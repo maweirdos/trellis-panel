@@ -1,0 +1,19 @@
+appId: com.mindfold.trellispanel
+productName: Trellis Panel
+publish: null
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: TrellisPanel-Setup-${version}.exe
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Trellis Panel
