@@ -1,90 +1,104 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   X,
-  FileText,
   FolderOpen,
   ExternalLink,
   SquarePen,
   Circle,
   CircleCheck,
-  FileWarning
+  FileWarning,
+  FileText,
+  GitCompare,
+  Save,
+  RotateCcw,
+  Bot,
+  Zap,
+  RefreshCw
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
-import { MarkdownView } from '../components/MarkdownView'
-import { PriorityBadge, StatusBadge } from '../components/badges'
+import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
+import { STATUS_OPTIONS, statusLabel } from '../utils/labels'
 import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
+import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
-import type { FileEntry, TaskInfo, TaskPatch, TaskPriority, TaskStatus } from '../../../shared/types'
+import type { TaskInfo, TaskPatch } from '../../../shared/types'
 
-const STATUS_OPTIONS: Array<{ v: TaskStatus; l: string }> = [
-  { v: 'planning', l: '规划中' },
-  { v: 'in_progress', l: '进行中' },
-  { v: 'review', l: '评审中' },
-  { v: 'completed', l: '已完成' }
-]
+const FIELD_LABEL: Record<string, string> = {
+  title: '标题',
+  description: '描述',
+  status: '状态',
+  priority: '优先级',
+  assignee: '负责人',
+  notes: '备注',
+  branch: '分支',
+  pr_url: 'PR 链接'
+}
 
-function Row({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+function Row({ label, modified, children }: { label: string; modified?: boolean; children: React.ReactNode }): JSX.Element {
   return (
     <div className="flex items-start gap-3 py-1.5">
-      <span className="w-16 shrink-0 pt-0.5 text-[11px] text-mist-500">{label}</span>
+      <span className="w-16 shrink-0 pt-0.5 text-[11px] text-mist-500">
+        {label}
+        {modified && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" title="待保存修改" />}
+      </span>
       <div className="min-w-0 flex-1 text-xs text-mist-200">{children}</div>
     </div>
   )
 }
 
 function FieldRow({
+  field,
   label,
   value,
-  onSave,
+  pendingValue,
+  onChange,
   multiline,
-  options
+  options,
+  display
 }: {
+  field: string
   label: string
   value: string
-  onSave: (v: string) => Promise<void>
+  pendingValue: string | null | undefined
+  onChange: (field: string, v: string) => void
   multiline?: boolean
-  options?: string[]
+  options?: Array<{ value: string; label: string }>
+  display?: (v: string) => string
 }): JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
-  const [busy, setBusy] = useState(false)
+  const shown = pendingValue ?? value
+  const modified = pendingValue !== undefined && pendingValue !== null && pendingValue !== value
 
   useEffect(() => {
-    if (!editing) setDraft(value)
-  }, [value, editing])
+    if (!editing) setDraft(shown)
+  }, [shown, editing])
 
-  const commit = async (): Promise<void> => {
-    if (draft !== value) {
-      setBusy(true)
-      await onSave(draft)
-      setBusy(false)
-    }
+  const done = (): void => {
+    if (draft !== shown) onChange(field, draft)
     setEditing(false)
   }
 
   return (
-    <Row label={label}>
+    <Row label={label} modified={modified}>
       {editing ? (
         <div className="space-y-1.5">
           {options ? (
-            // Selection fields commit immediately on change — a separate
-            // save button would lose the click to the select's blur-cancel.
             <select
               autoFocus
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value)
-                setBusy(true)
-                void onSave(e.target.value).finally(() => setBusy(false))
+                onChange(field, e.target.value)
                 setEditing(false)
               }}
               onBlur={() => setEditing(false)}
               className="field"
             >
               {options.map((o) => (
-                <option key={o} value={o}>{o}</option>
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           ) : multiline ? (
@@ -101,24 +115,31 @@ function FieldRow({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void commit()
+                if (e.key === 'Enter') done()
                 if (e.key === 'Escape') setEditing(false)
               }}
               className="field"
             />
           )}
-          <div className="flex gap-1.5">
-            <button disabled={busy} onClick={() => void commit()} className="btn-primary px-2 py-0.5">
-              保存
-            </button>
-            <button onClick={() => setEditing(false)} className="btn-ghost px-2 py-0.5">
-              取消
-            </button>
-          </div>
+          {!options && (
+            <div className="flex gap-1.5">
+              <button onClick={done} className="btn-primary px-2 py-0.5">
+                确认
+              </button>
+              <button onClick={() => setEditing(false)} className="btn-ghost px-2 py-0.5">
+                取消
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="group flex items-start gap-1.5">
-          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{value || <span className="text-mist-600">—</span>}</span>
+          <span className={clsx('min-w-0 flex-1 whitespace-pre-wrap break-words', modified && 'text-leaf-soft')}>
+            {(display ? display(shown) : shown) || <span className="text-mist-600">—</span>}
+            {modified && value && (
+              <span className="ml-1.5 text-[10px] text-mist-600 line-through">{display ? display(value) : value}</span>
+            )}
+          </span>
           <button
             onClick={() => setEditing(true)}
             className="mt-0.5 shrink-0 text-mist-600 opacity-0 transition-opacity hover:text-mist-200 group-hover:opacity-100"
@@ -132,77 +153,66 @@ function FieldRow({
   )
 }
 
-function ArtifactPreview({ file, onClose }: { file: FileEntry; onClose: () => void }): JSX.Element | null {
-  const [state, setState] = useState<{ loading: boolean; content?: string; error?: string }>({ loading: true })
-
-  useEffect(() => {
-    let alive = true
-    setState({ loading: true })
-    api.readTextFile(file.path).then((res) => {
-      if (!alive) return
-      if (res.ok) setState({ loading: false, content: res.content })
-      else setState({ loading: false, error: res.error })
-    })
-    return () => {
-      alive = false
-    }
-  }, [file.path])
-
-  const isMd = /\.(md|markdown)$/i.test(file.name)
-
-  return (
-    <div className="absolute inset-0 z-20 flex animate-fade-in flex-col rounded-r-xl bg-ink-850">
-      <div className="flex items-center gap-2 border-b border-ink-700 px-4 py-2.5">
-        <FileText size={13} className="text-leaf" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-mist-200">{file.name}</span>
-        <span className="text-[10.5px] text-mist-500">{fmtBytes(file.size)}</span>
-        <button onClick={onClose} className="btn-ghost px-1.5 py-1" title="关闭预览">
-          <X size={14} />
-        </button>
-      </div>
-      <div className="flex-1 overflow-auto px-5 py-4">
-        {state.loading && <div className="text-xs text-mist-500">加载中…</div>}
-        {state.error && (
-          <div className="flex items-center gap-1.5 text-xs text-rose-300">
-            <FileWarning size={13} /> {state.error}
-          </div>
-        )}
-        {!state.loading && !state.error && isMd && <MarkdownView content={state.content ?? ''} />}
-        {!state.loading && !state.error && !isMd && (
-          <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-5 text-mist-300">
-            {state.content}
-          </pre>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export function TaskDetail(): JSX.Element | null {
+export function TaskDetail({
+  onOpenArtifact
+}: {
+  onOpenArtifact: (f: { name: string; path: string; kind: 'file' | 'dir'; size: number; mtime: number; ext: string }) => void
+}): JSX.Element | null {
   const snapshot = useApp((s) => s.snapshot)
+  const settings = useApp((s) => s.settings)
   const openTaskDir = useApp((s) => s.openTaskDir)
   const archived = useApp((s) => s.openTaskArchived)
   const showTask = useApp((s) => s.showTask)
+  const pushToast = useApp((s) => s.pushToast)
 
-  const [previewFile, setPreviewFile] = useState<FileEntry | null>(null)
   const [tab, setTab] = useState<'info' | 'artifacts'>('info')
+  const [pending, setPending] = useState<TaskPatch>({})
+  const [showDiff, setShowDiff] = useState(false)
+  const [syncingJira, setSyncingJira] = useState(false)
+  const [aiBusy, setAiBusy] = useState<string | null>(null)
 
   useEffect(() => {
-    setPreviewFile(null)
     setTab('info')
+    setPending({})
+    setShowDiff(false)
   }, [openTaskDir])
 
-  const task: TaskInfo | undefined = snapshot
-    ? archived
-      ? snapshot.archived.find((t) => t.path === openTaskDir)
-      : snapshot.tasks.find((t) => t.dirName === openTaskDir)
-    : undefined
+  const task: TaskInfo | undefined = useMemo(
+    () =>
+      snapshot
+        ? archived
+          ? snapshot.archived.find((t) => t.path === openTaskDir)
+          : snapshot.tasks.find((t) => t.dirName === openTaskDir)
+        : undefined,
+    [snapshot, archived, openTaskDir]
+  )
 
   if (!task) return null
   const r = task.record
+  const jiraKey = typeof r?.meta?.jiraKey === 'string' ? (r.meta.jiraKey as string) : null
+  const jiraUrl = typeof r?.meta?.jiraUrl === 'string' ? (r.meta.jiraUrl as string) : null
+  const pendingCount = Object.keys(pending).length
 
-  const save = async (patch: TaskPatch): Promise<void> => {
-    await api.updateTask(task.path, patch)
+  const setField = (field: string, v: string): void => {
+    setPending((p) => {
+      const next = { ...p, [field]: v } as TaskPatch
+      if (String(next[field as keyof TaskPatch]) === String((r as any)?.[field] ?? '')) {
+        delete next[field as keyof TaskPatch]
+      }
+      return next
+    })
+  }
+
+  const saveAll = async (): Promise<void> => {
+    if (!pendingCount) return
+    const res = await api.updateTask(task.path, pending)
+    if (res.ok) {
+      pushToast({ kind: 'success', title: '任务已保存', body: `${pendingCount} 处修改已写入 task.json` })
+      setPending({})
+      setShowDiff(false)
+    } else {
+      pushToast({ kind: 'error', title: '保存失败', body: res.error })
+    }
   }
 
   const toggleSubtask = async (idx: number): Promise<void> => {
@@ -212,23 +222,62 @@ export function TaskDetail(): JSX.Element | null {
       const { done, text } = parseSubtask(s)
       return `[${done ? ' ' : 'x'}] ${text}`
     })
-    await save({ subtasks: next })
+    const res = await api.updateTask(task.path, { subtasks: next })
+    if (!res.ok) pushToast({ kind: 'error', title: '更新失败', body: res.error })
+  }
+
+  const syncJira = async (): Promise<void> => {
+    if (!jiraKey || !settings?.jira?.enabled) return
+    setSyncingJira(true)
+    const res = await api.jiraSearch(settings.jira, `issuekey = ${jiraKey}`)
+    setSyncingJira(false)
+    const issue = res.issues?.[0]
+    if (!res.ok || !issue) {
+      pushToast({ kind: 'error', title: 'Jira 同步失败', body: res.error ?? '未找到该问题' })
+      return
+    }
+    const map: Record<string, string> = { new: 'planning', indeterminate: 'in_progress', done: 'completed' }
+    const trellisStatus = map[issue.statusCategory] ?? 'planning'
+    const patch: TaskPatch = { status: trellisStatus }
+    if (issue.summary !== r?.title) patch.title = issue.summary
+    const res2 = await api.updateTask(task.path, patch)
+    if (res2.ok) {
+      pushToast({
+        kind: 'success',
+        title: `Jira ${jiraKey} 已同步`,
+        body: `状态：${issue.status} → ${statusLabel(trellisStatus)}`
+      })
+    } else {
+      pushToast({ kind: 'error', title: '同步写入失败', body: res2.error })
+    }
+  }
+
+  const launchAi = async (app: 'codex' | 'zcode' | 'claude'): Promise<void> => {
+    setAiBusy(app)
+    const res = await api.launchAiApp(app, task.dirName)
+    setAiBusy(null)
+    if (res.ok) {
+      pushToast({ kind: 'success', title: `已在终端调起 ${app}`, body: '任务上下文已注入提示词' })
+    } else {
+      pushToast({ kind: 'error', title: `调起 ${app} 失败`, body: res.error })
+    }
   }
 
   return (
-    <div className="relative flex w-[460px] shrink-0 animate-slide-in flex-col border-l border-ink-700 bg-ink-850">
-      <div className="relative z-30 flex items-start gap-2 border-b border-ink-700 px-4 py-3">
+    <div className="relative flex h-full w-[460px] shrink-0 animate-slide-in flex-col border-l border-ink-700 bg-ink-850 shadow-2xl">
+      <div className="flex items-start gap-2 border-b border-ink-700 px-4 py-3">
         <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-center gap-1.5">
-            {r && <StatusBadge status={r.status} />}
-            {r && <PriorityBadge priority={r.priority} />}
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            {r && <StatusBadge status={pending.status ?? r.status} />}
+            {r && <PriorityBadge priority={pending.priority ?? r.priority} />}
+            {jiraKey && <JiraChip jiraKey={jiraKey} />}
             <span className="font-mono text-[10px] text-mist-500">
               {taskDateLabel(task.dirName, task.date)}
               {archived ? ' · 已归档' : ''}
             </span>
           </div>
           <h2 className="line-clamp-2 text-[13px] font-semibold leading-5 text-mist-50">
-            {r?.title ?? task.dirName}
+            {pending.title ?? r?.title ?? task.dirName}
           </h2>
           <div className="mt-0.5 font-mono text-[10.5px] text-mist-500">{task.dirName}</div>
         </div>
@@ -241,7 +290,7 @@ export function TaskDetail(): JSX.Element | null {
       <div className="flex border-b border-ink-700 bg-ink-850 px-2">
         {(
           [
-            ['info', `详情`],
+            ['info', '详情'],
             ['artifacts', `产物 (${task.artifacts.length})`]
           ] as const
         ).map(([id, label]) => (
@@ -259,7 +308,7 @@ export function TaskDetail(): JSX.Element | null {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-20">
         {tab === 'info' && (
           <div className="space-y-1 divide-y divide-ink-700/50">
             {task.parseError && (
@@ -269,14 +318,41 @@ export function TaskDetail(): JSX.Element | null {
             )}
             {r ? (
               <>
-                <FieldRow label="标题" value={r.title} onSave={(v) => save({ title: v })} />
-                <FieldRow label="状态" value={r.status} onSave={(v) => save({ status: v })} options={STATUS_OPTIONS.map((o) => o.v)} />
-                <FieldRow label="优先级" value={r.priority} onSave={(v) => save({ priority: v })} options={[...['P0', 'P1', 'P2', 'P3']]} />
-                <FieldRow label="负责人" value={r.assignee} onSave={(v) => save({ assignee: v })} />
-                <FieldRow label="分支" value={r.branch ?? ''} onSave={(v) => save({ branch: v || null })} />
-                <FieldRow label="PR 链接" value={r.pr_url ?? ''} onSave={(v) => save({ pr_url: v || null })} />
-                <FieldRow label="描述" value={r.description} onSave={(v) => save({ description: v })} multiline />
-                <FieldRow label="备注" value={r.notes} onSave={(v) => save({ notes: v })} multiline />
+                <FieldRow field="title" label="标题" value={r.title} pendingValue={pending.title} onChange={setField} />
+                <FieldRow
+                  field="status"
+                  label="状态"
+                  value={r.status}
+                  pendingValue={pending.status}
+                  onChange={setField}
+                  options={STATUS_OPTIONS}
+                  display={statusLabel}
+                />
+                <FieldRow
+                  field="priority"
+                  label="优先级"
+                  value={r.priority}
+                  pendingValue={pending.priority}
+                  onChange={setField}
+                  options={[
+                    { value: 'P0', label: '紧急 P0' },
+                    { value: 'P1', label: '高 P1' },
+                    { value: 'P2', label: '中 P2' },
+                    { value: 'P3', label: '低 P3' }
+                  ]}
+                />
+                <FieldRow field="assignee" label="负责人" value={r.assignee} pendingValue={pending.assignee} onChange={setField} />
+                <FieldRow field="branch" label="分支" value={r.branch ?? ''} pendingValue={pending.branch} onChange={setField} />
+                <FieldRow field="pr_url" label="PR 链接" value={r.pr_url ?? ''} pendingValue={pending.pr_url} onChange={setField} />
+                <FieldRow
+                  field="description"
+                  label="描述"
+                  value={r.description}
+                  pendingValue={pending.description}
+                  onChange={setField}
+                  multiline
+                />
+                <FieldRow field="notes" label="备注" value={r.notes} pendingValue={pending.notes} onChange={setField} multiline />
 
                 {r.subtasks.length > 0 && (
                   <div className="py-1.5">
@@ -308,10 +384,10 @@ export function TaskDetail(): JSX.Element | null {
                   <span>创建时间</span><span className="text-right font-mono text-mist-200">{r.createdAt || '—'}</span>
                   <span>完成时间</span><span className="text-right font-mono text-mist-200">{r.completedAt ?? '—'}</span>
                   <span>基础分支</span><span className="text-right font-mono text-mist-200">{r.base_branch ?? '—'}</span>
-                  <span>dev_type</span><span className="text-right text-mist-200">{r.dev_type ?? '—'}</span>
-                  <span>scope / package</span><span className="text-right text-mist-200">{[r.scope, r.package].filter(Boolean).join(' / ') || '—'}</span>
-                  <span>commit</span><span className="text-right font-mono text-mist-200">{r.commit ?? '—'}</span>
-                  <span>worktree</span><span className="truncate text-right font-mono text-mist-200">{r.worktree_path ?? '—'}</span>
+                  <span>任务类型</span><span className="text-right text-mist-200">{r.dev_type ?? '—'}</span>
+                  <span>范围 / 包</span><span className="text-right text-mist-200">{[r.scope, r.package].filter(Boolean).join(' / ') || '—'}</span>
+                  <span>提交</span><span className="truncate text-right font-mono text-mist-200">{r.commit ?? '—'}</span>
+                  <span>工作树</span><span className="truncate text-right font-mono text-mist-200">{r.worktree_path ?? '—'}</span>
                   <span>父任务</span><span className="truncate text-right font-mono text-mist-200">{r.parent ?? '—'}</span>
                   <span>子任务(引用)</span><span className="truncate text-right font-mono text-mist-200">{r.children.length ? r.children.join(', ') : '—'}</span>
                 </div>
@@ -327,13 +403,46 @@ export function TaskDetail(): JSX.Element | null {
                   </div>
                 )}
 
-                <div className="flex gap-2 pt-3">
+                {/* AI 调起 */}
+                <div className="pt-3">
+                  <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
+                    <Bot size={12} /> 把任务交给 AI 工具继续
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button disabled={aiBusy !== null} onClick={() => void launchAi('codex')} className="btn-outline disabled:opacity-50">
+                      <Zap size={12} /> {aiBusy === 'codex' ? '调起中…' : 'Codex 接手'}
+                    </button>
+                    <button disabled={aiBusy !== null} onClick={() => void launchAi('zcode')} className="btn-outline disabled:opacity-50">
+                      <Zap size={12} /> {aiBusy === 'zcode' ? '调起中…' : 'ZCode 接手'}
+                    </button>
+                    <button disabled={aiBusy !== null} onClick={() => void launchAi('claude')} className="btn-outline disabled:opacity-50">
+                      <Zap size={12} /> {aiBusy === 'claude' ? '调起中…' : 'Claude 接手'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-3">
                   <button onClick={() => api.revealInExplorer(task.path)} className="btn-outline">
                     <FolderOpen size={12} /> 打开目录
                   </button>
                   <button onClick={() => api.openInEditor(task.path)} className="btn-outline">
                     <ExternalLink size={12} /> 编辑器打开
                   </button>
+                  {jiraKey && (
+                    <>
+                      {jiraUrl && (
+                        <button onClick={() => api.openExternal(jiraUrl)} className="btn-outline">
+                          <ExternalLink size={12} /> Jira {jiraKey}
+                        </button>
+                      )}
+                      {settings?.jira?.enabled && (
+                        <button onClick={() => void syncJira()} disabled={syncingJira} className="btn-outline disabled:opacity-50">
+                          <RefreshCw size={12} className={syncingJira ? 'animate-spin' : ''} />
+                          {syncingJira ? '同步中…' : '从 Jira 同步'}
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </>
             ) : (
@@ -353,7 +462,7 @@ export function TaskDetail(): JSX.Element | null {
                 <button
                   key={f.path}
                   disabled={!clickable}
-                  onClick={() => clickable && setPreviewFile(f)}
+                  onClick={() => clickable && onOpenArtifact(f)}
                   className={clsx(
                     'flex w-full items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
                     clickable
@@ -371,7 +480,34 @@ export function TaskDetail(): JSX.Element | null {
         )}
       </div>
 
-      {previewFile && <ArtifactPreview file={previewFile} onClose={() => setPreviewFile(null)} />}
+      {/* 待保存修改 footer */}
+      {pendingCount > 0 && (
+        <div className="absolute inset-x-0 bottom-0 z-10 flex animate-fade-in items-center gap-2 border-t border-ink-600 bg-ink-800/95 px-4 py-2.5 backdrop-blur">
+          <span className="text-[11px] text-amber-300">
+            {pendingCount} 处待保存修改
+          </span>
+          <div className="ml-auto flex gap-1.5">
+            <button onClick={() => setPending({})} className="btn-ghost" title="放弃全部修改">
+              <RotateCcw size={12} /> 放弃
+            </button>
+            <button onClick={() => setShowDiff(true)} className="btn-outline">
+              <GitCompare size={12} /> 预览
+            </button>
+            <button onClick={() => void saveAll()} className="btn-primary">
+              <Save size={12} /> 保存
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showDiff && (
+        <DiffModal
+          task={task}
+          pending={pending}
+          onCancel={() => setShowDiff(false)}
+          onSave={() => void saveAll()}
+        />
+      )}
     </div>
   )
 }

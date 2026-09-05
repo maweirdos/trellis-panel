@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Leaf, Minus, Square, X, Copy } from 'lucide-react'
+import { Leaf, Minus, Square, X, Copy, PictureInPicture2 } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
@@ -49,6 +49,15 @@ export function TitleBar(): JSX.Element {
             </span>
           )}
         </div>
+      )}
+      {snapshot && (
+        <button
+          onClick={() => api.setCapsuleMode(true)}
+          className="no-drag btn-ghost ml-2 px-2 py-1"
+          title="切换到胶囊模式（置顶小卡片）"
+        >
+          <PictureInPicture2 size={13} />
+        </button>
       )}
       <div className="ml-auto flex h-full items-stretch">
         <WinButton onClick={() => api.windowMinimize()}>

@@ -140,10 +140,37 @@ export interface ProjectSnapshot {
   scannedAt: number
 }
 
+export interface JiraConfig {
+  enabled: boolean
+  baseUrl: string
+  user: string
+  password: string
+  /** Extra JQL filter ANDed with the default assignee query; empty = default. */
+  jql: string
+}
+
+export interface JiraIssue {
+  key: string
+  summary: string
+  status: string
+  statusCategory: string
+  priority: string
+  issueType: string
+  updated: string
+  url: string
+  assignee: string
+}
+
+export interface JiraTransition {
+  id: string
+  name: string
+}
+
 export interface Settings {
   recentProjects: string[]
   theme: 'dark' | 'light'
   cliCommand: string
+  jira: JiraConfig
 }
 
 export interface RunEvent {
@@ -163,6 +190,21 @@ export interface RecentDoc {
   name: string
 }
 
+/** Toast notification pushed from main → any window. */
+export interface ToastEvent {
+  kind: 'info' | 'success' | 'warn' | 'error'
+  title: string
+  body?: string
+}
+
+/** Event fired when an AI tool (codex/zcode/hooks) touches a task. */
+export interface BridgeEvent {
+  type: 'task-event' | 'notify' | 'open-task'
+  taskDir?: string | null
+  text?: string
+  source?: string
+}
+
 /** APIs exposed to the renderer via contextBridge. */
 export interface TrellisApi {
   pickProject: () => Promise<string | null>
@@ -172,6 +214,16 @@ export interface TrellisApi {
   onSnapshotUpdated: (cb: (s: ProjectSnapshot) => void) => () => void
 
   updateTask: (taskDir: string, patch: TaskPatch) => Promise<{ ok: boolean; error?: string }>
+  createTaskFromJira: (input: {
+    dirName: string
+    title: string
+    description: string
+    status: string
+    priority: string
+    assignee: string
+    jiraKey: string
+    jiraUrl: string
+  }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
   readTextFile: (absPath: string) => Promise<{ ok: boolean; error?: string; content?: string }>
   revealInExplorer: (absPath: string) => Promise<void>
   openInEditor: (absPath: string) => Promise<void>
@@ -185,6 +237,24 @@ export interface TrellisApi {
   onCliOutput: (cb: (e: RunEvent) => void) => () => void
   onCliDone: (cb: (e: RunDoneEvent) => void) => () => void
 
+  /* --- AI bridge (codex / zcode / hooks) --- */
+  installTpanel: () => Promise<{ ok: boolean; error?: string; path?: string }>
+  installTrellisHooks: () => Promise<{ ok: boolean; error?: string; message?: string }>
+  copyToClipboard: (text: string) => Promise<void>
+  setCapsuleMode: (on: boolean) => Promise<void>
+  setCapsuleOnTop: (on: boolean) => Promise<void>
+  launchAiApp: (app: 'codex' | 'zcode' | 'claude', taskDir: string | null) => Promise<{ ok: boolean; error?: string }>
+  onToast: (cb: (e: ToastEvent) => void) => () => void
+  onBridgeTaskFocus: (cb: (taskDir: string) => void) => () => void
+
+  /* --- Jira --- */
+  jiraTest: (cfg: JiraConfig) => Promise<{ ok: boolean; error?: string; displayName?: string }>
+  jiraSearch: (cfg: JiraConfig, jql: string) => Promise<{ ok: boolean; error?: string; issues?: JiraIssue[]; total?: number }>
+  jiraTransitions: (cfg: JiraConfig, key: string) => Promise<{ ok: boolean; error?: string; transitions?: JiraTransition[] }>
+  jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) => Promise<{ ok: boolean; error?: string }>
+  jiraComment: (cfg: JiraConfig, key: string, body: string) => Promise<{ ok: boolean; error?: string }>
+
+  /* --- window --- */
   windowMinimize: () => void
   windowMaximize: () => void
   windowClose: () => void

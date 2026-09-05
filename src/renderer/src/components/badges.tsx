@@ -1,4 +1,5 @@
 import type { TaskPhase } from '../../../shared/types'
+import { STATUS_LABEL } from '../utils/labels'
 import { clsx } from 'clsx'
 
 export function StatusBadge({ status }: { status: string }): JSX.Element {
@@ -10,7 +11,7 @@ export function StatusBadge({ status }: { status: string }): JSX.Element {
     done: { label: '已完成', cls: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/25' }
   }
   const it = map[status?.toLowerCase()] ?? {
-    label: status || '未知',
+    label: STATUS_LABEL[status] ?? (status || '未知'),
     cls: 'bg-ink-700 text-mist-300 border border-ink-500'
   }
   return <span className={clsx('chip', it.cls)}>{it.label}</span>
@@ -26,6 +27,14 @@ export function PriorityBadge({ priority }: { priority: string }): JSX.Element {
   return (
     <span className={clsx('chip font-mono font-medium', map[priority] ?? map.P2)}>
       {priority || 'P?'}
+    </span>
+  )
+}
+
+export function JiraChip({ jiraKey }: { jiraKey: string }): JSX.Element {
+  return (
+    <span className="chip border border-blue-400/30 bg-blue-500/15 font-mono text-[10.5px] text-blue-300">
+      ⚡ {jiraKey}
     </span>
   )
 }

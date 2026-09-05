@@ -195,3 +195,25 @@ select {
 .md input[type='checkbox'] {
   @apply mr-1.5 accent-emerald-500;
 }
+
+/* ---------- ASCII diagram ---------- */
+.ascii-diagram {
+  @apply relative my-3 overflow-hidden rounded-lg border border-leaf-dim/25 bg-ink-950/70;
+}
+.ascii-diagram-label {
+  @apply border-b border-ink-700 bg-ink-850/80 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-leaf-soft/70;
+}
+.ascii-diagram pre {
+  @apply m-0 max-w-full overflow-x-auto p-3 text-[12px] leading-[1.45] text-mist-200;
+  font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+  font-variant-ligatures: none;
+}
+
+/* ---------- Toast ---------- */
+.toast-enter {
+  animation: toastIn .22s cubic-bezier(.2,.8,.3,1);
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(16px) scale(.97); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}

@@ -1,0 +1,12 @@
+
+
+# --- Trellis Panel bridge (auto-generated) ---
+hooks:
+  after_create:
+    - "tpanel task-event"
+  after_start:
+    - "tpanel task-event"
+  after_finish:
+    - "tpanel task-event"
+  after_archive:
+    - "tpanel task-event"

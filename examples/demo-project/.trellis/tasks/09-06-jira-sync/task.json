@@ -1,0 +1,29 @@
+{
+  "id": "jira-sync",
+  "name": "jira-sync",
+  "title": "Jira 双向同步（待规划）",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "demo",
+  "assignee": "demo",
+  "createdAt": "2026-09-06",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": null,
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "jiraKey": "HONSKY-680",
+    "jiraUrl": "http://192.168.1.202:8083/browse/HONSKY-680"
+  }
+}

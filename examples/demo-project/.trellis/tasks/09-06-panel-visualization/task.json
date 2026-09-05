@@ -1,0 +1,30 @@
+{
+  "id": "panel-visualization",
+  "name": "panel-visualization",
+  "title": "看板可视化与交互升级（演示任务）",
+  "description": "diff 预览测试：通过面板修改备注",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "demo",
+  "assignee": "demo",
+  "createdAt": "2026-09-06",
+  "completedAt": null,
+  "branch": "feat/kanban-upgrade",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [
+    "[x] 看板重构",
+    "[ ] Mermaid 渲染",
+    "[ ] 团队页"
+  ],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "这是演示项目中的示例任务",
+  "meta": {}
+}

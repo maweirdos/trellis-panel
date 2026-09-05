@@ -7,10 +7,11 @@ import {
   SquareTerminal,
   Settings,
   FolderOpen,
-  RotateCw
+  RotateCw,
+  Link2,
+  GitPullRequestArrow
 } from 'lucide-react'
 import { useApp, type Page } from '../store'
-import { api } from '../api'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
 
@@ -20,6 +21,8 @@ const NAV: Array<{ id: Page; label: string; icon: JSX.Element }> = [
   { id: 'spec', label: '规范文档', icon: <BookOpenText size={16} /> },
   { id: 'workspace', label: '工作区', icon: <Users size={16} /> },
   { id: 'archive', label: '归档', icon: <Archive size={16} /> },
+  { id: 'team', label: '团队协作', icon: <GitPullRequestArrow size={16} /> },
+  { id: 'jira', label: 'Jira 任务', icon: <Link2 size={16} /> },
   { id: 'cli', label: 'CLI 终端', icon: <SquareTerminal size={16} /> },
   { id: 'settings', label: '设置', icon: <Settings size={16} /> }
 ]

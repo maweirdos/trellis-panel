@@ -6,7 +6,8 @@ import type { Settings } from '../../shared/types'
 const DEFAULTS: Settings = {
   recentProjects: [],
   theme: 'dark',
-  cliCommand: 'trellis'
+  cliCommand: 'trellis',
+  jira: { enabled: false, baseUrl: '', user: '', password: '', jql: '' }
 }
 
 let cache: Settings | null = null

@@ -1,0 +1,29 @@
+{
+  "id": "jira-honsky-668",
+  "name": "jira-honsky-668",
+  "title": "[HONSKY-668] 【后端】【药库管理】【采购入库】",
+  "description": "从 Jira 导入 HONSKY-668\n类型：需求 · 优先级：一般 · 负责人：马维\n链接：http://192.168.1.202:8083/browse/HONSKY-668",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "mawei",
+  "assignee": "demo",
+  "createdAt": "2026-09-07",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": null,
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "从 Jira 导入：HONSKY-668\nhttp://192.168.1.202:8083/browse/HONSKY-668",
+  "meta": {
+    "jiraKey": "HONSKY-668",
+    "jiraUrl": "http://192.168.1.202:8083/browse/HONSKY-668"
+  }
+}
