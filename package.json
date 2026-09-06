@@ -1,6 +1,6 @@
 {
   "name": "trellis-panel",
-  "version": "0.3.0",
+  "version": "0.1.0",
   "description": "Trellis 可视化面板 — Windows 桌面客户端",
   "main": "out/main/index.js",
   "author": "trellis-panel",
