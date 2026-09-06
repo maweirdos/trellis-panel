@@ -1,5 +1,19 @@
 # Trellis Panel
 
+<div align="center">
+  <img src="https://img.shields.io/github/package-json/v/maweirdos/trellis-panel?style=for-the-badge&logo=github&logoColor=white" alt="版本">
+  <img src="https://img.shields.io/github/license/maweirdos/trellis-panel?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/badge/Windows-10%2B-0078D6?style=for-the-badge" alt="Windows">
+  <img src="https://img.shields.io/badge/Electron-33-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron">
+  <img src="https://img.shields.io/badge/React-18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript">
+  <br/>
+  <img src="https://img.shields.io/github/stars/maweirdos/trellis-panel?style=for-the-badge&logo=github&logoColor=white&label=Stars" alt="Stars">
+  <img src="https://img.shields.io/github/issues/maweirdos/trellis-panel?style=for-the-badge&logo=github&logoColor=white&label=Issues" alt="Issues">
+  <img src="https://img.shields.io/badge/MCP-Server-black?style=for-the-badge&logo=modelcontextprotocol&logoColor=white" alt="MCP Server">
+  <img src="https://img.shields.io/badge/Jira-双向同步-0052CC?style=for-the-badge&logo=jira&logoColor=white" alt="Jira 双向同步">
+</div>
+
 > Trellis 工作流可视化面板 — Windows 桌面客户端（Electron + React + TypeScript）
 
 Trellis Panel 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-first-task)（面向 AI coding 平台的工作流框架）的本地可视化面板。它直接读取项目中的 `.trellis/` 目录，把任务、规范文档、开发者工作区和 AI 会话以图形界面呈现，并通过桥接层与 codex / zcode / claude 等 AI 工具实时联动、与 Jira 双向同步。
