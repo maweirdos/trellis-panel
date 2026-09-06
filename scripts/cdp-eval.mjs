@@ -2,7 +2,7 @@
 const port = process.argv[2] ?? '9333'
 const mode = process.argv[3] ?? 'eval' // eval | shot | flow
 const expr = process.argv[4] ?? 'document.title'
-const outPath = process.argv[5] ?? 'D:/my_demo/trellis-gui/.cdp-shot.png'
+const outPath = process.argv[5] ?? 'D:/my_demo/trellis-panel/.cdp-shot.png'
 
 const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
 const pages = list.filter((t) => t.type === 'page')
