@@ -5,3 +5,4 @@ dist/
 *.log
 .shots/
 examples/demo-project
+.idea/
