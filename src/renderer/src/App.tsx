@@ -14,10 +14,9 @@ import { SpecPage } from './pages/Spec'
 import { WorkspacePage } from './pages/Workspace'
 import { ArchivePage } from './pages/Archive'
 import { TeamPage } from './pages/Team'
-import { ChannelPage } from './pages/Channel'
 import { JiraPage } from './pages/Jira'
-import { CliPage } from './pages/Cli'
 import { InboxPage } from './pages/Inbox'
+import { AiWorkbenchPage } from './pages/AiWorkbench'
 import { SettingsPage } from './pages/Settings'
 import { IntakeModal } from './components/IntakeModal'
 import { clsx } from 'clsx'
@@ -43,11 +42,27 @@ function MainApp(): JSX.Element {
       inboxAdd(e.items)
       useApp.setState({ page: 'inbox' })
     })
+    const offAiLog = api.onAiLog((e) => {
+      useApp.getState().aiAppendLog(e.runId, e.stream, e.data)
+    })
+    const offAiDone = api.onAiDone((e) => {
+      useApp.getState().aiFinishRun(e.runId, e.code ?? null, Boolean(e.aborted))
+      const run = useApp.getState().aiRuns.find((r) => r.runId === e.runId)
+      if (run) {
+        useApp.getState().pushToast({
+          kind: e.aborted ? 'info' : e.code === 0 ? 'success' : 'error',
+          title: `${run.app} 执行${e.aborted ? '已中止' : e.code === 0 ? '完成' : '失败'}`,
+          body: run.label
+        })
+      }
+    })
     return () => {
       off()
       offToast()
       offFocus()
       offInbox()
+      offAiLog()
+      offAiDone()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -67,7 +82,7 @@ function MainApp(): JSX.Element {
             <div
               className={clsx(
                 'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'workspace' || page === 'jira' || page === 'channel' || page === 'inbox'
+              page === 'tasks' || page === 'spec' || page === 'workspace' || page === 'jira' || page === 'ai' || page === 'inbox'
                 ? 'overflow-hidden'
                 : 'overflow-y-auto'
               )}
@@ -75,13 +90,12 @@ function MainApp(): JSX.Element {
               {page === 'dashboard' && <Dashboard />}
               {page === 'inbox' && <InboxPage />}
               {page === 'tasks' && <TasksPage />}
+              {page === 'ai' && <AiWorkbenchPage />}
               {page === 'spec' && <SpecPage />}
               {page === 'workspace' && <WorkspacePage />}
               {page === 'archive' && <ArchivePage />}
               {page === 'team' && <TeamPage />}
-              {page === 'channel' && <ChannelPage />}
               {page === 'jira' && <JiraPage />}
-              {page === 'cli' && <CliPage />}
               {page === 'settings' && <SettingsPage />}
             </div>
 

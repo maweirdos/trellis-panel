@@ -339,14 +339,30 @@ export function TaskDetail(): JSX.Element | null {
     }
   }
 
-  const launchAi = async (app: 'codex' | 'zcode' | 'claude'): Promise<void> => {
+  const launchAi = async (app: 'codex' | 'claude'): Promise<void> => {
     setAiBusy(app)
-    const res = await api.launchAiApp(app, task.dirName)
+    // 复用面板的 AI prompt 构造，走后台非交互执行
+    const prompt = [
+      `请按 .trellis/workflow.md 的流程继续当前 Trellis 任务。`,
+      ``,
+      `任务目录：${task.dirName}`,
+      `标题：${r?.title ?? ''}`,
+      r?.description ? `描述：${r.description}` : '',
+      `状态：${r?.status ?? ''} / 优先级：${r?.priority ?? ''}`,
+      r?.notes ? `备注：${r.notes}` : '',
+      ``,
+      `先读取 .trellis/spec/ 相关规范与任务目录下的 prd.md（如有），再继续实施。`
+    ]
+      .filter(Boolean)
+      .join('\n')
+    const res = await api.aiLaunchRun({ app, prompt, label: r?.title ?? task.dirName, taskDir: task.dirName })
     setAiBusy(null)
-    if (res.ok) {
-      pushToast({ kind: 'success', title: `已在终端调起 ${app}`, body: '任务上下文已注入提示词' })
+    if (res.ok && res.run) {
+      useApp.getState().aiAddRun(res.run)
+      pushToast({ kind: 'success', title: `${app} 已在后台接手`, body: '进度见 AI 工作台' })
+      useApp.setState({ page: 'ai' })
     } else {
-      pushToast({ kind: 'error', title: `调起 ${app} 失败`, body: res.error })
+      pushToast({ kind: 'error', title: `${app} 启动失败`, body: res.error })
     }
   }
 
@@ -674,20 +690,17 @@ export function TaskDetail(): JSX.Element | null {
                   </div>
                 )}
 
-                {/* AI 调起 */}
+                {/* AI 调起：面板后台执行，进度进 AI 工作台 */}
                 <div className="pt-3">
                   <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
-                    <Bot size={12} /> 把任务交给 AI 工具继续
+                    <Bot size={12} /> 把任务交给 AI（后台执行）
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     <button disabled={aiBusy !== null} onClick={() => void launchAi('codex')} className="btn-outline disabled:opacity-50">
-                      <Zap size={12} /> {aiBusy === 'codex' ? '调起中…' : 'Codex 接手'}
-                    </button>
-                    <button disabled={aiBusy !== null} onClick={() => void launchAi('zcode')} className="btn-outline disabled:opacity-50">
-                      <Zap size={12} /> {aiBusy === 'zcode' ? '调起中…' : 'ZCode 接手'}
+                      <Zap size={12} /> {aiBusy === 'codex' ? '启动中…' : 'Codex 接手'}
                     </button>
                     <button disabled={aiBusy !== null} onClick={() => void launchAi('claude')} className="btn-outline disabled:opacity-50">
-                      <Zap size={12} /> {aiBusy === 'claude' ? '调起中…' : 'Claude 接手'}
+                      <Zap size={12} /> {aiBusy === 'claude' ? '启动中…' : 'Claude 接手'}
                     </button>
                   </div>
                 </div>

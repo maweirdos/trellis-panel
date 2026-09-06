@@ -1,18 +1,17 @@
 import { create } from 'zustand'
-import type { InboxItem, ProjectSnapshot, Settings, ToastEvent } from '../../shared/types'
+import type { AiRunInfo, InboxItem, ProjectSnapshot, Settings, ToastEvent } from '../../shared/types'
 import { api } from './api'
 
 export type Page =
   | 'dashboard'
   | 'inbox'
   | 'tasks'
+  | 'ai'
   | 'spec'
   | 'workspace'
   | 'archive'
   | 'team'
-  | 'channel'
   | 'jira'
-  | 'cli'
   | 'settings'
 
 export interface ToastItem extends ToastEvent {
@@ -29,6 +28,14 @@ export type InboxState = 'pending' | 'accepted' | 'snoozed' | 'dismissed'
 
 export interface InboxEntry extends InboxItem {
   state: InboxState
+}
+
+/** AI background run card in the workbench */
+export interface AiRunCard extends AiRunInfo {
+  status: 'running' | 'done' | 'failed' | 'aborted'
+  lines: Array<{ text: string; err: boolean }>
+  endedAt?: number
+  code?: number | null
 }
 
 let toastSeq = 1
@@ -68,6 +75,7 @@ interface AppState {
   viewerActive: string | null
   intakeOpen: boolean
   inbox: Record<string, InboxEntry>
+  aiRuns: AiRunCard[]
   setPage: (p: Page) => void
   bootstrap: () => Promise<void>
   openProjectPath: (root: string) => Promise<void>
@@ -83,6 +91,9 @@ interface AppState {
   pinArtifact: (path: string, pinned: boolean) => void
   setViewerActive: (path: string) => void
   setIntakeOpen: (on: boolean) => void
+  aiAddRun: (run: AiRunInfo) => void
+  aiAppendLog: (runId: number, stream: 'stdout' | 'stderr', data: string) => void
+  aiFinishRun: (runId: number, code: number | null, aborted: boolean) => void
   inboxAdd: (items: InboxItem[]) => void
   inboxSetState: (dirName: string, state: InboxState) => void
   inboxAcceptAll: () => void
@@ -102,6 +113,7 @@ export const useApp = create<AppState>((set, get) => ({
   viewerActive: null,
   intakeOpen: false,
   inbox: loadInbox(),
+  aiRuns: [],
 
   setPage: (page) => set({ page }),
 
@@ -197,6 +209,34 @@ export const useApp = create<AppState>((set, get) => ({
   setViewerActive: (path) => set({ viewerActive: path }),
 
   setIntakeOpen: (on) => set({ intakeOpen: on }),
+
+  aiAddRun: (run: AiRunInfo) =>
+    set((s) => ({
+      aiRuns: [{ ...run, status: 'running' as const, lines: [] }, ...s.aiRuns].slice(0, 30)
+    })),
+
+  aiAppendLog: (runId: number, stream: 'stdout' | 'stderr', data: string) => {
+    set((s) => ({
+      aiRuns: s.aiRuns.map((r) =>
+        r.runId === runId
+          ? {
+              ...r,
+              lines: [...r.lines, ...data.split('\n').filter((l) => l !== '').map((text) => ({ text, err: stream === 'stderr' }))].slice(-800)
+            }
+          : r
+      )
+    }))
+  },
+
+  aiFinishRun: (runId: number, code: number | null, aborted: boolean) => {
+    set((s) => ({
+      aiRuns: s.aiRuns.map((r) =>
+        r.runId === runId
+          ? { ...r, status: aborted ? 'aborted' : code === 0 ? 'done' : 'failed', code, endedAt: Date.now() }
+          : r
+      )
+    }))
+  },
 
   inboxAdd: (items) => {
     set((s) => {

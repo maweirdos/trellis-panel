@@ -302,6 +302,27 @@ export interface InboxNewEvent {
   items: InboxItem[]
 }
 
+/* ---------- AI background runs ---------- */
+
+export interface AiRunInfo {
+  runId: number
+  app: 'codex' | 'claude'
+  label: string
+  taskDir: string | null
+  startedAt: number
+}
+
+export interface AiLogEvent extends AiRunInfo {
+  stream: 'stdout' | 'stderr'
+  data: string
+}
+
+export interface AiDoneEvent {
+  runId: number
+  code: number | null
+  aborted?: boolean
+}
+
 /* ---------- Settings ---------- */
 
 export interface Settings {
@@ -437,6 +458,13 @@ export interface TrellisApi {
 
   /* --- task intake --- */
   createTask: (input: { title: string; description: string; priority: string }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
+
+  /* --- AI background runs --- */
+  aiDetect: () => Promise<{ codex: boolean; claude: boolean }>
+  aiLaunchRun: (input: { app: 'codex' | 'claude'; prompt: string; label: string; taskDir: string | null }) => Promise<{ ok: boolean; error?: string; run?: AiRunInfo }>
+  aiAbortRun: (runId: number) => Promise<void>
+  onAiLog: (cb: (e: AiLogEvent) => void) => () => void
+  onAiDone: (cb: (e: AiDoneEvent) => void) => () => void
 
   /* --- inbox --- */
   onInboxNew: (cb: (e: InboxNewEvent) => void) => () => void

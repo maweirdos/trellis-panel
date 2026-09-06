@@ -385,7 +385,7 @@ export function TasksPage(): JSX.Element {
       {/* board view */}
       {view === 'board' && (
         <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-3">
-          <div className="grid h-full min-h-0 auto-cols-fr grid-flow-col">
+          <div className="flex h-full min-h-0 gap-3">
             {columns.map((col) => {
               const items = boardColumns.filter((t) => matchCol(t, col.status))
               return (
@@ -404,7 +404,7 @@ export function TasksPage(): JSX.Element {
                     if (t) void moveTo(t, col.status)
                   }}
                   className={clsx(
-                    'mx-1.5 flex min-w-[220px] flex-col rounded-xl border border-ink-700 bg-ink-850/50 first:ml-0 last:mr-0',
+                    'flex w-full min-w-[230px] flex-1 flex-col rounded-xl border border-ink-700 bg-ink-850/50',
                     dragOver === col.status && `ring-2 ${col.ring}`
                   )}
                 >
@@ -523,7 +523,7 @@ export function TasksPage(): JSX.Element {
                             {col.label} · {items.length}
                           </span>
                         </div>
-                        <div className="max-h-56 min-h-0 space-y-1.5 overflow-y-auto">
+                        <div className="max-h-[26rem] min-h-0 space-y-1.5 overflow-y-auto">
                           {items.map((t) => (
                             <TaskCard key={t.dirName} t={t} onOpen={() => showTask(t.dirName)} />
                           ))}

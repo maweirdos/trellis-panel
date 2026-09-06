@@ -5,13 +5,12 @@ import {
   BookOpenText,
   Users,
   Archive,
-  SquareTerminal,
   Settings,
   FolderOpen,
   RotateCw,
   Link2,
   GitPullRequestArrow,
-  Radio
+  Bot
 } from 'lucide-react'
 import { useApp, type Page } from '../store'
 import { clsx } from 'clsx'
@@ -21,13 +20,12 @@ const NAV: Array<{ id: Page; label: string; icon: JSX.Element }> = [
   { id: 'dashboard', label: '概览', icon: <LayoutDashboard size={16} /> },
   { id: 'inbox', label: '收件箱', icon: <Inbox size={16} /> },
   { id: 'tasks', label: '任务看板', icon: <SquareKanban size={16} /> },
+  { id: 'ai', label: 'AI 工作台', icon: <Bot size={16} /> },
   { id: 'spec', label: '规范文档', icon: <BookOpenText size={16} /> },
   { id: 'workspace', label: '工作区', icon: <Users size={16} /> },
   { id: 'archive', label: '归档', icon: <Archive size={16} /> },
   { id: 'team', label: '团队协作', icon: <GitPullRequestArrow size={16} /> },
-  { id: 'channel', label: 'AI 频道', icon: <Radio size={16} /> },
   { id: 'jira', label: 'Jira 任务', icon: <Link2 size={16} /> },
-  { id: 'cli', label: 'CLI 终端', icon: <SquareTerminal size={16} /> },
   { id: 'settings', label: '设置', icon: <Settings size={16} /> }
 ]
 
@@ -40,6 +38,7 @@ export function Sidebar(): JSX.Element {
   const inbox = useApp((s) => s.inbox)
 
   const pendingCount = Object.values(inbox).filter((e) => e.state === 'pending').length
+  const aiRunning = useApp((s) => s.aiRuns.filter((r) => r.status === 'running').length)
 
   const counts: Partial<Record<Page, number>> = snapshot
     ? {
@@ -51,6 +50,7 @@ export function Sidebar(): JSX.Element {
 
   const badge = (id: Page): number | undefined => {
     if (id === 'inbox' && pendingCount > 0) return pendingCount
+    if (id === 'ai' && aiRunning > 0) return aiRunning
     return counts[id]
   }
 
@@ -76,7 +76,9 @@ export function Sidebar(): JSX.Element {
                   'ml-auto rounded px-1.5 font-mono text-[10.5px]',
                   item.id === 'inbox'
                     ? 'bg-amber-500/20 text-amber-300'
-                    : 'bg-ink-750 text-mist-400'
+                    : item.id === 'ai'
+                      ? 'bg-leaf-dim/25 text-leaf-soft'
+                      : 'bg-ink-750 text-mist-400'
                 )}
               >
                 {badge(item.id)}

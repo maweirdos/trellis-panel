@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  AiDoneEvent,
+  AiLogEvent,
   GitLabConfig,
   InboxNewEvent,
   JiraConfig,
@@ -80,6 +82,13 @@ const api = {
     ipcRenderer.invoke('task:create', input),
 
   onInboxNew: (cb: (e: InboxNewEvent) => void) => subscribe('inbox:new', cb),
+
+  aiDetect: () => ipcRenderer.invoke('ai:detect'),
+  aiLaunchRun: (input: { app: 'codex' | 'claude'; prompt: string; label: string; taskDir: string | null }) =>
+    ipcRenderer.invoke('ai:launchRun', input),
+  aiAbortRun: (runId: number) => ipcRenderer.invoke('ai:abortRun', runId),
+  onAiLog: (cb: (e: AiLogEvent) => void) => subscribe('ai:log', cb),
+  onAiDone: (cb: (e: AiDoneEvent) => void) => subscribe('ai:done', cb),
 
   windowMinimize: () => ipcRenderer.send('win:minimize'),
   windowMaximize: () => ipcRenderer.send('win:maximize'),

@@ -20,6 +20,7 @@ import { taskGitInfo, createBranch, clearGitCache, isGitRepo } from './services/
 import { recordActivity, getAnalytics } from './services/activity'
 import { generateWeeklyReport, saveReport } from './services/report'
 import { listChannels, channelSend } from './services/channels'
+import { detectAiClis, launchAiRun, abortAiRun } from './services/airun'
 import {
   gitlabTest,
   gitlabTaskStatus,
@@ -823,6 +824,16 @@ function registerIpc(): void {
     }
   })
 
+  /* AI 后台执行（面板内 codex exec / claude -p，输出流回 AI 工作台） */
+  ipcMain.handle('ai:detect', () => new Promise((resolve) => detectAiClis(resolve)))
+  ipcMain.handle('ai:launchRun', (_e, input: { app: 'codex' | 'claude'; prompt: string; label: string; taskDir: string | null }) => {
+    if (!win || !projectRoot) return { ok: false, error: '未打开项目' }
+    if (input.app !== 'codex' && input.app !== 'claude') return { ok: false, error: `未安装 ${input.app} CLI` }
+    const meta = launchAiRun(win, projectRoot, input.app, input.prompt, { label: input.label, taskDir: input.taskDir })
+    return { ok: true, run: meta }
+  })
+  ipcMain.handle('ai:abortRun', (_e, runId: number) => abortAiRun(runId))
+
   /* http api / mcp */
   ipcMain.handle('mcp:info', () => {
     const st = httpApiStatus()
@@ -890,6 +901,10 @@ const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
+  // 调试端口（CDP 截图/自动化验收用）：TPANEL_DEBUG_PORT=9333 npm run dev
+  if (process.env.TPANEL_DEBUG_PORT) {
+    app.commandLine.appendSwitch('remote-debugging-port', process.env.TPANEL_DEBUG_PORT)
+  }
   app.on('second-instance', (_e, argv) => {
     const link = parseDeepLink(argv)
     if (link) handleDeepLink(link, bridgeHandlers(), getSettings().bridgeToken)
