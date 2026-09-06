@@ -9,56 +9,44 @@ Trellis Panel 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-fir
 | 页面 | 能力 |
 | --- | --- |
 | 概览 | 任务状态统计（全中文）、当前任务、AI 平台检测、活跃 AI 会话、项目配置一览 |
-| 任务看板 | **看板 / 列表 / 泳道** 三种视图；固定高度列内滚动，不再无限拉长页面；拖拽切换状态；优先级/子任务进度/产物数/Jira 徽章 |
-| 任务详情 | 右侧**悬浮层**（不挤压看板）；24 字段中文化展示；**修改暂存 + 保存前 Diff 预览**；子任务勾选；一键把任务交给 Codex / ZCode / Claude |
-| 产物查看 | **全屏查看器**：大空间阅读，Markdown 渲染，**Mermaid 图表**与 **ASCII 线框图**友好渲染，原文/渲染切换、一键复制 |
-| 规范文档 | `.trellis/spec/` 目录树 + Markdown/Mermaid 渲染 |
-| 工作区 | 开发者日志（journal-N.md）与共享索引 |
-| 归档 | 兼容新旧两种归档布局（`.trellis/archive/` 与 `.trellis/tasks/archive/YYYY-MM/`） |
-| 团队协作 | 全队当前焦点、成员工作量条形图、团队动态流（任务/日志/AI 会话）、成员任务明细、任务分享（Markdown 到剪贴板） |
-| Jira 任务 | 连接 Jira Server/DC：我的待办查询（自定义 JQL）、**导入为 Trellis 任务**（按状态类别自动映射）、**Jira ↔ Trellis 状态同步**、Trellis 状态推送 Jira 流转、进度回写 Jira 评论 |
-| CLI 终端 | 在项目目录运行 trellis 命令，实时输出、可中止 |
-| 胶囊模式 | 置顶小卡片常驻：当前任务 + 子任务进度 + Codex/ZCode 快捷接手 + 回到主面板 |
-| 实时同步 | chokidar 监听 `.trellis/`，防抖增量推送；AI 工具改动任务即刻反映 |
+| 任务看板 | **看板 / 列表 / 泳道** 三种视图；固定高度列内滚动；拖拽切换状态；优先级/子任务进度/产物数/Jira 徽章 |
+| 任务详情 | 右侧悬浮层；24 字段中文化；**修改暂存 + Diff 预览**；**Git 状态**（领先/落后、合并检测、提交列表、一键建分支）；**写冲突检测**（外部修改不覆盖）；一键交给 Codex / ZCode / Claude |
+| 产物查看 | 全屏查看器：Markdown + **Mermaid** + **ASCII 线框图**渲染，原文/渲染切换、复制 |
+| 规范文档 | 目录树 + 渲染 + **在线编辑（带冲突检测）** + **引用统计**（识别从未被引用的死规范） |
+| 工作区 | 开发者日志与共享索引 |
+| 归档 | 兼容新旧两种归档布局 |
+| 团队协作 | 三标签：动态流 / **效率分析**（交付周期、流转热度、停滞预警）/ **周报生成**（团队/个人，Markdown 导出） |
+| AI 频道 | **trellis channel 运行时看板**：实时事件流（create/message/progress/done），面板直接向频道发消息驱动 AI worker |
+| Jira 任务 | 我的待办 / **当前冲刺** / 自定义 JQL；导入任务（**可配置状态映射**）；双向同步；流转推送；进度回写评论；密码 DPAPI 加密 |
+| CLI 终端 | 运行 trellis 命令，实时输出、可中止 |
+| 胶囊模式 | 置顶小卡片：当前任务 + 进度 + AI 快捷接手 |
+| 桌面集成 | **托盘常驻**（关闭最小化到托盘）、**全局快捷键**、开机自启、**自动检查更新** |
+
+## MCP Server（AI 原生接入）
+
+设置页一键启动本地服务（默认端口 39573，Bearer 令牌鉴权）：
+
+- **HTTP MCP**：`POST http://127.0.0.1:39573/mcp` — 工具：`get_tasks` / `get_task` / `update_task_status` / `search_spec` / `read_spec` / `get_overview`
+- **stdio MCP**：`tpanel mcp` — 标准 stdio 桥接，适配 codex / zcode / claude 的 `mcpServers` 配置
+- **只读 Web 看板**：`GET /` — 自动刷新的团队看板页，可选局域网开放
+
+设置页提供一键复制的 codex / claude 客户端配置。
 
 ## AI 工具桥接（codex / zcode / claude）
 
-三条通道，让 AI 应用"调起"面板：
-
-1. **深链协议** `trellis-panel://`
-   - `trellis-panel://open-task?dir=<任务目录绝对路径>` — 聚焦面板并打开该任务
-   - `trellis-panel://notify?text=消息` — 弹出面板通知
-   - `trellis-panel://task-event?path=<task.json 路径>` — AI 更新任务后推送事件（面板重扫 + 通知）
-   任意程序可执行 `start trellis-panel://open-task?dir=...`（Windows）。
-
-2. **tpanel 命令**（设置页一键安装到 `%APPDATA%\npm`，已在 PATH）
-   ```bat
-   tpanel notify "任务已完成"
-   tpanel open D:\proj\.trellis\tasks\09-06-xxx
-   tpanel task-event        :: 读取 %TASK_JSON_PATH%（供 trellis hooks 调用）
-   ```
-
-3. **Trellis 任务 hooks**（设置页一键写入 `.trellis/config.yaml`）
-   ```yaml
-   hooks:
-     after_create:  ["tpanel task-event"]
-     after_start:   ["tpanel task-event"]
-     after_finish:  ["tpanel task-event"]
-     after_archive: ["tpanel task-event"]
-   ```
-   AI 工具在任务生命周期内每次落盘，面板都会实时收到通知并刷新。
-
-反向：面板里的任务详情提供「Codex / ZCode / Claude 接手」按钮——自动组装任务上下文提示词并在 Windows Terminal 中拉起对应 CLI。
+1. **深链协议** `trellis-panel://`（带每安装令牌 `&t=` 防伪）：
+   `open-task?dir=…` / `notify?text=…` / `task-event?path=…`
+2. **tpanel 命令**：`tpanel notify|open|task-event|mcp`（设置页一键安装/更新）
+3. **Trellis hooks**：一键写入 `.trellis/config.yaml`，任务生命周期事件实时推送面板
+4. **面板 → AI**：任务详情「Codex / ZCode / Claude 接手」，自动注入任务上下文到 Windows Terminal
 
 ## Jira 集成
 
-设置页填写 Jira Server 地址 + 用户名/密码（或 Token），即可：
-
-- 查询「我的待办」（默认 `assignee = currentUser()`，支持自定义 JQL）
-- 一键**导入为 Trellis 任务**：标题/优先级/负责人自动映射，`meta.jiraKey` 建立关联
-- **Jira → Trellis**：按 statusCategory 同步状态（待办→规划中、进行/待测→进行中、完成→已完成）
-- **Trellis → Jira**：把 Trellis 状态推送为 Jira 流转（开始/评审/完成）
-- **回写进度**：把 Trellis 任务进度以评论形式发到 Jira
+- 查询：我的待办 / 当前冲刺 / 自定义 JQL
+- **导入**：一键转为 Trellis 任务（状态按 statusCategory 或自定义映射表转换）
+- **同步**：Jira → Trellis 状态同步（可开 10 分钟自动同步）；Trellis → Jira 流转推送
+- **回写**：Trellis 进度以评论形式发到 Jira
+- 安全：密码经 safeStorage（DPAPI）加密存储
 
 ## 快速开始
 

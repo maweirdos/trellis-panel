@@ -1,7 +1,42 @@
+import { safeStorage } from 'electron'
 import type { JiraConfig, JiraIssue, JiraTransition } from '../../shared/types'
+import { JIRA_CATEGORY_STATUS } from '../../shared/labels-shared'
+
+/** Decrypt the stored password when it was encrypted with safeStorage. */
+export function resolvePassword(cfg: JiraConfig): string {
+  if (cfg.passwordEncrypted && cfg.password) {
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        return safeStorage.decryptString(Buffer.from(cfg.password, 'base64'))
+      }
+    } catch {
+      // fall through to plaintext
+    }
+  }
+  return cfg.password
+}
+
+/** Encrypt a plaintext password for storage (no-op fallback when unavailable). */
+export function protectPassword(plain: string): { password: string; passwordEncrypted: boolean } {
+  try {
+    if (plain && safeStorage.isEncryptionAvailable()) {
+      return { password: safeStorage.encryptString(plain).toString('base64'), passwordEncrypted: true }
+    }
+  } catch {
+    // fall back to plaintext
+  }
+  return { password: plain, passwordEncrypted: false }
+}
 
 function authHeader(cfg: JiraConfig): string {
-  return 'Basic ' + Buffer.from(`${cfg.user}:${cfg.password}`).toString('base64')
+  return 'Basic ' + Buffer.from(`${cfg.user}:${resolvePassword(cfg)}`).toString('base64')
+}
+
+/** Map a Jira issue to a trellis status: explicit map first, then statusCategory. */
+export function mapJiraStatus(statusMap: Record<string, string>, statusName: string, statusCategory: string): string {
+  const direct = statusMap[statusName]
+  if (direct) return direct
+  return JIRA_CATEGORY_STATUS[statusCategory] ?? 'planning'
 }
 
 async function jiraFetch(

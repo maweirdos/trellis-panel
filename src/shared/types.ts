@@ -66,7 +66,6 @@ export interface FileEntry {
 export interface TaskInfo {
   dirName: string
   path: string
-  /** MM-DD part when the dir follows the dated convention; null for 00-* system tasks. */
   date: string | null
   record: TaskRecord | null
   parseError?: string
@@ -74,6 +73,9 @@ export interface TaskInfo {
   artifacts: FileEntry[]
   updatedAt: number
   archived?: boolean
+  /** mtime of task.json at scan time — used for optimistic write conflict detection. */
+  taskJsonMtime: number
+  jiraKey?: string
 }
 
 export interface SpecNode {
@@ -83,6 +85,8 @@ export interface SpecNode {
   size?: number
   mtime?: number
   children?: SpecNode[]
+  /** number of references found across tasks/spec (computed on demand) */
+  refCount?: number
 }
 
 export interface JournalFile {
@@ -140,13 +144,94 @@ export interface ProjectSnapshot {
   scannedAt: number
 }
 
+/* ---------- Git integration ---------- */
+
+export interface GitCommitInfo {
+  hash: string
+  short: string
+  author: string
+  date: string
+  subject: string
+}
+
+export interface TaskGitInfo {
+  dirName: string
+  branchExists: boolean
+  currentBranch: string | null
+  ahead: number
+  behind: number
+  merged: boolean
+  commits: GitCommitInfo[]
+  worktreeDirty: boolean
+  error?: string
+}
+
+/* ---------- Activity / analytics ---------- */
+
+export interface ActivityEntry {
+  ts: number
+  dir: string
+  title: string
+  from: string | null
+  to: string
+}
+
+export interface AnalyticsResult {
+  totalTransitions: number
+  /** average days from creation to completion for tasks completed in window */
+  avgCycleDays: number | null
+  /** tasks in_progress/review with no activity for > 3 days */
+  aging: Array<{ dirName: string; title: string; status: string; days: number; assignee: string }>
+  /** transitions per day for the last 14 days */
+  daily: Array<{ date: string; count: number }>
+  /** per-member cycle time */
+  memberCycle: Array<{ name: string; avgDays: number | null; completed: number }>
+  recent: ActivityEntry[]
+}
+
+/* ---------- Reports ---------- */
+
+export interface ReportResult {
+  markdown: string
+  suggestedFileName: string
+}
+
+/* ---------- Channels (trellis multi-agent runtime) ---------- */
+
+export interface ChannelEvent {
+  kind: string
+  by: string
+  text?: string
+  seq: number
+  ts: string
+}
+
+export interface ChannelSummary {
+  name: string
+  bucket: string
+  type: string
+  eventCount: number
+  lastEventAt: string | null
+  lastKind: string | null
+  participants: string[]
+  events: ChannelEvent[]
+}
+
+/* ---------- Jira ---------- */
+
 export interface JiraConfig {
   enabled: boolean
   baseUrl: string
   user: string
+  /** stored encrypted via safeStorage when available */
   password: string
-  /** Extra JQL filter ANDed with the default assignee query; empty = default. */
+  passwordEncrypted?: boolean
+  /** extra JQL ANDed with the default assignee query; empty = default */
   jql: string
+  /** jira status name -> trellis status; fallback: statusCategory mapping */
+  statusMap: Record<string, string>
+  /** auto sync every 10 minutes */
+  autoSync: boolean
 }
 
 export interface JiraIssue {
@@ -166,12 +251,21 @@ export interface JiraTransition {
   name: string
 }
 
+/* ---------- Settings ---------- */
+
 export interface Settings {
   recentProjects: string[]
   theme: 'dark' | 'light'
   cliCommand: string
   jira: JiraConfig
+  /** random per-install token; deep links & MCP/HTTP must carry it */
+  bridgeToken: string
+  httpApi: { enabled: boolean; port: number; lanAccess: boolean; webBoard: boolean }
+  mcp: { enabled: boolean }
+  desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean }
 }
+
+/* ---------- Bridge ---------- */
 
 export interface RunEvent {
   runId: number
@@ -190,19 +284,25 @@ export interface RecentDoc {
   name: string
 }
 
-/** Toast notification pushed from main → any window. */
 export interface ToastEvent {
   kind: 'info' | 'success' | 'warn' | 'error'
   title: string
   body?: string
 }
 
-/** Event fired when an AI tool (codex/zcode/hooks) touches a task. */
 export interface BridgeEvent {
   type: 'task-event' | 'notify' | 'open-task'
   taskDir?: string | null
   text?: string
   source?: string
+}
+
+export interface McpInfo {
+  running: boolean
+  port: number | null
+  webBoardUrl: string | null
+  codexConfig: string
+  claudeConfig: string
 }
 
 /** APIs exposed to the renderer via contextBridge. */
@@ -213,7 +313,12 @@ export interface TrellisApi {
   closeProject: () => Promise<void>
   onSnapshotUpdated: (cb: (s: ProjectSnapshot) => void) => () => void
 
-  updateTask: (taskDir: string, patch: TaskPatch) => Promise<{ ok: boolean; error?: string }>
+  /** expectedMtime enables optimistic conflict detection */
+  updateTask: (
+    taskDir: string,
+    patch: TaskPatch,
+    expectedMtime?: number
+  ) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
   createTaskFromJira: (input: {
     dirName: string
     title: string
@@ -224,7 +329,10 @@ export interface TrellisApi {
     jiraKey: string
     jiraUrl: string
   }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
-  readTextFile: (absPath: string) => Promise<{ ok: boolean; error?: string; content?: string }>
+  readTextFile: (absPath: string) => Promise<{ ok: boolean; error?: string; content?: string; mtime?: number }>
+  /** write restricted to .trellis/spec/** (spec editor) */
+  writeSpecFile: (absPath: string, content: string, expectedMtime?: number) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
+  specBacklinks: () => Promise<{ ok: boolean; error?: string; counts?: Record<string, number> }>
   revealInExplorer: (absPath: string) => Promise<void>
   openInEditor: (absPath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
@@ -237,15 +345,30 @@ export interface TrellisApi {
   onCliOutput: (cb: (e: RunEvent) => void) => () => void
   onCliDone: (cb: (e: RunDoneEvent) => void) => () => void
 
-  /* --- AI bridge (codex / zcode / hooks) --- */
+  /* --- Git integration --- */
+  gitTaskInfo: (dirName: string) => Promise<TaskGitInfo>
+  gitCreateBranch: (name: string, fromBase: string) => Promise<{ ok: boolean; error?: string }>
+
+  /* --- Analytics & reports --- */
+  getAnalytics: () => Promise<AnalyticsResult>
+  generateReport: (scope: 'personal' | 'team') => Promise<ReportResult>
+  saveReport: (fileName: string, markdown: string) => Promise<{ ok: boolean; error?: string; path?: string }>
+
+  /* --- Channels runtime --- */
+  channelList: () => Promise<{ ok: boolean; error?: string; channels?: ChannelSummary[] }>
+  channelSend: (name: string, text: string) => Promise<{ ok: boolean; error?: string }>
+
+  /* --- AI bridge --- */
   installTpanel: () => Promise<{ ok: boolean; error?: string; path?: string }>
   installTrellisHooks: () => Promise<{ ok: boolean; error?: string; message?: string }>
   copyToClipboard: (text: string) => Promise<void>
-  setCapsuleMode: (on: boolean) => Promise<void>
+  setCapsuleMode: (on: boolean) => void
   setCapsuleOnTop: (on: boolean) => Promise<void>
   launchAiApp: (app: 'codex' | 'zcode' | 'claude', taskDir: string | null) => Promise<{ ok: boolean; error?: string }>
   onToast: (cb: (e: ToastEvent) => void) => () => void
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => () => void
+  getMcpInfo: () => Promise<McpInfo>
+  toggleHttpApi: (on: boolean) => Promise<{ ok: boolean; error?: string }>
 
   /* --- Jira --- */
   jiraTest: (cfg: JiraConfig) => Promise<{ ok: boolean; error?: string; displayName?: string }>

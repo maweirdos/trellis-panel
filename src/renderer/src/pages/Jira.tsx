@@ -65,6 +65,15 @@ export function JiraPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg?.enabled, cfg?.baseUrl])
 
+  const quickSearch = (preset: 'mine' | 'sprint'): void => {
+    const q =
+      preset === 'sprint'
+        ? 'assignee = currentUser() AND sprint in openSprints() ORDER BY updated DESC'
+        : ''
+    setJql(preset === 'sprint' ? q : '')
+    void search(q)
+  }
+
   const linkedByKey = new Map<string, TaskInfo>()
   for (const t of [...snapshot.tasks, ...snapshot.archived]) {
     const k = t.record?.meta?.jiraKey
@@ -97,18 +106,16 @@ export function JiraPage(): JSX.Element {
     const linked = linkedByKey.get(issue.key.toUpperCase())
     if (!linked?.record) return
     setBusyKey(issue.key)
-    const trellisStatus = JIRA_CATEGORY_STATUS[issue.statusCategory] ?? 'planning'
+    const custom = cfg.statusMap?.[issue.status]
+    const trellisStatus = custom ?? JIRA_CATEGORY_STATUS[issue.statusCategory] ?? 'planning'
     const patch: Record<string, unknown> = { status: trellisStatus }
-    if (linked.record.title !== `[${issue.key}] ${issue.summary}` && !linked.record.title.startsWith('[')) {
-      // 不覆盖用户改过的标题
-    }
     const res = await api.updateTask(linked.path, patch)
     setBusyKey(null)
     if (res.ok) {
       pushToast({
         kind: 'success',
         title: `${issue.key} 已同步`,
-        body: `Jira 状态 ${issue.status} → Trellis ${statusLabel(trellisStatus)}`
+        body: `Jira「${issue.status}」→ Trellis「${statusLabel(trellisStatus)}」${custom ? '（自定义映射）' : ''}`
       })
     } else {
       pushToast({ kind: 'error', title: `${issue.key} 同步失败`, body: res.error })
@@ -200,7 +207,23 @@ export function JiraPage(): JSX.Element {
       <div className="flex flex-wrap items-center gap-2 border-b border-ink-700 bg-ink-850/40 px-5 py-2.5">
         <h1 className="text-sm font-semibold text-mist-50">Jira 任务</h1>
         <span className="chip bg-blue-500/15 font-mono text-blue-300">{cfg.baseUrl.replace(/^https?:\/\//, '')}</span>
-        <div className="relative flex-1 min-w-[260px] max-w-md">
+        <div className="flex overflow-hidden rounded-lg border border-ink-500">
+          <button
+            onClick={() => quickSearch('mine')}
+            className="px-2.5 py-1.5 text-[11px] text-mist-300 transition-colors hover:bg-ink-700/40"
+            title="assignee = currentUser()"
+          >
+            我的待办
+          </button>
+          <button
+            onClick={() => quickSearch('sprint')}
+            className="px-2.5 py-1.5 text-[11px] text-mist-300 transition-colors hover:bg-ink-700/40"
+            title="当前冲刺中的任务"
+          >
+            当前冲刺
+          </button>
+        </div>
+        <div className="relative min-w-[260px] flex-1 max-w-md">
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-mist-500" />
           <input
             value={jql}

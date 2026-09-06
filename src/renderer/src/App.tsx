@@ -14,6 +14,7 @@ import { SpecPage } from './pages/Spec'
 import { WorkspacePage } from './pages/Workspace'
 import { ArchivePage } from './pages/Archive'
 import { TeamPage } from './pages/Team'
+import { ChannelPage } from './pages/Channel'
 import { JiraPage } from './pages/Jira'
 import { CliPage } from './pages/Cli'
 import { SettingsPage } from './pages/Settings'
@@ -59,9 +60,9 @@ function MainApp(): JSX.Element {
             <div
               className={clsx(
                 'min-h-0 flex-1',
-                page === 'tasks' || page === 'spec' || page === 'workspace' || page === 'jira'
-                  ? 'overflow-hidden'
-                  : 'overflow-y-auto'
+              page === 'tasks' || page === 'spec' || page === 'workspace' || page === 'jira' || page === 'channel'
+                ? 'overflow-hidden'
+                : 'overflow-y-auto'
               )}
             >
               {page === 'dashboard' && <Dashboard />}
@@ -70,6 +71,7 @@ function MainApp(): JSX.Element {
               {page === 'workspace' && <WorkspacePage />}
               {page === 'archive' && <ArchivePage />}
               {page === 'team' && <TeamPage />}
+              {page === 'channel' && <ChannelPage />}
               {page === 'jira' && <JiraPage />}
               {page === 'cli' && <CliPage />}
               {page === 'settings' && <SettingsPage />}

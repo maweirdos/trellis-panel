@@ -13,7 +13,14 @@ import {
   RotateCcw,
   Bot,
   Zap,
-  RefreshCw
+  RefreshCw,
+  GitBranch,
+  GitCommitHorizontal,
+  GitMerge,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Check,
+  Plus
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -23,7 +30,7 @@ import { STATUS_OPTIONS, statusLabel } from '../utils/labels'
 import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
 import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
-import type { TaskInfo, TaskPatch } from '../../../shared/types'
+import type { TaskGitInfo, TaskInfo, TaskPatch } from '../../../shared/types'
 
 const FIELD_LABEL: Record<string, string> = {
   title: '标题',
@@ -170,12 +177,31 @@ export function TaskDetail({
   const [showDiff, setShowDiff] = useState(false)
   const [syncingJira, setSyncingJira] = useState(false)
   const [aiBusy, setAiBusy] = useState<string | null>(null)
+  const [git, setGit] = useState<TaskGitInfo | null>(null)
+  const [gitLoading, setGitLoading] = useState(false)
+  const [newBranch, setNewBranch] = useState('')
+  /** task.json mtime captured when the drawer opened — for conflict detection */
+  const [openedMtime, setOpenedMtime] = useState<number | undefined>(undefined)
 
   useEffect(() => {
     setTab('info')
     setPending({})
     setShowDiff(false)
+    setGit(null)
+    setOpenedMtime(task?.taskJsonMtime)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTaskDir])
+
+  // load git info when drawer opens or a rescan lands (30s-cached in main)
+  const scannedAt = useApp((s) => s.snapshot?.scannedAt)
+  useEffect(() => {
+    if (!openTaskDir || archived) return
+    setGitLoading(true)
+    api.gitTaskInfo(openTaskDir).then((g) => {
+      setGit(g)
+      setGitLoading(false)
+    })
+  }, [openTaskDir, archived, scannedAt])
 
   const task: TaskInfo | undefined = useMemo(
     () =>
@@ -205,11 +231,21 @@ export function TaskDetail({
 
   const saveAll = async (): Promise<void> => {
     if (!pendingCount) return
-    const res = await api.updateTask(task.path, pending)
+    const res = await api.updateTask(task.path, pending, openedMtime)
     if (res.ok) {
       pushToast({ kind: 'success', title: '任务已保存', body: `${pendingCount} 处修改已写入 task.json` })
       setPending({})
       setShowDiff(false)
+      setOpenedMtime(snapshot?.tasks.find((t) => t.dirName === task.dirName)?.taskJsonMtime)
+    } else if (res.conflict) {
+      pushToast({
+        kind: 'warn',
+        title: '保存冲突',
+        body: 'task.json 已被外部修改（AI 工具或其他成员）。已刷新最新内容，请核对后重试。'
+      })
+      setPending({})
+      setShowDiff(false)
+      await useApp.getState().refresh()
     } else {
       pushToast({ kind: 'error', title: '保存失败', body: res.error })
     }
@@ -222,7 +258,7 @@ export function TaskDetail({
       const { done, text } = parseSubtask(s)
       return `[${done ? ' ' : 'x'}] ${text}`
     })
-    const res = await api.updateTask(task.path, { subtasks: next })
+    const res = await api.updateTask(task.path, { subtasks: next }, task.taskJsonMtime)
     if (!res.ok) pushToast({ kind: 'error', title: '更新失败', body: res.error })
   }
 
@@ -240,7 +276,7 @@ export function TaskDetail({
     const trellisStatus = map[issue.statusCategory] ?? 'planning'
     const patch: TaskPatch = { status: trellisStatus }
     if (issue.summary !== r?.title) patch.title = issue.summary
-    const res2 = await api.updateTask(task.path, patch)
+    const res2 = await api.updateTask(task.path, patch, task.taskJsonMtime)
     if (res2.ok) {
       pushToast({
         kind: 'success',
@@ -400,6 +436,91 @@ export function TaskDetail({
                         <div key={f} className="break-all font-mono text-[11px] text-mist-300">· {f}</div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Git 集成 */}
+                {!archived && (
+                  <div className="pt-3">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
+                      <GitBranch size={12} /> Git 状态
+                      {gitLoading && <RefreshCw size={10} className="animate-spin" />}
+                    </div>
+                    {git?.error ? (
+                      <div className="text-[11px] text-mist-600">{git.error}</div>
+                    ) : git ? (
+                      <div className="space-y-1.5 rounded-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span className="chip bg-ink-750 font-mono text-mist-300">{r.branch ?? '无分支'}</span>
+                          {git.ahead > 0 && (
+                            <span className="chip border border-sky-500/30 text-sky-300">
+                              <ArrowUpRight size={10} /> 领先 {git.ahead}
+                            </span>
+                          )}
+                          {git.behind > 0 && (
+                            <span className="chip border border-orange-500/30 text-orange-300">
+                              <ArrowDownLeft size={10} /> 落后 {git.behind}
+                            </span>
+                          )}
+                          {git.worktreeDirty && <span className="chip border border-amber-500/30 text-amber-300">有未提交改动</span>}
+                        </div>
+                        {git.merged && (
+                          <div className="flex items-center gap-1.5 rounded bg-emerald-500/10 px-2 py-1 text-emerald-300">
+                            <GitMerge size={11} /> 分支已合入 {r.base_branch ?? '主分支'}
+                            {r.status !== 'completed' && (
+                              <button
+                                onClick={() => setPending((p) => ({ ...p, status: 'completed' }))}
+                                className="ml-auto flex items-center gap-0.5 text-[10.5px] underline"
+                              >
+                                标记为已完成 <Check size={10} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {git.commits.length > 0 && (
+                          <div className="space-y-1">
+                            {git.commits.slice(0, 4).map((c) => (
+                              <div key={c.short} className="flex items-center gap-2 text-[10.5px] text-mist-400">
+                                <GitCommitHorizontal size={10} className="shrink-0" />
+                                <span className="font-mono text-mist-300">{c.short}</span>
+                                <span className="min-w-0 flex-1 truncate">{c.subject}</span>
+                                <span className="shrink-0">{c.author}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!r.branch && (
+                          <div className="flex items-center gap-1.5 pt-0.5">
+                            <input
+                              value={newBranch}
+                              onChange={(e) => setNewBranch(e.target.value)}
+                              placeholder={`从 ${r.base_branch ?? 'main'} 新建分支…`}
+                              className="field flex-1 font-mono"
+                            />
+                            <button
+                              disabled={!newBranch.trim()}
+                              onClick={async () => {
+                                const res = await api.gitCreateBranch(newBranch.trim(), r?.base_branch ?? 'main')
+                                if (res.ok) {
+                                  const w = await api.updateTask(task.path, { branch: newBranch.trim() }, task.taskJsonMtime)
+                                  if (w.ok) {
+                                    setNewBranch('')
+                                    pushToast({ kind: 'success', title: '分支已创建并关联', body: newBranch })
+                                  } else {
+                                    pushToast({ kind: 'warn', title: '分支已创建，关联失败', body: w.error })
+                                  }
+                                } else {
+                                  pushToast({ kind: 'error', title: '建分支失败', body: res.error })
+                                }
+                              }}
+                              className="btn-outline disabled:opacity-50"
+                            >
+                              <Plus size={11} /> 创建
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 )}
 

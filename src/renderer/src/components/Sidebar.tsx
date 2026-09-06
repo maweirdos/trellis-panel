@@ -9,7 +9,8 @@ import {
   FolderOpen,
   RotateCw,
   Link2,
-  GitPullRequestArrow
+  GitPullRequestArrow,
+  Radio
 } from 'lucide-react'
 import { useApp, type Page } from '../store'
 import { clsx } from 'clsx'
@@ -22,6 +23,7 @@ const NAV: Array<{ id: Page; label: string; icon: JSX.Element }> = [
   { id: 'workspace', label: '工作区', icon: <Users size={16} /> },
   { id: 'archive', label: '归档', icon: <Archive size={16} /> },
   { id: 'team', label: '团队协作', icon: <GitPullRequestArrow size={16} /> },
+  { id: 'channel', label: 'AI 频道', icon: <Radio size={16} /> },
   { id: 'jira', label: 'Jira 任务', icon: <Link2 size={16} /> },
   { id: 'cli', label: 'CLI 终端', icon: <SquareTerminal size={16} /> },
   { id: 'settings', label: '设置', icon: <Settings size={16} /> }

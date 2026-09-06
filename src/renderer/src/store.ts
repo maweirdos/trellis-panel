@@ -9,6 +9,7 @@ export type Page =
   | 'workspace'
   | 'archive'
   | 'team'
+  | 'channel'
   | 'jira'
   | 'cli'
   | 'settings'

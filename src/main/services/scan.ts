@@ -84,11 +84,16 @@ function entryInfo(dir: string, name: string): FileEntry | null {
   }
 }
 
-function parseTaskRecord(taskJsonPath: string): { record: TaskRecord | null; error?: string } {
+function parseTaskRecord(taskJsonPath: string): {
+  record: TaskRecord | null
+  error?: string
+  mtime?: number
+} {
   try {
     const raw = readFileSync(taskJsonPath, 'utf-8')
+    const mtime = statSync(taskJsonPath).mtimeMs
     const obj = JSON.parse(raw)
-    if (obj && typeof obj === 'object') return { record: obj as TaskRecord }
+    if (obj && typeof obj === 'object') return { record: obj as TaskRecord, mtime }
     return { record: null, error: 'task.json 不是对象' }
   } catch (e: any) {
     return { record: null, error: e?.message ?? '读取 task.json 失败' }
@@ -127,13 +132,15 @@ function scanTaskDir(taskDir: string, archived = false): TaskInfo {
   const dirName = basename(taskDir)
   const m = /^(\d{2})-(\d{2})-(.+)$/.exec(dirName)
   const system = /^00-/.test(dirName)
-  const { record, error } = parseTaskRecord(join(taskDir, 'task.json'))
+  const jsonPath = join(taskDir, 'task.json')
+  const { record, error, mtime: jsonMtime } = parseTaskRecord(jsonPath)
   let updatedAt = 0
   try {
     updatedAt = statSync(taskDir).mtimeMs
   } catch {
     // keep 0
   }
+  const jiraKey = typeof record?.meta?.jiraKey === 'string' ? (record.meta.jiraKey as string) : undefined
   return {
     dirName,
     path: taskDir,
@@ -143,7 +150,9 @@ function scanTaskDir(taskDir: string, archived = false): TaskInfo {
     phase: inferPhase(record?.status),
     artifacts: listArtifacts(taskDir),
     updatedAt,
-    archived
+    archived,
+    taskJsonMtime: jsonMtime ?? 0,
+    jiraKey
   }
 }
 
@@ -398,8 +407,9 @@ export function scanProject(root: string): ProjectSnapshot {
 export function updateTaskRecordAt(
   root: string,
   taskDir: string,
-  patch: Record<string, unknown>
-): void {
+  patch: Record<string, unknown>,
+  expectedMtime?: number
+): { conflict: boolean } {
   const dir = resolve(taskDir)
   const trellisRoot = resolve(root, '.trellis') + sep
   // containment: the task dir must live inside <project>/.trellis
@@ -407,6 +417,23 @@ export function updateTaskRecordAt(
   const jsonPath = join(dir, 'task.json')
   const { record } = parseTaskRecord(jsonPath)
   if (!record) throw new Error('task.json 不存在或无法解析')
+
+  // optimistic conflict detection: file changed since the caller last saw it
+  if (expectedMtime !== undefined) {
+    let curMtime = 0
+    try {
+      curMtime = statSync(jsonPath).mtimeMs
+    } catch {
+      // gone — fall through to parse error next
+    }
+    if (Math.abs(curMtime - expectedMtime) > 50) {
+      const err = new Error('任务文件已被外部修改（可能是 AI 工具或其他成员），请刷新后重试') as Error & {
+        conflict: boolean
+      }
+      err.conflict = true
+      throw err
+    }
+  }
 
   const EDITABLE = new Set([
     'title', 'description', 'status', 'priority', 'assignee', 'notes', 'branch', 'pr_url', 'subtasks'
@@ -423,6 +450,135 @@ export function updateTaskRecordAt(
     }
   }
   writeFileSync(jsonPath, JSON.stringify(next, null, 2) + '\n', 'utf-8')
+  return { conflict: false }
+}
+
+/** Read a text file with metadata for optimistic editing. */
+export function readTextWithMtime(absPath: string): {
+  ok: boolean
+  error?: string
+  content?: string
+  mtime?: number
+} {
+  try {
+    const st = statSync(absPath)
+    return { ok: true, content: readFileSync(absPath, 'utf-8'), mtime: st.mtimeMs }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? '读取失败' }
+  }
+}
+
+/** Save a spec markdown file with optimistic conflict detection. */
+export function writeSpecFile(
+  root: string,
+  absPath: string,
+  content: string,
+  expectedMtime?: number
+): { conflict: boolean } {
+  const specRoot = resolve(root, '.trellis', 'spec') + sep
+  const p = resolve(absPath)
+  if (!p.startsWith(specRoot)) throw new Error('只允许编辑 .trellis/spec/ 下的文件')
+  if (!/\.(md|markdown|txt)$/i.test(p)) throw new Error('只允许编辑 Markdown / 文本文件')
+  if (Buffer.byteLength(content, 'utf-8') > 1024 * 1024) throw new Error('内容超过 1MB')
+  if (expectedMtime !== undefined) {
+    let cur = 0
+    try {
+      cur = statSync(p).mtimeMs
+    } catch {
+      // new file — ok
+    }
+    if (cur && Math.abs(cur - expectedMtime) > 50) {
+      const err = new Error('文件已被外部修改，请刷新后重试') as Error & { conflict: boolean }
+      err.conflict = true
+      throw err
+    }
+  }
+  writeFileSync(p, content, 'utf-8')
+  return { conflict: false }
+}
+
+/**
+ * Count references to each spec file across the project (task artifacts,
+ * other spec docs, workflow.md). Reference = relative path segment or the
+ * bare file name appearing in any markdown/text content.
+ */
+export function computeSpecBacklinks(root: string): Record<string, number> {
+  const trellisDir = join(root, '.trellis')
+  const specDir = join(trellisDir, 'spec')
+  if (!isDir(specDir)) return {}
+
+  const specFiles: string[] = []
+  const collect = (dir: string): void => {
+    let names: string[] = []
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return
+    }
+    for (const n of names) {
+      const p = join(dir, n)
+      if (isDir(p)) collect(p)
+      else if (/\.(md|markdown|txt)$/i.test(n)) specFiles.push(p)
+    }
+  }
+  collect(specDir)
+
+  const names = specFiles.map((p) => basename(p))
+  const counts: Record<string, number> = {}
+  for (const p of specFiles) counts[p] = 0
+
+  // haystack: all spec docs (excluding self matches handled below) + task dirs
+  const haystacks: Array<{ path: string; text: string }> = []
+  for (const p of specFiles) {
+    try {
+      haystacks.push({ path: p, text: readFileSync(p, 'utf-8') })
+    } catch {
+      // skip
+    }
+  }
+  for (const bucket of ['tasks', 'archive', 'workspace']) {
+    const dir = join(trellisDir, bucket)
+    if (!isDir(dir)) continue
+    const walk = (d: string, depth: number): void => {
+      if (depth > 4) return
+      let names2: string[] = []
+      try {
+        names2 = readdirSync(d)
+      } catch {
+        return
+      }
+      for (const n of names2) {
+        const p = join(d, n)
+        if (isDir(p)) walk(p, depth + 1)
+        else if (/\.(md|markdown|txt)$/i.test(n)) {
+          try {
+            haystacks.push({ path: p, text: readFileSync(p, 'utf-8') })
+          } catch {
+            // skip
+          }
+        }
+      }
+    }
+    walk(dir, 0)
+  }
+  try {
+    const wf = join(trellisDir, 'workflow.md')
+    if (existsSync(wf)) haystacks.push({ path: wf, text: readFileSync(wf, 'utf-8') })
+  } catch {
+    // skip
+  }
+
+  for (const p of specFiles) {
+    const rel = p.slice(specDir.length + 1).replace(/\\/g, '/')
+    const base = basename(p)
+    let count = 0
+    for (const h of haystacks) {
+      if (h.path === p) continue
+      if (h.text.includes(rel) || h.text.includes(base)) count += 1
+    }
+    counts[p] = count
+  }
+  return counts
 }
 
 export { TEXT_EXTS }

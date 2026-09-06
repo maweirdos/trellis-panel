@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
-  BridgeEvent,
   JiraConfig,
   ProjectSnapshot,
   RunDoneEvent,
@@ -23,9 +22,13 @@ const api = {
   closeProject: () => ipcRenderer.invoke('project:close'),
   onSnapshotUpdated: (cb: (s: ProjectSnapshot) => void) => subscribe('project:snapshot', cb),
 
-  updateTask: (taskDir: string, patch: TaskPatch) => ipcRenderer.invoke('task:update', taskDir, patch),
+  updateTask: (taskDir: string, patch: TaskPatch, expectedMtime?: number) =>
+    ipcRenderer.invoke('task:update', taskDir, patch, expectedMtime),
   createTaskFromJira: (input: Record<string, unknown>) => ipcRenderer.invoke('task:createFromJira', input),
   readTextFile: (absPath: string) => ipcRenderer.invoke('fs:readText', absPath),
+  writeSpecFile: (absPath: string, content: string, expectedMtime?: number) =>
+    ipcRenderer.invoke('fs:writeSpec', absPath, content, expectedMtime),
+  specBacklinks: () => ipcRenderer.invoke('spec:backlinks'),
   revealInExplorer: (p: string) => ipcRenderer.invoke('shell:reveal', p),
   openInEditor: (p: string) => ipcRenderer.invoke('shell:openInEditor', p),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
@@ -38,7 +41,16 @@ const api = {
   onCliOutput: (cb: (e: RunEvent) => void) => subscribe('cli:output', cb),
   onCliDone: (cb: (e: RunDoneEvent) => void) => subscribe('cli:done', cb),
 
-  /* AI bridge */
+  gitTaskInfo: (dirName: string) => ipcRenderer.invoke('git:taskInfo', dirName),
+  gitCreateBranch: (name: string, fromBase: string) => ipcRenderer.invoke('git:createBranch', name, fromBase),
+
+  getAnalytics: () => ipcRenderer.invoke('analytics:get'),
+  generateReport: (scope: 'personal' | 'team') => ipcRenderer.invoke('report:generate', scope),
+  saveReport: (fileName: string, markdown: string) => ipcRenderer.invoke('report:save', fileName, markdown),
+
+  channelList: () => ipcRenderer.invoke('channel:list'),
+  channelSend: (name: string, text: string) => ipcRenderer.invoke('channel:send', name, text),
+
   installTpanel: () => ipcRenderer.invoke('bridge:installTpanel'),
   installTrellisHooks: () => ipcRenderer.invoke('bridge:installHooks'),
   copyToClipboard: (text: string) => ipcRenderer.invoke('util:clipboard', text),
@@ -48,17 +60,16 @@ const api = {
     ipcRenderer.invoke('ai:launch', app, taskDir),
   onToast: (cb: (e: ToastEvent) => void) => subscribe('bridge:toast', cb),
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => subscribe('bridge:focus-task', cb),
+  getMcpInfo: () => ipcRenderer.invoke('mcp:info'),
+  toggleHttpApi: (on: boolean) => ipcRenderer.invoke('mcp:toggle', on),
 
-  /* Jira */
   jiraTest: (cfg: JiraConfig) => ipcRenderer.invoke('jira:test', cfg),
   jiraSearch: (cfg: JiraConfig, jql: string) => ipcRenderer.invoke('jira:search', cfg, jql),
   jiraTransitions: (cfg: JiraConfig, key: string) => ipcRenderer.invoke('jira:transitions', cfg, key),
   jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) =>
     ipcRenderer.invoke('jira:transition', cfg, key, transitionId),
-  jiraComment: (cfg: JiraConfig, key: string, body: string) =>
-    ipcRenderer.invoke('jira:comment', cfg, key, body),
+  jiraComment: (cfg: JiraConfig, key: string, body: string) => ipcRenderer.invoke('jira:comment', cfg, key, body),
 
-  /* window */
   windowMinimize: () => ipcRenderer.send('win:minimize'),
   windowMaximize: () => ipcRenderer.send('win:maximize'),
   windowClose: () => ipcRenderer.send('win:close'),
@@ -68,5 +79,3 @@ const api = {
 export type Api = typeof api
 
 contextBridge.exposeInMainWorld('trellis', api)
-
-export type { BridgeEvent }
