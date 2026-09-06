@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  GitLabConfig,
+  InboxNewEvent,
   JiraConfig,
   ProjectSnapshot,
   RunDoneEvent,
@@ -69,6 +71,15 @@ const api = {
   jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) =>
     ipcRenderer.invoke('jira:transition', cfg, key, transitionId),
   jiraComment: (cfg: JiraConfig, key: string, body: string) => ipcRenderer.invoke('jira:comment', cfg, key, body),
+
+  gitlabTest: (cfg: GitLabConfig) => ipcRenderer.invoke('gitlab:test', cfg),
+  gitlabTaskStatus: (dirName: string) => ipcRenderer.invoke('gitlab:taskStatus', dirName),
+  gitlabCreateMr: (dirName: string) => ipcRenderer.invoke('gitlab:createMr', dirName),
+
+  createTask: (input: { title: string; description: string; priority: string }) =>
+    ipcRenderer.invoke('task:create', input),
+
+  onInboxNew: (cb: (e: InboxNewEvent) => void) => subscribe('inbox:new', cb),
 
   windowMinimize: () => ipcRenderer.send('win:minimize'),
   windowMaximize: () => ipcRenderer.send('win:maximize'),

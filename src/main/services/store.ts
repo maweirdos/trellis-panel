@@ -17,6 +17,13 @@ const DEFAULTS: Settings = {
     statusMap: {},
     autoSync: false
   },
+  gitlab: {
+    enabled: false,
+    baseUrl: '',
+    user: '',
+    password: '',
+    project: ''
+  },
   bridgeToken: '',
   httpApi: { enabled: false, port: 39573, lanAccess: false, webBoard: true },
   mcp: { enabled: false },

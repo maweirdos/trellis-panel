@@ -13,9 +13,14 @@ const PRESETS: Array<{ label: string; args: string[]; hint: string }> = [
   { label: 'mem help', args: ['mem', 'help'], hint: 'AI 会话检索子命令' }
 ]
 
+/** 执行历史（模块级：页面切换后仍保留） */
+const history: string[] = []
+let historyIdx = -1
+
 export function CliPage(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)!
   const settings = useApp((s) => s.settings)
+  const pushToast = useApp((s) => s.pushToast)
   const [input, setInput] = useState('')
   const [lines, setLines] = useState<Array<{ text: string; err: boolean }>>([])
   const [runningId, setRunningId] = useState<number | null>(null)
@@ -66,6 +71,11 @@ export function CliPage(): JSX.Element {
     if (runningIdRef.current !== null) return
     setLines((prev) => [...prev, { text: `$ ${settings?.cliCommand ?? 'trellis'} ${args.join(' ')}`, err: false }])
     const id = await api.runCli(args)
+    if (id === -1) {
+      // 未打开项目等场景：主进程拒绝执行，UI 不能卡在"运行中"
+      pushToast({ kind: 'error', title: '命令未执行', body: '未打开项目或窗口不可用' })
+      return
+    }
     runningIdRef.current = id
     setRunningId(id)
   }
@@ -74,9 +84,21 @@ export function CliPage(): JSX.Element {
     const raw = input.trim()
     if (!raw) return
     setInput('')
+    history.unshift(raw)
+    history.splice(20)
+    historyIdx = -1
     // split respecting simple quotes
     const args = raw.match(/(?:[^\s"]+|"[^"]*")+/g)?.map((a) => a.replace(/^"|"$/g, '')) ?? [raw]
     void run(args)
+  }
+
+  const historyNav = (dir: 1 | -1): void => {
+    if (history.length === 0) return
+    let idx = historyIdx + dir
+    if (idx < -1) idx = -1
+    if (idx >= history.length) idx = history.length - 1
+    historyIdx = idx
+    setInput(idx === -1 ? '' : history[idx])
   }
 
   const abort = async (): Promise<void> => {
@@ -126,9 +148,19 @@ export function CliPage(): JSX.Element {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit()
+            if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              historyNav(-1)
+            }
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              historyNav(1)
+            }
+          }}
           disabled={runningId !== null}
-          placeholder="输入 trellis 命令参数，如 workflow --list（需要交互确认的命令请使用 -y / --yes 参数）"
+          placeholder="输入 trellis 命令参数（↑/↓ 翻历史；交互式命令请加 -y / --yes）"
           className="field flex-1 font-mono"
         />
         <button onClick={submit} disabled={runningId !== null} className="btn-primary disabled:opacity-50">

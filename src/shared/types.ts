@@ -251,6 +251,57 @@ export interface JiraTransition {
   name: string
 }
 
+/* ---------- GitLab connector (pluggable VCS provider) ---------- */
+
+export interface GitLabConfig {
+  enabled: boolean
+  /** e.g. http://192.168.1.202:8929 */
+  baseUrl: string
+  user: string
+  /** stored encrypted via safeStorage when available */
+  password: string
+  passwordEncrypted?: boolean
+  /** project path with namespace, e.g. huachuang/honsky-lis */
+  project: string
+}
+
+export interface GitLabMrInfo {
+  iid: number
+  title: string
+  state: string
+  webUrl: string
+  sourceBranch: string
+  targetBranch: string
+}
+
+export interface GitLabPipelineInfo {
+  id: number
+  status: string
+  ref: string
+  webUrl: string
+}
+
+export interface GitLabTaskStatus {
+  ok: boolean
+  error?: string
+  mr: GitLabMrInfo | null
+  pipeline: GitLabPipelineInfo | null
+}
+
+/* ---------- Inbox (task triage) ---------- */
+
+export interface InboxItem {
+  dirName: string
+  title: string
+  creator: string
+  ts: number
+}
+
+export interface InboxNewEvent {
+  projectRoot: string
+  items: InboxItem[]
+}
+
 /* ---------- Settings ---------- */
 
 export interface Settings {
@@ -258,6 +309,8 @@ export interface Settings {
   theme: 'dark' | 'light'
   cliCommand: string
   jira: JiraConfig
+  /** pluggable git platform connector (GitLab first) */
+  gitlab: GitLabConfig
   /** random per-install token; deep links & MCP/HTTP must carry it */
   bridgeToken: string
   httpApi: { enabled: boolean; port: number; lanAccess: boolean; webBoard: boolean }
@@ -376,6 +429,17 @@ export interface TrellisApi {
   jiraTransitions: (cfg: JiraConfig, key: string) => Promise<{ ok: boolean; error?: string; transitions?: JiraTransition[] }>
   jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) => Promise<{ ok: boolean; error?: string }>
   jiraComment: (cfg: JiraConfig, key: string, body: string) => Promise<{ ok: boolean; error?: string }>
+
+  /* --- GitLab connector --- */
+  gitlabTest: (cfg: GitLabConfig) => Promise<{ ok: boolean; error?: string; displayName?: string }>
+  gitlabTaskStatus: (dirName: string) => Promise<GitLabTaskStatus>
+  gitlabCreateMr: (dirName: string) => Promise<{ ok: boolean; error?: string; url?: string }>
+
+  /* --- task intake --- */
+  createTask: (input: { title: string; description: string; priority: string }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
+
+  /* --- inbox --- */
+  onInboxNew: (cb: (e: InboxNewEvent) => void) => () => void
 
   /* --- window --- */
   windowMinimize: () => void

@@ -11,7 +11,8 @@ import {
   TerminalSquare,
   CheckCircle2,
   Server,
-  MonitorSmartphone
+  MonitorSmartphone,
+  GitMerge
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -113,6 +114,30 @@ export function SettingsPage(): JSX.Element {
   const saveJira = async (): Promise<void> => {
     await saveSettings({ jira: { ...jira, enabled: !!jira.baseUrl && !!jira.user } })
     pushToast({ kind: 'success', title: 'Jira 配置已保存' })
+  }
+
+  const [gitlab, setGitlab] = useState({
+    ...settings.gitlab,
+    password: settings.gitlab.passwordEncrypted ? '' : settings.gitlab.password
+  })
+  const [gitlabTesting, setGitlabTesting] = useState(false)
+  const [gitlabOk, setGitlabOk] = useState<string | null>(null)
+
+  const testGitlab = async (): Promise<void> => {
+    setGitlabTesting(true)
+    setGitlabOk(null)
+    const res = await api.gitlabTest({ ...gitlab, enabled: true })
+    setGitlabTesting(false)
+    if (res.ok) setGitlabOk(`✓ ${res.displayName}`)
+    else {
+      setGitlabOk(null)
+      pushToast({ kind: 'error', title: 'GitLab 连接失败', body: res.error })
+    }
+  }
+
+  const saveGitlab = async (): Promise<void> => {
+    await saveSettings({ gitlab: { ...gitlab, enabled: gitlab.enabled && !!gitlab.baseUrl && !!gitlab.user && !!gitlab.project } })
+    pushToast({ kind: 'success', title: 'GitLab 配置已保存' })
   }
 
   const toggleMcp = async (on: boolean): Promise<void> => {
@@ -346,6 +371,75 @@ export function SettingsPage(): JSX.Element {
           <div className="mt-4 border-t border-ink-700 pt-3">
             <div className="mb-2 text-[11px] font-semibold text-mist-300">状态映射（Jira 状态名 → Trellis 状态）</div>
             <JiraStatusMapEditor />
+          </div>
+        </section>
+
+        {/* GitLab connector */}
+        <section className="card px-5 py-4">
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">
+            <GitMerge size={13} /> GitLab 集成
+            <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-[11px] font-normal text-mist-400">
+              <input
+                type="checkbox"
+                checked={gitlab.enabled}
+                onChange={(e) => setGitlab({ ...gitlab, enabled: e.target.checked })}
+                className="accent-emerald-500"
+              />
+              启用（任务卡显示 MR / 构建状态）
+            </label>
+          </div>
+          <p className="mb-3 text-[11px] leading-5 text-mist-500">
+            自建 GitLab（OAuth 密码模式自动换 token）。关联分支的任务会显示 MR 与流水线状态，可一键创建 MR。密码经系统凭据加密（DPAPI）存储。
+          </p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="col-span-2 space-y-1">
+              <span className="text-[11px] text-mist-400">GitLab 地址</span>
+              <input
+                value={gitlab.baseUrl}
+                onChange={(e) => setGitlab({ ...gitlab, baseUrl: e.target.value })}
+                placeholder="http://192.168.1.202:8929"
+                className="field font-mono"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[11px] text-mist-400">账号</span>
+              <input
+                value={gitlab.user}
+                onChange={(e) => setGitlab({ ...gitlab, user: e.target.value })}
+                placeholder="1786487276@qq.com"
+                className="field"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[11px] text-mist-400">密码 {settings.gitlab.passwordEncrypted && <span className="text-emerald-400">（已加密保存）</span>}</span>
+              <input
+                type="password"
+                value={gitlab.password}
+                onChange={(e) => setGitlab({ ...gitlab, password: e.target.value })}
+                placeholder={settings.gitlab.passwordEncrypted ? '••••••••（输入新值覆盖）' : ''}
+                className="field"
+              />
+            </label>
+            <label className="col-span-2 space-y-1">
+              <span className="text-[11px] text-mist-400">项目路径（含命名空间，任务分支将在此项目下匹配 MR / 流水线）</span>
+              <input
+                value={gitlab.project}
+                onChange={(e) => setGitlab({ ...gitlab, project: e.target.value })}
+                placeholder="huachuang/honsky-lis"
+                className="field font-mono"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button onClick={() => void testGitlab()} disabled={gitlabTesting || !gitlab.baseUrl || !gitlab.user} className="btn-outline disabled:opacity-50">
+              {gitlabTesting ? '测试中…' : '测试连接'}
+            </button>
+            <button onClick={() => void saveGitlab()} className="btn-primary">保存配置</button>
+            {gitlabOk && (
+              <span className="flex items-center gap-1 text-[11px] text-emerald-300">
+                <CheckCircle2 size={12} /> {gitlabOk}
+              </span>
+            )}
           </div>
         </section>
 

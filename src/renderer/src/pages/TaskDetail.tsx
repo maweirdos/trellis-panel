@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   X,
   FolderOpen,
@@ -30,7 +30,7 @@ import { STATUS_OPTIONS, statusLabel } from '../utils/labels'
 import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
 import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
-import type { TaskGitInfo, TaskInfo, TaskPatch } from '../../../shared/types'
+import type { GitLabTaskStatus, TaskGitInfo, TaskInfo, TaskPatch } from '../../../shared/types'
 
 const FIELD_LABEL: Record<string, string> = {
   title: '标题',
@@ -149,7 +149,7 @@ function FieldRow({
           </span>
           <button
             onClick={() => setEditing(true)}
-            className="mt-0.5 shrink-0 text-mist-600 opacity-0 transition-opacity hover:text-mist-200 group-hover:opacity-100"
+            className="mt-0.5 shrink-0 text-mist-600 transition-colors hover:text-leaf-soft"
             title="编辑"
           >
             <SquarePen size={12} />
@@ -160,17 +160,14 @@ function FieldRow({
   )
 }
 
-export function TaskDetail({
-  onOpenArtifact
-}: {
-  onOpenArtifact: (f: { name: string; path: string; kind: 'file' | 'dir'; size: number; mtime: number; ext: string }) => void
-}): JSX.Element | null {
+export function TaskDetail(): JSX.Element | null {
   const snapshot = useApp((s) => s.snapshot)
   const settings = useApp((s) => s.settings)
   const openTaskDir = useApp((s) => s.openTaskDir)
   const archived = useApp((s) => s.openTaskArchived)
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
+  const openArtifact = useApp((s) => s.openArtifact)
 
   const [tab, setTab] = useState<'info' | 'artifacts'>('info')
   const [pending, setPending] = useState<TaskPatch>({})
@@ -180,14 +177,58 @@ export function TaskDetail({
   const [git, setGit] = useState<TaskGitInfo | null>(null)
   const [gitLoading, setGitLoading] = useState(false)
   const [newBranch, setNewBranch] = useState('')
+  const [showAllCommits, setShowAllCommits] = useState(false)
+  /** drawer width, draggable — persisted across sessions */
+  const [width, setWidth] = useState(() => {
+    const w = Number(localStorage.getItem('tpanel.drawerWidth'))
+    return w >= 360 && w <= 900 ? w : 460
+  })
   /** task.json mtime captured when the drawer opened — for conflict detection */
   const [openedMtime, setOpenedMtime] = useState<number | undefined>(undefined)
+
+  /* ----- drawer interactions: Esc to close, left edge to resize ----- */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      // don't hijack Esc while the user is editing in a field
+      const tag = (document.activeElement?.tagName ?? '').toLowerCase()
+      if (e.key === 'Escape' && !['input', 'textarea', 'select'].includes(tag)) {
+        showTask(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showTask])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent): void => {
+      if (!draggingRef.current) return
+      const w = Math.min(900, Math.max(360, window.innerWidth - e.clientX))
+      setWidth(w)
+    }
+    const onUp = (): void => {
+      if (!draggingRef.current) return
+      draggingRef.current = false
+      document.body.style.cursor = ''
+      setWidth((w) => {
+        localStorage.setItem('tpanel.drawerWidth', String(w))
+        return w
+      })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+  const draggingRef = useRef(false)
 
   useEffect(() => {
     setTab('info')
     setPending({})
     setShowDiff(false)
     setGit(null)
+    setShowAllCommits(false)
     setOpenedMtime(task?.taskJsonMtime)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTaskDir])
@@ -212,6 +253,15 @@ export function TaskDetail({
         : undefined,
     [snapshot, archived, openTaskDir]
   )
+
+  /* ----- GitLab connector: MR + pipeline status for the task branch ----- */
+  const gitlabEnabled = settings?.gitlab?.enabled && !!settings?.gitlab?.baseUrl && !!settings?.gitlab?.project
+  const [gl, setGl] = useState<GitLabTaskStatus | null>(null)
+  const [glBusy, setGlBusy] = useState(false)
+  useEffect(() => {
+    if (!gitlabEnabled || !openTaskDir || archived) return
+    api.gitlabTaskStatus(openTaskDir).then(setGl)
+  }, [gitlabEnabled, openTaskDir, archived, scannedAt, task?.record?.branch])
 
   if (!task) return null
   const r = task.record
@@ -238,14 +288,14 @@ export function TaskDetail({
       setShowDiff(false)
       setOpenedMtime(snapshot?.tasks.find((t) => t.dirName === task.dirName)?.taskJsonMtime)
     } else if (res.conflict) {
+      // 冲突不清空暂存：刷新基线后保留用户编辑，重新预览即可再次保存
       pushToast({
         kind: 'warn',
         title: '保存冲突',
-        body: 'task.json 已被外部修改（AI 工具或其他成员）。已刷新最新内容，请核对后重试。'
+        body: 'task.json 已被外部修改。已刷新最新内容，你的暂存修改已保留——请重新预览确认后再保存。'
       })
-      setPending({})
-      setShowDiff(false)
       await useApp.getState().refresh()
+      setOpenedMtime(useApp.getState().snapshot?.tasks.find((t) => t.dirName === task.dirName)?.taskJsonMtime)
     } else {
       pushToast({ kind: 'error', title: '保存失败', body: res.error })
     }
@@ -253,13 +303,14 @@ export function TaskDetail({
 
   const toggleSubtask = async (idx: number): Promise<void> => {
     if (!r) return
-    const next = r.subtasks.map((s, i) => {
+    // base on pending edits when present so checkbox edits never clash with staged field edits
+    const base = pending.subtasks ?? r.subtasks
+    const next = base.map((s, i) => {
       if (i !== idx) return s
       const { done, text } = parseSubtask(s)
       return `[${done ? ' ' : 'x'}] ${text}`
     })
-    const res = await api.updateTask(task.path, { subtasks: next }, task.taskJsonMtime)
-    if (!res.ok) pushToast({ kind: 'error', title: '更新失败', body: res.error })
+    setPending((p) => ({ ...p, subtasks: next }))
   }
 
   const syncJira = async (): Promise<void> => {
@@ -300,7 +351,17 @@ export function TaskDetail({
   }
 
   return (
-    <div className="relative flex h-full w-[460px] shrink-0 animate-slide-in flex-col border-l border-ink-700 bg-ink-850 shadow-2xl">
+    <div className="relative flex h-full shrink-0 animate-slide-in flex-col border-l border-ink-700 bg-ink-850 shadow-2xl" style={{ width }}>
+      {/* 左缘拖拽调宽手柄 */}
+      <div
+        onMouseDown={(e) => {
+          e.preventDefault()
+          draggingRef.current = true
+          document.body.style.cursor = 'ew-resize'
+        }}
+        className="absolute inset-y-0 left-0 z-30 w-1.5 cursor-ew-resize transition-colors hover:bg-leaf-dim/40"
+        title="拖拽调整宽度"
+      />
       <div className="flex items-start gap-2 border-b border-ink-700 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -479,14 +540,24 @@ export function TaskDetail({
                         )}
                         {git.commits.length > 0 && (
                           <div className="space-y-1">
-                            {git.commits.slice(0, 4).map((c) => (
+                            {(showAllCommits ? git.commits : git.commits.slice(0, 4)).map((c) => (
                               <div key={c.short} className="flex items-center gap-2 text-[10.5px] text-mist-400">
                                 <GitCommitHorizontal size={10} className="shrink-0" />
                                 <span className="font-mono text-mist-300">{c.short}</span>
-                                <span className="min-w-0 flex-1 truncate">{c.subject}</span>
+                                <span className="min-w-0 flex-1 truncate" title={`${c.subject} · ${c.date}`}>
+                                  {c.subject}
+                                </span>
                                 <span className="shrink-0">{c.author}</span>
                               </div>
                             ))}
+                            {git.commits.length > 4 && (
+                              <button
+                                onClick={() => setShowAllCommits((v) => !v)}
+                                className="text-[10.5px] text-leaf-soft/80 underline"
+                              >
+                                {showAllCommits ? '收起提交记录' : `展开全部 ${git.commits.length} 条提交`}
+                              </button>
+                            )}
                           </div>
                         )}
                         {!r.branch && (
@@ -521,6 +592,85 @@ export function TaskDetail({
                         )}
                       </div>
                     ) : null}
+                  </div>
+                )}
+
+                {/* GitLab 连接器：MR / 流水线 */}
+                {gitlabEnabled && r?.branch && (
+                  <div className="pt-3">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
+                      <GitMerge size={12} /> GitLab
+                      {!gl && <RefreshCw size={10} className="animate-spin" />}
+                    </div>
+                    {gl && !gl.ok && (
+                      <div className="text-[11px] text-mist-600">{gl.error}</div>
+                    )}
+                    {gl?.ok && (
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-[11px]">
+                        {gl.mr ? (
+                          <button
+                            onClick={() => api.openExternal(gl.mr!.webUrl)}
+                            className={clsx(
+                              'chip border',
+                              gl.mr.state === 'merged'
+                                ? 'border-violet-400/30 bg-violet-500/15 text-violet-300'
+                                : 'border-sky-400/30 bg-sky-500/15 text-sky-300'
+                            )}
+                            title={`${gl.mr.title} → ${gl.mr.targetBranch}`}
+                          >
+                            <GitMerge size={10} /> MR !{gl.mr.iid} · {gl.mr.state === 'merged' ? '已合并' : '评审中'} ↗
+                          </button>
+                        ) : (
+                          <span className="chip border border-ink-500 text-mist-400">无 MR</span>
+                        )}
+                        {gl.pipeline ? (
+                          <button
+                            onClick={() => api.openExternal(gl.pipeline!.webUrl)}
+                            className={clsx(
+                              'chip border',
+                              ['success', 'passed'].includes(gl.pipeline.status)
+                                ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300'
+                                : ['failed'].includes(gl.pipeline.status)
+                                  ? 'border-rose-400/30 bg-rose-500/15 text-rose-300'
+                                  : 'border-amber-400/30 bg-amber-500/15 text-amber-300'
+                            )}
+                            title="打开流水线"
+                          >
+                            构建源码 ·{' '}
+                            {gl.pipeline.status === 'success' || gl.pipeline.status === 'passed'
+                              ? '成功'
+                              : gl.pipeline.status === 'failed'
+                                ? '失败'
+                                : gl.pipeline.status === 'running'
+                                  ? '运行中'
+                                  : gl.pipeline.status}{' '}
+                            ↗
+                          </button>
+                        ) : (
+                          <span className="chip border border-ink-500 text-mist-400">无流水线</span>
+                        )}
+                        {!gl.mr && (
+                          <button
+                            disabled={glBusy}
+                            onClick={async () => {
+                              setGlBusy(true)
+                              const res = await api.gitlabCreateMr(task.dirName)
+                              setGlBusy(false)
+                              if (res.ok && res.url) {
+                                pushToast({ kind: 'success', title: 'MR 已创建', body: res.url })
+                                api.openExternal(res.url)
+                                setGl(await api.gitlabTaskStatus(task.dirName))
+                              } else {
+                                pushToast({ kind: 'error', title: '创建 MR 失败', body: res.error })
+                              }
+                            }}
+                            className="chip border border-leaf-dim/40 text-leaf-soft hover:bg-leaf-dim/10 disabled:opacity-50"
+                          >
+                            <GitMerge size={10} /> {glBusy ? '创建中…' : '新建 MR'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -578,12 +728,15 @@ export function TaskDetail({
               <div className="py-6 text-center text-xs text-mist-500">该任务目录暂无其他产物文件</div>
             )}
             {task.artifacts.map((f) => {
-              const clickable = f.kind === 'file' && /\.(md|markdown|json|jsonl|txt|yaml|yml|log|py|ts|js)$/i.test(f.name)
+              // 与主进程 TEXT_EXTS 白名单对齐
+              const clickable =
+                f.kind === 'file' &&
+                /\.(md|markdown|txt|json|jsonl|yaml|yml|toml|py|ts|tsx|js|mjs|cjs|sh|ps1|cmd|bat|cfg|ini|log|html|css|sql|env)$/i.test(f.name)
               return (
                 <button
                   key={f.path}
                   disabled={!clickable}
-                  onClick={() => clickable && onOpenArtifact(f)}
+                  onClick={() => clickable && openArtifact(f)}
                   className={clsx(
                     'flex w-full items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
                     clickable

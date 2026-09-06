@@ -7,6 +7,8 @@ export interface CliRun {
 }
 
 const runs = new Map<number, CliRun>()
+/** runIds aborted by the user — on Windows taskkill /F yields signal=null on close */
+const abortedRuns = new Set<number>()
 let nextId = 1
 
 function quoteArg(a: string): string {
@@ -40,8 +42,9 @@ export function runCli(
   })
   proc.on('close', (code, signal) => {
     runs.delete(id)
+    const wasAborted = abortedRuns.delete(id) || signal === 'SIGTERM'
     if (!win.isDestroyed()) {
-      win.webContents.send('cli:done', { runId: id, code, aborted: signal === 'SIGTERM' })
+      win.webContents.send('cli:done', { runId: id, code, aborted: wasAborted })
     }
   })
   return id
@@ -50,6 +53,7 @@ export function runCli(
 export function abortCli(runId: number): void {
   const run = runs.get(runId)
   if (!run) return
+  abortedRuns.add(runId)
   if (process.platform === 'win32') {
     // Kill the whole shell tree (cmd.exe -> trellis.cmd -> node/python).
     spawn('taskkill', ['/pid', String(run.proc.pid), '/T', '/F'], { windowsHide: true })

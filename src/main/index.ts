@@ -20,7 +20,15 @@ import { taskGitInfo, createBranch, clearGitCache, isGitRepo } from './services/
 import { recordActivity, getAnalytics } from './services/activity'
 import { generateWeeklyReport, saveReport } from './services/report'
 import { listChannels, channelSend } from './services/channels'
-import type { JiraConfig, ToastEvent } from '../shared/types'
+import {
+  gitlabTest,
+  gitlabTaskStatus,
+  gitlabCreateMr,
+  protectGitlabPassword,
+  clearGitlabTokenCache,
+  clearGitlabStatusCache
+} from './services/gitlab'
+import type { GitLabConfig, JiraConfig, ToastEvent } from '../shared/types'
 
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
@@ -30,6 +38,8 @@ let projectRoot: string | null = null
 const watcher = new TrellisWatcher()
 let jiraSyncTimer: ReturnType<typeof setInterval> | null = null
 let latestSnapshot: ReturnType<typeof scanProject> | null = null
+/** task dirs seen in the current project — drives the Inbox "new task" diff */
+let knownTaskDirs = new Set<string>()
 
 const MAX_TEXT_BYTES = 5 * 1024 * 1024
 
@@ -227,11 +237,47 @@ function sendSnapshot(): void {
   try {
     latestSnapshot = scanProject(projectRoot)
     recordActivity(latestSnapshot)
+    detectNewTasks(latestSnapshot)
     broadcastToWindows('project:snapshot', latestSnapshot)
     rebuildTrayMenu()
   } catch (e: any) {
     console.error('rescan failed:', e?.message)
   }
+}
+
+/**
+ * Diff scanned task dirs against the known set — any task that appeared since
+ * the last scan (e.g. created by an AI tool via trellis CLI) is pushed to the
+ * renderer Inbox for visual triage.
+ */
+function detectNewTasks(snap: ReturnType<typeof scanProject>): void {
+  const current = new Set(snap.tasks.map((t) => t.dirName))
+  if (knownTaskDirs.size === 0) {
+    // first scan after project open — baseline only, don't flood the inbox
+    knownTaskDirs = current
+    return
+  }
+  const fresh = [...current].filter((d) => !knownTaskDirs.has(d))
+  knownTaskDirs = current
+  if (fresh.length === 0) return
+  const items = fresh
+    .map((dir) => {
+      const t = snap.tasks.find((x) => x.dirName === dir)
+      return {
+        dirName: dir,
+        title: t?.record?.title ?? dir,
+        creator: t?.record?.creator ?? '',
+        ts: Date.now()
+      }
+    })
+    .slice(0, 20)
+  broadcastToWindows('inbox:new', { projectRoot, items })
+  const first = items[0]
+  toast({
+    kind: 'info',
+    title: items.length === 1 ? '新任务已创建' : `${items.length} 个新任务已创建`,
+    body: items.length === 1 ? first.title : `${first.title} 等`
+  })
 }
 
 function focusAndShow(): void {
@@ -432,18 +478,20 @@ function safeReadText(absPath: string): { ok: boolean; error?: string; content?:
   }
 }
 
-/* ---------------- task create from jira ---------------- */
+/* ---------------- task create (jira import & intake wizard) ---------------- */
 
-function createTaskFromJira(input: {
+interface CreateTaskInput {
   dirName: string
   title: string
   description: string
   status: string
   priority: string
   assignee: string
-  jiraKey: string
-  jiraUrl: string
-}): { ok: boolean; error?: string; dirName?: string } {
+  jiraKey?: string
+  jiraUrl?: string
+}
+
+function createTaskRecord(input: CreateTaskInput): { ok: boolean; error?: string; dirName?: string } {
   if (!projectRoot) return { ok: false, error: '未打开项目' }
   const tasksRoot = join(projectRoot, '.trellis', 'tasks')
   const today = new Date()
@@ -455,6 +503,11 @@ function createTaskFromJira(input: {
   if (existsSync(finalDir)) return { ok: false, error: `任务目录 ${finalDirName} 已存在` }
   try {
     mkdirSync(finalDir, { recursive: true })
+    const meta: Record<string, unknown> = {}
+    if (input.jiraKey) {
+      meta.jiraKey = input.jiraKey
+      meta.jiraUrl = input.jiraUrl ?? ''
+    }
     const record: Record<string, unknown> = {
       id: input.dirName,
       name: input.dirName,
@@ -465,7 +518,7 @@ function createTaskFromJira(input: {
       scope: null,
       package: null,
       priority: input.priority,
-      creator: getSettings().jira.user,
+      creator: latestSnapshot?.meta.developer ?? getSettings().jira.user ?? 'panel',
       assignee: input.assignee,
       createdAt: `${today.getFullYear()}-${mm}-${dd}`,
       completedAt: null,
@@ -478,8 +531,8 @@ function createTaskFromJira(input: {
       children: [],
       parent: null,
       relatedFiles: [],
-      notes: `从 Jira 导入：${input.jiraKey}\n${input.jiraUrl}`,
-      meta: { jiraKey: input.jiraKey, jiraUrl: input.jiraUrl }
+      notes: input.jiraKey ? `从 Jira 导入：${input.jiraKey}\n${input.jiraUrl}` : '',
+      meta
     }
     writeFileSync(join(finalDir, 'task.json'), JSON.stringify(record, null, 2) + '\n', 'utf-8')
     sendSnapshot()
@@ -487,6 +540,29 @@ function createTaskFromJira(input: {
   } catch (e: any) {
     return { ok: false, error: e?.message ?? '创建任务失败' }
   }
+}
+
+function createTaskFromJira(input: {
+  dirName: string
+  title: string
+  description: string
+  status: string
+  priority: string
+  assignee: string
+  jiraKey: string
+  jiraUrl: string
+}): { ok: boolean; error?: string; dirName?: string } {
+  return createTaskRecord(input)
+}
+
+/** Derive a filesystem-safe slug from a free-form requirement title. */
+function slugifyTitle(title: string): string {
+  const slug = title
+    .trim()
+    .replace(/[\\/:*?"<>|\s]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32)
+  return slug || 'req'
 }
 
 /* ---------------- ai prompt ---------------- */
@@ -544,6 +620,7 @@ function registerIpc(): void {
       watcher.start(projectRoot, sendSnapshot)
       clearGitCache()
       latestSnapshot = snap
+      knownTaskDirs = new Set(snap.tasks.map((t) => t.dirName))
       recordActivity(snap)
       return { ok: true, snapshot: snap }
     } catch (e: any) {
@@ -563,6 +640,7 @@ function registerIpc(): void {
   ipcMain.handle('project:close', () => {
     watcher.stop()
     projectRoot = null
+    knownTaskDirs = new Set()
   })
 
   ipcMain.handle('task:update', (_e, taskDir: string, patch: Record<string, unknown>, expectedMtime?: number) => {
@@ -578,6 +656,18 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('task:createFromJira', (_e, input) => createTaskFromJira(input))
+
+  ipcMain.handle('task:create', (_e, input: { title: string; description: string; priority: string }) => {
+    const dirName = slugifyTitle(input.title)
+    return createTaskRecord({
+      dirName,
+      title: input.title,
+      description: input.description,
+      status: 'planning',
+      priority: input.priority || 'P2',
+      assignee: latestSnapshot?.meta.developer ?? ''
+    })
+  })
 
   ipcMain.handle('fs:readText', (_e, absPath: string) => {
     const base = safeReadText(absPath)
@@ -668,7 +758,16 @@ function registerIpc(): void {
     if (jira && typeof jira.password === 'string' && jira.password && !jira.passwordEncrypted && jira.password !== prevJira.password) {
       jira = { ...jira, ...protectPassword(jira.password) }
     }
-    const next = setSettings({ ...patch, jira })
+    const prevGitlab = getSettings().gitlab
+    let gitlab = patch.gitlab as GitLabConfig | undefined
+    if (gitlab && typeof gitlab.password === 'string' && gitlab.password && !gitlab.passwordEncrypted && gitlab.password !== prevGitlab.password) {
+      gitlab = { ...gitlab, ...protectGitlabPassword(gitlab.password) }
+    }
+    const next = setSettings({ ...patch, jira, gitlab })
+    if (gitlab) {
+      clearGitlabTokenCache()
+      clearGitlabStatusCache()
+    }
     applyAutoStart()
     restartJiraAutoSync()
     return next
@@ -748,6 +847,26 @@ function registerIpc(): void {
   ipcMain.handle('jira:transitions', (_e, cfg: JiraConfig, key: string) => jiraTransitions(cfg, key))
   ipcMain.handle('jira:transition', (_e, cfg: JiraConfig, key: string, tid: string) => jiraTransition(cfg, key, tid))
   ipcMain.handle('jira:comment', (_e, cfg: JiraConfig, key: string, body: string) => jiraComment(cfg, key, body))
+
+  /* GitLab connector */
+  ipcMain.handle('gitlab:test', (_e, cfg: GitLabConfig) => gitlabTest(cfg))
+  ipcMain.handle('gitlab:taskStatus', (_e, dirName: string) => {
+    const cfg = getSettings().gitlab
+    const t = findTask(dirName)
+    if (!t) return { ok: false, error: '任务不存在', mr: null, pipeline: null }
+    return gitlabTaskStatus(cfg, dirName, t.record?.branch ?? null, t.record?.base_branch ?? null)
+  })
+  ipcMain.handle('gitlab:createMr', (_e, dirName: string) => {
+    const cfg = getSettings().gitlab
+    const t = findTask(dirName)
+    if (!t?.record?.branch) return { ok: false, error: '任务没有关联分支——先在任务详情里创建分支' }
+    return gitlabCreateMr(cfg, {
+      branch: t.record.branch,
+      baseBranch: t.record.base_branch,
+      title: `${dirName} ${t.record.title}`,
+      description: t.record.description ? `> ${t.record.description.slice(0, 500)}` : ''
+    })
+  })
 
   ipcMain.on('win:minimize', () => {
     const w = BrowserWindow.getFocusedWindow() ?? win

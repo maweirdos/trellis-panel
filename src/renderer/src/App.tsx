@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useApp } from './store'
 import { api } from './api'
 import { TitleBar } from './components/TitleBar'
@@ -17,17 +17,19 @@ import { TeamPage } from './pages/Team'
 import { ChannelPage } from './pages/Channel'
 import { JiraPage } from './pages/Jira'
 import { CliPage } from './pages/Cli'
+import { InboxPage } from './pages/Inbox'
 import { SettingsPage } from './pages/Settings'
+import { IntakeModal } from './components/IntakeModal'
 import { clsx } from 'clsx'
-import type { FileEntry } from '../../shared/types'
 
 function MainApp(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
   const page = useApp((s) => s.page)
   const openTaskDir = useApp((s) => s.openTaskDir)
+  const viewerTabs = useApp((s) => s.viewerTabs)
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
-  const [artifact, setArtifact] = useState<FileEntry | null>(null)
+  const inboxAdd = useApp((s) => s.inboxAdd)
 
   useEffect(() => {
     const off = api.onSnapshotUpdated((snap) => useApp.setState({ snapshot: snap }))
@@ -37,10 +39,15 @@ function MainApp(): JSX.Element {
       showTask(taskDir)
       pushToast({ kind: 'info', title: '已跳转到桥接任务', body: taskDir })
     })
+    const offInbox = api.onInboxNew((e) => {
+      inboxAdd(e.items)
+      useApp.setState({ page: 'inbox' })
+    })
     return () => {
       off()
       offToast()
       offFocus()
+      offInbox()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -60,12 +67,13 @@ function MainApp(): JSX.Element {
             <div
               className={clsx(
                 'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'workspace' || page === 'jira' || page === 'channel'
+              page === 'tasks' || page === 'spec' || page === 'workspace' || page === 'jira' || page === 'channel' || page === 'inbox'
                 ? 'overflow-hidden'
                 : 'overflow-y-auto'
               )}
             >
               {page === 'dashboard' && <Dashboard />}
+              {page === 'inbox' && <InboxPage />}
               {page === 'tasks' && <TasksPage />}
               {page === 'spec' && <SpecPage />}
               {page === 'workspace' && <WorkspacePage />}
@@ -77,17 +85,18 @@ function MainApp(): JSX.Element {
               {page === 'settings' && <SettingsPage />}
             </div>
 
-            {/* 任务详情：右侧悬浮层，不挤压看板布局 */}
-            {(detailOpen && (page === 'tasks' || page === 'dashboard' || page === 'archive')) && (
-              <div className="absolute inset-y-0 right-0 z-20 flex w-[460px] max-w-[85%] shadow-[-12px_0_40px_rgba(0,0,0,0.45)]">
-                <TaskDetail onOpenArtifact={setArtifact} />
+            {/* 任务详情：右侧悬浮层，宽度由抽屉自身控制（可拖拽调宽） */}
+            {(detailOpen && (page === 'tasks' || page === 'dashboard' || page === 'archive' || page === 'inbox')) && (
+              <div className="absolute inset-y-0 right-0 z-20 flex shadow-[-12px_0_40px_rgba(0,0,0,0.45)]">
+                <TaskDetail />
               </div>
             )}
 
-            {/* 产物全屏查看器 */}
-            {artifact && (
-              <ArtifactViewer file={artifact} projectName={snapshot.meta.name} onClose={() => setArtifact(null)} />
-            )}
+            {/* 产物多标签查看器 */}
+            {viewerTabs.length > 0 && <ArtifactViewer projectName={snapshot.meta.name} />}
+
+            {/* 需求 Intake 向导 */}
+            <IntakeModal />
           </main>
         </div>
       )}

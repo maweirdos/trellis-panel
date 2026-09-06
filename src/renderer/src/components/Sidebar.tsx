@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  Inbox,
   SquareKanban,
   BookOpenText,
   Users,
@@ -18,6 +19,7 @@ import type { JSX } from 'react'
 
 const NAV: Array<{ id: Page; label: string; icon: JSX.Element }> = [
   { id: 'dashboard', label: '概览', icon: <LayoutDashboard size={16} /> },
+  { id: 'inbox', label: '收件箱', icon: <Inbox size={16} /> },
   { id: 'tasks', label: '任务看板', icon: <SquareKanban size={16} /> },
   { id: 'spec', label: '规范文档', icon: <BookOpenText size={16} /> },
   { id: 'workspace', label: '工作区', icon: <Users size={16} /> },
@@ -35,6 +37,9 @@ export function Sidebar(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
   const pickAndOpen = useApp((s) => s.pickAndOpen)
   const refresh = useApp((s) => s.refresh)
+  const inbox = useApp((s) => s.inbox)
+
+  const pendingCount = Object.values(inbox).filter((e) => e.state === 'pending').length
 
   const counts: Partial<Record<Page, number>> = snapshot
     ? {
@@ -43,6 +48,11 @@ export function Sidebar(): JSX.Element {
         spec: countFiles(snapshot.spec)
       }
     : {}
+
+  const badge = (id: Page): number | undefined => {
+    if (id === 'inbox' && pendingCount > 0) return pendingCount
+    return counts[id]
+  }
 
   return (
     <aside className="flex w-52 shrink-0 flex-col border-r border-ink-700 bg-ink-850/60">
@@ -60,9 +70,16 @@ export function Sidebar(): JSX.Element {
           >
             <span className={page === item.id ? 'text-leaf' : 'text-mist-400'}>{item.icon}</span>
             {item.label}
-            {counts[item.id] !== undefined && counts[item.id]! > 0 && (
-              <span className="ml-auto rounded bg-ink-750 px-1.5 text-[10.5px] font-mono text-mist-400">
-                {counts[item.id]}
+            {badge(item.id) !== undefined && badge(item.id)! > 0 && (
+              <span
+                className={clsx(
+                  'ml-auto rounded px-1.5 font-mono text-[10.5px]',
+                  item.id === 'inbox'
+                    ? 'bg-amber-500/20 text-amber-300'
+                    : 'bg-ink-750 text-mist-400'
+                )}
+              >
+                {badge(item.id)}
               </span>
             )}
           </button>
