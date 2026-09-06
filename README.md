@@ -1,17 +1,13 @@
 # Trellis Panel
 
 <div align="center">
-  <img src="https://img.shields.io/github/package-json/v/maweirdos/trellis-panel?style=for-the-badge&logo=github&logoColor=white" alt="版本">
-  <img src="https://img.shields.io/github/license/maweirdos/trellis-panel?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/Windows-10%2B-0078D6?style=for-the-badge" alt="Windows">
-  <img src="https://img.shields.io/badge/Electron-33-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron">
-  <img src="https://img.shields.io/badge/React-18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React">
-  <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript">
-  <br/>
-  <img src="https://img.shields.io/github/stars/maweirdos/trellis-panel?style=for-the-badge&logo=github&logoColor=white&label=Stars" alt="Stars">
-  <img src="https://img.shields.io/github/issues/maweirdos/trellis-panel?style=for-the-badge&logo=github&logoColor=white&label=Issues" alt="Issues">
-  <img src="https://img.shields.io/badge/MCP-Server-black?style=for-the-badge&logo=modelcontextprotocol&logoColor=white" alt="MCP Server">
-  <img src="https://img.shields.io/badge/Jira-双向同步-0052CC?style=for-the-badge&logo=jira&logoColor=white" alt="Jira 双向同步">
+  <img src="https://img.shields.io/github/license/maweirdos/trellis-panel" alt="License">
+  <img src="https://img.shields.io/badge/Windows-10%2B-0078D6" alt="Windows">
+  <img src="https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white" alt="Electron">
+  <img src="https://img.shields.io/badge/React-18-20232A?logo=react&logoColor=61DAFB" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/MCP-Server-black?logo=modelcontextprotocol&logoColor=white" alt="MCP Server">
+  <img src="https://img.shields.io/badge/Jira-双向同步-0052CC?logo=jira&logoColor=white" alt="Jira 双向同步">
 </div>
 
 > Trellis 工作流可视化面板 — Windows 桌面客户端（Electron + React + TypeScript）
