@@ -126,65 +126,6 @@ export function handleDeepLink(
   }
 }
 
-const TPANEL_MCP_MJS = String.raw`#!/usr/bin/env node
-// Trellis Panel MCP stdio bridge: stdin JSON-RPC -> panel HTTP MCP endpoint.
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-
-const settingsPath = process.env.TPANEL_SETTINGS ?? join(process.env.APPDATA ?? '', 'trellis-panel', 'settings.json')
-let port = 39573
-let token = ''
-try {
-  const s = JSON.parse(readFileSync(settingsPath, 'utf-8'))
-  port = s.httpApi?.port ?? port
-  token = s.bridgeToken ?? ''
-} catch {}
-
-let buf = ''
-let pending = 0
-let sawEnd = false
-process.stdin.setEncoding('utf-8')
-process.stdin.on('data', (d) => {
-  buf += d
-  let idx
-  while ((idx = buf.indexOf('\n')) >= 0) {
-    const line = buf.slice(0, idx).trim()
-    buf = buf.slice(idx + 1)
-    if (line) {
-      pending += 1
-      dispatch(line).finally(() => {
-        pending -= 1
-        if (sawEnd && pending === 0) process.exit(0)
-      })
-    }
-  }
-})
-process.stdin.on('end', () => {
-  sawEnd = true
-  if (pending === 0) process.exit(0)
-})
-
-async function dispatch(line) {
-  let msg
-  try { msg = JSON.parse(line) } catch { return }
-  if (!msg || msg.method?.startsWith?.('notifications/')) return // ignore notifications
-  try {
-    const res = await fetch('http://127.0.0.1:' + port + '/mcp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify(msg),
-      signal: AbortSignal.timeout(15000)
-    })
-    const text = await res.text()
-    if (text.trim()) process.stdout.write(text.trim() + '\n')
-  } catch (e) {
-    if (msg.id !== undefined) {
-      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'panel unreachable: ' + e.message } }) + '\n')
-    }
-  }
-}
-`
-
 export function installTpanel(token: string): { ok: boolean; error?: string; path?: string } {
   const npmDir = join(app.getPath('appData'), 'npm')
   try {
@@ -198,11 +139,8 @@ export function installTpanel(token: string): { ok: boolean; error?: string; pat
     // NOTE: no parenthesized blocks — %VAR% set inside a block would expand
     // at parse time (classic batch pitfall). goto-flow keeps expansion correct.
     const cmd = `@echo off
-rem Trellis Panel bridge CLI (codex / zcode / trellis hooks -> panel)
+rem Trellis Panel bridge CLI (trellis hooks -> panel)
 rem NOTE: keep this file ASCII-only; cmd.exe parses it in the OEM codepage.
-if /i not "%~1"=="mcp" goto :try_notify
-node "%~dp0tpanel-mcp.mjs"
-exit /b %ERRORLEVEL%
 :try_notify
 if /i not "%~1"=="notify" goto :try_open
 if "%~2"=="" goto :usage
@@ -228,12 +166,11 @@ set "P=%TASK_JSON_PATH%"
 start "" "${urls.taskEvent}"
 exit /b 0
 :usage
-echo Usage: tpanel notify "message" ^| tpanel open [taskDir] ^| tpanel task-event ^| tpanel mcp
+echo Usage: tpanel notify "message" ^| tpanel open [taskDir] ^| tpanel task-event
 exit /b 1
 `
     const p = join(npmDir, 'tpanel.cmd')
     writeFileSync(p, cmd, 'utf-8')
-    writeFileSync(join(npmDir, 'tpanel-mcp.mjs'), TPANEL_MCP_MJS, 'utf-8')
     return { ok: true, path: p }
   } catch (e: any) {
     return { ok: false, error: e?.message ?? '写入失败' }

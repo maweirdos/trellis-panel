@@ -1,14 +1,12 @@
 import { create } from 'zustand'
-import type { AiRunInfo, InboxItem, ProjectSnapshot, Settings, ToastEvent } from '../../shared/types'
+import type { InboxItem, ProjectSnapshot, Settings, ToastEvent } from '../../shared/types'
 import { api } from './api'
 
 export type Page =
   | 'dashboard'
   | 'inbox'
   | 'tasks'
-  | 'ai'
   | 'spec'
-  | 'workspace'
   | 'archive'
   | 'team'
   | 'jira'
@@ -30,31 +28,29 @@ export interface InboxEntry extends InboxItem {
   state: InboxState
 }
 
-/** AI background run card in the workbench */
-export interface AiRunCard extends AiRunInfo {
-  status: 'running' | 'done' | 'failed' | 'aborted'
-  lines: Array<{ text: string; err: boolean }>
-  endedAt?: number
-  code?: number | null
-}
-
 let toastSeq = 1
 
-const INBOX_KEY = 'tpanel.inbox.v1'
+const INBOX_KEY = 'tpanel.inbox.v2'
 
-function loadInbox(): Record<string, InboxEntry> {
+function inboxStorageKey(projectRoot: string): string {
+  return `${INBOX_KEY}.${encodeURIComponent(projectRoot)}`
+}
+
+function loadInbox(projectRoot: string | null): Record<string, InboxEntry> {
+  if (!projectRoot) return {}
   try {
-    return JSON.parse(localStorage.getItem(INBOX_KEY) ?? '{}') as Record<string, InboxEntry>
+    return JSON.parse(localStorage.getItem(inboxStorageKey(projectRoot)) ?? '{}') as Record<string, InboxEntry>
   } catch {
     return {}
   }
 }
 
-function saveInbox(map: Record<string, InboxEntry>): void {
+function saveInbox(map: Record<string, InboxEntry>, projectRoot: string | null): void {
+  if (!projectRoot) return
   try {
     // cap stored entries — keep newest 200
     const entries = Object.entries(map).sort((a, b) => b[1].ts - a[1].ts).slice(0, 200)
-    localStorage.setItem(INBOX_KEY, JSON.stringify(Object.fromEntries(entries)))
+    localStorage.setItem(inboxStorageKey(projectRoot), JSON.stringify(Object.fromEntries(entries)))
   } catch {
     // persistence is best-effort
   }
@@ -66,6 +62,9 @@ interface AppState {
   page: Page
   openError: string | null
   starting: boolean
+  /** bootstrap 完成（项目已打开）——之前的桥接聚焦先暂存，避免被 openProjectPath 重置 */
+  bootstrapped: boolean
+  pendingFocusDir: string | null
   openTaskDir: string | null
   openTaskArchived: boolean
   capsuleMode: boolean
@@ -74,13 +73,14 @@ interface AppState {
   viewerTabs: ViewerTab[]
   viewerActive: string | null
   intakeOpen: boolean
+  inboxProjectRoot: string | null
   inbox: Record<string, InboxEntry>
-  aiRuns: AiRunCard[]
   setPage: (p: Page) => void
   bootstrap: () => Promise<void>
   openProjectPath: (root: string) => Promise<void>
   pickAndOpen: () => Promise<void>
   closeProject: () => Promise<void>
+  setInboxProject: (projectRoot: string | null) => void
   refresh: () => Promise<void>
   saveSettings: (patch: Partial<Settings>) => Promise<void>
   showTask: (dirName: string | null, archived?: boolean) => void
@@ -91,11 +91,9 @@ interface AppState {
   pinArtifact: (path: string, pinned: boolean) => void
   setViewerActive: (path: string) => void
   setIntakeOpen: (on: boolean) => void
-  aiAddRun: (run: AiRunInfo) => void
-  aiAppendLog: (runId: number, stream: 'stdout' | 'stderr', data: string) => void
-  aiFinishRun: (runId: number, code: number | null, aborted: boolean) => void
   inboxAdd: (items: InboxItem[]) => void
   inboxSetState: (dirName: string, state: InboxState) => void
+  inboxRemove: (dirName: string) => void
   inboxAcceptAll: () => void
 }
 
@@ -105,6 +103,8 @@ export const useApp = create<AppState>((set, get) => ({
   page: 'dashboard',
   openError: null,
   starting: true,
+  bootstrapped: false,
+  pendingFocusDir: null,
   openTaskDir: null,
   openTaskArchived: false,
   capsuleMode: new URLSearchParams(window.location.search).get('mode') === 'capsule',
@@ -112,8 +112,8 @@ export const useApp = create<AppState>((set, get) => ({
   viewerTabs: [],
   viewerActive: null,
   intakeOpen: false,
-  inbox: loadInbox(),
-  aiRuns: [],
+  inboxProjectRoot: null,
+  inbox: loadInbox(null),
 
   setPage: (page) => set({ page }),
 
@@ -130,13 +130,35 @@ export const useApp = create<AppState>((set, get) => ({
     if (last) {
       await get().openProjectPath(last)
     }
+    // 冷启动深链兜底：live 推送若早于 bootstrap 到达会被 openProjectPath 重置，
+    // 所以这里统一兜底消费一次（live 已消费时 pull 返回 null，用暂存的 dir 补上）
+    const pending = await api.pullPendingFocus()
+    const focusDir = pending?.taskDir ?? get().pendingFocusDir
+    const focusRoot = pending?.root ?? null
+    if (focusDir) {
+      if (focusRoot && get().snapshot?.meta.root !== focusRoot) {
+        await get().openProjectPath(focusRoot)
+      }
+      if (get().snapshot) {
+        set({ page: 'tasks' })
+        get().showTask(focusDir)
+      }
+      set({ pendingFocusDir: null })
+    }
+    set({ bootstrapped: true })
   },
 
   openProjectPath: async (root) => {
     set({ openError: null })
     const res = await api.openProject(root)
     if (res.ok && res.snapshot) {
-      set({ snapshot: res.snapshot, page: 'dashboard', openTaskDir: null })
+      set({
+        snapshot: res.snapshot,
+        page: 'dashboard',
+        openTaskDir: null,
+        inboxProjectRoot: res.snapshot.meta.root,
+        inbox: loadInbox(res.snapshot.meta.root)
+      })
     } else {
       set({ openError: res.error ?? '打开失败' })
     }
@@ -149,8 +171,10 @@ export const useApp = create<AppState>((set, get) => ({
 
   closeProject: async () => {
     await api.closeProject()
-    set({ snapshot: null, openTaskDir: null })
+    set({ snapshot: null, openTaskDir: null, inboxProjectRoot: null, inbox: {} })
   },
+
+  setInboxProject: (projectRoot) => set({ inboxProjectRoot: projectRoot, inbox: loadInbox(projectRoot) }),
 
   refresh: async () => {
     const snap = await api.getSnapshot()
@@ -210,41 +234,13 @@ export const useApp = create<AppState>((set, get) => ({
 
   setIntakeOpen: (on) => set({ intakeOpen: on }),
 
-  aiAddRun: (run: AiRunInfo) =>
-    set((s) => ({
-      aiRuns: [{ ...run, status: 'running' as const, lines: [] }, ...s.aiRuns].slice(0, 30)
-    })),
-
-  aiAppendLog: (runId: number, stream: 'stdout' | 'stderr', data: string) => {
-    set((s) => ({
-      aiRuns: s.aiRuns.map((r) =>
-        r.runId === runId
-          ? {
-              ...r,
-              lines: [...r.lines, ...data.split('\n').filter((l) => l !== '').map((text) => ({ text, err: stream === 'stderr' }))].slice(-800)
-            }
-          : r
-      )
-    }))
-  },
-
-  aiFinishRun: (runId: number, code: number | null, aborted: boolean) => {
-    set((s) => ({
-      aiRuns: s.aiRuns.map((r) =>
-        r.runId === runId
-          ? { ...r, status: aborted ? 'aborted' : code === 0 ? 'done' : 'failed', code, endedAt: Date.now() }
-          : r
-      )
-    }))
-  },
-
   inboxAdd: (items) => {
     set((s) => {
       const next = { ...s.inbox }
       for (const it of items) {
         if (!next[it.dirName]) next[it.dirName] = { ...it, state: 'pending' }
       }
-      saveInbox(next)
+      saveInbox(next, s.inboxProjectRoot)
       return { inbox: next }
     })
   },
@@ -254,7 +250,17 @@ export const useApp = create<AppState>((set, get) => ({
       const cur = s.inbox[dirName]
       if (!cur) return s
       const next = { ...s.inbox, [dirName]: { ...cur, state } }
-      saveInbox(next)
+      saveInbox(next, s.inboxProjectRoot)
+      return { inbox: next }
+    })
+  },
+
+  inboxRemove: (dirName) => {
+    set((s) => {
+      if (!s.inbox[dirName]) return s
+      const next = { ...s.inbox }
+      delete next[dirName]
+      saveInbox(next, s.inboxProjectRoot)
       return { inbox: next }
     })
   },
@@ -265,7 +271,7 @@ export const useApp = create<AppState>((set, get) => ({
       for (const [k, v] of Object.entries(s.inbox)) {
         next[k] = v.state === 'pending' ? { ...v, state: 'accepted' } : v
       }
-      saveInbox(next)
+      saveInbox(next, s.inboxProjectRoot)
       return { inbox: next }
     })
   }

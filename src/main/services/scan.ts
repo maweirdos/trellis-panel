@@ -3,6 +3,7 @@ import { join, basename, extname, resolve, sep } from 'path'
 import yaml from 'js-yaml'
 import type {
   DeveloperInfo,
+  DocSearchHit,
   FileEntry,
   JournalFile,
   PlatformChip,
@@ -440,6 +441,12 @@ export function updateTaskRecordAt(
   ])
   const next: Record<string, unknown> = { ...record }
   for (const [k, v] of Object.entries(patch)) {
+    if (k === 'meta') {
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        next.meta = { ...(record.meta ?? {}), ...(v as Record<string, unknown>) }
+      }
+      continue
+    }
     if (!EDITABLE.has(k)) continue
     if ((next as any)[k] === v) continue
     ;(next as any)[k] = v
@@ -582,3 +589,97 @@ export function computeSpecBacklinks(root: string): Record<string, number> {
 }
 
 export { TEXT_EXTS }
+
+/* ---------------- docs full-text search (.trellis 文档中心) ---------------- */
+
+const DOC_EXTS = /\.(md|markdown|txt)$/i
+const DOC_MAX_BYTES = 512 * 1024
+/** snippet match markers (stripped/highlighted by the renderer) */
+export const SNIPPET_MARK = { start: '\u0000', end: '\u0001' } as const
+
+function walkDocs(
+  dir: string,
+  group: DocSearchHit['group'],
+  out: Array<Omit<DocSearchHit, 'snippet'> & { content: string }>,
+  depth = 0
+): void {
+  if (depth > 4) return
+  let names: string[] = []
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return
+  }
+  for (const name of names) {
+    if (name.startsWith('.')) continue
+    const p = join(dir, name)
+    let st
+    try {
+      st = statSync(p)
+    } catch {
+      continue
+    }
+    if (st.isDirectory()) {
+      walkDocs(p, group, out, depth + 1)
+    } else if (DOC_EXTS.test(name) && st.size <= DOC_MAX_BYTES) {
+      let content = ''
+      try {
+        content = readFileSync(p, 'utf-8')
+        if (content.charCodeAt(0) === 0xfeff) content = content.slice(1)
+      } catch {
+        continue
+      }
+      out.push({ path: p, name, group, size: st.size, mtime: st.mtimeMs, content })
+    }
+  }
+}
+
+function buildSnippet(content: string, queryLower: string): string {
+  const idx = queryLower ? content.toLowerCase().indexOf(queryLower) : -1
+  const from = idx < 0 ? 0 : Math.max(0, idx - 40)
+  const raw = content.slice(from, from + 150).replace(/\s+/g, ' ').trim()
+  if (idx < 0) return raw
+  const at = idx - from
+  return (
+    raw.slice(0, at) + SNIPPET_MARK.start + raw.slice(at, at + queryLower.length) + SNIPPET_MARK.end + raw.slice(at + queryLower.length)
+  )
+}
+
+/**
+ * 全文检索 .trellis 下的规范文档与工作区日志。query 为空时按最近修改
+ * 返回全部文档（文档中心的默认浏览态），否则标题命中优先、内容命中次之。
+ */
+export function searchDocs(
+  root: string,
+  query: string,
+  group: 'all' | 'spec' | 'workspace'
+): { ok: boolean; error?: string; hits: DocSearchHit[] } {
+  const trellisDir = join(root, '.trellis')
+  if (!isDir(trellisDir)) return { ok: false, error: '未打开项目', hits: [] }
+  const q = query.trim().toLowerCase()
+  const buckets: Array<{ dir: string; group: DocSearchHit['group'] }> = []
+  if (group !== 'workspace') buckets.push({ dir: join(trellisDir, 'spec'), group: 'spec' })
+  if (group !== 'spec') {
+    buckets.push({ dir: join(trellisDir, 'workspace'), group: 'workspace' })
+    buckets.push({ dir: trellisDir, group: 'shared' })
+  }
+  const pool: Array<Omit<DocSearchHit, 'snippet'> & { content: string }> = []
+  for (const b of buckets) walkDocs(b.dir, b.group, pool)
+
+  // 顶层共享索引只取 .trellis 根下的散文件（walk 会深入子目录，这里过滤掉 spec/workspace 已覆盖的）
+  const hits: DocSearchHit[] = []
+  for (const d of pool) {
+    if (d.group === 'shared') {
+      const rel = d.path.slice(trellisDir.length + 1)
+      if (rel.includes('\\') || rel.includes('/')) continue
+    }
+    if (q && !d.name.toLowerCase().includes(q) && !d.content.toLowerCase().includes(q)) continue
+    hits.push({ path: d.path, name: d.name, group: d.group, size: d.size, mtime: d.mtime, snippet: buildSnippet(d.content, q) })
+  }
+  hits.sort((a, b) => {
+    const an = q && a.name.toLowerCase().includes(q) ? 0 : 1
+    const bn = q && b.name.toLowerCase().includes(q) ? 0 : 1
+    return an - bn || b.mtime - a.mtime
+  })
+  return { ok: true, hits: hits.slice(0, 60) }
+}

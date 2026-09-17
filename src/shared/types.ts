@@ -244,6 +244,8 @@ export interface JiraIssue {
   updated: string
   url: string
   assignee: string
+  /** fix version names (usually 0 or 1) */
+  fixVersions: string[]
 }
 
 export interface JiraTransition {
@@ -302,27 +304,6 @@ export interface InboxNewEvent {
   items: InboxItem[]
 }
 
-/* ---------- AI background runs ---------- */
-
-export interface AiRunInfo {
-  runId: number
-  app: 'codex' | 'claude'
-  label: string
-  taskDir: string | null
-  startedAt: number
-}
-
-export interface AiLogEvent extends AiRunInfo {
-  stream: 'stdout' | 'stderr'
-  data: string
-}
-
-export interface AiDoneEvent {
-  runId: number
-  code: number | null
-  aborted?: boolean
-}
-
 /* ---------- Settings ---------- */
 
 export interface Settings {
@@ -332,11 +313,22 @@ export interface Settings {
   jira: JiraConfig
   /** pluggable git platform connector (GitLab first) */
   gitlab: GitLabConfig
-  /** random per-install token; deep links & MCP/HTTP must carry it */
+  /** random per-install token; deep links must carry it */
   bridgeToken: string
   httpApi: { enabled: boolean; port: number; lanAccess: boolean; webBoard: boolean }
-  mcp: { enabled: boolean }
   desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean }
+}
+
+/* ---------- Docs (全文检索 .trellis 文档) ---------- */
+
+export interface DocSearchHit {
+  path: string
+  name: string
+  group: 'spec' | 'workspace' | 'shared'
+  /** match context with the matched range marked by \u0000 · \u0001 */
+  snippet: string
+  size: number
+  mtime: number
 }
 
 /* ---------- Bridge ---------- */
@@ -375,8 +367,6 @@ export interface McpInfo {
   running: boolean
   port: number | null
   webBoardUrl: string | null
-  codexConfig: string
-  claudeConfig: string
 }
 
 /** APIs exposed to the renderer via contextBridge. */
@@ -393,6 +383,7 @@ export interface TrellisApi {
     patch: TaskPatch,
     expectedMtime?: number
   ) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
+  deleteTask: (taskDir: string, expectedMtime?: number) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
   createTaskFromJira: (input: {
     dirName: string
     title: string
@@ -435,10 +426,11 @@ export interface TrellisApi {
   /* --- AI bridge --- */
   installTpanel: () => Promise<{ ok: boolean; error?: string; path?: string }>
   installTrellisHooks: () => Promise<{ ok: boolean; error?: string; message?: string }>
+  /** pull (and clear) a queued deep-link focus — used by cold start before listeners attach */
+  pullPendingFocus: () => Promise<{ taskDir: string; root: string | null } | null>
   copyToClipboard: (text: string) => Promise<void>
   setCapsuleMode: (on: boolean) => void
   setCapsuleOnTop: (on: boolean) => Promise<void>
-  launchAiApp: (app: 'codex' | 'zcode' | 'claude', taskDir: string | null) => Promise<{ ok: boolean; error?: string }>
   onToast: (cb: (e: ToastEvent) => void) => () => void
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => () => void
   getMcpInfo: () => Promise<McpInfo>
@@ -459,15 +451,11 @@ export interface TrellisApi {
   /* --- task intake --- */
   createTask: (input: { title: string; description: string; priority: string }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
 
-  /* --- AI background runs --- */
-  aiDetect: () => Promise<{ codex: boolean; claude: boolean }>
-  aiLaunchRun: (input: { app: 'codex' | 'claude'; prompt: string; label: string; taskDir: string | null }) => Promise<{ ok: boolean; error?: string; run?: AiRunInfo }>
-  aiAbortRun: (runId: number) => Promise<void>
-  onAiLog: (cb: (e: AiLogEvent) => void) => () => void
-  onAiDone: (cb: (e: AiDoneEvent) => void) => () => void
-
   /* --- inbox --- */
   onInboxNew: (cb: (e: InboxNewEvent) => void) => () => void
+
+  /* --- docs search --- */
+  docsSearch: (query: string, group: 'all' | 'spec' | 'workspace') => Promise<{ ok: boolean; error?: string; hits?: DocSearchHit[] }>
 
   /* --- window --- */
   windowMinimize: () => void

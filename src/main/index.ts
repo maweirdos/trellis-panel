@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, globalShortcut, clipboard, safeStorage, Notification, nativeImage } from 'electron'
-import { join, resolve, sep, extname, basename } from 'path'
-import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync } from 'fs'
-import { scanProject, updateTaskRecordAt, writeSpecFile, computeSpecBacklinks, readTextWithMtime, TEXT_EXTS } from './services/scan'
+import { join, resolve, sep, extname, basename, dirname } from 'path'
+import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, rmSync } from 'fs'
+import { scanProject, updateTaskRecordAt, writeSpecFile, computeSpecBacklinks, readTextWithMtime, searchDocs, TEXT_EXTS } from './services/scan'
 import { TrellisWatcher } from './services/watcher'
 import { runCli, abortCli, abortAll } from './services/cli'
 import { getSettings, setSettings, pushRecentProject } from './services/store'
@@ -15,12 +15,11 @@ import {
   installTrellisHooks,
   broadcastToWindows
 } from './services/bridge'
-import { startHttpApi, stopHttpApi, httpApiStatus, mcpClientConfigSnippet, setMcpDeps } from './services/httpapi'
+import { startHttpApi, stopHttpApi, httpApiStatus } from './services/httpapi'
 import { taskGitInfo, createBranch, clearGitCache, isGitRepo } from './services/git'
 import { recordActivity, getAnalytics } from './services/activity'
 import { generateWeeklyReport, saveReport } from './services/report'
 import { listChannels, channelSend } from './services/channels'
-import { detectAiClis, launchAiRun, abortAiRun } from './services/airun'
 import {
   gitlabTest,
   gitlabTaskStatus,
@@ -296,10 +295,61 @@ function focusMainAndOpenTask(taskDir: string): void {
   }
   win!.show()
   win!.focus()
-  const normalized = resolve(taskDir)
-  if (projectRoot && normalized.startsWith(resolve(projectRoot) + sep)) {
-    win!.webContents.send('bridge:focus-task', basename(normalized))
+
+  const target = resolve(taskDir)
+  // 深链任务可能来自另一个项目：向上找到最近的 .trellis 祖先作为项目根，
+  // 与当前打开项目不一致时自动切换，避免停留在历史项目上。
+  let root: string | null = null
+  let cur = target
+  for (let i = 0; i < 12; i += 1) {
+    if (existsSync(join(cur, '.trellis'))) {
+      root = cur
+      break
+    }
+    const parent = dirname(cur)
+    if (parent === cur) break
+    cur = parent
   }
+  if (root && (!projectRoot || resolve(projectRoot) !== resolve(root))) {
+    try {
+      const snap = scanProject(root)
+      if (snap.meta.trellisExists) {
+        projectRoot = snap.meta.root
+        pushRecentProject(projectRoot)
+        watcher.start(projectRoot, sendSnapshot)
+        clearGitCache()
+        latestSnapshot = snap
+        knownTaskDirs = new Set(snap.tasks.map((t) => t.dirName))
+        recordActivity(snap)
+      }
+    } catch {
+      // fall through — focus still works if the project was already open
+    }
+  }
+  if (!projectRoot || !target.startsWith(resolve(projectRoot) + sep)) return
+  // AI 工具常在事件后立刻拉起面板，先重扫一次确保新任务已在快照里
+  if (!findTask(basename(target))) sendSnapshot()
+  pushFocusTask(basename(target))
+}
+
+/** Focus task to deliver to the renderer — queued until the window can receive it. */
+let pendingFocusTask: string | null = null
+let pendingFocusRoot: string | null = null
+
+function pushFocusTask(dirName: string): void {
+  pendingFocusTask = dirName
+  pendingFocusRoot = projectRoot
+  const send = (): void => {
+    if (pendingFocusTask !== dirName) return
+    if (!win || win.isDestroyed()) return
+    if (win.webContents.isLoading()) {
+      setTimeout(send, 300)
+      return
+    }
+    pendingFocusTask = null
+    win.webContents.send('bridge:focus-task', dirName)
+  }
+  send()
 }
 
 function wireBridge(): void {
@@ -338,58 +388,6 @@ function bridgeHandlers() {
     onOpenTask: (taskDir: string) => focusMainAndOpenTask(taskDir)
   }
 }
-
-/* ---------------- MCP helper exports (used by httpapi) ---------------- */
-
-setMcpDeps({
-  updateTaskStatus: async (dir, status) => {
-    if (!projectRoot) return { text: '未打开项目', isError: true }
-    const t = findTask(dir)
-    if (!t) return { text: `任务不存在: ${dir}`, isError: true }
-    try {
-      updateTaskRecordAt(projectRoot, t.path, { status })
-      sendSnapshot()
-      return { text: `已更新 ${t.dirName} 状态为 ${status}` }
-    } catch (e: any) {
-      return { text: String(e?.message ?? e), isError: true }
-    }
-  },
-  searchSpec: async (query) => {
-    const snap0 = projectRoot ? latestSnapshot : null
-    if (!snap0) return { text: '未打开项目', isError: true }
-    const q = query.toLowerCase()
-    const hits: Array<{ file: string; line: number; text: string }> = []
-    const walk = (nodes: typeof snap0.spec): void => {
-      for (const n of nodes) {
-        if (n.type === 'dir' && n.children) walk(n.children)
-        else if (n.type === 'file' && /\.(md|markdown|txt)$/i.test(n.name)) {
-          try {
-            const lines = readFileSync(n.path, 'utf-8').split(/\r?\n/)
-            lines.forEach((l, i) => {
-              if (l.toLowerCase().includes(q))
-                hits.push({ file: n.path.split('spec').pop() ?? n.name, line: i + 1, text: l.trim().slice(0, 160) })
-            })
-          } catch {
-            // skip
-          }
-        }
-      }
-    }
-    walk(snap0.spec)
-    if (hits.length === 0) return { text: `没有包含 “${query}” 的规范内容` }
-    return { text: JSON.stringify({ total: hits.length, hits: hits.slice(0, 30) }, null, 2) }
-  },
-  readSpec: async (relPath) => {
-    if (!projectRoot) return { text: '未打开项目', isError: true }
-    const p = resolve(projectRoot, '.trellis', 'spec', relPath)
-    if (!p.startsWith(resolve(projectRoot, '.trellis', 'spec') + sep)) return { text: '路径非法', isError: true }
-    try {
-      return { text: readFileSync(p, 'utf-8') }
-    } catch (e: any) {
-      return { text: String(e?.message ?? e), isError: true }
-    }
-  }
-})
 
 function findTask(dir: string) {
   const snap = latestSnapshot
@@ -448,7 +446,7 @@ function restartJiraAutoSync(): void {
 function restartHttpApi(): void {
   const s = getSettings()
   if (s.httpApi.enabled) {
-    void startHttpApi(s.httpApi.port, s.bridgeToken, s.httpApi.lanAccess, () => latestSnapshot)
+    void startHttpApi(s.httpApi.port, s.httpApi.lanAccess, () => latestSnapshot)
   } else {
     stopHttpApi()
   }
@@ -488,6 +486,7 @@ interface CreateTaskInput {
   status: string
   priority: string
   assignee: string
+  origin?: 'panel' | 'jira'
   jiraKey?: string
   jiraUrl?: string
 }
@@ -496,15 +495,22 @@ function createTaskRecord(input: CreateTaskInput): { ok: boolean; error?: string
   if (!projectRoot) return { ok: false, error: '未打开项目' }
   const tasksRoot = join(projectRoot, '.trellis', 'tasks')
   const today = new Date()
-  const pad = (x: number): string => String(x + 1).padStart(2, '0')
-  const mm = pad(today.getMonth())
+  const pad = (x: number): string => String(x).padStart(2, '0')
+  const mm = pad(today.getMonth() + 1)
   const dd = pad(today.getDate())
   const finalDirName = `${mm}-${dd}-${input.dirName}`
   const finalDir = join(tasksRoot, finalDirName)
   if (existsSync(finalDir)) return { ok: false, error: `任务目录 ${finalDirName} 已存在` }
+  const jiraKey = input.jiraKey
+  if (jiraKey) {
+    const existing = [...(latestSnapshot?.tasks ?? []), ...(latestSnapshot?.archived ?? [])]
+      .find((t) => String(t.record?.meta?.jiraKey ?? '').toUpperCase() === jiraKey.toUpperCase())
+    if (existing) return { ok: false, error: `Jira ${jiraKey} 已关联任务 ${existing.dirName}` }
+  }
   try {
     mkdirSync(finalDir, { recursive: true })
     const meta: Record<string, unknown> = {}
+    meta.origin = input.origin ?? (input.jiraKey ? 'jira' : 'panel')
     if (input.jiraKey) {
       meta.jiraKey = input.jiraKey
       meta.jiraUrl = input.jiraUrl ?? ''
@@ -556,6 +562,27 @@ function createTaskFromJira(input: {
   return createTaskRecord(input)
 }
 
+function deleteTaskRecord(taskDir: string, expectedMtime?: number): { ok: boolean; error?: string; conflict?: boolean } {
+  if (!projectRoot || !latestSnapshot) return { ok: false, error: '未打开项目' }
+  const task = latestSnapshot.tasks.find((t) => t.dirName === taskDir || t.path.endsWith(taskDir))
+  if (!task?.record) return { ok: false, error: `任务不存在: ${taskDir}` }
+  if (expectedMtime !== undefined && Math.abs(task.taskJsonMtime - expectedMtime) > 50) {
+    return { ok: false, conflict: true, error: '待办已被外部修改，请刷新后重试' }
+  }
+  const tasksRoot = resolve(projectRoot, '.trellis', 'tasks') + sep
+  const target = resolve(task.path)
+  if (!target.startsWith(tasksRoot) || target === resolve(tasksRoot)) {
+    return { ok: false, error: '非法任务目录' }
+  }
+  try {
+    rmSync(target, { recursive: true, force: false })
+    sendSnapshot()
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? '删除待办失败' }
+  }
+}
+
 /** Derive a filesystem-safe slug from a free-form requirement title. */
 function slugifyTitle(title: string): string {
   const slug = title
@@ -564,37 +591,6 @@ function slugifyTitle(title: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 32)
   return slug || 'req'
-}
-
-/* ---------------- ai prompt ---------------- */
-
-function buildAiPrompt(taskDir: string | null): string {
-  if (!projectRoot) return ''
-  let taskBlock = ''
-  if (taskDir) {
-    const jsonPath = join(projectRoot, '.trellis', 'tasks', taskDir, 'task.json')
-    try {
-      const rec = JSON.parse(readFileSync(jsonPath, 'utf-8'))
-      taskBlock = [
-        `任务目录：${taskDir}`,
-        `标题：${rec.title ?? ''}`,
-        rec.description ? `描述：${rec.description}` : '',
-        `状态：${rec.status ?? ''} / 优先级：${rec.priority ?? ''}`,
-        rec.notes ? `备注：${rec.notes}` : ''
-      ]
-        .filter(Boolean)
-        .join('\n')
-    } catch {
-      // task.json unreadable — prompt without details
-    }
-  }
-  return [
-    '请按 .trellis/workflow.md 的流程继续当前 Trellis 任务。',
-    taskBlock,
-    '先读取 .trellis/spec/ 相关规范与任务目录下的 prd.md（如有），再开始实施。'
-  ]
-    .filter(Boolean)
-    .join('\n\n')
 }
 
 /* ---------------- IPC ---------------- */
@@ -656,6 +652,8 @@ function registerIpc(): void {
     }
   })
 
+  ipcMain.handle('task:delete', (_e, taskDir: string, expectedMtime?: number) => deleteTaskRecord(taskDir, expectedMtime))
+
   ipcMain.handle('task:createFromJira', (_e, input) => createTaskFromJira(input))
 
   ipcMain.handle('task:create', (_e, input: { title: string; description: string; priority: string }) => {
@@ -697,6 +695,15 @@ function registerIpc(): void {
       return { ok: true, counts: computeSpecBacklinks(projectRoot) }
     } catch (e: any) {
       return { ok: false, error: e?.message ?? '统计失败' }
+    }
+  })
+
+  ipcMain.handle('docs:search', (_e, query: string, group: 'all' | 'spec' | 'workspace') => {
+    if (!projectRoot) return { ok: false, error: '未打开项目', hits: [] }
+    try {
+      return searchDocs(projectRoot, String(query ?? ''), group === 'spec' || group === 'workspace' ? group : 'all')
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '检索失败', hits: [] }
     }
   })
 
@@ -783,6 +790,12 @@ function registerIpc(): void {
 
   /* AI bridge */
   ipcMain.handle('bridge:installTpanel', () => installTpanel(getSettings().bridgeToken))
+  ipcMain.handle('bridge:pullFocus', () => {
+    const payload = pendingFocusTask ? { taskDir: pendingFocusTask, root: pendingFocusRoot } : null
+    pendingFocusTask = null
+    pendingFocusRoot = null
+    return payload
+  })
   ipcMain.handle('bridge:installHooks', () =>
     projectRoot ? installTrellisHooks(projectRoot) : { ok: false, error: '未打开项目' }
   )
@@ -802,48 +815,13 @@ function registerIpc(): void {
     if (capsule && !capsule.isDestroyed()) capsule.setAlwaysOnTop(on, 'screen-saver')
   })
 
-  ipcMain.handle('ai:launch', (_e, appId: string, taskDir: string | null) => {
-    const root = projectRoot
-    if (!root) return { ok: false, error: '未打开项目' }
-    const prompt = buildAiPrompt(taskDir)
-    const cmd = appId === 'codex' ? 'codex' : appId === 'claude' ? 'claude' : 'zcode'
-    try {
-      const { spawn } = require('child_process') as typeof import('child_process')
-      const child = spawn('wt.exe', ['-d', root, cmd, prompt], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: false
-      })
-      child.on('error', () => {
-        spawn(cmd, [prompt], { cwd: root, detached: true, stdio: 'ignore', shell: true })
-      })
-      child.unref()
-      return { ok: true }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '启动失败（未安装该 CLI？）' }
-    }
-  })
-
-  /* AI 后台执行（面板内 codex exec / claude -p，输出流回 AI 工作台） */
-  ipcMain.handle('ai:detect', () => new Promise((resolve) => detectAiClis(resolve)))
-  ipcMain.handle('ai:launchRun', (_e, input: { app: 'codex' | 'claude'; prompt: string; label: string; taskDir: string | null }) => {
-    if (!win || !projectRoot) return { ok: false, error: '未打开项目' }
-    if (input.app !== 'codex' && input.app !== 'claude') return { ok: false, error: `未安装 ${input.app} CLI` }
-    const meta = launchAiRun(win, projectRoot, input.app, input.prompt, { label: input.label, taskDir: input.taskDir })
-    return { ok: true, run: meta }
-  })
-  ipcMain.handle('ai:abortRun', (_e, runId: number) => abortAiRun(runId))
-
-  /* http api / mcp */
+  /* http api（只读 Web 看板） */
   ipcMain.handle('mcp:info', () => {
     const st = httpApiStatus()
-    const snippets = st.port ? mcpClientConfigSnippet(st.port, getSettings().bridgeToken) : { codex: '', claude: '' }
     return {
       running: st.running,
       port: st.port,
-      webBoardUrl: st.running && getSettings().httpApi.webBoard ? `http://127.0.0.1:${st.port}/` : null,
-      codexConfig: snippets.codex,
-      claudeConfig: snippets.claude
+      webBoardUrl: st.running && getSettings().httpApi.webBoard ? `http://127.0.0.1:${st.port}/` : null
     }
   })
   ipcMain.handle('mcp:toggle', (_e, on: boolean) => {
@@ -930,6 +908,10 @@ if (!gotLock) {
     setupUpdater()
     restartHttpApi()
     restartJiraAutoSync()
+    // 冷启动深链：进程首次以 trellis-panel:// 协议拉起时 argv 里带着 URL，
+    // 不经过 second-instance，需要在这里处理（项目切换由 focusMainAndOpenTask 完成）
+    const coldLink = parseDeepLink(process.argv)
+    if (coldLink) handleDeepLink(coldLink, bridgeHandlers(), getSettings().bridgeToken)
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })

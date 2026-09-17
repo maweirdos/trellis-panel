@@ -1,7 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
-  AiDoneEvent,
-  AiLogEvent,
   GitLabConfig,
   InboxNewEvent,
   JiraConfig,
@@ -28,6 +26,8 @@ const api = {
 
   updateTask: (taskDir: string, patch: TaskPatch, expectedMtime?: number) =>
     ipcRenderer.invoke('task:update', taskDir, patch, expectedMtime),
+  deleteTask: (taskDir: string, expectedMtime?: number) =>
+    ipcRenderer.invoke('task:delete', taskDir, expectedMtime),
   createTaskFromJira: (input: Record<string, unknown>) => ipcRenderer.invoke('task:createFromJira', input),
   readTextFile: (absPath: string) => ipcRenderer.invoke('fs:readText', absPath),
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) =>
@@ -57,11 +57,10 @@ const api = {
 
   installTpanel: () => ipcRenderer.invoke('bridge:installTpanel'),
   installTrellisHooks: () => ipcRenderer.invoke('bridge:installHooks'),
+  pullPendingFocus: () => ipcRenderer.invoke('bridge:pullFocus'),
   copyToClipboard: (text: string) => ipcRenderer.invoke('util:clipboard', text),
   setCapsuleMode: (on: boolean) => ipcRenderer.send('win:capsule', on),
   setCapsuleOnTop: (on: boolean) => ipcRenderer.invoke('capsule:onTop', on),
-  launchAiApp: (app: 'codex' | 'zcode' | 'claude', taskDir: string | null) =>
-    ipcRenderer.invoke('ai:launch', app, taskDir),
   onToast: (cb: (e: ToastEvent) => void) => subscribe('bridge:toast', cb),
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => subscribe('bridge:focus-task', cb),
   getMcpInfo: () => ipcRenderer.invoke('mcp:info'),
@@ -83,12 +82,8 @@ const api = {
 
   onInboxNew: (cb: (e: InboxNewEvent) => void) => subscribe('inbox:new', cb),
 
-  aiDetect: () => ipcRenderer.invoke('ai:detect'),
-  aiLaunchRun: (input: { app: 'codex' | 'claude'; prompt: string; label: string; taskDir: string | null }) =>
-    ipcRenderer.invoke('ai:launchRun', input),
-  aiAbortRun: (runId: number) => ipcRenderer.invoke('ai:abortRun', runId),
-  onAiLog: (cb: (e: AiLogEvent) => void) => subscribe('ai:log', cb),
-  onAiDone: (cb: (e: AiDoneEvent) => void) => subscribe('ai:done', cb),
+  docsSearch: (query: string, group: 'all' | 'spec' | 'workspace') =>
+    ipcRenderer.invoke('docs:search', query, group),
 
   windowMinimize: () => ipcRenderer.send('win:minimize'),
   windowMaximize: () => ipcRenderer.send('win:maximize'),

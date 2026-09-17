@@ -346,8 +346,8 @@ export function TasksPage(): JSX.Element {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => setIntakeOpen(true)} className="btn-primary" title="发起需求：创建任务并交给 AI">
-            <Sparkles size={12} /> 发起需求
+          <button onClick={() => setIntakeOpen(true)} className="btn-primary" title="新建待办：记录需求，等待 AI 认领">
+            <Sparkles size={12} /> 新建待办
           </button>
           {hasEpics && view === 'board' && (
             <button
@@ -540,4 +540,3 @@ export function TasksPage(): JSX.Element {
     )
   }
 }
-

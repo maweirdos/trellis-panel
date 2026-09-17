@@ -11,8 +11,6 @@ import {
   GitCompare,
   Save,
   RotateCcw,
-  Bot,
-  Zap,
   RefreshCw,
   GitBranch,
   GitCommitHorizontal,
@@ -20,17 +18,23 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Check,
-  Plus
+  Plus,
+  Settings2,
+  Copy,
+  Maximize2,
+  Paperclip
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
+import { MarkdownView } from '../components/MarkdownView'
+import { CodeView } from '../components/CodeView'
 import { STATUS_OPTIONS, statusLabel } from '../utils/labels'
 import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
 import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
-import type { GitLabTaskStatus, TaskGitInfo, TaskInfo, TaskPatch } from '../../../shared/types'
+import type { FileEntry, GitLabTaskStatus, TaskGitInfo, TaskInfo, TaskPatch } from '../../../shared/types'
 
 const FIELD_LABEL: Record<string, string> = {
   title: '标题',
@@ -51,6 +55,94 @@ function Row({ label, modified, children }: { label: string; modified?: boolean;
         {modified && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" title="待保存修改" />}
       </span>
       <div className="min-w-0 flex-1 text-xs text-mist-200">{children}</div>
+    </div>
+  )
+}
+
+/* ---------------- 文档优先：任务产物（PRD / Design …）直接在抽屉里阅读 ---------------- */
+
+const CLICKABLE_ARTIFACT = /\.(md|markdown|txt|json|jsonl|yaml|yml|toml|py|ts|tsx|js|mjs|cjs|sh|ps1|cmd|bat|cfg|ini|log|html|css|sql|env)$/i
+
+/** PRD / Design 排最前，其余按名称 */
+function docWeight(name: string): number {
+  if (/prd|requirement|需求/i.test(name)) return 0
+  if (/design|方案|tech/i.test(name)) return 1
+  return 2
+}
+
+function docLabel(name: string): string {
+  const base = name.split('/').pop() ?? name
+  const stem = base.replace(/\.[^.]+$/, '')
+  if (/^prd$/i.test(stem)) return 'PRD'
+  if (/^design$/i.test(stem)) return 'Design'
+  return stem
+}
+
+/** 子目录同名文件（如 a/check.md、b/check.md）标签去重：加父目录前缀 */
+function docLabels(names: string[]): Map<string, string> {
+  const stems = names.map((n) => docLabel(n))
+  const counts = new Map<string, number>()
+  for (const s of stems) counts.set(s, (counts.get(s) ?? 0) + 1)
+  return new Map(
+    names.map((n, i) => {
+      const stem = stems[i]
+      if ((counts.get(stem) ?? 0) <= 1) return [n, stem]
+      const parent = n.split('/').slice(-2, -1)[0]
+      return [n, parent ? `${parent}/${stem}` : stem]
+    })
+  )
+}
+
+function useDocContent(path: string): { loading: boolean; content?: string; error?: string } {
+  const [state, setState] = useState<{ loading: boolean; content?: string; error?: string }>({ loading: true })
+  useEffect(() => {
+    let alive = true
+    setState({ loading: true })
+    api.readTextFile(path).then((res) => {
+      if (!alive) return
+      if (res.ok) setState({ loading: false, content: res.content })
+      else setState({ loading: false, error: res.error })
+    })
+    return () => {
+      alive = false
+    }
+  }, [path])
+  return state
+}
+
+/** 抽屉内嵌文档阅读器：渲染 PRD/Design，居中阅读栏 + 复制/放大 */
+function DocPane({ file, projectName, onOpenInViewer }: { file: FileEntry; projectName: string; onOpenInViewer: () => void }): JSX.Element {
+  const { loading, content, error } = useDocContent(file.path)
+  const isMd = /\.(md|markdown)$/i.test(file.name)
+  const [copied, setCopied] = useState(false)
+  const copy = async (): Promise<void> => {
+    await api.copyToClipboard(content ?? '')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-800/60 px-3 py-1.5">
+        <FileText size={12} className={clsx('shrink-0', isMd ? 'text-leaf' : 'text-mist-500')} />
+        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-mist-400" title={file.path}>
+          {projectName} / {file.name} · {fmtBytes(file.size)}
+        </span>
+        <button onClick={() => void copy()} className="btn-ghost px-1.5 py-0.5 text-[10.5px]" title="复制全文">
+          <Copy size={11} /> {copied ? '已复制' : '复制'}
+        </button>
+        <button onClick={onOpenInViewer} className="btn-ghost px-1.5 py-0.5 text-[10.5px]" title="在产物查看器中打开（固定标签）">
+          <Maximize2 size={11} /> 放大
+        </button>
+      </div>
+      <div className="mx-auto max-w-[760px] pb-4 text-[13px] leading-relaxed">
+        {loading && <div className="py-10 text-center text-xs text-mist-500">加载中…</div>}
+        {error && (
+          <div className="flex items-center gap-2 py-6 text-xs text-rose-300">
+            <FileWarning size={14} /> {error}
+          </div>
+        )}
+        {!loading && !error && (isMd ? <MarkdownView content={content ?? ''} /> : <CodeView content={content ?? ''} ext={file.ext} />)}
+      </div>
     </div>
   )
 }
@@ -167,21 +259,26 @@ export function TaskDetail(): JSX.Element | null {
   const archived = useApp((s) => s.openTaskArchived)
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
+  const inboxRemove = useApp((s) => s.inboxRemove)
   const openArtifact = useApp((s) => s.openArtifact)
 
-  const [tab, setTab] = useState<'info' | 'artifacts'>('info')
+  /** 当前选中视图：null = 自动（首选文档），'info' = 详情字段，其余 = 产物文件路径 */
+  const [sel, setSel] = useState<string | null>(null)
   const [pending, setPending] = useState<TaskPatch>({})
   const [showDiff, setShowDiff] = useState(false)
   const [syncingJira, setSyncingJira] = useState(false)
-  const [aiBusy, setAiBusy] = useState<string | null>(null)
   const [git, setGit] = useState<TaskGitInfo | null>(null)
   const [gitLoading, setGitLoading] = useState(false)
   const [newBranch, setNewBranch] = useState('')
   const [showAllCommits, setShowAllCommits] = useState(false)
-  /** drawer width, draggable — persisted across sessions */
-  const [width, setWidth] = useState(() => {
-    const w = Number(localStorage.getItem('tpanel.drawerWidth'))
-    return w >= 360 && w <= 900 ? w : 460
+  /** drawer widths, draggable — 看文档用宽幅、改字段用窄幅，分开记忆 */
+  const [widths, setWidths] = useState(() => {
+    const n = Number(localStorage.getItem('tpanel.drawerWidth'))
+    const d = Number(localStorage.getItem('tpanel.drawerDocWidth'))
+    return {
+      field: n >= 360 && n <= 1400 ? n : 460,
+      doc: d >= 520 && d <= 1600 ? d : Math.min(920, Math.round(window.innerWidth * 0.62))
+    }
   })
   /** task.json mtime captured when the drawer opened — for conflict detection */
   const [openedMtime, setOpenedMtime] = useState<number | undefined>(undefined)
@@ -202,16 +299,17 @@ export function TaskDetail(): JSX.Element | null {
   useEffect(() => {
     const onMove = (e: MouseEvent): void => {
       if (!draggingRef.current) return
-      const w = Math.min(900, Math.max(360, window.innerWidth - e.clientX))
-      setWidth(w)
+      const min = activeDocRef.current ? 520 : 360
+      const w = Math.min(1600, Math.max(min, window.innerWidth - e.clientX))
+      setWidths((s) => (activeDocRef.current ? { ...s, doc: w } : { ...s, field: w }))
     }
     const onUp = (): void => {
       if (!draggingRef.current) return
       draggingRef.current = false
       document.body.style.cursor = ''
-      setWidth((w) => {
-        localStorage.setItem('tpanel.drawerWidth', String(w))
-        return w
+      setWidths((s) => {
+        localStorage.setItem(activeDocRef.current ? 'tpanel.drawerDocWidth' : 'tpanel.drawerWidth', String(activeDocRef.current ? s.doc : s.field))
+        return s
       })
     }
     window.addEventListener('mousemove', onMove)
@@ -224,7 +322,7 @@ export function TaskDetail(): JSX.Element | null {
   const draggingRef = useRef(false)
 
   useEffect(() => {
-    setTab('info')
+    setSel(null)
     setPending({})
     setShowDiff(false)
     setGit(null)
@@ -253,6 +351,22 @@ export function TaskDetail(): JSX.Element | null {
         : undefined,
     [snapshot, archived, openTaskDir]
   )
+
+  /* 文档优先：PRD / Design 排前，直接在抽屉里阅读 */
+  const docs = useMemo(
+    () =>
+      (task?.artifacts ?? [])
+        .filter((f) => f.kind === 'file' && CLICKABLE_ARTIFACT.test(f.name))
+        .sort((a, b) => docWeight(a.name) - docWeight(b.name) || a.name.localeCompare(b.name)),
+    [task]
+  )
+  const activeDoc = sel === 'info' ? undefined : (docs.find((d) => d.path === sel) ?? docs[0])
+  const showInfo = !activeDoc
+  const labels = useMemo(() => docLabels(docs.map((d) => d.name)), [docs])
+  /** 当前生效宽度：读文档宽幅 / 改字段窄幅（拖拽手柄各自记忆） */
+  const width = activeDoc ? widths.doc : widths.field
+  const activeDocRef = useRef(activeDoc)
+  activeDocRef.current = activeDoc
 
   /* ----- GitLab connector: MR + pipeline status for the task branch ----- */
   const gitlabEnabled = settings?.gitlab?.enabled && !!settings?.gitlab?.baseUrl && !!settings?.gitlab?.project
@@ -339,30 +453,20 @@ export function TaskDetail(): JSX.Element | null {
     }
   }
 
-  const launchAi = async (app: 'codex' | 'claude'): Promise<void> => {
-    setAiBusy(app)
-    // 复用面板的 AI prompt 构造，走后台非交互执行
-    const prompt = [
-      `请按 .trellis/workflow.md 的流程继续当前 Trellis 任务。`,
-      ``,
-      `任务目录：${task.dirName}`,
-      `标题：${r?.title ?? ''}`,
-      r?.description ? `描述：${r.description}` : '',
-      `状态：${r?.status ?? ''} / 优先级：${r?.priority ?? ''}`,
-      r?.notes ? `备注：${r.notes}` : '',
-      ``,
-      `先读取 .trellis/spec/ 相关规范与任务目录下的 prd.md（如有），再继续实施。`
-    ]
-      .filter(Boolean)
-      .join('\n')
-    const res = await api.aiLaunchRun({ app, prompt, label: r?.title ?? task.dirName, taskDir: task.dirName })
-    setAiBusy(null)
-    if (res.ok && res.run) {
-      useApp.getState().aiAddRun(res.run)
-      pushToast({ kind: 'success', title: `${app} 已在后台接手`, body: '进度见 AI 工作台' })
-      useApp.setState({ page: 'ai' })
+  const deleteTodo = async (): Promise<void> => {
+    if (r?.status !== 'planning') return
+    const confirmed = window.confirm(`确定删除待办“${r?.title ?? task.dirName}”吗？\n只会删除本地 Trellis 待办，不会删除 Jira 问题。`)
+    if (!confirmed) return
+    const res = await api.deleteTask(task.path, task.taskJsonMtime)
+    if (res.ok) {
+      inboxRemove(task.dirName)
+      showTask(null)
+      pushToast({ kind: 'success', title: '待办已删除', body: task.dirName })
+    } else if (res.conflict) {
+      pushToast({ kind: 'warn', title: '删除冲突', body: res.error })
+      await useApp.getState().refresh()
     } else {
-      pushToast({ kind: 'error', title: `${app} 启动失败`, body: res.error })
+      pushToast({ kind: 'error', title: '删除待办失败', body: res.error })
     }
   }
 
@@ -399,30 +503,57 @@ export function TaskDetail(): JSX.Element | null {
         </button>
       </div>
 
-      {/* tabs */}
-      <div className="flex border-b border-ink-700 bg-ink-850 px-2">
-        {(
-          [
-            ['info', '详情'],
-            ['artifacts', `产物 (${task.artifacts.length})`]
-          ] as const
-        ).map(([id, label]) => (
+      {/* 文档直达条：PRD / Design 一键切换，详情殿后 */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-ink-700 bg-ink-850 px-3 py-2">
+          {docs.map((d) => {
+            const on = activeDoc?.path === d.path
+            const isMd = /\.(md|markdown)$/i.test(d.name)
+            return (
+              <button
+                key={d.path}
+                onClick={() => setSel(d.path)}
+                title={d.name}
+                className={clsx(
+                  'flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+                  on
+                    ? 'border-leaf-dim/50 bg-leaf-dim/15 text-leaf-soft'
+                    : 'border-ink-600 text-mist-300 hover:border-ink-500 hover:text-mist-100'
+                )}
+              >
+                <FileText size={11} className={isMd ? 'text-leaf' : 'text-mist-500'} />
+                {labels.get(d.name) ?? docLabel(d.name)}
+              </button>
+            )
+          })}
           <button
-            key={id}
-            onClick={() => setTab(id)}
+            onClick={() => setSel('info')}
             className={clsx(
-              'relative px-3 py-2 text-xs transition-colors',
-              tab === id ? 'font-medium text-leaf-soft' : 'text-mist-400 hover:text-mist-200'
+              'flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+              showInfo
+                ? 'border-leaf-dim/50 bg-leaf-dim/15 text-leaf-soft'
+                : 'border-transparent text-mist-400 hover:text-mist-200'
             )}
           >
-            {label}
-            {tab === id && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded bg-leaf" />}
+            <Settings2 size={11} /> 详情
           </button>
-        ))}
+          {task.artifacts.length > docs.length && (
+            <span className="ml-auto flex shrink-0 items-center gap-1 text-[10px] text-mist-600" title="其余产物见「详情」底部">
+              <Paperclip size={10} /> {task.artifacts.length - docs.length}
+            </span>
+          )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-20">
-        {tab === 'info' && (
+        {activeDoc && (
+          <DocPane
+            key={activeDoc.path}
+            file={activeDoc}
+            projectName={snapshot?.meta.name ?? ''}
+            onOpenInViewer={() => openArtifact(activeDoc, true)}
+          />
+        )}
+
+        {showInfo && (
           <div className="space-y-1 divide-y divide-ink-700/50">
             {task.parseError && (
               <div className="mb-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
@@ -690,22 +821,12 @@ export function TaskDetail(): JSX.Element | null {
                   </div>
                 )}
 
-                {/* AI 调起：面板后台执行，进度进 AI 工作台 */}
-                <div className="pt-3">
-                  <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
-                    <Bot size={12} /> 把任务交给 AI（后台执行）
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button disabled={aiBusy !== null} onClick={() => void launchAi('codex')} className="btn-outline disabled:opacity-50">
-                      <Zap size={12} /> {aiBusy === 'codex' ? '启动中…' : 'Codex 接手'}
-                    </button>
-                    <button disabled={aiBusy !== null} onClick={() => void launchAi('claude')} className="btn-outline disabled:opacity-50">
-                      <Zap size={12} /> {aiBusy === 'claude' ? '启动中…' : 'Claude 接手'}
-                    </button>
-                  </div>
-                </div>
-
                 <div className="flex flex-wrap gap-2 pt-3">
+                  {r?.status === 'planning' && (
+                    <button onClick={() => void deleteTodo()} className="btn bg-rose-500/15 text-rose-300 hover:bg-rose-500/25">
+                      <X size={12} /> 删除待办
+                    </button>
+                  )}
                   <button onClick={() => api.revealInExplorer(task.path)} className="btn-outline">
                     <FolderOpen size={12} /> 打开目录
                   </button>
@@ -732,37 +853,37 @@ export function TaskDetail(): JSX.Element | null {
             ) : (
               <div className="py-6 text-center text-xs text-mist-500">缺少 task.json</div>
             )}
-          </div>
-        )}
 
-        {tab === 'artifacts' && (
-          <div className="space-y-1">
-            {task.artifacts.length === 0 && (
-              <div className="py-6 text-center text-xs text-mist-500">该任务目录暂无其他产物文件</div>
+            {/* 其余产物（目录 / 不可预览文件等）——点击仍进入全屏查看器 */}
+            {task.artifacts.length > 0 && (
+              <div className="py-3">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
+                  <Paperclip size={12} /> 产物文件 ({task.artifacts.length})
+                </div>
+                <div className="space-y-1">
+                  {task.artifacts.map((f) => {
+                    const clickable = f.kind === 'file' && CLICKABLE_ARTIFACT.test(f.name)
+                    return (
+                      <button
+                        key={f.path}
+                        disabled={!clickable}
+                        onClick={() => clickable && openArtifact(f)}
+                        className={clsx(
+                          'flex w-full items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
+                          clickable
+                            ? 'hover:border-ink-600 hover:bg-ink-750/60'
+                            : 'cursor-default opacity-60'
+                        )}
+                      >
+                        <FileText size={13} className={clsx('shrink-0', /\.md$/i.test(f.name) ? 'text-leaf' : 'text-mist-500')} />
+                        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-mist-200">{f.name}</span>
+                        <span className="shrink-0 text-[10.5px] text-mist-500">{f.kind === 'file' ? fmtBytes(f.size) : '目录'}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             )}
-            {task.artifacts.map((f) => {
-              // 与主进程 TEXT_EXTS 白名单对齐
-              const clickable =
-                f.kind === 'file' &&
-                /\.(md|markdown|txt|json|jsonl|yaml|yml|toml|py|ts|tsx|js|mjs|cjs|sh|ps1|cmd|bat|cfg|ini|log|html|css|sql|env)$/i.test(f.name)
-              return (
-                <button
-                  key={f.path}
-                  disabled={!clickable}
-                  onClick={() => clickable && openArtifact(f)}
-                  className={clsx(
-                    'flex w-full items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
-                    clickable
-                      ? 'hover:border-ink-600 hover:bg-ink-750/60'
-                      : 'cursor-default opacity-60'
-                  )}
-                >
-                  <FileText size={13} className={clsx('shrink-0', /\.md$/i.test(f.name) ? 'text-leaf' : 'text-mist-500')} />
-                  <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-mist-200">{f.name}</span>
-                  <span className="shrink-0 text-[10.5px] text-mist-500">{f.kind === 'file' ? fmtBytes(f.size) : '目录'}</span>
-                </button>
-              )
-            })}
           </div>
         )}
       </div>

@@ -94,6 +94,7 @@ interface RawIssueFields {
   issuetype?: { name?: string }
   updated?: string
   assignee?: { name?: string; displayName?: string }
+  fixVersions?: Array<{ name?: string }>
 }
 
 export async function jiraSearch(
@@ -103,7 +104,7 @@ export async function jiraSearch(
   const q = jql.trim() || 'assignee = currentUser() ORDER BY updated DESC'
   const url =
     '/rest/api/2/search?maxResults=50' +
-    '&fields=key,summary,status,priority,issuetype,updated,assignee' +
+    '&fields=key,summary,status,priority,issuetype,updated,assignee,fixVersions' +
     '&jql=' +
     encodeURIComponent(q)
   const res = await jiraFetch(cfg, url)
@@ -120,7 +121,8 @@ export async function jiraSearch(
       issueType: f.issuetype?.name ?? '任务',
       updated: f.updated ?? '',
       url: `${cfg.baseUrl.replace(/\/+$/, '')}/browse/${raw.key}`,
-      assignee: f.assignee?.displayName ?? f.assignee?.name ?? '未分配'
+      assignee: f.assignee?.displayName ?? f.assignee?.name ?? '未分配',
+      fixVersions: (f.fixVersions ?? []).map((v) => v?.name ?? '').filter(Boolean)
     }
   })
   return { ok: true, issues, total: d?.total ?? issues.length }

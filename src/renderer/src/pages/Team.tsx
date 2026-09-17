@@ -9,7 +9,8 @@ import {
   Gauge,
   FileText,
   Copy,
-  Save
+  Save,
+  CircleCheck
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -19,6 +20,12 @@ import { fmtIso, relTime, taskDateLabel } from '../utils/format'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
 import type { AnalyticsResult, TaskInfo } from '../../../shared/types'
+
+/**
+ * 团队协作 —— 参考 Linear 团队页 / GitHub News Feed 的信息结构：
+ * 左侧「谁在做什么」成员负载卡，右侧按日分组的动态时间线；
+ * 效率分析与周报收进次级 Tab。
+ */
 
 interface FeedItem {
   at: number
@@ -35,53 +42,217 @@ interface MemberStat {
   lastActive: number
 }
 
-type Tab = 'feed' | 'efficiency' | 'report'
+type Tab = 'board' | 'efficiency' | 'report'
 
-/* ---------------- 动态 ---------------- */
+const AVATAR_STYLES = [
+  'bg-emerald-500/20 text-emerald-300',
+  'bg-sky-500/20 text-sky-300',
+  'bg-violet-500/20 text-violet-300',
+  'bg-amber-500/20 text-amber-300',
+  'bg-rose-500/20 text-rose-300',
+  'bg-cyan-500/20 text-cyan-300'
+]
 
-function FeedTab({ feed, snapshot }: { feed: FeedItem[]; snapshot: NonNullable<ReturnType<typeof useApp.getState>['snapshot']> }): JSX.Element {
-  const showTask = useApp((s) => s.showTask)
+function avatarStyle(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return AVATAR_STYLES[h % AVATAR_STYLES.length]
+}
+
+function Avatar({ name, size = 7 }: { name: string; size?: number }): JSX.Element {
   return (
-    <div className="card lg:col-span-3">
-      <div className="flex items-center gap-1.5 border-b border-ink-700 px-4 py-2.5 text-xs font-semibold text-mist-200">
-        <GitCommitHorizontal size={13} className="text-mist-400" /> 团队动态
+    <span
+      className={clsx(
+        'grid shrink-0 place-items-center rounded-full font-bold',
+        avatarStyle(name),
+        size === 7 ? 'h-7 w-7 text-[11px]' : 'h-5 w-5 text-[10px]'
+      )}
+      title={name}
+    >
+      {name.slice(0, 1).toUpperCase()}
+    </span>
+  )
+}
+
+function dayLabel(ts: number): string {
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  if (ts >= todayStart) return '今天'
+  if (ts >= todayStart - 86400000) return '昨天'
+  const d = new Date(ts)
+  const pad = (x: number): string => String(x).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function dayOrder(label: string): number {
+  if (label === '今天') return 0
+  if (label === '昨天') return 1
+  return 2
+}
+
+const STATUS_ORDER: Record<string, number> = { in_progress: 0, review: 1, planning: 2 }
+const PRIORITY_ORDER: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 }
+
+/* ---------------- 工作台：成员负载 + 动态时间线 ---------------- */
+
+function BoardTab({ feed, members, snapshot }: {
+  feed: FeedItem[]
+  members: MemberStat[]
+  snapshot: NonNullable<ReturnType<typeof useApp.getState>['snapshot']>
+}): JSX.Element {
+  const showTask = useApp((s) => s.showTask)
+
+  const feedGroups = useMemo(() => {
+    const groups = new Map<string, FeedItem[]>()
+    for (const it of feed) {
+      const label = dayLabel(it.at)
+      const list = groups.get(label) ?? []
+      list.push(it)
+      groups.set(label, list)
+    }
+    return [...groups.entries()].sort((a, b) => dayOrder(a[0]) - dayOrder(b[0]))
+  }, [feed])
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+      {/* 成员负载：谁在做什么（人多时自动铺成两列网格） */}
+      <div className="lg:col-span-3">
+        <div className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold text-mist-200">
+          <Users2 size={13} className="text-mist-400" /> 成员负载
+          <span className="text-[10.5px] font-normal text-mist-500">点击任务直达详情</span>
+        </div>
+        <div className={clsx('grid gap-3', members.length > 2 ? 'md:grid-cols-2' : 'grid-cols-1')}>
+          {members.map((m) => {
+            const mine = snapshot.tasks
+              .filter((t) => (t.record?.assignee || t.record?.creator) === m.name)
+              .sort(
+                (a, b) =>
+                  (STATUS_ORDER[t2s(a)] ?? 3) - (STATUS_ORDER[t2s(b)] ?? 3) ||
+                  (PRIORITY_ORDER[a.record?.priority ?? ''] ?? 9) -
+                    (PRIORITY_ORDER[b.record?.priority ?? ''] ?? 9) ||
+                  b.updatedAt - a.updatedAt
+              )
+            const inflight = mine.filter((t) => !['completed', 'done'].includes((t.record?.status ?? '').toLowerCase()))
+            const doneCount = m.byStatus['已完成'] ?? 0
+            return (
+              <div key={m.name} className="card px-4 py-3.5">
+                <div className="mb-2.5 flex items-center gap-2.5">
+                  <Avatar name={m.name} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-mist-100">{m.name}</span>
+                      <span className="text-[10.5px] text-mist-500">
+                        {inflight.length} 个进行中 · 完成 {doneCount}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-mist-600">
+                      {m.lastActive ? `最近活跃 ${relTime(m.lastActive)}` : '暂无活跃记录'}
+                    </div>
+                  </div>
+                  <div className="flex h-1.5 w-20 gap-px overflow-hidden rounded-full bg-ink-750">
+                    {(['规划中', '进行中', '评审中', '已完成'] as const).map((label, i) => {
+                      const v = m.byStatus[label] ?? 0
+                      if (!v) return null
+                      const colors = ['bg-sky-500/70', 'bg-amber-500/70', 'bg-violet-500/70', 'bg-emerald-500/70']
+                      return (
+                        <div key={label} className={clsx(colors[i], 'h-full')} style={{ width: `${(v / m.total) * 100}%` }} title={`${label} ${v}`} />
+                      )
+                    })}
+                  </div>
+                </div>
+                {/* 全量列出，超出高度滚动——不再截断 */}
+                <div className="max-h-64 space-y-1 overflow-y-auto">
+                  {inflight.map((t) => (
+                    <button
+                      key={t.dirName}
+                      onClick={() => showTask(t.dirName)}
+                      className="flex w-full items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-ink-600 hover:bg-ink-750/50"
+                    >
+                      <PriorityBadge priority={t.record?.priority ?? ''} />
+                      <span className="min-w-0 flex-1 truncate text-[11.5px] text-mist-200">
+                        {t.record?.title ?? taskDateLabel(t.dirName, t.date)}
+                      </span>
+                      <StatusBadge status={t.record?.status ?? ''} />
+                    </button>
+                  ))}
+                  {inflight.length === 0 && (
+                    <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-mist-600">
+                      <CircleCheck size={11} className="text-emerald-400" /> 当前没有进行中的任务
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {members.length === 0 && (
+          <div className="card py-10 text-center text-[11px] text-mist-500">暂无成员数据</div>
+        )}
       </div>
-      <div className="max-h-[520px] divide-y divide-ink-700/50 overflow-y-auto">
-        {feed.map((it, i) => (
-          <div key={i} className="flex items-center gap-2.5 px-4 py-2 text-xs">
-            <span
-              className={clsx(
-                'grid h-5 w-5 shrink-0 place-items-center rounded-full',
-                it.kind === 'task' && 'bg-amber-500/15 text-amber-300',
-                it.kind === 'journal' && 'bg-emerald-500/15 text-emerald-300',
-                it.kind === 'session' && 'bg-violet-500/15 text-violet-300'
-              )}
-            >
-              {it.kind === 'task' && <GitCommitHorizontal size={11} />}
-              {it.kind === 'journal' && <NotebookPen size={11} />}
-              {it.kind === 'session' && <Bot size={11} />}
-            </span>
-            <span className="shrink-0 font-medium text-mist-300">{it.who}</span>
-            {it.kind === 'task' && it.taskDir ? (
-              <button
-                onClick={() => {
-                  const t = snapshot.tasks.find((x) => x.dirName === it.taskDir)
-                  if (t) showTask(t.dirName)
-                  else showTask(it.taskDir!, true)
-                }}
-                className="min-w-0 flex-1 truncate text-left text-mist-400 hover:text-leaf-soft"
-              >
-                {it.what}
-              </button>
-            ) : (
-              <span className="min-w-0 flex-1 truncate text-mist-400">{it.what}</span>
-            )}
-            <span className="shrink-0 text-[10px] text-mist-600">{fmtIso(new Date(it.at).toISOString())}</span>
+
+      {/* 动态时间线：按日分组 */}
+      <div className="lg:col-span-2">
+        <div className="card">
+          <div className="flex items-center gap-1.5 border-b border-ink-700 px-4 py-2.5 text-xs font-semibold text-mist-200">
+            <GitCommitHorizontal size={13} className="text-mist-400" /> 团队动态
           </div>
-        ))}
-        {feed.length === 0 && <div className="py-10 text-center text-[11px] text-mist-500">暂无动态</div>}
+          <div className="max-h-[640px] overflow-y-auto px-4 py-3">
+            {feedGroups.map(([label, items]) => (
+              <div key={label} className="mb-3 last:mb-0">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-mist-600">{label}</div>
+                <div className="space-y-2.5 border-l border-ink-700 pl-3.5">
+                  {items.map((it, i) => (
+                    <div key={i} className="relative flex items-start gap-2.5 text-xs">
+                      <span className="absolute -left-[21px] top-0.5">{feedDot(it.kind)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="font-medium text-mist-300">{it.who}</span>{' '}
+                        {it.kind === 'task' && it.taskDir ? (
+                          <button
+                            onClick={() => {
+                              const t = snapshot.tasks.find((x) => x.dirName === it.taskDir)
+                              if (t) showTask(t.dirName)
+                              else showTask(it.taskDir!, true)
+                            }}
+                            className="text-left text-mist-400 hover:text-leaf-soft"
+                          >
+                            {it.what}
+                          </button>
+                        ) : (
+                          <span className="text-mist-400">{it.what}</span>
+                        )}
+                        <span className="ml-1.5 text-[10px] text-mist-600">{relTime(it.at)}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {feed.length === 0 && <div className="py-10 text-center text-[11px] text-mist-500">暂无动态</div>}
+          </div>
+        </div>
       </div>
     </div>
+  )
+}
+
+function t2s(t: TaskInfo): string {
+  return (t.record?.status ?? '').toLowerCase()
+}
+
+function feedDot(kind: FeedItem['kind']): JSX.Element {
+  return (
+    <span
+      className={clsx(
+        'grid h-[18px] w-[18px] place-items-center rounded-full ring-2 ring-ink-850',
+        kind === 'task' && 'bg-amber-500/20 text-amber-300',
+        kind === 'journal' && 'bg-emerald-500/20 text-emerald-300',
+        kind === 'session' && 'bg-violet-500/20 text-violet-300'
+      )}
+    >
+      {kind === 'task' && <GitCommitHorizontal size={11} />}
+      {kind === 'journal' && <NotebookPen size={11} />}
+      {kind === 'session' && <Bot size={11} />}
+    </span>
   )
 }
 
@@ -142,9 +313,7 @@ function EfficiencyTab(): JSX.Element {
           <div className="space-y-1.5">
             {data.memberCycle.map((m) => (
               <div key={m.name} className="flex items-center gap-2 text-[11px]">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-leaf-deep/60 text-[10px] font-bold text-leaf">
-                  {m.name.slice(0, 1).toUpperCase()}
-                </span>
+                <Avatar name={m.name} size={5} />
                 <span className="text-mist-200">{m.name}</span>
                 <span className="ml-auto font-mono text-mist-400">
                   {m.avgDays !== null ? `${m.avgDays} 天 / ${m.completed} 任务` : '—'}
@@ -259,7 +428,7 @@ function ReportTab(): JSX.Element {
         )}
       </div>
       {markdown ? (
-        <pre className="max-h-[60vh] overflow-auto rounded-xl border border-ink-700 bg-ink-950/70 p-4 font-mono text-[11.5px] leading-5 text-mist-300 select-text">
+        <pre className="max-h-[60vh] select-text overflow-auto rounded-xl border border-ink-700 bg-ink-950/70 p-4 font-mono text-[11.5px] leading-5 text-mist-300">
           {markdown}
         </pre>
       ) : (
@@ -278,7 +447,7 @@ export function TeamPage(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)!
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
-  const [tab, setTab] = useState<Tab>('feed')
+  const [tab, setTab] = useState<Tab>('board')
 
   const feed = useMemo<FeedItem[]>(() => {
     const items: FeedItem[] = []
@@ -305,7 +474,7 @@ export function TeamPage(): JSX.Element {
         kind: 'session'
       })
     }
-    return items.sort((a, b) => b.at - a.at).slice(0, 60)
+    return items.sort((a, b) => b.at - a.at).slice(0, 80)
   }, [snapshot])
 
   const members = useMemo<MemberStat[]>(() => {
@@ -328,6 +497,13 @@ export function TeamPage(): JSX.Element {
   }, [snapshot])
 
   const currentTask = snapshot.tasks.find((t) => t.dirName === snapshot.meta.currentTask)
+  const inflightCount = snapshot.tasks.filter((t) => !['completed', 'done'].includes((t.record?.status ?? '').toLowerCase())).length
+  const doneThisWeek = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 86400000
+    return [...snapshot.tasks, ...snapshot.archived].filter(
+      (t) => t.record?.completedAt && new Date(`${t.record.completedAt}T00:00:00`).getTime() >= weekAgo
+    ).length
+  }, [snapshot])
 
   const shareTask = async (t: TaskInfo): Promise<void> => {
     const r = t.record
@@ -351,13 +527,22 @@ export function TeamPage(): JSX.Element {
         <div className="flex flex-wrap items-center gap-3">
           <Users2 size={16} className="text-mist-400" />
           <h1 className="text-base font-semibold text-mist-50">团队协作</h1>
-          <span className="text-[11px] text-mist-500">
-            {members.length} 名成员 · {snapshot.tasks.length} 个进行中任务 · {snapshot.sessions.length} 个 AI 会话
-          </span>
+          <div className="flex items-center gap-1.5">
+            {[
+              ['成员', members.length],
+              ['进行中', inflightCount],
+              ['本周完成', doneThisWeek],
+              ['AI 会话', snapshot.sessions.length]
+            ].map(([label, v]) => (
+              <span key={label as string} className="chip bg-ink-800 text-[10.5px] text-mist-400">
+                {label} <span className="ml-0.5 font-mono text-mist-200">{v}</span>
+              </span>
+            ))}
+          </div>
           <div className="ml-auto flex overflow-hidden rounded-lg border border-ink-500">
             {(
               [
-                ['feed', '动态'],
+                ['board', '工作台'],
                 ['efficiency', '效率分析'],
                 ['report', '周报']
               ] as const
@@ -376,7 +561,7 @@ export function TeamPage(): JSX.Element {
           </div>
         </div>
 
-        {currentTask?.record && tab === 'feed' && (
+        {currentTask?.record && tab === 'board' && (
           <div className="card flex items-center gap-4 px-5 py-3.5">
             <Star size={15} className="shrink-0 text-leaf" fill="currentColor" />
             <div className="min-w-0 flex-1">
@@ -392,82 +577,7 @@ export function TeamPage(): JSX.Element {
           </div>
         )}
 
-        {tab === 'feed' && (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-            <div className="card lg:col-span-2">
-              <div className="border-b border-ink-700 px-4 py-2.5 text-xs font-semibold text-mist-200">成员工作量</div>
-              <div className="space-y-3 p-4">
-                {members.map((m) => {
-                  const done = m.byStatus['已完成'] ?? 0
-                  return (
-                    <div key={m.name}>
-                      <div className="mb-1 flex items-center gap-2 text-[11px]">
-                        <span className="grid h-5 w-5 place-items-center rounded-full bg-leaf-deep/60 text-[10px] font-bold text-leaf">
-                          {m.name.slice(0, 1).toUpperCase()}
-                        </span>
-                        <span className="font-medium text-mist-200">{m.name}</span>
-                        <span className="text-mist-500">{m.total} 任务 · 完成 {done}</span>
-                        <span className="ml-auto text-mist-600">{m.lastActive ? relTime(m.lastActive) : '—'}</span>
-                      </div>
-                      <div className="flex h-2 gap-px overflow-hidden rounded-full bg-ink-750">
-                        {(['规划中', '进行中', '评审中', '已完成'] as const).map((label, i) => {
-                          const v = m.byStatus[label] ?? 0
-                          if (!v) return null
-                          const colors = ['bg-sky-500/70', 'bg-amber-500/70', 'bg-violet-500/70', 'bg-emerald-500/70']
-                          return (
-                            <div
-                              key={label}
-                              className={clsx(colors[i], 'h-full')}
-                              style={{ width: `${(v / m.total) * 100}%` }}
-                              title={`${label} ${v}`}
-                            />
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-                {members.length === 0 && <div className="py-6 text-center text-[11px] text-mist-500">暂无数据</div>}
-              </div>
-            </div>
-
-            <FeedTab feed={feed} snapshot={snapshot} />
-
-            <div className="card lg:col-span-5">
-              <div className="border-b border-ink-700 px-4 py-2.5 text-xs font-semibold text-mist-200">成员任务明细</div>
-              <div className="divide-y divide-ink-700/50">
-                {members.map((m) => {
-                  const mine = snapshot.tasks.filter((t) => (t.record?.assignee || t.record?.creator) === m.name)
-                  return (
-                    <div key={m.name} className="px-4 py-3">
-                      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-mist-200">
-                        {m.name}
-                        <span className="text-[10.5px] font-normal text-mist-500">{mine.length} 个进行中任务</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {mine.map((t) => (
-                          <button
-                            key={t.dirName}
-                            onClick={() => showTask(t.dirName)}
-                            className="group flex max-w-[320px] items-center gap-1.5 rounded-lg border border-ink-700 bg-ink-850 px-2.5 py-1.5 text-left transition-colors hover:border-leaf-dim/40"
-                          >
-                            <PriorityBadge priority={t.record?.priority ?? ''} />
-                            <span className="min-w-0 flex-1 truncate text-[11px] text-mist-200">
-                              {t.record?.title ?? taskDateLabel(t.dirName, t.date)}
-                            </span>
-                            <StatusBadge status={t.record?.status ?? ''} />
-                          </button>
-                        ))}
-                        {mine.length === 0 && <span className="text-[11px] text-mist-600">无进行中任务</span>}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
+        {tab === 'board' && <BoardTab feed={feed} members={members} snapshot={snapshot} />}
         {tab === 'efficiency' && <EfficiencyTab />}
         {tab === 'report' && <ReportTab />}
       </div>

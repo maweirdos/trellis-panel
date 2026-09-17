@@ -26,7 +26,6 @@ const DEFAULTS: Settings = {
   },
   bridgeToken: '',
   httpApi: { enabled: false, port: 39573, lanAccess: false, webBoard: true },
-  mcp: { enabled: false },
   desktop: { autoStart: false, globalShortcut: 'Alt+Shift+T', autoUpdate: false }
 }
 
@@ -51,7 +50,6 @@ export function getSettings(): Settings {
       ...parsed,
       jira: { ...DEFAULTS.jira, ...(parsed.jira ?? {}) },
       httpApi: { ...DEFAULTS.httpApi, ...(parsed.httpApi ?? {}) },
-      mcp: { ...DEFAULTS.mcp, ...(parsed.mcp ?? {}) },
       desktop: { ...DEFAULTS.desktop, ...(parsed.desktop ?? {}) }
     }
   } catch {
@@ -82,7 +80,6 @@ export function setSettings(patch: Partial<Settings>): Settings {
     ...patch,
     jira: patch.jira ? { ...cur.jira, ...patch.jira } : cur.jira,
     httpApi: patch.httpApi ? { ...cur.httpApi, ...patch.httpApi } : cur.httpApi,
-    mcp: patch.mcp ? { ...cur.mcp, ...patch.mcp } : cur.mcp,
     desktop: patch.desktop ? { ...cur.desktop, ...patch.desktop } : cur.desktop
   }
   cache = next

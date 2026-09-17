@@ -143,13 +143,13 @@ export function SettingsPage(): JSX.Element {
   const toggleMcp = async (on: boolean): Promise<void> => {
     const res = await api.toggleHttpApi(on)
     setMcpInfo(await api.getMcpInfo())
-    if (res.ok) pushToast({ kind: 'success', title: on ? 'MCP / Web 服务已启动' : '已停止' })
+    if (res.ok) pushToast({ kind: 'success', title: on ? 'Web 看板服务已启动' : '已停止' })
     else pushToast({ kind: 'error', title: '启动失败', body: res.error })
   }
 
   const doInstallTpanel = async (): Promise<void> => {
     const res = await api.installTpanel()
-    if (res.ok) pushToast({ kind: 'success', title: 'tpanel 命令已安装', body: `位置：${res.path}（含 MCP 桥接）` })
+    if (res.ok) pushToast({ kind: 'success', title: 'tpanel 命令已安装', body: `位置：${res.path}` })
     else pushToast({ kind: 'error', title: '安装 tpanel 失败', body: res.error })
   }
 
@@ -165,21 +165,21 @@ export function SettingsPage(): JSX.Element {
       <div className="mx-auto max-w-2xl space-y-4">
         <h1 className="mb-1 text-base font-semibold text-mist-50">设置</h1>
 
-        {/* MCP / HTTP */}
+        {/* Web 看板 HTTP 服务 */}
         <section className="card px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">
-            <Server size={13} /> MCP 服务 & 只读 Web 看板
+            <Server size={13} /> Web 看板服务
           </div>
           <p className="mb-3 text-[11px] leading-5 text-mist-500">
-            启动本地 MCP 服务后，codex / zcode / claude 可以把面板当作工具服务器：
-            AI 能查询任务、读取规范、更新任务状态。同时提供局域网只读 Web 看板。
+            启动本地 HTTP 服务后，可在浏览器打开只读任务看板（每 30 秒自动刷新），
+            也可开放给局域网内其他成员查看。
           </p>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <button
               onClick={() => void toggleMcp(!(mcpInfo?.running ?? false))}
               className={clsx('btn', mcpInfo?.running ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25' : 'btn-primary')}
             >
-              {mcpInfo?.running ? '停止服务' : '启动 MCP / Web 服务'}
+              {mcpInfo?.running ? '停止服务' : '启动 Web 看板'}
             </button>
             {mcpInfo?.running && (
               <span className="chip border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
@@ -194,24 +194,6 @@ export function SettingsPage(): JSX.Element {
           </div>
           {mcpInfo?.running && (
             <div className="space-y-1.5">
-              <div className="text-[11px] text-mist-400">MCP 客户端配置（复制到 codex / claude 的 mcpServers 配置）：</div>
-              {(['codex', 'claude'] as const).map((k) => (
-                <div key={k} className="flex items-center gap-1.5">
-                  <span className="chip w-12 shrink-0 justify-center bg-ink-750 font-mono text-mist-300">{k}</span>
-                  <code className="min-w-0 flex-1 truncate rounded bg-ink-950 px-2 py-1 font-mono text-[10.5px] text-mist-400">
-                    {k === 'codex' ? mcpInfo.codexConfig : mcpInfo.claudeConfig}
-                  </code>
-                  <button
-                    onClick={async () => {
-                      await api.copyToClipboard(k === 'codex' ? mcpInfo.codexConfig : mcpInfo.claudeConfig)
-                      pushToast({ kind: 'success', title: '配置已复制' })
-                    }}
-                    className="btn-ghost shrink-0 px-1.5"
-                  >
-                    复制
-                  </button>
-                </div>
-              ))}
               <div className="flex items-center gap-2 pt-1">
                 <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-mist-400">
                   <input
@@ -287,9 +269,10 @@ export function SettingsPage(): JSX.Element {
             <Plug size={13} /> AI 工具桥接（codex / zcode / claude）
           </div>
           <p className="mb-3 text-[11px] leading-5 text-mist-500">
-            ① 安装 <code className="rounded bg-ink-750 px-1 font-mono">tpanel</code>（notify / open / task-event / <b>mcp</b>）；
-            ② 把任务事件 hooks 写入 <code className="rounded bg-ink-750 px-1 font-mono">.trellis/config.yaml</code>；
-            ③ 任意程序打开 <code className="rounded bg-ink-750 px-1 font-mono">trellis-panel://open-task?dir=…&amp;t=令牌</code> 跳转任务。
+            ① 安装 <code className="rounded bg-ink-750 px-1 font-mono">tpanel</code>；
+            ② 将上方对应配置复制到 Codex / ZCode / Claude Code；
+            ③ 把任务事件 hooks 写入 <code className="rounded bg-ink-750 px-1 font-mono">.trellis/config.yaml</code>；
+            ④ 任意程序可打开 <code className="rounded bg-ink-750 px-1 font-mono">trellis-panel://open-task?dir=…&amp;t=令牌</code> 跳转任务。
           </p>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => void doInstallTpanel()} className="btn-primary">
@@ -305,7 +288,7 @@ export function SettingsPage(): JSX.Element {
         {/* Jira */}
         <section className="card px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">
-            <Link2 size={13} /> Jira 集成
+            <Link2 size={13} /> Jira 连接
           </div>
           <p className="mb-3 text-[11px] leading-5 text-mist-500">
             Jira Server / Data Center（REST v2）。密码经系统凭据加密（DPAPI）存储。

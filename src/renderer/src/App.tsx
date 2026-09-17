@@ -11,12 +11,10 @@ import { Dashboard } from './pages/Dashboard'
 import { TasksPage } from './pages/Tasks'
 import { TaskDetail } from './pages/TaskDetail'
 import { SpecPage } from './pages/Spec'
-import { WorkspacePage } from './pages/Workspace'
 import { ArchivePage } from './pages/Archive'
 import { TeamPage } from './pages/Team'
 import { JiraPage } from './pages/Jira'
 import { InboxPage } from './pages/Inbox'
-import { AiWorkbenchPage } from './pages/AiWorkbench'
 import { SettingsPage } from './pages/Settings'
 import { IntakeModal } from './components/IntakeModal'
 import { clsx } from 'clsx'
@@ -29,43 +27,47 @@ function MainApp(): JSX.Element {
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
   const inboxAdd = useApp((s) => s.inboxAdd)
+  const projectRoot = snapshot?.meta.root
 
   useEffect(() => {
     const off = api.onSnapshotUpdated((snap) => useApp.setState({ snapshot: snap }))
     const offToast = api.onToast((t) => useApp.getState().pushToast(t))
     const offFocus = api.onBridgeTaskFocus((taskDir) => {
+      const st = useApp.getState()
+      // bootstrap 未完成时先暂存，否则随后 openProjectPath 会把 page/openTaskDir 重置掉
+      if (!st.bootstrapped) {
+        useApp.setState({ pendingFocusDir: taskDir })
+        return
+      }
+      const snap = st.snapshot
+      // 桥接任务尚未进入快照（AI 刚创建）时先补一次扫描
+      const known = snap && [...snap.tasks, ...snap.archived].some((t) => t.dirName === taskDir || t.path === taskDir)
+      if (!known) void st.refresh()
       useApp.setState({ page: 'tasks', openTaskArchived: false })
       showTask(taskDir)
       pushToast({ kind: 'info', title: '已跳转到桥接任务', body: taskDir })
     })
     const offInbox = api.onInboxNew((e) => {
+      const currentRoot = useApp.getState().snapshot?.meta.root
+      if (currentRoot && currentRoot !== e.projectRoot) return
       inboxAdd(e.items)
       useApp.setState({ page: 'inbox' })
-    })
-    const offAiLog = api.onAiLog((e) => {
-      useApp.getState().aiAppendLog(e.runId, e.stream, e.data)
-    })
-    const offAiDone = api.onAiDone((e) => {
-      useApp.getState().aiFinishRun(e.runId, e.code ?? null, Boolean(e.aborted))
-      const run = useApp.getState().aiRuns.find((r) => r.runId === e.runId)
-      if (run) {
-        useApp.getState().pushToast({
-          kind: e.aborted ? 'info' : e.code === 0 ? 'success' : 'error',
-          title: `${run.app} 执行${e.aborted ? '已中止' : e.code === 0 ? '完成' : '失败'}`,
-          body: run.label
-        })
-      }
     })
     return () => {
       off()
       offToast()
       offFocus()
       offInbox()
-      offAiLog()
-      offAiDone()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 深链切换项目时（主进程直接打开，不经过 openProjectPath）同步收件箱与项目状态
+  useEffect(() => {
+    if (projectRoot && useApp.getState().inboxProjectRoot !== projectRoot) {
+      useApp.getState().setInboxProject(projectRoot)
+    }
+  }, [projectRoot])
 
   const detailOpen = openTaskDir !== null
 
@@ -82,7 +84,7 @@ function MainApp(): JSX.Element {
             <div
               className={clsx(
                 'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'workspace' || page === 'jira' || page === 'ai' || page === 'inbox'
+              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox'
                 ? 'overflow-hidden'
                 : 'overflow-y-auto'
               )}
@@ -90,9 +92,7 @@ function MainApp(): JSX.Element {
               {page === 'dashboard' && <Dashboard />}
               {page === 'inbox' && <InboxPage />}
               {page === 'tasks' && <TasksPage />}
-              {page === 'ai' && <AiWorkbenchPage />}
               {page === 'spec' && <SpecPage />}
-              {page === 'workspace' && <WorkspacePage />}
               {page === 'archive' && <ArchivePage />}
               {page === 'team' && <TeamPage />}
               {page === 'jira' && <JiraPage />}

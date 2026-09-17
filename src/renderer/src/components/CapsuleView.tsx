@@ -13,7 +13,6 @@ export function CapsuleView(): JSX.Element {
   const settings = useApp((s) => s.settings)
   const pushToast = useApp((s) => s.pushToast)
   const [onTop, setOnTop] = useState(true)
-  const [busy, setBusy] = useState(false)
 
   const tasks = snapshot?.tasks ?? []
   const current =
@@ -31,17 +30,6 @@ export function CapsuleView(): JSX.Element {
 
   const expand = (): void => {
     void api.setCapsuleMode(false)
-  }
-
-  const handOff = async (app: 'codex' | 'zcode'): Promise<void> => {
-    setBusy(true)
-    const res = await api.launchAiApp(app, current?.dirName ?? null)
-    setBusy(false)
-    pushToast(
-      res.ok
-        ? { kind: 'success', title: `${app} 已在终端启动`, body: current?.record?.title }
-        : { kind: 'error', title: `${app} 调起失败`, body: res.error }
-    )
   }
 
   return (
@@ -103,12 +91,6 @@ export function CapsuleView(): JSX.Element {
               </div>
             )}
             <div className="mt-auto flex items-center gap-1.5 pt-2">
-              <button disabled={busy} onClick={() => void handOff('codex')} className="btn-outline flex-1 justify-center px-1 py-1 disabled:opacity-50">
-                Codex
-              </button>
-              <button disabled={busy} onClick={() => void handOff('zcode')} className="btn-outline flex-1 justify-center px-1 py-1 disabled:opacity-50">
-                ZCode
-              </button>
               <button
                 onClick={expand}
                 className={clsx('btn-primary flex-1 justify-center px-1 py-1')}
