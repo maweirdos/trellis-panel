@@ -11,7 +11,8 @@ import {
   Sparkles,
   Loader2,
   Send,
-  X
+  X,
+  BrainCircuit
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -294,6 +295,9 @@ export function KnowledgePage(): JSX.Element {
                   <Sparkles size={12} /> 到设置页接入 AI 模型（baseUrl 自定义）
                 </button>
               )}
+              <button onClick={() => useApp.getState().setPage('settings')} className="btn-outline mx-auto text-[11px]" title="本地 stdio MCP 服务器：codex / Claude Code / ZCode 编码时随时 kb_search / kb_read，毫秒级">
+                <BrainCircuit size={12} /> 接入 AI 编码工具作为持久记忆大脑（本地 MCP）
+              </button>
             </div>
           </div>
         )}

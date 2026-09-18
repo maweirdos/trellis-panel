@@ -77,8 +77,17 @@ const api = {
   aiTest: (cfg: AiConfig) => ipcRenderer.invoke('ai:test', cfg),
   aiPrdDraft: (dirName: string) => ipcRenderer.invoke('ai:prdDraft', dirName),
   aiSummary: (dirName: string) => ipcRenderer.invoke('ai:summary', dirName),
+  aiPlan: (input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) =>
+    ipcRenderer.invoke('ai:plan', input),
+  taskCreateFromPlan: (input: Record<string, unknown>) => ipcRenderer.invoke('task:createFromPlan', input),
+  planHandoff: (dirName: string) => ipcRenderer.invoke('plan:handoff', dirName),
   taskWriteArtifact: (dirName: string, fileName: string, content: string) =>
     ipcRenderer.invoke('task:writeArtifact', dirName, fileName, content),
+
+  kbMcpInstall: () => ipcRenderer.invoke('kbmcp:install'),
+  kbMcpStatus: () => ipcRenderer.invoke('kbmcp:status'),
+  studioSyncExtension: (sourcePath: string, targets: string[]) =>
+    ipcRenderer.invoke('studio:syncExtension', sourcePath, targets),
 
   generateStandup: () => ipcRenderer.invoke('report:standup'),
 

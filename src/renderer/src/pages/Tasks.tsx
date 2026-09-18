@@ -26,6 +26,7 @@ import { statusLabel } from '../utils/labels'
 import { taskDateLabel } from '../utils/format'
 import { api } from '../api'
 import { MarkdownView } from '../components/MarkdownView'
+import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
 
@@ -577,6 +578,9 @@ export function TasksPage(): JSX.Element {
   const [view, setView] = useState<ViewMode>('board')
   const [readerDir, setReaderDir] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [planSeed, setPlanSeed] = useState<PlanningSeed | null>(null)
+  /** 已展开的「已完成」等大列（列 key） */
+  const [expandedCols, setExpandedCols] = useState<Set<string>>(new Set())
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState('')
   const [dragOver, setDragOver] = useState<string | null>(null)
@@ -695,6 +699,9 @@ export function TasksPage(): JSX.Element {
           <button onClick={() => setIntakeOpen(true)} className="btn-primary" title="新建待办：记录需求，等待 AI 认领">
             <Sparkles size={12} /> 新建待办
           </button>
+          <button onClick={() => setPlanSeed({ title: '', description: '' })} className="btn-outline" title="需求 → 检索知识库 → AI 生成 Trellis 任务规划">
+            <Wand2 size={12} /> AI 规划
+          </button>
           {hasEpics && view === 'board' && (
             <button
               onClick={() => setGrouped(!groupOn)}
@@ -735,6 +742,13 @@ export function TasksPage(): JSX.Element {
           <div className="flex h-full min-h-0 gap-3">
             {columns.map((col) => {
               const items = boardColumns.filter((t) => matchCol(t, col.status))
+              // 大列自动折叠（>8 条只显示最近 5 条，避免"已完成"列无限增长挤压工作区）
+              const collapsible = items.length > 8
+              const expanded = expandedCols.has(col.status)
+              const visible = collapsible && !expanded
+                ? [...items].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5)
+                : items
+              const hiddenCount = items.length - visible.length
               return (
                 <div
                   key={col.status}
@@ -763,7 +777,7 @@ export function TasksPage(): JSX.Element {
                     </span>
                   </div>
                   <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-                    {items.map((t) =>
+                    {visible.map((t) =>
                       groupOn && childMap.has(t.dirName) ? (
                         <EpicCard
                           key={t.dirName}
@@ -774,6 +788,14 @@ export function TasksPage(): JSX.Element {
                       ) : (
                         <TaskCard key={t.dirName} t={t} onOpen={() => showTask(t.dirName)} />
                       )
+                    )}
+                    {hiddenCount > 0 && (
+                      <button
+                        onClick={() => setExpandedCols((s) => new Set(s).add(col.status))}
+                        className="w-full rounded-lg border border-dashed border-ink-600 py-1.5 text-[10.5px] text-mist-500 hover:border-ink-500 hover:text-mist-300"
+                      >
+                        展开更早的 {hiddenCount} 条
+                      </button>
                     )}
                     {items.length === 0 && (
                       <div className="grid place-items-center gap-1.5 py-10 text-mist-600">
@@ -818,6 +840,8 @@ export function TasksPage(): JSX.Element {
 
       {/* swimlane view */}
       {view === 'swimlane' && <SwimlaneView />}
+
+      {planSeed && <PlanningModal seed={planSeed} onClose={() => setPlanSeed(null)} />}
     </div>
   )
   function SwimlaneView(): JSX.Element {

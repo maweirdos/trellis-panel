@@ -28,10 +28,13 @@ import {
   setConfigKeys,
   setDeveloperFile,
   createWorkflow,
-  createExtension
+  createExtension,
+  syncExtensionToPlatforms
 } from './services/studio'
 import { kbSearch } from './services/knowledge'
 import { aiChat, aiTest, aiTaskPrompt, protectAiKey } from './services/ai'
+import { kbMcpInstall, kbMcpStatus } from './services/kbmcp'
+import { aiPlanTask, handoffTexts } from './services/plan'
 import {
   gitlabTest,
   gitlabTaskStatus,
@@ -508,9 +511,15 @@ interface CreateTaskInput {
   status: string
   priority: string
   assignee: string
-  origin?: 'panel' | 'jira'
+  origin?: 'panel' | 'jira' | 'plan'
   jiraKey?: string
   jiraUrl?: string
+  /** 计划工作台的扩展字段 */
+  subtasks?: string[]
+  workflow?: string | null
+  devType?: string | null
+  scope?: string | null
+  branch?: string | null
 }
 
 function createTaskRecord(input: CreateTaskInput): { ok: boolean; error?: string; dirName?: string } {
@@ -543,26 +552,27 @@ function createTaskRecord(input: CreateTaskInput): { ok: boolean; error?: string
       title: input.title,
       description: input.description,
       status: input.status,
-      dev_type: null,
-      scope: null,
+      dev_type: input.devType ?? null,
+      scope: input.scope ?? null,
       package: null,
       priority: input.priority,
       creator: latestSnapshot?.meta.developer ?? getSettings().jira.user ?? 'panel',
       assignee: input.assignee,
       createdAt: `${today.getFullYear()}-${mm}-${dd}`,
       completedAt: null,
-      branch: null,
+      branch: input.branch ?? null,
       base_branch: null,
       worktree_path: null,
       commit: null,
       pr_url: null,
-      subtasks: [],
+      subtasks: input.subtasks ?? [],
       children: [],
       parent: null,
       relatedFiles: [],
       notes: input.jiraKey ? `从 Jira 导入：${input.jiraKey}\n${input.jiraUrl}` : '',
       meta
     }
+    if (input.workflow) record.workflow = input.workflow
     writeFileSync(join(finalDir, 'task.json'), JSON.stringify(record, null, 2) + '\n', 'utf-8')
     sendSnapshot()
     return { ok: true, dirName: finalDirName }
@@ -885,6 +895,61 @@ function registerIpc(): void {
       },
       'summary'
     )
+  })
+
+  /* ---------------- 规划工作台（Jira/需求 → KB → AI 计划） ---------------- */
+
+  ipcMain.handle('ai:plan', (_e, input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目', sources: [], contextChars: 0 }
+    return aiPlanTask(projectRoot, getSettings().ai, {
+      title: String(input?.title ?? ''),
+      description: String(input?.description ?? ''),
+      jiraKey: input?.jiraKey ? String(input.jiraKey) : undefined,
+      jiraUrl: input?.jiraUrl ? String(input.jiraUrl) : undefined
+    })
+  })
+
+  ipcMain.handle('task:createFromPlan', (_e, input) => {
+    const dirName = slugifyTitle(String(input?.title ?? ''))
+    return createTaskRecord({
+      dirName,
+      title: String(input?.title ?? ''),
+      description: String(input?.description ?? ''),
+      status: 'planning',
+      priority: String(input?.priority ?? 'P2'),
+      assignee: latestSnapshot?.meta.developer ?? '',
+      origin: 'plan',
+      jiraKey: input?.jiraKey ? String(input.jiraKey) : undefined,
+      jiraUrl: input?.jiraUrl ? String(input.jiraUrl) : undefined,
+      subtasks: Array.isArray(input?.subtasks) ? input.subtasks.map(String) : [],
+      workflow: typeof input?.workflow === 'string' && input.workflow ? input.workflow : null,
+      devType: typeof input?.devType === 'string' && input.devType ? input.devType : null,
+      scope: typeof input?.scope === 'string' && input.scope ? input.scope : null,
+      branch: typeof input?.branch === 'string' && input.branch ? input.branch : null
+    })
+  })
+
+  ipcMain.handle('plan:handoff', (_e, dirName: string) => {
+    if (!projectRoot) return []
+    return handoffTexts(projectRoot, String(dirName))
+  })
+
+  /* ---------------- KB-MCP（AI 编码工具的持久记忆大脑） ---------------- */
+
+  ipcMain.handle('kbmcp:install', () => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    return kbMcpInstall(projectRoot)
+  })
+
+  ipcMain.handle('kbmcp:status', () => kbMcpStatus(projectRoot))
+
+  ipcMain.handle('studio:syncExtension', (_e, sourcePath: string, targets: string[]) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    const list = Array.isArray(targets) ? targets.map(String) : []
+    if (list.length === 0) return { ok: false, error: '未选择目标平台' }
+    const res = syncExtensionToPlatforms(projectRoot, String(sourcePath), list)
+    if (res.written.length > 0) sendSnapshot()
+    return { ok: true, ...res }
   })
 
   ipcMain.handle('task:writeArtifact', (_e, dirName: string, fileName: string, content: string) => {

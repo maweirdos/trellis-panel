@@ -491,6 +491,8 @@ export function StudioPage(): JSX.Element {
             setQuery={setQuery}
             onEdit={setEditingExt}
             onCreate={createExt}
+            platforms={scan.platforms}
+            reload={reload}
           />
         )}
         {section === 'hooks' && <HooksSection scan={scan} onOpenFile={setEditingPath} onChanged={reload} />}
@@ -716,7 +718,9 @@ function ExtSection({
   query,
   setQuery,
   onEdit,
-  onCreate
+  onCreate,
+  platforms,
+  reload
 }: {
   kind: ExtKind
   extensions: ExtEntry[]
@@ -724,8 +728,15 @@ function ExtSection({
   setQuery: (q: string) => void
   onEdit: (e: ExtEntry) => void
   onCreate: (kind: ExtKind) => void
+  platforms: StudioScan['platforms']
+  reload: () => Promise<void>
 }): JSX.Element {
+  const pushToast = useApp((s) => s.pushToast)
+  const [aggMode, setAggMode] = useState(false)
+  const [syncing, setSyncing] = useState<string | null>(null)
   const meta = SECTIONS.find((s) => s.id === kind)!
+  const capKey = kind === 'command' ? 'commands' : kind === 'agent' ? 'agents' : 'skills'
+
   const byPlatform = useMemo(() => {
     const m = new Map<string, ExtEntry[]>()
     for (const e of extensions) {
@@ -736,6 +747,42 @@ function ExtSection({
     return [...m.entries()]
   }, [extensions])
 
+  /* 聚合视图：同名扩展在支持该能力的平台上的覆盖矩阵 */
+  const groups = useMemo(() => {
+    if (!aggMode) return []
+    const capable = new Set(platforms.filter((p) => p.detected && p.capabilities.includes(capKey)).map((p) => p.id))
+    const m = new Map<string, { entries: ExtEntry[]; platforms: Set<string> }>()
+    for (const e of extensions) {
+      const g = m.get(e.name) ?? { entries: [], platforms: new Set<string>() }
+      g.entries.push(e)
+      g.platforms.add(e.platform)
+      m.set(e.name, g)
+    }
+    return [...m.entries()]
+      .map(([name, g]) => {
+        const missing = [...capable].filter((p) => !g.platforms.has(p))
+        return { name, entries: g.entries, present: [...g.platforms], missing }
+      })
+      .sort((a, b) => b.present.length + b.missing.length - (a.present.length + a.missing.length))
+  }, [aggMode, extensions, platforms, capKey])
+
+  const syncTo = async (entry: ExtEntry, targets: string[], label: string): Promise<void> => {
+    setSyncing(entry.name)
+    const res = await api.studioSyncExtension(entry.path, targets)
+    setSyncing(null)
+    if (res.ok) {
+      const skippedNote = res.skipped.map((s) => `${s.platform}：${s.reason}`).join('；')
+      pushToast({
+        kind: 'success',
+        title: label,
+        body: `已写入 ${res.written.length} 个平台${skippedNote ? '；跳过 → ' + skippedNote : ''}`
+      })
+      await reload()
+    } else {
+      pushToast({ kind: 'error', title: '同步失败', body: res.error })
+    }
+  }
+
   return (
     <div className="space-y-4 p-5">
       <div className="flex items-center gap-2">
@@ -743,39 +790,80 @@ function ExtSection({
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索名称 / 平台 / 路径…" className="field w-64" />
         </div>
         <span className="text-[11px] text-mist-500">{extensions.length} 个 · {meta.hint}</span>
-        <button onClick={() => onCreate(kind)} className="btn-primary ml-auto">
+        <button onClick={() => setAggMode((v) => !v)} className={clsx('chip border transition-colors ml-auto', aggMode ? 'border-leaf-dim/50 text-leaf-soft' : 'border-ink-500 text-mist-400')} title="同名扩展在哪些平台存在/缺失，一键补齐">
+          跨平台矩阵{aggMode ? ' 开' : ' 关'}
+        </button>
+        <button onClick={() => onCreate(kind)} className="btn-primary">
           <Plus size={12} /> 新建
         </button>
       </div>
 
-      {byPlatform.map(([platform, list]) => (
-        <div key={platform}>
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-[11.5px] font-semibold text-mist-200">{platform}</span>
-            <span className="chip bg-ink-750 text-[10px] text-mist-400">{list.length}</span>
-          </div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {list.map((e) => (
-              <button key={e.path} onClick={() => onEdit(e)} className="card p-3 text-left transition-colors hover:border-ink-500">
-                <div className="flex items-center gap-1.5">
-                  <span className="min-w-0 truncate text-xs font-medium text-mist-100">{e.name}</span>
-                  {e.frontmatter.model && <span className="chip bg-violet-500/15 text-[9.5px] text-violet-300">{e.frontmatter.model}</span>}
-                  <span className="ml-auto shrink-0 text-[10px] text-mist-600">{relTime(e.mtime)}</span>
-                </div>
-                {e.frontmatter.description && (
-                  <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-mist-400">{e.frontmatter.description}</div>
+      {aggMode && (
+        <div className="space-y-2">
+          {groups.map((g) => (
+            <div key={g.name} className="card p-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-medium text-mist-100">{g.name}</span>
+                {g.present.map((p) => (
+                  <span key={p} className="chip bg-leaf-dim/15 text-[9.5px] text-leaf-soft" title={p}>
+                    ✓ {p}
+                  </span>
+                ))}
+                {g.missing.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => void syncTo(g.entries[0], [p], `已同步到 ${p}`)}
+                    disabled={syncing === g.name}
+                    className="chip border border-dashed border-ink-500 text-[9.5px] text-mist-500 hover:border-leaf-dim/50 hover:text-leaf-soft disabled:opacity-40"
+                    title={`把 ${g.name} 补齐到 ${p}`}
+                  >
+                    + {p}
+                  </button>
+                ))}
+                {g.missing.length > 1 && (
+                  <button onClick={() => void syncTo(g.entries[0], g.missing, `已补齐 ${g.missing.length} 个平台`)} disabled={syncing === g.name} className="btn-outline ml-auto px-2 py-0.5 text-[10px] disabled:opacity-40">
+                    一键补齐全部（{g.missing.length}）
+                  </button>
                 )}
-                <div className="mt-2 flex items-center gap-1.5">
-                  {e.invocation && <span className="chip bg-leaf-dim/10 font-mono text-[9.5px] text-leaf-soft/80">{e.invocation}</span>}
-                  {e.frontmatter.tools && <span className="chip bg-ink-750 text-[9.5px] text-mist-400">{e.frontmatter.tools.split(',').length} 工具</span>}
-                  <span className="ml-auto font-mono text-[9.5px] text-mist-600">{fmtBytes(e.size)}</span>
-                </div>
-              </button>
-            ))}
-          </div>
+                <button onClick={() => onEdit(g.entries[0])} className="btn-ghost px-1.5 py-0.5 text-[10px]">
+                  编辑
+                </button>
+              </div>
+            </div>
+          ))}
+          {groups.length === 0 && <div className="card p-4 text-center text-xs text-mist-500">暂无扩展——切回列表视图或先新建</div>}
         </div>
-      ))}
-      {extensions.length === 0 && (
+      )}
+
+      {!aggMode &&
+        byPlatform.map(([platform, list]) => (
+          <div key={platform}>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-[11.5px] font-semibold text-mist-200">{platform}</span>
+              <span className="chip bg-ink-750 text-[10px] text-mist-400">{list.length}</span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {list.map((e) => (
+                <button key={e.path} onClick={() => onEdit(e)} className="card p-3 text-left transition-colors hover:border-ink-500">
+                  <div className="flex items-center gap-1.5">
+                    <span className="min-w-0 truncate text-xs font-medium text-mist-100">{e.name}</span>
+                    {e.frontmatter.model && <span className="chip bg-violet-500/15 text-[9.5px] text-violet-300">{e.frontmatter.model}</span>}
+                    <span className="ml-auto shrink-0 text-[10px] text-mist-600">{relTime(e.mtime)}</span>
+                  </div>
+                  {e.frontmatter.description && (
+                    <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-mist-400">{e.frontmatter.description}</div>
+                  )}
+                  <div className="mt-2 flex items-center gap-1.5">
+                    {e.invocation && <span className="chip bg-leaf-dim/10 font-mono text-[9.5px] text-leaf-soft/80">{e.invocation}</span>}
+                    {e.frontmatter.tools && <span className="chip bg-ink-750 text-[9.5px] text-mist-400">{e.frontmatter.tools.split(',').length} 工具</span>}
+                    <span className="ml-auto font-mono text-[9.5px] text-mist-600">{fmtBytes(e.size)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      {extensions.length === 0 && !aggMode && (
         <div className="card p-6 text-center text-xs text-mist-500">
           未发现{meta.label}文件。用「新建」创建，或在项目里运行 <code>trellis init --&lt;platform&gt;</code> 安装平台扩展。
         </div>

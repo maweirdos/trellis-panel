@@ -13,13 +13,14 @@ import {
   Server,
   MonitorSmartphone,
   GitMerge,
-  Sparkles
+  Sparkles,
+  BrainCircuit
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
-import type { McpInfo } from '../../../shared/types'
+import type { KbMcpInstallResult, KbMcpStatus, McpInfo } from '../../../shared/types'
 
 function JiraStatusMapEditor(): JSX.Element {
   const settings = useApp((s) => s.settings)!
@@ -139,6 +140,22 @@ export function SettingsPage(): JSX.Element {
   const saveGitlab = async (): Promise<void> => {
     await saveSettings({ gitlab: { ...gitlab, enabled: gitlab.enabled && !!gitlab.baseUrl && !!gitlab.user && !!gitlab.project } })
     pushToast({ kind: 'success', title: 'GitLab 配置已保存' })
+  }
+
+  /* ---- 知识库 MCP ---- */
+  const [mcpKbStatus, setMcpKbStatus] = useState<KbMcpStatus | null>(null)
+  const [mcpKbResult, setMcpKbResult] = useState<KbMcpInstallResult | null>(null)
+
+  useEffect(() => {
+    void api.kbMcpStatus().then(setMcpKbStatus)
+  }, [])
+
+  const installKbMcp = async (): Promise<void> => {
+    const res = await api.kbMcpInstall()
+    setMcpKbResult(res)
+    setMcpKbStatus(await api.kbMcpStatus())
+    if (res.ok) pushToast({ kind: 'success', title: '知识库 MCP 已安装', body: 'AI 工具重启会话后生效' })
+    else pushToast({ kind: 'error', title: '安装失败', body: res.error })
   }
 
   /* ---- AI 模型（baseUrl 自定义） ---- */
@@ -573,6 +590,65 @@ export function SettingsPage(): JSX.Element {
             <div className="text-[10.5px] leading-4 text-mist-600">
               兼容所有 OpenAI 格式端点：Ollama <code>http://localhost:11434/v1</code> · LM Studio <code>http://localhost:1234/v1</code> ·
               One-API / OpenRouter / DeepSeek 等云端 <code>https://…/v1</code>。Key 经系统 DPAPI 加密存储。
+            </div>
+          </div>
+        </section>
+
+        {/* 知识库 MCP（AI 记忆大脑） */}
+        <section className="card px-5 py-4">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-mist-200">
+            <BrainCircuit size={13} className="text-leaf" /> 知识库 MCP —— AI 编码工具的持久记忆大脑
+          </div>
+          <div className="space-y-2.5">
+            <div className="text-[11.5px] leading-5 text-mist-400">
+              把四库知识库（需求 / 规范 / Wiki / 归档）以 <b>本地 stdio MCP 服务器</b>暴露给 codex / Claude Code / ZCode：
+              工具把它作为子进程拉起，检索在进程内倒排索引上完成——<span className="text-leaf-soft">无网络、无 embedding，单查询毫秒级</span>，
+              彻底避开远程/向量知识库的秒级延迟。AI 写代码时随时 <code>kb_search</code> / <code>kb_read</code> / <code>kb_context</code>。
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => void installKbMcp()} className="btn-primary">
+                <Server size={12} /> 安装 / 更新 并注册到当前项目
+              </button>
+              {mcpKbStatus?.installed && (
+                <span className="text-[11px] text-emerald-300">
+                  ✓ 服务器已就绪{mcpKbStatus.claudeConfigured ? ' · 本项目 .mcp.json 已配置' : ' · 本项目尚未配置'}
+                </span>
+              )}
+            </div>
+            {mcpKbResult && (
+              <div className="space-y-1.5 rounded-lg border border-ink-600 bg-ink-800/60 p-3 text-[11px] leading-5 text-mist-300">
+                <div>
+                  服务器脚本：<code className="font-mono text-[10.5px]">{mcpKbResult.scriptPath}</code>
+                </div>
+                <div>
+                  {mcpKbResult.claudeMcpJson ? (
+                    <span className="text-emerald-300">✓ 已写入 {mcpKbResult.claudeMcpJson}（Claude Code 标准配置，随仓库共享）</span>
+                  ) : (
+                    <span className="text-amber-300">未能自动写入 .mcp.json——请手动添加下方通用配置</span>
+                  )}
+                </div>
+                <div>
+                  {mcpKbResult.codexWritten ? (
+                    <span className="text-emerald-300">✓ 已写入 ~/.codex/config.toml（Codex MCP）</span>
+                  ) : (
+                    <span className="text-amber-300">Codex 未自动写入——请将下方 TOML 片段加入 ~/.codex/config.toml</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <button onClick={() => { void api.copyToClipboard(mcpKbResult.codexSnippet); pushToast({ kind: 'success', title: 'Codex TOML 已复制' }) }} className="btn-ghost text-[10.5px]">
+                    复制 Codex TOML
+                  </button>
+                  <button onClick={() => { void api.copyToClipboard(mcpKbResult.zcodeCommand); pushToast({ kind: 'success', title: 'ZCode 命令已复制' }) }} className="btn-ghost text-[10.5px]">
+                    复制 ZCode 命令
+                  </button>
+                  <button onClick={() => { void api.copyToClipboard(mcpKbResult.genericSnippet); pushToast({ kind: 'success', title: '通用 JSON 已复制' }) }} className="btn-ghost text-[10.5px]">
+                    复制通用 mcpServers JSON
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="text-[10.5px] leading-4 text-mist-600">
+              提示：在 AI 工具里直接说「用 kb_search 查一下 XX 规范」即可；<code>.mcp.json</code> 随仓库提交后，团队成员共享同一记忆大脑。
             </div>
           </div>
         </section>

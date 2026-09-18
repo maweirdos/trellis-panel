@@ -11,12 +11,14 @@ import {
   Tag,
   EyeOff,
   Eye,
-  Layers
+  Layers,
+  Wand2
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { JIRA_CATEGORY_STATUS, statusLabel } from '../utils/labels'
+import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import type { JSX } from 'react'
 import type { JiraIssue, TaskInfo } from '../../../shared/types'
 
@@ -62,6 +64,8 @@ export function JiraPage(): JSX.Element {
   const [hideDone, setHideDone] = useState(true)
   /** 按修复版本分组展示 */
   const [groupByVersion, setGroupByVersion] = useState(true)
+  /** AI 规划工作台的种子（Jira issue） */
+  const [planSeed, setPlanSeed] = useState<PlanningSeed | null>(null)
 
   const cfg = settings.jira
 
@@ -273,6 +277,9 @@ export function JiraPage(): JSX.Element {
                 <button disabled={busy} onClick={() => void importIssue(issue)} className="btn-primary px-2 py-1 text-[10.5px] disabled:opacity-50">
                   <Download size={10} /> {busy ? '加入中…' : '加入待办'}
                 </button>
+                <button onClick={() => setPlanSeed({ title: issue.summary, description: `从 Jira ${issue.key} 规划（类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}）\n\n${issue.summary}`, jiraKey: issue.key, jiraUrl: issue.url })} className="btn-outline px-2 py-1 text-[10.5px]" title="检索知识库并让 AI 生成 Trellis 任务规划">
+                  <Wand2 size={10} /> AI 规划
+                </button>
                 {!linking && (
                   <button onClick={() => setLinkingKey(issue.key)} className="btn-ghost px-1.5 py-1 text-[10.5px]" title="关联到已有本地任务">
                     <Link2 size={10} /> 关联
@@ -430,6 +437,8 @@ export function JiraPage(): JSX.Element {
           )}
         </div>
       </div>
+
+      {planSeed && <PlanningModal seed={planSeed} onClose={() => setPlanSeed(null)} />}
     </div>
   )
 }

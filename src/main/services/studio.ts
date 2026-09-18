@@ -713,6 +713,87 @@ export function setDeveloperFile(root: string, content: string): void {
   writeFileSync(join(root, '.trellis', '.developer'), content.endsWith('\n') ? content : content + '\n', 'utf-8')
 }
 
+/* ---------------- 跨平台同步 ---------------- */
+
+export interface SyncResult {
+  written: string[]
+  skipped: Array<{ platform: string; reason: string }>
+}
+
+/**
+ * 把一个命令/子代理/技能同步到缺失的平台（内容原样复制，路径按各平台布局适配）。
+ * 命令：nested 风格（claude 系 trellis/{name}.md）↔ hyphen 风格（trellis-{name}.md）互转；
+ *       gemini 目标转成 TOML prompt。子代理仅在格式相同（md/toml/json）时同步。
+ */
+export function syncExtensionToPlatforms(
+  root: string,
+  sourcePath: string,
+  targets: string[]
+): SyncResult {
+  const counts = new Map<string, PlatformStatus['counts']>()
+  for (const p of PLATFORMS) counts.set(p.id, { commands: 0, agents: 0, skills: 0, hooks: 0 })
+  const entries: ExtEntry[] = []
+  scanCommandDirs(root, entries, counts)
+  scanAgentDirs(root, entries, counts)
+  scanSkillDirs(root, entries, counts)
+  const src = entries.find((e) => e.path === resolve(sourcePath))
+  if (!src) return { written: [], skipped: [{ platform: '—', reason: '源文件不存在或不在扫描范围内' }] }
+  const raw = readText(src.path) ?? ''
+
+  const written: string[] = []
+  const skipped: SyncResult['skipped'] = []
+
+  for (const target of targets) {
+    try {
+      let dest: string | null = null
+      let content = raw
+      if (src.kind === 'command') {
+        const spec = COMMAND_DIRS.find((c) => c.platform === target)
+        if (!spec) {
+          skipped.push({ platform: target, reason: '该平台无命令目录' })
+          continue
+        }
+        const base = join(root, spec.dir)
+        if (spec.style === 'hyphen') dest = join(base, `trellis-${src.name}.md`)
+        else if (target === 'gemini') {
+          dest = join(base, 'trellis', `${src.name}.toml`)
+          content = `prompt = """\n${raw.replace(/"""/g, '""')}"""\n`
+        } else dest = join(base, 'trellis', `${src.name}.md`)
+      } else if (src.kind === 'agent') {
+        const spec = AGENT_DIRS.find((c) => c.platform === target)
+        if (!spec) {
+          skipped.push({ platform: target, reason: '该平台无子代理目录' })
+          continue
+        }
+        if (spec.format !== src.format) {
+          skipped.push({ platform: target, reason: `格式不同（源 ${src.format} / 目标 ${spec.format}），请手动适配` })
+          continue
+        }
+        const ext = spec.format === 'toml' ? '.toml' : spec.format === 'json' ? '.json' : '.md'
+        dest = join(root, spec.dir, `${src.name}${ext}`)
+      } else {
+        const spec = SKILL_DIRS.find((c) => c.platform === target)
+        if (!spec) {
+          skipped.push({ platform: target, reason: '该平台无技能目录' })
+          continue
+        }
+        dest = join(root, spec.dir, src.name, 'SKILL.md')
+      }
+      if (!dest) continue
+      if (existsSync(dest)) {
+        skipped.push({ platform: target, reason: `已存在（${basename(dest)}），跳过以免覆盖` })
+        continue
+      }
+      mkdirSync(dirname(dest), { recursive: true })
+      writeFileSync(dest, content, 'utf-8')
+      written.push(dest)
+    } catch (e) {
+      skipped.push({ platform: target, reason: (e as Error).message })
+    }
+  }
+  return { written, skipped }
+}
+
 /* ---------------- 模板与创建 ---------------- */
 
 const WORKFLOW_TEMPLATE = (id: string): string => `# ${id}

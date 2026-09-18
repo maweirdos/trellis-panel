@@ -550,6 +550,68 @@ export interface McpInfo {
   webBoardUrl: string | null
 }
 
+/* ---------- 规划工作台（Jira/需求 → KB 检索 → AI 计划） ---------- */
+
+export interface PlanSource {
+  path: string
+  title: string
+  library: string
+}
+
+export interface TaskPlan {
+  title: string
+  description: string
+  priority: string
+  devType: string | null
+  scope: string | null
+  workflow: string | null
+  branch: string | null
+  subtasks: string[]
+  questions: string[]
+}
+
+export interface PlanResult {
+  ok: boolean
+  error?: string
+  plan?: TaskPlan
+  sources: PlanSource[]
+  contextChars: number
+  /** 项目可选 workflow id（.trellis/workflows） */
+  workflows: string[]
+}
+
+export interface HandoffText {
+  platform: string
+  text: string
+}
+
+/* ---------- KB-MCP（AI 编码工具的知识库记忆大脑） ---------- */
+
+export interface KbMcpInstallResult {
+  ok: boolean
+  error?: string
+  scriptPath: string
+  claudeMcpJson: string | null
+  codexWritten: boolean
+  codexSnippet: string
+  zcodeCommand: string
+  genericSnippet: string
+}
+
+export interface KbMcpStatus {
+  installed: boolean
+  scriptPath: string
+  mtime: number
+  claudeConfigured: boolean
+}
+
+export interface SyncExtensionResult {
+  ok: boolean
+  error?: string
+  written: string[]
+  skipped: Array<{ platform: string; reason: string }>
+}
+
 /** APIs exposed to the renderer via contextBridge. */
 export interface TrellisApi {
   pickProject: () => Promise<string | null>
@@ -656,7 +718,17 @@ export interface TrellisApi {
   aiTest: (cfg: AiConfig) => Promise<AiChatResult>
   aiPrdDraft: (dirName: string) => Promise<AiChatResult>
   aiSummary: (dirName: string) => Promise<AiChatResult>
+  aiPlan: (input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) => Promise<PlanResult>
+  taskCreateFromPlan: (input: TaskPlan & { jiraKey?: string; jiraUrl?: string }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
+  planHandoff: (dirName: string) => Promise<HandoffText[]>
   taskWriteArtifact: (dirName: string, fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
+
+  /* --- KB-MCP --- */
+  kbMcpInstall: () => Promise<KbMcpInstallResult>
+  kbMcpStatus: () => Promise<KbMcpStatus>
+
+  /* --- Studio 跨平台同步 --- */
+  studioSyncExtension: (sourcePath: string, targets: string[]) => Promise<SyncExtensionResult>
 
   /* --- Channel 动作（create/rm/kill/interrupt/wait/spawn） --- */
   channelAction: (args: string[]) => Promise<{ ok: boolean; error?: string; output?: string }>
