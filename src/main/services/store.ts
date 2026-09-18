@@ -24,6 +24,13 @@ const DEFAULTS: Settings = {
     password: '',
     project: ''
   },
+  ai: {
+    enabled: false,
+    baseUrl: 'http://localhost:11434/v1',
+    apiKey: '',
+    model: '',
+    temperature: 0.3
+  },
   bridgeToken: '',
   httpApi: { enabled: false, port: 39573, lanAccess: false, webBoard: true },
   desktop: { autoStart: false, globalShortcut: 'Alt+Shift+T', autoUpdate: false }
@@ -49,6 +56,8 @@ export function getSettings(): Settings {
       ...DEFAULTS,
       ...parsed,
       jira: { ...DEFAULTS.jira, ...(parsed.jira ?? {}) },
+      gitlab: { ...DEFAULTS.gitlab, ...(parsed.gitlab ?? {}) },
+      ai: { ...DEFAULTS.ai, ...(parsed.ai ?? {}) },
       httpApi: { ...DEFAULTS.httpApi, ...(parsed.httpApi ?? {}) },
       desktop: { ...DEFAULTS.desktop, ...(parsed.desktop ?? {}) }
     }
@@ -79,6 +88,8 @@ export function setSettings(patch: Partial<Settings>): Settings {
     ...cur,
     ...patch,
     jira: patch.jira ? { ...cur.jira, ...patch.jira } : cur.jira,
+    gitlab: patch.gitlab ? { ...cur.gitlab, ...patch.gitlab } : cur.gitlab,
+    ai: patch.ai ? { ...cur.ai, ...patch.ai } : cur.ai,
     httpApi: patch.httpApi ? { ...cur.httpApi, ...patch.httpApi } : cur.httpApi,
     desktop: patch.desktop ? { ...cur.desktop, ...patch.desktop } : cur.desktop
   }

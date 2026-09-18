@@ -1,8 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  AiConfig,
+  ChatMessage,
+  ExtKind,
   GitLabConfig,
   InboxNewEvent,
   JiraConfig,
+  KbLibrary,
   ProjectSnapshot,
   RunDoneEvent,
   RunEvent,
@@ -54,6 +58,29 @@ const api = {
 
   channelList: () => ipcRenderer.invoke('channel:list'),
   channelSend: (name: string, text: string) => ipcRenderer.invoke('channel:send', name, text),
+  channelAction: (args: string[]) => ipcRenderer.invoke('channel:action', args),
+
+  studioScan: () => ipcRenderer.invoke('studio:scan'),
+  studioRead: (absPath: string) => ipcRenderer.invoke('studio:read', absPath),
+  studioWrite: (absPath: string, content: string, expectedMtime?: number) =>
+    ipcRenderer.invoke('studio:write', absPath, content, expectedMtime),
+  studioSetConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke('studio:setConfig', patch),
+  studioSetDeveloper: (content: string) => ipcRenderer.invoke('studio:setDeveloper', content),
+  studioCreateWorkflow: (id: string) => ipcRenderer.invoke('studio:createWorkflow', id),
+  studioCreateExtension: (kind: ExtKind, platform: string, name: string) =>
+    ipcRenderer.invoke('studio:createExtension', kind, platform, name),
+  studioDeleteFile: (absPath: string) => ipcRenderer.invoke('studio:delete', absPath),
+
+  kbSearch: (library: KbLibrary | 'all', query: string) => ipcRenderer.invoke('kb:search', library, query),
+
+  aiChat: (messages: ChatMessage[]) => ipcRenderer.invoke('ai:chat', messages),
+  aiTest: (cfg: AiConfig) => ipcRenderer.invoke('ai:test', cfg),
+  aiPrdDraft: (dirName: string) => ipcRenderer.invoke('ai:prdDraft', dirName),
+  aiSummary: (dirName: string) => ipcRenderer.invoke('ai:summary', dirName),
+  taskWriteArtifact: (dirName: string, fileName: string, content: string) =>
+    ipcRenderer.invoke('task:writeArtifact', dirName, fileName, content),
+
+  generateStandup: () => ipcRenderer.invoke('report:standup'),
 
   installTpanel: () => ipcRenderer.invoke('bridge:installTpanel'),
   installTrellisHooks: () => ipcRenderer.invoke('bridge:installHooks'),

@@ -42,7 +42,7 @@ interface MemberStat {
   lastActive: number
 }
 
-type Tab = 'board' | 'efficiency' | 'report'
+type Tab = 'board' | 'efficiency' | 'report' | 'standup' | 'workflow'
 
 const AVATAR_STYLES = [
   'bg-emerald-500/20 text-emerald-300',
@@ -544,7 +544,9 @@ export function TeamPage(): JSX.Element {
               [
                 ['board', '工作台'],
                 ['efficiency', '效率分析'],
-                ['report', '周报']
+                ['standup', '站会'],
+                ['report', '周报'],
+                ['workflow', '工作流洞察']
               ] as const
             ).map(([id, label]) => (
               <button
@@ -579,8 +581,188 @@ export function TeamPage(): JSX.Element {
 
         {tab === 'board' && <BoardTab feed={feed} members={members} snapshot={snapshot} />}
         {tab === 'efficiency' && <EfficiencyTab />}
+        {tab === 'standup' && <StandupTab />}
         {tab === 'report' && <ReportTab />}
+        {tab === 'workflow' && <WorkflowInsightTab />}
       </div>
+    </div>
+  )
+}
+
+/* ---------------- 站会 Tab ---------------- */
+
+function StandupTab(): JSX.Element {
+  const pushToast = useApp((s) => s.pushToast)
+  const [markdown, setMarkdown] = useState('')
+  const [fileName, setFileName] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const generate = async (): Promise<void> => {
+    setLoading(true)
+    const res = await api.generateStandup()
+    setLoading(false)
+    setMarkdown(res.markdown)
+    setFileName(res.suggestedFileName)
+  }
+
+  useEffect(() => {
+    void generate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="card p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="text-xs font-semibold text-mist-100">每日站会摘要</span>
+        <span className="text-[10.5px] text-mist-500">今天完成 / 进行 / 评审待办 / 停滞阻塞，按负责人分组</span>
+        <div className="ml-auto flex gap-1.5">
+          <button onClick={() => void generate()} disabled={loading} className="btn-outline text-[11px]">
+            重新生成
+          </button>
+          <button
+            onClick={() => {
+              void api.copyToClipboard(markdown)
+              pushToast({ kind: 'success', title: '站会摘要已复制' })
+            }}
+            disabled={!markdown}
+            className="btn-ghost text-[11px]"
+          >
+            <Copy size={11} /> 复制
+          </button>
+          <button
+            onClick={async () => {
+              if (!markdown) return
+              const res = await api.saveReport(fileName || 'standup.md', markdown)
+              if (res.ok) pushToast({ kind: 'success', title: '已保存到 workspace', body: res.path })
+              else pushToast({ kind: 'error', title: '保存失败', body: res.error })
+            }}
+            disabled={!markdown}
+            className="btn-ghost text-[11px]"
+          >
+            <Save size={11} /> 存入工作区
+          </button>
+        </div>
+      </div>
+      <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-ink-700 bg-ink-950 p-3 font-mono text-[11.5px] leading-5 text-mist-300">
+        {markdown || '生成中…'}
+      </pre>
+    </div>
+  )
+}
+
+/* ---------------- 工作流洞察 Tab ---------------- */
+
+function WorkflowInsightTab(): JSX.Element {
+  const snapshot = useApp((s) => s.snapshot)!
+  const [scan, setScan] = useState<import('../../../shared/types').StudioScan | null>(null)
+
+  useEffect(() => {
+    void api.studioScan().then((res) => {
+      if (res.ok && res.scan) setScan(res.scan)
+    })
+  }, [snapshot.meta.root])
+
+  const usage = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const t of snapshot.tasks) {
+      const wf = typeof t.record?.workflow === 'string' && t.record.workflow ? t.record.workflow : '(默认链)'
+      map.set(wf, (map.get(wf) ?? 0) + 1)
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [snapshot.tasks])
+
+  const aging = useMemo(
+    () =>
+      snapshot.tasks
+        .filter((t) => ['in_progress', 'review'].includes((t.record?.status ?? '').toLowerCase()))
+        .map((t) => ({ t, days: Math.floor((Date.now() - t.updatedAt) / 86400000) }))
+        .filter((x) => x.days >= 3)
+        .sort((a, b) => b.days - a.days)
+        .slice(0, 8),
+    [snapshot.tasks]
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="card p-4">
+        <div className="mb-3 text-xs font-semibold text-mist-100">Workflow 解析链（团队 → 个人 → 任务）</div>
+        {scan ? (
+          <div className="grid gap-2 text-[11.5px] md:grid-cols-4">
+            <div className="rounded-lg border border-ink-600 bg-ink-800/60 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-mist-500">任务 pin</div>
+              <div className="mt-1 font-mono text-mist-100">
+                {scan.workflows.reduce((n, w) => n + w.pinnedTasks.length, 0) || '—'}
+              </div>
+            </div>
+            <div className="rounded-lg border border-ink-600 bg-ink-800/60 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-mist-500">个人默认（.developer）</div>
+              <div className="mt-1 font-mono text-mist-100">{scan.chain.developerWorkflow ?? '—'}</div>
+            </div>
+            <div className="rounded-lg border border-ink-600 bg-ink-800/60 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-mist-500">团队默认（config.yaml）</div>
+              <div className="mt-1 font-mono text-mist-100">{scan.chain.configDefault ?? '—'}</div>
+            </div>
+            <div className="rounded-lg border border-ink-600 bg-ink-800/60 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-mist-500">全局回退</div>
+              <div className="mt-1 font-mono text-mist-100">{scan.chain.globalExists ? 'workflow.md ✓' : '缺失'}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-mist-500">读取中…</div>
+        )}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="card p-4">
+          <div className="mb-3 text-xs font-semibold text-mist-100">任务 workflow 分布</div>
+          {usage.length === 0 ? (
+            <div className="text-xs text-mist-500">暂无任务</div>
+          ) : (
+            <div className="space-y-2">
+              {usage.map(([wf, n]) => (
+                <div key={wf} className="flex items-center gap-2 text-[11.5px]">
+                  <span className="w-32 truncate font-mono text-mist-300" title={wf}>{wf}</span>
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-700">
+                    <div className="h-full bg-leaf-dim/70" style={{ width: `${(n / snapshot.tasks.length) * 100}%` }} />
+                  </div>
+                  <span className="font-mono text-mist-400">{n}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="card p-4">
+          <div className="mb-3 text-xs font-semibold text-mist-100">流程健康度 · 停滞任务（≥3 天无动静）</div>
+          {aging.length === 0 ? (
+            <div className="text-xs text-emerald-300">没有停滞任务 👍</div>
+          ) : (
+            <div className="space-y-1.5">
+              {aging.map(({ t, days }) => (
+                <div key={t.dirName} className="flex items-center gap-2 text-[11.5px]">
+                  <StatusBadge status={t.record?.status ?? ''} />
+                  <span className="min-w-0 flex-1 truncate text-mist-200">{t.record?.title ?? t.dirName}</span>
+                  <span className="text-mist-500">{t.record?.assignee || '未分配'}</span>
+                  <span className={clsx('font-mono', days >= 7 ? 'text-rose-300' : 'text-amber-300')}>{days}d</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {scan && (
+        <div className="card p-4">
+          <div className="mb-3 text-xs font-semibold text-mist-100">平台覆盖</div>
+          <div className="flex flex-wrap gap-1.5">
+            {scan.platforms.filter((p) => p.detected).map((p) => (
+              <span key={p.id} className="chip bg-leaf-dim/10 text-[10.5px] text-leaf-soft">{p.name}</span>
+            ))}
+            {scan.platforms.filter((p) => p.detected).length === 0 && (
+              <span className="text-[11.5px] text-mist-500">未检测到 AI 平台目录——运行 trellis init --&lt;platform&gt; 安装</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -6,3 +6,4 @@ dist/
 .shots/
 examples/demo-project
 .idea/
+/docs/todo

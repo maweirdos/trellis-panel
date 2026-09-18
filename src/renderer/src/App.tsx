@@ -16,6 +16,9 @@ import { TeamPage } from './pages/Team'
 import { JiraPage } from './pages/Jira'
 import { InboxPage } from './pages/Inbox'
 import { SettingsPage } from './pages/Settings'
+import { StudioPage } from './pages/Studio'
+import { KnowledgePage } from './pages/Knowledge'
+import { ChannelsPage } from './pages/Channels'
 import { IntakeModal } from './components/IntakeModal'
 import { clsx } from 'clsx'
 
@@ -84,7 +87,7 @@ function MainApp(): JSX.Element {
             <div
               className={clsx(
                 'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox'
+              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio'
                 ? 'overflow-hidden'
                 : 'overflow-y-auto'
               )}
@@ -92,10 +95,13 @@ function MainApp(): JSX.Element {
               {page === 'dashboard' && <Dashboard />}
               {page === 'inbox' && <InboxPage />}
               {page === 'tasks' && <TasksPage />}
+              {page === 'knowledge' && <KnowledgePage />}
               {page === 'spec' && <SpecPage />}
               {page === 'archive' && <ArchivePage />}
+              {page === 'channels' && <ChannelsPage />}
               {page === 'team' && <TeamPage />}
               {page === 'jira' && <JiraPage />}
+              {page === 'studio' && <StudioPage />}
               {page === 'settings' && <SettingsPage />}
             </div>
 

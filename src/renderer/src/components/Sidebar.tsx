@@ -8,21 +8,47 @@ import {
   FolderOpen,
   RotateCw,
   Link2,
-  GitPullRequestArrow
+  GitPullRequestArrow,
+  Library,
+  Wand2,
+  Radio
 } from 'lucide-react'
 import { useApp, type Page } from '../store'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
 
-const NAV: Array<{ id: Page; label: string; icon: JSX.Element }> = [
-  { id: 'dashboard', label: '概览', icon: <LayoutDashboard size={16} /> },
-  { id: 'inbox', label: '待处理', icon: <Inbox size={16} /> },
-  { id: 'tasks', label: '任务看板', icon: <SquareKanban size={16} /> },
-  { id: 'spec', label: '规范文档', icon: <BookOpenText size={16} /> },
-  { id: 'archive', label: '归档', icon: <Archive size={16} /> },
-  { id: 'team', label: '团队协作', icon: <GitPullRequestArrow size={16} /> },
-  { id: 'jira', label: 'Jira 任务', icon: <Link2 size={16} /> },
-  { id: 'settings', label: '设置', icon: <Settings size={16} /> }
+const GROUPS: Array<{ label: string; items: Array<{ id: Page; label: string; icon: JSX.Element }> }> = [
+  {
+    label: '工作台',
+    items: [
+      { id: 'dashboard', label: '概览', icon: <LayoutDashboard size={16} /> },
+      { id: 'inbox', label: '待处理', icon: <Inbox size={16} /> },
+      { id: 'tasks', label: '任务看板', icon: <SquareKanban size={16} /> }
+    ]
+  },
+  {
+    label: '知识',
+    items: [
+      { id: 'knowledge', label: '知识库', icon: <Library size={16} /> },
+      { id: 'spec', label: '规范文档', icon: <BookOpenText size={16} /> },
+      { id: 'archive', label: '归档', icon: <Archive size={16} /> }
+    ]
+  },
+  {
+    label: '协作',
+    items: [
+      { id: 'channels', label: 'AI 频道', icon: <Radio size={16} /> },
+      { id: 'team', label: '团队协作', icon: <GitPullRequestArrow size={16} /> },
+      { id: 'jira', label: 'Jira 任务', icon: <Link2 size={16} /> }
+    ]
+  },
+  {
+    label: '系统',
+    items: [
+      { id: 'studio', label: '定制中心', icon: <Wand2 size={16} /> },
+      { id: 'settings', label: '设置', icon: <Settings size={16} /> }
+    ]
+  }
 ]
 
 export function Sidebar(): JSX.Element {
@@ -50,33 +76,40 @@ export function Sidebar(): JSX.Element {
 
   return (
     <aside className="flex w-52 shrink-0 flex-col border-r border-ink-700 bg-ink-850/60">
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5 pt-3">
-        {NAV.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setPage(item.id)}
-            className={clsx(
-              'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] transition-colors',
-              page === item.id
-                ? 'bg-leaf-dim/15 font-medium text-leaf-soft'
-                : 'text-mist-300 hover:bg-ink-700/50 hover:text-mist-100'
-            )}
-          >
-            <span className={page === item.id ? 'text-leaf' : 'text-mist-400'}>{item.icon}</span>
-            {item.label}
-            {badge(item.id) !== undefined && badge(item.id)! > 0 && (
-              <span
-                className={clsx(
-                  'ml-auto rounded px-1.5 font-mono text-[10.5px]',
-                  item.id === 'inbox'
-                    ? 'bg-amber-500/20 text-amber-300'
-                    : 'bg-ink-750 text-mist-400'
-                )}
-              >
-                {badge(item.id)}
-              </span>
-            )}
-          </button>
+      <nav className="flex-1 space-y-2 overflow-y-auto p-2.5 pt-3">
+        {GROUPS.map((group) => (
+          <div key={group.label}>
+            <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-mist-600">{group.label}</div>
+            <div className="space-y-0.5">
+              {group.items.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setPage(item.id)}
+                  className={clsx(
+                    'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] transition-colors',
+                    page === item.id
+                      ? 'bg-leaf-dim/15 font-medium text-leaf-soft'
+                      : 'text-mist-300 hover:bg-ink-700/50 hover:text-mist-100'
+                  )}
+                >
+                  <span className={page === item.id ? 'text-leaf' : 'text-mist-400'}>{item.icon}</span>
+                  {item.label}
+                  {badge(item.id) !== undefined && badge(item.id)! > 0 && (
+                    <span
+                      className={clsx(
+                        'ml-auto rounded px-1.5 font-mono text-[10.5px]',
+                        item.id === 'inbox'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-ink-750 text-mist-400'
+                      )}
+                    >
+                      {badge(item.id)}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 

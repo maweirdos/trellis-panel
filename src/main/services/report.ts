@@ -142,6 +142,88 @@ export function generateWeeklyReport(snap: ProjectSnapshot, input: ReportInput):
   return { markdown: lines.join('\n'), suggestedFileName }
 }
 
+/**
+ * 每日站会摘要：今天完成 / 今天进行 / 评审待办 / 阻塞风险，按负责人分组。
+ * 数据源与周报一致（task.json + activity 流转记录）。
+ */
+export function generateStandup(snap: ProjectSnapshot): { markdown: string; suggestedFileName: string } {
+  const now = new Date()
+  const todayStr = fmtDate(now)
+  const yesterdayMs = now.getTime() - DAY
+  const all = [...snap.tasks, ...snap.archived]
+  const who = (t: (typeof all)[number]): string => t.record?.assignee || t.record?.creator || '未分配'
+  const isDone = (t: (typeof all)[number]): boolean => ['completed', 'done'].includes((t.record?.status ?? '').toLowerCase())
+
+  const doneToday = all.filter(
+    (t) => isDone(t) && ((t.record?.completedAt ?? '').slice(0, 10) === todayStr || (t.updatedAt && new Date(t.updatedAt).toDateString() === now.toDateString() && t.record?.status))
+  )
+  const movedToday = new Set(
+    getActivity(2 * DAY)
+      .filter((e) => e.ts >= yesterdayMs && e.to !== e.from)
+      .map((e) => e.dir)
+  )
+  const inFlight = snap.tasks.filter((t) => ['in_progress', 'review'].includes((t.record?.status ?? '').toLowerCase()))
+  const blocked = inFlight.filter((t) => t.updatedAt && now.getTime() - t.updatedAt > 3 * DAY)
+  const active = inFlight.filter((t) => !blocked.includes(t))
+
+  const lines: string[] = []
+  lines.push(`# 每日站会 · ${snap.meta.name} · ${todayStr}`)
+  lines.push('')
+  lines.push(`> 生成于 ${todayStr} ${now.toTimeString().slice(0, 5)} · 数据源 \`.trellis/\` · Trellis Panel`)
+  lines.push('')
+
+  lines.push('## ✅ 今天完成')
+  lines.push('')
+  if (doneToday.length === 0) lines.push('- （暂无——今天没有任务标记完成）')
+  for (const t of doneToday) lines.push(`- ${t.record?.title}（${who(t)}）`)
+  lines.push('')
+
+  lines.push('## 🔄 今天进行')
+  lines.push('')
+  if (active.length === 0) lines.push('- （无在途任务）')
+  for (const t of active) {
+    const fresh = movedToday.has(t.dirName) ? ' · 今日有流转' : ''
+    lines.push(`- ${t.record?.title} — ${who(t)}（${statusLabel(t.record?.status)}${fresh}）`)
+  }
+  lines.push('')
+
+  lines.push('## 🔎 评审待办')
+  lines.push('')
+  const review = inFlight.filter((t) => (t.record?.status ?? '').toLowerCase() === 'review')
+  if (review.length === 0) lines.push('- （无待评审任务）')
+  for (const t of review) lines.push(`- ${t.record?.title} — ${who(t)}`)
+  lines.push('')
+
+  lines.push('## ⚠️ 阻塞与停滞（>3 天无动静）')
+  lines.push('')
+  if (blocked.length === 0) lines.push('- （无停滞任务 👍）')
+  for (const t of blocked) {
+    lines.push(`- ${t.record?.title} — ${who(t)} · 已停滞 ${Math.floor((now.getTime() - (t.updatedAt ?? 0)) / DAY)} 天`)
+  }
+  lines.push('')
+
+  const byMember = new Map<string, { doing: number; blocked: number }>()
+  for (const t of inFlight) {
+    const w = who(t)
+    const m = byMember.get(w) ?? { doing: 0, blocked: 0 }
+    m.doing += 1
+    if (blocked.includes(t)) m.blocked += 1
+    byMember.set(w, m)
+  }
+  if (byMember.size > 0) {
+    lines.push('## 👥 成员速览')
+    lines.push('')
+    lines.push('| 成员 | 在途 | 停滞 |')
+    lines.push('| --- | --- | --- |')
+    for (const [w, m] of byMember) lines.push(`| ${w} | ${m.doing} | ${m.blocked} |`)
+    lines.push('')
+  }
+
+  lines.push('---')
+  lines.push(`*由 Trellis Panel 自动生成 · ${new Date().toISOString()}*`)
+  return { markdown: lines.join('\n'), suggestedFileName: `standup-${todayStr}.md` }
+}
+
 export function saveReport(root: string, fileName: string, markdown: string): { ok: boolean; error?: string; path?: string } {
   try {
     const { writeFileSync, mkdirSync } = require('fs') as typeof import('fs')

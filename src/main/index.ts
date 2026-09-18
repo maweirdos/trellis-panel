@@ -18,8 +18,20 @@ import {
 import { startHttpApi, stopHttpApi, httpApiStatus } from './services/httpapi'
 import { taskGitInfo, createBranch, clearGitCache, isGitRepo } from './services/git'
 import { recordActivity, getAnalytics } from './services/activity'
-import { generateWeeklyReport, saveReport } from './services/report'
-import { listChannels, channelSend } from './services/channels'
+import { generateWeeklyReport, generateStandup, saveReport } from './services/report'
+import { listChannels, channelSend, channelAction } from './services/channels'
+import {
+  scanStudio,
+  studioReadText,
+  studioWriteText,
+  studioDelete,
+  setConfigKeys,
+  setDeveloperFile,
+  createWorkflow,
+  createExtension
+} from './services/studio'
+import { kbSearch } from './services/knowledge'
+import { aiChat, aiTest, aiTaskPrompt, protectAiKey } from './services/ai'
 import {
   gitlabTest,
   gitlabTaskStatus,
@@ -28,7 +40,7 @@ import {
   clearGitlabTokenCache,
   clearGitlabStatusCache
 } from './services/gitlab'
-import type { GitLabConfig, JiraConfig, ToastEvent } from '../shared/types'
+import type { AiConfig, ChatMessage, GitLabConfig, JiraConfig, SpecNode, ToastEvent } from '../shared/types'
 
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
@@ -399,6 +411,16 @@ function findTask(dir: string) {
   )
 }
 
+/** Flatten spec tree to file paths (relative to spec root) for AI context hints. */
+function flattenSpecNames(nodes: SpecNode[], depth = 0): string[] {
+  const out: string[] = []
+  for (const n of nodes ?? []) {
+    if (n.type === 'file') out.push(n.name)
+    else if (depth < 4 && n.children) out.push(...flattenSpecNames(n.children, depth + 1))
+  }
+  return out
+}
+
 /* ---------------- jira auto sync ---------------- */
 
 async function autoSyncJira(): Promise<void> {
@@ -733,6 +755,154 @@ function registerIpc(): void {
     })
   })
 
+  ipcMain.handle('report:standup', () => {
+    if (!latestSnapshot) return { markdown: '', suggestedFileName: '' }
+    return generateStandup(latestSnapshot)
+  })
+
+  ipcMain.handle('channel:action', (_e, args: string[]) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    const safe = (Array.isArray(args) ? args : []).map((a) => String(a))
+    return channelAction(projectRoot, getSettings().cliCommand, safe)
+  })
+
+  /* ---------------- Studio 定制中心 ---------------- */
+
+  ipcMain.handle('studio:scan', () => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    try {
+      return { ok: true, scan: scanStudio(projectRoot) }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '扫描失败' }
+    }
+  })
+
+  ipcMain.handle('studio:read', (_e, absPath: string) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    return studioReadText(projectRoot, absPath)
+  })
+
+  ipcMain.handle('studio:write', (_e, absPath: string, content: string, expectedMtime?: number) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    return studioWriteText(projectRoot, absPath, content, expectedMtime)
+  })
+
+  ipcMain.handle('studio:delete', (_e, absPath: string) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    return studioDelete(projectRoot, absPath)
+  })
+
+  ipcMain.handle('studio:setConfig', (_e, patch: Record<string, unknown>) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    try {
+      setConfigKeys(projectRoot, patch ?? {})
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '写入 config.yaml 失败' }
+    }
+  })
+
+  ipcMain.handle('studio:setDeveloper', (_e, content: string) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    try {
+      setDeveloperFile(projectRoot, String(content ?? ''))
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '写入 .developer 失败' }
+    }
+  })
+
+  ipcMain.handle('studio:createWorkflow', (_e, id: string) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    return createWorkflow(projectRoot, String(id ?? ''))
+  })
+
+  ipcMain.handle('studio:createExtension', (_e, kind: string, platform: string, name: string) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    if (!['command', 'agent', 'skill'].includes(kind)) return { ok: false, error: '未知扩展类型' }
+    return createExtension(projectRoot, kind as 'command' | 'agent' | 'skill', platform, String(name ?? ''))
+  })
+
+  /* ---------------- Knowledge 知识库 ---------------- */
+
+  ipcMain.handle('kb:search', (_e, library: string, query: string) => {
+    if (!projectRoot) {
+      return { ok: false, error: '未打开项目', hits: [], docs: [], totalDocs: 0, elapsedMs: 0 }
+    }
+    try {
+      const lib = ['requirements', 'spec', 'wiki', 'archive'].includes(library) ? library : 'all'
+      return kbSearch(projectRoot, lib as 'all', String(query ?? ''))
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '检索失败', hits: [], docs: [], totalDocs: 0, elapsedMs: 0 }
+    }
+  })
+
+  /* ---------------- AI（baseUrl 自定义模型） ---------------- */
+
+  ipcMain.handle('ai:chat', (_e, messages: ChatMessage[]) => {
+    const cfg = getSettings().ai
+    const safe = (Array.isArray(messages) ? messages : [])
+      .filter((m) => m && typeof m.content === 'string' && ['system', 'user', 'assistant'].includes(m.role))
+      .slice(0, 40)
+      .map((m) => ({ role: m.role, content: String(m.content).slice(0, 32_000) }))
+    return aiChat(cfg, safe)
+  })
+
+  ipcMain.handle('ai:test', (_e, cfg: AiConfig) => aiTest(cfg))
+
+  ipcMain.handle('ai:prdDraft', (_e, dirName: string) => {
+    const t = findTask(String(dirName))
+    if (!t?.record) return { ok: false, error: '任务不存在' }
+    const specTitles = flattenSpecNames(latestSnapshot?.spec ?? []).slice(0, 40)
+    return aiTaskPrompt(
+      getSettings().ai,
+      {
+        title: t.record.title,
+        description: t.record.description,
+        notes: t.record.notes,
+        subtasks: t.record.subtasks ?? [],
+        specTitles,
+        devType: t.record.dev_type,
+        scope: t.record.scope
+      },
+      'prd'
+    )
+  })
+
+  ipcMain.handle('ai:summary', (_e, dirName: string) => {
+    const t = findTask(String(dirName))
+    if (!t?.record) return { ok: false, error: '任务不存在' }
+    return aiTaskPrompt(
+      getSettings().ai,
+      {
+        title: t.record.title,
+        description: t.record.description,
+        notes: t.record.notes,
+        subtasks: t.record.subtasks ?? [],
+        specTitles: [],
+        devType: t.record.dev_type,
+        scope: t.record.scope
+      },
+      'summary'
+    )
+  })
+
+  ipcMain.handle('task:writeArtifact', (_e, dirName: string, fileName: string, content: string) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    const t = findTask(String(dirName))
+    if (!t) return { ok: false, error: '任务不存在' }
+    const name = String(fileName ?? '').trim()
+    if (!/^[\w.-]+\.(md|markdown|txt|yaml|yml|json)$/i.test(name)) return { ok: false, error: '文件名不合法（仅允许 md/txt/yaml/json）' }
+    try {
+      const p = join(t.path, name)
+      writeFileSync(p, String(content ?? ''), 'utf-8')
+      sendSnapshot()
+      return { ok: true, path: p }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '写入失败' }
+    }
+  })
+
   ipcMain.handle('report:save', (_e, fileName: string, markdown: string) => {
     if (!projectRoot) return { ok: false, error: '未打开项目' }
     return saveReport(projectRoot, fileName, markdown)
@@ -771,7 +941,12 @@ function registerIpc(): void {
     if (gitlab && typeof gitlab.password === 'string' && gitlab.password && !gitlab.passwordEncrypted && gitlab.password !== prevGitlab.password) {
       gitlab = { ...gitlab, ...protectGitlabPassword(gitlab.password) }
     }
-    const next = setSettings({ ...patch, jira, gitlab })
+    const prevAi = getSettings().ai
+    let ai = patch.ai as AiConfig | undefined
+    if (ai && typeof ai.apiKey === 'string' && ai.apiKey && !ai.apiKeyEncrypted && ai.apiKey !== prevAi.apiKey) {
+      ai = { ...ai, ...protectAiKey(ai.apiKey) }
+    }
+    const next = setSettings({ ...patch, jira, gitlab, ai })
     if (gitlab) {
       clearGitlabTokenCache()
       clearGitlabStatusCache()

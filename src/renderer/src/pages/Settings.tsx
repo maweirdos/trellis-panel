@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   Server,
   MonitorSmartphone,
-  GitMerge
+  GitMerge,
+  Sparkles
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -138,6 +139,28 @@ export function SettingsPage(): JSX.Element {
   const saveGitlab = async (): Promise<void> => {
     await saveSettings({ gitlab: { ...gitlab, enabled: gitlab.enabled && !!gitlab.baseUrl && !!gitlab.user && !!gitlab.project } })
     pushToast({ kind: 'success', title: 'GitLab 配置已保存' })
+  }
+
+  /* ---- AI 模型（baseUrl 自定义） ---- */
+  const [ai, setAi] = useState({ ...settings.ai, apiKey: settings.ai.apiKeyEncrypted ? '' : settings.ai.apiKey })
+  const [aiTesting, setAiTesting] = useState(false)
+  const [aiOk, setAiOk] = useState<string | null>(null)
+
+  const testAi = async (): Promise<void> => {
+    setAiTesting(true)
+    setAiOk(null)
+    const res = await api.aiTest({ ...ai, enabled: true })
+    setAiTesting(false)
+    if (res.ok) setAiOk(`✓ ${res.model ?? ai.model} 已连通`)
+    else {
+      setAiOk(null)
+      pushToast({ kind: 'error', title: 'AI 连接失败', body: res.error })
+    }
+  }
+
+  const saveAi = async (): Promise<void> => {
+    await saveSettings({ ai: { ...ai, enabled: ai.enabled && !!ai.baseUrl && !!ai.model } })
+    pushToast({ kind: 'success', title: 'AI 模型配置已保存' })
   }
 
   const toggleMcp = async (on: boolean): Promise<void> => {
@@ -479,6 +502,78 @@ export function SettingsPage(): JSX.Element {
                 </button>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* AI 模型（baseUrl 自定义） */}
+        <section className="card px-5 py-4">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-mist-200">
+            <Sparkles size={13} className="text-leaf" /> 应用内 AI（OpenAI 兼容 · baseUrl 自定义模型）
+          </div>
+          <div className="space-y-2.5">
+            <label className="flex items-center gap-2 text-[11.5px] text-mist-300">
+              <input
+                type="checkbox"
+                checked={ai.enabled}
+                onChange={(e) => setAi((c) => ({ ...c, enabled: e.target.checked }))}
+              />
+              启用应用内 AI（知识库问答 / PRD 草稿 / 任务摘要）
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-[11px] text-mist-400">Base URL —— 填到 /v1 即可；# 结尾 = 原样使用</span>
+                <input
+                  value={ai.baseUrl}
+                  onChange={(e) => setAi((c) => ({ ...c, baseUrl: e.target.value }))}
+                  placeholder="http://localhost:11434/v1"
+                  className="field w-full font-mono text-[11.5px]"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] text-mist-400">模型名</span>
+                <input
+                  value={ai.model}
+                  onChange={(e) => setAi((c) => ({ ...c, model: e.target.value }))}
+                  placeholder="qwen3-coder / gpt-4o-mini / deepseek-chat…"
+                  className="field w-full font-mono text-[11.5px]"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] text-mist-400">
+                  API Key {settings.ai.apiKeyEncrypted && <span className="text-emerald-400">（已加密保存）</span>}
+                </span>
+                <input
+                  type="password"
+                  value={ai.apiKey}
+                  onChange={(e) => setAi((c) => ({ ...c, apiKey: e.target.value }))}
+                  placeholder="本地服务可留空"
+                  className="field w-full font-mono text-[11.5px]"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] text-mist-400">Temperature（{ai.temperature}）</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={ai.temperature}
+                  onChange={(e) => setAi((c) => ({ ...c, temperature: Number(e.target.value) }))}
+                  className="w-full"
+                />
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => void saveAi()} className="btn-primary">保存配置</button>
+              <button onClick={() => void testAi()} disabled={aiTesting || !ai.baseUrl || !ai.model} className="btn-outline disabled:opacity-40">
+                {aiTesting ? '测试中…' : '测试连接'}
+              </button>
+              {aiOk && <span className="text-[11px] text-emerald-300">{aiOk}</span>}
+            </div>
+            <div className="text-[10.5px] leading-4 text-mist-600">
+              兼容所有 OpenAI 格式端点：Ollama <code>http://localhost:11434/v1</code> · LM Studio <code>http://localhost:1234/v1</code> ·
+              One-API / OpenRouter / DeepSeek 等云端 <code>https://…/v1</code>。Key 经系统 DPAPI 加密存储。
+            </div>
           </div>
         </section>
 

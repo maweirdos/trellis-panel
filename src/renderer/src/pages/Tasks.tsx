@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Search,
   Filter,
@@ -12,7 +12,12 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
-  Layers
+  Layers,
+  BookOpenText,
+  Loader2,
+  Wand2,
+  ExternalLink,
+  PanelLeftClose
 } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
@@ -20,10 +25,11 @@ import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
 import { statusLabel } from '../utils/labels'
 import { taskDateLabel } from '../utils/format'
 import { api } from '../api'
+import { MarkdownView } from '../components/MarkdownView'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
 
-type ViewMode = 'board' | 'list' | 'swimlane'
+type ViewMode = 'board' | 'list' | 'swimlane' | 'reader'
 
 const COLUMNS: Array<{ status: string; label: string; dot: string; ring: string }> = [
   { status: 'planning', label: '规划中', dot: 'bg-sky-400', ring: 'ring-sky-500/40' },
@@ -222,6 +228,345 @@ function TaskRow({ t, onOpen }: { t: TaskInfo; onOpen: () => void }): JSX.Elemen
   )
 }
 
+/* ---------------- Reader view（PRD 阅读模式） ---------------- */
+
+function extractHeadings(md: string): Array<{ level: number; text: string }> {
+  const out: Array<{ level: number; text: string }> = []
+  for (const line of md.split(/\r?\n/)) {
+    const m = /^(#{2,3})\s+(.+?)\s*#*\s*$/.exec(line)
+    if (m) out.push({ level: m[1].length, text: m[2] })
+  }
+  return out
+}
+
+function ReaderView({
+  tasks,
+  selected,
+  onSelect,
+  onOpenDetail
+}: {
+  tasks: TaskInfo[]
+  selected: string | null
+  onSelect: (dir: string | null) => void
+  onOpenDetail: (dir: string) => void
+}): JSX.Element {
+  const pushToast = useApp((s) => s.pushToast)
+  const [wide, setWide] = useState(false)
+  const [prd, setPrd] = useState<string | null>(null)
+  const [prdName, setPrdName] = useState<string | null>(null)
+  const [loadingPrd, setLoadingPrd] = useState(false)
+  const [aiBusy, setAiBusy] = useState<'prd' | 'summary' | null>(null)
+  const [aiDraft, setAiDraft] = useState<string | null>(null)
+  const [aiSummaryText, setAiSummaryText] = useState<string | null>(null)
+
+  const idx = Math.max(0, tasks.findIndex((t) => t.dirName === selected))
+  const task = tasks[idx] ?? null
+
+  useEffect(() => {
+    if (!task || selected === null) {
+      setPrd(null)
+      setAiDraft(null)
+      setAiSummaryText(null)
+      return
+    }
+    // 找任务目录里的 PRD 类文档：prd.md > PRD.md > requirement.md
+    const candidates = task.artifacts
+      .filter((a) => a.kind === 'file' && /^(prd|prd-final|requirement|requirements|需求)\.md$/i.test(a.name))
+      .sort((a, b) => (/^prd\.md$/i.test(a.name) ? -1 : 0) - (/^prd\.md$/i.test(b.name) ? -1 : 0))
+    setAiDraft(null)
+    setAiSummaryText(null)
+    if (candidates.length === 0) {
+      setPrd(null)
+      setPrdName(null)
+      return
+    }
+    const file = candidates[0]
+    setLoadingPrd(true)
+    void api
+      .readTextFile(file.path)
+      .then((res) => {
+        if (res.ok && res.content !== undefined) {
+          setPrd(res.content)
+          setPrdName(file.name)
+        } else {
+          setPrd(null)
+          setPrdName(null)
+        }
+      })
+      .finally(() => setLoadingPrd(false))
+  }, [task?.dirName, selected]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!task) {
+    return (
+      <div className="grid h-full place-items-center text-xs text-mist-500">
+        <div className="text-center">
+          <BookOpenText size={28} className="mx-auto mb-2 text-mist-600" />
+          当前筛选下没有任务——左侧切换或调整过滤条件
+        </div>
+      </div>
+    )
+  }
+
+  const headings = prd ? extractHeadings(prd) : []
+  const prog = subtaskProgress(task)
+  const goto = (delta: number): void => {
+    const next = tasks[idx + delta]
+    if (next) onSelect(next.dirName)
+  }
+
+  const genPrd = async (): Promise<void> => {
+    setAiBusy('prd')
+    const res = await api.aiPrdDraft(task.dirName)
+    setAiBusy(null)
+    if (res.ok && res.content) setAiDraft(res.content)
+    else pushToast({ kind: 'error', title: 'PRD 生成失败', body: res.error })
+  }
+
+  const genSummary = async (): Promise<void> => {
+    setAiBusy('summary')
+    const res = await api.aiSummary(task.dirName)
+    setAiBusy(null)
+    if (res.ok && res.content) setAiSummaryText(res.content)
+    else pushToast({ kind: 'error', title: '摘要生成失败', body: res.error })
+  }
+
+  const saveDraft = async (): Promise<void> => {
+    if (!aiDraft) return
+    const exists = task.artifacts.some((a) => /^prd\.md$/i.test(a.name))
+    if (exists && !confirm('任务目录已有 prd.md，覆盖？')) return
+    const res = await api.taskWriteArtifact(task.dirName, 'prd.md', aiDraft)
+    if (res.ok) {
+      pushToast({ kind: 'success', title: '已保存 prd.md', body: task.dirName })
+      setAiDraft(null)
+      setPrd(aiDraft)
+      setPrdName('prd.md')
+    } else {
+      pushToast({ kind: 'error', title: '保存失败', body: res.error })
+    }
+  }
+
+  return (
+    <div className="flex h-full min-h-0">
+      {/* 左侧任务轨 */}
+      <div className="flex w-72 shrink-0 flex-col border-r border-ink-700/70">
+        <div className="flex items-center gap-1.5 border-b border-ink-700/70 px-3 py-2 text-[10.5px] uppercase tracking-wide text-mist-500">
+          <BookOpenText size={11} className="text-leaf" /> 任务轨 · {tasks.length}
+          <button onClick={() => onSelect(null)} className="btn-ghost ml-auto justify-center px-1" title="收起说明">
+            <PanelLeftClose size={11} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          {tasks.map((t) => {
+            const st = statusOf(t)
+            const col = COLUMNS.find((x) => matchCol(t, x.status))
+            const isSel = t.dirName === selected
+            return (
+              <button
+                key={t.dirName}
+                onClick={() => onSelect(t.dirName)}
+                className={clsx(
+                  'mb-1 w-full rounded-lg px-2.5 py-2 text-left transition-colors',
+                  isSel ? 'bg-leaf-dim/15 ring-1 ring-leaf-dim/40' : 'hover:bg-ink-750/60'
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', col?.dot ?? 'bg-mist-600')} />
+                  <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-mist-100">{t.record?.title ?? t.dirName}</span>
+                  <PriorityBadge priority={t.record?.priority ?? ''} />
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 pl-3 text-[10px] text-mist-500">
+                  <span className="truncate">{t.record?.assignee || '未分配'}</span>
+                  {t.jiraKey && <JiraChip jiraKey={t.jiraKey} />}
+                  {prog && <span className="ml-auto shrink-0">{prog.done}/{prog.total}</span>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 阅读区 */}
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className={clsx('mx-auto px-8 py-6', wide ? 'max-w-[980px]' : 'max-w-[760px]')}>
+          {/* 头部 */}
+          <div className="flex items-center gap-1.5 text-[11px] text-mist-500">
+            <span className="font-mono">{task.dirName}</span>
+            <span>·</span>
+            <span>{task.record?.assignee || '未分配'}</span>
+            <span>·</span>
+            <span>{taskDateLabel(task.dirName, task.date)}</span>
+            <button onClick={() => setWide((w) => !w)} className="btn-ghost ml-auto text-[10.5px]">
+              {wide ? '舒适宽度' : '加宽阅读'}
+            </button>
+            <button onClick={() => onOpenDetail(task.dirName)} className="btn-outline text-[10.5px]">
+              在详情中打开
+            </button>
+          </div>
+          <h1 className="mt-2 text-[22px] font-bold leading-snug text-mist-100">{task.record?.title ?? task.dirName}</h1>
+
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <StatusBadge status={task.record?.status ?? ''} />
+            <PriorityBadge priority={task.record?.priority ?? ''} />
+            {task.jiraKey && <JiraChip jiraKey={task.jiraKey} />}
+            {task.record?.branch && <span className="chip bg-ink-750 font-mono text-[10px] text-mist-300">{task.record.branch}</span>}
+            {typeof task.record?.workflow === 'string' && task.record.workflow && (
+              <span className="chip bg-violet-500/15 text-[10px] text-violet-300" title="task.json 的 workflow pin">workflow: {task.record.workflow}</span>
+            )}
+            <div className="ml-auto flex items-center gap-1.5">
+              <select
+                value={statusOf(task)}
+                onChange={(e) => {
+                  void (async () => {
+                    const res = await api.updateTask(task.path, { status: e.target.value })
+                    if (!res.ok) pushToast({ kind: 'error', title: '状态更新失败', body: res.error })
+                  })()
+                }}
+                className="field w-28 px-2 py-1 text-[11px]"
+              >
+                {COLUMNS.map((c) => (
+                  <option key={c.status} value={c.status}>{statusLabel(c.status)}</option>
+                ))}
+              </select>
+              <button onClick={() => void api.revealInExplorer(task.path)} className="btn-ghost justify-center px-1.5" title="打开任务目录">
+                <ExternalLink size={12} />
+              </button>
+            </div>
+          </div>
+
+          {/* AI 摘要卡 */}
+          {aiSummaryText && (
+            <div className="mt-4 rounded-xl border border-leaf-dim/30 bg-leaf-dim/5 p-4">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-leaf-soft">
+                <Sparkles size={12} /> AI 任务摘要
+              </div>
+              <MarkdownView content={aiSummaryText} />
+            </div>
+          )}
+
+          {/* 章节导航 */}
+          {headings.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-1.5 border-b border-ink-700/70 pb-3">
+              {headings.map((h, i) => (
+                <span key={i} className={clsx('chip text-[10px]', h.level === 2 ? 'bg-ink-750 text-mist-300' : 'bg-ink-800 text-mist-500')}>
+                  {h.text}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* 正文 */}
+          <div className="mt-4">
+            {loadingPrd ? (
+              <div className="flex items-center gap-2 py-10 text-xs text-mist-500">
+                <Loader2 size={14} className="animate-spin" /> 读取 {prdName}…
+              </div>
+            ) : aiDraft ? (
+              <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-300">
+                    <Wand2 size={12} /> AI PRD 草稿
+                  </span>
+                  <button onClick={() => void saveDraft()} className="btn-primary ml-auto text-[11px]">
+                    保存为 prd.md
+                  </button>
+                  <button onClick={() => setAiDraft(null)} className="btn-ghost text-[11px]">放弃</button>
+                </div>
+                <MarkdownView content={aiDraft} />
+              </div>
+            ) : prd !== null ? (
+              <MarkdownView content={prd} />
+            ) : (
+              <div className="space-y-4">
+                {task.record?.description ? (
+                  <div>
+                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-mist-500">需求描述</div>
+                    <MarkdownView content={task.record.description} />
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-ink-600 p-6 text-center">
+                    <BookOpenText size={22} className="mx-auto mb-2 text-mist-600" />
+                    <div className="text-xs text-mist-400">该任务还没有 prd.md，描述也为空</div>
+                    <button onClick={() => void genPrd()} disabled={aiBusy !== null} className="btn-primary mt-3 disabled:opacity-40">
+                      {aiBusy === 'prd' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} AI 生成 PRD 草稿
+                    </button>
+                  </div>
+                )}
+                {task.record?.description && (
+                  <button onClick={() => void genPrd()} disabled={aiBusy !== null} className="btn-outline text-[11px]">
+                    {aiBusy === 'prd' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} AI 生成 PRD 草稿
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 子任务 / 备注 */}
+          {!aiDraft && (
+            <div className="mt-6 space-y-4 border-t border-ink-700/70 pt-4 pb-8">
+              {prog && (
+                <div>
+                  <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-mist-500">
+                    子任务 {prog.done}/{prog.total}
+                    <div className="h-1 w-32 overflow-hidden rounded-full bg-ink-700">
+                      <div className="h-full bg-leaf-dim/80" style={{ width: `${(prog.done / prog.total) * 100}%` }} />
+                    </div>
+                  </div>
+                  <ul className="space-y-1">
+                    {task.record?.subtasks.map((s, i) => {
+                      const m = /^\s*[-*]?\s*\[( |x|X)\]\s*(.*)$/.exec(s)
+                      const done = m?.[1]?.toLowerCase() === 'x'
+                      const text = m?.[2] ?? s
+                      return (
+                        <li key={i} className="flex items-start gap-2 text-xs leading-5 text-mist-300">
+                          <CircleCheck size={13} className={clsx('mt-0.5 shrink-0', done ? 'text-leaf' : 'text-mist-600')} />
+                          <span className={done ? 'text-mist-500 line-through' : ''}>{text}</span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+              {task.record?.notes && (
+                <div>
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-mist-500">备注</div>
+                  <div className="whitespace-pre-wrap rounded-lg border border-ink-700/70 bg-ink-850/50 p-3 text-xs leading-5 text-mist-300">{task.record.notes}</div>
+                </div>
+              )}
+              {task.artifacts.length > 0 && (
+                <div>
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-mist-500">产物（{task.artifacts.length}）</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {task.artifacts.map((a) => (
+                      <button
+                        key={a.path}
+                        onClick={() => useApp.getState().openArtifact({ ...a }, true)}
+                        className="chip border border-ink-600 text-[10.5px] text-mist-300 hover:border-ink-500 hover:text-mist-100"
+                      >
+                        <Paperclip size={10} /> {a.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 上一篇 / 下一篇 */}
+          <div className="sticky bottom-0 -mx-8 flex items-center gap-2 border-t border-ink-700/70 bg-ink-900/90 px-8 py-2.5 backdrop-blur">
+            <button onClick={() => goto(-1)} disabled={idx <= 0} className="btn-ghost text-[11px] disabled:opacity-30">
+              ← 上一篇
+            </button>
+            <span className="text-[10.5px] text-mist-600">{idx + 1} / {tasks.length}</span>
+            <button onClick={() => goto(1)} disabled={idx >= tasks.length - 1} className="btn-ghost ml-auto text-[11px] disabled:opacity-30">
+              下一篇 →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ---------------- Page ---------------- */
 
 export function TasksPage(): JSX.Element {
@@ -230,6 +575,7 @@ export function TasksPage(): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const setIntakeOpen = useApp((s) => s.setIntakeOpen)
   const [view, setView] = useState<ViewMode>('board')
+  const [readerDir, setReaderDir] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState('')
@@ -363,6 +709,7 @@ export function TasksPage(): JSX.Element {
             {(
               [
                 ['board', '看板', <LayoutGrid size={12} key="b" />],
+                ['reader', '阅读', <BookOpenText size={12} key="r" />],
                 ['list', '列表', <Rows3 size={12} key="l" />],
                 ['swimlane', '泳道', <Users2 size={12} key="s" />]
               ] as const
@@ -440,6 +787,16 @@ export function TasksPage(): JSX.Element {
             })}
           </div>
         </div>
+      )}
+
+      {/* reader view（PRD 阅读模式）——阅读场景需要覆盖全部任务（含子任务 PRD），不受需求组折叠影响 */}
+      {view === 'reader' && (
+        <ReaderView
+          tasks={filtered}
+          selected={readerDir ?? filtered[0]?.dirName ?? null}
+          onSelect={setReaderDir}
+          onOpenDetail={(dir) => showTask(dir)}
+        />
       )}
 
       {/* list view */}

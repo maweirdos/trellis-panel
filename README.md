@@ -19,18 +19,20 @@ Trellis Panel 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-fir
 | 页面 | 能力 |
 | --- | --- |
 | 概览 | 任务状态统计（全中文）、当前任务、AI 平台检测、活跃 AI 会话、项目配置一览 |
-| 任务看板 | **看板 / 列表 / 泳道** 三种视图；固定高度列内滚动；拖拽切换状态；优先级/子任务进度/产物数/Jira 徽章；面板可手工创建待办 |
+| 任务看板 | **看板 / 阅读 / 列表 / 泳道** 四种视图；拖拽切换状态；**阅读模式**：左侧任务轨 + 大面积 PRD 排版阅读（章节导航、加宽/舒适切换、上一篇/下一篇、状态快切、AI 生成 PRD 草稿/摘要） |
 | 任务详情 | 右侧悬浮层；24 字段中文化；**修改暂存 + Diff 预览**；**Git 状态**（领先/落后、合并检测、提交列表、一键建分支）；**写冲突检测**（外部修改不覆盖） |
 | 产物查看 | 全屏查看器：Markdown + **Mermaid** + **ASCII 线框图**渲染，原文/渲染切换、复制 |
 | 规范文档 | 目录树 + 渲染 + **在线编辑（带冲突检测）** + **引用统计**（识别从未被引用的死规范） |
-| 工作区 | 开发者日志与共享索引 |
+| 知识库 | **四库一体**：需求库（任务 PRD / task.json 提炼）/ 规范库 / Wiki 库（README·docs）/ 归档库；本地倒排索引全文检索（CJK 二元分词 + TF-IDF、高亮片段）；接入 AI 后支持**基于当前库的问答**（附来源引用） |
+| 定制中心 | **可视化定制 Trellis 工作流**：workflow.md 与 `.trellis/workflows/` 变体（结构解析、契约校验、四级解析链可视化、新建/设为团队与个人默认）；**Slash 命令 / 子代理 / 技能**跨平台扫描与表单化编辑（frontmatter + 正文，新建/删除）；**钩子**（平台 settings.json 注册表 + config.yaml 生命周期钩子 + 脚本浏览）；**config.yaml** 结构化编辑（packages / default_workflow / codex.dispatch_mode 等）；**平台与团队**：22 平台检测与文件计数、团队共享 vs 个人配置导览 |
+| AI 频道 | **trellis channel 运行时看板**：实时事件流（create/message/progress/done）、本项目/全局过滤、面板直接发消息（as panel-ui）驱动 AI worker、forum 线程视图、启动 worker / 软中断 / 删除等动作 |
 | 归档 | 兼容新旧两种归档布局 |
-| 团队协作 | 三标签：动态流 / **效率分析**（交付周期、流转热度、停滞预警）/ **周报生成**（团队/个人，Markdown 导出） |
-| AI 频道 | **trellis channel 运行时看板**：实时事件流（create/message/progress/done），面板直接向频道发消息驱动 AI worker |
+| 团队协作 | 五标签：动态流 / **效率分析**（交付周期、流转热度、停滞预警）/ **站会**（今日完成·进行·评审·阻塞一键生成）/ **周报生成**（团队/个人，Markdown 导出）/ **工作流洞察**（解析链、workflow 分布、停滞预警、平台覆盖） |
 | Jira 任务 | 我的待办 / **当前冲刺** / 自定义 JQL；加入待办（**可配置状态映射**）；双向同步；流转推送；进度回写评论；密码 DPAPI 加密 |
 | CLI 终端 | 运行 trellis 命令，实时输出、可中止 |
 | 胶囊模式 | 置顶小卡片：当前任务 + 进度 + 一键回主面板 |
 | 桌面集成 | **托盘常驻**（关闭最小化到托盘）、**全局快捷键**、开机自启、**自动检查更新** |
+| 应用内 AI | 设置页接入 **OpenAI 兼容 baseUrl 自定义模型**（Ollama / LM Studio / One-API / 云端均可用，Key 经 DPAPI 加密）；驱动知识库问答、PRD 草稿、任务摘要 |
 
 ## Web 看板（只读）
 
@@ -92,11 +94,15 @@ src/
 │     ├─ jira.ts          # Jira REST API v2（搜索/流转/评论）
 │     ├─ bridge.ts        # 深链解析、tpanel 安装、hooks 写入、通知广播
 │     ├─ httpapi.ts       # 只读 Web 看板 HTTP 服务
+│     ├─ studio.ts        # 定制中心：workflow/命令/子代理/技能/钩子/config.yaml 扫描与白名单写回
+│     ├─ knowledge.ts     # 四库知识库：倒排索引全文检索（CJK 二元分词 + TF-IDF）
+│     ├─ ai.ts            # 应用内 AI：OpenAI 兼容 baseUrl 自定义模型客户端
+│     ├─ channels.ts      # trellis channel 运行时读取 + 动作（create/spawn/rm…）
 │     └─ store.ts         # 设置持久化
 ├─ preload/index.ts       # contextBridge 类型化 API
 └─ renderer/src/
-   ├─ pages/              # Dashboard / Tasks / TaskDetail+Diff / Spec / Workspace
-   │                      # / Archive / Team / Jira / Cli / Settings
+   ├─ pages/              # Dashboard / Tasks(含阅读模式) / TaskDetail+Diff / Spec
+   │                      # / Knowledge / Studio / Channels / Archive / Team / Jira / Settings
    └─ components/         # CapsuleView / ArtifactViewer / MermaidBlock / MarkdownView / Toasts ...
 ```
 

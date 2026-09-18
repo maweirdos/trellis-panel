@@ -6,10 +6,13 @@ export type Page =
   | 'dashboard'
   | 'inbox'
   | 'tasks'
+  | 'knowledge'
   | 'spec'
   | 'archive'
+  | 'channels'
   | 'team'
   | 'jira'
+  | 'studio'
   | 'settings'
 
 export interface ToastItem extends ToastEvent {
