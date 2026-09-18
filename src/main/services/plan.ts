@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
-import type { AiConfig, PlanResult, PlanSource, TaskPlan } from '../../shared/types'
+import type { AiChatResult, AiConfig, PlanResult, PlanSource, TaskPlan } from '../../shared/types'
 import { kbSearch } from './knowledge'
 import { aiChat } from './ai'
 
@@ -151,4 +151,65 @@ export function hasOpenTaskFor(root: string, titleKeywords: string): boolean {
 
 export function specExists(root: string): boolean {
   return existsSync(join(root, '.trellis', 'spec'))
+}
+
+/* ---------- 开发流程 AI 端点（拆分 / 提交信息 / PR 描述） ---------- */
+
+export interface EpicChildPlan {
+  title: string
+  description: string
+  subtasks: string[]
+}
+
+const SPLIT_SYSTEM = `你是 Trellis 任务拆分专家。把父任务拆分为 2-6 个可独立交付的子任务（每个子任务一个目录、一个分支）。
+严格只输出 JSON：{"children":[{"title":"中文标题（<=30字）","description":"一段话范围说明（含输入输出与边界）","subtasks":["- [ ] 步骤"]}]}
+拆分原则：按业务能力或数据流切分，不按技术分层；每个子任务可独立验收；依赖关系写进 description 开头（"依赖 XX 先完成"）。`
+
+export async function aiSplitEpic(
+  cfg: AiConfig,
+  task: { title: string; description: string; prd?: string | null }
+): Promise<{ ok: boolean; error?: string; children?: EpicChildPlan[] }> {
+  const user = [
+    `父任务：${task.title}`,
+    task.description ? `描述：\n${task.description}` : '',
+    task.prd ? `PRD 摘录：\n${task.prd.slice(0, 6000)}` : ''
+  ].filter(Boolean).join('\n\n')
+  const res = await aiChat(cfg, [
+    { role: 'system', content: SPLIT_SYSTEM },
+    { role: 'user', content: user }
+  ], { temperature: 0.4 })
+  if (!res.ok || !res.content) return { ok: false, error: res.error ?? 'AI 未返回内容' }
+  const obj = extractJson(res.content)
+  const children = obj && Array.isArray(obj.children) ? (obj.children as unknown[]).map((c) => {
+    const o = c as Record<string, unknown>
+    return {
+      title: str(o.title, ''),
+      description: typeof o.description === 'string' ? o.description : '',
+      subtasks: Array.isArray(o.subtasks) ? (o.subtasks as unknown[]).map(String).slice(0, 10) : []
+    }
+  }).filter((c) => c.title).slice(0, 8) : null
+  if (!children || children.length === 0) return { ok: false, error: 'AI 未给出有效子任务' }
+  return { ok: true, children }
+}
+
+export async function aiCommitMsg(
+  cfg: AiConfig,
+  ctx: { title: string; description: string; recentCommits: string[] }
+): Promise<AiChatResult> {
+  const res = await aiChat(cfg, [
+    { role: 'system', content: '生成一条 conventional commit 信息：第一行 <=50 字符（type(scope): 中文概述），空一行后 2-3 条正文要点。只输出 commit 文本本身。' },
+    { role: 'user', content: `任务：${ctx.title}\n描述：${ctx.description.slice(0, 800)}\n最近提交风格参考：\n${ctx.recentCommits.slice(0, 5).join('\n') || '（无）'}` }
+  ], { temperature: 0.3, maxTokens: 200 })
+  return res
+}
+
+export async function aiPrDesc(
+  cfg: AiConfig,
+  ctx: { title: string; description: string; subtasks: string[] }
+): Promise<AiChatResult> {
+  const res = await aiChat(cfg, [
+    { role: 'system', content: '生成 MR/PR 描述（Markdown）：## 变更概述（一段话）、## 验收对照（对照需求验收标准逐条）、## 影响面、## 测试说明。只输出 Markdown 正文。' },
+    { role: 'user', content: `任务：${ctx.title}\n描述：${ctx.description.slice(0, 3000)}\n子任务：\n${ctx.subtasks.join('\n') || '（无）'}` }
+  ], { temperature: 0.3 })
+  return res
 }

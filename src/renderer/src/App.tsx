@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useApp } from './store'
 import { api } from './api'
 import { TitleBar } from './components/TitleBar'
@@ -7,6 +7,7 @@ import { Onboarding } from './components/Onboarding'
 import { Toasts } from './components/Toasts'
 import { CapsuleView } from './components/CapsuleView'
 import { ArtifactViewer } from './components/ArtifactViewer'
+import { CommandPalette } from './components/CommandPalette'
 import { Dashboard } from './pages/Dashboard'
 import { TasksPage } from './pages/Tasks'
 import { TaskDetail } from './pages/TaskDetail'
@@ -19,6 +20,7 @@ import { SettingsPage } from './pages/Settings'
 import { StudioPage } from './pages/Studio'
 import { KnowledgePage } from './pages/Knowledge'
 import { ChannelsPage } from './pages/Channels'
+import { ArchitecturePage } from './pages/Architecture'
 import { IntakeModal } from './components/IntakeModal'
 import { clsx } from 'clsx'
 
@@ -31,6 +33,18 @@ function MainApp(): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const inboxAdd = useApp((s) => s.inboxAdd)
   const projectRoot = snapshot?.meta.root
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     const off = api.onSnapshotUpdated((snap) => useApp.setState({ snapshot: snap }))
@@ -101,6 +115,7 @@ function MainApp(): JSX.Element {
               {page === 'channels' && <ChannelsPage />}
               {page === 'team' && <TeamPage />}
               {page === 'jira' && <JiraPage />}
+              {page === 'architecture' && <ArchitecturePage />}
               {page === 'studio' && <StudioPage />}
               {page === 'settings' && <SettingsPage />}
             </div>
@@ -117,6 +132,9 @@ function MainApp(): JSX.Element {
 
             {/* 需求 Intake 向导 */}
             <IntakeModal />
+
+            {/* 全局命令面板 */}
+            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
           </main>
         </div>
       )}

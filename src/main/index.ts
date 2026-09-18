@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, globalShortcut, clipboard, safeStorage, Notification, nativeImage } from 'electron'
 import { join, resolve, sep, extname, basename, dirname } from 'path'
-import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, rmSync } from 'fs'
+import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, rmSync, renameSync } from 'fs'
 import { scanProject, updateTaskRecordAt, writeSpecFile, computeSpecBacklinks, readTextWithMtime, searchDocs, TEXT_EXTS } from './services/scan'
 import { TrellisWatcher } from './services/watcher'
 import { runCli, abortCli, abortAll } from './services/cli'
@@ -34,7 +34,7 @@ import {
 import { kbSearch } from './services/knowledge'
 import { aiChat, aiTest, aiTaskPrompt, protectAiKey } from './services/ai'
 import { kbMcpInstall, kbMcpStatus } from './services/kbmcp'
-import { aiPlanTask, handoffTexts } from './services/plan'
+import { aiPlanTask, aiSplitEpic, aiCommitMsg, aiPrDesc, handoffTexts } from './services/plan'
 import {
   gitlabTest,
   gitlabTaskStatus,
@@ -932,6 +932,109 @@ function registerIpc(): void {
   ipcMain.handle('plan:handoff', (_e, dirName: string) => {
     if (!projectRoot) return []
     return handoffTexts(projectRoot, String(dirName))
+  })
+
+  ipcMain.handle('ai:splitEpic', async (_e, dirName: string) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    const t = findTask(String(dirName))
+    if (!t?.record) return { ok: false, error: '任务不存在' }
+    let prd: string | null = null
+    try {
+      prd = readFileSync(join(t.path, 'prd.md'), 'utf-8')
+    } catch {
+      // 无 PRD 也能按描述拆分
+    }
+    const res = await aiSplitEpic(getSettings().ai, { title: t.record.title, description: t.record.description, prd })
+    if (!res.ok || !res.children) return res
+    const created: string[] = []
+    const errors: string[] = []
+    for (const c of res.children) {
+      const r = createTaskRecord({
+        dirName: slugifyTitle(c.title),
+        title: c.title,
+        description: c.description,
+        status: 'planning',
+        priority: t.record.priority,
+        assignee: latestSnapshot?.meta.developer ?? '',
+        origin: 'panel',
+        subtasks: c.subtasks
+      })
+      if (r.ok && r.dirName) {
+        try {
+          const jp = join(projectRoot, '.trellis', 'tasks', r.dirName, 'task.json')
+          const rec = JSON.parse(readFileSync(jp, 'utf-8'))
+          rec.parent = t.dirName
+          writeFileSync(jp, JSON.stringify(rec, null, 2) + '\n', 'utf-8')
+        } catch {
+          // parent 引用写失败不影响目录创建
+        }
+        created.push(r.dirName)
+      } else {
+        errors.push(`${c.title}：${r.error}`)
+      }
+    }
+    if (created.length > 0) sendSnapshot()
+    return { ok: created.length > 0, error: errors.length ? errors.join('；') : undefined, created }
+  })
+
+  ipcMain.handle('ai:commitMsg', async (_e, dirName: string) => {
+    const t = findTask(String(dirName))
+    if (!t?.record) return { ok: false, error: '任务不存在' }
+    let commits: string[] = []
+    if (projectRoot && isGitRepo(projectRoot)) {
+      const info = await taskGitInfo(projectRoot, t.dirName, t.record.branch ?? null, t.record.base_branch ?? null)
+      commits = info.commits.map((c) => `${c.short} ${c.subject}`)
+    }
+    return aiCommitMsg(getSettings().ai, { title: t.record.title, description: t.record.description, recentCommits: commits })
+  })
+
+  ipcMain.handle('ai:prDesc', async (_e, dirName: string) => {
+    const t = findTask(String(dirName))
+    if (!t?.record) return { ok: false, error: '任务不存在' }
+    return aiPrDesc(getSettings().ai, {
+      title: t.record.title,
+      description: t.record.description,
+      subtasks: t.record.subtasks ?? []
+    })
+  })
+
+  ipcMain.handle('task:archive', (_e, dirName: string) => {
+    if (!projectRoot || !latestSnapshot) return { ok: false, error: '未打开项目' }
+    const t = findTask(String(dirName))
+    if (!t) return { ok: false, error: '任务不存在' }
+    if (t.archived) return { ok: false, error: '任务已在归档中' }
+    const target = resolve(t.path)
+    const tasksRoot = resolve(projectRoot, '.trellis', 'tasks') + sep
+    if (!target.startsWith(tasksRoot)) return { ok: false, error: '非法任务目录' }
+    try {
+      const jsonPath = join(target, 'task.json')
+      const rec = JSON.parse(readFileSync(jsonPath, 'utf-8'))
+      if (!rec.completedAt) {
+        const now = new Date()
+        const pad = (x: number): string => String(x).padStart(2, '0')
+        rec.completedAt = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+        writeFileSync(jsonPath, JSON.stringify(rec, null, 2) + '\n', 'utf-8')
+      }
+    } catch {
+      // task.json 缺失时仍允许归档
+    }
+    const archiveRoot = join(projectRoot, '.trellis', 'archive')
+    mkdirSync(archiveRoot, { recursive: true })
+    let destName = basename(target)
+    let dest = join(archiveRoot, destName)
+    let i = 2
+    while (existsSync(dest)) {
+      destName = `${basename(target)}-${i}`
+      dest = join(archiveRoot, destName)
+      i += 1
+    }
+    try {
+      renameSync(target, dest)
+      sendSnapshot()
+      return { ok: true, dirName: destName }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '归档失败' }
+    }
   })
 
   /* ---------------- KB-MCP（AI 编码工具的持久记忆大脑） ---------------- */

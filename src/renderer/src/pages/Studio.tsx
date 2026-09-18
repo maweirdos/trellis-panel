@@ -475,8 +475,8 @@ export function StudioPage(): JSX.Element {
             </button>
           ))}
         </div>
-        <div className="mt-auto border-t border-ink-700 p-3 text-[10.5px] leading-4 text-mist-600">
-          布局遵循 Trellis 官方文档：workflow 变体放 <code>.trellis/workflows/</code>，技能共享层 <code>.agents/skills/</code>。
+        <div className="mt-auto border-t border-ink-700 p-3 text-[10.5px] text-mist-600">
+          布局遵循 Trellis 官方文档
         </div>
       </div>
 
@@ -561,7 +561,7 @@ function WorkflowSection({
     if (res.ok) {
       setCreating(false)
       setNewId('')
-      pushToast({ kind: 'success', title: 'workflow 已创建', body: '已生成可编辑副本' })
+      pushToast({ kind: 'success', title: 'Workflow 已创建' })
       await onChanged()
     } else pushToast({ kind: 'error', title: '创建失败', body: res.error })
   }
@@ -576,7 +576,7 @@ function WorkflowSection({
         <div className="mb-1 flex items-center gap-2">
           <Workflow size={14} className="text-leaf" />
           <span className="text-xs font-semibold text-mist-100">Workflow 解析优先级</span>
-          <span className="text-[10.5px] text-mist-500">从高到低；未设置或无效时向下回退</span>
+          <span className="text-[10.5px] text-mist-500">自上而下回退</span>
         </div>
         <div className="mt-3 grid gap-2 md:grid-cols-4">
           <div className="rounded-lg border border-ink-600 bg-ink-800/60 p-3">
@@ -644,7 +644,7 @@ function WorkflowSection({
           </>
         ) : (
           <button onClick={() => setCreating(true)} className="btn-primary">
-            <Plus size={12} /> 新建 workflow 变体
+            <Plus size={12} /> 新建 Workflow
           </button>
         )}
       </div>
@@ -789,7 +789,7 @@ function ExtSection({
         <div className="relative">
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索名称 / 平台 / 路径…" className="field w-64" />
         </div>
-        <span className="text-[11px] text-mist-500">{extensions.length} 个 · {meta.hint}</span>
+        <span className="text-[11px] text-mist-500">{extensions.length} 个</span>
         <button onClick={() => setAggMode((v) => !v)} className={clsx('chip border transition-colors ml-auto', aggMode ? 'border-leaf-dim/50 text-leaf-soft' : 'border-ink-500 text-mist-400')} title="同名扩展在哪些平台存在/缺失，一键补齐">
           跨平台矩阵{aggMode ? ' 开' : ' 关'}
         </button>
@@ -917,7 +917,7 @@ function HooksSection({
         <div className="mb-1 flex items-center gap-2">
           <Webhook size={14} className="text-leaf" />
           <span className="text-xs font-semibold text-mist-100">任务生命周期钩子</span>
-          <span className="text-[10.5px] text-mist-500">config.yaml hooks.* · 每条命令收到 TASK_JSON_PATH 环境变量</span>
+          <span className="text-[10.5px] text-mist-500">config.yaml hooks.* · 注入 TASK_JSON_PATH</span>
         </div>
         <div className="mt-3 space-y-2">
           {(['after_create', 'after_start', 'after_finish', 'after_archive'] as const).map((ev) => (
@@ -941,7 +941,7 @@ function HooksSection({
               <CheckCircle2 size={12} /> 已写入
             </span>
           )}
-          <span className="ml-auto text-[10.5px] text-mist-600">钩子失败仅警告，不阻塞任务操作</span>
+          <span className="ml-auto text-[10.5px] text-mist-600">失败仅警告，不阻塞操作</span>
         </div>
       </div>
 
@@ -1190,8 +1190,8 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
         <div className="mb-2 flex items-center gap-2">
           <MonitorSmartphone size={14} className="text-leaf" />
           <span className="text-xs font-semibold text-mist-100">平台检测</span>
-          <span className="chip bg-leaf-dim/15 text-[10.5px] text-leaf-soft">{detected.length} / {scan.platforms.length} 已安装</span>
-          <span className="ml-auto text-[10.5px] text-mist-500">安装命令：trellis init --&lt;platform&gt; · 更新：trellis update</span>
+          <span className="chip bg-leaf-dim/15 text-[10.5px] text-leaf-soft">{detected.length} / {scan.platforms.length}</span>
+          <span className="ml-auto text-[10.5px] text-mist-500">trellis init --&lt;platform&gt;</span>
         </div>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {scan.platforms.map((p) => (

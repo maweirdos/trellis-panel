@@ -12,6 +12,7 @@ export type Page =
   | 'channels'
   | 'team'
   | 'jira'
+  | 'architecture'
   | 'studio'
   | 'settings'
 
@@ -86,6 +87,7 @@ interface AppState {
   setInboxProject: (projectRoot: string | null) => void
   refresh: () => Promise<void>
   saveSettings: (patch: Partial<Settings>) => Promise<void>
+  toggleTheme: () => void
   showTask: (dirName: string | null, archived?: boolean) => void
   pushToast: (t: ToastEvent) => void
   dismissToast: (id: number) => void
@@ -187,6 +189,11 @@ export const useApp = create<AppState>((set, get) => ({
   saveSettings: async (patch) => {
     const next = await api.setSettings(patch)
     set({ settings: next })
+  },
+
+  toggleTheme: () => {
+    const cur = get().settings
+    if (cur) void get().saveSettings({ theme: cur.theme === 'dark' ? 'light' : 'dark' })
   },
 
   showTask: (dirName, archived = false) => set({ openTaskDir: dirName, openTaskArchived: archived }),

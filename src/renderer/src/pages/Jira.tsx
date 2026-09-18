@@ -277,7 +277,7 @@ export function JiraPage(): JSX.Element {
                 <button disabled={busy} onClick={() => void importIssue(issue)} className="btn-primary px-2 py-1 text-[10.5px] disabled:opacity-50">
                   <Download size={10} /> {busy ? '加入中…' : '加入待办'}
                 </button>
-                <button onClick={() => setPlanSeed({ title: issue.summary, description: `从 Jira ${issue.key} 规划（类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}）\n\n${issue.summary}`, jiraKey: issue.key, jiraUrl: issue.url })} className="btn-outline px-2 py-1 text-[10.5px]" title="检索知识库并让 AI 生成 Trellis 任务规划">
+                <button onClick={() => setPlanSeed({ title: issue.summary, description: `从 Jira ${issue.key} 规划（类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}）\n\n${issue.summary}`, jiraKey: issue.key, jiraUrl: issue.url })} className="btn-outline px-2 py-1 text-[10.5px]" title="知识库 → AI 任务规划">
                   <Wand2 size={10} /> AI 规划
                 </button>
                 {!linking && (

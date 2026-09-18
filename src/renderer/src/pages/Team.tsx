@@ -614,7 +614,7 @@ function StandupTab(): JSX.Element {
     <div className="card p-4">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-xs font-semibold text-mist-100">每日站会摘要</span>
-        <span className="text-[10.5px] text-mist-500">今天完成 / 进行 / 评审待办 / 停滞阻塞，按负责人分组</span>
+        <span className="text-[10.5px] text-mist-500">完成 · 在途 · 阻塞</span>
         <div className="ml-auto flex gap-1.5">
           <button onClick={() => void generate()} disabled={loading} className="btn-outline text-[11px]">
             重新生成

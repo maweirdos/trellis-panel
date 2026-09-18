@@ -81,6 +81,10 @@ const api = {
     ipcRenderer.invoke('ai:plan', input),
   taskCreateFromPlan: (input: Record<string, unknown>) => ipcRenderer.invoke('task:createFromPlan', input),
   planHandoff: (dirName: string) => ipcRenderer.invoke('plan:handoff', dirName),
+  aiSplitEpic: (dirName: string) => ipcRenderer.invoke('ai:splitEpic', dirName),
+  aiCommitMsg: (dirName: string) => ipcRenderer.invoke('ai:commitMsg', dirName),
+  aiPrDesc: (dirName: string) => ipcRenderer.invoke('ai:prDesc', dirName),
+  taskArchive: (dirName: string) => ipcRenderer.invoke('task:archive', dirName),
   taskWriteArtifact: (dirName: string, fileName: string, content: string) =>
     ipcRenderer.invoke('task:writeArtifact', dirName, fileName, content),
 

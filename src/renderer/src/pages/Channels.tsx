@@ -179,8 +179,8 @@ export function ChannelsPage(): JSX.Element {
               <Plus size={11} /> 新建
             </button>
           </div>
-          <div className="text-[10.5px] leading-4 text-mist-600">
-            事件日志位于 <code>~/.trellis/channels/</code>，每 3 秒轮询刷新。面板以 <code>panel-ui</code> 身份参与。
+          <div className="text-[10.5px] text-mist-600">
+            3 秒轮询 · 以 <code>panel-ui</code> 参与
           </div>
         </div>
 
@@ -215,10 +215,7 @@ export function ChannelsPage(): JSX.Element {
             <div className="grid place-items-center gap-2 py-14 text-center text-xs text-mist-500">
               <RadioTower size={22} className="text-mist-600" />
               <div>
-                还没有 channel。用上方「新建」创建，或让 AI 执行：
-                <div className="mt-1.5 rounded border border-ink-600 bg-ink-900 p-2 text-left font-mono text-[10.5px] text-mist-400">
-                  trellis channel create review --task &lt;task-dir&gt; --by main
-                </div>
+                <div className="font-mono text-[10.5px] text-mist-400">trellis channel create &lt;name&gt; --by main</div>
               </div>
             </div>
           )}
@@ -313,7 +310,7 @@ export function ChannelsPage(): JSX.Element {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send()
               }}
-              placeholder={`向 ${active.name} 发送消息（as panel-ui）…`}
+              placeholder={`发送到 ${active.name}…`}
               className="field flex-1"
             />
             <button onClick={() => void send()} disabled={busy || !input.trim()} className="btn-primary disabled:opacity-40">

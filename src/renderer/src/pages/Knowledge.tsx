@@ -285,11 +285,7 @@ export function KnowledgePage(): JSX.Element {
             <div className="max-w-md space-y-3 p-8 text-center">
               <Library size={36} className="mx-auto text-mist-600" />
               <div className="text-sm font-semibold text-mist-200">四库知识库</div>
-              <p className="text-xs leading-5 text-mist-500">
-                需求库沉淀原始需求，规范库承载团队约定，Wiki 库索引仓库文档，归档库保留历史经验。
-                本地倒排索引全文检索（CJK 二元分词 + TF-IDF），毫秒级响应。
-                {aiEnabled && ' 已接入应用内 AI——可对当前库发起问答。'}
-              </p>
+              <p className="text-xs leading-5 text-mist-500">需求 · 规范 · Wiki · 归档，本地倒排索引，毫秒级检索。</p>
               {!aiEnabled && (
                 <button onClick={() => useApp.getState().setPage('settings')} className="btn-ghost mx-auto text-[11px]">
                   <Sparkles size={12} /> 到设置页接入 AI 模型（baseUrl 自定义）
@@ -329,11 +325,11 @@ export function KnowledgePage(): JSX.Element {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void aiAsk()
                 }}
-                placeholder={`基于${LIBS.find((l) => l.id === lib)?.label ?? '知识库'}提问，回车发送…`}
+                placeholder={`向${LIBS.find((l) => l.id === lib)?.label ?? '知识库'}提问…`}
                 className="field flex-1"
               />
               <button onClick={() => void aiAsk()} disabled={aiBusy || !aiQuestion.trim()} className="btn-primary disabled:opacity-40">
-                {aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} 询问 AI
+                {aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} 提问
               </button>
             </div>
           </div>

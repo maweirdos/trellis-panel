@@ -17,7 +17,12 @@ import {
   Loader2,
   Wand2,
   ExternalLink,
-  PanelLeftClose
+  PanelLeftClose,
+  FolderOpen,
+  Archive,
+  GitBranch,
+  Timer,
+  Split
 } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
@@ -27,6 +32,8 @@ import { taskDateLabel } from '../utils/format'
 import { api } from '../api'
 import { MarkdownView } from '../components/MarkdownView'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
+import { DoDModal } from '../components/DoDModal'
+import { FocusTimer } from '../components/FocusTimer'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
 
@@ -252,13 +259,15 @@ function ReaderView({
   onOpenDetail: (dir: string) => void
 }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
+  const aiEnabled = useApp((s) => s.settings?.ai.enabled ?? false)
   const [wide, setWide] = useState(false)
   const [prd, setPrd] = useState<string | null>(null)
   const [prdName, setPrdName] = useState<string | null>(null)
   const [loadingPrd, setLoadingPrd] = useState(false)
-  const [aiBusy, setAiBusy] = useState<'prd' | 'summary' | null>(null)
+  const [aiBusy, setAiBusy] = useState<'prd' | 'summary' | 'split' | null>(null)
   const [aiDraft, setAiDraft] = useState<string | null>(null)
   const [aiSummaryText, setAiSummaryText] = useState<string | null>(null)
+  const [dodOpen, setDodOpen] = useState(false)
 
   const idx = Math.max(0, tasks.findIndex((t) => t.dirName === selected))
   const task = tasks[idx] ?? null
@@ -302,7 +311,7 @@ function ReaderView({
       <div className="grid h-full place-items-center text-xs text-mist-500">
         <div className="text-center">
           <BookOpenText size={28} className="mx-auto mb-2 text-mist-600" />
-          当前筛选下没有任务——左侧切换或调整过滤条件
+          没有匹配的任务
         </div>
       </div>
     )
@@ -343,6 +352,34 @@ function ReaderView({
       setPrdName('prd.md')
     } else {
       pushToast({ kind: 'error', title: '保存失败', body: res.error })
+    }
+  }
+
+  const isDone = ['completed', 'done'].includes(statusOf(task))
+  const isRoot = !task.record?.parent
+  const archive = async (): Promise<void> => {
+    const res = await api.taskArchive(task.dirName)
+    if (res.ok) {
+      pushToast({ kind: 'success', title: '已归档', body: res.dirName })
+      onSelect(null)
+    } else {
+      pushToast({ kind: 'error', title: '归档失败', body: res.error })
+    }
+  }
+  const split = async (): Promise<void> => {
+    setAiBusy('split')
+    const res = await api.aiSplitEpic(task.dirName)
+    setAiBusy(null)
+    if (res.ok) pushToast({ kind: 'success', title: `已拆分 ${res.created?.length ?? 0} 个子任务`, body: res.created?.join('、') })
+    else pushToast({ kind: 'error', title: '拆分失败', body: res.error })
+  }
+  const genText = async (kind: 'commit' | 'pr'): Promise<void> => {
+    const res = kind === 'commit' ? await api.aiCommitMsg(task.dirName) : await api.aiPrDesc(task.dirName)
+    if (res.ok && res.content) {
+      await api.copyToClipboard(res.content)
+      pushToast({ kind: 'success', title: kind === 'commit' ? '提交信息已复制' : 'PR 描述已复制' })
+    } else {
+      pushToast({ kind: 'error', title: kind === 'commit' ? '生成失败' : '生成失败', body: res.error })
     }
   }
 
@@ -414,11 +451,17 @@ function ReaderView({
               <span className="chip bg-violet-500/15 text-[10px] text-violet-300" title="task.json 的 workflow pin">workflow: {task.record.workflow}</span>
             )}
             <div className="ml-auto flex items-center gap-1.5">
+              <FocusTimer task={task} />
               <select
                 value={statusOf(task)}
                 onChange={(e) => {
                   void (async () => {
-                    const res = await api.updateTask(task.path, { status: e.target.value })
+                    const target = e.target.value
+                    if (target === 'completed' && !isDone) {
+                      setDodOpen(true)
+                      return
+                    }
+                    const res = await api.updateTask(task.path, { status: target })
                     if (!res.ok) pushToast({ kind: 'error', title: '状态更新失败', body: res.error })
                   })()
                 }}
@@ -428,8 +471,24 @@ function ReaderView({
                   <option key={c.status} value={c.status}>{statusLabel(c.status)}</option>
                 ))}
               </select>
-              <button onClick={() => void api.revealInExplorer(task.path)} className="btn-ghost justify-center px-1.5" title="打开任务目录">
+              {isRoot && (
+                <button onClick={() => void split()} disabled={aiBusy !== null || !aiEnabled} className="btn-ghost justify-center px-1.5" title="AI 拆分子任务">
+                  {aiBusy === 'split' ? <Loader2 size={12} className="animate-spin" /> : <Split size={12} />}
+                </button>
+              )}
+              {isDone && (
+                <button onClick={() => void archive()} className="btn-ghost justify-center px-1.5 text-amber-300" title="归档">
+                  <Archive size={12} />
+                </button>
+              )}
+              <button onClick={() => void genText('commit')} disabled={!aiEnabled} className="btn-ghost justify-center px-1.5 disabled:opacity-40" title="AI 提交信息（复制）">
+                <GitBranch size={12} />
+              </button>
+              <button onClick={() => void genText('pr')} disabled={!aiEnabled} className="btn-ghost justify-center px-1.5 disabled:opacity-40" title="AI PR 描述（复制）">
                 <ExternalLink size={12} />
+              </button>
+              <button onClick={() => void api.revealInExplorer(task.path)} className="btn-ghost justify-center px-1.5" title="打开任务目录">
+                <FolderOpen size={12} />
               </button>
             </div>
           </div>
@@ -552,6 +611,17 @@ function ReaderView({
             </div>
           )}
 
+          {dodOpen && (
+            <DoDModal
+              task={task}
+              onClose={() => setDodOpen(false)}
+              onDone={() => {
+                setDodOpen(false)
+                pushToast({ kind: 'success', title: '已完成', body: task.dirName })
+              }}
+            />
+          )}
+
           {/* 上一篇 / 下一篇 */}
           <div className="sticky bottom-0 -mx-8 flex items-center gap-2 border-t border-ink-700/70 bg-ink-900/90 px-8 py-2.5 backdrop-blur">
             <button onClick={() => goto(-1)} disabled={idx <= 0} className="btn-ghost text-[11px] disabled:opacity-30">
@@ -581,6 +651,8 @@ export function TasksPage(): JSX.Element {
   const [planSeed, setPlanSeed] = useState<PlanningSeed | null>(null)
   /** 已展开的「已完成」等大列（列 key） */
   const [expandedCols, setExpandedCols] = useState<Set<string>>(new Set())
+  /** 完成门禁：待确认的任务 */
+  const [dodTask, setDodTask] = useState<TaskInfo | null>(null)
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState('')
   const [dragOver, setDragOver] = useState<string | null>(null)
@@ -640,6 +712,10 @@ export function TasksPage(): JSX.Element {
 
   const moveTo = async (t: TaskInfo, status: string): Promise<void> => {
     if (t.record?.status === status) return
+    if (status === 'completed' && !['completed', 'done'].includes((t.record?.status ?? '').toLowerCase())) {
+      setDodTask(t)
+      return
+    }
     const res = await api.updateTask(t.path, { status })
     if (!res.ok) {
       pushToast({ kind: 'error', title: '状态更新失败', body: res.error })
@@ -667,7 +743,7 @@ export function TasksPage(): JSX.Element {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索任务标题 / 描述 / 目录…"
+            placeholder="搜索任务…"
             className="field w-64 pl-8"
           />
         </div>
@@ -696,10 +772,10 @@ export function TasksPage(): JSX.Element {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => setIntakeOpen(true)} className="btn-primary" title="新建待办：记录需求，等待 AI 认领">
+          <button onClick={() => setIntakeOpen(true)} className="btn-primary" title="新建待办">
             <Sparkles size={12} /> 新建待办
           </button>
-          <button onClick={() => setPlanSeed({ title: '', description: '' })} className="btn-outline" title="需求 → 检索知识库 → AI 生成 Trellis 任务规划">
+          <button onClick={() => setPlanSeed({ title: '', description: '' })} className="btn-outline" title="知识库 → AI 生成任务规划">
             <Wand2 size={12} /> AI 规划
           </button>
           {hasEpics && view === 'board' && (
@@ -711,7 +787,7 @@ export function TasksPage(): JSX.Element {
               <Layers size={11} /> 需求组{groupOn ? ' 开' : ' 关'}
             </button>
           )}
-          <span className="hidden text-[11px] text-mist-500 md:inline">{filtered.length} 个任务 · 拖拽切换状态</span>
+          <span className="hidden text-[11px] text-mist-500 md:inline">{filtered.length} 个任务</span>
           <div className="flex overflow-hidden rounded-lg border border-ink-500">
             {(
               [
@@ -842,6 +918,13 @@ export function TasksPage(): JSX.Element {
       {view === 'swimlane' && <SwimlaneView />}
 
       {planSeed && <PlanningModal seed={planSeed} onClose={() => setPlanSeed(null)} />}
+      {dodTask && (
+        <DoDModal
+          task={dodTask}
+          onClose={() => setDodTask(null)}
+          onDone={() => setDodTask(null)}
+        />
+      )}
     </div>
   )
   function SwimlaneView(): JSX.Element {

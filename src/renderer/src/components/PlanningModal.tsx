@@ -153,15 +153,15 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
                 <input value={title} onChange={(e) => setTitle(e.target.value)} className="field w-full" placeholder="如：退药审核行内绑定与比对回退" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-mist-400">需求描述 / Jira 原文（可编辑补充）</span>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={7} className="field w-full resize-y font-mono text-[12px]" placeholder="粘贴 Jira 描述、原始需求或直接一句话说明目标…" />
+                <span className="mb-1 block text-[11px] text-mist-400">需求描述（可编辑）</span>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={7} className="field w-full resize-y font-mono text-[12px]" placeholder="Jira 描述或原始需求…" />
               </label>
               {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-[11.5px] text-rose-300">{error}</div>}
               <div className="flex items-center gap-2 pt-1">
                 <button onClick={() => void generate()} disabled={!aiEnabled} className="btn-primary disabled:opacity-40">
-                  <Wand2 size={12} /> 检索知识库并生成计划
+                  <Wand2 size={12} /> 生成计划
                 </button>
-                <span className="text-[10.5px] text-mist-600">AI 会先在四库中检索相关 spec / wiki / 历史 PRD 作为上下文</span>
+                <span className="text-[10.5px] text-mist-600">四库检索 → AI 组织</span>
               </div>
             </div>
           )}
@@ -183,7 +183,7 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
               {/* KB 来源 */}
               <div>
                 <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-mist-500">
-                  <Library size={11} /> 知识库来源（{result?.sources.length ?? 0} 篇 · {result?.contextChars ?? 0} 字符已注入 AI）
+                  <Library size={11} /> 知识库来源 · {result?.sources.length ?? 0} 篇
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {(result?.sources ?? []).map((s) => (
@@ -221,7 +221,7 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
-                  <span className="mb-1 block text-[11px] text-mist-400">分支建议（创建后可在详情一键建分支）</span>
+                  <span className="mb-1 block text-[11px] text-mist-400">分支建议</span>
                   <input value={plan.branch ?? ''} onChange={(e) => setPlan({ ...plan, branch: e.target.value })} className="field w-full font-mono text-[12px]" placeholder="feat/xxx" />
                 </label>
                 <label className="block">
@@ -230,14 +230,14 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
                 </label>
               </div>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-mist-400">PRD 草稿（写入任务目录，AI 按 workflow 消费）</span>
+                <span className="mb-1 block text-[11px] text-mist-400">PRD 草稿</span>
                 <div className="max-h-56 overflow-y-auto rounded-lg border border-ink-600 bg-ink-950 p-3">
                   <MarkdownView content={plan.description} />
                 </div>
                 <textarea value={plan.description} onChange={(e) => setPlan({ ...plan, description: e.target.value })} rows={3} className="field mt-1.5 w-full resize-y font-mono text-[11px]" title="编辑 PRD 原文" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-mist-400">子任务（每行一条，创建后为可勾选清单）</span>
+                <span className="mb-1 block text-[11px] text-mist-400">子任务（每行一条）</span>
                 <textarea value={subtasksText} onChange={(e) => setSubtasksText(e.target.value)} rows={5} className="field w-full resize-y font-mono text-[12px]" />
               </label>
               {(plan.questions.length > 0 || result?.sources.length === 0) && (
@@ -259,7 +259,7 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
                 <button onClick={() => void generate()} className="btn-ghost text-[11px]">
                   <RefreshCw size={11} /> 重新生成
                 </button>
-                <span className="ml-auto text-[10.5px] text-mist-600">将写入 .trellis/tasks/（{snapshot?.meta.developer || '当前开发者'}）</span>
+                <span className="ml-auto text-[10.5px] text-mist-600">.trellis/tasks/</span>
               </div>
             </div>
           )}
@@ -278,9 +278,7 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
                 </button>
               </div>
               <div>
-                <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-mist-500">
-                  无缝衔接 AI 工具 —— 复制启动提示词，到对应工具里粘贴即可开始
-                </div>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-mist-500">启动衔接</div>
                 <div className="space-y-1.5">
                   {handoffs.map((h) => (
                     <div key={h.platform} className="flex items-start gap-2 rounded-lg border border-ink-700 bg-ink-850/60 p-2.5">
@@ -295,9 +293,8 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
               </div>
               <div className="flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-850/40 p-3">
                 <Radio size={13} className="shrink-0 text-leaf" />
-                <div className="min-w-0 flex-1 text-[11px] text-mist-400">
-                  也可以到「AI 频道」派发 worker 全自动执行：
-                  <code className="ml-1 font-mono text-[10.5px]">trellis channel create {createdDir}-exec --task {createdDir} --by panel-ui</code>
+                <div className="min-w-0 flex-1 truncate text-[11px] text-mist-400">
+                  <code className="font-mono text-[10.5px]">channel create {createdDir}-exec --task {createdDir}</code>
                 </div>
                 <button onClick={() => { void api.copyToClipboard(`trellis channel create ${createdDir}-exec --task ${createdDir} --by panel-ui`); pushToast({ kind: 'success', title: '频道命令已复制' }) }} className="btn-ghost shrink-0 text-[10.5px]">
                   <Copy size={11} /> 复制

@@ -534,7 +534,7 @@ export function SettingsPage(): JSX.Element {
                 checked={ai.enabled}
                 onChange={(e) => setAi((c) => ({ ...c, enabled: e.target.checked }))}
               />
-              启用应用内 AI（知识库问答 / PRD 草稿 / 任务摘要）
+              知识库问答 · PRD 草稿 · 任务摘要 · 任务规划
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
@@ -587,9 +587,8 @@ export function SettingsPage(): JSX.Element {
               </button>
               {aiOk && <span className="text-[11px] text-emerald-300">{aiOk}</span>}
             </div>
-            <div className="text-[10.5px] leading-4 text-mist-600">
-              兼容所有 OpenAI 格式端点：Ollama <code>http://localhost:11434/v1</code> · LM Studio <code>http://localhost:1234/v1</code> ·
-              One-API / OpenRouter / DeepSeek 等云端 <code>https://…/v1</code>。Key 经系统 DPAPI 加密存储。
+            <div className="text-[10.5px] text-mist-600">
+              兼容 OpenAI 协议端点（Ollama / LM Studio / 云端）。密钥经 DPAPI 加密存储。
             </div>
           </div>
         </section>
@@ -601,13 +600,11 @@ export function SettingsPage(): JSX.Element {
           </div>
           <div className="space-y-2.5">
             <div className="text-[11.5px] leading-5 text-mist-400">
-              把四库知识库（需求 / 规范 / Wiki / 归档）以 <b>本地 stdio MCP 服务器</b>暴露给 codex / Claude Code / ZCode：
-              工具把它作为子进程拉起，检索在进程内倒排索引上完成——<span className="text-leaf-soft">无网络、无 embedding，单查询毫秒级</span>，
-              彻底避开远程/向量知识库的秒级延迟。AI 写代码时随时 <code>kb_search</code> / <code>kb_read</code> / <code>kb_context</code>。
+              本地 stdio MCP 服务器暴露四库给编码工具——进程内检索，毫秒级响应。工具：<code>kb_search</code> · <code>kb_read</code> · <code>kb_context</code>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={() => void installKbMcp()} className="btn-primary">
-                <Server size={12} /> 安装 / 更新 并注册到当前项目
+                <Server size={12} /> 安装并注册
               </button>
               {mcpKbStatus?.installed && (
                 <span className="text-[11px] text-emerald-300">
@@ -618,20 +615,19 @@ export function SettingsPage(): JSX.Element {
             {mcpKbResult && (
               <div className="space-y-1.5 rounded-lg border border-ink-600 bg-ink-800/60 p-3 text-[11px] leading-5 text-mist-300">
                 <div>
-                  服务器脚本：<code className="font-mono text-[10.5px]">{mcpKbResult.scriptPath}</code>
+                  <code className="font-mono text-[10.5px]">{mcpKbResult.scriptPath}</code>
                 </div>
                 <div>
                   {mcpKbResult.claudeMcpJson ? (
-                    <span className="text-emerald-300">✓ 已写入 {mcpKbResult.claudeMcpJson}（Claude Code 标准配置，随仓库共享）</span>
+                    <span className="text-emerald-300">✓ .mcp.json</span>
                   ) : (
-                    <span className="text-amber-300">未能自动写入 .mcp.json——请手动添加下方通用配置</span>
+                    <span className="text-amber-300">.mcp.json 未写入——用下方通用配置</span>
                   )}
-                </div>
-                <div>
+                  <span className="mx-2 text-mist-600">·</span>
                   {mcpKbResult.codexWritten ? (
-                    <span className="text-emerald-300">✓ 已写入 ~/.codex/config.toml（Codex MCP）</span>
+                    <span className="text-emerald-300">✓ ~/.codex/config.toml</span>
                   ) : (
-                    <span className="text-amber-300">Codex 未自动写入——请将下方 TOML 片段加入 ~/.codex/config.toml</span>
+                    <span className="text-amber-300">Codex 待手动配置</span>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -647,8 +643,8 @@ export function SettingsPage(): JSX.Element {
                 </div>
               </div>
             )}
-            <div className="text-[10.5px] leading-4 text-mist-600">
-              提示：在 AI 工具里直接说「用 kb_search 查一下 XX 规范」即可；<code>.mcp.json</code> 随仓库提交后，团队成员共享同一记忆大脑。
+            <div className="text-[10.5px] text-mist-600">
+              <code>.mcp.json</code> 随仓库提交，团队共享。
             </div>
           </div>
         </section>

@@ -11,7 +11,8 @@ import {
   GitPullRequestArrow,
   Library,
   Wand2,
-  Radio
+  Radio,
+  Network
 } from 'lucide-react'
 import { useApp, type Page } from '../store'
 import { clsx } from 'clsx'
@@ -45,6 +46,7 @@ const GROUPS: Array<{ label: string; items: Array<{ id: Page; label: string; ico
   {
     label: '系统',
     items: [
+      { id: 'architecture', label: '架构图', icon: <Network size={16} /> },
       { id: 'studio', label: '定制中心', icon: <Wand2 size={16} /> },
       { id: 'settings', label: '设置', icon: <Settings size={16} /> }
     ]

@@ -721,6 +721,10 @@ export interface TrellisApi {
   aiPlan: (input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) => Promise<PlanResult>
   taskCreateFromPlan: (input: TaskPlan & { jiraKey?: string; jiraUrl?: string }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
   planHandoff: (dirName: string) => Promise<HandoffText[]>
+  aiSplitEpic: (dirName: string) => Promise<{ ok: boolean; error?: string; created?: string[] }>
+  aiCommitMsg: (dirName: string) => Promise<AiChatResult>
+  aiPrDesc: (dirName: string) => Promise<AiChatResult>
+  taskArchive: (dirName: string) => Promise<{ ok: boolean; error?: string; dirName?: string }>
   taskWriteArtifact: (dirName: string, fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
 
   /* --- KB-MCP --- */

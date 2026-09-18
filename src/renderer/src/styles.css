@@ -217,3 +217,47 @@ select {
   from { opacity: 0; transform: translateX(16px) scale(.97); }
   to { opacity: 1; transform: translateX(0) scale(1); }
 }
+
+/* ---------- Architecture（工作流架构图） ---------- */
+.arch-svg { font-family: ui-sans-serif, system-ui, sans-serif; }
+.arch-lane {
+  fill: #5b6472;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+}
+.arch-lane-line { stroke: #2a2f3a; stroke-width: 1; }
+.arch-edge-path {
+  stroke: #3a4150;
+  stroke-width: 1.4;
+  fill: none;
+}
+.arch-edge-main .arch-edge-path { stroke: #4d5a70; }
+.arch-edge-dashed { stroke-dasharray: 5 5; }
+.arch-edge-active .arch-edge-path { stroke: #7fc4a4; stroke-width: 2; }
+.arch-edge-label {
+  fill: #8b94a5;
+  font-size: 9.5px;
+  text-anchor: middle;
+}
+.arch-flow-dot { fill: #9fe0be; filter: drop-shadow(0 0 4px rgba(127,196,164,.9)); }
+.arch-node rect { transition: opacity .18s ease, filter .18s ease; }
+.arch-node-tool rect { fill: #1d222c; stroke: #4a5468; }
+.arch-node-hook rect { fill: #17202b; stroke: #3d6b8f; }
+.arch-node-agent rect { fill: #201a2b; stroke: #6b5a9e; }
+.arch-node-file rect { fill: #1a2029; stroke: #3f5a4d; }
+.arch-node-state rect { fill: #142018; stroke: #3f7a58; }
+.arch-node-title { fill: #e6eaf2; font-size: 12px; font-weight: 600; }
+.arch-node-sub { fill: #79828f; font-size: 9.5px; font-family: ui-monospace, monospace; }
+.arch-node:hover rect { stroke: #9fe0be; }
+.arch-node-dim { opacity: .38; }
+.arch-node-live rect {
+  stroke: #7fc4a4;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 6px rgba(127,196,164,.55));
+  animation: archPulse 2s ease-in-out infinite;
+}
+@keyframes archPulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(127,196,164,.4)); }
+  50% { filter: drop-shadow(0 0 10px rgba(127,196,164,.85)); }
+}
