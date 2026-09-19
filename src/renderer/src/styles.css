@@ -218,43 +218,57 @@ select {
   to { opacity: 1; transform: translateX(0) scale(1); }
 }
 
-/* ---------- Architecture（工作流架构图） ---------- */
+/* ---------- Architecture（工作流架构图，跟随明暗主题） ---------- */
 .arch-svg { font-family: ui-sans-serif, system-ui, sans-serif; }
-.arch-lane {
-  fill: #5b6472;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .08em;
-}
-.arch-lane-line { stroke: #2a2f3a; stroke-width: 1; }
-.arch-edge-path {
-  stroke: #3a4150;
-  stroke-width: 1.4;
-  fill: none;
-}
-.arch-edge-main .arch-edge-path { stroke: #4d5a70; }
+
+/* 浅色主题（默认） */
+.arch-lane { fill: #8b93a2; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.arch-lane-line { stroke: #d7dce4; stroke-width: 1; }
+.arch-edge-path { stroke: #9aa3b2; stroke-width: 1.4; fill: none; }
+.arch-edge-main .arch-edge-path { stroke: #5d6a80; stroke-width: 1.6; }
 .arch-edge-dashed { stroke-dasharray: 5 5; }
-.arch-edge-active .arch-edge-path { stroke: #7fc4a4; stroke-width: 2; }
-.arch-edge-label {
-  fill: #8b94a5;
-  font-size: 9.5px;
-  text-anchor: middle;
-}
-.arch-flow-dot { fill: #9fe0be; filter: drop-shadow(0 0 4px rgba(127,196,164,.9)); }
+.arch-edge-active .arch-edge-path { stroke: #2f8a55; stroke-width: 2; }
+.arch-edge-label { fill: #79828f; font-size: 9.5px; text-anchor: middle; }
+.arch-flow-dot { fill: #2f9e5f; filter: drop-shadow(0 0 3px rgba(47,158,95,.7)); }
+
 .arch-node rect { transition: opacity .18s ease, filter .18s ease; }
-.arch-node-tool rect { fill: #1d222c; stroke: #4a5468; }
-.arch-node-hook rect { fill: #17202b; stroke: #3d6b8f; }
-.arch-node-agent rect { fill: #201a2b; stroke: #6b5a9e; }
-.arch-node-file rect { fill: #1a2029; stroke: #3f5a4d; }
-.arch-node-state rect { fill: #142018; stroke: #3f7a58; }
-.arch-node-title { fill: #e6eaf2; font-size: 12px; font-weight: 600; }
-.arch-node-sub { fill: #79828f; font-size: 9.5px; font-family: ui-monospace, monospace; }
-.arch-node:hover rect { stroke: #9fe0be; }
+rect.arch-node-tool { fill: #ffffff; stroke: #8fa0b5; }
+rect.arch-node-hook { fill: #f0f7fc; stroke: #3e7fae; }
+rect.arch-node-agent { fill: #f5f0fc; stroke: #8168cf; }
+rect.arch-node-file { fill: #f0f8f3; stroke: #47946a; }
+rect.arch-node-state { fill: #eef8f1; stroke: #2f9e5f; }
+.arch-node-title { fill: #222b38; font-size: 12px; font-weight: 600; }
+.arch-node-sub { fill: #6d7684; font-size: 9.5px; font-family: ui-monospace, monospace; }
+.arch-node:hover rect { stroke: #2f9e5f; stroke-width: 1.6; }
 .arch-node-dim { opacity: .38; }
 .arch-node-live rect {
-  stroke: #7fc4a4;
+  stroke: #2f9e5f;
   stroke-width: 2;
-  filter: drop-shadow(0 0 6px rgba(127,196,164,.55));
+  animation: archPulseLight 2s ease-in-out infinite;
+}
+@keyframes archPulseLight {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(47,158,95,.35)); }
+  50% { filter: drop-shadow(0 0 8px rgba(47,158,95,.75)); }
+}
+
+/* 深色主题覆盖（html.dark） */
+.dark .arch-lane { fill: #5b6472; }
+.dark .arch-lane-line { stroke: #2a2f3a; }
+.dark .arch-edge-path { stroke: #3a4150; }
+.dark .arch-edge-main .arch-edge-path { stroke: #4d5a70; }
+.dark .arch-edge-active .arch-edge-path { stroke: #7fc4a4; }
+.dark .arch-edge-label { fill: #8b94a5; }
+.dark .arch-flow-dot { fill: #9fe0be; filter: drop-shadow(0 0 4px rgba(127,196,164,.9)); }
+.dark rect.arch-node-tool { fill: #1d222c; stroke: #4a5468; }
+.dark rect.arch-node-hook { fill: #17202b; stroke: #3d6b8f; }
+.dark rect.arch-node-agent { fill: #201a2b; stroke: #6b5a9e; }
+.dark rect.arch-node-file { fill: #1a2029; stroke: #3f5a4d; }
+.dark rect.arch-node-state { fill: #142018; stroke: #3f7a58; }
+.dark .arch-node-title { fill: #e6eaf2; }
+.dark .arch-node-sub { fill: #79828f; }
+.dark .arch-node:hover rect { stroke: #9fe0be; }
+.dark .arch-node-live rect {
+  stroke: #7fc4a4;
   animation: archPulse 2s ease-in-out infinite;
 }
 @keyframes archPulse {

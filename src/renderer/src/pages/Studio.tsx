@@ -23,6 +23,7 @@ import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { fmtBytes, relTime } from '../utils/format'
+import { MarkdownView } from '../components/MarkdownView'
 import type { ExtEntry, ExtKind, StudioScan, WorkflowInfo } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -84,13 +85,16 @@ function FileEditor({
   title,
   onClose,
   onSaved,
-  validate
+  validate,
+  renderable = false
 }: {
   path: string
   title: string
   onClose: () => void
   onSaved: () => void
   validate?: (raw: string) => string[]
+  /** markdown 正文：提供 预览 / 编辑 切换（默认预览） */
+  renderable?: boolean
 }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const [raw, setRaw] = useState<string | null>(null)
@@ -98,6 +102,7 @@ function FileEditor({
   const [mtime, setMtime] = useState<number | undefined>()
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [view, setView] = useState<'preview' | 'edit'>(renderable ? 'preview' : 'edit')
   const dirty = raw !== null && content !== raw
 
   useEffect(() => {
@@ -135,6 +140,27 @@ function FileEditor({
         <span className="text-xs font-semibold text-mist-100">{title}</span>
         <span className="truncate font-mono text-[10.5px] text-mist-500">{path}</span>
         <div className="ml-auto flex items-center gap-2">
+          {renderable && (
+            <div className="flex overflow-hidden rounded-lg border border-ink-500">
+              {(
+                [
+                  ['preview', '预览'],
+                  ['edit', '编辑']
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => setView(id)}
+                  className={clsx(
+                    'px-2.5 py-1 text-[11px] transition-colors',
+                    view === id ? 'bg-leaf-dim/25 text-leaf-soft' : 'text-mist-400 hover:text-mist-200'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {dirty && <span className="chip bg-amber-500/15 text-amber-300">未保存</span>}
           <button onClick={save} disabled={!dirty || saving} className="btn-primary disabled:opacity-40">
             <Save size={12} /> 保存
@@ -158,12 +184,20 @@ function FileEditor({
           ))}
         </div>
       )}
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        spellCheck={false}
-        className="min-h-0 flex-1 resize-none bg-ink-950 p-4 font-mono text-[12px] leading-5 text-mist-200 outline-none"
-      />
+      {view === 'preview' && renderable ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          <div className="mx-auto max-w-[860px]">
+            <MarkdownView content={content} />
+          </div>
+        </div>
+      ) : (
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          spellCheck={false}
+          className="min-h-0 flex-1 resize-none bg-ink-950 p-4 font-mono text-[12px] leading-5 text-mist-200 outline-none"
+        />
+      )}
     </div>
   )
 }
@@ -211,7 +245,7 @@ function WorkflowEditor({ wf, onClose, onSaved }: { wf: WorkflowInfo; onClose: (
         ))}
       </div>
       <div className="relative min-w-0 flex-1">
-        <FileEditor path={wf.path} title={`workflow：${wf.name}`} onClose={onClose} onSaved={onSaved} validate={validateWorkflow} />
+        <FileEditor path={wf.path} title={`workflow：${wf.name}`} onClose={onClose} onSaved={onSaved} validate={validateWorkflow} renderable />
       </div>
     </div>
   )
@@ -251,6 +285,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
   const [mtime, setMtime] = useState<number | undefined>()
   const [error, setError] = useState<string | null>(null)
   const [editingRaw, setEditingRaw] = useState(false)
+  const [bodyView, setBodyView] = useState<'preview' | 'edit'>('edit')
 
   useEffect(() => {
     void api.studioRead(ext.path).then((res) => {
@@ -362,16 +397,42 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
                 )}
               </label>
             ))}
-            <label className="block flex-1">
-              <span className="mb-1 block font-mono text-[11px] text-mist-400">正文（系统提示词 / 指令）</span>
-              <textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                spellCheck={false}
-                rows={18}
-                className="w-full resize-y rounded-lg border border-ink-600 bg-ink-950 p-3 font-mono text-[12px] leading-5 text-mist-200 outline-none"
-              />
-            </label>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="font-mono text-[11px] text-mist-400">正文</span>
+                <div className="ml-auto flex overflow-hidden rounded-lg border border-ink-500">
+                  {(
+                    [
+                      ['preview', '预览'],
+                      ['edit', '编辑']
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setBodyView(id)}
+                      className={clsx(
+                        'px-2.5 py-0.5 text-[10.5px] transition-colors',
+                        bodyView === id ? 'bg-leaf-dim/25 text-leaf-soft' : 'text-mist-400 hover:text-mist-200'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {bodyView === 'preview' ? (
+                <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-ink-600 bg-ink-950 p-3">
+                  <MarkdownView content={body} />
+                </div>
+              ) : (
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  spellCheck={false}
+                  className="min-h-0 flex-1 resize-none rounded-lg border border-ink-600 bg-ink-950 p-3 font-mono text-[12px] leading-5 text-mist-200 outline-none"
+                />
+              )}
+            </div>
           </div>
         )}
       </div>
