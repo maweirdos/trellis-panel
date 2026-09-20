@@ -79,6 +79,9 @@ interface AppState {
   intakeOpen: boolean
   inboxProjectRoot: string | null
   inbox: Record<string, InboxEntry>
+  sidebarCollapsed: boolean
+  toggleSidebar: () => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   setPage: (p: Page) => void
   bootstrap: () => Promise<void>
   openProjectPath: (root: string) => Promise<void>
@@ -119,6 +122,22 @@ export const useApp = create<AppState>((set, get) => ({
   intakeOpen: false,
   inboxProjectRoot: null,
   inbox: loadInbox(null),
+  sidebarCollapsed: localStorage.getItem('tpanel.sidebarCollapsed') === 'true',
+
+  toggleSidebar: () => {
+    const next = !get().sidebarCollapsed
+    try {
+      localStorage.setItem('tpanel.sidebarCollapsed', String(next))
+    } catch {}
+    set({ sidebarCollapsed: next })
+  },
+
+  setSidebarCollapsed: (collapsed) => {
+    try {
+      localStorage.setItem('tpanel.sidebarCollapsed', String(collapsed))
+    } catch {}
+    set({ sidebarCollapsed: collapsed })
+  },
 
   setPage: (page) => set({ page }),
 

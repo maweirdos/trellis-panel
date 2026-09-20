@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Search,
   Filter,
   Inbox,
-  LayoutGrid,
-  Rows3,
-  Users2,
   Star,
   Paperclip,
   CircleCheck,
@@ -17,12 +14,21 @@ import {
   Loader2,
   Wand2,
   ExternalLink,
-  PanelLeftClose,
   FolderOpen,
   Archive,
   GitBranch,
-  Timer,
-  Split
+  Split,
+  X,
+  Check,
+  ListChecks,
+  FileText,
+  FileCode,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Compass,
+  ArrowLeft
 } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
@@ -31,13 +37,12 @@ import { statusLabel } from '../utils/labels'
 import { taskDateLabel } from '../utils/format'
 import { api } from '../api'
 import { MarkdownView } from '../components/MarkdownView'
+import { CodeView } from '../components/CodeView'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import { DoDModal } from '../components/DoDModal'
 import { FocusTimer } from '../components/FocusTimer'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
-
-type ViewMode = 'board' | 'list' | 'swimlane' | 'reader'
 
 const COLUMNS: Array<{ status: string; label: string; dot: string; ring: string }> = [
   { status: 'planning', label: '规划中', dot: 'bg-sky-400', ring: 'ring-sky-500/40' },
@@ -150,40 +155,58 @@ function EpicCard({
   return (
     <div
       className={clsx(
-        'overflow-hidden rounded-lg border transition-all',
+        'group overflow-hidden rounded-lg border transition-all',
         open ? 'border-leaf-dim/40 bg-ink-800' : 'border-ink-700 bg-ink-800/80 hover:border-ink-500'
       )}
     >
-      <button onClick={() => setOpen((o) => !o)} className="w-full px-3 py-2.5 text-left" title={fullTitle}>
-        <div className="flex items-center gap-1.5">
-          {open ? (
-            <ChevronDown size={12} className="shrink-0 text-leaf" />
-          ) : (
-            <ChevronRight size={12} className="shrink-0 text-mist-500" />
-          )}
-          <Layers size={11} className="shrink-0 text-leaf" />
-          <span className="text-[10px] font-medium uppercase tracking-wide text-leaf-soft/80">需求组</span>
-          <span className="ml-auto shrink-0 rounded bg-ink-750 px-1.5 font-mono text-[10px] text-mist-400">
-            {done}/{children.length}
-          </span>
-        </div>
-        <div className="mt-1.5 line-clamp-2 pl-4 text-xs leading-5 text-mist-100">{fullTitle}</div>
-        <div className="mt-1.5 flex items-center gap-2 pl-4 text-[10.5px] text-mist-500">
-          <span className="truncate">{epic.record?.assignee || epic.record?.creator || '未分配'}</span>
-          {prog && (
-            <span className="ml-auto flex shrink-0 items-center gap-1">
-              <CircleCheck size={10} className={prog.done === prog.total ? 'text-leaf' : 'text-mist-600'} />
-              {prog.done}/{prog.total}
+      <div className="flex items-start">
+        {/* 左侧折叠/展开子任务切换按钮 */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen((o) => !o)
+          }}
+          className="p-2.5 pr-1 text-mist-500 transition-colors hover:text-leaf"
+          title={open ? '收起子任务列表' : `展开 ${children.length} 个子任务`}
+        >
+          {open ? <ChevronDown size={14} className="text-leaf" /> : <ChevronRight size={14} />}
+        </button>
+
+        {/* 卡片主体：点击直接打开需求组父任务本身的文档 */}
+        <div
+          onClick={() => onOpen(epic.dirName)}
+          className="min-w-0 flex-1 cursor-pointer py-2.5 pr-3"
+          title={`点击查看需求组文档 · ${fullTitle}`}
+        >
+          <div className="flex items-center gap-1.5">
+            <Layers size={11} className="shrink-0 text-leaf" />
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-leaf-soft">需求组</span>
+            <span className="ml-auto shrink-0 rounded bg-ink-750 px-1.5 font-mono text-[10px] text-mist-400">
+              {done}/{children.length}
             </span>
-          )}
+          </div>
+          <div className="mt-1 line-clamp-2 text-xs leading-5 text-mist-100 transition-colors group-hover:text-leaf-soft">
+            {fullTitle}
+          </div>
+          <div className="mt-1.5 flex items-center gap-2 text-[10.5px] text-mist-500">
+            <span className="truncate">{epic.record?.assignee || epic.record?.creator || '未分配'}</span>
+            {prog && (
+              <span className="ml-auto flex shrink-0 items-center gap-1">
+                <CircleCheck size={10} className={prog.done === prog.total ? 'text-leaf' : 'text-mist-600'} />
+                {prog.done}/{prog.total}
+              </span>
+            )}
+          </div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-ink-700">
+            <div
+              className="h-full rounded-full bg-leaf-dim/80 transition-all"
+              style={{ width: `${children.length ? (done / children.length) * 100 : 0}%` }}
+            />
+          </div>
         </div>
-        <div className="ml-4 mt-2 h-1 overflow-hidden rounded-full bg-ink-700">
-          <div
-            className="h-full rounded-full bg-leaf-dim/80 transition-all"
-            style={{ width: `${children.length ? (done / children.length) * 100 : 0}%` }}
-          />
-        </div>
-      </button>
+      </div>
+
       {open && (
         <div className="space-y-1 border-t border-ink-700/70 bg-ink-850/60 p-2">
           {children.map((c) => {
@@ -194,7 +217,7 @@ function EpicCard({
                 key={c.dirName}
                 onClick={() => onOpen(c.dirName)}
                 className="flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:border-ink-600 hover:bg-ink-750/60"
-                title={c.record?.title ?? c.dirName}
+                title={`子任务 · ${c.record?.title ?? c.dirName}`}
               >
                 <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', col?.dot ?? 'bg-mist-600')} />
                 <span className="min-w-0 flex-1 truncate text-[11px] text-mist-200">{c.record?.title ?? c.dirName}</span>
@@ -236,7 +259,7 @@ function TaskRow({ t, onOpen }: { t: TaskInfo; onOpen: () => void }): JSX.Elemen
   )
 }
 
-/* ---------------- Reader view（PRD 阅读模式） ---------------- */
+/* ---------------- Task Workspace（一体化看板工作台） ---------------- */
 
 function extractHeadings(md: string): Array<{ level: number; text: string }> {
   const out: Array<{ level: number; text: string }> = []
@@ -247,64 +270,251 @@ function extractHeadings(md: string): Array<{ level: number; text: string }> {
   return out
 }
 
-function ReaderView({
+interface DocTabItem {
+  id: string
+  type: 'prd' | 'design' | 'other'
+  label: string
+  fileName: string
+  path: string
+  isInherited?: boolean
+}
+
+function StatusDropdown({
+  value,
+  columns,
+  onChange
+}: {
+  value: string
+  columns: Array<{ status: string; label: string; dot: string; ring: string }>
+  onChange: (status: string) => void
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent): void => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open])
+
+  const current = columns.find((c) => c.status === value) ?? columns[0]
+
+  return (
+    <div className="relative inline-block" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-mist-100 transition-colors hover:bg-ink-700/60 focus:outline-none"
+        title="切换任务状态"
+      >
+        <span className={clsx('h-1.5 w-1.5 rounded-full', current?.dot ?? 'bg-mist-400')} />
+        <span>{statusLabel(current?.status ?? value)}</span>
+        <ChevronDown size={11} className={clsx('text-mist-400 transition-transform duration-150', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-[130px] overflow-hidden rounded-lg border border-ink-700/80 bg-ink-800/95 p-1 shadow-xl backdrop-blur-md animate-fade-in">
+          {columns.map((c) => {
+            const isSelected = c.status === value
+            return (
+              <button
+                key={c.status}
+                type="button"
+                onClick={() => {
+                  onChange(c.status)
+                  setOpen(false)
+                }}
+                className={clsx(
+                  'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors',
+                  isSelected ? 'bg-ink-700/70 font-medium text-mist-50' : 'text-mist-300 hover:bg-ink-700/40 hover:text-mist-100'
+                )}
+              >
+                <span className={clsx('h-1.5 w-1.5 rounded-full', c.dot)} />
+                <span className="flex-1">{statusLabel(c.status)}</span>
+                {isSelected && <Check size={12} className="text-leaf-soft" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TaskWorkspace({
   tasks,
   selected,
   onSelect,
-  onOpenDetail
+  onClose,
+  columns,
+  onMoveTask,
+  childMap,
+  childDirs
 }: {
   tasks: TaskInfo[]
   selected: string | null
   onSelect: (dir: string | null) => void
-  onOpenDetail: (dir: string) => void
+  onClose: () => void
+  columns: Array<{ status: string; label: string; dot: string; ring: string }>
+  onMoveTask: (t: TaskInfo, status: string) => Promise<void>
+  childMap: Map<string, TaskInfo[]>
+  childDirs: Set<string>
 }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const aiEnabled = useApp((s) => s.settings?.ai.enabled ?? false)
-  const [wide, setWide] = useState(false)
-  const [prd, setPrd] = useState<string | null>(null)
-  const [prdName, setPrdName] = useState<string | null>(null)
-  const [loadingPrd, setLoadingPrd] = useState(false)
+  const [leftRailOpen, setLeftRailOpen] = useState(true)
+  const [rightAsideOpen, setRightAsideOpen] = useState(true)
+  const [activeDocPath, setActiveDocPath] = useState<string | null>(null)
+  const [activeDocType, setActiveDocType] = useState<'prd' | 'design' | 'artifact' | 'other'>('prd')
+  const [activeDocName, setActiveDocName] = useState<string>('prd.md')
+  const [docContent, setDocContent] = useState<string | null>(null)
+  const [loadingDoc, setLoadingDoc] = useState(false)
   const [aiBusy, setAiBusy] = useState<'prd' | 'summary' | 'split' | null>(null)
   const [aiDraft, setAiDraft] = useState<string | null>(null)
   const [aiSummaryText, setAiSummaryText] = useState<string | null>(null)
   const [dodOpen, setDodOpen] = useState(false)
+  const [filterStatus, setFilterStatus] = useState<string | null>(null)
+  const [collapsedEpics, setCollapsedEpics] = useState<Record<string, boolean>>({})
+  const docContainerRef = useRef<HTMLDivElement>(null)
 
   const idx = Math.max(0, tasks.findIndex((t) => t.dirName === selected))
   const task = tasks[idx] ?? null
 
-  useEffect(() => {
-    if (!task || selected === null) {
-      setPrd(null)
-      setAiDraft(null)
-      setAiSummaryText(null)
-      return
+  // 寻找父需求组与子任务
+  const parentTask = useMemo(() => {
+    if (!task?.record?.parent) return null
+    return matchTaskByRef(task.record.parent, tasks) ?? null
+  }, [task, tasks])
+
+  const myChildren = useMemo(() => {
+    if (!task) return []
+    return childMap.get(task.dirName) ?? []
+  }, [task, childMap])
+
+  // 提取当前任务的可用文档列表（PRD / Design / Other）
+  const docTabs = useMemo<DocTabItem[]>(() => {
+    if (!task) return []
+    const items: DocTabItem[] = []
+
+    for (const a of task.artifacts) {
+      if (a.kind !== 'file' || !/\.(md|markdown|txt)$/i.test(a.name)) continue
+      let type: DocTabItem['type'] = 'other'
+      let label = a.name
+      if (/^(prd|requirement|需求)/i.test(a.name) || /prd/i.test(a.name)) {
+        type = 'prd'
+        label = 'PRD 需求文档'
+      } else if (/^(design|方案|arch|tech|spec|技术方案)/i.test(a.name) || /design/i.test(a.name)) {
+        type = 'design'
+        label = 'Design 设计方案'
+      }
+      items.push({ id: a.path, type, label, fileName: a.name, path: a.path })
     }
-    // 找任务目录里的 PRD 类文档：prd.md > PRD.md > requirement.md
-    const candidates = task.artifacts
-      .filter((a) => a.kind === 'file' && /^(prd|prd-final|requirement|requirements|需求)\.md$/i.test(a.name))
-      .sort((a, b) => (/^prd\.md$/i.test(a.name) ? -1 : 0) - (/^prd\.md$/i.test(b.name) ? -1 : 0))
+
+    // 若当前任务是子任务且自身没有 design 文档，但父需求组有 design 文档，贴心引入继承 Design
+    const hasDesign = items.some((it) => it.type === 'design')
+    if (!hasDesign && parentTask) {
+      const parentDesign = parentTask.artifacts.find(
+        (a) => a.kind === 'file' && (/^(design|方案|arch|tech|spec|技术方案)/i.test(a.name) || /design/i.test(a.name))
+      )
+      if (parentDesign) {
+        items.push({
+          id: parentDesign.path,
+          type: 'design',
+          label: 'Design 设计方案 (父需求)',
+          fileName: parentDesign.name,
+          path: parentDesign.path,
+          isInherited: true
+        })
+      }
+    }
+
+    return items.sort((a, b) => {
+      const w = (x: DocTabItem) => (x.type === 'prd' ? 0 : x.type === 'design' ? 1 : 2)
+      return w(a) - w(b) || a.fileName.localeCompare(b.fileName)
+    })
+  }, [task, parentTask])
+
+  // 非文档类的交付产物（json、代码产物等，杜绝 prd.md 重复进入）
+  const nonDocArtifacts = useMemo(() => {
+    if (!task) return []
+    return task.artifacts.filter((a) => !/\.(md|markdown)$/i.test(a.name))
+  }, [task])
+
+  // 切换任务时，默认选中 PRD 文档或首个可用文档
+  useEffect(() => {
     setAiDraft(null)
     setAiSummaryText(null)
-    if (candidates.length === 0) {
-      setPrd(null)
-      setPrdName(null)
+    if (!task) {
+      setActiveDocPath(null)
+      setActiveDocName('prd.md')
+      setDocContent(null)
       return
     }
-    const file = candidates[0]
-    setLoadingPrd(true)
+    const prdItem = docTabs.find((d) => d.type === 'prd')
+    if (prdItem) {
+      setActiveDocPath(prdItem.path)
+      setActiveDocType('prd')
+      setActiveDocName(prdItem.fileName)
+    } else if (docTabs.length > 0) {
+      setActiveDocPath(docTabs[0].path)
+      setActiveDocType(docTabs[0].type)
+      setActiveDocName(docTabs[0].fileName)
+    } else {
+      setActiveDocPath(null)
+      setActiveDocType('prd')
+      setActiveDocName('prd.md')
+      setDocContent(null)
+    }
+  }, [task?.dirName, docTabs])
+
+  // 读取当前激活文档的内容
+  useEffect(() => {
+    if (!activeDocPath) {
+      setDocContent(null)
+      return
+    }
+    let alive = true
+    setLoadingDoc(true)
     void api
-      .readTextFile(file.path)
+      .readTextFile(activeDocPath)
       .then((res) => {
+        if (!alive) return
         if (res.ok && res.content !== undefined) {
-          setPrd(res.content)
-          setPrdName(file.name)
+          setDocContent(res.content)
         } else {
-          setPrd(null)
-          setPrdName(null)
+          setDocContent(null)
         }
       })
-      .finally(() => setLoadingPrd(false))
-  }, [task?.dirName, selected]) // eslint-disable-line react-hooks/exhaustive-deps
+      .finally(() => {
+        if (alive) setLoadingDoc(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [activeDocPath])
+
+  // 需求组与独立任务分类（保留层级结构，杜绝打散）
+  const { epicsList, standalonesList } = useMemo(() => {
+    const epics: TaskInfo[] = []
+    const standalones: TaskInfo[] = []
+
+    for (const t of tasks) {
+      if (childMap.has(t.dirName)) {
+        epics.push(t)
+      } else if (!childDirs.has(t.dirName)) {
+        standalones.push(t)
+      }
+    }
+    return { epicsList: epics, standalonesList: standalones }
+  }, [tasks, childMap, childDirs])
 
   if (!task) {
     return (
@@ -317,11 +527,38 @@ function ReaderView({
     )
   }
 
-  const headings = prd ? extractHeadings(prd) : []
+  const headings = docContent ? extractHeadings(docContent) : []
   const prog = subtaskProgress(task)
+  const isDone = ['completed', 'done'].includes(statusOf(task))
+  const isRoot = !task.record?.parent
+
   const goto = (delta: number): void => {
     const next = tasks[idx + delta]
     if (next) onSelect(next.dirName)
+  }
+
+  const scrollToHeading = (text: string): void => {
+    if (!docContainerRef.current) return
+    const clean = text.trim().toLowerCase()
+    const all = docContainerRef.current.querySelectorAll('h1, h2, h3, h4')
+    const match = Array.from(all).find((h) => h.textContent?.trim().toLowerCase() === clean)
+    if (match) {
+      match.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  const toggleSubtask = async (subIdx: number): Promise<void> => {
+    if (!task.record) return
+    const list = task.record.subtasks ?? []
+    const next = list.map((s, i) => {
+      if (i !== subIdx) return s
+      const m = /^\s*[-*]?\s*\[( |x|X)\]\s*(.*)$/.exec(s)
+      const done = m?.[1]?.toLowerCase() === 'x'
+      const text = m?.[2] ?? s
+      return `[${done ? ' ' : 'x'}] ${text}`
+    })
+    const res = await api.updateTask(task.path, { subtasks: next })
+    if (!res.ok) pushToast({ kind: 'error', title: '子任务更新失败', body: res.error })
   }
 
   const genPrd = async (): Promise<void> => {
@@ -348,15 +585,13 @@ function ReaderView({
     if (res.ok) {
       pushToast({ kind: 'success', title: '已保存 prd.md', body: task.dirName })
       setAiDraft(null)
-      setPrd(aiDraft)
-      setPrdName('prd.md')
+      setDocContent(aiDraft)
+      setActiveDocType('prd')
     } else {
       pushToast({ kind: 'error', title: '保存失败', body: res.error })
     }
   }
 
-  const isDone = ['completed', 'done'].includes(statusOf(task))
-  const isRoot = !task.record?.parent
   const archive = async (): Promise<void> => {
     const res = await api.taskArchive(task.dirName)
     if (res.ok) {
@@ -366,6 +601,7 @@ function ReaderView({
       pushToast({ kind: 'error', title: '归档失败', body: res.error })
     }
   }
+
   const split = async (): Promise<void> => {
     setAiBusy('split')
     const res = await api.aiSplitEpic(task.dirName)
@@ -373,90 +609,299 @@ function ReaderView({
     if (res.ok) pushToast({ kind: 'success', title: `已拆分 ${res.created?.length ?? 0} 个子任务`, body: res.created?.join('、') })
     else pushToast({ kind: 'error', title: '拆分失败', body: res.error })
   }
+
   const genText = async (kind: 'commit' | 'pr'): Promise<void> => {
     const res = kind === 'commit' ? await api.aiCommitMsg(task.dirName) : await api.aiPrDesc(task.dirName)
     if (res.ok && res.content) {
       await api.copyToClipboard(res.content)
       pushToast({ kind: 'success', title: kind === 'commit' ? '提交信息已复制' : 'PR 描述已复制' })
     } else {
-      pushToast({ kind: 'error', title: kind === 'commit' ? '生成失败' : '生成失败', body: res.error })
+      pushToast({ kind: 'error', title: '生成失败', body: res.error })
     }
   }
 
-  return (
-    <div className="flex h-full min-h-0">
-      {/* 左侧任务轨 */}
-      <div className="flex w-72 shrink-0 flex-col border-r border-ink-700/70">
-        <div className="flex items-center gap-1.5 border-b border-ink-700/70 px-3 py-2 text-[10.5px] uppercase tracking-wide text-mist-500">
-          <BookOpenText size={11} className="text-leaf" /> 任务轨 · {tasks.length}
-          <button onClick={() => onSelect(null)} className="btn-ghost ml-auto justify-center px-1" title="收起说明">
-            <PanelLeftClose size={11} />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {tasks.map((t) => {
-            const st = statusOf(t)
-            const col = COLUMNS.find((x) => matchCol(t, x.status))
-            const isSel = t.dirName === selected
-            return (
-              <button
-                key={t.dirName}
-                onClick={() => onSelect(t.dirName)}
-                className={clsx(
-                  'mb-1 w-full rounded-lg px-2.5 py-2 text-left transition-colors',
-                  isSel ? 'bg-leaf-dim/15 ring-1 ring-leaf-dim/40' : 'hover:bg-ink-750/60'
-                )}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', col?.dot ?? 'bg-mist-600')} />
-                  <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-mist-100">{t.record?.title ?? t.dirName}</span>
-                  <PriorityBadge priority={t.record?.priority ?? ''} />
-                </div>
-                <div className="mt-1 flex items-center gap-1.5 pl-3 text-[10px] text-mist-500">
-                  <span className="truncate">{t.record?.assignee || '未分配'}</span>
-                  {t.jiraKey && <JiraChip jiraKey={t.jiraKey} />}
-                  {prog && <span className="ml-auto shrink-0">{prog.done}/{prog.total}</span>}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+  const activeDocItem = docTabs.find((d) => d.path === activeDocPath)
 
-      {/* 阅读区 */}
-      <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className={clsx('mx-auto px-8 py-6', wide ? 'max-w-[980px]' : 'max-w-[760px]')}>
-          {/* 头部 */}
-          <div className="flex items-center gap-1.5 text-[11px] text-mist-500">
-            <span className="font-mono">{task.dirName}</span>
-            <span>·</span>
-            <span>{task.record?.assignee || '未分配'}</span>
-            <span>·</span>
-            <span>{taskDateLabel(task.dirName, task.date)}</span>
-            <button onClick={() => setWide((w) => !w)} className="btn-ghost ml-auto text-[10.5px]">
-              {wide ? '舒适宽度' : '加宽阅读'}
+  return (
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden animate-fade-in">
+      {/* 左侧：树形需求导轨（保持需求组层级，杜绝打散） */}
+      <div
+        className={clsx(
+          'flex shrink-0 flex-col border-r border-ink-700/80 bg-ink-900/60 transition-all duration-200 ease-in-out',
+          leftRailOpen ? 'w-72' : 'w-11'
+        )}
+      >
+        {/* 顶部控制栏：返回看板 + 收起展开 + 状态筛选 */}
+        <div className="border-b border-ink-700/70 text-[11px]">
+          {leftRailOpen ? (
+            <>
+              <div className="flex h-11 items-center justify-between px-2.5">
+                <button
+                  onClick={onClose}
+                  className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-mist-300 hover:bg-ink-750 hover:text-mist-50 transition-colors"
+                  title="返回四列看板 (快捷键 Esc)"
+                >
+                  <ArrowLeft size={13.5} />
+                  <span>返回看板</span>
+                </button>
+                <button
+                  onClick={() => setLeftRailOpen(false)}
+                  className="btn-ghost p-1.5 text-mist-400 hover:text-mist-100"
+                  title="收起任务导轨（释放更多阅读空间）"
+                >
+                  <PanelLeftClose size={14} />
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1 border-t border-ink-750/50 bg-ink-850/40 px-2 py-1.5 text-[10.5px]">
+                <button
+                  onClick={() => setFilterStatus(null)}
+                  className={clsx(
+                    'rounded px-1.5 py-0.5 transition-colors',
+                    filterStatus === null ? 'bg-leaf-dim/20 font-semibold text-leaf-soft' : 'text-mist-500 hover:text-mist-200'
+                  )}
+                >
+                  全部 {tasks.length}
+                </button>
+                {columns.map((c) => {
+                  const count = tasks.filter((t) => matchCol(t, c.status)).length
+                  const on = filterStatus === c.status
+                  return (
+                    <button
+                      key={c.status}
+                      onClick={() => setFilterStatus(on ? null : c.status)}
+                      className={clsx(
+                        'flex items-center gap-1 rounded px-1 py-0.5 transition-colors',
+                        on ? 'bg-ink-750 font-semibold text-mist-100' : 'text-mist-500 hover:text-mist-300'
+                      )}
+                      title={c.label}
+                    >
+                      <span className={clsx('h-1.5 w-1.5 rounded-full', c.dot)} />
+                      <span>{count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-2">
+              <button
+                onClick={onClose}
+                className="btn-ghost p-1.5 text-mist-400 hover:text-mist-100"
+                title="返回四列看板 (Esc)"
+              >
+                <ArrowLeft size={14} />
+              </button>
+              <button
+                onClick={() => setLeftRailOpen(true)}
+                className="btn-ghost p-1.5 text-mist-400 hover:text-mist-100"
+                title="展开任务导轨"
+              >
+                <PanelLeftOpen size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 树形列表内容 */}
+        {leftRailOpen && (
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
+            {/* 需求组分组列表 */}
+            {epicsList.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-mist-500">需求组</div>
+                {epicsList.map((epic) => {
+                  const children = childMap.get(epic.dirName) ?? []
+                  const visibleChildren = filterStatus
+                    ? children.filter((c) => matchCol(c, filterStatus))
+                    : children
+                  const isCollapsed = collapsedEpics[epic.dirName] ?? false
+                  const isEpicSelected = epic.dirName === selected
+                  const isChildSelected = children.some((c) => c.dirName === selected)
+                  const doneCount = children.filter((c) => matchCol(c, 'completed')).length
+
+                  return (
+                    <div
+                      key={epic.dirName}
+                      className={clsx(
+                        'rounded-lg border transition-all',
+                        isEpicSelected || isChildSelected
+                          ? 'border-leaf-dim/40 bg-ink-850/70 ring-1 ring-leaf-dim/30'
+                          : 'border-ink-750/70 bg-ink-850/40 hover:border-ink-600'
+                      )}
+                    >
+                      {/* 需求组节点 */}
+                      <div className="flex items-center p-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setCollapsedEpics((s) => ({ ...s, [epic.dirName]: !isCollapsed }))}
+                          className="p-1 text-mist-500 hover:text-leaf"
+                          title={isCollapsed ? '展开子任务' : '收起子任务'}
+                        >
+                          {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                        <button
+                          onClick={() => onSelect(epic.dirName)}
+                          className={clsx(
+                            'flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs transition-colors',
+                            isEpicSelected ? 'font-semibold text-leaf-soft' : 'text-mist-200 hover:text-mist-50'
+                          )}
+                          title={`查看需求组 · ${epic.record?.title ?? epic.dirName}`}
+                        >
+                          <Layers size={11} className="shrink-0 text-leaf" />
+                          <span className="truncate">{epic.record?.title ?? epic.dirName}</span>
+                          <span className="ml-auto shrink-0 rounded bg-ink-750 px-1 font-mono text-[9.5px] text-mist-400">
+                            {doneCount}/{children.length}
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* 子任务列表 */}
+                      {!isCollapsed && visibleChildren.length > 0 && (
+                        <div className="space-y-0.5 border-t border-ink-750/50 bg-ink-900/40 p-1.5 pl-6">
+                          {visibleChildren.map((c) => {
+                            const isSel = c.dirName === selected
+                            const col = columns.find((x) => matchCol(c, x.status))
+                            return (
+                              <button
+                                key={c.dirName}
+                                onClick={() => onSelect(c.dirName)}
+                                className={clsx(
+                                  'flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] transition-colors',
+                                  isSel
+                                    ? 'bg-leaf-dim/20 font-medium text-leaf-soft'
+                                    : 'text-mist-300 hover:bg-ink-750/60 hover:text-mist-100'
+                                )}
+                                title={c.record?.title ?? c.dirName}
+                              >
+                                <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', col?.dot ?? 'bg-mist-600')} />
+                                <span className="min-w-0 flex-1 truncate">{c.record?.title ?? c.dirName}</span>
+                                <span className="shrink-0 font-mono text-[10px] text-mist-500">
+                                  {c.record?.assignee || col?.label}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* 独立任务分组列表 */}
+            {standalonesList.length > 0 && (
+              <div className="space-y-1">
+                <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-mist-500">独立任务</div>
+                {standalonesList
+                  .filter((t) => filterStatus === null || matchCol(t, filterStatus))
+                  .map((t) => {
+                    const isSel = t.dirName === selected
+                    const col = columns.find((x) => matchCol(t, x.status))
+                    return (
+                      <div
+                        key={t.dirName}
+                        onClick={() => onSelect(t.dirName)}
+                        className={clsx(
+                          'cursor-pointer rounded-md border p-2 text-left transition-all',
+                          isSel
+                            ? 'border-leaf-dim/50 bg-leaf-dim/15 text-mist-50 ring-1 ring-leaf-dim/40'
+                            : 'border-ink-750/60 bg-ink-850/40 hover:border-ink-600 hover:bg-ink-750/60'
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <PriorityBadge priority={t.record?.priority ?? ''} />
+                          <span className="min-w-0 flex-1 truncate text-xs text-mist-200">
+                            {t.record?.title ?? t.dirName}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-[10px] text-mist-500">
+                          <span className="truncate">{t.record?.assignee || '未分配'}</span>
+                          <span className="ml-auto flex items-center gap-1">
+                            <span className={clsx('h-1.5 w-1.5 rounded-full', col?.dot ?? 'bg-mist-600')} />
+                            <span>{col?.label}</span>
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 底部导航翻页 */}
+        {leftRailOpen && (
+          <div className="flex items-center gap-2 border-t border-ink-700/70 bg-ink-850/60 px-3 py-2 text-[11px]">
+            <button onClick={() => goto(-1)} disabled={idx <= 0} className="btn-ghost px-2 py-0.5 text-[11px] disabled:opacity-30">
+              ← 上篇
             </button>
-            <button onClick={() => onOpenDetail(task.dirName)} className="btn-outline text-[10.5px]">
-              在详情中打开
+            <span className="mx-auto font-mono text-[10px] text-mist-500">{idx + 1} / {tasks.length}</span>
+            <button onClick={() => goto(1)} disabled={idx >= tasks.length - 1} className="btn-ghost px-2 py-0.5 text-[11px] disabled:opacity-30">
+              下篇 →
             </button>
           </div>
-          <h1 className="mt-2 text-[22px] font-bold leading-snug text-mist-100">{task.record?.title ?? task.dirName}</h1>
+        )}
+      </div>
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            <StatusBadge status={task.record?.status ?? ''} />
-            <PriorityBadge priority={task.record?.priority ?? ''} />
-            {task.jiraKey && <JiraChip jiraKey={task.jiraKey} />}
-            {task.record?.branch && <span className="chip bg-ink-750 font-mono text-[10px] text-mist-300">{task.record.branch}</span>}
-            {typeof task.record?.workflow === 'string' && task.record.workflow && (
-              <span className="chip bg-violet-500/15 text-[10px] text-violet-300" title="task.json 的 workflow pin">workflow: {task.record.workflow}</span>
+      {/* 右侧：主阅读与一体化工作区 */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ink-900">
+        {/* 任务工作台 Primary Header：任务主控栏 (42px，居于主导地位) */}
+        <div className="flex h-[42px] shrink-0 items-center justify-between border-b border-ink-750/80 bg-ink-900 px-4 backdrop-blur-sm">
+          {/* 左侧：任务身份与正式标题（清晰的主视觉） */}
+          <div className="flex min-w-0 items-center gap-2 text-xs">
+            {parentTask ? (
+              <button
+                onClick={() => onSelect(parentTask.dirName)}
+                className="flex items-center gap-1 rounded bg-leaf-dim/15 px-2 py-0.5 text-[11px] font-medium text-leaf-soft transition-colors hover:bg-leaf-dim/25 shrink-0"
+                title={`所属需求组：${parentTask.record?.title ?? parentTask.dirName} (点击跳转)`}
+              >
+                <Layers size={11.5} />
+                <span className="truncate max-w-[130px]">{parentTask.record?.title ?? parentTask.dirName}</span>
+                <span className="text-mist-500 font-normal">/</span>
+              </button>
+            ) : myChildren.length > 0 ? (
+              <span className="flex items-center gap-1 rounded bg-leaf-dim/15 px-2 py-0.5 text-[11px] font-medium text-leaf-soft shrink-0">
+                <Layers size={11.5} />
+                <span>需求组 ({myChildren.length})</span>
+              </span>
+            ) : (
+              <span className="rounded bg-ink-750/80 px-2 py-0.5 text-[11px] text-mist-400 shrink-0">
+                独立任务
+              </span>
             )}
-            <div className="ml-auto flex items-center gap-1.5">
-              <FocusTimer task={task} />
-              <select
+
+            {/* 正式任务标题 */}
+            <h1 className="truncate text-xs font-semibold text-mist-50" title={task.record?.title ?? task.dirName}>
+              {task.record?.title ?? task.dirName}
+            </h1>
+
+            {/* 辅助元信息 */}
+            <span className="font-mono text-[10.5px] text-mist-500 shrink-0 truncate max-w-[150px]" title={task.dirName}>
+              {task.dirName}
+            </span>
+
+            {task.record?.branch && (
+              <span className="chip bg-ink-750/80 font-mono text-[10px] text-mist-300 shrink-0" title={`Git 分支: ${task.record.branch}`}>
+                {task.record.branch}
+              </span>
+            )}
+
+            {jiraKeyOf(task) && <JiraChip jiraKey={jiraKeyOf(task)!} />}
+
+            <span className="text-mist-600">·</span>
+            <span className="text-[11px] text-mist-400 truncate shrink-0 max-w-[100px]">{task.record?.assignee || '未分配'}</span>
+          </div>
+
+          {/* 右侧：结构化功能操作区 */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* 分组 1：核心状态与属性 */}
+            <div className="flex items-center gap-1.5 rounded-lg bg-ink-800/80 p-0.5 border border-ink-750/70">
+              <StatusDropdown
                 value={statusOf(task)}
-                onChange={(e) => {
+                columns={columns}
+                onChange={(target) => {
                   void (async () => {
-                    const target = e.target.value
                     if (target === 'completed' && !isDone) {
                       setDodOpen(true)
                       return
@@ -465,119 +910,324 @@ function ReaderView({
                     if (!res.ok) pushToast({ kind: 'error', title: '状态更新失败', body: res.error })
                   })()
                 }}
-                className="field w-28 px-2 py-1 text-[11px]"
+              />
+              <PriorityBadge priority={task.record?.priority ?? ''} />
+              <div className="pr-1">
+                <FocusTimer task={task} />
+              </div>
+            </div>
+
+            <div className="h-4 w-px bg-ink-700/80" />
+
+            {/* 分组 2：工具与操作（AI / 目录 / 归档） */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => void api.revealInExplorer(task.path)}
+                className="btn-ghost p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                title="在资源管理器中打开任务目录"
               >
-                {COLUMNS.map((c) => (
-                  <option key={c.status} value={c.status}>{statusLabel(c.status)}</option>
-                ))}
-              </select>
+                <FolderOpen size={13.5} />
+              </button>
               {isRoot && (
-                <button onClick={() => void split()} disabled={aiBusy !== null || !aiEnabled} className="btn-ghost justify-center px-1.5" title="AI 拆分子任务">
-                  {aiBusy === 'split' ? <Loader2 size={12} className="animate-spin" /> : <Split size={12} />}
+                <button
+                  onClick={() => void split()}
+                  disabled={aiBusy !== null || !aiEnabled}
+                  className="btn-ghost p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                  title="AI 拆分子任务"
+                >
+                  {aiBusy === 'split' ? <Loader2 size={13.5} className="animate-spin" /> : <Split size={13.5} />}
                 </button>
               )}
+              <button
+                onClick={() => void genText('commit')}
+                disabled={!aiEnabled}
+                className="btn-ghost p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100 disabled:opacity-40"
+                title="AI 生成提交信息 (Commit Msg)"
+              >
+                <GitBranch size={13.5} />
+              </button>
+              <button
+                onClick={() => void genText('pr')}
+                disabled={!aiEnabled}
+                className="btn-ghost p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100 disabled:opacity-40"
+                title="AI 生成 PR 描述"
+              >
+                <ExternalLink size={13.5} />
+              </button>
               {isDone && (
-                <button onClick={() => void archive()} className="btn-ghost justify-center px-1.5 text-amber-300" title="归档">
-                  <Archive size={12} />
+                <button
+                  onClick={() => void archive()}
+                  className="btn-ghost p-1.5 text-amber-300 hover:bg-ink-750"
+                  title="归档当前已完成任务"
+                >
+                  <Archive size={13.5} />
                 </button>
               )}
-              <button onClick={() => void genText('commit')} disabled={!aiEnabled} className="btn-ghost justify-center px-1.5 disabled:opacity-40" title="AI 提交信息（复制）">
-                <GitBranch size={12} />
-              </button>
-              <button onClick={() => void genText('pr')} disabled={!aiEnabled} className="btn-ghost justify-center px-1.5 disabled:opacity-40" title="AI PR 描述（复制）">
-                <ExternalLink size={12} />
-              </button>
-              <button onClick={() => void api.revealInExplorer(task.path)} className="btn-ghost justify-center px-1.5" title="打开任务目录">
-                <FolderOpen size={12} />
+            </div>
+
+            <div className="h-4 w-px bg-ink-700/80" />
+
+            {/* 分组 3：视图切换 */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setRightAsideOpen((o) => !o)}
+                className={clsx(
+                  'btn-ghost p-1.5 transition-colors',
+                  rightAsideOpen ? 'bg-leaf-dim/15 text-leaf-soft' : 'text-mist-400 hover:text-mist-100'
+                )}
+                title={rightAsideOpen ? '折叠右侧辅助栏（宽屏阅读模式）' : '展开右侧大纲与产物'}
+              >
+                {rightAsideOpen ? <PanelRightClose size={13.5} /> : <PanelRightOpen size={13.5} />}
               </button>
             </div>
           </div>
+        </div>
 
-          {/* AI 摘要卡 */}
-          {aiSummaryText && (
-            <div className="mt-4 rounded-xl border border-leaf-dim/30 bg-leaf-dim/5 p-4">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-leaf-soft">
-                <Sparkles size={12} /> AI 任务摘要
-              </div>
-              <MarkdownView content={aiSummaryText} />
-            </div>
-          )}
+        {/* 文档 Secondary Tabs：轻量分段视图切换栏 (32px，从属于主控栏) */}
+        <div className="flex h-8 shrink-0 items-center justify-between border-b border-ink-800/80 bg-ink-850/40 px-4">
+          {/* 左侧：轻量分段胶囊 Tabs */}
+          <div className="flex items-center gap-1.5">
+            {/* PRD Tab */}
+            <button
+              onClick={() => {
+                const prdItem = docTabs.find((d) => d.type === 'prd')
+                setActiveDocType('prd')
+                setActiveDocPath(prdItem?.path ?? null)
+                setActiveDocName(prdItem?.fileName ?? 'prd.md')
+              }}
+              className={clsx(
+                'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] transition-all',
+                activeDocType === 'prd'
+                  ? 'bg-ink-750 text-mist-50 font-medium shadow-sm border border-ink-700/60'
+                  : 'text-mist-400 hover:text-mist-200 hover:bg-ink-800/50'
+              )}
+            >
+              <FileText size={12} className={activeDocType === 'prd' ? 'text-leaf-soft' : 'text-mist-500'} />
+              <span>PRD 需求文档</span>
+              {docTabs.some((d) => d.type === 'prd') && (
+                <span className={clsx('h-1.5 w-1.5 rounded-full', activeDocType === 'prd' ? 'bg-leaf' : 'bg-mist-600')} />
+              )}
+            </button>
 
-          {/* 章节导航 */}
-          {headings.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5 border-b border-ink-700/70 pb-3">
-              {headings.map((h, i) => (
-                <span key={i} className={clsx('chip text-[10px]', h.level === 2 ? 'bg-ink-750 text-mist-300' : 'bg-ink-800 text-mist-500')}>
-                  {h.text}
-                </span>
+            {/* Design Tab */}
+            <button
+              onClick={() => {
+                const designItem = docTabs.find((d) => d.type === 'design')
+                setActiveDocType('design')
+                setActiveDocPath(designItem?.path ?? null)
+                setActiveDocName(designItem?.fileName ?? 'design.md')
+              }}
+              className={clsx(
+                'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] transition-all',
+                activeDocType === 'design'
+                  ? 'bg-ink-750 text-mist-50 font-medium shadow-sm border border-ink-700/60'
+                  : 'text-mist-400 hover:text-mist-200 hover:bg-ink-800/50'
+              )}
+            >
+              <Compass size={12} className={activeDocType === 'design' ? 'text-sky-300' : 'text-mist-500'} />
+              <span>Design 设计方案</span>
+              {docTabs.some((d) => d.type === 'design') && (
+                <span className={clsx('h-1.5 w-1.5 rounded-full', activeDocType === 'design' ? 'bg-sky-400' : 'bg-mist-600')} />
+              )}
+            </button>
+
+            {/* 其他文档 Tabs */}
+            {docTabs
+              .filter((d) => d.type === 'other')
+              .map((d) => (
+                <button
+                  key={d.path}
+                  onClick={() => {
+                    setActiveDocType('other')
+                    setActiveDocPath(d.path)
+                    setActiveDocName(d.fileName)
+                  }}
+                  className={clsx(
+                    'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] transition-all',
+                    activeDocPath === d.path
+                      ? 'bg-ink-750 text-mist-50 font-medium shadow-sm border border-ink-700/60'
+                      : 'text-mist-400 hover:text-mist-200 hover:bg-ink-800/50'
+                  )}
+                >
+                  <BookOpenText size={12} className={activeDocPath === d.path ? 'text-violet-300' : 'text-mist-500'} />
+                  <span className="truncate max-w-[140px]">{d.fileName}</span>
+                </button>
               ))}
-            </div>
-          )}
 
-          {/* 正文 */}
-          <div className="mt-4">
-            {loadingPrd ? (
-              <div className="flex items-center gap-2 py-10 text-xs text-mist-500">
-                <Loader2 size={14} className="animate-spin" /> 读取 {prdName}…
-              </div>
-            ) : aiDraft ? (
-              <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-300">
-                    <Wand2 size={12} /> AI PRD 草稿
-                  </span>
-                  <button onClick={() => void saveDraft()} className="btn-primary ml-auto text-[11px]">
-                    保存为 prd.md
-                  </button>
-                  <button onClick={() => setAiDraft(null)} className="btn-ghost text-[11px]">放弃</button>
-                </div>
-                <MarkdownView content={aiDraft} />
-              </div>
-            ) : prd !== null ? (
-              <MarkdownView content={prd} />
-            ) : (
-              <div className="space-y-4">
-                {task.record?.description ? (
-                  <div>
-                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-mist-500">需求描述</div>
-                    <MarkdownView content={task.record.description} />
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-ink-600 p-6 text-center">
-                    <BookOpenText size={22} className="mx-auto mb-2 text-mist-600" />
-                    <div className="text-xs text-mist-400">该任务还没有 prd.md，描述也为空</div>
-                    <button onClick={() => void genPrd()} disabled={aiBusy !== null} className="btn-primary mt-3 disabled:opacity-40">
-                      {aiBusy === 'prd' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} AI 生成 PRD 草稿
-                    </button>
-                  </div>
-                )}
-                {task.record?.description && (
-                  <button onClick={() => void genPrd()} disabled={aiBusy !== null} className="btn-outline text-[11px]">
-                    {aiBusy === 'prd' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} AI 生成 PRD 草稿
-                  </button>
-                )}
+            {/* 激活的执行产物动态 Tab */}
+            {activeDocType === 'artifact' && (
+              <div className="flex items-center gap-1.5 rounded-md bg-ink-750 px-2.5 py-1 text-[11.5px] font-medium text-mist-50 border border-ink-700/60 shadow-sm">
+                <FileCode size={12} className="text-leaf-soft" />
+                <span className="truncate max-w-[140px]">{activeDocName}</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const prdItem = docTabs.find((d) => d.type === 'prd')
+                    setActiveDocType('prd')
+                    setActiveDocPath(prdItem?.path ?? null)
+                    setActiveDocName(prdItem?.fileName ?? 'prd.md')
+                  }}
+                  className="ml-1 text-mist-400 hover:text-mist-100"
+                  title="关闭产物预览，返回 PRD"
+                >
+                  <X size={11} />
+                </button>
               </div>
             )}
           </div>
+        </div>
 
-          {/* 子任务 / 备注 */}
-          {!aiDraft && (
-            <div className="mt-6 space-y-4 border-t border-ink-700/70 pt-4 pb-8">
-              {prog && (
-                <div>
-                  <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-mist-500">
-                    子任务 {prog.done}/{prog.total}
-                    <div className="h-1 w-32 overflow-hidden rounded-full bg-ink-700">
-                      <div className="h-full bg-leaf-dim/80" style={{ width: `${(prog.done / prog.total) * 100}%` }} />
+        {/* 双列/单列工作台容器（宽阔阅读区域） */}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          {/* 中间：自适应宽幅文档阅读区 */}
+          <div ref={docContainerRef} className="flex-1 min-w-0 overflow-y-auto px-8 py-6">
+            <div className={clsx('mx-auto transition-all', rightAsideOpen ? 'max-w-[1080px]' : 'max-w-[1240px]')}>
+              {/* AI 摘要卡片 */}
+              {aiSummaryText && (
+                <div className="mb-5 rounded-xl border border-leaf-dim/30 bg-leaf-dim/5 p-4">
+                  <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-leaf-soft">
+                    <Sparkles size={12} /> AI 任务摘要
+                  </div>
+                  <MarkdownView content={aiSummaryText} />
+                </div>
+              )}
+
+              {/* 正文渲染：根据活跃类型就地渲染 Markdown 或 CodeView */}
+              <div>
+                {loadingDoc ? (
+                  <div className="flex items-center gap-2 py-10 text-xs text-mist-500">
+                    <Loader2 size={14} className="animate-spin" /> 正在加载内容…
+                  </div>
+                ) : aiDraft ? (
+                  <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-300">
+                        <Wand2 size={12} /> AI PRD 草稿
+                      </span>
+                      <button onClick={() => void saveDraft()} className="btn-primary ml-auto text-[11px]">
+                        保存为 prd.md
+                      </button>
+                      <button onClick={() => setAiDraft(null)} className="btn-ghost text-[11px]">放弃</button>
+                    </div>
+                    <MarkdownView content={aiDraft} />
+                  </div>
+                ) : activeDocType === 'artifact' ? (
+                  /* 执行产物就地代码/JSON高亮视图 */
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-ink-750/70 pb-2.5">
+                      <div className="flex items-center gap-2 text-xs font-mono text-mist-200">
+                        <FileCode size={14} className="text-leaf" />
+                        <span className="font-semibold">{activeDocName}</span>
+                        <span className="text-[11px] text-mist-500">· 执行产物就地预览</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const prdItem = docTabs.find((d) => d.type === 'prd')
+                          setActiveDocType('prd')
+                          setActiveDocPath(prdItem?.path ?? null)
+                          setActiveDocName(prdItem?.fileName ?? 'prd.md')
+                        }}
+                        className="btn-ghost px-2 py-0.5 text-xs text-mist-400 hover:text-mist-100"
+                      >
+                        返回 PRD 文档
+                      </button>
+                    </div>
+                    {docContent !== null ? (
+                      <CodeView content={docContent} ext={activeDocName.slice(activeDocName.lastIndexOf('.'))} />
+                    ) : (
+                      <div className="py-10 text-center text-xs text-mist-500">该产物暂无文本内容</div>
+                    )}
+                  </div>
+                ) : docContent !== null ? (
+                  <MarkdownView content={docContent} />
+                ) : activeDocType === 'prd' ? (
+                  /* PRD 为空时的引导状态 */
+                  <div className="space-y-4">
+                    {task.record?.description ? (
+                      <div>
+                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-mist-500">需求描述</div>
+                        <MarkdownView content={task.record.description} />
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-ink-600 p-8 text-center">
+                        <BookOpenText size={24} className="mx-auto mb-2 text-mist-600" />
+                        <div className="text-xs text-mist-400">该任务暂无 prd.md 需求文档</div>
+                        <button onClick={() => void genPrd()} disabled={aiBusy !== null} className="btn-primary mt-3 disabled:opacity-40">
+                          {aiBusy === 'prd' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} AI 生成 PRD 草稿
+                        </button>
+                      </div>
+                    )}
+                    {task.record?.description && (
+                      <button onClick={() => void genPrd()} disabled={aiBusy !== null} className="btn-outline text-[11px]">
+                        {aiBusy === 'prd' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} AI 生成 PRD 草稿
+                      </button>
+                    )}
+                  </div>
+                ) : activeDocType === 'design' ? (
+                  /* Design 为空时的引导状态 */
+                  <div className="rounded-xl border border-dashed border-ink-600 p-8 text-center">
+                    <Compass size={24} className="mx-auto mb-2 text-mist-600" />
+                    <div className="text-xs text-mist-400">该任务暂无 design.md 设计文档</div>
+                    <div className="mt-1 text-[11px] text-mist-500">
+                      复杂需求通常包含架构设计方案（design.md），可与 PRD 需求文档协同查看
                     </div>
                   </div>
-                  <ul className="space-y-1">
+                ) : (
+                  <div className="py-10 text-center text-xs text-mist-500">暂无文档内容</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 右侧：结构化辅助栏（支持一键折叠，释放极宽阅读空间） */}
+          {rightAsideOpen && (
+            <div className="w-72 shrink-0 space-y-5 overflow-y-auto border-l border-ink-700/70 bg-ink-850/40 p-4 transition-all">
+              {/* 文档大纲 (TOC) */}
+              {headings.length > 0 && activeDocType !== 'artifact' && (
+                <div>
+                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-mist-400">
+                    <ListChecks size={12} className="text-leaf" /> 文档大纲
+                  </div>
+                  <div className="space-y-1">
+                    {headings.map((h, i) => (
+                      <button
+                        key={i}
+                        onClick={() => scrollToHeading(h.text)}
+                        className={clsx(
+                          'block w-full truncate rounded px-2 py-1 text-left text-[11px] transition-colors hover:bg-ink-750 hover:text-mist-100',
+                          h.level === 2 ? 'font-medium text-mist-300' : 'pl-4 text-mist-500'
+                        )}
+                        title={h.text}
+                      >
+                        {h.text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 子任务检查项 */}
+              {prog && (
+                <div className="border-t border-ink-700/60 pt-4">
+                  <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-mist-400">
+                    <span>子任务清单</span>
+                    <span className="font-mono text-mist-200">{prog.done}/{prog.total}</span>
+                  </div>
+                  <div className="mb-2 h-1 overflow-hidden rounded-full bg-ink-700">
+                    <div className="h-full bg-leaf-dim/80 transition-all" style={{ width: `${(prog.done / prog.total) * 100}%` }} />
+                  </div>
+                  <ul className="space-y-1.5">
                     {task.record?.subtasks.map((s, i) => {
                       const m = /^\s*[-*]?\s*\[( |x|X)\]\s*(.*)$/.exec(s)
                       const done = m?.[1]?.toLowerCase() === 'x'
                       const text = m?.[2] ?? s
                       return (
-                        <li key={i} className="flex items-start gap-2 text-xs leading-5 text-mist-300">
+                        <li
+                          key={i}
+                          onClick={() => void toggleSubtask(i)}
+                          className="flex cursor-pointer items-start gap-2 rounded px-1.5 py-1 text-xs leading-5 text-mist-300 transition-colors hover:bg-ink-750/60"
+                        >
                           <CircleCheck size={13} className={clsx('mt-0.5 shrink-0', done ? 'text-leaf' : 'text-mist-600')} />
                           <span className={done ? 'text-mist-500 line-through' : ''}>{text}</span>
                         </li>
@@ -586,54 +1236,65 @@ function ReaderView({
                   </ul>
                 </div>
               )}
-              {task.record?.notes && (
-                <div>
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-mist-500">备注</div>
-                  <div className="whitespace-pre-wrap rounded-lg border border-ink-700/70 bg-ink-850/50 p-3 text-xs leading-5 text-mist-300">{task.record.notes}</div>
+
+              {/* 代码与执行产物：就地无缝查看，绝不跳出到外部抽屉 */}
+              {nonDocArtifacts.length > 0 && (
+                <div className="border-t border-ink-700/60 pt-4">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-mist-400">
+                    执行产物 ({nonDocArtifacts.length})
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {nonDocArtifacts.map((a) => {
+                      const isViewing = activeDocPath === a.path
+                      return (
+                        <button
+                          key={a.path}
+                          onClick={() => {
+                            setActiveDocPath(a.path)
+                            setActiveDocType('artifact')
+                            setActiveDocName(a.name)
+                          }}
+                          className={clsx(
+                            'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors',
+                            isViewing
+                              ? 'border-leaf-dim/60 bg-leaf-dim/20 text-leaf-soft font-medium shadow-sm'
+                              : 'border-ink-700 bg-ink-800/80 text-mist-300 hover:border-ink-500 hover:text-mist-100'
+                          )}
+                          title={`就地查看 · ${a.name}`}
+                        >
+                          <FileCode size={11} className={isViewing ? 'text-leaf' : 'text-mist-400'} />
+                          <span className="truncate max-w-[180px]">{a.name}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
-              {task.artifacts.length > 0 && (
-                <div>
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-mist-500">产物（{task.artifacts.length}）</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {task.artifacts.map((a) => (
-                      <button
-                        key={a.path}
-                        onClick={() => useApp.getState().openArtifact({ ...a }, true)}
-                        className="chip border border-ink-600 text-[10.5px] text-mist-300 hover:border-ink-500 hover:text-mist-100"
-                      >
-                        <Paperclip size={10} /> {a.name}
-                      </button>
-                    ))}
+
+              {/* 备注 */}
+              {task.record?.notes && (
+                <div className="border-t border-ink-700/60 pt-4">
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-mist-400">备注</div>
+                  <div className="whitespace-pre-wrap rounded-lg border border-ink-700/70 bg-ink-850/50 p-2.5 text-xs leading-5 text-mist-300">
+                    {task.record.notes}
                   </div>
                 </div>
               )}
             </div>
           )}
-
-          {dodOpen && (
-            <DoDModal
-              task={task}
-              onClose={() => setDodOpen(false)}
-              onDone={() => {
-                setDodOpen(false)
-                pushToast({ kind: 'success', title: '已完成', body: task.dirName })
-              }}
-            />
-          )}
-
-          {/* 上一篇 / 下一篇 */}
-          <div className="sticky bottom-0 -mx-8 flex items-center gap-2 border-t border-ink-700/70 bg-ink-900/90 px-8 py-2.5 backdrop-blur">
-            <button onClick={() => goto(-1)} disabled={idx <= 0} className="btn-ghost text-[11px] disabled:opacity-30">
-              ← 上一篇
-            </button>
-            <span className="text-[10.5px] text-mist-600">{idx + 1} / {tasks.length}</span>
-            <button onClick={() => goto(1)} disabled={idx >= tasks.length - 1} className="btn-ghost ml-auto text-[11px] disabled:opacity-30">
-              下一篇 →
-            </button>
-          </div>
         </div>
       </div>
+
+      {dodOpen && (
+        <DoDModal
+          task={task}
+          onClose={() => setDodOpen(false)}
+          onDone={() => {
+            setDodOpen(false)
+            pushToast({ kind: 'success', title: '已完成', body: task.dirName })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -643,10 +1304,9 @@ function ReaderView({
 export function TasksPage(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)!
   const showTask = useApp((s) => s.showTask)
+  const openTaskDir = useApp((s) => s.openTaskDir)
   const pushToast = useApp((s) => s.pushToast)
   const setIntakeOpen = useApp((s) => s.setIntakeOpen)
-  const [view, setView] = useState<ViewMode>('board')
-  const [readerDir, setReaderDir] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [planSeed, setPlanSeed] = useState<PlanningSeed | null>(null)
   /** 已展开的「已完成」等大列（列 key） */
@@ -734,91 +1394,107 @@ export function TasksPage(): JSX.Element {
 
   const boardColumns = groupOn ? filtered.filter((t) => !childDirs.has(t.dirName)) : filtered
 
+  /* 键盘导航：Escape 退出工作台；j/k 上下切换任务 */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+      if (openTaskDir) {
+        if (e.key === 'Escape') {
+          showTask(null)
+        } else if (e.key === 'j' || e.key === 'ArrowDown') {
+          const curIdx = filtered.findIndex((t) => t.dirName === openTaskDir)
+          if (curIdx >= 0 && curIdx < filtered.length - 1) {
+            showTask(filtered[curIdx + 1].dirName)
+          }
+        } else if (e.key === 'k' || e.key === 'ArrowUp') {
+          const curIdx = filtered.findIndex((t) => t.dirName === openTaskDir)
+          if (curIdx > 0) {
+            showTask(filtered[curIdx - 1].dirName)
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openTaskDir, filtered, showTask])
+
   return (
     <div className="flex h-full min-w-0 animate-fade-in flex-col">
-      {/* toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-ink-700 bg-ink-850/40 px-5 py-2.5">
-        <div className="relative">
-          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-mist-500" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索任务…"
-            className="field w-64 pl-8"
-          />
-        </div>
-        <Filter size={13} className="text-mist-500" />
-        <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="field w-32">
-          <option value="">全部负责人</option>
-          {assignees.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
-        <select value={priority} onChange={(e) => setPriority(e.target.value)} className="field w-28">
-          <option value="">全部优先级</option>
-          {['P0', 'P1', 'P2', 'P3'].map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
+      {/* 全局看板工具栏：仅在四列看板模式下显示，进入具体任务工作台时隐藏，彻底消除多层Header堆叠 */}
+      {!openTaskDir && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-ink-700 bg-ink-850/40 px-5 py-2.5">
+          <div className="relative">
+            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-mist-500" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索任务…"
+              className="field w-64 pl-8"
+            />
+          </div>
+          <Filter size={13} className="text-mist-500" />
+          <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="field w-32">
+            <option value="">全部负责人</option>
+            {assignees.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+          <select value={priority} onChange={(e) => setPriority(e.target.value)} className="field w-28">
+            <option value="">全部优先级</option>
+            {['P0', 'P1', 'P2', 'P3'].map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
 
-        {/* 聚合健康度：状态计数条 */}
-        <div className="hidden items-center gap-1.5 xl:flex">
-          {counts.map((c) => (
-            <span key={c.status} className="flex items-center gap-1 text-[11px] text-mist-400" title={c.label}>
-              <span className={clsx('h-1.5 w-1.5 rounded-full', c.dot)} />
-              <span className="font-mono text-mist-200">{c.count}</span>
-            </span>
-          ))}
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => setIntakeOpen(true)} className="btn-primary" title="新建待办">
-            <Sparkles size={12} /> 新建待办
-          </button>
-          <button onClick={() => setPlanSeed({ title: '', description: '' })} className="btn-outline" title="知识库 → AI 生成任务规划">
-            <Wand2 size={12} /> AI 规划
-          </button>
-          {hasEpics && view === 'board' && (
-            <button
-              onClick={() => setGrouped(!groupOn)}
-              className={clsx('chip border transition-colors', groupOn ? 'border-leaf-dim/50 text-leaf-soft' : 'border-ink-500 text-mist-400')}
-              title="按需求组（parent 引用）折叠子任务"
-            >
-              <Layers size={11} /> 需求组{groupOn ? ' 开' : ' 关'}
-            </button>
-          )}
-          <span className="hidden text-[11px] text-mist-500 md:inline">{filtered.length} 个任务</span>
-          <div className="flex overflow-hidden rounded-lg border border-ink-500">
-            {(
-              [
-                ['board', '看板', <LayoutGrid size={12} key="b" />],
-                ['reader', '阅读', <BookOpenText size={12} key="r" />],
-                ['list', '列表', <Rows3 size={12} key="l" />],
-                ['swimlane', '泳道', <Users2 size={12} key="s" />]
-              ] as const
-            ).map(([id, label, icon]) => (
-              <button
-                key={id}
-                onClick={() => setView(id)}
-                className={clsx(
-                  'flex items-center gap-1 px-2.5 py-1 text-[11px] transition-colors',
-                  view === id ? 'bg-leaf-dim/25 text-leaf-soft' : 'text-mist-400 hover:text-mist-200'
-                )}
-              >
-                {icon} {label}
-              </button>
+          {/* 聚合健康度：状态计数条 */}
+          <div className="hidden items-center gap-1.5 xl:flex">
+            {counts.map((c) => (
+              <span key={c.status} className="flex items-center gap-1 text-[11px] text-mist-400" title={c.label}>
+                <span className={clsx('h-1.5 w-1.5 rounded-full', c.dot)} />
+                <span className="font-mono text-mist-200">{c.count}</span>
+              </span>
             ))}
           </div>
-        </div>
-      </div>
 
-      {/* board view */}
-      {view === 'board' && (
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setIntakeOpen(true)} className="btn-primary" title="新建待办">
+              <Sparkles size={12} /> 新建待办
+            </button>
+            <button onClick={() => setPlanSeed({ title: '', description: '' })} className="btn-outline" title="知识库 → AI 生成任务规划">
+              <Wand2 size={12} /> AI 规划
+            </button>
+            {hasEpics && (
+              <button
+                onClick={() => setGrouped(!groupOn)}
+                className={clsx('chip border transition-colors', groupOn ? 'border-leaf-dim/50 text-leaf-soft' : 'border-ink-500 text-mist-400')}
+                title="按需求组（parent 引用）折叠子任务"
+              >
+                <Layers size={11} /> 需求组{groupOn ? ' 开' : ' 关'}
+              </button>
+            )}
+            <span className="text-[11px] text-mist-500">{filtered.length} 个任务</span>
+          </div>
+        </div>
+      )}
+
+      {/* 视图内容：当打开任务时渲染一体化工作台；未打开任务时渲染全宽四列看板 */}
+      {openTaskDir ? (
+        <TaskWorkspace
+          tasks={filtered}
+          selected={openTaskDir}
+          onSelect={(dir) => showTask(dir)}
+          onClose={() => showTask(null)}
+          columns={columns}
+          onMoveTask={moveTo}
+          childMap={childMap}
+          childDirs={childDirs}
+        />
+      ) : (
         <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-3">
           <div className="flex h-full min-h-0 gap-3">
             {columns.map((col) => {
               const items = boardColumns.filter((t) => matchCol(t, col.status))
-              // 大列自动折叠（>8 条只显示最近 5 条，避免"已完成"列无限增长挤压工作区）
               const collapsible = items.length > 8
               const expanded = expandedCols.has(col.status)
               const visible = collapsible && !expanded
@@ -887,36 +1563,6 @@ export function TasksPage(): JSX.Element {
         </div>
       )}
 
-      {/* reader view（PRD 阅读模式）——阅读场景需要覆盖全部任务（含子任务 PRD），不受需求组折叠影响 */}
-      {view === 'reader' && (
-        <ReaderView
-          tasks={filtered}
-          selected={readerDir ?? filtered[0]?.dirName ?? null}
-          onSelect={setReaderDir}
-          onOpenDetail={(dir) => showTask(dir)}
-        />
-      )}
-
-      {/* list view */}
-      {view === 'list' && (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <div className="min-w-[820px]">
-            <div className="sticky top-0 z-10 grid grid-cols-[92px_84px_74px_1fr_110px_88px_84px] gap-3 border-b border-ink-700 bg-ink-850 px-4 py-2 text-[10.5px] font-semibold uppercase tracking-wide text-mist-400">
-              <span>日期</span><span>Jira</span><span>优先级</span><span>标题</span><span>负责人</span><span>状态</span><span className="text-right">分支</span>
-            </div>
-            {filtered.map((t) => (
-              <TaskRow key={t.dirName} t={t} onOpen={() => showTask(t.dirName)} />
-            ))}
-            {filtered.length === 0 && (
-              <div className="py-16 text-center text-xs text-mist-500">没有匹配的任务</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* swimlane view */}
-      {view === 'swimlane' && <SwimlaneView />}
-
       {planSeed && <PlanningModal seed={planSeed} onClose={() => setPlanSeed(null)} />}
       {dodTask && (
         <DoDModal
@@ -927,80 +1573,4 @@ export function TasksPage(): JSX.Element {
       )}
     </div>
   )
-  function SwimlaneView(): JSX.Element {
-    const lanes: Array<{ key: string; label: string; mine: TaskInfo[] }> = [
-      ...(filtered.some((t) => !t.record?.assignee)
-        ? [{ key: '__unassigned', label: '未分配', mine: filtered.filter((t) => !t.record?.assignee) }]
-        : []),
-      ...assignees.map((a) => ({ key: a, label: a, mine: filtered.filter((t) => t.record?.assignee === a) }))
-    ]
-    return (
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {lanes.length === 0 && (
-          <div className="py-16 text-center text-xs text-mist-500">暂无负责人数据</div>
-        )}
-        <div className="space-y-4">
-          {lanes.map((lane) => {
-            const done = lane.mine.filter((t) => matchCol(t, 'completed')).length
-            return (
-              <div key={lane.key} className="card overflow-hidden">
-                <div className="flex items-center gap-3 border-b border-ink-700 bg-ink-750/50 px-4 py-2.5">
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-leaf-deep/60 text-[11px] font-bold text-leaf">
-                    {lane.label.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="text-xs font-semibold text-mist-100">{lane.label}</span>
-                  <span className="text-[11px] text-mist-500">{lane.mine.length} 个任务 · 已完成 {done}</span>
-                  <div className="ml-auto h-1.5 w-40 overflow-hidden rounded-full bg-ink-700">
-                    <div
-                      className="h-full rounded-full bg-leaf-dim/80"
-                      style={{ width: `${lane.mine.length ? (done / lane.mine.length) * 100 : 0}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 divide-x divide-ink-700/50">
-                  {columns.map((col) => {
-                    const items = lane.mine.filter((t) => matchCol(t, col.status))
-                    const laneKey = `${lane.key}:${col.status}`
-                    return (
-                      <div
-                        key={col.status}
-                        onDragOver={(e) => {
-                          e.preventDefault()
-                          setDragOver(laneKey)
-                        }}
-                        onDragLeave={() => setDragOver((cur) => (cur === laneKey ? null : cur))}
-                        onDrop={(e) => {
-                          e.preventDefault()
-                          setDragOver(null)
-                          const dir = e.dataTransfer.getData('text/task-dir')
-                          const t = snapshot.tasks.find((x) => x.dirName === dir)
-                          if (t) void moveTo(t, col.status)
-                        }}
-                        className={clsx(
-                          'flex min-h-16 flex-col p-2',
-                          dragOver === laneKey && 'bg-leaf-dim/5 ring-1 ring-inset ring-leaf-dim/40'
-                        )}
-                      >
-                        <div className="mb-1.5 flex items-center gap-1.5 px-1">
-                          <span className={clsx('h-1.5 w-1.5 rounded-full', col.dot)} />
-                          <span className="text-[10.5px] text-mist-400">
-                            {col.label} · {items.length}
-                          </span>
-                        </div>
-                        <div className="max-h-[26rem] min-h-0 space-y-1.5 overflow-y-auto">
-                          {items.map((t) => (
-                            <TaskCard key={t.dirName} t={t} onOpen={() => showTask(t.dirName)} />
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
 }

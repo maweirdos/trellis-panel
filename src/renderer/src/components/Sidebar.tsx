@@ -12,7 +12,9 @@ import {
   Library,
   Wand2,
   Radio,
-  Network
+  Network,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react'
 import { useApp, type Page } from '../store'
 import { clsx } from 'clsx'
@@ -60,6 +62,8 @@ export function Sidebar(): JSX.Element {
   const pickAndOpen = useApp((s) => s.pickAndOpen)
   const refresh = useApp((s) => s.refresh)
   const inbox = useApp((s) => s.inbox)
+  const sidebarCollapsed = useApp((s) => s.sidebarCollapsed)
+  const toggleSidebar = useApp((s) => s.toggleSidebar)
 
   const pendingCount = Object.values(inbox).filter((e) => e.state === 'pending').length
 
@@ -77,67 +81,148 @@ export function Sidebar(): JSX.Element {
   }
 
   return (
-    <aside className="flex w-52 shrink-0 flex-col border-r border-ink-700 bg-ink-850/60">
-      <nav className="flex-1 space-y-2 overflow-y-auto p-2.5 pt-3">
-        {GROUPS.map((group) => (
+    <aside
+      className={clsx(
+        'flex shrink-0 flex-col border-r border-ink-700 bg-ink-850/60 transition-all duration-200 ease-in-out',
+        sidebarCollapsed ? 'w-14' : 'w-52'
+      )}
+    >
+      <nav className={clsx('flex-1 space-y-2 overflow-y-auto', sidebarCollapsed ? 'p-1.5 pt-3' : 'p-2.5 pt-3')}>
+        {GROUPS.map((group, gIdx) => (
           <div key={group.label}>
-            <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-mist-600">{group.label}</div>
+            {sidebarCollapsed ? (
+              gIdx > 0 && <div className="my-2 h-px bg-ink-750/70" />
+            ) : (
+              <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-mist-600">{group.label}</div>
+            )}
             <div className="space-y-0.5">
-              {group.items.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setPage(item.id)}
-                  className={clsx(
-                    'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] transition-colors',
-                    page === item.id
-                      ? 'bg-leaf-dim/15 font-medium text-leaf-soft'
-                      : 'text-mist-300 hover:bg-ink-700/50 hover:text-mist-100'
-                  )}
-                >
-                  <span className={page === item.id ? 'text-leaf' : 'text-mist-400'}>{item.icon}</span>
-                  {item.label}
-                  {badge(item.id) !== undefined && badge(item.id)! > 0 && (
-                    <span
-                      className={clsx(
-                        'ml-auto rounded px-1.5 font-mono text-[10.5px]',
-                        item.id === 'inbox'
-                          ? 'bg-amber-500/20 text-amber-300'
-                          : 'bg-ink-750 text-mist-400'
+              {group.items.map((item) => {
+                const count = badge(item.id)
+                const hasBadge = count !== undefined && count > 0
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setPage(item.id)}
+                    title={sidebarCollapsed ? `${item.label}${hasBadge ? ` (${count})` : ''}` : undefined}
+                    className={clsx(
+                      'relative flex w-full items-center rounded-lg text-[12.5px] transition-colors',
+                      sidebarCollapsed ? 'justify-center p-2' : 'gap-2.5 px-2.5 py-[7px]',
+                      page === item.id
+                        ? 'bg-leaf-dim/15 font-medium text-leaf-soft'
+                        : 'text-mist-300 hover:bg-ink-700/50 hover:text-mist-100'
+                    )}
+                  >
+                    <span className={clsx(page === item.id ? 'text-leaf' : 'text-mist-400', 'relative')}>
+                      {item.icon}
+                      {sidebarCollapsed && hasBadge && (
+                        <span
+                          className={clsx(
+                            'absolute -right-1 -top-1 h-2 w-2 rounded-full ring-2 ring-ink-850',
+                            item.id === 'inbox' ? 'bg-amber-400' : 'bg-mist-400'
+                          )}
+                        />
                       )}
-                    >
-                      {badge(item.id)}
                     </span>
-                  )}
-                </button>
-              ))}
+                    {!sidebarCollapsed && (
+                      <>
+                        <span className="truncate">{item.label}</span>
+                        {hasBadge && (
+                          <span
+                            className={clsx(
+                              'ml-auto rounded px-1.5 font-mono text-[10.5px]',
+                              item.id === 'inbox'
+                                ? 'bg-amber-500/20 text-amber-300'
+                                : 'bg-ink-750 text-mist-400'
+                            )}
+                          >
+                            {count}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
         ))}
       </nav>
 
-      <div className="space-y-1.5 border-t border-ink-700 p-3">
-        {snapshot && (
-          <div className="space-y-1 text-[11px] leading-4 text-mist-400">
-            {snapshot.meta.developer && (
-              <div>
-                开发者 <span className="text-mist-200">{snapshot.meta.developer}</span>
+      {/* 底部控制与项目信息：一体化水平工具栏，拒绝垂直堆叠 */}
+      <div className={clsx('border-t border-ink-700/80 bg-ink-850/40', sidebarCollapsed ? 'p-1.5' : 'p-2.5 space-y-2')}>
+        {!sidebarCollapsed && snapshot && (
+          <div className="flex items-center gap-2 rounded-lg bg-ink-800/60 p-1.5 border border-ink-750/50">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-leaf-dim/20 font-mono text-xs font-semibold text-leaf-soft">
+              {(snapshot.meta.developer || 'D').slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[11.5px] font-medium text-mist-200">
+                {snapshot.meta.developer || '开发者'}
               </div>
-            )}
-            {snapshot.meta.currentTask && (
-              <div className="truncate" title={snapshot.meta.currentTask}>
-                当前任务 <span className="font-mono text-leaf-soft/90">{snapshot.meta.currentTask}</span>
-              </div>
-            )}
+              {snapshot.meta.currentTask ? (
+                <div className="truncate font-mono text-[10px] text-leaf-soft/90" title={snapshot.meta.currentTask}>
+                  {snapshot.meta.currentTask}
+                </div>
+              ) : (
+                <div className="text-[10px] text-mist-500">就绪</div>
+              )}
+            </div>
           </div>
         )}
-        <div className="flex gap-1.5 pt-0.5">
-          <button onClick={pickAndOpen} className="btn-ghost flex-1 justify-center" title="打开项目">
-            <FolderOpen size={13} /> 打开
-          </button>
-          <button onClick={refresh} className="btn-ghost justify-center px-2" title="重新扫描">
-            <RotateCw size={13} />
-          </button>
-        </div>
+
+        {/* 水平工具条（展开状态横向排列，折叠状态垂直紧凑居中） */}
+        {sidebarCollapsed ? (
+          <div className="flex flex-col items-center gap-1">
+            <button
+              onClick={pickAndOpen}
+              className="btn-ghost justify-center p-2 text-mist-400 hover:text-mist-100"
+              title="打开项目"
+            >
+              <FolderOpen size={14} />
+            </button>
+            <button
+              onClick={refresh}
+              className="btn-ghost justify-center p-2 text-mist-400 hover:text-mist-100"
+              title="重新扫描"
+            >
+              <RotateCw size={14} />
+            </button>
+            <button
+              onClick={toggleSidebar}
+              className="btn-ghost justify-center p-2 text-mist-400 hover:text-mist-100"
+              title="展开侧边栏"
+            >
+              <PanelLeftOpen size={15} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between pt-0.5 px-0.5">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={pickAndOpen}
+                className="btn-ghost rounded-md p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                title="打开项目 (Open Project)"
+              >
+                <FolderOpen size={13.5} />
+              </button>
+              <button
+                onClick={refresh}
+                className="btn-ghost rounded-md p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                title="重新扫描项目 (Refresh)"
+              >
+                <RotateCw size={13.5} />
+              </button>
+            </div>
+
+            <button
+              onClick={toggleSidebar}
+              className="btn-ghost rounded-md p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+              title="收起侧边栏"
+            >
+              <PanelLeftClose size={13.5} />
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   )

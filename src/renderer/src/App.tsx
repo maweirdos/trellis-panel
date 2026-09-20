@@ -120,8 +120,8 @@ function MainApp(): JSX.Element {
               {page === 'settings' && <SettingsPage />}
             </div>
 
-            {/* 任务详情：右侧悬浮层，宽度由抽屉自身控制（可拖拽调宽） */}
-            {(detailOpen && (page === 'tasks' || page === 'dashboard' || page === 'archive' || page === 'inbox')) && (
+            {/* 任务详情：右侧悬浮层（dashboard/archive/inbox等页面使用；tasks页已一体化内置，不再弹抽屉遮挡） */}
+            {(detailOpen && (page === 'dashboard' || page === 'archive' || page === 'inbox')) && (
               <div className="absolute inset-y-0 right-0 z-20 flex shadow-[-12px_0_40px_rgba(0,0,0,0.45)]">
                 <TaskDetail />
               </div>

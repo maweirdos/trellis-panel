@@ -184,13 +184,20 @@ select {
   @apply bg-transparent p-0 text-[12px] leading-5 text-mist-200;
 }
 .md table {
-  @apply my-3 w-full border-collapse text-[12px];
+  @apply my-4 min-w-full border-collapse text-[12.5px];
 }
 .md th {
-  @apply border border-ink-600 bg-ink-750 px-2.5 py-1.5 text-left font-semibold text-mist-100;
+  @apply whitespace-nowrap border-b border-ink-700 bg-ink-800/90 px-4 py-2.5 text-left font-semibold text-mist-100;
 }
 .md td {
-  @apply border border-ink-700 px-2.5 py-1.5 align-top;
+  @apply border-b border-ink-800/60 px-4 py-2.5 align-top text-mist-200 leading-relaxed;
+}
+.md td:last-child,
+.md th:last-child {
+  min-width: 5.5rem;
+}
+.md tr:hover td {
+  background-color: rgba(255, 255, 255, 0.025);
 }
 .md input[type='checkbox'] {
   @apply mr-1.5 accent-emerald-500;
