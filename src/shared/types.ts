@@ -563,6 +563,8 @@ export interface Settings {
    * 始终仅绑定环回，无局域网开关；默认关闭。
    */
   access: { enabled: boolean; port: number }
+  /** 全局出网代理（TPD-015）：覆盖 AI/models.dev（undici）与 WeKnora（Chromium）路径 */
+  proxy: { enabled: boolean; url: string }
   desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean }
 }
 

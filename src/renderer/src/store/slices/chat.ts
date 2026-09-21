@@ -83,7 +83,8 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
         updatedAt: res.session.updatedAt,
         messageCount: 0,
         providerId: res.session.providerId,
-        modelId: res.session.modelId
+        modelId: res.session.modelId,
+        thinkingLevel: res.session.thinkingLevel ?? 'off'
       }
       set({
         chatSessions: [meta, ...get().chatSessions],

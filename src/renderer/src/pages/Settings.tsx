@@ -425,6 +425,41 @@ export function SettingsPage(): JSX.Element {
           )}
         </section>
 
+        {/* 网络代理 */}
+        <section className="card px-5 py-4">
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">
+            <Cloud size={13} /> 网络代理
+          </div>
+          <p className="mb-3 text-[11px] leading-5 text-mist-500">
+            统一覆盖应用内 AI（对话/模型目录）与公司库（WeKnora）的出网请求。
+            支持 <code className="font-mono">http://</code>、<code className="font-mono">socks5://</code> 形式，
+            例如 <code className="font-mono">http://127.0.0.1:7890</code> 或 <code className="font-mono">socks5://127.0.0.1:1080</code>。
+          </p>
+          <div className="space-y-2.5">
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-mist-300">
+              <input
+                type="checkbox"
+                checked={settings.proxy?.enabled ?? false}
+                onChange={(e) =>
+                  void saveSettings({
+                    proxy: { enabled: e.target.checked, url: settings.proxy?.url ?? '' }
+                  })
+                }
+                className="accent-emerald-500"
+              />
+              启用出网代理
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                value={settings.proxy?.url ?? ''}
+                onChange={(e) => void saveSettings({ proxy: { enabled: settings.proxy?.enabled ?? false, url: e.target.value } })}
+                placeholder="http://127.0.0.1:7890"
+                className="flex-1 rounded-lg border border-ink-600 bg-ink-850 px-3 py-1.5 font-mono text-xs text-mist-200 outline-none placeholder:text-mist-600 focus:border-leaf/60"
+              />
+            </div>
+          </div>
+        </section>
+
         {/* 桌面 */}
         <section className="card px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">

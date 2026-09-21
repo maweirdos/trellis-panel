@@ -10,6 +10,7 @@ import { getSettings } from './services/store'
 import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindows } from './services/bridge'
 import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
+import { applyChromiumProxy } from './services/proxy'
 import { ipcEvent } from '../shared/ipc-channels'
 import {
   setUiHooks,
@@ -357,6 +358,7 @@ if (!gotLock) {
     restartHttpApi()
     restartJiraAutoSync()
     void accessServer.syncFromSettings()
+    void applyChromiumProxy()
     // 冷启动深链：进程首次以 trellis-panel:// 协议拉起时 argv 里带着 URL，
     // 不经过 second-instance，需要在这里处理（项目切换由 focusMainAndOpenTask 完成）
     const coldLink = parseDeepLink(process.argv)

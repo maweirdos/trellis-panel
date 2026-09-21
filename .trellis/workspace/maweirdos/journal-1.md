@@ -98,3 +98,21 @@ access server 新增 GET /tpap/v1/chat/sessions 与 /chat/session?id= 只读端�
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: 统一代理设置（09-22-unified-proxy，roadmap #10）
+**Branch**: `main`
+
+### Summary
+
+settings.proxy（enabled+url，http/socks5）一处配置覆盖三条出网路径：services/proxy.ts 的 proxiedFetch（启用时 npm undici 同实例 fetch+ProxyAgent，禁用回退全局 fetch 直连）覆盖 aiChat/aiChatStream/模型探测/models.dev；applyChromiumProxy（session.setProxy fixed_servers，socks5 前缀转换）覆盖 WeKnora net.fetch，boot 与 settings:set 后应用。Settings 页新增"网络代理"节。TPD-015 入册，roadmap #10 完成。
+
+### 验证与教训
+
+proxy 冒烟 5 项全过（本地转发代理 absolute-form + 目标服务：启用时请求经代理且流式成功、禁用时直连零代理请求、探测路径经代理）；chat 21/tpap 16/registry 101 回归全过；typecheck 全绿。关键教训：**Node 内置 fetch 与 npm undici 是两个实例**，跨实例传 dispatcher 报 `invalid onRequestStart method`——必须用同一 undici 包的 fetch 配套 ProxyAgent。
+
+### Status
+
+[OK] **Completed**

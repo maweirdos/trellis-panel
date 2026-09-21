@@ -87,6 +87,16 @@ export const dialog = { showOpenDialog: () => Promise.resolve({ canceled: true, 
 /** electron net 的最小桩：weknora 服务仅在被调用时才发请求，冒烟不触达 */
 export const net = { fetch: () => Promise.reject(new Error('smoke stub')) }
 
+/** session 桩：代理应用冒烟不触达 Chromium，仅记录 setProxy 调用 */
+globalThis.__TPANEL_SETPROXY__ = []
+export const session = {
+  defaultSession: {
+    setProxy: async (cfg) => {
+      globalThis.__TPANEL_SETPROXY__.push(cfg)
+    }
+  }
+}
+
 /** safeStorage 桩：冒烟路径下密钥明文回落（isEncryptionAvailable false 分支） */
 export const safeStorage = {
   isEncryptionAvailable: () => false,

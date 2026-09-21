@@ -22,6 +22,7 @@
 | [TPD-012](#tpd-012) | 模型目录发现优先 + models.dev 富化 | 已采纳 | 2026-09-21 |
 | [TPD-013](#tpd-013) | 对话转录 Entry 管道 + 滚动状态机 | 已采纳 | 2026-09-21 |
 | [TPD-014](#tpd-014) | 思考流独立契约与档位映射 | 已采纳 | 2026-09-22 |
+| [TPD-015](#tpd-015) | 出网代理统一走同实例 undici dispatcher | 已采纳 | 2026-09-22 |
 
 ---
 
@@ -154,3 +155,13 @@
 - **理由**: 思考流混入正文会污染 Markdown 渲染与历史上下文；档位是请求参数而非 UI 装饰，
   必须落在请求体契约上并有冒烟断言。
 - **替代案**: 把 reasoning 拼进 content —— 无法区分展示、无法独立折叠，否决。
+
+## TPD-015: 出网代理统一走同实例 undici dispatcher
+
+- **决策**: Node 侧出网（AI 四形态/模型探测/models.dev）统一经 `services/proxy.ts` 的
+  `proxiedFetch`——启用代理时用 **npm undici 自带的 fetch + ProxyAgent**（同实例），禁用时
+  回退全局 fetch 直连；Chromium 侧（weknora net.fetch）经 `session.setProxy(fixed_servers)`。
+  禁止把 npm undici 的 ProxyAgent 塞进 Node 全局 fetch 的 init.dispatcher。
+- **理由**: Node 内置 fetch 与 npm undici 是两个实例，Handler 协议版本不兼容
+  （实测报 `invalid onRequestStart method`）；跨实例 dispatcher 必然失败。
+- **替代案**: setGlobalDispatcher —— 只影响 npm undici 实例，对全局 fetch 无效，否决。

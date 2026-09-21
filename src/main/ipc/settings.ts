@@ -7,6 +7,7 @@ import { protectAiKey } from '../services/ai'
 import { protectWeknoraKey, protectWeknoraMcpToken } from '../services/weknora'
 import { applyAutoStart, restartJiraAutoSync, syncWeknoraSpecConfig } from '../state'
 import { accessServer } from '../services/access/server'
+import { applyChromiumProxy } from '../services/proxy'
 import { handle } from './registry'
 
 export function registerSettingsIpc(): void {
@@ -59,8 +60,9 @@ export function registerSettingsIpc(): void {
     syncWeknoraSpecConfig()
     applyAutoStart()
     restartJiraAutoSync()
-    // 接入协议开关/端口变化 → 同步启停（始终环回绑定）
+    // 接入协议开关/端口变化 → 同步启停（始终环回绑定）；代理变化 → 重新应用 Chromium 代理
     void accessServer.syncFromSettings()
+    void applyChromiumProxy()
     return next
   })
 }

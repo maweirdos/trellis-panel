@@ -35,8 +35,9 @@
    已实现——读路径复用 chat-store 单一实现，恒只读、过 Bearer 鉴权，tpap 冒烟 16 项覆盖。
 9. **E2E 对话渲染契约**：借鉴"渲染次数插桩"思路，给转录区 Entry 管道做渲染次数断言
    （防流式更新引发全列表重渲染回归）。
-10. **代理设置统一**：settings 全局 proxy（undici dispatcher / SOCKS5），覆盖 ai/weknora/
-    models.dev 拉取三条出网路径。
+10. ✅ **代理设置统一**（2026-09-22）：settings.proxy（http/socks5）→ Node 侧 proxiedFetch
+    （同实例 undici ProxyAgent，TPD-015）覆盖 AI/模型目录/models.dev；Chromium 侧
+    session.setProxy 覆盖 WeKnora。冒烟：本地转发代理验证经代理/直连两路径。
 
 ## 低优先级 / 观察项
 

@@ -8,8 +8,14 @@ import { loadInbox, reconcileInbox } from '../inbox-storage'
  * 新增设置节在"渲染层新代码 + 主进程旧代码"混跑（dev 热更新只刷渲染层）或
  * 旧 settings.json 下会缺失，这里统一补默认值，页面侧不再假设节一定存在。
  */
+const PROXY_DEFAULTS = { enabled: false, url: '' }
+
 export function normalizeSettings(s: Settings): Settings {
-  return { ...s, weknora: { ...WEKNORA_DEFAULTS, ...(s.weknora ?? {}) } }
+  return {
+    ...s,
+    weknora: { ...WEKNORA_DEFAULTS, ...(s.weknora ?? {}) },
+    proxy: { ...PROXY_DEFAULTS, ...(s.proxy ?? {}) }
+  }
 }
 
 export const sessionSlice: AppSlice<SessionSlice> = (set, get) => ({

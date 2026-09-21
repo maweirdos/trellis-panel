@@ -36,6 +36,7 @@ const DEFAULTS: Settings = {
   bridgeToken: '',
   httpApi: { enabled: false, port: 39573, lanAccess: false, webBoard: true },
   access: { enabled: false, port: 39580 },
+  proxy: { enabled: false, url: '' },
   desktop: { autoStart: false, globalShortcut: 'Alt+Shift+T', autoUpdate: false }
 }
 
@@ -64,6 +65,7 @@ export function getSettings(): Settings {
       weknora: { ...DEFAULTS.weknora, ...(parsed.weknora ?? {}) },
       httpApi: { ...DEFAULTS.httpApi, ...(parsed.httpApi ?? {}) },
       access: { ...DEFAULTS.access, ...(parsed.access ?? {}) },
+      proxy: { ...DEFAULTS.proxy, ...(parsed.proxy ?? {}) },
       desktop: { ...DEFAULTS.desktop, ...(parsed.desktop ?? {}) }
     }
   } catch {
@@ -98,6 +100,7 @@ export function setSettings(patch: Partial<Settings>): Settings {
     weknora: patch.weknora ? { ...cur.weknora, ...patch.weknora } : cur.weknora,
     httpApi: patch.httpApi ? { ...cur.httpApi, ...patch.httpApi } : cur.httpApi,
     access: patch.access ? { ...cur.access, ...patch.access } : cur.access,
+    proxy: patch.proxy ? { ...cur.proxy, ...patch.proxy } : cur.proxy,
     desktop: patch.desktop ? { ...cur.desktop, ...patch.desktop } : cur.desktop
   }
   cache = next

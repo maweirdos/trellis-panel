@@ -1,6 +1,7 @@
 import { safeStorage } from 'electron'
 import type { AiApiFormat, AiChatResult, AiConfig, ChatMessage, ModelFetchResult, ModelItem, ThinkingLevel } from '../../shared/types'
 import { errorMessage, isAbortError } from '../../shared/errors'
+import { proxiedFetch } from './proxy'
 
 /**
  * 应用内 AI 客户端 —— OpenAI 兼容 /chat/completions。
@@ -129,7 +130,7 @@ export async function aiChat(
       }
     }
 
-    const res = await fetch(endpoint, {
+    const res = await proxiedFetch(endpoint, {
       method: 'POST',
       signal: controller.signal,
       headers,
@@ -303,7 +304,7 @@ export async function fetchModelsFromProvider(cfg: {
       }
     }
 
-    const res = await fetch(endpoint, {
+    const res = await proxiedFetch(endpoint, {
       method: 'GET',
       headers,
       signal: controller.signal
@@ -430,7 +431,7 @@ export async function testSingleModel(
       }
     }
 
-    const res = await fetch(endpoint, {
+    const res = await proxiedFetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -663,7 +664,7 @@ export async function aiChatStream(
 
   let content = ''
   try {
-    const res = await fetch(endpoint, {
+    const res = await proxiedFetch(endpoint, {
       method: 'POST',
       signal: controller.signal,
       headers,
@@ -784,7 +785,7 @@ async function loadModelsDevCatalog(app: { getPath: (name: 'userData' | 'home' |
   try {
     const controller = new AbortController()
     setTimeout(() => controller.abort(), 10_000)
-    const res = await fetch(MODELS_DEV_URL, { signal: controller.signal })
+    const res = await proxiedFetch(MODELS_DEV_URL, { signal: controller.signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const raw = await res.text()
     const parsed = parse(raw)
