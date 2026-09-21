@@ -108,7 +108,9 @@ export const ipcInvoke = {
     rename: 'chat:rename',
     send: 'chat:send',
     abort: 'chat:abort',
-    regenerate: 'chat:regenerate'
+    regenerate: 'chat:regenerate',
+    edit: 'chat:edit',
+    branch: 'chat:branch'
   },
   ai: {
     chat: 'ai:chat',

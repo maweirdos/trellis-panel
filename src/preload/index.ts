@@ -140,6 +140,10 @@ const api = {
     thinkingLevel?: import('../shared/types').ThinkingLevel
   }) => ipcRenderer.invoke(ipcInvoke.chat.send, input),
   chatRegenerate: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.regenerate, sessionId),
+  chatEditResend: (sessionId: string, messageId: string, content: string) =>
+    ipcRenderer.invoke(ipcInvoke.chat.edit, sessionId, messageId, content),
+  chatBranch: (sessionId: string, messageId: string) =>
+    ipcRenderer.invoke(ipcInvoke.chat.branch, sessionId, messageId),
   chatAbort: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.abort, sessionId),
   onChatOutput: (cb: (e: ChatOutputEvent) => void) => subscribe(ipcEvent.chatOutput, cb),
   onChatDone: (cb: (e: ChatDoneEvent) => void) => subscribe(ipcEvent.chatDone, cb),

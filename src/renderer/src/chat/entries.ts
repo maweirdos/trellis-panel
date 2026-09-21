@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../../shared/types'
+import type { ChatMessageView } from '../../../shared/types'
 
 /**
  * 转录区展示管道（TPD-013）：原始消息数组 → 稳定展示条目。
@@ -6,11 +6,29 @@ import type { ChatMessage } from '../../../shared/types'
  */
 
 export type ChatEntry =
-  | { kind: 'user'; key: string; content: string }
-  | { kind: 'assistant'; key: string; content: string; reasoning?: string }
+  | {
+      kind: 'user'
+      key: string
+      /** 节点 id：编辑重发/分支切换的定位符 */
+      id?: string
+      content: string
+      siblingCount?: number
+      siblingIndex?: number
+      siblingIds?: string[]
+    }
+  | {
+      kind: 'assistant'
+      key: string
+      id?: string
+      content: string
+      reasoning?: string
+      siblingCount?: number
+      siblingIndex?: number
+      siblingIds?: string[]
+    }
 
 /** 连续 assistant 消息合并为一个回合条目，减少视觉碎片 */
-export function buildEntries(messages: ChatMessage[]): ChatEntry[] {
+export function buildEntries(messages: ChatMessageView[]): ChatEntry[] {
   const out: ChatEntry[] = []
   for (let i = 0; i < messages.length; i += 1) {
     const m = messages[i]

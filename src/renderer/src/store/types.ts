@@ -1,4 +1,4 @@
-import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem, ChatMessage, ChatSessionMeta, ChatDoneEvent, ThinkingLevel } from '../../../shared/types'
+import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem, ChatMessageView, ChatSessionMeta, ThinkingLevel } from '../../../shared/types'
 import type { api } from '../api'
 import type { StateCreator } from 'zustand'
 
@@ -121,7 +121,7 @@ export interface ChatQueuedItem {
 export interface ChatSlice {
   chatSessions: ChatSessionMeta[]
   chatActiveId: string | null
-  chatMessages: ChatMessage[]
+  chatMessages: ChatMessageView[]
   chatStreaming: ChatStreamState | null
   chatPending: ChatQueuedItem[]
   /** 初始化事件订阅（App 挂载时调用一次，返回反注册函数） */
@@ -137,6 +137,8 @@ export interface ChatSlice {
   ) => Promise<void>
   chatAbort: () => Promise<void>
   chatRegenerate: () => Promise<void>
+  chatEditResend: (messageId: string, content: string) => Promise<void>
+  chatBranch: (messageId: string) => Promise<void>
 }
 
 export type AppState = SessionSlice & UiSlice & ToastSlice & ViewerSlice & TodosSlice & InboxSlice & ChatSlice

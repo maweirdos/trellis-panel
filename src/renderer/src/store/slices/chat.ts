@@ -1,5 +1,5 @@
 import type { AppSlice, ChatSlice } from '../types'
-import type { ChatDoneEvent, ChatSessionMeta } from '../../../../shared/types'
+import type { ChatDoneEvent, ChatMessageView, ChatSessionMeta } from '../../../../shared/types'
 import { api } from '../../api'
 
 /**
@@ -33,7 +33,10 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
       if (pending) {
         set({
           chatPending: st.chatPending.filter((p) => p.runId !== e.runId),
-          chatMessages: [...st.chatMessages, { role: 'user', content: pending.content }],
+          chatMessages: [
+            ...st.chatMessages,
+            { id: pending.runId, role: 'user', content: pending.content, siblingCount: 1, siblingIndex: 0, siblingIds: [pending.runId] }
+          ],
           chatStreaming: { runId: e.runId, content: e.delta ?? '', reasoning: e.reasoning ?? '' }
         })
       }
@@ -46,7 +49,20 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
         return
       }
       if (e.kind === 'done' && e.message) {
-        set({ chatMessages: [...st.chatMessages, e.message], chatStreaming: null })
+        const optimistic: ChatMessageView = {
+          ...e.message,
+          id: `m-${e.runId}`,
+          siblingCount: 1,
+          siblingIndex: 0,
+          siblingIds: [`m-${e.runId}`]
+        }
+        set({ chatMessages: [...st.chatMessages, optimistic], chatStreaming: null })
+        // 后台刷新拿准确的兄弟分支信息
+        if (st.chatActiveId) void api.chatOpen(st.chatActiveId).then((r) => {
+          if (r.ok && r.session && get().chatActiveId === st.chatActiveId) {
+            set({ chatMessages: r.session.messages })
+          }
+        })
       } else {
         set({ chatStreaming: null })
         if (e.kind === 'error' && e.error) {
@@ -139,7 +155,10 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
       set({ chatPending: [...st.chatPending, { runId: res.runId ?? `q-${Date.now()}`, content: trimmed }] })
     } else {
       set({
-        chatMessages: [...get().chatMessages, { role: 'user', content: trimmed }],
+        chatMessages: [
+          ...get().chatMessages,
+          { id: res.runId ?? `m-${Date.now()}`, role: 'user', content: trimmed, siblingCount: 1, siblingIndex: 0, siblingIds: [res.runId ?? ''] }
+        ],
         chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
       })
     }
@@ -160,10 +179,47 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
       st.pushToast({ kind: 'error', title: '重新生成失败', body: res.error })
       return
     }
-    // 末条 assistant 已在主进程截断，渲染层同步移除后进入流式态
+    // 旧回答在主进程保留为兄弟分支；渲染层移除旧叶并进入流式态
     set({
       chatMessages: st.chatMessages.slice(0, -1),
       chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
     })
+  },
+
+  chatEditResend: async (messageId, content) => {
+    const st = get()
+    const id = st.chatActiveId
+    if (!id || st.chatStreaming) return
+    const res = await api.chatEditResend(id, messageId, content)
+    if (!res.ok) {
+      st.pushToast({ kind: 'error', title: '编辑重发失败', body: res.error })
+      return
+    }
+    // 编辑生成兄弟分支：本地截断到该消息之前，替换为编辑后的用户消息
+    const idx = st.chatMessages.findIndex((m) => m.id === messageId)
+    const base = idx >= 0 ? st.chatMessages.slice(0, idx) : st.chatMessages
+    set({
+      chatMessages: [...base, { id: messageId, role: 'user', content: content.trim(), siblingCount: 1, siblingIndex: 0, siblingIds: [messageId] }],
+      chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
+    })
+    if (st.chatActiveId) {
+      void api.chatOpen(st.chatActiveId).then((r) => {
+        if (r.ok && r.session && get().chatActiveId === id && !get().chatStreaming) {
+          set({ chatMessages: r.session.messages })
+        }
+      })
+    }
+  },
+
+  chatBranch: async (messageId) => {
+    const st = get()
+    const id = st.chatActiveId
+    if (!id || st.chatStreaming) return
+    const res = await api.chatBranch(id, messageId)
+    if (!res.ok) {
+      st.pushToast({ kind: 'error', title: '切换分支失败', body: res.error })
+      return
+    }
+    await st.chatOpenSession(id)
   }
 })

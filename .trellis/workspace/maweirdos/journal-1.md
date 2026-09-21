@@ -116,3 +116,17 @@ proxy 冒烟 5 项全过（本地转发代理 absolute-form + 目标服务：启
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: 会话树结构升级（09-22-chat-tree，roadmap #2）
+**Branch**: `main`
+
+### Summary
+
+会话存储 v2 树结构（nodes map + activeLeaf，TPD-016）：活跃对话 = activeLeaf 回溯路径；v1 线性会话打开自动迁移为链。编辑重发（chat:edit，user 兄弟分支重跑）、chat:branch 分支切换、regenerate 升级为分支保留（旧回答不丢弃）；chatOpen 返回活跃路径视图（id/siblingCount/siblingIndex/siblingIds）；渲染层 ‹i/n› 分支切换器 + 用户消息内联编辑（铅笔→textarea→保存重发）。chat 冒烟扩至 30 项（新增 v1 迁移/编辑兄弟/分支切换/regenerate 保留），四套冒烟 + typecheck 全绿。
+
+### Status
+
+[OK] **Completed**

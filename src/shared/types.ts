@@ -503,9 +503,19 @@ export interface ChatSessionMeta {
   thinkingLevel: ThinkingLevel
 }
 
-/** 会话完整记录 */
-export interface ChatSession extends ChatSessionMeta {
-  messages: ChatMessage[]
+/** 会话完整记录（v2 树的活跃路径视图，TPD-016） */
+export interface ChatMessageView extends ChatMessage {
+  id: string
+  /** 同层兄弟数（含自身）；>1 时渲染分支切换器 */
+  siblingCount: number
+  /** 自身在兄弟中的序号（0 起） */
+  siblingIndex: number
+  /** 全部兄弟（含自身）的节点 id，供分支切换 */
+  siblingIds: string[]
+}
+
+export interface ChatSessionView extends ChatSessionMeta {
+  messages: ChatMessageView[]
 }
 
 /** chat:send 结果：直接开跑或进入会话队列 */
@@ -900,8 +910,8 @@ export interface TrellisApi {
 
   /* --- 对话（Chat 页） --- */
   chatList: () => Promise<{ ok: boolean; error?: string; sessions?: ChatSessionMeta[] }>
-  chatOpen: (id: string) => Promise<{ ok: boolean; error?: string; session?: ChatSession }>
-  chatNew: (binding?: { providerId?: string; modelId?: string }) => Promise<{ ok: boolean; error?: string; session?: ChatSession }>
+  chatOpen: (id: string) => Promise<{ ok: boolean; error?: string; session?: ChatSessionView }>
+  chatNew: (binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel }) => Promise<{ ok: boolean; error?: string; session?: ChatSessionView }>
   chatDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
   chatRename: (id: string, title: string) => Promise<{ ok: boolean; error?: string }>
   chatSend: (input: {
@@ -912,6 +922,8 @@ export interface TrellisApi {
     thinkingLevel?: ThinkingLevel
   }) => Promise<ChatSendResult>
   chatRegenerate: (sessionId: string) => Promise<ChatSendResult>
+  chatEditResend: (sessionId: string, messageId: string, content: string) => Promise<ChatSendResult>
+  chatBranch: (sessionId: string, messageId: string) => Promise<{ ok: boolean; error?: string }>
   chatAbort: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
   onChatOutput: (cb: (e: ChatOutputEvent) => void) => () => void
   onChatDone: (cb: (e: ChatDoneEvent) => void) => () => void

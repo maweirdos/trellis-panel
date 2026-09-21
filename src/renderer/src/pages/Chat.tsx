@@ -19,7 +19,9 @@ import {
   Download,
   Brain,
   RefreshCw,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft,
+  Pencil
 } from 'lucide-react'
 import type { ModelProvider, ThinkingLevel } from '../../../shared/types'
 
@@ -80,6 +82,41 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
   )
 
   return { provider, modelId, picker }
+}
+
+/** 分支切换器：同一位置存在多个兄弟版本时显示 ‹ i/n › */
+function BranchSwitcher({
+  index,
+  count,
+  ids,
+  onSwitch
+}: {
+  index: number
+  count: number
+  ids: string[]
+  onSwitch: (id: string) => void
+}): JSX.Element {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border border-ink-600/70 bg-ink-850/60 px-1.5 py-0.5 font-mono text-[10px] text-mist-400">
+      <button
+        disabled={index <= 0}
+        onClick={() => ids[index - 1] && onSwitch(ids[index - 1])}
+        className="disabled:opacity-30 hover:text-mist-200"
+        title="上一分支"
+      >
+        <ChevronLeft size={10} />
+      </button>
+      {index + 1}/{count}
+      <button
+        disabled={index >= count - 1}
+        onClick={() => ids[index + 1] && onSwitch(ids[index + 1])}
+        className="disabled:opacity-30 hover:text-mist-200"
+        title="下一分支"
+      >
+        <ChevronRight size={10} />
+      </button>
+    </span>
+  )
 }
 
 const THINKING_LABEL: Record<ThinkingLevel, string> = { off: '关', low: '低', medium: '中', high: '高' }
@@ -143,10 +180,13 @@ export function ChatPage(): JSX.Element {
   const chatSend = useApp((s) => s.chatSend)
   const chatAbort = useApp((s) => s.chatAbort)
   const chatRegenerate = useApp((s) => s.chatRegenerate)
+  const chatEditResend = useApp((s) => s.chatEditResend)
+  const chatBranch = useApp((s) => s.chatBranch)
   const aiEnabled = useApp((s) => !!s.settings?.ai?.enabled)
 
   const [draft, setDraft] = useState('')
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('off')
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   const { provider, modelId, picker } = ComposerModelPicker()
 
   // 切换会话时同步该会话的思考档位
@@ -297,18 +337,86 @@ export function ChatPage(): JSX.Element {
                   开始你的第一条对话。模型按会话绑定，可随时在上方切换。
                 </div>
               )}
-              {visible.map((e, idx) =>
-                e.kind === 'user' ? (
-                  <div key={e.key} className="flex justify-end">
-                    <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-leaf/15 px-3.5 py-2 text-xs leading-relaxed text-mist-100">
-                      {e.content}
+              {visible.map((e, idx) => {
+                if (e.kind === 'user') {
+                  const isEditing = editing?.id === e.key
+                  return (
+                    <div key={e.key} className="group flex flex-col items-end gap-1">
+                      {isEditing ? (
+                        <div className="flex w-[80%] flex-col gap-1.5">
+                          <textarea
+                            value={editing.text}
+                            onChange={(ev) => setEditing({ id: e.key, text: ev.target.value })}
+                            onKeyDown={(ev) => {
+                              if (ev.key === 'Enter' && !ev.shiftKey && !ev.nativeEvent.isComposing) {
+                                ev.preventDefault()
+                                const text = editing.text.trim()
+                                if (text && e.id) void chatEditResend(e.id, text)
+                                setEditing(null)
+                              } else if (ev.key === 'Escape') {
+                                setEditing(null)
+                              }
+                            }}
+                            rows={Math.min(6, Math.max(2, editing.text.split('\n').length))}
+                            className="resize-none rounded-lg border border-leaf/50 bg-ink-850 px-3 py-2 text-xs text-mist-200 outline-none"
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-1.5 text-[11px]">
+                            <button onClick={() => setEditing(null)} className="btn-ghost">取消（Esc）</button>
+                            <button
+                              onClick={() => {
+                                const text = editing.text.trim()
+                                if (text && e.id) void chatEditResend(e.id, text)
+                                setEditing(null)
+                              }}
+                              className="btn-primary"
+                            >
+                              保存并重发
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex max-w-[80%] items-end gap-1">
+                          <div className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-leaf/15 px-3.5 py-2 text-xs leading-relaxed text-mist-100">
+                            {e.content}
+                          </div>
+                          {e.id && (
+                            <button
+                              onClick={() => setEditing({ id: e.key, text: e.content })}
+                              className="shrink-0 rounded p-1 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-mist-200"
+                              title="编辑并重发（生成新分支）"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {(e.siblingCount ?? 0) > 1 && e.siblingIds && (
+                        <BranchSwitcher
+                          index={e.siblingIndex ?? 0}
+                          count={e.siblingCount ?? 0}
+                          ids={e.siblingIds}
+                          onSwitch={(id) => void chatBranch(id)}
+                        />
+                      )}
                     </div>
-                  </div>
-                ) : (
+                  )
+                }
+                return (
                   <div key={e.key} className="group flex items-start gap-2">
                     <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-ink-700/70 bg-ink-850/70 px-3.5 py-2.5">
                       {e.reasoning && <ThinkingBlock reasoning={e.reasoning} />}
                       <MarkdownView content={e.content} />
+                      {(e.siblingCount ?? 0) > 1 && e.siblingIds && (
+                        <div className="mt-2 border-t border-ink-700/60 pt-1.5">
+                          <BranchSwitcher
+                            index={e.siblingIndex ?? 0}
+                            count={e.siblingCount ?? 0}
+                            ids={e.siblingIds}
+                            onSwitch={(id) => void chatBranch(id)}
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="flex shrink-0 flex-col items-center gap-0.5">
                       <CopyButton text={e.content} />
@@ -316,7 +424,7 @@ export function ChatPage(): JSX.Element {
                         <button
                           onClick={regenerate}
                           className="rounded p-1 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-mist-200"
-                          title="重新生成"
+                          title="重新生成（保留旧回答为分支）"
                         >
                           <RefreshCw size={12} />
                         </button>
@@ -324,7 +432,7 @@ export function ChatPage(): JSX.Element {
                     </div>
                   </div>
                 )
-              )}
+              })}
               {pending.map((p) => (
                 <div key={p.runId} className="flex justify-end">
                   <div className="flex max-w-[80%] items-center gap-1.5 rounded-2xl rounded-br-md border border-dashed border-ink-600 bg-ink-850/40 px-3.5 py-2 text-xs text-mist-400">

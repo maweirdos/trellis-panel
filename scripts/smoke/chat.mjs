@@ -167,6 +167,8 @@ execFileSync(process.execPath, [
   `--outfile=${bundle3}`
 ], { stdio: 'inherit' })
 const store = await import(pathToFileURL(bundle3).href)
+const { activePath } = store
+const msgsOf = (id) => activePath(store.openSession({ getPath: () => workDir }, id))
 
 const { GatewayManager } = await import(pathToFileURL(bundle2).href)
 
@@ -241,7 +243,7 @@ const done1 = await waitFor(
   '首轮完成'
 )
 check('首轮 done 且 kind=done', done1?.kind === 'done')
-const persisted = store.openSession({ getPath: () => workDir }, session.id)
+const persisted = { messages: msgsOf(session.id) }
 check('首轮落库：user+assistant 两条', persisted?.messages?.length === 2 && persisted.messages[1].content === '你好，世界', JSON.stringify(persisted?.messages))
 check(
   'assistant 落库携带思考流 reasoning',
@@ -250,8 +252,8 @@ check(
 )
 await waitFor(
   () => {
-    const s = store.openSession({ getPath: () => workDir }, session.id)
-    return s.messages.length >= 4 && s.messages[3]?.content === '你好，世界'
+    const path = msgsOf(session.id)
+    return path.length >= 4 && path[3]?.content === '你好，世界'
   },
   10000,
   '队列自动续发'
@@ -294,8 +296,7 @@ const session2 = store.createSession({ getPath: () => workDir }, { providerId: '
 chatService.send({ sessionId: session2.id, content: '档位检查', providerId: 'mock', modelId: 'mock-model-a' })
 await waitFor(
   () => {
-    const s2 = store.openSession({ getPath: () => workDir }, session2.id)
-    return s2.messages.length >= 2
+    return msgsOf(session2.id).length >= 2
   },
   10000,
   '档位轮完成'
@@ -327,7 +328,7 @@ check('anthropic low：thinking.budget_tokens=4096', anthropicLowBody?.thinking?
 const session3 = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
 chatService.send({ sessionId: session3.id, content: '原始提问', providerId: 'mock', modelId: 'mock-model-a' })
 await waitFor(
-  () => store.openSession({ getPath: () => workDir }, session3.id).messages.length >= 2,
+  () => msgsOf(session3.id).length >= 2,
   10000,
   'regenerate 前置轮'
 )
@@ -338,11 +339,77 @@ await waitFor(
   10000,
   'regenerate 完成'
 )
-const regenSession = store.openSession({ getPath: () => workDir }, session3.id)
+const regenSession = { messages: msgsOf(session3.id) }
 check('regenerate 后仍为 user+assistant 且不叠加', regenSession.messages.length === 2 && regenSession.messages[1].role === 'assistant', JSON.stringify(regenSession.messages.map((m) => m.role)))
 const session4 = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
 const regenBad = chatService.regenerate(session4.id)
 check('空会话 regenerate 拒绝', !regenBad.ok, JSON.stringify(regenBad))
+
+/* 10.5 v1 → v2 迁移：旧线性会话打开自动迁移为链 */
+const v1Id = 'legacy-v1-session'
+const v1File = join(workDir, 'chat-sessions', `${v1Id}.json`)
+writeFileSync(
+  v1File,
+  JSON.stringify({
+    id: v1Id,
+    title: '旧格式会话',
+    createdAt: 1700000000000,
+    updatedAt: 1700000000001,
+    messageCount: 2,
+    providerId: 'mock',
+    modelId: 'mock-model-a',
+    messages: [
+      { role: 'user', content: '旧问题' },
+      { role: 'assistant', content: '旧回答' }
+    ]
+  }),
+  'utf-8'
+)
+const migrated = store.openSession({ getPath: () => workDir }, v1Id)
+const migratedPath = activePath(migrated)
+check('v1 会话自动迁移为 v2 树', migrated.version === 2 && Object.keys(migrated.nodes).length === 2)
+check('迁移后活跃路径内容等价', migratedPath.length === 2 && migratedPath[0].content === '旧问题' && migratedPath[1].content === '旧回答')
+
+/* 11. 树结构：编辑重发兄弟分支 + 分支切换 + regenerate 保留旧回答 */
+const pathBefore = msgsOf(session.id)
+const user0Id = pathBefore[0].id
+const beforeNodes = Object.keys(store.openSession({ getPath: () => workDir }, session.id).nodes).length
+
+// 编辑首条用户消息 → 兄弟分支重跑
+const editRes = chatService.editAndResend(session.id, user0Id, '编辑后的问候')
+check('编辑重发接受并开跑', editRes.ok && !!editRes.runId, JSON.stringify(editRes))
+await waitFor(
+  () => events().some((e) => e.channel === ipcEvent.chatDone && e.payload.runId === editRes.runId && e.payload.kind === 'done'),
+  10000,
+  '编辑轮完成'
+)
+const afterEdit = store.openSession({ getPath: () => workDir }, session.id)
+const afterEditPath = activePath(afterEdit)
+check('编辑后活跃路径为新内容', afterEditPath[0]?.content === '编辑后的问候', JSON.stringify(afterEditPath.map((m) => m.content)))
+check('编辑生成兄弟分支（节点数增加且旧分支保留）', Object.keys(afterEdit.nodes).length === beforeNodes + 2, `nodes=${Object.keys(afterEdit.nodes).length}`)
+
+// 分支切换：切回旧用户节点（视图截至提问处），再切回旧回答
+const oldAssistantId = pathBefore[1].id
+const branchToUser = chatService.branch(session.id, user0Id)
+check('分支切换到旧用户节点', branchToUser.ok, JSON.stringify(branchToUser))
+const userLeafPath = msgsOf(session.id)
+check('切到 user 叶后视图截至提问处', userLeafPath.length === 1 && userLeafPath[0]?.content === '打个招呼', JSON.stringify(userLeafPath.map((m) => m.content)))
+const branchBack = chatService.branch(session.id, oldAssistantId)
+check('分支切换回旧回答节点', branchBack.ok, JSON.stringify(branchBack))
+const oldPath = msgsOf(session.id)
+check('切回旧分支后路径恢复旧内容', oldPath.length === 2 && oldPath[0]?.content === '打个招呼' && oldPath[1]?.content === '你好，世界', JSON.stringify(oldPath.map((m) => m.content)))
+
+// regenerate 分支保留：在当前叶（assistant）同父生成新兄弟，旧回答不丢弃
+const beforeRegenNodes = Object.keys(store.openSession({ getPath: () => workDir }, session.id).nodes).length
+const regen2 = chatService.regenerate(session.id)
+check('regenerate 接受（分支保留语义）', regen2.ok && !!regen2.runId, JSON.stringify(regen2))
+await waitFor(
+  () => events().some((e) => e.channel === ipcEvent.chatDone && e.payload.runId === regen2.runId && e.payload.kind === 'done'),
+  10000,
+  'regenerate 分支完成'
+)
+const afterRegen = store.openSession({ getPath: () => workDir }, session.id)
+check('regenerate 新增兄弟 assistant（+1 节点）且路径不变长', Object.keys(afterRegen.nodes).length === beforeRegenNodes + 1 && msgsOf(session.id).length === 2, `nodes=${Object.keys(afterRegen.nodes).length}`)
 
 /* 收尾 */
 mockServer.close()

@@ -23,6 +23,7 @@
 | [TPD-013](#tpd-013) | 对话转录 Entry 管道 + 滚动状态机 | 已采纳 | 2026-09-21 |
 | [TPD-014](#tpd-014) | 思考流独立契约与档位映射 | 已采纳 | 2026-09-22 |
 | [TPD-015](#tpd-015) | 出网代理统一走同实例 undici dispatcher | 已采纳 | 2026-09-22 |
+| [TPD-016](#tpd-016) | 会话存储树结构：编辑/重新生成都生成兄弟分支 | 已采纳 | 2026-09-22 |
 
 ---
 
@@ -165,3 +166,12 @@
 - **理由**: Node 内置 fetch 与 npm undici 是两个实例，Handler 协议版本不兼容
   （实测报 `invalid onRequestStart method`）；跨实例 dispatcher 必然失败。
 - **替代案**: setGlobalDispatcher —— 只影响 npm undici 实例，对全局 fetch 无效，否决。
+
+## TPD-016: 会话存储树结构：编辑/重新生成都生成兄弟分支
+
+- **决策**: 会话 JSON v2 = `{version:2, nodes:{id→ChatNode}, activeLeaf}`；活跃对话 = activeLeaf
+  回溯路径。编辑重发（user 兄弟）、regenerate（assistant 兄弟）都生成新兄弟节点并切换
+  activeLeaf，旧分支永久保留可切回；禁止物理删除旧回答。v1 线性格式打开时自动迁移为链。
+- **理由**: 线性数组迫使 regenerate 丢弃旧回答；树结构让"换一个回答/改一个问题"成为
+  可逆操作，成本仅是节点引用。
+- **替代案**: 线性数组 + 备份文件 —— 状态分裂，否决。
