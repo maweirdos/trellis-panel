@@ -13,7 +13,9 @@
  * Clean-room 声明：本协议为独立设计，未复制任何第三方代码或文档原文。
  */
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http'
+import { app } from 'electron'
 import { getSettings } from '../store'
+import { listSessions, openSession } from '../chat-store'
 import { getSnapshot } from '../../state'
 import { GatewayManager } from '../gateway/manager'
 import { accessEventLog, type Cursor } from './event-log'
@@ -98,6 +100,17 @@ class AccessServer {
           return this.json(res, 200, { ok: true, ...accessEventLog.since(this.parseCursor(url.searchParams.get('cursor'))) })
         case 'GET /tools':
           return this.json(res, 200, { ok: true, data: GatewayManager.getStandardTools() })
+        case 'GET /chat/sessions':
+          // 对话只读面（roadmap #8）：复用 chat-store 单一实现，恒只读
+          return this.json(res, 200, { ok: true, data: listSessions(app), cursor: accessEventLog.latest() })
+        case 'GET /chat/session': {
+          const id = url.searchParams.get('id') ?? ''
+          const session = openSession(app, id)
+          if (!session) {
+            return this.json(res, 404, { ok: false, error: { code: 'E_NOT_FOUND', message: '会话不存在' } })
+          }
+          return this.json(res, 200, { ok: true, data: session, cursor: accessEventLog.latest() })
+        }
         case 'POST /spec/read':
         case 'POST /task/read': {
           const body = await this.readBody(req)
@@ -144,7 +157,7 @@ class AccessServer {
       name: 'trellis-panel',
       protocol: PROTOCOL_VERSION,
       project: snap ? { name: snap.meta.name, root: snap.meta.root } : null,
-      capabilities: ['session.read', 'events.pull', 'tools.list', 'tools.call', 'spec.read', 'task.read', 'token.rotate']
+      capabilities: ['session.read', 'events.pull', 'tools.list', 'tools.call', 'spec.read', 'task.read', 'token.rotate', 'chat.read']
     }
   }
 

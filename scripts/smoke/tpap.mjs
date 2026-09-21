@@ -125,6 +125,31 @@ check('新 token 可继续访问', newAfter.status === 200)
 // 10. 非环回路径不可达性（代码层 listen('127.0.0.1') 硬编码，无配置面）
 console.log('  ℹ 环回绑定由 server.listen(port, "127.0.0.1") 硬编码保证（无可配置项）')
 
+/* 11. 对话只读面：列表 + 单个转录（复用 chat-store 单一实现） */
+const chatStoreBundle = join(workDir, 'chatstore-bundle.mjs')
+execFileSync(process.execPath, [
+  join('node_modules', 'esbuild', 'bin', 'esbuild'),
+  'src/main/services/chat-store.ts',
+  '--bundle',
+  '--format=esm',
+  '--platform=node',
+  `--banner:js=${requireBanner}`,
+  `--alias:electron=${join(process.cwd(), 'scripts', 'smoke', 'mock-electron.mjs').replace(/\\/g, '/')}`,
+  `--outfile=${chatStoreBundle}`
+], { stdio: 'inherit' })
+const chatStore = await import(pathToFileURL(chatStoreBundle).href)
+const created = chatStore.createSession({ getPath: () => workDir }, { providerId: 'p1', modelId: 'm1' })
+const listed = await req('GET', '/tpap/v1/chat/sessions', { token: newToken })
+check(
+  'chat/sessions 列出会话',
+  listed.status === 200 && listed.json?.data?.some((x) => x.id === created.id),
+  JSON.stringify(listed.json).slice(0, 160)
+)
+const readOne = await req('GET', `/tpap/v1/chat/session?id=${created.id}`, { token: newToken })
+check('chat/session 读取完整转录', readOne.status === 200 && readOne.json?.data?.id === created.id)
+const readMissing = await req('GET', '/tpap/v1/chat/session?id=nonexistent', { token: newToken })
+check('chat/session 不存在返回 404', readMissing.status === 404 && readMissing.json?.error?.code === 'E_NOT_FOUND')
+
 accessServer.stop()
 rmSync(workDir, { recursive: true, force: true })
 

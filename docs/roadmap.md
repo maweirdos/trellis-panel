@@ -31,8 +31,8 @@
    多于 ~15 个工具时再做，避免上下文浪费。
 7. **多模态输入**：图片附件（composer 已有成熟的拖拽/粘贴模式可参考）；面板截图直接问 AI
    是刚需场景。
-8. **TPAP 对话只读面**：`/tpap/v1/chat/sessions` 只读端点，让外部工具看到对话历史（读路径
-   复用 chat-store，遵守 TPD-007 六条底线）。
+8. ✅ **TPAP 对话只读面**（2026-09-22）：`GET /tpap/v1/chat/sessions` 与 `/chat/session?id=`
+   已实现——读路径复用 chat-store 单一实现，恒只读、过 Bearer 鉴权，tpap 冒烟 16 项覆盖。
 9. **E2E 对话渲染契约**：借鉴"渲染次数插桩"思路，给转录区 Entry 管道做渲染次数断言
    （防流式更新引发全列表重渲染回归）。
 10. **代理设置统一**：settings 全局 proxy（undici dispatcher / SOCKS5），覆盖 ai/weknora/

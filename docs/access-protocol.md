@@ -34,6 +34,7 @@ TPAP 是 trellis-panel 的**本地控制面**，让外部 AI 工具（编辑器�
 | spec | `/tpap/v1/spec/read` | POST | 读 `.trellis/spec/` 规范文档（读） |
 | task | `/tpap/v1/task/read` | POST | 读任务 task.json + prd.md（读） |
 | token | `/tpap/v1/token/rotate` | POST | 轮换 Bearer token（**变更类**） |
+| chat | `/tpap/v1/chat/sessions`、`/tpap/v1/chat/session?id=` | GET | 对话会话列表 / 完整转录（只读） |
 
 读操作的实现**复用面板内部同一套 handler**（如 spec/task 读取直接走 GatewayManager
 的同一工具执行路径），不另建第二套权限或持久化逻辑——面板内看到的和外部拿到的永远一致。

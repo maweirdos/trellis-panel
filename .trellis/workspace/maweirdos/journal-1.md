@@ -84,3 +84,17 @@ typecheck 双配置全绿；chat 冒烟扩至 21 项全过（新增：reasoning 
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: TPAP 对话只读面（roadmap #8 增量）
+**Branch**: `main`
+
+### Summary
+
+access server 新增 GET /tpap/v1/chat/sessions 与 /chat/session?id= 只读端点——复用 chat-store 单一实现（TPD-007 第六条），过 Bearer 鉴权，host 能力表增 chat.read。tpap 冒烟扩至 16 项（新增列表/单读/404 三断言）。教训累积：heredoc 内多层转义（bash→python→JS regex）极易错一层，修复字符串应用 chr(92) 显式构造并对替换结果立即 grep 验证。
+
+### Status
+
+[OK] **Completed**
