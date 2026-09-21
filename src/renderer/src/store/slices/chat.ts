@@ -1,0 +1,144 @@
+import type { AppSlice, ChatSlice } from '../types'
+import type { ChatDoneEvent, ChatSessionMeta } from '../../../../shared/types'
+import { api } from '../../api'
+
+/**
+ * 对话切片：流式增量按 runId 累积；队列项由主进程预分配 runId，
+ * 当前轮 done 后主进程自动续发，渲染层凭 chat:output 首个增量把队列项转为流式态。
+ */
+export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
+  chatSessions: [],
+  chatActiveId: null,
+  chatMessages: [],
+  chatStreaming: null,
+  chatPending: [],
+
+  chatAttachEvents: () => {
+    const offOutput = api.onChatOutput((e) => {
+      const st = get()
+      if (st.chatStreaming?.runId === e.runId) {
+        set({ chatStreaming: { runId: e.runId, content: st.chatStreaming.content + e.delta } })
+        return
+      }
+      if (e.sessionId !== st.chatActiveId) return
+      // 队列项开跑：先把它携带的用户消息上屏
+      const pending = st.chatPending.find((p) => p.runId === e.runId)
+      if (pending) {
+        set({
+          chatPending: st.chatPending.filter((p) => p.runId !== e.runId),
+          chatMessages: [...st.chatMessages, { role: 'user', content: pending.content }],
+          chatStreaming: { runId: e.runId, content: e.delta }
+        })
+      }
+    })
+    const offDone = api.onChatDone((e: ChatDoneEvent) => {
+      const st = get()
+      if (e.sessionId !== st.chatActiveId) {
+        // 其他会话完成 / 标题总结事件：刷新列表即可
+        void st.chatLoadSessions()
+        return
+      }
+      if (e.kind === 'done' && e.message) {
+        set({ chatMessages: [...st.chatMessages, e.message], chatStreaming: null })
+      } else {
+        set({ chatStreaming: null })
+        if (e.kind === 'error' && e.error) {
+          st.pushToast({ kind: 'error', title: '本轮请求失败', body: e.error })
+        }
+      }
+      void st.chatLoadSessions()
+    })
+    return () => {
+      offOutput()
+      offDone()
+    }
+  },
+
+  chatLoadSessions: async () => {
+    const res = await api.chatList()
+    if (res.ok && res.sessions) set({ chatSessions: res.sessions })
+  },
+
+  chatOpenSession: async (id) => {
+    const res = await api.chatOpen(id)
+    if (res.ok && res.session) {
+      set({ chatActiveId: id, chatMessages: res.session.messages, chatStreaming: null, chatPending: [] })
+    }
+  },
+
+  chatNewSession: async (binding) => {
+    const res = await api.chatNew(binding)
+    if (res.ok && res.session) {
+      const meta: ChatSessionMeta = {
+        id: res.session.id,
+        title: res.session.title,
+        createdAt: res.session.createdAt,
+        updatedAt: res.session.updatedAt,
+        messageCount: 0,
+        providerId: res.session.providerId,
+        modelId: res.session.modelId
+      }
+      set({
+        chatSessions: [meta, ...get().chatSessions],
+        chatActiveId: meta.id,
+        chatMessages: [],
+        chatStreaming: null,
+        chatPending: []
+      })
+      return meta
+    }
+    return null
+  },
+
+  chatDeleteSession: async (id) => {
+    await api.chatDelete(id)
+    const st = get()
+    const sessions = st.chatSessions.filter((s) => s.id !== id)
+    set({ chatSessions: sessions })
+    if (st.chatActiveId === id) {
+      set({ chatActiveId: sessions[0]?.id ?? null, chatMessages: [], chatStreaming: null, chatPending: [] })
+      if (sessions[0]) await st.chatOpenSession(sessions[0].id)
+    }
+  },
+
+  chatRenameSession: async (id, title) => {
+    await api.chatRename(id, title)
+    set({ chatSessions: get().chatSessions.map((s) => (s.id === id ? { ...s, title } : s)) })
+  },
+
+  chatSend: async (content, binding) => {
+    const st = get()
+    let sessionId = st.chatActiveId
+    if (!sessionId) {
+      const meta = await st.chatNewSession(binding)
+      if (!meta) return
+      sessionId = meta.id
+    }
+    const trimmed = content.trim()
+    if (!trimmed) return
+    const res = await api.chatSend({
+      sessionId,
+      content: trimmed,
+      providerId: binding?.providerId,
+      modelId: binding?.modelId
+    })
+    if (!res.ok) {
+      st.pushToast({ kind: 'error', title: '发送失败', body: res.error })
+      return
+    }
+    if (res.queued) {
+      set({ chatPending: [...st.chatPending, { runId: res.runId ?? `q-${Date.now()}`, content: trimmed }] })
+    } else {
+      set({
+        chatMessages: [...get().chatMessages, { role: 'user', content: trimmed }],
+        chatStreaming: res.runId ? { runId: res.runId, content: '' } : null
+      })
+    }
+    void get().chatLoadSessions()
+  },
+
+  chatAbort: async () => {
+    const id = get().chatActiveId
+    if (id) await api.chatAbort(id)
+  }
+})

@@ -3,6 +3,8 @@ import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
 import type {
   AiConfig,
   ChatMessage,
+  ChatDoneEvent,
+  ChatOutputEvent,
   ExtKind,
   GatewaySecurityConfig,
   GitLabConfig,
@@ -124,6 +126,17 @@ const api = {
 
   accessStatus: () => ipcRenderer.invoke(ipcInvoke.access.status),
   accessRotateToken: () => ipcRenderer.invoke(ipcInvoke.access.rotateToken),
+
+  chatList: () => ipcRenderer.invoke(ipcInvoke.chat.list),
+  chatOpen: (id: string) => ipcRenderer.invoke(ipcInvoke.chat.open, id),
+  chatNew: (binding?: { providerId?: string; modelId?: string }) => ipcRenderer.invoke(ipcInvoke.chat.new, binding),
+  chatDelete: (id: string) => ipcRenderer.invoke(ipcInvoke.chat.delete, id),
+  chatRename: (id: string, title: string) => ipcRenderer.invoke(ipcInvoke.chat.rename, id, title),
+  chatSend: (input: { sessionId: string; content: string; providerId?: string; modelId?: string }) =>
+    ipcRenderer.invoke(ipcInvoke.chat.send, input),
+  chatAbort: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.abort, sessionId),
+  onChatOutput: (cb: (e: ChatOutputEvent) => void) => subscribe(ipcEvent.chatOutput, cb),
+  onChatDone: (cb: (e: ChatDoneEvent) => void) => subscribe(ipcEvent.chatDone, cb),
 
   studioSyncExtension: (sourcePath: string, targets: string[]) =>
     ipcRenderer.invoke(ipcInvoke.studio.syncExtension, sourcePath, targets),

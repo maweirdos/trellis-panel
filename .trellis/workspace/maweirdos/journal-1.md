@@ -48,3 +48,21 @@ L4 spec 文化——新增 .trellis/spec/guides/decisions.md 决策登记簿（T
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-21
+**Task**: 对话产品化（09-21-chat-product）
+**Branch**: `main`
+
+### Summary
+
+落地对话/多模型/工具安全三块：ai.ts 新增 aiChatStream（openai SSE / anthropic SSE / ollama NDJSON / response 四形态，signal 中断）；新建 chat-store（userData 原子持久化）与 chat 服务（每会话串行 + FIFO 队列自动续发 + abort + 首轮标题自动总结）；事件 chat:output/chat:done 成对 runId。渲染层新增 Chat 页（Entry 纯函数管道 + 滚动状态机 + 40 条窗口化 + 每会话 provider/model 绑定 + 导出 Markdown），入口走命令面板与 Ctrl+.，未触碰用户 WIP（Sidebar/TitleBar/Gateway/Knowledge）。Models 页经既有 ai:fetch-models 通道获得 models.dev 富化（24h 缓存离线回退，字段结构经真实 api.json 核实）。安全：fence.ts 路径围栏修复三处 ../ 目录穿越（TPD-010），截断契约 truncated/totalChars（TPD-011），决策 TPD-010..013 入册，docs/roadmap.md 沉淀持续检索增补点。
+
+### 验证
+
+typecheck 双配置全绿；scripts/smoke/chat.mjs 13 项全过（mock OpenAI SSE 端到端：探测/流式/队列/中止/标题/围栏/截断）；ipc-registry 100 通道双向断言；tpap 13 项回归。调试教训：①SSE 解析对 choices 数组误用 asRecord 取 .delta（恒 undefined）→ 流式空转；②冒烟 mock 每个内联 bundle 会重置全局事件数组 → 幂等初始化；③Node http req 'close' 在请求体读完即触发，服务端流清理必须挂 res 'close'。
+
+### Status
+
+[OK] **Completed**

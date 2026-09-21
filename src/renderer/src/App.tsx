@@ -29,6 +29,7 @@ const ChannelsPage = lazy(() => import('./pages/Channels').then((m) => ({ defaul
 const ArchitecturePage = lazy(() => import('./pages/Architecture').then((m) => ({ default: m.ArchitecturePage })))
 const ModelsPage = lazy(() => import('./pages/Models').then((m) => ({ default: m.ModelsPage })))
 const GatewayPage = lazy(() => import('./pages/Gateway').then((m) => ({ default: m.GatewayPage })))
+const ChatPage = lazy(() => import('./pages/Chat').then((m) => ({ default: m.ChatPage })))
 
 function PageLoading(): JSX.Element {
   return (
@@ -54,6 +55,10 @@ function MainApp(): JSX.Element {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((v) => !v)
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '.') {
+        e.preventDefault()
+        void useApp.getState().chatAbort()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -115,7 +120,7 @@ function MainApp(): JSX.Element {
             <div
               className={clsx(
                 'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models' || page === 'gateway'
+              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models' || page === 'gateway' || page === 'chat'
                 ? 'overflow-hidden'
                 : 'overflow-y-auto'
               )}
@@ -134,6 +139,7 @@ function MainApp(): JSX.Element {
                 {page === 'studio' && <StudioPage />}
                 {page === 'models' && <ModelsPage />}
                 {page === 'gateway' && <GatewayPage />}
+                {page === 'chat' && <ChatPage />}
                 {page === 'settings' && <SettingsPage />}
               </Suspense>
             </div>

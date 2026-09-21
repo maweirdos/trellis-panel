@@ -1,4 +1,4 @@
-import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem } from '../../../shared/types'
+import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem, ChatMessage, ChatSessionMeta, ChatDoneEvent } from '../../../shared/types'
 import type { api } from '../api'
 import type { StateCreator } from 'zustand'
 
@@ -17,8 +17,9 @@ export type Page =
   | 'architecture'
   | 'studio'
   | 'models'
-  | 'settings'
+  | 'chat'
   | 'gateway'
+  | 'settings'
 
 export interface ToastItem extends ToastEvent {
   id: number
@@ -103,6 +104,35 @@ export interface InboxSlice {
   inboxAcceptAll: () => void
 }
 
-export type AppState = SessionSlice & UiSlice & ToastSlice & ViewerSlice & TodosSlice & InboxSlice
+/** 流式中的消息：runId 关联，增量由 chat:output 事件累积 */
+export interface ChatStreamState {
+  runId: string
+  content: string
+}
+
+/** 本地已排队、尚未开跑的消息（runId 由主进程预分配） */
+export interface ChatQueuedItem {
+  runId: string
+  content: string
+}
+
+export interface ChatSlice {
+  chatSessions: ChatSessionMeta[]
+  chatActiveId: string | null
+  chatMessages: ChatMessage[]
+  chatStreaming: ChatStreamState | null
+  chatPending: ChatQueuedItem[]
+  /** 初始化事件订阅（App 挂载时调用一次，返回反注册函数） */
+  chatAttachEvents: () => () => void
+  chatLoadSessions: () => Promise<void>
+  chatOpenSession: (id: string) => Promise<void>
+  chatNewSession: (binding?: { providerId?: string; modelId?: string }) => Promise<ChatSessionMeta | null>
+  chatDeleteSession: (id: string) => Promise<void>
+  chatRenameSession: (id: string, title: string) => Promise<void>
+  chatSend: (content: string, binding?: { providerId?: string; modelId?: string }) => Promise<void>
+  chatAbort: () => Promise<void>
+}
+
+export type AppState = SessionSlice & UiSlice & ToastSlice & ViewerSlice & TodosSlice & InboxSlice & ChatSlice
 
 export type AppSlice<T> = StateCreator<AppState, [], [], T>

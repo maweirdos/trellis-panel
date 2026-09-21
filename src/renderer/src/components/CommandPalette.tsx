@@ -47,6 +47,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       ['jira', 'Jira'],
       ['architecture', '架构图'],
       ['studio', '定制中心'],
+      ['chat', 'AI 对话'],
       ['settings', '设置']
     ]
     for (const [p, label] of pages) {

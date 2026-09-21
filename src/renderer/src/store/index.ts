@@ -6,6 +6,7 @@ import { toastSlice } from './slices/toast'
 import { viewerSlice } from './slices/viewer'
 import { todosSlice } from './slices/todos'
 import { inboxSlice } from './slices/inbox'
+import { chatSlice } from './slices/chat'
 
 /**
  * 组合根（TPD-006）：六个域切片按 zustand slice 模式组装。
@@ -17,7 +18,8 @@ export const useApp = create<AppState>()((set, get, store) => ({
   ...toastSlice(set, get, store),
   ...viewerSlice(set, get, store),
   ...todosSlice(set, get, store),
-  ...inboxSlice(set, get, store)
+  ...inboxSlice(set, get, store),
+  ...chatSlice(set, get, store)
 }))
 
 export { reconcileInbox, loadInbox, saveInbox } from './inbox-storage'

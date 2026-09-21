@@ -4,6 +4,7 @@ import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync } from 
 import { join } from 'path'
 import { errorMessage } from '../../../shared/errors'
 import { accessEventLog } from '../access/event-log'
+import { insideRoot } from '../fence'
 import type {
   ContextHit,
   GatewayLogEntry,
@@ -221,10 +222,13 @@ class GatewayManagerClass {
       const result = await Promise.race([execPromise, timeoutPromise])
       const elapsedMs = Date.now() - start
 
-      // 截断保护
+      // 截断保护（TPD-011）：截断必须在响应里显式置位并保留原始长度
       let preview = typeof result === 'string' ? result : JSON.stringify(result)
+      const totalChars = preview.length
+      let truncated = false
       if (preview.length > this.security.maxResponseChars) {
         preview = preview.slice(0, this.security.maxResponseChars) + `... [已触发网关截断，超过 ${this.security.maxResponseChars} 字符]`
+        truncated = true
       }
 
       this.addLog({
@@ -241,7 +245,9 @@ class GatewayManagerClass {
       return {
         ok: true,
         elapsedMs,
-        result
+        result,
+        preview,
+        ...(truncated ? { truncated: true, totalChars } : {})
       }
     } catch (e) {
       const elapsedMs = Date.now() - start
@@ -338,7 +344,12 @@ class GatewayManagerClass {
       case 'trellis_get_spec': {
         if (!root) throw new Error('未打开项目')
         const name = String(args.name || '').trim()
-        const specPath = join(root, '.trellis', 'spec', name.endsWith('.md') ? name : `${name}.md`)
+        // 路径围栏（TPD-010）：name 可能携带 ../ 穿越项目根
+        const specRel = name.endsWith('.md') || name.endsWith('.txt') ? name : `${name}.md`
+        const specPath = insideRoot(root, join('.trellis', 'spec', specRel))
+        if (!specPath) {
+          throw new Error(`规范路径越界: .trellis/spec/${name}`)
+        }
         if (!existsSync(specPath)) {
           return { ok: false, error: `规范文件不存在: .trellis/spec/${name}` }
         }
@@ -349,8 +360,12 @@ class GatewayManagerClass {
       case 'trellis_get_task': {
         if (!root) throw new Error('未打开项目')
         const taskDir = String(args.taskDir || '').trim()
-        const prdPath = join(root, '.trellis', 'tasks', taskDir, 'prd.md')
-        const taskJsonPath = join(root, '.trellis', 'tasks', taskDir, 'task.json')
+        const taskBase = insideRoot(root, join('.trellis', 'tasks', taskDir))
+        if (!taskBase) {
+          throw new Error(`任务路径越界: ${taskDir}`)
+        }
+        const prdPath = join(taskBase, 'prd.md')
+        const taskJsonPath = join(taskBase, 'task.json')
         const result: Record<string, unknown> = { taskDir }
         if (existsSync(taskJsonPath)) {
           try {
@@ -504,7 +519,11 @@ class GatewayManagerClass {
       }
 
       const fileName = targetFileName.endsWith('.md') ? targetFileName : `${targetFileName}.md`
-      const filePath = join(specDir, fileName)
+      // 路径围栏（TPD-010）：目标文件名不得越出 spec 根
+      const filePath = insideRoot(root, join('.trellis', 'spec', fileName))
+      if (!filePath) {
+        return { ok: false, error: `目标文件名越界: ${targetFileName}` }
+      }
       writeFileSync(filePath, res.content, 'utf-8')
 
       return { ok: true, path: filePath }

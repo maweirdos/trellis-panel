@@ -1,7 +1,7 @@
 /**
- * TPAP 接入协议冒烟测试的 electron 桩：仅为让 access server 及其依赖
- * （state / store / gateway manager）能在纯 node 下完成模块加载并运行 HTTP 面。
- * 不模拟任何真实 UI 行为。
+ * TPAP / 对话冒烟测试的 electron 桩：仅为让主进程服务（state / store / gateway /
+ * chat）能在纯 node 下完成模块加载并运行。事件经 getAllWindows → webContents.send
+ * 落入 globalThis.__TPANEL_EVENTS__ 供断言。
  */
 const dataDir = process.env.TPAP_SMOKE_DIR
 
@@ -42,12 +42,26 @@ export const app = {
   whenReady: () => Promise.resolve()
 }
 
+/** 事件捕获：broadcastToWindows → webContents.send 落入全局数组。
+ *  注意：每个 smoke bundle 都内联一份 mock，必须幂等初始化，否则后加载的 bundle 会重置数组。 */
+if (!globalThis.__TPANEL_EVENTS__) globalThis.__TPANEL_EVENTS__ = []
+const capturedWindow = {
+  isDestroyed: () => false,
+  webContents: {
+    send: (channel, payload) => globalThis.__TPANEL_EVENTS__.push({ channel, payload, ts: Date.now() })
+  }
+}
+
 export const BrowserWindow = class BrowserWindowStub {
   constructor() {
     Object.assign(this, chainable)
   }
-  static getAllWindows() { return [] }
-  static getFocusedWindow() { return null }
+  static getAllWindows() {
+    return [capturedWindow]
+  }
+  static getFocusedWindow() {
+    return null
+  }
 }
 
 export const Notification = { isSupported: () => false }
@@ -58,6 +72,7 @@ export const ipcMain = {
   handle: (ch) => globalThis.__TPANEL_IPC__.handle.push(ch),
   on: (ch) => globalThis.__TPANEL_IPC__.on.push(ch)
 }
+
 export const Menu = { buildFromTemplate: () => ({ setContextMenu() {} }), setApplicationMenu() {} }
 export const Tray = class TrayStub {
   constructor() { Object.assign(this, chainable) }

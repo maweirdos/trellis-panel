@@ -100,6 +100,15 @@ export const ipcInvoke = {
     status: 'access:status',
     rotateToken: 'access:rotateToken'
   },
+  chat: {
+    list: 'chat:list',
+    open: 'chat:open',
+    new: 'chat:new',
+    delete: 'chat:delete',
+    rename: 'chat:rename',
+    send: 'chat:send',
+    abort: 'chat:abort'
+  },
   ai: {
     chat: 'ai:chat',
     test: 'ai:test',
@@ -177,6 +186,9 @@ export const ipcEvent = {
   /** cli 长任务事件流（runId 关联，成对出现） */
   cliOutput: 'cli:output',
   cliDone: 'cli:done',
+  /** chat 流式对话事件流（runId 关联，成对出现；增量/完成） */
+  chatOutput: 'chat:output',
+  chatDone: 'chat:done',
   /** 窗口最大化状态 */
   windowMaximized: 'window:maximized',
   /**

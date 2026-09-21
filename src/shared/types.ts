@@ -483,6 +483,50 @@ export interface ChatMessage {
   content: string
 }
 
+/* ---------- 对话（Chat 页） ---------- */
+
+/** 会话元信息（列表用，不含消息体） */
+export interface ChatSessionMeta {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messageCount: number
+  providerId: string | null
+  modelId: string | null
+}
+
+/** 会话完整记录 */
+export interface ChatSession extends ChatSessionMeta {
+  messages: ChatMessage[]
+}
+
+/** chat:send 结果：直接开跑或进入会话队列 */
+export interface ChatSendResult {
+  ok: boolean
+  error?: string
+  runId: string | null
+  queued: boolean
+  queueLen?: number
+}
+
+/** chat:output 事件负载（runId 关联的流式增量） */
+export interface ChatOutputEvent {
+  runId: string
+  sessionId: string
+  delta: string
+}
+
+/** chat:done 事件负载（runId 生命周期终结；title 为异步总结结果） */
+export interface ChatDoneEvent {
+  runId: string
+  sessionId: string
+  kind: 'done' | 'error' | 'aborted'
+  error?: string
+  title?: string
+  message?: ChatMessage
+}
+
 export interface AiChatResult {
   ok: boolean
   content?: string
@@ -841,6 +885,17 @@ export interface TrellisApi {
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => () => void
   getMcpInfo: () => Promise<McpInfo>
   toggleHttpApi: (on: boolean) => Promise<{ ok: boolean; error?: string }>
+
+  /* --- 对话（Chat 页） --- */
+  chatList: () => Promise<{ ok: boolean; error?: string; sessions?: ChatSessionMeta[] }>
+  chatOpen: (id: string) => Promise<{ ok: boolean; error?: string; session?: ChatSession }>
+  chatNew: (binding?: { providerId?: string; modelId?: string }) => Promise<{ ok: boolean; error?: string; session?: ChatSession }>
+  chatDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
+  chatRename: (id: string, title: string) => Promise<{ ok: boolean; error?: string }>
+  chatSend: (input: { sessionId: string; content: string; providerId?: string; modelId?: string }) => Promise<ChatSendResult>
+  chatAbort: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
+  onChatOutput: (cb: (e: ChatOutputEvent) => void) => () => void
+  onChatDone: (cb: (e: ChatDoneEvent) => void) => () => void
 
   /* --- TPAP 本地接入协议 --- */
   accessStatus: () => Promise<{

@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/ipc-conventions.md", "reason": "chat 通道需遵循 IPC 注册表与事件流约定"}
+{"file": ".trellis/spec/guides/decisions.md", "reason": "遵循 TPD-001..009 决策"}

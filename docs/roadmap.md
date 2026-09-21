@@ -1,0 +1,44 @@
+# 产品化 Roadmap（持续检索沉淀）
+
+> 持续研讨的增补点清单：已实现项标注 ✅，其余按性价比排序，作为后续任务输入。
+> 来源：PI-Desktop 架构研讨（clean-room，见 TPD-009）+ 业界通用实践检索。
+
+## 已实现
+
+- ✅ IPC 通道中央注册表 / 错误码信封 / 事件流约定（TPD-001..004）
+- ✅ store 切片化 + mermaid/markdown 渲染消毒（TPD-005/006）
+- ✅ TPAP 本地控制面（环回 + token + confirm + 幂等 + 游标事件）（TPD-007/008）
+- ✅ SSE 流式对话（openai/anthropic/ollama/response 四形态）+ 会话持久化 + 队列/中止 + 标题总结
+- ✅ 对话页（Entry 管道 + 滚动状态机 + 窗口化 + 每会话模型绑定 + 导出 Markdown）
+- ✅ 模型发现优先 + models.dev 富化（缓存 24h 离线回退）（TPD-012）
+- ✅ 路径围栏修复三处目录穿越（TPD-010）+ 工具输出截断契约（TPD-011）
+
+## 高价值待办（下一批候选）
+
+1. **Thinking 流独立展示**：DeepSeek-R1 / GLM 等的 `reasoning_content` 目前被忽略；
+   应作为独立"思考流"折叠条目渲染（含 thinking 档位选择）。对话页骨架已预留 entry 扩展位。
+2. **消息级操作**：编辑已发消息并重发、单条重新生成、停止点分支（branch）。会话存储为
+   线性数组，需先升级为树/分支结构（可借鉴 git 分支语义，会话 JSON 加 parentId 链）。
+3. **对话内权限卡**：当面板具备"AI 直接执行工具"能力时，allow-once / allow-session(按工具) /
+   deny 三态卡 + 120s 超时默认 deny。TPAP 的 confirm 门槛是其协议层对应物，UI 卡待 agent
+   循环落地时一并做。
+4. **Steer（运行中引导）**：目前运行中发送=排队；steer 语义需要 turn 内注入（中断当前流并
+   携带补充指令重入），依赖 agent 循环，与权限卡同一批。
+5. **会话分支 / 置顶 / 归档**：会话列表管理能力，存储结构升级后顺带。
+6. **按需工具加载（ToolSearch）**：工具 schema 不全量推送，先给 catalog、按名激活。接入
+   多于 ~15 个工具时再做，避免上下文浪费。
+7. **多模态输入**：图片附件（composer 已有成熟的拖拽/粘贴模式可参考）；面板截图直接问 AI
+   是刚需场景。
+8. **TPAP 对话只读面**：`/tpap/v1/chat/sessions` 只读端点，让外部工具看到对话历史（读路径
+   复用 chat-store，遵守 TPD-007 六条底线）。
+9. **E2E 对话渲染契约**：借鉴"渲染次数插桩"思路，给转录区 Entry 管道做渲染次数断言
+   （防流式更新引发全列表重渲染回归）。
+10. **代理设置统一**：settings 全局 proxy（undici dispatcher / SOCKS5），覆盖 ai/weknora/
+    models.dev 拉取三条出网路径。
+
+## 低优先级 / 观察项
+
+- 语音输入（speech-to-text）
+- 图片生成展示（transcript 内嵌 GeneratedImages）
+- 全站 i18n（当前中文单语，无需求不启动）
+- 命令面板插件化 / 自定义命令

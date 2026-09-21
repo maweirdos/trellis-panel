@@ -21,6 +21,7 @@ import { registerBridgeIpc } from './bridge'
 import { registerJiraIpc } from './jira'
 import { registerGitlabIpc } from './gitlab'
 import { registerHttpApiIpc } from './httpapi'
+import { registerChatIpc } from './chat'
 import { registerWindowIpc } from './window'
 import type { WindowDeps } from './deps'
 
@@ -45,4 +46,5 @@ export function registerIpc(deps: WindowDeps): void {
   registerJiraIpc()
   registerGitlabIpc()
   registerHttpApiIpc()
+  registerChatIpc()
 }

@@ -93,6 +93,11 @@ export interface GatewayTestToolResult {
   ok: boolean
   elapsedMs: number
   result?: unknown
+  /** 序列化后的工具输出（含截断标记文本），供 UI 预览 */
+  preview?: string
   error?: string
   blockedBySecurity?: boolean
+  /** 截断契约（TPD-011）：preview 被截断时置位，totalChars 为截断前总长 */
+  truncated?: boolean
+  totalChars?: number
 }

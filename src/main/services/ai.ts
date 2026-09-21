@@ -1,5 +1,5 @@
 import { safeStorage } from 'electron'
-import type { AiChatResult, AiConfig, ChatMessage, ModelFetchResult, ModelItem } from '../../shared/types'
+import type { AiApiFormat, AiChatResult, AiConfig, ChatMessage, ModelFetchResult, ModelItem } from '../../shared/types'
 import { errorMessage, isAbortError } from '../../shared/errors'
 
 /**
@@ -498,4 +498,310 @@ export async function aiTaskPrompt(
     { role: 'system', content: kind === 'prd' ? PRD_SYSTEM : SUMMARY_SYSTEM },
     { role: 'user', content: taskUserPrompt(task, kind) }
   ], { temperature: kind === 'prd' ? 0.4 : 0.2 })
+}
+
+/* ---------------- 流式对话（SSE / NDJSON） ---------------- */
+
+/** 流式调用的目标：对话按会话绑定 provider+model，因此独立于全局 AiConfig */
+export interface StreamTarget {
+  baseUrl: string
+  apiFormat: AiApiFormat
+  apiKey?: string
+  model: string
+  temperature?: number
+  maxTokens?: number
+}
+
+export interface StreamCallbacks {
+  onDelta: (text: string) => void
+  signal?: AbortSignal
+}
+
+export interface StreamResult {
+  ok: boolean
+  content?: string
+  error?: string
+  aborted?: boolean
+}
+
+export function decryptKeyOf(apiKey: string, encrypted?: boolean): string {
+  if (!apiKey) return ''
+  if (encrypted) {
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        return safeStorage.decryptString(Buffer.from(apiKey, 'base64'))
+      }
+    } catch {
+      return ''
+    }
+  }
+  return apiKey
+}
+
+/** SSE 行解析：把字节流切成 data: 负载行；`[DONE]` 转换为显式标记 */
+async function readSseLines(
+  res: Response,
+  onPayload: (payload: string) => void
+): Promise<void> {
+  const body = res.body
+  if (!body) throw new Error('响应无 body')
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).replace(/\r$/, '')
+      buffer = buffer.slice(nl + 1)
+      if (!line || line.startsWith(':')) continue
+      if (line.startsWith('data:')) {
+        const payload = line.slice(5).trim()
+        if (payload === '[DONE]') return
+        onPayload(payload)
+      }
+      // 非 data 行（event:/id:/retry:）对本协议无意义，忽略
+    }
+  }
+}
+
+/** NDJSON 行解析（ollama /api/chat 流式形态） */
+async function readNdjsonLines(
+  res: Response,
+  onLine: (line: string) => void
+): Promise<void> {
+  const body = res.body
+  if (!body) throw new Error('响应无 body')
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).trim()
+      buffer = buffer.slice(nl + 1)
+      if (line) onLine(line)
+    }
+  }
+  if (buffer.trim()) onLine(buffer.trim())
+}
+
+/**
+ * 流式对话：openai chat.completions / anthropic messages / ollama chat / responses。
+ * 逐段回调 onDelta；signal 触发时中断并返回 aborted。
+ */
+export async function aiChatStream(
+  target: StreamTarget,
+  messages: ChatMessage[],
+  cb: StreamCallbacks
+): Promise<StreamResult> {
+  const format = target.apiFormat || 'openai'
+  const endpoint = resolveEndpoint(target.baseUrl, format)
+  if (!endpoint || !/^https?:\/\//i.test(endpoint)) return { ok: false, error: 'baseUrl 无效' }
+  if (!target.model) return { ok: false, error: '未配置模型名' }
+
+  const key = target.apiKey?.trim() || ''
+  const controller = new AbortController()
+  const onAbort = (): void => controller.abort()
+  cb.signal?.addEventListener('abort', onAbort, { once: true })
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  let body: Record<string, unknown>
+  if (format === 'anthropic') {
+    if (key) {
+      headers['x-api-key'] = key
+      headers['anthropic-version'] = '2023-06-01'
+    }
+    body = {
+      model: target.model,
+      messages: messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content })),
+      system: messages.find((m) => m.role === 'system')?.content,
+      max_tokens: target.maxTokens ?? 4096,
+      temperature: target.temperature ?? 0.3,
+      stream: true
+    }
+  } else if (format === 'ollama') {
+    body = { model: target.model, messages, stream: true }
+  } else if (format === 'response') {
+    if (key) headers['Authorization'] = `Bearer ${key}`
+    body = {
+      model: target.model,
+      input: messages.map((m) => ({ role: m.role, content: m.content })),
+      temperature: target.temperature ?? 0.3,
+      stream: true
+    }
+  } else {
+    if (key) headers['Authorization'] = `Bearer ${key}`
+    body = {
+      model: target.model,
+      messages,
+      temperature: target.temperature ?? 0.3,
+      max_tokens: target.maxTokens,
+      stream: true
+    }
+  }
+
+  let content = ''
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      signal: controller.signal,
+      headers,
+      body: JSON.stringify(body)
+    })
+    if (!res.ok) {
+      const text = (await res.text().catch(() => '')).slice(0, 400)
+      return { ok: false, error: `HTTP ${res.status} ${text || res.statusText}`.trim() }
+    }
+
+    const emitDelta = (delta: unknown): void => {
+      if (typeof delta === 'string' && delta) {
+        content += delta
+        cb.onDelta(delta)
+      }
+    }
+
+    if (format === 'ollama') {
+      await readNdjsonLines(res, (line) => {
+        const obj = asRecord(JSON.parse(line) as unknown)
+        emitDelta(asRecord(obj?.message)?.content)
+      })
+    } else if (format === 'anthropic') {
+      await readSseLines(res, (payload) => {
+        const obj = asRecord(JSON.parse(payload) as unknown)
+        if (obj?.type !== 'content_block_delta') return
+        const delta = asRecord(obj.delta)
+        if (delta?.type === 'text_delta') emitDelta(delta.text)
+      })
+    } else if (format === 'response') {
+      await readSseLines(res, (payload) => {
+        const obj = asRecord(JSON.parse(payload) as unknown)
+        if (obj?.type === 'response.output_text.delta') emitDelta(obj.delta)
+      })
+    } else {
+      await readSseLines(res, (payload) => {
+        const obj = asRecord(JSON.parse(payload) as unknown)
+        // reasoning_content（DeepSeek-R1 等）不进正文；roadmap：独立思考流展示
+        const choices = obj?.choices
+        if (!Array.isArray(choices)) return
+        const delta = asRecord(asRecord(choices[0])?.delta)
+        emitDelta(delta?.content)
+      })
+    }
+
+    if (!content) return { ok: false, error: '流式响应为空' }
+    return { ok: true, content }
+  } catch (e) {
+    if (controller.signal.aborted && cb.signal?.aborted) {
+      return { ok: false, aborted: true, error: '已中止' }
+    }
+    if (isAbortError(e)) {
+      return { ok: false, aborted: cb.signal?.aborted ?? false, error: `请求超时（${TIMEOUT_MS / 1000}s）` }
+    }
+    return { ok: false, error: errorMessage(e) || '流式请求失败' }
+  } finally {
+    clearTimeout(timer)
+    cb.signal?.removeEventListener('abort', onAbort)
+  }
+}
+
+/* ---------------- models.dev 富化（发现优先的补充元数据） ---------------- */
+
+const MODELS_DEV_URL = 'https://models.dev/api.json'
+const MODELS_DEV_TTL = 24 * 60 * 60 * 1000
+
+interface ModelsDevModel {
+  context_window?: number
+  max_output_tokens?: number
+}
+
+interface ModelsDevEntry {
+  id?: string
+  models?: Record<string, ModelsDevModel>
+}
+
+async function loadModelsDevCatalog(app: { getPath: (name: 'userData' | 'home' | 'appData' | 'temp') => string }): Promise<Record<string, ModelsDevModel> | null> {
+  const { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } = await import('fs')
+  const { join, dirname } = await import('path')
+  const cachePath = join(app.getPath('userData'), 'models-dev.json')
+  const fresh = (p: string): boolean => {
+    try {
+      return existsSync(p) && Date.now() - statSync(p).mtimeMs < MODELS_DEV_TTL
+    } catch {
+      return false
+    }
+  }
+  const parse = (raw: string): Record<string, ModelsDevModel> | null => {
+    try {
+      const data = asRecord(JSON.parse(raw) as unknown)
+      if (!data) return null
+      const flat: Record<string, ModelsDevModel> = {}
+      for (const entry of Object.values(data)) {
+        const e = entry as ModelsDevEntry
+        if (!e || typeof e !== 'object' || !e.models) continue
+        for (const [modelId, meta] of Object.entries(e.models)) {
+          if (!flat[modelId]) flat[modelId] = meta
+        }
+      }
+      return flat
+    } catch {
+      return null
+    }
+  }
+  if (fresh(cachePath)) {
+    const parsed = parse(readFileSync(cachePath, 'utf-8'))
+    if (parsed) return parsed
+  }
+  try {
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 10_000)
+    const res = await fetch(MODELS_DEV_URL, { signal: controller.signal })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const raw = await res.text()
+    const parsed = parse(raw)
+    if (parsed) {
+      mkdirSync(dirname(cachePath), { recursive: true })
+      writeFileSync(cachePath, raw, 'utf-8')
+      return parsed
+    }
+  } catch {
+    // 离线/超时：回退到过期缓存（如果有）
+  }
+  try {
+    if (existsSync(cachePath)) return parse(readFileSync(cachePath, 'utf-8'))
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1000) return `${Math.round(n / 1000)}k`
+  return String(n)
+}
+
+/** best-effort 富化：按模型 id 匹配 models.dev 元数据，写回 contextWindow 与上限 tag */
+export async function enrichModelsWithCatalog(app: { getPath: (name: 'userData' | 'home' | 'appData' | 'temp') => string }, models: ModelItem[]): Promise<ModelItem[]> {
+  const catalog = await loadModelsDevCatalog(app)
+  if (!catalog) return models
+  return models.map((m) => {
+    const meta = catalog[m.id]
+    if (!meta) return m
+    const next: ModelItem = { ...m }
+    if (typeof meta.context_window === 'number' && meta.context_window > 0 && !next.contextWindow) {
+      next.contextWindow = formatTokenCount(meta.context_window)
+      next.tags = [...(next.tags ?? []), next.contextWindow].filter((t, i, arr) => arr.indexOf(t) === i)
+    }
+    if (typeof meta.max_output_tokens === 'number' && meta.max_output_tokens > 0 && !next.maxTokens) {
+      next.maxTokens = meta.max_output_tokens
+    }
+    return next
+  })
 }
