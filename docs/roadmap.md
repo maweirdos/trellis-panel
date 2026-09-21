@@ -21,14 +21,15 @@
 2. ✅ **消息级操作**（2026-09-22）：会话存储升级 v2 树（nodes+activeLeaf，v1 自动迁移，
    TPD-016）；编辑已发消息并重发、regenerate 分支保留、‹i/n› 分支切换器全部落地。
    剩余：停止点局部分支视图（当前切分支即整段切换）。
-3. **对话内权限卡**：当面板具备"AI 直接执行工具"能力时，allow-once / allow-session(按工具) /
-   deny 三态卡 + 120s 超时默认 deny。TPAP 的 confirm 门槛是其协议层对应物，UI 卡待 agent
-   循环落地时一并做。
+3. ✅ **对话内权限卡**（2026-09-22）：agent 工具循环落地（openai tool_calls 工具轮 + 流式
+   回答轮，复用 GatewayManager/fence/截断），转录区内联权限卡 allow-once / allow-session /
+   deny 三态 + 120s 超时默认拒绝，allow-session 随会话持久化（TPD-020）。
 4. ✅ **Steer（运行中引导）**（2026-09-22）：运行中 Alt+Enter 注入，文本立即上屏并在下一个
    工具轮边界并入请求上下文；残留 steer 在轮末自动转排队（TPD-021）。
 5. **会话分支 / 置顶 / 归档**：会话列表管理能力，存储结构升级后顺带。
-6. **按需工具加载（ToolSearch）**：工具 schema 不全量推送，先给 catalog、按名激活。接入
-   多于 ~15 个工具时再做，避免上下文浪费。
+6. ✅ **按需工具加载（ToolSearch）**（2026-09-22）：`GET /tools?mode=deferred` 仅暴露
+   tool_search 元工具，`POST /tool_search` 按名/描述/upstreamId 检索（TPD-018）；面板内部
+   全量路径不变。剩余：agent 循环落地后做"每轮只恢复有成功激活证据的工具"。
 7. ✅ **多模态输入**（2026-09-22）：composer 文件选择/粘贴图片（≤4 张、单张 ≤3MB 前端门槛 +
    4MB 主进程硬门槛），dataURL→ChatImage 持久化，openai/anthropic/ollama 图像分片升维，
    用户气泡缩略图（TPD-019）。剩余：response 格式分片、面板截图一键问 AI。
