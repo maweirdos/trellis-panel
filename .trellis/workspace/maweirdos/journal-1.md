@@ -28,3 +28,23 @@
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-21
+**Task**: 全站架构改造（09-21-arch-hardening）
+**Branch**: `main`
+
+### Summary
+
+参考 PI-Desktop（clean-room，见 TPD-009）完成四层改造：
+L1 主进程拆分——index.ts 1561→约 400 行薄壳，项目态收敛 state.ts，93 个 IPC handler 按域拆到 ipc/<domain>.ts（registry 包装器 dev 断言未声明通道）；新增 shared/ipc-channels.ts 中央注册表 + shared/ipc-errors.ts 错误码信封（TPD-001/002/003/004）。
+L2 前端——store.ts 单体切片化为 store/ 六域切片（组合出口 useApp 不变，页面零改动；注意 store.ts 与 store/ 同名会自引用成环）；MermaidBlock loose→strict + DOMPurify(SVG) 消毒，MarkdownView 挂 rehype-sanitize（TPD-005/006）。
+L3 网关接入——新建 TPAP 本地控制面 services/access/（恒环回 + Bearer token + confirm 门槛 + requestId 幂等 + {epoch,seq} 游标事件），Settings 页可开关/复制/重置，设计文档 docs/access-protocol.md（TPD-007/008）。
+L4 spec 文化——新增 .trellis/spec/guides/decisions.md 决策登记簿（TPD-001..009）+ IPC/store/协议安全三份约定，更新三处索引。
+
+验证：typecheck 双配置全绿；node scripts/smoke/tpap.mjs 13 项断言全过（401/422/幂等重放/游标增量/token 轮换）；node scripts/smoke/ipc-registry.mjs 双向断言（93 通道全注册、零未声明）。用户 WIP（Gateway.tsx/Knowledge.tsx）未触碰。
+
+### Status
+
+[OK] **Completed**

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
+import DOMPurify from 'dompurify'
 import { errorText } from '../../../shared/errors'
 
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null
@@ -15,7 +16,9 @@ async function getMermaid() {
       if (!initialized) {
         m.default.initialize({
           startOnLoad: false,
-          securityLevel: 'loose',
+          // strict：标签中的 HTML 被转义、禁用 click 回调（TPD-005）。
+          // 渲染产物仍会过一遍 DOMPurify 再注入，双保险。
+          securityLevel: 'strict',
           theme: isDark() ? 'dark' : 'neutral',
           fontFamily: '"Segoe UI", "Microsoft YaHei UI", sans-serif'
         })
@@ -25,6 +28,16 @@ async function getMermaid() {
     })
   }
   return mermaidPromise
+}
+
+/** mermaid 渲染出的 SVG 注入 innerHTML 前必须消毒：图表源码可能来自外部文档/AI 输出 */
+function sanitizeSvg(svg: string): string {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_ATTR: ['style'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'foreignObject'],
+    FORBID_ATTR: ['srcset']
+  })
 }
 
 export const MermaidBlock = React.memo(function MermaidBlock({ chart }: { chart: string }): JSX.Element {
@@ -39,7 +52,7 @@ export const MermaidBlock = React.memo(function MermaidBlock({ chart }: { chart:
         const mermaid = await getMermaid()
         const id = `mermaid-${Date.now()}-${seq.current++}`
         const { svg: out } = await mermaid.render(id, chart)
-        if (alive) setSvg(out)
+        if (alive) setSvg(sanitizeSvg(out))
       } catch (e) {
         if (alive) setError(errorText(e, 'Mermaid 渲染失败'))
       }

@@ -23,6 +23,7 @@ These guides help you **ask the right questions before coding**.
 
 | Guide                                                             | Purpose                                                      | When to Use                                          |
 | ----------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------- |
+| [Architecture Decisions (TPD)](./decisions.md)                    | **Decision registry with permanent IDs** — cite TPD-xxx in code/docs | Before making cross-cutting architecture decisions |
 | [Cross-Layer Thinking](./cross-layer-thinking-guide.md)           | Think through data flow across layers                        | Before implementing features that span 3+ layers     |
 | [Pre-Implementation Checklist](./pre-implementation-checklist.md) | Verify readiness before coding                               | Before starting any feature implementation           |
 | [Bug Root Cause Analysis](./bug-root-cause-thinking-guide.md)     | Analyze bugs to understand preventability                    | After fixing any non-trivial bug                     |

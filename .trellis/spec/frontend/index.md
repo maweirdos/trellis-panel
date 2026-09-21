@@ -17,6 +17,7 @@
 | File                                                                           | Description                                     | Priority      |
 | ------------------------------------------------------------------------------ | ----------------------------------------------- | ------------- |
 | [ipc-electron.md](./ipc-electron.md)                                           | IPC patterns, context isolation, title bar      | **Must Read** |
+| [store-conventions.md](./store-conventions.md)                                 | Zustand store slicing rules (TPD-006)           | **Must Read** |
 | [electron-browser-api-restrictions.md](./electron-browser-api-restrictions.md) | Browser APIs that don't work in Electron        | **Must Read** |
 | [react-pitfalls.md](./react-pitfalls.md)                                       | Critical React patterns and common mistakes     | **Must Read** |
 | [state-management.md](./state-management.md)                                   | Auth context, layout, navigation patterns       | Reference     |

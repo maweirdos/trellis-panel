@@ -15,7 +15,8 @@ import {
   GitMerge,
   Sparkles,
   BrainCircuit,
-  Cloud
+  Cloud,
+  KeyRound
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -98,10 +99,26 @@ export function SettingsPage(): JSX.Element {
   const [hookMsg, setHookMsg] = useState<string | null>(null)
   const [mcpInfo, setMcpInfo] = useState<McpInfo | null>(null)
   const [shortcut, setShortcut] = useState(settings.desktop.globalShortcut)
+  const [accessInfo, setAccessInfo] = useState<{
+    enabled: boolean
+    running: boolean
+    port: number | null
+    endpoint: string | null
+    token: string
+  } | null>(null)
 
   useEffect(() => {
     api.getMcpInfo().then(setMcpInfo)
   }, [settings.httpApi.enabled])
+
+  const refreshAccess = (): void => {
+    void api.accessStatus().then(setAccessInfo)
+  }
+
+  useEffect(() => {
+    refreshAccess()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.access?.enabled, settings.access?.port])
 
   const testJira = async (): Promise<void> => {
     setJiraTesting(true)
@@ -275,6 +292,19 @@ export function SettingsPage(): JSX.Element {
     else pushToast({ kind: 'error', title: '写入 hooks 失败', body: res.error })
   }
 
+  /* ---- TPAP 本地接入协议 ---- */
+  const toggleAccess = (on: boolean): void => {
+    void saveSettings({ access: { ...(settings.access ?? { enabled: false, port: 39580 }), enabled: on, port: settings.access?.port ?? 39580 } }).then(
+      () => setTimeout(refreshAccess, 300)
+    )
+  }
+
+  const rotateAccess = async (): Promise<void> => {
+    await api.accessRotateToken()
+    refreshAccess()
+    pushToast({ kind: 'success', title: 'Token 已重置', body: '外部工具需更新为新的 token' })
+  }
+
   return (
     <div className="h-full animate-fade-in overflow-y-auto p-6">
       <div className="mx-auto max-w-2xl space-y-4">
@@ -338,6 +368,58 @@ export function SettingsPage(): JSX.Element {
                   />
                   启用 Web 看板页
                 </label>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* TPAP 本地接入协议 */}
+        <section className="card px-5 py-4">
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">
+            <KeyRound size={13} /> 本地接入协议（TPAP）
+          </div>
+          <p className="mb-3 text-[11px] leading-5 text-mist-500">
+            供外部 AI 工具经 <code className="font-mono">127.0.0.1</code> 读取任务状态、检索知识与调用网关工具。
+            恒定仅绑定本机环回，凭 Bearer token 鉴权；变更类操作需显式 confirm，支持幂等重试。
+            默认关闭。协议详见 <code className="font-mono">docs/access-protocol.md</code>。
+          </p>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => toggleAccess(!(settings.access?.enabled ?? false))}
+              className={clsx('btn', settings.access?.enabled ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25' : 'btn-primary')}
+            >
+              {settings.access?.enabled ? '停止接入服务' : '启动接入服务'}
+            </button>
+            {accessInfo?.running && (
+              <span className="chip border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                <CheckCircle2 size={11} /> 运行中 · 端口 {accessInfo.port}
+              </span>
+            )}
+          </div>
+          {accessInfo?.running && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 text-[11px] text-mist-500">端点</span>
+                <code className="truncate rounded bg-ink-900 px-2 py-0.5 font-mono text-[11px] text-mist-300">{accessInfo.endpoint}</code>
+                <button
+                  onClick={() => void api.copyToClipboard(`${accessInfo.endpoint}（Authorization: Bearer ${accessInfo.token}）`)}
+                  className="btn-ghost shrink-0 text-[11px]"
+                >
+                  复制
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 text-[11px] text-mist-500">Token</span>
+                <code className="truncate rounded bg-ink-900 px-2 py-0.5 font-mono text-[11px] text-mist-300">{accessInfo.token}</code>
+                <button
+                  onClick={() => void api.copyToClipboard(accessInfo.token)}
+                  className="btn-ghost shrink-0 text-[11px]"
+                >
+                  复制
+                </button>
+                <button onClick={() => void rotateAccess()} className="btn-ghost shrink-0 text-[11px] text-amber-300">
+                  重置
+                </button>
               </div>
             </div>
           )}

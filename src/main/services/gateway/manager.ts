@@ -3,6 +3,7 @@ import { weknoraReadDoc, weknoraSearch, weknoraTest } from '../weknora'
 import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { errorMessage } from '../../../shared/errors'
+import { accessEventLog } from '../access/event-log'
 import type {
   ContextHit,
   GatewayLogEntry,
@@ -61,6 +62,13 @@ class GatewayManagerClass {
     if (this.logs.length > MAX_LOGS) {
       this.logs.length = MAX_LOGS
     }
+    // 接入协议事件源：外部客户端凭游标感知网关调用（含 blocked 拦截）
+    accessEventLog.append('gateway.tool_called', {
+      toolName: entry.toolName,
+      upstreamId: entry.upstreamId,
+      status: entry.status,
+      elapsedMs: entry.elapsedMs
+    })
   }
 
   /**

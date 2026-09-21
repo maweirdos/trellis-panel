@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
 import type {
   AiConfig,
   ChatMessage,
@@ -25,136 +26,139 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 const api = {
-  pickProject: () => ipcRenderer.invoke('project:pick'),
-  openProject: (root: string) => ipcRenderer.invoke('project:open', root),
-  getSnapshot: () => ipcRenderer.invoke('project:snapshot'),
-  closeProject: () => ipcRenderer.invoke('project:close'),
-  onSnapshotUpdated: (cb: (s: ProjectSnapshot) => void) => subscribe('project:snapshot', cb),
+  pickProject: () => ipcRenderer.invoke(ipcInvoke.project.pick),
+  openProject: (root: string) => ipcRenderer.invoke(ipcInvoke.project.open, root),
+  getSnapshot: () => ipcRenderer.invoke(ipcInvoke.project.snapshot),
+  closeProject: () => ipcRenderer.invoke(ipcInvoke.project.close),
+  onSnapshotUpdated: (cb: (s: ProjectSnapshot) => void) => subscribe(ipcEvent.snapshotUpdated, cb),
 
   updateTask: (taskDir: string, patch: TaskPatch, expectedMtime?: number) =>
-    ipcRenderer.invoke('task:update', taskDir, patch, expectedMtime),
+    ipcRenderer.invoke(ipcInvoke.task.update, taskDir, patch, expectedMtime),
   deleteTask: (taskDir: string, expectedMtime?: number) =>
-    ipcRenderer.invoke('task:delete', taskDir, expectedMtime),
-  createTaskFromJira: (input: Record<string, unknown>) => ipcRenderer.invoke('task:createFromJira', input),
-  readTextFile: (absPath: string) => ipcRenderer.invoke('fs:readText', absPath),
+    ipcRenderer.invoke(ipcInvoke.task.delete, taskDir, expectedMtime),
+  createTaskFromJira: (input: Record<string, unknown>) => ipcRenderer.invoke(ipcInvoke.task.createFromJira, input),
+  readTextFile: (absPath: string) => ipcRenderer.invoke(ipcInvoke.fs.readText, absPath),
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) =>
-    ipcRenderer.invoke('fs:writeSpec', absPath, content, expectedMtime),
-  specBacklinks: () => ipcRenderer.invoke('spec:backlinks'),
-  revealInExplorer: (p: string) => ipcRenderer.invoke('shell:reveal', p),
-  openInEditor: (p: string) => ipcRenderer.invoke('shell:openInEditor', p),
-  openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+    ipcRenderer.invoke(ipcInvoke.fs.writeSpec, absPath, content, expectedMtime),
+  specBacklinks: () => ipcRenderer.invoke(ipcInvoke.spec.backlinks),
+  revealInExplorer: (p: string) => ipcRenderer.invoke(ipcInvoke.shell.reveal, p),
+  openInEditor: (p: string) => ipcRenderer.invoke(ipcInvoke.shell.openInEditor, p),
+  openExternal: (url: string) => ipcRenderer.invoke(ipcInvoke.shell.openExternal, url),
 
-  getSettings: () => ipcRenderer.invoke('settings:get'),
-  setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke('settings:set', patch),
+  getSettings: () => ipcRenderer.invoke(ipcInvoke.settings.get),
+  setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(ipcInvoke.settings.set, patch),
 
-  runCli: (args: string[]) => ipcRenderer.invoke('cli:run', args),
-  abortCli: (runId: number) => ipcRenderer.invoke('cli:abort', runId),
-  onCliOutput: (cb: (e: RunEvent) => void) => subscribe('cli:output', cb),
-  onCliDone: (cb: (e: RunDoneEvent) => void) => subscribe('cli:done', cb),
+  runCli: (args: string[]) => ipcRenderer.invoke(ipcInvoke.cli.run, args),
+  abortCli: (runId: number) => ipcRenderer.invoke(ipcInvoke.cli.abort, runId),
+  onCliOutput: (cb: (e: RunEvent) => void) => subscribe(ipcEvent.cliOutput, cb),
+  onCliDone: (cb: (e: RunDoneEvent) => void) => subscribe(ipcEvent.cliDone, cb),
 
-  gitTaskInfo: (dirName: string) => ipcRenderer.invoke('git:taskInfo', dirName),
-  gitCreateBranch: (name: string, fromBase: string) => ipcRenderer.invoke('git:createBranch', name, fromBase),
+  gitTaskInfo: (dirName: string) => ipcRenderer.invoke(ipcInvoke.git.taskInfo, dirName),
+  gitCreateBranch: (name: string, fromBase: string) => ipcRenderer.invoke(ipcInvoke.git.createBranch, name, fromBase),
 
-  getAnalytics: () => ipcRenderer.invoke('analytics:get'),
-  generateReport: (scope: 'personal' | 'team') => ipcRenderer.invoke('report:generate', scope),
-  saveReport: (fileName: string, markdown: string) => ipcRenderer.invoke('report:save', fileName, markdown),
+  getAnalytics: () => ipcRenderer.invoke(ipcInvoke.analytics.get),
+  generateReport: (scope: 'personal' | 'team') => ipcRenderer.invoke(ipcInvoke.report.generate, scope),
+  saveReport: (fileName: string, markdown: string) => ipcRenderer.invoke(ipcInvoke.report.save, fileName, markdown),
 
-  channelList: () => ipcRenderer.invoke('channel:list'),
-  channelSend: (name: string, text: string) => ipcRenderer.invoke('channel:send', name, text),
-  channelAction: (args: string[]) => ipcRenderer.invoke('channel:action', args),
+  channelList: () => ipcRenderer.invoke(ipcInvoke.channel.list),
+  channelSend: (name: string, text: string) => ipcRenderer.invoke(ipcInvoke.channel.send, name, text),
+  channelAction: (args: string[]) => ipcRenderer.invoke(ipcInvoke.channel.action, args),
 
-  studioScan: () => ipcRenderer.invoke('studio:scan'),
-  studioRead: (absPath: string) => ipcRenderer.invoke('studio:read', absPath),
+  studioScan: () => ipcRenderer.invoke(ipcInvoke.studio.scan),
+  studioRead: (absPath: string) => ipcRenderer.invoke(ipcInvoke.studio.read, absPath),
   studioWrite: (absPath: string, content: string, expectedMtime?: number) =>
-    ipcRenderer.invoke('studio:write', absPath, content, expectedMtime),
-  studioSetConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke('studio:setConfig', patch),
-  studioSetDeveloper: (content: string) => ipcRenderer.invoke('studio:setDeveloper', content),
-  studioCreateWorkflow: (id: string) => ipcRenderer.invoke('studio:createWorkflow', id),
+    ipcRenderer.invoke(ipcInvoke.studio.write, absPath, content, expectedMtime),
+  studioSetConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke(ipcInvoke.studio.setConfig, patch),
+  studioSetDeveloper: (content: string) => ipcRenderer.invoke(ipcInvoke.studio.setDeveloper, content),
+  studioCreateWorkflow: (id: string) => ipcRenderer.invoke(ipcInvoke.studio.createWorkflow, id),
   studioCreateExtension: (kind: ExtKind, platform: string, name: string) =>
-    ipcRenderer.invoke('studio:createExtension', kind, platform, name),
-  studioDeleteFile: (absPath: string) => ipcRenderer.invoke('studio:delete', absPath),
+    ipcRenderer.invoke(ipcInvoke.studio.createExtension, kind, platform, name),
+  studioDeleteFile: (absPath: string) => ipcRenderer.invoke(ipcInvoke.studio.delete, absPath),
 
-  kbSearch: (library: KbLibrary | 'all', query: string) => ipcRenderer.invoke('kb:search', library, query),
+  kbSearch: (library: KbLibrary | 'all', query: string) => ipcRenderer.invoke(ipcInvoke.kb.search, library, query),
 
   /* WeKnora 桥接统一兜底：旧主进程（无对应通道）时降级为 ok:false，不产生未处理 rejection */
   weknoraTest: (cfg: WeknoraConfig) =>
-    ipcRenderer.invoke('weknora:test', cfg).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
+    ipcRenderer.invoke(ipcInvoke.weknora.test, cfg).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
   weknoraSearch: (query: string, limit?: number) =>
     ipcRenderer
-      .invoke('weknora:search', query, limit)
+      .invoke(ipcInvoke.weknora.search, query, limit)
       .catch((e: Error) => ({ ok: false, error: e?.message ?? String(e), hits: [], elapsedMs: 0 })),
   weknoraListDocs: (kbId: string) =>
-    ipcRenderer.invoke('weknora:listDocs', kbId).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
+    ipcRenderer.invoke(ipcInvoke.weknora.listDocs, kbId).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
   weknoraRead: (knowledgeId: string) =>
-    ipcRenderer.invoke('weknora:read', knowledgeId).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
+    ipcRenderer.invoke(ipcInvoke.weknora.read, knowledgeId).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
   weknoraTestMcp: (url: string, token: string) =>
-    ipcRenderer.invoke('weknora:testMcp', url, token).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
+    ipcRenderer.invoke(ipcInvoke.weknora.testMcp, url, token).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
 
-  aiChat: (messages: ChatMessage[]) => ipcRenderer.invoke('ai:chat', messages),
-  aiTest: (cfg: AiConfig) => ipcRenderer.invoke('ai:test', cfg),
-  aiFetchModels: (provider: ModelProvider) => ipcRenderer.invoke('ai:fetch-models', provider),
-  aiTestModel: (provider: ModelProvider, modelId: string) => ipcRenderer.invoke('ai:test-model', provider, modelId),
-  aiPrdDraft: (dirName: string) => ipcRenderer.invoke('ai:prdDraft', dirName),
-  aiSummary: (dirName: string) => ipcRenderer.invoke('ai:summary', dirName),
+  aiChat: (messages: ChatMessage[]) => ipcRenderer.invoke(ipcInvoke.ai.chat, messages),
+  aiTest: (cfg: AiConfig) => ipcRenderer.invoke(ipcInvoke.ai.test, cfg),
+  aiFetchModels: (provider: ModelProvider) => ipcRenderer.invoke(ipcInvoke.ai['fetch-models'], provider),
+  aiTestModel: (provider: ModelProvider, modelId: string) => ipcRenderer.invoke(ipcInvoke.ai['test-model'], provider, modelId),
+  aiPrdDraft: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.prdDraft, dirName),
+  aiSummary: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.summary, dirName),
   aiPlan: (input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) =>
-    ipcRenderer.invoke('ai:plan', input),
-  taskCreateFromPlan: (input: Record<string, unknown>) => ipcRenderer.invoke('task:createFromPlan', input),
-  planHandoff: (dirName: string) => ipcRenderer.invoke('plan:handoff', dirName),
-  aiSplitEpic: (dirName: string) => ipcRenderer.invoke('ai:splitEpic', dirName),
-  aiCommitMsg: (dirName: string) => ipcRenderer.invoke('ai:commitMsg', dirName),
-  aiPrDesc: (dirName: string) => ipcRenderer.invoke('ai:prDesc', dirName),
-  taskArchive: (dirName: string) => ipcRenderer.invoke('task:archive', dirName),
+    ipcRenderer.invoke(ipcInvoke.ai.plan, input),
+  taskCreateFromPlan: (input: Record<string, unknown>) => ipcRenderer.invoke(ipcInvoke.task.createFromPlan, input),
+  planHandoff: (dirName: string) => ipcRenderer.invoke(ipcInvoke.plan.handoff, dirName),
+  aiSplitEpic: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.splitEpic, dirName),
+  aiCommitMsg: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.commitMsg, dirName),
+  aiPrDesc: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.prDesc, dirName),
+  taskArchive: (dirName: string) => ipcRenderer.invoke(ipcInvoke.task.archive, dirName),
   taskWriteArtifact: (dirName: string, fileName: string, content: string) =>
-    ipcRenderer.invoke('task:writeArtifact', dirName, fileName, content),
+    ipcRenderer.invoke(ipcInvoke.task.writeArtifact, dirName, fileName, content),
 
-  kbMcpInstall: () => ipcRenderer.invoke('kbmcp:install'),
-  kbMcpStatus: () => ipcRenderer.invoke('kbmcp:status'),
+  kbMcpInstall: () => ipcRenderer.invoke(ipcInvoke.kbmcp.install),
+  kbMcpStatus: () => ipcRenderer.invoke(ipcInvoke.kbmcp.status),
 
-  gatewayStatus: () => ipcRenderer.invoke('gateway:status'),
-  gatewaySearch: (query: string, limit?: number) => ipcRenderer.invoke('gateway:search', query, limit),
-  gatewayRecentLogs: () => ipcRenderer.invoke('gateway:recentLogs'),
+  gatewayStatus: () => ipcRenderer.invoke(ipcInvoke.gateway.status),
+  gatewaySearch: (query: string, limit?: number) => ipcRenderer.invoke(ipcInvoke.gateway.search, query, limit),
+  gatewayRecentLogs: () => ipcRenderer.invoke(ipcInvoke.gateway.recentLogs),
   gatewaySyncSpec: (remoteDocId: string, targetFileName: string) =>
-    ipcRenderer.invoke('gateway:syncSpec', remoteDocId, targetFileName),
-  gatewayTestProvider: (providerId: string) => ipcRenderer.invoke('gateway:testProvider', providerId),
+    ipcRenderer.invoke(ipcInvoke.gateway.syncSpec, remoteDocId, targetFileName),
+  gatewayTestProvider: (providerId: string) => ipcRenderer.invoke(ipcInvoke.gateway.testProvider, providerId),
   gatewayTestTool: (toolName: string, args: Record<string, unknown>) =>
-    ipcRenderer.invoke('gateway:testTool', toolName, args),
+    ipcRenderer.invoke(ipcInvoke.gateway.testTool, toolName, args),
   gatewayUpdateSecurity: (security: GatewaySecurityConfig) =>
-    ipcRenderer.invoke('gateway:updateSecurity', security),
+    ipcRenderer.invoke(ipcInvoke.gateway.updateSecurity, security),
+
+  accessStatus: () => ipcRenderer.invoke(ipcInvoke.access.status),
+  accessRotateToken: () => ipcRenderer.invoke(ipcInvoke.access.rotateToken),
 
   studioSyncExtension: (sourcePath: string, targets: string[]) =>
-    ipcRenderer.invoke('studio:syncExtension', sourcePath, targets),
+    ipcRenderer.invoke(ipcInvoke.studio.syncExtension, sourcePath, targets),
 
-  generateStandup: () => ipcRenderer.invoke('report:standup'),
+  generateStandup: () => ipcRenderer.invoke(ipcInvoke.report.standup),
 
-  installTpanel: () => ipcRenderer.invoke('bridge:installTpanel'),
-  installTrellisHooks: () => ipcRenderer.invoke('bridge:installHooks'),
-  pullPendingFocus: () => ipcRenderer.invoke('bridge:pullFocus'),
-  copyToClipboard: (text: string) => ipcRenderer.invoke('util:clipboard', text),
-  setCapsuleMode: (on: boolean) => ipcRenderer.send('win:capsule', on),
-  setCapsuleOnTop: (on: boolean) => ipcRenderer.invoke('capsule:onTop', on),
-  setCapsuleShape: (shape: 'pill' | 'card') => ipcRenderer.invoke('capsule:setShape', shape),
-  closeCapsule: () => ipcRenderer.invoke('capsule:close'),
-  resizeCapsule: (width: number, height: number) => ipcRenderer.invoke('capsule:resize', width, height),
-  onToast: (cb: (e: ToastEvent) => void) => subscribe('bridge:toast', cb),
-  onBridgeTaskFocus: (cb: (taskDir: string) => void) => subscribe('bridge:focus-task', cb),
-  getMcpInfo: () => ipcRenderer.invoke('mcp:info'),
-  toggleHttpApi: (on: boolean) => ipcRenderer.invoke('mcp:toggle', on),
+  installTpanel: () => ipcRenderer.invoke(ipcInvoke.bridge.installTpanel),
+  installTrellisHooks: () => ipcRenderer.invoke(ipcInvoke.bridge.installHooks),
+  pullPendingFocus: () => ipcRenderer.invoke(ipcInvoke.bridge.pullFocus),
+  copyToClipboard: (text: string) => ipcRenderer.invoke(ipcInvoke.util.clipboard, text),
+  setCapsuleMode: (on: boolean) => ipcRenderer.send(ipcInvoke.win.capsule, on),
+  setCapsuleOnTop: (on: boolean) => ipcRenderer.invoke(ipcInvoke.capsule.onTop, on),
+  setCapsuleShape: (shape: 'pill' | 'card') => ipcRenderer.invoke(ipcInvoke.capsule.setShape, shape),
+  closeCapsule: () => ipcRenderer.invoke(ipcInvoke.capsule.close),
+  resizeCapsule: (width: number, height: number) => ipcRenderer.invoke(ipcInvoke.capsule.resize, width, height),
+  onToast: (cb: (e: ToastEvent) => void) => subscribe(ipcEvent.toast, cb),
+  onBridgeTaskFocus: (cb: (taskDir: string) => void) => subscribe(ipcEvent.bridgeTaskFocus, cb),
+  getMcpInfo: () => ipcRenderer.invoke(ipcInvoke.mcp.info),
+  toggleHttpApi: (on: boolean) => ipcRenderer.invoke(ipcInvoke.mcp.toggle, on),
 
-  jiraTest: (cfg: JiraConfig) => ipcRenderer.invoke('jira:test', cfg),
-  jiraSearch: (cfg: JiraConfig, jql: string) => ipcRenderer.invoke('jira:search', cfg, jql),
-  jiraTransitions: (cfg: JiraConfig, key: string) => ipcRenderer.invoke('jira:transitions', cfg, key),
+  jiraTest: (cfg: JiraConfig) => ipcRenderer.invoke(ipcInvoke.jira.test, cfg),
+  jiraSearch: (cfg: JiraConfig, jql: string) => ipcRenderer.invoke(ipcInvoke.jira.search, cfg, jql),
+  jiraTransitions: (cfg: JiraConfig, key: string) => ipcRenderer.invoke(ipcInvoke.jira.transitions, cfg, key),
   jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) =>
-    ipcRenderer.invoke('jira:transition', cfg, key, transitionId),
-  jiraComment: (cfg: JiraConfig, key: string, body: string) => ipcRenderer.invoke('jira:comment', cfg, key, body),
+    ipcRenderer.invoke(ipcInvoke.jira.transition, cfg, key, transitionId),
+  jiraComment: (cfg: JiraConfig, key: string, body: string) => ipcRenderer.invoke(ipcInvoke.jira.comment, cfg, key, body),
 
-  gitlabTest: (cfg: GitLabConfig) => ipcRenderer.invoke('gitlab:test', cfg),
-  gitlabTaskStatus: (dirName: string) => ipcRenderer.invoke('gitlab:taskStatus', dirName),
-  gitlabCreateMr: (dirName: string) => ipcRenderer.invoke('gitlab:createMr', dirName),
+  gitlabTest: (cfg: GitLabConfig) => ipcRenderer.invoke(ipcInvoke.gitlab.test, cfg),
+  gitlabTaskStatus: (dirName: string) => ipcRenderer.invoke(ipcInvoke.gitlab.taskStatus, dirName),
+  gitlabCreateMr: (dirName: string) => ipcRenderer.invoke(ipcInvoke.gitlab.createMr, dirName),
 
   createTask: (input: { title: string; description: string; priority: string }) =>
-    ipcRenderer.invoke('task:create', input),
+    ipcRenderer.invoke(ipcInvoke.task.create, input),
 
-  todoList: () => ipcRenderer.invoke('todo:list'),
+  todoList: () => ipcRenderer.invoke(ipcInvoke.todo.list),
   todoSave: (input: {
     id?: string
     title: string
@@ -164,18 +168,18 @@ const api = {
     jiraKey?: string
     jiraUrl?: string
     status?: 'pending' | 'converted' | 'dismissed'
-  }) => ipcRenderer.invoke('todo:save', input),
-  todoDelete: (id: string) => ipcRenderer.invoke('todo:delete', id),
+  }) => ipcRenderer.invoke(ipcInvoke.todo.save, input),
+  todoDelete: (id: string) => ipcRenderer.invoke(ipcInvoke.todo.delete, id),
 
-  onInboxNew: (cb: (e: InboxNewEvent) => void) => subscribe('inbox:new', cb),
+  onInboxNew: (cb: (e: InboxNewEvent) => void) => subscribe(ipcEvent.inboxNew, cb),
 
   docsSearch: (query: string, group: 'all' | 'spec' | 'workspace') =>
-    ipcRenderer.invoke('docs:search', query, group),
+    ipcRenderer.invoke(ipcInvoke.docs.search, query, group),
 
-  windowMinimize: () => ipcRenderer.send('win:minimize'),
-  windowMaximize: () => ipcRenderer.send('win:maximize'),
-  windowClose: () => ipcRenderer.send('win:close'),
-  onWindowMaximized: (cb: (maximized: boolean) => void) => subscribe('window:maximized', cb)
+  windowMinimize: () => ipcRenderer.send(ipcInvoke.win.minimize),
+  windowMaximize: () => ipcRenderer.send(ipcInvoke.win.maximize),
+  windowClose: () => ipcRenderer.send(ipcInvoke.win.close),
+  onWindowMaximized: (cb: (maximized: boolean) => void) => subscribe(ipcEvent.windowMaximized, cb)
 }
 
 export type Api = typeof api

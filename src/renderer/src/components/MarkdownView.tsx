@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import { MermaidBlock } from './MermaidBlock'
 import { AsciiDiagramBlock } from './AsciiDiagramBlock'
 
@@ -13,6 +14,12 @@ function looksLikeAsciiDiagram(text: string): boolean {
   return plusBox >= 2
 }
 
+/**
+ * 纵深防御（TPD-005）：当前未启用 rehype-raw，原始 HTML 本就不会渲染；
+ * 挂 sanitize 保证未来任何人引入 rehype-raw 或升级管线时默认安全。
+ * default schema 放行 code 的 language-* 类，mermaid 代码块路径不受影响。
+ */
+const REHYPE_PLUGINS = [rehypeSanitize]
 const REMARK_PLUGINS = [remarkGfm]
 
 export const MarkdownView = React.memo(function MarkdownView({ content }: { content: string }): JSX.Element {
@@ -20,6 +27,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content }: { cont
     <div className="md">
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
         components={{
           pre({ children, ...props }) {
             // 当代码块内容是自成一体的块级组件（AsciiDiagramBlock / MermaidBlock）时，直接返回该组件，彻底消除外层多余的 pre 边框与内边距

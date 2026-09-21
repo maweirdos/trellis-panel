@@ -504,6 +504,11 @@ export interface Settings {
   /** random per-install token; deep links must carry it */
   bridgeToken: string
   httpApi: { enabled: boolean; port: number; lanAccess: boolean; webBoard: boolean }
+  /**
+   * 本地接入协议（TPAP v1）：外部工具经 127.0.0.1 + Bearer token 读取面板状态/调用网关工具。
+   * 始终仅绑定环回，无局域网开关；默认关闭。
+   */
+  access: { enabled: boolean; port: number }
   desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean }
 }
 
@@ -836,6 +841,16 @@ export interface TrellisApi {
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => () => void
   getMcpInfo: () => Promise<McpInfo>
   toggleHttpApi: (on: boolean) => Promise<{ ok: boolean; error?: string }>
+
+  /* --- TPAP 本地接入协议 --- */
+  accessStatus: () => Promise<{
+    enabled: boolean
+    running: boolean
+    port: number | null
+    endpoint: string | null
+    token: string
+  }>
+  accessRotateToken: () => Promise<{ ok: boolean; token: string }>
 
   /* --- Jira --- */
   jiraTest: (cfg: JiraConfig) => Promise<{ ok: boolean; error?: string; displayName?: string }>
