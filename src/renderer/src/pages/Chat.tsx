@@ -16,9 +16,12 @@ import {
   ChevronDown,
   Bot,
   Hourglass,
-  Download
+  Download,
+  Brain,
+  RefreshCw,
+  ChevronRight
 } from 'lucide-react'
-import type { ModelProvider } from '../../../shared/types'
+import type { ModelProvider, ThinkingLevel } from '../../../shared/types'
 
 /**
  * AI 对话页：左会话列表 / 中转录（Entry 管道 + 滚动状态机）/ 下 Composer。
@@ -79,6 +82,36 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
   return { provider, modelId, picker }
 }
 
+const THINKING_LABEL: Record<ThinkingLevel, string> = { off: '关', low: '低', medium: '中', high: '高' }
+const THINKING_VALUES: ThinkingLevel[] = ['off', 'low', 'medium', 'high']
+
+/** 思考流折叠条目（TPD-014）：默认收起，流式时展开并实时增长 */
+function ThinkingBlock({ reasoning, live }: { reasoning: string; live?: boolean }): JSX.Element {
+  const [open, setOpen] = useState(!!live)
+  useEffect(() => {
+    if (live) setOpen(true)
+  }, [live])
+  return (
+    <div className="mb-2 rounded-lg border border-violet-400/25 bg-violet-500/5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[11px] text-violet-300/90"
+      >
+        <Brain size={11} />
+        {live ? '思考中…' : '思考过程'}
+        <span className="text-violet-300/50">（{reasoning.length} 字）</span>
+        <span className="flex-1" />
+        <ChevronRight size={11} className={clsx('transition-transform', open && 'rotate-90')} />
+      </button>
+      {open && (
+        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words border-t border-violet-400/15 px-3 py-2 text-[11px] leading-5 text-violet-200/70">
+          {reasoning}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function CopyButton({ text }: { text: string }): JSX.Element {
   const [done, setDone] = useState(false)
   return (
@@ -109,10 +142,18 @@ export function ChatPage(): JSX.Element {
   const chatDeleteSession = useApp((s) => s.chatDeleteSession)
   const chatSend = useApp((s) => s.chatSend)
   const chatAbort = useApp((s) => s.chatAbort)
+  const chatRegenerate = useApp((s) => s.chatRegenerate)
   const aiEnabled = useApp((s) => !!s.settings?.ai?.enabled)
 
   const [draft, setDraft] = useState('')
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('off')
   const { provider, modelId, picker } = ComposerModelPicker()
+
+  // 切换会话时同步该会话的思考档位
+  useEffect(() => {
+    const meta = sessions.find((x) => x.id === activeId)
+    if (meta?.thinkingLevel) setThinkingLevel(meta.thinkingLevel)
+  }, [activeId, sessions])
 
   useEffect(() => chatAttachEvents(), [chatAttachEvents])
 
@@ -140,14 +181,19 @@ export function ChatPage(): JSX.Element {
     const text = draft.trim()
     if (!text || streaming) return
     setDraft('')
-    void chatSend(text, { providerId: provider?.id, modelId })
+    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel })
   }
 
   const queueMore = (): void => {
     const text = draft.trim()
     if (!text || !streaming) return
     setDraft('')
-    void chatSend(text, { providerId: provider?.id, modelId })
+    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel })
+  }
+
+  const regenerate = (): void => {
+    if (busy) return
+    void chatRegenerate()
   }
 
   const exportMarkdown = (): void => {
@@ -218,6 +264,18 @@ export function ChatPage(): JSX.Element {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-2 border-b border-ink-700/60 px-4 py-2">
           <span className="min-w-0 flex-1 truncate text-xs font-semibold text-mist-200">{activeSession?.title ?? '新对话'}</span>
+          <select
+            value={thinkingLevel}
+            onChange={(e) => setThinkingLevel(e.target.value as ThinkingLevel)}
+            className="rounded-md border border-ink-600 bg-ink-850 px-1.5 py-1 text-[11px] text-mist-300 outline-none focus:border-leaf/60"
+            title="思考档位（按供应商协议映射；reasoning 模型的思考流独立折叠展示）"
+          >
+            {THINKING_VALUES.map((v) => (
+              <option key={v} value={v}>
+                思考: {THINKING_LABEL[v]}
+              </option>
+            ))}
+          </select>
           {picker}
           <button onClick={exportMarkdown} className="btn-ghost p-1" title="导出 Markdown" disabled={entries.length === 0}>
             <Download size={13} />
@@ -239,7 +297,7 @@ export function ChatPage(): JSX.Element {
                   开始你的第一条对话。模型按会话绑定，可随时在上方切换。
                 </div>
               )}
-              {visible.map((e) =>
+              {visible.map((e, idx) =>
                 e.kind === 'user' ? (
                   <div key={e.key} className="flex justify-end">
                     <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-leaf/15 px-3.5 py-2 text-xs leading-relaxed text-mist-100">
@@ -249,9 +307,21 @@ export function ChatPage(): JSX.Element {
                 ) : (
                   <div key={e.key} className="group flex items-start gap-2">
                     <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-ink-700/70 bg-ink-850/70 px-3.5 py-2.5">
+                      {e.reasoning && <ThinkingBlock reasoning={e.reasoning} />}
                       <MarkdownView content={e.content} />
                     </div>
-                    <CopyButton text={e.content} />
+                    <div className="flex shrink-0 flex-col items-center gap-0.5">
+                      <CopyButton text={e.content} />
+                      {idx === visible.length - 1 && (
+                        <button
+                          onClick={regenerate}
+                          className="rounded p-1 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-mist-200"
+                          title="重新生成"
+                        >
+                          <RefreshCw size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               )}
@@ -264,10 +334,11 @@ export function ChatPage(): JSX.Element {
               ))}
               {streaming && (
                 <div className="rounded-2xl rounded-tl-md border border-leaf/20 bg-ink-850/70 px-3.5 py-2.5">
+                  {streaming.reasoning && <ThinkingBlock reasoning={streaming.reasoning} live={!streaming.content} />}
                   {streaming.content ? (
                     <MarkdownView content={streaming.content} />
                   ) : (
-                    <span className="inline-block h-3 w-1.5 animate-pulse bg-leaf" />
+                    !streaming.reasoning && <span className="inline-block h-3 w-1.5 animate-pulse bg-leaf" />
                   )}
                 </div>
               )}

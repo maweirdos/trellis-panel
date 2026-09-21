@@ -1,4 +1,4 @@
-import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem, ChatMessage, ChatSessionMeta, ChatDoneEvent } from '../../../shared/types'
+import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem, ChatMessage, ChatSessionMeta, ChatDoneEvent, ThinkingLevel } from '../../../shared/types'
 import type { api } from '../api'
 import type { StateCreator } from 'zustand'
 
@@ -108,6 +108,8 @@ export interface InboxSlice {
 export interface ChatStreamState {
   runId: string
   content: string
+  /** 思考流增量单独累积（TPD-014） */
+  reasoning: string
 }
 
 /** 本地已排队、尚未开跑的消息（runId 由主进程预分配） */
@@ -129,8 +131,12 @@ export interface ChatSlice {
   chatNewSession: (binding?: { providerId?: string; modelId?: string }) => Promise<ChatSessionMeta | null>
   chatDeleteSession: (id: string) => Promise<void>
   chatRenameSession: (id: string, title: string) => Promise<void>
-  chatSend: (content: string, binding?: { providerId?: string; modelId?: string }) => Promise<void>
+  chatSend: (
+    content: string,
+    binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel }
+  ) => Promise<void>
   chatAbort: () => Promise<void>
+  chatRegenerate: () => Promise<void>
 }
 
 export type AppState = SessionSlice & UiSlice & ToastSlice & ViewerSlice & TodosSlice & InboxSlice & ChatSlice

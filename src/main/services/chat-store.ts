@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
 import { join } from 'path'
-import type { ChatMessage, ChatSession, ChatSessionMeta } from '../../shared/types'
+import type { ChatMessage, ChatSession, ChatSessionMeta, ThinkingLevel } from '../../shared/types'
 
 /** 仅依赖 getPath 的应用注入面（ Electron App 与冒烟桩均可满足） */
 export interface AppPathProvider {
@@ -40,7 +40,7 @@ export function newSessionId(): string {
 
 export function createSession(
   app: AppPathProvider,
-  binding?: { providerId?: string; modelId?: string }
+  binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel }
 ): ChatSession {
   const now = Date.now()
   const session: ChatSession = {
@@ -51,6 +51,7 @@ export function createSession(
     messageCount: 0,
     providerId: binding?.providerId ?? null,
     modelId: binding?.modelId ?? null,
+    thinkingLevel: binding?.thinkingLevel ?? 'off',
     messages: []
   }
   persist(app, session)
@@ -73,7 +74,8 @@ export function listSessions(app: AppPathProvider): ChatSessionMeta[] {
           updatedAt: s.updatedAt,
           messageCount: s.messageCount,
           providerId: s.providerId,
-          modelId: s.modelId
+          modelId: s.modelId,
+          thinkingLevel: s.thinkingLevel ?? 'off'
         })
       } catch {
         // 单个损坏文件不影响列表
@@ -106,12 +108,13 @@ export function renameSession(app: AppPathProvider, id: string, title: string): 
 export function updateBinding(
   app: AppPathProvider,
   id: string,
-  binding: { providerId?: string | null; modelId?: string | null }
+  binding: { providerId?: string | null; modelId?: string | null; thinkingLevel?: ThinkingLevel }
 ): void {
   const s = openSession(app, id)
   if (!s) throw new Error('会话不存在')
   if ('providerId' in binding) s.providerId = binding.providerId ?? null
   if ('modelId' in binding) s.modelId = binding.modelId ?? null
+  if ('thinkingLevel' in binding && binding.thinkingLevel) s.thinkingLevel = binding.thinkingLevel
   persist(app, s)
 }
 
@@ -119,6 +122,18 @@ export function appendMessage(app: AppPathProvider, id: string, message: ChatMes
   const s = openSession(app, id)
   if (!s) throw new Error('会话不存在')
   s.messages.push(message)
+  s.messageCount = s.messages.length
+  s.updatedAt = Date.now()
+  persist(app, s)
+}
+
+/** 重新生成用：移除末条 assistant 并落库；末条不是 assistant 时抛错 */
+export function popLastAssistant(app: AppPathProvider, id: string): void {
+  const s = openSession(app, id)
+  if (!s) throw new Error('会话不存在')
+  const last = s.messages[s.messages.length - 1]
+  if (!last || last.role !== 'assistant') throw new Error('没有可重新生成的回答')
+  s.messages.pop()
   s.messageCount = s.messages.length
   s.updatedAt = Date.now()
   persist(app, s)

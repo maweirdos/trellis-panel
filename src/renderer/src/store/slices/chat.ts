@@ -17,7 +17,14 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
     const offOutput = api.onChatOutput((e) => {
       const st = get()
       if (st.chatStreaming?.runId === e.runId) {
-        set({ chatStreaming: { runId: e.runId, content: st.chatStreaming.content + e.delta } })
+        const cur = st.chatStreaming
+        set({
+          chatStreaming: {
+            runId: e.runId,
+            content: e.delta ? cur.content + e.delta : cur.content,
+            reasoning: e.reasoning ? cur.reasoning + e.reasoning : cur.reasoning
+          }
+        })
         return
       }
       if (e.sessionId !== st.chatActiveId) return
@@ -27,7 +34,7 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
         set({
           chatPending: st.chatPending.filter((p) => p.runId !== e.runId),
           chatMessages: [...st.chatMessages, { role: 'user', content: pending.content }],
-          chatStreaming: { runId: e.runId, content: e.delta }
+          chatStreaming: { runId: e.runId, content: e.delta ?? '', reasoning: e.reasoning ?? '' }
         })
       }
     })
@@ -120,7 +127,8 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
       sessionId,
       content: trimmed,
       providerId: binding?.providerId,
-      modelId: binding?.modelId
+      modelId: binding?.modelId,
+      thinkingLevel: binding?.thinkingLevel
     })
     if (!res.ok) {
       st.pushToast({ kind: 'error', title: '发送失败', body: res.error })
@@ -131,7 +139,7 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
     } else {
       set({
         chatMessages: [...get().chatMessages, { role: 'user', content: trimmed }],
-        chatStreaming: res.runId ? { runId: res.runId, content: '' } : null
+        chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
       })
     }
     void get().chatLoadSessions()
@@ -140,5 +148,21 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
   chatAbort: async () => {
     const id = get().chatActiveId
     if (id) await api.chatAbort(id)
+  },
+
+  chatRegenerate: async () => {
+    const st = get()
+    const id = st.chatActiveId
+    if (!id || st.chatStreaming) return
+    const res = await api.chatRegenerate(id)
+    if (!res.ok) {
+      st.pushToast({ kind: 'error', title: '重新生成失败', body: res.error })
+      return
+    }
+    // 末条 assistant 已在主进程截断，渲染层同步移除后进入流式态
+    set({
+      chatMessages: st.chatMessages.slice(0, -1),
+      chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
+    })
   }
 })

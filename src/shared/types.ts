@@ -478,9 +478,15 @@ export interface AiConfig {
   providers?: ModelProvider[]
 }
 
+/** 思考档位：随会话持久化，按协议映射请求参数（TPD-014） */
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high'
+export const THINKING_LEVELS: ThinkingLevel[] = ['off', 'low', 'medium', 'high']
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
+  /** 思考流（DeepSeek-R1 reasoning_content / anthropic thinking_delta 等），独立于正文 */
+  reasoning?: string
 }
 
 /* ---------- 对话（Chat 页） ---------- */
@@ -494,6 +500,7 @@ export interface ChatSessionMeta {
   messageCount: number
   providerId: string | null
   modelId: string | null
+  thinkingLevel: ThinkingLevel
 }
 
 /** 会话完整记录 */
@@ -514,7 +521,10 @@ export interface ChatSendResult {
 export interface ChatOutputEvent {
   runId: string
   sessionId: string
+  /** 正文增量 */
   delta: string
+  /** 思考流增量（与 delta 互斥出现） */
+  reasoning?: string
 }
 
 /** chat:done 事件负载（runId 生命周期终结；title 为异步总结结果） */
@@ -892,7 +902,14 @@ export interface TrellisApi {
   chatNew: (binding?: { providerId?: string; modelId?: string }) => Promise<{ ok: boolean; error?: string; session?: ChatSession }>
   chatDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
   chatRename: (id: string, title: string) => Promise<{ ok: boolean; error?: string }>
-  chatSend: (input: { sessionId: string; content: string; providerId?: string; modelId?: string }) => Promise<ChatSendResult>
+  chatSend: (input: {
+    sessionId: string
+    content: string
+    providerId?: string
+    modelId?: string
+    thinkingLevel?: ThinkingLevel
+  }) => Promise<ChatSendResult>
+  chatRegenerate: (sessionId: string) => Promise<ChatSendResult>
   chatAbort: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
   onChatOutput: (cb: (e: ChatOutputEvent) => void) => () => void
   onChatDone: (cb: (e: ChatDoneEvent) => void) => () => void

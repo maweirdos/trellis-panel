@@ -15,10 +15,12 @@
 
 ## 高价值待办（下一批候选）
 
-1. **Thinking 流独立展示**：DeepSeek-R1 / GLM 等的 `reasoning_content` 目前被忽略；
-   应作为独立"思考流"折叠条目渲染（含 thinking 档位选择）。对话页骨架已预留 entry 扩展位。
-2. **消息级操作**：编辑已发消息并重发、单条重新生成、停止点分支（branch）。会话存储为
-   线性数组，需先升级为树/分支结构（可借鉴 git 分支语义，会话 JSON 加 parentId 链）。
+1. ✅ **Thinking 流独立展示**（2026-09-22）：reasoning_content / thinking_delta 解析、
+   chat:output 独立 reasoning 字段、落库、折叠条目渲染、per-会话思考档位（TPD-014）。
+   冒烟：mock reasoning 流 + anthropic thinking_delta 探针 + 档位请求体断言。
+2. **消息级操作**：✅ 单条重新生成已实现（chat:regenerate 截断末条 assistant 重跑）；
+   剩余：编辑已发消息并重发、停止点分支（branch）。会话存储为线性数组，分支需先升级为
+   树结构（可借鉴 git 分支语义，会话 JSON 加 parentId 链）。
 3. **对话内权限卡**：当面板具备"AI 直接执行工具"能力时，allow-once / allow-session(按工具) /
    deny 三态卡 + 120s 超时默认 deny。TPAP 的 confirm 门槛是其协议层对应物，UI 卡待 agent
    循环落地时一并做。

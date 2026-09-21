@@ -66,3 +66,21 @@ typecheck 双配置全绿；scripts/smoke/chat.mjs 13 项全过（mock OpenAI SS
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: 思考流展示 + 重新生成（09-22-thinking-stream）
+**Branch**: `main`
+
+### Summary
+
+roadmap #1 全量 + #2 子集：aiChatStream 解析 openai reasoning_content 与 anthropic thinking_delta（onReasoning 独立回调）；chat:output 增 reasoning 字段与 delta 互斥；ChatMessage 持久化 reasoning；思考档位 off/low/medium/high 随会话持久化并按协议映射（anthropic thinking.budget_tokens 4096/8192/16384 且 max_tokens>budget，openai reasoning_effort，off 不发参数）；转录区 ThinkingBlock 折叠条目（默认收起、流式展开、字数统计）；chat:regenerate 截断末条 assistant 重跑（popLastAssistant + startRun appendUser:false），转录区末条回答悬停出现重新生成按钮。TPD-014 入册，roadmap #1 标记完成。
+
+### 验证
+
+typecheck 双配置全绿；chat 冒烟扩至 21 项全过（新增：reasoning 事件与落库、reasoning_effort 请求体断言、anthropic off 不带 thinking 字段、thinking_delta 解析、budget_tokens=4096、regenerate 三态）；ipc-registry 101 通道回归、tpap 13 项回归。教训：python str.replace 批量改码会静默 no-op，多行匹配受换行符干扰——关键替换后必须 grep 验证。
+
+### Status
+
+[OK] **Completed**

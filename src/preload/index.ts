@@ -132,8 +132,14 @@ const api = {
   chatNew: (binding?: { providerId?: string; modelId?: string }) => ipcRenderer.invoke(ipcInvoke.chat.new, binding),
   chatDelete: (id: string) => ipcRenderer.invoke(ipcInvoke.chat.delete, id),
   chatRename: (id: string, title: string) => ipcRenderer.invoke(ipcInvoke.chat.rename, id, title),
-  chatSend: (input: { sessionId: string; content: string; providerId?: string; modelId?: string }) =>
-    ipcRenderer.invoke(ipcInvoke.chat.send, input),
+  chatSend: (input: {
+    sessionId: string
+    content: string
+    providerId?: string
+    modelId?: string
+    thinkingLevel?: import('../shared/types').ThinkingLevel
+  }) => ipcRenderer.invoke(ipcInvoke.chat.send, input),
+  chatRegenerate: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.regenerate, sessionId),
   chatAbort: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.abort, sessionId),
   onChatOutput: (cb: (e: ChatOutputEvent) => void) => subscribe(ipcEvent.chatOutput, cb),
   onChatDone: (cb: (e: ChatDoneEvent) => void) => subscribe(ipcEvent.chatDone, cb),

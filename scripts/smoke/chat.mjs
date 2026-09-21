@@ -23,6 +23,7 @@ process.env.TPAP_SMOKE_DIR = workDir
 /* ---------------- mock OpenAI 服务 ---------------- */
 
 let completionCount = 0
+const chatBodies = []
 const activeStreams = new Set()
 const mockServer = createServer((req, res) => {
   const url = (req.url ?? '/').split('?')[0]
@@ -32,22 +33,58 @@ const mockServer = createServer((req, res) => {
     res.end(JSON.stringify({ data: [{ id: 'mock-model-a' }, { id: 'mock-model-b' }] }))
     return
   }
+  if (req.method === 'POST' && url.endsWith('/messages')) {
+    let raw = ''
+    req.on('data', (c) => (raw += c))
+    req.on('end', () => {
+      chatBodies.push(JSON.parse(raw || '{}'))
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      const events = [
+        { delta: { type: 'thinking_delta', thinking: '思考A' } },
+        { delta: { type: 'thinking_delta', thinking: '思考B' } },
+        { delta: { type: 'text_delta', text: '回答文本' } }
+      ]
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+      ;(async () => {
+        for (const ev of events) {
+          if (res.writableEnded || res.destroyed) return
+          res.write(`data: ${JSON.stringify({ type: 'content_block_delta', ...ev })}
+
+`)
+          await sleep(40)
+        }
+        if (!res.writableEnded) res.end()
+      })().catch(() => {})
+    })
+    return
+  }
   if (req.method === 'POST' && url.endsWith('/chat/completions')) {
     let raw = ''
     req.on('data', (c) => (raw += c))
     req.on('end', () => {
       completionCount += 1
       const body = JSON.parse(raw || '{}')
+      chatBodies.push(body)
       const isTitle = String(body.messages?.[0]?.content ?? '').includes('标题')
       res.writeHead(200, { 'Content-Type': 'text/event-stream' })
-      const chunks = isTitle ? ['Mock 标题'] : ['你好', '，', '世', '界']
+      // 先思考流（reasoning_content）后正文（content）
+      const chunks = isTitle
+        ? [['reasoning_content', 'Mock 标题'], ['content', 'Mock 标题']]
+        : [
+            ['reasoning_content', '用户想打招呼，'],
+            ['reasoning_content', '礼貌回应即可。'],
+            ['content', '你好'],
+            ['content', '，'],
+            ['content', '世'],
+            ['content', '界']
+          ]
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
       // 自包含流式循环：不依赖外部定时器/集合，连接中断由 write 抛错自然结束
       ;(async () => {
-        for (const c of chunks) {
+        for (const [field, text] of chunks) {
           if (res.writableEnded || res.destroyed) return
-          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`)
-          await sleep(60)
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { [field]: text } }] })}\n\n`)
+          await sleep(50)
         }
         if (!res.writableEnded) {
           res.write('data: [DONE]\n\n')
@@ -138,6 +175,8 @@ const { ipcEvent } = await import(pathToFileURL(join(process.cwd(), 'src/shared/
 chatService.init({ getPath: () => workDir })
 
 let failures = 0
+const deltasA = []
+const thinkingA = []
 const check = (name, cond, extra = '') => {
   console.log(`${cond ? '  ✓' : '  ✗ FAIL'} ${name}${cond ? '' : ` ${extra}`}`)
   if (!cond) failures += 1
@@ -204,6 +243,11 @@ const done1 = await waitFor(
 check('首轮 done 且 kind=done', done1?.kind === 'done')
 const persisted = store.openSession({ getPath: () => workDir }, session.id)
 check('首轮落库：user+assistant 两条', persisted?.messages?.length === 2 && persisted.messages[1].content === '你好，世界', JSON.stringify(persisted?.messages))
+check(
+  'assistant 落库携带思考流 reasoning',
+  persisted?.messages?.[1]?.reasoning === '用户想打招呼，礼貌回应即可。',
+  JSON.stringify(persisted?.messages?.[1]?.reasoning)
+)
 await waitFor(
   () => {
     const s = store.openSession({ getPath: () => workDir }, session.id)
@@ -244,6 +288,61 @@ check('task 读取拒绝 ../ 穿越', !evilTask.ok && /越界/.test(evilTask.err
 GatewayManager.updateSecurity({ maxResponseChars: 20 })
 const trunc = await GatewayManager.executeTool('db_list_tables', {}, '')
 check('截断响应带 truncated/totalChars', trunc.ok && trunc.truncated === true && trunc.totalChars > 20, JSON.stringify(trunc).slice(0, 160))
+
+/* 8. thinking 档位：openai 形态 reasoning_effort 随请求体下发 */
+const session2 = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a', thinkingLevel: 'high' })
+chatService.send({ sessionId: session2.id, content: '档位检查', providerId: 'mock', modelId: 'mock-model-a' })
+await waitFor(
+  () => {
+    const s2 = store.openSession({ getPath: () => workDir }, session2.id)
+    return s2.messages.length >= 2
+  },
+  10000,
+  '档位轮完成'
+)
+const levelBodies = chatBodies.filter(
+  (b) => (b.messages ?? []).some((m) => m.content === '档位检查') && !String(b.messages?.[0]?.content ?? '').includes('标题')
+)
+const levelBody = levelBodies[levelBodies.length - 1]
+check('openai 形态 reasoning_effort=high 随请求体下发', levelBody?.reasoning_effort === 'high', JSON.stringify(levelBody).slice(0, 160))
+
+/* 9. anthropic thinking_delta 解析 + off 不携带 thinking 字段 */
+const anthropicOff = await ai.aiChatStream(
+  { baseUrl: `${BASE}/v1`, apiFormat: 'anthropic', model: 'claude-x' },
+  [{ role: 'user', content: 'hi' }],
+  { onDelta: () => {}, onReasoning: () => {} }
+)
+const anthropicOffBody = chatBodies[chatBodies.length - 1]
+check('anthropic off：请求体不含 thinking 字段', anthropicOffBody?.thinking === undefined, JSON.stringify(anthropicOffBody))
+const anthropicLow = await ai.aiChatStream(
+  { baseUrl: `${BASE}/v1`, apiFormat: 'anthropic', model: 'claude-x', thinkingLevel: 'low' },
+  [{ role: 'user', content: 'hi' }],
+  { onDelta: (d) => deltasA.push(d), onReasoning: (r) => thinkingA.push(r) }
+)
+check('anthropic thinking_delta 解析为 reasoning', anthropicLow.ok && thinkingA.join('') === '思考A思考B' && deltasA.join('') === '回答文本', JSON.stringify(anthropicLow))
+const anthropicLowBody = chatBodies[chatBodies.length - 1]
+check('anthropic low：thinking.budget_tokens=4096', anthropicLowBody?.thinking?.budget_tokens === 4096, JSON.stringify(anthropicLowBody).slice(0, 200))
+
+/* 10. 重新生成 */
+const session3 = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
+chatService.send({ sessionId: session3.id, content: '原始提问', providerId: 'mock', modelId: 'mock-model-a' })
+await waitFor(
+  () => store.openSession({ getPath: () => workDir }, session3.id).messages.length >= 2,
+  10000,
+  'regenerate 前置轮'
+)
+const regen = chatService.regenerate(session3.id)
+check('regenerate 接受并开跑', regen.ok && !!regen.runId, JSON.stringify(regen))
+await waitFor(
+  () => events().some((e) => e.channel === ipcEvent.chatDone && e.payload.runId === regen.runId && e.payload.kind === 'done'),
+  10000,
+  'regenerate 完成'
+)
+const regenSession = store.openSession({ getPath: () => workDir }, session3.id)
+check('regenerate 后仍为 user+assistant 且不叠加', regenSession.messages.length === 2 && regenSession.messages[1].role === 'assistant', JSON.stringify(regenSession.messages.map((m) => m.role)))
+const session4 = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
+const regenBad = chatService.regenerate(session4.id)
+check('空会话 regenerate 拒绝', !regenBad.ok, JSON.stringify(regenBad))
 
 /* 收尾 */
 mockServer.close()

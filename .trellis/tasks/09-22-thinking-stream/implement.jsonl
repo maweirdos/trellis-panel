@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/decisions.md", "reason": "遵循 TPD 决策"}
+{"file": ".trellis/spec/backend/ipc-conventions.md", "reason": "事件流与通道约定"}

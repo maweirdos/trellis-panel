@@ -7,8 +7,7 @@ import type { ChatMessage } from '../../../shared/types'
 
 export type ChatEntry =
   | { kind: 'user'; key: string; content: string }
-  | { kind: 'assistant'; key: string; content: string }
-  | { kind: 'error'; key: string; content: string }
+  | { kind: 'assistant'; key: string; content: string; reasoning?: string }
 
 /** 连续 assistant 消息合并为一个回合条目，减少视觉碎片 */
 export function buildEntries(messages: ChatMessage[]): ChatEntry[] {

@@ -1,5 +1,5 @@
 import { safeStorage } from 'electron'
-import type { AiApiFormat, AiChatResult, AiConfig, ChatMessage, ModelFetchResult, ModelItem } from '../../shared/types'
+import type { AiApiFormat, AiChatResult, AiConfig, ChatMessage, ModelFetchResult, ModelItem, ThinkingLevel } from '../../shared/types'
 import { errorMessage, isAbortError } from '../../shared/errors'
 
 /**
@@ -510,16 +510,21 @@ export interface StreamTarget {
   model: string
   temperature?: number
   maxTokens?: number
+  /** 思考档位：按协议映射请求参数；off 或缺省不携带思考参数（TPD-014） */
+  thinkingLevel?: ThinkingLevel
 }
 
 export interface StreamCallbacks {
   onDelta: (text: string) => void
+  /** 思考流增量（reasoning_content / thinking_delta），独立于正文 */
+  onReasoning?: (text: string) => void
   signal?: AbortSignal
 }
 
 export interface StreamResult {
   ok: boolean
   content?: string
+  reasoning?: string
   error?: string
   aborted?: boolean
 }
@@ -613,17 +618,22 @@ export async function aiChatStream(
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   let body: Record<string, unknown>
+  const THINKING_BUDGET: Record<Exclude<ThinkingLevel, 'off'>, number> = { low: 4096, medium: 8192, high: 16384 }
   if (format === 'anthropic') {
     if (key) {
       headers['x-api-key'] = key
       headers['anthropic-version'] = '2023-06-01'
     }
+    const level = target.thinkingLevel
+    const budget = level && level !== 'off' ? THINKING_BUDGET[level] : null
     body = {
       model: target.model,
       messages: messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content })),
       system: messages.find((m) => m.role === 'system')?.content,
-      max_tokens: target.maxTokens ?? 4096,
+      // anthropic 约束：max_tokens 必须大于 thinking budget
+      max_tokens: budget ? Math.max(target.maxTokens ?? 0, budget + 1024) : target.maxTokens ?? 4096,
       temperature: target.temperature ?? 0.3,
+      ...(budget ? { thinking: { type: 'enabled', budget_tokens: budget } } : {}),
       stream: true
     }
   } else if (format === 'ollama') {
@@ -643,6 +653,10 @@ export async function aiChatStream(
       messages,
       temperature: target.temperature ?? 0.3,
       max_tokens: target.maxTokens,
+      // reasoning 模型识别 reasoning_effort；严格网关可能忽略或拒绝，属供应商差异
+      ...(target.thinkingLevel && target.thinkingLevel !== 'off'
+        ? { reasoning_effort: target.thinkingLevel }
+        : {}),
       stream: true
     }
   }
@@ -660,10 +674,17 @@ export async function aiChatStream(
       return { ok: false, error: `HTTP ${res.status} ${text || res.statusText}`.trim() }
     }
 
+    let reasoning = ''
     const emitDelta = (delta: unknown): void => {
       if (typeof delta === 'string' && delta) {
         content += delta
         cb.onDelta(delta)
+      }
+    }
+    const emitReasoning = (text: unknown): void => {
+      if (typeof text === 'string' && text) {
+        reasoning += text
+        cb.onReasoning?.(text)
       }
     }
 
@@ -678,6 +699,7 @@ export async function aiChatStream(
         if (obj?.type !== 'content_block_delta') return
         const delta = asRecord(obj.delta)
         if (delta?.type === 'text_delta') emitDelta(delta.text)
+        else if (delta?.type === 'thinking_delta') emitReasoning(delta.thinking)
       })
     } else if (format === 'response') {
       await readSseLines(res, (payload) => {
@@ -687,16 +709,17 @@ export async function aiChatStream(
     } else {
       await readSseLines(res, (payload) => {
         const obj = asRecord(JSON.parse(payload) as unknown)
-        // reasoning_content（DeepSeek-R1 等）不进正文；roadmap：独立思考流展示
+        // reasoning_content（DeepSeek-R1 / GLM 等）独立成思考流
         const choices = obj?.choices
         if (!Array.isArray(choices)) return
         const delta = asRecord(asRecord(choices[0])?.delta)
+        emitReasoning(delta?.reasoning_content)
         emitDelta(delta?.content)
       })
     }
 
     if (!content) return { ok: false, error: '流式响应为空' }
-    return { ok: true, content }
+    return { ok: true, content, ...(reasoning ? { reasoning } : {}) }
   } catch (e) {
     if (controller.signal.aborted && cb.signal?.aborted) {
       return { ok: false, aborted: true, error: '已中止' }

@@ -59,4 +59,6 @@ export function registerChatIpc(): void {
   })
 
   handle(ipcInvoke.chat.abort, (_e, sessionId: string) => chatService.abort(String(sessionId ?? '')))
+
+  handle(ipcInvoke.chat.regenerate, (_e, sessionId: string) => chatService.regenerate(String(sessionId ?? '')))
 }

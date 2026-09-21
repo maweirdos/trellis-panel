@@ -21,6 +21,7 @@
 | [TPD-011](#tpd-011) | 工具输出截断必须显式契约化 | 已采纳 | 2026-09-21 |
 | [TPD-012](#tpd-012) | 模型目录发现优先 + models.dev 富化 | 已采纳 | 2026-09-21 |
 | [TPD-013](#tpd-013) | 对话转录 Entry 管道 + 滚动状态机 | 已采纳 | 2026-09-21 |
+| [TPD-014](#tpd-014) | 思考流独立契约与档位映射 | 已采纳 | 2026-09-22 |
 
 ---
 
@@ -141,3 +142,15 @@
 - **理由**: 消息→条目的纯函数分离让工具卡/折叠等后续能力只改一个函数；滚动是聊天 UX 的
   第一差评来源，必须集中管控。
 - **替代案**: 消息数组直接 map 渲染 + 全量 DOM —— 长会话卡顿，否决。
+
+## TPD-014: 思考流独立契约与档位映射
+
+- **决策**: reasoning（思考流）与正文在任何层面都分离：aiChatStream 以 onReasoning 独立回调；
+  chat:output 事件以 `reasoning` 字段与 `delta` 互斥下发；ChatMessage 持久化可选 `reasoning`；
+  转录区以独立折叠条目渲染（默认收起、流式时展开）。思考档位（off/low/medium/high）随会话
+  持久化，按协议映射：anthropic→thinking.budget_tokens（4096/8192/16384，且 max_tokens>budget）；
+  openai 兼容→reasoning_effort；off 一律不携带任何思考参数；ollama/response v1 不发参数
+  （被动解析仍然生效）。
+- **理由**: 思考流混入正文会污染 Markdown 渲染与历史上下文；档位是请求参数而非 UI 装饰，
+  必须落在请求体契约上并有冒烟断言。
+- **替代案**: 把 reasoning 拼进 content —— 无法区分展示、无法独立折叠，否决。

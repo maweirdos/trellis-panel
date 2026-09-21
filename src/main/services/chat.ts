@@ -1,7 +1,8 @@
 import { broadcastToWindows } from './bridge'
 import { getSettings } from './store'
 import { aiChatStream, decryptKeyOf, type StreamTarget } from './ai'
-import { appendMessage, createSession, openSession, renameSession, updateBinding, type AppPathProvider } from './chat-store'
+import type { ThinkingLevel } from '../../shared/types'
+import { appendMessage, createSession, openSession, popLastAssistant, renameSession, updateBinding, type AppPathProvider } from './chat-store'
 import { ipcEvent } from '../../shared/ipc-channels'
 import type { ChatMessage, ChatSendResult, ModelProvider } from '../../shared/types'
 
@@ -31,13 +32,14 @@ function resolveProvider(providerId?: string): ModelProvider | null {
   return list.find((p) => p.id === providerId) ?? list.find((p) => p.id === cfg.activeProviderId) ?? list[0] ?? null
 }
 
-function targetOf(provider: ModelProvider, modelId: string): StreamTarget {
+function targetOf(provider: ModelProvider, modelId: string, thinkingLevel?: ThinkingLevel): StreamTarget {
   return {
     baseUrl: provider.baseUrl,
     apiFormat: provider.apiFormat,
     apiKey: decryptKeyOf(provider.apiKey, provider.apiKeyEncrypted),
     model: modelId,
-    temperature: 0.4
+    temperature: 0.4,
+    thinkingLevel
   }
 }
 
@@ -65,16 +67,26 @@ class ChatService {
     return createSession(this.app(), binding)
   }
 
-  send(input: { sessionId: string; content: string; providerId?: string; modelId?: string }): ChatSendResult {
+  send(input: {
+    sessionId: string
+    content: string
+    providerId?: string
+    modelId?: string
+    thinkingLevel?: ThinkingLevel
+  }): ChatSendResult {
     const app = this.app()
     const content = String(input.content ?? '').trim()
     if (!content) return { ok: false, error: '消息不能为空', runId: null, queued: false }
     const session = openSession(app, input.sessionId)
     if (!session) return { ok: false, error: '会话不存在', runId: null, queued: false }
 
-    // 绑定更新：发送时可携带 provider/model（composer 切换即持久化到会话）
-    if (input.providerId || input.modelId) {
-      updateBinding(app, input.sessionId, { providerId: input.providerId, modelId: input.modelId })
+    // 绑定更新：发送时可携带 provider/model/thinking（composer 切换即持久化到会话）
+    if (input.providerId || input.modelId || input.thinkingLevel) {
+      updateBinding(app, input.sessionId, {
+        providerId: input.providerId,
+        modelId: input.modelId,
+        thinkingLevel: input.thinkingLevel
+      })
     }
 
     const runId = newRunId()
@@ -86,6 +98,21 @@ class ChatService {
       return { ok: true, runId, queued: true, queueLen: queue.length }
     }
     void this.startRun(runId, input.sessionId, content)
+    return { ok: true, runId, queued: false }
+  }
+
+  /** 重新生成：截断末条 assistant，以原历史重跑（不新增 user 消息） */
+  regenerate(sessionId: string): ChatSendResult {
+    const app = this.app()
+    const session = openSession(app, sessionId)
+    if (!session) return { ok: false, error: '会话不存在', runId: null, queued: false }
+    if (this.active.has(sessionId)) return { ok: false, error: '当前有轮次运行中', runId: null, queued: false }
+    if (session.messages.length === 0 || session.messages[session.messages.length - 1].role !== 'assistant') {
+      return { ok: false, error: '没有可重新生成的回答', runId: null, queued: false }
+    }
+    popLastAssistant(app, sessionId)
+    const runId = newRunId()
+    void this.startRun(runId, sessionId, '', { appendUser: false, thinkingLevel: session.thinkingLevel ?? 'off' })
     return { ok: true, runId, queued: false }
   }
 
@@ -108,8 +135,14 @@ class ChatService {
     return { ok: true }
   }
 
-  private async startRun(runId: string, sessionId: string, content: string): Promise<void> {
+  private async startRun(
+    runId: string,
+    sessionId: string,
+    content: string,
+    opts?: { appendUser?: boolean; thinkingLevel?: ThinkingLevel }
+  ): Promise<void> {
     const app = this.app()
+    const appendUser = opts?.appendUser ?? true
     const session = openSession(app, sessionId)
     if (!session) {
       this.finish(runId, sessionId, { kind: 'error', error: '会话不存在' })
@@ -119,9 +152,12 @@ class ChatService {
     this.runs.set(runId, { runId, sessionId, controller })
     this.active.set(sessionId, runId)
 
-    const userMsg: ChatMessage = { role: 'user', content }
-    appendMessage(app, sessionId, userMsg)
-    const history = openSession(app, sessionId)?.messages ?? [userMsg]
+    if (appendUser) appendMessage(app, sessionId, { role: 'user', content })
+    const history = openSession(app, sessionId)?.messages ?? []
+    if (history.length === 0) {
+      this.finish(runId, sessionId, { kind: 'error', error: '没有可发送的内容' })
+      return
+    }
 
     const provider = resolveProvider(session.providerId ?? undefined)
     const modelId = session.modelId || provider?.models?.find((m) => m.enabled)?.id || provider?.models?.[0]?.id || ''
@@ -135,12 +171,19 @@ class ChatService {
     }
 
     // 流式占位：assistant 消息在完成时一次性落库（增量只走事件，不逐条写盘）
-    const result = await aiChatStream(targetOf(provider, modelId), history, {
-      signal: controller.signal,
-      onDelta: (delta) => {
-        broadcastToWindows(ipcEvent.chatOutput, { runId, sessionId, delta })
+    const result = await aiChatStream(
+      targetOf(provider, modelId, opts?.thinkingLevel ?? session.thinkingLevel ?? 'off'),
+      history,
+      {
+        signal: controller.signal,
+        onDelta: (delta) => {
+          broadcastToWindows(ipcEvent.chatOutput, { runId, sessionId, delta })
+        },
+        onReasoning: (reasoning) => {
+          broadcastToWindows(ipcEvent.chatOutput, { runId, sessionId, delta: '', reasoning })
+        }
       }
-    })
+    )
 
     if (result.aborted) {
       this.finish(runId, sessionId, { kind: 'aborted' })
@@ -152,7 +195,11 @@ class ChatService {
       return
     }
 
-    const assistantMsg: ChatMessage = { role: 'assistant', content: result.content }
+    const assistantMsg: ChatMessage = {
+      role: 'assistant',
+      content: result.content,
+      ...(result.reasoning ? { reasoning: result.reasoning } : {})
+    }
     appendMessage(app, sessionId, assistantMsg)
     void this.maybeSummarizeTitle(sessionId)
     this.finish(runId, sessionId, { kind: 'done', message: assistantMsg })
