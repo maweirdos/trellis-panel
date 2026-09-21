@@ -138,6 +138,7 @@ const api = {
     providerId?: string
     modelId?: string
     thinkingLevel?: import('../shared/types').ThinkingLevel
+    images?: string[]
   }) => ipcRenderer.invoke(ipcInvoke.chat.send, input),
   chatRegenerate: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.regenerate, sessionId),
   chatEditResend: (sessionId: string, messageId: string, content: string) =>

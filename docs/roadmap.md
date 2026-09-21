@@ -29,8 +29,9 @@
 5. **会话分支 / 置顶 / 归档**：会话列表管理能力，存储结构升级后顺带。
 6. **按需工具加载（ToolSearch）**：工具 schema 不全量推送，先给 catalog、按名激活。接入
    多于 ~15 个工具时再做，避免上下文浪费。
-7. **多模态输入**：图片附件（composer 已有成熟的拖拽/粘贴模式可参考）；面板截图直接问 AI
-   是刚需场景。
+7. ✅ **多模态输入**（2026-09-22）：composer 文件选择/粘贴图片（≤4 张、单张 ≤3MB 前端门槛 +
+   4MB 主进程硬门槛），dataURL→ChatImage 持久化，openai/anthropic/ollama 图像分片升维，
+   用户气泡缩略图（TPD-019）。剩余：response 格式分片、面板截图一键问 AI。
 8. ✅ **TPAP 对话只读面**（2026-09-22）：`GET /tpap/v1/chat/sessions` 与 `/chat/session?id=`
    已实现——读路径复用 chat-store 单一实现，恒只读、过 Bearer 鉴权，tpap 冒烟 16 项覆盖。
 9. ✅ **E2E 对话渲染契约**（2026-09-22）：`reuseEntries` 引用复用 + `useChatEntries` +

@@ -1,5 +1,5 @@
 import { safeStorage } from 'electron'
-import type { AiApiFormat, AiChatResult, AiConfig, ChatMessage, ModelFetchResult, ModelItem, ThinkingLevel } from '../../shared/types'
+import type { AiApiFormat, AiChatResult, AiConfig, ChatImage, ChatMessage, ModelFetchResult, ModelItem, ThinkingLevel } from '../../shared/types'
 import { errorMessage, isAbortError } from '../../shared/errors'
 import { proxiedFetch } from './proxy'
 
@@ -544,6 +544,43 @@ export function decryptKeyOf(apiKey: string, encrypted?: boolean): string {
   return apiKey
 }
 
+/** 解析 dataURL 为 {mediaType, base64}；非 dataURL 返回 null */
+function parseDataUrl(dataUrl: string): { mediaType: string; base64: string } | null {
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl.trim())
+  return m ? { mediaType: m[1], base64: m[2] } : null
+}
+
+function stripDataUrlPrefix(dataUrl: string): string {
+  return parseDataUrl(dataUrl)?.base64 ?? dataUrl
+}
+
+/** 把 user 消息升维为多模态内容分片（openai 形态） */
+function toOpenAiContent(m: ChatMessage): string | Array<Record<string, unknown>> {
+  if (!m.images?.length) return m.content
+  const parts: Array<Record<string, unknown>> = []
+  for (const img of m.images) {
+    const dataUrl = img.dataBase64.includes(',') ? `data:${img.mediaType};base64,${img.dataBase64}` : parseDataUrlSafe(img)
+    parts.push({ type: 'image_url', image_url: { url: dataUrl } })
+  }
+  parts.push({ type: 'text', text: m.content })
+  return parts
+}
+
+function parseDataUrlSafe(img: ChatImage): string {
+  return `data:${img.mediaType};base64,${img.dataBase64}`
+}
+
+/** 把 user 消息升维为多模态内容分片（anthropic 形态） */
+function toAnthropicContent(m: ChatMessage): string | Array<Record<string, unknown>> {
+  if (!m.images?.length) return m.content
+  const parts: Array<Record<string, unknown>> = []
+  for (const img of m.images) {
+    parts.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.dataBase64 } })
+  }
+  parts.push({ type: 'text', text: m.content })
+  return parts
+}
+
 /** SSE 行解析：把字节流切成 data: 负载行；`[DONE]` 转换为显式标记 */
 async function readSseLines(
   res: Response,
@@ -629,7 +666,10 @@ export async function aiChatStream(
     const budget = level && level !== 'off' ? THINKING_BUDGET[level] : null
     body = {
       model: target.model,
-      messages: messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content })),
+      messages: messages.filter((m) => m.role !== 'system').map((m) => ({
+        role: m.role,
+        content: m.images?.length ? toAnthropicContent(m) : m.content
+      })),
       system: messages.find((m) => m.role === 'system')?.content,
       // anthropic 约束：max_tokens 必须大于 thinking budget
       max_tokens: budget ? Math.max(target.maxTokens ?? 0, budget + 1024) : target.maxTokens ?? 4096,
@@ -638,7 +678,15 @@ export async function aiChatStream(
       stream: true
     }
   } else if (format === 'ollama') {
-    body = { model: target.model, messages, stream: true }
+    body = {
+      model: target.model,
+      messages: messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        ...(m.images?.length ? { images: m.images.map((img) => (img.dataBase64.includes(',') ? stripDataUrlPrefix(img.dataBase64) : img.dataBase64)) } : {})
+      })),
+      stream: true
+    }
   } else if (format === 'response') {
     if (key) headers['Authorization'] = `Bearer ${key}`
     body = {
@@ -651,7 +699,10 @@ export async function aiChatStream(
     if (key) headers['Authorization'] = `Bearer ${key}`
     body = {
       model: target.model,
-      messages,
+      messages: messages.map((m) => ({
+        role: m.role,
+        ...(m.images?.length ? { content: toOpenAiContent(m) } : { content: m.content })
+      })),
       temperature: target.temperature ?? 0.3,
       max_tokens: target.maxTokens,
       // reasoning 模型识别 reasoning_effort；严格网关可能忽略或拒绝，属供应商差异

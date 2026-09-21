@@ -482,11 +482,18 @@ export interface AiConfig {
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high'
 export const THINKING_LEVELS: ThinkingLevel[] = ['off', 'low', 'medium', 'high']
 
+/** 图片附件（多模态输入，TPD-019） */
+export interface ChatImage {
+  mediaType: string
+  dataBase64: string
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
   /** 思考流（DeepSeek-R1 reasoning_content / anthropic thinking_delta 等），独立于正文 */
   reasoning?: string
+  images?: ChatImage[]
 }
 
 /* ---------- 对话（Chat 页） ---------- */
@@ -920,6 +927,8 @@ export interface TrellisApi {
     providerId?: string
     modelId?: string
     thinkingLevel?: ThinkingLevel
+    /** dataURL 形式的图片附件（TPD-019） */
+    images?: string[]
   }) => Promise<ChatSendResult>
   chatRegenerate: (sessionId: string) => Promise<ChatSendResult>
   chatEditResend: (sessionId: string, messageId: string, content: string) => Promise<ChatSendResult>

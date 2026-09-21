@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -21,9 +21,12 @@ import {
   RefreshCw,
   ChevronRight,
   ChevronLeft,
-  Pencil
+  Pencil,
+  ImagePlus,
+  X
 } from 'lucide-react'
 import type { ModelProvider, ThinkingLevel } from '../../../shared/types'
+import type { ChatImage } from '../../../shared/types'
 
 /**
  * AI 对话页：左会话列表 / 中转录（Entry 管道 + 滚动状态机）/ 下 Composer。
@@ -180,6 +183,7 @@ export function ChatPage(): JSX.Element {
   const chatSend = useApp((s) => s.chatSend)
   const chatAbort = useApp((s) => s.chatAbort)
   const chatRegenerate = useApp((s) => s.chatRegenerate)
+  const pushToast = useApp((s) => s.pushToast)
   const chatEditResend = useApp((s) => s.chatEditResend)
   const chatBranch = useApp((s) => s.chatBranch)
   const aiEnabled = useApp((s) => !!s.settings?.ai?.enabled)
@@ -187,6 +191,31 @@ export function ChatPage(): JSX.Element {
   const [draft, setDraft] = useState('')
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('off')
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
+  const [attachments, setAttachments] = useState<{ dataUrl: string; name: string }[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const addImageFiles = (files: FileList | File[]): void => {
+    const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    if (list.length === 0) return
+    setAttachments((cur) => {
+      if (cur.length + list.length > 4) {
+        pushToast({ kind: 'error', title: '图片过多', body: '每条消息最多 4 张' })
+        return cur
+      }
+      for (const f of list) {
+        if (f.size > 3 * 1024 * 1024) {
+          pushToast({ kind: 'error', title: '图片过大', body: `${f.name} 超过 3MB` })
+          return cur
+        }
+      }
+      for (const f of list) {
+        const reader = new FileReader()
+        reader.onload = () => setAttachments((c2) => [...c2, { dataUrl: String(reader.result ?? ''), name: f.name }])
+        reader.readAsDataURL(f)
+      }
+      return cur
+    })
+  }
   const { provider, modelId, picker } = ComposerModelPicker()
 
   // 切换会话时同步该会话的思考档位
@@ -219,16 +248,20 @@ export function ChatPage(): JSX.Element {
 
   const submit = (): void => {
     const text = draft.trim()
-    if (!text || streaming) return
+    const imgs = attachments.map((a) => a.dataUrl)
+    if ((!text && !imgs.length) || streaming) return
     setDraft('')
-    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel })
+    setAttachments([])
+    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel, images: imgs })
   }
 
   const queueMore = (): void => {
     const text = draft.trim()
-    if (!text || !streaming) return
+    const imgs = attachments.map((a) => a.dataUrl)
+    if ((!text && !imgs.length) || !streaming) return
     setDraft('')
-    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel })
+    setAttachments([])
+    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel, images: imgs })
   }
 
   const regenerate = (): void => {
@@ -467,9 +500,52 @@ export function ChatPage(): JSX.Element {
           {!aiEnabled && (
             <p className="mb-2 text-[11px] text-amber-300/90">应用内 AI 未启用（设置 → AI 模型）。启用并配置供应商后即可对话。</p>
           )}
+          {attachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {attachments.map((a, i) => (
+                <div key={i} className="relative">
+                  <img src={a.dataUrl} alt={a.name} className="h-14 w-14 rounded-lg border border-ink-600 object-cover" />
+                  <button
+                    onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
+                    className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-800 p-0.5 text-mist-400 shadow hover:text-rose-300"
+                    title="移除"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) addImageFiles(e.target.files)
+                e.target.value = ''
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="btn-ghost shrink-0 p-2"
+              title="添加图片（≤4 张，单张 ≤3MB）"
+            >
+              <ImagePlus size={15} />
+            </button>
             <textarea
               value={draft}
+              onPaste={(e) => {
+                const imgs = Array.from(e.clipboardData.items).filter((it) => it.type.startsWith('image/'))
+                if (imgs.length === 0) return
+                const files = imgs.map((it) => it.getAsFile()).filter((f): f is File => !!f)
+                if (files.length) {
+                  e.preventDefault()
+                  addImageFiles(files)
+                }
+              }}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -502,7 +578,7 @@ export function ChatPage(): JSX.Element {
                 </button>
               </>
             ) : (
-              <button onClick={submit} disabled={!draft.trim()} className="btn-primary shrink-0 text-xs">
+              <button onClick={submit} disabled={!draft.trim() && attachments.length === 0} className="btn-primary shrink-0 text-xs">
                 <Send size={12} /> 发送
               </button>
             )}

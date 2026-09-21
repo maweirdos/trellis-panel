@@ -15,7 +15,7 @@ import {
   type ChatNode
 } from './chat-store'
 import { ipcEvent } from '../../shared/ipc-channels'
-import type { ChatMessage, ChatSendResult, ModelProvider } from '../../shared/types'
+import type { ChatImage, ChatMessage, ChatSendResult, ModelProvider } from '../../shared/types'
 
 /**
  * 对话运行时（TPD-016 树语义）：每会话串行（一忙不二跑），忙碌发送进 FIFO 队列、轮末自动续发；
@@ -32,6 +32,7 @@ interface RunState {
 interface QueuedItem {
   runId: string
   content: string
+  images?: ChatImage[]
 }
 
 function newRunId(): string {
@@ -84,12 +85,16 @@ class ChatService {
     providerId?: string
     modelId?: string
     thinkingLevel?: ThinkingLevel
+    images?: string[]
   }): ChatSendResult {
     const app = this.app()
     const content = String(input.content ?? '').trim()
-    if (!content) return { ok: false, error: '消息不能为空', runId: null, queued: false }
+    if (!content && !(input.images?.length)) return { ok: false, error: '消息不能为空', runId: null, queued: false }
     const session = openSession(app, input.sessionId)
     if (!session) return { ok: false, error: '会话不存在', runId: null, queued: false }
+
+    const imgs = this.parseImages(input.images)
+    if (imgs.error) return { ok: false, error: imgs.error, runId: null, queued: false }
 
     // 绑定更新：发送时可携带 provider/model/thinking（composer 切换即持久化到会话）
     if (input.providerId || input.modelId || input.thinkingLevel) {
@@ -104,16 +109,34 @@ class ChatService {
     const busy = this.active.has(input.sessionId)
     if (busy) {
       const queue = this.queues.get(input.sessionId) ?? []
-      queue.push({ runId, content })
+      queue.push({ runId, content, images: imgs.images })
       this.queues.set(input.sessionId, queue)
       return { ok: true, runId, queued: true, queueLen: queue.length }
     }
-    const userNode = appendNode(app, input.sessionId, { role: 'user', content })
+    const userNode = appendNode(app, input.sessionId, {
+      role: 'user',
+      content,
+      ...(imgs.images?.length ? { images: imgs.images } : {})
+    })
     void this.startTurn(runId, input.sessionId, {
       historyEndLeafId: userNode.id,
       assistantParentId: userNode.id
     })
     return { ok: true, runId, queued: false }
+  }
+
+  /** 解析并校验 dataURL 图片（TPD-019）：≤4 张、单张 dataURL ≤4MB */
+  private parseImages(images?: string[]): { images?: ChatImage[]; error?: string } {
+    if (!images?.length) return {}
+    if (images.length > 4) return { error: '每条消息最多 4 张图片' }
+    const parsed: ChatImage[] = []
+    for (const dataUrl of images) {
+      if (dataUrl.length > 4 * 1024 * 1024) return { error: '单张图片超过 4MB' }
+      const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl.trim())
+      if (!m) return { error: '图片格式无效' }
+      parsed.push({ mediaType: m[1], dataBase64: m[2] })
+    }
+    return { images: parsed }
   }
 
   /** 编辑重发：user 节点生成兄弟分支重跑（旧分支保留，可经 chat:branch 切回） */
@@ -198,9 +221,15 @@ class ChatService {
     this.runs.set(runId, { runId, sessionId, controller })
     this.active.set(sessionId, runId)
 
-    const history: ChatMessage[] = activePath({ ...session, activeLeaf: opts.historyEndLeafId }).filter(
-      (n) => n.role !== 'system'
-    )
+    // 剥离节点元数据（id/parent），仅传协议字段；images 透传
+    const history: ChatMessage[] = activePath({ ...session, activeLeaf: opts.historyEndLeafId })
+      .filter((n) => n.role !== 'system')
+      .map((n) => ({
+        role: n.role,
+        content: n.content,
+        ...(n.reasoning ? { reasoning: n.reasoning } : {}),
+        ...(n.images?.length ? { images: n.images } : {})
+      }))
     if (history.length === 0) {
       this.finish(runId, sessionId, { kind: 'error', error: '没有可发送的内容' })
       return
@@ -267,7 +296,11 @@ class ChatService {
       if (queue.length === 0) this.queues.delete(sessionId)
       if (next) {
         setTimeout(() => {
-          const userNode = appendNode(this.app(), sessionId, { role: 'user', content: next.content })
+          const userNode = appendNode(this.app(), sessionId, {
+            role: 'user',
+            content: next.content,
+            ...(next.images?.length ? { images: next.images } : {})
+          })
           void this.startTurn(next.runId, sessionId, {
             historyEndLeafId: userNode.id,
             assistantParentId: userNode.id

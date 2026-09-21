@@ -370,6 +370,45 @@ const migratedPath = activePath(migrated)
 check('v1 会话自动迁移为 v2 树', migrated.version === 2 && Object.keys(migrated.nodes).length === 2)
 check('迁移后活跃路径内容等价', migratedPath.length === 2 && migratedPath[0].content === '旧问题' && migratedPath[1].content === '旧回答')
 
+/* 10.7 多模态：图片附件经 openai 图像内容分片（TPD-019） */
+const smallPng = 'data:image/png;base64,' + Buffer.from(
+  '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000050001' +
+    '0d0a2db40000000049454e44ae426082',
+  'hex'
+).toString('base64')
+const mmSession = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
+const mmSend = chatService.send({
+  sessionId: mmSession.id,
+  content: '这张图里是什么？',
+  providerId: 'mock',
+  modelId: 'mock-model-a',
+  images: [smallPng]
+})
+check('带图发送接受', mmSend.ok && !!mmSend.runId, JSON.stringify(mmSend))
+await waitFor(
+  () => events().some((e) => e.channel === ipcEvent.chatDone && e.payload.runId === mmSend.runId && e.payload.kind === 'done'),
+  10000,
+  '带图轮完成'
+)
+const mmBody = chatBodies.filter((b) => (b.messages ?? []).some((m) => Array.isArray(m.content))).pop()
+const mmUserMsg = mmBody?.messages?.find((m) => Array.isArray(m.content))
+check(
+  'openai 请求体 user 消息升维为图像分片数组',
+  Array.isArray(mmUserMsg?.content) && mmUserMsg.content.some((c) => c.type === 'image_url' && String(c.image_url?.url ?? '').startsWith('data:image/png;base64,')),
+  JSON.stringify(mmUserMsg).slice(0, 200)
+)
+check('图像分片同时包含文本分片', Array.isArray(mmUserMsg?.content) && mmUserMsg.content.some((c) => c.type === 'text'))
+const mmPersisted = activePath(store.openSession({ getPath: () => workDir }, mmSession.id))
+check('落库消息携带 images 元数据', mmPersisted[0]?.images?.[0]?.mediaType === 'image/png' && (mmPersisted[0]?.images?.[0]?.dataBase64 ?? '').length > 0)
+const oversize = chatService.send({
+  sessionId: mmSession.id,
+  content: '超图',
+  providerId: 'mock',
+  modelId: 'mock-model-a',
+  images: ['data:image/png;base64,' + 'A'.repeat(5 * 1024 * 1024)]
+})
+check('超限图片被拒（4MB 门槛）', !oversize.ok && /4MB/.test(oversize.error ?? ''), JSON.stringify(oversize))
+
 /* 11. 树结构：编辑重发兄弟分支 + 分支切换 + regenerate 保留旧回答 */
 const pathBefore = msgsOf(session.id)
 const user0Id = pathBefore[0].id

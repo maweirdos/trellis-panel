@@ -139,26 +139,32 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
       sessionId = meta.id
     }
     const trimmed = content.trim()
-    if (!trimmed) return
+    if (!trimmed && !(binding?.images?.length)) return
     const res = await api.chatSend({
       sessionId,
       content: trimmed,
       providerId: binding?.providerId,
       modelId: binding?.modelId,
-      thinkingLevel: binding?.thinkingLevel
+      thinkingLevel: binding?.thinkingLevel,
+      images: binding?.images
     })
     if (!res.ok) {
       st.pushToast({ kind: 'error', title: '发送失败', body: res.error })
       return
     }
+    const userView: ChatMessageView = {
+      id: res.runId ?? `m-${Date.now()}`,
+      role: 'user',
+      content: trimmed,
+      siblingCount: 1,
+      siblingIndex: 0,
+      siblingIds: [res.runId ?? '']
+    }
     if (res.queued) {
       set({ chatPending: [...st.chatPending, { runId: res.runId ?? `q-${Date.now()}`, content: trimmed }] })
     } else {
       set({
-        chatMessages: [
-          ...get().chatMessages,
-          { id: res.runId ?? `m-${Date.now()}`, role: 'user', content: trimmed, siblingCount: 1, siblingIndex: 0, siblingIds: [res.runId ?? ''] }
-        ],
+        chatMessages: [...get().chatMessages, userView],
         chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
       })
     }

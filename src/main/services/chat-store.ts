@@ -208,7 +208,8 @@ export function addChildNode(
     parent: parentId,
     role: message.role,
     content: message.content,
-    ...(message.reasoning ? { reasoning: message.reasoning } : {})
+    ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+    ...(message.images?.length ? { images: message.images } : {})
   }
   s.nodes[node.id] = node
   s.activeLeaf = node.id

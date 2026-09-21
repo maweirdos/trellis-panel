@@ -148,3 +148,21 @@ render-contract 冒烟 9 项全过；tpap 扩至 19 项；chat 30/registry 103/p
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: 多模态图片输入（09-22-multimodal，roadmap #7）
+**Branch**: `main`
+
+### Summary
+
+ChatMessage 增 images（{mediaType,dataBase64}）；渲染层 composer 文件选择+粘贴（≤4 张、前端 3MB、主进程 4MB 硬门槛），预览 chip 可移除；chat:send 经 parseImages 校验后随节点持久化（队列项亦携带）；aiChatStream 按协议升维 user content 为分片数组（openai image_url / anthropic image.source.base64 / ollama images 裸 base64），历史消息剥离节点元数据（id/parent）只传协议字段；用户气泡渲染缩略图。TPD-019 入册，roadmap #7 完成。
+
+### 验证与教训
+
+typecheck 全绿；chat 冒烟扩至 36 项全过（图像分片断言改为定位"含数组 content 的请求"，避免误匹配标题总结请求）；五套回归全过。教训：对同一代码块的多次 python 批量替换会互相覆盖（reasoning_effort 编辑覆盖了图像升维），关键块改动后必须重读确认。
+
+### Status
+
+[OK] **Completed**

@@ -12,6 +12,7 @@ import {
   siblingsOf
 } from '../services/chat-store'
 import { errorMessage } from '../../shared/errors'
+import type { ThinkingLevel } from '../../shared/types'
 import type { ChatMessageView } from '../../shared/types'
 import { handle } from './registry'
 
@@ -78,12 +79,14 @@ export function registerChatIpc(): void {
     }
   })
 
-  handle(ipcInvoke.chat.send, (_e, input: { sessionId: string; content: string; providerId?: string; modelId?: string }) => {
+  handle(ipcInvoke.chat.send, (_e, input: { sessionId: string; content: string; providerId?: string; modelId?: string; thinkingLevel?: string; images?: string[] }) => {
     return chatService.send({
       sessionId: String(input?.sessionId ?? ''),
       content: String(input?.content ?? ''),
       providerId: input?.providerId ? String(input.providerId) : undefined,
-      modelId: input?.modelId ? String(input.modelId) : undefined
+      modelId: input?.modelId ? String(input.modelId) : undefined,
+      thinkingLevel: input?.thinkingLevel as ThinkingLevel | undefined,
+      images: Array.isArray(input?.images) ? input.images.map(String) : undefined
     })
   })
 

@@ -1,4 +1,4 @@
-import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem, ChatMessageView, ChatSessionMeta, ThinkingLevel } from '../../../shared/types'
+import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem, ChatImage, ChatMessageView, ChatSessionMeta, ThinkingLevel } from '../../../shared/types'
 import type { api } from '../api'
 import type { StateCreator } from 'zustand'
 
@@ -133,7 +133,7 @@ export interface ChatSlice {
   chatRenameSession: (id: string, title: string) => Promise<void>
   chatSend: (
     content: string,
-    binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel }
+    binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel; images?: string[] }
   ) => Promise<void>
   chatAbort: () => Promise<void>
   chatRegenerate: () => Promise<void>

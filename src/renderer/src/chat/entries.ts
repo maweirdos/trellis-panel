@@ -1,4 +1,4 @@
-import type { ChatMessageView } from '../../../shared/types'
+import type { ChatImage, ChatMessageView } from '../../../shared/types'
 
 /**
  * 转录区展示管道（TPD-013）：原始消息数组 → 稳定展示条目。
@@ -12,6 +12,7 @@ export type ChatEntry =
       /** 节点 id：编辑重发/分支切换的定位符 */
       id?: string
       content: string
+      images?: ChatImage[]
       siblingCount?: number
       siblingIndex?: number
       siblingIds?: string[]
@@ -39,6 +40,7 @@ export function buildEntries(messages: ChatMessageView[]): ChatEntry[] {
         key,
         id: m.id,
         content: m.content,
+        images: m.images,
         siblingCount: m.siblingCount,
         siblingIndex: m.siblingIndex,
         siblingIds: m.siblingIds
