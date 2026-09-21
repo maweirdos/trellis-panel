@@ -66,7 +66,35 @@ const mockServer = createServer((req, res) => {
       const body = JSON.parse(raw || '{}')
       chatBodies.push(body)
       const isTitle = String(body.messages?.[0]?.content ?? '').includes('标题')
+      const hasToolResult = (body.messages ?? []).some((m) => m.role === 'tool')
       res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      // 工具轮：携带 tools 的请求返回 tool_calls；结果回灌后返回最终文本
+      if (body.tools?.length) {
+        const chunks2 = hasToolResult
+          ? [{ delta: { content: '工具答案' } }]
+          : [
+              {
+                delta: {
+                  tool_calls: [
+                    { index: 0, id: `call-${completionCount}`, type: 'function', function: { name: 'db_list_tables', arguments: '{}' } }
+                  ]
+                }
+              }
+            ]
+        const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms))
+        ;(async () => {
+          for (const c of chunks2) {
+            if (res.writableEnded || res.destroyed) return
+            res.write(`data: ${JSON.stringify({ choices: [c] })}\n\n`)
+            await sleep2(40)
+          }
+          if (!res.writableEnded) {
+            res.write('data: [DONE]\n\n')
+            res.end()
+          }
+        })().catch(() => {})
+      }
+      if (body.tools?.length) return
       // 先思考流（reasoning_content）后正文（content）
       const chunks = isTitle
         ? [['reasoning_content', 'Mock 标题'], ['content', 'Mock 标题']]
@@ -449,6 +477,108 @@ await waitFor(
 )
 const afterRegen = store.openSession({ getPath: () => workDir }, session.id)
 check('regenerate 新增兄弟 assistant（+1 节点）且路径不变长', Object.keys(afterRegen.nodes).length === beforeRegenNodes + 1 && msgsOf(session.id).length === 2, `nodes=${Object.keys(afterRegen.nodes).length}`)
+
+/* 13. Agent 工具循环：权限四路径 + steer 注入 */
+chatService.configure({ permissionTimeoutMs: 20000 })
+const permEventsOf = (runId) => events().filter((e) => e.channel === ipcEvent.chatPermission && e.payload.runId === runId)
+const mkAgent = () => {
+  const sess = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
+  chatService.send({ sessionId: sess.id, content: '查一下表', providerId: 'mock', modelId: 'mock-model-a', agent: true })
+  return sess.id
+}
+
+// A. allow-session：发卡→allow-session→工具执行→回答；白名单持久化
+const agentA = mkAgent()
+const doneA = await waitFor(
+  () => events().find((e) => e.channel === ipcEvent.chatDone && e.payload.runId === /^$/.test('') ? null : e.payload.runId) ?? null,
+  1,
+  'noop'
+).catch(() => null)
+// 上面 noop 忽略；等待权限卡
+const permA = await waitFor(() => permEventsOf('__none__').length ? null : true, 1, 'noop').catch(() => null)
+let permAEvent = null
+try {
+  permAEvent = await waitFor(
+    () => {
+      const pendingRun = events().find((e) => e.channel === ipcEvent.chatPermission && e.payload.sessionId === agentA)
+      return pendingRun ? pendingRun.payload : null
+    },
+    10000,
+    '权限卡'
+  )
+} catch (e) {
+  console.error('DEBUG channels:', JSON.stringify(events().slice(0, 10).map((x) => x.channel)))
+  console.error('DEBUG all events:', JSON.stringify(events().map((x) => x.channel + ':' + (x.payload?.toolName ?? x.payload?.kind ?? ''))))
+  throw e
+}
+check('工具调用触发权限卡', permAEvent?.toolName === 'db_list_tables', JSON.stringify(permAEvent))
+chatService.resolvePermission(permAEvent.permId, 'allow-session')
+const doneA2 = await waitFor(
+  () => events().find((e) => e.channel === ipcEvent.chatDone && e.payload.runId === permAEvent.runId && e.payload.kind === 'done')?.payload,
+  10000,
+  'agent 回答完成'
+)
+const agentAPath = msgsOf(agentA)
+check('assistant 节点携带 toolOps（success）', agentAPath.some((m) => m.toolOps?.[0]?.status === 'success' && m.toolOps[0].toolName === 'db_list_tables'), JSON.stringify(agentAPath))
+check('allow-session 白名单已持久化', store.openSession({ getPath: () => workDir }, agentA).allowedTools?.includes('db_list_tables') === true)
+const secondRoundBody = chatBodies.find((b) => (b.messages ?? []).some((m) => m.role === 'tool'))
+check('工具结果已回灌模型（role:tool）', !!secondRoundBody)
+
+// B. allow-session 复用：同名工具不再发卡
+let permEventsBefore = events().filter((e) => e.channel === ipcEvent.chatPermission && e.payload.sessionId === agentA).length
+chatService.send({ sessionId: agentA, content: '再查一次', providerId: 'mock', modelId: 'mock-model-a', agent: true })
+await waitFor(
+  () => {
+    const p = activePath(store.openSession({ getPath: () => workDir }, agentA))
+    return p.length >= 4
+  },
+  10000,
+  'B 轮完成'
+)
+const permEventsAfter = events().filter((e) => e.channel === ipcEvent.chatPermission && e.payload.sessionId === agentA).length
+check('白名单工具不再发权限卡', permEventsAfter === permEventsBefore)
+
+// C. deny 回灌 + steer 注入
+const agentC = mkAgent()
+const permC = await waitFor(
+  () => events().find((e) => e.channel === ipcEvent.chatPermission && e.payload.sessionId === agentC)?.payload,
+  10000,
+  'C 权限卡'
+)
+chatService.steer(agentC, '补充内容')
+const steerEvent = await waitFor(() => events().some((e) => e.channel === ipcEvent.chatSteer && e.payload.sessionId === agentC), 5000, 'steer 事件')
+check('steer 事件已广播', steerEvent)
+chatService.resolvePermission(permC.permId, 'deny')
+const doneC = await waitFor(
+  () => events().find((e) => e.channel === ipcEvent.chatDone && e.payload.runId === permC.runId && e.payload.kind === 'done')?.payload,
+  10000,
+  'C 完成'
+)
+check('deny 后回答仍完成', doneC?.kind === 'done')
+const denyBody = chatBodies.find((b) => (b.messages ?? []).some((m) => m.role === 'tool' && String(m.content).includes('拒绝')))
+check('拒绝文案作为工具结果回灌', !!denyBody)
+const steerInCtx = chatBodies.some((b) => (b.messages ?? []).some((m) => String(m.content).includes('[用户补充] 补充内容')))
+check('steer 文本注入后续请求上下文', steerInCtx)
+
+// D. 超时默认拒绝
+chatService.configure({ permissionTimeoutMs: 800 })
+const agentD = mkAgent()
+const permD = await waitFor(
+  () => events().find((e) => e.channel === ipcEvent.chatPermission && e.payload.sessionId === agentD)?.payload,
+  10000,
+  'D 权限卡'
+)
+const doneD = await waitFor(
+  () => {
+    const ev = events().find((e) => e.channel === ipcEvent.chatDone && e.payload.runId === permD.runId && e.payload.kind === 'done')
+    return ev?.payload ?? null
+  },
+  15000,
+  'D 超时完成'
+)
+const agentDPath = msgsOf(agentD)
+check('超时未决策默认拒绝（toolOps denied）', agentDPath.some((m) => m.toolOps?.[0]?.status === 'denied'), JSON.stringify(agentDPath.map((m) => m.toolOps)))
+void doneD
 
 /* 收尾 */
 mockServer.close()

@@ -1,7 +1,9 @@
 import { broadcastToWindows } from './bridge'
 import { getSettings } from './store'
-import { aiChatStream, decryptKeyOf, type StreamTarget } from './ai'
-import type { ThinkingLevel } from '../../shared/types'
+import { aiChatStream, decryptKeyOf, type StreamTarget, type ToolCallReq } from './ai'
+import type { ChatToolOp, ThinkingLevel } from '../../shared/types'
+import { GatewayManager } from './gateway/manager'
+import { getSnapshot } from '../state'
 import {
   activePath,
   addChildNode,
@@ -75,6 +77,66 @@ class ChatService {
     return this.queues.get(sessionId)?.length ?? 0
   }
 
+  private permissionTimeoutMs = 120_000
+  private pendingPerms = new Map<string, (decision: 'allow-once' | 'allow-session' | 'deny') => void>()
+  private runSteers = new Map<string, string[]>() // runId -> 未注入的 steer
+
+  /** 冒烟可缩短权限超时 */
+  configure(cfg: { permissionTimeoutMs?: number }): void {
+    if (cfg.permissionTimeoutMs != null) this.permissionTimeoutMs = cfg.permissionTimeoutMs
+  }
+
+  /** steer：运行中注入当前 turn（不入队）；turn 未运行时报错（TPD-021） */
+  steer(sessionId: string, content: string): { ok: boolean; error?: string } {
+    const runId = this.active.get(sessionId)
+    if (!runId) return { ok: false, error: '当前没有运行中的轮次' }
+    const text = String(content ?? '').trim()
+    if (!text) return { ok: false, error: '内容不能为空' }
+    const list = this.runSteers.get(runId) ?? []
+    list.push(text)
+    this.runSteers.set(runId, list)
+    broadcastToWindows(ipcEvent.chatSteer, { runId, sessionId, content: text })
+    return { ok: true }
+  }
+
+  /** 渲染层权限卡决策回传 */
+  resolvePermission(permId: string, decision: 'allow-once' | 'allow-session' | 'deny'): { ok: boolean; error?: string } {
+    const resolve = this.pendingPerms.get(permId)
+    if (!resolve) return { ok: false, error: '权限请求不存在或已过期' }
+    this.pendingPerms.delete(permId)
+    resolve(decision)
+    return { ok: true }
+  }
+
+  /** 权限 broker：allow-session 持久化跳过；否则广播权限卡并等待决策，超时默认 deny */
+  private async requestPermission(
+    runId: string,
+    sessionId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    allowedTools: string[]
+  ): Promise<'allow-once' | 'allow-session' | 'deny'> {
+    if (allowedTools.includes(toolName)) return 'allow-session'
+    if (!this.pendingPerms) return 'deny'
+    const permId = `perm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    const argsSummary = JSON.stringify(args).slice(0, 200)
+    const promise = new Promise<'allow-once' | 'allow-session' | 'deny'>((resolve) => {
+      this.pendingPerms.set(permId, resolve)
+      setTimeout(() => {
+        if (this.pendingPerms.delete(permId)) resolve('deny')
+      }, this.permissionTimeoutMs)
+    })
+    broadcastToWindows(ipcEvent.chatPermission, {
+      runId,
+      sessionId,
+      permId,
+      toolName,
+      argsSummary,
+      timeoutSec: Math.round(this.permissionTimeoutMs / 1000)
+    })
+    return promise
+  }
+
   createSession(binding?: { providerId?: string; modelId?: string }) {
     return createSession(this.app(), binding)
   }
@@ -86,6 +148,8 @@ class ChatService {
     modelId?: string
     thinkingLevel?: ThinkingLevel
     images?: string[]
+    /** agent 模式：启用工具调用循环（TPD-020） */
+    agent?: boolean
   }): ChatSendResult {
     const app = this.app()
     const content = String(input.content ?? '').trim()
@@ -97,11 +161,12 @@ class ChatService {
     if (imgs.error) return { ok: false, error: imgs.error, runId: null, queued: false }
 
     // 绑定更新：发送时可携带 provider/model/thinking（composer 切换即持久化到会话）
-    if (input.providerId || input.modelId || input.thinkingLevel) {
+    if (input.providerId || input.modelId || input.thinkingLevel || input.agent !== undefined) {
       updateBinding(app, input.sessionId, {
         providerId: input.providerId,
         modelId: input.modelId,
-        thinkingLevel: input.thinkingLevel
+        thinkingLevel: input.thinkingLevel,
+        agent: input.agent
       })
     }
 
@@ -120,7 +185,8 @@ class ChatService {
     })
     void this.startTurn(runId, input.sessionId, {
       historyEndLeafId: userNode.id,
-      assistantParentId: userNode.id
+      assistantParentId: userNode.id,
+      agent: input.agent ?? session.agent ?? false
     })
     return { ok: true, runId, queued: false }
   }
@@ -205,11 +271,113 @@ class ChatService {
     return { ok: true }
   }
 
+  /**
+   * agent 工具循环（TPD-020）：工具轮静默流式（聚合 tool_calls）→ 权限 broker → 执行 →
+   * 结果回灌；无 toolCalls 的轮即最终回答。≤6 轮；steer 在每轮边界并入请求上下文。
+   */
+  private async runAgentLoop(
+    runId: string,
+    sessionId: string,
+    opts: {
+      target: StreamTarget
+      history: ChatMessage[]
+      controller: AbortController
+      allowedTools: string[]
+      assistantParentId: string | null
+      thinkingLevel?: ThinkingLevel
+    }
+  ): Promise<{ done: boolean; content: string; reasoning?: string; toolOps: ChatToolOp[] }> {
+    const app = this.app()
+    const ctx: Array<ChatMessage | { role: 'assistant'; content: string; tool_calls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> } | { role: 'tool'; tool_call_id: string; content: string }> = [
+      ...opts.history
+    ]
+    const toolOps: ChatToolOp[] = []
+    const MAX_ROUNDS = 6
+
+    for (let round = 1; round <= MAX_ROUNDS; round += 1) {
+      // steer 注入：每个循环边界并入请求上下文
+      const steers = this.runSteers.get(runId) ?? []
+      for (const text of steers.splice(0, steers.length)) {
+        ctx.push({ role: 'user', content: `[用户补充] ${text}` })
+      }
+
+      const res = await aiChatStream(opts.target, ctx, {
+        signal: opts.controller.signal,
+        tools: GatewayManager.toOpenAiTools(),
+        onDelta: () => {}
+      })
+      if (res.aborted) {
+        this.finish(runId, sessionId, { kind: 'aborted' })
+        return { done: true, content: '', toolOps }
+      }
+      if (!res.ok) {
+        this.finish(runId, sessionId, { kind: 'error', error: res.error ?? '未知错误' })
+        return { done: true, content: '', toolOps }
+      }
+      if (!res.toolCalls?.length) {
+        // 无工具请求：本轮内容即最终回答
+        return { done: false, content: res.content ?? '', reasoning: res.reasoning, toolOps }
+      }
+
+      // 回显 assistant.tool_calls，然后逐个执行工具
+      ctx.push({
+        role: 'assistant',
+        content: res.content ?? '',
+        tool_calls: res.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: tc.argsJson }
+        }))
+      })
+      for (const call of res.toolCalls) {
+        let args: Record<string, unknown> = {}
+        try {
+          args = JSON.parse(call.argsJson || '{}') as Record<string, unknown>
+        } catch {
+          args = {}
+        }
+        const decision = await this.requestPermission(runId, sessionId, call.name, args, opts.allowedTools)
+        let status: ChatToolOp['status'] = 'success'
+        let elapsedMs = 0
+        let result: unknown
+        if (decision === 'deny') {
+          status = 'denied'
+          result = { ok: false, error: '用户拒绝了此工具调用' }
+        } else {
+          const exec = await GatewayManager.executeTool(call.name, args, getSnapshot()?.meta.root ?? '')
+          status = exec.ok ? 'success' : 'error'
+          elapsedMs = exec.elapsedMs
+          result = exec
+        }
+        const op: ChatToolOp = {
+          toolName: call.name,
+          argsSummary: JSON.stringify(args).slice(0, 200),
+          status,
+          elapsedMs
+        }
+        toolOps.push(op)
+        broadcastToWindows(ipcEvent.chatOutput, { runId, sessionId, delta: '', toolOp: op })
+        ctx.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result ?? {}).slice(0, 8000) })
+        if (decision === 'allow-session') {
+          const { addAllowedTool } = await import('./chat-store')
+          addAllowedTool(app, sessionId, call.name)
+        }
+      }
+    }
+    this.finish(runId, sessionId, { kind: 'error', error: '工具轮次超过上限（6 轮）' })
+    return { done: true, content: '', toolOps }
+  }
+
   /** 一轮：history 取 historyEndLeafId 的活跃路径；完成后在其下挂 assistant 兄弟并置为活跃叶 */
   private async startTurn(
     runId: string,
     sessionId: string,
-    opts: { historyEndLeafId: string; assistantParentId: string | null; thinkingLevel?: ThinkingLevel }
+    opts: {
+      historyEndLeafId: string
+      assistantParentId: string | null
+      thinkingLevel?: ThinkingLevel
+      agent?: boolean
+    }
   ): Promise<void> {
     const app = this.app()
     const session = openSession(app, sessionId)
@@ -246,10 +414,38 @@ class ChatService {
       return
     }
 
+    const steers = this.runSteers.get(runId) ?? []
+    const takeSteers = (): ChatMessage[] =>
+      steers.splice(0, steers.length).map((text) => ({ role: 'user' as const, content: `[用户补充] ${text}` }))
+
+    // agent 工具循环（TPD-020）：openai 兼容 + 会话开启 agent 时启用
+    const agentMode = !!opts.agent && provider.apiFormat === 'openai'
+    if (agentMode) {
+      const agentResult = await this.runAgentLoop(runId, sessionId, {
+        target: targetOf(provider, modelId, opts.thinkingLevel ?? session.thinkingLevel ?? 'off'),
+        history,
+        controller,
+        allowedTools: session.allowedTools ?? [],
+        assistantParentId: opts.assistantParentId
+      })
+      if (agentResult.done) return // 循环内部已处理完成/中止/错误
+      // 最终回答：落 assistant 节点（含 toolOps）
+      const assistantMsg: ChatMessage = {
+        role: 'assistant',
+        content: agentResult.content,
+        ...(agentResult.reasoning ? { reasoning: agentResult.reasoning } : {}),
+        ...(agentResult.toolOps.length ? { toolOps: agentResult.toolOps } : {})
+      }
+      addChildNode(app, sessionId, opts.assistantParentId, assistantMsg)
+      void this.maybeSummarizeTitle(sessionId)
+      this.finish(runId, sessionId, { kind: 'done', message: assistantMsg })
+      return
+    }
+
     // 增量只走事件不落盘；assistant 节点在完成时一次性落库
     const result = await aiChatStream(
       targetOf(provider, modelId, opts.thinkingLevel ?? session.thinkingLevel ?? 'off'),
-      history,
+      [...history, ...takeSteers()],
       {
         signal: controller.signal,
         onDelta: (delta) => {

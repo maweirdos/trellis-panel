@@ -520,12 +520,32 @@ export interface StreamCallbacks {
   /** 思考流增量（reasoning_content / thinking_delta），独立于正文 */
   onReasoning?: (text: string) => void
   signal?: AbortSignal
+  /** agent 工具循环：OpenAI function 工具表；传入后解析 tool_calls 增量（TPD-020） */
+  tools?: Array<Record<string, unknown>>
 }
+
+export interface ToolCallReq {
+  id: string
+  name: string
+  argsJson: string
+}
+
+/** agent 循环的上下文消息：普通消息之外还允许 assistant.tool_calls 与 tool 结果（TPD-020） */
+export type AgentLoopMessage =
+  | ChatMessage
+  | {
+      role: 'assistant'
+      content: string
+      tool_calls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
+    }
+  | { role: 'tool'; tool_call_id: string; content: string }
 
 export interface StreamResult {
   ok: boolean
   content?: string
   reasoning?: string
+  /** agent 循环：模型请求的工具调用（openai tool_calls 聚合） */
+  toolCalls?: ToolCallReq[]
   error?: string
   aborted?: boolean
 }
@@ -640,7 +660,7 @@ async function readNdjsonLines(
  */
 export async function aiChatStream(
   target: StreamTarget,
-  messages: ChatMessage[],
+  messages: ReadonlyArray<ChatMessage | AgentLoopMessage>,
   cb: StreamCallbacks
 ): Promise<StreamResult> {
   const format = target.apiFormat || 'openai'
@@ -666,10 +686,12 @@ export async function aiChatStream(
     const budget = level && level !== 'off' ? THINKING_BUDGET[level] : null
     body = {
       model: target.model,
-      messages: messages.filter((m) => m.role !== 'system').map((m) => ({
-        role: m.role,
-        content: m.images?.length ? toAnthropicContent(m) : m.content
-      })),
+      messages: messages
+        .filter((m) => m.role !== 'system' && m.role !== 'tool' && !('tool_calls' in m))
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: 'images' in m && m.images?.length ? toAnthropicContent(m) : m.content
+        })),
       system: messages.find((m) => m.role === 'system')?.content,
       // anthropic 约束：max_tokens 必须大于 thinking budget
       max_tokens: budget ? Math.max(target.maxTokens ?? 0, budget + 1024) : target.maxTokens ?? 4096,
@@ -683,7 +705,9 @@ export async function aiChatStream(
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
-        ...(m.images?.length ? { images: m.images.map((img) => (img.dataBase64.includes(',') ? stripDataUrlPrefix(img.dataBase64) : img.dataBase64)) } : {})
+        ...('images' in m && m.images?.length
+          ? { images: m.images.map((img) => (img.dataBase64.includes(',') ? stripDataUrlPrefix(img.dataBase64) : img.dataBase64)) }
+          : {})
       })),
       stream: true
     }
@@ -699,12 +723,18 @@ export async function aiChatStream(
     if (key) headers['Authorization'] = `Bearer ${key}`
     body = {
       model: target.model,
-      messages: messages.map((m) => ({
-        role: m.role,
-        ...(m.images?.length ? { content: toOpenAiContent(m) } : { content: m.content })
-      })),
+      messages: messages.map((m) => {
+        const out: Record<string, unknown> = { role: m.role }
+        if ('images' in m && m.images?.length) out.content = toOpenAiContent(m)
+        else out.content = m.content
+        if ('tool_calls' in m && m.tool_calls) out.tool_calls = m.tool_calls
+        if ('tool_call_id' in m) out.tool_call_id = m.tool_call_id
+        return out
+      }),
       temperature: target.temperature ?? 0.3,
       max_tokens: target.maxTokens,
+      // agent 工具循环（TPD-020）
+      ...(cb.tools?.length ? { tools: cb.tools, tool_choice: 'auto' } : {}),
       // reasoning 模型识别 reasoning_effort；严格网关可能忽略或拒绝，属供应商差异
       ...(target.thinkingLevel && target.thinkingLevel !== 'off'
         ? { reasoning_effort: target.thinkingLevel }
@@ -714,6 +744,7 @@ export async function aiChatStream(
   }
 
   let content = ''
+  const toolCallsAcc = new Map<number, { id: string; name: string; argsBuf: string }>()
   try {
     const res = await proxiedFetch(endpoint, {
       method: 'POST',
@@ -767,11 +798,32 @@ export async function aiChatStream(
         const delta = asRecord(asRecord(choices[0])?.delta)
         emitReasoning(delta?.reasoning_content)
         emitDelta(delta?.content)
+        // tool_calls 增量聚合（按 index 分片拼接 arguments）
+        if (Array.isArray(delta?.tool_calls)) {
+          for (const piece of delta.tool_calls as Array<Record<string, unknown>>) {
+            const idx = typeof piece.index === 'number' ? piece.index : 0
+            const pieceObj = asRecord(piece)
+            const fn = asRecord(pieceObj?.function)
+            const acc = toolCallsAcc.get(idx) ?? { id: '', name: '', argsBuf: '' }
+            if (typeof pieceObj?.id === 'string' && pieceObj.id) acc.id = pieceObj.id
+            if (typeof fn?.name === 'string' && fn.name) acc.name += fn.name
+            if (typeof fn?.arguments === 'string') acc.argsBuf += fn.arguments
+            toolCallsAcc.set(idx, acc)
+          }
+        }
       })
     }
 
-    if (!content) return { ok: false, error: '流式响应为空' }
-    return { ok: true, content, ...(reasoning ? { reasoning } : {}) }
+    const toolCalls = [...toolCallsAcc.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, v]) => ({ id: v.id, name: v.name, argsJson: v.argsBuf || '{}' }))
+    if (!content && toolCalls.length === 0) return { ok: false, error: '流式响应为空' }
+    return {
+      ok: true,
+      ...(content ? { content } : {}),
+      ...(reasoning ? { reasoning } : {}),
+      ...(toolCalls.length ? { toolCalls } : {})
+    }
   } catch (e) {
     if (controller.signal.aborted && cb.signal?.aborted) {
       return { ok: false, aborted: true, error: '已中止' }

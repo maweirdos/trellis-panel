@@ -166,3 +166,21 @@ typecheck 全绿；chat 冒烟扩至 36 项全过（图像分片断言改为定�
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: Agent 工具循环 + 权限卡 + Steer（09-22-agent-loop，roadmap #3+#4）
+**Branch**: `main`
+
+### Summary
+
+chat 服务内嵌 agent 工具循环（≤6 轮 openai tool_calls 流式聚合 + 工具轮静默缓冲 + 最终回答流式），工具执行复用 GatewayManager（fence/截断/审计继承）；权限 broker 三态 allow-once/allow-session（allowedTools 随会话持久化）/deny + 120s 可配置超时默认拒绝，deny 以拒绝文案回灌不毁轮；steer 运行中注入（chat:steer 立即上屏、轮边界并入上下文、残留转排队）；转录区工具行折叠块 + 内联权限卡三按钮 + Agent 开关 + Alt+Enter。TPD-020/021 入册，roadmap #3/#4 完成。
+
+### 验证与教训
+
+chat 冒烟扩至 44 项全过（allow-session 复用零发卡、deny 回灌、超时拒绝、steer 注入上下文、toolOps 落库）；tpap 19/proxy 5/render-contract 9/registry 103 回归全过；typecheck 全绿。教训：多层嵌套编辑极易互相覆盖（tools 展开被图像映射修复覆盖、buildEntries 字段透传静默丢失被契约冒烟逼出）——同文件连续改动必须改后立即 grep 验证。
+
+### Status
+
+[OK] **Completed**

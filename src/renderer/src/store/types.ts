@@ -1,4 +1,15 @@
-import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem, ChatImage, ChatMessageView, ChatSessionMeta, ThinkingLevel } from '../../../shared/types'
+import type {
+  InboxItem,
+  ProjectSnapshot,
+  Settings,
+  ToastEvent,
+  TodoItem,
+  ChatImage,
+  ChatMessageView,
+  ChatSessionMeta,
+  ChatToolOp,
+  ThinkingLevel
+} from '../../../shared/types'
 import type { api } from '../api'
 import type { StateCreator } from 'zustand'
 
@@ -110,6 +121,15 @@ export interface ChatStreamState {
   content: string
   /** 思考流增量单独累积（TPD-014） */
   reasoning: string
+  /** agent 工具行（TPD-020） */
+  toolOps: ChatToolOp[]
+}
+
+export interface PendingPermission {
+  permId: string
+  toolName: string
+  argsSummary: string
+  timeoutSec: number
 }
 
 /** 本地已排队、尚未开跑的消息（runId 由主进程预分配） */
@@ -124,6 +144,8 @@ export interface ChatSlice {
   chatMessages: ChatMessageView[]
   chatStreaming: ChatStreamState | null
   chatPending: ChatQueuedItem[]
+  /** 待决策工具权限卡（TPD-020） */
+  chatPendingPermission: PendingPermission | null
   /** 初始化事件订阅（App 挂载时调用一次，返回反注册函数） */
   chatAttachEvents: () => () => void
   chatLoadSessions: () => Promise<void>
@@ -136,6 +158,8 @@ export interface ChatSlice {
     binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel; images?: string[] }
   ) => Promise<void>
   chatAbort: () => Promise<void>
+  chatResolvePermission: (permId: string, decision: 'allow-once' | 'allow-session' | 'deny') => Promise<void>
+  chatSteer: (content: string) => Promise<void>
   chatRegenerate: () => Promise<void>
   chatEditResend: (messageId: string, content: string) => Promise<void>
   chatBranch: (messageId: string) => Promise<void>

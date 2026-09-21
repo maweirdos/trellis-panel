@@ -1,5 +1,5 @@
 import type { AppSlice, ChatSlice } from '../types'
-import type { ChatDoneEvent, ChatMessageView, ChatSessionMeta } from '../../../../shared/types'
+import type { ChatDoneEvent, ChatMessageView, ChatSessionMeta, ChatToolOp } from '../../../../shared/types'
 import { api } from '../../api'
 
 /**
@@ -12,8 +12,25 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
   chatMessages: [],
   chatStreaming: null,
   chatPending: [],
+  chatPendingPermission: null,
 
   chatAttachEvents: () => {
+    const offPermission = api.onChatPermission((e) => {
+      if (e.sessionId !== get().chatActiveId) return
+      set({
+        chatPendingPermission: { permId: e.permId, toolName: e.toolName, argsSummary: e.argsSummary, timeoutSec: e.timeoutSec }
+      })
+    })
+    const offSteer = api.onChatSteer((e) => {
+      const st = get()
+      if (e.sessionId !== st.chatActiveId) return
+      set({
+        chatMessages: [
+          ...st.chatMessages,
+          { id: `steer-${Date.now()}`, role: 'user', content: e.content, siblingCount: 1, siblingIndex: 0, siblingIds: [] }
+        ]
+      })
+    })
     const offOutput = api.onChatOutput((e) => {
       const st = get()
       if (st.chatStreaming?.runId === e.runId) {
@@ -22,7 +39,8 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
           chatStreaming: {
             runId: e.runId,
             content: e.delta ? cur.content + e.delta : cur.content,
-            reasoning: e.reasoning ? cur.reasoning + e.reasoning : cur.reasoning
+            reasoning: e.reasoning ? cur.reasoning + e.reasoning : cur.reasoning,
+            toolOps: e.toolOp ? [...cur.toolOps, e.toolOp] : cur.toolOps
           }
         })
         return
@@ -37,7 +55,7 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
             ...st.chatMessages,
             { id: pending.runId, role: 'user', content: pending.content, siblingCount: 1, siblingIndex: 0, siblingIds: [pending.runId] }
           ],
-          chatStreaming: { runId: e.runId, content: e.delta ?? '', reasoning: e.reasoning ?? '' }
+          chatStreaming: { runId: e.runId, content: e.delta ?? '', reasoning: e.reasoning ?? '', toolOps: [] }
         })
       }
     })
@@ -56,7 +74,7 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
           siblingIndex: 0,
           siblingIds: [`m-${e.runId}`]
         }
-        set({ chatMessages: [...st.chatMessages, optimistic], chatStreaming: null })
+        set({ chatMessages: [...st.chatMessages, optimistic], chatStreaming: null, chatPendingPermission: null })
         // 后台刷新拿准确的兄弟分支信息
         if (st.chatActiveId) void api.chatOpen(st.chatActiveId).then((r) => {
           if (r.ok && r.session && get().chatActiveId === st.chatActiveId) {
@@ -64,7 +82,7 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
           }
         })
       } else {
-        set({ chatStreaming: null })
+        set({ chatStreaming: null, chatPendingPermission: null })
         if (e.kind === 'error' && e.error) {
           st.pushToast({ kind: 'error', title: '本轮请求失败', body: e.error })
         }
@@ -72,6 +90,8 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
       void st.chatLoadSessions()
     })
     return () => {
+      offPermission()
+      offSteer()
       offOutput()
       offDone()
     }
@@ -146,7 +166,8 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
       providerId: binding?.providerId,
       modelId: binding?.modelId,
       thinkingLevel: binding?.thinkingLevel,
-      images: binding?.images
+      images: binding?.images,
+      agent: binding?.agent
     })
     if (!res.ok) {
       st.pushToast({ kind: 'error', title: '发送失败', body: res.error })
@@ -165,7 +186,7 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
     } else {
       set({
         chatMessages: [...get().chatMessages, userView],
-        chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
+        chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '', toolOps: [] } : null
       })
     }
     void get().chatLoadSessions()
@@ -174,6 +195,19 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
   chatAbort: async () => {
     const id = get().chatActiveId
     if (id) await api.chatAbort(id)
+  },
+
+  chatResolvePermission: async (permId, decision) => {
+    await api.chatResolvePermission(permId, decision)
+    set({ chatPendingPermission: null })
+  },
+
+  chatSteer: async (content) => {
+    const st = get()
+    const id = st.chatActiveId
+    if (!id) return
+    const res = await api.chatSteer(id, content)
+    if (!res.ok) st.pushToast({ kind: 'error', title: 'Steer 失败', body: res.error })
   },
 
   chatRegenerate: async () => {
@@ -188,7 +222,7 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
     // 旧回答在主进程保留为兄弟分支；渲染层移除旧叶并进入流式态
     set({
       chatMessages: st.chatMessages.slice(0, -1),
-      chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
+      chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '', toolOps: [] } : null
     })
   },
 
@@ -206,7 +240,7 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
     const base = idx >= 0 ? st.chatMessages.slice(0, idx) : st.chatMessages
     set({
       chatMessages: [...base, { id: messageId, role: 'user', content: content.trim(), siblingCount: 1, siblingIndex: 0, siblingIds: [messageId] }],
-      chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '' } : null
+      chatStreaming: res.runId ? { runId: res.runId, content: '', reasoning: '', toolOps: [] } : null
     })
     if (st.chatActiveId) {
       void api.chatOpen(st.chatActiveId).then((r) => {

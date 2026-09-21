@@ -95,6 +95,26 @@ class GatewayManagerClass {
     return [this.getToolSearchDef()]
   }
 
+/** GatewayToolDef -> OpenAI function schema（agent 循环用，TPD-020） */
+  toOpenAiTools(): Array<Record<string, unknown>> {
+    return this.getStandardTools().map((t) => {
+      const properties: Record<string, unknown> = {}
+      const required: string[] = []
+      for (const [name, def] of Object.entries(t.parameters ?? {})) {
+        properties[name] = { type: def.type ?? 'string', description: def.description ?? '' }
+        if (def.required) required.push(name)
+      }
+      return {
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: { type: 'object', properties, ...(required.length ? { required } : {}) }
+        }
+      }
+    })
+  }
+
   /** 按关键词检索工具（名称/描述/upstreamId），供 tool_search 执行 */
   searchTools(query: string): GatewayToolDef[] {
     const q = String(query ?? '').trim().toLowerCase()

@@ -145,6 +145,11 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.chat.edit, sessionId, messageId, content),
   chatBranch: (sessionId: string, messageId: string) =>
     ipcRenderer.invoke(ipcInvoke.chat.branch, sessionId, messageId),
+  chatSteer: (sessionId: string, content: string) => ipcRenderer.invoke(ipcInvoke.chat.steer, sessionId, content),
+  chatResolvePermission: (permId: string, decision: 'allow-once' | 'allow-session' | 'deny') =>
+    ipcRenderer.invoke(ipcInvoke.chat.permissionResolve, permId, decision),
+  onChatPermission: (cb: (e: import('../shared/types').ChatPermissionEvent) => void) => subscribe(ipcEvent.chatPermission, cb),
+  onChatSteer: (cb: (e: import('../shared/types').ChatSteerEvent) => void) => subscribe(ipcEvent.chatSteer, cb),
   chatAbort: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.abort, sessionId),
   onChatOutput: (cb: (e: ChatOutputEvent) => void) => subscribe(ipcEvent.chatOutput, cb),
   onChatDone: (cb: (e: ChatDoneEvent) => void) => subscribe(ipcEvent.chatDone, cb),

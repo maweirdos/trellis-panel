@@ -1,4 +1,4 @@
-import type { ChatImage, ChatMessageView } from '../../../shared/types'
+import type { ChatImage, ChatMessageView, ChatToolOp } from '../../../shared/types'
 
 /**
  * 转录区展示管道（TPD-013）：原始消息数组 → 稳定展示条目。
@@ -23,6 +23,7 @@ export type ChatEntry =
       id?: string
       content: string
       reasoning?: string
+      toolOps?: ChatToolOp[]
       siblingCount?: number
       siblingIndex?: number
       siblingIds?: string[]
@@ -51,6 +52,7 @@ export function buildEntries(messages: ChatMessageView[]): ChatEntry[] {
     let content = m.content
     let reasoning = m.reasoning
     let lastId = m.id
+    const toolOps: ChatToolOp[] = [...(m.toolOps ?? [])]
     let siblingCount = m.siblingCount
     let siblingIndex = m.siblingIndex
     let siblingIds = m.siblingIds
@@ -59,6 +61,7 @@ export function buildEntries(messages: ChatMessageView[]): ChatEntry[] {
       content += `\n\n${messages[i].content}`
       if (messages[i].reasoning) reasoning = [reasoning, messages[i].reasoning].filter(Boolean).join('\n\n')
       lastId = messages[i].id
+      toolOps.push(...(messages[i].toolOps ?? []))
       siblingCount = messages[i].siblingCount
       siblingIndex = messages[i].siblingIndex
       siblingIds = messages[i].siblingIds
@@ -69,6 +72,7 @@ export function buildEntries(messages: ChatMessageView[]): ChatEntry[] {
       id: lastId,
       content,
       ...(reasoning ? { reasoning } : {}),
+      ...(toolOps.length ? { toolOps } : {}),
       siblingCount,
       siblingIndex,
       siblingIds

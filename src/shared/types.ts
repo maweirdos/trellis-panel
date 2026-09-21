@@ -488,12 +488,22 @@ export interface ChatImage {
   dataBase64: string
 }
 
+/** 工具调用记录（agent 循环，TPD-020） */
+export interface ChatToolOp {
+  toolName: string
+  argsSummary: string
+  status: 'success' | 'error' | 'denied'
+  elapsedMs: number
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
   /** 思考流（DeepSeek-R1 reasoning_content / anthropic thinking_delta 等），独立于正文 */
   reasoning?: string
   images?: ChatImage[]
+  /** agent 循环中的工具调用记录 */
+  toolOps?: ChatToolOp[]
 }
 
 /* ---------- 对话（Chat 页） ---------- */
@@ -542,9 +552,26 @@ export interface ChatOutputEvent {
   delta: string
   /** 思考流增量（与 delta 互斥出现） */
   reasoning?: string
+  /** 工具行事件（与 delta 互斥出现，TPD-020） */
+  toolOp?: ChatToolOp
 }
 
 /** chat:done 事件负载（runId 生命周期终结；title 为异步总结结果） */
+export interface ChatPermissionEvent {
+  runId: string
+  sessionId: string
+  permId: string
+  toolName: string
+  argsSummary: string
+  timeoutSec: number
+}
+
+export interface ChatSteerEvent {
+  runId: string
+  sessionId: string
+  content: string
+}
+
 export interface ChatDoneEvent {
   runId: string
   sessionId: string
@@ -931,9 +958,15 @@ export interface TrellisApi {
     images?: string[]
   }) => Promise<ChatSendResult>
   chatRegenerate: (sessionId: string) => Promise<ChatSendResult>
+  chatSteer: (sessionId: string, content: string) => Promise<{ ok: boolean; error?: string }>
+  chatResolvePermission: (permId: string, decision: 'allow-once' | 'allow-session' | 'deny') => Promise<{ ok: boolean; error?: string }>
   chatEditResend: (sessionId: string, messageId: string, content: string) => Promise<ChatSendResult>
   chatBranch: (sessionId: string, messageId: string) => Promise<{ ok: boolean; error?: string }>
   chatAbort: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
+  onChatPermission: (
+    cb: (e: { runId: string; sessionId: string; permId: string; toolName: string; argsSummary: string; timeoutSec: number }) => void
+  ) => () => void
+  onChatSteer: (cb: (e: { runId: string; sessionId: string; content: string }) => void) => () => void
   onChatOutput: (cb: (e: ChatOutputEvent) => void) => () => void
   onChatDone: (cb: (e: ChatDoneEvent) => void) => () => void
 

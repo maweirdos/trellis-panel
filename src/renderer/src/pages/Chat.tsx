@@ -87,6 +87,68 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
   return { provider, modelId, picker }
 }
 
+/** agent 工具行折叠块（TPD-020） */
+function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: string; status: string; elapsedMs: number }> }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mb-2 rounded-lg border border-sky-400/25 bg-sky-500/5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[11px] text-sky-300/90"
+      >
+        <Brain size={11} /> 工具调用 × {ops.length}
+        <span className="flex-1" />
+        <ChevronRight size={11} className={clsx('transition-transform', open && 'rotate-90')} />
+      </button>
+      {open && (
+        <div className="space-y-1 border-t border-sky-400/15 px-3 py-2">
+          {ops.map((op, i) => (
+            <div key={i} className="font-mono text-[10.5px] text-mist-300">
+              <span className={op.status === 'success' ? 'text-emerald-300' : op.status === 'denied' ? 'text-rose-300' : 'text-amber-300'}>
+                {op.status === 'success' ? '✓' : op.status === 'denied' ? '⊘ 拒绝' : '✗'}
+              </span>{' '}
+              {op.toolName} <span className="text-mist-600">({op.elapsedMs}ms)</span>
+              <div className="truncate text-mist-600" title={op.argsSummary}>
+                {op.argsSummary}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 权限卡（TPD-020）：allow-once / allow-session / deny 三态 */
+function PermissionCard({
+  perm,
+  onDecision
+}: {
+  perm: { permId: string; toolName: string; argsSummary: string; timeoutSec: number }
+  onDecision: (decision: 'allow-once' | 'allow-session' | 'deny') => void
+}): JSX.Element {
+  return (
+    <div className="mx-auto mb-3 max-w-xl rounded-xl border border-amber-400/40 bg-amber-500/10 p-3">
+      <div className="mb-1 text-xs font-semibold text-amber-200">工具调用请求</div>
+      <p className="mb-2 font-mono text-[11px] text-mist-300">
+        {perm.toolName}({perm.argsSummary})
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        <button onClick={() => onDecision('allow-once')} className="btn-primary text-[11px]">
+          允许一次
+        </button>
+        <button onClick={() => onDecision('allow-session')} className="btn-outline text-[11px]">
+          本会话内允许
+        </button>
+        <button onClick={() => onDecision('deny')} className="btn-ghost text-[11px] text-rose-300">
+          拒绝
+        </button>
+        <span className="ml-auto self-center text-[10px] text-mist-600">{perm.timeoutSec}s 内未决策将自动拒绝</span>
+      </div>
+    </div>
+  )
+}
+
 /** 分支切换器：同一位置存在多个兄弟版本时显示 ‹ i/n › */
 function BranchSwitcher({
   index,
@@ -182,6 +244,9 @@ export function ChatPage(): JSX.Element {
   const chatDeleteSession = useApp((s) => s.chatDeleteSession)
   const chatSend = useApp((s) => s.chatSend)
   const chatAbort = useApp((s) => s.chatAbort)
+  const chatPendingPermission = useApp((s) => s.chatPendingPermission)
+  const chatResolvePermission = useApp((s) => s.chatResolvePermission)
+  const chatSteer = useApp((s) => s.chatSteer)
   const chatRegenerate = useApp((s) => s.chatRegenerate)
   const pushToast = useApp((s) => s.pushToast)
   const chatEditResend = useApp((s) => s.chatEditResend)
@@ -191,6 +256,7 @@ export function ChatPage(): JSX.Element {
   const [draft, setDraft] = useState('')
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('off')
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
+  const [agentMode, setAgentMode] = useState(false)
   const [attachments, setAttachments] = useState<{ dataUrl: string; name: string }[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -252,7 +318,7 @@ export function ChatPage(): JSX.Element {
     if ((!text && !imgs.length) || streaming) return
     setDraft('')
     setAttachments([])
-    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel, images: imgs })
+    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel, images: imgs, agent: agentMode })
   }
 
   const queueMore = (): void => {
@@ -349,6 +415,15 @@ export function ChatPage(): JSX.Element {
               </option>
             ))}
           </select>
+          <label className="flex cursor-pointer items-center gap-1 text-[11px] text-mist-400" title="启用后模型可调用网关工具（每次调用需你授权）">
+            <input
+              type="checkbox"
+              checked={agentMode}
+              onChange={(e) => setAgentMode(e.target.checked)}
+              className="accent-emerald-500"
+            />
+            Agent
+          </label>
           {picker}
           <button onClick={exportMarkdown} className="btn-ghost p-1" title="导出 Markdown" disabled={entries.length === 0}>
             <Download size={13} />
@@ -439,6 +514,7 @@ export function ChatPage(): JSX.Element {
                   <div key={e.key} className="group flex items-start gap-2">
                     <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-ink-700/70 bg-ink-850/70 px-3.5 py-2.5">
                       {e.reasoning && <ThinkingBlock reasoning={e.reasoning} />}
+                      {e.toolOps && e.toolOps.length > 0 && <ToolOpsBlock ops={e.toolOps} />}
                       <MarkdownView content={e.content} />
                       {(e.siblingCount ?? 0) > 1 && e.siblingIds && (
                         <div className="mt-2 border-t border-ink-700/60 pt-1.5">
@@ -473,8 +549,15 @@ export function ChatPage(): JSX.Element {
                   </div>
                 </div>
               ))}
+              {chatPendingPermission && (
+                <PermissionCard
+                  perm={chatPendingPermission}
+                  onDecision={(d) => void chatResolvePermission(chatPendingPermission.permId, d)}
+                />
+              )}
               {streaming && (
                 <div className="rounded-2xl rounded-tl-md border border-leaf/20 bg-ink-850/70 px-3.5 py-2.5">
+                  {streaming.toolOps.length > 0 && <ToolOpsBlock ops={streaming.toolOps} />}
                   {streaming.reasoning && <ThinkingBlock reasoning={streaming.reasoning} live={!streaming.content} />}
                   {streaming.content ? (
                     <MarkdownView content={streaming.content} />
@@ -537,6 +620,14 @@ export function ChatPage(): JSX.Element {
             </button>
             <textarea
               value={draft}
+              onKeyDown={(e) => {
+                if (e.altKey && e.key === 'Enter' && draft.trim()) {
+                  e.preventDefault()
+                  const text = draft.trim()
+                  setDraft('')
+                  void chatSteer(text)
+                }
+              }}
               onPaste={(e) => {
                 const imgs = Array.from(e.clipboardData.items).filter((it) => it.type.startsWith('image/'))
                 if (imgs.length === 0) return

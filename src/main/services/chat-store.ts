@@ -29,6 +29,10 @@ export interface ChatSessionTree {
   providerId: string | null
   modelId: string | null
   thinkingLevel: ThinkingLevel
+  /** agent 工具循环开关（TPD-020） */
+  agent?: boolean
+  /** allow-session 的工具白名单（随会话持久化） */
+  allowedTools?: string[]
   nodes: Record<string, ChatNode>
   activeLeaf: string | null
 }
@@ -177,13 +181,28 @@ export function renameSession(app: AppPathProvider, id: string, title: string): 
 export function updateBinding(
   app: AppPathProvider,
   id: string,
-  binding: { providerId?: string | null; modelId?: string | null; thinkingLevel?: ThinkingLevel }
+  binding: {
+    providerId?: string | null
+    modelId?: string | null
+    thinkingLevel?: ThinkingLevel
+    agent?: boolean
+  }
 ): void {
   const s = openSession(app, id)
   if (!s) throw new Error('会话不存在')
   if ('providerId' in binding) s.providerId = binding.providerId ?? null
   if ('modelId' in binding) s.modelId = binding.modelId ?? null
   if ('thinkingLevel' in binding && binding.thinkingLevel) s.thinkingLevel = binding.thinkingLevel
+  if (binding.agent !== undefined) s.agent = binding.agent
+  persist(app, s)
+}
+
+/** allow-session：加入会话工具白名单 */
+export function addAllowedTool(app: AppPathProvider, id: string, toolName: string): void {
+  const s = openSession(app, id)
+  if (!s) throw new Error('会话不存在')
+  s.allowedTools = s.allowedTools ?? []
+  if (!s.allowedTools.includes(toolName)) s.allowedTools.push(toolName)
   persist(app, s)
 }
 
@@ -209,7 +228,8 @@ export function addChildNode(
     role: message.role,
     content: message.content,
     ...(message.reasoning ? { reasoning: message.reasoning } : {}),
-    ...(message.images?.length ? { images: message.images } : {})
+    ...(message.images?.length ? { images: message.images } : {}),
+    ...(message.toolOps?.length ? { toolOps: message.toolOps } : {})
   }
   s.nodes[node.id] = node
   s.activeLeaf = node.id

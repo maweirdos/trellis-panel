@@ -101,4 +101,14 @@ export function registerChatIpc(): void {
   handle(ipcInvoke.chat.branch, (_e, sessionId: string, messageId: string) =>
     chatService.branch(String(sessionId ?? ''), String(messageId ?? ''))
   )
+
+  handle(ipcInvoke.chat.steer, (_e, sessionId: string, content: string) =>
+    chatService.steer(String(sessionId ?? ''), String(content ?? ''))
+  )
+
+  handle(
+    ipcInvoke.chat.permissionResolve,
+    (_e, permId: string, decision: 'allow-once' | 'allow-session' | 'deny') =>
+      chatService.resolvePermission(String(permId ?? ''), decision)
+  )
 }

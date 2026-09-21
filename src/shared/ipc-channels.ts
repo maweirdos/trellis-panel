@@ -110,7 +110,9 @@ export const ipcInvoke = {
     abort: 'chat:abort',
     regenerate: 'chat:regenerate',
     edit: 'chat:edit',
-    branch: 'chat:branch'
+    branch: 'chat:branch',
+    steer: 'chat:steer',
+    permissionResolve: 'chat:permission-resolve'
   },
   ai: {
     chat: 'ai:chat',
@@ -192,6 +194,9 @@ export const ipcEvent = {
   /** chat 流式对话事件流（runId 关联，成对出现；增量/完成） */
   chatOutput: 'chat:output',
   chatDone: 'chat:done',
+  /** 工具调用权限卡（请求决策）与 steer 注入 */
+  chatPermission: 'chat:permission',
+  chatSteer: 'chat:steer',
   /** 窗口最大化状态 */
   windowMaximized: 'window:maximized',
   /**
