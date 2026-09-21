@@ -130,3 +130,21 @@ proxy 冒烟 5 项全过（本地转发代理 absolute-form + 目标服务：启
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: 渲染契约（09-22-render-contract，roadmap #9）+ ToolSearch（09-22-toolsearch，roadmap #6）
+**Branch**: `main`
+
+### Summary
+
+#9：entries.ts 增 reuseEntries（key/content/reasoning/兄弟三元组全等即复用 prev 引用），useChatEntries 持 prev 链；render-contract 冒烟 9 项断言身份契约（恒等/流式/追加/分支/稳定）。修复过程发现此前批量替换静默失败导致 buildEntries 未透传 id/sibling 字段——渲染层分支切换器与编辑按钮将永远不可见，正是契约冒烟逼出的真 bug。#6：网关 getToolSearchDef/getDeferredCatalog/searchTools + TPAP GET /tools?mode=deferred 与 POST /tool_search（只读，不进 confirm 门槛），默认全量路径不变。TPD-017/018 入册，roadmap #9/#6 标记完成。
+
+### 验证
+
+render-contract 冒烟 9 项全过；tpap 扩至 19 项；chat 30/registry 103/proxy 5 回归全过；typecheck 全绿。教训：python 批量替换必须 assert + 替换后 grep 验证（本轮第三次被静默 no-op 咬到）。
+
+### Status
+
+[OK] **Completed**

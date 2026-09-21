@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 import { useApp } from '../store'
 import { api } from '../api'
-import { buildEntries } from '../chat/entries'
+import { useChatEntries } from '../chat/useChatEntries'
 import { useTranscriptScroll, useTranscriptWindow } from '../chat/useTranscriptScroll'
 import { MarkdownView } from '../components/MarkdownView'
 import { clsx } from 'clsx'
@@ -205,7 +205,7 @@ export function ChatPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const entries = useMemo(() => buildEntries(messages), [messages])
+  const entries = useChatEntries(messages)
   const streamLength = streaming?.content.length ?? 0
   const { containerRef, atBottom, scrollToBottom } = useTranscriptScroll(entries.length * 1000 + streamLength + pending.length)
   const { visibleCount, showOlder, hasOlder, hiddenCount } = useTranscriptWindow(entries.length, activeId ?? '')

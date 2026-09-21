@@ -73,6 +73,43 @@ class GatewayManagerClass {
   }
 
   /**
+   * ToolSearch 元工具定义（roadmap #6 / deferred 模式）：上下文经济性——
+   * 客户端默认只拿 catalog + 检索工具，按名激活后再调用具体工具。
+   */
+  getToolSearchDef(): GatewayToolDef {
+    return {
+      name: 'tool_search',
+      description:
+        '按名称或能力关键词检索网关可用工具（如 db、sql、weknora、知识、trellis、spec）。返回匹配工具的定义；随后可直接调用对应工具名。',
+      upstreamId: 'meta',
+      parameters: {
+        query: { type: 'string', description: '名称或能力关键词，例如 sql / 知识 / spec', required: true }
+      },
+      isReadOnly: true,
+      securityRule: '只读检索'
+    }
+  }
+
+  /** deferred 模式的上下文清单：仅元工具 */
+  getDeferredCatalog(): GatewayToolDef[] {
+    return [this.getToolSearchDef()]
+  }
+
+  /** 按关键词检索工具（名称/描述/upstreamId），供 tool_search 执行 */
+  searchTools(query: string): GatewayToolDef[] {
+    const q = String(query ?? '').trim().toLowerCase()
+    const all = this.getStandardTools()
+    if (!q) return all
+    return all.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.upstreamId.toLowerCase().includes(q) ||
+        (t.securityRule ?? '').toLowerCase().includes(q)
+    )
+  }
+
+  /**
    * 网关向 AI 编辑器暴露的标准工具集合
    */
   getStandardTools(): GatewayToolDef[] {

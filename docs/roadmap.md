@@ -33,8 +33,9 @@
    是刚需场景。
 8. ✅ **TPAP 对话只读面**（2026-09-22）：`GET /tpap/v1/chat/sessions` 与 `/chat/session?id=`
    已实现——读路径复用 chat-store 单一实现，恒只读、过 Bearer 鉴权，tpap 冒烟 16 项覆盖。
-9. **E2E 对话渲染契约**：借鉴"渲染次数插桩"思路，给转录区 Entry 管道做渲染次数断言
-   （防流式更新引发全列表重渲染回归）。
+9. ✅ **E2E 对话渲染契约**（2026-09-22）：`reuseEntries` 引用复用 + `useChatEntries` +
+   `scripts/smoke/render-contract.mjs` 身份契约断言（恒等/流式/追加/分支四场景，TPD-017）。
+   纯 node 断言管道契约，React.memo 链路依赖该身份复用。
 10. ✅ **代理设置统一**（2026-09-22）：settings.proxy（http/socks5）→ Node 侧 proxiedFetch
     （同实例 undici ProxyAgent，TPD-015）覆盖 AI/模型目录/models.dev；Chromium 侧
     session.setProxy 覆盖 WeKnora。冒烟：本地转发代理验证经代理/直连两路径。

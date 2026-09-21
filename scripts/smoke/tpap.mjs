@@ -150,6 +150,22 @@ check('chat/session 读取完整转录', readOne.status === 200 && readOne.json?
 const readMissing = await req('GET', '/tpap/v1/chat/session?id=nonexistent', { token: newToken })
 check('chat/session 不存在返回 404', readMissing.status === 404 && readMissing.json?.error?.code === 'E_NOT_FOUND')
 
+/* 12. ToolSearch deferred 模式（roadmap #6） */
+const deferredTools = await req('GET', '/tpap/v1/tools?mode=deferred', { token: newToken })
+check(
+  'deferred 模式仅暴露 tool_search 元工具',
+  deferredTools.status === 200 && deferredTools.json?.data?.length === 1 && deferredTools.json.data[0].name === 'tool_search',
+  JSON.stringify(deferredTools.json).slice(0, 160)
+)
+const searchCall = await req('POST', '/tpap/v1/tool_search', { token: newToken, body: { query: 'sql' } })
+check(
+  'tool_search 按关键词检索到 sql 工具',
+  searchCall.status === 200 && searchCall.json?.data?.some((t) => t.name === 'db_query_readonly'),
+  JSON.stringify(searchCall.json).slice(0, 160)
+)
+const fullTools = await req('GET', '/tpap/v1/tools', { token: newToken })
+check('默认模式仍返回全量工具目录', fullTools.status === 200 && (fullTools.json?.data?.length ?? 0) >= 8)
+
 accessServer.stop()
 rmSync(workDir, { recursive: true, force: true })
 

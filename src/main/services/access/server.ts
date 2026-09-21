@@ -98,8 +98,14 @@ class AccessServer {
           return this.json(res, 200, { ok: true, data: getSnapshot(), cursor: accessEventLog.latest() })
         case 'GET /events':
           return this.json(res, 200, { ok: true, ...accessEventLog.since(this.parseCursor(url.searchParams.get('cursor'))) })
-        case 'GET /tools':
+        case 'GET /tools': {
+          // deferred 模式（roadmap #6）：仅暴露 tool_search 元工具，按需检索激活
+          const mode = url.searchParams.get('mode')
+          if (mode === 'deferred') {
+            return this.json(res, 200, { ok: true, data: GatewayManager.getDeferredCatalog() })
+          }
           return this.json(res, 200, { ok: true, data: GatewayManager.getStandardTools() })
+        }
         case 'GET /chat/sessions':
           // 对话只读面（roadmap #8）：复用 chat-store 单一实现，恒只读
           return this.json(res, 200, { ok: true, data: listSessions(app), cursor: accessEventLog.latest() })
@@ -110,6 +116,12 @@ class AccessServer {
             return this.json(res, 404, { ok: false, error: { code: 'E_NOT_FOUND', message: '会话不存在' } })
           }
           return this.json(res, 200, { ok: true, data: session, cursor: accessEventLog.latest() })
+        }
+        case 'POST /tool_search': {
+          // tool_search 元工具执行（只读，不进 confirm 门槛）
+          const body = await this.readBody(req)
+          const matches = GatewayManager.searchTools(String(body.query ?? ''))
+          return this.json(res, 200, { ok: true, data: matches })
         }
         case 'POST /spec/read':
         case 'POST /task/read': {
@@ -157,7 +169,7 @@ class AccessServer {
       name: 'trellis-panel',
       protocol: PROTOCOL_VERSION,
       project: snap ? { name: snap.meta.name, root: snap.meta.root } : null,
-      capabilities: ['session.read', 'events.pull', 'tools.list', 'tools.call', 'spec.read', 'task.read', 'token.rotate', 'chat.read']
+      capabilities: ['session.read', 'events.pull', 'tools.list', 'tools.deferred', 'tools.call', 'tool_search', 'spec.read', 'task.read', 'token.rotate', 'chat.read']
     }
   }
 
