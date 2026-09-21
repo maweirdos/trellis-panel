@@ -7,12 +7,14 @@ import type {
   InboxNewEvent,
   JiraConfig,
   KbLibrary,
+  ModelProvider,
   ProjectSnapshot,
   RunDoneEvent,
   RunEvent,
   Settings,
   TaskPatch,
-  ToastEvent
+  ToastEvent,
+  WeknoraConfig
 } from '../shared/types'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -73,8 +75,24 @@ const api = {
 
   kbSearch: (library: KbLibrary | 'all', query: string) => ipcRenderer.invoke('kb:search', library, query),
 
+  /* WeKnora 桥接统一兜底：旧主进程（无对应通道）时降级为 ok:false，不产生未处理 rejection */
+  weknoraTest: (cfg: WeknoraConfig) =>
+    ipcRenderer.invoke('weknora:test', cfg).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
+  weknoraSearch: (query: string, limit?: number) =>
+    ipcRenderer
+      .invoke('weknora:search', query, limit)
+      .catch((e: Error) => ({ ok: false, error: e?.message ?? String(e), hits: [], elapsedMs: 0 })),
+  weknoraListDocs: (kbId: string) =>
+    ipcRenderer.invoke('weknora:listDocs', kbId).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
+  weknoraRead: (knowledgeId: string) =>
+    ipcRenderer.invoke('weknora:read', knowledgeId).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
+  weknoraTestMcp: (url: string, token: string) =>
+    ipcRenderer.invoke('weknora:testMcp', url, token).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),
+
   aiChat: (messages: ChatMessage[]) => ipcRenderer.invoke('ai:chat', messages),
   aiTest: (cfg: AiConfig) => ipcRenderer.invoke('ai:test', cfg),
+  aiFetchModels: (provider: ModelProvider) => ipcRenderer.invoke('ai:fetch-models', provider),
+  aiTestModel: (provider: ModelProvider, modelId: string) => ipcRenderer.invoke('ai:test-model', provider, modelId),
   aiPrdDraft: (dirName: string) => ipcRenderer.invoke('ai:prdDraft', dirName),
   aiSummary: (dirName: string) => ipcRenderer.invoke('ai:summary', dirName),
   aiPlan: (input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) =>

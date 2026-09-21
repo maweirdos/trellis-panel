@@ -1,6 +1,15 @@
 import { create } from 'zustand'
+import { WEKNORA_DEFAULTS } from '../../shared/types'
 import type { InboxItem, ProjectSnapshot, Settings, ToastEvent } from '../../shared/types'
 import { api } from './api'
+
+/**
+ * 新增设置节在"渲染层新代码 + 主进程旧代码"混跑（dev 热更新只刷渲染层）或
+ * 旧 settings.json 下会缺失，这里统一补默认值，页面侧不再假设节一定存在。
+ */
+function normalizeSettings(s: Settings): Settings {
+  return { ...s, weknora: { ...WEKNORA_DEFAULTS, ...(s.weknora ?? {}) } }
+}
 
 export type Page =
   | 'dashboard'
@@ -14,6 +23,7 @@ export type Page =
   | 'jira'
   | 'architecture'
   | 'studio'
+  | 'models'
   | 'settings'
 
 export interface ToastItem extends ToastEvent {
@@ -139,10 +149,10 @@ export const useApp = create<AppState>((set, get) => ({
     set({ sidebarCollapsed: collapsed })
   },
 
-  setPage: (page) => set({ page }),
+  setPage: (page) => set({ page, openTaskDir: null, openTaskArchived: false }),
 
   bootstrap: async () => {
-    const settings = await api.getSettings()
+    const settings = normalizeSettings(await api.getSettings())
     set({ settings, starting: false })
     // 胶囊窗口与主窗口共享主进程的项目状态，只需拉取当前快照。
     if (get().capsuleMode) {
@@ -206,7 +216,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   saveSettings: async (patch) => {
-    const next = await api.setSettings(patch)
+    const next = normalizeSettings(await api.setSettings(patch))
     set({ settings: next })
   },
 

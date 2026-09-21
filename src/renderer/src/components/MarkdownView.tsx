@@ -1,6 +1,8 @@
+import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { MermaidBlock } from './MermaidBlock'
+import { AsciiDiagramBlock } from './AsciiDiagramBlock'
 
 /** Heuristic: ASCII 线框图（box-drawing / +--- 风格）加宽展示并保持可横向滚动。 */
 function looksLikeAsciiDiagram(text: string): boolean {
@@ -11,16 +13,40 @@ function looksLikeAsciiDiagram(text: string): boolean {
   return plusBox >= 2
 }
 
-export function MarkdownView({ content }: { content: string }): JSX.Element {
+const REMARK_PLUGINS = [remarkGfm]
+
+export const MarkdownView = React.memo(function MarkdownView({ content }: { content: string }): JSX.Element {
   return (
     <div className="md">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={REMARK_PLUGINS}
         components={{
+          pre({ children, ...props }) {
+            // 当代码块内容是自成一体的块级组件（AsciiDiagramBlock / MermaidBlock）时，直接返回该组件，彻底消除外层多余的 pre 边框与内边距
+            const child = React.isValidElement(children)
+              ? children
+              : Array.isArray(children) && React.isValidElement(children[0])
+                ? children[0]
+                : null
+
+            if (child) {
+              const codeProps = child.props as { className?: string; children?: React.ReactNode }
+              const text = String(codeProps?.children ?? '').replace(/\n$/, '')
+              const className = codeProps?.className
+
+              if (className?.includes('language-mermaid')) {
+                return <MermaidBlock chart={text} />
+              }
+              if (!className && looksLikeAsciiDiagram(text)) {
+                return <AsciiDiagramBlock chart={text} />
+              }
+            }
+            return <pre {...props}>{children}</pre>
+          },
           table({ children, ...props }) {
             return (
-              <div className="my-4 overflow-x-auto rounded-xl border border-ink-700/80 bg-ink-900/50 shadow-sm">
-                <table className="min-w-full border-collapse text-[12.5px]" {...props}>
+              <div className="my-4 overflow-x-auto rounded-lg border border-ink-700 bg-ink-900/40 shadow-xs">
+                <table className="min-w-full w-max border-collapse text-left text-[12.5px]" {...props}>
                   {children}
                 </table>
               </div>
@@ -28,7 +54,7 @@ export function MarkdownView({ content }: { content: string }): JSX.Element {
           },
           thead({ children, ...props }) {
             return (
-              <thead className="border-b border-ink-700 bg-ink-800/90 text-mist-100 font-semibold" {...props}>
+              <thead className="border-b border-ink-700 bg-ink-850/90 text-mist-100 font-semibold" {...props}>
                 {children}
               </thead>
             )
@@ -36,7 +62,7 @@ export function MarkdownView({ content }: { content: string }): JSX.Element {
           th({ children, ...props }) {
             return (
               <th
-                className="whitespace-nowrap border-r border-ink-700/60 last:border-r-0 px-4 py-2.5 text-left font-semibold tracking-wide text-mist-100 select-none"
+                className="border-r border-ink-700 last:border-r-0 px-4 py-2.5 text-left font-semibold tracking-wide text-mist-100 select-none break-keep"
                 {...props}
               >
                 {children}
@@ -45,7 +71,7 @@ export function MarkdownView({ content }: { content: string }): JSX.Element {
           },
           tr({ children, ...props }) {
             return (
-              <tr className="border-b border-ink-800/60 last:border-b-0 transition-colors hover:bg-ink-800/30" {...props}>
+              <tr className="border-b border-ink-700/70 last:border-b-0 even:bg-ink-850/25 hover:bg-ink-800/40 transition-colors" {...props}>
                 {children}
               </tr>
             )
@@ -53,7 +79,7 @@ export function MarkdownView({ content }: { content: string }): JSX.Element {
           td({ children, ...props }) {
             return (
               <td
-                className="border-r border-ink-800/50 last:border-r-0 px-4 py-2.5 leading-relaxed text-mist-200 align-top"
+                className="border-r border-ink-700/70 last:border-r-0 px-4 py-2.5 leading-relaxed text-mist-200 align-top break-keep break-words"
                 {...props}
               >
                 {children}
@@ -66,12 +92,7 @@ export function MarkdownView({ content }: { content: string }): JSX.Element {
               return <MermaidBlock chart={text} />
             }
             if (!className && looksLikeAsciiDiagram(text)) {
-              return (
-                <div className="ascii-diagram">
-                  <div className="ascii-diagram-label">ASCII 线框图</div>
-                  <pre className="whitespace-pre">{text}</pre>
-                </div>
-              )
+              return <AsciiDiagramBlock chart={text} />
             }
             return (
               <code className={className} {...props}>
@@ -85,4 +106,4 @@ export function MarkdownView({ content }: { content: string }): JSX.Element {
       </ReactMarkdown>
     </div>
   )
-}
+})

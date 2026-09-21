@@ -1,8 +1,9 @@
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
-import type { AiChatResult, AiConfig, PlanResult, PlanSource, TaskPlan } from '../../shared/types'
+import type { AiChatResult, AiConfig, PlanResult, PlanSource, TaskPlan, WeknoraConfig } from '../../shared/types'
 import { kbSearch } from './knowledge'
 import { aiChat } from './ai'
+import { weknoraSearch } from './weknora'
 
 /**
  * 任务规划管线：Jira issue / 需求描述 → 知识库检索（spec/wiki/需求/归档）
@@ -53,10 +54,14 @@ function workflowCandidates(root: string): string[] {
   }
 }
 
+/** 公司库（WeKnora）补充摘录的上限——远程素材只做本地检索的增量，不喧宾夺主 */
+const COMPANY_EXCERPT_CAP = 12_000
+
 export async function aiPlanTask(
   root: string,
   cfg: AiConfig,
-  input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }
+  input: { title: string; description: string; jiraKey?: string; jiraUrl?: string },
+  weknoraCfg?: WeknoraConfig
 ): Promise<PlanResult> {
   if (!cfg.enabled)
     return { ok: false, error: '应用内 AI 未启用（设置 → AI 模型）', sources: [], contextChars: 0, workflows: workflowCandidates(root) }
@@ -69,6 +74,11 @@ export async function aiPlanTask(
     title: h.doc.title,
     library: h.doc.library
   }))
+
+  // 1b) 公司库（WeKnora）并行补充——跨项目规范 / 历史归档 / 接口约定
+  const companyHits = weknoraCfg?.enabled && weknoraCfg.searchKbIds.length
+    ? await weknoraSearch(weknoraCfg, keywords, 4)
+    : null
 
   // 2) 读取来源摘录（每篇最多 3500 字符）
   let contextChars = 0
@@ -90,6 +100,25 @@ export async function aiPlanTask(
     }
   }
 
+  // 2b) 公司库摘录（命中分块即摘录，总量封顶）
+  if (companyHits?.ok) {
+    let companyChars = 0
+    for (const h of companyHits.hits) {
+      if (companyChars >= COMPANY_EXCERPT_CAP) break
+      const cut = h.content.slice(0, 3000)
+      companyChars += cut.length
+      sources.push({
+        path: `weknora://${h.knowledgeId}`,
+        title: h.title || h.filename,
+        library: 'company'
+      })
+      excerpts.push(
+        `--- 来源 [company-kb] ${h.title || h.filename}（WeKnora knowledge_id: ${h.knowledgeId}）---\n${cut}`
+      )
+    }
+    contextChars += companyChars
+  }
+
   // 3) AI 规划
   const candidates = workflowCandidates(root)
   const userLines = [
@@ -97,7 +126,9 @@ export async function aiPlanTask(
     input.jiraKey ? `Jira：${input.jiraKey}${input.jiraUrl ? `（${input.jiraUrl}）` : ''}` : '',
     `需求描述：\n${input.description || '（无）'}`,
     candidates.length ? `可选 workflow id：${candidates.join(', ')}` : '',
-    excerpts.length ? `知识库检索摘录（共 ${excerpts.length} 篇，${contextChars} 字符）：\n\n${excerpts.join('\n\n')}` : '（知识库未检索到相关内容——请在 questions 里指出需要补充的规范/文档）'
+    excerpts.length
+      ? `知识库检索摘录（本地 + 公司库，共 ${excerpts.length} 篇，${contextChars} 字符）：\n\n${excerpts.join('\n\n')}`
+      : '（知识库未检索到相关内容——请在 questions 里指出需要补充的规范/文档）'
   ].filter(Boolean)
 
   const res = await aiChat(cfg, [

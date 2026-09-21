@@ -32,7 +32,7 @@ import {
   syncExtensionToPlatforms
 } from './services/studio'
 import { kbSearch } from './services/knowledge'
-import { aiChat, aiTest, aiTaskPrompt, protectAiKey } from './services/ai'
+import { aiChat, aiTest, aiTaskPrompt, protectAiKey, fetchModelsFromProvider, testSingleModel } from './services/ai'
 import { kbMcpInstall, kbMcpStatus } from './services/kbmcp'
 import { aiPlanTask, aiSplitEpic, aiCommitMsg, aiPrDesc, handoffTexts } from './services/plan'
 import {
@@ -43,7 +43,20 @@ import {
   clearGitlabTokenCache,
   clearGitlabStatusCache
 } from './services/gitlab'
-import type { AiConfig, ChatMessage, GitLabConfig, JiraConfig, SpecNode, ToastEvent } from '../shared/types'
+import {
+  WeknoraSpecSyncer,
+  buildArchiveDoc,
+  protectWeknoraKey,
+  protectWeknoraMcpToken,
+  weknoraListDocs,
+  weknoraMcpTokenOf,
+  weknoraPushManual,
+  weknoraReadDoc,
+  weknoraSearch,
+  weknoraTest,
+  weknoraTestMcp
+} from './services/weknora'
+import type { AiConfig, ChatMessage, GitLabConfig, JiraConfig, ModelProvider, SpecNode, ToastEvent, WeknoraConfig } from '../shared/types'
 
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
@@ -55,6 +68,36 @@ let jiraSyncTimer: ReturnType<typeof setInterval> | null = null
 let latestSnapshot: ReturnType<typeof scanProject> | null = null
 /** task dirs seen in the current project — drives the Inbox "new task" diff */
 let knownTaskDirs = new Set<string>()
+
+/* WeKnora spec 同步：变更进队列，静默期后批量推送公司库 */
+const weknoraSpecSync = new WeknoraSpecSyncer({
+  onReport: (r) => {
+    if (r.pushed === 0 && r.duplicates === 0 && r.failed.length === 0) return
+    broadcastToWindows('bridge:toast', {
+      kind: r.failed.length > 0 ? 'warn' : 'success',
+      title: '公司库（WeKnora）spec 同步',
+      body: [
+        r.pushed > 0 ? `推送 ${r.pushed} 篇` : '',
+        r.duplicates > 0 ? `无变化 ${r.duplicates} 篇` : '',
+        r.failed.length > 0 ? `失败 ${r.failed.length} 篇：${r.failed.slice(0, 3).map((f) => `${f.file}（${f.error}）`).join('；')}` : ''
+      ].filter(Boolean).join(' · ')
+    })
+  }
+})
+
+/** .trellis/spec 下的文本文件 → 同步队列（其余文件忽略） */
+function routeSpecFileSync(absPath: string): void {
+  if (!projectRoot) return
+  const specRoot = resolve(projectRoot, '.trellis', 'spec') + sep
+  const p = resolve(absPath)
+  if (!p.startsWith(specRoot)) return
+  if (!/\.(md|markdown|txt)$/i.test(extname(p))) return
+  weknoraSpecSync.enqueue(p)
+}
+
+function syncWeknoraSpecConfig(): void {
+  weknoraSpecSync.configure(getSettings().weknora, projectRoot)
+}
 
 const MAX_TEXT_BYTES = 5 * 1024 * 1024
 
@@ -331,7 +374,8 @@ function focusMainAndOpenTask(taskDir: string): void {
       if (snap.meta.trellisExists) {
         projectRoot = snap.meta.root
         pushRecentProject(projectRoot)
-        watcher.start(projectRoot, sendSnapshot)
+        watcher.start(projectRoot, sendSnapshot, routeSpecFileSync)
+        syncWeknoraSpecConfig()
         clearGitCache()
         latestSnapshot = snap
         knownTaskDirs = new Set(snap.tasks.map((t) => t.dirName))
@@ -646,7 +690,8 @@ function registerIpc(): void {
       }
       projectRoot = snap.meta.root
       pushRecentProject(projectRoot)
-      watcher.start(projectRoot, sendSnapshot)
+      watcher.start(projectRoot, sendSnapshot, routeSpecFileSync)
+      syncWeknoraSpecConfig()
       clearGitCache()
       latestSnapshot = snap
       knownTaskDirs = new Set(snap.tasks.map((t) => t.dirName))
@@ -670,6 +715,7 @@ function registerIpc(): void {
     watcher.stop()
     projectRoot = null
     knownTaskDirs = new Set()
+    syncWeknoraSpecConfig()
   })
 
   ipcMain.handle('task:update', (_e, taskDir: string, patch: Record<string, unknown>, expectedMtime?: number) => {
@@ -847,6 +893,38 @@ function registerIpc(): void {
     }
   })
 
+  /* ---------------- WeKnora 公司库（联邦检索 / 阅读） ---------------- */
+
+  /** 渲染层传入草稿配置：密钥留空则回落到已保存值（加密保存后无需重输即可测试） */
+  const mergeWeknoraDraft = (cfg: WeknoraConfig | undefined): WeknoraConfig => {
+    const saved = getSettings().weknora
+    if (!cfg || typeof cfg !== 'object') return saved
+    return {
+      ...saved,
+      ...cfg,
+      apiKey: typeof cfg.apiKey === 'string' && cfg.apiKey ? cfg.apiKey : saved.apiKey,
+      apiKeyEncrypted: typeof cfg.apiKey === 'string' && cfg.apiKey ? false : saved.apiKeyEncrypted,
+      mcpToken: typeof cfg.mcpToken === 'string' && cfg.mcpToken ? cfg.mcpToken : saved.mcpToken,
+      mcpTokenEncrypted: typeof cfg.mcpToken === 'string' && cfg.mcpToken ? false : saved.mcpTokenEncrypted
+    }
+  }
+
+  ipcMain.handle('weknora:test', (_e, cfg: WeknoraConfig) => weknoraTest(mergeWeknoraDraft(cfg)))
+
+  ipcMain.handle('weknora:search', (_e, query: string, limit?: number) =>
+    weknoraSearch(getSettings().weknora, String(query ?? ''), Math.min(Math.max(Number(limit) || 10, 1), 30))
+  )
+
+  ipcMain.handle('weknora:listDocs', (_e, kbId: string) => weknoraListDocs(getSettings().weknora, String(kbId ?? '')))
+
+  ipcMain.handle('weknora:read', (_e, knowledgeId: string) => weknoraReadDoc(getSettings().weknora, String(knowledgeId ?? '')))
+
+  ipcMain.handle('weknora:testMcp', (_e, url: string, token: string) => {
+    const merged = mergeWeknoraDraft({ ...getSettings().weknora, mcpUrl: String(url ?? '') })
+    const plainToken = typeof token === 'string' && token ? token : weknoraMcpTokenOf(merged)
+    return weknoraTestMcp(merged.mcpUrl, plainToken)
+  })
+
   /* ---------------- AI（baseUrl 自定义模型） ---------------- */
 
   ipcMain.handle('ai:chat', (_e, messages: ChatMessage[]) => {
@@ -859,6 +937,8 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('ai:test', (_e, cfg: AiConfig) => aiTest(cfg))
+  ipcMain.handle('ai:fetch-models', (_e, provider: ModelProvider) => fetchModelsFromProvider(provider))
+  ipcMain.handle('ai:test-model', (_e, provider: ModelProvider, modelId: string) => testSingleModel(provider, modelId))
 
   ipcMain.handle('ai:prdDraft', (_e, dirName: string) => {
     const t = findTask(String(dirName))
@@ -906,7 +986,7 @@ function registerIpc(): void {
       description: String(input?.description ?? ''),
       jiraKey: input?.jiraKey ? String(input.jiraKey) : undefined,
       jiraUrl: input?.jiraUrl ? String(input.jiraUrl) : undefined
-    })
+    }, getSettings().weknora)
   })
 
   ipcMain.handle('task:createFromPlan', (_e, input) => {
@@ -998,7 +1078,7 @@ function registerIpc(): void {
     })
   })
 
-  ipcMain.handle('task:archive', (_e, dirName: string) => {
+  ipcMain.handle('task:archive', async (_e, dirName: string) => {
     if (!projectRoot || !latestSnapshot) return { ok: false, error: '未打开项目' }
     const t = findTask(String(dirName))
     if (!t) return { ok: false, error: '任务不存在' }
@@ -1018,6 +1098,43 @@ function registerIpc(): void {
     } catch {
       // task.json 缺失时仍允许归档
     }
+    // WeKnora 沉淀素材必须在 rename 前读取（rename 后 t.path 失效）
+    const wkCfg = getSettings().weknora
+    let wkPayload: ReturnType<typeof buildArchiveDoc> | null = null
+    if (wkCfg.enabled && wkCfg.autoPushArchive && wkCfg.archiveKbId) {
+      const rec = t.record
+      let prd: string | null = null
+      try {
+        prd = readFileSync(join(target, 'prd.md'), 'utf-8')
+      } catch {
+        // 无 PRD 时用描述字段
+      }
+      let commits: string[] = []
+      if (rec?.branch && isGitRepo(projectRoot)) {
+        try {
+          const gi = await taskGitInfo(projectRoot, t.dirName, rec.branch, rec.base_branch ?? null)
+          commits = gi.commits.map((c) => `\`${c.short}\` ${c.subject}`)
+        } catch {
+          // git 信息缺失不影响沉淀
+        }
+      }
+      const meta = rec?.meta as Record<string, unknown> | undefined
+      wkPayload = buildArchiveDoc({
+        projectName: latestSnapshot.meta.name,
+        dirName: t.dirName,
+        title: rec?.title ?? t.dirName,
+        completedAt: rec?.completedAt ?? null,
+        jiraKey: (typeof meta?.jiraKey === 'string' && meta.jiraKey) || t.jiraKey || null,
+        jiraUrl: typeof meta?.jiraUrl === 'string' ? meta.jiraUrl : null,
+        branch: rec?.branch ?? null,
+        prUrl: rec?.pr_url ?? null,
+        notes: rec?.notes ?? '',
+        description: rec?.description ?? '',
+        subtasks: rec?.subtasks ?? [],
+        prd,
+        commits
+      })
+    }
     const archiveRoot = join(projectRoot, '.trellis', 'archive')
     mkdirSync(archiveRoot, { recursive: true })
     let destName = basename(target)
@@ -1031,6 +1148,15 @@ function registerIpc(): void {
     try {
       renameSync(target, dest)
       sendSnapshot()
+      // 归档成功后异步沉淀公司库（不阻塞归档返回；结果走 toast）
+      if (wkPayload) {
+        const payload = wkPayload
+        void weknoraPushManual(wkCfg, wkCfg.archiveKbId, payload).then((r) => {
+          broadcastToWindows('bridge:toast', r.ok
+            ? { kind: 'success', title: '已沉淀到公司库（WeKnora）', body: payload.title }
+            : { kind: 'warn', title: '公司库沉淀失败', body: r.error })
+        })
+      }
       return { ok: true, dirName: destName }
     } catch (e: any) {
       return { ok: false, error: e?.message ?? '归档失败' }
@@ -1111,14 +1237,38 @@ function registerIpc(): void {
     }
     const prevAi = getSettings().ai
     let ai = patch.ai as AiConfig | undefined
-    if (ai && typeof ai.apiKey === 'string' && ai.apiKey && !ai.apiKeyEncrypted && ai.apiKey !== prevAi.apiKey) {
-      ai = { ...ai, ...protectAiKey(ai.apiKey) }
+    if (ai) {
+      if (typeof ai.apiKey === 'string' && ai.apiKey && !ai.apiKeyEncrypted && ai.apiKey !== prevAi.apiKey) {
+        ai = { ...ai, ...protectAiKey(ai.apiKey) }
+      }
+      if (Array.isArray(ai.providers)) {
+        ai.providers = ai.providers.map((p) => {
+          const prevP = prevAi.providers?.find((x) => x.id === p.id)
+          if (p.apiKey && !p.apiKeyEncrypted && p.apiKey !== prevP?.apiKey) {
+            const enc = protectAiKey(p.apiKey)
+            return { ...p, apiKey: enc.apiKey, apiKeyEncrypted: enc.apiKeyEncrypted }
+          }
+          return p
+        })
+      }
     }
-    const next = setSettings({ ...patch, jira, gitlab, ai })
+    const prevWeknora = getSettings().weknora
+    let weknora = patch.weknora as WeknoraConfig | undefined
+    if (weknora) {
+      if (typeof weknora.apiKey === 'string' && weknora.apiKey && !weknora.apiKeyEncrypted && weknora.apiKey !== prevWeknora.apiKey) {
+        weknora = { ...weknora, ...protectWeknoraKey(weknora.apiKey) }
+      }
+      if (typeof weknora.mcpToken === 'string' && weknora.mcpToken && !weknora.mcpTokenEncrypted && weknora.mcpToken !== prevWeknora.mcpToken) {
+        weknora = { ...weknora, ...protectWeknoraMcpToken(weknora.mcpToken) }
+      }
+      if (!Array.isArray(weknora.searchKbIds)) weknora = { ...weknora, searchKbIds: [] }
+    }
+    const next = setSettings({ ...patch, jira, gitlab, ai, weknora })
     if (gitlab) {
       clearGitlabTokenCache()
       clearGitlabStatusCache()
     }
+    syncWeknoraSpecConfig()
     applyAutoStart()
     restartJiraAutoSync()
     return next
@@ -1270,5 +1420,6 @@ if (!gotLock) {
     abortAll()
     globalShortcut.unregisterAll()
     stopHttpApi()
+    weknoraSpecSync.stop()
   })
 }

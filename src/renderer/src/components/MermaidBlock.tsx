@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null
@@ -26,7 +26,7 @@ async function getMermaid() {
   return mermaidPromise
 }
 
-export function MermaidBlock({ chart }: { chart: string }): JSX.Element {
+export const MermaidBlock = React.memo(function MermaidBlock({ chart }: { chart: string }): JSX.Element {
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const seq = useRef(0)
@@ -65,4 +65,4 @@ export function MermaidBlock({ chart }: { chart: string }): JSX.Element {
       )}
     </div>
   )
-}
+})

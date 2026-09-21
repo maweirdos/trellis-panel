@@ -198,32 +198,56 @@ function BoardTab({ feed, members, snapshot }: {
           </div>
           <div className="max-h-[640px] overflow-y-auto px-4 py-3">
             {feedGroups.map(([label, items]) => (
-              <div key={label} className="mb-3 last:mb-0">
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-mist-600">{label}</div>
-                <div className="space-y-2.5 border-l border-ink-700 pl-3.5">
-                  {items.map((it, i) => (
-                    <div key={i} className="relative flex items-start gap-2.5 text-xs">
-                      <span className="absolute -left-[21px] top-0.5">{feedDot(it.kind)}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="font-medium text-mist-300">{it.who}</span>{' '}
-                        {it.kind === 'task' && it.taskDir ? (
-                          <button
-                            onClick={() => {
-                              const t = snapshot.tasks.find((x) => x.dirName === it.taskDir)
-                              if (t) showTask(t.dirName)
-                              else showTask(it.taskDir!, true)
-                            }}
-                            className="text-left text-mist-400 hover:text-leaf-soft"
-                          >
-                            {it.what}
-                          </button>
-                        ) : (
-                          <span className="text-mist-400">{it.what}</span>
-                        )}
-                        <span className="ml-1.5 text-[10px] text-mist-600">{relTime(it.at)}</span>
-                      </span>
-                    </div>
-                  ))}
+              <div key={label} className="mb-4 last:mb-0">
+                {/* 吸顶日期分割栏 */}
+                <div className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-2 bg-ink-800/95 px-4 py-1 backdrop-blur-sm">
+                  <span className="rounded bg-ink-750 px-2 py-0.5 font-mono text-[10px] font-semibold text-mist-400">
+                    {label}
+                  </span>
+                  <div className="h-px flex-1 bg-ink-700/60" />
+                </div>
+
+                {/* 时间线列表（轴线绝对居中穿过图标） */}
+                <div className="relative pl-6">
+                  {/* 垂直时间轴线 */}
+                  <div className="absolute left-[8px] top-2 bottom-2 w-px bg-ink-700/70" />
+
+                  <div className="space-y-3">
+                    {items.map((it, i) => (
+                      <div key={i} className="relative flex items-start gap-2.5 text-xs">
+                        {/* 时间线节点图标（居中覆盖在轴线上） */}
+                        <span className="absolute -left-[23px] top-0.5 z-10 flex h-[18px] w-[18px] items-center justify-center">
+                          {feedDot(it.kind)}
+                        </span>
+
+                        {/* 动态内容区（标题与时间戳分离，彻底杜绝时间戳折行撕裂） */}
+                        <div className="min-w-0 flex-1 leading-snug">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="truncate font-semibold text-mist-200">{it.who}</span>
+                            <span className="shrink-0 font-mono text-[10px] text-mist-500 whitespace-nowrap">
+                              {relTime(it.at)}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-[11.5px] text-mist-400 break-words">
+                            {it.kind === 'task' && it.taskDir ? (
+                              <button
+                                onClick={() => {
+                                  const t = snapshot.tasks.find((x) => x.dirName === it.taskDir)
+                                  if (t) showTask(t.dirName)
+                                  else showTask(it.taskDir!, true)
+                                }}
+                                className="text-left text-mist-300 hover:text-leaf-soft hover:underline transition-colors"
+                              >
+                                {it.what}
+                              </button>
+                            ) : (
+                              <span>{it.what}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             ))}
@@ -243,7 +267,7 @@ function feedDot(kind: FeedItem['kind']): JSX.Element {
   return (
     <span
       className={clsx(
-        'grid h-[18px] w-[18px] place-items-center rounded-full ring-2 ring-ink-850',
+        'grid h-[18px] w-[18px] place-items-center rounded-full ring-2 ring-ink-800 shadow-xs',
         kind === 'task' && 'bg-amber-500/20 text-amber-300',
         kind === 'journal' && 'bg-emerald-500/20 text-emerald-300',
         kind === 'session' && 'bg-violet-500/20 text-violet-300'

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { useApp } from './store'
 import { api } from './api'
 import { TitleBar } from './components/TitleBar'
@@ -8,21 +8,33 @@ import { Toasts } from './components/Toasts'
 import { CapsuleView } from './components/CapsuleView'
 import { ArtifactViewer } from './components/ArtifactViewer'
 import { CommandPalette } from './components/CommandPalette'
-import { Dashboard } from './pages/Dashboard'
-import { TasksPage } from './pages/Tasks'
-import { TaskDetail } from './pages/TaskDetail'
-import { SpecPage } from './pages/Spec'
-import { ArchivePage } from './pages/Archive'
-import { TeamPage } from './pages/Team'
-import { JiraPage } from './pages/Jira'
-import { InboxPage } from './pages/Inbox'
-import { SettingsPage } from './pages/Settings'
-import { StudioPage } from './pages/Studio'
-import { KnowledgePage } from './pages/Knowledge'
-import { ChannelsPage } from './pages/Channels'
-import { ArchitecturePage } from './pages/Architecture'
 import { IntakeModal } from './components/IntakeModal'
 import { clsx } from 'clsx'
+import { Loader2 } from 'lucide-react'
+
+// 页面级按需代码分割（开源标准 React.lazy + Suspense），避免启动和主面板一次性加载重型依赖（Mermaid/Cytoscape/KaTeX等）
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
+const TasksPage = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.TasksPage })))
+const TaskDetail = lazy(() => import('./pages/TaskDetail').then((m) => ({ default: m.TaskDetail })))
+const SpecPage = lazy(() => import('./pages/Spec').then((m) => ({ default: m.SpecPage })))
+const ArchivePage = lazy(() => import('./pages/Archive').then((m) => ({ default: m.ArchivePage })))
+const TeamPage = lazy(() => import('./pages/Team').then((m) => ({ default: m.TeamPage })))
+const JiraPage = lazy(() => import('./pages/Jira').then((m) => ({ default: m.JiraPage })))
+const InboxPage = lazy(() => import('./pages/Inbox').then((m) => ({ default: m.InboxPage })))
+const SettingsPage = lazy(() => import('./pages/Settings').then((m) => ({ default: m.SettingsPage })))
+const StudioPage = lazy(() => import('./pages/Studio').then((m) => ({ default: m.StudioPage })))
+const KnowledgePage = lazy(() => import('./pages/Knowledge').then((m) => ({ default: m.KnowledgePage })))
+const ChannelsPage = lazy(() => import('./pages/Channels').then((m) => ({ default: m.ChannelsPage })))
+const ArchitecturePage = lazy(() => import('./pages/Architecture').then((m) => ({ default: m.ArchitecturePage })))
+const ModelsPage = lazy(() => import('./pages/Models').then((m) => ({ default: m.ModelsPage })))
+
+function PageLoading(): JSX.Element {
+  return (
+    <div className="flex h-full w-full items-center justify-center text-mist-500">
+      <Loader2 size={20} className="animate-spin text-mist-400" />
+    </div>
+  )
+}
 
 function MainApp(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
@@ -101,29 +113,34 @@ function MainApp(): JSX.Element {
             <div
               className={clsx(
                 'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio'
+              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models'
                 ? 'overflow-hidden'
                 : 'overflow-y-auto'
               )}
             >
-              {page === 'dashboard' && <Dashboard />}
-              {page === 'inbox' && <InboxPage />}
-              {page === 'tasks' && <TasksPage />}
-              {page === 'knowledge' && <KnowledgePage />}
-              {page === 'spec' && <SpecPage />}
-              {page === 'archive' && <ArchivePage />}
-              {page === 'channels' && <ChannelsPage />}
-              {page === 'team' && <TeamPage />}
-              {page === 'jira' && <JiraPage />}
-              {page === 'architecture' && <ArchitecturePage />}
-              {page === 'studio' && <StudioPage />}
-              {page === 'settings' && <SettingsPage />}
+              <Suspense fallback={<PageLoading />}>
+                {page === 'dashboard' && <Dashboard />}
+                {page === 'inbox' && <InboxPage />}
+                {page === 'tasks' && <TasksPage />}
+                {page === 'knowledge' && <KnowledgePage />}
+                {page === 'spec' && <SpecPage />}
+                {page === 'archive' && <ArchivePage />}
+                {page === 'channels' && <ChannelsPage />}
+                {page === 'team' && <TeamPage />}
+                {page === 'jira' && <JiraPage />}
+                {page === 'architecture' && <ArchitecturePage />}
+                {page === 'studio' && <StudioPage />}
+                {page === 'models' && <ModelsPage />}
+                {page === 'settings' && <SettingsPage />}
+              </Suspense>
             </div>
 
             {/* 任务详情：右侧悬浮层（dashboard/archive/inbox等页面使用；tasks页已一体化内置，不再弹抽屉遮挡） */}
             {(detailOpen && (page === 'dashboard' || page === 'archive' || page === 'inbox')) && (
               <div className="absolute inset-y-0 right-0 z-20 flex shadow-[-12px_0_40px_rgba(0,0,0,0.45)]">
-                <TaskDetail />
+                <Suspense fallback={<PageLoading />}>
+                  <TaskDetail />
+                </Suspense>
               </div>
             )}
 

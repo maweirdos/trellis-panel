@@ -19,6 +19,7 @@ import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
+import { Select } from './Select'
 import type { HandoffText, JiraIssue, PlanResult, TaskPlan } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -207,16 +208,24 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-[11px] text-mist-400">优先级</span>
-                  <select value={plan.priority} onChange={(e) => setPlan({ ...plan, priority: e.target.value })} className="field w-full">
-                    {['P0', 'P1', 'P2', 'P3'].map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select>
+                  <Select
+                    value={plan.priority}
+                    onChange={(val) => setPlan({ ...plan, priority: val })}
+                    options={['P0', 'P1', 'P2', 'P3']}
+                    className="w-full"
+                  />
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-[11px] text-mist-400">workflow pin（可选）</span>
-                  <select value={plan.workflow ?? ''} onChange={(e) => setPlan({ ...plan, workflow: e.target.value || null })} className="field w-full">
-                    <option value="">（不指定）</option>
-                    {(result?.workflows ?? []).map((w) => <option key={w} value={w}>{w}</option>)}
-                  </select>
+                  <Select
+                    value={plan.workflow ?? ''}
+                    onChange={(val) => setPlan({ ...plan, workflow: val || null })}
+                    options={[
+                      { value: '', label: '（不指定）' },
+                      ...(result?.workflows ?? []).map((w) => ({ value: w, label: w }))
+                    ]}
+                    className="w-full"
+                  />
                 </label>
               </div>
               <div className="grid gap-3 md:grid-cols-2">

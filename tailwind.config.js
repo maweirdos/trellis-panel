@@ -56,6 +56,9 @@ export default {
           from: { opacity: '0', transform: 'translateX(24px)' },
           to: { opacity: '1', transform: 'translateX(0)' }
         }
+      },
+      boxShadow: {
+        xs: '0 1px 2px 0 rgb(0 0 0 / 0.05)'
       }
     }
   },

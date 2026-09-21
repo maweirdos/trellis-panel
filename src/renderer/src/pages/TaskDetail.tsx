@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   X,
   FolderOpen,
@@ -111,7 +111,15 @@ function useDocContent(path: string): { loading: boolean; content?: string; erro
 }
 
 /** 抽屉内嵌文档阅读器：渲染 PRD/Design，居中阅读栏 + 复制/放大 */
-function DocPane({ file, projectName, onOpenInViewer }: { file: FileEntry; projectName: string; onOpenInViewer: () => void }): JSX.Element {
+const DocPane = React.memo(function DocPane({
+  file,
+  projectName,
+  onOpenInViewer
+}: {
+  file: FileEntry
+  projectName: string
+  onOpenInViewer: () => void
+}): JSX.Element {
   const { loading, content, error } = useDocContent(file.path)
   const isMd = /\.(md|markdown)$/i.test(file.name)
   const [copied, setCopied] = useState(false)
@@ -145,7 +153,7 @@ function DocPane({ file, projectName, onOpenInViewer }: { file: FileEntry; proje
       </div>
     </div>
   )
-}
+})
 
 function FieldRow({
   field,
@@ -296,30 +304,29 @@ export function TaskDetail(): JSX.Element | null {
     return () => window.removeEventListener('keydown', onKey)
   }, [showTask])
 
-  useEffect(() => {
-    const onMove = (e: MouseEvent): void => {
-      if (!draggingRef.current) return
+  const onStartResize = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    document.body.style.cursor = 'ew-resize'
+    const onMove = (moveEv: MouseEvent): void => {
       const min = activeDocRef.current ? 520 : 360
-      const w = Math.min(1600, Math.max(min, window.innerWidth - e.clientX))
+      const w = Math.min(1600, Math.max(min, window.innerWidth - moveEv.clientX))
       setWidths((s) => (activeDocRef.current ? { ...s, doc: w } : { ...s, field: w }))
     }
     const onUp = (): void => {
-      if (!draggingRef.current) return
-      draggingRef.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
       document.body.style.cursor = ''
       setWidths((s) => {
-        localStorage.setItem(activeDocRef.current ? 'tpanel.drawerDocWidth' : 'tpanel.drawerWidth', String(activeDocRef.current ? s.doc : s.field))
+        localStorage.setItem(
+          activeDocRef.current ? 'tpanel.drawerDocWidth' : 'tpanel.drawerWidth',
+          String(activeDocRef.current ? s.doc : s.field)
+        )
         return s
       })
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-  }, [])
-  const draggingRef = useRef(false)
+  }
 
   useEffect(() => {
     setSel(null)
@@ -474,11 +481,7 @@ export function TaskDetail(): JSX.Element | null {
     <div className="relative flex h-full shrink-0 animate-slide-in flex-col border-l border-ink-700 bg-ink-850 shadow-2xl" style={{ width }}>
       {/* 左缘拖拽调宽手柄 */}
       <div
-        onMouseDown={(e) => {
-          e.preventDefault()
-          draggingRef.current = true
-          document.body.style.cursor = 'ew-resize'
-        }}
+        onMouseDown={onStartResize}
         className="absolute inset-y-0 left-0 z-30 w-1.5 cursor-ew-resize transition-colors hover:bg-leaf-dim/40"
         title="拖拽调整宽度"
       />

@@ -298,6 +298,96 @@ export interface GitLabTaskStatus {
   pipeline: GitLabPipelineInfo | null
 }
 
+/* ---------- WeKnora（公司级知识库联动） ---------- */
+
+export interface WeknoraConfig {
+  enabled: boolean
+  /** WeKnora 部署根地址；带不带 /api/v1 均可 */
+  baseUrl: string
+  /** X-API-Key（DPAPI 加密存储） */
+  apiKey: string
+  apiKeyEncrypted?: boolean
+  /** 联邦检索 / AI 规划的公司库范围（WeKnora 知识库 ID，可多个） */
+  searchKbIds: string[]
+  /** spec 同步目标库 ID */
+  specKbId: string
+  /** 归档沉淀目标库 ID */
+  archiveKbId: string
+  /** 归档任务时自动沉淀到公司库 */
+  autoPushArchive: boolean
+  /** .trellis/spec 变更自动同步到公司库（静默期后批量推送） */
+  syncSpec: boolean
+  /** WeKnora 内置 MCP Server 端点（Streamable HTTP），如 https://host/mcp/ep-xxx */
+  mcpUrl: string
+  /** 端点令牌（DPAPI 加密存储） */
+  mcpToken: string
+  mcpTokenEncrypted?: boolean
+}
+
+/** 主进程与渲染层共用的 weknora 默认值（旧 settings.json / 新旧主进程混跑时兜底） */
+export const WEKNORA_DEFAULTS: WeknoraConfig = {
+  enabled: false,
+  baseUrl: '',
+  apiKey: '',
+  searchKbIds: [],
+  specKbId: '',
+  archiveKbId: '',
+  autoPushArchive: true,
+  syncSpec: false,
+  mcpUrl: '',
+  mcpToken: ''
+}
+
+export interface WeknoraKbSummary {
+  id: string
+  name: string
+  knowledgeCount: number
+}
+
+export interface WeknoraHit {
+  knowledgeId: string
+  title: string
+  filename: string
+  /** file / url / manual */
+  sourceType: string
+  score: number
+  /** 命中分块文本 */
+  content: string
+}
+
+export interface WeknoraSearchResult {
+  ok: boolean
+  error?: string
+  hits: WeknoraHit[]
+  elapsedMs: number
+}
+
+export interface WeknoraDocSummary {
+  id: string
+  title: string
+  fileName: string
+  fileType: string
+  parseStatus: string
+  createdAt: string
+  channel: string
+}
+
+export interface WeknoraReadResult {
+  ok: boolean
+  error?: string
+  title?: string
+  fileName?: string
+  content?: string
+}
+
+export interface WeknoraPushResult {
+  ok: boolean
+  error?: string
+  knowledgeId?: string
+  /** 服务端按 file_hash 判定重复（409） */
+  duplicate?: boolean
+}
+
 /* ---------- Inbox (task triage) ---------- */
 
 export interface InboxItem {
@@ -314,6 +404,50 @@ export interface InboxNewEvent {
 
 /* ---------- Settings ---------- */
 
+export interface ModelItem {
+  id: string
+  name: string
+  contextWindow?: string
+  tags?: string[]
+  enabled: boolean
+  temperature?: number
+  maxTokens?: number
+  latencyMs?: number
+  lastTestedAt?: string
+}
+
+export type AiApiFormat = 'openai' | 'response' | 'anthropic' | 'ollama'
+
+export interface ModelProvider {
+  id: string
+  name: string
+  group?: string
+  icon?: string
+  enabled: boolean
+  baseUrl: string
+  apiFormat: AiApiFormat
+  apiKey: string
+  apiKeyEncrypted?: boolean
+  models: ModelItem[]
+  status?: 'connected' | 'untested' | 'error' | 'disabled'
+  latencyMs?: number
+  lastTestedAt?: string
+}
+
+export interface ModelFetchResult {
+  ok: boolean
+  error?: string
+  models?: ModelItem[]
+}
+
+export interface ModelTestResult {
+  ok: boolean
+  error?: string
+  latencyMs?: number
+  model?: string
+  message?: string
+}
+
 export interface AiConfig {
   enabled: boolean
   /** OpenAI 兼容 baseUrl，填到 /v1 即可；以 # 结尾则原样使用 */
@@ -323,6 +457,12 @@ export interface AiConfig {
   apiKeyEncrypted?: boolean
   model: string
   temperature: number
+  /** 当前激活的供应商 ID */
+  activeProviderId?: string
+  /** API 协议格式 */
+  apiFormat?: AiApiFormat
+  /** 多模型供应商列表 */
+  providers?: ModelProvider[]
 }
 
 export interface ChatMessage {
@@ -346,6 +486,8 @@ export interface Settings {
   gitlab: GitLabConfig
   /** 应用内 AI 能力（OpenAI 兼容 baseUrl 自定义模型） */
   ai: AiConfig
+  /** 公司级知识库联动（WeKnora） */
+  weknora: WeknoraConfig
   /** random per-install token; deep links must carry it */
   bridgeToken: string
   httpApi: { enabled: boolean; port: number; lanAccess: boolean; webBoard: boolean }
@@ -713,9 +855,18 @@ export interface TrellisApi {
   /* --- Knowledge 知识库 --- */
   kbSearch: (library: KbLibrary | 'all', query: string) => Promise<KbSearchResult>
 
-  /* --- AI（baseUrl 自定义模型） --- */
+  /* --- WeKnora 公司库联动 --- */
+  weknoraTest: (cfg: WeknoraConfig) => Promise<{ ok: boolean; error?: string; kbs?: WeknoraKbSummary[] }>
+  weknoraSearch: (query: string, limit?: number) => Promise<WeknoraSearchResult>
+  weknoraListDocs: (kbId: string) => Promise<{ ok: boolean; error?: string; docs?: WeknoraDocSummary[] }>
+  weknoraRead: (knowledgeId: string) => Promise<WeknoraReadResult>
+  weknoraTestMcp: (url: string, token: string) => Promise<{ ok: boolean; error?: string }>
+
+  /* --- AI（baseUrl 自定义模型与多供应商） --- */
   aiChat: (messages: ChatMessage[]) => Promise<AiChatResult>
   aiTest: (cfg: AiConfig) => Promise<AiChatResult>
+  aiFetchModels: (provider: ModelProvider) => Promise<ModelFetchResult>
+  aiTestModel: (provider: ModelProvider, modelId: string) => Promise<ModelTestResult>
   aiPrdDraft: (dirName: string) => Promise<AiChatResult>
   aiSummary: (dirName: string) => Promise<AiChatResult>
   aiPlan: (input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) => Promise<PlanResult>

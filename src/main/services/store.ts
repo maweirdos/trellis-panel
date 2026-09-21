@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { randomBytes } from 'crypto'
+import { WEKNORA_DEFAULTS } from '../../shared/types'
 import type { Settings } from '../../shared/types'
 
 const DEFAULTS: Settings = {
@@ -31,6 +32,7 @@ const DEFAULTS: Settings = {
     model: '',
     temperature: 0.3
   },
+  weknora: { ...WEKNORA_DEFAULTS },
   bridgeToken: '',
   httpApi: { enabled: false, port: 39573, lanAccess: false, webBoard: true },
   desktop: { autoStart: false, globalShortcut: 'Alt+Shift+T', autoUpdate: false }
@@ -58,6 +60,7 @@ export function getSettings(): Settings {
       jira: { ...DEFAULTS.jira, ...(parsed.jira ?? {}) },
       gitlab: { ...DEFAULTS.gitlab, ...(parsed.gitlab ?? {}) },
       ai: { ...DEFAULTS.ai, ...(parsed.ai ?? {}) },
+      weknora: { ...DEFAULTS.weknora, ...(parsed.weknora ?? {}) },
       httpApi: { ...DEFAULTS.httpApi, ...(parsed.httpApi ?? {}) },
       desktop: { ...DEFAULTS.desktop, ...(parsed.desktop ?? {}) }
     }
@@ -90,6 +93,7 @@ export function setSettings(patch: Partial<Settings>): Settings {
     jira: patch.jira ? { ...cur.jira, ...patch.jira } : cur.jira,
     gitlab: patch.gitlab ? { ...cur.gitlab, ...patch.gitlab } : cur.gitlab,
     ai: patch.ai ? { ...cur.ai, ...patch.ai } : cur.ai,
+    weknora: patch.weknora ? { ...cur.weknora, ...patch.weknora } : cur.weknora,
     httpApi: patch.httpApi ? { ...cur.httpApi, ...patch.httpApi } : cur.httpApi,
     desktop: patch.desktop ? { ...cur.desktop, ...patch.desktop } : cur.desktop
   }

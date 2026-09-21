@@ -28,6 +28,8 @@ interface GEdge {
   to: string
   path: string
   label?: string
+  labelX?: number
+  labelY?: number
   main?: boolean
   dashed?: boolean
   delay?: number
@@ -73,20 +75,21 @@ const EDGES: GEdge[] = [
   /* 工具调用 → PreToolUse（Task 派发） */
   { from: 'toolcall', to: 'pretooluse', path: 'M1067,128 V212 H309 V250', main: true, label: 'Task 派发' },
   { from: 'pretooluse', to: 'subagent', path: 'M388,279 H438', main: true, label: '注入' },
-  /* 子代理结果回传模型 */
-  { from: 'subagent', to: 'model', path: 'M522,250 V166 H883 V128', dashed: true, label: '回传' },
-  /* get_context 按需 */
-  { from: 'getctx', to: 'model', path: 'M735,250 V186 H883 V128', dashed: true, label: '按需' },
-  { from: 'model', to: 'dispatch', path: 'M900,128 V222 H943 V250', dashed: true },
+  /* 子代理结果回传模型：由 x=855 进入模型左侧，避免与按需路径重叠 */
+  { from: 'subagent', to: 'model', path: 'M522,250 V166 H855 V128', dashed: true, label: '回传' },
+  /* get_context 按需：由 x=890 进入模型中间 */
+  { from: 'getctx', to: 'model', path: 'M735,250 V186 H890 V128', dashed: true, label: '按需' },
+  /* 模型 → Codex 调度：由 x=925 离开模型右侧 */
+  { from: 'model', to: 'dispatch', path: 'M925,128 V222 H943 V250', dashed: true },
   /* 生命周期链 */
   { from: 'st-create', to: 'st-planning', path: 'M180,497 H220', main: true },
   { from: 'st-planning', to: 'st-doing', path: 'M370,497 H410', main: true },
   { from: 'st-doing', to: 'st-review', path: 'M560,497 H600', main: true },
   { from: 'st-review', to: 'st-done', path: 'M750,497 H790', main: true },
   { from: 'st-done', to: 'st-archive', path: 'M940,497 H980', main: true },
-  { from: 'st-review', to: 'st-doing', path: 'M640,524 V560 H485 V524', dashed: true, label: '退回' },
-  /* 状态驱动注入 */
-  { from: 'st-doing', to: 'state-inject', path: 'M485,470 V214 H690 V128', dashed: true, label: '状态驱动' }
+  { from: 'st-review', to: 'st-doing', path: 'M640,524 V560 H485 V524', dashed: true, label: '退回', labelX: 562, labelY: 574 },
+  /* 状态驱动注入：彻底分离路径，从 st-doing 经由泳道间隙上行，消除与 Task 派发实线的重叠 */
+  { from: 'st-doing', to: 'state-inject', path: 'M485,470 V380 H631 V148 H690 V128', dashed: true, label: '状态驱动', labelX: 558, labelY: 374 }
 ]
 
 const LANE_LABELS: Array<{ y: number; text: string }> = [
@@ -141,6 +144,33 @@ export function ArchitecturePage(): JSX.Element {
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto p-3">
           <svg key={runId} viewBox={`0 0 ${W} ${H}`} className="arch-svg h-full min-h-[520px] w-full">
+            <defs>
+              {/* 虚线箭头（默认） */}
+              <marker
+                id="arch-arrow-dashed"
+                viewBox="0 0 10 10"
+                refX="7"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path d="M 1 2 L 7 5 L 1 8 Z" className="arch-marker-dashed" />
+              </marker>
+              {/* 虚线箭头（选中激活） */}
+              <marker
+                id="arch-arrow-active"
+                viewBox="0 0 10 10"
+                refX="7"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path d="M 1 2 L 7 5 L 1 8 Z" className="arch-marker-active" />
+              </marker>
+            </defs>
+
             {/* 泳道底 */}
             {LANE_LABELS.map((l) => (
               <g key={l.y}>
@@ -156,7 +186,18 @@ export function ArchitecturePage(): JSX.Element {
               const active = selected && (selected.id === e.from || selected.id === e.to)
               return (
                 <g key={i} className={clsx('arch-edge', active && 'arch-edge-active', e.main && 'arch-edge-main')}>
-                  <path d={e.path} fill="none" className={clsx('arch-edge-path', e.dashed && 'arch-edge-dashed')} />
+                  <path
+                    d={e.path}
+                    fill="none"
+                    className={clsx('arch-edge-path', e.dashed && 'arch-edge-dashed')}
+                    markerEnd={
+                      e.dashed
+                        ? active
+                          ? 'url(#arch-arrow-active)'
+                          : 'url(#arch-arrow-dashed)'
+                        : undefined
+                    }
+                  />
                   {e.main && !e.dashed && (
                     <circle r={3.2} className="arch-flow-dot">
                       <animateMotion dur="3.2s" begin={`${(i % 5) * 0.4}s`} repeatCount="indefinite" path={e.path} />
@@ -164,8 +205,8 @@ export function ArchitecturePage(): JSX.Element {
                   )}
                   {e.label && (
                     <text
-                      x={(from.x + from.w / 2 + to.x + to.w / 2) / 2}
-                      y={(from.y + from.h / 2 + to.y + to.h / 2) / 2 - 8}
+                      x={e.labelX ?? (from.x + from.w / 2 + to.x + to.w / 2) / 2}
+                      y={e.labelY ?? (from.y + from.h / 2 + to.y + to.h / 2) / 2 - 8}
                       className="arch-edge-label"
                     >
                       {e.label}

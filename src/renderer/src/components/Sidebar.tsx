@@ -13,6 +13,7 @@ import {
   Wand2,
   Radio,
   Network,
+  Boxes,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react'
@@ -50,6 +51,7 @@ const GROUPS: Array<{ label: string; items: Array<{ id: Page; label: string; ico
     items: [
       { id: 'architecture', label: '架构图', icon: <Network size={16} /> },
       { id: 'studio', label: '定制中心', icon: <Wand2 size={16} /> },
+      { id: 'models', label: '模型管理', icon: <Boxes size={16} /> },
       { id: 'settings', label: '设置', icon: <Settings size={16} /> }
     ]
   }
@@ -83,7 +85,7 @@ export function Sidebar(): JSX.Element {
   return (
     <aside
       className={clsx(
-        'flex shrink-0 flex-col border-r border-ink-700 bg-ink-850/60 transition-all duration-200 ease-in-out',
+        'flex shrink-0 flex-col border-r border-ink-700 bg-ink-850 transition-all duration-200 ease-in-out',
         sidebarCollapsed ? 'w-14' : 'w-52'
       )}
     >

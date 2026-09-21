@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Search,
   Filter,
@@ -7,6 +7,7 @@ import {
   Paperclip,
   CircleCheck,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   Sparkles,
   Layers,
@@ -41,6 +42,7 @@ import { CodeView } from '../components/CodeView'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import { DoDModal } from '../components/DoDModal'
 import { FocusTimer } from '../components/FocusTimer'
+import { Select } from '../components/Select'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
 
@@ -82,9 +84,15 @@ function matchTaskByRef(ref: string | null | undefined, tasks: TaskInfo[]): Task
 
 /* ---------------- Kanban card ---------------- */
 
-function TaskCard({ t, onOpen }: { t: TaskInfo; onOpen: () => void }): JSX.Element {
-  const current = useApp((s) => s.snapshot?.meta.currentTask)
-  const isCurrent = current === t.dirName
+const TaskCard = React.memo(function TaskCard({
+  t,
+  isCurrent,
+  onOpen
+}: {
+  t: TaskInfo
+  isCurrent?: boolean
+  onOpen: () => void
+}): JSX.Element {
   const prog = subtaskProgress(t)
   const jira = jiraKeyOf(t)
   const fullTitle = t.record?.title ?? t.dirName
@@ -135,11 +143,11 @@ function TaskCard({ t, onOpen }: { t: TaskInfo; onOpen: () => void }): JSX.Eleme
       </div>
     </div>
   )
-}
+})
 
 /* ---------------- Epic card（需求 → 子任务折叠组） ---------------- */
 
-function EpicCard({
+const EpicCard = React.memo(function EpicCard({
   epic,
   children,
   onOpen
@@ -229,7 +237,7 @@ function EpicCard({
       )}
     </div>
   )
-}
+})
 
 /* ---------------- List row ---------------- */
 
@@ -623,84 +631,90 @@ function TaskWorkspace({
   const activeDocItem = docTabs.find((d) => d.path === activeDocPath)
 
   return (
-    <div className="flex h-full min-h-0 flex-1 overflow-hidden animate-fade-in">
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden">
       {/* 左侧：树形需求导轨（保持需求组层级，杜绝打散） */}
       <div
         className={clsx(
-          'flex shrink-0 flex-col border-r border-ink-700/80 bg-ink-900/60 transition-all duration-200 ease-in-out',
-          leftRailOpen ? 'w-72' : 'w-11'
+          'flex shrink-0 flex-col border-r border-ink-700 bg-ink-900 transition-all duration-200 ease-in-out',
+          leftRailOpen ? 'w-56' : 'w-11'
         )}
       >
-        {/* 顶部控制栏：返回看板 + 收起展开 + 状态筛选 */}
-        <div className="border-b border-ink-700/70 text-[11px]">
-          {leftRailOpen ? (
-            <>
-              <div className="flex h-11 items-center justify-between px-2.5">
-                <button
-                  onClick={onClose}
-                  className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-mist-300 hover:bg-ink-750 hover:text-mist-50 transition-colors"
-                  title="返回四列看板 (快捷键 Esc)"
-                >
-                  <ArrowLeft size={13.5} />
-                  <span>返回看板</span>
-                </button>
-                <button
-                  onClick={() => setLeftRailOpen(false)}
-                  className="btn-ghost p-1.5 text-mist-400 hover:text-mist-100"
-                  title="收起任务导轨（释放更多阅读空间）"
-                >
-                  <PanelLeftClose size={14} />
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-1 border-t border-ink-750/50 bg-ink-850/40 px-2 py-1.5 text-[10.5px]">
-                <button
-                  onClick={() => setFilterStatus(null)}
-                  className={clsx(
-                    'rounded px-1.5 py-0.5 transition-colors',
-                    filterStatus === null ? 'bg-leaf-dim/20 font-semibold text-leaf-soft' : 'text-mist-500 hover:text-mist-200'
-                  )}
-                >
-                  全部 {tasks.length}
-                </button>
-                {columns.map((c) => {
-                  const count = tasks.filter((t) => matchCol(t, c.status)).length
-                  const on = filterStatus === c.status
-                  return (
-                    <button
-                      key={c.status}
-                      onClick={() => setFilterStatus(on ? null : c.status)}
-                      className={clsx(
-                        'flex items-center gap-1 rounded px-1 py-0.5 transition-colors',
-                        on ? 'bg-ink-750 font-semibold text-mist-100' : 'text-mist-500 hover:text-mist-300'
-                      )}
-                      title={c.label}
-                    >
-                      <span className={clsx('h-1.5 w-1.5 rounded-full', c.dot)} />
-                      <span>{count}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center gap-2 py-2">
+        {/* 顶部控制栏：返回看板 + 收起展开 + 状态筛选 (两行独立镜像右侧，消除复合边框叠压) */}
+        {leftRailOpen ? (
+          <>
+            {/* 第 1 行：返回看板栏 (44px，与右侧 Primary Header 100% 对齐) */}
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-ink-700 bg-ink-850/90 px-2.5">
               <button
                 onClick={onClose}
+                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-mist-300 hover:bg-ink-750 hover:text-mist-50 transition-colors"
+                title="返回四列看板 (快捷键 Esc)"
+              >
+                <ArrowLeft size={13.5} />
+                <span>返回看板</span>
+              </button>
+              <button
+                onClick={() => setLeftRailOpen(false)}
                 className="btn-ghost p-1.5 text-mist-400 hover:text-mist-100"
+                title="收起任务导轨（释放更多阅读空间）"
+              >
+                <PanelLeftClose size={14} />
+              </button>
+            </div>
+            {/* 第 2 行：状态筛选栏 (36px，与右侧 Secondary Tab 栏 100% 对齐) */}
+            <div className="flex h-9 shrink-0 items-center flex-wrap gap-1 border-b border-ink-700/60 bg-ink-850/50 px-2 text-[10.5px]">
+              <button
+                onClick={() => setFilterStatus(null)}
+                className={clsx(
+                  'rounded px-1.5 py-0.5 transition-colors',
+                  filterStatus === null ? 'bg-leaf-dim/20 font-semibold text-leaf-soft' : 'text-mist-500 hover:text-mist-200'
+                )}
+              >
+                全部 {tasks.length}
+              </button>
+              {columns.map((c) => {
+                const count = tasks.filter((t) => matchCol(t, c.status)).length
+                const on = filterStatus === c.status
+                return (
+                  <button
+                    key={c.status}
+                    onClick={() => setFilterStatus(on ? null : c.status)}
+                    className={clsx(
+                      'flex items-center gap-1 rounded px-1 py-0.5 transition-colors',
+                      on ? 'bg-ink-750 font-semibold text-mist-100' : 'text-mist-500 hover:text-mist-300'
+                    )}
+                    title={c.label}
+                  >
+                    <span className={clsx('h-1.5 w-1.5 rounded-full', c.dot)} />
+                    <span>{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* 收起状态第 1 行：返回看板 (44px，与右侧 Primary Header 100% 对齐) */}
+            <div className="flex h-11 shrink-0 items-center justify-center border-b border-ink-700 bg-ink-850/90">
+              <button
+                onClick={onClose}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-mist-400 hover:bg-ink-750 hover:text-mist-100 transition-colors cursor-pointer"
                 title="返回四列看板 (Esc)"
               >
                 <ArrowLeft size={14} />
               </button>
+            </div>
+            {/* 收起状态第 2 行：展开导轨 (36px，与右侧 Secondary Tab 栏 100% 对齐) */}
+            <div className="flex h-9 shrink-0 items-center justify-center border-b border-ink-700/60 bg-ink-850/50">
               <button
                 onClick={() => setLeftRailOpen(true)}
-                className="btn-ghost p-1.5 text-mist-400 hover:text-mist-100"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-mist-400 hover:bg-ink-750 hover:text-mist-100 transition-colors cursor-pointer"
                 title="展开任务导轨"
               >
                 <PanelLeftOpen size={14} />
               </button>
             </div>
-          )}
-        </div>
+          </>
+        )}
 
         {/* 树形列表内容 */}
         {leftRailOpen && (
@@ -718,46 +732,80 @@ function TaskWorkspace({
                   const isEpicSelected = epic.dirName === selected
                   const isChildSelected = children.some((c) => c.dirName === selected)
                   const doneCount = children.filter((c) => matchCol(c, 'completed')).length
+                  const epicCol = columns.find((x) => matchCol(epic, x.status))
+
+                  // 若开启状态筛选且该需求组与子任务均不符合，则过滤隐藏
+                  if (filterStatus !== null && !matchCol(epic, filterStatus) && visibleChildren.length === 0) {
+                    return null
+                  }
 
                   return (
                     <div
                       key={epic.dirName}
                       className={clsx(
-                        'rounded-lg border transition-all',
-                        isEpicSelected || isChildSelected
-                          ? 'border-leaf-dim/40 bg-ink-850/70 ring-1 ring-leaf-dim/30'
-                          : 'border-ink-750/70 bg-ink-850/40 hover:border-ink-600'
+                        'overflow-hidden rounded-lg border transition-all shadow-xs',
+                        isEpicSelected
+                          ? 'border-leaf-dim/60 bg-ink-800 ring-1 ring-leaf-dim/40'
+                          : isChildSelected
+                            ? 'border-ink-600 bg-ink-800'
+                            : 'border-ink-700/80 bg-ink-800 hover:border-ink-600'
                       )}
                     >
-                      {/* 需求组节点 */}
-                      <div className="flex items-center p-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setCollapsedEpics((s) => ({ ...s, [epic.dirName]: !isCollapsed }))}
-                          className="p-1 text-mist-500 hover:text-leaf"
-                          title={isCollapsed ? '展开子任务' : '收起子任务'}
-                        >
-                          {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-                        </button>
-                        <button
-                          onClick={() => onSelect(epic.dirName)}
-                          className={clsx(
-                            'flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs transition-colors',
-                            isEpicSelected ? 'font-semibold text-leaf-soft' : 'text-mist-200 hover:text-mist-50'
-                          )}
-                          title={`查看需求组 · ${epic.record?.title ?? epic.dirName}`}
-                        >
+                      {/* 需求组节点卡片头：点击查看需求组本身，支持展开/收起 */}
+                      <div
+                        onClick={() => onSelect(epic.dirName)}
+                        className={clsx(
+                          'group cursor-pointer p-2 transition-colors',
+                          isEpicSelected ? 'bg-leaf-dim/15' : 'hover:bg-ink-750/50'
+                        )}
+                      >
+                        {/* 上行：折叠箭头 + 需求组标识 + 优先级 + 标题 + 进度徽标 */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setCollapsedEpics((s) => ({ ...s, [epic.dirName]: !isCollapsed }))
+                            }}
+                            className="shrink-0 rounded p-0.5 text-mist-500 hover:bg-ink-700 hover:text-leaf transition-colors"
+                            title={isCollapsed ? '展开子任务' : '收起子任务'}
+                          >
+                            {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                          </button>
                           <Layers size={11} className="shrink-0 text-leaf" />
-                          <span className="truncate">{epic.record?.title ?? epic.dirName}</span>
-                          <span className="ml-auto shrink-0 rounded bg-ink-750 px-1 font-mono text-[9.5px] text-mist-400">
+                          {epic.record?.priority && <PriorityBadge priority={epic.record.priority} />}
+                          <span
+                            className={clsx(
+                              'min-w-0 flex-1 truncate text-xs transition-colors',
+                              isEpicSelected ? 'font-medium text-leaf-soft' : 'text-mist-200 group-hover:text-mist-100'
+                            )}
+                            title={`需求组 · ${epic.record?.title ?? epic.dirName}`}
+                          >
+                            {epic.record?.title ?? epic.dirName}
+                          </span>
+                          <span
+                            className="shrink-0 rounded bg-ink-750/90 px-1 font-mono text-[9.5px] text-mist-400"
+                            title={`子任务完成度：${doneCount}/${children.length}`}
+                          >
                             {doneCount}/{children.length}
                           </span>
-                        </button>
+                        </div>
+
+                        {/* 下行：与独立任务完全同构的分配人与状态 */}
+                        <div className="mt-1.5 flex items-center gap-2 text-[10px] text-mist-500">
+                          <span className="truncate" title={`分配人：${epic.record?.assignee || '未分配'}`}>
+                            {epic.record?.assignee || '未分配'}
+                          </span>
+                          <span className="ml-auto flex shrink-0 items-center gap-1">
+                            <span className={clsx('h-1.5 w-1.5 rounded-full', epicCol?.dot ?? 'bg-mist-600')} />
+                            <span className="text-mist-400">{epicCol?.label ?? '规划中'}</span>
+                          </span>
+                        </div>
                       </div>
 
                       {/* 子任务列表 */}
                       {!isCollapsed && visibleChildren.length > 0 && (
-                        <div className="space-y-0.5 border-t border-ink-750/50 bg-ink-900/40 p-1.5 pl-6">
+                        <div className="space-y-0.5 border-t border-ink-700/60 bg-ink-900/60 p-1.5 pl-5">
                           {visibleChildren.map((c) => {
                             const isSel = c.dirName === selected
                             const col = columns.find((x) => matchCol(c, x.status))
@@ -771,13 +819,10 @@ function TaskWorkspace({
                                     ? 'bg-leaf-dim/20 font-medium text-leaf-soft'
                                     : 'text-mist-300 hover:bg-ink-750/60 hover:text-mist-100'
                                 )}
-                                title={c.record?.title ?? c.dirName}
+                                title={`子任务 · ${c.record?.title ?? c.dirName}${c.record?.assignee ? ` · ${c.record.assignee}` : ''}`}
                               >
                                 <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', col?.dot ?? 'bg-mist-600')} />
                                 <span className="min-w-0 flex-1 truncate">{c.record?.title ?? c.dirName}</span>
-                                <span className="shrink-0 font-mono text-[10px] text-mist-500">
-                                  {c.record?.assignee || col?.label}
-                                </span>
                               </button>
                             )
                           })}
@@ -791,7 +836,7 @@ function TaskWorkspace({
 
             {/* 独立任务分组列表 */}
             {standalonesList.length > 0 && (
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-mist-500">独立任务</div>
                 {standalonesList
                   .filter((t) => filterStatus === null || matchCol(t, filterStatus))
@@ -803,23 +848,34 @@ function TaskWorkspace({
                         key={t.dirName}
                         onClick={() => onSelect(t.dirName)}
                         className={clsx(
-                          'cursor-pointer rounded-md border p-2 text-left transition-all',
+                          'group cursor-pointer rounded-lg border p-2 text-left transition-all shadow-xs',
                           isSel
-                            ? 'border-leaf-dim/50 bg-leaf-dim/15 text-mist-50 ring-1 ring-leaf-dim/40'
-                            : 'border-ink-750/60 bg-ink-850/40 hover:border-ink-600 hover:bg-ink-750/60'
+                            ? 'border-leaf-dim/60 bg-leaf-dim/15 text-mist-50 ring-1 ring-leaf-dim/40'
+                            : 'border-ink-700/80 bg-ink-800 hover:border-ink-600 hover:shadow-sm'
                         )}
                       >
+                        {/* 上行：优先级徽标 + 任务标题 */}
                         <div className="flex items-center gap-1.5">
                           <PriorityBadge priority={t.record?.priority ?? ''} />
-                          <span className="min-w-0 flex-1 truncate text-xs text-mist-200">
+                          <span
+                            className={clsx(
+                              'min-w-0 flex-1 truncate text-xs transition-colors',
+                              isSel ? 'font-medium text-leaf-soft' : 'text-mist-200 group-hover:text-mist-100'
+                            )}
+                            title={t.record?.title ?? t.dirName}
+                          >
                             {t.record?.title ?? t.dirName}
                           </span>
                         </div>
-                        <div className="mt-1 flex items-center gap-2 text-[10px] text-mist-500">
-                          <span className="truncate">{t.record?.assignee || '未分配'}</span>
-                          <span className="ml-auto flex items-center gap-1">
+
+                        {/* 下行：分配人与状态 */}
+                        <div className="mt-1.5 flex items-center gap-2 text-[10px] text-mist-500">
+                          <span className="truncate" title={`分配人：${t.record?.assignee || '未分配'}`}>
+                            {t.record?.assignee || '未分配'}
+                          </span>
+                          <span className="ml-auto flex shrink-0 items-center gap-1">
                             <span className={clsx('h-1.5 w-1.5 rounded-full', col?.dot ?? 'bg-mist-600')} />
-                            <span>{col?.label}</span>
+                            <span className="text-mist-400">{col?.label ?? '规划中'}</span>
                           </span>
                         </div>
                       </div>
@@ -830,9 +886,127 @@ function TaskWorkspace({
           </div>
         )}
 
+        {/* 收起状态下的迷你任务气泡导轨 */}
+        {!leftRailOpen && (
+          <div className="min-h-0 flex-1 flex flex-col items-center gap-2 overflow-y-auto py-3 px-1.5 scrollbar-none">
+            {/* 需求组气泡 */}
+            {epicsList.map((epic) => {
+              const children = childMap.get(epic.dirName) ?? []
+              const isEpicSelected = epic.dirName === selected
+              const isChildSelected = children.some((c) => c.dirName === selected)
+              const epicCol = columns.find((x) => matchCol(epic, x.status))
+              const doneCount = children.filter((c) => matchCol(c, 'completed')).length
+
+              return (
+                <button
+                  key={epic.dirName}
+                  onClick={() => onSelect(epic.dirName)}
+                  title={`【需求组】${epic.record?.title ?? epic.dirName}\n子任务：${doneCount}/${children.length}\n负责人：${epic.record?.assignee || '未分配'}\n状态：${epicCol?.label ?? '规划中'}`}
+                  className={clsx(
+                    'group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-all cursor-pointer shadow-xs',
+                    isEpicSelected
+                      ? 'border-leaf bg-leaf/10 text-leaf-soft ring-2 ring-leaf/20 dark:bg-leaf/15 dark:text-leaf'
+                      : isChildSelected
+                        ? 'border-leaf-dim/40 bg-ink-800 text-leaf-soft'
+                        : 'border-ink-700/80 bg-ink-800/90 text-mist-400 hover:border-ink-500 hover:bg-ink-750 hover:text-mist-100'
+                  )}
+                >
+                  <Layers
+                    size={14}
+                    className={clsx(
+                      'transition-colors',
+                      isEpicSelected
+                        ? 'text-leaf-soft dark:text-leaf'
+                        : isChildSelected
+                          ? 'text-leaf-soft'
+                          : 'text-mist-400 group-hover:text-mist-100'
+                    )}
+                  />
+                  {/* 状态指示圆点 */}
+                  <span
+                    className={clsx(
+                      'absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-ink-900',
+                      epicCol?.dot ?? 'bg-mist-600'
+                    )}
+                  />
+                </button>
+              )
+            })}
+
+            {/* 分割线 */}
+            {epicsList.length > 0 && standalonesList.length > 0 && (
+              <div className="my-0.5 h-px w-5 bg-ink-700/60 shrink-0" />
+            )}
+
+            {/* 独立任务气泡 */}
+            {standalonesList.map((t) => {
+              const isSel = t.dirName === selected
+              const col = columns.find((x) => matchCol(t, x.status))
+              const rawPriority = t.record?.priority
+              const hasPriority = Boolean(
+                rawPriority &&
+                  typeof rawPriority === 'string' &&
+                  rawPriority.trim() !== '' &&
+                  rawPriority.toUpperCase() !== 'P?' &&
+                  rawPriority.toUpperCase() !== '?'
+              )
+              const priority = hasPriority ? rawPriority!.trim().toUpperCase() : null
+
+              return (
+                <button
+                  key={t.dirName}
+                  onClick={() => onSelect(t.dirName)}
+                  title={`【任务】${t.record?.title ?? t.dirName}\n优先级：${priority || '未设定'}\n负责人：${t.record?.assignee || '未分配'}\n状态：${col?.label ?? '规划中'}`}
+                  className={clsx(
+                    'group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-all cursor-pointer shadow-xs',
+                    isSel
+                      ? 'border-leaf bg-leaf/10 text-leaf-soft ring-2 ring-leaf/20 dark:bg-leaf/15 dark:text-leaf'
+                      : 'border-ink-700/80 bg-ink-800/90 text-mist-300 hover:border-ink-500 hover:bg-ink-750 hover:text-mist-100'
+                  )}
+                >
+                  {priority ? (
+                    <span
+                      className={clsx(
+                        'font-mono text-[10px] font-bold leading-none tracking-tight',
+                        priority === 'P0'
+                          ? 'text-rose-500 dark:text-rose-400'
+                          : priority === 'P1'
+                            ? 'text-amber-500 dark:text-amber-400'
+                            : priority === 'P2'
+                              ? 'text-sky-500 dark:text-sky-400'
+                              : isSel
+                                ? 'text-leaf-soft dark:text-leaf'
+                                : 'text-mist-300'
+                      )}
+                    >
+                      {priority}
+                    </span>
+                  ) : (
+                    <FileText
+                      size={13.5}
+                      className={clsx(
+                        'transition-colors',
+                        isSel ? 'text-leaf-soft dark:text-leaf' : 'text-mist-400 group-hover:text-mist-100'
+                      )}
+                    />
+                  )}
+
+                  {/* 状态指示圆点 */}
+                  <span
+                    className={clsx(
+                      'absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-ink-900',
+                      col?.dot ?? 'bg-mist-600'
+                    )}
+                  />
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* 底部导航翻页 */}
-        {leftRailOpen && (
-          <div className="flex items-center gap-2 border-t border-ink-700/70 bg-ink-850/60 px-3 py-2 text-[11px]">
+        {leftRailOpen ? (
+          <div className="flex items-center gap-2 border-t border-ink-700 bg-ink-850/60 px-3 py-2 text-[11px]">
             <button onClick={() => goto(-1)} disabled={idx <= 0} className="btn-ghost px-2 py-0.5 text-[11px] disabled:opacity-30">
               ← 上篇
             </button>
@@ -841,13 +1015,33 @@ function TaskWorkspace({
               下篇 →
             </button>
           </div>
+        ) : (
+          <div className="flex flex-col items-center gap-0.5 border-t border-ink-700 bg-ink-850/60 py-1">
+            <button
+              onClick={() => goto(-1)}
+              disabled={idx <= 0}
+              className="p-1 text-mist-400 hover:text-mist-100 disabled:opacity-20 cursor-pointer"
+              title="上一篇任务"
+            >
+              <ChevronUp size={11} />
+            </button>
+            <span className="font-mono text-[8.5px] text-mist-500">{idx + 1}/{tasks.length}</span>
+            <button
+              onClick={() => goto(1)}
+              disabled={idx >= tasks.length - 1}
+              className="p-1 text-mist-400 hover:text-mist-100 disabled:opacity-20 cursor-pointer"
+              title="下一篇任务"
+            >
+              <ChevronDown size={11} />
+            </button>
+          </div>
         )}
       </div>
 
       {/* 右侧：主阅读与一体化工作区 */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ink-900">
-        {/* 任务工作台 Primary Header：任务主控栏 (42px，居于主导地位) */}
-        <div className="flex h-[42px] shrink-0 items-center justify-between border-b border-ink-750/80 bg-ink-900 px-4 backdrop-blur-sm">
+        {/* 任务工作台 Primary Header：任务主控栏 (44px，与左侧第一行严格对齐) */}
+        <div className="flex h-11 shrink-0 items-center justify-between border-b border-ink-700 bg-ink-850/90 px-4 backdrop-blur-sm">
           {/* 左侧：任务身份与正式标题（清晰的主视觉） */}
           <div className="flex min-w-0 items-center gap-2 text-xs">
             {parentTask ? (
@@ -896,7 +1090,7 @@ function TaskWorkspace({
           {/* 右侧：结构化功能操作区 */}
           <div className="flex items-center gap-2.5 shrink-0">
             {/* 分组 1：核心状态与属性 */}
-            <div className="flex items-center gap-1.5 rounded-lg bg-ink-800/80 p-0.5 border border-ink-750/70">
+            <div className="flex items-center gap-1.5 rounded-lg bg-ink-800 p-0.5 border border-ink-700/80 shadow-xs">
               <StatusDropdown
                 value={statusOf(task)}
                 columns={columns}
@@ -983,8 +1177,8 @@ function TaskWorkspace({
           </div>
         </div>
 
-        {/* 文档 Secondary Tabs：轻量分段视图切换栏 (32px，从属于主控栏) */}
-        <div className="flex h-8 shrink-0 items-center justify-between border-b border-ink-800/80 bg-ink-850/40 px-4">
+        {/* 文档 Secondary Tabs：轻量分段视图切换栏 (36px，与左侧第二行严格对齐) */}
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-ink-700/60 bg-ink-850/50 px-4">
           {/* 左侧：轻量分段胶囊 Tabs */}
           <div className="flex items-center gap-1.5">
             {/* PRD Tab */}
@@ -998,7 +1192,7 @@ function TaskWorkspace({
               className={clsx(
                 'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] transition-all',
                 activeDocType === 'prd'
-                  ? 'bg-ink-750 text-mist-50 font-medium shadow-sm border border-ink-700/60'
+                  ? 'bg-ink-800 text-mist-50 font-medium shadow-xs border border-ink-700/70'
                   : 'text-mist-400 hover:text-mist-200 hover:bg-ink-800/50'
               )}
             >
@@ -1020,7 +1214,7 @@ function TaskWorkspace({
               className={clsx(
                 'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] transition-all',
                 activeDocType === 'design'
-                  ? 'bg-ink-750 text-mist-50 font-medium shadow-sm border border-ink-700/60'
+                  ? 'bg-ink-800 text-mist-50 font-medium shadow-xs border border-ink-700/70'
                   : 'text-mist-400 hover:text-mist-200 hover:bg-ink-800/50'
               )}
             >
@@ -1045,7 +1239,7 @@ function TaskWorkspace({
                   className={clsx(
                     'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] transition-all',
                     activeDocPath === d.path
-                      ? 'bg-ink-750 text-mist-50 font-medium shadow-sm border border-ink-700/60'
+                      ? 'bg-ink-800 text-mist-50 font-medium shadow-xs border border-ink-700/70'
                       : 'text-mist-400 hover:text-mist-200 hover:bg-ink-800/50'
                   )}
                 >
@@ -1056,7 +1250,7 @@ function TaskWorkspace({
 
             {/* 激活的执行产物动态 Tab */}
             {activeDocType === 'artifact' && (
-              <div className="flex items-center gap-1.5 rounded-md bg-ink-750 px-2.5 py-1 text-[11.5px] font-medium text-mist-50 border border-ink-700/60 shadow-sm">
+              <div className="flex items-center gap-1.5 rounded-md bg-ink-800 px-2.5 py-1 text-[11.5px] font-medium text-mist-50 border border-ink-700/70 shadow-xs">
                 <FileCode size={12} className="text-leaf-soft" />
                 <span className="truncate max-w-[140px]">{activeDocName}</span>
                 <button
@@ -1080,8 +1274,8 @@ function TaskWorkspace({
 
         {/* 双列/单列工作台容器（宽阔阅读区域） */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {/* 中间：自适应宽幅文档阅读区 */}
-          <div ref={docContainerRef} className="flex-1 min-w-0 overflow-y-auto px-8 py-6">
+          {/* 中间：自适应宽幅文档阅读区（纯白/纯黑纸张画布） */}
+          <div ref={docContainerRef} className="flex-1 min-w-0 overflow-y-auto bg-ink-950 px-6 py-5">
             <div className={clsx('mx-auto transition-all', rightAsideOpen ? 'max-w-[1080px]' : 'max-w-[1240px]')}>
               {/* AI 摘要卡片 */}
               {aiSummaryText && (
@@ -1182,7 +1376,7 @@ function TaskWorkspace({
 
           {/* 右侧：结构化辅助栏（支持一键折叠，释放极宽阅读空间） */}
           {rightAsideOpen && (
-            <div className="w-72 shrink-0 space-y-5 overflow-y-auto border-l border-ink-700/70 bg-ink-850/40 p-4 transition-all">
+            <div className="w-56 shrink-0 space-y-5 overflow-y-auto border-l border-ink-700 bg-ink-900 p-3.5 transition-all">
               {/* 文档大纲 (TOC) */}
               {headings.length > 0 && activeDocType !== 'artifact' && (
                 <div>
@@ -1420,7 +1614,7 @@ export function TasksPage(): JSX.Element {
   }, [openTaskDir, filtered, showTask])
 
   return (
-    <div className="flex h-full min-w-0 animate-fade-in flex-col">
+    <div className="flex h-full min-w-0 flex-col">
       {/* 全局看板工具栏：仅在四列看板模式下显示，进入具体任务工作台时隐藏，彻底消除多层Header堆叠 */}
       {!openTaskDir && (
         <div className="flex flex-wrap items-center gap-2 border-b border-ink-700 bg-ink-850/40 px-5 py-2.5">
@@ -1434,18 +1628,29 @@ export function TasksPage(): JSX.Element {
             />
           </div>
           <Filter size={13} className="text-mist-500" />
-          <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="field w-32">
-            <option value="">全部负责人</option>
-            {assignees.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
-          <select value={priority} onChange={(e) => setPriority(e.target.value)} className="field w-28">
-            <option value="">全部优先级</option>
-            {['P0', 'P1', 'P2', 'P3'].map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
+          <Select
+            value={assignee}
+            onChange={setAssignee}
+            options={[
+              { value: '', label: '全部负责人' },
+              ...assignees.map((a) => ({ value: a, label: a }))
+            ]}
+            className="w-32"
+            size="sm"
+          />
+          <Select
+            value={priority}
+            onChange={setPriority}
+            options={[
+              { value: '', label: '全部优先级' },
+              { value: 'P0', label: 'P0 紧急' },
+              { value: 'P1', label: 'P1 高' },
+              { value: 'P2', label: 'P2 中' },
+              { value: 'P3', label: 'P3 低' }
+            ]}
+            className="w-32"
+            size="sm"
+          />
 
           {/* 聚合健康度：状态计数条 */}
           <div className="hidden items-center gap-1.5 xl:flex">
@@ -1528,7 +1733,7 @@ export function TasksPage(): JSX.Element {
                       {items.length}
                     </span>
                   </div>
-                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2 [contain:content]">
                     {visible.map((t) =>
                       groupOn && childMap.has(t.dirName) ? (
                         <EpicCard
@@ -1538,7 +1743,12 @@ export function TasksPage(): JSX.Element {
                           onOpen={(dir) => showTask(dir)}
                         />
                       ) : (
-                        <TaskCard key={t.dirName} t={t} onOpen={() => showTask(t.dirName)} />
+                        <TaskCard
+                          key={t.dirName}
+                          t={t}
+                          isCurrent={snapshot.meta.currentTask === t.dirName}
+                          onOpen={() => showTask(t.dirName)}
+                        />
                       )
                     )}
                     {hiddenCount > 0 && (

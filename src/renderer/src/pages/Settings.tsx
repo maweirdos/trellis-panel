@@ -14,13 +14,15 @@ import {
   MonitorSmartphone,
   GitMerge,
   Sparkles,
-  BrainCircuit
+  BrainCircuit,
+  Cloud
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
-import type { KbMcpInstallResult, KbMcpStatus, McpInfo } from '../../../shared/types'
+import type { KbMcpInstallResult, KbMcpStatus, McpInfo, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
+import { WEKNORA_DEFAULTS } from '../../../shared/types'
 
 function JiraStatusMapEditor(): JSX.Element {
   const settings = useApp((s) => s.settings)!
@@ -178,6 +180,79 @@ export function SettingsPage(): JSX.Element {
   const saveAi = async (): Promise<void> => {
     await saveSettings({ ai: { ...ai, enabled: ai.enabled && !!ai.baseUrl && !!ai.model } })
     pushToast({ kind: 'success', title: 'AI 模型配置已保存' })
+  }
+
+  /* ---- WeKnora 公司库联动 ---- */
+  const [wk, setWk] = useState<WeknoraConfig>(() => {
+    const saved = settings.weknora ?? WEKNORA_DEFAULTS
+    return {
+      ...WEKNORA_DEFAULTS,
+      ...saved,
+      apiKey: saved.apiKeyEncrypted ? '' : saved.apiKey,
+      mcpToken: saved.mcpTokenEncrypted ? '' : saved.mcpToken
+    }
+  })
+  const [wkTesting, setWkTesting] = useState(false)
+  const [wkKbs, setWkKbs] = useState<WeknoraKbSummary[] | null>(null)
+  const [wkOk, setWkOk] = useState<string | null>(null)
+  const [wkMcpTesting, setWkMcpTesting] = useState(false)
+  const [wkMcpOk, setWkMcpOk] = useState<string | null>(null)
+
+  const testWeknora = async (): Promise<void> => {
+    setWkTesting(true)
+    setWkOk(null)
+    const res = await api.weknoraTest({ ...wk, enabled: true })
+    setWkTesting(false)
+    if (res.ok) {
+      setWkKbs(res.kbs ?? [])
+      setWkOk(`✓ 连接成功：${res.kbs?.length ?? 0} 个知识库`)
+    } else {
+      setWkKbs(null)
+      pushToast({ kind: 'error', title: 'WeKnora 连接失败', body: res.error })
+    }
+  }
+
+  const saveWeknora = async (): Promise<void> => {
+    const patch: WeknoraConfig = {
+      ...wk,
+      enabled: wk.enabled && !!wk.baseUrl,
+      searchKbIds: wk.searchKbIds.filter(Boolean)
+    }
+    await saveSettings({ weknora: patch })
+    pushToast({ kind: 'success', title: 'WeKnora 配置已保存' })
+  }
+
+  const testWeknoraMcp = async (): Promise<void> => {
+    setWkMcpTesting(true)
+    setWkMcpOk(null)
+    const res = await api.weknoraTestMcp(wk.mcpUrl, wk.mcpToken)
+    setWkMcpTesting(false)
+    if (res.ok) setWkMcpOk('✓ MCP 端点握手成功')
+    else pushToast({ kind: 'error', title: 'MCP 端点测试失败', body: res.error })
+  }
+
+  /** 远程 MCP 注册片段；令牌未知（已加密保存未重输）时用占位符 */
+  const mcpTokenForSnippet = (): string => wk.mcpToken || '<TOKEN>'
+  const mcpSnippets = (): { claude: string; codex: string; zcode: string } => {
+    const token = mcpTokenForSnippet()
+    const url = wk.mcpUrl || '<MCP_URL>'
+    return {
+      claude: JSON.stringify({ mcpServers: { weknora: { type: 'http', url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2),
+      codex: `# ~/.codex/config.toml\n[mcp_servers.weknora]\nurl = '${url}'\nhttp_headers = { "Authorization" = "Bearer ${token}" }`,
+      zcode: `zcode mcp add weknora --url ${url} --header "Authorization: Bearer ${token}"`
+    }
+  }
+
+  const copySnip = (text: string, title: string): void => {
+    void api.copyToClipboard(text)
+    pushToast({ kind: 'success', title, body: text.includes('<TOKEN>') ? '令牌为占位符——请先在上方输入端点令牌' : undefined })
+  }
+
+  const toggleSearchKb = (id: string): void => {
+    setWk((c) => ({
+      ...c,
+      searchKbIds: c.searchKbIds.includes(id) ? c.searchKbIds.filter((x) => x !== id) : [...c.searchKbIds, id]
+    }))
   }
 
   const toggleMcp = async (on: boolean): Promise<void> => {
@@ -463,6 +538,194 @@ export function SettingsPage(): JSX.Element {
                 <CheckCircle2 size={12} /> {gitlabOk}
               </span>
             )}
+          </div>
+        </section>
+
+        {/* WeKnora 公司库联动 */}
+        <section className="card px-5 py-4">
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">
+            <Cloud size={13} /> WeKnora 公司库联动
+            <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-[11px] font-normal text-mist-400">
+              <input
+                type="checkbox"
+                checked={wk.enabled}
+                onChange={(e) => setWk({ ...wk, enabled: e.target.checked })}
+                className="accent-emerald-500"
+              />
+              启用（知识库联邦检索 · 规划喂料 · 归档沉淀 · spec 同步）
+            </label>
+          </div>
+          <p className="mb-3 text-[11px] leading-5 text-mist-500">
+            本地四库保持毫秒级不动，WeKnora 作为公司级来源异步追加：跨项目规范、历史归档、接口文档。
+            API Key 经系统凭据加密（DPAPI）存储；建议在 WeKnora 侧使用限定知识库的 scoped API Key。
+          </p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="col-span-2 space-y-1">
+              <span className="text-[11px] text-mist-400">服务器地址（带不带 /api/v1 均可）</span>
+              <input
+                value={wk.baseUrl}
+                onChange={(e) => setWk({ ...wk, baseUrl: e.target.value })}
+                placeholder="http://192.168.1.202:8080"
+                className="field font-mono"
+              />
+            </label>
+            <label className="col-span-2 space-y-1">
+              <span className="text-[11px] text-mist-400">
+                API Key（X-API-Key）{settings.weknora?.apiKeyEncrypted && <span className="text-emerald-400">（已加密保存）</span>}
+              </span>
+              <input
+                type="password"
+                value={wk.apiKey}
+                onChange={(e) => setWk({ ...wk, apiKey: e.target.value })}
+                placeholder={settings.weknora?.apiKeyEncrypted ? '••••••••（输入新值覆盖）' : 'sk-…'}
+                className="field font-mono"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button onClick={() => void testWeknora()} disabled={wkTesting || !wk.baseUrl} className="btn-outline disabled:opacity-50">
+              {wkTesting ? '测试中…' : '测试连接并加载知识库'}
+            </button>
+            <button onClick={() => void saveWeknora()} className="btn-primary">保存配置</button>
+            {wkOk && (
+              <span className="flex items-center gap-1 text-[11px] text-emerald-300">
+                <CheckCircle2 size={12} /> {wkOk}
+              </span>
+            )}
+          </div>
+
+          {/* 库映射 */}
+          <div className="mt-4 space-y-2.5 border-t border-ink-700 pt-3">
+            <div className="text-[11px] font-semibold text-mist-300">
+              知识库映射{wkKbs ? `（已加载 ${wkKbs.length} 个）` : '（测试连接后可选择，也可手填 ID）'}
+            </div>
+            <div className="space-y-1">
+              <div className="text-[10.5px] text-mist-500">联邦检索 / AI 规划范围（可多选）</div>
+              <div className="flex flex-wrap gap-1.5">
+                {(wkKbs ?? []).map((kb) => (
+                  <button
+                    key={kb.id}
+                    onClick={() => toggleSearchKb(kb.id)}
+                    className={clsx(
+                      'chip border transition-colors',
+                      wk.searchKbIds.includes(kb.id)
+                        ? 'border-sky-400/50 bg-sky-500/15 text-sky-300'
+                        : 'border-ink-600 text-mist-400 hover:text-mist-200'
+                    )}
+                    title={`${kb.id} · ${kb.knowledgeCount} 篇`}
+                  >
+                    {wk.searchKbIds.includes(kb.id) ? '✓ ' : ''}{kb.name}
+                  </button>
+                ))}
+                {wk.searchKbIds
+                  .filter((id) => !(wkKbs ?? []).some((kb) => kb.id === id))
+                  .map((id) => (
+                    <button key={id} onClick={() => toggleSearchKb(id)} className="chip border border-sky-400/50 bg-sky-500/15 font-mono text-sky-300" title="列表外的 ID，点击移除">
+                      ✓ {id}
+                    </button>
+                  ))}
+                {(wkKbs ?? []).length === 0 && wk.searchKbIds.length === 0 && (
+                  <span className="text-[10.5px] text-mist-600">未选择——公司库检索与规划补充将不可用</span>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              {wkKbs && wkKbs.length > 0 ? (
+                <>
+                  <label className="space-y-1">
+                    <span className="text-[10.5px] text-mist-500">spec 同步目标库（L5）</span>
+                    <select value={wk.specKbId} onChange={(e) => setWk({ ...wk, specKbId: e.target.value })} className="field">
+                      <option value="">（不同步）</option>
+                      {wkKbs.map((kb) => (
+                        <option key={kb.id} value={kb.id}>{kb.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10.5px] text-mist-500">归档沉淀目标库（L4）</span>
+                    <select value={wk.archiveKbId} onChange={(e) => setWk({ ...wk, archiveKbId: e.target.value })} className="field">
+                      <option value="">（不沉淀）</option>
+                      {wkKbs.map((kb) => (
+                        <option key={kb.id} value={kb.id}>{kb.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="space-y-1">
+                    <span className="text-[10.5px] text-mist-500">spec 同步目标库 ID</span>
+                    <input value={wk.specKbId} onChange={(e) => setWk({ ...wk, specKbId: e.target.value })} placeholder="kb-…" className="field font-mono" />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10.5px] text-mist-500">归档沉淀目标库 ID</span>
+                    <input value={wk.archiveKbId} onChange={(e) => setWk({ ...wk, archiveKbId: e.target.value })} placeholder="kb-…" className="field font-mono" />
+                  </label>
+                </>
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5 pt-1">
+              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-mist-400">
+                <input
+                  type="checkbox"
+                  checked={wk.autoPushArchive}
+                  onChange={(e) => setWk({ ...wk, autoPushArchive: e.target.checked })}
+                  className="accent-emerald-500"
+                />
+                归档任务时自动沉淀到公司库（PRD + 交付信息，channel = trellis-panel）
+              </label>
+              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-mist-400">
+                <input
+                  type="checkbox"
+                  checked={wk.syncSpec}
+                  onChange={(e) => setWk({ ...wk, syncSpec: e.target.checked })}
+                  className="accent-emerald-500"
+                />
+                .trellis/spec 变更自动同步（10 分钟静默后批量推送，按内容去重更新）
+              </label>
+            </div>
+          </div>
+
+          {/* MCP 端点（L3A：注册 WeKnora 内置 MCP Server 给 AI 编码工具） */}
+          <div className="mt-4 space-y-2.5 border-t border-ink-700 pt-3">
+            <div className="text-[11px] font-semibold text-mist-300">MCP 端点（AI 编码工具直连公司库）</div>
+            <p className="text-[10.5px] leading-4 text-mist-600">
+              WeKnora「设置 → 发布与集成 → MCP Server」创建端点后填入。远程注册条目放在各工具的用户级配置，
+              不写入随仓库共享的 .mcp.json（避免端点令牌进 git）。
+            </p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <label className="col-span-2 space-y-1">
+                <span className="text-[11px] text-mist-400">端点 URL（Streamable HTTP）</span>
+                <input
+                  value={wk.mcpUrl}
+                  onChange={(e) => setWk({ ...wk, mcpUrl: e.target.value })}
+                  placeholder="https://weknora.internal:8080/mcp/ep-xxxx"
+                  className="field font-mono"
+                />
+              </label>
+              <label className="col-span-2 space-y-1">
+                <span className="text-[11px] text-mist-400">
+                  端点令牌{settings.weknora?.mcpTokenEncrypted && <span className="text-emerald-400">（已加密保存）</span>}
+                </span>
+                <input
+                  type="password"
+                  value={wk.mcpToken}
+                  onChange={(e) => setWk({ ...wk, mcpToken: e.target.value })}
+                  placeholder={settings.weknora?.mcpTokenEncrypted ? '••••••••（输入新值覆盖）' : ''}
+                  className="field font-mono"
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => void testWeknoraMcp()} disabled={wkMcpTesting || !wk.mcpUrl} className="btn-outline disabled:opacity-50">
+                {wkMcpTesting ? '握手中…' : '测试端点'}
+              </button>
+              {wkMcpOk && <span className="flex items-center gap-1 text-[11px] text-emerald-300"><CheckCircle2 size={12} /> {wkMcpOk}</span>}
+              <span className="h-4 w-px bg-ink-700" />
+              <button onClick={() => copySnip(mcpSnippets().claude, 'Claude .mcp.json 条目已复制')} className="btn-ghost text-[10.5px]">复制 Claude JSON</button>
+              <button onClick={() => copySnip(mcpSnippets().codex, 'Codex TOML 已复制')} className="btn-ghost text-[10.5px]">复制 Codex TOML</button>
+              <button onClick={() => copySnip(mcpSnippets().zcode, 'ZCode 命令已复制')} className="btn-ghost text-[10.5px]">复制 ZCode 命令</button>
+            </div>
           </div>
         </section>
 

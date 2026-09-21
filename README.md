@@ -36,6 +36,7 @@ Trellis Panel 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-fir
 | 命令面板 | **Ctrl+K** 全局呼出：页面跳转、任务搜索、常用动作（新建待办 / 重扫描 / 切换主题），键盘导航 |
 | 应用内 AI | 设置页接入 **OpenAI 兼容 baseUrl 自定义模型**（Ollama / LM Studio / One-API / 云端均可用，Key 经 DPAPI 加密）；驱动知识库问答、PRD 草稿、任务摘要、任务规划 |
 | 知识库 MCP | **AI 编码工具的持久记忆大脑**：一键安装本地 stdio MCP 服务器（零依赖脚本），自动注册到 Claude Code（`.mcp.json`，随仓库共享）与 Codex（`~/.codex/config.toml`）；AI 写代码时随时 `kb_search` / `kb_read` / `kb_context` / `kb_overview` 查询四库——进程内倒排索引，**实测单查询 30~50ms**，无网络、无 embedding |
+| WeKnora 联动 | **公司级知识库联邦**：本地四库保持毫秒级不动，WeKnora 作为公司来源异步追加——知识库页「公司库」tab + 「全部」检索态追加命中，右侧直接读远程正文；AI 规划并行纳入公司库摘录（跨项目规范 / 历史归档）；**归档任务自动沉淀公司库**（PRD + 分支 + 交付提交，闭环飞轮）；`.trellis/spec` 变更静默同步（删旧推新）；一键注册 WeKnora 内置 MCP 端点给 Claude / Codex / ZCode；API Key 与端点令牌 DPAPI 加密，断网时本地检索零影响 |
 
 ## Web 看板（只读）
 
@@ -100,6 +101,7 @@ src/
 │     ├─ studio.ts        # 定制中心：workflow/命令/子代理/技能/钩子/config.yaml 扫描与白名单写回
 │     ├─ knowledge.ts     # 四库知识库：倒排索引全文检索（CJK 二元分词 + TF-IDF）
 │     ├─ ai.ts            # 应用内 AI：OpenAI 兼容 baseUrl 自定义模型客户端
+│     ├─ weknora.ts       # WeKnora 公司库联动：REST 客户端（联邦检索/归档沉淀/spec 同步/MCP 端点探测）
 │     ├─ kbmcp.ts         # 知识库 MCP stdio 服务器（零依赖脚本 + 一键注册 AI 工具）
 │     ├─ plan.ts          # 规划工作台：KB 检索 → AI 结构化任务计划 + 启动衔接
 │     ├─ channels.ts      # trellis channel 运行时读取 + 动作（create/spawn/rm…）
