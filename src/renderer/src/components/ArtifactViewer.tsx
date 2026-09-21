@@ -204,7 +204,7 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
     return () => window.removeEventListener('keydown', onKey)
   }, [activeTab, closeArtifact])
 
-  if (tabs.length === 0 || !file) return null
+  if (tabs.length === 0 || !file || !activeTab) return null
 
   const hasGraphic = /\.(md|markdown|json|jsonl|ya?ml|toml|py|ts|tsx|js|mjs|cjs|sh|ps1|cmd|bat|log|sql|css|html|ini|cfg|env|txt)$/i.test(file.name)
 
@@ -268,11 +268,11 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
         <div className="ml-auto flex items-center gap-1.5">
           {hasGraphic && (
             <button
-              onClick={() => pinArtifact(file.path, !activeTab!.pinned)}
+              onClick={() => pinArtifact(file.path, !activeTab.pinned)}
               className="btn-outline"
-              title={activeTab!.pinned ? '取消固定' : '固定标签（固定后不被预览替换）'}
+              title={activeTab.pinned ? '取消固定' : '固定标签（固定后不被预览替换）'}
             >
-              {activeTab!.pinned ? <Pin size={12} className="text-leaf" /> : <PinOff size={12} />}
+              {activeTab.pinned ? <Pin size={12} className="text-leaf" /> : <PinOff size={12} />}
             </button>
           )}
           {hasGraphic && (

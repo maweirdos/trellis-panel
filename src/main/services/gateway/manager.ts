@@ -2,6 +2,7 @@ import { getSettings } from '../store'
 import { weknoraReadDoc, weknoraSearch, weknoraTest } from '../weknora'
 import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { errorMessage } from '../../../shared/errors'
 import type {
   ContextHit,
   GatewayLogEntry,
@@ -234,9 +235,9 @@ class GatewayManagerClass {
         elapsedMs,
         result
       }
-    } catch (e: any) {
+    } catch (e) {
       const elapsedMs = Date.now() - start
-      const error = e?.message || String(e)
+      const error = errorMessage(e) || String(e)
       this.addLog({
         id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         timestamp: Date.now(),
@@ -499,8 +500,8 @@ class GatewayManagerClass {
       writeFileSync(filePath, res.content, 'utf-8')
 
       return { ok: true, path: filePath }
-    } catch (e: any) {
-      return { ok: false, error: e?.message || String(e) }
+    } catch (e) {
+      return { ok: false, error: errorMessage(e) || String(e) }
     }
   }
 

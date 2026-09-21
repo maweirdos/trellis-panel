@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron'
+import { errorText } from '../../shared/errors'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync, copyFileSync } from 'fs'
 import { join } from 'path'
 import { watch, type FSWatcher } from 'chokidar'
@@ -67,13 +68,14 @@ export function stopInbox(): void {
   }
 }
 
-function dispatch(type: unknown, evt: any, handlers: BridgeHandlers): void {
-  const text = typeof evt?.text === 'string' ? evt.text : undefined
-  const taskDir = typeof evt?.taskDir === 'string' ? evt.taskDir : typeof evt?.dir === 'string' ? evt.dir : null
+function dispatch(type: unknown, rawEvt: unknown, handlers: BridgeHandlers): void {
+  const evt = typeof rawEvt === 'object' && rawEvt !== null ? (rawEvt as Record<string, unknown>) : {}
+  const text = typeof evt.text === 'string' ? evt.text : undefined
+  const taskDir = typeof evt.taskDir === 'string' ? evt.taskDir : typeof evt.dir === 'string' ? evt.dir : null
   switch (type) {
     case 'task-event':
     case 'task-update':
-      handlers.onTaskEvent(taskDir, text, String(evt?.source ?? 'hook'))
+      handlers.onTaskEvent(taskDir, text, String(evt.source ?? 'hook'))
       break
     case 'notify':
       handlers.onNotify(text ?? '收到桥接消息')
@@ -172,8 +174,8 @@ exit /b 1
     const p = join(npmDir, 'tpanel.cmd')
     writeFileSync(p, cmd, 'utf-8')
     return { ok: true, path: p }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '写入失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '写入失败') }
   }
 }
 
@@ -216,8 +218,8 @@ export function installTrellisHooks(projectRoot: string): { ok: boolean; error?:
     }
     writeFileSync(cfgPath, content, 'utf-8')
     return { ok: true, message: '已写入 .trellis/config.yaml — AI 工具的任务事件将实时推送到面板' }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '写入 config.yaml 失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '写入 config.yaml 失败') }
   }
 }
 

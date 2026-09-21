@@ -5,6 +5,7 @@ import { TitleBar } from './components/TitleBar'
 import { Sidebar } from './components/Sidebar'
 import { Onboarding } from './components/Onboarding'
 import { Toasts } from './components/Toasts'
+import { DialogHost } from './components/Dialogs'
 import { CapsuleView } from './components/CapsuleView'
 import { ArtifactViewer } from './components/ArtifactViewer'
 import { CommandPalette } from './components/CommandPalette'
@@ -158,6 +159,7 @@ function MainApp(): JSX.Element {
         </div>
       )}
       <Toasts />
+      <DialogHost />
     </div>
   )
 }

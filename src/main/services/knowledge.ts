@@ -463,7 +463,8 @@ export function kbSearch(
         let idfScore = 0
         for (const t of allTerms) {
           const tf = s.item.tokens.get(t) ?? 0
-          idfScore += tf * Math.log(1 + N / df.get(t)!)
+          const dfVal = df.get(t)
+          if (dfVal !== undefined) idfScore += tf * Math.log(1 + N / dfVal)
         }
         hits.push({
           doc: s.item.doc,

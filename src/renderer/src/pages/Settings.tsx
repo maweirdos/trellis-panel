@@ -302,7 +302,13 @@ export function SettingsPage(): JSX.Element {
               </span>
             )}
             {mcpInfo?.webBoardUrl && (
-              <button onClick={() => api.openExternal(mcpInfo.webBoardUrl!)} className="btn-outline">
+              <button
+                onClick={() => {
+                  const url = mcpInfo?.webBoardUrl
+                  if (url) api.openExternal(url)
+                }}
+                className="btn-outline"
+              >
                 打开 Web 看板 ↗
               </button>
             )}

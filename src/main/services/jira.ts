@@ -1,6 +1,7 @@
 import { safeStorage } from 'electron'
 import type { JiraConfig, JiraIssue, JiraTransition } from '../../shared/types'
 import { JIRA_CATEGORY_STATUS } from '../../shared/labels-shared'
+import { errorMessage } from '../../shared/errors'
 
 /** Decrypt the stored password when it was encrypted with safeStorage. */
 export function resolvePassword(cfg: JiraConfig): string {
@@ -56,8 +57,8 @@ async function jiraFetch(
       },
       signal: AbortSignal.timeout(15000)
     })
-  } catch (e: any) {
-    return { ok: false, error: '网络请求失败: ' + (e?.message ?? String(e)) }
+  } catch (e) {
+    return { ok: false, error: '网络请求失败: ' + (errorMessage(e) ?? String(e)) }
   }
   if (res.status === 401) return { ok: false, status: 401, error: '认证失败：用户名或密码错误' }
   let data: unknown = null
@@ -68,9 +69,14 @@ async function jiraFetch(
     data = text
   }
   if (!res.ok) {
-    const msg =
+    const errs =
       data && typeof data === 'object' && 'errorMessages' in data
-        ? ((data as any).errorMessages?.join('; ') ?? '请求失败')
+        ? (data as { errorMessages?: unknown }).errorMessages
+        : undefined
+    // 与旧实现语义对齐：无 errorMessages 时保留 HTTP 状态码；空数组也走兜底（旧实现会得到空文案）
+    const msg =
+      Array.isArray(errs) && errs.length > 0
+        ? errs.map((m) => String(m)).join('; ')
         : `请求失败 (HTTP ${res.status})`
     return { ok: false, status: res.status, error: msg }
   }
@@ -82,8 +88,10 @@ export async function jiraTest(
 ): Promise<{ ok: boolean; error?: string; displayName?: string }> {
   const res = await jiraFetch(cfg, '/rest/api/2/myself')
   if (!res.ok) return { ok: false, error: res.error }
-  const u = res.data as any
-  return { ok: true, displayName: u?.displayName ?? u?.name ?? '未知用户' }
+  const u = res.data && typeof res.data === 'object' ? (res.data as { displayName?: unknown; name?: unknown }) : null
+  const displayName = typeof u?.displayName === 'string' ? u.displayName : undefined
+  const name = typeof u?.name === 'string' ? u.name : undefined
+  return { ok: true, displayName: displayName ?? name ?? '未知用户' }
 }
 
 interface RawIssueFields {
@@ -109,18 +117,21 @@ export async function jiraSearch(
     encodeURIComponent(q)
   const res = await jiraFetch(cfg, url)
   if (!res.ok) return { ok: false, error: res.error }
-  const d = res.data as any
-  const issues: JiraIssue[] = (d?.issues ?? []).map((raw: { key: string; fields: RawIssueFields }) => {
-    const f = raw.fields ?? {}
+  const d = res.data && typeof res.data === 'object' ? (res.data as { issues?: unknown; total?: number }) : null
+  const issuesField = d?.issues
+  const issues: JiraIssue[] = (Array.isArray(issuesField) ? issuesField : []).map((raw) => {
+    const item = raw as { key?: unknown; fields?: RawIssueFields }
+    const key = typeof item.key === 'string' ? item.key : ''
+    const f: RawIssueFields = item.fields ?? {}
     return {
-      key: raw.key,
+      key,
       summary: f.summary ?? '(无标题)',
       status: f.status?.name ?? '未知',
       statusCategory: f.status?.statusCategory?.key ?? 'new',
       priority: f.priority?.name ?? '一般',
       issueType: f.issuetype?.name ?? '任务',
       updated: f.updated ?? '',
-      url: `${cfg.baseUrl.replace(/\/+$/, '')}/browse/${raw.key}`,
+      url: `${cfg.baseUrl.replace(/\/+$/, '')}/browse/${key}`,
       assignee: f.assignee?.displayName ?? f.assignee?.name ?? '未分配',
       fixVersions: (f.fixVersions ?? []).map((v) => v?.name ?? '').filter(Boolean)
     }
@@ -134,11 +145,15 @@ export async function jiraTransitions(
 ): Promise<{ ok: boolean; error?: string; transitions?: JiraTransition[] }> {
   const res = await jiraFetch(cfg, `/rest/api/2/issue/${encodeURIComponent(key)}/transitions`)
   if (!res.ok) return { ok: false, error: res.error }
-  const d = res.data as any
-  const transitions: JiraTransition[] = (d?.transitions ?? []).map((t: { id: string; name: string }) => ({
-    id: String(t.id),
-    name: t.name
-  }))
+  const d = res.data && typeof res.data === 'object' ? (res.data as { transitions?: unknown }) : null
+  const transitionsField = d?.transitions
+  const transitions: JiraTransition[] = (Array.isArray(transitionsField) ? transitionsField : []).map((t) => {
+    const raw = t as { id?: unknown; name?: unknown }
+    return {
+      id: String(raw.id),
+      name: typeof raw.name === 'string' ? raw.name : ''
+    }
+  })
   return { ok: true, transitions }
 }
 

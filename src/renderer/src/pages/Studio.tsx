@@ -24,6 +24,7 @@ import { api } from '../api'
 import { clsx } from 'clsx'
 import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
+import { confirmDialog, promptDialog } from '../components/Dialogs'
 import type { ExtEntry, ExtKind, StudioScan, WorkflowInfo } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -493,11 +494,18 @@ export function StudioPage(): JSX.Element {
   }
 
   const createExt = async (kind: ExtKind): Promise<void> => {
-    const platform = prompt(`要在哪个平台创建？可选：\n${scan.platforms.map((p) => p.id).join(', ')}`, kind === 'skill' ? 'shared' : 'claude')
-    if (!platform) return
-    const name = prompt('名称（字母/数字/下划线/连字符）：')
-    if (!name) return
-    const res = await api.studioCreateExtension(kind, platform.trim(), name.trim())
+    const platformIds = scan.platforms.map((p) => p.id)
+    const platform = await promptDialog({
+      title: '选择创建平台',
+      label: `可选平台：${platformIds.join(', ')}`,
+      placeholder: '输入平台 id',
+      defaultValue: kind === 'skill' ? 'shared' : 'claude',
+      validator: (v) => (platformIds.includes(v) ? null : `平台必须是：${platformIds.join(', ')}`)
+    })
+    if (platform === null) return
+    const name = await promptDialog({ title: '新建扩展', label: '名称（字母/数字/下划线/连字符）' })
+    if (name === null) return
+    const res = await api.studioCreateExtension(kind, platform, name)
     if (res.ok) {
       pushToast({ kind: 'success', title: '已创建', body: res.path ?? '' })
       await reload()
@@ -609,7 +617,13 @@ function WorkflowSection({
   }
 
   const removeWf = async (wf: WorkflowInfo): Promise<void> => {
-    if (!confirm(`删除 workflow「${wf.name}」？该文件不可恢复。`)) return
+    const ok = await confirmDialog({
+      title: `删除 workflow「${wf.name}」？`,
+      message: '该文件不可恢复。',
+      confirmText: '删除',
+      danger: true
+    })
+    if (!ok) return
     const res = await api.studioDeleteFile(wf.path)
     if (res.ok) {
       pushToast({ kind: 'success', title: '已删除', body: wf.name })

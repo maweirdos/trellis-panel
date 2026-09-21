@@ -28,6 +28,7 @@ import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
+import { confirmDialog } from '../components/Dialogs'
 import { MarkdownView } from '../components/MarkdownView'
 import { CodeView } from '../components/CodeView'
 import { STATUS_OPTIONS, statusLabel } from '../utils/labels'
@@ -393,7 +394,8 @@ export function TaskDetail(): JSX.Element | null {
   const setField = (field: string, v: string): void => {
     setPending((p) => {
       const next = { ...p, [field]: v } as TaskPatch
-      if (String(next[field as keyof TaskPatch]) === String((r as any)?.[field] ?? '')) {
+      const oldVal = r ? (r as unknown as Record<string, unknown>)[field] : undefined
+      if (String(next[field as keyof TaskPatch]) === String(oldVal ?? '')) {
         delete next[field as keyof TaskPatch]
       }
       return next
@@ -462,7 +464,11 @@ export function TaskDetail(): JSX.Element | null {
 
   const deleteTodo = async (): Promise<void> => {
     if (r?.status !== 'planning') return
-    const confirmed = window.confirm(`确定删除待办“${r?.title ?? task.dirName}”吗？\n只会删除本地 Trellis 待办，不会删除 Jira 问题。`)
+    const confirmed = await confirmDialog({
+      title: `确定删除待办“${r?.title ?? task.dirName}”吗？`,
+      message: '只会删除本地 Trellis 待办，不会删除 Jira 问题。',
+      danger: true
+    })
     if (!confirmed) return
     const res = await api.deleteTask(task.path, task.taskJsonMtime)
     if (res.ok) {
@@ -759,7 +765,10 @@ export function TaskDetail(): JSX.Element | null {
                       <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-[11px]">
                         {gl.mr ? (
                           <button
-                            onClick={() => api.openExternal(gl.mr!.webUrl)}
+                            onClick={() => {
+                              const mr = gl.mr
+                              if (mr) api.openExternal(mr.webUrl)
+                            }}
                             className={clsx(
                               'chip border',
                               gl.mr.state === 'merged'
@@ -775,7 +784,10 @@ export function TaskDetail(): JSX.Element | null {
                         )}
                         {gl.pipeline ? (
                           <button
-                            onClick={() => api.openExternal(gl.pipeline!.webUrl)}
+                            onClick={() => {
+                              const pipeline = gl.pipeline
+                              if (pipeline) api.openExternal(pipeline.webUrl)
+                            }}
                             className={clsx(
                               'chip border',
                               ['success', 'passed'].includes(gl.pipeline.status)

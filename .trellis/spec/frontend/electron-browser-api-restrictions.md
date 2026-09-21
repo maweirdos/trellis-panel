@@ -49,6 +49,48 @@ Even if you add a "temporary" `prompt()` call with a TODO comment, **it will cau
 | Confirmation | `confirm()`       | Confirmation dialog component |
 | Notification | `alert()`         | Toast notification component  |
 
+#### Project Convention: Standard Dialog Utilities (REQUIRED)
+
+This project ships a ready-made imperative dialog API. **Do not hand-roll a new
+modal per call site** — import the shared utilities:
+
+- File: `src/renderer/src/components/Dialogs.tsx`
+- Host: `<DialogHost />` is mounted once in `src/renderer/src/App.tsx` (next to `<Toasts />`)
+
+```tsx
+import { confirmDialog, promptDialog } from '../components/Dialogs'
+
+// Confirmation: resolves true on confirm, false on cancel / Esc / backdrop click
+const ok = await confirmDialog({
+  title: '删除 workflow「lint」？',
+  message: '该文件不可恢复。',        // optional
+  confirmText: '删除',               // optional
+  danger: true                        // red confirm button for destructive actions
+})
+if (!ok) return
+
+// Text input: resolves the trimmed string on confirm, null on cancel / Esc
+const name = await promptDialog({
+  title: '新建扩展',
+  label: '名称（字母/数字/下划线/连字符）',
+  placeholder?: string,
+  defaultValue?: string,
+  multiline?: boolean,                // Enter inserts newline, Ctrl/Cmd+Enter submits
+  validator?: (v: string) => string | null   // return error text to block submit
+})
+if (name === null) return
+```
+
+Contract notes:
+
+- Handlers become `async`; call sites follow the project `void fn()` convention
+  (e.g. `onClick={() => void removeChannel(channel)}`).
+- Boolean-choice prompts (`confirm(...) ? 'a' : 'b'`) map the boolean result back
+  and say so in `message` (e.g. "确定 = forum，取消 = chat").
+- The queue serializes concurrent calls; every path (confirm, cancel, Esc,
+  backdrop, host unmount) is guaranteed to settle — a stale-event double-fire
+  must not skip queued requests (guarded by request identity in `settle`).
+
 #### Example: Replacing prompt() with Dialog
 
 ```tsx
@@ -374,6 +416,18 @@ const title = prompt('Enter name:');
 **Fix**: Replaced with proper dialog component using React state management.
 
 **Lesson**: There are no "temporary" solutions with unsupported APIs. The code ships, users encounter it, and it crashes. Always use the correct pattern from the start.
+
+### Case Study: Audit Grep Missed `window.`-Prefixed Calls
+
+**Bug**: A compliance audit used the regex `(^|[^.a-zA-Z])(alert|confirm|prompt)\(` to find native dialog calls. It missed `window.confirm(...)` / `window.prompt(...)` because the char class `[^.a-zA-Z]` excludes `.`, so the preceding `.` in `window.confirm` never matched.
+
+**Fix**: Audit with an explicit prefixed pattern alongside the bare one:
+
+```bash
+grep -rnE 'window\.(alert|confirm|prompt)\(' src/renderer/src --include='*.tsx' --include='*.ts'
+```
+
+**Lesson**: When auditing for forbidden APIs, always include the `window.` qualified form; bare-name patterns systematically miss them. Note that project-local functions may share the name (`confirm` in `DoDModal.tsx`) — verify each hit is the browser API, not a local helper.
 
 ---
 

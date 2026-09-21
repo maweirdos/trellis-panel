@@ -26,6 +26,7 @@ import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { relTime } from '../utils/format'
+import { errorMessage } from '../../../shared/errors'
 import type {
   GatewayLogEntry,
   GatewaySecurityConfig,
@@ -101,8 +102,8 @@ export function GatewayPage(): JSX.Element {
         pushToast({ kind: 'error', title: `测试失败: ${res.error || '未知错误'}` })
       }
       loadStatus()
-    } catch (e: any) {
-      pushToast({ kind: 'error', title: `测试失败: ${e?.message || String(e)}` })
+    } catch (e) {
+      pushToast({ kind: 'error', title: `测试失败: ${errorMessage(e) || String(e)}` })
     } finally {
       setTestingUpstreamId(null)
     }
@@ -152,8 +153,8 @@ export function GatewayPage(): JSX.Element {
         pushToast({ kind: 'error', title: `执行失败: ${res.error || '未知错误'}` })
       }
       loadStatus()
-    } catch (e: any) {
-      pushToast({ kind: 'error', title: `执行异常: ${e?.message || String(e)}` })
+    } catch (e) {
+      pushToast({ kind: 'error', title: `执行异常: ${errorMessage(e) || String(e)}` })
     } finally {
       setExecutingTool(false)
     }
@@ -165,8 +166,8 @@ export function GatewayPage(): JSX.Element {
       pushToast({ kind: 'success', title: '网关安全策略已更新' })
       setShowSecurityModal(false)
       loadStatus()
-    } catch (e: any) {
-      pushToast({ kind: 'error', title: `更新失败: ${e?.message || String(e)}` })
+    } catch (e) {
+      pushToast({ kind: 'error', title: `更新失败: ${errorMessage(e) || String(e)}` })
     }
   }
 
@@ -176,8 +177,8 @@ export function GatewayPage(): JSX.Element {
       const res = await api.kbMcpInstall()
       setMcpInstallResult(res)
       setShowMountModal(true)
-    } catch (e: any) {
-      pushToast({ kind: 'error', title: `生成配置失败: ${e?.message || String(e)}` })
+    } catch (e) {
+      pushToast({ kind: 'error', title: `生成配置失败: ${errorMessage(e) || String(e)}` })
     } finally {
       setInstallingMcp(false)
     }

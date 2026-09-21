@@ -3,6 +3,7 @@ import { Inbox as InboxIcon, Sparkles, FileText, Trash2, Copy, ExternalLink, Lin
 import { useApp } from '../store'
 import { api } from '../api'
 import { PriorityBadge } from '../components/badges'
+import { confirmDialog } from '../components/Dialogs'
 import type { JSX } from 'react'
 import type { TodoItem } from '../../../shared/types'
 
@@ -42,7 +43,12 @@ export function InboxPage(): JSX.Element {
   }
 
   const removeTodo = async (todo: TodoItem): Promise<void> => {
-    if (!window.confirm(`确定删除待办“${todo.title}”吗？\n将删除本地文件 ${todo.filePath}。`)) return
+    const ok = await confirmDialog({
+      title: `确定删除待办“${todo.title}”吗？`,
+      message: `将删除本地文件 ${todo.filePath}。`,
+      danger: true
+    })
+    if (!ok) return
     await deleteTodo(todo.id)
   }
 
@@ -200,7 +206,10 @@ function TodoCard({
         </button>
         {todo.jiraUrl && (
           <button
-            onClick={() => void api.openExternal(todo.jiraUrl!)}
+            onClick={() => {
+              if (!todo.jiraUrl) return
+              void api.openExternal(todo.jiraUrl)
+            }}
             className="btn-ghost text-[11px] text-mist-400 hover:text-sky-300"
             title="在浏览器中打开 Jira"
           >

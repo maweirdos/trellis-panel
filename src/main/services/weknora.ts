@@ -436,7 +436,8 @@ export function buildArchiveDoc(input: ArchiveDocInput): { title: string; conten
   }
   if (deliver.length) sections.push(`## 交付信息\n\n${deliver.join('\n')}`)
 
-  if ((input.notes ?? '').trim()) sections.push(`## 备注\n\n${input.notes!.trim()}`)
+  const notes = input.notes ?? ''
+  if (notes.trim()) sections.push(`## 备注\n\n${notes.trim()}`)
 
   return {
     title: `[${input.projectName}] ${input.title}`.slice(0, 200),

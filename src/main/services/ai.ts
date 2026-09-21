@@ -1,5 +1,6 @@
 import { safeStorage } from 'electron'
-import type { AiChatResult, AiConfig, ChatMessage } from '../../shared/types'
+import type { AiChatResult, AiConfig, ChatMessage, ModelFetchResult, ModelItem } from '../../shared/types'
+import { errorMessage, isAbortError } from '../../shared/errors'
 
 /**
  * 应用内 AI 客户端 —— OpenAI 兼容 /chat/completions。
@@ -7,6 +8,18 @@ import type { AiChatResult, AiConfig, ChatMessage } from '../../shared/types'
  */
 
 const TIMEOUT_MS = 120_000
+
+/** 保守收窄：仅当值为普通对象时返回 Record 视图，其余返回 null */
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
+}
+
+/** 从 choices 数组安全取第一个元素的 message 对象 */
+function firstChoiceMessage(dataObj: Record<string, unknown> | null): Record<string, unknown> | null {
+  const choices = dataObj?.choices
+  if (!Array.isArray(choices)) return null
+  return asRecord(asRecord(choices[0])?.message)
+}
 
 export function protectAiKey(plain: string): { apiKey: string; apiKeyEncrypted: boolean } {
   try {
@@ -74,7 +87,7 @@ export async function aiChat(
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     }
-    let body: any = null
+    let body: Record<string, unknown> | null = null
 
     if (format === 'anthropic') {
       if (key) {
@@ -126,41 +139,52 @@ export async function aiChat(
       const text = (await res.text().catch(() => '')).slice(0, 400)
       return { ok: false, error: `HTTP ${res.status} ${text || res.statusText}`.trim() }
     }
-    const data = (await res.json()) as any
-    if (data.error?.message) return { ok: false, error: data.error.message }
+    const data: unknown = await res.json()
+    const dataObj = asRecord(data)
+    const apiErrorMsg = asRecord(dataObj?.error)?.message
+    if (typeof apiErrorMsg === 'string' && apiErrorMsg) return { ok: false, error: apiErrorMsg }
 
     let content: string | undefined
     if (format === 'response') {
-      if (typeof data.output_text === 'string') {
-        content = data.output_text
-      } else if (Array.isArray(data.output)) {
-        for (const item of data.output) {
-          if (item.type === 'message' && Array.isArray(item.content)) {
-            for (const c of item.content) {
-              if (c.type === 'output_text' && typeof c.text === 'string') {
-                content = (content || '') + c.text
-              } else if (typeof c.text === 'string') {
-                content = (content || '') + c.text
+      if (typeof dataObj?.output_text === 'string') {
+        content = dataObj.output_text
+      } else if (Array.isArray(dataObj?.output)) {
+        for (const item of dataObj.output) {
+          const itemObj = asRecord(item)
+          if (itemObj?.type === 'message' && Array.isArray(itemObj.content)) {
+            for (const c of itemObj.content) {
+              const cObj = asRecord(c)
+              if (typeof cObj?.text === 'string') {
+                content = (content || '') + cObj.text
               }
             }
           }
         }
       }
-      if (!content && typeof data.choices?.[0]?.message?.content === 'string') {
-        content = data.choices[0].message.content
+      const fallbackMsg = firstChoiceMessage(dataObj)
+      if (!content && typeof fallbackMsg?.content === 'string') {
+        content = fallbackMsg.content
       }
     } else if (format === 'anthropic') {
-      if (Array.isArray(data.content)) {
-        content = data.content.map((c: any) => c.text || '').join('')
+      if (Array.isArray(dataObj?.content)) {
+        content = dataObj.content
+          .map((c: unknown) => {
+            const cObj = asRecord(c)
+            return typeof cObj?.text === 'string' && cObj.text ? cObj.text : ''
+          })
+          .join('')
       }
     } else if (format === 'ollama') {
-      content = data.message?.content
+      const msgObj = asRecord(dataObj?.message)
+      if (typeof msgObj?.content === 'string') content = msgObj.content
     } else {
-      content = data.choices?.[0]?.message?.content
+      const firstMsg = firstChoiceMessage(dataObj)
+      if (typeof firstMsg?.content === 'string') content = firstMsg.content
     }
 
     if (typeof content !== 'string') return { ok: false, error: '响应缺少有效文本内容' }
-    return { ok: true, content, model: data.model ?? cfg.model }
+    const modelField = dataObj?.model
+    return { ok: true, content, model: typeof modelField === 'string' ? modelField : cfg.model }
   } catch (e) {
     const err = e as Error
     return { ok: false, error: err.name === 'AbortError' ? `请求超时（${TIMEOUT_MS / 1000}s）` : err.message }
@@ -240,7 +264,7 @@ export async function fetchModelsFromProvider(cfg: {
   baseUrl: string
   apiKey?: string
   apiFormat: string
-}): Promise<{ ok: boolean; error?: string; models?: any[] }> {
+}): Promise<ModelFetchResult> {
   let u = cfg.baseUrl.trim().replace(/\s+/g, '')
   if (!u) return { ok: false, error: 'Base URL 不能为空' }
   if (!/^https?:\/\//i.test(u)) u = `http://${u}`
@@ -290,11 +314,14 @@ export async function fetchModelsFromProvider(cfg: {
       return { ok: false, error: `HTTP ${res.status} ${text || res.statusText}`.trim() }
     }
 
-    const data = (await res.json()) as any
-    const rawList: any[] = Array.isArray(data?.data)
-      ? data.data
-      : Array.isArray(data?.models)
-        ? data.models
+    const data: unknown = await res.json()
+    const dataObj = asRecord(data)
+    const dataField = dataObj?.data
+    const modelsField = dataObj?.models
+    const rawList: unknown[] = Array.isArray(dataField)
+      ? dataField
+      : Array.isArray(modelsField)
+        ? modelsField
         : Array.isArray(data)
           ? data
           : []
@@ -303,8 +330,9 @@ export async function fetchModelsFromProvider(cfg: {
       return { ok: false, error: '供应商未返回可用模型列表' }
     }
 
-    const models = rawList.map((item: any) => {
-      const id = String(item.id || item.name || '')
+    const models: ModelItem[] = rawList.map((item: unknown) => {
+      const itemObj = asRecord(item)
+      const id = String(itemObj?.id || itemObj?.name || '')
       const { contextWindow, tags } = inferModelMetadata(id)
       return {
         id,
@@ -316,8 +344,8 @@ export async function fetchModelsFromProvider(cfg: {
     })
 
     return { ok: true, models }
-  } catch (e: any) {
-    return { ok: false, error: e?.name === 'AbortError' ? '获取模型超时 (15s)' : e?.message || '网络请求失败' }
+  } catch (e) {
+    return { ok: false, error: isAbortError(e) ? '获取模型超时 (15s)' : errorMessage(e) || '网络请求失败' }
   } finally {
     clearTimeout(timer)
   }
@@ -346,7 +374,7 @@ export async function testSingleModel(
 
   try {
     let endpoint = ''
-    let body: any = null
+    let body: Record<string, unknown> | null = null
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     }
@@ -417,11 +445,11 @@ export async function testSingleModel(
     }
 
     return { ok: true, latencyMs, model: targetModel, message: `连接正常 (${latencyMs}ms)` }
-  } catch (e: any) {
+  } catch (e) {
     const latencyMs = Date.now() - start
     return {
       ok: false,
-      error: e?.name === 'AbortError' ? '连接超时 (20s)' : e?.message || '连接失败',
+      error: isAbortError(e) ? '连接超时 (20s)' : errorMessage(e) || '连接失败',
       latencyMs
     }
   } finally {

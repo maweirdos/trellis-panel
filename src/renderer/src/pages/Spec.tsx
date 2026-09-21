@@ -301,14 +301,16 @@ export function SpecPage(): JSX.Element {
               {!searching && hits.length === 0 && (
                 <div className="px-2 py-8 text-center text-[11px] text-mist-500">没有匹配的文档</div>
               )}
-              {GROUP_ORDER.filter((g) => groupedHits.has(g)).map((g) => (
-                <div key={g} className="mb-2">
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-mist-500">
-                    {GROUP_META[g].icon} {GROUP_META[g].label}
-                    <span className="ml-auto font-mono font-normal">{groupedHits.get(g)!.length}</span>
-                  </div>
-                  <div className="space-y-0.5">
-                    {groupedHits.get(g)!.map((h) => (
+              {GROUP_ORDER.filter((g) => groupedHits.has(g)).map((g) => {
+                const groupHits = groupedHits.get(g) ?? []
+                return (
+                  <div key={g} className="mb-2">
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-mist-500">
+                      {GROUP_META[g].icon} {GROUP_META[g].label}
+                      <span className="ml-auto font-mono font-normal">{groupHits.length}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {groupHits.map((h) => (
                       <button
                         key={h.path}
                         onClick={() => loadDoc(h)}
@@ -331,10 +333,11 @@ export function SpecPage(): JSX.Element {
                           </div>
                         )}
                       </button>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </>
           ) : (
             /* 浏览态：规范树 + 工作区日志 */
@@ -418,7 +421,7 @@ export function SpecPage(): JSX.Element {
 
       {/* 右栏：阅读 / 编辑 */}
       <div className="relative min-w-0 flex-1 overflow-y-auto">
-        {selected && specSelected?.type !== 'dir' ? (
+        {selected && specSelected && specSelected.type !== 'dir' ? (
           <>
             <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-ink-700 bg-ink-900/90 px-5 py-2.5 backdrop-blur">
               {docSelected ? (
@@ -430,9 +433,9 @@ export function SpecPage(): JSX.Element {
                 {docSelected ? docSelected.name : relPath}
               </span>
               {docSelected && <span className="chip bg-ink-750 text-[10px] text-mist-400">{GROUP_META[docSelected.group].label}</span>}
-              {!docSelected && refCount?.[specSelected!.path] !== undefined && (
+              {!docSelected && refCount?.[specSelected.path] !== undefined && (
                 <span className="chip bg-ink-750 text-mist-400">
-                  <Link2 size={10} /> 被引用 {refCount[specSelected!.path]} 处
+                  <Link2 size={10} /> 被引用 {refCount[specSelected.path]} 处
                 </span>
               )}
               <span className="text-[10.5px] text-mist-500">

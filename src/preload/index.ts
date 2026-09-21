@@ -3,6 +3,7 @@ import type {
   AiConfig,
   ChatMessage,
   ExtKind,
+  GatewaySecurityConfig,
   GitLabConfig,
   InboxNewEvent,
   JiraConfig,
@@ -117,7 +118,7 @@ const api = {
   gatewayTestProvider: (providerId: string) => ipcRenderer.invoke('gateway:testProvider', providerId),
   gatewayTestTool: (toolName: string, args: Record<string, unknown>) =>
     ipcRenderer.invoke('gateway:testTool', toolName, args),
-  gatewayUpdateSecurity: (security: any) =>
+  gatewayUpdateSecurity: (security: GatewaySecurityConfig) =>
     ipcRenderer.invoke('gateway:updateSecurity', security),
 
   studioSyncExtension: (sourcePath: string, targets: string[]) =>

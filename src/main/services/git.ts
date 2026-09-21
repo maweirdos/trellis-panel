@@ -1,4 +1,5 @@
 import { spawn } from 'child_process'
+import { errorText } from '../../shared/errors'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import type { GitCommitInfo, TaskGitInfo } from '../../shared/types'
@@ -98,8 +99,8 @@ export async function taskGitInfo(root: string, dirName: string, branch: string 
 
     cache.set(key, { at: Date.now(), data: info })
     return info
-  } catch (e: any) {
-    info.error = e?.message ?? 'git 执行失败'
+  } catch (e) {
+    info.error = errorText(e, 'git 执行失败')
     return info
   }
 }

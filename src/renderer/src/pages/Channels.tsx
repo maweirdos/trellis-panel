@@ -22,6 +22,7 @@ import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { fmtIso } from '../utils/format'
+import { confirmDialog, promptDialog } from '../components/Dialogs'
 import type { ChannelEvent, ChannelSummary } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -114,22 +115,38 @@ export function ChannelsPage(): JSX.Element {
   }
 
   const createChannel = async (): Promise<void> => {
-    const name = prompt('频道名称（如 architecture-review）：')
-    if (!name) return
-    const type = confirm('是否创建为 forum（线程化看板）？\n确定 = forum，取消 = chat') ? 'forum' : 'chat'
-    await runAction(['create', name, '--type', type, '--by', 'panel-ui'], '创建频道')
+    const name = await promptDialog({ title: '新建频道', label: '频道名称（如 architecture-review）', placeholder: 'architecture-review' })
+    if (name === null) return
+    // 确认框的布尔结果映射回频道类型：确定 = forum，取消 = chat
+    const isForum = await confirmDialog({
+      title: '是否创建为 forum（线程化看板）？',
+      message: '确定 = forum（线程化看板），取消 = chat（普通频道）。',
+      confirmText: 'forum'
+    })
+    await runAction(['create', name, '--type', isForum ? 'forum' : 'chat', '--by', 'panel-ui'], '创建频道')
   }
 
   const spawnWorker = async (): Promise<void> => {
     if (!active) return
-    const provider = prompt('worker 提供方（claude / codex）：', 'codex')
-    if (!provider) return
-    const as = prompt('worker 命名（--as，如 reviewer）：', `${provider}-worker`)
-    if (!as) return
+    const provider = await promptDialog({ title: '启动 worker', label: '提供方（claude / codex）', defaultValue: 'codex' })
+    if (provider === null) return
+    const as = await promptDialog({ title: '启动 worker', label: 'worker 命名（--as，如 reviewer）', defaultValue: `${provider}-worker` })
+    if (as === null) return
     await runAction(
-      ['spawn', active.name, '--provider', provider.trim(), '--as', as.trim(), '--cwd', '.', '--timeout', '30m'],
+      ['spawn', active.name, '--provider', provider, '--as', as, '--cwd', '.', '--timeout', '30m'],
       '启动 worker'
     )
+  }
+
+  const removeChannel = async (channel: ChannelSummary): Promise<void> => {
+    const ok = await confirmDialog({
+      title: `删除频道「${channel.name}」？`,
+      message: '事件日志将被移除。',
+      confirmText: '删除',
+      danger: true
+    })
+    if (!ok) return
+    await runAction(['rm', channel.name], '删除频道')
   }
 
   const threadGroups = useMemo(() => {
@@ -241,9 +258,7 @@ export function ChannelsPage(): JSX.Element {
                 <Timer size={11} /> 中断
               </button>
               <button
-                onClick={() => {
-                  if (confirm(`确认删除频道「${active.name}」？事件日志将被移除。`)) void runAction(['rm', active.name], '删除频道')
-                }}
+                onClick={() => void removeChannel(active)}
                 disabled={busy}
                 className="btn-ghost justify-center px-2 text-rose-300"
                 title="channel rm"

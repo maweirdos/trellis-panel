@@ -22,6 +22,7 @@ import {
 import { useApp } from '../store'
 import { api } from '../api'
 import type { ModelItem, ModelProvider, AiApiFormat } from '../../../shared/types'
+import { errorMessage } from '../../../shared/errors'
 import { clsx } from 'clsx'
 
 export interface ProviderTemplate {
@@ -297,7 +298,7 @@ export function ModelsPage(): JSX.Element {
           body: res.error || '未获取到模型列表，请确认 Base URL 与 API Key 是否有效'
         })
       }
-    } catch (err: any) {
+    } catch (err) {
       const next = providers.map((p) =>
         p.id === currentProvider.id
           ? { ...p, status: 'error' as const, lastTestedAt: new Date().toISOString() }
@@ -307,7 +308,7 @@ export function ModelsPage(): JSX.Element {
       pushToast({
         kind: 'error',
         title: '拉取模型异常',
-        body: err?.message || String(err)
+        body: errorMessage(err) || String(err)
       })
     } finally {
       setFetchingModels(false)
@@ -348,10 +349,10 @@ export function ModelsPage(): JSX.Element {
           body: res.error || '无法与模型服务器建立连接'
         })
       }
-    } catch (err: any) {
+    } catch (err) {
       setTestResults((prev) => ({
         ...prev,
-        [modelId]: { ok: false, error: err?.message || String(err) }
+        [modelId]: { ok: false, error: errorMessage(err) || String(err) }
       }))
     } finally {
       setTestingModelId(null)
@@ -432,7 +433,7 @@ export function ModelsPage(): JSX.Element {
           })
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       const next = providers.map((p) =>
         p.id === providerToTest.id
           ? { ...p, status: 'error' as const, lastTestedAt: new Date().toISOString() }
@@ -442,7 +443,7 @@ export function ModelsPage(): JSX.Element {
       pushToast({
         kind: 'error',
         title: '测试连接异常',
-        body: err?.message || String(err)
+        body: errorMessage(err) || String(err)
       })
     } finally {
       setTestingProviderId(null)

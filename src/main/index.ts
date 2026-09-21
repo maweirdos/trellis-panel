@@ -58,7 +58,8 @@ import {
   weknoraTest,
   weknoraTestMcp
 } from './services/weknora'
-import type { AiConfig, ChatMessage, GitLabConfig, JiraConfig, ModelProvider, SpecNode, ToastEvent, WeknoraConfig } from '../shared/types'
+import type { AiConfig, ChatMessage, GatewaySecurityConfig, GitLabConfig, JiraConfig, ModelProvider, SpecNode, ToastEvent, WeknoraConfig } from '../shared/types'
+import { errorText, errorMessage } from '../shared/errors'
 
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
@@ -322,8 +323,8 @@ function sendSnapshot(): void {
     detectNewTasks(latestSnapshot)
     broadcastToWindows('project:snapshot', latestSnapshot)
     rebuildTrayMenu()
-  } catch (e: any) {
-    console.error('rescan failed:', e?.message)
+  } catch (e) {
+    console.error('rescan failed:', errorMessage(e))
   }
 }
 
@@ -374,8 +375,9 @@ function focusMainAndOpenTask(taskDir: string): void {
   if (!win || win.isDestroyed()) {
     createWindow()
   }
-  win!.show()
-  win!.focus()
+  if (!win || win.isDestroyed()) return
+  win.show()
+  win.focus()
 
   const target = resolve(taskDir)
   // 深链任务可能来自另一个项目：向上找到最近的 .trellis 祖先作为项目根，
@@ -564,8 +566,8 @@ function safeReadText(absPath: string): { ok: boolean; error?: string; content?:
     let content = readFileSync(p, 'utf-8')
     if (content.charCodeAt(0) === 0xfeff) content = content.slice(1)
     return { ok: true, content, mtime: st.mtimeMs }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '读取失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '读取失败') }
   }
 }
 
@@ -643,8 +645,8 @@ function createTaskRecord(input: CreateTaskInput): { ok: boolean; error?: string
     writeFileSync(join(finalDir, 'task.json'), JSON.stringify(record, null, 2) + '\n', 'utf-8')
     sendSnapshot()
     return { ok: true, dirName: finalDirName }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '创建任务失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '创建任务失败') }
   }
 }
 
@@ -677,8 +679,8 @@ function deleteTaskRecord(taskDir: string, expectedMtime?: number): { ok: boolea
     rmSync(target, { recursive: true, force: false })
     sendSnapshot()
     return { ok: true }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '删除待办失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '删除待办失败') }
   }
 }
 
@@ -720,8 +722,8 @@ function registerIpc(): void {
       knownTaskDirs = new Set(snap.tasks.map((t) => t.dirName))
       recordActivity(snap)
       return { ok: true, snapshot: snap }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '打开项目失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '打开项目失败') }
     }
   })
 
@@ -747,9 +749,11 @@ function registerIpc(): void {
       updateTaskRecordAt(projectRoot, taskDir, patch, expectedMtime)
       sendSnapshot()
       return { ok: true }
-    } catch (e: any & { conflict?: boolean }) {
-      if (e?.conflict) return { ok: false, conflict: true, error: e.message }
-      return { ok: false, error: e?.message ?? '写入 task.json 失败' }
+    } catch (e) {
+      const conflict = typeof e === 'object' && e !== null && 'conflict' in e && (e as { conflict?: unknown }).conflict
+      const msg = errorMessage(e)
+      if (conflict) return { ok: false, conflict: true, error: msg }
+      return { ok: false, error: msg ?? '写入 task.json 失败' }
     }
   })
 
@@ -779,8 +783,8 @@ function registerIpc(): void {
     try {
       const todo = saveTodo(projectRoot, input)
       return { ok: true, todo }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '保存待办失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '保存待办失败') }
     }
   })
 
@@ -789,8 +793,8 @@ function registerIpc(): void {
     try {
       deleteTodo(projectRoot, id)
       return { ok: true }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '删除待办失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '删除待办失败') }
     }
   })
 
@@ -809,9 +813,11 @@ function registerIpc(): void {
       writeSpecFile(projectRoot, absPath, content, expectedMtime)
       sendSnapshot()
       return { ok: true }
-    } catch (e: any & { conflict?: boolean }) {
-      if (e?.conflict) return { ok: false, conflict: true, error: e.message }
-      return { ok: false, error: e?.message ?? '写入失败' }
+    } catch (e) {
+      const conflict = typeof e === 'object' && e !== null && 'conflict' in e && (e as { conflict?: unknown }).conflict
+      const msg = errorMessage(e)
+      if (conflict) return { ok: false, conflict: true, error: msg }
+      return { ok: false, error: msg ?? '写入失败' }
     }
   })
 
@@ -819,8 +825,8 @@ function registerIpc(): void {
     if (!projectRoot) return { ok: false, error: '未打开项目' }
     try {
       return { ok: true, counts: computeSpecBacklinks(projectRoot) }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '统计失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '统计失败') }
     }
   })
 
@@ -828,8 +834,8 @@ function registerIpc(): void {
     if (!projectRoot) return { ok: false, error: '未打开项目', hits: [] }
     try {
       return searchDocs(projectRoot, String(query ?? ''), group === 'spec' || group === 'workspace' ? group : 'all')
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '检索失败', hits: [] }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '检索失败'), hits: [] }
     }
   })
 
@@ -876,8 +882,8 @@ function registerIpc(): void {
     if (!projectRoot) return { ok: false, error: '未打开项目' }
     try {
       return { ok: true, scan: scanStudio(projectRoot) }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '扫描失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '扫描失败') }
     }
   })
 
@@ -901,8 +907,8 @@ function registerIpc(): void {
     try {
       setConfigKeys(projectRoot, patch ?? {})
       return { ok: true }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '写入 config.yaml 失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '写入 config.yaml 失败') }
     }
   })
 
@@ -911,8 +917,8 @@ function registerIpc(): void {
     try {
       setDeveloperFile(projectRoot, String(content ?? ''))
       return { ok: true }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '写入 .developer 失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '写入 .developer 失败') }
     }
   })
 
@@ -936,8 +942,8 @@ function registerIpc(): void {
     try {
       const lib = ['requirements', 'spec', 'wiki', 'archive'].includes(library) ? library : 'all'
       return kbSearch(projectRoot, lib as 'all', String(query ?? ''))
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '检索失败', hits: [], docs: [], totalDocs: 0, elapsedMs: 0 }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '检索失败'), hits: [], docs: [], totalDocs: 0, elapsedMs: 0 }
     }
   })
 
@@ -1002,7 +1008,7 @@ function registerIpc(): void {
     return GatewayManager.executeTool(String(toolName), args || {}, projectRoot || '')
   })
 
-  ipcMain.handle('gateway:updateSecurity', async (_e, security: any) => {
+  ipcMain.handle('gateway:updateSecurity', async (_e, security: GatewaySecurityConfig) => {
     GatewayManager.updateSecurity(security)
     return { ok: true }
   })
@@ -1240,8 +1246,8 @@ function registerIpc(): void {
         })
       }
       return { ok: true, dirName: destName }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '归档失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '归档失败') }
     }
   })
 
@@ -1274,8 +1280,8 @@ function registerIpc(): void {
       writeFileSync(p, String(content ?? ''), 'utf-8')
       sendSnapshot()
       return { ok: true, path: p }
-    } catch (e: any) {
-      return { ok: false, error: e?.message ?? '写入失败' }
+    } catch (e) {
+      return { ok: false, error: errorText(e, '写入失败') }
     }
   })
 

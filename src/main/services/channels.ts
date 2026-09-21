@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
+import { errorText } from '../../shared/errors'
 import { join } from 'path'
 import { spawn } from 'child_process'
 import type { ChannelEvent, ChannelSummary } from '../../shared/types'
@@ -90,8 +91,8 @@ export function listChannels(projectRoot: string): { ok: boolean; error?: string
       return (b.lastEventAt ?? '').localeCompare(a.lastEventAt ?? '')
     })
     return { ok: true, channels: out }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '读取 channels 失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '读取 channels 失败') }
   }
 }
 

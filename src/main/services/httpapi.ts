@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'http'
+import { errorMessage } from '../../shared/errors'
 import type { ProjectSnapshot } from '../../shared/types'
 
 /**
@@ -100,9 +101,9 @@ export function startHttpApi(
         }
         res.writeHead(404, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: 'not found' }))
-      } catch (e: any) {
+      } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: String(e?.message ?? e) }))
+        res.end(JSON.stringify({ error: String(errorMessage(e) ?? e) }))
       }
     })
     server.once('error', (e: NodeJS.ErrnoException) => {

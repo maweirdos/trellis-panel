@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, writeFileSync, statSync, existsSync } from 'fs'
+import { errorText } from '../../shared/errors'
 import { join, basename, extname, resolve, sep } from 'path'
 import yaml from 'js-yaml'
 import type {
@@ -96,8 +97,8 @@ function parseTaskRecord(taskJsonPath: string): {
     const obj = JSON.parse(raw)
     if (obj && typeof obj === 'object') return { record: obj as TaskRecord, mtime }
     return { record: null, error: 'task.json 不是对象' }
-  } catch (e: any) {
-    return { record: null, error: e?.message ?? '读取 task.json 失败' }
+  } catch (e) {
+    return { record: null, error: errorText(e, '读取 task.json 失败') }
   }
 }
 
@@ -330,10 +331,11 @@ function readDeveloper(devPath: string): { developer: string | null; since: stri
 
 function parseConfig(configPath: string): { packages: string[] } {
   try {
-    const obj = yaml.load(readFileSync(configPath, 'utf-8')) as any
-    const packages = obj && typeof obj === 'object' && obj.packages && typeof obj.packages === 'object'
-      ? Object.keys(obj.packages)
-      : []
+    const obj = yaml.load(readFileSync(configPath, 'utf-8')) as Record<string, unknown> | null
+    const packages =
+      obj && typeof obj === 'object' && obj.packages && typeof obj.packages === 'object'
+        ? Object.keys(obj.packages as Record<string, unknown>)
+        : []
     return { packages }
   } catch {
     return { packages: [] }
@@ -448,8 +450,8 @@ export function updateTaskRecordAt(
       continue
     }
     if (!EDITABLE.has(k)) continue
-    if ((next as any)[k] === v) continue
-    ;(next as any)[k] = v
+    if (next[k] === v) continue
+    next[k] = v
     if (k === 'status') {
       const completing = String(v).toLowerCase() === 'completed'
       if (completing && !next.completedAt) next.completedAt = new Date().toISOString().slice(0, 10)
@@ -470,8 +472,8 @@ export function readTextWithMtime(absPath: string): {
   try {
     const st = statSync(absPath)
     return { ok: true, content: readFileSync(absPath, 'utf-8'), mtime: st.mtimeMs }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '读取失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '读取失败') }
   }
 }
 

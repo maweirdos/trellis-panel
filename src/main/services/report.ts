@@ -1,5 +1,6 @@
 import type { ProjectSnapshot } from '../../shared/types'
 import { statusLabelShared as statusLabel } from '../../shared/labels-shared'
+import { errorText } from '../../shared/errors'
 import { getActivity } from './activity'
 
 const DAY = 24 * 3600 * 1000
@@ -235,7 +236,7 @@ export function saveReport(root: string, fileName: string, markdown: string): { 
     const p = join(dir, safeName)
     writeFileSync(p, markdown, 'utf-8')
     return { ok: true, path: p }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '保存失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '保存失败') }
   }
 }

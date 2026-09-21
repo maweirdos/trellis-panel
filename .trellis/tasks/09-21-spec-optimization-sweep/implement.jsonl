@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/frontend/electron-browser-api-restrictions.md", "reason": "P0 依据：prompt/confirm/alert 在 Electron 中不可用，替代模式与对话框组件要求"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "禁用模式清单：非空断言、any、未使用导入等；提交前检查清单"}
+{"file": ".trellis/spec/frontend/components.md", "reason": "对话框/Modal 组件需遵循的语义 HTML、空态、滚动条模式"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "改造调用点为 async 时的 React 陷阱（useState 函数、useMemo、事件返回值）"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "any 消除的类型组织与导入路径规范"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "主进程侧 any → unknown + 收窄的模式"}
+{"file": ".trellis/spec/backend/api-patterns.md", "reason": "IPC handler {ok,error} 统一模式，抽查 gateway/todo 一致性"}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "跨层通用质量要求"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "对话框组件必须先查既有模式（IntakeModal/PlanningModal）再新建"}

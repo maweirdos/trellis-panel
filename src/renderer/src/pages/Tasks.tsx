@@ -41,6 +41,7 @@ import { MarkdownView } from '../components/MarkdownView'
 import { CodeView } from '../components/CodeView'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import { DoDModal } from '../components/DoDModal'
+import { confirmDialog } from '../components/Dialogs'
 import { FocusTimer } from '../components/FocusTimer'
 import { Select } from '../components/Select'
 import type { JSX } from 'react'
@@ -133,7 +134,8 @@ const TaskCard = React.memo(function TaskCard({
             href="#"
             onClick={(e) => {
               e.stopPropagation()
-              void api.openExternal(t.record!.pr_url!)
+              const prUrl = t.record?.pr_url
+              if (prUrl) void api.openExternal(prUrl)
             }}
             className="shrink-0 text-leaf-soft/80 hover:text-leaf-soft"
           >
@@ -588,7 +590,14 @@ function TaskWorkspace({
   const saveDraft = async (): Promise<void> => {
     if (!aiDraft) return
     const exists = task.artifacts.some((a) => /^prd\.md$/i.test(a.name))
-    if (exists && !confirm('任务目录已有 prd.md，覆盖？')) return
+    if (exists) {
+      const ok = await confirmDialog({
+        title: '任务目录已有 prd.md，覆盖？',
+        confirmText: '覆盖',
+        danger: true
+      })
+      if (!ok) return
+    }
     const res = await api.taskWriteArtifact(task.dirName, 'prd.md', aiDraft)
     if (res.ok) {
       pushToast({ kind: 'success', title: '已保存 prd.md', body: task.dirName })
@@ -943,14 +952,9 @@ function TaskWorkspace({
               const isSel = t.dirName === selected
               const col = columns.find((x) => matchCol(t, x.status))
               const rawPriority = t.record?.priority
-              const hasPriority = Boolean(
-                rawPriority &&
-                  typeof rawPriority === 'string' &&
-                  rawPriority.trim() !== '' &&
-                  rawPriority.toUpperCase() !== 'P?' &&
-                  rawPriority.toUpperCase() !== '?'
-              )
-              const priority = hasPriority ? rawPriority!.trim().toUpperCase() : null
+              const priorityText = rawPriority?.trim().toUpperCase()
+              const priority =
+                priorityText && priorityText !== 'P?' && priorityText !== '?' ? priorityText : null
 
               return (
                 <button

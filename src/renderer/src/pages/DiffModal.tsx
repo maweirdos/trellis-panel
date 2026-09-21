@@ -46,7 +46,7 @@ export function DiffModal({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {entries.map(([field, newVal]) => {
-            const oldVal = (r as any)[field]
+            const oldVal = (r as unknown as Record<string, unknown>)[field]
             const fmt = (v: unknown): string => {
               if (v === null || v === undefined || v === '') return '（空）'
               if (Array.isArray(v)) return v.join('\n')

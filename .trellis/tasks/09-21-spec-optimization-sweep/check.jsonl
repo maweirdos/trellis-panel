@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/electron-browser-api-restrictions.md", "reason": "验收：渲染进程无原生对话框调用"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "验收：无非空断言、无 any、typecheck 通过"}
+{"file": ".trellis/spec/backend/api-patterns.md", "reason": "验收：IPC handler 错误处理一致性"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "验收：async 化改造未引入 React 陷阱"}

@@ -1,4 +1,5 @@
 import { safeStorage } from 'electron'
+import { errorText } from '../../shared/errors'
 import type { GitLabConfig, GitLabMrInfo, GitLabPipelineInfo, GitLabTaskStatus } from '../../shared/types'
 
 /* ---------------- password protection (same scheme as Jira) ---------------- */
@@ -119,8 +120,8 @@ async function glGet<T>(cfg: GitLabConfig, path: string): Promise<{ ok: boolean;
     }
     if (!res.ok) return { ok: false, status: res.status, error: `GitLab API ${res.status}` }
     return { ok: true, data: (await res.json()) as T }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? 'GitLab 请求失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, 'GitLab 请求失败') }
   }
 }
 
@@ -144,8 +145,8 @@ async function glPost<T>(cfg: GitLabConfig, path: string, body: Record<string, u
       return { ok: false, status: res.status, error: msg }
     }
     return { ok: true, data: (await res.json()) as T }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? 'GitLab 请求失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, 'GitLab 请求失败') }
   }
 }
 
@@ -178,8 +179,8 @@ export async function gitlabTest(cfg: GitLabConfig): Promise<{ ok: boolean; erro
       ok: true,
       displayName: `${user.name ?? user.username ?? cfg.user}${proj ? ` · 项目 ${cfg.project}` : '（未找到项目，请检查项目路径）'}`
     }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? '连接失败' }
+  } catch (e) {
+    return { ok: false, error: errorText(e, '连接失败') }
   }
 }
 

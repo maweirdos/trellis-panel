@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
+import { errorText } from '../../../shared/errors'
 
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null
 let initialized = false
@@ -39,8 +40,8 @@ export const MermaidBlock = React.memo(function MermaidBlock({ chart }: { chart:
         const id = `mermaid-${Date.now()}-${seq.current++}`
         const { svg: out } = await mermaid.render(id, chart)
         if (alive) setSvg(out)
-      } catch (e: any) {
-        if (alive) setError(e?.message ?? 'Mermaid 渲染失败')
+      } catch (e) {
+        if (alive) setError(errorText(e, 'Mermaid 渲染失败'))
       }
     })()
     return () => {
