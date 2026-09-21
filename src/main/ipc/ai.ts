@@ -1,12 +1,13 @@
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { IpcErrorCode, ipcFail } from '../../shared/ipc-errors'
 import type { AiConfig, ChatMessage, ModelProvider } from '../../shared/types'
-import { aiChat, aiTest, aiTaskPrompt, fetchModelsFromProvider, testSingleModel } from '../services/ai'
+import { aiChat, aiTest, aiTaskPrompt, fetchModelsFromProvider, testSingleModel, enrichModelsWithCatalog } from '../services/ai'
 import { aiCommitMsg, aiPrDesc } from '../services/plan'
 import { getSettings } from '../services/store'
 import { isGitRepo, taskGitInfo } from '../services/git'
 import { getProjectRoot, getSnapshot, findTask, flattenSpecNames } from '../state'
 import { handle } from './registry'
+import { app } from 'electron'
 
 export function registerAiIpc(): void {
   handle(ipcInvoke.ai.chat, (_e, messages: ChatMessage[]) => {
@@ -19,7 +20,12 @@ export function registerAiIpc(): void {
   })
 
   handle(ipcInvoke.ai.test, (_e, cfg: AiConfig) => aiTest(cfg))
-  handle(ipcInvoke.ai['fetch-models'], (_e, provider: ModelProvider) => fetchModelsFromProvider(provider))
+  // 发现优先 + models.dev 富化（TPD-012）：缓存 24h，离线自动回退旧缓存
+  handle(ipcInvoke.ai['fetch-models'], async (_e, provider: ModelProvider) => {
+    const res = await fetchModelsFromProvider(provider)
+    if (!res.ok || !res.models) return res
+    return { ok: true, models: await enrichModelsWithCatalog(app, res.models) }
+  })
   handle(ipcInvoke.ai['test-model'], (_e, provider: ModelProvider, modelId: string) => testSingleModel(provider, modelId))
 
   handle(ipcInvoke.ai.prdDraft, (_e, dirName: string) => {
