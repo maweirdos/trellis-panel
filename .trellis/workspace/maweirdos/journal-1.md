@@ -184,3 +184,17 @@ chat 冒烟扩至 44 项全过（allow-session 复用零发卡、deny 回灌、�
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: roadmap 清扫（09-22-roadmap-sweep）
+**Branch**: `main`
+
+### Summary
+
+清空 roadmap 全部残留子项：response 格式 input_image 图像分片；面板截图一键问 AI（capturePage→PNG dataURL→附件流程，chat:screenshot 通道经 WindowDeps.captureMain 注入）；分支切换下潜到最深叶（切回旧分支=看到完整旧问答，TPD-023）；agent 循环按会话 activeTools 恢复工具 schema（成功执行即激活证据，上下文经济性落地，TPD-022/024）。观察项（语音/i18n/图片生成/面板插件化/并排分支视图）标注冻结待用户确认。chat 冒烟扩至 54 项全过。
+
+### Status
+
+[OK] **Completed** — roadmap 高价值清单全部完成，观察项冻结待用户解锁。

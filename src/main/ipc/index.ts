@@ -46,5 +46,5 @@ export function registerIpc(deps: WindowDeps): void {
   registerJiraIpc()
   registerGitlabIpc()
   registerHttpApiIpc()
-  registerChatIpc()
+  registerChatIpc(deps)
 }

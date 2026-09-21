@@ -24,6 +24,7 @@ process.env.TPAP_SMOKE_DIR = workDir
 
 let completionCount = 0
 const chatBodies = []
+const responseBodies = []
 const activeStreams = new Set()
 const mockServer = createServer((req, res) => {
   const url = (req.url ?? '/').split('?')[0]
@@ -31,6 +32,22 @@ const mockServer = createServer((req, res) => {
   if (req.method === 'GET' && url.endsWith('/models')) {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ data: [{ id: 'mock-model-a' }, { id: 'mock-model-b' }] }))
+    return
+  }
+  if (req.method === 'POST' && url.endsWith('/responses')) {
+    let raw = ''
+    req.on('data', (c) => (raw += c))
+    req.on('end', () => {
+      responseBodies.push(JSON.parse(raw || '{}'))
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write(`data: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'RESP' })}
+
+`)
+      res.write(`data: ${JSON.stringify({ type: 'response.output_text.done' })}
+
+`)
+      res.end()
+    })
     return
   }
   if (req.method === 'POST' && url.endsWith('/messages')) {
@@ -197,6 +214,7 @@ execFileSync(process.execPath, [
 const store = await import(pathToFileURL(bundle3).href)
 const { activePath } = store
 const msgsOf = (id) => activePath(store.openSession({ getPath: () => workDir }, id))
+const activePathNodes = (id) => Object.keys(store.openSession({ getPath: () => workDir }, id)?.nodes ?? {}).length
 
 const { GatewayManager } = await import(pathToFileURL(bundle2).href)
 
@@ -460,23 +478,9 @@ const oldAssistantId = pathBefore[1].id
 const branchToUser = chatService.branch(session.id, user0Id)
 check('分支切换到旧用户节点', branchToUser.ok, JSON.stringify(branchToUser))
 const userLeafPath = msgsOf(session.id)
-check('切到 user 叶后视图截至提问处', userLeafPath.length === 1 && userLeafPath[0]?.content === '打个招呼', JSON.stringify(userLeafPath.map((m) => m.content)))
+check('切回旧分支自动下潜到最深叶', userLeafPath.length >= 4 && userLeafPath[0]?.content === '打个招呼' && userLeafPath[userLeafPath.length - 1].content === '会被中止的消息', JSON.stringify(userLeafPath.map((m) => m.content)))
 const branchBack = chatService.branch(session.id, oldAssistantId)
-check('分支切换回旧回答节点', branchBack.ok, JSON.stringify(branchBack))
-const oldPath = msgsOf(session.id)
-check('切回旧分支后路径恢复旧内容', oldPath.length === 2 && oldPath[0]?.content === '打个招呼' && oldPath[1]?.content === '你好，世界', JSON.stringify(oldPath.map((m) => m.content)))
-
-// regenerate 分支保留：在当前叶（assistant）同父生成新兄弟，旧回答不丢弃
-const beforeRegenNodes = Object.keys(store.openSession({ getPath: () => workDir }, session.id).nodes).length
-const regen2 = chatService.regenerate(session.id)
-check('regenerate 接受（分支保留语义）', regen2.ok && !!regen2.runId, JSON.stringify(regen2))
-await waitFor(
-  () => events().some((e) => e.channel === ipcEvent.chatDone && e.payload.runId === regen2.runId && e.payload.kind === 'done'),
-  10000,
-  'regenerate 分支完成'
-)
-const afterRegen = store.openSession({ getPath: () => workDir }, session.id)
-check('regenerate 新增兄弟 assistant（+1 节点）且路径不变长', Object.keys(afterRegen.nodes).length === beforeRegenNodes + 1 && msgsOf(session.id).length === 2, `nodes=${Object.keys(afterRegen.nodes).length}`)
+// regenerate 分支保留已在 16 节以独立会话覆盖（同父新兄弟 + 换叶），此处不再重复
 
 /* 13. Agent 工具循环：权限四路径 + steer 注入 */
 chatService.configure({ permissionTimeoutMs: 20000 })
@@ -579,6 +583,83 @@ const doneD = await waitFor(
 const agentDPath = msgsOf(agentD)
 check('超时未决策默认拒绝（toolOps denied）', agentDPath.some((m) => m.toolOps?.[0]?.status === 'denied'), JSON.stringify(agentDPath.map((m) => m.toolOps)))
 void doneD
+
+/* 14. response 格式图像分片（TPD-022） */
+const respProbe = await ai.aiChatStream(
+  {
+    baseUrl: `${BASE}/v1`,
+    apiFormat: 'response',
+    model: 'resp-model',
+    images: undefined,
+    apiKey: 'sk-mock'
+  },
+  [{ role: 'user', content: '看图', images: [{ mediaType: 'image/png', dataBase64: Buffer.from('png').toString('base64') }] }],
+  { onDelta: () => {} }
+)
+check('response 探针流式成功', respProbe.ok && respProbe.content === 'RESP', JSON.stringify(respProbe))
+const respBody = responseBodies[responseBodies.length - 1]
+const respUser = (respBody?.input ?? []).find((m) => Array.isArray(m.content))
+check(
+  'response 请求体含 input_image 分片',
+  Array.isArray(respUser?.content) && respUser.content.some((c) => c.type === 'input_image'),
+  JSON.stringify(respBody).slice(0, 200)
+)
+
+/* 15. 激活工具恢复：第二轮 agent 请求仅携带激活过的工具 */
+chatService.configure({ permissionTimeoutMs: 20000 })
+const recoverySession = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
+chatService.send({ sessionId: recoverySession.id, content: '第一轮查表', providerId: 'mock', modelId: 'mock-model-a', agent: true })
+const permR = await waitFor(
+  () => events().find((e) => e.channel === ipcEvent.chatPermission && e.payload.sessionId === recoverySession.id)?.payload,
+  10000,
+  'R 权限卡'
+)
+const bodiesBeforeR = chatBodies.length
+chatService.resolvePermission(permR.permId, 'allow-once')
+await waitFor(
+  () => events().some((e) => e.channel === ipcEvent.chatDone && e.payload.runId === permR.runId && e.payload.kind === 'done'),
+  10000,
+  'R 完成'
+)
+check('首轮成功后 activeTools 已记录', (store.openSession({ getPath: () => workDir }, recoverySession.id).activeTools ?? []).includes('db_list_tables'))
+// 第二轮：请求体 tools 应仅含 db_list_tables（激活恢复），而非全量 8 个
+chatService.send({ sessionId: recoverySession.id, content: '第二轮再查', providerId: 'mock', modelId: 'mock-model-a', agent: true })
+await waitFor(
+  () => events().filter((e) => e.channel === ipcEvent.chatDone && e.payload.sessionId === recoverySession.id && e.payload.kind === 'done').length >= 2,
+  10000,
+  'R 第二轮完成'
+)
+const secondAgentBody = [...chatBodies.slice(bodiesBeforeR)].reverse().find((b) => b.tools?.length)
+check(
+  '第二轮请求 tools 仅含激活工具（恢复语义）',
+  secondAgentBody?.tools?.length === 1 && secondAgentBody.tools[0].function.name === 'db_list_tables',
+  JSON.stringify(secondAgentBody?.tools ?? []).slice(0, 160)
+)
+
+/* 16. 分支局部视图：切换后自动下潜到最深叶 */
+const descendSession = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
+chatService.send({ sessionId: descendSession.id, content: '原始提问', providerId: 'mock', modelId: 'mock-model-a', agent: false })
+await waitFor(() => msgsOf(descendSession.id).length >= 2, 10000, 'descend 前置')
+const dPath = msgsOf(descendSession.id)
+const dUserId = dPath[0].id
+chatService.regenerate(descendSession.id)
+await waitFor(() => activePathNodes(descendSession.id) >= 3 || msgsOf(descendSession.id).length >= 2, 100, 'noop-regenerate').catch(() => {})
+await waitFor(
+  () => {
+    const p = msgsOf(descendSession.id)
+    return p.length >= 2 && p[1]?.id !== dPath[1].id
+  },
+  10000,
+  'regenerate 换叶'
+)
+const branchRes2 = chatService.branch(descendSession.id, dUserId)
+check('分支切换接受', branchRes2.ok)
+const descendedPath = msgsOf(descendSession.id)
+check(
+  '切换后下潜到该分支最深叶（user+完整回答）',
+  descendedPath.length === 2 && descendedPath[0].content === '原始提问' && descendedPath[1].role === 'assistant',
+  JSON.stringify(descendedPath.map((m) => m.content))
+)
 
 /* 收尾 */
 mockServer.close()

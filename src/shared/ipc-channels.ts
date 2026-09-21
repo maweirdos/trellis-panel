@@ -112,7 +112,8 @@ export const ipcInvoke = {
     edit: 'chat:edit',
     branch: 'chat:branch',
     steer: 'chat:steer',
-    permissionResolve: 'chat:permission-resolve'
+    permissionResolve: 'chat:permission-resolve',
+    screenshot: 'chat:screenshot'
   },
   ai: {
     chat: 'ai:chat',

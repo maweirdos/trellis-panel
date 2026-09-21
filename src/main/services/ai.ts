@@ -715,7 +715,16 @@ export async function aiChatStream(
     if (key) headers['Authorization'] = `Bearer ${key}`
     body = {
       model: target.model,
-      input: messages.map((m) => ({ role: m.role, content: m.content })),
+      input: messages.map((m) => {
+        if (m.role !== 'user' || !m.images?.length) return { role: m.role, content: m.content }
+        // response 格式图像分片（TPD-022）：input_image 直接接受 dataURL
+        const parts: Array<Record<string, unknown>> = m.images.map((img) => ({
+          type: 'input_image',
+          image_url: `data:${img.mediaType};base64,${img.dataBase64}`
+        }))
+        parts.push({ type: 'input_text', text: m.content })
+        return { role: m.role, content: parts }
+      }),
       temperature: target.temperature ?? 0.3,
       stream: true
     }

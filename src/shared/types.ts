@@ -959,6 +959,7 @@ export interface TrellisApi {
   }) => Promise<ChatSendResult>
   chatRegenerate: (sessionId: string) => Promise<ChatSendResult>
   chatSteer: (sessionId: string, content: string) => Promise<{ ok: boolean; error?: string }>
+  chatScreenshot: () => Promise<{ ok: boolean; error?: string; dataUrl?: string }>
   chatResolvePermission: (permId: string, decision: 'allow-once' | 'allow-session' | 'deny') => Promise<{ ok: boolean; error?: string }>
   chatEditResend: (sessionId: string, messageId: string, content: string) => Promise<ChatSendResult>
   chatBranch: (sessionId: string, messageId: string) => Promise<{ ok: boolean; error?: string }>

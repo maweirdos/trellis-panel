@@ -9,6 +9,8 @@ import {
   addChildNode,
   appendNode,
   createSession,
+  addActiveTool,
+  deepestLeaf,
   openSession,
   renameSession,
   setLeaf,
@@ -231,7 +233,8 @@ class ChatService {
     if (!session) return { ok: false, error: '会话不存在' }
     if (this.active.has(sessionId)) return { ok: false, error: '当前有轮次运行中' }
     if (!session.nodes[messageId]) return { ok: false, error: '分支节点不存在' }
-    setLeaf(app, sessionId, messageId)
+    // 局部视图语义（TPD-023）：切回旧分支 = 下潜到该分支最深叶，看到完整旧问答而非截断在切换点
+    setLeaf(app, sessionId, deepestLeaf(session, messageId))
     return { ok: true }
   }
 
@@ -301,9 +304,18 @@ class ChatService {
         ctx.push({ role: 'user', content: `[用户补充] ${text}` })
       }
 
+      // 激活工具恢复（roadmap #6）：仅携带成功执行过的工具 schema；无记录则全量
+      const activeTools = openSession(app, sessionId)?.activeTools ?? []
+      const allTools = GatewayManager.toOpenAiTools()
+      const toolsForRound = activeTools.length
+        ? allTools.filter((t) => {
+            const fn = t.function as { name?: string }
+            return activeTools.includes(String(fn?.name ?? ''))
+          })
+        : allTools
       const res = await aiChatStream(opts.target, ctx, {
         signal: opts.controller.signal,
-        tools: GatewayManager.toOpenAiTools(),
+        tools: toolsForRound,
         onDelta: () => {}
       })
       if (res.aborted) {
@@ -348,6 +360,7 @@ class ChatService {
           status = exec.ok ? 'success' : 'error'
           elapsedMs = exec.elapsedMs
           result = exec
+          if (exec.ok) addActiveTool(app, sessionId, call.name)
         }
         const op: ChatToolOp = {
           toolName: call.name,

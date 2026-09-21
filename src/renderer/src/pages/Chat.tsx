@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   Pencil,
   ImagePlus,
+  Camera,
   X
 } from 'lucide-react'
 import type { ModelProvider, ThinkingLevel } from '../../../shared/types'
@@ -617,6 +618,21 @@ export function ChatPage(): JSX.Element {
               title="添加图片（≤4 张，单张 ≤3MB）"
             >
               <ImagePlus size={15} />
+            </button>
+            <button
+              onClick={() => {
+                void api.chatScreenshot().then((r) => {
+                  if (r.ok && r.dataUrl) {
+                    setAttachments((cur) => (cur.length >= 4 ? cur : [...cur, { dataUrl: r.dataUrl as string, name: 'screenshot.png' }]))
+                  } else if (r.error) {
+                    pushToast({ kind: 'error', title: '截图失败', body: r.error })
+                  }
+                })
+              }}
+              className="btn-ghost shrink-0 p-2"
+              title="截图问 AI：截取当前面板画面作为附件"
+            >
+              <Camera size={15} />
             </button>
             <textarea
               value={draft}

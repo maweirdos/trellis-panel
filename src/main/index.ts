@@ -333,6 +333,12 @@ if (!gotLock) {
       getCapsule: () => (capsule && !capsule.isDestroyed() ? capsule : null),
       showMain,
       createMain: createWindow,
+      captureMain: async () => {
+        const target = win && !win.isDestroyed() ? win : null
+        if (!target) return null
+        const image = await target.webContents.capturePage()
+        return image.isEmpty() ? null : `data:image/png;base64,${image.toPNG().toString('base64')}`
+      },
       capsule: capsuleApi
     })
     createWindow()

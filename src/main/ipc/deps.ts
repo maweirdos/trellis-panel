@@ -14,5 +14,7 @@ export interface WindowDeps {
   getCapsule(): BrowserWindow | null
   showMain(): void
   createMain(): void
+  /** 截取主窗口当前画面为 PNG dataURL（截图问 AI，TPD-022） */
+  captureMain(): Promise<string | null>
   capsule: CapsuleApi
 }

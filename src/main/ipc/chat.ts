@@ -15,11 +15,25 @@ import { errorMessage } from '../../shared/errors'
 import type { ThinkingLevel } from '../../shared/types'
 import type { ChatMessageView } from '../../shared/types'
 import { handle } from './registry'
+import type { WindowDeps } from './deps'
 
-export function registerChatIpc(): void {
+let depsCapture: WindowDeps['captureMain'] = async () => null
+
+export function registerChatIpc(deps?: WindowDeps): void {
+  if (deps) depsCapture = deps.captureMain
   chatService.init(app)
 
   handle(ipcInvoke.chat.list, () => ({ ok: true, sessions: listSessions(app) }))
+
+  handle(ipcInvoke.chat.screenshot, async () => {
+    try {
+      const dataUrl = await depsCapture()
+      if (!dataUrl) return ipcFail(IpcErrorCode.Unknown, '截图失败')
+      return { ok: true, dataUrl }
+    } catch (e) {
+      return ipcFail(IpcErrorCode.Unknown, errorMessage(e) ?? '截图失败')
+    }
+  })
 
   handle(ipcInvoke.chat.open, (_e, id: string) => {
     const session = openSession(app, String(id ?? ''))

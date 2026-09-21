@@ -33,6 +33,8 @@ export interface ChatSessionTree {
   agent?: boolean
   /** allow-session 的工具白名单（随会话持久化） */
   allowedTools?: string[]
+  /** 有成功执行证据的工具（roadmap #6：每轮只恢复激活工具的 schema） */
+  activeTools?: string[]
   nodes: Record<string, ChatNode>
   activeLeaf: string | null
 }
@@ -197,6 +199,15 @@ export function updateBinding(
   persist(app, s)
 }
 
+/** 激活工具恢复：记录成功执行过的工具（roadmap #6） */
+export function addActiveTool(app: AppPathProvider, id: string, toolName: string): void {
+  const s = openSession(app, id)
+  if (!s) throw new Error('会话不存在')
+  s.activeTools = s.activeTools ?? []
+  if (!s.activeTools.includes(toolName)) s.activeTools.push(toolName)
+  persist(app, s)
+}
+
 /** allow-session：加入会话工具白名单 */
 export function addAllowedTool(app: AppPathProvider, id: string, toolName: string): void {
   const s = openSession(app, id)
@@ -236,6 +247,19 @@ export function addChildNode(
   s.updatedAt = Date.now()
   persist(app, s)
   return node
+}
+
+/** 分支下潜：从指定节点沿"最后子节点"链下潜到最深后代叶（局部视图语义，TPD-023） */
+export function deepestLeaf(session: ChatSessionTree, nodeId: string): string {
+  let cur = nodeId
+  for (;;) {
+    let lastChild: ChatNode | null = null
+    for (const n of Object.values(session.nodes)) {
+      if (n.parent === cur) lastChild = n // Object.values 按插入序 → 最后一个即最新子节点
+    }
+    if (!lastChild) return cur
+    cur = lastChild.id
+  }
 }
 
 /** 分支切换：activeLeaf 置为指定节点 */
