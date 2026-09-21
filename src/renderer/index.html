@@ -5,8 +5,13 @@
     <title>Trellis Panel</title>
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     />
+    <script>
+      if (new URLSearchParams(window.location.search).get('mode') === 'capsule') {
+        document.documentElement.classList.add('is-capsule')
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

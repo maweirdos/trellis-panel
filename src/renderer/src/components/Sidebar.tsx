@@ -14,8 +14,10 @@ import {
   Radio,
   Network,
   Boxes,
+  BrainCircuit,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  User
 } from 'lucide-react'
 import { useApp, type Page } from '../store'
 import { clsx } from 'clsx'
@@ -26,7 +28,7 @@ const GROUPS: Array<{ label: string; items: Array<{ id: Page; label: string; ico
     label: '工作台',
     items: [
       { id: 'dashboard', label: '概览', icon: <LayoutDashboard size={16} /> },
-      { id: 'inbox', label: '待处理', icon: <Inbox size={16} /> },
+      { id: 'inbox', label: '待办池', icon: <Inbox size={16} /> },
       { id: 'tasks', label: '任务看板', icon: <SquareKanban size={16} /> }
     ]
   },
@@ -52,6 +54,7 @@ const GROUPS: Array<{ label: string; items: Array<{ id: Page; label: string; ico
       { id: 'architecture', label: '架构图', icon: <Network size={16} /> },
       { id: 'studio', label: '定制中心', icon: <Wand2 size={16} /> },
       { id: 'models', label: '模型管理', icon: <Boxes size={16} /> },
+      { id: 'gateway', label: 'MCP 网关', icon: <BrainCircuit size={16} /> },
       { id: 'settings', label: '设置', icon: <Settings size={16} /> }
     ]
   }
@@ -63,11 +66,11 @@ export function Sidebar(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
   const pickAndOpen = useApp((s) => s.pickAndOpen)
   const refresh = useApp((s) => s.refresh)
-  const inbox = useApp((s) => s.inbox)
+  const todos = useApp((s) => s.todos)
   const sidebarCollapsed = useApp((s) => s.sidebarCollapsed)
   const toggleSidebar = useApp((s) => s.toggleSidebar)
 
-  const pendingCount = Object.values(inbox).filter((e) => e.state === 'pending').length
+  const pendingCount = todos.filter((e) => e.status === 'pending').length
 
   const counts: Partial<Record<Page, number>> = snapshot
     ? {
@@ -133,7 +136,7 @@ export function Sidebar(): JSX.Element {
                             className={clsx(
                               'ml-auto rounded px-1.5 font-mono text-[10.5px]',
                               item.id === 'inbox'
-                                ? 'bg-amber-500/20 text-amber-300'
+                                ? 'border border-amber-500/30 bg-amber-500/15 font-medium text-amber-800 dark:text-amber-300'
                                 : 'bg-ink-750 text-mist-400'
                             )}
                           >
@@ -153,20 +156,50 @@ export function Sidebar(): JSX.Element {
       {/* 底部控制与项目信息：一体化水平工具栏，拒绝垂直堆叠 */}
       <div className={clsx('border-t border-ink-700/80 bg-ink-850/40', sidebarCollapsed ? 'p-1.5' : 'p-2.5 space-y-2')}>
         {!sidebarCollapsed && snapshot && (
-          <div className="flex items-center gap-2 rounded-lg bg-ink-800/60 p-1.5 border border-ink-750/50">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-leaf-dim/20 font-mono text-xs font-semibold text-leaf-soft">
-              {(snapshot.meta.developer || 'D').slice(0, 1).toUpperCase()}
+          <div className="space-y-2 rounded-xl border border-ink-700/60 bg-ink-800/90 p-2.5 shadow-sm backdrop-blur-sm">
+            {/* 当前项目名称与版本 */}
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-leaf/10 text-leaf">
+                <FolderOpen size={13.5} />
+              </div>
+              <span
+                className="min-w-0 flex-1 truncate text-xs font-semibold text-mist-100"
+                title={`${snapshot.meta.name}\n路径：${snapshot.meta.root}`}
+              >
+                {snapshot.meta.name}
+              </span>
+              {snapshot.meta.version && (
+                <span
+                  className="shrink-0 rounded bg-ink-700/60 px-1.5 py-0.5 font-mono text-[9.5px] font-medium text-mist-300 border border-ink-600/30"
+                  title={`版本: ${snapshot.meta.version}`}
+                >
+                  {snapshot.meta.version}
+                </span>
+              )}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[11.5px] font-medium text-mist-200">
-                {snapshot.meta.developer || '开发者'}
+
+            {/* 开发者与当前任务 */}
+            <div className="flex items-center justify-between gap-1.5 pt-0.5 text-[11px] text-mist-400">
+              <div className="flex min-w-0 items-center gap-1 truncate" title={`开发者: ${snapshot.meta.developer || '未配置'}`}>
+                <User size={11.5} className="shrink-0 text-mist-500" />
+                <span className="truncate">{snapshot.meta.developer || '开发者'}</span>
               </div>
               {snapshot.meta.currentTask ? (
-                <div className="truncate font-mono text-[10px] text-leaf-soft/90" title={snapshot.meta.currentTask}>
-                  {snapshot.meta.currentTask}
-                </div>
+                <span
+                  className="flex shrink-0 items-center gap-1 font-mono text-[10px] font-medium text-leaf-soft"
+                  title={`当前任务: ${snapshot.meta.currentTask}`}
+                >
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-leaf opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-leaf" />
+                  </span>
+                  <span className="max-w-[72px] truncate">{snapshot.meta.currentTask}</span>
+                </span>
               ) : (
-                <div className="text-[10px] text-mist-500">就绪</div>
+                <span className="flex shrink-0 items-center gap-1.5 text-[10.5px] font-medium text-leaf">
+                  <span className="h-1.5 w-1.5 rounded-full bg-leaf shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
+                  就绪
+                </span>
               )}
             </div>
           </div>
@@ -174,54 +207,54 @@ export function Sidebar(): JSX.Element {
 
         {/* 水平工具条（展开状态横向排列，折叠状态垂直紧凑居中） */}
         {sidebarCollapsed ? (
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-1.5">
             <button
               onClick={pickAndOpen}
-              className="btn-ghost justify-center p-2 text-mist-400 hover:text-mist-100"
+              className="btn-ghost justify-center rounded-lg p-2 text-mist-400 hover:bg-ink-700/60 hover:text-mist-100 active:scale-95 transition-all"
               title="打开项目"
             >
-              <FolderOpen size={14} />
+              <FolderOpen size={15} />
             </button>
             <button
               onClick={refresh}
-              className="btn-ghost justify-center p-2 text-mist-400 hover:text-mist-100"
+              className="btn-ghost justify-center rounded-lg p-2 text-mist-400 hover:bg-ink-700/60 hover:text-mist-100 active:scale-95 transition-all"
               title="重新扫描"
             >
-              <RotateCw size={14} />
+              <RotateCw size={15} />
             </button>
             <button
               onClick={toggleSidebar}
-              className="btn-ghost justify-center p-2 text-mist-400 hover:text-mist-100"
+              className="btn-ghost justify-center rounded-lg p-2 text-mist-400 hover:bg-ink-700/60 hover:text-mist-100 active:scale-95 transition-all"
               title="展开侧边栏"
             >
               <PanelLeftOpen size={15} />
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-between pt-0.5 px-0.5">
+          <div className="flex items-center justify-between px-0.5 pt-0.5">
             <div className="flex items-center gap-1">
               <button
                 onClick={pickAndOpen}
-                className="btn-ghost rounded-md p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                className="btn-ghost rounded-lg p-1.5 text-mist-400 hover:bg-ink-700/60 hover:text-mist-100 active:scale-95 transition-all"
                 title="打开项目 (Open Project)"
               >
-                <FolderOpen size={13.5} />
+                <FolderOpen size={14} />
               </button>
               <button
                 onClick={refresh}
-                className="btn-ghost rounded-md p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                className="btn-ghost rounded-lg p-1.5 text-mist-400 hover:bg-ink-700/60 hover:text-mist-100 active:scale-95 transition-all"
                 title="重新扫描项目 (Refresh)"
               >
-                <RotateCw size={13.5} />
+                <RotateCw size={14} />
               </button>
             </div>
 
             <button
               onClick={toggleSidebar}
-              className="btn-ghost rounded-md p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+              className="btn-ghost rounded-lg p-1.5 text-mist-400 hover:bg-ink-700/60 hover:text-mist-100 active:scale-95 transition-all"
               title="收起侧边栏"
             >
-              <PanelLeftClose size={13.5} />
+              <PanelLeftClose size={14} />
             </button>
           </div>
         )}

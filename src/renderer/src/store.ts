@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { WEKNORA_DEFAULTS } from '../../shared/types'
-import type { InboxItem, ProjectSnapshot, Settings, ToastEvent } from '../../shared/types'
+import type { InboxItem, ProjectSnapshot, Settings, ToastEvent, TodoItem } from '../../shared/types'
 import { api } from './api'
 
 /**
@@ -25,6 +25,7 @@ export type Page =
   | 'studio'
   | 'models'
   | 'settings'
+  | 'gateway'
 
 export interface ToastItem extends ToastEvent {
   id: number
@@ -70,8 +71,52 @@ function saveInbox(map: Record<string, InboxEntry>, projectRoot: string | null):
   }
 }
 
+/**
+ * 将收件箱数据与项目最新快照进行对齐（Reconciliation）：
+ * 1. 物理删除的任务（既不在 tasks 也不在 archived 中）：彻底从 inbox 剔除并持久化
+ * 2. 已归档任务：从 inbox 剔除（无需在待确认中展示）
+ * 3. 外部已推进任务（状态非 planning，如 in_progress/review/completed）：自动标记为 accepted
+ */
+export function reconcileInbox(
+  inbox: Record<string, InboxEntry>,
+  snapshot: ProjectSnapshot | null,
+  projectRoot: string | null
+): Record<string, InboxEntry> {
+  if (!snapshot || !projectRoot) return inbox
+  const activeDirs = new Set(snapshot.tasks.map((t) => t.dirName))
+  const archivedDirs = new Set(snapshot.archived.map((t) => t.dirName))
+
+  let changed = false
+  const next: Record<string, InboxEntry> = {}
+
+  for (const [dir, entry] of Object.entries(inbox)) {
+    // 1. 磁盘上已被删除或已被归档：直接移除
+    if (!activeDirs.has(dir) || archivedDirs.has(dir)) {
+      changed = true
+      continue
+    }
+
+    // 2. 外部已推进到非 planning 状态：自动标记为已确认
+    const task = snapshot.tasks.find((t) => t.dirName === dir)
+    const st = (task?.record?.status ?? '').toLowerCase()
+    if (st && st !== 'planning' && entry.state === 'pending') {
+      next[dir] = { ...entry, state: 'accepted' }
+      changed = true
+      continue
+    }
+
+    next[dir] = entry
+  }
+
+  if (changed) {
+    saveInbox(next, projectRoot)
+  }
+  return next
+}
+
 interface AppState {
   snapshot: ProjectSnapshot | null
+  setSnapshot: (snapshot: ProjectSnapshot) => void
   settings: Settings | null
   page: Page
   openError: string | null
@@ -89,6 +134,10 @@ interface AppState {
   intakeOpen: boolean
   inboxProjectRoot: string | null
   inbox: Record<string, InboxEntry>
+  todos: TodoItem[]
+  loadTodos: () => Promise<void>
+  saveTodo: (input: Parameters<typeof api.todoSave>[0]) => Promise<boolean>
+  deleteTodo: (id: string) => Promise<boolean>
   sidebarCollapsed: boolean
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -132,6 +181,39 @@ export const useApp = create<AppState>((set, get) => ({
   intakeOpen: false,
   inboxProjectRoot: null,
   inbox: loadInbox(null),
+  todos: [],
+
+  loadTodos: async () => {
+    const res = await api.todoList()
+    if (res.ok && res.todos) {
+      set({ todos: res.todos })
+    }
+  },
+
+  saveTodo: async (input) => {
+    const res = await api.todoSave(input)
+    if (res.ok && res.todo) {
+      await get().loadTodos()
+      get().pushToast({ kind: 'success', title: '待办已保存', body: res.todo.filePath })
+      return true
+    } else {
+      get().pushToast({ kind: 'error', title: '保存待办失败', body: res.error })
+      return false
+    }
+  },
+
+  deleteTodo: async (id) => {
+    const res = await api.todoDelete(id)
+    if (res.ok) {
+      await get().loadTodos()
+      get().pushToast({ kind: 'success', title: '待办已删除', body: id })
+      return true
+    } else {
+      get().pushToast({ kind: 'error', title: '删除待办失败', body: res.error })
+      return false
+    }
+  },
+
   sidebarCollapsed: localStorage.getItem('tpanel.sidebarCollapsed') === 'true',
 
   toggleSidebar: () => {
@@ -151,19 +233,33 @@ export const useApp = create<AppState>((set, get) => ({
 
   setPage: (page) => set({ page, openTaskDir: null, openTaskArchived: false }),
 
+  setSnapshot: (snapshot) => {
+    set((s) => {
+      const root = snapshot.meta.root
+      const nextInbox = reconcileInbox(s.inbox, snapshot, root)
+      return {
+        snapshot,
+        inbox: nextInbox,
+        inboxProjectRoot: root
+      }
+    })
+    void get().loadTodos()
+  },
+
   bootstrap: async () => {
     const settings = normalizeSettings(await api.getSettings())
     set({ settings, starting: false })
     // 胶囊窗口与主窗口共享主进程的项目状态，只需拉取当前快照。
     if (get().capsuleMode) {
       const snap = await api.getSnapshot()
-      if (snap) set({ snapshot: snap })
+      if (snap) get().setSnapshot(snap)
       return
     }
     const last = settings.recentProjects[0]
     if (last) {
       await get().openProjectPath(last)
     }
+    void get().loadTodos()
     // 冷启动深链兜底：live 推送若早于 bootstrap 到达会被 openProjectPath 重置，
     // 所以这里统一兜底消费一次（live 已消费时 pull 返回 null，用暂存的 dir 补上）
     const pending = await api.pullPendingFocus()
@@ -186,13 +282,17 @@ export const useApp = create<AppState>((set, get) => ({
     set({ openError: null })
     const res = await api.openProject(root)
     if (res.ok && res.snapshot) {
+      const rootPath = res.snapshot.meta.root
+      const rawInbox = loadInbox(rootPath)
+      const reconciled = reconcileInbox(rawInbox, res.snapshot, rootPath)
       set({
         snapshot: res.snapshot,
         page: 'dashboard',
         openTaskDir: null,
-        inboxProjectRoot: res.snapshot.meta.root,
-        inbox: loadInbox(res.snapshot.meta.root)
+        inboxProjectRoot: rootPath,
+        inbox: reconciled
       })
+      void get().loadTodos()
     } else {
       set({ openError: res.error ?? '打开失败' })
     }
@@ -205,14 +305,18 @@ export const useApp = create<AppState>((set, get) => ({
 
   closeProject: async () => {
     await api.closeProject()
-    set({ snapshot: null, openTaskDir: null, inboxProjectRoot: null, inbox: {} })
+    set({ snapshot: null, openTaskDir: null, inboxProjectRoot: null, inbox: {}, todos: [] })
   },
 
-  setInboxProject: (projectRoot) => set({ inboxProjectRoot: projectRoot, inbox: loadInbox(projectRoot) }),
+  setInboxProject: (projectRoot) => {
+    const raw = loadInbox(projectRoot)
+    const reconciled = reconcileInbox(raw, get().snapshot, projectRoot)
+    set({ inboxProjectRoot: projectRoot, inbox: reconciled })
+  },
 
   refresh: async () => {
     const snap = await api.getSnapshot()
-    if (snap) set({ snapshot: snap })
+    if (snap) get().setSnapshot(snap)
   },
 
   saveSettings: async (patch) => {
@@ -279,8 +383,8 @@ export const useApp = create<AppState>((set, get) => ({
       for (const it of items) {
         if (!next[it.dirName]) next[it.dirName] = { ...it, state: 'pending' }
       }
-      saveInbox(next, s.inboxProjectRoot)
-      return { inbox: next }
+      const reconciled = reconcileInbox(next, s.snapshot, s.inboxProjectRoot)
+      return { inbox: reconciled }
     })
   },
 

@@ -50,6 +50,8 @@ export function JiraPage(): JSX.Element {
   const settings = useApp((s) => s.settings)!
   const snapshot = useApp((s) => s.snapshot)!
   const pushToast = useApp((s) => s.pushToast)
+  const saveTodo = useApp((s) => s.saveTodo)
+  const todos = useApp((s) => s.todos)
 
   const [issues, setIssues] = useState<JiraIssue[]>([])
   const [total, setTotal] = useState(0)
@@ -128,25 +130,20 @@ export function JiraPage(): JSX.Element {
     if (typeof k === 'string' && k) linkedByKey.set(k.toUpperCase(), t)
   }
 
-  const slug = (key: string): string => 'jira-' + key.toLowerCase().replace(/[^a-z0-9-]+/g, '-')
-
-  const importIssue = async (issue: JiraIssue): Promise<void> => {
+  const importToBacklog = async (issue: JiraIssue): Promise<void> => {
     setBusyKey(issue.key)
-    const res = await api.createTaskFromJira({
-      dirName: slug(issue.key),
+    const ok = await saveTodo({
+      id: issue.key,
       title: `[${issue.key}] ${issue.summary}`,
-      description: `从 Jira 导入 ${issue.key}\n类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}\n链接：${issue.url}`,
-      status: JIRA_CATEGORY_STATUS[issue.statusCategory] ?? 'planning',
+      description: `### Jira 信息\n- 关键标识：${issue.key}\n- 需求类型：${issue.issueType}\n- 优先级：${issue.priority}\n- 负责人：${issue.assignee}\n- 原始链接：${issue.url}\n\n### 需求描述\n${issue.summary}\n`,
       priority: priorityOf(issue.priority),
-      assignee: snapshot.meta.developer ?? settings.jira.user,
+      source: 'jira',
       jiraKey: issue.key,
       jiraUrl: issue.url
     })
     setBusyKey(null)
-    if (res.ok) {
-      pushToast({ kind: 'success', title: `已加入待办：${issue.key}`, body: `创建任务目录 ${res.dirName}，等待 AI 认领` })
-    } else {
-      pushToast({ kind: 'error', title: `导入 ${issue.key} 失败`, body: res.error })
+    if (ok) {
+      pushToast({ kind: 'success', title: `已加入待办池：${issue.key}`, body: `保存为 .trellis/todos/${issue.key}.md，可供 AI 读取` })
     }
   }
 
@@ -240,6 +237,7 @@ export function JiraPage(): JSX.Element {
     const versionChips = groupByVersion
       ? issue.fixVersions.filter((v) => v !== groupVersion)
       : issue.fixVersions
+    const inTodos = todos.some((t) => t.jiraKey === issue.key || t.id === issue.key)
     return (
       <div key={issue.key} className="card px-3.5 py-2.5 transition-colors hover:border-ink-500">
         <div className="flex items-center gap-2">
@@ -274,9 +272,15 @@ export function JiraPage(): JSX.Element {
           <div className="ml-auto flex items-center gap-1">
             {!linked ? (
               <>
-                <button disabled={busy} onClick={() => void importIssue(issue)} className="btn-primary px-2 py-1 text-[10.5px] disabled:opacity-50">
-                  <Download size={10} /> {busy ? '加入中…' : '加入待办'}
-                </button>
+                {inTodos ? (
+                  <span className="chip border border-amber-400/30 bg-amber-500/10 text-amber-300" title="已在本地待办池中">
+                    ✓ 已在待办池
+                  </span>
+                ) : (
+                  <button disabled={busy} onClick={() => void importToBacklog(issue)} className="btn-primary px-2 py-1 text-[10.5px] disabled:opacity-50">
+                    <Download size={10} /> {busy ? '加入中…' : '加入待办池'}
+                  </button>
+                )}
                 <button onClick={() => setPlanSeed({ title: issue.summary, description: `从 Jira ${issue.key} 规划（类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}）\n\n${issue.summary}`, jiraKey: issue.key, jiraUrl: issue.url })} className="btn-outline px-2 py-1 text-[10.5px]" title="知识库 → AI 任务规划">
                   <Wand2 size={10} /> AI 规划
                 </button>

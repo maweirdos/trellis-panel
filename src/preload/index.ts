@@ -108,6 +108,18 @@ const api = {
 
   kbMcpInstall: () => ipcRenderer.invoke('kbmcp:install'),
   kbMcpStatus: () => ipcRenderer.invoke('kbmcp:status'),
+
+  gatewayStatus: () => ipcRenderer.invoke('gateway:status'),
+  gatewaySearch: (query: string, limit?: number) => ipcRenderer.invoke('gateway:search', query, limit),
+  gatewayRecentLogs: () => ipcRenderer.invoke('gateway:recentLogs'),
+  gatewaySyncSpec: (remoteDocId: string, targetFileName: string) =>
+    ipcRenderer.invoke('gateway:syncSpec', remoteDocId, targetFileName),
+  gatewayTestProvider: (providerId: string) => ipcRenderer.invoke('gateway:testProvider', providerId),
+  gatewayTestTool: (toolName: string, args: Record<string, unknown>) =>
+    ipcRenderer.invoke('gateway:testTool', toolName, args),
+  gatewayUpdateSecurity: (security: any) =>
+    ipcRenderer.invoke('gateway:updateSecurity', security),
+
   studioSyncExtension: (sourcePath: string, targets: string[]) =>
     ipcRenderer.invoke('studio:syncExtension', sourcePath, targets),
 
@@ -119,6 +131,9 @@ const api = {
   copyToClipboard: (text: string) => ipcRenderer.invoke('util:clipboard', text),
   setCapsuleMode: (on: boolean) => ipcRenderer.send('win:capsule', on),
   setCapsuleOnTop: (on: boolean) => ipcRenderer.invoke('capsule:onTop', on),
+  setCapsuleShape: (shape: 'pill' | 'card') => ipcRenderer.invoke('capsule:setShape', shape),
+  closeCapsule: () => ipcRenderer.invoke('capsule:close'),
+  resizeCapsule: (width: number, height: number) => ipcRenderer.invoke('capsule:resize', width, height),
   onToast: (cb: (e: ToastEvent) => void) => subscribe('bridge:toast', cb),
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => subscribe('bridge:focus-task', cb),
   getMcpInfo: () => ipcRenderer.invoke('mcp:info'),
@@ -137,6 +152,19 @@ const api = {
 
   createTask: (input: { title: string; description: string; priority: string }) =>
     ipcRenderer.invoke('task:create', input),
+
+  todoList: () => ipcRenderer.invoke('todo:list'),
+  todoSave: (input: {
+    id?: string
+    title: string
+    description: string
+    priority?: string
+    source?: 'jira' | 'manual'
+    jiraKey?: string
+    jiraUrl?: string
+    status?: 'pending' | 'converted' | 'dismissed'
+  }) => ipcRenderer.invoke('todo:save', input),
+  todoDelete: (id: string) => ipcRenderer.invoke('todo:delete', id),
 
   onInboxNew: (cb: (e: InboxNewEvent) => void) => subscribe('inbox:new', cb),
 

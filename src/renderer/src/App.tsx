@@ -27,6 +27,7 @@ const KnowledgePage = lazy(() => import('./pages/Knowledge').then((m) => ({ defa
 const ChannelsPage = lazy(() => import('./pages/Channels').then((m) => ({ default: m.ChannelsPage })))
 const ArchitecturePage = lazy(() => import('./pages/Architecture').then((m) => ({ default: m.ArchitecturePage })))
 const ModelsPage = lazy(() => import('./pages/Models').then((m) => ({ default: m.ModelsPage })))
+const GatewayPage = lazy(() => import('./pages/Gateway').then((m) => ({ default: m.GatewayPage })))
 
 function PageLoading(): JSX.Element {
   return (
@@ -59,7 +60,7 @@ function MainApp(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    const off = api.onSnapshotUpdated((snap) => useApp.setState({ snapshot: snap }))
+    const off = api.onSnapshotUpdated((snap) => useApp.getState().setSnapshot(snap))
     const offToast = api.onToast((t) => useApp.getState().pushToast(t))
     const offFocus = api.onBridgeTaskFocus((taskDir) => {
       const st = useApp.getState()
@@ -113,7 +114,7 @@ function MainApp(): JSX.Element {
             <div
               className={clsx(
                 'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models'
+              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models' || page === 'gateway'
                 ? 'overflow-hidden'
                 : 'overflow-y-auto'
               )}
@@ -131,6 +132,7 @@ function MainApp(): JSX.Element {
                 {page === 'architecture' && <ArchitecturePage />}
                 {page === 'studio' && <StudioPage />}
                 {page === 'models' && <ModelsPage />}
+                {page === 'gateway' && <GatewayPage />}
                 {page === 'settings' && <SettingsPage />}
               </Suspense>
             </div>
@@ -172,11 +174,12 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', settings?.theme !== 'light')
-  }, [settings?.theme])
+    document.documentElement.classList.toggle('is-capsule', capsuleMode)
+  }, [settings?.theme, capsuleMode])
 
   if (capsuleMode) {
     return (
-      <div className="h-full">
+      <div className="h-full w-full bg-transparent p-0 overflow-hidden">
         <CapsuleView />
         <Toasts />
       </div>

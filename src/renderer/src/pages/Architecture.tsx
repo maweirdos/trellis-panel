@@ -73,12 +73,12 @@ const EDGES: GEdge[] = [
   { from: 'state-inject', to: 'model', path: 'M774,99 H824', main: true },
   { from: 'model', to: 'toolcall', path: 'M942,99 H992', main: true },
   /* 工具调用 → PreToolUse（Task 派发） */
-  { from: 'toolcall', to: 'pretooluse', path: 'M1067,128 V212 H309 V250', main: true, label: 'Task 派发' },
+  { from: 'toolcall', to: 'pretooluse', path: 'M1067,128 V212 H309 V250', main: true, label: 'Task 派发', labelX: 365, labelY: 206 },
   { from: 'pretooluse', to: 'subagent', path: 'M388,279 H438', main: true, label: '注入' },
   /* 子代理结果回传模型：由 x=855 进入模型左侧，避免与按需路径重叠 */
-  { from: 'subagent', to: 'model', path: 'M522,250 V166 H855 V128', dashed: true, label: '回传' },
+  { from: 'subagent', to: 'model', path: 'M522,250 V166 H855 V128', dashed: true, label: '回传', labelX: 565, labelY: 160 },
   /* get_context 按需：由 x=890 进入模型中间 */
-  { from: 'getctx', to: 'model', path: 'M735,250 V186 H890 V128', dashed: true, label: '按需' },
+  { from: 'getctx', to: 'model', path: 'M735,250 V186 H890 V128', dashed: true, label: '按需', labelX: 810, labelY: 180 },
   /* 模型 → Codex 调度：由 x=925 离开模型右侧 */
   { from: 'model', to: 'dispatch', path: 'M925,128 V222 H943 V250', dashed: true },
   /* 生命周期链 */

@@ -397,6 +397,19 @@ export interface InboxItem {
   ts: number
 }
 
+export interface TodoItem {
+  id: string
+  title: string
+  description: string
+  priority: string
+  source: 'jira' | 'manual'
+  jiraKey?: string
+  jiraUrl?: string
+  status: 'pending' | 'converted' | 'dismissed'
+  createdAt: string
+  filePath: string
+}
+
 export interface InboxNewEvent {
   projectRoot: string
   items: InboxItem[]
@@ -816,6 +829,9 @@ export interface TrellisApi {
   copyToClipboard: (text: string) => Promise<void>
   setCapsuleMode: (on: boolean) => void
   setCapsuleOnTop: (on: boolean) => Promise<void>
+  setCapsuleShape: (shape: 'pill' | 'card') => Promise<void>
+  closeCapsule: () => Promise<void>
+  resizeCapsule: (width: number, height: number) => Promise<void>
   onToast: (cb: (e: ToastEvent) => void) => () => void
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => () => void
   getMcpInfo: () => Promise<McpInfo>
@@ -835,6 +851,20 @@ export interface TrellisApi {
 
   /* --- task intake --- */
   createTask: (input: { title: string; description: string; priority: string }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
+
+  /* --- todos (backlog) --- */
+  todoList: () => Promise<{ ok: boolean; error?: string; todos?: TodoItem[] }>
+  todoSave: (input: {
+    id?: string
+    title: string
+    description: string
+    priority?: string
+    source?: 'jira' | 'manual'
+    jiraKey?: string
+    jiraUrl?: string
+    status?: 'pending' | 'converted' | 'dismissed'
+  }) => Promise<{ ok: boolean; error?: string; todo?: TodoItem }>
+  todoDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
 
   /* --- inbox --- */
   onInboxNew: (cb: (e: InboxNewEvent) => void) => () => void
@@ -891,9 +921,112 @@ export interface TrellisApi {
   /* --- 站会报告 --- */
   generateStandup: () => Promise<ReportResult>
 
+  /* --- Gateway MCP 网关 --- */
+  gatewayStatus: () => Promise<GatewayStatus>
+  gatewaySearch: (query: string, limit?: number) => Promise<GatewaySearchResult>
+  gatewayRecentLogs: () => Promise<GatewayLogEntry[]>
+  gatewaySyncSpec: (remoteDocId: string, targetFileName: string) => Promise<{ ok: boolean; error?: string; path?: string }>
+  gatewayTestProvider: (providerId: string) => Promise<{ ok: boolean; error?: string; details?: Record<string, unknown> }>
+  gatewayTestTool: (toolName: string, args: Record<string, unknown>) => Promise<GatewayTestToolResult>
+  gatewayUpdateSecurity: (security: GatewaySecurityConfig) => Promise<{ ok: boolean }>
+
   /* --- window --- */
   windowMinimize: () => void
   windowMaximize: () => void
   windowClose: () => void
   onWindowMaximized: (cb: (maximized: boolean) => void) => () => void
+}
+
+export interface ContextHit {
+  id: string
+  title: string
+  source: string
+  sourceLabel: string
+  path?: string
+  snippet: string
+  score: number
+  metadata?: Record<string, unknown>
+}
+
+export interface GatewayToolDef {
+  name: string
+  description: string
+  upstreamId: string
+  parameters: Record<string, { type: string; description: string; required?: boolean; default?: unknown }>
+  isReadOnly: boolean
+  securityRule?: string
+}
+
+export interface GatewayUpstream {
+  id: string
+  name: string
+  category: 'database' | 'knowledge' | 'project' | 'custom'
+  description: string
+  status: 'connected' | 'disconnected' | 'error' | 'disabled'
+  endpoint?: string
+  tools: GatewayToolDef[]
+  isRemote: boolean
+  enabled: boolean
+  error?: string
+  lastChecked?: number
+  config?: Record<string, unknown>
+}
+
+export interface GatewaySecurityConfig {
+  sqlReadOnly: boolean
+  timeoutMs: number
+  maxResponseChars: number
+}
+
+export interface GatewayLogEntry {
+  id: string
+  timestamp: number
+  toolName: string
+  upstreamId: string
+  input?: Record<string, unknown>
+  status: 'success' | 'blocked' | 'error'
+  elapsedMs: number
+  responsePreview?: string
+  error?: string
+  query?: string
+  hitsCount?: number
+  sources?: Array<{ source: string; label: string; count: number }>
+}
+
+export interface GatewayProviderSummary {
+  id: string
+  name: string
+  description: string
+  isRemote: boolean
+  enabled: boolean
+  status: 'connected' | 'disconnected' | 'error' | 'disabled'
+  itemCount?: number
+  lastChecked?: number
+  error?: string
+}
+
+export interface GatewayStatus {
+  ok: boolean
+  running: boolean
+  transport: 'stdio' | 'sse' | 'http'
+  upstreams: GatewayUpstream[]
+  tools: GatewayToolDef[]
+  security: GatewaySecurityConfig
+  totalQueries: number
+  recentLogs: GatewayLogEntry[]
+  providers?: GatewayProviderSummary[]
+}
+
+export interface GatewayTestToolResult {
+  ok: boolean
+  elapsedMs: number
+  result?: unknown
+  error?: string
+  blockedBySecurity?: boolean
+}
+
+export interface GatewaySearchResult {
+  hits: ContextHit[]
+  elapsedMs: number
+  sources: Array<{ source: string; label: string; count: number }>
 }

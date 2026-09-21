@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, globalShortcut, clipboard, safeStorage, Notification, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, globalShortcut, clipboard, safeStorage, Notification, nativeImage, screen } from 'electron'
 import { join, resolve, sep, extname, basename, dirname } from 'path'
 import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, rmSync, renameSync } from 'fs'
 import { scanProject, updateTaskRecordAt, writeSpecFile, computeSpecBacklinks, readTextWithMtime, searchDocs, TEXT_EXTS } from './services/scan'
@@ -20,6 +20,7 @@ import { taskGitInfo, createBranch, clearGitCache, isGitRepo } from './services/
 import { recordActivity, getAnalytics } from './services/activity'
 import { generateWeeklyReport, generateStandup, saveReport } from './services/report'
 import { listChannels, channelSend, channelAction } from './services/channels'
+import { listTodos, saveTodo, deleteTodo } from './services/todo'
 import {
   scanStudio,
   studioReadText,
@@ -32,6 +33,7 @@ import {
   syncExtensionToPlatforms
 } from './services/studio'
 import { kbSearch } from './services/knowledge'
+import { GatewayManager } from './services/gateway/manager'
 import { aiChat, aiTest, aiTaskPrompt, protectAiKey, fetchModelsFromProvider, testSingleModel } from './services/ai'
 import { kbMcpInstall, kbMcpStatus } from './services/kbmcp'
 import { aiPlanTask, aiSplitEpic, aiCommitMsg, aiPrDesc, handoffTexts } from './services/plan'
@@ -61,6 +63,7 @@ import type { AiConfig, ChatMessage, GitLabConfig, JiraConfig, ModelProvider, Sp
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
 let capsuleOnTop = true
+let capsuleShape: 'pill' | 'card' = 'pill'
 let tray: Tray | null = null
 let projectRoot: string | null = null
 const watcher = new TrellisWatcher()
@@ -149,25 +152,35 @@ function createWindow(): void {
   }
 }
 
-function createCapsule(): void {
+function getCapsuleBounds(shape: 'pill' | 'card'): { width: number; height: number } {
+  if (shape === 'pill') {
+    return { width: 360, height: 44 }
+  }
+  return { width: 380, height: 260 }
+}
+
+function createCapsule(initialShape?: 'pill' | 'card'): void {
+  if (initialShape) capsuleShape = initialShape
   if (capsule && !capsule.isDestroyed()) {
     capsule.show()
     capsule.focus()
+    win?.hide()
     return
   }
+  const sz = getCapsuleBounds(capsuleShape)
   capsule = new BrowserWindow({
-    width: 400,
-    height: 210,
-    minWidth: 320,
-    minHeight: 160,
-    maxWidth: 560,
+    width: sz.width,
+    height: sz.height,
     frame: false,
+    transparent: true,
+    hasShadow: false,
     resizable: true,
     fullscreenable: false,
     alwaysOnTop: capsuleOnTop,
     skipTaskbar: false,
-    backgroundColor: '#12151c',
+    backgroundColor: '#00000000',
     title: 'Trellis 胶囊',
+    show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -179,13 +192,19 @@ function createCapsule(): void {
   capsule.on('closed', () => {
     capsule = null
   })
+  capsule.once('ready-to-show', () => {
+    if (capsule && !capsule.isDestroyed()) {
+      capsule.show()
+      capsule.focus()
+      win?.hide()
+    }
+  })
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
-    capsule.loadURL(devUrl + '?mode=capsule')
+    capsule.loadURL(devUrl + `?mode=capsule&shape=${capsuleShape}`)
   } else {
-    capsule.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'capsule' } })
+    capsule.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'capsule', shape: capsuleShape } })
   }
-  win?.hide()
 }
 
 /* ---------------- tray / shortcuts / autostart / updater ---------------- */
@@ -214,8 +233,13 @@ function rebuildTrayMenu(): void {
     {
       label: '胶囊模式',
       click: () => {
-        if (capsule && !capsule.isDestroyed()) capsule.close()
-        else createCapsule()
+        if (capsule && !capsule.isDestroyed() && capsule.isVisible()) {
+          capsule.hide()
+          win?.show()
+          win?.focus()
+        } else {
+          createCapsule(capsuleShape)
+        }
       }
     },
     { type: 'separator' },
@@ -239,7 +263,7 @@ function rebuildTrayMenu(): void {
 }
 
 function showMain(): void {
-  if (capsule && !capsule.isDestroyed()) capsule.close()
+  if (capsule && !capsule.isDestroyed()) capsule.hide()
   if (!win || win.isDestroyed()) {
     createWindow()
     return
@@ -329,17 +353,16 @@ function detectNewTasks(snap: ReturnType<typeof scanProject>): void {
       }
     })
     .slice(0, 20)
-  broadcastToWindows('inbox:new', { projectRoot, items })
   const first = items[0]
   toast({
     kind: 'info',
-    title: items.length === 1 ? '新任务已创建' : `${items.length} 个新任务已创建`,
+    title: items.length === 1 ? '新任务已进入看板' : `${items.length} 个新任务已进入看板`,
     body: items.length === 1 ? first.title : `${first.title} 等`
   })
 }
 
 function focusAndShow(): void {
-  const target = capsule && !capsule.isDestroyed() ? capsule : win
+  const target = capsule && !capsule.isDestroyed() && capsule.isVisible() ? capsule : win
   if (target && !target.isDestroyed()) {
     target.show()
     target.focus()
@@ -347,7 +370,7 @@ function focusAndShow(): void {
 }
 
 function focusMainAndOpenTask(taskDir: string): void {
-  if (capsule && !capsule.isDestroyed()) capsule.close()
+  if (capsule && !capsule.isDestroyed()) capsule.hide()
   if (!win || win.isDestroyed()) {
     createWindow()
   }
@@ -526,7 +549,7 @@ function restartHttpApi(): void {
 function safeReadText(absPath: string): { ok: boolean; error?: string; content?: string; mtime?: number } {
   if (!projectRoot) return { ok: false, error: '未打开项目' }
   const root = resolve(projectRoot)
-  const p = resolve(absPath)
+  const p = resolve(root, absPath)
   if (!p.startsWith(root + sep)) return { ok: false, error: '路径超出项目范围' }
   const ext = extname(p).toLowerCase()
   if (!TEXT_EXTS.has(ext)) return { ok: false, error: `不支持的文件类型 ${ext || '(无扩展名)'}` }
@@ -746,6 +769,31 @@ function registerIpc(): void {
     })
   })
 
+  ipcMain.handle('todo:list', () => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    return { ok: true, todos: listTodos(projectRoot) }
+  })
+
+  ipcMain.handle('todo:save', (_e, input) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    try {
+      const todo = saveTodo(projectRoot, input)
+      return { ok: true, todo }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '保存待办失败' }
+    }
+  })
+
+  ipcMain.handle('todo:delete', (_e, id: string) => {
+    if (!projectRoot) return { ok: false, error: '未打开项目' }
+    try {
+      deleteTodo(projectRoot, id)
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '删除待办失败' }
+    }
+  })
+
   ipcMain.handle('fs:readText', (_e, absPath: string) => {
     const base = safeReadText(absPath)
     if (base.ok) {
@@ -923,6 +971,40 @@ function registerIpc(): void {
     const merged = mergeWeknoraDraft({ ...getSettings().weknora, mcpUrl: String(url ?? '') })
     const plainToken = typeof token === 'string' && token ? token : weknoraMcpTokenOf(merged)
     return weknoraTestMcp(merged.mcpUrl, plainToken)
+  })
+
+  /* ---------------- Gateway MCP 知识网关 ---------------- */
+
+  ipcMain.handle('gateway:status', async () => {
+    return GatewayManager.getStatus(projectRoot || '')
+  })
+
+  ipcMain.handle('gateway:search', async (_e, query: string, limit?: number) => {
+    return GatewayManager.search(String(query ?? ''), {
+      limit: typeof limit === 'number' ? limit : 10,
+      root: projectRoot || ''
+    })
+  })
+
+  ipcMain.handle('gateway:recentLogs', async () => {
+    return GatewayManager.getLogs()
+  })
+
+  ipcMain.handle('gateway:syncSpec', async (_e, remoteDocId: string, targetFileName: string) => {
+    return GatewayManager.syncSpecFromRemote(projectRoot || '', remoteDocId, targetFileName)
+  })
+
+  ipcMain.handle('gateway:testProvider', async (_e, providerId: string) => {
+    return GatewayManager.testProvider(String(providerId), projectRoot || '')
+  })
+
+  ipcMain.handle('gateway:testTool', async (_e, toolName: string, args: Record<string, unknown>) => {
+    return GatewayManager.executeTool(String(toolName), args || {}, projectRoot || '')
+  })
+
+  ipcMain.handle('gateway:updateSecurity', async (_e, security: any) => {
+    GatewayManager.updateSecurity(security)
+    return { ok: true }
   })
 
   /* ---------------- AI（baseUrl 自定义模型） ---------------- */
@@ -1296,9 +1378,16 @@ function registerIpc(): void {
     clipboard.writeText(text)
   })
   ipcMain.on('win:capsule', (_e, on: boolean) => {
-    if (on) createCapsule()
-    else {
-      if (capsule && !capsule.isDestroyed()) capsule.close()
+    if (on) {
+      if (capsule && !capsule.isDestroyed()) {
+        capsule.show()
+        capsule.focus()
+        win?.hide()
+      } else {
+        createCapsule(capsuleShape)
+      }
+    } else {
+      if (capsule && !capsule.isDestroyed()) capsule.hide()
       win?.show()
       win?.focus()
     }
@@ -1306,6 +1395,47 @@ function registerIpc(): void {
   ipcMain.handle('capsule:onTop', (_e, on: boolean) => {
     capsuleOnTop = on
     if (capsule && !capsule.isDestroyed()) capsule.setAlwaysOnTop(on, 'screen-saver')
+  })
+  ipcMain.handle('capsule:setShape', async (_e, shape: 'pill' | 'card') => {
+    capsuleShape = shape
+    if (!capsule || capsule.isDestroyed()) return
+    const sz = getCapsuleBounds(shape)
+
+    const start = capsule.getBounds()
+    const currentDisplay = screen.getDisplayMatching(start)
+    const workArea = currentDisplay.workArea
+
+    let targetX = start.x - Math.round((sz.width - start.width) / 2)
+    let targetY = start.y
+
+    const willOverflowBottom = start.y + sz.height > workArea.y + workArea.height - 8
+    const isLowerHalf = (start.y + start.height / 2) > (workArea.y + workArea.height / 2)
+
+    if (shape === 'card') {
+      if (willOverflowBottom || isLowerHalf) {
+        targetY = start.y - (sz.height - start.height)
+      }
+    } else {
+      if (isLowerHalf) {
+        targetY = start.y + (start.height - sz.height)
+      }
+    }
+
+    targetX = Math.max(workArea.x + 8, Math.min(workArea.x + workArea.width - sz.width - 8, targetX))
+    targetY = Math.max(workArea.y + 8, Math.min(workArea.y + workArea.height - sz.height - 8, targetY))
+
+    capsule.setMinimumSize(0, 0)
+    capsule.setMaximumSize(10000, 10000)
+    capsule.setBounds({ x: targetX, y: targetY, width: sz.width, height: sz.height })
+  })
+  ipcMain.handle('capsule:resize', (_e, width: number, height: number) => {
+    if (!capsule || capsule.isDestroyed()) return
+    capsule.setSize(Math.round(width), Math.round(height), true)
+  })
+  ipcMain.handle('capsule:close', () => {
+    if (capsule && !capsule.isDestroyed()) {
+      capsule.hide()
+    }
   })
 
   /* http api（只读 Web 看板） */

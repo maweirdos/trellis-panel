@@ -57,9 +57,23 @@ body,
   overflow: hidden;
 }
 
+html.is-capsule,
+html.is-capsule body,
+html.is-capsule #root {
+  background: transparent !important;
+}
+
 body {
   @apply bg-ink-900 text-mist-100 font-sans antialiased select-none;
   font-size: 13px;
+}
+
+.capsule-pill {
+  box-shadow: 0 8px 28px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.capsule-card {
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .drag-region {
@@ -256,7 +270,7 @@ select {
 .arch-edge-main .arch-edge-path { stroke: #5d6a80; stroke-width: 1.6; }
 .arch-edge-dashed { stroke-dasharray: 5 4; }
 .arch-edge-active .arch-edge-path { stroke: #2f8a55; stroke-width: 2; }
-.arch-edge-label { fill: #79828f; font-size: 9.5px; text-anchor: middle; }
+.arch-edge-label { fill: #79828f; font-size: 9.5px; text-anchor: middle; paint-order: stroke fill; stroke: #f6f8fa; stroke-width: 3px; stroke-linejoin: round; }
 .arch-flow-dot { fill: #2f9e5f; filter: drop-shadow(0 0 3px rgba(47,158,95,.7)); }
 .arch-marker-dashed { fill: #9aa3b2; transition: fill .18s; }
 .arch-marker-active { fill: #2f8a55; transition: fill .18s; }
@@ -287,7 +301,7 @@ rect.arch-node-state { fill: #eef8f1; stroke: #2f9e5f; }
 .dark .arch-edge-path { stroke: #3a4150; }
 .dark .arch-edge-main .arch-edge-path { stroke: #4d5a70; }
 .dark .arch-edge-active .arch-edge-path { stroke: #7fc4a4; }
-.dark .arch-edge-label { fill: #8b94a5; }
+.dark .arch-edge-label { fill: #8b94a5; stroke: #12151b; }
 .dark .arch-flow-dot { fill: #9fe0be; filter: drop-shadow(0 0 4px rgba(127,196,164,.9)); }
 .dark .arch-marker-dashed { fill: #6d7684; }
 .dark .arch-marker-active { fill: #7fc4a4; }

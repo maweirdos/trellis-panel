@@ -12,7 +12,7 @@ import type { JSX } from 'react'
 export function IntakeModal(): JSX.Element | null {
   const open = useApp((s) => s.intakeOpen)
   const setIntakeOpen = useApp((s) => s.setIntakeOpen)
-  const pushToast = useApp((s) => s.pushToast)
+  const saveTodo = useApp((s) => s.saveTodo)
   const snapshot = useApp((s) => s.snapshot)
   const setPage = useApp((s) => s.setPage)
 
@@ -38,17 +38,14 @@ export function IntakeModal(): JSX.Element | null {
   const createTodo = async (): Promise<void> => {
     if (!title.trim() || busy) return
     setBusy(true)
-    const res = await api.createTask({ title: title.trim(), description: desc.trim(), priority })
-    setBusy(false)
-    if (!res.ok || !res.dirName) {
-      pushToast({ kind: 'error', title: '待办创建失败', body: res.error })
-      return
-    }
-    pushToast({
-      kind: 'success',
-      title: '待办已创建',
-      body: `${res.dirName} · 等待 Codex / ZCode / Claude Code 认领`
+    const ok = await saveTodo({
+      title: title.trim(),
+      description: desc.trim(),
+      priority,
+      source: 'manual'
     })
+    setBusy(false)
+    if (!ok) return
     setIntakeOpen(false)
     setTitle('')
     setDesc('')
@@ -116,7 +113,7 @@ export function IntakeModal(): JSX.Element | null {
           </div>
 
           <div className="rounded-lg border border-ink-700 bg-ink-800/60 px-3.5 py-2.5 text-[11px] leading-5 text-mist-500">
-            创建后待办会进入待处理任务和看板。已配置 MCP 的 Codex / ZCode / Claude Code 可以查询并认领它，面板不会接管已有 AI 会话。
+            创建后待办将保存为本地文档（.trellis/todos/*.md）。Codex / ZCode / Claude Code 可以直接读取该文件进行需求规划并转换为正式任务。
           </div>
         </div>
 

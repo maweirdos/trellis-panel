@@ -1,49 +1,63 @@
 import { useMemo } from 'react'
-import { Inbox as InboxIcon, Check, Clock, X, CheckCheck, Sparkles, FileText, Trash2 } from 'lucide-react'
+import { Inbox as InboxIcon, Sparkles, FileText, Trash2, Copy, ExternalLink, Link2, CheckCircle2 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
-import { clsx } from 'clsx'
+import { PriorityBadge } from '../components/badges'
 import type { JSX } from 'react'
-import type { TaskInfo } from '../../../shared/types'
+import type { TodoItem } from '../../../shared/types'
 
 /**
- * 待处理 —— 新任务确认：
- * AI / 协作者 / Jira 新建的任务以卡片形式到达，确认状态只记录面板侧的处理进度，
- * 不改变任务是否出现在看板中。
+ * 待办池（Backlog / 需求池）：
+ * 存放从 Jira 提取的待办事项与本地需求草稿，保存为 .trellis/todos/<id>.md。
+ * 下游 Codex / ZCode / Claude Code 可以直接读取以启动正式规划与实施。
  */
 export function InboxPage(): JSX.Element {
-  const inbox = useApp((s) => s.inbox)
-  const inboxSetState = useApp((s) => s.inboxSetState)
-  const inboxAcceptAll = useApp((s) => s.inboxAcceptAll)
-  const showTask = useApp((s) => s.showTask)
+  const todos = useApp((s) => s.todos)
   const setPage = useApp((s) => s.setPage)
   const setIntakeOpen = useApp((s) => s.setIntakeOpen)
-  const snapshot = useApp((s) => s.snapshot)
-  const inboxRemove = useApp((s) => s.inboxRemove)
+  const deleteTodo = useApp((s) => s.deleteTodo)
+  const saveTodo = useApp((s) => s.saveTodo)
+  const openArtifact = useApp((s) => s.openArtifact)
   const pushToast = useApp((s) => s.pushToast)
 
-  const entries = useMemo(() => Object.values(inbox).sort((a, b) => b.ts - a.ts), [inbox])
-  const pending = entries.filter((e) => e.state === 'pending')
-  const snoozed = entries.filter((e) => e.state === 'snoozed')
-  const accepted = entries.filter((e) => e.state === 'accepted')
-  const dismissed = entries.filter((e) => e.state === 'dismissed')
+  const pending = useMemo(() => todos.filter((t) => t.status === 'pending'), [todos])
+  const completed = useMemo(() => todos.filter((t) => t.status !== 'pending'), [todos])
 
-  const openTask = (dirName: string): void => {
-    setPage('tasks')
-    showTask(dirName)
+  const copyPrompt = (todo: TodoItem): void => {
+    const prompt = `请阅读本地待办需求文件 \`${todo.filePath}\`，按照项目 workflow.md 规范开始规划，并在 .trellis/tasks/ 下创建正式任务。`
+    void navigator.clipboard.writeText(prompt)
+    pushToast({
+      kind: 'success',
+      title: '已复制 AI 认领指令',
+      body: '可直接粘贴到 Codex / ZCode 会话中执行'
+    })
   }
 
-  const deleteTodo = async (dirName: string): Promise<void> => {
-    const task = snapshot?.tasks.find((t) => t.dirName === dirName)
-    if (!task?.record) return
-    if (!window.confirm(`确定删除待办“${task.record.title}”吗？\n只会删除本地 Trellis 待办，不会删除 Jira 问题。`)) return
-    const res = await api.deleteTask(task.path, task.taskJsonMtime)
-    if (res.ok) {
-      inboxRemove(dirName)
-      pushToast({ kind: 'success', title: '待办已删除', body: dirName })
-    } else {
-      pushToast({ kind: res.conflict ? 'warn' : 'error', title: res.conflict ? '删除冲突' : '删除待办失败', body: res.error })
-    }
+  const markConverted = async (todo: TodoItem): Promise<void> => {
+    const nextStatus = todo.status === 'converted' ? 'pending' : 'converted'
+    await saveTodo({
+      ...todo,
+      status: nextStatus
+    })
+  }
+
+  const removeTodo = async (todo: TodoItem): Promise<void> => {
+    if (!window.confirm(`确定删除待办“${todo.title}”吗？\n将删除本地文件 ${todo.filePath}。`)) return
+    await deleteTodo(todo.id)
+  }
+
+  const viewDoc = (todo: TodoItem): void => {
+    openArtifact(
+      {
+        name: `${todo.id}.md`,
+        path: todo.filePath,
+        kind: 'file',
+        size: 0,
+        mtime: Date.now(),
+        ext: '.md'
+      },
+      true
+    )
   }
 
   return (
@@ -51,151 +65,163 @@ export function InboxPage(): JSX.Element {
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-ink-700 bg-ink-850/40 px-5 py-2.5">
         <InboxIcon size={15} className="text-leaf" />
-        <h1 className="text-base font-semibold text-mist-50">待处理任务</h1>
-        <span className="chip border border-amber-400/30 bg-amber-500/15 text-amber-300">
-          {pending.length} 待确认
+        <h1 className="text-base font-semibold text-mist-50">待办池</h1>
+        <span className="chip border border-amber-500/30 bg-amber-500/15 font-medium text-amber-800 dark:text-amber-300">
+          {pending.length} 待规划
         </span>
         <div className="ml-auto flex gap-1.5">
-            <button onClick={() => setIntakeOpen(true)} className="btn-outline">
+          <button onClick={() => setPage('jira')} className="btn-outline">
+            <Link2 size={12} /> 从 Jira 导入
+          </button>
+          <button onClick={() => setIntakeOpen(true)} className="btn-primary">
             <Sparkles size={12} /> 新建待办
-            </button>
-          {pending.length > 0 && (
-            <button onClick={inboxAcceptAll} className="btn-primary">
-              <CheckCheck size={12} /> 全部确认
-            </button>
-          )}
+          </button>
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        {entries.length === 0 && (
+        {todos.length === 0 && (
           <div className="grid place-items-center gap-3 py-24 text-mist-600">
             <InboxIcon size={36} strokeWidth={1.2} />
-            <div className="text-sm">没有待处理任务</div>
-            <div className="max-w-sm text-center text-[11.5px] leading-5">
-              当 AI 工具、协作者或 Jira 导入新任务时，任务会以卡片形式出现在这里，
-              等你确认来源和内容。确认不会改变任务在看板中的状态。
+            <div className="text-sm">待办池为空</div>
+            <div className="max-w-md text-center text-[11.5px] leading-5">
+              这里是上游需求（Jira 待办或本地草稿）的收集与预处理池。
+              待办保存在本地 Markdown 文件（<code className="text-leaf">.trellis/todos/*.md</code>）中，
+              Codex / ZCode / Claude Code 可以直接读取以启动正式任务规划与实施。
             </div>
           </div>
         )}
 
-        {/* 待确认 */}
+        {/* 待规划列表 */}
         {pending.length > 0 && (
           <>
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-mist-500">待确认</div>
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-mist-500">待规划需求</div>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-              {pending.map((e) => (
-              <InboxCard key={e.dirName} entry={e} task={snapshot?.tasks.find((t) => t.dirName === e.dirName)} onOpen={openTask} onSet={inboxSetState} onDelete={deleteTodo} highlight />
+              {pending.map((todo) => (
+                <TodoCard
+                  key={todo.id}
+                  todo={todo}
+                  onCopyPrompt={copyPrompt}
+                  onViewDoc={viewDoc}
+                  onToggleStatus={markConverted}
+                  onDelete={removeTodo}
+                />
               ))}
             </div>
           </>
         )}
 
-        {/* 稍后 */}
-        {snoozed.length > 0 && (
+        {/* 已转任务 / 已归档待办 */}
+        {completed.length > 0 && (
           <>
             <div className="mb-2 mt-6 text-[11px] font-medium uppercase tracking-wide text-mist-500">
-              稍后处理 ({snoozed.length})
+              已转任务 / 已完成 ({completed.length})
             </div>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-              {snoozed.map((e) => (
-                <InboxCard key={e.dirName} entry={e} task={snapshot?.tasks.find((t) => t.dirName === e.dirName)} onOpen={openTask} onSet={inboxSetState} onDelete={deleteTodo} />
+              {completed.map((todo) => (
+                <TodoCard
+                  key={todo.id}
+                  todo={todo}
+                  onCopyPrompt={copyPrompt}
+                  onViewDoc={viewDoc}
+                  onToggleStatus={markConverted}
+                  onDelete={removeTodo}
+                />
               ))}
             </div>
           </>
-        )}
-
-        {/* 已确认 / 已忽略 —— 折叠摘要 */}
-        {(accepted.length > 0 || dismissed.length > 0) && (
-          <div className="mt-6 flex flex-wrap gap-2">
-            {accepted.length > 0 && (
-              <span className="chip border border-emerald-400/25 bg-emerald-500/10 text-emerald-300">
-                <Check size={11} /> 已确认 {accepted.length} · 仍在看板中
-              </span>
-            )}
-            {dismissed.length > 0 && (
-              <span className="chip border border-ink-500 text-mist-500">
-                <X size={11} /> 已忽略 {dismissed.length}
-              </span>
-            )}
-          </div>
         )}
       </div>
     </div>
   )
 }
 
-function InboxCard({
-  entry,
-  task,
-  onOpen,
-  onSet,
-  onDelete,
-  highlight
+function TodoCard({
+  todo,
+  onCopyPrompt,
+  onViewDoc,
+  onToggleStatus,
+  onDelete
 }: {
-  entry: { dirName: string; title: string; creator: string; ts: number }
-  task?: TaskInfo
-  onOpen: (dir: string) => void
-  onSet: (dir: string, state: 'accepted' | 'snoozed' | 'dismissed') => void
-  onDelete: (dir: string) => void
-  highlight?: boolean
+  todo: TodoItem
+  onCopyPrompt: (todo: TodoItem) => void
+  onViewDoc: (todo: TodoItem) => void
+  onToggleStatus: (todo: TodoItem) => void
+  onDelete: (todo: TodoItem) => void
 }): JSX.Element {
-  const time = new Date(entry.ts)
-  const timeLabel = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`
-  const jiraKey = typeof task?.record?.meta?.jiraKey === 'string' ? task.record.meta.jiraKey : null
-  const origin = jiraKey ? `Jira ${jiraKey}` : task?.record?.meta?.origin === 'panel' ? '面板待办' : 'AI / 外部'
+  const isConverted = todo.status === 'converted'
   return (
     <div
-      className={clsx(
-        'flex flex-col rounded-xl border bg-ink-800 p-3.5 transition-all',
-        highlight ? 'border-amber-400/30 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]' : 'border-ink-700'
-      )}
+      className="flex flex-col rounded-xl border border-ink-700 bg-ink-800 p-3.5 transition-all hover:border-ink-500"
     >
-      <button onClick={() => onOpen(entry.dirName)} className="group text-left" title="打开任务详情">
-        <div className="mb-1 flex items-center gap-2 text-[10.5px] text-mist-500">
-          <FileText size={10} className="text-leaf" />
-          <span className="font-mono">{entry.dirName}</span>
-          <span className="ml-auto font-mono">{timeLabel}</span>
+      <div className="mb-1.5 flex items-center gap-2 text-[10.5px] text-mist-500">
+        <PriorityBadge priority={todo.priority} />
+        <span className="font-mono">{todo.id}</span>
+        {todo.source === 'jira' && todo.jiraKey && (
+          <span className="chip border border-sky-400/25 bg-sky-500/10 text-sky-300">
+            Jira {todo.jiraKey}
+          </span>
+        )}
+        <span className="ml-auto font-mono text-[10px] text-mist-500">{todo.createdAt}</span>
+      </div>
+
+      <div
+        onClick={() => onViewDoc(todo)}
+        className="cursor-pointer font-medium leading-5 text-mist-100 hover:text-leaf-soft transition-colors"
+      >
+        <div className="line-clamp-2 text-xs">{todo.title}</div>
+      </div>
+
+      {todo.description && (
+        <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-mist-400">
+          {todo.description.replace(/^#+ .*/g, '').trim()}
         </div>
-        <div className="line-clamp-2 text-xs font-medium leading-5 text-mist-100 group-hover:text-leaf-soft">
-          {entry.title}
-        </div>
-        <div className="mt-1 flex items-center gap-2 text-[10.5px] text-mist-500">
-          <span>来源 {origin}</span>
-          <span>创建者 {entry.creator || '未知'}</span>
-        </div>
-      </button>
-      <div className="mt-3 grid grid-cols-4 gap-1.5">
+      )}
+
+      <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px] font-mono text-mist-500">
+        <FileText size={10} className="text-leaf" />
+        <span className="truncate">{todo.filePath}</span>
+      </div>
+
+      <div className="mt-3.5 flex flex-wrap items-center gap-1.5 border-t border-ink-700/60 pt-2.5">
         <button
-          onClick={() => onSet(entry.dirName, 'accepted')}
-          className="btn-primary justify-center"
-          title="确认已看到；任务仍在看板中"
+          onClick={() => onCopyPrompt(todo)}
+          className="btn-primary text-[11px]"
+          title="复制供 Codex / ZCode 读取并认领的 Prompt"
         >
-          <Check size={13} /> 确认
+          <Copy size={11} /> 复制认领指令
         </button>
         <button
-          onClick={() => onSet(entry.dirName, 'snoozed')}
-          className="btn-outline justify-center"
-          title="稍后处理"
+          onClick={() => onViewDoc(todo)}
+          className="btn-outline text-[11px]"
+          title="在右侧编辑器中查看与编辑该 Markdown 文档"
         >
-          <Clock size={13} /> 稍后
+          <FileText size={11} /> 查看文档
         </button>
-        <button
-          onClick={() => onSet(entry.dirName, 'dismissed')}
-          className="btn bg-ink-700/60 justify-center text-mist-300 hover:bg-ink-700"
-          title="退回 / 忽略"
-        >
-          <X size={13} /> 忽略
-        </button>
-        {task?.record?.status === 'planning' && (
+        {todo.jiraUrl && (
           <button
-            onClick={() => onDelete(entry.dirName)}
-            className="btn bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
-            title="删除本地待办，不影响 Jira 问题"
+            onClick={() => void api.openExternal(todo.jiraUrl!)}
+            className="btn-ghost text-[11px] text-mist-400 hover:text-sky-300"
+            title="在浏览器中打开 Jira"
           >
-            <Trash2 size={13} /> 删除
+            <ExternalLink size={11} />
           </button>
         )}
+        <button
+          onClick={() => onToggleStatus(todo)}
+          className="btn-ghost ml-auto text-[11px] text-mist-400 hover:text-leaf-soft"
+          title={isConverted ? '恢复为待规划' : '标记为已转任务'}
+        >
+          <CheckCircle2 size={12} className={isConverted ? 'text-leaf' : ''} />
+          {isConverted ? '已转' : '完成'}
+        </button>
+        <button
+          onClick={() => onDelete(todo)}
+          className="btn-ghost text-[11px] text-mist-500 hover:text-rose-400"
+          title="删除本地待办文件"
+        >
+          <Trash2 size={11} />
+        </button>
       </div>
     </div>
   )
