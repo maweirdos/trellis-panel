@@ -78,6 +78,12 @@ const api = {
   studioDeleteFile: (absPath: string) => ipcRenderer.invoke(ipcInvoke.studio.delete, absPath),
 
   kbSearch: (library: KbLibrary | 'all', query: string) => ipcRenderer.invoke(ipcInvoke.kb.search, library, query),
+  kbSaveNote: (fileName: string, content: string) => ipcRenderer.invoke(ipcInvoke.kb.saveNote, fileName, content),
+  kbDeleteNote: (fileName: string) => ipcRenderer.invoke(ipcInvoke.kb.deleteNote, fileName),
+  kbQaHistory: () => ipcRenderer.invoke(ipcInvoke.kb.qaHistory),
+  kbQaSave: (entry: { question: string; answer: string; sources?: Array<{ title: string; path: string; library?: string }> }) =>
+    ipcRenderer.invoke(ipcInvoke.kb.qaSave, entry),
+  kbQaClear: () => ipcRenderer.invoke(ipcInvoke.kb.qaClear),
 
   /* WeKnora 桥接统一兜底：旧主进程（无对应通道）时降级为 ok:false，不产生未处理 rejection */
   weknoraTest: (cfg: WeknoraConfig) =>

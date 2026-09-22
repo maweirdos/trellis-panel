@@ -74,7 +74,12 @@ export const ipcInvoke = {
     syncExtension: 'studio:syncExtension'
   },
   kb: {
-    search: 'kb:search'
+    search: 'kb:search',
+    saveNote: 'kb:saveNote',
+    deleteNote: 'kb:deleteNote',
+    qaHistory: 'kb:qaHistory',
+    qaSave: 'kb:qaSave',
+    qaClear: 'kb:qaClear'
   },
   kbmcp: {
     install: 'kbmcp:install',

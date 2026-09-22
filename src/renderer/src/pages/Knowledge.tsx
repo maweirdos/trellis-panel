@@ -13,14 +13,19 @@ import {
   Send,
   X,
   BrainCircuit,
-  Cloud
+  Cloud,
+  StickyNote,
+  Plus,
+  Save,
+  Trash2,
+  History
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
-import type { KbDoc, KbHit, KbLibrary, KbSearchResult, WeknoraDocSummary, WeknoraHit } from '../../../shared/types'
+import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult, WeknoraDocSummary, WeknoraHit } from '../../../shared/types'
 import type { JSX } from 'react'
 
 type LibFilter = KbLibrary | 'all' | 'company'
@@ -42,12 +47,13 @@ interface RemoteDoc {
 const NO_KB_IDS: string[] = []
 
 const LIBS: Array<{ id: LibFilter; label: string; icon: JSX.Element; desc: string }> = [
+  { id: 'notes', label: '我的笔记', icon: <StickyNote size={14} />, desc: '.trellis/notes 我的知识笔记（可新建 / 编辑 / 删除）' },
   { id: 'requirements', label: '需求库', icon: <ScrollText size={14} />, desc: '原始需求文档（活动任务 PRD / task.json 提炼）' },
   { id: 'spec', label: '规范库', icon: <BookOpenText size={14} />, desc: '.trellis/spec 团队规范' },
   { id: 'wiki', label: 'Wiki 库', icon: <FileText size={14} />, desc: 'README / docs / wiki 等仓库文档' },
   { id: 'archive', label: '归档库', icon: <Archive size={14} />, desc: '已归档任务的沉淀经验' },
   { id: 'company', label: '公司库', icon: <Cloud size={14} />, desc: 'WeKnora 公司级知识（跨项目规范 / 历史归档 / 接口文档）' },
-  { id: 'all', label: '全部', icon: <Library size={14} />, desc: '跨库联合检索（本地四库 + 公司库异步追加）' }
+  { id: 'all', label: '全部', icon: <Library size={14} />, desc: '跨库联合检索（本地五库 + 公司库异步追加）' }
 ]
 
 function highlight(text: string): JSX.Element {
@@ -101,6 +107,12 @@ export function KnowledgePage(): JSX.Element {
   const [aiBusy, setAiBusy] = useState(false)
   const [aiSources, setAiSources] = useState<KbDoc[]>([])
   const [aiRemoteSources, setAiRemoteSources] = useState<WeknoraHit[]>([])
+  const [qaHistory, setQaHistory] = useState<KbQaEntry[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+
+  /* 我的笔记：编辑态 */
+  const [noteDraft, setNoteDraft] = useState<{ name: string; content: string; isNew: boolean } | null>(null)
+  const [noteSaving, setNoteSaving] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 300)
@@ -257,6 +269,14 @@ export function KnowledgePage(): JSX.Element {
       ])
       if (res.ok && res.content) {
         setAiAnswer(res.content)
+        // 问答历史落盘（userData，个人维度）
+        const sourcesForHistory = [
+          ...sources.map((s) => ({ title: s.title, path: s.path, library: s.library })),
+          ...remoteSources.map((h) => ({ title: h.title || h.filename || '公司库文档', path: h.knowledgeId, library: '公司库' }))
+        ]
+        void api.kbQaSave({ question: q, answer: res.content, sources: sourcesForHistory }).then((r) => {
+          if (r.ok && r.entries) setQaHistory(r.entries)
+        })
       } else {
         pushToast({ kind: 'error', title: 'AI 回答失败', body: res.error })
       }
@@ -264,6 +284,59 @@ export function KnowledgePage(): JSX.Element {
       setAiBusy(false)
     }
   }
+
+  /* 我的笔记：编辑动作 */
+  const startNewNote = (): void => {
+    setActive(null)
+    setRemoteDoc(null)
+    setNoteDraft({ name: '', content: '# 新笔记\n\n', isNew: true })
+  }
+
+  const startEditNote = (doc: KbDoc): void => {
+    if (doc.synthetic) return
+    void api.readTextFile(doc.path).then((r) => {
+      setNoteDraft({ name: doc.name, content: r.ok && r.content ? r.content : '', isNew: false })
+    })
+  }
+
+  const saveNote = async (): Promise<void> => {
+    if (!noteDraft || noteSaving) return
+    const name = noteDraft.name.trim()
+    if (!name) {
+      pushToast({ kind: 'error', title: '请填写笔记名' })
+      return
+    }
+    setNoteSaving(true)
+    try {
+      const res = await api.kbSaveNote(name, noteDraft.content)
+      if (res.ok) {
+        pushToast({ kind: 'success', title: '笔记已保存', body: '已写入 .trellis/notes/，检索立即可用' })
+        setNoteDraft(null)
+        void runSearch()
+      } else {
+        pushToast({ kind: 'error', title: '保存失败', body: res.error })
+      }
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
+  const deleteNote = async (doc: KbDoc): Promise<void> => {
+    const res = await api.kbDeleteNote(doc.name)
+    if (res.ok) {
+      pushToast({ kind: 'success', title: '笔记已删除' })
+      setActive(null)
+      void runSearch()
+    } else {
+      pushToast({ kind: 'error', title: '删除失败', body: res.error })
+    }
+  }
+
+  useEffect(() => {
+    void api.kbQaHistory().then((r) => {
+      if (r.ok && r.entries) setQaHistory(r.entries)
+    })
+  }, [])
 
   const totalDocs = result?.totalDocs ?? 0
   const isSearch = debounced.length > 0
@@ -307,12 +380,14 @@ export function KnowledgePage(): JSX.Element {
   }, [lib, isSearch, companyHits, companyDocs])
 
   const LIB_ICON: Record<KbLibrary, JSX.Element> = {
+    notes: <StickyNote size={12} />,
     requirements: <ScrollText size={12} />,
     spec: <BookOpenText size={12} />,
     wiki: <FileText size={12} />,
     archive: <Archive size={12} />
   }
   const LIB_LABEL: Record<KbLibrary, string> = {
+    notes: '笔记',
     requirements: '需求',
     spec: '规范',
     wiki: 'Wiki',
@@ -355,6 +430,11 @@ export function KnowledgePage(): JSX.Element {
                 ? `${companyList.length} 条${isSearch ? '命中' : '文档'}${companyMs ? ` · ${companyMs}ms` : ''}`
                 : `${isSearch ? `${list.length} 条命中` : `${list.length} 篇文档`} · 库内共 ${totalDocs} 篇 · ${result?.elapsedMs ?? 0}ms`}
             </span>
+            {lib === 'notes' && (
+              <button onClick={startNewNote} className="btn-outline px-1.5 py-0.5 text-[10px]" title="新建笔记（写入 .trellis/notes/，立即进入五库检索）">
+                <Plus size={10} /> 新建笔记
+              </button>
+            )}
             <button onClick={() => void runSearch()} className="btn-ghost ml-auto justify-center px-1.5" title="重建检索">
               <RefreshCw size={11} />
             </button>
@@ -372,7 +452,7 @@ export function KnowledgePage(): JSX.Element {
               )}
             >
               <div className="flex items-center gap-1.5">
-                <span className={clsx('chip text-[9.5px]', doc.library === 'requirements' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : doc.library === 'spec' ? 'bg-leaf-dim/15 text-leaf-soft' : doc.library === 'wiki' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300' : 'bg-violet-500/15 text-violet-600 dark:text-violet-300')}>
+                <span className={clsx('chip text-[9.5px]', doc.library === 'requirements' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : doc.library === 'spec' ? 'bg-leaf-dim/15 text-leaf-soft' : doc.library === 'wiki' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300' : doc.library === 'notes' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : 'bg-violet-500/15 text-violet-600 dark:text-violet-300')}>
                   {LIB_ICON[doc.library]} {LIB_LABEL[doc.library]}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-mist-100">{doc.title}</span>
@@ -457,7 +537,39 @@ export function KnowledgePage(): JSX.Element {
 
       {/* 右列：阅读器 */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {remoteDoc ? (
+        {noteDraft ? (
+          <>
+            <div className="flex shrink-0 items-center gap-2 border-b border-ink-750 px-5 py-2.5">
+              <span className="chip bg-emerald-500/15 text-[9.5px] text-emerald-400">
+                <StickyNote size={12} /> {noteDraft.isNew ? '新建笔记' : '编辑笔记'}
+              </span>
+              <input
+                value={noteDraft.name}
+                onChange={(e) => setNoteDraft({ ...noteDraft, name: e.target.value })}
+                placeholder="笔记名（支持中英文/数字/空格）"
+                className="min-w-0 max-w-[260px] flex-1 rounded-md border border-ink-600 bg-ink-850 px-2 py-1 font-mono text-xs text-mist-100 outline-none focus:border-leaf/60"
+                disabled={!noteDraft.isNew}
+              />
+              <div className="ml-auto flex items-center gap-1.5">
+                <button onClick={() => void saveNote()} disabled={noteSaving} className="btn-primary text-[11px]">
+                  {noteSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} 保存
+                </button>
+                <button onClick={() => setNoteDraft(null)} className="btn-ghost justify-center px-2" title="取消">
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 p-4">
+              <textarea
+                value={noteDraft.content}
+                onChange={(e) => setNoteDraft({ ...noteDraft, content: e.target.value })}
+                spellCheck={false}
+                className="h-full w-full resize-none rounded-lg border border-ink-700 bg-ink-900 p-4 font-mono text-[12.5px] leading-6 text-mist-100 outline-none focus:border-leaf/40"
+                placeholder="# 标题&#10;&#10;用 Markdown 记录知识，保存后立即进入五库检索与 AI 问答…"
+              />
+            </div>
+          </>
+        ) : remoteDoc ? (
           <>
             <div className="flex shrink-0 items-center gap-2 border-b border-ink-750 px-5 py-2.5">
               <span className="chip bg-sky-500/15 text-[9.5px] text-sky-400">
@@ -501,6 +613,20 @@ export function KnowledgePage(): JSX.Element {
                 {!active.synthetic && active.library === 'spec' && (
                   <button onClick={() => setPage('spec')} className="btn-ghost text-[11px]">去规范页编辑</button>
                 )}
+                {!active.synthetic && active.library === 'notes' && (
+                  <>
+                    <button onClick={() => startEditNote(active)} className="btn-ghost text-[11px]" title="编辑这篇笔记">
+                      编辑
+                    </button>
+                    <button
+                      onClick={() => void deleteNote(active)}
+                      className="btn-ghost px-2 text-rose-300 hover:text-rose-200"
+                      title="删除笔记"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </>
+                )}
                 <button onClick={() => void api.revealInExplorer(active.path)} className="btn-ghost justify-center px-2" title="在资源管理器显示">
                   <ExternalLink size={12} />
                 </button>
@@ -533,8 +659,8 @@ export function KnowledgePage(): JSX.Element {
           <div className="grid h-full place-items-center">
             <div className="max-w-md space-y-3 p-8 text-center">
               <Library size={36} className="mx-auto text-mist-400" />
-              <div className="text-sm font-semibold text-mist-100">四库知识库</div>
-              <p className="text-xs leading-5 text-mist-400">需求 · 规范 · Wiki · 归档，本地倒排索引，毫秒级检索。</p>
+              <div className="text-sm font-semibold text-mist-100">五库知识库</div>
+              <p className="text-xs leading-5 text-mist-400">笔记 · 需求 · 规范 · Wiki · 归档，本地倒排索引，毫秒级检索，AI 问答带来源引用。</p>
               {!aiEnabled && (
                 <button onClick={() => setPage('settings')} className="btn-ghost mx-auto text-[11px]">
                   <Sparkles size={12} /> 到设置页接入 AI 模型（baseUrl 自定义）
@@ -550,6 +676,49 @@ export function KnowledgePage(): JSX.Element {
         {/* AI 问答条 */}
         {aiEnabled && (
           <div className="shrink-0 border-t border-ink-750 bg-ink-850/40 px-4 py-2.5">
+            {qaHistory.length > 0 && (
+              <div className="mx-auto mb-2 max-w-3xl">
+                <button
+                  onClick={() => setShowHistory((v) => !v)}
+                  className="flex w-full items-center gap-1.5 text-[10.5px] text-mist-400 hover:text-mist-200"
+                >
+                  <History size={11} /> 问答历史（{qaHistory.length}）
+                  <span className="flex-1" />
+                  <span className="text-mist-500">{showHistory ? '收起' : '展开'}</span>
+                  {!showHistory && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void api.kbQaClear().then(() => setQaHistory([]))
+                      }}
+                      className="ml-2 text-mist-500 hover:text-rose-300"
+                      title="清空问答历史"
+                    >
+                      清空
+                    </button>
+                  )}
+                </button>
+                {showHistory && (
+                  <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto">
+                    {qaHistory.map((h) => (
+                      <button
+                        key={h.id}
+                        onClick={() => {
+                          setAiQuestion(h.question)
+                          setAiAnswer(h.answer)
+                          setAiSources([])
+                          setAiRemoteSources([])
+                        }}
+                        className="block w-full truncate rounded-md border border-ink-750/70 bg-ink-850/60 px-2.5 py-1.5 text-left text-[11px] text-mist-300 hover:border-ink-650 hover:text-mist-100"
+                        title={h.question}
+                      >
+                        <span className="text-mist-500">{relTime(h.createdAt)}</span> · {h.question}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {aiAnswer && (
               <div className="mx-auto mb-2.5 max-w-3xl">
                 <div className="rounded-lg border border-leaf-dim/30 bg-leaf-dim/5 p-3">

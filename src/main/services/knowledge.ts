@@ -1,13 +1,14 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
-import { join, basename, extname, relative, sep } from 'path'
-import type { KbDoc, KbHit, KbLibrary, KbSearchResult } from '../../shared/types'
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync, mkdirSync } from 'fs'
+import { join, basename, extname, relative, sep, resolve } from 'path'
+import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult } from '../../shared/types'
 
 /**
- * 知识库（四库合一）：
+ * 知识库（五库合一）：
  *   requirements —— 原始需求（活动任务的 prd.md / task.json 提炼）
  *   spec        —— 规范知识库（.trellis/spec/**）
  *   wiki        —— 项目 Wiki（README / docs / wiki 等仓库文档）
  *   archive     —— 归档知识库（.trellis/archive 与 tasks/archive）
+ *   notes       —— 我的笔记（.trellis/notes/*.md，面板内可读写）
  *
  * 检索方案参考本地优先开源案例（Obsidian/Logseq 的倒排索引 + IDF 打分）：
  * CJK 二元分词 + 拉丁词元，AND 语义，TF-IDF 排序，窗口摘要高亮。
@@ -253,6 +254,67 @@ function collectWiki(root: string, out: RawDoc[]): void {
   }
 }
 
+/** 我的笔记（.trellis/notes/*.md，面板可读写） */
+function collectNotes(root: string, out: RawDoc[]): void {
+  const notesRoot = join(root, '.trellis', 'notes')
+  const files: string[] = []
+  walkFiles(notesRoot, 3, new Set(), files)
+  for (const p of files) {
+    const text = readText(p)
+    if (text === null) continue
+    const rel = relative(notesRoot, p).split(sep).join('/')
+    out.push({
+      path: p,
+      title: firstHeading(text) ?? basename(p, extname(p)),
+      group: rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '(笔记)',
+      text
+    })
+  }
+}
+
+/* ---------------- 我的笔记读写 ---------------- */
+
+/** 笔记文件名合法性：仅一层 .md，防路径穿越 */
+function safeNoteName(fileName: string): string | null {
+  const name = String(fileName ?? '').trim()
+  if (!name) return null
+  const withExt = name.toLowerCase().endsWith('.md') ? name : `${name}.md`
+  if (!/^[A-Za-z0-9_\u4e00-\u9fff][A-Za-z0-9_\-\u4e00-\u9fff .()]*\.md$/.test(withExt)) return null
+  if (withExt.includes('/') || withExt.includes('\\') || withExt.includes('..')) return null
+  return withExt
+}
+
+export function noteUpsert(root: string, fileName: string, content: string): { ok: boolean; error?: string; path?: string } {
+  const name = safeNoteName(fileName)
+  if (!name) return { ok: false, error: '笔记名仅允许中英文、数字、空格、- _ ( )，且不能包含路径分隔符' }
+  const body = String(content ?? '')
+  if (body.length > 512 * 1024) return { ok: false, error: '笔记内容超过 512KB' }
+  try {
+    const dir = join(root, '.trellis', 'notes')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const p = join(dir, name)
+    // 围栏：最终路径必须仍在 notes 目录内
+    if (relative(resolve(dir), resolve(p)).startsWith('..')) return { ok: false, error: '非法路径' }
+    writeFileSync(p, body, 'utf-8')
+    return { ok: true, path: p }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+}
+
+export function noteDelete(root: string, fileName: string): { ok: boolean; error?: string } {
+  const name = safeNoteName(fileName)
+  if (!name) return { ok: false, error: '非法笔记名' }
+  try {
+    const p = join(root, '.trellis', 'notes', name)
+    if (relative(resolve(join(root, '.trellis', 'notes')), resolve(p)).startsWith('..')) return { ok: false, error: '非法路径' }
+    if (existsSync(p)) rmSync(p)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+}
+
 function firstHeading(text: string): string | null {
   for (const line of text.split(/\r?\n/).slice(0, 30)) {
     const m = /^#\s+(.{2,80})\s*$/.exec(line.trim())
@@ -295,6 +357,7 @@ function collectLibrary(root: string, library: KbLibrary): RawDoc[] {
   else if (library === 'requirements') collectRequirements(root, out)
   else if (library === 'wiki') collectWiki(root, out)
   else if (library === 'archive') collectArchive(root, out)
+  else if (library === 'notes') collectNotes(root, out)
   return out
 }
 
@@ -389,7 +452,7 @@ export function kbSearch(
   query: string
 ): KbSearchResult {
   const t0 = Date.now()
-  const libs: KbLibrary[] = library === 'all' ? ['requirements', 'spec', 'wiki', 'archive'] : [library]
+  const libs: KbLibrary[] = library === 'all' ? ['requirements', 'spec', 'wiki', 'archive', 'notes'] : [library]
   const q = query.trim().toLowerCase()
   const { latin, runs } = parseQuery(query)
   const highlightTerms = [...latin, ...runs.flat()]
@@ -488,7 +551,48 @@ export function kbDocById(root: string, id: string): KbDoc | null {
   if (idx <= 0) return null
   const lib = id.slice(0, idx) as KbLibrary
   const path = id.slice(idx + 1)
-  if (!['requirements', 'spec', 'wiki', 'archive'].includes(lib)) return null
+  if (!['requirements', 'spec', 'wiki', 'archive', 'notes'].includes(lib)) return null
   const found = getIndexed(root, lib).find((d) => d.doc.path === path)
   return found?.doc ?? null
+}
+
+/* ---------------- 问答历史（userData 持久化） ---------------- */
+
+const MAX_QA_HISTORY = 100
+
+let qaHistoryFile: string | null = null
+
+function qaFilePath(app: { getPath: (name: 'userData') => string }): string {
+  if (!qaHistoryFile) qaHistoryFile = join(app.getPath('userData'), 'kb-qa-history.json')
+  return qaHistoryFile
+}
+
+export function qaHistoryList(app: { getPath: (name: 'userData') => string }): KbQaEntry[] {
+  try {
+    const p = qaFilePath(app)
+    if (!existsSync(p)) return []
+    const raw = JSON.parse(readFileSync(p, 'utf-8')) as unknown
+    return Array.isArray(raw) ? (raw as KbQaEntry[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function qaHistorySave(app: { getPath: (name: 'userData') => string }, entry: KbQaEntry): KbQaEntry[] {
+  const list = [entry, ...qaHistoryList(app)].slice(0, MAX_QA_HISTORY)
+  try {
+    writeFileSync(qaFilePath(app), JSON.stringify(list, null, 2), 'utf-8')
+  } catch {
+    // best-effort
+  }
+  return list
+}
+
+export function qaHistoryClear(app: { getPath: (name: 'userData') => string }): void {
+  try {
+    const p = qaFilePath(app)
+    if (existsSync(p)) rmSync(p)
+  } catch {
+    // ignore
+  }
 }

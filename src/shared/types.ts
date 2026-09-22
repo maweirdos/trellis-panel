@@ -734,7 +734,17 @@ export interface StudioScan {
 
 /* ---------- Knowledge（知识库：需求 / 规范 / Wiki / 归档） ---------- */
 
-export type KbLibrary = 'requirements' | 'spec' | 'wiki' | 'archive'
+export type KbLibrary = 'requirements' | 'spec' | 'wiki' | 'archive' | 'notes'
+
+/** 知识库问答记录（userData 持久化） */
+export interface KbQaEntry {
+  id: string
+  question: string
+  answer: string
+  /** 引用来源（标题/路径） */
+  sources: Array<{ title: string; path: string; library?: string }>
+  createdAt: number
+}
 
 export interface KbDoc {
   id: string
@@ -1038,6 +1048,11 @@ export interface TrellisApi {
 
   /* --- Knowledge 知识库 --- */
   kbSearch: (library: KbLibrary | 'all', query: string) => Promise<KbSearchResult>
+  kbSaveNote: (fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
+  kbDeleteNote: (fileName: string) => Promise<{ ok: boolean; error?: string }>
+  kbQaHistory: () => Promise<{ ok: boolean; entries?: KbQaEntry[] }>
+  kbQaSave: (entry: { question: string; answer: string; sources?: Array<{ title: string; path: string; library?: string }> }) => Promise<{ ok: boolean; error?: string; entries?: KbQaEntry[] }>
+  kbQaClear: () => Promise<{ ok: boolean }>
 
   /* --- WeKnora 公司库联动 --- */
   weknoraTest: (cfg: WeknoraConfig) => Promise<{ ok: boolean; error?: string; kbs?: WeknoraKbSummary[] }>

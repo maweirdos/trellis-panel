@@ -268,6 +268,15 @@ function collectRaw(lib) {
         out.push({ path: subFiles[j], title: firstHeading(t2) || path.basename(subFiles[j]), group: rel2.indexOf('/') >= 0 ? subs[s] + '/' + rel2.slice(0, rel2.lastIndexOf('/')) : subs[s], text: t2 })
       }
     }
+  } else if (lib === 'notes') {
+    var noteFiles = []
+    walkFiles(path.join(ROOT, '.trellis', 'notes'), 3, {}, noteFiles, 0)
+    for (var n = 0; n < noteFiles.length; n++) {
+      var t3 = readText(noteFiles[n])
+      if (t3 === null) continue
+      var rel3 = relSlash(path.join(ROOT, '.trellis', 'notes'), noteFiles[n])
+      out.push({ path: noteFiles[n], title: firstHeading(t3) || path.basename(noteFiles[n], '.md'), group: rel3.indexOf('/') >= 0 ? rel3.slice(0, rel3.lastIndexOf('/')) : '(notes)', text: t3 })
+    }
   } else {
     // requirements / archive：任务目录里的需求文档 + task.json 提炼
     var roots2 = lib === 'requirements'
@@ -445,12 +454,12 @@ function safeReadFile(relOrAbs, maxChars) {
 var TOOLS = [
   {
     name: 'kb_search',
-    description: 'Search the Trellis knowledge base (requirements PRDs / team spec / project wiki / archived tasks). Local inverted index, millisecond latency. Use before implementing anything to find related specs, past PRDs and conventions. CJK + English mixed queries supported.',
+    description: 'Search the Trellis knowledge base (requirements PRDs / team spec / project wiki / archived tasks / personal notes). Local inverted index, millisecond latency. Use before implementing anything to find related specs, past PRDs and conventions. CJK + English mixed queries supported.',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'keywords, e.g. "退货审核 spec" or "binding validation"' },
-        library: { type: 'string', enum: ['all', 'requirements', 'spec', 'wiki', 'archive'], description: 'which library to search (default all)' },
+        library: { type: 'string', enum: ['all', 'requirements', 'spec', 'wiki', 'archive', 'notes'], description: 'which library to search (default all)' },
         limit: { type: 'number', description: 'max hits, default 10' }
       },
       required: ['query']
@@ -489,7 +498,7 @@ var TOOLS = [
 
 function toolKbSearch(args) {
   var lib = args.library || 'all'
-  var libs = lib === 'all' ? ['requirements', 'spec', 'wiki', 'archive'] : [lib]
+  var libs = lib === 'all' ? ['requirements', 'spec', 'wiki', 'archive', 'notes'] : [lib]
   var r = doSearch(libs, String(args.query || ''), Math.min(Math.max(Number(args.limit) || 10, 1), 30))
   if (r.hits.length === 0) return { text: 'No hits for "' + args.query + '" (indexed ' + r.totalDocs + ' docs in ' + r.elapsedMs + 'ms). Try shorter keywords.' }
   var lines = ['KB search: "' + args.query + '" — ' + r.hits.length + ' hits (' + r.totalDocs + ' docs indexed, ' + r.elapsedMs + 'ms)']
@@ -510,7 +519,7 @@ function toolKbRead(args) {
 }
 
 function toolKbOverview() {
-  var libs = ['requirements', 'spec', 'wiki', 'archive']
+  var libs = ['requirements', 'spec', 'wiki', 'archive', 'notes']
   var lines = ['Trellis knowledge base overview (' + ROOT + ')']
   var specTree = {}
   for (var i = 0; i < libs.length; i++) {
@@ -533,7 +542,7 @@ function toolKbOverview() {
 
 function toolKbContext(args) {
   var topic = String(args.topic || '')
-  var libs = ['spec', 'wiki', 'requirements', 'archive']
+  var libs = ['spec', 'wiki', 'requirements', 'archive', 'notes']
   var r = doSearch(libs, topic, 8)
   var out = ['# Context pack: ' + topic, '']
   var perLib = {}

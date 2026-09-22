@@ -338,7 +338,7 @@ class GatewayManagerClass {
         const query = String(args.query || '').trim()
         if (!query) throw new Error('缺少参数: query')
         const libRaw = String(args.library || 'all').trim()
-        const library = ['requirements', 'spec', 'wiki', 'archive'].includes(libRaw) ? libRaw : 'all'
+        const library = ['requirements', 'spec', 'wiki', 'archive', 'notes'].includes(libRaw) ? libRaw : 'all'
         if (!root) return { ok: false, error: '未打开项目', hits: [] }
         const res = kbSearch(root, library as 'all', query)
         const hits = res.hits.slice(0, 8).map((h) => ({
