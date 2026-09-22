@@ -50,16 +50,16 @@ export function TitleBar(): JSX.Element {
           )}
         </div>
       )}
-      {snapshot && (
-        <button
-          onClick={() => api.setCapsuleMode(true)}
-          className="no-drag btn-ghost ml-2 px-2 py-1"
-          title="切换到胶囊模式（置顶小卡片）"
-        >
-          <PictureInPicture2 size={13} />
-        </button>
-      )}
       <div className="ml-auto flex h-full items-stretch">
+        {snapshot && (
+          <button
+            onClick={() => api.setCapsuleMode(true)}
+            className="no-drag grid h-full w-10 place-items-center text-mist-300 transition-colors hover:bg-ink-700 hover:text-mist-100"
+            title="切换到胶囊模式（置顶小卡片）"
+          >
+            <PictureInPicture2 size={13.5} />
+          </button>
+        )}
         <WinButton onClick={() => api.windowMinimize()}>
           <Minus size={14} />
         </WinButton>

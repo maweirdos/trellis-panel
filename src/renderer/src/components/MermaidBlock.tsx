@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import DOMPurify from 'dompurify'
 import { errorText } from '../../../shared/errors'
@@ -30,12 +30,37 @@ async function getMermaid() {
   return mermaidPromise
 }
 
+let globalSeq = 0
+let renderQueue = Promise.resolve()
+
+function nextMermaidId(): string {
+  return `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${++globalSeq}`
+}
+
+async function renderMermaid(mermaid: typeof import('mermaid').default, chart: string): Promise<string> {
+  const id = nextMermaidId()
+  return new Promise((resolve, reject) => {
+    renderQueue = renderQueue.then(async () => {
+      try {
+        const { svg } = await mermaid.render(id, chart)
+        resolve(svg)
+      } catch (err) {
+        reject(err)
+      }
+    })
+  })
+}
+
 /** mermaid 渲染出的 SVG 注入 innerHTML 前必须消毒：图表源码可能来自外部文档/AI 输出 */
 function sanitizeSvg(svg: string): string {
   return DOMPurify.sanitize(svg, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-    ADD_ATTR: ['style'],
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'foreignObject'],
+    USE_PROFILES: { svg: true, svgFilters: true, html: true },
+    ADD_TAGS: ['foreignobject', 'foreignObject'],
+    ADD_ATTR: ['style', 'dominant-baseline'],
+    HTML_INTEGRATION_POINTS: {
+      foreignobject: true
+    },
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
     FORBID_ATTR: ['srcset']
   })
 }
@@ -43,15 +68,13 @@ function sanitizeSvg(svg: string): string {
 export const MermaidBlock = React.memo(function MermaidBlock({ chart }: { chart: string }): JSX.Element {
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const seq = useRef(0)
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
         const mermaid = await getMermaid()
-        const id = `mermaid-${Date.now()}-${seq.current++}`
-        const { svg: out } = await mermaid.render(id, chart)
+        const out = await renderMermaid(mermaid, chart)
         if (alive) setSvg(sanitizeSvg(out))
       } catch (e) {
         if (alive) setError(errorText(e, 'Mermaid 渲染失败'))

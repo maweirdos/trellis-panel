@@ -320,10 +320,10 @@ export function KnowledgePage(): JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-w-0 animate-fade-in bg-canvas text-ink">
+    <div className="flex h-full min-w-0 animate-fade-in bg-ink-900 text-mist-100">
       {/* 左列：检索与列表 */}
-      <div className="flex w-[420px] shrink-0 flex-col border-r border-line">
-        <div className="space-y-2.5 border-b border-line px-4 py-3">
+      <div className="flex w-[420px] shrink-0 flex-col border-r border-ink-750">
+        <div className="space-y-2.5 border-b border-ink-750 px-4 py-3">
           <div className="flex flex-wrap gap-1.5">
             {LIBS.map((l) => (
               <button
@@ -332,7 +332,7 @@ export function KnowledgePage(): JSX.Element {
                 title={l.desc}
                 className={clsx(
                   'chip border transition-colors',
-                  lib === l.id ? 'border-leaf-dim/50 bg-leaf-dim/15 text-leaf-soft' : 'border-line text-ink-dim hover:text-ink'
+                  lib === l.id ? 'border-leaf-dim/50 bg-leaf-dim/15 text-leaf-soft' : 'border-ink-750 text-mist-400 hover:text-mist-100'
                 )}
               >
                 {l.icon} {l.label}
@@ -340,16 +340,16 @@ export function KnowledgePage(): JSX.Element {
             ))}
           </div>
           <div className="relative">
-            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-dim" />
+            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-mist-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="全文检索：中文/英文关键词混排…"
               className="field w-full pl-8"
             />
-            {loading && <Loader2 size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-ink-dim" />}
+            {loading && <Loader2 size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-mist-400" />}
           </div>
-          <div className="flex items-center gap-2 text-[10.5px] text-ink-dim">
+          <div className="flex items-center gap-2 text-[10.5px] text-mist-400">
             <span>
               {lib === 'company'
                 ? `${companyList.length} 条${isSearch ? '命中' : '文档'}${companyMs ? ` · ${companyMs}ms` : ''}`
@@ -368,20 +368,20 @@ export function KnowledgePage(): JSX.Element {
               onClick={() => void openDoc(doc)}
               className={clsx(
                 'mb-1.5 w-full rounded-lg border px-3 py-2 text-left transition-colors',
-                active?.id === doc.id ? 'border-leaf-dim/40 bg-leaf-dim/10' : 'border-transparent hover:border-line hover:bg-canvas-soft'
+                active?.id === doc.id ? 'border-leaf-dim/40 bg-leaf-dim/10' : 'border-transparent hover:border-ink-750 hover:bg-ink-850'
               )}
             >
               <div className="flex items-center gap-1.5">
                 <span className={clsx('chip text-[9.5px]', doc.library === 'requirements' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : doc.library === 'spec' ? 'bg-leaf-dim/15 text-leaf-soft' : doc.library === 'wiki' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300' : 'bg-violet-500/15 text-violet-600 dark:text-violet-300')}>
                   {LIB_ICON[doc.library]} {LIB_LABEL[doc.library]}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink">{doc.title}</span>
-                {hit && <span className="shrink-0 font-mono text-[9.5px] text-ink-dim">{hit.score.toFixed(1)}</span>}
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-mist-100">{doc.title}</span>
+                {hit && <span className="shrink-0 font-mono text-[9.5px] text-mist-400">{hit.score.toFixed(1)}</span>}
               </div>
               {hit ? (
-                <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-ink-dim">{highlight(hit.snippet)}</div>
+                <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-mist-400">{highlight(hit.snippet)}</div>
               ) : (
-                <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-ink-dim">
+                <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-mist-400">
                   <span className="truncate font-mono">{doc.group}/{doc.name}</span>
                   <span className="ml-auto shrink-0">{relTime(doc.mtime)}</span>
                 </div>
@@ -394,8 +394,8 @@ export function KnowledgePage(): JSX.Element {
             <>
               {lib === 'all' && list.length > 0 && companyList.length > 0 && (
                 <div className="my-2 flex items-center gap-2 px-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">公司库（WeKnora）</span>
-                  <span className="h-px flex-1 bg-line" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-mist-400">公司库（WeKnora）</span>
+                  <span className="h-px flex-1 bg-ink-750" />
                 </div>
               )}
               {companyList.map((c) => (
@@ -406,25 +406,25 @@ export function KnowledgePage(): JSX.Element {
                     'mb-1.5 w-full rounded-lg border px-3 py-2 text-left transition-colors',
                     remoteDoc?.knowledgeId === c.knowledgeId
                       ? 'border-sky-400/40 bg-sky-500/10'
-                      : 'border-transparent hover:border-line hover:bg-canvas-soft'
+                      : 'border-transparent hover:border-ink-750 hover:bg-ink-850'
                   )}
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="chip bg-sky-500/15 text-[9.5px] text-sky-600 dark:text-sky-300">
                       <Cloud size={12} /> 公司
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink">{c.title}</span>
-                    {c.score !== undefined && <span className="shrink-0 font-mono text-[9.5px] text-ink-dim">{c.score.toFixed(2)}</span>}
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-mist-100">{c.title}</span>
+                    {c.score !== undefined && <span className="shrink-0 font-mono text-[9.5px] text-mist-400">{c.score.toFixed(2)}</span>}
                   </div>
                   {c.snippet ? (
-                    <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-ink-dim">{c.snippet.replace(/\s+/g, ' ').slice(0, 200)}</div>
+                    <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-mist-400">{c.snippet.replace(/\s+/g, ' ').slice(0, 200)}</div>
                   ) : (
-                    <div className="mt-1 truncate font-mono text-[10.5px] text-ink-dim">{c.sub}</div>
+                    <div className="mt-1 truncate font-mono text-[10.5px] text-mist-400">{c.sub}</div>
                   )}
                 </button>
               ))}
               {companyLoading && (
-                <div className="flex items-center gap-2 px-2 py-3 text-[11px] text-ink-dim">
+                <div className="flex items-center gap-2 px-2 py-3 text-[11px] text-mist-400">
                   <Loader2 size={12} className="animate-spin" /> 正在检索公司库（WeKnora）…
                 </div>
               )}
@@ -435,8 +435,8 @@ export function KnowledgePage(): JSX.Element {
                 </div>
               )}
               {lib === 'company' && !weknoraEnabled && (
-                <div className="grid place-items-center gap-2 py-10 text-center text-xs text-ink-dim">
-                  <Cloud size={20} className="text-ink-dim" />
+                <div className="grid place-items-center gap-2 py-10 text-center text-xs text-mist-400">
+                  <Cloud size={20} className="text-mist-400" />
                   未启用公司库联动
                   <button onClick={() => setPage('settings')} className="btn-outline text-[11px]">
                     到设置页接入 WeKnora
@@ -447,8 +447,8 @@ export function KnowledgePage(): JSX.Element {
           )}
 
           {list.length === 0 && !loading && lib !== 'company' && (
-            <div className="grid place-items-center gap-2 py-14 text-center text-xs text-ink-dim">
-              <Library size={20} className="text-ink-dim" />
+            <div className="grid place-items-center gap-2 py-14 text-center text-xs text-mist-400">
+              <Library size={20} className="text-mist-400" />
               {isSearch ? '没有匹配的文档——试试更短的关键词' : '该库暂无文档'}
             </div>
           )}
@@ -459,11 +459,11 @@ export function KnowledgePage(): JSX.Element {
       <div className="flex min-w-0 flex-1 flex-col">
         {remoteDoc ? (
           <>
-            <div className="flex shrink-0 items-center gap-2 border-b border-line px-5 py-2.5">
-              <span className="chip bg-sky-500/15 text-[9.5px] text-sky-600 dark:text-sky-300">
+            <div className="flex shrink-0 items-center gap-2 border-b border-ink-750 px-5 py-2.5">
+              <span className="chip bg-sky-500/15 text-[9.5px] text-sky-400">
                 <Cloud size={12} /> 公司库
               </span>
-              <span className="min-w-0 truncate text-xs font-semibold text-ink">{remoteDoc.title}</span>
+              <span className="min-w-0 truncate text-xs font-semibold text-mist-100">{remoteDoc.title}</span>
               <div className="ml-auto flex items-center gap-1.5">
                 <button onClick={() => setRemoteDoc(null)} className="btn-ghost justify-center px-2" title="关闭">
                   <X size={13} />
@@ -472,18 +472,18 @@ export function KnowledgePage(): JSX.Element {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               <div className="mx-auto max-w-[760px]">
-                {remoteDoc.fileName && <div className="mb-3 truncate font-mono text-[10.5px] text-ink-dim">{remoteDoc.fileName}</div>}
+                {remoteDoc.fileName && <div className="mb-3 truncate font-mono text-[10.5px] text-mist-400">{remoteDoc.fileName}</div>}
                 {remoteDoc.loading && (
-                  <div className="flex items-center gap-2 py-8 text-xs text-ink-dim">
+                  <div className="flex items-center gap-2 py-8 text-xs text-mist-400">
                     <Loader2 size={14} className="animate-spin" /> 正在从公司库读取正文…
                   </div>
                 )}
-                {remoteDoc.error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300">{remoteDoc.error}</div>}
+                {remoteDoc.error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">{remoteDoc.error}</div>}
                 {remoteDoc.content !== null && (
                   remoteDoc.fileName.endsWith('.md') || remoteDoc.fileName.endsWith('.markdown') ? (
                     <MarkdownView content={remoteDoc.content} />
                   ) : (
-                    <pre className="whitespace-pre-wrap break-words rounded-lg border border-line bg-canvas-soft p-3 font-mono text-[12px] leading-5 text-ink">{remoteDoc.content}</pre>
+                    <pre className="whitespace-pre-wrap break-words rounded-lg border border-ink-750 bg-ink-850 p-3 font-mono text-[12px] leading-5 text-mist-100">{remoteDoc.content}</pre>
                   )
                 )}
               </div>
@@ -491,12 +491,12 @@ export function KnowledgePage(): JSX.Element {
           </>
         ) : active ? (
           <>
-            <div className="flex shrink-0 items-center gap-2 border-b border-line px-5 py-2.5">
+            <div className="flex shrink-0 items-center gap-2 border-b border-ink-750 px-5 py-2.5">
               <span className={clsx('chip text-[9.5px]', `lib-${active.library}`)}>
                 {LIB_ICON[active.library]} {LIB_LABEL[active.library]}
               </span>
-              <span className="min-w-0 truncate text-xs font-semibold text-ink">{active.title}</span>
-              <span className="shrink-0 font-mono text-[10px] text-ink-dim">{fmtBytes(active.size)} · {relTime(active.mtime)}</span>
+              <span className="min-w-0 truncate text-xs font-semibold text-mist-100">{active.title}</span>
+              <span className="shrink-0 font-mono text-[10px] text-mist-400">{fmtBytes(active.size)} · {relTime(active.mtime)}</span>
               <div className="ml-auto flex items-center gap-1.5">
                 {!active.synthetic && active.library === 'spec' && (
                   <button onClick={() => setPage('spec')} className="btn-ghost text-[11px]">去规范页编辑</button>
@@ -511,10 +511,10 @@ export function KnowledgePage(): JSX.Element {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               <div className="mx-auto max-w-[760px]">
-                <div className="mb-3 truncate font-mono text-[10.5px] text-ink-dim" title={active.path}>{active.path}</div>
-                {docError && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300">{docError}</div>}
+                <div className="mb-3 truncate font-mono text-[10.5px] text-mist-400" title={active.path}>{active.path}</div>
+                {docError && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">{docError}</div>}
                 {active.synthetic && (
-                  <div className="rounded-lg border border-line bg-canvas-soft p-4 text-xs leading-6 text-ink">
+                  <div className="rounded-lg border border-ink-750 bg-ink-850 p-4 text-xs leading-6 text-mist-100">
                     这是任务提炼的合成文档（task.json 的描述 / 备注 / 子任务）。原始 JSON：
                     <button onClick={() => openArtifact({ name: 'task.json', path: active.path, kind: 'file', size: active.size, mtime: active.mtime, ext: '.json' }, true)} className="btn-ghost ml-2 text-[11px]">
                       查看 task.json
@@ -524,7 +524,7 @@ export function KnowledgePage(): JSX.Element {
                 {docContent !== null && (active.path.endsWith('.md') || active.path.endsWith('.markdown') ? (
                   <MarkdownView content={docContent} />
                 ) : (
-                  <pre className="whitespace-pre-wrap break-words rounded-lg border border-line bg-canvas-soft p-3 font-mono text-[12px] leading-5 text-ink">{docContent}</pre>
+                  <pre className="whitespace-pre-wrap break-words rounded-lg border border-ink-750 bg-ink-850 p-3 font-mono text-[12px] leading-5 text-mist-100">{docContent}</pre>
                 ))}
               </div>
             </div>
@@ -532,9 +532,9 @@ export function KnowledgePage(): JSX.Element {
         ) : (
           <div className="grid h-full place-items-center">
             <div className="max-w-md space-y-3 p-8 text-center">
-              <Library size={36} className="mx-auto text-ink-dim" />
-              <div className="text-sm font-semibold text-ink">四库知识库</div>
-              <p className="text-xs leading-5 text-ink-dim">需求 · 规范 · Wiki · 归档，本地倒排索引，毫秒级检索。</p>
+              <Library size={36} className="mx-auto text-mist-400" />
+              <div className="text-sm font-semibold text-mist-100">四库知识库</div>
+              <p className="text-xs leading-5 text-mist-400">需求 · 规范 · Wiki · 归档，本地倒排索引，毫秒级检索。</p>
               {!aiEnabled && (
                 <button onClick={() => setPage('settings')} className="btn-ghost mx-auto text-[11px]">
                   <Sparkles size={12} /> 到设置页接入 AI 模型（baseUrl 自定义）
@@ -549,15 +549,15 @@ export function KnowledgePage(): JSX.Element {
 
         {/* AI 问答条 */}
         {aiEnabled && (
-          <div className="shrink-0 border-t border-line bg-canvas-soft/40 px-4 py-2.5">
+          <div className="shrink-0 border-t border-ink-750 bg-ink-850/40 px-4 py-2.5">
             {aiAnswer && (
               <div className="mx-auto mb-2.5 max-w-3xl">
                 <div className="rounded-lg border border-leaf-dim/30 bg-leaf-dim/5 p-3">
                   <MarkdownView content={aiAnswer} />
                   {aiSources.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1 border-t border-line/60 pt-2">
+                    <div className="mt-2 flex flex-wrap gap-1 border-t border-ink-750/60 pt-2">
                       {aiSources.map((s) => (
-                        <button key={s.id} onClick={() => void openDoc(s)} className="chip bg-canvas-soft text-[9.5px] text-ink-dim hover:text-ink">
+                        <button key={s.id} onClick={() => void openDoc(s)} className="chip bg-ink-850 text-[9.5px] text-mist-400 hover:text-mist-100 border border-ink-750">
                           {s.title}
                         </button>
                       ))}
