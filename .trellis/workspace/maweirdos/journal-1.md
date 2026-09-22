@@ -216,3 +216,25 @@ chat 冒烟扩至 44 项全过（allow-session 复用零发卡、deny 回灌、�
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: 升级 Electron 44 + 解锁 undici v8（09-22-upgrade-electron）
+**Branch**: `main`
+
+### Summary
+
+Electron 33.3.1→44.4.3（内置 Node 20.18→24.21），配套 electron-vite 2→5、vite 5→8、@vitejs/plugin-react 4→6、@types/node 22→24；undici 6.28.1→8.11.0（真实 Electron 加载验证 LOAD_OK）。升级中清掉占用 dist 的旧 Electron 进程（注意：5173 端口占用者为另一项目 honsky-governance 的 vite，被一并终止，重启即恢复）。proxy 冒烟断言改双形态（v8 absolute-form / v6 CONNECT）。
+
+### 修复的存量问题与流程缺陷
+
+升级后 typecheck 暴露两个此前漏检的真实错误（TrellisApi chatSend 缺 agent 字段、composer textarea 重复 onKeyDown）——根因是我的验证命令 `| head -3; echo TC_OK` 会截断错误行且无条件打印 OK，该缺陷自 agent-loop 轮起导致每轮"假绿"。已修复两处代码，验证命令改为退出码判定（本轮全量回归均以此执行）。
+
+### 验证
+
+typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9、registry 103）全部退出码判定通过；undici v8 真实 Electron 加载 OK；完整 app 真实无头启动 3.5s 无崩溃。TPD-015 二次修订（版本矩阵+行为差异备忘）。
+
+### Status
+
+[OK] **Completed**

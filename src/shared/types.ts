@@ -956,6 +956,8 @@ export interface TrellisApi {
     thinkingLevel?: ThinkingLevel
     /** dataURL 形式的图片附件（TPD-019） */
     images?: string[]
+    /** agent 模式：启用工具调用循环（TPD-020） */
+    agent?: boolean
   }) => Promise<ChatSendResult>
   chatRegenerate: (sessionId: string) => Promise<ChatSendResult>
   chatSteer: (sessionId: string, content: string) => Promise<{ ok: boolean; error?: string }>

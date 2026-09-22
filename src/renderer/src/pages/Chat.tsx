@@ -636,14 +636,6 @@ export function ChatPage(): JSX.Element {
             </button>
             <textarea
               value={draft}
-              onKeyDown={(e) => {
-                if (e.altKey && e.key === 'Enter' && draft.trim()) {
-                  e.preventDefault()
-                  const text = draft.trim()
-                  setDraft('')
-                  void chatSteer(text)
-                }
-              }}
               onPaste={(e) => {
                 const imgs = Array.from(e.clipboardData.items).filter((it) => it.type.startsWith('image/'))
                 if (imgs.length === 0) return
@@ -655,6 +647,13 @@ export function ChatPage(): JSX.Element {
               }}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
+                if (e.altKey && e.key === 'Enter' && draft.trim()) {
+                  e.preventDefault()
+                  const text = draft.trim()
+                  setDraft('')
+                  void chatSteer(text)
+                  return
+                }
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   submit()
@@ -662,7 +661,7 @@ export function ChatPage(): JSX.Element {
                   setDraft('')
                 }
               }}
-              placeholder="输入消息，Enter 发送，Shift+Enter 换行，Esc 清空"
+              placeholder="输入消息，Enter 发送，Shift+Enter 换行，Alt+Enter 运行中引导，Esc 清空"
               rows={Math.min(6, Math.max(1, draft.split('\n').length))}
               className="min-h-[38px] flex-1 resize-none rounded-lg border border-ink-600 bg-ink-850 px-3 py-2 text-xs text-mist-200 outline-none placeholder:text-mist-600 focus:border-leaf/60"
             />

@@ -155,7 +155,13 @@ export interface ChatSlice {
   chatRenameSession: (id: string, title: string) => Promise<void>
   chatSend: (
     content: string,
-    binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel; images?: string[] }
+    binding?: {
+      providerId?: string
+      modelId?: string
+      thinkingLevel?: ThinkingLevel
+      images?: string[]
+      agent?: boolean
+    }
   ) => Promise<void>
   chatAbort: () => Promise<void>
   chatResolvePermission: (permId: string, decision: 'allow-once' | 'allow-session' | 'deny') => Promise<void>

@@ -164,10 +164,10 @@ const proxied = await ai2.aiChatStream(
   { onDelta: () => {} }
 )
 check('代理启用时流式请求成功', proxied.ok && proxied.content === '经代理', JSON.stringify(proxied))
-check('请求确实经过代理转发（v6 为 CONNECT 隧道形态）', proxyHits.some((u) => String(u ?? '').includes('CONNECT')), JSON.stringify(proxyHits))
+check('请求确实经过代理转发（v8 absolute-form / v6 CONNECT 双形态兼容）', proxyHits.length > 0 && proxyHits.some((u) => String(u ?? '').includes('CONNECT') || String(u ?? '').includes('/chat/completions')), JSON.stringify(proxyHits))
 
 const discovery = await ai2.fetchModelsFromProvider({ baseUrl: `http://127.0.0.1:${TARGET_PORT}/v1`, apiFormat: 'openai', apiKey: 'sk-mock' })
-check('模型探测同样经代理', discovery.ok && discovery.models?.length === 1 && proxyHits.filter((u) => String(u ?? '').includes('CONNECT')).length >= 2, JSON.stringify(proxyHits))
+check('模型探测同样经代理', discovery.ok && discovery.models?.length === 1 && proxyHits.length >= 2, JSON.stringify(proxyHits))
 
 /* 收尾 */
 proxy.close()
