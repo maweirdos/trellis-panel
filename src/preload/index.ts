@@ -160,6 +160,7 @@ const api = {
   onChatPermission: (cb: (e: import('../shared/types').ChatPermissionEvent) => void) => subscribe(ipcEvent.chatPermission, cb),
   onChatSteer: (cb: (e: import('../shared/types').ChatSteerEvent) => void) => subscribe(ipcEvent.chatSteer, cb),
   chatAbort: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.abort, sessionId),
+  chatDistill: (sessionId: string, messageId: string) => ipcRenderer.invoke(ipcInvoke.chat.distill, sessionId, messageId),
   onChatOutput: (cb: (e: ChatOutputEvent) => void) => subscribe(ipcEvent.chatOutput, cb),
   onChatDone: (cb: (e: ChatDoneEvent) => void) => subscribe(ipcEvent.chatDone, cb),
 

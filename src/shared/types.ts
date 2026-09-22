@@ -984,6 +984,8 @@ export interface TrellisApi {
   chatEditResend: (sessionId: string, messageId: string, content: string) => Promise<ChatSendResult>
   chatBranch: (sessionId: string, messageId: string) => Promise<{ ok: boolean; error?: string }>
   chatAbort: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
+  /** 对话沉淀：一条 AI 回答 → AI 加工（拟题/打标/整理）→ 存入我的笔记库 */
+  chatDistill: (sessionId: string, messageId: string) => Promise<{ ok: boolean; error?: string; fileName?: string; path?: string }>
   onChatPermission: (
     cb: (e: { runId: string; sessionId: string; permId: string; toolName: string; argsSummary: string; timeoutSec: number }) => void
   ) => () => void

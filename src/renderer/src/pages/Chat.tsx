@@ -24,7 +24,9 @@ import {
   Pencil,
   ImagePlus,
   Camera,
-  X
+  X,
+  BookPlus,
+  Loader2
 } from 'lucide-react'
 import type { ModelProvider, ThinkingLevel } from '../../../shared/types'
 import type { ChatImage } from '../../../shared/types'
@@ -377,6 +379,23 @@ export function ChatPage(): JSX.Element {
   const busy = !!streaming
   const activeSession = sessions.find((s) => s.id === activeId)
 
+  /* 知识沉淀：一条回答 → AI 加工 → 我的笔记库 */
+  const [distilling, setDistilling] = useState<string | null>(null)
+  const distillAnswer = async (messageId: string): Promise<void> => {
+    if (!activeId || distilling) return
+    setDistilling(messageId)
+    try {
+      const res = await api.chatDistill(activeId, messageId)
+      if (res.ok && res.fileName) {
+        pushToast({ kind: 'success', title: '已存入知识库', body: `${res.fileName}（我的笔记库，可直接检索与问答）` })
+      } else {
+        pushToast({ kind: 'error', title: '沉淀失败', body: res.error })
+      }
+    } finally {
+      setDistilling(null)
+    }
+  }
+
   return (
     <div className="flex h-full">
       {/* 会话列表 */}
@@ -581,6 +600,16 @@ export function ChatPage(): JSX.Element {
                           title="重新生成（保留旧回答为分支）"
                         >
                           <RefreshCw size={12} />
+                        </button>
+                      )}
+                      {aiEnabled && e.id && (
+                        <button
+                          onClick={() => void distillAnswer(e.id ?? '')}
+                          disabled={distilling === e.id}
+                          className="rounded p-1 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-leaf disabled:opacity-40"
+                          title="存入知识库：AI 自动拟标题、打标签，整理成笔记（.trellis/notes/）"
+                        >
+                          {distilling === e.id ? <Loader2 size={12} className="animate-spin" /> : <BookPlus size={12} />}
                         </button>
                       )}
                     </div>

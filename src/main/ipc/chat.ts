@@ -2,6 +2,8 @@ import { app } from 'electron'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { IpcErrorCode, ipcFail } from '../../shared/ipc-errors'
 import { chatService } from '../services/chat'
+import { distillToNote } from '../services/kb-distill'
+import { getProjectRoot, getSnapshot } from '../state'
 import {
   activePath,
   createSession,
@@ -93,15 +95,45 @@ export function registerChatIpc(deps?: WindowDeps): void {
     }
   })
 
-  handle(ipcInvoke.chat.send, (_e, input: { sessionId: string; content: string; providerId?: string; modelId?: string; thinkingLevel?: string; images?: string[] }) => {
+  handle(ipcInvoke.chat.send, (_e, input: { sessionId: string; content: string; providerId?: string; modelId?: string; thinkingLevel?: string; images?: string[]; agent?: boolean; taskDir?: string | null }) => {
     return chatService.send({
       sessionId: String(input?.sessionId ?? ''),
       content: String(input?.content ?? ''),
       providerId: input?.providerId ? String(input.providerId) : undefined,
       modelId: input?.modelId ? String(input.modelId) : undefined,
       thinkingLevel: input?.thinkingLevel as ThinkingLevel | undefined,
-      images: Array.isArray(input?.images) ? input.images.map(String) : undefined
+      images: Array.isArray(input?.images) ? input.images.map(String) : undefined,
+      agent: typeof input?.agent === 'boolean' ? input.agent : undefined,
+      taskDir: input?.taskDir !== undefined ? input.taskDir : undefined
     })
+  })
+
+  /** 对话沉淀：把一条问答交给 AI 加工成知识笔记（写入 .trellis/notes/） */
+  handle(ipcInvoke.chat.distill, async (_e, sessionId: string, messageId: string) => {
+    const root = getProjectRoot()
+    if (!root) return ipcFail(IpcErrorCode.InvalidArg, '未打开项目')
+    const session = openSession(app, String(sessionId ?? ''))
+    if (!session) return ipcFail(IpcErrorCode.NotFound, '会话不存在')
+    const node = session.nodes[String(messageId ?? '')]
+    if (!node || node.role !== 'assistant') return ipcFail(IpcErrorCode.InvalidArg, '只能沉淀 AI 回答')
+    // 找到该回答之前最近的用户消息作为问题
+    const path = activePath(session)
+    const idx = path.findIndex((n) => n.id === node.id)
+    const questionNode = [...path.slice(0, idx)].reverse().find((n) => n.role === 'user')
+    if (!questionNode) return ipcFail(IpcErrorCode.InvalidArg, '未找到对应的提问')
+    const sources = (node.toolOps ?? [])
+      .flatMap((op) => op.sources ?? [])
+      .filter((s, i, arr) => arr.findIndex((x) => x.path === s.path) === i)
+      .slice(0, 6)
+    const taskTitle = session.taskDir ? getSnapshot()?.tasks.find((t) => t.dirName === session.taskDir)?.record?.title : undefined
+    const res = await distillToNote(root, {
+      question: questionNode.content,
+      answer: node.content,
+      sources,
+      taskTitle: taskTitle ?? undefined
+    })
+    if (!res.ok) return ipcFail(IpcErrorCode.Unknown, res.error ?? '沉淀失败')
+    return { ok: true, fileName: res.fileName, path: res.path }
   })
 
   handle(ipcInvoke.chat.abort, (_e, sessionId: string) => chatService.abort(String(sessionId ?? '')))
