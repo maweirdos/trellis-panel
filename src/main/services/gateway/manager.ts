@@ -1,5 +1,7 @@
 import { getSettings } from '../store'
 import { weknoraReadDoc, weknoraSearch, weknoraTest } from '../weknora'
+import { kbDocById, kbSearch } from '../knowledge'
+import { getSnapshot } from '../../state'
 import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { errorMessage } from '../../../shared/errors'
@@ -134,34 +136,27 @@ class GatewayManagerClass {
    */
   getStandardTools(): GatewayToolDef[] {
     return [
-      // --- MySQL Database Tools ---
+      // --- Local Knowledge Base Tools（本地四库：需求/规范/Wiki/归档） ---
       {
-        name: 'db_list_tables',
-        description: '列出当前数据库中所有业务数据表名及表注释信息。用于在规划任务或编写 SQL 前了解数据库全貌。',
-        upstreamId: 'mysql',
-        parameters: {},
-        isReadOnly: true,
-        securityRule: '只读模式'
-      },
-      {
-        name: 'db_describe_table',
-        description: '获取指定数据表的详细字段列表、数据类型、主键、索引及外键定义。',
-        upstreamId: 'mysql',
+        name: 'kb_search',
+        description: '检索当前项目的本地知识库（需求库、规范库、Wiki 文档库、归档库），返回命中片段与来源。回答项目相关问题前先用它查证。',
+        upstreamId: 'local-kb',
         parameters: {
-          table: { type: 'string', description: '目标数据表名，例如 users 或 orders', required: true }
+          query: { type: 'string', description: '检索关键词或问题', required: true },
+          library: { type: 'string', description: '限定库：requirements（需求）/ spec（规范）/ wiki（项目文档）/ archive（归档）；不传则全库检索', required: false }
         },
         isReadOnly: true,
-        securityRule: '只读模式'
+        securityRule: '只读检索'
       },
       {
-        name: 'db_query_readonly',
-        description: '安全执行只读 SELECT SQL 查询。受网关安全防线拦截保护，严格禁止任何修改或破坏性 DDL/DML。',
-        upstreamId: 'mysql',
+        name: 'kb_read_doc',
+        description: '读取知识库文档的完整正文（先用 kb_search 拿到 docId，再读全文）。',
+        upstreamId: 'local-kb',
         parameters: {
-          sql: { type: 'string', description: '只读 SELECT 语句，例如 SELECT * FROM orders LIMIT 5', required: true }
+          docId: { type: 'string', description: 'kb_search 返回的 docId（形如 "spec:D:\\...\\api.md"）', required: true }
         },
         isReadOnly: true,
-        securityRule: 'SQL 只读拦截 (禁止 DROP/DELETE/UPDATE/INSERT/ALTER)'
+        securityRule: '只读'
       },
 
       // --- WeKnora Enterprise Knowledge Tools ---
@@ -212,6 +207,13 @@ class GatewayManagerClass {
         upstreamId: 'trellis',
         parameters: {},
         isReadOnly: true
+      },
+      {
+        name: 'trellis_list_tasks',
+        description: '列出当前项目的全部任务（标题、状态、负责人、更新时间），了解项目进展时使用。',
+        upstreamId: 'trellis',
+        parameters: {},
+        isReadOnly: true
       }
     ]
   }
@@ -244,8 +246,8 @@ class GatewayManagerClass {
       return { ok: false, elapsedMs: Date.now() - start, error: err }
     }
 
-    // 1. 安全防护检查：SQL 只读拦截
-    if (this.security.sqlReadOnly && (toolName === 'db_query_readonly' || args.sql)) {
+    // 1. 安全防护检查：SQL 只读拦截（防御未来接入的 sql 参数型工具）
+    if (this.security.sqlReadOnly && args.sql) {
       const sql = String(args.sql || '').trim()
       if (DANGEROUS_SQL_REGEX.test(sql)) {
         const blockMsg = `操作被网关安全防护拦截：检测到修改或破坏性 DDL/DML 语句，只读模式下仅允许执行 SELECT 查询。拦截词: ${sql.match(DANGEROUS_SQL_REGEX)?.[0]}`
@@ -331,52 +333,41 @@ class GatewayManagerClass {
     const s = getSettings()
 
     switch (toolName) {
-      // --- MySQL Tools ---
-      case 'db_list_tables': {
+      // --- Local Knowledge Base Tools ---
+      case 'kb_search': {
+        const query = String(args.query || '').trim()
+        if (!query) throw new Error('缺少参数: query')
+        const libRaw = String(args.library || 'all').trim()
+        const library = ['requirements', 'spec', 'wiki', 'archive'].includes(libRaw) ? libRaw : 'all'
+        if (!root) return { ok: false, error: '未打开项目', hits: [] }
+        const res = kbSearch(root, library as 'all', query)
+        const hits = res.hits.slice(0, 8).map((h) => ({
+          docId: h.doc.id,
+          title: h.doc.title,
+          library: h.doc.library,
+          path: h.doc.path,
+          snippet: h.snippet.replace(/\u0000/g, '**').replace(/\u0001/g, '**'),
+          score: Math.round(h.score)
+        }))
         return {
-          database: 'app_production',
-          tables: [
-            { name: 't_user', comment: '系统用户主表', engine: 'InnoDB', rows: 1240 },
-            { name: 't_order', comment: '订单主表', engine: 'InnoDB', rows: 54302 },
-            { name: 't_order_item', comment: '订单明细项', engine: 'InnoDB', rows: 120530 },
-            { name: 't_product', comment: '商品与物料目录', engine: 'InnoDB', rows: 840 },
-            { name: 't_inventory', comment: '库存实时结存表', engine: 'InnoDB', rows: 1200 },
-            { name: 't_audit_log', comment: '安全操作审计日志', engine: 'InnoDB', rows: 430190 }
-          ]
+          ok: true,
+          query,
+          library,
+          totalDocs: res.totalDocs,
+          elapsedMs: res.elapsedMs,
+          hits,
+          hint: hits.length > 0 ? '用 kb_read_doc(docId) 可读全文' : '未命中，建议换关键词或减少限定库'
         }
       }
 
-      case 'db_describe_table': {
-        const table = String(args.table || '').trim()
-        if (!table) throw new Error('缺少参数: table')
-        return {
-          table,
-          columns: [
-            { field: 'id', type: 'bigint(20) unsigned', nullable: false, key: 'PRI', default: null, extra: 'auto_increment', comment: '主键 ID' },
-            { field: 'code', type: 'varchar(64)', nullable: false, key: 'UNI', default: null, extra: '', comment: '唯一业务编号' },
-            { field: 'status', type: 'varchar(32)', nullable: false, key: 'MUL', default: "'pending'", extra: '', comment: '业务状态码' },
-            { field: 'created_at', type: 'datetime', nullable: false, key: '', default: 'CURRENT_TIMESTAMP', extra: '', comment: '创建时间' },
-            { field: 'updated_at', type: 'datetime', nullable: false, key: '', default: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP', extra: '', comment: '更新时间' }
-          ],
-          indexes: [
-            { name: 'PRIMARY', columns: ['id'], unique: true },
-            { name: 'uk_code', columns: ['code'], unique: true },
-            { name: 'idx_status_created', columns: ['status', 'created_at'], unique: false }
-          ]
-        }
-      }
-
-      case 'db_query_readonly': {
-        const sql = String(args.sql || '').trim()
-        if (!sql) throw new Error('缺少参数: sql')
-        return {
-          sql,
-          rowCount: 2,
-          rows: [
-            { id: 1001, code: 'ORD-2026-001', status: 'completed', amount: 8900.0, created_at: '2026-09-20 10:12:00' },
-            { id: 1002, code: 'ORD-2026-002', status: 'processing', amount: 1420.5, created_at: '2026-09-21 08:30:15' }
-          ]
-        }
+      case 'kb_read_doc': {
+        const docId = String(args.docId || '').trim()
+        if (!docId) throw new Error('缺少参数: docId')
+        if (!root) throw new Error('未打开项目')
+        const doc = kbDocById(root, docId)
+        if (!doc) return { ok: false, error: `文档不存在或不在库内: ${docId.slice(0, 120)}` }
+        const content = readFileSync(doc.path, 'utf-8').slice(0, this.security.maxResponseChars)
+        return { ok: true, title: doc.title, library: doc.library, path: doc.path, content }
       }
 
       // --- WeKnora Tools ---
@@ -451,6 +442,24 @@ class GatewayManagerClass {
         }
       }
 
+      case 'trellis_list_tasks': {
+        const snap = getSnapshot()
+        if (!snap) return { ok: false, error: '未打开项目', tasks: [] }
+        return {
+          ok: true,
+          total: snap.tasks.length,
+          archived: snap.archived.length,
+          tasks: snap.tasks.map((t) => ({
+            dirName: t.dirName,
+            title: String(t.record?.title ?? t.dirName),
+            status: String(t.record?.status ?? ''),
+            priority: t.record?.priority ?? null,
+            assignee: t.record?.assignee ?? null,
+            jiraKey: t.record?.meta?.jiraKey ?? null
+          }))
+        }
+      }
+
       default:
         throw new Error(`未实现的工具处理器: ${toolName}`)
     }
@@ -461,18 +470,18 @@ class GatewayManagerClass {
     const tools = this.getStandardTools()
 
     const upstreams: GatewayUpstream[] = [
-      // 1. MySQL 数据库
+      // 1. 本地知识库（四库）
       {
-        id: 'mysql',
-        name: 'MySQL 数据库 MCP',
-        category: 'database',
-        description: '提供数据库表结构、字段元数据与安全只读 SQL 查询，供 AI 编辑器规划任务与编写业务代码',
-        status: 'connected',
-        endpoint: 'mysql://127.0.0.1:3306/app_production',
-        isRemote: true,
-        enabled: true,
+        id: 'local-kb',
+        name: '本地知识库（四库）',
+        category: 'knowledge',
+        description: '项目内需求库 / 规范库 / Wiki 库 / 归档库的毫秒级全文检索，供对话与 AI 规划查证项目事实',
+        status: root ? 'connected' : 'disabled',
+        endpoint: root ? `${root}/.trellis` : '未打开项目',
+        isRemote: false,
+        enabled: !!root,
         lastChecked: Date.now(),
-        tools: tools.filter((t) => t.upstreamId === 'mysql')
+        tools: tools.filter((t) => t.upstreamId === 'local-kb')
       },
 
       // 2. WeKnora 企业知识库
@@ -590,8 +599,10 @@ class GatewayManagerClass {
   }
 
   async testProvider(providerId: string, root?: string): Promise<{ ok: boolean; error?: string }> {
-    if (providerId === 'mysql') {
-      return { ok: true }
+    if (providerId === 'local-kb') {
+      if (!root) return { ok: false, error: '未打开项目' }
+      const res = kbSearch(root, 'all', '')
+      return { ok: res.ok }
     }
     if (providerId === 'weknora') {
       const s = getSettings()

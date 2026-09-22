@@ -1,6 +1,7 @@
 import { broadcastToWindows } from './bridge'
 import { getSettings } from './store'
 import { aiChatStream, decryptKeyOf, type StreamTarget, type ToolCallReq } from './ai'
+import { buildSystemPrompt } from './chat-context'
 import type { ChatToolOp, ThinkingLevel } from '../../shared/types'
 import { GatewayManager } from './gateway/manager'
 import { getSnapshot } from '../state'
@@ -41,6 +42,30 @@ interface QueuedItem {
 
 function newRunId(): string {
   return `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** 从检索类工具结果提取来源清单（供回答引用，R2） */
+function extractSources(toolName: string, result: unknown): ChatToolOp['sources'] | null {
+  if (!result || typeof result !== 'object') return null
+  const r = result as { hits?: unknown; result?: { hits?: unknown } }
+  const hits = Array.isArray(r.hits) ? r.hits : Array.isArray(r.result?.hits) ? r.result.hits : null
+  if (!hits) return null
+  const LIB_LABEL: Record<string, string> = {
+    requirements: '需求库',
+    spec: '规范库',
+    wiki: '项目文档',
+    archive: '归档库',
+    notes: '我的笔记'
+  }
+  const sources = hits.slice(0, 5).map((h) => {
+    const o = (h ?? {}) as { title?: unknown; path?: unknown; filename?: unknown; library?: unknown; knowledgeId?: unknown }
+    return {
+      title: String(o.title ?? o.filename ?? '未命名文档'),
+      path: String(o.path ?? o.knowledgeId ?? ''),
+      library: o.library ? (LIB_LABEL[String(o.library)] ?? String(o.library)) : toolName === 'weknora_search' ? '公司库' : ''
+    }
+  })
+  return sources.length > 0 ? sources : null
 }
 
 function resolveProvider(providerId?: string): ModelProvider | null {
@@ -152,6 +177,8 @@ class ChatService {
     images?: string[]
     /** agent 模式：启用工具调用循环（TPD-020） */
     agent?: boolean
+    /** 会话聚焦的任务目录（系统提示词注入该任务上下文） */
+    taskDir?: string | null
   }): ChatSendResult {
     const app = this.app()
     const content = String(input.content ?? '').trim()
@@ -162,13 +189,14 @@ class ChatService {
     const imgs = this.parseImages(input.images)
     if (imgs.error) return { ok: false, error: imgs.error, runId: null, queued: false }
 
-    // 绑定更新：发送时可携带 provider/model/thinking（composer 切换即持久化到会话）
-    if (input.providerId || input.modelId || input.thinkingLevel || input.agent !== undefined) {
+    // 绑定更新：发送时可携带 provider/model/thinking/taskDir（composer 切换即持久化到会话）
+    if (input.providerId || input.modelId || input.thinkingLevel || input.agent !== undefined || input.taskDir !== undefined) {
       updateBinding(app, input.sessionId, {
         providerId: input.providerId,
         modelId: input.modelId,
         thinkingLevel: input.thinkingLevel,
-        agent: input.agent
+        agent: input.agent,
+        taskDir: input.taskDir
       })
     }
 
@@ -362,11 +390,13 @@ class ChatService {
           result = exec
           if (exec.ok) addActiveTool(app, sessionId, call.name)
         }
+        const opSources = extractSources(call.name, result)
         const op: ChatToolOp = {
           toolName: call.name,
           argsSummary: JSON.stringify(args).slice(0, 200),
           status,
-          elapsedMs
+          elapsedMs,
+          ...(opSources ? { sources: opSources } : {})
         }
         toolOps.push(op)
         broadcastToWindows(ipcEvent.chatOutput, { runId, sessionId, delta: '', toolOp: op })
@@ -427,6 +457,10 @@ class ChatService {
       return
     }
 
+    // 系统提示词：面板助手人设 + 项目实时上下文（R1：对话「通」的前提）
+    const systemPrompt = buildSystemPrompt(app, sessionId)
+    const historyWithSystem: ChatMessage[] = [{ role: 'system', content: systemPrompt }, ...history]
+
     const steers = this.runSteers.get(runId) ?? []
     const takeSteers = (): ChatMessage[] =>
       steers.splice(0, steers.length).map((text) => ({ role: 'user' as const, content: `[用户补充] ${text}` }))
@@ -436,7 +470,7 @@ class ChatService {
     if (agentMode) {
       const agentResult = await this.runAgentLoop(runId, sessionId, {
         target: targetOf(provider, modelId, opts.thinkingLevel ?? session.thinkingLevel ?? 'off'),
-        history,
+        history: historyWithSystem,
         controller,
         allowedTools: session.allowedTools ?? [],
         assistantParentId: opts.assistantParentId
@@ -458,7 +492,7 @@ class ChatService {
     // 增量只走事件不落盘；assistant 节点在完成时一次性落库
     const result = await aiChatStream(
       targetOf(provider, modelId, opts.thinkingLevel ?? session.thinkingLevel ?? 'off'),
-      [...history, ...takeSteers()],
+      [...historyWithSystem, ...takeSteers()],
       {
         signal: controller.signal,
         onDelta: (delta) => {

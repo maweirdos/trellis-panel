@@ -494,6 +494,8 @@ export interface ChatToolOp {
   argsSummary: string
   status: 'success' | 'error' | 'denied'
   elapsedMs: number
+  /** 检索类工具命中的来源（回答可引用） */
+  sources?: Array<{ title: string; path: string; library?: string }>
 }
 
 export interface ChatMessage {
@@ -518,6 +520,10 @@ export interface ChatSessionMeta {
   providerId: string | null
   modelId: string | null
   thinkingLevel: ThinkingLevel
+  /** agent 工具循环开关 */
+  agent?: boolean
+  /** 会话聚焦的任务目录 */
+  taskDir?: string | null
 }
 
 /** 会话完整记录（v2 树的活跃路径视图，TPD-016） */
@@ -958,6 +964,8 @@ export interface TrellisApi {
     images?: string[]
     /** agent 模式：启用工具调用循环（TPD-020） */
     agent?: boolean
+    /** 会话聚焦的任务目录（系统提示词注入任务上下文） */
+    taskDir?: string | null
   }) => Promise<ChatSendResult>
   chatRegenerate: (sessionId: string) => Promise<ChatSendResult>
   chatSteer: (sessionId: string, content: string) => Promise<{ ok: boolean; error?: string }>

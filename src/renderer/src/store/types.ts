@@ -161,6 +161,7 @@ export interface ChatSlice {
       thinkingLevel?: ThinkingLevel
       images?: string[]
       agent?: boolean
+      taskDir?: string | null
     }
   ) => Promise<void>
   chatAbort: () => Promise<void>

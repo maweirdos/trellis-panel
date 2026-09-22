@@ -167,7 +167,8 @@ export const chatSlice: AppSlice<ChatSlice> = (set, get) => ({
       modelId: binding?.modelId,
       thinkingLevel: binding?.thinkingLevel,
       images: binding?.images,
-      agent: binding?.agent
+      agent: binding?.agent,
+      taskDir: binding?.taskDir
     })
     if (!res.ok) {
       st.pushToast({ kind: 'error', title: '发送失败', body: res.error })

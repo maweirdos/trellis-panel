@@ -88,9 +88,11 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
   return { provider, modelId, picker }
 }
 
-/** agent 工具行折叠块（TPD-020） */
-function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: string; status: string; elapsedMs: number }> }): JSX.Element {
+/** agent 工具行折叠块（TPD-020）；检索类工具附带来源引用（R2） */
+function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: string; status: string; elapsedMs: number; sources?: Array<{ title: string; path: string; library?: string }> }> }): JSX.Element {
   const [open, setOpen] = useState(false)
+  const allSources = ops.flatMap((op) => op.sources ?? [])
+  const uniqueSources = allSources.filter((s, i) => allSources.findIndex((x) => x.path === s.path) === i).slice(0, 6)
   return (
     <div className="mb-2 rounded-lg border border-sky-400/25 bg-sky-500/5">
       <button
@@ -113,6 +115,22 @@ function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: str
                 {op.argsSummary}
               </div>
             </div>
+          ))}
+        </div>
+      )}
+      {uniqueSources.length > 0 && (
+        <div className="border-t border-sky-400/15 px-3 py-1.5">
+          <span className="text-[10px] text-mist-500">参考来源：</span>
+          {uniqueSources.map((s, i) => (
+            <span key={i} className="mr-2 inline-flex max-w-full items-center gap-1 align-bottom">
+              <button
+                onClick={() => void api.openInEditor(s.path)}
+                className="truncate text-[10.5px] text-sky-300/80 underline decoration-dotted hover:text-sky-200"
+                title={s.path}
+              >
+                {s.library ? `[${s.library}] ` : ''}{s.title}
+              </button>
+            </span>
           ))}
         </div>
       )}
@@ -257,9 +275,11 @@ export function ChatPage(): JSX.Element {
   const [draft, setDraft] = useState('')
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('off')
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
-  const [agentMode, setAgentMode] = useState(false)
+  const [agentMode, setAgentMode] = useState(true)
+  const [taskDir, setTaskDir] = useState<string>('')
   const [attachments, setAttachments] = useState<{ dataUrl: string; name: string }[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const snapshot = useApp((s) => s.snapshot)
 
   const addImageFiles = (files: FileList | File[]): void => {
     const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
@@ -285,10 +305,14 @@ export function ChatPage(): JSX.Element {
   }
   const { provider, modelId, picker } = ComposerModelPicker()
 
-  // 切换会话时同步该会话的思考档位
+  // 切换会话时同步该会话的思考档位 / agent 开关 / 任务绑定
   useEffect(() => {
     const meta = sessions.find((x) => x.id === activeId)
     if (meta?.thinkingLevel) setThinkingLevel(meta.thinkingLevel)
+    if (meta) {
+      setAgentMode(meta.agent ?? true)
+      setTaskDir(meta.taskDir ?? '')
+    }
   }, [activeId, sessions])
 
   useEffect(() => chatAttachEvents(), [chatAttachEvents])
@@ -319,7 +343,7 @@ export function ChatPage(): JSX.Element {
     if ((!text && !imgs.length) || streaming) return
     setDraft('')
     setAttachments([])
-    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel, images: imgs, agent: agentMode })
+    void chatSend(text, { providerId: provider?.id, modelId, thinkingLevel, images: imgs, agent: agentMode, taskDir: taskDir || null })
   }
 
   const queueMore = (): void => {
@@ -402,8 +426,22 @@ export function ChatPage(): JSX.Element {
 
       {/* 转录 + Composer */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-ink-700/60 px-4 py-2">
-          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-mist-200">{activeSession?.title ?? '新对话'}</span>
+        <div className="flex flex-wrap items-center gap-2 border-b border-ink-700/60 px-4 py-2">
+          <span className="min-w-0 max-w-[240px] flex-1 truncate text-xs font-semibold text-mist-200">{activeSession?.title ?? '新对话'}</span>
+          <select
+            value={taskDir}
+            onChange={(e) => setTaskDir(e.target.value)}
+            disabled={!snapshot?.tasks?.length}
+            className="max-w-[190px] rounded-md border border-ink-600 bg-ink-850 px-1.5 py-1 text-[11px] text-mist-300 outline-none focus:border-leaf/60 disabled:opacity-40"
+            title="把对话聚焦到某个任务：AI 会自动携带该任务的描述、备注与子任务作为上下文"
+          >
+            <option value="">📌 不关联任务</option>
+            {snapshot?.tasks?.map((t) => (
+              <option key={t.dirName} value={t.dirName}>
+                {t.record?.title ?? t.dirName}
+              </option>
+            ))}
+          </select>
           <select
             value={thinkingLevel}
             onChange={(e) => setThinkingLevel(e.target.value as ThinkingLevel)}
@@ -416,14 +454,20 @@ export function ChatPage(): JSX.Element {
               </option>
             ))}
           </select>
-          <label className="flex cursor-pointer items-center gap-1 text-[11px] text-mist-400" title="启用后模型可调用网关工具（每次调用需你授权）">
+          <label
+            className={clsx(
+              'flex cursor-pointer select-none items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+              agentMode ? 'border-emerald-400/50 bg-emerald-500/10 text-emerald-300' : 'border-ink-600 bg-ink-850 text-mist-400'
+            )}
+            title="Agent 模式：AI 可查询项目知识库、任务与规范后再回答（每次工具调用需你授权）"
+          >
             <input
               type="checkbox"
               checked={agentMode}
               onChange={(e) => setAgentMode(e.target.checked)}
               className="accent-emerald-500"
             />
-            Agent
+            Agent 联网项目
           </label>
           {picker}
           <button onClick={exportMarkdown} className="btn-ghost p-1" title="导出 Markdown" disabled={entries.length === 0}>

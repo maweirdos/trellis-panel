@@ -56,7 +56,7 @@ export function GatewayPage(): JSX.Element {
   const [testResult, setTestResult] = useState<GatewayTestToolResult | null>(null)
 
   // 过滤分类
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'database' | 'knowledge' | 'project'>('all')
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'knowledge' | 'project'>('all')
 
   // 接入弹窗 & 安全配置弹窗
   const [showMountModal, setShowMountModal] = useState(false)
@@ -114,10 +114,10 @@ export function GatewayPage(): JSX.Element {
     setTestResult(null)
     // 设置默认参数
     const defaults: Record<string, string> = {}
-    if (tool.name === 'db_describe_table') {
-      defaults.table = 't_order'
-    } else if (tool.name === 'db_query_readonly') {
-      defaults.sql = 'SELECT * FROM t_order LIMIT 5'
+    if (tool.name === 'kb_search') {
+      defaults.query = '项目的开发流程是什么'
+    } else if (tool.name === 'kb_read_doc') {
+      defaults.docId = ''
     } else if (tool.name === 'weknora_search') {
       defaults.query = '退货审核流程规范'
       defaults.limit = '5'
@@ -195,8 +195,7 @@ export function GatewayPage(): JSX.Element {
   const tools = gatewayStatus?.tools || []
   const filteredTools = tools.filter((t) => {
     if (categoryFilter === 'all') return true
-    if (categoryFilter === 'database') return t.upstreamId === 'mysql'
-    if (categoryFilter === 'knowledge') return t.upstreamId === 'weknora'
+    if (categoryFilter === 'knowledge') return t.upstreamId === 'local-kb' || t.upstreamId === 'weknora'
     if (categoryFilter === 'project') return t.upstreamId === 'trellis'
     return true
   })
@@ -221,7 +220,7 @@ export function GatewayPage(): JSX.Element {
               </span>
             </div>
             <p className="mt-1 text-xs text-mist-400">
-              聚合 MySQL 数据库元数据、WeKnora 企业知识库与 Trellis 项目规范上下文，为 AI 编程编辑器（Claude Code / Codex / Cursor）提供统一代理与安全防护防线。
+              聚合本地知识库（四库全文检索）、WeKnora 企业知识库与 Trellis 项目上下文，为 AI 对话与编程工具提供统一代理与安全防护防线。
             </p>
           </div>
 
@@ -267,42 +266,49 @@ export function GatewayPage(): JSX.Element {
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {/* 1. MySQL 数据库 MCP */}
+            {/* 1. 本地知识库（四库） */}
             <div className="flex flex-col justify-between rounded-xl border border-ink-750 bg-ink-850 p-4 shadow-xs">
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Database className="h-4 w-4 text-blue-500" />
-                    <h3 className="text-xs font-semibold text-mist-100">MySQL 数据库</h3>
+                    <h3 className="text-xs font-semibold text-mist-100">本地知识库</h3>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
-                    <CheckCircle2 className="h-3 w-3" />
-                    已连接
-                  </span>
+                  {snapshot ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" />
+                      已连接
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-500/10 px-2 py-0.5 text-[11px] font-medium text-zinc-500">
+                      <AlertCircle className="h-3 w-3" />
+                      未打开项目
+                    </span>
+                  )}
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-mist-400">
-                  提供表结构、字段元数据与安全只读 SQL 查询，供 AI 规划任务与编写业务代码。
+                  需求库 / 规范库 / Wiki 库 / 归档库的毫秒级全文检索，供对话与 AI 规划查证项目事实。
                 </p>
                 <div className="mt-3 space-y-1 font-mono text-[11px] text-mist-400">
-                  <div className="truncate">端点: 127.0.0.1:3306</div>
-                  <div className="text-emerald-400">已开启 SQL 只读保护</div>
+                  <div className="truncate">端点: {snapshot?.meta?.root ? `${snapshot.meta.root}/.trellis` : '—'}</div>
+                  <div className="text-emerald-400">进程内倒排索引 · 离线可用</div>
                 </div>
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-ink-750/60 pt-3">
                 <button
-                  onClick={() => handleTestUpstream('mysql')}
-                  disabled={testingUpstreamId === 'mysql'}
+                  onClick={() => handleTestUpstream('local-kb')}
+                  disabled={testingUpstreamId === 'local-kb' || !snapshot}
                   className="btn-ghost flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40"
                 >
-                  {testingUpstreamId === 'mysql' ? (
+                  {testingUpstreamId === 'local-kb' ? (
                     <Loader2 size={12} className="animate-spin" />
                   ) : (
                     <Activity size={12} />
                   )}
                   <span>连通性探测</span>
                 </button>
-                <span className="text-[11px] text-mist-400">3 个工具</span>
+                <span className="text-[11px] text-mist-400">2 个工具</span>
               </div>
             </div>
 
@@ -443,22 +449,13 @@ export function GatewayPage(): JSX.Element {
                 全部 ({tools.length})
               </button>
               <button
-                onClick={() => setCategoryFilter('database')}
-                className={clsx(
-                  'rounded px-2.5 py-1 transition-colors',
-                  categoryFilter === 'database' ? 'bg-ink-800 font-medium text-mist-100 shadow-xs' : 'text-mist-400 hover:text-mist-100'
-                )}
-              >
-                数据库 ({tools.filter((t) => t.upstreamId === 'mysql').length})
-              </button>
-              <button
                 onClick={() => setCategoryFilter('knowledge')}
                 className={clsx(
                   'rounded px-2.5 py-1 transition-colors',
                   categoryFilter === 'knowledge' ? 'bg-ink-800 font-medium text-mist-100 shadow-xs' : 'text-mist-400 hover:text-mist-100'
                 )}
               >
-                知识库 ({tools.filter((t) => t.upstreamId === 'weknora').length})
+                知识库 ({tools.filter((t) => t.upstreamId === 'local-kb' || t.upstreamId === 'weknora').length})
               </button>
               <button
                 onClick={() => setCategoryFilter('project')}
@@ -666,21 +663,21 @@ export function GatewayPage(): JSX.Element {
               </div>
 
               {/* 快捷测试按钮提示 */}
-              {selectedTool.name === 'db_query_readonly' && (
+              {selectedTool.name === 'kb_search' && (
                 <div className="flex items-center gap-2 text-[11px] text-mist-400">
                   <span>快捷填入:</span>
                   <button
-                    onClick={() => setToolArgs({ sql: 'SELECT * FROM t_user LIMIT 5' })}
+                    onClick={() => setToolArgs({ query: '项目规范', library: 'spec' })}
                     className="underline hover:text-mist-200"
                   >
-                    安全 SELECT
+                    检索规范库
                   </button>
                   <span>·</span>
                   <button
-                    onClick={() => setToolArgs({ sql: 'DROP TABLE t_user' })}
-                    className="underline text-rose-500 hover:text-rose-400"
+                    onClick={() => setToolArgs({ query: '归档任务', library: 'archive' })}
+                    className="underline hover:text-mist-200"
                   >
-                    破坏性 DROP (测试安全防线)
+                    检索归档库
                   </button>
                 </div>
               )}

@@ -31,6 +31,8 @@ export interface ChatSessionTree {
   thinkingLevel: ThinkingLevel
   /** agent 工具循环开关（TPD-020） */
   agent?: boolean
+  /** 会话聚焦的任务目录（对话上下文绑定到该任务） */
+  taskDir?: string | null
   /** allow-session 的工具白名单（随会话持久化） */
   allowedTools?: string[]
   /** 有成功执行证据的工具（roadmap #6：每轮只恢复激活工具的 schema） */
@@ -83,6 +85,8 @@ export function createSession(
     providerId: binding?.providerId ?? null,
     modelId: binding?.modelId ?? null,
     thinkingLevel: binding?.thinkingLevel ?? 'off',
+    // 新会话默认开启 agent 工具循环（面向普通用户的核心能力；非 openai 格式自动回退纯对话）
+    agent: true,
     nodes: {},
     activeLeaf: null
   }
@@ -150,7 +154,9 @@ export function listSessions(app: AppPathProvider): ChatSessionMeta[] {
           messageCount: activePath(s).length,
           providerId: s.providerId,
           modelId: s.modelId,
-          thinkingLevel: s.thinkingLevel ?? 'off'
+          thinkingLevel: s.thinkingLevel ?? 'off',
+          agent: s.agent ?? false,
+          taskDir: s.taskDir ?? null
         })
       } catch {
         // 单个损坏文件不影响列表
@@ -188,6 +194,7 @@ export function updateBinding(
     modelId?: string | null
     thinkingLevel?: ThinkingLevel
     agent?: boolean
+    taskDir?: string | null
   }
 ): void {
   const s = openSession(app, id)
@@ -196,6 +203,7 @@ export function updateBinding(
   if ('modelId' in binding) s.modelId = binding.modelId ?? null
   if ('thinkingLevel' in binding && binding.thinkingLevel) s.thinkingLevel = binding.thinkingLevel
   if (binding.agent !== undefined) s.agent = binding.agent
+  if (binding.taskDir !== undefined) s.taskDir = binding.taskDir
   persist(app, s)
 }
 
