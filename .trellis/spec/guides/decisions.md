@@ -174,6 +174,11 @@
 - **理由**: Node 内置 fetch 与 npm undici 是两个实例，Handler 协议版本不兼容
   （实测报 `invalid onRequestStart method`）；跨实例 dispatcher 必然失败。
 - **替代案**: setGlobalDispatcher —— 只影响 npm undici 实例，对全局 fetch 无效，否决。
+- **修订（2026-09-22）**: npm undici **锁定 6.28.x**。v7+/v8 的 cachestorage 顶层调用
+  `webidl.util.markAsUncloneable`（Node ≥22 才有），Electron 33（Node 20.18）加载即崩
+  `TypeError: webidl.util.markAsUncloneable is not a function`。注意 v6 的 ProxyAgent 对
+  http 目标也走 CONNECT 隧道（v8 才改 absolute-form 直转），代理侧必须支持 CONNECT；
+  升级 Electron 到 Node ≥22 前不得升 undici v7+。
 
 ## TPD-016: 会话存储树结构：编辑/重新生成都生成兄弟分支
 

@@ -198,3 +198,21 @@ chat 冒烟扩至 44 项全过（allow-session 复用零发卡、deny 回灌、�
 ### Status
 
 [OK] **Completed** — roadmap 高价值清单全部完成，观察项冻结待用户解锁。
+
+---
+
+**Date**: 2026-09-22
+**Task**: 热修：undici 版本兼容 Electron 33（启动崩溃）
+**Branch**: `main`
+
+### Summary
+
+启动崩溃 `webidl.util.markAsUncloneable is not a function`：npm undici v8（v7 亦然）的 cachestorage 顶层调用该 API（Node ≥22 才有），Electron 33 内置 Node 20.18 加载即崩。修复：锁定 undici 6.28.1（exact）。连带发现并适配 v6 行为差异：ProxyAgent 对 http 目标也走 CONNECT 隧道（v8 才改 absolute-form 直转）——冒烟转发代理补 CONNECT 隧道实现，断言更新为 CONNECT 形态。TPD-015 补修订：升级 Electron 到 Node ≥22 前不得升 undici v7+。
+
+### 验证
+
+真实 Electron 二进制无头加载 3s 无崩溃（此前加载即崩）；proxy 冒烟 5 项全过（经隧道流式成功）；chat 54/tpap 19/render-contract 9/registry 103 回归全过；typecheck 全绿。
+
+### Status
+
+[OK] **Completed**

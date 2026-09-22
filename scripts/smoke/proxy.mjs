@@ -63,6 +63,23 @@ const proxy = createServer((req, res) => {
     fwd.end()
   })
 })
+// undici v6 ProxyAgent 对 http 目标也走 CONNECT 隧道（v8 才改 absolute-form），
+// 冒烟代理必须支持 CONNECT：建立到目标的 TCP 并双向管道
+import { connect as tcpConnect } from 'net'
+proxy.on('connect', (req, clientSocket, head) => {
+  proxyHits.push(`CONNECT ${req.url}`)
+  const targetUrl2 = new URL(`http://${req.url}`)
+  const upstream = tcpConnect(Number(targetUrl2.port || 80), targetUrl2.hostname, () => {
+    clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+    if (head.length) upstream.write(head)
+    upstream.pipe(clientSocket)
+    clientSocket.pipe(upstream)
+  })
+  upstream.on('error', () => {
+    clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n')
+  })
+  clientSocket.on('error', () => upstream.destroy())
+})
 await new Promise((r) => proxy.listen(PROXY_PORT, '127.0.0.1', r))
 
 /* ---------------- settings + bundle ---------------- */
@@ -147,10 +164,10 @@ const proxied = await ai2.aiChatStream(
   { onDelta: () => {} }
 )
 check('代理启用时流式请求成功', proxied.ok && proxied.content === '经代理', JSON.stringify(proxied))
-check('请求确实经过代理转发', proxyHits.some((u) => u?.includes('/chat/completions')), JSON.stringify(proxyHits))
+check('请求确实经过代理转发（v6 为 CONNECT 隧道形态）', proxyHits.some((u) => String(u ?? '').includes('CONNECT')), JSON.stringify(proxyHits))
 
 const discovery = await ai2.fetchModelsFromProvider({ baseUrl: `http://127.0.0.1:${TARGET_PORT}/v1`, apiFormat: 'openai', apiKey: 'sk-mock' })
-check('模型探测同样经代理', discovery.ok && discovery.models?.length === 1 && proxyHits.some((u) => u?.includes('/models')), JSON.stringify(proxyHits))
+check('模型探测同样经代理', discovery.ok && discovery.models?.length === 1 && proxyHits.filter((u) => String(u ?? '').includes('CONNECT')).length >= 2, JSON.stringify(proxyHits))
 
 /* 收尾 */
 proxy.close()
