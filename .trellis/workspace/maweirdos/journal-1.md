@@ -238,3 +238,17 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+---
+
+**Date**: 2026-09-22
+**Task**: 热修：升级后 dev 启动失败（out/main/index.js 缺失）
+**Branch**: `main`
+
+### Summary
+
+两个升级回归：①electron-vite 5/vite 8 默认输出 ESM(.mjs) 与 package.json main(out/main/index.js) 不匹配——config 强制 format:'cjs'+entryFileNames:'[name].js'（main/preload）；②externalizeDepsPlugin v5 仅外置 dependencies，electron 位于 devDependencies 被 bundle 进产物，运行时内联的 npm electron/index.js 以 __dirname=out/main 找 dist 误触二进制下载并抛错——rollupOptions 显式 external:['electron']。验证：build 产物无 getElectronPath；真实 npm run dev 全链路（main/preload 构建、vite 5373、electron 4 进程存活）；typecheck/五套冒烟/完整 app 无头启动 3.5s 全过（退出码判定）。
+
+### Status
+
+[OK] **Completed**
