@@ -1223,6 +1223,7 @@ export interface TrellisApi {
 
   /* --- Channel 动作（create/rm/kill/interrupt/wait/spawn） --- */
   channelAction: (args: string[]) => Promise<{ ok: boolean; error?: string; output?: string }>
+  channelDispatch: (input: { taskDir?: string; text?: string; channel?: string }) => Promise<{ ok: boolean; error?: string; channel?: string }>
 
   /* --- 站会报告 --- */
   generateStandup: () => Promise<ReportResult>

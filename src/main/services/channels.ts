@@ -118,6 +118,81 @@ export function channelSend(projectRoot: string, cliCommand: string, name: strin
   })
 }
 
+/* ---------------- 任务派发台（R8）：面板作为发起方驱动 AI worker ---------------- */
+
+export interface DispatchInput {
+  /** 派发一个 Trellis 任务（读取 task.json + prd.md 摘要组装指令） */
+  taskDir?: string
+  /** 或派发一句话需求 */
+  text?: string
+  /** 目标频道；缺省自动新建 dispatch-<ts> */
+  channel?: string
+}
+
+/** 组装派发指令：任务上下文 + 期望交付 + 回报约定 */
+export function buildDispatchText(projectRoot: string, input: DispatchInput): { ok: boolean; error?: string; text?: string } {
+  if (input.taskDir) {
+    const dir = join(projectRoot, '.trellis', 'tasks', input.taskDir)
+    if (!existsSync(dir)) return { ok: false, error: `任务目录不存在：${input.taskDir}` }
+    let title = input.taskDir
+    let status = ''
+    let subtasks = ''
+    try {
+      const o = JSON.parse(readFileSync(join(dir, 'task.json'), 'utf-8'))
+      title = String(o.title ?? title)
+      status = String(o.status ?? '')
+      subtasks = Array.isArray(o.subtasks) ? (o.subtasks as unknown[]).map(String).join('\n') : ''
+    } catch {
+      // task.json 缺失/损坏仍可派发（用目录名）
+    }
+    let prdHead = ''
+    for (const f of ['prd.md', 'PRD.md', 'requirement.md']) {
+      const p = join(dir, f)
+      if (existsSync(p)) {
+        prdHead = readFileSync(p, 'utf-8').slice(0, 2000)
+        break
+      }
+    }
+    const text = [
+      `【面板派发任务】${title}${status ? `（当前状态：${status}）` : ''}`,
+      `任务目录：${dir}`,
+      prdHead ? `\n需求摘录：\n${prdHead}` : '',
+      subtasks ? `\n子任务清单：\n${subtasks}` : '',
+      input.text ? `\n派发人补充：${input.text}` : '',
+      '\n请按 .trellis/workflow.md 推进该任务；关键节点在频道回报 progress，完成后发 done 并附变更摘要。'
+    ]
+      .filter(Boolean)
+      .join('\n')
+    return { ok: true, text }
+  }
+  const text = String(input.text ?? '').trim()
+  if (!text) return { ok: false, error: '派发内容不能为空' }
+  return {
+    ok: true,
+    text: `【面板派发需求】${text}\n\n请先在 .trellis/tasks/ 下创建任务（jiraKey 防重），按 .trellis/workflow.md 规划推进；关键节点在频道回报 progress，完成后发 done 并附变更摘要。`
+  }
+}
+
+/** 派发：组装指令 →（可选）建频道 → 以 panel-ui 身份发送 */
+export async function dispatchToChannel(
+  projectRoot: string,
+  cliCommand: string,
+  input: DispatchInput
+): Promise<{ ok: boolean; error?: string; channel?: string }> {
+  const built = buildDispatchText(projectRoot, input)
+  if (!built.ok || !built.text) return { ok: false, error: built.error }
+
+  let channel = input.channel?.trim() || ''
+  if (!channel) {
+    channel = `dispatch-${Date.now().toString(36)}`
+    const created = await channelAction(projectRoot, cliCommand, ['create', channel], 30_000)
+    if (!created.ok) return { ok: false, error: `创建频道失败：${created.error}` }
+  }
+  const sent = await channelSend(projectRoot, cliCommand, channel, built.text)
+  if (!sent.ok) return { ok: false, error: `发送失败：${sent.error}`, channel }
+  return { ok: true, channel }
+}
+
 /**
  * Run a trellis channel action (create/spawn/wait/interrupt/kill/rm …) and
  * capture its output. Long-running actions (spawn/wait) simply hit the

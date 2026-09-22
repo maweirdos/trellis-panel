@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { X, Sparkles, Save } from 'lucide-react'
+import { X, Sparkles, Save, Wand2 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
+import { PlanningModal } from './PlanningModal'
 import type { JSX } from 'react'
 
 /**
  * 待办录入：面板只记录需求。
- * Codex / ZCode / Claude Code 后续通过 MCP 或 tpanel CLI 认领待办。
+ * Codex / ZCode / Claude Code 后续通过 MCP 或 tpanel CLI 认领待办；
+ * 或直接「AI 规划成任务」——检索知识库 → 结构化计划 → 一键落成 Trellis 任务。
  */
 export function IntakeModal(): JSX.Element | null {
   const open = useApp((s) => s.intakeOpen)
@@ -20,8 +22,24 @@ export function IntakeModal(): JSX.Element | null {
   const [desc, setDesc] = useState('')
   const [priority, setPriority] = useState('P2')
   const [busy, setBusy] = useState(false)
+  /** 直达 AI 规划（需求直通车）：把当前输入交给规划工作台 */
+  const [planSeed, setPlanSeed] = useState<{ title: string; description: string } | null>(null)
 
   if (!open) return null
+
+  if (planSeed) {
+    return (
+      <PlanningModal
+        seed={planSeed}
+        onClose={() => {
+          setPlanSeed(null)
+          setIntakeOpen(false)
+          setTitle('')
+          setDesc('')
+        }}
+      />
+    )
+  }
 
   const close = (): void => {
     if (busy) return
@@ -118,10 +136,21 @@ export function IntakeModal(): JSX.Element | null {
         </div>
 
         <div className="flex items-center gap-2 border-t border-ink-700 px-5 py-3">
+          <button
+            onClick={() => {
+              if (!title.trim()) return
+              setPlanSeed({ title: title.trim(), description: desc.trim() })
+            }}
+            disabled={!title.trim()}
+            className="btn-outline disabled:opacity-40"
+            title="检索知识库 → AI 生成结构化任务计划（PRD/子任务/分支建议）→ 一键落成 Trellis 任务"
+          >
+            <Wand2 size={12} /> AI 规划成任务
+          </button>
           <span className="ml-auto text-[10.5px] text-mist-600">{snapshot?.meta.name}</span>
           <button onClick={close} className="btn-outline" disabled={busy}>取消</button>
           <button onClick={() => void createTodo()} disabled={!title.trim() || busy} className="btn-primary disabled:opacity-50">
-            <Save size={12} /> {busy ? '创建中…' : '创建待办'}
+            <Save size={12} /> {busy ? '创建中…' : '仅保存待办'}
           </button>
         </div>
       </div>

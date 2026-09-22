@@ -60,7 +60,8 @@ export const ipcInvoke = {
   channel: {
     list: 'channel:list',
     send: 'channel:send',
-    action: 'channel:action'
+    action: 'channel:action',
+    dispatch: 'channel:dispatch'
   },
   studio: {
     scan: 'studio:scan',

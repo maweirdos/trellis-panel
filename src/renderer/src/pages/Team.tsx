@@ -10,13 +10,16 @@ import {
   FileText,
   Copy,
   Save,
-  CircleCheck
+  CircleCheck,
+  Loader2,
+  Sparkles
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { StatusBadge, PriorityBadge } from '../components/badges'
 import { statusLabel } from '../utils/labels'
 import { fmtIso, relTime, taskDateLabel } from '../utils/format'
+import { MarkdownView } from '../components/MarkdownView'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
 import type { AnalyticsResult, TaskInfo } from '../../../shared/types'
@@ -284,17 +287,78 @@ function feedDot(kind: FeedItem['kind']): JSX.Element {
 
 function EfficiencyTab(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
+  const pushToast = useApp((s) => s.pushToast)
+  const aiEnabled = useApp((s) => s.settings?.ai.enabled ?? false)
   const [data, setData] = useState<AnalyticsResult | null>(null)
+  const [diag, setDiag] = useState<string | null>(null)
+  const [diagnosing, setDiagnosing] = useState(false)
   const maxDaily = Math.max(1, ...(data?.daily.map((d) => d.count) ?? [1]))
 
   useEffect(() => {
     api.getAnalytics().then(setData)
   }, [snapshot?.scannedAt])
 
+  /** AI 深度诊断（R9）：把效率数据交给 AI 解读——停滞归因、负载失衡、行动建议 */
+  const runDiagnosis = async (): Promise<void> => {
+    if (!data || diagnosing) return
+    setDiagnosing(true)
+    setDiag(null)
+    try {
+      const tasks = snapshot?.tasks ?? []
+      const byStatus = new Map<string, number>()
+      for (const t of tasks) {
+        const s = String(t.record?.status ?? 'unknown')
+        byStatus.set(s, (byStatus.get(s) ?? 0) + 1)
+      }
+      const facts = [
+        `项目：${snapshot?.meta.name ?? '未知'}，活跃任务 ${tasks.length} 个`,
+        `状态分布：${[...byStatus.entries()].map(([k, v]) => `${k} ${v}`).join(' / ')}`,
+        `记录到的状态流转：${data.totalTransitions} 次`,
+        `平均交付周期：${data.avgCycleDays !== null ? `${data.avgCycleDays} 天` : '无数据'}`,
+        `停滞任务（>3 天无动静）：${data.aging.length} 个${data.aging.length ? '——' + data.aging.map((t) => `「${t.title}」停 ${t.days} 天（${t.assignee}）`).join('；') : ''}`,
+        `成员交付：${data.memberCycle.map((m) => `${m.name} 平均 ${m.avgDays ?? '?'} 天/${m.completed} 个`).join('；') || '无数据'}`,
+        `近 14 天流转：${data.daily.map((d) => `${d.date.slice(5)}:${d.count}`).join('、')}`
+      ].join('\n')
+      const res = await api.aiChat([
+        {
+          role: 'system',
+          content:
+            '你是项目管理诊断师，服务不懂编程的负责人。基于给定的项目效率数据输出诊断报告（Markdown）：\n## 一句话总评\n## 风险与停滞归因（指出具体任务，推测可能原因）\n## 团队负载观察（谁可能过载/闲置）\n## 本周建议做的 3 件事（具体、可执行）\n数据不足以判断的地方直说，不要编造。全程简体中文，结论先行。'
+        },
+        { role: 'user', content: `项目效率数据：\n${facts}` }
+      ])
+      if (res.ok && res.content) setDiag(res.content)
+      else pushToast({ kind: 'error', title: '诊断失败', body: res.error })
+    } finally {
+      setDiagnosing(false)
+    }
+  }
+
   if (!data) return <div className="p-8 text-xs text-mist-500">分析中…</div>
 
   return (
     <div className="space-y-4 lg:col-span-5">
+      <div className="flex items-center gap-2">
+        <div className="text-xs font-semibold text-mist-200">效率分析</div>
+        {aiEnabled && (
+          <button onClick={() => void runDiagnosis()} disabled={diagnosing} className="btn-outline ml-auto text-[11px]" title="AI 解读效率数据：停滞归因、负载观察、行动建议">
+            {diagnosing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} {diagnosing ? 'AI 诊断中…' : 'AI 深度诊断'}
+          </button>
+        )}
+      </div>
+      {diag && (
+        <div className="card px-4 py-3.5">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-leaf-soft">
+            <Sparkles size={12} /> AI 诊断报告
+            <button onClick={() => void api.copyToClipboard(diag).then(() => pushToast({ kind: 'success', title: '已复制' }))} className="btn-ghost ml-auto text-[10px]">
+              复制
+            </button>
+          </div>
+          <div className="max-h-96 overflow-y-auto text-xs">
+            <MarkdownView content={diag} />
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-3">
         <div className="card px-4 py-3">
           <div className="text-[11px] text-mist-400">记录到的状态流转</div>

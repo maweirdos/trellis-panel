@@ -161,8 +161,40 @@ export function ChannelsPage(): JSX.Element {
     return map
   }, [active])
 
+  /* 任务派发台（R8）：面板作为发起方，把任务/需求派给 AI worker */
+  const [dispatchOpen, setDispatchOpen] = useState(false)
+  const [dispatchTask, setDispatchTask] = useState('')
+  const [dispatchText, setDispatchText] = useState('')
+  const [dispatching, setDispatching] = useState(false)
+
+  const doDispatch = async (): Promise<void> => {
+    if (dispatching) return
+    if (!dispatchTask && !dispatchText.trim()) {
+      pushToast({ kind: 'error', title: '请选择任务或填写需求描述' })
+      return
+    }
+    setDispatching(true)
+    try {
+      const res = await api.channelDispatch({
+        taskDir: dispatchTask || undefined,
+        text: dispatchText.trim() || undefined
+      })
+      if (res.ok && res.channel) {
+        pushToast({ kind: 'success', title: '已派发', body: `频道 ${res.channel}——AI worker 的事件回报将实时出现在频道里` })
+        setDispatchOpen(false)
+        setDispatchTask('')
+        setDispatchText('')
+        setTimeout(() => void reload(), 500)
+      } else {
+        pushToast({ kind: 'error', title: '派发失败', body: res.error })
+      }
+    } finally {
+      setDispatching(false)
+    }
+  }
+
   return (
-    <div className="flex h-full min-w-0 animate-fade-in">
+    <div className="relative flex h-full min-w-0 animate-fade-in">
       {/* 左列：频道列表 */}
       <div className="flex w-[340px] shrink-0 flex-col border-r border-ink-700">
         <div className="space-y-2.5 border-b border-ink-700 px-4 py-3">
@@ -192,7 +224,10 @@ export function ChannelsPage(): JSX.Element {
                 {label}
               </button>
             ))}
-            <button onClick={createChannel} className="btn-primary ml-auto" title="channel create">
+            <button onClick={() => setDispatchOpen(true)} className="btn-outline ml-auto text-[11px]" title="把一个任务或一句话需求派发给 AI worker（自动建频道 + 结构化指令）">
+              <Send size={11} /> 派活给 AI
+            </button>
+            <button onClick={createChannel} className="btn-primary" title="channel create">
               <Plus size={11} /> 新建
             </button>
           </div>
@@ -335,6 +370,59 @@ export function ChannelsPage(): JSX.Element {
         </div>
       ) : (
         <div className="grid min-w-0 flex-1 place-items-center text-xs text-mist-500">选择或创建一个频道</div>
+      )}
+
+      {/* 派发弹窗 */}
+      {dispatchOpen && (
+        <div className="absolute inset-0 z-50 grid animate-fade-in place-items-center bg-black/50 backdrop-blur-sm" onClick={() => !dispatching && setDispatchOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-[520px] overflow-hidden rounded-2xl border border-ink-600 bg-ink-850 shadow-2xl">
+            <div className="flex items-center gap-2 border-b border-ink-700 px-5 py-3.5">
+              <RadioTower size={15} className="text-leaf" />
+              <span className="text-sm font-semibold text-mist-50">派活给 AI</span>
+              <span className="chip border border-leaf-dim/30 bg-leaf-dim/10 text-[10px] text-leaf-soft">自动建频道 · 结构化指令 · 事件实时回流</span>
+              <button onClick={() => setDispatchOpen(false)} className="btn-ghost ml-auto px-1.5 py-1" title="关闭">
+                <X size={15} />
+              </button>
+            </div>
+            <div className="space-y-3.5 p-5">
+              <div>
+                <label className="mb-1.5 block text-[11px] text-mist-400">派发一个看板任务（可选）</label>
+                <select value={dispatchTask} onChange={(e) => setDispatchTask(e.target.value)} className="field">
+                  <option value="">— 不派任务，派一句话需求 —</option>
+                  {snapshot.tasks.map((t) => (
+                    <option key={t.dirName} value={t.dirName}>
+                      {t.record?.title ?? t.dirName}（{t.record?.status ?? ''}）
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] leading-4 text-mist-600">
+                  选中任务后，指令会自动携带任务目录、PRD 摘录与子任务清单，AI worker 可直接开工。
+                </p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[11px] text-mist-400">{dispatchTask ? '派发人补充说明（可选）' : '一句话需求 *'}</label>
+                <textarea
+                  value={dispatchText}
+                  onChange={(e) => setDispatchText(e.target.value)}
+                  rows={3}
+                  placeholder={dispatchTask ? '例如：重点核对验收标准第 2 条' : '例如：帮我检查所有任务的状态字段是否与 Jira 同步'}
+                  className="field resize-y"
+                />
+              </div>
+              <div className="rounded-lg border border-ink-700 bg-ink-800/60 px-3.5 py-2.5 text-[11px] leading-5 text-mist-500">
+                派发后自动创建 dispatch-* 频道并以 panel-ui 身份发送指令；AI worker（trellis channel spawn 启动）的
+                progress / done 事件会实时出现在频道事件流里，可随时插话引导。
+              </div>
+            </div>
+            <div className="flex items-center gap-2 border-t border-ink-700 px-5 py-3">
+              <span className="ml-auto text-[10.5px] text-mist-600">{snapshot?.meta.name}</span>
+              <button onClick={() => setDispatchOpen(false)} className="btn-outline" disabled={dispatching}>取消</button>
+              <button onClick={() => void doDispatch()} disabled={dispatching || (!dispatchTask && !dispatchText.trim())} className="btn-primary disabled:opacity-50">
+                {dispatching ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} {dispatching ? '派发中…' : '立即派发'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

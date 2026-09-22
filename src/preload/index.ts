@@ -65,6 +65,8 @@ const api = {
   channelList: () => ipcRenderer.invoke(ipcInvoke.channel.list),
   channelSend: (name: string, text: string) => ipcRenderer.invoke(ipcInvoke.channel.send, name, text),
   channelAction: (args: string[]) => ipcRenderer.invoke(ipcInvoke.channel.action, args),
+  channelDispatch: (input: { taskDir?: string; text?: string; channel?: string }) =>
+    ipcRenderer.invoke(ipcInvoke.channel.dispatch, input),
 
   studioScan: () => ipcRenderer.invoke(ipcInvoke.studio.scan),
   studioRead: (absPath: string) => ipcRenderer.invoke(ipcInvoke.studio.read, absPath),
