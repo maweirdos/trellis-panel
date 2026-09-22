@@ -17,7 +17,8 @@ import {
   ChevronRight,
   Layers,
   FolderOpen,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -25,12 +26,14 @@ import { clsx } from 'clsx'
 import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
 import { confirmDialog, promptDialog } from '../components/Dialogs'
+import { FlowStudio } from '../components/FlowStudio'
 import type { ExtEntry, ExtKind, StudioScan, WorkflowInfo } from '../../../shared/types'
 import type { JSX } from 'react'
 
-type Section = 'workflow' | 'command' | 'agent' | 'skill' | 'hooks' | 'config' | 'platform'
+type Section = 'flow' | 'workflow' | 'command' | 'agent' | 'skill' | 'hooks' | 'config' | 'platform'
 
 const SECTIONS: Array<{ id: Section; label: string; icon: JSX.Element; hint: string }> = [
+  { id: 'flow', label: 'AI 工作流', icon: <Sparkles size={15} />, hint: '一句话需求 → AI 设计多代理工作流 → 一键运行' },
   { id: 'workflow', label: '工作流', icon: <Workflow size={15} />, hint: 'workflow.md 与 .trellis/workflows 变体' },
   { id: 'command', label: 'Slash 命令', icon: <SlashSquare size={15} />, hint: '各平台 commands / prompts 目录' },
   { id: 'agent', label: '子代理', icon: <Bot size={15} />, hint: '各平台 agents 目录' },
@@ -551,6 +554,7 @@ export function StudioPage(): JSX.Element {
 
       {/* 右侧内容 */}
       <div className="relative min-w-0 flex-1 overflow-y-auto">
+        {section === 'flow' && <FlowStudio />}
         {section === 'workflow' && <WorkflowSection scan={scan} onEdit={setEditingWf} onChanged={reload} />}
         {extSection && (
           <ExtSection

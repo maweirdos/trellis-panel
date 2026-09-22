@@ -85,6 +85,20 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.kb.qaSave, entry),
   kbQaClear: () => ipcRenderer.invoke(ipcInvoke.kb.qaClear),
 
+  flowList: () => ipcRenderer.invoke(ipcInvoke.flow.list),
+  flowRead: (id: string) => ipcRenderer.invoke(ipcInvoke.flow.read, id),
+  flowSave: (def: import('../shared/types').FlowDef) => ipcRenderer.invoke(ipcInvoke.flow.save, def),
+  flowDelete: (id: string) => ipcRenderer.invoke(ipcInvoke.flow.delete, id),
+  flowGenerate: (description: string) => ipcRenderer.invoke(ipcInvoke.flow.generate, description),
+  flowTemplates: () => ipcRenderer.invoke(ipcInvoke.flow.templates),
+  flowInstallTemplate: (def: import('../shared/types').FlowDef) => ipcRenderer.invoke(ipcInvoke.flow.installTemplate, def),
+  flowRun: (id: string, input: Record<string, string>) => ipcRenderer.invoke(ipcInvoke.flow.run, id, input),
+  flowAbort: (runId: string) => ipcRenderer.invoke(ipcInvoke.flow.abort, runId),
+  flowRuns: (limit?: number) => ipcRenderer.invoke(ipcInvoke.flow.runs, limit),
+  onFlowOutput: (cb: (e: import('../shared/types').FlowRunEvent) => void) => subscribe(ipcEvent.flowOutput, cb),
+  onFlowDone: (cb: (e: { runId: string; flowId: string; status: string; error?: string; flowName?: string }) => void) =>
+    subscribe(ipcEvent.flowDone, cb),
+
   /* WeKnora 桥接统一兜底：旧主进程（无对应通道）时降级为 ok:false，不产生未处理 rejection */
   weknoraTest: (cfg: WeknoraConfig) =>
     ipcRenderer.invoke(ipcInvoke.weknora.test, cfg).catch((e: Error) => ({ ok: false, error: e?.message ?? String(e) })),

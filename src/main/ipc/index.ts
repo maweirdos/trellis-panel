@@ -22,6 +22,7 @@ import { registerJiraIpc } from './jira'
 import { registerGitlabIpc } from './gitlab'
 import { registerHttpApiIpc } from './httpapi'
 import { registerChatIpc } from './chat'
+import { registerFlowIpc } from './flow'
 import { registerWindowIpc } from './window'
 import type { WindowDeps } from './deps'
 
@@ -47,4 +48,5 @@ export function registerIpc(deps: WindowDeps): void {
   registerGitlabIpc()
   registerHttpApiIpc()
   registerChatIpc(deps)
+  registerFlowIpc()
 }

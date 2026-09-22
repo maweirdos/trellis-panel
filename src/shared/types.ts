@@ -732,7 +732,128 @@ export interface StudioScan {
   scannedAt: number
 }
 
-/* ---------- Knowledge（知识库：需求 / 规范 / Wiki / 归档） ---------- */
+/* ---------- AI 工作流（定制中心 → Flow DSL） ---------- */
+
+/** 工作流步骤：子代理（AI 生成/分析）/ 工具调用 / 确定性门禁 */
+export type FlowStep = AgentStep | ToolStep | GateStep
+
+export interface AgentStep {
+  kind: 'agent'
+  id: string
+  /** 展示名（用户在进度里看到的角色，如「资料调研员」） */
+  name: string
+  /** 子代理人设（system 提示） */
+  persona?: string
+  /** 任务指令，支持 {{input.x}} / {{vars.x}} 变量插值 */
+  instruction: string
+  /** 允许调用的网关工具（如 kb_search）；缺省为纯生成不查证 */
+  tools?: string[]
+  /** 工具循环上限（默认 3） */
+  maxRounds?: number
+  /** 输出存入变量 vars.<saveOutputAs>，供后续步骤引用 */
+  saveOutputAs?: string
+}
+
+export interface ToolStep {
+  kind: 'tool'
+  id: string
+  name: string
+  /** 网关工具名（kb_search / trellis_list_tasks / weknora_search …） */
+  tool: string
+  args: Record<string, string>
+  saveOutputAs?: string
+}
+
+export interface GateStep {
+  kind: 'gate'
+  id: string
+  name: string
+  /** 对指定步骤输出做确定性检查 */
+  check: { stepId: string; contains?: string; notContains?: string; minLength?: number }
+  /** 失败动作：中止 / 继续 / 跳到指定步骤（带反馈重试） */
+  onFail: 'abort' | 'continue' | 'goto'
+  gotoStepId?: string
+  /** 失败时把反馈发给该 agent 步骤重跑（fresh eyes 闭环） */
+  feedbackTo?: string
+  maxRetries?: number
+}
+
+export interface FlowPhase {
+  id: string
+  /** 阶段名（进度故事：「调研项目背景」「汇总并产出报告」） */
+  name: string
+  steps: FlowStep[]
+}
+
+/** 钩子：在关键时机注入给所有 agent 步骤的附加指令 + 完成动作 */
+export interface FlowHooks {
+  /** 开始时注入（全局约束：语言、口径） */
+  onStart?: string
+  /** 指定阶段开始时注入 */
+  onPhase?: Record<string, string>
+  /** 完成时动作：toast 通知 / 沉淀到我的笔记库 */
+  onComplete?: { notify?: boolean; saveNote?: boolean }
+}
+
+export interface FlowDef {
+  version: 1
+  id: string
+  name: string
+  description: string
+  /** 运行时向用户征集的输入（自然语言描述即可） */
+  inputs: Array<{ name: string; label: string; description?: string; required?: boolean; default?: string }>
+  phases: FlowPhase[]
+  hooks?: FlowHooks
+  createdAt?: number
+  updatedAt?: number
+}
+
+export interface FlowSummary {
+  id: string
+  name: string
+  description: string
+  phaseCount: number
+  stepCount: number
+  inputNames: string[]
+  updatedAt: number
+  path: string
+}
+
+/** 运行事件（flow:output，runId 关联） */
+export interface FlowRunEvent {
+  runId: string
+  flowId: string
+  kind: 'phase-start' | 'step-start' | 'step-done' | 'step-error' | 'gate-pass' | 'gate-fail' | 'log' | 'phase-done'
+  phaseId?: string
+  stepId?: string
+  /** 简短描述（用户可读） */
+  text?: string
+  /** 步骤输出摘要（截断） */
+  output?: string
+  ts: number
+}
+
+export interface FlowRunRecord {
+  runId: string
+  flowId: string
+  flowName: string
+  status: 'running' | 'completed' | 'aborted' | 'error'
+  startedAt: number
+  endedAt?: number
+  inputs: Record<string, string>
+  events: FlowRunEvent[]
+  /** 各步骤产物（saveOutputAs 的变量） */
+  vars: Record<string, string>
+  error?: string
+}
+
+export interface FlowRunResult {
+  ok: boolean
+  runId?: string
+  error?: string
+}
+
+/* ---------- 知识库（需求 / 规范 / Wiki / 归档） ---------- */
 
 export type KbLibrary = 'requirements' | 'spec' | 'wiki' | 'archive' | 'notes'
 
@@ -1055,6 +1176,20 @@ export interface TrellisApi {
   kbQaHistory: () => Promise<{ ok: boolean; entries?: KbQaEntry[] }>
   kbQaSave: (entry: { question: string; answer: string; sources?: Array<{ title: string; path: string; library?: string }> }) => Promise<{ ok: boolean; error?: string; entries?: KbQaEntry[] }>
   kbQaClear: () => Promise<{ ok: boolean }>
+
+  /* --- AI 工作流（定制中心 Flow） --- */
+  flowList: () => Promise<{ ok: boolean; error?: string; flows?: FlowSummary[] }>
+  flowRead: (id: string) => Promise<{ ok: boolean; error?: string; def?: FlowDef }>
+  flowSave: (def: FlowDef) => Promise<{ ok: boolean; error?: string; path?: string }>
+  flowDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
+  flowGenerate: (description: string) => Promise<{ ok: boolean; error?: string; def?: FlowDef }>
+  flowTemplates: () => Promise<{ ok: boolean; templates?: FlowDef[] }>
+  flowInstallTemplate: (def: FlowDef) => Promise<{ ok: boolean; error?: string }>
+  flowRun: (id: string, input: Record<string, string>) => Promise<FlowRunResult>
+  flowAbort: (runId: string) => Promise<{ ok: boolean; error?: string }>
+  flowRuns: (limit?: number) => Promise<{ ok: boolean; runs?: FlowRunRecord[] }>
+  onFlowOutput: (cb: (e: FlowRunEvent) => void) => () => void
+  onFlowDone: (cb: (e: { runId: string; flowId: string; status: string; error?: string; flowName?: string }) => void) => () => void
 
   /* --- WeKnora 公司库联动 --- */
   weknoraTest: (cfg: WeknoraConfig) => Promise<{ ok: boolean; error?: string; kbs?: WeknoraKbSummary[] }>

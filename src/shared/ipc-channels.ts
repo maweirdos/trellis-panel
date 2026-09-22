@@ -81,6 +81,18 @@ export const ipcInvoke = {
     qaSave: 'kb:qaSave',
     qaClear: 'kb:qaClear'
   },
+  flow: {
+    list: 'flow:list',
+    read: 'flow:read',
+    save: 'flow:save',
+    delete: 'flow:delete',
+    generate: 'flow:generate',
+    templates: 'flow:templates',
+    installTemplate: 'flow:installTemplate',
+    run: 'flow:run',
+    abort: 'flow:abort',
+    runs: 'flow:runs'
+  },
   kbmcp: {
     install: 'kbmcp:install',
     status: 'kbmcp:status'
@@ -201,6 +213,9 @@ export const ipcEvent = {
   /** chat 流式对话事件流（runId 关联，成对出现；增量/完成） */
   chatOutput: 'chat:output',
   chatDone: 'chat:done',
+  /** 工作流运行事件流（runId 关联，成对出现） */
+  flowOutput: 'flow:output',
+  flowDone: 'flow:done',
   /** 工具调用权限卡（请求决策）与 steer 注入 */
   chatPermission: 'chat:permission',
   chatSteer: 'chat:steer',
