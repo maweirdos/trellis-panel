@@ -615,7 +615,7 @@ export interface Settings {
   access: { enabled: boolean; port: number }
   /** 全局出网代理（TPD-015）：覆盖 AI/models.dev（undici）与 WeKnora（Chromium）路径 */
   proxy: { enabled: boolean; url: string }
-  desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean }
+  desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean; quickTodoShortcut: string }
 }
 
 /* ---------- Studio（定制中心：workflow / 命令 / 子代理 / 技能 / 钩子 / 配置 / 平台） ---------- */
@@ -1074,6 +1074,9 @@ export interface TrellisApi {
   setCapsuleShape: (shape: 'pill' | 'card') => Promise<void>
   closeCapsule: () => Promise<void>
   resizeCapsule: (width: number, height: number) => Promise<void>
+  /** 隐藏速记窗（全局热键呼出的迷你待办速记窗，失焦/Esc 后由渲染层调用） */
+  closeQuickTodo: () => Promise<void>
+  onQuickTodoShown: (cb: () => void) => () => void
   onToast: (cb: (e: ToastEvent) => void) => () => void
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => () => void
   getMcpInfo: () => Promise<McpInfo>

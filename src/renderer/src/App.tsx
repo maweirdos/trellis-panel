@@ -7,6 +7,7 @@ import { Onboarding } from './components/Onboarding'
 import { Toasts } from './components/Toasts'
 import { DialogHost } from './components/Dialogs'
 import { CapsuleView } from './components/CapsuleView'
+import { QuickTodoView } from './components/QuickTodoView'
 import { ArtifactViewer } from './components/ArtifactViewer'
 import { CommandPalette } from './components/CommandPalette'
 import { IntakeModal } from './components/IntakeModal'
@@ -174,6 +175,7 @@ export default function App(): JSX.Element {
   const settings = useApp((s) => s.settings)
   const bootstrap = useApp((s) => s.bootstrap)
   const capsuleMode = useApp((s) => s.capsuleMode)
+  const quickTodoMode = useApp((s) => s.quickTodoMode)
 
   useEffect(() => {
     void bootstrap()
@@ -182,8 +184,17 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', settings?.theme !== 'light')
-    document.documentElement.classList.toggle('is-capsule', capsuleMode)
-  }, [settings?.theme, capsuleMode])
+    // 速记窗与胶囊一样是无框透明窗，html/body 需要透明背景
+    document.documentElement.classList.toggle('is-capsule', capsuleMode || quickTodoMode)
+  }, [settings?.theme, capsuleMode, quickTodoMode])
+
+  if (quickTodoMode) {
+    return (
+      <div className="h-full w-full overflow-hidden bg-transparent p-0">
+        <QuickTodoView />
+      </div>
+    )
+  }
 
   if (capsuleMode) {
     return (

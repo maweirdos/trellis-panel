@@ -177,6 +177,9 @@ export const ipcInvoke = {
     resize: 'capsule:resize',
     close: 'capsule:close'
   },
+  quicktodo: {
+    close: 'quicktodo:close'
+  },
   mcp: {
     info: 'mcp:info',
     toggle: 'mcp:toggle'
@@ -222,6 +225,8 @@ export const ipcEvent = {
   chatSteer: 'chat:steer',
   /** 窗口最大化状态 */
   windowMaximized: 'window:maximized',
+  /** 速记窗已显示（渲染层收到后重新聚焦编辑区） */
+  quickTodoShown: 'quicktodo:shown',
   /**
    * 遗留通道：渲染层仍订阅，但主进程当前无发送方（新任务走系统通知）。
    * 保留常量以免 preload 断链；确认无消费方后可移除。

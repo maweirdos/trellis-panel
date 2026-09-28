@@ -194,6 +194,8 @@ const api = {
   setCapsuleShape: (shape: 'pill' | 'card') => ipcRenderer.invoke(ipcInvoke.capsule.setShape, shape),
   closeCapsule: () => ipcRenderer.invoke(ipcInvoke.capsule.close),
   resizeCapsule: (width: number, height: number) => ipcRenderer.invoke(ipcInvoke.capsule.resize, width, height),
+  closeQuickTodo: () => ipcRenderer.invoke(ipcInvoke.quicktodo.close),
+  onQuickTodoShown: (cb: () => void) => subscribe(ipcEvent.quickTodoShown, cb),
   onToast: (cb: (e: ToastEvent) => void) => subscribe(ipcEvent.toast, cb),
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => subscribe(ipcEvent.bridgeTaskFocus, cb),
   getMcpInfo: () => ipcRenderer.invoke(ipcInvoke.mcp.info),

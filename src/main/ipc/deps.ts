@@ -12,6 +12,8 @@ export interface CapsuleApi {
 export interface WindowDeps {
   getMain(): BrowserWindow | null
   getCapsule(): BrowserWindow | null
+  /** 全局热键呼出的速记窗（只隐藏不销毁，创建归 index.ts 的 toggleQuickTodo） */
+  getQuickTodo(): BrowserWindow | null
   showMain(): void
   createMain(): void
   /** 截取主窗口当前画面为 PNG dataURL（截图问 AI，TPD-022） */

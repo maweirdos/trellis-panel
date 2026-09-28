@@ -99,6 +99,7 @@ export function SettingsPage(): JSX.Element {
   const [hookMsg, setHookMsg] = useState<string | null>(null)
   const [mcpInfo, setMcpInfo] = useState<McpInfo | null>(null)
   const [shortcut, setShortcut] = useState(settings.desktop.globalShortcut)
+  const [quickShortcut, setQuickShortcut] = useState(settings.desktop.quickTodoShortcut)
   const [accessInfo, setAccessInfo] = useState<{
     enabled: boolean
     running: boolean
@@ -497,6 +498,19 @@ export function SettingsPage(): JSX.Element {
                 placeholder="Alt+Shift+T"
               />
               <span className="text-[10.5px] text-mist-600">显示 / 隐藏面板，保存后重启生效</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-mist-300">速记窗快捷键</span>
+              <input
+                value={quickShortcut}
+                onChange={(e) => setQuickShortcut(e.target.value)}
+                onBlur={() =>
+                  void saveSettings({ desktop: { ...settings.desktop, quickTodoShortcut: quickShortcut.trim() || 'Alt+N' } })
+                }
+                className="field w-36 font-mono"
+                placeholder="Alt+N"
+              />
+              <span className="text-[10.5px] text-mist-600">随时呼出 Markdown 速记窗记待办，保存后重启生效</span>
             </div>
           </div>
         </section>

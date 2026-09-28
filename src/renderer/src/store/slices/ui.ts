@@ -3,6 +3,7 @@ import type { AppSlice, UiSlice } from '../types'
 export const uiSlice: AppSlice<UiSlice> = (set) => ({
   page: 'dashboard',
   capsuleMode: new URLSearchParams(window.location.search).get('mode') === 'capsule',
+  quickTodoMode: new URLSearchParams(window.location.search).get('mode') === 'quicktodo',
   sidebarCollapsed: localStorage.getItem('tpanel.sidebarCollapsed') === 'true',
   intakeOpen: false,
 

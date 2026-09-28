@@ -70,6 +70,11 @@ export function registerWindowIpc(deps: WindowDeps): void {
     if (capsule) capsule.hide()
   })
 
+  handle(ipcInvoke.quicktodo.close, () => {
+    const w = deps.getQuickTodo()
+    if (w) w.hide()
+  })
+
   on(ipcInvoke.win.minimize, () => {
     const w = BrowserWindow.getFocusedWindow() ?? deps.getMain()
     w?.minimize()

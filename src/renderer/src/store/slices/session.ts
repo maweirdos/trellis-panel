@@ -44,8 +44,8 @@ export const sessionSlice: AppSlice<SessionSlice> = (set, get) => ({
   bootstrap: async () => {
     const settings = normalizeSettings(await api.getSettings())
     set({ settings, starting: false })
-    // 胶囊窗口与主窗口共享主进程的项目状态，只需拉取当前快照。
-    if (get().capsuleMode) {
+    // 胶囊 / 速记窗口与主窗口共享主进程的项目状态，只需拉取当前快照。
+    if (get().capsuleMode || get().quickTodoMode) {
       const snap = await api.getSnapshot()
       if (snap) get().setSnapshot(snap)
       return

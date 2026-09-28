@@ -2,7 +2,7 @@
  * 应用壳（薄编排层，决策 TPD-004）：窗口、托盘、全局快捷键、更新器、生命周期、深链。
  * IPC 注册全部在 src/main/ipc/；项目状态与跨域助手在 src/main/state.ts。
  */
-import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, screen, shell } from 'electron'
 import { join, resolve, basename, dirname, sep } from 'path'
 import { existsSync } from 'fs'
 import { abortAll } from './services/cli'
@@ -33,6 +33,7 @@ let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
 let capsuleOnTop = true
 let capsuleShape: 'pill' | 'card' = 'pill'
+let quickTodo: BrowserWindow | null = null
 let tray: Tray | null = null
 
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -141,6 +142,73 @@ function createCapsule(initialShape?: 'pill' | 'card'): void {
   }
 }
 
+function getQuickTodo(): BrowserWindow | null {
+  return quickTodo && !quickTodo.isDestroyed() ? quickTodo : null
+}
+
+/**
+ * 速记窗：全局热键随时呼出的迷你待办编辑窗（应用在后台也可用）。
+ * 启动时预创建并隐藏，首次按下热键即可瞬时显示；失焦即隐藏，不触碰主面板当前页面。
+ */
+function ensureQuickTodo(): BrowserWindow {
+  if (quickTodo && !quickTodo.isDestroyed()) return quickTodo
+  const width = 540
+  const height = 420
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+  quickTodo = new BrowserWindow({
+    width,
+    height,
+    minWidth: 420,
+    minHeight: 320,
+    x: area.x + Math.round((area.width - width) / 2),
+    y: area.y + Math.round((area.height - height) / 2),
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: true,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: '#00000000',
+    title: 'Trellis 速记',
+    show: false,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      spellcheck: false
+    }
+  })
+  quickTodo.setAlwaysOnTop(true, 'screen-saver')
+  quickTodo.on('closed', () => {
+    quickTodo = null
+  })
+  quickTodo.on('blur', () => {
+    const w = getQuickTodo()
+    if (w && w.isVisible()) w.hide()
+  })
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (devUrl) {
+    quickTodo.loadURL(devUrl + '?mode=quicktodo')
+  } else {
+    quickTodo.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'quicktodo' } })
+  }
+  return quickTodo
+}
+
+function toggleQuickTodo(): void {
+  const w = ensureQuickTodo()
+  if (w.isVisible() && w.isFocused()) {
+    w.hide()
+    return
+  }
+  w.show()
+  w.focus()
+  // 渲染层收到后把焦点放回编辑区（窗口复用，autoFocus 只在首挂载生效）
+  w.webContents.send(ipcEvent.quickTodoShown)
+}
+
 /* ---------------- tray / shortcuts / autostart / updater ---------------- */
 
 function createTray(): void {
@@ -207,6 +275,12 @@ function registerGlobalShortcut(): void {
       if (win && win.isVisible() && win.isFocused()) win.hide()
       else showMain()
     })
+  } catch {
+    // invalid accelerator — ignore
+  }
+  const quickAccel = getSettings().desktop.quickTodoShortcut || 'Alt+N'
+  try {
+    globalShortcut.register(quickAccel, () => toggleQuickTodo())
   } catch {
     // invalid accelerator — ignore
   }
@@ -331,6 +405,7 @@ if (!gotLock) {
     registerIpc({
       getMain: () => (win && !win.isDestroyed() ? win : null),
       getCapsule: () => (capsule && !capsule.isDestroyed() ? capsule : null),
+      getQuickTodo: () => (quickTodo && !quickTodo.isDestroyed() ? quickTodo : null),
       showMain,
       createMain: createWindow,
       captureMain: async () => {
@@ -342,6 +417,8 @@ if (!gotLock) {
       capsule: capsuleApi
     })
     createWindow()
+    // 速记窗启动即预创建（隐藏），热键首次按下瞬时显示
+    ensureQuickTodo()
     startInbox({
       onTaskEvent: (taskDir, text, source) => {
         sendSnapshot()

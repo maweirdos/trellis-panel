@@ -74,6 +74,7 @@ export interface SessionSlice {
 export interface UiSlice {
   page: Page
   capsuleMode: boolean
+  quickTodoMode: boolean
   sidebarCollapsed: boolean
   intakeOpen: boolean
   toggleSidebar: () => void
