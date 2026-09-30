@@ -316,7 +316,30 @@ export function ChannelsPage(): JSX.Element {
           )}
 
           <div ref={streamRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            {active.events.map((e, i) => {
+            {(() => {
+            // 后端返回 newest-first；对话视图按时间正序渲染（旧上新下，自动滚动=最新）
+            const chrono = [...active.events].reverse()
+            // 连续 progress 合并为单行计数（worker 内部步骤遥测，对回看者是噪音）
+            type Row = { kind: string; by: string; count: number; last: ChannelEvent; warn?: string }
+            const rows: Array<{ msg?: ChannelEvent } | { sys: Row }> = []
+            for (const e of chrono) {
+              if (e.kind === 'message') {
+                rows.push({ msg: e })
+                continue
+              }
+              const prev = rows[rows.length - 1]
+              const d = (e as unknown as { detail?: { kind?: string; message?: string } }).detail
+              const warn = d && d.kind === 'warning' ? d.message ?? '' : ''
+              if (e.kind === 'progress' && prev && 'sys' in prev && prev.sys.kind === 'progress' && prev.sys.by === e.by) {
+                prev.sys.count += 1
+                if (warn) prev.sys.warn = warn
+                continue
+              }
+              rows.push({ sys: { kind: e.kind, by: e.by, count: 1, last: e, warn: warn || undefined } })
+            }
+            return rows.map((row, i) => {
+            if ('msg' in row && row.msg) {
+              const e = row.msg
               // 对话视图（09-30）：message 渲染为气泡（我方右侧 / worker 左侧），
               // 系统事件收窄为紧凑单行，不再与文本等权展示
               if (e.kind === 'message' && e.text) {
@@ -325,7 +348,12 @@ export function ChannelsPage(): JSX.Element {
                   <div key={`${e.seq}-${i}`} className={clsx('mb-3 flex', mine ? 'justify-end' : 'justify-start')}>
                     <div className={clsx('max-w-[85%] min-w-0', mine ? 'items-end' : 'items-start')}>
                       <div className={clsx('mb-0.5 flex items-baseline gap-2 text-[9.5px] text-mist-600', mine && 'justify-end')}>
-                        <span className="font-mono font-medium text-mist-400">{e.by}</span>
+                        <span
+                          className="font-mono font-medium text-mist-400"
+                          title={mine ? `${e.by}（我方发起/操作）` : `${e.by}（worker，其“进度”为内部步骤遥测）`}
+                        >
+                          {e.by}
+                        </span>
                         <span>{e.ts ? fmtIso(e.ts) : ''}</span>
                       </div>
                       <div
@@ -344,20 +372,31 @@ export function ChannelsPage(): JSX.Element {
                   </div>
                 )
               }
-              const st = kindStyle(e.kind)
-              const detail = e.status || (e.kind === 'progress' ? '' : '')
-              return (
-                <div key={`${e.seq}-${i}`} className="mb-1 flex items-center gap-2 text-[10px] text-mist-600">
-                  <span className={clsx('flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px]', st.cls)}>
-                    {st.icon} {st.label}
-                  </span>
-                  <span className="font-mono text-mist-500">{e.by}</span>
-                  {e.thread && <span className="chip bg-sky-500/10 text-[9px] text-sky-300">{e.thread}</span>}
-                  {detail && <span className="truncate text-mist-500">{detail}</span>}
-                  <span className="ml-auto shrink-0">{e.ts ? fmtIso(e.ts) : ''}</span>
-                </div>
-              )
-            })}
+              return null
+            }
+            if (!('sys' in row)) return null
+            const sys = row.sys
+            const st = kindStyle(sys.kind)
+            const isHuman = ['panel', 'panel-ui', 'main'].includes(sys.by)
+            const byHint = sys.by.startsWith('supervisor:')
+              ? `${sys.by}（worker 的守护进程：超时/闲置等系统守护事件）`
+              : isHuman
+                ? `${sys.by}（我方发起/操作）`
+                : `${sys.by}（worker）`
+            return (
+              <div key={`${sys.last.seq}-${i}`} className="mb-1 flex items-center gap-2 text-[10px] text-mist-600" title={sys.warn ? sys.warn.slice(0, 200) : undefined}>
+                <span className={clsx('flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px]', st.cls)}>
+                  {st.icon} {st.label}
+                  {sys.count > 1 && <span className="font-mono">×{sys.count}</span>}
+                </span>
+                <span className="font-mono text-mist-500" title={byHint}>{sys.by}</span>
+                {sys.last.thread && <span className="chip bg-sky-500/10 text-[9px] text-sky-300">{sys.last.thread}</span>}
+                {sys.warn && <span className="min-w-0 flex-1 truncate text-amber-300/80" title={sys.warn}>⚠ {sys.warn}</span>}
+                <span className="ml-auto shrink-0">{sys.last.ts ? fmtIso(sys.last.ts) : ''}</span>
+              </div>
+            )
+            })
+            })()}
             {active.events.length === 0 && <div className="py-10 text-center text-xs text-mist-500">暂无事件</div>}
           </div>
 

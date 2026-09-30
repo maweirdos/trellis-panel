@@ -1,0 +1,2 @@
+{"file": "src/renderer/src/pages/Channels.tsx", "reason": "Chat stream ordering and progress grouping fix"}
+{"file": "src/main/services/channels.ts", "reason": "Backend newest-first event ordering being compensated in renderer"}
