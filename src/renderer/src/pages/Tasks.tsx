@@ -34,7 +34,8 @@ import {
   Link2,
   SquareCode,
   ClipboardCopy,
-  ScanSearch
+  ScanSearch,
+  ShieldCheck
 } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
@@ -49,6 +50,7 @@ import { confirmDialog } from '../components/Dialogs'
 import { FocusTimer } from '../components/FocusTimer'
 import { HandoffModal } from '../components/HandoffModal'
 import { TaskInsightsModal } from '../components/TaskInsightsModal'
+import { DispatchModal } from '../components/DispatchModal'
 import { Select } from '../components/Select'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
@@ -327,6 +329,7 @@ function TaskWorkspace({
   const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [handoffOpen, setHandoffOpen] = useState(false)
   const [insightsOpen, setInsightsOpen] = useState(false)
+  const [dispatchOpen, setDispatchOpen] = useState(false)
 
   const idx = Math.max(0, tasks.findIndex((t) => t.dirName === selected))
   const task = tasks[idx] ?? null
@@ -1095,6 +1098,14 @@ function TaskWorkspace({
               >
                 <ScanSearch size={13.5} />
               </button>
+              {/* T4 能力验证：派 codex 只读 worker 审阅本任务（read-only 沙箱，报告不落盘） */}
+              <button
+                onClick={() => setDispatchOpen(true)}
+                className="btn-ghost p-1.5 text-violet-300 hover:bg-ink-750 hover:text-violet-200"
+                title="派 Codex 只读审阅（read-only 沙箱 worker，固定三段报告）"
+              >
+                <ShieldCheck size={13.5} />
+              </button>
               {isRoot && (
                 <button
                   onClick={() => void split()}
@@ -1476,6 +1487,7 @@ function TaskWorkspace({
         )}
         {handoffOpen && task && <HandoffModal task={task} onClose={() => setHandoffOpen(false)} />}
         {insightsOpen && task && <TaskInsightsModal task={task} onClose={() => setInsightsOpen(false)} />}
+        {dispatchOpen && task && <DispatchModal task={task} onClose={() => setDispatchOpen(false)} />}
       </div>
 
     </div>

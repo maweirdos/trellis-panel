@@ -1237,6 +1237,15 @@ export interface TrellisApi {
   taskWriteArtifact: (dirName: string, fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
   taskResolveClipboardTask: () => Promise<{ ok: true; dirName: string; archived: boolean } | { ok: false; error: string }>
   taskBuildTaskLink: (dirName: string) => Promise<{ ok: true; url: string } | { ok: false; error: string }>
+  taskDispatchReview: (dirName: string) => Promise<{
+    ok: boolean
+    phase?: string
+    error?: string
+    report?: string
+    channel?: string
+  }>
+  taskDispatchAbort: () => Promise<{ ok: boolean }>
+  onDispatchPhase: (cb: (p: { key: string; label: string; detail?: string }) => void) => () => void
   taskContextExpect: (dirName: string) => Promise<
     | { ok: false; error: string }
     | {

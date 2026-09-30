@@ -136,6 +136,17 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.task.buildTaskLink, dirName) as Promise<
       { ok: true; url: string } | { ok: false; error: string }
     >,
+  taskDispatchReview: (dirName: string) =>
+    ipcRenderer.invoke(ipcInvoke.task.dispatchReview, dirName) as Promise<{
+      ok: boolean
+      phase?: string
+      error?: string
+      report?: string
+      channel?: string
+    }>,
+  taskDispatchAbort: () => ipcRenderer.invoke(ipcInvoke.task.dispatchAbort) as Promise<{ ok: boolean }>,
+  onDispatchPhase: (cb: (p: { key: string; label: string; detail?: string }) => void) =>
+    subscribe(ipcEvent.dispatchPhase, cb),
   taskContextExpect: (dirName: string) =>
     ipcRenderer.invoke(ipcInvoke.task.contextExpect, dirName) as Promise<
       | { ok: false; error: string }

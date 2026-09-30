@@ -31,7 +31,9 @@ export const ipcInvoke = {
     resolveClipboardTask: 'task:resolveClipboardTask',
     buildTaskLink: 'task:buildTaskLink',
     handoffBuild: 'task:handoffBuild',
-    contextExpect: 'task:contextExpect'
+    contextExpect: 'task:contextExpect',
+    dispatchReview: 'task:dispatchReview',
+    dispatchAbort: 'task:dispatchAbort'
   },
   todo: {
     list: 'todo:list',
@@ -221,6 +223,8 @@ export const ipcEvent = {
   materialUpdated: 'bridge:material-updated',
   /** FR：全局热键唤起主窗口时请求恢复上次阅读位置 */
   focusLastReading: 'bridge:focus-last-reading',
+  /** T4：只读审阅派发阶段进度 */
+  dispatchPhase: 'bridge:dispatch-phase',
   /** cli 长任务事件流（runId 关联，成对出现） */
   cliOutput: 'cli:output',
   cliDone: 'cli:done',

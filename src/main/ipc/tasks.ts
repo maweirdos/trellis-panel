@@ -1,7 +1,9 @@
 import { join, resolve, basename } from 'path'
 import { writeFileSync, readFileSync, statSync } from 'fs'
 import { clipboard } from 'electron'
-import { ipcInvoke } from '../../shared/ipc-channels'
+import { runReadonlyReview, abortDispatch } from '../services/channel-dispatch'
+import { broadcastToWindows } from '../services/bridge'
+import { ipcInvoke, ipcEvent } from '../../shared/ipc-channels'
 import { errorText, errorMessage } from '../../shared/errors'
 import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
 import { updateTaskRecordAt } from '../services/scan'
@@ -150,6 +152,26 @@ export function registerTasksIpc(): void {
       check: analyze('check.jsonl'),
       caps: { perFile: 32768, total: 131072 }
     }
+  })
+
+  /**
+   * T4 能力验证：一键派 codex+read-only worker 只读审阅指定任务。
+   * 阶段进度经 ipcEvent.dispatchPhase 广播；报告固定三段 Markdown。
+   */
+  handle(ipcInvoke.task.dispatchReview, async (_e, dirName: string) => {
+    const root = getProjectRoot()
+    if (!root) return noProject()
+    const t = findTask(String(dirName))
+    if (!t) return ipcFail(IpcErrorCode.NotFound, `任务不存在: ${dirName}`)
+    const res = await runReadonlyReview(root, t, (phase) => {
+      broadcastToWindows(ipcEvent.dispatchPhase, phase)
+    })
+    return res
+  })
+
+  handle(ipcInvoke.task.dispatchAbort, () => {
+    abortDispatch()
+    return { ok: true }
   })
 
   handle(ipcInvoke.task.writeArtifact, (_e, dirName: string, fileName: string, content: string) => {
