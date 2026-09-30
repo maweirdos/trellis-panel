@@ -131,6 +131,14 @@ const api = {
   aiPrDesc: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.prDesc, dirName),
   taskWriteArtifact: (dirName: string, fileName: string, content: string) =>
     ipcRenderer.invoke(ipcInvoke.task.writeArtifact, dirName, fileName, content),
+  taskBuildTaskLink: (dirName: string) =>
+    ipcRenderer.invoke(ipcInvoke.task.buildTaskLink, dirName) as Promise<
+      { ok: true; url: string } | { ok: false; error: string }
+    >,
+  desktopSetExplorerMenu: (on: boolean) =>
+    ipcRenderer.invoke(ipcInvoke.desktop.setExplorerMenu, on) as Promise<
+      { ok: boolean; supported: boolean; reason?: string }
+    >,
   taskResolveClipboardTask: () =>
     ipcRenderer.invoke(ipcInvoke.task.resolveClipboardTask) as Promise<
       { ok: true; dirName: string; archived: boolean } | { ok: false; error: string }

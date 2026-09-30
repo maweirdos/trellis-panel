@@ -109,13 +109,24 @@ export function routeMaterialNotice(absPath: string): void {
       materialFiles.delete(dirName)
       if (fs.size === 0) return
       const t = latestSnapshot?.tasks.find((x) => x.dirName === dirName)
-      broadcastToWindows(ipcEvent.materialUpdated, {
+      const payload = {
         dirName,
         title: t?.record?.title ?? dirName,
         count: fs.size,
         files: [...fs].slice(0, 5),
         at: Date.now()
-      })
+      }
+      broadcastToWindows(ipcEvent.materialUpdated, payload)
+      // T1：主窗隐藏/失焦时补发系统通知，点击直达该任务（窗口可见且聚焦时应用内 toast 足够）
+      const mw = getMainWindow()
+      const visibleFocused = Boolean(mw && mw.isVisible() && mw.isFocused())
+      if (!visibleFocused) {
+        toastFocusTask(dirName, {
+          kind: 'info',
+          title: `任务更新：${payload.title}`,
+          body: `${payload.count} 个文件：${payload.files.join('、')}${payload.count > payload.files.length ? ' 等' : ''}`
+        })
+      }
     }, MATERIAL_SETTLE_MS)
   )
 }
@@ -169,6 +180,21 @@ export function toast(t: ToastEvent): void {
     }
   } catch {
     // notifications are best-effort
+  }
+}
+
+/** T1：带任务定向的系统通知——点击直达该任务（复用 bridgeTaskFocus 聚焦链路） */
+function toastFocusTask(dirName: string, t: ToastEvent): void {
+  try {
+    if (!Notification.isSupported()) return
+    const n = new Notification({ title: t.title, body: t.body ?? '', silent: true })
+    n.on('click', () => {
+      uiHooks?.showMain()
+      pushFocusTask(dirName)
+    })
+    n.show()
+  } catch {
+    // best-effort
   }
 }
 

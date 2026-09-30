@@ -30,7 +30,8 @@ import {
   Compass,
   ArrowLeft,
   ClipboardPaste,
-  ListTodo
+  ListTodo,
+  Link2
 } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
@@ -559,6 +560,16 @@ function TaskWorkspace({
     else pushToast({ kind: 'error', title: '拆分失败', body: res.error })
   }
 
+  const copyTaskLink = async (): Promise<void> => {
+    const res = await api.taskBuildTaskLink(task.dirName)
+    if (res.ok) {
+      await api.copyToClipboard(res.url)
+      pushToast({ kind: 'success', title: '任务链接已复制', body: '本机粘贴运行可直接回到此任务' })
+    } else {
+      pushToast({ kind: 'error', title: '生成链接失败', body: res.error })
+    }
+  }
+
   const genText = async (kind: 'commit' | 'pr'): Promise<void> => {
     const res = kind === 'commit' ? await api.aiCommitMsg(task.dirName) : await api.aiPrDesc(task.dirName)
     if (res.ok && res.content) {
@@ -1079,6 +1090,14 @@ function TaskWorkspace({
                 title="AI 生成 PR 描述"
               >
                 <ExternalLink size={13.5} />
+              </button>
+              {/* T1：任务级分享深链——token 主进程拼装，本机任意处粘贴可回到此任务 */}
+              <button
+                onClick={() => void copyTaskLink()}
+                className="btn-ghost p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                title="复制任务链接（深链，本机粘贴可直达）"
+              >
+                <Link2 size={13.5} />
               </button>
             </div>
 

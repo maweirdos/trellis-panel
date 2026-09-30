@@ -624,7 +624,7 @@ export interface Settings {
   access: { enabled: boolean; port: number }
   /** 全局出网代理（TPD-015）：覆盖 AI/models.dev（undici）与 WeKnora（Chromium）路径 */
   proxy: { enabled: boolean; url: string }
-  desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean; quickTodoShortcut: string }
+  desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean; quickTodoShortcut: string; explorerContextMenu?: boolean }
 }
 
 /* ---------- Studio（定制中心：workflow / 命令 / 子代理 / 技能 / 钩子 / 配置 / 平台） ---------- */
@@ -1227,6 +1227,8 @@ export interface TrellisApi {
   aiPrDesc: (dirName: string) => Promise<AiChatResult>
   taskWriteArtifact: (dirName: string, fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
   taskResolveClipboardTask: () => Promise<{ ok: true; dirName: string; archived: boolean } | { ok: false; error: string }>
+  taskBuildTaskLink: (dirName: string) => Promise<{ ok: true; url: string } | { ok: false; error: string }>
+  desktopSetExplorerMenu: (on: boolean) => Promise<{ ok: boolean; supported: boolean; reason?: string }>
 
   /* --- KB-MCP --- */
   kbMcpInstall: () => Promise<KbMcpInstallResult>

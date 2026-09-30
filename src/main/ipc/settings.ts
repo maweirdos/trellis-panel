@@ -8,6 +8,7 @@ import { protectWeknoraKey, protectWeknoraMcpToken } from '../services/weknora'
 import { applyAutoStart, syncWeknoraSpecConfig } from '../state'
 import { accessServer } from '../services/access/server'
 import { applyChromiumProxy } from '../services/proxy'
+import { explorerMenuSupported, setExplorerMenu } from '../services/explorer-menu'
 import { handle } from './registry'
 
 export function registerSettingsIpc(): void {
@@ -63,5 +64,18 @@ export function registerSettingsIpc(): void {
     void accessServer.syncFromSettings()
     void applyChromiumProxy()
     return next
+  })
+
+  /** T1：资源管理器右键"用 Trellis Panel 阅读"（仅打包态 Windows；写 HKCU，幂等可撤销） */
+  handle(ipcInvoke.desktop.setExplorerMenu, async (_e, on: boolean) => {
+    if (!explorerMenuSupported()) {
+      return { ok: false as const, supported: false, reason: '仅打包版 Windows 支持资源管理器右键集成' }
+    }
+    const ok = await setExplorerMenu(on, getSettings().bridgeToken)
+    if (ok) {
+      const cur = getSettings()
+      setSettings({ ...cur, desktop: { ...cur.desktop, explorerContextMenu: on } })
+    }
+    return ok ? { ok: true as const, supported: true } : { ok: false as const, supported: true, reason: '注册表写入失败' }
   })
 }

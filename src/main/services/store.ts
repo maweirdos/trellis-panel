@@ -36,7 +36,7 @@ const DEFAULTS: Settings = {
   httpApi: { enabled: false, port: 39573, lanAccess: false, webBoard: true },
   access: { enabled: false, port: 39580 },
   proxy: { enabled: false, url: '' },
-  desktop: { autoStart: false, globalShortcut: 'Alt+Shift+T', autoUpdate: false, quickTodoShortcut: 'Alt+N' }
+  desktop: { autoStart: false, globalShortcut: 'Alt+Shift+T', autoUpdate: false, quickTodoShortcut: 'Alt+N', explorerContextMenu: false }
 }
 
 let cache: Settings | null = null

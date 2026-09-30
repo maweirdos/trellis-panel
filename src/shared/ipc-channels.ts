@@ -28,7 +28,8 @@ export const ipcInvoke = {
     createFromJira: 'task:createFromJira',
     createFromPlan: 'task:createFromPlan',
     writeArtifact: 'task:writeArtifact',
-    resolveClipboardTask: 'task:resolveClipboardTask'
+    resolveClipboardTask: 'task:resolveClipboardTask',
+    buildTaskLink: 'task:buildTaskLink'
   },
   todo: {
     list: 'todo:list',
@@ -152,6 +153,9 @@ export const ipcInvoke = {
   settings: {
     get: 'settings:get',
     set: 'settings:set'
+  },
+  desktop: {
+    setExplorerMenu: 'desktop:setExplorerMenu'
   },
   cli: {
     run: 'cli:run',

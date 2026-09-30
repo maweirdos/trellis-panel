@@ -5,6 +5,7 @@ import { ipcInvoke } from '../../shared/ipc-channels'
 import { errorText, errorMessage } from '../../shared/errors'
 import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
 import { updateTaskRecordAt } from '../services/scan'
+import { getSettings } from '../services/store'
 import {
   getProjectRoot,
   getSnapshot,
@@ -77,6 +78,14 @@ export function registerTasksIpc(): void {
       priority: input.priority || 'P2',
       assignee: getSnapshot()?.meta.developer ?? ''
     })
+  })
+
+  /** T1：任务级分享深链（token 只在主进程拼装，渲染层不接触） */
+  handle(ipcInvoke.task.buildTaskLink, (_e, dirName: string) => {
+    const t = findTask(String(dirName))
+    if (!t) return ipcFail(IpcErrorCode.NotFound, `任务不存在: ${dirName}`)
+    const token = getSettings().bridgeToken
+    return { ok: true as const, url: `trellis-panel://open-task?dir=${encodeURIComponent(t.path)}&t=${token}` }
   })
 
   handle(ipcInvoke.task.writeArtifact, (_e, dirName: string, fileName: string, content: string) => {

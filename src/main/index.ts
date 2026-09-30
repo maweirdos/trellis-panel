@@ -224,6 +224,14 @@ function rebuildTrayMenu(): void {
   const menu = Menu.buildFromTemplate([
     { label: '打开面板', click: () => showMain() },
     {
+      // T1：与全局热键同路径——回到上次阅读的任务与位置
+      label: '回到上次阅读',
+      click: () => {
+        showMain()
+        broadcastToWindows(ipcEvent.focusLastReading, { at: Date.now() })
+      }
+    },
+    {
       label: '胶囊模式',
       click: () => {
         if (capsule && !capsule.isDestroyed() && capsule.isVisible()) {

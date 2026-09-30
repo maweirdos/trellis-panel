@@ -488,6 +488,22 @@ export function SettingsPage(): JSX.Element {
               />
               自动检查更新（GitHub Releases）
             </label>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-mist-300">
+              <input
+                type="checkbox"
+                checked={settings.desktop.explorerContextMenu ?? false}
+                onChange={async (e) => {
+                  const res = await api.desktopSetExplorerMenu(e.target.checked)
+                  if (res.ok) {
+                    await saveSettings({ desktop: { ...settings.desktop, explorerContextMenu: e.target.checked } })
+                  } else {
+                    pushToast({ kind: 'warn', title: '右键集成未启用', body: res.reason ?? '不支持当前环境' })
+                  }
+                }}
+                className="accent-emerald-500"
+              />
+              资源管理器右键"用 Trellis Panel 阅读"（仅打包版 Windows）
+            </label>
             <div className="flex items-center gap-2">
               <span className="text-xs text-mist-300">全局唤起快捷键</span>
               <input
