@@ -362,3 +362,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: T2 透视中心切片落地
+<!-- trellis-session: v=2 fp=e08954c25c88fc7e -->
+
+**Date**: 2026-09-30
+**Task**: T2 透视中心切片落地
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+任务透视弹窗：文件事实徽标/workflow 行级解析(阶段条+面包屑规则预览,冒烟与真实注入一致)/jsonl 上下文预期四档诊断；会话诊断与技能视图按 PRD 移出
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b98a859` | feat(t2): 任务透视弹窗——文件事实+流程参考(规则预览)+上下文预期诊断 |
+
+### Status
+
+[OK] **Completed**
