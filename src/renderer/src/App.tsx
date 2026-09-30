@@ -7,6 +7,7 @@ import { Onboarding } from './components/Onboarding'
 import { Toasts } from './components/Toasts'
 import { DialogHost } from './components/Dialogs'
 import { CapsuleView } from './components/CapsuleView'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { getReading } from './utils/reading'
 import { QuickTodoView } from './components/QuickTodoView'
 import { ArtifactViewer } from './components/ArtifactViewer'
@@ -135,6 +136,7 @@ function MainApp(): JSX.Element {
   const detailOpen = openTaskDir !== null
 
   return (
+    <ErrorBoundary>
     <div className="flex h-full flex-col bg-ink-900 text-mist-100">
       <TitleBar />
       {!snapshot ? (
@@ -194,6 +196,7 @@ function MainApp(): JSX.Element {
       <Toasts />
       <DialogHost />
     </div>
+    </ErrorBoundary>
   )
 }
 

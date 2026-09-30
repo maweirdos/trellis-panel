@@ -38,9 +38,9 @@ export function PlannerModal({ onClose }: { onClose: () => void }): JSX.Element 
   const busyRef = useRef(false)
 
   useEffect(() => {
-    const off = api.onDispatchPhase((p) => setDoneKey(p.key))
+    const off = api.onDispatchPhase?.((p) => setDoneKey(p.key))
     return () => {
-      off()
+      off?.()
     }
   }, [])
 
@@ -50,14 +50,22 @@ export function PlannerModal({ onClose }: { onClose: () => void }): JSX.Element 
     setError(null)
     setReport(null)
     setDoneKey(null)
-    const res = await api.taskDispatchPlan({ title: title.trim(), requirement: requirement.trim() })
-    setRunning(false)
-    if (res.ok && res.report) {
-      setReport(res.report)
-      pushToast({ kind: 'success', title: '任务已起草', body: 'PRD 待你审阅' })
-      void refresh()
-    } else {
-      setError(res.error ?? `在 ${res.phase ?? '?'} 阶段失败`)
+    try {
+      if (typeof api.taskDispatchPlan !== 'function') {
+        throw new Error('当前会话的 preload 过期（缺少派发 API）——请重启 npm run dev 同步')
+      }
+      const res = await api.taskDispatchPlan({ title: title.trim(), requirement: requirement.trim() })
+      setRunning(false)
+      if (res.ok && res.report) {
+        setReport(res.report)
+        pushToast({ kind: 'success', title: '任务已起草', body: 'PRD 待你审阅' })
+        void refresh()
+      } else {
+        setError(res.error ?? `在 ${res.phase ?? '?'} 阶段失败`)
+      }
+    } catch (e) {
+      setRunning(false)
+      setError(e instanceof Error ? e.message : String(e))
     }
   }
 

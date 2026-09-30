@@ -1,0 +1,2 @@
+{"file": "src/renderer/src/components/DispatchModal.tsx", "reason": "Crash site: effect subscription + run invoke"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "Error boundary and effect-cleanup patterns"}

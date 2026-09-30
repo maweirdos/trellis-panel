@@ -30,11 +30,12 @@ export function DispatchModal({ task, onClose }: { task: TaskInfo; onClose: () =
   const startedRef = useRef(false)
 
   useEffect(() => {
-    const off = api.onDispatchPhase((p) => {
+    // 旧 preload 会话里该 API 可能不存在（preload 只随应用启动加载）——缺省不订阅而非崩溃
+    const off = api.onDispatchPhase?.((p) => {
       setDoneKey(p.key)
     })
     return () => {
-      off()
+      off?.()
     }
   }, [])
 
@@ -43,13 +44,21 @@ export function DispatchModal({ task, onClose }: { task: TaskInfo; onClose: () =
     setError(null)
     setReport(null)
     setDoneKey(null)
-    const res = await api.taskDispatchReview(task.dirName)
-    setRunning(false)
-    if (res.ok && res.report) {
-      setReport(res.report)
-      pushToast({ kind: 'success', title: '只读审阅完成', body: task.dirName })
-    } else {
-      setError(res.error ?? `在 ${res.phase ?? '?'} 阶段失败`)
+    try {
+      if (typeof api.taskDispatchReview !== 'function') {
+        throw new Error('当前会话的 preload 过期（缺少派发 API）——请重启 npm run dev 同步')
+      }
+      const res = await api.taskDispatchReview(task.dirName)
+      setRunning(false)
+      if (res.ok && res.report) {
+        setReport(res.report)
+        pushToast({ kind: 'success', title: '只读审阅完成', body: task.dirName })
+      } else {
+        setError(res.error ?? `在 ${res.phase ?? '?'} 阶段失败`)
+      }
+    } catch (e) {
+      setRunning(false)
+      setError(e instanceof Error ? e.message : String(e))
     }
   }
 
