@@ -604,3 +604,25 @@ AI 起草任务全链路：官方扩展点员工档案+六步派发+报告直达
 ### Status
 
 [OK] **Completed**
+
+
+## Session 18: 任务透视 v3 体检卡
+<!-- trellis-session: v=2 fp=fd26929ed48817e6 -->
+
+**Date**: 2026-09-30
+**Task**: 任务透视 v3 体检卡
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+删框架管线图，重做为任务体检+行动卡：状态带/问题清单/规则化下一步/交付物清单(可阅读)/上下文体检/会话频道关联
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `503227d` | feat(insights): 任务透视 v3——任务体检+行动卡（产品化重做） |
+
+### Status
+
+[OK] **Completed**
