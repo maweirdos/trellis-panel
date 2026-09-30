@@ -16,7 +16,6 @@ import {
   Wand2,
   ExternalLink,
   FolderOpen,
-  Archive,
   GitBranch,
   Split,
   X,
@@ -40,7 +39,6 @@ import { api } from '../api'
 import { MarkdownView } from '../components/MarkdownView'
 import { CodeView } from '../components/CodeView'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
-import { DoDModal } from '../components/DoDModal'
 import { confirmDialog } from '../components/Dialogs'
 import { FocusTimer } from '../components/FocusTimer'
 import { Select } from '../components/Select'
@@ -99,8 +97,6 @@ const TaskCard = React.memo(function TaskCard({
   const fullTitle = t.record?.title ?? t.dirName
   return (
     <div
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData('text/task-dir', t.dirName)}
       onClick={onOpen}
       title={`${fullTitle}${t.record?.assignee ? ` · ${t.record.assignee}` : ''}`}
       className="group cursor-pointer rounded-lg border border-ink-700 bg-ink-800 px-3 py-2.5 transition-all hover:border-ink-500 hover:shadow-md active:cursor-grabbing"
@@ -248,8 +244,6 @@ function TaskRow({ t, onOpen }: { t: TaskInfo; onOpen: () => void }): JSX.Elemen
   return (
     <div
       onClick={onOpen}
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData('text/task-dir', t.dirName)}
       className="grid cursor-pointer grid-cols-[92px_84px_74px_1fr_110px_88px_84px] items-center gap-3 border-b border-ink-700/50 px-4 py-2 text-xs transition-colors hover:bg-ink-750/60"
     >
       <span className="font-mono text-[10.5px] text-mist-500">{taskDateLabel(t.dirName, t.date)}</span>
@@ -289,83 +283,12 @@ interface DocTabItem {
   isInherited?: boolean
 }
 
-function StatusDropdown({
-  value,
-  columns,
-  onChange
-}: {
-  value: string
-  columns: Array<{ status: string; label: string; dot: string; ring: string }>
-  onChange: (status: string) => void
-}): JSX.Element {
-  const [open, setOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent): void => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [open])
-
-  const current = columns.find((c) => c.status === value) ?? columns[0]
-
-  return (
-    <div className="relative inline-block" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-mist-100 transition-colors hover:bg-ink-700/60 focus:outline-none"
-        title="切换任务状态"
-      >
-        <span className={clsx('h-1.5 w-1.5 rounded-full', current?.dot ?? 'bg-mist-400')} />
-        <span>{statusLabel(current?.status ?? value)}</span>
-        <ChevronDown size={11} className={clsx('text-mist-400 transition-transform duration-150', open && 'rotate-180')} />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-[130px] overflow-hidden rounded-lg border border-ink-700/80 bg-ink-800/95 p-1 shadow-xl backdrop-blur-md animate-fade-in">
-          {columns.map((c) => {
-            const isSelected = c.status === value
-            return (
-              <button
-                key={c.status}
-                type="button"
-                onClick={() => {
-                  onChange(c.status)
-                  setOpen(false)
-                }}
-                className={clsx(
-                  'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors',
-                  isSelected ? 'bg-ink-700/70 font-medium text-mist-50' : 'text-mist-300 hover:bg-ink-700/40 hover:text-mist-100'
-                )}
-              >
-                <span className={clsx('h-1.5 w-1.5 rounded-full', c.dot)} />
-                <span className="flex-1">{statusLabel(c.status)}</span>
-                {isSelected && <Check size={12} className="text-leaf-soft" />}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function TaskWorkspace({
   tasks,
   selected,
   onSelect,
   onClose,
   columns,
-  onMoveTask,
   childMap,
   childDirs
 }: {
@@ -374,7 +297,6 @@ function TaskWorkspace({
   onSelect: (dir: string | null) => void
   onClose: () => void
   columns: Array<{ status: string; label: string; dot: string; ring: string }>
-  onMoveTask: (t: TaskInfo, status: string) => Promise<void>
   childMap: Map<string, TaskInfo[]>
   childDirs: Set<string>
 }): JSX.Element {
@@ -390,7 +312,6 @@ function TaskWorkspace({
   const [aiBusy, setAiBusy] = useState<'prd' | 'summary' | 'split' | null>(null)
   const [aiDraft, setAiDraft] = useState<string | null>(null)
   const [aiSummaryText, setAiSummaryText] = useState<string | null>(null)
-  const [dodOpen, setDodOpen] = useState(false)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
   const [collapsedEpics, setCollapsedEpics] = useState<Record<string, boolean>>({})
   const docContainerRef = useRef<HTMLDivElement>(null)
@@ -539,7 +460,6 @@ function TaskWorkspace({
 
   const headings = docContent ? extractHeadings(docContent) : []
   const prog = subtaskProgress(task)
-  const isDone = ['completed', 'done'].includes(statusOf(task))
   const isRoot = !task.record?.parent
 
   const goto = (delta: number): void => {
@@ -606,16 +526,6 @@ function TaskWorkspace({
       setActiveDocType('prd')
     } else {
       pushToast({ kind: 'error', title: '保存失败', body: res.error })
-    }
-  }
-
-  const archive = async (): Promise<void> => {
-    const res = await api.taskArchive(task.dirName)
-    if (res.ok) {
-      pushToast({ kind: 'success', title: '已归档', body: res.dirName })
-      onSelect(null)
-    } else {
-      pushToast({ kind: 'error', title: '归档失败', body: res.error })
     }
   }
 
@@ -1095,20 +1005,14 @@ function TaskWorkspace({
           <div className="flex items-center gap-2.5 shrink-0">
             {/* 分组 1：核心状态与属性 */}
             <div className="flex items-center gap-1.5 rounded-lg bg-ink-800 p-0.5 border border-ink-700/80 shadow-xs">
-              <StatusDropdown
-                value={statusOf(task)}
-                columns={columns}
-                onChange={(target) => {
-                  void (async () => {
-                    if (target === 'completed' && !isDone) {
-                      setDodOpen(true)
-                      return
-                    }
-                    const res = await api.updateTask(task.path, { status: target })
-                    if (!res.ok) pushToast({ kind: 'error', title: '状态更新失败', body: res.error })
-                  })()
-                }}
-              />
+              {/* R0：状态只读展示，生命周期写入收归外部 Trellis 工作流 */}
+              <span
+                className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-mist-100"
+                title="任务阶段由外部 Trellis 工作流管理，面板不直接修改"
+              >
+                <span className={clsx('h-1.5 w-1.5 rounded-full', columns.find((c) => c.status === statusOf(task))?.dot ?? 'bg-mist-400')} />
+                <span>{statusLabel(statusOf(task))}</span>
+              </span>
               <PriorityBadge priority={task.record?.priority ?? ''} />
               <div className="pr-1">
                 <FocusTimer task={task} />
@@ -1152,15 +1056,6 @@ function TaskWorkspace({
               >
                 <ExternalLink size={13.5} />
               </button>
-              {isDone && (
-                <button
-                  onClick={() => void archive()}
-                  className="btn-ghost p-1.5 text-amber-300 hover:bg-ink-750"
-                  title="归档当前已完成任务"
-                >
-                  <Archive size={13.5} />
-                </button>
-              )}
             </div>
 
             <div className="h-4 w-px bg-ink-700/80" />
@@ -1483,16 +1378,6 @@ function TaskWorkspace({
         </div>
       </div>
 
-      {dodOpen && (
-        <DoDModal
-          task={task}
-          onClose={() => setDodOpen(false)}
-          onDone={() => {
-            setDodOpen(false)
-            pushToast({ kind: 'success', title: '已完成', body: task.dirName })
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -1510,10 +1395,8 @@ export function TasksPage(): JSX.Element {
   /** 已展开的「已完成」等大列（列 key） */
   const [expandedCols, setExpandedCols] = useState<Set<string>>(new Set())
   /** 完成门禁：待确认的任务 */
-  const [dodTask, setDodTask] = useState<TaskInfo | null>(null)
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState('')
-  const [dragOver, setDragOver] = useState<string | null>(null)
 
   const assignees = useMemo(
     () => [...new Set(snapshot.tasks.map((t) => t.record?.assignee).filter(Boolean) as string[])].sort(),
@@ -1567,18 +1450,6 @@ export function TasksPage(): JSX.Element {
     return extras
   }, [snapshot.tasks])
   const columns = [...COLUMNS, ...extraColumns]
-
-  const moveTo = async (t: TaskInfo, status: string): Promise<void> => {
-    if (t.record?.status === status) return
-    if (status === 'completed' && !['completed', 'done'].includes((t.record?.status ?? '').toLowerCase())) {
-      setDodTask(t)
-      return
-    }
-    const res = await api.updateTask(t.path, { status })
-    if (!res.ok) {
-      pushToast({ kind: 'error', title: '状态更新失败', body: res.error })
-    }
-  }
 
   /* ----- 聚合状态计数（filtered） ----- */
   const counts = useMemo(
@@ -1695,7 +1566,6 @@ export function TasksPage(): JSX.Element {
           onSelect={(dir) => showTask(dir)}
           onClose={() => showTask(null)}
           columns={columns}
-          onMoveTask={moveTo}
           childMap={childMap}
           childDirs={childDirs}
         />
@@ -1713,22 +1583,7 @@ export function TasksPage(): JSX.Element {
               return (
                 <div
                   key={col.status}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    setDragOver(col.status)
-                  }}
-                  onDragLeave={() => setDragOver((cur) => (cur === col.status ? null : cur))}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    setDragOver(null)
-                    const dir = e.dataTransfer.getData('text/task-dir')
-                    const t = snapshot.tasks.find((x) => x.dirName === dir)
-                    if (t) void moveTo(t, col.status)
-                  }}
-                  className={clsx(
-                    'flex w-full min-w-[230px] flex-1 flex-col rounded-xl border border-ink-700 bg-ink-850/50',
-                    dragOver === col.status && `ring-2 ${col.ring}`
-                  )}
+                  className="flex w-full min-w-[230px] flex-1 flex-col rounded-xl border border-ink-700 bg-ink-850/50"
                 >
                   <div className="flex shrink-0 items-center gap-2 border-b border-ink-700/70 px-3 py-2.5">
                     <span className={clsx('h-2 w-2 rounded-full', col.dot)} />
@@ -1778,13 +1633,6 @@ export function TasksPage(): JSX.Element {
       )}
 
       {planSeed && <PlanningModal seed={planSeed} onClose={() => setPlanSeed(null)} />}
-      {dodTask && (
-        <DoDModal
-          task={dodTask}
-          onClose={() => setDodTask(null)}
-          onDone={() => setDodTask(null)}
-        />
-      )}
     </div>
   )
 }

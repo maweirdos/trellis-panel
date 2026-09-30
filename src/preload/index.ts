@@ -128,7 +128,6 @@ const api = {
   aiSplitEpic: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.splitEpic, dirName),
   aiCommitMsg: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.commitMsg, dirName),
   aiPrDesc: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.prDesc, dirName),
-  taskArchive: (dirName: string) => ipcRenderer.invoke(ipcInvoke.task.archive, dirName),
   taskWriteArtifact: (dirName: string, fileName: string, content: string) =>
     ipcRenderer.invoke(ipcInvoke.task.writeArtifact, dirName, fileName, content),
 

@@ -9,10 +9,9 @@ import { app, Notification } from 'electron'
 import { join, resolve, sep, extname } from 'path'
 import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, rmSync } from 'fs'
 import { BrowserWindow } from 'electron'
-import { scanProject, updateTaskRecordAt, TEXT_EXTS } from './services/scan'
+import { scanProject, TEXT_EXTS } from './services/scan'
 import { TrellisWatcher } from './services/watcher'
 import { getSettings, pushRecentProject } from './services/store'
-import { jiraSearch, mapJiraStatus } from './services/jira'
 import { clearGitCache } from './services/git'
 import { recordActivity } from './services/activity'
 import { broadcastToWindows } from './services/bridge'
@@ -32,7 +31,6 @@ let projectRoot: string | null = null
 let latestSnapshot: ProjectSnapshot | null = null
 /** task dirs seen in the current project — drives the Inbox "new task" diff */
 let knownTaskDirs = new Set<string>()
-let jiraSyncTimer: ReturnType<typeof setInterval> | null = null
 export const watcher = new TrellisWatcher()
 
 /* WeKnora spec 同步：变更进队列，静默期后批量推送公司库 */
@@ -122,7 +120,13 @@ export function sendSnapshot(): void {
       archivedCount: latestSnapshot.archived.length
     })
   } catch (e) {
+    // R0：重扫失败保留上一份快照（latestSnapshot 未被替换），并显式告知而非静默
     console.error('rescan failed:', errorMessage(e))
+    broadcastToWindows(ipcEvent.toast, {
+      kind: 'warn',
+      title: '重新扫描失败',
+      body: `已保留上次结果（${errorText(e, '未知错误')}）`
+    })
   }
 }
 
@@ -373,51 +377,9 @@ export function slugifyTitle(title: string): string {
   return slug || 'req'
 }
 
-/* ---------------- jira auto sync ---------------- */
-
-async function autoSyncJira(): Promise<void> {
-  if (!projectRoot || !latestSnapshot) return
-  const cfg = getSettings().jira
-  if (!cfg.enabled || !cfg.baseUrl) return
-  const linked = latestSnapshot.tasks.filter((t) => t.jiraKey)
-  if (linked.length === 0) return
-  let changed = 0
-  for (const t of linked) {
-    try {
-      const res = await jiraSearch(cfg, `issuekey = ${t.jiraKey}`)
-      const issue = res.issues?.[0]
-      if (!issue) continue
-      const target = mapJiraStatus(cfg.statusMap ?? {}, issue.status, issue.statusCategory)
-      if ((t.record?.status ?? '').toLowerCase() !== target) {
-        updateTaskRecordAt(projectRoot, t.path, { status: target })
-        changed += 1
-      }
-    } catch {
-      // per-issue failures are non-fatal
-    }
-  }
-  if (changed > 0) {
-    broadcastToWindows(ipcEvent.toast, {
-      kind: 'info',
-      title: 'Jira 自动同步',
-      body: `${changed} 个关联任务状态已按 Jira 更新`
-    })
-  }
-}
-
-export function restartJiraAutoSync(): void {
-  stopJiraAutoSync()
-  if (getSettings().jira.enabled && getSettings().jira.autoSync) {
-    jiraSyncTimer = setInterval(() => void autoSyncJira(), 10 * 60 * 1000)
-  }
-}
-
-function stopJiraAutoSync(): void {
-  if (jiraSyncTimer) {
-    clearInterval(jiraSyncTimer)
-    jiraSyncTimer = null
-  }
-}
+/* R0（09-30-r0-trusted-boundary）：Jira 后台自动回写 task.json.status 已停用。
+ * 任务生命周期写入收归外部 Trellis 工作流；面板对 task.json 保持只读，
+ * 元数据编辑走 task.update 白名单（见 scan.ts EDITABLE）。 */
 
 /* ---------------- http api lifecycle ---------------- */
 
@@ -443,6 +405,5 @@ export function applyAutoStart(): void {
 export function stopTimers(): void {
   watcher.stop()
   weknoraSpecSync.stop()
-  stopJiraAutoSync()
   stopHttpApi()
 }

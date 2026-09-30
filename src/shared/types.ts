@@ -128,6 +128,8 @@ export interface ProjectMeta {
   developer: string | null
   developerSince: string | null
   currentTask: string | null
+  /** 该绑定来自最近活跃会话的最后记录（.runtime/sessions 的 last_seen_at），非在线心跳 */
+  currentTaskAt: string | null
   hasWorkflow: boolean
   workflowTemplate: string | null
   packages: string[]
@@ -238,8 +240,6 @@ export interface JiraConfig {
   jql: string
   /** jira status name -> trellis status; fallback: statusCategory mapping */
   statusMap: Record<string, string>
-  /** auto sync every 10 minutes */
-  autoSync: boolean
 }
 
 export interface JiraIssue {
@@ -1214,7 +1214,6 @@ export interface TrellisApi {
   aiSplitEpic: (dirName: string) => Promise<{ ok: boolean; error?: string; created?: string[] }>
   aiCommitMsg: (dirName: string) => Promise<AiChatResult>
   aiPrDesc: (dirName: string) => Promise<AiChatResult>
-  taskArchive: (dirName: string) => Promise<{ ok: boolean; error?: string; dirName?: string }>
   taskWriteArtifact: (dirName: string, fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
 
   /* --- KB-MCP --- */

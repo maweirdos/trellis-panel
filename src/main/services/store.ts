@@ -15,8 +15,7 @@ const DEFAULTS: Settings = {
     user: '',
     password: '',
     jql: '',
-    statusMap: {},
-    autoSync: false
+    statusMap: {}
   },
   gitlab: {
     enabled: false,

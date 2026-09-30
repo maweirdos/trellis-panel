@@ -354,13 +354,14 @@ export function scanProject(root: string): ProjectSnapshot {
   }
   const { developer, since } = readDeveloper(join(trellisDir, '.developer'))
 
-  let currentTask: string | null = null
-  try {
-    const raw = readFileSync(join(trellisDir, '.current-task'), 'utf-8').trim()
-    currentTask = raw ? basename(raw) : null
-  } catch {
-    // no current task
-  }
+  // R0：旧全局指针 .current-task 已废弃（Trellis 0.5+ 按会话记录绑定）。
+  // 会话焦点 = 最近活跃会话（.runtime/sessions/ 按 last_seen_at 排序的第一条）绑定的任务；
+  // currentTaskAt 记录该会话的最后时间，UI 必须以“最后记录”呈现，不得当作在线心跳。
+  const sessionsRoot = join(trellisDir, '.runtime', 'sessions')
+  const sessions = trellisExists ? scanSessions(sessionsRoot) : []
+  const freshest = sessions.find((s) => s.currentTask) ?? null
+  const currentTask = freshest?.currentTask ?? null
+  const currentTaskAt = freshest?.lastSeen ?? null
 
   const hasWorkflow = existsSync(join(trellisDir, 'workflow.md'))
   const { packages } = parseConfig(join(trellisDir, 'config.yaml'))
@@ -373,6 +374,7 @@ export function scanProject(root: string): ProjectSnapshot {
     developer,
     developerSince: since,
     currentTask,
+    currentTaskAt,
     hasWorkflow,
     workflowTemplate: null,
     packages,
@@ -401,7 +403,7 @@ export function scanProject(root: string): ProjectSnapshot {
     spec: walkSpec(join(trellisDir, 'spec'), trellisDir),
     developers: ws.developers,
     sharedWorkspaceFiles: ws.shared,
-    sessions: scanSessions(join(trellisDir, '.runtime', 'sessions')),
+    sessions,
     scannedAt: Date.now()
   }
 }
@@ -438,8 +440,10 @@ export function updateTaskRecordAt(
     }
   }
 
+  // R0：status / completedAt 属任务生命周期字段，收归外部 Trellis 工作流，
+  // 面板编辑白名单只保留元数据（title/description/priority/assignee/notes/branch/pr_url/subtasks/meta）
   const EDITABLE = new Set([
-    'title', 'description', 'status', 'priority', 'assignee', 'notes', 'branch', 'pr_url', 'subtasks'
+    'title', 'description', 'priority', 'assignee', 'notes', 'branch', 'pr_url', 'subtasks'
   ])
   const next: Record<string, unknown> = { ...record }
   for (const [k, v] of Object.entries(patch)) {
@@ -452,11 +456,6 @@ export function updateTaskRecordAt(
     if (!EDITABLE.has(k)) continue
     if (next[k] === v) continue
     next[k] = v
-    if (k === 'status') {
-      const completing = String(v).toLowerCase() === 'completed'
-      if (completing && !next.completedAt) next.completedAt = new Date().toISOString().slice(0, 10)
-      if (!completing) next.completedAt = null
-    }
   }
   writeFileSync(jsonPath, JSON.stringify(next, null, 2) + '\n', 'utf-8')
   return { conflict: false }

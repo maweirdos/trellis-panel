@@ -584,18 +584,7 @@ export function SettingsPage(): JSX.Element {
               {jiraTesting ? '测试中…' : '测试连接'}
             </button>
             <button onClick={() => void saveJira()} className="btn-primary">保存配置</button>
-            <label className="ml-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-mist-400">
-              <input
-                type="checkbox"
-                checked={jira.autoSync}
-                onChange={(e) => {
-                  setJira({ ...jira, autoSync: e.target.checked })
-                  void saveSettings({ jira: { ...jira, autoSync: e.target.checked, enabled: !!jira.baseUrl && !!jira.user } })
-                }}
-                className="accent-emerald-500"
-              />
-              每 10 分钟自动同步关联任务状态
-            </label>
+            {/* R0：Jira 后台自动回写任务状态已停用（生命周期收归外部工作流），开关一并移除 */}
             {jiraOk && (
               <span className="flex items-center gap-1 text-[11px] text-emerald-300">
                 <CheckCircle2 size={12} /> {jiraOk}

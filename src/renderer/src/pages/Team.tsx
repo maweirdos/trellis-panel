@@ -655,7 +655,7 @@ export function TeamPage(): JSX.Element {
           <div className="card flex items-center gap-4 px-5 py-3.5">
             <Star size={15} className="shrink-0 text-leaf" fill="currentColor" />
             <div className="min-w-0 flex-1">
-              <div className="text-[10.5px] uppercase tracking-wider text-mist-500">全队当前焦点</div>
+              <div className="text-[10.5px] uppercase tracking-wider text-mist-500">最近会话绑定的任务</div>
               <button onClick={() => showTask(currentTask.dirName)} className="truncate text-xs font-medium text-mist-100 hover:text-leaf-soft">
                 {currentTask.record.title}
               </button>

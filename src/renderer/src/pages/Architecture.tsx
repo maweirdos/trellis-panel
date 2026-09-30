@@ -133,7 +133,7 @@ export function ArchitecturePage(): JSX.Element {
         <span className="text-[10.5px] text-mist-500">点击节点查看细节</span>
         {currentNode && (
           <span className="chip bg-leaf-dim/15 text-[10.5px] text-leaf-soft">
-            当前任务 · {currentNode.dir}
+            会话最后绑定 · {currentNode.dir}
           </span>
         )}
         <button onClick={() => setRunId((r) => r + 1)} className="btn-ghost ml-auto justify-center px-2" title="重放动画">

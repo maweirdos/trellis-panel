@@ -96,7 +96,10 @@ export function Dashboard(): JSX.Element {
           </div>
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center gap-2">
-              <span className="chip bg-leaf/10 text-leaf-soft">当前任务</span>
+              {/* R0：焦点来自最近活跃会话的最后记录，非全局唯一“执行中”任务 */}
+              <span className="chip bg-leaf/10 text-leaf-soft" title={meta.currentTaskAt ?? undefined}>
+                会话最后绑定{meta.currentTaskAt ? ` · ${new Date(meta.currentTaskAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}
+              </span>
               <StatusBadge status={current.record.status} />
               <PriorityBadge priority={current.record.priority} />
             </div>

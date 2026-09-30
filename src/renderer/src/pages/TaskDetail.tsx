@@ -31,7 +31,6 @@ import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
 import { confirmDialog } from '../components/Dialogs'
 import { MarkdownView } from '../components/MarkdownView'
 import { CodeView } from '../components/CodeView'
-import { STATUS_OPTIONS, statusLabel } from '../utils/labels'
 import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
 import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
@@ -275,7 +274,6 @@ export function TaskDetail(): JSX.Element | null {
   const [sel, setSel] = useState<string | null>(null)
   const [pending, setPending] = useState<TaskPatch>({})
   const [showDiff, setShowDiff] = useState(false)
-  const [syncingJira, setSyncingJira] = useState(false)
   const [git, setGit] = useState<TaskGitInfo | null>(null)
   const [gitLoading, setGitLoading] = useState(false)
   const [newBranch, setNewBranch] = useState('')
@@ -436,32 +434,6 @@ export function TaskDetail(): JSX.Element | null {
     setPending((p) => ({ ...p, subtasks: next }))
   }
 
-  const syncJira = async (): Promise<void> => {
-    if (!jiraKey || !settings?.jira?.enabled) return
-    setSyncingJira(true)
-    const res = await api.jiraSearch(settings.jira, `issuekey = ${jiraKey}`)
-    setSyncingJira(false)
-    const issue = res.issues?.[0]
-    if (!res.ok || !issue) {
-      pushToast({ kind: 'error', title: 'Jira 同步失败', body: res.error ?? '未找到该问题' })
-      return
-    }
-    const map: Record<string, string> = { new: 'planning', indeterminate: 'in_progress', done: 'completed' }
-    const trellisStatus = map[issue.statusCategory] ?? 'planning'
-    const patch: TaskPatch = { status: trellisStatus }
-    if (issue.summary !== r?.title) patch.title = issue.summary
-    const res2 = await api.updateTask(task.path, patch, task.taskJsonMtime)
-    if (res2.ok) {
-      pushToast({
-        kind: 'success',
-        title: `Jira ${jiraKey} 已同步`,
-        body: `状态：${issue.status} → ${statusLabel(trellisStatus)}`
-      })
-    } else {
-      pushToast({ kind: 'error', title: '同步写入失败', body: res2.error })
-    }
-  }
-
   const deleteTodo = async (): Promise<void> => {
     if (r?.status !== 'planning') return
     const confirmed = await confirmDialog({
@@ -573,15 +545,6 @@ export function TaskDetail(): JSX.Element | null {
               <>
                 <FieldRow field="title" label="标题" value={r.title} pendingValue={pending.title} onChange={setField} />
                 <FieldRow
-                  field="status"
-                  label="状态"
-                  value={r.status}
-                  pendingValue={pending.status}
-                  onChange={setField}
-                  options={STATUS_OPTIONS}
-                  display={statusLabel}
-                />
-                <FieldRow
                   field="priority"
                   label="优先级"
                   value={r.priority}
@@ -684,14 +647,6 @@ export function TaskDetail(): JSX.Element | null {
                         {git.merged && (
                           <div className="flex items-center gap-1.5 rounded bg-emerald-500/10 px-2 py-1 text-emerald-300">
                             <GitMerge size={11} /> 分支已合入 {r.base_branch ?? '主分支'}
-                            {r.status !== 'completed' && (
-                              <button
-                                onClick={() => setPending((p) => ({ ...p, status: 'completed' }))}
-                                className="ml-auto flex items-center gap-0.5 text-[10.5px] underline"
-                              >
-                                标记为已完成 <Check size={10} />
-                              </button>
-                            )}
                           </div>
                         )}
                         {git.commits.length > 0 && (
@@ -855,12 +810,7 @@ export function TaskDetail(): JSX.Element | null {
                           <ExternalLink size={12} /> Jira {jiraKey}
                         </button>
                       )}
-                      {settings?.jira?.enabled && (
-                        <button onClick={() => void syncJira()} disabled={syncingJira} className="btn-outline disabled:opacity-50">
-                          <RefreshCw size={12} className={syncingJira ? 'animate-spin' : ''} />
-                          {syncingJira ? '同步中…' : '从 Jira 同步'}
-                        </button>
-                      )}
+                      {/* R0：从 Jira 同步（直写任务状态）已停用——任务阶段收归外部工作流 */}
                     </>
                   )}
                 </div>

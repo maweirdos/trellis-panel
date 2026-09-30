@@ -27,7 +27,6 @@ export const ipcInvoke = {
     create: 'task:create',
     createFromJira: 'task:createFromJira',
     createFromPlan: 'task:createFromPlan',
-    archive: 'task:archive',
     writeArtifact: 'task:writeArtifact'
   },
   todo: {

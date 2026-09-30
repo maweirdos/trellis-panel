@@ -13,8 +13,6 @@ import {
   FolderOpen,
   ArrowUpRight,
   Copy,
-  Play,
-  RotateCcw
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -145,27 +143,6 @@ export function CapsuleView(): JSX.Element {
   const nextTask = (): void => {
     if (displayTasks.length <= 1) return
     setSelectedIndex((i) => (i >= displayTasks.length - 1 ? 0 : i + 1))
-  }
-
-  const handleAdvanceStatus = async (): Promise<void> => {
-    if (!current?.record) return
-    const cur = current.record.status
-    let nextStatus = 'in_progress'
-    if (cur === 'planning') nextStatus = 'in_progress'
-    else if (cur === 'in_progress') nextStatus = 'review'
-    else if (cur === 'review') nextStatus = 'completed'
-    else nextStatus = 'in_progress'
-
-    const res = await api.updateTask(current.path, { status: nextStatus })
-    if (res.ok) {
-      pushToast({
-        kind: 'success',
-        title: '状态已流转',
-        body: `${current.record.title} -> ${nextStatus}`
-      })
-    } else {
-      pushToast({ kind: 'error', title: '状态流转失败', body: res.error || '未知错误' })
-    }
   }
 
   const handleOpenEditor = async (): Promise<void> => {
@@ -453,26 +430,7 @@ export function CapsuleView(): JSX.Element {
 
                 {/* 底部快捷操作栏 Footer */}
                 <div className="no-drag mt-auto flex items-center gap-1.5 pt-2 border-t border-ink-700/80">
-                  {/* 快捷推进状态按钮 */}
-                  <button
-                    onClick={handleAdvanceStatus}
-                    className="btn-outline flex items-center gap-1 px-2 py-1 text-[11px]"
-                    title="推进任务到下一阶段"
-                  >
-                    {current.record.status === 'planning' ? (
-                      <>
-                        <Play size={10} className="text-leaf" /> 开始进行
-                      </>
-                    ) : current.record.status === 'in_progress' ? (
-                      <>
-                        <ArrowUpRight size={10} className="text-violet-400" /> 提评审
-                      </>
-                    ) : (
-                      <>
-                        <RotateCcw size={10} /> 状态流转
-                      </>
-                    )}
-                  </button>
+                  {/* R0：状态流转直写已停用——任务阶段收归外部 Trellis 工作流 */}
 
                   {/* 在编辑器中打开 */}
                   <button

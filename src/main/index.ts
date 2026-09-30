@@ -18,7 +18,6 @@ import {
   sendSnapshot,
   toast,
   restartHttpApi,
-  restartJiraAutoSync,
   applyAutoStart,
   stopTimers,
   openProjectAt,
@@ -439,7 +438,6 @@ if (!gotLock) {
     registerGlobalShortcut()
     setupUpdater()
     restartHttpApi()
-    restartJiraAutoSync()
     void accessServer.syncFromSettings()
     void applyChromiumProxy()
     // 冷启动深链：进程首次以 trellis-panel:// 协议拉起时 argv 里带着 URL，

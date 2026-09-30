@@ -147,26 +147,6 @@ export function JiraPage(): JSX.Element {
     }
   }
 
-  const syncIssue = async (issue: JiraIssue): Promise<void> => {
-    const linked = linkedByKey.get(issue.key.toUpperCase())
-    if (!linked?.record) return
-    setBusyKey(issue.key)
-    const custom = cfg.statusMap?.[issue.status]
-    const trellisStatus = custom ?? JIRA_CATEGORY_STATUS[issue.statusCategory] ?? 'planning'
-    const patch: Record<string, unknown> = { status: trellisStatus }
-    const res = await api.updateTask(linked.path, patch)
-    setBusyKey(null)
-    if (res.ok) {
-      pushToast({
-        kind: 'success',
-        title: `${issue.key} 已同步`,
-        body: `Jira「${issue.status}」→ Trellis「${statusLabel(trellisStatus)}」${custom ? '（自定义映射）' : ''}`
-      })
-    } else {
-      pushToast({ kind: 'error', title: `${issue.key} 同步失败`, body: res.error })
-    }
-  }
-
   const pushStatusToJira = async (issue: JiraIssue): Promise<void> => {
     const linked = linkedByKey.get(issue.key.toUpperCase())
     if (!linked?.record) return
@@ -292,9 +272,7 @@ export function JiraPage(): JSX.Element {
               </>
             ) : (
               <>
-                <button disabled={busy} onClick={() => void syncIssue(issue)} className="btn-ghost px-1.5 py-1 text-[10.5px] disabled:opacity-50" title="Jira 状态 → Trellis 任务">
-                  <RefreshCw size={10} /> 同步
-                </button>
+                {/* R0：Jira→Trellis 状态直写（同步按钮）已停用——任务阶段收归外部工作流，页面对账化 */}
                 <button disabled={busy} onClick={() => void pushStatusToJira(issue)} className="btn-ghost px-1.5 py-1 text-[10.5px] disabled:opacity-50" title="Trellis 状态 → Jira 流转">
                   <ArrowRightCircle size={10} /> 推送
                 </button>
