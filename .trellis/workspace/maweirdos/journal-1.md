@@ -450,3 +450,25 @@ codex 升级后全链路实跑通过：read-only worker 产出三段审阅报告
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: FR 审阅缺陷修复
+<!-- trellis-session: v=2 fp=f1f51da888bd612f -->
+
+**Date**: 2026-09-30
+**Task**: FR 审阅缺陷修复
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+按 T4 门禁审阅报告修复 7 处交互缺陷(空态/阅读恢复/定时器/热键竞态/剪贴板/键冲突/归档竞态)，剪贴板逻辑三例冒烟通过，typecheck+build 绿
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3b205d5` | fix(fr): 修复只读审阅发现的 7 处交互缺陷 |
+
+### Status
+
+[OK] **Completed**
