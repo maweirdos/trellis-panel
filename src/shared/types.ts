@@ -1228,6 +1228,13 @@ export interface TrellisApi {
   taskWriteArtifact: (dirName: string, fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
   taskResolveClipboardTask: () => Promise<{ ok: true; dirName: string; archived: boolean } | { ok: false; error: string }>
   taskBuildTaskLink: (dirName: string) => Promise<{ ok: true; url: string } | { ok: false; error: string }>
+  taskHandoffBuild: (dirName: string, intent: string, includePrd: boolean) => Promise<{
+    ok: boolean
+    error?: string
+    text: string
+    issues: string[]
+    files: string[]
+  }>
   desktopSetExplorerMenu: (on: boolean) => Promise<{ ok: boolean; supported: boolean; reason?: string }>
 
   /* --- KB-MCP --- */

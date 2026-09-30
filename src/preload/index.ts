@@ -135,6 +135,14 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.task.buildTaskLink, dirName) as Promise<
       { ok: true; url: string } | { ok: false; error: string }
     >,
+  taskHandoffBuild: (dirName: string, intent: string, includePrd: boolean) =>
+    ipcRenderer.invoke(ipcInvoke.task.handoffBuild, dirName, intent, includePrd) as Promise<{
+      ok: boolean
+      error?: string
+      text: string
+      issues: string[]
+      files: string[]
+    }>,
   desktopSetExplorerMenu: (on: boolean) =>
     ipcRenderer.invoke(ipcInvoke.desktop.setExplorerMenu, on) as Promise<
       { ok: boolean; supported: boolean; reason?: string }

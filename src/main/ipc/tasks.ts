@@ -5,6 +5,7 @@ import { ipcInvoke } from '../../shared/ipc-channels'
 import { errorText, errorMessage } from '../../shared/errors'
 import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
 import { updateTaskRecordAt } from '../services/scan'
+import { buildHandoffPackage, readPrdContent } from '../services/handoff'
 import { getSettings } from '../services/store'
 import {
   getProjectRoot,
@@ -86,6 +87,16 @@ export function registerTasksIpc(): void {
     if (!t) return ipcFail(IpcErrorCode.NotFound, `任务不存在: ${dirName}`)
     const token = getSettings().bridgeToken
     return { ok: true as const, url: `trellis-panel://open-task?dir=${encodeURIComponent(t.path)}&t=${token}` }
+  })
+
+  /** T3：构建任务交接包（确定性文本；意图由渲染层选择，默认只核对与阅读） */
+  handle(ipcInvoke.task.handoffBuild, (_e, dirName: string, intent: string, includePrd: boolean) => {
+    const root = getProjectRoot()
+    if (!root) return noProject()
+    const t = findTask(String(dirName))
+    if (!t) return ipcFail(IpcErrorCode.NotFound, `任务不存在: ${dirName}`)
+    const extra = includePrd ? { prdContent: readPrdContent(t.path) } : undefined
+    return buildHandoffPackage(root, t, String(intent ?? ''), extra)
   })
 
   handle(ipcInvoke.task.writeArtifact, (_e, dirName: string, fileName: string, content: string) => {

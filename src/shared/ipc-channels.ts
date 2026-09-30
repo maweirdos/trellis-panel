@@ -29,7 +29,8 @@ export const ipcInvoke = {
     createFromPlan: 'task:createFromPlan',
     writeArtifact: 'task:writeArtifact',
     resolveClipboardTask: 'task:resolveClipboardTask',
-    buildTaskLink: 'task:buildTaskLink'
+    buildTaskLink: 'task:buildTaskLink',
+    handoffBuild: 'task:handoffBuild'
   },
   todo: {
     list: 'todo:list',

@@ -31,7 +31,9 @@ import {
   ArrowLeft,
   ClipboardPaste,
   ListTodo,
-  Link2
+  Link2,
+  SquareCode,
+  ClipboardCopy
 } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
@@ -44,6 +46,7 @@ import { MarkdownView } from '../components/MarkdownView'
 import { CodeView } from '../components/CodeView'
 import { confirmDialog } from '../components/Dialogs'
 import { FocusTimer } from '../components/FocusTimer'
+import { HandoffModal } from '../components/HandoffModal'
 import { Select } from '../components/Select'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
@@ -320,6 +323,7 @@ function TaskWorkspace({
   const [collapsedEpics, setCollapsedEpics] = useState<Record<string, boolean>>({})
   const docContainerRef = useRef<HTMLDivElement>(null)
   const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [handoffOpen, setHandoffOpen] = useState(false)
 
   const idx = Math.max(0, tasks.findIndex((t) => t.dirName === selected))
   const task = tasks[idx] ?? null
@@ -1059,11 +1063,26 @@ function TaskWorkspace({
             {/* 分组 2：工具与操作（AI / 目录 / 归档） */}
             <div className="flex items-center gap-1">
               <button
+                onClick={() => void api.openInEditor(task.path)}
+                className="btn-ghost p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                title="在 VS Code / 默认编辑器打开任务目录"
+              >
+                <SquareCode size={13.5} />
+              </button>
+              <button
                 onClick={() => void api.revealInExplorer(task.path)}
                 className="btn-ghost p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
                 title="在资源管理器中打开任务目录"
               >
                 <FolderOpen size={13.5} />
+              </button>
+              {/* T3：任务交接包——确定性文本，意图可选，附加 PRD 需显式勾选 */}
+              <button
+                onClick={() => setHandoffOpen(true)}
+                className="btn-ghost p-1.5 text-leaf-soft hover:bg-ink-750 hover:text-leaf"
+                title="生成任务交接包（复制给任意 AI 工具接续）"
+              >
+                <ClipboardCopy size={13.5} />
               </button>
               {isRoot && (
                 <button
@@ -1444,6 +1463,7 @@ function TaskWorkspace({
             <div className="text-[10.5px] text-mist-600">j / k 或 ↑↓ 切换 · Esc 关闭 · Ctrl+K 全局搜索</div>
           </div>
         )}
+        {handoffOpen && task && <HandoffModal task={task} onClose={() => setHandoffOpen(false)} />}
       </div>
 
     </div>
