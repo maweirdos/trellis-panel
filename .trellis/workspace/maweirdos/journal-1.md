@@ -428,3 +428,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 10: T4 门禁完整通过
+<!-- trellis-session: v=2 fp=5cf9be1bc9313c35 -->
+
+**Date**: 2026-09-30
+**Task**: T4 门禁完整通过
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+codex 升级后全链路实跑通过：read-only worker 产出三段审阅报告(9条file:line真实问题)，git 零写入；报告归档为门禁证据，planner/归档三段式解锁；审阅发现的 FR 交互缺陷待立修复任务
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `384dced` | docs(trellis): T4 门禁验证通过——只读审阅全链路实跑记录与报告归档 |
+
+### Status
+
+[OK] **Completed**
