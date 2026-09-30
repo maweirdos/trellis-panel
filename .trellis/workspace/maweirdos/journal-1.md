@@ -560,3 +560,25 @@ AI 起草任务全链路：官方扩展点员工档案+六步派发+报告直达
 ### Status
 
 [OK] **Completed**
+
+
+## Session 16: 白屏修复
+<!-- trellis-session: v=2 fp=62df13093dcbeefc -->
+
+**Date**: 2026-09-30
+**Task**: 白屏修复
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+用户点击派审阅白屏→定位 preload 过期根因；App ErrorBoundary+弹窗防御落地；用户动作=重启 npm run dev
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `eba282e` | fix(ui): 白屏根治——ErrorBoundary+派发弹窗防旧preload |
+
+### Status
+
+[OK] **Completed**
