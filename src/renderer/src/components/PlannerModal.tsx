@@ -16,7 +16,7 @@ const PHASES: Array<{ key: string; label: string }> = [
   { key: 'send', label: '发送需求' },
   { key: 'wait', label: '等待起草完成（最长 15 分钟）' },
   { key: 'collect', label: '收取起草报告' },
-  { key: 'cleanup', label: '清理临时频道' }
+  { key: 'cleanup', label: '留存频道（对话可在 AI 频道页回看）' }
 ]
 
 /** 从报告里抠任务目录名（planner 档案规定的格式：`- 任务目录：<dir>`） */

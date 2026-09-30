@@ -6,8 +6,8 @@
  *   claude 适配器走 bypassPermissions，提示词写 read-only 不会变只读）。
  * - trellis 子进程 cwd = 目标项目根：channel 项目桶由 CLI 进程 cwd 决定，
  *   与 spawn --cwd 无关——一次对齐（06 v2 channel 铁律 #1）。
- * - 一次性 ephemeral 频道，结束即删；worker 不自动获得全部项目文件，
- *   只投喂任务材料（--file 显式清单）。
+ * - 持久频道：完整对话留存（用户要求可在 AI 频道页回看），失败现场也保留；
+ *   worker 不自动获得全部项目文件，只投喂任务材料（--file 显式清单）。
  * - 每步失败即停并报告所在阶段；报告要求固定 Markdown 三段（可解析）。
  * - 中止 = Windows taskkill /T 树杀（cmd.exe → trellis.cmd → node 链）。
  */
@@ -147,7 +147,9 @@ export async function runReadonlyReview(
   task: TaskInfo,
   emit: (p: DispatchPhase) => void
 ): Promise<DispatchResult> {
-  const name = `tp-review-${task.dirName}`
+  // 持久频道：完整对话留存供面板回看；时间戳防重跑撞名
+  const stamp = new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).replace(/[^0-9]/g, '')
+  const name = `tp-review-${task.dirName}-${stamp}`
   const files: string[] = []
   for (const f of ['prd.md', 'design.md', 'implement.md']) {
     if (existsSync(join(task.path, f))) files.push(relative(root, join(task.path, f)).replace(/\\/g, '/'))
@@ -155,8 +157,8 @@ export async function runReadonlyReview(
   const timeoutMin = 20
   const ms = timeoutMin * 60 * 1000
 
-  emit({ key: 'create', label: '创建临时频道', detail: name })
-  let r = await step(root, ['channel', 'create', name, '--ephemeral', '--by', 'panel', '--task', relative(root, task.path).replace(/\\/g, '/')], 60_000)
+  emit({ key: 'create', label: '创建频道（持久）', detail: name })
+  let r = await step(root, ['channel', 'create', name, '--by', 'panel', '--task', relative(root, task.path).replace(/\\/g, '/')], 60_000)
   if (r.code !== 0) return { ok: false, phase: 'create', error: `创建频道失败：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
 
   emit({ key: 'spawn', label: '拉起只读 worker', detail: 'codex · sandbox read-only' })
@@ -167,7 +169,6 @@ export async function runReadonlyReview(
   for (const f of files) spawnArgs.push('--file', f)
   r = await step(root, spawnArgs, 120_000)
   if (r.code !== 0) {
-    await step(root, ['channel', 'rm', name], 15_000)
     return { ok: false, phase: 'spawn', error: `拉起 worker 失败（确认 codex CLI 已安装登录；若报模型不支持，到 设置→派单 填写账号可用的模型）：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
   }
 
@@ -185,14 +186,12 @@ export async function runReadonlyReview(
     }
   }
   if (r.code !== 0) {
-    await step(root, ['channel', 'rm', name], 15_000)
     return { ok: false, phase: 'send', error: `发送失败：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
   }
 
   emit({ key: 'wait', label: '等待审阅完成', detail: `最长 ${timeoutMin} 分钟` })
   r = await step(root, ['channel', 'wait', name, '--as', 'panel', '--from', 'reviewer', '--kind', 'turn_finished', '--timeout', `${timeoutMin}m`], ms + 60_000)
   if (r.code !== 0) {
-    await step(root, ['channel', 'rm', name], 15_000)
     return { ok: false, phase: 'wait', error: `等待失败或超时：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
   }
 
@@ -200,12 +199,10 @@ export async function runReadonlyReview(
   r = await step(root, ['channel', 'messages', name, '--from', 'reviewer', '--kind', 'message', '--last', '1', '--raw'], 60_000)
   const report = r.code === 0 ? extractReport(r.out) : null
   if (!report) {
-    await step(root, ['channel', 'rm', name], 15_000)
     return { ok: false, phase: 'collect', error: `未能解析报告（messages exit ${r.code}）：${(r.err || r.out).trim().slice(-300)}`, channel: name }
   }
 
-  emit({ key: 'cleanup', label: '清理临时频道' })
-  await step(root, ['channel', 'rm', name], 15_000)
+  emit({ key: 'cleanup', label: '留存频道', detail: '完整对话可在 AI 频道页回看' })
   return { ok: true, report, channel: name }
 }
 
@@ -237,14 +234,13 @@ export async function runPlannerDispatch(
   const timeoutMin = 15
   const ms = timeoutMin * 60 * 1000
 
-  emit({ key: 'create', label: '创建临时频道', detail: name })
-  let r = await step(root, ['channel', 'create', name, '--ephemeral', '--by', 'panel'], 60_000)
+  emit({ key: 'create', label: '创建频道（持久）', detail: name })
+  let r = await step(root, ['channel', 'create', name, '--by', 'panel'], 60_000)
   if (r.code !== 0) return { ok: false, phase: 'create', error: `创建频道失败：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
 
   emit({ key: 'spawn', label: '拉起 planner worker', detail: 'codex · workspace-write · 官方 planner 档案' })
   r = await step(root, ['channel', 'spawn', name, '--agent', 'planner', '--provider', 'codex', '--sandbox', 'workspace-write', '--as', 'planner', '--cwd', root, '--timeout', `${timeoutMin}m`], 120_000)
   if (r.code !== 0) {
-    await step(root, ['channel', 'rm', name], 15_000)
     return { ok: false, phase: 'spawn', error: `拉起 planner 失败（需 .trellis/agents/planner.md 与 codex CLI）：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
   }
 
@@ -267,22 +263,19 @@ export async function runPlannerDispatch(
     }
   }
   if (r.code !== 0) {
-    await step(root, ['channel', 'rm', name], 15_000)
     return { ok: false, phase: 'send', error: `发送失败：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
   }
 
   emit({ key: 'wait', label: '等待起草完成', detail: `最长 ${timeoutMin} 分钟` })
   r = await step(root, ['channel', 'wait', name, '--as', 'panel', '--from', 'planner', '--kind', 'turn_finished', '--timeout', `${timeoutMin}m`], ms + 60_000)
   if (r.code !== 0) {
-    await step(root, ['channel', 'rm', name], 15_000)
     return { ok: false, phase: 'wait', error: `等待失败或超时：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
   }
 
   emit({ key: 'collect', label: '收取起草报告' })
   r = await step(root, ['channel', 'messages', name, '--from', 'planner', '--kind', 'message', '--last', '1', '--raw'], 60_000)
   const report = r.code === 0 ? extractReport(r.out) : null
-  emit({ key: 'cleanup', label: '清理临时频道' })
-  await step(root, ['channel', 'rm', name], 15_000)
+  emit({ key: 'cleanup', label: '留存频道', detail: '完整对话可在 AI 频道页回看' })
   if (!report) {
     return { ok: false, phase: 'collect', error: `未能解析起草报告：${(r.err || r.out).trim().slice(-300)}`, channel: name }
   }

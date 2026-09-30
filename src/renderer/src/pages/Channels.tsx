@@ -23,6 +23,7 @@ import { api } from '../api'
 import { clsx } from 'clsx'
 import { fmtIso } from '../utils/format'
 import { confirmDialog, promptDialog } from '../components/Dialogs'
+import { MarkdownView } from '../components/MarkdownView'
 import type { ChannelEvent, ChannelSummary } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -316,25 +317,44 @@ export function ChannelsPage(): JSX.Element {
 
           <div ref={streamRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
             {active.events.map((e, i) => {
+              // 对话视图（09-30）：message 渲染为气泡（我方右侧 / worker 左侧），
+              // 系统事件收窄为紧凑单行，不再与文本等权展示
+              if (e.kind === 'message' && e.text) {
+                const mine = ['panel', 'panel-ui', 'main'].includes(e.by)
+                return (
+                  <div key={`${e.seq}-${i}`} className={clsx('mb-3 flex', mine ? 'justify-end' : 'justify-start')}>
+                    <div className={clsx('max-w-[85%] min-w-0', mine ? 'items-end' : 'items-start')}>
+                      <div className={clsx('mb-0.5 flex items-baseline gap-2 text-[9.5px] text-mist-600', mine && 'justify-end')}>
+                        <span className="font-mono font-medium text-mist-400">{e.by}</span>
+                        <span>{e.ts ? fmtIso(e.ts) : ''}</span>
+                      </div>
+                      <div
+                        className={clsx(
+                          'rounded-xl border px-3 py-2 text-[11.5px] leading-5 text-mist-200',
+                          mine ? 'border-leaf-dim/30 bg-leaf-dim/10' : 'border-ink-700 bg-ink-850/80'
+                        )}
+                      >
+                        {e.text.length > 6000 ? (
+                          <pre className="whitespace-pre-wrap break-words font-sans">{`${e.text.slice(0, 6000)}\n…（超长截断）`}</pre>
+                        ) : (
+                          <MarkdownView content={e.text} />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
               const st = kindStyle(e.kind)
+              const detail = e.status || (e.kind === 'progress' ? '' : '')
               return (
-                <div key={`${e.seq}-${i}`} className="mb-2 flex items-start gap-2.5">
-                  <span className={clsx('mt-0.5 flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px]', st.cls)}>
+                <div key={`${e.seq}-${i}`} className="mb-1 flex items-center gap-2 text-[10px] text-mist-600">
+                  <span className={clsx('flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px]', st.cls)}>
                     {st.icon} {st.label}
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-mono text-[10.5px] font-medium text-mist-300">{e.by}</span>
-                      {e.thread && <span className="chip bg-sky-500/10 text-[9px] text-sky-300">{e.thread}</span>}
-                      <span className="text-[9.5px] text-mist-600">{e.ts ? fmtIso(e.ts) : ''}</span>
-                    </div>
-                    {e.text && (
-                      <div className="mt-0.5 whitespace-pre-wrap break-words rounded-lg border border-ink-700/70 bg-ink-850/60 px-2.5 py-1.5 text-[11.5px] leading-5 text-mist-200">
-                        {e.text.length > 2000 ? `${e.text.slice(0, 2000)}\n…（截断，完整内容见 CLI --raw）` : e.text}
-                      </div>
-                    )}
-                    {e.status && <div className="mt-0.5 text-[10.5px] text-mist-500">状态：{e.status}</div>}
-                  </div>
+                  <span className="font-mono text-mist-500">{e.by}</span>
+                  {e.thread && <span className="chip bg-sky-500/10 text-[9px] text-sky-300">{e.thread}</span>}
+                  {detail && <span className="truncate text-mist-500">{detail}</span>}
+                  <span className="ml-auto shrink-0">{e.ts ? fmtIso(e.ts) : ''}</span>
                 </div>
               )
             })}

@@ -1,0 +1,2 @@
+{"file": "src/renderer/src/pages/Channels.tsx", "reason": "Event stream view being restructured"}
+{"file": "src/main/services/channel-dispatch.ts", "reason": "Dispatch persistence changes"}

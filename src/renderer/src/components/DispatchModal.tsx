@@ -18,7 +18,7 @@ const PHASES: Array<{ key: string; label: string }> = [
   { key: 'send', label: '发送审阅指令（仅任务材料）' },
   { key: 'wait', label: '等待审阅完成（最长 20 分钟）' },
   { key: 'collect', label: '收取报告' },
-  { key: 'cleanup', label: '清理临时频道' }
+  { key: 'cleanup', label: '留存频道（对话可在 AI 频道页回看）' }
 ]
 
 export function DispatchModal({ task, onClose }: { task: TaskInfo; onClose: () => void }): JSX.Element {
@@ -135,7 +135,7 @@ export function DispatchModal({ task, onClose }: { task: TaskInfo; onClose: () =
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-ink-700 px-4 py-3">
-          <span className="text-[10.5px] text-mist-600">关闭弹窗即中止在途派发；报告仅本次展示，不写任务目录</span>
+          <span className="text-[10.5px] text-mist-600">关闭弹窗即中止在途派发；报告不写任务目录，完整对话留存于 AI 频道页</span>
           <div className="flex items-center gap-2">
             {running ? (
               <button onClick={close} className="btn-outline">中止派发</button>
