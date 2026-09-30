@@ -318,3 +318,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: T1 触达扩展代码落地
+<!-- trellis-session: v=2 fp=d0aa82e458fa943b -->
+
+**Date**: 2026-09-30
+**Task**: T1 触达扩展代码落地
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+系统通知点击直达任务(隐藏不漏/可见不重弹)；托盘回到上次阅读；右键菜单集成(打包态+HKCU+开关)；任务分享深链(token 不出主进程)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a0c76b3` | feat(t1): 触达扩展——通知直达+托盘回读+右键集成+任务分享链接 |
+
+### Status
+
+[OK] **Completed**
