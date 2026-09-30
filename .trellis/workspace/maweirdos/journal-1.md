@@ -252,3 +252,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 2: 工作台优化提案四轮修订定稿与归档
+<!-- trellis-session: v=2 fp=dbd4006b5cc807b0 -->
+
+**Date**: 2026-09-30
+**Task**: 工作台优化提案四轮修订定稿与归档
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+完成 09-29-workbench-visualization-proposal：00-04 二次修订(主从布局/概览入口化/Jira 对账化)；收录 05 独立评审(R0-R4)与 09-30 跟进评审；撰写 06 触达优先与透视方案 v2(FR 最小可交付集+T1-T5, 派单能力验证优先, 流程参考图+上下文透视预演不回放)；落盘 feature-points.md 作 F 编号唯一来源；确立边界：面板与 worker 不改写 AGENTS.md/workflow.md 等托管文件、生命周期写入走官方脚本或有工作流身份的 worker、channel 子进程 cwd 绑定目标项目根
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b5fb6c0` | docs(proposal): 工作台优化提案定稿——收录 05 独立评审与 06 触达优先透视方案(v2) |
+
+### Status
+
+[OK] **Completed**
