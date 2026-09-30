@@ -274,3 +274,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: R0 可信数据与边界代码落地
+<!-- trellis-session: v=2 fp=ef4c37131cbf3f4b -->
+
+**Date**: 2026-09-30
+**Task**: R0 可信数据与边界代码落地
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+停用面板全部任务生命周期直写：删 autoSyncJira 整链与 task:archive 直写归档；EDITABLE 白名单去 status；会话焦点改读 .runtime/sessions（新增 currentTaskAt，冒烟验证与原始数据一致）；重扫失败保留旧快照+toast；撤下状态流转 UI 六处（下拉/DoD/拖拽/胶囊/详情编辑/Jira 同步）并改措辞为会话最后绑定；typecheck+build 通过
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2140945` | refactor(boundary): R0 可信数据与边界——停用面板生命周期直写 |
+
+### Status
+
+[OK] **Completed**
