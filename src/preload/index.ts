@@ -19,7 +19,8 @@ import type {
   TaskPatch,
   ToastEvent,
   WeknoraConfig,
-  MaterialUpdatedEvent
+  MaterialUpdatedEvent,
+  ContextExpectEntry
 } from '../shared/types'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -134,6 +135,16 @@ const api = {
   taskBuildTaskLink: (dirName: string) =>
     ipcRenderer.invoke(ipcInvoke.task.buildTaskLink, dirName) as Promise<
       { ok: true; url: string } | { ok: false; error: string }
+    >,
+  taskContextExpect: (dirName: string) =>
+    ipcRenderer.invoke(ipcInvoke.task.contextExpect, dirName) as Promise<
+      | { ok: false; error: string }
+      | {
+          ok: true
+          implement: { present: boolean; totalBytes: number; entries: ContextExpectEntry[] }
+          check: { present: boolean; totalBytes: number; entries: ContextExpectEntry[] }
+          caps: { perFile: number; total: number }
+        }
     >,
   taskHandoffBuild: (dirName: string, intent: string, includePrd: boolean) =>
     ipcRenderer.invoke(ipcInvoke.task.handoffBuild, dirName, intent, includePrd) as Promise<{

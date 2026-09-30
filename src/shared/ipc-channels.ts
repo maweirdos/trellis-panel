@@ -30,7 +30,8 @@ export const ipcInvoke = {
     writeArtifact: 'task:writeArtifact',
     resolveClipboardTask: 'task:resolveClipboardTask',
     buildTaskLink: 'task:buildTaskLink',
-    handoffBuild: 'task:handoffBuild'
+    handoffBuild: 'task:handoffBuild',
+    contextExpect: 'task:contextExpect'
   },
   todo: {
     list: 'todo:list',

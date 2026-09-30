@@ -33,7 +33,8 @@ import {
   ListTodo,
   Link2,
   SquareCode,
-  ClipboardCopy
+  ClipboardCopy,
+  ScanSearch
 } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
@@ -47,6 +48,7 @@ import { CodeView } from '../components/CodeView'
 import { confirmDialog } from '../components/Dialogs'
 import { FocusTimer } from '../components/FocusTimer'
 import { HandoffModal } from '../components/HandoffModal'
+import { TaskInsightsModal } from '../components/TaskInsightsModal'
 import { Select } from '../components/Select'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
@@ -324,6 +326,7 @@ function TaskWorkspace({
   const docContainerRef = useRef<HTMLDivElement>(null)
   const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [handoffOpen, setHandoffOpen] = useState(false)
+  const [insightsOpen, setInsightsOpen] = useState(false)
 
   const idx = Math.max(0, tasks.findIndex((t) => t.dirName === selected))
   const task = tasks[idx] ?? null
@@ -1084,6 +1087,14 @@ function TaskWorkspace({
               >
                 <ClipboardCopy size={13.5} />
               </button>
+              {/* T2：任务透视——文件事实 + 流程参考（规则预览）+ 上下文预期诊断 */}
+              <button
+                onClick={() => setInsightsOpen(true)}
+                className="btn-ghost p-1.5 text-mist-400 hover:bg-ink-750 hover:text-mist-100"
+                title="任务透视：文件事实、流程参考与上下文注入预期"
+              >
+                <ScanSearch size={13.5} />
+              </button>
               {isRoot && (
                 <button
                   onClick={() => void split()}
@@ -1464,6 +1475,7 @@ function TaskWorkspace({
           </div>
         )}
         {handoffOpen && task && <HandoffModal task={task} onClose={() => setHandoffOpen(false)} />}
+        {insightsOpen && task && <TaskInsightsModal task={task} onClose={() => setInsightsOpen(false)} />}
       </div>
 
     </div>

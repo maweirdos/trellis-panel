@@ -115,6 +115,15 @@ export interface SessionInfo {
 }
 
 /** FR：任务材料更新（主进程按任务防抖合并后广播） */
+/** T2：上下文预期诊断条目（预期注入行为，非实际读取回执） */
+export interface ContextExpectEntry {
+  file: string
+  reason: string
+  exists: boolean
+  size: number
+  verdict: 'full' | 'truncate' | 'index' | 'missing'
+}
+
 export interface MaterialUpdatedEvent {
   dirName: string
   title: string
@@ -1228,6 +1237,15 @@ export interface TrellisApi {
   taskWriteArtifact: (dirName: string, fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
   taskResolveClipboardTask: () => Promise<{ ok: true; dirName: string; archived: boolean } | { ok: false; error: string }>
   taskBuildTaskLink: (dirName: string) => Promise<{ ok: true; url: string } | { ok: false; error: string }>
+  taskContextExpect: (dirName: string) => Promise<
+    | { ok: false; error: string }
+    | {
+        ok: true
+        implement: { present: boolean; totalBytes: number; entries: ContextExpectEntry[] }
+        check: { present: boolean; totalBytes: number; entries: ContextExpectEntry[] }
+        caps: { perFile: number; total: number }
+      }
+  >
   taskHandoffBuild: (dirName: string, intent: string, includePrd: boolean) => Promise<{
     ok: boolean
     error?: string

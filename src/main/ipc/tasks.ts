@@ -1,5 +1,5 @@
 import { join, resolve, basename } from 'path'
-import { writeFileSync } from 'fs'
+import { writeFileSync, readFileSync, statSync } from 'fs'
 import { clipboard } from 'electron'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { errorText, errorMessage } from '../../shared/errors'
@@ -97,6 +97,59 @@ export function registerTasksIpc(): void {
     if (!t) return ipcFail(IpcErrorCode.NotFound, `任务不存在: ${dirName}`)
     const extra = includePrd ? { prdContent: readPrdContent(t.path) } : undefined
     return buildHandoffPackage(root, t, String(intent ?? ''), extra)
+  })
+
+  /**
+   * T2：上下文预期诊断——解析任务 jsonl 清单，按 hook 链默认上限
+   * （单文件 32768B 截断留路径；累计 131072B 超出降级为索引行）给出
+   * “预期注入行为”四档。措辞纪律：预期 ≠ 模型实际读过/遵守。
+   */
+  handle(ipcInvoke.task.contextExpect, (_e, dirName: string) => {
+    const root = getProjectRoot()
+    if (!root) return noProject()
+    const t = findTask(String(dirName))
+    if (!t) return ipcFail(IpcErrorCode.NotFound, `任务不存在: ${dirName}`)
+    const analyze = (jsonlName: string) => {
+      const entries: Array<{ file: string; reason: string; exists: boolean; size: number; verdict: string }> = []
+      let lines: string[] = []
+      try {
+        lines = readFileSync(join(t.path, jsonlName), 'utf-8').split(/\r?\n/).filter((l) => l.trim())
+      } catch {
+        return { present: false, entries, totalBytes: 0 }
+      }
+      let cumulative = 0
+      for (const line of lines) {
+        let obj: { file?: unknown; reason?: unknown } = {}
+        try {
+          obj = JSON.parse(line)
+        } catch {
+          continue
+        }
+        const rel = typeof obj.file === 'string' ? obj.file : ''
+        if (!rel) continue
+        const abs = resolve(root, rel)
+        let size = 0
+        let exists = true
+        try {
+          size = statSync(abs).size
+        } catch {
+          exists = false
+        }
+        cumulative += size
+        let verdict = 'full'
+        if (!exists) verdict = 'missing'
+        else if (size > 32768) verdict = 'truncate'
+        else if (cumulative > 131072) verdict = 'index'
+        entries.push({ file: rel, reason: typeof obj.reason === 'string' ? obj.reason : '', exists, size, verdict })
+      }
+      return { present: true, entries, totalBytes: cumulative }
+    }
+    return {
+      ok: true as const,
+      implement: analyze('implement.jsonl'),
+      check: analyze('check.jsonl'),
+      caps: { perFile: 32768, total: 131072 }
+    }
   })
 
   handle(ipcInvoke.task.writeArtifact, (_e, dirName: string, fileName: string, content: string) => {
