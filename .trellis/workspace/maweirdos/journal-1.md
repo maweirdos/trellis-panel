@@ -340,3 +340,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: T3 交接与打开代码落地
+<!-- trellis-session: v=2 fp=06fed7b02d1180eb -->
+
+**Date**: 2026-09-30
+**Task**: T3 交接与打开代码落地
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+确定性任务交接包(05模板/意图默认只阅读/PRD显式携带/防重复尾行)+HandoffModal(可编辑可复制/离开本机提示)+编辑器直达；真数据冒烟通过；元数据代跑与适配器矩阵移至T4
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9a7c5dc` | feat(t3): 任务交接包——确定性生成+意图选择+PRD显式携带；编辑器直达 |
+
+### Status
+
+[OK] **Completed**
