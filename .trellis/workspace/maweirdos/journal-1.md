@@ -516,3 +516,25 @@ AI 起草任务全链路：官方扩展点员工档案+六步派发+报告直达
 ### Status
 
 [OK] **Completed**
+
+
+## Session 14: 频道对话视图修正
+<!-- trellis-session: v=2 fp=9ee78ae633af8051 -->
+
+**Date**: 2026-09-30
+**Task**: 频道对话视图修正
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+正序排列(对冲后端reverse)+progress折叠计数+警告摘要+by身份悬停；tp-chat-demo 补第二轮(echo退场echo2接棒)作三段剧情演示
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8a19888` | fix(channels): 对话视图正序排列+进度折叠+身份悬停说明 |
+
+### Status
+
+[OK] **Completed**
