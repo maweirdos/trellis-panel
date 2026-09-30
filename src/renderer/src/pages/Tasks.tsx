@@ -1512,7 +1512,20 @@ function TaskWorkspace({
           </div>
         )}
         {handoffOpen && task && <HandoffModal task={task} onClose={() => setHandoffOpen(false)} />}
-        {insightsOpen && task && <TaskInsightsModal task={task} onClose={() => setInsightsOpen(false)} />}
+        {insightsOpen && task && (
+          <TaskInsightsModal
+            task={task}
+            onClose={() => setInsightsOpen(false)}
+            onReadArtifact={(fileName) => {
+              const hit = docTabs.find((d) => d.fileName === fileName)
+              if (hit) {
+                setActiveDocPath(hit.path)
+                setActiveDocType(hit.type)
+                setActiveDocName(hit.fileName)
+              }
+            }}
+          />
+        )}
         {dispatchOpen && task && <DispatchModal task={task} onClose={() => setDispatchOpen(false)} />}
       </div>
 
