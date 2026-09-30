@@ -494,3 +494,25 @@ AI 起草任务全链路：官方扩展点员工档案+六步派发+报告直达
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: AI 频道对话化
+<!-- trellis-session: v=2 fp=e5f36b87ce9a4158 -->
+
+**Date**: 2026-09-30
+**Task**: AI 频道对话化
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+派发改持久频道(不再用完即焚)；频道页重构对话视图(气泡+紧凑系统行)；真跑往返验证；演示频道 tp-chat-demo 留存供用户验收
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `100dd54` | feat(channels): AI 频道对话化——派发持久化+消息气泡视图 |
+
+### Status
+
+[OK] **Completed**
