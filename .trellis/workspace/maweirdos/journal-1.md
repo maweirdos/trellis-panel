@@ -472,3 +472,25 @@ codex 升级后全链路实跑通过：read-only worker 产出三段审阅报告
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: T4 planner 派单落地与真跑验证
+<!-- trellis-session: v=2 fp=8a84059baeb5235a -->
+
+**Date**: 2026-09-30
+**Task**: T4 planner 派单落地与真跑验证
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+AI 起草任务全链路：官方扩展点员工档案+六步派发+报告直达；真跑 4 分钟产出官方格式任务与模板 PRD，边界零越界；演示任务留待用户审阅
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0c736ef` | feat(t4): AI 起草任务——planner worker 派单端到端落地 |
+
+### Status
+
+[OK] **Completed**

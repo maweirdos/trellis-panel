@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-09-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~474 | Active |
+| `journal-1.md` | ~496 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-09-30 | T4 planner 派单落地与真跑验证 | `0c736ef` | `codex/spec-code-health` |
 | 11 | 2026-09-30 | FR 审阅缺陷修复 | `3b205d5` | `codex/spec-code-health` |
 | 10 | 2026-09-30 | T4 门禁完整通过 | `384dced` | `codex/spec-code-health` |
 | 9 | 2026-09-30 | T4 门禁实战执行与修正 | `fc68926` | `codex/spec-code-health` |
