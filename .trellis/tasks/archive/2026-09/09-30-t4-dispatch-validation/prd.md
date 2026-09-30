@@ -17,7 +17,7 @@
 - [x] typecheck（node+web）+ build 通过。
 - [x] 命令拼装干跑：六步参数序列正确（引号/相对路径/文件清单）。
 - [x] 服务代码经 Write 直写未被 shell 转义污染（正则/换行字面量复核）。
-- [ ] **运行侧验证（本任务的门禁，需用户在本机执行一次）**：选一个真实任务点按钮 → 六阶段走完 → 报告三段渲染 → `git status` 确认 worker 未写任何文件 → 待确认问题可读。通过后方可开 planner/归档三段式任务。
+- [x] **运行侧验证（2026-09-30 已通过，codex 0.159.2）**：对 09-30-fr-first-release 真实派发——六步全通（create/spawn read-only/send --text-file/wait turn_finished/collect/rm）；报告 1563 字符严格三段格式、含 9 条 file:line 依据（见 research/gate-validation-report.md）；`git status` 零写入（read-only 沙箱成立）；待确认问题两条可读。**门禁通过，planner/归档三段式解锁。**
 
 ## Notes
 
