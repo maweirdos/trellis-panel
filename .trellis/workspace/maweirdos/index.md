@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-09-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~408 | Active |
+| `journal-1.md` | ~430 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-09-30 | T4 门禁实战执行与修正 | `fc68926` | `codex/spec-code-health` |
 | 8 | 2026-09-30 | T4 派单能力验证切片落地 | `f5d3929` | `codex/spec-code-health` |
 | 7 | 2026-09-30 | T2 透视中心切片落地 | `b98a859` | `codex/spec-code-health` |
 | 6 | 2026-09-30 | T3 交接与打开代码落地 | `9a7c5dc` | `codex/spec-code-health` |

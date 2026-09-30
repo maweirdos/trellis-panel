@@ -406,3 +406,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: T4 门禁实战执行与修正
+<!-- trellis-session: v=2 fp=bd05f0c9c71fdca5 -->
+
+**Date**: 2026-09-30
+**Task**: T4 门禁实战执行与修正
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+真实跑通 channel 派发全链路(建/拉/喂/等/清)，抓到 send 参数错误与账号模型不匹配两个真问题并修复；模型配置化待用户填可用模型后即完整通过
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fc68926` | fix(t4): 派单验证实战修正——send 用 --text-file；派单模型可配置 |
+
+### Status
+
+[OK] **Completed**
