@@ -384,3 +384,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: T4 派单能力验证切片落地
+<!-- trellis-session: v=2 fp=57933abcb2d14517 -->
+
+**Date**: 2026-09-30
+**Task**: T4 派单能力验证切片落地
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+一键派 codex+read-only 只读审阅：channel 六步序列(进程 cwd=项目根/message-file 承载多行 prompt/失败即停树杀)，DispatchModal 阶段进度+报告渲染；运行侧门禁待用户执行
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f5d3929` | feat(t4): 派单能力验证——一键派 Codex 只读审阅任务 |
+
+### Status
+
+[OK] **Completed**
