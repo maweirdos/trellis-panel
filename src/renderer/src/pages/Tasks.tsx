@@ -51,6 +51,7 @@ import { FocusTimer } from '../components/FocusTimer'
 import { HandoffModal } from '../components/HandoffModal'
 import { TaskInsightsModal } from '../components/TaskInsightsModal'
 import { DispatchModal } from '../components/DispatchModal'
+import { PlannerModal } from '../components/PlannerModal'
 import { Select } from '../components/Select'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
@@ -1527,6 +1528,7 @@ export function TasksPage(): JSX.Element {
   const openTaskDir = useApp((s) => s.openTaskDir)
   const pushToast = useApp((s) => s.pushToast)
   const [query, setQuery] = useState('')
+  const [plannerOpen, setPlannerOpen] = useState(false)
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState('')
 
@@ -1691,11 +1693,17 @@ export function TasksPage(): JSX.Element {
             <button onClick={() => void openFromClipboard()} className="btn-outline" title="读取剪贴板中的任务路径并打开">
               <ClipboardPaste size={12} /> 打开剪贴板任务
             </button>
+            {/* T4 扩展：AI 起草任务——planner worker 在项目内走官方流程 */}
+            <button onClick={() => setPlannerOpen(true)} className="btn-primary" title="一句话需求 → planner worker 建任务写 PRD（待你审阅）">
+              <Sparkles size={12} /> AI 起草任务
+            </button>
             <span className="text-[11px] text-mist-500">{filtered.length} 个任务</span>
           </div>
         </div>
 
       {/* 视图内容：FR 主从布局常驻——左侧任务导轨 + 右侧阅读区（未选任务显示空态） */}
+      {plannerOpen && <PlannerModal onClose={() => setPlannerOpen(false)} />}
+
       <TaskWorkspace
         tasks={filtered}
         selected={openTaskDir}

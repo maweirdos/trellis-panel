@@ -1,7 +1,7 @@
 import { join, resolve } from 'path'
 import { writeFileSync, readFileSync, statSync } from 'fs'
 import { clipboard } from 'electron'
-import { runReadonlyReview, abortDispatch } from '../services/channel-dispatch'
+import { runReadonlyReview, runPlannerDispatch, abortDispatch } from '../services/channel-dispatch'
 import { broadcastToWindows } from '../services/bridge'
 import { ipcInvoke, ipcEvent } from '../../shared/ipc-channels'
 import { errorText, errorMessage } from '../../shared/errors'
@@ -178,6 +178,21 @@ export function registerTasksIpc(): void {
     const res = await runReadonlyReview(root, t, (phase) => {
       broadcastToWindows(ipcEvent.dispatchPhase, phase)
     })
+    return res
+  })
+
+  /** T4 扩展：AI 起草任务——planner worker 在项目内走官方流程建任务写 PRD */
+  handle(ipcInvoke.task.dispatchPlan, async (_e, input: { title: string; requirement: string }) => {
+    const root = getProjectRoot()
+    if (!root) return noProject()
+    const title = String(input?.title ?? '').trim()
+    const requirement = String(input?.requirement ?? '').trim()
+    if (!title || !requirement) return ipcFail(IpcErrorCode.InvalidArg, '标题与需求都不能为空')
+    const res = await runPlannerDispatch(root, { title, requirement }, (phase) => {
+      broadcastToWindows(ipcEvent.dispatchPhase, phase)
+    })
+    // 起草产生的文件变化由 watcher 触发快照刷新；这里再主动刷一次确保新任务立即可见
+    if (res.ok) sendSnapshot()
     return res
   })
 

@@ -208,3 +208,83 @@ export async function runReadonlyReview(
   await step(root, ['channel', 'rm', name], 15_000)
   return { ok: true, report, channel: name }
 }
+
+
+export interface PlannerInput {
+  title: string
+  requirement: string
+}
+
+export interface PlannerResult {
+  ok: boolean
+  phase?: DispatchPhase['key']
+  error?: string
+  report?: string
+  channel?: string
+}
+
+/**
+ * T4 扩展：AI 起草任务。planner worker（.trellis/agents/planner.md，codex +
+ * workspace-write）在项目内走官方流程：task.py create + 写 prd.md。
+ * 面板不直接建任务——写入由有工作流身份的 worker 完成（06 v2 支柱三）。
+ */
+export async function runPlannerDispatch(
+  root: string,
+  input: PlannerInput,
+  emit: (p: DispatchPhase) => void
+): Promise<PlannerResult> {
+  const name = `tp-plan-${Date.now().toString(36)}`
+  const timeoutMin = 15
+  const ms = timeoutMin * 60 * 1000
+
+  emit({ key: 'create', label: '创建临时频道', detail: name })
+  let r = await step(root, ['channel', 'create', name, '--ephemeral', '--by', 'panel'], 60_000)
+  if (r.code !== 0) return { ok: false, phase: 'create', error: `创建频道失败：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
+
+  emit({ key: 'spawn', label: '拉起 planner worker', detail: 'codex · workspace-write · 官方 planner 档案' })
+  r = await step(root, ['channel', 'spawn', name, '--agent', 'planner', '--provider', 'codex', '--sandbox', 'workspace-write', '--as', 'planner', '--cwd', root, '--timeout', `${timeoutMin}m`], 120_000)
+  if (r.code !== 0) {
+    await step(root, ['channel', 'rm', name], 15_000)
+    return { ok: false, phase: 'spawn', error: `拉起 planner 失败（需 .trellis/agents/planner.md 与 codex CLI）：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
+  }
+
+  emit({ key: 'send', label: '发送需求', detail: input.title })
+  const promptPath = join(tmpdir(), `${name}-prompt.md`)
+  const prompt = [
+    `请为以下需求起草 Trellis 任务（按你的角色规则：task.py create 官方流程 + 仅写 prd.md + 不实施）：`,
+    ``,
+    `标题：${input.title}`,
+    `需求：${input.requirement}`
+  ].join('\n')
+  try {
+    writeFileSync(promptPath, prompt, 'utf-8')
+    r = await step(root, ['channel', 'send', name, '--as', 'panel', '--to', 'planner', '--text-file', promptPath, '--delivery-mode', 'requireRunningWorker'], 60_000)
+  } finally {
+    try {
+      rmSync(promptPath, { force: true })
+    } catch {
+      // best-effort
+    }
+  }
+  if (r.code !== 0) {
+    await step(root, ['channel', 'rm', name], 15_000)
+    return { ok: false, phase: 'send', error: `发送失败：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
+  }
+
+  emit({ key: 'wait', label: '等待起草完成', detail: `最长 ${timeoutMin} 分钟` })
+  r = await step(root, ['channel', 'wait', name, '--as', 'panel', '--from', 'planner', '--kind', 'turn_finished', '--timeout', `${timeoutMin}m`], ms + 60_000)
+  if (r.code !== 0) {
+    await step(root, ['channel', 'rm', name], 15_000)
+    return { ok: false, phase: 'wait', error: `等待失败或超时：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
+  }
+
+  emit({ key: 'collect', label: '收取起草报告' })
+  r = await step(root, ['channel', 'messages', name, '--from', 'planner', '--kind', 'message', '--last', '1', '--raw'], 60_000)
+  const report = r.code === 0 ? extractReport(r.out) : null
+  emit({ key: 'cleanup', label: '清理临时频道' })
+  await step(root, ['channel', 'rm', name], 15_000)
+  if (!report) {
+    return { ok: false, phase: 'collect', error: `未能解析起草报告：${(r.err || r.out).trim().slice(-300)}`, channel: name }
+  }
+  return { ok: true, report, channel: name }
+}

@@ -33,6 +33,7 @@ export const ipcInvoke = {
     handoffBuild: 'task:handoffBuild',
     contextExpect: 'task:contextExpect',
     dispatchReview: 'task:dispatchReview',
+    dispatchPlan: 'task:dispatchPlan',
     dispatchAbort: 'task:dispatchAbort'
   },
   todo: {

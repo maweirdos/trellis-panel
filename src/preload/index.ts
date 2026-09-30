@@ -144,6 +144,14 @@ const api = {
       report?: string
       channel?: string
     }>,
+  taskDispatchPlan: (input: { title: string; requirement: string }) =>
+    ipcRenderer.invoke(ipcInvoke.task.dispatchPlan, input) as Promise<{
+      ok: boolean
+      phase?: string
+      error?: string
+      report?: string
+      channel?: string
+    }>,
   taskDispatchAbort: () => ipcRenderer.invoke(ipcInvoke.task.dispatchAbort) as Promise<{ ok: boolean }>,
   onDispatchPhase: (cb: (p: { key: string; label: string; detail?: string }) => void) =>
     subscribe(ipcEvent.dispatchPhase, cb),

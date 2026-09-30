@@ -1246,6 +1246,13 @@ export interface TrellisApi {
     report?: string
     channel?: string
   }>
+  taskDispatchPlan: (input: { title: string; requirement: string }) => Promise<{
+    ok: boolean
+    phase?: string
+    error?: string
+    report?: string
+    channel?: string
+  }>
   taskDispatchAbort: () => Promise<{ ok: boolean }>
   onDispatchPhase: (cb: (p: { key: string; label: string; detail?: string }) => void) => () => void
   taskContextExpect: (dirName: string) => Promise<
