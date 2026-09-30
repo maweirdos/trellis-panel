@@ -582,3 +582,25 @@ AI 起草任务全链路：官方扩展点员工档案+六步派发+报告直达
 ### Status
 
 [OK] **Completed**
+
+
+## Session 17: 任务透视 v2 管线图重做
+<!-- trellis-session: v=2 fp=666754dfeec6b9e1 -->
+
+**Date**: 2026-09-30
+**Task**: 任务透视 v2 管线图重做
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+按用户反馈把任务透视从文字列表重做为SVG工作流管线图：五阶段节点+状态点亮+点节点看阶段原文/注入人话/jsonl预期；阶段链去噪；冒烟五小节全命中
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `08ded2e` | feat(insights): 任务透视 v2——工作流管线图（架构图形态） |
+
+### Status
+
+[OK] **Completed**
