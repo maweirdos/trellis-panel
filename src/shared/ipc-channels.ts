@@ -27,7 +27,8 @@ export const ipcInvoke = {
     create: 'task:create',
     createFromJira: 'task:createFromJira',
     createFromPlan: 'task:createFromPlan',
-    writeArtifact: 'task:writeArtifact'
+    writeArtifact: 'task:writeArtifact',
+    resolveClipboardTask: 'task:resolveClipboardTask'
   },
   todo: {
     list: 'todo:list',
@@ -210,6 +211,10 @@ export const ipcEvent = {
   toast: 'bridge:toast',
   /** 深链/AI 工具触发任务聚焦 */
   bridgeTaskFocus: 'bridge:focus-task',
+  /** FR：任务材料更新（按任务防抖合并后广播；面板自写不通知） */
+  materialUpdated: 'bridge:material-updated',
+  /** FR：全局热键唤起主窗口时请求恢复上次阅读位置 */
+  focusLastReading: 'bridge:focus-last-reading',
   /** cli 长任务事件流（runId 关联，成对出现） */
   cliOutput: 'cli:output',
   cliDone: 'cli:done',

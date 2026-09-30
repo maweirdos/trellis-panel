@@ -1,5 +1,6 @@
-import { join } from 'path'
+import { join, resolve, basename } from 'path'
 import { writeFileSync } from 'fs'
+import { clipboard } from 'electron'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { errorText, errorMessage } from '../../shared/errors'
 import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
@@ -11,7 +12,8 @@ import {
   sendSnapshot,
   createTaskRecord,
   deleteTaskRecord,
-  slugifyTitle
+  slugifyTitle,
+  markPanelWrite
 } from '../state'
 import { handle } from './registry'
 
@@ -29,6 +31,7 @@ export function registerTasksIpc(): void {
     if (!root) return noProject()
     try {
       updateTaskRecordAt(root, taskDir, patch, expectedMtime)
+      markPanelWrite(join(resolve(taskDir), 'task.json'))
       sendSnapshot()
       return { ok: true }
     } catch (e) {
@@ -36,6 +39,28 @@ export function registerTasksIpc(): void {
       if (isConflict(e)) return ipcFail(IpcErrorCode.Conflict, msg ?? '任务已被外部修改', { conflict: true })
       return ipcFail(IpcErrorCode.Io, msg ?? '写入 task.json 失败')
     }
+  })
+
+  /** FR：从剪贴板解析任务（显式动作，非自动跳转）。接受 .trellis/tasks 下的
+   *  绝对/相对路径或裸任务目录名；返回归一化 dirName 与归档标志。 */
+  handle(ipcInvoke.task.resolveClipboardTask, async () => {
+    const snap = getSnapshot()
+    if (!snap) return noProject()
+    let raw = ''
+    try {
+      raw = (await clipboard.readText()).trim()
+    } catch {
+      return ipcFail(IpcErrorCode.Io, '读取剪贴板失败')
+    }
+    if (!raw) return ipcFail(IpcErrorCode.InvalidArg, '剪贴板为空')
+    raw = raw.replace(/^["']|["']$/g, '').replace(/[\\/]+$/, '')
+    for (const c of [basename(raw), raw]) {
+      const active = snap.tasks.find((t) => t.dirName === c || t.path.endsWith(c))
+      if (active) return { ok: true as const, dirName: active.dirName, archived: false }
+      const archived = snap.archived.find((t) => t.dirName === c || t.path.endsWith(c))
+      if (archived) return { ok: true as const, dirName: archived.dirName, archived: true }
+    }
+    return ipcFail(IpcErrorCode.NotFound, `剪贴板内容不是本项目的任务：${raw.slice(0, 120)}`)
   })
 
   handle(ipcInvoke.task.delete, (_e, taskDir: string, expectedMtime?: number) => deleteTaskRecord(taskDir, expectedMtime))
@@ -66,6 +91,7 @@ export function registerTasksIpc(): void {
     try {
       const p = join(t.path, name)
       writeFileSync(p, String(content ?? ''), 'utf-8')
+      markPanelWrite(p)
       sendSnapshot()
       return { ok: true, path: p }
     } catch (e) {

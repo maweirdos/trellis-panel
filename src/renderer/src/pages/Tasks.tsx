@@ -28,17 +28,19 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Compass,
-  ArrowLeft
+  ArrowLeft,
+  ClipboardPaste,
+  ListTodo
 } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
 import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
 import { statusLabel } from '../utils/labels'
+import { getReading, setReading } from '../utils/reading'
 import { taskDateLabel } from '../utils/format'
 import { api } from '../api'
 import { MarkdownView } from '../components/MarkdownView'
 import { CodeView } from '../components/CodeView'
-import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import { confirmDialog } from '../components/Dialogs'
 import { FocusTimer } from '../components/FocusTimer'
 import { Select } from '../components/Select'
@@ -302,6 +304,7 @@ function TaskWorkspace({
 }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const aiEnabled = useApp((s) => s.settings?.ai.enabled ?? false)
+  const projectName = useApp((s) => s.snapshot?.meta.name ?? '')
   const [leftRailOpen, setLeftRailOpen] = useState(true)
   const [rightAsideOpen, setRightAsideOpen] = useState(true)
   const [activeDocPath, setActiveDocPath] = useState<string | null>(null)
@@ -315,6 +318,7 @@ function TaskWorkspace({
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
   const [collapsedEpics, setCollapsedEpics] = useState<Record<string, boolean>>({})
   const docContainerRef = useRef<HTMLDivElement>(null)
+  const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const idx = Math.max(0, tasks.findIndex((t) => t.dirName === selected))
   const task = tasks[idx] ?? null
@@ -406,6 +410,17 @@ function TaskWorkspace({
     }
   }, [task?.dirName, docTabs])
 
+  // FR：阅读位置记忆——任务/文档切换即落库
+  useEffect(() => {
+    if (!task || !projectName) return
+    setReading(projectName, {
+      dirName: task.dirName,
+      docName: activeDocName,
+      docType: activeDocType,
+      scrollTop: docContainerRef.current?.scrollTop ?? 0
+    })
+  }, [task?.dirName, activeDocName, activeDocType, projectName, task])
+
   // 读取当前激活文档的内容
   useEffect(() => {
     if (!activeDocPath) {
@@ -420,6 +435,13 @@ function TaskWorkspace({
         if (!alive) return
         if (res.ok && res.content !== undefined) {
           setDocContent(res.content)
+          // FR：恢复上次阅读的滚动位置（仅当任务与文档都对得上）
+          const saved = getReading(projectName)
+          if (saved && task && saved.dirName === task.dirName && saved.docName === activeDocName) {
+            requestAnimationFrame(() => {
+              if (alive && docContainerRef.current) docContainerRef.current.scrollTop = saved.scrollTop
+            })
+          }
         } else {
           setDocContent(null)
         }
@@ -430,7 +452,7 @@ function TaskWorkspace({
     return () => {
       alive = false
     }
-  }, [activeDocPath])
+  }, [activeDocPath, activeDocName, projectName, task?.dirName, task])
 
   // 需求组与独立任务分类（保留层级结构，杜绝打散）
   const { epicsList, standalonesList } = useMemo(() => {
@@ -566,10 +588,10 @@ function TaskWorkspace({
               <button
                 onClick={onClose}
                 className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-mist-300 hover:bg-ink-750 hover:text-mist-50 transition-colors"
-                title="返回四列看板 (快捷键 Esc)"
+                title="关闭当前任务，回到空态 (Esc)"
               >
                 <ArrowLeft size={13.5} />
-                <span>返回看板</span>
+                <span>关闭任务</span>
               </button>
               <button
                 onClick={() => setLeftRailOpen(false)}
@@ -617,7 +639,7 @@ function TaskWorkspace({
               <button
                 onClick={onClose}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-mist-400 hover:bg-ink-750 hover:text-mist-100 transition-colors cursor-pointer"
-                title="返回四列看板 (Esc)"
+                title="关闭当前任务 (Esc)"
               >
                 <ArrowLeft size={14} />
               </button>
@@ -952,8 +974,10 @@ function TaskWorkspace({
         )}
       </div>
 
-      {/* 右侧：主阅读与一体化工作区 */}
+      {/* 右侧：主阅读与一体化工作区（FR：未选任务时展示空态，主从常驻） */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ink-900">
+        {task ? (
+          <>
         {/* 任务工作台 Primary Header：任务主控栏 (44px，与左侧第一行严格对齐) */}
         <div className="flex h-11 shrink-0 items-center justify-between border-b border-ink-700 bg-ink-850/90 px-4 backdrop-blur-sm">
           {/* 左侧：任务身份与正式标题（清晰的主视觉） */}
@@ -1174,7 +1198,24 @@ function TaskWorkspace({
         {/* 双列/单列工作台容器（宽阔阅读区域） */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* 中间：自适应宽幅文档阅读区（纯白/纯黑纸张画布） */}
-          <div ref={docContainerRef} className="flex-1 min-w-0 overflow-y-auto bg-ink-950 px-6 py-5">
+          <div
+            ref={docContainerRef}
+            onScroll={(e) => {
+              // FR：滚动位置节流落库（500ms）
+              const el = e.currentTarget
+              if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current)
+              scrollSaveTimer.current = setTimeout(() => {
+                if (task && projectName) {
+                  setReading(projectName, {
+                    dirName: task.dirName,
+                    docName: activeDocName,
+                    docType: activeDocType,
+                    scrollTop: el.scrollTop
+                  })
+                }
+              }, 500)
+            }}
+            className="flex-1 min-w-0 overflow-y-auto bg-ink-950 px-6 py-5">
             <div className={clsx('mx-auto transition-all', rightAsideOpen ? 'max-w-[1080px]' : 'max-w-[1240px]')}>
               {/* AI 摘要卡片 */}
               {aiSummaryText && (
@@ -1376,6 +1417,14 @@ function TaskWorkspace({
             </div>
           )}
         </div>
+          </>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-mist-500">
+            <ListTodo size={22} className="text-mist-600" />
+            <div className="text-xs">从左侧选择任务开始阅读</div>
+            <div className="text-[10.5px] text-mist-600">j / k 或 ↑↓ 切换 · Esc 关闭 · Ctrl+K 全局搜索</div>
+          </div>
+        )}
       </div>
 
     </div>
@@ -1389,12 +1438,7 @@ export function TasksPage(): JSX.Element {
   const showTask = useApp((s) => s.showTask)
   const openTaskDir = useApp((s) => s.openTaskDir)
   const pushToast = useApp((s) => s.pushToast)
-  const setIntakeOpen = useApp((s) => s.setIntakeOpen)
   const [query, setQuery] = useState('')
-  const [planSeed, setPlanSeed] = useState<PlanningSeed | null>(null)
-  /** 已展开的「已完成」等大列（列 key） */
-  const [expandedCols, setExpandedCols] = useState<Set<string>>(new Set())
-  /** 完成门禁：待确认的任务 */
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState('')
 
@@ -1419,7 +1463,7 @@ export function TasksPage(): JSX.Element {
   )
 
   /* ----- 任务树（parent 引用 → Epic 折叠组） ----- */
-  const { childMap, childDirs, hasEpics } = useMemo(() => {
+  const { childMap, childDirs } = useMemo(() => {
     const map = new Map<string, TaskInfo[]>()
     const dirs = new Set<string>()
     for (const t of snapshot.tasks) {
@@ -1431,11 +1475,8 @@ export function TasksPage(): JSX.Element {
         dirs.add(t.dirName)
       }
     }
-    return { childMap: map, childDirs: dirs, hasEpics: map.size > 0 }
+    return { childMap: map, childDirs: dirs }
   }, [snapshot.tasks])
-  const [grouped, setGrouped] = useState<boolean | null>(null)
-  const groupOn = grouped ?? hasEpics
-
   /* ----- 动态兜底列：自定义状态不丢失 ----- */
   const extraColumns = useMemo(() => {
     const known = new Set(COLUMNS.map((c) => c.status))
@@ -1461,7 +1502,28 @@ export function TasksPage(): JSX.Element {
     [filtered, columns]
   )
 
-  const boardColumns = groupOn ? filtered.filter((t) => !childDirs.has(t.dirName)) : filtered
+  /* FR：显式打开剪贴板中的任务路径 */
+  const openFromClipboard = async (): Promise<void> => {
+    const res = await api.taskResolveClipboardTask()
+    if (res.ok) {
+      showTask(res.dirName, res.archived)
+      pushToast({ kind: 'success', title: '已打开任务', body: res.dirName })
+    } else {
+      pushToast({ kind: 'warn', title: '未能识别剪贴板任务', body: res.error })
+    }
+  }
+
+  /* FR：进入任务页时恢复上次阅读的任务（稳定地址；仅首次） */
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current || !snapshot?.tasks.length) return
+    restoredRef.current = true
+    if (openTaskDir) return
+    const saved = getReading(snapshot.meta.name)
+    if (saved && snapshot.tasks.some((t) => t.dirName === saved.dirName)) {
+      showTask(saved.dirName)
+    }
+  }, [snapshot, openTaskDir, showTask])
 
   /* 键盘导航：Escape 退出工作台；j/k 上下切换任务 */
   useEffect(() => {
@@ -1490,8 +1552,7 @@ export function TasksPage(): JSX.Element {
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      {/* 全局看板工具栏：仅在四列看板模式下显示，进入具体任务工作台时隐藏，彻底消除多层Header堆叠 */}
-      {!openTaskDir && (
+      {/* 任务页工具栏（FR：主从常驻，不再随选中状态隐藏） */}
         <div className="flex flex-wrap items-center gap-2 border-b border-ink-700 bg-ink-850/40 px-5 py-2.5">
           <div className="relative">
             <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-mist-500" />
@@ -1538,101 +1599,25 @@ export function TasksPage(): JSX.Element {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={() => setIntakeOpen(true)} className="btn-primary" title="新建待办">
-              <Sparkles size={12} /> 新建待办
+            {/* FR：显式打开剪贴板中的任务路径（从 AI 客户端复制路径后一键定位；不自动跳转） */}
+            <button onClick={() => void openFromClipboard()} className="btn-outline" title="读取剪贴板中的任务路径并打开">
+              <ClipboardPaste size={12} /> 打开剪贴板任务
             </button>
-            <button onClick={() => setPlanSeed({ title: '', description: '' })} className="btn-outline" title="知识库 → AI 生成任务规划">
-              <Wand2 size={12} /> AI 规划
-            </button>
-            {hasEpics && (
-              <button
-                onClick={() => setGrouped(!groupOn)}
-                className={clsx('chip border transition-colors', groupOn ? 'border-leaf-dim/50 text-leaf-soft' : 'border-ink-500 text-mist-400')}
-                title="按需求组（parent 引用）折叠子任务"
-              >
-                <Layers size={11} /> 需求组{groupOn ? ' 开' : ' 关'}
-              </button>
-            )}
             <span className="text-[11px] text-mist-500">{filtered.length} 个任务</span>
           </div>
         </div>
-      )}
 
-      {/* 视图内容：当打开任务时渲染一体化工作台；未打开任务时渲染全宽四列看板 */}
-      {openTaskDir ? (
-        <TaskWorkspace
-          tasks={filtered}
-          selected={openTaskDir}
-          onSelect={(dir) => showTask(dir)}
-          onClose={() => showTask(null)}
-          columns={columns}
-          childMap={childMap}
-          childDirs={childDirs}
-        />
-      ) : (
-        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-3">
-          <div className="flex h-full min-h-0 gap-3">
-            {columns.map((col) => {
-              const items = boardColumns.filter((t) => matchCol(t, col.status))
-              const collapsible = items.length > 8
-              const expanded = expandedCols.has(col.status)
-              const visible = collapsible && !expanded
-                ? [...items].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5)
-                : items
-              const hiddenCount = items.length - visible.length
-              return (
-                <div
-                  key={col.status}
-                  className="flex w-full min-w-[230px] flex-1 flex-col rounded-xl border border-ink-700 bg-ink-850/50"
-                >
-                  <div className="flex shrink-0 items-center gap-2 border-b border-ink-700/70 px-3 py-2.5">
-                    <span className={clsx('h-2 w-2 rounded-full', col.dot)} />
-                    <span className="text-xs font-semibold text-mist-100">{col.label}</span>
-                    <span className="ml-auto rounded bg-ink-750 px-1.5 font-mono text-[10.5px] text-mist-400">
-                      {items.length}
-                    </span>
-                  </div>
-                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2 [contain:content]">
-                    {visible.map((t) =>
-                      groupOn && childMap.has(t.dirName) ? (
-                        <EpicCard
-                          key={t.dirName}
-                          epic={t}
-                          children={childMap.get(t.dirName)!}
-                          onOpen={(dir) => showTask(dir)}
-                        />
-                      ) : (
-                        <TaskCard
-                          key={t.dirName}
-                          t={t}
-                          isCurrent={snapshot.meta.currentTask === t.dirName}
-                          onOpen={() => showTask(t.dirName)}
-                        />
-                      )
-                    )}
-                    {hiddenCount > 0 && (
-                      <button
-                        onClick={() => setExpandedCols((s) => new Set(s).add(col.status))}
-                        className="w-full rounded-lg border border-dashed border-ink-600 py-1.5 text-[10.5px] text-mist-500 hover:border-ink-500 hover:text-mist-300"
-                      >
-                        展开更早的 {hiddenCount} 条
-                      </button>
-                    )}
-                    {items.length === 0 && (
-                      <div className="grid place-items-center gap-1.5 py-10 text-mist-600">
-                        <Inbox size={18} />
-                        <span className="text-[11px]">拖拽任务到这里</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {/* 视图内容：FR 主从布局常驻——左侧任务导轨 + 右侧阅读区（未选任务显示空态） */}
+      <TaskWorkspace
+        tasks={filtered}
+        selected={openTaskDir}
+        onSelect={(dir) => showTask(dir)}
+        onClose={() => showTask(null)}
+        columns={columns}
+        childMap={childMap}
+        childDirs={childDirs}
+      />
 
-      {planSeed && <PlanningModal seed={planSeed} onClose={() => setPlanSeed(null)} />}
     </div>
   )
 }

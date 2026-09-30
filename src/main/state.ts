@@ -59,6 +59,73 @@ export function routeSpecFileSync(absPath: string): void {
   weknoraSpecSync.enqueue(p)
 }
 
+/* ---------------- FR：任务材料更新提醒（按任务防抖合并） ----------------
+ * 合同（06 v2 §2 支柱一）：等文件稳定后按任务合并通知；首扫不通知（chokidar
+ * ignoreInitial 天然满足）；面板自身写入不通知；只报文件事实，不推断代理状态。 */
+
+const MATERIAL_SETTLE_MS = 8000
+const PANEL_WRITE_GRACE_MS = 5000
+const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const materialFiles = new Map<string, Set<string>>()
+/** 面板自己刚写过的文件（绝对路径 → 时间戳），提醒管道据此过滤自嗨通知 */
+const panelWrittenAt = new Map<string, number>()
+
+export function markPanelWrite(absPath: string): void {
+  panelWrittenAt.set(resolve(absPath), Date.now())
+  if (panelWrittenAt.size > 200) {
+    const now = Date.now()
+    for (const [k, t] of panelWrittenAt) {
+      if (now - t > PANEL_WRITE_GRACE_MS * 2) panelWrittenAt.delete(k)
+    }
+  }
+}
+
+export function routeMaterialNotice(absPath: string): void {
+  if (!projectRoot) return
+  const tasksRoot = resolve(projectRoot, '.trellis', 'tasks') + sep
+  const p = resolve(absPath)
+  if (!p.startsWith(tasksRoot)) return
+  const written = panelWrittenAt.get(p)
+  if (written && Date.now() - written < PANEL_WRITE_GRACE_MS) return
+  const rel = p.slice(tasksRoot.length)
+  const parts = rel.split(/[\\/]/).filter(Boolean)
+  if (parts.length < 2) return
+  // 只提醒活跃任务（tasks/<dir>/…）；归档目录的变化不打扰
+  if (parts[0] === 'archive') return
+  const dirName = parts[0]
+  let files = materialFiles.get(dirName)
+  if (!files) {
+    files = new Set()
+    materialFiles.set(dirName, files)
+  }
+  files.add(parts.slice(1).join('/'))
+  const prev = materialTimers.get(dirName)
+  if (prev) clearTimeout(prev)
+  materialTimers.set(
+    dirName,
+    setTimeout(() => {
+      materialTimers.delete(dirName)
+      const fs = materialFiles.get(dirName) ?? new Set<string>()
+      materialFiles.delete(dirName)
+      if (fs.size === 0) return
+      const t = latestSnapshot?.tasks.find((x) => x.dirName === dirName)
+      broadcastToWindows(ipcEvent.materialUpdated, {
+        dirName,
+        title: t?.record?.title ?? dirName,
+        count: fs.size,
+        files: [...fs].slice(0, 5),
+        at: Date.now()
+      })
+    }, MATERIAL_SETTLE_MS)
+  )
+}
+
+function clearMaterialTimers(): void {
+  for (const t of materialTimers.values()) clearTimeout(t)
+  materialTimers.clear()
+  materialFiles.clear()
+}
+
 export function syncWeknoraSpecConfig(): void {
   weknoraSpecSync.configure(getSettings().weknora, projectRoot)
 }
@@ -194,7 +261,10 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
     }
     projectRoot = snap.meta.root
     pushRecentProject(projectRoot)
-    watcher.start(projectRoot, sendSnapshot, routeSpecFileSync)
+    watcher.start(projectRoot, sendSnapshot, (path) => {
+      routeSpecFileSync(path)
+      routeMaterialNotice(path)
+    })
     syncWeknoraSpecConfig()
     clearGitCache()
     latestSnapshot = snap
@@ -210,6 +280,7 @@ export function closeProjectAt(): void {
   watcher.stop()
   projectRoot = null
   knownTaskDirs = new Set()
+  clearMaterialTimers()
   syncWeknoraSpecConfig()
 }
 
@@ -339,6 +410,7 @@ export function createTaskRecord(input: CreateTaskInput): { ok: true; dirName: s
     }
     if (input.workflow) record.workflow = input.workflow
     writeFileSync(join(finalDir, 'task.json'), JSON.stringify(record, null, 2) + '\n', 'utf-8')
+    markPanelWrite(join(finalDir, 'task.json'))
     sendSnapshot()
     return { ok: true, dirName: finalDirName }
   } catch (e) {
@@ -405,5 +477,6 @@ export function applyAutoStart(): void {
 export function stopTimers(): void {
   watcher.stop()
   weknoraSpecSync.stop()
+  clearMaterialTimers()
   stopHttpApi()
 }

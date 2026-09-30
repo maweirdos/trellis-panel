@@ -18,7 +18,8 @@ import type {
   Settings,
   TaskPatch,
   ToastEvent,
-  WeknoraConfig
+  WeknoraConfig,
+  MaterialUpdatedEvent
 } from '../shared/types'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -130,6 +131,10 @@ const api = {
   aiPrDesc: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.prDesc, dirName),
   taskWriteArtifact: (dirName: string, fileName: string, content: string) =>
     ipcRenderer.invoke(ipcInvoke.task.writeArtifact, dirName, fileName, content),
+  taskResolveClipboardTask: () =>
+    ipcRenderer.invoke(ipcInvoke.task.resolveClipboardTask) as Promise<
+      { ok: true; dirName: string; archived: boolean } | { ok: false; error: string }
+    >,
 
   kbMcpInstall: () => ipcRenderer.invoke(ipcInvoke.kbmcp.install),
   kbMcpStatus: () => ipcRenderer.invoke(ipcInvoke.kbmcp.status),
@@ -197,6 +202,8 @@ const api = {
   onQuickTodoShown: (cb: () => void) => subscribe(ipcEvent.quickTodoShown, cb),
   onToast: (cb: (e: ToastEvent) => void) => subscribe(ipcEvent.toast, cb),
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => subscribe(ipcEvent.bridgeTaskFocus, cb),
+  onMaterialUpdated: (cb: (e: MaterialUpdatedEvent) => void) => subscribe(ipcEvent.materialUpdated, cb),
+  onFocusLastReading: (cb: () => void) => subscribe(ipcEvent.focusLastReading, cb),
   getMcpInfo: () => ipcRenderer.invoke(ipcInvoke.mcp.info),
   toggleHttpApi: (on: boolean) => ipcRenderer.invoke(ipcInvoke.mcp.toggle, on),
 

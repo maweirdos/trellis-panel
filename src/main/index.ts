@@ -272,7 +272,11 @@ function registerGlobalShortcut(): void {
   try {
     globalShortcut.register(accel, () => {
       if (win && win.isVisible() && win.isFocused()) win.hide()
-      else showMain()
+      else {
+        showMain()
+        // FR：热键唤起 = 回到上次阅读位置（不新开窗口、不跳最新文件）
+        broadcastToWindows(ipcEvent.focusLastReading, { at: Date.now() })
+      }
     })
   } catch {
     // invalid accelerator — ignore

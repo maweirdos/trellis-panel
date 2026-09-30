@@ -7,6 +7,7 @@ import { Onboarding } from './components/Onboarding'
 import { Toasts } from './components/Toasts'
 import { DialogHost } from './components/Dialogs'
 import { CapsuleView } from './components/CapsuleView'
+import { getReading } from './utils/reading'
 import { QuickTodoView } from './components/QuickTodoView'
 import { ArtifactViewer } from './components/ArtifactViewer'
 import { CommandPalette } from './components/CommandPalette'
@@ -90,11 +91,34 @@ function MainApp(): JSX.Element {
       inboxAdd(e.items)
       useApp.setState({ page: 'inbox' })
     })
+    // FR：任务材料更新（主进程按任务防抖合并）——正在阅读的任务给轻提示，其余正常提醒
+    const offMaterial = api.onMaterialUpdated((e) => {
+      const st = useApp.getState()
+      const readingIt = st.page === 'tasks' && st.openTaskDir === e.dirName
+      pushToast({
+        kind: 'info',
+        title: readingIt ? '当前阅读任务有更新' : `任务更新：${e.title}`,
+        body: `${e.count} 个文件：${e.files.join('、')}${e.count > e.files.length ? ' 等' : ''}`
+      })
+    })
+    // FR：全局热键唤起 → 回到上次阅读位置（不新开、不跳最新）
+    const offFocusReading = api.onFocusLastReading(() => {
+      const st = useApp.getState()
+      st.setPage('tasks')
+      const snap = st.snapshot
+      if (!snap) return
+      const saved = getReading(snap.meta.name)
+      if (saved && [...snap.tasks, ...snap.archived].some((t) => t.dirName === saved.dirName) && st.openTaskDir !== saved.dirName) {
+        st.showTask(saved.dirName, snap.archived.some((t) => t.dirName === saved.dirName))
+      }
+    })
     return () => {
       off()
       offToast()
       offFocus()
       offInbox()
+      offMaterial()
+      offFocusReading()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

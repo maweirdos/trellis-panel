@@ -114,6 +114,15 @@ export interface SessionInfo {
   run: string | null
 }
 
+/** FR：任务材料更新（主进程按任务防抖合并后广播） */
+export interface MaterialUpdatedEvent {
+  dirName: string
+  title: string
+  count: number
+  files: string[]
+  at: number
+}
+
 export interface PlatformChip {
   id: string
   name: string
@@ -1079,6 +1088,8 @@ export interface TrellisApi {
   onQuickTodoShown: (cb: () => void) => () => void
   onToast: (cb: (e: ToastEvent) => void) => () => void
   onBridgeTaskFocus: (cb: (taskDir: string) => void) => () => void
+  onMaterialUpdated: (cb: (e: MaterialUpdatedEvent) => void) => () => void
+  onFocusLastReading: (cb: () => void) => () => void
   getMcpInfo: () => Promise<McpInfo>
   toggleHttpApi: (on: boolean) => Promise<{ ok: boolean; error?: string }>
 
@@ -1215,6 +1226,7 @@ export interface TrellisApi {
   aiCommitMsg: (dirName: string) => Promise<AiChatResult>
   aiPrDesc: (dirName: string) => Promise<AiChatResult>
   taskWriteArtifact: (dirName: string, fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
+  taskResolveClipboardTask: () => Promise<{ ok: true; dirName: string; archived: boolean } | { ok: false; error: string }>
 
   /* --- KB-MCP --- */
   kbMcpInstall: () => Promise<KbMcpInstallResult>
