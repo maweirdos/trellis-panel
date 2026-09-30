@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/archive/2026-09/09-30-t4-dispatch-validation/research/gate-validation-report.md", "reason": "Defect source: the read-only review report driving every fix"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "Effect cleanup / stale-state pitfalls referenced by fixes #3 #4"}

@@ -1,4 +1,4 @@
-import { join, resolve, basename } from 'path'
+import { join, resolve } from 'path'
 import { writeFileSync, readFileSync, statSync } from 'fs'
 import { clipboard } from 'electron'
 import { runReadonlyReview, abortDispatch } from '../services/channel-dispatch'
@@ -58,11 +58,23 @@ export function registerTasksIpc(): void {
     }
     if (!raw) return ipcFail(IpcErrorCode.InvalidArg, '剪贴板为空')
     raw = raw.replace(/^["']|["']$/g, '').replace(/[\\/]+$/, '')
-    for (const c of [basename(raw), raw]) {
-      const active = snap.tasks.find((t) => t.dirName === c || t.path.endsWith(c))
-      if (active) return { ok: true as const, dirName: active.dirName, archived: false }
-      const archived = snap.archived.find((t) => t.dirName === c || t.path.endsWith(c))
-      if (archived) return { ok: true as const, dirName: archived.dirName, archived: true }
+    // 审阅修复#5：带路径分隔符的内容只做 resolve 精确匹配（防其他项目同名
+    // 任务目录 basename 误命中）；仅裸目录名才按 dirName 匹配。
+    const root = getProjectRoot()
+    const hasSep = /[\\/]/.test(raw)
+    for (const list of [snap.tasks, snap.archived] as const) {
+      const hit = list.find((t) => {
+        if (hasSep) {
+          if (!root) return false
+          try {
+            return resolve(raw) === resolve(t.path)
+          } catch {
+            return false
+          }
+        }
+        return t.dirName === raw
+      })
+      if (hit) return { ok: true as const, dirName: hit.dirName, archived: hit.archived }
     }
     return ipcFail(IpcErrorCode.NotFound, `剪贴板内容不是本项目的任务：${raw.slice(0, 120)}`)
   })

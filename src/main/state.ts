@@ -108,6 +108,9 @@ export function routeMaterialNotice(absPath: string): void {
       const fs = materialFiles.get(dirName) ?? new Set<string>()
       materialFiles.delete(dirName)
       if (fs.size === 0) return
+      // 审阅修复#7：合并窗口内任务可能已被外部归档——仅活跃任务提醒
+      const stillActive = latestSnapshot?.tasks.some((x) => x.dirName === dirName) ?? false
+      if (!stillActive) return
       const t = latestSnapshot?.tasks.find((x) => x.dirName === dirName)
       const payload = {
         dirName,

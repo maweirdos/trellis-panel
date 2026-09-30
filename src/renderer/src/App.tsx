@@ -103,13 +103,15 @@ function MainApp(): JSX.Element {
     })
     // FR：全局热键唤起 → 回到上次阅读位置（不新开、不跳最新）
     const offFocusReading = api.onFocusLastReading(() => {
-      const st = useApp.getState()
-      st.setPage('tasks')
-      const snap = st.snapshot
+      // 审阅修复#4：setPage 会清空选中任务，必须重读最新状态再判断，
+      // 且已保存任务有效时无条件恢复（旧写法在已选中时会因旧状态跳过恢复）
+      useApp.getState().setPage('tasks')
+      const fresh = useApp.getState()
+      const snap = fresh.snapshot
       if (!snap) return
-      const saved = getReading(snap.meta.name)
-      if (saved && [...snap.tasks, ...snap.archived].some((t) => t.dirName === saved.dirName) && st.openTaskDir !== saved.dirName) {
-        st.showTask(saved.dirName, snap.archived.some((t) => t.dirName === saved.dirName))
+      const saved = getReading(snap.meta.root)
+      if (saved && [...snap.tasks, ...snap.archived].some((t) => t.dirName === saved.dirName)) {
+        fresh.showTask(saved.dirName, snap.archived.some((t) => t.dirName === saved.dirName))
       }
     })
     return () => {

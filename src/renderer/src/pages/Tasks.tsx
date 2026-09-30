@@ -312,7 +312,8 @@ function TaskWorkspace({
 }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const aiEnabled = useApp((s) => s.settings?.ai.enabled ?? false)
-  const projectName = useApp((s) => s.snapshot?.meta.name ?? '')
+  // 修复#6：阅读记录键用项目根路径
+  const projectName = useApp((s) => s.snapshot?.meta.root ?? '')
   const [leftRailOpen, setLeftRailOpen] = useState(true)
   const [rightAsideOpen, setRightAsideOpen] = useState(true)
   const [activeDocPath, setActiveDocPath] = useState<string | null>(null)
@@ -331,8 +332,10 @@ function TaskWorkspace({
   const [insightsOpen, setInsightsOpen] = useState(false)
   const [dispatchOpen, setDispatchOpen] = useState(false)
 
-  const idx = Math.max(0, tasks.findIndex((t) => t.dirName === selected))
-  const task = tasks[idx] ?? null
+  // 审阅修复#1：选中任务被筛选排除时进入空态，不再回退展示列表首项
+  const foundIdx = tasks.findIndex((t) => t.dirName === selected)
+  const idx = foundIdx >= 0 ? foundIdx : 0
+  const task = foundIdx >= 0 ? (tasks[foundIdx] ?? null) : null
 
   // 寻找父需求组与子任务
   const parentTask = useMemo(() => {
@@ -394,15 +397,30 @@ function TaskWorkspace({
     return task.artifacts.filter((a) => !/\.(md|markdown)$/i.test(a.name))
   }, [task])
 
-  // 切换任务时，默认选中 PRD 文档或首个可用文档
+  // 切换任务时：优先恢复上次阅读的文档（审阅修复#2），否则默认 PRD/首个
   useEffect(() => {
     setAiDraft(null)
     setAiSummaryText(null)
+    // 修复#3：切换任务先清未落盘的滚动保存定时器，防止旧任务延迟覆盖新记录
+    if (scrollSaveTimer.current) {
+      clearTimeout(scrollSaveTimer.current)
+      scrollSaveTimer.current = null
+    }
     if (!task) {
       setActiveDocPath(null)
       setActiveDocName('prd.md')
       setDocContent(null)
       return
+    }
+    const saved = getReading(projectName)
+    if (saved && saved.dirName === task.dirName) {
+      const hit = docTabs.find((d) => d.fileName === saved.docName)
+      if (hit) {
+        setActiveDocPath(hit.path)
+        setActiveDocType(hit.type)
+        setActiveDocName(hit.fileName)
+        return
+      }
     }
     const prdItem = docTabs.find((d) => d.type === 'prd')
     if (prdItem) {
@@ -420,6 +438,13 @@ function TaskWorkspace({
       setDocContent(null)
     }
   }, [task?.dirName, docTabs])
+
+  // 修复#3：组件卸载清理滚动保存定时器
+  useEffect(() => {
+    return () => {
+      if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current)
+    }
+  }, [])
 
   // FR：阅读位置记忆——任务/文档切换即落库
   useEffect(() => {

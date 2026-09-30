@@ -10,6 +10,7 @@ export interface ReadingPos {
   scrollTop: number
 }
 
+// 审阅修复#6：键用项目根路径（唯一身份），同名 clone/worktree 不再互相覆盖
 const key = (project: string): string => `tp:reading:${project}`
 
 export function getReading(project: string): ReadingPos | null {
