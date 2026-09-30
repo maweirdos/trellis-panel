@@ -44,6 +44,9 @@ ambiguity into 开放问题 instead of inventing answers.
 ## Final report (end of turn, this exact format)
 
 ```
+## 分析过程
+- （2-4 条：你按什么顺序读了什么、考虑过哪些方案、为何取舍——把思考写成明文）
+
 ## 起草结果
 - 任务目录：<dir-name>
 - 标题：<title>

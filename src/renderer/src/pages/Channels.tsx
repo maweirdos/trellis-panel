@@ -5,13 +5,8 @@ import {
   Send,
   Plus,
   Trash2,
-  OctagonX,
   Play,
   Users,
-  MessageSquare,
-  Zap,
-  CircleCheck,
-  AlertCircle,
   Loader2,
   Timer,
   Sparkles,
@@ -26,26 +21,6 @@ import { confirmDialog, promptDialog } from '../components/Dialogs'
 import { MarkdownView } from '../components/MarkdownView'
 import type { ChannelEvent, ChannelSummary } from '../../../shared/types'
 import type { JSX } from 'react'
-
-const KIND_STYLE: Record<string, { icon: JSX.Element; cls: string; label: string }> = {
-  message: { icon: <MessageSquare size={11} />, cls: 'bg-sky-500/15 text-sky-300', label: '消息' },
-  create: { icon: <Sparkles size={11} />, cls: 'bg-leaf-dim/20 text-leaf-soft', label: '创建' },
-  progress: { icon: <Loader2 size={11} />, cls: 'bg-amber-500/15 text-amber-300', label: '进度' },
-  turn_finished: { icon: <CircleCheck size={11} />, cls: 'bg-emerald-500/15 text-emerald-300', label: '回合完成' },
-  done: { icon: <CircleCheck size={11} />, cls: 'bg-emerald-500/15 text-emerald-300', label: '完成' },
-  error: { icon: <AlertCircle size={11} />, cls: 'bg-rose-500/15 text-rose-300', label: '错误' },
-  killed: { icon: <OctagonX size={11} />, cls: 'bg-rose-500/15 text-rose-300', label: '已终止' }
-}
-
-function kindStyle(kind: string): { icon: JSX.Element; cls: string; label: string } {
-  return (
-    KIND_STYLE[kind] ?? {
-      icon: <Zap size={11} />,
-      cls: 'bg-ink-700 text-mist-300',
-      label: kind
-    }
-  )
-}
 
 export function ChannelsPage(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)!
@@ -317,49 +292,114 @@ export function ChannelsPage(): JSX.Element {
 
           <div ref={streamRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
             {(() => {
-            // 后端返回 newest-first；对话视图按时间正序渲染（旧上新下，自动滚动=最新）
-            const chrono = [...active.events].reverse()
-            // 连续 progress 合并为单行计数（worker 内部步骤遥测，对回看者是噪音）
-            type Row = { kind: string; by: string; count: number; last: ChannelEvent; warn?: string }
-            const rows: Array<{ msg?: ChannelEvent } | { sys: Row }> = []
-            for (const e of chrono) {
-              if (e.kind === 'message') {
-                rows.push({ msg: e })
-                continue
-              }
-              const prev = rows[rows.length - 1]
-              const d = (e as unknown as { detail?: { kind?: string; message?: string } }).detail
-              const warn = d && d.kind === 'warning' ? d.message ?? '' : ''
-              if (e.kind === 'progress' && prev && 'sys' in prev && prev.sys.kind === 'progress' && prev.sys.by === e.by) {
-                prev.sys.count += 1
-                if (warn) prev.sys.warn = warn
-                continue
-              }
-              rows.push({ sys: { kind: e.kind, by: e.by, count: 1, last: e, warn: warn || undefined } })
+            // 对话视图 v3（产品化）：系统事件转人话、按 worker 回合折叠、
+            // output 增量拼接为实时打字气泡。后端 newest-first → 反转为时间正序。
+            type MsgEvent = ChannelEvent & { text: string }
+            type ChatItem =
+              | { type: 'msg'; e: MsgEvent; mine: boolean }
+              | { type: 'status'; text: string; tone: 'plain' | 'ok' | 'warn' | 'error'; ts?: string }
+              | { type: 'live'; by: string; text: string; steps: number }
+
+            const HUMAN = ['panel', 'panel-ui', 'main']
+            const who = (by: string): string => {
+              if (by === 'panel' || by === 'panel-ui') return '面板'
+              if (by === 'main') return '操作者'
+              return by
             }
-            return rows.map((row, i) => {
-            if ('msg' in row && row.msg) {
-              const e = row.msg
-              // 对话视图（09-30）：message 渲染为气泡（我方右侧 / worker 左侧），
-              // 系统事件收窄为紧凑单行，不再与文本等权展示
-              if (e.kind === 'message' && e.text) {
-                const mine = ['panel', 'panel-ui', 'main'].includes(e.by)
+            const workerOf = (by: string): string => (by.startsWith('supervisor:') ? by.slice('supervisor:'.length) : by)
+
+            type Turn = { steps: number; text: string; warn?: string }
+            const turns = new Map<string, Turn>()
+            const items: ChatItem[] = []
+
+            for (const e of [...active.events].reverse()) {
+              const d = (e as unknown as { detail?: { kind?: string; message?: string; text_delta?: string } }).detail
+              switch (e.kind) {
+                case 'create':
+                  items.push({ type: 'status', text: '频道已创建', tone: 'plain', ts: e.ts })
+                  break
+                case 'spawned': {
+                  const w = (e as unknown as { as?: string }).as ?? workerOf(e.by)
+                  items.push({ type: 'status', text: `已启动 worker「${w}」`, tone: 'plain', ts: e.ts })
+                  break
+                }
+                case 'message': {
+                  if (!e.text) break
+                  turns.delete(e.by)
+                  items.push({ type: 'msg', e: { ...e, text: e.text }, mine: HUMAN.includes(e.by) })
+                  break
+                }
+                case 'turn_started': {
+                  if (!turns.has(e.by)) turns.set(e.by, { steps: 0, text: '' })
+                  break
+                }
+                case 'progress': {
+                  let t = turns.get(e.by)
+                  if (!t) {
+                    t = { steps: 0, text: '' }
+                    turns.set(e.by, t)
+                  }
+                  t.steps += 1
+                  if (d?.kind === 'output' && typeof d.text_delta === 'string') t.text += d.text_delta
+                  if (d?.kind === 'warning' && d.message) t.warn = d.message
+                  break
+                }
+                case 'turn_finished': {
+                  const t = turns.get(e.by)
+                  turns.delete(e.by)
+                  const outcome = (e as unknown as { outcome?: string }).outcome
+                  if (outcome && outcome !== 'done') {
+                    items.push({ type: 'status', text: `「${who(e.by)}」处理失败${t?.warn ? `：${t.warn.slice(0, 120)}` : ''}`, tone: 'error', ts: e.ts })
+                  } else if (t && t.steps > 0) {
+                    items.push({ type: 'status', text: `「${who(e.by)}」完成（${t.steps} 步）`, tone: 'ok', ts: e.ts })
+                  }
+                  break
+                }
+                case 'done':
+                  break // 回合完成已由 turn_finished 表达
+                case 'killed': {
+                  const w = workerOf(e.by)
+                  const t = turns.get(w)
+                  turns.delete(w)
+                  if (t && t.text) {
+                    items.push({
+                      type: 'msg',
+                      e: { ...e, kind: 'message', by: w, text: `${t.text}\n\n…（worker 被清理，以上为未完成的输出）` } as MsgEvent,
+                      mine: false
+                    })
+                  } else {
+                    items.push({ type: 'status', text: `worker「${w}」已清理（闲置超时或手动终止）`, tone: 'plain', ts: e.ts })
+                  }
+                  break
+                }
+                case 'undeliverable':
+                  items.push({ type: 'status', text: '消息未送达：目标 worker 已退出——重新启动 worker 后可重发', tone: 'warn', ts: e.ts })
+                  break
+                case 'supervisor_warning':
+                  break // 折叠进对应回合；独立超时预警不单列
+                default:
+                  break
+              }
+            }
+            // 尚未收尾的回合 → 实时打字气泡（轮询持续刷新 text）
+            for (const [w, t] of turns) {
+              if (t.text || t.steps > 0) items.push({ type: 'live', by: w, text: t.text, steps: t.steps })
+            }
+
+            return items.map((item, i) => {
+              if (item.type === 'msg') {
+                const e = item.e
                 return (
-                  <div key={`${e.seq}-${i}`} className={clsx('mb-3 flex', mine ? 'justify-end' : 'justify-start')}>
-                    <div className={clsx('max-w-[85%] min-w-0', mine ? 'items-end' : 'items-start')}>
-                      <div className={clsx('mb-0.5 flex items-baseline gap-2 text-[9.5px] text-mist-600', mine && 'justify-end')}>
-                        <span
-                          className="font-mono font-medium text-mist-400"
-                          title={mine ? `${e.by}（我方发起/操作）` : `${e.by}（worker，其“进度”为内部步骤遥测）`}
-                        >
-                          {e.by}
-                        </span>
+                  <div key={`m${e.seq}-${i}`} className={clsx('mb-3 flex', item.mine ? 'justify-end' : 'justify-start')}>
+                    <div className="max-w-[85%] min-w-0">
+                      <div className={clsx('mb-0.5 flex items-baseline gap-2 text-[9.5px] text-mist-600', item.mine && 'justify-end')}>
+                        <span className="font-medium text-mist-400">{item.mine ? who(e.by) : `worker「${e.by}」`}</span>
                         <span>{e.ts ? fmtIso(e.ts) : ''}</span>
                       </div>
                       <div
                         className={clsx(
                           'rounded-xl border px-3 py-2 text-[11.5px] leading-5 text-mist-200',
-                          mine ? 'border-leaf-dim/30 bg-leaf-dim/10' : 'border-ink-700 bg-ink-850/80'
+                          item.mine ? 'border-leaf-dim/30 bg-leaf-dim/10' : 'border-ink-700 bg-ink-850/80'
                         )}
                       >
                         {e.text.length > 6000 ? (
@@ -372,29 +412,34 @@ export function ChannelsPage(): JSX.Element {
                   </div>
                 )
               }
-              return null
-            }
-            if (!('sys' in row)) return null
-            const sys = row.sys
-            const st = kindStyle(sys.kind)
-            const isHuman = ['panel', 'panel-ui', 'main'].includes(sys.by)
-            const byHint = sys.by.startsWith('supervisor:')
-              ? `${sys.by}（worker 的守护进程：超时/闲置等系统守护事件）`
-              : isHuman
-                ? `${sys.by}（我方发起/操作）`
-                : `${sys.by}（worker）`
-            return (
-              <div key={`${sys.last.seq}-${i}`} className="mb-1 flex items-center gap-2 text-[10px] text-mist-600" title={sys.warn ? sys.warn.slice(0, 200) : undefined}>
-                <span className={clsx('flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px]', st.cls)}>
-                  {st.icon} {st.label}
-                  {sys.count > 1 && <span className="font-mono">×{sys.count}</span>}
-                </span>
-                <span className="font-mono text-mist-500" title={byHint}>{sys.by}</span>
-                {sys.last.thread && <span className="chip bg-sky-500/10 text-[9px] text-sky-300">{sys.last.thread}</span>}
-                {sys.warn && <span className="min-w-0 flex-1 truncate text-amber-300/80" title={sys.warn}>⚠ {sys.warn}</span>}
-                <span className="ml-auto shrink-0">{sys.last.ts ? fmtIso(sys.last.ts) : ''}</span>
-              </div>
-            )
+              if (item.type === 'live') {
+                return (
+                  <div key={`live${item.by}-${i}`} className="mb-3 flex justify-start">
+                    <div className="max-w-[85%] min-w-0">
+                      <div className="mb-0.5 flex items-baseline gap-2 text-[9.5px] text-mist-600">
+                        <span className="font-medium text-mist-400">worker「{item.by}」</span>
+                        <span className="text-leaf-soft">正在回复…（{item.steps} 步）</span>
+                      </div>
+                      <div className="rounded-xl border border-ink-700 bg-ink-850/80 px-3 py-2 text-[11.5px] leading-5 text-mist-200">
+                        <pre className="whitespace-pre-wrap break-words font-sans">{item.text.slice(-2000) || '…'}</pre>
+                        <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-leaf-soft align-middle" />
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+              return (
+                <div key={`s${i}`} className="mb-1 flex items-center gap-2 text-[10px] text-mist-600">
+                  <span
+                    className={clsx(
+                      'h-1 w-1 shrink-0 rounded-full',
+                      item.tone === 'error' ? 'bg-rose-400' : item.tone === 'warn' ? 'bg-amber-400' : item.tone === 'ok' ? 'bg-leaf' : 'bg-mist-600'
+                    )}
+                  />
+                  <span className={clsx(item.tone === 'error' && 'text-rose-300', item.tone === 'warn' && 'text-amber-300/90')}>{item.text}</span>
+                  {item.ts && <span className="ml-auto shrink-0">{fmtIso(item.ts)}</span>}
+                </div>
+              )
             })
             })()}
             {active.events.length === 0 && <div className="py-10 text-center text-xs text-mist-500">暂无事件</div>}
