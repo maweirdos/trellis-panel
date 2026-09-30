@@ -634,6 +634,8 @@ export interface Settings {
   /** 全局出网代理（TPD-015）：覆盖 AI/models.dev（undici）与 WeKnora（Chromium）路径 */
   proxy: { enabled: boolean; url: string }
   desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean; quickTodoShortcut: string; explorerContextMenu?: boolean }
+  /** T4 派单：codex worker 显式模型（账号默认模型不可用时在此指定；留空用 CLI 默认） */
+  dispatch: { codexModel?: string }
 }
 
 /* ---------- Studio（定制中心：workflow / 命令 / 子代理 / 技能 / 钩子 / 配置 / 平台） ---------- */

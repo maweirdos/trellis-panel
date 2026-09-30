@@ -16,6 +16,7 @@ import { existsSync, writeFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, relative } from 'path'
 import type { TaskInfo } from '../../shared/types'
+import { getSettings } from './store'
 
 export interface DispatchPhase {
   key: 'create' | 'spawn' | 'send' | 'wait' | 'collect' | 'cleanup'
@@ -160,19 +161,22 @@ export async function runReadonlyReview(
 
   emit({ key: 'spawn', label: '拉起只读 worker', detail: 'codex · sandbox read-only' })
   const spawnArgs = ['channel', 'spawn', name, '--provider', 'codex', '--sandbox', 'read-only', '--as', 'reviewer', '--cwd', root, '--timeout', `${timeoutMin}m`]
+  // 账号默认模型不可用时（400 not supported）在设置中指定派单模型
+  const model = getSettings().dispatch?.codexModel?.trim()
+  if (model) spawnArgs.push('--model', model)
   for (const f of files) spawnArgs.push('--file', f)
   r = await step(root, spawnArgs, 120_000)
   if (r.code !== 0) {
     await step(root, ['channel', 'rm', name], 15_000)
-    return { ok: false, phase: 'spawn', error: `拉起 worker 失败（确认 codex CLI 已安装登录）：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
+    return { ok: false, phase: 'spawn', error: `拉起 worker 失败（确认 codex CLI 已安装登录；若报模型不支持，到 设置→派单 填写账号可用的模型）：${r.err.trim().slice(-400) || `exit ${r.code}`}`, channel: name }
   }
 
   emit({ key: 'send', label: '发送审阅指令', detail: `${files.length} 个材料文件` })
-  // 多行 prompt 走 --message-file（官方建议；避免 shell 重新解释换行与标点）
+  // 多行 prompt 走 --text-file（send 的文件参数；--message-file 是 channel run 的参数，send 不认）
   const promptPath = join(tmpdir(), `${name}-prompt.md`)
   try {
     writeFileSync(promptPath, buildPrompt(task), 'utf-8')
-    r = await step(root, ['channel', 'send', name, '--as', 'panel', '--to', 'reviewer', '--message-file', promptPath, '--delivery-mode', 'requireRunningWorker'], 60_000)
+    r = await step(root, ['channel', 'send', name, '--as', 'panel', '--to', 'reviewer', '--text-file', promptPath, '--delivery-mode', 'requireRunningWorker'], 60_000)
   } finally {
     try {
       rmSync(promptPath, { force: true })

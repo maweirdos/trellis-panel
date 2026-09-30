@@ -99,6 +99,7 @@ export function SettingsPage(): JSX.Element {
   const [hookMsg, setHookMsg] = useState<string | null>(null)
   const [mcpInfo, setMcpInfo] = useState<McpInfo | null>(null)
   const [shortcut, setShortcut] = useState(settings.desktop.globalShortcut)
+  const [dispatchModel, setDispatchModel] = useState(settings.dispatch?.codexModel ?? '')
   const [quickShortcut, setQuickShortcut] = useState(settings.desktop.quickTodoShortcut)
   const [accessInfo, setAccessInfo] = useState<{
     enabled: boolean
@@ -515,7 +516,18 @@ export function SettingsPage(): JSX.Element {
               />
               <span className="text-[10.5px] text-mist-600">显示 / 隐藏面板，保存后重启生效</span>
             </div>
+
             <div className="flex items-center gap-2">
+              <span className="text-xs text-mist-300">派单模型（codex worker）</span>
+              <input
+                value={dispatchModel}
+                onChange={(e) => setDispatchModel(e.target.value)}
+                onBlur={() => void saveSettings({ dispatch: { codexModel: dispatchModel.trim() } })}
+                className="field w-44 font-mono"
+                placeholder="留空用 CLI 默认"
+              />
+              <span className="text-[10.5px] text-mist-600">只读审阅等派单用的 codex 模型；报 400 not supported 时填账号可用的模型</span>
+            </div>            <div className="flex items-center gap-2">
               <span className="text-xs text-mist-300">速记窗快捷键</span>
               <input
                 value={quickShortcut}

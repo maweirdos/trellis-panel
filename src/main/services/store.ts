@@ -37,6 +37,7 @@ const DEFAULTS: Settings = {
   access: { enabled: false, port: 39580 },
   proxy: { enabled: false, url: '' },
   desktop: { autoStart: false, globalShortcut: 'Alt+Shift+T', autoUpdate: false, quickTodoShortcut: 'Alt+N', explorerContextMenu: false }
+  ,dispatch: { codexModel: '' }
 }
 
 let cache: Settings | null = null
@@ -65,7 +66,8 @@ export function getSettings(): Settings {
       httpApi: { ...DEFAULTS.httpApi, ...(parsed.httpApi ?? {}) },
       access: { ...DEFAULTS.access, ...(parsed.access ?? {}) },
       proxy: { ...DEFAULTS.proxy, ...(parsed.proxy ?? {}) },
-      desktop: { ...DEFAULTS.desktop, ...(parsed.desktop ?? {}) }
+      desktop: { ...DEFAULTS.desktop, ...(parsed.desktop ?? {}) },
+      dispatch: { ...DEFAULTS.dispatch, ...(parsed.dispatch ?? {}) }
     }
   } catch {
     loaded = { ...DEFAULTS }
