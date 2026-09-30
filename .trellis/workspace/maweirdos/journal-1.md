@@ -296,3 +296,25 @@ typecheck/build/五套冒烟（chat 54、tpap 19、proxy 5、render-contract 9�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: FR 首个可交付版本代码落地
+<!-- trellis-session: v=2 fp=381aee2cef9da6ec -->
+
+**Date**: 2026-09-30
+**Task**: FR 首个可交付版本代码落地
+**Branch**: `codex/spec-code-health`
+
+### Summary
+
+任务页收敛单一主从布局(看板退场+空态+剪贴板打开)；阅读位置持久化与双匹配恢复；全局热键唤起回上次阅读；材料更新按任务8s防抖合并提醒(自写过滤/首扫不通知/归档不提醒)；Electron44 异步剪贴板适配；typecheck+build 通过
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `95560cf` | feat(fr): 首个可交付版本——主从阅读常驻+热键唤起+记住位置+合并提醒 |
+
+### Status
+
+[OK] **Completed**
