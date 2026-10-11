@@ -167,3 +167,146 @@ export interface DocumentReadSuccess {
 }
 
 export type DocumentReadOutcome = DocumentReadSuccess | IpcFail
+
+/* ---------------- 版本比较（document:diff，design §6.2） ---------------- */
+
+/** 每侧对比输入上限（design §6.2：初始对比每侧 2MiB；试点后可调整）。 */
+export const DOCUMENT_DIFF_SIDE_LIMIT_BYTES = 2 * 1024 * 1024
+/** worker 行级 diff 计算超时（毫秒）：超时终止 worker 并返回诊断，不冻结调用方。 */
+export const DOCUMENT_DIFF_TIMEOUT_MS = 1000
+/** 统一单列 diff 的上下文行数。 */
+export const DOCUMENT_DIFF_CONTEXT_LINES = 3
+
+/** 对比的一侧输入。文本由调用方（渲染端阅读会话）持有并传入。 */
+export interface DocumentDiffSideInput {
+  /** 侧文本（UTF-8 字节数不得超过 DOCUMENT_DIFF_SIDE_LIMIT_BYTES）。 */
+  text: string
+  /** 该文本的内容 revision（sha256 前 16 hex）；无法提供为 null。 */
+  revision: string | null
+}
+
+/**
+ * 基准选择（design §6.2）：
+ * - text：调用方持有的文本——「与本次打开版本比较」（覆盖未提交草稿是特性，
+ *   由界面文案说清基准）或「与最新候选比较」。
+ * - git-latest-commit：最近提交（HEAD）中的该路径内容，由主进程 `git show` 取得；
+ *   不实现任意两个历史提交选择器。
+ */
+export type DocumentDiffBaseline =
+  | { kind: 'text'; side: DocumentDiffSideInput }
+  | { kind: 'git-latest-commit' }
+
+export interface DocumentDiffRequest {
+  requestId: string
+  /** 相对项目根路径（git 基线解析与诊断回显；越界拒绝）。 */
+  relativePath: string
+  baseline: DocumentDiffBaseline
+  /** 当前展示侧（右侧）。 */
+  current: DocumentDiffSideInput
+}
+
+export const documentDiffRequestSchema = z.object({
+  requestId: z.string().min(1).max(256),
+  relativePath: z.string().min(1).max(2048),
+  baseline: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('text'),
+      side: z.object({ text: z.string(), revision: z.string().nullable() })
+    }),
+    z.object({ kind: z.literal('git-latest-commit') })
+  ]),
+  current: z.object({ text: z.string(), revision: z.string().nullable() })
+})
+
+export const DOCUMENT_DIFF_DIAGNOSTIC_CODES = [
+  /** 某侧输入超过每侧 2MiB 上限，未计算；附 side/sizeBytes/limitBytes 与外部打开建议数据。 */
+  'diff_side_too_large',
+  /** worker 计算超时，已终止并恢复；建议改为原文对比或本机打开。 */
+  'diff_timeout',
+  /** worker 异常退出或消息异常（非超时）。 */
+  'diff_worker_error',
+  /** 当前目录不是 Git 仓库——「最近提交」基线不可用（中性降级说明，非错误）。 */
+  'git_no_repo',
+  /** 仓库尚无任何提交。 */
+  'git_no_commits',
+  /** 文件未跟踪（不在索引中），无提交历史可比较。 */
+  'git_untracked',
+  /** 路径在最近提交中不存在（可能新增未提交或已重命名/移动）。 */
+  'git_path_not_in_commit',
+  /** git 不可调用（未安装或启动失败）。 */
+  'git_unavailable'
+] as const
+
+export type DocumentDiffDiagnosticCode = (typeof DOCUMENT_DIFF_DIAGNOSTIC_CODES)[number]
+
+export interface DocumentDiffDiagnostic {
+  code: DocumentDiffDiagnosticCode
+  severity: DocumentDiagnosticSeverity
+  /** 面向用户的中文文案（不含原始内容）。 */
+  message: string
+  /** 机器可读补充（side、limitBytes、commit、openLocally 等）。 */
+  data?: Record<string, unknown>
+}
+
+/* ---------------- diff 结果结构（统一单列） ---------------- */
+
+export type DocumentDiffLineType = 'context' | 'added' | 'removed'
+
+export interface DocumentDiffLine {
+  type: DocumentDiffLineType
+  /**
+   * 纯文本行内容（worker 已剥离控制字符；本契约只承载文本行，
+   * 渲染端以文本节点呈现，绝不将 diff 输出作为 HTML 注入）。
+   */
+  text: string
+  /** 左侧（基准）行号；added 行为 null。 */
+  oldLine: number | null
+  /** 右侧（当前展示）行号；removed 行为 null。 */
+  newLine: number | null
+}
+
+export interface DocumentDiffHunk {
+  /** 1-based；hunk 首行在基准侧的行号（0 表示纯新增块无基准行）。 */
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  lines: DocumentDiffLine[]
+}
+
+export interface DocumentDiffStats {
+  added: number
+  removed: number
+  /** 进入 hunks 的上下文行数（不是全文未变行数）。 */
+  context: number
+}
+
+export interface DocumentDiffResultSide {
+  /** revision；git 基线侧为对 `git show` 输出内容计算的 revision。 */
+  revision: string | null
+  /** 基线来源描述：provided=调用方文本；git-latest-commit=最近提交。 */
+  origin: 'provided' | 'git-latest-commit'
+  /** origin=git-latest-commit 时的提交完整哈希；否则 null。 */
+  commit: string | null
+}
+
+export interface DocumentDiffResult {
+  /** 两侧文本完全一致时为 true（hunks 为空）。 */
+  identical: boolean
+  hunks: DocumentDiffHunk[]
+  stats: DocumentDiffStats
+  left: DocumentDiffResultSide
+  right: DocumentDiffResultSide
+  /** 本次计算耗时（毫秒；时长度量，不是时间点）。 */
+  elapsedMs: number
+}
+
+export interface DocumentDiffSuccess {
+  ok: true
+  requestId: string
+  /** null = 无法计算（超限/超时/Git 基线不可用），原因见 diagnostics（降级说明）。 */
+  diff: DocumentDiffResult | null
+  diagnostics: DocumentDiffDiagnostic[]
+}
+
+export type DocumentDiffOutcome = DocumentDiffSuccess | IpcFail

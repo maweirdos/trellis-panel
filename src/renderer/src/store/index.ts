@@ -7,9 +7,10 @@ import { viewerSlice } from './slices/viewer'
 import { todosSlice } from './slices/todos'
 import { inboxSlice } from './slices/inbox'
 import { chatSlice } from './slices/chat'
+import { readerSlice } from './slices/reader'
 
 /**
- * 组合根（TPD-006）：六个域切片按 zustand slice 模式组装。
+ * 组合根（TPD-006）：各域切片按 zustand slice 模式组装。
  * 对外导出 useApp 与全部公共类型/助手 —— 页面 import 路径保持 '../store' 不变。
  */
 export const useApp = create<AppState>()((set, get, store) => ({
@@ -19,7 +20,8 @@ export const useApp = create<AppState>()((set, get, store) => ({
   ...viewerSlice(set, get, store),
   ...todosSlice(set, get, store),
   ...inboxSlice(set, get, store),
-  ...chatSlice(set, get, store)
+  ...chatSlice(set, get, store),
+  ...readerSlice(set, get, store)
 }))
 
 export { reconcileInbox, loadInbox, saveInbox } from './inbox-storage'

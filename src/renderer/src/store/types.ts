@@ -12,6 +12,8 @@ import type {
 } from '../../../shared/types'
 import type { api } from '../api'
 import type { StateCreator } from 'zustand'
+import type { ReadingSessionState, ReadingVersion } from '../reader/reading-session'
+import type { ReaderWidthPref } from '../reader/reader-prefs'
 
 /* ---------------- 公共类型（store.ts 原样再导出，页面零改动） ---------------- */
 
@@ -117,6 +119,29 @@ export interface InboxSlice {
   inboxAcceptAll: () => void
 }
 
+/**
+ * 阅读会话域（S0 G2，design §6.2）：base/displayed/latest 三态由纯函数迁移
+ * （reader/reading-session.ts），本切片只做登记与持久化边界——
+ * 会话快照只在内存（关闭即丢、不进 localStorage）；宽度偏好持久化到本地设置。
+ */
+export interface ReaderSlice {
+  /** 每个打开文档一个阅读会话（key = readingSessionKey(scope, relativePath)）。 */
+  readingSessions: Record<string, ReadingSessionState>
+  /** 阅读最大宽度偏好（680/760/880）。 */
+  readerWidthPref: ReaderWidthPref
+  /** 文档打开/重开：首次成功加载建立会话基线。 */
+  readerOpenSession: (key: string, firstLoad: ReadingVersion) => void
+  /** 文档关闭：丢弃会话快照（无跨重启）。 */
+  readerCloseSession: (key: string) => void
+  /** 外部变化只更新 latest 标记（不自动切换展示版）。 */
+  readerExternalChange: (key: string, candidate: ReadingVersion) => void
+  /** 「阅读新版」：替换 displayed，不改首次基线。 */
+  readerReadNewVersion: (key: string) => void
+  /** 「以当前为本次基线」：base := displayed。 */
+  readerRebaseToCurrent: (key: string) => void
+  setReaderWidthPref: (pref: ReaderWidthPref) => void
+}
+
 /** 流式中的消息：runId 关联，增量由 chat:output 事件累积 */
 export interface ChatStreamState {
   runId: string
@@ -174,6 +199,13 @@ export interface ChatSlice {
   chatBranch: (messageId: string) => Promise<void>
 }
 
-export type AppState = SessionSlice & UiSlice & ToastSlice & ViewerSlice & TodosSlice & InboxSlice & ChatSlice
+export type AppState = SessionSlice &
+  UiSlice &
+  ToastSlice &
+  ViewerSlice &
+  TodosSlice &
+  InboxSlice &
+  ChatSlice &
+  ReaderSlice
 
 export type AppSlice<T> = StateCreator<AppState, [], [], T>

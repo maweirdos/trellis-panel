@@ -22,13 +22,47 @@ function looksLikeAsciiDiagram(text: string): boolean {
 const REHYPE_PLUGINS = [rehypeSanitize]
 const REMARK_PLUGINS = [remarkGfm]
 
-export const MarkdownView = React.memo(function MarkdownView({ content }: { content: string }): JSX.Element {
+/** heading 覆写：按 hast position.source 行号挂稳定锚点 ID（无行号信息则不挂）。 */
+type HeadingNode = { position?: { start?: { line?: number } } } | undefined
+type HeadingProps = React.ComponentPropsWithoutRef<'h1'> & { node?: unknown }
+
+function headingComponent(
+  level: number,
+  anchorsByLine: ReadonlyMap<number, string> | undefined
+): (props: HeadingProps) => React.JSX.Element {
+  return function MarkdownHeading({ node, children, ...rest }: HeadingProps) {
+    const line = (node as HeadingNode)?.position?.start?.line
+    const id = anchorsByLine !== undefined && line !== undefined ? anchorsByLine.get(line) : undefined
+    return React.createElement(
+      `h${level}`,
+      id !== undefined ? { ...rest, id } : rest,
+      children as React.ReactNode
+    )
+  }
+}
+
+export interface MarkdownViewProps {
+  content: string
+  /**
+   * S0 G2：行号 → 稳定锚点 ID（由 reader/heading-anchors.ts 的
+   * headingAnchorsByLine(content) 预计算）。缺省不挂 ID，既有调用方零改动。
+   */
+  headingAnchorsByLine?: ReadonlyMap<number, string>
+}
+
+export const MarkdownView = React.memo(function MarkdownView({ content, headingAnchorsByLine }: MarkdownViewProps): JSX.Element {
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}
         components={{
+          h1: headingComponent(1, headingAnchorsByLine),
+          h2: headingComponent(2, headingAnchorsByLine),
+          h3: headingComponent(3, headingAnchorsByLine),
+          h4: headingComponent(4, headingAnchorsByLine),
+          h5: headingComponent(5, headingAnchorsByLine),
+          h6: headingComponent(6, headingAnchorsByLine),
           pre({ children, ...props }) {
             // 当代码块内容是自成一体的块级组件（AsciiDiagramBlock / MermaidBlock）时，直接返回该组件，彻底消除外层多余的 pre 边框与内边距
             const child = React.isValidElement(children)

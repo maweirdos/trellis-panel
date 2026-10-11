@@ -7,6 +7,7 @@ import { join, resolve, basename, dirname, sep } from 'path'
 import { existsSync } from 'fs'
 import { abortAll } from './services/cli'
 import { getSettings } from './services/store'
+import { stopDiffWorker } from './services/documents'
 import { routeNotifyRail, shutdownAcp } from './services/acp'
 import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindows } from './services/bridge'
 import { httpApiStatus } from './services/httpapi'
@@ -477,6 +478,8 @@ if (!gotLock) {
     stopInbox()
     abortAll()
     shutdownAcp()
+    // S0 G2：diff worker 线程收口（worker 无子进程，terminate 即完整清理）
+    stopDiffWorker()
     globalShortcut.unregisterAll()
     accessServer.stop()
   })

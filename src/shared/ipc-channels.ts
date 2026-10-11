@@ -47,7 +47,9 @@ export const ipcInvoke = {
   },
   document: {
     /** S0 G2：文档限界读取（revision/诊断契约，design §5.1） */
-    read: 'document:read'
+    read: 'document:read',
+    /** S0 G2：行级版本比较（jsdiff worker，2MiB/侧 + 1s 超时，design §6.2） */
+    diff: 'document:diff'
   },
   spec: {
     backlinks: 'spec:backlinks'

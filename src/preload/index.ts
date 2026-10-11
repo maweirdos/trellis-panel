@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
 import type {
+  DocumentDiffOutcome,
+  DocumentDiffRequest,
   DocumentReadOutcome,
   DocumentReadRequest,
   DocumentReadScope
@@ -50,6 +52,9 @@ const api = {
   /* S0 G2：文档限界读取（revision 随内容变化；缺失/坏行/超限走诊断而非错误伪装） */
   documentRead: (scope: DocumentReadScope, input: DocumentReadRequest) =>
     ipcRenderer.invoke(ipcInvoke.document.read, scope, input) as Promise<DocumentReadOutcome>,
+  /* S0 G2：行级版本比较（jsdiff worker；2MiB/侧 + 1s 超时；Git 基线不可用为中性降级） */
+  documentDiff: (scope: DocumentReadScope, input: DocumentDiffRequest) =>
+    ipcRenderer.invoke(ipcInvoke.document.diff, scope, input) as Promise<DocumentDiffOutcome>,
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) =>
     ipcRenderer.invoke(ipcInvoke.fs.writeSpec, absPath, content, expectedMtime),
   specBacklinks: () => ipcRenderer.invoke(ipcInvoke.spec.backlinks),

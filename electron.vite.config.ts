@@ -1,10 +1,36 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
+import esbuild from 'esbuild'
+import type { Plugin } from 'vite'
+
+/**
+ * S0 G2：diff worker 单独 esbuild 打包（不走 rollup 多入口——实测 vite 会给第二入口
+ * 生成 require('./index.js') 的 facade 依赖，worker 线程内加载主 bundle 即 require
+ * ('electron') 崩溃）。与 scripts/smoke/reading-session.mjs 的 worker 打包路径一致。
+ * dev（main 为 build --watch）与 build 均会触发 closeBundle。
+ */
+function bundleDiffWorker(): Plugin {
+  return {
+    name: 'bundle-diff-worker',
+    apply: 'build',
+    closeBundle() {
+      return esbuild.build({
+        entryPoints: [resolve(__dirname, 'src/main/services/documents/diff-worker.ts')],
+        outfile: resolve(__dirname, 'out/main/diff-worker.js'),
+        bundle: true,
+        format: 'cjs',
+        platform: 'node',
+        target: 'node22',
+        logLevel: 'warning'
+      })
+    }
+  }
+}
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), bundleDiffWorker()],
     build: {
       // electron-vite 5 / vite 8 默认输出 ESM(.mjs)；本项目为 CJS（package.json 无 type:module），
       // 强制回 CJS 以匹配 out/main/index.js 入口（Electron 44 + CJS 主进程）
