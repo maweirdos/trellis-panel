@@ -6,6 +6,7 @@ import { registerProjectIpc } from './project'
 import { registerTasksIpc } from './tasks'
 import { registerTodoIpc } from './todo'
 import { registerFilesIpc } from './files'
+import { registerDocumentsIpc } from './documents'
 import { registerGitIpc } from './git'
 import { registerReportIpc } from './report'
 import { registerChannelsIpc } from './channels'
@@ -33,6 +34,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerTasksIpc()
   registerTodoIpc()
   registerFilesIpc()
+  registerDocumentsIpc()
   registerGitIpc()
   registerReportIpc()
   registerChannelsIpc()

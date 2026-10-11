@@ -3,6 +3,7 @@
  * Mirrors the canonical Trellis task.json schema (24 fields, see
  * @mindfoldhq/trellis-core task/schema).
  */
+import type { DocumentReadOutcome, DocumentReadRequest, DocumentReadScope } from './documents'
 
 export const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
@@ -1057,6 +1058,8 @@ export interface TrellisApi {
     jiraUrl: string
   }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
   readTextFile: (absPath: string) => Promise<{ ok: boolean; error?: string; content?: string; mtime?: number }>
+  /** S0 G2：文档限界读取（design §5.1）——revision=内容摘要；文档级事实（缺失/坏行/超限）走诊断 */
+  documentRead: (scope: DocumentReadScope, input: DocumentReadRequest) => Promise<DocumentReadOutcome>
   /** write restricted to .trellis/spec/** (spec editor) */
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
   specBacklinks: () => Promise<{ ok: boolean; error?: string; counts?: Record<string, number> }>

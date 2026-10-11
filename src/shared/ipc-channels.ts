@@ -45,6 +45,10 @@ export const ipcInvoke = {
     readText: 'fs:readText',
     writeSpec: 'fs:writeSpec'
   },
+  document: {
+    /** S0 G2：文档限界读取（revision/诊断契约，design §5.1） */
+    read: 'document:read'
+  },
   spec: {
     backlinks: 'spec:backlinks'
   },

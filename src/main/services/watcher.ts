@@ -1,4 +1,5 @@
 import type watch from 'chokidar'
+import { PANEL_RUNTIME_PATH_RE } from './documents/paths'
 
 export class TrellisWatcher {
   private watcher: watch.FSWatcher | null = null
@@ -22,6 +23,10 @@ export class TrellisWatcher {
         depth: 8,
         ignored: [
           /(^|[/\\])\.backup-[^/\\]*[/\\]/,
+          // S0 观测隔离（design §4.1/§5.2）：精确忽略 .panel/runtime（回执/绑定等
+          // runtime 写入不触发全项目重扫与正文 loading）；不扩大到整个 .panel，
+          // 未来 .panel 下的任务批准资料仍应被普通扫描看见。
+          PANEL_RUNTIME_PATH_RE,
           '**/node_modules/**',
           '**/.git/**'
         ]

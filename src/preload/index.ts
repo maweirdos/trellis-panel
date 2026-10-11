@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
 import type {
+  DocumentReadOutcome,
+  DocumentReadRequest,
+  DocumentReadScope
+} from '../shared/documents'
+import type {
   AiConfig,
   ChatMessage,
   ChatDoneEvent,
@@ -42,6 +47,9 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.task.delete, taskDir, expectedMtime),
   createTaskFromJira: (input: Record<string, unknown>) => ipcRenderer.invoke(ipcInvoke.task.createFromJira, input),
   readTextFile: (absPath: string) => ipcRenderer.invoke(ipcInvoke.fs.readText, absPath),
+  /* S0 G2：文档限界读取（revision 随内容变化；缺失/坏行/超限走诊断而非错误伪装） */
+  documentRead: (scope: DocumentReadScope, input: DocumentReadRequest) =>
+    ipcRenderer.invoke(ipcInvoke.document.read, scope, input) as Promise<DocumentReadOutcome>,
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) =>
     ipcRenderer.invoke(ipcInvoke.fs.writeSpec, absPath, content, expectedMtime),
   specBacklinks: () => ipcRenderer.invoke(ipcInvoke.spec.backlinks),
