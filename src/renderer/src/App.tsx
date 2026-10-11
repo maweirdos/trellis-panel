@@ -13,6 +13,8 @@ import { QuickTodoView } from './components/QuickTodoView'
 import { ArtifactViewer } from './components/ArtifactViewer'
 import { CommandPalette } from './components/CommandPalette'
 import { IntakeModal } from './components/IntakeModal'
+import { attachDocumentChangedSource } from './reader/document-session-hub'
+import { dispatchEscKey } from './utils/esc-layer'
 import { clsx } from 'clsx'
 import { Loader2 } from 'lucide-react'
 
@@ -67,6 +69,23 @@ function MainApp(): JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // S0 G2 第三片：唯一的全局 Esc 入口——按层级只消费最上层一层（design §6.3）。
+  // 各可关闭层（模态/命令面板/查看器/对比面板/预览）经 useEscLayer 登记，
+  // 不再各自挂 window 监听"叠罗汉"。
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      dispatchEscKey()
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [])
+
+  // S0 G2 第三片：接通文档会话集线器（定向变更事件 → 各阅读会话）
+  useEffect(() => {
+    attachDocumentChangedSource((cb) => api.onDocumentChanged(cb))
   }, [])
 
   useEffect(() => {
@@ -148,6 +167,7 @@ function MainApp(): JSX.Element {
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
             {/* 页面层：详情打开时保持看板全宽，不再挤压 */}
             <div
+              data-page-scroll=""
               className={clsx(
                 'min-h-0 flex-1',
               page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models' || page === 'gateway' || page === 'chat'

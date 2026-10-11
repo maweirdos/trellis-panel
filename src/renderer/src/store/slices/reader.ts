@@ -65,6 +65,11 @@ export const readerSlice: AppSlice<ReaderSlice> = (set) => ({
     })
   },
 
+  /** 项目切换/关闭：全部会话快照丢弃（design §6.2 会话不跨项目/重启）。 */
+  readerClearAllSessions: () => {
+    set((s) => (Object.keys(s.readingSessions).length === 0 ? s : { readingSessions: {} }))
+  },
+
   setReaderWidthPref: (pref) => {
     try {
       localStorage.setItem(READER_WIDTH_STORAGE_KEY, String(pref))

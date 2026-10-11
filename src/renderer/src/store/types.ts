@@ -74,16 +74,30 @@ export interface SessionSlice {
   showTask: (dirName: string | null, archived?: boolean) => void
 }
 
+/** TaskDetail 预览「展开为完整工作区」的来源记录（AC1：返回时回到原页面与位置）。 */
+export interface TaskExpandOrigin {
+  fromPage: Page
+  taskDir: string
+  archived: boolean
+  scrollTop: number
+}
+
 export interface UiSlice {
   page: Page
   capsuleMode: boolean
   quickTodoMode: boolean
   sidebarCollapsed: boolean
   intakeOpen: boolean
+  /** 非空 = 当前任务工作区是由快速预览展开进入的（Esc 返回预览而非关闭）。 */
+  taskExpandOrigin: TaskExpandOrigin | null
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setPage: (p: Page) => void
   setIntakeOpen: (on: boolean) => void
+  /** 预览 → 完整工作区（记录来源页面与滚动位置）。 */
+  expandTaskWorkspace: (origin: TaskExpandOrigin) => void
+  /** 工作区 → 返回来源页面的预览抽屉（恢复任务选中与滚动位置由调用方 rAF 处理）。 */
+  returnFromWorkspace: () => TaskExpandOrigin | null
 }
 
 export interface ToastSlice {
@@ -139,6 +153,8 @@ export interface ReaderSlice {
   readerReadNewVersion: (key: string) => void
   /** 「以当前为本次基线」：base := displayed。 */
   readerRebaseToCurrent: (key: string) => void
+  /** 项目切换/关闭：清空全部会话快照（主进程同步清空变更信号桥监听）。 */
+  readerClearAllSessions: () => void
   setReaderWidthPref: (pref: ReaderWidthPref) => void
 }
 

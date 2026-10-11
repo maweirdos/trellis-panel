@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp, type Page } from '../store'
 import { clsx } from 'clsx'
+import { useEscLayer } from '../utils/use-esc-layer'
 import type { JSX } from 'react'
 
 interface Cmd {
@@ -84,6 +85,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   useEffect(() => setIdx(0), [q])
 
+  // Esc 关闭走全局 Esc 层（modal 最高优先级，每次只关本层；design §6.3）
+  useEscLayer(open, {
+    kind: 'modal',
+    id: 'command-palette',
+    onClose
+  })
+
   if (!open) return null
 
   const exec = (c?: Cmd): void => {
@@ -103,7 +111,6 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             if (e.key === 'ArrowDown') { e.preventDefault(); setIdx((i) => Math.min(i + 1, filtered.length - 1)) }
             else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx((i) => Math.max(i - 1, 0)) }
             else if (e.key === 'Enter') { e.preventDefault(); exec(filtered[idx]) }
-            else if (e.key === 'Escape') onClose()
           }}
           placeholder="搜索页面、任务，或执行动作…"
           className="w-full border-0 border-b border-ink-700 bg-transparent px-4 py-3 text-sm text-mist-100 outline-none placeholder:text-mist-600"

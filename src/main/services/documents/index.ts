@@ -12,6 +12,14 @@ export {
 } from './controller'
 export { parseContextManifest, parseTaskJsonText } from './parse'
 export { PANEL_RUNTIME_PATH_RE, isPanelRuntimePath, resolveAuthorizedDocumentPath } from './paths'
+export {
+  clearReaderDocuments,
+  onReaderDocumentChanged,
+  routeReaderDocumentChange,
+  unwatchReaderDocument,
+  watchReaderDocument,
+  READER_SETTLE_MS_ENV
+} from './change-bridge'
 export { computeDocumentDiff, stopDiffWorker, DIFF_WORKER_FILE_ENV, type DiffComputeOverrides } from './diff-service'
 // 注意：不要从本入口 re-export diff-worker 的运行时值——diff-worker 是独立 rollup 入口，
 // 若进入 index 依赖图，rollup 会让 worker 产物 require 主 bundle（worker 线程内加载 electron 即崩）。

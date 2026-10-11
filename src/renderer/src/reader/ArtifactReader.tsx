@@ -131,6 +131,8 @@ export interface ArtifactReaderProps {
   /** 阅读最大宽度偏好（680/760/880，store 持久化；缺省 760）。 */
   maxWidthPx?: number
   initialView?: 'rendered' | 'raw'
+  /** 宿主已有自己的 渲染/原文 切换（如 ArtifactViewer）时隐藏内置切换，避免双开关。 */
+  hideViewToggle?: boolean
 }
 
 export function ArtifactReader({
@@ -139,7 +141,8 @@ export function ArtifactReader({
   parsed,
   diagnostics,
   maxWidthPx = DEFAULT_READER_WIDTH_PREF,
-  initialView = 'rendered'
+  initialView = 'rendered',
+  hideViewToggle = false
 }: ArtifactReaderProps): JSX.Element {
   const [view, setView] = useState<'rendered' | 'raw'>(initialView)
   const ext = extOf(relativePath)
@@ -167,36 +170,38 @@ export function ArtifactReader({
         <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-mist-400" title={relativePath}>
           {relativePath}
         </span>
-        <div className="flex shrink-0 items-center gap-1" role="group" aria-label="视图切换">
-          <button
-            type="button"
-            disabled={!canToggle && view === 'rendered'}
-            onClick={() => setView('rendered')}
-            className={clsx(
-              'chip border text-[10.5px]',
-              view === 'rendered'
-                ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300'
-                : 'border-ink-200 text-mist-500 hover:border-sky-200 dark:border-ink-600'
-            )}
-          >
-            <Eye size={11} className="mr-1 inline align-[-1px]" />
-            渲染
-          </button>
-          <button
-            type="button"
-            disabled={!canToggle}
-            onClick={() => setView('raw')}
-            className={clsx(
-              'chip border text-[10.5px]',
-              view === 'raw'
-                ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300'
-                : 'border-ink-200 text-mist-500 hover:border-sky-200 dark:border-ink-600'
-            )}
-          >
-            <FileCode2 size={11} className="mr-1 inline align-[-1px]" />
-            原文
-          </button>
-        </div>
+        {!hideViewToggle && (
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label="视图切换">
+            <button
+              type="button"
+              disabled={!canToggle && view === 'rendered'}
+              onClick={() => setView('rendered')}
+              className={clsx(
+                'chip border text-[10.5px]',
+                view === 'rendered'
+                  ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300'
+                  : 'border-ink-200 text-mist-500 hover:border-sky-200 dark:border-ink-600'
+              )}
+            >
+              <Eye size={11} className="mr-1 inline align-[-1px]" />
+              渲染
+            </button>
+            <button
+              type="button"
+              disabled={!canToggle}
+              onClick={() => setView('raw')}
+              className={clsx(
+                'chip border text-[10.5px]',
+                view === 'raw'
+                  ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300'
+                  : 'border-ink-200 text-mist-500 hover:border-sky-200 dark:border-ink-600'
+              )}
+            >
+              <FileCode2 size={11} className="mr-1 inline align-[-1px]" />
+              原文
+            </button>
+          </div>
+        )}
       </div>
 
       <DiagnosticsStrip diagnostics={diagnostics} />

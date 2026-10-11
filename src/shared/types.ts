@@ -4,11 +4,13 @@
  * @mindfoldhq/trellis-core task/schema).
  */
 import type {
+  DocumentChangedEvent,
   DocumentDiffOutcome,
   DocumentDiffRequest,
   DocumentReadOutcome,
   DocumentReadRequest,
-  DocumentReadScope
+  DocumentReadScope,
+  DocumentWatchOutcome
 } from './documents'
 
 export const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed'] as const
@@ -1068,6 +1070,15 @@ export interface TrellisApi {
   documentRead: (scope: DocumentReadScope, input: DocumentReadRequest) => Promise<DocumentReadOutcome>
   /** S0 G2：行级版本比较（design §6.2）——基准=会话文本或最近提交；超限/超时/无 Git 基线走降级诊断 */
   documentDiff: (scope: DocumentReadScope, input: DocumentDiffRequest) => Promise<DocumentDiffOutcome>
+  /** S0 G2 第三片：注册阅读会话的定向变更监听（返回 canonicalPath 作为解除键） */
+  documentWatch: (
+    scope: DocumentReadScope,
+    input: { relativePath: string; knownRevision: string | null }
+  ) => Promise<DocumentWatchOutcome>
+  /** 解除监听（引用计数归零才停发） */
+  documentUnwatch: (canonicalPath: string) => Promise<void>
+  /** 定向文档变更事件（只针对已注册的 canonicalPath） */
+  onDocumentChanged: (cb: (e: DocumentChangedEvent) => void) => () => void
   /** write restricted to .trellis/spec/** (spec editor) */
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
   specBacklinks: () => Promise<{ ok: boolean; error?: string; counts?: Record<string, number> }>

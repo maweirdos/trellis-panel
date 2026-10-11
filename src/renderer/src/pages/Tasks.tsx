@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Search,
   Filter,
@@ -45,7 +45,6 @@ import { getReading, setReading } from '../utils/reading'
 import { taskDateLabel } from '../utils/format'
 import { api } from '../api'
 import { MarkdownView } from '../components/MarkdownView'
-import { CodeView } from '../components/CodeView'
 import { confirmDialog } from '../components/Dialogs'
 import { FocusTimer } from '../components/FocusTimer'
 import { HandoffModal } from '../components/HandoffModal'
@@ -53,6 +52,10 @@ import { TaskInsightsModal } from '../components/TaskInsightsModal'
 import { DispatchModal } from '../components/DispatchModal'
 import { PlannerModal } from '../components/PlannerModal'
 import { Select } from '../components/Select'
+import { DocumentReader } from '../reader/DocumentReader'
+import { readingSessionKey } from '../reader/reading-session'
+import { relativePathUnderRoot } from '../reader/reader-paths'
+import { useEscLayer } from '../utils/use-esc-layer'
 import type { JSX } from 'react'
 import type { TaskInfo } from '../../../shared/types'
 
@@ -316,12 +319,11 @@ function TaskWorkspace({
   // 修复#6：阅读记录键用项目根路径
   const projectName = useApp((s) => s.snapshot?.meta.root ?? '')
   const [leftRailOpen, setLeftRailOpen] = useState(true)
-  const [rightAsideOpen, setRightAsideOpen] = useState(true)
+  // S0 G2（design §6.3）：1440 以下默认收起右侧辅助栏——正文优先，不硬塞三区
+  const [rightAsideOpen, setRightAsideOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 1440))
   const [activeDocPath, setActiveDocPath] = useState<string | null>(null)
   const [activeDocType, setActiveDocType] = useState<'prd' | 'design' | 'artifact' | 'other'>('prd')
   const [activeDocName, setActiveDocName] = useState<string>('prd.md')
-  const [docContent, setDocContent] = useState<string | null>(null)
-  const [loadingDoc, setLoadingDoc] = useState(false)
   const [aiBusy, setAiBusy] = useState<'prd' | 'summary' | 'split' | null>(null)
   const [aiDraft, setAiDraft] = useState<string | null>(null)
   const [aiSummaryText, setAiSummaryText] = useState<string | null>(null)
@@ -407,10 +409,11 @@ function TaskWorkspace({
       clearTimeout(scrollSaveTimer.current)
       scrollSaveTimer.current = null
     }
+    // FR：文档切换后允许再次恢复滚动位置（每次进入该文档都尝试一次）
+    restoredDocRef.current = null
     if (!task) {
       setActiveDocPath(null)
       setActiveDocName('prd.md')
-      setDocContent(null)
       return
     }
     const saved = getReading(projectName)
@@ -436,7 +439,6 @@ function TaskWorkspace({
       setActiveDocPath(null)
       setActiveDocType('prd')
       setActiveDocName('prd.md')
-      setDocContent(null)
     }
   }, [task?.dirName, docTabs])
 
@@ -446,6 +448,34 @@ function TaskWorkspace({
       if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current)
     }
   }, [])
+
+  // S0 G2 第三片：文档装载走共享 reader（documentRead + 阅读会话）。
+  // 展示正文/TOC 从会话状态机读（displayed），不再单独维护 docContent。
+  const readerRelativePath =
+    activeDocPath !== null && task !== null ? relativePathUnderRoot(projectName, activeDocPath) : null
+  const readerScopeKey =
+    readerRelativePath !== null && task !== null
+      ? readingSessionKey({ workspaceId: projectName, taskRef: task.dirName }, readerRelativePath)
+      : null
+  const displayedRevision = useApp((s) => (readerScopeKey !== null ? s.readingSessions[readerScopeKey]?.displayed?.revision : undefined))
+  const displayedText = useApp((s) => (readerScopeKey !== null ? s.readingSessions[readerScopeKey]?.displayed?.text : undefined)) ?? null
+
+  // FR：文档切换装载完成后恢复上次阅读的滚动位置（仅当任务与文档都对得上）
+  const restoredDocRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (readerScopeKey === null || task === null || displayedRevision === undefined) return
+    const mark = `${task.dirName}::${activeDocName}`
+    if (restoredDocRef.current === mark) return
+    restoredDocRef.current = mark
+    const saved = getReading(projectName)
+    if (saved && saved.dirName === task.dirName && saved.docName === activeDocName) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (docContainerRef.current) docContainerRef.current.scrollTop = saved.scrollTop
+        })
+      })
+    }
+  }, [readerScopeKey, displayedRevision, task, activeDocName, projectName])
 
   // FR：阅读位置记忆——任务/文档切换即落库
   useEffect(() => {
@@ -457,39 +487,6 @@ function TaskWorkspace({
       scrollTop: docContainerRef.current?.scrollTop ?? 0
     })
   }, [task?.dirName, activeDocName, activeDocType, projectName, task])
-
-  // 读取当前激活文档的内容
-  useEffect(() => {
-    if (!activeDocPath) {
-      setDocContent(null)
-      return
-    }
-    let alive = true
-    setLoadingDoc(true)
-    void api
-      .readTextFile(activeDocPath)
-      .then((res) => {
-        if (!alive) return
-        if (res.ok && res.content !== undefined) {
-          setDocContent(res.content)
-          // FR：恢复上次阅读的滚动位置（仅当任务与文档都对得上）
-          const saved = getReading(projectName)
-          if (saved && task && saved.dirName === task.dirName && saved.docName === activeDocName) {
-            requestAnimationFrame(() => {
-              if (alive && docContainerRef.current) docContainerRef.current.scrollTop = saved.scrollTop
-            })
-          }
-        } else {
-          setDocContent(null)
-        }
-      })
-      .finally(() => {
-        if (alive) setLoadingDoc(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [activeDocPath, activeDocName, projectName, task?.dirName, task])
 
   // 需求组与独立任务分类（保留层级结构，杜绝打散）
   const { epicsList, standalonesList } = useMemo(() => {
@@ -517,7 +514,7 @@ function TaskWorkspace({
     )
   }
 
-  const headings = docContent ? extractHeadings(docContent) : []
+  const headings = displayedText !== null && activeDocType !== 'artifact' ? extractHeadings(displayedText) : []
   const prog = subtaskProgress(task)
   const isRoot = !task.record?.parent
 
@@ -581,8 +578,21 @@ function TaskWorkspace({
     if (res.ok) {
       pushToast({ kind: 'success', title: '已保存 prd.md', body: task.dirName })
       setAiDraft(null)
-      setDocContent(aiDraft)
       setActiveDocType('prd')
+      // S0 G2：面板自己保存的内容经同一阅读会话状态机直接进入展示版
+      // （externalChange → readNewVersion = 「阅读新版」同一条路径，不另写一套）。
+      // 之后 watcher 的定向信号到达时若已是同版，状态机自动清提示。
+      if (readerRelativePath !== null && readerScopeKey !== null) {
+        const fresh = await api.documentRead(
+          { workspaceId: projectName, taskRef: task.dirName },
+          { relativePath: readerRelativePath, requestId: `panel-save-${Date.now()}` }
+        )
+        if (fresh.ok && fresh.revision !== null && fresh.rawText !== null) {
+          const st = useApp.getState()
+          st.readerExternalChange(readerScopeKey, { revision: fresh.revision, text: fresh.rawText })
+          st.readerReadNewVersion(readerScopeKey)
+        }
+      }
     } else {
       pushToast({ kind: 'error', title: '保存失败', body: res.error })
     }
@@ -1313,13 +1323,9 @@ function TaskWorkspace({
                 </div>
               )}
 
-              {/* 正文渲染：根据活跃类型就地渲染 Markdown 或 CodeView */}
+              {/* 正文渲染：S0 G2 统一走共享 DocumentReader（documentRead + 阅读会话 + 版本契约） */}
               <div>
-                {loadingDoc ? (
-                  <div className="flex items-center gap-2 py-10 text-xs text-mist-500">
-                    <Loader2 size={14} className="animate-spin" /> 正在加载内容…
-                  </div>
-                ) : aiDraft ? (
+                {aiDraft ? (
                   <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
                     <div className="mb-2 flex items-center gap-2">
                       <span className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-300">
@@ -1332,35 +1338,41 @@ function TaskWorkspace({
                     </div>
                     <MarkdownView content={aiDraft} />
                   </div>
-                ) : activeDocType === 'artifact' ? (
-                  /* 执行产物就地代码/JSON高亮视图 */
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between border-b border-ink-750/70 pb-2.5">
-                      <div className="flex items-center gap-2 text-xs font-mono text-mist-200">
-                        <FileCode size={14} className="text-leaf" />
-                        <span className="font-semibold">{activeDocName}</span>
-                        <span className="text-[11px] text-mist-500">· 执行产物就地预览</span>
+                ) : activeDocPath !== null && readerRelativePath !== null ? (
+                  activeDocType === 'artifact' ? (
+                    /* 执行产物：保留就地查看头部（返回入口），正文走同一 reader */
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-ink-750/70 pb-2.5">
+                        <div className="flex items-center gap-2 text-xs font-mono text-mist-200">
+                          <FileCode size={14} className="text-leaf" />
+                          <span className="font-semibold">{activeDocName}</span>
+                          <span className="text-[11px] text-mist-500">· 执行产物就地预览</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const prdItem = docTabs.find((d) => d.type === 'prd')
+                            setActiveDocType('prd')
+                            setActiveDocPath(prdItem?.path ?? null)
+                            setActiveDocName(prdItem?.fileName ?? 'prd.md')
+                          }}
+                          className="btn-ghost px-2 py-0.5 text-xs text-mist-400 hover:text-mist-100"
+                        >
+                          返回 PRD 文档
+                        </button>
                       </div>
-                      <button
-                        onClick={() => {
-                          const prdItem = docTabs.find((d) => d.type === 'prd')
-                          setActiveDocType('prd')
-                          setActiveDocPath(prdItem?.path ?? null)
-                          setActiveDocName(prdItem?.fileName ?? 'prd.md')
-                        }}
-                        className="btn-ghost px-2 py-0.5 text-xs text-mist-400 hover:text-mist-100"
-                      >
-                        返回 PRD 文档
-                      </button>
+                      <DocumentReader
+                        workspaceId={projectName}
+                        taskRef={task.dirName}
+                        relativePath={readerRelativePath}
+                      />
                     </div>
-                    {docContent !== null ? (
-                      <CodeView content={docContent} ext={activeDocName.slice(activeDocName.lastIndexOf('.'))} />
-                    ) : (
-                      <div className="py-10 text-center text-xs text-mist-500">该产物暂无文本内容</div>
-                    )}
-                  </div>
-                ) : docContent !== null ? (
-                  <MarkdownView content={docContent} />
+                  ) : (
+                    <DocumentReader
+                      workspaceId={projectName}
+                      taskRef={task.dirName}
+                      relativePath={readerRelativePath}
+                    />
+                  )
                 ) : activeDocType === 'prd' ? (
                   /* PRD 为空时的引导状态 */
                   <div className="space-y-4">
@@ -1628,15 +1640,13 @@ export function TasksPage(): JSX.Element {
     }
   }, [snapshot, openTaskDir, showTask])
 
-  /* 键盘导航：Escape 退出工作台；j/k 上下切换任务 */
+  /* 键盘导航：j/k 上下切换任务（Esc 已收归全局 Esc 层，见下方 useEscLayer） */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const target = e.target as HTMLElement | null
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       if (openTaskDir) {
-        if (e.key === 'Escape') {
-          showTask(null)
-        } else if (e.key === 'j' || e.key === 'ArrowDown') {
+        if (e.key === 'j' || e.key === 'ArrowDown') {
           const curIdx = filtered.findIndex((t) => t.dirName === openTaskDir)
           if (curIdx >= 0 && curIdx < filtered.length - 1) {
             showTask(filtered[curIdx + 1].dirName)
@@ -1652,6 +1662,30 @@ export function TasksPage(): JSX.Element {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [openTaskDir, filtered, showTask])
+
+  /* S0 G2 第三片（AC1）：工作区 Esc 层（preview）——
+   * 由快速预览展开进入时返回预览（恢复来源页面滚动位置），否则关闭任务回空态。
+   * 焦点在输入控件内时 Esc 交给字段自身——守卫在 Esc 层派发前生效（deferWhenInputFocused）。 */
+  const closeWorkspace = useCallback((): void => {
+    const st = useApp.getState()
+    if (st.taskExpandOrigin !== null) {
+      const origin = st.returnFromWorkspace()
+      if (origin !== null) {
+        requestAnimationFrame(() => {
+          const el = document.querySelector<HTMLElement>('[data-page-scroll]')
+          if (el) el.scrollTop = origin.scrollTop
+        })
+      }
+    } else {
+      st.showTask(null)
+    }
+  }, [])
+  useEscLayer(openTaskDir !== null, {
+    kind: 'preview',
+    id: 'tasks-workspace',
+    deferWhenInputFocused: true,
+    onClose: closeWorkspace
+  })
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -1721,7 +1755,7 @@ export function TasksPage(): JSX.Element {
         tasks={filtered}
         selected={openTaskDir}
         onSelect={(dir) => showTask(dir)}
-        onClose={() => showTask(null)}
+        onClose={closeWorkspace}
         columns={columns}
         childMap={childMap}
         childDirs={childDirs}

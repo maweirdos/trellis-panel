@@ -6,7 +6,6 @@ import {
   SquarePen,
   Circle,
   CircleCheck,
-  FileWarning,
   FileText,
   GitCompare,
   Save,
@@ -29,9 +28,11 @@ import { api } from '../api'
 import { clsx } from 'clsx'
 import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
 import { confirmDialog } from '../components/Dialogs'
-import { MarkdownView } from '../components/MarkdownView'
-import { CodeView } from '../components/CodeView'
 import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
+import { DocumentReader } from '../reader/DocumentReader'
+import { readingSessionKey } from '../reader/reading-session'
+import { relativePathUnderRoot } from '../reader/reader-paths'
+import { useEscLayer } from '../utils/use-esc-layer'
 import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
 import type { FileEntry, GitLabTaskStatus, TaskGitInfo, TaskInfo, TaskPatch } from '../../../shared/types'
@@ -93,38 +94,32 @@ function docLabels(names: string[]): Map<string, string> {
   )
 }
 
-function useDocContent(path: string): { loading: boolean; content?: string; error?: string } {
-  const [state, setState] = useState<{ loading: boolean; content?: string; error?: string }>({ loading: true })
-  useEffect(() => {
-    let alive = true
-    setState({ loading: true })
-    api.readTextFile(path).then((res) => {
-      if (!alive) return
-      if (res.ok) setState({ loading: false, content: res.content })
-      else setState({ loading: false, error: res.error })
-    })
-    return () => {
-      alive = false
-    }
-  }, [path])
-  return state
-}
-
-/** 抽屉内嵌文档阅读器：渲染 PRD/Design，居中阅读栏 + 复制/放大 */
+/** 抽屉内嵌文档阅读器（S0 G2 第三片）：正文走共享 DocumentReader（同一加载/错误/版本契约），
+ * 头部保留复制/放大既有能力，并新增「展开为完整工作区」入口（AC1）。 */
 const DocPane = React.memo(function DocPane({
   file,
   projectName,
-  onOpenInViewer
+  taskRef,
+  onOpenInViewer,
+  onExpand
 }: {
   file: FileEntry
   projectName: string
+  taskRef: string | null
   onOpenInViewer: () => void
+  onExpand: () => void
 }): JSX.Element {
-  const { loading, content, error } = useDocContent(file.path)
+  const projectRoot = useApp((s) => s.snapshot?.meta.root ?? '')
+  const relativePath = relativePathUnderRoot(projectRoot, file.path)
+  // 复制按钮取展示版全文（阅读会话状态机是三入口共同的正文事实源）
+  const sessionKey = relativePath !== null && taskRef !== null
+    ? readingSessionKey({ workspaceId: projectRoot, taskRef }, relativePath)
+    : null
+  const displayedText = useApp((s) => (sessionKey !== null ? s.readingSessions[sessionKey]?.displayed?.text : undefined))
   const isMd = /\.(md|markdown)$/i.test(file.name)
   const [copied, setCopied] = useState(false)
   const copy = async (): Promise<void> => {
-    await api.copyToClipboard(content ?? '')
+    await api.copyToClipboard(displayedText ?? '')
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -138,19 +133,25 @@ const DocPane = React.memo(function DocPane({
         <button onClick={() => void copy()} className="btn-ghost px-1.5 py-0.5 text-[10.5px]" title="复制全文">
           <Copy size={11} /> {copied ? '已复制' : '复制'}
         </button>
+        <button onClick={onExpand} className="btn-ghost px-1.5 py-0.5 text-[10.5px] text-leaf-soft" title="展开为完整任务工作区（保留返回位置）">
+          <Maximize2 size={11} /> 展开
+        </button>
         <button onClick={onOpenInViewer} className="btn-ghost px-1.5 py-0.5 text-[10.5px]" title="在产物查看器中打开（固定标签）">
-          <Maximize2 size={11} /> 放大
+          <ArrowUpRight size={11} /> 放大
         </button>
       </div>
-      <div className="mx-auto max-w-[760px] pb-4 text-[13px] leading-relaxed">
-        {loading && <div className="py-10 text-center text-xs text-mist-500">加载中…</div>}
-        {error && (
-          <div className="flex items-center gap-2 py-6 text-xs text-rose-300">
-            <FileWarning size={14} /> {error}
-          </div>
-        )}
-        {!loading && !error && (isMd ? <MarkdownView content={content ?? ''} /> : <CodeView content={content ?? ''} ext={file.ext} />)}
-      </div>
+      {relativePath !== null ? (
+        <DocumentReader
+          workspaceId={projectRoot}
+          taskRef={taskRef ?? undefined}
+          relativePath={relativePath}
+          variant="compact"
+        />
+      ) : (
+        <div className="rounded-lg border border-ink-700 bg-ink-850/60 px-3 py-2 text-[11.5px] text-mist-400">
+          该文件不在当前项目内，使用普通读取打开；不提供版本比较与变更提示。
+        </div>
+      )}
     </div>
   )
 })
@@ -290,18 +291,29 @@ export function TaskDetail(): JSX.Element | null {
   /** task.json mtime captured when the drawer opened — for conflict detection */
   const [openedMtime, setOpenedMtime] = useState<number | undefined>(undefined)
 
-  /* ----- drawer interactions: Esc to close, left edge to resize ----- */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      // don't hijack Esc while the user is editing in a field
-      const tag = (document.activeElement?.tagName ?? '').toLowerCase()
-      if (e.key === 'Escape' && !['input', 'textarea', 'select'].includes(tag)) {
-        showTask(null)
-      }
+  /* ----- drawer interactions: Esc 关闭走全局 Esc 层（preview；编辑字段时不抢），左缘拖拽调宽 ----- */
+  useEscLayer(true, {
+    kind: 'preview',
+    id: 'task-detail-drawer',
+    // 焦点在输入控件内时 Esc 交给字段自身（如取消编辑），不关抽屉——守卫在 Esc 层派发前生效
+    deferWhenInputFocused: true,
+    onClose: () => {
+      showTask(null)
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [showTask])
+  })
+
+  /* S0 G2 第三片（AC1）：展开为完整工作区——记录来源页面与滚动位置，返回时恢复 */
+  const expandToWorkspace = (): void => {
+    const st = useApp.getState()
+    if (!openTaskDir) return
+    const pageScroll = document.querySelector<HTMLElement>('[data-page-scroll]')
+    st.expandTaskWorkspace({
+      fromPage: st.page,
+      taskDir: openTaskDir,
+      archived,
+      scrollTop: pageScroll?.scrollTop ?? 0
+    })
+  }
 
   const onStartResize = (e: React.MouseEvent): void => {
     e.preventDefault()
@@ -530,7 +542,9 @@ export function TaskDetail(): JSX.Element | null {
             key={activeDoc.path}
             file={activeDoc}
             projectName={snapshot?.meta.name ?? ''}
+            taskRef={task.dirName}
             onOpenInViewer={() => openArtifact(activeDoc, true)}
+            onExpand={expandToWorkspace}
           />
         )}
 

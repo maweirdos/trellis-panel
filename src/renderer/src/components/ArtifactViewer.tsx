@@ -1,42 +1,31 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { JSX } from 'react'
 import { X, FileText, Copy, FileWarning, Code2, BookOpen, Pin, PinOff } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
-import { MarkdownView } from './MarkdownView'
 import { JsonTree } from './JsonTree'
 import { CodeView } from './CodeView'
 import { fmtBytes } from '../utils/format'
-import type { JSX } from 'react'
+import { ArtifactReader } from '../reader/ArtifactReader'
+import { DocumentDiffPanel } from '../reader/DocumentDiffPanel'
+import { ReaderNoticeStrip, ReaderVersionBar } from '../reader/ReaderVersionBar'
+import { relativePathUnderRoot } from '../reader/reader-paths'
+import { useDocumentReader } from '../reader/use-document-reader'
+import { useEscLayer } from '../utils/use-esc-layer'
 import type { FileEntry } from '../../../shared/types'
 
 /**
  * 产物查看器（图形化优先）：
  * - 多标签页（VS Code 模型：预览标签复用、可固定）
- * - .json → 可折叠 JSON 树（默认） / 高亮源码
- * - .jsonl → 记录流卡片（默认） / 高亮源码
- * - 代码/配置 → 语法高亮 + 行号
- * - .md → 渲染视图（默认） / 原文
+ * - S0 G2 第三片：装载/错误/版本契约统一走 useDocumentReader（documentRead +
+ *   阅读会话 + 定向变更信号），与 Tasks / TaskDetail 同一套，不另写一份。
+ * - 正文专项渲染保留（零回归）：.json → 可折叠 JSON 树、.jsonl → 记录流卡片、
+ *   代码/配置 → 语法高亮；markdown / task.json / 上下文清单走共享 ArtifactReader。
+ * - 源码视图（graphic/raw）由查看器自己的按钮控制（ArtifactReader 隐藏内置切换）。
  */
 
 const JSONL_CAP = 300
-
-function useFileContent(path: string): { loading: boolean; content?: string; error?: string } {
-  const [state, setState] = useState<{ loading: boolean; content?: string; error?: string }>({ loading: true })
-  useEffect(() => {
-    let alive = true
-    setState({ loading: true })
-    api.readTextFile(path).then((res) => {
-      if (!alive) return
-      if (res.ok) setState({ loading: false, content: res.content })
-      else setState({ loading: false, error: res.error })
-    })
-    return () => {
-      alive = false
-    }
-  }, [path])
-  return state
-}
 
 /* ---------------- JSONL record stream ---------------- */
 
@@ -109,12 +98,28 @@ function JsonlView({ content }: { content: string }): JSX.Element {
   )
 }
 
-/* ---------------- content by file type ---------------- */
+/* ---------------- 内容装载（共享 reader 契约） ---------------- */
 
 export type ArtifactMode = 'graphic' | 'raw'
 
-function ArtifactContent({ file, mode }: { file: FileEntry; mode: ArtifactMode }): JSX.Element {
-  const { loading, content, error } = useFileContent(file.path)
+function ViewerBody({
+  file,
+  mode,
+  relativePath
+}: {
+  file: FileEntry
+  mode: ArtifactMode
+  relativePath: string | null
+}): JSX.Element {
+  const projectRoot = useApp((s) => s.snapshot?.meta.root ?? '')
+  const widthPref = useApp((s) => s.readerWidthPref)
+  const reader = useDocumentReader({
+    workspaceId: projectRoot,
+    relativePath,
+    absolutePath: file.path
+  })
+
+  const content = reader.displayedText
   const isMd = /\.(md|markdown)$/i.test(file.ext || file.name)
   const isJson = /\.json$/i.test(file.name)
   const isJsonl = /\.jsonl$/i.test(file.name)
@@ -127,41 +132,103 @@ function ArtifactContent({ file, mode }: { file: FileEntry; mode: ArtifactMode }
     }
   }, [isJson, content])
 
-  if (loading) return <div className="p-6 text-xs text-mist-500">加载中…</div>
-  if (error)
-    return (
-      <div className="flex items-center gap-2 p-6 text-xs text-rose-300">
-        <FileWarning size={14} /> {error}
-      </div>
-    )
+  const session = reader.session
+  const displayedRevision = session?.displayed?.revision ?? reader.doc?.revision ?? null
+  const baseRevision = session?.base?.revision ?? null
+  const latestRevision = session?.latest?.revision ?? null
+  const diffTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
 
-  if (mode === 'raw') {
-    return (
-      <div className="mx-auto max-w-5xl px-8 py-6">
-        <CodeView content={content ?? ''} ext={isMd ? '.txt' : file.ext} />
-      </div>
-    )
+  const openDiffFrom = (m: 'pending' | 'git-latest-commit', el: HTMLButtonElement | null): void => {
+    if (el !== null) diffTriggerRef.current = el
+    reader.openDiff(m)
   }
 
-  const graphic = (
-    <>
-      {isMd && <MarkdownView content={content ?? ''} />}
-      {isJson &&
-        (parsedJson !== undefined ? (
-          <JsonTree data={parsedJson} />
-        ) : (
-          <>
-            <div className="mb-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-300">
-              JSON 解析失败，展示源码
-            </div>
-            <CodeView content={content ?? ''} ext={file.ext} />
-          </>
-        ))}
-      {isJsonl && <JsonlView content={content ?? ''} />}
-      {!isMd && !isJson && !isJsonl && <CodeView content={content ?? ''} ext={file.ext} />}
-    </>
+  if (reader.loading) return <div className="p-6 text-xs text-mist-500">加载中…</div>
+  if (reader.requestError !== null && content === null)
+    return (
+      <div className="flex items-center gap-2 p-6 text-xs text-rose-300">
+        <FileWarning size={14} /> {reader.requestError}
+      </div>
+    )
+
+  // 共享正文（markdown / task.json 卡片 / 上下文清单）：走 ArtifactReader，
+  // 隐藏其内置 渲染/原文 切换（查看器头部已有同职责按钮）
+  const useSharedReader = isMd || reader.displayedParsed?.kind === 'task-json' || reader.displayedParsed?.kind === 'context-manifest'
+
+  return (
+    <div ref={bodyRef} className="mx-auto w-full px-8 py-6" style={useSharedReader ? { maxWidth: `${widthPref}px` } : undefined}>
+      {reader.legacy ? (
+        <p className="mb-2 text-[11.5px] text-mist-400">
+          该文件不在当前项目内：使用普通读取打开，不提供版本比较与变更提示。
+        </p>
+      ) : (
+        <ReaderVersionBar
+          displayedRevision={displayedRevision}
+          baseRevision={baseRevision}
+          latestRevision={latestRevision}
+          pending={reader.pendingUpdate}
+          onReadNew={(trigger) => {
+            if (trigger !== null) diffTriggerRef.current = trigger
+            void reader.applyNewVersionAnchored(bodyRef.current)
+          }}
+          onComparePending={(trigger) => openDiffFrom('pending', trigger)}
+          onCompareGit={(trigger) => openDiffFrom('git-latest-commit', trigger)}
+          onRebase={() => reader.rebaseToCurrent()}
+          showWidthPref={false}
+        />
+      )}
+      <ReaderNoticeStrip
+        requestError={reader.requestError}
+        unreadableNotice={reader.unreadableNotice}
+        anchorNotice={null}
+        onDismissAnchor={() => undefined}
+        onRetry={() => reader.reload()}
+      />
+      {reader.diff !== null ? (
+        <div className="pt-3">
+          <DocumentDiffPanel
+            state={reader.diff}
+            displayedRevision={displayedRevision}
+            latestRevision={latestRevision}
+            onClose={() => reader.closeDiff()}
+            returnFocusRef={diffTriggerRef}
+          />
+        </div>
+      ) : mode === 'raw' ? (
+        <div className="mx-auto max-w-5xl pt-3">
+          <CodeView content={content ?? ''} ext={isMd ? '.txt' : file.ext} />
+        </div>
+      ) : useSharedReader ? (
+        <div className="pt-3">
+          <ArtifactReader
+            relativePath={relativePath ?? file.name}
+            rawText={content}
+            parsed={reader.displayedParsed}
+            diagnostics={reader.diagnostics}
+            maxWidthPx={widthPref}
+            hideViewToggle
+          />
+        </div>
+      ) : (
+        <div className="mx-auto max-w-5xl pt-3">
+          {isJson &&
+            (parsedJson !== undefined ? (
+              <JsonTree data={parsedJson} />
+            ) : (
+              <>
+                <div className="mb-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-300">
+                  JSON 解析失败，展示源码
+                </div>
+                <CodeView content={content ?? ''} ext={file.ext} />
+              </>
+            ))}
+          {isJsonl && <JsonlView content={content ?? ''} />}
+          {!isJson && !isJsonl && <CodeView content={content ?? ''} ext={file.ext} />}
+        </div>
+      )}
+    </div>
   )
-  return <div className="mx-auto max-w-5xl px-8 py-6">{graphic}</div>
 }
 
 /* ---------------- viewer shell ---------------- */
@@ -172,12 +239,13 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
   const closeArtifact = useApp((s) => s.closeArtifact)
   const pinArtifact = useApp((s) => s.pinArtifact)
   const setViewerActive = useApp((s) => s.setViewerActive)
+  const projectRoot = useApp((s) => s.snapshot?.meta.root ?? '')
   const [copied, setCopied] = useState(false)
   const [mode, setMode] = useState<ArtifactMode>('graphic')
-  const [contentForCopy, setContentForCopy] = useState('')
 
   const activeTab = tabs.find((t) => t.file.path === active) ?? null
   const file = activeTab?.file
+  const relativePath = file !== undefined ? relativePathUnderRoot(projectRoot, file.path) : null
 
   // reset to graphic view when switching files
   useEffect(() => {
@@ -185,6 +253,7 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
   }, [active])
 
   // keep a copy of the active content for the copy button (loaded separately, cheap)
+  const [contentForCopy, setContentForCopy] = useState('')
   useEffect(() => {
     if (!file) return
     let alive = true
@@ -196,13 +265,14 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
     }
   }, [file])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && activeTab) closeArtifact(activeTab.file.path)
+  // S0 G2 第三片：Esc 关闭标签走全局 Esc 层（overlay），每次只关一层
+  useEscLayer(activeTab !== null, {
+    kind: 'overlay',
+    id: 'artifact-viewer',
+    onClose: () => {
+      if (activeTab) closeArtifact(activeTab.file.path)
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [activeTab, closeArtifact])
+  })
 
   if (tabs.length === 0 || !file || !activeTab) return null
 
@@ -295,7 +365,7 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <ArtifactContent key={file.path} file={file} mode={mode} />
+        <ViewerBody key={file.path} file={file} mode={mode} relativePath={relativePath} />
       </div>
     </div>
   )

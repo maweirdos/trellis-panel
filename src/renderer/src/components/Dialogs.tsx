@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
+import { useEscLayer } from '../utils/use-esc-layer'
 import type { JSX } from 'react'
 
 /**
@@ -119,16 +120,15 @@ export function DialogHost(): JSX.Element | null {
     }
   }, [])
 
-  // Esc 取消走 window 级监听，焦点不在面板内（如刚点击触发按钮）时也能生效
-  useEffect(() => {
-    if (!req) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return
-      cancelIfCurrent(req)
+  // Esc 取消走全局 Esc 层（modal 最高优先级；焦点不在面板内也能生效）。
+  // 层协调器保证与查看器/预览等下层同按时只关最上层一层（design §6.3）。
+  useEscLayer(req !== null, {
+    kind: 'modal',
+    id: 'dialog-host',
+    onClose: () => {
+      if (req) cancelIfCurrent(req)
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [req])
+  })
 
   if (!req) return null
 

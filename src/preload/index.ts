@@ -1,11 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
 import type {
+  DocumentChangedEvent,
   DocumentDiffOutcome,
   DocumentDiffRequest,
   DocumentReadOutcome,
   DocumentReadRequest,
-  DocumentReadScope
+  DocumentReadScope,
+  DocumentWatchOutcome
 } from '../shared/documents'
 import type {
   AiConfig,
@@ -55,6 +57,11 @@ const api = {
   /* S0 G2：行级版本比较（jsdiff worker；2MiB/侧 + 1s 超时；Git 基线不可用为中性降级） */
   documentDiff: (scope: DocumentReadScope, input: DocumentDiffRequest) =>
     ipcRenderer.invoke(ipcInvoke.document.diff, scope, input) as Promise<DocumentDiffOutcome>,
+  /* S0 G2 第三片：注册/解除阅读会话的定向变更监听（design §5.2） */
+  documentWatch: (scope: DocumentReadScope, input: { relativePath: string; knownRevision: string | null }) =>
+    ipcRenderer.invoke(ipcInvoke.document.watch, scope, input) as Promise<DocumentWatchOutcome>,
+  documentUnwatch: (canonicalPath: string) => ipcRenderer.invoke(ipcInvoke.document.unwatch, canonicalPath),
+  onDocumentChanged: (cb: (e: DocumentChangedEvent) => void) => subscribe(ipcEvent.documentChanged, cb),
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) =>
     ipcRenderer.invoke(ipcInvoke.fs.writeSpec, absPath, content, expectedMtime),
   specBacklinks: () => ipcRenderer.invoke(ipcInvoke.spec.backlinks),

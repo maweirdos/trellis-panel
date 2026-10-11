@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, rmSync } 
 import { BrowserWindow } from 'electron'
 import { scanProject, TEXT_EXTS } from './services/scan'
 import { TrellisWatcher } from './services/watcher'
-import { clearDocumentCache } from './services/documents'
+import { clearDocumentCache, clearReaderDocuments, routeReaderDocumentChange } from './services/documents'
 import { getSettings, pushRecentProject } from './services/store'
 import { clearGitCache } from './services/git'
 import { recordActivity } from './services/activity'
@@ -292,12 +292,16 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
     }
     projectRoot = snap.meta.root
     pushRecentProject(projectRoot)
-    // S0 G2：切换项目清空文档缓存（缓存键含 canonicalPath，但避免旧项目全文驻留）
+    // S0 G2：切换项目清空文档缓存（缓存键含 canonicalPath，但避免旧项目全文驻留）；
+    // 同时清空变更信号桥的会话监听（渲染端同步清空全部阅读会话）
     clearDocumentCache()
+    clearReaderDocuments()
     watcher.start(projectRoot, sendSnapshot, (path, ev) => {
       routeSpecFileSync(path)
       routeMaterialNotice(path)
       routeWatcherEvent(snap.meta.root, path, ev)
+      // S0 G2 第三片：只对已注册阅读会话的文档定向通知（无关文档零开销）
+      routeReaderDocumentChange(path)
     })
     syncWeknoraSpecConfig()
     clearGitCache()
@@ -316,6 +320,7 @@ export function closeProjectAt(): void {
   knownTaskDirs = new Set()
   clearMaterialTimers()
   clearDocumentCache()
+  clearReaderDocuments()
   syncWeknoraSpecConfig()
 }
 

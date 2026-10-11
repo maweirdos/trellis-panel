@@ -168,6 +168,38 @@ export interface DocumentReadSuccess {
 
 export type DocumentReadOutcome = DocumentReadSuccess | IpcFail
 
+/* ---------------- 会话级变更信号（design §5.2 按 canonicalPath+digest 定向通知） ---------------- */
+
+export const documentWatchRequestSchema = z.object({
+  relativePath: z.string().min(1).max(2048),
+  /**
+   * 调用方已展示的内容 revision（sha256 前 16 hex）；null = 尚无版本（缺失文件首次监听）。
+   * 主进程注册时读一次磁盘：与 knownRevision 不同则立即发一条变更事件，关闭
+   * 「读完成 → 注册监听」之间文件又变化的竞态窗口。
+   */
+  knownRevision: z.string().min(1).max(64).nullable()
+})
+
+export interface DocumentWatchSuccess {
+  ok: true
+  /** realpath 后的绝对路径——渲染端会话注册与解除监听的定向键。 */
+  canonicalPath: string
+  relativePath: string
+}
+
+export type DocumentWatchOutcome = DocumentWatchSuccess | IpcFail
+
+/**
+ * 主进程 → 渲染层的定向文档变更事件（只发给已注册的 canonicalPath，不广播无关文档）。
+ * revision 是 settle 后读到的内容摘要；读不到（如正被删除）为 null——渲染端
+ * 收到 null 仍应重读一次以呈现诚实诊断（file_missing / file_unreadable）。
+ */
+export interface DocumentChangedEvent {
+  canonicalPath: string
+  relativePath: string
+  revision: string | null
+}
+
 /* ---------------- 版本比较（document:diff，design §6.2） ---------------- */
 
 /** 每侧对比输入上限（design §6.2：初始对比每侧 2MiB；试点后可调整）。 */

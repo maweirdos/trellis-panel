@@ -49,7 +49,11 @@ export const ipcInvoke = {
     /** S0 G2：文档限界读取（revision/诊断契约，design §5.1） */
     read: 'document:read',
     /** S0 G2：行级版本比较（jsdiff worker，2MiB/侧 + 1s 超时，design §6.2） */
-    diff: 'document:diff'
+    diff: 'document:diff',
+    /** S0 G2 第三片：渲染端注册"当前打开的阅读会话"以接收定向变更信号（design §5.2） */
+    watch: 'document:watch',
+    /** S0 G2 第三片：解除会话监听（引用计数归零才真正停发） */
+    unwatch: 'document:unwatch'
   },
   spec: {
     backlinks: 'spec:backlinks'
@@ -231,6 +235,8 @@ export const ipcInvoke = {
 export const ipcEvent = {
   /** 项目快照刷新（全量推送） */
   snapshotUpdated: 'project:snapshot',
+  /** S0 G2 第三片：阅读会话定向文档变更（只发给已注册的 canonicalPath，design §5.2） */
+  documentChanged: 'document:changed',
   /** 全局 toast */
   toast: 'bridge:toast',
   /** 深链/AI 工具触发任务聚焦 */
