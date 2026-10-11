@@ -151,6 +151,14 @@ export default defineConfig({
 - [ ] Use transactions for multiple write operations
 - [ ] Always use `$defaultFn` for auto-generated values
 
+### Common Mistake: 冒烟/夹具 JSON 里直接内插 Windows 路径
+
+**Symptom**: 含绝对路径的清单行整条变"坏行"，解析条目数比预期少。
+
+**Cause**: 模板字符串 `` `{"file":"${winPath}"}` `` 内插的 `C:\Users\...` 反斜杠未转义，`\U` 是非法 JSON 转义，`JSON.parse` 整行失败。注意：插值变量里的反斜杠**不会**被模板字面量的转义规则处理。
+
+**Fix / Prevention**: 需要把运行期路径写进 JSON 夹具时一律用 `JSON.stringify({ file: winPath, ... })` 构造该行，不要手拼 JSON 文本。实例：`scripts/smoke/task-reader.mjs`（cockpit-s0）。
+
 ---
 
 ## Testing Guidelines

@@ -31,6 +31,16 @@ src/main/services/{domain}/
     └── cache.ts          # Caching operations
 ```
 
+### Convention: 无 DB 的读取型域（controller/parse/paths 变体）
+
+**What**: 不含数据库、以"读取+解析+缓存"为主的域（如 `services/documents/`）可用 `controller.ts`（编排/重试/缓存）+ `parse.ts`（纯解析）+ `paths.ts`（路径边界）+ `index.ts`（barrel）替代 types/procedures/lib 三件套。
+
+**Why**: 这类域的 wire 契约必须放 `src/shared/`（渲染端与主进程共用，见 ipc-electron.md），域内不再有独立 types.ts；CRUD procedures 结构对纯读取域是空架子。
+
+**判定规则**: 域内有持久化查询/写入 → 用标准三件套；纯读取/解析 → 允许变体，但 zod 输入校验、显式返回类型、诊断分级（neutral/warning/error）纪律不变。首个采用者：`src/main/services/documents/`（cockpit-s0 G2）。
+
+---
+
 ---
 
 ## File Responsibilities

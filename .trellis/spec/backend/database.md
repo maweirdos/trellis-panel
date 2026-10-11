@@ -4,6 +4,61 @@
 
 ---
 
+## Scenario: 内置 SQLite 双生产者（观测/控制存储，D-SQLITE 登记于 cockpit-s0）
+
+### 1. Scope / Trigger
+
+本文档其余部分（Drizzle + better-sqlite3 + WAL）是**ORM 引入后的参考指导**——当前 `package.json` 并未安装这些依赖。已落地的存储是 S0 观测/控制库（`.trellis/.panel/runtime/*.sqlite`），采用 Node 内置 `node:sqlite`（Electron worker）+ Python 标准库 `sqlite3`（Hook 子进程）双生产者。打包（asar）环境验证尚未完成；通过后本节升级为正式约定。
+
+### 2. Signatures
+
+- Panel 侧（唯一建库/迁移方）：`new DatabaseSync(path)`（专用 worker 内），`PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL`。
+- Hook 侧（只写已存在的库）：`sqlite3.connect(f"file:{db}?mode=rw", uri=True, timeout=0.005, isolation_level=None)`；`BEGIN IMMEDIATE` → 参数化 INSERT → `COMMIT`；**不做建库/迁移/清理/循环重试**。
+
+### 3. Contracts
+
+- 事件表核心列：`seq INTEGER PRIMARY KEY AUTOINCREMENT`（单调不复用）、`eventId TEXT UNIQUE`、`payloadDigest`、`injectionId`（索引）、`occurredAtMs INTEGER`（Unix 毫秒，见 shared/timestamp.md）。
+- 双库分离：`observations.sqlite`（可禁用/清理/损坏重建）与 `control.sqlite`（任务恢复记录，观测清理不得触碰）独立版本/连接/事务，不假装跨库原子。
+
+### 4. Validation & Error Matrix
+
+- commit 前进程死亡 → 无脏行（journal 回滚），已实测
+- 锁等待 5ms 耗尽 → Hook 立即失败退出，**不重试、不影响 hook 正常输出**，已实测
+- 同 eventId 同 payloadDigest → 幂等（INSERT OR IGNORE + 计数不增）；同 eventId 异 digest → 唯一约束拒绝并留冲突诊断
+- 库损坏 → 停写并显示不可用，保留原文件由用户选择重建；**不自动删除**
+
+### 5. Good/Base/Bad Cases
+
+- Good：Panel worker 批量查询 + Python 短事务插入，互不阻塞超过锁预算。
+- Base：Python 写入失败（锁/满）→ 回执缺失记为缺证据，界面显示"未观察到"。
+- Bad（禁止）：为规避锁把 emitted 记录提前到 stdout 写之前；用 `journal_mode=WAL` "顺手调优"（S0 明确不做，须先过兼容矩阵）。
+
+### 6. Tests Required
+
+- 跨进程探针（`.trellis/tasks/10-11-cockpit-s0-glass-box/research/spike/g1b-cross-process.mjs`）：崩溃无脏行/锁预算/幂等/seq 单调，12 项断言。
+- 待补：打包 asar 内 worker 加载、Electron 主进程同进程并发、迁移/损坏矩阵（G3）。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+conn = sqlite3.connect(db_path)          # 可能隐式建库；timeout 默认 5s 阻塞 hook
+conn.execute(f"INSERT ... '{event_id}'")  # 字符串拼接 SQL
+```
+
+#### Correct
+
+```python
+conn = sqlite3.connect(f"file:{db_path}?mode=rw", uri=True, timeout=0.005, isolation_level=None)
+conn.execute("BEGIN IMMEDIATE")
+conn.execute("INSERT INTO events(...) VALUES(?,?,?,?,?,?)", (event_id, digest, ...))
+conn.execute("COMMIT")
+```
+
+---
+
+
 ## Drizzle Client Setup
 
 ```typescript
