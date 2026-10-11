@@ -1,0 +1,15 @@
+{
+  "scope": "local artifact links, static HTML IDs/assets, JavaScript syntax",
+  "markdown_files": 12,
+  "local_links_checked": 43,
+  "static_assets_checked": 2,
+  "javascript_syntax_passed": true,
+  "errors": [],
+  "not_tested": [
+    "live Jira",
+    "actual Agent/ACP",
+    "MCP",
+    "production authorization",
+    "production device sync"
+  ]
+}

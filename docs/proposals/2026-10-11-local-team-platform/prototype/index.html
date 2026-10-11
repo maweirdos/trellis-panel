@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Trellis 团队工作台 · 初版交互原型</title>
+  <link rel="stylesheet" href="styles.css?v=0.1.1">
+  <script src="app.js?v=0.1.1" defer></script>
+</head>
+<body>
+  <div class="review-bar">
+    <div><span class="review-tag">交互原型</span><span class="review-caption">示例数据 · 不连接 Jira、模型或你的电脑</span></div>
+    <div class="review-controls">
+      <label>演示角色 <select id="role" aria-label="演示角色"><option value="pm">产品 · 小林</option><option value="dev">开发 · 小周</option><option value="qa">验收 · 小陈</option><option value="maint">规范维护 · 阿宁</option></select></label>
+      <label>场景 <select id="scenario" aria-label="演示场景"><option value="discovery">需求澄清</option><option value="planning">本地工程规划</option><option value="change">需求变更</option><option value="offline">设备离线</option><option value="delivery">交付待验收</option></select></label>
+      <button class="review-reset" id="reset" type="button">重置演示</button>
+    </div>
+  </div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">T</span><div>Trellis<span>团队研发工作台</span></div></div>
+      <div class="project-label"><span class="project-icon" aria-hidden="true">P</span><div>支付产品组<small>内部协作空间</small></div></div>
+      <nav id="nav" aria-label="主要导航"></nav>
+      <div class="sidebar-bottom"><span class="tiny-dot"></span>需求有来处，交付有依据<div>研发发生在员工本机</div><a href="../README.md">方案文档目录 ↗</a></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><div class="breadcrumb">支付产品组 <span>/</span> <span id="view-name">需求空间</span></div><div class="topbar-right"><span id="place" class="location">团队空间</span><span id="avatar" class="avatar">林</span></div></header>
+      <main id="main"></main>
+    </div>
+  </div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-head"><h2 id="dialog-title"></h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="关闭弹窗">×</button></div><div id="dialog-body"></div><div id="dialog-footer" class="dialog-footer"></div></dialog>
+</body>
+</html>

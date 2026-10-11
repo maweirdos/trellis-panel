@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css?v=0.2.1">
+  <script src="app.js?v=0.2.1" defer></script>
+  <title>Trellis 任务驾驶舱 · 统一候选原型</title>
+</head>
+<body>
+  <div class="demo"><span><b>方案 v0.3</b>　目标形态演示（含后续功能） · 非首发全量承诺 · 无真实服务</span><div><label>视角 <select id="audience" aria-label="视角"><option value="local">开发的本机</option><option value="team">团队只读快照</option></select></label><label>观测来源 <select id="mode" aria-label="观测来源"><option value="managed">ACP + Trellis 回执</option><option value="hooks">外部宿主 + hooks</option><option value="files">仅文件观察</option></select></label><button id="reset">重置</button></div></div>
+  <div class="shell" id="shell">
+    <aside class="sidebar"><div class="brand"><b>T</b><div>Trellis<span>任务驾驶舱</span></div></div><div class="project"><small>当前项目 · 示例</small><strong>追溯业务工作区</strong><span>版本 V16</span></div><div class="side-title">我的任务</div><button class="task selected" data-action="current"><small>TRACE-231 · 优化</small><strong>重复扫码的提示与处置</strong><span>工程检查中</span></button><button class="task" data-page="history"><small>TRACE-182 · 已归档</small><strong>扫码异常恢复</strong><span>本任务的前序修复</span></button><button class="task" data-action="quick"><small>快车道示例</small><strong>一个描述明确的小 bug</strong><span>无需再写一份 Brief</span></button><div class="side-bottom">代码与执行留在员工本机<br><a href="../README.md">本轮方案与分歧记录 ↗</a></div></aside>
+    <div class="work"><header><div>追溯业务 / V16 / <b>TRACE-231</b></div><div id="sync-state"></div></header><main><div class="heading"><div><div class="eyebrow">任务驾驶舱 · 交付可以继续迭代</div><h1>重复扫码的提示与处置</h1><p>开发：小周　·　来源：Jira + 飞书章节　·　前序任务：TRACE-182</p></div><div class="heading-actions" id="heading-actions"></div></div><div id="capability" class="capability"></div><nav id="tabs" aria-label="任务视图"></nav><div id="content"></div></main></div>
+  </div>
+  <dialog id="modal" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title"></h2><button data-action="close" aria-label="关闭弹窗">×</button></div><div id="modal-body"></div><div id="modal-actions" class="actions"></div></dialog>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

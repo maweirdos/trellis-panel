@@ -27,7 +27,7 @@
 | [macos-permissions.md](./macos-permissions.md)     | macOS system permissions (mic, accessibility)     | Features requiring permissions     |
 | [text-input.md](./text-input.md)                   | Text insertion without clipboard pollution        | Voice-to-text, paste features      |
 | [ipc-conventions.md](./ipc-conventions.md)         | IPC channel registry, error codes, event streams (TPD-001/002/003) | Adding or modifying any IPC channel |
-| [access-protocol-security.md](./access-protocol-security.md) | TPAP local control-plane security invariants (TPD-007/008) | Touching services/access or exposing new endpoints |
+| [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |
 
 ---
 
