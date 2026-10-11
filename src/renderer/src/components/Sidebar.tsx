@@ -13,6 +13,7 @@ import {
   Wand2,
   Radio,
   Network,
+  Bot,
   Boxes,
   BrainCircuit,
   PanelLeftClose,
@@ -44,6 +45,7 @@ const GROUPS: Array<{ label: string; items: Array<{ id: Page; label: string; ico
     label: '协作',
     items: [
       { id: 'channels', label: 'AI 频道', icon: <Radio size={16} /> },
+      { id: 'acp', label: 'Agent 会话', icon: <Bot size={16} /> },
       { id: 'team', label: '团队协作', icon: <GitPullRequestArrow size={16} /> },
       { id: 'jira', label: 'Jira 任务', icon: <Link2 size={16} /> }
     ]

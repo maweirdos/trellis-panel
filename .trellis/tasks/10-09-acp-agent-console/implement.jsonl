@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/ipc-conventions.md", "reason": "新增 acp 域 invoke/事件通道的注册表契约与命名约定"}
+{"file": ".trellis/spec/backend/api-module.md", "reason": "acp.ts 主进程服务的模块结构与导出形态"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误码信封与失败返回约定"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "主进程类型安全约定"}
+{"file": ".trellis/spec/frontend/ipc-electron.md", "reason": "渲染层消费 IPC 事件流的既定模式"}
+{"file": ".trellis/spec/frontend/store-conventions.md", "reason": "AcpConsole 新切片的 zustand 规则"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "新页组件常见坑（滚动/键盘/重渲染）"}

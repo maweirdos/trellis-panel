@@ -209,6 +209,15 @@ export const ipcInvoke = {
     reveal: 'shell:reveal',
     openInEditor: 'shell:openInEditor',
     openExternal: 'shell:openExternal'
+  },
+  acp: {
+    agents: 'acp:agents',
+    sessions: 'acp:sessions',
+    sessionNew: 'acp:session.new',
+    sessionPrompt: 'acp:session.prompt',
+    sessionCancel: 'acp:session.cancel',
+    sessionKill: 'acp:session.kill',
+    permissionRespond: 'acp:permission.respond'
   }
 } as const
 
@@ -238,6 +247,10 @@ export const ipcEvent = {
   /** 工具调用权限卡（请求决策）与 steer 注入 */
   chatPermission: 'chat:permission',
   chatSteer: 'chat:steer',
+  /** ACP 会话事件流（runId 关联，成对出现；TimelineEvent 双轨混排 + 权限请求） */
+  acpOutput: 'acp:output',
+  acpPermission: 'acp:permission',
+  acpDone: 'acp:done',
   /** 窗口最大化状态 */
   windowMaximized: 'window:maximized',
   /** 速记窗已显示（渲染层收到后重新聚焦编辑区） */

@@ -29,6 +29,7 @@ export type Page =
   | 'studio'
   | 'models'
   | 'chat'
+  | 'acp'
   | 'gateway'
   | 'settings'
 

@@ -33,6 +33,8 @@ const chainable = {
 
 export const app = {
   getPath: () => dataDir,
+  getAppPath: () => process.cwd(),
+  getVersion: () => '0.0.0-smoke',
   quit() {},
   isPackaged: false,
   requestSingleInstanceLock: () => true,

@@ -6,6 +6,11 @@
 ## 已实现
 
 - ✅ IPC 通道中央注册表 / 错误码信封 / 事件流约定（TPD-001..004）
+- ✅ **ACP Agent 控制台**（2026-10-09，10-09-acp-agent-console）：`services/acp.ts` NDJSON
+  JSON-RPC 客户端（任意 ACP agent 子进程，预置 codex-acp / gemini --acp / 内置 mock）+
+  AcpConsole 页双轨混排（agent 回复流/工具卡/权限三态卡 + trellis 卡片：任务流转/文档/
+  spec/jira）+ 工单人工审查流 + 会话记录落盘。冒烟：`node scripts/smoke/acp-mock-agent.mjs`
+  （协议序列 9 项）与 `node scripts/smoke/acp.mjs`（真实服务 × mock 子进程 19 项）。
 - ✅ store 切片化 + mermaid/markdown 渲染消毒（TPD-005/006）
 - ✅ TPAP 本地控制面（环回 + token + confirm + 幂等 + 游标事件）（TPD-007/008）
 - ✅ SSE 流式对话（openai/anthropic/ollama/response 四形态）+ 会话持久化 + 队列/中止 + 标题总结

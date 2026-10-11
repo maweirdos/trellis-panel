@@ -23,6 +23,7 @@ import { registerGitlabIpc } from './gitlab'
 import { registerHttpApiIpc } from './httpapi'
 import { registerChatIpc } from './chat'
 import { registerFlowIpc } from './flow'
+import { registerAcpIpc } from './acp'
 import { registerWindowIpc } from './window'
 import type { WindowDeps } from './deps'
 
@@ -49,4 +50,5 @@ export function registerIpc(deps: WindowDeps): void {
   registerHttpApiIpc()
   registerChatIpc(deps)
   registerFlowIpc()
+  registerAcpIpc()
 }

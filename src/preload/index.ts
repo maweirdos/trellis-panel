@@ -57,6 +57,19 @@ const api = {
   onCliOutput: (cb: (e: RunEvent) => void) => subscribe(ipcEvent.cliOutput, cb),
   onCliDone: (cb: (e: RunDoneEvent) => void) => subscribe(ipcEvent.cliDone, cb),
 
+  acpAgents: () => ipcRenderer.invoke(ipcInvoke.acp.agents),
+  acpSessions: () => ipcRenderer.invoke(ipcInvoke.acp.sessions),
+  acpSessionNew: (input: { agentId: string; taskDir?: string }) => ipcRenderer.invoke(ipcInvoke.acp.sessionNew, input),
+  acpSessionPrompt: (sessionId: string, text: string) => ipcRenderer.invoke(ipcInvoke.acp.sessionPrompt, sessionId, text),
+  acpSessionCancel: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.acp.sessionCancel, sessionId),
+  acpSessionKill: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.acp.sessionKill, sessionId),
+  acpPermissionRespond: (requestId: string, optionId: string) =>
+    ipcRenderer.invoke(ipcInvoke.acp.permissionRespond, requestId, optionId),
+  onAcpOutput: (cb: (e: import('../shared/types').TimelineEvent) => void) => subscribe(ipcEvent.acpOutput, cb),
+  onAcpPermission: (cb: (e: import('../shared/types').AcpPermissionPayload) => void) => subscribe(ipcEvent.acpPermission, cb),
+  onAcpDone: (cb: (e: { sessionId: string; status: import('../shared/types').AcpSessionStatus; error?: string }) => void) =>
+    subscribe(ipcEvent.acpDone, cb),
+
   gitTaskInfo: (dirName: string) => ipcRenderer.invoke(ipcInvoke.git.taskInfo, dirName),
   gitCreateBranch: (name: string, fromBase: string) => ipcRenderer.invoke(ipcInvoke.git.createBranch, name, fromBase),
 

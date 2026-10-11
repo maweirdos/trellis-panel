@@ -7,6 +7,7 @@ import { join, resolve, basename, dirname, sep } from 'path'
 import { existsSync } from 'fs'
 import { abortAll } from './services/cli'
 import { getSettings } from './services/store'
+import { routeNotifyRail, shutdownAcp } from './services/acp'
 import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindows } from './services/bridge'
 import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
@@ -23,7 +24,8 @@ import {
   openProjectAt,
   findTask,
   pushFocusTask,
-  getSnapshot
+  getSnapshot,
+  getProjectRoot
 } from './state'
 import { registerIpc } from './ipc'
 import type { CapsuleApi } from './ipc/deps'
@@ -369,6 +371,9 @@ function bridgeHandlers() {
     onNotify: (text: string) => {
       focusAndShow()
       broadcastToWindows(ipcEvent.toast, { kind: 'info', title: '桥接消息', body: text })
+      // ACP 轨道：`acp:<kind>:` 前缀的钩子上报进会话时间线（spec 注入等），普通文本不受影响
+      const railRoot = getProjectRoot()
+      if (railRoot) routeNotifyRail(railRoot, text)
     },
     onOpenTask: (taskDir: string) => focusMainAndOpenTask(taskDir)
   }
@@ -442,6 +447,8 @@ if (!gotLock) {
       onNotify: (text) => {
         focusAndShow()
         broadcastToWindows(ipcEvent.toast, { kind: 'info', title: '桥接消息', body: text })
+        const railRoot = getProjectRoot()
+        if (railRoot) routeNotifyRail(railRoot, text)
       },
       onOpenTask: (taskDir) => focusMainAndOpenTask(taskDir)
     })
@@ -469,6 +476,7 @@ if (!gotLock) {
     stopTimers()
     stopInbox()
     abortAll()
+    shutdownAcp()
     globalShortcut.unregisterAll()
     accessServer.stop()
   })

@@ -26,6 +26,7 @@ Trellis Panel 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-fir
 | 知识库 | **五库一体**：需求库（任务 PRD / task.json 提炼）/ 规范库 / Wiki 库（README·docs）/ 归档库 / **我的笔记**（`.trellis/notes/`，面板内新建·编辑·删除）；本地倒排索引全文检索（CJK 二元分词 + TF-IDF、高亮片段）；**AI 问答带来源引用 + 问答历史落盘**；接入 AI 后支持基于当前库的问答 |
 | 定制中心 | **可视化定制 Trellis 工作流**：workflow.md 与 `.trellis/workflows/` 变体（结构解析、契约校验、四级解析链可视化、新建/设为团队与个人默认）；**AI 工作流（Flow）**：一句话需求 → AI 设计多代理工作流（阶段 / 子代理 / 工具调用 / 质量门禁 / 钩子，Flow DSL 存储 `.trellis/flows/`）→ 可视化预览 → 一键运行 → 实时阶段进度 → 运行历史与产物回看，内置模板（项目知识调研 / 项目健康巡检 / 文档评审）；**Slash 命令 / 子代理 / 技能**跨平台扫描与表单化编辑（frontmatter + 正文，新建/删除）；**跨平台矩阵**：同名扩展在哪些平台存在/缺失一目了然，一键补齐到缺失平台（nested↔hyphen 命名互转、gemini TOML 转换、格式不同自动跳过）；**钩子**（平台 settings.json 注册表 + config.yaml 生命周期钩子 + 脚本浏览）；**config.yaml** 结构化编辑（packages / default_workflow / codex.dispatch_mode 等）；**平台与团队**：22 平台检测与文件计数、团队共享 vs 个人配置导览 |
 | AI 频道 | **trellis channel 运行时看板**：实时事件流（create/message/progress/done）、本项目/全局过滤、面板直接发消息（as panel-ui）驱动 AI worker、forum 线程视图、启动 worker / 软中断 / 删除等动作；**任务派发台**：把看板任务（自动携带 PRD 摘录/子任务）或一句话需求派给 AI worker——自动建 dispatch-* 频道 + 结构化指令，事件实时回流面板 |
+| Agent 会话 | **ACP 控制台（Agent Client Protocol v1）**：把任意 NDJSON ACP agent 作为子进程接入（预置 codex-acp / `gemini --acp` / 内置冒烟 mock，命令模板可配）；任务对话窗口**双轨混排**——agent 轨道（回复流 / 思考折叠 / 工具调用卡 / 权限三态卡 120s 超时默认拒绝）+ Trellis 轨道（任务流转 / 文档创建 / spec 注入·更新 / Jira 同步卡片，点击直达任务·产物·规范页）；**从 Jira 选工单**人工审查流（查询 → 点选 → jiraKey 防重导入 → 以该任务开会话，无自动触发）；会话记录落盘回看；agent 崩溃可一键重开、关窗进程树清理 |
 | 归档 | 兼容新旧两种归档布局 |
 | 团队协作 | 五标签：动态流 / **效率分析**（交付周期、流转热度、停滞预警 + **AI 深度诊断**：停滞归因、负载观察、本周行动建议）/ **站会**（今日完成·进行·评审·阻塞一键生成）/ **周报生成**（团队/个人，Markdown 导出）/ **工作流洞察**（解析链、workflow 分布、停滞预警、平台覆盖） |
 | Jira 任务 | 我的待办 / **当前冲刺** / 自定义 JQL；加入待办（**可配置状态映射**）；双向同步；流转推送；进度回写评论；密码 DPAPI 加密；**AI 规划**：issue → 检索知识库 → AI 生成结构化计划（PRD/子任务/workflow pin/分支建议）→ 评审修订 → 一键落成 Trellis 任务并生成 codex/Claude Code/ZCode 启动衔接 |
@@ -109,6 +110,7 @@ src/
 │     ├─ kbmcp.ts         # 知识库 MCP stdio 服务器（零依赖脚本 + 一键注册 AI 工具）
 │     ├─ plan.ts          # 规划工作台：KB 检索 → AI 结构化任务计划 + 启动衔接
 │     ├─ channels.ts      # trellis channel 运行时读取 + 动作 + 任务派发台
+│     ├─ acp.ts           # ACP 客户端：NDJSON JSON-RPC 子进程 / 会话生命周期 / 权限桥 / TimelineEvent 双轨（acp+trellis）
 │     └─ store.ts         # 设置持久化
 ├─ preload/index.ts       # contextBridge 类型化 API
 └─ renderer/src/

@@ -636,6 +636,8 @@ export interface Settings {
   desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean; quickTodoShortcut: string; explorerContextMenu?: boolean }
   /** T4 派单：codex worker 显式模型（账号默认模型不可用时在此指定；留空用 CLI 默认） */
   dispatch: { codexModel?: string }
+  /** ACP agent 注册表（10-09：缺省用内置预置项） */
+  acp?: { agents?: AcpAgentConfig[] }
 }
 
 /* ---------- Studio（定制中心：workflow / 命令 / 子代理 / 技能 / 钩子 / 配置 / 平台） ---------- */
@@ -1156,6 +1158,18 @@ export interface TrellisApi {
   jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) => Promise<{ ok: boolean; error?: string }>
   jiraComment: (cfg: JiraConfig, key: string, body: string) => Promise<{ ok: boolean; error?: string }>
 
+  /* --- ACP Agent 控制台 --- */
+  acpAgents: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
+  acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>
+  acpSessionNew: (input: { agentId: string; taskDir?: string }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
+  acpSessionPrompt: (sessionId: string, text: string) => Promise<{ ok: boolean; error?: string }>
+  acpSessionCancel: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
+  acpSessionKill: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
+  acpPermissionRespond: (requestId: string, optionId: string) => Promise<{ ok: boolean; error?: string }>
+  onAcpOutput: (cb: (e: TimelineEvent) => void) => () => void
+  onAcpPermission: (cb: (e: AcpPermissionPayload) => void) => () => void
+  onAcpDone: (cb: (e: { sessionId: string; status: AcpSessionStatus; error?: string }) => void) => () => void
+
   /* --- GitLab connector --- */
   gitlabTest: (cfg: GitLabConfig) => Promise<{ ok: boolean; error?: string; displayName?: string }>
   gitlabTaskStatus: (dirName: string) => Promise<GitLabTaskStatus>
@@ -1395,4 +1409,86 @@ export interface GatewaySearchResult {
   hits: ContextHit[]
   elapsedMs: number
   sources: Array<{ source: string; label: string; count: number }>
+}
+
+/* ---------- ACP Agent 控制台（10-09-acp-agent-console） ---------- */
+
+/** 设置页注册表里的一条 ACP agent（任意 NDJSON ACP agent 通用） */
+export interface AcpAgentConfig {
+  id: string
+  name: string
+  /** 命令模板（整行交给 shell，如 `codex-acp` / `gemini --acp` / `node scripts/smoke/acp-mock-agent.mjs --serve`） */
+  command: string
+  enabled: boolean
+}
+
+/** 注册表条目 + 本机可用性探测结果 */
+export interface AcpAgentStatus extends AcpAgentConfig {
+  available: boolean
+}
+
+export type AcpSessionStatus = 'starting' | 'ready' | 'busy' | 'error' | 'closed'
+
+export interface AcpSessionMeta {
+  sessionId: string
+  agentId: string
+  agentName: string
+  projectRoot: string
+  /** 会话绑定的 Trellis 任务目录名（可选；绑定后 trellis 轨道卡片按任务归属） */
+  taskDir?: string
+  status: AcpSessionStatus
+  startedAt: number
+  endedAt?: number
+  error?: string
+  title?: string
+}
+
+/** 会话持久化记录（userData/acp-sessions/<sessionId>.json，原子写） */
+export interface AcpSessionRecord extends AcpSessionMeta {
+  events: TimelineEvent[]
+}
+
+/** ACP 权限请求的选项（协议原样映射：allow_once / allow_always / reject_once） */
+export interface AcpPermissionOption {
+  optionId: string
+  name: string
+  kind: 'allow_once' | 'allow_always' | 'reject_once'
+}
+
+export interface AcpPermissionPayload {
+  requestId: string
+  sessionId: string
+  agentName: string
+  toolCall?: { toolCallId?: string; title?: string; kind?: string }
+  options: AcpPermissionOption[]
+}
+
+/**
+ * 双轨统一时间线事件：acp 轨道来自 session/update（对话/思考/工具/回合结束），
+ * trellis 轨道来自面板自有信号（watcher / tpanel / jira 第一方动作）。
+ * sessionId 对 trellis 轨道事件可空——渲染层按 projectRoot 关联当前会话。
+ */
+export type TimelineEventKind =
+  | 'message'
+  | 'thought'
+  | 'tool-call'
+  | 'turn-done'
+  | 'permission'
+  | 'session-status'
+  | 'task-status'
+  | 'doc-created'
+  | 'spec-injected'
+  | 'spec-updated'
+  | 'jira-sync'
+
+export interface TimelineEvent {
+  id: string
+  ts: number
+  source: 'acp' | 'trellis'
+  sessionId?: string
+  projectRoot: string
+  taskDir?: string
+  kind: TimelineEventKind
+  text?: string
+  payload?: Record<string, unknown>
 }

@@ -16,13 +16,14 @@ import {
   Sparkles,
   BrainCircuit,
   Cloud,
-  KeyRound
+  KeyRound,
+  Bot
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
-import type { KbMcpInstallResult, KbMcpStatus, McpInfo, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
+import type { AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
 import { WEKNORA_DEFAULTS } from '../../../shared/types'
 
 function JiraStatusMapEditor(): JSX.Element {
@@ -313,6 +314,8 @@ export function SettingsPage(): JSX.Element {
         <h1 className="mb-1 text-base font-semibold text-mist-50">设置</h1>
 
         {/* Web 看板 HTTP 服务 */}
+        <AcpAgentsSection />
+
         <section className="card px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">
             <Server size={13} /> Web 看板服务
@@ -1090,5 +1093,89 @@ export function SettingsPage(): JSX.Element {
         </section>
       </div>
     </div>
+  )
+}
+
+
+/* ---------------- ACP agent 注册表（10-09-acp-agent-console） ---------------- */
+
+function AcpAgentsSection(): JSX.Element {
+  const saveSettings = useApp((s) => s.saveSettings)
+  const settings = useApp((s) => s.settings)!
+  const pushToast = useApp((s) => s.pushToast)
+  const [agents, setAgents] = useState<AcpAgentStatus[]>([])
+
+  const reload = (): void => {
+    void api.acpAgents().then((res) => {
+      if (res.ok && res.agents) setAgents(res.agents)
+    })
+  }
+  useEffect(reload, [])
+
+  const persist = (rows: AcpAgentStatus[]): void => {
+    setAgents(rows)
+    void saveSettings({
+      acp: {
+        agents: rows.map((a) => ({ id: a.id, name: a.name, command: a.command, enabled: a.enabled }))
+      }
+    })
+  }
+
+  return (
+    <section className="card px-5 py-4">
+      <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-mist-200">
+        <Bot size={13} /> ACP Agent 注册表
+      </div>
+      <p className="mb-3 text-[11px] leading-5 text-mist-500">
+        任意 NDJSON ACP agent（Agent Client Protocol v1）都可作为子进程接入「Agent 会话」页。
+        命令整行交给 shell；可用性按 PATH 探测。内置 mock agent 可随时端到端体验对话/工具/权限卡。
+      </p>
+      <div className="space-y-2">
+        {agents.map((a) => (
+          <div key={a.id} className="flex items-center gap-2 rounded-md border border-mist-700/40 px-3 py-2">
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-mist-200">
+              <input
+                type="checkbox"
+                checked={a.enabled}
+                onChange={(e) => persist(agents.map((row) => (row.id === a.id ? { ...row, enabled: e.target.checked } : row)))}
+              />
+              {a.name}
+            </label>
+            {a.available ? (
+              <span className="chip border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">可用</span>
+            ) : (
+              <span className="chip border border-amber-500/30 bg-amber-500/10 text-amber-300" title="命令首词不在 PATH（仍可强制启用）">
+                未探测到
+              </span>
+            )}
+            <input
+              className="field flex-1 font-mono text-[11px]"
+              value={a.command}
+              placeholder="命令模板，如 codex-acp / gemini --acp"
+              onChange={(e) => setAgents(agents.map((row) => (row.id === a.id ? { ...row, command: e.target.value } : row)))}
+              onBlur={() => persist(agents)}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <button className="btn-outline" onClick={reload}>
+          重新探测
+        </button>
+        {settings.acp?.agents && (
+          <button
+            className="btn-outline"
+            onClick={() => {
+              void saveSettings({ acp: { agents: [] } }).then(() => {
+                pushToast({ kind: 'info', title: '已恢复预置项' })
+                reload()
+              })
+            }}
+          >
+            恢复预置
+          </button>
+        )}
+      </div>
+    </section>
   )
 }

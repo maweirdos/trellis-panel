@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality.md", "reason": "后端质量门"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "前端质量门"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "shared→main→renderer 跨层数据流检查"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用 Chat/cli 既有实现的查重检查"}

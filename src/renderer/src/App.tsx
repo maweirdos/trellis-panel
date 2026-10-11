@@ -33,6 +33,7 @@ const ArchitecturePage = lazy(() => import('./pages/Architecture').then((m) => (
 const ModelsPage = lazy(() => import('./pages/Models').then((m) => ({ default: m.ModelsPage })))
 const GatewayPage = lazy(() => import('./pages/Gateway').then((m) => ({ default: m.GatewayPage })))
 const ChatPage = lazy(() => import('./pages/Chat').then((m) => ({ default: m.ChatPage })))
+const AcpConsolePage = lazy(() => import('./pages/AcpConsole').then((m) => ({ default: m.AcpConsolePage })))
 
 function PageLoading(): JSX.Element {
   return (
@@ -169,6 +170,7 @@ function MainApp(): JSX.Element {
                 {page === 'models' && <ModelsPage />}
                 {page === 'gateway' && <GatewayPage />}
                 {page === 'chat' && <ChatPage />}
+              {page === 'acp' && <AcpConsolePage />}
                 {page === 'settings' && <SettingsPage />}
               </Suspense>
             </div>

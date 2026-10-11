@@ -15,6 +15,7 @@ import { getSettings, pushRecentProject } from './services/store'
 import { clearGitCache } from './services/git'
 import { recordActivity } from './services/activity'
 import { broadcastToWindows } from './services/bridge'
+import { routeWatcherEvent } from './services/acp'
 import { startHttpApi, stopHttpApi } from './services/httpapi'
 import { WeknoraSpecSyncer } from './services/weknora'
 import { accessEventLog } from './services/access/event-log'
@@ -290,9 +291,10 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
     }
     projectRoot = snap.meta.root
     pushRecentProject(projectRoot)
-    watcher.start(projectRoot, sendSnapshot, (path) => {
+    watcher.start(projectRoot, sendSnapshot, (path, ev) => {
       routeSpecFileSync(path)
       routeMaterialNotice(path)
+      routeWatcherEvent(snap.meta.root, path, ev)
     })
     syncWeknoraSpecConfig()
     clearGitCache()
