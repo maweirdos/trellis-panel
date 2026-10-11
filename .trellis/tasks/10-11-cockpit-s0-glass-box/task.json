@@ -1,0 +1,41 @@
+{
+  "id": "cockpit-s0-glass-box",
+  "name": "cockpit-s0-glass-box",
+  "title": "驾驶舱 S0：统一阅读、上下文回执与可信活动",
+  "description": "v2 规划：三入口统一阅读、真实上下文输出证据、独立活动来源、Jira 本地轻任务与可验证分发/试点；保留本机开发与现有 UI。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "maweirdos",
+  "assignee": "maweirdos",
+  "createdAt": "2026-10-11",
+  "completedAt": null,
+  "branch": "codex/trellis-team-refactor",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "prd.md",
+    "design.md",
+    "implement.md",
+    "review/04-revision-resolution.md"
+  ],
+  "notes": "",
+  "meta": {
+    "planningRevision": "v2",
+    "planningUpdatedAt": "2026-10-11",
+    "planningReview": {
+      "status": "planning_consistency_passed",
+      "supersedes": "review/approval.json",
+      "resolution": "review/04-revision-resolution.md",
+      "implementationAuthorized": false,
+      "validation": "review/05-v2-planning-check.md"
+    }
+  }
+}

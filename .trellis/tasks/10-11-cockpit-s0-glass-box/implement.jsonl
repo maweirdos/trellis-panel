@@ -1,0 +1,14 @@
+{"file": "docs/proposals/2026-10-11-cockpit-counter-proposal/01-user-pain-points.md", "reason": "用户痛点 P01-P09；只按本任务 v2 范围实现，不扩展旧原型"}
+{"file": ".trellis/tasks/10-11-cockpit-s0-glass-box/review/04-revision-resolution.md", "reason": "R01-R12 的 v2 修订映射、历史原稿与当前依据，防止执行旧方案"}
+{"file": ".trellis/spec/frontend/components.md", "reason": "三入口共享 reader、组件复用与职责边界"}
+{"file": ".trellis/spec/frontend/store-conventions.md", "reason": "Zustand 切片登记、缓存作用域、订阅取消与持久化限制"}
+{"file": ".trellis/spec/frontend/ipc-electron.md", "reason": "renderer/preload 的类型化 IPC 与生命周期"}
+{"file": ".trellis/spec/frontend/css-design.md", "reason": "沿用现有 tokens、阅读布局和适配窗口"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "避免 task 引用变化重载文档和重复全局 Esc"}
+{"file": ".trellis/spec/backend/ipc-conventions.md", "reason": "通道/handler registry/共享 API 全链注册"}
+{"file": ".trellis/spec/backend/database.md", "reason": "继承事务/迁移/约束；驱动与 journal 示例按 design 的 D-SQLITE 差异执行"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "输出故障、观测故障和 Jira 不确定结果分别处理"}
+{"file": ".trellis/spec/backend/pagination.md", "reason": "游标完整性、上限、取消与外部 Jira 分页适配"}
+{"file": ".trellis/spec/shared/typescript.md", "reason": "v1 事件、错误结果和未知字段类型契约"}
+{"file": ".trellis/spec/shared/timestamp.md", "reason": "UTC 时间、字节计量、数据库序号与因果时间分离"}
+{"file": ".agents/skills/trellis-meta/references/local-architecture/generated-files.md", "reason": "生成 Hook 不是上游源；必须确认真实模板/升级/回退路径"}

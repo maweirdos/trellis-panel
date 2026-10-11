@@ -1,0 +1,11 @@
+{"file": ".trellis/tasks/10-11-cockpit-s0-glass-box/review/04-revision-resolution.md", "reason": "逐项验证修订已落地，区分设计修订与未执行的产品验证"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "阅读、组件和状态质量；实际命令以 package.json/implement.md 为准"}
+{"file": ".trellis/spec/frontend/store-conventions.md", "reason": "多项目缓存、过期请求丢弃、订阅取消、无界存储检查"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "三入口刷新、选区保持和 Esc 处理检查"}
+{"file": ".trellis/spec/backend/quality.md", "reason": "后端失败处理、模块边界和可执行检查"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "schema 版本、IPC 输入和跨语言夹具"}
+{"file": ".trellis/spec/backend/database.md", "reason": "按 D-SQLITE 差异审查事务、迁移、并发与故障，不能强行套用尚不存在的 ORM"}
+{"file": ".trellis/spec/big-question/transaction-silent-failure.md", "reason": "日志提交失败不能假报成功；多步本地任务恢复"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Hook→数据库→IPC→UI 与 Jira→本地文件跨层一致性"}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "实现复用、作用域、未知状态语义和安全边界"}
+{"file": ".trellis/spec/shared/git-conventions.md", "reason": "最终提交与现有改动保护；文档修订本轮不自动提交"}
