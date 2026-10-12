@@ -36,3 +36,17 @@
 ## 5. G3 第二片时点状态（2026-10-12）
 
 观测 UI 与投影（ReceiptProjection / ObservationPanel / 健康治理）已落地并经夹具冒烟（见 [validation/observability.md](../validation/observability.md)），但**全部事件为契约夹具，非真实 Hook 产出**。上述 §4 待验证项均未启动，AC9 维持 blocked_external：不把「本地实验回执」写成「团队分发完成」。
+
+## 6. G1-A/C 实验片时点状态（2026-10-13）：本地副本已改造，上游 PR 未发起
+
+本仓库 `.codex/hooks/` 的**活体副本**已完成观测接线实验（详细证据见 [validation/g1c-hook-producer.md](../validation/g1c-hook-producer.md)）：
+
+| 项 | 状态 |
+| --- | --- |
+| 本地副本改造 | 已完成：新增 `.codex/hooks/observability_emit.py`（独立模块承载全部逻辑）；`inject-subagent-context.py` 仅 import + 两处输出路径各三个时机点调用（组装完成 / stdout flush 成功 / 输出失败），stdout 与 git HEAD 逐字节一致（sha256 证明） |
+| 事件真实性 | 已有真实 emitter 产出的 assembled/emitted 配对事件与 Python 黄金夹具（`scripts/fixtures/observability/python-produced-*.json`），payloadDigest 跨语言一致（P3-b 偿还） |
+| 冒烟 | `scripts/smoke/hook-emitter.mjs`（117 项：字节一致性/旁路/身份不符/存储故障/输出故障矩阵）+ `observability-contract.mjs` 扩展（跨语言 digest） |
+| 上游模板改动 | **未发起**：§3 的正确路径（上游 `packages/cli/src/templates/` → PR → 发版 → `trellis update`）尚未开始，本节改造不能替代 |
+| AC9 | **维持 blocked_external**：本地实验合法但不构成团队分发；其他员工仓库不会获得改动 |
+
+**用户须知（`trellis update` 交互）**：`.codex/hooks/inject-subagent-context.py` 的改动会被 `.template-hashes.json` 三态机制识别为**用户修改**——执行 `trellis update` 时不会自动覆盖，但会留下 `.new` sidecar 提示模板已更新，需要手动合并；`observability_emit.py` 是全新文件，update 不会管理它。回退方式：`git checkout .codex/hooks/inject-subagent-context.py` 并删除 `observability_emit.py` 即可恢复上游生成形态（观测库数据保留，见 design §8 回退分层）。

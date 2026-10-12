@@ -24,7 +24,7 @@
 
 - commit 前进程死亡 → 无脏行（journal 回滚），已实测
 - 锁等待 5ms 耗尽 → Hook 立即失败退出，**不重试、不影响 hook 正常输出**，已实测
-- 同 eventId 同 payloadDigest → 幂等（INSERT OR IGNORE + 计数不增）；同 eventId 异 digest → 唯一约束拒绝并留冲突诊断
+- 同 eventId 同 payloadDigest → 幂等（事务内 SELECT 判重后跳过，计数不增）；同 eventId 异 digest → 唯一约束拒绝并留冲突诊断（不用 INSERT OR IGNORE——无法区分冲突，见 §7）
 - 库损坏 → 停写并显示不可用，保留原文件由用户选择重建；**不自动删除**
 
 ### 5. Good/Base/Bad Cases
@@ -36,6 +36,7 @@
 ### 6. Tests Required
 
 - 跨进程探针（`.trellis/tasks/10-11-cockpit-s0-glass-box/research/spike/g1b-cross-process.mjs`）：崩溃无脏行/锁预算/幂等/seq 单调，12 项断言。
+- Hook 生产者冒烟（`scripts/smoke/hook-emitter.mjs`，G1-C）：stdout 与 git HEAD 逐字节一致（sha256）、assembled/emitted 配对、故障矩阵（binding 缺失/TRELLIS_RECEIPTS=off/库只读/库损坏/stdout 提前关闭/序列化注入/身份不符）。
 - 待补：打包 asar 内 worker 加载、Electron 主进程同进程并发、迁移/损坏矩阵（G3）。
 
 ### 7. Wrong vs Correct
@@ -45,15 +46,40 @@
 ```python
 conn = sqlite3.connect(db_path)          # 可能隐式建库；timeout 默认 5s 阻塞 hook
 conn.execute(f"INSERT ... '{event_id}'")  # 字符串拼接 SQL
+# 只插 6 列的简化示例：与落地 events 表不兼容（repositoryId/workspaceId/
+# receivedAtMs/payloadBytes/payload 均 NOT NULL，见 store-core OBS_SCHEMA_V1）
+conn.execute("INSERT INTO events(eventId, payloadDigest, injectionId, kind, occurredAtMs, payload) VALUES(?,?,?,?,?,?)", ...)
 ```
 
 #### Correct
 
 ```python
+# 列集与 store-core OBS_SCHEMA_V1 的 events 表完全一致（P3-a 修正：非空列全填）
 conn = sqlite3.connect(f"file:{db_path}?mode=rw", uri=True, timeout=0.005, isolation_level=None)
 conn.execute("BEGIN IMMEDIATE")
-conn.execute("INSERT INTO events(...) VALUES(?,?,?,?,?,?)", (event_id, digest, ...))
+usage = conn.execute("SELECT logicalCount, logicalPayloadBytes FROM store_usage WHERE id=1").fetchone()
+if usage is None:                      # 非 Panel 建的库/被篡改 → 放弃，不猜
+    conn.execute("ROLLBACK")
+# 事务内配额检查（满额暂停新增）与重复判定（不用 INSERT OR IGNORE——无法区分
+# 同 eventId 同 digest 幂等与异 digest 冲突；Panel 侧是 SELECT-then-INSERT）
+existing = conn.execute("SELECT payloadDigest FROM events WHERE eventId=?", (event_id,)).fetchone()
+if existing is not None:               # 保留首见，不覆盖不重计
+    conn.execute("ROLLBACK")
+conn.execute(
+    "INSERT INTO events(eventId, payloadDigest, injectionId, kind, repositoryId, workspaceId,"
+    " taskRef, occurredAtMs, receivedAtMs, payloadBytes, payload) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+    (event_id, digest, injection_id, kind, repo_id, ws_id, task_ref,
+     occurred_ms, received_ms, payload_bytes, payload_json),
+)
+# 事件 INSERT 与 store_usage 变更同一事务提交（design §4.2）
+conn.execute(
+    "UPDATE store_usage SET logicalCount=logicalCount+1,"
+    " logicalPayloadBytes=logicalPayloadBytes+?, updatedAtMs=? WHERE id=1",
+    (payload_bytes, now_ms),
+)
 conn.execute("COMMIT")
+# 任何失败：ROLLBACK → close → 退出（不重试）；payloadDigest = SHA-256(stableStringify(event))，
+# 与 TS 侧 stableStringify 跨语言一致（黄金夹具 scripts/fixtures/observability/python-produced-*.json）
 ```
 
 ---

@@ -8,3 +8,6 @@ examples/demo-project
 .idea/
 /docs/todo
 .tmp-*
+
+# Python hooks 缓存（.codex/.zcode hooks 首次运行产生）
+__pycache__/

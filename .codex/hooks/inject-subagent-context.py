@@ -968,7 +968,39 @@ def _handle_codex_subagent_start(input_data: dict) -> None:
             ),
         }
     }
-    print(json.dumps(output, ensure_ascii=False))
+    if _observability_emit is not None:
+        try:
+            _observability_emit.note_assembled(
+                repo_root, task_dir, subagent_type, context, output,
+                parent_session_id, "codex",
+            )
+        except Exception:
+            pass
+    try:
+        print(json.dumps(output, ensure_ascii=False))
+    except Exception as _obs_exc:
+        if _observability_emit is not None:
+            try:
+                _observability_emit.note_output_failed("write", _obs_exc)
+            except Exception:
+                pass
+        raise
+    try:
+        sys.stdout.flush()
+    except Exception as _obs_exc:
+        # 显式 flush 失败不改变退出码：与原版一致（原版无显式 flush，失败延迟到
+        # 解释器关闭且同样不影响退出码；此时缓冲区内容未变，关闭期行为相同）。
+        if _observability_emit is not None:
+            try:
+                _observability_emit.note_output_failed("flush", _obs_exc)
+            except Exception:
+                pass
+    else:
+        if _observability_emit is not None:
+            try:
+                _observability_emit.note_emitted(output)
+            except Exception:
+                pass
 
 
 def _extract_subagent_name(value: Any) -> str:
@@ -1087,6 +1119,16 @@ def _parse_hook_input(input_data: dict) -> tuple[str, str, dict]:
         return tool_name_camel, input_data.get("toolArgs", ""), tool_input
 
     return "", "", tool_input
+
+
+# --- Observability receipts (cockpit S0 G1-A/C local experiment) ---------------
+# 本地实验接线（design §8：不构成团队分发）：仅当观测已启用（binding.json 存在）
+# 时由 observability_emit 记录组装/输出回执；TRELLIS_RECEIPTS=off 旁路。该模块
+# 自身保证任何失败绝不影响 stdout 内容、退出码与既有行为。
+try:
+    import observability_emit as _observability_emit
+except Exception:
+    _observability_emit = None
 
 
 def main():
@@ -1208,7 +1250,40 @@ def main():
             "updatedInput": updated,
         }
 
-    print(json.dumps(output, ensure_ascii=False))
+    if _observability_emit is not None:
+        try:
+            _observability_emit.note_assembled(
+                repo_root, task_dir, subagent_type, context, output,
+                _string_value(input_data.get("session_id")) or None,
+                _detect_platform(input_data) or "unknown",
+            )
+        except Exception:
+            pass
+    try:
+        print(json.dumps(output, ensure_ascii=False))
+    except Exception as _obs_exc:
+        if _observability_emit is not None:
+            try:
+                _observability_emit.note_output_failed("write", _obs_exc)
+            except Exception:
+                pass
+        raise
+    try:
+        sys.stdout.flush()
+    except Exception as _obs_exc:
+        # 显式 flush 失败不改变退出码：与原版一致（原版无显式 flush，失败延迟到
+        # 解释器关闭且同样不影响退出码；此时缓冲区内容未变，关闭期行为相同）。
+        if _observability_emit is not None:
+            try:
+                _observability_emit.note_output_failed("flush", _obs_exc)
+            except Exception:
+                pass
+    else:
+        if _observability_emit is not None:
+            try:
+                _observability_emit.note_emitted(output)
+            except Exception:
+                pass
     sys.exit(0)
 
 
