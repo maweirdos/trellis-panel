@@ -4,6 +4,7 @@ import type { ObservationCursor, ObservationHealth } from '../../shared/observab
 import {
   cleanupObservationRetention,
   clearObservationEvents,
+  enableObservation,
   observationStatus,
   onObservationEvents,
   queryObservations,
@@ -50,6 +51,13 @@ export function registerObservationIpc(): void {
     const root = getProjectRoot()
     if (!root) return Promise.resolve(noProject())
     return setObservationCollectionEnabled(root, enabled)
+  })
+
+  /* 首次显式绑定（G3 走查补全：此前未绑定分支无任何入口；design §3.1 的 enableObservation 是唯一绑定路径） */
+  handle(ipcInvoke.observation.bind, (): Promise<unknown> => {
+    const root = getProjectRoot()
+    if (!root) return Promise.resolve(noProject())
+    return enableObservation(root).then(async (r) => ({ ...r, status: await observationStatus() }))
   })
 
   handle(

@@ -338,6 +338,27 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
   const compact = variant === 'compact'
   const scope = useObservationScope({ workspaceId, taskRef })
   const [showHistory, setShowHistory] = useState(false)
+  const [binding, setBinding] = useState(false)
+  const pushToast = useApp((s) => s.pushToast)
+
+  /** 首次显式绑定（G3 走查补全：未绑定分支此前无入口；design §3.1 绑定是用户动作） */
+  const bindCurrentProject = async (): Promise<void> => {
+    if (binding) return
+    setBinding(true)
+    try {
+      const res = await api.observationBind()
+      if (res.ok === true && res.bound) {
+        pushToast({ kind: 'success', title: '观测已绑定并启用', body: 'Hook 之后的注入将开始落回执；读取不依赖绑定。' })
+      } else if (res.ok === true) {
+        pushToast({ kind: 'warn', title: `绑定未完成（${res.bindingStatus}）`, body: '已有绑定不符时需在治理区重新绑定；未删除任何数据。' })
+      } else {
+        pushToast({ kind: 'error', title: '绑定失败', body: res.error })
+      }
+    } finally {
+      setBinding(false)
+      scope.reload()
+    }
+  }
 
   // 材料核对（有界：仅最新回执的 file 来源）→ 带当前文件比对结果的回执投影
   const currentDigests = useMaterialCurrency(scope.receipts, workspaceId, taskRef)
@@ -372,6 +393,16 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
       {scope.status === 'closed' && (
         <div className="mt-1.5 text-[10.5px] leading-relaxed text-mist-500">
           本工作区未绑定观测（未观察到 ≠ 故障）。绑定与启用属显式操作，读取不依赖它。
+          <button
+            type="button"
+            className="btn-ghost ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
+            onClick={() => void bindCurrentProject()}
+            disabled={binding}
+            title="为当前项目创建绑定并启用采集（写入 .trellis/.panel/runtime/binding.json；本机私有）"
+          >
+            {binding ? <Loader2 size={10} className="animate-spin" /> : <ShieldQuestion size={10} />}
+            绑定本工作区并启用观测
+          </button>
         </div>
       )}
       {scope.status === 'error' && (

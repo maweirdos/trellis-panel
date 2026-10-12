@@ -4,14 +4,14 @@
 
 | AC | 需求 | 状态 | 证据 / 缺口 |
 | --- | --- | --- | --- |
-| AC1 | FR1 三入口一致；JSON 原值可见；清单真实行号 | **passed（夹具级）/ not_run（真实走查）** | task-reader 57 项 + reader-wiring 41 项（三入口同契约）；`validation/reader.md` §4 人工清单未走 |
-| AC2 | FR1 连续保存不重置；会话草稿+最近提交比较；坏文件/无 Git 降级 | **passed（夹具级）/ not_run（真实走查）** | reading-session 59 项（状态机/diff worker/git 基线夹具）；连续保存的视觉体验待走查 |
-| AC3 | FR2 认证宿主 assembled/emitted 可配对；输出失败无 emitted；观测失败不改 stdout | **passed（直调级）/ not_run（真实会话端到端）** | hook-emitter 117 项（真实 hook 脚本+真实 python+真实 SQLite，与 git HEAD 逐字节一致）；真实 Codex 会话闭环待用户绑定观测后走查 |
+| AC1 | FR1 三入口一致；JSON 原值可见；清单真实行号 | **passed（夹具级 + 自动化走查）/ 部分留用户（1280/1920 截图、项目外文件、高缩放）** | task-reader 57 项 + reader-wiring 41 项；walkthrough-report.md §reader（预览/展开/Esc 层级/视图切换/宽度偏好实测，截图 02/03） |
+| AC2 | FR1 连续保存不重置；会话草稿+最近提交比较；坏文件/无 Git 降级 | **passed（夹具级 + 自动化走查核心项）** | reading-session 59 项；walkthrough-report.md：外部改盘→「当前阅读任务有更新」提示出现且正文未跳→阅读新版干净切换（真实应用实测） |
+| AC3 | FR2 认证宿主 assembled/emitted 可配对；输出失败无 emitted；观测失败不改 stdout | **真实仓库闭环 passed（直调形态）；宿主进程内触发 not_run（用户一次真实 Codex 会话即可关闭）** | hook-emitter 117 项 + walkthrough-report.md：真实绑定→真实 hook→assembled+emitted 成对落库（taskRef 解析到本任务）→面板实时显示「已输出至宿主通道」（截图 03，DB 留存 2 条真实事件）。codex exec 宿主尝试与根因见报告 |
 | AC4 | FR2 并发/重复/锁/容量/旧 schema/禁用恢复 | **passed** | observability-store 82 项（真实 worker 线程+node:sqlite）；跨进程语义另证于 g1b 探针 |
 | AC5 | FR3 多任务/项目/归档不串线；状态/活动/归档独立；不伪造阶段 | **passed** | receipt-projection 41 项 + task-identity/archive 冒烟；真实多 worktree 场景待走查（边缘） |
 | AC6 | FR4 重复点击/中断恢复可恢复；PRD 来源真实；归档与流转分离 | **passed（夹具级，真实 CLI）/ not_run（真实 Jira）** | jira-local-task 77 项（恢复矩阵真实 python+task.py）+ light-task-metrics 18 项；真实工单点击待用户 |
 | AC7 | FR5 两版本 Jira 基线 + hook 性能报告 | **部分：性能 passed（夹具口径见 performance.md）；Jira blocked_external** | 性能采样 200 对×2 档（直调口径，非真实宿主）；公司 Jira 权限未验证（jira-baseline.md §3 登记） |
-| AC8 | 全部：typecheck/build/既有测试/无回归/三档尺寸/焦点 Esc | **passed（机器）/ not_run（视觉走查）** | typecheck+build+14 套冒烟全绿；chat/tpap 既有失败经干净树复现隔离（known-issues）；1280/1440/1920 截图与 Esc 实感待走查 |
+| AC8 | 全部：typecheck/build/既有测试/无回归/三档尺寸/焦点 Esc | **passed（机器 + Esc/宽度走查）/ 1280/1920 截图与高缩放留用户** | typecheck+build+15 套冒烟全绿；chat/tpap 既有失败经干净树复现隔离（known-issues）；Esc 逐层退出实测通过（walkthrough-report.md §5）；1440 收起规则实证（innerWidth=1360 时右栏默认收起） |
 | AC9 | FR2 干净/用户修改项目的安装/升级/禁用/回退；另一开发可接入 | **blocked_external** | 上游 `mindfold-ai/trellis` PR 未发起；本地实验完成（host-distribution.md §6）；按 implement.md 规则 AC9 不得由本地实验关闭 |
 | AC10 | FR5 2 开发+1 协作者试点；新增负担与维护时间记录 | **not_run（人选未定）** | 08 决策第 2 项待用户指定；走查清单已备（light-task.md/reader.md/observability.md §4） |
 
@@ -23,8 +23,10 @@
 
 ## 建议的用户动作（按优先级）
 
-1. `npm run dev` 走查 validation/reader.md §4 + observability.md §4（约 30 分钟）。
-2. 设置页启用观测绑定（生成 binding.json）→ 跑一次真实 Codex 子代理任务 → 看 AcpConsole/Tasks 观察面板出现真实回执（AC3 真实半边）。
+> 2026-10-13 更新：第 1、2 步的自动化部分已由走查完成（walkthrough-report.md）；剩余为需要人眼/真实环境的部分。
+
+1. ~~`npm run dev` 走查~~ → **已自动化完成主体**；剩：1280/1920 窗口截图、高缩放、项目外文件、AcpConsole compact 目检（可选，低风险）。
+2. ~~启用观测绑定跑真实会话~~ → **绑定与真实回执闭环已通过**（面板里点过绑定、真实 hook 已落 assembled+emitted）；剩：**在真实 Codex 会话内**（面板把任务设为当前后）派一次 trellis 子代理，确认宿主进程内触发（AC3 最后一块）。
 3. Jira 页用真实工单点一次"在当前项目创建任务"（AC6 真实半边 + 轻任务计量录制）。
 4. 指定试点人选（08 决策第 2 项）→ G5 试点。
 5. 决定是否发起上游 PR（关闭 AC9 的唯一路径）。

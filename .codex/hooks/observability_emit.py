@@ -759,17 +759,34 @@ def _arm() -> bool:
     """启用采集包装。探测失败/入口缺失 → False（hook 输出完全不受影响）。"""
     try:
         if os.environ.get("TRELLIS_RECEIPTS") == "off":
+            _arm_debug("disabled_by_env")
             return False
         if not _probe_enabled():
+            _arm_debug("probe_disabled")
             return False
         hook_module = sys.modules.get("__main__")
         if hook_module is None or getattr(hook_module, "__file__", None) is None:
+            _arm_debug("no_main_file")
             return False
         _install_wrappers(hook_module)
         _install_test_failure_injection()
+        _arm_debug("armed")
         return True
-    except Exception:
+    except Exception as e:
+        _arm_debug(f"exception:{type(e).__name__}")
         return False
+
+
+def _arm_debug(reason: str) -> None:
+    """诊断专用（默认零输出）：TRELLIS_ARM_DEBUG=<绝对路径> 时追加一行原因。"""
+    path = os.environ.get("TRELLIS_ARM_DEBUG")
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{reason} cwd={os.getcwd()} main={getattr(sys.modules.get('__main__'), '__file__', None)}\\n")
+    except Exception:
+        pass
 
 
 def _install_test_failure_injection() -> None:

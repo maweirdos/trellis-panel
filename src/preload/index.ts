@@ -87,6 +87,11 @@ const api = {
   /* S0 G3 第二片：绑定/健康综合状态（含绑定 workspaceId） */
   observationHealth: () =>
     ipcRenderer.invoke(ipcInvoke.observation.health) as Promise<ObservationStatusResult | IpcFail>,
+  /* G3 走查补全：首次显式绑定当前项目（未绑定分支的唯一入口，design §3.1） */
+  observationBind: () =>
+    ipcRenderer.invoke(ipcInvoke.observation.bind) as Promise<
+      { ok: true; bound: boolean; bindingStatus: string; status: ObservationStatusResult } | IpcFail
+    >,
   /* S0 G3 第二片：启用/停用采集（需已有绑定） */
   observationSetEnabled: (enabled: boolean) =>
     ipcRenderer.invoke(ipcInvoke.observation.setEnabled, enabled) as Promise<

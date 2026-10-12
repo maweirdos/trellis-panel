@@ -67,7 +67,9 @@ export const ipcInvoke = {
     /** S0 G3 第二片：启用/停用采集（需已有绑定；未绑定为中性事实不是错误） */
     setEnabled: 'observation:set-enabled',
     /** S0 G3 第二片：清理观测（retention=保留策略清理；all=清空观测记录，epoch 更换） */
-    cleanup: 'observation:cleanup'
+    cleanup: 'observation:cleanup',
+    /** G3 走查补全：首次显式绑定（design §3.1；未绑定分支的唯一入口） */
+    bind: 'observation:bind'
   },
   spec: {
     backlinks: 'spec:backlinks'

@@ -1220,6 +1220,10 @@ export interface TrellisApi {
   ) => () => void
   /** S0 G3 第二片：绑定/健康综合状态（含绑定 workspaceId，供渲染端组 scope） */
   observationHealth: () => Promise<ObservationStatusResult | IpcFail>
+  /** G3 走查补全：首次显式绑定当前项目（未绑定分支的唯一入口，design §3.1） */
+  observationBind: () => Promise<
+    { ok: true; bound: boolean; bindingStatus: string; status: ObservationStatusResult } | IpcFail
+  >
   /** S0 G3 第二片：启用/停用采集（需已有绑定；未绑定为中性事实） */
   observationSetEnabled: (enabled: boolean) => Promise<{ ok: true; health: ObservationHealth } | IpcFail>
   /** S0 G3 第二片：清理观测（retention=保留策略清理；all=清空观测记录，epoch 更换） */
