@@ -23,7 +23,7 @@
 
 1. **G1-C 前必须修**：database.md §7 Correct 示例只插 6 列，与落地 events 表非空列（repositoryId/workspaceId/receivedAtMs 等）不兼容——Python 生产者设计前先同步 spec 示例。
 2. **G1-C 设计输入**：Python 侧若用 INSERT OR IGNORE 无法区分同 eventId 异 digest 冲突（Panel 侧是事务内 SELECT-then-INSERT，行为等价可区分）；stableStringify 的 digest 跨语言一致性（键排序/转义）必须用黄金夹具证明。
-3. 第二片接线时补：observation query/subscribe 校验 scope.workspaceId 与当前绑定归属；queryObservations 的 catch 在 IPC 边界套 redact（防 fs/SQLite 原始 message 带绝对路径）。
+3. ~~第二片接线时补：observation query/subscribe 校验 scope.workspaceId 与当前绑定归属；queryObservations 的 catch 在 IPC 边界套 redact（防 fs/SQLite 原始 message 带绝对路径）~~ **已偿还（G3 二片，2026-10-12）**：service.ts query/subscribe 双入口校验绑定归属（E_INVALID_ARG）；query/cleanup/clearAll/set-enabled 的 catch 统一走 store-core 导出的 redactText。冒烟：observability-store E1/E2。
 4. observability-store 冒烟实为 67 项（实施申报 70，数量不实内容无恙）；physical_limit 软保护路径与 query 的 before 游标参数无断言，可补。
 5. 杂项：哨兵字符串 'store-unavailable' 在 service/store-core 三处字面重复（建议上移 shared）；sameRoot 非 Windows 平台为严格相等（符号链接差异会误报 rebind_required，Windows 首发可接受）；实施代理的报告未持久化到 validation/（流程改进：后续片报告落盘）。
 

@@ -1,6 +1,6 @@
 # G0 · Hook 分发路径调查（host-distribution）
 
-日期：2026-10-11。对应 implement.md G0 第 4 项与 G1-C 前置。只读调查，未修改任何 Hook。
+日期：2026-10-11（G3 第二片 2026-10-12 复核更新：状态未变，仍 blocked_external）。对应 implement.md G0 第 4 项与 G1-C 前置。只读调查，未修改任何 Hook。
 
 ## 1. 上游真实源（已核实）
 
@@ -32,3 +32,7 @@
 - [ ] 面板侧能力握手（协议版本/producer 版本探测）。
 
 **风险**：若上游发布条件不可得，AC9 无法关闭；按 implement.md 规则，G2（阅读）不受阻塞照常推进，回执仅作实验性验证。
+
+## 5. G3 第二片时点状态（2026-10-12）
+
+观测 UI 与投影（ReceiptProjection / ObservationPanel / 健康治理）已落地并经夹具冒烟（见 [validation/observability.md](../validation/observability.md)），但**全部事件为契约夹具，非真实 Hook 产出**。上述 §4 待验证项均未启动，AC9 维持 blocked_external：不把「本地实验回执」写成「团队分发完成」。

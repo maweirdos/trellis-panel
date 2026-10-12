@@ -83,6 +83,10 @@ const {
   stopObservationWorker,
   noteTaskDir,
   refreshTaskAliases,
+  observationStatus,
+  setObservationCollectionEnabled,
+  clearObservationEvents,
+  redactText,
   OBSERVATION_EVENT_ENCODE_LIMIT_BYTES,
   OBSERVATION_QUERY_PAGE_MAX,
   parseTrellisTaskPath,
@@ -403,7 +407,8 @@ mkdirSync(repoC, { recursive: true })
   check('C1 无绑定 → not_bound 且不创建任何文件', notBound.ok === true && notBound.bound === false && !existsSync(join(repoC, '.trellis')))
 }
 
-const installC = join(workDir, 'install-c')
+// 目录名固定为 TrellisPanel：E4 走生产默认安装目录解析（LOCALAPPDATA/TrellisPanel）
+const installC = join(workDir, 'TrellisPanel')
 const enabled = await enableObservation(repoC, { installDir: installC, gitFacts: { gitCommonDir: null, worktreeRoot: null } })
 check('C2 显式绑定初始化（worker 线程拉起）', enabled.ok === true && enabled.bound === true && enabled.health.state === 'active')
 check('C2 安装身份与绑定文件落盘（临时目录，未触真实 LOCALAPPDATA）', existsSync(join(installC, 'installation.json')) && existsSync(join(repoC, '.trellis', '.panel', 'runtime', 'binding.json')))
@@ -512,6 +517,66 @@ const scopeC = { workspaceId: bindingC.workspaceId }
   check('D1 归档任务路径显式识别', p2 !== null && p2.archived === true && p2.taskDir === '10-01-a' && p2.innerPath === 'task.json')
   check('D1 任务外路径不解析', p3 === null)
   check('D1 taskRef 派生前缀隔离', taskRefFor('abc', '.trellis/tasks/x') === 'task:abc' && taskRefFor(null, '.trellis/tasks/x') === 'dir:.trellis/tasks/x')
+}
+
+/* E 系列（G3 第二片）：健康/治理 IPC 后端 + P3-c/P3-d 偿还 */
+{
+  /* 恢复正确安装身份并重初始化（C9 结束时处于 rebind_required 暂停态） */
+  const reinit = await initObservationForRoot(repoC, { installDir: installC })
+  check('E0 正确身份重初始化 → bound/active', reinit.ok === true && reinit.bound === true && reinit.bindingStatus === 'bound' && reinit.health.state === 'active')
+
+  /* E1 P3-c：scope.workspaceId 与当前绑定不符 → 拒绝（不静默返回别的工作区数据） */
+  const qForeign = await queryObservations({ workspaceId: 'ws-not-mine' }, { limit: 10 })
+  check('E1 P3-c 跨工作区 query 拒绝 E_INVALID_ARG', qForeign.ok === false && qForeign.code === 'E_INVALID_ARG')
+  const subForeign = await subscribeObservations({ workspaceId: 'ws-not-mine' })
+  check('E1 P3-c 跨工作区 subscribe 同样拒绝', subForeign.ok === false && subForeign.code === 'E_INVALID_ARG')
+
+  /* E2 P3-d：redactText 剥离绝对路径形态（catch 包装统一走它；文件名保留可读） */
+  check(
+    'E2 P3-d redactText 剥离盘符/根路径与控制字符',
+    redactText('打开失败：C:\\Users\\a\\ observations.sqlite locked') === '打开失败：<path> observations.sqlite locked' &&
+      redactText('/home/a/.trellis/x.sqlite busy') === '<path>/x.sqlite busy'
+  )
+
+  /* E3 observationStatus：绑定 workspaceId 透出（渲染端组 scope 用） */
+  const status = await observationStatus()
+  check(
+    'E3 observationStatus 绑定事实完整',
+    status.ok === true && status.binding.workspaceId === bindingC.workspaceId && status.binding.collectionEnabled === true && status.binding.bindingStatus === 'bound'
+  )
+
+  /* E4 set-enabled：禁用 → paused/collection_disabled（读取照常）→ 启用恢复。
+   * 服务按生产口径读默认安装目录（LOCALAPPDATA/TrellisPanel）——冒烟把环境变量
+   * 临时指向 workDir（installC 的父目录），使身份核验与 C/E0 的显式 override 一致。 */
+  const realLocalAppData = process.env.LOCALAPPDATA
+  process.env.LOCALAPPDATA = workDir
+  const off = await setObservationCollectionEnabled(repoC, false)
+  check('E4 禁用采集 → paused/collection_disabled', off.ok === true && off.health.state === 'paused' && off.health.pauseReason === 'collection_disabled')
+  const readWhileOff = await queryObservations(scopeC, { limit: 5 })
+  check('E4 禁用不阻断读取', readWhileOff.ok === true)
+  const on = await setObservationCollectionEnabled(repoC, true)
+  check('E4 重新启用 → active', on.ok === true && on.health.state === 'active')
+  if (realLocalAppData !== undefined) process.env.LOCALAPPDATA = realLocalAppData
+  else delete process.env.LOCALAPPDATA
+
+  /* E5 clearObservationEvents（服务层清空包装）：epoch 更换 + 旧 cursor resetRequired */
+  const writerProbe = new ObservationStoreCore(join(repoC, '.trellis', '.panel', 'runtime'))
+  writerProbe.setBinding({ repositoryId: bindingC.repositoryId, workspaceId: bindingC.workspaceId, collectionEnabled: true, collectionBlocked: false, blockReason: null })
+  writerProbe.open()
+  writerProbe.insertEvent(makeEvent({ scope: { ...makeEvent().scope, workspaceId: bindingC.workspaceId, repositoryId: bindingC.repositoryId } }), Date.now())
+  const epochBeforeClear = (await queryObservations(scopeC, { limit: 1 })).health.storeEpoch
+  const cleared = await clearObservationEvents()
+  check('E5 clearObservationEvents ok 且换 epoch', cleared.ok === true && cleared.storeEpoch !== epochBeforeClear)
+  const qAfter = await queryObservations(scopeC, { limit: 10, cursorEpoch: epochBeforeClear })
+  check('E5 清空后旧 cursor → resetRequired 且事件为空', qAfter.ok === true && qAfter.resetRequired === true && qAfter.items.length === 0)
+  const statusAfter = await observationStatus()
+  check('E5 清空只作用观测库（health 仍可读）', statusAfter.ok === true && statusAfter.health.logicalCount === 0)
+  writerProbe.close()
+
+  /* E6 订阅接受 pollMs（后台 5s 降频请求；主进程夹取——建立/退订不报错） */
+  const subSlow = await subscribeObservations(scopeC, { pollMs: 5000 })
+  check('E6 订阅携带 pollMs 建立 ok', subSlow.ok === true)
+  unsubscribeObservations(subSlow.subscriptionId)
 }
 
 stopObservationWorker()

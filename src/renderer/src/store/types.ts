@@ -10,6 +10,11 @@ import type {
   ChatToolOp,
   ThinkingLevel
 } from '../../../shared/types'
+import type {
+  ObservationCursor,
+  ObservationItem,
+  ObservationStatusResult
+} from '../../../shared/observability/store'
 import type { api } from '../api'
 import type { StateCreator } from 'zustand'
 import type { ReadingSessionState, ReadingVersion } from '../reader/reading-session'
@@ -215,6 +220,43 @@ export interface ChatSlice {
   chatBranch: (messageId: string) => Promise<void>
 }
 
+/** 观测 scope 缓冲键（workspaceId::taskRef；见 slices/observation.ts）。 */
+export type ObservationScopeKey = string
+
+/** 单个观察 scope 的内存缓冲（S0 G3 第二片，design §5.1/§5.2）。 */
+export interface ObservationScopeState {
+  workspaceId: string
+  taskRef?: string
+  events: ObservationItem[]
+  cursor: ObservationCursor | null
+  /** connecting=订阅建立中；live=增量到达；closed=未绑定/已停读（中性）；error=请求级失败。 */
+  status: 'connecting' | 'live' | 'closed' | 'error'
+  error: string | null
+  /** 最近一次 epoch reset（清理/重建）时间；用于诚实提示「记录已重置」。 */
+  lastResetAtMs: number | null
+}
+
+/**
+ * 观测域（S0 G3 第二片）：回执/活动事件缓冲与健康状态。
+ * 事件只在内存（eventId 去重、上限截断、不进 localStorage）；
+ * 订阅/退订与轮询降频的编排在使用方 hook（observation/use-observation-scope）。
+ */
+export interface ObservationSlice {
+  observationScopes: Record<ObservationScopeKey, ObservationScopeState>
+  /** 最近一次 observation:health 结果（绑定 workspaceId / 启用态 / 存储事实）。 */
+  observationStatus: ObservationStatusResult | null
+  observationScopeConnecting: (key: ObservationScopeKey, scope: { workspaceId: string; taskRef?: string }) => void
+  /** 未绑定/组件停读（中性态，非错误）。 */
+  observationScopeClosed: (key: ObservationScopeKey) => void
+  observationScopeError: (key: ObservationScopeKey, error: string) => void
+  observationEventsIngest: (key: ObservationScopeKey, items: ObservationItem[], cursor: ObservationCursor) => void
+  observationScopeReset: (key: ObservationScopeKey, atMs: number) => void
+  observationRemoveScope: (key: ObservationScopeKey) => void
+  observationSetStatus: (status: ObservationStatusResult | null) => void
+  /** 项目切换/关闭：清空全部 scope 缓冲与健康状态。 */
+  observationClearAllScopes: () => void
+}
+
 export type AppState = SessionSlice &
   UiSlice &
   ToastSlice &
@@ -222,6 +264,7 @@ export type AppState = SessionSlice &
   TodosSlice &
   InboxSlice &
   ChatSlice &
-  ReaderSlice
+  ReaderSlice &
+  ObservationSlice
 
 export type AppSlice<T> = StateCreator<AppState, [], [], T>

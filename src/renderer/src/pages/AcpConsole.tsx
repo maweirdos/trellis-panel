@@ -25,6 +25,8 @@ import {
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
+import { ObservationPanel } from '../observation/ObservationPanel'
+import type { ActivityEventInput } from '../../../shared/observability/activity'
 import type {
   AcpAgentStatus,
   AcpPermissionPayload,
@@ -255,6 +257,25 @@ export function AcpConsolePage(): JSX.Element {
     [activeSession, snapshot]
   )
 
+  /* S0 G3 第二片：观察面板的活动来源——时间线事件按 kind 归列（文件类 vs 时间线类），
+   * 各自带稳定事件 ID，不与其他来源合并；任务归属取事件自身（无则未归属，不猜）。 */
+  const FILE_KINDS: ReadonlySet<string> = new Set(['doc-created', 'spec-updated'])
+  const activityEvents = useMemo<ActivityEventInput[]>((): ActivityEventInput[] => {
+    const out: ActivityEventInput[] = []
+    for (const ev of activeEvents.slice(-40)) {
+      if (ev.kind === 'message' || ev.kind === 'thought') continue /* 对话内容不进活动列 */
+      const taskDir = ev.taskDir ?? (typeof ev.payload?.taskDir === 'string' ? (ev.payload.taskDir as string) : null) ?? null
+      out.push({
+        id: ev.id,
+        atMs: ev.ts,
+        source: ev.source === 'trellis' && FILE_KINDS.has(ev.kind) ? 'file' : 'timeline',
+        text: ev.text ?? ev.kind,
+        taskDir
+      })
+    }
+    return out
+  }, [activeEvents])
+
   /* ---------------- 渲染 ---------------- */
 
   const availableAgents = agents.filter((a) => a.enabled && a.available)
@@ -412,12 +433,24 @@ export function AcpConsolePage(): JSX.Element {
         )}
       </section>
 
-      {/* 工单人工审查流入口 */}
-      <aside className="flex w-44 shrink-0 flex-col gap-2">
+      {/* 工单人工审查流入口 + S0 G3 观察面板（会话侧复用） */}
+      <aside className="flex w-44 shrink-0 flex-col gap-2 overflow-y-auto">
         <button className="card flex items-center gap-2 px-3 py-3 text-left text-xs text-mist-200 hover:border-sky-400/40" onClick={() => setJiraOpen(true)}>
           <GitBranch size={15} className="text-sky-300" />
           <span>从 Jira 选工单开始</span>
         </button>
+        {root !== '' && (
+          <ObservationPanel
+            workspaceId={root}
+            variant="compact"
+            activity={{
+              taskRecord: boundTask !== null ? { status: boundTask.record?.status ?? null, updatedAtMs: null } : null,
+              events: activityEvents,
+              archive: { archived: false, repoRelativeDir: null },
+              taskDir: null
+            }}
+          />
+        )}
         <div className="card px-3 py-2.5 text-[10px] leading-relaxed text-mist-500">
           人工审查流：查询工单 → 点选导入（jiraKey 防重）→ 以该任务开新会话。无自动触发。
           <br />

@@ -14,6 +14,7 @@ import type {
   ObservationQueryRequest,
   ObservationQuerySuccess,
   ObservationScope,
+  ObservationStatusResult,
   ObservationSubscribeResult,
   ObservationSubscriptionEvent
 } from '../shared/observability/store'
@@ -77,12 +78,25 @@ const api = {
   /* S0 G3：观测事件查询（limit≤100；cursor epoch 不符 → resetRequired 全量重拉） */
   observationQuery: (scope: ObservationScope, request: ObservationQueryRequest) =>
     ipcRenderer.invoke(ipcInvoke.observation.query, scope, request) as Promise<ObservationQuerySuccess | IpcFail>,
-  /* S0 G3：订阅增量（返回快照基准 cursor；增量经 onObservationEvents 推送，按 eventId 去重） */
-  observationSubscribe: (scope: ObservationScope, options?: { afterCursor?: ObservationCursor }) =>
+  /* S0 G3：订阅增量（返回快照基准 cursor；增量经 onObservationEvents 推送，按 eventId 去重）。pollMs=轮询请求（可见 1s/后台 5s，主进程夹取 [1000,5000]） */
+  observationSubscribe: (scope: ObservationScope, options?: { afterCursor?: ObservationCursor; pollMs?: number }) =>
     ipcRenderer.invoke(ipcInvoke.observation.subscribe, scope, options) as Promise<ObservationSubscribeResult | IpcFail>,
   observationUnsubscribe: (subscriptionId: string) => ipcRenderer.invoke(ipcInvoke.observation.unsubscribe, subscriptionId),
   onObservationEvents: (cb: (e: ObservationSubscriptionPush) => void) =>
     subscribe(ipcEvent.observationEvents, cb),
+  /* S0 G3 第二片：绑定/健康综合状态（含绑定 workspaceId） */
+  observationHealth: () =>
+    ipcRenderer.invoke(ipcInvoke.observation.health) as Promise<ObservationStatusResult | IpcFail>,
+  /* S0 G3 第二片：启用/停用采集（需已有绑定） */
+  observationSetEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke(ipcInvoke.observation.setEnabled, enabled) as Promise<
+      { ok: true; health: import('../shared/observability/store').ObservationHealth } | IpcFail
+    >,
+  /* S0 G3 第二片：清理观测（retention=保留策略；all=清空观测记录，epoch 更换） */
+  observationCleanup: (mode: 'retention' | 'all') =>
+    ipcRenderer.invoke(ipcInvoke.observation.cleanup, mode) as Promise<
+      { ok: true; removed: number; resumed: boolean } | { ok: true; storeEpoch: string } | IpcFail
+    >,
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) =>
     ipcRenderer.invoke(ipcInvoke.fs.writeSpec, absPath, content, expectedMtime),
   specBacklinks: () => ipcRenderer.invoke(ipcInvoke.spec.backlinks),

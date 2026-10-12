@@ -4,11 +4,13 @@ import { dirname, join } from 'node:path'
 import {
   observationQueryRequestSchema,
   observationScopeSchema,
+  type ObservationBindingStatus,
   type ObservationCursor,
   type ObservationHealth,
   type ObservationQueryRequest,
   type ObservationQuerySuccess,
   type ObservationScope,
+  type ObservationStatusResult,
   type ObservationSubscriptionEvent,
   type ObservationSubscribeResult
 } from '../../../shared/observability/store'
@@ -25,7 +27,7 @@ import {
   type InstallationIdentity,
   type PanelBinding
 } from './identity'
-import type { StoreBindingContext, StoreLimits, VerifyAliasesResult } from './store-core'
+import { redactText, type StoreBindingContext, type StoreLimits, type VerifyAliasesResult } from './store-core'
 import type { ObservationWorkerRequest, ObservationWorkerResponse } from './observation-worker'
 import { readTrellisTaskId, scanKnownTaskDirs, taskRefFor, observationRuntimeExists } from '../task-identity'
 
@@ -218,9 +220,13 @@ const subscriptions = new Map<string, Subscription>()
 /** 项目切换/关闭递增：旧订阅轮询结果直接丢弃（防串线，design §5.1）。 */
 let generation = 0
 
-function pollIntervalMs(): number {
+function pollIntervalMs(requestedMs?: number): number {
+  // 冒烟/试验环境变量优先（允许 <1000ms 的加速轮询）
   const raw = Number(process.env[OBSERVATION_POLL_MS_ENV])
-  return Number.isFinite(raw) && raw >= 100 ? raw : DEFAULT_POLL_MS
+  if (Number.isFinite(raw) && raw >= 100) return raw
+  if (requestedMs === undefined) return DEFAULT_POLL_MS
+  // 生产请求夹取 [1000, 5000]：可见 1s / 后台 5s（design §5.2）
+  return Math.max(1000, Math.min(5000, Math.floor(requestedMs)))
 }
 
 function notInitializedHealth(): ObservationHealth {
@@ -371,15 +377,28 @@ export async function enableObservation(
 }
 
 /** 显式启用/停用采集（FR2）：写 binding.collectionEnabled 并热更新 worker 门禁。 */
-export async function setObservationCollectionEnabled(root: string, enabled: boolean): Promise<ObservationHealth | IpcFail> {
+export async function setObservationCollectionEnabled(
+  root: string,
+  enabled: boolean
+): Promise<{ ok: true; health: ObservationHealth } | IpcFail> {
   const runtimeDir = ensureRuntimeDir(root)
-  const next = setCollectionEnabled(runtimeDir, enabled)
+  let next: PanelBinding | null
+  try {
+    next = setCollectionEnabled(runtimeDir, enabled)
+  } catch (e) {
+    return ipcFail(IpcErrorCode.Io, `切换采集开关失败：${redactText(e instanceof Error ? e.message : String(e))}`)
+  }
   if (next === null) return ipcFail(IpcErrorCode.InvalidArg, '尚未绑定工作区（先显式绑定再切换采集开关）')
   const installation = readInstallationIdentity()
   const context = bindingContextOf(next, { installation, root })
   workerRoot = root
   workerBinding = context
-  return workerRequest<ObservationHealth>({ op: 'init', args: { runtimeDir, binding: context, limits: workerLimits } })
+  try {
+    const health = await workerRequest<ObservationHealth>({ op: 'init', args: { runtimeDir, binding: context, limits: workerLimits } })
+    return { ok: true, health }
+  } catch (e) {
+    return ipcFail(IpcErrorCode.Unknown, `切换采集开关失败：${redactText(e instanceof Error ? e.message : String(e))}`)
+  }
 }
 
 /* ---------------- 查询 / 订阅 ---------------- */
@@ -395,7 +414,10 @@ async function queryObservationsInternal(
   return { ok: true, ...res }
 }
 
-/** 查询入口（design §5.1）：limit ≤100；库未初始化返回哨兵空集（旧 cursor → resetRequired）。 */
+/**
+ * 查询入口（design §5.1）：limit ≤100；库未初始化返回哨兵空集（旧 cursor → resetRequired）。
+ * P3-c 偿还：scope.workspaceId 必须与当前绑定归属一致，拒绝跨工作区读取。
+ */
 export async function queryObservations(
   scope: unknown,
   request: unknown
@@ -408,6 +430,10 @@ export async function queryObservations(
   if (reqParsed.success === false) {
     const first = reqParsed.error.issues[0]?.message ?? '参数不合法'
     return ipcFail(IpcErrorCode.InvalidArg, `observation query 参数非法：${first}`)
+  }
+  // P3-c：已绑定时只允许本绑定 workspaceId（未绑定走下方「未初始化≠错误」哨兵口径）
+  if (workerBinding !== null && scopeParsed.data.workspaceId !== workerBinding.workspaceId) {
+    return ipcFail(IpcErrorCode.InvalidArg, 'observation scope.workspaceId 与当前绑定不符（拒绝跨工作区读取）')
   }
   if (worker === null || workerBinding === null) {
     return {
@@ -423,18 +449,23 @@ export async function queryObservations(
   try {
     return await queryObservationsInternal(scopeParsed.data, reqParsed.data)
   } catch (e) {
-    return ipcFail(IpcErrorCode.Unknown, `observation query 失败：${e instanceof Error ? e.message : String(e)}`)
+    // P3-d 偿还：fs/SQLite 原始 message 可能带绝对路径，IPC 边界统一脱敏
+    return ipcFail(IpcErrorCode.Unknown, `observation query 失败：${redactText(e instanceof Error ? e.message : String(e))}`)
   }
 }
 
 /** 订阅入口：返回快照基准 cursor；增量经 onObservationEvents 推送（renderer 按 eventId 去重）。 */
 export async function subscribeObservations(
   scope: unknown,
-  options: { afterCursor?: ObservationCursor } | undefined
+  options: { afterCursor?: ObservationCursor; pollMs?: number } | undefined
 ): Promise<ObservationSubscribeResult | IpcFail> {
   const scopeParsed = observationScopeSchema.safeParse(scope ?? {})
   if (scopeParsed.success === false) {
     return ipcFail(IpcErrorCode.InvalidArg, 'observation subscribe scope 非法：workspaceId 必填且为非空字符串')
+  }
+  // P3-c：订阅与查询同一归属校验（防渲染端拿别的工作区 ID 订阅推送）
+  if (workerBinding !== null && scopeParsed.data.workspaceId !== workerBinding.workspaceId) {
+    return ipcFail(IpcErrorCode.InvalidArg, 'observation scope.workspaceId 与当前绑定不符（拒绝跨工作区订阅）')
   }
   const afterCursor = options?.afterCursor
   // 快照基准：无论是否初始化都建立订阅（库稍后可用时经 epoch 变化自然 reset 对齐）
@@ -450,7 +481,7 @@ export async function subscribeObservations(
     scope: scopeParsed.data,
     lastSeq: cursorMatches ? afterCursor.seq : snapshotCursor.seq,
     lastEpoch,
-    timer: setInterval(() => void pollSubscription(sub), pollIntervalMs()),
+    timer: setInterval(() => void pollSubscription(sub), pollIntervalMs(options?.pollMs)),
     generation
   }
   sub.timer.unref()
@@ -505,12 +536,49 @@ export async function observationHealth(): Promise<ObservationHealth> {
   }
 }
 
-export async function cleanupObservationRetention(): Promise<{ removed: number; resumed: boolean } | IpcFail> {
+/** 绑定/健康综合状态（observation:health IPC 口径；workspaceId 供渲染端组 scope）。 */
+export async function observationStatus(): Promise<ObservationStatusResult> {
+  const health = await observationHealth()
+  const binding: ObservationBindingStatus =
+    workerBinding === null
+      ? {
+          workspaceId: null,
+          repositoryId: null,
+          collectionEnabled: null,
+          bindingStatus: 'not_bound',
+          blockReason: null
+        }
+      : {
+          workspaceId: workerBinding.workspaceId,
+          repositoryId: workerBinding.repositoryId,
+          collectionEnabled: workerBinding.collectionEnabled,
+          bindingStatus: workerBinding.collectionBlocked ? 'rebind_required' : 'bound',
+          blockReason: workerBinding.blockReason
+        }
+  return { ok: true, health, binding }
+}
+
+export async function cleanupObservationRetention(): Promise<{ ok: true; removed: number; resumed: boolean } | IpcFail> {
   if (worker === null || workerRoot === null) return ipcFail(IpcErrorCode.InvalidArg, '观测库未初始化')
   try {
-    return await workerRequest({ op: 'cleanup', args: null })
+    const res = await workerRequest<{ removed: number; resumed: boolean }>({ op: 'cleanup', args: null })
+    return { ok: true, ...res }
   } catch (e) {
-    return ipcFail(IpcErrorCode.Unknown, `观测保留清理失败：${e instanceof Error ? e.message : String(e)}`)
+    return ipcFail(IpcErrorCode.Unknown, `观测保留清理失败：${redactText(e instanceof Error ? e.message : String(e))}`)
+  }
+}
+
+/**
+ * 显式清空观测记录（用户确认后调用，design §4.2）：只删事件与观测诊断并更新
+ * storeEpoch（旧 cursor → resetRequired）；不触碰 control.sqlite / 绑定 / 任务文档。
+ */
+export async function clearObservationEvents(): Promise<{ ok: true; storeEpoch: string } | IpcFail> {
+  if (worker === null || workerRoot === null) return ipcFail(IpcErrorCode.InvalidArg, '观测库未初始化')
+  try {
+    const res = await workerRequest<{ storeEpoch: string }>({ op: 'clearAll', args: null })
+    return { ok: true, ...res }
+  } catch (e) {
+    return ipcFail(IpcErrorCode.Unknown, `清空观测记录失败：${redactText(e instanceof Error ? e.message : String(e))}`)
   }
 }
 

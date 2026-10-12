@@ -8,6 +8,7 @@ import { todosSlice } from './slices/todos'
 import { inboxSlice } from './slices/inbox'
 import { chatSlice } from './slices/chat'
 import { readerSlice } from './slices/reader'
+import { observationSlice } from './slices/observation'
 
 /**
  * 组合根（TPD-006）：各域切片按 zustand slice 模式组装。
@@ -21,9 +22,11 @@ export const useApp = create<AppState>()((set, get, store) => ({
   ...todosSlice(set, get, store),
   ...inboxSlice(set, get, store),
   ...chatSlice(set, get, store),
-  ...readerSlice(set, get, store)
+  ...readerSlice(set, get, store),
+  ...observationSlice(set, get, store)
 }))
 
 export { reconcileInbox, loadInbox, saveInbox } from './inbox-storage'
 export { normalizeSettings } from './slices/session'
-export type { Page, ToastItem, ViewerTab, InboxState, InboxEntry, AppState } from './types'
+export { observationScopeKey, OBSERVATION_SCOPE_MAX_EVENTS } from './slices/observation'
+export type { Page, ToastItem, ViewerTab, InboxState, InboxEntry, AppState, ObservationScopeKey, ObservationScopeState } from './types'

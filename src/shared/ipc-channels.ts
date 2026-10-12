@@ -61,7 +61,13 @@ export const ipcInvoke = {
     /** S0 G3：订阅增量（快照基准 cursor + 独立高水位轮询推送） */
     subscribe: 'observation:subscribe',
     /** S0 G3：解除订阅（项目切换由主进程 generation 兜底取消） */
-    unsubscribe: 'observation:unsubscribe'
+    unsubscribe: 'observation:unsubscribe',
+    /** S0 G3 第二片：绑定/健康综合状态（含绑定 workspaceId，供渲染端组 scope） */
+    health: 'observation:health',
+    /** S0 G3 第二片：启用/停用采集（需已有绑定；未绑定为中性事实不是错误） */
+    setEnabled: 'observation:set-enabled',
+    /** S0 G3 第二片：清理观测（retention=保留策略清理；all=清空观测记录，epoch 更换） */
+    cleanup: 'observation:cleanup'
   },
   spec: {
     backlinks: 'spec:backlinks'

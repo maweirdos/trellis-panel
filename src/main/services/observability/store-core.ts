@@ -174,8 +174,8 @@ function utf8Bytes(text: string): number {
   return Buffer.byteLength(text, 'utf-8')
 }
 
-/** 诊断文本脱敏：剥离本机绝对路径形态（盘符/根路径）与控制字符，只留可读说明。 */
-function redactText(text: string): string {
+/** 诊断/错误文本脱敏：剥离本机绝对路径形态（盘符/根路径）与控制字符，只留可读说明。 */
+export function redactText(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/[A-Za-z]:\\[^\s"']*/g, '<path>').replace(/\/(?:[\w.-]+\/)+/g, '<path>/').replace(/[\u0000-\u001f]/g, '')
 }

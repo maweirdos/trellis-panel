@@ -14,9 +14,11 @@ import type {
 } from './documents'
 import type {
   ObservationCursor,
+  ObservationHealth,
   ObservationQueryRequest,
   ObservationQuerySuccess,
   ObservationScope,
+  ObservationStatusResult,
   ObservationSubscribeResult,
   ObservationSubscriptionEvent
 } from './observability/store'
@@ -1093,10 +1095,10 @@ export interface TrellisApi {
     scope: ObservationScope,
     request: ObservationQueryRequest
   ) => Promise<ObservationQuerySuccess | IpcFail>
-  /** S0 G3：订阅增量（返回快照基准 cursor；增量经 onObservationEvents 推送，按 eventId 去重） */
+  /** S0 G3：订阅增量（返回快照基准 cursor；增量经 onObservationEvents 推送，按 eventId 去重）。pollMs=轮询请求（可见 1s/后台 5s） */
   observationSubscribe: (
     scope: ObservationScope,
-    options?: { afterCursor?: ObservationCursor }
+    options?: { afterCursor?: ObservationCursor; pollMs?: number }
   ) => Promise<ObservationSubscribeResult | IpcFail>
   /** 解除订阅（项目切换由主进程 generation 兜底取消） */
   observationUnsubscribe: (subscriptionId: string) => Promise<void>
@@ -1104,6 +1106,14 @@ export interface TrellisApi {
   onObservationEvents: (
     cb: (e: { subscriptionId: string; event: ObservationSubscriptionEvent }) => void
   ) => () => void
+  /** S0 G3 第二片：绑定/健康综合状态（含绑定 workspaceId，供渲染端组 scope） */
+  observationHealth: () => Promise<ObservationStatusResult | IpcFail>
+  /** S0 G3 第二片：启用/停用采集（需已有绑定；未绑定为中性事实） */
+  observationSetEnabled: (enabled: boolean) => Promise<{ ok: true; health: ObservationHealth } | IpcFail>
+  /** S0 G3 第二片：清理观测（retention=保留策略清理；all=清空观测记录，epoch 更换） */
+  observationCleanup: (
+    mode: 'retention' | 'all'
+  ) => Promise<{ ok: true; removed: number; resumed: boolean } | { ok: true; storeEpoch: string } | IpcFail>
   /** write restricted to .trellis/spec/** (spec editor) */
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
   specBacklinks: () => Promise<{ ok: boolean; error?: string; counts?: Record<string, number> }>

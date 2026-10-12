@@ -87,8 +87,11 @@ export const sessionSlice: AppSlice<SessionSlice> = (set, get) => ({
         taskExpandOrigin: null,
         inboxProjectRoot: rootPath,
         inbox: reconciled,
-        // S0 G2：切换项目清空全部阅读会话（主进程同步清空变更信号桥监听）
-        readingSessions: {}
+        // S0 G2：切换项目清空全部阅读会话（主进程同步清空变更信号桥监听）；
+        // S0 G3：观测 scope 缓冲与健康状态一并清空（主进程 generation 兜底取消订阅）
+        readingSessions: {},
+        observationScopes: {},
+        observationStatus: null
       })
       void get().loadTodos()
     } else {
@@ -103,8 +106,9 @@ export const sessionSlice: AppSlice<SessionSlice> = (set, get) => ({
 
   closeProject: async () => {
     await api.closeProject()
-    // S0 G2：关闭项目同样清空全部阅读会话（快照不跨项目/重启）
-    set({ snapshot: null, openTaskDir: null, taskExpandOrigin: null, inboxProjectRoot: null, inbox: {}, todos: [], readingSessions: {} })
+    // S0 G2：关闭项目同样清空全部阅读会话（快照不跨项目/重启）；
+    // S0 G3：观测 scope/健康状态同步清空（停读）
+    set({ snapshot: null, openTaskDir: null, taskExpandOrigin: null, inboxProjectRoot: null, inbox: {}, todos: [], readingSessions: {}, observationScopes: {}, observationStatus: null })
   },
 
   refresh: async () => {

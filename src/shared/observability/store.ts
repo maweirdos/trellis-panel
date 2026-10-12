@@ -103,6 +103,11 @@ export interface ObservationQuerySuccess {
 export interface ObservationSubscriptionOptions {
   /** 已持有的 cursor（首次可不带 → 从当前 highWatermark 起回补至最新）。 */
   afterCursor?: ObservationCursor
+  /**
+   * 订阅轮询间隔请求（S0 G3 第二片，design §5.2）：可见 1s / 后台 5s。
+   * 服务端夹取 [1000, 5000]；冒烟环境变量覆盖优先。
+   */
+  pollMs?: number
 }
 
 /** 推给订阅者的增量/复位事件（主进程 → 渲染层，eventId 去重由发送侧保证不重叠）。 */
@@ -125,6 +130,72 @@ export interface ObservationSubscribeResult {
   subscriptionId: string
   /** 订阅建立时的快照基准（渲染端可先 query 回补到该水位再收增量）。 */
   snapshotCursor: ObservationCursor
+}
+
+/* ---------------- 健康与治理（S0 G3 第二片：设置/面板的状态显示与开关） ---------------- */
+
+/** 当前项目观测绑定状态（不含绝对路径；workspaceId 为绑定内 UUID，非本机路径）。 */
+export interface ObservationBindingStatus {
+  workspaceId: string | null
+  repositoryId: string | null
+  /** null = 未绑定（无从谈启用）。 */
+  collectionEnabled: boolean | null
+  bindingStatus: 'bound' | 'rebind_required' | 'not_bound'
+  blockReason: string | null
+}
+
+export interface ObservationStatusResult {
+  ok: true
+  health: ObservationHealth
+  binding: ObservationBindingStatus
+}
+
+export type ObservationHealthTone = 'ok' | 'neutral' | 'warn' | 'error'
+
+export interface ObservationHealthView {
+  label: string
+  tone: ObservationHealthTone
+  detail: string | null
+}
+
+const PAUSE_REASON_LABELS: Record<string, string> = {
+  collection_disabled: '采集已禁用（可随时重新启用）',
+  quota_retention: '达到保留配额，暂停新增记录（清理后恢复）',
+  physical_limit: '观测库体积达到软保护阈值，暂停新增',
+  store_corrupted: '观测库损坏，已停止写入（原文件保留）',
+  future_version: '观测库来自更新版本，本程序只读不写',
+  store_unavailable: '观测存储暂不可用',
+  installation_missing: '安装身份缺失，需重新绑定确认',
+  installation_mismatch: '安装身份不符，需重新绑定确认',
+  root_mismatch: '项目根与绑定不符，需确认迁移',
+  binding_mismatch: '绑定校验未通过'
+}
+
+/**
+ * 健康事实 → 展示口径（纯函数；未知 ≠ 故障）：
+ * 未初始化/关闭/禁用是中性事实，不标失败；只有明确损坏才是错误态。
+ */
+export function observationHealthView(health: ObservationHealth): ObservationHealthView {
+  const reason = health.pauseReason
+  switch (health.state) {
+    case 'active':
+      return { label: '采集中', tone: 'ok', detail: null }
+    case 'paused': {
+      const known = reason !== null ? PAUSE_REASON_LABELS[reason] : undefined
+      // 配额/体积类暂停是可恢复的存储事实 → 提示级；禁用/门禁 → 中性
+      const tone = reason === 'collection_disabled' || reason === 'installation_missing' || reason === 'installation_mismatch' || reason === 'root_mismatch' ? 'neutral' : 'warn'
+      return { label: '已暂停', tone, detail: known ?? (reason !== null ? `暂停原因：${reason}` : null) }
+    }
+    case 'corrupted':
+      return { label: '存储异常', tone: 'error', detail: '观测库损坏：已停止写入并保留原文件，可由用户选择重建' }
+    case 'future_version':
+      return { label: '版本不兼容', tone: 'warn', detail: PAUSE_REASON_LABELS.future_version }
+    case 'closed':
+      return { label: '未连接', tone: 'neutral', detail: '观测库连接未打开（读取按未初始化口径呈现）' }
+    case 'not_initialized':
+    default:
+      return { label: '未初始化', tone: 'neutral', detail: '尚未绑定工作区或未打开观测库；未观察到 ≠ 故障' }
+  }
 }
 
 /* ---------------- 写入口径（insert 结果，供回执投影消费；也用于冒烟） ---------------- */

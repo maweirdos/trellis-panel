@@ -53,6 +53,8 @@ import { DispatchModal } from '../components/DispatchModal'
 import { PlannerModal } from '../components/PlannerModal'
 import { Select } from '../components/Select'
 import { DocumentReader } from '../reader/DocumentReader'
+import { ObservationPanel } from '../observation/ObservationPanel'
+import type { ActivityEventInput } from '../../../shared/observability/activity'
 import { readingSessionKey } from '../reader/reading-session'
 import { relativePathUnderRoot } from '../reader/reader-paths'
 import { useEscLayer } from '../utils/use-esc-layer'
@@ -447,6 +449,26 @@ function TaskWorkspace({
     return () => {
       if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current)
     }
+  }, [])
+
+  // S0 G3 第二片：观察面板的文件变化来源（watcher 防抖合并的 material-updated 信号；
+  // files 为任务目录内相对路径，无绝对路径）。有界缓冲，只在本组件内存。
+  const [materialEvents, setMaterialEvents] = useState<ActivityEventInput[]>([])
+  useEffect(() => {
+    return api.onMaterialUpdated((e) => {
+      setMaterialEvents((prev) =>
+        [
+          {
+            id: `mat-${e.dirName}-${e.at}`,
+            atMs: e.at,
+            source: 'file' as const,
+            text: `任务材料变化：${e.files.slice(0, 3).join('、')}${e.files.length > 3 ? ` 等 ${e.count} 个文件` : ''}`,
+            taskDir: e.dirName
+          },
+          ...prev
+        ].slice(0, 30)
+      )
+    })
   }, [])
 
   // S0 G2 第三片：文档装载走共享 reader（documentRead + 阅读会话）。
@@ -1415,6 +1437,18 @@ function TaskWorkspace({
           {/* 右侧：结构化辅助栏（支持一键折叠，释放极宽阅读空间） */}
           {rightAsideOpen && (
             <div className="w-56 shrink-0 space-y-5 overflow-y-auto border-l border-ink-700 bg-ink-900 p-3.5 transition-all">
+              {/* S0 G3 第二片：观察面板（回执 + 实际活动 + 健康治理；design §6.3 右侧按需展开） */}
+              <ObservationPanel
+                workspaceId={projectName}
+                taskRef={task.record?.id ? `task:${task.record.id}` : `dir:.trellis/tasks/${task.dirName}`}
+                activity={{
+                  taskRecord: { status: task.record?.status ?? null, updatedAtMs: null },
+                  events: materialEvents,
+                  archive: { archived: false, repoRelativeDir: `.trellis/tasks/${task.dirName}` },
+                  taskDir: task.dirName
+                }}
+              />
+
               {/* 文档大纲 (TOC) */}
               {headings.length > 0 && activeDocType !== 'artifact' && (
                 <div>
