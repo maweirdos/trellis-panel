@@ -220,6 +220,8 @@ export const ipcInvoke = {
   jira: {
     test: 'jira:test',
     search: 'jira:search',
+    /** G4 第二片：Jira 页查询改走分页服务（完整字段 + 完整性口径；旧 jira:search 保留给既有调用方） */
+    searchPaged: 'jira:searchPaged',
     transitions: 'jira:transitions',
     transition: 'jira:transition',
     comment: 'jira:comment'

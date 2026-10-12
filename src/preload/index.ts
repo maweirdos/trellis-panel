@@ -323,6 +323,9 @@ const api = {
 
   jiraTest: (cfg: JiraConfig) => ipcRenderer.invoke(ipcInvoke.jira.test, cfg),
   jiraSearch: (cfg: JiraConfig, jql: string) => ipcRenderer.invoke(ipcInvoke.jira.search, cfg, jql),
+  /* G4 第二片：分页查询（完整字段 + 完整性口径；sample ≠ 失败） */
+  jiraSearchPaged: (cfg: JiraConfig, jql: string, opts?: { maxPages?: number }) =>
+    ipcRenderer.invoke(ipcInvoke.jira.searchPaged, cfg, jql, opts),
   jiraTransitions: (cfg: JiraConfig, key: string) => ipcRenderer.invoke(ipcInvoke.jira.transitions, cfg, key),
   jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) =>
     ipcRenderer.invoke(ipcInvoke.jira.transition, cfg, key, transitionId),

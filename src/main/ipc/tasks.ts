@@ -129,10 +129,18 @@ export function registerTasksIpc(): void {
           : res.code === 'conflict'
             ? IpcErrorCode.Conflict
             : IpcErrorCode.Io
-      return ipcFail(code, res.error)
+      // serviceCode 透传服务侧分级（control_store/cli_failed/conflict/interrupted/…），供 UI 分级展示
+      return ipcFail(code, res.error, { serviceCode: res.code })
     }
     if (res.created) sendSnapshot()
-    return { ok: true as const, dirName: res.dirName, created: res.created, already: res.already }
+    return {
+      ok: true as const,
+      dirName: res.dirName,
+      created: res.created,
+      already: res.already,
+      archived: res.archived,
+      notes: res.notes
+    }
   })
 
   handle(ipcInvoke.task.create, (_e, input: { title: string; description: string; priority: string }) => {

@@ -302,8 +302,8 @@ export interface JiraFixVersionRef {
 
 /**
  * G4 扩充字段的 Jira issue（design §7.1）：issueId/issueTypeId/fixVersionId/
- * description/updatedAtMs。由分页查询（jiraSearchPaged）产出；服务层契约，
- * 本片不接 IPC（UI 属第二片）。
+ * description/updatedAtMs。由分页查询（jiraSearchPaged）产出，经
+ * TrellisApi.jiraSearchPaged 供 Jira 页创建链消费。
  */
 export interface JiraIssueDetail extends JiraIssue {
   /** Jira 数字稳定 issue id；服务端未返回时为 null */
@@ -1151,16 +1151,43 @@ export interface TrellisApi {
     expectedMtime?: number
   ) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
   deleteTask: (taskDir: string, expectedMtime?: number) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
+  /**
+   * G4：Jira → 本地轻任务（design §7.2 单一创建器 LocalTaskService）。
+   * 入参为旧契约超集：issueId/fullDescription/updatedAtMs/allowAdditional 为 G4 新增；
+   * 旧调用方（AcpConsole 导入）只传基础字段仍成立。成功响应为超集：
+   * created/already 区分本次新建与打开已有；archived 表示已有任务已归档；
+   * notes 携带服务侧可见说明（如恢复/保留用户改动）。失败带 serviceCode
+   * （control_store/cli_failed/conflict/interrupted/invalid/internal）供 UI 分级。
+   */
   createTaskFromJira: (input: {
-    dirName: string
+    /** 期望的任务 slug（旧字段，兼容既有调用）；缺省由服务按 issueKey+标题派生 */
+    dirName?: string
     title: string
     description: string
-    status: string
+    status?: string
     priority: string
     assignee: string
     jiraKey: string
     jiraUrl: string
-  }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
+    /** Jira 数字稳定 issue id（服务端未返回可缺省） */
+    issueId?: number | null
+    /** 服务端返回的完整描述原文（wiki 标记原样） */
+    fullDescription?: string | null
+    /** 工单更新时间（Unix 毫秒；非法/缺失不写时间标识） */
+    updatedAtMs?: number | null
+    /** 显式一单多任务新增序号（UI 不提供快捷入口，仅登记） */
+    allowAdditional?: boolean
+  }) => Promise<{
+    ok: boolean
+    error?: string
+    code?: string
+    serviceCode?: string
+    dirName?: string
+    created?: boolean
+    already?: boolean
+    archived?: boolean
+    notes?: string[]
+  }>
   readTextFile: (absPath: string) => Promise<{ ok: boolean; error?: string; content?: string; mtime?: number }>
   /** S0 G2：文档限界读取（design §5.1）——revision=内容摘要；文档级事实（缺失/坏行/超限）走诊断 */
   documentRead: (scope: DocumentReadScope, input: DocumentReadRequest) => Promise<DocumentReadOutcome>
@@ -1296,6 +1323,19 @@ export interface TrellisApi {
   /* --- Jira --- */
   jiraTest: (cfg: JiraConfig) => Promise<{ ok: boolean; error?: string; displayName?: string }>
   jiraSearch: (cfg: JiraConfig, jql: string) => Promise<{ ok: boolean; error?: string; issues?: JiraIssue[]; total?: number }>
+  /** G4 第二片：分页查询（完整字段 issueId/description/updatedAtMs + 完整性口径；sample ≠ 失败） */
+  jiraSearchPaged: (
+    cfg: JiraConfig,
+    jql: string,
+    opts?: { maxPages?: number }
+  ) => Promise<{
+    ok: boolean
+    error?: string
+    issues?: JiraIssueDetail[]
+    /** 服务端报告总数（token 协议不可验证时为已去重条数） */
+    total?: number
+    meta?: JiraPagedSearchMeta
+  }>
   jiraTransitions: (cfg: JiraConfig, key: string) => Promise<{ ok: boolean; error?: string; transitions?: JiraTransition[] }>
   jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) => Promise<{ ok: boolean; error?: string }>
   jiraComment: (cfg: JiraConfig, key: string, body: string) => Promise<{ ok: boolean; error?: string }>

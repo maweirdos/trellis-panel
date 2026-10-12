@@ -12,7 +12,8 @@ import {
   EyeOff,
   Eye,
   Layers,
-  Wand2
+  Wand2,
+  FolderPlus
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -20,13 +21,53 @@ import { clsx } from 'clsx'
 import { JIRA_CATEGORY_STATUS, statusLabel } from '../utils/labels'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import type { JSX } from 'react'
-import type { JiraIssue, TaskInfo } from '../../../shared/types'
+import type { JiraIssue, JiraIssueDetail, JiraPagedSearchMeta, TaskInfo } from '../../../shared/types'
 
 function priorityOf(name: string): string {
   if (/highest|最高/i.test(name)) return 'P0'
   if (/high|高/i.test(name)) return 'P1'
   if (/low|低/i.test(name)) return 'P3'
   return 'P2'
+}
+
+/**
+ * G4：创建失败分级文案（design §7.2 语义红线：未创建≠失败、超时≠成功）。
+ * 按 serviceCode 给出可操作的下一步，不静默吞错；detail 为服务侧已脱敏的错误文本。
+ */
+function describeCreateFailure(res: {
+  code?: string
+  serviceCode?: string
+}): { kind: 'error' | 'warn'; title: string; body: (detail: string) => string } {
+  if (res.code === 'E_NO_PROJECT') {
+    return { kind: 'warn', title: '未打开项目', body: () => '本入口只在当前已打开的项目中创建任务；请先打开项目后重试' }
+  }
+  switch (res.serviceCode) {
+    case 'conflict':
+      return {
+        kind: 'error',
+        title: '同名或多任务冲突，需人工确认',
+        body: (d) => `${d}。面板不自动选择、不使用 --force；请在任务目录人工确认后重试`
+      }
+    case 'control_store':
+      return { kind: 'error', title: '本地控制库不可用', body: (d) => `任务未被创建（可安全重试）：${d}` }
+    case 'cli_failed':
+      return { kind: 'error', title: 'task.py create 失败', body: (d) => `任务未被创建（可安全重试）：${d}` }
+    case 'interrupted':
+      return {
+        kind: 'warn',
+        title: '创建被中断，可恢复',
+        body: (d) => `目录已保留：再次点击同一入口会续写补完，不会重复建任务。${d}`
+      }
+    case 'invalid':
+      return { kind: 'warn', title: '创建参数不合法', body: (d) => d }
+    default:
+      return { kind: 'error', title: '创建失败', body: (d) => d }
+  }
+}
+
+const SAMPLE_REASON: Record<string, string> = {
+  max_pages: '已达最大页数',
+  page_failed: '有页失败（重试耗尽）'
 }
 
 /** 组装最终 JQL：用户输入（或默认我的待办）+ 可选过滤已完成；ORDER BY 摘出来放最后 */
@@ -52,9 +93,14 @@ export function JiraPage(): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const saveTodo = useApp((s) => s.saveTodo)
   const todos = useApp((s) => s.todos)
+  const setPage = useApp((s) => s.setPage)
+  const showTask = useApp((s) => s.showTask)
+  const refresh = useApp((s) => s.refresh)
 
-  const [issues, setIssues] = useState<JiraIssue[]>([])
+  const [issues, setIssues] = useState<JiraIssueDetail[]>([])
   const [total, setTotal] = useState(0)
+  /** 分页完整性口径（design §7.1）：sample ≠ 查询失败，样本如实标注 */
+  const [searchMeta, setSearchMeta] = useState<JiraPagedSearchMeta | null>(null)
   const [jql, setJql] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,6 +114,10 @@ export function JiraPage(): JSX.Element {
   const [groupByVersion, setGroupByVersion] = useState(true)
   /** AI 规划工作台的种子（Jira issue） */
   const [planSeed, setPlanSeed] = useState<PlanningSeed | null>(null)
+  /** G4 轻任务入口：同键 in-flight 防抖（重复点击并发只跑一次服务调用） */
+  const [creatingKey, setCreatingKey] = useState<string | null>(null)
+  /** G4 轻任务入口：服务返回的本地任务定位（created/already 共用；键为 issue.key 大写） */
+  const [localTasks, setLocalTasks] = useState<Record<string, { dirName: string; archived: boolean }>>({})
 
   const cfg = settings.jira
 
@@ -79,14 +129,18 @@ export function JiraPage(): JSX.Element {
       }
       setLoading(true)
       setError(null)
-      const res = await api.jiraSearch(cfg, composeJql(query, hideOverride ?? hideDone))
+      // G4 第二片：分页查询（完整字段 issueId/description/updatedAtMs 供本地任务创建消费；
+      // 旧单页 jira:search 保留给 AcpConsole 等既有调用方，零回归）
+      const res = await api.jiraSearchPaged(cfg, composeJql(query, hideOverride ?? hideDone))
       setLoading(false)
       if (res.ok && res.issues) {
         setIssues(res.issues)
         setTotal(res.total ?? res.issues.length)
+        setSearchMeta(res.meta ?? null)
       } else {
         setError(res.error ?? '查询失败')
         setIssues([])
+        setSearchMeta(null)
       }
     },
     [cfg, hideDone]
@@ -107,8 +161,8 @@ export function JiraPage(): JSX.Element {
   }
 
   /* 版本分组：命名版本按自然序倒排（新的在上），无版本殿后 */
-  const versionGroups = useMemo<Array<{ version: string; issues: JiraIssue[] }>>(() => {
-    const map = new Map<string, JiraIssue[]>()
+  const versionGroups = useMemo<Array<{ version: string; issues: JiraIssueDetail[] }>>(() => {
+    const map = new Map<string, JiraIssueDetail[]>()
     for (const it of issues) {
       const v = it.fixVersions[0] ?? NO_VERSION
       const list = map.get(v) ?? []
@@ -124,10 +178,95 @@ export function JiraPage(): JSX.Element {
       .map(([version, list]) => ({ version, issues: list }))
   }, [issues])
 
-  const linkedByKey = new Map<string, TaskInfo>()
-  for (const t of [...snapshot.tasks, ...snapshot.archived]) {
-    const k = t.record?.meta?.jiraKey
-    if (typeof k === 'string' && k) linkedByKey.set(k.toUpperCase(), t)
+  /* 本地关联索引：旧 meta.jiraKey（手动关联/旧流程）+ 新 panel_jira_issue_key（G4 服务创建）双索引 */
+  const linkedByKey = useMemo(() => {
+    const map = new Map<string, TaskInfo>()
+    for (const t of [...snapshot.tasks, ...snapshot.archived]) {
+      const meta = t.record?.meta
+      for (const k of [meta?.jiraKey, meta?.panel_jira_issue_key]) {
+        if (typeof k === 'string' && k) map.set(k.toUpperCase(), t)
+      }
+    }
+    return map
+  }, [snapshot.tasks, snapshot.archived])
+
+  /* G4 轻任务入口的已知定位：快照关联 ∪ 服务返回（服务结果覆盖，避免快照竞态） */
+  const entryByKey = useMemo(() => {
+    const m = new Map<string, { dirName: string; archived: boolean }>()
+    for (const [k, t] of linkedByKey) m.set(k, { dirName: t.dirName, archived: Boolean(t.archived) })
+    for (const [k, v] of Object.entries(localTasks)) m.set(k, v)
+    return m
+  }, [linkedByKey, localTasks])
+
+  /** G4：打开（定位）本地任务——跳任务页选中；归档任务不跳空列表，如实提示去归档页。 */
+  const openLocalTask = (dirName: string, archived: boolean, issueKey: string): void => {
+    if (archived) {
+      pushToast({
+        kind: 'info',
+        title: `${issueKey} 关联的本地任务已归档`,
+        body: `任务目录 ${dirName} 已在归档区，可在「归档」页查看`
+      })
+      return
+    }
+    setPage('tasks')
+    showTask(dirName, false)
+  }
+
+  /**
+   * G4：Jira 行 → 本地轻任务入口（design §7.2 单一创建器，全部经 task:createFromJira）。
+   * - 已知定位 → 直接打开；否则携带工单完整字段调用服务，按 created/already 切换文案。
+   * - 不提供「一单多任务」快捷入口（服务支持 allowAdditional，UI 保持显式后置）。
+   * - 入口只作用于当前已打开项目（换仓库须显式选择，不在本入口隐式切换）。
+   */
+  const createOrOpenLocal = async (issue: JiraIssueDetail): Promise<void> => {
+    const key = issue.key.toUpperCase()
+    const known = entryByKey.get(key)
+    if (known) {
+      openLocalTask(known.dirName, known.archived, issue.key)
+      return
+    }
+    if (creatingKey !== null) return // 同键 in-flight 防抖（重复点击只跑一次）
+    setCreatingKey(issue.key)
+    setBusyKey(issue.key)
+    let res
+    try {
+      res = await api.createTaskFromJira({
+        jiraKey: issue.key,
+        issueId: issue.issueId,
+        title: `[${issue.key}] ${issue.summary}`,
+        description: issue.summary,
+        fullDescription: issue.description,
+        jiraUrl: issue.url,
+        priority: priorityOf(issue.priority),
+        assignee: snapshot?.meta.developer || issue.assignee,
+        updatedAtMs: issue.updatedAtMs,
+        allowAdditional: false
+      })
+    } finally {
+      // invoke 意外 reject 也必须复位入口，否则全部行卡在禁用（check P3-2）
+      setCreatingKey(null)
+      setBusyKey(null)
+    }
+    if (res.ok && res.dirName) {
+      const archived = res.archived === true
+      setLocalTasks((m) => ({ ...m, [key]: { dirName: res.dirName as string, archived } }))
+      if (res.created) await refresh() // 新任务先进快照再跳转，避免空选中
+      if (archived) {
+        openLocalTask(res.dirName, true, issue.key)
+        return
+      }
+      const notes = (res.notes ?? []).join('；')
+      pushToast({
+        kind: 'success',
+        title: res.already ? `${issue.key} 已打开已有本地任务` : `${issue.key} 已在当前项目创建任务`,
+        body: `任务目录 ${res.dirName}${notes ? `（${notes}）` : ''}`
+      })
+      openLocalTask(res.dirName, false, issue.key)
+      return
+    }
+    // 失败分级：控制库/CLI/冲突/中断各给可操作文案，不静默（未创建≠失败：可安全重试的明说）
+    const tier = describeCreateFailure(res)
+    pushToast({ kind: tier.kind, title: `${issue.key} ${tier.title}`, body: tier.body(res.error ?? '未知错误') })
   }
 
   const importToBacklog = async (issue: JiraIssue): Promise<void> => {
@@ -209,10 +348,12 @@ export function JiraPage(): JSX.Element {
     }
   }
 
-  const renderIssue = (issue: JiraIssue, groupVersion?: string): JSX.Element => {
+  const renderIssue = (issue: JiraIssueDetail, groupVersion?: string): JSX.Element => {
     const linked = linkedByKey.get(issue.key.toUpperCase())
     const busy = busyKey === issue.key
     const linking = linkingKey === issue.key
+    const creating = creatingKey === issue.key
+    const knownLocal = entryByKey.get(issue.key.toUpperCase())
     // 版本分组时行内不再重复当前分组版本，仅展示额外 fixVersion
     const versionChips = groupByVersion
       ? issue.fixVersions.filter((v) => v !== groupVersion)
@@ -250,6 +391,24 @@ export function JiraPage(): JSX.Element {
             </span>
           )}
           <div className="ml-auto flex items-center gap-1">
+            {/* G4：轻任务入口——同一按钮按服务返回 created/already 切换文案；只作用于当前已打开项目 */}
+            <button
+              disabled={!snapshot || busy || creatingKey !== null}
+              onClick={() => void createOrOpenLocal(issue)}
+              className={clsx(
+                'px-2 py-1 text-[10.5px] disabled:opacity-50',
+                knownLocal ? 'btn-outline' : 'btn-primary'
+              )}
+              title={
+                !snapshot
+                  ? '未打开项目——本入口只在当前已打开的项目中创建任务，请先打开项目'
+                  : knownLocal
+                    ? `打开当前项目中的本地任务 ${knownLocal.dirName}（重复点击不重复创建）`
+                    : '在当前已打开的项目中创建本地轻任务（task.py create --no-start + 来源 PRD 草稿）'
+              }
+            >
+              <FolderPlus size={10} /> {creating ? '创建中…' : knownLocal ? '打开本地任务' : '在当前项目创建任务'}
+            </button>
             {!linked ? (
               <>
                 {inTodos ? (
@@ -392,6 +551,14 @@ export function JiraPage(): JSX.Element {
         <span className="text-[11px] text-mist-500">
           显示 {issues.length} / 共 {total} 条
         </span>
+        {searchMeta?.sample && (
+          <span
+            className="chip border border-amber-400/30 bg-amber-500/10 text-amber-300"
+            title={`结果为样本，不是完整集合（去重 ${searchMeta.duplicateCount} 条；采集 ${searchMeta.pagesFetched} 页）`}
+          >
+            样本 · {SAMPLE_REASON[searchMeta.incompleteReason ?? ''] ?? '未取全'}
+          </span>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
