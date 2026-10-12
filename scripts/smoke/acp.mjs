@@ -105,6 +105,11 @@ try {
   check('doc-created 卡片', outEvents().some((e) => e.source === 'trellis' && e.kind === 'doc-created'))
   acp.routeWatcherEvent(projectRoot, join(projectRoot, '.trellis', 'spec', 'backend', 'index.md'), 'change')
   check('spec-updated 卡片', outEvents().some((e) => e.source === 'trellis' && e.kind === 'spec-updated'))
+  // S0 G3：归档任务路径显式识别且不打扰活动轨道（与旧正则净行为一致）
+  const trellisCountBefore = outEvents().filter((e) => e.source === 'trellis').length
+  acp.routeWatcherEvent(projectRoot, join(projectRoot, '.trellis', 'tasks', 'archive', '2026-10', '10-09-demo', 'task.json'), 'change')
+  acp.routeWatcherEvent(projectRoot, join(projectRoot, '.trellis', 'tasks', 'archive', '2026-10', '10-09-demo', 'prd.md'), 'add')
+  check('归档路径不产生任务轨道卡片', outEvents().filter((e) => e.source === 'trellis').length === trellisCountBefore)
   acp.routeNotifyRail(projectRoot, 'acp:spec-injected:注入 spec/backend/index.md')
   check('notify 前缀路由 spec-injected', outEvents().some((e) => e.kind === 'spec-injected'))
   acp.routeNotifyRail(projectRoot, '普通桥接消息不进轨道')

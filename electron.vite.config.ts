@@ -28,9 +28,31 @@ function bundleDiffWorker(): Plugin {
   }
 }
 
+/**
+ * S0 G3：observation worker 同一先例单独 esbuild 打包（node:sqlite + 控制库核心，
+ * 独立于主 bundle；service 侧按 __dirname 邻位定位 out/main/observation-worker.js）。
+ */
+function bundleObservationWorker(): Plugin {
+  return {
+    name: 'bundle-observation-worker',
+    apply: 'build',
+    closeBundle() {
+      return esbuild.build({
+        entryPoints: [resolve(__dirname, 'src/main/services/observability/observation-worker.ts')],
+        outfile: resolve(__dirname, 'out/main/observation-worker.js'),
+        bundle: true,
+        format: 'cjs',
+        platform: 'node',
+        target: 'node22',
+        logLevel: 'warning'
+      })
+    }
+  }
+}
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), bundleDiffWorker()],
+    plugins: [externalizeDepsPlugin(), bundleDiffWorker(), bundleObservationWorker()],
     build: {
       // electron-vite 5 / vite 8 默认输出 ESM(.mjs)；本项目为 CJS（package.json 无 type:module），
       // 强制回 CJS 以匹配 out/main/index.js 入口（Electron 44 + CJS 主进程）

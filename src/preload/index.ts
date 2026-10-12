@@ -10,6 +10,18 @@ import type {
   DocumentWatchOutcome
 } from '../shared/documents'
 import type {
+  ObservationCursor,
+  ObservationQueryRequest,
+  ObservationQuerySuccess,
+  ObservationScope,
+  ObservationSubscribeResult,
+  ObservationSubscriptionEvent
+} from '../shared/observability/store'
+import type { IpcFail } from '../shared/ipc-errors'
+
+/** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
+type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
+import type {
   AiConfig,
   ChatMessage,
   ChatDoneEvent,
@@ -62,6 +74,15 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.document.watch, scope, input) as Promise<DocumentWatchOutcome>,
   documentUnwatch: (canonicalPath: string) => ipcRenderer.invoke(ipcInvoke.document.unwatch, canonicalPath),
   onDocumentChanged: (cb: (e: DocumentChangedEvent) => void) => subscribe(ipcEvent.documentChanged, cb),
+  /* S0 G3：观测事件查询（limit≤100；cursor epoch 不符 → resetRequired 全量重拉） */
+  observationQuery: (scope: ObservationScope, request: ObservationQueryRequest) =>
+    ipcRenderer.invoke(ipcInvoke.observation.query, scope, request) as Promise<ObservationQuerySuccess | IpcFail>,
+  /* S0 G3：订阅增量（返回快照基准 cursor；增量经 onObservationEvents 推送，按 eventId 去重） */
+  observationSubscribe: (scope: ObservationScope, options?: { afterCursor?: ObservationCursor }) =>
+    ipcRenderer.invoke(ipcInvoke.observation.subscribe, scope, options) as Promise<ObservationSubscribeResult | IpcFail>,
+  observationUnsubscribe: (subscriptionId: string) => ipcRenderer.invoke(ipcInvoke.observation.unsubscribe, subscriptionId),
+  onObservationEvents: (cb: (e: ObservationSubscriptionPush) => void) =>
+    subscribe(ipcEvent.observationEvents, cb),
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) =>
     ipcRenderer.invoke(ipcInvoke.fs.writeSpec, absPath, content, expectedMtime),
   specBacklinks: () => ipcRenderer.invoke(ipcInvoke.spec.backlinks),

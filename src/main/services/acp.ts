@@ -19,6 +19,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFile
 import { join } from 'path'
 import { getSettings } from './store'
 import { broadcastToWindows } from './bridge'
+import { noteTaskDir } from './observability/service'
+import { parseTrellisTaskPath } from './task-identity'
 import { ipcEvent } from '../../shared/ipc-channels'
 import { IpcErrorCode, ipcFail, type IpcFail } from '../../shared/ipc-errors'
 import type {
@@ -226,11 +228,13 @@ export function emitTrellisTimeline(
 
 /** watcher 文件级探针 → trellis 轨道事件（task.json 状态 / 任务文档新增 / spec 变更） */
 export function routeWatcherEvent(projectRoot: string, rawPath: string, ev: 'add' | 'change'): void {
-  const p = rawPath.replace(/\\/g, '/')
-  const taskMatch = p.match(/^(?:.*\/)?\.trellis\/tasks\/([^/]+)\/(.+)$/)
-  if (taskMatch) {
-    const taskDir = taskMatch[1]
-    const rest = taskMatch[2]
+  // S0 G3：路径解析收敛到 task-identity（吸收原内联正则；archive 结构显式识别）
+  const parsed = parseTrellisTaskPath(projectRoot, rawPath)
+  if (parsed !== null) {
+    // 归档目录变化不打扰活动轨道（与原行为一致：旧正则把 archive 当 taskDir，两分支均不命中）
+    if (parsed.archived) return
+    const taskDir = parsed.taskDir
+    const rest = parsed.innerPath
     if (rest === 'task.json' && ev === 'change') {
       // 同一任务 1.5s 内多次写只报一次（AI 批量改字段常见）
       const now = Date.now()
@@ -246,15 +250,20 @@ export function routeWatcherEvent(projectRoot: string, rawPath: string, ev: 'add
         // 读失败仍发事件（无 status 字段）
       }
       emitTrellisTimeline(projectRoot, 'task-status', `任务状态变更${status ? `：${status}` : ''}`, { taskDir, status }, taskDir)
+      // S0 G3：任务身份登记（路径→taskRef 的真实目录证据；fire-and-forget，无绑定时静默跳过）
+      noteTaskDir(projectRoot, taskDir)
       return
     }
     if (ev === 'add' && (rest === 'prd.md' || rest === 'PRD.md' || rest === 'design.md' || rest.startsWith('research/'))) {
       emitTrellisTimeline(projectRoot, 'doc-created', `创建文档：${rest}`, { taskDir, file: rest, path: rawPath }, taskDir)
+      noteTaskDir(projectRoot, taskDir)
     }
     return
   }
+  const p = rawPath.replace(/\\/g, '/')
   if (/^(?:.*\/)?\.trellis\/spec\/.+/.test(p)) {
     const file = p.split('.trellis/spec/')[1] ?? ''
+    // spec 更新是项目级活动：不带 taskDir，不借当前选中任务补全归属（design §5.3）
     emitTrellisTimeline(projectRoot, 'spec-updated', `规范变更：${file}`, { file, path: rawPath })
   }
 }

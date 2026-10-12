@@ -17,6 +17,7 @@ import { clearGitCache } from './services/git'
 import { recordActivity } from './services/activity'
 import { broadcastToWindows } from './services/bridge'
 import { routeWatcherEvent } from './services/acp'
+import { closeObservationForProject, initObservationForRoot } from './services/observability'
 import { startHttpApi, stopHttpApi } from './services/httpapi'
 import { WeknoraSpecSyncer } from './services/weknora'
 import { accessEventLog } from './services/access/event-log'
@@ -308,6 +309,11 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
     latestSnapshot = snap
     knownTaskDirs = new Set(snap.tasks.map((t) => t.dirName))
     recordActivity(snap)
+    // S0 G3：观测存储懒初始化（已有绑定才拉起 worker；无绑定不创建任何文件）。
+    // 异步进行且失败不阻塞项目打开——读取失败按未初始化口径呈现，不算打开失败。
+    void initObservationForRoot(projectRoot).catch(() => {
+      /* 观测初始化失败不影响阅读；下次打开/显式绑定重试 */
+    })
     return { ok: true, snapshot: snap }
   } catch (e) {
     return ipcFail(IpcErrorCode.Io, errorText(e, '打开项目失败'))
@@ -322,6 +328,8 @@ export function closeProjectAt(): void {
   clearDocumentCache()
   clearReaderDocuments()
   syncWeknoraSpecConfig()
+  // S0 G3：取消观测订阅并关闭库连接（design §5.2 关闭工作区后停止轮询；数据保留）
+  closeObservationForProject()
 }
 
 /* ---------------- pending focus task（深链聚焦，窗口未就绪时暂存） ---------------- */

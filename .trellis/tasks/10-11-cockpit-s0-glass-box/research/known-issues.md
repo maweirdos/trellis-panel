@@ -19,7 +19,16 @@
 3. 同文档双入口（如预览+查看器）共用 sessionKey：一方卸载 closeSession 会清另一方 base/pending（displayed 有本地 rawText 兜底不空白）。边缘场景，G3 观测接线时一并考虑会话共享计数。
 4. `change-bridge.ts:112-118`："读取完成→注册 watch"窗口内新建文件且 watcher add 先于注册处理的毫秒级补发缺口，需等下一次事件。
 
+## 登记不阻塞（P3，来源：G3 一片 trellis-check）
+
+1. **G1-C 前必须修**：database.md §7 Correct 示例只插 6 列，与落地 events 表非空列（repositoryId/workspaceId/receivedAtMs 等）不兼容——Python 生产者设计前先同步 spec 示例。
+2. **G1-C 设计输入**：Python 侧若用 INSERT OR IGNORE 无法区分同 eventId 异 digest 冲突（Panel 侧是事务内 SELECT-then-INSERT，行为等价可区分）；stableStringify 的 digest 跨语言一致性（键排序/转义）必须用黄金夹具证明。
+3. 第二片接线时补：observation query/subscribe 校验 scope.workspaceId 与当前绑定归属；queryObservations 的 catch 在 IPC 边界套 redact（防 fs/SQLite 原始 message 带绝对路径）。
+4. observability-store 冒烟实为 67 项（实施申报 70，数量不实内容无恙）；physical_limit 软保护路径与 query 的 before 游标参数无断言，可补。
+5. 杂项：哨兵字符串 'store-unavailable' 在 service/store-core 三处字面重复（建议上移 shared）；sameRoot 非 Windows 平台为严格相等（符号链接差异会误报 rebind_required，Windows 首发可接受）；实施代理的报告未持久化到 validation/（流程改进：后续片报告落盘）。
+
 ## 已处置
 
 - G2 二片 check 的 5 个 P3 中：`\r` 剥离、present 措辞"存在"、useMemo 常量三处已当场修复（随本片提交）；其余见上。
 - G2 三片 check 的 P2（输入焦点时 Esc 误注销层）已修：`deferWhenInputFocused` 在派发前守卫；两处弱断言收紧、DocumentReader 死分支文案改为如实描述。
+- G3 一片 check 的 P2（切到无绑定项目时旧订阅不取消）已修：initObservationForRoot 顶部先清场（generation++/清订阅/关旧连接）再走 not_bound 早退。

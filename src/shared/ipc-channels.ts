@@ -55,6 +55,14 @@ export const ipcInvoke = {
     /** S0 G2 第三片：解除会话监听（引用计数归零才真正停发） */
     unwatch: 'document:unwatch'
   },
+  observation: {
+    /** S0 G3：观测事件查询（limit≤100；cursor epoch 不符 → resetRequired，design §5.1） */
+    query: 'observation:query',
+    /** S0 G3：订阅增量（快照基准 cursor + 独立高水位轮询推送） */
+    subscribe: 'observation:subscribe',
+    /** S0 G3：解除订阅（项目切换由主进程 generation 兜底取消） */
+    unsubscribe: 'observation:unsubscribe'
+  },
   spec: {
     backlinks: 'spec:backlinks'
   },
@@ -237,6 +245,8 @@ export const ipcEvent = {
   snapshotUpdated: 'project:snapshot',
   /** S0 G2 第三片：阅读会话定向文档变更（只发给已注册的 canonicalPath，design §5.2） */
   documentChanged: 'document:changed',
+  /** S0 G3：观测订阅增量/复位推送（subscriptionId 关联；渲染端按 eventId 去重，design §5.1） */
+  observationEvents: 'observation:events',
   /** 全局 toast */
   toast: 'bridge:toast',
   /** 深链/AI 工具触发任务聚焦 */

@@ -12,6 +12,15 @@ import type {
   DocumentReadScope,
   DocumentWatchOutcome
 } from './documents'
+import type {
+  ObservationCursor,
+  ObservationQueryRequest,
+  ObservationQuerySuccess,
+  ObservationScope,
+  ObservationSubscribeResult,
+  ObservationSubscriptionEvent
+} from './observability/store'
+import type { IpcFail } from './ipc-errors'
 
 export const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
@@ -1079,6 +1088,22 @@ export interface TrellisApi {
   documentUnwatch: (canonicalPath: string) => Promise<void>
   /** 定向文档变更事件（只针对已注册的 canonicalPath） */
   onDocumentChanged: (cb: (e: DocumentChangedEvent) => void) => () => void
+  /** S0 G3：观测事件查询（limit≤100；cursor epoch 不符 → resetRequired 全量重拉，design §5.1） */
+  observationQuery: (
+    scope: ObservationScope,
+    request: ObservationQueryRequest
+  ) => Promise<ObservationQuerySuccess | IpcFail>
+  /** S0 G3：订阅增量（返回快照基准 cursor；增量经 onObservationEvents 推送，按 eventId 去重） */
+  observationSubscribe: (
+    scope: ObservationScope,
+    options?: { afterCursor?: ObservationCursor }
+  ) => Promise<ObservationSubscribeResult | IpcFail>
+  /** 解除订阅（项目切换由主进程 generation 兜底取消） */
+  observationUnsubscribe: (subscriptionId: string) => Promise<void>
+  /** 订阅增量/复位推送（subscriptionId 关联） */
+  onObservationEvents: (
+    cb: (e: { subscriptionId: string; event: ObservationSubscriptionEvent }) => void
+  ) => () => void
   /** write restricted to .trellis/spec/** (spec editor) */
   writeSpecFile: (absPath: string, content: string, expectedMtime?: number) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
   specBacklinks: () => Promise<{ ok: boolean; error?: string; counts?: Record<string, number> }>

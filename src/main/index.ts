@@ -8,6 +8,7 @@ import { existsSync } from 'fs'
 import { abortAll } from './services/cli'
 import { getSettings } from './services/store'
 import { stopDiffWorker } from './services/documents'
+import { stopObservationWorker } from './services/observability'
 import { routeNotifyRail, shutdownAcp } from './services/acp'
 import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindows } from './services/bridge'
 import { httpApiStatus } from './services/httpapi'
@@ -480,6 +481,8 @@ if (!gotLock) {
     shutdownAcp()
     // S0 G2：diff worker 线程收口（worker 无子进程，terminate 即完整清理）
     stopDiffWorker()
+    // S0 G3：观测 worker 收口（先 close 让库连接正常收尾，超时即 terminate）
+    stopObservationWorker()
     globalShortcut.unregisterAll()
     accessServer.stop()
   })
