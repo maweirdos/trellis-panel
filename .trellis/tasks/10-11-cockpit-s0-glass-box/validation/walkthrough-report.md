@@ -31,6 +31,8 @@
 
 **2026-10-13 第二轮（resume 已有会话，验证器指定路径）**：用已存在 session 文件的会话 `codex_01a0cd77`（current_task=09-23-spec-code-health，任务目录存活）经 `codex exec --sandbox read-only resume` 共 6 次派发 trellis 子代理：
 
+**第三轮（codex 0.162.1 升级重试）**：将 codex CLI 临时升级至 0.162.1（最新）重试 resume 派发 3 次——子代理均正确完成任务（读出 prd 首行），armed 出现（模块加载）但经 handler 级键值诊断证实 **SubagentStart 处理器零进入**：armed 来自 PreToolUse 分支（子代理读文件时），非 SubagentStart。**结论升级：codex exec 模式对 collab 子代理不派发 SubagentStart 事件是跨版本（0.159.2/0.162.1）的宿主设计，非版本缺陷**。CLI 已回滚至 0.159.2，诊断已移除，hook-emitter 117 项复验全绿。
+
 - 子代理**真实派发且正确完成**（其中一次准确读出目标 prd.md 首行「# 规范与实现一致性健康检查」，collab: Wait 可见）。
 - **SubagentStart 项目 hook 在 collab 派发路径上未触发**：6 次中 0 次执行（TRELLIS_ARM_DEBUG/TRELLIS_INPUT_DEBUG 双诊断零记录；此前轮次曾偶发 1 次 armed 但未达落账）。对照：同一会话的 UserPromptSubmit 项目 hook **每次都执行**（用户级 hooks.json 为空 `{"hooks":{}}`，排除了来源混淆），项目 trust_level=trusted、features.hooks=true、两钩子均有审批记录——即配置面全部就绪。
 - 结论：**codex CLI 0.159.2 exec 模式的 collab 子代理派发不（稳定）触发项目级 SubagentStart hook，属上游宿主行为缺口**，非本项目实现缺陷。与 G1-C 的 blocked_external 同类。

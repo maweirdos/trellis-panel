@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | AC1 | FR1 三入口一致；JSON 原值可见；清单真实行号 | **passed（夹具级 + 自动化走查）/ 部分留用户（1280/1920 截图、项目外文件、高缩放）** | task-reader 57 项 + reader-wiring 41 项；walkthrough-report.md §reader（预览/展开/Esc 层级/视图切换/宽度偏好实测，截图 02/03） |
 | AC2 | FR1 连续保存不重置；会话草稿+最近提交比较；坏文件/无 Git 降级 | **passed（夹具级 + 自动化走查核心项）** | reading-session 59 项；walkthrough-report.md：外部改盘→「当前阅读任务有更新」提示出现且正文未跳→阅读新版干净切换（真实应用实测） |
-| AC3 | FR2 认证宿主 assembled/emitted 可配对；输出失败无 emitted；观测失败不改 stdout | **真实仓库闭环 passed（直调形态）；宿主进程内触发 not_run（上游缺口：codex exec 0.159.2 collab 派发不触发项目 SubagentStart hook，6 次实测 0 触发；配置面全部就绪）** | hook-emitter 117 项 + walkthrough-report.md：真实绑定→真实 hook→assembled+emitted 成对落库（taskRef 解析到本任务）→面板实时显示「已输出至宿主通道」（截图 03，DB 留存 2 条真实事件）。宿主缺口调查（两轮、含 resume 已有会话的指定路径）与用户关闭路径见报告 |
+| AC3 | FR2 认证宿主 assembled/emitted 可配对；输出失败无 emitted；观测失败不改 stdout | **真实仓库闭环 passed（直调形态）；宿主进程内触发 not_run（上游设计：codex exec 对 collab 子代理不派发 SubagentStart——0.159.2 与 0.162.1 双版本实测确认，handler 级诊断证实零进入）** | hook-emitter 117 项 + walkthrough-report.md 三轮调查：真实绑定→真实 hook→assembled+emitted 成对落库（taskRef 解析到本任务）→面板实时显示（截图 03，DB 留存）。CLI 临时升级 0.162.1 排除版本缺陷后已回滚；用户关闭路径：Codex TUI（解锁后）/ 桌面版 |
 | AC4 | FR2 并发/重复/锁/容量/旧 schema/禁用恢复 | **passed** | observability-store 82 项（真实 worker 线程+node:sqlite）；跨进程语义另证于 g1b 探针 |
 | AC5 | FR3 多任务/项目/归档不串线；状态/活动/归档独立；不伪造阶段 | **passed** | receipt-projection 41 项 + task-identity/archive 冒烟；真实多 worktree 场景待走查（边缘） |
 | AC6 | FR4 重复点击/中断恢复可恢复；PRD 来源真实；归档与流转分离 | **passed（夹具级 + 真实工单全链）** | jira-local-task 77 项 + light-task-metrics 18 项；**真实闭环（2026-10-13）**：真实工单 HONSKY-984 点击「在当前项目创建任务」→ 本地任务创建（panel_* 溯源 meta 全链：issueKey/issueId/operationId/updatedAtMs）→ PRD 草稿含来源链接与「待结合本机代码确认」→ 重复点击防重（该行变「打开本地任务」，68→67）→ task.py archive 归档完成。真实计量：新增管理动作 1（一次点击）、重复录入 0、重复确认 0（目标 0/0/≤2 达成） |
