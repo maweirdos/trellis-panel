@@ -29,10 +29,14 @@
 
 ## 真实 Codex 宿主（codex exec 0.159.2）尝试记录
 
-- `codex exec --sandbox read-only` 派发 trellis-research：**UserPromptSubmit hook 真实执行**（宿主日志可见），子代理真实完成；但未落回执。
-- 根因（已定位）：新 codex 会话无 `.trellis/.runtime/sessions/codex_<id>.json`（current_task 未绑定）→ SubagentStart 处理器 `require_existing=True` 保护性早退；且该次 collab 派发未见 SubagentStart 触发日志。**arm 与绑定均正常**（TRELLIS_ARM_DEBUG 诊断输出 `armed`）。
-- **用户复现路径**：面板里把任务设为当前（会话绑定后 UserPromptSubmit 会写 session 文件）→ 在 Codex 里让主代理派 trellis 子代理 → 回执自然落库。
-- 结论：AC3「真实宿主进程内触发」仍标 not_run（诚实）；「真实仓库+真实绑定+真实 hook 的注入回执闭环」**已通过**（直调形态）。
+**2026-10-13 第二轮（resume 已有会话，验证器指定路径）**：用已存在 session 文件的会话 `codex_01a0cd77`（current_task=09-23-spec-code-health，任务目录存活）经 `codex exec --sandbox read-only resume` 共 6 次派发 trellis 子代理：
+
+- 子代理**真实派发且正确完成**（其中一次准确读出目标 prd.md 首行「# 规范与实现一致性健康检查」，collab: Wait 可见）。
+- **SubagentStart 项目 hook 在 collab 派发路径上未触发**：6 次中 0 次执行（TRELLIS_ARM_DEBUG/TRELLIS_INPUT_DEBUG 双诊断零记录；此前轮次曾偶发 1 次 armed 但未达落账）。对照：同一会话的 UserPromptSubmit 项目 hook **每次都执行**（用户级 hooks.json 为空 `{"hooks":{}}`，排除了来源混淆），项目 trust_level=trusted、features.hooks=true、两钩子均有审批记录——即配置面全部就绪。
+- 结论：**codex CLI 0.159.2 exec 模式的 collab 子代理派发不（稳定）触发项目级 SubagentStart hook，属上游宿主行为缺口**，非本项目实现缺陷。与 G1-C 的 blocked_external 同类。
+- **用户关闭路径**（保持 not_run，注明根因）：① 在 Codex 交互 TUI 中 `/hooks` 复审后正常使用（TUI 路径的 SubagentStart 触发未测）；或 ② 等 codex CLI 修复 collab 派发的 SubagentStart 触发；或 ③ ChatGPT 桌面版 Codex（内置旧版 CLI，行为可能不同）。任一宿主内派一次 trellis 子代理即完成。
+
+第一轮记录（保留）：`codex exec` 新会话派发——UserPromptSubmit hook 执行、子代理完成；新会话无 session 文件时 SubagentStart 处理器按设计保护性早退。
 
 ## 证据文件
 
