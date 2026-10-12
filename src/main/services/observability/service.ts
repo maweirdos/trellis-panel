@@ -1,6 +1,5 @@
 import { Worker } from 'node:worker_threads'
 import { randomUUID } from 'node:crypto'
-import { dirname, join } from 'node:path'
 import {
   observationQueryRequestSchema,
   observationScopeSchema,
@@ -28,6 +27,7 @@ import {
   type PanelBinding
 } from './identity'
 import { redactText, type StoreBindingContext, type StoreLimits, type VerifyAliasesResult } from './store-core'
+import { neighborWorkerFile } from '../worker-path'
 import type { ObservationWorkerRequest, ObservationWorkerResponse } from './observation-worker'
 import { readTrellisTaskId, scanKnownTaskDirs, taskRefFor, observationRuntimeExists } from '../task-identity'
 
@@ -104,11 +104,8 @@ class ObservationWorkerError extends Error {}
 class ObservationAbortedError extends Error {}
 
 function resolveWorkerFile(): string {
-  const fromEnv = process.env[OBSERVATION_WORKER_FILE_ENV]
-  if (typeof fromEnv === 'string' && fromEnv.trim().length > 0) return fromEnv
-  // electron-vite 主进程产物为 CJS（out/main/index.js），worker 产物按构建配置同名邻位
-  if (typeof __filename === 'string') return join(dirname(__filename), 'observation-worker.js')
-  throw new Error(`observation worker 文件未定位（当前为 ESM 运行环境）：请设置 ${OBSERVATION_WORKER_FILE_ENV}`)
+  // 邻位产物；打包环境（asar）由 helper 重写到 app.asar.unpacked（worker_threads 不能从 asar 加载）
+  return neighborWorkerFile('observation-worker.js', OBSERVATION_WORKER_FILE_ENV)
 }
 
 function killWorker(reason: Error): void {

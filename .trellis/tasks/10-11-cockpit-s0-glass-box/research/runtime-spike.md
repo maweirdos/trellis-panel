@@ -29,7 +29,7 @@ SQLite 双生产者方案在开发机语义成立，**继续采用**；不切换
 
 ## 4. 未覆盖（后续验证登记）
 
-- [ ] 打包（asar/dist:dir）内 node:sqlite + worker 线程加载（G1-B 关键剩余项）。
+- [x] **打包（dist:dir）验证已完成（G1-B，2026-10-12）**：随包 Electron 44.4.3（Node 24.21.0 / sqlite 3.53.4）内 node:sqlite 可用；`app.asar.unpacked/out/main/observation-worker.js` 经 worker_threads 真实加载并跑通 init/insert/query/health 全协议（探针 `g1b-packaged-probe.mjs`，5/5 通过）。修复随验证落地：asarUnpack `out/main/*-worker.js` + `services/worker-path.ts` asar 路径重写（worker_threads 不能从 asar 内加载）+ 排除散落的 `out/worker-only`。
 - [ ] 真实宿主 stdout 序列化/write/flush 边界 + BrokenPipe/序列化错误注入（G1-A 剩余项，需 Hook 改造后进行）。
 - [ ] 真实 Hook 并发与开销采样（≥200 次 on/off，G4 定稿）。
-- [ ] 迁移备份/库损坏/容量与保留策略实现后的故障矩阵（G3）。
+- [ ] 迁移备份/库损坏/容量与保留策略实现后的故障矩阵（G3 一片冒烟已覆盖 82 项，Electron 进程内长跑待走查）。

@@ -1,5 +1,5 @@
 import { Worker } from 'node:worker_threads'
-import { dirname, join, relative as pathRelative, sep } from 'node:path'
+import { relative as pathRelative, sep } from 'node:path'
 import {
   DOCUMENT_DIFF_CONTEXT_LINES,
   DOCUMENT_DIFF_SIDE_LIMIT_BYTES,
@@ -14,6 +14,7 @@ import {
 import { IpcErrorCode, ipcFail } from '../../../shared/ipc-errors'
 import { latestCommitBaseline, type GitBaseline, type GitBaselineFailureStatus } from './git-baseline'
 import { realRootOf, resolveAuthorizedDocumentPath } from './paths'
+import { neighborWorkerFile } from '../worker-path'
 import type { DiffWorkerRequest, DiffWorkerResponse, UnifiedDiffCore } from './diff-worker'
 
 /**
@@ -57,11 +58,8 @@ interface PendingEntry {
 const pending = new Map<number, PendingEntry>()
 
 function resolveWorkerFile(): string {
-  const fromEnv = process.env[DIFF_WORKER_FILE_ENV]
-  if (typeof fromEnv === 'string' && fromEnv.trim().length > 0) return fromEnv
-  // electron-vite 主进程产物为 CJS（out/main/index.js），worker 产物按构建配置同名邻位
-  if (typeof __filename === 'string') return join(dirname(__filename), 'diff-worker.js')
-  throw new Error(`diff worker 文件未定位（当前为 ESM 运行环境）：请设置 ${DIFF_WORKER_FILE_ENV}`)
+  // 邻位产物；打包环境（asar）由 helper 重写到 app.asar.unpacked（worker_threads 不能从 asar 加载）
+  return neighborWorkerFile('diff-worker.js', DIFF_WORKER_FILE_ENV)
 }
 
 function settleOk(id: number, core: UnifiedDiffCore): void {
