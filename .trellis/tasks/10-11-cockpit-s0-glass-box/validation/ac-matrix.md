@@ -9,7 +9,7 @@
 | AC3 | FR2 认证宿主 assembled/emitted 可配对；输出失败无 emitted；观测失败不改 stdout | **真实仓库闭环 passed（直调形态）；宿主进程内触发 not_run（上游缺口：codex exec 0.159.2 collab 派发不触发项目 SubagentStart hook，6 次实测 0 触发；配置面全部就绪）** | hook-emitter 117 项 + walkthrough-report.md：真实绑定→真实 hook→assembled+emitted 成对落库（taskRef 解析到本任务）→面板实时显示「已输出至宿主通道」（截图 03，DB 留存 2 条真实事件）。宿主缺口调查（两轮、含 resume 已有会话的指定路径）与用户关闭路径见报告 |
 | AC4 | FR2 并发/重复/锁/容量/旧 schema/禁用恢复 | **passed** | observability-store 82 项（真实 worker 线程+node:sqlite）；跨进程语义另证于 g1b 探针 |
 | AC5 | FR3 多任务/项目/归档不串线；状态/活动/归档独立；不伪造阶段 | **passed** | receipt-projection 41 项 + task-identity/archive 冒烟；真实多 worktree 场景待走查（边缘） |
-| AC6 | FR4 重复点击/中断恢复可恢复；PRD 来源真实；归档与流转分离 | **passed（夹具级，真实 CLI）/ not_run（真实 Jira）** | jira-local-task 77 项（恢复矩阵真实 python+task.py）+ light-task-metrics 18 项；真实工单点击待用户 |
+| AC6 | FR4 重复点击/中断恢复可恢复；PRD 来源真实；归档与流转分离 | **passed（夹具级 + 真实工单全链）** | jira-local-task 77 项 + light-task-metrics 18 项；**真实闭环（2026-10-13）**：真实工单 HONSKY-984 点击「在当前项目创建任务」→ 本地任务创建（panel_* 溯源 meta 全链：issueKey/issueId/operationId/updatedAtMs）→ PRD 草稿含来源链接与「待结合本机代码确认」→ 重复点击防重（该行变「打开本地任务」，68→67）→ task.py archive 归档完成。真实计量：新增管理动作 1（一次点击）、重复录入 0、重复确认 0（目标 0/0/≤2 达成） |
 | AC7 | FR5 两版本 Jira 基线 + hook 性能报告 | **部分：性能 passed（夹具口径见 performance.md）；Jira blocked_external** | 性能采样 200 对×2 档（直调口径，非真实宿主）；公司 Jira 权限未验证（jira-baseline.md §3 登记） |
 | AC8 | 全部：typecheck/build/既有测试/无回归/三档尺寸/焦点 Esc | **passed（机器 + Esc/宽度走查）/ 1280/1920 截图与高缩放留用户** | typecheck+build+15 套冒烟全绿；chat/tpap 既有失败经干净树复现隔离（known-issues）；Esc 逐层退出实测通过（walkthrough-report.md §5）；1440 收起规则实证（innerWidth=1360 时右栏默认收起） |
 | AC9 | FR2 干净/用户修改项目的安装/升级/禁用/回退；另一开发可接入 | **blocked_external** | 上游 `mindfold-ai/trellis` PR 未发起；本地实验完成（host-distribution.md §6）；按 implement.md 规则 AC9 不得由本地实验关闭 |
@@ -27,6 +27,6 @@
 
 1. ~~`npm run dev` 走查~~ → **已自动化完成主体**；剩：1280/1920 窗口截图、高缩放、项目外文件、AcpConsole compact 目检（可选，低风险）。
 2. ~~启用观测绑定跑真实会话~~ → **绑定与真实回执闭环已通过**（面板里点过绑定、真实 hook 已落 assembled+emitted）；AC3 宿主半边经两轮实测（含 resume 指定路径）确认被 **codex CLI 0.159.2 上游缺口**挡住（collab 派发不触发 SubagentStart hook，配置全就绪）——关闭路径：Codex TUI `/hooks` 复审后派一次 / 等 CLI 修复 / 桌面版宿主。
-3. Jira 页用真实工单点一次"在当前项目创建任务"（AC6 真实半边 + 轻任务计量录制）。
+3. ~~Jira 页用真实工单点一次"在当前项目创建任务"~~ → **已完成（2026-10-13，应用内代执行）**：真实工单 HONSKY-984 全链通过并归档，计量 1/0/0 达标（见 AC6 行）。
 4. 指定试点人选（08 决策第 2 项）→ G5 试点。
 5. 决定是否发起上游 PR（关闭 AC9 的唯一路径）。

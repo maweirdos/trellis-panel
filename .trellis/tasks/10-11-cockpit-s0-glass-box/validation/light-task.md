@@ -51,3 +51,10 @@
 - fixture 的 Jira 传输层为 mock：真实公司 Jira 的分页协议/字段权限/速率限制未测（见 validation/jira-baseline.md §3 blocked_external）。
 - fixture 计数是服务侧事件枚举，不含真实人工操作时间（阅读/编码/外部等待单列属 FR4 口径，待真实走查补充）。
 - UI 交互层（按钮 in-flight 防抖、错误分级 toast、样本标注）为静态实现 + typecheck/build 验证，无自动化 UI 测试；真实点击走查见 §3。
+
+## 真实工单录制（2026-10-13，应用内执行）
+
+- 工单：HONSKY-984（数字 ID 11964）；动作链：Jira 页点击「在当前项目创建任务」一次 → 任务创建+跳转 → 回 Jira 页验证防重（该行变「打开本地任务」，创建按钮 68→67）→ task.py archive 归档（含 --skip-branch-validation，走查任务无分支）。
+- **真实计量**：新增重复录入 **0**、同范围重复确认 **0**、新增管理动作 **1**（单次点击）——目标 0/0/≤2 达成。
+- 产物：`.trellis/tasks/archive/2026-10/10-13-HONSKY-984-HONSKY-984-集成-pacs对接/`（prd.md 含来源链接/更新时间/原文描述与「待结合本机代码确认」标注；task.json 含 panel_* 溯源 meta 全链）。
+- 未含：Jira 状态流转（按设计为显式手动动作，本链未执行，归档与流转分离原则保持）。

@@ -1,0 +1,32 @@
+{
+  "id": "HONSKY-984-HONSKY-984-集成-pacs对接",
+  "name": "HONSKY-984-HONSKY-984-集成-pacs对接",
+  "title": "[HONSKY-984] 【集成】pacs对接",
+  "description": "【集成】pacs对接",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "maweirdos",
+  "assignee": "maweirdos",
+  "createdAt": "2026-10-13",
+  "completedAt": "2026-10-13",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "panel_operation_id": "op-5791de6881b6b8c6e4ef662a60785412",
+    "panel_jira_instance_id": "jira-4f60561723a31c7d",
+    "panel_jira_issue_key": "HONSKY-984",
+    "panel_jira_issue_id": "11964",
+    "panel_source_updated_at_ms": "1791796757000"
+  }
+}
