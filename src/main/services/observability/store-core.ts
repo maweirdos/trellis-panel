@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS task_aliases (
   firstSeenMs INTEGER NOT NULL,
   updatedAtMs INTEGER NOT NULL
 );
--- source_links / local_operations：G4 才有业务；本片仅建表（清理观测不得触碰）。
+-- source_links / local_operations：G4 起有业务（LocalTaskService 写入；清理观测不得触碰）。
 CREATE TABLE IF NOT EXISTS source_links (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   workspaceId TEXT NOT NULL,
@@ -147,6 +147,11 @@ CREATE TABLE IF NOT EXISTS local_operations (
   updatedAtMs INTEGER NOT NULL
 );
 `
+/**
+ * 控制库 v1 DDL（G4 起导出复用）：LocalTaskService 以独立连接打开同一 control.sqlite，
+ * 必须与观测 worker 建库用同一份表结构，保持单一 schema 权威。
+ */
+export const CONTROL_SCHEMA_V1_DDL = CTRL_SCHEMA_V1
 
 /** 迁移框架：登记表 + 迁移期间暂停采集（design §4.3「迁移暂停采集」）。 */
 const OBS_MIGRATIONS: Array<{ toVersion: number; up: (db: DatabaseSync) => void }> = [
@@ -270,7 +275,9 @@ export class ObservationStoreCore {
     let db: DatabaseSync | null = null
     try {
       db = new DatabaseSync(path)
-      db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;')
+      // busy_timeout 与 Python Hook 生产者的 5ms 预算不同：这是 worker 侧对
+      // 短暂锁竞争的有限等待（与 control 连接对称，G4-1 check P2）
+      db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA busy_timeout=2000;')
     } catch (e) {
       // 打开/PRAGMA 即失败：必须关闭句柄（Windows 上残留句柄会让重建 rename 报 EBUSY）
       if (db !== null) {
@@ -379,7 +386,8 @@ export class ObservationStoreCore {
     let db: DatabaseSync | null = null
     try {
       db = new DatabaseSync(path)
-      db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;')
+      // busy_timeout 与主进程 LocalControlStore 对称：双写者短事务共存（G4-1 check P2）
+      db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA busy_timeout=2000;')
     } catch (e) {
       if (db !== null) {
         try {
@@ -1047,28 +1055,7 @@ export class ObservationStoreCore {
   /** 记录/刷新已核实目录（调用方断言的明确移动关系：旧目录进 priorDirs）。 */
   recordTaskAlias(taskRef: string, trellisTaskId: string | null, dir: string): TaskAliasRecord {
     if (this.ctrl === null) throw new Error('control store unavailable')
-    const now = Date.now()
-    const existing = this.ctrl.prepare('SELECT * FROM task_aliases WHERE taskRef=?').get(taskRef) as
-      | (Omit<TaskAliasRecord, 'priorDirs' | 'pendingCandidates'> & { priorDirsJson: string; pendingCandidatesJson: string | null })
-      | undefined
-    if (existing === undefined) {
-      this.ctrl
-        .prepare(
-          'INSERT INTO task_aliases(taskRef, trellisTaskId, currentDir, priorDirsJson, status, pendingCandidatesJson, firstSeenMs, updatedAtMs) VALUES(?,?,?,?,?,?,?,?)'
-        )
-        .run(taskRef, trellisTaskId, dir, '[]', 'verified', null, now, now)
-    } else if (existing.currentDir !== dir) {
-      const prior = JSON.parse(existing.priorDirsJson) as string[]
-      if (!prior.includes(existing.currentDir)) prior.push(existing.currentDir)
-      this.ctrl
-        .prepare('UPDATE task_aliases SET trellisTaskId=?, currentDir=?, priorDirsJson=?, status=?, pendingCandidatesJson=NULL, updatedAtMs=? WHERE taskRef=?')
-        .run(trellisTaskId, dir, JSON.stringify(prior), 'verified', now, taskRef)
-    } else {
-      this.ctrl
-        .prepare('UPDATE task_aliases SET trellisTaskId=?, status=?, pendingCandidatesJson=NULL, updatedAtMs=? WHERE taskRef=?')
-        .run(trellisTaskId, 'verified', now, taskRef)
-    }
-    const record = this.getTaskAlias(taskRef)
+    const record = upsertTaskAliasRecord(this.ctrl, taskRef, trellisTaskId, dir)
     if (record === null) throw new Error('control store unavailable')
     return record
   }
@@ -1144,6 +1131,62 @@ export class ObservationStoreCore {
 }
 
 /* ---------------- 内部 ---------------- */
+
+/**
+ * task_aliases 读取（G4 起独立导出）：LocalTaskService 的独立控制库连接复用
+ * 同一行→记录映射，别名口径单一来源。
+ */
+export function readTaskAliasRecord(db: DatabaseSync, taskRef: string): TaskAliasRecord | null {
+  const row = db.prepare('SELECT * FROM task_aliases WHERE taskRef=?').get(taskRef) as
+    | (Omit<TaskAliasRecord, 'priorDirs' | 'pendingCandidates'> & { priorDirsJson: string; pendingCandidatesJson: string | null })
+    | undefined
+  if (row === undefined) return null
+  return {
+    taskRef: row.taskRef,
+    trellisTaskId: row.trellisTaskId,
+    currentDir: row.currentDir,
+    priorDirs: JSON.parse(row.priorDirsJson) as string[],
+    status: row.status,
+    pendingCandidates: row.pendingCandidatesJson ? (JSON.parse(row.pendingCandidatesJson) as string[]) : [],
+    firstSeenMs: row.firstSeenMs,
+    updatedAtMs: row.updatedAtMs
+  }
+}
+
+/**
+ * task_aliases upsert（G4 起独立导出，ObservationStoreCore.recordTaskAlias 同款语义）：
+ * 记录/刷新已核实目录（调用方断言的明确移动关系：旧目录进 priorDirs）。
+ */
+export function upsertTaskAliasRecord(
+  db: DatabaseSync,
+  taskRef: string,
+  trellisTaskId: string | null,
+  dir: string
+): TaskAliasRecord | null {
+  const now = Date.now()
+  const existing = db.prepare('SELECT * FROM task_aliases WHERE taskRef=?').get(taskRef) as
+    | (Omit<TaskAliasRecord, 'priorDirs' | 'pendingCandidates'> & { priorDirsJson: string; pendingCandidatesJson: string | null })
+    | undefined
+  if (existing === undefined) {
+    db.prepare(
+      'INSERT INTO task_aliases(taskRef, trellisTaskId, currentDir, priorDirsJson, status, pendingCandidatesJson, firstSeenMs, updatedAtMs) VALUES(?,?,?,?,?,?,?,?)'
+    ).run(taskRef, trellisTaskId, dir, '[]', 'verified', null, now, now)
+  } else if (existing.currentDir !== dir) {
+    const prior = JSON.parse(existing.priorDirsJson) as string[]
+    if (!prior.includes(existing.currentDir)) prior.push(existing.currentDir)
+    db.prepare(
+      'UPDATE task_aliases SET trellisTaskId=?, currentDir=?, priorDirsJson=?, status=?, pendingCandidatesJson=NULL, updatedAtMs=? WHERE taskRef=?'
+    ).run(trellisTaskId, dir, JSON.stringify(prior), 'verified', now, taskRef)
+  } else {
+    db.prepare('UPDATE task_aliases SET trellisTaskId=?, status=?, pendingCandidatesJson=NULL, updatedAtMs=? WHERE taskRef=?').run(
+      trellisTaskId,
+      'verified',
+      now,
+      taskRef
+    )
+  }
+  return readTaskAliasRecord(db, taskRef)
+}
 
 interface EventRow {
   seq: number

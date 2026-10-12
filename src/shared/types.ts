@@ -294,9 +294,94 @@ export interface JiraIssue {
   fixVersions: string[]
 }
 
+/** G4：带稳定 ID 的 fixVersion（JiraIssue.fixVersions 保留纯名字供既有 UI 使用）。 */
+export interface JiraFixVersionRef {
+  id: string
+  name: string
+}
+
+/**
+ * G4 扩充字段的 Jira issue（design §7.1）：issueId/issueTypeId/fixVersionId/
+ * description/updatedAtMs。由分页查询（jiraSearchPaged）产出；服务层契约，
+ * 本片不接 IPC（UI 属第二片）。
+ */
+export interface JiraIssueDetail extends JiraIssue {
+  /** Jira 数字稳定 issue id；服务端未返回时为 null */
+  issueId: number | null
+  issueTypeId: string
+  issueTypeName: string
+  fixVersionDetails: JiraFixVersionRef[]
+  /** 服务端返回的完整描述（wiki 标记/纯文本原样）；未请求到为 null */
+  description: string | null
+  /** 从 `updated` 显式解析校验出的 Unix 毫秒；缺失/非法为 null */
+  updatedAtMs: number | null
+}
+
 export interface JiraTransition {
   id: string
   name: string
+  /** 该 transition 的目标状态名（Jira `to.name`）；服务端未带则缺省 */
+  toStatusName?: string
+}
+
+/* ---------- G4：Jira 分页查询与基线口径（design §7.1） ---------- */
+
+export type JiraPaginationKind = 'startAt_total' | 'nextPageToken' | 'unknown'
+export type JiraSearchIncompleteReason = 'max_pages' | 'page_failed' | 'cancelled' | null
+
+/** 单次分页查询的完整性口径：不能只看 total==抓取数。 */
+export interface JiraPagedSearchMeta {
+  jql: string
+  paginationKind: JiraPaginationKind
+  pagesFetched: number
+  /** 服务端报告的总数（startAt 协议）；token 协议可能为 null */
+  serverTotal: number | null
+  /** 去重后的取回数 */
+  retrievedCount: number
+  /** 跨页重复（issueId/key 去重掉的条数） */
+  duplicateCount: number
+  /** 明知不完整（达最大页数/页失败）→ 结果只是样本 */
+  sample: boolean
+  incompleteReason: JiraSearchIncompleteReason
+  cancelled: boolean
+  /** 采集期间服务端 total 变化（startAt 协议可观测；token 协议不可验证为 null） */
+  changedDuringCollection: boolean | null
+  startedAtMs: number
+  endedAtMs: number
+}
+
+export interface JiraPagedSearchResult {
+  ok: boolean
+  error?: string
+  issues: JiraIssueDetail[]
+  meta: JiraPagedSearchMeta
+}
+
+/** 单版本类型分布（FR5：按 fixVersion 独立查询计数）。 */
+export interface JiraVersionTypeCount {
+  issueTypeId: string
+  issueTypeName: string
+  count: number
+}
+
+export interface JiraVersionDistribution {
+  versionId: string
+  versionName: string
+  ok: boolean
+  error?: string
+  meta: JiraPagedSearchMeta
+  /** 该版本内去重后的工单数（多版本工单分别计入各自版本） */
+  issueCount: number
+  byType: JiraVersionTypeCount[]
+}
+
+/** 跨版本汇总另按 issueId/key 去重（design §7.1）。 */
+export interface JiraDistributionResult {
+  versions: JiraVersionDistribution[]
+  crossVersionUniqueCount: number
+  crossVersionByType: JiraVersionTypeCount[]
+  startedAtMs: number
+  endedAtMs: number
 }
 
 /* ---------- GitLab connector (pluggable VCS provider) ---------- */

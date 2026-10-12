@@ -9,6 +9,8 @@ import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
 import { updateTaskRecordAt } from '../services/scan'
 import { buildHandoffPackage, readPrdContent } from '../services/handoff'
 import { getSettings } from '../services/store'
+import { createOrOpenTaskFromJira } from '../services/local-task'
+import { jiraInstanceIdFor } from '../services/jira-instance'
 import {
   getProjectRoot,
   getSnapshot,
@@ -81,7 +83,57 @@ export function registerTasksIpc(): void {
 
   handle(ipcInvoke.task.delete, (_e, taskDir: string, expectedMtime?: number) => deleteTaskRecord(taskDir, expectedMtime))
 
-  handle(ipcInvoke.task.createFromJira, (_e, input) => createTaskRecord(input))
+  /**
+   * G4：Jira → 本地任务统一走 LocalTaskService（design §7.2 单一创建器）：
+   * task.py create --no-start + --meta 扁平恢复标识 + 最小 PRD 来源草稿；
+   * 重复点击默认打开已有任务；显式 allowAdditional 才产生一单多任务新增序号。
+   * 兼容旧入参（dirName/title/description/jiraKey/jiraUrl），新增 issueId/
+   * fullDescription/updatedAtMs/allowAdditional（UI 第二片接入）。
+   */
+  handle(ipcInvoke.task.createFromJira, async (_e, input) => {
+    const root = getProjectRoot()
+    if (!root) return noProject()
+    const jira = getSettings().jira
+    const raw = (input ?? {}) as Record<string, unknown>
+    const issueKey = String(raw.jiraKey ?? '').trim()
+    if (issueKey === '') return ipcFail(IpcErrorCode.InvalidArg, '缺少 jiraKey')
+    const issueIdRaw = raw.issueId
+    const issueId =
+      typeof issueIdRaw === 'number' && Number.isSafeInteger(issueIdRaw) && issueIdRaw > 0
+        ? issueIdRaw
+        : null
+    const updatedAtRaw = raw.updatedAtMs
+    const updatedAtMs =
+      typeof updatedAtRaw === 'number' && Number.isSafeInteger(updatedAtRaw) && updatedAtRaw > 0 ? updatedAtRaw : null
+    const fullDescription = typeof raw.fullDescription === 'string' ? raw.fullDescription : null
+    const res = await createOrOpenTaskFromJira({
+      root,
+      instanceId: jiraInstanceIdFor(jira.baseUrl, jira.user),
+      issueKey,
+      issueId,
+      title: String(raw.title ?? `[${issueKey}]`),
+      summaryDescription: String(raw.description ?? ''),
+      description: fullDescription,
+      url: String(raw.jiraUrl ?? ''),
+      updatedAtMs,
+      priority: (['P0', 'P1', 'P2', 'P3'] as const).includes(raw.priority as 'P0') ? (raw.priority as 'P0') : 'P2',
+      assignee: String(raw.assignee ?? ''),
+      slug: typeof raw.dirName === 'string' && raw.dirName.trim() !== '' ? slugifyTitle(raw.dirName) : undefined,
+      allowAdditional: raw.allowAdditional === true,
+      fetchedAtMs: Date.now()
+    })
+    if (!res.ok) {
+      const code =
+        res.code === 'invalid'
+          ? IpcErrorCode.InvalidArg
+          : res.code === 'conflict'
+            ? IpcErrorCode.Conflict
+            : IpcErrorCode.Io
+      return ipcFail(code, res.error)
+    }
+    if (res.created) sendSnapshot()
+    return { ok: true as const, dirName: res.dirName, created: res.created, already: res.already }
+  })
 
   handle(ipcInvoke.task.create, (_e, input: { title: string; description: string; priority: string }) => {
     const dirName = slugifyTitle(input.title)
