@@ -1,6 +1,6 @@
 # 实施计划 · 驾驶舱 S0 v2
 
-状态：规划；下面所有实施/发布检查尚未执行。对应 [PRD](prd.md) 与 [design](design.md)。本文件写执行顺序，不替代 implement.jsonl/check.jsonl 上下文清单。
+状态：**实施推进中（2026-10-12）**——G0/G1-A/B/G2 三片/G3 两片/G4 两片/Hook 生产者实验/性能采样已完成并提交（机器可验证部分全绿）；G1-C 分发（AC9）与 G5 试点（AC10）依赖外部条件，如实保持未完成。**逐项状态以 [validation/ac-matrix.md](validation/ac-matrix.md) 为准**（勾选框不再逐条回填，避免双份真相）。对应 [PRD](prd.md) 与 [design](design.md)。本文件写执行顺序，不替代 implement.jsonl/check.jsonl 上下文清单。
 
 ## 1. 开工与阶段规则
 
