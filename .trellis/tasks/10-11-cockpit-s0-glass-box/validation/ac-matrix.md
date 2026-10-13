@@ -12,8 +12,8 @@
 | AC6 | FR4 重复点击/中断恢复可恢复；PRD 来源真实；归档与流转分离 | **passed（夹具级 + 真实工单全链）** | jira-local-task 77 项 + light-task-metrics 18 项；**真实闭环（2026-10-13）**：真实工单 HONSKY-984 点击「在当前项目创建任务」→ 本地任务创建（panel_* 溯源 meta 全链：issueKey/issueId/operationId/updatedAtMs）→ PRD 草稿含来源链接与「待结合本机代码确认」→ 重复点击防重（该行变「打开本地任务」，68→67）→ task.py archive 归档完成。真实计量：新增管理动作 1（一次点击）、重复录入 0、重复确认 0（目标 0/0/≤2 达成） |
 | AC7 | FR5 两版本 Jira 基线 + hook 性能报告 | **部分：性能 passed（夹具口径见 performance.md）；Jira blocked_external** | 性能采样 200 对×2 档（直调口径，非真实宿主）；公司 Jira 权限未验证（jira-baseline.md §3 登记） |
 | AC8 | 全部：typecheck/build/既有测试/无回归/三档尺寸/焦点 Esc | **passed（机器 + Esc/宽度走查）/ 1280/1920 截图与高缩放留用户** | typecheck+build+15 套冒烟全绿；chat/tpap 既有失败经干净树复现隔离（known-issues）；Esc 逐层退出实测通过（walkthrough-report.md §5）；1440 收起规则实证（innerWidth=1360 时右栏默认收起） |
-| AC9 | FR2 干净/用户修改项目的安装/升级/禁用/回退；另一开发可接入 | **blocked_external** | 上游 `mindfold-ai/trellis` PR 未发起；本地实验完成（host-distribution.md §6）；按 implement.md 规则 AC9 不得由本地实验关闭 |
-| AC10 | FR5 2 开发+1 协作者试点；新增负担与维护时间记录 | **not_run（人选未定）** | 08 决策第 2 项待用户指定；走查清单已备（light-task.md/reader.md/observability.md §4） |
+| AC9 | FR2 干净/用户修改项目的安装/升级/禁用/回退；另一开发可接入 | **blocked_external** | 上游 `mindfold-ai/trellis` PR 未发起；本地实验完成（host-distribution.md §6）；按 implement.md 规则 AC9 不得由本地实验关闭。**2026-10-13 备件就绪**：英文 PR 草稿两份（research/upstream-pr-draft.md，本地未推送）——用户选"发"则过目后按检查单提交，选"不发"则作废走本地维护 |
+| AC10 | FR5 2 开发+1 协作者试点；新增负担与维护时间记录 | **not_run（人选未定）** | 08 决策第 2 项待用户指定；走查清单已备（light-task.md/reader.md/observability.md §4）。**2026-10-13 备件就绪**：安装包 `release/TrellisPanel-Setup-0.1.0.exe`（140MB NSIS，gitignored）+ 试点速览一页纸（pilot-quickstart.md）——用户回复名单即可转发启动 |
 
 ## 结论
 

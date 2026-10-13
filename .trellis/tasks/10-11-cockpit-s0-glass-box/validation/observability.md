@@ -5,7 +5,7 @@
 ## 1. 实验口径（如实声明）
 
 - **全部为本地实验/夹具验证**：观测事件由冒烟脚本按 shared/observability v1 契约构造（`scripts/smoke/observability-store.mjs` 的 `makeEvent` / `scripts/smoke/receipt-projection.mjs` 的 `mkItem`），经真实 worker 线程 + `node:sqlite` 落库后读回，或直接驱动纯投影函数。
-- **真实 Hook 生产者不存在**：`blocked_external`——上游模板改造与发布未开始（G1-C，见 research/host-distribution.md §4）。因此「已输出至宿主通道」的端到端证据链当前只能到「Panel 侧存储/投影正确消费 v1 事件」，不能宣称真实 Codex 宿主回执已验证。AC3 的真实宿主部分保持未关闭。
+- **真实 Hook 生产者**：本片时点（2026-10-12）为 `blocked_external`——上游模板改造与发布未开始（G1-C，见 research/host-distribution.md §4）。**2026-10-13 更新**：真实 Codex 宿主回执已在本机验证（[host-verification.md](host-verification.md)：真实 TUI 内派发子代理，assembled/emitted 对落库，`producer.host=codex`）；但"上游模板化发布 + 跨员工分发"（AC9）仍未完成，团队级真实宿主回执依旧不能宣称。
 - 渲染组件（ObservationPanel / EvidenceBadge / 健康治理交互）为 React DOM 契约，纯 node 冒烟不覆盖，列入 §5 人工走查。
 
 ## 2. ReceiptProjection（scripts/smoke/receipt-projection.mjs，22 项断言）
