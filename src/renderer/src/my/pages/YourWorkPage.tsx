@@ -1,0 +1,173 @@
+// Your work 页（R8）：问候区 + 三张统计卡 + 「分配给我的工作项 / 由我创建 / 近期更新」区块。
+import { type JSX, type ReactNode } from 'react'
+import { useMy } from '../store'
+import { Avatar, EmptyState, formatDate } from '../ui'
+import { PriorityIcon, StateGroupIcon } from '../icons'
+import type { Issue, Member, WorkItemState } from '../types'
+
+/** 判断工作项是否未完结（completed / cancelled 均视为已结束） */
+function isIssueOpen(issue: Issue, states: Map<string, WorkItemState>): boolean {
+  const group = states.get(issue.stateId)?.group
+  return group !== 'completed' && group !== 'cancelled'
+}
+
+/** 最近一条评论时间（用于「近期更新」排序） */
+function lastCommentAt(issue: Issue): string {
+  return issue.comments[issue.comments.length - 1]?.at ?? ''
+}
+
+/* ---------------- 工作项行 ---------------- */
+
+function IssueRow({
+  issue,
+  members,
+  states,
+  onOpen
+}: {
+  issue: Issue
+  members: Map<string, Member>
+  states: Map<string, WorkItemState>
+  onOpen: (id: string) => void
+}): JSX.Element {
+  const state = states.get(issue.stateId)
+  const assignee = issue.assigneeId ? members.get(issue.assigneeId) : undefined
+  const due = formatDate(issue.dueDate)
+  return (
+    <div
+      onClick={() => onOpen(issue.id)}
+      className="flex h-11 cursor-pointer items-center gap-2.5 px-3 hover:bg-my-layer-1"
+    >
+      {state && <StateGroupIcon stateGroup={state.group} color={state.color} />}
+      <span className="min-w-0 flex-1 truncate text-[13px] text-my-primary">{issue.name}</span>
+      <PriorityIcon priority={issue.priority} size={13} />
+      {due !== '' && <span className="shrink-0 text-[11px] text-my-tertiary">{due}</span>}
+      {assignee && <Avatar name={assignee.name} color={assignee.avatarColor} size={18} />}
+    </div>
+  )
+}
+
+/* ---------------- 区块容器 ---------------- */
+
+function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
+  return (
+    <section className="mt-6">
+      <h2 className="mb-2 text-[13px] font-medium text-my-secondary">{title}</h2>
+      {children}
+    </section>
+  )
+}
+
+function IssueList({
+  issues,
+  members,
+  states,
+  onOpen,
+  emptyTitle
+}: {
+  issues: Issue[]
+  members: Map<string, Member>
+  states: Map<string, WorkItemState>
+  onOpen: (id: string) => void
+  emptyTitle: string
+}): JSX.Element {
+  if (issues.length === 0) return <EmptyState title={emptyTitle} />
+  return (
+    <div className="my-card divide-y divide-my-line overflow-hidden">
+      {issues.map((i) => (
+        <IssueRow key={i.id} issue={i} members={members} states={states} onOpen={onOpen} />
+      ))}
+    </div>
+  )
+}
+
+/* ---------------- 页面 ---------------- */
+
+export function YourWorkPage(): JSX.Element {
+  const { data, openIssue } = useMy()
+
+  const members = new Map<string, Member>(data.members.map((m) => [m.id, m]))
+  const states = new Map<string, WorkItemState>(data.states.map((s) => [s.id, s]))
+
+  const assigned = data.issues.filter((i) => i.assigneeId === 'me' && isIssueOpen(i, states))
+  const createdByMe = data.issues.filter((i) => i.activity[0]?.actorId === 'me')
+
+  // 即将到期：分配给我且未完结，7 天内到期（含已逾期）
+  const today = new Date()
+  today.setHours(12, 0, 0, 0)
+  const dueSoon = assigned.filter((i) => {
+    if (!i.dueDate) return false
+    const d = new Date(`${i.dueDate}T12:00:00`)
+    if (Number.isNaN(d.getTime())) return false
+    return (d.getTime() - today.getTime()) / 86400000 <= 7
+  })
+
+  // 近期更新：有评论的工作项，按最后一条评论时间倒序取 5 条
+  const recent = data.issues
+    .filter((i) => i.comments.length > 0)
+    .sort((a, b) => (lastCommentAt(a) < lastCommentAt(b) ? 1 : -1))
+    .slice(0, 5)
+
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好'
+  const dateLine = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })
+
+  const statCards = [
+    { label: '分配给我', value: assigned.length },
+    { label: '由我创建', value: createdByMe.length },
+    { label: '即将到期', value: dueSoon.length }
+  ]
+
+  return (
+    <div className="mx-auto max-w-[1024px]">
+      {/* 问候区 */}
+      <header className="px-8 pb-4 pt-6">
+        <h1 className="text-[20px] font-semibold text-my-primary">
+          {greeting}，我
+        </h1>
+        <p className="mt-1 text-[12px] text-my-tertiary">{dateLine}</p>
+      </header>
+
+      <div className="px-8 pb-16">
+        {/* 统计卡行 */}
+        <div className="grid grid-cols-3 gap-3">
+          {statCards.map((s) => (
+            <div key={s.label} className="my-card p-3">
+              <div className="text-[22px] font-semibold text-my-primary">{s.value}</div>
+              <div className="mt-0.5 text-[12px] text-my-tertiary">{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <Section title="分配给我的工作项">
+          <IssueList
+            issues={assigned}
+            members={members}
+            states={states}
+            onOpen={openIssue}
+            emptyTitle="暂无分配给你的工作项"
+          />
+        </Section>
+
+        <Section title="由我创建">
+          <IssueList
+            issues={createdByMe}
+            members={members}
+            states={states}
+            onOpen={openIssue}
+            emptyTitle="你还没有创建过工作项"
+          />
+        </Section>
+
+        <Section title="近期更新">
+          <IssueList
+            issues={recent}
+            members={members}
+            states={states}
+            onOpen={openIssue}
+            emptyTitle="近期没有新的评论动态"
+          />
+        </Section>
+      </div>
+    </div>
+  )
+}

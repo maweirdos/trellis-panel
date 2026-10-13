@@ -27,6 +27,7 @@
 | [directory-structure.md](./directory-structure.md)                             | Project structure conventions                   | Reference     |
 | [css-design.md](./css-design.md)                                               | CSS organization and design tokens              | Reference     |
 | [quality.md](./quality.md)                                                     | Code quality and performance standards          | Reference     |
+| [my-ui-module.md](./my-ui-module.md)                                     | Shell module tokens & conventions      | Module-scoped |
 
 ---
 

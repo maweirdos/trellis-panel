@@ -1,0 +1,124 @@
+/* 参考 UI 克隆模块样式。令牌值见 my-tokens.css（上游令牌包 0.9.7 解析产物）。
+   所有规则限定在 .my-root 下，避免污染面板其余页面。 */
+@import './my-tokens.css';
+
+.my-root {
+  --my-radius-sm: 4px;
+  --my-radius-md: 6px;
+  --my-radius-lg: 8px;
+  --my-radius-xl: 12px;
+  --my-radius-3xl: 20px;
+  --my-shadow-raised-100: 0px 1px 6px -1px rgb(41 47 61 / 0.03), 0px 1px 4px 0px rgb(41 47 61 / 0.04);
+  --my-shadow-raised-200: 0px 1px 2px -1px rgb(41 47 61 / 0.06), 0px 1px 3px 0px rgb(41 47 61 / 0.05);
+  --my-shadow-raised-300: 0px 2px 4px -1px rgb(41 47 61 / 0.04), 0px 4px 6px -1px rgb(41 47 61 / 0.05);
+  --my-shadow-overlay-100: 0px 10px 10px -5px rgb(41 47 61 / 0.04), 0px 10px 40px -5px rgb(41 47 61 / 0.04);
+  --my-shadow-overlay-200: 0px 10px 10px -10px rgb(41 47 61 / 0.04), 0px 30px 60px -12px rgb(41 47 61 / 0.1);
+  font-family: 'Inter Variable', Inter, 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04';
+}
+
+/* 控制高度体系（上游令牌包：xs20 sm24 md28 lg32 xl36 2xl40） */
+.my-root .my-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--my-radius-md);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.my-root .my-control-sm { height: 24px; padding: 0 8px; gap: 4px; font-size: 12px; }
+.my-root .my-control-lg { height: 32px; padding: 0 12px; }
+.my-root button:not(:disabled), .my-root [role='button']:not(:disabled) { cursor: pointer; }
+
+/* 滚动条（上游令牌包：隐藏式轨道 + 悬浮显 thumb） */
+.my-root .my-scrollbar { overflow-y: auto; scrollbar-gutter: stable; }
+.my-root .my-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; display: block; }
+.my-root .my-scrollbar::-webkit-scrollbar-track { background: transparent; border-radius: 9999px; }
+.my-root .my-scrollbar::-webkit-scrollbar-thumb {
+  background-clip: padding-box;
+  background-color: transparent;
+  border: 3px solid rgba(0, 0, 0, 0);
+  border-radius: 9999px;
+}
+.my-root:hover .my-scrollbar::-webkit-scrollbar-thumb { background-color: var(--my-scroll-thumb, rgba(96, 100, 108, 0.25)); }
+.my-root .my-scrollbar::-webkit-scrollbar-thumb:hover,
+.my-root .my-scrollbar:hover::-webkit-scrollbar-thumb { background-color: var(--my-scroll-thumb-hover, rgba(96, 100, 108, 0.4)); }
+[data-my-theme='dark'] .my-root .my-scrollbar::-webkit-scrollbar-thumb { background-color: transparent; }
+.my-root:hover [data-my-theme='dark'] .my-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.2); }
+
+/* 弹层动画（参考 下拉/浮层：短促淡入 + 轻微缩放） */
+@keyframes my-pop-in {
+  from { opacity: 0; transform: scale(0.98) translateY(2px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.my-root .my-pop { animation: my-pop-in 0.12s ease-out; transform-origin: top left; }
+
+@keyframes my-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.my-root .my-fade { animation: my-fade-in 0.15s ease-out; }
+
+@keyframes my-peek-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.my-root .my-peek-in { animation: my-peek-in 0.16s cubic-bezier(0.2, 0.8, 0.3, 1); }
+
+/* 键位提示 */
+.my-root .my-kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--my-border-subtle);
+  border-radius: 4px;
+  background: var(--my-bg-layer-2);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--my-txt-tertiary);
+}
+
+/* 列表行 hover 显拖拽把手 */
+.my-root .my-row:hover .my-row-handle { opacity: 1; }
+.my-root .my-row-handle { opacity: 0; transition: opacity 0.1s ease; }
+
+/* 输入框基线（参考：layer-2 底 + subtle 描边 + focus accent 环） */
+.my-root .my-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-md);
+  background: var(--my-bg-layer-2);
+  font-size: 13px;
+  color: var(--my-txt-primary);
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.my-root .my-input::placeholder { color: var(--my-txt-placeholder); }
+.my-root .my-input:focus {
+  border-color: var(--my-border-accent-strong);
+  box-shadow: 0 0 0 3px var(--my-alpha-brand-subtle, rgba(0, 99, 153, 0.12));
+}
+
+/* 看板卡片 */
+.my-root .my-card {
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-lg);
+  background: var(--my-bg-layer-2);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.my-root .my-card:hover { border-color: var(--my-border-subtle-1); box-shadow: var(--my-shadow-raised-100); }
+
+/* 文档编辑器占位 */
+.my-root .my-editor:empty::before { content: attr(data-placeholder); color: var(--my-txt-placeholder); }
+
+/* 甘特/日历网格线 */
+.my-root .my-gridline-r { border-right: 1px solid var(--my-border-subtle); }
+.my-root .my-gridline-b { border-bottom: 1px solid var(--my-border-subtle); }

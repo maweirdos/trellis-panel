@@ -36,6 +36,7 @@ const ModelsPage = lazy(() => import('./pages/Models').then((m) => ({ default: m
 const GatewayPage = lazy(() => import('./pages/Gateway').then((m) => ({ default: m.GatewayPage })))
 const ChatPage = lazy(() => import('./pages/Chat').then((m) => ({ default: m.ChatPage })))
 const AcpConsolePage = lazy(() => import('./pages/AcpConsole').then((m) => ({ default: m.AcpConsolePage })))
+const MyApp = lazy(() => import('./my/layout/MyApp').then((m) => ({ default: m.MyApp })))
 
 function PageLoading(): JSX.Element {
   return (
@@ -170,7 +171,7 @@ function MainApp(): JSX.Element {
               data-page-scroll=""
               className={clsx(
                 'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models' || page === 'gateway' || page === 'chat'
+              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models' || page === 'gateway' || page === 'chat' || page === 'my'
                 ? 'overflow-hidden'
                 : 'overflow-y-auto'
               )}
@@ -191,6 +192,7 @@ function MainApp(): JSX.Element {
                 {page === 'gateway' && <GatewayPage />}
                 {page === 'chat' && <ChatPage />}
               {page === 'acp' && <AcpConsolePage />}
+              {page === 'my' && <MyApp />}
                 {page === 'settings' && <SettingsPage />}
               </Suspense>
             </div>
@@ -244,6 +246,16 @@ export default function App(): JSX.Element {
       <div className="h-full w-full overflow-hidden bg-transparent p-0">
         <QuickTodoView />
       </div>
+    )
+  }
+
+  // 开发便利：?my=1 直接渲染 参考 UI 克隆模块（无 IPC 依赖，便于浏览器级截图验证；
+  // 打包后渲染层走 file: 协议，此入口自然失效）
+  if (window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
+    return (
+      <Suspense fallback={null}>
+        <MyApp />
+      </Suspense>
     )
   }
 

@@ -1,0 +1,619 @@
+// peek-over 工作项详情浮层：backdrop 点击关闭，中央面板（标题/描述/子工作项/评论/活动 + 右侧属性栏），Esc 关闭。
+import { useEffect, useState, type JSX, type ReactNode } from 'react'
+import { clsx } from 'clsx'
+import { Check, ChevronDown, Copy, Plus, X } from 'lucide-react'
+import { useMy } from '../store'
+import { Avatar, Checkbox, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../ui'
+import { WorkspaceMark, PriorityIcon, StateGroupIcon } from '../icons'
+import type { Issue, Label, Member, Priority, WorkItemState } from '../types'
+
+function toIso(d: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
+const PRIORITY_LABELS: Record<Priority, string> = {
+  urgent: 'Urgent',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  none: 'None'
+}
+
+/** 属性栏右侧触发框样式 */
+const BOX =
+  'flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md border border-my-line bg-my-layer-1 px-2 text-[12.5px] text-my-secondary hover:bg-my-layer-1-hover'
+
+interface PropRowProps {
+  label: string
+  children: ReactNode
+}
+
+/** 属性栏一行 */
+function PropRow({ label, children }: PropRowProps): JSX.Element {
+  return (
+    <div className="mb-3">
+      <div className="mb-1 text-[11px] font-medium text-my-tertiary">{label}</div>
+      {children}
+    </div>
+  )
+}
+
+/** 日期属性输入 */
+function DateField({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }): JSX.Element {
+  const theme = useMy((s) => s.theme)
+  return (
+    <input
+      type="date"
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
+      style={{ colorScheme: theme }}
+      className="h-7 w-full rounded-md border border-my-line bg-my-layer-1 px-2 text-[12px] text-my-secondary outline-none focus:border-my-line-accent"
+    />
+  )
+}
+
+interface PeekBodyProps {
+  issue: Issue
+  ident: string
+}
+
+/** 面板主体（拥有本地输入态；issue.id 变化时重置） */
+function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
+  const store = useMy()
+  const { data, updateIssue, openIssue, closeIssue } = store
+  const [name, setName] = useState(issue.name)
+  const [desc, setDesc] = useState(issue.description)
+  const [tab, setTab] = useState<'sub' | 'comments' | 'activity'>('sub')
+  const [subName, setSubName] = useState('')
+  const [comment, setComment] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  // 切换 peek 目标时重置本地输入
+  useEffect(() => {
+    setName(issue.name)
+    setDesc(issue.description)
+    setSubName('')
+    setComment('')
+  }, [issue.id, issue.name, issue.description])
+
+  const memberOf = (id: string | null): Member | undefined => data.members.find((m) => m.id === id)
+  const stateOf = (stateId: string): WorkItemState | undefined => data.states.find((s) => s.id === stateId)
+  const state = stateOf(issue.stateId)
+  const assignee = memberOf(issue.assigneeId)
+  const peekProject = data.projects.find((p) => p.id === issue.projectId)
+
+  const commitName = (): void => {
+    const v = name.trim()
+    if (v && v !== issue.name) updateIssue(issue.id, { name: v })
+    else setName(issue.name)
+  }
+  const commitDesc = (): void => {
+    if (desc !== issue.description) updateIssue(issue.id, { description: desc })
+  }
+
+  const copyId = (): void => {
+    navigator.clipboard
+      .writeText(`${ident}-${issue.sequenceId}`)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1200)
+      })
+      .catch(() => undefined)
+  }
+
+  // 子工作项：回车创建并挂到当前工作项
+  const addSubIssue = (): void => {
+    const n = subName.trim()
+    if (!n) return
+    const sid = store.createIssue({ projectId: issue.projectId, name: n, priority: 'none' })
+    updateIssue(sid, { parentId: issue.id })
+    updateIssue(issue.id, { subIssueIds: [...issue.subIssueIds, sid] })
+    setSubName('')
+  }
+
+  // 评论：回车追加
+  const addComment = (): void => {
+    const body = comment.trim()
+    if (!body) return
+    updateIssue(issue.id, {
+      comments: [
+        ...issue.comments,
+        { id: `${issue.id}-c-${Date.now()}`, actorId: data.workspace.memberId, body, at: '刚刚' }
+      ]
+    })
+    setComment('')
+  }
+
+  const subIssues = issue.subIssueIds
+    .map((id) => data.issues.find((i) => i.id === id))
+    .filter((i): i is Issue => Boolean(i))
+  const projectCycles = data.cycles.filter((c) => c.projectId === issue.projectId)
+  const projectModules = data.modules.filter((m) => m.projectId === issue.projectId)
+  const currentCycle = projectCycles.find((c) => c.id === issue.cycleId)
+  const currentModule = projectModules.find((m) => m.id === issue.moduleId)
+  const issueLabels = issue.labelIds
+    .map((id) => data.labels.find((l) => l.id === id))
+    .filter((l): l is Label => Boolean(l))
+
+  const toggleLabel = (labelId: string): void => {
+    const has = issue.labelIds.includes(labelId)
+    updateIssue(issue.id, {
+      labelIds: has ? issue.labelIds.filter((x) => x !== labelId) : [...issue.labelIds, labelId]
+    })
+  }
+
+  const tabs: Array<{ id: 'sub' | 'comments' | 'activity'; label: string; count?: number }> = [
+    { id: 'sub', label: '子工作项', count: subIssues.length },
+    { id: 'comments', label: '评论', count: issue.comments.length },
+    { id: 'activity', label: '活动' }
+  ]
+
+  return (
+    <div
+      className="my-peek-in flex max-h-[84vh] w-[880px] flex-col overflow-hidden rounded-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {/* 头部 */}
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-my-line px-4">
+        <WorkspaceMark color={peekProject?.color ?? '#006399'} letter={peekProject?.icon ?? 'P'} size={16} />
+        <span className="shrink-0 text-[12px] text-my-tertiary">
+          {ident}-{issue.sequenceId}
+        </span>
+        <span onKeyDown={(e) => e.stopPropagation()} className="flex shrink-0 items-center">
+          {/* 头部状态下拉 */}
+          <Dropdown
+            width={190}
+            trigger={({ toggle }) => (
+              <button
+                type="button"
+                onClick={toggle}
+                className="flex h-6 items-center gap-1 rounded px-1.5 text-[12px] text-my-secondary hover:bg-my-layer-1-hover"
+              >
+                {state && <StateGroupIcon stateGroup={state.group} color={state.color} size={12} />}
+                {state?.name ?? '无状态'}
+                <ChevronDown size={11} className="text-my-icon-tertiary" />
+              </button>
+            )}
+          >
+            {(close) => (
+              <>
+                {[...data.states]
+                  .sort((a, b) => a.sequence - b.sequence)
+                  .map((st) => (
+                    <DropdownItem
+                      key={st.id}
+                      selected={st.id === issue.stateId}
+                      icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
+                      onClick={() => {
+                        updateIssue(issue.id, {
+                          stateId: st.id,
+                          completedAt: st.group === 'completed' ? toIso(new Date()) : null
+                        })
+                        close()
+                      }}
+                    >
+                      {st.name}
+                    </DropdownItem>
+                  ))}
+              </>
+            )}
+          </Dropdown>
+        </span>
+        <div className="ml-auto flex items-center gap-0.5">
+          <button
+            type="button"
+            title="复制 ID"
+            onClick={copyId}
+            className="flex h-7 w-7 items-center justify-center rounded text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
+          >
+            {copied ? <Check size={14} className="text-my-success-text" /> : <Copy size={14} />}
+          </button>
+          <button
+            type="button"
+            title="关闭"
+            onClick={() => closeIssue()}
+            className="flex h-7 w-7 items-center justify-center rounded text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      </div>
+
+      {/* 主体：左内容 + 右属性栏 */}
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="shrink-0 px-4 pb-2 pt-3">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
+              className="w-full bg-transparent text-[15px] font-semibold text-my-primary outline-none placeholder:text-my-placeholder"
+              placeholder="工作项标题"
+            />
+            <textarea
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              onBlur={commitDesc}
+              placeholder="添加描述…"
+              className="mt-2 min-h-[140px] w-full resize-none bg-transparent text-[13px] leading-5 text-my-secondary outline-none placeholder:text-my-placeholder"
+            />
+          </div>
+          <div className="shrink-0 border-b border-my-line px-4 pb-1">
+            <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id)} />
+          </div>
+          <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            {tab === 'sub' && (
+              <div>
+                {subIssues.map((sub) => {
+                  const subState = stateOf(sub.stateId)
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => openIssue(sub.id)}
+                      className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-my-layer-1"
+                    >
+                      {subState && <StateGroupIcon stateGroup={subState.group} color={subState.color} size={12} />}
+                      <span className="w-16 shrink-0 text-[11px] text-my-tertiary">
+                        {ident}-{sub.sequenceId}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-my-secondary">{sub.name}</span>
+                      <PriorityIcon priority={sub.priority} size={12} />
+                    </button>
+                  )
+                })}
+                <div className="mt-1 flex items-center gap-2 rounded-md px-2 py-1 hover:bg-my-layer-1">
+                  <Plus size={13} className="shrink-0 text-my-icon-tertiary" />
+                  <input
+                    value={subName}
+                    onChange={(e) => setSubName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addSubIssue()
+                    }}
+                    placeholder="添加子工作项"
+                    className="h-7 min-w-0 flex-1 bg-transparent text-[12.5px] text-my-primary outline-none placeholder:text-my-placeholder"
+                  />
+                </div>
+              </div>
+            )}
+            {tab === 'comments' && (
+              <div>
+                {issue.comments.map((c) => {
+                  const actor = memberOf(c.actorId)
+                  return (
+                    <div key={c.id} className="flex items-start gap-2 py-2">
+                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={20} /> : <Avatar name="？" color="#848890" size={20} />}
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-[12.5px] font-medium text-my-primary">{actor?.name ?? '未知成员'}</span>
+                          <span className="text-[11px] text-my-tertiary">{c.at}</span>
+                        </div>
+                        <div className="whitespace-pre-wrap text-[12.5px] leading-5 text-my-secondary">{c.body}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+                <div className="mt-1 flex items-center gap-2 rounded-md px-2 py-1 hover:bg-my-layer-1">
+                  <Avatar
+                    name={memberOf(data.workspace.memberId)?.name ?? '我'}
+                    color={memberOf(data.workspace.memberId)?.avatarColor ?? '#006399'}
+                    size={20}
+                  />
+                  <input
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addComment()
+                    }}
+                    placeholder="写下评论，回车发送"
+                    className="h-7 min-w-0 flex-1 bg-transparent text-[12.5px] text-my-primary outline-none placeholder:text-my-placeholder"
+                  />
+                </div>
+              </div>
+            )}
+            {tab === 'activity' && (
+              <div>
+                {issue.activity.map((a) => {
+                  const actor = memberOf(a.actorId)
+                  const detailState = a.detail ? stateOf(a.detail) : undefined
+                  return (
+                    <div key={a.id} className="flex items-start gap-2 py-1.5">
+                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={16} /> : <Avatar name="？" color="#848890" size={16} />}
+                      <div className="min-w-0 text-[12.5px] leading-5 text-my-secondary">
+                        <span className="font-medium text-my-primary">{actor?.name ?? '未知成员'}</span> {a.verb}
+                        {detailState && (
+                          <span className="ml-1 inline-flex items-center gap-1">
+                            <StateGroupIcon stateGroup={detailState.group} color={detailState.color} size={11} />
+                            {detailState.name}
+                          </span>
+                        )}
+                        {!detailState && a.detail && <span className="ml-1">{a.detail}</span>}
+                        <span className="ml-1.5 text-[11px] text-my-tertiary">{a.at}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 右侧属性栏 */}
+        <aside className="my-scrollbar w-[260px] shrink-0 overflow-y-auto border-l border-my-line p-3">
+          <PropRow label="优先级">
+            <Dropdown
+              width={180}
+              trigger={({ toggle }) => (
+                <button type="button" onClick={toggle} className={BOX}>
+                  <PriorityIcon priority={issue.priority} size={13} />
+                  <span className="min-w-0 flex-1 truncate text-left">{PRIORITY_LABELS[issue.priority]}</span>
+                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  <DropdownHeader>设置优先级</DropdownHeader>
+                  {PRIORITIES.map((pr) => (
+                    <DropdownItem
+                      key={pr}
+                      selected={pr === issue.priority}
+                      icon={<PriorityIcon priority={pr} size={13} />}
+                      onClick={() => {
+                        updateIssue(issue.id, { priority: pr })
+                        close()
+                      }}
+                    >
+                      {PRIORITY_LABELS[pr]}
+                    </DropdownItem>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+          </PropRow>
+          <PropRow label="状态">
+            <Dropdown
+              width={190}
+              trigger={({ toggle }) => (
+                <button type="button" onClick={toggle} className={BOX}>
+                  {state && <StateGroupIcon stateGroup={state.group} color={state.color} size={13} />}
+                  <span className="min-w-0 flex-1 truncate text-left">{state?.name ?? '无状态'}</span>
+                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  {[...data.states]
+                    .sort((a, b) => a.sequence - b.sequence)
+                    .map((st) => (
+                      <DropdownItem
+                        key={st.id}
+                        selected={st.id === issue.stateId}
+                        icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
+                        onClick={() => {
+                          updateIssue(issue.id, {
+                            stateId: st.id,
+                            completedAt: st.group === 'completed' ? toIso(new Date()) : null
+                          })
+                          close()
+                        }}
+                      >
+                        {st.name}
+                      </DropdownItem>
+                    ))}
+                </>
+              )}
+            </Dropdown>
+          </PropRow>
+          <PropRow label="负责人">
+            <Dropdown
+              width={200}
+              trigger={({ toggle }) => (
+                <button type="button" onClick={toggle} className={BOX}>
+                  {assignee ? <Avatar name={assignee.name} color={assignee.avatarColor} size={18} /> : <span className="h-[18px] w-[18px] shrink-0 rounded-full border border-dashed border-my-line-strong" />}
+                  <span className="min-w-0 flex-1 truncate text-left">{assignee?.name ?? '未分配'}</span>
+                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  <DropdownItem
+                    selected={issue.assigneeId === null}
+                    onClick={() => {
+                      updateIssue(issue.id, { assigneeId: null })
+                      close()
+                    }}
+                  >
+                    未分配
+                  </DropdownItem>
+                  {data.members.map((m) => (
+                    <DropdownItem
+                      key={m.id}
+                      selected={m.id === issue.assigneeId}
+                      icon={<Avatar name={m.name} color={m.avatarColor} size={16} />}
+                      onClick={() => {
+                        updateIssue(issue.id, { assigneeId: m.id })
+                        close()
+                      }}
+                    >
+                      {m.name}
+                    </DropdownItem>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+          </PropRow>
+          <PropRow label="标签">
+            <Dropdown
+              width={210}
+              trigger={({ toggle }) => (
+                <button type="button" onClick={toggle} className={clsx(BOX, issueLabels.length === 0 && 'text-my-tertiary')}>
+                  {issueLabels.length === 0 ? (
+                    <span className="min-w-0 flex-1 truncate text-left">无</span>
+                  ) : (
+                    <>
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-[3px]"
+                        style={{ background: `var(--my-label-${issueLabels[0].color}-icon)` }}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-left">{issueLabels[0].name}</span>
+                      {issueLabels.length > 1 && (
+                        <span className="shrink-0 text-[11px] text-my-tertiary">+{issueLabels.length - 1}</span>
+                      )}
+                    </>
+                  )}
+                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  <DropdownHeader>设置标签</DropdownHeader>
+                  {data.labels.map((lb) => (
+                    <button
+                      key={lb.id}
+                      type="button"
+                      onClick={() => toggleLabel(lb.id)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-my-layer-1-hover"
+                    >
+                      <Checkbox checked={issue.labelIds.includes(lb.id)} onChange={() => toggleLabel(lb.id)} />
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-[3px]"
+                        style={{ background: `var(--my-label-${lb.color}-icon)` }}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-my-secondary">{lb.name}</span>
+                    </button>
+                  ))}
+                  <div className="mt-1 border-t border-my-line pt-1">
+                    <DropdownItem onClick={close}>完成</DropdownItem>
+                  </div>
+                </>
+              )}
+            </Dropdown>
+          </PropRow>
+          <PropRow label="周期">
+            <Dropdown
+              width={210}
+              trigger={({ toggle }) => (
+                <button type="button" onClick={toggle} className={clsx(BOX, !currentCycle && 'text-my-tertiary')}>
+                  <span className="min-w-0 flex-1 truncate text-left">{currentCycle?.name ?? '无'}</span>
+                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  <DropdownItem
+                    selected={issue.cycleId === null}
+                    onClick={() => {
+                      updateIssue(issue.id, { cycleId: null })
+                      close()
+                    }}
+                  >
+                    无
+                  </DropdownItem>
+                  {projectCycles.map((c) => (
+                    <DropdownItem
+                      key={c.id}
+                      selected={c.id === issue.cycleId}
+                      onClick={() => {
+                        updateIssue(issue.id, { cycleId: c.id })
+                        close()
+                      }}
+                    >
+                      {c.name}
+                    </DropdownItem>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+          </PropRow>
+          <PropRow label="模块">
+            <Dropdown
+              width={210}
+              trigger={({ toggle }) => (
+                <button type="button" onClick={toggle} className={clsx(BOX, !currentModule && 'text-my-tertiary')}>
+                  <span className="min-w-0 flex-1 truncate text-left">{currentModule?.name ?? '无'}</span>
+                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  <DropdownItem
+                    selected={issue.moduleId === null}
+                    onClick={() => {
+                      updateIssue(issue.id, { moduleId: null })
+                      close()
+                    }}
+                  >
+                    无
+                  </DropdownItem>
+                  {projectModules.map((m) => (
+                    <DropdownItem
+                      key={m.id}
+                      selected={m.id === issue.moduleId}
+                      onClick={() => {
+                        updateIssue(issue.id, { moduleId: m.id })
+                        close()
+                      }}
+                    >
+                      {m.name}
+                    </DropdownItem>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+          </PropRow>
+          <PropRow label="开始日期">
+            <DateField value={issue.startDate} onChange={(v) => updateIssue(issue.id, { startDate: v })} />
+          </PropRow>
+          <PropRow label="截止日期">
+            <DateField value={issue.dueDate} onChange={(v) => updateIssue(issue.id, { dueDate: v })} />
+          </PropRow>
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+/** peek 浮层入口：无 peek 目标时不渲染 */
+export function IssuePeek(): JSX.Element | null {
+  const peekIssueId = useMy((s) => s.peekIssueId)
+  const issue = useMy((s) => (s.peekIssueId ? s.data.issues.find((i) => i.id === s.peekIssueId) : undefined))
+  const projects = useMy((s) => s.data.projects)
+  const closeIssue = useMy((s) => s.closeIssue)
+
+  // Esc 关闭：捕获阶段拦截并 stopPropagation，避免其他全局快捷键同时响应
+  useEffect(() => {
+    if (!peekIssueId) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        e.preventDefault()
+        closeIssue()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [peekIssueId, closeIssue])
+
+  if (!issue) return null
+  const project = projects.find((p) => p.id === issue.projectId)
+  const ident = (project?.id ?? 'p-x').replace(/^p-/, '').toUpperCase()
+  return (
+    <div
+      className="my-fade fixed inset-0 z-[60] flex items-center justify-center bg-my-backdrop"
+      onMouseDown={() => closeIssue()}
+    >
+      <PeekBody issue={issue} ident={ident} />
+    </div>
+  )
+}
