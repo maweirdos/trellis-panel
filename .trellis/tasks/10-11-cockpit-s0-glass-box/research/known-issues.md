@@ -2,6 +2,7 @@
 
 ## 环境类
 
+- **TUI 内 `task.py start` 降级导致 SubagentStart 钩子静默跳过注入**（2026-10-13，AC3 宿主验证时根因定位，P1）：codex 0.159.2 不向钩子/子进程导出会话身份环境变量（`CODEX_THREAD_ID` 未下发）→ TUI 内跑 start 走降级（不写会话指针）→ 钩子按 `codex_<父会话id>` 键查指针落空 → 按"native 绝不借用他窗任务"设计静默早退（无注入/无回执/无 stderr）。缓解：外部 `TRELLIS_CONTEXT_ID=codex_<TUI主会话id>` 重跑 start。上游修复素材（AC9）：codex 导出会话身份，或 task.py 提供 `--context-key`。详见 validation/host-verification.md §3。
 - **chat.mjs 冒烟超时**（2026-10-11，G2 二片检查时发现）：`等待超时： 流式增量`，两次复现；依赖真实模型端点流式响应，与本任务改动无关（chat 域文件未动）。不在 implement.md §8 检查清单内。待单独排查（疑似端点/网络环境变化）。
 - **tpap.mjs 2 项失败**（2026-10-12，G3/G4/Hook 各片检查均复现）：`tool_search` 空结果 + `db_list_tables` 外部工具未注册；git stash 干净树复现一致，属外部工具目录环境问题，非本任务回归。
 
