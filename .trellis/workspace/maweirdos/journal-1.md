@@ -626,3 +626,26 @@ AI 起草任务全链路：官方扩展点员工档案+六步派发+报告直达
 ### Status
 
 [OK] **Completed**
+
+## Session 19: 驾驶舱 S0 收官——AC3 宿主验证 + AC9/AC10 备件
+<!-- trellis-session: v=2 fp=ac3-host-finale -->
+
+**Date**: 2026-10-13
+**Task**: cockpit-s0-glass-box（驾驶舱 S0：统一阅读、上下文回执与可信活动）
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+AC3 宿主半边关闭：真实交互式 Codex TUI（0.159.2）内 spawn_agent 派发 trellis-research，SubagentStart 触发（TRACE+armed 双证）、上下文注入生效、assembled/emitted 回执落库（producer.host=codex、真实父会话 id）。期间根因定位并登记 P1 缺口：TUI 内 task.py start 因无会话身份降级不写指针 → 钩子静默跳过注入；缓解 = TRELLIS_CONTEXT_ID=codex_<会话id> 外部重跑 start。更正前轮"TUI 不触发"误判（exec 不触发的结论维持）。模型后端经本地 LiteLLM 桥接（公司代理跨网段不可达），被测钩子/宿主全真实件，密钥全程未上屏、事后清理。AC9/AC10 备件就绪：上游 PR 英文草稿两份（未推送）、试点安装包+一页纸速览、1280/1920/1920@2x 三档截图。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `508d54c` | test(task): AC3 宿主验证通过——真实 Codex TUI 内子代理派发全链落证 |
+| `c82539a` | docs(task): AC9/AC10 关闭备件就绪——上游 PR 草稿与试点启动包 |
+| `fdee050` | test(task): 补齐 1280/1920/高缩放三档宽度截图——AC1/AC8 留用户项再收窄 |
+
+### Status
+
+[BLOCKED] **In Progress** — AC1–AC8 全关；AC9/AC10 等用户两句话：①试点名单或"暂无人选"；②上游 PR"发/不发"。备件均在任务目录备好，回复即收尾。
