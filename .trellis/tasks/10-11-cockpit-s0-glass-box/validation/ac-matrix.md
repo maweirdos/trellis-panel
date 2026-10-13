@@ -4,14 +4,14 @@
 
 | AC | 需求 | 状态 | 证据 / 缺口 |
 | --- | --- | --- | --- |
-| AC1 | FR1 三入口一致；JSON 原值可见；清单真实行号 | **passed（夹具级 + 自动化走查）/ 部分留用户（1280/1920 截图、项目外文件、高缩放）** | task-reader 57 项 + reader-wiring 41 项；walkthrough-report.md §reader（预览/展开/Esc 层级/视图切换/宽度偏好实测，截图 02/03） |
+| AC1 | FR1 三入口一致；JSON 原值可见；清单真实行号 | **passed（夹具级 + 自动化走查）/ 部分留用户（项目外文件真人操作、高缩放真机目检）** | task-reader 57 项 + reader-wiring 41 项；walkthrough-report.md §reader（预览/展开/Esc 层级/视图切换/宽度偏好实测，截图 02/03）；**2026-10-13 补**：1280/1920/1920@2x 截图（walkthrough 04/05/06，CDP 视口仿真 + 视觉核验，无破损/横滚） |
 | AC2 | FR1 连续保存不重置；会话草稿+最近提交比较；坏文件/无 Git 降级 | **passed（夹具级 + 自动化走查核心项）** | reading-session 59 项；walkthrough-report.md：外部改盘→「当前阅读任务有更新」提示出现且正文未跳→阅读新版干净切换（真实应用实测） |
 | AC3 | FR2 认证宿主 assembled/emitted 可配对；输出失败无 emitted；观测失败不改 stdout | **passed（直调 + 真实 TUI 宿主进程内，2026-10-13）** | hook-emitter 117 项 + walkthrough-report.md 三轮调查 + **host-verification.md**：真实交互式 Codex TUI（0.159.2）内原生 spawn_agent 派发 trellis-research → SubagentStart 触发（codex TRACE hook/started + 钩子 armed 双证）→ 注入真实生效（子代理 rollout 含标记）→ assembled+emitted 对落库（injectionId 0327c767、producer.host=codex、parentId=真实主会话）。`codex exec` 不触发 SubagentStart 的上游结论维持（4478dc7）；TUI 内 `task.py start` 降级缺口已根因登记（known-issues 环境类） |
 | AC4 | FR2 并发/重复/锁/容量/旧 schema/禁用恢复 | **passed** | observability-store 82 项（真实 worker 线程+node:sqlite）；跨进程语义另证于 g1b 探针 |
 | AC5 | FR3 多任务/项目/归档不串线；状态/活动/归档独立；不伪造阶段 | **passed** | receipt-projection 41 项 + task-identity/archive 冒烟；真实多 worktree 场景待走查（边缘） |
 | AC6 | FR4 重复点击/中断恢复可恢复；PRD 来源真实；归档与流转分离 | **passed（夹具级 + 真实工单全链）** | jira-local-task 77 项 + light-task-metrics 18 项；**真实闭环（2026-10-13）**：真实工单 HONSKY-984 点击「在当前项目创建任务」→ 本地任务创建（panel_* 溯源 meta 全链：issueKey/issueId/operationId/updatedAtMs）→ PRD 草稿含来源链接与「待结合本机代码确认」→ 重复点击防重（该行变「打开本地任务」，68→67）→ task.py archive 归档完成。真实计量：新增管理动作 1（一次点击）、重复录入 0、重复确认 0（目标 0/0/≤2 达成） |
 | AC7 | FR5 两版本 Jira 基线 + hook 性能报告 | **部分：性能 passed（夹具口径见 performance.md）；Jira blocked_external** | 性能采样 200 对×2 档（直调口径，非真实宿主）；公司 Jira 权限未验证（jira-baseline.md §3 登记） |
-| AC8 | 全部：typecheck/build/既有测试/无回归/三档尺寸/焦点 Esc | **passed（机器 + Esc/宽度走查）/ 1280/1920 截图与高缩放留用户** | typecheck+build+15 套冒烟全绿；chat/tpap 既有失败经干净树复现隔离（known-issues）；Esc 逐层退出实测通过（walkthrough-report.md §5）；1440 收起规则实证（innerWidth=1360 时右栏默认收起） |
+| AC8 | 全部：typecheck/build/既有测试/无回归/三档尺寸/焦点 Esc | **passed（机器 + Esc/宽度走查 + 三档宽度截图）/ 高缩放真机目检留用户** | typecheck+build+15 套冒烟全绿；chat/tpap 既有失败经干净树复现隔离（known-issues）；Esc 逐层退出实测通过（walkthrough-report.md §5）；1440 收起规则实证（innerWidth=1360 时右栏默认收起）；1280/1920/1920@2x 截图补齐（walkthrough 04/05/06） |
 | AC9 | FR2 干净/用户修改项目的安装/升级/禁用/回退；另一开发可接入 | **blocked_external** | 上游 `mindfold-ai/trellis` PR 未发起；本地实验完成（host-distribution.md §6）；按 implement.md 规则 AC9 不得由本地实验关闭。**2026-10-13 备件就绪**：英文 PR 草稿两份（research/upstream-pr-draft.md，本地未推送）——用户选"发"则过目后按检查单提交，选"不发"则作废走本地维护 |
 | AC10 | FR5 2 开发+1 协作者试点；新增负担与维护时间记录 | **not_run（人选未定）** | 08 决策第 2 项待用户指定；走查清单已备（light-task.md/reader.md/observability.md §4）。**2026-10-13 备件就绪**：安装包 `release/TrellisPanel-Setup-0.1.0.exe`（140MB NSIS，gitignored）+ 试点速览一页纸（pilot-quickstart.md）——用户回复名单即可转发启动 |
 

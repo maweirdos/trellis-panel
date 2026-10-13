@@ -48,4 +48,5 @@
 
 ## 遗留给用户的走查（低风险/需环境）
 
-1280/1920 窗口宽度与高缩放截图（#1/#8）；项目外文件打开（#7）；真实 Codex 会话内触发（见上）；AcpConsole compact 面板目检。
+~~1280/1920 窗口宽度与高缩放截图（#1/#8）~~ **已补（2026-10-13，CDP 视口仿真 + 视觉模型核验）**：`walkthrough/04-width-1280.png`（1280×800，三栏完整无重叠/横滚）、`05-width-1920.png`（1920×1080，主区正确扩展）、`06-width-1920-dsf2.png`（3840×2160，1920@2x 高密度渲染）。仿真经 `Emulation.setDeviceMetricsOverride`，与真实窗口同走 innerWidth 布局分支。
+剩余留用户：项目外文件打开的真人操作（#7，降级路径已有冒烟断言）；AcpConsole compact 面板目检；~~真实 Codex 会话内触发~~ **已完成（host-verification.md）**。

@@ -61,6 +61,16 @@ try {
     console.log(JSON.stringify(await evaluate(expr), null, 1))
   } else if (mode === 'shot') {
     await shot(outPath)
+  } else if (mode === 'emulate-shot') {
+    // argv: port emulate-shot "<width>x<height>[@dsf]" outPath — 视口仿真后截图
+    const [dims, dsf = '1'] = expr.split('@')
+    const [width, height] = dims.split('x').map(Number)
+    await send('Emulation.setDeviceMetricsOverride', {
+      width, height, deviceScaleFactor: Number(dsf), mobile: false
+    })
+    await new Promise((r) => setTimeout(r, 400))
+    await shot(outPath)
+    await send('Emulation.clearDeviceMetricsOverride')
   } else if (mode === 'flow') {
     // mode=flow: expr is JSON array of steps
     // {"eval": "..."} | {"clickSel": "..."} | {"shot": "path"} | {"wait": ms}
