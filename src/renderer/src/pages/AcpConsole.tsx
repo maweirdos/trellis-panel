@@ -25,6 +25,7 @@ import {
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
+import { Button } from '../my/ui'
 import { ObservationPanel } from '../observation/ObservationPanel'
 import type { ActivityEventInput } from '../../../shared/observability/activity'
 import type {
@@ -125,10 +126,10 @@ const TRELLIS_ICON: Record<string, JSX.Element> = {
 
 const STATUS_COLOR: Record<string, string> = {
   starting: 'text-amber-300',
-  ready: 'text-leaf',
+  ready: 'text-my-success-text',
   busy: 'text-sky-300',
   error: 'text-rose-300',
-  closed: 'text-mist-500'
+  closed: 'text-my-tertiary'
 }
 
 export function AcpConsolePage(): JSX.Element {
@@ -283,14 +284,14 @@ export function AcpConsolePage(): JSX.Element {
   return (
     <div className="flex h-full min-h-0 gap-3 p-3">
       {/* 会话列表 */}
-      <aside className="card flex w-60 shrink-0 flex-col overflow-hidden">
-        <div className="border-b border-mist-700/40 px-3 py-2.5">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-mist-300">
+      <aside className="my-card flex w-60 shrink-0 flex-col overflow-hidden">
+        <div className="border-b border-my-line px-3 py-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <Bot size={14} /> Agent 会话
           </div>
           <div className="mt-2 flex gap-1.5">
             <select
-              className="field flex-1 text-xs"
+              className="h-8 min-w-0 flex-1 rounded-md border border-my-line bg-my-surface-1 px-2 text-xs text-my-primary outline-none focus:border-my-line-accent disabled:opacity-40 [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
               defaultValue=""
               disabled={creating || availableAgents.length === 0}
               onChange={(e) => {
@@ -305,27 +306,27 @@ export function AcpConsolePage(): JSX.Element {
                 </option>
               ))}
             </select>
-            <button className="btn-ghost px-2 py-1" title="刷新" onClick={() => void reloadSessions()}>
+            <Button variant="ghost" size="sm" title="刷新" onClick={() => void reloadSessions()}>
               <RefreshCw size={13} />
-            </button>
+            </Button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {sessions.length === 0 && <div className="px-2 py-6 text-center text-xs text-mist-500">尚无会话。右上选择 agent 开始。</div>}
+        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-1.5">
+          {sessions.length === 0 && <div className="px-2 py-6 text-center text-xs text-my-tertiary">尚无会话。右上选择 agent 开始。</div>}
           {sessions.map((s) => (
             <button
               key={s.sessionId}
               onClick={() => setActiveId(s.sessionId)}
               className={clsx(
                 'mb-1 w-full rounded-md px-2.5 py-2 text-left transition-colors',
-                s.sessionId === activeId ? 'bg-leaf/15 text-mist-100' : 'text-mist-300 hover:bg-mist-700/30'
+                s.sessionId === activeId ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1'
               )}
             >
               <div className="flex items-center justify-between gap-1">
                 <span className="truncate text-xs font-medium">{s.title ?? `${s.agentName} 会话`}</span>
                 <span className={clsx('shrink-0 text-[10px]', STATUS_COLOR[s.status])}>{s.status}</span>
               </div>
-              <div className="mt-0.5 truncate text-[10px] text-mist-500">
+              <div className="mt-0.5 truncate text-[10px] text-my-tertiary">
                 {s.agentName}
                 {s.taskDir ? ` · ${s.taskDir}` : ''}
               </div>
@@ -335,15 +336,15 @@ export function AcpConsolePage(): JSX.Element {
       </aside>
 
       {/* 会话主体 */}
-      <section className="card flex min-w-0 flex-1 flex-col overflow-hidden">
+      <section className="my-card flex min-w-0 flex-1 flex-col overflow-hidden">
         {!activeSession ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-mist-500">
+          <div className="flex flex-1 items-center justify-center text-sm text-my-tertiary">
             选择左侧会话，或从 Jira 选一个工单开始
           </div>
         ) : (
           <>
-            <header className="flex items-center gap-2 border-b border-mist-700/40 px-4 py-2.5">
-              <span className="truncate text-sm font-medium">{activeSession.title ?? activeSession.agentName}</span>
+            <header className="flex items-center gap-2 border-b border-my-line px-4 py-2.5">
+              <span className="truncate text-sm font-medium text-my-primary">{activeSession.title ?? activeSession.agentName}</span>
               <span className={clsx('rounded px-1.5 py-0.5 text-[10px]', STATUS_COLOR[activeSession.status])}>
                 {activeSession.status}
               </span>
@@ -361,33 +362,36 @@ export function AcpConsolePage(): JSX.Element {
               )}
               <div className="flex-1" />
               {activeSession.status === 'busy' && (
-                <button className="btn-ghost text-xs" onClick={() => void api.acpSessionCancel(activeSession.sessionId)}>
+                <Button variant="ghost" size="sm" onClick={() => void api.acpSessionCancel(activeSession.sessionId)}>
                   <CircleStop size={13} /> 中止本轮
-                </button>
+                </Button>
               )}
               {(activeSession.status === 'error' || activeSession.status === 'closed') && (
-                <button
-                  className="btn-ghost text-xs"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => void newSession(activeSession.agentId, activeSession.taskDir)}
                   title="同 agent 重开会话"
                 >
                   <Plus size={13} /> 重开
-                </button>
+                </Button>
               )}
               {activeSession.status !== 'closed' && activeSession.status !== 'error' && (
-                <button
-                  className="btn-ghost text-xs text-rose-300"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-my-danger-text"
                   onClick={() => void api.acpSessionKill(activeSession.sessionId)}
                   title="结束进程树"
                 >
                   <X size={13} /> 结束
-                </button>
+                </Button>
               )}
             </header>
 
             <div
               ref={streamRef}
-              className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-3"
+              className="my-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-3"
               onScroll={(e) => {
                 const el = e.currentTarget
                 liveRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
@@ -402,16 +406,16 @@ export function AcpConsolePage(): JSX.Element {
                 <EventRow key={item.key} item={item} pendingPerm={pendingPerm} onRespond={respondPerm} onOpenTask={(d) => { setPage('tasks'); showTask(d) }} onOpenArtifact={openArtifact} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />
               ))}
               {items.length === 0 && (
-                <div className="py-10 text-center text-xs text-mist-500">
+                <div className="py-10 text-center text-xs text-my-tertiary">
                   会话已就绪。发一条指令试试，例如「按 .trellis/workflow.md 推进当前任务」。
                 </div>
               )}
             </div>
 
-            <footer className="border-t border-mist-700/40 p-2.5">
+            <footer className="border-t border-my-line p-2.5">
               <div className="flex items-end gap-2">
                 <textarea
-                  className="field min-h-[42px] flex-1 resize-none text-sm"
+                  className="min-h-[42px] flex-1 resize-none rounded-md border border-my-line bg-my-surface-1 px-3 py-2 text-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent disabled:opacity-50"
                   rows={2}
                   placeholder={activeSession.status === 'busy' ? '运行中…可先输入，回合结束后发送' : '输入指令，Enter 发送 / Shift+Enter 换行'}
                   value={input}
@@ -424,9 +428,9 @@ export function AcpConsolePage(): JSX.Element {
                     }
                   }}
                 />
-                <button className="btn-primary" disabled={activeSession.status !== 'ready' || !input.trim()} onClick={() => void send()}>
+                <Button variant="primary" disabled={activeSession.status !== 'ready' || !input.trim()} onClick={() => void send()}>
                   {activeSession.status === 'busy' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                </button>
+                </Button>
               </div>
             </footer>
           </>
@@ -435,7 +439,7 @@ export function AcpConsolePage(): JSX.Element {
 
       {/* 工单人工审查流入口 + S0 G3 观察面板（会话侧复用） */}
       <aside className="flex w-44 shrink-0 flex-col gap-2 overflow-y-auto">
-        <button className="card flex items-center gap-2 px-3 py-3 text-left text-xs text-mist-200 hover:border-sky-400/40" onClick={() => setJiraOpen(true)}>
+        <button className="my-card flex items-center gap-2 px-3 py-3 text-left text-xs text-my-secondary" onClick={() => setJiraOpen(true)}>
           <GitBranch size={15} className="text-sky-300" />
           <span>从 Jira 选工单开始</span>
         </button>
@@ -451,7 +455,7 @@ export function AcpConsolePage(): JSX.Element {
             }}
           />
         )}
-        <div className="card px-3 py-2.5 text-[10px] leading-relaxed text-mist-500">
+        <div className="my-card px-3 py-2.5 text-[10px] leading-relaxed text-my-tertiary">
           人工审查流：查询工单 → 点选导入（jiraKey 防重）→ 以该任务开新会话。无自动触发。
           <br />
           trellis 卡片（任务流转 / 文档 / spec / Jira）会实时混排在对话流里。
@@ -693,43 +697,43 @@ function JiraPickerModal(props: { onClose: () => void; onStarted: (sessionId: st
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6" onClick={onClose}>
-      <div className="card max-h-[80vh] w-[640px] max-w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 border-b border-mist-700/40 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop p-6" onClick={onClose}>
+      <div className="max-h-[80vh] w-[640px] max-w-full overflow-hidden rounded-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 border-b border-my-line px-4 py-3">
           <GitBranch size={15} className="text-sky-300" />
-          <span className="text-sm font-medium">从 Jira 选工单开始</span>
+          <span className="text-sm font-medium text-my-primary">从 Jira 选工单开始</span>
           <div className="flex-1" />
-          <select className="field w-44 text-xs" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+          <select className="h-8 w-44 rounded-md border border-my-line bg-my-surface-1 px-2 text-xs text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
             {agents.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
               </option>
             ))}
           </select>
-          <button className="btn-ghost px-2 py-1" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose}>
             <X size={14} />
-          </button>
+          </Button>
         </div>
-        <div className="flex gap-1.5 border-b border-mist-700/40 px-4 py-2">
+        <div className="flex gap-1.5 border-b border-my-line px-4 py-2">
           {JQL_PRESETS.map((p) => (
-            <button key={p.label} className="chip border border-mist-600/40 text-mist-300 hover:border-sky-400/40" disabled={loading} onClick={() => void search(p.jql)}>
+            <button key={p.label} className="chip border border-my-line text-my-secondary transition-colors hover:border-my-line-accent-subtle" disabled={loading} onClick={() => void search(p.jql)}>
               {p.label}
             </button>
           ))}
-          {loading && <Loader2 size={13} className="animate-spin self-center text-mist-400" />}
+          {loading && <Loader2 size={13} className="animate-spin self-center text-my-tertiary" />}
         </div>
-        <div className="max-h-[52vh] overflow-y-auto p-2">
-          {issues.length === 0 && !loading && <div className="py-8 text-center text-xs text-mist-500">无工单</div>}
+        <div className="my-scrollbar max-h-[52vh] overflow-y-auto p-2">
+          {issues.length === 0 && !loading && <div className="py-8 text-center text-xs text-my-tertiary">无工单</div>}
           {issues.map((it) => (
             <button
               key={it.key}
               disabled={importing !== null}
               onClick={() => void startWith(it)}
-              className="mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-mist-700/30 disabled:opacity-50"
+              className="mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-my-layer-1 disabled:opacity-50"
             >
               <span className="shrink-0 font-mono text-xs text-sky-300">{it.key}</span>
-              <span className="min-w-0 flex-1 truncate text-sm text-mist-100">{it.summary}</span>
-              <span className="shrink-0 text-[10px] text-mist-500">{it.status}</span>
+              <span className="min-w-0 flex-1 truncate text-sm text-my-primary">{it.summary}</span>
+              <span className="shrink-0 text-[10px] text-my-tertiary">{it.status}</span>
               {importing === it.key && <Loader2 size={12} className="animate-spin" />}
             </button>
           ))}

@@ -5,6 +5,7 @@ import { api } from '../api'
 import { useChatEntries } from '../chat/useChatEntries'
 import { useTranscriptScroll, useTranscriptWindow } from '../chat/useTranscriptScroll'
 import { MarkdownView } from '../components/MarkdownView'
+import { Button } from '../my/ui'
 import { clsx } from 'clsx'
 import {
   Plus,
@@ -14,7 +15,6 @@ import {
   Check,
   Copy,
   ChevronDown,
-  Bot,
   Hourglass,
   Download,
   Brain,
@@ -61,7 +61,7 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
           setProviderId(e.target.value)
           setModelId(p?.models?.find((m) => m.enabled)?.id ?? p?.models?.[0]?.id ?? '')
         }}
-        className="max-w-[130px] rounded-md border border-ink-600 bg-ink-850 px-1.5 py-1 text-[11px] text-mist-300 outline-none focus:border-leaf/60"
+        className="h-8 max-w-[130px] rounded-md border border-my-line bg-my-surface-1 px-2 text-[12px] text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
         title="供应商"
       >
         {providers.length === 0 && <option value="">未配置供应商</option>}
@@ -74,7 +74,7 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
       <select
         value={modelId}
         onChange={(e) => setModelId(e.target.value)}
-        className="max-w-[170px] rounded-md border border-ink-600 bg-ink-850 px-1.5 py-1 text-[11px] text-mist-300 outline-none focus:border-leaf/60"
+        className="h-8 max-w-[170px] rounded-md border border-my-line bg-my-surface-1 px-2 text-[12px] text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
         title="模型"
       >
         {(!provider || provider.models.length === 0) && <option value="">未选择模型</option>}
@@ -155,15 +155,15 @@ function PermissionCard({
         {perm.toolName}({perm.argsSummary})
       </p>
       <div className="flex flex-wrap gap-1.5">
-        <button onClick={() => onDecision('allow-once')} className="btn-primary text-[11px]">
+        <Button variant="primary" size="sm" onClick={() => onDecision('allow-once')}>
           允许一次
-        </button>
-        <button onClick={() => onDecision('allow-session')} className="btn-outline text-[11px]">
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => onDecision('allow-session')}>
           本会话内允许
-        </button>
-        <button onClick={() => onDecision('deny')} className="btn-ghost text-[11px] text-rose-300">
+        </Button>
+        <Button variant="ghost" size="sm" className="text-my-danger-text" onClick={() => onDecision('deny')}>
           拒绝
-        </button>
+        </Button>
         <span className="ml-auto self-center text-[10px] text-mist-600">{perm.timeoutSec}s 内未决策将自动拒绝</span>
       </div>
     </div>
@@ -183,11 +183,11 @@ function BranchSwitcher({
   onSwitch: (id: string) => void
 }): JSX.Element {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-ink-600/70 bg-ink-850/60 px-1.5 py-0.5 font-mono text-[10px] text-mist-400">
+    <span className="inline-flex items-center gap-1 rounded-md border border-my-line bg-my-layer-2 px-1.5 py-0.5 font-mono text-[10px] text-my-tertiary">
       <button
         disabled={index <= 0}
         onClick={() => ids[index - 1] && onSwitch(ids[index - 1])}
-        className="disabled:opacity-30 hover:text-mist-200"
+        className="disabled:opacity-30 hover:text-my-secondary"
         title="上一分支"
       >
         <ChevronLeft size={10} />
@@ -196,7 +196,7 @@ function BranchSwitcher({
       <button
         disabled={index >= count - 1}
         onClick={() => ids[index + 1] && onSwitch(ids[index + 1])}
-        className="disabled:opacity-30 hover:text-mist-200"
+        className="disabled:opacity-30 hover:text-my-secondary"
         title="下一分支"
       >
         <ChevronRight size={10} />
@@ -244,10 +244,10 @@ function CopyButton({ text }: { text: string }): JSX.Element {
         setDone(true)
         setTimeout(() => setDone(false), 1200)
       }}
-      className="shrink-0 rounded p-1 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-mist-200"
+      className="shrink-0 rounded p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
       title="复制"
     >
-      {done ? <Check size={12} className="text-leaf" /> : <Copy size={12} />}
+      {done ? <Check size={12} className="text-my-success-text" /> : <Copy size={12} />}
     </button>
   )
 }
@@ -399,41 +399,40 @@ export function ChatPage(): JSX.Element {
   return (
     <div className="flex h-full">
       {/* 会话列表 */}
-      <aside className="flex w-56 shrink-0 flex-col border-r border-ink-700/70 bg-ink-950/40">
-        <div className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-mist-200">
-          <Bot size={13} /> AI 对话
-          <span className="flex-1" />
-          <button
+      <aside className="flex w-56 shrink-0 flex-col border-r border-my-line">
+        <div className="flex items-center px-3 py-2.5">
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => void chatNewSession({ providerId: provider?.id, modelId })}
-            className="btn-ghost p-1"
             title="新建会话"
           >
             <Plus size={14} />
-          </button>
+          </Button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {sessions.length === 0 && (
-            <p className="px-2 py-4 text-[11px] leading-5 text-mist-500">还没有会话。点击 + 新建，或直接在下方输入第一条消息。</p>
+            <p className="px-2 py-4 text-[11px] leading-5 text-my-tertiary">还没有会话。点击 + 新建，或直接在下方输入第一条消息。</p>
           )}
           {sessions.map((s) => (
             <div
               key={s.id}
               className={clsx(
                 'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition-colors',
-                s.id === activeId ? 'bg-leaf/10 text-mist-100' : 'text-mist-400 hover:bg-ink-800/60'
+                s.id === activeId ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1'
               )}
               onClick={() => void chatOpenSession(s.id)}
             >
               <span className="min-w-0 flex-1 truncate" title={s.title}>
                 {s.title}
               </span>
-              <span className="shrink-0 font-mono text-[9.5px] text-mist-600">{s.messageCount}</span>
+              <span className="shrink-0 font-mono text-[9.5px] text-my-placeholder">{s.messageCount}</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   void chatDeleteSession(s.id)
                 }}
-                className="shrink-0 rounded p-0.5 text-mist-600 opacity-0 hover:text-rose-300 group-hover:opacity-100"
+                className="shrink-0 rounded p-0.5 text-my-placeholder opacity-0 hover:text-my-danger-text group-hover:opacity-100"
                 title="删除会话"
               >
                 <Trash2 size={11} />
@@ -445,13 +444,13 @@ export function ChatPage(): JSX.Element {
 
       {/* 转录 + Composer */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center gap-2 border-b border-ink-700/60 px-4 py-2">
-          <span className="min-w-0 max-w-[240px] flex-1 truncate text-xs font-semibold text-mist-200">{activeSession?.title ?? '新对话'}</span>
+        <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-4 py-2">
+          <span className="min-w-0 max-w-[240px] flex-1 truncate text-xs font-semibold text-my-secondary">{activeSession?.title ?? '新对话'}</span>
           <select
             value={taskDir}
             onChange={(e) => setTaskDir(e.target.value)}
             disabled={!snapshot?.tasks?.length}
-            className="max-w-[190px] rounded-md border border-ink-600 bg-ink-850 px-1.5 py-1 text-[11px] text-mist-300 outline-none focus:border-leaf/60 disabled:opacity-40"
+            className="h-8 max-w-[190px] rounded-md border border-my-line bg-my-surface-1 px-2 text-[12px] text-my-primary outline-none focus:border-my-line-accent disabled:opacity-40 [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
             title="把对话聚焦到某个任务：AI 会自动携带该任务的描述、备注与子任务作为上下文"
           >
             <option value="">📌 不关联任务</option>
@@ -464,7 +463,7 @@ export function ChatPage(): JSX.Element {
           <select
             value={thinkingLevel}
             onChange={(e) => setThinkingLevel(e.target.value as ThinkingLevel)}
-            className="rounded-md border border-ink-600 bg-ink-850 px-1.5 py-1 text-[11px] text-mist-300 outline-none focus:border-leaf/60"
+            className="h-8 rounded-md border border-my-line bg-my-surface-1 px-2 text-[12px] text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
             title="思考档位（按供应商协议映射；reasoning 模型的思考流独立折叠展示）"
           >
             {THINKING_VALUES.map((v) => (
@@ -476,7 +475,7 @@ export function ChatPage(): JSX.Element {
           <label
             className={clsx(
               'flex cursor-pointer select-none items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
-              agentMode ? 'border-emerald-400/50 bg-emerald-500/10 text-emerald-300' : 'border-ink-600 bg-ink-850 text-mist-400'
+              agentMode ? 'border-emerald-400/50 bg-emerald-500/10 text-emerald-300' : 'border-my-line bg-my-layer-2 text-my-tertiary'
             )}
             title="Agent 模式：AI 可查询项目知识库、任务与规范后再回答（每次工具调用需你授权）"
           >
@@ -489,9 +488,9 @@ export function ChatPage(): JSX.Element {
             Agent 联网项目
           </label>
           {picker}
-          <button onClick={exportMarkdown} className="btn-ghost p-1" title="导出 Markdown" disabled={entries.length === 0}>
+          <Button variant="ghost" size="sm" onClick={exportMarkdown} title="导出 Markdown" disabled={entries.length === 0}>
             <Download size={13} />
-          </button>
+          </Button>
         </div>
 
         <div className="relative min-h-0 flex-1">
@@ -499,13 +498,13 @@ export function ChatPage(): JSX.Element {
             <div className="mx-auto max-w-3xl space-y-3 px-4 py-4">
               {hasOlder && (
                 <div className="text-center">
-                  <button onClick={showOlder} className="btn-ghost text-[11px]">
+                  <Button variant="ghost" size="sm" onClick={showOlder}>
                     加载更早的消息（还有 {hiddenCount} 条）
-                  </button>
+                  </Button>
                 </div>
               )}
               {visible.length === 0 && !streaming && pending.length === 0 && (
-                <div className="py-16 text-center text-xs text-mist-500">
+                <div className="py-16 text-center text-xs text-my-tertiary">
                   开始你的第一条对话。模型按会话绑定，可随时在上方切换。
                 </div>
               )}
@@ -530,21 +529,22 @@ export function ChatPage(): JSX.Element {
                               }
                             }}
                             rows={Math.min(6, Math.max(2, editing.text.split('\n').length))}
-                            className="resize-none rounded-lg border border-leaf/50 bg-ink-850 px-3 py-2 text-xs text-mist-200 outline-none"
+                            className="resize-none rounded-md border border-my-line-accent-subtle bg-my-layer-2 px-3 py-2 text-xs text-my-primary outline-none"
                             autoFocus
                           />
                           <div className="flex justify-end gap-1.5 text-[11px]">
-                            <button onClick={() => setEditing(null)} className="btn-ghost">取消（Esc）</button>
-                            <button
+                            <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>取消（Esc）</Button>
+                            <Button
+                              variant="primary"
+                              size="sm"
                               onClick={() => {
                                 const text = editing.text.trim()
                                 if (text && e.id) void chatEditResend(e.id, text)
                                 setEditing(null)
                               }}
-                              className="btn-primary"
                             >
                               保存并重发
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       ) : (
@@ -555,7 +555,7 @@ export function ChatPage(): JSX.Element {
                           {e.id && (
                             <button
                               onClick={() => setEditing({ id: e.key, text: e.content })}
-                              className="shrink-0 rounded p-1 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-mist-200"
+                              className="shrink-0 rounded p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
                               title="编辑并重发（生成新分支）"
                             >
                               <Pencil size={12} />
@@ -596,7 +596,7 @@ export function ChatPage(): JSX.Element {
                       {idx === visible.length - 1 && (
                         <button
                           onClick={regenerate}
-                          className="rounded p-1 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-mist-200"
+                          className="rounded p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
                           title="重新生成（保留旧回答为分支）"
                         >
                           <RefreshCw size={12} />
@@ -606,7 +606,7 @@ export function ChatPage(): JSX.Element {
                         <button
                           onClick={() => void distillAnswer(e.id ?? '')}
                           disabled={distilling === e.id}
-                          className="rounded p-1 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-leaf disabled:opacity-40"
+                          className="rounded p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-accent-text disabled:opacity-40"
                           title="存入知识库：AI 自动拟标题、打标签，整理成笔记（.trellis/notes/）"
                         >
                           {distilling === e.id ? <Loader2 size={12} className="animate-spin" /> : <BookPlus size={12} />}
@@ -645,7 +645,7 @@ export function ChatPage(): JSX.Element {
           {!atBottom && (
             <button
               onClick={() => scrollToBottom('smooth')}
-              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-ink-600 bg-ink-850 px-3 py-1 text-[11px] text-mist-300 shadow-lg hover:border-leaf/50"
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-my-line bg-my-layer-2 px-3 py-1 text-[11px] text-my-secondary shadow-lg hover:border-my-line-accent-subtle"
             >
               <ChevronDown size={11} /> 回到底部
             </button>
@@ -653,7 +653,7 @@ export function ChatPage(): JSX.Element {
         </div>
 
         {/* Composer */}
-        <div className="border-t border-ink-700/60 p-3">
+        <div className="border-t border-my-line p-3">
           {!aiEnabled && (
             <p className="mb-2 text-[11px] text-amber-300/90">应用内 AI 未启用（设置 → AI 模型）。启用并配置供应商后即可对话。</p>
           )}
@@ -661,10 +661,10 @@ export function ChatPage(): JSX.Element {
             <div className="mb-2 flex flex-wrap gap-2">
               {attachments.map((a, i) => (
                 <div key={i} className="relative">
-                  <img src={a.dataUrl} alt={a.name} className="h-14 w-14 rounded-lg border border-ink-600 object-cover" />
+                  <img src={a.dataUrl} alt={a.name} className="h-14 w-14 rounded-lg border border-my-line object-cover" />
                   <button
                     onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
-                    className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-800 p-0.5 text-mist-400 shadow hover:text-rose-300"
+                    className="absolute -right-1.5 -top-1.5 rounded-full bg-my-layer-3 p-0.5 text-my-tertiary shadow hover:text-my-danger-text"
                     title="移除"
                   >
                     <X size={10} />
@@ -685,14 +685,12 @@ export function ChatPage(): JSX.Element {
                 e.target.value = ''
               }}
             />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="btn-ghost shrink-0 p-2"
-              title="添加图片（≤4 张，单张 ≤3MB）"
-            >
+            <Button variant="ghost" className="shrink-0" onClick={() => fileInputRef.current?.click()} title="添加图片（≤4 张，单张 ≤3MB）">
               <ImagePlus size={15} />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              className="shrink-0"
               onClick={() => {
                 void api.chatScreenshot().then((r) => {
                   if (r.ok && r.dataUrl) {
@@ -702,11 +700,10 @@ export function ChatPage(): JSX.Element {
                   }
                 })
               }}
-              className="btn-ghost shrink-0 p-2"
               title="截图问 AI：截取当前面板画面作为附件"
             >
               <Camera size={15} />
-            </button>
+            </Button>
             <textarea
               value={draft}
               onPaste={(e) => {
@@ -736,30 +733,32 @@ export function ChatPage(): JSX.Element {
               }}
               placeholder="输入消息，Enter 发送，Shift+Enter 换行，Alt+Enter 运行中引导，Esc 清空"
               rows={Math.min(6, Math.max(1, draft.split('\n').length))}
-              className="min-h-[38px] flex-1 resize-none rounded-lg border border-ink-600 bg-ink-850 px-3 py-2 text-xs text-mist-200 outline-none placeholder:text-mist-600 focus:border-leaf/60"
+              className="min-h-[38px] flex-1 resize-none rounded-md border border-my-line bg-my-surface-1 px-3 py-2 text-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
             />
             {busy ? (
               <>
-                <button
+                <Button
+                  variant="outline"
+                  className="shrink-0"
                   onClick={queueMore}
                   disabled={!draft.trim()}
-                  className="btn-outline shrink-0 text-xs"
                   title="当前轮运行中，点击加入队列"
                 >
                   <Hourglass size={12} /> 排队 ({pending.length})
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="shrink-0 bg-my-danger-subtle text-my-danger-text hover:bg-my-danger-subtle-hover"
                   onClick={() => void chatAbort()}
-                  className="btn shrink-0 bg-rose-500/15 text-xs text-rose-300 hover:bg-rose-500/25"
                   title="中止当前轮（Ctrl+.）"
                 >
                   <Square size={12} /> 停止
-                </button>
+                </Button>
               </>
             ) : (
-              <button onClick={submit} disabled={!draft.trim() && attachments.length === 0} className="btn-primary shrink-0 text-xs">
+              <Button variant="primary" className="shrink-0" onClick={submit} disabled={!draft.trim() && attachments.length === 0}>
                 <Send size={12} /> 发送
-              </button>
+              </Button>
             )}
           </div>
         </div>

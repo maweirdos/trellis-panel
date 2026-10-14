@@ -21,25 +21,24 @@ const BOX =
 
 function CreateIssueForm(): JSX.Element {
   const store = useMy()
-  const { data, createIssue, updateIssue, setCreateIssueOpen, openIssue } = store
-  const defaultProject = data.projects.find((p) => p.id === store.activeProjectId) ?? data.projects[0]
-  const [projectId, setProjectId] = useState(defaultProject.id)
+  const { data, createIssue, setCreateIssueOpen, openIssue } = store
+  const defaultProject = data.projects[0]
   const [name, setName] = useState('')
   const [priority, setPriority] = useState<Priority>('none')
-  const [stateId, setStateId] = useState('st-todo')
+  const [stateId, setStateId] = useState('st-planning')
   const [description, setDescription] = useState('')
 
-  const project = data.projects.find((p) => p.id === projectId) ?? defaultProject
   const states = [...data.states].sort((a, b) => a.sequence - b.sequence)
-  const currentState = states.find((s) => s.id === stateId)
 
   const submit = (): void => {
     const n = name.trim()
     if (!n) return
-    const id = createIssue({ projectId, name: n, priority, description: description.trim() })
-    if (stateId !== 'st-todo') updateIssue(id, { stateId })
-    setCreateIssueOpen(false)
-    openIssue(id)
+    void createIssue({ name: n, priority, description: description.trim() }).then((id) => {
+      if (!id) return
+      if (stateId !== 'st-planning') void store.updateIssue(id, { stateId })
+      setCreateIssueOpen(false)
+      openIssue(id)
+    })
   }
 
   return (
@@ -65,28 +64,16 @@ function CreateIssueForm(): JSX.Element {
               width={280}
               trigger={({ toggle }) => (
                 <button type="button" onClick={toggle} className={BOX}>
-                  <WorkspaceMark color={project.color} letter={project.icon} size={16} />
-                  <span className="min-w-0 flex-1 truncate text-left">{project.name}</span>
+                  <WorkspaceMark color={defaultProject.color} letter={defaultProject.icon} size={16} />
+                  <span className="min-w-0 flex-1 truncate text-left">{defaultProject.name}</span>
                   <ChevronDown size={12} className="shrink-0 text-my-icon-tertiary" />
                 </button>
               )}
             >
               {(close) => (
-                <>
-                  {data.projects.map((p) => (
-                    <DropdownItem
-                      key={p.id}
-                      selected={p.id === projectId}
-                      icon={<WorkspaceMark color={p.color} letter={p.icon} size={14} />}
-                      onClick={() => {
-                        setProjectId(p.id)
-                        close()
-                      }}
-                    >
-                      {p.name}
-                    </DropdownItem>
-                  ))}
-                </>
+                <DropdownItem selected icon={<WorkspaceMark color={defaultProject.color} letter={defaultProject.icon} size={14} />} onClick={close}>
+                  {defaultProject.name}
+                </DropdownItem>
               )}
             </Dropdown>
           </div>
@@ -139,13 +126,16 @@ function CreateIssueForm(): JSX.Element {
               <div className="mb-1 text-[11px] font-medium text-my-tertiary">状态</div>
               <Dropdown
                 width={190}
-                trigger={({ toggle }) => (
+                trigger={({ toggle }) => {
+                  const currentState = states.find((s) => s.id === stateId)
+                  return (
                   <button type="button" onClick={toggle} className={BOX}>
                     {currentState && <StateGroupIcon stateGroup={currentState.group} color={currentState.color} size={13} />}
-                    <span className="min-w-0 flex-1 truncate text-left">{currentState?.name ?? 'Todo'}</span>
+                    <span className="min-w-0 flex-1 truncate text-left">{currentState?.name ?? '规划中'}</span>
                     <ChevronDown size={12} className="shrink-0 text-my-icon-tertiary" />
                   </button>
-                )}
+                  )
+                }}
               >
                 {(close) => (
                   <>

@@ -27,6 +27,7 @@ import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
+import { Button } from '../my/ui'
 import { confirmDialog } from '../components/Dialogs'
 import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
 import { DocumentReader } from '../reader/DocumentReader'
@@ -125,20 +126,20 @@ const DocPane = React.memo(function DocPane({
   }
   return (
     <div>
-      <div className="mb-4 flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-800/60 px-3 py-1.5">
-        <FileText size={12} className={clsx('shrink-0', isMd ? 'text-leaf' : 'text-mist-500')} />
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-mist-400" title={file.path}>
+      <div className="mb-4 flex items-center gap-2 rounded-lg border border-my-line bg-my-layer-1 px-3 py-1.5">
+        <FileText size={12} className={clsx('shrink-0', isMd ? 'text-my-icon-accent' : 'text-my-icon-tertiary')} />
+        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-my-tertiary" title={file.path}>
           {projectName} / {file.name} · {fmtBytes(file.size)}
         </span>
-        <button onClick={() => void copy()} className="btn-ghost px-1.5 py-0.5 text-[10.5px]" title="复制全文">
+        <Button variant="ghost" size="sm" onClick={() => void copy()} title="复制全文">
           <Copy size={11} /> {copied ? '已复制' : '复制'}
-        </button>
-        <button onClick={onExpand} className="btn-ghost px-1.5 py-0.5 text-[10.5px] text-leaf-soft" title="展开为完整任务工作区（保留返回位置）">
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onExpand} title="展开为完整任务工作区（保留返回位置）">
           <Maximize2 size={11} /> 展开
-        </button>
-        <button onClick={onOpenInViewer} className="btn-ghost px-1.5 py-0.5 text-[10.5px]" title="在产物查看器中打开（固定标签）">
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onOpenInViewer} title="在产物查看器中打开（固定标签）">
           <ArrowUpRight size={11} /> 放大
-        </button>
+        </Button>
       </div>
       {relativePath !== null ? (
         <DocumentReader
@@ -148,7 +149,7 @@ const DocPane = React.memo(function DocPane({
           variant="compact"
         />
       ) : (
-        <div className="rounded-lg border border-ink-700 bg-ink-850/60 px-3 py-2 text-[11.5px] text-mist-400">
+        <div className="rounded-lg border border-my-line bg-my-layer-1 px-3 py-2 text-[11.5px] text-my-tertiary">
           该文件不在当前项目内，使用普通读取打开；不提供版本比较与变更提示。
         </div>
       )}
@@ -468,36 +469,36 @@ export function TaskDetail(): JSX.Element | null {
   }
 
   return (
-    <div className="relative flex h-full shrink-0 animate-slide-in flex-col border-l border-ink-700 bg-ink-850 shadow-2xl" style={{ width }}>
+    <div className="relative flex h-full shrink-0 animate-slide-in flex-col bg-my-canvas" style={{ width }}>
       {/* 左缘拖拽调宽手柄 */}
       <div
         onMouseDown={onStartResize}
-        className="absolute inset-y-0 left-0 z-30 w-1.5 cursor-ew-resize transition-colors hover:bg-leaf-dim/40"
+        className="absolute inset-y-0 left-0 z-30 w-1.5 cursor-ew-resize transition-colors hover:bg-my-line-strong"
         title="拖拽调整宽度"
       />
-      <div className="flex items-start gap-2 border-b border-ink-700 px-4 py-3">
+      <div className="flex items-start gap-2 border-b border-my-line px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             {r && <StatusBadge status={pending.status ?? r.status} />}
             {r && <PriorityBadge priority={pending.priority ?? r.priority} />}
             {jiraKey && <JiraChip jiraKey={jiraKey} />}
-            <span className="font-mono text-[10px] text-mist-500">
+            <span className="font-mono text-[10px] text-my-tertiary">
               {taskDateLabel(task.dirName, task.date)}
               {archived ? ' · 已归档' : ''}
             </span>
           </div>
-          <h2 className="line-clamp-2 text-[13px] font-semibold leading-5 text-mist-50">
+          <h2 className="line-clamp-2 text-[13px] font-semibold leading-5 text-my-primary">
             {pending.title ?? r?.title ?? task.dirName}
           </h2>
-          <div className="mt-0.5 font-mono text-[10.5px] text-mist-500">{task.dirName}</div>
+          <div className="mt-0.5 font-mono text-[10.5px] text-my-tertiary">{task.dirName}</div>
         </div>
-        <button onClick={() => showTask(null)} className="btn-ghost px-1.5 py-1" title="关闭">
+        <Button variant="ghost" size="sm" onClick={() => showTask(null)} title="关闭">
           <X size={15} />
-        </button>
+        </Button>
       </div>
 
       {/* 文档直达条：PRD / Design 一键切换，详情殿后 */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-ink-700 bg-ink-850 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-1 border-b border-my-line bg-my-canvas px-3 py-2">
           {docs.map((d) => {
             const on = activeDoc?.path === d.path
             const isMd = /\.(md|markdown)$/i.test(d.name)
@@ -509,11 +510,11 @@ export function TaskDetail(): JSX.Element | null {
                 className={clsx(
                   'flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
                   on
-                    ? 'border-leaf-dim/50 bg-leaf-dim/15 text-leaf-soft'
-                    : 'border-ink-600 text-mist-300 hover:border-ink-500 hover:text-mist-100'
+                    ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
+                    : 'border-my-line text-my-secondary hover:bg-my-layer-1-hover'
                 )}
               >
-                <FileText size={11} className={isMd ? 'text-leaf' : 'text-mist-500'} />
+                <FileText size={11} className={isMd ? 'text-my-icon-accent' : 'text-my-icon-tertiary'} />
                 {labels.get(d.name) ?? docLabel(d.name)}
               </button>
             )
@@ -523,20 +524,20 @@ export function TaskDetail(): JSX.Element | null {
             className={clsx(
               'flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
               showInfo
-                ? 'border-leaf-dim/50 bg-leaf-dim/15 text-leaf-soft'
-                : 'border-transparent text-mist-400 hover:text-mist-200'
+                ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
+                : 'border-transparent text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary'
             )}
           >
             <Settings2 size={11} /> 详情
           </button>
           {task.artifacts.length > docs.length && (
-            <span className="ml-auto flex shrink-0 items-center gap-1 text-[10px] text-mist-600" title="其余产物见「详情」底部">
+            <span className="ml-auto flex shrink-0 items-center gap-1 text-[10px] text-my-tertiary" title="其余产物见「详情」底部">
               <Paperclip size={10} /> {task.artifacts.length - docs.length}
             </span>
           )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-20">
+      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-4 pb-20">
         {activeDoc && (
           <DocPane
             key={activeDoc.path}
@@ -586,7 +587,7 @@ export function TaskDetail(): JSX.Element | null {
 
                 {r.subtasks.length > 0 && (
                   <div className="py-1.5">
-                    <div className="mb-1.5 text-[11px] text-mist-500">子任务</div>
+                    <div className="mb-1.5 text-[11px] text-my-tertiary">子任务</div>
                     <div className="space-y-1">
                       {r.subtasks.map((s, i) => {
                         const { done, text, isCheckable } = parseSubtask(s)
@@ -624,7 +625,7 @@ export function TaskDetail(): JSX.Element | null {
 
                 {r.relatedFiles.length > 0 && (
                   <div className="py-1.5">
-                    <div className="mb-1.5 text-[11px] text-mist-500">相关文件</div>
+                    <div className="mb-1.5 text-[11px] text-my-tertiary">相关文件</div>
                     <div className="space-y-0.5">
                       {r.relatedFiles.map((f) => (
                         <div key={f} className="break-all font-mono text-[11px] text-mist-300">· {f}</div>
@@ -636,7 +637,7 @@ export function TaskDetail(): JSX.Element | null {
                 {/* Git 集成 */}
                 {!archived && (
                   <div className="pt-3">
-                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-my-tertiary">
                       <GitBranch size={12} /> Git 状态
                       {gitLoading && <RefreshCw size={10} className="animate-spin" />}
                     </div>
@@ -723,7 +724,7 @@ export function TaskDetail(): JSX.Element | null {
                 {/* GitLab 连接器：MR / 流水线 */}
                 {gitlabEnabled && r?.branch && (
                   <div className="pt-3">
-                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-my-tertiary">
                       <GitMerge size={12} /> GitLab
                       {!gl && <RefreshCw size={10} className="animate-spin" />}
                     </div>
@@ -807,22 +808,26 @@ export function TaskDetail(): JSX.Element | null {
 
                 <div className="flex flex-wrap gap-2 pt-3">
                   {r?.status === 'planning' && (
-                    <button onClick={() => void deleteTodo()} className="btn bg-rose-500/15 text-rose-300 hover:bg-rose-500/25">
+                    <button
+                      type="button"
+                      onClick={() => void deleteTodo()}
+                      className="my-control my-control-sm bg-my-danger-subtle text-my-danger-text hover:bg-my-danger-subtle-hover"
+                    >
                       <X size={12} /> 删除待办
                     </button>
                   )}
-                  <button onClick={() => api.revealInExplorer(task.path)} className="btn-outline">
+                  <Button size="sm" variant="outline" onClick={() => api.revealInExplorer(task.path)}>
                     <FolderOpen size={12} /> 打开目录
-                  </button>
-                  <button onClick={() => api.openInEditor(task.path)} className="btn-outline">
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => api.openInEditor(task.path)}>
                     <ExternalLink size={12} /> 编辑器打开
-                  </button>
+                  </Button>
                   {jiraKey && (
                     <>
                       {jiraUrl && (
-                        <button onClick={() => api.openExternal(jiraUrl)} className="btn-outline">
+                        <Button size="sm" variant="outline" onClick={() => api.openExternal(jiraUrl)}>
                           <ExternalLink size={12} /> Jira {jiraKey}
-                        </button>
+                        </Button>
                       )}
                       {/* R0：从 Jira 同步（直写任务状态）已停用——任务阶段收归外部工作流 */}
                     </>
@@ -836,7 +841,7 @@ export function TaskDetail(): JSX.Element | null {
             {/* 其余产物（目录 / 不可预览文件等）——点击仍进入全屏查看器 */}
             {task.artifacts.length > 0 && (
               <div className="py-3">
-                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mist-500">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-my-tertiary">
                   <Paperclip size={12} /> 产物文件 ({task.artifacts.length})
                 </div>
                 <div className="space-y-1">
@@ -869,20 +874,20 @@ export function TaskDetail(): JSX.Element | null {
 
       {/* 待保存修改 footer */}
       {pendingCount > 0 && (
-        <div className="absolute inset-x-0 bottom-0 z-10 flex animate-fade-in items-center gap-2 border-t border-ink-600 bg-ink-800/95 px-4 py-2.5 backdrop-blur">
-          <span className="text-[11px] text-amber-300">
+        <div className="absolute inset-x-0 bottom-0 z-10 flex animate-fade-in items-center gap-2 border-t border-my-line bg-my-layer-2 px-4 py-2.5">
+          <span className="text-[11px] text-my-warning-text">
             {pendingCount} 处待保存修改
           </span>
           <div className="ml-auto flex gap-1.5">
-            <button onClick={() => setPending({})} className="btn-ghost" title="放弃全部修改">
+            <Button variant="ghost" size="sm" onClick={() => setPending({})} title="放弃全部修改">
               <RotateCcw size={12} /> 放弃
-            </button>
-            <button onClick={() => setShowDiff(true)} className="btn-outline">
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowDiff(true)}>
               <GitCompare size={12} /> 预览
-            </button>
-            <button onClick={() => void saveAll()} className="btn-primary">
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => void saveAll()}>
               <Save size={12} /> 保存
-            </button>
+            </Button>
           </div>
         </div>
       )}

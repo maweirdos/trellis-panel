@@ -1,26 +1,17 @@
-// 模块内自治 zustand store（独立于面板主 store；持久化仅 UI 偏好，键前缀 tpanel.my.）
+// 应用级 参考 外壳状态。路由唯一事实是主 store 的 useApp.page，这里只管
+// 视图偏好（布局/分组/排序/筛选）、弹层（peek/命令面板/新建）与数据镜像。
 import { create } from 'zustand'
-import { createDemoDataset } from './data'
-import type {
-  GroupBy,
-  Issue,
-  IssueFilters,
-  OrderBy,
-  MyDataset,
-  MyPage,
-  Priority,
-  ThemeMode,
-  WorkItemLayout
-} from './types'
+import { api } from '../api'
+import { useApp } from '../store'
+import { deriveDataset, issueToTaskPatch, todayIso, TRELLIS_PROJECT_ID } from './adapter'
+import type { GroupBy, Issue, IssueFilters, OrderBy, Priority, ThemeMode, WorkItemLayout } from './types'
 
 const STORAGE_KEY = 'tpanel.my.ui'
 
 interface PersistedPrefs {
-  theme: ThemeMode
   layout: WorkItemLayout
   groupBy: GroupBy
   orderBy: OrderBy
-  customAccent: string | null
 }
 
 function loadPrefs(): Partial<PersistedPrefs> {
@@ -37,29 +28,20 @@ function savePrefs(prefs: PersistedPrefs): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
   } catch {
-    // 持久化失败静默降级（隐私模式等）
+    // 隐私模式等场景下静默降级
   }
 }
 
 const prefs = loadPrefs()
-const dataset: MyDataset = createDemoDataset()
 
 export interface MyStore {
-  data: MyDataset
+  /** 视图模型镜像；快照更新时 syncFromSnapshot() 重建 */
+  data: ReturnType<typeof deriveDataset>
+  syncFromSnapshot: () => void
 
-  // 主题
   theme: ThemeMode
-  customAccent: string | null
   setTheme: (t: ThemeMode) => void
-  setCustomAccent: (hex: string | null) => void
 
-  // 导航
-  page: MyPage
-  activeProjectId: string
-  navigateWorkspace: (page: MyPage) => void
-  navigateProject: (projectId: string, page?: MyPage) => void
-
-  // 工作项视图偏好
   layout: WorkItemLayout
   groupBy: GroupBy
   orderBy: OrderBy
@@ -75,68 +57,38 @@ export interface MyStore {
   clearFilters: () => void
   setDisplay: (patch: Partial<MyStore['display']>) => void
 
-  // 弹层与选中
   peekIssueId: string | null
   openIssue: (id: string) => void
   closeIssue: () => void
   createIssueOpen: boolean
   setCreateIssueOpen: (v: boolean) => void
-  createProjectOpen: boolean
-  setCreateProjectOpen: (v: boolean) => void
   paletteOpen: boolean
   setPaletteOpen: (v: boolean) => void
-  selectedCycleId: string | null
-  setSelectedCycle: (id: string | null) => void
-  selectedModuleId: string | null
-  setSelectedModule: (id: string | null) => void
-  selectedViewId: string | null
-  setSelectedView: (id: string | null) => void
-  selectedPageDocId: string
-  setSelectedPageDoc: (id: string) => void
-  projectSettingsTab: 'general' | 'states' | 'labels' | 'members' | 'features'
-  setProjectSettingsTab: (t: MyStore['projectSettingsTab']) => void
-  workspaceSettingsTab: 'general' | 'members'
-  setWorkspaceSettingsTab: (t: MyStore['workspaceSettingsTab']) => void
 
-  // 数据操作（纯内存）
-  updateIssue: (id: string, patch: Partial<Issue>) => void
-  createIssue: (input: { projectId: string; name: string; priority: Priority; description?: string }) => string
-  markNotificationRead: (id: string) => void
-  toggleProjectFavorite: (id: string) => void
-  updatePageDoc: (id: string, patch: { title?: string; content?: string; emoji?: string }) => void
-  setIntakeStatus: (id: string, status: 'pending' | 'accepted' | 'declined' | 'duplicate' | 'snoozed') => void
-}
-
-function persist(s: MyStore): void {
-  savePrefs({
-    theme: s.theme,
-    layout: s.layout,
-    groupBy: s.groupBy,
-    orderBy: s.orderBy,
-    customAccent: s.customAccent
-  })
+  updateIssue: (id: string, patch: Partial<Issue>) => Promise<void>
+  createIssue: (input: { name: string; priority: Priority; description?: string }) => Promise<string | null>
+  toggleTheme: () => void
 }
 
 const defaultFilters: IssueFilters = { priority: [], stateGroup: [], assigneeIds: [], labelIds: [] }
 
-export const useMy = create<MyStore>()((set, get) => ({
-  data: dataset,
+function currentDataset(): ReturnType<typeof deriveDataset> {
+  return deriveDataset(useApp.getState().snapshot)
+}
 
-  theme: prefs.theme ?? 'dark',
-  customAccent: prefs.customAccent ?? null,
+export const useMy = create<MyStore>()((set, get) => ({
+  data: currentDataset(),
+  syncFromSnapshot: () => set({ data: currentDataset() }),
+
+  theme: useApp.getState().settings?.theme === 'light' ? 'light' : 'dark',
   setTheme: (t) => {
     set({ theme: t })
-    persist(get())
+    void useApp.getState().saveSettings({ theme: t })
   },
-  setCustomAccent: (hex) => {
-    set({ customAccent: hex })
-    persist(get())
+  toggleTheme: () => {
+    const next = get().theme === 'dark' ? 'light' : 'dark'
+    get().setTheme(next)
   },
-
-  page: 'your-work',
-  activeProjectId: 'p-web',
-  navigateWorkspace: (page) => set({ page, activeProjectId: '' }),
-  navigateProject: (projectId, page = 'work-items') => set({ page, activeProjectId: projectId }),
 
   layout: prefs.layout ?? 'list',
   groupBy: prefs.groupBy ?? 'state',
@@ -145,15 +97,15 @@ export const useMy = create<MyStore>()((set, get) => ({
   display: { showEmptyGroups: false, showSubIssues: true },
   setLayout: (l) => {
     set({ layout: l })
-    persist(get())
+    savePrefs({ layout: get().layout, groupBy: get().groupBy, orderBy: get().orderBy })
   },
   setGroupBy: (g) => {
     set({ groupBy: g })
-    persist(get())
+    savePrefs({ layout: get().layout, groupBy: g, orderBy: get().orderBy })
   },
   setOrderBy: (o) => {
     set({ orderBy: o })
-    persist(get())
+    savePrefs({ layout: get().layout, groupBy: get().groupBy, orderBy: o })
   },
   toggleFilter: (key, value) => {
     const cur = get().filters[key] as unknown[]
@@ -168,91 +120,51 @@ export const useMy = create<MyStore>()((set, get) => ({
   closeIssue: () => set({ peekIssueId: null }),
   createIssueOpen: false,
   setCreateIssueOpen: (v) => set({ createIssueOpen: v }),
-  createProjectOpen: false,
-  setCreateProjectOpen: (v) => set({ createProjectOpen: v }),
   paletteOpen: false,
   setPaletteOpen: (v) => set({ paletteOpen: v }),
-  selectedCycleId: null,
-  setSelectedCycle: (id) => set({ selectedCycleId: id }),
-  selectedModuleId: null,
-  setSelectedModule: (id) => set({ selectedModuleId: id }),
-  selectedViewId: null,
-  setSelectedView: (id) => set({ selectedViewId: id }),
-  selectedPageDocId: dataset.pages[0]?.id ?? '',
-  setSelectedPageDoc: (id) => set({ selectedPageDocId: id }),
-  projectSettingsTab: 'general',
-  setProjectSettingsTab: (t) => set({ projectSettingsTab: t }),
-  workspaceSettingsTab: 'general',
-  setWorkspaceSettingsTab: (t) => set({ workspaceSettingsTab: t }),
 
-  updateIssue: (id, patch) =>
-    set((s) => {
-      const issues = s.data.issues.map((i) => (i.id === id ? { ...i, ...patch } : i))
-      return { data: { ...s.data, issues } }
-    }),
-  createIssue: (input) => {
-    const { data } = get()
-    const seq = data.issues.filter((i) => i.projectId === input.projectId).length + 1
-    const id = `${input.projectId}-new-${seq}-${Date.now()}`
-    const issue: Issue = {
-      id,
-      projectId: input.projectId,
-      sequenceId: seq,
-      name: input.name,
-      description: input.description ?? '',
-      stateId: 'st-todo',
-      priority: input.priority,
-      assigneeId: 'me',
-      labelIds: [],
-      cycleId: null,
-      moduleId: null,
-      startDate: null,
-      dueDate: null,
-      createdAt: new Date().toISOString().slice(0, 10),
-      parentId: null,
-      subIssueIds: [],
-      activity: [{ id: `${id}-a1`, actorId: 'me', verb: '创建了工作项', at: '刚刚' }],
-      comments: [],
-      completedAt: null
-    }
-    set({ data: { ...data, issues: [issue, ...data.issues] } })
-    return id
-  },
-  markNotificationRead: (id) =>
+  /** 本地乐观更新 + 经 IPC 落盘，随后由快照推送收敛 */
+  updateIssue: async (id, patch) => {
+    const data = get().data
+    const issue = data.issues.find((i) => i.id === id)
+    if (!issue) return
+    const merged: Issue = { ...issue, ...patch }
     set((s) => ({
-      data: {
-        ...s.data,
-        notifications: s.data.notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
-      }
-    })),
-  toggleProjectFavorite: (id) =>
-    set((s) => ({
-      data: {
-        ...s.data,
-        projects: s.data.projects.map((p) => (p.id === id ? { ...p, favorite: !p.favorite } : p))
-      }
-    })),
-  updatePageDoc: (id, patch) =>
-    set((s) => ({
-      data: {
-        ...s.data,
-        pages: s.data.pages.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: '刚刚' } : p))
-      }
-    })),
-  setIntakeStatus: (id, status) =>
-    set((s) => ({
-      data: {
-        ...s.data,
-        intake: s.data.intake.map((i) => (i.id === id ? { ...i, status } : i))
-      }
+      data: { ...s.data, issues: s.data.issues.map((i) => (i.id === id ? merged : i)) }
     }))
+    const task = useApp.getState().snapshot?.tasks.find((t) => t.dirName === id)
+    if (task && api) {
+      try {
+        await api.updateTask(id, issueToTaskPatch(merged), task.taskJsonMtime)
+        await useApp.getState().refresh()
+      } catch {
+        await useApp.getState().refresh()
+      }
+    }
+  },
+
+  createIssue: async (input) => {
+    if (!api) return null
+    try {
+      await api.createTask({
+        title: input.name,
+        description: input.description ?? '',
+        priority: { urgent: 'P0', high: 'P1', medium: 'P2', low: 'P3', none: 'P2' }[input.priority]
+      })
+      await useApp.getState().refresh()
+      const created = get().data.issues.find((i) => i.name === input.name)
+      return created?.id ?? null
+    } catch {
+      return null
+    }
+  }
 }))
 
-/* ------- 派生选择器（页面复用） ------- */
+/* ------- 派生工具 ------- */
 
-export function useProject(): MyDataset['projects'][number] {
-  const { data, activeProjectId } = useMy()
-  return data.projects.find((p) => p.id === activeProjectId) ?? data.projects[0]
+export function useProject(): ReturnType<typeof deriveDataset>['projects'][number] {
+  const { data } = useMy()
+  return data.projects[0]
 }
 
 export const PRIORITY_ORDER: Record<Priority, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
@@ -260,10 +172,17 @@ export const PRIORITY_ORDER: Record<Priority, number> = { urgent: 0, high: 1, me
 export function filterIssues(issues: Issue[], filters: IssueFilters): Issue[] {
   return issues.filter((i) => {
     if (filters.priority.length > 0 && !filters.priority.includes(i.priority)) return false
-    const st = dataset.states.find((s) => s.id === i.stateId)
+    const st = useMy.getState().data.states.find((s) => s.id === i.stateId)
     if (filters.stateGroup.length > 0 && st && !filters.stateGroup.includes(st.group)) return false
     if (filters.assigneeIds.length > 0 && (!i.assigneeId || !filters.assigneeIds.includes(i.assigneeId))) return false
     if (filters.labelIds.length > 0 && !i.labelIds.some((l) => filters.labelIds.includes(l))) return false
     return true
   })
 }
+
+/** 当前页面是否属于项目上下文（决定项目侧边栏是否显示） */
+export function isProjectPage(page: string): boolean {
+  return ['tasks', 'knowledge', 'spec', 'archive', 'inbox'].includes(page)
+}
+
+export { todayIso, TRELLIS_PROJECT_ID }

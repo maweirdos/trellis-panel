@@ -103,21 +103,23 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
       .catch(() => undefined)
   }
 
-  // 子工作项：回车创建并挂到当前工作项
+  // 子工作项：回车创建并挂到当前工作项（父子关联为本地视图状态，任务落盘不含该字段）
   const addSubIssue = (): void => {
     const n = subName.trim()
     if (!n) return
-    const sid = store.createIssue({ projectId: issue.projectId, name: n, priority: 'none' })
-    updateIssue(sid, { parentId: issue.id })
-    updateIssue(issue.id, { subIssueIds: [...issue.subIssueIds, sid] })
-    setSubName('')
+    void store.createIssue({ name: n, priority: 'none' }).then((sid) => {
+      if (!sid) return
+      void store.updateIssue(sid, { parentId: issue.id })
+      void store.updateIssue(issue.id, { subIssueIds: [...issue.subIssueIds, sid] })
+      setSubName('')
+    })
   }
 
-  // 评论：回车追加
+  // 评论：回车追加（本地视图状态；任务落盘不含评论字段）
   const addComment = (): void => {
     const body = comment.trim()
     if (!body) return
-    updateIssue(issue.id, {
+    void store.updateIssue(issue.id, {
       comments: [
         ...issue.comments,
         { id: `${issue.id}-c-${Date.now()}`, actorId: data.workspace.memberId, body, at: '刚刚' }
@@ -498,80 +500,86 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
               )}
             </Dropdown>
           </PropRow>
-          <PropRow label="周期">
-            <Dropdown
-              width={210}
-              trigger={({ toggle }) => (
-                <button type="button" onClick={toggle} className={clsx(BOX, !currentCycle && 'text-my-tertiary')}>
-                  <span className="min-w-0 flex-1 truncate text-left">{currentCycle?.name ?? '无'}</span>
-                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
-                </button>
-              )}
-            >
-              {(close) => (
-                <>
-                  <DropdownItem
-                    selected={issue.cycleId === null}
-                    onClick={() => {
-                      updateIssue(issue.id, { cycleId: null })
-                      close()
-                    }}
-                  >
-                    无
-                  </DropdownItem>
-                  {projectCycles.map((c) => (
+          {/* 无周期数据时隐藏该属性行 */}
+          {data.cycles.length > 0 && (
+            <PropRow label="周期">
+              <Dropdown
+                width={210}
+                trigger={({ toggle }) => (
+                  <button type="button" onClick={toggle} className={clsx(BOX, !currentCycle && 'text-my-tertiary')}>
+                    <span className="min-w-0 flex-1 truncate text-left">{currentCycle?.name ?? '无'}</span>
+                    <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                  </button>
+                )}
+              >
+                {(close) => (
+                  <>
                     <DropdownItem
-                      key={c.id}
-                      selected={c.id === issue.cycleId}
+                      selected={issue.cycleId === null}
                       onClick={() => {
-                        updateIssue(issue.id, { cycleId: c.id })
+                        updateIssue(issue.id, { cycleId: null })
                         close()
                       }}
                     >
-                      {c.name}
+                      无
                     </DropdownItem>
-                  ))}
-                </>
-              )}
-            </Dropdown>
-          </PropRow>
-          <PropRow label="模块">
-            <Dropdown
-              width={210}
-              trigger={({ toggle }) => (
-                <button type="button" onClick={toggle} className={clsx(BOX, !currentModule && 'text-my-tertiary')}>
-                  <span className="min-w-0 flex-1 truncate text-left">{currentModule?.name ?? '无'}</span>
-                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
-                </button>
-              )}
-            >
-              {(close) => (
-                <>
-                  <DropdownItem
-                    selected={issue.moduleId === null}
-                    onClick={() => {
-                      updateIssue(issue.id, { moduleId: null })
-                      close()
-                    }}
-                  >
-                    无
-                  </DropdownItem>
-                  {projectModules.map((m) => (
+                    {projectCycles.map((c) => (
+                      <DropdownItem
+                        key={c.id}
+                        selected={c.id === issue.cycleId}
+                        onClick={() => {
+                          updateIssue(issue.id, { cycleId: c.id })
+                          close()
+                        }}
+                      >
+                        {c.name}
+                      </DropdownItem>
+                    ))}
+                  </>
+                )}
+              </Dropdown>
+            </PropRow>
+          )}
+          {/* 无模块数据时隐藏该属性行 */}
+          {data.modules.length > 0 && (
+            <PropRow label="模块">
+              <Dropdown
+                width={210}
+                trigger={({ toggle }) => (
+                  <button type="button" onClick={toggle} className={clsx(BOX, !currentModule && 'text-my-tertiary')}>
+                    <span className="min-w-0 flex-1 truncate text-left">{currentModule?.name ?? '无'}</span>
+                    <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                  </button>
+                )}
+              >
+                {(close) => (
+                  <>
                     <DropdownItem
-                      key={m.id}
-                      selected={m.id === issue.moduleId}
+                      selected={issue.moduleId === null}
                       onClick={() => {
-                        updateIssue(issue.id, { moduleId: m.id })
+                        updateIssue(issue.id, { moduleId: null })
                         close()
                       }}
                     >
-                      {m.name}
+                      无
                     </DropdownItem>
-                  ))}
-                </>
-              )}
-            </Dropdown>
-          </PropRow>
+                    {projectModules.map((m) => (
+                      <DropdownItem
+                        key={m.id}
+                        selected={m.id === issue.moduleId}
+                        onClick={() => {
+                          updateIssue(issue.id, { moduleId: m.id })
+                          close()
+                        }}
+                      >
+                        {m.name}
+                      </DropdownItem>
+                    ))}
+                  </>
+                )}
+              </Dropdown>
+            </PropRow>
+          )}
           <PropRow label="开始日期">
             <DateField value={issue.startDate} onChange={(v) => updateIssue(issue.id, { startDate: v })} />
           </PropRow>

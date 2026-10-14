@@ -39,7 +39,7 @@ export type Page =
   | 'acp'
   | 'gateway'
   | 'settings'
-  | 'my'
+  | 'analytics'
 
 export interface ToastItem extends ToastEvent {
   id: number

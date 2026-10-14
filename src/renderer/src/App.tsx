@@ -1,42 +1,20 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { useApp } from './store'
 import { api } from './api'
+import { useMy } from './my/store'
 import { TitleBar } from './components/TitleBar'
-import { Sidebar } from './components/Sidebar'
 import { Onboarding } from './components/Onboarding'
 import { Toasts } from './components/Toasts'
 import { DialogHost } from './components/Dialogs'
-import { CapsuleView } from './components/CapsuleView'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { getReading } from './utils/reading'
 import { QuickTodoView } from './components/QuickTodoView'
 import { ArtifactViewer } from './components/ArtifactViewer'
-import { CommandPalette } from './components/CommandPalette'
 import { IntakeModal } from './components/IntakeModal'
 import { attachDocumentChangedSource } from './reader/document-session-hub'
 import { dispatchEscKey } from './utils/esc-layer'
-import { clsx } from 'clsx'
+import { MyApp } from './my/layout/MyApp'
 import { Loader2 } from 'lucide-react'
-
-// 页面级按需代码分割（开源标准 React.lazy + Suspense），避免启动和主面板一次性加载重型依赖（Mermaid/Cytoscape/KaTeX等）
-const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
-const TasksPage = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.TasksPage })))
-const TaskDetail = lazy(() => import('./pages/TaskDetail').then((m) => ({ default: m.TaskDetail })))
-const SpecPage = lazy(() => import('./pages/Spec').then((m) => ({ default: m.SpecPage })))
-const ArchivePage = lazy(() => import('./pages/Archive').then((m) => ({ default: m.ArchivePage })))
-const TeamPage = lazy(() => import('./pages/Team').then((m) => ({ default: m.TeamPage })))
-const JiraPage = lazy(() => import('./pages/Jira').then((m) => ({ default: m.JiraPage })))
-const InboxPage = lazy(() => import('./pages/Inbox').then((m) => ({ default: m.InboxPage })))
-const SettingsPage = lazy(() => import('./pages/Settings').then((m) => ({ default: m.SettingsPage })))
-const StudioPage = lazy(() => import('./pages/Studio').then((m) => ({ default: m.StudioPage })))
-const KnowledgePage = lazy(() => import('./pages/Knowledge').then((m) => ({ default: m.KnowledgePage })))
-const ChannelsPage = lazy(() => import('./pages/Channels').then((m) => ({ default: m.ChannelsPage })))
-const ArchitecturePage = lazy(() => import('./pages/Architecture').then((m) => ({ default: m.ArchitecturePage })))
-const ModelsPage = lazy(() => import('./pages/Models').then((m) => ({ default: m.ModelsPage })))
-const GatewayPage = lazy(() => import('./pages/Gateway').then((m) => ({ default: m.GatewayPage })))
-const ChatPage = lazy(() => import('./pages/Chat').then((m) => ({ default: m.ChatPage })))
-const AcpConsolePage = lazy(() => import('./pages/AcpConsole').then((m) => ({ default: m.AcpConsolePage })))
-const MyApp = lazy(() => import('./my/layout/MyApp').then((m) => ({ default: m.MyApp })))
 
 function PageLoading(): JSX.Element {
   return (
@@ -48,33 +26,14 @@ function PageLoading(): JSX.Element {
 
 function MainApp(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
-  const page = useApp((s) => s.page)
   const openTaskDir = useApp((s) => s.openTaskDir)
   const viewerTabs = useApp((s) => s.viewerTabs)
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
   const inboxAdd = useApp((s) => s.inboxAdd)
   const projectRoot = snapshot?.meta.root
-  const [paletteOpen, setPaletteOpen] = useState(false)
+  const theme = useMy((s) => s.theme)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setPaletteOpen((v) => !v)
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === '.') {
-        e.preventDefault()
-        void useApp.getState().chatAbort()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  // S0 G2 第三片：唯一的全局 Esc 入口——按层级只消费最上层一层（design §6.3）。
-  // 各可关闭层（模态/命令面板/查看器/对比面板/预览）经 useEscLayer 登记，
-  // 不再各自挂 window 监听"叠罗汉"。
   useEffect(() => {
     const onEsc = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
@@ -84,7 +43,7 @@ function MainApp(): JSX.Element {
     return () => window.removeEventListener('keydown', onEsc)
   }, [])
 
-  // S0 G2 第三片：接通文档会话集线器（定向变更事件 → 各阅读会话）
+  // 文档会话集线器：定向变更事件 → 各阅读会话
   useEffect(() => {
     attachDocumentChangedSource((cb) => api.onDocumentChanged(cb))
   }, [])
@@ -100,12 +59,11 @@ function MainApp(): JSX.Element {
         return
       }
       const snap = st.snapshot
-      // 桥接任务尚未进入快照（AI 刚创建）时先补一次扫描
       const known = snap && [...snap.tasks, ...snap.archived].some((t) => t.dirName === taskDir || t.path === taskDir)
       if (!known) void st.refresh()
       useApp.setState({ page: 'tasks', openTaskArchived: false })
       showTask(taskDir)
-      pushToast({ kind: 'info', title: '已跳转到桥接任务', body: taskDir })
+      pushToast({ kind: 'info', title: '已跳转到该任务', body: taskDir })
     })
     const offInbox = api.onInboxNew((e) => {
       const currentRoot = useApp.getState().snapshot?.meta.root
@@ -113,7 +71,7 @@ function MainApp(): JSX.Element {
       inboxAdd(e.items)
       useApp.setState({ page: 'inbox' })
     })
-    // FR：任务材料更新（主进程按任务防抖合并）——正在阅读的任务给轻提示，其余正常提醒
+    // 任务材料更新（主进程按任务防抖合并）——正在阅读的任务给轻提示，其余正常提醒
     const offMaterial = api.onMaterialUpdated((e) => {
       const st = useApp.getState()
       const readingIt = st.page === 'tasks' && st.openTaskDir === e.dirName
@@ -123,10 +81,8 @@ function MainApp(): JSX.Element {
         body: `${e.count} 个文件：${e.files.join('、')}${e.count > e.files.length ? ' 等' : ''}`
       })
     })
-    // FR：全局热键唤起 → 回到上次阅读位置（不新开、不跳最新）
+    // 全局热键唤起 → 回到上次阅读位置（不新开、不跳最新）
     const offFocusReading = api.onFocusLastReading(() => {
-      // 审阅修复#4：setPage 会清空选中任务，必须重读最新状态再判断，
-      // 且已保存任务有效时无条件恢复（旧写法在已选中时会因旧状态跳过恢复）
       useApp.getState().setPage('tasks')
       const fresh = useApp.getState()
       const snap = fresh.snapshot
@@ -154,73 +110,18 @@ function MainApp(): JSX.Element {
     }
   }, [projectRoot])
 
-  const detailOpen = openTaskDir !== null
+  if (!snapshot) {
+    return <Onboarding />
+  }
 
   return (
-    <ErrorBoundary>
-    <div className="flex h-full flex-col bg-ink-900 text-mist-100">
-      <TitleBar />
-      {!snapshot ? (
-        <Onboarding />
-      ) : (
-        <div className="flex min-h-0 flex-1">
-          <Sidebar />
-          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-            {/* 页面层：详情打开时保持看板全宽，不再挤压 */}
-            <div
-              data-page-scroll=""
-              className={clsx(
-                'min-h-0 flex-1',
-              page === 'tasks' || page === 'spec' || page === 'jira' || page === 'inbox' || page === 'knowledge' || page === 'channels' || page === 'studio' || page === 'models' || page === 'gateway' || page === 'chat' || page === 'my'
-                ? 'overflow-hidden'
-                : 'overflow-y-auto'
-              )}
-            >
-              <Suspense fallback={<PageLoading />}>
-                {page === 'dashboard' && <Dashboard />}
-                {page === 'inbox' && <InboxPage />}
-                {page === 'tasks' && <TasksPage />}
-                {page === 'knowledge' && <KnowledgePage />}
-                {page === 'spec' && <SpecPage />}
-                {page === 'archive' && <ArchivePage />}
-                {page === 'channels' && <ChannelsPage />}
-                {page === 'team' && <TeamPage />}
-                {page === 'jira' && <JiraPage />}
-                {page === 'architecture' && <ArchitecturePage />}
-                {page === 'studio' && <StudioPage />}
-                {page === 'models' && <ModelsPage />}
-                {page === 'gateway' && <GatewayPage />}
-                {page === 'chat' && <ChatPage />}
-              {page === 'acp' && <AcpConsolePage />}
-              {page === 'my' && <MyApp />}
-                {page === 'settings' && <SettingsPage />}
-              </Suspense>
-            </div>
-
-            {/* 任务详情：右侧悬浮层（dashboard/archive/inbox等页面使用；tasks页已一体化内置，不再弹抽屉遮挡） */}
-            {(detailOpen && (page === 'dashboard' || page === 'archive' || page === 'inbox')) && (
-              <div className="absolute inset-y-0 right-0 z-20 flex shadow-[-12px_0_40px_rgba(0,0,0,0.45)]">
-                <Suspense fallback={<PageLoading />}>
-                  <TaskDetail />
-                </Suspense>
-              </div>
-            )}
-
-            {/* 产物多标签查看器 */}
-            {viewerTabs.length > 0 && <ArtifactViewer projectName={snapshot.meta.name} />}
-
-            {/* 需求 Intake 向导 */}
-            <IntakeModal />
-
-            {/* 全局命令面板 */}
-            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-          </main>
-        </div>
-      )}
-      <Toasts />
-      <DialogHost />
+    <div className="flex min-h-0 flex-1">
+      <Suspense fallback={<PageLoading />}>
+        <MyApp />
+      </Suspense>
+      {viewerTabs.length > 0 && <ArtifactViewer projectName={snapshot.meta.name} />}
+      <IntakeModal />
     </div>
-    </ErrorBoundary>
   )
 }
 
@@ -229,6 +130,7 @@ export default function App(): JSX.Element {
   const bootstrap = useApp((s) => s.bootstrap)
   const capsuleMode = useApp((s) => s.capsuleMode)
   const quickTodoMode = useApp((s) => s.quickTodoMode)
+  const theme = useMy((s) => s.theme)
 
   useEffect(() => {
     void bootstrap()
@@ -249,23 +151,37 @@ export default function App(): JSX.Element {
     )
   }
 
-  // 开发便利：?my=1 直接渲染 参考 UI 克隆模块（无 IPC 依赖，便于浏览器级截图验证；
-  // 打包后渲染层走 file: 协议，此入口自然失效）
-  if (window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
-    return (
-      <Suspense fallback={null}>
-        <MyApp />
-      </Suspense>
-    )
-  }
-
   if (capsuleMode) {
     return (
       <div className="h-full w-full bg-transparent p-0 overflow-hidden">
-        <CapsuleView />
+        {/* eslint-disable-next-line @typescript-eslint/no-unsafe-call */}
+        <CapsuleLazy />
         <Toasts />
       </div>
     )
   }
-  return <MainApp />
+
+  // 预览入口：?my=1 且无 IPC 环境（浏览器）时直接渲染外壳，便于界面级验证
+  if (window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
+    return (
+      <div data-my-theme={theme} className="my-root h-full w-full bg-my-canvas">
+        <Suspense fallback={null}>
+          <MyApp />
+        </Suspense>
+      </div>
+    )
+  }
+
+  return (
+    <ErrorBoundary>
+      <div data-my-theme={theme} className="my-root flex h-full flex-col bg-my-canvas text-[13px] text-my-primary">
+        <TitleBar />
+        <MainApp />
+        <Toasts />
+        <DialogHost />
+      </div>
+    </ErrorBoundary>
+  )
 }
+
+const CapsuleLazy = lazy(() => import('./components/CapsuleView').then((m) => ({ default: m.CapsuleView })))

@@ -11,10 +11,6 @@ function isIssueOpen(issue: Issue, states: Map<string, WorkItemState>): boolean 
   return group !== 'completed' && group !== 'cancelled'
 }
 
-/** 最近一条评论时间（用于「近期更新」排序） */
-function lastCommentAt(issue: Issue): string {
-  return issue.comments[issue.comments.length - 1]?.at ?? ''
-}
 
 /* ---------------- 工作项行 ---------------- */
 
@@ -88,23 +84,16 @@ export function YourWorkPage(): JSX.Element {
   const members = new Map<string, Member>(data.members.map((m) => [m.id, m]))
   const states = new Map<string, WorkItemState>(data.states.map((s) => [s.id, s]))
 
-  const assigned = data.issues.filter((i) => i.assigneeId === 'me' && isIssueOpen(i, states))
-  const createdByMe = data.issues.filter((i) => i.activity[0]?.actorId === 'me')
+  const me = data.workspace.memberId
 
-  // 即将到期：分配给我且未完结，7 天内到期（含已逾期）
-  const today = new Date()
-  today.setHours(12, 0, 0, 0)
-  const dueSoon = assigned.filter((i) => {
-    if (!i.dueDate) return false
-    const d = new Date(`${i.dueDate}T12:00:00`)
-    if (Number.isNaN(d.getTime())) return false
-    return (d.getTime() - today.getTime()) / 86400000 <= 7
-  })
+  const assigned = data.issues.filter((i) => i.assigneeId === me && isIssueOpen(i, states))
+  const createdByMe = data.issues.filter((i) => i.activity[0]?.actorId === me)
+  const completedRecently = data.issues.filter((i) => i.completedAt)
 
-  // 近期更新：有评论的工作项，按最后一条评论时间倒序取 5 条
+  // 近期更新：按创建时间倒序取 5 条
   const recent = data.issues
-    .filter((i) => i.comments.length > 0)
-    .sort((a, b) => (lastCommentAt(a) < lastCommentAt(b) ? 1 : -1))
+    .slice()
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .slice(0, 5)
 
   const hour = new Date().getHours()
@@ -114,7 +103,7 @@ export function YourWorkPage(): JSX.Element {
   const statCards = [
     { label: '分配给我', value: assigned.length },
     { label: '由我创建', value: createdByMe.length },
-    { label: '即将到期', value: dueSoon.length }
+    { label: '已完成', value: completedRecently.length }
   ]
 
   return (

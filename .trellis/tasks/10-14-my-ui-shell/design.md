@@ -79,3 +79,31 @@ my/
 
 - 集成面最小：`store/types.ts` Page 加 `'my'`、`Sidebar.tsx` 加入口、`App.tsx` 加 lazy 路由。
 - 回滚 = revert 三处集成 + 删 `my/` 目录，不影响其他页面。
+
+---
+
+# 修订 v2：全应用换壳
+
+## 架构
+
+- 路由唯一事实 = 主 store `useApp.page`（IPC 事件零改动）。MyApp 壳读取该字段渲染：
+  - `dashboard` → YourWork（真实统计）
+  - `tasks` → WorkItems（五布局，真实任务）
+  - `inbox` → 待办池（原 InboxPage + 参考 框）
+  - `knowledge|spec|archive` → 文档组（原页面 + 参考 框）
+  - `channels|acp|team|jira|architecture|studio|models|gateway|settings` → 原页面 + 参考 框
+  - my 独有弹层（peek/命令面板/新建）全局挂载
+- 数据适配 `my/adapter.ts`：ProjectSnapshot → MyDataset 视图模型
+  （states 五态映射、P0-P3→优先级、assignee/creator→members、createdAt/completedAt→日期、
+  parent/children→父子、subtasks→子工作项计数）；snapshot 为 null → 演示数据（仅预览路径）。
+- 主题：my theme 跟随 `useApp.settings.theme`；偏好外观的深/浅卡调用 saveSettings。
+- TaskDetail：保留现有抽屉功能，外壳按 参考 令牌重绘；peek 内「打开任务详情」→ showTask。
+
+## 执行
+
+1. adapter + store 改造 + MyApp 内容路由（主线）
+2. 工作项/Your work/分析 真实数据（主线）
+3. 旧页面 参考 化重绘：代理 E（knowledge/spec/archive/inbox/settings）
+   代理 F（channels/acp/team/jira/architecture/studio/models/gateway/chat）
+   代理 G（TaskDetail 抽屉框 + 命令面板真实条目）
+4. 清理演示痕迹（主线）；验证 + 提交

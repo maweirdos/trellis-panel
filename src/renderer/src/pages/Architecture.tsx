@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Network, RotateCw } from 'lucide-react'
+import { RotateCw } from 'lucide-react'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
+import { Button } from '../my/ui'
 import type { JSX } from 'react'
 
 /**
@@ -126,23 +127,20 @@ export function ArchitecturePage(): JSX.Element {
   }, [snapshot])
 
   return (
-    <div className="flex h-full min-w-0 animate-fade-in flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-ink-700 bg-ink-850/40 px-5 py-2.5">
-        <Network size={14} className="text-leaf" />
-        <span className="text-[13px] font-semibold text-mist-100">Trellis 工作流架构</span>
-        <span className="text-[10.5px] text-mist-500">点击节点查看细节</span>
+    <div className="flex h-full min-w-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-2">
         {currentNode && (
-          <span className="chip bg-leaf-dim/15 text-[10.5px] text-leaf-soft">
+          <span className="chip bg-my-accent-subtle text-[10.5px] text-my-accent-text">
             会话最后绑定 · {currentNode.dir}
           </span>
         )}
-        <button onClick={() => setRunId((r) => r + 1)} className="btn-ghost ml-auto justify-center px-2" title="重放动画">
+        <Button variant="ghost" className="ml-auto" title="重放动画" onClick={() => setRunId((r) => r + 1)}>
           <RotateCw size={12} />
-        </button>
+        </Button>
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-auto p-3">
+        <div className="my-scrollbar min-w-0 flex-1 overflow-auto p-3">
           <svg key={runId} viewBox={`0 0 ${W} ${H}`} className="arch-svg h-full min-h-[520px] w-full">
             <defs>
               {/* 虚线箭头（默认） */}
@@ -238,40 +236,40 @@ export function ArchitecturePage(): JSX.Element {
         </div>
 
         {/* 细节面板 */}
-        <div className="w-72 shrink-0 overflow-y-auto border-l border-ink-700 p-4">
+        <div className="my-scrollbar w-72 shrink-0 overflow-y-auto border-l border-my-line p-4">
           {selected ? (
             <div className="space-y-3">
-              <div className="text-xs font-semibold text-mist-100">{selected.title}</div>
-              {selected.sub && <div className="font-mono text-[10.5px] text-mist-500">{selected.sub}</div>}
+              <div className="text-xs font-semibold text-my-primary">{selected.title}</div>
+              {selected.sub && <div className="font-mono text-[10.5px] text-my-tertiary">{selected.sub}</div>}
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-mist-600">触发时机</div>
-                <div className="mt-1 text-[11.5px] leading-5 text-mist-300">{selected.detail.trigger}</div>
+                <div className="text-[10px] uppercase tracking-wider text-my-tertiary">触发时机</div>
+                <div className="mt-1 text-[11.5px] leading-5 text-my-secondary">{selected.detail.trigger}</div>
               </div>
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-mist-600">做什么</div>
-                <div className="mt-1 text-[11.5px] leading-5 text-mist-300">{selected.detail.consumer}</div>
+                <div className="text-[10px] uppercase tracking-wider text-my-tertiary">做什么</div>
+                <div className="mt-1 text-[11.5px] leading-5 text-my-secondary">{selected.detail.consumer}</div>
               </div>
               {selected.detail.files && (
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-mist-600">实现</div>
-                  <code className="mt-1 block break-all font-mono text-[10.5px] text-leaf-soft/90">{selected.detail.files}</code>
+                  <div className="text-[10px] uppercase tracking-wider text-my-tertiary">实现</div>
+                  <code className="mt-1 block break-all font-mono text-[10.5px] text-my-accent-text">{selected.detail.files}</code>
                 </div>
               )}
-              <button onClick={() => setSelected(null)} className="btn-ghost w-full justify-center text-[11px]">关闭</button>
+              <Button variant="ghost" className="w-full" onClick={() => setSelected(null)}>关闭</Button>
             </div>
           ) : (
-            <div className="space-y-3 text-[11px] leading-5 text-mist-500">
-              <div className="text-xs font-semibold text-mist-300">图例</div>
+            <div className="space-y-3 text-[11px] leading-5 text-my-tertiary">
+              <div className="text-xs font-semibold text-my-secondary">图例</div>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-sky-400" /> hooks（自动触发）</div>
-                <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-leaf" /> 任务状态机</div>
+                <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-my-success" /> 任务状态机</div>
                 <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-violet-400" /> 子代理 / 调度</div>
-                <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-mist-500" /> 工具 / 文件</div>
+                <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-my-tertiary" /> 工具 / 文件</div>
               </div>
-              <div className="border-t border-ink-700 pt-3">
+              <div className="border-t border-my-line pt-3">
                 实线为每轮必经链路，虚线为按需或回退路径。流动光点表示上下文注入方向。
               </div>
-              <div className="border-t border-ink-700 pt-3">
+              <div className="border-t border-my-line pt-3">
                 {snapshot
                   ? '当前项目已接入——进行中的任务会点亮状态机对应节点。'
                   : '打开项目后，进行中的任务会点亮状态机对应节点。'}

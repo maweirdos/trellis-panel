@@ -1,4 +1,4 @@
-/* 参考 UI 克隆模块样式。令牌值见 my-tokens.css（上游令牌包 0.9.7 解析产物）。
+/* 外壳样式。令牌值见 my-tokens.css。
    所有规则限定在 .my-root 下，避免污染面板其余页面。 */
 @import './my-tokens.css';
 

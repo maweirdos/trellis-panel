@@ -1,5 +1,5 @@
-import { Archive as ArchiveIcon } from 'lucide-react'
 import { useApp } from '../store'
+import { EmptyState } from '../my/ui'
 import { StatusBadge, PriorityBadge } from '../components/badges'
 import { relTime } from '../utils/format'
 import type { JSX } from 'react'
@@ -10,39 +10,30 @@ export function ArchivePage(): JSX.Element {
   const archived = snapshot.archived
 
   return (
-    <div className="h-full animate-fade-in overflow-y-auto p-6">
-      <div className="mx-auto max-w-4xl">
-        <div className="mb-4 flex items-center gap-2">
-          <ArchiveIcon size={16} className="text-mist-400" />
-          <h1 className="text-base font-semibold text-mist-50">归档任务</h1>
-          <span className="rounded bg-ink-750 px-1.5 font-mono text-[10.5px] text-mist-400">{archived.length}</span>
-          <span className="ml-2 text-[11px] text-mist-500">由 task.py archive 移入 .trellis/archive</span>
-        </div>
-
+    <div className="my-fade">
+      <div className="mx-auto max-w-4xl px-6 py-6">
         {archived.length === 0 ? (
-          <div className="card grid place-items-center gap-2 py-16 text-mist-500">
-            <ArchiveIcon size={22} />
-            <span className="text-xs">暂无归档任务</span>
-          </div>
+          <EmptyState title="暂无归档任务" description="由 task.py archive 移入 .trellis/archive 的任务会显示在这里" />
         ) : (
-          <div className="card divide-y divide-ink-700/60">
+          <div className="my-card divide-y divide-my-line overflow-hidden">
             {archived.map((t) => (
               <button
                 key={t.dirName}
+                type="button"
                 onClick={() => showTask(t.path, true)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-ink-750/50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-my-layer-1"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium text-mist-100">
+                  <div className="truncate text-xs font-medium text-my-primary">
                     {t.record?.title ?? t.dirName}
-                    {t.parseError && <span className="ml-1.5 text-[10px] text-rose-400">(解析失败)</span>}
+                    {t.parseError && <span className="ml-1.5 text-[10px] text-my-danger-text">(解析失败)</span>}
                   </div>
-                  <div className="truncate font-mono text-[10.5px] text-mist-500">
+                  <div className="truncate font-mono text-[10.5px] text-my-tertiary">
                     {t.dirName} · {t.record?.assignee || t.record?.creator || '—'}
                     {t.record?.completedAt ? ` · 完成于 ${t.record.completedAt}` : ''}
                   </div>
                 </div>
-                <span className="shrink-0 text-[10.5px] text-mist-500">{relTime(t.updatedAt)}</span>
+                <span className="shrink-0 text-[10.5px] text-my-tertiary">{relTime(t.updatedAt)}</span>
                 {t.record && (
                   <>
                     <PriorityBadge priority={t.record.priority} />

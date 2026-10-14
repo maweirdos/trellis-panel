@@ -1,4 +1,4 @@
-// 参考 UI 克隆模块领域类型。内容为自拟演示数据模型（非 参考 业务模型拷贝）。
+// 外壳领域类型。
 
 export type ThemeMode = 'light' | 'dark'
 
@@ -157,12 +157,12 @@ export interface NotificationItem {
   issueId: string
 }
 
-/** 演示数据集（内存态，可被操作变更） */
+/** 视图数据集（内存态，可被操作变更） */
 export interface MyDataset {
   workspace: Workspace
   members: Member[]
   projects: Project[]
-  states: WorkItemState[] // 全项目共用一套默认状态（演示简化）
+  states: WorkItemState[] // 全项目共用一套默认状态
   labels: Label[]
   issues: Issue[]
   cycles: Cycle[]

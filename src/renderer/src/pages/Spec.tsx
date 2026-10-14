@@ -8,7 +8,6 @@ import {
   RotateCw,
   Link2,
   Eye,
-  Search,
   NotebookPen,
   Share2,
   BookOpenText,
@@ -19,6 +18,7 @@ import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
+import { Button, SearchInput } from '../my/ui'
 import { fmtBytes, relTime } from '../utils/format'
 import type { JSX } from 'react'
 import type { DocSearchHit, SpecNode } from '../../../shared/types'
@@ -45,7 +45,7 @@ function Snippet({ text }: { text: string }): JSX.Element {
     <>
       {parts.map((p, i) =>
         i % 2 === 1 ? (
-          <mark key={i} className="rounded bg-leaf-dim/25 px-0.5 text-leaf-soft">
+          <mark key={i} className="rounded bg-my-accent-subtle px-0.5 text-my-accent-text">
             {p}
           </mark>
         ) : (
@@ -78,6 +78,7 @@ function TreeItem({
   return (
     <div>
       <button
+        type="button"
         onClick={() => {
           if (isDir) setExpanded((e) => !e)
           onSelect(node)
@@ -86,25 +87,25 @@ function TreeItem({
         className={clsx(
           'flex w-full items-center gap-1.5 rounded-md py-[5px] pr-2 text-left text-xs transition-colors',
           selected === node.path
-            ? 'bg-leaf-dim/15 font-medium text-leaf-soft'
-            : 'text-mist-300 hover:bg-ink-700/50 hover:text-mist-100'
+            ? 'bg-my-accent-subtle font-medium text-my-accent-text'
+            : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
         )}
       >
         {isDir ? (
           expanded ? (
-            <ChevronDown size={12} className="shrink-0 text-mist-500" />
+            <ChevronDown size={12} className="shrink-0 text-my-icon-tertiary" />
           ) : (
-            <ChevronRight size={12} className="shrink-0 text-mist-500" />
+            <ChevronRight size={12} className="shrink-0 text-my-icon-tertiary" />
           )
         ) : (
-          <FileText size={12} className="shrink-0 text-mist-500" />
+          <FileText size={12} className="shrink-0 text-my-icon-tertiary" />
         )}
         <span className="truncate">{node.name}</span>
         {!isDir && refs !== undefined && (
           <span
             className={clsx(
               'ml-auto shrink-0 rounded px-1 text-[9.5px] font-mono',
-              refs === 0 ? 'bg-ink-750 text-mist-600' : 'bg-leaf-dim/15 text-leaf-soft/90'
+              refs === 0 ? 'bg-my-layer-3 text-my-tertiary' : 'bg-my-accent-subtle text-my-accent-text'
             )}
             title={refs === 0 ? '从未被引用（候选死规范）' : `被 ${refs} 处引用`}
           >
@@ -254,19 +255,11 @@ export function SpecPage(): JSX.Element {
   const searching_ = query.trim().length > 0
 
   return (
-    <div className="flex h-full animate-fade-in">
+    <div className="flex h-full min-w-0 my-fade">
       {/* 左栏：检索 + 规范树 / 命中列表 / 工作区日志 */}
-      <div className="flex w-80 shrink-0 flex-col border-r border-ink-700 bg-ink-850/40">
-        <div className="space-y-2 border-b border-ink-700 p-2.5">
-          <div className="relative">
-            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-mist-500" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="全文搜索规范 / 日志 / 共享文档…"
-              className="field w-full pl-8"
-            />
-          </div>
+      <div className="flex w-80 shrink-0 flex-col border-r border-my-line">
+        <div className="space-y-2 border-b border-my-line p-2.5">
+          <SearchInput value={query} onChange={setQuery} placeholder="全文搜索规范 / 日志 / 共享文档…" />
           {searching_ && (
             <div className="flex items-center gap-1">
               {(
@@ -278,34 +271,35 @@ export function SpecPage(): JSX.Element {
               ).map(([v, label]) => (
                 <button
                   key={v}
+                  type="button"
                   onClick={() => setScope(v)}
                   className={clsx(
                     'rounded-md px-2 py-0.5 text-[11px] transition-colors',
-                    scope === v ? 'bg-leaf-dim/20 text-leaf-soft' : 'text-mist-400 hover:bg-ink-700/40 hover:text-mist-200'
+                    scope === v ? 'bg-my-accent-subtle text-my-accent-text' : 'text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary'
                   )}
                 >
                   {label}
                 </button>
               ))}
-              <span className="ml-auto text-[10.5px] text-mist-500">
+              <span className="ml-auto text-[10.5px] text-my-tertiary">
                 {searching ? '检索中…' : `${hits.length} 篇命中`}
               </span>
             </div>
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        <div className="my-scrollbar min-h-0 flex-1 p-2">
           {searching_ ? (
             /* 搜索态：跨来源命中列表 */
             <>
               {!searching && hits.length === 0 && (
-                <div className="px-2 py-8 text-center text-[11px] text-mist-500">没有匹配的文档</div>
+                <div className="px-2 py-8 text-center text-[11px] text-my-tertiary">没有匹配的文档</div>
               )}
               {GROUP_ORDER.filter((g) => groupedHits.has(g)).map((g) => {
                 const groupHits = groupedHits.get(g) ?? []
                 return (
                   <div key={g} className="mb-2">
-                    <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-mist-500">
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-my-tertiary">
                       {GROUP_META[g].icon} {GROUP_META[g].label}
                       <span className="ml-auto font-mono font-normal">{groupHits.length}</span>
                     </div>
@@ -313,22 +307,23 @@ export function SpecPage(): JSX.Element {
                       {groupHits.map((h) => (
                       <button
                         key={h.path}
+                        type="button"
                         onClick={() => loadDoc(h)}
                         title={h.path}
                         className={clsx(
                           'w-full rounded-lg border px-2.5 py-2 text-left transition-colors',
                           selected?.path === h.path
-                            ? 'border-leaf-dim/40 bg-leaf-dim/10'
-                            : 'border-transparent hover:border-ink-600 hover:bg-ink-750/50'
+                            ? 'border-my-line-accent-subtle bg-my-accent-subtle'
+                            : 'border-transparent hover:border-my-line hover:bg-my-layer-1'
                         )}
                       >
                         <div className="flex items-center gap-2">
-                          <FileText size={12} className="shrink-0 text-leaf/80" />
-                          <span className="min-w-0 flex-1 truncate text-[11.5px] text-mist-200">{h.name}</span>
-                          <span className="shrink-0 text-[10px] text-mist-600">{relTime(h.mtime)}</span>
+                          <FileText size={12} className="shrink-0 text-my-icon-accent" />
+                          <span className="min-w-0 flex-1 truncate text-[11.5px] text-my-secondary">{h.name}</span>
+                          <span className="shrink-0 text-[10px] text-my-placeholder">{relTime(h.mtime)}</span>
                         </div>
                         {h.snippet && (
-                          <div className="mt-1 line-clamp-2 pl-5 text-[10.5px] leading-4 text-mist-500">
+                          <div className="mt-1 line-clamp-2 pl-5 text-[10.5px] leading-4 text-my-tertiary">
                             <Snippet text={h.snippet} />
                           </div>
                         )}
@@ -342,18 +337,19 @@ export function SpecPage(): JSX.Element {
           ) : (
             /* 浏览态：规范树 + 工作区日志 */
             <>
-              <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-mist-500">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-my-tertiary">
                 .trellis/spec
                 <button
+                  type="button"
                   onClick={loadBacklinks}
-                  className="ml-auto text-mist-600 hover:text-mist-300"
+                  className="ml-auto text-my-placeholder hover:text-my-secondary"
                   title="统计每个文档被任务/其他规范的引用次数"
                 >
                   <Link2 size={11} /> 引用
                 </button>
               </div>
               {snapshot.spec.length === 0 && (
-                <div className="px-2 py-4 text-center text-[11px] text-mist-500">没有规范文档</div>
+                <div className="px-2 py-4 text-center text-[11px] text-my-tertiary">没有规范文档</div>
               )}
               {snapshot.spec.map((n) => (
                 <TreeItem key={n.path} node={n} depth={0} selected={selected?.path ?? null} refCount={refCount} onSelect={loadSpec} />
@@ -361,30 +357,31 @@ export function SpecPage(): JSX.Element {
 
               {snapshot.developers.length > 0 && (
                 <div className="mt-3">
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-mist-500">
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-my-tertiary">
                     <NotebookPen size={11} /> 工作区日志
                   </div>
                   {snapshot.developers.map((d) => (
                     <div key={d.name} className="mb-1">
-                      <div className="px-2 py-1 text-[11px] text-mist-400">
-                        {d.name} <span className="text-mist-600">· {relTime(d.lastActive)}</span>
+                      <div className="px-2 py-1 text-[11px] text-my-tertiary">
+                        {d.name} <span className="text-my-placeholder">· {relTime(d.lastActive)}</span>
                       </div>
                       {[...d.journals, ...d.otherFiles].map((f) => (
                         <button
                           key={f.path}
+                          type="button"
                           onClick={() =>
                             loadDoc({ path: f.path, name: f.name, group: 'workspace', size: f.size, mtime: f.mtime })
                           }
                           className={clsx(
                             'flex w-full items-center gap-2 rounded-md py-[5px] pl-6 pr-2 text-left text-[11.5px] transition-colors',
                             selected?.path === f.path
-                              ? 'bg-leaf-dim/15 text-leaf-soft'
-                              : 'text-mist-300 hover:bg-ink-700/40 hover:text-mist-100'
+                              ? 'bg-my-accent-subtle text-my-accent-text'
+                              : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
                           )}
                         >
-                          <NotebookPen size={11} className="shrink-0 text-mist-500" />
+                          <NotebookPen size={11} className="shrink-0 text-my-icon-tertiary" />
                           <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                          <span className="shrink-0 text-[9.5px] text-mist-600">{fmtBytes(f.size)}</span>
+                          <span className="shrink-0 text-[9.5px] text-my-placeholder">{fmtBytes(f.size)}</span>
                         </button>
                       ))}
                     </div>
@@ -394,21 +391,22 @@ export function SpecPage(): JSX.Element {
 
               {snapshot.sharedWorkspaceFiles.length > 0 && (
                 <div className="mt-2">
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-mist-500">
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-my-tertiary">
                     <Share2 size={11} /> 共享索引
                   </div>
                   {snapshot.sharedWorkspaceFiles.map((f) => (
                     <button
                       key={f.path}
+                      type="button"
                       onClick={() => loadDoc({ path: f.path, name: f.name, group: 'shared', size: f.size, mtime: f.mtime })}
                       className={clsx(
                         'flex w-full items-center gap-2 rounded-md py-[5px] pl-6 pr-2 text-left text-[11.5px] transition-colors',
                         selected?.path === f.path
-                          ? 'bg-leaf-dim/15 text-leaf-soft'
-                          : 'text-mist-300 hover:bg-ink-700/40 hover:text-mist-100'
+                          ? 'bg-my-accent-subtle text-my-accent-text'
+                          : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
                       )}
                     >
-                      <FileText size={11} className="shrink-0 text-mist-500" />
+                      <FileText size={11} className="shrink-0 text-my-icon-tertiary" />
                       <span className="min-w-0 flex-1 truncate">{f.name}</span>
                     </button>
                   ))}
@@ -420,50 +418,52 @@ export function SpecPage(): JSX.Element {
       </div>
 
       {/* 右栏：阅读 / 编辑 */}
-      <div className="relative min-w-0 flex-1 overflow-y-auto">
+      <div className="my-scrollbar relative min-w-0 flex-1 overflow-y-auto">
         {selected && specSelected && specSelected.type !== 'dir' ? (
           <>
-            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-ink-700 bg-ink-900/90 px-5 py-2.5 backdrop-blur">
+            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-my-line bg-my-canvas px-5 py-2.5">
               {docSelected ? (
                 GROUP_META[docSelected.group].icon
               ) : (
-                <FileText size={13} className="text-leaf" />
+                <FileText size={13} className="text-my-icon-accent" />
               )}
-              <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-mist-300">
+              <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-my-secondary">
                 {docSelected ? docSelected.name : relPath}
               </span>
-              {docSelected && <span className="chip bg-ink-750 text-[10px] text-mist-400">{GROUP_META[docSelected.group].label}</span>}
+              {docSelected && <span className="chip bg-my-layer-3 text-[10px] text-my-tertiary">{GROUP_META[docSelected.group].label}</span>}
               {!docSelected && refCount?.[specSelected.path] !== undefined && (
-                <span className="chip bg-ink-750 text-mist-400">
+                <span className="chip bg-my-layer-3 text-my-tertiary">
                   <Link2 size={10} /> 被引用 {refCount[specSelected.path]} 处
                 </span>
               )}
-              <span className="text-[10.5px] text-mist-500">
+              <span className="text-[10.5px] text-my-tertiary">
                 {fmtBytes(docSelected ? docSelected.size : (specSelected?.size ?? 0))}
               </span>
-              <button onClick={() => void copyContent()} className="btn-ghost px-1.5 py-1" title="复制全文">
+              <Button variant="ghost" size="sm" className="px-1.5" onClick={() => void copyContent()} title="复制全文">
                 <Copy size={12} /> {copied ? '已复制' : ''}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-1.5"
                 onClick={() => api.revealInExplorer(selected.path)}
-                className="btn-ghost px-1.5 py-1"
                 title="在资源管理器中显示"
               >
                 <FolderOpen size={12} />
-              </button>
+              </Button>
               {!docSelected && specSelected?.type === 'file' &&
                 (!editing ? (
-                  <button onClick={() => { setDraft(state.content ?? ''); setEditing(true) }} className="btn-outline">
+                  <Button variant="outline" size="sm" onClick={() => { setDraft(state.content ?? ''); setEditing(true) }}>
                     <SquarePen size={12} /> 编辑
-                  </button>
+                  </Button>
                 ) : (
                   <div className="flex gap-1.5">
-                    <button onClick={() => setEditing(false)} className="btn-ghost">
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
                       <RotateCw size={12} /> 取消
-                    </button>
-                    <button onClick={() => void save()} disabled={saving} className="btn-primary disabled:opacity-50">
+                    </Button>
+                    <Button variant="primary" size="sm" onClick={() => void save()} disabled={saving}>
                       <Save size={12} /> {saving ? '保存中…' : '保存'}
-                    </button>
+                    </Button>
                   </div>
                 ))}
             </div>
@@ -473,17 +473,17 @@ export function SpecPage(): JSX.Element {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 spellCheck={false}
-                className="h-[calc(100vh-140px)] w-full resize-none bg-ink-950/60 p-5 font-mono text-[12px] leading-5 text-mist-200 outline-none"
+                className="h-[calc(100vh-140px)] w-full resize-none bg-my-canvas p-5 font-mono text-[12px] leading-5 text-my-secondary outline-none"
               />
             ) : (
               <div className="mx-auto max-w-3xl px-6 py-5">
-                {state.loading && <div className="text-xs text-mist-500">加载中…</div>}
-                {state.error && <div className="text-xs text-rose-300">{state.error}</div>}
+                {state.loading && <div className="text-xs text-my-tertiary">加载中…</div>}
+                {state.error && <div className="text-xs text-my-danger-text">{state.error}</div>}
                 {!state.loading && !state.error && (
                   /\.(md|markdown)$/i.test(selected.name) ? (
                     <MarkdownView content={state.content ?? ''} />
                   ) : (
-                    <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-5 text-mist-300">
+                    <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-5 text-my-secondary">
                       {state.content}
                     </pre>
                   )
@@ -492,7 +492,7 @@ export function SpecPage(): JSX.Element {
             )}
           </>
         ) : (
-          <div className="grid h-full place-items-center text-xs text-mist-500">
+          <div className="grid h-full place-items-center text-xs text-my-tertiary">
             <span className="flex items-center gap-1.5"><Eye size={13} /> 选择左侧文件查看；或全文搜索跨文档定位</span>
           </div>
         )}

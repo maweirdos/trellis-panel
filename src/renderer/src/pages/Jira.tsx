@@ -18,6 +18,7 @@ import {
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
+import { Button } from '../my/ui'
 import { JIRA_CATEGORY_STATUS, statusLabel } from '../utils/labels'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import type { JSX } from 'react'
@@ -360,45 +361,43 @@ export function JiraPage(): JSX.Element {
       : issue.fixVersions
     const inTodos = todos.some((t) => t.jiraKey === issue.key || t.id === issue.key)
     return (
-      <div key={issue.key} className="card px-3.5 py-2.5 transition-colors hover:border-ink-500">
+      <div key={issue.key} className="my-card px-3.5 py-2.5">
         <div className="flex items-center gap-2">
           <span className="chip shrink-0 bg-blue-500/15 font-mono text-[10.5px] text-blue-300">{issue.key}</span>
-          <span className={clsx('chip shrink-0 border', STATUS_PILL[issue.statusCategory] ?? 'border-ink-500 text-mist-300')}>
+          <span className={clsx('chip shrink-0 border', STATUS_PILL[issue.statusCategory] ?? 'border-my-line text-my-secondary')}>
             {issue.status}
           </span>
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-mist-100" title={issue.summary}>
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-my-primary" title={issue.summary}>
             {issue.summary}
           </span>
-          <span className="shrink-0 text-[10.5px] text-mist-400">{issue.assignee}</span>
-          <span className="shrink-0 font-mono text-[10px] text-mist-600" title="最近更新">
+          <span className="shrink-0 text-[10.5px] text-my-tertiary">{issue.assignee}</span>
+          <span className="shrink-0 font-mono text-[10px] text-my-placeholder" title="最近更新">
             {(issue.updated || '').slice(0, 10)}
           </span>
-          <button onClick={() => api.openExternal(issue.url)} className="btn-ghost shrink-0 px-1 py-0.5" title="在浏览器打开">
+          <Button variant="ghost" size="sm" className="shrink-0" onClick={() => api.openExternal(issue.url)} title="在浏览器打开">
             <ExternalLink size={11} />
-          </button>
+          </Button>
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10.5px] text-mist-400">
-          <span className="chip border border-ink-600 text-mist-300">{issue.issueType}</span>
-          <span className="chip border border-ink-600 text-mist-300">{issue.priority}</span>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10.5px] text-my-tertiary">
+          <span className="chip border border-my-line text-my-secondary">{issue.issueType}</span>
+          <span className="chip border border-my-line text-my-secondary">{issue.priority}</span>
           {versionChips.map((v) => (
             <span key={v} className="chip border border-violet-500/30 bg-violet-500/10 font-mono text-violet-300" title="修复版本">
               <Tag size={9} /> {v}
             </span>
           ))}
           {linked && (
-            <span className="chip border border-leaf-dim/30 bg-leaf/10 text-leaf-soft" title={`已关联本地任务 ${linked.dirName}`}>
+            <span className="chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text" title={`已关联本地任务 ${linked.dirName}`}>
               ✓ {linked.dirName}
             </span>
           )}
           <div className="ml-auto flex items-center gap-1">
             {/* G4：轻任务入口——同一按钮按服务返回 created/already 切换文案；只作用于当前已打开项目 */}
-            <button
+            <Button
+              size="sm"
+              variant={knownLocal ? 'outline' : 'primary'}
               disabled={!snapshot || busy || creatingKey !== null}
               onClick={() => void createOrOpenLocal(issue)}
-              className={clsx(
-                'px-2 py-1 text-[10.5px] disabled:opacity-50',
-                knownLocal ? 'btn-outline' : 'btn-primary'
-              )}
               title={
                 !snapshot
                   ? '未打开项目——本入口只在当前已打开的项目中创建任务，请先打开项目'
@@ -408,7 +407,7 @@ export function JiraPage(): JSX.Element {
               }
             >
               <FolderPlus size={10} /> {creating ? '创建中…' : knownLocal ? '打开本地任务' : '在当前项目创建任务'}
-            </button>
+            </Button>
             {!linked ? (
               <>
                 {inTodos ? (
@@ -416,28 +415,28 @@ export function JiraPage(): JSX.Element {
                     ✓ 已在待办池
                   </span>
                 ) : (
-                  <button disabled={busy} onClick={() => void importToBacklog(issue)} className="btn-primary px-2 py-1 text-[10.5px] disabled:opacity-50">
+                  <Button variant="primary" size="sm" disabled={busy} onClick={() => void importToBacklog(issue)}>
                     <Download size={10} /> {busy ? '加入中…' : '加入待办池'}
-                  </button>
+                  </Button>
                 )}
-                <button onClick={() => setPlanSeed({ title: issue.summary, description: `从 Jira ${issue.key} 规划（类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}）\n\n${issue.summary}`, jiraKey: issue.key, jiraUrl: issue.url })} className="btn-outline px-2 py-1 text-[10.5px]" title="知识库 → AI 任务规划">
+                <Button variant="outline" size="sm" onClick={() => setPlanSeed({ title: issue.summary, description: `从 Jira ${issue.key} 规划（类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}）\n\n${issue.summary}`, jiraKey: issue.key, jiraUrl: issue.url })} title="知识库 → AI 任务规划">
                   <Wand2 size={10} /> AI 规划
-                </button>
+                </Button>
                 {!linking && (
-                  <button onClick={() => setLinkingKey(issue.key)} className="btn-ghost px-1.5 py-1 text-[10.5px]" title="关联到已有本地任务">
+                  <Button variant="ghost" size="sm" onClick={() => setLinkingKey(issue.key)} title="关联到已有本地任务">
                     <Link2 size={10} /> 关联
-                  </button>
+                  </Button>
                 )}
               </>
             ) : (
               <>
                 {/* R0：Jira→Trellis 状态直写（同步按钮）已停用——任务阶段收归外部工作流，页面对账化 */}
-                <button disabled={busy} onClick={() => void pushStatusToJira(issue)} className="btn-ghost px-1.5 py-1 text-[10.5px] disabled:opacity-50" title="Trellis 状态 → Jira 流转">
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => void pushStatusToJira(issue)} title="Trellis 状态 → Jira 流转">
                   <ArrowRightCircle size={10} /> 推送
-                </button>
-                <button disabled={busy} onClick={() => void addProgressComment(issue)} className="btn-ghost px-1.5 py-1 text-[10.5px] disabled:opacity-50" title="把任务进度以评论回写到 Jira">
+                </Button>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => void addProgressComment(issue)} title="把任务进度以评论回写到 Jira">
                   <MessageSquarePlus size={10} /> 回写
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -448,23 +447,24 @@ export function JiraPage(): JSX.Element {
               autoFocus
               value={linkTargets[issue.key] ?? ''}
               onChange={(e) => setLinkTargets((m) => ({ ...m, [issue.key]: e.target.value }))}
-              className="field flex-1"
+              className="h-8 min-w-0 flex-1 rounded-md border border-my-line bg-my-surface-1 px-2 text-[12.5px] text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
             >
               <option value="">选择要关联的本地任务…</option>
               {snapshot.tasks.map((t) => (
                 <option key={t.dirName} value={t.dirName}>{t.dirName}</option>
               ))}
             </select>
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               disabled={busy || !linkTargets[issue.key]}
               onClick={() => void linkExisting(issue, linkTargets[issue.key])}
-              className="btn-outline px-2 py-1 text-[10.5px] disabled:opacity-50"
             >
               <CheckCircle2 size={10} /> 确认
-            </button>
-            <button onClick={() => setLinkingKey(null)} className="btn-ghost px-1.5 py-1 text-[10.5px]">
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setLinkingKey(null)}>
               取消
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -475,49 +475,48 @@ export function JiraPage(): JSX.Element {
     return (
       <div className="grid h-full place-items-center p-6">
         <div className="max-w-sm text-center">
-          <Link2 size={28} className="mx-auto mb-3 text-mist-500" />
-          <div className="mb-1.5 text-sm font-medium text-mist-100">尚未启用 Jira 连接</div>
-          <p className="mb-4 text-xs leading-5 text-mist-400">
+          <Link2 size={28} className="mx-auto mb-3 text-my-tertiary" />
+          <div className="mb-1.5 text-sm font-medium text-my-primary">尚未启用 Jira 连接</div>
+          <p className="mb-4 text-xs leading-5 text-my-tertiary">
             在「设置 → Jira 连接」中填写服务器地址与账号，即可把 Jira 待办导入为 Trellis 任务、
             双向同步状态，并把 Trellis 进度以评论形式回写到 Jira。
           </p>
-          <button onClick={() => useApp.getState().setPage('settings')} className="btn-primary">
+          <Button variant="primary" onClick={() => useApp.getState().setPage('settings')}>
             前往设置
-          </button>
+          </Button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full animate-fade-in flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-ink-700 bg-ink-850/40 px-5 py-2.5">
-        <h1 className="text-sm font-semibold text-mist-50">Jira 任务</h1>
+    <div className="flex flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
         <span className="chip bg-blue-500/15 font-mono text-blue-300">{cfg.baseUrl.replace(/^https?:\/\//, '')}</span>
-        <div className="flex overflow-hidden rounded-lg border border-ink-500">
+        <div className="flex overflow-hidden rounded-md border border-my-line">
           <button
             onClick={() => quickSearch('mine')}
-            className="px-2.5 py-1.5 text-[11px] text-mist-300 transition-colors hover:bg-ink-700/40"
+            className="px-2.5 py-1.5 text-[12px] text-my-secondary transition-colors hover:bg-my-layer-1"
             title="assignee = currentUser()"
           >
             我的待办
           </button>
           <button
             onClick={() => quickSearch('sprint')}
-            className="px-2.5 py-1.5 text-[11px] text-mist-300 transition-colors hover:bg-ink-700/40"
+            className="px-2.5 py-1.5 text-[12px] text-my-secondary transition-colors hover:bg-my-layer-1"
             title="当前冲刺中的任务"
           >
             当前冲刺
           </button>
         </div>
         <div className="relative min-w-[260px] flex-1 max-w-md">
-          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-mist-500" />
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-my-tertiary" />
           <input
             value={jql}
             onChange={(e) => setJql(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void search(jql)}
             placeholder="自定义 JQL，如 project = HONSKY AND status != 完成（留空 = 我的待办）"
-            className="field w-full pl-8"
+            className="h-8 w-full rounded-md border border-my-line bg-my-surface-1 pl-7 pr-2 text-[12.5px] text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
           />
         </div>
         <button
@@ -528,7 +527,7 @@ export function JiraPage(): JSX.Element {
           }}
           className={clsx(
             'chip border transition-colors',
-            hideDone ? 'border-leaf-dim/50 text-leaf-soft' : 'border-ink-500 text-mist-400'
+            hideDone ? 'border-my-line-accent-subtle text-my-accent-text' : 'border-my-line text-my-tertiary'
           )}
           title="隐藏 statusCategory = Done 的已关闭/已完成问题"
         >
@@ -538,17 +537,17 @@ export function JiraPage(): JSX.Element {
           onClick={() => setGroupByVersion((v) => !v)}
           className={clsx(
             'chip border transition-colors',
-            groupByVersion ? 'border-leaf-dim/50 text-leaf-soft' : 'border-ink-500 text-mist-400'
+            groupByVersion ? 'border-my-line-accent-subtle text-my-accent-text' : 'border-my-line text-my-tertiary'
           )}
           title="按修复版本（fixVersion）分组"
         >
           <Layers size={11} /> 版本分组{groupByVersion ? ' 开' : ' 关'}
         </button>
-        <button onClick={() => void search(jql)} disabled={loading} className="btn-primary disabled:opacity-50">
+        <Button variant="primary" onClick={() => void search(jql)} disabled={loading}>
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           {loading ? '查询中…' : '查询'}
-        </button>
-        <span className="text-[11px] text-mist-500">
+        </Button>
+        <span className="text-[11px] text-my-tertiary">
           显示 {issues.length} / 共 {total} 条
         </span>
         {searchMeta?.sample && (
@@ -561,7 +560,7 @@ export function JiraPage(): JSX.Element {
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <div className="p-5">
         {error && (
           <div className="mx-auto mb-4 max-w-3xl rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs text-rose-300">
             {error}
@@ -571,18 +570,18 @@ export function JiraPage(): JSX.Element {
           {groupByVersion
             ? versionGroups.map((g) => (
                 <div key={g.version} className="space-y-2">
-                  <div className="flex items-center gap-1.5 px-1 pb-1 pt-2 text-[11px] text-mist-300">
-                    <Tag size={11} className="text-mist-500" />
-                    <span className="font-mono font-medium text-mist-100">{g.version}</span>
-                    <span className="text-mist-600">· {g.issues.length} 个问题</span>
-                    <span className="ml-1 h-px flex-1 bg-ink-700" />
+                  <div className="flex items-center gap-1.5 px-1 pb-1 pt-2 text-[11px] text-my-secondary">
+                    <Tag size={11} className="text-my-tertiary" />
+                    <span className="font-mono font-medium text-my-primary">{g.version}</span>
+                    <span className="text-my-placeholder">· {g.issues.length} 个问题</span>
+                    <span className="ml-1 h-px flex-1 bg-my-line" />
                   </div>
                   {g.issues.map((issue) => renderIssue(issue, g.version))}
                 </div>
               ))
             : issues.map((issue) => renderIssue(issue))}
           {!loading && issues.length === 0 && !error && (
-            <div className={clsx('py-16 text-center text-xs text-mist-500')}>没有匹配的 Jira 问题</div>
+            <div className={clsx('py-16 text-center text-xs text-my-tertiary')}>没有匹配的 Jira 问题</div>
           )}
         </div>
       </div>

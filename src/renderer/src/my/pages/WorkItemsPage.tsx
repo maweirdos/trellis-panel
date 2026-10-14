@@ -1100,8 +1100,8 @@ function CheckMark({ show }: { show: boolean }): JSX.Element {
 
 function WorkItemsPageInner(): JSX.Element {
   const store = useMy()
-  const { data, layout, groupBy, orderBy, filters, display, activeProjectId } = store
-  const project = data.projects.find((p) => p.id === activeProjectId) ?? data.projects[0]
+  const { data, layout, groupBy, orderBy, filters, display } = store
+  const project = data.projects[0]
   const [tab, setTab] = useState<IssueTab>('all')
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set<string>())
 
@@ -1136,7 +1136,7 @@ function WorkItemsPageInner(): JSX.Element {
 
   const groups = buildGroups(tabbed, groupBy, orderBy, data.states, data.members, data.labels)
   const filterCount = filters.priority.length + filters.stateGroup.length + filters.assigneeIds.length + filters.labelIds.length
-  const ident = project.id.replace(/^p-/, '').toUpperCase()
+  const ident = project.id.replace(/^p-/, '').slice(0, 3).toUpperCase()
 
   let body: JSX.Element
   if (layout === 'list') {
@@ -1241,16 +1241,21 @@ function WorkItemsPageInner(): JSX.Element {
                     icon={<Avatar name={m.name} color={m.avatarColor} size={16} />}
                   />
                 ))}
-                <DropdownHeader>标签</DropdownHeader>
-                {data.labels.map((lb) => (
-                  <FilterCheckRow
-                    key={lb.id}
-                    checked={filters.labelIds.includes(lb.id)}
-                    onToggle={() => store.toggleFilter('labelIds', lb.id)}
-                    label={lb.name}
-                    icon={<LabelDot label={lb} />}
-                  />
-                ))}
+                {/* 无标签数据时隐藏该筛选段 */}
+                {data.labels.length > 0 && (
+                  <>
+                    <DropdownHeader>标签</DropdownHeader>
+                    {data.labels.map((lb) => (
+                      <FilterCheckRow
+                        key={lb.id}
+                        checked={filters.labelIds.includes(lb.id)}
+                        onToggle={() => store.toggleFilter('labelIds', lb.id)}
+                        label={lb.name}
+                        icon={<LabelDot label={lb} />}
+                      />
+                    ))}
+                  </>
+                )}
                 {filterCount > 0 && (
                   <div className="mt-1 border-t border-my-line pt-1">
                     <DropdownItem onClick={() => store.clearFilters()}>清除筛选</DropdownItem>
@@ -1284,7 +1289,8 @@ function WorkItemsPageInner(): JSX.Element {
                   </DropdownItem>
                 ))}
                 <DropdownHeader>分组</DropdownHeader>
-                {GROUP_BY_OPTIONS.map((o) => (
+                {/* 无标签数据时不提供标签分组维度 */}
+                {GROUP_BY_OPTIONS.filter((o) => o.id !== 'labels' || data.labels.length > 0).map((o) => (
                   <DropdownItem
                     key={o.id}
                     selected={groupBy === o.id}

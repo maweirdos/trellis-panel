@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Leaf, Minus, Square, X, Copy, PictureInPicture2 } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
@@ -10,15 +10,15 @@ function WinButton({
   danger
 }: {
   onClick: () => void
-  children: React.ReactNode
+  children: ReactNode
   danger?: boolean
 }): JSX.Element {
   return (
     <button
       onClick={onClick}
       className={clsx(
-        'no-drag grid h-full w-11 place-items-center text-mist-300 transition-colors',
-        danger ? 'hover:bg-red-600 hover:text-white' : 'hover:bg-ink-700 hover:text-mist-100'
+        'no-drag grid h-full w-11 place-items-center text-my-icon-secondary transition-colors',
+        danger ? 'hover:bg-my-danger hover:text-my-on-color' : 'hover:bg-my-layer-1-active hover:text-my-primary'
       )}
     >
       {children}
@@ -33,18 +33,18 @@ export function TitleBar(): JSX.Element {
   useEffect(() => api.onWindowMaximized(setMaximized), [])
 
   return (
-    <header className="drag-region relative z-50 flex h-10 shrink-0 items-center border-b border-ink-700 bg-ink-850">
+    <header className="drag-region relative z-50 flex h-10 shrink-0 items-center border-b border-my-line bg-my-canvas">
       <div className="flex items-center gap-2 px-3.5">
-        <Leaf size={15} className="text-leaf" strokeWidth={2.4} />
-        <span className="text-[13px] font-semibold tracking-wide text-mist-100">Trellis Panel</span>
+        <Leaf size={15} className="text-my-icon-accent" strokeWidth={2.4} />
+        <span className="text-[13px] font-semibold tracking-wide text-my-primary">Trellis Panel</span>
       </div>
       {snapshot && (
-        <div className="ml-2 flex min-w-0 items-center gap-1.5 rounded-md bg-ink-800 px-2 py-0.5 text-[11px] text-mist-300">
+        <div className="ml-2 flex min-w-0 items-center gap-1.5 rounded-md border border-my-line bg-my-layer-1 px-2 py-0.5 text-[11px] text-my-secondary">
           <span className="max-w-[260px] truncate" title={snapshot.meta.root}>
             {snapshot.meta.name}
           </span>
           {snapshot.meta.version && (
-            <span className="rounded bg-ink-750 px-1 font-mono text-[10px] text-mist-400">
+            <span className="rounded border border-my-line bg-my-layer-2 px-1 font-mono text-[10px] text-my-tertiary">
               v{snapshot.meta.version}
             </span>
           )}
@@ -54,7 +54,7 @@ export function TitleBar(): JSX.Element {
         {snapshot && (
           <button
             onClick={() => api.setCapsuleMode(true)}
-            className="no-drag grid h-full w-10 place-items-center text-mist-300 transition-colors hover:bg-ink-700 hover:text-mist-100"
+            className="no-drag grid h-full w-10 place-items-center text-my-icon-secondary transition-colors hover:bg-my-layer-1-active hover:text-my-primary"
             title="切换到胶囊模式（置顶小卡片）"
           >
             <PictureInPicture2 size={13.5} />

@@ -1,4 +1,4 @@
-// 参考 克隆模块共享基础件。所有页面从本文件取用，勿各自造轮子。
+// 外壳共享基础件。所有页面从本文件取用，勿各自造轮子。
 import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { ChevronDown, Search } from 'lucide-react'

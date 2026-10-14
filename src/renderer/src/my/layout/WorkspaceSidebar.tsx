@@ -1,61 +1,65 @@
-// 工作区侧边栏：工作区切换器 / 搜索入口 / 导航 / 项目列表 / 用户菜单。
-import { useState, type JSX } from 'react'
+// 工作区侧边栏：工作区切换器 / 搜索入口 / 一级导航 / 项目入口 / 用户。
+import { type JSX } from 'react'
 import { clsx } from 'clsx'
-import { ChevronDown, CircleUser, Cog, PanelLeftClose, Plus, Search, Star } from 'lucide-react'
+import { ChevronDown, CircleUser, FolderOpen, PanelLeftClose, Plus, Search } from 'lucide-react'
+import { useApp } from '../../store'
 import { useMy } from '../store'
 import { Avatar, Dropdown, DropdownHeader, DropdownItem, Tooltip } from '../ui'
 import { NavIcon, WorkspaceMark } from '../icons'
-import type { MyPage } from '../types'
-
-const NAV_ITEMS: Array<{ id: MyPage; label: string; icon: string }> = [
-  { id: 'your-work', label: 'Your work', icon: 'your-work' },
-  { id: 'inbox', label: 'Inbox', icon: 'inbox' },
-  { id: 'analytics', label: 'Analytics', icon: 'analytics' }
-]
 
 export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): JSX.Element {
   const data = useMy((s) => s.data)
-  const page = useMy((s) => s.page)
-  const navigateWorkspace = useMy((s) => s.navigateWorkspace)
-  const navigateProject = useMy((s) => s.navigateProject)
-  const toggleFavorite = useMy((s) => s.toggleProjectFavorite)
+  const page = useApp((s) => s.page)
+  const setPage = useApp((s) => s.setPage)
+  const snapshot = useApp((s) => s.snapshot)
+  const pickAndOpen = useApp((s) => s.pickAndOpen)
   const setPaletteOpen = useMy((s) => s.setPaletteOpen)
-  const setCreateProjectOpen = useMy((s) => s.setCreateProjectOpen)
+  const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
   const theme = useMy((s) => s.theme)
-  const setTheme = useMy((s) => s.setTheme)
+  const toggleTheme = useMy((s) => s.toggleTheme)
   const me = data.members.find((m) => m.id === data.workspace.memberId) ?? data.members[0]
-  const unread = data.notifications.filter((n) => !n.read).length
-  const favorites = data.projects.filter((p) => p.favorite)
-  const others = data.projects.filter((p) => !p.favorite)
+  const project = data.projects[0]
 
-  const ProjectRow = ({ id, name, icon, color, active }: { id: string; name: string; icon: string; color: string; active: boolean }): JSX.Element => (
+  const NAV_ITEMS: Array<{ id: string; label: string; icon: string }> = [
+    { id: 'dashboard', label: 'Your work', icon: 'your-work' },
+    { id: 'analytics', label: 'Analytics', icon: 'analytics' }
+  ]
+
+  const COLLAB_ITEMS: Array<{ id: string; label: string; icon: string }> = [
+    { id: 'channels', label: 'AI 频道', icon: 'inbox' },
+    { id: 'acp', label: 'Agent 会话', icon: 'intake' },
+    { id: 'team', label: '团队协作', icon: 'views' },
+    { id: 'jira', label: 'Jira 任务', icon: 'work-items' }
+  ]
+
+  const SYSTEM_ITEMS: Array<{ id: string; label: string; icon: string }> = [
+    { id: 'architecture', label: '架构图', icon: 'views' },
+    { id: 'studio', label: '定制中心', icon: 'modules' },
+    { id: 'models', label: '模型管理', icon: 'cycles' },
+    { id: 'gateway', label: 'MCP 网关', icon: 'analytics' },
+    { id: 'settings', label: '设置', icon: 'work-items' }
+  ]
+
+  const navButton = (id: string, label: string, icon: string, badge?: number): JSX.Element => (
     <button
+      key={id}
       type="button"
-      onClick={() => navigateProject(id)}
+      onClick={() => setPage(id as never)}
       className={clsx(
-        'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px]',
-        active ? 'bg-my-layer-transparent-active text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover'
+        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
+        page === id ? 'bg-my-layer-transparent-active text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover'
       )}
     >
-      <WorkspaceMark color={color} letter={icon.slice(0, 1)} size={18} />
-      <span className="min-w-0 flex-1 truncate">{name}</span>
-      <span
-        role="button"
-        tabIndex={-1}
-        onClick={(e) => {
-          e.stopPropagation()
-          toggleFavorite(id)
-        }}
-        className={clsx('opacity-0 transition-opacity group-hover:opacity-100', active && 'opacity-60')}
-      >
-        <Star size={12} className="fill-current text-my-icon-placeholder" />
-      </span>
+      <NavIcon name={icon} size={16} className={page === id ? 'text-my-icon-primary' : 'text-my-icon-tertiary'} />
+      <span className="flex-1 text-left">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="rounded-full bg-my-accent px-1.5 text-[10px] font-semibold leading-4 text-my-on-color">{badge}</span>
+      )}
     </button>
   )
 
   return (
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-my-line bg-my-canvas">
-      {/* 工作区切换器 */}
       <div className="flex items-center gap-1 px-2.5 pb-1 pt-3">
         <Dropdown
           width={240}
@@ -66,7 +70,7 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
               onClick={toggle}
               className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 hover:bg-my-layer-transparent-hover"
             >
-              <WorkspaceMark color="#006399" letter="星" size={22} />
+              <WorkspaceMark color={project.color} letter={project.icon.slice(0, 1)} size={22} />
               <span className="min-w-0 flex-1 truncate text-left text-[13.5px] font-medium text-my-primary">
                 {data.workspace.name}
               </span>
@@ -81,26 +85,26 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
                 {data.workspace.name}
               </DropdownItem>
               <div className="my-1 border-t border-my-line" />
-              <DropdownItem icon={<CircleUser size={13} />} onClick={() => { navigateWorkspace('profile'); close() }}>
-                Profile
-              </DropdownItem>
-              <DropdownItem
-                icon={<Cog size={13} />}
-                onClick={() => {
-                  navigateWorkspace('workspace-settings')
-                  close()
-                }}
-              >
-                Workspace settings
+              <DropdownItem icon={<CircleUser size={13} />} onClick={() => { setPage('settings'); close() }}>
+                设置
               </DropdownItem>
               <DropdownItem
                 icon={theme === 'dark' ? '☀️' : '🌙'}
                 onClick={() => {
-                  setTheme(theme === 'dark' ? 'light' : 'dark')
+                  toggleTheme()
                   close()
                 }}
               >
                 切换浅色 / 深色主题
+              </DropdownItem>
+              <DropdownItem
+                icon={<FolderOpen size={13} />}
+                onClick={() => {
+                  void pickAndOpen()
+                  close()
+                }}
+              >
+                打开本地其他项目
               </DropdownItem>
             </div>
           )}
@@ -116,7 +120,6 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
         )}
       </div>
 
-      {/* 搜索入口 */}
       <div className="px-2.5 pb-1">
         <button
           type="button"
@@ -129,67 +132,45 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
         </button>
       </div>
 
-      {/* 导航 */}
       <div className="flex flex-col gap-0.5 px-2.5 pb-1">
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => navigateWorkspace(item.id)}
-            className={clsx(
-              'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
-              page === item.id ? 'bg-my-layer-transparent-active text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover'
-            )}
-          >
-            <NavIcon name={item.icon} size={16} className={page === item.id ? 'text-my-icon-primary' : 'text-my-icon-tertiary'} />
-            <span className="flex-1 text-left">{item.label}</span>
-            {item.id === 'inbox' && unread > 0 && (
-              <span className="rounded-full bg-my-accent px-1.5 text-[10px] font-semibold leading-4 text-my-on-color">{unread}</span>
-            )}
-          </button>
-        ))}
+        {NAV_ITEMS.map((item) => navButton(item.id, item.label, item.icon))}
       </div>
 
-      {/* 项目列表 */}
       <div className="my-scrollbar min-h-0 flex-1 px-2.5 pb-2">
         <div className="flex items-center justify-between px-2 pb-1 pt-2">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-my-tertiary">Projects</span>
-          <Tooltip label="新建项目">
+          <Tooltip label="新建工作项">
             <button
               type="button"
-              onClick={() => setCreateProjectOpen(true)}
+              onClick={() => setCreateIssueOpen(true)}
               className="flex h-4 w-4 items-center justify-center rounded-sm text-my-icon-tertiary hover:bg-my-layer-transparent-hover"
             >
               <Plus size={12} />
             </button>
           </Tooltip>
         </div>
-        {favorites.length > 0 && (
-          <>
-            <div className="px-2 pb-1 pt-1 text-[11px] font-medium text-my-tertiary">收藏</div>
-            <div className="flex flex-col gap-0.5">
-              {favorites.map((p) => (
-                <ProjectRow key={p.id} id={p.id} name={p.name} icon={p.icon} color={p.color} active={page !== 'your-work' && useMy.getState().activeProjectId === p.id} />
-              ))}
-            </div>
-          </>
-        )}
-        <div className="px-2 pb-1 pt-1 text-[11px] font-medium text-my-tertiary">全部项目</div>
-        <div className="flex flex-col gap-0.5">
-          {others.map((p) => (
-            <ProjectRow
-              key={p.id}
-              id={p.id}
-              name={p.name}
-              icon={p.icon}
-              color={p.color}
-              active={page !== 'your-work' && useMy.getState().activeProjectId === p.id}
-            />
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => setPage('tasks')}
+          className={clsx(
+            'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px]',
+            page === 'tasks' ? 'bg-my-layer-transparent-active text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover'
+          )}
+        >
+          <WorkspaceMark color={project.color} letter={project.icon.slice(0, 1)} size={18} />
+          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+          <span className="text-[11px] text-my-tertiary">{snapshot?.tasks.length ?? 0}</span>
+        </button>
+
+        <div className="mt-3 border-t border-my-line pt-3" />
+        <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-my-tertiary">协作</div>
+        <div className="flex flex-col gap-0.5">{COLLAB_ITEMS.map((item) => navButton(item.id, item.label, item.icon))}</div>
+
+        <div className="mt-3 border-t border-my-line pt-3" />
+        <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-my-tertiary">系统</div>
+        <div className="flex flex-col gap-0.5">{SYSTEM_ITEMS.map((item) => navButton(item.id, item.label, item.icon))}</div>
       </div>
 
-      {/* 用户 */}
       <div className="border-t border-my-line p-2">
         <Dropdown
           width={200}
@@ -211,17 +192,17 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
           {(close) => (
             <div>
               <DropdownHeader>{me.name} · {me.role}</DropdownHeader>
-              <DropdownItem icon={<CircleUser size={13} />} onClick={() => { navigateWorkspace('profile'); close() }}>
-                Profile & 偏好
+              <DropdownItem icon={<CircleUser size={13} />} onClick={() => { setPage('settings'); close() }}>
+                设置
               </DropdownItem>
               <DropdownItem
-                icon={<Cog size={13} />}
+                icon={theme === 'dark' ? '☀️' : '🌙'}
                 onClick={() => {
-                  navigateWorkspace('workspace-settings')
+                  toggleTheme()
                   close()
                 }}
               >
-                Workspace settings
+                切换浅色 / 深色主题
               </DropdownItem>
             </div>
           )}
