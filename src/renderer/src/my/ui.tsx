@@ -367,7 +367,7 @@ export function SearchInput({
   )
 }
 
-/* ---------------- 页签（参考 顶栏 tabs） ---------------- */
+/* ---------------- 页签（顶栏 tabs） ---------------- */
 
 export function Tabs<T extends string>({
   tabs,

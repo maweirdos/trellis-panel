@@ -1,7 +1,6 @@
 /*
- * 参考 (参考仓库 + 上游设计令牌包 0.9.7) design tokens, resolved to
- * final color values. Light block from 上游令牌包 :root; dark from its @variant dark.
- * Auto-generated — do not hand-edit color values.
+ * 外壳设计令牌（基于 上游令牌包 0.9.7 令牌解析为最终色值；浅色取自 :root，深色取其 dark 覆盖）。
+ * 自动生成 — 勿手改色值。
  */
 [data-my-theme='light'] {
   --my-alpha-white-0: rgba(255, 255, 255, 0);

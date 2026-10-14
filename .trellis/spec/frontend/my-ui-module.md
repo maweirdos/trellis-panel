@@ -1,14 +1,14 @@
-# 参考 UI 克隆模块约定（src/renderer/src/my/）
+# 外壳 UI 约定（src/renderer/src/my/）
 
-> 来源：任务 10-14-my-ui-shell。改动该模块或新增 `p.*` 色板消费前必读。
+> 来源：任务 10-14-my-ui-shell（原 参考 UI 复刻，已去名更名为 my 外壳）。改动该模块或新增 `my.*` 色板消费前必读。
 
 ## 模块边界
 
 - 整个模块自包含在 `src/renderer/src/my/`：类型(`types.ts`)、演示数据(`data.ts`)、
   自治 zustand store(`store.ts`)、图标(`icons.tsx`)、基础件(`ui.tsx`)、
   令牌与样式(`my-tokens.css` / `my.css`)、外壳(`layout/`)、界面(`pages/`)。
-- 与主站唯一集成点：`store/types.ts` 的 `Page` 联合类型含 `'my'` +
-  `Sidebar.tsx` 入口 + `App.tsx` lazy 路由。**禁止在模块内 import 主 store（useApp）或 window.api。**
+- 集成点：`App.tsx` 直接渲染 `my/layout/MyApp`（唯一应用壳，路由以主 store `page` 为事实）。
+  **禁止在模块内 import 主 store 之外的跨域逻辑；window.api 仅经 `my/store.ts` 的动作桥接使用。**
 - 开发验证入口：dev 渲染层 URL 加 `?my=1` 直渲染模块（无 IPC 依赖，可用浏览器截图；
   打包后 file: 协议自然失效）。
 
@@ -16,12 +16,12 @@
 
 - `my-tokens.css` 由 `上游设计令牌包 0.9.7` 令牌脚本解析生成
   （oklch→hex，浅/深两组挂在 `[data-my-theme='light'|'dark']`），**勿手改色值**。
-- Tailwind 侧 `colors.p.*`（tailwind.config.js）映射到 `var(--my-…)`，**不支持 alpha 修饰符**。
+- Tailwind 侧 `colors.my.*`（tailwind.config.js）映射到 `var(--my-…)`，**不支持 alpha 修饰符**。
 - **品牌强调色 = 面板 leaf 绿**：`--my-bg-accent-*` / `--my-border-accent-*` / `--my-txt-accent-*`
   在 my.css 中覆写为 `rgb(var(--leaf-*-rgb))` 引用（非硬编码），自动随面板深浅主题切换；
   改品牌色只动 styles.css 的 leaf 变量。
 - **排版/圆角令牌**：`--my-text-2xs..xl`（10/11/12/13/14/16px）与 `--my-radius-sm..xl`（4/6/8/12px）
-  定义在 my.css，Tailwind 侧对应 `text-my-2xs..p-xl`、`rounded-my-sm..p-xl`。
+  定义在 my.css，Tailwind 侧对应 `text-my-2xs..my-xl`、`rounded-my-sm..my-xl`。
   外壳与页面**禁止写死字号/圆角**（text-[13px]/rounded-md 等），一律用令牌类。
 - 常用类：`bg-my-canvas`、`bg-my-layer-1(-hover/-active/-selected)`、`bg-my-layer-2/3`、
   `bg-my-surface-1/2`、`text-my-primary/-secondary/-tertiary/-placeholder`、
@@ -47,7 +47,7 @@
 
 - 控制高度体系：`my-control`（28px）/`my-control-sm`（24px）/`my-control-lg`（32px）。
 - 弹层动画类：`my-pop`（下拉）、`my-fade`、`my-peek-in`（peek 浮层）；滚动容器用 `my-scrollbar`。
-- 下拉统一用 `ui.tsx` 的 `Dropdown`（fixed 定位 + 外点/Esc/滚动关闭；开箱后按菜单实测高度定位，
+- 下拉统一用 `my/ui.tsx` 的 `Dropdown`（fixed 定位 + 外点/Esc/滚动关闭；开箱后按菜单实测高度定位，
   下方空间不足贴上缘，水平收进视口——不要回退成估算高度）；
   已知测试陷阱：截图工具会触发 resize 导致弹层关闭——自动化验证时用「打开后立即
   evaluate 读取 `.my-pop` 内容或坐标点击」而非截图中间态。

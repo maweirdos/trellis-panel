@@ -1,4 +1,4 @@
-// 快照 → 参考 视图模型适配层。无快照时回退内置示例数据（仅 ?my=1 预览路径使用）。
+// 快照 → 外壳视图模型适配层。无快照时回退内置示例数据（仅 ?my=1 预览路径使用）。
 import type { ProjectSnapshot, TaskInfo } from '../../../shared/types'
 import { createDemoDataset } from './data'
 import type { Issue, IssueActivity, Member, MyDataset, Priority, WorkItemState } from './types'

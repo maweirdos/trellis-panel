@@ -1,4 +1,4 @@
-// 应用级 参考 外壳状态。路由唯一事实是主 store 的 useApp.page，这里只管
+// 应用级外壳状态。路由唯一事实是主 store 的 useApp.page，这里只管
 // 视图偏好（布局/分组/排序/筛选）、弹层（peek/命令面板/新建）与数据镜像。
 import { create } from 'zustand'
 import { api } from '../api'

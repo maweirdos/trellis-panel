@@ -1,4 +1,4 @@
-// 参考 视觉签名图标（SVG 路径取自其开源仓库 上游令牌包/blocks，AGPL）。
+// 状态/优先级/布局签名图标（SVG 基线取自 上游令牌包/blocks，AGPL 许可）。
 import type { JSX } from 'react'
 import type { Priority, StateGroup } from './types'
 
@@ -212,7 +212,7 @@ export function NavIcon({ name, size = 16, className }: IconProps & { name: stri
   )
 }
 
-/* ---------------- 品牌 logo（自拟几何标记，非 参考 商标） ---------------- */
+/* ---------------- 品牌 logo（自拟几何标记） ---------------- */
 
 export function WorkspaceMark({ color, letter, size = 20 }: { color: string; letter: string; size?: number }): JSX.Element {
   return (

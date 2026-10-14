@@ -149,6 +149,21 @@ export default {
       },
       boxShadow: {
         xs: '0 1px 2px 0 rgb(0 0 0 / 0.05)'
+      },
+      // 外壳排版/圆角令牌（值见 src/renderer/src/my/my.css）
+      fontSize: {
+        'my-2xs': ['var(--my-text-2xs)', { lineHeight: '1.4' }],
+        'my-xs': ['var(--my-text-xs)', { lineHeight: '1.45' }],
+        'my-sm': ['var(--my-text-sm)', { lineHeight: '1.5' }],
+        'my-md': ['var(--my-text-md)', { lineHeight: '1.5' }],
+        'my-lg': ['var(--my-text-lg)', { lineHeight: '1.5' }],
+        'my-xl': ['var(--my-text-xl)', { lineHeight: '1.4' }]
+      },
+      borderRadius: {
+        'my-sm': 'var(--my-radius-sm)',
+        'my-md': 'var(--my-radius-md)',
+        'my-lg': 'var(--my-radius-lg)',
+        'my-xl': 'var(--my-radius-xl)'
       }
     }
   },
