@@ -1,7 +1,7 @@
 // 工作区侧边栏：工作区切换器 / 搜索入口 / 一级导航 / 项目入口 / 用户。
 import { type JSX } from 'react'
 import { clsx } from 'clsx'
-import { ChevronDown, CircleUser, FolderOpen, PanelLeftClose, Plus, Search } from 'lucide-react'
+import { ChevronDown, CircleUser, FolderOpen, PanelLeftClose, Plus, Search, Star, X } from 'lucide-react'
 import { useApp } from '../../store'
 import { useMy } from '../store'
 import { Avatar, Dropdown, DropdownHeader, DropdownItem, Tooltip } from '../ui'
@@ -19,6 +19,10 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
   const toggleTheme = useMy((s) => s.toggleTheme)
   const me = data.members.find((m) => m.id === data.workspace.memberId) ?? data.members[0]
   const project = data.projects[0]
+  const favorites = useMy((s) => s.favorites)
+  const toggleFavorite = useMy((s) => s.toggleFavorite)
+  const openIssue = useMy((s) => s.openIssue)
+  const favoriteIssues = data.issues.filter((i) => favorites.includes(i.id))
 
   const NAV_ITEMS: Array<{ id: string; label: string; icon: string }> = [
     { id: 'dashboard', label: '我的工作', icon: 'your-work' },
@@ -137,6 +141,39 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
       </div>
 
       <div className="my-scrollbar min-h-0 flex-1 px-2.5 pb-2">
+        {favoriteIssues.length > 0 && (
+          <>
+            <div className="px-2 pb-1 pt-2 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">收藏</div>
+            <div className="flex flex-col gap-0.5">
+              {favoriteIssues.map((issue) => (
+                <div
+                  key={issue.id}
+                  className="group/f flex w-full items-center gap-2 rounded-my-md px-2 py-1.5 text-my-md text-my-secondary hover:bg-my-layer-transparent-hover"
+                >
+                  <Star size={12} className="shrink-0 fill-current text-my-warning" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPage('tasks')
+                      openIssue(issue.id)
+                    }}
+                    className="min-w-0 flex-1 truncate text-left"
+                  >
+                    {issue.name}
+                  </button>
+                  <button
+                    type="button"
+                    title="取消收藏"
+                    onClick={() => toggleFavorite(issue.id)}
+                    className="opacity-0 group-hover/f:opacity-100"
+                  >
+                    <X size={11} className="text-my-icon-tertiary hover:text-my-danger-text" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         <div className="flex items-center justify-between px-2 pb-1 pt-2">
           <span className="text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">项目</span>
           <Tooltip label="新建工作项">

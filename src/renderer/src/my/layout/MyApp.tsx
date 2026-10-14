@@ -1,7 +1,7 @@
 // 应用外壳：工作区侧边栏 + 项目侧边栏 + 内容路由 + 全局弹层。
 // 路由唯一事实是主 store 的 useApp.page，IPC 事件联动不受换壳影响。
-import { useEffect, lazy, Suspense, type JSX, type ReactNode } from "react"
-import { Loader2 } from 'lucide-react'
+import { useEffect, lazy, Suspense, useState, type JSX, type ReactNode } from "react"
+import { Keyboard, Loader2, PanelLeftOpen, Plus, Search } from 'lucide-react'
 import { useApp } from '../../store'
 import { useMy, isProjectPage } from '../store'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
@@ -80,6 +80,10 @@ export function MyApp(): JSX.Element {
   const page = useApp((s) => s.page)
   const openTaskDir = useApp((s) => s.openTaskDir)
   const theme = useMy((s) => s.theme)
+  const sidebarCollapsed = useMy((s) => s.sidebarCollapsed)
+  const toggleSidebar = useMy((s) => s.toggleSidebar)
+  const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
+  const [helpOpen, setHelpOpen] = useState(false)
   const inProject = isProjectPage(page)
 
   useEffect(() => {
@@ -107,9 +111,46 @@ export function MyApp(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [setPaletteOpen])
 
+  // 全局快捷键：C 新建 / / 面板 / ? 帮助 / Ctrl+B 折叠侧栏（输入态不拦截）
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null): boolean =>
+      t instanceof HTMLElement &&
+      (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.isComposing || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key === 'c' || e.key === 'C') {
+        setCreateIssueOpen(true)
+      } else if (e.key === '/') {
+        e.preventDefault()
+        setPaletteOpen(true)
+      } else if (e.key === '?') {
+        setHelpOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setCreateIssueOpen, setPaletteOpen])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        toggleSidebar()
+      } else if (e.key === 'Escape') {
+        setHelpOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleSidebar])
+
   return (
     <div className="flex h-full min-w-0 flex-1">
-      <WorkspaceSidebar />
+      {sidebarCollapsed ? (
+        <CollapsedRail onExpand={toggleSidebar} />
+      ) : (
+        <WorkspaceSidebar onCollapse={toggleSidebar} />
+      )}
       {inProject && <ProjectSidebar />}
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="my-scrollbar min-h-0 flex-1">
@@ -126,6 +167,66 @@ export function MyApp(): JSX.Element {
       <IssuePeek />
       <CreateIssueModal />
       <CommandPalette />
+      {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
+    </div>
+  )
+}
+
+/** 侧栏折叠态：窄条操作栏 */
+function CollapsedRail({ onExpand }: { onExpand: () => void }): JSX.Element {
+  const setPaletteOpen = useMy((s) => s.setPaletteOpen)
+  const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
+  const railBtn =
+    'flex h-8 w-8 items-center justify-center rounded-md text-my-icon-tertiary hover:bg-my-layer-1-hover hover:text-my-primary'
+  return (
+    <aside className="flex h-full w-[48px] shrink-0 flex-col items-center gap-1 border-r border-my-line bg-my-canvas py-3">
+      <button type="button" title="展开侧栏 (Ctrl+B)" onClick={onExpand} className={railBtn}>
+        <PanelLeftOpen size={15} />
+      </button>
+      <button type="button" title="搜索 (Ctrl+K)" onClick={() => setPaletteOpen(true)} className={railBtn}>
+        <Search size={15} />
+      </button>
+      <button type="button" title="新建工作项 (C)" onClick={() => setCreateIssueOpen(true)} className={railBtn}>
+        <Plus size={15} />
+      </button>
+    </aside>
+  )
+}
+
+/** 快捷键帮助浮层（? 呼出，Esc 或点击遮罩关闭） */
+const SHORTCUTS: Array<[string, string]> = [
+  ['C', '新建工作项'],
+  ['/', '打开命令面板'],
+  ['Ctrl+K', '命令面板（同 /）'],
+  ['Ctrl+B', '折叠 / 展开侧边栏'],
+  ['↑ ↓', '列表导航'],
+  ['Enter', '打开聚焦的工作项'],
+  ['?', '显示本帮助']
+]
+
+function HelpOverlay({ onClose }: { onClose: () => void }): JSX.Element {
+  return (
+    <div className="p-fade fixed inset-0 z-[88] flex items-center justify-center bg-my-backdrop" onMouseDown={onClose}>
+      <div
+        className="w-[380px] rounded-my-xl border border-my-line bg-my-layer-2 p-4 shadow-[var(--my-shadow-overlay-200)]"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-my-md font-semibold text-my-primary">
+            <Keyboard size={15} className="text-my-icon-secondary" />
+            键盘快捷键
+          </span>
+          <span className="my-kbd">Esc 关闭</span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          {SHORTCUTS.map(([keys, label]) => (
+            <div key={keys} className="flex items-center justify-between text-my-sm">
+              <span className="text-my-secondary">{label}</span>
+              <span className="my-kbd">{keys}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

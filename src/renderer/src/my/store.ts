@@ -12,6 +12,17 @@ interface PersistedPrefs {
   layout: WorkItemLayout
   groupBy: GroupBy
   orderBy: OrderBy
+  sidebarCollapsed: boolean
+  favorites: string[]
+  savedViews: SavedView[]
+}
+
+export interface SavedView {
+  id: string
+  name: string
+  filters: IssueFilters
+  groupBy: GroupBy
+  createdAt: number
 }
 
 function loadPrefs(): Partial<PersistedPrefs> {
@@ -29,6 +40,43 @@ function savePrefs(prefs: PersistedPrefs): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
   } catch {
     // 隐私模式等场景下静默降级
+  }
+}
+
+const FAV_KEY = 'tpanel.my.favorites'
+const VIEW_KEY = 'tpanel.my.views'
+
+function loadFavorites(): string[] {
+  try {
+    const raw = localStorage.getItem(FAV_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+function saveFavorites(ids: string[]): void {
+  try {
+    localStorage.setItem(FAV_KEY, JSON.stringify(ids.slice(0, 50)))
+  } catch {
+    // 容量敏感数据截断保存
+  }
+}
+
+function loadSavedViews(): SavedView[] {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY)
+    return raw ? (JSON.parse(raw) as SavedView[]) : []
+  } catch {
+    return []
+  }
+}
+
+function saveSavedViews(views: SavedView[]): void {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(views.slice(0, 30)))
+  } catch {
+    // 静默降级
   }
 }
 
@@ -65,6 +113,15 @@ export interface MyStore {
   paletteOpen: boolean
   setPaletteOpen: (v: boolean) => void
 
+  sidebarCollapsed: boolean
+  toggleSidebar: () => void
+  favorites: string[]
+  toggleFavorite: (id: string) => void
+  savedViews: SavedView[]
+  saveView: (name: string, filters: IssueFilters, groupBy: GroupBy) => void
+  applyView: (id: string) => void
+  removeView: (id: string) => void
+
   updateIssue: (id: string, patch: Partial<Issue>) => Promise<void>
   createIssue: (input: { name: string; priority: Priority; description?: string }) => Promise<string | null>
   toggleTheme: () => void
@@ -97,15 +154,15 @@ export const useMy = create<MyStore>()((set, get) => ({
   display: { showEmptyGroups: false, showSubIssues: true },
   setLayout: (l) => {
     set({ layout: l })
-    savePrefs({ layout: get().layout, groupBy: get().groupBy, orderBy: get().orderBy })
+    savePrefs({ layout: l, groupBy: get().groupBy, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, favorites: get().favorites, savedViews: get().savedViews })
   },
   setGroupBy: (g) => {
     set({ groupBy: g })
-    savePrefs({ layout: get().layout, groupBy: g, orderBy: get().orderBy })
+    savePrefs({ layout: get().layout, groupBy: g, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, favorites: get().favorites, savedViews: get().savedViews })
   },
   setOrderBy: (o) => {
     set({ orderBy: o })
-    savePrefs({ layout: get().layout, groupBy: get().groupBy, orderBy: o })
+    savePrefs({ layout: get().layout, groupBy: get().groupBy, orderBy: o, sidebarCollapsed: get().sidebarCollapsed, favorites: get().favorites, savedViews: get().savedViews })
   },
   toggleFilter: (key, value) => {
     const cur = get().filters[key] as unknown[]
@@ -122,6 +179,44 @@ export const useMy = create<MyStore>()((set, get) => ({
   setCreateIssueOpen: (v) => set({ createIssueOpen: v }),
   paletteOpen: false,
   setPaletteOpen: (v) => set({ paletteOpen: v }),
+
+  sidebarCollapsed: prefs.sidebarCollapsed ?? false,
+  toggleSidebar: () => {
+    set({ sidebarCollapsed: !get().sidebarCollapsed })
+    savePrefs({
+      layout: get().layout,
+      groupBy: get().groupBy,
+      orderBy: get().orderBy,
+      sidebarCollapsed: get().sidebarCollapsed,
+      favorites: get().favorites,
+      savedViews: get().savedViews
+    })
+  },
+  favorites: loadFavorites(),
+  toggleFavorite: (id) => {
+    const cur = get().favorites
+    const next = cur.includes(id) ? cur.filter((f) => f !== id) : [id, ...cur]
+    set({ favorites: next })
+    saveFavorites(next)
+  },
+  savedViews: loadSavedViews(),
+  saveView: (name, filters, groupBy) => {
+    const view: SavedView = { id: `v-${Date.now()}`, name: name.trim(), filters: { ...filters }, groupBy, createdAt: Date.now() }
+    if (!view.name) return
+    const next = [view, ...get().savedViews].slice(0, 30)
+    set({ savedViews: next })
+    saveSavedViews(next)
+  },
+  applyView: (id) => {
+    const view = get().savedViews.find((v) => v.id === id)
+    if (!view) return
+    set({ filters: { ...defaultFilters, ...view.filters }, groupBy: view.groupBy })
+  },
+  removeView: (id) => {
+    const next = get().savedViews.filter((v) => v.id !== id)
+    set({ savedViews: next })
+    saveSavedViews(next)
+  },
 
   /** 本地乐观更新 + 经 IPC 落盘，随后由快照推送收敛 */
   updateIssue: async (id, patch) => {

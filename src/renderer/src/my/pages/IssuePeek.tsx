@@ -1,7 +1,7 @@
 // peek-over 工作项详情浮层：backdrop 点击关闭，中央面板（标题/描述/子工作项/评论/活动 + 右侧属性栏），Esc 关闭。
 import { useEffect, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { Check, ChevronDown, Copy, Plus, X } from 'lucide-react'
+import { Check, ChevronDown, Copy, Plus, Star, X } from 'lucide-react'
 import { useMy } from '../store'
 import { Avatar, Checkbox, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../ui'
 import { WorkspaceMark, PriorityIcon, StateGroupIcon } from '../icons'
@@ -204,6 +204,14 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
           </Dropdown>
         </span>
         <div className="ml-auto flex items-center gap-0.5">
+          <button
+            type="button"
+            title={store.favorites.includes(issue.id) ? '取消收藏' : '收藏'}
+            onClick={() => store.toggleFavorite(issue.id)}
+            className="flex h-7 w-7 items-center justify-center rounded text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
+          >
+            <Star size={14} className={store.favorites.includes(issue.id) ? 'fill-current text-my-warning' : ''} />
+          </button>
           <button
             type="button"
             title="复制 ID"

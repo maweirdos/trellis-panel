@@ -1,6 +1,7 @@
 // 工作项页：顶栏（面包屑 + tabs + 布局切换器 + 筛选/显示 + 新建按钮）与 5 种布局（List/Board/Spreadsheet/Gantt/Calendar）。
-import { useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX } from 'react'
 import { clsx } from 'clsx'
+import { Bookmark, Star } from 'lucide-react'
 import {
   CalendarDays,
   Check,
@@ -459,8 +460,9 @@ function AssigneeSelect({
 
 /* ---------------- List 布局 ---------------- */
 
-function ListRow({ issue, ident }: { issue: Issue; ident: string }): JSX.Element {
-  const { data, openIssue, updateIssue } = useMy()
+function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: string; focused?: boolean; rowIdx?: number }): JSX.Element {
+  const { data, openIssue, updateIssue, favorites, toggleFavorite } = useMy()
+  const isFav = favorites.includes(issue.id)
   const state = data.states.find((s) => s.id === issue.stateId)
   const assignee = data.members.find((m) => m.id === issue.assigneeId)
   const labels = issue.labelIds
@@ -471,7 +473,8 @@ function ListRow({ issue, ident }: { issue: Issue; ident: string }): JSX.Element
   return (
     <div
       role="button"
-      tabIndex={0}
+      tabIndex={-1}
+      data-row-idx={rowIdx}
       onClick={() => openIssue(issue.id)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -479,7 +482,10 @@ function ListRow({ issue, ident }: { issue: Issue; ident: string }): JSX.Element
           openIssue(issue.id)
         }
       }}
-      className="my-row group flex h-[44px] cursor-pointer items-center gap-2 border-b border-my-line px-3 hover:bg-my-layer-1"
+      className={clsx(
+        'my-row group flex h-[44px] cursor-pointer items-center gap-2 border-b border-my-line px-3 hover:bg-my-layer-1',
+        focused && 'bg-my-layer-1-selected'
+      )}
     >
       <span className="my-row-handle select-none text-my-xs leading-none text-my-icon-tertiary">⠿</span>
       <span className="w-16 shrink-0 text-my-sm text-my-tertiary">
@@ -509,6 +515,20 @@ function ListRow({ issue, ident }: { issue: Issue; ident: string }): JSX.Element
           }}
         />
       </span>
+      <button
+        type="button"
+        title={isFav ? '取消收藏' : '收藏'}
+        onClick={(e) => {
+          e.stopPropagation()
+          toggleFavorite(issue.id)
+        }}
+        className={clsx(
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded',
+          isFav ? 'text-my-warning' : 'text-my-icon-tertiary opacity-0 group-hover:opacity-100 hover:text-my-warning'
+        )}
+      >
+        <Star size={12} className={isFav ? 'fill-current' : ''} />
+      </button>
       <span className="ml-1 flex shrink-0 items-center">
         {assignee ? <Avatar name={assignee.name} color={assignee.avatarColor} size={20} /> : <EmptyAvatar />}
       </span>
@@ -531,18 +551,47 @@ function ListLayout({
   showEmpty: boolean
   ident: string
 }): JSX.Element {
+  const { openIssue } = useMy()
+  const [focusIdx, setFocusIdx] = useState(-1)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0)
+  // 可见行 = 未折叠分组的行集合；偏移表用于渲染时标注全局行号
+  let acc = 0
+  const offsets = new Map<string, number>()
+  for (const g of shown) {
+    offsets.set(g.key, acc)
+    const isCollapsed = g.meta.kind !== 'none' && collapsed.has(g.key)
+    if (!isCollapsed) acc += g.issues.length
+  }
+  const rows = shown.flatMap((g) => (g.meta.kind !== 'none' && collapsed.has(g.key) ? [] : g.issues))
+  useEffect(() => {
+    if (focusIdx < 0) return
+    containerRef.current?.querySelector(`[data-row-idx="${focusIdx}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [focusIdx])
+  const onContainerKeyDown = (e: React.KeyboardEvent): void => {
+    if (rows.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setFocusIdx((i) => Math.min(i + 1, rows.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setFocusIdx((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter' && focusIdx >= 0 && rows[focusIdx]) {
+      e.preventDefault()
+      openIssue(rows[focusIdx].id)
+    }
+  }
   if (shown.every((g) => g.issues.length === 0)) {
     return <EmptyState title="没有工作项" description="当前筛选与页签下没有匹配的工作项，调整条件或新建一个。" />
   }
   return (
-    <div className="my-scrollbar h-full overflow-y-auto">
+    <div ref={containerRef} tabIndex={0} onKeyDown={onContainerKeyDown} className="my-scrollbar h-full overflow-y-auto outline-none">
       {shown.map((g) => {
         if (g.meta.kind === 'none') {
           return (
             <div key={g.key}>
-              {g.issues.map((i) => (
-                <ListRow key={i.id} issue={i} ident={ident} />
+              {g.issues.map((i, li) => (
+                <ListRow key={i.id} issue={i} ident={ident} focused={li === focusIdx} rowIdx={li} />
               ))}
             </div>
           )
@@ -586,7 +635,10 @@ function ListLayout({
               </div>
             </div>
             {!isCollapsed &&
-              g.issues.map((i) => <ListRow key={i.id} issue={i} ident={ident} />)}
+              g.issues.map((i, li) => {
+                const base = offsets.get(g.key) ?? 0
+                return <ListRow key={i.id} issue={i} ident={ident} focused={base + li === focusIdx} rowIdx={base + li} />
+              })}
           </section>
         )
       })}
@@ -607,6 +659,11 @@ function BoardCard({ issue }: { issue: Issue }): JSX.Element {
     <div
       role="button"
       tabIndex={0}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/my-issue-id', issue.id)
+        e.dataTransfer.effectAllowed = 'move'
+      }}
       onClick={() => openIssue(issue.id)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -614,7 +671,7 @@ function BoardCard({ issue }: { issue: Issue }): JSX.Element {
           openIssue(issue.id)
         }
       }}
-      className="my-card mx-2.5 mb-1.5 cursor-pointer p-2.5"
+      className="my-card mx-2.5 mb-1.5 cursor-grab p-2.5 active:cursor-grabbing"
     >
       <div className="flex items-start gap-1.5">
         <span className="mt-[3px]">
@@ -639,13 +696,18 @@ function BoardLayout({
   groups,
   collapsed,
   onToggleGroup,
-  showEmpty
+  showEmpty,
+  groupBy,
+  onMoveToState
 }: {
   groups: IssueGroup[]
   collapsed: Set<string>
   onToggleGroup: (key: string) => void
   showEmpty: boolean
+  groupBy: GroupBy
+  onMoveToState: (stateId: string, issueId: string) => void
 }): JSX.Element {
+  const [dragOver, setDragOver] = useState<string | null>(null)
   const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0)
   if (shown.every((g) => g.issues.length === 0)) {
     return <EmptyState title="没有工作项" description="当前筛选与页签下没有匹配的工作项。" />
@@ -655,7 +717,29 @@ function BoardLayout({
       {shown.map((g) => {
         const isCollapsed = collapsed.has(g.key)
         return (
-          <div key={g.key} className="flex w-[280px] min-w-[280px] shrink-0 flex-col">
+          <div
+            key={g.key}
+            onDragOver={(e) => {
+              if (groupBy !== 'state' || g.meta.kind !== 'state') return
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              setDragOver(g.key)
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOver(null)
+              if (groupBy !== 'state' || g.meta.kind !== 'state') return
+              const issueId = e.dataTransfer.getData('text/my-issue-id')
+              if (issueId) onMoveToState(g.meta.state.id, issueId)
+            }}
+            className={clsx(
+              'flex w-[280px] min-w-[280px] shrink-0 flex-col',
+              dragOver === g.key && 'bg-my-accent-subtle ring-1 ring-inset ring-my-line-accent'
+            )}
+          >
             <div className="flex h-9 items-center gap-1.5 border-b border-my-line px-3">
               <button
                 type="button"
@@ -797,7 +881,12 @@ function SpreadsheetRow({
 }
 
 function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }): JSX.Element {
+  const { data, updateIssue } = useMy()
   const [checked, setChecked] = useState<Set<string>>(() => new Set<string>())
+  const applyBatch = async (patch: Partial<Issue>): Promise<void> => {
+    for (const id of checked) await updateIssue(id, patch)
+    setChecked(new Set())
+  }
   const allChecked = issues.length > 0 && issues.every((i) => checked.has(i.id))
   const onCheck = (id: string, v: boolean): void => {
     setChecked((prev) => {
@@ -837,6 +926,68 @@ function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }
           <SpreadsheetRow key={i.id} issue={i} ident={ident} checked={checked.has(i.id)} onCheck={onCheck} />
         ))}
       </div>
+      {checked.size > 0 && (
+        <div className="fixed bottom-8 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-2 px-3 py-2 shadow-[var(--my-shadow-overlay-200)]">
+          <span className="text-my-sm text-my-secondary">已选 {checked.size} 项</span>
+          <Dropdown
+            width={180}
+            align="right"
+            trigger={({ toggle }) => (
+              <Button variant="neutral" size="sm" onClick={toggle}>
+                设为状态
+              </Button>
+            )}
+          >
+            {(close) => (
+              <>
+                {[...data.states]
+                  .sort((a, b) => a.sequence - b.sequence)
+                  .map((st) => (
+                    <DropdownItem
+                      key={st.id}
+                      icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
+                      onClick={() => {
+                        void applyBatch({ stateId: st.id })
+                        close()
+                      }}
+                    >
+                      {st.name}
+                    </DropdownItem>
+                  ))}
+              </>
+            )}
+          </Dropdown>
+          <Dropdown
+            width={170}
+            align="right"
+            trigger={({ toggle }) => (
+              <Button variant="neutral" size="sm" onClick={toggle}>
+                设为优先级
+              </Button>
+            )}
+          >
+            {(close) => (
+              <>
+                {PRIORITIES.map((pr) => (
+                  <DropdownItem
+                    key={pr}
+                    icon={<PriorityIcon priority={pr} size={13} />}
+                    onClick={() => {
+                      void applyBatch({ priority: pr })
+                      close()
+                    }}
+                  >
+                    {PRIORITY_LABELS[pr]}
+                  </DropdownItem>
+                ))}
+              </>
+            )}
+          </Dropdown>
+          <Button variant="ghost" size="sm" onClick={() => setChecked(new Set())}>
+            取消选择
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1096,6 +1247,36 @@ function CheckMark({ show }: { show: boolean }): JSX.Element {
   return <Check size={12} className={clsx('text-my-accent-text', !show && 'opacity-0')} />
 }
 
+/* ---------------- 保存视图表单 ---------------- */
+
+function SaveViewBody({ onSave }: { onSave: (name: string) => void }): JSX.Element {
+  const [name, setName] = useState('')
+  const submit = (): void => {
+    const n = name.trim()
+    if (!n) return
+    onSave(n)
+  }
+  return (
+    <div className="flex flex-col gap-2 px-3 py-2">
+      <div className="text-my-xs text-my-tertiary">保存当前筛选与分组，稍后在项目侧边栏「视图」区一键应用。</div>
+      {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit()
+        }}
+        placeholder="视图名称，如：我的紧急项"
+        className="my-input h-8"
+      />
+      <Button variant="primary" size="sm" onClick={submit} disabled={!name.trim()}>
+        保存视图
+      </Button>
+    </div>
+  )
+}
+
 /* ---------------- 页面 ---------------- */
 
 function WorkItemsPageInner(): JSX.Element {
@@ -1152,7 +1333,14 @@ function WorkItemsPageInner(): JSX.Element {
     )
   } else if (layout === 'board') {
     body = (
-      <BoardLayout groups={groups} collapsed={collapsed} onToggleGroup={toggleGroup} showEmpty={display.showEmptyGroups} />
+      <BoardLayout
+        groups={groups}
+        collapsed={collapsed}
+        onToggleGroup={toggleGroup}
+        showEmpty={display.showEmptyGroups}
+        groupBy={groupBy}
+        onMoveToState={(stateId, issueId) => void store.updateIssue(issueId, { stateId })}
+      />
     )
   } else if (layout === 'spreadsheet') {
     body = <SpreadsheetLayout issues={tabbed} ident={ident} />
@@ -1262,6 +1450,26 @@ function WorkItemsPageInner(): JSX.Element {
                   </div>
                 )}
               </>
+            )}
+          </Dropdown>
+          {/* 存为视图：保存当前筛选+分组，项目侧边栏「视图」区可应用 */}
+          <Dropdown
+            width={230}
+            align="right"
+            trigger={({ toggle }) => (
+              <Button variant="neutral" onClick={toggle}>
+                <Bookmark size={13} className="text-my-icon-secondary" />
+                存为视图
+              </Button>
+            )}
+          >
+            {(close) => (
+              <SaveViewBody
+                onSave={(name) => {
+                  store.saveView(name, filters, groupBy)
+                  close()
+                }}
+              />
             )}
           </Dropdown>
           {/* Display 下拉：布局/分组/排序/显示 */}
