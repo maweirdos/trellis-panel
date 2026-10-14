@@ -39,7 +39,8 @@
 
 - `StateGroupIcon`（backlog 虚线环 / unstarted 空环 / started 进度环+内圈 / completed 实心勾 / cancelled 实心叉）
 - `PriorityIcon`（urgent 方块感叹号 / high·medium·low 三阶竖条 / none 横杠）
-- `LayoutIcon`（list/board/spreadsheet/gantt/calendar）、`NavIcon`、`WorkspaceMark`。
+- `LayoutIcon`：List/Columns3/Table2/ChartGantt/Calendar；`NavIcon`：LayoutDashboard/Inbox/
+  ChartColumn/ListTodo/RotateCw/Box/Eye/FileText/CircleAlert；`WorkspaceMark` 为自拟色块标记。
 - 默认状态色：Backlog #A3A3A3 / Todo #3A3A3A / In Progress #F59E0B / Done #16A34A / Cancelled #EF4444。
 
 ## 交互约定
