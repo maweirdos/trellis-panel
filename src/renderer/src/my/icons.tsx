@@ -1,4 +1,4 @@
-// 状态/优先级/布局签名图标（自绘 SVG）。
+// 状态/优先级/布局/导航签名图标（原创绘制：以基本图元表达等价语义）。
 import type { JSX } from 'react'
 import type { Priority, StateGroup } from './types'
 
@@ -8,7 +8,11 @@ interface IconProps {
   color?: string
 }
 
-function ShrinkWrap({ className, size = 14, children }: IconProps & { children: React.ReactNode }): JSX.Element {
+function Svg({
+  className,
+  size = 14,
+  children
+}: IconProps & { children: React.ReactNode }): JSX.Element {
   return (
     <svg
       width={size}
@@ -24,23 +28,30 @@ function ShrinkWrap({ className, size = 14, children }: IconProps & { children: 
   )
 }
 
-/* ---------------- 状态组图标（backlog 虚线环 / unstarted 空环 / started 进度环+内圈 /
-   completed 实心对勾 / cancelled 实心叉） ---------------- */
+/* ---------------- 状态组图标 ----------------
+ * backlog：虚线环（仅待定）
+ * unstarted：虚线环 + 细实线内环（已排期未开始）
+ * started：虚线环 + 实心内点（进行中）
+ * completed：实心圆 + 白色对勾
+ * cancelled：实心圆 + 白色叉号
+ * 虚线以 stroke-dasharray 单圆实现，段数/相位为本实现自有参数。 */
 
-function DashedCircle({ color, percentage }: { color: string; percentage: number }): JSX.Element {
-  const segments: JSX.Element[] = []
-  const total = 15
-  for (let i = 0; i < total; i++) {
-    const angle = i * (360 / total) - 90
-    const visible = (i / total) * 100 >= percentage
-    if (!visible) continue
-    segments.push(
-      <g key={i} transform={`translate(8 8) rotate(${angle})`}>
-        <line x1={5.75} y1={0} x2={6.5} y2={0} stroke={color} strokeWidth={1.21} strokeLinecap="round" />
-      </g>
-    )
-  }
-  return <g>{segments}</g>
+const RING_DASHARRAY = '1.15 1.36' // 周长 2π×6.5≈40.8，约 17 段
+
+function DashedRing({ color }: { color: string }): JSX.Element {
+  return (
+    <circle
+      cx={8}
+      cy={8}
+      r={6.5}
+      fill="none"
+      stroke={color}
+      strokeWidth={1.3}
+      strokeLinecap="round"
+      strokeDasharray={RING_DASHARRAY}
+      transform="rotate(-90 8 8)"
+    />
+  )
 }
 
 export function StateGroupIcon({
@@ -50,165 +61,236 @@ export function StateGroupIcon({
   className
 }: IconProps & { stateGroup: StateGroup }): JSX.Element {
   const c = color ?? '#848890'
+
   if (stateGroup === 'completed') {
     return (
-      <ShrinkWrap className={className} size={size}>
+      <Svg className={className} size={size}>
+        <circle cx={8} cy={8} r={7} fill={c} />
         <path
-          fillRule="evenodd"
-          clipRule="evenodd"
-          d="M8 15C11.866 15 15 11.866 15 8C15 4.13401 11.866 1 8 1C4.13401 1 1 4.13401 1 8C1 11.866 4.13401 15 8 15ZM11.3587 6.18828C11.6007 5.85214 11.5244 5.38343 11.1882 5.14141C10.8521 4.89938 10.3834 4.97568 10.1414 5.31183L7.03706 9.62335L5.25956 7.97751C4.95563 7.69609 4.4811 7.71434 4.19968 8.01828C3.91826 8.32221 3.93651 8.79673 4.24045 9.07815L6.64045 11.3004C6.79816 11.4464 7.01095 11.5178 7.22481 11.4963C7.43868 11.4749 7.63307 11.3627 7.75865 11.1883L11.3587 6.18828Z"
-          fill={c}
+          d="M4.9 8.3 L7.1 10.4 L11.1 5.9"
+          stroke="var(--my-txt-on-color, #ffffff)"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
         />
-      </ShrinkWrap>
+      </Svg>
     )
   }
+
   if (stateGroup === 'cancelled') {
     return (
-      <ShrinkWrap className={className} size={size}>
+      <Svg className={className} size={size}>
+        <circle cx={8} cy={8} r={7} fill={c} />
         <path
-          fillRule="evenodd"
-          clipRule="evenodd"
-          d="M8 15C11.866 15 15 11.866 15 8C15 4.13401 11.866 1 8 1C4.13401 1 1 4.13401 1 8C1 11.866 4.13401 15 8 15ZM11.1018 4.89826C11.3947 5.19115 11.3947 5.66603 11.1018 5.95892L9.06068 8.00002L11.1018 10.0411C11.3947 10.334 11.3947 10.8089 11.1018 11.1018C10.8089 11.3947 10.334 11.3947 10.0411 11.1018L8.00002 9.06068L5.95892 11.1018C5.66603 11.3947 5.19115 11.3947 4.89826 11.1018C4.60537 10.8089 4.60537 10.334 4.89826 10.0411L6.93936 8.00002L4.89826 5.95892C4.60537 5.66603 4.60537 5.19115 4.89826 4.89826C5.19115 4.60537 5.66603 4.60537 5.95892 4.89826L8.00002 6.93936L10.0411 4.89826C10.334 4.60537 10.8089 4.60537 11.1018 4.89826Z"
-          fill={c}
+          d="M5.7 5.7 L10.3 10.3 M10.3 5.7 L5.7 10.3"
+          stroke="var(--my-txt-on-color, #ffffff)"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          fill="none"
         />
-      </ShrinkWrap>
+      </Svg>
     )
   }
-  const circumference = 2 * Math.PI * 6
-  const progress = stateGroup === 'started' ? 100 : 0
-  const dashOffset = circumference * (1 - progress / 100)
+
+  if (stateGroup === 'started') {
+    return (
+      <Svg className={className} size={size}>
+        <DashedRing color={c} />
+        <circle cx={8} cy={8} r={3.1} fill={c} />
+      </Svg>
+    )
+  }
+
+  if (stateGroup === 'unstarted') {
+    return (
+      <Svg className={className} size={size}>
+        <DashedRing color={c} />
+        <circle cx={8} cy={8} r={3.1} fill="none" stroke={c} strokeWidth={1.2} />
+      </Svg>
+    )
+  }
+
+  // backlog
   return (
-    <ShrinkWrap className={className} size={size}>
-      <DashedCircle color={c} percentage={progress} />
-      <circle
-        cx={6}
-        cy={6}
-        r={3}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        fill="none"
-        transform="rotate(-90 8 6)"
-        strokeDasharray={circumference}
-        strokeDashoffset={stateGroup === 'started' ? 0 : circumference}
-        stroke={c}
-      />
-      <circle
-        cx={8}
-        cy={8}
-        r={6}
-        fill="none"
-        stroke={c}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeDasharray={circumference}
-        strokeDashoffset={dashOffset}
-        transform="rotate(-90 8 8)"
-      />
-    </ShrinkWrap>
+    <Svg className={className} size={size}>
+      <DashedRing color={c} />
+    </Svg>
   )
 }
 
-export function StateIcon({ stateColor, group, size = 14 }: { stateColor: string; group: StateGroup; size?: number }): JSX.Element {
-  return <StateGroupIcon stateGroup={group} color={stateColor} size={size} />
-}
-
-/* ---------------- 优先级图标（三阶竖条 / urgent 方块感叹号 / none 横杠） ---------------- */
+/* ---------------- 优先级图标 ----------------
+ * urgent：圆角方块 + 感叹号
+ * high：双柱（中、高）
+ * medium：三柱渐高
+ * low：三柱矮柱组
+ * none：单一横杠 */
 
 export function PriorityIcon({ priority, size = 14, className }: IconProps & { priority: Priority }): JSX.Element {
-  const colorVar = `var(--my-priority-${priority})`
+  const color = `var(--my-priority-${priority})`
+
   if (priority === 'urgent') {
     return (
-      <ShrinkWrap className={className} size={size}>
-        <path
-          fill="currentColor"
-          style={{ color: colorVar }}
-          d="M11.12 2A2.88 2.88 0 0 1 14 4.88v6.24A2.88 2.88 0 0 1 11.12 14H4.88A2.88 2.88 0 0 1 2 11.12V4.88A2.88 2.88 0 0 1 4.88 2zm-3.24 8a.6.6 0 0 0 0 1.2h.006a.6.6 0 1 0 0-1.2zm0-5.12a.6.6 0 0 0-.6.6v2.56a.6.6 0 0 0 1.2 0V5.48a.6.6 0 0 0-.6-.6"
-        />
-      </ShrinkWrap>
+      <Svg className={className} size={size}>
+        <rect x={2} y={2} width={12} height={12} rx={3.2} fill="currentColor" style={{ color }} />
+        <path d="M8 4.9 V8.7" stroke="var(--my-txt-on-color, #ffffff)" strokeWidth={1.5} strokeLinecap="round" />
+        <circle cx={8} cy={11.1} r={0.95} fill="var(--my-txt-on-color, #ffffff)" />
+      </Svg>
     )
   }
+
   if (priority === 'none') {
     return (
-      <ShrinkWrap className={className} size={size}>
-        <path fill="currentColor" style={{ color: colorVar }} d="M4.25 9.25a1.25 1.25 0 1 1 0-2.5h7.5a1.25 1.25 0 1 1 0 2.5z" />
-      </ShrinkWrap>
+      <Svg className={className} size={size}>
+        <rect x={3.2} y={6.9} width={9.6} height={2.3} rx={1.15} fill="currentColor" style={{ color }} />
+      </Svg>
     )
   }
-  const paths: Record<string, string[]> = {
+
+  // 三柱：x 为柱左缘，柱宽 2.2，底部对齐 y=13.2；[柱左缘, 柱顶 y]
+  const BAR_SETS: Record<string, Array<[number, number]>> = {
     high: [
-      'M6.75 6.75a1.25 1.25 0 1 1 2.5 0v6a1.25 1.25 0 1 1-2.5 0z',
-      'M10.75 3.251a1.25 1.25 0 1 1 2.5 0v9.5a1.25 1.25 0 0 1-2.5 0z'
+      [4.4, 5.4],
+      [9.4, 2.9]
     ],
     medium: [
-      'M2.75 10.251a1.25 1.25 0 1 1 2.5 0v2.5a1.25 1.25 0 0 1-2.5 0z',
-      'M6.75 6.75a1.25 1.25 0 1 1 2.5 0v6a1.25 1.25 0 1 1-2.5 0z',
-      'M10.75 3.251a1.25 1.25 0 1 1 2.5 0v9.5a1.25 1.25 0 0 1-2.5 0z'
+      [1.9, 8.2],
+      [6.9, 5.4],
+      [11.9, 2.9]
     ],
     low: [
-      'M3 10.25a1.25 1.25 0 1 1 2.5 0v2.5a1.25 1.25 0 1 1-2.5 0z',
-      'M7 6.75a1.25 1.25 0 1 1 2.5 0v6a1.25 1.25 0 1 1-2.5 0z',
-      'M10.75 3.251a1.25 1.25 0 1 1 2.5 0v9.5a1.25 1.25 0 0 1-2.5 0z'
+      [1.9, 10.4],
+      [6.9, 9.4],
+      [11.9, 8.4]
     ]
   }
+  const bars = BAR_SETS[priority] ?? BAR_SETS.medium
   return (
-    <ShrinkWrap className={className} size={size}>
-      {(paths[priority] ?? paths.medium).map((d, i) => (
-        <path key={i} fill="currentColor" style={{ color: colorVar }} d={d} />
+    <Svg className={className} size={size}>
+      {bars.map(([x, top]) => (
+        <rect key={x} x={x} y={top} width={2.2} height={13.2 - top} rx={1.1} fill="currentColor" style={{ color }} />
       ))}
-    </ShrinkWrap>
+    </Svg>
   )
 }
 
-/* ---------------- 布局切换图标（list/board/table/timeline/calendar） ---------------- */
+/* ---------------- 布局切换图标（自绘简化形） ---------------- */
 
-const LAYOUT_PATHS: Record<string, string> = {
-  list: 'M14 11.375a.625.625 0 1 1 0 1.25H2a.625.625 0 1 1 0-1.25zm0-4a.625.625 0 1 1 0 1.25H2a.625.625 0 1 1 0-1.25zm0-4a.625.625 0 1 1 0 1.25H2a.625.625 0 1 1 0-1.25z',
-  board:
-    'M13.375 5.2c0-.571 0-.961-.025-1.263-.024-.295-.068-.45-.124-.562a1.38 1.38 0 0 0-.602-.602c-.111-.056-.267-.1-.562-.124a17 17 0 0 0-1.262-.025h-.175v10.75h.175c.57 0 .96 0 1.262-.025.295-.024.45-.068.562-.124.259-.132.47-.343.602-.602.056-.111.1-.267.124-.561.024-.303.025-.693.025-1.263zm-6.75 8.174h2.75V2.624h-2.75zm-4-2.575c0 .57 0 .96.025 1.263.024.294.068.45.124.561.132.259.343.47.602.602.111.056.267.1.562.124.302.024.692.025 1.262.025h.175V2.624H5.2c-.57 0-.96 0-1.263.025-.294.024-.45.068-.561.124-.259.132-.47.343-.602.602-.056.111-.1.267-.124.562a17 17 0 0 0-.025 1.262zm12 0c0 .55 0 1-.03 1.364-.03.372-.095.71-.256 1.027a2.63 2.63 0 0 1-1.148 1.148c-.316.161-.655.226-1.027.257-.365.03-.815.029-1.364.029H5.2c-.55 0-1 0-1.364-.03-.372-.03-.71-.095-1.027-.256A2.63 2.63 0 0 1 1.66 13.19c-.161-.316-.226-.655-.257-1.027-.03-.365-.029-.815-.029-1.364v-5.6c0-.55 0-1 .03-1.364.03-.372.095-.71.256-1.027A2.63 2.63 0 0 1 2.81 1.66c.316-.161.655-.226 1.027-.257.365-.03.815-.029 1.364-.029h5.6c.55 0 1 0 1.364.03.372.03.71.095 1.027.256.494.252.896.654 1.148 1.148.161.316.226.655.257 1.027.03.365.029.815.029 1.364z',
-  spreadsheet:
-    'M13.375 6.625h-6.75v6.75H10.8c.57 0 .96 0 1.262-.025.295-.024.45-.068.562-.124.259-.132.47-.343.602-.602.056-.111.1-.267.124-.562.024-.302.025-.692.025-1.262zM2.625 10.8c0 .57 0 .96.025 1.262.024.295.068.45.124.562.132.259.343.47.602.602.111.056.267.1.562.124.302.024.692.025 1.262.025h.175v-6.75h-2.75zm10.75-5.6c0-.57 0-.96-.025-1.263-.024-.294-.068-.45-.124-.561a1.38 1.38 0 0 0-.602-.602c-.111-.056-.267-.1-.562-.124a17 17 0 0 0-1.262-.025H5.2c-.57 0-.96 0-1.263.025-.294.024-.45.068-.561.124-.259.132-.47.343-.602.602-.056.111-.1.267-.124.562A17 17 0 0 0 2.625 5.2v.175h10.75zm1.25 5.6c0 .55 0 1-.03 1.364-.03.372-.095.71-.256 1.027a2.63 2.63 0 0 1-1.148 1.148c-.316.161-.655.226-1.027.257-.365.03-.815.029-1.364.029H5.2c-.55 0-1 0-1.364-.03-.372-.03-.71-.095-1.027-.256A2.63 2.63 0 0 1 1.66 13.19c-.161-.316-.226-.655-.257-1.027-.03-.365-.029-.815-.029-1.364V5.2c0-.55 0-1 .03-1.364.03-.372.095-.71.256-1.027A2.63 2.63 0 0 1 2.81 1.66c.316-.161.655-.226 1.027-.257.365-.03.815-.029 1.364-.029h5.6c.55 0 1 0 1.364.03.372.03.71.095 1.027.256.494.252.896.654 1.148 1.148.161.316.226.655.257 1.027.03.365.029.815.029 1.364z',
-  gantt:
-    'M13.542 11.333c0-.319 0-.527-.011-.687a.8.8 0 0 0-.043-.25.7.7 0 0 0-.383-.384.8.8 0 0 0-.251-.042c-.16-.011-.368-.012-.687-.012H6.833c-.32 0-.527 0-.687.012a.8.8 0 0 0-.251.042.7.7 0 0 0-.384.383.8.8 0 0 0-.042.252c-.01.16-.011.367-.011.686s0 .527.011.687c.01.153.028.217.042.25a.7.7 0 0 0 .384.384.8.8 0 0 0 .251.042c.16.011.368.012.686.012h5.333c.32 0 .528 0 .688-.012a.8.8 0 0 0 .251-.042.7.7 0 0 0 .383-.383.8.8 0 0 0 .043-.252c.01-.16.01-.367.01-.686m-3-6.666c0-.319 0-.527-.011-.687a.8.8 0 0 0-.043-.25.7.7 0 0 0-.383-.384.8.8 0 0 0-.251-.042c-.16-.011-.368-.012-.687-.012H3.834c-.32 0-.527 0-.687.012a.8.8 0 0 0-.251.042.7.7 0 0 0-.384.383.8.8 0 0 0-.042.251c-.01.16-.012.368-.012.687s.001.527.012.687c.01.153.028.217.042.25a.7.7 0 0 0 .384.384.8.8 0 0 0 .251.042c.16.011.368.012.687.012h5.333c.319 0 .527 0 .687-.012a.8.8 0 0 0 .251-.042.7.7 0 0 0 .383-.384.8.8 0 0 0 .043-.25c.01-.16.01-.368.01-.687m4.25 6.666c0 .302 0 .56-.014.772a2 2 0 0 1-.135.644c-.199.48-.58.86-1.06 1.06-.212.087-.426.12-.644.135-.212.015-.47.014-.773.014H6.833c-.302 0-.56 0-.772-.014a2 2 0 0 1-.644-.135c-.48-.2-.86-.58-1.06-1.06a2 2 0 0 1-.135-.644c-.014-.212-.014-.47-.014-.772s0-.56.014-.772c.015-.218.048-.433.136-.644.199-.48.58-.86 1.06-1.06.21-.087.425-.12.643-.135.212-.015.47-.014.773-.014h5.333c.302 0 .56 0 .772.014.218.015.432.048.643.135.48.2.862.58 1.061 1.06.087.211.12.426.135.644.014.212.013.47.013.772m-3-6.666c0 .302 0 .56-.014.772a2 2 0 0 1-.135.644c-.199.48-.58.86-1.06 1.06-.212.087-.426.12-.644.135-.212.015-.47.014-.772.014H3.834c-.303 0-.56 0-.773-.014a2 2 0 0 1-.644-.135c-.48-.2-.86-.58-1.06-1.06a2 2 0 0 1-.135-.644c-.014-.212-.014-.47-.014-.772s0-.56.014-.772c.015-.218.048-.433.136-.644.199-.48.58-.86 1.06-1.06.21-.087.425-.12.643-.135.212-.015.47-.014.773-.014h5.333c.302 0 .56 0 .772.014.218.015.432.048.643.135.48.2.862.58 1.061 1.06.087.211.12.426.135.644.014.212.013.47.013.772',
-  calendar:
-    'M13.375 7.291H2.625v4.176c0 .57 0 .96.025 1.262.024.295.068.45.124.562.132.259.343.469.602.6.111.057.267.101.562.126.302.024.692.024 1.262.024h5.6c.57 0 .96 0 1.262-.024.295-.024.45-.069.562-.125.259-.132.47-.342.602-.601.056-.111.1-.267.124-.562.024-.302.025-.692.025-1.262zM10.042 4v-.709H5.958V4a.625.625 0 0 1-1.25 0v-.707c-.317.002-.564.007-.77.023-.295.024-.45.069-.562.125-.259.132-.47.342-.602.601-.056.111-.1.267-.124.562-.024.302-.025.692-.025 1.262v.175h10.75v-.175c0-.57 0-.96-.025-1.262-.024-.295-.068-.45-.124-.562a1.38 1.38 0 0 0-.602-.6c-.111-.057-.267-.102-.562-.126a11 11 0 0 0-.77-.023V4a.626.626 0 0 1-1.25 0m4.583 7.467c0 .55 0 1-.03 1.364-.03.372-.095.71-.256 1.027a2.63 2.63 0 0 1-1.148 1.147c-.316.161-.655.226-1.027.257-.365.03-.815.029-1.364.029H5.2c-.55 0-1 0-1.364-.03-.372-.03-.71-.095-1.027-.256a2.63 2.63 0 0 1-1.148-1.147c-.161-.316-.226-.655-.257-1.027-.03-.365-.029-.815-.029-1.364v-5.6c0-.55 0-1 .03-1.365.03-.372.095-.71.256-1.027A2.63 2.63 0 0 1 2.81 2.327c.316-.161.655-.226 1.027-.257.25-.02.538-.025.872-.027v-.71a.625.625 0 0 1 1.25 0v.708h4.084v-.708a.625.625 0 1 1 1.25 0v.71c.334.002.623.007.872.027.372.03.71.096 1.027.257.494.252.896.654 1.148 1.148l.056.12c.12.282.174.581.2.907.03.365.03.815.03 1.364z'
+function LayoutGlyph({ layout }: { layout: string }): JSX.Element {
+  const s = 'var(--my-txt-primary, currentColor)'
+  switch (layout) {
+    case 'board': // 三列看板
+      return (
+        <>
+          <rect x={2} y={2.5} width={3.4} height={11} rx={1} stroke={s} strokeWidth={1.2} fill="none" />
+          <rect x={6.3} y={2.5} width={3.4} height={11} rx={1} stroke={s} strokeWidth={1.2} fill="none" />
+          <rect x={10.6} y={2.5} width={3.4} height={11} rx={1} stroke={s} strokeWidth={1.2} fill="none" />
+        </>
+      )
+    case 'spreadsheet': // 表格
+      return (
+        <>
+          <rect x={2} y={2.5} width={12} height={11} rx={1.5} stroke={s} strokeWidth={1.2} fill="none" />
+          <path d="M2 6.1 H14 M7 6.1 V13.5" stroke={s} strokeWidth={1.2} fill="none" />
+        </>
+      )
+    case 'gantt': // 双时间条
+      return (
+        <>
+          <rect x={2} y={3.6} width={8.2} height={2.8} rx={1.4} fill={s} />
+          <rect x={5.8} y={9.2} width={8.2} height={2.8} rx={1.4} fill={s} />
+        </>
+      )
+    case 'calendar': // 日历
+      return (
+        <>
+          <rect x={2} y={3} width={12} height={11} rx={1.5} stroke={s} strokeWidth={1.2} fill="none" />
+          <path d="M5.2 1.8 V4.2 M10.8 1.8 V4.2 M2 6.4 H14" stroke={s} strokeWidth={1.2} fill="none" />
+        </>
+      )
+    default: // list 列表三行
+      return <path d="M2.6 4 H13.4 M2.6 8 H13.4 M2.6 12 H13.4" stroke={s} strokeWidth={1.5} strokeLinecap="round" fill="none" />
+  }
 }
 
 export function LayoutIcon({ layout, size = 14, className }: IconProps & { layout: string }): JSX.Element {
   return (
-    <ShrinkWrap className={className} size={size}>
-      <path fill="currentColor" d={LAYOUT_PATHS[layout] ?? LAYOUT_PATHS.list} />
-    </ShrinkWrap>
+    <Svg className={className} size={size}>
+      <LayoutGlyph layout={layout} />
+    </Svg>
   )
 }
 
-/* ---------------- 工作项/周期/模块/页面/接收/视图 导航图标 ---------------- */
+/* ---------------- 导航图标（自绘简化形） ---------------- */
 
-const NAV_PATHS: Record<string, string> = {
-  'work-items':
-    'M2.875 12.75h10.25a.625.625 0 1 1 0 1.25H2.875a.625.625 0 1 1 0-1.25zm2-5.5h8.25a.625.625 0 1 1 0 1.25h-8.25a.625.625 0 1 1 0-1.25zm-2-5.5h10.25a.625.625 0 1 1 0 1.25H2.875a.625.625 0 1 1 0-1.25z',
-  cycles:
-    'M8 2.625A5.375 5.375 0 1 0 13.375 8a.625.625 0 1 1 1.25 0A6.625 6.625 0 1 1 8 1.375a.625.625 0 1 1 0 1.25zm5.75-1.25c.345 0 .625.28.625.625v2.75a.625.625 0 0 1-.625.625h-2.75a.625.625 0 1 1 0-1.25h1.434A4.11 4.11 0 0 0 8 2.625a.625.625 0 1 1 0-1.25c1.762 0 3.36.69 4.542 1.815V2c0-.345.28-.625.625-.625zM8 5.5A2.5 2.5 0 1 1 8 10.5 2.5 2.5 0 0 1 8 5.5z',
-  modules:
-    'M8.625 2.31a1.25 1.25 0 0 0-1.25 0L3.354 4.556a1.25 1.25 0 0 0-.625 1.082v4.724c0 .446.238.859.625 1.082l4.021 2.246a1.25 1.25 0 0 0 1.25 0l4.021-2.246a1.25 1.25 0 0 0 .625-1.082V5.638a1.25 1.25 0 0 0-.625-1.082zM4 5.638 8 3.393l4 2.245v4.724L8 12.607l-4-2.245z',
-  views:
-    'M8 3.5c-2.536 0-4.733 1.42-6.243 3.55a1.62 1.62 0 0 0 0 1.9C3.267 11.08 5.464 12.5 8 12.5s4.733-1.42 6.243-3.55a1.62 1.62 0 0 0 0-1.9C12.733 4.92 10.536 3.5 8 3.5zm0 1.25c1.984 0 3.807 1.128 5.152 3.013a.37.37 0 0 1 0 .474C11.807 10.122 9.984 11.25 8 11.25s-3.807-1.128-5.152-3.013a.37.37 0 0 1 0-.474C4.193 5.878 6.016 4.75 8 4.75zM8 6.375a1.625 1.625 0 1 0 0 3.25 1.625 1.625 0 0 0 0-3.25z',
-  pages:
-    'M4.5 1.625A1.875 1.875 0 0 0 2.625 3.5v9A1.875 1.875 0 0 0 4.5 14.375h7A1.875 1.875 0 0 0 13.375 12.5V6.34c0-.465-.175-.913-.49-1.256L10.2 2.197a1.875 1.875 0 0 0-1.385-.61zm0 1.25h4.25v2.5c0 .483.392.875.875.875h2.5V12.5a.625.625 0 0 1-.625.625h-7a.625.625 0 0 1-.625-.625v-9c0-.345.28-.625.625-.625zm5.5.71 1.665 1.79H10z',
-  intake:
-    'M8 1.625A6.375 6.375 0 1 0 14.375 8A6.375 6.375 0 0 0 8 1.625zm0 1.25A5.125 5.125 0 1 1 8 13.125 5.125 5.125 0 0 1 8 2.875zM8 4.75a.625.625 0 0 1 .625.625v3a.625.625 0 1 1-1.25 0v-3A.625.625 0 0 1 8 4.75zm0 5.625a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5z',
-  'your-work':
-    'M3.5 2.625h9A1.875 1.875 0 0 1 14.375 4.5v7A1.875 1.875 0 0 1 12.5 13.375h-9A1.875 1.875 0 0 1 1.625 11.5v-7A1.875 1.875 0 0 1 3.5 2.625zm.625 1.25a.625.625 0 0 0-.625.625v6.125h8.875V4.5a.625.625 0 0 0-.625-.625z',
-  inbox:
-    'M4.5 2.625h7A1.875 1.875 0 0 1 13.375 4.5v7A1.875 1.875 0 0 1 11.5 13.375h-7A1.875 1.875 0 0 1 2.625 11.5v-7A1.875 1.875 0 0 1 4.5 2.625zM3.875 9.25v2.25c0 .345.28.625.625.625h7c.345 0 .625-.28.625-.625V9.25h-1.9a2.25 2.25 0 0 1-4.45 0zm0-1.25h2.027a.625.625 0 0 1 .617.523 1 1 0 0 0 1.972 0 .625.625 0 0 1 .617-.523h2.017V4.5a.625.625 0 0 0-.625-.625h-7a.625.625 0 0 0-.625.625z',
-  analytics:
-    'M3.75 9.5a.75.75 0 0 1 .75.75v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 1 .75-.75zm4.25-3a.75.75 0 0 1 .75.75v5a.75.75 0 0 1-1.5 0v-5a.75.75 0 0 1 .75-.75zm4.25-3.25a.75.75 0 0 1 .75.75v8.25a.75.75 0 0 1-1.5 0V4a.75.75 0 0 1 .75-.75z'
+function NavGlyph({ name }: { name: string }): JSX.Element {
+  const s = 'currentColor'
+  switch (name) {
+    case 'cycles': // 圆环 + 箭头（周期）
+      return (
+        <>
+          <path d="M13.4 8 A5.4 5.4 0 1 1 9.6 2.8" stroke={s} strokeWidth={1.3} strokeLinecap="round" fill="none" />
+          <path d="M9.2 1.6 L13.8 2.4 L11.4 6.2" stroke={s} strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </>
+      )
+    case 'modules': // 立方体（模块）
+      return (
+        <>
+          <path d="M8 1.9 L13.6 5 V11 L8 14.1 L2.4 11 V5 Z" stroke={s} strokeWidth={1.2} strokeLinejoin="round" fill="none" />
+          <path d="M2.6 5.1 L8 8 L13.4 5.1 M8 8 V13.8" stroke={s} strokeWidth={1.2} strokeLinejoin="round" fill="none" />
+        </>
+      )
+    case 'views': // 眼睛（视图）
+      return (
+        <>
+          <path d="M1.8 8 C3.4 5 5.6 3.6 8 3.6 C10.4 3.6 12.6 5 14.2 8 C12.6 11 10.4 12.4 8 12.4 C5.6 12.4 3.4 11 1.8 8 Z" stroke={s} strokeWidth={1.2} fill="none" />
+          <circle cx={8} cy={8} r={2} stroke={s} strokeWidth={1.2} fill="none" />
+        </>
+      )
+    case 'pages': // 文档页
+      return (
+        <>
+          <path d="M4 2 H9.6 L12.6 5 V13.2 A0.8 0.8 0 0 1 11.8 14 H4 A0.8 0.8 0 0 1 3.2 13.2 V2.8 A0.8 0.8 0 0 1 4 2 Z" stroke={s} strokeWidth={1.2} strokeLinejoin="round" fill="none" />
+          <path d="M9.4 2.2 V5.2 H12.4" stroke={s} strokeWidth={1.2} strokeLinejoin="round" fill="none" />
+        </>
+      )
+    case 'intake': // 圆 + 感叹号（接收）
+      return (
+        <>
+          <circle cx={8} cy={8} r={6.2} stroke={s} strokeWidth={1.2} fill="none" />
+          <path d="M8 4.8 V8.4" stroke={s} strokeWidth={1.3} strokeLinecap="round" />
+          <circle cx={8} cy={11} r={0.9} fill={s} />
+        </>
+      )
+    case 'your-work': // 工作台面板
+      return (
+        <>
+          <rect x={2} y={2.8} width={12} height={10.4} rx={1.5} stroke={s} strokeWidth={1.2} fill="none" />
+          <path d="M2 6.2 H14 M6.4 6.2 V13.2" stroke={s} strokeWidth={1.2} fill="none" />
+        </>
+      )
+    case 'inbox': // 收件托盘
+      return (
+        <>
+          <path d="M2.4 9 V4.4 A1.6 1.6 0 0 1 4 2.8 H12 A1.6 1.6 0 0 1 13.6 4.4 V9" stroke={s} strokeWidth={1.2} fill="none" />
+          <path d="M2.4 9 H5.4 A2.6 2.6 0 0 0 10.6 9 H13.6 V11.6 A1.6 1.6 0 0 1 12 13.2 H4 A1.6 1.6 0 0 1 2.4 11.6 Z" stroke={s} strokeWidth={1.2} strokeLinejoin="round" fill="none" />
+        </>
+      )
+    default: // work-items 工作项
+      return (
+        <>
+          <path d="M2.6 4 H13.4 M2.6 8 H13.4 M2.6 12 H9.6" stroke={s} strokeWidth={1.4} strokeLinecap="round" fill="none" />
+          <circle cx={12.2} cy={12} r={1.4} fill={s} />
+        </>
+      )
+  }
 }
 
 export function NavIcon({ name, size = 16, className }: IconProps & { name: string }): JSX.Element {
   return (
-    <ShrinkWrap className={className} size={size}>
-      <path fill="currentColor" d={NAV_PATHS[name] ?? NAV_PATHS['work-items']} />
-    </ShrinkWrap>
+    <Svg className={className} size={size}>
+      <NavGlyph name={name} />
+    </Svg>
   )
 }
 
@@ -217,7 +299,7 @@ export function NavIcon({ name, size = 16, className }: IconProps & { name: stri
 export function WorkspaceMark({ color, letter, size = 20 }: { color: string; letter: string; size?: number }): JSX.Element {
   return (
     <div
-      className="flex shrink-0 items-center justify-center rounded-my-sm font-semibold text-white"
+      className="flex shrink-0 items-center justify-center rounded-[5px] font-semibold text-white"
       style={{ width: size, height: size, background: color, fontSize: size * 0.5 }}
     >
       {letter}
