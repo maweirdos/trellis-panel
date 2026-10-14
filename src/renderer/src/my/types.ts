@@ -29,7 +29,7 @@ export interface WorkItemState {
 export interface Label {
   id: string
   name: string
-  color: string // 上游令牌包 label family: indigo|emerald|grey|crimson|yellow|orange|pink|purple
+  color: string // label 色系: indigo|emerald|grey|crimson|yellow|orange|pink|purple
 }
 
 export type CycleStatus = 'draft' | 'upcoming' | 'active' | 'completed'

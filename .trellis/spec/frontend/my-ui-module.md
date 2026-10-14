@@ -14,8 +14,7 @@
 
 ## 设计令牌（p.* 色板）
 
-- `my-tokens.css` 由 `上游设计令牌包 0.9.7` 令牌脚本解析生成
-  （oklch→hex，浅/深两组挂在 `[data-my-theme='light'|'dark']`），**勿手改色值**。
+- `my-tokens.css` 为外壳自有设计令牌（浅/深两组挂在 `[data-my-theme='light'|'dark']`），**勿手改色值**。
 - Tailwind 侧 `colors.my.*`（tailwind.config.js）映射到 `var(--my-…)`，**不支持 alpha 修饰符**。
 - **品牌强调色 = 面板 leaf 绿**：`--my-bg-accent-*` / `--my-border-accent-*` / `--my-txt-accent-*`
   在 my.css 中覆写为 `rgb(var(--leaf-*-rgb))` 引用（非硬编码），自动随面板深浅主题切换；

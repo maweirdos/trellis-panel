@@ -1,4 +1,4 @@
-// 状态/优先级/布局签名图标（SVG 基线取自 上游令牌包/blocks，AGPL 许可）。
+// 状态/优先级/布局签名图标（自绘 SVG）。
 import type { JSX } from 'react'
 import type { Priority, StateGroup } from './types'
 

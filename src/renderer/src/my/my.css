@@ -43,7 +43,7 @@
   --my-txt-accent-primary: rgb(var(--leaf-dim-rgb));
 }
 
-/* 控制高度体系（上游令牌包：xs20 sm24 md28 lg32 xl36 2xl40） */
+/* 控制高度体系（xs20 sm24 md28 lg32 xl36 2xl40） */
 .my-root .my-control {
   display: inline-flex;
   align-items: center;
@@ -61,7 +61,7 @@
 .my-root .my-control-lg { height: 32px; padding: 0 12px; }
 .my-root button:not(:disabled), .my-root [role='button']:not(:disabled) { cursor: pointer; }
 
-/* 滚动条（上游令牌包：隐藏式轨道 + 悬浮显 thumb） */
+/* 滚动条（隐藏式轨道 + 悬浮显 thumb） */
 .my-root .my-scrollbar { overflow-y: auto; scrollbar-gutter: stable; }
 .my-root .my-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; display: block; }
 .my-root .my-scrollbar::-webkit-scrollbar-track { background: transparent; border-radius: 9999px; }

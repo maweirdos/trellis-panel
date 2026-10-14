@@ -318,7 +318,7 @@ export function TriProgressBar({ done, started, total }: { done: number; started
   )
 }
 
-/* ---------------- 标签 Pill（上游令牌包 label 色系） ---------------- */
+/* ---------------- 标签 Pill（label 色系） ---------------- */
 
 export function LabelPill({ label, onClick }: { label: Label; onClick?: () => void }): JSX.Element {
   return (
