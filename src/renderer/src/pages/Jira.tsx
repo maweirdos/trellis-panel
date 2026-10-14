@@ -363,22 +363,22 @@ export function JiraPage(): JSX.Element {
     return (
       <div key={issue.key} className="my-card px-3.5 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="chip shrink-0 bg-blue-500/15 font-mono text-[10.5px] text-blue-300">{issue.key}</span>
+          <span className="chip shrink-0 bg-blue-500/15 font-mono text-my-xs text-blue-300">{issue.key}</span>
           <span className={clsx('chip shrink-0 border', STATUS_PILL[issue.statusCategory] ?? 'border-my-line text-my-secondary')}>
             {issue.status}
           </span>
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-my-primary" title={issue.summary}>
             {issue.summary}
           </span>
-          <span className="shrink-0 text-[10.5px] text-my-tertiary">{issue.assignee}</span>
-          <span className="shrink-0 font-mono text-[10px] text-my-placeholder" title="最近更新">
+          <span className="shrink-0 text-my-xs text-my-tertiary">{issue.assignee}</span>
+          <span className="shrink-0 font-mono text-my-2xs text-my-placeholder" title="最近更新">
             {(issue.updated || '').slice(0, 10)}
           </span>
           <Button variant="ghost" size="sm" className="shrink-0" onClick={() => api.openExternal(issue.url)} title="在浏览器打开">
             <ExternalLink size={11} />
           </Button>
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10.5px] text-my-tertiary">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-my-xs text-my-tertiary">
           <span className="chip border border-my-line text-my-secondary">{issue.issueType}</span>
           <span className="chip border border-my-line text-my-secondary">{issue.priority}</span>
           {versionChips.map((v) => (
@@ -447,7 +447,7 @@ export function JiraPage(): JSX.Element {
               autoFocus
               value={linkTargets[issue.key] ?? ''}
               onChange={(e) => setLinkTargets((m) => ({ ...m, [issue.key]: e.target.value }))}
-              className="h-8 min-w-0 flex-1 rounded-md border border-my-line bg-my-surface-1 px-2 text-[12.5px] text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+              className="h-8 min-w-0 flex-1 rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
             >
               <option value="">选择要关联的本地任务…</option>
               {snapshot.tasks.map((t) => (
@@ -493,17 +493,17 @@ export function JiraPage(): JSX.Element {
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
         <span className="chip bg-blue-500/15 font-mono text-blue-300">{cfg.baseUrl.replace(/^https?:\/\//, '')}</span>
-        <div className="flex overflow-hidden rounded-md border border-my-line">
+        <div className="flex overflow-hidden rounded-my-md border border-my-line">
           <button
             onClick={() => quickSearch('mine')}
-            className="px-2.5 py-1.5 text-[12px] text-my-secondary transition-colors hover:bg-my-layer-1"
+            className="px-2.5 py-1.5 text-my-sm text-my-secondary transition-colors hover:bg-my-layer-1"
             title="assignee = currentUser()"
           >
             我的待办
           </button>
           <button
             onClick={() => quickSearch('sprint')}
-            className="px-2.5 py-1.5 text-[12px] text-my-secondary transition-colors hover:bg-my-layer-1"
+            className="px-2.5 py-1.5 text-my-sm text-my-secondary transition-colors hover:bg-my-layer-1"
             title="当前冲刺中的任务"
           >
             当前冲刺
@@ -516,7 +516,7 @@ export function JiraPage(): JSX.Element {
             onChange={(e) => setJql(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void search(jql)}
             placeholder="自定义 JQL，如 project = HONSKY AND status != 完成（留空 = 我的待办）"
-            className="h-8 w-full rounded-md border border-my-line bg-my-surface-1 pl-7 pr-2 text-[12.5px] text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+            className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 pl-7 pr-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
           />
         </div>
         <button
@@ -547,7 +547,7 @@ export function JiraPage(): JSX.Element {
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           {loading ? '查询中…' : '查询'}
         </Button>
-        <span className="text-[11px] text-my-tertiary">
+        <span className="text-my-xs text-my-tertiary">
           显示 {issues.length} / 共 {total} 条
         </span>
         {searchMeta?.sample && (
@@ -562,7 +562,7 @@ export function JiraPage(): JSX.Element {
 
       <div className="p-5">
         {error && (
-          <div className="mx-auto mb-4 max-w-3xl rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs text-rose-300">
+          <div className="mx-auto mb-4 max-w-3xl rounded-my-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs text-rose-300">
             {error}
           </div>
         )}
@@ -570,7 +570,7 @@ export function JiraPage(): JSX.Element {
           {groupByVersion
             ? versionGroups.map((g) => (
                 <div key={g.version} className="space-y-2">
-                  <div className="flex items-center gap-1.5 px-1 pb-1 pt-2 text-[11px] text-my-secondary">
+                  <div className="flex items-center gap-1.5 px-1 pb-1 pt-2 text-my-xs text-my-secondary">
                     <Tag size={11} className="text-my-tertiary" />
                     <span className="font-mono font-medium text-my-primary">{g.version}</span>
                     <span className="text-my-placeholder">· {g.issues.length} 个问题</span>

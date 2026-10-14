@@ -46,19 +46,19 @@ type IssueTab = 'all' | 'active' | 'backlog'
 
 const STATE_GROUPS: StateGroup[] = ['backlog', 'unstarted', 'started', 'completed', 'cancelled']
 const STATE_GROUP_LABELS: Record<StateGroup, string> = {
-  backlog: 'Backlog',
-  unstarted: 'Unstarted',
-  started: 'Started',
-  completed: 'Completed',
-  cancelled: 'Cancelled'
+  backlog: '未规划',
+  unstarted: '未开始',
+  started: '进行中',
+  completed: '已完成',
+  cancelled: '已取消'
 }
 const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
 const PRIORITY_LABELS: Record<Priority, string> = {
-  urgent: 'Urgent',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
-  none: 'None'
+  urgent: '紧急',
+  high: '高',
+  medium: '中',
+  low: '低',
+  none: '无'
 }
 const LAYOUTS: Array<{ id: WorkItemLayout; label: string }> = [
   { id: 'list', label: '列表' },
@@ -218,7 +218,7 @@ function buildGroups(
 function LabelDot({ label }: { label: Label }): JSX.Element {
   return (
     <span
-      className="h-2 w-2 shrink-0 rounded-[3px]"
+      className="h-2 w-2 shrink-0 rounded-my-sm"
       style={{ background: `var(--my-label-${label.color}-icon)` }}
     />
   )
@@ -245,7 +245,7 @@ function GroupBadge({ meta, size = 12 }: { meta: GroupMeta; size?: number }): JS
   }
   if (meta.kind === 'label') {
     if (meta.label) return <LabelDot label={meta.label} />
-    return <span className="inline-block h-2 w-2 shrink-0 rounded-[3px] border border-dashed border-my-line-strong" />
+    return <span className="inline-block h-2 w-2 shrink-0 rounded-my-sm border border-dashed border-my-line-strong" />
   }
   return null
 }
@@ -257,7 +257,7 @@ function DueChip({ due, stateGroup, done }: { due: string; stateGroup: StateGrou
   return (
     <span
       className={clsx(
-        'inline-flex h-[20px] shrink-0 items-center gap-1 rounded-[4px] px-1.5 text-[11px]',
+        'inline-flex h-[20px] shrink-0 items-center gap-1 rounded-my-sm px-1.5 text-my-xs',
         overdue ? 'bg-my-danger-subtle text-my-danger-text' : 'text-my-tertiary'
       )}
     >
@@ -277,11 +277,11 @@ interface SelectStyle {
 }
 
 const BARE_TRIGGER: SelectStyle = {
-  trigger: 'flex h-6 min-w-0 items-center gap-1 rounded px-1.5 text-[11.5px] text-my-secondary hover:bg-my-layer-1-hover'
+  trigger: 'flex h-6 min-w-0 items-center gap-1 rounded px-1.5 text-my-sm text-my-secondary hover:bg-my-layer-1-hover'
 }
 const BOX_TRIGGER: SelectStyle = {
   trigger:
-    'flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md border border-my-line bg-my-layer-1 px-2 text-[12.5px] text-my-secondary hover:bg-my-layer-1-hover'
+    'flex h-7 w-full min-w-0 items-center gap-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 text-my-sm text-my-secondary hover:bg-my-layer-1-hover'
 }
 
 /** 状态下拉（列表行/表格单元格/peek 通用） */
@@ -481,8 +481,8 @@ function ListRow({ issue, ident }: { issue: Issue; ident: string }): JSX.Element
       }}
       className="my-row group flex h-[44px] cursor-pointer items-center gap-2 border-b border-my-line px-3 hover:bg-my-layer-1"
     >
-      <span className="my-row-handle select-none text-[11px] leading-none text-my-icon-tertiary">⠿</span>
-      <span className="w-16 shrink-0 text-[11.5px] text-my-tertiary">
+      <span className="my-row-handle select-none text-my-xs leading-none text-my-icon-tertiary">⠿</span>
+      <span className="w-16 shrink-0 text-my-sm text-my-tertiary">
         {ident}-{issue.sequenceId}
       </span>
       <PriorityIcon priority={issue.priority} size={12} />
@@ -491,9 +491,9 @@ function ListRow({ issue, ident }: { issue: Issue; ident: string }): JSX.Element
           <LabelPill key={lb.id} label={lb} />
         ))}
       </span>
-      <span className={clsx('min-w-0 flex-1 truncate text-[13px] text-my-secondary', done && 'opacity-60')}>{issue.name}</span>
+      <span className={clsx('min-w-0 flex-1 truncate text-my-md text-my-secondary', done && 'opacity-60')}>{issue.name}</span>
       {subCount > 0 && (
-        <span className="flex shrink-0 items-center gap-0.5 text-[11px] text-my-tertiary" title={`${subCount} 个子工作项`}>
+        <span className="flex shrink-0 items-center gap-0.5 text-my-xs text-my-tertiary" title={`${subCount} 个子工作项`}>
           <ListTree size={11} className="text-my-icon-tertiary" />
           {subCount}
         </span>
@@ -561,8 +561,8 @@ function ListLayout({
                   className={clsx('shrink-0 text-my-icon-tertiary transition-transform', !isCollapsed && 'rotate-90')}
                 />
                 <GroupBadge meta={g.meta} />
-                <span className="truncate text-[13px] font-medium text-my-secondary">{g.title}</span>
-                <span className="shrink-0 text-[11px] text-my-tertiary">{g.issues.length}</span>
+                <span className="truncate text-my-md font-medium text-my-secondary">{g.title}</span>
+                <span className="shrink-0 text-my-xs text-my-tertiary">{g.issues.length}</span>
               </button>
               <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                 <Tooltip label="新建工作项">
@@ -620,7 +620,7 @@ function BoardCard({ issue }: { issue: Issue }): JSX.Element {
         <span className="mt-[3px]">
           <PriorityIcon priority={issue.priority} size={12} />
         </span>
-        <span className="line-clamp-2 text-[13px] leading-5 text-my-secondary">{issue.name}</span>
+        <span className="line-clamp-2 text-my-md leading-5 text-my-secondary">{issue.name}</span>
       </div>
       <div className="mt-2 flex items-center gap-1.5">
         {labels.slice(0, 2).map((lb) => (
@@ -667,8 +667,8 @@ function BoardLayout({
                   className={clsx('shrink-0 text-my-icon-tertiary transition-transform', !isCollapsed && 'rotate-90')}
                 />
                 <GroupBadge meta={g.meta} />
-                <span className="truncate text-[13px] font-medium text-my-secondary">{g.title}</span>
-                <span className="shrink-0 text-[11px] text-my-tertiary">{g.issues.length}</span>
+                <span className="truncate text-my-md font-medium text-my-secondary">{g.title}</span>
+                <span className="shrink-0 text-my-xs text-my-tertiary">{g.issues.length}</span>
               </button>
             </div>
             {!isCollapsed && (
@@ -677,7 +677,7 @@ function BoardLayout({
                   <BoardCard key={i.id} issue={i} />
                 ))}
                 {g.issues.length === 0 && (
-                  <div className="mx-2.5 mt-2 rounded-md border border-dashed border-my-line py-5 text-center text-[11px] text-my-disabled">
+                  <div className="mx-2.5 mt-2 rounded-my-md border border-dashed border-my-line py-5 text-center text-my-xs text-my-disabled">
                     暂无工作项
                   </div>
                 )}
@@ -692,7 +692,7 @@ function BoardLayout({
 
 /* ---------------- Spreadsheet 布局 ---------------- */
 
-const CELL_BARE = 'flex h-6 min-w-0 items-center gap-1 rounded px-1 text-[12px] text-my-secondary hover:bg-my-layer-1-hover'
+const CELL_BARE = 'flex h-6 min-w-0 items-center gap-1 rounded px-1 text-my-sm text-my-secondary hover:bg-my-layer-1-hover'
 
 function SpreadsheetRow({
   issue,
@@ -726,13 +726,13 @@ function SpreadsheetRow({
       <span className="flex w-8 shrink-0 items-center" onClick={(e) => e.stopPropagation()}>
         <Checkbox checked={checked} onChange={(v) => onCheck(issue.id, v)} />
       </span>
-      <span className="w-16 shrink-0 text-[11.5px] text-my-tertiary">
+      <span className="w-16 shrink-0 text-my-sm text-my-tertiary">
         {ident}-{issue.sequenceId}
       </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 truncate text-[13px] text-my-secondary">{issue.name}</span>
+        <span className="min-w-0 truncate text-my-md text-my-secondary">{issue.name}</span>
         {subCount > 0 && (
-          <span className="flex shrink-0 items-center gap-0.5 text-[11px] text-my-tertiary">
+          <span className="flex shrink-0 items-center gap-0.5 text-my-xs text-my-tertiary">
             <ListTree size={11} className="text-my-icon-tertiary" />
             {subCount}
           </span>
@@ -784,8 +784,8 @@ function SpreadsheetRow({
           onChange={(mid) => updateIssue(issue.id, { assigneeId: mid })}
         />
       </span>
-      <span className="w-24 shrink-0 truncate text-[12px] text-my-tertiary">{issue.startDate ? formatDate(issue.startDate) : '—'}</span>
-      <span className="w-24 shrink-0 truncate text-[12px]">
+      <span className="w-24 shrink-0 truncate text-my-sm text-my-tertiary">{issue.startDate ? formatDate(issue.startDate) : '—'}</span>
+      <span className="w-24 shrink-0 truncate text-my-sm">
         {issue.dueDate && state ? (
           <DueChip due={issue.dueDate} stateGroup={state.group} />
         ) : (
@@ -821,7 +821,7 @@ function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }
     <div className="my-scrollbar h-full overflow-auto">
       <div className="min-w-[860px]">
         {/* 表头（sticky） */}
-        <div className="sticky top-0 z-10 flex h-9 items-center gap-2 border-b border-my-line bg-my-layer-1 px-3 text-[11px] font-medium text-my-tertiary">
+        <div className="sticky top-0 z-10 flex h-9 items-center gap-2 border-b border-my-line bg-my-layer-1 px-3 text-my-xs font-medium text-my-tertiary">
           <span className={clsx(headCell, 'w-8 shrink-0')}>
             <Checkbox checked={allChecked} onChange={onCheckAll} />
           </span>
@@ -865,7 +865,7 @@ function GanttLayout({ issues }: { issues: Issue[] }): JSX.Element {
         {/* 时间线表头（sticky top；左侧首格同时 sticky left） */}
         <div className="sticky top-0 z-30 flex h-9 border-b border-my-line bg-my-layer-1">
           <div
-            className="sticky left-0 z-10 flex w-[300px] shrink-0 items-center border-r border-my-line px-3 text-[11px] font-medium text-my-tertiary"
+            className="sticky left-0 z-10 flex w-[300px] shrink-0 items-center border-r border-my-line px-3 text-my-xs font-medium text-my-tertiary"
             style={{ width: GANTT_LEFT }}
           >
             工作项
@@ -878,7 +878,7 @@ function GanttLayout({ issues }: { issues: Issue[] }): JSX.Element {
                 key={toIso(d)}
                 style={{ width: GANTT_COL }}
                 className={clsx(
-                  'flex shrink-0 items-center justify-center border-r border-my-line text-[10px]',
+                  'flex shrink-0 items-center justify-center border-r border-my-line text-my-2xs',
                   isWeekStart && i > 0 && 'border-l border-my-line-strong',
                   isToday ? 'font-medium text-my-accent-text' : 'text-my-tertiary'
                 )}
@@ -925,7 +925,7 @@ function GanttLayout({ issues }: { issues: Issue[] }): JSX.Element {
                   style={{ width: GANTT_LEFT }}
                 >
                   {st && <StateGroupIcon stateGroup={st.group} color={st.color} size={12} />}
-                  <span className="min-w-0 truncate text-[12.5px] text-my-secondary">{issue.name}</span>
+                  <span className="min-w-0 truncate text-my-sm text-my-secondary">{issue.name}</span>
                 </div>
                 <div className="relative flex shrink-0" style={{ width: GANTT_WIDTH }}>
                   {days.map((d, i) => (
@@ -983,7 +983,7 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
   return (
     <div className="my-scrollbar flex h-full flex-col overflow-y-auto p-4">
       <div className="mb-3 flex shrink-0 items-center gap-1">
-        <span className="mr-2 text-[13px] font-medium text-my-primary">
+        <span className="mr-2 text-my-md font-medium text-my-primary">
           {cursor.y}年{cursor.m + 1}月
         </span>
         <button
@@ -1008,7 +1008,7 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
         {WEEKDAYS.map((w) => (
           <div
             key={w}
-            className="flex h-8 items-center justify-center border-b border-r border-my-line bg-my-layer-1 text-[11px] font-medium text-my-tertiary"
+            className="flex h-8 items-center justify-center border-b border-r border-my-line bg-my-layer-1 text-my-xs font-medium text-my-tertiary"
           >
             {w}
           </div>
@@ -1031,7 +1031,7 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
             >
               <span
                 className={clsx(
-                  'inline-flex h-5 min-w-5 items-center justify-end self-end rounded-full px-1 text-[11px]',
+                  'inline-flex h-5 min-w-5 items-center justify-end self-end rounded-full px-1 text-my-xs',
                   isToday
                     ? 'bg-my-accent font-medium text-my-on-color'
                     : inMonth
@@ -1048,14 +1048,14 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
                     key={issue.id}
                     type="button"
                     onClick={() => openIssue(issue.id)}
-                    className="flex h-[20px] w-full items-center gap-1 rounded-[4px] border border-my-line bg-my-layer-2 px-1 text-left hover:bg-my-layer-1-hover"
+                    className="flex h-[20px] w-full items-center gap-1 rounded-my-sm border border-my-line bg-my-layer-2 px-1 text-left hover:bg-my-layer-1-hover"
                   >
                     {st && <StateGroupIcon stateGroup={st.group} color={st.color} size={10} />}
-                    <span className="min-w-0 truncate text-[11px] text-my-secondary">{issue.name}</span>
+                    <span className="min-w-0 truncate text-my-xs text-my-secondary">{issue.name}</span>
                   </button>
                 )
               })}
-              {rest > 0 && <span className="pl-0.5 text-[10px] text-my-tertiary">还有 {rest} 项</span>}
+              {rest > 0 && <span className="pl-0.5 text-my-2xs text-my-tertiary">还有 {rest} 项</span>}
             </div>
           )
         })}
@@ -1086,7 +1086,7 @@ function FilterCheckRow({
     >
       <Checkbox checked={checked} onChange={() => onToggle()} />
       {icon && <span className="flex h-4 w-4 items-center justify-center">{icon}</span>}
-      <span className="min-w-0 flex-1 truncate text-[12.5px] text-my-secondary">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{label}</span>
     </button>
   )
 }
@@ -1129,9 +1129,9 @@ function WorkItemsPageInner(): JSX.Element {
   const countIn = (predicate: (g: StateGroup | undefined) => boolean): number =>
     visible.filter((i) => predicate(stateOf(i.stateId)?.group)).length
   const tabs: Array<{ id: IssueTab; label: string; count?: number }> = [
-    { id: 'all', label: 'All', count: visible.length },
-    { id: 'active', label: 'Active', count: countIn((g) => g === 'unstarted' || g === 'started') },
-    { id: 'backlog', label: 'Backlog', count: countIn((g) => g === 'backlog') }
+    { id: 'all', label: '全部', count: visible.length },
+    { id: 'active', label: '未完结', count: countIn((g) => g === 'unstarted' || g === 'started') },
+    { id: 'backlog', label: '未规划', count: countIn((g) => g === 'backlog') }
   ]
 
   const groups = buildGroups(tabbed, groupBy, orderBy, data.states, data.members, data.labels)
@@ -1168,14 +1168,14 @@ function WorkItemsPageInner(): JSX.Element {
       <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-my-line bg-my-canvas px-4">
         <div className="flex min-w-0 items-center gap-1.5">
           <WorkspaceMark color={project.color} letter={project.icon} size={16} />
-          <span className="truncate text-[13px] font-medium text-my-primary">{project.name}</span>
+          <span className="truncate text-my-md font-medium text-my-primary">{project.name}</span>
           <span className="text-my-disabled">/</span>
-          <span className="shrink-0 text-[13px] text-my-tertiary">Work items</span>
+          <span className="shrink-0 text-my-md text-my-tertiary">工作项</span>
         </div>
         <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id)} />
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {/* 布局切换器 */}
-          <div className="flex items-center gap-0.5 rounded-md border border-my-line bg-my-layer-1 p-0.5">
+          <div className="flex items-center gap-0.5 rounded-my-md border border-my-line bg-my-layer-1 p-0.5">
             {LAYOUTS.map((l) => (
               <Tooltip key={l.id} label={l.label}>
                 <button
@@ -1200,9 +1200,9 @@ function WorkItemsPageInner(): JSX.Element {
             trigger={({ toggle }) => (
               <Button variant="neutral" onClick={toggle}>
                 <SlidersHorizontal size={13} className="text-my-icon-secondary" />
-                Filters
+                筛选
                 {filterCount > 0 && (
-                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-my-accent px-1 text-[10px] font-medium text-my-on-color">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-my-accent px-1 text-my-2xs font-medium text-my-on-color">
                     {filterCount}
                   </span>
                 )}
@@ -1271,7 +1271,7 @@ function WorkItemsPageInner(): JSX.Element {
             trigger={({ toggle }) => (
               <Button variant="neutral" onClick={toggle}>
                 <Settings2 size={13} className="text-my-icon-secondary" />
-                Display
+                显示
               </Button>
             )}
           >
@@ -1317,11 +1317,11 @@ function WorkItemsPageInner(): JSX.Element {
                     checked={display.showEmptyGroups}
                     onChange={(v) => store.setDisplay({ showEmptyGroups: v })}
                   />
-                  <span className="text-[12.5px] text-my-secondary">显示空分组</span>
+                  <span className="text-my-sm text-my-secondary">显示空分组</span>
                 </div>
                 <div className="flex w-full items-center gap-2 px-3 py-1.5">
                   <Checkbox checked={display.showSubIssues} onChange={(v) => store.setDisplay({ showSubIssues: v })} />
-                  <span className="text-[12.5px] text-my-secondary">显示子工作项</span>
+                  <span className="text-my-sm text-my-secondary">显示子工作项</span>
                 </div>
               </>
             )}
@@ -1329,7 +1329,7 @@ function WorkItemsPageInner(): JSX.Element {
           {/* 主按钮 */}
           <Button variant="primary" onClick={() => store.setCreateIssueOpen(true)}>
             <Plus size={13} />
-            Add work item
+            新建工作项
           </Button>
         </div>
       </header>

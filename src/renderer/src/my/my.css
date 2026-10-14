@@ -8,6 +8,24 @@
   --my-radius-lg: 8px;
   --my-radius-xl: 12px;
   --my-radius-3xl: 20px;
+  --my-text-2xs: 10px;
+  --my-text-xs: 11px;
+  --my-text-sm: 12px;
+  --my-text-md: 13px;
+  --my-text-lg: 14px;
+  --my-text-xl: 16px;
+  /* 品牌强调色引用面板全局 leaf 变量，自动随深浅主题切换 */
+  --my-bg-accent-primary: rgb(var(--leaf-dim-rgb));
+  --my-bg-accent-primary-hover: rgb(var(--leaf-rgb));
+  --my-bg-accent-primary-active: rgb(var(--leaf-dim-rgb));
+  --my-bg-accent-subtle: rgb(var(--leaf-rgb) / 0.14);
+  --my-bg-accent-subtle-hover: rgb(var(--leaf-rgb) / 0.22);
+  --my-bg-accent-subtle-active: rgb(var(--leaf-rgb) / 0.3);
+  --my-border-accent-strong: rgb(var(--leaf-dim-rgb));
+  --my-border-accent-subtle: rgb(var(--leaf-rgb) / 0.4);
+  --my-txt-accent-secondary: rgb(var(--leaf-dim-rgb));
+  --my-txt-icon-accent-primary: rgb(var(--leaf-dim-rgb));
+  --my-txt-icon-accent-subtle: rgb(var(--leaf-dim-rgb) / 0.8);
   --my-shadow-raised-100: 0px 1px 6px -1px rgb(41 47 61 / 0.03), 0px 1px 4px 0px rgb(41 47 61 / 0.04);
   --my-shadow-raised-200: 0px 1px 2px -1px rgb(41 47 61 / 0.06), 0px 1px 3px 0px rgb(41 47 61 / 0.05);
   --my-shadow-raised-300: 0px 2px 4px -1px rgb(41 47 61 / 0.04), 0px 4px 6px -1px rgb(41 47 61 / 0.05);
@@ -15,6 +33,14 @@
   --my-shadow-overlay-200: 0px 10px 10px -10px rgb(41 47 61 / 0.04), 0px 30px 60px -12px rgb(41 47 61 / 0.1);
   font-family: 'Inter Variable', Inter, 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
   font-feature-settings: 'cv02', 'cv03', 'cv04';
+}
+
+.my-root[data-my-theme='dark'] {
+  --my-txt-accent-primary: rgb(var(--leaf-soft-rgb));
+}
+
+.my-root[data-my-theme='light'] {
+  --my-txt-accent-primary: rgb(var(--leaf-dim-rgb));
 }
 
 /* 控制高度体系（上游令牌包：xs20 sm24 md28 lg32 xl36 2xl40） */

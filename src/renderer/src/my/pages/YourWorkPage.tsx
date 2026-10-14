@@ -34,9 +34,9 @@ function IssueRow({
       className="flex h-11 cursor-pointer items-center gap-2.5 px-3 hover:bg-my-layer-1"
     >
       {state && <StateGroupIcon stateGroup={state.group} color={state.color} />}
-      <span className="min-w-0 flex-1 truncate text-[13px] text-my-primary">{issue.name}</span>
+      <span className="min-w-0 flex-1 truncate text-my-md text-my-primary">{issue.name}</span>
       <PriorityIcon priority={issue.priority} size={13} />
-      {due !== '' && <span className="shrink-0 text-[11px] text-my-tertiary">{due}</span>}
+      {due !== '' && <span className="shrink-0 text-my-xs text-my-tertiary">{due}</span>}
       {assignee && <Avatar name={assignee.name} color={assignee.avatarColor} size={18} />}
     </div>
   )
@@ -47,7 +47,7 @@ function IssueRow({
 function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
     <section className="mt-6">
-      <h2 className="mb-2 text-[13px] font-medium text-my-secondary">{title}</h2>
+      <h2 className="mb-2 text-my-md font-medium text-my-secondary">{title}</h2>
       {children}
     </section>
   )
@@ -113,7 +113,7 @@ export function YourWorkPage(): JSX.Element {
         <h1 className="text-[20px] font-semibold text-my-primary">
           {greeting}，我
         </h1>
-        <p className="mt-1 text-[12px] text-my-tertiary">{dateLine}</p>
+        <p className="mt-1 text-my-sm text-my-tertiary">{dateLine}</p>
       </header>
 
       <div className="px-8 pb-16">
@@ -122,7 +122,7 @@ export function YourWorkPage(): JSX.Element {
           {statCards.map((s) => (
             <div key={s.label} className="my-card p-3">
               <div className="text-[22px] font-semibold text-my-primary">{s.value}</div>
-              <div className="mt-0.5 text-[12px] text-my-tertiary">{s.label}</div>
+              <div className="mt-0.5 text-my-sm text-my-tertiary">{s.label}</div>
             </div>
           ))}
         </div>

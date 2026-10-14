@@ -559,14 +559,14 @@ export function ModelsPage(): JSX.Element {
       </div>
 
       {/* 主双栏容器 */}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-my-line bg-my-layer-2">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-my-lg border border-my-line bg-my-layer-2">
         {/* 左栏：供应商分组列表 */}
         <div className="flex w-64 shrink-0 flex-col border-r border-my-line p-3">
           <div className="my-scrollbar flex-1 space-y-4 overflow-y-auto pr-1">
             {providers.length > 0 ? (
               Object.entries(groupedProviders).map(([groupName, groupItems]) => (
                 <div key={groupName}>
-                  <div className="px-2 pb-1.5 text-[11px] font-medium tracking-wide text-my-tertiary">{groupName}</div>
+                  <div className="px-2 pb-1.5 text-my-xs font-medium tracking-wide text-my-tertiary">{groupName}</div>
                   <div className="space-y-1">
                     {groupItems.map((p) => {
                       const isSelected = p.id === currentProvider?.id
@@ -579,7 +579,7 @@ export function ModelsPage(): JSX.Element {
                             void persistProviders(providers, p.id)
                           }}
                           className={clsx(
-                            'group flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs transition-colors',
+                            'group flex w-full items-center justify-between rounded-my-lg border px-3 py-2 text-left text-xs transition-colors',
                             isSelected
                               ? 'border-my-line-accent-subtle bg-my-accent-subtle font-semibold text-my-accent-text'
                               : 'border-transparent text-my-secondary hover:bg-my-layer-1 hover:text-my-primary'
@@ -614,10 +614,10 @@ export function ModelsPage(): JSX.Element {
                 </div>
               ))
             ) : (
-              <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-my-line p-4 text-center">
+              <div className="flex h-full flex-col items-center justify-center rounded-my-lg border border-dashed border-my-line p-4 text-center">
                 <Boxes size={24} className="mb-2 text-my-tertiary opacity-60" />
                 <span className="text-xs font-medium text-my-secondary">已接入列表暂空</span>
-                <span className="mt-1 text-[11px] leading-relaxed text-my-tertiary">
+                <span className="mt-1 text-my-xs leading-relaxed text-my-tertiary">
                   请点击右上角「添加供应商」
                 </span>
               </div>
@@ -643,7 +643,7 @@ export function ModelsPage(): JSX.Element {
                   return (
                     <span
                       className={clsx(
-                        'rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide transition-colors',
+                        'rounded-full border px-2 py-0.5 text-my-2xs font-medium tracking-wide transition-colors',
                         statusInfo.badgeClass
                       )}
                       title={statusInfo.tooltip}
@@ -683,13 +683,13 @@ export function ModelsPage(): JSX.Element {
                 {/* 更多菜单 */}
                 <button
                   onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-my-tertiary hover:bg-my-layer-1 hover:text-my-primary"
+                  className="flex h-8 w-8 items-center justify-center rounded-my-lg text-my-tertiary hover:bg-my-layer-1 hover:text-my-primary"
                 >
                   <MoreHorizontal size={17} />
                 </button>
 
                 {moreMenuOpen && (
-                  <div className="absolute right-0 top-10 z-30 w-36 rounded-lg border border-my-line bg-my-layer-2 py-1 shadow-[var(--my-shadow-overlay-200)]">
+                  <div className="absolute right-0 top-10 z-30 w-36 rounded-my-lg border border-my-line bg-my-layer-2 py-1 shadow-[var(--my-shadow-overlay-200)]">
                     <button
                       onClick={handleDeleteCurrentProvider}
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-my-danger-text hover:bg-my-layer-1"
@@ -740,7 +740,7 @@ export function ModelsPage(): JSX.Element {
                   <label className="font-medium text-my-tertiary">
                     API Key
                     {currentProvider.apiKeyEncrypted && (
-                      <span className="ml-2 text-[10px] text-emerald-400 font-normal">（已加密保存）</span>
+                      <span className="ml-2 text-my-2xs text-emerald-400 font-normal">（已加密保存）</span>
                     )}
                   </label>
                 </div>
@@ -750,7 +750,7 @@ export function ModelsPage(): JSX.Element {
                     value={currentProvider.apiKey}
                     onChange={(e) => updateCurrentProvider({ apiKey: e.target.value, apiKeyEncrypted: false })}
                     placeholder="输入 API Key"
-                    className="h-9 w-full rounded-md border border-my-line bg-my-layer-2 px-3 pr-10 text-[13px] text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                    className="h-9 w-full rounded-my-md border border-my-line bg-my-layer-2 px-3 pr-10 text-my-md text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
                   />
                   <button
                     type="button"
@@ -793,12 +793,12 @@ export function ModelsPage(): JSX.Element {
                       return (
                         <div
                           key={m.id}
-                          className="flex items-center justify-between rounded-lg border border-my-line bg-my-canvas px-4 py-3 transition-colors hover:border-my-line-strong"
+                          className="flex items-center justify-between rounded-my-lg border border-my-line bg-my-canvas px-4 py-3 transition-colors hover:border-my-line-strong"
                         >
                           <div className="flex items-center gap-2.5">
                             <span className="text-xs font-semibold text-my-primary">{m.name}</span>
                             {m.contextWindow && (
-                              <span className="rounded bg-my-layer-3 px-2 py-0.5 text-[10px] font-medium text-my-tertiary">
+                              <span className="rounded bg-my-layer-3 px-2 py-0.5 text-my-2xs font-medium text-my-tertiary">
                                 {m.contextWindow}
                               </span>
                             )}
@@ -806,7 +806,7 @@ export function ModelsPage(): JSX.Element {
                               m.tags.map((tag) => (
                                 <span
                                   key={tag}
-                                  className="rounded bg-my-layer-3 px-2 py-0.5 text-[10px] font-medium text-my-tertiary"
+                                  className="rounded bg-my-layer-3 px-2 py-0.5 text-my-2xs font-medium text-my-tertiary"
                                 >
                                   {tag}
                                 </span>
@@ -816,7 +816,7 @@ export function ModelsPage(): JSX.Element {
                           <div className="flex items-center gap-3">
                             {/* 连通测试结果显示 */}
                             {testRes && (
-                              <div className="flex items-center gap-1 text-[11px]">
+                              <div className="flex items-center gap-1 text-my-xs">
                                 {testRes.ok ? (
                                   <span className="flex items-center gap-1 text-emerald-400">
                                     <CheckCircle2 size={12} />
@@ -885,9 +885,9 @@ export function ModelsPage(): JSX.Element {
                       )
                     })
                   ) : (
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-my-line py-10 px-4 text-center">
+                    <div className="flex flex-col items-center justify-center rounded-my-lg border border-dashed border-my-line py-10 px-4 text-center">
                       <p className="text-xs font-medium text-my-tertiary">当前供应商暂无模型</p>
-                      <p className="mt-2 text-[11px] leading-normal text-my-placeholder">点击上方「自动获取模型」从接口拉取，或「添加模型」手动创建</p>
+                      <p className="mt-2 text-my-xs leading-normal text-my-placeholder">点击上方「自动获取模型」从接口拉取，或「添加模型」手动创建</p>
                     </div>
                   )}
                 </div>
@@ -908,7 +908,7 @@ export function ModelsPage(): JSX.Element {
       {/* 选择添加供应商模板模态框 */}
       {showAddProviderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop p-4">
-          <div className="w-full max-w-xl rounded-xl border border-my-line bg-my-layer-2 p-6 shadow-[var(--my-shadow-overlay-200)]">
+          <div className="w-full max-w-xl rounded-my-xl border border-my-line bg-my-layer-2 p-6 shadow-[var(--my-shadow-overlay-200)]">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-my-primary">选择供应商模板</h3>
@@ -916,7 +916,7 @@ export function ModelsPage(): JSX.Element {
               </div>
               <button
                 onClick={() => setShowAddProviderModal(false)}
-                className="rounded-lg p-1 text-my-tertiary hover:bg-my-layer-1 hover:text-my-primary"
+                className="rounded-my-lg p-1 text-my-tertiary hover:bg-my-layer-1 hover:text-my-primary"
               >
                 <X size={18} />
               </button>
@@ -927,7 +927,7 @@ export function ModelsPage(): JSX.Element {
                 <button
                   key={tpl.id}
                   onClick={() => handleSelectTemplate(tpl)}
-                  className="flex flex-col items-start rounded-lg border border-my-line bg-my-canvas p-3.5 text-left transition-all hover:border-my-line-strong hover:bg-my-layer-1"
+                  className="flex flex-col items-start rounded-my-lg border border-my-line bg-my-canvas p-3.5 text-left transition-all hover:border-my-line-strong hover:bg-my-layer-1"
                 >
                   <div className="flex w-full items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -944,29 +944,29 @@ export function ModelsPage(): JSX.Element {
                       )}
                       <span className="text-xs font-semibold text-my-primary">{tpl.name}</span>
                     </div>
-                    <span className="rounded bg-my-layer-3 px-1.5 py-0.5 text-[10px] text-my-tertiary">官方</span>
+                    <span className="rounded bg-my-layer-3 px-1.5 py-0.5 text-my-2xs text-my-tertiary">官方</span>
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-[11px] text-my-tertiary leading-snug">{tpl.description}</p>
-                  <div className="mt-2.5 truncate text-[10px] text-my-placeholder font-mono">{tpl.baseUrl}</div>
+                  <p className="mt-1.5 line-clamp-2 text-my-xs text-my-tertiary leading-snug">{tpl.description}</p>
+                  <div className="mt-2.5 truncate text-my-2xs text-my-placeholder font-mono">{tpl.baseUrl}</div>
                 </button>
               ))}
 
               {/* 自定义供应商卡片 */}
               <button
                 onClick={() => handleSelectTemplate('custom')}
-                className="flex flex-col items-start rounded-lg border border-dashed border-my-line bg-my-canvas p-3.5 text-left transition-all hover:border-my-line-strong hover:bg-my-layer-1"
+                className="flex flex-col items-start rounded-my-lg border border-dashed border-my-line bg-my-canvas p-3.5 text-left transition-all hover:border-my-line-strong hover:bg-my-layer-1"
               >
                 <div className="flex w-full items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Plus size={16} className="text-my-secondary" />
                     <span className="text-xs font-semibold text-my-primary">自定义供应商</span>
                   </div>
-                  <span className="rounded bg-my-layer-3 px-1.5 py-0.5 text-[10px] text-my-tertiary">自定义</span>
+                  <span className="rounded bg-my-layer-3 px-1.5 py-0.5 text-my-2xs text-my-tertiary">自定义</span>
                 </div>
-                <p className="mt-1.5 text-[11px] text-my-tertiary leading-snug">
+                <p className="mt-1.5 text-my-xs text-my-tertiary leading-snug">
                   接入任意 OpenAI / Anthropic 兼容的自建或第三方模型中转服务
                 </p>
-                <div className="mt-2.5 text-[10px] text-my-placeholder font-mono">自定义 Base URL & Key</div>
+                <div className="mt-2.5 text-my-2xs text-my-placeholder font-mono">自定义 Base URL & Key</div>
               </button>
             </div>
 
@@ -982,7 +982,7 @@ export function ModelsPage(): JSX.Element {
       {/* 手动添加模型模态框 */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop">
-          <div className="w-96 rounded-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]">
+          <div className="w-96 rounded-my-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]">
             <h3 className="mb-4 text-sm font-semibold text-my-primary">添加模型</h3>
             <div className="space-y-3 text-xs">
               <div>
@@ -1039,7 +1039,7 @@ export function ModelsPage(): JSX.Element {
       {/* 编辑模型模态框 */}
       {editingModel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop">
-          <div className="w-96 rounded-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]">
+          <div className="w-96 rounded-my-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]">
             <h3 className="mb-4 text-sm font-semibold text-my-primary">编辑模型</h3>
             <div className="space-y-3 text-xs">
               <div>

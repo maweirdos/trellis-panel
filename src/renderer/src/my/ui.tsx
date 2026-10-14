@@ -40,7 +40,7 @@ export function AvatarStack({ members, max = 3, size = 20 }: { members: Member[]
       ))}
       {rest > 0 && (
         <div
-          className="-ml-1.5 flex items-center justify-center rounded-full bg-[var(--my-bg-layer-3)] text-[10px] font-medium text-[var(--my-txt-secondary)] ring-2 ring-[var(--my-bg-layer-2)]"
+          className="-ml-1.5 flex items-center justify-center rounded-full bg-[var(--my-bg-layer-3)] text-my-2xs font-medium text-[var(--my-txt-secondary)] ring-2 ring-[var(--my-bg-layer-2)]"
           style={{ width: size, height: size }}
         >
           +{rest}
@@ -116,24 +116,30 @@ export function Dropdown({
   className?: string
 }): JSX.Element {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
-  const place = (): void => {
+  // 渲染后按菜单实际尺寸定位：优先贴触发器下缘，空间不足则贴上缘，并收进视口
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null)
+      return
+    }
     const anchor = anchorRef.current
-    if (!anchor) return
+    const menu = menuRef.current
+    if (!anchor || !menu) return
     const r = anchor.getBoundingClientRect()
-    const below = r.bottom + 4
-    const top = below + 240 > window.innerHeight ? Math.max(8, r.top - 244) : below
-    const left = align === 'right' ? r.right - (width ?? 200) - 4 : r.left
-    setPos({ top, left: Math.max(8, left) })
-  }
+    const h = menu.offsetHeight
+    const w = menu.offsetWidth
+    const spaceBelow = window.innerHeight - r.bottom
+    const flip = h + 8 > spaceBelow && r.top - 8 > h
+    const top = flip ? Math.max(8, r.top - h - 4) : Math.min(r.bottom + 4, window.innerHeight - h - 8)
+    const left = align === 'right' ? r.right - w : r.left
+    setPos({ top, left: Math.min(Math.max(8, left), window.innerWidth - w - 8) })
+  }, [open, align])
 
-  const toggle = (): void => {
-    if (!open) place()
-    setOpen((v) => !v)
-  }
+  const toggle = (): void => setOpen((v) => !v)
 
   useEffect(() => {
     if (!open) return
@@ -164,8 +170,13 @@ export function Dropdown({
       {open && (
         <div
           ref={menuRef}
-          style={{ top: pos.top, left: pos.left, width }}
-          className="my-pop fixed z-[80] overflow-hidden rounded-lg border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] py-1 shadow-[var(--my-shadow-overlay-200)]"
+          style={{
+            top: pos?.top ?? -9999,
+            left: pos?.left ?? -9999,
+            width,
+            visibility: pos ? 'visible' : 'hidden'
+          }}
+          className="my-pop fixed z-[80] overflow-hidden rounded-my-lg border border-my-line bg-my-layer-2 py-1 shadow-[var(--my-shadow-overlay-200)]"
         >
           {children(() => setOpen(false))}
         </div>
@@ -192,7 +203,7 @@ export function DropdownItem({
       type="button"
       onClick={onClick}
       className={clsx(
-        'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-[var(--my-txt-secondary)] hover:bg-[var(--my-bg-layer-1-hover)]',
+        'flex w-full items-center gap-2 px-3 py-1.5 text-left text-my-sm text-[var(--my-txt-secondary)] hover:bg-[var(--my-bg-layer-1-hover)]',
         selected && 'text-[var(--my-txt-accent-primary)]',
         danger && 'text-[var(--my-txt-danger-primary)]'
       )}
@@ -205,7 +216,7 @@ export function DropdownItem({
 
 export function DropdownHeader({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-[var(--my-txt-tertiary)]">
+    <div className="px-3 pb-1 pt-2 text-my-xs font-medium text-[var(--my-txt-tertiary)]">
       {children}
     </div>
   )
@@ -219,7 +230,7 @@ export function Tooltip({ label, children, side = 'top' }: { label: string; chil
       {children}
       <span
         className={clsx(
-          'pointer-events-none absolute left-1/2 z-[90] hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] px-2 py-1 text-[11px] text-[var(--my-txt-secondary)] shadow-[var(--my-shadow-raised-200)] group-hover/tt:block',
+          'pointer-events-none absolute left-1/2 z-[90] hidden -translate-x-1/2 whitespace-nowrap rounded-my-md border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] px-2 py-1 text-my-xs text-[var(--my-txt-secondary)] shadow-[var(--my-shadow-raised-200)] group-hover/tt:block',
           side === 'top' ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]'
         )}
       >
@@ -259,7 +270,7 @@ export function Modal({
     <div className="my-fade fixed inset-0 z-[70] flex items-start justify-center bg-[var(--my-bg-backdrop)] pt-[12vh]" onMouseDown={onClose}>
       <div
         style={{ width }}
-        className="my-peek-in max-h-[76vh] overflow-hidden rounded-xl border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] shadow-[var(--my-shadow-overlay-200)]"
+        className="my-peek-in max-h-[76vh] overflow-hidden rounded-my-xl border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] shadow-[var(--my-shadow-overlay-200)]"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {children}
@@ -278,7 +289,7 @@ export function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={clsx(
-        'flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[3px] border transition-colors',
+        'flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-my-sm border transition-colors',
         checked
           ? 'border-[var(--my-bg-accent-primary)] bg-[var(--my-bg-accent-primary)] text-white'
           : 'border-[var(--my-border-strong)] hover:border-[var(--my-border-accent-strong)]'
@@ -315,7 +326,7 @@ export function LabelPill({ label, onClick }: { label: Label; onClick?: () => vo
       type="button"
       onClick={onClick}
       className={clsx(
-        'inline-flex h-[22px] max-w-[140px] items-center gap-1 rounded-[4px] border border-[var(--my-label-border,var(--my-border-subtle))] px-1.5 text-[11px] font-medium',
+        'inline-flex h-[22px] max-w-[140px] items-center gap-1 rounded-my-sm border border-[var(--my-label-border,var(--my-border-subtle))] px-1.5 text-my-xs font-medium',
         onClick && 'hover:brightness-110'
       )}
       style={{
@@ -350,7 +361,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-8 w-full rounded-md border border-[var(--my-border-subtle)] bg-[var(--my-bg-surface-1)] pl-7 pr-2 text-[12.5px] text-[var(--my-txt-primary)] outline-none placeholder:text-[var(--my-txt-placeholder)] focus:border-[var(--my-border-accent-strong)]"
+        className="h-8 w-full rounded-my-md border border-[var(--my-border-subtle)] bg-[var(--my-bg-surface-1)] pl-7 pr-2 text-my-sm text-[var(--my-txt-primary)] outline-none placeholder:text-[var(--my-txt-placeholder)] focus:border-[var(--my-border-accent-strong)]"
       />
     </div>
   )
@@ -375,14 +386,14 @@ export function Tabs<T extends string>({
           type="button"
           onClick={() => onChange(t.id)}
           className={clsx(
-            'my-control my-control-sm rounded-md',
+            'my-control my-control-sm rounded-my-md',
             active === t.id
               ? 'bg-[var(--my-bg-layer-transparent-active)] text-[var(--my-txt-primary)]'
               : 'text-[var(--my-txt-tertiary)] hover:bg-[var(--my-bg-layer-transparent-hover)]'
           )}
         >
           {t.label}
-          {t.count !== undefined && <span className="text-[11px] opacity-70">{t.count}</span>}
+          {t.count !== undefined && <span className="text-my-xs opacity-70">{t.count}</span>}
         </button>
       ))}
     </div>
@@ -394,14 +405,14 @@ export function Tabs<T extends string>({
 export function EmptyState({ title, description }: { title: string; description?: string }): JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center gap-1 px-6 py-14 text-center">
-      <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--my-bg-layer-2)] text-[var(--my-txt-tertiary)]">
+      <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-my-lg bg-[var(--my-bg-layer-2)] text-[var(--my-txt-tertiary)]">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
           <rect x="2.5" y="2.5" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
           <path d="M2.5 6h11M6 6v7.5" stroke="currentColor" strokeWidth="1.2" />
         </svg>
       </div>
-      <div className="text-[13px] font-medium text-[var(--my-txt-primary)]">{title}</div>
-      {description && <div className="max-w-[320px] text-[12px] text-[var(--my-txt-tertiary)]">{description}</div>}
+      <div className="text-my-md font-medium text-[var(--my-txt-primary)]">{title}</div>
+      {description && <div className="max-w-[320px] text-my-sm text-[var(--my-txt-tertiary)]">{description}</div>}
     </div>
   )
 }

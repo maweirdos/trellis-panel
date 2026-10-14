@@ -8,16 +8,16 @@ import type { Priority } from '../../types'
 
 const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
 const PRIORITY_LABELS: Record<Priority, string> = {
-  urgent: 'Urgent',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
-  none: 'None'
+  urgent: '紧急',
+  high: '高',
+  medium: '中',
+  low: '低',
+  none: '无'
 }
 
 /** 属性触发框（弹窗内） */
 const BOX =
-  'flex h-8 w-full min-w-0 items-center gap-1.5 rounded-md border border-my-line bg-my-layer-2 px-2 text-[12.5px] text-my-secondary hover:border-my-line-strong'
+  'flex h-8 w-full min-w-0 items-center gap-1.5 rounded-my-md border border-my-line bg-my-layer-2 px-2 text-my-sm text-my-secondary hover:border-my-line-strong'
 
 function CreateIssueForm(): JSX.Element {
   const store = useMy()
@@ -46,7 +46,7 @@ function CreateIssueForm(): JSX.Element {
       <div className="flex flex-col">
         {/* 标题行 */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-my-line px-4">
-          <span className="text-[14px] font-semibold text-my-primary">新建工作项</span>
+          <span className="text-my-lg font-semibold text-my-primary">新建工作项</span>
           <button
             type="button"
             title="关闭"
@@ -59,7 +59,7 @@ function CreateIssueForm(): JSX.Element {
         {/* 表单 */}
         <div className="flex flex-col gap-3 px-4 py-4">
           <div>
-            <div className="mb-1 text-[11px] font-medium text-my-tertiary">项目</div>
+            <div className="mb-1 text-my-xs font-medium text-my-tertiary">项目</div>
             <Dropdown
               width={280}
               trigger={({ toggle }) => (
@@ -78,7 +78,7 @@ function CreateIssueForm(): JSX.Element {
             </Dropdown>
           </div>
           <div>
-            <div className="mb-1 text-[11px] font-medium text-my-tertiary">名称</div>
+            <div className="mb-1 text-my-xs font-medium text-my-tertiary">名称</div>
             <input
               autoFocus
               value={name}
@@ -92,7 +92,7 @@ function CreateIssueForm(): JSX.Element {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <div className="mb-1 text-[11px] font-medium text-my-tertiary">优先级</div>
+              <div className="mb-1 text-my-xs font-medium text-my-tertiary">优先级</div>
               <Dropdown
                 width={180}
                 trigger={({ toggle }) => (
@@ -123,7 +123,7 @@ function CreateIssueForm(): JSX.Element {
               </Dropdown>
             </div>
             <div>
-              <div className="mb-1 text-[11px] font-medium text-my-tertiary">状态</div>
+              <div className="mb-1 text-my-xs font-medium text-my-tertiary">状态</div>
               <Dropdown
                 width={190}
                 trigger={({ toggle }) => {
@@ -159,12 +159,12 @@ function CreateIssueForm(): JSX.Element {
             </div>
           </div>
           <div>
-            <div className="mb-1 text-[11px] font-medium text-my-tertiary">描述</div>
+            <div className="mb-1 text-my-xs font-medium text-my-tertiary">描述</div>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="添加描述…"
-              className="min-h-[90px] w-full resize-none rounded-md border border-my-line bg-my-layer-2 p-2 text-[13px] leading-5 text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+              className="min-h-[90px] w-full resize-none rounded-my-md border border-my-line bg-my-layer-2 p-2 text-my-md leading-5 text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
             />
           </div>
         </div>

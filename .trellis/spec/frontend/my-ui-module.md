@@ -17,6 +17,12 @@
 - `my-tokens.css` 由 `上游设计令牌包 0.9.7` 令牌脚本解析生成
   （oklch→hex，浅/深两组挂在 `[data-my-theme='light'|'dark']`），**勿手改色值**。
 - Tailwind 侧 `colors.p.*`（tailwind.config.js）映射到 `var(--my-…)`，**不支持 alpha 修饰符**。
+- **品牌强调色 = 面板 leaf 绿**：`--my-bg-accent-*` / `--my-border-accent-*` / `--my-txt-accent-*`
+  在 my.css 中覆写为 `rgb(var(--leaf-*-rgb))` 引用（非硬编码），自动随面板深浅主题切换；
+  改品牌色只动 styles.css 的 leaf 变量。
+- **排版/圆角令牌**：`--my-text-2xs..xl`（10/11/12/13/14/16px）与 `--my-radius-sm..xl`（4/6/8/12px）
+  定义在 my.css，Tailwind 侧对应 `text-my-2xs..p-xl`、`rounded-my-sm..p-xl`。
+  外壳与页面**禁止写死字号/圆角**（text-[13px]/rounded-md 等），一律用令牌类。
 - 常用类：`bg-my-canvas`、`bg-my-layer-1(-hover/-active/-selected)`、`bg-my-layer-2/3`、
   `bg-my-surface-1/2`、`text-my-primary/-secondary/-tertiary/-placeholder`、
   `text-my-accent-text`、`bg-my-accent(-hover)`、`border-my-line(-1/-strong/-accent)`、
@@ -41,7 +47,8 @@
 
 - 控制高度体系：`my-control`（28px）/`my-control-sm`（24px）/`my-control-lg`（32px）。
 - 弹层动画类：`my-pop`（下拉）、`my-fade`、`my-peek-in`（peek 浮层）；滚动容器用 `my-scrollbar`。
-- 下拉统一用 `ui.tsx` 的 `Dropdown`（fixed 定位 + 外点/Esc/滚动关闭）；
+- 下拉统一用 `ui.tsx` 的 `Dropdown`（fixed 定位 + 外点/Esc/滚动关闭；开箱后按菜单实测高度定位，
+  下方空间不足贴上缘，水平收进视口——不要回退成估算高度）；
   已知测试陷阱：截图工具会触发 resize 导致弹层关闭——自动化验证时用「打开后立即
   evaluate 读取 `.my-pop` 内容或坐标点击」而非截图中间态。
 - 字体：Inter Variable（`@fontsource-variable/inter`，注意本仓库 npm install 需 `--legacy-peer-deps`）。

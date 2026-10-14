@@ -6,7 +6,7 @@ import type { Issue, IssueActivity, Member, MyDataset, Priority, WorkItemState }
 export const TRELLIS_PROJECT_ID = 'trellis'
 
 export const MY_STATES: WorkItemState[] = [
-  { id: 'st-backlog', name: 'Backlog', color: '#A3A3A3', group: 'backlog', sequence: 15000 },
+  { id: 'st-backlog', name: '未规划', color: '#A3A3A3', group: 'backlog', sequence: 15000 },
   { id: 'st-planning', name: '规划中', color: '#3A3A3A', group: 'unstarted', sequence: 25000 },
   { id: 'st-progress', name: '进行中', color: '#F59E0B', group: 'started', sequence: 35000 },
   { id: 'st-review', name: '评审中', color: '#3F76FF', group: 'started', sequence: 40000 },
@@ -149,13 +149,13 @@ export function deriveDataset(snapshot: ProjectSnapshot | null): MyDataset {
       slug: 'trellis',
       memberId: snapshot.meta.developer ?? members[0]?.id ?? '我'
     },
-    members: members.length > 0 ? members : [{ id: '我', name: '我', avatarColor: '#006399', role: 'Admin' }],
+    members: members.length > 0 ? members : [{ id: '我', name: '我', avatarColor: '#059669', role: 'Admin' }],
     projects: [
       {
         id: TRELLIS_PROJECT_ID,
         name: snapshot.meta.name || 'Trellis 项目',
         icon: (snapshot.meta.name || 'T').slice(0, 1),
-        color: '#006399',
+        color: '#059669',
         description: `${createdCount} 个工作项 · ${snapshot.archived.length} 个已归档`,
         cycleEnabled: false,
         moduleEnabled: false,

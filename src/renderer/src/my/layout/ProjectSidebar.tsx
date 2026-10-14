@@ -25,14 +25,14 @@ export function ProjectSidebar(): JSX.Element {
       type="button"
       onClick={() => setPage(id as never)}
       className={clsx(
-        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
+        'flex w-full items-center gap-2 rounded-my-md px-2 py-1.5 text-my-md',
         page === id ? 'bg-my-layer-transparent-active text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover'
       )}
     >
       <NavIcon name={icon} size={16} className={page === id ? 'text-my-icon-primary' : 'text-my-icon-tertiary'} />
       <span className="flex-1 text-left">{label}</span>
       {count !== undefined && count > 0 && (
-        <span className="rounded bg-my-layer-3 px-1 text-[10px] font-semibold text-my-tertiary">{count}</span>
+        <span className="rounded bg-my-layer-3 px-1 text-my-2xs font-semibold text-my-tertiary">{count}</span>
       )}
     </button>
   )
@@ -43,13 +43,13 @@ export function ProjectSidebar(): JSX.Element {
         <button
           type="button"
           onClick={() => setPage('dashboard')}
-          title="返回 Your work"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-my-icon-tertiary hover:bg-my-layer-transparent-hover"
+          title="返回我的工作"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-my-md text-my-icon-tertiary hover:bg-my-layer-transparent-hover"
         >
           <ChevronLeft size={14} />
         </button>
         <WorkspaceMark color={project.color} letter={project.icon.slice(0, 1)} size={18} />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-my-primary">{project.name}</span>
+        <span className="min-w-0 flex-1 truncate text-my-md font-medium text-my-primary">{project.name}</span>
         <button
           type="button"
           className="flex h-5 w-5 items-center justify-center rounded-sm text-my-icon-tertiary hover:bg-my-layer-transparent-hover"
@@ -66,13 +66,13 @@ export function ProjectSidebar(): JSX.Element {
       </div>
 
       <div className="my-scrollbar min-h-0 flex-1 px-2.5 pb-3 pt-1">
-        <div className="flex flex-col gap-0.5">{navButton('tasks', 'Work items', 'work-items', taskCount)}</div>
+        <div className="flex flex-col gap-0.5">{navButton('tasks', '工作项', 'work-items', taskCount)}</div>
         <div className="mt-3 flex flex-col gap-0.5 border-t border-my-line pt-3">
-          <div className="px-2 pb-1 text-[11px] font-medium text-my-tertiary">文档</div>
+          <div className="px-2 pb-1 text-my-xs font-medium text-my-tertiary">文档</div>
           {DOC_ITEMS.map((item) => navButton(item.id, item.label, item.icon))}
         </div>
         <div className="mt-3 flex flex-col gap-0.5 border-t border-my-line pt-3">
-          <div className="px-2 pb-1 text-[11px] font-medium text-my-tertiary">跟踪</div>
+          <div className="px-2 pb-1 text-my-xs font-medium text-my-tertiary">跟踪</div>
           {navButton('inbox', '待办池', 'intake')}
         </div>
       </div>

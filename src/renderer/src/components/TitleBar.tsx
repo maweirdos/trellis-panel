@@ -36,15 +36,15 @@ export function TitleBar(): JSX.Element {
     <header className="drag-region relative z-50 flex h-10 shrink-0 items-center border-b border-my-line bg-my-canvas">
       <div className="flex items-center gap-2 px-3.5">
         <Leaf size={15} className="text-my-icon-accent" strokeWidth={2.4} />
-        <span className="text-[13px] font-semibold tracking-wide text-my-primary">Trellis Panel</span>
+        <span className="text-my-md font-semibold tracking-wide text-my-primary">Trellis Panel</span>
       </div>
       {snapshot && (
-        <div className="ml-2 flex min-w-0 items-center gap-1.5 rounded-md border border-my-line bg-my-layer-1 px-2 py-0.5 text-[11px] text-my-secondary">
+        <div className="ml-2 flex min-w-0 items-center gap-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 py-0.5 text-my-xs text-my-secondary">
           <span className="max-w-[260px] truncate" title={snapshot.meta.root}>
             {snapshot.meta.name}
           </span>
           {snapshot.meta.version && (
-            <span className="rounded border border-my-line bg-my-layer-2 px-1 font-mono text-[10px] text-my-tertiary">
+            <span className="rounded border border-my-line bg-my-layer-2 px-1 font-mono text-my-2xs text-my-tertiary">
               v{snapshot.meta.version}
             </span>
           )}

@@ -21,8 +21,8 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
   const project = data.projects[0]
 
   const NAV_ITEMS: Array<{ id: string; label: string; icon: string }> = [
-    { id: 'dashboard', label: 'Your work', icon: 'your-work' },
-    { id: 'analytics', label: 'Analytics', icon: 'analytics' }
+    { id: 'dashboard', label: '我的工作', icon: 'your-work' },
+    { id: 'analytics', label: '统计分析', icon: 'analytics' }
   ]
 
   const COLLAB_ITEMS: Array<{ id: string; label: string; icon: string }> = [
@@ -46,14 +46,14 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
       type="button"
       onClick={() => setPage(id as never)}
       className={clsx(
-        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
+        'flex w-full items-center gap-2 rounded-my-md px-2 py-1.5 text-my-md',
         page === id ? 'bg-my-layer-transparent-active text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover'
       )}
     >
       <NavIcon name={icon} size={16} className={page === id ? 'text-my-icon-primary' : 'text-my-icon-tertiary'} />
       <span className="flex-1 text-left">{label}</span>
       {badge !== undefined && badge > 0 && (
-        <span className="rounded-full bg-my-accent px-1.5 text-[10px] font-semibold leading-4 text-my-on-color">{badge}</span>
+        <span className="rounded-full bg-my-accent px-1.5 text-my-2xs font-semibold leading-4 text-my-on-color">{badge}</span>
       )}
     </button>
   )
@@ -68,10 +68,10 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
             <button
               type="button"
               onClick={toggle}
-              className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 hover:bg-my-layer-transparent-hover"
+              className="flex w-full items-center gap-2 rounded-my-md px-1.5 py-1 hover:bg-my-layer-transparent-hover"
             >
               <WorkspaceMark color={project.color} letter={project.icon.slice(0, 1)} size={22} />
-              <span className="min-w-0 flex-1 truncate text-left text-[13.5px] font-medium text-my-primary">
+              <span className="min-w-0 flex-1 truncate text-left text-my-lg font-medium text-my-primary">
                 {data.workspace.name}
               </span>
               <ChevronDown size={13} className="shrink-0 text-my-icon-tertiary" />
@@ -113,7 +113,7 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
           <button
             type="button"
             onClick={onCollapse}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-my-icon-tertiary hover:bg-my-layer-transparent-hover"
+            className="flex h-7 w-7 items-center justify-center rounded-my-md text-my-icon-tertiary hover:bg-my-layer-transparent-hover"
           >
             <PanelLeftClose size={15} />
           </button>
@@ -124,10 +124,10 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
-          className="flex h-7 w-full items-center gap-2 rounded-md border border-my-line bg-my-layer-2 px-2 text-my-tertiary hover:border-my-line-1"
+          className="flex h-7 w-full items-center gap-2 rounded-my-md border border-my-line bg-my-layer-2 px-2 text-my-tertiary hover:border-my-line-1"
         >
           <Search size={12} />
-          <span className="min-w-0 flex-1 truncate text-left text-[12px]">Search or type a command...</span>
+          <span className="min-w-0 flex-1 truncate text-left text-my-sm">搜索或输入命令…</span>
           <span className="my-kbd">⌘K</span>
         </button>
       </div>
@@ -138,7 +138,7 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
 
       <div className="my-scrollbar min-h-0 flex-1 px-2.5 pb-2">
         <div className="flex items-center justify-between px-2 pb-1 pt-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-my-tertiary">Projects</span>
+          <span className="text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">项目</span>
           <Tooltip label="新建工作项">
             <button
               type="button"
@@ -153,21 +153,21 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
           type="button"
           onClick={() => setPage('tasks')}
           className={clsx(
-            'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px]',
+            'group flex w-full items-center gap-2 rounded-my-md px-2 py-1.5 text-left text-my-md',
             page === 'tasks' ? 'bg-my-layer-transparent-active text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover'
           )}
         >
           <WorkspaceMark color={project.color} letter={project.icon.slice(0, 1)} size={18} />
           <span className="min-w-0 flex-1 truncate">{project.name}</span>
-          <span className="text-[11px] text-my-tertiary">{snapshot?.tasks.length ?? 0}</span>
+          <span className="text-my-xs text-my-tertiary">{snapshot?.tasks.length ?? 0}</span>
         </button>
 
         <div className="mt-3 border-t border-my-line pt-3" />
-        <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-my-tertiary">协作</div>
+        <div className="px-2 pb-1 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">协作</div>
         <div className="flex flex-col gap-0.5">{COLLAB_ITEMS.map((item) => navButton(item.id, item.label, item.icon))}</div>
 
         <div className="mt-3 border-t border-my-line pt-3" />
-        <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-my-tertiary">系统</div>
+        <div className="px-2 pb-1 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">系统</div>
         <div className="flex flex-col gap-0.5">{SYSTEM_ITEMS.map((item) => navButton(item.id, item.label, item.icon))}</div>
       </div>
 
@@ -179,11 +179,11 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
             <button
               type="button"
               onClick={toggle}
-              className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 hover:bg-my-layer-transparent-hover"
+              className="flex w-full items-center gap-2 rounded-my-md px-1.5 py-1.5 hover:bg-my-layer-transparent-hover"
             >
               <Avatar name={me.name} color={me.avatarColor} size={22} />
               <span className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-[12.5px] font-medium text-my-primary">{me.name}</span>
+                <span className="block truncate text-my-sm font-medium text-my-primary">{me.name}</span>
               </span>
               <ChevronDown size={12} className="text-my-icon-tertiary" />
             </button>
@@ -191,7 +191,7 @@ export function WorkspaceSidebar({ onCollapse }: { onCollapse?: () => void }): J
         >
           {(close) => (
             <div>
-              <DropdownHeader>{me.name} · {me.role}</DropdownHeader>
+              <DropdownHeader>{me.name} · {me.role === 'Admin' ? '管理员' : me.role === 'Member' ? '成员' : '访客'}</DropdownHeader>
               <DropdownItem icon={<CircleUser size={13} />} onClick={() => { setPage('settings'); close() }}>
                 设置
               </DropdownItem>

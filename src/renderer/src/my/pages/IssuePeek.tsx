@@ -14,16 +14,16 @@ function toIso(d: Date): string {
 
 const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
 const PRIORITY_LABELS: Record<Priority, string> = {
-  urgent: 'Urgent',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
-  none: 'None'
+  urgent: '紧急',
+  high: '高',
+  medium: '中',
+  low: '低',
+  none: '无'
 }
 
 /** 属性栏右侧触发框样式 */
 const BOX =
-  'flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md border border-my-line bg-my-layer-1 px-2 text-[12.5px] text-my-secondary hover:bg-my-layer-1-hover'
+  'flex h-7 w-full min-w-0 items-center gap-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 text-my-sm text-my-secondary hover:bg-my-layer-1-hover'
 
 interface PropRowProps {
   label: string
@@ -34,7 +34,7 @@ interface PropRowProps {
 function PropRow({ label, children }: PropRowProps): JSX.Element {
   return (
     <div className="mb-3">
-      <div className="mb-1 text-[11px] font-medium text-my-tertiary">{label}</div>
+      <div className="mb-1 text-my-xs font-medium text-my-tertiary">{label}</div>
       {children}
     </div>
   )
@@ -49,7 +49,7 @@ function DateField({ value, onChange }: { value: string | null; onChange: (v: st
       value={value ?? ''}
       onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
       style={{ colorScheme: theme }}
-      className="h-7 w-full rounded-md border border-my-line bg-my-layer-1 px-2 text-[12px] text-my-secondary outline-none focus:border-my-line-accent"
+      className="h-7 w-full rounded-my-md border border-my-line bg-my-layer-1 px-2 text-my-sm text-my-secondary outline-none focus:border-my-line-accent"
     />
   )
 }
@@ -154,13 +154,13 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
 
   return (
     <div
-      className="my-peek-in flex max-h-[84vh] w-[880px] flex-col overflow-hidden rounded-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
+      className="my-peek-in flex max-h-[84vh] w-[880px] flex-col overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
       onMouseDown={(e) => e.stopPropagation()}
     >
       {/* 头部 */}
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-my-line px-4">
         <WorkspaceMark color={peekProject?.color ?? '#006399'} letter={peekProject?.icon ?? 'P'} size={16} />
-        <span className="shrink-0 text-[12px] text-my-tertiary">
+        <span className="shrink-0 text-my-sm text-my-tertiary">
           {ident}-{issue.sequenceId}
         </span>
         <span onKeyDown={(e) => e.stopPropagation()} className="flex shrink-0 items-center">
@@ -171,7 +171,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
               <button
                 type="button"
                 onClick={toggle}
-                className="flex h-6 items-center gap-1 rounded px-1.5 text-[12px] text-my-secondary hover:bg-my-layer-1-hover"
+                className="flex h-6 items-center gap-1 rounded px-1.5 text-my-sm text-my-secondary hover:bg-my-layer-1-hover"
               >
                 {state && <StateGroupIcon stateGroup={state.group} color={state.color} size={12} />}
                 {state?.name ?? '无状态'}
@@ -234,7 +234,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') e.currentTarget.blur()
               }}
-              className="w-full bg-transparent text-[15px] font-semibold text-my-primary outline-none placeholder:text-my-placeholder"
+              className="w-full bg-transparent text-my-lg font-semibold text-my-primary outline-none placeholder:text-my-placeholder"
               placeholder="工作项标题"
             />
             <textarea
@@ -242,7 +242,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
               onChange={(e) => setDesc(e.target.value)}
               onBlur={commitDesc}
               placeholder="添加描述…"
-              className="mt-2 min-h-[140px] w-full resize-none bg-transparent text-[13px] leading-5 text-my-secondary outline-none placeholder:text-my-placeholder"
+              className="mt-2 min-h-[140px] w-full resize-none bg-transparent text-my-md leading-5 text-my-secondary outline-none placeholder:text-my-placeholder"
             />
           </div>
           <div className="shrink-0 border-b border-my-line px-4 pb-1">
@@ -258,18 +258,18 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                       key={sub.id}
                       type="button"
                       onClick={() => openIssue(sub.id)}
-                      className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-my-layer-1"
+                      className="flex h-9 w-full items-center gap-2 rounded-my-md px-2 text-left hover:bg-my-layer-1"
                     >
                       {subState && <StateGroupIcon stateGroup={subState.group} color={subState.color} size={12} />}
-                      <span className="w-16 shrink-0 text-[11px] text-my-tertiary">
+                      <span className="w-16 shrink-0 text-my-xs text-my-tertiary">
                         {ident}-{sub.sequenceId}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-my-secondary">{sub.name}</span>
+                      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{sub.name}</span>
                       <PriorityIcon priority={sub.priority} size={12} />
                     </button>
                   )
                 })}
-                <div className="mt-1 flex items-center gap-2 rounded-md px-2 py-1 hover:bg-my-layer-1">
+                <div className="mt-1 flex items-center gap-2 rounded-my-md px-2 py-1 hover:bg-my-layer-1">
                   <Plus size={13} className="shrink-0 text-my-icon-tertiary" />
                   <input
                     value={subName}
@@ -278,7 +278,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                       if (e.key === 'Enter') addSubIssue()
                     }}
                     placeholder="添加子工作项"
-                    className="h-7 min-w-0 flex-1 bg-transparent text-[12.5px] text-my-primary outline-none placeholder:text-my-placeholder"
+                    className="h-7 min-w-0 flex-1 bg-transparent text-my-sm text-my-primary outline-none placeholder:text-my-placeholder"
                   />
                 </div>
               </div>
@@ -292,15 +292,15 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                       {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={20} /> : <Avatar name="？" color="#848890" size={20} />}
                       <div className="min-w-0">
                         <div className="flex items-baseline gap-1.5">
-                          <span className="text-[12.5px] font-medium text-my-primary">{actor?.name ?? '未知成员'}</span>
-                          <span className="text-[11px] text-my-tertiary">{c.at}</span>
+                          <span className="text-my-sm font-medium text-my-primary">{actor?.name ?? '未知成员'}</span>
+                          <span className="text-my-xs text-my-tertiary">{c.at}</span>
                         </div>
-                        <div className="whitespace-pre-wrap text-[12.5px] leading-5 text-my-secondary">{c.body}</div>
+                        <div className="whitespace-pre-wrap text-my-sm leading-5 text-my-secondary">{c.body}</div>
                       </div>
                     </div>
                   )
                 })}
-                <div className="mt-1 flex items-center gap-2 rounded-md px-2 py-1 hover:bg-my-layer-1">
+                <div className="mt-1 flex items-center gap-2 rounded-my-md px-2 py-1 hover:bg-my-layer-1">
                   <Avatar
                     name={memberOf(data.workspace.memberId)?.name ?? '我'}
                     color={memberOf(data.workspace.memberId)?.avatarColor ?? '#006399'}
@@ -313,7 +313,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                       if (e.key === 'Enter') addComment()
                     }}
                     placeholder="写下评论，回车发送"
-                    className="h-7 min-w-0 flex-1 bg-transparent text-[12.5px] text-my-primary outline-none placeholder:text-my-placeholder"
+                    className="h-7 min-w-0 flex-1 bg-transparent text-my-sm text-my-primary outline-none placeholder:text-my-placeholder"
                   />
                 </div>
               </div>
@@ -326,7 +326,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                   return (
                     <div key={a.id} className="flex items-start gap-2 py-1.5">
                       {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={16} /> : <Avatar name="？" color="#848890" size={16} />}
-                      <div className="min-w-0 text-[12.5px] leading-5 text-my-secondary">
+                      <div className="min-w-0 text-my-sm leading-5 text-my-secondary">
                         <span className="font-medium text-my-primary">{actor?.name ?? '未知成员'}</span> {a.verb}
                         {detailState && (
                           <span className="ml-1 inline-flex items-center gap-1">
@@ -335,7 +335,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                           </span>
                         )}
                         {!detailState && a.detail && <span className="ml-1">{a.detail}</span>}
-                        <span className="ml-1.5 text-[11px] text-my-tertiary">{a.at}</span>
+                        <span className="ml-1.5 text-my-xs text-my-tertiary">{a.at}</span>
                       </div>
                     </div>
                   )
@@ -462,12 +462,12 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                   ) : (
                     <>
                       <span
-                        className="h-2 w-2 shrink-0 rounded-[3px]"
+                        className="h-2 w-2 shrink-0 rounded-my-sm"
                         style={{ background: `var(--my-label-${issueLabels[0].color}-icon)` }}
                       />
                       <span className="min-w-0 flex-1 truncate text-left">{issueLabels[0].name}</span>
                       {issueLabels.length > 1 && (
-                        <span className="shrink-0 text-[11px] text-my-tertiary">+{issueLabels.length - 1}</span>
+                        <span className="shrink-0 text-my-xs text-my-tertiary">+{issueLabels.length - 1}</span>
                       )}
                     </>
                   )}
@@ -487,10 +487,10 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                     >
                       <Checkbox checked={issue.labelIds.includes(lb.id)} onChange={() => toggleLabel(lb.id)} />
                       <span
-                        className="h-2 w-2 shrink-0 rounded-[3px]"
+                        className="h-2 w-2 shrink-0 rounded-my-sm"
                         style={{ background: `var(--my-label-${lb.color}-icon)` }}
                       />
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-my-secondary">{lb.name}</span>
+                      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{lb.name}</span>
                     </button>
                   ))}
                   <div className="mt-1 border-t border-my-line pt-1">

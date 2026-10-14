@@ -431,7 +431,7 @@ export function KnowledgePage(): JSX.Element {
               <Loader2 size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-my-tertiary" />
             )}
           </div>
-          <div className="flex items-center gap-2 text-[10.5px] text-my-tertiary">
+          <div className="flex items-center gap-2 text-my-xs text-my-tertiary">
             <span>
               {lib === 'company'
                 ? `${companyList.length} 条${isSearch ? '命中' : '文档'}${companyMs ? ` · ${companyMs}ms` : ''}`
@@ -455,7 +455,7 @@ export function KnowledgePage(): JSX.Element {
               type="button"
               onClick={() => void openDoc(doc)}
               className={clsx(
-                'mb-1.5 w-full rounded-lg border px-3 py-2 text-left transition-colors',
+                'mb-1.5 w-full rounded-my-lg border px-3 py-2 text-left transition-colors',
                 active?.id === doc.id
                   ? 'border-my-line-accent-subtle bg-my-accent-subtle'
                   : 'border-transparent hover:border-my-line hover:bg-my-layer-1'
@@ -466,12 +466,12 @@ export function KnowledgePage(): JSX.Element {
                   {LIB_ICON[doc.library]} {LIB_LABEL[doc.library]}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-my-primary">{doc.title}</span>
-                {hit && <span className="shrink-0 font-mono text-[9.5px] text-my-tertiary">{hit.score.toFixed(1)}</span>}
+                {hit && <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{hit.score.toFixed(1)}</span>}
               </div>
               {hit ? (
-                <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-my-tertiary">{highlight(hit.snippet)}</div>
+                <div className="mt-1 line-clamp-2 text-my-xs leading-4 text-my-tertiary">{highlight(hit.snippet)}</div>
               ) : (
-                <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-my-tertiary">
+                <div className="mt-1 flex items-center gap-1.5 text-my-xs text-my-tertiary">
                   <span className="truncate font-mono">{doc.group}/{doc.name}</span>
                   <span className="ml-auto shrink-0">{relTime(doc.mtime)}</span>
                 </div>
@@ -484,7 +484,7 @@ export function KnowledgePage(): JSX.Element {
             <>
               {lib === 'all' && list.length > 0 && companyList.length > 0 && (
                 <div className="my-2 flex items-center gap-2 px-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-my-tertiary">公司库（WeKnora）</span>
+                  <span className="text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">公司库（WeKnora）</span>
                   <span className="h-px flex-1 bg-my-line" />
                 </div>
               )}
@@ -494,33 +494,33 @@ export function KnowledgePage(): JSX.Element {
                   type="button"
                   onClick={() => void openRemoteDoc({ knowledgeId: c.knowledgeId, title: c.title })}
                   className={clsx(
-                    'mb-1.5 w-full rounded-lg border px-3 py-2 text-left transition-colors',
+                    'mb-1.5 w-full rounded-my-lg border px-3 py-2 text-left transition-colors',
                     remoteDoc?.knowledgeId === c.knowledgeId
                       ? 'border-my-line-accent-subtle bg-my-accent-subtle'
                       : 'border-transparent hover:border-my-line hover:bg-my-layer-1'
                   )}
                 >
                   <div className="flex items-center gap-1.5">
-                    <span className="chip bg-my-accent-subtle text-[9.5px] text-my-accent-text">
+                    <span className="chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
                       <Cloud size={12} /> 公司
                     </span>
                     <span className="min-w-0 flex-1 truncate text-xs font-medium text-my-primary">{c.title}</span>
-                    {c.score !== undefined && <span className="shrink-0 font-mono text-[9.5px] text-my-tertiary">{c.score.toFixed(2)}</span>}
+                    {c.score !== undefined && <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{c.score.toFixed(2)}</span>}
                   </div>
                   {c.snippet ? (
-                    <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-my-tertiary">{c.snippet.replace(/\s+/g, ' ').slice(0, 200)}</div>
+                    <div className="mt-1 line-clamp-2 text-my-xs leading-4 text-my-tertiary">{c.snippet.replace(/\s+/g, ' ').slice(0, 200)}</div>
                   ) : (
-                    <div className="mt-1 truncate font-mono text-[10.5px] text-my-tertiary">{c.sub}</div>
+                    <div className="mt-1 truncate font-mono text-my-xs text-my-tertiary">{c.sub}</div>
                   )}
                 </button>
               ))}
               {companyLoading && (
-                <div className="flex items-center gap-2 px-2 py-3 text-[11px] text-my-tertiary">
+                <div className="flex items-center gap-2 px-2 py-3 text-my-xs text-my-tertiary">
                   <Loader2 size={12} className="animate-spin" /> 正在检索公司库（WeKnora）…
                 </div>
               )}
               {companyError && (
-                <div className="mx-1 mb-1.5 rounded-lg border border-my-line-warning bg-my-warning-subtle px-2.5 py-2 text-[10.5px] leading-4 text-my-warning-text">
+                <div className="mx-1 mb-1.5 rounded-my-lg border border-my-line-warning bg-my-warning-subtle px-2.5 py-2 text-my-xs leading-4 text-my-warning-text">
                   公司库不可用：{companyError}
                   {lib === 'all' && '（本地结果不受影响）'}
                 </div>
@@ -558,7 +558,7 @@ export function KnowledgePage(): JSX.Element {
                 value={noteDraft.name}
                 onChange={(e) => setNoteDraft({ ...noteDraft, name: e.target.value })}
                 placeholder="笔记名（支持中英文/数字/空格）"
-                className="min-w-0 max-w-[260px] flex-1 rounded-md border border-my-line bg-my-layer-2 px-2 py-1 font-mono text-xs text-my-primary outline-none focus:border-my-line-accent"
+                className="min-w-0 max-w-[260px] flex-1 rounded-my-md border border-my-line bg-my-layer-2 px-2 py-1 font-mono text-xs text-my-primary outline-none focus:border-my-line-accent"
                 disabled={!noteDraft.isNew}
               />
               <div className="ml-auto flex items-center gap-1.5">
@@ -575,7 +575,7 @@ export function KnowledgePage(): JSX.Element {
                 value={noteDraft.content}
                 onChange={(e) => setNoteDraft({ ...noteDraft, content: e.target.value })}
                 spellCheck={false}
-                className="h-full w-full resize-none rounded-lg border border-my-line bg-my-surface-1 p-4 font-mono text-[12.5px] leading-6 text-my-primary outline-none focus:border-my-line-accent"
+                className="h-full w-full resize-none rounded-my-lg border border-my-line bg-my-surface-1 p-4 font-mono text-my-sm leading-6 text-my-primary outline-none focus:border-my-line-accent"
                 placeholder="# 标题&#10;&#10;用 Markdown 记录知识，保存后立即进入五库检索与 AI 问答…"
               />
             </div>
@@ -583,7 +583,7 @@ export function KnowledgePage(): JSX.Element {
         ) : remoteDoc ? (
           <>
             <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-2.5">
-              <span className="chip bg-my-accent-subtle text-[9.5px] text-my-accent-text">
+              <span className="chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
                 <Cloud size={12} /> 公司库
               </span>
               <span className="min-w-0 truncate text-xs font-semibold text-my-primary">{remoteDoc.title}</span>
@@ -595,20 +595,20 @@ export function KnowledgePage(): JSX.Element {
             </div>
             <div className="my-scrollbar min-h-0 flex-1 px-5 py-4">
               <div className="mx-auto max-w-[760px]">
-                {remoteDoc.fileName && <div className="mb-3 truncate font-mono text-[10.5px] text-my-tertiary">{remoteDoc.fileName}</div>}
+                {remoteDoc.fileName && <div className="mb-3 truncate font-mono text-my-xs text-my-tertiary">{remoteDoc.fileName}</div>}
                 {remoteDoc.loading && (
                   <div className="flex items-center gap-2 py-8 text-xs text-my-tertiary">
                     <Loader2 size={14} className="animate-spin" /> 正在从公司库读取正文…
                   </div>
                 )}
                 {remoteDoc.error && (
-                  <div className="rounded-lg border border-my-line-danger bg-my-danger-subtle p-3 text-xs text-my-danger-text">{remoteDoc.error}</div>
+                  <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-xs text-my-danger-text">{remoteDoc.error}</div>
                 )}
                 {remoteDoc.content !== null && (
                   remoteDoc.fileName.endsWith('.md') || remoteDoc.fileName.endsWith('.markdown') ? (
                     <MarkdownView content={remoteDoc.content} />
                   ) : (
-                    <pre className="whitespace-pre-wrap break-words rounded-lg border border-my-line bg-my-surface-1 p-3 font-mono text-[12px] leading-5 text-my-primary">{remoteDoc.content}</pre>
+                    <pre className="whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{remoteDoc.content}</pre>
                   )
                 )}
               </div>
@@ -621,7 +621,7 @@ export function KnowledgePage(): JSX.Element {
                 {LIB_ICON[active.library]} {LIB_LABEL[active.library]}
               </span>
               <span className="min-w-0 truncate text-xs font-semibold text-my-primary">{active.title}</span>
-              <span className="shrink-0 font-mono text-[10px] text-my-tertiary">{fmtBytes(active.size)} · {relTime(active.mtime)}</span>
+              <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{fmtBytes(active.size)} · {relTime(active.mtime)}</span>
               <div className="ml-auto flex items-center gap-1.5">
                 {!active.synthetic && active.library === 'spec' && (
                   <Button variant="ghost" size="sm" onClick={() => setPage('spec')}>去规范页编辑</Button>
@@ -652,10 +652,10 @@ export function KnowledgePage(): JSX.Element {
             </div>
             <div className="my-scrollbar min-h-0 flex-1 px-5 py-4">
               <div className="mx-auto max-w-[760px]">
-                <div className="mb-3 truncate font-mono text-[10.5px] text-my-tertiary" title={active.path}>{active.path}</div>
-                {docError && <div className="rounded-lg border border-my-line-danger bg-my-danger-subtle p-3 text-xs text-my-danger-text">{docError}</div>}
+                <div className="mb-3 truncate font-mono text-my-xs text-my-tertiary" title={active.path}>{active.path}</div>
+                {docError && <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-xs text-my-danger-text">{docError}</div>}
                 {active.synthetic && (
-                  <div className="rounded-lg border border-my-line bg-my-layer-1 p-4 text-xs leading-6 text-my-primary">
+                  <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-4 text-xs leading-6 text-my-primary">
                     这是任务提炼的合成文档（task.json 的描述 / 备注 / 子任务）。原始 JSON：
                     <Button
                       variant="ghost"
@@ -670,7 +670,7 @@ export function KnowledgePage(): JSX.Element {
                 {docContent !== null && (active.path.endsWith('.md') || active.path.endsWith('.markdown') ? (
                   <MarkdownView content={docContent} />
                 ) : (
-                  <pre className="whitespace-pre-wrap break-words rounded-lg border border-my-line bg-my-surface-1 p-3 font-mono text-[12px] leading-5 text-my-primary">{docContent}</pre>
+                  <pre className="whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{docContent}</pre>
                 ))}
               </div>
             </div>
@@ -705,7 +705,7 @@ export function KnowledgePage(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => setShowHistory((v) => !v)}
-                  className="flex w-full items-center gap-1.5 text-[10.5px] text-my-tertiary hover:text-my-secondary"
+                  className="flex w-full items-center gap-1.5 text-my-xs text-my-tertiary hover:text-my-secondary"
                 >
                   <History size={11} /> 问答历史（{qaHistory.length}）
                   <span className="flex-1" />
@@ -736,7 +736,7 @@ export function KnowledgePage(): JSX.Element {
                           setAiSources([])
                           setAiRemoteSources([])
                         }}
-                        className="block w-full truncate rounded-md border border-my-line bg-my-layer-2 px-2.5 py-1.5 text-left text-[11px] text-my-secondary hover:border-my-line-strong hover:text-my-primary"
+                        className="block w-full truncate rounded-my-md border border-my-line bg-my-layer-2 px-2.5 py-1.5 text-left text-my-xs text-my-secondary hover:border-my-line-strong hover:text-my-primary"
                         title={h.question}
                       >
                         <span className="text-my-placeholder">{relTime(h.createdAt)}</span> · {h.question}
@@ -748,12 +748,12 @@ export function KnowledgePage(): JSX.Element {
             )}
             {aiAnswer && (
               <div className="mx-auto mb-2.5 max-w-3xl">
-                <div className="rounded-lg border border-my-line-accent-subtle bg-my-accent-subtle p-3">
+                <div className="rounded-my-lg border border-my-line-accent-subtle bg-my-accent-subtle p-3">
                   <MarkdownView content={aiAnswer} />
                   {aiSources.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1 border-t border-my-line pt-2">
                       {aiSources.map((s) => (
-                        <button key={s.id} type="button" onClick={() => void openDoc(s)} className="chip border border-my-line bg-my-layer-2 text-[9.5px] text-my-tertiary hover:text-my-primary">
+                        <button key={s.id} type="button" onClick={() => void openDoc(s)} className="chip border border-my-line bg-my-layer-2 text-my-2xs text-my-tertiary hover:text-my-primary">
                           {s.title}
                         </button>
                       ))}
@@ -766,7 +766,7 @@ export function KnowledgePage(): JSX.Element {
                           key={`${h.knowledgeId}-${i}`}
                           type="button"
                           onClick={() => void openRemoteDoc({ knowledgeId: h.knowledgeId, title: h.title })}
-                          className="chip border border-my-line-accent-subtle bg-my-surface-1 text-[9.5px] text-my-accent-text hover:bg-my-accent-subtle"
+                          className="chip border border-my-line-accent-subtle bg-my-surface-1 text-my-2xs text-my-accent-text hover:bg-my-accent-subtle"
                         >
                           <Cloud size={10} /> {h.title || h.filename}
                         </button>

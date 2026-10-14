@@ -312,15 +312,15 @@ export function SettingsPage(): JSX.Element {
 
   return (
     <div className="my-fade">
-      <div className="mx-auto max-w-2xl space-y-4 px-6 py-6">
+      <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
         {/* Web 看板 HTTP 服务 */}
         <AcpAgentsSection />
 
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <Server size={13} /> Web 看板服务
           </div>
-          <p className="mb-3 text-[11px] leading-5 text-my-tertiary">
+          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
             启动本地 HTTP 服务后，可在浏览器打开只读任务看板（每 30 秒自动刷新），
             也可开放给局域网内其他成员查看。
           </p>
@@ -355,7 +355,7 @@ export function SettingsPage(): JSX.Element {
           {mcpInfo?.running && (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 pt-1">
-                <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-my-tertiary">
+                <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
                   <input
                     type="checkbox"
                     checked={settings.httpApi.lanAccess}
@@ -368,7 +368,7 @@ export function SettingsPage(): JSX.Element {
                   />
                   允许局域网访问（0.0.0.0 监听）
                 </label>
-                <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-[11px] text-my-tertiary">
+                <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
                   <input
                     type="checkbox"
                     checked={settings.httpApi.webBoard}
@@ -383,11 +383,11 @@ export function SettingsPage(): JSX.Element {
         </section>
 
         {/* TPAP 本地接入协议 */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <KeyRound size={13} /> 本地接入协议（TPAP）
           </div>
-          <p className="mb-3 text-[11px] leading-5 text-my-tertiary">
+          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
             供外部 AI 工具经 <code className="font-mono">127.0.0.1</code> 读取任务状态、检索知识与调用网关工具。
             恒定仅绑定本机环回，凭 Bearer token 鉴权；变更类操作需显式 confirm，支持幂等重试。
             默认关闭。协议详见 <code className="font-mono">docs/access-protocol.md</code>。
@@ -412,15 +412,15 @@ export function SettingsPage(): JSX.Element {
           {accessInfo?.running && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="shrink-0 text-[11px] text-my-tertiary">端点</span>
-                <code className="truncate rounded bg-my-layer-1 px-2 py-0.5 font-mono text-[11px] text-my-secondary">{accessInfo.endpoint}</code>
+                <span className="shrink-0 text-my-xs text-my-tertiary">端点</span>
+                <code className="truncate rounded bg-my-layer-1 px-2 py-0.5 font-mono text-my-xs text-my-secondary">{accessInfo.endpoint}</code>
                 <Button variant="ghost" size="sm" className="shrink-0" onClick={() => void api.copyToClipboard(`${accessInfo.endpoint}（Authorization: Bearer ${accessInfo.token}）`)}>
                   复制
                 </Button>
               </div>
               <div className="flex items-center gap-2">
-                <span className="shrink-0 text-[11px] text-my-tertiary">Token</span>
-                <code className="truncate rounded bg-my-layer-1 px-2 py-0.5 font-mono text-[11px] text-my-secondary">{accessInfo.token}</code>
+                <span className="shrink-0 text-my-xs text-my-tertiary">Token</span>
+                <code className="truncate rounded bg-my-layer-1 px-2 py-0.5 font-mono text-my-xs text-my-secondary">{accessInfo.token}</code>
                 <Button variant="ghost" size="sm" className="shrink-0" onClick={() => void api.copyToClipboard(accessInfo.token)}>
                   复制
                 </Button>
@@ -433,11 +433,11 @@ export function SettingsPage(): JSX.Element {
         </section>
 
         {/* 网络代理 */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <Cloud size={13} /> 网络代理
           </div>
-          <p className="mb-3 text-[11px] leading-5 text-my-tertiary">
+          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
             统一覆盖应用内 AI（对话/模型目录）与公司库（WeKnora）的出网请求。
             支持 <code className="font-mono">http://</code>、<code className="font-mono">socks5://</code> 形式，
             例如 <code className="font-mono">http://127.0.0.1:7890</code> 或 <code className="font-mono">socks5://127.0.0.1:1080</code>。
@@ -468,11 +468,11 @@ export function SettingsPage(): JSX.Element {
         </section>
 
         {/* 桌面 */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <MonitorSmartphone size={13} /> 桌面集成
           </div>
-          <p className="mb-3 text-[11px] leading-4 text-my-tertiary">
+          <p className="mb-3 text-my-xs leading-4 text-my-tertiary">
             关闭窗口会最小化到托盘（托盘菜单可退出）。
           </p>
           <div className="space-y-2.5">
@@ -519,7 +519,7 @@ export function SettingsPage(): JSX.Element {
                 className="my-input !w-36 font-mono"
                 placeholder="Alt+Shift+T"
               />
-              <span className="text-[10.5px] text-my-placeholder">显示 / 隐藏面板，保存后重启生效</span>
+              <span className="text-my-xs text-my-placeholder">显示 / 隐藏面板，保存后重启生效</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -531,7 +531,7 @@ export function SettingsPage(): JSX.Element {
                 className="my-input !w-44 font-mono"
                 placeholder="留空用 CLI 默认"
               />
-              <span className="text-[10.5px] text-my-placeholder">只读审阅等派单用的 codex 模型；报 400 not supported 时填账号可用的模型</span>
+              <span className="text-my-xs text-my-placeholder">只读审阅等派单用的 codex 模型；报 400 not supported 时填账号可用的模型</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-my-secondary">速记窗快捷键</span>
@@ -544,17 +544,17 @@ export function SettingsPage(): JSX.Element {
                 className="my-input !w-36 font-mono"
                 placeholder="Alt+N"
               />
-              <span className="text-[10.5px] text-my-placeholder">随时呼出 Markdown 速记窗记待办，保存后重启生效</span>
+              <span className="text-my-xs text-my-placeholder">随时呼出 Markdown 速记窗记待办，保存后重启生效</span>
             </div>
           </div>
         </section>
 
         {/* AI bridge */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <Plug size={13} /> AI 工具桥接（codex / zcode / claude）
           </div>
-          <p className="mb-3 text-[11px] leading-5 text-my-tertiary">
+          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
             ① 安装 <code className="rounded bg-my-layer-3 px-1 font-mono">tpanel</code>；
             ② 将上方对应配置复制到 Codex / ZCode / Claude Code；
             ③ 把任务事件 hooks 写入 <code className="rounded bg-my-layer-3 px-1 font-mono">.trellis/config.yaml</code>；
@@ -568,20 +568,20 @@ export function SettingsPage(): JSX.Element {
               <Plug size={12} /> 写入 Trellis 任务 hooks
             </Button>
           </div>
-          {hookMsg && <div className="mt-2 text-[11px] text-my-tertiary">{hookMsg}</div>}
+          {hookMsg && <div className="mt-2 text-my-xs text-my-tertiary">{hookMsg}</div>}
         </section>
 
         {/* Jira */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <Link2 size={13} /> Jira 连接
           </div>
-          <p className="mb-3 text-[11px] leading-5 text-my-tertiary">
+          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
             Jira Server / Data Center（REST v2）。密码经系统凭据加密（DPAPI）存储。
           </p>
           <div className="grid grid-cols-2 gap-2.5">
             <label className="col-span-2 space-y-1">
-              <span className="text-[11px] text-my-tertiary">服务器地址</span>
+              <span className="text-my-xs text-my-tertiary">服务器地址</span>
               <input
                 value={jira.baseUrl}
                 onChange={(e) => setJira({ ...jira, baseUrl: e.target.value })}
@@ -590,11 +590,11 @@ export function SettingsPage(): JSX.Element {
               />
             </label>
             <label className="space-y-1">
-              <span className="text-[11px] text-my-tertiary">用户名</span>
+              <span className="text-my-xs text-my-tertiary">用户名</span>
               <input value={jira.user} onChange={(e) => setJira({ ...jira, user: e.target.value })} className="my-input" />
             </label>
             <label className="space-y-1">
-              <span className="text-[11px] text-my-tertiary">密码 / Token {settings.jira.passwordEncrypted && <span className="text-my-success-text">（已加密保存）</span>}</span>
+              <span className="text-my-xs text-my-tertiary">密码 / Token {settings.jira.passwordEncrypted && <span className="text-my-success-text">（已加密保存）</span>}</span>
               <input
                 type="password"
                 value={jira.password}
@@ -604,7 +604,7 @@ export function SettingsPage(): JSX.Element {
               />
             </label>
             <label className="col-span-2 space-y-1">
-              <span className="text-[11px] text-my-tertiary">默认 JQL（留空 = assignee = currentUser()）</span>
+              <span className="text-my-xs text-my-tertiary">默认 JQL（留空 = assignee = currentUser()）</span>
               <input
                 value={jira.jql}
                 onChange={(e) => setJira({ ...jira, jql: e.target.value })}
@@ -620,23 +620,23 @@ export function SettingsPage(): JSX.Element {
             <Button variant="primary" onClick={() => void saveJira()}>保存配置</Button>
             {/* R0：Jira 后台自动回写任务状态已停用（生命周期收归外部工作流），开关一并移除 */}
             {jiraOk && (
-              <span className="flex items-center gap-1 text-[11px] text-my-success-text">
+              <span className="flex items-center gap-1 text-my-xs text-my-success-text">
                 <CheckCircle2 size={12} /> {jiraOk}
               </span>
             )}
           </div>
 
           <div className="mt-4 border-t border-my-line pt-3">
-            <div className="mb-2 text-[11px] font-semibold text-my-secondary">状态映射（Jira 状态名 → Trellis 状态）</div>
+            <div className="mb-2 text-my-xs font-semibold text-my-secondary">状态映射（Jira 状态名 → Trellis 状态）</div>
             <JiraStatusMapEditor />
           </div>
         </section>
 
         {/* GitLab connector */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <GitMerge size={13} /> GitLab 集成
-            <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-[11px] font-normal text-my-tertiary">
+            <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-my-xs font-normal text-my-tertiary">
               <input
                 type="checkbox"
                 checked={gitlab.enabled}
@@ -646,12 +646,12 @@ export function SettingsPage(): JSX.Element {
               启用（任务卡显示 MR / 构建状态）
             </label>
           </div>
-          <p className="mb-3 text-[11px] leading-5 text-my-tertiary">
+          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
             自建 GitLab（OAuth 密码模式自动换 token）。关联分支的任务会显示 MR 与流水线状态，可一键创建 MR。密码经系统凭据加密（DPAPI）存储。
           </p>
           <div className="grid grid-cols-2 gap-2.5">
             <label className="col-span-2 space-y-1">
-              <span className="text-[11px] text-my-tertiary">GitLab 地址</span>
+              <span className="text-my-xs text-my-tertiary">GitLab 地址</span>
               <input
                 value={gitlab.baseUrl}
                 onChange={(e) => setGitlab({ ...gitlab, baseUrl: e.target.value })}
@@ -660,7 +660,7 @@ export function SettingsPage(): JSX.Element {
               />
             </label>
             <label className="space-y-1">
-              <span className="text-[11px] text-my-tertiary">账号</span>
+              <span className="text-my-xs text-my-tertiary">账号</span>
               <input
                 value={gitlab.user}
                 onChange={(e) => setGitlab({ ...gitlab, user: e.target.value })}
@@ -669,7 +669,7 @@ export function SettingsPage(): JSX.Element {
               />
             </label>
             <label className="space-y-1">
-              <span className="text-[11px] text-my-tertiary">密码 {settings.gitlab.passwordEncrypted && <span className="text-my-success-text">（已加密保存）</span>}</span>
+              <span className="text-my-xs text-my-tertiary">密码 {settings.gitlab.passwordEncrypted && <span className="text-my-success-text">（已加密保存）</span>}</span>
               <input
                 type="password"
                 value={gitlab.password}
@@ -679,7 +679,7 @@ export function SettingsPage(): JSX.Element {
               />
             </label>
             <label className="col-span-2 space-y-1">
-              <span className="text-[11px] text-my-tertiary">项目路径（含命名空间，任务分支将在此项目下匹配 MR / 流水线）</span>
+              <span className="text-my-xs text-my-tertiary">项目路径（含命名空间，任务分支将在此项目下匹配 MR / 流水线）</span>
               <input
                 value={gitlab.project}
                 onChange={(e) => setGitlab({ ...gitlab, project: e.target.value })}
@@ -694,7 +694,7 @@ export function SettingsPage(): JSX.Element {
             </Button>
             <Button variant="primary" onClick={() => void saveGitlab()}>保存配置</Button>
             {gitlabOk && (
-              <span className="flex items-center gap-1 text-[11px] text-my-success-text">
+              <span className="flex items-center gap-1 text-my-xs text-my-success-text">
                 <CheckCircle2 size={12} /> {gitlabOk}
               </span>
             )}
@@ -702,10 +702,10 @@ export function SettingsPage(): JSX.Element {
         </section>
 
         {/* WeKnora 公司库联动 */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <Cloud size={13} /> WeKnora 公司库联动
-            <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-[11px] font-normal text-my-tertiary">
+            <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-my-xs font-normal text-my-tertiary">
               <input
                 type="checkbox"
                 checked={wk.enabled}
@@ -715,13 +715,13 @@ export function SettingsPage(): JSX.Element {
               启用（知识库联邦检索 · 规划喂料 · 归档沉淀 · spec 同步）
             </label>
           </div>
-          <p className="mb-3 text-[11px] leading-5 text-my-tertiary">
+          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
             本地四库保持毫秒级不动，WeKnora 作为公司级来源异步追加：跨项目规范、历史归档、接口文档。
             API Key 经系统凭据加密（DPAPI）存储；建议在 WeKnora 侧使用限定知识库的 scoped API Key。
           </p>
           <div className="grid grid-cols-2 gap-2.5">
             <label className="col-span-2 space-y-1">
-              <span className="text-[11px] text-my-tertiary">服务器地址（带不带 /api/v1 均可）</span>
+              <span className="text-my-xs text-my-tertiary">服务器地址（带不带 /api/v1 均可）</span>
               <input
                 value={wk.baseUrl}
                 onChange={(e) => setWk({ ...wk, baseUrl: e.target.value })}
@@ -730,7 +730,7 @@ export function SettingsPage(): JSX.Element {
               />
             </label>
             <label className="col-span-2 space-y-1">
-              <span className="text-[11px] text-my-tertiary">
+              <span className="text-my-xs text-my-tertiary">
                 API Key（X-API-Key）{settings.weknora?.apiKeyEncrypted && <span className="text-my-success-text">（已加密保存）</span>}
               </span>
               <input
@@ -748,7 +748,7 @@ export function SettingsPage(): JSX.Element {
             </Button>
             <Button variant="primary" onClick={() => void saveWeknora()}>保存配置</Button>
             {wkOk && (
-              <span className="flex items-center gap-1 text-[11px] text-my-success-text">
+              <span className="flex items-center gap-1 text-my-xs text-my-success-text">
                 <CheckCircle2 size={12} /> {wkOk}
               </span>
             )}
@@ -756,11 +756,11 @@ export function SettingsPage(): JSX.Element {
 
           {/* 库映射 */}
           <div className="mt-4 space-y-2.5 border-t border-my-line pt-3">
-            <div className="text-[11px] font-semibold text-my-secondary">
+            <div className="text-my-xs font-semibold text-my-secondary">
               知识库映射{wkKbs ? `（已加载 ${wkKbs.length} 个）` : '（测试连接后可选择，也可手填 ID）'}
             </div>
             <div className="space-y-1">
-              <div className="text-[10.5px] text-my-tertiary">联邦检索 / AI 规划范围（可多选）</div>
+              <div className="text-my-xs text-my-tertiary">联邦检索 / AI 规划范围（可多选）</div>
               <div className="flex flex-wrap gap-1.5">
                 {(wkKbs ?? []).map((kb) => (
                   <button
@@ -786,7 +786,7 @@ export function SettingsPage(): JSX.Element {
                     </button>
                   ))}
                 {(wkKbs ?? []).length === 0 && wk.searchKbIds.length === 0 && (
-                  <span className="text-[10.5px] text-my-placeholder">未选择——公司库检索与规划补充将不可用</span>
+                  <span className="text-my-xs text-my-placeholder">未选择——公司库检索与规划补充将不可用</span>
                 )}
               </div>
             </div>
@@ -794,7 +794,7 @@ export function SettingsPage(): JSX.Element {
               {wkKbs && wkKbs.length > 0 ? (
                 <>
                   <label className="space-y-1">
-                    <span className="text-[10.5px] text-my-tertiary">spec 同步目标库（L5）</span>
+                    <span className="text-my-xs text-my-tertiary">spec 同步目标库（L5）</span>
                     <select value={wk.specKbId} onChange={(e) => setWk({ ...wk, specKbId: e.target.value })} className="my-input">
                       <option value="">（不同步）</option>
                       {wkKbs.map((kb) => (
@@ -803,7 +803,7 @@ export function SettingsPage(): JSX.Element {
                     </select>
                   </label>
                   <label className="space-y-1">
-                    <span className="text-[10.5px] text-my-tertiary">归档沉淀目标库（L4）</span>
+                    <span className="text-my-xs text-my-tertiary">归档沉淀目标库（L4）</span>
                     <select value={wk.archiveKbId} onChange={(e) => setWk({ ...wk, archiveKbId: e.target.value })} className="my-input">
                       <option value="">（不沉淀）</option>
                       {wkKbs.map((kb) => (
@@ -815,18 +815,18 @@ export function SettingsPage(): JSX.Element {
               ) : (
                 <>
                   <label className="space-y-1">
-                    <span className="text-[10.5px] text-my-tertiary">spec 同步目标库 ID</span>
+                    <span className="text-my-xs text-my-tertiary">spec 同步目标库 ID</span>
                     <input value={wk.specKbId} onChange={(e) => setWk({ ...wk, specKbId: e.target.value })} placeholder="kb-…" className="my-input font-mono" />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-[10.5px] text-my-tertiary">归档沉淀目标库 ID</span>
+                    <span className="text-my-xs text-my-tertiary">归档沉淀目标库 ID</span>
                     <input value={wk.archiveKbId} onChange={(e) => setWk({ ...wk, archiveKbId: e.target.value })} placeholder="kb-…" className="my-input font-mono" />
                   </label>
                 </>
               )}
             </div>
             <div className="flex flex-col gap-1.5 pt-1">
-              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-my-tertiary">
+              <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
                 <input
                   type="checkbox"
                   checked={wk.autoPushArchive}
@@ -835,7 +835,7 @@ export function SettingsPage(): JSX.Element {
                 />
                 归档任务时自动沉淀到公司库（PRD + 交付信息，channel = trellis-panel）
               </label>
-              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-my-tertiary">
+              <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
                 <input
                   type="checkbox"
                   checked={wk.syncSpec}
@@ -849,14 +849,14 @@ export function SettingsPage(): JSX.Element {
 
           {/* MCP 端点（L3A：注册 WeKnora 内置 MCP Server 给 AI 编码工具） */}
           <div className="mt-4 space-y-2.5 border-t border-my-line pt-3">
-            <div className="text-[11px] font-semibold text-my-secondary">MCP 端点（AI 编码工具直连公司库）</div>
-            <p className="text-[10.5px] leading-4 text-my-placeholder">
+            <div className="text-my-xs font-semibold text-my-secondary">MCP 端点（AI 编码工具直连公司库）</div>
+            <p className="text-my-xs leading-4 text-my-placeholder">
               WeKnora「设置 → 发布与集成 → MCP Server」创建端点后填入。远程注册条目放在各工具的用户级配置，
               不写入随仓库共享的 .mcp.json（避免端点令牌进 git）。
             </p>
             <div className="grid grid-cols-2 gap-2.5">
               <label className="col-span-2 space-y-1">
-                <span className="text-[11px] text-my-tertiary">端点 URL（Streamable HTTP）</span>
+                <span className="text-my-xs text-my-tertiary">端点 URL（Streamable HTTP）</span>
                 <input
                   value={wk.mcpUrl}
                   onChange={(e) => setWk({ ...wk, mcpUrl: e.target.value })}
@@ -865,7 +865,7 @@ export function SettingsPage(): JSX.Element {
                 />
               </label>
               <label className="col-span-2 space-y-1">
-                <span className="text-[11px] text-my-tertiary">
+                <span className="text-my-xs text-my-tertiary">
                   端点令牌{settings.weknora?.mcpTokenEncrypted && <span className="text-my-success-text">（已加密保存）</span>}
                 </span>
                 <input
@@ -881,17 +881,17 @@ export function SettingsPage(): JSX.Element {
               <Button variant="outline" onClick={() => void testWeknoraMcp()} disabled={wkMcpTesting || !wk.mcpUrl}>
                 {wkMcpTesting ? '握手中…' : '测试端点'}
               </Button>
-              {wkMcpOk && <span className="flex items-center gap-1 text-[11px] text-my-success-text"><CheckCircle2 size={12} /> {wkMcpOk}</span>}
+              {wkMcpOk && <span className="flex items-center gap-1 text-my-xs text-my-success-text"><CheckCircle2 size={12} /> {wkMcpOk}</span>}
               <span className="h-4 w-px bg-my-line" />
-              <Button variant="ghost" className="text-[10.5px]" onClick={() => copySnip(mcpSnippets().claude, 'Claude .mcp.json 条目已复制')}>复制 Claude JSON</Button>
-              <Button variant="ghost" className="text-[10.5px]" onClick={() => copySnip(mcpSnippets().codex, 'Codex TOML 已复制')}>复制 Codex TOML</Button>
-              <Button variant="ghost" className="text-[10.5px]" onClick={() => copySnip(mcpSnippets().zcode, 'ZCode 命令已复制')}>复制 ZCode 命令</Button>
+              <Button variant="ghost" className="text-my-xs" onClick={() => copySnip(mcpSnippets().claude, 'Claude .mcp.json 条目已复制')}>复制 Claude JSON</Button>
+              <Button variant="ghost" className="text-my-xs" onClick={() => copySnip(mcpSnippets().codex, 'Codex TOML 已复制')}>复制 Codex TOML</Button>
+              <Button variant="ghost" className="text-my-xs" onClick={() => copySnip(mcpSnippets().zcode, 'ZCode 命令已复制')}>复制 ZCode 命令</Button>
             </div>
           </div>
         </section>
 
         {/* theme + cli */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-3 text-xs font-semibold text-my-secondary">外观与 CLI</div>
           <div className="mb-3 flex gap-2">
             {(
@@ -905,7 +905,7 @@ export function SettingsPage(): JSX.Element {
                 type="button"
                 onClick={() => void saveSettings({ theme: v })}
                 className={clsx(
-                  'flex items-center gap-2 rounded-lg border px-4 py-2 text-xs transition-colors',
+                  'flex items-center gap-2 rounded-my-lg border px-4 py-2 text-xs transition-colors',
                   settings.theme === v
                     ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
                     : 'border-my-line-strong text-my-secondary hover:border-my-line-strong-1'
@@ -927,15 +927,15 @@ export function SettingsPage(): JSX.Element {
         </section>
 
         {/* recents */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
             <FolderOpen size={13} /> 最近项目
           </div>
-          {settings.recentProjects.length === 0 && <div className="text-[11px] text-my-tertiary">暂无记录</div>}
+          {settings.recentProjects.length === 0 && <div className="text-my-xs text-my-tertiary">暂无记录</div>}
           <div className="space-y-1">
             {settings.recentProjects.map((r) => (
-              <div key={r} className="group flex items-center gap-2 rounded-lg border border-my-line bg-my-layer-1 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-my-secondary">{r}</span>
+              <div key={r} className="group flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-2">
+                <span className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-secondary">{r}</span>
                 <button
                   type="button"
                   onClick={() => void saveSettings({ recentProjects: settings.recentProjects.filter((x) => x !== r) })}
@@ -949,12 +949,12 @@ export function SettingsPage(): JSX.Element {
         </section>
 
         {/* AI 模型（baseUrl 自定义） */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-my-secondary">
             <Sparkles size={13} className="text-my-icon-accent" /> 应用内 AI（OpenAI 兼容 · baseUrl 自定义模型）
           </div>
           <div className="space-y-2.5">
-            <label className="flex items-center gap-2 text-[11.5px] text-my-secondary">
+            <label className="flex items-center gap-2 text-my-sm text-my-secondary">
               <input
                 type="checkbox"
                 className="accent-p-accent"
@@ -965,25 +965,25 @@ export function SettingsPage(): JSX.Element {
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="mb-1 block text-[11px] text-my-tertiary">Base URL —— 填到 /v1 即可；# 结尾 = 原样使用</span>
+                <span className="mb-1 block text-my-xs text-my-tertiary">Base URL —— 填到 /v1 即可；# 结尾 = 原样使用</span>
                 <input
                   value={ai.baseUrl}
                   onChange={(e) => setAi((c) => ({ ...c, baseUrl: e.target.value }))}
                   placeholder="http://localhost:11434/v1"
-                  className="my-input font-mono text-[11.5px]"
+                  className="my-input font-mono text-my-sm"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-my-tertiary">模型名</span>
+                <span className="mb-1 block text-my-xs text-my-tertiary">模型名</span>
                 <input
                   value={ai.model}
                   onChange={(e) => setAi((c) => ({ ...c, model: e.target.value }))}
                   placeholder="qwen3-coder / gpt-4o-mini / deepseek-chat…"
-                  className="my-input font-mono text-[11.5px]"
+                  className="my-input font-mono text-my-sm"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-my-tertiary">
+                <span className="mb-1 block text-my-xs text-my-tertiary">
                   API Key {settings.ai.apiKeyEncrypted && <span className="text-my-success-text">（已加密保存）</span>}
                 </span>
                 <input
@@ -991,11 +991,11 @@ export function SettingsPage(): JSX.Element {
                   value={ai.apiKey}
                   onChange={(e) => setAi((c) => ({ ...c, apiKey: e.target.value }))}
                   placeholder="本地服务可留空"
-                  className="my-input font-mono text-[11.5px]"
+                  className="my-input font-mono text-my-sm"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-my-tertiary">Temperature（{ai.temperature}）</span>
+                <span className="mb-1 block text-my-xs text-my-tertiary">Temperature（{ai.temperature}）</span>
                 <input
                   type="range"
                   min={0}
@@ -1012,21 +1012,21 @@ export function SettingsPage(): JSX.Element {
               <Button variant="outline" onClick={() => void testAi()} disabled={aiTesting || !ai.baseUrl || !ai.model}>
                 {aiTesting ? '测试中…' : '测试连接'}
               </Button>
-              {aiOk && <span className="text-[11px] text-my-success-text">{aiOk}</span>}
+              {aiOk && <span className="text-my-xs text-my-success-text">{aiOk}</span>}
             </div>
-            <div className="text-[10.5px] text-my-placeholder">
+            <div className="text-my-xs text-my-placeholder">
               兼容 OpenAI 协议端点（Ollama / LM Studio / 云端）。密钥经 DPAPI 加密存储。
             </div>
           </div>
         </section>
 
         {/* 知识库 MCP（AI 记忆大脑） */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-my-secondary">
             <BrainCircuit size={13} className="text-my-icon-accent" /> 知识库 MCP —— AI 编码工具的持久记忆大脑
           </div>
           <div className="space-y-2.5">
-            <div className="text-[11.5px] leading-5 text-my-tertiary">
+            <div className="text-my-sm leading-5 text-my-tertiary">
               本地 stdio MCP 服务器暴露四库给编码工具——进程内检索，毫秒级响应。工具：<code>kb_search</code> · <code>kb_read</code> · <code>kb_context</code>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1034,15 +1034,15 @@ export function SettingsPage(): JSX.Element {
                 <Server size={12} /> 安装并注册
               </Button>
               {mcpKbStatus?.installed && (
-                <span className="text-[11px] text-my-success-text">
+                <span className="text-my-xs text-my-success-text">
                   ✓ 服务器已就绪{mcpKbStatus.claudeConfigured ? ' · 本项目 .mcp.json 已配置' : ' · 本项目尚未配置'}
                 </span>
               )}
             </div>
             {mcpKbResult && (
-              <div className="space-y-1.5 rounded-lg border border-my-line bg-my-layer-1 p-3 text-[11px] leading-5 text-my-secondary">
+              <div className="space-y-1.5 rounded-my-lg border border-my-line bg-my-layer-1 p-3 text-my-xs leading-5 text-my-secondary">
                 <div>
-                  <code className="font-mono text-[10.5px]">{mcpKbResult.scriptPath}</code>
+                  <code className="font-mono text-my-xs">{mcpKbResult.scriptPath}</code>
                 </div>
                 <div>
                   {mcpKbResult.claudeMcpJson ? (
@@ -1058,30 +1058,30 @@ export function SettingsPage(): JSX.Element {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  <Button variant="ghost" className="text-[10.5px]" onClick={() => { void api.copyToClipboard(mcpKbResult.codexSnippet); pushToast({ kind: 'success', title: 'Codex TOML 已复制' }) }}>
+                  <Button variant="ghost" className="text-my-xs" onClick={() => { void api.copyToClipboard(mcpKbResult.codexSnippet); pushToast({ kind: 'success', title: 'Codex TOML 已复制' }) }}>
                     复制 Codex TOML
                   </Button>
-                  <Button variant="ghost" className="text-[10.5px]" onClick={() => { void api.copyToClipboard(mcpKbResult.zcodeCommand); pushToast({ kind: 'success', title: 'ZCode 命令已复制' }) }}>
+                  <Button variant="ghost" className="text-my-xs" onClick={() => { void api.copyToClipboard(mcpKbResult.zcodeCommand); pushToast({ kind: 'success', title: 'ZCode 命令已复制' }) }}>
                     复制 ZCode 命令
                   </Button>
-                  <Button variant="ghost" className="text-[10.5px]" onClick={() => { void api.copyToClipboard(mcpKbResult.genericSnippet); pushToast({ kind: 'success', title: '通用 JSON 已复制' }) }}>
+                  <Button variant="ghost" className="text-my-xs" onClick={() => { void api.copyToClipboard(mcpKbResult.genericSnippet); pushToast({ kind: 'success', title: '通用 JSON 已复制' }) }}>
                     复制通用 mcpServers JSON
                   </Button>
                 </div>
               </div>
             )}
-            <div className="text-[10.5px] text-my-placeholder">
+            <div className="text-my-xs text-my-placeholder">
               <code>.mcp.json</code> 随仓库提交，团队共享。
             </div>
           </div>
         </section>
 
         {/* about */}
-        <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-my-secondary">
             <Leaf size={13} className="text-my-icon-accent" /> 关于
           </div>
-          <div className="grid grid-cols-2 gap-y-1.5 text-[11px] text-my-tertiary">
+          <div className="grid grid-cols-2 gap-y-1.5 text-my-xs text-my-tertiary">
             <span>Trellis Panel</span>
             <span className="text-right text-my-secondary">v0.3.0（Electron + React）</span>
             <span>数据格式</span>
@@ -1130,17 +1130,17 @@ function AcpAgentsSection(): JSX.Element {
   }
 
   return (
-    <section className="rounded-lg border border-my-line bg-my-layer-2 px-5 py-4">
+    <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
       <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
         <Bot size={13} /> ACP Agent 注册表
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-my-tertiary">
+      <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
         任意 NDJSON ACP agent（Agent Client Protocol v1）都可作为子进程接入「Agent 会话」页。
         命令整行交给 shell；可用性按 PATH 探测。内置 mock agent 可随时端到端体验对话/工具/权限卡。
       </p>
       <div className="space-y-2">
         {agents.map((a) => (
-          <div key={a.id} className="flex items-center gap-2 rounded-md border border-my-line px-3 py-2">
+          <div key={a.id} className="flex items-center gap-2 rounded-my-md border border-my-line px-3 py-2">
             <label className="flex cursor-pointer items-center gap-2 text-xs text-my-secondary">
               <input
                 type="checkbox"
@@ -1158,7 +1158,7 @@ function AcpAgentsSection(): JSX.Element {
               </span>
             )}
             <input
-              className="my-input flex-1 font-mono text-[11px]"
+              className="my-input flex-1 font-mono text-my-xs"
               value={a.command}
               placeholder="命令模板，如 codex-acp / gemini --acp"
               onChange={(e) => setAgents(agents.map((row) => (row.id === a.id ? { ...row, command: e.target.value } : row)))}

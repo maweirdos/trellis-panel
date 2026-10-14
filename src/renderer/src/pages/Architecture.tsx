@@ -130,7 +130,7 @@ export function ArchitecturePage(): JSX.Element {
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-2">
         {currentNode && (
-          <span className="chip bg-my-accent-subtle text-[10.5px] text-my-accent-text">
+          <span className="chip bg-my-accent-subtle text-my-xs text-my-accent-text">
             会话最后绑定 · {currentNode.dir}
           </span>
         )}
@@ -240,25 +240,25 @@ export function ArchitecturePage(): JSX.Element {
           {selected ? (
             <div className="space-y-3">
               <div className="text-xs font-semibold text-my-primary">{selected.title}</div>
-              {selected.sub && <div className="font-mono text-[10.5px] text-my-tertiary">{selected.sub}</div>}
+              {selected.sub && <div className="font-mono text-my-xs text-my-tertiary">{selected.sub}</div>}
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-my-tertiary">触发时机</div>
-                <div className="mt-1 text-[11.5px] leading-5 text-my-secondary">{selected.detail.trigger}</div>
+                <div className="text-my-2xs uppercase tracking-wider text-my-tertiary">触发时机</div>
+                <div className="mt-1 text-my-sm leading-5 text-my-secondary">{selected.detail.trigger}</div>
               </div>
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-my-tertiary">做什么</div>
-                <div className="mt-1 text-[11.5px] leading-5 text-my-secondary">{selected.detail.consumer}</div>
+                <div className="text-my-2xs uppercase tracking-wider text-my-tertiary">做什么</div>
+                <div className="mt-1 text-my-sm leading-5 text-my-secondary">{selected.detail.consumer}</div>
               </div>
               {selected.detail.files && (
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-my-tertiary">实现</div>
-                  <code className="mt-1 block break-all font-mono text-[10.5px] text-my-accent-text">{selected.detail.files}</code>
+                  <div className="text-my-2xs uppercase tracking-wider text-my-tertiary">实现</div>
+                  <code className="mt-1 block break-all font-mono text-my-xs text-my-accent-text">{selected.detail.files}</code>
                 </div>
               )}
               <Button variant="ghost" className="w-full" onClick={() => setSelected(null)}>关闭</Button>
             </div>
           ) : (
-            <div className="space-y-3 text-[11px] leading-5 text-my-tertiary">
+            <div className="space-y-3 text-my-xs leading-5 text-my-tertiary">
               <div className="text-xs font-semibold text-my-secondary">图例</div>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-sky-400" /> hooks（自动触发）</div>

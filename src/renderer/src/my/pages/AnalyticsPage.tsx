@@ -109,7 +109,7 @@ function MetricCard({ label, value }: { label: string; value: number }): JSX.Ele
   return (
     <div className="my-card p-3">
       <div className="text-[22px] font-semibold text-my-primary">{value}</div>
-      <div className="mt-0.5 text-[12px] text-my-tertiary">{label}</div>
+      <div className="mt-0.5 text-my-sm text-my-tertiary">{label}</div>
     </div>
   )
 }
@@ -154,7 +154,7 @@ export function AnalyticsPage(): JSX.Element {
     <div className="mx-auto max-w-[1024px]">
       {/* 顶栏 */}
       <header className="px-8 pb-4 pt-6">
-        <h1 className="text-[20px] font-semibold text-my-primary">Analytics</h1>
+        <h1 className="text-my-xl font-semibold text-my-primary">统计分析</h1>
       </header>
 
       <div className="space-y-3 px-8 pb-16">
@@ -170,8 +170,8 @@ export function AnalyticsPage(): JSX.Element {
         <div className="grid grid-cols-4 gap-3">
           <div className="my-card col-span-2 p-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-[13px] font-medium text-my-secondary">创建 vs 关闭（近 8 周）</h2>
-              <div className="flex items-center gap-3 text-[11px] text-my-tertiary">
+              <h2 className="text-my-md font-medium text-my-secondary">创建 vs 关闭（近 8 周）</h2>
+              <div className="flex items-center gap-3 text-my-xs text-my-tertiary">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-[2px] bg-my-accent" />
                   创建
@@ -190,7 +190,7 @@ export function AnalyticsPage(): JSX.Element {
           <div className="col-span-2 flex flex-col gap-3">
             {/* 状态分布 */}
             <div className="my-card p-4">
-              <h2 className="text-[13px] font-medium text-my-secondary">状态分布</h2>
+              <h2 className="text-my-md font-medium text-my-secondary">状态分布</h2>
               <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-my-layer-3">
                 {stateCounts.map(
                   (r) =>
@@ -204,7 +204,7 @@ export function AnalyticsPage(): JSX.Element {
               </div>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
                 {stateCounts.map((r) => (
-                  <span key={r.state.id} className="flex items-center gap-1.5 text-[12px] text-my-secondary">
+                  <span key={r.state.id} className="flex items-center gap-1.5 text-my-sm text-my-secondary">
                     <StateGroupIcon stateGroup={r.state.group} color={r.state.color} size={12} />
                     {r.state.name}
                     <span className="text-my-tertiary">{r.count}</span>
@@ -215,7 +215,7 @@ export function AnalyticsPage(): JSX.Element {
 
             {/* 优先级分布 */}
             <div className="my-card flex-1 p-4">
-              <h2 className="text-[13px] font-medium text-my-secondary">优先级分布</h2>
+              <h2 className="text-my-md font-medium text-my-secondary">优先级分布</h2>
               <div className="mt-3 space-y-2">
                 {priorityCounts.map((r) => (
                   <div key={r.priority} className="flex items-center gap-2.5">
@@ -231,7 +231,7 @@ export function AnalyticsPage(): JSX.Element {
                         }}
                       />
                     </div>
-                    <span className="w-7 shrink-0 text-right text-[12px] text-my-tertiary">{r.count}</span>
+                    <span className="w-7 shrink-0 text-right text-my-sm text-my-tertiary">{r.count}</span>
                   </div>
                 ))}
               </div>
@@ -241,20 +241,20 @@ export function AnalyticsPage(): JSX.Element {
 
         {/* 成员排行 */}
         <div className="my-card p-4">
-          <h2 className="text-[13px] font-medium text-my-secondary">成员排行（未关闭工作项）</h2>
+          <h2 className="text-my-md font-medium text-my-secondary">成员排行（未关闭工作项）</h2>
           <div className="mt-3 space-y-2.5">
             {memberRows.map((r) => (
               <div key={r.member.id} className="flex items-center gap-3">
                 <Avatar name={r.member.name} color={r.member.avatarColor} size={20} />
-                <span className="w-16 shrink-0 truncate text-[12.5px] text-my-secondary">{r.member.name}</span>
+                <span className="w-16 shrink-0 truncate text-my-sm text-my-secondary">{r.member.name}</span>
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-my-layer-3">
                   <div className="h-full rounded-full bg-my-accent" style={{ width: `${(r.count / memberMax) * 100}%` }} />
                 </div>
-                <span className="w-7 shrink-0 text-right text-[12px] text-my-tertiary">{r.count}</span>
+                <span className="w-7 shrink-0 text-right text-my-sm text-my-tertiary">{r.count}</span>
               </div>
             ))}
             {memberRows.length === 0 && (
-              <div className="py-4 text-center text-[12px] text-my-tertiary">暂无数据</div>
+              <div className="py-4 text-center text-my-sm text-my-tertiary">暂无数据</div>
             )}
           </div>
         </div>

@@ -39,9 +39,9 @@ export function CommandPalette(): JSX.Element | null {
       return <StateGroupIcon stateGroup={st?.group ?? 'unstarted'} color={st?.color} size={14} />
     }
     const nav: PaletteItem[] = [
-      { id: 'n-your-work', section: '导航', label: 'Your work', icon: stateIcon('st-planning'), run: () => go('dashboard') },
-      { id: 'n-analytics', section: '导航', label: 'Analytics', icon: stateIcon('st-planning'), run: () => go('analytics') },
-      { id: 'n-work', section: '导航', label: 'Work items', icon: stateIcon('st-planning'), run: () => go('tasks') },
+      { id: 'n-your-work', section: '导航', label: '我的工作', icon: stateIcon('st-planning'), run: () => go('dashboard') },
+      { id: 'n-analytics', section: '导航', label: '统计分析', icon: stateIcon('st-planning'), run: () => go('analytics') },
+      { id: 'n-work', section: '导航', label: '工作项', icon: stateIcon('st-planning'), run: () => go('tasks') },
       { id: 'n-knowledge', section: '导航', label: '知识库', icon: stateIcon('st-planning'), run: () => go('knowledge') },
       { id: 'n-spec', section: '导航', label: '规范文档', icon: stateIcon('st-planning'), run: () => go('spec') },
       { id: 'n-archive', section: '导航', label: '归档', icon: stateIcon('st-planning'), run: () => go('archive') },
@@ -144,7 +144,7 @@ export function CommandPalette(): JSX.Element | null {
   return (
     <div className="my-fade fixed inset-0 z-[85] bg-my-backdrop" onMouseDown={() => setOpen(false)}>
       <div
-        className="my-pop mx-auto mt-[14vh] w-[560px] overflow-hidden rounded-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
+        className="my-pop mx-auto mt-[14vh] w-[560px] overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex h-12 items-center gap-2 border-b border-my-line px-3">
@@ -158,32 +158,32 @@ export function CommandPalette(): JSX.Element | null {
               setSelected(0)
             }}
             placeholder="搜索或输入命令..."
-            className="min-w-0 flex-1 bg-transparent text-[14px] text-my-primary outline-none placeholder:text-my-placeholder"
+            className="min-w-0 flex-1 bg-transparent text-my-lg text-my-primary outline-none placeholder:text-my-placeholder"
           />
           <span className="my-kbd">Esc</span>
         </div>
         <div className="my-scrollbar max-h-[46vh] p-1.5">
           {filtered.length === 0 && (
-            <div className="px-2.5 py-6 text-center text-[12.5px] text-my-tertiary">无匹配结果</div>
+            <div className="px-2.5 py-6 text-center text-my-sm text-my-tertiary">无匹配结果</div>
           )}
           {filtered.map((item, index) => {
             const header = item.section !== lastSection ? item.section : null
             lastSection = item.section
             return (
               <div key={item.id}>
-                {header && <div className="px-2.5 pb-1 pt-2 text-[11px] text-my-tertiary">{header}</div>}
+                {header && <div className="px-2.5 pb-1 pt-2 text-my-xs text-my-tertiary">{header}</div>}
                 <button
                   type="button"
                   onMouseEnter={() => setSelected(index)}
                   onClick={item.run}
                   className={clsx(
-                    'flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[13px]',
+                    'flex h-9 w-full items-center gap-2.5 rounded-my-md px-2.5 text-left text-my-md',
                     selected === index ? 'bg-my-layer-1-active text-my-primary' : 'text-my-secondary'
                   )}
                 >
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center">{item.icon}</span>
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {item.hint && <span className="shrink-0 text-[11px] text-my-tertiary">{item.hint}</span>}
+                  {item.hint && <span className="shrink-0 text-my-xs text-my-tertiary">{item.hint}</span>}
                 </button>
               </div>
             )

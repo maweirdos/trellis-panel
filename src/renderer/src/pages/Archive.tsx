@@ -26,14 +26,14 @@ export function ArchivePage(): JSX.Element {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-medium text-my-primary">
                     {t.record?.title ?? t.dirName}
-                    {t.parseError && <span className="ml-1.5 text-[10px] text-my-danger-text">(解析失败)</span>}
+                    {t.parseError && <span className="ml-1.5 text-my-2xs text-my-danger-text">(解析失败)</span>}
                   </div>
-                  <div className="truncate font-mono text-[10.5px] text-my-tertiary">
+                  <div className="truncate font-mono text-my-xs text-my-tertiary">
                     {t.dirName} · {t.record?.assignee || t.record?.creator || '—'}
                     {t.record?.completedAt ? ` · 完成于 ${t.record.completedAt}` : ''}
                   </div>
                 </div>
-                <span className="shrink-0 text-[10.5px] text-my-tertiary">{relTime(t.updatedAt)}</span>
+                <span className="shrink-0 text-my-xs text-my-tertiary">{relTime(t.updatedAt)}</span>
                 {t.record && (
                   <>
                     <PriorityBadge priority={t.record.priority} />

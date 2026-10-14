@@ -52,7 +52,7 @@ const FIELD_LABEL: Record<string, string> = {
 function Row({ label, modified, children }: { label: string; modified?: boolean; children: React.ReactNode }): JSX.Element {
   return (
     <div className="flex items-start gap-3 py-1.5">
-      <span className="w-16 shrink-0 pt-0.5 text-[11px] text-mist-500">
+      <span className="w-16 shrink-0 pt-0.5 text-my-xs text-mist-500">
         {label}
         {modified && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" title="待保存修改" />}
       </span>
@@ -126,9 +126,9 @@ const DocPane = React.memo(function DocPane({
   }
   return (
     <div>
-      <div className="mb-4 flex items-center gap-2 rounded-lg border border-my-line bg-my-layer-1 px-3 py-1.5">
+      <div className="mb-4 flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-1.5">
         <FileText size={12} className={clsx('shrink-0', isMd ? 'text-my-icon-accent' : 'text-my-icon-tertiary')} />
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-my-tertiary" title={file.path}>
+        <span className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-tertiary" title={file.path}>
           {projectName} / {file.name} · {fmtBytes(file.size)}
         </span>
         <Button variant="ghost" size="sm" onClick={() => void copy()} title="复制全文">
@@ -149,7 +149,7 @@ const DocPane = React.memo(function DocPane({
           variant="compact"
         />
       ) : (
-        <div className="rounded-lg border border-my-line bg-my-layer-1 px-3 py-2 text-[11.5px] text-my-tertiary">
+        <div className="rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-2 text-my-sm text-my-tertiary">
           该文件不在当前项目内，使用普通读取打开；不提供版本比较与变更提示。
         </div>
       )}
@@ -246,7 +246,7 @@ function FieldRow({
           <span className={clsx('min-w-0 flex-1 whitespace-pre-wrap break-words', modified && 'text-leaf-soft')}>
             {(display ? display(shown) : shown) || <span className="text-mist-600">—</span>}
             {modified && value && (
-              <span className="ml-1.5 text-[10px] text-mist-600 line-through">{display ? display(value) : value}</span>
+              <span className="ml-1.5 text-my-2xs text-mist-600 line-through">{display ? display(value) : value}</span>
             )}
           </span>
           <button
@@ -482,15 +482,15 @@ export function TaskDetail(): JSX.Element | null {
             {r && <StatusBadge status={pending.status ?? r.status} />}
             {r && <PriorityBadge priority={pending.priority ?? r.priority} />}
             {jiraKey && <JiraChip jiraKey={jiraKey} />}
-            <span className="font-mono text-[10px] text-my-tertiary">
+            <span className="font-mono text-my-2xs text-my-tertiary">
               {taskDateLabel(task.dirName, task.date)}
               {archived ? ' · 已归档' : ''}
             </span>
           </div>
-          <h2 className="line-clamp-2 text-[13px] font-semibold leading-5 text-my-primary">
+          <h2 className="line-clamp-2 text-my-md font-semibold leading-5 text-my-primary">
             {pending.title ?? r?.title ?? task.dirName}
           </h2>
-          <div className="mt-0.5 font-mono text-[10.5px] text-my-tertiary">{task.dirName}</div>
+          <div className="mt-0.5 font-mono text-my-xs text-my-tertiary">{task.dirName}</div>
         </div>
         <Button variant="ghost" size="sm" onClick={() => showTask(null)} title="关闭">
           <X size={15} />
@@ -508,7 +508,7 @@ export function TaskDetail(): JSX.Element | null {
                 onClick={() => setSel(d.path)}
                 title={d.name}
                 className={clsx(
-                  'flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+                  'flex items-center gap-1 rounded-my-md border px-2 py-1 text-my-xs transition-colors',
                   on
                     ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
                     : 'border-my-line text-my-secondary hover:bg-my-layer-1-hover'
@@ -522,7 +522,7 @@ export function TaskDetail(): JSX.Element | null {
           <button
             onClick={() => setSel('info')}
             className={clsx(
-              'flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+              'flex items-center gap-1 rounded-my-md border px-2 py-1 text-my-xs transition-colors',
               showInfo
                 ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
                 : 'border-transparent text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary'
@@ -531,7 +531,7 @@ export function TaskDetail(): JSX.Element | null {
             <Settings2 size={11} /> 详情
           </button>
           {task.artifacts.length > docs.length && (
-            <span className="ml-auto flex shrink-0 items-center gap-1 text-[10px] text-my-tertiary" title="其余产物见「详情」底部">
+            <span className="ml-auto flex shrink-0 items-center gap-1 text-my-2xs text-my-tertiary" title="其余产物见「详情」底部">
               <Paperclip size={10} /> {task.artifacts.length - docs.length}
             </span>
           )}
@@ -552,7 +552,7 @@ export function TaskDetail(): JSX.Element | null {
         {showInfo && (
           <div className="space-y-1 divide-y divide-ink-700/50">
             {task.parseError && (
-              <div className="mb-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
+              <div className="mb-2 rounded-my-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-my-xs text-rose-300">
                 task.json 解析失败：{task.parseError}
               </div>
             )}
@@ -587,7 +587,7 @@ export function TaskDetail(): JSX.Element | null {
 
                 {r.subtasks.length > 0 && (
                   <div className="py-1.5">
-                    <div className="mb-1.5 text-[11px] text-my-tertiary">子任务</div>
+                    <div className="mb-1.5 text-my-xs text-my-tertiary">子任务</div>
                     <div className="space-y-1">
                       {r.subtasks.map((s, i) => {
                         const { done, text, isCheckable } = parseSubtask(s)
@@ -610,7 +610,7 @@ export function TaskDetail(): JSX.Element | null {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-x-4 py-1.5 text-[11px] leading-5 text-mist-400">
+                <div className="grid grid-cols-2 gap-x-4 py-1.5 text-my-xs leading-5 text-mist-400">
                   <span>创建者</span><span className="text-right text-mist-200">{r.creator || '—'}</span>
                   <span>创建时间</span><span className="text-right font-mono text-mist-200">{r.createdAt || '—'}</span>
                   <span>完成时间</span><span className="text-right font-mono text-mist-200">{r.completedAt ?? '—'}</span>
@@ -625,10 +625,10 @@ export function TaskDetail(): JSX.Element | null {
 
                 {r.relatedFiles.length > 0 && (
                   <div className="py-1.5">
-                    <div className="mb-1.5 text-[11px] text-my-tertiary">相关文件</div>
+                    <div className="mb-1.5 text-my-xs text-my-tertiary">相关文件</div>
                     <div className="space-y-0.5">
                       {r.relatedFiles.map((f) => (
-                        <div key={f} className="break-all font-mono text-[11px] text-mist-300">· {f}</div>
+                        <div key={f} className="break-all font-mono text-my-xs text-mist-300">· {f}</div>
                       ))}
                     </div>
                   </div>
@@ -637,14 +637,14 @@ export function TaskDetail(): JSX.Element | null {
                 {/* Git 集成 */}
                 {!archived && (
                   <div className="pt-3">
-                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-my-tertiary">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-my-xs text-my-tertiary">
                       <GitBranch size={12} /> Git 状态
                       {gitLoading && <RefreshCw size={10} className="animate-spin" />}
                     </div>
                     {git?.error ? (
-                      <div className="text-[11px] text-mist-600">{git.error}</div>
+                      <div className="text-my-xs text-mist-600">{git.error}</div>
                     ) : git ? (
-                      <div className="space-y-1.5 rounded-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-[11px]">
+                      <div className="space-y-1.5 rounded-my-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-my-xs">
                         <div className="flex items-center gap-2">
                           <span className="chip bg-ink-750 font-mono text-mist-300">{r.branch ?? '无分支'}</span>
                           {git.ahead > 0 && (
@@ -667,7 +667,7 @@ export function TaskDetail(): JSX.Element | null {
                         {git.commits.length > 0 && (
                           <div className="space-y-1">
                             {(showAllCommits ? git.commits : git.commits.slice(0, 4)).map((c) => (
-                              <div key={c.short} className="flex items-center gap-2 text-[10.5px] text-mist-400">
+                              <div key={c.short} className="flex items-center gap-2 text-my-xs text-mist-400">
                                 <GitCommitHorizontal size={10} className="shrink-0" />
                                 <span className="font-mono text-mist-300">{c.short}</span>
                                 <span className="min-w-0 flex-1 truncate" title={`${c.subject} · ${c.date}`}>
@@ -679,7 +679,7 @@ export function TaskDetail(): JSX.Element | null {
                             {git.commits.length > 4 && (
                               <button
                                 onClick={() => setShowAllCommits((v) => !v)}
-                                className="text-[10.5px] text-leaf-soft/80 underline"
+                                className="text-my-xs text-leaf-soft/80 underline"
                               >
                                 {showAllCommits ? '收起提交记录' : `展开全部 ${git.commits.length} 条提交`}
                               </button>
@@ -724,15 +724,15 @@ export function TaskDetail(): JSX.Element | null {
                 {/* GitLab 连接器：MR / 流水线 */}
                 {gitlabEnabled && r?.branch && (
                   <div className="pt-3">
-                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-my-tertiary">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-my-xs text-my-tertiary">
                       <GitMerge size={12} /> GitLab
                       {!gl && <RefreshCw size={10} className="animate-spin" />}
                     </div>
                     {gl && !gl.ok && (
-                      <div className="text-[11px] text-mist-600">{gl.error}</div>
+                      <div className="text-my-xs text-mist-600">{gl.error}</div>
                     )}
                     {gl?.ok && (
-                      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-my-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-my-xs">
                         {gl.mr ? (
                           <button
                             onClick={() => {
@@ -841,7 +841,7 @@ export function TaskDetail(): JSX.Element | null {
             {/* 其余产物（目录 / 不可预览文件等）——点击仍进入全屏查看器 */}
             {task.artifacts.length > 0 && (
               <div className="py-3">
-                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-my-tertiary">
+                <div className="mb-1.5 flex items-center gap-1.5 text-my-xs text-my-tertiary">
                   <Paperclip size={12} /> 产物文件 ({task.artifacts.length})
                 </div>
                 <div className="space-y-1">
@@ -853,15 +853,15 @@ export function TaskDetail(): JSX.Element | null {
                         disabled={!clickable}
                         onClick={() => clickable && openArtifact(f)}
                         className={clsx(
-                          'flex w-full items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
+                          'flex w-full items-center gap-2.5 rounded-my-lg border border-transparent px-3 py-2 text-left transition-colors',
                           clickable
                             ? 'hover:border-ink-600 hover:bg-ink-750/60'
                             : 'cursor-default opacity-60'
                         )}
                       >
                         <FileText size={13} className={clsx('shrink-0', /\.md$/i.test(f.name) ? 'text-leaf' : 'text-mist-500')} />
-                        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-mist-200">{f.name}</span>
-                        <span className="shrink-0 text-[10.5px] text-mist-500">{f.kind === 'file' ? fmtBytes(f.size) : '目录'}</span>
+                        <span className="min-w-0 flex-1 truncate font-mono text-my-sm text-mist-200">{f.name}</span>
+                        <span className="shrink-0 text-my-xs text-mist-500">{f.kind === 'file' ? fmtBytes(f.size) : '目录'}</span>
                       </button>
                     )
                   })}
@@ -875,7 +875,7 @@ export function TaskDetail(): JSX.Element | null {
       {/* 待保存修改 footer */}
       {pendingCount > 0 && (
         <div className="absolute inset-x-0 bottom-0 z-10 flex animate-fade-in items-center gap-2 border-t border-my-line bg-my-layer-2 px-4 py-2.5">
-          <span className="text-[11px] text-my-warning-text">
+          <span className="text-my-xs text-my-warning-text">
             {pendingCount} 处待保存修改
           </span>
           <div className="ml-auto flex gap-1.5">

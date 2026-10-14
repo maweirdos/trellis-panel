@@ -291,7 +291,7 @@ export function AcpConsolePage(): JSX.Element {
           </div>
           <div className="mt-2 flex gap-1.5">
             <select
-              className="h-8 min-w-0 flex-1 rounded-md border border-my-line bg-my-surface-1 px-2 text-xs text-my-primary outline-none focus:border-my-line-accent disabled:opacity-40 [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+              className="h-8 min-w-0 flex-1 rounded-my-md border border-my-line bg-my-surface-1 px-2 text-xs text-my-primary outline-none focus:border-my-line-accent disabled:opacity-40 [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
               defaultValue=""
               disabled={creating || availableAgents.length === 0}
               onChange={(e) => {
@@ -318,15 +318,15 @@ export function AcpConsolePage(): JSX.Element {
               key={s.sessionId}
               onClick={() => setActiveId(s.sessionId)}
               className={clsx(
-                'mb-1 w-full rounded-md px-2.5 py-2 text-left transition-colors',
+                'mb-1 w-full rounded-my-md px-2.5 py-2 text-left transition-colors',
                 s.sessionId === activeId ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1'
               )}
             >
               <div className="flex items-center justify-between gap-1">
                 <span className="truncate text-xs font-medium">{s.title ?? `${s.agentName} 会话`}</span>
-                <span className={clsx('shrink-0 text-[10px]', STATUS_COLOR[s.status])}>{s.status}</span>
+                <span className={clsx('shrink-0 text-my-2xs', STATUS_COLOR[s.status])}>{s.status}</span>
               </div>
-              <div className="mt-0.5 truncate text-[10px] text-my-tertiary">
+              <div className="mt-0.5 truncate text-my-2xs text-my-tertiary">
                 {s.agentName}
                 {s.taskDir ? ` · ${s.taskDir}` : ''}
               </div>
@@ -345,7 +345,7 @@ export function AcpConsolePage(): JSX.Element {
           <>
             <header className="flex items-center gap-2 border-b border-my-line px-4 py-2.5">
               <span className="truncate text-sm font-medium text-my-primary">{activeSession.title ?? activeSession.agentName}</span>
-              <span className={clsx('rounded px-1.5 py-0.5 text-[10px]', STATUS_COLOR[activeSession.status])}>
+              <span className={clsx('rounded px-1.5 py-0.5 text-my-2xs', STATUS_COLOR[activeSession.status])}>
                 {activeSession.status}
               </span>
               {boundTask && (
@@ -398,7 +398,7 @@ export function AcpConsolePage(): JSX.Element {
               }}
             >
               {activeSession.error && (
-                <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+                <div className="rounded-my-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
                   ⚠ {activeSession.error}
                 </div>
               )}
@@ -415,7 +415,7 @@ export function AcpConsolePage(): JSX.Element {
             <footer className="border-t border-my-line p-2.5">
               <div className="flex items-end gap-2">
                 <textarea
-                  className="min-h-[42px] flex-1 resize-none rounded-md border border-my-line bg-my-surface-1 px-3 py-2 text-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent disabled:opacity-50"
+                  className="min-h-[42px] flex-1 resize-none rounded-my-md border border-my-line bg-my-surface-1 px-3 py-2 text-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent disabled:opacity-50"
                   rows={2}
                   placeholder={activeSession.status === 'busy' ? '运行中…可先输入，回合结束后发送' : '输入指令，Enter 发送 / Shift+Enter 换行'}
                   value={input}
@@ -455,7 +455,7 @@ export function AcpConsolePage(): JSX.Element {
             }}
           />
         )}
-        <div className="my-card px-3 py-2.5 text-[10px] leading-relaxed text-my-tertiary">
+        <div className="my-card px-3 py-2.5 text-my-2xs leading-relaxed text-my-tertiary">
           人工审查流：查询工单 → 点选导入（jiraKey 防重）→ 以该任务开新会话。无自动触发。
           <br />
           trellis 卡片（任务流转 / 文档 / spec / Jira）会实时混排在对话流里。
@@ -490,18 +490,18 @@ function EventRow(props: {
   if (item.type === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-lg bg-leaf/20 px-3 py-2 text-sm text-mist-100">{item.text}</div>
+        <div className="max-w-[80%] rounded-my-lg bg-leaf/20 px-3 py-2 text-sm text-mist-100">{item.text}</div>
       </div>
     )
   }
   if (item.type === 'agent') {
     return (
-      <div className="max-w-[92%] whitespace-pre-wrap rounded-lg bg-mist-700/30 px-3 py-2 text-sm leading-relaxed text-mist-100">{item.text}</div>
+      <div className="max-w-[92%] whitespace-pre-wrap rounded-my-lg bg-mist-700/30 px-3 py-2 text-sm leading-relaxed text-mist-100">{item.text}</div>
     )
   }
   if (item.type === 'thought') {
     return (
-      <details className="max-w-[92%] rounded-md border border-mist-700/40 px-3 py-1.5 text-xs text-mist-400">
+      <details className="max-w-[92%] rounded-my-md border border-mist-700/40 px-3 py-1.5 text-xs text-mist-400">
         <summary className="cursor-pointer select-none opacity-70">💭 思考过程</summary>
         <div className="mt-1 whitespace-pre-wrap">{item.text}</div>
       </details>
@@ -510,11 +510,11 @@ function EventRow(props: {
   if (item.type === 'tool') {
     const st = item.tool.status
     return (
-      <div className="flex items-center gap-2 rounded-md border border-mist-700/40 bg-mist-800/30 px-3 py-1.5 font-mono text-xs text-mist-300">
+      <div className="flex items-center gap-2 rounded-my-md border border-mist-700/40 bg-mist-800/30 px-3 py-1.5 font-mono text-xs text-mist-300">
         {st === 'completed' ? <span className="text-leaf">✓</span> : st === 'failed' ? <span className="text-rose-300">✗</span> : <Loader2 size={12} className="animate-spin" />}
         <span className="truncate">🔧 {item.tool.title}</span>
-        <span className="shrink-0 text-[10px] text-mist-500">{st}</span>
-        {item.tool.preview && <span className="truncate text-[10px] text-mist-500">{item.tool.preview}</span>}
+        <span className="shrink-0 text-my-2xs text-mist-500">{st}</span>
+        {item.tool.preview && <span className="truncate text-my-2xs text-mist-500">{item.tool.preview}</span>}
       </div>
     )
   }
@@ -522,7 +522,7 @@ function EventRow(props: {
     const requestId = String(item.ev.payload?.requestId ?? '')
     const pending = requestId ? pendingPerm[requestId] : undefined
     return (
-      <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
+      <div className="rounded-my-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
         <div className="flex items-center gap-1.5 font-medium text-amber-200">
           <ShieldQuestion size={13} /> {pending?.toolCall?.title ?? item.ev.text ?? '权限请求'}
         </div>
@@ -532,7 +532,7 @@ function EventRow(props: {
               <button
                 key={o.optionId}
                 className={clsx(
-                  'rounded px-2 py-1 text-[11px] transition-colors',
+                  'rounded px-2 py-1 text-my-xs transition-colors',
                   o.kind === 'reject_once' ? 'border border-rose-400/40 text-rose-300 hover:bg-rose-500/20' : 'border border-leaf/40 text-leaf hover:bg-leaf/20'
                 )}
                 onClick={() => onRespond(pending.requestId, o.optionId)}
@@ -540,7 +540,7 @@ function EventRow(props: {
                 {o.name}
               </button>
             ))}
-            <span className="self-center text-[10px] text-mist-500">120s 超时自动拒绝</span>
+            <span className="self-center text-my-2xs text-mist-500">120s 超时自动拒绝</span>
           </div>
         ) : (
           <div className="mt-1 text-mist-400">{item.ev.text}</div>
@@ -549,10 +549,10 @@ function EventRow(props: {
     )
   }
   if (item.type === 'status') {
-    return <div className="px-1 font-mono text-[10px] text-mist-500">{item.text}</div>
+    return <div className="px-1 font-mono text-my-2xs text-mist-500">{item.text}</div>
   }
   if (item.type === 'turn') {
-    return <div className="flex items-center gap-2 px-1 py-1 text-[10px] text-mist-600"><span className="h-px flex-1 bg-mist-700/40" />{item.text}<span className="h-px flex-1 bg-mist-700/40" /></div>
+    return <div className="flex items-center gap-2 px-1 py-1 text-my-2xs text-mist-600"><span className="h-px flex-1 bg-mist-700/40" />{item.text}<span className="h-px flex-1 bg-mist-700/40" /></div>
   }
   // trellis 卡片
   const ev = item.ev
@@ -560,17 +560,17 @@ function EventRow(props: {
   const taskDir = ev.taskDir ?? (ev.payload?.taskDir as string | undefined)
   const filePath = ev.payload?.path as string | undefined
   return (
-    <div className="flex w-fit max-w-full items-center gap-2 rounded-md border border-sky-400/25 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-200">
+    <div className="flex w-fit max-w-full items-center gap-2 rounded-my-md border border-sky-400/25 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-200">
       {icon}
       <span className="truncate">{ev.text}</span>
       {ev.kind === 'task-status' && taskDir && (
-        <button className="shrink-0 text-[10px] text-sky-300 underline underline-offset-2" onClick={() => onOpenTask(taskDir)}>
+        <button className="shrink-0 text-my-2xs text-sky-300 underline underline-offset-2" onClick={() => onOpenTask(taskDir)}>
           查看任务
         </button>
       )}
       {ev.kind === 'doc-created' && filePath && (
         <button
-          className="shrink-0 text-[10px] text-sky-300 underline underline-offset-2"
+          className="shrink-0 text-my-2xs text-sky-300 underline underline-offset-2"
           onClick={() =>
             onOpenArtifact({
               name: String(ev.payload?.file ?? 'artifact.md'),
@@ -586,12 +586,12 @@ function EventRow(props: {
         </button>
       )}
       {(ev.kind === 'spec-injected' || ev.kind === 'spec-updated') && (
-        <button className="shrink-0 text-[10px] text-sky-300 underline underline-offset-2" onClick={onOpenSpec}>
+        <button className="shrink-0 text-my-2xs text-sky-300 underline underline-offset-2" onClick={onOpenSpec}>
           规范页
         </button>
       )}
       {ev.kind === 'jira-sync' && (
-        <button className="shrink-0 text-[10px] text-sky-300 underline underline-offset-2" onClick={onOpenJira}>
+        <button className="shrink-0 text-my-2xs text-sky-300 underline underline-offset-2" onClick={onOpenJira}>
           Jira
         </button>
       )}
@@ -698,12 +698,12 @@ function JiraPickerModal(props: { onClose: () => void; onStarted: (sessionId: st
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop p-6" onClick={onClose}>
-      <div className="max-h-[80vh] w-[640px] max-w-full overflow-hidden rounded-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[80vh] w-[640px] max-w-full overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 border-b border-my-line px-4 py-3">
           <GitBranch size={15} className="text-sky-300" />
           <span className="text-sm font-medium text-my-primary">从 Jira 选工单开始</span>
           <div className="flex-1" />
-          <select className="h-8 w-44 rounded-md border border-my-line bg-my-surface-1 px-2 text-xs text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+          <select className="h-8 w-44 rounded-my-md border border-my-line bg-my-surface-1 px-2 text-xs text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
             {agents.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -729,11 +729,11 @@ function JiraPickerModal(props: { onClose: () => void; onStarted: (sessionId: st
               key={it.key}
               disabled={importing !== null}
               onClick={() => void startWith(it)}
-              className="mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-my-layer-1 disabled:opacity-50"
+              className="mb-1 flex w-full items-center gap-3 rounded-my-md px-3 py-2 text-left hover:bg-my-layer-1 disabled:opacity-50"
             >
               <span className="shrink-0 font-mono text-xs text-sky-300">{it.key}</span>
               <span className="min-w-0 flex-1 truncate text-sm text-my-primary">{it.summary}</span>
-              <span className="shrink-0 text-[10px] text-my-tertiary">{it.status}</span>
+              <span className="shrink-0 text-my-2xs text-my-tertiary">{it.status}</span>
               {importing === it.key && <Loader2 size={12} className="animate-spin" />}
             </button>
           ))}

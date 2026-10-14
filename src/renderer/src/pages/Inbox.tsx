@@ -89,7 +89,7 @@ export function InboxPage(): JSX.Element {
           <div className="grid place-items-center gap-3 py-24 text-my-tertiary">
             <InboxIcon size={36} strokeWidth={1.2} />
             <div className="text-sm text-my-secondary">待办池为空</div>
-            <div className="max-w-md text-center text-[11.5px] leading-5">
+            <div className="max-w-md text-center text-my-sm leading-5">
               这里是上游需求（Jira 待办或本地草稿）的收集与预处理池。
               待办保存在本地 Markdown 文件（<code className="text-my-accent-text">.trellis/todos/*.md</code>）中，
               Codex / ZCode / Claude Code 可以直接读取以启动正式任务规划与实施。
@@ -100,7 +100,7 @@ export function InboxPage(): JSX.Element {
         {/* 待规划列表 */}
         {pending.length > 0 && (
           <>
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-my-tertiary">待规划需求</div>
+            <div className="mb-2 text-my-xs font-medium uppercase tracking-wide text-my-tertiary">待规划需求</div>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
               {pending.map((todo) => (
                 <TodoCard
@@ -119,7 +119,7 @@ export function InboxPage(): JSX.Element {
         {/* 已转任务 / 已归档待办 */}
         {completed.length > 0 && (
           <>
-            <div className="mb-2 mt-6 text-[11px] font-medium uppercase tracking-wide text-my-tertiary">
+            <div className="mb-2 mt-6 text-my-xs font-medium uppercase tracking-wide text-my-tertiary">
               已转任务 / 已完成 ({completed.length})
             </div>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
@@ -159,7 +159,7 @@ function TodoCard({
     <div
       className="my-card flex flex-col p-3.5"
     >
-      <div className="mb-1.5 flex items-center gap-2 text-[10.5px] text-my-tertiary">
+      <div className="mb-1.5 flex items-center gap-2 text-my-xs text-my-tertiary">
         <PriorityBadge priority={todo.priority} />
         <span className="font-mono">{todo.id}</span>
         {todo.source === 'jira' && todo.jiraKey && (
@@ -167,7 +167,7 @@ function TodoCard({
             Jira {todo.jiraKey}
           </span>
         )}
-        <span className="ml-auto font-mono text-[10px] text-my-tertiary">{todo.createdAt}</span>
+        <span className="ml-auto font-mono text-my-2xs text-my-tertiary">{todo.createdAt}</span>
       </div>
 
       <div
@@ -178,12 +178,12 @@ function TodoCard({
       </div>
 
       {todo.description && (
-        <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-my-tertiary">
+        <div className="mt-1 line-clamp-2 text-my-xs leading-4 text-my-tertiary">
           {todo.description.replace(/^#+ .*/g, '').trim()}
         </div>
       )}
 
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px] font-mono text-my-tertiary">
+      <div className="mt-1.5 flex items-center gap-1.5 text-my-xs font-mono text-my-tertiary">
         <FileText size={10} className="text-my-icon-accent" />
         <span className="truncate">{todo.filePath}</span>
       </div>

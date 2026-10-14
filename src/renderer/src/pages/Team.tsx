@@ -69,7 +69,7 @@ function Avatar({ name, size = 7 }: { name: string; size?: number }): JSX.Elemen
       className={clsx(
         'grid shrink-0 place-items-center rounded-full font-bold',
         avatarStyle(name),
-        size === 7 ? 'h-7 w-7 text-[11px]' : 'h-5 w-5 text-[10px]'
+        size === 7 ? 'h-7 w-7 text-my-xs' : 'h-5 w-5 text-my-2xs'
       )}
       title={name}
     >
@@ -123,7 +123,7 @@ function BoardTab({ feed, members, snapshot }: {
       <div className="lg:col-span-3">
         <div className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold text-my-secondary">
           <Users2 size={13} className="text-my-tertiary" /> 成员负载
-          <span className="text-[10.5px] font-normal text-my-tertiary">点击任务直达详情</span>
+          <span className="text-my-xs font-normal text-my-tertiary">点击任务直达详情</span>
         </div>
         <div className={clsx('grid gap-3', members.length > 2 ? 'md:grid-cols-2' : 'grid-cols-1')}>
           {members.map((m) => {
@@ -145,11 +145,11 @@ function BoardTab({ feed, members, snapshot }: {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-my-primary">{m.name}</span>
-                      <span className="text-[10.5px] text-my-tertiary">
+                      <span className="text-my-xs text-my-tertiary">
                         {inflight.length} 个进行中 · 完成 {doneCount}
                       </span>
                     </div>
-                    <div className="mt-0.5 text-[10px] text-my-placeholder">
+                    <div className="mt-0.5 text-my-2xs text-my-placeholder">
                       {m.lastActive ? `最近活跃 ${relTime(m.lastActive)}` : '暂无活跃记录'}
                     </div>
                   </div>
@@ -170,17 +170,17 @@ function BoardTab({ feed, members, snapshot }: {
                     <button
                       key={t.dirName}
                       onClick={() => showTask(t.dirName)}
-                      className="flex w-full items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-my-line hover:bg-my-layer-1"
+                      className="flex w-full items-center gap-2 rounded-my-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-my-line hover:bg-my-layer-1"
                     >
                       <PriorityBadge priority={t.record?.priority ?? ''} />
-                      <span className="min-w-0 flex-1 truncate text-[11.5px] text-my-secondary">
+                      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">
                         {t.record?.title ?? taskDateLabel(t.dirName, t.date)}
                       </span>
                       <StatusBadge status={t.record?.status ?? ''} />
                     </button>
                   ))}
                   {inflight.length === 0 && (
-                    <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-my-placeholder">
+                    <div className="flex items-center gap-1.5 px-2 py-1 text-my-xs text-my-placeholder">
                       <CircleCheck size={11} className="text-emerald-400" /> 当前没有进行中的任务
                     </div>
                   )}
@@ -190,7 +190,7 @@ function BoardTab({ feed, members, snapshot }: {
           })}
         </div>
         {members.length === 0 && (
-          <div className="my-card py-10 text-center text-[11px] text-my-tertiary">暂无成员数据</div>
+          <div className="my-card py-10 text-center text-my-xs text-my-tertiary">暂无成员数据</div>
         )}
       </div>
 
@@ -205,7 +205,7 @@ function BoardTab({ feed, members, snapshot }: {
               <div key={label} className="mb-4 last:mb-0">
                 {/* 吸顶日期分割栏 */}
                 <div className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-2 bg-my-canvas px-4 py-1">
-                  <span className="rounded bg-my-layer-2 px-2 py-0.5 font-mono text-[10px] font-semibold text-my-tertiary">
+                  <span className="rounded bg-my-layer-2 px-2 py-0.5 font-mono text-my-2xs font-semibold text-my-tertiary">
                     {label}
                   </span>
                   <div className="h-px flex-1 bg-my-line" />
@@ -228,11 +228,11 @@ function BoardTab({ feed, members, snapshot }: {
                         <div className="min-w-0 flex-1 leading-snug">
                           <div className="flex items-center justify-between gap-1.5">
                             <span className="truncate font-semibold text-my-secondary">{it.who}</span>
-                            <span className="shrink-0 font-mono text-[10px] text-my-tertiary whitespace-nowrap">
+                            <span className="shrink-0 font-mono text-my-2xs text-my-tertiary whitespace-nowrap">
                               {relTime(it.at)}
                             </span>
                           </div>
-                          <div className="mt-0.5 text-[11.5px] text-my-tertiary break-words">
+                          <div className="mt-0.5 text-my-sm text-my-tertiary break-words">
                             {it.kind === 'task' && it.taskDir ? (
                               <button
                                 onClick={() => {
@@ -255,7 +255,7 @@ function BoardTab({ feed, members, snapshot }: {
                 </div>
               </div>
             ))}
-            {feed.length === 0 && <div className="py-10 text-center text-[11px] text-my-tertiary">暂无动态</div>}
+            {feed.length === 0 && <div className="py-10 text-center text-my-xs text-my-tertiary">暂无动态</div>}
           </div>
         </div>
       </div>
@@ -362,17 +362,17 @@ function EfficiencyTab(): JSX.Element {
       )}
       <div className="grid grid-cols-3 gap-3">
         <div className="my-card px-4 py-3">
-          <div className="text-[11px] text-my-tertiary">记录到的状态流转</div>
+          <div className="text-my-xs text-my-tertiary">记录到的状态流转</div>
           <div className="mt-1 text-xl font-semibold text-my-primary">{data.totalTransitions}</div>
         </div>
         <div className="my-card px-4 py-3">
-          <div className="text-[11px] text-my-tertiary">平均交付周期（创建→完成）</div>
+          <div className="text-my-xs text-my-tertiary">平均交付周期（创建→完成）</div>
           <div className="mt-1 text-xl font-semibold text-my-primary">
             {data.avgCycleDays !== null ? `${data.avgCycleDays} 天` : '—'}
           </div>
         </div>
         <div className="my-card px-4 py-3">
-          <div className="text-[11px] text-my-tertiary">停滞任务（&gt;3 天无动静）</div>
+          <div className="text-my-xs text-my-tertiary">停滞任务（&gt;3 天无动静）</div>
           <div className={clsx('mt-1 text-xl font-semibold', data.aging.length > 0 ? 'text-amber-300' : 'text-my-primary')}>
             {data.aging.length}
           </div>
@@ -389,7 +389,7 @@ function EfficiencyTab(): JSX.Element {
                 style={{ height: `${(d.count / maxDaily) * 96}px`, minHeight: d.count ? '4px' : '2px' }}
                 title={`${d.date}: ${d.count} 次`}
               />
-              <div className="mt-1 truncate text-center text-[9px] text-my-placeholder">{d.date.slice(5)}</div>
+              <div className="mt-1 truncate text-center text-my-2xs text-my-placeholder">{d.date.slice(5)}</div>
             </div>
           ))}
         </div>
@@ -398,10 +398,10 @@ function EfficiencyTab(): JSX.Element {
       <div className="grid grid-cols-2 gap-4">
         <div className="my-card px-4 py-3.5">
           <div className="mb-2.5 text-xs font-semibold text-my-secondary">成员平均交付周期</div>
-          {data.memberCycle.length === 0 && <div className="text-[11px] text-my-tertiary">暂无已完成任务数据</div>}
+          {data.memberCycle.length === 0 && <div className="text-my-xs text-my-tertiary">暂无已完成任务数据</div>}
           <div className="space-y-1.5">
             {data.memberCycle.map((m) => (
-              <div key={m.name} className="flex items-center gap-2 text-[11px]">
+              <div key={m.name} className="flex items-center gap-2 text-my-xs">
                 <Avatar name={m.name} size={5} />
                 <span className="text-my-secondary">{m.name}</span>
                 <span className="ml-auto font-mono text-my-tertiary">
@@ -414,10 +414,10 @@ function EfficiencyTab(): JSX.Element {
 
         <div className="my-card px-4 py-3.5">
           <div className="mb-2.5 text-xs font-semibold text-my-secondary">停滞任务预警</div>
-          {data.aging.length === 0 && <div className="text-[11px] text-emerald-300">没有停滞任务 👍</div>}
+          {data.aging.length === 0 && <div className="text-my-xs text-emerald-300">没有停滞任务 👍</div>}
           <div className="space-y-1.5">
             {data.aging.map((t) => (
-              <div key={t.dirName} className="flex items-center gap-2 text-[11px]">
+              <div key={t.dirName} className="flex items-center gap-2 text-my-xs">
                 <span className="chip border border-amber-500/30 bg-amber-500/10 text-amber-300">{t.days} 天</span>
                 <span className="min-w-0 flex-1 truncate text-my-secondary">{t.title}</span>
                 <span className="shrink-0 text-my-tertiary">{t.assignee}</span>
@@ -432,7 +432,7 @@ function EfficiencyTab(): JSX.Element {
           <div className="mb-2 text-xs font-semibold text-my-secondary">最近流转</div>
           <div className="space-y-1">
             {data.recent.map((e, i) => (
-              <div key={i} className="flex items-center gap-2 text-[11px] text-my-tertiary">
+              <div key={i} className="flex items-center gap-2 text-my-xs text-my-tertiary">
                 <span className="font-mono">{fmtIso(new Date(e.ts).toISOString())}</span>
                 <span className="text-my-secondary">{e.title}</span>
                 <span className="text-my-placeholder">
@@ -467,7 +467,7 @@ function ReportTab(): JSX.Element {
   return (
     <div className="space-y-3 lg:col-span-5">
       <div className="flex items-center gap-2">
-        <div className="flex overflow-hidden rounded-md border border-my-line">
+        <div className="flex overflow-hidden rounded-my-md border border-my-line">
           {(
             [
               ['team', '团队周报'],
@@ -517,7 +517,7 @@ function ReportTab(): JSX.Element {
         )}
       </div>
       {markdown ? (
-        <pre className="max-h-[60vh] select-text overflow-auto rounded-xl border border-my-line bg-my-canvas p-4 font-mono text-[11.5px] leading-5 text-my-secondary">
+        <pre className="max-h-[60vh] select-text overflow-auto rounded-my-xl border border-my-line bg-my-canvas p-4 font-mono text-my-sm leading-5 text-my-secondary">
           {markdown}
         </pre>
       ) : (
@@ -621,7 +621,7 @@ export function TeamPage(): JSX.Element {
               ['本周完成', doneThisWeek],
               ['AI 会话', snapshot.sessions.length]
             ].map(([label, v]) => (
-              <span key={label as string} className="chip bg-my-layer-2 text-[10.5px] text-my-tertiary">
+              <span key={label as string} className="chip bg-my-layer-2 text-my-xs text-my-tertiary">
                 {label} <span className="ml-0.5 font-mono text-my-secondary">{v}</span>
               </span>
             ))}
@@ -645,7 +645,7 @@ export function TeamPage(): JSX.Element {
           <div className="my-card flex items-center gap-4 px-5 py-3.5">
             <Star size={15} className="shrink-0 text-my-accent-text" fill="currentColor" />
             <div className="min-w-0 flex-1">
-              <div className="text-[10.5px] uppercase tracking-wider text-my-tertiary">最近会话绑定的任务</div>
+              <div className="text-my-xs uppercase tracking-wider text-my-tertiary">最近会话绑定的任务</div>
               <button onClick={() => showTask(currentTask.dirName)} className="truncate text-xs font-medium text-my-primary hover:text-my-accent-text">
                 {currentTask.record.title}
               </button>
@@ -692,7 +692,7 @@ function StandupTab(): JSX.Element {
     <div className="my-card p-4">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-xs font-semibold text-my-primary">每日站会摘要</span>
-        <span className="text-[10.5px] text-my-tertiary">完成 · 在途 · 阻塞</span>
+        <span className="text-my-xs text-my-tertiary">完成 · 在途 · 阻塞</span>
         <div className="ml-auto flex gap-1.5">
           <Button variant="outline" size="sm" onClick={() => void generate()} disabled={loading}>
             重新生成
@@ -723,7 +723,7 @@ function StandupTab(): JSX.Element {
           </Button>
         </div>
       </div>
-      <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-my-line bg-my-canvas p-3 font-mono text-[11.5px] leading-5 text-my-secondary">
+      <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-secondary">
         {markdown || '生成中…'}
       </pre>
     </div>
@@ -767,23 +767,23 @@ function WorkflowInsightTab(): JSX.Element {
       <div className="my-card p-4">
         <div className="mb-3 text-xs font-semibold text-my-primary">Workflow 解析链（团队 → 个人 → 任务）</div>
         {scan ? (
-          <div className="grid gap-2 text-[11.5px] md:grid-cols-4">
-            <div className="rounded-lg border border-my-line bg-my-layer-1 p-3">
-              <div className="text-[10px] uppercase tracking-wide text-my-tertiary">任务 pin</div>
+          <div className="grid gap-2 text-my-sm md:grid-cols-4">
+            <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+              <div className="text-my-2xs uppercase tracking-wide text-my-tertiary">任务 pin</div>
               <div className="mt-1 font-mono text-my-primary">
                 {scan.workflows.reduce((n, w) => n + w.pinnedTasks.length, 0) || '—'}
               </div>
             </div>
-            <div className="rounded-lg border border-my-line bg-my-layer-1 p-3">
-              <div className="text-[10px] uppercase tracking-wide text-my-tertiary">个人默认（.developer）</div>
+            <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+              <div className="text-my-2xs uppercase tracking-wide text-my-tertiary">个人默认（.developer）</div>
               <div className="mt-1 font-mono text-my-primary">{scan.chain.developerWorkflow ?? '—'}</div>
             </div>
-            <div className="rounded-lg border border-my-line bg-my-layer-1 p-3">
-              <div className="text-[10px] uppercase tracking-wide text-my-tertiary">团队默认（config.yaml）</div>
+            <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+              <div className="text-my-2xs uppercase tracking-wide text-my-tertiary">团队默认（config.yaml）</div>
               <div className="mt-1 font-mono text-my-primary">{scan.chain.configDefault ?? '—'}</div>
             </div>
-            <div className="rounded-lg border border-my-line bg-my-layer-1 p-3">
-              <div className="text-[10px] uppercase tracking-wide text-my-tertiary">全局回退</div>
+            <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+              <div className="text-my-2xs uppercase tracking-wide text-my-tertiary">全局回退</div>
               <div className="mt-1 font-mono text-my-primary">{scan.chain.globalExists ? 'workflow.md ✓' : '缺失'}</div>
             </div>
           </div>
@@ -800,7 +800,7 @@ function WorkflowInsightTab(): JSX.Element {
           ) : (
             <div className="space-y-2">
               {usage.map(([wf, n]) => (
-                <div key={wf} className="flex items-center gap-2 text-[11.5px]">
+                <div key={wf} className="flex items-center gap-2 text-my-sm">
                   <span className="w-32 truncate font-mono text-my-secondary" title={wf}>{wf}</span>
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-my-layer-3">
                     <div className="h-full bg-my-accent" style={{ width: `${(n / snapshot.tasks.length) * 100}%` }} />
@@ -818,7 +818,7 @@ function WorkflowInsightTab(): JSX.Element {
           ) : (
             <div className="space-y-1.5">
               {aging.map(({ t, days }) => (
-                <div key={t.dirName} className="flex items-center gap-2 text-[11.5px]">
+                <div key={t.dirName} className="flex items-center gap-2 text-my-sm">
                   <StatusBadge status={t.record?.status ?? ''} />
                   <span className="min-w-0 flex-1 truncate text-my-secondary">{t.record?.title ?? t.dirName}</span>
                   <span className="text-my-tertiary">{t.record?.assignee || '未分配'}</span>
@@ -835,10 +835,10 @@ function WorkflowInsightTab(): JSX.Element {
           <div className="mb-3 text-xs font-semibold text-my-primary">平台覆盖</div>
           <div className="flex flex-wrap gap-1.5">
             {scan.platforms.filter((p) => p.detected).map((p) => (
-              <span key={p.id} className="chip bg-my-accent-subtle text-[10.5px] text-my-accent-text">{p.name}</span>
+              <span key={p.id} className="chip bg-my-accent-subtle text-my-xs text-my-accent-text">{p.name}</span>
             ))}
             {scan.platforms.filter((p) => p.detected).length === 0 && (
-              <span className="text-[11.5px] text-my-tertiary">未检测到 AI 平台目录——运行 trellis init --&lt;platform&gt; 安装</span>
+              <span className="text-my-sm text-my-tertiary">未检测到 AI 平台目录——运行 trellis init --&lt;platform&gt; 安装</span>
             )}
           </div>
         </div>

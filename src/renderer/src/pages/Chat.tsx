@@ -61,7 +61,7 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
           setProviderId(e.target.value)
           setModelId(p?.models?.find((m) => m.enabled)?.id ?? p?.models?.[0]?.id ?? '')
         }}
-        className="h-8 max-w-[130px] rounded-md border border-my-line bg-my-surface-1 px-2 text-[12px] text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+        className="h-8 max-w-[130px] rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
         title="供应商"
       >
         {providers.length === 0 && <option value="">未配置供应商</option>}
@@ -74,7 +74,7 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
       <select
         value={modelId}
         onChange={(e) => setModelId(e.target.value)}
-        className="h-8 max-w-[170px] rounded-md border border-my-line bg-my-surface-1 px-2 text-[12px] text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+        className="h-8 max-w-[170px] rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
         title="模型"
       >
         {(!provider || provider.models.length === 0) && <option value="">未选择模型</option>}
@@ -96,10 +96,10 @@ function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: str
   const allSources = ops.flatMap((op) => op.sources ?? [])
   const uniqueSources = allSources.filter((s, i) => allSources.findIndex((x) => x.path === s.path) === i).slice(0, 6)
   return (
-    <div className="mb-2 rounded-lg border border-sky-400/25 bg-sky-500/5">
+    <div className="mb-2 rounded-my-lg border border-sky-400/25 bg-sky-500/5">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[11px] text-sky-300/90"
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-my-xs text-sky-300/90"
       >
         <Brain size={11} /> 工具调用 × {ops.length}
         <span className="flex-1" />
@@ -108,7 +108,7 @@ function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: str
       {open && (
         <div className="space-y-1 border-t border-sky-400/15 px-3 py-2">
           {ops.map((op, i) => (
-            <div key={i} className="font-mono text-[10.5px] text-mist-300">
+            <div key={i} className="font-mono text-my-xs text-mist-300">
               <span className={op.status === 'success' ? 'text-emerald-300' : op.status === 'denied' ? 'text-rose-300' : 'text-amber-300'}>
                 {op.status === 'success' ? '✓' : op.status === 'denied' ? '⊘ 拒绝' : '✗'}
               </span>{' '}
@@ -122,12 +122,12 @@ function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: str
       )}
       {uniqueSources.length > 0 && (
         <div className="border-t border-sky-400/15 px-3 py-1.5">
-          <span className="text-[10px] text-mist-500">参考来源：</span>
+          <span className="text-my-2xs text-mist-500">参考来源：</span>
           {uniqueSources.map((s, i) => (
             <span key={i} className="mr-2 inline-flex max-w-full items-center gap-1 align-bottom">
               <button
                 onClick={() => void api.openInEditor(s.path)}
-                className="truncate text-[10.5px] text-sky-300/80 underline decoration-dotted hover:text-sky-200"
+                className="truncate text-my-xs text-sky-300/80 underline decoration-dotted hover:text-sky-200"
                 title={s.path}
               >
                 {s.library ? `[${s.library}] ` : ''}{s.title}
@@ -149,9 +149,9 @@ function PermissionCard({
   onDecision: (decision: 'allow-once' | 'allow-session' | 'deny') => void
 }): JSX.Element {
   return (
-    <div className="mx-auto mb-3 max-w-xl rounded-xl border border-amber-400/40 bg-amber-500/10 p-3">
+    <div className="mx-auto mb-3 max-w-xl rounded-my-xl border border-amber-400/40 bg-amber-500/10 p-3">
       <div className="mb-1 text-xs font-semibold text-amber-200">工具调用请求</div>
-      <p className="mb-2 font-mono text-[11px] text-mist-300">
+      <p className="mb-2 font-mono text-my-xs text-mist-300">
         {perm.toolName}({perm.argsSummary})
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -164,7 +164,7 @@ function PermissionCard({
         <Button variant="ghost" size="sm" className="text-my-danger-text" onClick={() => onDecision('deny')}>
           拒绝
         </Button>
-        <span className="ml-auto self-center text-[10px] text-mist-600">{perm.timeoutSec}s 内未决策将自动拒绝</span>
+        <span className="ml-auto self-center text-my-2xs text-mist-600">{perm.timeoutSec}s 内未决策将自动拒绝</span>
       </div>
     </div>
   )
@@ -183,7 +183,7 @@ function BranchSwitcher({
   onSwitch: (id: string) => void
 }): JSX.Element {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-my-line bg-my-layer-2 px-1.5 py-0.5 font-mono text-[10px] text-my-tertiary">
+    <span className="inline-flex items-center gap-1 rounded-my-md border border-my-line bg-my-layer-2 px-1.5 py-0.5 font-mono text-my-2xs text-my-tertiary">
       <button
         disabled={index <= 0}
         onClick={() => ids[index - 1] && onSwitch(ids[index - 1])}
@@ -215,10 +215,10 @@ function ThinkingBlock({ reasoning, live }: { reasoning: string; live?: boolean 
     if (live) setOpen(true)
   }, [live])
   return (
-    <div className="mb-2 rounded-lg border border-violet-400/25 bg-violet-500/5">
+    <div className="mb-2 rounded-my-lg border border-violet-400/25 bg-violet-500/5">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[11px] text-violet-300/90"
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-my-xs text-violet-300/90"
       >
         <Brain size={11} />
         {live ? '思考中…' : '思考过程'}
@@ -227,7 +227,7 @@ function ThinkingBlock({ reasoning, live }: { reasoning: string; live?: boolean 
         <ChevronRight size={11} className={clsx('transition-transform', open && 'rotate-90')} />
       </button>
       {open && (
-        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words border-t border-violet-400/15 px-3 py-2 text-[11px] leading-5 text-violet-200/70">
+        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words border-t border-violet-400/15 px-3 py-2 text-my-xs leading-5 text-violet-200/70">
           {reasoning}
         </p>
       )}
@@ -412,13 +412,13 @@ export function ChatPage(): JSX.Element {
         </div>
         <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {sessions.length === 0 && (
-            <p className="px-2 py-4 text-[11px] leading-5 text-my-tertiary">还没有会话。点击 + 新建，或直接在下方输入第一条消息。</p>
+            <p className="px-2 py-4 text-my-xs leading-5 text-my-tertiary">还没有会话。点击 + 新建，或直接在下方输入第一条消息。</p>
           )}
           {sessions.map((s) => (
             <div
               key={s.id}
               className={clsx(
-                'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition-colors',
+                'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-my-lg px-2 py-1.5 text-xs transition-colors',
                 s.id === activeId ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1'
               )}
               onClick={() => void chatOpenSession(s.id)}
@@ -426,7 +426,7 @@ export function ChatPage(): JSX.Element {
               <span className="min-w-0 flex-1 truncate" title={s.title}>
                 {s.title}
               </span>
-              <span className="shrink-0 font-mono text-[9.5px] text-my-placeholder">{s.messageCount}</span>
+              <span className="shrink-0 font-mono text-my-2xs text-my-placeholder">{s.messageCount}</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -450,7 +450,7 @@ export function ChatPage(): JSX.Element {
             value={taskDir}
             onChange={(e) => setTaskDir(e.target.value)}
             disabled={!snapshot?.tasks?.length}
-            className="h-8 max-w-[190px] rounded-md border border-my-line bg-my-surface-1 px-2 text-[12px] text-my-primary outline-none focus:border-my-line-accent disabled:opacity-40 [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+            className="h-8 max-w-[190px] rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent disabled:opacity-40 [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
             title="把对话聚焦到某个任务：AI 会自动携带该任务的描述、备注与子任务作为上下文"
           >
             <option value="">📌 不关联任务</option>
@@ -463,7 +463,7 @@ export function ChatPage(): JSX.Element {
           <select
             value={thinkingLevel}
             onChange={(e) => setThinkingLevel(e.target.value as ThinkingLevel)}
-            className="h-8 rounded-md border border-my-line bg-my-surface-1 px-2 text-[12px] text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+            className="h-8 rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
             title="思考档位（按供应商协议映射；reasoning 模型的思考流独立折叠展示）"
           >
             {THINKING_VALUES.map((v) => (
@@ -474,7 +474,7 @@ export function ChatPage(): JSX.Element {
           </select>
           <label
             className={clsx(
-              'flex cursor-pointer select-none items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+              'flex cursor-pointer select-none items-center gap-1 rounded-my-md border px-2 py-1 text-my-xs transition-colors',
               agentMode ? 'border-emerald-400/50 bg-emerald-500/10 text-emerald-300' : 'border-my-line bg-my-layer-2 text-my-tertiary'
             )}
             title="Agent 模式：AI 可查询项目知识库、任务与规范后再回答（每次工具调用需你授权）"
@@ -529,10 +529,10 @@ export function ChatPage(): JSX.Element {
                               }
                             }}
                             rows={Math.min(6, Math.max(2, editing.text.split('\n').length))}
-                            className="resize-none rounded-md border border-my-line-accent-subtle bg-my-layer-2 px-3 py-2 text-xs text-my-primary outline-none"
+                            className="resize-none rounded-my-md border border-my-line-accent-subtle bg-my-layer-2 px-3 py-2 text-xs text-my-primary outline-none"
                             autoFocus
                           />
-                          <div className="flex justify-end gap-1.5 text-[11px]">
+                          <div className="flex justify-end gap-1.5 text-my-xs">
                             <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>取消（Esc）</Button>
                             <Button
                               variant="primary"
@@ -549,7 +549,7 @@ export function ChatPage(): JSX.Element {
                         </div>
                       ) : (
                         <div className="flex max-w-[80%] items-end gap-1">
-                          <div className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-leaf/15 px-3.5 py-2 text-xs leading-relaxed text-mist-100">
+                          <div className="whitespace-pre-wrap break-words rounded-2xl rounded-br-p-md bg-leaf/15 px-3.5 py-2 text-xs leading-relaxed text-mist-100">
                             {e.content}
                           </div>
                           {e.id && (
@@ -576,7 +576,7 @@ export function ChatPage(): JSX.Element {
                 }
                 return (
                   <div key={e.key} className="group flex items-start gap-2">
-                    <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-ink-700/70 bg-ink-850/70 px-3.5 py-2.5">
+                    <div className="min-w-0 flex-1 rounded-2xl rounded-tl-p-md border border-ink-700/70 bg-ink-850/70 px-3.5 py-2.5">
                       {e.reasoning && <ThinkingBlock reasoning={e.reasoning} />}
                       {e.toolOps && e.toolOps.length > 0 && <ToolOpsBlock ops={e.toolOps} />}
                       <MarkdownView content={e.content} />
@@ -618,7 +618,7 @@ export function ChatPage(): JSX.Element {
               })}
               {pending.map((p) => (
                 <div key={p.runId} className="flex justify-end">
-                  <div className="flex max-w-[80%] items-center gap-1.5 rounded-2xl rounded-br-md border border-dashed border-ink-600 bg-ink-850/40 px-3.5 py-2 text-xs text-mist-400">
+                  <div className="flex max-w-[80%] items-center gap-1.5 rounded-2xl rounded-br-p-md border border-dashed border-ink-600 bg-ink-850/40 px-3.5 py-2 text-xs text-mist-400">
                     <Hourglass size={11} /> <span className="whitespace-pre-wrap">{p.content}</span>
                   </div>
                 </div>
@@ -630,7 +630,7 @@ export function ChatPage(): JSX.Element {
                 />
               )}
               {streaming && (
-                <div className="rounded-2xl rounded-tl-md border border-leaf/20 bg-ink-850/70 px-3.5 py-2.5">
+                <div className="rounded-2xl rounded-tl-p-md border border-leaf/20 bg-ink-850/70 px-3.5 py-2.5">
                   {streaming.toolOps.length > 0 && <ToolOpsBlock ops={streaming.toolOps} />}
                   {streaming.reasoning && <ThinkingBlock reasoning={streaming.reasoning} live={!streaming.content} />}
                   {streaming.content ? (
@@ -645,7 +645,7 @@ export function ChatPage(): JSX.Element {
           {!atBottom && (
             <button
               onClick={() => scrollToBottom('smooth')}
-              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-my-line bg-my-layer-2 px-3 py-1 text-[11px] text-my-secondary shadow-lg hover:border-my-line-accent-subtle"
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-my-line bg-my-layer-2 px-3 py-1 text-my-xs text-my-secondary shadow-lg hover:border-my-line-accent-subtle"
             >
               <ChevronDown size={11} /> 回到底部
             </button>
@@ -655,13 +655,13 @@ export function ChatPage(): JSX.Element {
         {/* Composer */}
         <div className="border-t border-my-line p-3">
           {!aiEnabled && (
-            <p className="mb-2 text-[11px] text-amber-300/90">应用内 AI 未启用（设置 → AI 模型）。启用并配置供应商后即可对话。</p>
+            <p className="mb-2 text-my-xs text-amber-300/90">应用内 AI 未启用（设置 → AI 模型）。启用并配置供应商后即可对话。</p>
           )}
           {attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {attachments.map((a, i) => (
                 <div key={i} className="relative">
-                  <img src={a.dataUrl} alt={a.name} className="h-14 w-14 rounded-lg border border-my-line object-cover" />
+                  <img src={a.dataUrl} alt={a.name} className="h-14 w-14 rounded-my-lg border border-my-line object-cover" />
                   <button
                     onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
                     className="absolute -right-1.5 -top-1.5 rounded-full bg-my-layer-3 p-0.5 text-my-tertiary shadow hover:text-my-danger-text"
@@ -733,7 +733,7 @@ export function ChatPage(): JSX.Element {
               }}
               placeholder="输入消息，Enter 发送，Shift+Enter 换行，Alt+Enter 运行中引导，Esc 清空"
               rows={Math.min(6, Math.max(1, draft.split('\n').length))}
-              className="min-h-[38px] flex-1 resize-none rounded-md border border-my-line bg-my-surface-1 px-3 py-2 text-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+              className="min-h-[38px] flex-1 resize-none rounded-my-md border border-my-line bg-my-surface-1 px-3 py-2 text-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
             />
             {busy ? (
               <>

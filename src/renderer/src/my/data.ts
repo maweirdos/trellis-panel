@@ -30,7 +30,7 @@ function day(offset: number): string {
 }
 
 const MEMBERS: Member[] = [
-  { id: 'me', name: '我', avatarColor: '#006399', role: 'Admin' },
+  { id: 'me', name: '我', avatarColor: '#059669', role: 'Admin' },
   { id: 'u2', name: '陈曦', avatarColor: '#7e22ce', role: 'Member' },
   { id: 'u3', name: '林远', avatarColor: '#c2410c', role: 'Member' },
   { id: 'u4', name: '苏澜', avatarColor: '#15803d', role: 'Member' },
@@ -38,11 +38,11 @@ const MEMBERS: Member[] = [
 ]
 
 const DEFAULT_STATES: WorkItemState[] = [
-  { id: 'st-backlog', name: 'Backlog', color: '#A3A3A3', group: 'backlog', sequence: 15000 },
-  { id: 'st-todo', name: 'Todo', color: '#3A3A3A', group: 'unstarted', sequence: 25000 },
-  { id: 'st-progress', name: 'In Progress', color: '#F59E0B', group: 'started', sequence: 35000 },
-  { id: 'st-done', name: 'Done', color: '#16A34A', group: 'completed', sequence: 45000 },
-  { id: 'st-cancel', name: 'Cancelled', color: '#EF4444', group: 'cancelled', sequence: 55000 }
+  { id: 'st-backlog', name: '未规划', color: '#A3A3A3', group: 'backlog', sequence: 15000 },
+  { id: 'st-todo', name: '待办', color: '#3A3A3A', group: 'unstarted', sequence: 25000 },
+  { id: 'st-progress', name: '进行中', color: '#F59E0B', group: 'started', sequence: 35000 },
+  { id: 'st-done', name: '已完成', color: '#16A34A', group: 'completed', sequence: 45000 },
+  { id: 'st-cancel', name: '已取消', color: '#EF4444', group: 'cancelled', sequence: 55000 }
 ]
 
 const LABELS: Label[] = [
@@ -61,7 +61,7 @@ const PROJECTS: Project[] = [
     id: 'p-web',
     name: '网站改版',
     icon: '网',
-    color: '#006399',
+    color: '#059669',
     description: '官网视觉与信息架构升级，统一设计语言。',
     cycleEnabled: true,
     moduleEnabled: true,

@@ -85,7 +85,7 @@ function TreeItem({
         }}
         style={{ paddingLeft: 8 + depth * 14 }}
         className={clsx(
-          'flex w-full items-center gap-1.5 rounded-md py-[5px] pr-2 text-left text-xs transition-colors',
+          'flex w-full items-center gap-1.5 rounded-my-md py-[5px] pr-2 text-left text-xs transition-colors',
           selected === node.path
             ? 'bg-my-accent-subtle font-medium text-my-accent-text'
             : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
@@ -104,7 +104,7 @@ function TreeItem({
         {!isDir && refs !== undefined && (
           <span
             className={clsx(
-              'ml-auto shrink-0 rounded px-1 text-[9.5px] font-mono',
+              'ml-auto shrink-0 rounded px-1 text-my-2xs font-mono',
               refs === 0 ? 'bg-my-layer-3 text-my-tertiary' : 'bg-my-accent-subtle text-my-accent-text'
             )}
             title={refs === 0 ? '从未被引用（候选死规范）' : `被 ${refs} 处引用`}
@@ -274,14 +274,14 @@ export function SpecPage(): JSX.Element {
                   type="button"
                   onClick={() => setScope(v)}
                   className={clsx(
-                    'rounded-md px-2 py-0.5 text-[11px] transition-colors',
+                    'rounded-my-md px-2 py-0.5 text-my-xs transition-colors',
                     scope === v ? 'bg-my-accent-subtle text-my-accent-text' : 'text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary'
                   )}
                 >
                   {label}
                 </button>
               ))}
-              <span className="ml-auto text-[10.5px] text-my-tertiary">
+              <span className="ml-auto text-my-xs text-my-tertiary">
                 {searching ? '检索中…' : `${hits.length} 篇命中`}
               </span>
             </div>
@@ -293,13 +293,13 @@ export function SpecPage(): JSX.Element {
             /* 搜索态：跨来源命中列表 */
             <>
               {!searching && hits.length === 0 && (
-                <div className="px-2 py-8 text-center text-[11px] text-my-tertiary">没有匹配的文档</div>
+                <div className="px-2 py-8 text-center text-my-xs text-my-tertiary">没有匹配的文档</div>
               )}
               {GROUP_ORDER.filter((g) => groupedHits.has(g)).map((g) => {
                 const groupHits = groupedHits.get(g) ?? []
                 return (
                   <div key={g} className="mb-2">
-                    <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-my-tertiary">
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">
                       {GROUP_META[g].icon} {GROUP_META[g].label}
                       <span className="ml-auto font-mono font-normal">{groupHits.length}</span>
                     </div>
@@ -311,7 +311,7 @@ export function SpecPage(): JSX.Element {
                         onClick={() => loadDoc(h)}
                         title={h.path}
                         className={clsx(
-                          'w-full rounded-lg border px-2.5 py-2 text-left transition-colors',
+                          'w-full rounded-my-lg border px-2.5 py-2 text-left transition-colors',
                           selected?.path === h.path
                             ? 'border-my-line-accent-subtle bg-my-accent-subtle'
                             : 'border-transparent hover:border-my-line hover:bg-my-layer-1'
@@ -319,11 +319,11 @@ export function SpecPage(): JSX.Element {
                       >
                         <div className="flex items-center gap-2">
                           <FileText size={12} className="shrink-0 text-my-icon-accent" />
-                          <span className="min-w-0 flex-1 truncate text-[11.5px] text-my-secondary">{h.name}</span>
-                          <span className="shrink-0 text-[10px] text-my-placeholder">{relTime(h.mtime)}</span>
+                          <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{h.name}</span>
+                          <span className="shrink-0 text-my-2xs text-my-placeholder">{relTime(h.mtime)}</span>
                         </div>
                         {h.snippet && (
-                          <div className="mt-1 line-clamp-2 pl-5 text-[10.5px] leading-4 text-my-tertiary">
+                          <div className="mt-1 line-clamp-2 pl-5 text-my-xs leading-4 text-my-tertiary">
                             <Snippet text={h.snippet} />
                           </div>
                         )}
@@ -337,7 +337,7 @@ export function SpecPage(): JSX.Element {
           ) : (
             /* 浏览态：规范树 + 工作区日志 */
             <>
-              <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-my-tertiary">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">
                 .trellis/spec
                 <button
                   type="button"
@@ -349,7 +349,7 @@ export function SpecPage(): JSX.Element {
                 </button>
               </div>
               {snapshot.spec.length === 0 && (
-                <div className="px-2 py-4 text-center text-[11px] text-my-tertiary">没有规范文档</div>
+                <div className="px-2 py-4 text-center text-my-xs text-my-tertiary">没有规范文档</div>
               )}
               {snapshot.spec.map((n) => (
                 <TreeItem key={n.path} node={n} depth={0} selected={selected?.path ?? null} refCount={refCount} onSelect={loadSpec} />
@@ -357,12 +357,12 @@ export function SpecPage(): JSX.Element {
 
               {snapshot.developers.length > 0 && (
                 <div className="mt-3">
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-my-tertiary">
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">
                     <NotebookPen size={11} /> 工作区日志
                   </div>
                   {snapshot.developers.map((d) => (
                     <div key={d.name} className="mb-1">
-                      <div className="px-2 py-1 text-[11px] text-my-tertiary">
+                      <div className="px-2 py-1 text-my-xs text-my-tertiary">
                         {d.name} <span className="text-my-placeholder">· {relTime(d.lastActive)}</span>
                       </div>
                       {[...d.journals, ...d.otherFiles].map((f) => (
@@ -373,7 +373,7 @@ export function SpecPage(): JSX.Element {
                             loadDoc({ path: f.path, name: f.name, group: 'workspace', size: f.size, mtime: f.mtime })
                           }
                           className={clsx(
-                            'flex w-full items-center gap-2 rounded-md py-[5px] pl-6 pr-2 text-left text-[11.5px] transition-colors',
+                            'flex w-full items-center gap-2 rounded-my-md py-[5px] pl-6 pr-2 text-left text-my-sm transition-colors',
                             selected?.path === f.path
                               ? 'bg-my-accent-subtle text-my-accent-text'
                               : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
@@ -381,7 +381,7 @@ export function SpecPage(): JSX.Element {
                         >
                           <NotebookPen size={11} className="shrink-0 text-my-icon-tertiary" />
                           <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                          <span className="shrink-0 text-[9.5px] text-my-placeholder">{fmtBytes(f.size)}</span>
+                          <span className="shrink-0 text-my-2xs text-my-placeholder">{fmtBytes(f.size)}</span>
                         </button>
                       ))}
                     </div>
@@ -391,7 +391,7 @@ export function SpecPage(): JSX.Element {
 
               {snapshot.sharedWorkspaceFiles.length > 0 && (
                 <div className="mt-2">
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-my-tertiary">
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">
                     <Share2 size={11} /> 共享索引
                   </div>
                   {snapshot.sharedWorkspaceFiles.map((f) => (
@@ -400,7 +400,7 @@ export function SpecPage(): JSX.Element {
                       type="button"
                       onClick={() => loadDoc({ path: f.path, name: f.name, group: 'shared', size: f.size, mtime: f.mtime })}
                       className={clsx(
-                        'flex w-full items-center gap-2 rounded-md py-[5px] pl-6 pr-2 text-left text-[11.5px] transition-colors',
+                        'flex w-full items-center gap-2 rounded-my-md py-[5px] pl-6 pr-2 text-left text-my-sm transition-colors',
                         selected?.path === f.path
                           ? 'bg-my-accent-subtle text-my-accent-text'
                           : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
@@ -427,16 +427,16 @@ export function SpecPage(): JSX.Element {
               ) : (
                 <FileText size={13} className="text-my-icon-accent" />
               )}
-              <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-my-secondary">
+              <span className="min-w-0 flex-1 truncate font-mono text-my-sm text-my-secondary">
                 {docSelected ? docSelected.name : relPath}
               </span>
-              {docSelected && <span className="chip bg-my-layer-3 text-[10px] text-my-tertiary">{GROUP_META[docSelected.group].label}</span>}
+              {docSelected && <span className="chip bg-my-layer-3 text-my-2xs text-my-tertiary">{GROUP_META[docSelected.group].label}</span>}
               {!docSelected && refCount?.[specSelected.path] !== undefined && (
                 <span className="chip bg-my-layer-3 text-my-tertiary">
                   <Link2 size={10} /> 被引用 {refCount[specSelected.path]} 处
                 </span>
               )}
-              <span className="text-[10.5px] text-my-tertiary">
+              <span className="text-my-xs text-my-tertiary">
                 {fmtBytes(docSelected ? docSelected.size : (specSelected?.size ?? 0))}
               </span>
               <Button variant="ghost" size="sm" className="px-1.5" onClick={() => void copyContent()} title="复制全文">
@@ -473,7 +473,7 @@ export function SpecPage(): JSX.Element {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 spellCheck={false}
-                className="h-[calc(100vh-140px)] w-full resize-none bg-my-canvas p-5 font-mono text-[12px] leading-5 text-my-secondary outline-none"
+                className="h-[calc(100vh-140px)] w-full resize-none bg-my-canvas p-5 font-mono text-my-sm leading-5 text-my-secondary outline-none"
               />
             ) : (
               <div className="mx-auto max-w-3xl px-6 py-5">
@@ -483,7 +483,7 @@ export function SpecPage(): JSX.Element {
                   /\.(md|markdown)$/i.test(selected.name) ? (
                     <MarkdownView content={state.content ?? ''} />
                   ) : (
-                    <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-5 text-my-secondary">
+                    <pre className="whitespace-pre-wrap break-words font-mono text-my-sm leading-5 text-my-secondary">
                       {state.content}
                     </pre>
                   )
