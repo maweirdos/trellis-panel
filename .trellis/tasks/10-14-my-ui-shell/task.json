@@ -1,8 +1,8 @@
 {
-  "id": "my-ui-clone",
-  "name": "my-ui-clone",
+  "id": "my-ui-shell",
+  "name": "my-ui-shell",
   "title": "全新外壳 UI 体系（双栏导航、多布局工作项与主题系统）",
-  "description": "在 trellis-panel 渲染层新增独立的 参考 UI 克隆模块：完整复刻 参考仓库 的应用外壳（工作区侧边栏+项目侧边栏+导航）、工作项多布局（列表/看板/表格/甘特/日历）、周期/模块/视图/页面/接收/分析/你的工作/设置等界面与交互，以及深浅色主题与命令面板；内容使用自拟演示数据，不复制 参考 的品牌与内容。",
+  "description": "在 trellis-panel 渲染层落地全新应用外壳：双栏导航（工作区+项目）、工作项多布局（列表/看板/表格/甘特/日历）、文档/接收/分析等界面与交互，以及深浅色主题与命令面板；内容使用真实 Trellis 数据。",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,

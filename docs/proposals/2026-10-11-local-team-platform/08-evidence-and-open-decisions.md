@@ -28,7 +28,7 @@
 | S04 | [Paperclip Jira](https://docs.paperclip.ing/connectors/jira/) | 官方该连接面向 Atlassian Cloud MCP | Data Center 接入及可靠双向同步 |
 | S05 | [OpenHands](https://github.com/OpenHands/OpenHands) | Agent Canvas 支持本地/远程等执行环境 | 团队部署权限是否满足本项目 |
 | S06 | [Vibe Kanban 公告](https://www.vibekanban.com/blog/shutdown) | 公司关闭、远程服务退场，项目声明转社区维护 | 社区后续维护承诺与质量 |
-| S07 | [参考](https://github.com/参考仓库) | 任务、周期、文档；仓库 AGPL-3.0 | 各企业功能在目标版本的可用性 |
+| S07 | [参考](https://github.com/make参考/参考) | 任务、周期、文档；仓库 AGPL-3.0 | 各企业功能在目标版本的可用性 |
 | S08 | [Happy](https://github.com/slopus/happy) | 本地编码工具与跨设备交互方向；MIT | 不作为本产品远程控制能力承诺 |
 | S09 | [ACP TS SDK](https://github.com/agentclientprotocol/typescript-sdk) | 官方 SDK、Apache-2.0，v2 为实验入口 | 员工实际 Agent/版本矩阵 |
 | S10 | [ACP session setup](https://agentclientprotocol.com/protocol/v1/session-setup) | 会话携带 cwd/MCP 配置，能力有边界 | 所选 Agent 对传输和恢复的支持 |

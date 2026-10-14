@@ -5,13 +5,13 @@
 
 ## Goal
 
-trellis-panel 的整个界面复刻 参考仓库 的 UI/UX：参考 的工作区侧边栏 +
+trellis-panel 的整个界面复刻 参考产品 的 UI/UX：参考 的工作区侧边栏 +
 项目侧边栏 + 顶栏是唯一外壳；旧 Sidebar/页面路由退役；现有页面作为壳内内容保留；
 内容使用真实 Trellis 数据（snapshot），不复刻 参考 的内容。
 
 ## Requirements
 
-- R1 壳替换：TitleBar（保留窗口控制，按 参考 视觉重绘）+ MyApp 唯一外壳；
+- R1 壳替换：TitleBar（保留窗口控制，按 参考 视觉重绘）+ 参考App 唯一外壳；
   旧 Sidebar 退役；路由以主 store `page` 为唯一事实（IPC 事件联动不受影响）。
 - R2 真实数据：任务→工作项（planning/in_progress/review/completed→
   规划中/进行中/评审中/已完成 五状态；P0-P3→urgent/high/medium/low），

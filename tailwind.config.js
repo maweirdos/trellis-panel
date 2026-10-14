@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 
-// 上游令牌包 label 色系 8 族 × 5 槽位（bg/strong/hover/icon/text/border→截取常用 5 槽）
+// label 色系 8 族 × 5 槽位（bg/strong/hover/icon/text/border）
 function labelColorSet() {
   const families = ['indigo', 'emerald', 'grey', 'crimson', 'yellow', 'orange', 'pink', 'purple']
   const slots = { '': 'bg', '-bg': 'bg', '-strong': 'bg-strong', '-hover': 'hover', '-icon': 'icon', '-text': 'text', '-border': 'border' }

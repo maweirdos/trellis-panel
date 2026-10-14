@@ -120,7 +120,7 @@ Esc 只处理最上层：打开的菜单/对话框 → 专注模式 → 快速�
 
 | 开源来源 | 借用的具体能力 | 与本项目的适配和决定 |
 | --- | --- | --- |
-| [参考 工作项详情](https://docs.参考.so/work-items/work-item-details) / [源码](https://github.com/参考仓库) | 快速侧览、展开工作区、属性与主内容分层 | **借交互，不搬整套应用**。它包含独立服务栈，源码标 AGPL-3.0；S0 没必要为阅读器引入第二个项目管理平台 |
+| [参考 工作项详情](https://docs.参考.so/work-items/work-item-details) / [源码](https://github.com/make参考/参考) | 快速侧览、展开工作区、属性与主内容分层 | **借交互，不搬整套应用**。它包含独立服务栈，源码标 AGPL-3.0；S0 没必要为阅读器引入第二个项目管理平台 |
 | [shadcn/ui](https://github.com/shadcn-ui/ui) / [Resizable](https://ui.shadcn.com/docs/components/base/resizable) | 可组合的面板、菜单、侧栏等组件模式 | MIT；保留作为局部组件来源。现项目 React 18/Tailwind 3，不能直接执行最新版生成器覆盖主题；有缺口时锁定兼容实现并映射现有 tokens |
 | [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) | 分栏尺寸约束、折叠与键盘调整 | MIT；需要重做可拖动阅读布局时优先验证它，避免再写一套鼠标拖拽系统。明确选定版本/API，别混用不同主版本示例 |
 | [jsdiff](https://github.com/kpdecker/jsdiff) | 文本行差异计算及耗时限制 | BSD-3-Clause；**S0 文档对比优先采用**，显示层复用当前只读文本样式。长文档用 worker/超时与大小上限，原始文本安全转义 |

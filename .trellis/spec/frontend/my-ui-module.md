@@ -1,6 +1,6 @@
 # 外壳 UI 约定（src/renderer/src/my/）
 
-> 来源：任务 10-14-my-ui-shell（原 参考 UI 复刻，已去名更名为 my 外壳）。改动该模块或新增 `my.*` 色板消费前必读。
+> 外壳 UI 约定。改动该模块或新增 `my.*` 色板消费前必读。
 
 ## 模块边界
 
@@ -35,7 +35,7 @@
   键 `tpanel.my.ui`（localStorage，遵循 `tpanel.` 前缀约定），存 theme/layout/groupBy/orderBy/customAccent。
 - 自定义强调色通过根节点内联覆盖 `--my-bg-accent-primary` 实现。
 
-## 视觉签名组件（icons.tsx，SVG 取自 参考 开源仓库）
+## 视觉签名组件（icons.tsx，自绘 SVG）
 
 - `StateGroupIcon`（backlog 虚线环 / unstarted 空环 / started 进度环+内圈 / completed 实心勾 / cancelled 实心叉）
 - `PriorityIcon`（urgent 方块感叹号 / high·medium·low 三阶竖条 / none 横杠）

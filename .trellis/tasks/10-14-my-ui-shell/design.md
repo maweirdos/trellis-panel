@@ -2,7 +2,7 @@
 
 ## 1. 参考来源（已核实）
 
-- 仓库稀疏克隆：`D:\my_demo\my-ref`（参考仓库 master，`apps/web`）。
+- 仓库稀疏克隆：`D:\my_demo\my-ref`（参考产品 master，`apps/web`）。
 - 设计令牌：`上游设计令牌包 0.9.7`（npm 包已解包到 `my-ref/_vendor/package`）。
   419 个浅色令牌 + 281 个深色覆盖，已用脚本解析 var() 链并把 oklch 转 hex，
   产物 `_vendor/extract/my-tokens.css`（`[data-my-theme=light|dark]` 两组）。
@@ -25,7 +25,7 @@
 
 ```
 my/
-  index.ts              # export MyApp
+  index.ts              # export 参考App
   my.css             # 令牌 + 字体 + 滚动条 + 模块级样式（无全局污染，选择器前缀 .my-root）
   types.ts              # 领域类型
   data.ts               # 确定性演示数据（中文内容）
@@ -34,7 +34,7 @@ my/
   ui.tsx                # 基础件：Avatar/AvatarStack/Button/Dropdown/Tooltip/Modal/
                         #   Checkbox/LinearProgress/AreaChart 等单一文件内小件
   layout/
-    MyApp.tsx        # 壳：WorkspaceSidebar + (ProjectSidebar|空) + 内容路由 + 弹层宿主
+    参考App.tsx        # 壳：WorkspaceSidebar + (ProjectSidebar|空) + 内容路由 + 弹层宿主
     WorkspaceSidebar.tsx
     ProjectSidebar.tsx
   pages/                # 每个界面一个文件（或目录）
@@ -58,7 +58,7 @@ my/
 - **自治 store**：`my/store.ts` 独立 `create`（不复用主 AppState）。理由：域完全独立、
   避免污染主 store 切片；持久化仅主题/布局偏好，键 `tpanel.my.ui`。
   与主站集成只通过 `Page` 联合类型新增 `'my'`。
-- **主题机制**：MyApp 根节点挂 `data-my-theme`；初始值取主站 settings.theme
+- **主题机制**：参考App 根节点挂 `data-my-theme`；初始值取主站 settings.theme
   （dark 默认），模块内 Appearance 设置可覆盖并持久化。Tailwind3 的 `dark:` 类不用于本模块
   （面板根已切 `dark` 类，两者隔离）。
 - **Tailwind 扩展**：`tailwind.config.js` 增 `colors.p.*` 语义别名（canvas/surface-1/2、
@@ -66,8 +66,8 @@ my/
   placeholder 文本、icon-*、border subtle/strong/accent、danger/warning/success/info、
   priority 五色、label 8 色系），值指向 `var(--my-…)`；`boxShadow` 增 raised/overlay；
   `fontSize` 增 11/13px；fontFamily 增 Inter 前置。不与既有 ink/mist/leaf 冲突。
-- **路由（模块内）**：store 维护 `{ scope: 'workspace'|'project', page: MyPage, projectId? }`，
-  MyPage = 'your-work'|'inbox'|'analytics'|'projects'|'workspace-settings'|'profile'|
+- **路由（模块内）**：store 维护 `{ scope: 'workspace'|'project', page: 参考Page, projectId? }`，
+  参考Page = 'your-work'|'inbox'|'analytics'|'projects'|'workspace-settings'|'profile'|
   'work-items'|'cycles'|'modules'|'views'|'pages'|'intake'|'project-settings'。
 - **数据流**：data.ts 生成不可变演示集；store 内 workItems 可变（勾完成/改状态/创建），
   操作均为纯函数 set；peek/create 用 id 引用。
@@ -86,14 +86,14 @@ my/
 
 ## 架构
 
-- 路由唯一事实 = 主 store `useApp.page`（IPC 事件零改动）。MyApp 壳读取该字段渲染：
+- 路由唯一事实 = 主 store `useApp.page`（IPC 事件零改动）。参考App 壳读取该字段渲染：
   - `dashboard` → YourWork（真实统计）
   - `tasks` → WorkItems（五布局，真实任务）
   - `inbox` → 待办池（原 InboxPage + 参考 框）
   - `knowledge|spec|archive` → 文档组（原页面 + 参考 框）
   - `channels|acp|team|jira|architecture|studio|models|gateway|settings` → 原页面 + 参考 框
   - my 独有弹层（peek/命令面板/新建）全局挂载
-- 数据适配 `my/adapter.ts`：ProjectSnapshot → MyDataset 视图模型
+- 数据适配 `my/adapter.ts`：ProjectSnapshot → 参考Dataset 视图模型
   （states 五态映射、P0-P3→优先级、assignee/creator→members、createdAt/completedAt→日期、
   parent/children→父子、subtasks→子工作项计数）；snapshot 为 null → 演示数据（仅预览路径）。
 - 主题：my theme 跟随 `useApp.settings.theme`；偏好外观的深/浅卡调用 saveSettings。
@@ -101,7 +101,7 @@ my/
 
 ## 执行
 
-1. adapter + store 改造 + MyApp 内容路由（主线）
+1. adapter + store 改造 + 参考App 内容路由（主线）
 2. 工作项/Your work/分析 真实数据（主线）
 3. 旧页面 参考 化重绘：代理 E（knowledge/spec/archive/inbox/settings）
    代理 F（channels/acp/team/jira/architecture/studio/models/gateway/chat）

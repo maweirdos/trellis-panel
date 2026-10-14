@@ -6,7 +6,7 @@
    - [ ] 拷贝 my-tokens.css → `my/my.css`，补字体/滚动条/模块样式
    - [ ] `types.ts` 领域类型；`data.ts` 演示数据；`store.ts`；`icons.tsx`；`ui.tsx` 基础件
    - [ ] tailwind.config.js 扩展 `p.*` 色板/阴影/字号；package.json 加 Inter 依赖并安装
-   - [ ] layout/：MyApp 壳 + WorkspaceSidebar + ProjectSidebar + 内容路由骨架
+   - [ ] layout/：参考App 壳 + WorkspaceSidebar + ProjectSidebar + 内容路由骨架
 2. **子代理并行（每代理只写自己的 pages/ 文件，禁改基础契约）**
    - [ ] A：WorkItemsPage（5 布局/工具栏/筛选/显示/创建）+ IssuePeek
    - [ ] B：CyclesPage + ModulesPage + ViewsPage + IntakePage
