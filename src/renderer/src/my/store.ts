@@ -17,15 +17,6 @@ interface PersistedPrefs {
   savedViews: SavedView[]
 }
 
-export interface PinnedDoc {
-  key: string
-  path: string
-  title: string
-  x: number
-  y: number
-  z: number
-}
-
 export interface SavedView {
   id: string
   name: string
@@ -124,13 +115,6 @@ export interface MyStore {
 
   sidebarCollapsed: boolean
   toggleSidebar: () => void
-  /** 钉住的文档浮层（会话级，可多开；z 为层叠序） */
-  pinnedDocs: PinnedDoc[]
-  zTop: number
-  openPinnedDoc: (opts: { path: string; title: string }) => void
-  closePinnedDoc: (key: string) => void
-  movePinnedDoc: (key: string, x: number, y: number) => void
-  bringDocToFront: (key: string) => void
   favorites: string[]
   toggleFavorite: (id: string) => void
   savedViews: SavedView[]
@@ -197,36 +181,6 @@ export const useMy = create<MyStore>()((set, get) => ({
   setPaletteOpen: (v) => set({ paletteOpen: v }),
 
   sidebarCollapsed: prefs.sidebarCollapsed ?? false,
-  pinnedDocs: [],
-  zTop: 1,
-  openPinnedDoc: (opts) => {
-    const existing = get().pinnedDocs.find((d) => d.key === opts.path)
-    const z = get().zTop + 1
-    if (existing) {
-      set((s) => ({
-        pinnedDocs: s.pinnedDocs.map((d) => (d.key === opts.path ? { ...d, z } : d)),
-        zTop: z
-      }))
-      return
-    }
-    const n = get().pinnedDocs.length
-    const doc: PinnedDoc = {
-      key: opts.path,
-      path: opts.path,
-      title: opts.title,
-      x: 560 + (n % 5) * 40,
-      y: 110 + (n % 5) * 42,
-      z
-    }
-    set((s) => ({ pinnedDocs: [...s.pinnedDocs, doc], zTop: z }))
-  },
-  closePinnedDoc: (key) => set((s) => ({ pinnedDocs: s.pinnedDocs.filter((d) => d.key !== key) })),
-  movePinnedDoc: (key, x, y) =>
-    set((s) => ({ pinnedDocs: s.pinnedDocs.map((d) => (d.key === key ? { ...d, x, y } : d)) })),
-  bringDocToFront: (key) => {
-    const z = get().zTop + 1
-    set((s) => ({ pinnedDocs: s.pinnedDocs.map((d) => (d.key === key ? { ...d, z } : d)), zTop: z }))
-  },
   toggleSidebar: () => {
     const collapsed = !get().sidebarCollapsed
     set({ sidebarCollapsed: collapsed })
