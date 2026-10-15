@@ -7,6 +7,9 @@ let mermaidPromise: Promise<typeof import('mermaid').default> | null = null
 let initialized = false
 
 function isDark(): boolean {
+  // 外壳主题事实是 .my-root 上的 data-my-theme（?my=1 预览下 html.dark 不可靠）
+  const shellTheme = document.querySelector('.my-root')?.getAttribute('data-my-theme')
+  if (shellTheme === 'light' || shellTheme === 'dark') return shellTheme === 'dark'
   return document.documentElement.classList.contains('dark')
 }
 
@@ -87,16 +90,16 @@ export const MermaidBlock = React.memo(function MermaidBlock({ chart }: { chart:
 
   if (error) {
     return (
-      <div className="my-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
-        <div className="mb-1 text-[11px] text-rose-300">Mermaid 语法错误</div>
-        <pre className="overflow-x-auto font-mono text-[11px] text-mist-400">{chart}</pre>
+      <div className="my-3 rounded-my-md border border-my-line-danger bg-my-danger-subtle p-3">
+        <div className="mb-1 text-my-xs text-my-danger-text">Mermaid 语法错误</div>
+        <pre className="overflow-x-auto font-mono text-my-xs text-my-secondary">{chart}</pre>
       </div>
     )
   }
   return (
-    <div className="my-3 overflow-x-auto rounded-lg border border-ink-600 bg-ink-950/60 p-3 text-center [&_svg]:mx-auto [&_svg]:max-w-full">
+    <div className="my-3 overflow-x-auto rounded-my-md border border-my-line bg-my-canvas p-3 text-center [&_svg]:mx-auto [&_svg]:max-w-full">
       {svg === null ? (
-        <div className="py-4 text-xs text-mist-500">Mermaid 渲染中…</div>
+        <div className="py-4 text-my-xs text-my-tertiary">Mermaid 渲染中…</div>
       ) : (
         <div dangerouslySetInnerHTML={{ __html: svg }} />
       )}

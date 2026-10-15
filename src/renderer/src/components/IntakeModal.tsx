@@ -3,6 +3,7 @@ import { X, Sparkles, Save, Wand2 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
+import { Button } from '../my/ui'
 import { PlanningModal } from './PlanningModal'
 import type { JSX } from 'react'
 
@@ -72,57 +73,65 @@ export function IntakeModal(): JSX.Element | null {
   }
 
   return (
-    <div className="absolute inset-0 z-50 grid animate-fade-in place-items-center bg-black/50 backdrop-blur-sm" onClick={closeOnBackdrop}>
+    <div className="absolute inset-0 z-50 grid animate-fade-in place-items-center bg-my-backdrop backdrop-blur-sm" onClick={closeOnBackdrop}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85%] w-[520px] flex-col overflow-hidden rounded-2xl border border-ink-600 bg-ink-850 shadow-2xl"
+        className="flex max-h-[85%] w-[520px] flex-col overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
       >
-        <div className="flex items-center gap-2 border-b border-ink-700 px-5 py-3.5">
-          <Sparkles size={15} className="text-leaf" />
-          <span className="text-sm font-semibold text-mist-50">新建待办</span>
-          <span className="chip border border-amber-400/25 bg-amber-500/10 text-[10px] text-amber-300">记录需求，不启动 AI</span>
-          <button onClick={close} className="btn-ghost ml-auto px-1.5 py-1" title="关闭">
+        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3.5">
+          <Sparkles size={15} className="text-my-icon-accent" />
+          <span className="text-my-md font-semibold text-my-primary">新建待办</span>
+          <span className="my-chip border border-my-line-warning bg-my-warning-subtle text-my-warning-text">记录需求，不启动 AI</span>
+          <button
+            onClick={close}
+            className="ml-auto rounded-my-md p-1.5 text-my-icon-secondary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary"
+            title="关闭"
+          >
             <X size={15} />
           </button>
         </div>
 
         <div className="flex-1 space-y-3.5 overflow-y-auto p-5">
           <div>
-            <label className="mb-1.5 block text-[11px] text-mist-400">需求标题 *</label>
+            <label className="mb-1.5 block text-my-xs text-my-secondary">需求标题 *</label>
             <input
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="一句话说清要做什么，如：增加 Jira 状态映射配置"
-              className="field"
+              className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
               onKeyDown={(e) => e.key === 'Enter' && void createTodo()}
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] text-mist-400">需求描述</label>
+            <label className="mb-1.5 block text-my-xs text-my-secondary">需求描述</label>
             <textarea
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
               rows={6}
               placeholder="背景、验收标准、涉及模块…（AI 认领时可直接读取）"
-              className="field resize-y"
+              className="w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-2.5 py-1.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] text-mist-400">优先级</label>
+            <label className="mb-1.5 block text-my-xs text-my-secondary">优先级</label>
             <div className="flex gap-1.5">
               {(
                 [
-                  ['P0', '紧急 P0', 'btn bg-rose-500/15 text-rose-300'],
-                  ['P1', '高 P1', 'btn bg-orange-500/15 text-orange-300'],
-                  ['P2', '中 P2', 'btn bg-ink-700/70 text-mist-200'],
-                  ['P3', '低 P3', 'btn bg-ink-750 text-mist-300']
+                  ['P0', '紧急 P0', 'bg-my-danger-subtle text-my-danger-text'],
+                  ['P1', '高 P1', 'bg-my-warning-subtle text-my-warning-text'],
+                  ['P2', '中 P2', 'bg-my-layer-3 text-my-secondary'],
+                  ['P3', '低 P3', 'bg-my-layer-3 text-my-tertiary']
                 ] as const
               ).map(([p, label, buttonClass]) => (
                 <button
                   key={p}
                   onClick={() => setPriority(p)}
-                  className={clsx(buttonClass, priority === p && 'ring-2 ring-leaf-dim/60')}
+                  className={clsx(
+                    'inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-my-md px-2.5 py-1 text-my-xs font-medium transition-colors',
+                    buttonClass,
+                    priority === p && 'ring-2 ring-my-line-accent'
+                  )}
                 >
                   {label}
                 </button>
@@ -130,28 +139,28 @@ export function IntakeModal(): JSX.Element | null {
             </div>
           </div>
 
-          <div className="rounded-lg border border-ink-700 bg-ink-800/60 px-3.5 py-2.5 text-[11px] leading-5 text-mist-500">
+          <div className="rounded-my-md border border-my-line bg-my-layer-1 px-3.5 py-2.5 text-my-xs leading-5 text-my-tertiary">
             创建后待办将保存为本地文档（.trellis/todos/*.md）。Codex / ZCode / Claude Code 可以直接读取该文件进行需求规划并转换为正式任务。
           </div>
         </div>
 
-        <div className="flex items-center gap-2 border-t border-ink-700 px-5 py-3">
-          <button
+        <div className="flex items-center gap-2 border-t border-my-line px-5 py-3">
+          <Button
+            variant="outline"
             onClick={() => {
               if (!title.trim()) return
               setPlanSeed({ title: title.trim(), description: desc.trim() })
             }}
             disabled={!title.trim()}
-            className="btn-outline disabled:opacity-40"
             title="检索知识库 → AI 生成结构化任务计划（PRD/子任务/分支建议）→ 一键落成 Trellis 任务"
           >
             <Wand2 size={12} /> AI 规划成任务
-          </button>
-          <span className="ml-auto text-[10.5px] text-mist-600">{snapshot?.meta.name}</span>
-          <button onClick={close} className="btn-outline" disabled={busy}>取消</button>
-          <button onClick={() => void createTodo()} disabled={!title.trim() || busy} className="btn-primary disabled:opacity-50">
+          </Button>
+          <span className="ml-auto text-my-2xs text-my-tertiary">{snapshot?.meta.name}</span>
+          <Button variant="outline" onClick={close} disabled={busy}>取消</Button>
+          <Button variant="primary" onClick={() => void createTodo()} disabled={!title.trim() || busy}>
             <Save size={12} /> {busy ? '创建中…' : '仅保存待办'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -110,145 +110,181 @@ select {
   user-select: text;
 }
 
-@layer components {
-  .card {
-    @apply rounded-xl border border-ink-700 bg-ink-800/80 backdrop-blur-sm;
-  }
-  .btn {
-    @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium
-      transition-colors duration-150 cursor-pointer whitespace-nowrap;
-  }
-  .btn-primary {
-    @apply btn bg-leaf-dim/90 text-white hover:bg-leaf-dim;
-  }
-  .btn-ghost {
-    @apply btn text-mist-300 hover:text-mist-100 hover:bg-ink-700/60;
-  }
-  .btn-outline {
-    @apply btn border border-ink-500 text-mist-200 hover:border-ink-400 hover:bg-ink-700/40;
-  }
-  .field {
-    @apply w-full rounded-lg border border-ink-500 bg-ink-850 px-2.5 py-1.5 text-xs
-      text-mist-100 outline-none focus:border-leaf-dim/70 placeholder:text-mist-400/60;
-  }
-  select.field {
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238fa0b5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-    padding-right: 26px;
-    cursor: pointer;
-  }
-  select.field option {
-    background-color: rgb(var(--ink-800-rgb));
-    color: rgb(var(--mist-100-rgb));
-  }
-  .chip {
-    @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4;
-  }
-}
 
-/* ---------- Markdown viewer ---------- */
+/* ---------- Markdown viewer（壳内排版，消费方均渲染于 .my-root，走外壳令牌） ---------- */
 .md {
-  @apply text-[13px] leading-6 text-mist-200;
+  font-size: var(--my-text-md, 13px);
+  line-height: 1.65;
+  color: var(--my-txt-primary, inherit);
   user-select: text;
 }
 .md > :first-child {
   margin-top: 0;
 }
 .md h1 {
-  @apply mt-6 mb-3 border-b border-ink-600 pb-2 text-xl font-semibold text-mist-50;
+  margin: 24px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--my-border-subtle);
+  font-size: var(--my-text-xl, 16px);
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--my-txt-primary);
 }
 .md h2 {
-  @apply mt-6 mb-2.5 border-b border-ink-700 pb-1.5 text-base font-semibold text-mist-50;
+  margin: 24px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--my-border-subtle);
+  font-size: var(--my-text-lg, 14px);
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--my-txt-primary);
 }
 .md h3 {
-  @apply mt-5 mb-2 text-sm font-semibold text-mist-100;
+  margin: 20px 0 8px;
+  font-size: var(--my-text-md, 13px);
+  font-weight: 600;
+  color: var(--my-txt-primary);
 }
 .md h4,
 .md h5,
 .md h6 {
-  @apply mt-4 mb-1.5 text-[13px] font-semibold text-mist-100;
+  margin: 16px 0 6px;
+  font-size: var(--my-text-sm, 12px);
+  font-weight: 600;
+  color: var(--my-txt-primary);
 }
 .md p {
-  @apply my-2.5;
+  margin: 10px 0;
 }
 .md a {
-  @apply text-leaf-soft underline decoration-leaf-dim/50 underline-offset-2 hover:decoration-leaf-soft;
+  color: var(--my-txt-accent-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--my-border-accent-subtle);
+  text-underline-offset: 2px;
+}
+.md a:hover {
+  text-decoration-color: var(--my-txt-accent-primary);
 }
 .md strong {
-  @apply font-semibold text-mist-50;
+  font-weight: 600;
+  color: var(--my-txt-primary);
 }
 .md em {
-  @apply italic;
+  font-style: italic;
 }
 .md del {
-  @apply text-mist-400 line-through;
+  color: var(--my-txt-tertiary);
+  text-decoration: line-through;
 }
 .md ul {
-  @apply my-2.5 list-disc space-y-1 pl-5;
+  margin: 10px 0;
+  list-style: disc;
+  padding-left: 20px;
+}
+.md ul > li {
+  margin-top: 4px;
 }
 .md ol {
-  @apply my-2.5 list-decimal space-y-1 pl-5;
+  margin: 10px 0;
+  list-style: decimal;
+  padding-left: 20px;
+}
+.md ol > li {
+  margin-top: 4px;
 }
 .md li > ul,
 .md li > ol {
-  @apply my-1;
+  margin: 4px 0;
 }
 .md blockquote {
-  @apply my-3 border-l-2 border-leaf-dim/60 bg-ink-850/60 py-1 pl-3 pr-2 text-mist-300;
+  margin: 12px 0;
+  border-left: 2px solid var(--my-border-accent-subtle);
+  background: var(--my-bg-layer-1);
+  padding: 4px 8px 4px 12px;
+  color: var(--my-txt-secondary);
 }
 .md hr {
-  @apply my-4 border-ink-600;
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--my-border-subtle);
 }
 .md code {
-  @apply rounded bg-ink-750 px-1.5 py-0.5 font-mono text-[12px] text-leaf-soft;
+  border-radius: var(--my-radius-sm);
+  background: var(--my-bg-layer-3);
+  padding: 2px 6px;
+  font-family: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  font-size: var(--my-text-sm, 12px);
+  color: var(--my-txt-accent-primary);
 }
 .md pre {
-  @apply my-3 overflow-auto rounded-lg border border-ink-600 bg-ink-950 p-3;
+  margin: 12px 0;
+  overflow: auto;
+  border-radius: var(--my-radius-md);
+  border: 1px solid var(--my-border-subtle);
+  background: var(--my-bg-canvas);
+  padding: 12px;
 }
 .md pre code {
-  @apply bg-transparent p-0 text-[12px] leading-5 text-mist-200;
+  background: transparent;
+  padding: 0;
+  font-size: var(--my-text-sm, 12px);
+  line-height: 1.5;
+  color: var(--my-txt-secondary);
 }
 .md table {
-  @apply my-4 min-w-full w-max border-collapse text-[12.5px];
+  margin: 16px 0;
+  min-width: 100%;
+  width: max-content;
+  border-collapse: collapse;
+  font-size: var(--my-text-sm, 12px);
 }
 .md thead {
-  @apply border-b border-ink-700 bg-ink-850/90 text-mist-100 font-semibold;
+  border-bottom: 1px solid var(--my-border-subtle);
+  background: var(--my-bg-layer-2);
+  color: var(--my-txt-primary);
+  font-weight: 600;
 }
 .md th {
-  @apply border-r border-ink-700 last:border-r-0 px-4 py-2.5 text-left font-semibold tracking-wide text-mist-100 select-none break-keep;
+  border-right: 1px solid var(--my-border-subtle);
+  padding: 10px 16px;
+  text-align: left;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--my-txt-primary);
+  user-select: none;
+  word-break: keep-all;
+}
+.md th:last-child {
+  border-right: 0;
 }
 .md tr {
-  @apply border-b border-ink-700/70 last:border-b-0 transition-colors;
+  border-bottom: 1px solid var(--my-border-subtle);
+  transition: background-color 0.12s ease;
 }
 .md tr:nth-child(even) {
-  @apply bg-ink-850/25;
+  background: color-mix(in srgb, var(--my-bg-layer-2) 45%, transparent);
 }
 .md tr:hover td {
-  @apply bg-ink-800/40;
+  background: color-mix(in srgb, var(--my-bg-layer-1-hover) 55%, transparent);
 }
 .md td {
-  @apply border-r border-ink-700/70 last:border-r-0 px-4 py-2.5 align-top text-mist-200 leading-relaxed break-keep break-words;
+  border-right: 1px solid var(--my-border-subtle);
+  padding: 10px 16px;
+  vertical-align: top;
+  color: var(--my-txt-secondary);
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+.md td:last-child {
+  border-right: 0;
 }
 .md td code {
-  @apply break-all;
+  word-break: break-all;
 }
 .md input[type='checkbox'] {
-  @apply mr-1.5 accent-emerald-500;
-}
-
-/* ---------- ASCII diagram ---------- */
-.ascii-diagram {
-  @apply relative my-3 overflow-hidden rounded-xl border border-ink-700 bg-ink-950/60 shadow-sm;
-}
-.ascii-diagram-label {
-  @apply border-b border-ink-700/80 bg-ink-850/80 px-3 py-1 text-[10.5px] font-medium text-mist-200;
-}
-.ascii-diagram pre {
-  @apply m-0 max-w-full overflow-x-auto p-3 text-[11.5px] leading-[1.18] text-mist-100;
-  font-family: 'Cascadia Code', 'Cascadia Mono', Consolas, 'Fira Code', 'Courier New', monospace;
-  font-variant-ligatures: none;
+  margin-right: 6px;
+  accent-color: var(--my-bg-accent-primary);
 }
 
 /* ---------- Toast ---------- */
@@ -295,25 +331,25 @@ rect.arch-node-state { fill: #eef8f1; stroke: #2f9e5f; }
   50% { filter: drop-shadow(0 0 8px rgba(47,158,95,.75)); }
 }
 
-/* 深色主题覆盖（html.dark） */
-.dark .arch-lane { fill: #5b6472; }
-.dark .arch-lane-line { stroke: #2a2f3a; }
-.dark .arch-edge-path { stroke: #3a4150; }
-.dark .arch-edge-main .arch-edge-path { stroke: #4d5a70; }
-.dark .arch-edge-active .arch-edge-path { stroke: #7fc4a4; }
-.dark .arch-edge-label { fill: #8b94a5; stroke: #12151b; }
-.dark .arch-flow-dot { fill: #9fe0be; filter: drop-shadow(0 0 4px rgba(127,196,164,.9)); }
-.dark .arch-marker-dashed { fill: #6d7684; }
-.dark .arch-marker-active { fill: #7fc4a4; }
-.dark rect.arch-node-tool { fill: #1d222c; stroke: #4a5468; }
-.dark rect.arch-node-hook { fill: #17202b; stroke: #3d6b8f; }
-.dark rect.arch-node-agent { fill: #201a2b; stroke: #6b5a9e; }
-.dark rect.arch-node-file { fill: #1a2029; stroke: #3f5a4d; }
-.dark rect.arch-node-state { fill: #142018; stroke: #3f7a58; }
-.dark .arch-node-title { fill: #e6eaf2; }
-.dark .arch-node-sub { fill: #79828f; }
-.dark .arch-node:hover rect { stroke: #9fe0be; }
-.dark .arch-node-live rect {
+/* 深色主题覆盖（外壳 data-my-theme） */
+[data-my-theme='dark'] .arch-lane { fill: #5b6472; }
+[data-my-theme='dark'] .arch-lane-line { stroke: #2a2f3a; }
+[data-my-theme='dark'] .arch-edge-path { stroke: #3a4150; }
+[data-my-theme='dark'] .arch-edge-main .arch-edge-path { stroke: #4d5a70; }
+[data-my-theme='dark'] .arch-edge-active .arch-edge-path { stroke: #7fc4a4; }
+[data-my-theme='dark'] .arch-edge-label { fill: #8b94a5; stroke: #12151b; }
+[data-my-theme='dark'] .arch-flow-dot { fill: #9fe0be; filter: drop-shadow(0 0 4px rgba(127,196,164,.9)); }
+[data-my-theme='dark'] .arch-marker-dashed { fill: #6d7684; }
+[data-my-theme='dark'] .arch-marker-active { fill: #7fc4a4; }
+[data-my-theme='dark'] rect.arch-node-tool { fill: #1d222c; stroke: #4a5468; }
+[data-my-theme='dark'] rect.arch-node-hook { fill: #17202b; stroke: #3d6b8f; }
+[data-my-theme='dark'] rect.arch-node-agent { fill: #201a2b; stroke: #6b5a9e; }
+[data-my-theme='dark'] rect.arch-node-file { fill: #1a2029; stroke: #3f5a4d; }
+[data-my-theme='dark'] rect.arch-node-state { fill: #142018; stroke: #3f7a58; }
+[data-my-theme='dark'] .arch-node-title { fill: #e6eaf2; }
+[data-my-theme='dark'] .arch-node-sub { fill: #79828f; }
+[data-my-theme='dark'] .arch-node:hover rect { stroke: #9fe0be; }
+[data-my-theme='dark'] .arch-node-live rect {
   stroke: #7fc4a4;
   animation: archPulse 2s ease-in-out infinite;
 }

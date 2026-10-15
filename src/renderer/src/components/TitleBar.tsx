@@ -44,7 +44,7 @@ export function TitleBar(): JSX.Element {
             {snapshot.meta.name}
           </span>
           {snapshot.meta.version && (
-            <span className="rounded border border-my-line bg-my-layer-2 px-1 font-mono text-my-2xs text-my-tertiary">
+            <span className="rounded-my-sm border border-my-line bg-my-layer-2 px-1 font-mono text-my-2xs text-my-tertiary">
               v{snapshot.meta.version}
             </span>
           )}

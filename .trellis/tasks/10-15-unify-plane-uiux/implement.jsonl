@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/my-ui-module.md", "reason": "外壳模块约定:my-* 令牌清单、禁写死字号/圆角、交互约定(my-pop/my-control/my-scrollbar)、主题机制 data-my-theme"}
+{"file": ".trellis/spec/frontend/css-design.md", "reason": "CSS 组织与设计令牌规范,styles.css 职责边界"}
+{"file": ".trellis/spec/frontend/components.md", "reason": "语义 HTML、空状态、滚动条模式"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "React 陷阱:函数态包裹、useMemo、受控组件"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "禁非空断言、代码质量标准"}
+{"file": ".trellis/tasks/10-15-unify-plane-uiux/design.md", "reason": "本任务迁移映射表(唯一对照标准)与文件互斥切分"}

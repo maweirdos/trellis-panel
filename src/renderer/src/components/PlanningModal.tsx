@@ -20,6 +20,7 @@ import { api } from '../api'
 import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
 import { Select } from './Select'
+import { Button } from '../my/ui'
 import type { HandoffText, JiraIssue, PlanResult, TaskPlan } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -30,10 +31,10 @@ const LIB_ICON: Record<string, JSX.Element> = {
   archive: <Archive size={11} />
 }
 const LIB_CLS: Record<string, string> = {
-  requirements: 'bg-amber-500/15 text-amber-300',
-  spec: 'bg-leaf-dim/15 text-leaf-soft',
-  wiki: 'bg-sky-500/15 text-sky-300',
-  archive: 'bg-violet-500/15 text-violet-300'
+  requirements: 'bg-my-label-yellow text-my-label-yellow-text',
+  spec: 'bg-my-accent-subtle text-my-accent-text',
+  wiki: 'bg-my-label-indigo text-my-label-indigo-text',
+  archive: 'bg-my-label-purple text-my-label-purple-text'
 }
 const LIB_LABEL: Record<string, string> = {
   requirements: '需求库',
@@ -125,23 +126,23 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-ink-950/70 p-6 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-ink-600 bg-ink-900 shadow-2xl">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-my-backdrop p-6 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]">
         {/* 头部 */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-ink-700 px-5 py-3">
-          <Wand2 size={15} className="text-leaf" />
-          <span className="text-sm font-semibold text-mist-50">AI 规划工作台</span>
-          {seed.jiraKey && <span className="chip bg-blue-500/15 font-mono text-[10.5px] text-blue-300">⚡ {seed.jiraKey}</span>}
-          <span className="text-[10.5px] text-mist-500">需求 → 知识库检索 → AI 计划 → Trellis 任务</span>
-          <button onClick={onClose} className="btn-ghost ml-auto justify-center px-1.5" title="关闭">
+        <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-3">
+          <Wand2 size={15} className="text-my-icon-accent" />
+          <span className="text-my-sm font-semibold text-my-primary">AI 规划工作台</span>
+          {seed.jiraKey && <span className="my-chip bg-my-label-indigo font-mono text-my-label-indigo-text">⚡ {seed.jiraKey}</span>}
+          <span className="text-my-2xs text-my-tertiary">需求 → 知识库检索 → AI 计划 → Trellis 任务</span>
+          <Button variant="ghost" className="ml-auto justify-center px-1.5" onClick={onClose} title="关闭">
             <X size={14} />
-          </button>
+          </Button>
         </div>
 
         {!aiEnabled && (
-          <div className="flex items-center gap-2 border-b border-amber-500/25 bg-amber-500/5 px-5 py-2.5 text-[11.5px] text-amber-300">
+          <div className="flex items-center gap-2 border-b border-my-line-warning bg-my-warning-subtle px-5 py-2.5 text-my-xs text-my-warning-text">
             <AlertTriangle size={13} /> 应用内 AI 未启用——请先到「设置 → 应用内 AI」接入 baseUrl 自定义模型
-            <button onClick={() => { useApp.getState().setPage('settings'); onClose() }} className="btn-ghost ml-auto text-[11px]">去设置</button>
+            <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { useApp.getState().setPage('settings'); onClose() }}>去设置</Button>
           </div>
         )}
 
@@ -150,19 +151,19 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
           {phase === 'input' && (
             <div className="space-y-3">
               <label className="block">
-                <span className="mb-1 block text-[11px] text-mist-400">需求标题</span>
-                <input value={title} onChange={(e) => setTitle(e.target.value)} className="field w-full" placeholder="如：退药审核行内绑定与比对回退" />
+                <span className="mb-1 block text-my-xs text-my-secondary">需求标题</span>
+                <input value={title} onChange={(e) => setTitle(e.target.value)} className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" placeholder="如：退药审核行内绑定与比对回退" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-mist-400">需求描述（可编辑）</span>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={7} className="field w-full resize-y font-mono text-[12px]" placeholder="Jira 描述或原始需求…" />
+                <span className="mb-1 block text-my-xs text-my-secondary">需求描述（可编辑）</span>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={7} className="w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-2 py-1.5 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" placeholder="Jira 描述或原始需求…" />
               </label>
-              {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-[11.5px] text-rose-300">{error}</div>}
+              {error && <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-2.5 text-my-xs text-my-danger-text">{error}</div>}
               <div className="flex items-center gap-2 pt-1">
-                <button onClick={() => void generate()} disabled={!aiEnabled} className="btn-primary disabled:opacity-40">
+                <Button variant="primary" disabled={!aiEnabled} onClick={() => void generate()}>
                   <Wand2 size={12} /> 生成计划
-                </button>
-                <span className="text-[10.5px] text-mist-600">四库检索 → AI 组织</span>
+                </Button>
+                <span className="text-my-2xs text-my-placeholder">四库检索 → AI 组织</span>
               </div>
             </div>
           )}
@@ -170,9 +171,9 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
           {/* Step 2: 生成中 */}
           {phase === 'generating' && (
             <div className="grid place-items-center gap-3 py-16 text-center">
-              <Loader2 size={26} className="animate-spin text-leaf" />
-              <div className="text-xs text-mist-300">正在检索知识库并规划…</div>
-              <div className="text-[10.5px] leading-4 text-mist-600">
+              <Loader2 size={26} className="animate-spin text-my-icon-accent" />
+              <div className="text-my-xs text-my-secondary">正在检索知识库并规划…</div>
+              <div className="text-my-2xs leading-4 text-my-placeholder">
                 本地倒排索引检索（毫秒级）→ AI 组织成 PRD 与子任务
               </div>
             </div>
@@ -183,7 +184,7 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
             <div className="space-y-4">
               {/* KB 来源 */}
               <div>
-                <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-mist-500">
+                <div className="mb-1.5 flex items-center gap-2 text-my-xs font-semibold uppercase tracking-wide text-my-tertiary">
                   <Library size={11} /> 知识库来源 · {result?.sources.length ?? 0} 篇
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -192,22 +193,22 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
                       key={s.path}
                       onClick={() => void api.revealInExplorer(s.path)}
                       title={s.path}
-                      className={clsx('chip text-[10px] hover:opacity-80', LIB_CLS[s.library] ?? 'bg-ink-750 text-mist-300')}
+                      className={clsx('my-chip hover:opacity-80', LIB_CLS[s.library] ?? 'bg-my-layer-2 text-my-secondary')}
                     >
                       {LIB_ICON[s.library]} {LIB_LABEL[s.library] ?? s.library} · {s.title.slice(0, 24)}
                     </button>
                   ))}
-                  {(result?.sources.length ?? 0) === 0 && <span className="text-[11px] text-mist-600">未检索到相关内容——AI 将主要依赖需求原文</span>}
+                  {(result?.sources.length ?? 0) === 0 && <span className="text-my-xs text-my-placeholder">未检索到相关内容——AI 将主要依赖需求原文</span>}
                 </div>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="block">
-                  <span className="mb-1 block text-[11px] text-mist-400">任务标题</span>
-                  <input value={plan.title} onChange={(e) => setPlan({ ...plan, title: e.target.value })} className="field w-full" />
+                  <span className="mb-1 block text-my-xs text-my-secondary">任务标题</span>
+                  <input value={plan.title} onChange={(e) => setPlan({ ...plan, title: e.target.value })} className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[11px] text-mist-400">优先级</span>
+                  <span className="mb-1 block text-my-xs text-my-secondary">优先级</span>
                   <Select
                     value={plan.priority}
                     onChange={(val) => setPlan({ ...plan, priority: val })}
@@ -216,7 +217,7 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[11px] text-mist-400">workflow pin（可选）</span>
+                  <span className="mb-1 block text-my-xs text-my-secondary">workflow pin（可选）</span>
                   <Select
                     value={plan.workflow ?? ''}
                     onChange={(val) => setPlan({ ...plan, workflow: val || null })}
@@ -230,45 +231,45 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
-                  <span className="mb-1 block text-[11px] text-mist-400">分支建议</span>
-                  <input value={plan.branch ?? ''} onChange={(e) => setPlan({ ...plan, branch: e.target.value })} className="field w-full font-mono text-[12px]" placeholder="feat/xxx" />
+                  <span className="mb-1 block text-my-xs text-my-secondary">分支建议</span>
+                  <input value={plan.branch ?? ''} onChange={(e) => setPlan({ ...plan, branch: e.target.value })} className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" placeholder="feat/xxx" />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[11px] text-mist-400">范围 / 模块（可选）</span>
-                  <input value={plan.scope ?? ''} onChange={(e) => setPlan({ ...plan, scope: e.target.value || null })} className="field w-full" />
+                  <span className="mb-1 block text-my-xs text-my-secondary">范围 / 模块（可选）</span>
+                  <input value={plan.scope ?? ''} onChange={(e) => setPlan({ ...plan, scope: e.target.value || null })} className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" />
                 </label>
               </div>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-mist-400">PRD 草稿</span>
-                <div className="max-h-56 overflow-y-auto rounded-lg border border-ink-600 bg-ink-950 p-3">
+                <span className="mb-1 block text-my-xs text-my-secondary">PRD 草稿</span>
+                <div className="max-h-56 overflow-y-auto rounded-my-lg border border-my-line bg-my-canvas p-3">
                   <MarkdownView content={plan.description} />
                 </div>
-                <textarea value={plan.description} onChange={(e) => setPlan({ ...plan, description: e.target.value })} rows={3} className="field mt-1.5 w-full resize-y font-mono text-[11px]" title="编辑 PRD 原文" />
+                <textarea value={plan.description} onChange={(e) => setPlan({ ...plan, description: e.target.value })} rows={3} className="mt-1.5 w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-2 py-1.5 font-mono text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" title="编辑 PRD 原文" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-mist-400">子任务（每行一条）</span>
-                <textarea value={subtasksText} onChange={(e) => setSubtasksText(e.target.value)} rows={5} className="field w-full resize-y font-mono text-[12px]" />
+                <span className="mb-1 block text-my-xs text-my-secondary">子任务（每行一条）</span>
+                <textarea value={subtasksText} onChange={(e) => setSubtasksText(e.target.value)} rows={5} className="w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-2 py-1.5 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" />
               </label>
               {(plan.questions.length > 0 || result?.sources.length === 0) && (
-                <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
-                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
+                <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-warning-text">
                     <AlertTriangle size={11} /> 开放问题（AI 标注的信息缺口）
                   </div>
-                  <ul className="space-y-0.5 text-[11.5px] leading-5 text-amber-200/90">
+                  <ul className="space-y-0.5 text-my-xs leading-5 text-my-warning-text">
                     {plan.questions.map((q, i) => <li key={i}>· {q}</li>)}
                     {(result?.sources.length ?? 0) === 0 && <li>· 知识库无相关命中——考虑先补充 spec / Wiki</li>}
                   </ul>
                 </div>
               )}
-              {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-[11.5px] text-rose-300">{error}</div>}
+              {error && <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-2.5 text-my-xs text-my-danger-text">{error}</div>}
               <div className="flex items-center gap-2">
-                <button onClick={() => void create()} disabled={creating} className="btn-primary disabled:opacity-40">
+                <Button variant="primary" disabled={creating} onClick={() => void create()}>
                   {creating ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} 创建 Trellis 任务
-                </button>
-                <button onClick={() => void generate()} className="btn-ghost text-[11px]">
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => void generate()}>
                   <RefreshCw size={11} /> 重新生成
-                </button>
-                <span className="ml-auto text-[10.5px] text-mist-600">.trellis/tasks/</span>
+                </Button>
+                <span className="ml-auto text-my-2xs text-my-placeholder">.trellis/tasks/</span>
               </div>
             </div>
           )}
@@ -276,41 +277,41 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
           {/* Step 4: 完成 + 衔接 */}
           {phase === 'done' && createdDir && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 rounded-xl border border-leaf-dim/30 bg-leaf-dim/10 p-4">
-                <CheckCircle2 size={18} className="shrink-0 text-leaf" />
+              <div className="flex items-center gap-2 rounded-my-xl border border-my-line-accent-subtle bg-my-accent-subtle p-4">
+                <CheckCircle2 size={18} className="shrink-0 text-my-icon-accent" />
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-mist-100">任务已创建：{createdDir}</div>
-                  <div className="text-[10.5px] text-mist-500">PRD 与子任务清单已写入任务目录，AI 工具按 workflow 即可接手</div>
+                  <div className="text-my-xs font-semibold text-my-primary">任务已创建：{createdDir}</div>
+                  <div className="text-my-2xs text-my-tertiary">PRD 与子任务清单已写入任务目录，AI 工具按 workflow 即可接手</div>
                 </div>
-                <button onClick={() => { showTask(createdDir); onClose() }} className="btn-outline ml-auto shrink-0">
+                <Button variant="outline" className="ml-auto shrink-0" onClick={() => { showTask(createdDir); onClose() }}>
                   <FolderOpen size={12} /> 打开任务
-                </button>
+                </Button>
               </div>
               <div>
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-mist-500">启动衔接</div>
+                <div className="mb-2 text-my-xs font-semibold uppercase tracking-wide text-my-tertiary">启动衔接</div>
                 <div className="space-y-1.5">
                   {handoffs.map((h) => (
-                    <div key={h.platform} className="flex items-start gap-2 rounded-lg border border-ink-700 bg-ink-850/60 p-2.5">
-                      <span className="chip shrink-0 bg-leaf-dim/15 text-[10px] text-leaf-soft">{h.platform}</span>
-                      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-[10.5px] leading-4 text-mist-400">{h.text.split('\n')[0]}</pre>
-                      <button onClick={() => { void api.copyToClipboard(h.text); pushToast({ kind: 'success', title: `${h.platform} 启动词已复制` }) }} className="btn-ghost shrink-0 justify-center px-2" title="复制完整启动词">
+                    <div key={h.platform} className="flex items-start gap-2 rounded-my-lg border border-my-line bg-my-layer-1 p-2.5">
+                      <span className="my-chip shrink-0 bg-my-accent-subtle text-my-accent-text">{h.platform}</span>
+                      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-my-2xs leading-4 text-my-secondary">{h.text.split('\n')[0]}</pre>
+                      <Button variant="ghost" className="shrink-0 justify-center px-2" onClick={() => { void api.copyToClipboard(h.text); pushToast({ kind: 'success', title: `${h.platform} 启动词已复制` }) }} title="复制完整启动词">
                         <Copy size={12} />
-                      </button>
+                      </Button>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-850/40 p-3">
-                <Radio size={13} className="shrink-0 text-leaf" />
-                <div className="min-w-0 flex-1 truncate text-[11px] text-mist-400">
-                  <code className="font-mono text-[10.5px]">channel create {createdDir}-exec --task {createdDir}</code>
+              <div className="flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+                <Radio size={13} className="shrink-0 text-my-icon-accent" />
+                <div className="min-w-0 flex-1 truncate text-my-xs text-my-secondary">
+                  <code className="font-mono text-my-2xs">channel create {createdDir}-exec --task {createdDir}</code>
                 </div>
-                <button onClick={() => { void api.copyToClipboard(`trellis channel create ${createdDir}-exec --task ${createdDir} --by panel-ui`); pushToast({ kind: 'success', title: '频道命令已复制' }) }} className="btn-ghost shrink-0 text-[10.5px]">
+                <Button variant="ghost" size="sm" className="shrink-0" onClick={() => { void api.copyToClipboard(`trellis channel create ${createdDir}-exec --task ${createdDir} --by panel-ui`); pushToast({ kind: 'success', title: '频道命令已复制' }) }}>
                   <Copy size={11} /> 复制
-                </button>
-                <button onClick={() => { useApp.getState().setPage('channels'); onClose() }} className="btn-outline shrink-0 text-[10.5px]">
+                </Button>
+                <Button variant="outline" size="sm" className="shrink-0" onClick={() => { useApp.getState().setPage('channels'); onClose() }}>
                   去 AI 频道
-                </button>
+                </Button>
               </div>
             </div>
           )}

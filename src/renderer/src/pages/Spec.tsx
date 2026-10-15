@@ -45,7 +45,7 @@ function Snippet({ text }: { text: string }): JSX.Element {
     <>
       {parts.map((p, i) =>
         i % 2 === 1 ? (
-          <mark key={i} className="rounded bg-my-accent-subtle px-0.5 text-my-accent-text">
+          <mark key={i} className="rounded-my-sm bg-my-accent-subtle px-0.5 text-my-accent-text">
             {p}
           </mark>
         ) : (
@@ -85,7 +85,7 @@ function TreeItem({
         }}
         style={{ paddingLeft: 8 + depth * 14 }}
         className={clsx(
-          'flex w-full items-center gap-1.5 rounded-my-md py-[5px] pr-2 text-left text-xs transition-colors',
+          'flex w-full items-center gap-1.5 rounded-my-md py-[5px] pr-2 text-left text-my-xs transition-colors',
           selected === node.path
             ? 'bg-my-accent-subtle font-medium text-my-accent-text'
             : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
@@ -104,7 +104,7 @@ function TreeItem({
         {!isDir && refs !== undefined && (
           <span
             className={clsx(
-              'ml-auto shrink-0 rounded px-1 text-my-2xs font-mono',
+              'ml-auto shrink-0 rounded-my-sm px-1 text-my-2xs font-mono',
               refs === 0 ? 'bg-my-layer-3 text-my-tertiary' : 'bg-my-accent-subtle text-my-accent-text'
             )}
             title={refs === 0 ? '从未被引用（候选死规范）' : `被 ${refs} 处引用`}
@@ -430,9 +430,9 @@ export function SpecPage(): JSX.Element {
               <span className="min-w-0 flex-1 truncate font-mono text-my-sm text-my-secondary">
                 {docSelected ? docSelected.name : relPath}
               </span>
-              {docSelected && <span className="chip bg-my-layer-3 text-my-2xs text-my-tertiary">{GROUP_META[docSelected.group].label}</span>}
+              {docSelected && <span className="my-chip bg-my-layer-3 text-my-2xs text-my-tertiary">{GROUP_META[docSelected.group].label}</span>}
               {!docSelected && refCount?.[specSelected.path] !== undefined && (
-                <span className="chip bg-my-layer-3 text-my-tertiary">
+                <span className="my-chip bg-my-layer-3 text-my-tertiary">
                   <Link2 size={10} /> 被引用 {refCount[specSelected.path]} 处
                 </span>
               )}
@@ -477,8 +477,8 @@ export function SpecPage(): JSX.Element {
               />
             ) : (
               <div className="mx-auto max-w-3xl px-6 py-5">
-                {state.loading && <div className="text-xs text-my-tertiary">加载中…</div>}
-                {state.error && <div className="text-xs text-my-danger-text">{state.error}</div>}
+                {state.loading && <div className="text-my-xs text-my-tertiary">加载中…</div>}
+                {state.error && <div className="text-my-xs text-my-danger-text">{state.error}</div>}
                 {!state.loading && !state.error && (
                   /\.(md|markdown)$/i.test(selected.name) ? (
                     <MarkdownView content={state.content ?? ''} />
@@ -492,7 +492,7 @@ export function SpecPage(): JSX.Element {
             )}
           </>
         ) : (
-          <div className="grid h-full place-items-center text-xs text-my-tertiary">
+          <div className="grid h-full place-items-center text-my-xs text-my-tertiary">
             <span className="flex items-center gap-1.5"><Eye size={13} /> 选择左侧文件查看；或全文搜索跨文档定位</span>
           </div>
         )}

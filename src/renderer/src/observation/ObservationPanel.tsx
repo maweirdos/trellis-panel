@@ -4,6 +4,7 @@ import { clsx } from 'clsx'
 import { api } from '../api'
 import { useApp } from '../store'
 import { confirmDialog } from '../components/Dialogs'
+import { Button } from '../my/ui'
 import { fmtBytes, relTime } from '../utils/format'
 import { EvidenceBadge } from './EvidenceBadge'
 import { useMaterialCurrency, useObservationScope } from './use-observation-scope'
@@ -32,18 +33,18 @@ import type { JSX } from 'react'
  */
 
 const OUTCOME_TONE: Record<ReceiptMaterialView['outcome'], string> = {
-  included: 'text-leaf',
-  truncated: 'text-amber-400',
-  index_only: 'text-sky-300',
-  missing: 'text-amber-400',
-  unreadable: 'text-amber-400'
+  included: 'text-my-accent-text',
+  truncated: 'text-my-warning-text',
+  index_only: 'text-my-info-text',
+  missing: 'text-my-warning-text',
+  unreadable: 'text-my-warning-text'
 }
 
 const HEALTH_TONE_DOT: Record<ObservationHealthTone, string> = {
-  ok: 'bg-leaf',
-  neutral: 'bg-mist-400',
-  warn: 'bg-amber-400',
-  error: 'bg-rose-400'
+  ok: 'bg-my-accent',
+  neutral: 'bg-my-icon-secondary',
+  warn: 'bg-my-warning',
+  error: 'bg-my-danger'
 }
 
 function bytesLabel(bytes: number | null): string {
@@ -53,20 +54,20 @@ function bytesLabel(bytes: number | null): string {
 function MaterialRow({ material, compact }: { material: ReceiptMaterialView; compact: boolean }): JSX.Element {
   const currency = MATERIAL_CURRENCY_LABELS[material.currency]
   return (
-    <div className={clsx('flex flex-wrap items-baseline gap-x-1.5', compact ? 'text-[10.5px]' : 'text-[11px]')}>
-      <span className="min-w-0 flex-1 truncate font-mono text-mist-300" title={material.source}>
+    <div className={clsx('flex flex-wrap items-baseline gap-x-1.5', compact ? 'text-my-2xs' : 'text-my-xs')}>
+      <span className="min-w-0 flex-1 truncate font-mono text-my-secondary" title={material.source}>
         {material.source}
       </span>
       <span className={clsx('shrink-0 font-medium', OUTCOME_TONE[material.outcome])}>{MATERIAL_OUTCOME_LABELS[material.outcome]}</span>
-      <span className="shrink-0 font-mono text-[10px] text-mist-500">
+      <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">
         {material.includedBytes !== null ? `纳入 ${fmtBytes(material.includedBytes)}` : material.sourceBytes !== null ? `源 ${fmtBytes(material.sourceBytes)}` : ''}
       </span>
-      {material.reason !== null && <span className="shrink-0 text-[10px] text-mist-500">（{material.reason}）</span>}
+      {material.reason !== null && <span className="shrink-0 text-my-2xs text-my-tertiary">（{material.reason}）</span>}
       {currency !== '' && (
         <span
           className={clsx(
-            'shrink-0 text-[10px]',
-            material.currency === 'changed' ? 'text-amber-300' : material.currency === 'same' ? 'text-mist-500' : 'text-mist-400'
+            'shrink-0 text-my-2xs',
+            material.currency === 'changed' ? 'text-my-warning-text' : material.currency === 'same' ? 'text-my-tertiary' : 'text-my-secondary'
           )}
           title="材料当时摘要与当前文件的核对结果"
         >
@@ -80,15 +81,15 @@ function MaterialRow({ material, compact }: { material: ReceiptMaterialView; com
 function ReceiptCard({ receipt, compact }: { receipt: ReceiptView; compact: boolean }): JSX.Element {
   const wording = evidenceWording(receipt.level)
   return (
-    <div className={clsx('rounded-lg border border-ink-700/70 bg-ink-850/50 p-2.5', compact && 'p-2')}>
+    <div className={clsx('rounded-my-lg border border-my-line bg-my-layer-1 p-2.5', compact && 'p-2')}>
       <div className="flex flex-wrap items-center gap-1.5">
         <EvidenceBadge level={receipt.level} />
-        <span className="ml-auto shrink-0 font-mono text-[10px] text-mist-500" title={new Date(receipt.occurredAtMs).toLocaleString()}>
+        <span className="ml-auto shrink-0 font-mono text-my-2xs text-my-tertiary" title={new Date(receipt.occurredAtMs).toLocaleString()}>
           {relTime(receipt.occurredAtMs)}
         </span>
       </div>
-      <p className={clsx('mt-1.5 text-mist-400', compact ? 'text-[10px]' : 'text-[10.5px]')}>{wording.hint}</p>
-      <div className={clsx('mt-1.5 flex flex-wrap gap-x-2 text-[10px] text-mist-500', compact && 'text-[9.5px]')}>
+      <p className="mt-1.5 text-my-2xs text-my-secondary">{wording.hint}</p>
+      <div className="mt-1.5 flex flex-wrap gap-x-2 text-my-2xs text-my-tertiary">
         <span title="事件来源（宿主 / Hook）">
           {receipt.host} · {receipt.hook} v{receipt.producerVersion}
         </span>
@@ -105,7 +106,7 @@ function ReceiptCard({ receipt, compact }: { receipt: ReceiptView; compact: bool
         {!receipt.paired && receipt.level === 'emitted' && <span title="assembled 记录缺失，emitted 仍为完整证据">缺组装记录（输出证据仍完整）</span>}
       </div>
 
-      <div className={clsx('mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[10px] text-mist-400', compact && 'text-[9.5px]')}>
+      <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-my-2xs text-my-secondary">
         <span title="组装后上下文 UTF-8 字节（含标题/提示文案）">上下文 {bytesLabel(receipt.totals.contextUtf8Bytes)}</span>
         <span title="宿主协议包装整体 stdout UTF-8 字节（最终序列化后可得）">输出包装 {bytesLabel(receipt.totals.stdoutUtf8Bytes)}</span>
         <span title="本次采集实际记录的材料条数">
@@ -116,7 +117,7 @@ function ReceiptCard({ receipt, compact }: { receipt: ReceiptView; compact: bool
       </div>
 
       {receipt.manifestIncomplete && (
-        <div className="mt-1.5 rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-1 text-[10px] text-amber-300">
+        <div className="mt-1.5 rounded-my-sm border border-my-line-warning bg-my-warning-subtle px-1.5 py-1 text-my-2xs text-my-warning-text">
           清单不完整：遗漏 {receipt.totals.omittedEntries} 条（本次采集所列材料口径，不代表规范覆盖完整）
           {receipt.totals.expectedEntries === null && '；预期数量未知，不计算缺失率'}
         </div>
@@ -130,17 +131,17 @@ function ReceiptCard({ receipt, compact }: { receipt: ReceiptView; compact: bool
         </div>
       ) : (
         receipt.totals.omittedEntries > 0 && (
-          <div className="mt-1.5 text-[10px] text-mist-500">材料明细超编码预算未保留（汇总与遗漏数仍在）。</div>
+          <div className="mt-1.5 text-my-2xs text-my-tertiary">材料明细超编码预算未保留（汇总与遗漏数仍在）。</div>
         )
       )}
 
       {receipt.outputDigest !== null && (
-        <div className="mt-1.5 font-mono text-[9.5px] text-mist-600" title="实际输出上下文字段 SHA-256（UI 缩写）">
+        <div className="mt-1.5 font-mono text-my-2xs text-my-tertiary" title="实际输出上下文字段 SHA-256（UI 缩写）">
           digest {shortDigest(receipt.outputDigest)}
         </div>
       )}
       {receipt.diagnosticCode !== null && (
-        <div className="mt-1 font-mono text-[9.5px] text-mist-500">诊断码 {receipt.diagnosticCode}</div>
+        <div className="mt-1 font-mono text-my-2xs text-my-tertiary">诊断码 {receipt.diagnosticCode}</div>
       )}
     </div>
   )
@@ -151,24 +152,24 @@ function ActivityColumns({ columns, compact }: { columns: ActivityColumnView[]; 
     <div className={clsx('space-y-2.5', compact && 'space-y-2')}>
       {columns.map((column) => (
         <div key={column.key}>
-          <div className={clsx('mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-mist-500', compact && 'text-[9.5px]')}>
+          <div className="mb-1 flex items-center gap-1 text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">
             <Activity size={10} />
             {column.label}
           </div>
           {column.entries.length === 0 ? (
-            <div className={clsx('text-[10px] text-mist-600', compact && 'text-[9.5px]')}>暂无记录</div>
+            <div className="text-my-2xs text-my-tertiary">暂无记录</div>
           ) : (
             <ul className="space-y-0.5">
               {column.entries.map((entry) => (
-                <li key={entry.key} className={clsx('flex items-baseline gap-1.5 text-[10.5px] text-mist-300', compact && 'text-[10px]')}>
+                <li key={entry.key} className="flex items-baseline gap-1.5 text-my-2xs text-my-secondary">
                   <span className="min-w-0 flex-1 break-words">{entry.text}</span>
                   {entry.atMs > 0 && (
-                    <span className="shrink-0 font-mono text-[9.5px] text-mist-600" title={new Date(entry.atMs).toLocaleString()}>
+                    <span className="shrink-0 font-mono text-my-2xs text-my-tertiary" title={new Date(entry.atMs).toLocaleString()}>
                       {relTime(entry.atMs)}
                     </span>
                   )}
                   {entry.taskDir === null && column.key !== 'task-record' && (
-                    <span className="shrink-0 text-[9.5px] text-mist-500" title="任务归属无法确定，保留未归属，不借当前选中任务补全">
+                    <span className="shrink-0 text-my-2xs text-my-tertiary" title="任务归属无法确定，保留未归属，不借当前选中任务补全">
                       未归属
                     </span>
                   )}
@@ -177,7 +178,7 @@ function ActivityColumns({ columns, compact }: { columns: ActivityColumnView[]; 
             </ul>
           )}
           {column.note !== null && (
-            <div className={clsx('mt-0.5 text-[9.5px] leading-relaxed text-mist-600', compact && 'text-[9px]')}>{column.note}</div>
+            <div className="mt-0.5 text-my-2xs leading-relaxed text-my-tertiary">{column.note}</div>
           )}
         </div>
       ))}
@@ -256,28 +257,28 @@ function HealthGovernance(): JSX.Element {
   }
 
   if (status === null) {
-    return <div className="text-[10px] text-mist-600">正在读取观测健康状态…</div>
+    return <div className="text-my-2xs text-my-tertiary">正在读取观测健康状态…</div>
   }
 
   return (
     <div className="space-y-2">
       {view !== null && (
-        <div className="flex items-center gap-1.5 text-[11px]">
+        <div className="flex items-center gap-1.5 text-my-xs">
           <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', HEALTH_TONE_DOT[view.tone])} aria-hidden />
-          <span className={clsx('font-medium', view.tone === 'error' ? 'text-rose-300' : view.tone === 'warn' ? 'text-amber-300' : 'text-mist-200')}>
+          <span className={clsx('font-medium', view.tone === 'error' ? 'text-my-danger-text' : view.tone === 'warn' ? 'text-my-warning-text' : 'text-my-primary')}>
             {view.label}
           </span>
           {binding?.bindingStatus === 'rebind_required' && (
-            <span className="text-[10px] text-amber-300" title={binding.blockReason ?? undefined}>
+            <span className="text-my-2xs text-my-warning-text" title={binding.blockReason ?? undefined}>
               需重新绑定
             </span>
           )}
         </div>
       )}
-      {view?.detail !== null && view !== null && <div className="text-[10px] leading-relaxed text-mist-500">{view.detail}</div>}
+      {view?.detail !== null && view !== null && <div className="text-my-2xs leading-relaxed text-my-tertiary">{view.detail}</div>}
 
       {health !== null && (
-        <div className="grid grid-cols-2 gap-x-2 font-mono text-[10px] text-mist-500">
+        <div className="grid grid-cols-2 gap-x-2 font-mono text-my-2xs text-my-tertiary">
           <span title="库＋sidecar 物理字节（软保护口径，非精确配额）">磁盘 {fmtBytes(health.physicalBytes)}</span>
           <span title="逻辑事件条数（保留策略口径）">事件 {health.logicalCount} 条</span>
         </div>
@@ -285,37 +286,38 @@ function HealthGovernance(): JSX.Element {
 
       <div className="flex flex-wrap gap-1.5">
         {binding !== null && binding.collectionEnabled !== null && binding.bindingStatus === 'bound' && (
-          <button
-            type="button"
-            className="btn-ghost px-2 py-0.5 text-[10.5px]"
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={busy !== null}
             onClick={() => void toggle()}
             title={binding.collectionEnabled ? '停用后 Hook 不再落新记录；读取与清理不受影响' : '启用后恢复采集落账'}
           >
             {busy === 'toggle' ? <Loader2 size={11} className="animate-spin" /> : null}
             {binding.collectionEnabled ? '停用采集' : '启用采集'}
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
-          className="btn-ghost px-2 py-0.5 text-[10.5px]"
+        <Button
+          variant="ghost"
+          size="sm"
           disabled={busy !== null}
           onClick={() => void cleanup('retention')}
           title="按保留策略清理过期/超限记录（不换游标纪元）"
         >
           {busy === 'retention' ? <Loader2 size={11} className="animate-spin" /> : null}
           按保留策略清理
-        </button>
-        <button
-          type="button"
-          className="btn-ghost px-2 py-0.5 text-[10.5px] text-rose-300"
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="!text-my-danger-text"
           disabled={busy !== null}
           onClick={() => void cleanup('all')}
           title="清空观测事件并重置游标纪元；清理观测 ≠ 归档任务"
         >
           {busy === 'all' ? <Loader2 size={11} className="animate-spin" /> : null}
           清空观测记录…
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -372,13 +374,13 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
 
   return (
     <section
-      className={clsx('rounded-lg border border-ink-700/70 bg-ink-900/60', compact ? 'p-2' : 'p-2.5')}
+      className={clsx('rounded-my-lg border border-my-line bg-my-layer-1', compact ? 'p-2' : 'p-2.5')}
       aria-label="上下文回执与观察"
       data-observation-panel={scope.scopeKey}
     >
       <header className="flex items-center gap-1.5">
-        <Eye size={12} className="shrink-0 text-leaf" />
-        <span className={clsx('font-semibold text-mist-200', compact ? 'text-[11px]' : 'text-[11.5px]')}>观察 · 上下文回执</span>
+        <Eye size={12} className="shrink-0 text-my-icon-accent" />
+        <span className="font-semibold text-my-primary text-my-xs">观察 · 上下文回执</span>
         <span className="ml-auto">
           <EvidenceBadge level={latestView?.level} unobserved={latestView === null} size={compact ? 'sm' : 'md'} />
         </span>
@@ -386,36 +388,37 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
 
       {/* 状态行（未知/未绑定/连接中都是中性，不标失败） */}
       {scope.status === 'connecting' && (
-        <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-mist-500">
+        <div className="mt-1.5 flex items-center gap-1.5 text-my-2xs text-my-tertiary">
           <Loader2 size={11} className="animate-spin" /> 正在连接观测存储…
         </div>
       )}
       {scope.status === 'closed' && (
-        <div className="mt-1.5 text-[10.5px] leading-relaxed text-mist-500">
+        <div className="mt-1.5 text-my-2xs leading-relaxed text-my-tertiary">
           本工作区未绑定观测（未观察到 ≠ 故障）。绑定与启用属显式操作，读取不依赖它。
-          <button
-            type="button"
-            className="btn-ghost ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-1.5"
             onClick={() => void bindCurrentProject()}
             disabled={binding}
             title="为当前项目创建绑定并启用采集（写入 .trellis/.panel/runtime/binding.json；本机私有）"
           >
             {binding ? <Loader2 size={10} className="animate-spin" /> : <ShieldQuestion size={10} />}
             绑定本工作区并启用观测
-          </button>
+          </Button>
         </div>
       )}
       {scope.status === 'error' && (
-        <div className="mt-1.5 flex items-start gap-1.5 text-[10.5px] text-amber-300">
+        <div className="mt-1.5 flex items-start gap-1.5 text-my-2xs text-my-warning-text">
           <ShieldQuestion size={11} className="mt-0.5 shrink-0" />
           <span className="min-w-0 flex-1 break-words">{scope.error ?? '观测读取失败'}</span>
-          <button type="button" className="btn-ghost shrink-0 px-1.5 py-0.5 text-[10px]" onClick={scope.reload} title="重试连接">
+          <Button variant="ghost" size="sm" className="shrink-0" onClick={scope.reload} title="重试连接">
             <RefreshCw size={10} /> 重试
-          </button>
+          </Button>
         </div>
       )}
       {scope.lastResetAtMs !== null && scope.status === 'live' && (
-        <div className="mt-1.5 text-[10px] text-mist-500" title={new Date(scope.lastResetAtMs).toLocaleString()}>
+        <div className="mt-1.5 text-my-2xs text-my-tertiary" title={new Date(scope.lastResetAtMs).toLocaleString()}>
           观测记录已重置（清理/重建），已按最新纪元重新拉取。
         </div>
       )}
@@ -426,7 +429,7 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
           {latestView !== null ? (
             <ReceiptCard receipt={latestView} compact={compact} />
           ) : scope.status === 'live' ? (
-            <div className="rounded-lg border border-dashed border-ink-600 p-2.5 text-center text-[10.5px] text-mist-500">
+            <div className="rounded-my-lg border border-dashed border-my-line-strong p-2.5 text-center text-my-2xs text-my-tertiary">
               未观察到注入记录（{latestWording.label}）。这不是故障证明；可在下方「健康与治理」检查观测配置。
             </div>
           ) : null}
@@ -438,23 +441,23 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
         <div className="mt-2">
           <button
             type="button"
-            className="flex w-full items-center gap-1 rounded px-0.5 py-0.5 text-[10.5px] text-mist-400 transition-colors hover:text-mist-200"
+            className="flex w-full items-center gap-1 rounded-my-sm px-0.5 py-0.5 text-my-2xs text-my-secondary transition-colors hover:text-my-primary"
             onClick={() => setShowHistory((v) => !v)}
             aria-expanded={showHistory}
           >
             <History size={11} />
             历史回执（{history.length} 次）
-            <span className="ml-auto font-mono text-[9.5px] text-mist-600">{showHistory ? '收起' : '展开'}</span>
+            <span className="ml-auto font-mono text-my-2xs text-my-tertiary">{showHistory ? '收起' : '展开'}</span>
           </button>
           {showHistory && (
             <ul className="mt-1 space-y-1">
               {history.map((receipt) => (
-                <li key={receipt.injectionId} className="flex items-center gap-1.5 text-[10.5px] text-mist-400">
+                <li key={receipt.injectionId} className="flex items-center gap-1.5 text-my-2xs text-my-secondary">
                   <EvidenceBadge level={receipt.level} />
-                  <span className="min-w-0 flex-1 truncate font-mono text-[9.5px] text-mist-600">
+                  <span className="min-w-0 flex-1 truncate font-mono text-my-2xs text-my-tertiary">
                     {receipt.host} · {receipt.materials.length} 材料{receipt.manifestIncomplete ? ` · 遗漏 ${receipt.totals.omittedEntries}` : ''}
                   </span>
-                  <span className="shrink-0 font-mono text-[9.5px] text-mist-600" title={new Date(receipt.occurredAtMs).toLocaleString()}>
+                  <span className="shrink-0 font-mono text-my-2xs text-my-tertiary" title={new Date(receipt.occurredAtMs).toLocaleString()}>
                     {relTime(receipt.occurredAtMs)}
                   </span>
                 </li>
@@ -466,17 +469,17 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
 
       {/* 实际活动（分列；不含回执，不升级阶段） */}
       {activityColumns !== null && (
-        <div className={clsx('mt-3 border-t border-ink-700/60 pt-2.5', compact && 'mt-2 pt-2')}>
-          <div className={clsx('mb-1.5 flex items-center gap-1.5 font-semibold text-mist-200', compact ? 'text-[11px]' : 'text-[11.5px]')}>
-            <FileClock size={12} className="shrink-0 text-leaf" /> 实际活动
+        <div className={clsx('mt-3 border-t border-my-line pt-2.5', compact && 'mt-2 pt-2')}>
+          <div className="mb-1.5 flex items-center gap-1.5 font-semibold text-my-primary text-my-xs">
+            <FileClock size={12} className="shrink-0 text-my-icon-accent" /> 实际活动
           </div>
           <ActivityColumns columns={activityColumns.columns} compact={compact} />
         </div>
       )}
 
       {/* 健康与治理 */}
-      <details className={clsx('mt-3 border-t border-ink-700/60 pt-2', compact && 'mt-2')}>
-        <summary className={clsx('flex cursor-pointer select-none items-center gap-1.5 text-[10.5px] font-medium text-mist-400 hover:text-mist-200', compact && 'text-[10px]')}>
+      <details className={clsx('mt-3 border-t border-my-line pt-2', compact && 'mt-2')}>
+        <summary className="flex cursor-pointer select-none items-center gap-1.5 text-my-2xs font-medium text-my-secondary transition-colors hover:text-my-primary">
           <Database size={11} /> 观测健康与治理
         </summary>
         <div className="mt-2">

@@ -174,7 +174,7 @@ export function ChannelsPage(): JSX.Element {
       <div className="flex w-[340px] shrink-0 flex-col border-r border-my-line">
         <div className="space-y-2.5 border-b border-my-line px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="chip bg-my-layer-2 text-my-2xs text-my-tertiary">{visible.length}</span>
+            <span className="my-chip bg-my-layer-2 text-my-tertiary">{visible.length}</span>
             <Button variant="ghost" className="ml-auto" title="刷新" onClick={() => void reload()}>
               <RefreshCw size={12} />
             </Button>
@@ -190,7 +190,7 @@ export function ChannelsPage(): JSX.Element {
                 key={id}
                 onClick={() => setScopeFilter(id)}
                 className={clsx(
-                  'chip border transition-colors',
+                  'my-chip border transition-colors',
                   scopeFilter === id
                     ? 'border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text'
                     : 'border-my-line text-my-tertiary hover:bg-my-layer-1'
@@ -212,7 +212,7 @@ export function ChannelsPage(): JSX.Element {
         </div>
 
         <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
-          {error && <div className="rounded-my-lg border border-rose-500/30 bg-rose-500/10 p-3 text-my-xs text-rose-300">{error}</div>}
+          {error && <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{error}</div>}
           {visible.map((c) => (
             <button
               key={`${c.bucket}/${c.name}`}
@@ -225,11 +225,11 @@ export function ChannelsPage(): JSX.Element {
               )}
             >
               <div className="flex items-center gap-1.5">
-                <span className={clsx('chip text-my-2xs', c.scope === 'project' ? 'bg-my-accent-subtle text-my-accent-text' : 'bg-violet-500/15 text-violet-300')}>
+                <span className={clsx('my-chip', c.scope === 'project' ? 'bg-my-accent-subtle text-my-accent-text' : 'bg-my-label-purple text-my-label-purple-text')}>
                   {c.scope === 'project' ? '本项目' : '全局'}
                 </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-my-primary">{c.name}</span>
-                <span className="chip shrink-0 bg-my-layer-2 text-my-2xs text-my-tertiary">{c.type}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-my-xs font-medium text-my-primary">{c.name}</span>
+                <span className="my-chip shrink-0 bg-my-layer-2 text-my-tertiary">{c.type}</span>
               </div>
               <div className="mt-1 flex items-center gap-1.5 text-my-2xs text-my-tertiary">
                 <Users size={10} /> {c.participants.slice(0, 3).join(', ')}
@@ -239,7 +239,7 @@ export function ChannelsPage(): JSX.Element {
             </button>
           ))}
           {visible.length === 0 && !error && (
-            <div className="grid place-items-center gap-2 py-14 text-center text-xs text-my-tertiary">
+            <div className="grid place-items-center gap-2 py-14 text-center text-my-xs text-my-tertiary">
               <RadioTower size={22} className="text-my-placeholder" />
               <div>
                 <div className="font-mono text-my-xs text-my-tertiary">trellis channel create &lt;name&gt; --by main</div>
@@ -253,8 +253,8 @@ export function ChannelsPage(): JSX.Element {
       {active ? (
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-4 py-2.5">
-            <span className="font-mono text-xs font-semibold text-my-primary">{active.name}</span>
-            <span className="chip bg-my-layer-2 text-my-2xs text-my-tertiary">{active.bucket}</span>
+            <span className="font-mono text-my-xs font-semibold text-my-primary">{active.name}</span>
+            <span className="my-chip bg-my-layer-2 text-my-tertiary">{active.bucket}</span>
             <div className="ml-auto flex items-center gap-1.5">
               <Button variant="ghost" size="sm" onClick={spawnWorker} disabled={busy} title="channel spawn">
                 <Play size={11} /> 启动 worker
@@ -285,7 +285,7 @@ export function ChannelsPage(): JSX.Element {
           {threadGroups && (
             <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-my-line px-4 py-2">
               {[...threadGroups.entries()].map(([thread, evs]) => (
-                <span key={thread} className="chip shrink-0 bg-sky-500/10 text-my-2xs text-sky-300">
+                <span key={thread} className="my-chip shrink-0 bg-my-info-subtle text-my-info-text">
                   {thread} · {evs.length}
                 </span>
               ))}
@@ -394,14 +394,14 @@ export function ChannelsPage(): JSX.Element {
                 return (
                   <div key={`m${e.seq}-${i}`} className={clsx('mb-3 flex', item.mine ? 'justify-end' : 'justify-start')}>
                     <div className="max-w-[85%] min-w-0">
-                      <div className={clsx('mb-0.5 flex items-baseline gap-2 text-my-2xs text-mist-600', item.mine && 'justify-end')}>
-                        <span className="font-medium text-mist-400">{item.mine ? who(e.by) : `worker「${e.by}」`}</span>
+                      <div className={clsx('mb-0.5 flex items-baseline gap-2 text-my-2xs text-my-placeholder', item.mine && 'justify-end')}>
+                        <span className="font-medium text-my-secondary">{item.mine ? who(e.by) : `worker「${e.by}」`}</span>
                         <span>{e.ts ? fmtIso(e.ts) : ''}</span>
                       </div>
                       <div
                         className={clsx(
-                          'rounded-my-xl border px-3 py-2 text-my-sm leading-5 text-mist-200',
-                          item.mine ? 'border-leaf-dim/30 bg-leaf-dim/10' : 'border-ink-700 bg-ink-850/80'
+                          'rounded-my-xl border px-3 py-2 text-my-sm leading-5 text-my-primary',
+                          item.mine ? 'border-my-line-accent-subtle bg-my-accent-subtle' : 'border-my-line bg-my-layer-2'
                         )}
                       >
                         {e.text.length > 6000 ? (
@@ -418,33 +418,33 @@ export function ChannelsPage(): JSX.Element {
                 return (
                   <div key={`live${item.by}-${i}`} className="mb-3 flex justify-start">
                     <div className="max-w-[85%] min-w-0">
-                      <div className="mb-0.5 flex items-baseline gap-2 text-my-2xs text-mist-600">
-                        <span className="font-medium text-mist-400">worker「{item.by}」</span>
-                        <span className="text-leaf-soft">正在回复…（{item.steps} 步）</span>
+                      <div className="mb-0.5 flex items-baseline gap-2 text-my-2xs text-my-placeholder">
+                        <span className="font-medium text-my-secondary">worker「{item.by}」</span>
+                        <span className="text-my-accent-text">正在回复…（{item.steps} 步）</span>
                       </div>
-                      <div className="rounded-my-xl border border-ink-700 bg-ink-850/80 px-3 py-2 text-my-sm leading-5 text-mist-200">
+                      <div className="rounded-my-xl border border-my-line bg-my-layer-2 px-3 py-2 text-my-sm leading-5 text-my-primary">
                         <pre className="whitespace-pre-wrap break-words font-sans">{item.text.slice(-2000) || '…'}</pre>
-                        <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-leaf-soft align-middle" />
+                        <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-my-accent align-middle" />
                       </div>
                     </div>
                   </div>
                 )
               }
               return (
-                <div key={`s${i}`} className="mb-1 flex items-center gap-2 text-my-2xs text-mist-600">
+                <div key={`s${i}`} className="mb-1 flex items-center gap-2 text-my-2xs text-my-placeholder">
                   <span
                     className={clsx(
                       'h-1 w-1 shrink-0 rounded-full',
-                      item.tone === 'error' ? 'bg-rose-400' : item.tone === 'warn' ? 'bg-amber-400' : item.tone === 'ok' ? 'bg-leaf' : 'bg-mist-600'
+                      item.tone === 'error' ? 'bg-my-danger' : item.tone === 'warn' ? 'bg-my-warning' : item.tone === 'ok' ? 'bg-my-accent' : 'bg-my-placeholder'
                     )}
                   />
-                  <span className={clsx(item.tone === 'error' && 'text-rose-300', item.tone === 'warn' && 'text-amber-300/90')}>{item.text}</span>
+                  <span className={clsx(item.tone === 'error' && 'text-my-danger-text', item.tone === 'warn' && 'text-my-warning-text')}>{item.text}</span>
                   {item.ts && <span className="ml-auto shrink-0">{fmtIso(item.ts)}</span>}
                 </div>
               )
             })
             })()}
-            {active.events.length === 0 && <div className="py-10 text-center text-xs text-my-tertiary">暂无事件</div>}
+            {active.events.length === 0 && <div className="py-10 text-center text-my-xs text-my-tertiary">暂无事件</div>}
           </div>
 
           {actionOutput && (
@@ -475,7 +475,7 @@ export function ChannelsPage(): JSX.Element {
           </div>
         </div>
       ) : (
-        <div className="grid min-w-0 flex-1 place-items-center text-xs text-my-tertiary">选择或创建一个频道</div>
+        <div className="grid min-w-0 flex-1 place-items-center text-my-xs text-my-tertiary">选择或创建一个频道</div>
       )}
 
       {/* 派发弹窗 */}
@@ -484,8 +484,8 @@ export function ChannelsPage(): JSX.Element {
           <div onClick={(e) => e.stopPropagation()} className="w-[520px] overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]">
             <div className="flex items-center gap-2 border-b border-my-line px-5 py-3.5">
               <RadioTower size={15} className="text-my-accent-text" />
-              <span className="text-sm font-semibold text-my-primary">派活给 AI</span>
-              <span className="chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-2xs text-my-accent-text">自动建频道 · 结构化指令 · 事件实时回流</span>
+              <span className="text-my-sm font-semibold text-my-primary">派活给 AI</span>
+              <span className="my-chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text">自动建频道 · 结构化指令 · 事件实时回流</span>
               <Button variant="ghost" className="ml-auto" title="关闭" onClick={() => setDispatchOpen(false)}>
                 <X size={15} />
               </Button>

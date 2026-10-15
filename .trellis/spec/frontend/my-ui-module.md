@@ -52,3 +52,25 @@
   已知测试陷阱：截图工具会触发 resize 导致弹层关闭——自动化验证时用「打开后立即
   evaluate 读取 `.my-pop` 内容或坐标点击」而非截图中间态。
 - 字体：Inter Variable（`@fontsource-variable/inter`，注意本仓库 npm install 需 `--legacy-peer-deps`）。
+
+## 旧体系禁用与迁移映射（2026-10 全量统一后生效）
+
+旧面板样式体系（`styles.css` 的 ink/mist/leaf 色板与 `.card/.btn*/.field/.chip` 组件类）已清除，
+壳内**禁止再引入**。等价对照：
+
+- 亮/中/暗文本：`text-my-primary / secondary / tertiary / placeholder`；表面：`bg-my-canvas`（页底）、
+  `bg-my-layer-1/2/3`（凹→凸）、`bg-my-surface-1/2`（输入/嵌入面）、`border-my-line(-strong)`。
+- 品牌强调（原 leaf 系）：`bg-my-accent(-hover)`、`bg-my-accent-subtle(-hover)`、`text-my-accent-text`、
+  `border-my-line-accent(-subtle)`。语义彩色一律成对：`bg-my-<sem>-subtle + text-my-<sem>-text`
+  （sem: success/warning/danger/info），描边用 `border-my-line-<sem>`。
+- 徽标基类 `my-chip`（my.css，20px 高）+ 语义色类；彩色标签用 label 族
+  `bg-my-label-<fam> / text-my-label-<fam>-text / border-my-label-<fam>-border`。
+- **`my.*` 色板不支持 alpha 修饰符**（禁写 `bg-my-accent/20`），半透明场景用 subtle/hover 令牌。
+- 字号/圆角只用令牌类（`text-my-2xs..my-xl`、`rounded-my-sm..my-xl`），禁写死 px 与裸 tailwind 档位；
+  按钮统一 `my/ui.tsx` 的 `Button`，输入用 SearchInput 同款工具类。
+- styles.css 现仅存：leaf 变量（品牌色桥）、全局基础、令牌化的 `.md` 排版块、
+  `[data-my-theme='dark']` 祖先选择器的 `.arch-*`、透明窗阴影类（`.capsule-*`）。
+- 令牌作用域在 `.my-root`：CapsuleView/QuickTodoView 等独立窗口的根节点必须带
+  `my-root` + `data-my-theme`（App.tsx 已处理，新增窗体时照做）。
+- 类有效性自查：TSX 用到的 `my-*` 类必须能在构建产物 CSS 中找到（脚本
+  `.trellis/tasks/10-15-unify-plane-uiux/check_my_classes.py`，可复用为门禁）。

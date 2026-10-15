@@ -130,7 +130,7 @@ export function ArchitecturePage(): JSX.Element {
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-2">
         {currentNode && (
-          <span className="chip bg-my-accent-subtle text-my-xs text-my-accent-text">
+          <span className="my-chip bg-my-accent-subtle text-my-accent-text">
             会话最后绑定 · {currentNode.dir}
           </span>
         )}
@@ -239,7 +239,7 @@ export function ArchitecturePage(): JSX.Element {
         <div className="my-scrollbar w-72 shrink-0 overflow-y-auto border-l border-my-line p-4">
           {selected ? (
             <div className="space-y-3">
-              <div className="text-xs font-semibold text-my-primary">{selected.title}</div>
+              <div className="text-my-xs font-semibold text-my-primary">{selected.title}</div>
               {selected.sub && <div className="font-mono text-my-xs text-my-tertiary">{selected.sub}</div>}
               <div>
                 <div className="text-my-2xs uppercase tracking-wider text-my-tertiary">触发时机</div>
@@ -259,11 +259,11 @@ export function ArchitecturePage(): JSX.Element {
             </div>
           ) : (
             <div className="space-y-3 text-my-xs leading-5 text-my-tertiary">
-              <div className="text-xs font-semibold text-my-secondary">图例</div>
+              <div className="text-my-xs font-semibold text-my-secondary">图例</div>
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-sky-400" /> hooks（自动触发）</div>
+                <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-my-info" /> hooks（自动触发）</div>
                 <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-my-success" /> 任务状态机</div>
-                <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-violet-400" /> 子代理 / 调度</div>
+                <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-my-label-purple-icon" /> 子代理 / 调度</div>
                 <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-my-tertiary" /> 工具 / 文件</div>
               </div>
               <div className="border-t border-my-line pt-3">

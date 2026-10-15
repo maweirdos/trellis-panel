@@ -68,11 +68,11 @@ function tokenizeLine(line: string, lang: string): Tok[] {
 }
 
 const CLS: Record<Tok['t'], string> = {
-  kw: 'text-violet-300',
-  str: 'text-emerald-300',
-  num: 'text-sky-300',
-  com: 'text-mist-600 italic',
-  bool: 'text-orange-300',
+  kw: 'text-my-label-purple-text',
+  str: 'text-my-success-text',
+  num: 'text-my-info-text',
+  com: 'text-my-tertiary italic',
+  bool: 'text-my-warning-text',
   plain: ''
 }
 
@@ -82,15 +82,15 @@ export function CodeView({ content, ext }: { content: string; ext: string }): JS
 
   if (lang === 'plain') {
     return (
-      <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-mist-300">{content}</pre>
+      <pre className="whitespace-pre-wrap break-words font-mono text-my-sm leading-5 text-my-secondary">{content}</pre>
     )
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 p-3 font-mono text-[12px] leading-5">
+    <div className="overflow-x-auto rounded-my-lg border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5">
       {lines.map((toks, i) => (
         <div key={i} className="flex">
-          <span className="w-9 shrink-0 select-none pr-2 text-right text-[10px] text-mist-700">{i + 1}</span>
+          <span className="w-9 shrink-0 select-none pr-2 text-right text-my-2xs text-my-placeholder">{i + 1}</span>
           <span className="min-w-0 flex-1 whitespace-pre-wrap break-all">
             {toks.length === 0 ? (
               <span> </span>

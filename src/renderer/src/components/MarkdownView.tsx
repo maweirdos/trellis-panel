@@ -87,8 +87,8 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
           },
           table({ children, ...props }) {
             return (
-              <div className="my-4 overflow-x-auto rounded-lg border border-ink-700 bg-ink-900/40 shadow-xs">
-                <table className="min-w-full w-max border-collapse text-left text-[12.5px]" {...props}>
+              <div className="my-4 overflow-x-auto rounded-my-lg border border-my-line bg-my-surface-1 shadow-xs">
+                <table className="min-w-full w-max border-collapse text-left text-my-sm" {...props}>
                   {children}
                 </table>
               </div>
@@ -96,7 +96,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
           },
           thead({ children, ...props }) {
             return (
-              <thead className="border-b border-ink-700 bg-ink-850/90 text-mist-100 font-semibold" {...props}>
+              <thead className="border-b border-my-line bg-my-layer-2 text-my-primary font-semibold" {...props}>
                 {children}
               </thead>
             )
@@ -104,7 +104,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
           th({ children, ...props }) {
             return (
               <th
-                className="border-r border-ink-700 last:border-r-0 px-4 py-2.5 text-left font-semibold tracking-wide text-mist-100 select-none break-keep"
+                className="border-r border-my-line last:border-r-0 px-4 py-2.5 text-left font-semibold tracking-wide text-my-primary select-none break-keep"
                 {...props}
               >
                 {children}
@@ -113,7 +113,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
           },
           tr({ children, ...props }) {
             return (
-              <tr className="border-b border-ink-700/70 last:border-b-0 even:bg-ink-850/25 hover:bg-ink-800/40 transition-colors" {...props}>
+              <tr className="border-b border-my-line last:border-b-0 even:bg-my-layer-1-hover hover:bg-my-layer-1-hover transition-colors" {...props}>
                 {children}
               </tr>
             )
@@ -121,7 +121,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
           td({ children, ...props }) {
             return (
               <td
-                className="border-r border-ink-700/70 last:border-r-0 px-4 py-2.5 leading-relaxed text-mist-200 align-top break-keep break-words"
+                className="border-r border-my-line last:border-r-0 px-4 py-2.5 leading-relaxed text-my-secondary align-top break-keep break-words"
                 {...props}
               >
                 {children}

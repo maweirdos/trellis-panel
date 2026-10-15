@@ -22,7 +22,7 @@ import {
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
-import { Button } from '../my/ui'
+import { Button, Checkbox } from '../my/ui'
 import type { JSX } from 'react'
 import type { AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
 import { WEKNORA_DEFAULTS } from '../../../shared/types'
@@ -317,7 +317,7 @@ export function SettingsPage(): JSX.Element {
         <AcpAgentsSection />
 
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <Server size={13} /> Web 看板服务
           </div>
           <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
@@ -336,7 +336,7 @@ export function SettingsPage(): JSX.Element {
               {mcpInfo?.running ? '停止服务' : '启动 Web 看板'}
             </button>
             {mcpInfo?.running && (
-              <span className="chip border border-my-line-success bg-my-success-subtle text-my-success-text">
+              <span className="my-chip border border-my-line-success bg-my-success-subtle text-my-success-text">
                 <CheckCircle2 size={11} /> 运行中 · 端口 {mcpInfo.port}
               </span>
             )}
@@ -356,24 +356,20 @@ export function SettingsPage(): JSX.Element {
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 pt-1">
                 <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={settings.httpApi.lanAccess}
-                    onChange={(e) => {
-                      void saveSettings({ httpApi: { ...settings.httpApi, lanAccess: e.target.checked } }).then(() => {
+                    onChange={(v) => {
+                      void saveSettings({ httpApi: { ...settings.httpApi, lanAccess: v } }).then(() => {
                         void api.toggleHttpApi(settings.httpApi.enabled)
                       })
                     }}
-                    className="accent-p-accent"
                   />
                   允许局域网访问（0.0.0.0 监听）
                 </label>
                 <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={settings.httpApi.webBoard}
-                    onChange={(e) => void saveSettings({ httpApi: { ...settings.httpApi, webBoard: e.target.checked } })}
-                    className="accent-p-accent"
+                    onChange={(v) => void saveSettings({ httpApi: { ...settings.httpApi, webBoard: v } })}
                   />
                   启用 Web 看板页
                 </label>
@@ -384,7 +380,7 @@ export function SettingsPage(): JSX.Element {
 
         {/* TPAP 本地接入协议 */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <KeyRound size={13} /> 本地接入协议（TPAP）
           </div>
           <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
@@ -404,7 +400,7 @@ export function SettingsPage(): JSX.Element {
               {settings.access?.enabled ? '停止接入服务' : '启动接入服务'}
             </button>
             {accessInfo?.running && (
-              <span className="chip border border-my-line-success bg-my-success-subtle text-my-success-text">
+              <span className="my-chip border border-my-line-success bg-my-success-subtle text-my-success-text">
                 <CheckCircle2 size={11} /> 运行中 · 端口 {accessInfo.port}
               </span>
             )}
@@ -413,14 +409,14 @@ export function SettingsPage(): JSX.Element {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="shrink-0 text-my-xs text-my-tertiary">端点</span>
-                <code className="truncate rounded bg-my-layer-1 px-2 py-0.5 font-mono text-my-xs text-my-secondary">{accessInfo.endpoint}</code>
+                <code className="truncate rounded-my-sm bg-my-layer-1 px-2 py-0.5 font-mono text-my-xs text-my-secondary">{accessInfo.endpoint}</code>
                 <Button variant="ghost" size="sm" className="shrink-0" onClick={() => void api.copyToClipboard(`${accessInfo.endpoint}（Authorization: Bearer ${accessInfo.token}）`)}>
                   复制
                 </Button>
               </div>
               <div className="flex items-center gap-2">
                 <span className="shrink-0 text-my-xs text-my-tertiary">Token</span>
-                <code className="truncate rounded bg-my-layer-1 px-2 py-0.5 font-mono text-my-xs text-my-secondary">{accessInfo.token}</code>
+                <code className="truncate rounded-my-sm bg-my-layer-1 px-2 py-0.5 font-mono text-my-xs text-my-secondary">{accessInfo.token}</code>
                 <Button variant="ghost" size="sm" className="shrink-0" onClick={() => void api.copyToClipboard(accessInfo.token)}>
                   复制
                 </Button>
@@ -434,7 +430,7 @@ export function SettingsPage(): JSX.Element {
 
         {/* 网络代理 */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <Cloud size={13} /> 网络代理
           </div>
           <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
@@ -443,16 +439,14 @@ export function SettingsPage(): JSX.Element {
             例如 <code className="font-mono">http://127.0.0.1:7890</code> 或 <code className="font-mono">socks5://127.0.0.1:1080</code>。
           </p>
           <div className="space-y-2.5">
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-my-secondary">
-              <input
-                type="checkbox"
+            <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
+              <Checkbox
                 checked={settings.proxy?.enabled ?? false}
-                onChange={(e) =>
+                onChange={(v) =>
                   void saveSettings({
-                    proxy: { enabled: e.target.checked, url: settings.proxy?.url ?? '' }
+                    proxy: { enabled: v, url: settings.proxy?.url ?? '' }
                   })
                 }
-                className="accent-p-accent"
               />
               启用出网代理
             </label>
@@ -469,49 +463,43 @@ export function SettingsPage(): JSX.Element {
 
         {/* 桌面 */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <MonitorSmartphone size={13} /> 桌面集成
           </div>
           <p className="mb-3 text-my-xs leading-4 text-my-tertiary">
             关闭窗口会最小化到托盘（托盘菜单可退出）。
           </p>
           <div className="space-y-2.5">
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-my-secondary">
-              <input
-                type="checkbox"
+            <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
+              <Checkbox
                 checked={settings.desktop.autoStart}
-                onChange={(e) => void saveSettings({ desktop: { ...settings.desktop, autoStart: e.target.checked } })}
-                className="accent-p-accent"
+                onChange={(v) => void saveSettings({ desktop: { ...settings.desktop, autoStart: v } })}
               />
               开机自动启动
             </label>
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-my-secondary">
-              <input
-                type="checkbox"
+            <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
+              <Checkbox
                 checked={settings.desktop.autoUpdate}
-                onChange={(e) => void saveSettings({ desktop: { ...settings.desktop, autoUpdate: e.target.checked } })}
-                className="accent-p-accent"
+                onChange={(v) => void saveSettings({ desktop: { ...settings.desktop, autoUpdate: v } })}
               />
               自动检查更新（GitHub Releases）
             </label>
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-my-secondary">
-              <input
-                type="checkbox"
+            <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
+              <Checkbox
                 checked={settings.desktop.explorerContextMenu ?? false}
-                onChange={async (e) => {
-                  const res = await api.desktopSetExplorerMenu(e.target.checked)
+                onChange={async (v) => {
+                  const res = await api.desktopSetExplorerMenu(v)
                   if (res.ok) {
-                    await saveSettings({ desktop: { ...settings.desktop, explorerContextMenu: e.target.checked } })
+                    await saveSettings({ desktop: { ...settings.desktop, explorerContextMenu: v } })
                   } else {
                     pushToast({ kind: 'warn', title: '右键集成未启用', body: res.reason ?? '不支持当前环境' })
                   }
                 }}
-                className="accent-p-accent"
               />
               资源管理器右键"用 Trellis Panel 阅读"（仅打包版 Windows）
             </label>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-my-secondary">全局唤起快捷键</span>
+              <span className="text-my-xs text-my-secondary">全局唤起快捷键</span>
               <input
                 value={shortcut}
                 onChange={(e) => setShortcut(e.target.value)}
@@ -523,7 +511,7 @@ export function SettingsPage(): JSX.Element {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-my-secondary">派单模型（codex worker）</span>
+              <span className="text-my-xs text-my-secondary">派单模型（codex worker）</span>
               <input
                 value={dispatchModel}
                 onChange={(e) => setDispatchModel(e.target.value)}
@@ -534,7 +522,7 @@ export function SettingsPage(): JSX.Element {
               <span className="text-my-xs text-my-placeholder">只读审阅等派单用的 codex 模型；报 400 not supported 时填账号可用的模型</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-my-secondary">速记窗快捷键</span>
+              <span className="text-my-xs text-my-secondary">速记窗快捷键</span>
               <input
                 value={quickShortcut}
                 onChange={(e) => setQuickShortcut(e.target.value)}
@@ -551,14 +539,14 @@ export function SettingsPage(): JSX.Element {
 
         {/* AI bridge */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <Plug size={13} /> AI 工具桥接（codex / zcode / claude）
           </div>
           <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
-            ① 安装 <code className="rounded bg-my-layer-3 px-1 font-mono">tpanel</code>；
+            ① 安装 <code className="rounded-my-sm bg-my-layer-3 px-1 font-mono">tpanel</code>；
             ② 将上方对应配置复制到 Codex / ZCode / Claude Code；
-            ③ 把任务事件 hooks 写入 <code className="rounded bg-my-layer-3 px-1 font-mono">.trellis/config.yaml</code>；
-            ④ 任意程序可打开 <code className="rounded bg-my-layer-3 px-1 font-mono">trellis-panel://open-task?dir=…&amp;t=令牌</code> 跳转任务。
+            ③ 把任务事件 hooks 写入 <code className="rounded-my-sm bg-my-layer-3 px-1 font-mono">.trellis/config.yaml</code>；
+            ④ 任意程序可打开 <code className="rounded-my-sm bg-my-layer-3 px-1 font-mono">trellis-panel://open-task?dir=…&amp;t=令牌</code> 跳转任务。
           </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={() => void doInstallTpanel()}>
@@ -573,7 +561,7 @@ export function SettingsPage(): JSX.Element {
 
         {/* Jira */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <Link2 size={13} /> Jira 连接
           </div>
           <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
@@ -634,14 +622,12 @@ export function SettingsPage(): JSX.Element {
 
         {/* GitLab connector */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <GitMerge size={13} /> GitLab 集成
             <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-my-xs font-normal text-my-tertiary">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={gitlab.enabled}
-                onChange={(e) => setGitlab({ ...gitlab, enabled: e.target.checked })}
-                className="accent-p-accent"
+                onChange={(v) => setGitlab({ ...gitlab, enabled: v })}
               />
               启用（任务卡显示 MR / 构建状态）
             </label>
@@ -703,14 +689,12 @@ export function SettingsPage(): JSX.Element {
 
         {/* WeKnora 公司库联动 */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <Cloud size={13} /> WeKnora 公司库联动
             <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-my-xs font-normal text-my-tertiary">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={wk.enabled}
-                onChange={(e) => setWk({ ...wk, enabled: e.target.checked })}
-                className="accent-p-accent"
+                onChange={(v) => setWk({ ...wk, enabled: v })}
               />
               启用（知识库联邦检索 · 规划喂料 · 归档沉淀 · spec 同步）
             </label>
@@ -768,7 +752,7 @@ export function SettingsPage(): JSX.Element {
                     type="button"
                     onClick={() => toggleSearchKb(kb.id)}
                     className={clsx(
-                      'chip border transition-colors',
+                      'my-chip border transition-colors',
                       wk.searchKbIds.includes(kb.id)
                         ? 'border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text'
                         : 'border-my-line text-my-tertiary hover:text-my-secondary'
@@ -781,7 +765,7 @@ export function SettingsPage(): JSX.Element {
                 {wk.searchKbIds
                   .filter((id) => !(wkKbs ?? []).some((kb) => kb.id === id))
                   .map((id) => (
-                    <button key={id} type="button" onClick={() => toggleSearchKb(id)} className="chip border border-my-line-accent-subtle bg-my-accent-subtle font-mono text-my-accent-text" title="列表外的 ID，点击移除">
+                    <button key={id} type="button" onClick={() => toggleSearchKb(id)} className="my-chip border border-my-line-accent-subtle bg-my-accent-subtle font-mono text-my-accent-text" title="列表外的 ID，点击移除">
                       ✓ {id}
                     </button>
                   ))}
@@ -827,21 +811,17 @@ export function SettingsPage(): JSX.Element {
             </div>
             <div className="flex flex-col gap-1.5 pt-1">
               <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
-                <input
-                  type="checkbox"
-                  checked={wk.autoPushArchive}
-                  onChange={(e) => setWk({ ...wk, autoPushArchive: e.target.checked })}
-                  className="accent-p-accent"
-                />
+              <Checkbox
+                checked={wk.autoPushArchive}
+                onChange={(v) => setWk({ ...wk, autoPushArchive: v })}
+              />
                 归档任务时自动沉淀到公司库（PRD + 交付信息，channel = trellis-panel）
               </label>
               <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
-                <input
-                  type="checkbox"
-                  checked={wk.syncSpec}
-                  onChange={(e) => setWk({ ...wk, syncSpec: e.target.checked })}
-                  className="accent-p-accent"
-                />
+              <Checkbox
+                checked={wk.syncSpec}
+                onChange={(v) => setWk({ ...wk, syncSpec: v })}
+              />
                 .trellis/spec 变更自动同步（10 分钟静默后批量推送，按内容去重更新）
               </label>
             </div>
@@ -892,7 +872,7 @@ export function SettingsPage(): JSX.Element {
 
         {/* theme + cli */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-3 text-xs font-semibold text-my-secondary">外观与 CLI</div>
+          <div className="mb-3 text-my-xs font-semibold text-my-secondary">外观与 CLI</div>
           <div className="mb-3 flex gap-2">
             {(
               [
@@ -905,7 +885,7 @@ export function SettingsPage(): JSX.Element {
                 type="button"
                 onClick={() => void saveSettings({ theme: v })}
                 className={clsx(
-                  'flex items-center gap-2 rounded-my-lg border px-4 py-2 text-xs transition-colors',
+                  'flex items-center gap-2 rounded-my-lg border px-4 py-2 text-my-xs transition-colors',
                   settings.theme === v
                     ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
                     : 'border-my-line-strong text-my-secondary hover:border-my-line-strong-1'
@@ -928,7 +908,7 @@ export function SettingsPage(): JSX.Element {
 
         {/* recents */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+          <div className="mb-3 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <FolderOpen size={13} /> 最近项目
           </div>
           {settings.recentProjects.length === 0 && <div className="text-my-xs text-my-tertiary">暂无记录</div>}
@@ -950,16 +930,14 @@ export function SettingsPage(): JSX.Element {
 
         {/* AI 模型（baseUrl 自定义） */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-my-secondary">
+          <div className="mb-2 flex items-center gap-2 text-my-xs font-semibold text-my-secondary">
             <Sparkles size={13} className="text-my-icon-accent" /> 应用内 AI（OpenAI 兼容 · baseUrl 自定义模型）
           </div>
           <div className="space-y-2.5">
             <label className="flex items-center gap-2 text-my-sm text-my-secondary">
-              <input
-                type="checkbox"
-                className="accent-p-accent"
+              <Checkbox
                 checked={ai.enabled}
-                onChange={(e) => setAi((c) => ({ ...c, enabled: e.target.checked }))}
+                onChange={(v) => setAi((c) => ({ ...c, enabled: v }))}
               />
               知识库问答 · PRD 草稿 · 任务摘要 · 任务规划
             </label>
@@ -1022,7 +1000,7 @@ export function SettingsPage(): JSX.Element {
 
         {/* 知识库 MCP（AI 记忆大脑） */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-my-secondary">
+          <div className="mb-2 flex items-center gap-2 text-my-xs font-semibold text-my-secondary">
             <BrainCircuit size={13} className="text-my-icon-accent" /> 知识库 MCP —— AI 编码工具的持久记忆大脑
           </div>
           <div className="space-y-2.5">
@@ -1078,7 +1056,7 @@ export function SettingsPage(): JSX.Element {
 
         {/* about */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-my-secondary">
+          <div className="mb-2 flex items-center gap-2 text-my-xs font-semibold text-my-secondary">
             <Leaf size={13} className="text-my-icon-accent" /> 关于
           </div>
           <div className="grid grid-cols-2 gap-y-1.5 text-my-xs text-my-tertiary">
@@ -1131,7 +1109,7 @@ function AcpAgentsSection(): JSX.Element {
 
   return (
     <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-      <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-my-secondary">
+      <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
         <Bot size={13} /> ACP Agent 注册表
       </div>
       <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
@@ -1141,19 +1119,17 @@ function AcpAgentsSection(): JSX.Element {
       <div className="space-y-2">
         {agents.map((a) => (
           <div key={a.id} className="flex items-center gap-2 rounded-my-md border border-my-line px-3 py-2">
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-my-secondary">
-              <input
-                type="checkbox"
-                className="accent-p-accent"
+            <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
+              <Checkbox
                 checked={a.enabled}
-                onChange={(e) => persist(agents.map((row) => (row.id === a.id ? { ...row, enabled: e.target.checked } : row)))}
+                onChange={(v) => persist(agents.map((row) => (row.id === a.id ? { ...row, enabled: v } : row)))}
               />
               {a.name}
             </label>
             {a.available ? (
-              <span className="chip border border-my-line-success bg-my-success-subtle text-my-success-text">可用</span>
+              <span className="my-chip border border-my-line-success bg-my-success-subtle text-my-success-text">可用</span>
             ) : (
-              <span className="chip border border-my-line-warning bg-my-warning-subtle text-my-warning-text" title="命令首词不在 PATH（仍可强制启用）">
+              <span className="my-chip border border-my-line-warning bg-my-warning-subtle text-my-warning-text" title="命令首词不在 PATH（仍可强制启用）">
                 未探测到
               </span>
             )}

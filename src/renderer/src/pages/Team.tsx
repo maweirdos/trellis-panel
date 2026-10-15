@@ -49,12 +49,12 @@ interface MemberStat {
 type Tab = 'board' | 'efficiency' | 'report' | 'standup' | 'workflow'
 
 const AVATAR_STYLES = [
-  'bg-emerald-500/20 text-emerald-300',
-  'bg-sky-500/20 text-sky-300',
-  'bg-violet-500/20 text-violet-300',
-  'bg-amber-500/20 text-amber-300',
-  'bg-rose-500/20 text-rose-300',
-  'bg-cyan-500/20 text-cyan-300'
+  'bg-my-label-emerald text-my-label-emerald-text',
+  'bg-my-label-indigo text-my-label-indigo-text',
+  'bg-my-label-purple text-my-label-purple-text',
+  'bg-my-label-yellow text-my-label-yellow-text',
+  'bg-my-label-crimson text-my-label-crimson-text',
+  'bg-my-label-orange text-my-label-orange-text'
 ]
 
 function avatarStyle(name: string): string {
@@ -121,7 +121,7 @@ function BoardTab({ feed, members, snapshot }: {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
       {/* 成员负载：谁在做什么（人多时自动铺成两列网格） */}
       <div className="lg:col-span-3">
-        <div className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold text-my-secondary">
+        <div className="mb-2 flex items-center gap-2 px-1 text-my-xs font-semibold text-my-secondary">
           <Users2 size={13} className="text-my-tertiary" /> 成员负载
           <span className="text-my-xs font-normal text-my-tertiary">点击任务直达详情</span>
         </div>
@@ -144,7 +144,7 @@ function BoardTab({ feed, members, snapshot }: {
                   <Avatar name={m.name} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-my-primary">{m.name}</span>
+                      <span className="text-my-xs font-semibold text-my-primary">{m.name}</span>
                       <span className="text-my-xs text-my-tertiary">
                         {inflight.length} 个进行中 · 完成 {doneCount}
                       </span>
@@ -157,7 +157,7 @@ function BoardTab({ feed, members, snapshot }: {
                     {(['规划中', '进行中', '评审中', '已完成'] as const).map((label, i) => {
                       const v = m.byStatus[label] ?? 0
                       if (!v) return null
-                      const colors = ['bg-sky-500/70', 'bg-amber-500/70', 'bg-violet-500/70', 'bg-emerald-500/70']
+                      const colors = ['bg-my-info', 'bg-my-warning', 'bg-my-label-purple', 'bg-my-success']
                       return (
                         <div key={label} className={clsx(colors[i], 'h-full')} style={{ width: `${(v / m.total) * 100}%` }} title={`${label} ${v}`} />
                       )
@@ -181,7 +181,7 @@ function BoardTab({ feed, members, snapshot }: {
                   ))}
                   {inflight.length === 0 && (
                     <div className="flex items-center gap-1.5 px-2 py-1 text-my-xs text-my-placeholder">
-                      <CircleCheck size={11} className="text-emerald-400" /> 当前没有进行中的任务
+                      <CircleCheck size={11} className="text-my-success-text" /> 当前没有进行中的任务
                     </div>
                   )}
                 </div>
@@ -197,7 +197,7 @@ function BoardTab({ feed, members, snapshot }: {
       {/* 动态时间线：按日分组 */}
       <div className="lg:col-span-2">
         <div className="my-card">
-          <div className="flex items-center gap-1.5 border-b border-my-line px-4 py-2.5 text-xs font-semibold text-my-secondary">
+          <div className="flex items-center gap-1.5 border-b border-my-line px-4 py-2.5 text-my-xs font-semibold text-my-secondary">
             <GitCommitHorizontal size={13} className="text-my-tertiary" /> 团队动态
           </div>
           <div className="my-scrollbar max-h-[640px] overflow-y-auto px-4 py-3">
@@ -205,7 +205,7 @@ function BoardTab({ feed, members, snapshot }: {
               <div key={label} className="mb-4 last:mb-0">
                 {/* 吸顶日期分割栏 */}
                 <div className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-2 bg-my-canvas px-4 py-1">
-                  <span className="rounded bg-my-layer-2 px-2 py-0.5 font-mono text-my-2xs font-semibold text-my-tertiary">
+                  <span className="rounded-my-sm bg-my-layer-2 px-2 py-0.5 font-mono text-my-2xs font-semibold text-my-tertiary">
                     {label}
                   </span>
                   <div className="h-px flex-1 bg-my-line" />
@@ -218,7 +218,7 @@ function BoardTab({ feed, members, snapshot }: {
 
                   <div className="space-y-3">
                     {items.map((it, i) => (
-                      <div key={i} className="relative flex items-start gap-2.5 text-xs">
+                      <div key={i} className="relative flex items-start gap-2.5 text-my-xs">
                         {/* 时间线节点图标（居中覆盖在轴线上） */}
                         <span className="absolute -left-[23px] top-0.5 z-10 flex h-[18px] w-[18px] items-center justify-center">
                           {feedDot(it.kind)}
@@ -272,9 +272,9 @@ function feedDot(kind: FeedItem['kind']): JSX.Element {
     <span
       className={clsx(
         'grid h-[18px] w-[18px] place-items-center rounded-full ring-2 ring-my-canvas shadow-xs',
-        kind === 'task' && 'bg-amber-500/20 text-amber-300',
-        kind === 'journal' && 'bg-emerald-500/20 text-emerald-300',
-        kind === 'session' && 'bg-violet-500/20 text-violet-300'
+        kind === 'task' && 'bg-my-label-yellow text-my-label-yellow-text',
+        kind === 'journal' && 'bg-my-label-emerald text-my-label-emerald-text',
+        kind === 'session' && 'bg-my-label-purple text-my-label-purple-text'
       )}
     >
       {kind === 'task' && <GitCommitHorizontal size={11} />}
@@ -335,12 +335,12 @@ function EfficiencyTab(): JSX.Element {
     }
   }
 
-  if (!data) return <div className="p-8 text-xs text-my-tertiary">分析中…</div>
+  if (!data) return <div className="p-8 text-my-xs text-my-tertiary">分析中…</div>
 
   return (
     <div className="space-y-4 lg:col-span-5">
       <div className="flex items-center gap-2">
-        <div className="text-xs font-semibold text-my-secondary">效率分析</div>
+        <div className="text-my-xs font-semibold text-my-secondary">效率分析</div>
         {aiEnabled && (
           <Button variant="outline" size="sm" className="ml-auto" onClick={() => void runDiagnosis()} disabled={diagnosing} title="AI 解读效率数据：停滞归因、负载观察、行动建议">
             {diagnosing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} {diagnosing ? 'AI 诊断中…' : 'AI 深度诊断'}
@@ -349,13 +349,13 @@ function EfficiencyTab(): JSX.Element {
       </div>
       {diag && (
         <div className="my-card px-4 py-3.5">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-my-accent-text">
+          <div className="mb-2 flex items-center gap-1.5 text-my-xs font-semibold text-my-accent-text">
             <Sparkles size={12} /> AI 诊断报告
             <Button variant="ghost" size="sm" className="ml-auto" onClick={() => void api.copyToClipboard(diag).then(() => pushToast({ kind: 'success', title: '已复制' }))}>
               复制
             </Button>
           </div>
-          <div className="max-h-96 overflow-y-auto text-xs">
+          <div className="max-h-96 overflow-y-auto text-my-xs">
             <MarkdownView content={diag} />
           </div>
         </div>
@@ -363,24 +363,24 @@ function EfficiencyTab(): JSX.Element {
       <div className="grid grid-cols-3 gap-3">
         <div className="my-card px-4 py-3">
           <div className="text-my-xs text-my-tertiary">记录到的状态流转</div>
-          <div className="mt-1 text-xl font-semibold text-my-primary">{data.totalTransitions}</div>
+          <div className="mt-1 text-my-xl font-semibold text-my-primary">{data.totalTransitions}</div>
         </div>
         <div className="my-card px-4 py-3">
           <div className="text-my-xs text-my-tertiary">平均交付周期（创建→完成）</div>
-          <div className="mt-1 text-xl font-semibold text-my-primary">
+          <div className="mt-1 text-my-xl font-semibold text-my-primary">
             {data.avgCycleDays !== null ? `${data.avgCycleDays} 天` : '—'}
           </div>
         </div>
         <div className="my-card px-4 py-3">
           <div className="text-my-xs text-my-tertiary">停滞任务（&gt;3 天无动静）</div>
-          <div className={clsx('mt-1 text-xl font-semibold', data.aging.length > 0 ? 'text-amber-300' : 'text-my-primary')}>
+          <div className={clsx('mt-1 text-my-xl font-semibold', data.aging.length > 0 ? 'text-my-warning-text' : 'text-my-primary')}>
             {data.aging.length}
           </div>
         </div>
       </div>
 
       <div className="my-card px-4 py-3.5">
-        <div className="mb-3 text-xs font-semibold text-my-secondary">近 14 天流转热度</div>
+        <div className="mb-3 text-my-xs font-semibold text-my-secondary">近 14 天流转热度</div>
         <div className="flex h-24 items-end gap-1.5">
           {data.daily.map((d) => (
             <div key={d.date} className="group relative flex-1">
@@ -397,7 +397,7 @@ function EfficiencyTab(): JSX.Element {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="my-card px-4 py-3.5">
-          <div className="mb-2.5 text-xs font-semibold text-my-secondary">成员平均交付周期</div>
+          <div className="mb-2.5 text-my-xs font-semibold text-my-secondary">成员平均交付周期</div>
           {data.memberCycle.length === 0 && <div className="text-my-xs text-my-tertiary">暂无已完成任务数据</div>}
           <div className="space-y-1.5">
             {data.memberCycle.map((m) => (
@@ -413,12 +413,12 @@ function EfficiencyTab(): JSX.Element {
         </div>
 
         <div className="my-card px-4 py-3.5">
-          <div className="mb-2.5 text-xs font-semibold text-my-secondary">停滞任务预警</div>
-          {data.aging.length === 0 && <div className="text-my-xs text-emerald-300">没有停滞任务 👍</div>}
+          <div className="mb-2.5 text-my-xs font-semibold text-my-secondary">停滞任务预警</div>
+          {data.aging.length === 0 && <div className="text-my-xs text-my-success-text">没有停滞任务 👍</div>}
           <div className="space-y-1.5">
             {data.aging.map((t) => (
               <div key={t.dirName} className="flex items-center gap-2 text-my-xs">
-                <span className="chip border border-amber-500/30 bg-amber-500/10 text-amber-300">{t.days} 天</span>
+                <span className="my-chip border border-my-label-yellow-border bg-my-label-yellow text-my-label-yellow-text">{t.days} 天</span>
                 <span className="min-w-0 flex-1 truncate text-my-secondary">{t.title}</span>
                 <span className="shrink-0 text-my-tertiary">{t.assignee}</span>
               </div>
@@ -429,7 +429,7 @@ function EfficiencyTab(): JSX.Element {
 
       {data.recent.length > 0 && (
         <div className="my-card px-4 py-3.5">
-          <div className="mb-2 text-xs font-semibold text-my-secondary">最近流转</div>
+          <div className="mb-2 text-my-xs font-semibold text-my-secondary">最近流转</div>
           <div className="space-y-1">
             {data.recent.map((e, i) => (
               <div key={i} className="flex items-center gap-2 text-my-xs text-my-tertiary">
@@ -523,7 +523,7 @@ function ReportTab(): JSX.Element {
       ) : (
         <div className="my-card grid place-items-center gap-2 py-16 text-my-tertiary">
           <FileText size={20} />
-          <span className="text-xs">点击「生成周报」— 面板会汇总本周任务流转、完成情况、成员工作量与 Jira 对账</span>
+          <span className="text-my-xs">点击「生成周报」— 面板会汇总本周任务流转、完成情况、成员工作量与 Jira 对账</span>
         </div>
       )}
     </div>
@@ -621,7 +621,7 @@ export function TeamPage(): JSX.Element {
               ['本周完成', doneThisWeek],
               ['AI 会话', snapshot.sessions.length]
             ].map(([label, v]) => (
-              <span key={label as string} className="chip bg-my-layer-2 text-my-xs text-my-tertiary">
+              <span key={label as string} className="my-chip bg-my-layer-2 text-my-tertiary">
                 {label} <span className="ml-0.5 font-mono text-my-secondary">{v}</span>
               </span>
             ))}
@@ -646,7 +646,7 @@ export function TeamPage(): JSX.Element {
             <Star size={15} className="shrink-0 text-my-accent-text" fill="currentColor" />
             <div className="min-w-0 flex-1">
               <div className="text-my-xs uppercase tracking-wider text-my-tertiary">最近会话绑定的任务</div>
-              <button onClick={() => showTask(currentTask.dirName)} className="truncate text-xs font-medium text-my-primary hover:text-my-accent-text">
+              <button onClick={() => showTask(currentTask.dirName)} className="truncate text-my-xs font-medium text-my-primary hover:text-my-accent-text">
                 {currentTask.record.title}
               </button>
             </div>
@@ -691,7 +691,7 @@ function StandupTab(): JSX.Element {
   return (
     <div className="my-card p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-xs font-semibold text-my-primary">每日站会摘要</span>
+        <span className="text-my-xs font-semibold text-my-primary">每日站会摘要</span>
         <span className="text-my-xs text-my-tertiary">完成 · 在途 · 阻塞</span>
         <div className="ml-auto flex gap-1.5">
           <Button variant="outline" size="sm" onClick={() => void generate()} disabled={loading}>
@@ -765,7 +765,7 @@ function WorkflowInsightTab(): JSX.Element {
   return (
     <div className="space-y-4">
       <div className="my-card p-4">
-        <div className="mb-3 text-xs font-semibold text-my-primary">Workflow 解析链（团队 → 个人 → 任务）</div>
+        <div className="mb-3 text-my-xs font-semibold text-my-primary">Workflow 解析链（团队 → 个人 → 任务）</div>
         {scan ? (
           <div className="grid gap-2 text-my-sm md:grid-cols-4">
             <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
@@ -788,15 +788,15 @@ function WorkflowInsightTab(): JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="text-xs text-my-tertiary">读取中…</div>
+          <div className="text-my-xs text-my-tertiary">读取中…</div>
         )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="my-card p-4">
-          <div className="mb-3 text-xs font-semibold text-my-primary">任务 workflow 分布</div>
+          <div className="mb-3 text-my-xs font-semibold text-my-primary">任务 workflow 分布</div>
           {usage.length === 0 ? (
-            <div className="text-xs text-my-tertiary">暂无任务</div>
+            <div className="text-my-xs text-my-tertiary">暂无任务</div>
           ) : (
             <div className="space-y-2">
               {usage.map(([wf, n]) => (
@@ -812,9 +812,9 @@ function WorkflowInsightTab(): JSX.Element {
           )}
         </div>
         <div className="my-card p-4">
-          <div className="mb-3 text-xs font-semibold text-my-primary">流程健康度 · 停滞任务（≥3 天无动静）</div>
+          <div className="mb-3 text-my-xs font-semibold text-my-primary">流程健康度 · 停滞任务（≥3 天无动静）</div>
           {aging.length === 0 ? (
-            <div className="text-xs text-emerald-300">没有停滞任务 👍</div>
+            <div className="text-my-xs text-my-success-text">没有停滞任务 👍</div>
           ) : (
             <div className="space-y-1.5">
               {aging.map(({ t, days }) => (
@@ -822,7 +822,7 @@ function WorkflowInsightTab(): JSX.Element {
                   <StatusBadge status={t.record?.status ?? ''} />
                   <span className="min-w-0 flex-1 truncate text-my-secondary">{t.record?.title ?? t.dirName}</span>
                   <span className="text-my-tertiary">{t.record?.assignee || '未分配'}</span>
-                  <span className={clsx('font-mono', days >= 7 ? 'text-rose-300' : 'text-amber-300')}>{days}d</span>
+                  <span className={clsx('font-mono', days >= 7 ? 'text-my-danger-text' : 'text-my-warning-text')}>{days}d</span>
                 </div>
               ))}
             </div>
@@ -832,10 +832,10 @@ function WorkflowInsightTab(): JSX.Element {
 
       {scan && (
         <div className="my-card p-4">
-          <div className="mb-3 text-xs font-semibold text-my-primary">平台覆盖</div>
+          <div className="mb-3 text-my-xs font-semibold text-my-primary">平台覆盖</div>
           <div className="flex flex-wrap gap-1.5">
             {scan.platforms.filter((p) => p.detected).map((p) => (
-              <span key={p.id} className="chip bg-my-accent-subtle text-my-xs text-my-accent-text">{p.name}</span>
+              <span key={p.id} className="my-chip bg-my-accent-subtle text-my-accent-text">{p.name}</span>
             ))}
             {scan.platforms.filter((p) => p.detected).length === 0 && (
               <span className="text-my-sm text-my-tertiary">未检测到 AI 平台目录——运行 trellis init --&lt;platform&gt; 安装</span>

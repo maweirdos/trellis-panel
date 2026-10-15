@@ -49,21 +49,21 @@ export function ReaderVersionBar({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-ink-100 pb-2 dark:border-ink-700/60">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-my-line pb-2">
         <span
-          className="shrink-0 font-mono text-[11px] text-mist-400"
+          className="shrink-0 font-mono text-my-xs text-my-secondary"
           title={`展示版 ${displayedRevision ?? '—'} · 本次打开基线 ${baseRevision ?? '—'}`}
         >
           版本 {shortRev(displayedRevision)}
           {baseRevision !== null && displayedRevision !== null && baseRevision !== displayedRevision && (
-            <span className="ml-1 text-mist-500">（本次打开 {shortRev(baseRevision)}）</span>
+            <span className="ml-1 text-my-tertiary">（本次打开 {shortRev(baseRevision)}）</span>
           )}
         </span>
         <button
           type="button"
           onClick={(e) => onCompareGit(e.currentTarget)}
           disabled={displayedRevision === null}
-          className="chip shrink-0 border border-ink-200 text-[10.5px] text-mist-500 transition-colors hover:border-sky-200 hover:text-sky-700 disabled:opacity-40 dark:border-ink-600"
+          className="my-chip shrink-0 border border-my-line text-my-tertiary transition-colors hover:border-my-line-info hover:text-my-info-text disabled:opacity-40"
           title="比较基准：最近提交（HEAD） → 当前展示版本；无 Git 基线会如实说明"
         >
           <GitCompareArrows size={11} className="mr-1 inline align-[-1px]" />
@@ -71,17 +71,17 @@ export function ReaderVersionBar({
         </button>
         {showWidthPref && (
           <div className="flex shrink-0 items-center gap-1" role="group" aria-label="阅读宽度偏好">
-            <ArrowUpDown size={11} className="text-mist-400" />
+            <ArrowUpDown size={11} className="text-my-icon-secondary" />
             {READER_WIDTH_PREFS.map((w) => (
               <button
                 key={w}
                 type="button"
                 onClick={() => setWidthPref(w)}
                 className={clsx(
-                  'rounded px-1.5 text-[10.5px] transition-colors',
+                  'rounded-my-sm px-1.5 text-my-2xs transition-colors',
                   widthPref === w
-                    ? 'bg-sky-50 font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
-                    : 'text-mist-400 hover:text-mist-600 dark:hover:text-mist-200'
+                    ? 'bg-my-info-subtle font-medium text-my-info-text'
+                    : 'text-my-secondary hover:text-my-primary'
                 )}
                 title={`阅读最大宽度 ${w}px（实际不超过容器）`}
               >
@@ -94,26 +94,30 @@ export function ReaderVersionBar({
       </div>
 
       {pending && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/70 bg-amber-50/80 px-3 py-1.5 dark:border-amber-500/30 dark:bg-amber-500/10">
-          <span className="text-[12px] text-amber-700 dark:text-amber-300">发现新版本</span>
-          <span className="font-mono text-[10.5px] text-amber-600/80 dark:text-amber-400/70">
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-my-lg border border-my-line-warning bg-my-warning-subtle px-3 py-1.5">
+          <span className="text-my-sm text-my-warning-text">发现新版本</span>
+          <span className="font-mono text-my-2xs text-my-warning-text opacity-80">
             {shortRev(displayedRevision)} → {shortRev(latestRevision)}
           </span>
           <button
             type="button"
             onClick={(e) => onComparePending(e.currentTarget)}
-            className="btn-ghost px-2 py-0.5 text-[11px]"
+            className="rounded-my-md px-2 py-0.5 text-my-xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
             title="比较基准：当前展示版本 → 最新候选（会话内比较，含未提交草稿）"
           >
             查看变化
           </button>
-          <button type="button" onClick={(e) => onReadNew(e.currentTarget)} className="btn-primary px-2 py-0.5 text-[11px]">
+          <button
+            type="button"
+            onClick={(e) => onReadNew(e.currentTarget)}
+            className="rounded-my-md bg-my-accent px-2 py-0.5 text-my-xs font-medium text-my-on-color transition-colors hover:bg-my-accent-hover"
+          >
             阅读新版
           </button>
           <button
             type="button"
             onClick={onRebase}
-            className="btn-ghost px-1.5 py-0.5 text-[10.5px] text-mist-400"
+            className="rounded-my-md px-1.5 py-0.5 text-my-2xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
             title="以当前展示版作为新的「本次打开」基线（此后的会话比较以它为基准）"
           >
             <RotateCcw size={10} className="mr-0.5 inline align-[-1px]" />
@@ -143,24 +147,32 @@ export function ReaderNoticeStrip({
   return (
     <>
       {requestError !== null && (
-        <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-300/70 bg-rose-50/80 px-3 py-1.5 text-[12px] text-rose-600 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+        <div className="mt-2 flex items-center gap-2 rounded-my-lg border border-my-line-danger bg-my-danger-subtle px-3 py-1.5 text-my-sm text-my-danger-text">
           <CircleAlert size={13} className="shrink-0" />
           <span className="min-w-0 flex-1">读取失败：{requestError}（已保留当前展示内容）</span>
-          <button type="button" onClick={onRetry} className="btn-ghost px-1.5 py-0.5 text-[11px]">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-my-md px-1.5 py-0.5 text-my-xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
+          >
             <RefreshCw size={10} className="mr-1 inline align-[-1px]" />
             重试
           </button>
         </div>
       )}
       {unreadableNotice !== null && (
-        <div className="mt-2 rounded-lg border border-amber-300/70 bg-amber-50/80 px-3 py-1.5 text-[12px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+        <div className="mt-2 rounded-my-lg border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-sm text-my-warning-text">
           {unreadableNotice}
         </div>
       )}
       {anchorNotice !== null && (
-        <div className="mt-2 flex items-center gap-2 rounded-lg border border-ink-200 bg-ink-50/80 px-3 py-1.5 text-[12px] text-mist-500 dark:border-ink-700 dark:bg-ink-850/50">
+        <div className="mt-2 flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-1.5 text-my-sm text-my-tertiary">
           <span className="min-w-0 flex-1">{anchorNotice}</span>
-          <button type="button" onClick={onDismissAnchor} className="btn-ghost px-1.5 py-0.5 text-[10.5px]">
+          <button
+            type="button"
+            onClick={onDismissAnchor}
+            className="rounded-my-md px-1.5 py-0.5 text-my-2xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
+          >
             知道了
           </button>
         </div>

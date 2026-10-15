@@ -61,7 +61,8 @@ export function Button({
   className,
   onClick,
   disabled,
-  title
+  title,
+  autoFocus
 }: {
   children: ReactNode
   variant?: ButtonVariant
@@ -70,6 +71,7 @@ export function Button({
   onClick?: () => void
   disabled?: boolean
   title?: string
+  autoFocus?: boolean
 }): JSX.Element {
   const variants: Record<ButtonVariant, string> = {
     primary: 'bg-[var(--my-bg-accent-primary)] text-[var(--my-txt-on-color)] hover:bg-[var(--my-bg-accent-primary-hover)]',
@@ -85,6 +87,7 @@ export function Button({
       type="button"
       title={title}
       disabled={disabled}
+      autoFocus={autoFocus}
       onClick={onClick}
       className={clsx(
         'my-control',

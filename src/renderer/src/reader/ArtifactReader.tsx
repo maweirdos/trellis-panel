@@ -33,9 +33,9 @@ const extOf = (p: string): string => {
 }
 
 const SEVERITY_VIEW: Record<DocumentDiagnosticSeverity, { icon: typeof Info; cls: string }> = {
-  neutral: { icon: Info, cls: 'text-mist-400' },
-  warning: { icon: AlertTriangle, cls: 'text-amber-500' },
-  error: { icon: CircleAlert, cls: 'text-rose-500' }
+  neutral: { icon: Info, cls: 'text-my-icon-secondary' },
+  warning: { icon: AlertTriangle, cls: 'text-my-icon-warning-primary' },
+  error: { icon: CircleAlert, cls: 'text-my-icon-danger-primary' }
 }
 
 function DiagnosticsStrip({ diagnostics }: { diagnostics: DocumentDiagnostic[] }): JSX.Element | null {
@@ -46,9 +46,9 @@ function DiagnosticsStrip({ diagnostics }: { diagnostics: DocumentDiagnostic[] }
         const view = SEVERITY_VIEW[d.severity]
         const Icon = view.icon
         return (
-          <li key={i} className="flex items-start gap-1.5 text-[12px] leading-5">
+          <li key={i} className="flex items-start gap-1.5 text-my-sm leading-5">
             <Icon size={13} className={clsx('mt-1 shrink-0', view.cls)} />
-            <span className="text-mist-500">{d.message}</span>
+            <span className="text-my-tertiary">{d.message}</span>
           </li>
         )
       })}
@@ -59,11 +59,11 @@ function DiagnosticsStrip({ diagnostics }: { diagnostics: DocumentDiagnostic[] }
 function FieldRow({ label, value }: { label: string; value: string | null }): JSX.Element {
   return (
     <div className="flex items-baseline gap-2 py-1">
-      <span className="w-20 shrink-0 text-[11px] text-mist-400">{label}</span>
+      <span className="w-20 shrink-0 text-my-xs text-my-secondary">{label}</span>
       <span
         className={clsx(
-          'min-w-0 break-all text-[12.5px]',
-          value === null ? 'italic text-mist-400' : 'text-slate-700 dark:text-mist-200'
+          'min-w-0 break-all text-my-sm',
+          value === null ? 'italic text-my-secondary' : 'text-my-primary'
         )}
       >
         {value ?? '未知'}
@@ -87,7 +87,7 @@ function TaskJsonCard({ parsed, rawText }: { parsed: TaskJsonParsed; rawText: st
   const f = parsed.fields
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-ink-200 bg-ink-50/50 px-4 py-3 dark:border-ink-700 dark:bg-ink-850/40">
+      <div className="rounded-my-lg border border-my-line bg-my-layer-1 px-4 py-3">
         <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
           <FieldRow label="ID" value={f.id} />
           <FieldRow label="名称" value={f.name} />
@@ -99,7 +99,7 @@ function TaskJsonCard({ parsed, rawText }: { parsed: TaskJsonParsed; rawText: st
           <FieldRow label="创建时间" value={f.createdAt} />
           <FieldRow label="完成时间" value={f.completedAt} />
         </div>
-        <p className="mt-2 text-[11px] text-mist-400">
+        <p className="mt-2 text-my-xs text-my-secondary">
           状态为任务记录原文，不代表实施/检查已依次完成；未知字段见下方结构树。
         </p>
       </div>
@@ -112,8 +112,8 @@ function EmptyState({ message }: { message: string }): JSX.Element {
   return (
     <div className="flex flex-1 items-center justify-center">
       <div className="-mt-24 text-center">
-        <FileCode2 size={36} className="mx-auto text-mist-300" />
-        <p className="mt-3 text-[13px] text-mist-400">{message}</p>
+        <FileCode2 size={36} className="mx-auto text-my-icon-secondary" />
+        <p className="mt-3 text-my-md text-my-secondary">{message}</p>
       </div>
     </div>
   )
@@ -166,8 +166,8 @@ export function ArtifactReader({
 
   return (
     <div className="mx-auto flex min-h-full w-full flex-col" style={{ maxWidth: `${maxWidthPx}px` }}>
-      <div className="flex items-center gap-2 border-b border-ink-100 pb-2 dark:border-ink-700/60">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-mist-400" title={relativePath}>
+      <div className="flex items-center gap-2 border-b border-my-line pb-2">
+        <span className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-secondary" title={relativePath}>
           {relativePath}
         </span>
         {!hideViewToggle && (
@@ -177,10 +177,10 @@ export function ArtifactReader({
               disabled={!canToggle && view === 'rendered'}
               onClick={() => setView('rendered')}
               className={clsx(
-                'chip border text-[10.5px]',
+                'my-chip border transition-colors',
                 view === 'rendered'
-                  ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300'
-                  : 'border-ink-200 text-mist-500 hover:border-sky-200 dark:border-ink-600'
+                  ? 'border-my-line-info bg-my-info-subtle text-my-info-text'
+                  : 'border-my-line text-my-tertiary hover:border-my-line-info'
               )}
             >
               <Eye size={11} className="mr-1 inline align-[-1px]" />
@@ -191,10 +191,10 @@ export function ArtifactReader({
               disabled={!canToggle}
               onClick={() => setView('raw')}
               className={clsx(
-                'chip border text-[10.5px]',
+                'my-chip border transition-colors',
                 view === 'raw'
-                  ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300'
-                  : 'border-ink-200 text-mist-500 hover:border-sky-200 dark:border-ink-600'
+                  ? 'border-my-line-info bg-my-info-subtle text-my-info-text'
+                  : 'border-my-line text-my-tertiary hover:border-my-line-info'
               )}
             >
               <FileCode2 size={11} className="mr-1 inline align-[-1px]" />

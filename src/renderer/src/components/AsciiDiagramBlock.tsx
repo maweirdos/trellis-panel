@@ -19,31 +19,31 @@ function highlightAsciiLine(line: string): React.ReactNode {
     const token = match[0]
     if (/^[┌┐└┘├┤│─┬┴╔╗╚╝║╠╣═╬┼+]+$/.test(token)) {
       parts.push(
-        <span key={match.index} className="text-mist-500/75 select-none font-normal">
+        <span key={match.index} className="text-my-icon-tertiary select-none font-normal">
           {token}
         </span>
       )
     } else if (/^\[[^\]]+\]$/.test(token)) {
       parts.push(
-        <span key={match.index} className="text-leaf-soft font-medium">
+        <span key={match.index} className="text-my-accent-text font-medium">
           {token}
         </span>
       )
     } else if (/^[□☑✓✗]$/.test(token)) {
       parts.push(
-        <span key={match.index} className="text-leaf">
+        <span key={match.index} className="text-my-accent-text">
           {token}
         </span>
       )
     } else if (/^[★●▲▼▶◀]$/.test(token)) {
       parts.push(
-        <span key={match.index} className="text-amber-400">
+        <span key={match.index} className="text-my-warning-text">
           {token}
         </span>
       )
     } else if (token === '||') {
       parts.push(
-        <span key={match.index} className="text-mist-400">
+        <span key={match.index} className="text-my-tertiary">
           {token}
         </span>
       )
@@ -76,22 +76,22 @@ export const AsciiDiagramBlock = React.memo(function AsciiDiagramBlock({ chart }
   }
 
   return (
-    <div className="my-4 overflow-hidden rounded-xl border border-ink-700 bg-ink-950/60 shadow-sm backdrop-blur-sm">
+    <div className="my-4 overflow-hidden rounded-my-lg border border-my-line bg-my-canvas shadow-xs">
       {/* 顶栏控制条 */}
-      <div className="flex h-8 items-center justify-between border-b border-ink-700/80 bg-ink-850/80 px-3 text-[11px]">
-        <div className="flex items-center gap-1.5 font-medium text-mist-200">
-          <LayoutTemplate size={13} className="text-leaf" />
+      <div className="flex h-8 items-center justify-between border-b border-my-line bg-my-layer-2 px-3 text-my-xs">
+        <div className="flex items-center gap-1.5 font-medium text-my-secondary">
+          <LayoutTemplate size={13} className="text-my-icon-accent" />
           <span>UI 原型草图 · 线框图</span>
-          <span className="rounded bg-ink-750 px-1 py-0.2 font-mono text-[9.5px] text-mist-400">Wireframe</span>
+          <span className="rounded-my-sm bg-my-layer-3 px-1 py-0.5 font-mono text-my-2xs text-my-tertiary">Wireframe</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={handleCopy}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-mist-400 hover:bg-ink-750 hover:text-mist-200 transition-colors cursor-pointer"
+            className="flex items-center gap-1 rounded-my-sm px-1.5 py-0.5 text-my-2xs text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary transition-colors cursor-pointer"
             title="复制线框图原文"
           >
-            {copied ? <Check size={11} className="text-leaf" /> : <Copy size={11} />}
+            {copied ? <Check size={11} className="text-my-accent-text" /> : <Copy size={11} />}
             <span>{copied ? '已复制' : '复制'}</span>
           </button>
         </div>
@@ -99,7 +99,7 @@ export const AsciiDiagramBlock = React.memo(function AsciiDiagramBlock({ chart }
 
       {/* 线框图画布主体：消除行高断缝，确保字符连续拼接（使用 div 彻底规避 .md pre 全局注入边框） */}
       <div
-        className="m-0 max-w-full overflow-x-auto p-3.5 font-mono select-text transition-all leading-[1.18] text-[11px]"
+        className="m-0 max-w-full overflow-x-auto p-3.5 font-mono select-text transition-all leading-[1.18] text-my-xs text-my-secondary"
         style={{
           fontFamily:
             "'Cascadia Code', 'Cascadia Mono', Consolas, 'Fira Code', 'SimSun', 'NSimSun', monospace",

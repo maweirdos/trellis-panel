@@ -13,6 +13,7 @@ import { ReaderNoticeStrip, ReaderVersionBar } from '../reader/ReaderVersionBar'
 import { relativePathUnderRoot } from '../reader/reader-paths'
 import { useDocumentReader } from '../reader/use-document-reader'
 import { useEscLayer } from '../utils/use-esc-layer'
+import { Button } from '../my/ui'
 import type { FileEntry } from '../../../shared/types'
 
 /**
@@ -52,24 +53,24 @@ function JsonlRecord({ line, idx }: { line: string; idx: number }): JSX.Element 
     <button
       onClick={() => setOpen((o) => !o)}
       className={clsx(
-        'w-full rounded-lg border px-3 py-2 text-left transition-colors',
-        open ? 'border-leaf-dim/40 bg-ink-850' : 'border-ink-700 bg-ink-850/50 hover:border-ink-500'
+        'w-full rounded-my-md border px-3 py-2 text-left transition-colors',
+        open ? 'border-my-line-accent-subtle bg-my-layer-1' : 'border-my-line bg-my-surface-1 hover:border-my-line-strong'
       )}
     >
       <div className="flex items-center gap-2">
-        <span className="shrink-0 rounded bg-ink-750 px-1.5 font-mono text-[10px] text-mist-400">#{idx + 1}</span>
+        <span className="shrink-0 rounded-my-sm bg-my-layer-3 px-1.5 font-mono text-my-2xs text-my-secondary">#{idx + 1}</span>
         {parsed === undefined ? (
-          <span className="text-[11px] text-rose-300">JSON 解析失败（原文见源码视图）</span>
+          <span className="text-my-xs text-my-danger-text">JSON 解析失败（原文见源码视图）</span>
         ) : (
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {chips.map(([k, v]) => (
-              <span key={k} className="truncate font-mono text-[10.5px] text-mist-400">
-                <span className="text-violet-300/80">{k}</span>={v}
+              <span key={k} className="truncate font-mono text-my-2xs text-my-secondary">
+                <span className="text-my-label-purple-text">{k}</span>={v}
               </span>
             ))}
           </div>
         )}
-        <span className="ml-auto shrink-0 text-[10px] text-mist-600">{open ? '收起' : '展开'}</span>
+        <span className="ml-auto shrink-0 text-my-2xs text-my-tertiary">{open ? '收起' : '展开'}</span>
       </div>
       {open && parsed !== undefined && (
         <div className="mt-2">
@@ -86,14 +87,14 @@ function JsonlView({ content }: { content: string }): JSX.Element {
   return (
     <div className="space-y-1.5">
       {lines.length > JSONL_CAP && (
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-300">
+        <div className="rounded-my-md border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-xs text-my-warning-text">
           共 {lines.length} 行，仅展示前 {JSONL_CAP} 行
         </div>
       )}
       {shown.map((l, i) => (
         <JsonlRecord key={i} line={l} idx={i} />
       ))}
-      {lines.length === 0 && <div className="py-6 text-center text-xs text-mist-500">空文件</div>}
+      {lines.length === 0 && <div className="py-6 text-center text-my-xs text-my-tertiary">空文件</div>}
     </div>
   )
 }
@@ -144,10 +145,10 @@ function ViewerBody({
     reader.openDiff(m)
   }
 
-  if (reader.loading) return <div className="p-6 text-xs text-mist-500">加载中…</div>
+  if (reader.loading) return <div className="p-6 text-my-xs text-my-tertiary">加载中…</div>
   if (reader.requestError !== null && content === null)
     return (
-      <div className="flex items-center gap-2 p-6 text-xs text-rose-300">
+      <div className="flex items-center gap-2 p-6 text-my-xs text-my-danger-text">
         <FileWarning size={14} /> {reader.requestError}
       </div>
     )
@@ -159,7 +160,7 @@ function ViewerBody({
   return (
     <div ref={bodyRef} className="mx-auto w-full px-8 py-6" style={useSharedReader ? { maxWidth: `${widthPref}px` } : undefined}>
       {reader.legacy ? (
-        <p className="mb-2 text-[11.5px] text-mist-400">
+        <p className="mb-2 text-my-xs text-my-secondary">
           该文件不在当前项目内：使用普通读取打开，不提供版本比较与变更提示。
         </p>
       ) : (
@@ -217,7 +218,7 @@ function ViewerBody({
               <JsonTree data={parsedJson} />
             ) : (
               <>
-                <div className="mb-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-300">
+                <div className="mb-2 rounded-my-md border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-xs text-my-warning-text">
                   JSON 解析失败，展示源码
                 </div>
                 <CodeView content={content ?? ''} ext={file.ext} />
@@ -285,9 +286,9 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
   }
 
   return (
-    <div className="absolute inset-0 z-40 flex animate-fade-in flex-col bg-ink-900">
+    <div className="absolute inset-0 z-40 flex animate-fade-in flex-col bg-my-canvas">
       {/* tab strip */}
-      <div className="flex shrink-0 items-stretch overflow-x-auto border-b border-ink-700 bg-ink-850">
+      <div className="flex shrink-0 items-stretch overflow-x-auto border-b border-my-line bg-my-layer-1">
         {tabs.map((t) => (
           <div
             key={t.file.path}
@@ -297,18 +298,18 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
               if (e.button === 1) closeArtifact(t.file.path)
             }}
             className={clsx(
-              'group flex cursor-pointer items-center gap-1.5 border-r border-ink-700 px-3 py-2 text-[11.5px] transition-colors',
-              t.file.path === active ? 'bg-ink-900 text-mist-100' : 'text-mist-400 hover:bg-ink-750/60 hover:text-mist-200'
+              'group flex cursor-pointer items-center gap-1.5 border-r border-my-line px-3 py-2 text-my-xs transition-colors',
+              t.file.path === active ? 'bg-my-canvas text-my-primary' : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
             )}
           >
-            <FileText size={11} className={clsx('shrink-0', t.file.path === active ? 'text-leaf' : 'text-mist-600')} />
+            <FileText size={11} className={clsx('shrink-0', t.file.path === active ? 'text-my-icon-accent' : 'text-my-icon-tertiary')} />
             <span className={clsx('max-w-[160px] truncate', !t.pinned && 'italic')}>{t.file.name}</span>
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 pinArtifact(t.file.path, !t.pinned)
               }}
-              className={clsx('shrink-0 rounded p-0.5 transition-opacity', t.pinned ? 'text-leaf' : 'text-mist-600 opacity-0 hover:text-mist-200 group-hover:opacity-100')}
+              className={clsx('shrink-0 rounded-my-sm p-0.5 transition-opacity', t.pinned ? 'text-my-icon-accent' : 'text-my-icon-tertiary opacity-0 hover:text-my-primary group-hover:opacity-100')}
               title={t.pinned ? '取消固定（预览标签）' : '固定标签'}
             >
               {t.pinned ? <Pin size={10} /> : <PinOff size={10} />}
@@ -318,7 +319,7 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
                 e.stopPropagation()
                 closeArtifact(t.file.path)
               }}
-              className="shrink-0 rounded p-0.5 text-mist-600 hover:text-rose-300"
+              className="shrink-0 rounded-my-sm p-0.5 text-my-icon-tertiary hover:text-my-danger-text"
               title="关闭标签"
             >
               <X size={11} />
@@ -328,37 +329,46 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
       </div>
 
       {/* header */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-ink-700 bg-ink-850 px-4 py-2">
-        <FileText size={14} className="shrink-0 text-leaf" />
+      <div className="flex shrink-0 items-center gap-2 border-b border-my-line bg-my-layer-1 px-4 py-2">
+        <FileText size={14} className="shrink-0 text-my-icon-accent" />
         <div className="min-w-0">
-          <div className="truncate font-mono text-[10px] text-mist-500" title={file.path}>
+          <div className="truncate font-mono text-my-2xs text-my-tertiary" title={file.path}>
             {projectName} / 产物 · {fmtBytes(file.size)}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           {hasGraphic && (
-            <button
+            <Button
+              variant="outline"
               onClick={() => pinArtifact(file.path, !activeTab.pinned)}
-              className="btn-outline"
               title={activeTab.pinned ? '取消固定' : '固定标签（固定后不被预览替换）'}
             >
-              {activeTab.pinned ? <Pin size={12} className="text-leaf" /> : <PinOff size={12} />}
-            </button>
+              {activeTab.pinned ? <Pin size={12} className="text-my-icon-accent" /> : <PinOff size={12} />}
+            </Button>
           )}
           {hasGraphic && (
             <button
               onClick={() => setMode((m) => (m === 'graphic' ? 'raw' : 'graphic'))}
-              className={clsx('btn-outline', mode === 'raw' && 'border-leaf-dim/50 text-leaf-soft')}
+              className={clsx(
+                'my-control cursor-pointer whitespace-nowrap rounded-my-md border px-3 transition-colors duration-150',
+                mode === 'raw'
+                  ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
+                  : 'border-my-line-strong text-my-secondary hover:bg-my-layer-transparent-hover'
+              )}
               title="切换 图形化 / 源码 视图"
             >
               {mode === 'graphic' ? <Code2 size={12} /> : <BookOpen size={12} />}
               {mode === 'graphic' ? '源码视图' : '图形视图'}
             </button>
           )}
-          <button onClick={() => void copy()} className="btn-outline">
+          <Button variant="outline" onClick={() => void copy()}>
             <Copy size={12} /> {copied ? '已复制' : '复制'}
-          </button>
-          <button onClick={() => closeArtifact(file.path)} className="btn-ghost px-2 py-1.5" title="关闭 (Esc)">
+          </Button>
+          <button
+            onClick={() => closeArtifact(file.path)}
+            className="rounded-my-md p-1.5 text-my-icon-secondary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary"
+            title="关闭 (Esc)"
+          >
             <X size={15} />
           </button>
         </div>

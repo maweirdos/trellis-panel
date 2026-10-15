@@ -81,9 +81,9 @@ function composeJql(userJql: string, hideDone: boolean): string {
 }
 
 const STATUS_PILL: Record<string, string> = {
-  new: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
-  indeterminate: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  done: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+  new: 'border-my-label-indigo-border bg-my-label-indigo text-my-label-indigo-text',
+  indeterminate: 'border-my-label-yellow-border bg-my-label-yellow text-my-label-yellow-text',
+  done: 'border-my-label-emerald-border bg-my-label-emerald text-my-label-emerald-text'
 }
 
 const NO_VERSION = '无版本'
@@ -363,11 +363,11 @@ export function JiraPage(): JSX.Element {
     return (
       <div key={issue.key} className="my-card px-3.5 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="chip shrink-0 bg-blue-500/15 font-mono text-my-xs text-blue-300">{issue.key}</span>
-          <span className={clsx('chip shrink-0 border', STATUS_PILL[issue.statusCategory] ?? 'border-my-line text-my-secondary')}>
+          <span className="my-chip shrink-0 bg-my-label-indigo font-mono text-my-label-indigo-text">{issue.key}</span>
+          <span className={clsx('my-chip shrink-0 border', STATUS_PILL[issue.statusCategory] ?? 'border-my-line text-my-secondary')}>
             {issue.status}
           </span>
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-my-primary" title={issue.summary}>
+          <span className="min-w-0 flex-1 truncate text-my-xs font-medium text-my-primary" title={issue.summary}>
             {issue.summary}
           </span>
           <span className="shrink-0 text-my-xs text-my-tertiary">{issue.assignee}</span>
@@ -379,15 +379,15 @@ export function JiraPage(): JSX.Element {
           </Button>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-my-xs text-my-tertiary">
-          <span className="chip border border-my-line text-my-secondary">{issue.issueType}</span>
-          <span className="chip border border-my-line text-my-secondary">{issue.priority}</span>
+          <span className="my-chip border border-my-line text-my-secondary">{issue.issueType}</span>
+          <span className="my-chip border border-my-line text-my-secondary">{issue.priority}</span>
           {versionChips.map((v) => (
-            <span key={v} className="chip border border-violet-500/30 bg-violet-500/10 font-mono text-violet-300" title="修复版本">
+            <span key={v} className="my-chip border border-my-label-purple-border bg-my-label-purple font-mono text-my-label-purple-text" title="修复版本">
               <Tag size={9} /> {v}
             </span>
           ))}
           {linked && (
-            <span className="chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text" title={`已关联本地任务 ${linked.dirName}`}>
+            <span className="my-chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text" title={`已关联本地任务 ${linked.dirName}`}>
               ✓ {linked.dirName}
             </span>
           )}
@@ -411,7 +411,7 @@ export function JiraPage(): JSX.Element {
             {!linked ? (
               <>
                 {inTodos ? (
-                  <span className="chip border border-amber-400/30 bg-amber-500/10 text-amber-300" title="已在本地待办池中">
+                  <span className="my-chip border border-my-label-yellow-border bg-my-label-yellow text-my-label-yellow-text" title="已在本地待办池中">
                     ✓ 已在待办池
                   </span>
                 ) : (
@@ -476,8 +476,8 @@ export function JiraPage(): JSX.Element {
       <div className="grid h-full place-items-center p-6">
         <div className="max-w-sm text-center">
           <Link2 size={28} className="mx-auto mb-3 text-my-tertiary" />
-          <div className="mb-1.5 text-sm font-medium text-my-primary">尚未启用 Jira 连接</div>
-          <p className="mb-4 text-xs leading-5 text-my-tertiary">
+          <div className="mb-1.5 text-my-sm font-medium text-my-primary">尚未启用 Jira 连接</div>
+          <p className="mb-4 text-my-xs leading-5 text-my-tertiary">
             在「设置 → Jira 连接」中填写服务器地址与账号，即可把 Jira 待办导入为 Trellis 任务、
             双向同步状态，并把 Trellis 进度以评论形式回写到 Jira。
           </p>
@@ -492,7 +492,7 @@ export function JiraPage(): JSX.Element {
   return (
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
-        <span className="chip bg-blue-500/15 font-mono text-blue-300">{cfg.baseUrl.replace(/^https?:\/\//, '')}</span>
+        <span className="my-chip bg-my-label-indigo font-mono text-my-label-indigo-text">{cfg.baseUrl.replace(/^https?:\/\//, '')}</span>
         <div className="flex overflow-hidden rounded-my-md border border-my-line">
           <button
             onClick={() => quickSearch('mine')}
@@ -526,7 +526,7 @@ export function JiraPage(): JSX.Element {
             void search(jql, v)
           }}
           className={clsx(
-            'chip border transition-colors',
+            'my-chip border transition-colors',
             hideDone ? 'border-my-line-accent-subtle text-my-accent-text' : 'border-my-line text-my-tertiary'
           )}
           title="隐藏 statusCategory = Done 的已关闭/已完成问题"
@@ -536,7 +536,7 @@ export function JiraPage(): JSX.Element {
         <button
           onClick={() => setGroupByVersion((v) => !v)}
           className={clsx(
-            'chip border transition-colors',
+            'my-chip border transition-colors',
             groupByVersion ? 'border-my-line-accent-subtle text-my-accent-text' : 'border-my-line text-my-tertiary'
           )}
           title="按修复版本（fixVersion）分组"
@@ -552,7 +552,7 @@ export function JiraPage(): JSX.Element {
         </span>
         {searchMeta?.sample && (
           <span
-            className="chip border border-amber-400/30 bg-amber-500/10 text-amber-300"
+            className="my-chip border border-my-label-yellow-border bg-my-label-yellow text-my-label-yellow-text"
             title={`结果为样本，不是完整集合（去重 ${searchMeta.duplicateCount} 条；采集 ${searchMeta.pagesFetched} 页）`}
           >
             样本 · {SAMPLE_REASON[searchMeta.incompleteReason ?? ''] ?? '未取全'}
@@ -562,7 +562,7 @@ export function JiraPage(): JSX.Element {
 
       <div className="p-5">
         {error && (
-          <div className="mx-auto mb-4 max-w-3xl rounded-my-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs text-rose-300">
+          <div className="mx-auto mb-4 max-w-3xl rounded-my-lg border border-my-line-danger bg-my-danger-subtle px-4 py-2.5 text-my-xs text-my-danger-text">
             {error}
           </div>
         )}
@@ -581,7 +581,7 @@ export function JiraPage(): JSX.Element {
               ))
             : issues.map((issue) => renderIssue(issue))}
           {!loading && issues.length === 0 && !error && (
-            <div className={clsx('py-16 text-center text-xs text-my-tertiary')}>没有匹配的 Jira 问题</div>
+            <div className={clsx('py-16 text-center text-my-xs text-my-tertiary')}>没有匹配的 Jira 问题</div>
           )}
         </div>
       </div>

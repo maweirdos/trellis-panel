@@ -57,11 +57,11 @@ export function Select<T extends string = string>({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className={clsx(
-          'flex w-full items-center justify-between gap-1.5 rounded-lg border border-ink-700/80 bg-ink-850 px-2.5 text-left text-xs transition-all cursor-pointer select-none',
+          'flex w-full items-center justify-between gap-1.5 rounded-my-md border bg-my-surface-1 px-2.5 text-left text-my-sm transition-colors cursor-pointer select-none outline-none',
           size === 'sm' ? 'h-7 py-1' : 'h-8 py-1.5',
           open
-            ? 'border-leaf/60 ring-2 ring-leaf/20 shadow-xs text-mist-50'
-            : 'text-mist-100 hover:border-ink-500 hover:bg-ink-800',
+            ? 'border-my-line-accent text-my-primary'
+            : 'border-my-line text-my-primary hover:border-my-line-strong hover:bg-my-layer-1-hover',
           disabled && 'opacity-50 cursor-not-allowed'
         )}
       >
@@ -70,7 +70,7 @@ export function Select<T extends string = string>({
             <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', selectedOption.dot)} />
           )}
           {selectedOption?.icon && (
-            <span className="shrink-0 text-mist-400">{selectedOption.icon}</span>
+            <span className="shrink-0 text-my-icon-tertiary">{selectedOption.icon}</span>
           )}
           <span className="truncate">
             {selectedOption ? selectedOption.label : placeholder}
@@ -79,14 +79,14 @@ export function Select<T extends string = string>({
         <ChevronDown
           size={12}
           className={clsx(
-            'shrink-0 text-mist-400 transition-transform duration-150',
-            open && 'rotate-180 text-leaf'
+            'shrink-0 text-my-icon-tertiary transition-transform duration-150',
+            open && 'rotate-180 text-my-icon-accent'
           )}
         />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 max-h-60 min-w-full w-max overflow-y-auto rounded-lg border border-ink-700/80 bg-ink-800/95 p-1 shadow-xl backdrop-blur-md animate-fade-in">
+        <div className="my-pop absolute left-0 top-full z-50 mt-1 max-h-60 min-w-full w-max overflow-y-auto rounded-my-lg border border-my-line bg-my-layer-2 p-1 shadow-[var(--my-shadow-overlay-200)]">
           {normalizedOptions.map((opt) => {
             const isSelected = opt.value === value
             return (
@@ -98,20 +98,20 @@ export function Select<T extends string = string>({
                   setOpen(false)
                 }}
                 className={clsx(
-                  'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs transition-colors cursor-pointer',
+                  'flex w-full items-center gap-2 rounded-my-sm px-2.5 py-1.5 text-left text-my-sm transition-colors cursor-pointer',
                   isSelected
-                    ? 'bg-leaf-dim/15 font-medium text-leaf-soft'
-                    : 'text-mist-200 hover:bg-ink-700/60 hover:text-mist-50'
+                    ? 'bg-my-accent-subtle font-medium text-my-accent-text'
+                    : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
                 )}
               >
                 {opt.dot && (
                   <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', opt.dot)} />
                 )}
                 {opt.icon && (
-                  <span className="shrink-0 text-mist-400">{opt.icon}</span>
+                  <span className="shrink-0 text-my-icon-tertiary">{opt.icon}</span>
                 )}
                 <span className="flex-1 truncate">{opt.label}</span>
-                {isSelected && <Check size={12} className="shrink-0 text-leaf-soft" />}
+                {isSelected && <Check size={12} className="shrink-0 text-my-accent-text" />}
               </button>
             )
           })}

@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
-import { Button } from '../my/ui'
+import { Button, Dropdown, DropdownItem } from '../my/ui'
 import type { ModelItem, ModelProvider, AiApiFormat } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors'
 import { clsx } from 'clsx'
@@ -89,8 +89,8 @@ function getProviderStatus(p: ModelProvider, isTesting: boolean) {
   }
   if (isTesting) {
     return {
-      dotClass: 'bg-sky-400 animate-pulse shadow-[0_0_6px_rgba(56,189,248,0.7)]',
-      badgeClass: 'border-sky-500/30 bg-sky-500/10 text-sky-400',
+      dotClass: 'bg-my-info animate-pulse shadow-[0_0_6px_var(--my-bg-info-primary)]',
+      badgeClass: 'border-my-line-info bg-my-info-subtle text-my-info-text',
       label: '测试中…',
       tooltip: '正在测试接口连通性…'
     }
@@ -105,23 +105,23 @@ function getProviderStatus(p: ModelProvider, isTesting: boolean) {
   }
   if (p.status === 'connected') {
     return {
-      dotClass: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]',
-      badgeClass: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
+      dotClass: 'bg-my-success shadow-[0_0_6px_var(--my-bg-success-primary)]',
+      badgeClass: 'border-my-line-success bg-my-success-subtle text-my-success-text',
       label: p.latencyMs ? `已连通 ${p.latencyMs}ms` : '已连通',
       tooltip: `连通正常${p.latencyMs ? `，耗时 ${p.latencyMs}ms` : ''}`
     }
   }
   if (p.status === 'error') {
     return {
-      dotClass: 'bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.7)]',
-      badgeClass: 'border-rose-500/30 bg-rose-500/10 text-rose-400',
+      dotClass: 'bg-my-danger shadow-[0_0_6px_var(--my-bg-danger-primary)]',
+      badgeClass: 'border-my-line-danger bg-my-danger-subtle text-my-danger-text',
       label: '连接异常',
       tooltip: '无法连接到供应商服务器，请检查 Base URL 与 API Key'
     }
   }
   return {
-    dotClass: 'bg-amber-400/80',
-    badgeClass: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
+    dotClass: 'bg-my-warning',
+    badgeClass: 'border-my-line-warning bg-my-warning-subtle text-my-warning-text',
     label: '待测试',
     tooltip: '配置尚未进行连通性测试'
   }
@@ -206,7 +206,6 @@ export function ModelsPage(): JSX.Element {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showAddProviderModal, setShowAddProviderModal] = useState(false)
   const [newModelForm, setNewModelForm] = useState({ id: '', name: '', contextWindow: '128k', tags: '代码' })
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
 
   // Currently selected provider
   const currentProvider = useMemo(() => {
@@ -494,7 +493,6 @@ export function ModelsPage(): JSX.Element {
     const next = providers.filter((p) => p.id !== currentProvider?.id)
     const nextActive = next[0]?.id || ''
     setSelectedProviderId(nextActive)
-    setMoreMenuOpen(false)
     void persistProviders(next, nextActive)
     if (currentProvider) {
       pushToast({ kind: 'info', title: '已删除供应商', body: currentProvider.name })
@@ -579,7 +577,7 @@ export function ModelsPage(): JSX.Element {
                             void persistProviders(providers, p.id)
                           }}
                           className={clsx(
-                            'group flex w-full items-center justify-between rounded-my-lg border px-3 py-2 text-left text-xs transition-colors',
+                            'group flex w-full items-center justify-between rounded-my-lg border px-3 py-2 text-left text-my-xs transition-colors',
                             isSelected
                               ? 'border-my-line-accent-subtle bg-my-accent-subtle font-semibold text-my-accent-text'
                               : 'border-transparent text-my-secondary hover:bg-my-layer-1 hover:text-my-primary'
@@ -588,13 +586,13 @@ export function ModelsPage(): JSX.Element {
                           <div className="flex min-w-0 items-center gap-2.5">
                             {p.group === '官方供应商' ? (
                               p.id === 'zhipu' || p.name.includes('BigModel') || p.name.includes('智谱') ? (
-                                <Sparkles size={15} className="shrink-0 text-blue-400" />
+                                <Sparkles size={15} className="shrink-0 text-my-info-text" />
                               ) : p.id === 'deepseek' || p.name.includes('DeepSeek') ? (
-                                <Bot size={15} className="shrink-0 text-sky-400" />
+                                <Bot size={15} className="shrink-0 text-my-info-text" />
                               ) : p.id === 'kimi' || p.name.includes('Kimi') ? (
-                                <Sparkles size={15} className="shrink-0 text-emerald-400" />
+                                <Sparkles size={15} className="shrink-0 text-my-success-text" />
                               ) : p.id === 'openai' || p.name.includes('OpenAI') ? (
-                                <Bot size={15} className="shrink-0 text-indigo-400" />
+                                <Bot size={15} className="shrink-0 text-my-accent-text" />
                               ) : (
                                 <Box size={15} className="shrink-0 text-my-tertiary" />
                               )
@@ -616,7 +614,7 @@ export function ModelsPage(): JSX.Element {
             ) : (
               <div className="flex h-full flex-col items-center justify-center rounded-my-lg border border-dashed border-my-line p-4 text-center">
                 <Boxes size={24} className="mb-2 text-my-tertiary opacity-60" />
-                <span className="text-xs font-medium text-my-secondary">已接入列表暂空</span>
+                <span className="text-my-xs font-medium text-my-secondary">已接入列表暂空</span>
                 <span className="mt-1 text-my-xs leading-relaxed text-my-tertiary">
                   请点击右上角「添加供应商」
                 </span>
@@ -636,7 +634,7 @@ export function ModelsPage(): JSX.Element {
                   type="text"
                   value={currentProvider.name}
                   onChange={(e) => updateCurrentProvider({ name: e.target.value })}
-                  className="rounded px-1 bg-transparent text-lg font-bold text-my-primary outline-none focus:ring-1 focus:ring-my-line-accent"
+                  className="rounded-my-sm px-1 bg-transparent text-my-xl font-bold text-my-primary outline-none focus:ring-1 focus:ring-my-line-accent"
                 />
                 {(() => {
                   const statusInfo = getProviderStatus(currentProvider, testingProviderId === currentProvider.id)
@@ -662,9 +660,9 @@ export function ModelsPage(): JSX.Element {
                   title="真实测试供应商连通性与测速"
                 >
                   {testingProviderId === currentProvider.id ? (
-                    <Loader2 size={13} className="animate-spin text-sky-400" />
+                    <Loader2 size={13} className="animate-spin text-my-info-text" />
                   ) : (
-                    <Zap size={13} className="text-amber-400" />
+                    <Zap size={13} className="text-my-warning-text" />
                   )}
                   <span>{testingProviderId === currentProvider.id ? '测试中…' : '测试连接'}</span>
                 </Button>
@@ -677,28 +675,36 @@ export function ModelsPage(): JSX.Element {
                     onChange={(e) => updateCurrentProvider({ enabled: e.target.checked })}
                     className="peer sr-only"
                   />
-                  <div className="h-5 w-9 rounded-full bg-my-layer-3 transition-colors peer-checked:bg-emerald-500 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-all peer-checked:after:translate-x-4 after:content-['']" />
+                  <div className="h-5 w-9 rounded-full bg-my-layer-3 transition-colors peer-checked:bg-my-success after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-all peer-checked:after:translate-x-4 after:content-['']" />
                 </label>
 
                 {/* 更多菜单 */}
-                <button
-                  onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-                  className="flex h-8 w-8 items-center justify-center rounded-my-lg text-my-tertiary hover:bg-my-layer-1 hover:text-my-primary"
-                >
-                  <MoreHorizontal size={17} />
-                </button>
-
-                {moreMenuOpen && (
-                  <div className="absolute right-0 top-10 z-30 w-36 rounded-my-lg border border-my-line bg-my-layer-2 py-1 shadow-[var(--my-shadow-overlay-200)]">
+                <Dropdown
+                  align="right"
+                  width={144}
+                  trigger={({ toggle }) => (
                     <button
-                      onClick={handleDeleteCurrentProvider}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-my-danger-text hover:bg-my-layer-1"
+                      type="button"
+                      onClick={toggle}
+                      className="flex h-8 w-8 items-center justify-center rounded-my-lg text-my-tertiary hover:bg-my-layer-1 hover:text-my-primary"
                     >
-                      <Trash2 size={13} />
-                      删除供应商
+                      <MoreHorizontal size={17} />
                     </button>
-                  </div>
-                )}
+                  )}
+                >
+                  {(close) => (
+                    <DropdownItem
+                      danger
+                      icon={<Trash2 size={13} />}
+                      onClick={() => {
+                        close()
+                        handleDeleteCurrentProvider()
+                      }}
+                    >
+                      删除供应商
+                    </DropdownItem>
+                  )}
+                </Dropdown>
               </div>
             </div>
 
@@ -706,7 +712,7 @@ export function ModelsPage(): JSX.Element {
             <div className="space-y-5">
               {/* Base URL */}
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-my-tertiary">Base URL</label>
+                <label className="mb-1.5 block text-my-xs font-medium text-my-tertiary">Base URL</label>
                 <input
                   type="text"
                   value={currentProvider.baseUrl}
@@ -718,7 +724,7 @@ export function ModelsPage(): JSX.Element {
 
               {/* API 格式 */}
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-my-tertiary">API 格式</label>
+                <label className="mb-1.5 block text-my-xs font-medium text-my-tertiary">API 格式</label>
                 <div className="relative">
                   <select
                     value={currentProvider.apiFormat}
@@ -736,11 +742,11 @@ export function ModelsPage(): JSX.Element {
 
               {/* API Key */}
               <div>
-                <div className="mb-1.5 flex items-center justify-between text-xs">
+                <div className="mb-1.5 flex items-center justify-between text-my-xs">
                   <label className="font-medium text-my-tertiary">
                     API Key
                     {currentProvider.apiKeyEncrypted && (
-                      <span className="ml-2 text-my-2xs text-emerald-400 font-normal">（已加密保存）</span>
+                      <span className="ml-2 text-my-2xs text-my-success-text font-normal">（已加密保存）</span>
                     )}
                   </label>
                 </div>
@@ -765,7 +771,7 @@ export function ModelsPage(): JSX.Element {
               {/* 模型列表区域 */}
               <div className="pt-3">
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wide text-my-secondary">模型列表</span>
+                  <span className="text-my-xs font-semibold tracking-wide text-my-secondary">模型列表</span>
                   <div className="flex items-center gap-2">
                     {/* 自动拉取模型按钮 (用户核心要求) */}
                     <Button
@@ -796,9 +802,9 @@ export function ModelsPage(): JSX.Element {
                           className="flex items-center justify-between rounded-my-lg border border-my-line bg-my-canvas px-4 py-3 transition-colors hover:border-my-line-strong"
                         >
                           <div className="flex items-center gap-2.5">
-                            <span className="text-xs font-semibold text-my-primary">{m.name}</span>
+                            <span className="text-my-xs font-semibold text-my-primary">{m.name}</span>
                             {m.contextWindow && (
-                              <span className="rounded bg-my-layer-3 px-2 py-0.5 text-my-2xs font-medium text-my-tertiary">
+                              <span className="my-chip bg-my-layer-3 text-my-tertiary">
                                 {m.contextWindow}
                               </span>
                             )}
@@ -806,7 +812,7 @@ export function ModelsPage(): JSX.Element {
                               m.tags.map((tag) => (
                                 <span
                                   key={tag}
-                                  className="rounded bg-my-layer-3 px-2 py-0.5 text-my-2xs font-medium text-my-tertiary"
+                                  className="my-chip bg-my-layer-3 text-my-tertiary"
                                 >
                                   {tag}
                                 </span>
@@ -818,13 +824,13 @@ export function ModelsPage(): JSX.Element {
                             {testRes && (
                               <div className="flex items-center gap-1 text-my-xs">
                                 {testRes.ok ? (
-                                  <span className="flex items-center gap-1 text-emerald-400">
+                                  <span className="flex items-center gap-1 text-my-success-text">
                                     <CheckCircle2 size={12} />
                                     {testRes.latencyMs}ms
                                   </span>
                                 ) : (
                                   <span
-                                    className="flex items-center gap-1 text-rose-400"
+                                    className="flex items-center gap-1 text-my-danger-text"
                                     title={testRes.error}
                                   >
                                     <XCircle size={12} />
@@ -859,7 +865,7 @@ export function ModelsPage(): JSX.Element {
                                 const next = currentProvider.models.filter((item) => item.id !== m.id)
                                 updateCurrentProvider({ models: next })
                               }}
-                              className="text-my-tertiary transition-colors hover:text-rose-400"
+                              className="text-my-tertiary transition-colors hover:text-my-danger-text"
                               title="删除模型"
                             >
                               <Trash2 size={14} />
@@ -878,7 +884,7 @@ export function ModelsPage(): JSX.Element {
                                 }}
                                 className="peer sr-only"
                               />
-                              <div className="h-4 w-7 rounded-full bg-my-layer-3 transition-colors peer-checked:bg-emerald-500 after:absolute after:left-[2px] after:top-[2px] after:h-3 after:w-3 after:rounded-full after:bg-white after:shadow-sm after:transition-all peer-checked:after:translate-x-3 after:content-['']" />
+                              <div className="h-4 w-7 rounded-full bg-my-layer-3 transition-colors peer-checked:bg-my-success after:absolute after:left-[2px] after:top-[2px] after:h-3 after:w-3 after:rounded-full after:bg-white after:shadow-sm after:transition-all peer-checked:after:translate-x-3 after:content-['']" />
                             </label>
                           </div>
                         </div>
@@ -886,7 +892,7 @@ export function ModelsPage(): JSX.Element {
                     })
                   ) : (
                     <div className="flex flex-col items-center justify-center rounded-my-lg border border-dashed border-my-line py-10 px-4 text-center">
-                      <p className="text-xs font-medium text-my-tertiary">当前供应商暂无模型</p>
+                      <p className="text-my-xs font-medium text-my-tertiary">当前供应商暂无模型</p>
                       <p className="mt-2 text-my-xs leading-normal text-my-placeholder">点击上方「自动获取模型」从接口拉取，或「添加模型」手动创建</p>
                     </div>
                   )}
@@ -897,8 +903,8 @@ export function ModelsPage(): JSX.Element {
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-center p-8">
             <Bot size={40} className="text-my-tertiary mb-3 stroke-[1.5]" />
-            <p className="text-sm font-medium text-my-secondary">未选择模型供应商</p>
-            <p className="mt-1 text-xs text-my-tertiary">
+            <p className="text-my-sm font-medium text-my-secondary">未选择模型供应商</p>
+            <p className="mt-1 text-my-xs text-my-tertiary">
               请从左侧列表选择供应商，或点击右上角「添加供应商」
             </p>
           </div>
@@ -911,8 +917,8 @@ export function ModelsPage(): JSX.Element {
           <div className="w-full max-w-xl rounded-my-xl border border-my-line bg-my-layer-2 p-6 shadow-[var(--my-shadow-overlay-200)]">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-my-primary">选择供应商模板</h3>
-                <p className="mt-0.5 text-xs text-my-tertiary">选择官方预设模板快速接入，或创建空白自定义供应商</p>
+                <h3 className="text-my-xl font-bold text-my-primary">选择供应商模板</h3>
+                <p className="mt-0.5 text-my-xs text-my-tertiary">选择官方预设模板快速接入，或创建空白自定义供应商</p>
               </div>
               <button
                 onClick={() => setShowAddProviderModal(false)}
@@ -932,19 +938,19 @@ export function ModelsPage(): JSX.Element {
                   <div className="flex w-full items-center justify-between">
                     <div className="flex items-center gap-2">
                       {tpl.id === 'zhipu' ? (
-                        <Sparkles size={16} className="text-blue-400" />
+                        <Sparkles size={16} className="text-my-info-text" />
                       ) : tpl.id === 'deepseek' ? (
-                        <Bot size={16} className="text-sky-400" />
+                        <Bot size={16} className="text-my-info-text" />
                       ) : tpl.id === 'kimi' ? (
-                        <Sparkles size={16} className="text-emerald-400" />
+                        <Sparkles size={16} className="text-my-success-text" />
                       ) : tpl.id === 'openai' ? (
-                        <Bot size={16} className="text-indigo-400" />
+                        <Bot size={16} className="text-my-accent-text" />
                       ) : (
                         <Box size={16} className="text-my-tertiary" />
                       )}
-                      <span className="text-xs font-semibold text-my-primary">{tpl.name}</span>
+                      <span className="text-my-xs font-semibold text-my-primary">{tpl.name}</span>
                     </div>
-                    <span className="rounded bg-my-layer-3 px-1.5 py-0.5 text-my-2xs text-my-tertiary">官方</span>
+                    <span className="my-chip bg-my-layer-3 text-my-tertiary">官方</span>
                   </div>
                   <p className="mt-1.5 line-clamp-2 text-my-xs text-my-tertiary leading-snug">{tpl.description}</p>
                   <div className="mt-2.5 truncate text-my-2xs text-my-placeholder font-mono">{tpl.baseUrl}</div>
@@ -959,9 +965,9 @@ export function ModelsPage(): JSX.Element {
                 <div className="flex w-full items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Plus size={16} className="text-my-secondary" />
-                    <span className="text-xs font-semibold text-my-primary">自定义供应商</span>
+                    <span className="text-my-xs font-semibold text-my-primary">自定义供应商</span>
                   </div>
-                  <span className="rounded bg-my-layer-3 px-1.5 py-0.5 text-my-2xs text-my-tertiary">自定义</span>
+                  <span className="my-chip bg-my-layer-3 text-my-tertiary">自定义</span>
                 </div>
                 <p className="mt-1.5 text-my-xs text-my-tertiary leading-snug">
                   接入任意 OpenAI / Anthropic 兼容的自建或第三方模型中转服务
@@ -983,8 +989,8 @@ export function ModelsPage(): JSX.Element {
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop">
           <div className="w-96 rounded-my-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]">
-            <h3 className="mb-4 text-sm font-semibold text-my-primary">添加模型</h3>
-            <div className="space-y-3 text-xs">
+            <h3 className="mb-4 text-my-sm font-semibold text-my-primary">添加模型</h3>
+            <div className="space-y-3 text-my-xs">
               <div>
                 <label className="mb-1 block text-my-tertiary">模型 ID (如 gpt-4o, claude-3-7-sonnet)</label>
                 <input
@@ -1040,8 +1046,8 @@ export function ModelsPage(): JSX.Element {
       {editingModel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop">
           <div className="w-96 rounded-my-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]">
-            <h3 className="mb-4 text-sm font-semibold text-my-primary">编辑模型</h3>
-            <div className="space-y-3 text-xs">
+            <h3 className="mb-4 text-my-sm font-semibold text-my-primary">编辑模型</h3>
+            <div className="space-y-3 text-my-xs">
               <div>
                 <label className="mb-1 block text-my-tertiary">模型 ID</label>
                 <input

@@ -11,16 +11,16 @@ import type { ContextManifestParsed, ManifestEntry, ManifestReadability } from '
  */
 
 const READABILITY_VIEW: Record<ManifestReadability['status'], { label: string; cls: string; icon: typeof FileText }> = {
-  present: { label: '存在', cls: 'bg-emerald-50 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30', icon: FileText },
-  missing: { label: '缺失', cls: 'bg-amber-50 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30', icon: FileX2 },
-  unknown: { label: '未知', cls: 'bg-ink-100 text-mist-600 border border-ink-300 dark:bg-ink-700 dark:text-mist-300 dark:border-ink-500', icon: FileQuestion }
+  present: { label: '存在', cls: 'bg-my-success-subtle text-my-success-text border border-my-line-success', icon: FileText },
+  missing: { label: '缺失', cls: 'bg-my-warning-subtle text-my-warning-text border border-my-line-warning', icon: FileX2 },
+  unknown: { label: '未知', cls: 'bg-my-layer-2 text-my-secondary border border-my-line-strong', icon: FileQuestion }
 }
 
 function ReadabilityBadge({ readability }: { readability: ManifestReadability }): JSX.Element {
   const view = READABILITY_VIEW[readability.status]
   const Icon = view.icon
   return (
-    <span className={clsx('chip inline-flex items-center gap-1 text-[10.5px]', view.cls)}>
+    <span className={clsx('my-chip', view.cls)}>
       <Icon size={11} />
       {view.label}
       {readability.status === 'present' && readability.sizeBytes !== null && (
@@ -32,22 +32,22 @@ function ReadabilityBadge({ readability }: { readability: ManifestReadability })
 
 function ManifestRow({ entry }: { entry: ManifestEntry }): JSX.Element {
   return (
-    <tr className="border-b border-ink-100 last:border-b-0 dark:border-ink-700/60">
-      <td className="px-2 py-1.5 text-right font-mono text-[11px] text-mist-400 select-none">{entry.line}</td>
+    <tr className="border-b border-my-line last:border-b-0">
+      <td className="px-2 py-1.5 text-right font-mono text-my-xs text-my-secondary select-none">{entry.line}</td>
       <td className="px-2 py-1.5">
         <div className="flex items-center gap-1.5">
           {entry.type === 'directory' ? (
-            <FolderOpen size={13} className="shrink-0 text-mist-400" />
+            <FolderOpen size={13} className="shrink-0 text-my-icon-secondary" />
           ) : (
-            <FileText size={13} className="shrink-0 text-mist-400" />
+            <FileText size={13} className="shrink-0 text-my-icon-secondary" />
           )}
-          <span className="break-all font-mono text-[12px] text-slate-700 dark:text-mist-200">{entry.file}</span>
+          <span className="break-all font-mono text-my-sm text-my-primary">{entry.file}</span>
         </div>
         {entry.reason !== null && (
-          <p className="mt-0.5 text-[11.5px] leading-4 text-mist-500">{entry.reason}</p>
+          <p className="mt-0.5 text-my-xs leading-4 text-my-tertiary">{entry.reason}</p>
         )}
       </td>
-      <td className="px-2 py-1.5 text-[11px] text-mist-400">{entry.type ?? '—'}</td>
+      <td className="px-2 py-1.5 text-my-xs text-my-secondary">{entry.type ?? '—'}</td>
       <td className="px-2 py-1.5">
         <ReadabilityBadge readability={entry.readability} />
       </td>
@@ -61,11 +61,11 @@ export function ContextManifestView({ parsed }: { parsed: ContextManifestParsed 
   const totals = parsed.totals
   return (
     <div className="space-y-3">
-      <p className="text-[12px] text-mist-500">{MANIFEST_NOTE}</p>
-      <div className="overflow-x-auto rounded-lg border border-ink-200 dark:border-ink-700">
-        <table className="min-w-full w-max border-collapse text-left text-[12.5px]">
+      <p className="text-my-sm text-my-tertiary">{MANIFEST_NOTE}</p>
+      <div className="overflow-x-auto rounded-my-lg border border-my-line">
+        <table className="min-w-full w-max border-collapse text-left text-my-sm">
           <thead>
-            <tr className="border-b border-ink-200 bg-ink-50/80 text-[11px] font-semibold tracking-wide text-mist-500 dark:border-ink-700 dark:bg-ink-850/60 dark:text-mist-300">
+            <tr className="border-b border-my-line bg-my-layer-1 text-my-xs font-semibold tracking-wide text-my-secondary">
               <th className="w-12 px-2 py-2 text-right">行号</th>
               <th className="px-2 py-2">材料 / 用途</th>
               <th className="w-16 px-2 py-2">形态</th>
@@ -79,7 +79,7 @@ export function ContextManifestView({ parsed }: { parsed: ContextManifestParsed 
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-mist-400">
+      <p className="text-my-xs text-my-secondary">
         共 {totals.entries} 条 · 坏行 {totals.badLines} 行（见上方诊断，保留原始行号） · 空行 {totals.blankLines} 行（不改编号）
       </p>
     </div>

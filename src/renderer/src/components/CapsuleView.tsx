@@ -17,6 +17,7 @@ import {
 import { useApp } from '../store'
 import { api } from '../api'
 import { StatusBadge, PriorityBadge } from './badges'
+import { Button } from '../my/ui'
 import { subtaskProgressOf } from '../utils/format2'
 import { clsx } from 'clsx'
 import { useState, useEffect } from 'react'
@@ -27,28 +28,28 @@ function getStatusPulse(status?: string): { dot: string; glow: string; label: st
   switch (status?.toLowerCase()) {
     case 'in_progress':
       return {
-        dot: 'bg-amber-400',
-        glow: 'shadow-[0_0_8px_rgba(251,191,36,0.8)] animate-pulse',
+        dot: 'bg-my-warning',
+        glow: 'shadow-[0_0_8px_var(--my-bg-warning-primary)] animate-pulse',
         label: '进行中'
       }
     case 'review':
       return {
-        dot: 'bg-violet-400',
-        glow: 'shadow-[0_0_8px_rgba(167,139,250,0.8)]',
+        dot: 'bg-my-label-purple-strong',
+        glow: 'shadow-[0_0_8px_var(--my-label-purple-bg-strong)]',
         label: '评审中'
       }
     case 'completed':
     case 'done':
       return {
-        dot: 'bg-leaf',
-        glow: 'shadow-[0_0_8px_rgba(52,211,153,0.8)]',
+        dot: 'bg-my-success',
+        glow: 'shadow-[0_0_8px_var(--my-bg-success-primary)]',
         label: '已完成'
       }
     case 'planning':
     default:
       return {
-        dot: 'bg-sky-400',
-        glow: 'shadow-[0_0_8px_rgba(56,189,248,0.8)]',
+        dot: 'bg-my-info',
+        glow: 'shadow-[0_0_8px_var(--my-bg-info-primary)]',
         label: '规划中'
       }
   }
@@ -187,12 +188,12 @@ export function CapsuleView(): JSX.Element {
         /* ------------------------- 形态 1：药丸条视图（Pill View，360x44） ------------------------- */
         <div
           onDoubleClick={() => switchShape('card')}
-          className="drag-region flex h-full w-full items-center justify-between gap-2 rounded-full border border-ink-600 bg-ink-850 px-3 py-1 text-mist-100 shadow-2xl overflow-hidden transition-opacity duration-150"
+          className="drag-region capsule-pill flex h-full w-full items-center justify-between gap-2 rounded-full border border-my-line-strong bg-my-layer-2 px-3 py-1 text-my-primary overflow-hidden transition-opacity duration-150"
         >
           {/* 左侧：呼吸指示灯与闪电标识 */}
           <div className="flex shrink-0 items-center gap-1.5">
             <div className={clsx('h-2.5 w-2.5 rounded-full transition-all', pulse.dot, pulse.glow)} />
-            <span className="flex items-center text-leaf">
+            <span className="flex items-center text-my-icon-accent">
               <Zap size={12} />
             </span>
           </div>
@@ -200,23 +201,23 @@ export function CapsuleView(): JSX.Element {
           {/* 中间：任务标题与进度提示 */}
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
             {!snapshot ? (
-              <span className="truncate text-xs text-mist-400">未打开项目</span>
+              <span className="truncate text-my-xs text-my-secondary">未打开项目</span>
             ) : current?.record ? (
               <>
                 <span
-                  className="truncate text-xs font-medium text-mist-50"
+                  className="truncate text-my-xs font-medium text-my-primary"
                   title={`${current.dirName}: ${current.record.title}`}
                 >
                   {current.record.title}
                 </span>
                 {prog && (
-                  <span className="shrink-0 rounded-full bg-ink-700 px-1.5 py-0.5 font-mono text-[10px] text-leaf-soft">
+                  <span className="shrink-0 rounded-full bg-my-layer-3 px-1.5 py-0.5 font-mono text-my-2xs text-my-accent-text">
                     {prog.done}/{prog.total}
                   </span>
                 )}
               </>
             ) : (
-              <span className="truncate text-xs text-mist-400">暂无活跃任务</span>
+              <span className="truncate text-my-xs text-my-secondary">暂无活跃任务</span>
             )}
           </div>
 
@@ -225,7 +226,7 @@ export function CapsuleView(): JSX.Element {
             {displayTasks.length > 1 && (
               <button
                 onClick={nextTask}
-                className="btn-ghost px-1.5 py-0.5 font-mono text-[10px] text-mist-300 hover:text-mist-50"
+                className="px-1.5 py-0.5 font-mono text-my-2xs text-my-secondary transition-colors hover:text-my-primary"
                 title={`点击切换下一个任务 (${safeIndex + 1}/${displayTasks.length})`}
               >
                 {safeIndex + 1}/{displayTasks.length}
@@ -233,21 +234,21 @@ export function CapsuleView(): JSX.Element {
             )}
             <button
               onClick={() => switchShape('card')}
-              className="btn-ghost p-1 text-mist-300 hover:text-leaf-soft"
+              className="p-1 text-my-secondary transition-colors hover:text-my-accent-text"
               title="展开为便签卡片"
             >
               <Maximize2 size={12} />
             </button>
             <button
               onClick={expandToMain}
-              className="btn-ghost p-1 text-mist-300 hover:text-mist-50"
+              className="p-1 text-my-secondary transition-colors hover:text-my-primary"
               title="打开完整面板"
             >
               <ArrowUpRight size={13} />
             </button>
             <button
               onClick={closeCapsule}
-              className="btn-ghost p-1 text-mist-400 hover:text-rose-400"
+              className="p-1 text-my-secondary transition-colors hover:text-my-danger-text"
               title="关闭胶囊"
             >
               <X size={12} />
@@ -256,17 +257,17 @@ export function CapsuleView(): JSX.Element {
         </div>
       ) : (
         /* ------------------------- 形态 2：便签卡片视图（Card View，380x260） ------------------------- */
-        <div className="drag-region flex h-full w-full flex-col justify-between overflow-hidden rounded-2xl border border-ink-600 bg-ink-850 text-mist-100 shadow-2xl transition-opacity duration-150">
+        <div className="drag-region capsule-card flex h-full w-full flex-col justify-between overflow-hidden rounded-my-xl border border-my-line-strong bg-my-layer-2 text-my-primary transition-opacity duration-150">
           {/* 顶栏 Header */}
-          <div className="flex shrink-0 items-center justify-between border-b border-ink-700 bg-ink-800/90 px-3 py-2">
+          <div className="flex shrink-0 items-center justify-between border-b border-my-line bg-my-layer-3 px-3 py-2">
             <div className="flex min-w-0 items-center gap-1.5">
               <div className={clsx('h-2 w-2 rounded-full', pulse.dot, pulse.glow)} />
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-leaf-soft">
-                <Zap size={12} className="text-leaf" /> 胶囊
+              <span className="flex items-center gap-1 text-my-xs font-semibold text-my-accent-text">
+                <Zap size={12} className="text-my-icon-accent" /> 胶囊
               </span>
               {snapshot && (
                 <span
-                  className="max-w-[120px] truncate text-[10px] text-mist-400"
+                  className="max-w-[120px] truncate text-my-2xs text-my-secondary"
                   title={snapshot.meta.name}
                 >
                   · {snapshot.meta.name}
@@ -276,20 +277,20 @@ export function CapsuleView(): JSX.Element {
 
             {/* 任务轮播翻页器 */}
             {displayTasks.length > 1 && (
-              <div className="no-drag flex items-center gap-0.5 font-mono text-[10px] text-mist-400">
+              <div className="no-drag flex items-center gap-0.5 font-mono text-my-2xs text-my-secondary">
                 <button
                   onClick={prevTask}
-                  className="btn-ghost p-0.5 hover:text-mist-50"
+                  className="p-0.5 transition-colors hover:text-my-primary"
                   title="上一条任务"
                 >
                   <ChevronLeft size={12} />
                 </button>
-                <span className="px-1 text-mist-200">
+                <span className="px-1 text-my-primary">
                   {safeIndex + 1}/{displayTasks.length}
                 </span>
                 <button
                   onClick={nextTask}
-                  className="btn-ghost p-0.5 hover:text-mist-50"
+                  className="p-0.5 transition-colors hover:text-my-primary"
                   title="下一条任务"
                 >
                   <ChevronRight size={12} />
@@ -301,28 +302,28 @@ export function CapsuleView(): JSX.Element {
             <div className="no-drag flex items-center gap-0.5">
               <button
                 onClick={() => switchShape('pill')}
-                className="btn-ghost p-1 text-mist-300 hover:text-mist-50"
+                className="p-1 text-my-secondary transition-colors hover:text-my-primary"
                 title="收起为药丸条"
               >
                 <Minimize2 size={12} />
               </button>
               <button
                 onClick={toggleOnTop}
-                className="btn-ghost p-1 text-mist-300 hover:text-mist-50"
+                className="p-1 text-my-secondary transition-colors hover:text-my-primary"
                 title={onTop ? '取消置顶' : '置顶窗口'}
               >
-                {onTop ? <Pin size={12} className="text-leaf" /> : <PinOff size={12} />}
+                {onTop ? <Pin size={12} className="text-my-icon-accent" /> : <PinOff size={12} />}
               </button>
               <button
                 onClick={expandToMain}
-                className="btn-ghost p-1 text-mist-300 hover:text-mist-50"
+                className="p-1 text-my-secondary transition-colors hover:text-my-primary"
                 title="打开主面板"
               >
                 <ArrowUpRight size={12} />
               </button>
               <button
                 onClick={closeCapsule}
-                className="btn-ghost p-1 text-mist-400 hover:text-rose-400"
+                className="p-1 text-my-secondary transition-colors hover:text-my-danger-text"
                 title="关闭胶囊"
               >
                 <X size={12} />
@@ -334,13 +335,10 @@ export function CapsuleView(): JSX.Element {
           <div className="flex min-h-0 flex-1 flex-col justify-between overflow-hidden p-3">
             {!snapshot ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                <span className="text-xs text-mist-400">未检测到已打开项目</span>
-                <button
-                  onClick={expandToMain}
-                  className="no-drag btn-outline px-3 py-1 text-xs"
-                >
+                <span className="text-my-xs text-my-secondary">未检测到已打开项目</span>
+                <Button variant="outline" size="sm" onClick={expandToMain} className="no-drag">
                   打开主面板
-                </button>
+                </Button>
               </div>
             ) : current?.record ? (
               <div className="flex h-full flex-col justify-between">
@@ -350,11 +348,11 @@ export function CapsuleView(): JSX.Element {
                     <StatusBadge status={current.record.status} />
                     <PriorityBadge priority={current.record.priority} />
                     {current.record.branch && (
-                      <span className="chip max-w-[120px] truncate border border-ink-600 bg-ink-800 font-mono text-[10px] text-mist-300">
+                      <span className="my-chip max-w-[120px] truncate border border-my-line bg-my-layer-3 font-mono text-my-secondary">
                         {current.record.branch}
                       </span>
                     )}
-                    <span className="ml-auto font-mono text-[10px] text-mist-400">
+                    <span className="ml-auto font-mono text-my-2xs text-my-secondary">
                       进行中 {inProgressCount}
                     </span>
                   </div>
@@ -362,40 +360,40 @@ export function CapsuleView(): JSX.Element {
                   {/* 任务标题与复制 */}
                   <div className="group mt-1 flex items-start justify-between gap-1">
                     <div
-                      className="line-clamp-2 text-xs font-semibold leading-snug text-mist-50 select-text"
+                      className="line-clamp-2 text-my-xs font-semibold leading-snug text-my-primary select-text"
                       title={current.record.title}
                     >
                       {current.record.title}
                     </div>
                     <button
                       onClick={handleCopyInfo}
-                      className="no-drag shrink-0 text-mist-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-mist-200"
+                      className="no-drag shrink-0 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-primary"
                       title="复制任务信息"
                     >
                       <Copy size={11} />
                     </button>
                   </div>
 
-                  <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] text-mist-400">
+                  <div className="mt-0.5 flex items-center gap-2 font-mono text-my-2xs text-my-secondary">
                     <span className="truncate">{current.dirName}</span>
                     {current.record.assignee && (
-                      <span className="shrink-0 text-mist-500">· {current.record.assignee}</span>
+                      <span className="shrink-0 text-my-tertiary">· {current.record.assignee}</span>
                     )}
                   </div>
                 </div>
 
                 {/* 子任务进度与待办勾选 */}
-                <div className="my-1.5 rounded-xl border border-ink-700 bg-ink-800/80 p-2">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-mist-300 font-medium">子任务进度</span>
-                    <span className="font-mono text-[10px] text-mist-400">
+                <div className="my-1.5 rounded-my-md border border-my-line bg-my-layer-3 p-2">
+                  <div className="flex items-center justify-between text-my-xs">
+                    <span className="text-my-secondary font-medium">子任务进度</span>
+                    <span className="font-mono text-my-2xs text-my-secondary">
                       {prog ? `${prog.done}/${prog.total}` : '无子任务'}
                     </span>
                   </div>
                   {prog && (
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-ink-700">
+                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-my-layer-1">
                       <div
-                        className="h-full rounded-full bg-leaf-dim transition-all duration-300"
+                        className="h-full rounded-full bg-my-accent transition-all duration-300"
                         style={{ width: `${(prog.done / prog.total) * 100}%` }}
                       />
                     </div>
@@ -411,14 +409,14 @@ export function CapsuleView(): JSX.Element {
                           <div
                             key={idx}
                             onClick={() => handleToggleSubtask(idx)}
-                            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-mist-300 transition-colors hover:text-mist-100"
+                            className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-secondary transition-colors hover:text-my-primary"
                           >
                             {isDone ? (
-                              <CheckSquare size={12} className="shrink-0 text-leaf" />
+                              <CheckSquare size={12} className="shrink-0 text-my-icon-accent" />
                             ) : (
-                              <Square size={12} className="shrink-0 text-mist-500" />
+                              <Square size={12} className="shrink-0 text-my-tertiary" />
                             )}
-                            <span className={clsx('truncate', isDone && 'line-through text-mist-500')}>
+                            <span className={clsx('truncate', isDone && 'line-through text-my-tertiary')}>
                               {text}
                             </span>
                           </div>
@@ -429,13 +427,13 @@ export function CapsuleView(): JSX.Element {
                 </div>
 
                 {/* 底部快捷操作栏 Footer */}
-                <div className="no-drag mt-auto flex items-center gap-1.5 pt-2 border-t border-ink-700/80">
+                <div className="no-drag mt-auto flex items-center gap-1.5 pt-2 border-t border-my-line">
                   {/* R0：状态流转直写已停用——任务阶段收归外部 Trellis 工作流 */}
 
                   {/* 在编辑器中打开 */}
                   <button
                     onClick={handleOpenEditor}
-                    className="btn-ghost p-1 text-mist-400 hover:text-mist-100"
+                    className="p-1 text-my-secondary transition-colors hover:text-my-primary"
                     title="在 VS Code / 编辑器中定位"
                   >
                     <Code2 size={13} />
@@ -444,30 +442,24 @@ export function CapsuleView(): JSX.Element {
                   {/* 在文件资源管理器中打开 */}
                   <button
                     onClick={handleReveal}
-                    className="btn-ghost p-1 text-mist-400 hover:text-mist-100"
+                    className="p-1 text-my-secondary transition-colors hover:text-my-primary"
                     title="在文件资源管理器中打开目录"
                   >
                     <FolderOpen size={13} />
                   </button>
 
                   {/* 打开主面板大按钮 */}
-                  <button
-                    onClick={expandToMain}
-                    className="btn-primary ml-auto flex-1 justify-center py-1 text-xs font-medium"
-                  >
+                  <Button variant="primary" onClick={expandToMain} className="ml-auto flex-1">
                     打开面板
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                <span className="text-xs text-mist-400">暂无活跃任务</span>
-                <button
-                  onClick={expandToMain}
-                  className="no-drag btn-outline px-3 py-1 text-xs"
-                >
+                <span className="text-my-xs text-my-secondary">暂无活跃任务</span>
+                <Button variant="outline" size="sm" onClick={expandToMain} className="no-drag">
                   前往主面板创建
-                </button>
+                </Button>
               </div>
             )}
           </div>

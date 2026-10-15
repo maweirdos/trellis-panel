@@ -52,11 +52,11 @@ const FIELD_LABEL: Record<string, string> = {
 function Row({ label, modified, children }: { label: string; modified?: boolean; children: React.ReactNode }): JSX.Element {
   return (
     <div className="flex items-start gap-3 py-1.5">
-      <span className="w-16 shrink-0 pt-0.5 text-my-xs text-mist-500">
+      <span className="w-16 shrink-0 pt-0.5 text-my-xs text-my-tertiary">
         {label}
-        {modified && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" title="待保存修改" />}
+        {modified && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-my-warning align-middle" title="待保存修改" />}
       </span>
-      <div className="min-w-0 flex-1 text-xs text-mist-200">{children}</div>
+      <div className="min-w-0 flex-1 text-my-xs text-my-primary">{children}</div>
     </div>
   )
 }
@@ -204,7 +204,7 @@ function FieldRow({
                 setEditing(false)
               }}
               onBlur={() => setEditing(false)}
-              className="field"
+              className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none focus:border-my-line-accent"
             >
               {options.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -216,7 +216,7 @@ function FieldRow({
               rows={3}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              className="field resize-y"
+              className="w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 py-1.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent resize-y"
             />
           ) : (
             <input
@@ -227,31 +227,31 @@ function FieldRow({
                 if (e.key === 'Enter') done()
                 if (e.key === 'Escape') setEditing(false)
               }}
-              className="field"
+              className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
             />
           )}
           {!options && (
             <div className="flex gap-1.5">
-              <button onClick={done} className="btn-primary px-2 py-0.5">
+              <Button variant="primary" size="sm" onClick={done}>
                 确认
-              </button>
-              <button onClick={() => setEditing(false)} className="btn-ghost px-2 py-0.5">
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
                 取消
-              </button>
+              </Button>
             </div>
           )}
         </div>
       ) : (
         <div className="group flex items-start gap-1.5">
-          <span className={clsx('min-w-0 flex-1 whitespace-pre-wrap break-words', modified && 'text-leaf-soft')}>
-            {(display ? display(shown) : shown) || <span className="text-mist-600">—</span>}
+          <span className={clsx('min-w-0 flex-1 whitespace-pre-wrap break-words', modified && 'text-my-accent-text')}>
+            {(display ? display(shown) : shown) || <span className="text-my-placeholder">—</span>}
             {modified && value && (
-              <span className="ml-1.5 text-my-2xs text-mist-600 line-through">{display ? display(value) : value}</span>
+              <span className="ml-1.5 text-my-2xs text-my-placeholder line-through">{display ? display(value) : value}</span>
             )}
           </span>
           <button
             onClick={() => setEditing(true)}
-            className="mt-0.5 shrink-0 text-mist-600 transition-colors hover:text-leaf-soft"
+            className="mt-0.5 shrink-0 text-my-icon-placeholder transition-colors hover:text-my-icon-accent"
             title="编辑"
           >
             <SquarePen size={12} />
@@ -550,9 +550,9 @@ export function TaskDetail(): JSX.Element | null {
         )}
 
         {showInfo && (
-          <div className="space-y-1 divide-y divide-ink-700/50">
+          <div className="space-y-1 divide-y divide-my-line">
             {task.parseError && (
-              <div className="mb-2 rounded-my-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-my-xs text-rose-300">
+              <div className="mb-2 rounded-my-lg border border-my-line-danger bg-my-danger-subtle px-3 py-2 text-my-xs text-my-danger-text">
                 task.json 解析失败：{task.parseError}
               </div>
             )}
@@ -592,17 +592,17 @@ export function TaskDetail(): JSX.Element | null {
                       {r.subtasks.map((s, i) => {
                         const { done, text, isCheckable } = parseSubtask(s)
                         return (
-                          <div key={i} className="flex items-start gap-2 text-xs text-mist-200">
+                          <div key={i} className="flex items-start gap-2 text-my-xs text-my-primary">
                             {isCheckable ? (
                               <button onClick={() => void toggleSubtask(i)} className="mt-0.5 shrink-0">
                                 {done ? (
-                                  <CircleCheck size={13} className="text-leaf" />
+                                  <CircleCheck size={13} className="text-my-icon-accent" />
                                 ) : (
-                                  <Circle size={13} className="text-mist-500 hover:text-mist-300" />
+                                  <Circle size={13} className="text-my-icon-tertiary transition-colors hover:text-my-icon-secondary" />
                                 )}
                               </button>
                             ) : null}
-                            <span className={clsx(done && 'text-mist-500 line-through')}>{text}</span>
+                            <span className={clsx(done && 'text-my-tertiary line-through')}>{text}</span>
                           </div>
                         )
                       })}
@@ -610,17 +610,17 @@ export function TaskDetail(): JSX.Element | null {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-x-4 py-1.5 text-my-xs leading-5 text-mist-400">
-                  <span>创建者</span><span className="text-right text-mist-200">{r.creator || '—'}</span>
-                  <span>创建时间</span><span className="text-right font-mono text-mist-200">{r.createdAt || '—'}</span>
-                  <span>完成时间</span><span className="text-right font-mono text-mist-200">{r.completedAt ?? '—'}</span>
-                  <span>基础分支</span><span className="text-right font-mono text-mist-200">{r.base_branch ?? '—'}</span>
-                  <span>任务类型</span><span className="text-right text-mist-200">{r.dev_type ?? '—'}</span>
-                  <span>范围 / 包</span><span className="text-right text-mist-200">{[r.scope, r.package].filter(Boolean).join(' / ') || '—'}</span>
-                  <span>提交</span><span className="truncate text-right font-mono text-mist-200">{r.commit ?? '—'}</span>
-                  <span>工作树</span><span className="truncate text-right font-mono text-mist-200">{r.worktree_path ?? '—'}</span>
-                  <span>父任务</span><span className="truncate text-right font-mono text-mist-200">{r.parent ?? '—'}</span>
-                  <span>子任务(引用)</span><span className="truncate text-right font-mono text-mist-200">{r.children.length ? r.children.join(', ') : '—'}</span>
+                <div className="grid grid-cols-2 gap-x-4 py-1.5 text-my-xs leading-5 text-my-secondary">
+                  <span>创建者</span><span className="text-right text-my-primary">{r.creator || '—'}</span>
+                  <span>创建时间</span><span className="text-right font-mono text-my-primary">{r.createdAt || '—'}</span>
+                  <span>完成时间</span><span className="text-right font-mono text-my-primary">{r.completedAt ?? '—'}</span>
+                  <span>基础分支</span><span className="text-right font-mono text-my-primary">{r.base_branch ?? '—'}</span>
+                  <span>任务类型</span><span className="text-right text-my-primary">{r.dev_type ?? '—'}</span>
+                  <span>范围 / 包</span><span className="text-right text-my-primary">{[r.scope, r.package].filter(Boolean).join(' / ') || '—'}</span>
+                  <span>提交</span><span className="truncate text-right font-mono text-my-primary">{r.commit ?? '—'}</span>
+                  <span>工作树</span><span className="truncate text-right font-mono text-my-primary">{r.worktree_path ?? '—'}</span>
+                  <span>父任务</span><span className="truncate text-right font-mono text-my-primary">{r.parent ?? '—'}</span>
+                  <span>子任务(引用)</span><span className="truncate text-right font-mono text-my-primary">{r.children.length ? r.children.join(', ') : '—'}</span>
                 </div>
 
                 {r.relatedFiles.length > 0 && (
@@ -628,7 +628,7 @@ export function TaskDetail(): JSX.Element | null {
                     <div className="mb-1.5 text-my-xs text-my-tertiary">相关文件</div>
                     <div className="space-y-0.5">
                       {r.relatedFiles.map((f) => (
-                        <div key={f} className="break-all font-mono text-my-xs text-mist-300">· {f}</div>
+                        <div key={f} className="break-all font-mono text-my-xs text-my-secondary">· {f}</div>
                       ))}
                     </div>
                   </div>
@@ -642,34 +642,34 @@ export function TaskDetail(): JSX.Element | null {
                       {gitLoading && <RefreshCw size={10} className="animate-spin" />}
                     </div>
                     {git?.error ? (
-                      <div className="text-my-xs text-mist-600">{git.error}</div>
+                      <div className="text-my-xs text-my-tertiary">{git.error}</div>
                     ) : git ? (
-                      <div className="space-y-1.5 rounded-my-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-my-xs">
+                      <div className="space-y-1.5 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-2.5 text-my-xs">
                         <div className="flex items-center gap-2">
-                          <span className="chip bg-ink-750 font-mono text-mist-300">{r.branch ?? '无分支'}</span>
+                          <span className="my-chip bg-my-layer-2 font-mono text-my-secondary">{r.branch ?? '无分支'}</span>
                           {git.ahead > 0 && (
-                            <span className="chip border border-sky-500/30 text-sky-300">
+                            <span className="my-chip border border-my-label-indigo-border text-my-label-indigo-text">
                               <ArrowUpRight size={10} /> 领先 {git.ahead}
                             </span>
                           )}
                           {git.behind > 0 && (
-                            <span className="chip border border-orange-500/30 text-orange-300">
+                            <span className="my-chip border border-my-label-orange-border text-my-label-orange-text">
                               <ArrowDownLeft size={10} /> 落后 {git.behind}
                             </span>
                           )}
-                          {git.worktreeDirty && <span className="chip border border-amber-500/30 text-amber-300">有未提交改动</span>}
+                          {git.worktreeDirty && <span className="my-chip border border-my-label-yellow-border text-my-label-yellow-text">有未提交改动</span>}
                         </div>
                         {git.merged && (
-                          <div className="flex items-center gap-1.5 rounded bg-emerald-500/10 px-2 py-1 text-emerald-300">
+                          <div className="flex items-center gap-1.5 rounded-my-sm bg-my-success-subtle px-2 py-1 text-my-success-text">
                             <GitMerge size={11} /> 分支已合入 {r.base_branch ?? '主分支'}
                           </div>
                         )}
                         {git.commits.length > 0 && (
                           <div className="space-y-1">
                             {(showAllCommits ? git.commits : git.commits.slice(0, 4)).map((c) => (
-                              <div key={c.short} className="flex items-center gap-2 text-my-xs text-mist-400">
+                              <div key={c.short} className="flex items-center gap-2 text-my-xs text-my-secondary">
                                 <GitCommitHorizontal size={10} className="shrink-0" />
-                                <span className="font-mono text-mist-300">{c.short}</span>
+                                <span className="font-mono text-my-secondary">{c.short}</span>
                                 <span className="min-w-0 flex-1 truncate" title={`${c.subject} · ${c.date}`}>
                                   {c.subject}
                                 </span>
@@ -679,7 +679,7 @@ export function TaskDetail(): JSX.Element | null {
                             {git.commits.length > 4 && (
                               <button
                                 onClick={() => setShowAllCommits((v) => !v)}
-                                className="text-my-xs text-leaf-soft/80 underline"
+                                className="text-my-xs text-my-accent-text underline"
                               >
                                 {showAllCommits ? '收起提交记录' : `展开全部 ${git.commits.length} 条提交`}
                               </button>
@@ -692,11 +692,9 @@ export function TaskDetail(): JSX.Element | null {
                               value={newBranch}
                               onChange={(e) => setNewBranch(e.target.value)}
                               placeholder={`从 ${r.base_branch ?? 'main'} 新建分支…`}
-                              className="field flex-1 font-mono"
+                              className="h-8 w-full flex-1 rounded-my-md border border-my-line bg-my-surface-1 px-2.5 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
                             />
-                            <button
-                              disabled={!newBranch.trim()}
-                              onClick={async () => {
+                              <Button variant="outline" size="sm" disabled={!newBranch.trim()} onClick={async () => {
                                 const res = await api.gitCreateBranch(newBranch.trim(), r?.base_branch ?? 'main')
                                 if (res.ok) {
                                   const w = await api.updateTask(task.path, { branch: newBranch.trim() }, task.taskJsonMtime)
@@ -709,11 +707,9 @@ export function TaskDetail(): JSX.Element | null {
                                 } else {
                                   pushToast({ kind: 'error', title: '建分支失败', body: res.error })
                                 }
-                              }}
-                              className="btn-outline disabled:opacity-50"
-                            >
-                              <Plus size={11} /> 创建
-                            </button>
+                              }}>
+                                <Plus size={11} /> 创建
+                              </Button>
                           </div>
                         )}
                       </div>
@@ -729,10 +725,10 @@ export function TaskDetail(): JSX.Element | null {
                       {!gl && <RefreshCw size={10} className="animate-spin" />}
                     </div>
                     {gl && !gl.ok && (
-                      <div className="text-my-xs text-mist-600">{gl.error}</div>
+                      <div className="text-my-xs text-my-tertiary">{gl.error}</div>
                     )}
                     {gl?.ok && (
-                      <div className="flex flex-wrap items-center gap-1.5 rounded-my-lg border border-ink-700 bg-ink-800/60 px-3 py-2.5 text-my-xs">
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-2.5 text-my-xs">
                         {gl.mr ? (
                           <button
                             onClick={() => {
@@ -740,17 +736,17 @@ export function TaskDetail(): JSX.Element | null {
                               if (mr) api.openExternal(mr.webUrl)
                             }}
                             className={clsx(
-                              'chip border',
+                              'my-chip border',
                               gl.mr.state === 'merged'
-                                ? 'border-violet-400/30 bg-violet-500/15 text-violet-300'
-                                : 'border-sky-400/30 bg-sky-500/15 text-sky-300'
+                                ? 'border-my-label-purple-border bg-my-label-purple text-my-label-purple-text'
+                                : 'border-my-label-indigo-border bg-my-label-indigo text-my-label-indigo-text'
                             )}
                             title={`${gl.mr.title} → ${gl.mr.targetBranch}`}
                           >
                             <GitMerge size={10} /> MR !{gl.mr.iid} · {gl.mr.state === 'merged' ? '已合并' : '评审中'} ↗
                           </button>
                         ) : (
-                          <span className="chip border border-ink-500 text-mist-400">无 MR</span>
+                          <span className="my-chip border border-my-line text-my-tertiary">无 MR</span>
                         )}
                         {gl.pipeline ? (
                           <button
@@ -759,12 +755,12 @@ export function TaskDetail(): JSX.Element | null {
                               if (pipeline) api.openExternal(pipeline.webUrl)
                             }}
                             className={clsx(
-                              'chip border',
+                              'my-chip border',
                               ['success', 'passed'].includes(gl.pipeline.status)
-                                ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300'
+                                ? 'border-my-label-emerald-border bg-my-label-emerald text-my-label-emerald-text'
                                 : ['failed'].includes(gl.pipeline.status)
-                                  ? 'border-rose-400/30 bg-rose-500/15 text-rose-300'
-                                  : 'border-amber-400/30 bg-amber-500/15 text-amber-300'
+                                  ? 'border-my-label-crimson-border bg-my-label-crimson text-my-label-crimson-text'
+                                  : 'border-my-label-yellow-border bg-my-label-yellow text-my-label-yellow-text'
                             )}
                             title="打开流水线"
                           >
@@ -779,7 +775,7 @@ export function TaskDetail(): JSX.Element | null {
                             ↗
                           </button>
                         ) : (
-                          <span className="chip border border-ink-500 text-mist-400">无流水线</span>
+                          <span className="my-chip border border-my-line text-my-tertiary">无流水线</span>
                         )}
                         {!gl.mr && (
                           <button
@@ -796,7 +792,7 @@ export function TaskDetail(): JSX.Element | null {
                                 pushToast({ kind: 'error', title: '创建 MR 失败', body: res.error })
                               }
                             }}
-                            className="chip border border-leaf-dim/40 text-leaf-soft hover:bg-leaf-dim/10 disabled:opacity-50"
+                            className="my-chip border border-my-line-accent-subtle text-my-accent-text hover:bg-my-accent-subtle disabled:opacity-50"
                           >
                             <GitMerge size={10} /> {glBusy ? '创建中…' : '新建 MR'}
                           </button>
@@ -835,7 +831,7 @@ export function TaskDetail(): JSX.Element | null {
                 </div>
               </>
             ) : (
-              <div className="py-6 text-center text-xs text-mist-500">缺少 task.json</div>
+              <div className="py-6 text-center text-my-xs text-my-tertiary">缺少 task.json</div>
             )}
 
             {/* 其余产物（目录 / 不可预览文件等）——点击仍进入全屏查看器 */}
@@ -855,13 +851,13 @@ export function TaskDetail(): JSX.Element | null {
                         className={clsx(
                           'flex w-full items-center gap-2.5 rounded-my-lg border border-transparent px-3 py-2 text-left transition-colors',
                           clickable
-                            ? 'hover:border-ink-600 hover:bg-ink-750/60'
+                            ? 'hover:border-my-line hover:bg-my-layer-1-hover'
                             : 'cursor-default opacity-60'
                         )}
                       >
-                        <FileText size={13} className={clsx('shrink-0', /\.md$/i.test(f.name) ? 'text-leaf' : 'text-mist-500')} />
-                        <span className="min-w-0 flex-1 truncate font-mono text-my-sm text-mist-200">{f.name}</span>
-                        <span className="shrink-0 text-my-xs text-mist-500">{f.kind === 'file' ? fmtBytes(f.size) : '目录'}</span>
+                        <FileText size={13} className={clsx('shrink-0', /\.md$/i.test(f.name) ? 'text-my-icon-accent' : 'text-my-icon-tertiary')} />
+                        <span className="min-w-0 flex-1 truncate font-mono text-my-sm text-my-primary">{f.name}</span>
+                        <span className="shrink-0 text-my-xs text-my-tertiary">{f.kind === 'file' ? fmtBytes(f.size) : '目录'}</span>
                       </button>
                     )
                   })}

@@ -10,20 +10,20 @@ import { EVIDENCE_UNOBSERVED, evidenceWording, type EvidenceTone, type ReceiptEv
 
 const TONE_CLASS: Record<EvidenceTone, string> = {
   // L0：灰圈（空心）
-  l0: 'border-mist-600/60 text-mist-400',
+  l0: 'border border-my-line text-my-secondary',
   // L1：灰描边
-  l1: 'border-mist-500 bg-mist-700/30 text-mist-200',
+  l1: 'border border-my-line-strong bg-my-layer-2 text-my-primary',
   // L2：实心蓝
-  l2: 'border-sky-500 bg-sky-500/85 text-white',
+  l2: 'border border-my-line-info bg-my-info text-my-on-color',
   // 输出失败：错误色（仅明确故障）
-  fail: 'border-rose-500/70 bg-rose-500/15 text-rose-300'
+  fail: 'border border-my-line-danger bg-my-danger-subtle text-my-danger-text'
 }
 
 const TONE_DOT: Record<EvidenceTone, string> = {
-  l0: 'bg-transparent border border-mist-500',
-  l1: 'bg-mist-400',
-  l2: 'bg-white',
-  fail: 'bg-rose-400'
+  l0: 'bg-transparent border border-my-line-strong',
+  l1: 'bg-my-icon-secondary',
+  l2: 'bg-my-on-color',
+  fail: 'bg-my-danger'
 }
 
 export interface EvidenceBadgeProps {
@@ -33,15 +33,12 @@ export interface EvidenceBadgeProps {
   size?: 'sm' | 'md'
 }
 
-export function EvidenceBadge({ level, unobserved = false, size = 'sm' }: EvidenceBadgeProps): JSX.Element {
+export function EvidenceBadge({ level, unobserved = false }: EvidenceBadgeProps): JSX.Element {
+  // size 语义已由 my-chip 徽标基线统一（sm/md 同高同字号），参数仅保留 API 兼容
   const wording = level !== undefined && !unobserved ? evidenceWording(level) : EVIDENCE_UNOBSERVED
   return (
     <span
-      className={clsx(
-        'inline-flex items-center gap-1.5 rounded-full border font-medium',
-        size === 'sm' ? 'px-2 py-0.5 text-[10.5px]' : 'px-2.5 py-1 text-[11.5px]',
-        TONE_CLASS[wording.tone]
-      )}
+      className={clsx('my-chip', TONE_CLASS[wording.tone])}
       title={wording.hint}
     >
       <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', TONE_DOT[wording.tone])} aria-hidden />

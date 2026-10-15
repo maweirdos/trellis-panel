@@ -110,6 +110,19 @@
   color: var(--my-txt-tertiary);
 }
 
+/* 徽标基线：高度/圆角/字号统一，语义色由消费方追加（label 族 / subtle 对） */
+.my-root .my-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--my-radius-sm);
+  font-size: var(--my-text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 /* 列表行 hover 显拖拽把手 */
 .my-root .my-row:hover .my-row-handle { opacity: 1; }
 .my-root .my-row-handle { opacity: 0; transition: opacity 0.1s ease; }

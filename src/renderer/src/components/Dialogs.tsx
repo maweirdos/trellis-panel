@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { clsx } from 'clsx'
 import { useEscLayer } from '../utils/use-esc-layer'
 import type { JSX } from 'react'
+import { Button } from '../my/ui'
 
 /**
  * 命令式对话框（Promise API）。
@@ -141,12 +141,12 @@ export function DialogHost(): JSX.Element | null {
   }
 
   return (
-    <div className="absolute inset-0 z-50 grid animate-fade-in place-items-center bg-black/50 backdrop-blur-sm" onClick={closeOnBackdrop}>
+    <div className="absolute inset-0 z-50 grid my-fade place-items-center bg-my-backdrop" onClick={closeOnBackdrop}>
       <div
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="w-[420px] max-w-[90%] rounded-2xl border border-ink-600 bg-ink-850 p-5 shadow-2xl"
+        className="w-[420px] max-w-[90%] rounded-my-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]"
       >
         {req.kind === 'confirm' ? <ConfirmPanel key={req.id} req={req} onCancel={cancel} /> : <PromptPanel key={req.id} req={req} onCancel={cancel} />}
       </div>
@@ -158,20 +158,19 @@ function ConfirmPanel({ req, onCancel }: { req: ConfirmRequest; onCancel: () => 
   const { title, message, confirmText, danger } = req.opts
   return (
     <>
-      <div className="text-sm font-semibold text-mist-50">{title}</div>
-      {message && <div className="mt-2 whitespace-pre-line text-xs leading-5 text-mist-300">{message}</div>}
+      <div className="text-my-sm font-semibold text-my-primary">{title}</div>
+      {message && <div className="mt-2 whitespace-pre-line text-my-xs leading-5 text-my-secondary">{message}</div>}
       <div className="mt-4 flex justify-end gap-2">
-        <button onClick={onCancel} className="btn-outline">
+        <Button variant="outline" onClick={onCancel}>
           取消
-        </button>
-        <button
+        </Button>
+        <Button
           // autoFocus 让 Enter 直接触发确认（按钮聚焦时原生响应 Enter）
-          autoFocus
+          variant={danger ? 'danger' : 'primary'}
           onClick={() => settleIfCurrent(req, true)}
-          className={clsx('btn', danger ? 'bg-red-600 text-white hover:bg-red-500' : 'btn-primary')}
         >
           {confirmText ?? '确定'}
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -204,8 +203,8 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
 
   return (
     <>
-      <div className="text-sm font-semibold text-mist-50">{title}</div>
-      {label && <label className="mt-3 mb-1.5 block text-[11px] text-mist-400">{label}</label>}
+      <div className="text-my-sm font-semibold text-my-primary">{title}</div>
+      {label && <label className="mt-3 mb-1.5 block text-my-xs text-my-secondary">{label}</label>}
       {multiline ? (
         <textarea
           autoFocus
@@ -214,7 +213,7 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           rows={4}
-          className="field resize-y"
+          className="w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 py-1.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent resize-y"
         />
       ) : (
         <input
@@ -226,21 +225,17 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
           }}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="field"
+          className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
         />
       )}
-      {error && <div className="mt-1.5 text-[11px] text-rose-600 dark:text-rose-400">{error}</div>}
+      {error && <div className="mt-1.5 text-my-xs text-my-danger-text">{error}</div>}
       <div className="mt-4 flex justify-end gap-2">
-        <button onClick={onCancel} className="btn-outline">
+        <Button variant="outline" onClick={onCancel}>
           取消
-        </button>
-        <button
-          onClick={submit}
-          disabled={!value.trim()}
-          className="btn-primary disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="primary" onClick={submit} disabled={!value.trim()}>
           确定
-        </button>
+        </Button>
       </div>
     </>
   )

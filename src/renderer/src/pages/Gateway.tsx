@@ -24,7 +24,7 @@ import {
 import { useApp } from '../store'
 import { api } from '../api'
 import { clsx } from 'clsx'
-import { Button } from '../my/ui'
+import { Button, Checkbox } from '../my/ui'
 import { relTime } from '../utils/format'
 import { errorMessage } from '../../../shared/errors'
 import type {
@@ -208,11 +208,11 @@ export function GatewayPage(): JSX.Element {
         {/* 状态徽标与操作栏 */}
         <div className="flex flex-col gap-3 border-b border-my-line pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="my-chip bg-my-success-subtle text-my-success-text">
+              <span className="h-1.5 w-1.5 rounded-full bg-my-success animate-pulse" />
               Active · stdio
             </span>
-            <span className="rounded-full bg-my-accent-subtle px-2 py-0.5 text-xs font-medium text-my-accent-text">
+            <span className="my-chip bg-my-accent-subtle text-my-accent-text">
               {tools.length} 个聚合工具
             </span>
           </div>
@@ -223,7 +223,7 @@ export function GatewayPage(): JSX.Element {
               onClick={() => setShowSecurityModal(true)}
               title="配置安全防护与熔断参数"
             >
-              <ShieldCheck size={13} className="text-emerald-500" />
+              <ShieldCheck size={13} className="text-my-success-text" />
               <span>安全策略</span>
             </Button>
             <Button variant="outline" onClick={loadStatus} disabled={loadingStatus} title="刷新网关状态">
@@ -240,7 +240,7 @@ export function GatewayPage(): JSX.Element {
         {/* 1. 上游服务治理 (Upstream Services) */}
         <div>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-my-tertiary">
+            <h2 className="flex items-center gap-2 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">
               <Layers className="h-4 w-4" />
               <span>上游服务治理 (Upstream Services)</span>
             </h2>
@@ -255,27 +255,27 @@ export function GatewayPage(): JSX.Element {
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Database className="h-4 w-4 text-blue-500" />
-                    <h3 className="text-xs font-semibold text-my-primary">本地知识库</h3>
+                    <Database className="h-4 w-4 text-my-info-text" />
+                    <h3 className="text-my-xs font-semibold text-my-primary">本地知识库</h3>
                   </div>
                   {snapshot ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-my-xs font-medium text-emerald-400">
+                    <span className="my-chip bg-my-success-subtle text-my-success-text">
                       <CheckCircle2 className="h-3 w-3" />
                       已连接
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-500/10 px-2 py-0.5 text-my-xs font-medium text-zinc-500">
+                    <span className="my-chip bg-my-layer-3 text-my-tertiary">
                       <AlertCircle className="h-3 w-3" />
                       未打开项目
                     </span>
                   )}
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-my-tertiary">
+                <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
                   需求库 / 规范库 / Wiki 库 / 归档库的毫秒级全文检索，供对话与 AI 规划查证项目事实。
                 </p>
                 <div className="mt-3 space-y-1 font-mono text-my-xs text-my-tertiary">
                   <div className="truncate">端点: {snapshot?.meta?.root ? `${snapshot.meta.root}/.trellis` : '—'}</div>
-                  <div className="text-emerald-400">进程内倒排索引 · 离线可用</div>
+                  <div className="text-my-success-text">进程内倒排索引 · 离线可用</div>
                 </div>
               </div>
 
@@ -283,7 +283,7 @@ export function GatewayPage(): JSX.Element {
                 <button
                   onClick={() => handleTestUpstream('local-kb')}
                   disabled={testingUpstreamId === 'local-kb' || !snapshot}
-                  className="my-control my-control-sm text-blue-400 hover:text-blue-300 disabled:opacity-40"
+                  className="my-control my-control-sm text-my-info-text hover:text-[var(--my-txt-info-secondary)] disabled:opacity-40"
                 >
                   {testingUpstreamId === 'local-kb' ? (
                     <Loader2 size={12} className="animate-spin" />
@@ -301,22 +301,22 @@ export function GatewayPage(): JSX.Element {
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Cloud className="h-4 w-4 text-sky-500" />
-                    <h3 className="text-xs font-semibold text-my-primary">WeKnora 知识库</h3>
+                    <Cloud className="h-4 w-4 text-my-info-text" />
+                    <h3 className="text-my-xs font-semibold text-my-primary">WeKnora 知识库</h3>
                   </div>
                   {settings?.weknora?.enabled ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-my-xs font-medium text-emerald-400">
+                    <span className="my-chip bg-my-success-subtle text-my-success-text">
                       <CheckCircle2 className="h-3 w-3" />
                       已连接
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-500/10 px-2 py-0.5 text-my-xs font-medium text-zinc-500">
+                    <span className="my-chip bg-my-layer-3 text-my-tertiary">
                       <AlertCircle className="h-3 w-3" />
                       未启用
                     </span>
                   )}
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-my-tertiary">
+                <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
                   企业级 RAG 知识平台，提供业务规则文档、技术架构标准与跨团队规范向量检索。
                 </p>
                 <div className="mt-3 space-y-1 font-mono text-my-xs text-my-tertiary">
@@ -329,7 +329,7 @@ export function GatewayPage(): JSX.Element {
                 <button
                   onClick={() => handleTestUpstream('weknora')}
                   disabled={testingUpstreamId === 'weknora' || !settings?.weknora?.enabled}
-                  className="my-control my-control-sm text-sky-400 hover:text-sky-300 disabled:opacity-40"
+                  className="my-control my-control-sm text-my-info-text hover:text-[var(--my-txt-info-secondary)] disabled:opacity-40"
                 >
                   {testingUpstreamId === 'weknora' ? (
                     <Loader2 size={12} className="animate-spin" />
@@ -340,7 +340,7 @@ export function GatewayPage(): JSX.Element {
                 </button>
                 <button
                   onClick={() => setPage('settings')}
-                  className="text-xs text-my-tertiary hover:text-my-primary"
+                  className="text-my-xs text-my-tertiary hover:text-my-primary"
                 >
                   配置 →
                 </button>
@@ -352,15 +352,15 @@ export function GatewayPage(): JSX.Element {
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <FileCode className="h-4 w-4 text-emerald-500" />
-                    <h3 className="text-xs font-semibold text-my-primary">Trellis 项目内核</h3>
+                    <FileCode className="h-4 w-4 text-my-success-text" />
+                    <h3 className="text-my-xs font-semibold text-my-primary">Trellis 项目内核</h3>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-my-xs font-medium text-emerald-400">
+                  <span className="my-chip bg-my-success-subtle text-my-success-text">
                     <CheckCircle2 className="h-3 w-3" />
                     已挂载
                   </span>
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-my-tertiary">
+                <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
                   动态注入本地规范文档（.trellis/spec/）与当前活跃任务的 PRD / 设计上下文。
                 </p>
                 <div className="mt-3 space-y-1 font-mono text-my-xs text-my-tertiary">
@@ -373,7 +373,7 @@ export function GatewayPage(): JSX.Element {
                 <button
                   onClick={() => handleTestUpstream('trellis')}
                   disabled={testingUpstreamId === 'trellis'}
-                  className="my-control my-control-sm text-emerald-400 hover:text-emerald-300 disabled:opacity-40"
+                  className="my-control my-control-sm text-my-success-text hover:text-[var(--my-txt-success-secondary)] disabled:opacity-40"
                 >
                   <Activity size={12} />
                   <span>状态探测</span>
@@ -387,14 +387,14 @@ export function GatewayPage(): JSX.Element {
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <PlusCircle className="h-4 w-4 text-purple-500" />
-                    <h3 className="text-xs font-semibold text-my-primary">自定义扩展槽位</h3>
+                    <PlusCircle className="h-4 w-4 text-my-label-purple-icon" />
+                    <h3 className="text-my-xs font-semibold text-my-primary">自定义扩展槽位</h3>
                   </div>
-                  <span className="rounded-full bg-purple-500/10 px-2 py-0.5 text-my-xs font-medium text-purple-400">
+                  <span className="my-chip bg-my-label-purple text-my-label-purple-text">
                     可插拔
                   </span>
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-my-tertiary">
+                <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
                   通过 stdio 或 SSE 聚合第三方 MCP 命令行服务（例如 git-mcp, jira-mcp）。
                 </p>
               </div>
@@ -411,22 +411,22 @@ export function GatewayPage(): JSX.Element {
             <div>
               <div className="flex items-center gap-2">
                 <Code className="h-4 w-4 text-my-accent-text" />
-                <h2 className="text-xs font-semibold text-my-primary">聚合工具目录 (Tool Catalog)</h2>
-                <span className="rounded-full bg-my-canvas px-2 py-0.5 text-my-xs font-mono text-my-tertiary border border-my-line">
+                <h2 className="text-my-xs font-semibold text-my-primary">聚合工具目录 (Tool Catalog)</h2>
+                <span className="my-chip border border-my-line bg-my-canvas font-mono text-my-tertiary">
                   {filteredTools.length} 个就绪
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-my-tertiary">
+              <p className="mt-0.5 text-my-xs text-my-tertiary">
                 网关统一暴露给 AI 编辑器的标准工具。点击工具右侧的“在线调试”可直接在面板输入参数实测执行。
               </p>
             </div>
 
             {/* 分类过滤器 */}
-            <div className="flex items-center rounded-my-md bg-my-canvas p-0.5 border border-my-line text-xs">
+            <div className="flex items-center rounded-my-md bg-my-canvas p-0.5 border border-my-line text-my-xs">
               <button
                 onClick={() => setCategoryFilter('all')}
                 className={clsx(
-                  'rounded px-2.5 py-1 transition-colors',
+                  'rounded-my-sm px-2.5 py-1 transition-colors',
                   categoryFilter === 'all' ? 'bg-my-layer-1-active font-medium text-my-primary' : 'text-my-tertiary hover:text-my-primary'
                 )}
               >
@@ -435,7 +435,7 @@ export function GatewayPage(): JSX.Element {
               <button
                 onClick={() => setCategoryFilter('knowledge')}
                 className={clsx(
-                  'rounded px-2.5 py-1 transition-colors',
+                  'rounded-my-sm px-2.5 py-1 transition-colors',
                   categoryFilter === 'knowledge' ? 'bg-my-layer-1-active font-medium text-my-primary' : 'text-my-tertiary hover:text-my-primary'
                 )}
               >
@@ -444,7 +444,7 @@ export function GatewayPage(): JSX.Element {
               <button
                 onClick={() => setCategoryFilter('project')}
                 className={clsx(
-                  'rounded px-2.5 py-1 transition-colors',
+                  'rounded-my-sm px-2.5 py-1 transition-colors',
                   categoryFilter === 'project' ? 'bg-my-layer-1-active font-medium text-my-primary' : 'text-my-tertiary hover:text-my-primary'
                 )}
               >
@@ -462,28 +462,28 @@ export function GatewayPage(): JSX.Element {
               >
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-semibold text-my-accent-text">
+                    <span className="font-mono text-my-xs font-semibold text-my-accent-text">
                       {tool.name}
                     </span>
-                    <span className="rounded bg-my-canvas px-1.5 py-0.5 text-my-2xs uppercase font-mono text-my-tertiary border border-my-line">
+                    <span className="my-chip border border-my-line bg-my-canvas font-mono uppercase text-my-tertiary">
                       {tool.upstreamId}
                     </span>
                     {tool.securityRule && (
-                      <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-my-2xs font-medium text-amber-400">
+                      <span className="my-chip bg-my-warning-subtle text-my-warning-text">
                         {tool.securityRule}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-my-tertiary leading-relaxed">{tool.description}</p>
+                  <p className="text-my-xs text-my-tertiary leading-relaxed">{tool.description}</p>
                   <div className="flex items-center gap-2 font-mono text-my-xs text-my-tertiary">
                     <span>参数:</span>
                     {Object.keys(tool.parameters).length === 0 ? (
                       <span>无参</span>
                     ) : (
                       Object.entries(tool.parameters).map(([pName, pMeta]) => (
-                        <span key={pName} className="rounded border border-my-line bg-my-canvas px-1 text-my-secondary">
+                        <span key={pName} className="rounded-my-sm border border-my-line bg-my-canvas px-1 text-my-secondary">
                           {pName}: {pMeta.type}
-                          {pMeta.required && <span className="text-rose-500">*</span>}
+                          {pMeta.required && <span className="text-my-danger-text">*</span>}
                         </span>
                       ))
                     )}
@@ -509,8 +509,8 @@ export function GatewayPage(): JSX.Element {
           <div className="flex items-center justify-between border-b border-my-line pb-3">
             <div className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-my-accent-text" />
-              <h2 className="text-xs font-semibold text-my-primary">实时调用审计流水 (Invocation Audit)</h2>
-              <span className="rounded-full bg-my-canvas px-2 py-0.5 text-my-xs font-mono text-my-tertiary border border-my-line">
+              <h2 className="text-my-xs font-semibold text-my-primary">实时调用审计流水 (Invocation Audit)</h2>
+              <span className="my-chip border border-my-line bg-my-canvas font-mono text-my-tertiary">
                 累计 {gatewayStatus?.totalQueries || 0} 次调用
               </span>
             </div>
@@ -521,20 +521,20 @@ export function GatewayPage(): JSX.Element {
 
           <div className="mt-3 divide-y divide-my-line">
             {recentLogs.length === 0 ? (
-              <div className="py-8 text-center text-xs text-my-tertiary">
+              <div className="py-8 text-center text-my-xs text-my-tertiary">
                 暂无调用记录。当 AI 编辑器调用网关工具或通过上方“在线调试”发起测试时，此处将实时展示调用入参、耗时与安全防护状态。
               </div>
             ) : (
               recentLogs.map((log) => (
-                <div key={log.id} className="py-3 text-xs first:pt-1 last:pb-1">
+                <div key={log.id} className="py-3 text-my-xs first:pt-1 last:pb-1">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span
                         className={clsx(
-                          'rounded px-1.5 py-0.5 text-my-2xs font-mono font-medium',
-                          log.status === 'success' && 'bg-emerald-500/10 text-emerald-400',
-                          log.status === 'blocked' && 'bg-rose-500/10 text-rose-400',
-                          log.status === 'error' && 'bg-amber-500/10 text-amber-400'
+                          'my-chip font-mono',
+                          log.status === 'success' && 'bg-my-success-subtle text-my-success-text',
+                          log.status === 'blocked' && 'bg-my-danger-subtle text-my-danger-text',
+                          log.status === 'error' && 'bg-my-warning-subtle text-my-warning-text'
                         )}
                       >
                         {log.status === 'success' ? '200 OK' : log.status === 'blocked' ? '403 BLOCKED' : '500 ERROR'}
@@ -545,7 +545,7 @@ export function GatewayPage(): JSX.Element {
                       <span className="text-my-xs text-my-tertiary font-mono">[{log.upstreamId || 'gateway'}]</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-my-xs text-emerald-400">
+                      <span className="font-mono text-my-xs text-my-success-text">
                         {log.elapsedMs}ms
                       </span>
                       <span className="text-my-xs text-my-tertiary">{relTime(log.timestamp)}</span>
@@ -560,7 +560,7 @@ export function GatewayPage(): JSX.Element {
                       </div>
                     )}
                     {log.error && (
-                      <div className="text-rose-500 font-mono">
+                      <div className="text-my-danger-text font-mono">
                         {log.error}
                       </div>
                     )}
@@ -587,7 +587,7 @@ export function GatewayPage(): JSX.Element {
             <div className="flex items-center justify-between border-b border-my-line pb-3">
               <div className="flex items-center gap-2">
                 <Play size={16} className="text-my-accent-text" />
-                <h3 className="text-sm font-semibold text-my-primary">
+                <h3 className="text-my-sm font-semibold text-my-primary">
                   在线工具调试: <span className="font-mono text-my-accent-text">{selectedTool.name}</span>
                 </h3>
               </div>
@@ -597,22 +597,22 @@ export function GatewayPage(): JSX.Element {
             </div>
 
             <div className="mt-4 space-y-4">
-              <p className="text-xs text-my-secondary leading-relaxed">{selectedTool.description}</p>
+              <p className="text-my-xs text-my-secondary leading-relaxed">{selectedTool.description}</p>
 
               {/* 参数输入 */}
               <div className="space-y-3">
-                <h4 className="text-xs font-semibold text-my-primary">调用入参 (Parameters)</h4>
+                <h4 className="text-my-xs font-semibold text-my-primary">调用入参 (Parameters)</h4>
                 {Object.keys(selectedTool.parameters).length === 0 ? (
-                  <div className="rounded-my-lg border border-my-line bg-my-canvas p-3 text-xs text-my-tertiary">
+                  <div className="rounded-my-lg border border-my-line bg-my-canvas p-3 text-my-xs text-my-tertiary">
                     该工具为无参工具，直接点击下方“执行调用”即可。
                   </div>
                 ) : (
                   Object.entries(selectedTool.parameters).map(([pName, pMeta]) => (
                     <div key={pName} className="space-y-1">
-                      <label className="flex items-center justify-between text-xs font-medium text-my-secondary">
+                      <label className="flex items-center justify-between text-my-xs font-medium text-my-secondary">
                         <span>
                           {pName} ({pMeta.type})
-                          {pMeta.required && <span className="text-rose-500 ml-1">*</span>}
+                          {pMeta.required && <span className="text-my-danger-text ml-1">*</span>}
                         </span>
                         <span className="text-my-xs text-my-tertiary">{pMeta.description}</span>
                       </label>
@@ -621,7 +621,7 @@ export function GatewayPage(): JSX.Element {
                           rows={3}
                           value={toolArgs[pName] || ''}
                           onChange={(e) => setToolArgs({ ...toolArgs, [pName]: e.target.value })}
-                          className="w-full rounded-my-md border border-my-line bg-my-surface-1 p-2.5 font-mono text-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                          className="w-full rounded-my-md border border-my-line bg-my-surface-1 p-2.5 font-mono text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
                           placeholder="输入 SQL 语句，例如 SELECT * FROM t_order LIMIT 5"
                         />
                       ) : (
@@ -662,13 +662,13 @@ export function GatewayPage(): JSX.Element {
               {testResult && (
                 <div className="space-y-2 border-t border-my-line pt-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-my-primary">执行结果</span>
-                    <span className="font-mono text-xs text-emerald-400">
+                    <span className="text-my-xs font-semibold text-my-primary">执行结果</span>
+                    <span className="font-mono text-my-xs text-my-success-text">
                       耗时: {testResult.elapsedMs}ms
                     </span>
                   </div>
                   {testResult.blockedBySecurity ? (
-                    <div className="rounded-my-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400 space-y-1">
+                    <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text space-y-1">
                       <div className="flex items-center gap-1.5 font-semibold">
                         <AlertTriangle size={14} />
                         <span>网关安全防线触发：执行被拦截！</span>
@@ -680,7 +680,7 @@ export function GatewayPage(): JSX.Element {
                       {JSON.stringify(testResult.result, null, 2)}
                     </pre>
                   ) : (
-                    <div className="rounded-my-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-400">
+                    <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">
                       {testResult.error}
                     </div>
                   )}
@@ -710,25 +710,23 @@ export function GatewayPage(): JSX.Element {
           <div className="w-full max-w-md rounded-my-xl border border-my-line bg-my-layer-2 p-6 shadow-[var(--my-shadow-overlay-200)]">
             <div className="flex items-center justify-between border-b border-my-line pb-3">
               <div className="flex items-center gap-2">
-                <ShieldCheck size={16} className="text-emerald-500" />
-                <h3 className="text-sm font-semibold text-my-primary">网关安全防线与熔断策略</h3>
+                <ShieldCheck size={16} className="text-my-success-text" />
+                <h3 className="text-my-sm font-semibold text-my-primary">网关安全防线与熔断策略</h3>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setShowSecurityModal(false)}>
                 <X size={14} />
               </Button>
             </div>
 
-            <div className="mt-4 space-y-4 text-xs">
+            <div className="mt-4 space-y-4 text-my-xs">
               <div className="flex items-center justify-between rounded-my-lg border border-my-line bg-my-canvas p-3">
                 <div>
                   <div className="font-semibold text-my-primary">SQL 只读安全拦截 (Strict Read-Only)</div>
                   <p className="mt-0.5 text-my-tertiary">强制阻断 DROP / DELETE / UPDATE / ALTER 等写操作</p>
                 </div>
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={securityForm.sqlReadOnly}
-                  onChange={(e) => setSecurityForm({ ...securityForm, sqlReadOnly: e.target.checked })}
-                  className="h-4 w-4 rounded accent-p-accent"
+                  onChange={(v) => setSecurityForm({ ...securityForm, sqlReadOnly: v })}
                 />
               </div>
 
@@ -777,15 +775,15 @@ export function GatewayPage(): JSX.Element {
             <div className="flex items-center justify-between border-b border-my-line pb-3">
               <div className="flex items-center gap-2">
                 <Terminal size={16} className="text-my-accent-text" />
-                <h3 className="text-sm font-semibold text-my-primary">接入 AI 编程编辑器 (MCP Client Config)</h3>
+                <h3 className="text-my-sm font-semibold text-my-primary">接入 AI 编程编辑器 (MCP Client Config)</h3>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setShowMountModal(false)}>
                 <X size={14} />
               </Button>
             </div>
 
-            <div className="mt-4 space-y-4 text-xs">
-              <div className="rounded-my-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-emerald-400 leading-relaxed">
+            <div className="mt-4 space-y-4 text-my-xs">
+              <div className="rounded-my-lg border border-my-line-success bg-my-success-subtle p-3 text-my-success-text leading-relaxed">
                 网关脚本已就绪：<br />
                 <code className="font-mono text-my-xs break-all">{mcpInstallResult.scriptPath}</code>
               </div>
@@ -815,11 +813,11 @@ export function GatewayPage(): JSX.Element {
                       )
                     }
                   >
-                    {copiedKey === 'claude' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                    {copiedKey === 'claude' ? <Check size={12} className="text-my-success-text" /> : <Copy size={12} />}
                     <span>复制 JSON</span>
                   </Button>
                 </div>
-                <pre className="mt-2 overflow-x-auto rounded border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
+                <pre className="mt-2 overflow-x-auto rounded-my-sm border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
 {`{
   "mcpServers": {
     "trellis-gateway": {
@@ -845,11 +843,11 @@ export function GatewayPage(): JSX.Element {
                       )
                     }
                   >
-                    {copiedKey === 'codex' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                    {copiedKey === 'codex' ? <Check size={12} className="text-my-success-text" /> : <Copy size={12} />}
                     <span>复制 TOML</span>
                   </Button>
                 </div>
-                <pre className="mt-2 overflow-x-auto rounded border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
+                <pre className="mt-2 overflow-x-auto rounded-my-sm border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
 {`[mcp_servers.trellis-gateway]
 command = "node"
 args = ["${mcpInstallResult.scriptPath}", "--root", "${snapshot?.meta.root || '.'}"]`}

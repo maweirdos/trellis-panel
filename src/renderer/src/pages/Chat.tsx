@@ -96,24 +96,24 @@ function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: str
   const allSources = ops.flatMap((op) => op.sources ?? [])
   const uniqueSources = allSources.filter((s, i) => allSources.findIndex((x) => x.path === s.path) === i).slice(0, 6)
   return (
-    <div className="mb-2 rounded-my-lg border border-sky-400/25 bg-sky-500/5">
+    <div className="mb-2 rounded-my-lg border border-[var(--my-border-info-subtle)] bg-my-info-subtle">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-my-xs text-sky-300/90"
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-my-xs text-my-info-text"
       >
         <Brain size={11} /> 工具调用 × {ops.length}
         <span className="flex-1" />
         <ChevronRight size={11} className={clsx('transition-transform', open && 'rotate-90')} />
       </button>
       {open && (
-        <div className="space-y-1 border-t border-sky-400/15 px-3 py-2">
+        <div className="space-y-1 border-t border-[var(--my-border-info-subtle)] px-3 py-2">
           {ops.map((op, i) => (
-            <div key={i} className="font-mono text-my-xs text-mist-300">
-              <span className={op.status === 'success' ? 'text-emerald-300' : op.status === 'denied' ? 'text-rose-300' : 'text-amber-300'}>
+            <div key={i} className="font-mono text-my-xs text-my-secondary">
+              <span className={op.status === 'success' ? 'text-my-success-text' : op.status === 'denied' ? 'text-my-danger-text' : 'text-my-warning-text'}>
                 {op.status === 'success' ? '✓' : op.status === 'denied' ? '⊘ 拒绝' : '✗'}
               </span>{' '}
-              {op.toolName} <span className="text-mist-600">({op.elapsedMs}ms)</span>
-              <div className="truncate text-mist-600" title={op.argsSummary}>
+              {op.toolName} <span className="text-my-placeholder">({op.elapsedMs}ms)</span>
+              <div className="truncate text-my-placeholder" title={op.argsSummary}>
                 {op.argsSummary}
               </div>
             </div>
@@ -121,13 +121,13 @@ function ToolOpsBlock({ ops }: { ops: Array<{ toolName: string; argsSummary: str
         </div>
       )}
       {uniqueSources.length > 0 && (
-        <div className="border-t border-sky-400/15 px-3 py-1.5">
-          <span className="text-my-2xs text-mist-500">参考来源：</span>
+        <div className="border-t border-[var(--my-border-info-subtle)] px-3 py-1.5">
+          <span className="text-my-2xs text-my-tertiary">参考来源：</span>
           {uniqueSources.map((s, i) => (
             <span key={i} className="mr-2 inline-flex max-w-full items-center gap-1 align-bottom">
               <button
                 onClick={() => void api.openInEditor(s.path)}
-                className="truncate text-my-xs text-sky-300/80 underline decoration-dotted hover:text-sky-200"
+                className="truncate text-my-xs text-my-info-text underline decoration-dotted hover:text-[var(--my-txt-info-secondary)]"
                 title={s.path}
               >
                 {s.library ? `[${s.library}] ` : ''}{s.title}
@@ -149,9 +149,9 @@ function PermissionCard({
   onDecision: (decision: 'allow-once' | 'allow-session' | 'deny') => void
 }): JSX.Element {
   return (
-    <div className="mx-auto mb-3 max-w-xl rounded-my-xl border border-amber-400/40 bg-amber-500/10 p-3">
-      <div className="mb-1 text-xs font-semibold text-amber-200">工具调用请求</div>
-      <p className="mb-2 font-mono text-my-xs text-mist-300">
+    <div className="mx-auto mb-3 max-w-xl rounded-my-xl border border-my-line-warning bg-my-warning-subtle p-3">
+      <div className="mb-1 text-my-xs font-semibold text-my-warning-text">工具调用请求</div>
+      <p className="mb-2 font-mono text-my-xs text-my-secondary">
         {perm.toolName}({perm.argsSummary})
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -164,7 +164,7 @@ function PermissionCard({
         <Button variant="ghost" size="sm" className="text-my-danger-text" onClick={() => onDecision('deny')}>
           拒绝
         </Button>
-        <span className="ml-auto self-center text-my-2xs text-mist-600">{perm.timeoutSec}s 内未决策将自动拒绝</span>
+        <span className="ml-auto self-center text-my-2xs text-my-placeholder">{perm.timeoutSec}s 内未决策将自动拒绝</span>
       </div>
     </div>
   )
@@ -215,19 +215,19 @@ function ThinkingBlock({ reasoning, live }: { reasoning: string; live?: boolean 
     if (live) setOpen(true)
   }, [live])
   return (
-    <div className="mb-2 rounded-my-lg border border-violet-400/25 bg-violet-500/5">
+    <div className="mb-2 rounded-my-lg border border-[var(--my-label-purple-border)] bg-my-label-purple">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-my-xs text-violet-300/90"
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-my-xs text-my-label-purple-text"
       >
         <Brain size={11} />
         {live ? '思考中…' : '思考过程'}
-        <span className="text-violet-300/50">（{reasoning.length} 字）</span>
+        <span className="text-my-label-purple-text opacity-60">（{reasoning.length} 字）</span>
         <span className="flex-1" />
         <ChevronRight size={11} className={clsx('transition-transform', open && 'rotate-90')} />
       </button>
       {open && (
-        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words border-t border-violet-400/15 px-3 py-2 text-my-xs leading-5 text-violet-200/70">
+        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words border-t border-[var(--my-label-purple-hover)] px-3 py-2 text-my-xs leading-5 text-my-label-purple-text opacity-70">
           {reasoning}
         </p>
       )}
@@ -244,7 +244,7 @@ function CopyButton({ text }: { text: string }): JSX.Element {
         setDone(true)
         setTimeout(() => setDone(false), 1200)
       }}
-      className="shrink-0 rounded p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
+      className="shrink-0 rounded-my-sm p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
       title="复制"
     >
       {done ? <Check size={12} className="text-my-success-text" /> : <Copy size={12} />}
@@ -418,7 +418,7 @@ export function ChatPage(): JSX.Element {
             <div
               key={s.id}
               className={clsx(
-                'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-my-lg px-2 py-1.5 text-xs transition-colors',
+                'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-my-lg px-2 py-1.5 text-my-xs transition-colors',
                 s.id === activeId ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1'
               )}
               onClick={() => void chatOpenSession(s.id)}
@@ -432,7 +432,7 @@ export function ChatPage(): JSX.Element {
                   e.stopPropagation()
                   void chatDeleteSession(s.id)
                 }}
-                className="shrink-0 rounded p-0.5 text-my-placeholder opacity-0 hover:text-my-danger-text group-hover:opacity-100"
+                className="shrink-0 rounded-my-sm p-0.5 text-my-placeholder opacity-0 hover:text-my-danger-text group-hover:opacity-100"
                 title="删除会话"
               >
                 <Trash2 size={11} />
@@ -445,7 +445,7 @@ export function ChatPage(): JSX.Element {
       {/* 转录 + Composer */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-4 py-2">
-          <span className="min-w-0 max-w-[240px] flex-1 truncate text-xs font-semibold text-my-secondary">{activeSession?.title ?? '新对话'}</span>
+          <span className="min-w-0 max-w-[240px] flex-1 truncate text-my-xs font-semibold text-my-secondary">{activeSession?.title ?? '新对话'}</span>
           <select
             value={taskDir}
             onChange={(e) => setTaskDir(e.target.value)}
@@ -475,7 +475,7 @@ export function ChatPage(): JSX.Element {
           <label
             className={clsx(
               'flex cursor-pointer select-none items-center gap-1 rounded-my-md border px-2 py-1 text-my-xs transition-colors',
-              agentMode ? 'border-emerald-400/50 bg-emerald-500/10 text-emerald-300' : 'border-my-line bg-my-layer-2 text-my-tertiary'
+              agentMode ? 'border-my-line-success bg-my-success-subtle text-my-success-text' : 'border-my-line bg-my-layer-2 text-my-tertiary'
             )}
             title="Agent 模式：AI 可查询项目知识库、任务与规范后再回答（每次工具调用需你授权）"
           >
@@ -483,7 +483,7 @@ export function ChatPage(): JSX.Element {
               type="checkbox"
               checked={agentMode}
               onChange={(e) => setAgentMode(e.target.checked)}
-              className="accent-emerald-500"
+              className="accent-[var(--my-bg-success-primary)]"
             />
             Agent 联网项目
           </label>
@@ -504,7 +504,7 @@ export function ChatPage(): JSX.Element {
                 </div>
               )}
               {visible.length === 0 && !streaming && pending.length === 0 && (
-                <div className="py-16 text-center text-xs text-my-tertiary">
+                <div className="py-16 text-center text-my-xs text-my-tertiary">
                   开始你的第一条对话。模型按会话绑定，可随时在上方切换。
                 </div>
               )}
@@ -529,7 +529,7 @@ export function ChatPage(): JSX.Element {
                               }
                             }}
                             rows={Math.min(6, Math.max(2, editing.text.split('\n').length))}
-                            className="resize-none rounded-my-md border border-my-line-accent-subtle bg-my-layer-2 px-3 py-2 text-xs text-my-primary outline-none"
+                            className="resize-none rounded-my-md border border-my-line-accent-subtle bg-my-layer-2 px-3 py-2 text-my-xs text-my-primary outline-none"
                             autoFocus
                           />
                           <div className="flex justify-end gap-1.5 text-my-xs">
@@ -549,13 +549,13 @@ export function ChatPage(): JSX.Element {
                         </div>
                       ) : (
                         <div className="flex max-w-[80%] items-end gap-1">
-                          <div className="whitespace-pre-wrap break-words rounded-2xl rounded-br-p-md bg-leaf/15 px-3.5 py-2 text-xs leading-relaxed text-mist-100">
+                          <div className="whitespace-pre-wrap break-words rounded-my-xl rounded-br-my-md bg-my-accent-subtle px-3.5 py-2 text-my-xs leading-relaxed text-my-primary">
                             {e.content}
                           </div>
                           {e.id && (
                             <button
                               onClick={() => setEditing({ id: e.key, text: e.content })}
-                              className="shrink-0 rounded p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
+                              className="shrink-0 rounded-my-sm p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
                               title="编辑并重发（生成新分支）"
                             >
                               <Pencil size={12} />
@@ -576,12 +576,12 @@ export function ChatPage(): JSX.Element {
                 }
                 return (
                   <div key={e.key} className="group flex items-start gap-2">
-                    <div className="min-w-0 flex-1 rounded-2xl rounded-tl-p-md border border-ink-700/70 bg-ink-850/70 px-3.5 py-2.5">
+                    <div className="min-w-0 flex-1 rounded-my-xl rounded-tl-my-md border border-my-line bg-my-layer-2 px-3.5 py-2.5">
                       {e.reasoning && <ThinkingBlock reasoning={e.reasoning} />}
                       {e.toolOps && e.toolOps.length > 0 && <ToolOpsBlock ops={e.toolOps} />}
                       <MarkdownView content={e.content} />
                       {(e.siblingCount ?? 0) > 1 && e.siblingIds && (
-                        <div className="mt-2 border-t border-ink-700/60 pt-1.5">
+                        <div className="mt-2 border-t border-my-line pt-1.5">
                           <BranchSwitcher
                             index={e.siblingIndex ?? 0}
                             count={e.siblingCount ?? 0}
@@ -596,7 +596,7 @@ export function ChatPage(): JSX.Element {
                       {idx === visible.length - 1 && (
                         <button
                           onClick={regenerate}
-                          className="rounded p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
+                          className="rounded-my-sm p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-secondary"
                           title="重新生成（保留旧回答为分支）"
                         >
                           <RefreshCw size={12} />
@@ -606,7 +606,7 @@ export function ChatPage(): JSX.Element {
                         <button
                           onClick={() => void distillAnswer(e.id ?? '')}
                           disabled={distilling === e.id}
-                          className="rounded p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-accent-text disabled:opacity-40"
+                          className="rounded-my-sm p-1 text-my-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-my-accent-text disabled:opacity-40"
                           title="存入知识库：AI 自动拟标题、打标签，整理成笔记（.trellis/notes/）"
                         >
                           {distilling === e.id ? <Loader2 size={12} className="animate-spin" /> : <BookPlus size={12} />}
@@ -618,7 +618,7 @@ export function ChatPage(): JSX.Element {
               })}
               {pending.map((p) => (
                 <div key={p.runId} className="flex justify-end">
-                  <div className="flex max-w-[80%] items-center gap-1.5 rounded-2xl rounded-br-p-md border border-dashed border-ink-600 bg-ink-850/40 px-3.5 py-2 text-xs text-mist-400">
+                  <div className="flex max-w-[80%] items-center gap-1.5 rounded-my-xl rounded-br-my-md border border-dashed border-my-line bg-my-layer-2 px-3.5 py-2 text-my-xs text-my-secondary">
                     <Hourglass size={11} /> <span className="whitespace-pre-wrap">{p.content}</span>
                   </div>
                 </div>
@@ -630,13 +630,13 @@ export function ChatPage(): JSX.Element {
                 />
               )}
               {streaming && (
-                <div className="rounded-2xl rounded-tl-p-md border border-leaf/20 bg-ink-850/70 px-3.5 py-2.5">
+                <div className="rounded-my-xl rounded-tl-my-md border border-my-line-accent-subtle bg-my-layer-2 px-3.5 py-2.5">
                   {streaming.toolOps.length > 0 && <ToolOpsBlock ops={streaming.toolOps} />}
                   {streaming.reasoning && <ThinkingBlock reasoning={streaming.reasoning} live={!streaming.content} />}
                   {streaming.content ? (
                     <MarkdownView content={streaming.content} />
                   ) : (
-                    !streaming.reasoning && <span className="inline-block h-3 w-1.5 animate-pulse bg-leaf" />
+                    !streaming.reasoning && <span className="inline-block h-3 w-1.5 animate-pulse bg-my-accent" />
                   )}
                 </div>
               )}
@@ -655,7 +655,7 @@ export function ChatPage(): JSX.Element {
         {/* Composer */}
         <div className="border-t border-my-line p-3">
           {!aiEnabled && (
-            <p className="mb-2 text-my-xs text-amber-300/90">应用内 AI 未启用（设置 → AI 模型）。启用并配置供应商后即可对话。</p>
+            <p className="mb-2 text-my-xs text-my-warning-text">应用内 AI 未启用（设置 → AI 模型）。启用并配置供应商后即可对话。</p>
           )}
           {attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
@@ -733,7 +733,7 @@ export function ChatPage(): JSX.Element {
               }}
               placeholder="输入消息，Enter 发送，Shift+Enter 换行，Alt+Enter 运行中引导，Esc 清空"
               rows={Math.min(6, Math.max(1, draft.split('\n').length))}
-              className="min-h-[38px] flex-1 resize-none rounded-my-md border border-my-line bg-my-surface-1 px-3 py-2 text-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+              className="min-h-[38px] flex-1 resize-none rounded-my-md border border-my-line bg-my-surface-1 px-3 py-2 text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
             />
             {busy ? (
               <>

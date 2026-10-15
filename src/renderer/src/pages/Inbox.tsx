@@ -71,7 +71,7 @@ export function InboxPage(): JSX.Element {
     <div className="flex h-full min-w-0 flex-col my-fade">
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
-        <span className="chip border border-my-line-warning bg-my-warning-subtle font-medium text-my-warning-text">
+        <span className="my-chip border border-my-line-warning bg-my-warning-subtle text-my-warning-text">
           {pending.length} 待规划
         </span>
         <div className="ml-auto flex gap-1.5">
@@ -88,7 +88,7 @@ export function InboxPage(): JSX.Element {
         {todos.length === 0 && (
           <div className="grid place-items-center gap-3 py-24 text-my-tertiary">
             <InboxIcon size={36} strokeWidth={1.2} />
-            <div className="text-sm text-my-secondary">待办池为空</div>
+            <div className="text-my-sm text-my-secondary">待办池为空</div>
             <div className="max-w-md text-center text-my-sm leading-5">
               这里是上游需求（Jira 待办或本地草稿）的收集与预处理池。
               待办保存在本地 Markdown 文件（<code className="text-my-accent-text">.trellis/todos/*.md</code>）中，
@@ -163,7 +163,7 @@ function TodoCard({
         <PriorityBadge priority={todo.priority} />
         <span className="font-mono">{todo.id}</span>
         {todo.source === 'jira' && todo.jiraKey && (
-          <span className="chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text">
+          <span className="my-chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text">
             Jira {todo.jiraKey}
           </span>
         )}
@@ -174,7 +174,7 @@ function TodoCard({
         onClick={() => onViewDoc(todo)}
         className="cursor-pointer font-medium leading-5 text-my-primary transition-colors hover:text-my-accent-text"
       >
-        <div className="line-clamp-2 text-xs">{todo.title}</div>
+        <div className="line-clamp-2 text-my-xs">{todo.title}</div>
       </div>
 
       {todo.description && (

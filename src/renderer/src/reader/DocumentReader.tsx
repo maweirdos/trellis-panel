@@ -67,9 +67,9 @@ export function DocumentReader({
   if (relativePath === null) {
     return (
       <div className="flex min-h-full items-center justify-center">
-        <div className="-mt-16 max-w-md rounded-lg border border-ink-200 bg-ink-50/60 p-5 text-center dark:border-ink-700 dark:bg-ink-850/40">
-          <CircleAlert size={22} className="mx-auto text-mist-400" />
-          <p className="mt-2 text-[12.5px] text-mist-500">
+        <div className="-mt-16 max-w-md rounded-my-lg border border-my-line bg-my-layer-1 p-5 text-center">
+          <CircleAlert size={22} className="mx-auto text-my-icon-secondary" />
+          <p className="mt-2 text-my-sm text-my-tertiary">
             该文件在当前项目根之外，共享阅读器无法读取；可在文件查看器中查看。
           </p>
         </div>
@@ -94,7 +94,7 @@ export function DocumentReader({
             <button
               type="button"
               onClick={onExpand}
-              className="chip shrink-0 border border-leaf-dim/40 text-[10.5px] text-leaf-soft transition-colors hover:bg-leaf-dim/10"
+              className="my-chip shrink-0 border border-my-line-accent-subtle text-my-accent-text transition-colors hover:bg-my-accent-subtle"
               title={expandLabel}
             >
               <Maximize2 size={11} className="mr-1 inline align-[-1px]" />
@@ -126,7 +126,7 @@ export function DocumentReader({
           />
         </div>
       ) : reader.loading ? (
-        <div className="flex items-center gap-2 py-10 text-[12.5px] text-mist-400">
+        <div className="flex items-center gap-2 py-10 text-my-sm text-my-secondary">
           <RefreshCw size={13} className="animate-spin" /> 正在加载文档…
         </div>
       ) : (
