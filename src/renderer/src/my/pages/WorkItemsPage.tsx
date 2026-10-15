@@ -337,13 +337,16 @@ function SubProgressBadge({ done, total }: { done: number; total: number }): JSX
   return (
     <span
       title={`子工作项 ${done}/${total} 已完成`}
-      className={clsx('flex shrink-0 items-center gap-1 text-my-xs', allDone ? 'text-my-success-text' : 'text-my-tertiary')}
+      className={clsx(
+        'flex h-[18px] shrink-0 items-center gap-1 rounded-my-sm px-1 text-my-xs',
+        allDone ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-layer-2 text-my-tertiary'
+      )}
     >
       <ListTree size={11} />
-      <span className="flex h-1 w-8 overflow-hidden rounded-full bg-my-layer-3">
+      <span className="leading-none">{done}/{total}</span>
+      <span className="flex h-1 w-7 overflow-hidden rounded-full bg-my-layer-3">
         <span style={{ width: `${Math.round((done / total) * 100)}%` }} className="bg-my-success" />
       </span>
-      {done}/{total}
     </span>
   )
 }
@@ -570,7 +573,9 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
       <span className="w-16 shrink-0 text-my-sm text-my-tertiary">
         {ident}-{issue.sequenceId}
       </span>
-      <PriorityIcon priority={issue.priority} size={12} />
+      <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+        <PriorityIcon priority={issue.priority} size={12} />
+      </span>
       <span className="flex w-[110px] shrink-0 items-center gap-1 overflow-hidden">
         {labels.slice(0, 2).map((lb) => (
           <LabelPill key={lb.id} label={lb} />
@@ -749,12 +754,12 @@ function BoardCard({ issue }: { issue: Issue }): JSX.Element {
       className="my-card mx-2.5 mb-1.5 cursor-grab p-2.5 active:cursor-grabbing"
     >
       <div className="flex items-start gap-1.5">
-        <span className="mt-[3px]">
+        <span className="mt-[2px] flex h-3.5 w-3.5 shrink-0 items-center justify-center">
           <PriorityIcon priority={issue.priority} size={12} />
         </span>
         <span className="line-clamp-2 text-my-md leading-5 text-my-secondary">{issue.name}</span>
       </div>
-      <div className="mt-2 flex items-center gap-1.5">
+      <div className="mt-2 flex min-h-[18px] items-center gap-1.5">
         {labels.slice(0, 2).map((lb) => (
           <LabelPill key={lb.id} label={lb} />
         ))}
