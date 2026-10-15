@@ -1411,10 +1411,18 @@ function WorkItemsPageInner(): JSX.Element {
   const filterCount = filters.priority.length + filters.stateGroup.length + filters.assigneeIds.length + filters.labelIds.length
   const ident = project.id.replace(/^p-/, '').slice(0, 3).toUpperCase()
 
-  // 周期概览条
+  // 周期概览条：本周有任务显示进度与完成分布；空周给出「一键排入本周」引导
   let cycleOverview: JSX.Element | null = null
   if (groupBy === 'cycle') {
     const weekIssues = tabbed.filter((i) => i.cycle === thisWeek)
+    const unplanned = tabbed.filter((i) => {
+      if (i.cycle) return false
+      const g = stateOf(i.stateId)?.group
+      return g !== 'completed' && g !== 'cancelled'
+    })
+    const planIntoWeek = async (): Promise<void> => {
+      for (const i of unplanned) await store.updateIssue(i.id, { cycle: thisWeek })
+    }
     const doneByDay = Array.from({ length: 7 }, (_, di) => {
       const day = new Date()
       day.setHours(0, 0, 0, 0)
@@ -1431,23 +1439,44 @@ function WorkItemsPageInner(): JSX.Element {
           <Calendar size={13} className="text-my-icon-secondary" />
           本周 {isoWeekRangeTitle(thisWeek)}
         </span>
-        <span className="text-my-sm text-my-tertiary">
-          {done}/{weekIssues.length || 0} 已完成
-        </span>
-        <div className="flex h-1.5 w-40 overflow-hidden rounded-full bg-my-layer-3">
-          <div style={{ width: `${(done / total) * 100}%` }} className="bg-my-success" />
-        </div>
-        <div className="ml-auto flex items-end gap-1" title="按日完成分布">
-          {doneByDay.map((d, i) => (
-            <div key={d.iso} className="flex flex-col items-center gap-0.5">
-              <div
-                style={{ height: 4 + (d.count / maxDay) * 16 }}
-                className={clsx('w-3 rounded-sm', d.count > 0 ? 'bg-my-success' : 'bg-my-layer-3')}
-              />
-              <span className="text-[9px] leading-none text-my-disabled">{d.label}</span>
+        {weekIssues.length === 0 ? (
+          <>
+            <span className="text-my-sm text-my-tertiary">本周暂未安排工作项</span>
+            {unplanned.length > 0 && (
+              <Button variant="primary" size="sm" onClick={() => void planIntoWeek()}>
+                把 {unplanned.length} 个未完结项排入本周
+              </Button>
+            )}
+            {unplanned.length === 0 && (
+              <span className="text-my-sm text-my-disabled">拖拽工作项到「本周」列即可排期</span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="text-my-sm text-my-tertiary">
+              {done}/{weekIssues.length} 已完成
+            </span>
+            <div className="flex h-1.5 w-40 overflow-hidden rounded-full bg-my-layer-3">
+              <div style={{ width: `${(done / total) * 100}%` }} className="bg-my-success" />
             </div>
-          ))}
-        </div>
+            {unplanned.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => void planIntoWeek()}>
+                + 排入 {unplanned.length} 项
+              </Button>
+            )}
+            <div className="ml-auto flex items-end gap-1" title="按日完成分布">
+              {doneByDay.map((d, i) => (
+                <div key={d.iso} className="flex flex-col items-center gap-0.5">
+                  <div
+                    style={{ height: 4 + (d.count / maxDay) * 16 }}
+                    className={clsx('w-3 rounded-sm', d.count > 0 ? 'bg-my-success' : 'bg-my-layer-3')}
+                  />
+                  <span className="text-[9px] leading-none text-my-disabled">{d.label}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     )
   }

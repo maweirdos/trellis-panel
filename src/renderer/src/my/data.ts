@@ -432,7 +432,7 @@ function buildDataset(): MyDataset {
     }
   }
   return {
-    workspace: { name: '星港工坊', slug: 'harbor', memberId: 'me' },
+    workspace: { name: '示例工作区（预览数据）', slug: 'sample', memberId: 'me' },
     members: MEMBERS,
     projects: PROJECTS,
     states: DEFAULT_STATES,
