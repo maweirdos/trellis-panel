@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "useEffect 依赖与非空断言陷阱"}
+{"file": ".trellis/spec/frontend/my-ui-module.md", "reason": "外壳约定:预览入口 ?my=1 与令牌作用域"}

@@ -20,7 +20,7 @@ import {
   History
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
@@ -191,6 +191,7 @@ export function KnowledgePage(): JSX.Element {
   }, [lib, debounced, runCompanySearch])
 
   useEffect(() => {
+    if (!hasIpc) return
     void runSearch()
     // 切库时关闭远程阅读器
     setRemoteDoc(null)
@@ -341,6 +342,7 @@ export function KnowledgePage(): JSX.Element {
   }
 
   useEffect(() => {
+    if (!hasIpc) return
     void api.kbQaHistory().then((r) => {
       if (r.ok && r.entries) setQaHistory(r.entries)
     })

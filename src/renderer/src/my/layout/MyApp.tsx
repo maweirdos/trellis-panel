@@ -10,6 +10,7 @@ import { CommandPalette } from '../CommandPalette'
 import { IssuePeek } from '../pages/IssuePeek'
 import { CreateIssueModal } from '../pages/work-items/CreateIssueModal'
 import { PageFrame } from './PageFrame'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 import '@fontsource-variable/inter'
 import '../my.css'
 
@@ -64,10 +65,14 @@ function PageBody(): JSX.Element {
   const framed = FRAMED_PAGES[page]
   return (
     <Suspense fallback={<PageLoading />}>
-      {page === 'dashboard' && <YourWorkPage />}
-      {page === 'tasks' && <WorkItemsPage />}
-      {page === 'analytics' && <AnalyticsPage />}
-      {framed && <PageFrame title={framed.title} parent={framed.parent}>{framed.element}</PageFrame>}
+      {/* 页面级兜底：单页崩溃只换掉内容区（错误卡片可重试），外壳与侧栏存活；
+          key=page 让切页时重置错误态，不把上一页的崩溃带给下一页 */}
+      <ErrorBoundary key={page}>
+        {page === 'dashboard' && <YourWorkPage />}
+        {page === 'tasks' && <WorkItemsPage />}
+        {page === 'analytics' && <AnalyticsPage />}
+        {framed && <PageFrame title={framed.title} parent={framed.parent}>{framed.element}</PageFrame>}
+      </ErrorBoundary>
     </Suspense>
   )
 }
@@ -159,7 +164,9 @@ export function MyApp(): JSX.Element {
         {openTaskDir !== null && (
           <div className="absolute inset-y-0 right-0 z-20 flex border-l border-my-line bg-my-canvas shadow-[-12px_0_40px_rgba(0,0,0,0.35)]">
             <Suspense fallback={<PageLoading />}>
-              <TaskDetail />
+              <ErrorBoundary key={openTaskDir}>
+                <TaskDetail />
+              </ErrorBoundary>
             </Suspense>
           </div>
         )}

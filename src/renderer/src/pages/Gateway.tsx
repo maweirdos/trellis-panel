@@ -22,7 +22,7 @@ import {
   ArrowUpRight
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, Checkbox } from '../my/ui'
 import { relTime } from '../utils/format'
@@ -39,7 +39,7 @@ import type {
 import type { JSX } from 'react'
 
 export function GatewayPage(): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+  const snapshot = useApp((s) => s.snapshot)
   const settings = useApp((s) => s.settings)
   const pushToast = useApp((s) => s.pushToast)
   const setPage = useApp((s) => s.setPage)
@@ -89,6 +89,7 @@ export function GatewayPage(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    if (!hasIpc) return
     loadStatus()
   }, [loadStatus])
 

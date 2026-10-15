@@ -21,7 +21,7 @@ import {
   Sparkles
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, SearchInput } from '../my/ui'
 import { fmtBytes, relTime } from '../utils/format'
@@ -111,6 +111,7 @@ function FileEditor({
   const dirty = raw !== null && content !== raw
 
   useEffect(() => {
+    if (!hasIpc) return
     void api.studioRead(path).then((res) => {
       if (res.ok && res.content !== undefined) {
         setRaw(res.content)
@@ -293,6 +294,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
   const [bodyView, setBodyView] = useState<'preview' | 'edit'>('edit')
 
   useEffect(() => {
+    if (!hasIpc) return
     void api.studioRead(ext.path).then((res) => {
       if (res.ok && res.content !== undefined) {
         setRaw(res.content)
@@ -465,6 +467,7 @@ export function StudioPage(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    if (!hasIpc) return
     void reload()
   }, [reload, snapshot?.meta.root])
 

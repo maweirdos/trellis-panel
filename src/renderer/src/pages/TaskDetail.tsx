@@ -24,7 +24,7 @@ import {
   Paperclip
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
 import { Button } from '../my/ui'
@@ -353,6 +353,7 @@ export function TaskDetail(): JSX.Element | null {
   // load git info when drawer opens or a rescan lands (30s-cached in main)
   const scannedAt = useApp((s) => s.snapshot?.scannedAt)
   useEffect(() => {
+    if (!hasIpc) return
     if (!openTaskDir || archived) return
     setGitLoading(true)
     api.gitTaskInfo(openTaskDir).then((g) => {
@@ -392,6 +393,7 @@ export function TaskDetail(): JSX.Element | null {
   const [gl, setGl] = useState<GitLabTaskStatus | null>(null)
   const [glBusy, setGlBusy] = useState(false)
   useEffect(() => {
+    if (!hasIpc) return
     if (!gitlabEnabled || !openTaskDir || archived) return
     api.gitlabTaskStatus(openTaskDir).then(setGl)
   }, [gitlabEnabled, openTaskDir, archived, scannedAt, task?.record?.branch])

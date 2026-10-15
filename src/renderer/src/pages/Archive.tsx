@@ -5,9 +5,9 @@ import { relTime } from '../utils/format'
 import type { JSX } from 'react'
 
 export function ArchivePage(): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+  const snapshot = useApp((s) => s.snapshot)
   const showTask = useApp((s) => s.showTask)
-  const archived = snapshot.archived
+  const archived = snapshot?.archived ?? []
 
   return (
     <div className="my-fade">

@@ -15,15 +15,15 @@ import {
   Sparkles
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
-import { Button, Tabs } from '../my/ui'
+import { api, hasIpc } from '../api'
+import { Button, EmptyState, Tabs } from '../my/ui'
 import { StatusBadge, PriorityBadge } from '../components/badges'
 import { statusLabel } from '../utils/labels'
 import { fmtIso, relTime, taskDateLabel } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
-import type { AnalyticsResult, TaskInfo } from '../../../shared/types'
+import type { AnalyticsResult, ProjectSnapshot, TaskInfo } from '../../../shared/types'
 
 /**
  * 团队协作 —— 参考 Linear 团队页 / GitHub News Feed 的信息结构：
@@ -296,6 +296,7 @@ function EfficiencyTab(): JSX.Element {
   const maxDaily = Math.max(1, ...(data?.daily.map((d) => d.count) ?? [1]))
 
   useEffect(() => {
+    if (!hasIpc) return
     api.getAnalytics().then(setData)
   }, [snapshot?.scannedAt])
 
@@ -533,7 +534,14 @@ function ReportTab(): JSX.Element {
 /* ---------------- page ---------------- */
 
 export function TeamPage(): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+  const snapshot = useApp((s) => s.snapshot)
+  // 浏览器预览（?my=1）无 IPC 桥、snapshot 恒为 null：渲染空态而非在渲染期解引用崩溃
+  // （真机 MainApp 在 snapshot 就绪后才挂载页面，此分支不出现）
+  if (!snapshot) return <EmptyState title="项目未加载" />
+  return <TeamPageBody snapshot={snapshot} />
+}
+
+function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element {
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
   const [tab, setTab] = useState<Tab>('board')
@@ -661,7 +669,7 @@ export function TeamPage(): JSX.Element {
         {tab === 'efficiency' && <EfficiencyTab />}
         {tab === 'standup' && <StandupTab />}
         {tab === 'report' && <ReportTab />}
-        {tab === 'workflow' && <WorkflowInsightTab />}
+        {tab === 'workflow' && <WorkflowInsightTab snapshot={snapshot} />}
       </div>
     </div>
   )
@@ -684,6 +692,7 @@ function StandupTab(): JSX.Element {
   }
 
   useEffect(() => {
+    if (!hasIpc) return
     void generate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -732,11 +741,11 @@ function StandupTab(): JSX.Element {
 
 /* ---------------- 工作流洞察 Tab ---------------- */
 
-function WorkflowInsightTab(): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+function WorkflowInsightTab({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element {
   const [scan, setScan] = useState<import('../../../shared/types').StudioScan | null>(null)
 
   useEffect(() => {
+    if (!hasIpc) return
     void api.studioScan().then((res) => {
       if (res.ok && res.scan) setScan(res.scan)
     })

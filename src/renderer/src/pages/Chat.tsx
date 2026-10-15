@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { useChatEntries } from '../chat/useChatEntries'
 import { useTranscriptScroll, useTranscriptWindow } from '../chat/useTranscriptScroll'
 import { MarkdownView } from '../components/MarkdownView'
@@ -317,9 +317,13 @@ export function ChatPage(): JSX.Element {
     }
   }, [activeId, sessions])
 
-  useEffect(() => chatAttachEvents(), [chatAttachEvents])
+  useEffect(() => {
+    if (!hasIpc) return
+    return chatAttachEvents()
+  }, [chatAttachEvents])
 
   useEffect(() => {
+    if (!hasIpc) return
     void chatLoadSessions().then(() => {
       const st = useApp.getState()
       if (st.chatSessions[0] && !st.chatActiveId) void st.chatOpenSession(st.chatSessions[0].id)

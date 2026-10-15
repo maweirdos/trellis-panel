@@ -16,13 +16,13 @@ import {
   FolderPlus
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
-import { Button } from '../my/ui'
+import { Button, EmptyState } from '../my/ui'
 import { JIRA_CATEGORY_STATUS, statusLabel } from '../utils/labels'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import type { JSX } from 'react'
-import type { JiraIssue, JiraIssueDetail, JiraPagedSearchMeta, TaskInfo } from '../../../shared/types'
+import type { JiraIssue, JiraIssueDetail, JiraPagedSearchMeta, Settings, TaskInfo } from '../../../shared/types'
 
 function priorityOf(name: string): string {
   if (/highest|最高/i.test(name)) return 'P0'
@@ -89,7 +89,14 @@ const STATUS_PILL: Record<string, string> = {
 const NO_VERSION = '无版本'
 
 export function JiraPage(): JSX.Element {
-  const settings = useApp((s) => s.settings)!
+  const settings = useApp((s) => s.settings)
+  // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态，页面体不挂载
+  // （渲染期 settings.jira / snapshot 解引用都在 Body 内，此时已收窄为非空）
+  if (!settings) return <EmptyState title="设置未加载" />
+  return <JiraPageBody settings={settings} />
+}
+
+function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)!
   const pushToast = useApp((s) => s.pushToast)
   const saveTodo = useApp((s) => s.saveTodo)
@@ -148,6 +155,7 @@ export function JiraPage(): JSX.Element {
   )
 
   useEffect(() => {
+    if (!hasIpc) return
     if (cfg?.enabled && cfg.baseUrl) void search('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg?.enabled, cfg?.baseUrl])

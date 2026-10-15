@@ -23,7 +23,7 @@ import {
   X
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button } from '../my/ui'
 import { ObservationPanel } from '../observation/ObservationPanel'
@@ -176,6 +176,7 @@ export function AcpConsolePage(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    if (!hasIpc) return
     void api.acpAgents().then((res) => {
       if (res.ok && res.agents) setAgents(res.agents)
     })
@@ -183,6 +184,7 @@ export function AcpConsolePage(): JSX.Element {
   }, [reloadSessions])
 
   useEffect(() => {
+    if (!hasIpc) return
     const offOut = api.onAcpOutput((ev) => {
       if (!root || ev.projectRoot !== root) return
       if (!ev.sessionId) {
@@ -618,6 +620,7 @@ function JiraPickerModal(props: { onClose: () => void; onStarted: (sessionId: st
   const [agents, setAgents] = useState<AcpAgentStatus[]>([])
 
   useEffect(() => {
+    if (!hasIpc) return
     void api.acpAgents().then((res) => {
       if (res.ok && res.agents) {
         const ok = res.agents.filter((a) => a.enabled && a.available)
@@ -647,6 +650,7 @@ function JiraPickerModal(props: { onClose: () => void; onStarted: (sessionId: st
   )
 
   useEffect(() => {
+    if (!hasIpc) return
     void search(JQL_PRESETS[0].jql)
   }, [search])
 

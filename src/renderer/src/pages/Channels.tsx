@@ -12,7 +12,7 @@ import {
   X
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button } from '../my/ui'
 import { fmtIso } from '../utils/format'
@@ -22,7 +22,7 @@ import type { ChannelEvent, ChannelSummary } from '../../../shared/types'
 import type { JSX } from 'react'
 
 export function ChannelsPage(): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+  const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
   const [channels, setChannels] = useState<ChannelSummary[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +45,7 @@ export function ChannelsPage(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    if (!hasIpc) return
     void reload()
     const t = setInterval(() => void reload(), 3000)
     return () => clearInterval(t)
@@ -495,7 +496,7 @@ export function ChannelsPage(): JSX.Element {
                 <label className="mb-1.5 block text-my-xs text-my-tertiary">派发一个看板任务（可选）</label>
                 <select value={dispatchTask} onChange={(e) => setDispatchTask(e.target.value)} className="h-9 w-full rounded-my-md border border-my-line bg-my-surface-1 px-3 text-my-md text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary">
                   <option value="">— 不派任务，派一句话需求 —</option>
-                  {snapshot.tasks.map((t) => (
+                  {snapshot?.tasks.map((t) => (
                     <option key={t.dirName} value={t.dirName}>
                       {t.record?.title ?? t.dirName}（{t.record?.status ?? ''}）
                     </option>

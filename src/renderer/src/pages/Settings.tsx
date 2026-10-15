@@ -20,15 +20,14 @@ import {
   Bot
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
-import { Button, Checkbox } from '../my/ui'
+import { Button, Checkbox, EmptyState } from '../my/ui'
 import type { JSX } from 'react'
-import type { AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
+import type { AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, Settings, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
 import { WEKNORA_DEFAULTS } from '../../../shared/types'
 
-function JiraStatusMapEditor(): JSX.Element {
-  const settings = useApp((s) => s.settings)!
+function JiraStatusMapEditor({ settings }: { settings: Settings }): JSX.Element {
   const saveSettings = useApp((s) => s.saveSettings)
   const [rows, setRows] = useState<Array<[string, string]>>([])
 
@@ -90,7 +89,13 @@ function JiraStatusMapEditor(): JSX.Element {
 }
 
 export function SettingsPage(): JSX.Element {
-  const settings = useApp((s) => s.settings)!
+  const settings = useApp((s) => s.settings)
+  // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态而非在渲染期解引用崩溃（真机 bootstrap 后恒非空）
+  if (!settings) return <EmptyState title="设置未加载" />
+  return <SettingsPageBody settings={settings} />
+}
+
+function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
   const saveSettings = useApp((s) => s.saveSettings)
   const refresh = useApp((s) => s.refresh)
   const pushToast = useApp((s) => s.pushToast)
@@ -113,6 +118,7 @@ export function SettingsPage(): JSX.Element {
   } | null>(null)
 
   useEffect(() => {
+    if (!hasIpc) return
     api.getMcpInfo().then(setMcpInfo)
   }, [settings.httpApi.enabled])
 
@@ -121,6 +127,7 @@ export function SettingsPage(): JSX.Element {
   }
 
   useEffect(() => {
+    if (!hasIpc) return
     refreshAccess()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.access?.enabled, settings.access?.port])
@@ -171,6 +178,7 @@ export function SettingsPage(): JSX.Element {
   const [mcpKbResult, setMcpKbResult] = useState<KbMcpInstallResult | null>(null)
 
   useEffect(() => {
+    if (!hasIpc) return
     void api.kbMcpStatus().then(setMcpKbStatus)
   }, [])
 
@@ -616,7 +624,7 @@ export function SettingsPage(): JSX.Element {
 
           <div className="mt-4 border-t border-my-line pt-3">
             <div className="mb-2 text-my-xs font-semibold text-my-secondary">状态映射（Jira 状态名 → Trellis 状态）</div>
-            <JiraStatusMapEditor />
+            <JiraStatusMapEditor settings={settings} />
           </div>
         </section>
 
@@ -1087,7 +1095,7 @@ export function SettingsPage(): JSX.Element {
 
 function AcpAgentsSection(): JSX.Element {
   const saveSettings = useApp((s) => s.saveSettings)
-  const settings = useApp((s) => s.settings)!
+  const settings = useApp((s) => s.settings)
   const pushToast = useApp((s) => s.pushToast)
   const [agents, setAgents] = useState<AcpAgentStatus[]>([])
 
@@ -1096,7 +1104,11 @@ function AcpAgentsSection(): JSX.Element {
       if (res.ok && res.agents) setAgents(res.agents)
     })
   }
-  useEffect(reload, [])
+  useEffect(() => {
+    if (!hasIpc) return
+    reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const persist = (rows: AcpAgentStatus[]): void => {
     setAgents(rows)
@@ -1147,7 +1159,7 @@ function AcpAgentsSection(): JSX.Element {
         <Button variant="outline" onClick={reload}>
           重新探测
         </Button>
-        {settings.acp?.agents && (
+        {settings?.acp?.agents && (
           <Button
             variant="outline"
             onClick={() => {

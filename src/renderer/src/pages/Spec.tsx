@@ -15,7 +15,7 @@ import {
   Copy
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
 import { Button, SearchInput } from '../my/ui'
@@ -142,7 +142,7 @@ interface SelectedDoc {
 }
 
 export function SpecPage(): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+  const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
 
   /* 检索 */
@@ -161,10 +161,11 @@ export function SpecPage(): JSX.Element {
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const files = useMemo(() => flattenFiles(snapshot.spec), [snapshot.spec])
+  const files = useMemo(() => flattenFiles(snapshot?.spec ?? []), [snapshot?.spec])
 
   /* 检索：空 query = 浏览态（规范树 + 工作区日志） */
   useEffect(() => {
+    if (!hasIpc) return
     let alive = true
     setSearching(true)
     const t = setTimeout(() => {
@@ -178,7 +179,7 @@ export function SpecPage(): JSX.Element {
       alive = false
       clearTimeout(t)
     }
-  }, [query, scope, snapshot.scannedAt])
+  }, [query, scope, snapshot?.scannedAt])
 
   const loadSpec = (n: SpecNode): void => {
     setSpecSelected(n)
@@ -210,13 +211,14 @@ export function SpecPage(): JSX.Element {
   }
 
   useEffect(() => {
+    if (!hasIpc) return
     if (files.length > 0) loadSpec(files[0])
     loadBacklinks()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.meta.root])
+  }, [snapshot?.meta?.root])
 
   const selected = specSelected ?? docSelected
-  const relPath = specSelected?.path.replace(snapshot.meta.root + '\\', '').replace(snapshot.meta.root + '/', '') ?? ''
+  const relPath = snapshot && specSelected ? specSelected.path.replace(snapshot.meta.root + '\\', '').replace(snapshot.meta.root + '/', '') : ''
 
   const save = async (): Promise<void> => {
     if (!specSelected || specSelected.type !== 'file') return
@@ -348,19 +350,19 @@ export function SpecPage(): JSX.Element {
                   <Link2 size={11} /> 引用
                 </button>
               </div>
-              {snapshot.spec.length === 0 && (
+              {snapshot?.spec.length === 0 && (
                 <div className="px-2 py-4 text-center text-my-xs text-my-tertiary">没有规范文档</div>
               )}
-              {snapshot.spec.map((n) => (
+              {snapshot?.spec.map((n) => (
                 <TreeItem key={n.path} node={n} depth={0} selected={selected?.path ?? null} refCount={refCount} onSelect={loadSpec} />
               ))}
 
-              {snapshot.developers.length > 0 && (
+              {(snapshot?.developers.length ?? 0) > 0 && (
                 <div className="mt-3">
                   <div className="flex items-center gap-1.5 px-2 py-1.5 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">
                     <NotebookPen size={11} /> 工作区日志
                   </div>
-                  {snapshot.developers.map((d) => (
+                  {snapshot?.developers.map((d) => (
                     <div key={d.name} className="mb-1">
                       <div className="px-2 py-1 text-my-xs text-my-tertiary">
                         {d.name} <span className="text-my-placeholder">· {relTime(d.lastActive)}</span>
@@ -389,12 +391,12 @@ export function SpecPage(): JSX.Element {
                 </div>
               )}
 
-              {snapshot.sharedWorkspaceFiles.length > 0 && (
+              {(snapshot?.sharedWorkspaceFiles.length ?? 0) > 0 && (
                 <div className="mt-2">
                   <div className="flex items-center gap-1.5 px-2 py-1.5 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">
                     <Share2 size={11} /> 共享索引
                   </div>
-                  {snapshot.sharedWorkspaceFiles.map((f) => (
+                  {snapshot?.sharedWorkspaceFiles.map((f) => (
                     <button
                       key={f.path}
                       type="button"
