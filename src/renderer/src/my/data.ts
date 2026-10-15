@@ -17,6 +17,23 @@ import type {
 
 const pad = (n: number): string => String(n).padStart(2, '0')
 
+function dayDate(offset: number): Date {
+  const d = new Date()
+  d.setHours(12, 0, 0, 0)
+  d.setDate(d.getDate() + offset)
+  return d
+}
+
+function isoWeekKeyOf(d: Date): string {
+  const c = new Date(d)
+  c.setHours(0, 0, 0, 0)
+  c.setDate(c.getDate() + 3 - ((c.getDay() + 6) % 7))
+  const week1 = new Date(c.getFullYear(), 0, 4)
+  week1.setDate(week1.getDate() + 3 - ((week1.getDay() + 6) % 7))
+  const week = 1 + Math.round((c.getTime() - week1.getTime()) / (7 * 24 * 3600 * 1000))
+  return `${c.getFullYear()}-W${String(week).padStart(2, '0')}`
+}
+
 function iso(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
@@ -190,6 +207,7 @@ function buildIssues(): Issue[] {
         labelIds: s.lb,
         cycleId: s.cyc ?? null,
         moduleId: s.mod ?? null,
+        cycle: isoWeekKeyOf(dayDate(Math.max(s.off[0], -6))),
         pkg: s.lb.includes('lb-fe')
           ? '渲染层'
           : s.lb.includes('lb-be')
@@ -246,6 +264,7 @@ function buildIssues(): Issue[] {
         moduleId: parent.moduleId,
         pkg: parent.pkg,
         scope: null,
+        cycle: isoWeekKeyOf(dayDate(-3)),
         startDate: parent.startDate,
         dueDate: parent.dueDate,
         createdAt: day(-10),

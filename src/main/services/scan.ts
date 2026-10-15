@@ -443,7 +443,7 @@ export function updateTaskRecordAt(
   // R0：status / completedAt 属任务生命周期字段，收归外部 Trellis 工作流，
   // 面板编辑白名单只保留元数据（title/description/priority/assignee/notes/branch/pr_url/subtasks/meta）
   const EDITABLE = new Set([
-    'title', 'description', 'priority', 'assignee', 'notes', 'branch', 'pr_url', 'subtasks'
+    'title', 'description', 'priority', 'assignee', 'notes', 'branch', 'pr_url', 'subtasks', 'cycle'
   ])
   const next: Record<string, unknown> = { ...record }
   for (const [k, v] of Object.entries(patch)) {

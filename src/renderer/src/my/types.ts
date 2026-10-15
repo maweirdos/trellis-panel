@@ -8,7 +8,7 @@ export type Priority = 'urgent' | 'high' | 'medium' | 'low' | 'none'
 
 export type WorkItemLayout = 'list' | 'board' | 'spreadsheet' | 'gantt' | 'calendar'
 
-export type GroupBy = 'state' | 'priority' | 'assignee' | 'labels' | 'package' | 'none'
+export type GroupBy = 'state' | 'priority' | 'assignee' | 'labels' | 'package' | 'cycle' | 'none'
 export type OrderBy = 'priority' | 'due_date' | 'created_at' | 'manual'
 
 export interface Member {
@@ -133,6 +133,8 @@ export interface Issue {
   /** task.json 既有字段：模块（package）/ 范围（scope），仅用于分组与统计维度 */
   pkg: string | null
   scope: string | null
+  /** 面板自有：自然周周期（ISO 周号） */
+  cycle: string | null
   startDate: string | null
   dueDate: string | null
   createdAt: string

@@ -59,11 +59,14 @@ export interface TaskRecord {
   notes: string
   /** workflow pin（动态 workflow 切换：task.json 可携带 workflow 字段） */
   workflow?: string | null
+  /** 面板自有：自然周周期（ISO 周号，如 2026-W45）。CLI 字段级写回保留未知字段。 */
+  cycle?: string | null
   meta: Record<string, unknown>
 }
 
 /** Editable fields exposed by the task editor. */
 export type TaskEditableField =
+  | 'cycle'
   | 'title'
   | 'description'
   | 'status'

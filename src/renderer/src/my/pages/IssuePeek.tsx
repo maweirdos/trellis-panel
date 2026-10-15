@@ -1,8 +1,9 @@
 // peek-over 工作项详情浮层：backdrop 点击关闭，中央面板（标题/描述/子工作项/评论/活动 + 右侧属性栏），Esc 关闭。
 import { useEffect, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { Check, ChevronDown, Copy, Plus, Star, X } from 'lucide-react'
+import { Calendar, Check, ChevronDown, Copy, Plus, Star, X } from 'lucide-react'
 import { useMy } from '../store'
+import { currentWeekKey, nextWeekKey } from '../isoWeek'
 import { Avatar, Checkbox, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../ui'
 import { WorkspaceMark, PriorityIcon, StateGroupIcon } from '../icons'
 import type { Issue, Label, Member, Priority, WorkItemState } from '../types'
@@ -458,6 +459,52 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                   ))}
                 </>
               )}
+            </Dropdown>
+          </PropRow>
+          <PropRow label="周期">
+            <Dropdown
+              width={200}
+              trigger={({ toggle }) => {
+                const opts = [
+                  { key: '', label: '无周期' },
+                  { key: currentWeekKey(), label: `本周（${currentWeekKey()}）` },
+                  { key: nextWeekKey(), label: `下周（${nextWeekKey()}）` }
+                ]
+                const cur = opts.find((o) => o.key === (issue.cycle ?? ''))
+                return (
+                  <button type="button" onClick={toggle} className={BOX}>
+                    <Calendar size={13} className={issue.cycle ? 'text-my-icon-accent' : 'text-my-icon-tertiary'} />
+                    <span className="min-w-0 flex-1 truncate text-left">{cur?.label ?? '无周期'}</span>
+                    <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
+                  </button>
+                )
+              }}
+            >
+              {(close) => {
+                const opts = [
+                  { key: '', label: '无周期' },
+                  { key: currentWeekKey(), label: `本周（${currentWeekKey()}）` },
+                  { key: nextWeekKey(), label: `下周（${nextWeekKey()}）` }
+                ]
+                return (
+                  <>
+                    <DropdownHeader>设置周期</DropdownHeader>
+                    {opts.map((o) => (
+                      <DropdownItem
+                        key={o.key}
+                        selected={(issue.cycle ?? '') === o.key}
+                        icon={<Calendar size={13} />}
+                        onClick={() => {
+                          void store.updateIssue(issue.id, { cycle: o.key || null })
+                          close()
+                        }}
+                      >
+                        {o.label}
+                      </DropdownItem>
+                    ))}
+                  </>
+                )
+              }}
             </Dropdown>
           </PropRow>
           <PropRow label="标签">

@@ -21,6 +21,8 @@ export function ProjectSidebar(): JSX.Element {
   const savedViews = useMy((s) => s.savedViews)
   const applyView = useMy((s) => s.applyView)
   const removeView = useMy((s) => s.removeView)
+  const groupBy = useMy((s) => s.groupBy)
+  const setGroupBy = useMy((s) => s.setGroupBy)
 
   const navButton = (id: string, label: string, icon: string, count?: number): JSX.Element => (
     <button
@@ -69,7 +71,25 @@ export function ProjectSidebar(): JSX.Element {
       </div>
 
       <div className="my-scrollbar min-h-0 flex-1 px-2.5 pb-3 pt-1">
-        <div className="flex flex-col gap-0.5">{navButton('tasks', '工作项', 'work-items', taskCount)}</div>
+        <div className="flex flex-col gap-0.5">
+          {navButton('tasks', '工作项', 'work-items', taskCount)}
+          <button
+            type="button"
+            onClick={() => {
+              setGroupBy('cycle')
+              setPage('tasks')
+            }}
+            className={clsx(
+              'flex w-full items-center gap-2 rounded-my-md px-2 py-1.5 text-my-md',
+              page === 'tasks' && groupBy === 'cycle'
+                ? 'bg-my-layer-transparent-active text-my-primary'
+                : 'text-my-secondary hover:bg-my-layer-transparent-hover'
+            )}
+          >
+            <NavIcon name="cycles" size={16} className={groupBy === 'cycle' ? 'text-my-icon-primary' : 'text-my-icon-tertiary'} />
+            <span className="flex-1 text-left">周期</span>
+          </button>
+        </div>
         <div className="mt-3 flex flex-col gap-0.5 border-t border-my-line pt-3">
           <div className="px-2 pb-1 text-my-xs font-medium text-my-tertiary">文档</div>
           {DOC_ITEMS.map((item) => navButton(item.id, item.label, item.icon))}

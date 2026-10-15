@@ -1,7 +1,8 @@
 // 工作项页：顶栏（面包屑 + tabs + 布局切换器 + 筛选/显示 + 新建按钮）与 5 种布局（List/Board/Spreadsheet/Gantt/Calendar）。
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { clsx } from 'clsx'
-import { Bookmark, Star } from 'lucide-react'
+import { Bookmark, Calendar, Star } from 'lucide-react'
+import { currentWeekKey, isoWeekRangeTitle, nextWeekKey } from '../isoWeek'
 import {
   CalendarDays,
   Check,
@@ -73,6 +74,7 @@ const GROUP_BY_OPTIONS: Array<{ id: GroupBy; label: string }> = [
   { id: 'priority', label: '优先级' },
   { id: 'assignee', label: '负责人' },
   { id: 'package', label: '模块' },
+  { id: 'cycle', label: '周期' },
   { id: 'labels', label: '标签' },
   { id: 'none', label: '无' }
 ]
@@ -128,6 +130,7 @@ type GroupMeta =
   | { kind: 'assignee'; member: Member | null }
   | { kind: 'label'; label: Label | null }
   | { kind: 'package'; pkg: string }
+  | { kind: 'cycle'; cycle: string }
   | { kind: 'none' }
 
 interface IssueGroup {
@@ -199,6 +202,24 @@ function buildGroups(
     })
     return byMember
   }
+  if (groupBy === 'cycle') {
+    const weeks = Array.from(new Set(sorted.map((i) => i.cycle ?? null)))
+      .filter((w): w is string => Boolean(w))
+      .sort((a, b) => a.localeCompare(b))
+    const cols: IssueGroup[] = weeks.map((w) => ({
+      key: `cycle:${w}`,
+      title: `第 ${w.split('-W')[1]} 周（${isoWeekRangeTitle(w)}）`,
+      meta: { kind: 'cycle', cycle: w },
+      issues: sorted.filter((i) => i.cycle === w)
+    }))
+    cols.push({
+      key: 'cycle:none',
+      title: '无周期',
+      meta: { kind: 'cycle', cycle: '' },
+      issues: sorted.filter((i) => !i.cycle)
+    })
+    return cols
+  }
   if (groupBy === 'package') {
     // 模块 = task.json 既有 package 字段；缺失归入「未分组」
     const pkgs = Array.from(new Set(sorted.map((i) => i.pkg ?? null))).sort((a, b) =>
@@ -257,6 +278,9 @@ function GroupBadge({ meta, size = 12 }: { meta: GroupMeta; size?: number }): JS
         style={{ width: size + 6, height: size + 6 }}
       />
     )
+  }
+  if (meta.kind === 'cycle') {
+    return <Calendar size={size} className="shrink-0 text-my-icon-secondary" />
   }
   if (meta.kind === 'package') {
     return (
@@ -750,7 +774,8 @@ function BoardLayout({
   onToggleGroup,
   showEmpty,
   groupBy,
-  onMoveToState
+  onMoveToState,
+  onMoveToCycle
 }: {
   groups: IssueGroup[]
   collapsed: Set<string>
@@ -758,6 +783,7 @@ function BoardLayout({
   showEmpty: boolean
   groupBy: GroupBy
   onMoveToState: (stateId: string, issueId: string) => void
+  onMoveToCycle: (cycle: string, issueId: string) => void
 }): JSX.Element {
   const [dragOver, setDragOver] = useState<string | null>(null)
   const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0)
@@ -772,7 +798,9 @@ function BoardLayout({
           <div
             key={g.key}
             onDragOver={(e) => {
-              if (groupBy !== 'state' || g.meta.kind !== 'state') return
+              const droppable =
+                (groupBy === 'state' && g.meta.kind === 'state') || (groupBy === 'cycle' && g.meta.kind === 'cycle')
+              if (!droppable) return
               e.preventDefault()
               e.dataTransfer.dropEffect = 'move'
               setDragOver(g.key)
@@ -783,9 +811,10 @@ function BoardLayout({
             onDrop={(e) => {
               e.preventDefault()
               setDragOver(null)
-              if (groupBy !== 'state' || g.meta.kind !== 'state') return
               const issueId = e.dataTransfer.getData('text/my-issue-id')
-              if (issueId) onMoveToState(g.meta.state.id, issueId)
+              if (!issueId) return
+              if (groupBy === 'state' && g.meta.kind === 'state') onMoveToState(g.meta.state.id, issueId)
+              else if (groupBy === 'cycle' && g.meta.kind === 'cycle') onMoveToCycle(g.meta.cycle || '', issueId)
             }}
             className={clsx(
               'flex w-[280px] min-w-[280px] shrink-0 flex-col',
@@ -1367,9 +1396,61 @@ function WorkItemsPageInner(): JSX.Element {
     { id: 'backlog', label: '未规划', count: countIn((g) => g === 'backlog') }
   ]
 
+  // 周期概览：当前周完成进度与 7 日完成分布（仅按周期分组时展示）
+  const thisWeek = currentWeekKey()
+  const carryOver = (): void => {
+    const stale = tabbed.filter((i) => i.cycle === thisWeek)
+    const open = stale.filter((i) => {
+      const g = stateOf(i.stateId)?.group
+      return g !== 'completed' && g !== 'cancelled'
+    })
+    for (const i of open) void store.updateIssue(i.id, { cycle: nextWeekKey() })
+  }
+
   const groups = buildGroups(tabbed, groupBy, orderBy, data.states, data.members, data.labels)
   const filterCount = filters.priority.length + filters.stateGroup.length + filters.assigneeIds.length + filters.labelIds.length
   const ident = project.id.replace(/^p-/, '').slice(0, 3).toUpperCase()
+
+  // 周期概览条
+  let cycleOverview: JSX.Element | null = null
+  if (groupBy === 'cycle') {
+    const weekIssues = tabbed.filter((i) => i.cycle === thisWeek)
+    const doneByDay = Array.from({ length: 7 }, (_, di) => {
+      const day = new Date()
+      day.setHours(0, 0, 0, 0)
+      day.setDate(day.getDate() - ((day.getDay() + 6) % 7) + di)
+      const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
+      return { iso, label: day.getDate(), count: weekIssues.filter((i) => i.completedAt === iso).length }
+    })
+    const done = weekIssues.filter((i) => i.completedAt).length
+    const total = Math.max(weekIssues.length, 1)
+    const maxDay = Math.max(1, ...doneByDay.map((d) => d.count))
+    cycleOverview = (
+      <div className="flex shrink-0 items-center gap-4 border-b border-my-line bg-my-layer-1 px-4 py-2.5">
+        <span className="flex items-center gap-1.5 text-my-sm font-medium text-my-primary">
+          <Calendar size={13} className="text-my-icon-secondary" />
+          本周 {isoWeekRangeTitle(thisWeek)}
+        </span>
+        <span className="text-my-sm text-my-tertiary">
+          {done}/{weekIssues.length || 0} 已完成
+        </span>
+        <div className="flex h-1.5 w-40 overflow-hidden rounded-full bg-my-layer-3">
+          <div style={{ width: `${(done / total) * 100}%` }} className="bg-my-success" />
+        </div>
+        <div className="ml-auto flex items-end gap-1" title="按日完成分布">
+          {doneByDay.map((d, i) => (
+            <div key={d.iso} className="flex flex-col items-center gap-0.5">
+              <div
+                style={{ height: 4 + (d.count / maxDay) * 16 }}
+                className={clsx('w-3 rounded-sm', d.count > 0 ? 'bg-my-success' : 'bg-my-layer-3')}
+              />
+              <span className="text-[9px] leading-none text-my-disabled">{d.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   let body: JSX.Element
   if (layout === 'list') {
@@ -1392,6 +1473,7 @@ function WorkItemsPageInner(): JSX.Element {
         showEmpty={display.showEmptyGroups}
         groupBy={groupBy}
         onMoveToState={(stateId, issueId) => void store.updateIssue(issueId, { stateId })}
+        onMoveToCycle={(cycle, issueId) => void store.updateIssue(issueId, { cycle: cycle || null })}
       />
     )
   } else if (layout === 'spreadsheet') {
@@ -1504,6 +1586,13 @@ function WorkItemsPageInner(): JSX.Element {
               </>
             )}
           </Dropdown>
+          {groupBy === 'cycle' && (
+            <Tooltip label="当前周未完结项移入下一周">
+              <Button variant="neutral" onClick={carryOver}>
+                结转未完成
+              </Button>
+            </Tooltip>
+          )}
           {/* 存为视图：保存当前筛选+分组，项目侧边栏「视图」区可应用 */}
           <Dropdown
             width={230}
@@ -1593,6 +1682,7 @@ function WorkItemsPageInner(): JSX.Element {
           </Button>
         </div>
       </header>
+      {cycleOverview}
       {/* 布局主体 */}
       <div className="min-h-0 flex-1 bg-my-canvas">{body}</div>
     </div>
