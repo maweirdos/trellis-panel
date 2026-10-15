@@ -1,8 +1,10 @@
 // peek-over 工作项详情浮层：backdrop 点击关闭，中央面板（标题/描述/子工作项/评论/活动 + 右侧属性栏），Esc 关闭。
 import { useEffect, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { Calendar, Check, ChevronDown, Copy, Plus, Star, X } from 'lucide-react'
+import { Calendar, Check, ChevronDown, Copy, Plus, Star, X, FileText } from 'lucide-react'
 import { useMy } from '../store'
+import { useApp } from '../../store'
+import { api } from '../../api'
 import { currentWeekKey, nextWeekKey } from '../isoWeek'
 import { Avatar, Checkbox, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../ui'
 import { WorkspaceMark, PriorityIcon, StateGroupIcon } from '../icons'
@@ -78,6 +80,30 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
     setSubName('')
     setComment('')
   }, [issue.id, issue.name, issue.description])
+
+  // 任务文档（task 目录下的 .md）：prd/design 命名友好化，点击进入完整任务详情抽屉阅读
+  const snapshotTasks = useApp((s) => s.snapshot?.tasks)
+  const taskInfo = snapshotTasks?.find((t) => t.dirName === issue.id)
+  const docs = (taskInfo?.artifacts ?? [])
+    .filter((a) => a.kind === 'file' && a.name.toLowerCase().endsWith('.md'))
+    .map((a) => ({
+      name: a.name,
+      label:
+        a.name.toLowerCase() === 'prd.md'
+          ? 'PRD'
+          : a.name.toLowerCase() === 'design.md'
+            ? '设计'
+            : a.name.replace(/\.md$/i, '')
+    }))
+  const openFullDetail = (): void => {
+    useApp.getState().showTask(issue.id)
+    closeIssue()
+  }
+  // 文档绝对路径（artifacts 里的 path 就是任务目录内的文件路径）
+  const docPath = (name: string): string => {
+    const hit = taskInfo?.artifacts.find((a) => a.name === name)
+    return hit?.path ?? name
+  }
 
   const memberOf = (id: string | null): Member | undefined => data.members.find((m) => m.id === id)
   const stateOf = (stateId: string): WorkItemState | undefined => data.states.find((s) => s.id === stateId)
@@ -205,6 +231,17 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
           </Dropdown>
         </span>
         <div className="ml-auto flex items-center gap-0.5">
+          <button
+            type="button"
+            title="打开完整任务详情（文档 / 材料 / Git）"
+            onClick={() => {
+              useApp.getState().showTask(issue.id)
+              closeIssue()
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
+          >
+            <FileText size={14} />
+          </button>
           <button
             type="button"
             title={store.favorites.includes(issue.id) ? '取消收藏' : '收藏'}
@@ -356,6 +393,39 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
 
         {/* 右侧属性栏 */}
         <aside className="my-scrollbar w-[260px] shrink-0 overflow-y-auto border-l border-my-line p-3">
+          <PropRow label="文档">
+            {docs.length === 0 ? (
+              <span className="text-my-xs text-my-tertiary">任务目录下暂无 .md 文档</span>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {docs.map((d) => (
+                  <button
+                    key={d.name}
+                    type="button"
+                    title={`钉住 ${d.name}（置顶小窗，可多开）`}
+                    onClick={() => {
+                      void api.docOpen({
+                        key: docPath(d.name),
+                        title: `${ident}-${issue.sequenceId} · ${d.label}`,
+                        file: docPath(d.name)
+                      })
+                    }}
+                    className="flex items-center gap-1 rounded-my-sm border border-my-line bg-my-layer-1 px-1.5 py-1 text-my-xs text-my-secondary hover:border-my-line-accent hover:text-my-accent-text"
+                  >
+                    <FileText size={11} className="text-my-icon-secondary" />
+                    {d.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={openFullDetail}
+                  className="flex items-center gap-1 rounded-my-sm px-1 py-1 text-my-xs text-my-tertiary hover:text-my-accent-text"
+                >
+                  全部 ›
+                </button>
+              </div>
+            )}
+          </PropRow>
           <PropRow label="优先级">
             <Dropdown
               width={180}

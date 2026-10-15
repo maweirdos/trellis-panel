@@ -27,10 +27,12 @@ import { registerChatIpc } from './chat'
 import { registerFlowIpc } from './flow'
 import { registerAcpIpc } from './acp'
 import { registerWindowIpc } from './window'
+import { registerDocsIpc } from './docs'
 import type { WindowDeps } from './deps'
 
 export function registerIpc(deps: WindowDeps): void {
   registerWindowIpc(deps)
+  registerDocsIpc(deps)
   registerProjectIpc(deps)
   registerTasksIpc()
   registerTodoIpc()
