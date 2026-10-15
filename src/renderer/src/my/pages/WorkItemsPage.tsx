@@ -318,6 +318,15 @@ function DueChip({ due, stateGroup, done }: { due: string; stateGroup: StateGrou
 }
 
 /** 空负责人占位 */
+/** 模块胶囊：无标签卡片的信息补充（色系由模块名哈希决定，同名同色） */
+const PKG_FAMILIES = ['indigo', 'emerald', 'grey', 'crimson', 'yellow', 'orange', 'pink', 'purple']
+function pkgLabel(pkg: string | null): Label | null {
+  if (!pkg) return null
+  let h = 0
+  for (let i = 0; i < pkg.length; i++) h = (h * 31 + pkg.charCodeAt(i)) >>> 0
+  return { id: `pkg:${pkg}`, name: pkg, color: PKG_FAMILIES[h % PKG_FAMILIES.length] }
+}
+
 /** 子工作项完成进度（基于 children 的状态统计） */
 function subProgress(issue: Issue, issues: Issue[], states: WorkItemState[]): { done: number; total: number } {
   const total = issue.subIssueIds.length
@@ -577,7 +586,7 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
         <PriorityIcon priority={issue.priority} size={12} />
       </span>
       <span className="flex w-[110px] shrink-0 items-center gap-1 overflow-hidden">
-        {labels.slice(0, 2).map((lb) => (
+        {(labels.length > 0 ? labels : [pkgLabel(issue.pkg)].filter((l): l is Label => Boolean(l))).slice(0, 2).map((lb) => (
           <LabelPill key={lb.id} label={lb} />
         ))}
       </span>
@@ -727,7 +736,7 @@ function ListLayout({
 
 /* ---------------- Board 布局 ---------------- */
 
-function BoardCard({ issue }: { issue: Issue }): JSX.Element {
+function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Element {
   const { data, openIssue } = useMy()
   const state = data.states.find((s) => s.id === issue.stateId)
   const assignee = data.members.find((m) => m.id === issue.assigneeId)
@@ -760,7 +769,8 @@ function BoardCard({ issue }: { issue: Issue }): JSX.Element {
         <span className="line-clamp-2 text-my-md leading-5 text-my-secondary">{issue.name}</span>
       </div>
       <div className="mt-2 flex min-h-[18px] items-center gap-1.5">
-        {labels.slice(0, 2).map((lb) => (
+        <span className="shrink-0 text-my-2xs text-my-disabled">{ident}-{issue.sequenceId}</span>
+        {(labels.length > 0 ? labels : [pkgLabel(issue.pkg)].filter((l): l is Label => Boolean(l))).slice(0, 2).map((lb) => (
           <LabelPill key={lb.id} label={lb} />
         ))}
         <SubProgressBadge done={sub.done} total={sub.total} />
@@ -780,7 +790,8 @@ function BoardLayout({
   showEmpty,
   groupBy,
   onMoveToState,
-  onMoveToCycle
+  onMoveToCycle,
+  ident
 }: {
   groups: IssueGroup[]
   collapsed: Set<string>
@@ -789,6 +800,7 @@ function BoardLayout({
   groupBy: GroupBy
   onMoveToState: (stateId: string, issueId: string) => void
   onMoveToCycle: (cycle: string, issueId: string) => void
+  ident: string
 }): JSX.Element {
   const [dragOver, setDragOver] = useState<string | null>(null)
   const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0)
@@ -844,7 +856,7 @@ function BoardLayout({
             {!isCollapsed && (
               <div className="min-h-[80px]">
                 {g.issues.map((i) => (
-                  <BoardCard key={i.id} issue={i} />
+                  <BoardCard key={i.id} issue={i} ident={ident} />
                 ))}
                 {g.issues.length === 0 && (
                   <div className="mx-2.5 mt-2 rounded-my-md border border-dashed border-my-line py-5 text-center text-my-xs text-my-disabled">
@@ -1506,6 +1518,7 @@ function WorkItemsPageInner(): JSX.Element {
         onToggleGroup={toggleGroup}
         showEmpty={display.showEmptyGroups}
         groupBy={groupBy}
+        ident={ident}
         onMoveToState={(stateId, issueId) => void store.updateIssue(issueId, { stateId })}
         onMoveToCycle={(cycle, issueId) => void store.updateIssue(issueId, { cycle: cycle || null })}
       />
