@@ -182,8 +182,20 @@ export function deriveDataset(snapshot: ProjectSnapshot | null): MyDataset {
   }
 }
 
-export function issueToTaskPatch(issue: Issue): { status?: string; priority?: string; title?: string; description?: string } {
-  const patch: { status?: string; priority?: string; title?: string; description?: string } = {}
+export function issueToTaskPatch(issue: Issue): {
+  status?: string
+  priority?: string
+  title?: string
+  description?: string
+  cycle?: string | null
+} {
+  const patch: {
+    status?: string
+    priority?: string
+    title?: string
+    description?: string
+    cycle?: string | null
+  } = {}
   const state = MY_STATES.find((s) => s.id === issue.stateId)
   if (state) {
     const statusByState: Record<string, string> = {
@@ -199,6 +211,8 @@ export function issueToTaskPatch(issue: Issue): { status?: string; priority?: st
   if (taskPriority) patch.priority = taskPriority
   patch.title = issue.name
   patch.description = issue.description
+  // 周期为面板自有字段：null 时写 null（清除排期）
+  patch.cycle = issue.cycle
   return patch
 }
 

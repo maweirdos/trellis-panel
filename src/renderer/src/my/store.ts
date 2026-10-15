@@ -230,9 +230,13 @@ export const useMy = create<MyStore>()((set, get) => ({
     const task = useApp.getState().snapshot?.tasks.find((t) => t.dirName === id)
     if (task && api) {
       try {
-        await api.updateTask(id, issueToTaskPatch(merged), task.taskJsonMtime)
+        const result = await api.updateTask(task.path, issueToTaskPatch(merged), task.taskJsonMtime)
+        if (result && result.ok === false) {
+          useApp.getState().pushToast({ kind: 'error', title: '保存失败', body: `${issue.name}: ${result.error ?? '未知错误'}` })
+        }
         await useApp.getState().refresh()
-      } catch {
+      } catch (err) {
+        useApp.getState().pushToast({ kind: 'error', title: '保存失败', body: `${issue.name}: ${String(err).slice(0, 80)}` })
         await useApp.getState().refresh()
       }
     }
