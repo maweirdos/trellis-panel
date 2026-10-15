@@ -1,7 +1,7 @@
-// Your work 页（R8）：问候区 + 三张统计卡 + 「分配给我的工作项 / 由我创建 / 近期更新」区块。
-import { type JSX, type ReactNode } from 'react'
+import { useState, type JSX, type ReactNode } from 'react'
 import { useMy } from '../store'
 import { Avatar, EmptyState, formatDate } from '../ui'
+import { Check, Copy } from 'lucide-react'
 import { PriorityIcon, StateGroupIcon } from '../icons'
 import type { Issue, Member, WorkItemState } from '../types'
 
@@ -106,6 +106,28 @@ export function YourWorkPage(): JSX.Element {
     { label: '已完成', value: completedRecently.length }
   ]
 
+  // 归档提醒：已完成超过 10 天且未归档的工作项（本周内已忽略则不再提示）
+  const staleDone = data.issues.filter((i) => {
+    if (!i.completedAt) return false
+    const d = new Date(`${i.completedAt}T12:00:00`)
+    if (Number.isNaN(d.getTime())) return false
+    return (Date.now() - d.getTime()) / 86400000 >= 10
+  })
+  const [hintDismissed, setHintDismissed] = useState(false)
+  const weekKey = `tpanel.my.archive-hint.${new Date().toISOString().slice(0, 7)}`
+  const hintSuppressed = hintDismissed || localStorage.getItem(weekKey) === '1'
+  const dismissHint = (): void => {
+    try {
+      localStorage.setItem(weekKey, '1')
+    } catch {
+      // 忽略
+    }
+    setHintDismissed(true)
+  }
+  const copyArchiveCmd = (dirName: string): void => {
+    void navigator.clipboard.writeText(`python .trellis/scripts/task.py archive ${dirName}`).catch(() => undefined)
+  }
+
   return (
     <div className="mx-auto max-w-[1024px]">
       {/* 问候区 */}
@@ -117,6 +139,40 @@ export function YourWorkPage(): JSX.Element {
       </header>
 
       <div className="px-8 pb-16">
+        {/* 归档提醒：静置的已完成项 */}
+        {staleDone.length > 0 && !hintSuppressed && (
+          <div className="mb-3 flex items-start gap-3 rounded-my-lg border border-my-line bg-my-layer-2 p-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-my-md font-medium text-my-primary">
+                {staleDone.length} 个已完成任务已静置超过 10 天
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                {staleDone.slice(0, 5).map((i) => (
+                  <button
+                    key={i.id}
+                    type="button"
+                    title="点击复制归档命令"
+                    onClick={() => copyArchiveCmd(i.id)}
+                    className="flex items-center gap-1 text-my-sm text-my-tertiary hover:text-my-accent-text"
+                  >
+                    <Copy size={11} />
+                    {i.name}
+                  </button>
+                ))}
+                {staleDone.length > 5 && <span className="text-my-sm text-my-tertiary">等 {staleDone.length} 项</span>}
+              </div>
+              <div className="mt-1 text-my-xs text-my-disabled">点击条目复制归档命令（task.py archive），归档后从「归档」页可查。</div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissHint}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-my-icon-tertiary hover:bg-my-layer-1-hover"
+              title="本周不再提示"
+            >
+              <Check size={14} />
+            </button>
+          </div>
+        )}
         {/* 统计卡行 */}
         <div className="grid grid-cols-3 gap-3">
           {statCards.map((s) => (

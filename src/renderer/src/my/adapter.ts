@@ -104,6 +104,8 @@ function buildTaskIssue(task: TaskInfo, byDir: Map<string, TaskInfo>): Issue {
     labelIds: [],
     cycleId: null,
     moduleId: null,
+    pkg: record?.package ?? null,
+    scope: record?.scope ?? null,
     startDate: createdAt,
     dueDate: null,
     createdAt,

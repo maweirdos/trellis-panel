@@ -72,6 +72,7 @@ const GROUP_BY_OPTIONS: Array<{ id: GroupBy; label: string }> = [
   { id: 'state', label: '状态' },
   { id: 'priority', label: '优先级' },
   { id: 'assignee', label: '负责人' },
+  { id: 'package', label: '模块' },
   { id: 'labels', label: '标签' },
   { id: 'none', label: '无' }
 ]
@@ -126,6 +127,7 @@ type GroupMeta =
   | { kind: 'priority'; priority: Priority }
   | { kind: 'assignee'; member: Member | null }
   | { kind: 'label'; label: Label | null }
+  | { kind: 'package'; pkg: string }
   | { kind: 'none' }
 
 interface IssueGroup {
@@ -197,6 +199,18 @@ function buildGroups(
     })
     return byMember
   }
+  if (groupBy === 'package') {
+    // 模块 = task.json 既有 package 字段；缺失归入「未分组」
+    const pkgs = Array.from(new Set(sorted.map((i) => i.pkg ?? null))).sort((a, b) =>
+      (a ?? '').localeCompare(b ?? '')
+    )
+    return pkgs.map((pkg) => ({
+      key: `package:${pkg ?? 'none'}`,
+      title: pkg ?? '未分组',
+      meta: { kind: 'package', pkg: pkg ?? '' },
+      issues: sorted.filter((i) => (i.pkg ?? null) === pkg)
+    }))
+  }
   // labels：同一工作项可出现在多个标签组；无标签项归入「无标签」
   const byLabel: IssueGroup[] = labels.map((lb) => ({
     key: `label:${lb.id}`,
@@ -244,6 +258,17 @@ function GroupBadge({ meta, size = 12 }: { meta: GroupMeta; size?: number }): JS
       />
     )
   }
+  if (meta.kind === 'package') {
+    return (
+      <span
+        title={`模块：${meta.pkg || '未分组'}`}
+        className="flex shrink-0 items-center justify-center rounded-[3px] border border-my-line-strong text-[9px] font-semibold text-my-tertiary"
+        style={{ width: size + 6, height: size + 6 }}
+      >
+        {(meta.pkg || '·').slice(0, 1)}
+      </span>
+    )
+  }
   if (meta.kind === 'label') {
     if (meta.label) return <LabelDot label={meta.label} />
     return <span className="inline-block h-2 w-2 shrink-0 rounded-my-sm border border-dashed border-my-line-strong" />
@@ -269,6 +294,36 @@ function DueChip({ due, stateGroup, done }: { due: string; stateGroup: StateGrou
 }
 
 /** 空负责人占位 */
+/** 子工作项完成进度（基于 children 的状态统计） */
+function subProgress(issue: Issue, issues: Issue[], states: WorkItemState[]): { done: number; total: number } {
+  const total = issue.subIssueIds.length
+  if (total === 0) return { done: 0, total: 0 }
+  const done = issue.subIssueIds.reduce((acc, sid) => {
+    const sub = issues.find((i) => i.id === sid)
+    const group = sub ? states.find((s) => s.id === sub.stateId)?.group : undefined
+    return acc + (group === 'completed' || group === 'cancelled' ? 1 : 0)
+  }, 0)
+  return { done, total }
+}
+
+/** 子工作项进度徽标：图标 + 迷你进度条 + n/n */
+function SubProgressBadge({ done, total }: { done: number; total: number }): JSX.Element | null {
+  if (total === 0) return null
+  const allDone = done >= total
+  return (
+    <span
+      title={`子工作项 ${done}/${total} 已完成`}
+      className={clsx('flex shrink-0 items-center gap-1 text-my-xs', allDone ? 'text-my-success-text' : 'text-my-tertiary')}
+    >
+      <ListTree size={11} />
+      <span className="flex h-1 w-8 overflow-hidden rounded-full bg-my-layer-3">
+        <span style={{ width: `${Math.round((done / total) * 100)}%` }} className="bg-my-success" />
+      </span>
+      {done}/{total}
+    </span>
+  )
+}
+
 function EmptyAvatar({ size = 20 }: { size?: number }): JSX.Element {
   return <span className="inline-block shrink-0 rounded-full border border-dashed border-my-line-strong" style={{ width: size, height: size }} title="未分配" />
 }
@@ -468,8 +523,8 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
   const labels = issue.labelIds
     .map((id) => data.labels.find((l) => l.id === id))
     .filter((l): l is Label => Boolean(l))
-  const subCount = issue.subIssueIds.length
   const done = state?.group === 'completed' || state?.group === 'cancelled'
+  const sub = subProgress(issue, data.issues, data.states)
   return (
     <div
       role="button"
@@ -498,12 +553,7 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
         ))}
       </span>
       <span className={clsx('min-w-0 flex-1 truncate text-my-md text-my-secondary', done && 'opacity-60')}>{issue.name}</span>
-      {subCount > 0 && (
-        <span className="flex shrink-0 items-center gap-0.5 text-my-xs text-my-tertiary" title={`${subCount} 个子工作项`}>
-          <ListTree size={11} className="text-my-icon-tertiary" />
-          {subCount}
-        </span>
-      )}
+      <SubProgressBadge done={sub.done} total={sub.total} />
       {issue.dueDate && state && <DueChip due={issue.dueDate} stateGroup={state.group} done={done} />}
       {/* 拦截键盘冒泡，避免下拉内按键触发行点击 */}
       <span onKeyDown={(e) => e.stopPropagation()} className="flex shrink-0 items-center">
@@ -652,6 +702,7 @@ function BoardCard({ issue }: { issue: Issue }): JSX.Element {
   const { data, openIssue } = useMy()
   const state = data.states.find((s) => s.id === issue.stateId)
   const assignee = data.members.find((m) => m.id === issue.assigneeId)
+  const sub = subProgress(issue, data.issues, data.states)
   const labels = issue.labelIds
     .map((id) => data.labels.find((l) => l.id === id))
     .filter((l): l is Label => Boolean(l))
@@ -683,6 +734,7 @@ function BoardCard({ issue }: { issue: Issue }): JSX.Element {
         {labels.slice(0, 2).map((lb) => (
           <LabelPill key={lb.id} label={lb} />
         ))}
+        <SubProgressBadge done={sub.done} total={sub.total} />
         {issue.dueDate && state && <DueChip due={issue.dueDate} stateGroup={state.group} />}
         <span className="ml-auto flex shrink-0 items-center">
           {assignee ? <Avatar name={assignee.name} color={assignee.avatarColor} size={18} /> : <EmptyAvatar size={18} />}

@@ -150,6 +150,46 @@ export function AnalyticsPage(): JSX.Element {
     .sort((a, b) => b.count - a.count)
   const memberMax = Math.max(1, ...memberRows.map((r) => r.count))
 
+  // 模块维度：task.json 既有 package 字段聚合（完成 / 未完结）
+  const pkgRows = (() => {
+    const map = new Map<string, { done: number; open: number }>()
+    for (const i of issues) {
+      const k = i.pkg ?? '未分组'
+      const row = map.get(k) ?? { done: 0, open: 0 }
+      if (groupOf(i) === 'completed') row.done += 1
+      else if (groupOf(i) !== 'cancelled') row.open += 1
+      map.set(k, row)
+    }
+    return Array.from(map.entries())
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.open - a.open)
+  })()
+  const pkgMax = Math.max(1, ...pkgRows.map((r) => r.open))
+
+  // 周环比：本周 vs 上周 的新增与完成
+  const startOfWeek = (d: Date): Date => {
+    const c = new Date(d)
+    c.setHours(0, 0, 0, 0)
+    c.setDate(c.getDate() - ((c.getDay() + 6) % 7))
+    return c
+  }
+  const weekStart = startOfWeek(new Date())
+  const lastWeekStart = new Date(weekStart)
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7)
+  const toTs = (v: string | null): number => (v ? new Date(`${v}T12:00:00`).getTime() : 0)
+  const weekStats = {
+    createdThis: issues.filter((i) => toTs(i.createdAt) >= weekStart.getTime()).length,
+    createdLast: issues.filter((i) => {
+      const t = toTs(i.createdAt)
+      return t >= lastWeekStart.getTime() && t < weekStart.getTime()
+    }).length,
+    doneThis: issues.filter((i) => i.completedAt && toTs(i.completedAt) >= weekStart.getTime()).length,
+    doneLast: issues.filter((i) => {
+      const t = toTs(i.completedAt)
+      return t >= lastWeekStart.getTime() && t < weekStart.getTime()
+    }).length
+  }
+
   return (
     <div className="mx-auto max-w-[1024px]">
       {/* 顶栏 */}
@@ -234,6 +274,48 @@ export function AnalyticsPage(): JSX.Element {
                     <span className="w-7 shrink-0 text-right text-my-sm text-my-tertiary">{r.count}</span>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 模块维度 + 周环比 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="my-card p-4">
+            <h2 className="text-my-md font-medium text-my-secondary">模块分布（未完结 / 已完成）</h2>
+            <div className="mt-3 space-y-2.5">
+              {pkgRows.map((r) => (
+                <div key={r.name} className="flex items-center gap-3">
+                  <span className="w-20 shrink-0 truncate text-my-sm text-my-secondary">{r.name}</span>
+                  <div className="flex h-1.5 flex-1 items-center overflow-hidden rounded-full bg-my-layer-3">
+                    <span
+                      style={{ width: `${(r.open / pkgMax) * 100}%` }}
+                      className="h-full bg-my-accent"
+                    />
+                    <span
+                      style={{ width: `${(r.done / pkgMax) * 100}%` }}
+                      className="h-full bg-[var(--my-txt-icon-states-completed)]"
+                    />
+                  </div>
+                  <span className="w-16 shrink-0 text-right text-my-xs text-my-tertiary">
+                    未结 {r.open} · 完成 {r.done}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="my-card p-4">
+            <h2 className="text-my-md font-medium text-my-secondary">周环比</h2>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="rounded-my-md border border-my-line p-3">
+                <div className="text-my-xs text-my-tertiary">本周新增</div>
+                <div className="mt-1 text-[20px] font-semibold text-my-primary">{weekStats.createdThis}</div>
+                <div className="text-my-xs text-my-tertiary">上周 {weekStats.createdLast}</div>
+              </div>
+              <div className="rounded-my-md border border-my-line p-3">
+                <div className="text-my-xs text-my-tertiary">本周完成</div>
+                <div className="mt-1 text-[20px] font-semibold text-my-primary">{weekStats.doneThis}</div>
+                <div className="text-my-xs text-my-tertiary">上周 {weekStats.doneLast}</div>
               </div>
             </div>
           </div>

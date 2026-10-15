@@ -190,6 +190,16 @@ function buildIssues(): Issue[] {
         labelIds: s.lb,
         cycleId: s.cyc ?? null,
         moduleId: s.mod ?? null,
+        pkg: s.lb.includes('lb-fe')
+          ? '渲染层'
+          : s.lb.includes('lb-be')
+            ? '服务端'
+            : s.lb.includes('lb-infra')
+              ? '基础设施'
+              : s.lb.includes('lb-design')
+                ? '设计'
+                : '通用',
+        scope: null,
         startDate: day(s.off[0]),
         dueDate: day(s.off[1]),
         createdAt: day(s.off[0] - 5),
@@ -234,6 +244,8 @@ function buildIssues(): Issue[] {
         labelIds: [],
         cycleId: parent.cycleId,
         moduleId: parent.moduleId,
+        pkg: parent.pkg,
+        scope: null,
         startDate: parent.startDate,
         dueDate: parent.dueDate,
         createdAt: day(-10),

@@ -14,6 +14,8 @@ interface PaletteItem {
   icon: ReactNode
   hint?: string
   keywords?: string
+  /** 全文匹配域（如工作项描述），命中时标签补「描述」角标 */
+  fulltext?: string
   run: () => void
 }
 
@@ -70,6 +72,7 @@ export function CommandPalette(): JSX.Element | null {
       label: issue.name,
       icon: stateIcon(issue.stateId),
       keywords: issue.id,
+      fulltext: issue.description,
       run: () => {
         setPageMain('tasks')
         openIssue(issue.id)
@@ -106,7 +109,12 @@ export function CommandPalette(): JSX.Element | null {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return items
-    return items.filter((it) => it.label.toLowerCase().includes(q) || (it.keywords ?? '').toLowerCase().includes(q))
+    return items.filter(
+      (it) =>
+        it.label.toLowerCase().includes(q) ||
+        (it.keywords ?? '').toLowerCase().includes(q) ||
+        (it.fulltext ?? '').toLowerCase().includes(q)
+    )
   }, [items, query])
 
   useEffect(() => {
@@ -183,6 +191,9 @@ export function CommandPalette(): JSX.Element | null {
                 >
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center">{item.icon}</span>
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.fulltext && query.trim() && !item.label.toLowerCase().includes(query.trim().toLowerCase()) && (
+                    <span className="shrink-0 rounded bg-my-layer-3 px-1 text-my-2xs text-my-tertiary">描述命中</span>
+                  )}
                   {item.hint && <span className="shrink-0 text-my-xs text-my-tertiary">{item.hint}</span>}
                 </button>
               </div>
