@@ -53,57 +53,6 @@ const { autoUpdater } = (() => {
 const TRAY_ICON_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXUlEQVR4nGNgrQj/TwlmABEml2fCscDORrwYWS1WA/AZgq4OpwHYDMGmBm4ALgX4NIPEUQzApRCfwRgGEGMIslqsBuAzBF0dbQygyAsUBSJF0UhxQqJqUiYrM1GCAVVSVG+cKoQ/AAAAAElFTkSuQmCC'
 
-/** 文档小窗登记表：key（文件绝对路径）→ 窗口；重复打开即聚焦 */
-const docWindows = new Map<string, BrowserWindow>()
-
-function openDocWindow(opts: { key: string; title: string; file: string }): {
-  ok: boolean
-  focused?: boolean
-  error?: string
-} {
-  const existing = docWindows.get(opts.key)
-  if (existing && !existing.isDestroyed()) {
-    if (existing.isMinimized()) existing.restore()
-    existing.show()
-    existing.focus()
-    return { ok: true, focused: true }
-  }
-  const area = screen.getPrimaryDisplay().workArea
-  const offset = (docWindows.size % 6) * 32
-  const w = new BrowserWindow({
-    width: 560,
-    height: 680,
-    minWidth: 380,
-    minHeight: 320,
-    x: area.x + 140 + offset,
-    y: area.y + 60 + offset,
-    frame: false,
-    show: false,
-    alwaysOnTop: true,
-    backgroundColor: '#17181c',
-    title: opts.title,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      spellcheck: false
-    }
-  })
-  w.setAlwaysOnTop(true, 'screen-saver')
-  docWindows.set(opts.key, w)
-  w.on('closed', () => docWindows.delete(opts.key))
-  const query = `mode=doc&path=${encodeURIComponent(opts.file)}&title=${encodeURIComponent(opts.title)}`
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) {
-    w.loadURL(devUrl + `?${query}`)
-  } else {
-    w.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'doc', path: opts.file, title: opts.title } })
-  }
-  w.once('ready-to-show', () => w.show())
-  return { ok: true }
-}
-
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1360,
@@ -483,8 +432,7 @@ if (!gotLock) {
         const image = await target.webContents.capturePage()
         return image.isEmpty() ? null : `data:image/png;base64,${image.toPNG().toString('base64')}`
       },
-      capsule: capsuleApi,
-      openDocWindow
+      capsule: capsuleApi
     })
     createWindow()
     // 速记窗启动即预创建（隐藏），热键首次按下瞬时显示

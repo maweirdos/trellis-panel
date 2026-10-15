@@ -4,7 +4,6 @@ import { clsx } from 'clsx'
 import { Calendar, Check, ChevronDown, Copy, Plus, Star, X, FileText } from 'lucide-react'
 import { useMy } from '../store'
 import { useApp } from '../../store'
-import { api } from '../../api'
 import { currentWeekKey, nextWeekKey } from '../isoWeek'
 import { Avatar, Checkbox, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../ui'
 import { WorkspaceMark, PriorityIcon, StateGroupIcon } from '../icons'
@@ -403,13 +402,12 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                     key={d.name}
                     type="button"
                     title={`钉住 ${d.name}（置顶小窗，可多开）`}
-                    onClick={() => {
-                      void api.docOpen({
-                        key: docPath(d.name),
-                        title: `${ident}-${issue.sequenceId} · ${d.label}`,
-                        file: docPath(d.name)
+                    onClick={() =>
+                      store.openPinnedDoc({
+                        path: docPath(d.name),
+                        title: `${ident}-${issue.sequenceId} · ${d.label}`
                       })
-                    }}
+                    }
                     className="flex items-center gap-1 rounded-my-sm border border-my-line bg-my-layer-1 px-1.5 py-1 text-my-xs text-my-secondary hover:border-my-line-accent hover:text-my-accent-text"
                   >
                     <FileText size={11} className="text-my-icon-secondary" />

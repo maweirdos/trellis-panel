@@ -9,7 +9,6 @@ import { DialogHost } from './components/Dialogs'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { getReading } from './utils/reading'
 import { QuickTodoView } from './components/QuickTodoView'
-import { DocWindowApp } from './my/pages/DocWindow'
 import { ArtifactViewer } from './components/ArtifactViewer'
 import { IntakeModal } from './components/IntakeModal'
 import { attachDocumentChangedSource } from './reader/document-session-hub'
@@ -132,15 +131,6 @@ export default function App(): JSX.Element {
   const capsuleMode = useApp((s) => s.capsuleMode)
   const quickTodoMode = useApp((s) => s.quickTodoMode)
   const theme = useMy((s) => s.theme)
-
-  // 文档小窗模式：主进程以 ?mode=doc 拉起的独立置顶阅读窗（不跑 bootstrap/IPC 订阅）
-  if (new URLSearchParams(window.location.search).get('mode') === 'doc') {
-    return (
-      <div data-my-theme={theme} className="my-root flex h-full w-full flex-col bg-my-canvas text-[13px] text-my-primary">
-        <DocWindowApp />
-      </div>
-    )
-  }
 
   useEffect(() => {
     void bootstrap()

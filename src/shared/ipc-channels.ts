@@ -189,9 +189,7 @@ export const ipcInvoke = {
     setExplorerMenu: 'desktop:setExplorerMenu'
   },
   doc: {
-    open: 'doc:open',
-    read: 'doc:read',
-    setPin: 'doc:setPin'
+    read: 'doc:read'
   },
   cli: {
     run: 'cli:run',

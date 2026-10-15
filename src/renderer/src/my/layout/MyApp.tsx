@@ -7,6 +7,7 @@ import { useMy, isProjectPage } from '../store'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { ProjectSidebar } from './ProjectSidebar'
 import { CommandPalette } from '../CommandPalette'
+import { PinnedDocPanels } from '../pages/PinnedDocs'
 import { IssuePeek } from '../pages/IssuePeek'
 import { CreateIssueModal } from '../pages/work-items/CreateIssueModal'
 import { PageFrame } from './PageFrame'
@@ -164,6 +165,7 @@ export function MyApp(): JSX.Element {
           </div>
         )}
       </main>
+      <PinnedDocPanels />
       <IssuePeek />
       <CreateIssueModal />
       <CommandPalette />

@@ -366,16 +366,13 @@ const api = {
   windowClose: () => ipcRenderer.send(ipcInvoke.win.close),
   onWindowMaximized: (cb: (maximized: boolean) => void) => subscribe(ipcEvent.windowMaximized, cb),
 
-  docOpen: (opts: { key: string; title: string; file: string }) =>
-    ipcRenderer.invoke(ipcInvoke.doc.open, opts) as Promise<{ ok: boolean; focused?: boolean; error?: string }>,
   docRead: (path: string) =>
     ipcRenderer.invoke(ipcInvoke.doc.read, path) as Promise<{
       ok: boolean
       content?: string
       mtime?: number
       error?: string
-    }>,
-  docSetPin: (on: boolean) => ipcRenderer.invoke(ipcInvoke.doc.setPin, on) as Promise<{ ok: boolean }>
+    }>
 }
 
 export type Api = typeof api
