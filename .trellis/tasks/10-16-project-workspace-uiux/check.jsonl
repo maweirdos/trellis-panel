@@ -1,0 +1,14 @@
+{"file":".trellis/spec/frontend/quality.md","reason":"Type safety, forbidden patterns and existing quality rules"}
+{"file":".trellis/spec/frontend/my-ui-module.md","reason":"Token validity and preservation of current root/ACP isolation contracts"}
+{"file":".trellis/spec/frontend/react-pitfalls.md","reason":"Reader unmount, effects and source-state preservation review"}
+{"file":".trellis/spec/frontend/store-conventions.md","reason":"Review task presentation and semantic navigation state ownership"}
+{"file":".trellis/spec/frontend/ipc-electron.md","reason":"Review no-bridge preview and native title-bar interactions"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/prd.md","reason":"Verify AC1–AC9, approved fixed rail/context layout and current-style/light-theme hierarchy without inflating deferred capabilities"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/design.md","reason":"Verify shared task-instance lifetime and precise project/application/local boundaries"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/implement.md","reason":"Required automated and mounted/native UI checks; pure smoke limits"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/research/current-state.md","reason":"Defect anchors and protection of existing dirty concurrent work"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/research/visual-refinement.md","reason":"Verify the rejected header/rail/outer frame are corrected visually while preserving keyboard/native and workflow contracts"}
+{"file":".trellis/spec/backend/index.md","reason":"Native main-window appearance and existing settings theme updates are now in the explicit visual correction scope"}
+{"file":".trellis/spec/backend/ipc-conventions.md","reason":"No new IPC; preserve existing thin settings handler and native process boundaries"}
+{"file":".trellis/spec/backend/quality.md","reason":"Review supported Electron appearance calls, platform and destroyed-window guards"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/research/native-frame-diagnosis.md","reason":"Evidence and exact supported DWM border correction; preserve resizing/snap and other windows"}

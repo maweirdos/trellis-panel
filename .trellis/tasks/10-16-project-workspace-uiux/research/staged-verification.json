@@ -1,0 +1,15 @@
+{
+  "tree": "fb6ea843f3f7c92b110127fffaf8b6a73aaf8517",
+  "path": "C:\\Users\\Maweirdos\\.codex\\visualizations\\2026\\10\\16\\01a1436e-1074-7543-b63b-a091acb889ed\\uiux-commit-verify-6262b16a",
+  "scope": "staged code snapshot only; unrelated working-tree changes excluded",
+  "packaging_correction": "Include required existing document-window API wiring after isolated typecheck revealed missing contracts; original unrelated ACP/other task changes remain excluded.",
+  "results": {
+    "typecheck": "passed",
+    "build": "passed",
+    "navigation": "passed",
+    "task_presentation": "passed",
+    "uiux_wiring": "passed",
+    "ipc_registry_153": "passed"
+  },
+  "code_commit": "519c69ca9d103f20be74fd5dda8718a2485338ff"
+}

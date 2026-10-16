@@ -1,0 +1,13 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend entry point and mandatory development guidelines"}
+{"file":".trellis/spec/frontend/my-ui-module.md","reason":"Existing tokens, shell boundaries and project/ACP scope contracts; old domain hierarchy is superseded only by this task design"}
+{"file":".trellis/spec/frontend/store-conventions.md","reason":"Zustand slice ownership, cross-domain actions and persistence"}
+{"file":".trellis/spec/frontend/react-pitfalls.md","reason":"Stable component identity and effect lifecycle during reader presentation changes"}
+{"file":".trellis/spec/frontend/ipc-electron.md","reason":"Native bridge guards and title-bar drag/no-drag requirements"}
+{"file":".trellis/spec/frontend/electron-browser-api-restrictions.md","reason":"Electron-compatible interaction and no browser modal APIs"}
+{"file":".trellis/spec/guides/pre-implementation-checklist.md","reason":"Search and reuse before introducing helpers or state"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/prd.md","reason":"User scope, observable acceptance and explicit deferred capabilities"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/design.md","reason":"Shared header, peer navigation, one task reader instance and scope-compatible layout"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/implement.md","reason":"Ordered execution, ownership and validation plan"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/research/current-state.md","reason":"Repository evidence, broken central workspace, reader lifecycle and real collaboration limits"}
+{"file":"docs/proposals/2026-10-15-hifox-roadmap/05-project-workspace-and-integrations.md","reason":"Authoritative latest window-root layout and deferred integration/run/log/Git boundary"}
+{"file":".trellis/tasks/10-16-project-workspace-uiux/research/visual-refinement.md","reason":"Latest user rejection and Codex visual benchmark; scoped renderer/native chrome refinement without changing navigation/workflows"}
