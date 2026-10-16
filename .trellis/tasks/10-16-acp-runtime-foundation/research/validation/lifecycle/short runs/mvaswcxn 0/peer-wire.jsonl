@@ -1,0 +1,4 @@
+{"kind":"started","pid":59940,"scenario":"normal","directory":"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvaswcxn 0"}
+{"kind":"in","pid":59940,"message":{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false},"clientInfo":{"name":"acpx","version":"0.19.5"}}}}
+{"kind":"out","pid":59940,"message":{"id":0,"result":{"protocolVersion":1,"agentInfo":{"name":"independent-strict-peer","version":"1.0.0"},"agentCapabilities":{"loadSession":true,"promptCapabilities":{"embeddedContext":false},"mcpCapabilities":{"http":false,"sse":false}},"authMethods":[]}}}
+{"kind":"stdin-closed","pid":59940}

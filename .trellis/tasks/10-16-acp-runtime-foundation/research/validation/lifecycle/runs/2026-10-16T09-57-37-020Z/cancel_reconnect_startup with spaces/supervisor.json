@@ -1,0 +1,32 @@
+{
+  "caseName": "cancel_reconnect_startup",
+  "nonce": "db0734ec-7edd-4895-83ee-0dfc7307e032",
+  "workerPid": 56856,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 56856,
+      "alive": false
+    },
+    {
+      "pid": 62248,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 56856,
+      "alive": false
+    },
+    {
+      "pid": 62248,
+      "alive": false
+    }
+  ],
+  "output": [
+    "{\"caseName\":\"cancel_reconnect_startup\",\"outcome\":\"case-error\",\"durationMs\":10063,\"error\":{\"name\":\"AcpRuntimeError\",\"code\":\"ACP_SESSION_INIT_FAILED\",\"message\":\"ACP agent node.exe did not complete ACP initialization within 1600ms. Check that the configured command starts an ACP server.\",\"cause\":{\"message\":\"Timed out after 1600ms\"}}}\n"
+  ]
+}

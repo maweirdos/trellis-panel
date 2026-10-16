@@ -1,0 +1,65 @@
+{
+  "version": "acpx@0.19.5",
+  "node": "v24.12.0",
+  "platform": "win32",
+  "execPath": "C:\\nvm4w\\nodejs\\node.exe",
+  "runRoot": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-04-23-290Z",
+  "cases": [
+    {
+      "caseName": "peer_control",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvaswcxn 0",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 4000ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-78510eb1-0ab4-4ce1-9094-a557c2331ec5"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-78510eb1-0ab4-4ce1-9094-a557c2331ec5"
+          },
+          "pid": 59940,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-78510eb1-0ab4-4ce1-9094-a557c2331ec5"
+          },
+          "pid": 59940,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 59840,
+          "alive": false
+        },
+        {
+          "pid": 59940,
+          "alive": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "schema": "acpx.session.v1",
+  "acpx_record_id": "malformed-init",
+  "acp_session_id": "opaque-agent-session:malformed-init:729",
+  "agent_command": "\"C:\\\\nvm4w\\\\nodejs\\\\node.exe\" \"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\protocol\\\\strict-peer.mjs\" \"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\protocol\\\\runs\\\\2026-10-16T09-57-26-735Z\\\\malformed-init\" malformed-init",
+  "agent_argv": [
+    "C:\\nvm4w\\nodejs\\node.exe",
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\malformed-init",
+    "malformed-init"
+  ],
+  "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\malformed-init",
+  "name": "malformed-init",
+  "created_at": "2026-10-16T09:58:06.290Z",
+  "last_used_at": "2026-10-16T09:58:07.338Z",
+  "last_seq": 0,
+  "last_request_id": "research-12",
+  "event_log": {
+    "active_path": "C:\\Users\\Maweirdos\\.acpx\\sessions\\malformed-init.stream.ndjson",
+    "segment_count": 5,
+    "max_segment_bytes": 67108864,
+    "max_segments": 5,
+    "last_write_error": null
+  },
+  "closed": false,
+  "pid": 59148,
+  "agent_started_at": "2026-10-16T09:58:03.382Z",
+  "last_prompt_at": "2026-10-16T09:58:06.297Z",
+  "protocol_version": "one",
+  "agent_capabilities": {},
+  "title": null,
+  "messages": [
+    {
+      "User": {
+        "id": "66a2c051-00d2-4478-a838-5fac104ed7d6",
+        "content": [
+          {
+            "Text": "must fail before a fixture prompt"
+          }
+        ]
+      }
+    },
+    {
+      "Agent": {
+        "content": [
+          {
+            "Text": "你好，协议✅"
+          },
+          {
+            "ToolUse": {
+              "id": "fixed-tool",
+              "name": "Fixture tool",
+              "raw_input": "{}",
+              "input": {},
+              "is_input_complete": true,
+              "thought_signature": null
+            }
+          },
+          {
+            "Text": " turn:1"
+          }
+        ],
+        "tool_results": {
+          "fixed-tool": {
+            "tool_use_id": "fixed-tool",
+            "tool_name": "Fixture tool",
+            "is_error": false,
+            "content": {
+              "Text": "{\"fixture\":true}"
+            },
+            "output": {
+              "fixture": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "updated_at": "2026-10-16T09:58:06.324Z",
+  "cumulative_token_usage": {},
+  "request_token_usage": {},
+  "acpx": {
+    "session_origin": "new",
+    "current_model_id": "small",
+    "available_models": [
+      "small",
+      "large"
+    ],
+    "available_model_names": {
+      "small": "Small",
+      "large": "Large"
+    },
+    "model_control": "legacy_set_model",
+    "config_options": [
+      {
+        "id": "quality",
+        "name": "Fixture quality",
+        "type": "select",
+        "currentValue": "fast",
+        "options": [
+          {
+            "value": "fast",
+            "name": "Fast"
+          },
+          {
+            "value": "careful",
+            "name": "Careful"
+          }
+        ]
+      }
+    ]
+  }
+}

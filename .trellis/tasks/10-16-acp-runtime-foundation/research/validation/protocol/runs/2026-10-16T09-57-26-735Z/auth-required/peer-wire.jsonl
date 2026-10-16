@@ -1,0 +1,6 @@
+{"kind":"started","pid":62264,"scenario":"auth-required","directory":"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\auth-required"}
+{"kind":"in","pid":62264,"message":{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false},"clientInfo":{"name":"acpx","version":"0.19.5"}}}}
+{"kind":"out","pid":62264,"message":{"id":0,"result":{"protocolVersion":1,"agentInfo":{"name":"independent-strict-peer","version":"1.0.0"},"agentCapabilities":{"loadSession":true,"promptCapabilities":{"embeddedContext":false},"mcpCapabilities":{"http":false,"sse":false}},"authMethods":[{"id":"fixture-login","name":"Fixture login"}]}}}
+{"kind":"in","pid":62264,"message":{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\auth-required","mcpServers":[]}}}
+{"kind":"out","pid":62264,"message":{"id":1,"error":{"code":-32000,"message":"Fixture authentication required"}}}
+{"kind":"stdin-closed","pid":62264}

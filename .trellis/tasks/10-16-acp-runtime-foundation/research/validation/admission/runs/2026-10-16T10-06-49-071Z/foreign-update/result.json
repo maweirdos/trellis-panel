@@ -1,0 +1,271 @@
+{
+  "scenario": "foreign-update",
+  "directory": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\admission\\runs\\2026-10-16T10-06-49-071Z\\foreign-update",
+  "timeline": [
+    {
+      "seq": 35,
+      "kind": "before-spawn"
+    },
+    {
+      "seq": 36,
+      "kind": "spawned",
+      "pid": 40864
+    },
+    {
+      "seq": 37,
+      "kind": "store-save",
+      "protocolVersion": 1,
+      "hasSnakeCaseProtocolField": false,
+      "backendSessionId": "opaque-agent-session:normal:729",
+      "markerPresent": false,
+      "foreignEnvelopeIdPresent": false
+    },
+    {
+      "seq": 38,
+      "kind": "ensure-returned",
+      "backendSessionId": "opaque-agent-session:normal:729"
+    },
+    {
+      "seq": 39,
+      "kind": "facade-admitted"
+    },
+    {
+      "seq": 40,
+      "kind": "store-save",
+      "protocolVersion": 1,
+      "hasSnakeCaseProtocolField": false,
+      "backendSessionId": "opaque-agent-session:normal:729",
+      "markerPresent": false,
+      "foreignEnvelopeIdPresent": false
+    },
+    {
+      "seq": 41,
+      "kind": "store-save",
+      "protocolVersion": 1,
+      "hasSnakeCaseProtocolField": false,
+      "backendSessionId": "opaque-agent-session:normal:729",
+      "markerPresent": false,
+      "foreignEnvelopeIdPresent": false
+    },
+    {
+      "seq": 42,
+      "kind": "prompt-started"
+    },
+    {
+      "seq": 43,
+      "kind": "normalized-text",
+      "text": "WRONG-SESSION-MARKER"
+    },
+    {
+      "seq": 44,
+      "kind": "normalized-text",
+      "text": "你好，协议✅"
+    },
+    {
+      "seq": 45,
+      "kind": "normalized-text",
+      "text": " turn:1"
+    },
+    {
+      "seq": 46,
+      "kind": "store-save",
+      "protocolVersion": 1,
+      "hasSnakeCaseProtocolField": false,
+      "backendSessionId": "opaque-agent-session:normal:729",
+      "markerPresent": true,
+      "foreignEnvelopeIdPresent": false
+    },
+    {
+      "seq": 47,
+      "kind": "store-rejected-marker"
+    },
+    {
+      "seq": 48,
+      "kind": "store-save",
+      "protocolVersion": 1,
+      "hasSnakeCaseProtocolField": false,
+      "backendSessionId": "opaque-agent-session:normal:729",
+      "markerPresent": true,
+      "foreignEnvelopeIdPresent": false
+    },
+    {
+      "seq": 49,
+      "kind": "store-rejected-marker"
+    },
+    {
+      "seq": 50,
+      "kind": "exit",
+      "pid": 40864,
+      "signal": null
+    },
+    {
+      "seq": 51,
+      "kind": "store-save",
+      "protocolVersion": 1,
+      "hasSnakeCaseProtocolField": false,
+      "backendSessionId": "opaque-agent-session:normal:729",
+      "markerPresent": true,
+      "foreignEnvelopeIdPresent": false
+    },
+    {
+      "seq": 52,
+      "kind": "store-rejected-marker"
+    },
+    {
+      "seq": 53,
+      "kind": "turn-settled",
+      "result": {
+        "status": "failed",
+        "error": {
+          "message": "Host timing probe rejected projected marker",
+          "code": "RUNTIME"
+        }
+      }
+    },
+    {
+      "seq": 54,
+      "kind": "store-save",
+      "protocolVersion": 1,
+      "hasSnakeCaseProtocolField": false,
+      "backendSessionId": "opaque-agent-session:normal:729",
+      "markerPresent": true,
+      "foreignEnvelopeIdPresent": false
+    },
+    {
+      "seq": 55,
+      "kind": "store-rejected-marker"
+    },
+    {
+      "seq": 56,
+      "kind": "store-save",
+      "protocolVersion": 1,
+      "hasSnakeCaseProtocolField": false,
+      "backendSessionId": "opaque-agent-session:normal:729",
+      "markerPresent": true,
+      "foreignEnvelopeIdPresent": false
+    },
+    {
+      "seq": 57,
+      "kind": "store-rejected-marker"
+    }
+  ],
+  "guard": "public camelCase protocolVersion !== 1, then nonempty handle.backendSessionId",
+  "handle": {
+    "sessionKey": "admission-foreign-update",
+    "backend": "acpx",
+    "runtimeSessionName": "acpx:v2:eyJuYW1lIjoiYWRtaXNzaW9uLWZvcmVpZ24tdXBkYXRlIiwiYWdlbnQiOiJhZG1pc3Npb24tcGVlciIsImN3ZCI6IkQ6XFxteV9kZW1vXFx0cmVsbGlzLXBhbmVsXFwudHJlbGxpc1xcdGFza3NcXDEwLTE2LWFjcC1ydW50aW1lLWZvdW5kYXRpb25cXHJlc2VhcmNoXFx2YWxpZGF0aW9uXFxhZG1pc3Npb25cXHJ1bnNcXDIwMjYtMTAtMTZUMTAtMDYtNDktMDcxWlxcZm9yZWlnbi11cGRhdGUiLCJtb2RlIjoicGVyc2lzdGVudCIsImFjcHhSZWNvcmRJZCI6ImFkbWlzc2lvbi1mb3JlaWduLXVwZGF0ZSIsImJhY2tlbmRTZXNzaW9uSWQiOiJvcGFxdWUtYWdlbnQtc2Vzc2lvbjpub3JtYWw6NzI5In0",
+    "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\admission\\runs\\2026-10-16T10-06-49-071Z\\foreign-update",
+    "acpxRecordId": "admission-foreign-update",
+    "backendSessionId": "opaque-agent-session:normal:729"
+  },
+  "admitted": true,
+  "turn": {
+    "result": {
+      "status": "failed",
+      "error": {
+        "message": "Host timing probe rejected projected marker",
+        "code": "RUNTIME"
+      }
+    },
+    "events": [
+      {
+        "type": "text_delta",
+        "text": "WRONG-SESSION-MARKER",
+        "stream": "output",
+        "tag": "agent_message_chunk"
+      },
+      {
+        "type": "text_delta",
+        "text": "你好，协议✅",
+        "stream": "output",
+        "tag": "agent_message_chunk"
+      },
+      {
+        "type": "tool_call",
+        "text": "Fixture tool (pending)",
+        "tag": "tool_call",
+        "title": "Fixture tool",
+        "toolCallId": "fixed-tool",
+        "status": "pending",
+        "kind": "read",
+        "locations": [
+          {
+            "path": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\admission\\runs\\2026-10-16T10-06-49-071Z\\foreign-update\\fixture.txt"
+          }
+        ]
+      },
+      {
+        "type": "tool_call",
+        "text": "tool call (completed): controlled output",
+        "tag": "tool_call_update",
+        "title": "tool call",
+        "toolCallId": "fixed-tool",
+        "status": "completed",
+        "rawOutput": {
+          "fixture": true
+        },
+        "content": [
+          {
+            "content": {
+              "text": "controlled output",
+              "type": "text"
+            },
+            "type": "content"
+          }
+        ]
+      },
+      {
+        "type": "status",
+        "text": "plan: Inspect fixture",
+        "tag": "plan",
+        "entries": [
+          {
+            "content": "Inspect fixture",
+            "status": "completed",
+            "priority": "medium"
+          }
+        ]
+      },
+      {
+        "type": "text_delta",
+        "text": " turn:1",
+        "stream": "output",
+        "tag": "agent_message_chunk"
+      }
+    ]
+  },
+  "aliveBeforeCallerCleanup": [
+    {
+      "pid": 40864,
+      "alive": false
+    }
+  ],
+  "shutdown": {
+    "message": "ACP runtime shutdown failed."
+  },
+  "aliveAfterShutdown": [
+    {
+      "pid": 40864,
+      "alive": false
+    }
+  ],
+  "requests": [
+    {
+      "method": "initialize"
+    },
+    {
+      "method": "session/new"
+    },
+    {
+      "method": "session/prompt",
+      "sessionId": "opaque-agent-session:normal:729"
+    }
+  ],
+  "promptTransmitted": true,
+  "newSessionTransmitted": true,
+  "markerTiming": {
+    "normalizedSeq": 43,
+    "firstProjectedSaveSeq": 46,
+    "envelopeIdExposedInPublicSave": false
+  }
+}

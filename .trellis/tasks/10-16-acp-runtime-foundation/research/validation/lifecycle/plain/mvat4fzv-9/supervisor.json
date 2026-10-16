@@ -1,0 +1,42 @@
+{
+  "caseName": "shutdown_grandchild",
+  "nonce": "58f8a028-b09b-4382-a108-149af5fdc340",
+  "workerPid": 37344,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 37344,
+      "alive": false
+    },
+    {
+      "pid": 52852,
+      "alive": false
+    },
+    {
+      "pid": 20244,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 37344,
+      "alive": false
+    },
+    {
+      "pid": 52852,
+      "alive": false
+    },
+    {
+      "pid": 20244,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat4fzv-9 --nonce 58f8a028-b09b-4382-a108-149af5fdc340 --mode grandchild --stage main --extra literal spaces & metacharacters\n",
+    "[acpx] initialized protocol version 1\n",
+    "{\"caseName\":\"shutdown_grandchild\",\"outcome\":\"case-settled\",\"durationMs\":8255}\n"
+  ]
+}

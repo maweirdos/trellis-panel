@@ -1,0 +1,208 @@
+{
+  "caseName": "no_child_env",
+  "nonce": "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+  "startedAt": 1792145136761,
+  "observations": [
+    {
+      "kind": "registry",
+      "stage": "main",
+      "requestedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0",
+        "--nonce",
+        "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "resolvedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0",
+        "--nonce",
+        "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ]
+    }
+  ],
+  "lifecycle": [
+    {
+      "at": 1792145137018,
+      "kind": "before",
+      "launchId": "7e774e0b-d9c0-4528-89e1-fe0723567a01",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-98c0f5ac-f4ec-4b1c-912a-48233c4f55b3"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0",
+        "--nonce",
+        "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0"
+    },
+    {
+      "at": 1792145137026,
+      "kind": "spawned",
+      "launchId": "7e774e0b-d9c0-4528-89e1-fe0723567a01",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-98c0f5ac-f4ec-4b1c-912a-48233c4f55b3"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0",
+        "--nonce",
+        "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0",
+      "pid": 47416,
+      "startedAt": "2026-10-16T10:05:37.025Z"
+    },
+    {
+      "at": 1792145143436,
+      "kind": "exit",
+      "launchId": "7e774e0b-d9c0-4528-89e1-fe0723567a01",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-98c0f5ac-f4ec-4b1c-912a-48233c4f55b3"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0",
+        "--nonce",
+        "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0",
+      "pid": 47416,
+      "startedAt": "2026-10-16T10:05:37.025Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T10:05:43.436Z"
+    }
+  ],
+  "outcome": "case-error",
+  "error": {
+    "name": "AcpRuntimeError",
+    "code": "ACP_SESSION_INIT_FAILED",
+    "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+    "cause": {
+      "message": "Timed out after 4000ms"
+    }
+  },
+  "cleanup": [
+    {
+      "shutdown": "settled"
+    }
+  ],
+  "fixture": [
+    {
+      "at": 1792145137066,
+      "kind": "agent_started",
+      "pid": 47416,
+      "parentPid": 50344,
+      "nonce": "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+      "stage": "main",
+      "execPath": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "argv": [
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasxxl2-0",
+        "--nonce",
+        "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "childPath": "C:\\Program Files\\PowerShell\\7;C:\\Users\\Maweirdos\\.codex\\tmp\\arg0\\codex-arg0glQQV9;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\libheif\\libheif\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\jxrlib\\jxrlib\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\poppler\\Library\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\override;D:\\my_work\\environment\\Python310\\Scripts\\;D:\\my_work\\environment\\Python310\\;D:\\my_work\\environment\\Scripts\\;D:\\my_work\\environment\\;D:\\Dev_Application\\Oracle11\\product\\11.2.0\\dbhome_1\\bin;.;D:\\my_work\\environment\\java\\OpenJDK21\\bin;D:\\my_work\\environment\\java\\OpenJDK21\\jre\\bin;D:\\my_work\\development_tool\\VMware\\VMware Workstation\\bin\\;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;D:\\my_work\\environment\\apache-maven-3.6.3\\bin;D:\\my_soft_install\\Bandizip\\;node_global\\node_modules;C:\\ProgramData\\Oracle\\Java\\javapath;D:\\Dev_Application\\MySQL Server 8.3\\bin;C:\\Program Files\\dotnet\\;D:\\my_work\\development_tool\\Git\\cmd;D:\\my_work\\development_tool\\miniconda3\\Library\\bin;D:\\my_work\\development_tool\\miniconda3\\Scripts;D:\\my_work\\environment\\pyenv\\pyenv-win\\bin;D:\\my_work\\environment\\pyenv\\pyenv-win\\shims;C:\\Users\\Maweirdos\\AppData\\Roaming\\npm;D:\\my_work\\development_tool\\cursor\\resources\\app\\bin;d:\\my_work\\development_tool\\cursor\\resources\\app\\bin;D:\\my_work\\environment\\nvm;C:\\nvm4w\\nodejs;C:\\Program Files\\PowerShell\\7\\;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\Tailscale\\;C:\\Users\\Maweirdos\\AppData\\Local\\agy\\bin;C:\\Users\\Maweirdos\\scoop\\shims;D:\\my_work\\environment\\java\\jdk17\\bin;D:\\my_work\\environment\\java\\jdk17\\jre\\bin;D:\\my_work\\development_tool\\Tailscale\\;D:\\my_work\\environment\\pyenv\\pyenv-win;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell;C:\\Users\\Maweirdos\\AppData\\Local\\Microsoft\\WindowsApps;D:\\my_work\\development_tool\\CodeBuddy CN\\bin;C:\\Users\\Maweirdos\\AppData\\Local\\Microsoft\\WinGet\\Packages\\zufuliu.notepad4_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\\Users\\Maweirdos\\.qoder\\bin\\qodercli;D:\\my_work\\development_tool\\Qoder\\bin;D:\\my_work\\development_tool\\IntelliJ IDEA 2026.2\\bin;C:\\Users\\Maweirdos\\AppData\\Local\\Android\\Sdk\\platform-tools;C:\\Users\\Maweirdos\\.hifox\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\fallback;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\git\\cmd;C:\\Users\\Maweirdos\\AppData\\Local\\OpenAI\\Codex\\bin\\77fbd4d52e601e0a;C:\\Users\\Maweirdos\\AppData\\Local\\OpenAI\\Codex\\bin\\9614f1d9b40d9c4f"
+    },
+    {
+      "at": 1792145137069,
+      "kind": "request",
+      "pid": 47416,
+      "parentPid": 50344,
+      "nonce": "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+      "stage": "main",
+      "method": "initialize",
+      "id": 0
+    },
+    {
+      "at": 1792145137069,
+      "kind": "response_written",
+      "pid": 47416,
+      "parentPid": 50344,
+      "nonce": "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+      "stage": "main",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "result": {
+          "protocolVersion": 1,
+          "agentInfo": {
+            "name": "trellis-original-lifecycle-fixture",
+            "version": "1.0.0"
+          },
+          "agentCapabilities": {
+            "loadSession": true,
+            "promptCapabilities": {
+              "embeddedContext": false
+            },
+            "mcpCapabilities": {
+              "http": false,
+              "sse": false
+            }
+          },
+          "authMethods": []
+        }
+      }
+    },
+    {
+      "at": 1792145143429,
+      "kind": "stdin_end",
+      "pid": 47416,
+      "parentPid": 50344,
+      "nonce": "98c0f5ac-f4ec-4b1c-912a-48233c4f55b3",
+      "stage": "main"
+    }
+  ],
+  "finishedAt": 1792145149222,
+  "durationMs": 12461
+}

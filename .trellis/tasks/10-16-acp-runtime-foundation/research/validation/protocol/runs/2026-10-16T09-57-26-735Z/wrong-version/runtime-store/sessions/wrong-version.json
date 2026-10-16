@@ -1,0 +1,122 @@
+{
+  "schema": "acpx.session.v1",
+  "acpx_record_id": "wrong-version",
+  "acp_session_id": "opaque-agent-session:wrong-version:729",
+  "agent_command": "\"C:\\\\nvm4w\\\\nodejs\\\\node.exe\" \"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\protocol\\\\strict-peer.mjs\" \"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\protocol\\\\runs\\\\2026-10-16T09-57-26-735Z\\\\wrong-version\" wrong-version",
+  "agent_argv": [
+    "C:\\nvm4w\\nodejs\\node.exe",
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\wrong-version",
+    "wrong-version"
+  ],
+  "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\wrong-version",
+  "name": "wrong-version",
+  "created_at": "2026-10-16T09:58:14.542Z",
+  "last_used_at": "2026-10-16T09:58:15.583Z",
+  "last_seq": 0,
+  "last_request_id": "research-13",
+  "event_log": {
+    "active_path": "C:\\Users\\Maweirdos\\.acpx\\sessions\\wrong-version.stream.ndjson",
+    "segment_count": 5,
+    "max_segment_bytes": 67108864,
+    "max_segments": 5,
+    "last_write_error": null
+  },
+  "closed": false,
+  "pid": 54884,
+  "agent_started_at": "2026-10-16T09:58:11.658Z",
+  "last_prompt_at": "2026-10-16T09:58:14.549Z",
+  "protocol_version": 999,
+  "agent_capabilities": {
+    "loadSession": true,
+    "promptCapabilities": {
+      "embeddedContext": false
+    },
+    "mcpCapabilities": {
+      "http": false,
+      "sse": false
+    }
+  },
+  "title": null,
+  "messages": [
+    {
+      "User": {
+        "id": "f607c431-e89d-40e4-9c53-420424e0b82f",
+        "content": [
+          {
+            "Text": "must fail before a fixture prompt"
+          }
+        ]
+      }
+    },
+    {
+      "Agent": {
+        "content": [
+          {
+            "Text": "你好，协议✅"
+          },
+          {
+            "ToolUse": {
+              "id": "fixed-tool",
+              "name": "Fixture tool",
+              "raw_input": "{}",
+              "input": {},
+              "is_input_complete": true,
+              "thought_signature": null
+            }
+          },
+          {
+            "Text": " turn:1"
+          }
+        ],
+        "tool_results": {
+          "fixed-tool": {
+            "tool_use_id": "fixed-tool",
+            "tool_name": "Fixture tool",
+            "is_error": false,
+            "content": {
+              "Text": "{\"fixture\":true}"
+            },
+            "output": {
+              "fixture": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "updated_at": "2026-10-16T09:58:14.568Z",
+  "cumulative_token_usage": {},
+  "request_token_usage": {},
+  "acpx": {
+    "session_origin": "new",
+    "current_model_id": "small",
+    "available_models": [
+      "small",
+      "large"
+    ],
+    "available_model_names": {
+      "small": "Small",
+      "large": "Large"
+    },
+    "model_control": "legacy_set_model",
+    "config_options": [
+      {
+        "id": "quality",
+        "name": "Fixture quality",
+        "type": "select",
+        "currentValue": "fast",
+        "options": [
+          {
+            "value": "fast",
+            "name": "Fast"
+          },
+          {
+            "value": "careful",
+            "name": "Careful"
+          }
+        ]
+      }
+    ]
+  }
+}

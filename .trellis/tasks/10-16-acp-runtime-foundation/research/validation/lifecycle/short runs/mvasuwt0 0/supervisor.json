@@ -1,0 +1,35 @@
+{
+  "caseName": "explicit_paths_restricted_path",
+  "nonce": "6ca77846-9afa-496c-acba-129b8516022e",
+  "workerPid": 57988,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 57988,
+      "alive": false
+    },
+    {
+      "pid": 56540,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 57988,
+      "alive": false
+    },
+    {
+      "pid": 56540,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasuwt0 0 --nonce 6ca77846-9afa-496c-acba-129b8516022e --mode normal --stage main --extra literal spaces & metacharacters\n",
+    "[acpx] initialized protocol version 1\n",
+    "[acpx] agent processes did not exit after SIGTERM; forcing SIGKILL\n",
+    "{\"caseName\":\"explicit_paths_restricted_path\",\"outcome\":\"case-error\",\"durationMs\":12446,\"error\":{\"name\":\"AcpRuntimeError\",\"code\":\"ACP_SESSION_INIT_FAILED\",\"message\":\"ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.\",\"cause\":{\"message\":\"Timed out after 4000ms\"}}}\n"
+  ]
+}

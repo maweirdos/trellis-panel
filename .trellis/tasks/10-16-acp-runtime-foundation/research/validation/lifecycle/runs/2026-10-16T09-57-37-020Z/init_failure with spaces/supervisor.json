@@ -1,0 +1,32 @@
+{
+  "caseName": "init_failure",
+  "nonce": "b1208d3a-dd04-4ddf-afa1-4f145ffec385",
+  "workerPid": 52320,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 52320,
+      "alive": false
+    },
+    {
+      "pid": 32292,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 52320,
+      "alive": false
+    },
+    {
+      "pid": 32292,
+      "alive": false
+    }
+  ],
+  "output": [
+    "{\"caseName\":\"init_failure\",\"outcome\":\"ensure-rejected\",\"durationMs\":6973,\"error\":{\"name\":\"Error\",\"message\":\"ensure exceeded 4500ms\"}}\n"
+  ]
+}

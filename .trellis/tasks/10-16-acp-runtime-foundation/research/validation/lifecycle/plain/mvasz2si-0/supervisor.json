@@ -1,0 +1,35 @@
+{
+  "caseName": "plain_baseline",
+  "nonce": "aa4e9405-1a39-4fd6-965d-6db863a40224",
+  "workerPid": 55556,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 55556,
+      "alive": false
+    },
+    {
+      "pid": 60940,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 55556,
+      "alive": false
+    },
+    {
+      "pid": 60940,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: C:\\nvm4w\\nodejs\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent-entry.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0 --nonce aa4e9405-1a39-4fd6-965d-6db863a40224 --mode normal --stage main\n",
+    "[acpx] initialized protocol version 1\n",
+    "[acpx] agent processes did not exit after SIGTERM; forcing SIGKILL\n",
+    "{\"caseName\":\"plain_baseline\",\"outcome\":\"case-error\",\"durationMs\":12474,\"error\":{\"name\":\"AcpRuntimeError\",\"code\":\"ACP_SESSION_INIT_FAILED\",\"message\":\"ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.\",\"cause\":{\"message\":\"Timed out after 4000ms\"}}}\n"
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "schema": "acpx.session.v1",
+  "acpx_record_id": "lifecycle-05d5917c-2b93-4139-9163-21a23b857eb0",
+  "acp_session_id": "remote-05d5917c-2b93-4139-9163-21a23b857eb0",
+  "agent_command": "\"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\lifecycle\\\\node_modules\\\\Node Runtime With Spaces\\\\node.exe\" \"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\lifecycle\\\\agent fixture.mjs\" --root \"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\lifecycle\\\\plain\\\\mvat2ywc-4\" --nonce 05d5917c-2b93-4139-9163-21a23b857eb0 --mode busy --stage main --extra \"literal spaces & metacharacters\"",
+  "agent_argv": [
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+    "--root",
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat2ywc-4",
+    "--nonce",
+    "05d5917c-2b93-4139-9163-21a23b857eb0",
+    "--mode",
+    "busy",
+    "--stage",
+    "main",
+    "--extra",
+    "literal spaces & metacharacters"
+  ],
+  "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat2ywc-4",
+  "name": "lifecycle-05d5917c-2b93-4139-9163-21a23b857eb0",
+  "created_at": "2026-10-16T10:09:34.948Z",
+  "last_used_at": "2026-10-16T10:09:36.020Z",
+  "last_seq": 0,
+  "last_request_id": "request-05d5917c-2b93-4139-9163-21a23b857eb0",
+  "event_log": {
+    "active_path": "C:\\Users\\Maweirdos\\.acpx\\sessions\\lifecycle-05d5917c-2b93-4139-9163-21a23b857eb0.stream.ndjson",
+    "segment_count": 5,
+    "max_segment_bytes": 67108864,
+    "max_segments": 5,
+    "last_write_error": null
+  },
+  "closed": false,
+  "pid": 49792,
+  "agent_started_at": "2026-10-16T10:09:32.027Z",
+  "last_prompt_at": "2026-10-16T10:09:34.958Z",
+  "protocol_version": 1,
+  "agent_capabilities": {
+    "loadSession": true,
+    "promptCapabilities": {
+      "embeddedContext": false
+    },
+    "mcpCapabilities": {
+      "http": false,
+      "sse": false
+    }
+  },
+  "title": null,
+  "messages": [
+    {
+      "User": {
+        "id": "ff4e9ace-64ff-4db4-b47c-8503014de8cf",
+        "content": [
+          {
+            "Text": "local fixture only"
+          }
+        ]
+      }
+    }
+  ],
+  "updated_at": "2026-10-16T10:09:34.955Z",
+  "cumulative_token_usage": {},
+  "request_token_usage": {},
+  "acpx": {
+    "session_origin": "new",
+    "config_options": []
+  }
+}

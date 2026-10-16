@@ -1,0 +1,5 @@
+# Ephemeral daemon homes contain generated identity keys and upstream runtime
+# bundles, not authored research sources or acceptance summaries. Preserve them
+# locally as historical evidence; never include them in task commits.
+**/paseo-home/
+**/Windows/PowerShell/StartupProfileData-*

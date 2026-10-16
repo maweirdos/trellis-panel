@@ -1,0 +1,33 @@
+{
+  "caseName": "spawned_hook_reject",
+  "nonce": "dcba93f7-218d-4950-ac14-c2bd45a76c2d",
+  "workerPid": 49380,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 49380,
+      "alive": false
+    },
+    {
+      "pid": 47248,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 49380,
+      "alive": false
+    },
+    {
+      "pid": 47248,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat2tf9-3 --nonce dcba93f7-218d-4950-ac14-c2bd45a76c2d --mode normal --stage main --extra literal spaces & metacharacters\n",
+    "{\"caseName\":\"spawned_hook_reject\",\"outcome\":\"ensure-rejected\",\"durationMs\":4753,\"error\":{\"name\":\"Error\",\"message\":\"deliberate spawned-hook rejection\"}}\n"
+  ]
+}

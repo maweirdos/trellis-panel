@@ -1,0 +1,157 @@
+{
+  "version": "acpx@0.19.5",
+  "node": "v24.12.0",
+  "platform": "win32",
+  "execPath": "C:\\nvm4w\\nodejs\\node.exe",
+  "runRoot": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-01-29-470Z",
+  "cases": [
+    {
+      "caseName": "no_child_env",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-01-29-470Z\\no_child_env with spaces",
+      "completed": {
+        "outerError": {
+          "name": "Error",
+          "message": "outer case exceeded 11000ms"
+        }
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 4000ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-9168169f-e761-4bb1-bf6e-028ad20d86ce"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-9168169f-e761-4bb1-bf6e-028ad20d86ce"
+          },
+          "pid": 57112,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-9168169f-e761-4bb1-bf6e-028ad20d86ce"
+          },
+          "pid": 57112,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [
+        {
+          "pid": 40768,
+          "alive": true,
+          "identity": {
+            "ProcessId": 40768,
+            "ParentProcessId": 52996,
+            "ExecutablePath": "C:\\nvm4w\\nodejs\\node.exe",
+            "CommandLine": "C:\\nvm4w\\nodejs\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\run-lifecycle.mjs --worker no_child_env 9168169f-e761-4bb1-bf6e-028ad20d86ce \"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-01-29-470Z\\no_child_env with spaces\" \"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe\""
+          },
+          "ownershipVerified": true,
+          "cleanupError": {
+            "name": "Error",
+            "message": "Command failed: C:\\WINDOWS\\System32\\taskkill.exe /PID 40768 /T /F\n����: û���ҵ����� \"40768\"��\r\n"
+          }
+        }
+      ],
+      "afterCleanup": [
+        {
+          "pid": 40768,
+          "alive": false
+        },
+        {
+          "pid": 57112,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "original_node",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-01-29-470Z\\original_node with spaces",
+      "completed": {
+        "outerError": {
+          "name": "Error",
+          "message": "outer case exceeded 11000ms"
+        }
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 4000ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-33f93cd8-b533-4481-9c36-41f3e31bf00f"
+          },
+          "command": "C:\\nvm4w\\nodejs\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-33f93cd8-b533-4481-9c36-41f3e31bf00f"
+          },
+          "pid": 8124,
+          "command": "C:\\nvm4w\\nodejs\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-33f93cd8-b533-4481-9c36-41f3e31bf00f"
+          },
+          "pid": 8124,
+          "command": "C:\\nvm4w\\nodejs\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [
+        {
+          "pid": 7356,
+          "alive": true,
+          "identity": {
+            "ProcessId": 7356,
+            "ParentProcessId": 52996,
+            "ExecutablePath": "C:\\nvm4w\\nodejs\\node.exe",
+            "CommandLine": "C:\\nvm4w\\nodejs\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\run-lifecycle.mjs --worker original_node 33f93cd8-b533-4481-9c36-41f3e31bf00f \"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-01-29-470Z\\original_node with spaces\" \"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe\""
+          },
+          "ownershipVerified": true,
+          "cleanupError": {
+            "name": "Error",
+            "message": "Command failed: C:\\WINDOWS\\System32\\taskkill.exe /PID 7356 /T /F\n����: û���ҵ����� \"7356\"��\r\n"
+          }
+        }
+      ],
+      "afterCleanup": [
+        {
+          "pid": 7356,
+          "alive": false
+        },
+        {
+          "pid": 8124,
+          "alive": false
+        }
+      ]
+    }
+  ]
+}

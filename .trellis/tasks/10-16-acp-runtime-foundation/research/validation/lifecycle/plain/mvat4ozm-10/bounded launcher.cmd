@@ -1,0 +1,2 @@
+@echo off
+"D:\my_demo\trellis-panel\.trellis\tasks\10-16-acp-runtime-foundation\research\validation\lifecycle\node_modules\Node Runtime With Spaces\node.exe" "D:\my_demo\trellis-panel\.trellis\tasks\10-16-acp-runtime-foundation\research\validation\lifecycle\agent fixture.mjs" --root "D:\my_demo\trellis-panel\.trellis\tasks\10-16-acp-runtime-foundation\research\validation\lifecycle\plain\mvat4ozm-10" --nonce "ece38b96-9cb1-41a4-bb37-b403a091ff07" --mode normal --stage main

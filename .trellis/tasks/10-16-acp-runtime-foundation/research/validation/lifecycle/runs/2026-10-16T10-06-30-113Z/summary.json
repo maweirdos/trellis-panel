@@ -1,0 +1,65 @@
+{
+  "version": "acpx@0.19.5",
+  "node": "v24.12.0",
+  "platform": "win32",
+  "execPath": "C:\\nvm4w\\nodejs\\node.exe",
+  "runRoot": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-06-30-113Z",
+  "cases": [
+    {
+      "caseName": "plain_baseline",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 4000ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-aa4e9405-1a39-4fd6-965d-6db863a40224"
+          },
+          "command": "C:\\nvm4w\\nodejs\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-aa4e9405-1a39-4fd6-965d-6db863a40224"
+          },
+          "pid": 60940,
+          "command": "C:\\nvm4w\\nodejs\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-aa4e9405-1a39-4fd6-965d-6db863a40224"
+          },
+          "pid": 60940,
+          "command": "C:\\nvm4w\\nodejs\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 55556,
+          "alive": false
+        },
+        {
+          "pid": 60940,
+          "alive": false
+        }
+      ]
+    }
+  ]
+}

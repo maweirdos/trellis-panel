@@ -1,0 +1,209 @@
+{
+  "caseName": "explicit_paths_restricted_path",
+  "nonce": "847680a2-5fdf-421a-af36-c5e35e72599a",
+  "startedAt": 1792144954699,
+  "observations": [
+    {
+      "kind": "registry",
+      "stage": "main",
+      "requestedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0",
+        "--nonce",
+        "847680a2-5fdf-421a-af36-c5e35e72599a",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "resolvedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0",
+        "--nonce",
+        "847680a2-5fdf-421a-af36-c5e35e72599a",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ]
+    }
+  ],
+  "lifecycle": [
+    {
+      "at": 1792144954958,
+      "kind": "before",
+      "launchId": "bce9714b-23ce-4780-ae71-c92f124adcf7",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-847680a2-5fdf-421a-af36-c5e35e72599a"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0",
+        "--nonce",
+        "847680a2-5fdf-421a-af36-c5e35e72599a",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0"
+    },
+    {
+      "at": 1792144954971,
+      "kind": "spawned",
+      "launchId": "bce9714b-23ce-4780-ae71-c92f124adcf7",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-847680a2-5fdf-421a-af36-c5e35e72599a"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0",
+        "--nonce",
+        "847680a2-5fdf-421a-af36-c5e35e72599a",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0",
+      "pid": 30960,
+      "startedAt": "2026-10-16T10:02:34.970Z"
+    },
+    {
+      "at": 1792144961308,
+      "kind": "exit",
+      "launchId": "bce9714b-23ce-4780-ae71-c92f124adcf7",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-847680a2-5fdf-421a-af36-c5e35e72599a"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0",
+        "--nonce",
+        "847680a2-5fdf-421a-af36-c5e35e72599a",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0",
+      "pid": 30960,
+      "startedAt": "2026-10-16T10:02:34.970Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T10:02:41.307Z"
+    }
+  ],
+  "outcome": "case-error",
+  "error": {
+    "name": "AcpRuntimeError",
+    "code": "ACP_SESSION_INIT_FAILED",
+    "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+    "cause": {
+      "message": "Timed out after 4000ms"
+    }
+  },
+  "cleanup": [
+    {
+      "shutdown": "settled"
+    }
+  ],
+  "fixture": [
+    {
+      "at": 1792144955018,
+      "kind": "agent_started",
+      "pid": 30960,
+      "parentPid": 46776,
+      "nonce": "847680a2-5fdf-421a-af36-c5e35e72599a",
+      "stage": "main",
+      "execPath": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "argv": [
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0",
+        "--nonce",
+        "847680a2-5fdf-421a-af36-c5e35e72599a",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "childPath": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\short runs\\mvasu13g 0\\empty path",
+      "marker": "847680a2-5fdf-421a-af36-c5e35e72599a"
+    },
+    {
+      "at": 1792144955020,
+      "kind": "request",
+      "pid": 30960,
+      "parentPid": 46776,
+      "nonce": "847680a2-5fdf-421a-af36-c5e35e72599a",
+      "stage": "main",
+      "method": "initialize",
+      "id": 0
+    },
+    {
+      "at": 1792144955020,
+      "kind": "response_written",
+      "pid": 30960,
+      "parentPid": 46776,
+      "nonce": "847680a2-5fdf-421a-af36-c5e35e72599a",
+      "stage": "main",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "result": {
+          "protocolVersion": 1,
+          "agentInfo": {
+            "name": "trellis-original-lifecycle-fixture",
+            "version": "1.0.0"
+          },
+          "agentCapabilities": {
+            "loadSession": true,
+            "promptCapabilities": {
+              "embeddedContext": false
+            },
+            "mcpCapabilities": {
+              "http": false,
+              "sse": false
+            }
+          },
+          "authMethods": []
+        }
+      }
+    },
+    {
+      "at": 1792144961302,
+      "kind": "stdin_end",
+      "pid": 30960,
+      "parentPid": 46776,
+      "nonce": "847680a2-5fdf-421a-af36-c5e35e72599a",
+      "stage": "main"
+    }
+  ],
+  "finishedAt": 1792144967152,
+  "durationMs": 12453
+}

@@ -1,0 +1,45 @@
+{
+  "caseName": "cancel_reconnect_startup",
+  "nonce": "8929dd51-d0f4-4674-b81f-140373a58606",
+  "workerPid": 20908,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 20908,
+      "alive": false
+    },
+    {
+      "pid": 59228,
+      "alive": false
+    },
+    {
+      "pid": 48488,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 20908,
+      "alive": false
+    },
+    {
+      "pid": 59228,
+      "alive": false
+    },
+    {
+      "pid": 48488,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat3za7-8 --nonce 8929dd51-d0f4-4674-b81f-140373a58606 --mode normal --stage seed --extra literal spaces & metacharacters\n",
+    "[acpx] initialized protocol version 1\n",
+    "[acpx] agent processes did not exit after SIGTERM; forcing SIGKILL\n",
+    "[acpx] spawning agent: D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat3za7-8 --nonce 8929dd51-d0f4-4674-b81f-140373a58606 --mode normal --stage seed --extra literal spaces & metacharacters\n",
+    "[acpx] initialized protocol version 1\n",
+    "{\"caseName\":\"cancel_reconnect_startup\",\"outcome\":\"case-error\",\"durationMs\":18171,\"error\":{\"name\":\"Error\",\"message\":\"condition did not arrive within 2500ms\"}}\n"
+  ]
+}

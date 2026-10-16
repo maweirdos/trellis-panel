@@ -1,0 +1,129 @@
+{
+  "caseName": "no_lifecycle",
+  "nonce": "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204",
+  "startedAt": 1792144774443,
+  "observations": [
+    {
+      "kind": "registry",
+      "stage": "main",
+      "requestedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-59-34-378Z\\no_lifecycle with spaces",
+        "--nonce",
+        "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "resolvedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-59-34-378Z\\no_lifecycle with spaces",
+        "--nonce",
+        "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ]
+    }
+  ],
+  "lifecycle": [],
+  "outcome": "case-error",
+  "error": {
+    "name": "AcpRuntimeError",
+    "code": "ACP_SESSION_INIT_FAILED",
+    "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+    "cause": {
+      "message": "Timed out after 4000ms"
+    }
+  },
+  "cleanup": [
+    {
+      "shutdown": "settled"
+    }
+  ],
+  "fixture": [
+    {
+      "at": 1792144774819,
+      "kind": "agent_started",
+      "pid": 53596,
+      "parentPid": 40276,
+      "nonce": "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204",
+      "stage": "main",
+      "execPath": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "argv": [
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-59-34-378Z\\no_lifecycle with spaces",
+        "--nonce",
+        "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "childPath": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-59-34-378Z\\no_lifecycle with spaces\\empty path",
+      "marker": "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204"
+    },
+    {
+      "at": 1792144774821,
+      "kind": "request",
+      "pid": 53596,
+      "parentPid": 40276,
+      "nonce": "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204",
+      "stage": "main",
+      "method": "initialize",
+      "id": 0
+    },
+    {
+      "at": 1792144774821,
+      "kind": "response_written",
+      "pid": 53596,
+      "parentPid": 40276,
+      "nonce": "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204",
+      "stage": "main",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "result": {
+          "protocolVersion": 1,
+          "agentInfo": {
+            "name": "trellis-original-lifecycle-fixture",
+            "version": "1.0.0"
+          },
+          "agentCapabilities": {
+            "loadSession": true,
+            "promptCapabilities": {
+              "embeddedContext": false
+            },
+            "mcpCapabilities": {
+              "http": false,
+              "sse": false
+            }
+          },
+          "authMethods": []
+        }
+      }
+    },
+    {
+      "at": 1792144780610,
+      "kind": "stdin_end",
+      "pid": 53596,
+      "parentPid": 40276,
+      "nonce": "9d3c9bcc-ed34-4d7d-9597-fcfa5cc6f204",
+      "stage": "main"
+    }
+  ],
+  "finishedAt": 1792144786955,
+  "durationMs": 12512
+}

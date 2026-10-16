@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-16T16:24:19.561Z",
+  "versions": {
+    "application": "0.1.0",
+    "electron": "44.4.3",
+    "embeddedNode": "24.21.0",
+    "externalNode": "24.12.0",
+    "acpx": "0.19.5",
+    "acpSdk": "1.8.0",
+    "compatRevision": 1,
+    "codexAdapter": "2.2.2",
+    "codexEngine": "codex-cli 0.160.1",
+    "claudeAdapter": "0.91.0",
+    "claudeAgentSdk": "0.3.300",
+    "claudeEngine": "2.1.300",
+    "selectedClaudeDisplayName": "glm-5.3-flash",
+    "latestAdvertisedClaudeId": "sonnet"
+  },
+  "cases": [
+    {
+      "name": "fresh Claude nonce after full packaged restart",
+      "status": "passed"
+    },
+    {
+      "name": "Claude original reject ID and failed tool",
+      "status": "passed"
+    },
+    {
+      "name": "Claude original allow-once ID and completed write",
+      "status": "passed"
+    },
+    {
+      "name": "Claude cancel settles once with no historical pending approval",
+      "status": "passed"
+    },
+    {
+      "name": "Claude late approval is rejected and competing directory is retained",
+      "status": "passed"
+    },
+    {
+      "name": "Claude subsequent and restored conversation keeps memory",
+      "status": "passed"
+    },
+    {
+      "name": "Claude acknowledged mode changes",
+      "status": "passed"
+    },
+    {
+      "name": "Codex fresh native read after canonical stop/resume",
+      "status": "passed"
+    },
+    {
+      "name": "Codex actual diff and individually approved mutations",
+      "status": "passed"
+    },
+    {
+      "name": "Codex cancel and subsequent usable turn",
+      "status": "passed"
+    },
+    {
+      "name": "profile survives full restart without implicit work",
+      "status": "passed"
+    },
+    {
+      "name": "current-root IPC rejects foreign session",
+      "status": "passed"
+    },
+    {
+      "name": "final package consumes actual released build bytes",
+      "status": "passed"
+    },
+    {
+      "name": "full earlier owned process tree exited",
+      "status": "passed"
+    }
+  ]
+}

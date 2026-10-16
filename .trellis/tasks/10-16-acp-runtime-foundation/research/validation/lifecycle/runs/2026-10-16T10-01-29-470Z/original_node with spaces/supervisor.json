@@ -1,0 +1,48 @@
+{
+  "caseName": "original_node",
+  "nonce": "33f93cd8-b533-4481-9c36-41f3e31bf00f",
+  "workerPid": 7356,
+  "completed": {
+    "outerError": {
+      "name": "Error",
+      "message": "outer case exceeded 11000ms"
+    }
+  },
+  "ownership": [
+    {
+      "pid": 7356,
+      "alive": true,
+      "identity": {
+        "ProcessId": 7356,
+        "ParentProcessId": 52996,
+        "ExecutablePath": "C:\\nvm4w\\nodejs\\node.exe",
+        "CommandLine": "C:\\nvm4w\\nodejs\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\run-lifecycle.mjs --worker original_node 33f93cd8-b533-4481-9c36-41f3e31bf00f \"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-01-29-470Z\\original_node with spaces\" \"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe\""
+      },
+      "ownershipVerified": true,
+      "cleanupError": {
+        "name": "Error",
+        "message": "Command failed: C:\\WINDOWS\\System32\\taskkill.exe /PID 7356 /T /F\n����: û���ҵ����� \"7356\"��\r\n"
+      }
+    },
+    {
+      "pid": 8124,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 7356,
+      "alive": false
+    },
+    {
+      "pid": 8124,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: C:\\nvm4w\\nodejs\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-01-29-470Z\\original_node with spaces --nonce 33f93cd8-b533-4481-9c36-41f3e31bf00f --mode normal --stage main --extra literal spaces & metacharacters\n",
+    "[acpx] initialized protocol version 1\n",
+    "[acpx] agent processes did not exit after SIGTERM; forcing SIGKILL\n",
+    "{\"caseName\":\"original_node\",\"outcome\":\"case-error\",\"durationMs\":12450,\"error\":{\"name\":\"AcpRuntimeError\",\"code\":\"ACP_SESSION_INIT_FAILED\",\"message\":\"ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.\",\"cause\":{\"message\":\"Timed out after 4000ms\"}}}\n"
+  ]
+}

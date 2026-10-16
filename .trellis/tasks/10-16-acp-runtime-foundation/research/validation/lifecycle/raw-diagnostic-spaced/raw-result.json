@@ -1,0 +1,1 @@
+{"out":"{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"trellis-original-lifecycle-fixture\",\"version\":\"1.0.0\"},\"agentCapabilities\":{\"loadSession\":true,\"promptCapabilities\":{\"embeddedContext\":false},\"mcpCapabilities\":{\"http\":false,\"sse\":false}},\"authMethods\":[]}}\n","err":"","code":0}

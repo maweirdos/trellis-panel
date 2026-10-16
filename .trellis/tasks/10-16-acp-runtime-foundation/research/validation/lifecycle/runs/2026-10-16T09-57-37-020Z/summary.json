@@ -1,0 +1,578 @@
+{
+  "version": "acpx@0.19.5",
+  "node": "v24.12.0",
+  "platform": "win32",
+  "execPath": "C:\\nvm4w\\nodejs\\node.exe",
+  "runRoot": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z",
+  "cases": [
+    {
+      "caseName": "explicit_paths_restricted_path",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\explicit_paths_restricted_path with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 1600ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 1600ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-34fed1d3-d72e-4030-b934-a7d261abec22"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-34fed1d3-d72e-4030-b934-a7d261abec22"
+          },
+          "pid": 43236,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-34fed1d3-d72e-4030-b934-a7d261abec22"
+          },
+          "pid": 43236,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 56544,
+          "alive": false
+        },
+        {
+          "pid": 43236,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "init_failure",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\init_failure with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "ensure-rejected",
+      "error": {
+        "name": "Error",
+        "message": "ensure exceeded 4500ms"
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-b1208d3a-dd04-4ddf-afa1-4f145ffec385"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-b1208d3a-dd04-4ddf-afa1-4f145ffec385"
+          },
+          "pid": 32292,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-b1208d3a-dd04-4ddf-afa1-4f145ffec385"
+          },
+          "pid": 32292,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 52320,
+          "alive": false
+        },
+        {
+          "pid": 32292,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "before_hook_reject",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\before_hook_reject with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "ensure-rejected",
+      "error": {
+        "name": "Error",
+        "message": "deliberate before-hook rejection"
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-b61edfc7-c077-4ccf-9659-e78274544be0"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 60476,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "spawned_hook_reject",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "ensure-rejected",
+      "error": {
+        "name": "Error",
+        "message": "ensure exceeded 4500ms"
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-e0851d1a-9ecc-4104-9345-96f25ca76dca"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-e0851d1a-9ecc-4104-9345-96f25ca76dca"
+          },
+          "pid": 62248,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 52368,
+          "alive": false
+        },
+        {
+          "pid": 62248,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "cancel_turn",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\cancel_turn with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 1600ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 1600ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-556a70aa-8ea6-4e0f-a0f9-0f450e9cd8c4"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-556a70aa-8ea6-4e0f-a0f9-0f450e9cd8c4"
+          },
+          "pid": 60580,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-556a70aa-8ea6-4e0f-a0f9-0f450e9cd8c4"
+          },
+          "pid": 60580,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 27748,
+          "alive": false
+        },
+        {
+          "pid": 60580,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "shutdown_ready",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\shutdown_ready with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 1600ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 1600ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-e21f8d23-02ab-458c-94e1-e9095b8b18d2"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-e21f8d23-02ab-458c-94e1-e9095b8b18d2"
+          },
+          "pid": 53020,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-e21f8d23-02ab-458c-94e1-e9095b8b18d2"
+          },
+          "pid": 53020,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 35704,
+          "alive": false
+        },
+        {
+          "pid": 53020,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "shutdown_busy",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\shutdown_busy with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 1600ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 1600ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-2b5a0d7e-9f56-42dc-8824-62457f121421"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-2b5a0d7e-9f56-42dc-8824-62457f121421"
+          },
+          "pid": 38060,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-2b5a0d7e-9f56-42dc-8824-62457f121421"
+          },
+          "pid": 38060,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 3656,
+          "alive": false
+        },
+        {
+          "pid": 38060,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "shutdown_startup",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\shutdown_startup with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "Error",
+        "message": "shutdown during initialization exceeded 4500ms"
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-e2c167c9-6712-41a9-9c61-b370c03c3fbe"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-e2c167c9-6712-41a9-9c61-b370c03c3fbe"
+          },
+          "pid": 39320,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-e2c167c9-6712-41a9-9c61-b370c03c3fbe"
+          },
+          "pid": 39320,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 49796,
+          "alive": false
+        },
+        {
+          "pid": 39320,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "cancel_reconnect_startup",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\cancel_reconnect_startup with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 1600ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 1600ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-db0734ec-7edd-4895-83ee-0dfc7307e032"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-db0734ec-7edd-4895-83ee-0dfc7307e032"
+          },
+          "pid": 62248,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-db0734ec-7edd-4895-83ee-0dfc7307e032"
+          },
+          "pid": 62248,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 56856,
+          "alive": false
+        },
+        {
+          "pid": 62248,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "shutdown_grandchild",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\shutdown_grandchild with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 1600ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 1600ms"
+        }
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-22a45fc8-dff0-4ceb-b4d8-5edf0e17ede3"
+          },
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-22a45fc8-dff0-4ceb-b4d8-5edf0e17ede3"
+          },
+          "pid": 39752,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-22a45fc8-dff0-4ceb-b4d8-5edf0e17ede3"
+          },
+          "pid": 39752,
+          "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 13372,
+          "alive": false
+        },
+        {
+          "pid": 39752,
+          "alive": false
+        }
+      ]
+    },
+    {
+      "caseName": "cmd_launcher",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\cmd_launcher with spaces",
+      "completed": {
+        "code": 0,
+        "signal": null
+      },
+      "outcome": "ensure-rejected",
+      "error": {
+        "name": "Error",
+        "message": "ensure exceeded 4500ms"
+      },
+      "hooks": [
+        {
+          "kind": "before",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-059ef224-57f1-4b13-ab08-933931ad2d10"
+          },
+          "command": "C:\\WINDOWS\\system32\\cmd.exe"
+        },
+        {
+          "kind": "spawned",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-059ef224-57f1-4b13-ab08-933931ad2d10"
+          },
+          "pid": 58172,
+          "command": "C:\\WINDOWS\\system32\\cmd.exe"
+        },
+        {
+          "kind": "exit",
+          "scope": {
+            "kind": "runtime-session",
+            "sessionKey": "lifecycle-059ef224-57f1-4b13-ab08-933931ad2d10"
+          },
+          "pid": 58172,
+          "command": "C:\\WINDOWS\\system32\\cmd.exe"
+        }
+      ],
+      "supervisorCleanup": [],
+      "afterCleanup": [
+        {
+          "pid": 35548,
+          "alive": false
+        },
+        {
+          "pid": 22216,
+          "alive": false
+        },
+        {
+          "pid": 58172,
+          "alive": false
+        }
+      ]
+    }
+  ]
+}

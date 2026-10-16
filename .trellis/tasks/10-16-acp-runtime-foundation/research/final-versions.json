@@ -1,0 +1,16 @@
+{
+  "application": "0.1.0",
+  "electron": "44.4.3",
+  "embeddedNode": "24.21.0",
+  "externalNode": "24.12.0",
+  "acpx": "0.19.5",
+  "acpSdk": "1.8.0",
+  "compatRevision": 1,
+  "codexAdapter": "2.2.2",
+  "codexEngine": "codex-cli 0.160.1",
+  "claudeAdapter": "0.91.0",
+  "claudeAgentSdk": "0.3.300",
+  "claudeEngine": "2.1.300",
+  "selectedClaudeDisplayName": "glm-5.3-flash",
+  "latestAdvertisedClaudeId": "sonnet"
+}

@@ -1,0 +1,140 @@
+{
+  "caseName": "spawned_hook_reject",
+  "nonce": "e0851d1a-9ecc-4104-9345-96f25ca76dca",
+  "startedAt": 1792144683772,
+  "observations": [
+    {
+      "kind": "registry",
+      "stage": "main",
+      "requestedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces",
+        "--nonce",
+        "e0851d1a-9ecc-4104-9345-96f25ca76dca",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "resolvedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces",
+        "--nonce",
+        "e0851d1a-9ecc-4104-9345-96f25ca76dca",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ]
+    }
+  ],
+  "lifecycle": [
+    {
+      "at": 1792144684094,
+      "kind": "before",
+      "launchId": "d284cc68-83b4-4e50-945d-39d541a18d6f",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-e0851d1a-9ecc-4104-9345-96f25ca76dca"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces",
+        "--nonce",
+        "e0851d1a-9ecc-4104-9345-96f25ca76dca",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces"
+    },
+    {
+      "at": 1792144684101,
+      "kind": "spawned",
+      "launchId": "d284cc68-83b4-4e50-945d-39d541a18d6f",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-e0851d1a-9ecc-4104-9345-96f25ca76dca"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces",
+        "--nonce",
+        "e0851d1a-9ecc-4104-9345-96f25ca76dca",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces",
+      "pid": 62248,
+      "startedAt": "2026-10-16T09:58:04.099Z"
+    }
+  ],
+  "outcome": "ensure-rejected",
+  "error": {
+    "name": "Error",
+    "message": "ensure exceeded 4500ms"
+  },
+  "cleanup": [
+    {
+      "shutdown": "failed",
+      "error": {
+        "name": "Error",
+        "message": "finally shutdown exceeded 2000ms"
+      }
+    }
+  ],
+  "fixture": [
+    {
+      "at": 1792144684148,
+      "kind": "agent_started",
+      "pid": 62248,
+      "parentPid": 52368,
+      "nonce": "e0851d1a-9ecc-4104-9345-96f25ca76dca",
+      "stage": "main",
+      "execPath": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "argv": [
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces",
+        "--nonce",
+        "e0851d1a-9ecc-4104-9345-96f25ca76dca",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "childPath": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T09-57-37-020Z\\spawned_hook_reject with spaces\\empty path",
+      "marker": "e0851d1a-9ecc-4104-9345-96f25ca76dca"
+    },
+    {
+      "at": 1792144687119,
+      "kind": "stdin_end",
+      "pid": 62248,
+      "parentPid": 52368,
+      "nonce": "e0851d1a-9ecc-4104-9345-96f25ca76dca",
+      "stage": "main"
+    }
+  ],
+  "finishedAt": 1792144690757,
+  "durationMs": 6985
+}

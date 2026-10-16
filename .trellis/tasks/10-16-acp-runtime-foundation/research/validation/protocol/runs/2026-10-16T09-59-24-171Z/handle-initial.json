@@ -1,0 +1,8 @@
+{
+  "sessionKey": "research-conversation",
+  "backend": "acpx",
+  "runtimeSessionName": "acpx:v2:eyJuYW1lIjoicmVzZWFyY2gtY29udmVyc2F0aW9uIiwiYWdlbnQiOiJyZXNlYXJjaC1wZWVyIiwiY3dkIjoiRDpcXG15X2RlbW9cXHRyZWxsaXMtcGFuZWxcXC50cmVsbGlzXFx0YXNrc1xcMTAtMTYtYWNwLXJ1bnRpbWUtZm91bmRhdGlvblxccmVzZWFyY2hcXHZhbGlkYXRpb25cXHByb3RvY29sXFxydW5zXFwyMDI2LTEwLTE2VDA5LTU5LTI0LTE3MVpcXG5vcm1hbCIsIm1vZGUiOiJwZXJzaXN0ZW50IiwiYWNweFJlY29yZElkIjoicmVzZWFyY2gtY29udmVyc2F0aW9uIiwiYmFja2VuZFNlc3Npb25JZCI6Im9wYXF1ZS1hZ2VudC1zZXNzaW9uOm5vcm1hbDo3MjkifQ",
+  "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-59-24-171Z\\normal",
+  "acpxRecordId": "research-conversation",
+  "backendSessionId": "opaque-agent-session:normal:729"
+}

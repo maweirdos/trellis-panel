@@ -1,0 +1,242 @@
+{
+  "caseName": "shutdown_ready",
+  "nonce": "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+  "startedAt": 1792145385505,
+  "observations": [
+    {
+      "kind": "registry",
+      "stage": "main",
+      "requestedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+        "--nonce",
+        "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "resolvedArgv": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+        "--nonce",
+        "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ]
+    }
+  ],
+  "lifecycle": [
+    {
+      "at": 1792145385837,
+      "kind": "before",
+      "launchId": "682335a7-c27f-48bb-8bee-09e284acda9a",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+        "--nonce",
+        "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5"
+    },
+    {
+      "at": 1792145385844,
+      "kind": "spawned",
+      "launchId": "682335a7-c27f-48bb-8bee-09e284acda9a",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+        "--nonce",
+        "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+      "pid": 57712,
+      "startedAt": "2026-10-16T10:09:45.842Z"
+    },
+    {
+      "at": 1792145390023,
+      "kind": "exit",
+      "launchId": "682335a7-c27f-48bb-8bee-09e284acda9a",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140"
+      },
+      "command": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+        "--nonce",
+        "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+      "pid": 57712,
+      "startedAt": "2026-10-16T10:09:45.842Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T10:09:50.023Z"
+    }
+  ],
+  "outcome": "case-settled",
+  "handle": {
+    "sessionKey": "lifecycle-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+    "backend": "acpx",
+    "runtimeSessionName": "acpx:v2:eyJuYW1lIjoibGlmZWN5Y2xlLTFkNzJiNDM5LTVmZDItNGZjYy1hM2Y2LTNhMzg5ZGJiZjE0MCIsImFnZW50IjoiZml4dHVyZS1sb2NhbCIsImN3ZCI6IkQ6XFxteV9kZW1vXFx0cmVsbGlzLXBhbmVsXFwudHJlbGxpc1xcdGFza3NcXDEwLTE2LWFjcC1ydW50aW1lLWZvdW5kYXRpb25cXHJlc2VhcmNoXFx2YWxpZGF0aW9uXFxsaWZlY3ljbGVcXHBsYWluXFxtdmF0MzlpYy01IiwibW9kZSI6InBlcnNpc3RlbnQiLCJhY3B4UmVjb3JkSWQiOiJsaWZlY3ljbGUtMWQ3MmI0MzktNWZkMi00ZmNjLWEzZjYtM2EzODlkYmJmMTQwIiwiYmFja2VuZFNlc3Npb25JZCI6InJlbW90ZS0xZDcyYjQzOS01ZmQyLTRmY2MtYTNmNi0zYTM4OWRiYmYxNDAifQ",
+    "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+    "acpxRecordId": "lifecycle-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+    "backendSessionId": "remote-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140"
+  },
+  "shutdownAt": 1792145388678,
+  "aliveAfterRuntimeShutdown": [
+    {
+      "pid": 57712,
+      "alive": false
+    }
+  ],
+  "cleanup": [
+    {
+      "shutdown": "settled"
+    }
+  ],
+  "fixture": [
+    {
+      "at": 1792145385890,
+      "kind": "agent_started",
+      "pid": 57712,
+      "parentPid": 28136,
+      "nonce": "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+      "stage": "main",
+      "execPath": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+      "argv": [
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+        "--nonce",
+        "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+        "--mode",
+        "normal",
+        "--stage",
+        "main",
+        "--extra",
+        "literal spaces & metacharacters"
+      ],
+      "restrictedPath": true,
+      "marker": "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140"
+    },
+    {
+      "at": 1792145385892,
+      "kind": "request",
+      "pid": 57712,
+      "parentPid": 28136,
+      "nonce": "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+      "stage": "main",
+      "method": "initialize",
+      "id": 0
+    },
+    {
+      "at": 1792145385893,
+      "kind": "response_written",
+      "pid": 57712,
+      "parentPid": 28136,
+      "nonce": "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+      "stage": "main",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "result": {
+          "protocolVersion": 1,
+          "agentInfo": {
+            "name": "trellis-original-lifecycle-fixture",
+            "version": "1.0.0"
+          },
+          "agentCapabilities": {
+            "loadSession": true,
+            "promptCapabilities": {
+              "embeddedContext": false
+            },
+            "mcpCapabilities": {
+              "http": false,
+              "sse": false
+            }
+          },
+          "authMethods": []
+        }
+      }
+    },
+    {
+      "at": 1792145387259,
+      "kind": "request",
+      "pid": 57712,
+      "parentPid": 28136,
+      "nonce": "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+      "stage": "main",
+      "method": "session/new",
+      "id": 1
+    },
+    {
+      "at": 1792145387260,
+      "kind": "response_written",
+      "pid": 57712,
+      "parentPid": 28136,
+      "nonce": "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+      "stage": "main",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "sessionId": "remote-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+          "configOptions": []
+        }
+      }
+    },
+    {
+      "at": 1792145390016,
+      "kind": "stdin_end",
+      "pid": 57712,
+      "parentPid": 28136,
+      "nonce": "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+      "stage": "main"
+    }
+  ],
+  "finishedAt": 1792145393147,
+  "durationMs": 7642
+}

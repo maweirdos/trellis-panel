@@ -1,0 +1,32 @@
+{
+  "caseName": "shutdown_ready",
+  "nonce": "e21f8d23-02ab-458c-94e1-e9095b8b18d2",
+  "workerPid": 35704,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 35704,
+      "alive": false
+    },
+    {
+      "pid": 53020,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 35704,
+      "alive": false
+    },
+    {
+      "pid": 53020,
+      "alive": false
+    }
+  ],
+  "output": [
+    "{\"caseName\":\"shutdown_ready\",\"outcome\":\"case-error\",\"durationMs\":10099,\"error\":{\"name\":\"AcpRuntimeError\",\"code\":\"ACP_SESSION_INIT_FAILED\",\"message\":\"ACP agent node.exe did not complete ACP initialization within 1600ms. Check that the configured command starts an ACP server.\",\"cause\":{\"message\":\"Timed out after 1600ms\"}}}\n"
+  ]
+}

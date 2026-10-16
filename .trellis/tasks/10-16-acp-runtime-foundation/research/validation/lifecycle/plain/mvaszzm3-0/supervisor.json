@@ -1,0 +1,35 @@
+{
+  "caseName": "plain_baseline",
+  "nonce": "2c63058c-c199-46c5-aa72-ea0f64f39c34",
+  "workerPid": 4944,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 4944,
+      "alive": false
+    },
+    {
+      "pid": 53752,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 4944,
+      "alive": false
+    },
+    {
+      "pid": 53752,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: C:\\nvm4w\\nodejs\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent-entry.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvaszzm3-0 --nonce 2c63058c-c199-46c5-aa72-ea0f64f39c34 --mode normal --stage main\n",
+    "[acpx] initialized protocol version 1\n",
+    "[acpx] agent processes did not exit after SIGTERM; forcing SIGKILL\n",
+    "{\"caseName\":\"plain_baseline\",\"outcome\":\"case-error\",\"durationMs\":9904,\"error\":{\"name\":\"Error\",\"message\":\"final shutdown exceeded 4500ms\"}}\n"
+  ]
+}

@@ -1,0 +1,23 @@
+{"file":".trellis/spec/shared/code-quality.md","reason":"Shared type/quality contracts and failure visibility"}
+{"file":".trellis/spec/backend/api-module.md","reason":"Main service and IPC responsibility boundaries"}
+{"file":".trellis/spec/backend/ipc-conventions.md","reason":"Registered IPC names, typed errors, root ownership and correlated events"}
+{"file":".trellis/spec/backend/environment.md","reason":"Native process/package paths and environment behavior"}
+{"file":".trellis/spec/backend/type-safety.md","reason":"Runtime schemas and explicit protocol types"}
+{"file":".trellis/spec/frontend/store-conventions.md","reason":"ACP session/profile state placement and persistence"}
+{"file":".trellis/spec/frontend/ipc-electron.md","reason":"Typed renderer/preload/main contract"}
+{"file":".trellis/spec/frontend/my-ui-module.md","reason":"Preserve project-root shell and existing project/reader behavior"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/provenance-and-upstream.md","reason":"History, official SDK/adapters and current package/source constraints"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/backend-audit.md","reason":"Reproduced identity, permissions, lifecycle and ownership failures"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/frontend-audit.md","reason":"Actual UI wiring, preserved guards and HiFox-inspired capability-backed flow"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/reuse-acpx-aionui.md","reason":"User-directed mature runtime reuse evaluation; validate public boundary before rebuilding SDK supervision"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/reuse-pi-ecosystem.md","reason":"User-directed mature runtime reuse evaluation; validate public boundary before rebuilding SDK supervision"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/reuse-paseo-openhands.md","reason":"User-directed mature runtime reuse evaluation; validate public boundary before rebuilding SDK supervision"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/reuse-decision.md","reason":"User-directed mature runtime reuse evaluation; validate public boundary before rebuilding SDK supervision"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/validation-protocol.md","reason":"Executed isolated validation: preserve failed strict gates and distinguish fixture/vendor/native evidence"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/validation-admission.md","reason":"Executed isolated validation: preserve failed strict gates and distinguish fixture/vendor/native evidence"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/validation-lifecycle.md","reason":"Executed isolated validation: preserve failed strict gates and distinguish fixture/vendor/native evidence"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/validation-vendors.md","reason":"Executed isolated validation: preserve failed strict gates and distinguish fixture/vendor/native evidence"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/validation-summary.md","reason":"Executed isolated validation: preserve failed strict gates and distinguish fixture/vendor/native evidence"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/validation-paseo.md","reason":"Bounded alternate-service evidence; user selected fixed acpx patch instead"}
+{"file":".trellis/tasks/10-16-acp-runtime-foundation/research/planning-review-final.md","reason":"Final selected acpx patch architecture and evidence convergence review"}
+{"file": ".trellis/spec/backend/acp-runtime.md", "reason": "Final executable runtime/setup/identity/approval/restore and native-tools contracts"}

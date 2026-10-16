@@ -1,0 +1,196 @@
+{
+  "caseName": "plain_baseline",
+  "nonce": "aa4e9405-1a39-4fd6-965d-6db863a40224",
+  "startedAt": 1792145190174,
+  "observations": [
+    {
+      "kind": "registry",
+      "stage": "main",
+      "requestedArgv": [
+        "C:\\nvm4w\\nodejs\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent-entry.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+        "--nonce",
+        "aa4e9405-1a39-4fd6-965d-6db863a40224",
+        "--mode",
+        "normal",
+        "--stage",
+        "main"
+      ],
+      "resolvedArgv": [
+        "C:\\nvm4w\\nodejs\\node.exe",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent-entry.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+        "--nonce",
+        "aa4e9405-1a39-4fd6-965d-6db863a40224",
+        "--mode",
+        "normal",
+        "--stage",
+        "main"
+      ]
+    }
+  ],
+  "lifecycle": [
+    {
+      "at": 1792145190457,
+      "kind": "before",
+      "launchId": "e584eb87-1331-47af-b60f-52cc37d002bf",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-aa4e9405-1a39-4fd6-965d-6db863a40224"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent-entry.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+        "--nonce",
+        "aa4e9405-1a39-4fd6-965d-6db863a40224",
+        "--mode",
+        "normal",
+        "--stage",
+        "main"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0"
+    },
+    {
+      "at": 1792145190472,
+      "kind": "spawned",
+      "launchId": "e584eb87-1331-47af-b60f-52cc37d002bf",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-aa4e9405-1a39-4fd6-965d-6db863a40224"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent-entry.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+        "--nonce",
+        "aa4e9405-1a39-4fd6-965d-6db863a40224",
+        "--mode",
+        "normal",
+        "--stage",
+        "main"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+      "pid": 60940,
+      "startedAt": "2026-10-16T10:06:30.470Z"
+    },
+    {
+      "at": 1792145197752,
+      "kind": "exit",
+      "launchId": "e584eb87-1331-47af-b60f-52cc37d002bf",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "lifecycle-aa4e9405-1a39-4fd6-965d-6db863a40224"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent-entry.mjs",
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+        "--nonce",
+        "aa4e9405-1a39-4fd6-965d-6db863a40224",
+        "--mode",
+        "normal",
+        "--stage",
+        "main"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+      "pid": 60940,
+      "startedAt": "2026-10-16T10:06:30.470Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T10:06:37.752Z"
+    }
+  ],
+  "outcome": "case-error",
+  "error": {
+    "name": "AcpRuntimeError",
+    "code": "ACP_SESSION_INIT_FAILED",
+    "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+    "cause": {
+      "message": "Timed out after 4000ms"
+    }
+  },
+  "cleanup": [
+    {
+      "shutdown": "settled"
+    }
+  ],
+  "fixture": [
+    {
+      "at": 1792145190526,
+      "kind": "agent_started",
+      "pid": 60940,
+      "parentPid": 55556,
+      "nonce": "aa4e9405-1a39-4fd6-965d-6db863a40224",
+      "stage": "main",
+      "execPath": "C:\\nvm4w\\nodejs\\node.exe",
+      "argv": [
+        "--root",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvasz2si-0",
+        "--nonce",
+        "aa4e9405-1a39-4fd6-965d-6db863a40224",
+        "--mode",
+        "normal",
+        "--stage",
+        "main"
+      ],
+      "childPath": "C:\\Program Files\\PowerShell\\7;C:\\Users\\Maweirdos\\.codex\\tmp\\arg0\\codex-arg0glQQV9;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\libheif\\libheif\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\jxrlib\\jxrlib\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\poppler\\Library\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\override;D:\\my_work\\environment\\Python310\\Scripts\\;D:\\my_work\\environment\\Python310\\;D:\\my_work\\environment\\Scripts\\;D:\\my_work\\environment\\;D:\\Dev_Application\\Oracle11\\product\\11.2.0\\dbhome_1\\bin;.;D:\\my_work\\environment\\java\\OpenJDK21\\bin;D:\\my_work\\environment\\java\\OpenJDK21\\jre\\bin;D:\\my_work\\development_tool\\VMware\\VMware Workstation\\bin\\;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;D:\\my_work\\environment\\apache-maven-3.6.3\\bin;D:\\my_soft_install\\Bandizip\\;node_global\\node_modules;C:\\ProgramData\\Oracle\\Java\\javapath;D:\\Dev_Application\\MySQL Server 8.3\\bin;C:\\Program Files\\dotnet\\;D:\\my_work\\development_tool\\Git\\cmd;D:\\my_work\\development_tool\\miniconda3\\Library\\bin;D:\\my_work\\development_tool\\miniconda3\\Scripts;D:\\my_work\\environment\\pyenv\\pyenv-win\\bin;D:\\my_work\\environment\\pyenv\\pyenv-win\\shims;C:\\Users\\Maweirdos\\AppData\\Roaming\\npm;D:\\my_work\\development_tool\\cursor\\resources\\app\\bin;d:\\my_work\\development_tool\\cursor\\resources\\app\\bin;D:\\my_work\\environment\\nvm;C:\\nvm4w\\nodejs;C:\\Program Files\\PowerShell\\7\\;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\Tailscale\\;C:\\Users\\Maweirdos\\AppData\\Local\\agy\\bin;C:\\Users\\Maweirdos\\scoop\\shims;D:\\my_work\\environment\\java\\jdk17\\bin;D:\\my_work\\environment\\java\\jdk17\\jre\\bin;D:\\my_work\\development_tool\\Tailscale\\;D:\\my_work\\environment\\pyenv\\pyenv-win;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell;C:\\Users\\Maweirdos\\AppData\\Local\\Microsoft\\WindowsApps;D:\\my_work\\development_tool\\CodeBuddy CN\\bin;C:\\Users\\Maweirdos\\AppData\\Local\\Microsoft\\WinGet\\Packages\\zufuliu.notepad4_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\\Users\\Maweirdos\\.qoder\\bin\\qodercli;D:\\my_work\\development_tool\\Qoder\\bin;D:\\my_work\\development_tool\\IntelliJ IDEA 2026.2\\bin;C:\\Users\\Maweirdos\\AppData\\Local\\Android\\Sdk\\platform-tools;C:\\Users\\Maweirdos\\.hifox\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\fallback;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;C:\\Users\\Maweirdos\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\git\\cmd;C:\\Users\\Maweirdos\\AppData\\Local\\OpenAI\\Codex\\bin\\77fbd4d52e601e0a;C:\\Users\\Maweirdos\\AppData\\Local\\OpenAI\\Codex\\bin\\9614f1d9b40d9c4f"
+    },
+    {
+      "at": 1792145190528,
+      "kind": "request",
+      "pid": 60940,
+      "parentPid": 55556,
+      "nonce": "aa4e9405-1a39-4fd6-965d-6db863a40224",
+      "stage": "main",
+      "method": "initialize",
+      "id": 0
+    },
+    {
+      "at": 1792145190528,
+      "kind": "response_written",
+      "pid": 60940,
+      "parentPid": 55556,
+      "nonce": "aa4e9405-1a39-4fd6-965d-6db863a40224",
+      "stage": "main",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "result": {
+          "protocolVersion": 1,
+          "agentInfo": {
+            "name": "trellis-original-lifecycle-fixture",
+            "version": "1.0.0"
+          },
+          "agentCapabilities": {
+            "loadSession": true,
+            "promptCapabilities": {
+              "embeddedContext": false
+            },
+            "mcpCapabilities": {
+              "http": false,
+              "sse": false
+            }
+          },
+          "authMethods": []
+        }
+      }
+    },
+    {
+      "at": 1792145197744,
+      "kind": "stdin_end",
+      "pid": 60940,
+      "parentPid": 55556,
+      "nonce": "aa4e9405-1a39-4fd6-965d-6db863a40224",
+      "stage": "main"
+    }
+  ],
+  "finishedAt": 1792145202648,
+  "durationMs": 12474
+}

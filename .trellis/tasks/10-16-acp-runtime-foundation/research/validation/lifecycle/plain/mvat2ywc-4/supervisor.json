@@ -1,0 +1,35 @@
+{
+  "caseName": "cancel_turn",
+  "nonce": "05d5917c-2b93-4139-9163-21a23b857eb0",
+  "workerPid": 57088,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 57088,
+      "alive": false
+    },
+    {
+      "pid": 49792,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 57088,
+      "alive": false
+    },
+    {
+      "pid": 49792,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat2ywc-4 --nonce 05d5917c-2b93-4139-9163-21a23b857eb0 --mode busy --stage main --extra literal spaces & metacharacters\n",
+    "[acpx] initialized protocol version 1\n",
+    "[acpx] agent processes did not exit after SIGTERM; forcing SIGKILL\n",
+    "{\"caseName\":\"cancel_turn\",\"outcome\":\"case-settled\",\"durationMs\":11560,\"result\":{\"status\":\"cancelled\",\"stopReason\":\"cancelled\"}}\n"
+  ]
+}

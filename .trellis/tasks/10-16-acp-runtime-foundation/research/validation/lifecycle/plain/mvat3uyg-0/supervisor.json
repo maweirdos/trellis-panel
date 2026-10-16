@@ -1,0 +1,25 @@
+{
+  "caseName": "spawn_failure",
+  "nonce": "cdd88a81-3095-4ce9-bbdd-b9a04e216155",
+  "workerPid": 36600,
+  "completed": {
+    "code": 0,
+    "signal": null
+  },
+  "ownership": [
+    {
+      "pid": 36600,
+      "alive": false
+    }
+  ],
+  "afterCleanup": [
+    {
+      "pid": 36600,
+      "alive": false
+    }
+  ],
+  "output": [
+    "[acpx] spawning agent: D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat3uyg-0\\deliberately-missing-runtime.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs --root D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat3uyg-0 --nonce cdd88a81-3095-4ce9-bbdd-b9a04e216155 --mode normal --stage main --extra literal spaces & metacharacters\n",
+    "{\"caseName\":\"spawn_failure\",\"outcome\":\"ensure-rejected\",\"durationMs\":560,\"error\":{\"name\":\"AgentSpawnError\",\"message\":\"Failed to spawn agent command: \\\"D:\\\\\\\\my_demo\\\\\\\\trellis-panel\\\\\\\\.trellis\\\\\\\\tasks\\\\\\\\10-16-acp-runtime-foundation\\\\\\\\research\\\\\\\\validation\\\\\\\\lifecycle\\\\\\\\plain\\\\\\\\mvat3uyg-0\\\\\\\\deliberately-missing-runtime.exe\\\" \\\"D:\\\\\\\\my_demo\\\\\\\\trellis-panel\\\\\\\\.trellis\\\\\\\\tasks\\\\\\\\10-16-acp-runtime-foundation\\\\\\\\research\\\\\\\\validation\\\\\\\\lifecycle\\\\\\\\agent fixture.mjs\\\" --root \\\"D:\\\\\\\\my_demo\\\\\\\\trellis-panel\\\\\\\\.trellis\\\\\\\\tasks\\\\\\\\10-16-acp-runtime-foundation\\\\\\\\research\\\\\\\\validation\\\\\\\\lifecycle\\\\\\\\plain\\\\\\\\mvat3uyg-0\\\" --nonce cdd88a81-3095-4ce9-bbdd-b9a04e216155 --mode normal --stage main --extra \\\"literal spaces & metacharacters\\\". The agent process could not start because a required executable, interpreter, working directory, or other launch path was not found. Check the command, effective PATH, and working directory, or verify the custom agent's configured argv.\",\"cause\":{\"code\":\"ENOENT\",\"message\":\"spawn D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\lifecycle\\\\plain\\\\mvat3uyg-0\\\\deliberately-missing-runtime.exe ENOENT\"}}}\n"
+  ]
+}

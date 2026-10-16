@@ -1,0 +1,56 @@
+{
+  "version": "acpx@0.19.5",
+  "node": "v24.12.0",
+  "platform": "win32",
+  "execPath": "C:\\nvm4w\\nodejs\\node.exe",
+  "runRoot": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-00-32-321Z",
+  "cases": [
+    {
+      "caseName": "no_lifecycle",
+      "root": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-00-32-321Z\\no_lifecycle with spaces",
+      "completed": {
+        "outerError": {
+          "name": "Error",
+          "message": "outer case exceeded 11000ms"
+        }
+      },
+      "outcome": "case-error",
+      "error": {
+        "name": "AcpRuntimeError",
+        "code": "ACP_SESSION_INIT_FAILED",
+        "message": "ACP agent node.exe did not complete ACP initialization within 4000ms. Check that the configured command starts an ACP server.",
+        "cause": {
+          "message": "Timed out after 4000ms"
+        }
+      },
+      "hooks": [],
+      "supervisorCleanup": [
+        {
+          "pid": 60940,
+          "alive": true,
+          "identity": {
+            "ProcessId": 60940,
+            "ParentProcessId": 8108,
+            "ExecutablePath": "C:\\nvm4w\\nodejs\\node.exe",
+            "CommandLine": "C:\\nvm4w\\nodejs\\node.exe D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\run-lifecycle.mjs --worker no_lifecycle ae7afd69-0664-4be3-98a4-477b7cc0dfbd \"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\runs\\2026-10-16T10-00-32-321Z\\no_lifecycle with spaces\" \"D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe\""
+          },
+          "ownershipVerified": true,
+          "cleanupError": {
+            "name": "Error",
+            "message": "Command failed: C:\\WINDOWS\\System32\\taskkill.exe /PID 60940 /T /F\n����: û���ҵ����� \"60940\"��\r\n"
+          }
+        }
+      ],
+      "afterCleanup": [
+        {
+          "pid": 60940,
+          "alive": false
+        },
+        {
+          "pid": 17488,
+          "alive": false
+        }
+      ]
+    }
+  ]
+}

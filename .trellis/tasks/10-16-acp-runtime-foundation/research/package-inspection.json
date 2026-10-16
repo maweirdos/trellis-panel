@@ -1,0 +1,36 @@
+{
+  "archive": "C:\\Users\\Maweirdos\\.codex\\visualizations\\2026\\10\\16\\01a143cf-354c-7ce0-a351-45db825fc514\\acp-native-qa\\packaged\\win-unpacked\\resources\\app.asar",
+  "main": "package-bootstrap.cjs",
+  "checks": [
+    {
+      "file": "out/main/index.js",
+      "sha256": "9eaca9ad2b2a73846209d50d25af0abe0c7b64c27195e7dbe053f5617bf1b221",
+      "sameAsWorkspace": true
+    },
+    {
+      "file": "out/preload/index.js",
+      "sha256": "14edfc395c50e62675ecf2f7507c2075cb5b7fdf18d9509810dc4e429f452a80",
+      "sameAsWorkspace": true
+    },
+    {
+      "file": "out/renderer/index.html",
+      "sha256": "c3d37f7250343871d1607dcd219590e81064e97d6362349e1769b7ff3d1e6ffe",
+      "sameAsWorkspace": true
+    },
+    {
+      "file": "node_modules/acpx/dist/runtime.js",
+      "sha256": "f787daa19152b174b27821b4893f02ef01f5c88b96ee2ad2209860c2f0309460",
+      "sameAsWorkspace": true
+    },
+    {
+      "file": "node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js",
+      "sha256": "2225150b5c0b038b359ae1b4e8d8d6592e379b46c009c61808d623f53d09d0bf",
+      "sameAsWorkspace": true
+    },
+    {
+      "file": "node_modules/acpx/node_modules/@agentclientprotocol/sdk/schema/schema.json",
+      "sha256": "5d89e96761e4312d9043ecd41d5be1ba9adc81d02c402bb774b79ef38bc32d91",
+      "sameAsWorkspace": true
+    }
+  ]
+}

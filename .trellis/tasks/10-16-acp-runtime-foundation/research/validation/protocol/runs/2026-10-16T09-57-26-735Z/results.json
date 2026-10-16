@@ -1,0 +1,686 @@
+{
+  "cleanRoom": true,
+  "package": {
+    "name": "acpx",
+    "version": "0.19.5"
+  },
+  "node": "v24.12.0",
+  "runRoot": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z",
+  "observations": [
+    {
+      "name": "remote identity and two turns",
+      "status": "passed",
+      "detail": {
+        "handle": {
+          "sessionKey": "research-conversation",
+          "backend": "acpx",
+          "runtimeSessionName": "acpx:v2:eyJuYW1lIjoicmVzZWFyY2gtY29udmVyc2F0aW9uIiwiYWdlbnQiOiJyZXNlYXJjaC1wZWVyIiwiY3dkIjoiRDpcXG15X2RlbW9cXHRyZWxsaXMtcGFuZWxcXC50cmVsbGlzXFx0YXNrc1xcMTAtMTYtYWNwLXJ1bnRpbWUtZm91bmRhdGlvblxccmVzZWFyY2hcXHZhbGlkYXRpb25cXHByb3RvY29sXFxydW5zXFwyMDI2LTEwLTE2VDA5LTU3LTI2LTczNVpcXG5vcm1hbCIsIm1vZGUiOiJwZXJzaXN0ZW50IiwiYWNweFJlY29yZElkIjoicmVzZWFyY2gtY29udmVyc2F0aW9uIiwiYmFja2VuZFNlc3Npb25JZCI6Im9wYXF1ZS1hZ2VudC1zZXNzaW9uOm5vcm1hbDo3MjkifQ",
+          "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+          "acpxRecordId": "research-conversation",
+          "backendSessionId": "opaque-agent-session:normal:729"
+        },
+        "promptSessionIds": [
+          "opaque-agent-session:normal:729",
+          "opaque-agent-session:normal:729"
+        ],
+        "results": [
+          {
+            "status": "completed",
+            "stopReason": "end_turn"
+          },
+          {
+            "status": "completed",
+            "stopReason": "end_turn"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split Unicode and tool patch",
+      "status": "passed",
+      "detail": {
+        "text": "你好，协议✅ turn:1",
+        "patch": {
+          "type": "tool_call",
+          "text": "tool call (completed): controlled output",
+          "tag": "tool_call_update",
+          "title": "tool call",
+          "toolCallId": "fixed-tool",
+          "status": "completed",
+          "rawOutput": {
+            "fixture": true
+          },
+          "content": [
+            {
+              "content": {
+                "text": "controlled output",
+                "type": "text"
+              },
+              "type": "content"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "acknowledged model mode and config",
+      "status": "passed",
+      "detail": {
+        "state": {
+          "remoteId": "opaque-agent-session:normal:729",
+          "newCount": 1,
+          "turnCount": 2,
+          "currentMode": "edit",
+          "currentModel": "large",
+          "quality": "careful",
+          "appliedActions": 0
+        },
+        "status": {
+          "lastRequestId": "research-2",
+          "summary": "session=research-conversation backendSessionId=opaque-agent-session:normal:729 pid=30068 open",
+          "acpxRecordId": "research-conversation",
+          "backendSessionId": "opaque-agent-session:normal:729",
+          "models": {
+            "currentModelId": "large",
+            "availableModelIds": [
+              "small",
+              "large"
+            ],
+            "availableModels": [
+              {
+                "modelId": "small",
+                "name": "Small"
+              },
+              {
+                "modelId": "large",
+                "name": "Large"
+              }
+            ]
+          },
+          "details": {
+            "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+            "lastUsedAt": "2026-10-16T09:57:32.462Z",
+            "closed": false,
+            "configOptions": [
+              {
+                "id": "quality",
+                "name": "Fixture quality",
+                "type": "select",
+                "currentValue": "careful",
+                "options": [
+                  {
+                    "value": "fast",
+                    "name": "Fast"
+                  },
+                  {
+                    "value": "careful",
+                    "name": "Careful"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "reply": {
+          "configOptions": [
+            {
+              "id": "quality",
+              "name": "Fixture quality",
+              "type": "select",
+              "currentValue": "careful",
+              "options": [
+                {
+                  "value": "fast",
+                  "name": "Fast"
+                },
+                {
+                  "value": "careful",
+                  "name": "Careful"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "all four permission kinds and original IDs",
+      "status": "passed",
+      "detail": [
+        {
+          "kind": "allow_once",
+          "rawOptions": [
+            {
+              "optionId": "opaque-allow-once",
+              "name": "Allow this action",
+              "kind": "allow_once"
+            },
+            {
+              "optionId": "opaque-allow-always",
+              "name": "Always allow this action",
+              "kind": "allow_always"
+            },
+            {
+              "optionId": "opaque-reject-once",
+              "name": "Deny this action",
+              "kind": "reject_once"
+            },
+            {
+              "optionId": "opaque-reject-always",
+              "name": "Always deny this action",
+              "kind": "reject_always"
+            }
+          ]
+        },
+        {
+          "kind": "allow_always",
+          "rawOptions": [
+            {
+              "optionId": "opaque-allow-once",
+              "name": "Allow this action",
+              "kind": "allow_once"
+            },
+            {
+              "optionId": "opaque-allow-always",
+              "name": "Always allow this action",
+              "kind": "allow_always"
+            },
+            {
+              "optionId": "opaque-reject-once",
+              "name": "Deny this action",
+              "kind": "reject_once"
+            },
+            {
+              "optionId": "opaque-reject-always",
+              "name": "Always deny this action",
+              "kind": "reject_always"
+            }
+          ]
+        },
+        {
+          "kind": "reject_once",
+          "rawOptions": [
+            {
+              "optionId": "opaque-allow-once",
+              "name": "Allow this action",
+              "kind": "allow_once"
+            },
+            {
+              "optionId": "opaque-allow-always",
+              "name": "Always allow this action",
+              "kind": "allow_always"
+            },
+            {
+              "optionId": "opaque-reject-once",
+              "name": "Deny this action",
+              "kind": "reject_once"
+            },
+            {
+              "optionId": "opaque-reject-always",
+              "name": "Always deny this action",
+              "kind": "reject_always"
+            }
+          ]
+        },
+        {
+          "kind": "reject_always",
+          "rawOptions": [
+            {
+              "optionId": "opaque-allow-once",
+              "name": "Allow this action",
+              "kind": "allow_once"
+            },
+            {
+              "optionId": "opaque-allow-always",
+              "name": "Always allow this action",
+              "kind": "allow_always"
+            },
+            {
+              "optionId": "opaque-reject-once",
+              "name": "Deny this action",
+              "kind": "reject_once"
+            },
+            {
+              "optionId": "opaque-reject-always",
+              "name": "Always deny this action",
+              "kind": "reject_always"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "duplicate-kind option limitation",
+      "status": "limitation",
+      "detail": {
+        "desiredId": "opaque-second-once",
+        "selectedId": "opaque-first-once",
+        "contract": "Public handler chooses a kind; no original optionId field is supported"
+      }
+    },
+    {
+      "name": "cancel while permission pending",
+      "status": "passed",
+      "detail": {
+        "response": {
+          "outcome": {
+            "outcome": "cancelled"
+          }
+        },
+        "result": {
+          "status": "cancelled",
+          "stopReason": "cancelled"
+        },
+        "signalAborted": true
+      }
+    },
+    {
+      "name": "foreign session update filtering",
+      "status": "limitation",
+      "detail": {
+        "text": "WRONG-SESSION-MARKER你好，协议✅ turn:9",
+        "reason": "Foreign notification projected into active turn"
+      }
+    },
+    {
+      "name": "same-session store restart",
+      "status": "passed",
+      "detail": {
+        "old": {
+          "remoteId": "opaque-agent-session:normal:729",
+          "newCount": 1,
+          "turnCount": 9,
+          "currentMode": "edit",
+          "currentModel": "large",
+          "quality": "careful",
+          "appliedActions": 3
+        },
+        "after": {
+          "remoteId": "opaque-agent-session:normal:729",
+          "newCount": 1,
+          "turnCount": 10,
+          "currentMode": "edit",
+          "currentModel": "large",
+          "quality": "careful",
+          "appliedActions": 3
+        },
+        "restored": {
+          "sessionKey": "research-conversation",
+          "backend": "acpx",
+          "runtimeSessionName": "acpx:v2:eyJuYW1lIjoicmVzZWFyY2gtY29udmVyc2F0aW9uIiwiYWdlbnQiOiJyZXNlYXJjaC1wZWVyIiwiY3dkIjoiRDpcXG15X2RlbW9cXHRyZWxsaXMtcGFuZWxcXC50cmVsbGlzXFx0YXNrc1xcMTAtMTYtYWNwLXJ1bnRpbWUtZm91bmRhdGlvblxccmVzZWFyY2hcXHZhbGlkYXRpb25cXHByb3RvY29sXFxydW5zXFwyMDI2LTEwLTE2VDA5LTU3LTI2LTczNVpcXG5vcm1hbCIsIm1vZGUiOiJwZXJzaXN0ZW50IiwiYWNweFJlY29yZElkIjoicmVzZWFyY2gtY29udmVyc2F0aW9uIiwiYmFja2VuZFNlc3Npb25JZCI6Im9wYXF1ZS1hZ2VudC1zZXNzaW9uOm5vcm1hbDo3MjkifQ",
+          "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+          "acpxRecordId": "research-conversation",
+          "backendSessionId": "opaque-agent-session:normal:729"
+        },
+        "load": {
+          "kind": "in",
+          "pid": 39324,
+          "message": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/load",
+            "params": {
+              "sessionId": "opaque-agent-session:normal:729",
+              "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+              "mcpServers": [],
+              "_meta": {
+                "claudeCode": {
+                  "options": {
+                    "model": "large"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "failed load never creates replacement",
+      "status": "passed",
+      "detail": {
+        "result": {
+          "status": "failed",
+          "error": {
+            "message": "Persistent ACP session opaque-agent-session:normal:729 could not be resumed: Fixture saved session is unavailable",
+            "code": "NO_SESSION",
+            "detailCode": "SESSION_RESUME_REQUIRED",
+            "retryable": true
+          }
+        },
+        "state": {
+          "remoteId": "opaque-agent-session:normal:729",
+          "newCount": 1,
+          "turnCount": 10,
+          "currentMode": "edit",
+          "currentModel": "large",
+          "quality": "careful",
+          "appliedActions": 3,
+          "failLoad": true
+        }
+      }
+    },
+    {
+      "name": "auth-required",
+      "status": "passed",
+      "detail": {
+        "error": {
+          "message": "Fixture authentication required",
+          "code": -32000
+        },
+        "publicAuthenticateMethod": "undefined"
+      }
+    },
+    {
+      "name": "malformed-init",
+      "status": "failed",
+      "detail": {
+        "message": "The expression evaluated to a falsy value:\n\n  assert.ok(error || output?.result.status === 'failed')\n",
+        "stack": [
+          "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:",
+          "",
+          "  assert.ok(error || output?.result.status === 'failed')",
+          "",
+          "    at file:///D:/my_demo/trellis-panel/.trellis/tasks/10-16-acp-runtime-foundation/research/validation/protocol/run-protocol.mjs:230:14"
+        ]
+      }
+    },
+    {
+      "name": "wrong-version",
+      "status": "failed",
+      "detail": {
+        "message": "The expression evaluated to a falsy value:\n\n  assert.ok(error || output?.result.status === 'failed')\n",
+        "stack": [
+          "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:",
+          "",
+          "  assert.ok(error || output?.result.status === 'failed')",
+          "",
+          "    at file:///D:/my_demo/trellis-panel/.trellis/tasks/10-16-acp-runtime-foundation/research/validation/protocol/run-protocol.mjs:230:14"
+        ]
+      }
+    },
+    {
+      "name": "missing-new-id",
+      "status": "passed",
+      "detail": {
+        "output": {
+          "result": {
+            "status": "failed",
+            "error": {
+              "message": "ACP session not found: missing-new-id",
+              "code": "NO_SESSION"
+            }
+          },
+          "events": [],
+          "admission": {
+            "accepted": false,
+            "message": "ACP session not found: missing-new-id"
+          }
+        },
+        "publicAuthenticateMethod": "undefined"
+      }
+    }
+  ],
+  "launches": [
+    {
+      "phase": "spawned",
+      "launchId": "5872a504-0b2e-4bfc-a862-3fed6cfb057c",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "research-conversation"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+        "normal"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+      "pid": 30068,
+      "startedAt": "2026-10-16T09:57:27.008Z"
+    },
+    {
+      "phase": "exit",
+      "launchId": "5872a504-0b2e-4bfc-a862-3fed6cfb057c",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "research-conversation"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+        "normal"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+      "pid": 30068,
+      "startedAt": "2026-10-16T09:57:27.008Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T09:57:41.167Z"
+    },
+    {
+      "phase": "spawned",
+      "launchId": "43ceeb85-7d09-42fb-8ce7-8f2755fafc38",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "research-conversation"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+        "normal"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+      "pid": 39324,
+      "startedAt": "2026-10-16T09:57:43.978Z"
+    },
+    {
+      "phase": "exit",
+      "launchId": "43ceeb85-7d09-42fb-8ce7-8f2755fafc38",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "research-conversation"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+        "normal"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+      "pid": 39324,
+      "startedAt": "2026-10-16T09:57:43.978Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T09:57:49.495Z"
+    },
+    {
+      "phase": "spawned",
+      "launchId": "d3e56e15-3489-4347-8811-049d5d132671",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "research-conversation"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+        "normal"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+      "pid": 58192,
+      "startedAt": "2026-10-16T09:57:52.116Z"
+    },
+    {
+      "phase": "exit",
+      "launchId": "d3e56e15-3489-4347-8811-049d5d132671",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "research-conversation"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+        "normal"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\normal",
+      "pid": 58192,
+      "startedAt": "2026-10-16T09:57:52.116Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T09:57:54.924Z"
+    },
+    {
+      "phase": "spawned",
+      "launchId": "b97fa24e-3691-4572-bcbd-b0b6ff281c3f",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "auth-required"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\auth-required",
+        "auth-required"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\auth-required",
+      "pid": 62264,
+      "startedAt": "2026-10-16T09:57:57.714Z"
+    },
+    {
+      "phase": "exit",
+      "launchId": "b97fa24e-3691-4572-bcbd-b0b6ff281c3f",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "auth-required"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\auth-required",
+        "auth-required"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\auth-required",
+      "pid": 62264,
+      "startedAt": "2026-10-16T09:57:57.714Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T09:58:00.544Z"
+    },
+    {
+      "phase": "spawned",
+      "launchId": "14608084-3bf6-4291-b5bf-a080082b19ed",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "malformed-init"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\malformed-init",
+        "malformed-init"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\malformed-init",
+      "pid": 59148,
+      "startedAt": "2026-10-16T09:58:03.382Z"
+    },
+    {
+      "phase": "exit",
+      "launchId": "14608084-3bf6-4291-b5bf-a080082b19ed",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "malformed-init"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\malformed-init",
+        "malformed-init"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\malformed-init",
+      "pid": 59148,
+      "startedAt": "2026-10-16T09:58:03.382Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T09:58:08.875Z"
+    },
+    {
+      "phase": "spawned",
+      "launchId": "e99f64de-d343-4d10-90d2-6603a00b4581",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "wrong-version"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\wrong-version",
+        "wrong-version"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\wrong-version",
+      "pid": 54884,
+      "startedAt": "2026-10-16T09:58:11.658Z"
+    },
+    {
+      "phase": "exit",
+      "launchId": "e99f64de-d343-4d10-90d2-6603a00b4581",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "wrong-version"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\wrong-version",
+        "wrong-version"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\wrong-version",
+      "pid": 54884,
+      "startedAt": "2026-10-16T09:58:11.658Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T09:58:17.130Z"
+    },
+    {
+      "phase": "spawned",
+      "launchId": "7d53bd67-b84d-4837-bdbd-c6d5ef11a362",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "missing-new-id"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\missing-new-id",
+        "missing-new-id"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\missing-new-id",
+      "pid": 50592,
+      "startedAt": "2026-10-16T09:58:19.878Z"
+    },
+    {
+      "phase": "exit",
+      "launchId": "7d53bd67-b84d-4837-bdbd-c6d5ef11a362",
+      "scope": {
+        "kind": "runtime-session",
+        "sessionKey": "missing-new-id"
+      },
+      "command": "C:\\nvm4w\\nodejs\\node.exe",
+      "args": [
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\strict-peer.mjs",
+        "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\missing-new-id",
+        "missing-new-id"
+      ],
+      "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\protocol\\runs\\2026-10-16T09-57-26-735Z\\missing-new-id",
+      "pid": 50592,
+      "startedAt": "2026-10-16T09:58:19.878Z",
+      "exitCode": 0,
+      "signal": null,
+      "exitedAt": "2026-10-16T09:58:24.082Z"
+    }
+  ],
+  "verdict": "needs-review"
+}

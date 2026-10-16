@@ -1,0 +1,55 @@
+{
+  "schema": "acpx.session.v1",
+  "acpx_record_id": "lifecycle-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+  "acp_session_id": "remote-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+  "agent_command": "\"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\lifecycle\\\\node_modules\\\\Node Runtime With Spaces\\\\node.exe\" \"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\lifecycle\\\\agent fixture.mjs\" --root \"D:\\\\my_demo\\\\trellis-panel\\\\.trellis\\\\tasks\\\\10-16-acp-runtime-foundation\\\\research\\\\validation\\\\lifecycle\\\\plain\\\\mvat39ic-5\" --nonce 1d72b439-5fd2-4fcc-a3f6-3a389dbbf140 --mode normal --stage main --extra \"literal spaces & metacharacters\"",
+  "agent_argv": [
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\node_modules\\Node Runtime With Spaces\\node.exe",
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\agent fixture.mjs",
+    "--root",
+    "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+    "--nonce",
+    "1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+    "--mode",
+    "normal",
+    "--stage",
+    "main",
+    "--extra",
+    "literal spaces & metacharacters"
+  ],
+  "cwd": "D:\\my_demo\\trellis-panel\\.trellis\\tasks\\10-16-acp-runtime-foundation\\research\\validation\\lifecycle\\plain\\mvat39ic-5",
+  "name": "lifecycle-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140",
+  "created_at": "2026-10-16T10:09:48.673Z",
+  "last_used_at": "2026-10-16T10:09:48.673Z",
+  "last_seq": 0,
+  "event_log": {
+    "active_path": "C:\\Users\\Maweirdos\\.acpx\\sessions\\lifecycle-1d72b439-5fd2-4fcc-a3f6-3a389dbbf140.stream.ndjson",
+    "segment_count": 5,
+    "max_segment_bytes": 67108864,
+    "max_segments": 5,
+    "last_write_error": null
+  },
+  "closed": false,
+  "pid": 57712,
+  "agent_started_at": "2026-10-16T10:09:45.842Z",
+  "protocol_version": 1,
+  "agent_capabilities": {
+    "loadSession": true,
+    "promptCapabilities": {
+      "embeddedContext": false
+    },
+    "mcpCapabilities": {
+      "http": false,
+      "sse": false
+    }
+  },
+  "title": null,
+  "messages": [],
+  "updated_at": "2026-10-16T10:09:48.673Z",
+  "cumulative_token_usage": {},
+  "request_token_usage": {},
+  "acpx": {
+    "session_origin": "new",
+    "config_options": []
+  }
+}
