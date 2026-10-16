@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
-- **Last Active**: 2026-10-16
+- **Total Sessions**: 21
+- **Last Active**: 2026-10-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~687 | Active |
+| `journal-1.md` | ~729 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-10-17 | ACP 底座接入与双 Agent 核心验收 | `f265a1d`, `4e86747` | `codex/trellis-team-refactor` |
 | 20 | 2026-10-16 | 项目工作区 UIUX 本版提交 | `519c69ca9d103f20be74fd5dda8718a2485338ff`, `b779e55af8ec82ece26465bdae6ce61e6b3505e1` | `codex/trellis-team-refactor` |
 | 18 | 2026-09-30 | 任务透视 v3 体检卡 | `503227d` | `codex/spec-code-health` |
 | 17 | 2026-09-30 | 任务透视 v2 管线图重做 | `08ded2e` | `codex/spec-code-health` |

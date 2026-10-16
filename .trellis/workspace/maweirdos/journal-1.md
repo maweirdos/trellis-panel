@@ -685,3 +685,45 @@ AC3 宿主半边关闭：真实交互式 Codex TUI（0.159.2）内 spawn_agent �
 ### Next Steps
 
 - 补做精修后的原生边框、主题、缩放与布局实图验收；任务继续in_progress。
+
+
+## Session 21: ACP 底座接入与双 Agent 核心验收
+<!-- trellis-session: v=2 fp=b48a32b5de770587 -->
+
+**Date**: 2026-10-17
+**Task**: ACP 底座接入与双 Agent 核心验收
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+完成 acpx 接入与工作台，Codex 和 glm-5.3-flash Claude 核心链路通过；原生 IME/视觉验收待完成，任务保持进行中。
+
+### Main Changes
+
+Implemented the approved ACP foundation using exact acpx0.19.5 / SDK1.8.0 with a bounded compatibility patch, explicit managed adapter setup, reusable profiles, exact permission mediation, native history restore, directory ownership and the Agent workspace.
+
+- Work commits: f265a1d (feature/spec/tests), 4e86747 (research/acceptance/task records). User approved the concrete two-commit plan with “继续” on2026-10-17. Nothing was pushed or deployed.
+- Quality: foundation13, UI38, strict runtime23, clean preparation7; typecheck/build, service/scope, Chat, IPC/navigation/UIUX/render all passed. Final product summary14/14 assertions passed. No lint script is configured.
+- Real final Windows package: Codex0.160.1 via adapter2.2.2 and Claude2.1.300 / Agent SDK0.3.300 via adapter0.91.0. User-selected glm-5.3-flash passed actual nonce reads, edits, original allow/deny, cancellation/next turn and same-ID native continuation after complete restart. Package uses restricted PATH and cached absolute external Node24.12; Electron44.4.3 embeds Node24.21.
+- Failed stock/runtime selection trials and one stale-context/no-tool trial remain distinguishable from positive evidence. Public acpx already persists explicit model requests; alias-name remapping was not treated as a proven lost-preference defect. No redundant preference layer or global credential/provider rewrite was added.
+- Verified both owned process exits: captured16 and9 processes cleared, including native engine/console/tool children. Optional client fs/terminal callbacks are unadvertised; native tools retain exact per-turn permissions.
+- The staged audit excluded generated PowerShell startup cache data and private daemon homes/runtime bundles without deleting local historical files. Valid unified-diff context whitespace is checked separately from actual source additions; patch bytes and compatibility hashes remain unchanged.
+- Pre-existing cycle metadata and unrelated ProjectSidebar/DocWindow work remain untouched and unstaged. Parent task staging includes only the child link.
+
+Native system-IME, profile/draft-switch and final visual checks remain open after two physical-Escape stops. Task remains in_progress and was not archived. Resume from validation.md / implement.md and .trellis/spec/backend/acp-runtime.md; do not repeat completed implementation or pretend hook/API tests close native UI criteria.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f265a1d` | feat(acp): 接入 acpx 并完善 Agent 工作台 |
+| `4e86747` | docs(acp): 记录底座选型与双 Agent 验收 |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 完成系统 IME、原生 profile/draft-switch 与最终视觉验收后再关闭任务。
