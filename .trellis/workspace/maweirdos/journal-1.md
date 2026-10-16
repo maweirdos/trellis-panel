@@ -649,3 +649,39 @@ AC3 宿主半边关闭：真实交互式 Codex TUI（0.159.2）内 spawn_agent �
 ### Status
 
 [BLOCKED] **In Progress** — AC1–AC8 全关；AC9/AC10 等用户两句话：①试点名单或"暂无人选"；②上游 PR"发/不发"。备件均在任务目录备好，回复即收尾。
+
+
+## Session 20: 项目工作区 UIUX 本版提交
+<!-- trellis-session: v=2 fp=cdd3526ce9ed72e1 -->
+
+**Date**: 2026-10-16
+**Task**: 项目工作区 UIUX 本版提交
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+按用户要求提交当前 UIUX 实现与规划文档；保留原生外框实图复核待办，不归档任务、不推送。
+
+### Main Changes
+
+- 唯一项目顶栏、桌面模块栏与上下文导航、中央任务阅读及知识团队整理；主题化原生窗口边框。
+- 独立暂存快照发现并补齐必要文档窗口接口依赖；其他ACP和任务改动保留。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `519c69ca9d103f20be74fd5dda8718a2485338ff` | feat(workspace): 固定模块导航与中央任务工作区 |
+| `b779e55af8ec82ece26465bdae6ce61e6b3505e1` | docs(workspace): 同步布局验收与外部集成路线图 |
+
+### Testing
+
+- [OK] 独立暂存快照 typecheck、build、navigation、task-presentation、uiux-wiring 和153个IPC通道注册检查通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 补做精修后的原生边框、主题、缩放与布局实图验收；任务继续in_progress。

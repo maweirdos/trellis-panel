@@ -22,5 +22,12 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "checkpoint": {
+      "code": "519c69ca9d103f20be74fd5dda8718a2485338ff",
+      "docs": "b779e55af8ec82ece26465bdae6ce61e6b3505e1",
+      "native_visual": "pending",
+      "requested_by_user": true
+    }
+  }
 }
