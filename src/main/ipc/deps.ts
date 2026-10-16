@@ -19,4 +19,10 @@ export interface WindowDeps {
   /** 截取主窗口当前画面为 PNG dataURL（截图问 AI，TPD-022） */
   captureMain(): Promise<string | null>
   capsule: CapsuleApi
+  /** 置顶文档小窗：打开/聚焦（创建与生命周期归 index.ts） */
+  openDocWindow(opts: { key: string; title: string; file: string; theme: string }): {
+    ok: boolean
+    focused?: boolean
+    error?: string
+  }
 }

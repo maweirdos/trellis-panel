@@ -37,13 +37,14 @@ interface FeedItem {
   what: string
   kind: 'task' | 'journal' | 'session'
   taskDir?: string
+  archived?: boolean
 }
 
 interface MemberStat {
   name: string
   total: number
   byStatus: Record<string, number>
-  lastActive: number
+  lastRecordAt: number
 }
 
 type Tab = 'board' | 'efficiency' | 'report' | 'standup' | 'workflow'
@@ -105,6 +106,9 @@ function BoardTab({ feed, members, snapshot }: {
   snapshot: NonNullable<ReturnType<typeof useApp.getState>['snapshot']>
 }): JSX.Element {
   const showTask = useApp((s) => s.showTask)
+  const [responsibility, setResponsibility] = useState<'all' | 'mine' | 'unassigned'>('all')
+  const visibleMembers = members.filter((member) => responsibility === 'all' || (responsibility === 'unassigned' ? member.name === '未分配' : member.name === snapshot.meta.developer))
+  const unassignedCount = snapshot.tasks.filter((task) => !task.record?.assignee && !isFinished(task)).length
 
   const feedGroups = useMemo(() => {
     const groups = new Map<string, FeedItem[]>()
@@ -118,17 +122,27 @@ function BoardTab({ feed, members, snapshot }: {
   }, [feed])
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
       {/* 成员负载：谁在做什么（人多时自动铺成两列网格） */}
-      <div className="lg:col-span-3">
-        <div className="mb-2 flex items-center gap-2 px-1 text-my-xs font-semibold text-my-secondary">
-          <Users2 size={13} className="text-my-tertiary" /> 成员负载
-          <span className="text-my-xs font-normal text-my-tertiary">点击任务直达详情</span>
+      <div className="xl:col-span-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-my-xs font-semibold text-my-primary">
+          <Users2 size={13} className="text-my-icon-secondary" /> 工作责任
+          <div className="ml-auto flex items-center gap-1" role="group" aria-label="按任务负责人筛选">
+            {([
+              ['all', '全部'],
+              ['mine', '我负责'],
+              ['unassigned', `未分配 ${unassignedCount}`]
+            ] as const).map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={responsibility === value} onClick={() => setResponsibility(value)} className={clsx('my-control my-control-sm border', responsibility === value ? 'border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text' : 'border-transparent text-my-secondary hover:bg-my-layer-1-hover')}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className={clsx('grid gap-3', members.length > 2 ? 'md:grid-cols-2' : 'grid-cols-1')}>
-          {members.map((m) => {
+        <div className="space-y-3">
+          {visibleMembers.map((m) => {
             const mine = snapshot.tasks
-              .filter((t) => (t.record?.assignee || t.record?.creator) === m.name)
+              .filter((t) => (t.record?.assignee || '未分配') === m.name)
               .sort(
                 (a, b) =>
                   (STATUS_ORDER[t2s(a)] ?? 3) - (STATUS_ORDER[t2s(b)] ?? 3) ||
@@ -136,21 +150,21 @@ function BoardTab({ feed, members, snapshot }: {
                     (PRIORITY_ORDER[b.record?.priority ?? ''] ?? 9) ||
                   b.updatedAt - a.updatedAt
               )
-            const inflight = mine.filter((t) => !['completed', 'done'].includes((t.record?.status ?? '').toLowerCase()))
+            const inflight = mine.filter((t) => !isFinished(t))
             const doneCount = m.byStatus['已完成'] ?? 0
             return (
-              <div key={m.name} className="my-card px-4 py-3.5">
+              <div key={m.name} className="rounded-my-lg border border-my-line bg-my-surface-1 px-4 py-3.5">
                 <div className="mb-2.5 flex items-center gap-2.5">
                   <Avatar name={m.name} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-my-xs font-semibold text-my-primary">{m.name}</span>
                       <span className="text-my-xs text-my-tertiary">
-                        {inflight.length} 个进行中 · 完成 {doneCount}
+                        {inflight.length} 个未结束 · 完成 {doneCount}
                       </span>
                     </div>
-                    <div className="mt-0.5 text-my-2xs text-my-placeholder">
-                      {m.lastActive ? `最近活跃 ${relTime(m.lastActive)}` : '暂无活跃记录'}
+                    <div className="mt-0.5 text-my-xs text-my-secondary">
+                      {m.lastRecordAt ? `关联文件最近更新 ${relTime(m.lastRecordAt)}` : '暂无文件更新记录'}
                     </div>
                   </div>
                   <div className="flex h-1.5 w-20 gap-px overflow-hidden rounded-full bg-my-layer-3">
@@ -181,7 +195,7 @@ function BoardTab({ feed, members, snapshot }: {
                   ))}
                   {inflight.length === 0 && (
                     <div className="flex items-center gap-1.5 px-2 py-1 text-my-xs text-my-placeholder">
-                      <CircleCheck size={11} className="text-my-success-text" /> 当前没有进行中的任务
+                      <CircleCheck size={11} className="text-my-success-text" /> 当前没有未结束任务
                     </div>
                   )}
                 </div>
@@ -189,17 +203,18 @@ function BoardTab({ feed, members, snapshot }: {
             )
           })}
         </div>
-        {members.length === 0 && (
-          <div className="my-card py-10 text-center text-my-xs text-my-tertiary">暂无成员数据</div>
+        {visibleMembers.length === 0 && (
+          <div className="rounded-my-lg border border-my-line bg-my-surface-1 py-10 text-center text-my-sm text-my-secondary">{responsibility === 'mine' && !snapshot.meta.developer ? '当前项目未设置开发者身份' : '此范围暂无任务负责人'}</div>
         )}
       </div>
 
       {/* 动态时间线：按日分组 */}
-      <div className="lg:col-span-2">
-        <div className="my-card">
+      <div className="xl:col-span-2">
+        <div className="overflow-hidden rounded-my-lg border border-my-line bg-my-surface-1">
           <div className="flex items-center gap-1.5 border-b border-my-line px-4 py-2.5 text-my-xs font-semibold text-my-secondary">
-            <GitCommitHorizontal size={13} className="text-my-tertiary" /> 团队动态
+            <GitCommitHorizontal size={13} className="text-my-tertiary" /> 最近记录
           </div>
+          <p className="border-b border-my-line bg-my-layer-1 px-4 py-2 text-my-xs leading-5 text-my-secondary">来自任务、工作区文件和会话时间记录；负责人不等于实际操作者。</p>
           <div className="my-scrollbar max-h-[640px] overflow-y-auto px-4 py-3">
             {feedGroups.map(([label, items]) => (
               <div key={label} className="mb-4 last:mb-0">
@@ -236,9 +251,7 @@ function BoardTab({ feed, members, snapshot }: {
                             {it.kind === 'task' && it.taskDir ? (
                               <button
                                 onClick={() => {
-                                  const t = snapshot.tasks.find((x) => x.dirName === it.taskDir)
-                                  if (t) showTask(t.dirName)
-                                  else showTask(it.taskDir!, true)
+                                  if (it.taskDir) showTask(it.taskDir, it.archived ?? false)
                                 }}
                                 className="text-left text-my-secondary hover:text-my-accent-text hover:underline transition-colors"
                               >
@@ -255,7 +268,7 @@ function BoardTab({ feed, members, snapshot }: {
                 </div>
               </div>
             ))}
-            {feed.length === 0 && <div className="py-10 text-center text-my-xs text-my-tertiary">暂无动态</div>}
+            {feed.length === 0 && <div className="py-10 text-center text-my-xs text-my-tertiary">暂无记录</div>}
           </div>
         </div>
       </div>
@@ -265,6 +278,10 @@ function BoardTab({ feed, members, snapshot }: {
 
 function t2s(t: TaskInfo): string {
   return (t.record?.status ?? '').toLowerCase()
+}
+
+function isFinished(task: TaskInfo): boolean {
+  return ['completed', 'done', 'cancelled', 'canceled'].includes(t2s(task))
 }
 
 function feedDot(kind: FeedItem['kind']): JSX.Element {
@@ -552,22 +569,25 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
       if (!t.updatedAt) continue
       items.push({
         at: t.updatedAt,
-        who: t.record?.assignee || t.record?.creator || '未知',
-        what: `更新了任务「${t.record?.title ?? t.dirName}」`,
+        who: `负责人 · ${t.record?.assignee || '未分配'}`,
+        what: `任务文件更新「${t.record?.title ?? t.dirName}」`,
         kind: 'task',
-        taskDir: t.archived ? t.path : t.dirName
+        taskDir: t.archived ? t.path : t.dirName,
+        archived: Boolean(t.archived)
       })
     }
     for (const d of snapshot.developers) {
       for (const j of [...d.journals, ...d.otherFiles]) {
-        items.push({ at: j.mtime, who: d.name, what: `写入工作区日志 ${j.name}`, kind: 'journal' })
+        items.push({ at: j.mtime, who: `工作区 · ${d.name}`, what: `文件更新 ${j.name}`, kind: 'journal' })
       }
     }
     for (const s of snapshot.sessions.slice(0, 12)) {
+      const at = s.lastSeen ? new Date(s.lastSeen).getTime() : 0
+      if (!Number.isFinite(at) || at <= 0) continue
       items.push({
-        at: s.lastSeen ? new Date(s.lastSeen).getTime() : 0,
-        who: s.platform,
-        what: `AI 会话活跃${s.currentTask ? `（${s.currentTask}）` : ''}`,
+        at,
+        who: `平台 · ${s.platform}`,
+        what: `会话记录${s.currentTask ? `（${s.currentTask}）` : ''}`,
         kind: 'session'
       })
     }
@@ -577,24 +597,24 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
   const members = useMemo<MemberStat[]>(() => {
     const map = new Map<string, MemberStat>()
     for (const t of snapshot.tasks) {
-      const who = t.record?.assignee || t.record?.creator || '未分配'
-      const m = map.get(who) ?? { name: who, total: 0, byStatus: {}, lastActive: 0 }
+      const who = t.record?.assignee || '未分配'
+      const m = map.get(who) ?? { name: who, total: 0, byStatus: {}, lastRecordAt: 0 }
       m.total += 1
       const st = statusLabel(t.record?.status)
       m.byStatus[st] = (m.byStatus[st] ?? 0) + 1
-      m.lastActive = Math.max(m.lastActive, t.updatedAt)
+      m.lastRecordAt = Math.max(m.lastRecordAt, t.updatedAt)
       map.set(who, m)
     }
     for (const d of snapshot.developers) {
-      const m = map.get(d.name) ?? { name: d.name, total: 0, byStatus: {}, lastActive: 0 }
-      m.lastActive = Math.max(m.lastActive, d.lastActive)
+      const m = map.get(d.name) ?? { name: d.name, total: 0, byStatus: {}, lastRecordAt: 0 }
+      m.lastRecordAt = Math.max(m.lastRecordAt, d.lastActive)
       map.set(d.name, m)
     }
-    return [...map.values()].sort((a, b) => b.total - a.total || b.lastActive - a.lastActive)
+    return [...map.values()].sort((a, b) => b.total - a.total || b.lastRecordAt - a.lastRecordAt)
   }, [snapshot])
 
   const currentTask = snapshot.tasks.find((t) => t.dirName === snapshot.meta.currentTask)
-  const inflightCount = snapshot.tasks.filter((t) => !['completed', 'done'].includes((t.record?.status ?? '').toLowerCase())).length
+  const inflightCount = snapshot.tasks.filter((t) => !isFinished(t)).length
   const doneThisWeek = useMemo(() => {
     const weekAgo = Date.now() - 7 * 86400000
     return [...snapshot.tasks, ...snapshot.archived].filter(
@@ -624,8 +644,8 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5">
             {[
-              ['成员', members.length],
-              ['进行中', inflightCount],
+              ['已知成员', members.filter((member) => member.name !== '未分配').length],
+              ['未结束', inflightCount],
               ['本周完成', doneThisWeek],
               ['AI 会话', snapshot.sessions.length]
             ].map(([label, v]) => (
@@ -637,7 +657,7 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
           <div className="ml-auto">
             <Tabs
               tabs={[
-                { id: 'board', label: '工作台' },
+                { id: 'board', label: '责任与记录' },
                 { id: 'efficiency', label: '效率分析' },
                 { id: 'standup', label: '站会' },
                 { id: 'report', label: '周报' },

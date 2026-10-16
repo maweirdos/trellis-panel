@@ -80,7 +80,7 @@ export interface SessionSlice {
   showTask: (dirName: string | null, archived?: boolean) => void
 }
 
-/** TaskDetail 预览「展开为完整工作区」的来源记录（AC1：返回时回到原页面与位置）。 */
+/** TaskDetail 展开的来源；展示方式与路由身份分离，来源组件保持挂载。 */
 export interface TaskExpandOrigin {
   fromPage: Page
   taskDir: string
@@ -96,12 +96,19 @@ export interface UiSlice {
   intakeOpen: boolean
   /** 非空 = 当前任务工作区是由快速预览展开进入的（Esc 返回预览而非关闭）。 */
   taskExpandOrigin: TaskExpandOrigin | null
+  /** 一次性材料定位；仅用于明确选中文件，展开/收回本身不更换阅读器。 */
+  taskMaterialTarget: string | null
+  setTaskMaterialTarget: (path: string | null) => void
+  /** Knowledge → Spec 的一次性定位，必须由消费端核对当前真实根目录。 */
+  specDocumentTarget: { projectRoot: string; path: string } | null
+  openSpecDocument: (path: string) => void
+  consumeSpecDocumentTarget: () => { projectRoot: string; path: string } | null
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setPage: (p: Page) => void
   setIntakeOpen: (on: boolean) => void
   /** 预览 → 完整工作区（记录来源页面与滚动位置）。 */
-  expandTaskWorkspace: (origin: TaskExpandOrigin) => void
+  expandTaskWorkspace: (origin: TaskExpandOrigin, materialPath?: string) => void
   /** 工作区 → 返回来源页面的预览抽屉（恢复任务选中与滚动位置由调用方 rAF 处理）。 */
   returnFromWorkspace: () => TaskExpandOrigin | null
 }

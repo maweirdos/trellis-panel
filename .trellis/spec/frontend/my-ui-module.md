@@ -74,3 +74,157 @@
   `my-root` + `data-my-theme`（App.tsx 已处理，新增窗体时照做）。
 - 类有效性自查：TSX 用到的 `my-*` 类必须能在构建产物 CSS 中找到（脚本
   `.trellis/tasks/10-15-unify-plane-uiux/check_my_classes.py`，可复用为门禁）。
+
+## Navigation and project scope contract (2026-10-16)
+
+### 1. Scope / trigger
+
+The ordinary window has one real project selector in the shared TitleBar, a fixed module
+rail and a collapsible contextual sidebar. Overview, intake, work items, iterations,
+knowledge, conversations, team and analytics are peers. The former task-parent tree and
+`ProjectSidebar` are retired. Preserve the frontend and ACP contracts below.
+
+### 2. Signatures
+
+- `my/navigation.ts`: `PAGE_NAVIGATION satisfies Record<Page, PageNavigation>` is the shared
+  source for route title, domain, scope, source notes, and command hints. Sidebar, PageFrame,
+  and CommandPalette consume it. The route remains `useApp.page`.
+- `PRIMARY_NAVIGATION` defines peer order. `activeModule(page, workItemsView)` resolves
+  selection; `hasShellContext(page)` excludes page-owned knowledge/session browsers and
+  modules without useful contextual navigation.
+- `useMy.workItemsView: 'items' | 'iterations'` / `setWorkItemsView(view)` express navigation
+  identity; `groupBy` only expresses grouping; `itemsGroupBy` preserves ordinary grouping.
+- `TaskDetail({ presentation?: 'preview' | 'workspace' })` defaults to preview.
+  `expandTaskWorkspace(origin, materialPath?)` preserves source `page`;
+  `taskExpandOrigin !== null` means workspace. `returnFromWorkspace()` retains the current
+  task in its source preview. `taskMaterialTarget` is a one-shot file target.
+- `openSpecDocument(path)` captures `{ projectRoot, path }` in `specDocumentTarget`.
+- Dropdown/Modal register stable `useId` layers through `useEscLayer`; a single ordinary
+  App listener calls `dispatchEscKey`. Doc/capsule/quicktodo modes remain independent.
+- `projectRootKey(root: string | null | undefined): string | null` is the frontend identity
+  helper. Windows drive/UNC paths normalize separators and case; POSIX paths preserve case.
+- `loadProjectPreferences(root, storage?)` / `saveProjectPreferences(root, prefs, storage?)`
+  own root-scoped favorites and saved views.
+- Main service: `listAcpSessions(projectRoot: string, limit = 20)`.
+  Renderer IPC remains `api.acpSessions(limit?)`; the handler supplies `getProjectRoot()`.
+
+### 3. Contracts
+
+- Project name/path comes from the real snapshot and recent project settings, never the
+  demo dataset's workspace/projects. An unbound browser preview says no project is open
+  and disables native project-opening actions.
+- Desktop and no-IPC preview share the header. Native controls/subscriptions require
+  `hasIpc`; title-bar interactive areas are `no-drag`. Selecting the current canonical
+  root closes the menu without reopening the project. Context collapse never hides or
+  reorders the rail, and context does not repeat the main menu or project selector.
+- Ordinary work items grouped by cycle remain work items; entering iterations is explicit.
+- MyApp retains one stable task surface and a mounted source PageBody, hidden/inert while
+  expanded. Capture/restore nested scroll and source focus. Task/DocPane/reader keys use
+  root/task/file identity, never presentation; compact/full changes cannot restart the
+  load/watch effect or discard displayed/base/latest revisions. External changes only
+  prompt; explicit reading of the newer version changes displayed content.
+- Material groups establish no approvals or successful checks. Exact implement.jsonl and
+  check.jsonl belong to execution and validation; task.json/unknown records remain raw.
+- Knowledge retains original paths, independent company retrieval and honest source labels.
+  Project notes have no private ACL; remote previews do not claim local revisions. Spec
+  displays loaded search/log content independently of editable tree selection. Cross-page
+  targets must match root and reject parent traversal before any read.
+- Reject stale note read/edit/save responses after selection changes. Failed note reads do
+  not create blank replacement drafts. Existing kbSaveNote lacks expected-mtime support;
+  do not imply it has Spec's external conflict protection.
+- Escape dismisses only the top layer: dropdown/context/diff before task. Returning from
+  workspace re-registers preview so the next Escape can close it. Do not combine independent
+  component Escape listeners with global task dismissal.
+- Retain current design language and generated tokens. Use canvas for periphery, layers for
+  context and surface-1 for the central task workspace. The desktop rail uses 40px icon
+  targets with 22px icons, full accessible names and hover labels rather than permanent
+  10px captions; selected backgrounds/icons are restrained and neutral. Keep green for
+  product emphasis. The project name is a borderless title at rest, not a select/input;
+  context rows use soft selection without persistent card borders/shadows. Measure actual
+  foreground/background pairs; keyboard focus remains distinct from hover/selection.
+- Scope identifies the page context, not a promise that every external result is filtered:
+  Jira query results follow external criteria while imports target the current project;
+  company knowledge and personal Q&A history have their own cross-project ranges. Keep
+  these notes in route metadata. API chat history is local and cross-project; do not assign
+  its old records to the current project. Application settings do not use project breadcrumbs.
+- `MyApp` synchronizes the initial snapshot in a layout effect and subscribes to later
+  snapshots. Initial null-to-root synchronization preserves an existing task deep link.
+  Actual root changes clear prior selection/filter/peek state and remount project content.
+- Root preferences use `tpanel.my.project.${encodeURIComponent(projectRootKey(root))}`,
+  bounded to 50 favorites and 30 views. Legacy unscoped keys remain intact and are not
+  automatically claimed by any project. Theme/layout preferences remain application-wide.
+- Successful `session.openProjectPath` displays the snapshot before asynchronously refreshing
+  recent projects. Only that settings field is merged; operation generation/root guards
+  discard stale responses, including after close. History-read failure does not undo an open.
+- ACP filters both active and persisted records by root **before** truncating historical
+  results. The service remains a leaf and does not import application state.
+- ACP page callbacks use a root generation and scoped session ownership. A root-bearing
+  timeline permission event may arrive before the create/list reply. Only requests still
+  pending in this process are actionable after re-entering a project. Old records, resolved
+  requests, and timed-out requests cannot revive approvals. Project changes do not stop
+  other projects' running agents.
+
+### 4. Validation / error matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| No snapshot / no IPC | Honest unbound preview; native project opening disabled; no real project inferred |
+| ACP list with no current root | IPC returns existing `noProject()` failure; service empty-root call returns no sessions |
+| Corrupt or unavailable preference storage | Empty scoped preferences / in-memory fallback; no legacy deletion |
+| Same task directory name in different roots | Independent favorites, views, and ACP records |
+| Old list/settings/create response after a switch | Discard it, including A → B → A generations |
+| Pending permission after returning to its root | Restore only while the current process still owns the pending request |
+| Resolved, expired, or historical permission | Read-only history; never actionable |
+| Recent-project read failure | Keep successful project open and existing settings |
+| Work items grouped by cycle | Keep work-items module selected |
+| Context collapsed | Keep fixed module order and accessible names |
+| Pending update across preview/expand/return | Preserve displayed/base/latest and notice |
+| Close task / deliberate navigation / actual root change | Clear presentation and one-shot targets |
+| Spec target from old root or containing parent traversal | Reject without starting a read |
+| Late note A reply after B/new note | Ignore A; retain current selection/draft |
+| Company query fails | Keep local results and honest remote failure |
+| Menu over central task + Escape | Close only the menu |
+| 960px viewport | Primary actions reachable; context/auxiliary panels yield to reading |
+
+### 5. Good / base / bad cases
+
+- Good: switching between two roots with the same display name still shows distinct paths
+  and independent task preferences. An older current-project ACP history remains discoverable
+  even when other projects have more than 20 newer histories.
+- Base: a project with no sessions shows an empty project list; application settings remain
+  reachable through the unified tool menu and Ctrl+K.
+- Bad: a late response from root A overwrites root B, or a persisted permission becomes an
+  approval card after restart. Both are regressions.
+- Good reading case: A is displayed, B arrives, preview/expand/return retain A with B
+  pending until explicit “阅读新版”; reading B preserves the opening baseline A.
+
+### 6. Required checks
+
+- `node scripts/smoke/navigation.mjs`: all 17 routes, Windows/UNC/POSIX identity, distinct
+  roots with equal names, scoped persistence, legacy-key preservation, initial focus,
+  root transitions, and asynchronous recent-project refresh/failure/close behavior.
+- `node scripts/smoke/acp.mjs`: existing ACP service lifecycle and permission behavior.
+- `node scripts/smoke/acp-project-scope.mjs`: mixed active/history roots, filtering before
+  limit, early events, generation isolation, live approval restoration, and expiry.
+- `node scripts/smoke/task-presentation.mjs`: composed source/reader actions, target cleanup,
+  exact known manifests and raw fallback. `node scripts/smoke/uiux-wiring.mjs`: actual
+  component hook/event handlers for Escape priority, stale note replies, local-first results
+  and Spec display/target guards. These are not mounted/native E2E evidence.
+- Existing reading-session/task-reader/reader-wiring tests plus actual UI checks for file
+  changes, same reader during presentation changes, scroll/focus, light/dark and OS controls.
+  After development HMR, establish a fresh reader before judging live subscriptions; record
+  anomalies without inferring their cause from a passing pure-state test.
+- `npm run typecheck` and `npm run build`; browser walkthrough for navigation, Ctrl+K,
+  scope notes, and collapse. Browser demo data is not proof of real IPC or vendor CLI behavior.
+
+### 7. Wrong vs correct
+
+Wrong: display a global list as project conversations, then filter its first 20 records;
+derive the selector from the demo workspace; maintain unrelated route-title lists in three places.
+
+Correct: inject the real project root at the ACP IPC boundary, filter before limiting,
+select projects from real snapshots/settings, and consume typed route metadata throughout the shell.
+
+Wrong: `{workspace ? <Reader key="full" /> : <Reader key="preview" />}` creates separate
+lifetimes. Correct: retain one task/reader instance, vary presentation/container props, and
+register floating layers in the common Escape stack so only its top layer consumes Escape.

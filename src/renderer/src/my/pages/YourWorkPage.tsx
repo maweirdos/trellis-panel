@@ -1,218 +1,146 @@
-import { useState, type JSX, type ReactNode } from 'react'
+import { useMemo, useState, type JSX } from 'react'
+import { Archive, ArrowUpRight, Copy } from 'lucide-react'
+import { useApp } from '../../store'
+import { relTime } from '../../utils/format'
 import { useMy } from '../store'
-import { Avatar, EmptyState, formatDate } from '../ui'
-import { Check, Copy } from 'lucide-react'
+import { Avatar, Button, EmptyState, formatDate } from '../ui'
 import { PriorityIcon, StateGroupIcon } from '../icons'
 import type { Issue, Member, WorkItemState } from '../types'
 
-/** 判断工作项是否未完结（completed / cancelled 均视为已结束） */
+type WorkView = 'assigned' | 'created' | 'recent'
+
 function isIssueOpen(issue: Issue, states: Map<string, WorkItemState>): boolean {
   const group = states.get(issue.stateId)?.group
   return group !== 'completed' && group !== 'cancelled'
 }
 
-
-/* ---------------- 工作项行 ---------------- */
-
-function IssueRow({
-  issue,
-  members,
-  states,
-  onOpen
-}: {
+function IssueRow({ issue, members, states, updatedAt, onOpen }: {
   issue: Issue
   members: Map<string, Member>
   states: Map<string, WorkItemState>
+  updatedAt?: number
   onOpen: (id: string) => void
 }): JSX.Element {
   const state = states.get(issue.stateId)
   const assignee = issue.assigneeId ? members.get(issue.assigneeId) : undefined
   const due = formatDate(issue.dueDate)
   return (
-    <div
+    <button
+      type="button"
       onClick={() => onOpen(issue.id)}
-      className="flex h-11 cursor-pointer items-center gap-2.5 px-3 hover:bg-my-layer-1"
+      className="group flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-my-line-accent"
     >
       {state && <StateGroupIcon stateGroup={state.group} color={state.color} />}
-      <span className="min-w-0 flex-1 truncate text-my-md text-my-primary">{issue.name}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-my-md font-medium text-my-primary">{issue.name}</span>
+        <span className="mt-0.5 block truncate text-my-xs text-my-secondary">
+          {state?.name ?? '状态未记录'}{assignee ? ` · ${assignee.name}` : ' · 未分配'}
+        </span>
+      </span>
       <PriorityIcon priority={issue.priority} size={13} />
-      {due !== '' && <span className="shrink-0 text-my-xs text-my-tertiary">{due}</span>}
-      {assignee && <Avatar name={assignee.name} color={assignee.avatarColor} size={18} />}
-    </div>
+      <span className="hidden shrink-0 text-my-xs text-my-secondary sm:block">
+        {updatedAt ? `更新于 ${relTime(updatedAt)}` : due}
+      </span>
+      {assignee && <Avatar name={assignee.name} color={assignee.avatarColor} size={20} />}
+      <ArrowUpRight size={13} className="shrink-0 text-my-icon-tertiary group-hover:text-my-icon-accent" />
+    </button>
   )
 }
 
-/* ---------------- 区块容器 ---------------- */
-
-function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
-  return (
-    <section className="mt-6">
-      <h2 className="mb-2 text-my-md font-medium text-my-secondary">{title}</h2>
-      {children}
-    </section>
-  )
-}
-
-function IssueList({
-  issues,
-  members,
-  states,
-  onOpen,
-  emptyTitle
-}: {
-  issues: Issue[]
-  members: Map<string, Member>
-  states: Map<string, WorkItemState>
-  onOpen: (id: string) => void
-  emptyTitle: string
-}): JSX.Element {
-  if (issues.length === 0) return <EmptyState title={emptyTitle} />
-  return (
-    <div className="my-card divide-y divide-my-line overflow-hidden">
-      {issues.map((i) => (
-        <IssueRow key={i.id} issue={i} members={members} states={states} onOpen={onOpen} />
-      ))}
-    </div>
-  )
-}
-
-/* ---------------- 页面 ---------------- */
-
+/** A single queue; creator and update time come from the real task record. */
 export function YourWorkPage(): JSX.Element {
   const { data, openIssue } = useMy()
-
-  const members = new Map<string, Member>(data.members.map((m) => [m.id, m]))
-  const states = new Map<string, WorkItemState>(data.states.map((s) => [s.id, s]))
-
-  const me = data.workspace.memberId
-
-  const assigned = data.issues.filter((i) => i.assigneeId === me && isIssueOpen(i, states))
-  const createdByMe = data.issues.filter((i) => i.activity[0]?.actorId === me)
-  const completedRecently = data.issues.filter((i) => i.completedAt)
-
-  // 近期更新：按创建时间倒序取 5 条
-  const recent = data.issues
-    .slice()
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, 5)
-
-  const hour = new Date().getHours()
-  const greeting = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好'
-  const dateLine = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })
-
-  const statCards = [
-    { label: '分配给我', value: assigned.length },
-    { label: '由我创建', value: createdByMe.length },
-    { label: '已完成', value: completedRecently.length }
+  const snapshot = useApp((s) => s.snapshot)
+  const [view, setView] = useState<WorkView>('assigned')
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
+  const members = useMemo(() => new Map(data.members.map((m) => [m.id, m])), [data.members])
+  const states = useMemo(() => new Map(data.states.map((s) => [s.id, s])), [data.states])
+  const tasks = useMemo(() => new Map(snapshot?.tasks.map((t) => [t.dirName, t]) ?? []), [snapshot?.tasks])
+  // A project without an identity must not impersonate its first member.
+  const me = snapshot ? snapshot.meta.developer : data.workspace.memberId
+  const queues = useMemo(() => {
+    const updated = (issue: Issue): number => tasks.get(issue.id)?.updatedAt ?? 0
+    const newest = (a: Issue, b: Issue): number => updated(b) - updated(a)
+    return {
+      assigned: data.issues.filter((i) => me && i.assigneeId === me && isIssueOpen(i, states)).sort(newest),
+      created: data.issues.filter((i) => me && (snapshot ? tasks.get(i.id)?.record?.creator === me : i.activity[0]?.actorId === me)).sort(newest),
+      recent: data.issues.slice().sort(newest)
+    }
+  }, [data.issues, me, snapshot, states, tasks])
+  const views: Array<{ id: WorkView; label: string; description: string; empty: string }> = [
+    { id: 'assigned', label: '我负责', description: '分配给我的未结束工作，按实际更新时间排列。', empty: '当前没有分配给你的未结束工作' },
+    { id: 'created', label: '我创建', description: '由我创建的工作，包含已完成项。', empty: '当前没有由你创建的工作' },
+    { id: 'recent', label: '最近更新', description: '项目内任务文件的最近更新记录，不代表实际操作者。', empty: '项目内暂无工作项' }
   ]
-
-  // 归档提醒：已完成超过 10 天且未归档的工作项（本周内已忽略则不再提示）
+  const currentView = views.find((item) => item.id === view) ?? views[0]
   const staleDone = data.issues.filter((i) => {
     if (!i.completedAt) return false
-    const d = new Date(`${i.completedAt}T12:00:00`)
-    if (Number.isNaN(d.getTime())) return false
-    return (Date.now() - d.getTime()) / 86400000 >= 10
+    const timestamp = new Date(`${i.completedAt}T12:00:00`).getTime()
+    return Number.isFinite(timestamp) && Date.now() - timestamp >= 10 * 86400000
   })
-  const [hintDismissed, setHintDismissed] = useState(false)
-  const weekKey = `tpanel.my.archive-hint.${new Date().toISOString().slice(0, 7)}`
-  const hintSuppressed = hintDismissed || localStorage.getItem(weekKey) === '1'
-  const dismissHint = (): void => {
-    try {
-      localStorage.setItem(weekKey, '1')
-    } catch {
-      // 忽略
-    }
-    setHintDismissed(true)
-  }
   const copyArchiveCmd = (dirName: string): void => {
     void navigator.clipboard.writeText(`python .trellis/scripts/task.py archive ${dirName}`).catch(() => undefined)
   }
 
   return (
-    <div className="mx-auto max-w-[1024px]">
-      {/* 问候区 */}
-      <header className="px-8 pb-4 pt-6">
-        <h1 className="text-[20px] font-semibold text-my-primary">
-          {greeting}，我
-        </h1>
-        <p className="mt-1 text-my-sm text-my-tertiary">{dateLine}</p>
+    <div className="mx-auto w-full max-w-5xl px-5 pb-12 pt-6 lg:px-8">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-my-xl font-semibold text-my-primary">我的工作</h1>
+          <p className="mt-1 text-my-sm text-my-secondary">
+            {me ? `${me}，从当前需要推进的工作开始。` : '当前项目未设置开发者身份，可先查看最近更新。'}
+          </p>
+        </div>
+        <span className="text-my-xs text-my-secondary">
+          {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}
+        </span>
       </header>
 
-      <div className="px-8 pb-16">
-        {/* 归档提醒：静置的已完成项 */}
-        {staleDone.length > 0 && !hintSuppressed && (
-          <div className="mb-3 flex items-start gap-3 rounded-my-lg border border-my-line bg-my-layer-2 p-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-my-md font-medium text-my-primary">
-                {staleDone.length} 个已完成任务已静置超过 10 天
-              </div>
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                {staleDone.slice(0, 5).map((i) => (
-                  <button
-                    key={i.id}
-                    type="button"
-                    title="点击复制归档命令"
-                    onClick={() => copyArchiveCmd(i.id)}
-                    className="flex items-center gap-1 text-my-sm text-my-tertiary hover:text-my-accent-text"
-                  >
-                    <Copy size={11} />
-                    {i.name}
-                  </button>
-                ))}
-                {staleDone.length > 5 && <span className="text-my-sm text-my-tertiary">等 {staleDone.length} 项</span>}
-              </div>
-              <div className="mt-1 text-my-xs text-my-disabled">点击条目复制归档命令（task.py archive），归档后从「归档」页可查。</div>
-            </div>
-            <button
-              type="button"
-              onClick={dismissHint}
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-my-icon-tertiary hover:bg-my-layer-1-hover"
-              title="本周不再提示"
-            >
-              <Check size={14} />
-            </button>
+      <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-my-line" role="tablist" aria-label="我的工作视图">
+        {views.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            id={`overview-tab-${item.id}`}
+            aria-selected={view === item.id}
+            aria-controls="overview-work-list"
+            onClick={() => setView(item.id)}
+            className={`flex items-center gap-2 border-b-2 px-3 py-2.5 text-my-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent ${view === item.id ? 'border-my-line-accent text-my-accent-text' : 'border-transparent text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'}`}
+          >
+            {item.label}<span className="rounded-my-sm bg-my-layer-2 px-1.5 text-my-xs tabular-nums text-my-secondary">{queues[item.id].length}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mb-3 text-my-xs text-my-secondary">{currentView.description}{!snapshot && ' 当前为演示数据。'}</p>
+      <section id="overview-work-list" role="tabpanel" aria-labelledby={`overview-tab-${view}`} className="overflow-hidden rounded-my-lg border border-my-line bg-my-surface-1">
+        {queues[view].length === 0 ? <EmptyState title={currentView.empty} /> : (
+          <div className="divide-y divide-my-line">
+            {queues[view].map((issue) => (
+              <IssueRow key={issue.id} issue={issue} members={members} states={states} updatedAt={tasks.get(issue.id)?.updatedAt} onOpen={openIssue} />
+            ))}
           </div>
         )}
-        {/* 统计卡行 */}
-        <div className="grid grid-cols-3 gap-3">
-          {statCards.map((s) => (
-            <div key={s.label} className="my-card p-3">
-              <div className="text-[22px] font-semibold text-my-primary">{s.value}</div>
-              <div className="mt-0.5 text-my-sm text-my-tertiary">{s.label}</div>
+      </section>
+
+      {staleDone.length > 0 && (
+        <section className="mt-8 border-t border-my-line pt-3">
+          <button type="button" onClick={() => setMaintenanceOpen((v) => !v)} aria-expanded={maintenanceOpen} className="flex items-center gap-2 text-my-xs text-my-secondary hover:text-my-primary">
+            <Archive size={13} /> 归档整理 · {staleDone.length} 项已完成超过 10 天 <span>{maintenanceOpen ? '收起' : '查看'}</span>
+          </button>
+          {maintenanceOpen && (
+            <div className="mt-3 space-y-2">
+              <p className="text-my-xs text-my-secondary">复制命令后在项目目录执行；归档记录仍可查看。</p>
+              {staleDone.map((issue) => (
+                <div key={issue.id} className="flex items-center justify-between gap-3 text-my-sm text-my-secondary">
+                  <button type="button" onClick={() => openIssue(issue.id)} className="truncate text-left hover:text-my-accent-text">{issue.name}</button>
+                  <Button variant="ghost" size="sm" onClick={() => copyArchiveCmd(issue.id)}><Copy size={11} /> 复制命令</Button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-
-        <Section title="分配给我的工作项">
-          <IssueList
-            issues={assigned}
-            members={members}
-            states={states}
-            onOpen={openIssue}
-            emptyTitle="暂无分配给你的工作项"
-          />
-        </Section>
-
-        <Section title="由我创建">
-          <IssueList
-            issues={createdByMe}
-            members={members}
-            states={states}
-            onOpen={openIssue}
-            emptyTitle="你还没有创建过工作项"
-          />
-        </Section>
-
-        <Section title="近期更新">
-          <IssueList
-            issues={recent}
-            members={members}
-            states={states}
-            onOpen={openIssue}
-            emptyTitle="近期没有新的评论动态"
-          />
-        </Section>
-      </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }

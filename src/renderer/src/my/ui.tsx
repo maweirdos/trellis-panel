@@ -1,8 +1,9 @@
 // 外壳共享基础件。所有页面从本文件取用，勿各自造轮子。
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { ChevronDown, Search } from 'lucide-react'
 import type { Label, Member } from './types'
+import { useEscLayer } from '../utils/use-esc-layer'
 
 /* ---------------- Avatar ---------------- */
 
@@ -122,6 +123,15 @@ export function Dropdown({
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const escId = useId()
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+
+  useEscLayer(open, {
+    kind: 'modal',
+    id: `dropdown-${escId}`,
+    onClose: () => setOpen(false),
+    returnFocusRef
+  })
 
   // 渲染后按菜单实际尺寸定位：优先贴触发器下缘，空间不足则贴上缘，并收进视口
   useLayoutEffect(() => {
@@ -132,6 +142,7 @@ export function Dropdown({
     const anchor = anchorRef.current
     const menu = menuRef.current
     if (!anchor || !menu) return
+    returnFocusRef.current = anchor.querySelector<HTMLElement>('button, [tabindex]')
     const r = anchor.getBoundingClientRect()
     const h = menu.offsetHeight
     const w = menu.offsetWidth
@@ -151,17 +162,12 @@ export function Dropdown({
       if (anchorRef.current?.contains(t) || menuRef.current?.contains(t)) return
       setOpen(false)
     }
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
-    }
     const onScroll = (): void => setOpen(false)
     window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
     window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', onScroll)
     return () => {
       window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onScroll)
     }
@@ -256,17 +262,8 @@ export function Modal({
   children: ReactNode
   width?: number
 }): JSX.Element | null {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [open, onClose])
+  const escId = useId()
+  useEscLayer(open, { kind: 'modal', id: `modal-${escId}`, onClose })
 
   if (!open) return null
   return (

@@ -1,19 +1,15 @@
 // peek-over 工作项详情浮层：backdrop 点击关闭，中央面板（标题/描述/子工作项/评论/活动 + 右侧属性栏），Esc 关闭。
 import { useEffect, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { Calendar, Check, ChevronDown, Copy, Plus, Star, X, FileText } from 'lucide-react'
+import { Calendar, Check, ChevronDown, Copy, Plus, Star, X, FileText, Maximize2, ExternalLink } from 'lucide-react'
 import { useMy } from '../store'
 import { useApp } from '../../store'
 import { api } from '../../api'
+import { useEscLayer } from '../../utils/use-esc-layer'
 import { currentWeekKey, nextWeekKey } from '../isoWeek'
 import { Avatar, Checkbox, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../ui'
 import { WorkspaceMark, PriorityIcon, StateGroupIcon } from '../icons'
 import type { Issue, Label, Member, Priority, WorkItemState } from '../types'
-
-function toIso(d: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
 const PRIORITY_LABELS: Record<Priority, string> = {
@@ -95,8 +91,14 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
             ? '设计'
             : a.name.replace(/\.md$/i, '')
     }))
-  const openFullDetail = (): void => {
-    useApp.getState().showTask(issue.id)
+  const openFullDetail = (materialPath?: string): void => {
+    if (!taskInfo) {
+      useApp.getState().pushToast({ kind: 'info', title: '当前为演示工作项', body: '连接本机项目后，可在中央工作区阅读真实任务材料。' })
+      return
+    }
+    const state = useApp.getState()
+    state.expandTaskWorkspace({ fromPage: state.page, taskDir: issue.id, archived: false,
+      scrollTop: document.querySelector<HTMLElement>('[data-page-scroll]')?.scrollTop ?? 0 }, materialPath)
     closeIssue()
   }
   // 文档绝对路径（artifacts 里的 path 就是任务目录内的文件路径）
@@ -175,13 +177,16 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
 
   const tabs: Array<{ id: 'sub' | 'comments' | 'activity'; label: string; count?: number }> = [
     { id: 'sub', label: '子工作项', count: subIssues.length },
-    { id: 'comments', label: '评论', count: issue.comments.length },
-    { id: 'activity', label: '活动' }
+    { id: 'comments', label: '临时评论', count: issue.comments.length },
+    { id: 'activity', label: '记录' }
   ]
 
   return (
     <div
-      className="my-peek-in flex max-h-[84vh] w-[880px] flex-col overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="工作项快速预览"
+      className="my-peek-in flex max-h-[84vh] w-[880px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
       onMouseDown={(e) => e.stopPropagation()}
     >
       {/* 头部 */}
@@ -191,52 +196,21 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
           {ident}-{issue.sequenceId}
         </span>
         <span onKeyDown={(e) => e.stopPropagation()} className="flex shrink-0 items-center">
-          {/* 头部状态下拉 */}
-          <Dropdown
-            width={190}
-            trigger={({ toggle }) => (
-              <button
-                type="button"
-                onClick={toggle}
-                className="flex h-6 items-center gap-1 rounded px-1.5 text-my-sm text-my-secondary hover:bg-my-layer-1-hover"
-              >
-                {state && <StateGroupIcon stateGroup={state.group} color={state.color} size={12} />}
-                {state?.name ?? '无状态'}
-                <ChevronDown size={11} className="text-my-icon-tertiary" />
-              </button>
-            )}
-          >
-            {(close) => (
-              <>
-                {[...data.states]
-                  .sort((a, b) => a.sequence - b.sequence)
-                  .map((st) => (
-                    <DropdownItem
-                      key={st.id}
-                      selected={st.id === issue.stateId}
-                      icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
-                      onClick={() => {
-                        updateIssue(issue.id, {
-                          stateId: st.id,
-                          completedAt: st.group === 'completed' ? toIso(new Date()) : null
-                        })
-                        close()
-                      }}
-                    >
-                      {st.name}
-                    </DropdownItem>
-                  ))}
-              </>
-            )}
-          </Dropdown>
+          <span className="flex h-6 items-center gap-1.5 px-1.5 text-my-sm text-my-secondary" title="任务阶段由 Trellis 工作流维护，面板只读">
+            {state && <StateGroupIcon stateGroup={state.group} color={state.color} size={12} />}
+            {state?.name ?? '未知阶段'}
+          </span>
         </span>
         <div className="ml-auto flex items-center gap-0.5">
+          <button type="button" title="在中央任务工作区展开" onClick={() => openFullDetail()} className="my-control my-control-sm text-my-secondary hover:bg-my-layer-1-hover">
+            <Maximize2 size={14} /> 展开
+          </button>
           <button
             type="button"
-            title="打开完整任务详情（文档 / 材料 / Git）"
+            title={docs.length > 0 ? '查看任务文档' : '打开完整任务详情（任务目录下暂无文档）'}
             onClick={() => {
-              useApp.getState().showTask(issue.id)
-              closeIssue()
+              const first = docs.find((d) => d.name.toLowerCase() === 'prd.md') ?? docs[0]
+              openFullDetail(first ? docPath(first.name) : undefined)
             }}
             className="flex h-7 w-7 items-center justify-center rounded text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
           >
@@ -331,6 +305,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
             )}
             {tab === 'comments' && (
               <div>
+                <p className="mb-3 text-my-xs leading-5 text-my-secondary">仅保留在当前界面内存中，刷新项目后会清除；不会发送给其他成员。</p>
                 {issue.comments.map((c) => {
                   const actor = memberOf(c.actorId)
                   return (
@@ -358,7 +333,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') addComment()
                     }}
-                    placeholder="写下评论，回车发送"
+                    placeholder="添加临时备注，回车追加"
                     className="h-7 min-w-0 flex-1 bg-transparent text-my-sm text-my-primary outline-none placeholder:text-my-placeholder"
                   />
                 </div>
@@ -399,28 +374,18 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {docs.map((d) => (
-                  <button
-                    key={d.name}
-                    type="button"
-                    title={`钉住 ${d.name}（置顶小窗，可多开）`}
-                    onClick={() => {
-                      const theme = useMy.getState().theme
-                      void api.docOpen({
-                        key: docPath(d.name),
-                        title: `${ident}-${issue.sequenceId} · ${d.label}`,
-                        file: docPath(d.name),
-                        theme
-                      })
-                    }}
-                    className="flex items-center gap-1 rounded-my-sm border border-my-line bg-my-layer-1 px-1.5 py-1 text-my-xs text-my-secondary hover:border-my-line-accent hover:text-my-accent-text"
-                  >
-                    <FileText size={11} className="text-my-icon-secondary" />
-                    {d.label}
-                  </button>
+                  <span key={d.name} className="inline-flex overflow-hidden rounded-my-sm border border-my-line bg-my-layer-1">
+                    <button type="button" title={`在中央工作区阅读 ${d.name}`} onClick={() => openFullDetail(docPath(d.name))} className="flex items-center gap-1 px-1.5 py-1 text-my-xs text-my-secondary hover:bg-my-layer-1-hover hover:text-my-accent-text">
+                      <FileText size={11} /> {d.label}
+                    </button>
+                    <button type="button" title={`在独立文档窗打开 ${d.name}`} onClick={() => {
+                      void api.docOpen({ key: docPath(d.name), title: `${ident}-${issue.sequenceId} · ${d.label}`, file: docPath(d.name), theme: useMy.getState().theme })
+                    }} className="border-l border-my-line px-1 text-my-secondary hover:bg-my-layer-1-hover hover:text-my-accent-text"><ExternalLink size={11} /></button>
+                  </span>
                 ))}
                 <button
                   type="button"
-                  onClick={openFullDetail}
+                  onClick={() => openFullDetail()}
                   className="flex items-center gap-1 rounded-my-sm px-1 py-1 text-my-xs text-my-tertiary hover:text-my-accent-text"
                 >
                   全部 ›
@@ -459,40 +424,11 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
               )}
             </Dropdown>
           </PropRow>
-          <PropRow label="状态">
-            <Dropdown
-              width={190}
-              trigger={({ toggle }) => (
-                <button type="button" onClick={toggle} className={BOX}>
-                  {state && <StateGroupIcon stateGroup={state.group} color={state.color} size={13} />}
-                  <span className="min-w-0 flex-1 truncate text-left">{state?.name ?? '无状态'}</span>
-                  <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
-                </button>
-              )}
-            >
-              {(close) => (
-                <>
-                  {[...data.states]
-                    .sort((a, b) => a.sequence - b.sequence)
-                    .map((st) => (
-                      <DropdownItem
-                        key={st.id}
-                        selected={st.id === issue.stateId}
-                        icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
-                        onClick={() => {
-                          updateIssue(issue.id, {
-                            stateId: st.id,
-                            completedAt: st.group === 'completed' ? toIso(new Date()) : null
-                          })
-                          close()
-                        }}
-                      >
-                        {st.name}
-                      </DropdownItem>
-                    ))}
-                </>
-              )}
-            </Dropdown>
+          <PropRow label="阶段（工作流维护）">
+            <div className="flex h-7 items-center gap-1.5 text-my-sm text-my-secondary">
+              {state && <StateGroupIcon stateGroup={state.group} color={state.color} size={13} />}
+              {state?.name ?? '未知阶段'}
+            </div>
           </PropRow>
           <PropRow label="负责人">
             <Dropdown
@@ -726,19 +662,12 @@ export function IssuePeek(): JSX.Element | null {
   const projects = useMy((s) => s.data.projects)
   const closeIssue = useMy((s) => s.closeIssue)
 
-  // Esc 关闭：捕获阶段拦截并 stopPropagation，避免其他全局快捷键同时响应
-  useEffect(() => {
-    if (!peekIssueId) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        e.preventDefault()
-        closeIssue()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [peekIssueId, closeIssue])
+  useEscLayer(Boolean(peekIssueId), {
+    kind: 'preview',
+    id: 'issue-peek',
+    deferWhenInputFocused: true,
+    onClose: closeIssue
+  })
 
   if (!issue) return null
   const project = projects.find((p) => p.id === issue.projectId)

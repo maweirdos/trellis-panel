@@ -1,16 +1,17 @@
-// 应用外壳：工作区侧边栏 + 项目侧边栏 + 内容路由 + 全局弹层。
+// 项目工作区：固定模块栏 + 按需上下文 + 稳定的来源页与任务阅读面。
 // 路由唯一事实是主 store 的 useApp.page，IPC 事件联动不受换壳影响。
-import { useEffect, lazy, Suspense, useState, type JSX, type ReactNode } from "react"
-import { Keyboard, Loader2, PanelLeftOpen, Plus, Search } from 'lucide-react'
-import { useApp } from '../../store'
-import { useMy, isProjectPage } from '../store'
+import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
+import { Keyboard, Loader2 } from 'lucide-react'
+import { useApp, type Page } from '../../store'
+import { useMy } from '../store'
+import { getPageNavigation, projectRootKey } from '../navigation'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
-import { ProjectSidebar } from './ProjectSidebar'
 import { CommandPalette } from '../CommandPalette'
 import { IssuePeek } from '../pages/IssuePeek'
 import { CreateIssueModal } from '../pages/work-items/CreateIssueModal'
 import { PageFrame } from './PageFrame'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
+import { useEscLayer } from '../../utils/use-esc-layer'
 import '@fontsource-variable/inter'
 import '../my.css'
 
@@ -43,35 +44,38 @@ function PageLoading(): JSX.Element {
 }
 
 /** 保留功能、按外壳规范重绘的页面：框架提供顶栏，页面内部只输出内容 */
-const FRAMED_PAGES: Record<string, { title: string; parent: string; element: ReactNode }> = {
-  knowledge: { title: '知识库', parent: '文档', element: <KnowledgePage /> },
-  spec: { title: '规范文档', parent: '文档', element: <SpecPage /> },
-  archive: { title: '归档', parent: '文档', element: <ArchivePage /> },
-  inbox: { title: '待办池', parent: '接收', element: <InboxPage /> },
-  channels: { title: 'AI 频道', parent: '协作', element: <ChannelsPage /> },
-  acp: { title: 'Agent 会话', parent: '协作', element: <AcpConsolePage /> },
-  team: { title: '团队协作', parent: '协作', element: <TeamPage /> },
-  jira: { title: 'Jira 任务', parent: '协作', element: <JiraPage /> },
-  architecture: { title: '架构图', parent: '系统', element: <ArchitecturePage /> },
-  studio: { title: '定制中心', parent: '系统', element: <StudioPage /> },
-  models: { title: '模型管理', parent: '系统', element: <ModelsPage /> },
-  gateway: { title: 'MCP 网关', parent: '系统', element: <GatewayPage /> },
-  chat: { title: '会话', parent: '协作', element: <ChatPage /> },
-  settings: { title: '设置', parent: '系统', element: <SettingsPage /> }
+const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
+  knowledge: <KnowledgePage />,
+  spec: <SpecPage />,
+  archive: <ArchivePage />,
+  inbox: <InboxPage />,
+  channels: <ChannelsPage />,
+  acp: <AcpConsolePage />,
+  team: <TeamPage />,
+  jira: <JiraPage />,
+  architecture: <ArchitecturePage />,
+  studio: <StudioPage />,
+  models: <ModelsPage />,
+  gateway: <GatewayPage />,
+  chat: <ChatPage />,
+  settings: <SettingsPage />
 }
 
 function PageBody(): JSX.Element {
   const page = useApp((s) => s.page)
+  const root = useApp((s) => projectRootKey(s.snapshot?.meta.root))
+  const scope = getPageNavigation(page).scope
+  const contentKey = scope === 'project' || scope === 'mixed' ? `${page}:${root ?? 'preview'}` : page
   const framed = FRAMED_PAGES[page]
   return (
     <Suspense fallback={<PageLoading />}>
       {/* 页面级兜底：单页崩溃只换掉内容区（错误卡片可重试），外壳与侧栏存活；
-          key=page 让切页时重置错误态，不把上一页的崩溃带给下一页 */}
-      <ErrorBoundary key={page}>
+          项目页面同时按真实 root 重挂，清除旧项目页面状态和错误态 */}
+      <ErrorBoundary key={contentKey}>
         {page === 'dashboard' && <YourWorkPage />}
         {page === 'tasks' && <WorkItemsPage />}
         {page === 'analytics' && <AnalyticsPage />}
-        {framed && <PageFrame title={framed.title} parent={framed.parent}>{framed.element}</PageFrame>}
+        {framed && <PageFrame page={page}>{framed}</PageFrame>}
       </ErrorBoundary>
     </Suspense>
   )
@@ -82,14 +86,49 @@ export function MyApp(): JSX.Element {
   const syncFromSnapshot = useMy((s) => s.syncFromSnapshot)
   const setPaletteOpen = useMy((s) => s.setPaletteOpen)
   const panelTheme = useApp((s) => (s.settings?.theme === 'light' ? 'light' : 'dark'))
-  const page = useApp((s) => s.page)
   const openTaskDir = useApp((s) => s.openTaskDir)
+  const root = useApp((s) => projectRootKey(s.snapshot?.meta.root))
   const theme = useMy((s) => s.theme)
-  const sidebarCollapsed = useMy((s) => s.sidebarCollapsed)
   const toggleSidebar = useMy((s) => s.toggleSidebar)
   const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
   const [helpOpen, setHelpOpen] = useState(false)
-  const inProject = isProjectPage(page)
+  const workspace = useApp((s) => s.taskExpandOrigin !== null)
+  const sourceRef = useRef<HTMLDivElement>(null)
+  const sourceFocus = useRef<HTMLElement | null>(null)
+  const sourceScroll = useRef<Array<{ element: HTMLElement; top: number; left: number }>>([])
+  const wasWorkspace = useRef(false)
+
+  useLayoutEffect(() => {
+    const rememberFocus = (event: FocusEvent): void => {
+      if (event.target instanceof HTMLElement && sourceRef.current?.contains(event.target)) sourceFocus.current = event.target
+    }
+    document.addEventListener('focusin', rememberFocus)
+    const off = useApp.subscribe((state, previous) => {
+      if (state.taskExpandOrigin !== null && previous.taskExpandOrigin === null) {
+        const source = sourceRef.current
+        if (source) sourceScroll.current = [source, ...Array.from(source.querySelectorAll<HTMLElement>('.my-scrollbar, [data-page-scroll]'))]
+          .map((element) => ({ element, top: element.scrollTop, left: element.scrollLeft }))
+      }
+      if (projectRootKey(state.snapshot?.meta.root) !== projectRootKey(previous.snapshot?.meta.root)) {
+        sourceFocus.current = null
+        sourceScroll.current = []
+      }
+    })
+    return () => { document.removeEventListener('focusin', rememberFocus); off() }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (sourceRef.current) sourceRef.current.inert = workspace
+    if (wasWorkspace.current && !workspace) {
+      for (const saved of sourceScroll.current) if (saved.element.isConnected) {
+        saved.element.scrollTop = saved.top
+        saved.element.scrollLeft = saved.left
+      }
+      const focusTarget = sourceFocus.current?.isConnected ? sourceFocus.current : sourceRef.current
+      focusTarget?.focus({ preventScroll: true })
+    }
+    wasWorkspace.current = workspace
+  }, [workspace])
 
   useEffect(() => {
     if (panelTheme !== theme) setTheme(panelTheme)
@@ -97,7 +136,9 @@ export function MyApp(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelTheme])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Bootstrap may have supplied the first snapshot before this shell mounted.
+    syncFromSnapshot()
     const off = useApp.subscribe((state, prev) => {
       if (state.snapshot !== prev.snapshot) syncFromSnapshot()
     })
@@ -141,8 +182,6 @@ export function MyApp(): JSX.Element {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         toggleSidebar()
-      } else if (e.key === 'Escape') {
-        setHelpOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -150,53 +189,30 @@ export function MyApp(): JSX.Element {
   }, [toggleSidebar])
 
   return (
-    <div className="flex h-full min-w-0 flex-1">
-      {sidebarCollapsed ? (
-        <CollapsedRail onExpand={toggleSidebar} />
-      ) : (
-        <WorkspaceSidebar onCollapse={toggleSidebar} />
-      )}
-      {inProject && <ProjectSidebar />}
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="my-scrollbar min-h-0 flex-1">
+    <div className="flex h-full min-h-0 min-w-0 flex-1">
+      <WorkspaceSidebar />
+      <main className="my-workspace-center relative flex min-w-0 flex-1 flex-col overflow-hidden bg-my-surface-1">
+        {/* Keep the source instance mounted, with its local tabs/filter/scroll intact. */}
+        <div ref={sourceRef} data-page-scroll tabIndex={-1} aria-label="来源工作视图" aria-hidden={workspace || undefined}
+          className={`my-scrollbar min-h-0 min-w-0 flex-1 ${workspace ? 'invisible pointer-events-none absolute inset-0' : ''}`}>
           <PageBody />
         </div>
         {openTaskDir !== null && (
-          <div className="absolute inset-y-0 right-0 z-20 flex border-l border-my-line bg-my-canvas shadow-[-12px_0_40px_rgba(0,0,0,0.35)]">
+          <div data-task-presentation={workspace ? 'workspace' : 'preview'}
+            className={`my-task-surface absolute inset-y-0 right-0 z-20 flex max-w-full bg-my-surface-1 ${workspace ? 'left-0' : 'border-l border-my-line-strong shadow-[var(--my-shadow-overlay-200)]'}`}>
             <Suspense fallback={<PageLoading />}>
-              <ErrorBoundary key={openTaskDir}>
-                <TaskDetail />
+              <ErrorBoundary key={`${root}:${openTaskDir}`}>
+                <TaskDetail presentation={workspace ? 'workspace' : 'preview'} />
               </ErrorBoundary>
             </Suspense>
           </div>
         )}
       </main>
-      <IssuePeek />
-      <CreateIssueModal />
-      <CommandPalette />
+      <IssuePeek key={`peek:${root}`} />
+      <CreateIssueModal key={`create:${root}`} />
+      <CommandPalette key={`palette:${root}`} />
       {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
     </div>
-  )
-}
-
-/** 侧栏折叠态：窄条操作栏 */
-function CollapsedRail({ onExpand }: { onExpand: () => void }): JSX.Element {
-  const setPaletteOpen = useMy((s) => s.setPaletteOpen)
-  const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
-  const railBtn =
-    'flex h-8 w-8 items-center justify-center rounded-md text-my-icon-tertiary hover:bg-my-layer-1-hover hover:text-my-primary'
-  return (
-    <aside className="flex h-full w-[48px] shrink-0 flex-col items-center gap-1 border-r border-my-line bg-my-canvas py-3">
-      <button type="button" title="展开侧栏 (Ctrl+B)" onClick={onExpand} className={railBtn}>
-        <PanelLeftOpen size={15} />
-      </button>
-      <button type="button" title="搜索 (Ctrl+K)" onClick={() => setPaletteOpen(true)} className={railBtn}>
-        <Search size={15} />
-      </button>
-      <button type="button" title="新建工作项 (C)" onClick={() => setCreateIssueOpen(true)} className={railBtn}>
-        <Plus size={15} />
-      </button>
-    </aside>
   )
 }
 
@@ -205,13 +221,14 @@ const SHORTCUTS: Array<[string, string]> = [
   ['C', '新建工作项'],
   ['/', '打开命令面板'],
   ['Ctrl+K', '命令面板（同 /）'],
-  ['Ctrl+B', '折叠 / 展开侧边栏'],
+  ['Ctrl+B', '收起 / 展开上下文栏'],
   ['↑ ↓', '列表导航'],
   ['Enter', '打开聚焦的工作项'],
   ['?', '显示本帮助']
 ]
 
 function HelpOverlay({ onClose }: { onClose: () => void }): JSX.Element {
+  useEscLayer(true, { kind: 'modal', id: 'keyboard-help', onClose })
   return (
     <div className="p-fade fixed inset-0 z-[88] flex items-center justify-center bg-my-backdrop" onMouseDown={onClose}>
       <div

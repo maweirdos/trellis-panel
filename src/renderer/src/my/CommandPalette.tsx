@@ -1,11 +1,11 @@
 // 全局命令面板（Ctrl+K）：页面导航 + 工作项搜索 + 主题切换，键盘上下循环选择。
-import { useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { Search } from 'lucide-react'
 import { useApp, type Page } from '../store'
 import { useMy } from './store'
-import { StateGroupIcon, WorkspaceMark } from './icons'
-import type { StateGroup } from './types'
+import { NavIcon, StateGroupIcon } from './icons'
+import { DOMAIN_LABELS, getPageNavigation, navigationScopeLabel, PAGE_NAVIGATION } from './navigation'
 
 interface PaletteItem {
   id: string
@@ -26,46 +26,39 @@ export function CommandPalette(): JSX.Element | null {
   const theme = useMy((s) => s.theme)
   const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
   const openIssue = useMy((s) => s.openIssue)
+  const setWorkItemsView = useMy((s) => s.setWorkItemsView)
   const setPageMain = useApp((s) => s.setPage)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
 
-  const go = (page: Page): void => {
+  const go = useCallback((page: Page): void => {
+    if (page === 'tasks') setWorkItemsView('items')
     setPageMain(page)
     setOpen(false)
-  }
+  }, [setWorkItemsView, setPageMain, setOpen])
 
   const items = useMemo<PaletteItem[]>(() => {
     const stateIcon = (stateId: string): ReactNode => {
       const st = data.states.find((s) => s.id === stateId)
       return <StateGroupIcon stateGroup={st?.group ?? 'unstarted'} color={st?.color} size={14} />
     }
-    const nav: PaletteItem[] = [
-      { id: 'n-your-work', section: '导航', label: '我的工作', icon: stateIcon('st-planning'), run: () => go('dashboard') },
-      { id: 'n-analytics', section: '导航', label: '统计分析', icon: stateIcon('st-planning'), run: () => go('analytics') },
-      { id: 'n-work', section: '导航', label: '工作项', icon: stateIcon('st-planning'), run: () => go('tasks') },
-      { id: 'n-knowledge', section: '导航', label: '知识库', icon: stateIcon('st-planning'), run: () => go('knowledge') },
-      { id: 'n-spec', section: '导航', label: '规范文档', icon: stateIcon('st-planning'), run: () => go('spec') },
-      { id: 'n-archive', section: '导航', label: '归档', icon: stateIcon('st-planning'), run: () => go('archive') },
-      { id: 'n-inbox', section: '导航', label: '待办池', icon: stateIcon('st-planning'), run: () => go('inbox') },
-      { id: 'n-settings', section: '导航', label: '设置', icon: stateIcon('st-planning'), run: () => go('settings') }
-    ]
-    const project: PaletteItem[] = [
-      {
-        id: 'p-project',
-        section: '项目',
-        label: data.projects[0]?.name ?? '项目',
-        icon: (
-          <WorkspaceMark
-            color={data.projects[0]?.color ?? '#006399'}
-            letter={data.projects[0]?.icon.slice(0, 1) ?? 'T'}
-            size={16}
-          />
-        ),
-        hint: '进入项目',
-        run: () => go('tasks')
+    const nav: PaletteItem[] = (Object.keys(PAGE_NAVIGATION) as Page[]).map((page) => {
+      const entry = getPageNavigation(page)
+      return {
+        id: `n-${page}`,
+        section: `导航 · ${DOMAIN_LABELS[entry.domain]}`,
+        label: entry.title,
+        icon: <NavIcon name={entry.icon} size={14} />,
+        hint: entry.commandHint ?? navigationScopeLabel(entry.scope),
+        keywords: `${DOMAIN_LABELS[entry.domain]} ${entry.keywords ?? ''}`,
+        run: () => go(page)
       }
-    ]
+    })
+    nav.splice(1, 0, {
+      id: 'n-task-cycle', section: '导航 · 迭代', label: '迭代', icon: <NavIcon name="cycles" size={14} />,
+      hint: '当前项目', keywords: '排期 自然周',
+      run: () => { setWorkItemsView('iterations'); setPageMain('tasks'); setOpen(false) }
+    })
     const issues: PaletteItem[] = data.issues.slice(0, 60).map((issue) => ({
       id: `i-${issue.id}`,
       section: '工作项',
@@ -74,6 +67,7 @@ export function CommandPalette(): JSX.Element | null {
       keywords: issue.id,
       fulltext: issue.description,
       run: () => {
+        setWorkItemsView('items')
         setPageMain('tasks')
         openIssue(issue.id)
         setOpen(false)
@@ -97,14 +91,15 @@ export function CommandPalette(): JSX.Element | null {
         label: '新建工作项',
         icon: stateIcon('st-planning'),
         run: () => {
+          setWorkItemsView('items')
           setPageMain('tasks')
           setCreateIssueOpen(true)
           setOpen(false)
         }
       }
     ]
-    return [...nav, ...project, ...issues, ...actions]
-  }, [data, theme, setPageMain, openIssue, setOpen, setCreateIssueOpen])
+    return [...nav, ...issues, ...actions]
+  }, [data, theme, go, setWorkItemsView, setPageMain, openIssue, setOpen, setCreateIssueOpen])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

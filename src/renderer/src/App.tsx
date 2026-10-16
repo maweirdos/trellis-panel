@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { useApp } from './store'
-import { api } from './api'
+import { api, hasIpc } from './api'
 import { useMy } from './my/store'
 import { TitleBar } from './components/TitleBar'
 import { Onboarding } from './components/Onboarding'
@@ -14,12 +14,13 @@ import { IntakeModal } from './components/IntakeModal'
 import { attachDocumentChangedSource } from './reader/document-session-hub'
 import { dispatchEscKey } from './utils/esc-layer'
 import { MyApp } from './my/layout/MyApp'
+import { DocWindowApp } from './my/pages/DocWindow'
 import { Loader2 } from 'lucide-react'
 
 function PageLoading(): JSX.Element {
   return (
-    <div className="flex h-full w-full items-center justify-center text-mist-500">
-      <Loader2 size={20} className="animate-spin text-mist-400" />
+    <div className="flex h-full w-full items-center justify-center text-my-tertiary">
+      <Loader2 size={20} className="animate-spin text-my-icon-tertiary" />
     </div>
   )
 }
@@ -33,15 +34,6 @@ function MainApp(): JSX.Element {
   const inboxAdd = useApp((s) => s.inboxAdd)
   const projectRoot = snapshot?.meta.root
   const theme = useMy((s) => s.theme)
-
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return
-      dispatchEscKey()
-    }
-    window.addEventListener('keydown', onEsc)
-    return () => window.removeEventListener('keydown', onEsc)
-  }, [])
 
   // 文档会话集线器：定向变更事件 → 各阅读会话
   useEffect(() => {
@@ -74,7 +66,7 @@ function MainApp(): JSX.Element {
     // 任务材料更新（主进程按任务防抖合并）——正在阅读的任务给轻提示，其余正常提醒
     const offMaterial = api.onMaterialUpdated((e) => {
       const st = useApp.getState()
-      const readingIt = st.page === 'tasks' && st.openTaskDir === e.dirName
+      const readingIt = st.openTaskDir === e.dirName
       pushToast({
         kind: 'info',
         title: readingIt ? '当前阅读任务有更新' : `任务更新：${e.title}`,
@@ -132,20 +124,47 @@ export default function App(): JSX.Element {
   const quickTodoMode = useApp((s) => s.quickTodoMode)
   const theme = useMy((s) => s.theme)
 
+  // 文档小窗模式：主进程以 ?mode=doc 拉起的独立置顶阅读窗（不跑 bootstrap/IPC 订阅；
+  // location.search 按窗口固定，早退不会造成同根 hooks 错序）。
+  // index.html 默认带 html.dark，本分支不跑主题 effect，必须按 URL 参数同步，
+  // 否则 .md 的 mist/ink 调色板与浅色窗底错配（正文发灰看不清）。
+  const docParams = new URLSearchParams(window.location.search)
+  if (docParams.get('mode') === 'doc') {
+    const docTheme = docParams.get('theme') === 'light' ? 'light' : 'dark'
+    document.documentElement.classList.toggle('dark', docTheme !== 'light')
+    document.documentElement.style.colorScheme = docTheme
+    return (
+      <div data-my-theme={docTheme} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
+        <DocWindowApp />
+      </div>
+    )
+  }
+
   useEffect(() => {
-    void bootstrap()
+    if (hasIpc) void bootstrap()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // One dispatcher for the ordinary shell, including no-IPC preview. Independent
+  // capsule/quicktodo windows keep their own key behavior; doc mode returns above.
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', settings?.theme !== 'light')
+    if (capsuleMode || quickTodoMode) return
+    const onEsc = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && dispatchEscKey()) e.preventDefault()
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [capsuleMode, quickTodoMode])
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', (settings?.theme ?? theme) !== 'light')
     // 速记窗与胶囊一样是无框透明窗，html/body 需要透明背景
     document.documentElement.classList.toggle('is-capsule', capsuleMode || quickTodoMode)
-  }, [settings?.theme, capsuleMode, quickTodoMode])
+  }, [settings?.theme, theme, capsuleMode, quickTodoMode])
 
   if (quickTodoMode) {
     return (
-      <div className="h-full w-full overflow-hidden bg-transparent p-0">
+      <div data-my-theme={theme} className="my-root h-full w-full overflow-hidden bg-transparent p-0">
         <QuickTodoView />
       </div>
     )
@@ -153,7 +172,7 @@ export default function App(): JSX.Element {
 
   if (capsuleMode) {
     return (
-      <div className="h-full w-full bg-transparent p-0 overflow-hidden">
+      <div data-my-theme={theme} className="my-root h-full w-full bg-transparent p-0 overflow-hidden">
         {/* eslint-disable-next-line @typescript-eslint/no-unsafe-call */}
         <CapsuleLazy />
         <Toasts />
@@ -162,9 +181,10 @@ export default function App(): JSX.Element {
   }
 
   // 预览入口：?my=1 且无 IPC 环境（浏览器）时直接渲染外壳，便于界面级验证
-  if (window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
+  if (!hasIpc && window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
     return (
-      <div data-my-theme={theme} className="my-root h-full w-full bg-my-canvas">
+      <div data-my-theme={theme} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
+        <TitleBar />
         <Suspense fallback={null}>
           <MyApp />
         </Suspense>
@@ -174,7 +194,7 @@ export default function App(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div data-my-theme={theme} className="my-root flex h-full flex-col bg-my-canvas text-[13px] text-my-primary">
+      <div data-my-theme={theme} className="my-root flex h-full flex-col bg-my-canvas text-my-md text-my-primary">
         <TitleBar />
         <MainApp />
         <Toasts />

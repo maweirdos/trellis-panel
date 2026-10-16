@@ -4,7 +4,11 @@ import { create } from 'zustand'
 import { api } from '../api'
 import { useApp } from '../store'
 import { deriveDataset, issueToTaskPatch, todayIso, TRELLIS_PROJECT_ID } from './adapter'
+import { projectRootKey, type WorkItemsView } from './navigation'
+import { loadProjectPreferences, saveProjectPreferences, type SavedView } from './project-preferences'
 import type { GroupBy, Issue, IssueFilters, OrderBy, Priority, ThemeMode, WorkItemLayout } from './types'
+
+export type { SavedView } from './project-preferences'
 
 const STORAGE_KEY = 'tpanel.my.ui'
 
@@ -13,16 +17,6 @@ interface PersistedPrefs {
   groupBy: GroupBy
   orderBy: OrderBy
   sidebarCollapsed: boolean
-  favorites: string[]
-  savedViews: SavedView[]
-}
-
-export interface SavedView {
-  id: string
-  name: string
-  filters: IssueFilters
-  groupBy: GroupBy
-  createdAt: number
 }
 
 function loadPrefs(): Partial<PersistedPrefs> {
@@ -37,60 +31,34 @@ function loadPrefs(): Partial<PersistedPrefs> {
 
 function savePrefs(prefs: PersistedPrefs): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
+    // Retain legacy embedded fields without assigning them to any project.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadPrefs(), ...prefs }))
   } catch {
     // 隐私模式等场景下静默降级
   }
 }
 
-const FAV_KEY = 'tpanel.my.favorites'
-const VIEW_KEY = 'tpanel.my.views'
-
-function loadFavorites(): string[] {
-  try {
-    const raw = localStorage.getItem(FAV_KEY)
-    return raw ? (JSON.parse(raw) as string[]) : []
-  } catch {
-    return []
-  }
-}
-
-function saveFavorites(ids: string[]): void {
-  try {
-    localStorage.setItem(FAV_KEY, JSON.stringify(ids.slice(0, 50)))
-  } catch {
-    // 容量敏感数据截断保存
-  }
-}
-
-function loadSavedViews(): SavedView[] {
-  try {
-    const raw = localStorage.getItem(VIEW_KEY)
-    return raw ? (JSON.parse(raw) as SavedView[]) : []
-  } catch {
-    return []
-  }
-}
-
-function saveSavedViews(views: SavedView[]): void {
-  try {
-    localStorage.setItem(VIEW_KEY, JSON.stringify(views.slice(0, 30)))
-  } catch {
-    // 静默降级
-  }
-}
-
 const prefs = loadPrefs()
+const initialProjectRoot = projectRootKey(useApp.getState().snapshot?.meta.root)
+const projectPrefs = loadProjectPreferences(initialProjectRoot)
 
 export interface MyStore {
   /** 视图模型镜像；快照更新时 syncFromSnapshot() 重建 */
   data: ReturnType<typeof deriveDataset>
+  /** Normalized real snapshot root; null is an unbound browser preview. */
+  projectRoot: string | null
+  canOpenLocalProject: boolean
   syncFromSnapshot: () => void
 
   theme: ThemeMode
   setTheme: (t: ThemeMode) => void
 
   layout: WorkItemLayout
+  workItemsView: WorkItemsView
+  workItemsTab: 'all' | 'active' | 'backlog'
+  itemsGroupBy: GroupBy
+  setWorkItemsView: (view: WorkItemsView) => void
+  setWorkItemsTab: (tab: 'all' | 'active' | 'backlog') => void
   groupBy: GroupBy
   orderBy: OrderBy
   filters: IssueFilters
@@ -135,12 +103,39 @@ function currentDataset(): ReturnType<typeof deriveDataset> {
 
 export const useMy = create<MyStore>()((set, get) => ({
   data: currentDataset(),
-  syncFromSnapshot: () => set({ data: currentDataset() }),
+  projectRoot: initialProjectRoot,
+  canOpenLocalProject: Boolean(api),
+  syncFromSnapshot: () => {
+    const projectRoot = projectRootKey(useApp.getState().snapshot?.meta.root)
+    const previousRoot = get().projectRoot
+    const changed = projectRoot !== previousRoot
+    set({
+      data: currentDataset(),
+      ...(changed ? {
+        projectRoot,
+        ...loadProjectPreferences(projectRoot),
+        filters: { ...defaultFilters },
+        groupBy: 'state' as const,
+        itemsGroupBy: 'state' as const,
+        workItemsView: 'items' as const,
+        workItemsTab: 'all' as const,
+        orderBy: 'manual' as const,
+        peekIssueId: null,
+        createIssueOpen: false,
+        paletteOpen: false
+      } : {})
+    })
+    // A first bootstrap/deep link may already have selected a task in this root.
+    if (changed && previousRoot !== null) {
+      useApp.getState().showTask(null)
+      useApp.setState({ taskExpandOrigin: null, taskMaterialTarget: null, specDocumentTarget: null })
+    }
+  },
 
   theme: useApp.getState().settings?.theme === 'light' ? 'light' : 'dark',
   setTheme: (t) => {
     set({ theme: t })
-    void useApp.getState().saveSettings({ theme: t })
+    if (api) void useApp.getState().saveSettings({ theme: t })
   },
   toggleTheme: () => {
     const next = get().theme === 'dark' ? 'light' : 'dark'
@@ -148,21 +143,29 @@ export const useMy = create<MyStore>()((set, get) => ({
   },
 
   layout: prefs.layout ?? 'list',
-  groupBy: prefs.groupBy ?? 'state',
+  workItemsView: 'items',
+  workItemsTab: 'all',
+  itemsGroupBy: 'state',
+  setWorkItemsView: (view) => set({
+    workItemsView: view,
+    groupBy: view === 'iterations' ? 'cycle' : get().itemsGroupBy
+  }),
+  setWorkItemsTab: (tab) => set({ workItemsTab: tab }),
+  groupBy: 'state',
   orderBy: prefs.orderBy ?? 'manual',
   filters: defaultFilters,
   display: { showEmptyGroups: false, showSubIssues: true },
   setLayout: (l) => {
     set({ layout: l })
-    savePrefs({ layout: l, groupBy: get().groupBy, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, favorites: get().favorites, savedViews: get().savedViews })
+    savePrefs({ layout: l, groupBy: get().groupBy, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed })
   },
   setGroupBy: (g) => {
-    set({ groupBy: g })
-    savePrefs({ layout: get().layout, groupBy: g, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, favorites: get().favorites, savedViews: get().savedViews })
+    set({ groupBy: g, ...(get().workItemsView === 'items' ? { itemsGroupBy: g } : {}) })
+    savePrefs({ layout: get().layout, groupBy: g, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed })
   },
   setOrderBy: (o) => {
     set({ orderBy: o })
-    savePrefs({ layout: get().layout, groupBy: get().groupBy, orderBy: o, sidebarCollapsed: get().sidebarCollapsed, favorites: get().favorites, savedViews: get().savedViews })
+    savePrefs({ layout: get().layout, groupBy: get().groupBy, orderBy: o, sidebarCollapsed: get().sidebarCollapsed })
   },
   toggleFilter: (key, value) => {
     const cur = get().filters[key] as unknown[]
@@ -188,43 +191,33 @@ export const useMy = create<MyStore>()((set, get) => ({
       layout: get().layout,
       groupBy: get().groupBy,
       orderBy: get().orderBy,
-      sidebarCollapsed: collapsed,
-      favorites: get().favorites,
-      savedViews: get().savedViews
-    })
-    savePrefs({
-      layout: get().layout,
-      groupBy: get().groupBy,
-      orderBy: get().orderBy,
-      sidebarCollapsed: get().sidebarCollapsed,
-      favorites: get().favorites,
-      savedViews: get().savedViews
+      sidebarCollapsed: collapsed
     })
   },
-  favorites: loadFavorites(),
+  favorites: projectPrefs.favorites,
   toggleFavorite: (id) => {
     const cur = get().favorites
     const next = cur.includes(id) ? cur.filter((f) => f !== id) : [id, ...cur]
     set({ favorites: next })
-    saveFavorites(next)
+    saveProjectPreferences(get().projectRoot, { favorites: next, savedViews: get().savedViews })
   },
-  savedViews: loadSavedViews(),
+  savedViews: projectPrefs.savedViews,
   saveView: (name, filters, groupBy) => {
     const view: SavedView = { id: `v-${Date.now()}`, name: name.trim(), filters: { ...filters }, groupBy, createdAt: Date.now() }
     if (!view.name) return
     const next = [view, ...get().savedViews].slice(0, 30)
     set({ savedViews: next })
-    saveSavedViews(next)
+    saveProjectPreferences(get().projectRoot, { favorites: get().favorites, savedViews: next })
   },
   applyView: (id) => {
     const view = get().savedViews.find((v) => v.id === id)
     if (!view) return
-    set({ filters: { ...defaultFilters, ...view.filters }, groupBy: view.groupBy })
+    set({ filters: { ...defaultFilters, ...view.filters }, groupBy: view.groupBy, itemsGroupBy: view.groupBy, workItemsView: 'items' })
   },
   removeView: (id) => {
     const next = get().savedViews.filter((v) => v.id !== id)
     set({ savedViews: next })
-    saveSavedViews(next)
+    saveProjectPreferences(get().projectRoot, { favorites: get().favorites, savedViews: next })
   },
 
   /** 本地乐观更新 + 经 IPC 落盘，随后由快照推送收敛 */
@@ -286,11 +279,6 @@ export function filterIssues(issues: Issue[], filters: IssueFilters): Issue[] {
     if (filters.labelIds.length > 0 && !i.labelIds.some((l) => filters.labelIds.includes(l))) return false
     return true
   })
-}
-
-/** 当前页面是否属于项目上下文（决定项目侧边栏是否显示） */
-export function isProjectPage(page: string): boolean {
-  return ['tasks', 'knowledge', 'spec', 'archive', 'inbox'].includes(page)
 }
 
 export { todayIso, TRELLIS_PROJECT_ID }

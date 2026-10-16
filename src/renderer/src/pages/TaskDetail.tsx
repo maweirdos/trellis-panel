@@ -21,7 +21,9 @@ import {
   Settings2,
   Copy,
   Maximize2,
-  Paperclip
+  Paperclip,
+  ArrowLeft,
+  PanelRightOpen
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
@@ -33,6 +35,8 @@ import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
 import { DocumentReader } from '../reader/DocumentReader'
 import { readingSessionKey } from '../reader/reading-session'
 import { relativePathUnderRoot } from '../reader/reader-paths'
+import { TASK_MATERIAL_GROUPS, taskMaterialGroup, type TaskMaterialGroup } from '../reader/task-materials'
+import { ObservationPanel } from '../observation/ObservationPanel'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
@@ -62,8 +66,6 @@ function Row({ label, modified, children }: { label: string; modified?: boolean;
 }
 
 /* ---------------- 文档优先：任务产物（PRD / Design …）直接在抽屉里阅读 ---------------- */
-
-const CLICKABLE_ARTIFACT = /\.(md|markdown|txt|json|jsonl|yaml|yml|toml|py|ts|tsx|js|mjs|cjs|sh|ps1|cmd|bat|cfg|ini|log|html|css|sql|env)$/i
 
 /** PRD / Design 排最前，其余按名称 */
 function docWeight(name: string): number {
@@ -99,16 +101,16 @@ function docLabels(names: string[]): Map<string, string> {
  * 头部保留复制/放大既有能力，并新增「展开为完整工作区」入口（AC1）。 */
 const DocPane = React.memo(function DocPane({
   file,
-  projectName,
   taskRef,
   onOpenInViewer,
-  onExpand
+  onExpand,
+  presentation
 }: {
   file: FileEntry
-  projectName: string
   taskRef: string | null
   onOpenInViewer: () => void
   onExpand: () => void
+  presentation: 'preview' | 'workspace'
 }): JSX.Element {
   const projectRoot = useApp((s) => s.snapshot?.meta.root ?? '')
   const relativePath = relativePathUnderRoot(projectRoot, file.path)
@@ -125,18 +127,20 @@ const DocPane = React.memo(function DocPane({
     setTimeout(() => setCopied(false), 1500)
   }
   return (
-    <div>
+    <div data-task-document={file.path}>
       <div className="mb-4 flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-1.5">
         <FileText size={12} className={clsx('shrink-0', isMd ? 'text-my-icon-accent' : 'text-my-icon-tertiary')} />
         <span className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-tertiary" title={file.path}>
-          {projectName} / {file.name} · {fmtBytes(file.size)}
+          {file.name} · {fmtBytes(file.size)}
         </span>
         <Button variant="ghost" size="sm" onClick={() => void copy()} title="复制全文">
           <Copy size={11} /> {copied ? '已复制' : '复制'}
         </Button>
-        <Button variant="ghost" size="sm" onClick={onExpand} title="展开为完整任务工作区（保留返回位置）">
-          <Maximize2 size={11} /> 展开
-        </Button>
+        {presentation === 'preview' && (
+          <Button variant="ghost" size="sm" onClick={onExpand} title="展开为完整任务工作区（保留返回位置）">
+            <Maximize2 size={11} /> 展开
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={onOpenInViewer} title="在产物查看器中打开（固定标签）">
           <ArrowUpRight size={11} /> 放大
         </Button>
@@ -146,7 +150,7 @@ const DocPane = React.memo(function DocPane({
           workspaceId={projectRoot}
           taskRef={taskRef ?? undefined}
           relativePath={relativePath}
-          variant="compact"
+          variant={presentation === 'workspace' ? 'full' : 'compact'}
         />
       ) : (
         <div className="rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-2 text-my-sm text-my-tertiary">
@@ -262,7 +266,7 @@ function FieldRow({
   )
 }
 
-export function TaskDetail(): JSX.Element | null {
+export function TaskDetail({ presentation = 'preview' }: { presentation?: 'preview' | 'workspace' }): JSX.Element | null {
   const snapshot = useApp((s) => s.snapshot)
   const settings = useApp((s) => s.settings)
   const openTaskDir = useApp((s) => s.openTaskDir)
@@ -271,9 +275,13 @@ export function TaskDetail(): JSX.Element | null {
   const pushToast = useApp((s) => s.pushToast)
   const inboxRemove = useApp((s) => s.inboxRemove)
   const openArtifact = useApp((s) => s.openArtifact)
+  const materialTarget = useApp((s) => s.taskMaterialTarget)
+  const workspace = presentation === 'workspace'
 
   /** 当前选中视图：null = 自动（首选文档），'info' = 详情字段，其余 = 产物文件路径 */
   const [sel, setSel] = useState<string | null>(null)
+  const [materialGroup, setMaterialGroup] = useState<TaskMaterialGroup>('all')
+  const [contextOpen, setContextOpen] = useState(false)
   const [pending, setPending] = useState<TaskPatch>({})
   const [showDiff, setShowDiff] = useState(false)
   const [git, setGit] = useState<TaskGitInfo | null>(null)
@@ -293,20 +301,28 @@ export function TaskDetail(): JSX.Element | null {
   const [openedMtime, setOpenedMtime] = useState<number | undefined>(undefined)
 
   /* ----- drawer interactions: Esc 关闭走全局 Esc 层（preview；编辑字段时不抢），左缘拖拽调宽 ----- */
-  useEscLayer(true, {
+  useEscLayer(openTaskDir !== null, {
     kind: 'preview',
-    id: 'task-detail-drawer',
+    // A consumed layer must register again on preview/workspace transition.
+    id: `task-detail-${presentation}`,
     // 焦点在输入控件内时 Esc 交给字段自身（如取消编辑），不关抽屉——守卫在 Esc 层派发前生效
     deferWhenInputFocused: true,
     onClose: () => {
-      showTask(null)
+      if (workspace) useApp.getState().returnFromWorkspace()
+      else showTask(null)
     }
+  })
+  useEscLayer(contextOpen, {
+    kind: 'overlay',
+    id: 'task-detail-context',
+    deferWhenInputFocused: true,
+    onClose: () => setContextOpen(false)
   })
 
   /* S0 G2 第三片（AC1）：展开为完整工作区——记录来源页面与滚动位置，返回时恢复 */
   const expandToWorkspace = (): void => {
     const st = useApp.getState()
-    if (!openTaskDir) return
+    if (!openTaskDir || workspace) return
     const pageScroll = document.querySelector<HTMLElement>('[data-page-scroll]')
     st.expandTaskWorkspace({
       fromPage: st.page,
@@ -342,24 +358,29 @@ export function TaskDetail(): JSX.Element | null {
 
   useEffect(() => {
     setSel(null)
+    setMaterialGroup('all')
+    setContextOpen(false)
     setPending({})
     setShowDiff(false)
     setGit(null)
     setShowAllCommits(false)
     setOpenedMtime(task?.taskJsonMtime)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTaskDir])
+  }, [openTaskDir, archived])
 
   // load git info when drawer opens or a rescan lands (30s-cached in main)
   const scannedAt = useApp((s) => s.snapshot?.scannedAt)
   useEffect(() => {
     if (!hasIpc) return
     if (!openTaskDir || archived) return
+    let alive = true
     setGitLoading(true)
     api.gitTaskInfo(openTaskDir).then((g) => {
+      if (!alive) return
       setGit(g)
       setGitLoading(false)
-    })
+    }).catch(() => { if (alive) setGitLoading(false) })
+    return () => { alive = false }
   }, [openTaskDir, archived, scannedAt])
 
   const task: TaskInfo | undefined = useMemo(
@@ -376,13 +397,22 @@ export function TaskDetail(): JSX.Element | null {
   const docs = useMemo(
     () =>
       (task?.artifacts ?? [])
-        .filter((f) => f.kind === 'file' && CLICKABLE_ARTIFACT.test(f.name))
+        .filter((f) => f.kind === 'file')
         .sort((a, b) => docWeight(a.name) - docWeight(b.name) || a.name.localeCompare(b.name)),
     [task]
   )
   const activeDoc = sel === 'info' ? undefined : (docs.find((d) => d.path === sel) ?? docs[0])
   const showInfo = !activeDoc
   const labels = useMemo(() => docLabels(docs.map((d) => d.name)), [docs])
+  const visibleDocs = materialGroup === 'all' ? docs : docs.filter((d) => taskMaterialGroup(d.name) === materialGroup)
+  useEffect(() => {
+    if (materialTarget === null) return
+    if (docs.some((d) => d.path === materialTarget)) {
+      setSel(materialTarget)
+      setMaterialGroup('all')
+    }
+    useApp.getState().setTaskMaterialTarget(null)
+  }, [materialTarget, docs])
   /** 当前生效宽度：读文档宽幅 / 改字段窄幅（拖拽手柄各自记忆） */
   const width = activeDoc ? widths.doc : widths.field
   const activeDocRef = useRef(activeDoc)
@@ -395,7 +425,9 @@ export function TaskDetail(): JSX.Element | null {
   useEffect(() => {
     if (!hasIpc) return
     if (!gitlabEnabled || !openTaskDir || archived) return
-    api.gitlabTaskStatus(openTaskDir).then(setGl)
+    let alive = true
+    api.gitlabTaskStatus(openTaskDir).then((status) => { if (alive) setGl(status) }).catch(() => undefined)
+    return () => { alive = false }
   }, [gitlabEnabled, openTaskDir, archived, scannedAt, task?.record?.branch])
 
   if (!task) return null
@@ -471,14 +503,23 @@ export function TaskDetail(): JSX.Element | null {
   }
 
   return (
-    <div className="relative flex h-full shrink-0 animate-slide-in flex-col bg-my-canvas" style={{ width }}>
+    <div
+      data-task-detail-presentation={presentation}
+      className={clsx('relative flex h-full min-w-0 shrink-0 flex-col', workspace ? 'w-full bg-my-surface-1' : 'animate-slide-in bg-my-canvas')}
+      style={workspace ? undefined : { width, maxWidth: '100%' }}
+    >
       {/* 左缘拖拽调宽手柄 */}
-      <div
+      {!workspace && <div
         onMouseDown={onStartResize}
         className="absolute inset-y-0 left-0 z-30 w-1.5 cursor-ew-resize transition-colors hover:bg-my-line-strong"
         title="拖拽调整宽度"
-      />
-      <div className="flex items-start gap-2 border-b border-my-line px-4 py-3">
+      />}
+      <div className="flex shrink-0 items-start gap-2 border-b border-my-line px-4 py-3">
+        {workspace && (
+          <Button variant="ghost" size="sm" onClick={() => { useApp.getState().returnFromWorkspace() }} title="返回来源视图的任务预览">
+            <ArrowLeft size={14} /> 返回
+          </Button>
+        )}
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             {r && <StatusBadge status={pending.status ?? r.status} />}
@@ -494,19 +535,36 @@ export function TaskDetail(): JSX.Element | null {
           </h2>
           <div className="mt-0.5 font-mono text-my-xs text-my-tertiary">{task.dirName}</div>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => showTask(null)} title="关闭">
+        {!workspace && (
+          <Button variant="ghost" size="sm" onClick={expandToWorkspace} title="展开为中央任务工作区">
+            <Maximize2 size={14} />
+          </Button>
+        )}
+        <button type="button" aria-expanded={contextOpen} aria-controls="task-context-panel" onClick={() => setContextOpen((open) => !open)} title="任务属性、关联与上下文回执" className={clsx('my-control my-control-sm shrink-0', contextOpen ? 'bg-my-accent-subtle text-my-accent-text' : 'text-my-secondary hover:bg-my-layer-1-hover')}>
+          <PanelRightOpen size={14} /> 上下文
+        </button>
+        <Button variant="ghost" size="sm" onClick={() => showTask(null)} title="关闭任务">
           <X size={15} />
         </Button>
       </div>
 
-      {/* 文档直达条：PRD / Design 一键切换，详情殿后 */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-my-line bg-my-canvas px-3 py-2">
-          {docs.map((d) => {
+      <div className="shrink-0 border-b border-my-line bg-my-layer-1 px-3 py-2">
+        <div className="my-scrollbar mb-2 flex items-center gap-1 overflow-x-auto" aria-label="材料浏览分组">
+          {TASK_MATERIAL_GROUPS.map((group) => (
+            <button key={group.id} type="button" aria-pressed={materialGroup === group.id} onClick={() => setMaterialGroup(group.id)} className={clsx('my-control my-control-sm shrink-0', materialGroup === group.id ? 'bg-my-layer-2 font-medium text-my-primary' : 'text-my-secondary hover:bg-my-layer-1-hover')}>
+              {group.label}
+            </button>
+          ))}
+        </div>
+        <div className="my-scrollbar flex max-h-24 flex-wrap items-center gap-1 overflow-y-auto" aria-label="任务材料">
+          {visibleDocs.map((d) => {
             const on = activeDoc?.path === d.path
             const isMd = /\.(md|markdown)$/i.test(d.name)
             return (
               <button
                 key={d.path}
+                type="button"
+                aria-pressed={on}
                 onClick={() => setSel(d.path)}
                 title={d.name}
                 className={clsx(
@@ -521,6 +579,7 @@ export function TaskDetail(): JSX.Element | null {
               </button>
             )
           })}
+          {visibleDocs.length === 0 && <span className="px-1 text-my-xs text-my-secondary">该分组暂无材料；分组只便于查找，不代表阶段完成。</span>}
           <button
             onClick={() => setSel('info')}
             className={clsx(
@@ -537,6 +596,7 @@ export function TaskDetail(): JSX.Element | null {
               <Paperclip size={10} /> {task.artifacts.length - docs.length}
             </span>
           )}
+        </div>
       </div>
 
       <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-4 pb-20">
@@ -544,10 +604,10 @@ export function TaskDetail(): JSX.Element | null {
           <DocPane
             key={activeDoc.path}
             file={activeDoc}
-            projectName={snapshot?.meta.name ?? ''}
             taskRef={task.dirName}
             onOpenInViewer={() => openArtifact(activeDoc, true)}
             onExpand={expandToWorkspace}
+            presentation={presentation}
           />
         )}
 
@@ -836,7 +896,7 @@ export function TaskDetail(): JSX.Element | null {
               <div className="py-6 text-center text-my-xs text-my-tertiary">缺少 task.json</div>
             )}
 
-            {/* 其余产物（目录 / 不可预览文件等）——点击仍进入全屏查看器 */}
+            {/* 全部产物：未知扩展名仍可选择，读取诊断由共享阅读器原样显示。 */}
             {task.artifacts.length > 0 && (
               <div className="py-3">
                 <div className="mb-1.5 flex items-center gap-1.5 text-my-xs text-my-tertiary">
@@ -844,12 +904,12 @@ export function TaskDetail(): JSX.Element | null {
                 </div>
                 <div className="space-y-1">
                   {task.artifacts.map((f) => {
-                    const clickable = f.kind === 'file' && CLICKABLE_ARTIFACT.test(f.name)
+                    const clickable = f.kind === 'file'
                     return (
                       <button
                         key={f.path}
                         disabled={!clickable}
-                        onClick={() => clickable && openArtifact(f)}
+                        onClick={() => clickable && setSel(f.path)}
                         className={clsx(
                           'flex w-full items-center gap-2.5 rounded-my-lg border border-transparent px-3 py-2 text-left transition-colors',
                           clickable
@@ -869,6 +929,29 @@ export function TaskDetail(): JSX.Element | null {
           </div>
         )}
       </div>
+
+      {contextOpen && (
+        <aside id="task-context-panel" aria-label="任务上下文" className="my-scrollbar absolute inset-y-0 right-0 z-30 w-[min(340px,100%)] overflow-y-auto border-l border-my-line-strong bg-my-layer-1 p-4 shadow-[var(--my-shadow-overlay-200)]">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-my-md font-semibold text-my-primary">任务上下文</h3>
+            <Button variant="ghost" size="sm" onClick={() => setContextOpen(false)} title="收起上下文"><X size={14} /></Button>
+          </div>
+          <dl className="mb-4 space-y-3 text-my-sm">
+            <div><dt className="text-my-secondary">负责人</dt><dd className="mt-0.5 break-words text-my-primary">{r?.assignee || '未分配'}</dd></div>
+            <div><dt className="text-my-secondary">创建者</dt><dd className="mt-0.5 text-my-primary">{r?.creator || '未知'}</dd></div>
+            <div><dt className="text-my-secondary">任务目录</dt><dd className="mt-0.5 break-all font-mono text-my-xs text-my-primary">{task.path}</dd></div>
+            {r?.branch && <div><dt className="text-my-secondary">关联分支</dt><dd className="mt-0.5 break-all font-mono text-my-xs text-my-primary">{r.branch}</dd></div>}
+          </dl>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setSel('info'); setContextOpen(false) }}><Settings2 size={12} /> 详细属性</Button>
+            {jiraUrl && <Button size="sm" variant="outline" onClick={() => { void api.openExternal(jiraUrl) }}><ExternalLink size={12} /> Jira 来源</Button>}
+            {r?.pr_url && <Button size="sm" variant="outline" onClick={() => { void api.openExternal(r.pr_url ?? '') }}><ExternalLink size={12} /> PR / MR</Button>}
+          </div>
+          {hasIpc && snapshot ? (
+            <ObservationPanel workspaceId={snapshot.meta.root} taskRef={r?.id ? `task:${r.id}` : `dir:${relativePathUnderRoot(snapshot.meta.root, task.path) ?? `.trellis/tasks/${task.dirName}`}`} variant="compact" />
+          ) : <p className="text-my-xs leading-5 text-my-secondary">当前没有本机项目连接，无法读取真实上下文回执。</p>}
+        </aside>
+      )}
 
       {/* 待保存修改 footer */}
       {pendingCount > 0 && (

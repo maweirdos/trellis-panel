@@ -161,3 +161,29 @@
 /* 甘特/日历网格线 */
 .my-root .my-gridline-r { border-right: 1px solid var(--my-border-subtle); }
 .my-root .my-gridline-b { border-bottom: 1px solid var(--my-border-subtle); }
+
+/* Project workspace hierarchy: semantic surfaces, with no new palette. */
+.my-root .my-window-header,
+.my-root .my-module-rail { background: var(--my-bg-canvas); }
+.my-root .my-module-rail > nav { scrollbar-gutter: auto; scrollbar-width: none; }
+.my-root .my-module-rail > nav::-webkit-scrollbar { display: none; }
+.my-root .my-module-button { line-height: 1; }
+.my-root .my-context-sidebar { background: var(--my-bg-layer-1); }
+.my-root .my-workspace-center { background: var(--my-bg-surface-1); }
+.my-root .my-project-switcher { border: 0; background: transparent; }
+.my-root .my-project-switcher:hover,
+.my-root .my-project-switcher[aria-expanded='true'] { background: var(--my-bg-layer-transparent-hover); }
+.my-root .my-context-button { border: 0; box-shadow: none; }
+.my-root button:focus-visible,
+.my-root [role='button']:focus-visible,
+.my-root a:focus-visible {
+  outline: 2px solid var(--my-border-accent-strong);
+  outline-offset: 2px;
+}
+.my-root .my-task-surface { min-width: 0; }
+@media (max-width: 1100px) {
+  .my-root .my-context-sidebar { width: 200px; }
+  .my-root .my-work-items-header { gap: 8px; padding-inline: 12px; }
+  .my-root .my-project-switcher-name { max-width: 190px; }
+  .my-root .my-window-search { margin-right: 8px; gap: 8px; }
+}

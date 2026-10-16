@@ -20,6 +20,7 @@
 | [error-handling.md](./error-handling.md)           | Error handling strategies in procedures           | Handling errors in transactions    |
 | [database.md](./database.md)                       | Drizzle ORM, schema, migrations                   | Database operations                |
 | [environment.md](./environment.md)                 | Dev/prod isolation, userData separation           | Setting up environment, debugging  |
+| [window-appearance.md](./window-appearance.md)     | Ordinary native frame/theme decoration, resize preservation | Changing main-window chrome or theme updates |
 | [type-safety.md](./type-safety.md)                 | Zod schemas, discriminated unions, type patterns  | Type-related decisions             |
 | [logging.md](./logging.md)                         | Logging and native module packaging               | Debugging, packaging               |
 | [pagination.md](./pagination.md)                   | Cursor vs offset pagination guidelines            | Implementing list APIs             |

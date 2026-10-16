@@ -1141,8 +1141,16 @@ export interface SyncExtensionResult {
 
 /** APIs exposed to the renderer via contextBridge. */
 export interface TrellisApi {
+  /** 置顶文档小窗：打开/聚焦（支持多开，key 去重）；theme 跟随面板主题 */
+  docOpen: (opts: { key: string; title: string; file: string; theme: string }) => Promise<{
+    ok: boolean
+    focused?: boolean
+    error?: string
+  }>
   /** 读取项目内文本文件（路径必须位于项目根内） */
   docRead: (path: string) => Promise<{ ok: boolean; content?: string; mtime?: number; error?: string }>
+  /** 切换调用方文档窗的置顶状态 */
+  docSetPin: (on: boolean) => Promise<{ ok: boolean }>
   pickProject: () => Promise<string | null>
   openProject: (root: string) => Promise<{ ok: boolean; error?: string; snapshot?: ProjectSnapshot }>
   getSnapshot: () => Promise<ProjectSnapshot | null>

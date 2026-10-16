@@ -32,7 +32,7 @@ import type { WindowDeps } from './deps'
 
 export function registerIpc(deps: WindowDeps): void {
   registerWindowIpc(deps)
-  registerDocsIpc()
+  registerDocsIpc(deps)
   registerProjectIpc(deps)
   registerTasksIpc()
   registerTodoIpc()

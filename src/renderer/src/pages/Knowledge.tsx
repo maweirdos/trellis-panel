@@ -17,13 +17,17 @@ import {
   Plus,
   Save,
   Trash2,
-  History
+  History,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
+import { DocumentReader } from '../reader/DocumentReader'
+import { relativePathUnderRoot } from '../reader/reader-paths'
 import { Button, SearchInput } from '../my/ui'
 import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult, WeknoraDocSummary, WeknoraHit } from '../../../shared/types'
 import type { JSX } from 'react'
@@ -47,7 +51,7 @@ interface RemoteDoc {
 const NO_KB_IDS: string[] = []
 
 const LIBS: Array<{ id: LibFilter; label: string; icon: JSX.Element; desc: string }> = [
-  { id: 'notes', label: '我的笔记', icon: <StickyNote size={14} />, desc: '.trellis/notes 我的知识笔记（可新建 / 编辑 / 删除）' },
+  { id: 'notes', label: '项目笔记', icon: <StickyNote size={14} />, desc: '当前项目 .trellis/notes 文件，可新建 / 编辑 / 删除；不提供个人私密权限' },
   { id: 'requirements', label: '需求库', icon: <ScrollText size={14} />, desc: '原始需求文档（活动任务 PRD / task.json 提炼）' },
   { id: 'spec', label: '规范库', icon: <BookOpenText size={14} />, desc: '.trellis/spec 团队规范' },
   { id: 'wiki', label: 'Wiki 库', icon: <FileText size={14} />, desc: 'README / docs / wiki 等仓库文档' },
@@ -81,11 +85,12 @@ function highlight(text: string): JSX.Element {
 }
 
 export function KnowledgePage(): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+  const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
   const viewerTabs = useApp((s) => s.viewerTabs)
   const openArtifact = useApp((s) => s.openArtifact)
   const setPage = useApp((s) => s.setPage)
+  const openSpecDocument = useApp((s) => s.openSpecDocument)
 
   const [lib, setLib] = useState<LibFilter>('requirements')
   const [query, setQuery] = useState('')
@@ -96,6 +101,10 @@ export function KnowledgePage(): JSX.Element {
   const [docContent, setDocContent] = useState<string | null>(null)
   const [docError, setDocError] = useState<string | null>(null)
   const searchSeq = useRef(0)
+  const docSeq = useRef(0)
+  const pageRef = useRef<HTMLDivElement | null>(null)
+  const readerRef = useRef<HTMLDivElement | null>(null)
+  const [browseOpen, setBrowseOpen] = useState(true)
 
   /* 公司库（WeKnora）——独立状态与序号，异步追加，绝不阻塞本地检索 */
   const weknoraEnabled = useApp((s) => s.settings?.weknora?.enabled ?? false)
@@ -118,9 +127,15 @@ export function KnowledgePage(): JSX.Element {
   const [qaHistory, setQaHistory] = useState<KbQaEntry[]>([])
   const [showHistory, setShowHistory] = useState(false)
 
-  /* 我的笔记：编辑态 */
+  /* Project notes are repository files, not private personal storage. */
   const [noteDraft, setNoteDraft] = useState<{ name: string; content: string; isNew: boolean } | null>(null)
   const [noteSaving, setNoteSaving] = useState(false)
+
+  useEffect(() => () => {
+    searchSeq.current += 1
+    companySeq.current += 1
+    docSeq.current += 1
+  }, [])
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 300)
@@ -135,6 +150,7 @@ export function KnowledgePage(): JSX.Element {
         setCompanyHits([])
         setCompanyDocs([])
         setCompanyError(null)
+        setCompanyLoading(false)
         return
       }
       setCompanyLoading(true)
@@ -160,6 +176,8 @@ export function KnowledgePage(): JSX.Element {
           setCompanyMs(Date.now() - t0)
           setCompanyError(docs.length === 0 ? err : null)
         }
+      } catch (error) {
+        if (seq === companySeq.current) setCompanyError(error instanceof Error ? error.message : '公司库读取失败')
       } finally {
         if (seq === companySeq.current) setCompanyLoading(false)
       }
@@ -169,23 +187,34 @@ export function KnowledgePage(): JSX.Element {
 
   const runSearch = useCallback(async () => {
     const seq = ++searchSeq.current
+    if (!hasIpc) return
     if (lib === 'company') {
+      setLoading(false)
       setResult(null)
       setActive(null)
       void runCompanySearch(debounced ? 'search' : 'browse')
       return
     }
     setLoading(true)
-    const res = await api.kbSearch(lib, debounced)
+    try {
+      const res = await api.kbSearch(lib, debounced)
+      if (seq !== searchSeq.current) return
+      if (res.ok) setResult(res)
+      else pushToast({ kind: 'error', title: '检索失败', body: res.error })
+    } catch (error) {
+      if (seq !== searchSeq.current) return
+      pushToast({ kind: 'error', title: '本地检索失败', body: error instanceof Error ? error.message : '读取失败' })
+    } finally {
+      if (seq === searchSeq.current) setLoading(false)
+    }
     if (seq !== searchSeq.current) return
-    setLoading(false)
-    if (res.ok) setResult(res)
-    else pushToast({ kind: 'error', title: '检索失败', body: res.error })
     // 联邦检索：'all' 检索态下公司库命中异步追加
     if (lib === 'all' && debounced) void runCompanySearch('search')
     else {
+      companySeq.current += 1
       setCompanyHits([])
       setCompanyError(null)
+      setCompanyLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lib, debounced, runCompanySearch])
@@ -197,41 +226,61 @@ export function KnowledgePage(): JSX.Element {
     setRemoteDoc(null)
   }, [runSearch, snapshot?.meta.root])
 
+  const focusReader = (): void => {
+    // Preserve the browser/results state while giving narrow windows a full-width reader.
+    if ((pageRef.current?.clientWidth ?? 0) < 1000) {
+      setBrowseOpen(false)
+      requestAnimationFrame(() => readerRef.current?.focus({ preventScroll: true }))
+    }
+  }
+
   const openDoc = useCallback(async (doc: KbDoc): Promise<void> => {
+    const seq = ++docSeq.current
     setRemoteDoc(null)
+    setNoteDraft(null)
     setActive(doc)
+    focusReader()
+    setDocContent(null)
     setDocError(null)
-    if (doc.synthetic) {
-      setDocContent(null)
-      return
+    // Project files use the shared version-aware reader below; remote content does not.
+    if (doc.synthetic || relativePathUnderRoot(snapshot?.meta.root ?? '', doc.path) !== null) return
+    try {
+      const res = await api.readTextFile(doc.path)
+      if (seq !== docSeq.current) return
+      if (res.ok && res.content !== undefined) setDocContent(res.content)
+      else setDocError(res.error ?? '读取失败')
+    } catch (error) {
+      if (seq === docSeq.current) setDocError(error instanceof Error ? error.message : '读取失败')
     }
-    const res = await api.readTextFile(doc.path)
-    if (res.ok && res.content !== undefined) setDocContent(res.content)
-    else {
-      setDocContent(null)
-      setDocError(res.error ?? '读取失败')
-    }
-  }, [])
+  }, [snapshot?.meta.root])
 
   /** 打开公司库（WeKnora）文档：拉取 preview 正文 */
   const openRemoteDoc = useCallback(async (hit: { knowledgeId: string; title: string }): Promise<void> => {
+    const seq = ++docSeq.current
     setActive(null)
+    setNoteDraft(null)
+    focusReader()
     setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: true })
-    const res = await api.weknoraRead(hit.knowledgeId)
-    setRemoteDoc((cur) =>
-      cur && cur.knowledgeId === hit.knowledgeId
-        ? res.ok
-          ? {
-              knowledgeId: hit.knowledgeId,
-              title: res.title || hit.title,
-              fileName: res.fileName ?? '',
-              content: res.content ?? null,
-              loading: false,
-              error: res.content === undefined ? '非文本文档——请在 WeKnora 中查看' : undefined
-            }
-          : { knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: res.error }
-        : cur
-    )
+    try {
+      const res = await api.weknoraRead(hit.knowledgeId)
+      if (seq !== docSeq.current) return
+      setRemoteDoc((cur) =>
+        cur && cur.knowledgeId === hit.knowledgeId
+          ? res.ok
+            ? {
+                knowledgeId: hit.knowledgeId,
+                title: res.title || hit.title,
+                fileName: res.fileName ?? '',
+                content: res.content ?? null,
+                loading: false,
+                error: res.content === undefined ? '非文本文档——请在 WeKnora 中查看' : undefined
+              }
+            : { knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: res.error }
+          : cur
+      )
+    } catch (error) {
+      if (seq === docSeq.current) setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: error instanceof Error ? error.message : '公司文档读取失败' })
+    }
   }, [])
 
   /* AI 问答（本地 + 公司库上下文） */
@@ -294,17 +343,27 @@ export function KnowledgePage(): JSX.Element {
     }
   }
 
-  /* 我的笔记：编辑动作 */
+  /* Project-note editing uses the existing repository note service. */
   const startNewNote = (): void => {
+    docSeq.current += 1
     setActive(null)
     setRemoteDoc(null)
     setNoteDraft({ name: '', content: '# 新笔记\n\n', isNew: true })
+    focusReader()
   }
 
   const startEditNote = (doc: KbDoc): void => {
     if (doc.synthetic) return
+    const seq = ++docSeq.current
     void api.readTextFile(doc.path).then((r) => {
-      setNoteDraft({ name: doc.name, content: r.ok && r.content ? r.content : '', isNew: false })
+      if (seq !== docSeq.current) return
+      if (!r.ok || r.content === undefined) {
+        pushToast({ kind: 'error', title: '无法编辑笔记', body: r.error ?? '读取失败' })
+        return
+      }
+      setNoteDraft({ name: doc.name, content: r.content, isNew: false })
+    }).catch((error: unknown) => {
+      if (seq === docSeq.current) pushToast({ kind: 'error', title: '无法编辑笔记', body: error instanceof Error ? error.message : '读取失败' })
     })
   }
 
@@ -315,9 +374,11 @@ export function KnowledgePage(): JSX.Element {
       pushToast({ kind: 'error', title: '请填写笔记名' })
       return
     }
+    const seq = docSeq.current
     setNoteSaving(true)
     try {
       const res = await api.kbSaveNote(name, noteDraft.content)
+      if (seq !== docSeq.current) return
       if (res.ok) {
         pushToast({ kind: 'success', title: '笔记已保存', body: '已写入 .trellis/notes/，检索立即可用' })
         setNoteDraft(null)
@@ -331,7 +392,9 @@ export function KnowledgePage(): JSX.Element {
   }
 
   const deleteNote = async (doc: KbDoc): Promise<void> => {
+    const seq = docSeq.current
     const res = await api.kbDeleteNote(doc.name)
+    if (seq !== docSeq.current) return
     if (res.ok) {
       pushToast({ kind: 'success', title: '笔记已删除' })
       setActive(null)
@@ -404,10 +467,19 @@ export function KnowledgePage(): JSX.Element {
     archive: '归档'
   }
 
+  const relativePath = active && !active.synthetic ? relativePathUnderRoot(snapshot?.meta.root ?? '', active.path) : null
+
   return (
-    <div className="flex h-full min-w-0 my-fade">
+    <div ref={pageRef} className="my-fade flex h-full min-h-0 min-w-0 flex-col bg-my-surface-1">
+      <div className="flex shrink-0 items-center gap-3 border-b border-my-line bg-my-surface-1 px-4 py-2">
+        <button type="button" onClick={() => setBrowseOpen((v) => !v)} aria-expanded={browseOpen} aria-controls="knowledge-browser" title={browseOpen ? '收起来源与检索' : '展开来源与检索'} className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
+          {browseOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 来源与检索
+        </button>
+        <span className="min-w-0 truncate text-my-xs text-my-secondary">{snapshot ? '项目文件保留原始位置 · 公司知识单独标明来源' : '未绑定本地项目 · 知识检索需在桌面打开项目'}</span>
+      </div>
+      <div className="flex min-h-0 min-w-0 flex-1">
       {/* 左列：检索与列表 */}
-      <div className="flex w-[420px] shrink-0 flex-col border-r border-my-line">
+      <div id="knowledge-browser" className={clsx('w-80 max-w-[45%] shrink-0 flex-col border-r border-my-line bg-my-layer-1', browseOpen ? 'flex' : 'hidden')}>
         <div className="space-y-2.5 border-b border-my-line px-4 py-3">
           <div className="flex flex-wrap gap-1.5">
             {LIBS.map((l) => (
@@ -415,6 +487,7 @@ export function KnowledgePage(): JSX.Element {
                 key={l.id}
                 type="button"
                 onClick={() => setLib(l.id)}
+                aria-pressed={lib === l.id}
                 title={l.desc}
                 className={clsx(
                   'my-control my-control-sm border',
@@ -440,11 +513,11 @@ export function KnowledgePage(): JSX.Element {
                 : `${isSearch ? `${list.length} 条命中` : `${list.length} 篇文档`} · 库内共 ${totalDocs} 篇 · ${result?.elapsedMs ?? 0}ms`}
             </span>
             {lib === 'notes' && (
-              <Button variant="neutral" size="sm" onClick={startNewNote} title="新建笔记（写入 .trellis/notes/，立即进入五库检索）">
+              <Button variant="neutral" size="sm" onClick={startNewNote} disabled={!hasIpc || !snapshot} title="新建项目笔记（写入 .trellis/notes/，不提供私密权限）">
                 <Plus size={10} /> 新建笔记
               </Button>
             )}
-            <Button variant="ghost" size="sm" className="ml-auto px-1.5" onClick={() => void runSearch()} title="重建检索">
+            <Button variant="ghost" size="sm" className="ml-auto px-1.5" onClick={() => void runSearch()} disabled={!hasIpc} title="重建检索">
               <RefreshCw size={11} />
             </Button>
           </div>
@@ -456,6 +529,7 @@ export function KnowledgePage(): JSX.Element {
               key={doc.id}
               type="button"
               onClick={() => void openDoc(doc)}
+              aria-pressed={active?.id === doc.id}
               className={clsx(
                 'mb-1.5 w-full rounded-my-lg border px-3 py-2 text-left transition-colors',
                 active?.id === doc.id
@@ -495,6 +569,7 @@ export function KnowledgePage(): JSX.Element {
                   key={c.key}
                   type="button"
                   onClick={() => void openRemoteDoc({ knowledgeId: c.knowledgeId, title: c.title })}
+                  aria-pressed={remoteDoc?.knowledgeId === c.knowledgeId}
                   className={clsx(
                     'mb-1.5 w-full rounded-my-lg border px-3 py-2 text-left transition-colors',
                     remoteDoc?.knowledgeId === c.knowledgeId
@@ -549,10 +624,10 @@ export function KnowledgePage(): JSX.Element {
       </div>
 
       {/* 右列：阅读器 */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div ref={readerRef} tabIndex={-1} aria-label="知识阅读区" className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1 outline-none">
         {noteDraft ? (
           <>
-            <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-2.5">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
               <span className="my-chip bg-my-label-emerald text-my-label-emerald-text">
                 <StickyNote size={12} /> {noteDraft.isNew ? '新建笔记' : '编辑笔记'}
               </span>
@@ -567,7 +642,7 @@ export function KnowledgePage(): JSX.Element {
                 <Button variant="primary" size="sm" onClick={() => void saveNote()} disabled={noteSaving}>
                   {noteSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} 保存
                 </Button>
-                <Button variant="ghost" size="sm" className="px-1.5" onClick={() => setNoteDraft(null)} title="取消">
+                <Button variant="ghost" size="sm" className="px-1.5" onClick={() => { docSeq.current += 1; setNoteDraft(null) }} title="取消">
                   <X size={13} />
                 </Button>
               </div>
@@ -584,7 +659,7 @@ export function KnowledgePage(): JSX.Element {
           </>
         ) : remoteDoc ? (
           <>
-            <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-2.5">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
               <span className="my-chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
                 <Cloud size={12} /> 公司库
               </span>
@@ -618,7 +693,7 @@ export function KnowledgePage(): JSX.Element {
           </>
         ) : active ? (
           <>
-            <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-2.5">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
               <span className={clsx('my-chip', LIB_CHIP[active.library])}>
                 {LIB_ICON[active.library]} {LIB_LABEL[active.library]}
               </span>
@@ -626,7 +701,7 @@ export function KnowledgePage(): JSX.Element {
               <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{fmtBytes(active.size)} · {relTime(active.mtime)}</span>
               <div className="ml-auto flex items-center gap-1.5">
                 {!active.synthetic && active.library === 'spec' && (
-                  <Button variant="ghost" size="sm" onClick={() => setPage('spec')}>去规范页编辑</Button>
+                  <Button variant="ghost" size="sm" onClick={() => openSpecDocument(active.path)}>去规范页编辑</Button>
                 )}
                 {!active.synthetic && active.library === 'notes' && (
                   <>
@@ -647,7 +722,7 @@ export function KnowledgePage(): JSX.Element {
                 <Button variant="ghost" size="sm" className="px-1.5" onClick={() => void api.revealInExplorer(active.path)} title="在资源管理器显示">
                   <ExternalLink size={12} />
                 </Button>
-                <Button variant="ghost" size="sm" className="px-1.5" onClick={() => setActive(null)} title="关闭">
+                <Button variant="ghost" size="sm" className="px-1.5" onClick={() => { docSeq.current += 1; setActive(null) }} title="关闭">
                   <X size={13} />
                 </Button>
               </div>
@@ -669,7 +744,10 @@ export function KnowledgePage(): JSX.Element {
                     </Button>
                   </div>
                 )}
-                {docContent !== null && (active.path.endsWith('.md') || active.path.endsWith('.markdown') ? (
+                {!active.synthetic && relativePath !== null && snapshot && (
+                  <DocumentReader key={`${snapshot.meta.root}:${active.path}`} workspaceId={snapshot.meta.root} relativePath={relativePath} />
+                )}
+                {relativePath === null && docContent !== null && (active.path.endsWith('.md') || active.path.endsWith('.markdown') ? (
                   <MarkdownView content={docContent} />
                 ) : (
                   <pre className="whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{docContent}</pre>
@@ -681,8 +759,8 @@ export function KnowledgePage(): JSX.Element {
           <div className="grid h-full place-items-center">
             <div className="max-w-md space-y-3 p-8 text-center">
               <Library size={36} className="mx-auto text-my-icon-tertiary" />
-              <div className="text-my-sm font-semibold text-my-primary">五库知识库</div>
-              <p className="text-my-xs leading-5 text-my-tertiary">笔记 · 需求 · 规范 · Wiki · 归档，本地倒排索引，毫秒级检索，AI 问答带来源引用。</p>
+              <div className="text-my-sm font-semibold text-my-primary">从材料找到答案</div>
+              <p className="text-my-xs leading-5 text-my-secondary">选择项目笔记、需求、规范、仓库文档或归档材料阅读原文。公司知识来自配置的 WeKnora，范围独立于当前项目。</p>
               {!aiEnabled && (
                 <div>
                   <Button variant="ghost" size="sm" className="mx-auto" onClick={() => setPage('settings')}>
@@ -704,14 +782,16 @@ export function KnowledgePage(): JSX.Element {
           <div className="shrink-0 border-t border-my-line bg-my-layer-1 px-4 py-2.5">
             {qaHistory.length > 0 && (
               <div className="mx-auto mb-2 max-w-3xl">
+                <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setShowHistory((v) => !v)}
                   className="flex w-full items-center gap-1.5 text-my-xs text-my-tertiary hover:text-my-secondary"
                 >
-                  <History size={11} /> 问答历史（{qaHistory.length}）
+                  <History size={11} /> 本机个人问答历史（跨项目，{qaHistory.length}）
                   <span className="flex-1" />
                   <span className="text-my-placeholder">{showHistory ? '收起' : '展开'}</span>
+                </button>
                   {!showHistory && (
                     <button
                       type="button"
@@ -725,7 +805,7 @@ export function KnowledgePage(): JSX.Element {
                       清空
                     </button>
                   )}
-                </button>
+                </div>
                 {showHistory && (
                   <div className="my-scrollbar mt-1.5 max-h-40 space-y-1 overflow-y-auto">
                     {qaHistory.map((h) => (
@@ -795,6 +875,7 @@ export function KnowledgePage(): JSX.Element {
             </div>
           </div>
         )}
+      </div>
       </div>
       {/* 打开的产物查看器标签保留在最上层（外部组件渲染） */}
       {viewerTabs.length > 0 && null}

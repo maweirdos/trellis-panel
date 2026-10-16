@@ -14,6 +14,7 @@ import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindow
 import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
 import { applyChromiumProxy } from './services/proxy'
+import { mainWindowAppearance } from './services/window-appearance'
 import { ipcEvent } from '../shared/ipc-channels'
 import {
   setUiHooks,
@@ -53,6 +54,81 @@ const { autoUpdater } = (() => {
 const TRAY_ICON_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXUlEQVR4nGNgrQj/TwlmABEml2fCscDORrwYWS1WA/AZgq4OpwHYDMGmBm4ALgX4NIPEUQzApRCfwRgGEGMIslqsBuAzBF0dbQygyAsUBSJF0UhxQqJqUiYrM1GCAVVSVG+cKoQ/AAAAAElFTkSuQmCC'
 
+/** 文档小窗登记表：key（文件绝对路径）→ 窗口；重复打开即聚焦 */
+const docWindows = new Map<string, BrowserWindow>()
+
+/**
+ * 置顶文档小窗：可拖出主窗口的 OS 级窗口，样式与 peek 同源（my 令牌）。
+ * 位置锚定主窗口右缘级联排布，不落到屏幕角落。
+ */
+function openDocWindow(opts: { key: string; title: string; file: string; theme: string }): {
+  ok: boolean
+  focused?: boolean
+  error?: string
+} {
+  const existing = docWindows.get(opts.key)
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore()
+    existing.show()
+    existing.focus()
+    return { ok: true, focused: true }
+  }
+  const mainBounds = win && !win.isDestroyed() ? win.getBounds() : screen.getPrimaryDisplay().workArea
+  const workArea = screen.getPrimaryDisplay().workArea
+  // 宽度按物理像素理解（高分屏下 BrowserWindow 用 DIP，需除以缩放倍率，否则 1400 会被放大到 2000+）；
+  // 高度沿用 DIP 并被工作区收敛。DOC_WIN_MARGIN 是弹窗距工作区四周的留白。
+  const DOC_WIN_MARGIN = 24
+  const scale = screen.getPrimaryDisplay().scaleFactor || 1
+  const width = Math.min(1400 / scale, workArea.width - DOC_WIN_MARGIN * 2)
+  const height = Math.min(1300, workArea.height - DOC_WIN_MARGIN * 2)
+  const cascade = (docWindows.size % 5) * 36
+  // 居中于主窗口弹出；多开时级联偏移避免完全重叠
+  const x = Math.min(
+    mainBounds.x + Math.round((mainBounds.width - width) / 2) + cascade,
+    workArea.x + workArea.width - width - DOC_WIN_MARGIN
+  )
+  const y = Math.min(
+    mainBounds.y + Math.round((mainBounds.height - height) / 2) + cascade,
+    workArea.y + workArea.height - height - DOC_WIN_MARGIN
+  )
+  const w = new BrowserWindow({
+    width,
+    height,
+    minWidth: 480,
+    minHeight: 420,
+    x: Math.max(workArea.x + 8, x),
+    y: Math.max(workArea.y + 8, y),
+    frame: false,
+    resizable: true,
+    show: false,
+    alwaysOnTop: true,
+    backgroundColor: opts.theme === 'light' ? '#f2f2f3' : '#0f0f10',
+    title: opts.title,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      spellcheck: false
+    }
+  })
+  w.setAlwaysOnTop(true, 'screen-saver')
+  docWindows.set(opts.key, w)
+  w.on('closed', () => docWindows.delete(opts.key))
+  // 最大化状态广播给本窗（标题栏还原图标随动；双击拖动区原生切换也走这里）
+  w.on('maximize', () => w.webContents.send(ipcEvent.windowMaximized, true))
+  w.on('unmaximize', () => w.webContents.send(ipcEvent.windowMaximized, false))
+  const query = `mode=doc&path=${encodeURIComponent(opts.file)}&title=${encodeURIComponent(opts.title)}&theme=${encodeURIComponent(opts.theme)}`
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (devUrl) {
+    w.loadURL(devUrl + `?${query}`)
+  } else {
+    w.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'doc', path: opts.file, title: opts.title, theme: opts.theme } })
+  }
+  w.once('ready-to-show', () => w.show())
+  return { ok: true }
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1360,
@@ -61,7 +137,7 @@ function createWindow(): void {
     minHeight: 620,
     show: false,
     frame: false,
-    backgroundColor: '#0f1115',
+    ...mainWindowAppearance(getSettings().theme),
     title: 'Trellis Panel',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -432,7 +508,8 @@ if (!gotLock) {
         const image = await target.webContents.capturePage()
         return image.isEmpty() ? null : `data:image/png;base64,${image.toPNG().toString('base64')}`
       },
-      capsule: capsuleApi
+      capsule: capsuleApi,
+      openDocWindow
     })
     createWindow()
     // 速记窗启动即预创建（隐藏），热键首次按下瞬时显示

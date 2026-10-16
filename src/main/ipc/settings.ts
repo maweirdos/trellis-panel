@@ -5,10 +5,11 @@ import { protectPassword } from '../services/jira'
 import { protectGitlabPassword, clearGitlabTokenCache, clearGitlabStatusCache } from '../services/gitlab'
 import { protectAiKey } from '../services/ai'
 import { protectWeknoraKey, protectWeknoraMcpToken } from '../services/weknora'
-import { applyAutoStart, syncWeknoraSpecConfig } from '../state'
+import { applyAutoStart, getMainWindow, syncWeknoraSpecConfig } from '../state'
 import { accessServer } from '../services/access/server'
 import { applyChromiumProxy } from '../services/proxy'
 import { explorerMenuSupported, setExplorerMenu } from '../services/explorer-menu'
+import { applyMainWindowAppearance } from '../services/window-appearance'
 import { handle } from './registry'
 
 export function registerSettingsIpc(): void {
@@ -54,6 +55,7 @@ export function registerSettingsIpc(): void {
       if (!Array.isArray(weknora.searchKbIds)) weknora = { ...weknora, searchKbIds: [] }
     }
     const next = setSettings({ ...patch, jira, gitlab, ai, weknora })
+    if (patch.theme !== undefined) applyMainWindowAppearance(getMainWindow(), next.theme)
     if (gitlab) {
       clearGitlabTokenCache()
       clearGitlabStatusCache()

@@ -7,6 +7,19 @@ export const uiSlice: AppSlice<UiSlice> = (set, get) => ({
   sidebarCollapsed: localStorage.getItem('tpanel.sidebarCollapsed') === 'true',
   intakeOpen: false,
   taskExpandOrigin: null,
+  taskMaterialTarget: null,
+  setTaskMaterialTarget: (path) => set({ taskMaterialTarget: path }),
+  specDocumentTarget: null,
+  openSpecDocument: (path) => {
+    const projectRoot = get().snapshot?.meta.root
+    if (!projectRoot) return
+    set({ page: 'spec', specDocumentTarget: { projectRoot, path }, openTaskDir: null, openTaskArchived: false, taskExpandOrigin: null, taskMaterialTarget: null })
+  },
+  consumeSpecDocumentTarget: () => {
+    const target = get().specDocumentTarget
+    set({ specDocumentTarget: null })
+    return target
+  },
 
   toggleSidebar: () => {
     set((s) => {
@@ -25,16 +38,17 @@ export const uiSlice: AppSlice<UiSlice> = (set, get) => ({
     set({ sidebarCollapsed: collapsed })
   },
 
-  setPage: (page) => set({ page, openTaskDir: null, openTaskArchived: false, taskExpandOrigin: null }),
+  setPage: (page) => set({ page, openTaskDir: null, openTaskArchived: false, taskExpandOrigin: null, taskMaterialTarget: null, specDocumentTarget: null }),
 
   setIntakeOpen: (on) => set({ intakeOpen: on }),
 
   /**
-   * 预览 → 完整工作区（AC1）：记录来源页面与滚动位置后进入 tasks 页并选中任务。
+   * 预览 → 完整工作区：记录来源但不换路由，来源视图和阅读器保持挂载。
    * 注意不清 openTaskDir（跨域直写，store-conventions 切片组合的预期用法）。
    */
-  expandTaskWorkspace: (origin) =>
-    set({ taskExpandOrigin: origin, page: 'tasks', openTaskDir: origin.taskDir, openTaskArchived: origin.archived }),
+  expandTaskWorkspace: (origin, materialPath) =>
+    set({ taskExpandOrigin: origin, openTaskDir: origin.taskDir, openTaskArchived: origin.archived,
+      ...(materialPath !== undefined ? { taskMaterialTarget: materialPath } : {}) }),
 
   /**
    * 工作区 → 预览：回到来源页面并重开当前选中任务的详情抽屉（用户在工作区内
@@ -43,10 +57,7 @@ export const uiSlice: AppSlice<UiSlice> = (set, get) => ({
   returnFromWorkspace: () => {
     const origin = get().taskExpandOrigin
     set({ taskExpandOrigin: null })
-    if (origin === null) {
-      set({ openTaskDir: null, openTaskArchived: false })
-      return null
-    }
+    if (origin === null) return null
     const cur = get().openTaskDir
     const taskDir = cur ?? origin.taskDir
     const archived = cur !== null ? get().openTaskArchived : origin.archived
