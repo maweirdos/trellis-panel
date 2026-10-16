@@ -11,7 +11,15 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "dist:dir": "electron-vite build && electron-builder --dir",
-    "dist": "electron-vite build && electron-builder --win"
+    "dist": "electron-vite build && electron-builder --win",
+    "postinstall": "node scripts/prepare-acpx.mjs",
+    "check:acpx": "node scripts/check-acpx-compat.mjs",
+    "predev": "npm run check:acpx",
+    "prebuild": "npm run check:acpx",
+    "predist:dir": "npm run check:acpx",
+    "predist": "npm run check:acpx",
+    "prepare:acpx": "node scripts/prepare-acpx.mjs",
+    "pretypecheck": "npm run check:acpx"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
@@ -30,6 +38,7 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
+    "acpx": "0.19.5",
     "chokidar": "^3.6.0",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
@@ -38,6 +47,7 @@
     "js-yaml": "^4.1.0",
     "lucide-react": "^0.469.0",
     "mermaid": "^11.17.2",
+    "patch-package": "8.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
@@ -46,5 +56,10 @@
     "undici": "^8.11.0",
     "zod": "^4.6.5",
     "zustand": "^4.5.5"
+  },
+  "overrides": {
+    "acpx": {
+      "@agentclientprotocol/sdk": "1.8.0"
+    }
   }
 }

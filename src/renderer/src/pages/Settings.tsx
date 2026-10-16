@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Moon,
   Sun,
@@ -23,8 +23,9 @@ import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, Checkbox, EmptyState } from '../my/ui'
+import { RuntimePanel } from '../acp/RuntimePanel'
 import type { JSX } from 'react'
-import type { AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, Settings, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
+import type { AcpAgentConfig, AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, Settings, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
 import { WEKNORA_DEFAULTS } from '../../../shared/types'
 
 function JiraStatusMapEditor({ settings }: { settings: Settings }): JSX.Element {
@@ -1091,88 +1092,54 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
 }
 
 
-/* ---------------- ACP agent 注册表（10-09-acp-agent-console） ---------------- */
+/* ---------------- ACP runtime setup and user-managed launch commands ---------------- */
 
 function AcpAgentsSection(): JSX.Element {
-  const saveSettings = useApp((s) => s.saveSettings)
-  const settings = useApp((s) => s.settings)
-  const pushToast = useApp((s) => s.pushToast)
+  const settings = useApp((state) => state.settings)
+  const saveSettings = useApp((state) => state.saveSettings)
   const [agents, setAgents] = useState<AcpAgentStatus[]>([])
-
-  const reload = (): void => {
-    void api.acpAgents().then((res) => {
-      if (res.ok && res.agents) setAgents(res.agents)
-    })
-  }
+  const [rows, setRows] = useState<AcpAgentConfig[]>(() => settings?.acp?.agents ?? [])
+  const [pending, setPending] = useState(false)
+  const [message, setMessage] = useState('')
+  const live = useRef(true)
+  const lock = useRef(false)
+  const isCurrent = (): boolean => live.current
   useEffect(() => {
-    if (!hasIpc) return
-    reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    live.current = true
+    if (hasIpc) void api.acpAgents().then((response) => {
+      if (!live.current) return
+      if (response.ok && response.agents) setAgents(response.agents)
+      else setMessage(response.error ?? 'Runtime 列表加载失败')
+    }).catch((error: unknown) => { if (live.current) setMessage(error instanceof Error ? error.message : 'Runtime 列表加载失败') })
+    return () => { live.current = false }
   }, [])
-
-  const persist = (rows: AcpAgentStatus[]): void => {
-    setAgents(rows)
-    void saveSettings({
-      acp: {
-        agents: rows.map((a) => ({ id: a.id, name: a.name, command: a.command, enabled: a.enabled }))
-      }
-    })
+  const persist = async (): Promise<void> => {
+    if (lock.current || !live.current) return
+    if (rows.some((row) => !row.name.trim() || (!row.command.trim() && !row.executable))) { setMessage('请填写每个自定义 Runtime 的名称和启动命令。'); return }
+    lock.current = true; setPending(true); setMessage('')
+    try {
+      await saveSettings({ acp: { ...useApp.getState().settings?.acp, agents: rows } })
+      if (!live.current) return
+      const response = await api.acpRuntimeRefresh()
+      if (!live.current) return
+      if (response.agents) setAgents(response.agents)
+      setMessage(response.ok ? '自定义命令已保存并重新探测。不会自动开始会话。' : response.error ?? '已保存，但重新探测失败。')
+    } catch (error) { if (live.current) setMessage(error instanceof Error ? error.message : '保存失败，请重试') }
+    finally { lock.current = false; if (live.current) setPending(false) }
   }
-
-  return (
-    <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-      <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
-        <Bot size={13} /> ACP Agent 注册表
-      </div>
-      <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
-        任意 NDJSON ACP agent（Agent Client Protocol v1）都可作为子进程接入「Agent 会话」页。
-        命令整行交给 shell；可用性按 PATH 探测。内置 mock agent 可随时端到端体验对话/工具/权限卡。
-      </p>
-      <div className="space-y-2">
-        {agents.map((a) => (
-          <div key={a.id} className="flex items-center gap-2 rounded-my-md border border-my-line px-3 py-2">
-            <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
-              <Checkbox
-                checked={a.enabled}
-                onChange={(v) => persist(agents.map((row) => (row.id === a.id ? { ...row, enabled: v } : row)))}
-              />
-              {a.name}
-            </label>
-            {a.available ? (
-              <span className="my-chip border border-my-line-success bg-my-success-subtle text-my-success-text">可用</span>
-            ) : (
-              <span className="my-chip border border-my-line-warning bg-my-warning-subtle text-my-warning-text" title="命令首词不在 PATH（仍可强制启用）">
-                未探测到
-              </span>
-            )}
-            <input
-              className="my-input flex-1 font-mono text-my-xs"
-              value={a.command}
-              placeholder="命令模板，如 codex-acp / gemini --acp"
-              onChange={(e) => setAgents(agents.map((row) => (row.id === a.id ? { ...row, command: e.target.value } : row)))}
-              onBlur={() => persist(agents)}
-            />
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <Button variant="outline" onClick={reload}>
-          重新探测
-        </Button>
-        {settings?.acp?.agents && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              void saveSettings({ acp: { agents: [] } }).then(() => {
-                pushToast({ kind: 'info', title: '已恢复预置项' })
-                reload()
-              })
-            }}
-          >
-            恢复预置
-          </Button>
-        )}
-      </div>
-    </section>
-  )
+  return <section className="space-y-4 rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
+    <div className="flex items-center gap-2 text-my-xs font-semibold text-my-secondary"><Bot size={13} /> ACP Runtime</div>
+    <RuntimePanel agents={agents} onChange={setAgents} isCurrent={isCurrent} />
+    <details className="border-t border-my-line pt-3">
+      <summary className="cursor-pointer text-my-xs font-medium text-my-secondary">自定义启动命令与原有配置</summary>
+      <p className="my-3 text-my-2xs leading-relaxed text-my-tertiary">适用于自行安装的 ACP v1 程序。内置 Codex / Claude 使用上方固定版本安装路径。自定义命令由本机管理；保存不会下载或执行。原有覆盖配置保持保留。</p>
+      <div className="space-y-3">{rows.map((row) => <div key={row.id} className="space-y-2 rounded-my-md border border-my-line p-3">
+        <div className="flex flex-wrap items-center gap-2"><Checkbox checked={row.enabled} onChange={(enabled) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, enabled } : item))} /><input aria-label="Runtime 名称" className="my-input min-w-0 flex-1" value={row.name} disabled={pending} onChange={(event) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, name: event.target.value } : item))} /><Button size="sm" variant="ghost" disabled={pending} className="text-my-danger-text" onClick={() => setRows((previous) => previous.filter((item) => item.id !== row.id))}>移除此配置</Button></div>
+        <input aria-label="Runtime 启动命令" className="my-input w-full font-mono text-my-xs" value={row.executable ? [row.executable, ...(row.args ?? [])].join(' ') : row.command} disabled={pending || Boolean(row.executable)} placeholder='如 "C:\Tools\my-agent.cmd" --acp' onChange={(event) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, command: event.target.value } : item))} />
+        {row.executable && <p className="text-my-2xs text-my-tertiary">此项使用结构化 executable / args 配置，保留原始参数边界。</p>}
+      </div>)}</div>
+      <div className="mt-3 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={pending} onClick={() => setRows((previous) => [...previous, { id: `custom-${Date.now()}`, name: '', command: '', enabled: true }])}>添加自定义 Runtime</Button><Button size="sm" variant="primary" disabled={pending || !hasIpc} onClick={() => void persist()}>{pending ? '保存并检测中…' : '保存命令配置'}</Button></div>
+    </details>
+    {message && <p role="status" className="break-words text-my-xs text-my-secondary">{message}</p>}
+  </section>
 }

@@ -28,6 +28,7 @@
 | [macos-permissions.md](./macos-permissions.md)     | macOS system permissions (mic, accessibility)     | Features requiring permissions     |
 | [text-input.md](./text-input.md)                   | Text insertion without clipboard pollution        | Voice-to-text, paste features      |
 | [ipc-conventions.md](./ipc-conventions.md)         | IPC channel registry, error codes, event streams (TPD-001/002/003) | Adding or modifying any IPC channel |
+| [acp-runtime.md](./acp-runtime.md)                 | Pinned runtime, exact approvals, setup, identity, restore, workspace and acceptance contracts | ACP Agent, dependency or packaging changes |
 | [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |
 
 ---

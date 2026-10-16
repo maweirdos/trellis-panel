@@ -60,7 +60,9 @@ export default defineConfig({
         input: { index: resolve(__dirname, 'src/main/index.ts') },
         // externalizeDepsPlugin v5 仅外置 dependencies；electron 位于 devDependencies，
         // 不显式 external 会把 npm 包 index.js 打进产物（运行时误触二进制下载逻辑）
-        external: ['electron'],
+        // Keep acpx's public CommonJS export and package-relative owner paths intact.
+        // Bundling its ESM branch rewrites import.meta.resolve and breaks packaged launches.
+        external: ['electron', /^acpx(?:\/|$)/],
         output: { format: 'cjs', entryFileNames: '[name].js' }
       }
     }

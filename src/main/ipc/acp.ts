@@ -12,14 +12,19 @@ import {
   listAcpSessions,
   newAcpSession,
   promptAcpSession,
-  respondAcpPermission
+  respondAcpPermission,
+  listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, resumeAcpSession, configureAcpSession
 } from '../services/acp'
 import { handle } from './registry'
 
 export function registerAcpIpc(): void {
   handle(ipcInvoke.acp.agents, () => listAcpAgents())
 
-  handle(ipcInvoke.acp.sessions, (_e, limit?: number) => listAcpSessions(limit))
+  handle(ipcInvoke.acp.sessions, (_e, limit?: number) => {
+    const root = getProjectRoot()
+    if (!root) return noProject()
+    return listAcpSessions(root, limit)
+  })
 
   handle(ipcInvoke.acp.sessionNew, (_e, input: { agentId: string; taskDir?: string }) => {
     const root = getProjectRoot()
@@ -27,11 +32,19 @@ export function registerAcpIpc(): void {
     return newAcpSession(root, input)
   })
 
-  handle(ipcInvoke.acp.sessionPrompt, (_e, sessionId: string, text: string) => promptAcpSession(sessionId, text))
+  handle(ipcInvoke.acp.sessionPrompt, (_e, sessionId: string, text: string) => promptAcpSession(getProjectRoot() ?? '', sessionId, text))
 
-  handle(ipcInvoke.acp.sessionCancel, (_e, sessionId: string) => cancelAcpSession(sessionId))
+  handle(ipcInvoke.acp.sessionCancel, (_e, sessionId: string) => cancelAcpSession(getProjectRoot() ?? '', sessionId))
 
-  handle(ipcInvoke.acp.sessionKill, (_e, sessionId: string) => killAcpSession(sessionId))
+  handle(ipcInvoke.acp.sessionKill, (_e, sessionId: string) => killAcpSession(getProjectRoot() ?? '', sessionId))
 
-  handle(ipcInvoke.acp.permissionRespond, (_e, requestId: string, optionId: string) => respondAcpPermission(requestId, optionId))
+  handle(ipcInvoke.acp.permissionRespond, (_e, requestId: string, optionId: string) => respondAcpPermission(getProjectRoot() ?? '', requestId, optionId))
+  handle(ipcInvoke.acp.profiles, () => listAcpProfiles(getProjectRoot() ?? ''))
+  handle(ipcInvoke.acp.profileSave, (_e, input) => saveAcpProfile(getProjectRoot() ?? '', input))
+  handle(ipcInvoke.acp.profileDelete, (_e, id: string) => deleteAcpProfile(getProjectRoot() ?? '', id))
+  handle(ipcInvoke.acp.runtimeRefresh, () => listAcpAgents(true))
+  handle(ipcInvoke.acp.runtimeSetup, (_e, id: string) => setupAcpRuntime(id))
+  handle(ipcInvoke.acp.runtimeNodePick, () => pickAcpNode())
+  handle(ipcInvoke.acp.sessionResume, (_e, id: string) => resumeAcpSession(getProjectRoot() ?? '', id))
+  handle(ipcInvoke.acp.sessionConfigure, (_e, id: string, input) => configureAcpSession(getProjectRoot() ?? '', id, input))
 }

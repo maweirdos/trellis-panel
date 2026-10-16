@@ -250,7 +250,15 @@ export const ipcInvoke = {
     sessionPrompt: 'acp:session.prompt',
     sessionCancel: 'acp:session.cancel',
     sessionKill: 'acp:session.kill',
-    permissionRespond: 'acp:permission.respond'
+    permissionRespond: 'acp:permission.respond',
+    profiles: 'acp:profiles',
+    profileSave: 'acp:profile.save',
+    profileDelete: 'acp:profile.delete',
+    runtimeRefresh: 'acp:runtime.refresh',
+    runtimeSetup: 'acp:runtime.setup',
+    runtimeNodePick: 'acp:runtime.node-pick',
+    sessionResume: 'acp:session.resume',
+    sessionConfigure: 'acp:session.configure'
   }
 } as const
 
@@ -288,6 +296,7 @@ export const ipcEvent = {
   acpOutput: 'acp:output',
   acpPermission: 'acp:permission',
   acpDone: 'acp:done',
+  acpState: 'acp:state',
   /** 窗口最大化状态 */
   windowMaximized: 'window:maximized',
   /** 速记窗已显示（渲染层收到后重新聚焦编辑区） */

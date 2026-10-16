@@ -745,7 +745,7 @@ export interface Settings {
   /** T4 派单：codex worker 显式模型（账号默认模型不可用时在此指定；留空用 CLI 默认） */
   dispatch: { codexModel?: string }
   /** ACP agent 注册表（10-09：缺省用内置预置项） */
-  acp?: { agents?: AcpAgentConfig[] }
+  acp?: { agents?: AcpAgentConfig[]; nodePath?: string }
 }
 
 /* ---------- Studio（定制中心：workflow / 命令 / 子代理 / 技能 / 钩子 / 配置 / 平台） ---------- */
@@ -1360,14 +1360,23 @@ export interface TrellisApi {
   /* --- ACP Agent 控制台 --- */
   acpAgents: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>
-  acpSessionNew: (input: { agentId: string; taskDir?: string }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
+  acpSessionNew: (input: { agentId: string; profileId?: string; taskDir?: string }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
   acpSessionPrompt: (sessionId: string, text: string) => Promise<{ ok: boolean; error?: string }>
   acpSessionCancel: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
   acpSessionKill: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
   acpPermissionRespond: (requestId: string, optionId: string) => Promise<{ ok: boolean; error?: string }>
+  acpProfiles: () => Promise<{ ok: boolean; error?: string; profiles?: AcpAgentProfile[] }>
+  acpProfileSave: (profile: AcpAgentProfile) => Promise<{ ok: boolean; error?: string; profile?: AcpAgentProfile }>
+  acpProfileDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
+  acpRuntimeRefresh: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
+  acpRuntimeSetup: (runtimeId: string) => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
+  acpRuntimeNodePick: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; nodePath?: string; agents?: AcpAgentStatus[] }>
+  acpSessionResume: (sessionId: string) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
+  acpSessionConfigure: (sessionId: string, input: AcpConfigureInput) => Promise<{ ok: boolean; error?: string; session?: AcpSessionRecord }>
+  onAcpState: (cb: (e: AcpStateEvent) => void) => () => void
   onAcpOutput: (cb: (e: TimelineEvent) => void) => () => void
   onAcpPermission: (cb: (e: AcpPermissionPayload) => void) => () => void
-  onAcpDone: (cb: (e: { sessionId: string; status: AcpSessionStatus; error?: string }) => void) => () => void
+  onAcpDone: (cb: (e: AcpDoneEvent) => void) => () => void
 
   /* --- GitLab connector --- */
   gitlabTest: (cfg: GitLabConfig) => Promise<{ ok: boolean; error?: string; displayName?: string }>
@@ -1619,14 +1628,75 @@ export interface AcpAgentConfig {
   /** 命令模板（整行交给 shell，如 `codex-acp` / `gemini --acp` / `node scripts/smoke/acp-mock-agent.mjs --serve`） */
   command: string
   enabled: boolean
+  /** Frozen launch provenance; Settings overrides are always user-managed. */
+  launchKind?: 'managed' | 'custom'
+  executable?: string
+  args?: string[]
 }
 
 /** 注册表条目 + 本机可用性探测结果 */
 export interface AcpAgentStatus extends AcpAgentConfig {
   available: boolean
+  runtimeId?: string
+  health?: AcpRuntimeHealth
+  diagnostics?: string[]
+  adapterVersion?: string
+  nodePath?: string
+  setupRequired?: boolean
+  checkedAt?: number
 }
 
-export type AcpSessionStatus = 'starting' | 'ready' | 'busy' | 'error' | 'closed'
+export type AcpRuntimeHealth = 'not_checked' | 'executable_missing' | 'adapter_missing' | 'launch_error' | 'incompatible' | 'auth_required' | 'directory_unavailable' | 'ready'
+
+export interface AcpAgentProfile {
+  id: string
+  name: string
+  description: string
+  instructions: string
+  runtimeId: string
+  cwd?: string
+  maxTurnMinutes: number
+}
+
+export interface AcpStartupObservation {
+  label: string
+  atMs: number
+  durationMs?: number
+  status: 'observed' | 'failed'
+}
+
+export interface AcpConfigOption {
+  id: string
+  name: string
+  category?: string
+  currentValue: string
+  options: Array<{ value: string; name: string }>
+}
+
+export type AcpConfigureInput = { kind: 'model' | 'mode' | 'config'; id: string; value?: string }
+export type AcpSessionStatus = 'starting' | 'ready' | 'busy' | 'awaiting_permission' | 'cancelling' | 'disconnected' | 'legacy' | 'error' | 'closed'
+
+export interface AcpStateEvent {
+  sessionId: string
+  projectRoot: string
+  connectionGeneration?: string
+  turnId?: string
+  status: AcpSessionStatus
+  error?: string
+  session?: AcpSessionRecord
+}
+
+/** Legacy terminal records may lack scope; new service emissions include it. */
+export interface AcpDoneEvent {
+  sessionId: string
+  status: AcpSessionStatus
+  error?: string
+  projectRoot?: string
+  connectionGeneration?: string
+  turnId?: string
+  session?: AcpSessionRecord
+  result?: unknown
+}
 
 export interface AcpSessionMeta {
   sessionId: string
@@ -1640,6 +1710,27 @@ export interface AcpSessionMeta {
   endedAt?: number
   error?: string
   title?: string
+  schemaVersion?: number
+  backendSessionId?: string
+  agentSessionId?: string
+  acpxRecordId?: string
+  connectionGeneration?: string
+  turnId?: string
+  cwd?: string
+  profileSnapshot?: AcpAgentProfile
+  runtimeSnapshot?: AcpAgentConfig
+  startup?: AcpStartupObservation[]
+  historyKind?: 'live' | 'resumable' | 'transcript' | 'legacy'
+  canResume?: boolean
+  restorePending?: boolean
+  capabilities?: { controls: string[]; loadSession?: boolean; protocolVersion?: number; agentInfo?: Record<string, unknown>; authMethods?: unknown[] }
+  models?: Array<{ modelId: string; name: string }>
+  modes?: Array<{ id: string; name: string }>
+  currentModelId?: string
+  currentModeId?: string
+  configOptions?: AcpConfigOption[]
+  materialSnapshot?: { taskDir?: string; profileId?: string; instructions: string; files: string[]; capturedAt: number }
+  directoryLeaseReason?: string
 }
 
 /** 会话持久化记录（userData/acp-sessions/<sessionId>.json，原子写） */
@@ -1651,7 +1742,7 @@ export interface AcpSessionRecord extends AcpSessionMeta {
 export interface AcpPermissionOption {
   optionId: string
   name: string
-  kind: 'allow_once' | 'allow_always' | 'reject_once'
+  kind: 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always'
 }
 
 export interface AcpPermissionPayload {
@@ -1660,6 +1751,10 @@ export interface AcpPermissionPayload {
   agentName: string
   toolCall?: { toolCallId?: string; title?: string; kind?: string }
   options: AcpPermissionOption[]
+  projectRoot?: string
+  connectionGeneration?: string
+  turnId?: string
+  expiresAt?: number
 }
 
 /**
@@ -1679,6 +1774,9 @@ export type TimelineEventKind =
   | 'spec-injected'
   | 'spec-updated'
   | 'jira-sync'
+  | 'plan'
+  | 'diagnostic'
+  | 'config'
 
 export interface TimelineEvent {
   id: string
@@ -1690,4 +1788,6 @@ export interface TimelineEvent {
   kind: TimelineEventKind
   text?: string
   payload?: Record<string, unknown>
+  connectionGeneration?: string
+  turnId?: string
 }

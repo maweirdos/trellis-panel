@@ -2,7 +2,7 @@
  * 应用壳（薄编排层，决策 TPD-004）：窗口、托盘、全局快捷键、更新器、生命周期、深链。
  * IPC 注册全部在 src/main/ipc/；项目状态与跨域助手在 src/main/state.ts。
  */
-import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, screen, shell } from 'electron'
+import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, screen, shell, dialog } from 'electron'
 import { join, resolve, basename, dirname, sep } from 'path'
 import { existsSync } from 'fs'
 import { abortAll } from './services/cli'
@@ -551,11 +551,21 @@ if (!gotLock) {
     // keep running in tray — quit only via tray menu
   })
 
-  app.on('before-quit', () => {
+  let acpQuitSettled = false
+  let acpQuitPending = false
+  app.on('before-quit', (event) => {
+    if (acpQuitSettled) return
+    event.preventDefault()
+    if (acpQuitPending) return
+    acpQuitPending = true
     stopTimers()
     stopInbox()
     abortAll()
-    shutdownAcp()
+    // Let acpx join admitted turns and stop its owned children before Electron exits.
+    void shutdownAcp().then(() => { acpQuitSettled = true; app.quit() }).catch((error: unknown) => {
+      acpQuitPending = false
+      dialog.showErrorBox('Agent 清理未完成', `尚未确认 Runtime 已退出，请停止 Agent 后重试退出。\n${error instanceof Error ? error.message : String(error)}`)
+    })
     // S0 G2：diff worker 线程收口（worker 无子进程，terminate 即完整清理）
     stopDiffWorker()
     // S0 G3：观测 worker 收口（先 close 让库连接正常收尾，超时即 terminate）

@@ -119,15 +119,24 @@ const api = {
 
   acpAgents: () => ipcRenderer.invoke(ipcInvoke.acp.agents),
   acpSessions: () => ipcRenderer.invoke(ipcInvoke.acp.sessions),
-  acpSessionNew: (input: { agentId: string; taskDir?: string }) => ipcRenderer.invoke(ipcInvoke.acp.sessionNew, input),
+  acpSessionNew: (input: { agentId: string; profileId?: string; taskDir?: string }) => ipcRenderer.invoke(ipcInvoke.acp.sessionNew, input),
   acpSessionPrompt: (sessionId: string, text: string) => ipcRenderer.invoke(ipcInvoke.acp.sessionPrompt, sessionId, text),
   acpSessionCancel: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.acp.sessionCancel, sessionId),
   acpSessionKill: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.acp.sessionKill, sessionId),
   acpPermissionRespond: (requestId: string, optionId: string) =>
     ipcRenderer.invoke(ipcInvoke.acp.permissionRespond, requestId, optionId),
+  acpProfiles: () => ipcRenderer.invoke(ipcInvoke.acp.profiles),
+  acpProfileSave: (profile: import('../shared/types').AcpAgentProfile) => ipcRenderer.invoke(ipcInvoke.acp.profileSave, profile),
+  acpProfileDelete: (id: string) => ipcRenderer.invoke(ipcInvoke.acp.profileDelete, id),
+  acpRuntimeRefresh: () => ipcRenderer.invoke(ipcInvoke.acp.runtimeRefresh),
+  acpRuntimeSetup: (runtimeId: string) => ipcRenderer.invoke(ipcInvoke.acp.runtimeSetup, runtimeId),
+  acpRuntimeNodePick: () => ipcRenderer.invoke(ipcInvoke.acp.runtimeNodePick),
+  acpSessionResume: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.acp.sessionResume, sessionId),
+  acpSessionConfigure: (sessionId: string, input: import('../shared/types').AcpConfigureInput) => ipcRenderer.invoke(ipcInvoke.acp.sessionConfigure, sessionId, input),
+  onAcpState: (cb: (e: import('../shared/types').AcpStateEvent) => void) => subscribe(ipcEvent.acpState, cb),
   onAcpOutput: (cb: (e: import('../shared/types').TimelineEvent) => void) => subscribe(ipcEvent.acpOutput, cb),
   onAcpPermission: (cb: (e: import('../shared/types').AcpPermissionPayload) => void) => subscribe(ipcEvent.acpPermission, cb),
-  onAcpDone: (cb: (e: { sessionId: string; status: import('../shared/types').AcpSessionStatus; error?: string }) => void) =>
+  onAcpDone: (cb: (e: import('../shared/types').AcpDoneEvent) => void) =>
     subscribe(ipcEvent.acpDone, cb),
 
   gitTaskInfo: (dirName: string) => ipcRenderer.invoke(ipcInvoke.git.taskInfo, dirName),

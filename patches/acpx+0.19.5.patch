@@ -1,0 +1,545 @@
+diff --git a/node_modules/acpx/dist/ipc-C96eDxkW.js b/node_modules/acpx/dist/ipc-C96eDxkW.js
+index a2f5ea8..5a13199 100644
+--- a/node_modules/acpx/dist/ipc-C96eDxkW.js
++++ b/node_modules/acpx/dist/ipc-C96eDxkW.js
+@@ -1323,6 +1323,8 @@ function serializeSessionRecordForDisk(record) {
+ 		last_agent_disconnect_reason: record.lastAgentDisconnectReason,
+ 		protocol_version: record.protocolVersion,
+ 		agent_capabilities: record.agentCapabilities,
++		agent_info: trellisParseDisplayAgentInfo(record.agentInfo),
++		auth_methods: trellisParseDisplayList(record.authMethods),
+ 		title: record.title,
+ 		messages: record.messages,
+ 		updated_at: record.updated_at,
+@@ -1676,6 +1678,8 @@ function parseAcpxState(raw) {
+ 	if (record.session_origin === "new" || record.session_origin === "resume") state.session_origin = record.session_origin;
+ 	if (record.reset_on_next_ensure === true) state.reset_on_next_ensure = true;
+ 	assignStringState(state, "current_mode_id", record.current_mode_id);
++	const availableModes = trellisParseDisplayList(record.available_modes);
++	if (availableModes) state.available_modes = availableModes;
+ 	assignStringState(state, "desired_mode_id", record.desired_mode_id);
+ 	const desiredConfigOptions = parseStringMap(record.desired_config_options);
+ 	if (desiredConfigOptions) state.desired_config_options = desiredConfigOptions;
+@@ -1763,6 +1767,18 @@ function parseSessionRecordMetadata(record) {
+ 		importedFrom
+ 	};
+ }
++function trellisParseDisplayAgentInfo(raw) {
++	const info = asRecord$2(raw);
++	if (!info || typeof info.name !== "string" || typeof info.version !== "string") return;
++	return { name: info.name, version: info.version, ...typeof info.title === "string" ? { title: info.title } : {} };
++}
++function trellisParseDisplayList(raw) {
++	if (!Array.isArray(raw)) return;
++	return raw.flatMap((value) => {
++		const entry = asRecord$2(value);
++		return entry && typeof entry.id === "string" && typeof entry.name === "string" ? [{ id: entry.id, name: entry.name, ...typeof entry.description === "string" ? { description: entry.description } : {} }] : [];
++	});
++}
+ function normalizeOptionalName(value) {
+ 	if (value == null) return;
+ 	if (typeof value !== "string") return null;
+@@ -1841,6 +1857,8 @@ function parseSessionRecord(raw) {
+ 		lastAgentDisconnectReason: optionals.lastAgentDisconnectReason,
+ 		protocolVersion: typeof record.protocol_version === "number" ? record.protocol_version : void 0,
+ 		agentCapabilities: asRecord$2(record.agent_capabilities),
++		agentInfo: trellisParseDisplayAgentInfo(record.agent_info),
++		authMethods: trellisParseDisplayList(record.auth_methods),
+ 		title: conversation.title,
+ 		messages: conversation.messages,
+ 		updated_at: conversation.updated_at,
+diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
+index 4eb7bc1..fe8b64e 100644
+--- a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
++++ b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
+@@ -16,6 +16,24 @@ import { FsSafeError } from "@openclaw/fs-safe/errors";
+ import { isPathInside } from "@openclaw/fs-safe/path";
+ import { root } from "@openclaw/fs-safe/root";
+ import readline from "node:readline/promises";
++import { z } from "zod";
++import trellisSdkSchema from "@agentclientprotocol/sdk/schema/schema.json" with { type: "json" };
++// Exact SDK1.8's public schema closes this union. Unknown tags are diagnostics,
++// never accepted as a new protocol feature or passed to SDK raw-error logging.
++const trellisSdkSessionTags = new Set(trellisSdkSchema.$defs.SessionUpdate.oneOf.map((variant) => variant.properties.sessionUpdate.const));
++// Trellis compat v1: validate the v1 handshake before authentication/session work.
++const trellisInitializeSchema = z.object({
++	protocolVersion: z.literal(PROTOCOL_VERSION),
++	agentCapabilities: z.object({
++		loadSession: z.boolean().optional(),
++		promptCapabilities: z.object({ image: z.boolean().optional(), audio: z.boolean().optional(), embeddedContext: z.boolean().optional() }).passthrough().optional(),
++		mcpCapabilities: z.object({ http: z.boolean().optional(), sse: z.boolean().optional(), acp: z.boolean().optional() }).passthrough().optional(),
++		sessionCapabilities: z.object({ list: z.object({}).passthrough().nullish(), resume: z.object({}).passthrough().nullish(), close: z.object({}).passthrough().nullish() }).passthrough().optional(),
++		auth: z.object({}).passthrough().optional()
++	}).passthrough().optional(),
++	agentInfo: z.object({ name: z.string(), version: z.string() }).passthrough().nullish(),
++	authMethods: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()).optional()
++}).passthrough();
+ //#region src/async-control.ts
+ var TimeoutError = class extends Error {
+ 	constructor(timeoutMs) {
+@@ -1103,6 +1121,11 @@ const DECISION_FALLBACK_ORDER = {
+ };
+ function decisionToResponse(params, decision) {
+ 	if (decision.outcome === "cancel") return cancelled();
++	if (decision.outcome === "selected") {
++		const matches = (params.options ?? []).filter((option) => option.optionId === decision.optionId);
++		return typeof decision.optionId === "string" && matches.length === 1 ? selected(decision.optionId) : cancelled();
++	}
++	if (!Object.hasOwn(DECISION_FALLBACK_ORDER, decision.outcome)) return cancelled();
+ 	const matched = pickOption(params.options ?? [], DECISION_FALLBACK_ORDER[decision.outcome]);
+ 	return matched ? selected(matched.optionId) : cancelled();
+ }
+@@ -1802,7 +1825,7 @@ function observeAcpStream(base, options) {
+ 			elicitationRequestIds.add(requestId);
+ 			return;
+ 		}
+-		if (!shouldSuppressInboundReplaySessionUpdate(message)) options.onMessage("inbound", message);
++		return options.onMessage("inbound", message, shouldSuppressInboundReplaySessionUpdate(message));
+ 	};
+ 	return {
+ 		readable: new ReadableStream({ async start(controller) {
+@@ -1812,7 +1835,7 @@ function observeAcpStream(base, options) {
+ 					const { value, done } = await reader.read();
+ 					if (done) break;
+ 					if (!value) continue;
+-					observeInbound(value);
++					if (observeInbound(value) === false) continue;
+ 					if (isExtensionNotification(value)) continue;
+ 					controller.enqueue(value);
+ 				}
+@@ -2466,6 +2489,7 @@ function toReconnectedSessionResult(response) {
+ 	const configOptions = normalizeResponseConfigOptions(response);
+ 	return {
+ 		agentSessionId: extractAgentSessionId(response?._meta),
++		modes: response?.modes,
+ 		configOptions,
+ 		models: modelStateFromSessionResponse({
+ 			configOptions,
+@@ -2511,6 +2535,8 @@ var AcpClient = class {
+ 	commandProbes = /* @__PURE__ */ new Set();
+ 	initResult;
+ 	loadedSessionId;
++	// Pending new/load/resume updates are bounded and remain unprojected until admitted.
++	trellisPendingSession;
+ 	eventHandlers;
+ 	permissionStats = {
+ 		requested: 0,
+@@ -2929,12 +2955,16 @@ var AcpClient = class {
+ 		if (capabilities.terminal) app.onRequest(methods.client.terminal.create, async ({ params, signal }) => {
+ 			return await this.handleCreateTerminal(params, signal);
+ 		}).onRequest(methods.client.terminal.output, async ({ params }) => {
++			this.assertTrellisInboundSession(params.sessionId);
+ 			return await this.terminalManager.terminalOutput(params);
+ 		}).onRequest(methods.client.terminal.waitForExit, async ({ params }) => {
++			this.assertTrellisInboundSession(params.sessionId);
+ 			return await this.terminalManager.waitForTerminalExit(params);
+ 		}).onRequest(methods.client.terminal.kill, async ({ params }) => {
++			this.assertTrellisInboundSession(params.sessionId);
+ 			return await this.terminalManager.killTerminal(params);
+ 		}).onRequest(methods.client.terminal.release, async ({ params }) => {
++			this.assertTrellisInboundSession(params.sessionId);
+ 			return await this.terminalManager.releaseTerminal(params);
+ 		});
+ 		if (launch.devinAcp) app.onRequest("_cognition.ai/request_diagnostics", (params) => {
+@@ -2962,6 +2992,8 @@ var AcpClient = class {
+ 			clientInfo: resolveClientInfo(launch.devinAcp)
+ 		});
+ 		const initialized = launch.geminiAcp ? await withTimeout(initializePromise, resolveGeminiAcpStartupTimeoutMs()) : await initializePromise;
++		const validation = trellisInitializeSchema.safeParse(initialized);
++		if (!validation.success) throw new Error("ACP initialize response is malformed or uses an unsupported protocol version (expected v1)");
+ 		await this.authenticateIfRequired(connection, initialized.authMethods ?? []);
+ 		return initialized;
+ 	}
+@@ -2978,7 +3010,18 @@ var AcpClient = class {
+ 	}
+ 	createTappedStream(base) {
+ 		return observeAcpStream(base, {
+-			onMessage: (direction, message) => {
++			onMessage: (direction, message, suppressed = false) => {
++				if (direction === "inbound" && message.method === "session/update" && !("id" in message)) {
++					const tag = message.params?.update?.sessionUpdate;
++					if (typeof tag === "string" && !trellisSdkSessionTags.has(tag)) {
++						// The original rejected payload is deliberately unavailable downstream.
++						void this.handleSessionUpdate({ sessionId: message.params?.sessionId, update: {
++							sessionUpdate: "trellis_sdk_rejected_update", originalTag: tag.slice(0, 128), payloadUnavailable: true
++						} }).catch(() => this.log("Unsupported ACP update diagnostic could not be delivered"));
++						return false;
++					}
++				}
++				if (suppressed) return;
+ 				this.eventHandlers.onAcpOutputMessage?.(direction, message);
+ 				this.eventHandlers.onAcpMessage?.(direction, message);
+ 			},
+@@ -2998,6 +3041,7 @@ var AcpClient = class {
+ 		const { command, args } = resolveAgentCommandParts(this.options.agentCommand, this.options.agentArgv);
+ 		const claudeAcp = isClaudeAcpCommand(command, args);
+ 		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
++		const admission = this.beginTrellisSessionAdmission(void 0, authority);
+ 		let result;
+ 		try {
+ 			const createPromise = this.runConnectionRequest(() => connection.agent.request(methods.agent.session.new, {
+@@ -3007,13 +3051,18 @@ var AcpClient = class {
+ 			}), authority);
+ 			result = claudeAcp ? await withTimeout(createPromise, resolveClaudeAcpSessionCreateTimeoutMs()) : await createPromise;
+ 		} catch (error) {
++			this.discardTrellisSessionAdmission(admission);
+ 			if (claudeAcp && error instanceof TimeoutError) throw new ClaudeAcpSessionCreateTimeoutError(buildClaudeAcpSessionCreateTimeoutMessage(), {
+ 				cause: error,
+ 				retryable: true
+ 			});
+ 			throw error;
+ 		}
+-		this.loadedSessionId = result.sessionId;
++		if (typeof result?.sessionId !== "string" || result.sessionId.trim().length === 0) {
++			this.discardTrellisSessionAdmission(admission);
++			throw new Error("ACP session/new response requires a non-empty sessionId");
++		}
++		await this.commitTrellisSessionAdmission(admission, result.sessionId);
+ 		const configOptions = normalizeResponseConfigOptions(result);
+ 		const models = modelStateFromSessionResponse({
+ 			configOptions,
+@@ -3023,6 +3072,7 @@ var AcpClient = class {
+ 		return {
+ 			sessionId: result.sessionId,
+ 			agentSessionId: extractAgentSessionId(result._meta),
++			modes: result.modes,
+ 			configOptions,
+ 			models,
+ 			configOptionsPresent: configOptions !== void 0,
+@@ -3037,6 +3087,7 @@ var AcpClient = class {
+ 		const connection = this.getConnection();
+ 		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
+ 		assertControlAuthority(options.authority);
++		const admission = this.beginTrellisSessionAdmission(sessionId, options.authority);
+ 		const previousSuppression = this.applySessionUpdateSuppression(Boolean(options.suppressReplayUpdates));
+ 		let response;
+ 		try {
+@@ -3046,11 +3097,12 @@ var AcpClient = class {
+ 				mcpServers: this.options.mcpServers ?? [],
+ 				_meta: this.sessionMeta()
+ 			}), options.authority);
++			await this.commitTrellisSessionAdmission(admission, sessionId);
+ 			await this.waitForSessionUpdateDrain(options.replayIdleMs ?? REPLAY_IDLE_MS, options.replayDrainTimeoutMs ?? REPLAY_DRAIN_TIMEOUT_MS);
+ 		} finally {
++			this.discardTrellisSessionAdmission(admission);
+ 			this.restoreSessionUpdateSuppression(previousSuppression);
+ 		}
+-		this.loadedSessionId = sessionId;
+ 		const result = toReconnectedSessionResult(response);
+ 		await this.captureAgentDescendants(this.agent);
+ 		return result;
+@@ -3059,13 +3111,19 @@ var AcpClient = class {
+ 		assertControlAuthority(authority);
+ 		const connection = this.getConnection();
+ 		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
+-		const response = await this.runConnectionRequest(() => connection.agent.request(methods.agent.session.resume, {
++		const admission = this.beginTrellisSessionAdmission(sessionId, authority);
++		let response;
++		try {
++			response = await this.runConnectionRequest(() => connection.agent.request(methods.agent.session.resume, {
+ 			sessionId,
+ 			cwd: sessionCwd,
+ 			mcpServers: this.options.mcpServers ?? [],
+ 			_meta: this.sessionMeta()
+ 		}), authority);
+-		this.loadedSessionId = sessionId;
++			await this.commitTrellisSessionAdmission(admission, sessionId);
++		} finally {
++			this.discardTrellisSessionAdmission(admission);
++		}
+ 		const result = toReconnectedSessionResult(response);
+ 		await this.captureAgentDescendants(this.agent);
+ 		return result;
+@@ -3290,6 +3348,7 @@ var AcpClient = class {
+ 	close() {
+ 		this.closing = true;
+ 		this.closeEpoch += 1;
++		this.trellisPendingSession = void 0;
+ 		if (this.closeTask) return this.closeTask;
+ 		this.closeTask = Promise.resolve().then(() => this.finishClose()).finally(() => {
+ 			this.closeTask = void 0;
+@@ -3554,6 +3613,7 @@ var AcpClient = class {
+ 		this.log(`authenticated with method ${selected.methodId} (${selected.source})`);
+ 	}
+ 	async handlePermissionRequest(params, requestSignal) {
++		if (!this.isTrellisOwnedInboundSession(params.sessionId)) return cancelledPermissionResponse();
+ 		const owner = this.captureDelegatedRequestOwner(params.sessionId, requestSignal);
+ 		if (!this.isDelegatedRequestActive(owner)) return cancelledPermissionResponse();
+ 		if (!this.hasPermissionOwner(params.sessionId)) return this.finishPermissionRequest(params, owner, cancelledPermissionResponse());
+@@ -3634,7 +3694,7 @@ var AcpClient = class {
+ 			signal,
+ 			permissionHandler: active?.permissionHandler ?? this.options.onPermissionRequest,
+ 			assertActive: () => {
+-				if (this.closing || this.closeEpoch !== epoch || this.cancellingSessionIds.has(sessionId)) throw RequestError.requestCancelled();
++				if (this.closeEpoch !== epoch || !this.isTrellisOwnedInboundSession(sessionId)) throw RequestError.requestCancelled();
+ 			}
+ 		};
+ 	}
+@@ -3900,11 +3960,59 @@ var AcpClient = class {
+ 		}
+ 		if (error instanceof PermissionDeniedError) this.recordPermissionDecision("denied");
+ 	}
+-	async handleSessionUpdate(notification) {
++	beginTrellisSessionAdmission(targetId, authority) {
++		if (this.trellisPendingSession) throw new Error("ACP session admission is already pending");
++		if (targetId !== void 0 && (typeof targetId !== "string" || !targetId.trim())) throw new Error("ACP load/resume requires a non-empty sessionId");
++		const pending = { targetId, authority, epoch: this.closeEpoch, updates: [], bytes: 0 };
++		this.loadedSessionId = void 0;
++		this.trellisPendingSession = pending;
++		return pending;
++	}
++	discardTrellisSessionAdmission(pending) {
++		if (this.trellisPendingSession === pending) this.trellisPendingSession = void 0;
++		pending.updates.length = 0;
++	}
++	async commitTrellisSessionAdmission(pending, sessionId) {
++		try {
++			assertControlAuthority(pending.authority);
++			if (this.trellisPendingSession !== pending || pending.epoch !== this.closeEpoch || !this.hasLiveConnection()) throw new Error("ACP session admission was cancelled or disconnected");
++			if (pending.error) throw pending.error;
++			this.loadedSessionId = sessionId;
++			this.trellisPendingSession = void 0;
++			// Enqueue the whole pre-response batch synchronously to preserve wire ordering.
++			await Promise.all(pending.updates.splice(0).filter((entry) => entry.notification.sessionId === sessionId).map((entry) => this.handleSessionUpdate(entry.notification, entry.suppressed)));
++		} finally {
++			this.discardTrellisSessionAdmission(pending);
++		}
++	}
++	isTrellisOwnedInboundSession(sessionId) {
++		return !this.closing && this.loadedSessionId !== void 0 && sessionId === this.loadedSessionId && !this.cancellingSessionIds.has(sessionId);
++	}
++	assertTrellisInboundSession(sessionId) {
++		if (!this.isTrellisOwnedInboundSession(sessionId)) throw RequestError.requestCancelled();
++	}
++	async handleSessionUpdate(notification, suppressed = this.suppressSessionUpdates) {
++		if (typeof notification?.sessionId !== "string" || !notification.sessionId.trim() || this.closing) return;
++		const pending = this.trellisPendingSession;
++		if (pending) {
++			if (pending.targetId !== void 0 && pending.targetId !== notification.sessionId) return;
++			try { assertControlAuthority(pending.authority); } catch { return; }
++			const bytes = Buffer.byteLength(JSON.stringify(notification), "utf8");
++			if (pending.error || pending.updates.length >= 256 || pending.bytes + bytes > 1048576) {
++				pending.error ??= new Error("ACP pre-session updates exceeded the bounded admission buffer");
++				pending.updates.length = 0;
++				return;
++			}
++			pending.bytes += bytes;
++			pending.updates.push({ notification, suppressed });
++			return;
++		}
++		if (!this.isTrellisOwnedInboundSession(notification.sessionId)) return;
++		const epoch = this.closeEpoch;
+ 		const sequence = ++this.observedSessionUpdates;
+ 		this.sessionUpdateChain = this.sessionUpdateChain.then(async () => {
+ 			try {
+-				if (!this.suppressSessionUpdates) this.eventHandlers.onSessionUpdate?.(notification);
++				if (epoch === this.closeEpoch && this.isTrellisOwnedInboundSession(notification.sessionId) && !suppressed) this.eventHandlers.onSessionUpdate?.(notification);
+ 			} catch (error) {
+ 				const message = error instanceof Error ? error.message : String(error);
+ 				this.log(`session update handler failed: ${message}`);
+@@ -4315,6 +4423,7 @@ function cloneSessionAcpxState(state) {
+ 	return {
+ 		...state.session_origin ? { session_origin: state.session_origin } : {},
+ 		current_mode_id: state.current_mode_id,
++		available_modes: state.available_modes ? state.available_modes.map((mode) => ({ ...mode })) : void 0,
+ 		desired_mode_id: state.desired_mode_id,
+ 		desired_config_options: state.desired_config_options ? { ...state.desired_config_options } : void 0,
+ 		current_model_id: state.current_model_id,
+@@ -4766,6 +4875,16 @@ function applyConfigOptionsToState(state, configOptions) {
+ 	return acpxState;
+ }
+ function applyConfigOptionsToRecord(record, result) {
++	// Retain advertised display modes at the existing session-response boundary.
++	if (Array.isArray(result?.modes?.availableModes)) {
++		record.acpx ??= {};
++		record.acpx.available_modes = result.modes.availableModes.filter((mode) => mode && typeof mode.id === "string" && typeof mode.name === "string").map((mode) => ({
++			id: mode.id,
++			name: mode.name,
++			...typeof mode.description === "string" ? { description: mode.description } : {}
++		}));
++		if (typeof result.modes.currentModeId === "string") record.acpx.current_mode_id = result.modes.currentModeId;
++	}
+ 	const configOptions = result?.configOptions;
+ 	if (!Array.isArray(configOptions)) return;
+ 	record.acpx = applyConfigOptionsToState(record.acpx, configOptions);
+diff --git a/node_modules/acpx/dist/runtime.d.ts b/node_modules/acpx/dist/runtime.d.ts
+index d98dcfe..3b5d48d 100644
+--- a/node_modules/acpx/dist/runtime.d.ts
++++ b/node_modules/acpx/dist/runtime.d.ts
+@@ -242,6 +242,11 @@ type AcpRuntimeEvent = {
+   type: "status";
+   text: string;
+   tag?: AcpSessionUpdateTag;
++  /** Passive, owned-session unknown-update diagnostic; bounded and secret-key redacted. */
++  rawUpdate?: Record<string, unknown>;
++  /** True when only the rejected tag is available; original SDK-rejected payload is omitted. */
++  payloadUnavailable?: boolean;
++  rawUpdateTruncated?: boolean;
+   used?: number;
+   size?: number;
+   /** Populated on `usage_update` events when the agent reported a cost. */
+@@ -855,4 +860,6 @@ export declare function createRuntimeStore(options: {
+ }): AcpSessionStore;
+ //#endregion
+ export { type AcpAgentInspection, type AcpAgentInspectionOptions, type AcpAgentRegistry, type AcpElicitationContext, type AcpElicitationHandler, type AcpElicitationMode, type AcpElicitationRequest, type AcpElicitationResponse, type AcpFileSessionStoreOptions, type AcpInspectableAgentRegistry, type AcpPermissionDecision, type AcpPermissionHandler, type AcpPermissionRequest, type AcpProcessExit, type AcpProcessLaunch, type AcpProcessLaunchScope, type AcpProcessLifecycle, type AcpProcessSpawnFailure, type AcpProcessStarted, type AcpRuntime, type AcpRuntimeAvailableCommand, type AcpRuntimeCapabilities, type AcpRuntimeDoctorReport, type AcpRuntimeEnsureInput, type AcpRuntimeErrorCode, type AcpRuntimeEvent, type AcpRuntimeHandle, type AcpRuntimeOptions, type AcpRuntimePlanEntry, type AcpRuntimePromptMode, type AcpRuntimeSessionContext, type AcpRuntimeSessionMode, type AcpRuntimeSessionModels, type AcpRuntimeSessionPermissions, type AcpRuntimeSessionUsage, type AcpRuntimeStatus, type AcpRuntimeTurn, type AcpRuntimeTurnAttachment, type AcpRuntimeTurnInput, type AcpRuntimeTurnResult, type AcpRuntimeTurnResultError, type AcpRuntimeUsageBreakdown, type AcpRuntimeUsageCost, type AcpSessionRecord, type AcpSessionStore, type AcpSessionUpdateTag, type AcpTextDeltaOriginMeta, DEFAULT_AGENT_NAME, type InspectAgentModelsOptions, type PermissionPolicy, type RequestedModelUnsupportedErrorCode, type RequestedModelUnsupportedReason, type SessionAgentOptions, type SessionWatchEvent, type SessionWatchResult, type SharedAcpRuntimeOptions, type SystemPromptOption, createAgentRegistry };
++/** Trellis-maintained compatibility contract for exact acpx@0.19.5. */
++export declare const TRELLIS_ACPX_COMPAT_VERSION: 1;
+ //# sourceMappingURL=runtime.d.ts.map
+diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.js
+index 5787968..cdb4f29 100644
+--- a/node_modules/acpx/dist/runtime.js
++++ b/node_modules/acpx/dist/runtime.js
+@@ -7,6 +7,22 @@ import path from "node:path";
+ import fs from "node:fs/promises";
+ import { randomUUID } from "node:crypto";
+ import { isDeepStrictEqual } from "node:util";
++// Trellis-maintained acpx@0.19.5 compatibility patch; see patches/README.md.
++export const TRELLIS_ACPX_COMPAT_VERSION = 1;
++// Keep only non-secret protocol display fields in the public record/store.
++function trellisRetainHandshakeDisplay(record, initialized) {
++	const info = initialized?.agentInfo;
++	record.agentInfo = info && typeof info.name === "string" && typeof info.version === "string" ? {
++		name: info.name,
++		version: info.version,
++		...typeof info.title === "string" ? { title: info.title } : {}
++	} : void 0;
++	record.authMethods = Array.isArray(initialized?.authMethods) ? initialized.authMethods.filter((method) => method && typeof method.id === "string" && typeof method.name === "string").map((method) => ({
++		id: method.id,
++		name: method.name,
++		...typeof method.description === "string" ? { description: method.description } : {}
++	})) : void 0;
++}
+ //#region src/runtime/public/errors.ts
+ var AcpRuntimeError = class extends Error {
+ 	code;
+@@ -413,7 +429,72 @@ function parsePromptEventLine(line) {
+ 	const payload = structured.payload;
+ 	const tag = structured.tag;
+ 	const parser = promptEventParser(type);
+-	return parser ? parser(payload, tag) : null;
++	return parser ? parser(payload, tag) : type ? trellisUnknownUpdateEvent(payload, tag ?? type) : null;
++}
++// Passive projection only: never infer completion, readiness or permission.
++function trellisRedactDiagnosticString(value, limit) {
++	const bounded = value.slice(0, limit);
++	if (/-----BEGIN (?:[A-Z ]* )?PRIVATE KEY-----/i.test(bounded)) return "[REDACTED]";
++	return bounded.replace(/\bBearer\s+[A-Za-z0-9._~+\/=-]+/gi, "Bearer [REDACTED]").replace(/\bsk-[A-Za-z0-9_-]+/gi, "[REDACTED]").replace(/\b((?:api[-_]?key|access[-_]?token|password|passwd|secret|credential)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1[REDACTED]");
++}
++function trellisUnknownUpdateEvent(payload, incomingTag) {
++	const unavailable = payload.sessionUpdate === "trellis_sdk_rejected_update" && payload.payloadUnavailable === true;
++	const tag = trellisRedactDiagnosticString(String(unavailable ? payload.originalTag : incomingTag), 128);
++	let bytes = 6144;
++	let nodes = 0;
++	let truncated = false;
++	const reserve = (size) => {
++		if (size > bytes) { truncated = true; return false; }
++		bytes -= size;
++		return true;
++	};
++	const atom = (value) => reserve(Buffer.byteLength(JSON.stringify(value), "utf8")) ? value : void 0;
++	const boundString = (value, limit) => {
++		if (value.length > limit) truncated = true;
++		return trellisRedactDiagnosticString(value, limit);
++	};
++	const visit = (value, depth = 0) => {
++		if (++nodes > 128) { truncated = true; return; }
++		if (depth > 4) { truncated = true; return atom("[TRUNCATED]"); }
++		if (typeof value === "string") return atom(boundString(value, 256));
++		if (value === null || typeof value === "boolean" || typeof value === "number") return atom(value);
++		if (Array.isArray(value)) {
++			if (!reserve(2)) return;
++			const out = [];
++			if (value.length > 8) truncated = true;
++			for (const entry of value.slice(0, 8)) {
++				if (!reserve(1)) break;
++				const next = visit(entry, depth + 1);
++				if (next === void 0) break;
++				out.push(next);
++			}
++			return out;
++		}
++		if (isRecord(value)) {
++			if (!reserve(2)) return;
++			const out = Object.create(null);
++			let count = 0;
++			for (const original in value) {
++				if (!Object.hasOwn(value, original)) continue;
++				if (++count > 16) { truncated = true; break; }
++				const key = boundString(original, 64);
++				if (!reserve(Buffer.byteLength(JSON.stringify(key), "utf8") + 2)) break;
++				const next = /auth|token|secret|pass(?:word|wd)?|cookie|credential|api[-_]?key|private[-_]?key/i.test(original) ? atom("[REDACTED]") : visit(value[original], depth + 1);
++				if (next === void 0) break;
++				out[key] = next;
++			}
++			return out;
++		}
++		return atom("[UNAVAILABLE]");
++	};
++	const rawUpdate = visit(payload) ?? { diagnostic: "Payload unavailable within diagnostic limits" };
++	return {
++		type: "status", tag,
++		text: unavailable ? `ACP SDK rejected update "${tag}"; payload unavailable` : `Unrecognized ACP update: ${tag}`,
++		rawUpdate,
++		...unavailable ? { payloadUnavailable: true } : {},
++		...truncated ? { rawUpdateTruncated: true } : {}
++	};
+ }
+ const PROMPT_EVENT_PARSERS = {
+ 	text: (payload, tag) => createTextDeltaEvent({
+@@ -1378,6 +1459,7 @@ var AcpRuntimeManager = class {
+ 		record.closedAt = void 0;
+ 		record.protocolVersion = owner.client.initializeResult?.protocolVersion;
+ 		record.agentCapabilities = owner.client.initializeResult?.agentCapabilities;
++		trellisRetainHandshakeDisplay(record, owner.client.initializeResult);
+ 		applyLifecycleSnapshotToRecord(record, owner.client.getAgentLifecycleSnapshot());
+ 	}
+ 	async ensureSession(input) {
+@@ -1560,6 +1642,7 @@ var AcpRuntimeManager = class {
+ 		this.closingActiveRecords.delete(record.acpxRecordId);
+ 		record.protocolVersion = client.initializeResult?.protocolVersion;
+ 		record.agentCapabilities = client.initializeResult?.agentCapabilities;
++		trellisRetainHandshakeDisplay(record, client.initializeResult);
+ 		this.attachIdleProjection(owner, record);
+ 		applyConfigOptionsToRecord(record, session.sessionResult);
+ 		const modelApplication = await applyRequestedModelIfAdvertised({
+@@ -1966,6 +2049,7 @@ var AcpRuntimeManager = class {
+ 		reconcileAgentSessionId(turn.record, turn.record.agentSessionId);
+ 		turn.record.protocolVersion = turn.client.initializeResult?.protocolVersion;
+ 		turn.record.agentCapabilities = turn.client.initializeResult?.agentCapabilities;
++		trellisRetainHandshakeDisplay(turn.record, turn.client.initializeResult);
+ 	}
+ 	handleRuntimeTurnFailure(task, error) {
+ 		if (!task.input.signal?.aborted || error !== task.input.signal.reason) return this.failRuntimeTurn(task, error);
+diff --git a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts b/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
+index 41c4e52..147e50e 100644
+--- a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
++++ b/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
+@@ -9,6 +9,10 @@ type AcpPermissionRequest = {
+   inferredKind: ToolKind | undefined;
+ };
+ type AcpPermissionDecision = {
++  /** Exact original ACP optionId; invalid/ambiguous IDs cancel without fallback. */
++  outcome: "selected";
++  optionId: string;
++} | {
+   outcome: "allow_once";
+ } | {
+   outcome: "allow_always";
+@@ -264,6 +268,7 @@ type SessionAcpxState = {
+   session_origin?: "new" | "resume";
+   reset_on_next_ensure?: boolean;
+   current_mode_id?: string;
++  available_modes?: Array<{ id: string; name: string; description?: string }>;
+   desired_mode_id?: string;
+   desired_config_options?: Record<string, string>;
+   current_model_id?: string;
+@@ -313,6 +318,9 @@ type SessionRecord = {
+   lastAgentDisconnectReason?: string;
+   protocolVersion?: number;
+   agentCapabilities?: AgentCapabilities;
++  /** Protocol-advertised display metadata only; no authentication secrets. */
++  agentInfo?: { name: string; version: string; title?: string };
++  authMethods?: Array<{ id: string; name: string; description?: string }>;
+   title?: string | null;
+   messages: SessionMessage[];
+   updated_at: string;

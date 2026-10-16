@@ -1,0 +1,32 @@
+import { z } from 'zod'
+import { isAbsolute } from 'path'
+
+export const idSchema = z.string().min(1).max(200).regex(/^[\w.-]+$/)
+export const newSessionSchema = z.object({ agentId: idSchema, profileId: idSchema.optional(), taskDir: z.string().min(1).max(200).regex(/^[^\\/]+$/).refine((value) => value !== '.' && value !== '..').optional() })
+export const profileSchema = z.object({
+  id: idSchema, name: z.string().trim().min(1).max(100), description: z.string().max(2000),
+  instructions: z.string().max(32000), runtimeId: idSchema,
+  cwd: z.string().max(4096).refine((value) => !value || isAbsolute(value), '请填写完整的绝对工作目录；留空则使用当前项目').optional(),
+  maxTurnMinutes: z.number().int().min(1).max(120)
+})
+export const configureSchema = z.object({ kind: z.enum(['model', 'mode', 'config']), id: z.string().min(1).max(300), value: z.string().max(1000).optional() })
+
+export function objectValue(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+export function errorMessage(value: unknown): string {
+  const parts: string[] = []
+  let current = value
+  const seen = new Set<unknown>()
+  while (current !== undefined && !seen.has(current) && parts.length < 4) {
+    seen.add(current)
+    const message = current instanceof Error ? current.message : String(current)
+    if (!parts.includes(message)) parts.push(message)
+    current = current instanceof Error ? current.cause : undefined
+  }
+  const message = parts.join('；').replace(/(?:sk-|sk_)[A-Za-z0-9_-]{8,}/g, '[redacted]').replace(/(Bearer\s+)[^\s"']+/gi, '$1[redacted]')
+  return /AUTH_REQUIRED|authentication required|not authenticated|not logged in/i.test(message)
+    ? `${message}。请先在本机终端完成对应 Codex / Claude 登录，再显式重试；面板沿用本机配置。`
+    : message
+}

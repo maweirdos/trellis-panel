@@ -5,7 +5,7 @@
  *   路径围栏拒绝穿越 → 截断契约字段。
  * 运行：node scripts/smoke/chat.mjs
  */
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { execFileSync } from 'child_process'
@@ -19,6 +19,11 @@ process.on('unhandledRejection', (r) => console.error('UNHANDLED REJECTION:', r)
 
 const workDir = mkdtempSync(join(tmpdir(), 'tpanel-chat-smoke-'))
 process.env.TPAP_SMOKE_DIR = workDir
+// A registered local read-only tool replaces the removed db_list_tables fixture.
+// Keep actual gateway execution, permissions, truncation and tool recovery checks.
+const fixtureRoot = join(workDir, 'fixture-project')
+mkdirSync(join(fixtureRoot, '.trellis', 'spec'), { recursive: true })
+writeFileSync(join(fixtureRoot, '.trellis', 'spec', 'smoke-long-fixture-name.md'), '# Isolated chat fixture\n')
 
 /* ---------------- mock OpenAI 服务 ---------------- */
 
@@ -93,7 +98,7 @@ const mockServer = createServer((req, res) => {
               {
                 delta: {
                   tool_calls: [
-                    { index: 0, id: `call-${completionCount}`, type: 'function', function: { name: 'db_list_tables', arguments: '{}' } }
+                    { index: 0, id: `call-${completionCount}`, type: 'function', function: { name: 'trellis_list_specs', arguments: '{}' } }
                   ]
                 }
               }
@@ -267,7 +272,7 @@ check('aiChatStream 探针收齐增量', probe.ok && probe.content === '你好�
 
 /* 2. 流式对话：发送 → 依序 delta → done 落库 */
 const session = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
-const send1 = chatService.send({ sessionId: session.id, content: '打个招呼', providerId: 'mock', modelId: 'mock-model-a' })
+const send1 = chatService.send({ sessionId: session.id, content: '打个招呼', providerId: 'mock', modelId: 'mock-model-a', agent: false })
 check('首轮发送直接开跑（非排队）', send1.ok && !send1.queued && !!send1.runId, JSON.stringify(send1))
 const deltas = await waitFor(
   () => {
@@ -280,7 +285,7 @@ const deltas = await waitFor(
 check('收到流式增量（chat:output）', deltas.length >= 3)
 
 /* 3. 忙碌排队：趁首轮流式中发第二条 → queued → 首轮完成后自动续发 */
-const send2 = await chatService.send({ sessionId: session.id, content: '排队消息A', providerId: 'mock', modelId: 'mock-model-a' })
+const send2 = await chatService.send({ sessionId: session.id, content: '排队消息A', providerId: 'mock', modelId: 'mock-model-a', agent: false })
 check('忙碌时发送进入队列', send2.ok && send2.queued && send2.queueLen === 1, JSON.stringify(send2))
 
 const done1 = await waitFor(
@@ -307,7 +312,7 @@ await waitFor(
 check('队列项在首轮结束后自动发送并落库', true)
 
 /* 4. 中止：发一条，收到首个 delta 后 abort */
-const send3 = chatService.send({ sessionId: session.id, content: '会被中止的消息', providerId: 'mock', modelId: 'mock-model-a' })
+const send3 = chatService.send({ sessionId: session.id, content: '会被中止的消息', providerId: 'mock', modelId: 'mock-model-a', agent: false })
 await waitFor(() => events().some((e) => e.channel === ipcEvent.chatOutput && e.payload.runId === send3.runId), 8000, '中止前增量')
 chatService.abort(session.id)
 const done3 = await waitFor(
@@ -334,12 +339,12 @@ check('task 读取拒绝 ../ 穿越', !evilTask.ok && /越界/.test(evilTask.err
 
 /* 7. 截断契约 */
 GatewayManager.updateSecurity({ maxResponseChars: 20 })
-const trunc = await GatewayManager.executeTool('db_list_tables', {}, '')
+const trunc = await GatewayManager.executeTool('trellis_list_specs', {}, fixtureRoot)
 check('截断响应带 truncated/totalChars', trunc.ok && trunc.truncated === true && trunc.totalChars > 20, JSON.stringify(trunc).slice(0, 160))
 
 /* 8. thinking 档位：openai 形态 reasoning_effort 随请求体下发 */
 const session2 = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a', thinkingLevel: 'high' })
-chatService.send({ sessionId: session2.id, content: '档位检查', providerId: 'mock', modelId: 'mock-model-a' })
+chatService.send({ sessionId: session2.id, content: '档位检查', providerId: 'mock', modelId: 'mock-model-a', agent: false })
 await waitFor(
   () => {
     return msgsOf(session2.id).length >= 2
@@ -372,7 +377,7 @@ check('anthropic low：thinking.budget_tokens=4096', anthropicLowBody?.thinking?
 
 /* 10. 重新生成 */
 const session3 = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
-chatService.send({ sessionId: session3.id, content: '原始提问', providerId: 'mock', modelId: 'mock-model-a' })
+chatService.send({ sessionId: session3.id, content: '原始提问', providerId: 'mock', modelId: 'mock-model-a', agent: false })
 await waitFor(
   () => msgsOf(session3.id).length >= 2,
   10000,
@@ -428,6 +433,7 @@ const mmSend = chatService.send({
   content: '这张图里是什么？',
   providerId: 'mock',
   modelId: 'mock-model-a',
+  agent: false,
   images: [smallPng]
 })
 check('带图发送接受', mmSend.ok && !!mmSend.runId, JSON.stringify(mmSend))
@@ -451,6 +457,7 @@ const oversize = chatService.send({
   content: '超图',
   providerId: 'mock',
   modelId: 'mock-model-a',
+  agent: false,
   images: ['data:image/png;base64,' + 'A'.repeat(5 * 1024 * 1024)]
 })
 check('超限图片被拒（4MB 门槛）', !oversize.ok && /4MB/.test(oversize.error ?? ''), JSON.stringify(oversize))
@@ -487,7 +494,7 @@ chatService.configure({ permissionTimeoutMs: 20000 })
 const permEventsOf = (runId) => events().filter((e) => e.channel === ipcEvent.chatPermission && e.payload.runId === runId)
 const mkAgent = () => {
   const sess = store.createSession({ getPath: () => workDir }, { providerId: 'mock', modelId: 'mock-model-a' })
-  chatService.send({ sessionId: sess.id, content: '查一下表', providerId: 'mock', modelId: 'mock-model-a', agent: true })
+  chatService.send({ sessionId: sess.id, content: '查看规范清单', providerId: 'mock', modelId: 'mock-model-a', agent: true })
   return sess.id
 }
 
@@ -515,7 +522,7 @@ try {
   console.error('DEBUG all events:', JSON.stringify(events().map((x) => x.channel + ':' + (x.payload?.toolName ?? x.payload?.kind ?? ''))))
   throw e
 }
-check('工具调用触发权限卡', permAEvent?.toolName === 'db_list_tables', JSON.stringify(permAEvent))
+check('工具调用触发权限卡', permAEvent?.toolName === 'trellis_list_specs', JSON.stringify(permAEvent))
 chatService.resolvePermission(permAEvent.permId, 'allow-session')
 const doneA2 = await waitFor(
   () => events().find((e) => e.channel === ipcEvent.chatDone && e.payload.runId === permAEvent.runId && e.payload.kind === 'done')?.payload,
@@ -523,8 +530,8 @@ const doneA2 = await waitFor(
   'agent 回答完成'
 )
 const agentAPath = msgsOf(agentA)
-check('assistant 节点携带 toolOps（success）', agentAPath.some((m) => m.toolOps?.[0]?.status === 'success' && m.toolOps[0].toolName === 'db_list_tables'), JSON.stringify(agentAPath))
-check('allow-session 白名单已持久化', store.openSession({ getPath: () => workDir }, agentA).allowedTools?.includes('db_list_tables') === true)
+check('assistant 节点携带 toolOps（success）', agentAPath.some((m) => m.toolOps?.[0]?.status === 'success' && m.toolOps[0].toolName === 'trellis_list_specs'), JSON.stringify(agentAPath))
+check('allow-session 白名单已持久化', store.openSession({ getPath: () => workDir }, agentA).allowedTools?.includes('trellis_list_specs') === true)
 const secondRoundBody = chatBodies.find((b) => (b.messages ?? []).some((m) => m.role === 'tool'))
 check('工具结果已回灌模型（role:tool）', !!secondRoundBody)
 
@@ -621,8 +628,8 @@ await waitFor(
   10000,
   'R 完成'
 )
-check('首轮成功后 activeTools 已记录', (store.openSession({ getPath: () => workDir }, recoverySession.id).activeTools ?? []).includes('db_list_tables'))
-// 第二轮：请求体 tools 应仅含 db_list_tables（激活恢复），而非全量 8 个
+check('首轮成功后 activeTools 已记录', (store.openSession({ getPath: () => workDir }, recoverySession.id).activeTools ?? []).includes('trellis_list_specs'))
+// 第二轮：请求体 tools 应仅含 trellis_list_specs（激活恢复），而非全量 8 个
 chatService.send({ sessionId: recoverySession.id, content: '第二轮再查', providerId: 'mock', modelId: 'mock-model-a', agent: true })
 await waitFor(
   () => events().filter((e) => e.channel === ipcEvent.chatDone && e.payload.sessionId === recoverySession.id && e.payload.kind === 'done').length >= 2,
@@ -632,7 +639,7 @@ await waitFor(
 const secondAgentBody = [...chatBodies.slice(bodiesBeforeR)].reverse().find((b) => b.tools?.length)
 check(
   '第二轮请求 tools 仅含激活工具（恢复语义）',
-  secondAgentBody?.tools?.length === 1 && secondAgentBody.tools[0].function.name === 'db_list_tables',
+  secondAgentBody?.tools?.length === 1 && secondAgentBody.tools[0].function.name === 'trellis_list_specs',
   JSON.stringify(secondAgentBody?.tools ?? []).slice(0, 160)
 )
 

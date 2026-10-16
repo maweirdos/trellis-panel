@@ -1,0 +1,14 @@
+{
+  "version": "0.19.5",
+  "sdkVersion": "1.8.0",
+  "compatVersion": 1,
+  "patch": "acpx+0.19.5.patch",
+  "patchSha256": "c049ad917c2a83cb8049ed8b0f918449beb2a24115dae87a34fd715e69679a2a",
+  "files": {
+    "dist/queue-owner-runtime-DoijBCvt.js": "87882086e88d9de09e9b955cf4e2197402630954b59080e366a40a47a046ff2d",
+    "dist/runtime.js": "2868065619d0887568307b36ea0e815590c476c7cc473c082d39b3fa2fa63e64",
+    "dist/runtime.d.ts": "221d125ebbeb1085959c01335b2a014bfe5a0422790200cf25620cb6dcd4708f",
+    "dist/session-options-CkcvthCv.d.ts": "2be250fffe0fe4555b9c219006acf3edfedd611ec7a476813c7c53e8165b95aa",
+    "dist/ipc-C96eDxkW.js": "dfcea7783b4c42784662add519e5390add1ff42bff9c3721a2605c5981746129"
+  }
+}

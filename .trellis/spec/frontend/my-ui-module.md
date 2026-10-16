@@ -106,7 +106,10 @@ knowledge, conversations, team and analytics are peers. The former task-parent t
 - `loadProjectPreferences(root, storage?)` / `saveProjectPreferences(root, prefs, storage?)`
   own root-scoped favorites and saved views.
 - Main service: `listAcpSessions(projectRoot: string, limit = 20)`.
-  Renderer IPC remains `api.acpSessions(limit?)`; the handler supplies `getProjectRoot()`.
+  Renderer IPC is `api.acpSessions()`; the handler supplies `getProjectRoot()`.
+  Agent workspace/profile/runtime/permission and lazy-restore contracts are defined
+  in [ACP runtime](../backend/acp-runtime.md). Keep drafts/scroll per root/session,
+  IME-safe explicit sends, collapsed routine activity and visible approvals/errors.
 
 ### 3. Contracts
 
@@ -205,7 +208,10 @@ knowledge, conversations, team and analytics are peers. The former task-parent t
   root transitions, and asynchronous recent-project refresh/failure/close behavior.
 - `node scripts/smoke/acp.mjs`: existing ACP service lifecycle and permission behavior.
 - `node scripts/smoke/acp-project-scope.mjs`: mixed active/history roots, filtering before
-  limit, early events, generation isolation, live approval restoration, and expiry.
+  limit, trusted-root IPC injection, foreign action rejection, approval ownership and expiry.
+- `node scripts/smoke/acp-ui.mjs`: actual ACP handlers for early events, root A→B→A,
+  connection generations, live approval restoration, drafts, IME, follow-scroll projection,
+  lazy restore, collapsed activity and visible errors. This is not mounted/native E2E evidence.
 - `node scripts/smoke/task-presentation.mjs`: composed source/reader actions, target cleanup,
   exact known manifests and raw fallback. `node scripts/smoke/uiux-wiring.mjs`: actual
   component hook/event handlers for Escape priority, stale note replies, local-first results
