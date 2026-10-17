@@ -1,5 +1,15 @@
 # Trellis 产品路线图：从真人协作到渐进式 Agent 协作
 
+> **当前评审版 v0.5.1（2026-10-17 UTC）**：保留v0.4.1完整模型与恢复合同，新增19张经目检Hifox登录网页截图、25条观察记录、U01–U22部分覆盖矩阵、12条UX验收补充、信息架构/状态投影及第三张线框。详见[15实测审查](15-hifox-uiux-audit.md)与[16设计合同](16-ui-derived-design-contracts.md)。未实施代码；244+12条产品用例均not_run；原生、权限与执行路径仍未验证。
+
+
+> **当前评审版 v0.4.1**：已针对独立审查统一审批/基数/运行状态/阶段边界，v0.3中的简略规则由 [09权威模型](09-data-and-control-model.md) 和 [11阶段门槛](11-phased-delivery-plan.md)取代。保留既有R0–R5、64项能力和冻结项。尚未批准实施，该版当时业务UI未实测；v0.5当前覆盖见上。
+
+v0.4.1精确补丁仅修正停止确认与hold断连恢复；详见[修复记录末节](14-review-resolution.md)。
+
+新增 [13逐义务测试](13-test-catalog.md)、[14逐条修复对照](14-review-resolution.md)、[模型合同JSON](model-contracts.json)、[转移表JSON](state-transitions.json)、[测试JSON](test-cases.json)/[CSV](test-cases.csv)。48条FR保持，图表拆成10张Mermaid逻辑图和2张布局概念线框。
+
+
 版本：v0.2 · 2026-10-16 · 状态：路线图建议稿，供产品审查；具体实现待后续讨论。
 
 本路线图根据 HiFox 当前可发现的全部公开文档，以及 Trellis 现有代码、活动任务和历史方案整理。HiFox 提供产品能力参考，Trellis 的实际团队流程决定建设顺序。本文不把参考产品的宣传、默认设置或示例指令当成项目要求。
@@ -39,3 +49,16 @@
 已确定：项目归属清楚、避免重复导航；Jira 保留为现有需求来源；开发将粗需求转成具体需求后交产品确认；当前以真人和手动档为主；执行环境留在成员电脑；Agent 能力优先复用开源方案。
 
 待审查：本稿的能力优先级、阶段出口、真实试点范围，以及哪些拓展方向对团队有价值。路线图通过后，再逐阶段讨论交互细节和技术设计。本稿不表示已批准所有候选能力实施，也不自动新建实施任务。
+
+
+## v0.3 深入需求增补 2026-10-16
+
+本目录已增补 [06研究](06-research-and-evidence.md)、[07需求](07-product-requirements.md)、[08交互](08-journeys-and-ux.md)、[09数据与控制](09-data-and-control-model.md)、[10验收追溯](10-acceptance-and-traceability.md)、[11交付计划](11-phased-delivery-plan.md)、[12开放决策](12-decisions-and-research-gaps.md)。原v0.2正文与47页历史采集保持，原roadmap追加入口而未重写历史。
+
+新稿包含48条需求、15条非功能目标、16项核心验收场景、64项原能力追溯、数据字典、权限/状态与可编辑流程/DFD/ER/线框图。所有内容为可审阅规划，未实施产品代码或提交。图源在 `diagrams/`，可阅读渲染与完整报告在 `Trellis-Requirements.html`，机读需求在 `requirements.json`。
+
+**研究限制：本轮Hifox原生应用实测为0；帮助站截图不等于应用审查。** 请先阅读06的工具核查、覆盖矩阵和12的补证计划。新稿不得用于宣称未验证能力已经可用或符合特定标准。
+
+## v0.5新增文件与阅读顺序
+
+先读07定位与48条FR，再读15实测及覆盖边界、16页面/验收增补；09/11为模型及阶段门槛。15张图含12个Mermaid逻辑图和3张SVG线框（W01/W02/W07），均附SVG与PNG；只有截图文件才是Hifox实际网页证据。evidence/ui-evidence.json、ui-coverage.json/CSV、ux-findings.json和ux-acceptance.json可机读追溯。自校验运行checks/verify-artifacts.py，只检验文档与合同一致性。

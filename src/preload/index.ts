@@ -60,6 +60,15 @@ const api = {
 
   updateTask: (taskDir: string, patch: TaskPatch, expectedMtime?: number) =>
     ipcRenderer.invoke(ipcInvoke.task.update, taskDir, patch, expectedMtime),
+  /* C1–C3：本机开发工具（只读 Git + 有归属的工程运行） */
+  devtoolsGitStatus: () => ipcRenderer.invoke(ipcInvoke.devtools.gitStatus),
+  devtoolsGitFileDiff: (relPath: string, staged: boolean) =>
+    ipcRenderer.invoke(ipcInvoke.devtools.gitFileDiff, relPath, staged),
+  devtoolsListScripts: (dir: string) => ipcRenderer.invoke(ipcInvoke.devtools.listScripts, dir),
+  devRunStart: (dir: string, script: string) => ipcRenderer.invoke(ipcInvoke.devtools.devRunStart, dir, script),
+  devRunStop: (id: string) => ipcRenderer.invoke(ipcInvoke.devtools.devRunStop, id),
+  devRunStopAll: () => ipcRenderer.invoke(ipcInvoke.devtools.devRunStopAll),
+  devRunList: () => ipcRenderer.invoke(ipcInvoke.devtools.devRunList),
   deleteTask: (taskDir: string, expectedMtime?: number) =>
     ipcRenderer.invoke(ipcInvoke.task.delete, taskDir, expectedMtime),
   createTaskFromJira: (input: Record<string, unknown>) => ipcRenderer.invoke(ipcInvoke.task.createFromJira, input),
@@ -208,7 +217,8 @@ const api = {
   aiPlan: (input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) =>
     ipcRenderer.invoke(ipcInvoke.ai.plan, input),
   taskCreateFromPlan: (input: Record<string, unknown>) => ipcRenderer.invoke(ipcInvoke.task.createFromPlan, input),
-  planHandoff: (dirName: string) => ipcRenderer.invoke(ipcInvoke.plan.handoff, dirName),
+  taskLinkSubtask: (parentDir: string, childDir: string, remove?: boolean) =>
+    ipcRenderer.invoke(ipcInvoke.task.linkSubtask, parentDir, childDir, remove) as Promise<{ ok: boolean; error?: string }>,
   aiSplitEpic: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.splitEpic, dirName),
   aiCommitMsg: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.commitMsg, dirName),
   aiPrDesc: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.prDesc, dirName),
@@ -254,6 +264,10 @@ const api = {
       text: string
       issues: string[]
       files: string[]
+      gitLines: string[]
+      checkFiles: string[]
+      uncheckedSubtasks: string[]
+      openQuestions: string[]
     }>,
   desktopSetExplorerMenu: (on: boolean) =>
     ipcRenderer.invoke(ipcInvoke.desktop.setExplorerMenu, on) as Promise<

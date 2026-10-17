@@ -44,7 +44,11 @@ export const PAGE_NAVIGATION = {
   studio: { title: '定制中心', domain: 'tools', scope: 'project', icon: 'modules' },
   models: { title: '模型管理', domain: 'tools', scope: 'application', icon: 'cycles' },
   settings: { title: '设置', domain: 'tools', scope: 'application', icon: 'work-items', scopeNote: '个人偏好和连接配置在本机保存；项目绑定按设置项注明的目标生效。' },
-  gateway: { title: 'MCP 网关', domain: 'tools', scope: 'mixed', icon: 'analytics', keywords: '应用 项目' }
+  gateway: { title: 'MCP 网关', domain: 'tools', scope: 'mixed', icon: 'analytics', keywords: '应用 项目' },
+  devtools: {
+    title: '本机开发工具', domain: 'tools', scope: 'local', icon: 'views', keywords: 'Git 只读 运行 日志 脚本 多工程',
+    scopeNote: 'Git 仅为只读查看（无写操作）；运行只管理面板自己启动的进程，进程存活不代表服务就绪。'
+  }
 } satisfies Record<Page, PageNavigation>
 
 export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
@@ -67,7 +71,7 @@ export const INTAKE_PAGES: readonly Page[] = ['inbox', 'jira']
 export const WORK_PAGES: readonly Page[] = ['tasks', 'archive']
 export const AI_MODES: readonly Page[] = ['acp', 'channels']
 export const PROJECT_TOOLS: readonly Page[] = ['architecture', 'studio']
-export const APPLICATION_TOOLS: readonly Page[] = ['chat', 'models', 'settings']
+export const APPLICATION_TOOLS: readonly Page[] = ['chat', 'models', 'settings', 'devtools']
 
 export function getPageNavigation(page: Page): PageNavigation {
   return PAGE_NAVIGATION[page]

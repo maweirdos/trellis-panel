@@ -1,0 +1,717 @@
+[
+  {
+    "id": "UI01-inbox-empty",
+    "file": "evidence/ui/UI01-inbox-empty.jpg",
+    "captured_at": "2026-10-17T00:24:55.726Z",
+    "url": "https://app.hifox.com/{org}/inbox",
+    "surface": "首页与收件箱",
+    "action": "从现有已登录Inbox开始；收起对话摘要和进阶指引",
+    "observation": "收件箱/稍后/已清理和全部/重要/其他分层；主区暂无通知；组织与空间导航分开",
+    "strength": "通知状态与重要性采用两层筛选",
+    "risk": "暂无通知不说明是否没有待处理任务；清理与完成需要分开解释",
+    "limits": "未点击标已读/全部清理；没有真实通知，未验证通知聚合与处理副作用",
+    "maps": [
+      "U01",
+      "U09"
+    ],
+    "privacy": "已收起个人对话摘要，无任务正文或个人联系方式",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "d66cd871015aacacc07066dbe50d172d308aac46763a02128e469d4b55579a1a",
+    "viewport": {
+      "width": 1707,
+      "height": 898
+    },
+    "viewport_source": "本次会话记录；不是从裁切图片反推视口",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1707,
+      "height": 898
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI02-agents-overview",
+    "file": "evidence/ui/UI02-agents-overview.jpg",
+    "captured_at": "2026-10-17T00:26:02.245Z",
+    "url": "https://app.hifox.com/{org}/agents",
+    "surface": "全部Agent和小队",
+    "action": "从首页进入全部Agent",
+    "observation": "全部/Agent/小队/我的四种筛选；搜索；按空间分组计数；存在单条私有Agent，卡片区分runtime与所有者",
+    "strength": "组织总览保留空间分组，Agent与小队有独立筛选",
+    "risk": "runtime徽标只说明类型，不证明电脑在线或可执行；卡片私有标记需有文字说明",
+    "limits": "没有执行对话、收藏或行操作；名称和所有者不进入交付截图",
+    "maps": [
+      "U10",
+      "U13"
+    ],
+    "privacy": "裁去私有Agent卡片，仅保留页头、筛选与分组计数",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "7ef3e0b4eeb4347591383804091340bb4d032641e7069a67b0338db8feb2db01",
+    "viewport": {
+      "width": 1707,
+      "height": 898
+    },
+    "viewport_source": "本次会话记录；不是从裁切图片反推视口",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1342,
+      "height": 205
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport_crop"
+  },
+  {
+    "id": "UI03-agent-search-empty",
+    "file": "evidence/ui/UI03-agent-search-empty.jpg",
+    "captured_at": "2026-10-17T00:30:00.446Z",
+    "url": "https://app.hifox.com/{org}/agents",
+    "viewport": {
+      "width": 1000,
+      "height": 900
+    },
+    "surface": "窄屏Agent搜索零结果",
+    "action": "输入不存在关键词后在1000×900查看",
+    "observation": "显示无匹配项；搜索框变为图标，关键词和清除入口暂不在主面板显示",
+    "strength": "空态文字区分无匹配与无配置",
+    "risk": "窄屏隐藏当前筛选原因，需要展开搜索才能恢复",
+    "limits": "未证明后端检索完整性；早先更新前或无效尺寸截图均已拒用",
+    "maps": [
+      "U10",
+      "U22"
+    ],
+    "privacy": "零结果不含私有Agent卡片",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "5d60c0d73c2d6cb10356d3ac17356aca034ea8ec8f1dad5245834b104c5af8a8",
+    "metadata_correction": "v0.5.1：纠正错误视口元数据；依据会话1000×900记录、正文及独立复核；图像字节未改变。",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1000,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI04-narrow-search-expanded",
+    "file": "evidence/ui/UI04-narrow-search-expanded.jpg",
+    "captured_at": "2026-10-17T00:31:18.554Z",
+    "url": "https://app.hifox.com/{org}/agents",
+    "viewport": {
+      "height": 900,
+      "width": 1000
+    },
+    "surface": "窄屏搜索恢复",
+    "action": "点击搜索图标展开输入",
+    "observation": "原搜索词与清除搜索按钮可见",
+    "strength": "展开后保留输入并提供清除",
+    "risk": "收起时缺少明显的筛选激活标记，须比较展开前后",
+    "limits": "不进行键盘读屏合规判断",
+    "maps": [
+      "U10",
+      "U22"
+    ],
+    "privacy": "仅无匹配状态",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "2fd9c45880ff09568e549fb23bec365636bb6d62aaa9430687ce9623598b7c69",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1000,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI05-agent-create-form",
+    "file": null,
+    "captured_at": "2026-10-17T00:32:38.845Z",
+    "url": "https://app.hifox.com/{org}/agents",
+    "viewport": {
+      "height": 898,
+      "width": 1707
+    },
+    "surface": "创建Agent未提交表单",
+    "action": "只打开创建表单",
+    "observation": "区分代码开发/日常办公；设计创意禁用；名称与职位、所属空间、私有默认、Runtime、工作方式和Git仓库分别配置",
+    "strength": "执行载体与材料范围在创建前可见，默认私有",
+    "risk": "预选runtime不等于已通过运行预检；禁用类型的解释需核查",
+    "limits": "未填写、未提交或安装；不验证默认值保存后的语义; visual capture did not show the dialog; no visual finding claimed",
+    "maps": [
+      "U10",
+      "U11",
+      "U12"
+    ],
+    "privacy": "只截空白创建弹窗，不含既有Agent名称或指令；本机标识为用户已提供的设备名",
+    "accepted": false,
+    "capture_status": "blocked_mismatch",
+    "observation_level": "structure_only"
+  },
+  {
+    "id": "UI06-conversation-controls",
+    "file": "evidence/ui/UI06-conversation-controls.jpg",
+    "captured_at": "2026-10-17T00:38:07.352Z",
+    "url": "https://app.hifox.com/{org}/agents/{agentId}",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "对话工作台输入与模式控件",
+    "action": "只读打开已有对话，不发送",
+    "observation": "底部提供微信/Slack/多会话视图控件；composer显示远程Runtime、工作目录控件、单对话模型与空输入禁用发送",
+    "strength": "会话运行环境、输入和模型保持在就地上下文",
+    "risk": "模式入口依赖图标，需要标签/提示；多会话模式不等于并行执行保证",
+    "limits": "未切换模式、未新建会话、未发送；未测并发、重试或恢复",
+    "maps": [
+      "U07",
+      "U11",
+      "U12"
+    ],
+    "privacy": "只截底部控制区，排除已有对话正文、Agent名称和本地工作路径",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "3c7e835fa5a7c886f8d69538c518df758a9107b5bda064309475e6ee7cacddc5",
+    "scope": "独立Agent会话；不构成任务对话视觉证据",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1365,
+      "height": 130
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport_crop"
+  },
+  {
+    "id": "UI07-existing-run-failure",
+    "file": null,
+    "surface": "已有示例任务的历史失败",
+    "action": "只读打开既有示例任务对话",
+    "observation": "任务业务状态为待开始；动态出现执行完成1次；右侧为执行失败，环境准备18秒，模型本轮无输出；提供重试和帮助入口",
+    "strength": "环境阶段、执行结果和业务状态分别呈现",
+    "risk": "完成次数的措辞可能被误认为成功；重试具有执行副作用",
+    "limits": "历史记录，不证明当前服务仍失败；未重试或打开原始数据；截图Page.captureScreenshot在5秒超时，视觉未验证",
+    "maps": [
+      "U03",
+      "U08",
+      "U11"
+    ],
+    "privacy": "不保存任务正文、人员或评论",
+    "capture_status": "timeout",
+    "observation_level": "structure_only",
+    "url": ""
+  },
+  {
+    "id": "UI08-task-discussion-structure",
+    "file": null,
+    "surface": "任务与讨论结构",
+    "action": "只读查看已有示例任务",
+    "observation": "任务详情可见业务状态、优先级、专项、标签、更多属性、动态与对话记录页签；普通评论、回复、对话面板有不同输入；空输入提交按钮禁用",
+    "strength": "业务正文与Agent面板并列，讨论和对话有不同入口",
+    "risk": "召唤Agent、改状态、标重复、关注等控制均有副作用，不能把打开或关闭会话当完成任务",
+    "limits": "未更改任何字段、评论、反应、关注或任务关系；相关菜单和提交路径未验证；未获得完整可交付截图",
+    "maps": [
+      "U03",
+      "U05",
+      "U06",
+      "U08"
+    ],
+    "privacy": "只保留结构性摘要，不保存现有正文和评论",
+    "capture_status": "privacy_or_capture_limit",
+    "observation_level": "structure_only",
+    "url": ""
+  },
+  {
+    "id": "UI09-task-board",
+    "file": "evidence/ui/UI09-task-board.jpg",
+    "captured_at": "2026-10-17T00:41:09.260Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/tasks",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "默认空间任务看板",
+    "action": "只读打开任务列表",
+    "observation": "任务按待开始/待分拣/待规划/进行中/已完成分组；需求/缺陷/任务筛选；显示设置、视图搜索与新建视图独立；仅一条示例任务",
+    "strength": "对象类型、查看方式和生命周期分别表达",
+    "risk": "看板拖拽与行内属性会修改业务状态，查看模式应避免误操作",
+    "limits": "未拖拽、未改状态、未保存视图；只有示例数据不能验证大数据量和复杂层级",
+    "maps": [
+      "U02",
+      "U05",
+      "U16"
+    ],
+    "privacy": "画面只有默认示例任务，无真实客户或个人联系方式",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "aead4a088cd022bd8edec88e336c252f7b8ed0229b9763b414b0c4b29be0b689",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI10-new-workitem-form",
+    "file": "evidence/ui/UI10-new-workitem-form.jpg",
+    "captured_at": "2026-10-17T00:41:51.267Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/tasks",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "空间新建需求未提交表单",
+    "action": "打开空间加号，不填写或提交",
+    "observation": "当前类型为需求；标题和描述分开；处理人、业务状态、优先级、专项、标签独立；标题为空显示请先填写标题且创建禁用",
+    "strength": "空标题前置提示，不靠提交后报错",
+    "risk": "新建任务通用入口实际默认类型为需求，需保持类型提示清楚；继续创建是独立开关",
+    "limits": "未更改类型或属性、未提交、未上传附件；不验证服务端必填校验",
+    "maps": [
+      "U04",
+      "U05"
+    ],
+    "privacy": "空白表单，无真实业务输入",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "86d47cd13310c96060f0f29272de824e63a85ab13f4810a7dc93ca60b0c89738",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI11-workitem-type-menu",
+    "file": "evidence/ui/UI11-workitem-type-menu.jpg",
+    "captured_at": "2026-10-17T00:42:27.519Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/tasks",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "工作项类型菜单",
+    "action": "只展开类型菜单，不选择",
+    "observation": "需求/缺陷/任务与管理任务类型入口分开",
+    "strength": "业务对象类型可在创建前识别",
+    "risk": "管理入口应受权限约束；同名任务泛称与具体类型需区分",
+    "limits": "未切换类型或进入管理；未验证角色差异和字段迁移",
+    "maps": [
+      "U04",
+      "U05"
+    ],
+    "privacy": "空白创建表单",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "dadd84f13a697f1966b704a18b2209fd9895dae5e2e3bf02f8366902f5c02f1f",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI12-iterations-empty",
+    "file": "evidence/ui/UI12-iterations-empty.jpg",
+    "captured_at": "2026-10-17T00:44:08.033Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/sprints",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "迭代列表空态",
+    "action": "打开默认空间迭代，等实际空态出现",
+    "observation": "迭代列表/规划迭代分开；可按状态筛选；还没有迭代明确引导创建第一轮",
+    "strength": "时间窗口列表与范围规划拆成两个任务",
+    "risk": "没有迭代不等于没有任务；不应自动把全部任务加入首轮",
+    "limits": "当前无真实迭代，无法验证结束、结转、历史和跨周期统计",
+    "maps": [
+      "U17"
+    ],
+    "privacy": "空态，无成员或业务数据",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "66d0de54b4267304f1cb9e5738eb53b003691731cf7d231dbef1b89f38483028",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI13-saved-views-empty",
+    "file": "evidence/ui/UI13-saved-views-empty.jpg",
+    "captured_at": "2026-10-17T00:44:58.433Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/views",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "保存视图空态",
+    "action": "只读打开视图页面",
+    "observation": "空态说明视图保存常用任务筛选和展示方式，可按处理人、状态、专项创建；新建与帮助入口并列",
+    "strength": "明确视图是工作视角，降低把视图当新任务库的误解",
+    "risk": "私有与共享定义、临时修改和保存范围仍需在创建/真实数据中验证",
+    "limits": "未创建或保存视图，不证明多人共享与权限边界",
+    "maps": [
+      "U16"
+    ],
+    "privacy": "空态无业务数据",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "893b37079033e4d4f9aa9805b43ffc4935026c574917d0cbc2dac4a35836548b",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI14-task-navigation-more",
+    "file": "evidence/ui/UI14-task-navigation-more.jpg",
+    "captured_at": "2026-10-17T00:45:35.833Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/views",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "任务子导航扩展",
+    "action": "只展开更多导航",
+    "observation": "迭代、分拣台、视图、专项在同一任务导航扩展；各入口的固定/移除控件独立",
+    "strength": "主导航收敛，同时保留完整目的地；固定与访问分开",
+    "risk": "复选固定会改变偏好，浏览研究不勾选；隐藏入口需要可发现性提示",
+    "limits": "未更改固定项或拖动导航",
+    "maps": [
+      "U15",
+      "U18"
+    ],
+    "privacy": "只有导航标签",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "b5111486a3baa80446a5ba675df1ba124dc561fa62a54bf28b822c9f9e51f74d",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI15-delivery-goals-empty",
+    "file": "evidence/ui/UI15-delivery-goals-empty.jpg",
+    "captured_at": "2026-10-17T00:46:32.198Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/projects",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "专项空态",
+    "action": "只读打开专项",
+    "observation": "将专项解释为有限起止时间的攻坚目标，对应Epic；提供创建与帮助",
+    "strength": "用用途和例子区分专项与迭代、视图",
+    "risk": "同名项目概念跨平台不同；Trellis不得把业务项目、仓库和专项混成同一层",
+    "limits": "当前无专项；期限、负责人、进度汇总和跨任务交付未验证",
+    "maps": [
+      "U15"
+    ],
+    "privacy": "只有空态说明",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "b58fc17abd0e5b86ccfa8d241e51f812e05404600449f56601fbc41eca996b92",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI16-triage-empty",
+    "file": "evidence/ui/UI16-triage-empty.jpg",
+    "captured_at": "2026-10-17T00:47:34.550Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/triage",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "分拣台空态",
+    "action": "只读打开分拣台",
+    "observation": "待分拣任务计数为0；列表与详情双区；说明外部集成/访客任务先审核、定优先级，再接受或拒绝；责任配置单列",
+    "strength": "明确分拣对象是进入空间的工作，不是个人通知",
+    "risk": "配置责任和接受/拒绝都会影响真实工作，不能用作无副作用演示",
+    "limits": "无待分拣记录；未配置、创建、接受、拒绝、去重或暂缓",
+    "maps": [
+      "U18",
+      "U09"
+    ],
+    "privacy": "空态无外部来源数据",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "4cc81b17b0be8e611e8f8d00f3782f79d89263fb744a7a1f80892cad2e34e434",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI17-automation-empty",
+    "file": "evidence/ui/UI17-automation-empty.jpg",
+    "captured_at": "2026-10-17T00:48:40.841Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/automations",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "自动化空态",
+    "action": "只读打开自动化列表",
+    "observation": "说明由任务事件触发任务操作，并可组合Agent和第三方集成；仅新建入口，当前无规则记录",
+    "strength": "把事件、动作与执行者关联，适合解释自动化副作用",
+    "risk": "新建、启用或试运行均需独立授权；空列表不能证明恢复、去重或预算机制",
+    "limits": "未新建、启用、触发或测试规则；运行历史和失败补偿未验证",
+    "maps": [
+      "U19"
+    ],
+    "privacy": "空态无规则配置",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "8bae018949a88404ef38abad470d2655c441358a3ff6999a79147bfebbb1fc21",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI18-skills-empty",
+    "file": "evidence/ui/UI18-skills-empty.jpg",
+    "captured_at": "2026-10-17T00:49:39.118Z",
+    "url": "https://app.hifox.com/{org}/space/MAWE/skills",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "空间技能空态",
+    "action": "只读打开技能页",
+    "observation": "添加来源包括创建、URL导入和已连接电脑复制；页面处在空间上下文，空态文案同时提到组织中每个Agent可用",
+    "strength": "说明技能来源和复用用途",
+    "risk": "空间入口与组织可用文案存在范围解释疑问；只能列为待核实，不认定真实越权",
+    "limits": "未导入、复制、安装或发布技能；实际可见性与执行权限未验证",
+    "maps": [
+      "U13"
+    ],
+    "privacy": "空态无技能正文或来源地址",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "e1d55fcba9c37372a11b861737ff833f6ba4a5db1a365813b6a8ef848bf2897c",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI19-document-library-empty",
+    "file": "evidence/ui/UI19-document-library-empty.jpg",
+    "captured_at": "2026-10-17T00:50:40.264Z",
+    "url": "https://app.hifox.com/{org}/docs/space/MAWE",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "文档库私有与团队范围",
+    "action": "打开文档库并等待正在加载消失",
+    "observation": "我的文档与团队文档分列；我的文档空态明确只属于自己；文档集、快速添加、上传文件为独立入口",
+    "strength": "个人资料与团队共享结构可辨；加载与空态分开",
+    "risk": "从个人进入团队共享必须解释发布范围，不可把本地路径或个人草稿当团队链接",
+    "limits": "未新建、上传、共享或搜索真实文档；跨设备访问和Agent实际读取未验证",
+    "maps": [
+      "U01",
+      "U13"
+    ],
+    "privacy": "空文档库，无文件名或内容",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "9b573307b5735d501466469b782f91a95a4e42ab9b38d4974a80ce02f79734b9",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI20-integration-directory",
+    "file": "evidence/ui/UI20-integration-directory.jpg",
+    "captured_at": "2026-10-17T00:51:53.786Z",
+    "url": "https://app.hifox.com/{org}/settings/integrations",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "外部应用集成目录",
+    "action": "只读打开目录，不设置连接",
+    "observation": "任务管理、Git仓库、协作工具分组；入口区分设置与即将推出；部分文案描述双向更新、回链或消息发送",
+    "strength": "按实际工作对象分类，比单一厂商长列表更易理解",
+    "risk": "设置入口不证明已连接或功能可用；能力文案含写回和外发，不能当严格只读承诺",
+    "limits": "未打开凭据、授权、测试连接或发起同步；所有方向/范围能力仅是界面声明",
+    "maps": [
+      "U20",
+      "U21"
+    ],
+    "privacy": "只有目录与设置导航，无账户令牌或连接地址",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "0c8adc953df2f7162279b979db7378d18f4a249de7065ce156ef26f56f215fd5",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI21-git-and-collaboration-integrations",
+    "file": "evidence/ui/UI21-git-and-collaboration-integrations.jpg",
+    "captured_at": "2026-10-17T00:52:50.120Z",
+    "url": "https://app.hifox.com/{org}/settings/integrations",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "Git与协作工具集成分类",
+    "action": "只滚动目录到Git和协作分类",
+    "observation": "Git仓库与Git issues单独分类；协作平台与任务平台不同职责；部分未来平台显式即将推出",
+    "strength": "代码证据、任务同步、消息通道各自说明目的",
+    "risk": "回链、自动改状态、发送消息均为外部副作用；接入入口不可当成只读能力",
+    "limits": "未连接厂商、获取凭据、发消息或执行回写；当前只有目录声明",
+    "maps": [
+      "U20"
+    ],
+    "privacy": "无已连接账户信息",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "052466b03beffe77bc9abcffd413b504d05f71aaf3c65f3354ba1134f71cbf82",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1440,
+      "height": 900
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport"
+  },
+  {
+    "id": "UI22-computer-local-bridge-unavailable",
+    "file": "evidence/ui/UI22-computer-local-bridge-unavailable.jpg",
+    "captured_at": "2026-10-17T00:55:22.847Z",
+    "url": "https://app.hifox.com/{org}/computers",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "surface": "电脑与运行资源",
+    "action": "只读电脑列表，不连接或启动",
+    "observation": "本地桌面桥接能力在当前Chrome扩展访问环境中不可用，页面给出重启/更新说明；共享远程电脑为空；私有电脑列表显示可用徽标及多个Runtime图标",
+    "strength": "本地能力故障、共享空态与私有电脑清单分区呈现",
+    "risk": "电脑可用徽标不能推导Runtime已认证、目录可写或任务可执行；桌面桥接提示是本次浏览器访问上下文，不代表原生应用全局故障",
+    "limits": "未启动/刷新服务，未连接新电脑，未点击电脑详情、检查凭据或执行任何Runtime；主机名与所有者不交付",
+    "maps": [
+      "U11"
+    ],
+    "privacy": "裁切到本地桥接提示和共享空态，排除私有电脑名称与所有者",
+    "accepted": true,
+    "observation_level": "screenshot_and_structure",
+    "sha256": "1015bfbfc5b2488d41eb77e907c143e5af55b51338fce2840dabcf416c736883",
+    "viewport_unit": "CSS pixels (session record)",
+    "image_size": {
+      "width": 1076,
+      "height": 363
+    },
+    "image_size_unit": "encoded image pixels (JPEG SOF)",
+    "capture_kind": "viewport_crop"
+  },
+  {
+    "id": "UI23-members-role-scope",
+    "surface": "组织成员页",
+    "observation": "成员与外部账号分Tab，表头分别列角色、空间、加入时间；当前只有一个所有者。",
+    "action": "只读成员页，不打开邀请或操作菜单",
+    "strength": "组织角色与空间范围分列",
+    "risk": "单一所有者不能证明其他角色的隔离和撤权",
+    "limits": "未邀请、复制链接、查看个人详情、修改角色或验证无权场景；裁切截图超时，视觉未验证",
+    "maps": [
+      "U14",
+      "U21"
+    ],
+    "file": null,
+    "accepted": false,
+    "observation_level": "structure_only",
+    "url": "https://app.hifox.com/{org}/settings/people",
+    "captured_at": null,
+    "capture_time_precision": "date_only",
+    "privacy": "脱敏结构文字；无原始截图交付",
+    "observed_date": "2026-10-17"
+  },
+  {
+    "id": "UI24-keyboard-preferences",
+    "surface": "快捷键说明",
+    "observation": "发送快捷键适用于对话、评论和回复；命令菜单、移动任务和当前视图查找分别提供快捷键说明。",
+    "action": "只读说明，不更改选项、不录制快捷键",
+    "strength": "发送与换行行为可解释",
+    "risk": "说明不证明键盘、焦点、读屏完整可用",
+    "limits": "未修改偏好、未发送内容、未做读屏和全键盘审查；没有交付截图",
+    "maps": [
+      "U22",
+      "U21"
+    ],
+    "file": null,
+    "accepted": false,
+    "observation_level": "structure_only",
+    "url": "https://app.hifox.com/{org}/settings/shortcuts",
+    "captured_at": null,
+    "capture_time_precision": "date_only",
+    "privacy": "脱敏结构文字；无原始截图交付",
+    "observed_date": "2026-10-17"
+  },
+  {
+    "id": "UI25-agent-settings-form",
+    "surface": "组织设置创建Agent",
+    "observation": "空白表单将名称、职位/角色、所属空间、可见性、Runtime和工作方式分开；代码开发与日常办公可选，设计创意禁用。本次可见性显示共享，与UI05结构观察私有不同。",
+    "action": "打开未提交表单，无填写或选择；截屏后表单已不可见",
+    "strength": "用途、作用域与运行资源是独立字段",
+    "risk": "默认可见性差异需要复核，不能确定是入口策略、上下文继承或会话状态",
+    "limits": "未创建或修改；截图超时且复查时弹层已消失，不能归因于产品；不交付视觉结论。主机名、所有者和Agent名称不交付",
+    "maps": [
+      "U10",
+      "U14"
+    ],
+    "file": null,
+    "accepted": false,
+    "observation_level": "structure_only",
+    "url": "https://app.hifox.com/{org}/settings/agents",
+    "captured_at": null,
+    "capture_time_precision": "date_only",
+    "privacy": "脱敏结构文字；无原始截图交付",
+    "observed_date": "2026-10-17"
+  }
+]

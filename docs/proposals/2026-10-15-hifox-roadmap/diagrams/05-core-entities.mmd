@@ -1,0 +1,16 @@
+erDiagram
+  Project ||--o{ WorkItem : contains
+  WorkItem ||--o{ SourceRef : sourceRefs
+  WorkItem o|--o{ Session : optional_task
+  Project ||--o{ Session : owns
+  Session ||--o{ Run : executes
+  Run o|--o{ Evidence : optional_origin
+  Acceptance ||--o{ AcceptanceEvidence : links
+  Evidence ||--o{ AcceptanceEvidence : reused_by
+  AuthorizationGrant }o--o{ AuthorizationDecision : grant_refs
+  Run o|--o{ AuthorizationDecision : optional_origin
+  WorkItem { string id PK string ownerId_nullable string sourceRefs_array }
+  Session { string id PK string projectId string workItemId_nullable }
+  Run { string id PK string sessionId string workItemId_snapshot_nullable }
+  Evidence { string id PK string originRunId_nullable string sha256 }
+  AcceptanceEvidence { string acceptanceId FK string evidenceId FK }

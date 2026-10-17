@@ -1,0 +1,11 @@
+flowchart LR
+  Root["工程 root"] -->|包含| Task["任务目录 task.json"]
+  Task -->|现有父子引用| Related["其他任务目录"]
+  Task -->|同目录资料| Material["PRD 设计 检查记录"]
+  Jira["Jira来源引用"] -.关联.-> Task
+  Root -->|配置按root隔离| Profile["ACP配置"]
+  Root -->|会话归属| Session["本机会话"]
+  Session -.可选绑定.-> Task
+  Session -->|包含| Turn["回合与事件"]
+  Session -->|读取时记录| Snapshot["材料路径和读取时间"]
+  Snapshot -.引用.-> Material

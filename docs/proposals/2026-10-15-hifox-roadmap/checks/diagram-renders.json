@@ -1,0 +1,86 @@
+[
+  {
+    "file": "01-business-flow.svg",
+    "png": "01-business-flow.png",
+    "width": 1776,
+    "height": 4129,
+    "bytes": 320670
+  },
+  {
+    "file": "02-context-dfd.svg",
+    "png": "02-context-dfd.png",
+    "width": 2817,
+    "height": 824,
+    "bytes": 212895
+  },
+  {
+    "file": "03-layered-dfd.svg",
+    "png": "03-layered-dfd.png",
+    "width": 2258,
+    "height": 1257,
+    "bytes": 228620
+  },
+  {
+    "file": "03b-execution-dfd.svg",
+    "png": "03b-execution-dfd.png",
+    "width": 3635,
+    "height": 1264,
+    "bytes": 271126
+  },
+  {
+    "file": "04-reliable-operation.svg",
+    "png": "04-reliable-operation.png",
+    "width": 1782,
+    "height": 1708,
+    "bytes": 183227
+  },
+  {
+    "file": "05-core-entities.svg",
+    "png": "05-core-entities.png",
+    "width": 2041,
+    "height": 2420,
+    "bytes": 213648
+  },
+  {
+    "file": "05b-approval-testing.svg",
+    "png": "05b-approval-testing.png",
+    "width": 2459,
+    "height": 1160,
+    "bytes": 133798
+  },
+  {
+    "file": "06-run-state.svg",
+    "png": "06-run-state.png",
+    "width": 3494,
+    "height": 739,
+    "bytes": 185403
+  },
+  {
+    "file": "06b-run-recovery.svg",
+    "png": "06b-run-recovery.png",
+    "width": 3295,
+    "height": 831,
+    "bytes": 183017
+  },
+  {
+    "file": "07-roadmap-dependencies.svg",
+    "png": "07-roadmap-dependencies.png",
+    "width": 2373,
+    "height": 469,
+    "bytes": 107542
+  },
+  {
+    "file": "W01-task-workspace.svg",
+    "png": "W01-task-workspace.png",
+    "width": 2400,
+    "height": 1500,
+    "bytes": 256902
+  },
+  {
+    "file": "W02-review.svg",
+    "png": "W02-review.png",
+    "width": 2400,
+    "height": 1500,
+    "bytes": 231287
+  }
+]

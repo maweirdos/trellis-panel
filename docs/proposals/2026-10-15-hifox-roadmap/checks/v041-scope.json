@@ -1,0 +1,43 @@
+{
+  "version": "0.4.1",
+  "modified_existing": [
+    "09-data-and-control-model.md",
+    "13-test-catalog.md",
+    "14-review-resolution.md",
+    "README.md",
+    "Trellis-Requirements.html",
+    "Trellis-Requirements.md",
+    "checks/README.md",
+    "checks/file-manifest.json",
+    "checks/validation.json",
+    "checks/verify-artifacts.py",
+    "diagrams/06b-run-recovery.mmd",
+    "diagrams/06b-run-recovery.png",
+    "diagrams/06b-run-recovery.svg",
+    "model-contracts.json",
+    "state-transitions.json",
+    "test-cases.csv",
+    "test-cases.json"
+  ],
+  "allowed": [
+    "09-data-and-control-model.md",
+    "13-test-catalog.md",
+    "14-review-resolution.md",
+    "README.md",
+    "Trellis-Requirements.html",
+    "Trellis-Requirements.md",
+    "checks/README.md",
+    "checks/file-manifest.json",
+    "checks/validation.json",
+    "checks/verify-artifacts.py",
+    "diagrams/06b-run-recovery.mmd",
+    "diagrams/06b-run-recovery.png",
+    "diagrams/06b-run-recovery.svg",
+    "model-contracts.json",
+    "state-transitions.json",
+    "test-cases.csv",
+    "test-cases.json"
+  ],
+  "unrelated_changes": false,
+  "product_tests": "not_run"
+}

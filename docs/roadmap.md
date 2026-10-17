@@ -1,3 +1,32 @@
+# 基于当前项目的场景化 Roadmap
+
+当前入口：[场景化规划](proposals/2026-10-17-project-first-roadmap/01-main-roadmap.md) · [完整目录](proposals/2026-10-17-project-first-roadmap/README.md) · [HTML阅读版](proposals/2026-10-17-project-first-roadmap/Trellis-Project-Roadmap.html)。v0.6，2026-10-17。
+
+**实施记录（2026-10-17）**：A3（F01–F03 一致性）、B1/B2/B3、C1/C2/C3（新「本机开发工具」页）、D1、F04 已按蓝图实现并通过 typecheck/build/冒烟；同日完成桌面原生走查与真实使用验证（原生外框/亮色层级、只读 Git 实测一致、typecheck 真实运行退出码 0、状态工作流入口与接续交接端到端复制核对）；第二轮对照蓝图逐条复核补齐：接续说明补"本次变化（Git）/检查记录与未完成项/待确认问题"三块、peek 新增"资料引入（添加项目资料）"、PF-01 切工程 A→B→A 原生验证通过（含失败路径如实报错）；ACP 会话功能按要求未动。明细见 [roadmap_v2 第 1 章](roadmap_v2.md)。
+
+当前已经具备本地任务、材料阅读、Jira接入与ACP基础。按用户偏好，AI会话、阅读和本机使用靠前呈现；粗需求/旧任务接续、本机Git/运行/日志、检查与交接仍可按真实需要独立选择。文档说明各项收益、依赖、边界和完成标准，不锁定唯一主线、最终排期或实施授权。
+
+旧Hifox研究留作证据参考；64项能力覆盖、旧48条FR、R0–R5及旧验收目录不再是现行必须完成的目标。见[范围取舍](proposals/2026-10-17-project-first-roadmap/04-scope-and-reference-decisions.md)。当前静态断点仅列候选修正及验证方法；本轮未修改产品代码或任务状态。
+
+<details>
+<summary>历史路线和工程记录（原文保留；旧入口与阶段承诺已由v0.6取舍替代）</summary>
+
+> **v0.4.1 需求合同修订：** [审查修复对照](proposals/2026-10-15-hifox-roadmap/14-review-resolution.md)统一逐需求审批、基数、状态、R1手工/R4集成和测试门槛；业务UI仍待实测，未批准实施。
+
+## 2026-10-17：v0.5.1独立复核修正
+
+修正UI03视口元数据、区分视口/裁切后图片尺寸；U08任务对话仅结构，独立会话截图不作其视觉覆盖；UXAC按子断言分阶段，完整UXAC01在R3/R4核验，不被R0静态夹具提前关闭。未新增调研或改动产品代码。见[复核记录](proposals/2026-10-15-hifox-roadmap/14-review-resolution.md)与[阶段适用](proposals/2026-10-15-hifox-roadmap/16-ui-derived-design-contracts.md)。
+
+
+## 2026-10-17：Hifox登录网页实测与需求评审稿v0.5
+
+保留既有路线图、v0.4.1可靠执行合同及R0–R5；新增19张经目检网页截图、25条观察和U01–U22部分覆盖矩阵。完整48条FR、15项NFR、数据流/ER/状态/权限、22个工作包与估算依赖保留；补12条UX验收和2张逻辑图、1张线框，总计15张可编辑图。
+
+当前入口：[评审目录](proposals/2026-10-15-hifox-roadmap/README.md)、[实测审查](proposals/2026-10-15-hifox-roadmap/15-hifox-uiux-audit.md)、[UI设计与验收](proposals/2026-10-15-hifox-roadmap/16-ui-derived-design-contracts.md)。研究仅低风险浏览；原生、双账号权限、跨设备、runtime执行和集成写入仍未验证。244条既有用例与12条UX增补均not_run。本轮仅文档更新，不实施代码或提交/推送。
+
+
+> **深入需求增补（2026-10-16）：[Trellis 完整需求与数据控制模型](proposals/2026-10-15-hifox-roadmap/07-product-requirements.md)。** 沿用R0–R5，含48条需求、追溯/验收、可编辑流程图/DFD/ER及补证限制；未实施产品代码，Hifox原生应用实测尚缺。
+
 # 产品化 Roadmap（持续检索沉淀）
 
 > **当前产品路线图入口（2026-10-15）：[基于 HiFox 全量公开文档的 Trellis Roadmap](proposals/2026-10-15-hifox-roadmap/README.md)。** 新稿按真人协作、手动 Agent、受控自动化分阶段，含能力地图、来源覆盖和现状边界；具体实现留待讨论。下文继续保留历史工程实现记录及冻结事项，不因新稿改变其状态。
@@ -64,3 +93,6 @@
 - 全站 i18n（当前中文单语，无需求不启动）— 冻结
 - 命令面板插件化 / 自定义命令 — 冻结
 - 停止点并排多分支视图（当前整段下潜切换已覆盖核心需求）— 冻结
+
+
+</details>

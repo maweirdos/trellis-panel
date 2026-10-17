@@ -1,0 +1,134 @@
+[
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\09-data-and-control-model.md",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\09-data-and-control-model.md",
+    "sha256": "d9e3ba19285862d8dac17274205f0b3e083c0f72bf7afd9468ec9609cf7c80b6",
+    "bytes": 27391
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\13-test-catalog.md",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\13-test-catalog.md",
+    "sha256": "f8f9c82ce619387ca0f82bb70fe1ebe9f8f6d7701036244ab2eae6100b8a275e",
+    "bytes": 45753
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\14-review-resolution.md",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\14-review-resolution.md",
+    "sha256": "427962d72024c7068fe1ed734e6b4d97f42510b0ea0b73184d75bea59fc7b897",
+    "bytes": 5337
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\checks\\README.md",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\checks\\README.md",
+    "sha256": "be3295a121e14f6c664dc8ca97231d6c793c6d77e6407b5676239b52e627f4d9",
+    "bytes": 1012
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\checks\\screenshots\\v041-cover.png",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\checks\\screenshots\\v041-cover.png",
+    "sha256": "45f3eb91f52032c0dd019a1ef2e04f3143f27c7d3f7ebc416cb9fb3e5d42a311",
+    "bytes": 133945
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\checks\\v041-browser-layout.json",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\checks\\v041-browser-layout.json",
+    "sha256": "16fccdd4cc0c2db25358e53f31859b97921fd486100209adc5b54a6fb30c70c4",
+    "bytes": 169
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\checks\\v041-diagram-renders.json",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\checks\\v041-diagram-renders.json",
+    "sha256": "5c0b6c3800cdca40fab87a4f456782f9f02f78344eb0e9a8e389c4e3b11f07b8",
+    "bytes": 141
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\checks\\v041-scope.json",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\checks\\v041-scope.json",
+    "sha256": "7a4200c2295d8c5250506b6b8b430aa85dcfd5dffc79fd57aa74e65044cab9c2",
+    "bytes": 1192
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\checks\\v041-visual-review.md",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\checks\\v041-visual-review.md",
+    "sha256": "f95d29165718197f144ac1596f7faea4c208fce0b912b55c15731d6952453040",
+    "bytes": 721
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\checks\\validation.json",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\checks\\validation.json",
+    "sha256": "cf8b04d916f4b6519e028c3113ea71e62272b7ac12dfd70aa4e8a4a84ba329f7",
+    "bytes": 31456
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\checks\\verify-artifacts.py",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\checks\\verify-artifacts.py",
+    "sha256": "73383a66f85758887a8c9dd6108bafee062c9b1cea003edecf5621341d05c41a",
+    "bytes": 10153
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\diagrams\\06b-run-recovery.mmd",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\diagrams\\06b-run-recovery.mmd",
+    "sha256": "fae6c3edb22c1f5a674d5e7d4fc763c078978e850d45b53de782dc51f21b955e",
+    "bytes": 891
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\diagrams\\06b-run-recovery.png",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\diagrams\\06b-run-recovery.png",
+    "sha256": "f912b654acf0ad47eff2b3a1782e89565c11a67f25bf156e85276072762bb1a4",
+    "bytes": 202157
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\diagrams\\06b-run-recovery.svg",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\diagrams\\06b-run-recovery.svg",
+    "sha256": "8d38e5fd5aafd4ef0c224d29cab5d9b4a8dbe7aa7f96689ebae6bde1cae64bde",
+    "bytes": 38107
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\model-contracts.json",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\model-contracts.json",
+    "sha256": "6d7d2a1426d742c5cb5cc93b40eee9c80f8b21f9c3227ea8729db71beed894cd",
+    "bytes": 3183
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\README.md",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\README.md",
+    "sha256": "eaa916a3681a8093fab89f912d97db80d680dfedd120b6fd30c3ca20c9f00b59",
+    "bytes": 5707
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\state-transitions.json",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\state-transitions.json",
+    "sha256": "65f02eb7ade03396635cbbda27aff8dcacc2d996b307422e21f34dbdc1743341",
+    "bytes": 7928
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\test-cases.csv",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\test-cases.csv",
+    "sha256": "85f28f49722087b8c232404a73bae32c4e5a2b46f3a975d9d1c134e67251c622",
+    "bytes": 46590
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\test-cases.json",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\test-cases.json",
+    "sha256": "30b6ae155c2ae188410e9b31d2ced3cda43891e5888d6a37b1da4b896eb3c1d1",
+    "bytes": 88239
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\Trellis-Requirements.html",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\Trellis-Requirements.html",
+    "sha256": "e80411388095a60129590fda0096d714a447d22d2c4efc95b7a4625e716e61ad",
+    "bytes": 1005484
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\hifox-roadmap-v0.4.1\\Trellis-Requirements.md",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\proposals\\2026-10-15-hifox-roadmap\\Trellis-Requirements.md",
+    "sha256": "ab61bc314ab9d4c852d8419197db395b7e384b42721d8234815c6c3c2da113a1",
+    "bytes": 256426
+  },
+  {
+    "source": "C:\\Users\\Maweirdos\\Documents\\Codex\\2026-10-17\\task\\deliverables\\roadmap-v041.md.updated",
+    "target": "D:\\my_demo\\trellis-panel\\docs\\roadmap.md",
+    "sha256": "ceba55f497fc220166e43bb3f5242bcfe64b03d161d30388f2b7dc1537c1f2f0",
+    "bytes": 6975
+  }
+]

@@ -33,6 +33,7 @@ const ModelsPage = lazy(() => import('../../pages/Models').then((m) => ({ defaul
 const GatewayPage = lazy(() => import('../../pages/Gateway').then((m) => ({ default: m.GatewayPage })))
 const ChatPage = lazy(() => import('../../pages/Chat').then((m) => ({ default: m.ChatPage })))
 const AcpConsolePage = lazy(() => import('../../pages/AcpConsole').then((m) => ({ default: m.AcpConsolePage })))
+const DevToolsPage = lazy(() => import('../pages/DevToolsPage').then((m) => ({ default: m.DevToolsPage })))
 const TaskDetail = lazy(() => import('../../pages/TaskDetail').then((m) => ({ default: m.TaskDetail })))
 
 function PageLoading(): JSX.Element {
@@ -58,6 +59,7 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   models: <ModelsPage />,
   gateway: <GatewayPage />,
   chat: <ChatPage />,
+  devtools: <DevToolsPage />,
   settings: <SettingsPage />
 }
 

@@ -1,0 +1,240 @@
+[
+  {
+    "id": "PF-01",
+    "title": "项目与当前对象连续",
+    "scenario": "打开工程知道在做什么",
+    "work_packages": [
+      "A1"
+    ],
+    "implementation_state": "已有实现，收尾验证",
+    "behavior": "切工程、开任务、展开和返回均保留正确root及来源；旧响应不能进入新工程。",
+    "evidence": [
+      "E05",
+      "E06",
+      "E08",
+      "E09"
+    ],
+    "acceptance_ids": [
+      "PA-01"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-02",
+    "title": "材料阅读与变更可理解",
+    "scenario": "阅读PRD/设计/清单",
+    "work_packages": [
+      "A1"
+    ],
+    "implementation_state": "已有实现，收尾验证",
+    "behavior": "复用现有阅读与差异；缺失/坏文件保留原文与原因；新文件版本由用户选择，不静默替换正在读的内容。",
+    "evidence": [
+      "E01",
+      "E07",
+      "E31",
+      "E33"
+    ],
+    "acceptance_ids": [
+      "PA-02"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-03",
+    "title": "状态入口反馈真实",
+    "scenario": "知道任务是否真的改变",
+    "work_packages": [
+      "A3"
+    ],
+    "implementation_state": "静态定位的现有断点",
+    "behavior": "按当前Trellis生命周期权威处理状态；不支持的写入不乐观伪装成功。阶段记录、Agent结果、归档位置分别说明。",
+    "evidence": [
+      "E09",
+      "E10",
+      "E20",
+      "E21",
+      "E22"
+    ],
+    "acceptance_ids": [
+      "PA-03"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-04",
+    "title": "创建结果与资料落盘一致",
+    "scenario": "把问题变成本地任务",
+    "work_packages": [
+      "A3",
+      "B1"
+    ],
+    "implementation_state": "现有不同路径需收敛合同",
+    "behavior": "普通、AI计划、Jira创建分别显示真实生成物；已确认的计划资料能在该任务中读到。复用现有来源幂等与中断恢复，不覆盖用户修改。",
+    "evidence": [
+      "E10",
+      "E11",
+      "E12",
+      "E13",
+      "E14",
+      "E15"
+    ],
+    "acceptance_ids": [
+      "PA-04"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-05",
+    "title": "有边界地看过程",
+    "scenario": "看哪些材料确实被组装/输出",
+    "work_packages": [
+      "A1",
+      "B2"
+    ],
+    "implementation_state": "已有观测，补使用验证",
+    "behavior": "保留真实回执和来源/任务范围；计划清单、assembled、emitted、模型遵守分开。Flow模板事件不冒充外部Trellis步骤全部完成。",
+    "evidence": [
+      "E01",
+      "E07",
+      "E18",
+      "E26"
+    ],
+    "acceptance_ids": [
+      "PA-05"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-06",
+    "title": "Codex与Claude日常可用收尾",
+    "scenario": "在面板实际使用已有Agent",
+    "work_packages": [
+      "A2"
+    ],
+    "implementation_state": "已批准任务的余项",
+    "behavior": "继续复用固定版acpx和当前配置/权限/停止/恢复；完成原生IME、配置、草稿切换及最终视觉，保留已通过核心矩阵。",
+    "evidence": [
+      "E03",
+      "E04",
+      "E18",
+      "E19"
+    ],
+    "acceptance_ids": [
+      "PA-06"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-07",
+    "title": "澄清与人工确认沿用项目流程",
+    "scenario": "粗需求变清楚再开工",
+    "work_packages": [
+      "B1"
+    ],
+    "implementation_state": "建议的最小连续体验",
+    "behavior": "将原问题、本地相关资料、规则、待问问题放回原任务材料；人工确认沿现有工作流/对话，不默认增加多人审批后端。",
+    "evidence": [
+      "E01",
+      "E02",
+      "E14",
+      "E15"
+    ],
+    "acceptance_ids": [
+      "PA-07"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-08",
+    "title": "旧任务接续与统一交接",
+    "scenario": "隔几天或换工具继续",
+    "work_packages": [
+      "B2",
+      "B3"
+    ],
+    "implementation_state": "已有材料/关系，待样本验证增量",
+    "behavior": "复用PRD/设计/检查记录、父子任务与确定性交接包；说明上次结果、本次增量、资料读取时间及缺失；收敛过时交接指令。",
+    "evidence": [
+      "E01",
+      "E16",
+      "E17",
+      "E18",
+      "E28"
+    ],
+    "acceptance_ids": [
+      "PA-08"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-09",
+    "title": "工程代码只读查看",
+    "scenario": "开发中定位改动",
+    "work_packages": [
+      "C1"
+    ],
+    "implementation_state": "有项目依据，部分服务可复用",
+    "behavior": "使用现有Git读取/差异基础；标当前仓库、基线、暂存/未暂存和已有脏改动的归因限制；新只读入口无写操作。",
+    "evidence": [
+      "E05",
+      "E24",
+      "E33"
+    ],
+    "acceptance_ids": [
+      "PA-09"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-10",
+    "title": "有归属的工程运行与日志",
+    "scenario": "少切终端看多个工程",
+    "work_packages": [
+      "C2",
+      "C3"
+    ],
+    "implementation_state": "有项目依据，尚未形成完整服务组",
+    "behavior": "先复用单工程命令输出/中止，再补明确目录、进程归属、日志来源、退出码与可选就绪检查；多工程依赖在单工程可靠后增加。",
+    "evidence": [
+      "E05",
+      "E25"
+    ],
+    "acceptance_ids": [
+      "PA-10"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  },
+  {
+    "id": "PF-11",
+    "title": "做完能核实并交给下一次",
+    "scenario": "检查、收尾和最小交接",
+    "work_packages": [
+      "D1"
+    ],
+    "implementation_state": "已有记录，待真实使用试点",
+    "behavior": "汇总本次变化、实际检查、未覆盖、已知问题、继续方式。归档遵循项目命令，Jira/外发单独决定；现有文档/仓库/沟通工具优先。",
+    "evidence": [
+      "E01",
+      "E02",
+      "E07",
+      "E17",
+      "E23",
+      "E27"
+    ],
+    "acceptance_ids": [
+      "PA-11"
+    ],
+    "priority": "AI会话、阅读与本机使用靠前呈现为用户偏好；具体任务与最终排期以后选择",
+    "commitment": "proposal_or_existing_task_closure_not_new_implementation_approval"
+  }
+]

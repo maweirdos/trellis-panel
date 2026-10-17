@@ -1,0 +1,11 @@
+{
+  "version": "0.4",
+  "bodyWidth": 1692,
+  "brokenAnchors": 0,
+  "caseRows": 244,
+  "hash": "#doc-13",
+  "svg": 12,
+  "tables": 96,
+  "viewport": 1692,
+  "scope": "document artifact only; no Hifox business UI or product tests"
+}

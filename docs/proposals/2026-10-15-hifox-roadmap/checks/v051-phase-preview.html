@@ -1,0 +1,45 @@
+<!doctype html><html lang=zh-CN><meta charset=utf-8><title>v0.5.1阶段子断言版式检查</title><style>*{box-sizing:border-box}html{scroll-behavior:auto}body{margin:0;background:#f3f6f4;color:#22342c;font:16px/1.75 'Microsoft YaHei','Segoe UI',sans-serif}header{padding:42px max(30px,calc((100vw - 1220px)/2));background:#153f30;color:white}header h1{font-size:34px;margin:0 0 12px}header p{max-width:1000px;margin:8px 0}.badge{display:inline-block;border:1px solid #adcfbd;padding:2px 10px;border-radius:5px;margin:3px}nav{max-width:1240px;margin:28px auto;padding:24px 32px;background:white;border:1px solid #d5e0d9}nav a{display:inline-block;margin:5px 16px 5px 0}main{max-width:1240px;margin:auto;padding:0 0 60px}article{background:#fff;border:1px solid #d5e0d9;border-radius:8px;padding:34px 38px;margin:28px 0;overflow-wrap:anywhere}h1{font-size:29px;line-height:1.35}h2{font-size:23px;margin-top:36px;padding-top:12px;border-top:1px solid #dce5df}h3{font-size:19px;margin:26px 0 10px;color:#165c3c}a{color:#12633f}code{font-size:.92em;background:#eef3ef;padding:2px 4px;border-radius:3px}pre{white-space:pre-wrap;background:#f0f4f1;padding:18px}.table-wrap{overflow:auto;margin:20px 0}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.65;table-layout:auto}th,td{border:1px solid #cbd8d0;padding:10px 12px;vertical-align:top;min-width:90px}th{background:#eaf2ec;text-align:left}td:first-child{min-width:110px}tr:nth-child(even){background:#f8faf8}blockquote{margin:18px 0;border-left:4px solid #4c8a64;background:#f0f6f1;padding:12px 20px}.figure{display:block;width:100%;height:auto;margin:20px auto}.diagram{overflow:auto;min-height:100px;background:#fff}.diagram svg{max-width:none!important;display:block;margin:auto;min-width:900px}.note{padding:15px 20px;background:#fff5db;border:1px solid #d6b97f;border-radius:6px}footer{max-width:1200px;margin:20px auto;color:#53685b}img{max-width:100%} @media(max-width:800px){header{padding:28px 20px}header h1{font-size:27px}main{padding:0 12px}article{padding:20px 16px}nav{margin:16px 12px;padding:18px}table{min-width:800px}}@media print{body{background:#fff;font-size:10pt}header{background:white;color:#123e2b;padding:0;break-after:page}nav{break-after:page}main{max-width:none}article{border:0;padding:0;break-before:page}h2,h3{break-after:avoid}tr{break-inside:avoid}table{font-size:8pt}a{color:#123e2b;text-decoration:none}.diagram svg{min-width:0;max-width:100%!important}.table-wrap{overflow:visible}footer{display:none}}</style><body><main><article><h2>5 实施顺序与估算影响</h2>
+<p>本轮不新增阶段或功能主编号。W00/W01只承接下表可独立成立的R0静态展示、本地空态与基础行为子断言；不能据此将跨阶段UXAC整项判为通过。<strong>完整UXAC01必须在R3/R4以实际Run及验收投影核验，禁止用R0静态夹具提前关闭。</strong> 其余用例也按子断言的适用阶段分别留证，尚未到达或未实施的子断言继续not_run；整项只有全部适用断言通过才可关闭。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>用例</th>
+<th>R0可承接的子断言</th>
+<th>后续阶段、依赖和工作包</th>
+<th>整项关闭边界</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>UXAC01</td>
+<td>R0 W00/W01：仅业务/执行/验收标签分组的静态展示</td>
+<td>R3 W12/W13：实际Run、输入版本、业务状态独立；R4 W15：测试/验收事实投影和联动</td>
+<td>R3/R4真实Run及验收投影；R0静态夹具不得关闭完整用例</td>
+</tr>
+<tr>
+<td>UXAC02</td>
+<td>R0 W01：本地桥缺失提示、未知文案与材料仍可读</td>
+<td>R1 W04/W05：真人共享无需运行权；R3 W12：实时分层预检、时效、禁用开始及修复入口</td>
+<td>适用R1/R3子断言完成后；静态在线/错误图不等于runtime就绪</td>
+</tr>
+<tr>
+<td>UXAC04</td>
+<td>R0 W01：本地无记录、加载失败、缓存保留的静态/本地断言</td>
+<td>R1 W04：无权/共享离线缓存；R2 W10：真实视图筛选零结果及不泄漏对象</td>
+<td>按各场景真实数据/权限验证，R2覆盖完整组合；不能只跑空态夹具</td>
+</tr>
+<tr>
+<td>UXAC06</td>
+<td>R0 W01：本地标题必填、草稿、受控创建与重复提交</td>
+<td>R1 W05：正式分配/真人门槛；R2 W10：任务类型和管理权限（启用分类时）</td>
+<td>各适用阶段分别保留结果；R0不关闭R1正式门槛或R2分类行为</td>
+</tr>
+<tr>
+<td>UXAC11</td>
+<td>R0 W01：项目/材料定位、草稿、辅助区收起与正文可读</td>
+<td>R2 W10：共享视图临时呈现不覆盖；R3 W14：真实Session/Run、权限和进程无隐式变化</td>
+<td>到R3真实会话/运行断言核验；静态线框或无后端夹具不得提前关闭</td>
+</tr>
+</tbody></table></div>
+<p>R1承担UXAC03/07/12适用的手工交接、共享作用域与回执；UXAC12中的实际运行、停止和租约断言仍依赖R3。W10承担视图/计划细化；W12–14承担环境/执行；W15–17承担集成；W18–19承担自动化。不得让自动化先于共享身份、版本决定、停止确认和外部账本。本轮所有244条原产品用例及12条UX补充均not_run，文档一致性检查与静态夹具都不是产品阶段退出证据。</p>
+<p>19张截图减少入口、空态和信息层次的不确定性，未降低双账号/两设备、runtime差异和集成故障的工程成本。W00现有2/3/5人日范围中复核本轮证据，后续估算前先扣除当前项目任务已经完成的实现，若作用域/预检后端合同缺失则重新估算W04/W12；不擅自调整总人日或承诺日期。2开发+兼职产品/测试和外部审批不计入的假设仍成立。</p>
+</article></main></body></html>

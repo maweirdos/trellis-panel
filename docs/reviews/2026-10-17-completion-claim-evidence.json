@@ -1,0 +1,199 @@
+{
+  "baseline": {
+    "at": "2026-10-17T07:24:26.173087+00:00",
+    "head": "e07cdc003a64d0289e071b98d3856753cbd4bf73",
+    "roadmap_sha256": "6c03bfeb9e262292c94426ff591d1d6952950500dd858fe925aa981ee14d3a77",
+    "roadmap_bytes": 126725,
+    "initial_status_records": 214
+  },
+  "source_hashes": {
+    "src/renderer/src/my/store.ts": "85ec22d9d8367a064f28b86e1bc66fe7c27a4093c53f95eef90dcf568d96fecf",
+    "src/renderer/src/store/slices/ui.ts": "c4ca57bf2e0f54a5ad8b3883f9daf12a4d25398ffb85ab4dddece070935c5e29",
+    "src/renderer/src/reader/use-document-reader.ts": "9454d3c858185bf2edeb4db5179f66998242c79fc0988a38c445aad7d710eb03",
+    "docs/roadmap_v2.md": "6c03bfeb9e262292c94426ff591d1d6952950500dd858fe925aa981ee14d3a77",
+    ".trellis/tasks/10-16-project-workspace-uiux/validation.md": "c3176cc4bb5dfba91f8c824402d352bdc1929caadd1437b45687f769f376d9f7",
+    "src/main/services/documents/controller.ts": "71fa7f03f925c254fcc4001376073de49d9a1c77abe95ea3f7e9cbfe376c4c6c",
+    "src/renderer/src/store/slices/reader.ts": "6b122e575e0a0d38b4605ef3c6303a9592cdff38b88aea1d195055c18f73ce85",
+    "src/main/services/documents/diff-service.ts": "335729db5438e9e092e81ee6712cf3354de70494d1b604e77ec005441d5c1090",
+    "src/renderer/src/my/adapter.ts": "bfd19cbad84fbc763bb2b195eb0ce2f22d4afec1e376fdf66e55417c4c4973dd",
+    "src/main/services/scan.ts": "73fd544dee4690598fabb30e7bdfb0145cbc8acd5c14af9ce924b6f20ea1330f",
+    "src/main/ipc/tasks.ts": "ae9e58cce09fa38c917ca6d1164994abae42f35730f5ca12a9a91b55e508ccad",
+    "src/renderer/src/my/pages/WorkItemsPage.tsx": "fd882439d3f7da8d2d487f1edab075ae65c04458faf7e9d81d36a53f95820397",
+    "src/main/state.ts": "a819a3461dda288230938a62af3ce1582e6b45494dc055fb4e3b04cc7f156629",
+    "src/main/ipc/planning.ts": "5cab99990feddc6803e76966b8499e981c64d7e3f20863472f8ad45372f4c74b",
+    "src/renderer/src/components/PlanningModal.tsx": "f0a05ed97e5664b4989343ba7b73cc3d30c4a0b3553ff396b1b01fc49146d52c",
+    "src/renderer/src/my/pages/work-items/CreateIssueModal.tsx": "e8bd6cfb84f0b967c79dbea471a61aee3aa517dccf8af8bb23742a081c806602",
+    "src/main/services/local-task/index.ts": "97e52ab3ef2dfa4fa43f1bc7602c705f34f19b55a388c09105228602a0d2c112",
+    "src/renderer/src/observation/ObservationPanel.tsx": "53aafb22c09a1413f298811ed26eeb9377095909df5e916ab6a9a690da05f0d1",
+    "src/renderer/src/observation/use-observation-scope.ts": "d1f742137c34500efbd8dfb3d22cce7df34fb8e72621b1b76080ffb0888b491c",
+    "src/main/services/flow-run.ts": "549a852f6a7bae160b4fa3d74672f4c9f85ffba0388ce73ecbb270786260bd3f",
+    "src/main/services/acp.ts": "a1cd13d20b9c2c1faa886be557b6f4752d2233da495b79774b5a69a9aaa570f0",
+    ".trellis/tasks/10-16-acp-runtime-foundation/validation.md": "b921b193a976ad603b47536aab22a54badd86ff3ad5371d286c20f7430902aac",
+    "src/renderer/src/my/pages/IssuePeek.tsx": "8bacd15bef2859e322de2e13afa0542b7363ab8a9b26441b116d27b9e22b8970",
+    "src/main/services/handoff.ts": "1f4521c18e1b7d3a10adf3bfeaa89b18876144e1173fb80c9ffc593ce8ba0b25",
+    "src/main/services/devtools-git.ts": "c893562252f4132c3ebcabf15741846d31c5254a74d143cb7188ec576f140c09",
+    "src/renderer/src/my/pages/DevToolsPage.tsx": "6ad12bf75620c8b463a3077dab30cbf44121e7b14dbd66bd28902cdfb60fbb9b",
+    "src/main/services/git.ts": "cff66ea87c800cefe61f68c6a93c2cfdee7f3652d06fc008f07a84a40b19a721",
+    "src/main/ipc/devtools.ts": "c8848f3a33d332c016f14ecfc1f35220eb598bac4fb4724e4adf4fd23335ba51",
+    "src/main/services/dev-run.ts": "e6d12613ac6e87c1f837110fd8dc39371d4b5bd3cc6ab88703952804fe4cb1bb",
+    "src/renderer/src/pages/TaskDetail.tsx": "dcd883916f75a9fb41516c1eb958a1412e80a894b177a414d41f22dbdd6c1793",
+    "src/main/ipc/jira.ts": "0ca8f23b52343d3fb20029c421c94be0df2d1e47cfcd575035ad09cc2396ca4d"
+  },
+  "probes": {
+    "boundary": "All product imports transpiled from current source. Every filesystem/transport/process dependency used by the probes is supplied in memory. No real process, Agent, business file or external operation.",
+    "source_hashes": {
+      "src/main/services/dev-run.ts": "e6d12613ac6e87c1f837110fd8dc39371d4b5bd3cc6ab88703952804fe4cb1bb",
+      "src/renderer/src/my/store.ts": "85ec22d9d8367a064f28b86e1bc66fe7c27a4093c53f95eef90dcf568d96fecf",
+      "src/main/services/handoff.ts": "d69fefe0a150d9edb2552871addc60e380b18c88869fc679f2922f6e5f1b85f7"
+    },
+    "records": [
+      {
+        "id": "P01",
+        "case": "stopAll before any process exit event",
+        "result": {
+          "stopped": 1,
+          "stateStill": "running",
+          "stopSpawn": "taskkill"
+        },
+        "observation": "stopped counts a request while run remains running; UI success wording is separately located in source",
+        "verification": "isolated source execution; no OS process started"
+      },
+      {
+        "id": "P02",
+        "case": "declared script containing spaces",
+        "result": {
+          "command": "cmd.exe",
+          "args": [
+            "/d",
+            "/s",
+            "/c",
+            "npm run task with spaces"
+          ]
+        },
+        "observation": "Windows shell command passes the script name without quoting; no shell execution performed",
+        "verification": "captured arguments only"
+      },
+      {
+        "id": "P03",
+        "case": "declared script containing shell metacharacter",
+        "result": {
+          "command": "cmd.exe",
+          "args": [
+            "/d",
+            "/s",
+            "/c",
+            "npm run dev & extra"
+          ]
+        },
+        "observation": "metacharacter remains in cmd command text; not executed and not claimed as an exploited vulnerability",
+        "verification": "captured arguments only"
+      },
+      {
+        "id": "P04",
+        "case": "ordinary create returns conflict while same-name task exists",
+        "result": {
+          "apiResult": {
+            "ok": false,
+            "error": "same task directory exists"
+          },
+          "returnedId": "old-task",
+          "toasts": []
+        },
+        "observation": "existing task id is returned despite backend ok=false; modal treats any id as success",
+        "verification": "real store function with controlled transport and in-memory store"
+      },
+      {
+        "id": "P05",
+        "case": "ordinary create warns PRD was not written",
+        "result": {
+          "apiResult": {
+            "ok": true,
+            "dirName": "new-dir",
+            "files": [
+              "task.json"
+            ],
+            "warnings": [
+              "prd.md fixture write failed"
+            ]
+          },
+          "returnedId": "created-task",
+          "toasts": []
+        },
+        "observation": "warning/files are dropped by this store path; caller receives only id",
+        "verification": "real store function with controlled transport"
+      },
+      {
+        "id": "P06",
+        "case": "PRD exists but optional content read fails",
+        "result": {
+          "prdContent": null,
+          "issues": [],
+          "files": [
+            "AGENTS.md",
+            ".trellis/workflow.md",
+            ".trellis/tasks/t/prd.md",
+            ".trellis/tasks/t/design.md",
+            ".trellis/tasks/t/implement.md",
+            ".trellis/tasks/t/implement.jsonl",
+            ".trellis/tasks/t/check.jsonl"
+          ],
+          "statesNoKnownReadIssue": true,
+          "containsPrdOriginal": false
+        },
+        "observation": "read failure becomes null and is absent from issues even with explicit include intent; only existence is checked for file list",
+        "verification": "real handoff source with in-memory exists/read fault"
+      },
+      {
+        "id": "P07",
+        "case": "default handoff summary fields",
+        "result": {
+          "hasTitle": true,
+          "hasIntent": true,
+          "hasPriorOutcome": false,
+          "hasCheckResults": false,
+          "hasNextStep": false
+        },
+        "observation": "default handoff is an index and intent, not a filled outcome/check/next-step summary; equivalence via existing documents still needs usage acceptance",
+        "verification": "generated fixture text only"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "id": "TC01",
+      "command": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.node.json",
+      "exit_code": 0,
+      "result": "通过；类型检查，仅noEmit，不代表运行行为通过"
+    },
+    {
+      "id": "TC02",
+      "command": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.web.json",
+      "exit_code": 0,
+      "result": "通过；类型检查，仅noEmit，不代表原生交互通过"
+    },
+    {
+      "id": "SM01",
+      "command": "node scripts/smoke/navigation.mjs",
+      "exit_code": 1,
+      "result": "环境阻断：esbuild读取临时目录祖先路径被拒，未进入断言；不是产品失败/通过"
+    },
+    {
+      "id": "SM02",
+      "command": "node scripts/smoke/task-presentation.mjs",
+      "exit_code": 1,
+      "result": "同上：环境阻断；没有申请额外访问权限"
+    },
+    {
+      "id": "IP01",
+      "command": "独立内存依赖执行当前dev-run/store/handoff源码",
+      "exit_code": 0,
+      "result": "7条受控观察已记录；不启动真实进程、Agent、网络或业务写入；不称原生复现"
+    }
+  ],
+  "limits": [
+    "No native UI rerun",
+    "No external Agent, paid work, process start/stop or business writes",
+    "Existing smoke environment failures are not product assertion failures",
+    "No private Agent conversation directories read"
+  ]
+}

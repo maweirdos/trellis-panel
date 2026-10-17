@@ -1,0 +1,1484 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>基于当前项目的场景化 Roadmap v0.6</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:#25382e;background:#f4f6f4;font:16px/1.9 'Microsoft YaHei','Segoe UI',sans-serif}header{background:#174732;color:#fff;padding:40px max(24px,calc((100vw - 1120px)/2))}header h1{font-size:32px;line-height:1.5;margin:0 0 12px}header p{margin:8px 0;max-width:1050px}.meta{opacity:.85;font-size:14px}nav,main{max-width:1180px;margin:24px auto}nav{padding:24px;background:#fff;border:1px solid #d4dfd6}nav a{display:inline-block;margin:4px 22px 4px 0}article,details{background:#fff;border:1px solid #d4dfd6;border-radius:8px;margin:24px 0;padding:32px 36px;overflow-wrap:anywhere}details{padding:0}summary{padding:22px 30px;font-size:20px;font-weight:700;cursor:pointer;background:#edf4ee}details .content{padding:8px 36px 32px}h1{font-size:28px;line-height:1.5}h2{font-size:23px;margin:34px 0 14px;padding-top:12px;border-top:1px solid #dce5df}h3{font-size:20px;color:#165a38}p{margin:14px 0}a{color:#12633f}code{font-size:.9em;background:#edf3ee;padding:2px 4px;border-radius:3px}pre{white-space:pre-wrap;background:#f1f5f1;padding:16px}.table-wrap{overflow:auto;margin:22px 0}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.8}th,td{border:1px solid #cad8ce;padding:10px 12px;vertical-align:top;min-width:105px}th{background:#e7f0e9;text-align:left}tr:nth-child(even){background:#f8faf8}blockquote{margin:20px 0;padding:14px 20px;background:#fff5dd;border-left:4px solid #b99845}.diagram{overflow:auto;background:white;padding:12px}.diagram svg{display:block;max-width:none!important;margin:auto}.hint{font-size:14px;color:#5b6b60}footer{max-width:1120px;margin:30px auto;padding-bottom:30px;color:#596c60}@media(max-width:800px){header{padding:28px 20px}header h1{font-size:26px}nav,main{margin:16px 12px}article{padding:22px 18px}summary{padding:18px}details .content{padding:8px 18px 24px}table{min-width:760px}}@media print{body{background:white;font-size:10pt}header{background:white;color:#174732;padding:0}nav{break-after:page}article,details{border:0;padding:0;break-before:page}details .content{display:block!important;padding:0}summary{background:white;padding:12px 0}main{max-width:none}.diagram svg{max-width:100%!important}.table-wrap{overflow:visible}tr{break-inside:avoid}h2{break-after:avoid}}</style><body><header><h1>基于当前项目的场景化 Roadmap</h1><p>已有本地任务、资料阅读、Jira与ACP基础；AI会话、阅读和本机使用按用户偏好靠前呈现。</p><p class="meta">Trellis Panel · v0.6 正式规划 · 2026-10-17 UTC · 工作项可独立选择；最终排期由用户后续决定；本轮仅文档</p></header><nav><strong>先看当前项目和可规划方向，技术与研究附录按需展开。</strong><br><a href="#doc-01">场景规划：现状、方向与完成标准</a><a href="#doc-02">事实基线：现在做得到什么</a><a href="#doc-03">需求与验收：供开发测试追溯</a><a href="#doc-04">范围取舍：Hifox借鉴与不采用</a><a href="#doc-05">数据与状态：当前技术边界</a><a href="#doc-06">实施准备：依赖、风险与估算</a><a href="#C01-current-flow">当前流程：资料仍在工程，工具有多条入口</a><a href="#C02-proposed-flow">规划工作项与依赖：可独立选择，不锁定排期</a><a href="#C03-current-data-flow">当前数据流：本地任务、会话与外部事实分开</a><a href="#C04-current-relations">当前对象关系：工程、任务、材料与本机会话</a></nav><main><article id="doc-01"><h1>基于当前项目的场景化 Roadmap</h1>
+<p>Trellis Panel已经具备本地任务、材料阅读、Jira接入和面板内ACP会话基础。接下来可规划的方向是：把已有AI会话和阅读体验补齐，让粗需求和旧任务更容易接续，在本机看Git、启动工程和读日志，以及让一次工作有可核实的结果和交接说明。</p>
+<p><strong>用户偏好：AI会话、阅读与本机使用靠前呈现。</strong> 这决定文档的阅读次序，不是最终排期。用户会根据roadmap自行选择后续工作；本版只规划，不修缺陷、不实现功能，也不要求先指定唯一“主线”。已经批准的任务仍以原任务边界为准。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>可规划方向</th>
+<th>已有基础</th>
+<th>主要收益</th>
+<th>可独立选择的部分</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A 现有AI会话和阅读体验</td>
+<td>ACP/acpx、任务工作区、阅读与资料比较已有实现</td>
+<td>少丢草稿、看清资料、正确处理权限/停止、反馈真实</td>
+<td>阅读走查、ACP余项、创建/状态/交接候选修正可分开规划</td>
+</tr>
+<tr>
+<td>B 粗需求与旧任务接续</td>
+<td>Jira来源草稿、本地资料、任务关系、交接包</td>
+<td>从原问题和上次结果继续，减少重复澄清</td>
+<td>资料连续性、统一交接、已有任务关系按样本选择</td>
+</tr>
+<tr>
+<td>C 本机开发工具</td>
+<td>单命令输出/中止、Git读取、文档差异基础</td>
+<td>减少反复切终端和Git工具，分清运行与变更归属</td>
+<td>只读Git可独立；单工程命令可靠后再规划多工程组合</td>
+</tr>
+<tr>
+<td>D 检查与交接</td>
+<td>任务材料、检查记录、现有Jira/沟通工具</td>
+<td>知道实际查了什么、缺什么、下次怎样继续</td>
+<td>先改善原任务记录；跨设备协作为后续可选场景</td>
+</tr>
+</tbody></table></div>
+<p>这些方向不是必须全做的四阶段。依赖只约束确有先后关系的动作，例如多个工程的运行组合需要可靠的单工程进程归属；只读Git无需等待ACP、多人审批或新团队后端。团队近期围绕本机使用规划；跨设备确认以后若有真实需要，再确定最小共享方案。</p>
+<p>下面的场景例子解释建议，不冒充新访谈。阅读、黑盒、接续、Jira粗需求和面板内Agent来自历史用户证词；新增功能的收益仍须实际使用验证。</p>
+<h2>1 现在一项工作怎么完成</h2>
+<p>打开工程后，工作项来自已有<code>.trellis/tasks</code>、手动新建或Jira导入。开发者读PRD/设计，与用户澄清并按项目工作流确认；可用外部AI编辑器，也可主动打开绑定任务的ACP会话。资料和代码仍落在本机。面板监听文件、显示材料版本和可观察到的活动。最后按项目流程检查、记录结果，需要时再归档；Jira流转、评论或外部发布各自决定。</p>
+<p>这条路不是每个任务都必须经过Jira、AI规划、发布包、回写或团队审批。小修复可以走短路径，资料复杂的任务再多做澄清。当前实现和限制见02，现状图见<a href="#C01-current-flow">C01</a>。</p>
+<h2>2 方向A：让已经做出来的工作台和ACP稳定好用</h2>
+<p><strong>现在怎么做</strong>：顶栏选工程，工作项/知识/会话并列；材料可展开到中央，已有新版提醒。Codex和Claude已接入acpx，最新验收记录包含真实工具、权限、停止和会话恢复。</p>
+<p><strong>哪里卡住</strong>：现有工作区任务还有原生外框/视觉复核，ACP还有原生中文输入法、配置操作及草稿切换走查。另有两条静态定位的候选修正路径：状态菜单发送修改但后端忽略生命周期字段；AI规划成功文案说PRD已写入，而创建器实际只写task.json。本轮未重新操作这些界面，可在后续实施任务中先用隔离夹具核实，再决定修正。</p>
+<p><strong>改什么</strong>：</p>
+<ul>
+<li>可沿已有任务逐项关闭未完验收，不重写已通过的阅读器或ACP底座。</li>
+<li>状态入口按现行Trellis权威说明能做什么；不能保存的动作不装成成功。是否以后增加受控状态命令，另行设计，不放开直接写状态来图省事。</li>
+<li>普通创建、AI规划和Jira创建分别明确会生成哪些文件。先修“承诺了什么、实际得到什么”；计划确认后的材料应能从原任务读到。复用现有创建/资料能力，不另建一套任务库。</li>
+<li>校准README等入口文案，避免继续称ACP只是未来能力，或把已停用归档/自动覆盖状态写成当前功能。</li>
+</ul>
+<p><strong>改完怎么用</strong>：选好工程后，能读当前任务、主动开启现有Agent、处理权限和停止，返回原材料也不丢位置；创建结果有真实文件或准确说明。用户不会仅因一个按钮样子像“完成”就误判工作已经结束。</p>
+<p><strong>最小可独立交付</strong>：A1工作区剩余视觉/阅读走查；A2 ACP原生输入/配置/草稿收尾；A3状态入口与创建结果一致性。三者可以分开验收，每项沿用原任务的实现和记录。</p>
+<p><strong>完成标准</strong>：在隔离项目中完成一次中文输入、改稿、发送/拒绝/停止、重新打开会话及返回材料；任务归属正确。状态操作不会短暂假成功后回退；创建页面所说的文件与磁盘一致。未运行的原生项继续标未验证，不能只以build通过代替。</p>
+<p><strong>为什么靠前呈现</strong>：用户最新偏好是AI会话、阅读和本机使用偏靠前；现有能力也已有投入和指定通过记录。最终做哪项、何时做仍由用户后续选择，不把偏好解释为实施授权或固定排期。</p>
+<p><strong>这批不做</strong>：自建共享身份服务、正式多人审批、远程机器调度、小队、通用自动化或新编码Agent底座。现有通用问答、Flow和频道继续保留入口。</p>
+<h2>3 方向B：把粗需求说清楚，隔几天也能回到原任务</h2>
+<p><strong>现在怎么做</strong>：Jira通常只有问题摘要，细节可能在飞书；用户历史上会挑出相关内容放本地docs给AI读。Jira轻任务已有来源草稿和防重；本地也有PRD/设计、父子任务、知识检索、文档比较和交接文本。</p>
+<p><strong>哪里卡住</strong>：历史用户明确说过“隔了几个任务再优化，容易又从头来”。当前两套交接文本仍有不同指引；任务父子关系能看到字段，但不能据此宣称已有完整的需求沿革。新的“接续说明”是否足够，还要拿真实返工任务验证。</p>
+<p><strong>改什么</strong>：把原始问题、选取的本地资料、已说清的规则、尚未回答的问题和本次要补什么放回同一任务。先用已有PRD/设计/检查记录和父子关系组织，不默认引入逐条需求审批、依赖闭包或额外审批数据库。收敛交接文本，明确“核对/阅读”与“开始实施”，显示资料读取时间和已知缺失。</p>
+<p><strong>改完怎么用</strong>：例如周一接到一条粗需求，先选相关本地资料并列待问问题；用户确认后再做。周三回来补一个规则，先打开原任务，看到上次改到哪里、依据哪些资料、哪些检查还没做。真正独立的后续工作再建关联任务，不自动复制全部任务。</p>
+<p><strong>最小可独立交付</strong>：B1三种创建入口的资料连续性；B2统一的任务接续/交接说明；B3原任务与后续任务的可读关联。B1可先交付，B2/B3用一个真实返工样本验证后再扩面。</p>
+<p><strong>完成标准</strong>：一个本地任务和一个适用的Jira任务均可读到各自真实资料；重复Jira导入打开原任务。接手者只靠原任务资料能说出“本次目标、上轮结果、当前缺项、下一步”；新说明不冒用旧确认，也不自动开启Agent。材料变化时能比较，旧正文不被静默换掉。</p>
+<p><strong>依赖与顺序</strong>：依赖现有项目/阅读归属和A3创建结果真实，不必等待ACP全部原生余项关闭。是否自动读飞书、产品是否必须跨设备确认，还没有足够依据；先支持人工选取资料与现有工具沟通。</p>
+<p><strong>这批不做</strong>：自动抓全公司飞书、把所有历史文档转成结构化需求图、强制每任务发布/双验收/回写、在本机面板伪造多人实时协作。</p>
+<h2>4 开发工作项：运行、日志和只读Git可以独立往前排</h2>
+<p>这项有项目范围记录支持，不因Hifox菜单而加入，也不需要等团队审批平台完成。它可以与其他候选包独立排期；如果用户当前更在意开发时反复切工具，可优先选择这里的小项。</p>
+<p><strong>现在怎么做</strong>：已有CLI命令输出、中止、任务分支/提交/脏状态和材料Git基线比较。当前还没有证据证明完整的工程运行组、长期服务就绪管理或全工作区Diff已经完成。</p>
+<p><strong>准备改什么、怎样拆小</strong>：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>小项</th>
+<th>先复用什么</th>
+<th>改完如何用</th>
+<th>独立完成标准</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>C1只读Git</td>
+<td>现有Git状态、提交读取和差异组件</td>
+<td>在任务旁看当前工程改了哪些文件、基线是什么；已有脏改动单独说明</td>
+<td>无Git可正常读任务；多仓库来源明确；新入口无提交/切分支/重置副作用</td>
+</tr>
+<tr>
+<td>C2单工程命令与日志</td>
+<td>CLI输出、runId、中止机制</td>
+<td>选择已存在的开发脚本，看到真实输出、退出码和归属</td>
+<td>启动前说明目录/命令；不改现有脚本；暂停日志跟随不停止服务；不杀外部进程</td>
+</tr>
+<tr>
+<td>C3多个工程一起运行</td>
+<td>C2及团队已用的启动脚本</td>
+<td>选择明确的工程组合，例如经确认的前后端服务，逐个看到启动/就绪/失败</td>
+<td>部分失败可定位；依赖与停止范围清楚；没有已定义就绪检查时只说进程存活，不假称服务可用</td>
+</tr>
+</tbody></table></div>
+<p><strong>先后理由</strong>：C1可先独立做；C2建立进程归属后才做C3，避免直接搭一个大调度平台。具体工程、脚本、就绪条件与最近痛点还需用户提供；本文不假造当前业务工程配置。多工程不等于多机或云开发。</p>
+<p><strong>这项不做</strong>：代码编辑器、断点调试、默认Git写操作、远程执行集群、公共预览发布平台。现有独立Git写能力不因本提案被删除，但不混入新的只读入口。</p>
+<h2>5 用一次真实工作把检查和接手验证清楚</h2>
+<p><strong>现在怎么做</strong>：AI和开发按项目流程检查，结果留在任务材料或验收记录；需要归档时走task.py。产品/测试现在具体在哪里看资料、怎样回复，尚未有足够现行证据，不能假定大家已在面板审批。</p>
+<p><strong>改什么</strong>：在原任务集中呈现“这次改了什么、实际查了什么、未查什么、已知问题、怎么继续”。复用现有文件、提交/分支、会话和交接包。适合发Jira评论的任务可显式回写；无需回写的本地任务也能完成。先用现有Jira/飞书/文件或基座仓库交接一轮，再决定是否缺专门共享能力。</p>
+<p><strong>改完怎么用</strong>：自己或同事打开说明能核对本次结果，知道哪些结论来自检查、哪些只是Agent说完成；要补做时回到同一个任务。需要产品判断的规则留给具体人确认，不把代码检查通过当业务已认可。</p>
+<p><strong>完成标准</strong>：选一个适合的真实任务，由使用者记录实际入口、资料位置、未完成检查和接续结果；接手者能完成一次继续核对。若第二设备访问困难，记录究竟是文档位置、账号权限还是缺服务，避免直接把问题归为“必须自建团队平台”。本轮不虚构试点人选、效率提升比例或验收通过。</p>
+<p><strong>这项不做</strong>：要求每任务携带统一构建包、部署/发布、正式多人批准、远程撤回已下载副本或建设完整测试管理系统。</p>
+<h2>6 如何从roadmap选出后续工作</h2>
+<p>先选择当前最影响使用的一项场景，再以“当前缺口、改后用法、依赖、完成标准”形成独立任务。A靠前呈现符合用户偏好；C1可单独选择，C2/C3按真实运行依赖展开；B与D按实际接续和交接样本决定。当前静态断点F01–F03只是候选修正项及验证计划，不是本轮必须立即实施的修复指令。</p>
+<p>有现成功能就补经核实的缺口，不按竞品重复建设。没有真实使用场景的共享审批、专项、小队或通用自动化，可以长期不采用。对未来实施的设备、脚本、人员和数据范围，可以在选择相应小项后再查清；这些不是本份roadmap交付的阻塞问题。</p>
+<p><a href="#C02-proposed-flow">规划工作项及真实依赖图</a>展示可独立选择的部分；<a href="#doc-06">06实施准备</a>解释估算、风险及后续设计输入。本版不锁定单一路线，不设“答完问题才能继续规划”的前置条件。</p>
+</article><details id="doc-02"><summary>事实基线：现在做得到什么</summary><div class="content"><h1>项目事实基线与真实工作链</h1>
+<p>核对日期2026-10-17 UTC。范围是当前工作区代码、项目规范、原始用户证词与现有任务验收。没有重新运行应用、AI、Jira写入或业务服务，也没有用Hifox截图填补Trellis验证。代码行号是本次检查点，文件内容指纹见<a href="evidence/project-evidence.json">evidence/project-evidence.json</a>。仓库有并发修改，因此“当前代码”只代表采集时刻。</p>
+<h2>1 目标证据、假设和冲突</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>判断</th>
+<th>证据与性质</th>
+<th>本版如何处理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>资料阅读是立项初衷</td>
+<td>E01 P01，用户一手证词整理</td>
+<td>放规划范围，不被管理功能稀释</td>
+</tr>
+<tr>
+<td>看见上下文/过程，减少黑盒</td>
+<td>E01 P02/P03/P06；S0真实观测设计</td>
+<td>保留有界观测，不承诺证明模型遵守或步骤全执行</td>
+</tr>
+<tr>
+<td>隔几个任务能继续旧工作</td>
+<td>E01 P04</td>
+<td>用真实返工样本验证接续说明，不先上复杂修订图</td>
+</tr>
+<tr>
+<td>Jira是来源之一，飞书可能有细节</td>
+<td>E01 P05；E12/E13</td>
+<td>本地创建和Jira都可用；人工选择资料先行</td>
+</tr>
+<tr>
+<td>要在面板真正使用Agent</td>
+<td>E01 P09；E03用户明确ACP优先</td>
+<td>复用当前acpx实现，先补其未完原生验收</td>
+</tr>
+<tr>
+<td>希望扩成团队产品</td>
+<td>E01 P07/P08、S0背景</td>
+<td>是方向，尚不能推出实时协作/审批/身份服务为近期必需</td>
+</tr>
+<tr>
+<td>多项目启动/日志/Git查看</td>
+<td>E05 prd.md:14及扩展边界</td>
+<td>有项目记录支持，可独立交付；不是无依据支线，也不是已批准所有实现细节</td>
+</tr>
+<tr>
+<td>产品/测试现在必须在面板跨设备确认</td>
+<td>未找到当前实际用法与完整需求</td>
+<td>标待决策；先核对资料/回复的实际位置</td>
+</tr>
+<tr>
+<td>小队、专项、分拣、高级字段、兼容API、非研发扩张必需</td>
+<td>主要来自旧竞品覆盖映射</td>
+<td>从场景规划移除；有明确触发条件才再评估</td>
+</tr>
+</tbody></table></div>
+<p>README同时写“面板不接管/派发会话”和当前ACP/频道能力，亦保留旧归档与双向同步概述。E03/E18/E10/E11说明这些文字已非统一可靠事实源；本稿以当前实现和有边界的验收记录交叉核对，后续小交付中应校准入口文案。</p>
+<h2>2 从入口到归档</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>环节</th>
+<th>实现判断</th>
+<th>现有做法</th>
+<th>尚缺什么/不能推断</th>
+<th>证据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>打开工程与找到工作</td>
+<td>已实现主要结构，收尾验收中</td>
+<td>顶栏工程、八个并列模块、概览我负责/我创建/最近更新；真实目录驱动</td>
+<td>最终原生外框/视觉仍开；菜单不等于后端权限</td>
+<td>E05/E06/E08/E23</td>
+</tr>
+<tr>
+<td>已有任务与本地新建</td>
+<td>已实现基本写入</td>
+<td>扫描任务文件；普通create写planning任务记录</td>
+<td>普通创建没有自动PRD/清单种子；不能称已有完整Trellis创建合同</td>
+<td>E09/E10/E11/E21</td>
+</tr>
+<tr>
+<td>Jira到本地任务</td>
+<td>已实现并有历史真实链路证据</td>
+<td>当前项目导入、防重、来源PRD与中断对账</td>
+<td>飞书详情需人工选择；公司完整基线未闭；本轮未连Jira</td>
+<td>E07/E12/E13</td>
+</tr>
+<tr>
+<td>计划与用户确认</td>
+<td>已有人工流程及可编辑AI计划</td>
+<td>Trellis规划规范；PlanningModal生成/修改计划再创建</td>
+<td>没有正式团队审批；计划成功文案与实际PRD落盘不符</td>
+<td>E02/E14/E15/E16</td>
+</tr>
+<tr>
+<td>执行</td>
+<td>已有外部工具路径与当前ACP底座</td>
+<td>外部编辑器按项目流程；ACP复用acpx，显式启动/绑定材料</td>
+<td>厂商核心通过记录不是本次重跑；最终原生输入/草稿/视觉未闭</td>
+<td>E03/E04/E18/E19</td>
+</tr>
+<tr>
+<td>过程与资料观察</td>
+<td>已实现并有部分验收</td>
+<td>阅读版本比较、assembled/emitted回执、双来源事件</td>
+<td>不能证明每一步工作流都执行、规范都遵守；未知须保留</td>
+<td>E07/E09/E18/E31/E33</td>
+</tr>
+<tr>
+<td>周迭代</td>
+<td>已有实现、任务仍进行中</td>
+<td>自然周、周期字段、结转与分组</td>
+<td>不是未来从零建设；无依据增加专项/复杂迭代平台</td>
+<td>E20/E32</td>
+</tr>
+<tr>
+<td>检查/归档/外部动作</td>
+<td>已有手工流程与分开的动作</td>
+<td>检查记录与Trellis命令；归档复制命令；Jira评论/流转API</td>
+<td>没有统一发布/审批/构建闭环；旧直接归档和后台改状态已停用</td>
+<td>E02/E10/E23/E27</td>
+</tr>
+<tr>
+<td>运行服务、日志、只读Git</td>
+<td>部分复用基础+有记录的后续方向</td>
+<td>CLI输出/中止、任务Git状态、文档差异</td>
+<td>未见完整服务组/就绪管理/全工程Diff；不是已完成</td>
+<td>E05/E24/E25/E33</td>
+</tr>
+<tr>
+<td>团队实时协同</td>
+<td>未证实；当前主要为本机投影</td>
+<td>成员从任务作者/负责人推导，已有团队/统计展示</td>
+<td>不能据此声称在线身份、评论、正式待办或多人审批</td>
+<td>E22</td>
+</tr>
+<tr>
+<td>Flow与频道</td>
+<td>已有独立工具，完整适用性未证</td>
+<td>本机Flow模板、运行事件/历史；频道另有入口</td>
+<td>不是外部Trellis工作流的全程状态，更不证明通用团队自动化成熟</td>
+<td>E26/E08</td>
+</tr>
+</tbody></table></div>
+<h2>3 当前最值得先核实的实现断点</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>断点</th>
+<th>当前调用链</th>
+<th>可能造成的用户结果</th>
+<th>建议最小处理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>F01 状态入口与生命周期权威不一致</td>
+<td>WorkItemsPage StateSelect→my/store updateIssue→adapter issueToTaskPatch.status→task.update→scan白名单忽略status/completedAt，IPC仍返回ok再刷新</td>
+<td>静态推断：乐观状态不等于落盘；本轮未复现界面回退</td>
+<td>先在隔离任务复现；明确只读/受控工作流入口与反馈，不直接放开status写入</td>
+</tr>
+<tr>
+<td>F02 AI计划成功文案与文件不一致</td>
+<td>PlanningModal:283–284称PRD已写→planning.ts:createFromPlan→state.ts:createTaskRecord仅写task.json</td>
+<td>静态推断：用户去读PRD可能没有对应文件</td>
+<td>先明确创建产物合同；确保页面承诺与真实文件相符，优先复用已有来源/材料机制</td>
+</tr>
+<tr>
+<td>F03 两套交接指引冲突</td>
+<td>新handoff.ts默认只读核对；旧plan.ts handoffTexts仍提示完成后更新task.json且被planning IPC调用</td>
+<td>计划出口可能给出过时的状态操作指引</td>
+<td>迁移到同一确定性交接意图；不做原生会话跨工具无损迁移承诺</td>
+</tr>
+<tr>
+<td>F04 说明文档落后真实实现</td>
+<td>README旧归档/状态同步/被动面板叙事与E10/E11/E18不一致</td>
+<td>用户不知哪些当前可用，哪些停用/待验证</td>
+<td>随对应小交付修入口说明，历史记录另留</td>
+</tr>
+</tbody></table></div>
+<p>以上是代码审查发现，未被称作本轮产品复现或已修复。本轮不运行测试改真实任务，也不在文档任务内修产品代码。F01/F02是路线依据，不用于证明新的大平台必需。</p>
+<h2>4 当前流程与建议流程的区别</h2>
+<ul>
+<li>当前：已有多种入口和工具；接入、计划、交接有若干历史路径并存，界面文案有承诺错位；用户确认主要在实际项目流程/对话中。</li>
+<li>建议：先让每个入口产物和反馈真实；把原资料、当前缺项、上轮结果和下一步留在同一任务；继续使用现有Agent和项目工作流。只有真实试点显示缺共享能力才单独立项。</li>
+<li>保持：任务资料以仓库为准；打开/阅读/指派不启动AI；Agent回合结束不批准任务；归档、Jira和发布各自真实反馈。</li>
+</ul>
+<h2>5 逐文件证据索引</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>ID/类别</th>
+<th>路径与定位</th>
+<th>确认的事实</th>
+<th>限制</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>E01 目标证据</td>
+<td><code>docs/proposals/2026-10-11-cockpit-counter-proposal/01-user-pain-points.md</code> P01–P09</td>
+<td>用户一手证词：阅读、注入/流程黑盒、迭代接续、Jira/飞书资料与本机Agent需求；团队沉淀仍为理想</td>
+<td>用户证词整理，不等于所有方案已批准</td>
+</tr>
+<tr>
+<td>E02 流程规范</td>
+<td><code>.trellis/workflow.md</code> Core Principles / Task System / Phase Index</td>
+<td>先计划后代码；task create/start/finish/archive；finish清指针不改任务状态，archive写completed并归档</td>
+<td>规范约束，不证明每次实际执行完整</td>
+</tr>
+<tr>
+<td>E03 已确认范围</td>
+<td><code>.trellis/tasks/10-16-acp-runtime-foundation/prd.md</code> Confirmed background and decisions / R1–R8</td>
+<td>用户优先ACP、指定Codex+Claude，选择acpx固定版与最小补丁；本机、显式执行；远程机器/小队/组织平台不在本任务</td>
+<td>已批准该任务，不自动批准本新路线全部增量</td>
+</tr>
+<tr>
+<td>E04 历史验收</td>
+<td><code>.trellis/tasks/10-16-acp-runtime-foundation/validation.md</code> Executed product matrix / Remaining work</td>
+<td>打包产品双厂商核心对话、工具、权限、取消、恢复有通过记录；原生IME/配置/草稿与最终视觉仍待补</td>
+<td>本轮读取记录，未重新运行厂商或模型作业</td>
+</tr>
+<tr>
+<td>E05 已确认范围</td>
+<td><code>.trellis/tasks/10-16-project-workspace-uiux/prd.md</code> L5–14 / R1–R8 / Out of scope</td>
+<td>项目顶栏、并列模块、中央材料；多项目启动/日志/Git查看是有记录的后续方向；不含编辑调试</td>
+<td>功能范围与视觉最终验收分开</td>
+</tr>
+<tr>
+<td>E06 历史验收</td>
+<td><code>.trellis/tasks/10-16-project-workspace-uiux/validation.md</code> Acceptance evidence / Remaining boundaries</td>
+<td>导航、阅读版本连续性等已有证据；最终原生外框视觉仍未关闭</td>
+<td>检查点提交不等于全项验收</td>
+</tr>
+<tr>
+<td>E07 历史验收</td>
+<td><code>.trellis/tasks/10-11-cockpit-s0-glass-box/validation/ac-matrix.md</code> AC1–AC10</td>
+<td>阅读/回执/轻任务已有局部与真实链路记录；公司Jira完整基线、上游分发、跨人试点未闭</td>
+<td>不能将历史passed泛化到全部主机/团队</td>
+</tr>
+<tr>
+<td>E08 当前代码</td>
+<td><code>src/renderer/src/my/navigation.ts</code> L18–76</td>
+<td>工作项/需求接入/知识/ACP/迭代等路由及项目/应用/本机范围已存在</td>
+<td>有菜单不等于有服务端团队能力</td>
+</tr>
+<tr>
+<td>E09 当前代码</td>
+<td><code>src/main/services/scan.ts</code> L133–161 / L345 / L412–460</td>
+<td>扫描真实任务；元数据写回白名单排除status/completedAt，保留未知字段与mtime冲突检测</td>
+<td>文件快照不是Agent过程或审批事实</td>
+</tr>
+<tr>
+<td>E10 当前代码</td>
+<td><code>src/main/ipc/tasks.ts</code> L26–29 / L86–156 / L166–174</td>
+<td>旧直接归档停用；Jira统一LocalTaskService；普通create走createTaskRecord；已有确定性交接包入口</td>
+<td>不同创建入口尚非完全同一实现</td>
+</tr>
+<tr>
+<td>E11 当前代码</td>
+<td><code>src/main/state.ts</code> L409–463 / L500–502</td>
+<td>普通/AI计划创建器当前只写task.json；Jira后台自动覆盖任务状态已停用</td>
+<td>README中旧双向同步叙事需校准</td>
+</tr>
+<tr>
+<td>E12 当前代码</td>
+<td><code>src/main/services/local-task/index.ts</code> L39–48 / L143 / L349–418</td>
+<td>Jira走task.py create --no-start、来源PRD、幂等/中断对账，并保护用户已改PRD</td>
+<td>不等于所有普通创建均有这些保障</td>
+</tr>
+<tr>
+<td>E13 当前代码</td>
+<td><code>src/renderer/src/pages/Jira.tsx</code> L211–273 / L414</td>
+<td>已有Jira创建/打开本地任务入口，导入目标是当前工程</td>
+<td>不自动读取飞书完整需求或认领工单</td>
+</tr>
+<tr>
+<td>E14 当前代码</td>
+<td><code>src/renderer/src/components/PlanningModal.tsx</code> L57 / L103–120 / L267–294</td>
+<td>AI计划可人工修改后建任务，成功文案说PRD已写入并提供handoff</td>
+<td>实际写入需与E11交叉核验</td>
+</tr>
+<tr>
+<td>E15 当前代码</td>
+<td><code>src/main/ipc/planning.ts</code> L19–53</td>
+<td>计划生成与createFromPlan分开；创建调用普通createTaskRecord；旧handoffTexts仍在被调用</td>
+<td>尚无正式团队审批/多人决定后端</td>
+</tr>
+<tr>
+<td>E16 当前代码</td>
+<td><code>src/main/services/plan.ts</code> L60–156 / L165–172</td>
+<td>知识检索辅助AI计划；旧交接文本仍指引直接更新task.json状态</td>
+<td>与新的确定性交接意图不一致，需收敛</td>
+</tr>
+<tr>
+<td>E17 当前代码</td>
+<td><code>src/main/services/handoff.ts</code> L22–100</td>
+<td>交接包默认只核对与阅读，列真实存在材料；显式携带PRD；不自动开始/归档</td>
+<td>目前不是完整的跨工具原生会话迁移</td>
+</tr>
+<tr>
+<td>E18 当前代码</td>
+<td><code>src/main/services/acp.ts</code> L6–8 / L312–355 / L378–435</td>
+<td>当前已复用acpx；本机目录预检、手动会话、资料快照、运行事件与权限；回合结束未改业务任务</td>
+<td>资料快照列文件/时间，不等于逐文件内容哈希或遵守证明</td>
+</tr>
+<tr>
+<td>E19 当前代码</td>
+<td><code>src/main/services/acp/metadata.ts</code> L14–47 / L50–69</td>
+<td>配置按root散列保存在userData，历史在acp-sessions；旧活跃状态按兼容规则处理</td>
+<td>本机历史不是跨设备共享存储</td>
+</tr>
+<tr>
+<td>E20 当前代码</td>
+<td><code>src/renderer/src/my/pages/WorkItemsPage.tsx</code> L380–429 / L598–604 / L954–959 / L1418–1452</td>
+<td>状态选择器调用updateIssue；自然周分组与结转已有实现</td>
+<td>状态能持久化须看E09/E21，不能只看控件</td>
+</tr>
+<tr>
+<td>E21 当前代码</td>
+<td><code>src/renderer/src/my/store.ts</code> L223–260</td>
+<td>状态乐观更新经issueToTaskPatch送IPC后刷新；普通创建走createTask</td>
+<td>UI乐观变化不是落盘成功</td>
+</tr>
+<tr>
+<td>E22 当前代码</td>
+<td><code>src/renderer/src/my/adapter.ts</code> L90–128 / L180–215</td>
+<td>成员由creator/assignee推导，comments/intake/notifications为空；映射status到patch</td>
+<td>团队页不证明真实身份、在线、评论或审批能力</td>
+</tr>
+<tr>
+<td>E23 当前代码</td>
+<td><code>src/renderer/src/my/pages/YourWorkPage.tsx</code> L65–82</td>
+<td>我负责/我创建/最近更新；归档入口复制task.py archive命令</td>
+<td>不是直接受管归档或业务验收</td>
+</tr>
+<tr>
+<td>E24 当前代码</td>
+<td><code>src/main/services/git.ts</code> L33–105 / L108–115</td>
+<td>已有任务分支/提交/脏状态读取，另有创建分支动作</td>
+<td>不是完整多仓库Diff界面，新只读入口应隔离写操作</td>
+</tr>
+<tr>
+<td>E25 当前代码</td>
+<td><code>src/main/services/cli.ts</code> L18–66</td>
+<td>已有单命令子进程、stdout/stderr与中止</td>
+<td>不等于服务组依赖、就绪检测和持续进程管理</td>
+</tr>
+<tr>
+<td>E26 当前代码</td>
+<td><code>src/main/services/flow-run.ts</code> L34–65 / L185–223 / L240–310</td>
+<td>已有Flow模板的本机执行、事件、内容规则gate和历史</td>
+<td>不是外部Trellis工作流全步骤观测，亦非持久跨人审批</td>
+</tr>
+<tr>
+<td>E27 当前代码</td>
+<td><code>src/main/ipc/jira.ts</code> L28–46</td>
+<td>Jira流转与评论为实际外部动作，成功后才发相应事件</td>
+<td>并非每任务必须回写，外部失败不自动等同本地失败</td>
+</tr>
+<tr>
+<td>E28 当前代码</td>
+<td><code>src/shared/types.ts</code> L36–65 / L1677–1739</td>
+<td>真实TaskRecord与ACP状态/会话身份字段</td>
+<td>不是旧稿提出的通用RequirementRevision/ApprovalDecision实体</td>
+</tr>
+<tr>
+<td>E29 历史文案</td>
+<td><code>README.md</code> 功能总览 / 推荐任务流 / Jira连接</td>
+<td>立项为Trellis本地可视化；仍写不派发、双向同步及旧归档能力</td>
+<td>部分描述落后当前代码，不能单独当实现证明</td>
+</tr>
+<tr>
+<td>E30 历史视觉记录</td>
+<td><code>design-qa.md</code> Reopened after user review / final result</td>
+<td>旧布局已有检查，用户重新打开原生视觉验收；最后为blocked</td>
+<td>本轮不复用过时截图冒充最终原生UI通过</td>
+</tr>
+<tr>
+<td>E31 当前代码</td>
+<td><code>src/main/services/documents/controller.ts</code> L42 / L111</td>
+<td>阅读器有内容修订与受控读取</td>
+<td>单文档修订不等于正式需求逐义务批准</td>
+</tr>
+<tr>
+<td>E32 已存在任务</td>
+<td><code>.trellis/tasks/10-15-weekly-cycles/task.json</code> status / description</td>
+<td>周周期、结转在in_progress既有工作中，零CLI/工作流改动</td>
+<td>不应被写成未来才从零建设的Hifox迭代系统</td>
+</tr>
+<tr>
+<td>E33 当前代码</td>
+<td><code>src/main/services/documents/diff-service.ts</code> L173–215</td>
+<td>会话打开基线与Git最近提交差异，失败有诊断降级</td>
+<td>不是全工作区多仓库代码Diff管理器</td>
+</tr>
+</tbody></table></div>
+<h2>6 验证口径</h2>
+<p>“当前代码存在”表示静态路径可追溯，不代表本轮运行通过；“有历史通过记录”指E04/E06/E07里的具体边界。用户原生输入与视觉、公司权限/完整数据、另一开发者/产品实际使用仍待验证。已有工作不重新排成远期从零建设，旧提案也不覆盖当前已批准任务的边界。</p>
+<h2>7 三处断点怎样验证（计划，尚未执行）</h2>
+<p>这些场景用于复核当前实现和未来修正，没有对真实业务任务操作。验证须使用隔离工程、静态输入和受控API；无需调用付费AI、Jira写回或修改生产资料。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>场景</th>
+<th>隔离准备与步骤</th>
+<th>当前静态判断</th>
+<th>修正后应核对的结果</th>
+<th>尚未验证</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>VF01 状态选择与真实文件</td>
+<td>准备planning任务并记录原字节；在列表/表格选择另一状态，观察task.update参数、反馈、刷新后状态与文件</td>
+<td>UI发status，但scan白名单忽略且IPC可返回ok；可能出现乐观显示与持久化不一致</td>
+<td>不支持的生命周期动作明确只读/给流程入口；若另批准受控命令，需实际回执；不得把未落盘称成功</td>
+<td>原生交互时序、提示与刷新表现；本轮未操作</td>
+</tr>
+<tr>
+<td>VF02 AI计划创建的真实产物</td>
+<td>用已确认的静态TaskPlan夹具，不调用模型；从计划确认路径创建一次，核对task.json、prd.md、子任务和成功页</td>
+<td>createFromPlan调用普通创建器只写task.json，成功文案却说PRD已写</td>
+<td>页面列出的产物实际存在且能打开；候选建议让确认计划落回既有PRD资料，按Trellis兼容合同实施；不覆盖已有用户内容</td>
+<td>原生创建窗口与中断重试；本轮未创建</td>
+</tr>
+<tr>
+<td>VF03 同任务两种交接出口</td>
+<td>对同一隔离任务分别从计划出口和任务详情构建交接；比较root/dir、实际材料、默认意图和状态指引</td>
+<td>新服务默认只核对阅读，旧plan.handoff仍含直接更新task.json状态的指引</td>
+<td>两出口语义一致；真实文件清单、缺项与用户意图明确；按项目流程继续，不自动开工/归档/重放旧prompt</td>
+<td>两出口完整UI接线与复制反馈；本轮未发送</td>
+</tr>
+</tbody></table></div>
+<p>VF01–03不是已复现缺陷或已修复证明。任何修复先确认本项目的生命周期和创建合同，不能为让演示通过而放开后端白名单或绕过Trellis。</p>
+</div></details><details id="doc-03"><summary>需求与验收：供开发测试追溯</summary><div class="content"><h1>支撑附录：项目需求与验收</h1>
+<p>本章供开发/测试追溯，不承担场景规划说明。PF编号只覆盖本版有项目依据的场景；旧48条FR及244+12条用例保持历史，不转成这里的必做清单。下面的新验收计划均not_run；02所引的历史通过记录仍按原范围引用，既不抹去已有成果，也不把新用例标通过。</p>
+<h2>1 场景需求</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>需求/当前判断</th>
+<th>场景与包</th>
+<th>具体行为</th>
+<th>证据</th>
+<th>可观察验收</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PF-01 项目与当前对象连续；已有实现，收尾验证</td>
+<td>打开工程知道在做什么 A1</td>
+<td>切工程、开任务、展开和返回均保留正确root及来源；旧响应不能进入新工程。</td>
+<td>E05, E06, E08, E09</td>
+<td>切A→B→A及预览/中央返回，任务和资料不串，来源位置恢复。</td>
+</tr>
+<tr>
+<td>PF-02 材料阅读与变更可理解；已有实现，收尾验证</td>
+<td>阅读PRD/设计/清单 A1</td>
+<td>复用现有阅读与差异；缺失/坏文件保留原文与原因；新文件版本由用户选择，不静默替换正在读的内容。</td>
+<td>E01, E07, E31, E33</td>
+<td>连续保存资料时正文/基线保持，显式阅读新版才切换；无Git/坏JSON仍可理解。</td>
+</tr>
+<tr>
+<td>PF-03 状态入口反馈真实；静态定位的现有断点</td>
+<td>知道任务是否真的改变 A3</td>
+<td>按当前Trellis生命周期权威处理状态；不支持的写入不乐观伪装成功。阶段记录、Agent结果、归档位置分别说明。</td>
+<td>E09, E10, E20, E21, E22</td>
+<td>隔离任务状态操作的界面反馈与实际文件一致；不改生命周期白名单来掩盖问题。</td>
+</tr>
+<tr>
+<td>PF-04 创建结果与资料落盘一致；现有不同路径需收敛合同</td>
+<td>把问题变成本地任务 A3/B1</td>
+<td>普通、AI计划、Jira创建分别显示真实生成物；已确认的计划资料能在该任务中读到。复用现有来源幂等与中断恢复，不覆盖用户修改。</td>
+<td>E10, E11, E12, E13, E14, E15</td>
+<td>每入口逐一核对页面声明与磁盘；Jira重复打开原任务；AI计划不再宣称不存在的PRD。</td>
+</tr>
+<tr>
+<td>PF-05 有边界地看过程；已有观测，补使用验证</td>
+<td>看哪些材料确实被组装/输出 A1/B2</td>
+<td>保留真实回执和来源/任务范围；计划清单、assembled、emitted、模型遵守分开。Flow模板事件不冒充外部Trellis步骤全部完成。</td>
+<td>E01, E07, E18, E26</td>
+<td>未观察到不显示成功；项目级变化不挂错任务；不能从模板gate通过推导业务/技术验收。</td>
+</tr>
+<tr>
+<td>PF-06 Codex与Claude日常可用收尾；已批准任务的余项</td>
+<td>在面板实际使用已有Agent A2</td>
+<td>继续复用固定版acpx和当前配置/权限/停止/恢复；完成原生IME、配置、草稿切换及最终视觉，保留已通过核心矩阵。</td>
+<td>E03, E04, E18, E19</td>
+<td>按原任务未完AC记录真实原生结果；草稿不误发，停止未确认不假装结束，旧历史不自动重放。</td>
+</tr>
+<tr>
+<td>PF-07 澄清与人工确认沿用项目流程；建议的最小连续体验</td>
+<td>粗需求变清楚再开工 B1</td>
+<td>将原问题、本地相关资料、规则、待问问题放回原任务材料；人工确认沿现有工作流/对话，不默认增加多人审批后端。</td>
+<td>E01, E02, E14, E15</td>
+<td>读者可区分原始摘要/整理结论/未决问题；没有用户实施确认不把计划创建当开工。</td>
+</tr>
+<tr>
+<td>PF-08 旧任务接续与统一交接；已有材料/关系，待样本验证增量</td>
+<td>隔几天或换工具继续 B2/B3</td>
+<td>复用PRD/设计/检查记录、父子任务与确定性交接包；说明上次结果、本次增量、资料读取时间及缺失；收敛过时交接指令。</td>
+<td>E01, E16, E17, E18, E28</td>
+<td>接手者说明目标/上次结果/缺项/下一步；默认核对阅读；不新建重复任务、不自动重放历史prompt。</td>
+</tr>
+<tr>
+<td>PF-09 工程代码只读查看；有项目依据，部分服务可复用</td>
+<td>开发中定位改动 C1</td>
+<td>使用现有Git读取/差异基础；标当前仓库、基线、暂存/未暂存和已有脏改动的归因限制；新只读入口无写操作。</td>
+<td>E05, E24, E33</td>
+<td>只读路径不发Git写命令；无Git降级；多仓库如启用必须各自标明来源。</td>
+</tr>
+<tr>
+<td>PF-10 有归属的工程运行与日志；有项目依据，尚未形成完整服务组</td>
+<td>少切终端看多个工程 C2/C3</td>
+<td>先复用单工程命令输出/中止，再补明确目录、进程归属、日志来源、退出码与可选就绪检查；多工程依赖在单工程可靠后增加。</td>
+<td>E05, E25</td>
+<td>未定义就绪不称服务可用；部分失败定位具体工程；只停止自己拥有的进程；暂停跟随不停止进程。</td>
+</tr>
+<tr>
+<td>PF-11 做完能核实并交给下一次；已有记录，待真实使用试点</td>
+<td>检查、收尾和最小交接 D1</td>
+<td>汇总本次变化、实际检查、未覆盖、已知问题、继续方式。归档遵循项目命令，Jira/外发单独决定；现有文档/仓库/沟通工具优先。</td>
+<td>E01, E02, E07, E17, E23, E27</td>
+<td>自检通过不自动等同业务认可；不需要Jira/发布的本地任务也可完成；接手记录不虚构试点或效率。</td>
+</tr>
+</tbody></table></div>
+<p>机器可读文件：<a href="project-requirements.json">project-requirements.json</a>、<a href="acceptance-plan.json">acceptance-plan.json</a>。<code>已有</code>是静态实现/指定历史证据的判断，不表示全部可用性已经关闭。</p>
+<h2>2 非功能与安全约束</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>编号/目标</th>
+<th>行为与验收方向</th>
+<th>适用包</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PN-01 原资料与Trellis权威</td>
+<td>不另建同名任务/生命周期双主；未知字段和用户改动保留；状态变化走现有流程或单独批准的适配。</td>
+<td>所有包</td>
+<td>E02/E09/E10/E12</td>
+</tr>
+<tr>
+<td>PN-02 工程与会话不串</td>
+<td>每次动作校验真实root/task/session；迟到事件和历史记录保留原归属。</td>
+<td>A1/A2/B/C</td>
+<td>E08/E18/E19</td>
+</tr>
+<tr>
+<td>PN-03 结果可解释</td>
+<td>文件更新、回合结束、进程存活、服务就绪、检查通过、业务认可和外部发布不互相替代。</td>
+<td>全部</td>
+<td>E07/E18/E25/E27</td>
+</tr>
+<tr>
+<td>PN-04 错误保留成果</td>
+<td>读取失败保留可用旧内容；写冲突保留用户内容；外部结果不确定先核实，不自动重复副作用。</td>
+<td>A/B/D及适用外部动作</td>
+<td>E07/E09/E12/E27</td>
+</tr>
+<tr>
+<td>PN-05 本机与隐私边界</td>
+<td>默认不分享代码、prompt、会话和日志；诊断不含凭据；显式携带资料说明范围；不为路线研究读取真实凭据。</td>
+<td>全部</td>
+<td>E01/E17/E19</td>
+</tr>
+<tr>
+<td>PN-06 桌面交互真实可用</td>
+<td>原生中文输入、草稿、焦点/Esc、窄宽度与主题需适用实测；浏览器/构建不替代原生验收，不作合规认证声明。</td>
+<td>A1/A2及新增页面</td>
+<td>E04/E06/E30</td>
+</tr>
+<tr>
+<td>PN-07 可维护与可停止</td>
+<td>复用当前acpx固定版/补丁和已有服务；运行资源有归属；取消/断线按真实能力处理；不叠加第二套通用编码循环。</td>
+<td>A2/C2/C3</td>
+<td>E03/E04/E18/E25</td>
+</tr>
+<tr>
+<td>PN-08 时间与成本目标先有基线</td>
+<td>性能阈值以现有夹具和目标设备确认；不照搬竞品承诺或虚构效率百分比；估算只计算剩余/新增工作。</td>
+<td>各包开始前</td>
+<td>E01/E07</td>
+</tr>
+</tbody></table></div>
+<p>性能与可靠性不能只写形容词。每包开始前记录目标设备、数据量、使用步骤与允许阈值；本次不无依据设全平台SLO、存储RPO/RTO或团队可用率。C2/C3进入真实运行前须有受控夹具与停止规则；共享载体未选定时，不假定存在远程权限撤销或跨机缓存治理能力。</p>
+<h2>3 退出与范围控制</h2>
+<p>每个小包单独验收，未满足的原生、外部或跨人项明确not_run/blocked。A1/A2以当前任务AC为准，只补余项；不另做一遍全部ACP或阅读器。B包必须至少拿真实资料说明它解决了哪一个接续问题。C1无需等待C2/C3或团队服务；C3依赖可核实的进程归属和单工程行为。D1先验证实际接手，不先绑定新共享平台。</p>
+<p>若未来确需正式跨人决定，先明确参与者、资料版本、回复渠道、责任和撤回情形，再评估是否需要实体/存储；旧稿的RequirementRevision/ApprovalDecision/多层授权模型仅供参考，不能以其存在为由反推必建后端。</p>
+</div></details><details id="doc-04"><summary>范围取舍：Hifox借鉴与不采用</summary><div class="content"><h1>支撑附录：研究覆盖与实施承诺分开</h1>
+<p>旧版从Hifox覆盖清单反推64项能力、48条FR和R0–R5，容易把“研究过”变成“迟早要做”。本版停止这种推导。旧研究与截图原样保留，证明当时看到了什么；是否进入产品路线必须再有本项目场景、现实缺口和用户目标。<strong>没有64能力全覆盖目标，没有要求旧48条逐项通过的新门槛。</strong></p>
+<h2>1 Hifox借鉴、暂缓与不采用</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>参考主题</th>
+<th>本版取舍</th>
+<th>项目理由</th>
+<th>何时才改变</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>阅读、就地资料和渐进披露</td>
+<td>借鉴细节，沿用现有实现</td>
+<td>服务P01与E05；不重绘成Hifox组织/空间结构</td>
+<td>遇到当前阅读/窄屏问题时按真实截图验证</td>
+</tr>
+<tr>
+<td>环境诊断与业务/运行分开</td>
+<td>保留原则，复用当前ACP</td>
+<td>E03/E18已有安装/认证/目录/会话事实；不能当未来全新平台</td>
+<td>继续原任务的真实厂商与原生验收</td>
+</tr>
+<tr>
+<td>Agent列表/角色配置</td>
+<td>复用现有ACP配置，适度借鉴</td>
+<td>当前Codex/Claude和root配置已实现，不新增组织资源发布</td>
+<td>有具体配置难用样本再调整交互</td>
+</tr>
+<tr>
+<td>搜索条件/空态/错误恢复</td>
+<td>仅作交互检查参考</td>
+<td>Hifox截图可提示风险，不能替代Trellis复现</td>
+<td>实际任务页出现相同问题才立项</td>
+</tr>
+<tr>
+<td>周迭代</td>
+<td>复用当前自然周，不照搬新平台</td>
+<td>E20/E32已有周期和结转；属于既有进行中工作</td>
+<td>按原任务验证，新增复杂规则另决策</td>
+</tr>
+<tr>
+<td>多工程运行/日志/只读Git</td>
+<td>项目主场景，可独立排期</td>
+<td>E05明确后续方向、E24/E25有基础；不依赖Hifox或共享审批</td>
+<td>由实际工程/脚本/优先级决定C1–C3顺序</td>
+</tr>
+<tr>
+<td>专项/交付目标、分拣台</td>
+<td>暂缓且允许不采用</td>
+<td>当前没有独立长期目标或外部反馈分诊的具体样本；本地需求接入并不等于Hifox分拣</td>
+<td>出现跨任务目标管理/大量外部反馈，并证明现有任务与Jira不足</td>
+</tr>
+<tr>
+<td>高级字段/任务类型平台</td>
+<td>不纳入本规划范围</td>
+<td>已有TaskRecord足以承接当前任务；照搬三类类型会增加迁移和管理</td>
+<td>具体字段/检索无法表达且使用者确认收益</td>
+</tr>
+<tr>
+<td>共享视图/通知/统计扩张</td>
+<td>保留现有本机功能，暂缓团队平台化</td>
+<td>个人保存视图与本机通知不被删除；没有跨人身份/投递数据就不补假在线或待办</td>
+<td>真实多人流程出现明确漏接/视图共享问题，先用现有渠道试验</td>
+</tr>
+<tr>
+<td>正式跨设备审批/组织权限</td>
+<td>先验证实际协作，不预选平台</td>
+<td>E01确有团队目标，但不推出必须自建完整服务</td>
+<td>用户确定产品/测试的实际入口、回复和权限需求后再选最小方案</td>
+</tr>
+<tr>
+<td>小队/通用自动化/测试或文档流水线</td>
+<td>候选，退出默认实施承诺</td>
+<td>现有Flow/频道保持可用；没有证明哪条重复流程值得自动化</td>
+<td>指定手动流程多次稳定、收益与责任/预算可核实，再做一条最小规则</td>
+</tr>
+<tr>
+<td>其他任务平台/消息集成</td>
+<td>不采用为覆盖目标</td>
+<td>当前可见来源以本地/Jira与既有GitLab为主，厂商目录不是需求</td>
+<td>真实迁移/接入要求出现才逐平台评估</td>
+</tr>
+<tr>
+<td>Jira兼容API、通用CLI/PAT平台</td>
+<td>本路线不采用</td>
+<td>没有现成客户端或外部调用场景；不扩张既有TPAP边界</td>
+<td>用户提出确切调用者、动作、身份与运维要求</td>
+</tr>
+<tr>
+<td>非研发场景扩张</td>
+<td>本路线不采用</td>
+<td>当前证据围绕本机研发工作，旧FR-045不构成产品承诺</td>
+<td>出现真实新用户问题后独立立项</td>
+</tr>
+<tr>
+<td>新编码Agent/远程机器/云开发</td>
+<td>不纳入当前路线</td>
+<td>当前已批准复用acpx且执行在员工本机；现有成熟工具为基础</td>
+<td>本机无法满足的明确场景与责任/成本确认后再评估</td>
+</tr>
+</tbody></table></div>
+<p>“暂缓”不表示进入承诺队列；允许以后仍不采用。“不采用”针对本版新增范围，不删除产品已有工具。跨人确认有场景，也不等于需要自建完整身份、评论、批准和共享存储服务。</p>
+<h2>2 旧FR逐项处理</h2>
+<p>以下是历史条目的去向说明，不是新增待办。所有implementation_commitment=false；真正的本版可规划需求只看03的PF；只有用户后续选定的任务才形成实施范围。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>旧ID/标题</th>
+<th>本版处理</th>
+<th>相关位置</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-001 唯一项目上下文</td>
+<td>复用并收尾</td>
+<td>PF-01</td>
+<td>当前工程唯一上下文已有实现，不另起R0。</td>
+</tr>
+<tr>
+<td>FR-002 真实材料阅读</td>
+<td>复用并收尾</td>
+<td>PF-02</td>
+<td>当前阅读器与版本比较已有实现。</td>
+</tr>
+<tr>
+<td>FR-003 逐需求修订、发布版与发送证据</td>
+<td>缩为原则/候选</td>
+<td>PF-02/PF-05/PF-08</td>
+<td>保留资料版本和发送事实；逐义务修订/发布manifest不默认建。</td>
+</tr>
+<tr>
+<td>FR-004 普通本地创建、空态与上手</td>
+<td>修现有断点</td>
+<td>PF-04</td>
+<td>按真实创建入口产物改反馈，不假定已有统一CLI创建器。</td>
+</tr>
+<tr>
+<td>FR-005 兼容、冲突、取消与重开</td>
+<td>保留权威原则</td>
+<td>PF-03/PF-11</td>
+<td>取消/重开须现有流程支持，暂不搭完整新状态平台。</td>
+</tr>
+<tr>
+<td>FR-006 导出与恢复</td>
+<td>缩为最小交接</td>
+<td>PF-11</td>
+<td>先用现有文件/工具验证接手；全量备份服务非默认。</td>
+</tr>
+<tr>
+<td>FR-007 Jira 来源与幂等导入</td>
+<td>复用现有</td>
+<td>PF-04</td>
+<td>Jira防重/来源草稿已存在，增量按真实实例。</td>
+</tr>
+<tr>
+<td>FR-008 具体需求、稳定修订与影响分析</td>
+<td>缩为任务材料澄清</td>
+<td>PF-07/PF-08</td>
+<td>具体规则/缺项留原任务，不先建依赖闭包。</td>
+</tr>
+<tr>
+<td>FR-009 逐项产品决定与整版批准</td>
+<td>条件候选</td>
+<td>可选跨人协作</td>
+<td>正式逐项/整版审批需真实跨人需求，不设规划范围门槛。</td>
+</tr>
+<tr>
+<td>FR-010 真人分配门槛与执行槽</td>
+<td>保留现有负责人字段</td>
+<td>PF-01/PF-07</td>
+<td>未确认需要接受分配/执行槽制度，不默认加新门禁。</td>
+</tr>
+<tr>
+<td>FR-011 最小跨人共享和访问恢复</td>
+<td>条件候选</td>
+<td>可选跨人协作</td>
+<td>跨设备需求先验证现有渠道，不默认共享服务硬前置。</td>
+</tr>
+<tr>
+<td>FR-012 讨论修订、稳定锚点和并发</td>
+<td>条件候选</td>
+<td>可选跨人协作</td>
+<td>先用实际Jira/飞书/文档回复；不先建评论修订/锚点平台。</td>
+</tr>
+<tr>
+<td>FR-013 待办交接</td>
+<td>条件候选</td>
+<td>可选跨人协作</td>
+<td>正式ActionItem/等你等人并无当前后端事实。</td>
+</tr>
+<tr>
+<td>FR-014 方案评审、覆盖分解与双验收</td>
+<td>缩为人工流程</td>
+<td>PF-07/PF-11</td>
+<td>沿用项目计划确认和检查，不默认双层审批实体。</td>
+</tr>
+<tr>
+<td>FR-015 R1手工交付最小合同</td>
+<td>取消统一硬合同</td>
+<td>PF-11</td>
+<td>每任务不必发布manifest/构建包/跨设备交付；按任务实际检查记录。</td>
+</tr>
+<tr>
+<td>FR-016 动作账本、授权与并发恢复</td>
+<td>按现有副作用边界复用</td>
+<td>PF-03/PF-04/PN-04</td>
+<td>Jira本地操作控制已有；不为全部动作建通用新账本。</td>
+</tr>
+<tr>
+<td>FR-017 材料组织与搜索</td>
+<td>复用现有</td>
+<td>PF-02/PF-07</td>
+<td>知识与材料阅读沿用当前索引和来源。</td>
+</tr>
+<tr>
+<td>FR-018 任务类型与分类</td>
+<td>不纳入默认</td>
+<td>候选</td>
+<td>不以Hifox需求/缺陷/任务三类取代现有工程TaskRecord。</td>
+</tr>
+<tr>
+<td>FR-019 任务关系</td>
+<td>缩为现有任务关联</td>
+<td>PF-08</td>
+<td>先显示已有parent/children和后续任务，不建通用关系平台。</td>
+</tr>
+<tr>
+<td>FR-020 个人与共享视图</td>
+<td>复用个人偏好，暂缓共享平台</td>
+<td>PF-01/候选</td>
+<td>已有本机保存视图不删除；共享默认需真实团队场景。</td>
+</tr>
+<tr>
+<td>FR-021 迭代与交付目标</td>
+<td>拆开处理</td>
+<td>当前周期任务/候选</td>
+<td>自然周已实现；专项/交付目标没有独立样本则暂缓。</td>
+</tr>
+<tr>
+<td>FR-022 可选接收队列</td>
+<td>暂缓</td>
+<td>候选</td>
+<td>本地需求接入保留，外部反馈分拣不是必经步骤。</td>
+</tr>
+<tr>
+<td>FR-023 通知与权限路由</td>
+<td>保留本机通知，暂缓扩张</td>
+<td>候选</td>
+<td>不默认建团队通知路由/身份投递平台。</td>
+</tr>
+<tr>
+<td>FR-024 流程度量</td>
+<td>保留已有展示，暂缓扩张</td>
+<td>候选</td>
+<td>不以管理指标增加工作记录负担；无样本不补零。</td>
+</tr>
+<tr>
+<td>FR-025 执行角色与资源</td>
+<td>复用当前ACP配置</td>
+<td>PF-06</td>
+<td>已有角色配置不重做成组织资源库。</td>
+</tr>
+<tr>
+<td>FR-026 复用成熟运行层</td>
+<td>已经选择并复用</td>
+<td>PF-06/PN-07</td>
+<td>当前acpx固定版/补丁是现状，不再列远期技术选型。</td>
+</tr>
+<tr>
+<td>FR-027 分层环境预检</td>
+<td>复用并收尾</td>
+<td>PF-06</td>
+<td>环境诊断已有；按原AC补真实原生余项。</td>
+</tr>
+<tr>
+<td>FR-028 机器目录租约与并发</td>
+<td>复用本机目录策略</td>
+<td>PF-06/PN-07</td>
+<td>当前租约/后台工具处理已有，不引入分布式机器调度。</td>
+</tr>
+<tr>
+<td>FR-029 明确启动和发送防重</td>
+<td>保留并验证</td>
+<td>PF-06</td>
+<td>显式启动和busy草稿是当前行为边界。</td>
+</tr>
+<tr>
+<td>FR-030 取消、hold、权限与unknown恢复</td>
+<td>以当前ACP实现为准</td>
+<td>PF-06/PN-07</td>
+<td>旧hold/unknown提案不是当前枚举；安全停止原则保留，不能直接套新状态机。</td>
+</tr>
+<tr>
+<td>FR-031 Session归属与会话隐私</td>
+<td>复用当前root/session归属</td>
+<td>PF-06/PN-02</td>
+<td>本机会话隔离已有，不升级成团队会话权限平台。</td>
+</tr>
+<tr>
+<td>FR-032 跨 runtime 继续包</td>
+<td>先做资料接续</td>
+<td>PF-08</td>
+<td>可看历史/真实支持resume/新会话分清，不承诺跨runtime无损。</td>
+</tr>
+<tr>
+<td>FR-033 快捷指令</td>
+<td>按实际动作另评</td>
+<td>候选</td>
+<td>通用快捷指令不是近期必须；浏览/开页不执行原则保留。</td>
+</tr>
+<tr>
+<td>FR-034 R4版本集成核验与手动测试增强</td>
+<td>缩为适用的检查记录</td>
+<td>PF-11</td>
+<td>不默认完整测试管理/CI版本平台。</td>
+</tr>
+<tr>
+<td>FR-035 交付与发布分离</td>
+<td>保留事实分离</td>
+<td>PF-11/PN-03</td>
+<td>完成/验收/发布分开，但不要求每任务走发布。</td>
+</tr>
+<tr>
+<td>FR-036 统一外部应用契约</td>
+<td>保留扩展边界</td>
+<td>候选</td>
+<td>不先建统一连接器权限平台。</td>
+</tr>
+<tr>
+<td>FR-037 CLI API 与访问身份</td>
+<td>本路线不采用扩张</td>
+<td>候选</td>
+<td>既有TPAP/CLI保留，新增访问身份平台无确切调用者。</td>
+</tr>
+<tr>
+<td>FR-038 逐字段同步与冲突</td>
+<td>按真实Jira/GitLab场景</td>
+<td>PF-11/候选</td>
+<td>现有回写可选，逐字段持续同步扩张不默认。</td>
+</tr>
+<tr>
+<td>FR-039 按需平台接入</td>
+<td>取消覆盖目标</td>
+<td>候选</td>
+<td>其他平台只有实际接入需求才讨论。</td>
+</tr>
+<tr>
+<td>FR-040 独立证据、验收关联和保留</td>
+<td>缩为文件和检查引用</td>
+<td>PF-11</td>
+<td>独立证据库/保留治理依实际共享载体再决定。</td>
+</tr>
+<tr>
+<td>FR-041 受控小队</td>
+<td>暂缓且允许不采用</td>
+<td>候选</td>
+<td>小队无当前具体手动流程收益证明。</td>
+</tr>
+<tr>
+<td>FR-042 自动化与补偿</td>
+<td>保留既有工具，暂缓新平台</td>
+<td>候选</td>
+<td>当前Flow存在不等于需要通用自动化规划范围。</td>
+</tr>
+<tr>
+<td>FR-043 测试自动化</td>
+<td>条件候选</td>
+<td>候选</td>
+<td>先验证实际测试步骤，不先组测试小队。</td>
+</tr>
+<tr>
+<td>FR-044 文档流水线</td>
+<td>条件候选</td>
+<td>候选</td>
+<td>文档草稿可用现有工具，发布/回写需独立场景。</td>
+</tr>
+<tr>
+<td>FR-045 扩展场景边界</td>
+<td>本路线不采用</td>
+<td>范围外</td>
+<td>不自动扩到非研发场景。</td>
+</tr>
+<tr>
+<td>FR-046 工程运行与跨项目总览</td>
+<td>项目有依据的独立工作项</td>
+<td>PF-10</td>
+<td>可按用户优先级前排，不依赖共享审批/R4。</td>
+</tr>
+<tr>
+<td>FR-047 基础日志</td>
+<td>项目有依据的独立工作项</td>
+<td>PF-10</td>
+<td>先真实命令输出/归属，再决定长期日志。</td>
+</tr>
+<tr>
+<td>FR-048 只读 Git 与工作视图</td>
+<td>项目有依据的独立工作项</td>
+<td>PF-09</td>
+<td>复用Git读取，不作为大交付平台之后的装饰支线。</td>
+</tr>
+</tbody></table></div>
+<p>旧R0–R5、旧ST/AP/SEC/NF和244+12条测试属于历史方案。关于文件不串、权限不能被角色名字代替、停止未核实不显示已停止等原则可参考；复杂实体、强制阶段依赖和测试编号不能直接变成本版代码要求。适用的新功能再做具体设计和原生/外部验证。</p>
+</div></details><details id="doc-05"><summary>数据与状态：当前技术边界</summary><div class="content"><h1>支撑附录：当前数据、状态与权限边界</h1>
+<p>这里描述本次静态核对的现状，并列出少量设计建议；不把旧稿的通用协作模型当作已实现数据库。当前数据流见<a href="#C03-current-data-flow">C03</a>，图中只绘制规划范围核心，不穷举所有后台模块；当前人与工具的工作链见<a href="#C01-current-flow">C01</a>。双向线表示现有请求/响应或读写关系，不代表每次读取都会写入；Jira外写仍须显式动作。</p>
+<h2>1 数据在哪里、谁是事实源</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>数据/对象</th>
+<th>当前字段或位置</th>
+<th>产生/使用关系</th>
+<th>边界与建议</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>工程上下文</td>
+<td>snapshot.meta.root、当前projectRoot</td>
+<td>扫描/导航/IPC/ACP动作按root关联</td>
+<td>UI派生project名字不是第二个工程权威</td>
+</tr>
+<tr>
+<td>任务记录</td>
+<td>.trellis/tasks/<dir>/task.json；id/name/status/assignee/parent/children/branch/commit等</td>
+<td>外部Trellis流程、不同创建器；scan读取</td>
+<td>生命周期归现行流程；panel只写允许元数据；未知字段保留</td>
+</tr>
+<tr>
+<td>任务资料</td>
+<td>prd/design/implement.md、implement/check.jsonl和已有research/validation</td>
+<td>人与AI产出，阅读器/交接/ACP读取</td>
+<td>清单是上下文引用，不是成功证据；资料缺失不伪造</td>
+</tr>
+<tr>
+<td>阅读会话/修订</td>
+<td>documents读取与内容修订、打开基线/候选新版本</td>
+<td>文件变化→候选提醒→用户选择比较/切换</td>
+<td>本地文件版本不等于正式多人批准；旧确认不可冒称新版确认</td>
+</tr>
+<tr>
+<td>Jira来源/本地操作</td>
+<td>meta来源标识与LocalTaskService操作/来源控制记录</td>
+<td>远端查询→受控创建→对账/来源草稿</td>
+<td>Jira自动后台覆盖任务状态已停用；旧通用创建路径仍需校准</td>
+</tr>
+<tr>
+<td>ACP配置</td>
+<td>userData/acp/profiles/<root-hash>.json</td>
+<td>可复用名字/职责/指令/runtime/default目录</td>
+<td>本机配置按root分开，不是组织角色/执行授权</td>
+</tr>
+<tr>
+<td>ACP会话</td>
+<td>userData/acp-sessions/<sessionId>.json；projectRoot/taskDir/远端身份/turn/events/materialSnapshot</td>
+<td>acpx事件与主进程投影，历史读取与受能力支持的恢复</td>
+<td>taskDir可空；本机记录不自动共享；材料快照不等于完整内容指纹或遵守证据</td>
+</tr>
+<tr>
+<td>观测回执/活动</td>
+<td>既有observability与activity服务</td>
+<td>Hook/文件/第一方动作→有来源记录→读模型</td>
+<td>assembled/emitted与模型接受/遵守分开；无记录不补成功</td>
+</tr>
+<tr>
+<td>周期/视图偏好</td>
+<td>TaskRecord.cycle；按工程的本机偏好</td>
+<td>工作项分组与自然周结转</td>
+<td>没必要引入Hifox式专项/共享视图实体才能使用当前周期</td>
+</tr>
+<tr>
+<td>Flow模板/运行</td>
+<td>.trellis/flows；userData/flow-runs</td>
+<td>定制中心显式运行模板，保存事件/结果</td>
+<td>是另一工具路径，不是外部Trellis全生命周期审计</td>
+</tr>
+<tr>
+<td>Git/CLI事实</td>
+<td>taskGitInfo、文档基线；CliRun的id/proc与流式输出</td>
+<td>读取Git或显式运行命令</td>
+<td>文件脏改动未必属于当前任务；进程存活不等于就绪</td>
+</tr>
+</tbody></table></div>
+<p>实体关系采用当前实际对象：工程包含任务目录；任务可引用父/子任务及资料；会话可绑定任务，也可独立；一次会话可有多个turn；Jira来源引用关联本地任务。当前没有证据要求把每段文字都拆成RequirementRevision/ApprovalDecision/ImpactAssessment实体。先用真实任务文件和接续说明验证，复杂结构有需求再设计。</p>
+<h2>2 状态如何读</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>状态线</th>
+<th>当前事实/代码</th>
+<th>可以说明什么</th>
+<th>不能代替什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>任务阶段</td>
+<td>task.json.status及workflow约定</td>
+<td>项目记录在哪个阶段；自定义原值保留</td>
+<td>不证明当次运行、检查或业务已经通过</td>
+</tr>
+<tr>
+<td>当前任务指针</td>
+<td>Trellis会话运行记录；task.py start/finish</td>
+<td>某个会话绑定/清除当前任务</td>
+<td>finish不自动等于completed或archive</td>
+</tr>
+<tr>
+<td>ACP会话</td>
+<td>starting/ready/busy/awaiting_permission/cancelling/disconnected/legacy/error/closed</td>
+<td>当前连接/回合/权限状态</td>
+<td>turn-done不批准任务、Jira或发布</td>
+</tr>
+<tr>
+<td>工具/后台工作</td>
+<td>真实tool状态、目录占用与进程事实</td>
+<td>是否仍有未结束工作，谁占目录</td>
+<td>未收到完成不能显示已释放/已停止</td>
+</tr>
+<tr>
+<td>Flow运行</td>
+<td>running/completed/error/aborted及模板步骤</td>
+<td>该Flow定义的一次执行结果</td>
+<td>不能称整个Trellis规范流程执行完毕</td>
+</tr>
+<tr>
+<td>归档/Jira/发布</td>
+<td>文件位置和外部独立回执</td>
+<td>各自实际发生的动作</td>
+<td>本地归档不自动代表Jira成功或软件已发布</td>
+</tr>
+</tbody></table></div>
+<p>旧稿的planned/preflight/hold_requested/unknown等是提案模型，并非当前ACP枚举。本版复用当前实现；“结果未知”可作为诊断含义，但不冒充已存在的新状态或要求立即迁移。取消与未结束工具的安全处理按现有ACP任务AC验收。</p>
+<h2>3 谁可以做什么</h2>
+<p>当前主要边界是本机路径访问、IPC工程/会话归属、runtime提供的权限选项和已有外部账号权限。成员名字由任务记录推导不代表登录身份；工作视图不授予权限；共享角色/指令不授予电脑执行权。</p>
+<p>本机执行不等于模型请求一定离线。所选工具可能按已有配置把指令和选取资料发送到模型服务；本轮没有读取凭据、改变模型设置或执行请求。平台不额外镜像仓库的目标不能被写成模型永不接收代码。</p>
+<p>新建议只补适用动作的检查与真实反馈：打开/阅读不执行；显式发起才发送资料/启动；外部写入说明目的地与结果；无人批准时不自行放大权限。没有正式跨设备协作目标时，不建一套组织RBAC/多层授权图作为前置。</p>
+<h2>4 最小接续说明（设计建议，优先存在原任务资料中）</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>为什么需要</th>
+<th>暂不要求</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>原任务与本次目标</td>
+<td>防止隔几个任务后重来或做错范围</td>
+<td>新建第二个需求系统</td>
+</tr>
+<tr>
+<td>原资料位置/读取时间与变化</td>
+<td>知道AI/人依据哪份内容，能回看差异</td>
+<td>每条义务不可变修订/完整依赖闭包</td>
+</tr>
+<tr>
+<td>上轮实际结果/检查及未完成项</td>
+<td>区分做过、失败、没测、待确认</td>
+<td>每任务都绑定构建平台/正式双验收实体</td>
+</tr>
+<tr>
+<td>下一步与需要谁回答的问题</td>
+<td>接手者知道从哪里继续</td>
+<td>完整通知/待办投递服务</td>
+</tr>
+<tr>
+<td>明确动作意图</td>
+<td>只核对阅读、继续规划或已授权实施分开</td>
+<td>自动重放历史prompt或跨runtime进程无损迁移</td>
+</tr>
+</tbody></table></div>
+<p>如果真实接手验证说明这些字段已能从现有资料清楚获得，就只调整入口和文案，不新增重复表单或强迫维护第二份状态。</p>
+<p><a href="#C04-current-relations">当前对象关系图</a>只描述代码与文件关系，不是新增数据库或团队审批模型。</p>
+</div></details><details id="doc-06"><summary>实施准备：依赖、风险与估算</summary><div class="content"><h1>支撑附录：实施准备、依赖与估算</h1>
+<p>本轮交付完整规划，用户以后根据roadmap选择任务。它不要求先定唯一主线，也不授权修代码或实现功能。AI会话、阅读和本机使用靠前是用户偏好，不是最终排期。已经批准的工程任务仍依原边界开展。</p>
+<h2>1 已明确的规划口径</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>记录</th>
+<th>最新依据与处理</th>
+<th>对规划的含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>D01 已明确：roadmap用于后续决策</td>
+<td>用户说明只做规划、无需先考虑主线；若呈现顺序，AI会话和阅读偏靠前</td>
+<td>A方向靠前呈现，B/C/D仍可独立选择；不等待优先级问答、不固定单一路线</td>
+</tr>
+<tr>
+<td>D02 已明确：本机使用偏靠前</td>
+<td>用户将本机使用列为靠前偏好；未要求当前必须跨设备审批</td>
+<td>当前围绕本机能力规划；跨设备资料/回复/确认列后续可选场景，不预设共享服务架构</td>
+</tr>
+<tr>
+<td>实施边界明确</td>
+<td>本轮不做实现；静态代码断点只作候选修正项及验证方法</td>
+<td>不新开实施任务，不修改状态、后端白名单或产品代码</td>
+</tr>
+</tbody></table></div>
+<p>最新用户说明见<a href="evidence/user-directions.json">evidence/user-directions.json</a>。未来实施时仍需具体设备、数据量、脚本和使用样本；这些是选中对应工作项后的设计输入，不阻塞本份规划交付。</p>
+<h2>2 可独立选择的工作项</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>包</th>
+<th>交付目标</th>
+<th>前置</th>
+<th>完成证据</th>
+<th>边界</th>
+<th>责任角色（未指定人员）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A1</td>
+<td>原项目工作区余项</td>
+<td>现有实现/任务AC，确认当前构建</td>
+<td>按原任务原生视觉/阅读连续性余项留证</td>
+<td>不重做导航与阅读器；不新增共享后端</td>
+<td>原桌面任务维护者＋使用者</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>ACP日常使用收尾</td>
+<td>当前acpx与原厂商矩阵</td>
+<td>原生IME/配置/草稿等未完项；旧通过矩阵不回退</td>
+<td>不扩厂商/远程机/自建循环</td>
+<td>原运行任务维护者＋使用者</td>
+</tr>
+<tr>
+<td>A3</td>
+<td>状态/创建/交接承诺一致</td>
+<td>隔离任务复现F01–F03</td>
+<td>确认写入/不支持/文件实际结果；准确反馈</td>
+<td>不直接放开生命周期写入；不拆成审批平台</td>
+<td>桌面与Trellis适配维护者</td>
+</tr>
+<tr>
+<td>B1</td>
+<td>粗需求到本地资料</td>
+<td>一个资料样本；若涉及未落盘路径，先核实对应创建断点</td>
+<td>本地/Jira都能读到准确原资料和待问问题</td>
+<td>不自动抓全部飞书</td>
+<td>任务处理人＋需求协作者</td>
+</tr>
+<tr>
+<td>B2</td>
+<td>统一接续/交接</td>
+<td>已有handoff服务与可读资料；对应交接差异先核实</td>
+<td>一个隔天继续/换工具核对场景说清下一步</td>
+<td>不承诺无损会话迁移</td>
+<td>任务处理人</td>
+</tr>
+<tr>
+<td>B3</td>
+<td>后续任务关联</td>
+<td>真实返工样本与现有parent/children</td>
+<td>先验证现有字段/页面是否足够，再只补定位缺口</td>
+<td>无样本不建通用关系图</td>
+<td>任务处理人</td>
+</tr>
+<tr>
+<td>C1</td>
+<td>只读Git入口</td>
+<td>现有Git/差异基础及真实仓库范围</td>
+<td>独立交付来源清楚的只读状态/Diff</td>
+<td>不等团队平台，不默认Git写操作</td>
+<td>本机开发工具维护者</td>
+</tr>
+<tr>
+<td>C2</td>
+<td>单工程命令/日志</td>
+<td>明确脚本、目录、拥有者及停止规则</td>
+<td>可核实输出/退出/占用与安全中止</td>
+<td>不先做长期日志平台</td>
+<td>本机运行维护者</td>
+</tr>
+<tr>
+<td>C3</td>
+<td>多工程组合</td>
+<td>C2可靠，明确依赖/就绪定义</td>
+<td>部分失败/按拥有者停止有证据</td>
+<td>不扩成远程调度</td>
+<td>本机运行维护者＋使用者</td>
+</tr>
+<tr>
+<td>D1</td>
+<td>真实任务检查和接手</td>
+<td>适用A/B/C成果，可先手工</td>
+<td>实际接手者说明目标、结果、未测与下一步</td>
+<td>不要求每任务发布/回写/共享服务</td>
+<td>任务处理人＋实际接手者</td>
+</tr>
+</tbody></table></div>
+<h2>3 估算与计划的实际口径</h2>
+<p>不沿用旧22工作包的人日总和，也不把已完成ACP/阅读/周迭代再估一次。本轮没有足够新原生走查和实际工程样本，不能可靠给出A1/A2余项工期或C2/C3建设量；因此不编日历承诺。</p>
+<p>每包估算前先列：当前已通过项、需要复现的断点、涉及文件/层、目标设备/脚本、所需权限与外部等待、质量负责人及可用投入。A3先分别复现F01/F02/F03再估修改；C2先一条命令，C3再增加服务依赖，不能把CLI输出直接算成已具备调度。B3若现有关系已够用可不开发；D1可使用现有工具而不新建服务。</p>
+<p>建议用“单个小包→一次真实使用→保留/调整/停止”的方式控制预算。需要估算时给低/中/高及明确假设，外部审批/账号/人员等待单列；在没有实际参与者和维护能力信息时，原稿2开发＋兼职测试的假设也不继续冒充团队承诺。</p>
+<h2>4 风险与如何避免方向失控</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>风险</th>
+<th>当前事实/假设</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>已有能力被写成远期重建</td>
+<td>当前ACP/阅读/周期已有实现</td>
+<td>先对照原任务余项，避免重复项目</td>
+</tr>
+<tr>
+<td>为竞品覆盖增加管理负担</td>
+<td>旧64映射会制造迟早全做的暗示</td>
+<td>04明确允许不采用；候选无自动排期</td>
+</tr>
+<tr>
+<td>UI说做成了，实际未落盘</td>
+<td>F01/F02静态路径已定位</td>
+<td>隔离复现、实物核对与反馈；不靠换名掩盖</td>
+</tr>
+<tr>
+<td>以本机字段假造团队能力</td>
+<td>成员/评论/通知缺真实后端证据</td>
+<td>使用中性记录归因，团队平台先有场景</td>
+</tr>
+<tr>
+<td>接续说明变第二份重复台账</td>
+<td>尚未做真实接手续用验证</td>
+<td>现有资料能表达就只改入口，不加重复表单</td>
+</tr>
+<tr>
+<td>新工程运行误杀/串日志</td>
+<td>CLI基础不等完整服务组</td>
+<td>先单工程归属和退出，再组合，不杀外部进程</td>
+</tr>
+<tr>
+<td>历史证据被当本次验收</td>
+<td>本轮只静态核查/文档</td>
+<td>所有新PA测试not_run；原证据按指定范围保留</td>
+</tr>
+</tbody></table></div>
+<h2>5 后续可选场景与尚需输入</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>若选择此方向</th>
+<th>再明确什么</th>
+<th>当前不据此预建什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>原生会话/阅读收尾</td>
+<td>目标系统、IME、配置/草稿使用步骤和原任务未完AC</td>
+<td>第二套Agent运行层或新阅读器</td>
+</tr>
+<tr>
+<td>多工程运行</td>
+<td>使用者的工程组合、真实脚本、就绪条件、停止边界</td>
+<td>分布式调度、远程机器或云IDE</td>
+</tr>
+<tr>
+<td>旧任务接续</td>
+<td>一次实际返工/交接样本、当前资料和沟通位置</td>
+<td>逐条需求审批、通用关系图或第二份任务状态</td>
+</tr>
+<tr>
+<td>跨设备协作</td>
+<td>谁读哪份资料、在哪回复、确认何事、现有渠道的具体不足</td>
+<td>自建身份/评论/审批后端作为默认前置</td>
+</tr>
+<tr>
+<td>可选自动化/更多集成</td>
+<td>哪个稳定手动流程、真实调用者、频次和成本责任</td>
+<td>按厂商目录逐一接入或先组“小队”</td>
+</tr>
+</tbody></table></div>
+<h2>6 交付物与历史处理</h2>
+<p>当前正式入口更新到本目录；根docs/roadmap.md保留原内容为折叠历史，并把本版放在首屏。项目旧Hifox目录不改原字节，原Library三个文件更新内容版本以保留版本历史。单独的v0.6-draft.1草稿也保留，不当作当前正式版本。</p>
+<p>本版阅读层不继续铺陈旧64项能力、旧复杂实体和强制阶段。旧141文件只放在明确标记“已被本版取舍替代”的历史ZIP中，便于追溯研究证据；不将其作为现行附录或实施清单。当前48条历史FR的去向均implementation_commitment=false。</p>
+<p>文档校验只验证证据引用、范围口径、图源与交付可读性，不关闭产品AC，不运行模型、业务服务或外部写入。后续若选择实施，仍按项目规范建立具体任务与验收范围。</p>
+</div></details><details id="C01-current-flow"><summary>当前流程：资料仍在工程，工具有多条入口</summary><div class="content"><p class="hint">当前代码/项目流程的静态模型，不是本轮运行验收 · <a href="diagrams/C01-current-flow.mmd">可编辑Mermaid源</a> · <a href="diagrams/C01-current-flow.svg">完整SVG</a></p><div class="diagram"><svg id="plotC01currentflow" width="940.862060546875" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="1415.1666259765625" viewBox="0.00000762939453125 0.0000019073486328125 940.862060546875 1415.1666259765625" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#plotC01currentflow{font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:19px;fill:#233a2a;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#plotC01currentflow .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#plotC01currentflow .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#plotC01currentflow .error-icon{fill:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);}#plotC01currentflow .error-text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);stroke:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC01currentflow .edge-thickness-normal{stroke-width:1px;}#plotC01currentflow .edge-thickness-thick{stroke-width:3.5px;}#plotC01currentflow .edge-pattern-solid{stroke-dasharray:0;}#plotC01currentflow .edge-thickness-invisible{stroke-width:0;fill:none;}#plotC01currentflow .edge-pattern-dashed{stroke-dasharray:3;}#plotC01currentflow .edge-pattern-dotted{stroke-dasharray:2;}#plotC01currentflow .marker{fill:#54705a;stroke:#54705a;}#plotC01currentflow .marker.cross{stroke:#54705a;}#plotC01currentflow svg{font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:19px;}#plotC01currentflow p{margin:0;}#plotC01currentflow .label{font-family:Microsoft YaHei,Segoe UI,sans-serif;color:#233a2a;}#plotC01currentflow .cluster-label text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC01currentflow .cluster-label span{color:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC01currentflow .cluster-label span p{background-color:transparent;}#plotC01currentflow .label text,#plotC01currentflow span{fill:#233a2a;color:#233a2a;}#plotC01currentflow .node rect,#plotC01currentflow .node circle,#plotC01currentflow .node ellipse,#plotC01currentflow .node polygon,#plotC01currentflow .node path{fill:#edf4ee;stroke:#5c8268;stroke-width:1px;}#plotC01currentflow .rough-node .label text,#plotC01currentflow .node .label text,#plotC01currentflow .image-shape .label,#plotC01currentflow .icon-shape .label{text-anchor:middle;}#plotC01currentflow .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#plotC01currentflow .rough-node .label,#plotC01currentflow .node .label,#plotC01currentflow .image-shape .label,#plotC01currentflow .icon-shape .label{text-align:center;}#plotC01currentflow .node.clickable{cursor:pointer;}#plotC01currentflow .root .anchor path{fill:#54705a!important;stroke-width:0;stroke:#54705a;}#plotC01currentflow .arrowheadPath{fill:#0b0b0b;}#plotC01currentflow .edgePaths .path{stroke:#54705a;stroke-width:1px;}#plotC01currentflow .flowchart-link{stroke:#54705a;fill:none;}#plotC01currentflow .edgeLabel{background-color:#f7f0dc;text-align:center;}#plotC01currentflow .edgeLabel p{background-color:#f7f0dc;}#plotC01currentflow .edgeLabel rect{opacity:0.5;background-color:#f7f0dc;fill:#f7f0dc;}#plotC01currentflow .labelBkg{background-color:rgba(247, 240, 220, 0.5);}#plotC01currentflow .cluster rect{fill:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);stroke:hsl(308.5714285714, 0%, 89.3137254902%);stroke-width:1px;}#plotC01currentflow .cluster text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC01currentflow .cluster span{color:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC01currentflow .node .collapsed-indicator{fill:hsl(308.5714285714, 0%, 89.3137254902%);stroke:none;opacity:0.6;}#plotC01currentflow .node .collapsed-separator{stroke:hsl(308.5714285714, 0%, 89.3137254902%);stroke-width:0.75px;}#plotC01currentflow div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:12px;background:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);border:1px solid hsl(308.5714285714, 0%, 89.3137254902%);border-radius:2px;pointer-events:none;z-index:100;}#plotC01currentflow .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#233a2a;}#plotC01currentflow rect.text{fill:none;stroke-width:0;}#plotC01currentflow .icon-shape,#plotC01currentflow .image-shape{background-color:#f7f0dc;text-align:center;}#plotC01currentflow .icon-shape p,#plotC01currentflow .image-shape p{background-color:#f7f0dc;padding:2px;}#plotC01currentflow .icon-shape .label rect,#plotC01currentflow .image-shape .label rect{opacity:0.5;background-color:#f7f0dc;fill:#f7f0dc;}#plotC01currentflow .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#plotC01currentflow .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#plotC01currentflow .node .neo-node{stroke:#5c8268;}#plotC01currentflow [data-look="neo"].node rect,#plotC01currentflow [data-look="neo"].cluster rect,#plotC01currentflow [data-look="neo"].node polygon{stroke:url(#plotC01currentflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC01currentflow [data-look="neo"].swimlane.cluster rect{filter:none;}#plotC01currentflow [data-look="neo"].node path{stroke:url(#plotC01currentflow-gradient);stroke-width:1px;}#plotC01currentflow [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC01currentflow [data-look="neo"].node .neo-line path{stroke:#5c8268;filter:none;}#plotC01currentflow [data-look="neo"].node circle{stroke:url(#plotC01currentflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC01currentflow [data-look="neo"].node circle .state-start{fill:#000000;}#plotC01currentflow [data-look="neo"].icon-shape .icon{fill:url(#plotC01currentflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC01currentflow [data-look="neo"].icon-shape .icon-neo path{stroke:url(#plotC01currentflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC01currentflow :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="plotC01currentflow_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC01currentflow_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC01currentflow_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC01currentflow_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="plotC01currentflow_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC01currentflow_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC01currentflow_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC01currentflow_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC01currentflow_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC01currentflow_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC01currentflow_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="plotC01currentflow_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M302.801,62.667L302.801,70.547C302.801,78.428,302.801,94.189,326.764,109.747C350.726,125.304,398.65,140.659,422.613,148.336L446.575,156.013" id="plotC01currentflow-L_Old_Files_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Old_Files_0" data-points="W3sieCI6MzAyLjgwMTIyMzc1NDg4MjgsInkiOjYyLjY2NjY2NzkzODIzMjQyfSx7IngiOjMwMi44MDEyMjM3NTQ4ODI4LCJ5IjoxMDkuOTUwMDAwNzYyOTM5NDV9LHsieCI6NDUwLjM4NDI2NTI1MDA5MTYzLCJ5IjoxNTcuMjMzMzMzNTg3NjQ2NDh9XQ==" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M536.7,62.667L536.7,70.547C536.7,78.428,536.7,94.189,536.603,109.283C536.507,124.378,536.313,138.806,536.216,146.02L536.119,153.234" id="plotC01currentflow-L_Local_Files_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Local_Files_0" data-points="W3sieCI6NTM2LjcwMDMwOTc1MzQxOCwieSI6NjIuNjY2NjY3OTM4MjMyNDJ9LHsieCI6NTM2LjcwMDMwOTc1MzQxOCwieSI6MTA5Ljk1MDAwMDc2MjkzOTQ1fSx7IngiOjUzNi4wNjU0MTU0MTkwNTM5LCJ5IjoxNTcuMjMzMzMzNTg3NjQ2NDh9XQ==" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M741.015,62.667L741.015,70.547C741.015,78.428,741.015,94.189,719.957,109.722C698.899,125.256,656.784,140.561,635.726,148.214L614.669,155.867" id="plotC01currentflow-L_Jira_Files_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Jira_Files_0" data-points="W3sieCI6NzQxLjAxNDU5NTAzMTczODMsInkiOjYyLjY2NjY2NzkzODIzMjQyfSx7IngiOjc0MS4wMTQ1OTUwMzE3MzgzLCJ5IjoxMDkuOTUwMDAwNzYyOTM5NDV9LHsieCI6NjEwLjkwOTE1Nzg5ODI1OTgsInkiOjE1Ny4yMzMzMzM1ODc2NDY0OH1d" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M535.698,211.9L535.698,215.65C535.698,219.4,535.698,226.9,535.698,233.733C535.698,240.567,535.698,246.733,535.698,249.817L535.698,252.9" id="plotC01currentflow-L_Files_Read_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Files_Read_0" data-points="W3sieCI6NTM1LjY5ODM5ODU5MDA4NzksInkiOjIxMS45MDAwMDE1MjU4Nzg5fSx7IngiOjUzNS42OTgzOTg1OTAwODc5LCJ5IjoyMzQuNDAwMDAxNTI1ODc4OX0seyJ4Ijo1MzUuNjk4Mzk4NTkwMDg3OSwieSI6MjU2LjkwMDAwMTUyNTg3ODl9XQ==" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M439.032,316.687L411.004,323.067C382.977,329.447,326.922,342.207,298.894,351.67C270.867,361.133,270.867,367.3,270.867,370.383L270.867,373.467" id="plotC01currentflow-L_Read_Choice_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Read_Choice_0" data-points="W3sieCI6NDM5LjAzMTczNDQ2NjU1MjczLCJ5IjozMTYuNjg3NDc4NTM2MjgzNTV9LHsieCI6MjcwLjg2Njk4MTUwNjM0NzY2LCJ5IjozNTQuOTY2NjY3MTc1MjkyOTd9LHsieCI6MjcwLjg2Njk4MTUwNjM0NzY2LCJ5IjozNzcuNDY2NjY3MTc1MjkyOTd9XQ==" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M221.932,497.532L205.551,509.438C189.169,521.343,156.406,545.155,140.025,560.144C123.643,575.133,123.643,581.3,123.643,584.383L123.643,587.467" id="plotC01currentflow-L_Choice_External_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Choice_External_0" data-points="W3sieCI6MjIxLjkzMjE0MjE1NDE3Mjc3LCJ5Ijo0OTcuNTMxODI3ODIzMTE4MX0seyJ4IjoxMjMuNjQzNDcwNzY0MTYwMTYsInkiOjU2OC45NjY2NjcxNzUyOTN9LHsieCI6MTIzLjY0MzQ3MDc2NDE2MDE2LCJ5Ijo1OTEuNDY2NjY3MTc1MjkzfV0=" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M315.118,502.216L327.349,513.341C339.581,524.466,364.043,546.716,376.274,560.925C388.506,575.133,388.506,581.3,388.506,584.383L388.506,587.467" id="plotC01currentflow-L_Choice_ACP_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Choice_ACP_0" data-points="W3sieCI6MzE1LjExNzkwNzc4NjUyNjEsInkiOjUwMi4yMTU3NDA4OTUxMTQ2fSx7IngiOjM4OC41MDU2OTE1MjgzMjAzLCJ5Ijo1NjguOTY2NjY3MTc1MjkzfSx7IngiOjM4OC41MDU2OTE1MjgzMjAzLCJ5Ijo1OTEuNDY2NjY3MTc1MjkzfV0=" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M123.643,646.133L123.643,652.272C123.643,658.411,123.643,670.689,135.161,682.665C146.679,694.642,169.715,706.317,181.232,712.154L192.75,717.992" id="plotC01currentflow-L_External_Output_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_External_Output_0" data-points="W3sieCI6MTIzLjY0MzQ3MDc2NDE2MDE2LCJ5Ijo2NDYuMTMzMzM1MTEzNTI1NH0seyJ4IjoxMjMuNjQzNDcwNzY0MTYwMTYsInkiOjY4Mi45NjY2NjgxMjg5NjczfSx7IngiOjE5Ni4zMTgwMjA1ODIzODE1LCJ5Ijo3MTkuODAwMDAxMTQ0NDA5Mn1d" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M388.506,646.133L388.506,652.272C388.506,658.411,388.506,670.689,379.39,682.61C370.275,694.53,352.044,706.094,342.928,711.876L333.813,717.657" id="plotC01currentflow-L_ACP_Output_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_ACP_Output_0" data-points="W3sieCI6Mzg4LjUwNTY5MTUyODMyMDMsInkiOjY0Ni4xMzMzMzUxMTM1MjU0fSx7IngiOjM4OC41MDU2OTE1MjgzMjAzLCJ5Ijo2ODIuOTY2NjY4MTI4OTY3M30seyJ4IjozMzAuNDM1MjA5MTEwNTA1NjQsInkiOjcxOS44MDAwMDExNDQ0MDkyfV0=" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M270.867,795.367L270.867,799.117C270.867,802.867,270.867,810.367,275.077,817.453C279.288,824.539,287.708,831.211,291.919,834.547L296.129,837.883" id="plotC01currentflow-L_Output_Watch_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Output_Watch_0" data-points="W3sieCI6MjcwLjg2Njk4MTUwNjM0NzY2LCJ5Ijo3OTUuMzY2NjY2NzkzODIzMn0seyJ4IjoyNzAuODY2OTgxNTA2MzQ3NjYsInkiOjgxNy44NjY2NjY3OTM4MjMyfSx7IngiOjI5OS4yNjQxMzM2MDc1MzYxLCJ5Ijo4NDAuMzY2NjY2NzkzODIzMn1d" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M465.251,840.367L476.992,836.617C488.733,832.867,512.216,825.367,523.957,811.569C535.698,797.772,535.698,777.678,535.698,755.194C535.698,732.711,535.698,707.839,535.698,684.708C535.698,661.578,535.698,640.189,535.698,621.189C535.698,602.189,535.698,585.578,535.698,559.439C535.698,533.3,535.698,497.633,535.698,461.967C535.698,426.3,535.698,390.633,535.698,369.717C535.698,348.8,535.698,342.633,535.698,339.55L535.698,336.467" id="plotC01currentflow-L_Watch_Read_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Watch_Read_0" data-points="W3sieCI6NDY1LjI1MDUzNjU2OTE5NzMsInkiOjg0MC4zNjY2NjY3OTM4MjMyfSx7IngiOjUzNS42OTgzOTg1OTAwODc5LCJ5Ijo4MTcuODY2NjY2NzkzODIzMn0seyJ4Ijo1MzUuNjk4Mzk4NTkwMDg3OSwieSI6NzU3LjU4MzMzMzk2OTExNjJ9LHsieCI6NTM1LjY5ODM5ODU5MDA4NzksInkiOjY4Mi45NjY2NjgxMjg5NjczfSx7IngiOjUzNS42OTgzOTg1OTAwODc5LCJ5Ijo2MTguODAwMDAxMTQ0NDA5Mn0seyJ4Ijo1MzUuNjk4Mzk4NTkwMDg3OSwieSI6NTY4Ljk2NjY2NzE3NTI5M30seyJ4Ijo1MzUuNjk4Mzk4NTkwMDg3OSwieSI6NDYxLjk2NjY2NzE3NTI5Mjk3fSx7IngiOjUzNS42OTgzOTg1OTAwODc5LCJ5IjozNTQuOTY2NjY3MTc1MjkyOTd9LHsieCI6NTM1LjY5ODM5ODU5MDA4NzksInkiOjMzMi40NjY2NjcxNzUyOTI5N31d" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M396.034,775.655L444.763,782.69C493.492,789.725,590.95,803.796,639.678,813.915C688.407,824.033,688.407,830.2,688.407,833.283L688.407,836.367" id="plotC01currentflow-L_Output_Check_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Output_Check_0" data-points="W3sieCI6Mzk2LjAzMzY0NTYyOTg4MjgsInkiOjc3NS42NTQ1NDg2Mjk3NzF9LHsieCI6Njg4LjQwNzQ2MzA3MzczMDUsInkiOjgxNy44NjY2NjY3OTM4MjMyfSx7IngiOjY4OC40MDc0NjMwNzM3MzA1LCJ5Ijo4NDAuMzY2NjY2NzkzODIzMn1d" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M688.407,915.933L688.407,919.683C688.407,923.433,688.407,930.933,693.226,943.009C698.045,955.085,707.683,971.736,712.502,980.062L717.32,988.388" id="plotC01currentflow-L_Check_Fix_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Check_Fix_0" data-points="W3sieCI6Njg4LjQwNzQ2MzA3MzczMDUsInkiOjkxNS45MzMzMzI0NDMyMzczfSx7IngiOjY4OC40MDc0NjMwNzM3MzA1LCJ5Ijo5MzguNDMzMzMyNDQzMjM3M30seyJ4Ijo3MTkuMzI0MTI4NDA1Mzc5MywieSI6OTkxLjg0OTk5OTE3MzM1NjN9XQ==" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M781.157,991.85L786.31,982.947C791.463,974.044,801.769,956.239,806.921,937.289C812.074,918.339,812.074,898.244,812.074,878.15C812.074,858.056,812.074,837.961,812.074,817.867C812.074,797.772,812.074,777.678,812.074,755.194C812.074,732.711,812.074,707.839,812.074,684.708C812.074,661.578,812.074,640.189,812.074,621.189C812.074,602.189,812.074,585.578,812.074,559.439C812.074,533.3,812.074,497.633,812.074,461.967C812.074,426.3,812.074,390.633,782.774,366.409C753.474,342.185,694.873,329.403,665.573,323.012L636.273,316.621" id="plotC01currentflow-L_Fix_Read_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Fix_Read_0" data-points="W3sieCI6NzgxLjE1NzQ2MTg2NTYxOCwieSI6OTkxLjg0OTk5OTE3MzM1Njh9LHsieCI6ODEyLjA3NDEyNzE5NzI2NTYsInkiOjkzOC40MzMzMzI0NDMyMzczfSx7IngiOjgxMi4wNzQxMjcxOTcyNjU2LCJ5Ijo4NzguMTQ5OTk5NjE4NTMwM30seyJ4Ijo4MTIuMDc0MTI3MTk3MjY1NiwieSI6ODE3Ljg2NjY2Njc5MzgyMzJ9LHsieCI6ODEyLjA3NDEyNzE5NzI2NTYsInkiOjc1Ny41ODMzMzM5NjkxMTYyfSx7IngiOjgxMi4wNzQxMjcxOTcyNjU2LCJ5Ijo2ODIuOTY2NjY4MTI4OTY3M30seyJ4Ijo4MTIuMDc0MTI3MTk3MjY1NiwieSI6NjE4LjgwMDAwMTE0NDQwOTJ9LHsieCI6ODEyLjA3NDEyNzE5NzI2NTYsInkiOjU2OC45NjY2NjcxNzUyOTN9LHsieCI6ODEyLjA3NDEyNzE5NzI2NTYsInkiOjQ2MS45NjY2NjcxNzUyOTI5N30seyJ4Ijo4MTIuMDc0MTI3MTk3MjY1NiwieSI6MzU0Ljk2NjY2NzE3NTI5Mjk3fSx7IngiOjYzMi4zNjUwNjI3MTM2MjMsInkiOjMxNS43NjgzNTc2ODM3ODg2fV0=" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M750.241,1129.6L750.241,1135.739C750.241,1141.878,750.241,1154.156,750.241,1165.767C750.241,1177.378,750.241,1188.322,750.241,1193.794L750.241,1199.267" id="plotC01currentflow-L_Fix_Finish_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Fix_Finish_0" data-points="W3sieCI6NzUwLjI0MDc5NTEzNTQ5NzQsInkiOjExMjkuNjAwMDA0MTk2MTY3Mn0seyJ4Ijo3NTAuMjQwNzk1MTM1NDk4LCJ5IjoxMTY2LjQzMzMzNzIxMTYwOX0seyJ4Ijo3NTAuMjQwNzk1MTM1NDk4LCJ5IjoxMjAzLjI2NjY3MDIyNzA1MDh9XQ==" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M699.534,1257.933L688.145,1264.072C676.757,1270.211,653.98,1282.489,642.592,1295.786C631.203,1309.083,631.203,1323.4,631.203,1330.558L631.203,1337.717" id="plotC01currentflow-L_Finish_Archive_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Finish_Archive_0" data-points="W3sieCI6Njk5LjUzMzg2OTQ5MTMzOCwieSI6MTI1Ny45MzMzMzgxNjUyODMyfSx7IngiOjYzMS4yMDMxOTc0NzkyNDgsInkiOjEyOTQuNzY2NjcxMTgwNzI1fSx7IngiOjYzMS4yMDMxOTc0NzkyNDgsInkiOjEzNDEuNzE2NjcwOTg5OTkwMn1d" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path><path d="M788.345,1257.933L796.903,1264.072C805.461,1270.211,822.578,1282.489,831.136,1294.1C839.694,1305.711,839.694,1316.656,839.694,1322.128L839.694,1327.6" id="plotC01currentflow-L_Finish_Back_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Finish_Back_0" data-points="W3sieCI6Nzg4LjM0NTM2Mzg3ODUyNzcsInkiOjEyNTcuOTMzMzM4MTY1MjgzMn0seyJ4Ijo4MzkuNjkzNTkyMDcxNTMzMiwieSI6MTI5NC43NjY2NzExODA3MjV9LHsieCI6ODM5LjY5MzU5MjA3MTUzMzIsInkiOjEzMzEuNjAwMDA0MTk2MTY3fV0=" data-look="classic" marker-end="url(#plotC01currentflow_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_Old_Files_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel" transform="translate(536.700309753418, 109.95000076293945)"><g class="label" data-id="L_Local_Files_0" transform="translate(0, -11.66666567325592)"><g><rect class="background" style="" x="-89.390625" y="-3.000001311302185" width="178.78125" height="29.33333396911621"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">当前主要写task.json</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(741.0145950317383, 109.95000076293945)"><g class="label" data-id="L_Jira_Files_0" transform="translate(0, -21.783331513404846)"><g><rect class="background" style="" x="-68.75521087646484" y="-3.000001311302185" width="137.5104217529297" height="49.56666564941406"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">显式导入</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">防重和来源PRD</tspan></tspan></text></g></g></g><g class="edgeLabel"><g class="label" data-id="L_Files_Read_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Read_Choice_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Choice_External_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Choice_ACP_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_External_Output_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_ACP_Output_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Output_Watch_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Watch_Read_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Output_Check_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Check_Fix_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel" transform="translate(812.0741271972656, 682.9666681289673)"><g class="label" data-id="L_Fix_Read_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-21" y="-3.000001311302185" width="42.333335876464844" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">需要</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(750.240795135498, 1166.433337211609)"><g class="label" data-id="L_Fix_Finish_0" transform="translate(0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-31.166667938232422" y="-3.000001311302185" width="62" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">不需要</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(631.203197479248, 1294.766671180725)"><g class="label" data-id="L_Finish_Archive_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-21" y="-3.000001311302185" width="42.333335876464844" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">按需</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(839.6935920715332, 1294.766671180725)"><g class="label" data-id="L_Finish_Back_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-21" y="-3.000001311302185" width="42.333335876464844" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">按需</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="plotC01currentflow-flowchart-Old-0" data-look="classic" transform="translate(302.8012237548828, 35.33333396911621)"><rect class="basic label-container" style="" x="-93.919921875" y="-27.33333396911621" width="187.83984375" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">已有Trellis任务</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Files-1" data-look="classic" transform="translate(535.6983985900879, 184.5666675567627)"><rect class="basic label-container" style="" x="-115.66667175292969" y="-27.33333396911621" width="231.33334350585938" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">本机任务目录和资料</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Local-2" data-look="classic" transform="translate(536.700309753418, 35.33333396911621)"><rect class="basic label-container" style="" x="-105.97917175292969" y="-27.33333396911621" width="211.95834350585938" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">普通创建或AI计划</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Jira-4" data-look="classic" transform="translate(741.0145950317383, 35.33333396911621)"><rect class="basic label-container" style="" x="-64.33512496948242" y="-27.33333396911621" width="128.67024993896484" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Jira工单</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Read-7" data-look="classic" transform="translate(535.6983985900879, 294.68333435058594)"><rect class="basic label-container" style="" x="-96.66667175292969" y="-37.78333282470703" width="193.33334350585938" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">面板阅读</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">澄清与人工确认</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Choice-9" data-look="classic" transform="translate(270.86698150634766, 461.96666717529297)"><polygon points="84.50000190734863,0 169.00000381469727,-84.50000190734863 84.50000190734863,-169.00000381469727 0,-84.50000190734863" class="label-container" transform="translate(-84.00000190734863, 84.50000190734863)"></polygon><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">选择执行工具</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-External-11" data-look="classic" transform="translate(123.64347076416016, 618.8000011444092)"><rect class="basic label-container" style="" x="-115.64347839355469" y="-27.33333396911621" width="231.28695678710938" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">熟悉的外部AI编辑器</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-ACP-13" data-look="classic" transform="translate(388.5056915283203, 618.8000011444092)"><rect class="basic label-container" style="" x="-115.21875" y="-27.33333396911621" width="230.4375" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">面板内显式开启ACP</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Output-15" data-look="classic" transform="translate(270.86698150634766, 757.5833339691162)"><rect class="basic label-container" style="" x="-125.16667175292969" y="-37.78333282470703" width="250.33334350585938" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">本机代码和任务资料更</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">新</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Watch-19" data-look="classic" transform="translate(346.95031356811523, 878.1499996185303)"><rect class="basic label-container" style="" x="-125.16667175292969" y="-37.78333282470703" width="250.33334350585938" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">文件监听与有来源的事</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">件</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Check-23" data-look="classic" transform="translate(688.4074630737305, 878.1499996185303)"><rect class="basic label-container" style="" x="-96.66667175292969" y="-37.78333282470703" width="193.33334350585938" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">按项目流程检查</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">记录未完成项</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Fix-25" data-look="classic" transform="translate(750.240795135498, 1045.2666683197021)"><polygon points="84.33333396911621,0 168.66666793823242,-84.33333396911621 84.33333396911621,-168.66666793823242 0,-84.33333396911621" class="label-container" transform="translate(-83.83333396911621, 84.33333396911621)"></polygon><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">还需要补做吗</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Finish-29" data-look="classic" transform="translate(750.240795135498, 1230.600004196167)"><rect class="basic label-container" style="" x="-87.16666793823242" y="-27.33333396911621" width="174.33333587646484" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">本次工作收尾</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Archive-31" data-look="classic" transform="translate(631.203197479248, 1369.383337020874)"><rect class="basic label-container" style="" x="-81.32194137573242" y="-27.666666984558105" width="162.64388275146484" height="55.33333396911621"></rect><g class="label" style="" transform="translate(0, -12.666666984558105)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">task.py归档</tspan></tspan></text></g></g></g><g class="node default" id="plotC01currentflow-flowchart-Back-33" data-look="classic" transform="translate(839.6935920715332, 1369.383337020874)"><rect class="basic label-container" style="" x="-93.16845703125" y="-37.78333282470703" width="186.3369140625" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Jira流转或评论</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">单独回执</tspan></tspan></text></g></g></g></g></g></g><defs><filter id="plotC01currentflow-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="plotC01currentflow-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="plotC01currentflow-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#5c8268" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(44.4444444444, 22.7906976744%, 81.568627451%)" stop-opacity="1"></stop></linearGradient></svg></div></div></details><details id="C02-proposed-flow"><summary>规划工作项与依赖：可独立选择，不锁定排期</summary><div class="content"><p class="hint">设计建议，未实施 · <a href="diagrams/C02-proposed-flow.mmd">可编辑Mermaid源</a> · <a href="diagrams/C02-proposed-flow.svg">完整SVG</a></p><div class="diagram"><svg id="plotC02proposedflow" width="1684.7825927734375" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="900.9666748046875" viewBox="0 0.000003814697265625 1684.7825927734375 900.9666748046875" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#plotC02proposedflow{font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:19px;fill:#233a2a;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#plotC02proposedflow .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#plotC02proposedflow .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#plotC02proposedflow .error-icon{fill:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);}#plotC02proposedflow .error-text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);stroke:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC02proposedflow .edge-thickness-normal{stroke-width:1px;}#plotC02proposedflow .edge-thickness-thick{stroke-width:3.5px;}#plotC02proposedflow .edge-pattern-solid{stroke-dasharray:0;}#plotC02proposedflow .edge-thickness-invisible{stroke-width:0;fill:none;}#plotC02proposedflow .edge-pattern-dashed{stroke-dasharray:3;}#plotC02proposedflow .edge-pattern-dotted{stroke-dasharray:2;}#plotC02proposedflow .marker{fill:#54705a;stroke:#54705a;}#plotC02proposedflow .marker.cross{stroke:#54705a;}#plotC02proposedflow svg{font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:19px;}#plotC02proposedflow p{margin:0;}#plotC02proposedflow .label{font-family:Microsoft YaHei,Segoe UI,sans-serif;color:#233a2a;}#plotC02proposedflow .cluster-label text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC02proposedflow .cluster-label span{color:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC02proposedflow .cluster-label span p{background-color:transparent;}#plotC02proposedflow .label text,#plotC02proposedflow span{fill:#233a2a;color:#233a2a;}#plotC02proposedflow .node rect,#plotC02proposedflow .node circle,#plotC02proposedflow .node ellipse,#plotC02proposedflow .node polygon,#plotC02proposedflow .node path{fill:#edf4ee;stroke:#5c8268;stroke-width:1px;}#plotC02proposedflow .rough-node .label text,#plotC02proposedflow .node .label text,#plotC02proposedflow .image-shape .label,#plotC02proposedflow .icon-shape .label{text-anchor:middle;}#plotC02proposedflow .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#plotC02proposedflow .rough-node .label,#plotC02proposedflow .node .label,#plotC02proposedflow .image-shape .label,#plotC02proposedflow .icon-shape .label{text-align:center;}#plotC02proposedflow .node.clickable{cursor:pointer;}#plotC02proposedflow .root .anchor path{fill:#54705a!important;stroke-width:0;stroke:#54705a;}#plotC02proposedflow .arrowheadPath{fill:#0b0b0b;}#plotC02proposedflow .edgePaths .path{stroke:#54705a;stroke-width:1px;}#plotC02proposedflow .flowchart-link{stroke:#54705a;fill:none;}#plotC02proposedflow .edgeLabel{background-color:#f7f0dc;text-align:center;}#plotC02proposedflow .edgeLabel p{background-color:#f7f0dc;}#plotC02proposedflow .edgeLabel rect{opacity:0.5;background-color:#f7f0dc;fill:#f7f0dc;}#plotC02proposedflow .labelBkg{background-color:rgba(247, 240, 220, 0.5);}#plotC02proposedflow .cluster rect{fill:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);stroke:hsl(308.5714285714, 0%, 89.3137254902%);stroke-width:1px;}#plotC02proposedflow .cluster text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC02proposedflow .cluster span{color:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC02proposedflow .node .collapsed-indicator{fill:hsl(308.5714285714, 0%, 89.3137254902%);stroke:none;opacity:0.6;}#plotC02proposedflow .node .collapsed-separator{stroke:hsl(308.5714285714, 0%, 89.3137254902%);stroke-width:0.75px;}#plotC02proposedflow div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:12px;background:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);border:1px solid hsl(308.5714285714, 0%, 89.3137254902%);border-radius:2px;pointer-events:none;z-index:100;}#plotC02proposedflow .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#233a2a;}#plotC02proposedflow rect.text{fill:none;stroke-width:0;}#plotC02proposedflow .icon-shape,#plotC02proposedflow .image-shape{background-color:#f7f0dc;text-align:center;}#plotC02proposedflow .icon-shape p,#plotC02proposedflow .image-shape p{background-color:#f7f0dc;padding:2px;}#plotC02proposedflow .icon-shape .label rect,#plotC02proposedflow .image-shape .label rect{opacity:0.5;background-color:#f7f0dc;fill:#f7f0dc;}#plotC02proposedflow .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#plotC02proposedflow .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#plotC02proposedflow .node .neo-node{stroke:#5c8268;}#plotC02proposedflow [data-look="neo"].node rect,#plotC02proposedflow [data-look="neo"].cluster rect,#plotC02proposedflow [data-look="neo"].node polygon{stroke:url(#plotC02proposedflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC02proposedflow [data-look="neo"].swimlane.cluster rect{filter:none;}#plotC02proposedflow [data-look="neo"].node path{stroke:url(#plotC02proposedflow-gradient);stroke-width:1px;}#plotC02proposedflow [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC02proposedflow [data-look="neo"].node .neo-line path{stroke:#5c8268;filter:none;}#plotC02proposedflow [data-look="neo"].node circle{stroke:url(#plotC02proposedflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC02proposedflow [data-look="neo"].node circle .state-start{fill:#000000;}#plotC02proposedflow [data-look="neo"].icon-shape .icon{fill:url(#plotC02proposedflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC02proposedflow [data-look="neo"].icon-shape .icon-neo path{stroke:url(#plotC02proposedflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC02proposedflow :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="plotC02proposedflow_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC02proposedflow_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC02proposedflow_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC02proposedflow_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="plotC02proposedflow_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC02proposedflow_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC02proposedflow_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC02proposedflow_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC02proposedflow_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC02proposedflow_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC02proposedflow_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="plotC02proposedflow_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M267.335,204.133L267.335,210.272C267.335,216.411,267.335,228.689,267.335,242.042C267.335,255.394,267.335,269.822,267.335,277.036L267.335,284.25" id="plotC02proposedflow-L_Preference_A_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Preference_A_0" data-points="W3sieCI6MjY3LjMzNDc3NzgzMjAzMTI1LCJ5IjoyMDQuMTMzMzMxMjk4ODI4MTJ9LHsieCI6MjY3LjMzNDc3NzgzMjAzMTI1LCJ5IjoyNDAuOTY2NjY0MzE0MjcwMDJ9LHsieCI6MjY3LjMzNDc3NzgzMjAzMTI1LCJ5IjoyODguMjQ5OTk2MTg1MzAyNzN9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M204.72,342.917L192.139,348.408C179.559,353.9,154.399,364.883,141.818,375.2C129.238,385.517,129.238,395.167,129.238,399.992L129.238,404.817" id="plotC02proposedflow-L_A_A1_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A_A1_0" data-points="W3sieCI6MjA0LjcxOTc2MjEyMzU3MTMxLCJ5IjozNDIuOTE2NjY0MTIzNTM1MTZ9LHsieCI6MTI5LjIzODEyODY2MjEwOTM4LCJ5IjozNzUuODY2NjYyOTc5MTI2fSx7IngiOjEyOS4yMzgxMjg2NjIxMDkzOCwieSI6NDA4LjgxNjY2MTgzNDcxNjh9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M329.95,342.917L342.53,348.408C355.11,353.9,380.271,364.883,392.851,375.2C405.431,385.517,405.431,395.167,405.431,399.992L405.431,404.817" id="plotC02proposedflow-L_A_A2_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A_A2_0" data-points="W3sieCI6MzI5Ljk0OTc5MzU0MDQ5MTIsInkiOjM0Mi45MTY2NjQxMjM1MzUxNn0seyJ4Ijo0MDUuNDMxNDI3MDAxOTUzMSwieSI6Mzc1Ljg2NjY2Mjk3OTEyNn0seyJ4Ijo0MDUuNDMxNDI3MDAxOTUzMSwieSI6NDA4LjgxNjY2MTgzNDcxNjh9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M690.415,83.567L690.415,87.317C690.415,91.067,690.415,98.567,690.415,105.4C690.415,112.233,690.415,118.4,690.415,121.483L690.415,124.567" id="plotC02proposedflow-L_Gaps_A3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Gaps_A3_0" data-points="W3sieCI6NjkwLjQxNTM2NzEyNjQ2NDgsInkiOjgzLjU2NjY2NTY0OTQxNDA2fSx7IngiOjY5MC40MTUzNjcxMjY0NjQ4LCJ5IjoxMDYuMDY2NjY1NjQ5NDE0MDZ9LHsieCI6NjkwLjQxNTM2NzEyNjQ2NDgsInkiOjEyOC41NjY2NjU2NDk0MTQwNn1d" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M690.415,204.133L690.415,210.272C690.415,216.411,690.415,228.689,690.415,240.3C690.415,251.911,690.415,262.856,690.415,268.328L690.415,273.8" id="plotC02proposedflow-L_A3_B1_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A3_B1_0" data-points="W3sieCI6NjkwLjQxNTM2NzEyNjQ2NDgsInkiOjIwNC4xMzMzMzEyOTg4MjgxMn0seyJ4Ijo2OTAuNDE1MzY3MTI2NDY0OCwieSI6MjQwLjk2NjY2NDMxNDI3MDAyfSx7IngiOjY5MC40MTUzNjcxMjY0NjQ4LCJ5IjoyNzcuNzk5OTk3MzI5NzExOX1d" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M690.415,353.367L690.415,357.117C690.415,360.867,690.415,368.367,691.217,376.951C692.019,385.535,693.623,395.203,694.425,400.037L695.227,404.871" id="plotC02proposedflow-L_B1_B2_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_B1_B2_0" data-points="W3sieCI6NjkwLjQxNTM2NzEyNjQ2NDgsInkiOjM1My4zNjY2NjI5NzkxMjZ9LHsieCI6NjkwLjQxNTM2NzEyNjQ2NDgsInkiOjM3NS44NjY2NjI5NzkxMjZ9LHsieCI6Njk1Ljg4MTIyMjY2NDI0NzMsInkiOjQwOC44MTY2NjE4MzQ3MTY4fV0=" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M916.984,342.917L903.82,348.408C890.656,353.9,864.327,364.883,839.24,375.599C814.153,386.315,790.307,396.763,778.384,401.987L766.461,407.211" id="plotC02proposedflow-L_Sample_B2_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Sample_B2_0" data-points="W3sieCI6OTE2Ljk4NDE4NTc0NzcyODYsInkiOjM0Mi45MTY2NjQxMjM1MzUxNn0seyJ4Ijo4MzcuOTk4Njk5MTg4MjMyNCwieSI6Mzc1Ljg2NjY2Mjk3OTEyNn0seyJ4Ijo3NjIuNzk3NjM3NDQyNTk0OCwieSI6NDA4LjgxNjY2MTgzNDcxNjh9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M987.04,342.917L987.951,348.408C988.862,353.9,990.684,364.883,991.595,373.458C992.506,382.033,992.506,388.2,992.506,391.283L992.506,394.367" id="plotC02proposedflow-L_Sample_B3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Sample_B3_0" data-points="W3sieCI6OTg3LjAzOTkzMTM1Nzk2OTUsInkiOjM0Mi45MTY2NjQxMjM1MzUxNn0seyJ4Ijo5OTIuNTA1Nzg2ODk1NzUyLCJ5IjozNzUuODY2NjYyOTc5MTI2fSx7IngiOjk5Mi41MDU3ODY4OTU3NTIsInkiOjM5OC4zNjY2NjI5NzkxMjZ9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M1555.878,342.917L1555.878,348.408C1555.878,353.9,1555.878,364.883,1555.878,373.458C1555.878,382.033,1555.878,388.2,1555.878,391.283L1555.878,394.367" id="plotC02proposedflow-L_C2_C3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_C2_C3_0" data-points="W3sieCI6MTU1NS44Nzc4NDk1Nzg4NTc0LCJ5IjozNDIuOTE2NjY0MTIzNTM1MTZ9LHsieCI6MTU1NS44Nzc4NDk1Nzg4NTc0LCJ5IjozNzUuODY2NjYyOTc5MTI2fSx7IngiOjE1NTUuODc3ODQ5NTc4ODU3NCwieSI6Mzk4LjM2NjY2Mjk3OTEyNn1d" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M1555.878,204.133L1555.878,210.272C1555.878,216.411,1555.878,228.689,1555.878,242.042C1555.878,255.394,1555.878,269.822,1555.878,277.036L1555.878,284.25" id="plotC02proposedflow-L_Scripts_C2_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Scripts_C2_0" data-points="W3sieCI6MTU1NS44Nzc4NDk1Nzg4NTc0LCJ5IjoyMDQuMTMzMzMxMjk4ODI4MTJ9LHsieCI6MTU1NS44Nzc4NDk1Nzg4NTc0LCJ5IjoyNDAuOTY2NjY0MzE0MjcwMDJ9LHsieCI6MTU1NS44Nzc4NDk1Nzg4NTc0LCJ5IjoyODguMjQ5OTk2MTg1MzAyNzN9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M129.238,463.483L129.238,471.364C129.238,479.244,129.238,495.006,202.912,512.511C276.586,530.016,423.934,549.265,497.608,558.889L571.282,568.514" id="plotC02proposedflow-L_A1_D_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A1_D_0" data-points="W3sieCI6MTI5LjIzODEyODY2MjEwOTM4LCJ5Ijo0NjMuNDgzMzI5NzcyOTQ5Mn0seyJ4IjoxMjkuMjM4MTI4NjYyMTA5MzgsInkiOjUxMC43NjY2NjE2NDM5ODE5M30seyJ4Ijo1NzUuMjQ4NzAzMDAyOTI5NywieSI6NTY5LjAzMTk3NzExMTA5ODF9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M405.431,463.483L405.431,471.364C405.431,479.244,405.431,495.006,433.088,509.882C460.745,524.758,516.058,538.75,543.714,545.746L571.371,552.741" id="plotC02proposedflow-L_A2_D_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A2_D_0" data-points="W3sieCI6NDA1LjQzMTQyNzAwMTk1MzEsInkiOjQ2My40ODMzMjk3NzI5NDkyfSx7IngiOjQwNS40MzE0MjcwMDE5NTMxLCJ5Ijo1MTAuNzY2NjYxNjQzOTgxOTN9LHsieCI6NTc1LjI0ODcwMzAwMjkyOTcsInkiOjU1My43MjIyMTY4OTE4Mzk2fV0=" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M700.415,463.483L700.415,471.364C700.415,479.244,700.415,495.006,700.415,508.358C700.415,521.711,700.415,532.656,700.415,538.128L700.415,543.6" id="plotC02proposedflow-L_B2_D_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_B2_D_0" data-points="W3sieCI6NzAwLjQxNTM2NzEyNjQ2NDgsInkiOjQ2My40ODMzMjk3NzI5NDkyfSx7IngiOjcwMC40MTUzNjcxMjY0NjQ4LCJ5Ijo1MTAuNzY2NjYxNjQzOTgxOTN9LHsieCI6NzAwLjQxNTM2NzEyNjQ2NDgsInkiOjU0Ny41OTk5OTQ2NTk0MjM4fV0=" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M1278.858,463.483L1278.858,471.364C1278.858,479.244,1278.858,495.006,1203.974,512.546C1129.089,530.086,979.319,549.406,904.434,559.066L829.549,568.726" id="plotC02proposedflow-L_C1_D_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_C1_D_0" data-points="W3sieCI6MTI3OC44NTg0ODYxNzU1MzcsInkiOjQ2My40ODMzMjk3NzI5NDkyfSx7IngiOjEyNzguODU4NDg2MTc1NTM3LCJ5Ijo1MTAuNzY2NjYxNjQzOTgxOTN9LHsieCI6ODI1LjU4MjAzMTI1LCJ5Ijo1NjkuMjM3MzY4MDIyMTQzM31d" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M1555.878,473.933L1555.878,480.072C1555.878,486.211,1555.878,498.489,1434.826,515.186C1313.774,531.884,1071.671,553.001,950.619,563.56L829.567,574.118" id="plotC02proposedflow-L_C3_D_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_C3_D_0" data-points="W3sieCI6MTU1NS44Nzc4NDk1Nzg4NTc0LCJ5Ijo0NzMuOTMzMzI4NjI4NTQwMDR9LHsieCI6MTU1NS44Nzc4NDk1Nzg4NTc0LCJ5Ijo1MTAuNzY2NjYxNjQzOTgxOTN9LHsieCI6ODI1LjU4MjAzMTI1LCJ5Ijo1NzQuNDY1ODE4NzE4MDQ0NX1d" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M700.415,623.167L700.415,629.306C700.415,635.444,700.415,647.722,700.415,659.333C700.415,670.944,700.415,681.889,700.415,687.361L700.415,692.833" id="plotC02proposedflow-L_D_Optional_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_D_Optional_0" data-points="W3sieCI6NzAwLjQxNTM2NzEyNjQ2NDgsInkiOjYyMy4xNjY2NjAzMDg4Mzc5fSx7IngiOjcwMC40MTUzNjcxMjY0NjQ4LCJ5Ijo2NTkuOTk5OTkzMzI0Mjc5OH0seyJ4Ijo3MDAuNDE1MzY3MTI2NDY0OCwieSI6Njk2LjgzMzMyNjMzOTcyMTd9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path><path d="M700.415,772.4L700.415,776.15C700.415,779.9,700.415,787.4,700.415,794.233C700.415,801.067,700.415,807.233,700.415,810.317L700.415,813.4" id="plotC02proposedflow-L_Optional_Minimal_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Optional_Minimal_0" data-points="W3sieCI6NzAwLjQxNTM2NzEyNjQ2NDgsInkiOjc3Mi4zOTk5OTE5ODkxMzU3fSx7IngiOjcwMC40MTUzNjcxMjY0NjQ4LCJ5Ijo3OTQuODk5OTkxOTg5MTM1N30seyJ4Ijo3MDAuNDE1MzY3MTI2NDY0OCwieSI6ODE3LjM5OTk5MTk4OTEzNTd9XQ==" data-look="classic" marker-end="url(#plotC02proposedflow_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(267.33477783203125, 240.96666431427002)"><g class="label" data-id="L_Preference_A_0" transform="translate(0, -11.333332657814026)"><g><rect class="background" style="" x="-68.5" y="-3.000001311302185" width="137" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">呈现次序非排期</tspan></tspan></text></g></g></g><g class="edgeLabel"><g class="label" data-id="L_A_A1_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_A_A2_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Gaps_A3_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel" transform="translate(690.4153671264648, 240.96666431427002)"><g class="label" data-id="L_A3_B1_0" transform="translate(-0.1666717529296875, -11.333332657814026)"><g><rect class="background" style="" x="-87.5" y="-3.000001311302185" width="175.33334350585938" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">相关创建断点若属实</tspan></tspan></text></g></g></g><g class="edgeLabel"><g class="label" data-id="L_B1_B2_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Sample_B2_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Sample_B3_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_C2_C3_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Scripts_C2_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel" transform="translate(129.23812866210938, 510.76666164398193)"><g class="label" data-id="L_A1_D_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-59" y="-3.000001311302185" width="118.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">选取适用成果</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(405.4314270019531, 510.76666164398193)"><g class="label" data-id="L_A2_D_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-59" y="-3.000001311302185" width="118.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">选取适用成果</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(700.4153671264648, 510.76666164398193)"><g class="label" data-id="L_B2_D_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-59" y="-3.000001311302185" width="118.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">选取适用成果</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(1278.858486175537, 510.76666164398193)"><g class="label" data-id="L_C1_D_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-59" y="-3.000001311302185" width="118.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">选取适用成果</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(1555.8778495788574, 510.76666164398193)"><g class="label" data-id="L_C3_D_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-59" y="-3.000001311302185" width="118.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">选取适用成果</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(700.4153671264648, 659.9999933242798)"><g class="label" data-id="L_D_Optional_0" transform="translate(-0.1666717529296875, -11.333332657814026)"><g><rect class="background" style="" x="-68.5" y="-3.000001311302185" width="137.33334350585938" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">以后有真实需要</tspan></tspan></text></g></g></g><g class="edgeLabel"><g class="label" data-id="L_Optional_Minimal_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g></g><g class="nodes"><g class="node default" id="plotC02proposedflow-flowchart-Preference-0" data-look="classic" transform="translate(267.33477783203125, 166.3499984741211)"><rect class="basic label-container" style="" x="-121.26937103271484" y="-37.78333282470703" width="242.5387420654297" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">用户偏好</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> AI会话</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 阅读</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">本机使用靠前</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-A-1" data-look="classic" transform="translate(267.33477783203125, 315.58333015441895)"><rect class="basic label-container" style="" x="-125.49853515625" y="-27.33333396911621" width="250.9970703125" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">A</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 现有会话与阅读体验</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-A1-3" data-look="classic" transform="translate(129.23812866210938, 436.149995803833)"><rect class="basic label-container" style="" x="-121.23812866210938" y="-27.33333396911621" width="242.47625732421875" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">A1</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 阅读与工作区余项</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-A2-5" data-look="classic" transform="translate(405.4314270019531, 436.149995803833)"><rect class="basic label-container" style="" x="-120.95516967773438" y="-27.33333396911621" width="241.91033935546875" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">A2</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> ACP日常使用余项</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-Gaps-6" data-look="classic" transform="translate(690.4153671264648, 45.78333282470703)"><rect class="basic label-container" style="" x="-97" y="-37.78333282470703" width="194" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">静态断点</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">候选修正及验证</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-A3-7" data-look="classic" transform="translate(690.4153671264648, 166.3499984741211)"><rect class="basic label-container" style="" x="-87.16666793823242" y="-37.78333282470703" width="174.33333587646484" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">A3</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 状态</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 创建</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">交接反馈真实</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-B1-9" data-look="classic" transform="translate(690.4153671264648, 315.58333015441895)"><rect class="basic label-container" style="" x="-125.5" y="-37.78333282470703" width="251" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">B1</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">原问题和本地资料连续</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-B2-11" data-look="classic" transform="translate(700.4153671264648, 436.149995803833)"><rect class="basic label-container" style="" x="-130.01416778564453" y="-27.33333396911621" width="260.02833557128906" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">B2</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 接续说明与统一交接</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-Sample-12" data-look="classic" transform="translate(982.505786895752, 315.58333015441895)"><rect class="basic label-container" style="" x="-115.66667175292969" y="-27.33333396911621" width="231.33334350585938" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">真实返工或交接样本</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-B3-15" data-look="classic" transform="translate(992.505786895752, 436.149995803833)"><rect class="basic label-container" style="" x="-125" y="-37.78333282470703" width="250" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">B3</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">已有任务关系是否够用</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-C1-16" data-look="classic" transform="translate(1278.858486175537, 436.149995803833)"><rect class="basic label-container" style="" x="-127.35270690917969" y="-27.33333396911621" width="254.70541381835938" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">C1</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 只读Git</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 可独立选择</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-C2-17" data-look="classic" transform="translate(1555.8778495788574, 315.58333015441895)"><rect class="basic label-container" style="" x="-120.90479278564453" y="-27.33333396911621" width="241.80958557128906" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">C2</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 单工程命令与日志</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-C3-18" data-look="classic" transform="translate(1555.8778495788574, 436.149995803833)"><rect class="basic label-container" style="" x="-115.66667175292969" y="-37.78333282470703" width="231.33334350585938" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">C3</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">明确的多个工程组合</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-Scripts-19" data-look="classic" transform="translate(1555.8778495788574, 166.3499984741211)"><rect class="basic label-container" style="" x="-96.5" y="-37.78333282470703" width="193" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">真实脚本</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">目录和停止归属</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-D-22" data-look="classic" transform="translate(700.4153671264648, 585.3833274841309)"><rect class="basic label-container" style="" x="-125.16667175292969" y="-37.78333282470703" width="250.33334350585938" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">D1</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">实际检查与下一次接手</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-Optional-32" data-look="classic" transform="translate(700.4153671264648, 734.6166591644287)"><rect class="basic label-container" style="" x="-106.5" y="-37.78333282470703" width="213" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">可选跨设备协作</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">先查现有渠道不足</tspan></tspan></text></g></g></g><g class="node default" id="plotC02proposedflow-flowchart-Minimal-34" data-look="classic" transform="translate(700.4153671264648, 855.1833248138428)"><rect class="basic label-container" style="" x="-97.33333587646484" y="-37.78333282470703" width="194.6666717529297" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">再选最小方案</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">不预定自建服务</tspan></tspan></text></g></g></g></g></g></g><defs><filter id="plotC02proposedflow-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="plotC02proposedflow-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="plotC02proposedflow-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#5c8268" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(44.4444444444, 22.7906976744%, 81.568627451%)" stop-opacity="1"></stop></linearGradient></svg></div></div></details><details id="C03-current-data-flow"><summary>当前数据流：本地任务、会话与外部事实分开</summary><div class="content"><p class="hint">当前代码/项目流程的静态模型，不是本轮运行验收 · <a href="diagrams/C03-current-data-flow.mmd">可编辑Mermaid源</a> · <a href="diagrams/C03-current-data-flow.svg">完整SVG</a></p><div class="diagram"><svg id="plotC03currentdataflow" width="941.2625732421875" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="797.800048828125" viewBox="0.00000762939453125 0.0000019073486328125 941.2625732421875 797.800048828125" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#plotC03currentdataflow{font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:19px;fill:#233a2a;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#plotC03currentdataflow .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#plotC03currentdataflow .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#plotC03currentdataflow .error-icon{fill:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);}#plotC03currentdataflow .error-text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);stroke:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC03currentdataflow .edge-thickness-normal{stroke-width:1px;}#plotC03currentdataflow .edge-thickness-thick{stroke-width:3.5px;}#plotC03currentdataflow .edge-pattern-solid{stroke-dasharray:0;}#plotC03currentdataflow .edge-thickness-invisible{stroke-width:0;fill:none;}#plotC03currentdataflow .edge-pattern-dashed{stroke-dasharray:3;}#plotC03currentdataflow .edge-pattern-dotted{stroke-dasharray:2;}#plotC03currentdataflow .marker{fill:#54705a;stroke:#54705a;}#plotC03currentdataflow .marker.cross{stroke:#54705a;}#plotC03currentdataflow svg{font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:19px;}#plotC03currentdataflow p{margin:0;}#plotC03currentdataflow .label{font-family:Microsoft YaHei,Segoe UI,sans-serif;color:#233a2a;}#plotC03currentdataflow .cluster-label text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC03currentdataflow .cluster-label span{color:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC03currentdataflow .cluster-label span p{background-color:transparent;}#plotC03currentdataflow .label text,#plotC03currentdataflow span{fill:#233a2a;color:#233a2a;}#plotC03currentdataflow .node rect,#plotC03currentdataflow .node circle,#plotC03currentdataflow .node ellipse,#plotC03currentdataflow .node polygon,#plotC03currentdataflow .node path{fill:#edf4ee;stroke:#5c8268;stroke-width:1px;}#plotC03currentdataflow .rough-node .label text,#plotC03currentdataflow .node .label text,#plotC03currentdataflow .image-shape .label,#plotC03currentdataflow .icon-shape .label{text-anchor:middle;}#plotC03currentdataflow .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#plotC03currentdataflow .rough-node .label,#plotC03currentdataflow .node .label,#plotC03currentdataflow .image-shape .label,#plotC03currentdataflow .icon-shape .label{text-align:center;}#plotC03currentdataflow .node.clickable{cursor:pointer;}#plotC03currentdataflow .root .anchor path{fill:#54705a!important;stroke-width:0;stroke:#54705a;}#plotC03currentdataflow .arrowheadPath{fill:#0b0b0b;}#plotC03currentdataflow .edgePaths .path{stroke:#54705a;stroke-width:1px;}#plotC03currentdataflow .flowchart-link{stroke:#54705a;fill:none;}#plotC03currentdataflow .edgeLabel{background-color:#f7f0dc;text-align:center;}#plotC03currentdataflow .edgeLabel p{background-color:#f7f0dc;}#plotC03currentdataflow .edgeLabel rect{opacity:0.5;background-color:#f7f0dc;fill:#f7f0dc;}#plotC03currentdataflow .labelBkg{background-color:rgba(247, 240, 220, 0.5);}#plotC03currentdataflow .cluster rect{fill:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);stroke:hsl(308.5714285714, 0%, 89.3137254902%);stroke-width:1px;}#plotC03currentdataflow .cluster text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC03currentdataflow .cluster span{color:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC03currentdataflow .node .collapsed-indicator{fill:hsl(308.5714285714, 0%, 89.3137254902%);stroke:none;opacity:0.6;}#plotC03currentdataflow .node .collapsed-separator{stroke:hsl(308.5714285714, 0%, 89.3137254902%);stroke-width:0.75px;}#plotC03currentdataflow div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:12px;background:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);border:1px solid hsl(308.5714285714, 0%, 89.3137254902%);border-radius:2px;pointer-events:none;z-index:100;}#plotC03currentdataflow .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#233a2a;}#plotC03currentdataflow rect.text{fill:none;stroke-width:0;}#plotC03currentdataflow .icon-shape,#plotC03currentdataflow .image-shape{background-color:#f7f0dc;text-align:center;}#plotC03currentdataflow .icon-shape p,#plotC03currentdataflow .image-shape p{background-color:#f7f0dc;padding:2px;}#plotC03currentdataflow .icon-shape .label rect,#plotC03currentdataflow .image-shape .label rect{opacity:0.5;background-color:#f7f0dc;fill:#f7f0dc;}#plotC03currentdataflow .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#plotC03currentdataflow .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#plotC03currentdataflow .node .neo-node{stroke:#5c8268;}#plotC03currentdataflow [data-look="neo"].node rect,#plotC03currentdataflow [data-look="neo"].cluster rect,#plotC03currentdataflow [data-look="neo"].node polygon{stroke:url(#plotC03currentdataflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC03currentdataflow [data-look="neo"].swimlane.cluster rect{filter:none;}#plotC03currentdataflow [data-look="neo"].node path{stroke:url(#plotC03currentdataflow-gradient);stroke-width:1px;}#plotC03currentdataflow [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC03currentdataflow [data-look="neo"].node .neo-line path{stroke:#5c8268;filter:none;}#plotC03currentdataflow [data-look="neo"].node circle{stroke:url(#plotC03currentdataflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC03currentdataflow [data-look="neo"].node circle .state-start{fill:#000000;}#plotC03currentdataflow [data-look="neo"].icon-shape .icon{fill:url(#plotC03currentdataflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC03currentdataflow [data-look="neo"].icon-shape .icon-neo path{stroke:url(#plotC03currentdataflow-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC03currentdataflow :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="plotC03currentdataflow_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC03currentdataflow_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC03currentdataflow_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC03currentdataflow_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="plotC03currentdataflow_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC03currentdataflow_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC03currentdataflow_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC03currentdataflow_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC03currentdataflow_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC03currentdataflow_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC03currentdataflow_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="plotC03currentdataflow_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M374.489,66.667L374.489,69.75C374.489,72.833,374.489,79,374.489,85.167C374.489,91.333,374.489,97.5,374.489,100.583L374.489,103.667" id="plotC03currentdataflow-L_User_UI_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_User_UI_0" data-points="W3sieCI6Mzc0LjQ4OTIxMzk0MzQ4MTQ1LCJ5Ijo2Mi42NjY2Njc5MzgyMzI0Mn0seyJ4IjozNzQuNDg5MjEzOTQzNDgxNDUsInkiOjg1LjE2NjY2NzkzODIzMjQyfSx7IngiOjM3NC40ODkyMTM5NDM0ODE0NSwieSI6MTA3LjY2NjY2NzkzODIzMjQyfV0=" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M374.489,166.333L374.489,169.417C374.489,172.5,374.489,178.667,374.489,184.833C374.489,191,374.489,197.167,374.489,200.25L374.489,203.333" id="plotC03currentdataflow-L_UI_IPC_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_UI_IPC_0" data-points="W3sieCI6Mzc0LjQ4OTIxMzk0MzQ4MTQ1LCJ5IjoxNjIuMzMzMzM1ODc2NDY0ODR9LHsieCI6Mzc0LjQ4OTIxMzk0MzQ4MTQ1LCJ5IjoxODQuODMzMzM1ODc2NDY0ODR9LHsieCI6Mzc0LjQ4OTIxMzk0MzQ4MTQ1LCJ5IjoyMDcuMzMzMzM1ODc2NDY0ODR9XQ==" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M299.824,264.12L290.83,267.628C281.836,271.136,263.848,278.151,254.854,284.742C245.86,291.333,245.86,297.5,245.86,300.583L245.86,303.667" id="plotC03currentdataflow-L_IPC_Scan_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_IPC_Scan_0" data-points="W3sieCI6MzAzLjU1MDgzNTA2MzcyOTY2LCJ5IjoyNjIuNjY2NjY3OTM4MjMyNH0seyJ4IjoyNDUuODU5OTgzNDQ0MjEzODcsInkiOjI4NS4xNjY2Njc5MzgyMzI0fSx7IngiOjI0NS44NTk5ODM0NDQyMTM4NywieSI6MzA3LjY2NjY2NzkzODIzMjR9XQ==" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M262.373,253.95L231.592,259.153C200.812,264.356,139.25,274.761,108.469,290.011C77.688,305.261,77.688,325.356,77.688,347.839C77.688,370.322,77.688,395.194,77.688,420.067C77.688,444.939,77.688,469.811,77.688,494.683C77.688,519.556,77.688,544.428,118.474,564.449C159.26,584.47,240.832,599.641,281.617,607.226L322.403,614.811" id="plotC03currentdataflow-L_IPC_ACP_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_IPC_ACP_0" data-points="W3sieCI6MjY2LjMxNzMzODk0MzQ4MTQ1LCJ5IjoyNTMuMjgzNzAxNzUzODUzNzN9LHsieCI6NzcuNjg4MTA4NDQ0MjEzODcsInkiOjI4NS4xNjY2Njc5MzgyMzI0fSx7IngiOjc3LjY4ODEwODQ0NDIxMzg3LCJ5IjozNDUuNDUwMDAwNzYyOTM5NDV9LHsieCI6NzcuNjg4MTA4NDQ0MjEzODcsInkiOjQyMC4wNjY2NjY2MDMwODg0fSx7IngiOjc3LjY4ODEwODQ0NDIxMzg3LCJ5Ijo0OTQuNjgzMzMyNDQzMjM3M30seyJ4Ijo3Ny42ODgxMDg0NDQyMTM4NywieSI6NTY5LjI5OTk5ODI4MzM4NjJ9LHsieCI6MzI2LjMzNTg1MTY2OTMxMTUsInkiOjYxNS41NDIxMjc0ODIyMDJ9XQ==" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M445.147,264.194L453.607,267.69C462.067,271.185,478.987,278.176,487.447,284.755C495.907,291.333,495.907,297.5,495.907,300.583L495.907,303.667" id="plotC03currentdataflow-L_IPC_JS_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_IPC_JS_0" data-points="W3sieCI6NDQxLjQ1MDM5Mjg0MDg2NTMzLCJ5IjoyNjIuNjY2NjY3OTM4MjMyNH0seyJ4Ijo0OTUuOTA2Nzc0NTIwODc0LCJ5IjoyODUuMTY2NjY3OTM4MjMyNH0seyJ4Ijo0OTUuOTA2Nzc0NTIwODc0LCJ5IjozMDcuNjY2NjY3OTM4MjMyNH1d" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M336.781,378.863L355.468,385.73C374.155,392.597,411.53,406.332,444.335,419.082C477.14,431.832,505.376,443.597,519.494,449.479L533.612,455.362" id="plotC03currentdataflow-L_Scan_Files_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Scan_Files_0" data-points="W3sieCI6MzMzLjAyNjY0NzU2Nzc0OSwieSI6Mzc3LjQ4Mjg2MDE1Njg0NzV9LHsieCI6NDQ4LjkwNDE2OTA4MjY0MTYsInkiOjQyMC4wNjY2NjY2MDMwODg0fSx7IngiOjUzNy4zMDQ0ODg0NDA3MTMyLCJ5Ijo0NTYuODk5OTk5NjE4NTMwM31d" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M408.389,384.876L395.37,390.741C382.351,396.606,356.313,408.337,343.294,419.674C330.275,431.011,330.275,441.956,330.275,447.428L330.275,452.9" id="plotC03currentdataflow-L_JS_Jira_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_JS_Jira_0" data-points="W3sieCI6NDEyLjAzNjQ2NjAxNjMyOTAzLCJ5IjozODMuMjMzMzMzNTg3NjQ2NX0seyJ4IjozMzAuMjc0OTM4NTgzMzc0LCJ5Ijo0MjAuMDY2NjY2NjAzMDg4NH0seyJ4IjozMzAuMjc0OTM4NTgzMzc0LCJ5Ijo0NTYuODk5OTk5NjE4NTMwM31d" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M552.431,383.233L561.614,389.372C570.798,395.511,589.166,407.789,599.856,419.424C610.546,431.059,613.559,442.05,615.065,447.546L616.572,453.042" id="plotC03currentdataflow-L_JS_Files_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_JS_Files_0" data-points="W3sieCI6NTUyLjQzMDY4NzUwMDUxOTYsInkiOjM4My4yMzMzMzM1ODc2NDY1fSx7IngiOjYwNy41MzMzOTk1ODE5MDkyLCJ5Ijo0MjAuMDY2NjY2NjAzMDg4NH0seyJ4Ijo2MTcuNjI4OTE2NTU4NzAxNSwieSI6NDU2Ljg5OTk5OTYxODUzMDN9XQ==" data-look="classic" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M627.985,532.467L627.985,538.606C627.985,544.744,627.985,557.022,609.254,569.099C590.524,581.175,553.063,593.05,534.332,598.987L515.602,604.925" id="plotC03currentdataflow-L_Files_ACP_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Files_ACP_0" data-points="W3sieCI6NjI3Ljk4NDgxNTU5NzUzNDIsInkiOjUzMi40NjY2NjUyNjc5NDQzfSx7IngiOjYyNy45ODQ4MTU1OTc1MzQyLCJ5Ijo1NjkuMjk5OTk4MjgzMzg2Mn0seyJ4Ijo1MTEuNzg4NTU4OTE5OTcxMywieSI6NjA2LjEzMzMzMTI5ODgyODF9XQ==" data-look="classic" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M322.426,655.873L289.724,662.944C257.022,670.016,191.618,684.158,158.915,696.701C126.213,709.244,126.213,720.189,126.213,725.661L126.213,731.133" id="plotC03currentdataflow-L_ACP_Hist_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_ACP_Hist_0" data-points="W3sieCI6MzI2LjMzNTg1MTY2OTMxMTUsInkiOjY1NS4wMjc5NTI4Mzc0NjYzfSx7IngiOjEyNi4yMTMyOTQ5ODI5MTAxNiwieSI6Njk4LjI5OTk5NjM3NjAzNzZ9LHsieCI6MTI2LjIxMzI5NDk4MjkxMDE2LCJ5Ijo3MzUuMTMzMzI5MzkxNDc5NX1d" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M458.066,664.15L464.359,669.842C470.652,675.533,483.238,686.917,489.53,698.081C495.823,709.244,495.823,720.189,495.823,725.661L495.823,731.133" id="plotC03currentdataflow-L_ACP_Model_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_ACP_Model_0" data-points="W3sieCI6NDU1LjA5OTE4NDA0MTg3NzEsInkiOjY2MS40NjY2NjMzNjA1OTU3fSx7IngiOjQ5NS44MjM0NDA1NTE3NTc4LCJ5Ijo2OTguMjk5OTk2Mzc2MDM3Nn0seyJ4Ijo0OTUuODIzNDQwNTUxNzU3OCwieSI6NzM1LjEzMzMyOTM5MTQ3OTV9XQ==" data-look="classic" marker-start="url(#plotC03currentdataflow_flowchart-v2-pointStart)" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M522.684,656.576L552.658,663.53C582.632,670.484,642.58,684.392,680.473,697.093C718.367,709.795,734.206,721.289,742.125,727.037L750.044,732.784" id="plotC03currentdataflow-L_ACP_Code_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_ACP_Code_0" data-points="W3sieCI6NTIyLjY4Mzk5NjIwMDU2MTUsInkiOjY1Ni41NzYzMDQ0ODEwMTYzfSx7IngiOjcwMi41MjgxMDg1OTY4MDE4LCJ5Ijo2OTguMjk5OTk2Mzc2MDM3Nn0seyJ4Ijo3NTMuMjgxNTcwNzQ1ODM5MSwieSI6NzM1LjEzMzMyOTM5MTQ3OTV9XQ==" data-look="classic" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M755.859,383.233L746.895,389.372C737.931,395.511,720.004,407.789,705.414,419.594C690.825,431.398,679.573,442.73,673.947,448.396L668.321,454.062" id="plotC03currentdataflow-L_Editor_Files_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Editor_Files_0" data-points="W3sieCI6NzU1Ljg1ODgzMDE2OTY0MjYsInkiOjM4My4yMzMzMzM1ODc2NDY1fSx7IngiOjcwMi4wNzY2OTI1ODExNzY4LCJ5Ijo0MjAuMDY2NjY2NjAzMDg4NH0seyJ4Ijo2NjUuNTAyNDEzMjU2OTgyNywieSI6NDU2Ljg5OTk5OTYxODUzMDN9XQ==" data-look="classic" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path><path d="M816.092,383.233L816.914,389.372C817.737,395.511,819.383,407.789,820.205,426.364C821.028,444.939,821.028,469.811,821.028,494.683C821.028,519.556,821.028,544.428,821.028,567.614C821.028,590.8,821.028,612.3,821.028,633.8C821.028,655.3,821.028,676.8,818.433,693.085C815.838,709.371,810.648,720.441,808.053,725.976L805.457,731.512" id="plotC03currentdataflow-L_Editor_Code_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Editor_Code_0" data-points="W3sieCI6ODE2LjA5MTc2NzI4NDc0ODIsInkiOjM4My4yMzMzMzM1ODc2NDY1fSx7IngiOjgyMS4wMjgxMDg1OTY4MDE4LCJ5Ijo0MjAuMDY2NjY2NjAzMDg4NH0seyJ4Ijo4MjEuMDI4MTA4NTk2ODAxOCwieSI6NDk0LjY4MzMzMjQ0MzIzNzN9LHsieCI6ODIxLjAyODEwODU5NjgwMTgsInkiOjU2OS4yOTk5OTgyODMzODYyfSx7IngiOjgyMS4wMjgxMDg1OTY4MDE4LCJ5Ijo2MzMuNzk5OTk3MzI5NzExOX0seyJ4Ijo4MjEuMDI4MTA4NTk2ODAxOCwieSI6Njk4LjI5OTk5NjM3NjAzNzZ9LHsieCI6ODAzLjc1OTQ5Mzc0NzgxOTksInkiOjczNS4xMzMzMjkzOTE0Nzk1fV0=" data-look="classic" marker-end="url(#plotC03currentdataflow_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_User_UI_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_UI_IPC_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_IPC_Scan_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_IPC_ACP_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_IPC_JS_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Scan_Files_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_JS_Jira_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel" transform="translate(595.85773, 412.26208)"><g class="label" data-id="L_JS_Files_0" transform="translate(0, -11.333332657814026)"><g><rect class="background" style="" x="-40" y="-3.000001311302185" width="80" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">来源草稿</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(627.9848155975342, 569.2999982833862)"><g class="label" data-id="L_Files_ACP_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-40" y="-3.000001311302185" width="80.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">选取资料</tspan></tspan></text></g></g></g><g class="edgeLabel"><g class="label" data-id="L_ACP_Hist_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_ACP_Model_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel" transform="translate(643.15009, 684.52434)"><g class="label" data-id="L_ACP_Code_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-40" y="-3.000001311302185" width="80.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">工具操作</tspan></tspan></text></g></g></g><g class="edgeLabel"><g class="label" data-id="L_Editor_Files_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g><g class="edgeLabel"><g class="label" data-id="L_Editor_Code_0" transform="translate(0, 0)"><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"></tspan></text></g></g><g><rect class="background" style="stroke: none"></rect></g></g><g class="nodes"><g class="node default" id="plotC03currentdataflow-flowchart-User-0" data-look="classic" transform="translate(374.48921394348145, 35.33333396911621)"><rect class="basic label-container" style="" x="-58.66666793823242" y="-27.33333396911621" width="117.33333587646484" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">使用者</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-UI-1" data-look="classic" transform="translate(374.48921394348145, 135.00000190734863)"><rect class="basic label-container" style="" x="-118.47770690917969" y="-27.33333396911621" width="236.95541381835938" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">页面</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 阅读与明确动作</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-IPC-3" data-look="classic" transform="translate(374.48921394348145, 235.00000190734863)"><rect class="basic label-container" style="" x="-108.171875" y="-27.666666984558105" width="216.34375" height="55.33333396911621"></rect><g class="label" style="" transform="translate(0, -12.666666984558105)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">preload与分域IPC</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-Scan-5" data-look="classic" transform="translate(245.85998344421387, 345.45000076293945)"><rect class="basic label-container" style="" x="-87.16666793823242" y="-37.78333282470703" width="174.33333587646484" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">扫描</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 阅读</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">允许的元数据</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-ACP-7" data-look="classic" transform="translate(424.5099239349365, 633.7999973297119)"><rect class="basic label-container" style="" x="-98.174072265625" y="-27.666666984558105" width="196.34814453125" height="55.33333396911621"></rect><g class="label" style="" transform="translate(0, -12.666666984558105)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">本机ACP与acpx</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-JS-9" data-look="classic" transform="translate(495.906774520874, 345.45000076293945)"><rect class="basic label-container" style="" x="-121.66845703125" y="-37.78333282470703" width="243.3369140625" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Jira入口与本地创建服</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">务</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-Files-11" data-look="classic" transform="translate(627.9848155975342, 494.6833324432373)"><rect class="basic label-container" style="" x="-122.08659362792969" y="-37.78333282470703" width="244.17318725585938" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">工程内Trellis任务与资</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">料</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-Jira-13" data-look="classic" transform="translate(330.274938583374, 494.6833324432373)"><rect class="basic label-container" style="" x="-121.171875" y="-37.78333282470703" width="242.34375" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Jira工单与独立外写回</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">执</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-Hist-19" data-look="classic" transform="translate(126.21329498291016, 762.4666633605957)"><rect class="basic label-container" style="" x="-118.21330261230469" y="-27.33333396911621" width="236.42660522460938" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">userData会话与配置</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-Model-21" data-look="classic" transform="translate(495.8234405517578, 762.4666633605957)"><rect class="basic label-container" style="" x="-116" y="-27.33333396911621" width="232" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">工具配置的模型服务</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-Code-23" data-look="classic" transform="translate(790.9447746276855, 762.4666633605957)"><rect class="basic label-container" style="" x="-87" y="-27.33333396911621" width="174" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">本机工程代码</tspan></tspan></text></g></g></g><g class="node default" id="plotC03currentdataflow-flowchart-Editor-24" data-look="classic" transform="translate(811.0281085968018, 345.45000076293945)"><rect class="basic label-container" style="" x="-122.234375" y="-37.78333282470703" width="244.46875" height="75.56666564941406"></rect><g class="label" style="" transform="translate(0, -22.78333282470703)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">外部AI编辑器与Trellis</tspan></tspan><tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">命令</tspan></tspan></text></g></g></g></g></g></g><defs><filter id="plotC03currentdataflow-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="plotC03currentdataflow-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="plotC03currentdataflow-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#5c8268" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(44.4444444444, 22.7906976744%, 81.568627451%)" stop-opacity="1"></stop></linearGradient></svg></div></div></details><details id="C04-current-relations"><summary>当前对象关系：工程、任务、材料与本机会话</summary><div class="content"><p class="hint">当前代码/项目流程的静态模型，不是本轮运行验收 · <a href="diagrams/C04-current-relations.mmd">可编辑Mermaid源</a> · <a href="diagrams/C04-current-relations.svg">完整SVG</a></p><div class="diagram"><svg id="plotC04currentrelations" width="1269.42333984375" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="401" viewBox="0 -9.5367431640625e-7 1269.42333984375 401" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#plotC04currentrelations{font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:19px;fill:#233a2a;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#plotC04currentrelations .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#plotC04currentrelations .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#plotC04currentrelations .error-icon{fill:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);}#plotC04currentrelations .error-text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);stroke:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC04currentrelations .edge-thickness-normal{stroke-width:1px;}#plotC04currentrelations .edge-thickness-thick{stroke-width:3.5px;}#plotC04currentrelations .edge-pattern-solid{stroke-dasharray:0;}#plotC04currentrelations .edge-thickness-invisible{stroke-width:0;fill:none;}#plotC04currentrelations .edge-pattern-dashed{stroke-dasharray:3;}#plotC04currentrelations .edge-pattern-dotted{stroke-dasharray:2;}#plotC04currentrelations .marker{fill:#54705a;stroke:#54705a;}#plotC04currentrelations .marker.cross{stroke:#54705a;}#plotC04currentrelations svg{font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:19px;}#plotC04currentrelations p{margin:0;}#plotC04currentrelations .label{font-family:Microsoft YaHei,Segoe UI,sans-serif;color:#233a2a;}#plotC04currentrelations .cluster-label text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC04currentrelations .cluster-label span{color:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC04currentrelations .cluster-label span p{background-color:transparent;}#plotC04currentrelations .label text,#plotC04currentrelations span{fill:#233a2a;color:#233a2a;}#plotC04currentrelations .node rect,#plotC04currentrelations .node circle,#plotC04currentrelations .node ellipse,#plotC04currentrelations .node polygon,#plotC04currentrelations .node path{fill:#edf4ee;stroke:#5c8268;stroke-width:1px;}#plotC04currentrelations .rough-node .label text,#plotC04currentrelations .node .label text,#plotC04currentrelations .image-shape .label,#plotC04currentrelations .icon-shape .label{text-anchor:middle;}#plotC04currentrelations .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#plotC04currentrelations .rough-node .label,#plotC04currentrelations .node .label,#plotC04currentrelations .image-shape .label,#plotC04currentrelations .icon-shape .label{text-align:center;}#plotC04currentrelations .node.clickable{cursor:pointer;}#plotC04currentrelations .root .anchor path{fill:#54705a!important;stroke-width:0;stroke:#54705a;}#plotC04currentrelations .arrowheadPath{fill:#0b0b0b;}#plotC04currentrelations .edgePaths .path{stroke:#54705a;stroke-width:1px;}#plotC04currentrelations .flowchart-link{stroke:#54705a;fill:none;}#plotC04currentrelations .edgeLabel{background-color:#f7f0dc;text-align:center;}#plotC04currentrelations .edgeLabel p{background-color:#f7f0dc;}#plotC04currentrelations .edgeLabel rect{opacity:0.5;background-color:#f7f0dc;fill:#f7f0dc;}#plotC04currentrelations .labelBkg{background-color:rgba(247, 240, 220, 0.5);}#plotC04currentrelations .cluster rect{fill:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);stroke:hsl(308.5714285714, 0%, 89.3137254902%);stroke-width:1px;}#plotC04currentrelations .cluster text{fill:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC04currentrelations .cluster span{color:rgb(1.3275862069, 2.1724137931, 1.4482758621);}#plotC04currentrelations .node .collapsed-indicator{fill:hsl(308.5714285714, 0%, 89.3137254902%);stroke:none;opacity:0.6;}#plotC04currentrelations .node .collapsed-separator{stroke:hsl(308.5714285714, 0%, 89.3137254902%);stroke-width:0.75px;}#plotC04currentrelations div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:Microsoft YaHei,Segoe UI,sans-serif;font-size:12px;background:hsl(308.5714285714, 24.1379310345%, 99.3137254902%);border:1px solid hsl(308.5714285714, 0%, 89.3137254902%);border-radius:2px;pointer-events:none;z-index:100;}#plotC04currentrelations .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#233a2a;}#plotC04currentrelations rect.text{fill:none;stroke-width:0;}#plotC04currentrelations .icon-shape,#plotC04currentrelations .image-shape{background-color:#f7f0dc;text-align:center;}#plotC04currentrelations .icon-shape p,#plotC04currentrelations .image-shape p{background-color:#f7f0dc;padding:2px;}#plotC04currentrelations .icon-shape .label rect,#plotC04currentrelations .image-shape .label rect{opacity:0.5;background-color:#f7f0dc;fill:#f7f0dc;}#plotC04currentrelations .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#plotC04currentrelations .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#plotC04currentrelations .node .neo-node{stroke:#5c8268;}#plotC04currentrelations [data-look="neo"].node rect,#plotC04currentrelations [data-look="neo"].cluster rect,#plotC04currentrelations [data-look="neo"].node polygon{stroke:url(#plotC04currentrelations-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC04currentrelations [data-look="neo"].swimlane.cluster rect{filter:none;}#plotC04currentrelations [data-look="neo"].node path{stroke:url(#plotC04currentrelations-gradient);stroke-width:1px;}#plotC04currentrelations [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC04currentrelations [data-look="neo"].node .neo-line path{stroke:#5c8268;filter:none;}#plotC04currentrelations [data-look="neo"].node circle{stroke:url(#plotC04currentrelations-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC04currentrelations [data-look="neo"].node circle .state-start{fill:#000000;}#plotC04currentrelations [data-look="neo"].icon-shape .icon{fill:url(#plotC04currentrelations-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC04currentrelations [data-look="neo"].icon-shape .icon-neo path{stroke:url(#plotC04currentrelations-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#plotC04currentrelations :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="plotC04currentrelations_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC04currentrelations_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC04currentrelations_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC04currentrelations_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="plotC04currentrelations_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC04currentrelations_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC04currentrelations_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC04currentrelations_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="plotC04currentrelations_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC04currentrelations_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="plotC04currentrelations_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="plotC04currentrelations_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M150.099,49.605L165.312,45.06C180.525,40.515,210.951,31.424,255.239,26.879C299.527,22.333,357.677,22.333,412.642,22.333C467.607,22.333,519.386,22.333,570.543,43.516C621.699,64.699,672.233,107.065,697.5,128.247L722.767,149.43" id="plotC04currentrelations-L_Root_Task_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Root_Task_0" data-points="W3sieCI6MTUwLjA5OTQ1Njc4NzEwOTM4LCJ5Ijo0OS42MDUyMTcxMzA0OTQwMDV9LHsieCI6MjQxLjM3NzQ1NjY2NTAzOTA2LCJ5IjoyMi4zMzMzMzMwMTU0NDE4OTV9LHsieCI6NDE1LjgyNzMzMTU0Mjk2ODc1LCJ5IjoyMi4zMzMzMzMwMTU0NDE4OTV9LHsieCI6NTcxLjE2NTg3NDQ4MTIwMTIsInkiOjIyLjMzMzMzMzAxNTQ0MTg5NX0seyJ4Ijo3MjUuODMxODM3MDcyODkxNCwieSI6MTUyLjAwMDAwMTkwNzM0ODYzfV0=" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M869.536,154.66L883.918,151.411C898.301,148.162,927.067,141.664,958.513,138.416C989.959,135.167,1024.085,135.167,1041.148,135.167L1058.211,135.167" id="plotC04currentrelations-L_Task_Related_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Task_Related_0" data-points="W3sieCI6ODY5LjUzNTY2NzQxOTQzMzYsInkiOjE1NC42NjAxMjQ0NzM3NjU0Mn0seyJ4Ijo5NTUuODMyNTQyNDE5NDMzNiwieSI6MTM1LjE2NjY2NzkzODIzMjQyfSx7IngiOjEwNjIuMjExMjk2MDgxNTQzLCJ5IjoxMzUuMTY2NjY3OTM4MjMyNDJ9XQ==" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M833.665,207.333L854.027,214.861C874.388,222.389,915.11,237.444,959.046,258.229C1002.983,279.013,1050.133,305.526,1073.708,318.783L1097.283,332.039" id="plotC04currentrelations-L_Task_Material_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Task_Material_0" data-points="W3sieCI6ODMzLjY2NTQ5Mjk3MTQ2MzcsInkiOjIwNy4zMzMzMzM5NjkxMTYyfSx7IngiOjk1NS44MzI1NDI0MTk0MzM2LCJ5IjoyNTIuNTAwMDAwOTUzNjc0MzJ9LHsieCI6MTEwMC43NjkzMDk2ODE5NjIzLCJ5IjozMzQuMDAwMDAxOTA3MzQ4NjN9XQ==" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M498.999,179.667L511.027,179.667C523.055,179.667,547.11,179.667,571.299,179.667C595.487,179.667,619.808,179.667,631.969,179.667L644.129,179.667" id="plotC04currentrelations-L_Jira_Task_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Jira_Task_0" data-points="W3sieCI6NDk4Ljk5OTIwNjU0Mjk2ODc1LCJ5IjoxNzkuNjY2NjY3OTM4MjMyNDJ9LHsieCI6NTcxLjE2NTg3NDQ4MTIwMTIsInkiOjE3OS42NjY2Njc5MzgyMzI0Mn0seyJ4Ijo2NDguMTI5NDE3NDE5NDMzNiwieSI6MTc5LjY2NjY2NzkzODIzMjQyfV0=" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M150.099,79.66L165.312,81.55C180.525,83.44,210.951,87.22,243.259,89.11C275.566,91,309.755,91,326.849,91L343.944,91" id="plotC04currentrelations-L_Root_Profile_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Root_Profile_0" data-points="W3sieCI6MTUwLjA5OTQ1Njc4NzEwOTM4LCJ5Ijo3OS42NjAxNDQyMjcwMTYxNn0seyJ4IjoyNDEuMzc3NDU2NjY1MDM5MDYsInkiOjkxfSx7IngiOjM0Ny45NDM2MjY0MDM4MDg2LCJ5Ijo5MX1d" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M100.571,98.167L124.039,127.972C147.506,157.778,194.442,217.389,234.957,247.194C275.472,277,309.566,277,326.613,277L343.661,277" id="plotC04currentrelations-L_Root_Session_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Root_Session_0" data-points="W3sieCI6MTAwLjU3MDk0NzQ4Mzg1ODczLCJ5Ijo5OC4xNjY2NjY5ODQ1NTgxfSx7IngiOjI0MS4zNzc0NTY2NjUwMzkwNiwieSI6Mjc3fSx7IngiOjM0Ny42NjA2Njc0MTk0MzM2LCJ5IjoyNzd9XQ==" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M483.994,255.644L498.523,251.092C513.051,246.54,542.109,237.437,569.488,229.552C596.868,221.668,622.571,215.003,635.422,211.67L648.273,208.337" id="plotC04currentrelations-L_Session_Task_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Session_Task_0" data-points="W3sieCI6NDgzLjk5Mzk5NTY2NjUwMzksInkiOjI1NS42NDM3Nzg4NDIwNjk5fSx7IngiOjU3MS4xNjU4NzQ0ODEyMDEyLCJ5IjoyMjguMzMzMzMzOTY5MTE2Mn0seyJ4Ijo2NTIuMTQ1MzI4MTQyNjAzMSwieSI6MjA3LjMzMzMzMzk2OTExNjJ9XQ==" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M483.994,277L498.523,277C513.051,277,542.109,277,574.304,277C606.499,277,641.833,277,659.499,277L677.166,277" id="plotC04currentrelations-L_Session_Turn_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Session_Turn_0" data-points="W3sieCI6NDgzLjk5Mzk5NTY2NjUwMzksInkiOjI3N30seyJ4Ijo1NzEuMTY1ODc0NDgxMjAxMiwieSI6Mjc3fSx7IngiOjY4MS4xNjU4NzgyOTU4OTg0LCJ5IjoyNzd9XQ==" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M463.714,304.333L481.622,314.556C499.531,324.778,535.348,345.222,564.618,355.444C593.888,365.667,616.61,365.667,627.971,365.667L639.333,365.667" id="plotC04currentrelations-L_Session_Snapshot_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Session_Snapshot_0" data-points="W3sieCI6NDYzLjcxMzY0OTcxNzk2MTMsInkiOjMwNC4zMzMzMzM5NjkxMTYyfSx7IngiOjU3MS4xNjU4NzQ0ODEyMDEyLCJ5IjozNjUuNjY2NjY3OTM4MjMyNH0seyJ4Ijo2NDMuMzMyNTQyNDE5NDMzNiwieSI6MzY1LjY2NjY2NzkzODIzMjR9XQ==" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path><path d="M874.333,365.667L887.916,365.667C901.499,365.667,928.666,365.667,955.166,365.377C981.666,365.088,1007.5,364.51,1020.417,364.221L1033.334,363.931" id="plotC04currentrelations-L_Snapshot_Material_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_Snapshot_Material_0" data-points="W3sieCI6ODc0LjMzMjU0MjQxOTQzMzYsInkiOjM2NS42NjY2Njc5MzgyMzI0fSx7IngiOjk1NS44MzI1NDI0MTk0MzM2LCJ5IjozNjUuNjY2NjY3OTM4MjMyNH0seyJ4IjoxMDM3LjMzMjU0MjQxOTQzMzYsInkiOjM2My44NDE5NDYwMzUzNn1d" data-look="classic" marker-end="url(#plotC04currentrelations_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(415.82733154296875, 22.333333015441895)"><g class="label" data-id="L_Root_Task_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-21" y="-3.000001311302185" width="42.333335876464844" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">包含</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(955.8325424194336, 135.16666793823242)"><g class="label" data-id="L_Task_Related_0" transform="translate(0, -11.333332657814026)"><g><rect class="background" style="" x="-59" y="-3.000001311302185" width="118" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">现有父子引用</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(971.53548, 261.32998)"><g class="label" data-id="L_Task_Material_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-49.5" y="-3.000001311302185" width="99.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">同目录资料</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(571.1658744812012, 179.66666793823242)"><g class="label" data-id="L_Jira_Task_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-21" y="-3.000001311302185" width="42.333335876464844" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">关联</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(241.37745666503906, 91)"><g class="label" data-id="L_Root_Profile_0" transform="translate(-0.16341400146484375, -11.333332657814026)"><g><rect class="background" style="" x="-68.61458587646484" y="-3.000001311302185" width="137.55599975585938" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">配置按root隔离</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(241.37745666503906, 277)"><g class="label" data-id="L_Root_Session_0" transform="translate(0.3333320617675781, -11.333332657814026)"><g><rect class="background" style="" x="-40.66666793823242" y="-3.000001311302185" width="80.66667175292969" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">会话归属</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(567.49587, 229.48312)"><g class="label" data-id="L_Session_Task_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-40" y="-3.000001311302185" width="80.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">可选绑定</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(571.1658744812012, 277)"><g class="label" data-id="L_Session_Turn_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-21" y="-3.000001311302185" width="42.333335876464844" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">包含</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(571.1658744812012, 365.6666679382324)"><g class="label" data-id="L_Session_Snapshot_0" transform="translate(-0.16666793823242188, -11.333332657814026)"><g><rect class="background" style="" x="-49.5" y="-3.000001311302185" width="99.33333587646484" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">读取时记录</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(955.8325424194336, 365.6666679382324)"><g class="label" data-id="L_Snapshot_Material_0" transform="translate(0, -11.333332657814026)"><g><rect class="background" style="" x="-21" y="-3.000001311302185" width="42" height="28.666667938232422"></rect><text y="-10.1" text-anchor="middle" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">引用</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="plotC04currentrelations-flowchart-Root-0" data-look="classic" transform="translate(79.04972839355469, 70.8333330154419)"><rect class="basic label-container" style="" x="-71.04972839355469" y="-27.33333396911621" width="142.09945678710938" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">工程</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> root</tspan></tspan></text></g></g></g><g class="node default" id="plotC04currentrelations-flowchart-Task-1" data-look="classic" transform="translate(758.8325424194336, 179.66666793823242)"><rect class="basic label-container" style="" x="-110.703125" y="-27.666666984558105" width="221.40625" height="55.33333396911621"></rect><g class="label" style="" transform="translate(0, -12.666666984558105)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">任务目录</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> task.json</tspan></tspan></text></g></g></g><g class="node default" id="plotC04currentrelations-flowchart-Related-3" data-look="classic" transform="translate(1149.3779602050781, 135.16666793823242)"><rect class="basic label-container" style="" x="-87.16666793823242" y="-27.33333396911621" width="174.33333587646484" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">其他任务目录</tspan></tspan></text></g></g></g><g class="node default" id="plotC04currentrelations-flowchart-Material-5" data-look="classic" transform="translate(1149.3779602050781, 361.33333587646484)"><rect class="basic label-container" style="" x="-112.04541778564453" y="-27.33333396911621" width="224.09083557128906" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">PRD</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 设计</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 检查记录</tspan></tspan></text></g></g></g><g class="node default" id="plotC04currentrelations-flowchart-Jira-6" data-look="classic" transform="translate(415.82733154296875, 179.66666793823242)"><rect class="basic label-container" style="" x="-83.171875" y="-27.33333396911621" width="166.34375" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Jira来源引用</tspan></tspan></text></g></g></g><g class="node default" id="plotC04currentrelations-flowchart-Profile-9" data-look="classic" transform="translate(415.82733154296875, 91)"><rect class="basic label-container" style="" x="-67.88370895385742" y="-27.33333396911621" width="135.76741790771484" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">ACP配置</tspan></tspan></text></g></g></g><g class="node default" id="plotC04currentrelations-flowchart-Session-11" data-look="classic" transform="translate(415.82733154296875, 277)"><rect class="basic label-container" style="" x="-68.16666793823242" y="-27.33333396911621" width="136.33333587646484" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">本机会话</tspan></tspan></text></g></g></g><g class="node default" id="plotC04currentrelations-flowchart-Turn-15" data-look="classic" transform="translate(758.8325424194336, 277)"><rect class="basic label-container" style="" x="-77.66666793823242" y="-27.33333396911621" width="155.33333587646484" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">回合与事件</tspan></tspan></text></g></g></g><g class="node default" id="plotC04currentrelations-flowchart-Snapshot-17" data-look="classic" transform="translate(758.8325424194336, 365.6666679382324)"><rect class="basic label-container" style="" x="-115.5" y="-27.33333396911621" width="231" height="54.66666793823242"></rect><g class="label" style="" transform="translate(0, -12.333333969116211)"><rect></rect><g><rect class="background" style="stroke: none"></rect><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">材料路径和读取时间</tspan></tspan></text></g></g></g></g></g></g><defs><filter id="plotC04currentrelations-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="plotC04currentrelations-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="plotC04currentrelations-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#5c8268" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(44.4444444444, 22.7906976744%, 81.568627451%)" stop-opacity="1"></stop></linearGradient></svg></div></div></details></main><footer>依据当前代码、项目规范、用户历史证词与有边界的既有验收。旧Hifox方案只保留在明确标记的历史归档；64项研究覆盖不构成必建清单。本文未重跑产品或AI作业。</footer><script>document.querySelectorAll('a[href^="#"]').forEach(a=>a.addEventListener('click',()=>{const d=document.getElementById(a.getAttribute('href').slice(1));if(d&&d.tagName==='DETAILS')d.open=true;}));</script></body></html>

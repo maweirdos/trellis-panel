@@ -10,6 +10,7 @@ import { updateTaskRecordAt } from '../services/scan'
 import { buildHandoffPackage, readPrdContent } from '../services/handoff'
 import { getSettings } from '../services/store'
 import { createOrOpenTaskFromJira } from '../services/local-task'
+import { runTaskSubtaskCli } from '../services/local-task/cli-runner'
 import { jiraInstanceIdFor } from '../services/jira-instance'
 import {
   getProjectRoot,
@@ -36,10 +37,10 @@ export function registerTasksIpc(): void {
     const root = getProjectRoot()
     if (!root) return noProject()
     try {
-      updateTaskRecordAt(root, taskDir, patch, expectedMtime)
+      const res = updateTaskRecordAt(root, taskDir, patch, expectedMtime)
       markPanelWrite(join(resolve(taskDir), 'task.json'))
       sendSnapshot()
-      return { ok: true }
+      return { ok: true, ignored: res.ignored }
     } catch (e) {
       const msg = errorMessage(e)
       if (isConflict(e)) return ipcFail(IpcErrorCode.Conflict, msg ?? '任务已被外部修改', { conflict: true })
@@ -145,13 +146,25 @@ export function registerTasksIpc(): void {
 
   handle(ipcInvoke.task.create, (_e, input: { title: string; description: string; priority: string }) => {
     const dirName = slugifyTitle(input.title)
+    // 资料连续性（PF-07/B1）：原始问题随任务落盘为 prd.md 草稿，不留在界面输入框里
+    const prd = [
+      `# ${input.title}`,
+      '',
+      '> 来源：面板普通创建（原始描述，未经整理）',
+      '',
+      '## 原始描述',
+      '',
+      input.description.trim() || '（无）',
+      ''
+    ].join('\n')
     return createTaskRecord({
       dirName,
       title: input.title,
       description: input.description,
       status: 'planning',
       priority: input.priority || 'P2',
-      assignee: getSnapshot()?.meta.developer ?? ''
+      assignee: getSnapshot()?.meta.developer ?? '',
+      prdContent: prd
     })
   })
 
@@ -164,13 +177,13 @@ export function registerTasksIpc(): void {
   })
 
   /** T3：构建任务交接包（确定性文本；意图由渲染层选择，默认只核对与阅读） */
-  handle(ipcInvoke.task.handoffBuild, (_e, dirName: string, intent: string, includePrd: boolean) => {
+  handle(ipcInvoke.task.handoffBuild, async (_e, dirName: string, intent: string, includePrd: boolean) => {
     const root = getProjectRoot()
     if (!root) return noProject()
     const t = findTask(String(dirName))
     if (!t) return ipcFail(IpcErrorCode.NotFound, `任务不存在: ${dirName}`)
     const extra = includePrd ? { prdContent: readPrdContent(t.path) } : undefined
-    return buildHandoffPackage(root, t, String(intent ?? ''), extra)
+    return await buildHandoffPackage(root, t, String(intent ?? ''), extra)
   })
 
   /**
@@ -261,14 +274,36 @@ export function registerTasksIpc(): void {
     return { ok: true }
   })
 
+  /**
+   * B3：父子关联走唯一权威路径 task.py add/remove-subtask（受控命令，实出
+   * 退出码）；替代此前 peek 里只存在于视图层的伪造关联。成功后由快照刷新
+   * 呈现真实 children/parent。
+   */
+  handle(ipcInvoke.task.linkSubtask, async (_e, parentDir: string, childDir: string, remove?: boolean) => {
+    const root = getProjectRoot()
+    if (!root) return noProject()
+    const parent = findTask(String(parentDir))
+    const child = findTask(String(childDir))
+    if (!parent || !child) return ipcFail(IpcErrorCode.NotFound, '父任务或子任务不存在')
+    const res = await runTaskSubtaskCli({ root }, parent.dirName, child.dirName, remove === true)
+    if (res.code !== 0) {
+      const reason = res.aborted ? '执行超时被终止（超时≠成功）' : res.failedToStart ? 'task.py 无法启动' : `退出码 ${res.code}`
+      const detail = (res.stderr || res.stdout).trim().split('\n').slice(-3).join(' ').slice(0, 200)
+      return ipcFail(IpcErrorCode.Io, `task.py ${remove ? 'remove-subtask' : 'add-subtask'} 失败（${reason}）${detail ? `：${detail}` : ''}`)
+    }
+    sendSnapshot()
+    return { ok: true as const }
+  })
+
   handle(ipcInvoke.task.writeArtifact, (_e, dirName: string, fileName: string, content: string) => {
     const root = getProjectRoot()
     if (!root) return noProject()
     const t = findTask(String(dirName))
     if (!t) return ipcFail(IpcErrorCode.NotFound, `任务不存在: ${dirName}`)
     const name = String(fileName ?? '').trim()
-    if (!/^[\w.-]+\.(md|markdown|txt|yaml|yml|json)$/i.test(name)) {
-      return ipcFail(IpcErrorCode.InvalidArg, '文件名不合法（仅允许 md/txt/yaml/json）')
+    // 允许中文等安全字符；仅禁止路径分隔符与 Windows 非法字符，防止逃出任务目录
+    if (!name || /[\\/:*?"<>|\r\n]/.test(name) || !/\.(md|markdown|txt|yaml|yml|json)$/i.test(name)) {
+      return ipcFail(IpcErrorCode.InvalidArg, '文件名不合法（仅允许 md/markdown/txt/yaml/yml/json，且不含路径分隔符）')
     }
     try {
       const p = join(t.path, name)

@@ -27,6 +27,7 @@ export const ipcInvoke = {
     create: 'task:create',
     createFromJira: 'task:createFromJira',
     createFromPlan: 'task:createFromPlan',
+    linkSubtask: 'task:linkSubtask',
     writeArtifact: 'task:writeArtifact',
     resolveClipboardTask: 'task:resolveClipboardTask',
     buildTaskLink: 'task:buildTaskLink',
@@ -80,6 +81,16 @@ export const ipcInvoke = {
   git: {
     taskInfo: 'git:taskInfo',
     createBranch: 'git:createBranch'
+  },
+  devtools: {
+    gitStatus: 'devtools:gitStatus',
+    gitFileDiff: 'devtools:gitFileDiff',
+    listScripts: 'devtools:listScripts',
+    devRunStart: 'devtools:devRunStart',
+    devRunStop: 'devtools:devRunStop',
+    devRunStopAll: 'devtools:devRunStopAll',
+    devRunList: 'devtools:devRunList',
+    devRunGet: 'devtools:devRunGet'
   },
   analytics: {
     get: 'analytics:get'
@@ -177,9 +188,6 @@ export const ipcInvoke = {
     splitEpic: 'ai:splitEpic',
     commitMsg: 'ai:commitMsg',
     prDesc: 'ai:prDesc'
-  },
-  plan: {
-    handoff: 'plan:handoff'
   },
   settings: {
     get: 'settings:get',

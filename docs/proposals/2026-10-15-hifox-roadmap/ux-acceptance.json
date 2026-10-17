@@ -1,0 +1,256 @@
+[
+  {
+    "id": "UXAC01",
+    "requirements": [
+      "FR-035",
+      "FR-030"
+    ],
+    "version": "R3/R4",
+    "given_when": "业务任务待开始、既有run失败，打开任务",
+    "expected": "业务状态不改变；执行区显示该run失败、时间和输入版本；验收保持未验证；回合结束不得显示交付通过。",
+    "evidence": [
+      "UI07-existing-run-failure"
+    ],
+    "method": "R0仅静态展示回归；R3实际Run事件/输入基线与业务状态对照；R4测试/验收事实投影验证及无写入断言；静态夹具不得关闭整项",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance",
+    "phase_assertions": {
+      "R0_subset": "R0 W00/W01：仅业务/执行/验收标签分组的静态展示",
+      "later_dependencies": "R3 W12/W13：实际Run、输入版本、业务状态独立；R4 W15：测试/验收事实投影和联动",
+      "full_case_closure": "R3/R4真实Run及验收投影；R0静态夹具不得关闭完整用例",
+      "status": "not_run",
+      "static_fixture_can_close_full_case": false
+    }
+  },
+  {
+    "id": "UXAC02",
+    "requirements": [
+      "FR-004",
+      "FR-027"
+    ],
+    "version": "R0/R1/R3",
+    "given_when": "本地桥接不可用但有私有电脑在线缓存，打开预检",
+    "expected": "电脑连接、本地服务、安装/认证、目录、预算分别显示时间与未知；开始本次执行禁用且说明缺项；材料/真人协作可继续。",
+    "evidence": [
+      "UI22-computer-local-bridge-unavailable"
+    ],
+    "method": "R0提示与导航夹具；R1真人共享权限；R3实际预检故障/时效与开始门槛；静态图不代替就绪",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance",
+    "phase_assertions": {
+      "R0_subset": "R0 W01：本地桥缺失提示、未知文案与材料仍可读",
+      "later_dependencies": "R1 W04/W05：真人共享无需运行权；R3 W12：实时分层预检、时效、禁用开始及修复入口",
+      "full_case_closure": "适用R1/R3子断言完成后；静态在线/错误图不等于runtime就绪",
+      "status": "not_run",
+      "static_fixture_can_close_full_case": false
+    }
+  },
+  {
+    "id": "UXAC03",
+    "requirements": [
+      "FR-012",
+      "FR-013",
+      "FR-022",
+      "FR-023"
+    ],
+    "version": "R1/R2",
+    "given_when": "同一对象有通知、正式ActionItem与外部接收记录，标通知已读",
+    "expected": "仅通知readAt改变；ActionItem未完成；接收记录不自动接受；任何普通评论和打开页面均无run。",
+    "evidence": [
+      "UI01-inbox-empty",
+      "UI16-triage-empty"
+    ],
+    "method": "三对象差分和run计数检查",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance"
+  },
+  {
+    "id": "UXAC04",
+    "requirements": [
+      "FR-004",
+      "FR-017",
+      "FR-020"
+    ],
+    "version": "R0/R1/R2",
+    "given_when": "分别加载无记录、筛选零结果、无权、离线缓存和加载失败",
+    "expected": "五种状态有各自原因/恢复；不把旧缓存清空；无权不显示对象标题；创建按钮只在可创建空库出现。",
+    "evidence": [
+      "UI12-iterations-empty",
+      "UI13-saved-views-empty",
+      "UI19-document-library-empty"
+    ],
+    "method": "状态夹具逐屏和权限负例",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance",
+    "phase_assertions": {
+      "R0_subset": "R0 W01：本地无记录、加载失败、缓存保留的静态/本地断言",
+      "later_dependencies": "R1 W04：无权/共享离线缓存；R2 W10：真实视图筛选零结果及不泄漏对象",
+      "full_case_closure": "按各场景真实数据/权限验证，R2覆盖完整组合；不能只跑空态夹具",
+      "status": "not_run",
+      "static_fixture_can_close_full_case": false
+    }
+  },
+  {
+    "id": "UXAC05",
+    "requirements": [
+      "FR-017",
+      "FR-020"
+    ],
+    "version": "R1/R2",
+    "given_when": "视口1000和960px，已有搜索词及两项筛选，收起搜索",
+    "expected": "仍显示非空查询或条件数、零结果原因与可达清除；展开恢复原值；清除后列表恢复且不保存共享视图。",
+    "evidence": [
+      "UI03-agent-search-empty",
+      "UI04-narrow-search-expanded"
+    ],
+    "method": "响应式截图、键盘清除和网络写入断言",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance"
+  },
+  {
+    "id": "UXAC06",
+    "requirements": [
+      "FR-004",
+      "FR-010",
+      "FR-018"
+    ],
+    "version": "R0/R1/R2",
+    "given_when": "打开普通创建空表单，标题为空；输入后关闭/切项目",
+    "expected": "空标题禁用并有可感知原因；可留未分配草稿；返回恢复或明确放弃；确认一次只创建一个稳定任务，无Agent启动。",
+    "evidence": [
+      "UI10-new-workitem-form",
+      "UI11-workitem-type-menu"
+    ],
+    "method": "草稿恢复/幂等和run计数；提交只在测试空间",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance",
+    "phase_assertions": {
+      "R0_subset": "R0 W01：本地标题必填、草稿、受控创建与重复提交",
+      "later_dependencies": "R1 W05：正式分配/真人门槛；R2 W10：任务类型和管理权限（启用分类时）",
+      "full_case_closure": "各适用阶段分别保留结果；R0不关闭R1正式门槛或R2分类行为",
+      "status": "not_run",
+      "static_fixture_can_close_full_case": false
+    }
+  },
+  {
+    "id": "UXAC07",
+    "requirements": [
+      "FR-011",
+      "FR-017",
+      "FR-025",
+      "FR-033"
+    ],
+    "version": "R1/R3",
+    "given_when": "从个人材料或私有角色请求发布至团队/Agent",
+    "expected": "预览来源、固定修订、接收范围、附件及排除项；取消无共享；发布后接收者另机同指纹读取；不能因角色共享而获取机器/执行权。",
+    "evidence": [
+      "UI18-skills-empty",
+      "UI19-document-library-empty",
+      "UI25-agent-settings-form"
+    ],
+    "method": "双账号/两设备和ApplicableChecks负例",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance"
+  },
+  {
+    "id": "UXAC08",
+    "requirements": [
+      "FR-007",
+      "FR-036",
+      "FR-038",
+      "FR-039"
+    ],
+    "version": "R1/R4",
+    "given_when": "连接器已授权但未绑定项目，打开对象集成",
+    "expected": "分别显示已授权/未绑定/未同步；每个外写动作列目的地/字段/身份；未知回执先核对，不能一键盲重试。",
+    "evidence": [
+      "UI20-integration-directory",
+      "UI21-git-and-collaboration-integrations"
+    ],
+    "method": "假连接器与回执故障夹具",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance"
+  },
+  {
+    "id": "UXAC09",
+    "requirements": [
+      "FR-001",
+      "FR-021",
+      "FR-024"
+    ],
+    "version": "R0/R2",
+    "given_when": "工程root A含跨两迭代交付目标，切迭代并查看目标",
+    "expected": "工程身份不变；目标和时间窗口为独立实体；移出/结转记录保留，计数注明分母且不复制任务。",
+    "evidence": [
+      "UI12-iterations-empty",
+      "UI15-delivery-goals-empty"
+    ],
+    "method": "关系与范围变更夹具",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance"
+  },
+  {
+    "id": "UXAC10",
+    "requirements": [
+      "FR-025",
+      "FR-041",
+      "FR-042"
+    ],
+    "version": "R3/R5",
+    "given_when": "打开技能/自动化页面，再预览已配置规则",
+    "expected": "浏览不安装或执行；预览展示固定版本、身份、权限、预算、人工等待；重复事件/重启不重复外写；未授权规则不能启用。",
+    "evidence": [
+      "UI17-automation-empty",
+      "UI18-skills-empty"
+    ],
+    "method": "隔离规则沙箱与重复事件断言",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance"
+  },
+  {
+    "id": "UXAC11",
+    "requirements": [
+      "FR-001",
+      "FR-020",
+      "FR-032",
+      "FR-048"
+    ],
+    "version": "R0/R2/R3",
+    "given_when": "在960/1440px阅读版本材料，开关辅助会话和工作视图",
+    "expected": "任务、修订、阅读锚点和草稿保持；窄屏辅助抽屉不盖住关闭/主要操作；呈现切换不改权限、不启动进程。",
+    "evidence": [
+      "UI06-conversation-controls",
+      "UI09-task-board",
+      "UI14-task-navigation-more"
+    ],
+    "method": "视口截图、焦点与状态差分",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance",
+    "phase_assertions": {
+      "R0_subset": "R0 W01：项目/材料定位、草稿、辅助区收起与正文可读",
+      "later_dependencies": "R2 W10：共享视图临时呈现不覆盖；R3 W14：真实Session/Run、权限和进程无隐式变化",
+      "full_case_closure": "到R3真实会话/运行断言核验；静态线框或无后端夹具不得提前关闭",
+      "status": "not_run",
+      "static_fixture_can_close_full_case": false
+    }
+  },
+  {
+    "id": "UXAC12",
+    "requirements": [
+      "FR-016",
+      "FR-027",
+      "FR-030",
+      "FR-047"
+    ],
+    "version": "R1/R3/R4",
+    "given_when": "外部动作发送后断线导致unknown，点击恢复入口",
+    "expected": "说明已保留结果、待核对象、责任人与安全下一步；核对先于重发；停止确认前旧lease保留；复制诊断默认不含令牌、私人路径或正文。",
+    "evidence": [
+      "UI07-existing-run-failure",
+      "UI22-computer-local-bridge-unavailable"
+    ],
+    "method": "operation/run故障注入和脱敏检查",
+    "status": "not_run",
+    "type": "proposed_Trellis_UX_acceptance"
+  }
+]

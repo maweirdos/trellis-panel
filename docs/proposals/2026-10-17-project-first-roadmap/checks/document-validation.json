@@ -1,0 +1,938 @@
+{
+  "version": "0.6",
+  "at": "2026-10-17T05:04:15.311193+00:00",
+  "checks": [
+    {
+      "name": "formal planning version",
+      "passed": true
+    },
+    {
+      "name": "user direction resolved",
+      "passed": true
+    },
+    {
+      "name": "future task selection stays open",
+      "passed": true
+    },
+    {
+      "name": "no inherited competitor completion mandate",
+      "passed": true
+    },
+    {
+      "name": "project requirement IDs",
+      "passed": true
+    },
+    {
+      "name": "source index unique and content-addressed",
+      "passed": true
+    },
+    {
+      "name": "new acceptance cases remain not_run",
+      "passed": true
+    },
+    {
+      "name": "PF-01 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-01 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-02 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-02 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-03 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-03 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-04 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-04 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-05 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-05 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-06 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-06 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-07 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-07 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-08 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-08 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-09 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-09 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-10 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-10 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PF-11 evidence and acceptance refs",
+      "passed": true
+    },
+    {
+      "name": "PF-11 no new implementation authorization",
+      "passed": true
+    },
+    {
+      "name": "PA-01 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-02 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-03 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-04 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-05 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-06 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-07 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-08 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-09 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-10 concrete case",
+      "passed": true
+    },
+    {
+      "name": "PA-11 concrete case",
+      "passed": true
+    },
+    {
+      "name": "legacy FRs are dispositions, not backlog",
+      "passed": true
+    },
+    {
+      "name": "first screen project and useful directions",
+      "passed": true
+    },
+    {
+      "name": "no unresolved priority gate",
+      "passed": true
+    },
+    {
+      "name": "local preference and optional collaboration",
+      "passed": true
+    },
+    {
+      "name": "existing ACP and weekly work not reset",
+      "passed": true
+    },
+    {
+      "name": "developer tools independently selectable",
+      "passed": true
+    },
+    {
+      "name": "candidate corrections not reproduced or fixed",
+      "passed": true
+    },
+    {
+      "name": "scenarios specify behavior and outcome",
+      "passed": true
+    },
+    {
+      "name": "competitor expansion may remain unadopted",
+      "passed": true
+    },
+    {
+      "name": "old tests are not new obligations",
+      "passed": true
+    },
+    {
+      "name": "estimates not fabricated",
+      "passed": true
+    },
+    {
+      "name": "latest human direction recorded",
+      "passed": true
+    },
+    {
+      "name": "01-main-roadmap.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "01-main-roadmap.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "02-project-baseline.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "02-project-baseline.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "03-requirements-and-acceptance.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "03-requirements-and-acceptance.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "04-scope-and-reference-decisions.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "04-scope-and-reference-decisions.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "05-data-and-state.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "05-data-and-state.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "06-decisions-and-delivery.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "06-decisions-and-delivery.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "HISTORICAL-REFERENCE.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "HISTORICAL-REFERENCE.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "README.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "README.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "Trellis-Project-Roadmap.md UTF8",
+      "passed": true
+    },
+    {
+      "name": "Trellis-Project-Roadmap.md relative links resolve",
+      "passed": true
+    },
+    {
+      "name": "four editable current/proposed diagrams",
+      "passed": true
+    },
+    {
+      "name": "C01-current-flow real SVG text",
+      "passed": true
+    },
+    {
+      "name": "C01-current-flow PNG rendered",
+      "passed": true
+    },
+    {
+      "name": "C01-current-flow editable source",
+      "passed": true
+    },
+    {
+      "name": "C02-proposed-flow real SVG text",
+      "passed": true
+    },
+    {
+      "name": "C02-proposed-flow PNG rendered",
+      "passed": true
+    },
+    {
+      "name": "C02-proposed-flow editable source",
+      "passed": true
+    },
+    {
+      "name": "C03-current-data-flow real SVG text",
+      "passed": true
+    },
+    {
+      "name": "C03-current-data-flow PNG rendered",
+      "passed": true
+    },
+    {
+      "name": "C03-current-data-flow editable source",
+      "passed": true
+    },
+    {
+      "name": "C04-current-relations real SVG text",
+      "passed": true
+    },
+    {
+      "name": "C04-current-relations PNG rendered",
+      "passed": true
+    },
+    {
+      "name": "C04-current-relations editable source",
+      "passed": true
+    },
+    {
+      "name": "dependency diagram keeps options open",
+      "passed": true
+    },
+    {
+      "name": "self contained formal reading core",
+      "passed": true
+    },
+    {
+      "name": "plain scenarios first",
+      "passed": true
+    },
+    {
+      "name": "old plans not embedded in current HTML",
+      "passed": true
+    },
+    {
+      "name": "root current entry",
+      "passed": true
+    },
+    {
+      "name": "old root byte-preserved",
+      "passed": true
+    },
+    {
+      "name": "old plans archived, not current appendices",
+      "passed": true
+    },
+    {
+      "name": "historical archive CRC",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 01-product-roadmap.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 02-capability-map.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 03-source-index.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 04-baseline-and-boundaries.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 05-project-workspace-and-integrations.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 06-research-and-evidence.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 07-product-requirements.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 08-journeys-and-ux.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 09-data-and-control-model.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 10-acceptance-and-traceability.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 11-phased-delivery-plan.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 12-decisions-and-research-gaps.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 13-test-catalog.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 14-review-resolution.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 15-hifox-uiux-audit.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes 16-ui-derived-design-contracts.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes extension-manifest.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes model-contracts.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes README.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes requirements.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes source-manifest.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes state-transitions.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes test-cases.csv",
+      "passed": true
+    },
+    {
+      "name": "historical bytes test-cases.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes Trellis-Requirements.html",
+      "passed": true
+    },
+    {
+      "name": "historical bytes Trellis-Requirements.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes ux-acceptance.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/baseline-hashes.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/browser-layout.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/diagram-renders.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/file-manifest.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/local-evidence.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/project-write-result.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/README.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v04-project-baseline.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v04-visual-review.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v04-write-plan.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v04-write-result.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v041-browser-layout.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v041-diagram-renders.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v041-project-baseline.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v041-scope.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v041-visual-review.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v041-write-plan.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v041-write-result.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v05-project-baseline.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v05-report-design-screen.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v05-report-first-screen.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v05-visual-review.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v05-write-plan.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v05-write-result.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v051-checker-regressions.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v051-layout-review.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v051-phase-preview.html",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v051-phase-table.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v051-project-baseline.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v051-write-plan.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/v051-write-result.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/validation.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/verify-artifacts.py",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/visual-review.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/write-plan.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/screenshots/report-cover.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/screenshots/report-data-dictionary.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/screenshots/report-data-model.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/screenshots/v04-catalog.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/screenshots/v04-cover.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/screenshots/v04-model.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/screenshots/v04-trace.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes checks/screenshots/v041-cover.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/01-business-flow.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/01-business-flow.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/01-business-flow.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/02-context-dfd.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/02-context-dfd.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/02-context-dfd.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/03-layered-dfd.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/03-layered-dfd.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/03-layered-dfd.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/03b-execution-dfd.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/03b-execution-dfd.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/03b-execution-dfd.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/04-reliable-operation.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/04-reliable-operation.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/04-reliable-operation.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/05-core-entities.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/05-core-entities.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/05-core-entities.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/05b-approval-testing.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/05b-approval-testing.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/05b-approval-testing.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/06-run-state.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/06-run-state.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/06-run-state.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/06b-run-recovery.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/06b-run-recovery.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/06b-run-recovery.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/07-roadmap-dependencies.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/07-roadmap-dependencies.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/07-roadmap-dependencies.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/08-ui-informed-ia.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/08-ui-informed-ia.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/08-ui-informed-ia.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/09-status-projections.mmd",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/09-status-projections.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/09-status-projections.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/index.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/README.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/W01-task-workspace.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/W01-task-workspace.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/W02-review.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/W02-review.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/W07-filter-empty.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes diagrams/W07-filter-empty.svg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/README-ui.md",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui-coverage.csv",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui-coverage.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui-evidence.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ux-findings.json",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/WEB-01-welcome.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/WEB-02-login-gate.png",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI01-inbox-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI02-agents-overview.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI03-agent-search-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI04-narrow-search-expanded.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI06-conversation-controls.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI09-task-board.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI10-new-workitem-form.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI11-workitem-type-menu.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI12-iterations-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI13-saved-views-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI14-task-navigation-more.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI15-delivery-goals-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI16-triage-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI17-automation-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI18-skills-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI19-document-library-empty.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI20-integration-directory.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI21-git-and-collaboration-integrations.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes evidence/ui/UI22-computer-local-bridge-unavailable.jpg",
+      "passed": true
+    },
+    {
+      "name": "historical bytes research/parent-official-research.md",
+      "passed": true
+    }
+  ],
+  "passed": 232,
+  "total": 232,
+  "product_cases": "not_run",
+  "implementation_authorized": false
+}

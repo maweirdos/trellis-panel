@@ -16,6 +16,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react'
 import { PRIORITY_ORDER, filterIssues, useMy } from '../store'
+import { useApp } from '../../store'
 import {
   Avatar,
   Button,
@@ -376,27 +377,53 @@ const BOX_TRIGGER: SelectStyle = {
     'flex h-7 w-full min-w-0 items-center gap-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 text-my-sm text-my-secondary hover:bg-my-layer-1-hover'
 }
 
-/** 状态下拉（列表行/表格单元格/peek 通用） */
+/** 状态字段 → Trellis 工作流入口。生命周期状态由 task.py 管理，面板不直接写
+ *  task.json；可迁移的状态复制对应受控命令，无可命令的状态如实说明。 */
+function stateWorkflow(dirName: string, stateId: string): { command?: string; hint: string } {
+  switch (stateId) {
+    case 'st-progress':
+      return { command: `python .trellis/scripts/task.py start ${dirName}`, hint: '复制 start 命令' }
+    case 'st-done':
+      return { command: `python .trellis/scripts/task.py archive ${dirName}`, hint: '复制 archive 命令' }
+    case 'st-planning':
+    case 'st-backlog':
+      return { hint: '任务创建后的初始状态，无命令' }
+    case 'st-review':
+      return { hint: '由项目流程推进，无受控命令' }
+    default:
+      return { hint: '由 Trellis 工作流管理' }
+  }
+}
+
+/** 状态展示（列表行/表格单元格通用）：只读展示当前状态，下拉提供工作流入口，
+ *  不再伪装可直接改状态——此前乐观更新会被落盘白名单静默回退。 */
 function StateSelect({
   value,
-  onChange,
+  dirName,
   variant = 'bare',
   showChevron = true
 }: {
   value: string
-  onChange: (stateId: string) => void
+  dirName: string
   variant?: 'bare' | 'box'
   showChevron?: boolean
 }): JSX.Element {
   const { data } = useMy()
   const current = data.states.find((s) => s.id === value)
   const states = [...data.states].sort((a, b) => a.sequence - b.sequence)
+  const copyCommand = (command: string): void => {
+    void navigator.clipboard
+      .writeText(command)
+      .then(() => useApp.getState().pushToast({ kind: 'success', title: '已复制工作流命令', body: command }))
+      .catch(() => undefined)
+  }
   return (
     <Dropdown
-      width={200}
+      width={260}
       trigger={({ toggle }) => (
         <button
           type="button"
+          title="状态由 Trellis 工作流管理，点开查看流程入口"
           onClick={(e) => {
             e.stopPropagation()
             toggle()
@@ -411,19 +438,26 @@ function StateSelect({
     >
       {(close) => (
         <>
-          {states.map((st) => (
-            <DropdownItem
-              key={st.id}
-              selected={st.id === value}
-              icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
-              onClick={() => {
-                onChange(st.id)
-                close()
-              }}
-            >
-              {st.name}
-            </DropdownItem>
-          ))}
+          <DropdownHeader>状态由 Trellis 工作流管理</DropdownHeader>
+          {states.map((st) => {
+            const flow = stateWorkflow(dirName, st.id)
+            const isCurrent = st.id === value
+            const suffix = isCurrent ? ' · 当前' : ` · ${flow.hint}`
+            return (
+              <DropdownItem
+                key={st.id}
+                selected={isCurrent}
+                disabled={!flow.command || isCurrent}
+                icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
+                onClick={() => {
+                  if (flow.command) copyCommand(flow.command)
+                  close()
+                }}
+              >
+                {st.name + suffix}
+              </DropdownItem>
+            )
+          })}
         </>
       )}
     </Dropdown>
@@ -595,13 +629,7 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
       {issue.dueDate && state && <DueChip due={issue.dueDate} stateGroup={state.group} done={done} />}
       {/* 拦截键盘冒泡，避免下拉内按键触发行点击 */}
       <span onKeyDown={(e) => e.stopPropagation()} className="flex shrink-0 items-center">
-        <StateSelect
-          value={issue.stateId}
-          onChange={(stateId) => {
-            const st = data.states.find((s) => s.id === stateId)
-            updateIssue(issue.id, { stateId, completedAt: st?.group === 'completed' ? toIso(new Date()) : null })
-          }}
-        />
+        <StateSelect value={issue.stateId} dirName={issue.id} />
       </span>
       <button
         type="button"
@@ -951,13 +979,7 @@ function SpreadsheetRow({
         </Dropdown>
       </span>
       <span className="w-32 shrink-0" onClick={(e) => e.stopPropagation()}>
-        <StateSelect
-          value={issue.stateId}
-          onChange={(stateId) => {
-            const st = data.states.find((s) => s.id === stateId)
-            updateIssue(issue.id, { stateId, completedAt: st?.group === 'completed' ? toIso(new Date()) : null })
-          }}
-        />
+        <StateSelect value={issue.stateId} dirName={issue.id} />
       </span>
       <span className="w-28 shrink-0" onClick={(e) => e.stopPropagation()}>
         <AssigneeSelect
@@ -1027,34 +1049,7 @@ function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }
       {checked.size > 0 && (
         <div className="fixed bottom-8 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-2 px-3 py-2 shadow-[var(--my-shadow-overlay-200)]">
           <span className="text-my-sm text-my-secondary">已选 {checked.size} 项</span>
-          <Dropdown
-            width={180}
-            align="right"
-            trigger={({ toggle }) => (
-              <Button variant="neutral" size="sm" onClick={toggle}>
-                设为状态
-              </Button>
-            )}
-          >
-            {(close) => (
-              <>
-                {[...data.states]
-                  .sort((a, b) => a.sequence - b.sequence)
-                  .map((st) => (
-                    <DropdownItem
-                      key={st.id}
-                      icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
-                      onClick={() => {
-                        void applyBatch({ stateId: st.id })
-                        close()
-                      }}
-                    >
-                      {st.name}
-                    </DropdownItem>
-                  ))}
-              </>
-            )}
-          </Dropdown>
+          {/* 批量状态不提供：生命周期状态由 Trellis 工作流逐任务管理（F01 同源），批量写入本就是缓议的受控命令 */}
           <Dropdown
             width={170}
             align="right"
@@ -1518,7 +1513,19 @@ function WorkItemsPageInner(): JSX.Element {
         showEmpty={display.showEmptyGroups}
         groupBy={groupBy}
         ident={ident}
-        onMoveToState={(stateId, issueId) => void store.updateIssue(issueId, { stateId })}
+        onMoveToState={(stateId, issueId) => {
+          // 拖到目标状态列 = 提供该状态的工作流入口（复制受控命令）；
+          // 不再伪装本地改状态——落盘白名单会静默回退（F01）。
+          const flow = stateWorkflow(issueId, stateId)
+          const target = data.states.find((s) => s.id === stateId)?.name ?? stateId
+          if (flow.command) {
+            void navigator.clipboard.writeText(flow.command)
+              .then(() => useApp.getState().pushToast({ kind: 'success', title: `已复制「${target}」的工作流命令`, body: flow.command }))
+              .catch(() => undefined)
+          } else {
+            useApp.getState().pushToast({ kind: 'info', title: `「${target}」无受控命令`, body: `${flow.hint}；状态由 Trellis 工作流管理` })
+          }
+        }}
         onMoveToCycle={(cycle, issueId) => void store.updateIssue(issueId, { cycle: cycle || null })}
       />
     )

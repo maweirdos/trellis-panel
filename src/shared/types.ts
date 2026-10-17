@@ -79,6 +79,60 @@ export type TaskEditableField =
 
 export type TaskPatch = Partial<Pick<TaskRecord, TaskEditableField>>
 
+/* --- C1–C3：本机开发工具（只读 Git + 有归属的工程运行） --- */
+
+export interface GitStatusEntry {
+  path: string
+  x: string
+  y: string
+  origPath?: string
+}
+
+export interface GitReadonlyStatus {
+  ok: boolean
+  error?: string
+  isRepo: boolean
+  branch: string | null
+  head: { short: string; subject: string } | null
+  staged: GitStatusEntry[]
+  unstaged: GitStatusEntry[]
+  untracked: string[]
+  scannedAt: number
+}
+
+export interface GitReadonlyFileDiff {
+  ok: boolean
+  error?: string
+  path: string
+  staged: boolean
+  added: number
+  removed: number
+  binary: boolean
+  diff: string
+  truncated: boolean
+}
+
+export interface DevScriptInfo {
+  name: string
+  command: string
+}
+
+export type DevRunState = 'running' | 'exited' | 'failed' | 'killed'
+
+export interface DevRunInfo {
+  id: string
+  dir: string
+  command: string
+  script: string
+  startedAt: number
+  exitedAt: number | null
+  state: DevRunState
+  exitCode: number | null
+  pid: number | null
+  output: string
+  outputTruncated: boolean
+}
+
 export interface FileEntry {
   name: string
   path: string
@@ -1107,11 +1161,6 @@ export interface PlanResult {
   workflows: string[]
 }
 
-export interface HandoffText {
-  platform: string
-  text: string
-}
-
 /* ---------- KB-MCP（AI 编码工具的知识库记忆大脑） ---------- */
 
 export interface KbMcpInstallResult {
@@ -1157,12 +1206,21 @@ export interface TrellisApi {
   closeProject: () => Promise<void>
   onSnapshotUpdated: (cb: (s: ProjectSnapshot) => void) => () => void
 
-  /** expectedMtime enables optimistic conflict detection */
+  /** expectedMtime enables optimistic conflict detection；ignored 列出白名单外未写入的字段 */
   updateTask: (
     taskDir: string,
     patch: TaskPatch,
     expectedMtime?: number
-  ) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
+  ) => Promise<{ ok: boolean; error?: string; conflict?: boolean; ignored?: string[] }>
+
+  /* --- C1–C3：本机开发工具（只读 Git + 有归属的工程运行） --- */
+  devtoolsGitStatus: () => Promise<GitReadonlyStatus>
+  devtoolsGitFileDiff: (relPath: string, staged: boolean) => Promise<GitReadonlyFileDiff>
+  devtoolsListScripts: (dir: string) => Promise<{ ok: boolean; error?: string; dir?: string; scripts: DevScriptInfo[] }>
+  devRunStart: (dir: string, script: string) => Promise<{ ok: boolean; error?: string; run?: DevRunInfo }>
+  devRunStop: (id: string) => Promise<{ ok: boolean; error?: string }>
+  devRunStopAll: () => Promise<{ stopped: number }>
+  devRunList: () => Promise<{ ok: boolean; runs: DevRunInfo[] }>
   deleteTask: (taskDir: string, expectedMtime?: number) => Promise<{ ok: boolean; error?: string; conflict?: boolean }>
   /**
    * G4：Jira → 本地轻任务（design §7.2 单一创建器 LocalTaskService）。
@@ -1453,8 +1511,16 @@ export interface TrellisApi {
   aiPrdDraft: (dirName: string) => Promise<AiChatResult>
   aiSummary: (dirName: string) => Promise<AiChatResult>
   aiPlan: (input: { title: string; description: string; jiraKey?: string; jiraUrl?: string }) => Promise<PlanResult>
-  taskCreateFromPlan: (input: TaskPlan & { jiraKey?: string; jiraUrl?: string }) => Promise<{ ok: boolean; error?: string; dirName?: string }>
-  planHandoff: (dirName: string) => Promise<HandoffText[]>
+  /** 创建合同：files 为实际落盘文件；warnings 非空时界面不得宣称对应产物已生成 */
+  taskCreateFromPlan: (input: TaskPlan & { jiraKey?: string; jiraUrl?: string }) => Promise<{
+    ok: boolean
+    error?: string
+    dirName?: string
+    files?: string[]
+    warnings?: string[]
+  }>
+  /** 父子关联唯一权威路径：task.py add/remove-subtask（B3） */
+  taskLinkSubtask: (parentDir: string, childDir: string, remove?: boolean) => Promise<{ ok: boolean; error?: string }>
   aiSplitEpic: (dirName: string) => Promise<{ ok: boolean; error?: string; created?: string[] }>
   aiCommitMsg: (dirName: string) => Promise<AiChatResult>
   aiPrDesc: (dirName: string) => Promise<AiChatResult>
@@ -1492,6 +1558,10 @@ export interface TrellisApi {
     text: string
     issues: string[]
     files: string[]
+    gitLines: string[]
+    checkFiles: string[]
+    uncheckedSubtasks: string[]
+    openQuestions: string[]
   }>
   desktopSetExplorerMenu: (on: boolean) => Promise<{ ok: boolean; supported: boolean; reason?: string }>
 

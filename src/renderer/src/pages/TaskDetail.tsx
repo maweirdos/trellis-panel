@@ -266,6 +266,129 @@ function FieldRow({
   )
 }
 
+/* D1/PF-11：接续与交接——把"这次怎么继续"集中放回原任务：真实材料清单、
+ * 已知读取问题、可选携带 PRD、生命周期命令提示。确定性生成（不依赖 LLM）、
+ * 只含索引与元信息、不含凭据；复制出去的内容以文本为准。 */
+const HANDOFF_INTENTS = ['只核对与阅读，不开始实施', '继续该任务的实施'] as const
+
+function HandoffSection({ dirName, status }: { dirName: string; status: string | null }): JSX.Element {
+  const pushToast = useApp((s) => s.pushToast)
+  const [intent, setIntent] = useState<string>(HANDOFF_INTENTS[0])
+  const [includePrd, setIncludePrd] = useState(false)
+  const [result, setResult] = useState<{
+    text: string
+    issues: string[]
+    files: string[]
+    gitLines: string[]
+    checkFiles: string[]
+    uncheckedSubtasks: string[]
+    openQuestions: string[]
+  } | null>(null)
+  const [building, setBuilding] = useState(false)
+
+  const build = async (): Promise<void> => {
+    setBuilding(true)
+    try {
+      const res = await api.taskHandoffBuild(dirName, intent, includePrd)
+      if (res.ok) {
+        setResult({
+          text: res.text,
+          issues: res.issues,
+          files: res.files,
+          gitLines: res.gitLines ?? [],
+          checkFiles: res.checkFiles ?? [],
+          uncheckedSubtasks: res.uncheckedSubtasks ?? [],
+          openQuestions: res.openQuestions ?? []
+        })
+      } else {
+        setResult(null)
+        pushToast({ kind: 'error', title: '交接材料生成失败', body: res.error ?? '未知错误' })
+      }
+    } finally {
+      setBuilding(false)
+    }
+  }
+
+  const statusHint = ((): string => {
+    const cmd = (sub: string): string => `python .trellis/scripts/task.py ${sub} ${dirName}`
+    switch ((status ?? '').toLowerCase()) {
+      case '': return '任务尚未开始——需要进入开发时运行 ' + cmd('start')
+      case 'planning': return '进入开发请运行 ' + cmd('start') + '（会置为 in_progress 并设为当前任务）'
+      case 'in_progress': return '本轮告一段落可运行 task.py finish 清除当前任务指针（finish 不修改任务状态）'
+      case 'review': return '评审通过后按项目流程归档：' + cmd('archive')
+      case 'completed': case 'done': return '归档请运行 ' + cmd('archive')
+      default: return '状态变化请走项目工作流（task.py / AI 会话），面板不直接改写生命周期'
+    }
+  })()
+
+  return (
+    <div className="py-3">
+      <div className="mb-1.5 flex items-center gap-1.5 text-my-xs text-my-tertiary">
+        <ArrowUpRight size={12} /> 接续与交接
+      </div>
+      <p className="mb-2 px-1 text-my-xs leading-5 text-my-secondary">{statusHint}</p>
+      <div className="flex flex-wrap items-center gap-2 px-1">
+        <select
+          value={intent}
+          onChange={(e) => setIntent(e.target.value)}
+          className="my-control my-control-sm max-w-52"
+          aria-label="交接意图"
+        >
+          {HANDOFF_INTENTS.map((i) => <option key={i} value={i}>{i}</option>)}
+        </select>
+        <label className="flex items-center gap-1.5 text-my-xs text-my-secondary">
+          <input type="checkbox" checked={includePrd} onChange={(e) => setIncludePrd(e.target.checked)} />
+          携带 PRD 原文（内容将离开本机）
+        </label>
+        <Button size="sm" variant="outline" onClick={() => void build()} disabled={building}>
+          {building ? <RefreshCw size={12} className="animate-spin" /> : <FileText size={12} />} 生成交接材料
+        </Button>
+      </div>
+      {result && (
+        <div className="mt-2 px-1">
+          {result.issues.length > 0 && (
+            <p className="mb-1.5 rounded-my-md border border-my-line-warning bg-my-warning-subtle px-2 py-1.5 text-my-xs leading-4 text-my-warning-text">
+              已知读取问题：{result.issues.join('；')}
+            </p>
+          )}
+          {result.gitLines.length > 0 && (
+            <div className="mb-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 py-1.5">
+              <p className="mb-0.5 text-my-xs font-medium text-my-tertiary">本次变化（Git · 归属以 git 为准）</p>
+              {result.gitLines.map((l, i) => (
+                <p key={i} className="truncate font-mono text-my-2xs leading-4 text-my-secondary" title={l}>· {l}</p>
+              ))}
+            </div>
+          )}
+          <div className="mb-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 py-1.5">
+            <p className="mb-0.5 text-my-xs font-medium text-my-tertiary">检查与未完成项</p>
+            <p className="text-my-2xs leading-4 text-my-secondary">
+              检查记录：{result.checkFiles.length > 0 ? result.checkFiles.join('、') : '未发现检查记录文件'}
+              {result.uncheckedSubtasks.length > 0 ? ` · 未完成子任务 ${result.uncheckedSubtasks.length} 项` : ' · 未完成子任务：无'}
+            </p>
+          </div>
+          {result.openQuestions.length > 0 && (
+            <div className="mb-1.5 rounded-my-md border border-my-line-warning bg-my-warning-subtle px-2 py-1.5">
+              <p className="mb-0.5 text-my-xs font-medium text-my-warning-text">待确认问题（来自 prd.md，{result.openQuestions.length} 项）</p>
+              {result.openQuestions.map((q, i) => (
+                <p key={i} className="truncate text-my-2xs leading-4 text-my-warning-text" title={q}>· {q}</p>
+              ))}
+            </div>
+          )}
+          <p className="mb-1 text-my-xs text-my-tertiary">阅读清单（实际存在 {result.files.length} 个文件）</p>
+          <ul className="mb-1.5 space-y-0.5">
+            {result.files.map((f) => (
+              <li key={f} className="truncate font-mono text-my-2xs text-my-secondary">· {f}</li>
+            ))}
+          </ul>
+          <Button size="sm" variant="ghost" onClick={() => { void api.copyToClipboard(result.text); pushToast({ kind: 'success', title: '交接材料已复制' }) }}>
+            <Copy size={12} /> 复制完整交接材料
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function TaskDetail({ presentation = 'preview' }: { presentation?: 'preview' | 'workspace' }): JSX.Element | null {
   const snapshot = useApp((s) => s.snapshot)
   const settings = useApp((s) => s.settings)
@@ -926,6 +1049,9 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                 </div>
               </div>
             )}
+
+            {/* D1：接续与交接（生命周期命令提示 + 确定性交接包） */}
+            {r && <HandoffSection dirName={task.dirName} status={r.status ?? null} />}
           </div>
         )}
       </div>

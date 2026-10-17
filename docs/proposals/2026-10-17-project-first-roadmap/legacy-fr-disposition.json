@@ -1,0 +1,386 @@
+[
+  {
+    "id": "FR-001",
+    "title": "唯一项目上下文",
+    "disposition": "复用并收尾",
+    "new_reference": "PF-01",
+    "reason": "当前工程唯一上下文已有实现，不另起R0。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-002",
+    "title": "真实材料阅读",
+    "disposition": "复用并收尾",
+    "new_reference": "PF-02",
+    "reason": "当前阅读器与版本比较已有实现。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-003",
+    "title": "逐需求修订、发布版与发送证据",
+    "disposition": "缩为原则/候选",
+    "new_reference": "PF-02/PF-05/PF-08",
+    "reason": "保留资料版本和发送事实；逐义务修订/发布manifest不默认建。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-004",
+    "title": "普通本地创建、空态与上手",
+    "disposition": "修现有断点",
+    "new_reference": "PF-04",
+    "reason": "按真实创建入口产物改反馈，不假定已有统一CLI创建器。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-005",
+    "title": "兼容、冲突、取消与重开",
+    "disposition": "保留权威原则",
+    "new_reference": "PF-03/PF-11",
+    "reason": "取消/重开须现有流程支持，暂不搭完整新状态平台。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-006",
+    "title": "导出与恢复",
+    "disposition": "缩为最小交接",
+    "new_reference": "PF-11",
+    "reason": "先用现有文件/工具验证接手；全量备份服务非默认。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-007",
+    "title": "Jira 来源与幂等导入",
+    "disposition": "复用现有",
+    "new_reference": "PF-04",
+    "reason": "Jira防重/来源草稿已存在，增量按真实实例。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-008",
+    "title": "具体需求、稳定修订与影响分析",
+    "disposition": "缩为任务材料澄清",
+    "new_reference": "PF-07/PF-08",
+    "reason": "具体规则/缺项留原任务，不先建依赖闭包。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-009",
+    "title": "逐项产品决定与整版批准",
+    "disposition": "条件候选",
+    "new_reference": "后续可选协作场景",
+    "reason": "正式逐项/整版审批需真实跨人需求，不设规划范围门槛。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-010",
+    "title": "真人分配门槛与执行槽",
+    "disposition": "保留现有负责人字段",
+    "new_reference": "PF-01/PF-07",
+    "reason": "未确认需要接受分配/执行槽制度，不默认加新门禁。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-011",
+    "title": "最小跨人共享和访问恢复",
+    "disposition": "条件候选",
+    "new_reference": "后续可选协作场景",
+    "reason": "跨设备需求先验证现有渠道，不默认共享服务硬前置。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-012",
+    "title": "讨论修订、稳定锚点和并发",
+    "disposition": "条件候选",
+    "new_reference": "后续可选协作场景",
+    "reason": "先用实际Jira/飞书/文档回复；不先建评论修订/锚点平台。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-013",
+    "title": "待办交接",
+    "disposition": "条件候选",
+    "new_reference": "后续可选协作场景",
+    "reason": "正式ActionItem/等你等人并无当前后端事实。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-014",
+    "title": "方案评审、覆盖分解与双验收",
+    "disposition": "缩为人工流程",
+    "new_reference": "PF-07/PF-11",
+    "reason": "沿用项目计划确认和检查，不默认双层审批实体。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-015",
+    "title": "R1手工交付最小合同",
+    "disposition": "取消统一硬合同",
+    "new_reference": "PF-11",
+    "reason": "每任务不必发布manifest/构建包/跨设备交付；按任务实际检查记录。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-016",
+    "title": "动作账本、授权与并发恢复",
+    "disposition": "按现有副作用边界复用",
+    "new_reference": "PF-03/PF-04/PN-04",
+    "reason": "Jira本地操作控制已有；不为全部动作建通用新账本。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-017",
+    "title": "材料组织与搜索",
+    "disposition": "复用现有",
+    "new_reference": "PF-02/PF-07",
+    "reason": "知识与材料阅读沿用当前索引和来源。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-018",
+    "title": "任务类型与分类",
+    "disposition": "不纳入默认",
+    "new_reference": "候选",
+    "reason": "不以Hifox需求/缺陷/任务三类取代现有工程TaskRecord。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-019",
+    "title": "任务关系",
+    "disposition": "缩为现有任务关联",
+    "new_reference": "PF-08",
+    "reason": "先显示已有parent/children和后续任务，不建通用关系平台。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-020",
+    "title": "个人与共享视图",
+    "disposition": "复用个人偏好，暂缓共享平台",
+    "new_reference": "PF-01/候选",
+    "reason": "已有本机保存视图不删除；共享默认需真实团队场景。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-021",
+    "title": "迭代与交付目标",
+    "disposition": "拆开处理",
+    "new_reference": "当前周期任务/候选",
+    "reason": "自然周已实现；专项/交付目标没有独立样本则暂缓。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-022",
+    "title": "可选接收队列",
+    "disposition": "暂缓",
+    "new_reference": "候选",
+    "reason": "本地需求接入保留，外部反馈分拣不是必经步骤。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-023",
+    "title": "通知与权限路由",
+    "disposition": "保留本机通知，暂缓扩张",
+    "new_reference": "候选",
+    "reason": "不默认建团队通知路由/身份投递平台。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-024",
+    "title": "流程度量",
+    "disposition": "保留已有展示，暂缓扩张",
+    "new_reference": "候选",
+    "reason": "不以管理指标增加工作记录负担；无样本不补零。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-025",
+    "title": "执行角色与资源",
+    "disposition": "复用当前ACP配置",
+    "new_reference": "PF-06",
+    "reason": "已有角色配置不重做成组织资源库。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-026",
+    "title": "复用成熟运行层",
+    "disposition": "已经选择并复用",
+    "new_reference": "PF-06/PN-07",
+    "reason": "当前acpx固定版/补丁是现状，不再列远期技术选型。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-027",
+    "title": "分层环境预检",
+    "disposition": "复用并收尾",
+    "new_reference": "PF-06",
+    "reason": "环境诊断已有；按原AC补真实原生余项。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-028",
+    "title": "机器目录租约与并发",
+    "disposition": "复用本机目录策略",
+    "new_reference": "PF-06/PN-07",
+    "reason": "当前租约/后台工具处理已有，不引入分布式机器调度。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-029",
+    "title": "明确启动和发送防重",
+    "disposition": "保留并验证",
+    "new_reference": "PF-06",
+    "reason": "显式启动和busy草稿是当前行为边界。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-030",
+    "title": "取消、hold、权限与unknown恢复",
+    "disposition": "以当前ACP实现为准",
+    "new_reference": "PF-06/PN-07",
+    "reason": "旧hold/unknown提案不是当前枚举；安全停止原则保留，不能直接套新状态机。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-031",
+    "title": "Session归属与会话隐私",
+    "disposition": "复用当前root/session归属",
+    "new_reference": "PF-06/PN-02",
+    "reason": "本机会话隔离已有，不升级成团队会话权限平台。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-032",
+    "title": "跨 runtime 继续包",
+    "disposition": "先做资料接续",
+    "new_reference": "PF-08",
+    "reason": "可看历史/真实支持resume/新会话分清，不承诺跨runtime无损。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-033",
+    "title": "快捷指令",
+    "disposition": "按实际动作另评",
+    "new_reference": "候选",
+    "reason": "通用快捷指令不是近期必须；浏览/开页不执行原则保留。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-034",
+    "title": "R4版本集成核验与手动测试增强",
+    "disposition": "缩为适用的检查记录",
+    "new_reference": "PF-11",
+    "reason": "不默认完整测试管理/CI版本平台。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-035",
+    "title": "交付与发布分离",
+    "disposition": "保留事实分离",
+    "new_reference": "PF-11/PN-03",
+    "reason": "完成/验收/发布分开，但不要求每任务走发布。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-036",
+    "title": "统一外部应用契约",
+    "disposition": "保留扩展边界",
+    "new_reference": "候选",
+    "reason": "不先建统一连接器权限平台。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-037",
+    "title": "CLI API 与访问身份",
+    "disposition": "本路线不采用扩张",
+    "new_reference": "候选",
+    "reason": "既有TPAP/CLI保留，新增访问身份平台无确切调用者。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-038",
+    "title": "逐字段同步与冲突",
+    "disposition": "按真实Jira/GitLab场景",
+    "new_reference": "PF-11/候选",
+    "reason": "现有回写可选，逐字段持续同步扩张不默认。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-039",
+    "title": "按需平台接入",
+    "disposition": "取消覆盖目标",
+    "new_reference": "候选",
+    "reason": "其他平台只有实际接入需求才讨论。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-040",
+    "title": "独立证据、验收关联和保留",
+    "disposition": "缩为文件和检查引用",
+    "new_reference": "PF-11",
+    "reason": "独立证据库/保留治理依实际共享载体再决定。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-041",
+    "title": "受控小队",
+    "disposition": "暂缓且允许不采用",
+    "new_reference": "候选",
+    "reason": "小队无当前具体手动流程收益证明。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-042",
+    "title": "自动化与补偿",
+    "disposition": "保留既有工具，暂缓新平台",
+    "new_reference": "候选",
+    "reason": "当前Flow存在不等于需要通用自动化规划范围。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-043",
+    "title": "测试自动化",
+    "disposition": "条件候选",
+    "new_reference": "候选",
+    "reason": "先验证实际测试步骤，不先组测试小队。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-044",
+    "title": "文档流水线",
+    "disposition": "条件候选",
+    "new_reference": "候选",
+    "reason": "文档草稿可用现有工具，发布/回写需独立场景。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-045",
+    "title": "扩展场景边界",
+    "disposition": "本路线不采用",
+    "new_reference": "范围外",
+    "reason": "不自动扩到非研发场景。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-046",
+    "title": "工程运行与跨项目总览",
+    "disposition": "项目有依据的独立工作项",
+    "new_reference": "PF-10",
+    "reason": "可按用户优先级前排，不依赖共享审批/R4。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-047",
+    "title": "基础日志",
+    "disposition": "项目有依据的独立工作项",
+    "new_reference": "PF-10",
+    "reason": "先真实命令输出/归属，再决定长期日志。",
+    "implementation_commitment": false
+  },
+  {
+    "id": "FR-048",
+    "title": "只读 Git 与工作视图",
+    "disposition": "项目有依据的独立工作项",
+    "new_reference": "PF-09",
+    "reason": "复用Git读取，不作为大交付平台之后的装饰支线。",
+    "implementation_commitment": false
+  }
+]

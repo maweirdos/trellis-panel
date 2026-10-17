@@ -1,0 +1,22 @@
+stateDiagram-v2
+  direction LR
+  [*] --> planned
+  planned --> preflight: ST01明确开始
+  preflight --> queued: ST02资源不足
+  queued --> preflight: ST03再校验
+  preflight --> starting: ST05门槛与lease有效
+  starting --> running: ST07当前回执
+  running --> waiting: ST09当前请求
+  waiting --> running: ST10有效答复
+  preflight --> cancelled: ST04未发送取消
+  queued --> cancelled: ST04撤队列
+  starting --> stopping: ST08已发送后取消
+  waiting --> stopping: ST11拒绝过期或取消
+  running --> stopping: ST12明确停止
+  stopping --> stopped: ST19可信停止回执
+  running --> succeeded: ST20结果保存
+  running --> failed: ST20明确失败
+  note right of succeeded
+    只产生待审阅
+    不完成业务任务
+  end note

@@ -1,0 +1,8 @@
+{
+  "version": "0.5.1",
+  "reviewed": "New section16 phase table rendered from final HTML fragment using identical CSS; saved screenshot opened and inspected",
+  "result": "all five phase rows and closure boundaries readable; no overflow or overlap",
+  "new_ui_research": false,
+  "reused_images": 19,
+  "reused_diagrams": 15
+}

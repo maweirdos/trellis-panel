@@ -1,0 +1,149 @@
+[
+  {
+    "id": "ST01",
+    "transition": "planned→preflight",
+    "event_actor": "真人明确开始",
+    "guard": "任务owner或独立会话发起真人有效；需求/方案门槛按任务类型成立；适用授权有效",
+    "effects_lease_recovery": "固定输入/operationId；未满足时返回诊断，不启动"
+  },
+  {
+    "id": "ST02",
+    "transition": "preflight→queued",
+    "event_actor": "预检发现暂时资源不足",
+    "guard": "不含永久拒绝；排队范围仍有效",
+    "effects_lease_recovery": "显示机器/目录/额度原因；不预占写lease"
+  },
+  {
+    "id": "ST03",
+    "transition": "queued→preflight",
+    "event_actor": "调度器收到资源变化",
+    "guard": "未取消/hold；重新鉴权和校验版本",
+    "effects_lease_recovery": "重新预检，不用入队时旧批准"
+  },
+  {
+    "id": "ST04",
+    "transition": "preflight/queued→cancelled",
+    "event_actor": "有权发起人/owner取消",
+    "guard": "尚未发送runtime启动；取消CAS成功",
+    "effects_lease_recovery": "撤队列和待发意图，无进程可停；释放仅自身临时预留"
+  },
+  {
+    "id": "ST05",
+    "transition": "preflight→starting",
+    "event_actor": "启动器获得可写lease",
+    "guard": "输入/授权/owner仍有效；lease generation匹配",
+    "effects_lease_recovery": "持久send-intent再发启动；lease绑定run"
+  },
+  {
+    "id": "ST06",
+    "transition": "preflight→failed",
+    "event_actor": "确定性配置错误/权限拒绝",
+    "guard": "已知未启动",
+    "effects_lease_recovery": "记录具体原因；释放临时预留，不自动重试"
+  },
+  {
+    "id": "ST07",
+    "transition": "starting→running",
+    "event_actor": "当前generation的启动回执",
+    "guard": "receipt对应operationId/环境",
+    "effects_lease_recovery": "固定processRef；开始事件序列，不完成任务"
+  },
+  {
+    "id": "ST08",
+    "transition": "starting→stopping或cancelled",
+    "event_actor": "有权人取消启动",
+    "guard": "已知未发送可cancelled；已发/是否执行未知只能stopping/unknown",
+    "effects_lease_recovery": "向当前请求取消；确认停止前保留lease"
+  },
+  {
+    "id": "ST09",
+    "transition": "running→waiting",
+    "event_actor": "runtime请求补答/权限",
+    "guard": "请求绑定run/turn/generation和expiresAt",
+    "effects_lease_recovery": "持久请求；lease按会话策略保留，不让其他写执行抢占"
+  },
+  {
+    "id": "ST10",
+    "transition": "waiting→running",
+    "event_actor": "目标真人答复/允许一次",
+    "guard": "未过期、同turn/generation、授权当前有效且无hold",
+    "effects_lease_recovery": "只提交当前请求，权限不升级为其他运行授权"
+  },
+  {
+    "id": "ST11",
+    "transition": "waiting→stopping",
+    "event_actor": "有权人取消，或拒绝/请求过期",
+    "guard": "请求仍pending；本稿默认拒绝/过期后停止该轮",
+    "effects_lease_recovery": "请求作废并记denied/expired原因；runtime确认停止后释放lease；若runtime明确已安全终止可直接failed/cancelled并存回执"
+  },
+  {
+    "id": "ST12",
+    "transition": "running/waiting→stopping",
+    "event_actor": "有权人停止",
+    "guard": "对象、机器和执行控制权匹配",
+    "effects_lease_recovery": "设置hold，发停止，拒绝新动作；不是已停止"
+  },
+  {
+    "id": "ST13",
+    "transition": "running/waiting→hold_requested",
+    "event_actor": "需求/批准撤回、owner失效或权限变化",
+    "guard": "受影响闭包/授权范围已识别",
+    "effects_lease_recovery": "阻新动作；owner建立影响待办；lease保留"
+  },
+  {
+    "id": "ST14",
+    "transition": "hold_requested→paused或stopping",
+    "event_actor": "运行控制器",
+    "guard": "已验证pause支持并有回执才paused；其他情况stopping",
+    "effects_lease_recovery": "不支持暂停则停止并固化继续包；不可盲发新启动"
+  },
+  {
+    "id": "ST15",
+    "transition": "paused→preflight或stopping",
+    "event_actor": "owner请求继续或变更输入",
+    "guard": "原输入继续须hold原因解决、manifest/计划及适用授权有效且runtime支持已核实的resume；输入改变由有权控制者先请求停止旧run，不以新输入已批准作为停止前置",
+    "effects_lease_recovery": "原输入executionIntent=resume_existing经重新鉴权/预检后仅调用已核实的resume，不重新start或改历史输入；输入变化先stopping并发送有归属的stop，停止确认前保留旧lease且不执行关联新run；仅ST19可信停止确认或ST18可信终态及副作用核对后释放旧lease、让关联新run进入预检；停止超时按ST16进入unknown，不直接标stopped"
+  },
+  {
+    "id": "ST16",
+    "transition": "running/starting/waiting/stopping/paused/hold_requested→unknown",
+    "event_actor": "连接丢失、停止或暂停确认超时/丢失",
+    "guard": "无可信终态、暂停请求未获匹配回执或无法证明进程事实",
+    "effects_lease_recovery": "记lastKnownState、requestedControl及原run/generation，保留controlHold和旧lease；阻重发/目录双写，过租期也不自动释放；暂停确认丢失先核查同一进程，证实paused才按ST17投影paused且hold保留；仍活动且有hold则回hold_requested，安全pause能力不能证实则请求stopping；状态仍不明保持unknown，不盲resume或start"
+  },
+  {
+    "id": "ST17",
+    "transition": "unknown→running/waiting/paused或hold_requested",
+    "event_actor": "核对器取得仍存活状态",
+    "guard": "相同operationId、processRef、generation；无较新终态；同时核对持久controlHold与最后控制请求",
+    "effects_lease_recovery": "无hold才恢复正常活动投影；有hold且证实暂停则paused，仍活动则hold_requested并继续安全暂停/停止控制；旧turn权限请求失效/重申请；核对未证明停止前保留旧lease，不启动关联新run"
+  },
+  {
+    "id": "ST18",
+    "transition": "unknown→succeeded/failed/stopped/cancelled",
+    "event_actor": "核对器/机器所有者确认结果",
+    "guard": "可信回执或进程检查＋副作用核对，且与当前run一致",
+    "effects_lease_recovery": "保存证据，释放已确认不写的lease；unknown没有“超时自动失败并重跑”"
+  },
+  {
+    "id": "ST19",
+    "transition": "stopping→stopped/cancelled；超时→unknown",
+    "event_actor": "runtime停止确认；控制器监测停止超时",
+    "guard": "终态必须匹配当前run/generation且可核实副作用；超时不构成停止证明",
+    "effects_lease_recovery": "仅可信停止确认后记录stopped/cancelled并释放旧lease，保留结果/取消原因；若停止超时或确认丢失按ST16进入unknown，保留controlHold和旧lease并核查，禁止直接stopped或启动关联新run"
+  },
+  {
+    "id": "ST20",
+    "transition": "running→succeeded/failed",
+    "event_actor": "runtime当前终态回执",
+    "guard": "事件匹配当前generation且终态摘要已持久化",
+    "effects_lease_recovery": "runtime失败与附件回写失败分开；后者resultDeliveryState=pending/failed，仅补保存、不重跑；终态摘要未持久则unknown；成功产待审阅而非业务完成"
+  },
+  {
+    "id": "ST21",
+    "transition": "任意→原状态或核对事项",
+    "event_actor": "迟到/重复/矛盾终态事件",
+    "guard": "同事件ID去重；旧generation/turn不改当前；当前终态相互矛盾时触发核对",
+    "effects_lease_recovery": "追加审计而不复活已关闭run，不释放其他run lease；若可信终态先于停止回执，按真实终态收敛并记录取消太晚"
+  }
+]

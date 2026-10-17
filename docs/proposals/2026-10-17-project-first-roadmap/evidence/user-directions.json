@@ -1,0 +1,13 @@
+{
+  "id": "U01",
+  "date": "2026-10-17",
+  "source": "human user instruction relayed by parent task",
+  "quote": "你不做实现，只规划roadmap，也不需要去考虑主线，主线是我后面根据你的roadmap来决定的，如果说你确实是要说主线，那AI 会话和阅读与本机使用还是偏靠前",
+  "interpretation": [
+    "roadmap completed without blocking priority questions",
+    "AI sessions, reading and local use presented earlier as preference",
+    "other project-backed directions remain independently selectable",
+    "no implementation authorization or fixed schedule",
+    "cross-device collaboration stays an optional later scenario"
+  ]
+}

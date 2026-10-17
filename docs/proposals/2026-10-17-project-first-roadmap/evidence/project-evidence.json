@@ -1,0 +1,338 @@
+{
+  "version": "0.6",
+  "at": "2026-10-17T04:35:38.546531+00:00",
+  "project": "D:\\my_demo\\trellis-panel",
+  "files": [
+    {
+      "id": "E01",
+      "kind": "目标证据",
+      "path": "docs/proposals/2026-10-11-cockpit-counter-proposal/01-user-pain-points.md",
+      "anchors": "P01–P09",
+      "fact": "用户一手证词：阅读、注入/流程黑盒、迭代接续、Jira/飞书资料与本机Agent需求；团队沉淀仍为理想",
+      "limit": "用户证词整理，不等于所有方案已批准",
+      "sha256": "2118a83b44b42b76a203980aefe1d1fa2918a2853e10344214984e565b1cc9a2",
+      "review": "document_read"
+    },
+    {
+      "id": "E02",
+      "kind": "流程规范",
+      "path": ".trellis/workflow.md",
+      "anchors": "Core Principles / Task System / Phase Index",
+      "fact": "先计划后代码；task create/start/finish/archive；finish清指针不改任务状态，archive写completed并归档",
+      "limit": "规范约束，不证明每次实际执行完整",
+      "sha256": "31e86b9b0a188efbdbcc4c82810bb5addf98bc5b2221272c8770e5cdfdb6fad2",
+      "review": "document_read"
+    },
+    {
+      "id": "E03",
+      "kind": "已确认范围",
+      "path": ".trellis/tasks/10-16-acp-runtime-foundation/prd.md",
+      "anchors": "Confirmed background and decisions / R1–R8",
+      "fact": "用户优先ACP、指定Codex+Claude，选择acpx固定版与最小补丁；本机、显式执行；远程机器/小队/组织平台不在本任务",
+      "limit": "已批准该任务，不自动批准本新路线全部增量",
+      "sha256": "3ec8ee5b7b65e887081adb2e3c1f3179ebb732efef8212bcff11848fe35802b7",
+      "review": "document_read"
+    },
+    {
+      "id": "E04",
+      "kind": "历史验收",
+      "path": ".trellis/tasks/10-16-acp-runtime-foundation/validation.md",
+      "anchors": "Executed product matrix / Remaining work",
+      "fact": "打包产品双厂商核心对话、工具、权限、取消、恢复有通过记录；原生IME/配置/草稿与最终视觉仍待补",
+      "limit": "本轮读取记录，未重新运行厂商或模型作业",
+      "sha256": "b921b193a976ad603b47536aab22a54badd86ff3ad5371d286c20f7430902aac",
+      "review": "document_read"
+    },
+    {
+      "id": "E05",
+      "kind": "已确认范围",
+      "path": ".trellis/tasks/10-16-project-workspace-uiux/prd.md",
+      "anchors": "L5–14 / R1–R8 / Out of scope",
+      "fact": "项目顶栏、并列模块、中央材料；多项目启动/日志/Git查看是有记录的后续方向；不含编辑调试",
+      "limit": "功能范围与视觉最终验收分开",
+      "sha256": "32c698024240d5fbf7df5738a939b2176198fc10b9de91a993f72cbfda3c1c11",
+      "review": "document_read"
+    },
+    {
+      "id": "E06",
+      "kind": "历史验收",
+      "path": ".trellis/tasks/10-16-project-workspace-uiux/validation.md",
+      "anchors": "Acceptance evidence / Remaining boundaries",
+      "fact": "导航、阅读版本连续性等已有证据；最终原生外框视觉仍未关闭",
+      "limit": "检查点提交不等于全项验收",
+      "sha256": "c3176cc4bb5dfba91f8c824402d352bdc1929caadd1437b45687f769f376d9f7",
+      "review": "document_read"
+    },
+    {
+      "id": "E07",
+      "kind": "历史验收",
+      "path": ".trellis/tasks/10-11-cockpit-s0-glass-box/validation/ac-matrix.md",
+      "anchors": "AC1–AC10",
+      "fact": "阅读/回执/轻任务已有局部与真实链路记录；公司Jira完整基线、上游分发、跨人试点未闭",
+      "limit": "不能将历史passed泛化到全部主机/团队",
+      "sha256": "cdb6b62edc33f4d7cc7035694f3cfb122640c805166e4c0c7a79709c65f605cc",
+      "review": "document_read"
+    },
+    {
+      "id": "E08",
+      "kind": "当前代码",
+      "path": "src/renderer/src/my/navigation.ts",
+      "anchors": "L18–76",
+      "fact": "工作项/需求接入/知识/ACP/迭代等路由及项目/应用/本机范围已存在",
+      "limit": "有菜单不等于有服务端团队能力",
+      "sha256": "0fef7e3a4bd003bce5337425efb8b59ae4aca9e2cbe2ca6def24f3c073c35bf8",
+      "review": "static_read"
+    },
+    {
+      "id": "E09",
+      "kind": "当前代码",
+      "path": "src/main/services/scan.ts",
+      "anchors": "L133–161 / L345 / L412–460",
+      "fact": "扫描真实任务；元数据写回白名单排除status/completedAt，保留未知字段与mtime冲突检测",
+      "limit": "文件快照不是Agent过程或审批事实",
+      "sha256": "3b2702bba6f9fd39bf6f398cdda5e914c78bd84b93e31b8bfc114ec05442eb7b",
+      "review": "static_read"
+    },
+    {
+      "id": "E10",
+      "kind": "当前代码",
+      "path": "src/main/ipc/tasks.ts",
+      "anchors": "L26–29 / L86–156 / L166–174",
+      "fact": "旧直接归档停用；Jira统一LocalTaskService；普通create走createTaskRecord；已有确定性交接包入口",
+      "limit": "不同创建入口尚非完全同一实现",
+      "sha256": "616bae8383fc46a46f62fc9f88e0495fce3c669ebe4c376607da0be6f2415399",
+      "review": "static_read"
+    },
+    {
+      "id": "E11",
+      "kind": "当前代码",
+      "path": "src/main/state.ts",
+      "anchors": "L409–463 / L500–502",
+      "fact": "普通/AI计划创建器当前只写task.json；Jira后台自动覆盖任务状态已停用",
+      "limit": "README中旧双向同步叙事需校准",
+      "sha256": "b78bb41619d066e5a782fb3ca1609f51b2d2133cc4cee533f229f047c4e74c61",
+      "review": "static_read"
+    },
+    {
+      "id": "E12",
+      "kind": "当前代码",
+      "path": "src/main/services/local-task/index.ts",
+      "anchors": "L39–48 / L143 / L349–418",
+      "fact": "Jira走task.py create --no-start、来源PRD、幂等/中断对账，并保护用户已改PRD",
+      "limit": "不等于所有普通创建均有这些保障",
+      "sha256": "97e52ab3ef2dfa4fa43f1bc7602c705f34f19b55a388c09105228602a0d2c112",
+      "review": "static_read"
+    },
+    {
+      "id": "E13",
+      "kind": "当前代码",
+      "path": "src/renderer/src/pages/Jira.tsx",
+      "anchors": "L211–273 / L414",
+      "fact": "已有Jira创建/打开本地任务入口，导入目标是当前工程",
+      "limit": "不自动读取飞书完整需求或认领工单",
+      "sha256": "ba7a4e7d544c742d95e8ae954a9ca6b657af8a558b2ce86fc18764a0356f40cc",
+      "review": "static_read"
+    },
+    {
+      "id": "E14",
+      "kind": "当前代码",
+      "path": "src/renderer/src/components/PlanningModal.tsx",
+      "anchors": "L57 / L103–120 / L267–294",
+      "fact": "AI计划可人工修改后建任务，成功文案说PRD已写入并提供handoff",
+      "limit": "实际写入需与E11交叉核验",
+      "sha256": "b8e274c8bc1f0207eb42cbc6dcafe8b94f777da38199354eea1091879d13aa7f",
+      "review": "static_read"
+    },
+    {
+      "id": "E15",
+      "kind": "当前代码",
+      "path": "src/main/ipc/planning.ts",
+      "anchors": "L19–53",
+      "fact": "计划生成与createFromPlan分开；创建调用普通createTaskRecord；旧handoffTexts仍在被调用",
+      "limit": "尚无正式团队审批/多人决定后端",
+      "sha256": "f6263fbdab1f6ed68f1fb6d0b339d86f55dc93d8df2499ee9394a831b2d046b0",
+      "review": "static_read"
+    },
+    {
+      "id": "E16",
+      "kind": "当前代码",
+      "path": "src/main/services/plan.ts",
+      "anchors": "L60–156 / L165–172",
+      "fact": "知识检索辅助AI计划；旧交接文本仍指引直接更新task.json状态",
+      "limit": "与新的确定性交接意图不一致，需收敛",
+      "sha256": "dd1204ac702c7f6de14bc646e8819bcb73ae7dc97786c01817d2460893043264",
+      "review": "static_read"
+    },
+    {
+      "id": "E17",
+      "kind": "当前代码",
+      "path": "src/main/services/handoff.ts",
+      "anchors": "L22–100",
+      "fact": "交接包默认只核对与阅读，列真实存在材料；显式携带PRD；不自动开始/归档",
+      "limit": "目前不是完整的跨工具原生会话迁移",
+      "sha256": "d69fefe0a150d9edb2552871addc60e380b18c88869fc679f2922f6e5f1b85f7",
+      "review": "static_read"
+    },
+    {
+      "id": "E18",
+      "kind": "当前代码",
+      "path": "src/main/services/acp.ts",
+      "anchors": "L6–8 / L312–355 / L378–435",
+      "fact": "当前已复用acpx；本机目录预检、手动会话、资料快照、运行事件与权限；回合结束未改业务任务",
+      "limit": "资料快照列文件/时间，不等于逐文件内容哈希或遵守证明",
+      "sha256": "a1cd13d20b9c2c1faa886be557b6f4752d2233da495b79774b5a69a9aaa570f0",
+      "review": "static_read"
+    },
+    {
+      "id": "E19",
+      "kind": "当前代码",
+      "path": "src/main/services/acp/metadata.ts",
+      "anchors": "L14–47 / L50–69",
+      "fact": "配置按root散列保存在userData，历史在acp-sessions；旧活跃状态按兼容规则处理",
+      "limit": "本机历史不是跨设备共享存储",
+      "sha256": "43d34d0ba210eb488fda070c13cbccb7c91a575653bba3d0b892575797ee08d6",
+      "review": "static_read"
+    },
+    {
+      "id": "E20",
+      "kind": "当前代码",
+      "path": "src/renderer/src/my/pages/WorkItemsPage.tsx",
+      "anchors": "L380–429 / L598–604 / L954–959 / L1418–1452",
+      "fact": "状态选择器调用updateIssue；自然周分组与结转已有实现",
+      "limit": "状态能持久化须看E09/E21，不能只看控件",
+      "sha256": "18fb30105cd42dc35dfad55ae1722372999c708ed51f7f7fc3137480c86e1110",
+      "review": "static_read"
+    },
+    {
+      "id": "E21",
+      "kind": "当前代码",
+      "path": "src/renderer/src/my/store.ts",
+      "anchors": "L223–260",
+      "fact": "状态乐观更新经issueToTaskPatch送IPC后刷新；普通创建走createTask",
+      "limit": "UI乐观变化不是落盘成功",
+      "sha256": "38d1f0dff0d049f6f321d4ba674702960183096b48a1b66580e0e0d9b67839c4",
+      "review": "static_read"
+    },
+    {
+      "id": "E22",
+      "kind": "当前代码",
+      "path": "src/renderer/src/my/adapter.ts",
+      "anchors": "L90–128 / L180–215",
+      "fact": "成员由creator/assignee推导，comments/intake/notifications为空；映射status到patch",
+      "limit": "团队页不证明真实身份、在线、评论或审批能力",
+      "sha256": "3fb28b0d32c4cd8738f00632dd7d468bfc879869738d354f479ef914c640f70d",
+      "review": "static_read"
+    },
+    {
+      "id": "E23",
+      "kind": "当前代码",
+      "path": "src/renderer/src/my/pages/YourWorkPage.tsx",
+      "anchors": "L65–82",
+      "fact": "我负责/我创建/最近更新；归档入口复制task.py archive命令",
+      "limit": "不是直接受管归档或业务验收",
+      "sha256": "885491b3667d58233ebde93e465b67ffa69b0669737426fa645a3316ebd1efaa",
+      "review": "static_read"
+    },
+    {
+      "id": "E24",
+      "kind": "当前代码",
+      "path": "src/main/services/git.ts",
+      "anchors": "L33–105 / L108–115",
+      "fact": "已有任务分支/提交/脏状态读取，另有创建分支动作",
+      "limit": "不是完整多仓库Diff界面，新只读入口应隔离写操作",
+      "sha256": "51daaf1d038a5f38fea05af0ce4c8a23444d444cfd83f8539728dad9c4d2ec64",
+      "review": "static_read"
+    },
+    {
+      "id": "E25",
+      "kind": "当前代码",
+      "path": "src/main/services/cli.ts",
+      "anchors": "L18–66",
+      "fact": "已有单命令子进程、stdout/stderr与中止",
+      "limit": "不等于服务组依赖、就绪检测和持续进程管理",
+      "sha256": "1e45fff43fa11427b7b20fb338d3d5271e6e2c2f98e41782d31d4505c72cb0d3",
+      "review": "static_read"
+    },
+    {
+      "id": "E26",
+      "kind": "当前代码",
+      "path": "src/main/services/flow-run.ts",
+      "anchors": "L34–65 / L185–223 / L240–310",
+      "fact": "已有Flow模板的本机执行、事件、内容规则gate和历史",
+      "limit": "不是外部Trellis工作流全步骤观测，亦非持久跨人审批",
+      "sha256": "549a852f6a7bae160b4fa3d74672f4c9f85ffba0388ce73ecbb270786260bd3f",
+      "review": "static_read"
+    },
+    {
+      "id": "E27",
+      "kind": "当前代码",
+      "path": "src/main/ipc/jira.ts",
+      "anchors": "L28–46",
+      "fact": "Jira流转与评论为实际外部动作，成功后才发相应事件",
+      "limit": "并非每任务必须回写，外部失败不自动等同本地失败",
+      "sha256": "0ca8f23b52343d3fb20029c421c94be0df2d1e47cfcd575035ad09cc2396ca4d",
+      "review": "static_read"
+    },
+    {
+      "id": "E28",
+      "kind": "当前代码",
+      "path": "src/shared/types.ts",
+      "anchors": "L36–65 / L1677–1739",
+      "fact": "真实TaskRecord与ACP状态/会话身份字段",
+      "limit": "不是旧稿提出的通用RequirementRevision/ApprovalDecision实体",
+      "sha256": "fb5c1bf4331f34de472efcde1c4962b25ebcf685c09d031ab5afe8d5990bd7ff",
+      "review": "static_read"
+    },
+    {
+      "id": "E29",
+      "kind": "历史文案",
+      "path": "README.md",
+      "anchors": "功能总览 / 推荐任务流 / Jira连接",
+      "fact": "立项为Trellis本地可视化；仍写不派发、双向同步及旧归档能力",
+      "limit": "部分描述落后当前代码，不能单独当实现证明",
+      "sha256": "345998ca7b134f7cb1b459f12e440fba62f6b9e76f4161f646783b57869ef83b",
+      "review": "document_read"
+    },
+    {
+      "id": "E30",
+      "kind": "历史视觉记录",
+      "path": "design-qa.md",
+      "anchors": "Reopened after user review / final result",
+      "fact": "旧布局已有检查，用户重新打开原生视觉验收；最后为blocked",
+      "limit": "本轮不复用过时截图冒充最终原生UI通过",
+      "sha256": "ed4d860b125f7902bfe48c803eb6d719f69fa42eeec532b3b3b8f6d23e961e7d",
+      "review": "document_read"
+    },
+    {
+      "id": "E31",
+      "kind": "当前代码",
+      "path": "src/main/services/documents/controller.ts",
+      "anchors": "L42 / L111",
+      "fact": "阅读器有内容修订与受控读取",
+      "limit": "单文档修订不等于正式需求逐义务批准",
+      "sha256": "71fa7f03f925c254fcc4001376073de49d9a1c77abe95ea3f7e9cbfe376c4c6c",
+      "review": "static_read"
+    },
+    {
+      "id": "E32",
+      "kind": "已存在任务",
+      "path": ".trellis/tasks/10-15-weekly-cycles/task.json",
+      "anchors": "status / description",
+      "fact": "周周期、结转在in_progress既有工作中，零CLI/工作流改动",
+      "limit": "不应被写成未来才从零建设的Hifox迭代系统",
+      "sha256": "9ee011ed986c6fdbad035979719aa1df5d55f179a97474e838c846db197ce15e",
+      "review": "document_read"
+    },
+    {
+      "id": "E33",
+      "kind": "当前代码",
+      "path": "src/main/services/documents/diff-service.ts",
+      "anchors": "L173–215",
+      "fact": "会话打开基线与Git最近提交差异，失败有诊断降级",
+      "limit": "不是全工作区多仓库代码Diff管理器",
+      "sha256": "335729db5438e9e092e81ee6712cf3354de70494d1b604e77ec005441d5c1090",
+      "review": "static_read"
+    }
+  ],
+  "limits": "当前代码静态核对+既有验收记录；本轮不重跑产品/模型/业务写入，不声称原生UI新验收"
+}

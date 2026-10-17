@@ -135,7 +135,7 @@ function ContextSidebar(): JSX.Element {
           {routeButton('gateway')}
           <div className="mx-2.5 mt-6 border-t border-my-line pt-3 text-my-xs leading-relaxed text-my-tertiary">
             外部应用将统一接入。现有 Jira 来源可在「需求接入」查看；连接配置仍在设置中管理。
-            <p className="mt-2">多项目启动、日志与 Git 查看已列入路线图。</p>
+            <p className="mt-2">多工程启动、命令日志与只读 Git 查看在「本机开发工具」提供；边界说明见该页。</p>
           </div>
         </>}
       </div>

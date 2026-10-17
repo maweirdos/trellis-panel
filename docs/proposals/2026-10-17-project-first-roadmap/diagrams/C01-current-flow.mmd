@@ -1,0 +1,18 @@
+flowchart TB
+  Old["已有Trellis任务"] --> Files["本机任务目录和资料"]
+  Local["普通创建或AI计划"] -->|当前主要写task.json| Files
+  Jira["Jira工单"] -->|显式导入 防重和来源PRD| Files
+  Files --> Read["面板阅读 澄清与人工确认"]
+  Read --> Choice{"选择执行工具"}
+  Choice --> External["熟悉的外部AI编辑器"]
+  Choice --> ACP["面板内显式开启ACP"]
+  External --> Output["本机代码和任务资料更新"]
+  ACP --> Output
+  Output --> Watch["文件监听与有来源的事件"]
+  Watch --> Read
+  Output --> Check["按项目流程检查 记录未完成项"]
+  Check --> Fix{"还需要补做吗"}
+  Fix -->|需要| Read
+  Fix -->|不需要| Finish["本次工作收尾"]
+  Finish -.按需.-> Archive["task.py归档"]
+  Finish -.按需.-> Back["Jira流转或评论 单独回执"]

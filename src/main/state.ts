@@ -404,9 +404,20 @@ export interface CreateTaskInput {
   devType?: string | null
   scope?: string | null
   branch?: string | null
+  /** 创建合同（PF-04）：随任务落盘的 prd.md 草稿；目录内已有 prd.md 时不覆盖 */
+  prdContent?: string
 }
 
-export function createTaskRecord(input: CreateTaskInput): { ok: true; dirName: string } | IpcFail {
+export interface CreateTaskResult {
+  ok: true
+  dirName: string
+  /** 实际写入磁盘的文件（相对任务目录），供界面如实展示创建产物 */
+  files: string[]
+  /** 非致命写入问题（如 prd.md 写失败）；出现时界面不得宣称该产物已生成 */
+  warnings: string[]
+}
+
+export function createTaskRecord(input: CreateTaskInput): CreateTaskResult | IpcFail {
   if (!projectRoot) return noProject()
   const tasksRoot = join(projectRoot, '.trellis', 'tasks')
   const today = new Date()
@@ -459,8 +470,23 @@ export function createTaskRecord(input: CreateTaskInput): { ok: true; dirName: s
     if (input.workflow) record.workflow = input.workflow
     writeFileSync(join(finalDir, 'task.json'), JSON.stringify(record, null, 2) + '\n', 'utf-8')
     markPanelWrite(join(finalDir, 'task.json'))
+    const files = ['task.json']
+    const warnings: string[] = []
+    if (input.prdContent && input.prdContent.trim()) {
+      const prdPath = join(finalDir, 'prd.md')
+      // 目录为本面板新建，正常不存在同名文件；防御式检查避免覆盖用户内容
+      if (!existsSync(prdPath)) {
+        try {
+          writeFileSync(prdPath, input.prdContent, 'utf-8')
+          markPanelWrite(prdPath)
+          files.push('prd.md')
+        } catch (e) {
+          warnings.push(`prd.md 写入失败：${errorText(e, '未知错误')}（任务已创建，可手动补写）`)
+        }
+      }
+    }
     sendSnapshot()
-    return { ok: true, dirName: finalDirName }
+    return { ok: true, dirName: finalDirName, files, warnings }
   } catch (e) {
     return ipcFail(IpcErrorCode.Io, errorText(e, '创建任务失败'))
   }

@@ -1,0 +1,29 @@
+{
+  "version": "0.6",
+  "basis": "project_first",
+  "historical_capability_coverage_is_commitment": false,
+  "old_r0_r5_mandatory": false,
+  "new_product_implementation_authorized": false,
+  "pending_decisions": [],
+  "product_tests": "not_run",
+  "evidence_types": [
+    "current_static_code",
+    "existing_validation_record",
+    "user_testimony",
+    "proposal"
+  ],
+  "publication_state": "formal_planning_document",
+  "resolved_directions": [
+    "D01",
+    "D02"
+  ],
+  "user_preference": [
+    "AI sessions",
+    "reading",
+    "local use"
+  ],
+  "final_schedule_locked": false,
+  "implementation_selection": "user later chooses work items",
+  "original_library_files_action": "replace same identities with version guard",
+  "legacy_archive": "history/hifox-v0.5.1.zip"
+}

@@ -1,0 +1,388 @@
+[
+  {
+    "id": "U01",
+    "surface": "启动、登录后首页、组织/空间切换",
+    "checks": "版本、身份范围、无空间、离线",
+    "status": "observed_partial",
+    "evidence": [
+      "UI01-inbox-empty",
+      "UI19-document-library-empty"
+    ],
+    "limits": [
+      "未点击标已读/全部清理；没有真实通知，未验证通知聚合与处理副作用",
+      "未新建、上传、共享或搜索真实文档；跨设备访问和Agent实际读取未验证"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "已登录网页首屏；未测登录、组织切换、无空间、离线和原生启动版本。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U02",
+    "surface": "全部任务/空间列表",
+    "checks": "列表、看板、搜索、筛选、零结果",
+    "status": "observed_partial",
+    "evidence": [
+      "UI09-task-board"
+    ],
+    "limits": [
+      "未拖拽、未改状态、未保存视图；只有示例数据不能验证大数据量和复杂层级"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "仅示例看板与类型过滤入口；列表模式、复杂筛选、大数据量未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U03",
+    "surface": "已有任务详情",
+    "checks": "标题、人员、状态、材料、历史、返回位置",
+    "status": "structure_only",
+    "evidence": [
+      "UI07-existing-run-failure",
+      "UI08-task-discussion-structure"
+    ],
+    "limits": [
+      "历史记录，不证明当前服务仍失败；未重试或打开原始数据；截图Page.captureScreenshot在5秒超时，视觉未验证",
+      "未更改任何字段、评论、反应、关注或任务关系；相关菜单和提交路径未验证；未获得完整可交付截图"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "仅已有示例任务结构和历史失败；材料返回位置、完整视觉未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U04",
+    "surface": "新建任务表单",
+    "checks": "必填提示、取消、未保存草稿",
+    "status": "observed_partial",
+    "evidence": [
+      "UI10-new-workitem-form",
+      "UI11-workitem-type-menu"
+    ],
+    "limits": [
+      "未更改类型或属性、未提交、未上传附件；不验证服务端必填校验",
+      "未切换类型或进入管理；未验证角色差异和字段迁移"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "空标题禁用、类型菜单、关闭已观察；未提交，不证明服务端幂等与保存。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U05",
+    "surface": "类型、标签、关系",
+    "checks": "菜单分类、循环依赖/重复解释",
+    "status": "observed_partial",
+    "evidence": [
+      "UI08-task-discussion-structure",
+      "UI09-task-board",
+      "UI10-new-workitem-form",
+      "UI11-workitem-type-menu"
+    ],
+    "limits": [
+      "未更改任何字段、评论、反应、关注或任务关系；相关菜单和提交路径未验证；未获得完整可交付截图",
+      "未拖拽、未改状态、未保存视图；只有示例数据不能验证大数据量和复杂层级",
+      "未更改类型或属性、未提交、未上传附件；不验证服务端必填校验",
+      "未切换类型或进入管理；未验证角色差异和字段迁移"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "类型入口与属性结构已观察；标签编辑、循环依赖与重复合并未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U06",
+    "surface": "任务评论与回复",
+    "checks": "锚点、已解决、@ 真人/Agent 语义",
+    "status": "structure_only",
+    "evidence": [
+      "UI08-task-discussion-structure"
+    ],
+    "limits": [
+      "未更改任何字段、评论、反应、关注或任务关系；相关菜单和提交路径未验证；未获得完整可交付截图"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "评论/回复结构已观察；未发送，不证明通知、锚点、解决和@语义。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U07",
+    "surface": "对话模块",
+    "checks": "发起者归属、等你/等人、行定位、未读",
+    "status": "observed_partial",
+    "evidence": [
+      "UI06-conversation-controls"
+    ],
+    "limits": [
+      "未切换模式、未新建会话、未发送；未测并发、重试或恢复"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "独立会话控件已观察；等你/等人、未读、发起者、并发未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U08",
+    "surface": "任务对话",
+    "checks": "历史、多会话、布局和返回",
+    "status": "structure_only",
+    "evidence": [
+      "UI07-existing-run-failure",
+      "UI08-task-discussion-structure"
+    ],
+    "limits": [
+      "历史记录，不证明当前服务仍失败；未重试或打开原始数据；截图Page.captureScreenshot在5秒超时，视觉未验证",
+      "未更改任何字段、评论、反应、关注或任务关系；相关菜单和提交路径未验证；未获得完整可交付截图"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "structure_only：仅任务对话结构和历史执行观察，没有可交付的任务对话截图。UI06仅为独立Agent会话入口参考，不计任务对话视觉覆盖；新运行、继续、取消、真实交接和布局恢复未验证。",
+    "related_entry_references": [
+      "UI06-conversation-controls"
+    ]
+  },
+  {
+    "id": "U09",
+    "surface": "收件箱",
+    "checks": "聚合、重要、已读/稍后与对话分工",
+    "status": "observed_partial",
+    "evidence": [
+      "UI01-inbox-empty",
+      "UI16-triage-empty"
+    ],
+    "limits": [
+      "未点击标已读/全部清理；没有真实通知，未验证通知聚合与处理副作用",
+      "无待分拣记录；未配置、创建、接受、拒绝、去重或暂缓"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "个人通知空态；无真实通知，不证明聚合、已读或稍后副作用。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U10",
+    "surface": "Agent 列表与详情",
+    "checks": "无 Agent、禁用、职责、runtime",
+    "status": "observed_partial",
+    "evidence": [
+      "UI02-agents-overview",
+      "UI03-agent-search-empty",
+      "UI04-narrow-search-expanded",
+      "UI05-agent-create-form",
+      "UI25-agent-settings-form"
+    ],
+    "limits": [
+      "没有执行对话、收藏或行操作；名称和所有者不进入交付截图",
+      "未证明后端检索完整性；早先更新前或无效尺寸截图均已拒用",
+      "不进行键盘读屏合规判断",
+      "未填写、未提交或安装；不验证默认值保存后的语义; visual capture did not show the dialog; no visual finding claimed",
+      "未创建或修改；截图超时且复查时弹层已消失，不能归因于产品；不交付视觉结论。主机名、所有者和Agent名称不交付"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "列表、搜索零结果实测；创建表单结构观察；禁用/详情/保存未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U11",
+    "surface": "电脑与 runtime",
+    "checks": "在线/离线、连接/安装/登录区分",
+    "status": "observed_partial",
+    "evidence": [
+      "UI05-agent-create-form",
+      "UI06-conversation-controls",
+      "UI07-existing-run-failure",
+      "UI22-computer-local-bridge-unavailable"
+    ],
+    "limits": [
+      "未填写、未提交或安装；不验证默认值保存后的语义; visual capture did not show the dialog; no visual finding claimed",
+      "未切换模式、未新建会话、未发送；未测并发、重试或恢复",
+      "历史记录，不证明当前服务仍失败；未重试或打开原始数据；截图Page.captureScreenshot在5秒超时，视觉未验证",
+      "未启动/刷新服务，未连接新电脑，未点击电脑详情、检查凭据或执行任何Runtime；主机名与所有者不交付"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "电脑页本地桥接提示已观察；私有可用徽标仅结构观察；安装、认证、真正执行未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U12",
+    "surface": "工作目录/仓库",
+    "checks": "目录来源、锁、worktree 策略和权限",
+    "status": "observed_partial",
+    "evidence": [
+      "UI05-agent-create-form",
+      "UI06-conversation-controls"
+    ],
+    "limits": [
+      "未填写、未提交或安装；不验证默认值保存后的语义; visual capture did not show the dialog; no visual finding claimed",
+      "未切换模式、未新建会话、未发送；未测并发、重试或恢复"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "只看到会话目录入口与创建表单Git工作方式；未打开目录选择、锁和worktree策略。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U13",
+    "surface": "技能与小队",
+    "checks": "依赖、空态、队长与成员职责",
+    "status": "observed_partial",
+    "evidence": [
+      "UI02-agents-overview",
+      "UI18-skills-empty",
+      "UI19-document-library-empty"
+    ],
+    "limits": [
+      "没有执行对话、收藏或行操作；名称和所有者不进入交付截图",
+      "未导入、复制、安装或发布技能；实际可见性与执行权限未验证",
+      "未新建、上传、共享或搜索真实文档；跨设备访问和Agent实际读取未验证"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "技能空态与Agent/小队Tab入口已观察；小队详情、依赖、队长、执行均未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U14",
+    "surface": "成员与空间权限",
+    "checks": "可见、无权、角色范围和邀请副作用",
+    "status": "structure_only",
+    "evidence": [
+      "UI23-members-role-scope",
+      "UI25-agent-settings-form"
+    ],
+    "limits": [
+      "未邀请、复制链接、查看个人详情、修改角色或验证无权场景；裁切截图超时，视觉未验证",
+      "未创建或修改；截图超时且复查时弹层已消失，不能归因于产品；不交付视觉结论。主机名、所有者和Agent名称不交付"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "组织成员角色/空间列结构可见；只有所有者，普通成员、访客和拒绝场景未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U15",
+    "surface": "专项/交付目标",
+    "checks": "范围、负责人、进度和空态",
+    "status": "observed_partial",
+    "evidence": [
+      "UI14-task-navigation-more",
+      "UI15-delivery-goals-empty"
+    ],
+    "limits": [
+      "未更改固定项或拖动导航",
+      "当前无专项；期限、负责人、进度汇总和跨任务交付未验证"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "专项解释与空态；无实际目标，负责人、进度、结束路径未验证。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U16",
+    "surface": "保存视图",
+    "checks": "私有/共享、临时更改、重置、窄屏",
+    "status": "observed_partial",
+    "evidence": [
+      "UI09-task-board",
+      "UI13-saved-views-empty"
+    ],
+    "limits": [
+      "未拖拽、未改状态、未保存视图；只有示例数据不能验证大数据量和复杂层级",
+      "未创建或保存视图，不证明多人共享与权限边界"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "保存视图空态；未创建、保存、共享或重置，权限未知。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U17",
+    "surface": "迭代",
+    "checks": "当前/历史/无迭代、结转语义",
+    "status": "observed_partial",
+    "evidence": [
+      "UI12-iterations-empty"
+    ],
+    "limits": [
+      "当前无真实迭代，无法验证结束、结转、历史和跨周期统计"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "迭代空态与过滤入口；无历史，不验证结束和结转。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U18",
+    "surface": "分拣台",
+    "checks": "接受/重复/拒绝/暂缓菜单及空态",
+    "status": "observed_partial",
+    "evidence": [
+      "UI14-task-navigation-more",
+      "UI16-triage-empty"
+    ],
+    "limits": [
+      "未更改固定项或拖动导航",
+      "无待分拣记录；未配置、创建、接受、拒绝、去重或暂缓"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "分拣入口与空态；未分拣、配置或接收外部记录。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U19",
+    "surface": "自动化",
+    "checks": "触发、范围、历史、失败原因",
+    "status": "observed_partial",
+    "evidence": [
+      "UI17-automation-empty"
+    ],
+    "limits": [
+      "未新建、启用、触发或测试规则；运行历史和失败补偿未验证"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "自动化空态与用途说明；未启用、运行、检查历史或补偿。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U20",
+    "surface": "Jira/Git/IM 集成",
+    "checks": "只读连接状态、字段方向、失效授权",
+    "status": "observed_partial",
+    "evidence": [
+      "UI20-integration-directory",
+      "UI21-git-and-collaboration-integrations"
+    ],
+    "limits": [
+      "未打开凭据、授权、测试连接或发起同步；所有方向/范围能力仅是界面声明",
+      "未连接厂商、获取凭据、发消息或执行回写；当前只有目录声明"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "目录分类和UI文案；没有连接、同步、回写或失效授权测试。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U21",
+    "surface": "设置/CLI/PAT",
+    "checks": "能力说明、掩码、撤销提示",
+    "status": "observed_partial",
+    "evidence": [
+      "UI20-integration-directory",
+      "UI23-members-role-scope",
+      "UI24-keyboard-preferences"
+    ],
+    "limits": [
+      "未打开凭据、授权、测试连接或发起同步；所有方向/范围能力仅是界面声明",
+      "未邀请、复制链接、查看个人详情、修改角色或验证无权场景；裁切截图超时，视觉未验证",
+      "未修改偏好、未发送内容、未做读屏和全键盘审查；没有交付截图"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "设置导航、成员/集成/快捷键说明；未打开PAT、CLI、账号绑定或凭据页。",
+    "related_entry_references": []
+  },
+  {
+    "id": "U22",
+    "surface": "键盘/缩放/主题/窄屏",
+    "checks": "焦点、读序、状态非色彩表达",
+    "status": "observed_partial",
+    "evidence": [
+      "UI03-agent-search-empty",
+      "UI04-narrow-search-expanded",
+      "UI24-keyboard-preferences"
+    ],
+    "limits": [
+      "未证明后端检索完整性；早先更新前或无效尺寸截图均已拒用",
+      "不进行键盘读屏合规判断",
+      "未修改偏好、未发送内容、未做读屏和全键盘审查；没有交付截图"
+    ],
+    "closure": "未完成全路径验证；详见限定项",
+    "verified_boundary": "1000×900与1440×900网页视口、搜索展开和Esc关闭菜单；无原生/读屏/完整键盘/主题测试。",
+    "related_entry_references": []
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "path": "src/shared/types.ts",
+    "sha256": "fb5c1bf4331f34de472efcde1c4962b25ebcf685c09d031ab5afe8d5990bd7ff",
+    "bytes": 59467
+  },
+  {
+    "path": "src/main/services/scan.ts",
+    "sha256": "3b2702bba6f9fd39bf6f398cdda5e914c78bd84b93e31b8bfc114ec05442eb7b",
+    "bytes": 21631
+  },
+  {
+    "path": "src/main/services/handoff.ts",
+    "sha256": "d69fefe0a150d9edb2552871addc60e380b18c88869fc679f2922f6e5f1b85f7",
+    "bytes": 4435
+  },
+  {
+    "path": "src/main/services/acp.ts",
+    "sha256": "a1cd13d20b9c2c1faa886be557b6f4752d2233da495b79774b5a69a9aaa570f0",
+    "bytes": 40971
+  },
+  {
+    "path": "src/main/services/acp/types.ts",
+    "sha256": "9a0f7e684c6042f78dc3b0335a697ab2e589d9148c091cd1f760eda63bddd897",
+    "bytes": 1919
+  },
+  {
+    "path": "src/main/services/flow-run.ts",
+    "sha256": "549a852f6a7bae160b4fa3d74672f4c9f85ffba0388ce73ecbb270786260bd3f",
+    "bytes": 14569
+  },
+  {
+    "path": "src/renderer/src/my/navigation.ts",
+    "sha256": "0fef7e3a4bd003bce5337425efb8b59ae4aca9e2cbe2ca6def24f3c073c35bf8",
+    "bytes": 6413
+  },
+  {
+    "path": "src/renderer/src/my/adapter.ts",
+    "sha256": "3fb28b0d32c4cd8738f00632dd7d468bfc879869738d354f479ef914c640f70d",
+    "bytes": 7233
+  },
+  {
+    "path": "src/renderer/src/my/my.css",
+    "sha256": "99307ab803cd56cd69b6a2c2a187f0d0fcb08c85ccb3dd64b5f9d0f791217485",
+    "bytes": 7843
+  },
+  {
+    "path": ".trellis/tasks/10-16-project-workspace-uiux/prd.md",
+    "sha256": "32c698024240d5fbf7df5738a939b2176198fc10b9de91a993f72cbfda3c1c11",
+    "bytes": 12350
+  },
+  {
+    "path": ".trellis/tasks/10-16-acp-runtime-foundation/task.json",
+    "sha256": "be22f5f31e61696ee4e44838c11f03780becaa2e697eba686b42bca0491e47ae",
+    "bytes": 1287
+  },
+  {
+    "path": ".trellis/tasks/10-11-cockpit-s0-glass-box/validation/ac-matrix.md",
+    "sha256": "cdb6b62edc33f4d7cc7035694f3cfb122640c805166e4c0c7a79709c65f605cc",
+    "bytes": 6848
+  }
+]

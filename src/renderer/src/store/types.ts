@@ -40,6 +40,7 @@ export type Page =
   | 'gateway'
   | 'settings'
   | 'analytics'
+  | 'devtools'
 
 export interface ToastItem extends ToastEvent {
   id: number

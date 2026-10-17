@@ -1,0 +1,25 @@
+{
+  "version": "0.5",
+  "at": "2026-10-17T01:09:46.275122+00:00",
+  "reviewed": [
+    "19 accepted evidence/ui JPEGs inspected individually before inclusion",
+    "08-ui-informed-ia SVG rendered in Chrome and PNG inspected",
+    "09-status-projections SVG rendered in Chrome and final white PNG inspected",
+    "W07-filter-empty SVG/PNG inspected",
+    "standalone HTML first screen and design table screens saved and inspected"
+  ],
+  "reused": "12 unchanged v0.4.1 diagrams retain prior inspected renders",
+  "browser_dom": {
+    "images_loaded": 21,
+    "images_total": 21,
+    "svg_diagrams": 15,
+    "tables": 104,
+    "viewport_width": 1707,
+    "document_width": 1692
+  },
+  "limits": [
+    "HTML is a continuous document, not paginated PDF/DOCX",
+    "Wide diagrams and tables use local overflow containers; editable source and full resolution PNG included",
+    "No product execution, accessibility compliance or native Hifox assertion"
+  ]
+}

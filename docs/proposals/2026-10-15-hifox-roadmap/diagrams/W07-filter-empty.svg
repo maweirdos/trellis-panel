@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="720" viewBox="0 0 1100 720">
+<style>text{font-family:'Microsoft YaHei','Segoe UI',sans-serif;fill:#253b30;font-size:20px}.muted{fill:#596b61;font-size:18px}.small{font-size:17px}.bold{font-weight:700}.green{fill:#146340}</style>
+<rect width="1100" height="720" fill="#f1f5f2"/>
+<text x="28" y="38" class="bold">W07 搜索与空态 · 布局概念（D设计建议，未实施）</text>
+<text x="28" y="67" class="muted">来源：UI03/04、UI12/13/19；沿用Trellis主题令牌，非Hifox截图</text>
+<rect x="24" y="90" width="1052" height="575" rx="10" fill="#fff" stroke="#bfd0c4"/>
+<rect x="24" y="90" width="1052" height="54" rx="10" fill="#e6f0e9"/>
+<text x="44" y="124" class="bold">示例工程 A</text><text x="268" y="124" class="muted">唯一项目上下文 · 工作项</text>
+<rect x="24" y="144" width="72" height="521" fill="#edf3ee"/>
+<rect x="40" y="165" width="40" height="40" rx="7" fill="#146340"/>
+<text x="44" y="193" style="fill:white;font-size:17px">任务</text>
+<text x="43" y="250" class="small">知识</text><text x="43" y="310" class="small">会话</text>
+<text x="120" y="185" class="bold">工作项</text><text x="264" y="185" class="muted">列表 / 看板</text>
+<rect x="120" y="204" width="400" height="44" rx="6" fill="#f7faf7" stroke="#94b19e"/>
+<text x="138" y="233" class="small">搜索：示例查询</text><text x="450" y="233" class="green small">清除</text>
+<rect x="536" y="204" width="198" height="44" rx="6" fill="#edf4ef" stroke="#94b19e"/>
+<text x="552" y="233" class="small">筛选 2 项 · 展开</text>
+<text x="758" y="232" class="green small">重置临时条件</text>
+<line x1="120" y1="268" x2="1048" y2="268" stroke="#cfdbd2"/>
+<text x="344" y="344" class="bold">当前筛选无匹配项</text>
+<text x="280" y="383" class="muted">当前项目仍可能有任务；搜索和两项条件正在生效。</text>
+<rect x="384" y="411" width="242" height="44" rx="6" fill="#146340"/>
+<text x="426" y="440" style="fill:white">清除搜索与筛选</text>
+<text x="292" y="494" class="muted">重置仅影响当前呈现，不覆盖团队共享视图。</text>
+<rect x="120" y="538" width="928" height="98" rx="7" fill="#faf5e7" stroke="#d8c393"/>
+<text x="138" y="566" class="small bold">响应式及状态合同</text>
+<text x="138" y="595" class="small">960 / 1000px：收辅助区；活动查询或筛选数、返回、清除始终可达。</text>
+<text x="138" y="621" class="small">无记录 / 无权 / 离线缓存 / 加载失败各有原因与恢复，不复用此零结果文案。</text>
+<text x="28" y="699" class="muted">示意数据；UXAC04/05/11均not_run。具体断点、输入和焦点需原生验证。</text>
+</svg>

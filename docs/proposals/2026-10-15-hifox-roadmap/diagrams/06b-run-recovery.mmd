@@ -1,0 +1,23 @@
+stateDiagram-v2
+  direction TB
+  active --> hold_requested: ST13变更撤回撤权
+  hold_requested --> paused: ST14支持且确认暂停
+  hold_requested --> stopping: ST14不支持则停止
+  paused --> preflight: ST15原输入可安全继续
+  paused --> stopping: ST15变更先停
+  active --> unknown: ST16断连或回执丢失
+  stopping --> unknown: ST16停止超时
+  hold_requested --> unknown: ST16暂停确认丢失
+  unknown --> active: ST17无hold且核实活动
+  unknown --> paused: ST17证实暂停 保留hold
+  unknown --> hold_requested: ST17仍活动且有hold
+  unknown --> terminal: ST18可信终态和副作用核对
+  stopping --> stopped: ST19停止确认
+  note right of active
+    活动态集合见转移表
+    有hold拒绝新动作
+  end note
+  note right of terminal
+    晚到终态按ST21核对
+    确认前保留旧租约
+  end note

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "C01-current-flow",
+    "title": "当前流程：资料仍在工程，工具有多条入口",
+    "source": "diagrams/C01-current-flow.mmd",
+    "svg": "diagrams/C01-current-flow.svg",
+    "png": "diagrams/C01-current-flow.png",
+    "type": "current_static_model"
+  },
+  {
+    "id": "C02-proposed-flow",
+    "title": "规划工作项与依赖：可独立选择，不锁定排期",
+    "source": "diagrams/C02-proposed-flow.mmd",
+    "svg": "diagrams/C02-proposed-flow.svg",
+    "png": "diagrams/C02-proposed-flow.png",
+    "type": "proposal_not_implemented"
+  },
+  {
+    "id": "C03-current-data-flow",
+    "title": "当前数据流：本地任务、会话与外部事实分开",
+    "source": "diagrams/C03-current-data-flow.mmd",
+    "svg": "diagrams/C03-current-data-flow.svg",
+    "png": "diagrams/C03-current-data-flow.png",
+    "type": "current_static_model"
+  },
+  {
+    "id": "C04-current-relations",
+    "title": "当前对象关系：工程、任务、材料与本机会话",
+    "type": "current_static_model",
+    "source": "diagrams/C04-current-relations.mmd",
+    "svg": "diagrams/C04-current-relations.svg",
+    "png": "diagrams/C04-current-relations.png"
+  }
+]

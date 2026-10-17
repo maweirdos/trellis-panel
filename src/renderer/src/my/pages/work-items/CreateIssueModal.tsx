@@ -1,9 +1,11 @@
-// 新建工作项弹窗：项目下拉 + 名称（回车提交）+ 优先级/状态 + 描述；创建后关闭并打开 peek。
+// 新建工作项弹窗：项目下拉 + 名称（回车提交）+ 优先级 + 描述；创建后关闭并打开 peek。
+// 创建合同：普通创建固定生成 planning 状态的 task.json（Trellis 生命周期收归工作流），
+// 不提供状态选择，避免“创建即改状态”的假通道。
 import { useState, type JSX } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import { useMy } from '../../store'
-import { Button, Dropdown, DropdownHeader, DropdownItem, Modal } from '../../ui'
-import { WorkspaceMark, PriorityIcon, StateGroupIcon } from '../../icons'
+import { Button, Dropdown, DropdownItem, Modal } from '../../ui'
+import { WorkspaceMark, PriorityIcon } from '../../icons'
 import type { Priority } from '../../types'
 
 const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
@@ -25,17 +27,13 @@ function CreateIssueForm(): JSX.Element {
   const defaultProject = data.projects[0]
   const [name, setName] = useState('')
   const [priority, setPriority] = useState<Priority>('none')
-  const [stateId, setStateId] = useState('st-planning')
   const [description, setDescription] = useState('')
-
-  const states = [...data.states].sort((a, b) => a.sequence - b.sequence)
 
   const submit = (): void => {
     const n = name.trim()
     if (!n) return
     void createIssue({ name: n, priority, description: description.trim() }).then((id) => {
       if (!id) return
-      if (stateId !== 'st-planning') void store.updateIssue(id, { stateId })
       setCreateIssueOpen(false)
       openIssue(id)
     })
@@ -90,73 +88,37 @@ function CreateIssueForm(): JSX.Element {
               className="my-input"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="mb-1 text-my-xs font-medium text-my-tertiary">优先级</div>
-              <Dropdown
-                width={180}
-                trigger={({ toggle }) => (
-                  <button type="button" onClick={toggle} className={BOX}>
-                    <PriorityIcon priority={priority} size={13} />
-                    <span className="min-w-0 flex-1 truncate text-left">{PRIORITY_LABELS[priority]}</span>
-                    <ChevronDown size={12} className="shrink-0 text-my-icon-tertiary" />
-                  </button>
-                )}
-              >
-                {(close) => (
-                  <>
-                    {PRIORITIES.map((pr) => (
-                      <DropdownItem
-                        key={pr}
-                        selected={pr === priority}
-                        icon={<PriorityIcon priority={pr} size={13} />}
-                        onClick={() => {
-                          setPriority(pr)
-                          close()
-                        }}
-                      >
-                        {PRIORITY_LABELS[pr]}
-                      </DropdownItem>
-                    ))}
-                  </>
-                )}
-              </Dropdown>
-            </div>
-            <div>
-              <div className="mb-1 text-my-xs font-medium text-my-tertiary">状态</div>
-              <Dropdown
-                width={190}
-                trigger={({ toggle }) => {
-                  const currentState = states.find((s) => s.id === stateId)
-                  return (
-                  <button type="button" onClick={toggle} className={BOX}>
-                    {currentState && <StateGroupIcon stateGroup={currentState.group} color={currentState.color} size={13} />}
-                    <span className="min-w-0 flex-1 truncate text-left">{currentState?.name ?? '规划中'}</span>
-                    <ChevronDown size={12} className="shrink-0 text-my-icon-tertiary" />
-                  </button>
-                  )
-                }}
-              >
-                {(close) => (
-                  <>
-                    <DropdownHeader>设置状态</DropdownHeader>
-                    {states.map((st) => (
-                      <DropdownItem
-                        key={st.id}
-                        selected={st.id === stateId}
-                        icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
-                        onClick={() => {
-                          setStateId(st.id)
-                          close()
-                        }}
-                      >
-                        {st.name}
-                      </DropdownItem>
-                    ))}
-                  </>
-                )}
-              </Dropdown>
-            </div>
+          <div>
+            <div className="mb-1 text-my-xs font-medium text-my-tertiary">优先级</div>
+            <Dropdown
+              width={180}
+              trigger={({ toggle }) => (
+                <button type="button" onClick={toggle} className={BOX}>
+                  <PriorityIcon priority={priority} size={13} />
+                  <span className="min-w-0 flex-1 truncate text-left">{PRIORITY_LABELS[priority]}</span>
+                  <ChevronDown size={12} className="shrink-0 text-my-icon-tertiary" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  {PRIORITIES.map((pr) => (
+                    <DropdownItem
+                      key={pr}
+                      selected={pr === priority}
+                      icon={<PriorityIcon priority={pr} size={13} />}
+                      onClick={() => {
+                        setPriority(pr)
+                        close()
+                      }}
+                    >
+                      {PRIORITY_LABELS[pr]}
+                    </DropdownItem>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+            <div className="mt-1 text-my-xs text-my-tertiary">新任务固定为「规划中」，进入开发请用 task.py start。</div>
           </div>
           <div>
             <div className="mb-1 text-my-xs font-medium text-my-tertiary">描述</div>

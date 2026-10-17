@@ -136,3 +136,15 @@ export async function runTaskArchiveCli(
   const res = await runTaskPy({ timeoutMs: 90_000, ...options }, args)
   return { ...res, createdDirName: null }
 }
+
+/** task.py add-subtask / remove-subtask：父子关联的唯一权威写入路径。
+ *  面板此前在视图层伪造关联（刷新即丢），现统一走该受控命令。 */
+export async function runTaskSubtaskCli(
+  options: TaskCliSpawnOptions,
+  parentDir: string,
+  childDir: string,
+  remove = false
+): Promise<TaskCliRunResult> {
+  const res = await runTaskPy(options, [remove ? 'remove-subtask' : 'add-subtask', parentDir, childDir])
+  return { ...res, createdDirName: null }
+}

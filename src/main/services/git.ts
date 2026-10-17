@@ -26,6 +26,9 @@ function git(root: string, args: string[], timeoutMs = 10_000): Promise<{ ok: bo
   })
 }
 
+/** 供只读查看场景（C1 devtools）复用同一执行器；调用方自行保证参数只读。 */
+export const runGit = git
+
 export function isGitRepo(root: string): boolean {
   return existsSync(join(root, '.git'))
 }

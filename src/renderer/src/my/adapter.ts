@@ -183,30 +183,19 @@ export function deriveDataset(snapshot: ProjectSnapshot | null): MyDataset {
 }
 
 export function issueToTaskPatch(issue: Issue): {
-  status?: string
   priority?: string
   title?: string
   description?: string
   cycle?: string | null
 } {
+  // status / completedAt 属任务生命周期字段，由 Trellis 工作流（task.py）管理；
+  // 面板补丁只携带白名单内元数据，避免“看似已保存、落盘被忽略”的假成功。
   const patch: {
-    status?: string
     priority?: string
     title?: string
     description?: string
     cycle?: string | null
   } = {}
-  const state = MY_STATES.find((s) => s.id === issue.stateId)
-  if (state) {
-    const statusByState: Record<string, string> = {
-      'st-planning': 'planning',
-      'st-progress': 'in_progress',
-      'st-review': 'review',
-      'st-done': 'completed',
-      'st-backlog': 'planning'
-    }
-    patch.status = statusByState[state.id]
-  }
   const taskPriority = priorityToTaskPriority(issue.priority)
   if (taskPriority) patch.priority = taskPriority
   patch.title = issue.name

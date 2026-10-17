@@ -1,0 +1,15 @@
+flowchart TB
+  User["使用者"] <--> UI["页面 阅读与明确动作"]
+  UI <--> IPC["preload与分域IPC"]
+  IPC <--> Scan["扫描 阅读 允许的元数据"]
+  IPC <--> ACP["本机ACP与acpx"]
+  IPC <--> JS["Jira入口与本地创建服务"]
+  Scan <--> Files["工程内Trellis任务与资料"]
+  JS <--> Jira["Jira工单与独立外写回执"]
+  JS -->|来源草稿| Files
+  Files -.选取资料.-> ACP
+  ACP <--> Hist["userData会话与配置"]
+  ACP <--> Model["工具配置的模型服务"]
+  ACP -->|工具操作| Code["本机工程代码"]
+  Editor["外部AI编辑器与Trellis命令"] --> Files
+  Editor --> Code

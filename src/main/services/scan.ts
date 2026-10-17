@@ -414,7 +414,7 @@ export function updateTaskRecordAt(
   taskDir: string,
   patch: Record<string, unknown>,
   expectedMtime?: number
-): { conflict: boolean } {
+): { conflict: boolean; ignored: string[] } {
   const dir = resolve(taskDir)
   const trellisRoot = resolve(root, '.trellis') + sep
   // containment: the task dir must live inside <project>/.trellis
@@ -441,11 +441,13 @@ export function updateTaskRecordAt(
   }
 
   // R0：status / completedAt 属任务生命周期字段，收归外部 Trellis 工作流，
-  // 面板编辑白名单只保留元数据（title/description/priority/assignee/notes/branch/pr_url/subtasks/meta）
+  // 面板编辑白名单只保留元数据（title/description/priority/assignee/notes/branch/pr_url/subtasks/meta）。
+  // 白名单外的字段不是静默丢弃：原样列入 ignored 返回，让调用方如实反馈。
   const EDITABLE = new Set([
     'title', 'description', 'priority', 'assignee', 'notes', 'branch', 'pr_url', 'subtasks', 'cycle'
   ])
   const next: Record<string, unknown> = { ...record }
+  const ignored: string[] = []
   for (const [k, v] of Object.entries(patch)) {
     if (k === 'meta') {
       if (v && typeof v === 'object' && !Array.isArray(v)) {
@@ -453,12 +455,15 @@ export function updateTaskRecordAt(
       }
       continue
     }
-    if (!EDITABLE.has(k)) continue
+    if (!EDITABLE.has(k)) {
+      ignored.push(k)
+      continue
+    }
     if (next[k] === v) continue
     next[k] = v
   }
   writeFileSync(jsonPath, JSON.stringify(next, null, 2) + '\n', 'utf-8')
-  return { conflict: false }
+  return { conflict: false, ignored }
 }
 
 /** Read a text file with metadata for optimistic editing. */

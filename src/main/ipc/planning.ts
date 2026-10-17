@@ -3,7 +3,7 @@ import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
-import { aiPlanTask, aiSplitEpic, handoffTexts } from '../services/plan'
+import { aiPlanTask, aiSplitEpic } from '../services/plan'
 import { getSettings } from '../services/store'
 import {
   getProjectRoot,
@@ -28,10 +28,26 @@ export function registerPlanningIpc(): void {
   })
 
   handle(ipcInvoke.task.createFromPlan, (_e, input) => {
-    const dirName = slugifyTitle(String(input?.title ?? ''))
+    // 创建合同（PF-04/VF02）：确认的计划必须真实落盘为任务材料——
+    // task.json + prd.md（需求说明/子任务/待确认问题），界面只宣称实际写出的文件。
+    const title = String(input?.title ?? '')
+    const subtasks = Array.isArray(input?.subtasks) ? (input.subtasks as unknown[]).map((s) => String(s)) : []
+    const questions = Array.isArray(input?.questions)
+      ? (input.questions as unknown[]).map((q) => String(q)).filter((q) => q.trim() !== '')
+      : []
+    const prdSections: string[] = [`# ${title}`, '']
+    prdSections.push('> 来源：AI 规划工作台（人工确认后创建）')
+    if (input?.jiraKey) prdSections.push(`> Jira：${String(input.jiraKey)}${input?.jiraUrl ? ` · ${String(input.jiraUrl)}` : ''}`)
+    prdSections.push('', '## 需求说明', '', String(input?.description ?? '').trim() || '（待补充）', '')
+    if (subtasks.length > 0) {
+      prdSections.push('## 子任务', '', ...subtasks.map((s) => (s.trim().startsWith('-') ? s : `- [ ] ${s}`)), '')
+    }
+    if (questions.length > 0) {
+      prdSections.push('## 待确认问题（AI 标注的信息缺口，开工前先澄清）', '', ...questions.map((q) => `- [ ] ${q}`), '')
+    }
     return createTaskRecord({
-      dirName,
-      title: String(input?.title ?? ''),
+      dirName: slugifyTitle(title),
+      title,
       description: String(input?.description ?? ''),
       status: 'planning',
       priority: String(input?.priority ?? 'P2'),
@@ -39,19 +55,18 @@ export function registerPlanningIpc(): void {
       origin: 'plan',
       jiraKey: input?.jiraKey ? String(input.jiraKey) : undefined,
       jiraUrl: input?.jiraUrl ? String(input.jiraUrl) : undefined,
-      subtasks: Array.isArray(input?.subtasks) ? input.subtasks.map(String) : [],
+      subtasks,
       workflow: typeof input?.workflow === 'string' && input.workflow ? input.workflow : null,
       devType: typeof input?.devType === 'string' && input.devType ? input.devType : null,
       scope: typeof input?.scope === 'string' && input.scope ? input.scope : null,
-      branch: typeof input?.branch === 'string' && input.branch ? input.branch : null
+      branch: typeof input?.branch === 'string' && input.branch ? input.branch : null,
+      prdContent: prdSections.join('\n')
     })
   })
 
-  handle(ipcInvoke.plan.handoff, (_e, dirName: string) => {
-    const root = getProjectRoot()
-    if (!root) return []
-    return handoffTexts(root, String(dirName))
-  })
+  /* 交接出口已收敛（F03/PF-08）：计划完成页改走 task:handoffBuild（handoff.ts
+   * 确定性交接包，默认只核对与阅读）；旧 plan.ts handoffTexts 的"完成后更新
+   * task.json 状态"越权指引与平台硬编码一并移除。 */
 
   handle(ipcInvoke.ai.splitEpic, async (_e, dirName: string) => {
     const root = getProjectRoot()

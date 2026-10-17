@@ -67,6 +67,8 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
   const [tab, setTab] = useState<'sub' | 'comments' | 'activity'>('sub')
   const [subName, setSubName] = useState('')
   const [comment, setComment] = useState('')
+  const [attachOpen, setAttachOpen] = useState(false)
+  const [attachPath, setAttachPath] = useState('')
   const [copied, setCopied] = useState(false)
 
   // 切换 peek 目标时重置本地输入
@@ -132,15 +134,52 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
       .catch(() => undefined)
   }
 
-  // 子工作项：回车创建并挂到当前工作项（父子关联为本地视图状态，任务落盘不含该字段）
+  // 资料引入（PF-07/B1）：人工选取项目内文件，复制一份进任务目录（原件不动）。
+  // 走既有 docRead（项目内包含检查）+ taskWriteArtifact（任务目录写入），不建第二套资料库。
+  const confirmAttach = (): void => {
+    const rel = attachPath.trim().replace(/^[\\/]+|[\\/]+$/g, '')
+    if (!rel) return
+    const root = useApp.getState().snapshot?.meta.root
+    if (!root) {
+      useApp.getState().pushToast({ kind: 'warn', title: '未打开项目', body: '请先在顶栏选择项目' })
+      return
+    }
+    const abs = `${root.replace(/[\\/]+$/, '')}/${rel.replace(/\\/g, '/')}`
+    void api.docRead(abs).then((r) => {
+      if (!r.ok || typeof r.content !== 'string') {
+        useApp.getState().pushToast({ kind: 'error', title: '读取失败', body: r.error ?? '文件无法读取' })
+        return
+      }
+      const base = rel.split(/[\\/]/).pop() ?? ''
+      void api.taskWriteArtifact(issue.id, base, r.content).then((w) => {
+        if (w.ok) {
+          useApp.getState().pushToast({ kind: 'success', title: '已复制到任务资料', body: base })
+          setAttachOpen(false)
+          setAttachPath('')
+        } else {
+          useApp.getState().pushToast({ kind: 'error', title: '写入失败', body: w.error ?? '未知错误' })
+        }
+      })
+    })
+  }
+
+  // 子工作项：回车创建真实任务并经 task.py add-subtask 持久化父子关联（B3）。
+  // 关联以快照里的真实 children 为准；命令失败时如实提示，不伪造本地链接。
   const addSubIssue = (): void => {
     const n = subName.trim()
     if (!n) return
     void store.createIssue({ name: n, priority: 'none' }).then((sid) => {
       if (!sid) return
-      void store.updateIssue(sid, { parentId: issue.id })
-      void store.updateIssue(issue.id, { subIssueIds: [...issue.subIssueIds, sid] })
       setSubName('')
+      void api.taskLinkSubtask(issue.id, sid).then((r) => {
+        if (!r.ok) {
+          useApp.getState().pushToast({
+            kind: 'warn',
+            title: '子任务已创建，关联未建立',
+            body: `${r.error ?? '未知错误'}。可手动运行：python .trellis/scripts/task.py add-subtask ${issue.id} ${sid}`
+          })
+        }
+      })
     })
   }
 
@@ -301,6 +340,9 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                     className="h-7 min-w-0 flex-1 bg-transparent text-my-sm text-my-primary outline-none placeholder:text-my-placeholder"
                   />
                 </div>
+                <p className="mt-1 px-2 text-my-xs leading-4 text-my-tertiary">
+                  回车创建真实子任务；父子关联经 task.py add-subtask 写入 task.json，失败时会明确提示。
+                </p>
               </div>
             )}
             {tab === 'comments' && (
@@ -391,6 +433,49 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                   全部 ›
                 </button>
               </div>
+            )}
+          </PropRow>
+          <PropRow label="资料引入">
+            {attachOpen ? (
+              <div className="flex flex-col gap-1">
+                <input
+                  autoFocus
+                  value={attachPath}
+                  onChange={(e) => setAttachPath(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') confirmAttach()
+                  }}
+                  placeholder="项目内路径，如 docs/需求摘要.md"
+                  className="h-7 w-full rounded-my-sm border border-my-line bg-my-layer-1 px-2 text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                />
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={confirmAttach}
+                    className="rounded-my-sm bg-my-accent-subtle px-2 py-1 text-my-xs text-my-accent-text hover:bg-my-layer-1-hover"
+                  >
+                    复制到任务资料
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAttachOpen(false); setAttachPath('') }}
+                    className="px-1 py-1 text-my-xs text-my-tertiary hover:text-my-primary"
+                  >
+                    取消
+                  </button>
+                </div>
+                <p className="text-my-xs leading-4 text-my-tertiary">
+                  人工选取：把项目内 md / txt / yaml / json 复制一份进任务目录，原件不动、不建第二套资料库。
+                </p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAttachOpen(true)}
+                className="flex items-center gap-1 rounded-my-sm px-1 py-1 text-my-xs text-my-tertiary hover:text-my-accent-text"
+              >
+                <Plus size={11} /> 添加项目资料
+              </button>
             )}
           </PropRow>
           <PropRow label="优先级">

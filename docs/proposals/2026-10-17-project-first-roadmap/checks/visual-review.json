@@ -1,0 +1,26 @@
+{
+  "version": "0.6",
+  "scope": "document layout only; product not rerun",
+  "diagrams_reviewed": [
+    "C01-current-flow",
+    "C02-proposed-flow",
+    "C03-current-data-flow",
+    "C04-current-relations"
+  ],
+  "diagram_result": "SVG real text and PNG labels readable; optional dependencies and local data relationships inspected",
+  "html_checks": [
+    "project facts and user preference visible on first screen",
+    "four independently selectable directions shown in scenario table",
+    "scope appendix opens from navigation and explicitly rejects competitor completion mandate"
+  ],
+  "screenshots": [
+    "report-first-screen.jpg",
+    "report-scenarios.jpg",
+    "report-scope.jpg"
+  ],
+  "limitations": [
+    "normal desktop browser viewport only",
+    "native product UI not revalidated",
+    "no PDF export claimed"
+  ]
+}

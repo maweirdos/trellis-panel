@@ -199,22 +199,26 @@ export function DropdownItem({
   onClick,
   selected,
   danger,
-  icon
+  icon,
+  disabled
 }: {
   children: ReactNode
   onClick?: () => void
   selected?: boolean
   danger?: boolean
   icon?: ReactNode
+  disabled?: boolean
 }): JSX.Element {
   return (
     <button
       type="button"
-      onClick={onClick}
+      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
       className={clsx(
         'flex w-full items-center gap-2 px-3 py-1.5 text-left text-my-sm text-[var(--my-txt-secondary)] hover:bg-[var(--my-bg-layer-1-hover)]',
         selected && 'text-[var(--my-txt-accent-primary)]',
-        danger && 'text-[var(--my-txt-danger-primary)]'
+        danger && 'text-[var(--my-txt-danger-primary)]',
+        disabled && 'cursor-default opacity-50 hover:bg-transparent'
       )}
     >
       {icon && <span className="flex h-4 w-4 items-center justify-center">{icon}</span>}

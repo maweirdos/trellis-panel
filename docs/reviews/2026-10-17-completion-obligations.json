@@ -1,0 +1,1611 @@
+{
+  "scope": "audit inventory; not an implementation authorization",
+  "actual_selected_scope": "unknown pending original user instruction and zcode response",
+  "rows": [
+    {
+      "id": "PF-01.01",
+      "parent": "PF-01",
+      "obligation": "工程root切换与任务/资料归属正确",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "静态路径及既有记录；整条PA-01未关闭",
+      "roadmap_line": 498,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/store.ts",
+          "line": 108,
+          "link": "[src/renderer/src/my/store.ts:108](../../src/renderer/src/my/store.ts#L108)"
+        }
+      ],
+      "acceptance": "AV01"
+    },
+    {
+      "id": "PF-01.02",
+      "parent": "PF-01",
+      "obligation": "预览展开到中央、返回保留对象与来源位置",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "ui逻辑和既有task-presentation用例；本轮冒烟被环境阻断",
+      "roadmap_line": 498,
+      "evidence": [
+        {
+          "path": "src/renderer/src/store/slices/ui.ts",
+          "line": 49,
+          "link": "[src/renderer/src/store/slices/ui.ts:49](../../src/renderer/src/store/slices/ui.ts#L49)"
+        },
+        {
+          "path": "src/renderer/src/store/slices/ui.ts",
+          "line": 57,
+          "link": "[src/renderer/src/store/slices/ui.ts:57](../../src/renderer/src/store/slices/ui.ts#L57)"
+        }
+      ],
+      "acceptance": "AV01"
+    },
+    {
+      "id": "PF-01.03",
+      "parent": "PF-01",
+      "obligation": "旧工程迟到的读取响应不能污染新工程",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "阅读hook有请求序号/卸载处理；所有入口尚非本轮运行结论",
+      "roadmap_line": 498,
+      "evidence": [
+        {
+          "path": "src/renderer/src/reader/use-document-reader.ts",
+          "line": 93,
+          "link": "[src/renderer/src/reader/use-document-reader.ts:93](../../src/renderer/src/reader/use-document-reader.ts#L93)"
+        },
+        {
+          "path": "src/renderer/src/my/store.ts",
+          "line": 108,
+          "link": "[src/renderer/src/my/store.ts:108](../../src/renderer/src/my/store.ts#L108)"
+        }
+      ],
+      "acceptance": "AV01"
+    },
+    {
+      "id": "PF-01.04",
+      "parent": "PF-01",
+      "obligation": "实际A→B→A与阅读返回组合完整验收",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "证据不足",
+      "verification": "roadmap:75明确未覆盖；原生亮色检查不能替代",
+      "roadmap_line": 498,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 75,
+          "link": "[docs/roadmap_v2.md:75](../roadmap_v2.md#L75)"
+        },
+        {
+          "path": ".trellis/tasks/10-16-project-workspace-uiux/validation.md",
+          "line": 9,
+          "link": "[.trellis/tasks/10-16-project-workspace-uiux/validation.md:9](../../.trellis/tasks/10-16-project-workspace-uiux/validation.md#L9)"
+        }
+      ],
+      "acceptance": "AV01"
+    },
+    {
+      "id": "PF-01.05",
+      "parent": "PF-01",
+      "obligation": "原生外框、主题、拖拽/resize适用走查",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "部分",
+      "verification": "有最新亮色文字通过记录；深色、拖拽/resize未测且旧状态仍存在",
+      "roadmap_line": 498,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 57,
+          "link": "[docs/roadmap_v2.md:57](../roadmap_v2.md#L57)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 67,
+          "link": "[docs/roadmap_v2.md:67](../roadmap_v2.md#L67)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 75,
+          "link": "[docs/roadmap_v2.md:75](../roadmap_v2.md#L75)"
+        }
+      ],
+      "acceptance": "AV02"
+    },
+    {
+      "id": "PF-02.01",
+      "parent": "PF-02",
+      "obligation": "读取PRD/设计/清单并显示真实正文或诊断",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "共享读取/渲染链存在；既有记录非全场景关闭",
+      "roadmap_line": 499,
+      "evidence": [
+        {
+          "path": "src/renderer/src/reader/use-document-reader.ts",
+          "line": 15,
+          "link": "[src/renderer/src/reader/use-document-reader.ts:15](../../src/renderer/src/reader/use-document-reader.ts#L15)"
+        },
+        {
+          "path": "src/main/services/documents/controller.ts",
+          "line": 111,
+          "link": "[src/main/services/documents/controller.ts:111](../../src/main/services/documents/controller.ts#L111)"
+        }
+      ],
+      "acceptance": "AV03"
+    },
+    {
+      "id": "PF-02.02",
+      "parent": "PF-02",
+      "obligation": "外部保存仅产生候选，不静默替换正在读的版本",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "hook和reader状态机存在；本轮未运行watch链",
+      "roadmap_line": 499,
+      "evidence": [
+        {
+          "path": "src/renderer/src/reader/use-document-reader.ts",
+          "line": 20,
+          "link": "[src/renderer/src/reader/use-document-reader.ts:20](../../src/renderer/src/reader/use-document-reader.ts#L20)"
+        },
+        {
+          "path": "src/renderer/src/store/slices/reader.ts",
+          "line": 45,
+          "link": "[src/renderer/src/store/slices/reader.ts:45](../../src/renderer/src/store/slices/reader.ts#L45)"
+        }
+      ],
+      "acceptance": "AV03"
+    },
+    {
+      "id": "PF-02.03",
+      "parent": "PF-02",
+      "obligation": "用户显式阅读新版，保留打开基线和比较能力",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "状态机与diff服务可定位；原生完整场景未重验",
+      "roadmap_line": 499,
+      "evidence": [
+        {
+          "path": "src/renderer/src/store/slices/reader.ts",
+          "line": 52,
+          "link": "[src/renderer/src/store/slices/reader.ts:52](../../src/renderer/src/store/slices/reader.ts#L52)"
+        },
+        {
+          "path": "src/main/services/documents/diff-service.ts",
+          "line": 173,
+          "link": "[src/main/services/documents/diff-service.ts:173](../../src/main/services/documents/diff-service.ts#L173)"
+        }
+      ],
+      "acceptance": "AV03"
+    },
+    {
+      "id": "PF-02.04",
+      "parent": "PF-02",
+      "obligation": "读取失败保留旧正文并说明原因",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "hook契约和错误状态存在；需读失败夹具",
+      "roadmap_line": 499,
+      "evidence": [
+        {
+          "path": "src/renderer/src/reader/use-document-reader.ts",
+          "line": 24,
+          "link": "[src/renderer/src/reader/use-document-reader.ts:24](../../src/renderer/src/reader/use-document-reader.ts#L24)"
+        }
+      ],
+      "acceptance": "AV03"
+    },
+    {
+      "id": "PF-02.05",
+      "parent": "PF-02",
+      "obligation": "坏JSON/缺文件/无Git仍能理解并中性降级",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "既有文档诊断/diff路径；不代表新增工具所有错误场景已验",
+      "roadmap_line": 499,
+      "evidence": [
+        {
+          "path": "src/main/services/documents/controller.ts",
+          "line": 111,
+          "link": "[src/main/services/documents/controller.ts:111](../../src/main/services/documents/controller.ts#L111)"
+        },
+        {
+          "path": "src/main/services/documents/diff-service.ts",
+          "line": 213,
+          "link": "[src/main/services/documents/diff-service.ts:213](../../src/main/services/documents/diff-service.ts#L213)"
+        }
+      ],
+      "acceptance": "AV03"
+    },
+    {
+      "id": "PF-03.01",
+      "parent": "PF-03",
+      "obligation": "生命周期字段不由面板直接改写",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "adapter不发送status、scan白名单仍排除；本轮静态确认",
+      "roadmap_line": 500,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/adapter.ts",
+          "line": 185,
+          "link": "[src/renderer/src/my/adapter.ts:185](../../src/renderer/src/my/adapter.ts#L185)"
+        },
+        {
+          "path": "src/main/services/scan.ts",
+          "line": 443,
+          "link": "[src/main/services/scan.ts:443](../../src/main/services/scan.ts#L443)"
+        }
+      ],
+      "acceptance": "AV04"
+    },
+    {
+      "id": "PF-03.02",
+      "parent": "PF-03",
+      "obligation": "白名单外字段ignored得到用户可见反馈",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "IPC透传ignored及store toast存在；未执行真实文件patch",
+      "roadmap_line": 500,
+      "evidence": [
+        {
+          "path": "src/main/ipc/tasks.ts",
+          "line": 36,
+          "link": "[src/main/ipc/tasks.ts:36](../../src/main/ipc/tasks.ts#L36)"
+        },
+        {
+          "path": "src/renderer/src/my/store.ts",
+          "line": 235,
+          "link": "[src/renderer/src/my/store.ts:235](../../src/renderer/src/my/store.ts#L235)"
+        }
+      ],
+      "acceptance": "AV04"
+    },
+    {
+      "id": "PF-03.03",
+      "parent": "PF-03",
+      "obligation": "列表/表格提供实际task.py命令而非假保存",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "命令映射和复制成功逻辑存在；既有原生文字仅证复制archive",
+      "roadmap_line": 500,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/pages/WorkItemsPage.tsx",
+          "line": 380,
+          "link": "[src/renderer/src/my/pages/WorkItemsPage.tsx:380](../../src/renderer/src/my/pages/WorkItemsPage.tsx#L380)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 71,
+          "link": "[docs/roadmap_v2.md:71](../roadmap_v2.md#L71)"
+        }
+      ],
+      "acceptance": "AV04"
+    },
+    {
+      "id": "PF-03.04",
+      "parent": "PF-03",
+      "obligation": "拖拽/批量路径不暗中绕开生命周期权威",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "拖拽只复制命令、批量状态入口去除；未端到端覆盖所有视图",
+      "roadmap_line": 500,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/pages/WorkItemsPage.tsx",
+          "line": 1052,
+          "link": "[src/renderer/src/my/pages/WorkItemsPage.tsx:1052](../../src/renderer/src/my/pages/WorkItemsPage.tsx#L1052)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/WorkItemsPage.tsx",
+          "line": 1517,
+          "link": "[src/renderer/src/my/pages/WorkItemsPage.tsx:1517](../../src/renderer/src/my/pages/WorkItemsPage.tsx#L1517)"
+        }
+      ],
+      "acceptance": "AV04"
+    },
+    {
+      "id": "PF-04.01",
+      "parent": "PF-04",
+      "obligation": "普通创建实际生成任务与原始描述PRD",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "创建IPC提供prdContent，创建器写文件；未真实创建业务任务",
+      "roadmap_line": 501,
+      "evidence": [
+        {
+          "path": "src/main/ipc/tasks.ts",
+          "line": 147,
+          "link": "[src/main/ipc/tasks.ts:147](../../src/main/ipc/tasks.ts#L147)"
+        },
+        {
+          "path": "src/main/state.ts",
+          "line": 420,
+          "link": "[src/main/state.ts:420](../../src/main/state.ts#L420)"
+        }
+      ],
+      "acceptance": "AV05"
+    },
+    {
+      "id": "PF-04.02",
+      "parent": "PF-04",
+      "obligation": "AI计划确认后生成描述、子任务、待确认问题PRD",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "计划IPC构建各段、完成页显示files/warnings；未调用模型",
+      "roadmap_line": 501,
+      "evidence": [
+        {
+          "path": "src/main/ipc/planning.ts",
+          "line": 30,
+          "link": "[src/main/ipc/planning.ts:30](../../src/main/ipc/planning.ts#L30)"
+        },
+        {
+          "path": "src/renderer/src/components/PlanningModal.tsx",
+          "line": 284,
+          "link": "[src/renderer/src/components/PlanningModal.tsx:284](../../src/renderer/src/components/PlanningModal.tsx#L284)"
+        }
+      ],
+      "acceptance": "AV05"
+    },
+    {
+      "id": "PF-04.03",
+      "parent": "PF-04",
+      "obligation": "普通入口显示真实files/warnings和失败结果",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "P04/P05隔离探针：ok=false仍返回旧id；PRD警告被丢弃",
+      "roadmap_line": 501,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/store.ts",
+          "line": 254,
+          "link": "[src/renderer/src/my/store.ts:254](../../src/renderer/src/my/store.ts#L254)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/work-items/CreateIssueModal.tsx",
+          "line": 32,
+          "link": "[src/renderer/src/my/pages/work-items/CreateIssueModal.tsx:32](../../src/renderer/src/my/pages/work-items/CreateIssueModal.tsx#L32)"
+        }
+      ],
+      "acceptance": "AV05"
+    },
+    {
+      "id": "PF-04.04",
+      "parent": "PF-04",
+      "obligation": "重复/同名普通创建不得冒充新建成功",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "P04返回old-task；真实弹窗时序未运行",
+      "roadmap_line": 501,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/store.ts",
+          "line": 257,
+          "link": "[src/renderer/src/my/store.ts:257](../../src/renderer/src/my/store.ts#L257)"
+        },
+        {
+          "path": "src/main/state.ts",
+          "line": 429,
+          "link": "[src/main/state.ts:429](../../src/main/state.ts#L429)"
+        }
+      ],
+      "acceptance": "AV05"
+    },
+    {
+      "id": "PF-04.05",
+      "parent": "PF-04",
+      "obligation": "Jira重复导入打开原任务，恢复中断不重复创建",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "既有LocalTaskService幂等/对账路径和旧smoke存在；本轮未运行Jira",
+      "roadmap_line": 501,
+      "evidence": [
+        {
+          "path": "src/main/services/local-task/index.ts",
+          "line": 143,
+          "link": "[src/main/services/local-task/index.ts:143](../../src/main/services/local-task/index.ts#L143)"
+        },
+        {
+          "path": "src/main/services/local-task/index.ts",
+          "line": 181,
+          "link": "[src/main/services/local-task/index.ts:181](../../src/main/services/local-task/index.ts#L181)"
+        }
+      ],
+      "acceptance": "AV06"
+    },
+    {
+      "id": "PF-04.06",
+      "parent": "PF-04",
+      "obligation": "已有用户PRD不覆盖，部分产物失败明确告知",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "创建器有存在检查及warning；普通UI没有消费warning；竞争/中断未验",
+      "roadmap_line": 501,
+      "evidence": [
+        {
+          "path": "src/main/state.ts",
+          "line": 475,
+          "link": "[src/main/state.ts:475](../../src/main/state.ts#L475)"
+        },
+        {
+          "path": "src/renderer/src/my/store.ts",
+          "line": 257,
+          "link": "[src/renderer/src/my/store.ts:257](../../src/renderer/src/my/store.ts#L257)"
+        }
+      ],
+      "acceptance": "AV05"
+    },
+    {
+      "id": "PF-04.07",
+      "parent": "PF-04",
+      "obligation": "各入口的声明与实际文件逐一核对",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "证据不足",
+      "verification": "有构建/实施文字；未见三入口错误与重试完整行为证据",
+      "roadmap_line": 501,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 49,
+          "link": "[docs/roadmap_v2.md:49](../roadmap_v2.md#L49)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 561,
+          "link": "[docs/roadmap_v2.md:561](../roadmap_v2.md#L561)"
+        }
+      ],
+      "acceptance": "AV05"
+    },
+    {
+      "id": "PF-05.01",
+      "parent": "PF-05",
+      "obligation": "计划清单/assembled/emitted/模型遵守不同级别",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "观测面板有事实等级及措辞；本轮未执行全事件链",
+      "roadmap_line": 502,
+      "evidence": [
+        {
+          "path": "src/renderer/src/observation/ObservationPanel.tsx",
+          "line": 30,
+          "link": "[src/renderer/src/observation/ObservationPanel.tsx:30](../../src/renderer/src/observation/ObservationPanel.tsx#L30)"
+        },
+        {
+          "path": "src/renderer/src/observation/ObservationPanel.tsx",
+          "line": 105,
+          "link": "[src/renderer/src/observation/ObservationPanel.tsx:105](../../src/renderer/src/observation/ObservationPanel.tsx#L105)"
+        }
+      ],
+      "acceptance": "AV07"
+    },
+    {
+      "id": "PF-05.02",
+      "parent": "PF-05",
+      "obligation": "回执保留来源与工程/任务范围，不挂错任务",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "证据不足",
+      "verification": "存在归属实现与旧记录；跨页面/迟到/并发组合未逐项重验",
+      "roadmap_line": 502,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 502,
+          "link": "[docs/roadmap_v2.md:502](../roadmap_v2.md#L502)"
+        },
+        {
+          "path": "src/renderer/src/observation/use-observation-scope.ts",
+          "line": 1,
+          "link": "[src/renderer/src/observation/use-observation-scope.ts:1](../../src/renderer/src/observation/use-observation-scope.ts#L1)"
+        }
+      ],
+      "acceptance": "AV07"
+    },
+    {
+      "id": "PF-05.03",
+      "parent": "PF-05",
+      "obligation": "Flow通过不自动等于外部Trellis/业务验收通过",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "Flow独立服务和运行状态；不能从现存服务证明所有文案均正确",
+      "roadmap_line": 502,
+      "evidence": [
+        {
+          "path": "src/main/services/flow-run.ts",
+          "line": 34,
+          "link": "[src/main/services/flow-run.ts:34](../../src/main/services/flow-run.ts#L34)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 502,
+          "link": "[docs/roadmap_v2.md:502](../roadmap_v2.md#L502)"
+        }
+      ],
+      "acceptance": "AV07"
+    },
+    {
+      "id": "PF-06.01",
+      "parent": "PF-06",
+      "obligation": "继续复用现有acpx及Codex/Claude基础",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "历史核心矩阵有通过记录；本轮未启动Agent",
+      "roadmap_line": 503,
+      "evidence": [
+        {
+          "path": "src/main/services/acp.ts",
+          "line": 6,
+          "link": "[src/main/services/acp.ts:6](../../src/main/services/acp.ts#L6)"
+        },
+        {
+          "path": ".trellis/tasks/10-16-acp-runtime-foundation/validation.md",
+          "line": 39,
+          "link": "[.trellis/tasks/10-16-acp-runtime-foundation/validation.md:39](../../.trellis/tasks/10-16-acp-runtime-foundation/validation.md#L39)"
+        }
+      ],
+      "acceptance": "AV08"
+    },
+    {
+      "id": "PF-06.02",
+      "parent": "PF-06",
+      "obligation": "显式启动与发送；忙时草稿不自动排队",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "服务显式入口及原矩阵；非本次新验收",
+      "roadmap_line": 503,
+      "evidence": [
+        {
+          "path": "src/main/services/acp.ts",
+          "line": 312,
+          "link": "[src/main/services/acp.ts:312](../../src/main/services/acp.ts#L312)"
+        },
+        {
+          "path": "src/main/services/acp.ts",
+          "line": 378,
+          "link": "[src/main/services/acp.ts:378](../../src/main/services/acp.ts#L378)"
+        },
+        {
+          "path": ".trellis/tasks/10-16-acp-runtime-foundation/validation.md",
+          "line": 54,
+          "link": "[.trellis/tasks/10-16-acp-runtime-foundation/validation.md:54](../../.trellis/tasks/10-16-acp-runtime-foundation/validation.md#L54)"
+        }
+      ],
+      "acceptance": "AV08"
+    },
+    {
+      "id": "PF-06.03",
+      "parent": "PF-06",
+      "obligation": "权限/取消/恢复按真实结果与归属处理",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "owned guard和取消状态存在；旧核心通过记录",
+      "roadmap_line": 503,
+      "evidence": [
+        {
+          "path": "src/main/services/acp.ts",
+          "line": 246,
+          "link": "[src/main/services/acp.ts:246](../../src/main/services/acp.ts#L246)"
+        },
+        {
+          "path": "src/main/services/acp.ts",
+          "line": 446,
+          "link": "[src/main/services/acp.ts:446](../../src/main/services/acp.ts#L446)"
+        },
+        {
+          "path": ".trellis/tasks/10-16-acp-runtime-foundation/validation.md",
+          "line": 49,
+          "link": "[.trellis/tasks/10-16-acp-runtime-foundation/validation.md:49](../../.trellis/tasks/10-16-acp-runtime-foundation/validation.md#L49)"
+        }
+      ],
+      "acceptance": "AV08"
+    },
+    {
+      "id": "PF-06.04",
+      "parent": "PF-06",
+      "obligation": "会话恢复和材料绑定不等于业务状态流转",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "现存",
+      "verification": "材料快照与历史接受记录；本轮不验证真实厂商",
+      "roadmap_line": 503,
+      "evidence": [
+        {
+          "path": "src/main/services/acp.ts",
+          "line": 398,
+          "link": "[src/main/services/acp.ts:398](../../src/main/services/acp.ts#L398)"
+        },
+        {
+          "path": ".trellis/tasks/10-16-acp-runtime-foundation/validation.md",
+          "line": 46,
+          "link": "[.trellis/tasks/10-16-acp-runtime-foundation/validation.md:46](../../.trellis/tasks/10-16-acp-runtime-foundation/validation.md#L46)"
+        }
+      ],
+      "acceptance": "AV08"
+    },
+    {
+      "id": "PF-06.05",
+      "parent": "PF-06",
+      "obligation": "系统IME、配置操作、草稿切换原生余项完成",
+      "scope": "既有能力/收尾验证；不能据此认定zcode本次应重做",
+      "implementation": "证据不足",
+      "verification": "原验收明确pending native；后续实施记录记载未动ACP",
+      "roadmap_line": 503,
+      "evidence": [
+        {
+          "path": ".trellis/tasks/10-16-acp-runtime-foundation/validation.md",
+          "line": 56,
+          "link": "[.trellis/tasks/10-16-acp-runtime-foundation/validation.md:56](../../.trellis/tasks/10-16-acp-runtime-foundation/validation.md#L56)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 503,
+          "link": "[docs/roadmap_v2.md:503](../roadmap_v2.md#L503)"
+        }
+      ],
+      "acceptance": "AV08"
+    },
+    {
+      "id": "PF-07.01",
+      "parent": "PF-07",
+      "obligation": "原问题/整理结果/未决问题留回同一任务资料",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "普通和计划PRD不同来源段落；真实澄清效果仍未验",
+      "roadmap_line": 504,
+      "evidence": [
+        {
+          "path": "src/main/ipc/tasks.ts",
+          "line": 147,
+          "link": "[src/main/ipc/tasks.ts:147](../../src/main/ipc/tasks.ts#L147)"
+        },
+        {
+          "path": "src/main/ipc/planning.ts",
+          "line": 38,
+          "link": "[src/main/ipc/planning.ts:38](../../src/main/ipc/planning.ts#L38)"
+        }
+      ],
+      "acceptance": "AV05"
+    },
+    {
+      "id": "PF-07.02",
+      "parent": "PF-07",
+      "obligation": "用户选取本地相关资料后可连续阅读",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "收尾时新增资料复制入口可定位；没有本轮真实粗需求→澄清/连续阅读样本",
+      "roadmap_line": 504,
+      "evidence": [
+        {
+          "path": "src/renderer/src/reader/use-document-reader.ts",
+          "line": 15,
+          "link": "[src/renderer/src/reader/use-document-reader.ts:15](../../src/renderer/src/reader/use-document-reader.ts#L15)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/IssuePeek.tsx",
+          "line": 137,
+          "link": "[src/renderer/src/my/pages/IssuePeek.tsx:137](../../src/renderer/src/my/pages/IssuePeek.tsx#L137)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 504,
+          "link": "[docs/roadmap_v2.md:504](../roadmap_v2.md#L504)"
+        }
+      ],
+      "acceptance": "AV09"
+    },
+    {
+      "id": "PF-07.03",
+      "parent": "PF-07",
+      "obligation": "创建计划不自动开始Agent或视作已获实施确认",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "createFromPlan固定planning；handoff默认只核对；未扩团队审批",
+      "roadmap_line": 504,
+      "evidence": [
+        {
+          "path": "src/main/ipc/planning.ts",
+          "line": 48,
+          "link": "[src/main/ipc/planning.ts:48](../../src/main/ipc/planning.ts#L48)"
+        },
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 22,
+          "link": "[src/main/services/handoff.ts:22](../../src/main/services/handoff.ts#L22)"
+        }
+      ],
+      "acceptance": "AV09"
+    },
+    {
+      "id": "PF-08.01",
+      "parent": "PF-08",
+      "obligation": "计划完成页与详情统一交接出口",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "旧handoff已移除，新接口共用；两入口完整UI比对未运行",
+      "roadmap_line": 505,
+      "evidence": [
+        {
+          "path": "src/main/ipc/planning.ts",
+          "line": 67,
+          "link": "[src/main/ipc/planning.ts:67](../../src/main/ipc/planning.ts#L67)"
+        },
+        {
+          "path": "src/renderer/src/components/PlanningModal.tsx",
+          "line": 306,
+          "link": "[src/renderer/src/components/PlanningModal.tsx:306](../../src/renderer/src/components/PlanningModal.tsx#L306)"
+        },
+        {
+          "path": "src/main/ipc/tasks.ts",
+          "line": 180,
+          "link": "[src/main/ipc/tasks.ts:180](../../src/main/ipc/tasks.ts#L180)"
+        }
+      ],
+      "acceptance": "AV10"
+    },
+    {
+      "id": "PF-08.02",
+      "parent": "PF-08",
+      "obligation": "交接默认只阅读，不自动建任务/开工/归档",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "确定性文本及默认意图存在",
+      "roadmap_line": 505,
+      "evidence": [
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 22,
+          "link": "[src/main/services/handoff.ts:22](../../src/main/services/handoff.ts#L22)"
+        },
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 85,
+          "link": "[src/main/services/handoff.ts:85](../../src/main/services/handoff.ts#L85)"
+        }
+      ],
+      "acceptance": "AV10"
+    },
+    {
+      "id": "PF-08.03",
+      "parent": "PF-08",
+      "obligation": "真实文件清单与无法读取问题如实告知",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "P06：exists为真但PRD读取失败→issues=[]并称无问题",
+      "roadmap_line": 505,
+      "evidence": [
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 51,
+          "link": "[src/main/services/handoff.ts:51](../../src/main/services/handoff.ts#L51)"
+        },
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 103,
+          "link": "[src/main/services/handoff.ts:103](../../src/main/services/handoff.ts#L103)"
+        },
+        {
+          "path": "src/main/ipc/tasks.ts",
+          "line": 185,
+          "link": "[src/main/ipc/tasks.ts:185](../../src/main/ipc/tasks.ts#L185)"
+        }
+      ],
+      "acceptance": "AV10"
+    },
+    {
+      "id": "PF-08.04",
+      "parent": "PF-08",
+      "obligation": "上次结果、本次增量、缺项、下一步可从接续说明获得",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "P07仅生成索引/阶段/意图；未见真实使用证明已有资料等效满足",
+      "roadmap_line": 505,
+      "evidence": [
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 77,
+          "link": "[src/main/services/handoff.ts:77](../../src/main/services/handoff.ts#L77)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 505,
+          "link": "[docs/roadmap_v2.md:505](../roadmap_v2.md#L505)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 677,
+          "link": "[docs/roadmap_v2.md:677](../roadmap_v2.md#L677)"
+        }
+      ],
+      "acceptance": "AV11"
+    },
+    {
+      "id": "PF-08.05",
+      "parent": "PF-08",
+      "obligation": "父子关联经受控命令持久化，失败不伪造链接",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "handler检查退出码；peek有部分失败提示；原生记录只证提示可见",
+      "roadmap_line": 505,
+      "evidence": [
+        {
+          "path": "src/main/ipc/tasks.ts",
+          "line": 282,
+          "link": "[src/main/ipc/tasks.ts:282](../../src/main/ipc/tasks.ts#L282)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/IssuePeek.tsx",
+          "line": 166,
+          "link": "[src/renderer/src/my/pages/IssuePeek.tsx:166](../../src/renderer/src/my/pages/IssuePeek.tsx#L166)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 72,
+          "link": "[docs/roadmap_v2.md:72](../roadmap_v2.md#L72)"
+        }
+      ],
+      "acceptance": "AV12"
+    },
+    {
+      "id": "PF-08.06",
+      "parent": "PF-08",
+      "obligation": "隔天/换工具/真实返工能继续原任务",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "证据不足",
+      "verification": "原记录仍缺真实样本；不能以复制材料按钮代替",
+      "roadmap_line": 505,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 505,
+          "link": "[docs/roadmap_v2.md:505](../roadmap_v2.md#L505)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 593,
+          "link": "[docs/roadmap_v2.md:593](../roadmap_v2.md#L593)"
+        }
+      ],
+      "acceptance": "AV11"
+    },
+    {
+      "id": "PF-09.01",
+      "parent": "PF-09",
+      "obligation": "当前仓库分支、基线、暂存/未暂存/未跟踪分组",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "Git读取服务与UI存在，记录一次本仓库观察",
+      "roadmap_line": 506,
+      "evidence": [
+        {
+          "path": "src/main/services/devtools-git.ts",
+          "line": 34,
+          "link": "[src/main/services/devtools-git.ts:34](../../src/main/services/devtools-git.ts#L34)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 62,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:62](../../src/renderer/src/my/pages/DevToolsPage.tsx#L62)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 68,
+          "link": "[docs/roadmap_v2.md:68](../roadmap_v2.md#L68)"
+        }
+      ],
+      "acceptance": "AV13"
+    },
+    {
+      "id": "PF-09.02",
+      "parent": "PF-09",
+      "obligation": "新入口只发读取类Git命令且相对路径受限",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "参数只含status/log/diff等，contained检查；未完整恶意路径测试",
+      "roadmap_line": 506,
+      "evidence": [
+        {
+          "path": "src/main/services/devtools-git.ts",
+          "line": 94,
+          "link": "[src/main/services/devtools-git.ts:94](../../src/main/services/devtools-git.ts#L94)"
+        },
+        {
+          "path": "src/main/services/devtools-git.ts",
+          "line": 105,
+          "link": "[src/main/services/devtools-git.ts:105](../../src/main/services/devtools-git.ts#L105)"
+        }
+      ],
+      "acceptance": "AV13"
+    },
+    {
+      "id": "PF-09.03",
+      "parent": "PF-09",
+      "obligation": "非Git项目中性降级，不阻挡任务阅读",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "服务分支存在；原生记录明确未触发该场景",
+      "roadmap_line": 506,
+      "evidence": [
+        {
+          "path": "src/main/services/devtools-git.ts",
+          "line": 39,
+          "link": "[src/main/services/devtools-git.ts:39](../../src/main/services/devtools-git.ts#L39)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 68,
+          "link": "[docs/roadmap_v2.md:68](../roadmap_v2.md#L68)"
+        }
+      ],
+      "acceptance": "AV13"
+    },
+    {
+      "id": "PF-09.04",
+      "parent": "PF-09",
+      "obligation": "Diff有截断与二进制说明",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "返回值/UI有截断标记；底层git缓冲先全量收集，未测极大输出",
+      "roadmap_line": 506,
+      "evidence": [
+        {
+          "path": "src/main/services/devtools-git.ts",
+          "line": 115,
+          "link": "[src/main/services/devtools-git.ts:115](../../src/main/services/devtools-git.ts#L115)"
+        },
+        {
+          "path": "src/main/services/git.ts",
+          "line": 15,
+          "link": "[src/main/services/git.ts:15](../../src/main/services/git.ts#L15)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 145,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:145](../../src/renderer/src/my/pages/DevToolsPage.tsx#L145)"
+        }
+      ],
+      "acceptance": "AV13"
+    },
+    {
+      "id": "PF-09.05",
+      "parent": "PF-09",
+      "obligation": "多仓库如启用须标明各来源",
+      "scope": "条件义务：是否选择/配置未知；不自动认定为本批必做缺失",
+      "implementation": "证据不足",
+      "verification": "当前Git IPC只读当前root；是否本批选择多仓库未知",
+      "roadmap_line": 506,
+      "evidence": [
+        {
+          "path": "src/main/ipc/devtools.ts",
+          "line": 11,
+          "link": "[src/main/ipc/devtools.ts:11](../../src/main/ipc/devtools.ts#L11)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 506,
+          "link": "[docs/roadmap_v2.md:506](../roadmap_v2.md#L506)"
+        }
+      ],
+      "acceptance": "AV13"
+    },
+    {
+      "id": "PF-10.01",
+      "parent": "PF-10",
+      "obligation": "目录、脚本来源与拟执行命令可核对",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "package.json发现和UI选择器存在；真实多工程未完成",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 19,
+          "link": "[src/main/services/dev-run.ts:19](../../src/main/services/dev-run.ts#L19)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 329,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:329](../../src/renderer/src/my/pages/DevToolsPage.tsx#L329)"
+        }
+      ],
+      "acceptance": "AV14"
+    },
+    {
+      "id": "PF-10.02",
+      "parent": "PF-10",
+      "obligation": "脚本名称按选中的名称准确执行，不被shell再拆分",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "P02/P03捕获Windows未引用命令文本；未执行任何shell",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 79,
+          "link": "[src/main/services/dev-run.ts:79](../../src/main/services/dev-run.ts#L79)"
+        }
+      ],
+      "acceptance": "AV14"
+    },
+    {
+      "id": "PF-10.03",
+      "parent": "PF-10",
+      "obligation": "输出、退出码/信号与运行归属显示真实",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "run字段和close处理存在；记录一次typecheck；本轮未跑工程脚本",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 90,
+          "link": "[src/main/services/dev-run.ts:90](../../src/main/services/dev-run.ts#L90)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 376,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:376](../../src/renderer/src/my/pages/DevToolsPage.tsx#L376)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 69,
+          "link": "[docs/roadmap_v2.md:69](../roadmap_v2.md#L69)"
+        }
+      ],
+      "acceptance": "AV14"
+    },
+    {
+      "id": "PF-10.04",
+      "parent": "PF-10",
+      "obligation": "停止只作用于面板拥有的运行",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "只从内部Map取child/pid；非面板进程保护未做真实验证",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 118,
+          "link": "[src/main/services/dev-run.ts:118](../../src/main/services/dev-run.ts#L118)"
+        }
+      ],
+      "acceptance": "AV15"
+    },
+    {
+      "id": "PF-10.05",
+      "parent": "PF-10",
+      "obligation": "停止请求与已确认停止分开，不提前成功",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "P01累计stopped=1时state仍running；UI立即显示已停止",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 137,
+          "link": "[src/main/services/dev-run.ts:137](../../src/main/services/dev-run.ts#L137)"
+        },
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 145,
+          "link": "[src/main/services/dev-run.ts:145](../../src/main/services/dev-run.ts#L145)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 288,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:288](../../src/renderer/src/my/pages/DevToolsPage.tsx#L288)"
+        }
+      ],
+      "acceptance": "AV15"
+    },
+    {
+      "id": "PF-10.06",
+      "parent": "PF-10",
+      "obligation": "暂停日志跟随不停止进程",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "RunConsole仅改变follow/scroll；原生行为未独立验证",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 174,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:174](../../src/renderer/src/my/pages/DevToolsPage.tsx#L174)"
+        }
+      ],
+      "acceptance": "AV14"
+    },
+    {
+      "id": "PF-10.07",
+      "parent": "PF-10",
+      "obligation": "多工程明确顺序和每项启动/失败结果",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "仅顺序发起spawn；异步退出不在组合汇总；没有完整组合验收",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 265,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:265](../../src/renderer/src/my/pages/DevToolsPage.tsx#L265)"
+        },
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 93,
+          "link": "[src/main/services/dev-run.ts:93](../../src/main/services/dev-run.ts#L93)"
+        }
+      ],
+      "acceptance": "AV16"
+    },
+    {
+      "id": "PF-10.08",
+      "parent": "PF-10",
+      "obligation": "没有任何可用脚本时不报告组合启动成功",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "静态：空picked全部continue，dirs>0仍走success分支；未UI复现",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 265,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:265](../../src/renderer/src/my/pages/DevToolsPage.tsx#L265)"
+        }
+      ],
+      "acceptance": "AV16"
+    },
+    {
+      "id": "PF-10.09",
+      "parent": "PF-10",
+      "obligation": "连续点击/中断时不无意重复启动组合",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "证据不足",
+      "verification": "startCombo未设busy或防重标记；静态风险，尚未交互复现",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 265,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:265](../../src/renderer/src/my/pages/DevToolsPage.tsx#L265)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 313,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:313](../../src/renderer/src/my/pages/DevToolsPage.tsx#L313)"
+        }
+      ],
+      "acceptance": "AV16"
+    },
+    {
+      "id": "PF-10.10",
+      "parent": "PF-10",
+      "obligation": "就绪条件若定义须按真实条件判断，否则仅称进程存活",
+      "scope": "条件义务：是否选择/配置未知；不自动认定为本批必做缺失",
+      "implementation": "部分",
+      "verification": "无就绪检查时中性措辞已实现；条件配置/依赖图没有实现证据",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 168,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:168](../../src/renderer/src/my/pages/DevToolsPage.tsx#L168)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 323,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:323](../../src/renderer/src/my/pages/DevToolsPage.tsx#L323)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 168,
+          "link": "[docs/roadmap_v2.md:168](../roadmap_v2.md#L168)"
+        }
+      ],
+      "acceptance": "AV16"
+    },
+    {
+      "id": "PF-10.11",
+      "parent": "PF-10",
+      "obligation": "真实前后端/多工程长期运行、部分失败、停止可复查",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "证据不足",
+      "verification": "roadmap仍列真实组合/长驻停止为待测；不等于程序全缺失",
+      "roadmap_line": 507,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 70,
+          "link": "[docs/roadmap_v2.md:70](../roadmap_v2.md#L70)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 75,
+          "link": "[docs/roadmap_v2.md:75](../roadmap_v2.md#L75)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 507,
+          "link": "[docs/roadmap_v2.md:507](../roadmap_v2.md#L507)"
+        }
+      ],
+      "acceptance": "AV16"
+    },
+    {
+      "id": "PF-11.01",
+      "parent": "PF-11",
+      "obligation": "集中呈现本次变化、检查、未覆盖、已知问题和继续方式",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "索引/PRD/意图有代码；未形成完整结果摘要或等效使用证据",
+      "roadmap_line": 508,
+      "evidence": [
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 77,
+          "link": "[src/main/services/handoff.ts:77](../../src/main/services/handoff.ts#L77)"
+        },
+        {
+          "path": "src/renderer/src/pages/TaskDetail.tsx",
+          "line": 269,
+          "link": "[src/renderer/src/pages/TaskDetail.tsx:269](../../src/renderer/src/pages/TaskDetail.tsx#L269)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 508,
+          "link": "[docs/roadmap_v2.md:508](../roadmap_v2.md#L508)"
+        }
+      ],
+      "acceptance": "AV11"
+    },
+    {
+      "id": "PF-11.02",
+      "parent": "PF-11",
+      "obligation": "业务认可、检查通过、归档、Jira与发布分别决定",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "归档直写禁用，Jira单独外部动作；全部组合未验",
+      "roadmap_line": 508,
+      "evidence": [
+        {
+          "path": "src/main/ipc/tasks.ts",
+          "line": 27,
+          "link": "[src/main/ipc/tasks.ts:27](../../src/main/ipc/tasks.ts#L27)"
+        },
+        {
+          "path": "src/main/ipc/jira.ts",
+          "line": 28,
+          "link": "[src/main/ipc/jira.ts:28](../../src/main/ipc/jira.ts#L28)"
+        }
+      ],
+      "acceptance": "AV17"
+    },
+    {
+      "id": "PF-11.03",
+      "parent": "PF-11",
+      "obligation": "本地任务无需Jira或发布也能收尾",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "普通本地创建、命令提示和handoff均不要求Jira",
+      "roadmap_line": 508,
+      "evidence": [
+        {
+          "path": "src/main/ipc/tasks.ts",
+          "line": 147,
+          "link": "[src/main/ipc/tasks.ts:147](../../src/main/ipc/tasks.ts#L147)"
+        },
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 28,
+          "link": "[src/main/services/handoff.ts:28](../../src/main/services/handoff.ts#L28)"
+        }
+      ],
+      "acceptance": "AV17"
+    },
+    {
+      "id": "PF-11.04",
+      "parent": "PF-11",
+      "obligation": "实际接手者能说清目标、结果、未测、下一步",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "证据不足",
+      "verification": "真实第二人接手仍not_run；原生“生成成功”只覆盖索引",
+      "roadmap_line": 508,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 55,
+          "link": "[docs/roadmap_v2.md:55](../roadmap_v2.md#L55)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 73,
+          "link": "[docs/roadmap_v2.md:73](../roadmap_v2.md#L73)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 617,
+          "link": "[docs/roadmap_v2.md:617](../roadmap_v2.md#L617)"
+        }
+      ],
+      "acceptance": "AV11"
+    },
+    {
+      "id": "PN-01.01",
+      "parent": "PN-01",
+      "obligation": "原字段/用户改动保留，不引入生命周期双主",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "scan保留原record，白名单排除status；创建/更新竞争仍需夹具",
+      "roadmap_line": 516,
+      "evidence": [
+        {
+          "path": "src/main/services/scan.ts",
+          "line": 449,
+          "link": "[src/main/services/scan.ts:449](../../src/main/services/scan.ts#L449)"
+        },
+        {
+          "path": "src/main/state.ts",
+          "line": 429,
+          "link": "[src/main/state.ts:429](../../src/main/state.ts#L429)"
+        }
+      ],
+      "acceptance": "AV04"
+    },
+    {
+      "id": "PN-02.01",
+      "parent": "PN-02",
+      "obligation": "每次动作与迟到事件保持root/task/session归属",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "文档/ACP有归属校验；新运行仅dir/id、全局列表，适用全局/项目范围未定义",
+      "roadmap_line": 517,
+      "evidence": [
+        {
+          "path": "src/main/services/acp.ts",
+          "line": 378,
+          "link": "[src/main/services/acp.ts:378](../../src/main/services/acp.ts#L378)"
+        },
+        {
+          "path": "src/renderer/src/reader/use-document-reader.ts",
+          "line": 93,
+          "link": "[src/renderer/src/reader/use-document-reader.ts:93](../../src/renderer/src/reader/use-document-reader.ts#L93)"
+        },
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 35,
+          "link": "[src/main/services/dev-run.ts:35](../../src/main/services/dev-run.ts#L35)"
+        },
+        {
+          "path": "src/main/ipc/devtools.ts",
+          "line": 44,
+          "link": "[src/main/ipc/devtools.ts:44](../../src/main/ipc/devtools.ts#L44)"
+        }
+      ],
+      "acceptance": "AV01"
+    },
+    {
+      "id": "PN-03.01",
+      "parent": "PN-03",
+      "obligation": "文件更新/回合/进程/就绪/检查/业务/发布不混同",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "多处边界文案正确；全部停止仍把请求当完成",
+      "roadmap_line": 518,
+      "evidence": [
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 168,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:168](../../src/renderer/src/my/pages/DevToolsPage.tsx#L168)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 288,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:288](../../src/renderer/src/my/pages/DevToolsPage.tsx#L288)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 518,
+          "link": "[docs/roadmap_v2.md:518](../roadmap_v2.md#L518)"
+        }
+      ],
+      "acceptance": "AV15"
+    },
+    {
+      "id": "PN-04.01",
+      "parent": "PN-04",
+      "obligation": "失败保留可用旧内容与冲突用户内容",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "reader保留旧版，metadata mtime冲突保护；故障组合未全验",
+      "roadmap_line": 519,
+      "evidence": [
+        {
+          "path": "src/renderer/src/reader/use-document-reader.ts",
+          "line": 24,
+          "link": "[src/renderer/src/reader/use-document-reader.ts:24](../../src/renderer/src/reader/use-document-reader.ts#L24)"
+        },
+        {
+          "path": "src/main/services/scan.ts",
+          "line": 426,
+          "link": "[src/main/services/scan.ts:426](../../src/main/services/scan.ts#L426)"
+        }
+      ],
+      "acceptance": "AV03"
+    },
+    {
+      "id": "PN-04.02",
+      "parent": "PN-04",
+      "obligation": "外部结果未知先核对，不能自动重做副作用",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "证据不足",
+      "verification": "Jira有操作对账；未证明全部外部路径均满足，未做真实写回",
+      "roadmap_line": 519,
+      "evidence": [
+        {
+          "path": "src/main/services/local-task/index.ts",
+          "line": 230,
+          "link": "[src/main/services/local-task/index.ts:230](../../src/main/services/local-task/index.ts#L230)"
+        },
+        {
+          "path": "src/main/ipc/jira.ts",
+          "line": 28,
+          "link": "[src/main/ipc/jira.ts:28](../../src/main/ipc/jira.ts#L28)"
+        }
+      ],
+      "acceptance": "AV06"
+    },
+    {
+      "id": "PN-05.01",
+      "parent": "PN-05",
+      "obligation": "携带资料显式选择，默认不自动分享",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "PRD复选默认false，交接包含显式携带提示",
+      "roadmap_line": 520,
+      "evidence": [
+        {
+          "path": "src/renderer/src/pages/TaskDetail.tsx",
+          "line": 277,
+          "link": "[src/renderer/src/pages/TaskDetail.tsx:277](../../src/renderer/src/pages/TaskDetail.tsx#L277)"
+        },
+        {
+          "path": "src/main/services/handoff.ts",
+          "line": 93,
+          "link": "[src/main/services/handoff.ts:93](../../src/main/services/handoff.ts#L93)"
+        }
+      ],
+      "acceptance": "AV10"
+    },
+    {
+      "id": "PN-05.02",
+      "parent": "PN-05",
+      "obligation": "诊断不含凭据，并明确模型服务可能收到资料",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "证据不足",
+      "verification": "规划边界明确；未找到面向新日志与错误复制的脱敏专项证据",
+      "roadmap_line": 520,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 520,
+          "link": "[docs/roadmap_v2.md:520](../roadmap_v2.md#L520)"
+        },
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 91,
+          "link": "[src/main/services/dev-run.ts:91](../../src/main/services/dev-run.ts#L91)"
+        }
+      ],
+      "acceptance": "AV18"
+    },
+    {
+      "id": "PN-06.01",
+      "parent": "PN-06",
+      "obligation": "原生IME/草稿/焦点/Esc/窄宽/主题适用实测",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "原生亮色文字观察存在；IME/深色/全组合并未闭环",
+      "roadmap_line": 521,
+      "evidence": [
+        {
+          "path": ".trellis/tasks/10-16-acp-runtime-foundation/validation.md",
+          "line": 56,
+          "link": "[.trellis/tasks/10-16-acp-runtime-foundation/validation.md:56](../../.trellis/tasks/10-16-acp-runtime-foundation/validation.md#L56)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 75,
+          "link": "[docs/roadmap_v2.md:75](../roadmap_v2.md#L75)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 521,
+          "link": "[docs/roadmap_v2.md:521](../roadmap_v2.md#L521)"
+        }
+      ],
+      "acceptance": "AV02"
+    },
+    {
+      "id": "PN-07.01",
+      "parent": "PN-07",
+      "obligation": "复用固定acpx，不重复构建编码循环",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "现有import/固定运行层与原记录；后续变更未触及ACP主体",
+      "roadmap_line": 522,
+      "evidence": [
+        {
+          "path": "src/main/services/acp.ts",
+          "line": 6,
+          "link": "[src/main/services/acp.ts:6](../../src/main/services/acp.ts#L6)"
+        },
+        {
+          "path": ".trellis/tasks/10-16-acp-runtime-foundation/validation.md",
+          "line": 9,
+          "link": "[.trellis/tasks/10-16-acp-runtime-foundation/validation.md:9](../../.trellis/tasks/10-16-acp-runtime-foundation/validation.md#L9)"
+        }
+      ],
+      "acceptance": "AV08"
+    },
+    {
+      "id": "PN-07.02",
+      "parent": "PN-07",
+      "obligation": "运行资源有归属且可解释地停止/断开",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "部分",
+      "verification": "内部child句柄存在；退出确认/停止失败结果仍有缺口",
+      "roadmap_line": 522,
+      "evidence": [
+        {
+          "path": "src/main/services/dev-run.ts",
+          "line": 118,
+          "link": "[src/main/services/dev-run.ts:118](../../src/main/services/dev-run.ts#L118)"
+        },
+        {
+          "path": "src/renderer/src/my/pages/DevToolsPage.tsx",
+          "line": 288,
+          "link": "[src/renderer/src/my/pages/DevToolsPage.tsx:288](../../src/renderer/src/my/pages/DevToolsPage.tsx#L288)"
+        }
+      ],
+      "acceptance": "AV15"
+    },
+    {
+      "id": "PN-08.01",
+      "parent": "PN-08",
+      "obligation": "性能/可靠性目标有设备、数据量、步骤、阈值基线",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "缺失",
+      "verification": "仅规定以后确认；本批C2/C3缺可复查的目标/阈值，不能判断性能通过",
+      "roadmap_line": 523,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 523,
+          "link": "[docs/roadmap_v2.md:523](../roadmap_v2.md#L523)"
+        },
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 525,
+          "link": "[docs/roadmap_v2.md:525](../roadmap_v2.md#L525)"
+        }
+      ],
+      "acceptance": "AV18"
+    },
+    {
+      "id": "PN-08.02",
+      "parent": "PN-08",
+      "obligation": "估算只算剩余/新增工作，不虚构团队日历",
+      "scope": "可实施规划/约束；记录涉及的实现不能代替原始授权与逐项验收",
+      "implementation": "现存",
+      "verification": "roadmap明确不重估已完成工作，但不是实现验收证据",
+      "roadmap_line": 523,
+      "evidence": [
+        {
+          "path": "docs/roadmap_v2.md",
+          "line": 807,
+          "link": "[docs/roadmap_v2.md:807](../roadmap_v2.md#L807)"
+        }
+      ],
+      "acceptance": "AV18"
+    }
+  ]
+}

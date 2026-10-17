@@ -1,0 +1,39 @@
+{
+  "negative_tests": [
+    {
+      "test": "bad_viewport",
+      "rejected": true,
+      "failures": [
+        "FAIL UI03-agent-search-empty reasonable CSS viewport ",
+        "FAIL UI03-agent-search-empty explicit viewport versus crop ",
+        "FAIL UI03 corrected actual viewport "
+      ]
+    },
+    {
+      "test": "bad_encoded_size",
+      "rejected": true,
+      "failures": [
+        "FAIL UI03-agent-search-empty image dimensions match JPEG "
+      ]
+    },
+    {
+      "test": "unrelated_task_visual",
+      "rejected": true,
+      "failures": [
+        "FAIL U08 direct evidence remains structure only ",
+        "FAIL No unrelated image upgrades coverage ",
+        "FAIL UI CSV and JSON status and evidence agree "
+      ]
+    },
+    {
+      "test": "early_static_closure",
+      "rejected": true,
+      "failures": [
+        "FAIL Cross-stage UX cannot close on static fixtures "
+      ]
+    }
+  ],
+  "all_bad_artifacts_rejected": true,
+  "accepted_19_image_bytes_unchanged": true,
+  "scope": "validator regression checks only; no product execution"
+}

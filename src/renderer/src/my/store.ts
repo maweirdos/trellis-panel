@@ -235,6 +235,13 @@ export const useMy = create<MyStore>()((set, get) => ({
         const result = await api.updateTask(task.path, issueToTaskPatch(merged), task.taskJsonMtime)
         if (result && result.ok === false) {
           useApp.getState().pushToast({ kind: 'error', title: '保存失败', body: `${issue.name}: ${result.error ?? '未知错误'}` })
+        } else if (result && result.ignored && result.ignored.length > 0) {
+          // 白名单外字段未写入：如实告知，不冒充保存成功
+          useApp.getState().pushToast({
+            kind: 'warn',
+            title: '部分字段未保存',
+            body: `${issue.name}：${result.ignored.join('、')} 由 Trellis 工作流管理，面板不直接修改`
+          })
         }
         await useApp.getState().refresh()
       } catch (err) {

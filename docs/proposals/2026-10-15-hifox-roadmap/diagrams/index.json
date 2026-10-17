@@ -1,0 +1,92 @@
+[
+  {
+    "id": "01-business-flow",
+    "title": "需求到交付业务流程",
+    "source": "diagrams/01-business-flow.mmd",
+    "svg": "diagrams/01-business-flow.svg"
+  },
+  {
+    "id": "02-context-dfd",
+    "title": "上下文数据流图",
+    "source": "diagrams/02-context-dfd.mmd",
+    "svg": "diagrams/02-context-dfd.svg"
+  },
+  {
+    "id": "03-layered-dfd",
+    "title": "分层数据流与信任边界",
+    "source": "diagrams/03-layered-dfd.mmd",
+    "svg": "diagrams/03-layered-dfd.svg"
+  },
+  {
+    "id": "03b-execution-dfd",
+    "title": "执行与集成分层数据流",
+    "source": "diagrams/03b-execution-dfd.mmd",
+    "svg": "diagrams/03b-execution-dfd.svg"
+  },
+  {
+    "id": "04-reliable-operation",
+    "title": "外部动作部分成功与未知恢复",
+    "source": "diagrams/04-reliable-operation.mmd",
+    "svg": "diagrams/04-reliable-operation.svg"
+  },
+  {
+    "id": "05-core-entities",
+    "title": "核心实体关系图",
+    "source": "diagrams/05-core-entities.mmd",
+    "svg": "diagrams/05-core-entities.svg"
+  },
+  {
+    "id": "05b-approval-testing",
+    "title": "需求审批与测试实体关系",
+    "source": "diagrams/05b-approval-testing.mmd",
+    "svg": "diagrams/05b-approval-testing.svg"
+  },
+  {
+    "id": "06-run-state",
+    "title": "运行正常路径与取消",
+    "source": "diagrams/06-run-state.mmd",
+    "svg": "diagrams/06-run-state.svg"
+  },
+  {
+    "id": "06b-run-recovery",
+    "title": "变更hold与未知恢复",
+    "source": "diagrams/06b-run-recovery.mmd",
+    "svg": "diagrams/06b-run-recovery.svg"
+  },
+  {
+    "id": "07-roadmap-dependencies",
+    "title": "阶段依赖与支线",
+    "source": "diagrams/07-roadmap-dependencies.mmd",
+    "svg": "diagrams/07-roadmap-dependencies.svg"
+  },
+  {
+    "id": "W01-task-workspace",
+    "title": "中央任务工作区线框",
+    "source": "diagrams/W01-task-workspace.svg",
+    "svg": "diagrams/W01-task-workspace.svg"
+  },
+  {
+    "id": "W02-review",
+    "title": "版本确认线框",
+    "source": "diagrams/W02-review.svg",
+    "svg": "diagrams/W02-review.svg"
+  },
+  {
+    "id": "08-ui-informed-ia",
+    "title": "基于实测启发的Trellis信息架构（D）",
+    "source": "diagrams/08-ui-informed-ia.mmd",
+    "svg": "diagrams/08-ui-informed-ia.svg"
+  },
+  {
+    "id": "09-status-projections",
+    "title": "业务、运行、环境与交接的独立投影（D）",
+    "source": "diagrams/09-status-projections.mmd",
+    "svg": "diagrams/09-status-projections.svg"
+  },
+  {
+    "id": "W07-filter-empty",
+    "title": "搜索与空态线框（布局概念）",
+    "source": "diagrams/W07-filter-empty.svg",
+    "svg": "diagrams/W07-filter-empty.svg"
+  }
+]

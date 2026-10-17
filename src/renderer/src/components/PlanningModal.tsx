@@ -21,7 +21,7 @@ import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
 import { Select } from './Select'
 import { Button } from '../my/ui'
-import type { HandoffText, JiraIssue, PlanResult, TaskPlan } from '../../../shared/types'
+import type { JiraIssue, PlanResult, TaskPlan } from '../../../shared/types'
 import type { JSX } from 'react'
 
 const LIB_ICON: Record<string, JSX.Element> = {
@@ -55,7 +55,7 @@ export interface PlanningSeed {
 /**
  * 规划工作台：需求/Jira issue → 知识库检索（spec/wiki/需求/归档）
  * → 应用内 AI 生成结构化计划 → 人工评审修订 → 一键落成 Trellis 任务
- * → 生成各 AI 工具（codex / Claude Code / ZCode）的启动衔接。
+ * （task.json + prd.md，产物清单如实展示）→ 确定性交接包（只核对与阅读）。
  */
 export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: () => void }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
@@ -73,7 +73,9 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [createdDir, setCreatedDir] = useState<string | null>(null)
-  const [handoffs, setHandoffs] = useState<HandoffText[]>([])
+  const [createdFiles, setCreatedFiles] = useState<string[]>([])
+  const [createdWarnings, setCreatedWarnings] = useState<string[]>([])
+  const [handoff, setHandoff] = useState<{ text: string; issues: string[] } | null>(null)
 
   const generate = async (): Promise<void> => {
     if (!title.trim()) {
@@ -116,9 +118,13 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
     setCreating(false)
     if (res.ok && res.dirName) {
       setCreatedDir(res.dirName)
+      setCreatedFiles(res.files ?? [])
+      setCreatedWarnings(res.warnings ?? [])
       setPhase('done')
-      const hs = await api.planHandoff(res.dirName)
-      setHandoffs(hs)
+      // F03/PF-08：与任务详情同一确定性交接包（默认意图=只核对与阅读），
+      // 不再使用平台硬编码启动词与"直接改 task.json 状态"的过时指引。
+      const hb = await api.taskHandoffBuild(res.dirName, '只核对与阅读，不开始实施', false)
+      setHandoff(hb.ok ? { text: hb.text, issues: hb.issues } : null)
     } else {
       setError(res.error ?? '创建失败')
       setPhase('review')
@@ -281,25 +287,42 @@ export function PlanningModal({ seed, onClose }: { seed: PlanningSeed; onClose: 
                 <CheckCircle2 size={18} className="shrink-0 text-my-icon-accent" />
                 <div className="min-w-0">
                   <div className="text-my-xs font-semibold text-my-primary">任务已创建：{createdDir}</div>
-                  <div className="text-my-2xs text-my-tertiary">PRD 与子任务清单已写入任务目录，AI 工具按 workflow 即可接手</div>
+                  <div className="text-my-2xs text-my-tertiary">
+                    已写入：{createdFiles.length > 0 ? createdFiles.join('、') : 'task.json'}
+                    {createdFiles.includes('prd.md') ? '（可在任务内直接阅读）' : ''}
+                  </div>
                 </div>
                 <Button variant="outline" className="ml-auto shrink-0" onClick={() => { showTask(createdDir); onClose() }}>
                   <FolderOpen size={12} /> 打开任务
                 </Button>
               </div>
+              {createdWarnings.length > 0 && (
+                <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs leading-5 text-my-warning-text">
+                  <div className="mb-1 flex items-center gap-1.5 font-semibold"><AlertTriangle size={11} /> 部分产物未写入</div>
+                  {createdWarnings.map((w, i) => <div key={i}>· {w}</div>)}
+                </div>
+              )}
               <div>
-                <div className="mb-2 text-my-xs font-semibold uppercase tracking-wide text-my-tertiary">启动衔接</div>
-                <div className="space-y-1.5">
-                  {handoffs.map((h) => (
-                    <div key={h.platform} className="flex items-start gap-2 rounded-my-lg border border-my-line bg-my-layer-1 p-2.5">
-                      <span className="my-chip shrink-0 bg-my-accent-subtle text-my-accent-text">{h.platform}</span>
-                      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-my-2xs leading-4 text-my-secondary">{h.text.split('\n')[0]}</pre>
-                      <Button variant="ghost" className="shrink-0 justify-center px-2" onClick={() => { void api.copyToClipboard(h.text); pushToast({ kind: 'success', title: `${h.platform} 启动词已复制` }) }} title="复制完整启动词">
+                <div className="mb-2 text-my-xs font-semibold uppercase tracking-wide text-my-tertiary">交接材料（默认只核对与阅读）</div>
+                {handoff ? (
+                  <div className="space-y-1.5">
+                    {handoff.issues.length > 0 && (
+                      <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-2.5 text-my-2xs leading-4 text-my-warning-text">
+                        已知读取问题：{handoff.issues.join('；')}
+                      </div>
+                    )}
+                    <div className="flex items-start gap-2 rounded-my-lg border border-my-line bg-my-layer-1 p-2.5">
+                      <pre className="min-h-16 max-h-44 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-all font-mono text-my-2xs leading-4 text-my-secondary">{handoff.text}</pre>
+                      <Button variant="ghost" className="shrink-0 justify-center px-2" onClick={() => { void api.copyToClipboard(handoff.text); pushToast({ kind: 'success', title: '交接材料已复制' }) }} title="复制完整交接材料">
                         <Copy size={12} />
                       </Button>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ) : (
+                  <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-2.5 text-my-2xs text-my-tertiary">
+                    交接材料生成失败——可在任务详情重新构建，不影响任务本身。
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 p-3">
                 <Radio size={13} className="shrink-0 text-my-icon-accent" />

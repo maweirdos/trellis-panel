@@ -161,17 +161,9 @@ export function planSlug(title: string): string {
   return title.trim().replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32) || 'req'
 }
 
-/** 各 AI 工具的启动提示词（官方约定：SessionStart 自动注入，continue/finish-work 为内置命令） */
-export function handoffTexts(root: string, dirName: string): Array<{ platform: string; text: string }> {
-  const taskPath = join(root, '.trellis', 'tasks', dirName)
-  const generic = `请继续处理 Trellis 任务 ${dirName}：\n1. 读取 ${taskPath}\\task.json 与同目录 prd.md\n2. 按 .trellis/workflow.md 的当前阶段推进（可运行 python ./.trellis/scripts/get_context.py --mode phase 查看步骤）\n3. 完成后更新 task.json 状态与 subtasks 勾选`
-  return [
-    { platform: 'Claude Code', text: `/trellis:continue ${dirName}\n\n${generic}` },
-    { platform: 'Cursor', text: `/trellis-continue ${dirName}\n\n${generic}` },
-    { platform: 'Codex / ZCode（skills）', text: generic + '\n\n（会话启动时会自动加载 .agents/skills 里的 trellis 技能，直接发送上面文本即可）' },
-    { platform: '通用（任意 AI 工具）', text: generic }
-  ]
-}
+/* 旧 handoffTexts 已删除（F03/PF-08）：其"完成后更新 task.json 状态"指引与
+ * 生命周期白名单冲突，平台硬编码启动词也被 handoff.ts 的确定性交接包取代
+ * （task:handoffBuild，默认意图=只核对与阅读）。 */
 
 /** 判断需求是否与已有任务相关（避免重复建任务） */
 export function hasOpenTaskFor(root: string, titleKeywords: string): boolean {
