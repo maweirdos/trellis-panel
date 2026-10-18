@@ -1765,6 +1765,7 @@ export interface AcpSourceReference {
 export interface AcpPromptOptions {
   expectedConnectionGeneration?: string
   sourceReferences?: AcpSourceReference[]
+  images?: import('./acp-images').AcpImageAttachment[]
 }
 
 export interface AcpSourceChange {
@@ -1862,7 +1863,7 @@ export interface AcpSessionMeta {
   historyKind?: 'live' | 'resumable' | 'transcript' | 'legacy'
   canResume?: boolean
   restorePending?: boolean
-  capabilities?: { controls: string[]; loadSession?: boolean; protocolVersion?: number; agentInfo?: Record<string, unknown>; authMethods?: unknown[] }
+  capabilities?: { controls: string[]; loadSession?: boolean; promptCapabilities?: { image?: boolean }; protocolVersion?: number; agentInfo?: Record<string, unknown>; authMethods?: unknown[] }
   models?: Array<{ modelId: string; name: string }>
   modes?: Array<{ id: string; name: string }>
   currentModelId?: string

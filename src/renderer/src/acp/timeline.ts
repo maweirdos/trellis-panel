@@ -1,4 +1,5 @@
 import type { AcpSessionStatus, TimelineEvent } from '../../../shared/types'
+import { readAcpImages, type AcpImageAttachment } from '../../../shared/acp-images'
 
 export interface ToolItemState {
   toolCallId: string
@@ -8,7 +9,7 @@ export interface ToolItemState {
 }
 
 export type RenderItem =
-  | { type: 'user' | 'agent' | 'thought'; key: string; text: string; startsAnswer?: boolean }
+  | { type: 'user' | 'agent' | 'thought'; key: string; text: string; startsAnswer?: boolean; images?: AcpImageAttachment[] }
   | { type: 'tool'; key: string; tool: ToolItemState }
   | { type: 'activity'; key: string; events: TimelineEvent[]; children?: RenderItem[]; turnId?: string; connectionGeneration?: string; startedAt?: number; endedAt?: number; outcome?: 'completed' | 'cancelled' | 'failed' }
   | { type: 'perm' | 'trellis' | 'detail'; key: string; ev: TimelineEvent }
@@ -58,7 +59,7 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
       const type = ev.kind === 'thought' ? 'thought' : ev.payload?.role === 'user' ? 'user' : 'agent'
       const last = items[items.length - 1]
       if (type !== 'user' && last?.type === type) last.text += ev.text ?? ''
-      else items.push({ type, key, text: ev.text ?? '' })
+      else items.push({ type, key, text: ev.text ?? '', ...(type === 'user' ? { images: readAcpImages(ev.payload?.images) } : {}) })
       if (type === 'user') {
         const identity = identityOf(ev), group = activityGroups.get(identity)
         if (group && !renderedActivity.has(identity)) { items.push(group); renderedActivity.add(identity) }

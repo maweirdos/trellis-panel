@@ -6,6 +6,7 @@ import { asObject, type RenderItem } from './timeline'
 import { ConnectionNotice } from './ConnectionNotice'
 import { RunActivity } from './RunActivity'
 import { ThoughtActivity } from './ThoughtActivity'
+import { ImageAttachments } from './ImageAttachments'
 import type { AcpPermissionPayload, AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -47,7 +48,10 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   onOpenSpec: () => void
   onOpenJira: () => void
 }): JSX.Element {
-  if (item.type === 'user') return <div className="flex justify-end"><div className="acp-chat-copy max-w-[88%] whitespace-pre-wrap break-words rounded-my-lg bg-my-layer-1 px-4 py-3 text-my-primary">{item.text}</div></div>
+  if (item.type === 'user') return <div className="flex justify-end"><div className="acp-user-message max-w-[88%]">
+    {item.images && <ImageAttachments images={item.images} />}
+    {item.text && <div className="acp-chat-copy whitespace-pre-wrap break-words rounded-my-lg bg-my-layer-1 px-4 py-3 text-my-primary">{item.text}</div>}
+  </div></div>
   if (item.type === 'agent') return <div className={clsx('acp-chat-copy min-w-0 break-words px-1 py-2 text-my-primary', item.startsAnswer && 'acp-answer-start')}><MarkdownView content={item.text} /></div>
   if (item.type === 'thought') {
     const originIndex = events?.findIndex((event) => event.id === item.key) ?? -1
