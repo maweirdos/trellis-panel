@@ -15,6 +15,8 @@ import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button } from '../my/ui'
+import { useMy } from '../my/store'
+import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { fmtIso } from '../utils/format'
 import { confirmDialog, promptDialog } from '../components/Dialogs'
 import { MarkdownView } from '../components/MarkdownView'
@@ -22,6 +24,8 @@ import type { ChannelEvent, ChannelSummary } from '../../../shared/types'
 import type { JSX } from 'react'
 
 export function ChannelsPage(): JSX.Element {
+  const sidebarStyle = useSidebarWidthStyle()
+  const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
   const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
   const [channels, setChannels] = useState<ChannelSummary[]>([])
@@ -172,7 +176,8 @@ export function ChannelsPage(): JSX.Element {
   return (
     <div className="relative flex h-full min-w-0">
       {/* 左列：频道列表 */}
-      <div className="flex w-[340px] shrink-0 flex-col border-r border-my-line">
+      {!sidebarCollapsed && <div style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
+        <SidebarResizeHandle />
         <div className="space-y-2.5 border-b border-my-line px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="my-chip bg-my-layer-2 text-my-tertiary">{visible.length}</span>
@@ -250,6 +255,7 @@ export function ChannelsPage(): JSX.Element {
         </div>
       </div>
 
+      }
       {/* 右列：事件流 */}
       {active ? (
         <div className="flex min-w-0 flex-1 flex-col">

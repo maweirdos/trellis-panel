@@ -2,6 +2,10 @@
 
 > 外壳 UI 约定。改动该模块或新增 `my.*` 色板消费前必读。
 
+## 共享侧栏尺寸
+
+模块上下文侧栏统一消费 `useSidebarWidthStyle` 与 `SidebarResizeHandle`，宽度保存在 `tpanel.my.ui`：默认260px，范围220–400px；沿用字体、折叠等既有偏好。外壳拥有的侧栏与 Knowledge/Spec/Channels/Chat/ACP 页面拥有的侧栏不重复渲染，不另设页面宽度；标题栏统一折叠/展开，页面不得再用独立布尔值阻断全局展开。拖动、键盘微调和双击复位使用同一组件，配色使用全局语义 token。
+
 ## 模块边界
 
 - 整个模块自包含在 `src/renderer/src/my/`：类型(`types.ts`)、演示数据(`data.ts`)、
@@ -110,6 +114,9 @@ knowledge, conversations, team and analytics are peers. The former task-parent t
   Agent workspace/profile/runtime/permission and lazy-restore contracts are defined
   in [ACP runtime](../backend/acp-runtime.md). Keep drafts/scroll per root/session,
   IME-safe explicit sends, collapsed routine activity and visible approvals/errors.
+  The compact workspace/Settings-only appearance, exact principal review, connection
+  re-reference and reader host contracts are in [conversation-workspace](./conversation-workspace.md).
+  ACP owns one module header instead of nesting another PageFrame; other framing remains unchanged.
 
 ### 3. Contracts
 

@@ -1,9 +1,10 @@
 // 外壳共享基础件。所有页面从本文件取用，勿各自造轮子。
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type ButtonHTMLAttributes } from 'react'
 import { clsx } from 'clsx'
 import { ChevronDown, Search } from 'lucide-react'
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
+import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 
 /* ---------------- Avatar ---------------- */
 
@@ -63,13 +64,14 @@ export function Button({
   onClick,
   disabled,
   title,
-  autoFocus
-}: {
+  autoFocus,
+  ...buttonProps
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'onClick'> & {
   children: ReactNode
   variant?: ButtonVariant
   size?: 'sm' | 'md' | 'lg'
   className?: string
-  onClick?: () => void
+  onClick?: ButtonHTMLAttributes<HTMLButtonElement>['onClick']
   disabled?: boolean
   title?: string
   autoFocus?: boolean
@@ -85,6 +87,7 @@ export function Button({
   }
   return (
     <button
+      {...buttonProps}
       type="button"
       title={title}
       disabled={disabled}
@@ -111,15 +114,19 @@ export function Dropdown({
   children,
   align = 'left',
   width,
+  layoutKey,
   className
 }: {
   trigger: (props: { open: boolean; toggle: () => void }) => ReactNode
   children: (close: () => void) => ReactNode
   align?: 'left' | 'right'
   width?: number
+  layoutKey?: string | number
   className?: string
 }): JSX.Element {
   const [open, setOpen] = useState(false)
+  const interactive = useInteractionActive()
+  const canInteract = useInteractionGuard()
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -135,7 +142,7 @@ export function Dropdown({
 
   // 渲染后按菜单实际尺寸定位：优先贴触发器下缘，空间不足则贴上缘，并收进视口
   useLayoutEffect(() => {
-    if (!open) {
+    if (!open || !interactive) {
       setPos(null)
       return
     }
@@ -151,18 +158,22 @@ export function Dropdown({
     const top = flip ? Math.max(8, r.top - h - 4) : Math.min(r.bottom + 4, window.innerHeight - h - 8)
     const left = align === 'right' ? r.right - w : r.left
     setPos({ top, left: Math.min(Math.max(8, left), window.innerWidth - w - 8) })
-  }, [open, align])
+  }, [open, align, interactive, width, layoutKey])
 
-  const toggle = (): void => setOpen((v) => !v)
+  const toggle = (): void => { if (canInteract()) setOpen((v) => !v) }
+  useEffect(() => { if (!interactive) setOpen(false) }, [interactive])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !interactive) return
     const onDown = (e: MouseEvent): void => {
       const t = e.target as Node
       if (anchorRef.current?.contains(t) || menuRef.current?.contains(t)) return
       setOpen(false)
     }
-    const onScroll = (): void => setOpen(false)
+    const onScroll = (event: Event): void => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return
+      setOpen(false)
+    }
     window.addEventListener('mousedown', onDown)
     window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', onScroll)
@@ -171,12 +182,12 @@ export function Dropdown({
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onScroll)
     }
-  }, [open])
+  }, [open, interactive])
 
   return (
     <div ref={anchorRef} className={clsx('relative', className)}>
-      {trigger({ open, toggle })}
-      {open && (
+      {trigger({ open: open && interactive, toggle })}
+      {open && interactive && (
         <div
           ref={menuRef}
           style={{
@@ -237,13 +248,15 @@ export function DropdownHeader({ children }: { children: ReactNode }): JSX.Eleme
 
 /* ---------------- Tooltip（纯 CSS hover） ---------------- */
 
-export function Tooltip({ label, children, side = 'top' }: { label: string; children: ReactNode; side?: 'top' | 'bottom' }): JSX.Element {
+export function Tooltip({ label, children, side = 'top', align = 'center', wrap = false }: { label: string; children: ReactNode; side?: 'top' | 'bottom'; align?: 'center' | 'right'; wrap?: boolean }): JSX.Element {
   return (
     <span className="group/tt relative inline-flex">
       {children}
       <span
+        style={wrap ? { width: 'max-content', maxWidth: 'min(360px, calc(100vw - 24px))', whiteSpace: 'normal' } : undefined}
         className={clsx(
-          'pointer-events-none absolute left-1/2 z-[90] hidden -translate-x-1/2 whitespace-nowrap rounded-my-md border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] px-2 py-1 text-my-xs text-[var(--my-txt-secondary)] shadow-[var(--my-shadow-raised-200)] group-hover/tt:block',
+          'pointer-events-none absolute z-[90] hidden whitespace-nowrap rounded-my-md border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] px-2 py-1 text-my-xs text-[var(--my-txt-secondary)] shadow-[var(--my-shadow-raised-200)] group-hover/tt:block group-focus-within/tt:block',
+          align === 'right' ? 'right-0' : 'left-1/2 -translate-x-1/2',
           side === 'top' ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]'
         )}
       >
@@ -267,9 +280,10 @@ export function Modal({
   width?: number
 }): JSX.Element | null {
   const escId = useId()
+  const interactive = useInteractionActive()
   useEscLayer(open, { kind: 'modal', id: `modal-${escId}`, onClose })
 
-  if (!open) return null
+  if (!open || !interactive) return null
   return (
     <div className="my-fade fixed inset-0 z-[70] flex items-start justify-center bg-[var(--my-bg-backdrop)] pt-[12vh]" onMouseDown={onClose}>
       <div

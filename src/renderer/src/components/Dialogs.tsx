@@ -40,7 +40,7 @@ interface PromptRequest {
   settle: (value: string | null) => void
 }
 
-type DialogRequest = ConfirmRequest | PromptRequest
+type DialogRequest = (ConfirmRequest | PromptRequest) & { releaseAbort?: () => void }
 
 // 模块级请求队列：任意页面命令式发起，DialogHost 单点渲染当前请求，其余排队等待
 let seq = 0
@@ -57,13 +57,26 @@ const promote = (): void => {
   notify()
 }
 
-const enqueue = (req: DialogRequest): void => {
+const enqueue = (req: DialogRequest, signal?: AbortSignal): void => {
+  if (signal?.aborted) { settleCancel(req); return }
+  if (signal) {
+    const abort = (): void => {
+      if (current === req) cancelIfCurrent(req)
+      else {
+        const index = queue.indexOf(req)
+        if (index >= 0) { queue.splice(index, 1); settleCancel(req) }
+      }
+    }
+    signal.addEventListener('abort', abort, { once: true })
+    req.releaseAbort = () => signal.removeEventListener('abort', abort)
+  }
   queue.push(req)
   if (!current) promote()
 }
 
 /** 取消语义：confirm → false，prompt → null（与原生 API 的取消返回值对齐） */
 function settleCancel(r: DialogRequest): void {
+  r.releaseAbort?.()
   if (r.kind === 'confirm') r.settle(false)
   else r.settle(null)
 }
@@ -75,6 +88,7 @@ function settleCancel(r: DialogRequest): void {
  */
 function settleIfCurrent(req: DialogRequest, value: boolean | string | null): void {
   if (current !== req) return
+  req.releaseAbort?.()
   if (req.kind === 'confirm') req.settle(Boolean(value))
   else req.settle(typeof value === 'string' ? value : null)
   promote()
@@ -86,10 +100,10 @@ function cancelIfCurrent(r: DialogRequest): void {
   promote()
 }
 
-export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
+export function confirmDialog(opts: ConfirmDialogOptions, signal?: AbortSignal): Promise<boolean> {
   return new Promise((resolve) => {
     seq += 1
-    enqueue({ kind: 'confirm', id: seq, opts, settle: resolve })
+    enqueue({ kind: 'confirm', id: seq, opts, settle: resolve }, signal)
   })
 }
 
@@ -124,7 +138,9 @@ export function DialogHost(): JSX.Element | null {
   // 层协调器保证与查看器/预览等下层同按时只关最上层一层（design §6.3）。
   useEscLayer(req !== null, {
     kind: 'modal',
-    id: 'dialog-host',
+    // Esc consumes its registration. A queued successor remains active=true,
+    // so its request identity must rearm a distinct layer after promotion.
+    id: `dialog-host-${req?.id ?? 'idle'}`,
     onClose: () => {
       if (req) cancelIfCurrent(req)
     }

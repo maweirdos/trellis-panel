@@ -6,6 +6,8 @@ import { useChatEntries } from '../chat/useChatEntries'
 import { useTranscriptScroll, useTranscriptWindow } from '../chat/useTranscriptScroll'
 import { MarkdownView } from '../components/MarkdownView'
 import { Button } from '../my/ui'
+import { useMy } from '../my/store'
+import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { clsx } from 'clsx'
 import {
   Plus,
@@ -253,6 +255,8 @@ function CopyButton({ text }: { text: string }): JSX.Element {
 }
 
 export function ChatPage(): JSX.Element {
+  const sidebarStyle = useSidebarWidthStyle()
+  const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
   const sessions = useApp((s) => s.chatSessions)
   const activeId = useApp((s) => s.chatActiveId)
   const messages = useApp((s) => s.chatMessages)
@@ -403,7 +407,8 @@ export function ChatPage(): JSX.Element {
   return (
     <div className="flex h-full">
       {/* 会话列表 */}
-      <aside className="flex w-56 shrink-0 flex-col border-r border-my-line">
+      {!sidebarCollapsed && <aside style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
+        <SidebarResizeHandle />
         <div className="flex items-center px-3 py-2.5">
           <Button
             variant="ghost"
@@ -444,7 +449,7 @@ export function ChatPage(): JSX.Element {
             </div>
           ))}
         </div>
-      </aside>
+      </aside>}
 
       {/* 转录 + Composer */}
       <div className="flex min-w-0 flex-1 flex-col">

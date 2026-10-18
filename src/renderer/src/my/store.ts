@@ -6,24 +6,28 @@ import { useApp } from '../store'
 import { deriveDataset, issueToTaskPatch, todayIso, TRELLIS_PROJECT_ID } from './adapter'
 import { projectRootKey, type WorkItemsView } from './navigation'
 import { loadProjectPreferences, saveProjectPreferences, type SavedView } from './project-preferences'
+import { normalizeSidebarWidth, normalizeUiFontSize, UI_PREFERENCES_KEY, type UiFontSize } from './appearance'
 import type { GroupBy, Issue, IssueFilters, OrderBy, Priority, ThemeMode, WorkItemLayout } from './types'
 
 export type { SavedView } from './project-preferences'
 
-const STORAGE_KEY = 'tpanel.my.ui'
+const STORAGE_KEY = UI_PREFERENCES_KEY
 
 interface PersistedPrefs {
+  fontSize: UiFontSize
   layout: WorkItemLayout
   groupBy: GroupBy
   orderBy: OrderBy
   sidebarCollapsed: boolean
+  sidebarWidth: number
 }
 
 function loadPrefs(): Partial<PersistedPrefs> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return {}
-    return JSON.parse(raw) as Partial<PersistedPrefs>
+    const parsed: unknown = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Partial<PersistedPrefs> : {}
   } catch {
     return {}
   }
@@ -52,6 +56,9 @@ export interface MyStore {
 
   theme: ThemeMode
   setTheme: (t: ThemeMode) => void
+  fontSize: UiFontSize
+  setFontSize: (size: UiFontSize) => void
+  syncFontSizeFromStorage: () => void
 
   layout: WorkItemLayout
   workItemsView: WorkItemsView
@@ -82,6 +89,8 @@ export interface MyStore {
   setPaletteOpen: (v: boolean) => void
 
   sidebarCollapsed: boolean
+  sidebarWidth: number
+  setSidebarWidth: (width: number) => void
   toggleSidebar: () => void
   favorites: string[]
   toggleFavorite: (id: string) => void
@@ -142,6 +151,17 @@ export const useMy = create<MyStore>()((set, get) => ({
     get().setTheme(next)
   },
 
+  fontSize: normalizeUiFontSize(prefs.fontSize),
+  setFontSize: (value) => {
+    const fontSize = normalizeUiFontSize(value)
+    set({ fontSize })
+    savePrefs({ fontSize, layout: get().layout, groupBy: get().groupBy, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, sidebarWidth: get().sidebarWidth })
+  },
+  syncFontSizeFromStorage: () => {
+    const stored = loadPrefs()
+    set({ fontSize: normalizeUiFontSize(stored.fontSize), sidebarWidth: normalizeSidebarWidth(stored.sidebarWidth), sidebarCollapsed: stored.sidebarCollapsed === true })
+  },
+
   layout: prefs.layout ?? 'list',
   workItemsView: 'items',
   workItemsTab: 'all',
@@ -157,15 +177,15 @@ export const useMy = create<MyStore>()((set, get) => ({
   display: { showEmptyGroups: false, showSubIssues: true },
   setLayout: (l) => {
     set({ layout: l })
-    savePrefs({ layout: l, groupBy: get().groupBy, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed })
+    savePrefs({ fontSize: get().fontSize, layout: l, groupBy: get().groupBy, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, sidebarWidth: get().sidebarWidth })
   },
   setGroupBy: (g) => {
     set({ groupBy: g, ...(get().workItemsView === 'items' ? { itemsGroupBy: g } : {}) })
-    savePrefs({ layout: get().layout, groupBy: g, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed })
+    savePrefs({ fontSize: get().fontSize, layout: get().layout, groupBy: g, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, sidebarWidth: get().sidebarWidth })
   },
   setOrderBy: (o) => {
     set({ orderBy: o })
-    savePrefs({ layout: get().layout, groupBy: get().groupBy, orderBy: o, sidebarCollapsed: get().sidebarCollapsed })
+    savePrefs({ fontSize: get().fontSize, layout: get().layout, groupBy: get().groupBy, orderBy: o, sidebarCollapsed: get().sidebarCollapsed, sidebarWidth: get().sidebarWidth })
   },
   toggleFilter: (key, value) => {
     const cur = get().filters[key] as unknown[]
@@ -183,15 +203,24 @@ export const useMy = create<MyStore>()((set, get) => ({
   paletteOpen: false,
   setPaletteOpen: (v) => set({ paletteOpen: v }),
 
-  sidebarCollapsed: prefs.sidebarCollapsed ?? false,
+  sidebarCollapsed: prefs.sidebarCollapsed === true,
+  sidebarWidth: normalizeSidebarWidth(prefs.sidebarWidth),
+  setSidebarWidth: (value) => {
+    const sidebarWidth = normalizeSidebarWidth(value)
+    if (get().sidebarWidth === sidebarWidth) return
+    set({ sidebarWidth })
+    savePrefs({ fontSize: get().fontSize, layout: get().layout, groupBy: get().groupBy, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, sidebarWidth })
+  },
   toggleSidebar: () => {
     const collapsed = !get().sidebarCollapsed
     set({ sidebarCollapsed: collapsed })
     savePrefs({
+      fontSize: get().fontSize,
       layout: get().layout,
       groupBy: get().groupBy,
       orderBy: get().orderBy,
-      sidebarCollapsed: collapsed
+      sidebarCollapsed: collapsed,
+      sidebarWidth: get().sidebarWidth
     })
   },
   favorites: projectPrefs.favorites,

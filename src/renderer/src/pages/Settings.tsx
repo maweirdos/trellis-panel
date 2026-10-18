@@ -24,6 +24,7 @@ import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, Checkbox, EmptyState } from '../my/ui'
 import { RuntimePanel } from '../acp/RuntimePanel'
+import { AppearancePreferences } from '../my/AppearancePreferences'
 import type { JSX } from 'react'
 import type { AcpAgentConfig, AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, Settings, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
 import { WEKNORA_DEFAULTS } from '../../../shared/types'
@@ -92,7 +93,14 @@ function JiraStatusMapEditor({ settings }: { settings: Settings }): JSX.Element 
 export function SettingsPage(): JSX.Element {
   const settings = useApp((s) => s.settings)
   // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态而非在渲染期解引用崩溃（真机 bootstrap 后恒非空）
-  if (!settings) return <EmptyState title="设置未加载" />
+  if (!settings) return (
+    <div className="my-scrollbar h-full space-y-4 p-5">
+      <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
+        <AppearancePreferences />
+      </section>
+      <EmptyState title="设置未加载" description="连接桌面应用后可查看其余设置。" />
+    </div>
+  )
   return <SettingsPageBody settings={settings} />
 }
 
@@ -904,6 +912,7 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
               </button>
             ))}
           </div>
+          <AppearancePreferences />
           <div className="flex gap-2">
             <input value={cliDraft} onChange={(e) => setCliDraft(e.target.value)} className="my-input flex-1 font-mono" />
             <Button
