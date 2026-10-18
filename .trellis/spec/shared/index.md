@@ -34,7 +34,7 @@
 | ------------------------------------ | ------------------------------------------ |
 | No non-null assertions (`!`)         | [code-quality.md](./code-quality.md)       |
 | Use explicit type annotations        | [typescript.md](./typescript.md)           |
-| Follow commit message format         | [git-conventions.md](./git-conventions.md) |
+| Chinese commit descriptions and bodies; Conventional Commit format | [git-conventions.md](./git-conventions.md) |
 | Use Unix milliseconds for timestamps | [timestamp.md](./timestamp.md)             |
 
 ---
@@ -45,6 +45,7 @@
 - [ ] `npm run typecheck` - 0 errors
 - [ ] No non-null assertions (`!`)
 - [ ] Commit message follows format
+- [ ] Commit description and prose body use Chinese
 - [ ] Tests pass (if applicable)
 
 ---

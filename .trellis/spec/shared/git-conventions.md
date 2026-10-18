@@ -14,6 +14,19 @@ type(scope): description
 [optional footer]
 ```
 
+### Language (mandatory)
+
+- Write commit descriptions and prose bodies in **Chinese**, including documentation, tests and tooling commits. Do not copy English descriptions from older history.
+- Retain Conventional Commit types and technical scope identifiers, for example `feat(acp): 接入图片输入与预览`.
+- Keep code identifiers, paths, product names, issue references and machine-readable trailers unchanged when needed. These do not replace the Chinese explanation.
+- Use the same Chinese-description rule for PR titles. State the concrete behavior or reason, rather than vague wording such as `更新代码`.
+
+```text
+feat(acp): 接入图片输入与预览
+fix(reader): 修复切换项目后旧文档结果覆盖当前内容
+docs(git): 明确提交说明使用中文
+```
+
 ### Types
 
 | Type       | Description                                             |
@@ -44,19 +57,19 @@ Scope should identify the affected area:
 
 ```bash
 # Feature
-feat(project): add project archive functionality
+feat(project): 添加项目归档功能
 
 # Bug fix
-fix(db): resolve migration timing issue
+fix(db): 修复数据库迁移时序问题
 
 # Refactor
-refactor(ipc): extract common validation logic
+refactor(ipc): 提取公共参数校验逻辑
 
 # Documentation
-docs: update API documentation
+docs: 更新 API 文档
 
 # Chore
-chore: upgrade electron to v28
+chore: 将 Electron 升级至 v28
 ```
 
 ---
@@ -93,31 +106,31 @@ Each commit should represent one logical change:
 
 ```bash
 # GOOD - Separate commits
-git commit -m "feat(project): add archive button to UI"
-git commit -m "feat(project): implement archive procedure"
-git commit -m "test(project): add archive procedure tests"
+git commit -m "feat(project): 添加归档按钮"
+git commit -m "feat(project): 实现项目归档流程"
+git commit -m "test(project): 补充项目归档测试"
 
 # BAD - Mixed changes
-git commit -m "add archive feature and fix some bugs"
+git commit -m "添加归档功能并修复一些问题"
 ```
 
 ### Write Clear Descriptions
 
 ```bash
 # GOOD - Clear description
-feat(auth): add OAuth2 login with Google
+feat(auth): 添加 Google OAuth2 登录
 
 # BAD - Vague
-feat: update auth
+feat: 更新认证
 ```
 
 ### Use Body for Context
 
 ```bash
-git commit -m "fix(db): handle null timestamps in migration
+git commit -m "fix(db): 处理迁移中的空时间戳
 
-Previous migration assumed all records had timestamps.
-This caused failures when upgrading from v1.0.
+原迁移假定所有记录均有时间戳，导致从 v1.0 升级时失败。
+对空时间戳增加显式处理，保留已有记录。
 
 Fixes #123"
 ```
@@ -132,6 +145,7 @@ Before committing:
 - [ ] Linting passes (`npm run lint`)
 - [ ] Tests pass (`npm test`)
 - [ ] Commit message follows format
+- [ ] Description and prose body are Chinese; technical identifiers may retain their original spelling
 - [ ] Changes are atomic
 
 ---
@@ -175,7 +189,7 @@ Brief description of changes.
 
 | Convention     | Format                     | Example                       |
 | -------------- | -------------------------- | ----------------------------- |
-| Commit message | `type(scope): description` | `feat(auth): add login`       |
+| Commit message | `type(scope): 中文说明`    | `feat(auth): 添加登录功能`      |
 | Branch name    | `type/description`         | `feat/oauth-login`            |
-| Commit body    | Optional context           | Multi-line explanation        |
-| PR title       | Same as commit             | `feat(auth): add OAuth login` |
+| Commit body    | Optional Chinese context   | 中文说明变更原因与行为         |
+| PR title       | Same as commit             | `feat(auth): 添加 OAuth 登录`  |
