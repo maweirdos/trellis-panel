@@ -82,7 +82,7 @@ const api = {
   /* S0 G2 第三片：注册/解除阅读会话的定向变更监听（design §5.2） */
   documentWatch: (scope: DocumentReadScope, input: { relativePath: string; knownRevision: string | null }) =>
     ipcRenderer.invoke(ipcInvoke.document.watch, scope, input) as Promise<DocumentWatchOutcome>,
-  documentUnwatch: (canonicalPath: string) => ipcRenderer.invoke(ipcInvoke.document.unwatch, canonicalPath),
+  documentUnwatch: (canonicalPath: string, watchId?: string) => ipcRenderer.invoke(ipcInvoke.document.unwatch, canonicalPath, watchId),
   onDocumentChanged: (cb: (e: DocumentChangedEvent) => void) => subscribe(ipcEvent.documentChanged, cb),
   /* S0 G3：观测事件查询（limit≤100；cursor epoch 不符 → resetRequired 全量重拉） */
   observationQuery: (scope: ObservationScope, request: ObservationQueryRequest) =>

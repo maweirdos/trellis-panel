@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../store'
 import { registerDocumentSession } from './document-session-hub'
-import { readingSessionKey } from './reading-session'
+import { readingOwnerKey, ReaderRequestOwner } from './reader-owner'
+import { projectRootKey } from '../my/navigation'
+import { relativePathUnderRoot } from './reader-paths'
 import { applyScrollPlan, captureScrollPosition, resolveScrollRestore } from './scroll-restore'
 import type { ReadingSessionState } from './reading-session'
 import type {
@@ -43,6 +45,8 @@ export interface UseDocumentReaderParams {
   relativePath: string | null
   /** legacy 降级读取的绝对路径（relativePath=null 时使用）。 */
   absolutePath?: string | null
+  /** Explicit root for scoped hosts; workspaceId is only a namespace. */
+  projectRoot?: string
 }
 
 export interface DocumentReaderController {
@@ -78,12 +82,27 @@ export interface DocumentReaderController {
 }
 
 export function useDocumentReader(params: UseDocumentReaderParams): DocumentReaderController {
-  const { workspaceId, taskRef, relativePath, absolutePath = null } = params
+  const { workspaceId, taskRef, relativePath, absolutePath = null, projectRoot } = params
   const legacy = relativePath === null
+  const ownerId = useId()
+  const key = relativePath !== null ? readingOwnerKey({ workspaceId, taskRef }, relativePath, ownerId) : null
+  const identity = JSON.stringify([key, absolutePath, projectRoot])
+  const identityRef = useRef(identity)
+  const requests = useRef(new ReaderRequestOwner())
+  if (identityRef.current !== identity) {
+    identityRef.current = identity
+    requests.current.invalidate()
+  }
+  const hasCurrentRoot = useCallback((): boolean => projectRoot === undefined ||
+    projectRootKey(useApp.getState().snapshot?.meta.root ?? '') === projectRootKey(projectRoot), [projectRoot])
+  const acceptsSource = useCallback((res: DocumentReadSuccess): boolean =>
+    res.source.relativePath === relativePath?.replace(/\\/g, '/') && res.source.workspaceId === workspaceId &&
+    (res.source.taskRef ?? undefined) === taskRef &&
+    (projectRoot === undefined || relativePathUnderRoot(projectRoot, res.source.canonicalPath) !== null),
+  [projectRoot, relativePath, workspaceId, taskRef])
 
-  const key = relativePath !== null ? readingSessionKey({ workspaceId, taskRef }, relativePath) : null
-
-  const [loadSeq, setLoadSeq] = useState(0)
+  const refreshRef = useRef<(() => void) | null>(null)
+  const [loadedIdentity, setLoadedIdentity] = useState(identity)
   const [loading, setLoading] = useState(!legacy)
   const [doc, setDoc] = useState<DocumentReadSuccess | null>(null)
   const [requestError, setRequestError] = useState<string | null>(null)
@@ -97,6 +116,10 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
     session !== undefined && session.latest !== null && session.displayed !== null && session.latest.revision !== session.displayed.revision
 
   useEffect(() => {
+    setLoadedIdentity(identity)
+    setDiff(null)
+    setDoc(null)
+    setLegacyText(null)
     if (relativePath === null) {
       // legacy 降级：项目外文件走旧读取路径（无会话/无版本比较）
       setDoc(null)
@@ -108,11 +131,12 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
         return
       }
       let alive = true
-      setLoading(true)
-      api
-        .readTextFile(absolutePath)
+      const readLegacy = (): void => {
+        const ticket = requests.current.request('legacy')
+        setLoading(true)
+        void api.readTextFile(absolutePath)
         .then((res) => {
-          if (!alive) return
+          if (!alive || !requests.current.accepts(ticket)) return
           setLoading(false)
           if (res.ok) {
             setLegacyText(res.content ?? '')
@@ -123,52 +147,80 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
           }
         })
         .catch(() => {
-          if (alive) {
+          if (alive && requests.current.accepts(ticket)) {
             setLoading(false)
             setRequestError('读取失败')
           }
         })
+      }
+      refreshRef.current = readLegacy
+      readLegacy()
       return () => {
         alive = false
+        requests.current.invalidate()
+        refreshRef.current = null
       }
     }
 
     let alive = true
     let unregisterHub: (() => void) | null = null
-    let watchedCanonical: string | null = null
+    let watchLease: { canonicalPath: string; watchId: string } | null = null
+    const releasedWatchIds = new Set<string>()
+    const releaseWatch = (lease: { canonicalPath: string; watchId: string }): void => {
+      if (releasedWatchIds.has(lease.watchId)) return
+      releasedWatchIds.add(lease.watchId)
+      // A canonical path may already belong to a newer A -> B -> A registration.
+      // Only the acknowledged opaque registration may be released, never its path alone.
+      void api.documentUnwatch(lease.canonicalPath, lease.watchId).catch(() => undefined)
+    }
     // 此分支 relativePath 必为 string；key 在此处必然非空（与 relativePath 同源推导）
-    const sessionKey = readingSessionKey({ workspaceId, taskRef }, relativePath)
+    const sessionKey = readingOwnerKey({ workspaceId, taskRef }, relativePath, ownerId)
     reqSeq.current += 1
-    const baseReqId = `${sessionKey}#${reqSeq.current}`
+    const baseReqId = `${ownerId}#${reqSeq.current}`
 
     setLoading(true)
     setRequestError(null)
     setUnreadableNotice(null)
 
-    /** 消费一次定向变更信号（revision hint 为 null 时总是重读以取得诚实诊断）。 */
-    const consumeChange = (revisionHint: string | null): void => {
-      if (!alive) return
-      void (async () => {
-        const cur = useApp.getState().readingSessions[sessionKey]
-        if (
-          revisionHint !== null &&
-          cur !== undefined &&
-          cur.displayed !== null &&
-          revisionHint === cur.displayed.revision
-        ) {
-          // 同版信号：只清提示（写回了相同内容），不重读
-          if (cur.latest !== null) {
-            useApp.getState().readerExternalChange(sessionKey, { revision: revisionHint, text: cur.displayed.text })
+    let watchPending = false
+    const ensureWatch = (res: DocumentReadSuccess): void => {
+      if (watchPending || watchLease !== null || !alive) return
+      watchPending = true
+      const canonical = res.source.canonicalPath
+      unregisterHub?.()
+      unregisterHub = registerDocumentSession(sessionKey, canonical, () => consumeChange())
+      void api.documentWatch({ workspaceId, taskRef }, { relativePath, knownRevision: res.revision }).then((watched) => {
+        if (watched.ok) {
+          if (typeof watched.watchId !== 'string' || watched.watchId === '') {
+            if (alive && hasCurrentRoot()) setRequestError('文档监听未返回有效的注册标识，请重试')
+            return
           }
-          return
-        }
-        const res = await api.documentRead({ workspaceId, taskRef }, { relativePath, requestId: `${baseReqId}-c` })
-        if (!alive) return
+          const lease = { canonicalPath: watched.canonicalPath, watchId: watched.watchId }
+          if (!alive || !hasCurrentRoot()) releaseWatch(lease)
+          else watchLease = lease
+        } else if (alive && hasCurrentRoot()) setRequestError(watched.error)
+      }).catch((error: unknown) => {
+        if (alive && hasCurrentRoot()) setRequestError(error instanceof Error ? error.message : '文档监听失败，可重试')
+      }).finally(() => { watchPending = false })
+    }
+
+    /** Re-read actual bytes; hints never authorize replacing the displayed version. */
+    const consumeChange = (): void => {
+      if (!alive || !hasCurrentRoot()) return
+      const ticket = requests.current.request('read')
+      void (async () => {
+        const res = await api.documentRead({ workspaceId, taskRef }, { relativePath, requestId: `${baseReqId}-c${ticket.sequence}` })
+        if (!alive || !hasCurrentRoot() || !requests.current.accepts(ticket)) return
+        setLoading(false)
         if (!res.ok) {
           // 请求级失败：保留旧版 + 提示（不吞成文档事实）
           setRequestError(res.error)
           return
         }
+        if (!acceptsSource(res)) { setRequestError('文档来源与当前项目不一致'); return }
+        setRequestError(null)
+        setUnreadableNotice(null)
+        ensureWatch(res)
         if (res.revision !== null && res.rawText !== null) {
           const cur2 = useApp.getState().readingSessions[sessionKey]
           if (cur2 === undefined || cur2.displayed === null) {
@@ -184,44 +236,55 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
           const first = res.diagnostics[0]
           setUnreadableNotice(first !== undefined ? first.message : '文件暂不可读，已保留当前展示版本')
         }
-      })()
+      })().catch((error: unknown) => {
+        if (alive && hasCurrentRoot() && requests.current.accepts(ticket)) {
+          setLoading(false)
+          setRequestError(error instanceof Error ? error.message : '读取失败')
+        }
+      })
     }
 
+    refreshRef.current = consumeChange
+    const ticket = requests.current.request('read')
     void (async () => {
+      if (!hasCurrentRoot()) { setLoading(false); setRequestError('项目已切换，请返回原项目阅读此文档'); return }
       const res = await api.documentRead({ workspaceId, taskRef }, { relativePath, requestId: baseReqId })
-      if (!alive) return
+      if (!alive || !hasCurrentRoot() || !requests.current.accepts(ticket)) return
       setLoading(false)
       if (!res.ok) {
         setDoc(null)
         setRequestError(res.error)
         return
       }
+      if (!acceptsSource(res)) { setRequestError('文档来源与当前项目不一致'); return }
       setDoc(res)
       if (res.revision !== null && res.rawText !== null) {
         useApp.getState().readerOpenSession(sessionKey, { revision: res.revision, text: res.rawText })
       }
       // 定向监听：canonicalPath 来自读取结果；knownRevision 闭合「读完→注册」竞态
-      const canonical = res.source.canonicalPath
-      unregisterHub = registerDocumentSession(sessionKey, canonical, (ev) => consumeChange(ev.revision))
-      watchedCanonical = canonical
-      void api
-        .documentWatch({ workspaceId, taskRef }, { relativePath, knownRevision: res.revision })
-        .catch(() => undefined)
-    })()
+      ensureWatch(res)
+    })().catch((error: unknown) => {
+      if (alive && hasCurrentRoot() && requests.current.accepts(ticket)) {
+        setLoading(false)
+        setRequestError(error instanceof Error ? error.message : '读取失败')
+      }
+    })
 
     return () => {
       alive = false
+      requests.current.invalidate()
+      refreshRef.current = null
       unregisterHub?.()
-      if (watchedCanonical !== null) void api.documentUnwatch(watchedCanonical).catch(() => undefined)
+      if (watchLease !== null) releaseWatch(watchLease)
       // 会话收口（known-issues P3-4）：文档关闭/切换即丢弃快照
       useApp.getState().readerCloseSession(sessionKey)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, taskRef, relativePath, loadSeq])
+  }, [workspaceId, taskRef, relativePath, absolutePath, ownerId, identity, hasCurrentRoot, acceptsSource])
 
   const openDiff = useCallback(
     (mode: ReaderDiffMode) => {
-      if (relativePath === null || key === null) return
+      if (relativePath === null || key === null || !hasCurrentRoot()) return
       const s = useApp.getState().readingSessions[key]
       if (s === undefined || s.displayed === null) return
       if (mode === 'pending' && s.latest === null) return
@@ -232,7 +295,8 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
       if (currentSide === null) return
       setDiff({ mode, loading: true, outcome: null })
       reqSeq.current += 1
-      const requestId = `${key}#diff${reqSeq.current}`
+      const ticket = requests.current.request('diff')
+      const requestId = `${ownerId}:diff:${ticket.sequence}`
       void (async () => {
         try {
           const outcome = await api.documentDiff(
@@ -250,24 +314,40 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
               current: { text: currentSide.text, revision: currentSide.revision }
             }
           )
-          setDiff((d) => (d !== null ? { ...d, loading: false, outcome } : d))
+          if (identityRef.current === identity && hasCurrentRoot() && requests.current.accepts(ticket)) {
+            setDiff((d) => (d !== null ? { ...d, loading: false, outcome } : d))
+          }
         } catch {
-          setDiff((d) => (d !== null ? { ...d, loading: false } : d))
+          if (identityRef.current === identity && hasCurrentRoot() && requests.current.accepts(ticket)) {
+            setDiff(null)
+            setRequestError('文档比较失败，已保留当前内容，可重试')
+          }
         }
       })()
     },
-    [workspaceId, taskRef, relativePath, key]
+    [workspaceId, taskRef, relativePath, key, identity, ownerId, hasCurrentRoot]
   )
 
-  const closeDiff = useCallback(() => setDiff(null), [])
+  const closeDiff = useCallback(() => { requests.current.request('diff'); setDiff(null) }, [])
 
   const applyNewVersion = useCallback(async (): Promise<boolean> => {
-    if (relativePath === null || key === null) return false
-    const res = await api.documentRead({ workspaceId, taskRef }, { relativePath, requestId: `${key}#apply` })
+    if (relativePath === null || key === null || !hasCurrentRoot()) return false
+    // File-change reads and explicit replacements share ordering. A newer observation
+    // must not be overwritten by an older apply completion.
+    const ticket = requests.current.request('read')
+    let res: Awaited<ReturnType<typeof api.documentRead>>
+    try {
+      res = await api.documentRead({ workspaceId, taskRef }, { relativePath, requestId: `${ownerId}:apply:${ticket.sequence}` })
+    } catch (error) {
+      if (identityRef.current === identity && hasCurrentRoot() && requests.current.accepts(ticket)) setRequestError(error instanceof Error ? error.message : '读取失败')
+      return false
+    }
+    if (identityRef.current !== identity || !hasCurrentRoot() || !requests.current.accepts(ticket)) return false
     if (!res.ok) {
       setRequestError(res.error)
       return false
     }
+    if (!acceptsSource(res)) { setRequestError('文档来源与当前项目不一致'); return false }
     if (res.revision === null || res.rawText === null) {
       const first = res.diagnostics[0]
       setUnreadableNotice(first !== undefined ? first.message : '文件暂不可读，已保留当前展示版本')
@@ -279,13 +359,16 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
     st.readerExternalChange(key, { revision: res.revision, text: res.rawText })
     st.readerReadNewVersion(key)
     setDoc(res)
+    setRequestError(null)
+    setUnreadableNotice(null)
+    closeDiff()
     return true
-  }, [workspaceId, taskRef, relativePath, key])
+  }, [workspaceId, taskRef, relativePath, key, identity, ownerId, hasCurrentRoot, acceptsSource, closeDiff])
 
   const rebaseToCurrent = useCallback(() => {
-    if (key === null) return
+    if (key === null || !hasCurrentRoot()) return
     useApp.getState().readerRebaseToCurrent(key)
-  }, [key])
+  }, [key, hasCurrentRoot])
 
   const applyNewVersionAnchored = useCallback(
     async (container: HTMLElement | null): Promise<{ fallback: boolean } | null> => {
@@ -297,35 +380,39 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
       const newText = useApp.getState().readingSessions[key]?.displayed?.text ?? null
       if (oldText === null || newText === null) return { fallback: false }
       const plan = resolveScrollRestore({ captured, oldText, newText })
-      requestAnimationFrame(() => applyScrollPlan(container, plan))
+      requestAnimationFrame(() => {
+        if (identityRef.current === identity && hasCurrentRoot() && container.isConnected) applyScrollPlan(container, plan)
+      })
       return { fallback: plan.fallbackUsed }
     },
-    [applyNewVersion, key]
+    [applyNewVersion, key, identity, hasCurrentRoot]
   )
 
-  const reload = useCallback(() => setLoadSeq((n) => n + 1), [])
+  const reload = useCallback(() => refreshRef.current?.(), [])
 
-  const displayedText = session?.displayed?.text ?? doc?.rawText ?? legacyText
+  const visible = loadedIdentity === identity
+  const currentDoc = visible ? doc : null
+  const displayedText = session?.displayed?.text ?? currentDoc?.rawText ?? (visible ? legacyText : null)
   const displayedRevisionInSession = session?.displayed?.revision ?? null
   const displayedParsed =
-    doc !== null && displayedRevisionInSession !== null && doc.revision === displayedRevisionInSession
-      ? doc.parsed
+    currentDoc !== null && displayedRevisionInSession !== null && currentDoc.revision === displayedRevisionInSession
+      ? currentDoc.parsed
       : null
-  const diagnostics = doc?.diagnostics ?? []
+  const diagnostics = currentDoc?.diagnostics ?? []
 
   return {
     key,
     legacy,
-    loading,
-    doc,
-    requestError,
-    unreadableNotice,
+    loading: visible ? loading : true,
+    doc: currentDoc,
+    requestError: visible ? requestError : null,
+    unreadableNotice: visible ? unreadableNotice : null,
     session,
     pendingUpdate,
     displayedText,
     displayedParsed,
     diagnostics,
-    diff,
+    diff: visible ? diff : null,
     openDiff,
     closeDiff,
     applyNewVersion,

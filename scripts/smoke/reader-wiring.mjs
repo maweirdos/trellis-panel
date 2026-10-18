@@ -146,25 +146,27 @@ try {
   // 1d. 引用计数：同路径两个会话，解除一个仍通知，全部解除后停发
   const w2 = watchReaderDocument(rootReal, { workspaceId: 'ws-other' }, { relativePath: relA, knownRevision: null })
   check('第二个会话注册同一路径（refs=2）', w2.ok === true && w2.canonicalPath === w1.canonicalPath)
-  unwatchReaderDocument(w1.canonicalPath)
+  check('同路径独立注册拥有不同 opaque watchId', typeof w1.watchId === 'string' && typeof w2.watchId === 'string' && w1.watchId !== w2.watchId)
+  unwatchReaderDocument(w2.canonicalPath) // legacy path-only cleanup cannot prove ownership
+  unwatchReaderDocument(w1.canonicalPath, w1.watchId)
   writeFileSync(docA, '# v3\n', 'utf-8')
   routeReaderDocumentChange(docA)
   await sleep(80)
-  check('引用计数未归零仍定向通知', events.length === 1 && events[0].revision === computeRevision(Buffer.from('# v3\n', 'utf-8')))
+  check('路径单参清理不消费另一 owner lease；精确解除一个后仍通知', events.length === 1 && events[0].revision === computeRevision(Buffer.from('# v3\n', 'utf-8')))
   events.length = 0
-  unwatchReaderDocument(w2.canonicalPath)
+  unwatchReaderDocument(w2.canonicalPath, w2.watchId)
   writeFileSync(docA, '# v4\n', 'utf-8')
   routeReaderDocumentChange(docA)
   await sleep(80)
   check('引用计数归零后停发（解除监听收口）', events.length === 0)
   // 重复 unwatch 幂等的的行为学证明：再次解除后重新 watch 仍正常工作
-  unwatchReaderDocument(w2.canonicalPath)
+  unwatchReaderDocument(w2.canonicalPath, w2.watchId)
   const w3 = watchReaderDocument(rootReal, SCOPE, { relativePath: relA, knownRevision: null })
   writeFileSync(docA, '# v5\n', 'utf-8')
   routeReaderDocumentChange(docA)
   await sleep(80)
   check('重复 unwatch 后重新 watch 正常（幂等未破坏注册表）', w3.ok === true && events.length === 1 && events[0].revision === computeRevision(Buffer.from('# v5\n', 'utf-8')))
-  unwatchReaderDocument(w3.canonicalPath)
+  unwatchReaderDocument(w3.canonicalPath, w3.watchId)
   events.length = 0
 
   // 1e. 读不到（文件被删除）→ revision=null 事件（渲染端重读取得诚实诊断）

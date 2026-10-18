@@ -1,15 +1,18 @@
 import { ipcEvent, ipcInvoke } from '../../shared/ipc-channels'
 import { noProject } from '../../shared/ipc-errors'
-import { getProjectRoot } from '../state'
+import { getProjectRoot, getProjectGeneration } from '../state'
 import {
   computeDocumentDiff,
   readDocument,
   onReaderDocumentChanged,
   unwatchReaderDocument,
-  watchReaderDocument
+  watchReaderDocument,
+  clearReaderDocumentOwner
 } from '../services/documents'
 import { broadcastToWindows } from '../services/bridge'
 import { handle } from './registry'
+
+const watchedSenders = new Set<number>()
 
 /**
  * 文档域 IPC（S0 G2）：documentRead / documentDiff / documentWatch 全链注册。
@@ -30,14 +33,22 @@ export function registerDocumentsIpc(): void {
     if (!root) return noProject()
     return computeDocumentDiff(root, scope, input)
   })
-  handle(ipcInvoke.document.watch, (_e, scope: unknown, input: unknown) => {
+  handle(ipcInvoke.document.watch, (event, scope: unknown, input: unknown) => {
     const root = getProjectRoot()
     if (!root) return noProject()
-    return watchReaderDocument(root, scope, input)
+    const ownerId = event.sender.id
+    const result = watchReaderDocument(root, scope, input, { projectRoot: root, projectGeneration: getProjectGeneration(), ownerId })
+    if (result.ok && !watchedSenders.has(ownerId)) {
+      watchedSenders.add(ownerId)
+      event.sender.once('destroyed', () => { watchedSenders.delete(ownerId); clearReaderDocumentOwner(ownerId) })
+    }
+    return result
   })
-  handle(ipcInvoke.document.unwatch, (_e, canonicalPath: unknown) => {
+  handle(ipcInvoke.document.unwatch, (event, canonicalPath: unknown, watchId: unknown) => {
     if (typeof canonicalPath !== 'string' || canonicalPath.length === 0) return
-    unwatchReaderDocument(canonicalPath)
+    const root = getProjectRoot()
+    if (!root || typeof watchId !== 'string' || watchId.length === 0) return
+    unwatchReaderDocument(canonicalPath, watchId, { projectRoot: root, projectGeneration: getProjectGeneration(), ownerId: event.sender.id })
   })
 
   onReaderDocumentChanged((event) => broadcastToWindows(ipcEvent.documentChanged, event))

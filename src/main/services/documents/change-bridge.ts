@@ -1,4 +1,5 @@
 import { readFileSync, realpathSync } from 'fs'
+import { randomUUID } from 'crypto'
 import { relative as pathRelative, resolve, sep } from 'path'
 import {
   documentReadScopeSchema,
@@ -38,12 +39,31 @@ const SETTLE_MS = (() => {
 
 interface WatchEntry {
   relativePath: string
-  /** 引用计数：同一 canonicalPath 被多个入口同时打开时全部解除才停发。 */
-  refs: number
+  /** Exact registrations; duplicate/stale cleanup cannot consume another lease. */
+  watchIds: Set<string>
   timer: ReturnType<typeof setTimeout> | null
 }
 
+/** Supplied by main IPC from current application state and sender, never wire scope. */
+interface WatchAuthority {
+  projectRoot: string
+  projectGeneration: number
+  ownerId: number
+}
+
+interface WatchLease {
+  canonicalPath: string
+  root: string
+  authority?: WatchAuthority
+}
+
 const watched = new Map<string, WatchEntry>()
+const leases = new Map<string, WatchLease>()
+
+function rootIdentity(root: string): string {
+  const value = realRootOf(root)
+  return process.platform === 'win32' ? value.toLowerCase() : value
+}
 
 type ChangedListener = (e: DocumentChangedEvent) => void
 const listeners = new Set<ChangedListener>()
@@ -86,7 +106,7 @@ function relativeUnder(realRoot: string, canonicalPath: string): string {
  * 注册一个阅读会话监听。scope/input 非法或路径越界 → ipcFail（请求级失败，
  * 与 documentRead 同口径）。
  */
-export function watchReaderDocument(root: string, scope: unknown, input: unknown): DocumentWatchOutcome {
+export function watchReaderDocument(root: string, scope: unknown, input: unknown, authority?: WatchAuthority): DocumentWatchOutcome {
   const scopeParsed = documentReadScopeSchema.safeParse(scope ?? {})
   if (scopeParsed.success === false) {
     return ipcFail(IpcErrorCode.InvalidArg, 'documentWatch scope 非法：workspaceId 必填且为非空字符串')
@@ -100,12 +120,15 @@ export function watchReaderDocument(root: string, scope: unknown, input: unknown
   if (!auth.ok) return ipcFail(IpcErrorCode.InvalidArg, '路径超出已打开工作区范围（含软链接逃逸拒绝）')
 
   const realRoot = realRootOf(root)
+  if (authority && rootIdentity(authority.projectRoot) !== rootIdentity(root)) return ipcFail(IpcErrorCode.Denied, '文档监听不属于当前项目')
   const relPath = relativeUnder(realRoot, auth.canonicalPath)
+  const watchId = randomUUID()
+  leases.set(watchId, { canonicalPath: auth.canonicalPath, root: rootIdentity(root), authority: authority ? { ...authority } : undefined })
   const prev = watched.get(auth.canonicalPath)
   if (prev === undefined) {
-    watched.set(auth.canonicalPath, { relativePath: relPath, refs: 1, timer: null })
+    watched.set(auth.canonicalPath, { relativePath: relPath, watchIds: new Set([watchId]), timer: null })
   } else {
-    prev.refs += 1
+    prev.watchIds.add(watchId)
   }
 
   // 竞态闭合：注册时磁盘版本与调用方已展示版本不同 → 立即补发一条定向事件
@@ -116,18 +139,38 @@ export function watchReaderDocument(root: string, scope: unknown, input: unknown
       emit({ canonicalPath: auth.canonicalPath, relativePath: relPath, revision: disk })
     }
   }
-  return { ok: true, canonicalPath: auth.canonicalPath, relativePath: relPath }
+  return { ok: true, watchId, canonicalPath: auth.canonicalPath, relativePath: relPath }
 }
 
-/** 解除一个监听（引用计数归零才真正停发并清理定时器）。 */
-export function unwatchReaderDocument(canonicalPath: string): void {
-  const key = normalizeAbs(canonicalPath)
+function releaseLease(watchId: string, lease: WatchLease): void {
+  leases.delete(watchId)
+  const key = lease.canonicalPath
   const entry = watched.get(key)
   if (entry === undefined) return
-  entry.refs -= 1
-  if (entry.refs > 0) return
+  entry.watchIds.delete(watchId)
+  if (entry.watchIds.size > 0) return
   if (entry.timer !== null) clearTimeout(entry.timer)
   watched.delete(key)
+}
+
+/**
+ * Release only the exact opaque lease. A legacy path-only cleanup is a safe no-op:
+ * it cannot prove whether it refers to old A or a new owner of the same path.
+ * Legacy registrations are still cleared on project replacement/window destruction.
+ */
+export function unwatchReaderDocument(canonicalPath: string, watchId?: string, authority?: WatchAuthority): void {
+  if (!watchId) return
+  const lease = leases.get(watchId)
+  if (!lease || normalizeAbs(canonicalPath) !== lease.canonicalPath) return
+  if (lease.authority) {
+    if (!authority || authority.ownerId !== lease.authority.ownerId || authority.projectGeneration !== lease.authority.projectGeneration || rootIdentity(authority.projectRoot) !== lease.root) return
+  } else if (authority) return
+  releaseLease(watchId, lease)
+}
+
+/** Main sender destruction reclaims its registrations, including old path-only clients. */
+export function clearReaderDocumentOwner(ownerId: number): void {
+  for (const [watchId, lease] of leases) if (lease.authority?.ownerId === ownerId) releaseLease(watchId, lease)
 }
 
 /** 项目切换/关闭：清空全部监听（渲染端同步清空全部会话）。 */
@@ -136,6 +179,7 @@ export function clearReaderDocuments(): void {
     if (entry.timer !== null) clearTimeout(entry.timer)
   }
   watched.clear()
+  leases.clear()
 }
 
 /**
@@ -152,7 +196,7 @@ export function routeReaderDocumentChange(absPath: string): void {
     entry.timer = null
     // 定时器触发时条目可能已被解除/清空：只对仍注册的路径发通知
     const cur = watched.get(key)
-    if (cur === undefined) return
+    if (cur !== entry) return
     emit({ canonicalPath: key, relativePath: cur.relativePath, revision: currentRevision(key) })
   }, SETTLE_MS)
 }
