@@ -1,4 +1,0 @@
-{"file": ".trellis/tasks/10-15-unify-plane-uiux/prd.md", "reason": "验收标准 AC1-AC5 与范围外清单"}
-{"file": ".trellis/tasks/10-15-unify-plane-uiux/design.md", "reason": "映射表合规性检查依据"}
-{"file": ".trellis/spec/frontend/my-ui-module.md", "reason": "外壳令牌与交互约定符合性"}
-{"file": ".trellis/spec/frontend/quality.md", "reason": "质量门槛"}
