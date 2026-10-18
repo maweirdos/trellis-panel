@@ -5,6 +5,7 @@ import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { Avatar, Dropdown, DropdownItem } from '../ui'
 import { NavIcon } from '../icons'
+import { SidebarResizeHandle, useSidebarWidthStyle } from './SidebarResizeHandle'
 import {
   activeModule, APPLICATION_TOOLS, getPageNavigation, hasShellContext, INTAKE_PAGES,
   PRIMARY_NAVIGATION, PROJECT_TOOLS, type ModuleId
@@ -64,6 +65,7 @@ export function WorkspaceSidebar(): JSX.Element {
 }
 
 function ContextSidebar(): JSX.Element {
+  const sidebarStyle = useSidebarWidthStyle()
   const page = useApp((s) => s.page)
   const setPage = useApp((s) => s.setPage)
   const data = useMy((s) => s.data)
@@ -79,7 +81,8 @@ function ContextSidebar(): JSX.Element {
   const applyView = useMy((s) => s.applyView)
   const removeView = useMy((s) => s.removeView)
   const domain = getPageNavigation(page).domain
-  const title = domain === 'work' ? view === 'iterations' && page === 'tasks' ? '自然周计划' : '工作视图' : domain === 'intake' ? '需求来源' : '工具与设置'
+  const title = domain === 'work' ? view === 'iterations' && page === 'tasks' ? '自然周计划' : '工作视图' : domain === 'intake' ? '需求来源'
+    : domain === 'overview' ? '项目概览' : domain === 'team' ? '团队协作' : domain === 'analytics' ? '项目统计' : '工具与设置'
   const buttonClass = (selected: boolean): string => clsx('my-context-button mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-my-md px-3 py-2 text-left text-my-lg transition-colors',
     selected ? 'bg-my-layer-transparent-selected text-my-primary font-medium' : 'text-my-secondary hover:bg-my-layer-transparent-hover')
   const routeButton = (target: Page): JSX.Element => <button key={target} type="button" aria-current={page === target ? 'page' : undefined}
@@ -87,13 +90,51 @@ function ContextSidebar(): JSX.Element {
     <NavIcon name={getPageNavigation(target).icon} size={16} />{getPageNavigation(target).title}
   </button>
   return (
-    <aside aria-label={`${title}上下文`} className="my-context-sidebar flex h-full w-[224px] shrink-0 flex-col border-r border-my-line">
+    <aside aria-label={`${title}上下文`} style={sidebarStyle} className="my-context-sidebar flex h-full shrink-0 flex-col border-r border-my-line">
+      <SidebarResizeHandle />
       <header className="flex h-[52px] shrink-0 items-center gap-2 px-4">
         <h2 className="flex-1 text-my-xl font-semibold text-my-primary">{title}</h2>
         {domain === 'work' && <button type="button" aria-label="新建工作项" title="新建工作项 (C)" onClick={() => setCreate(true)}
           className="grid h-7 w-7 place-items-center rounded-my-md text-my-icon-secondary hover:bg-my-layer-transparent-hover"><Plus size={18} /></button>}
       </header>
       <div className="my-scrollbar min-h-0 flex-1 px-2 pb-4">
+        {domain === 'overview' && <>
+          {routeButton('dashboard')}
+          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">开始工作</h3>
+          <button type="button" onClick={() => { setView('items'); setTab('active'); setPage('tasks') }} className={buttonClass(false)}>
+            <ListTodo size={16} />进行与待开始
+          </button>
+          {routeButton('inbox')}
+          {routeButton('acp')}
+          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">项目工作项</h3>
+          {data.issues.slice(0, 6).map((issue) => <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} className={buttonClass(false)}>
+            <ListTodo size={15} className="shrink-0" /><span className="truncate" title={issue.name}>{issue.name}</span>
+          </button>)}
+          {data.issues.length === 0 && <p className="px-3 py-2 text-my-sm text-my-tertiary">当前项目暂无工作项</p>}
+        </>}
+        {domain === 'team' && <>
+          {routeButton('team')}
+          {routeButton('channels')}
+          {routeButton('tasks')}
+          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">项目成员</h3>
+          {data.members.map((member) => <div key={member.id} className="flex min-h-9 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary">
+            <Avatar name={member.name} color={member.avatarColor} size={22} /><span className="min-w-0 flex-1 truncate" title={member.name}>{member.name}</span>
+            <span className="text-my-xs text-my-tertiary" title="已分配工作项">{data.issues.filter((issue) => issue.assigneeId === member.id).length}</span>
+          </div>)}
+          {data.members.length === 0 && <p className="px-3 py-2 text-my-sm text-my-tertiary">成员来自当前项目记录</p>}
+        </>}
+        {domain === 'analytics' && <>
+          {routeButton('analytics')}
+          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">查看明细</h3>
+          {routeButton('tasks')}
+          {routeButton('team')}
+          {routeButton('archive')}
+          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">工作项状态</h3>
+          {data.states.map((state) => <div key={state.id} className="flex min-h-8 items-center gap-2.5 px-3 text-my-sm text-my-secondary">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: state.color }} />
+            <span className="min-w-0 flex-1 truncate">{state.name}</span><span className="text-my-xs text-my-tertiary">{data.issues.filter((issue) => issue.stateId === state.id).length}</span>
+          </div>)}
+        </>}
         {domain === 'intake' && <>
           {INTAKE_PAGES.map(routeButton)}
           <p className="px-2.5 pt-4 text-my-xs leading-relaxed text-my-tertiary">查看收集的线索或 Jira 粗需求，再整理为可确认的项目工作项。</p>

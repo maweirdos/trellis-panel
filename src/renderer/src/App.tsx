@@ -2,6 +2,7 @@ import { useEffect, useState, lazy, Suspense } from 'react'
 import { useApp } from './store'
 import { api, hasIpc } from './api'
 import { useMy } from './my/store'
+import { UI_PREFERENCES_KEY } from './my/appearance'
 import { TitleBar } from './components/TitleBar'
 import { Onboarding } from './components/Onboarding'
 import { Toasts } from './components/Toasts'
@@ -123,6 +124,15 @@ export default function App(): JSX.Element {
   const capsuleMode = useApp((s) => s.capsuleMode)
   const quickTodoMode = useApp((s) => s.quickTodoMode)
   const theme = useMy((s) => s.theme)
+  const fontSize = useMy((s) => s.fontSize)
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent): void => {
+      if (event.key === UI_PREFERENCES_KEY || event.key === null) useMy.getState().syncFontSizeFromStorage()
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   // 文档小窗模式：主进程以 ?mode=doc 拉起的独立置顶阅读窗（不跑 bootstrap/IPC 订阅；
   // location.search 按窗口固定，早退不会造成同根 hooks 错序）。
@@ -134,7 +144,7 @@ export default function App(): JSX.Element {
     document.documentElement.classList.toggle('dark', docTheme !== 'light')
     document.documentElement.style.colorScheme = docTheme
     return (
-      <div data-my-theme={docTheme} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
+      <div data-my-theme={docTheme} data-my-font-size={fontSize} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
         <DocWindowApp />
       </div>
     )
@@ -164,7 +174,7 @@ export default function App(): JSX.Element {
 
   if (quickTodoMode) {
     return (
-      <div data-my-theme={theme} className="my-root h-full w-full overflow-hidden bg-transparent p-0">
+      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root h-full w-full overflow-hidden bg-transparent p-0">
         <QuickTodoView />
       </div>
     )
@@ -172,7 +182,7 @@ export default function App(): JSX.Element {
 
   if (capsuleMode) {
     return (
-      <div data-my-theme={theme} className="my-root h-full w-full bg-transparent p-0 overflow-hidden">
+      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root h-full w-full bg-transparent p-0 overflow-hidden">
         {/* eslint-disable-next-line @typescript-eslint/no-unsafe-call */}
         <CapsuleLazy />
         <Toasts />
@@ -183,7 +193,7 @@ export default function App(): JSX.Element {
   // 预览入口：?my=1 且无 IPC 环境（浏览器）时直接渲染外壳，便于界面级验证
   if (!hasIpc && window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
     return (
-      <div data-my-theme={theme} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
+      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
         <TitleBar />
         <Suspense fallback={null}>
           <MyApp />
@@ -194,7 +204,7 @@ export default function App(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div data-my-theme={theme} className="my-root flex h-full flex-col bg-my-canvas text-my-md text-my-primary">
+      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root flex h-full flex-col bg-my-canvas text-my-md text-my-primary">
         <TitleBar />
         <MainApp />
         <Toasts />

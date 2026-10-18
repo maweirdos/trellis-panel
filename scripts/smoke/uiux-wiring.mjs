@@ -78,7 +78,7 @@ try {
   const targets = ['src/renderer/src/my/ui.tsx', 'src/renderer/src/pages/TaskDetail.tsx', 'src/renderer/src/pages/Knowledge.tsx', 'src/renderer/src/pages/Spec.tsx']
   const iconNames = new Set(targets.flatMap((file) => [...readFileSync(file, 'utf8').matchAll(/import\s*\{([^}]+)\}\s*from 'lucide-react'/gs)].flatMap((match) => match[1].split(',').map((name) => name.trim()))))
   const mocks = {
-    react: `const r = globalThis.__UIUX_WIRING__; ${['useState', 'useRef', 'useId', 'useMemo', 'useCallback', 'useEffect'].map((name) => `export const ${name} = (...args) => r.current.${name}(...args);`).join('\n')} export const useLayoutEffect = useEffect; export default { memo: (component) => component };`,
+    react: `const r = globalThis.__UIUX_WIRING__; ${['useState', 'useRef', 'useId', 'useMemo', 'useCallback', 'useEffect'].map((name) => `export const ${name} = (...args) => r.current.${name}(...args);`).join('\n')} export const createContext = (value) => ({ _value:value, Provider:() => null }); export const useContext = (context) => context._value; export const useLayoutEffect = useEffect; export default { memo: (component) => component };`,
     'react/jsx-runtime': 'export const jsx = (type, props, key) => ({ type, props, key }); export const jsxs = jsx; export const Fragment = "fragment";',
     'lucide-react': [...iconNames].map((name) => `export const ${name} = () => null;`).join('\n'),
     '../store': 'const r = globalThis.__UIUX_WIRING__; export const useApp = (selector) => selector(r.state); useApp.getState = () => r.state;',

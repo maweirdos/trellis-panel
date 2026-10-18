@@ -81,9 +81,9 @@ export function activeModule(page: Page, view: WorkItemsView): ModuleId {
   return page === 'tasks' && view === 'iterations' ? 'iterations' : getPageNavigation(page).domain
 }
 
-/** Knowledge and Agent pages already own their real source/session browsers. */
+/** Knowledge and conversation pages already own their real source/session browsers. */
 export function hasShellContext(page: Page): boolean {
-  return ['work', 'intake', 'tools'].includes(getPageNavigation(page).domain)
+  return page !== 'chat' && !['knowledge', 'conversations'].includes(getPageNavigation(page).domain)
 }
 
 export function navigationScopeLabel(scope: NavigationScope): string {

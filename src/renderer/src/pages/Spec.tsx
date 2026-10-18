@@ -25,6 +25,8 @@ import { relativePathUnderRoot } from '../reader/reader-paths'
 import { readingSessionKey } from '../reader/reading-session'
 import { projectRootKey } from '../my/navigation'
 import { Button, SearchInput } from '../my/ui'
+import { useMy } from '../my/store'
+import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { fmtBytes, relTime } from '../utils/format'
 import type { JSX } from 'react'
 import type { DocSearchHit, SpecNode } from '../../../shared/types'
@@ -148,6 +150,9 @@ interface SelectedDoc {
 }
 
 export function SpecPage(): JSX.Element {
+  const sidebarStyle = useSidebarWidthStyle()
+  const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
+  const toggleSidebar = useMy((state) => state.toggleSidebar)
   const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
 
@@ -167,7 +172,7 @@ export function SpecPage(): JSX.Element {
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [browseOpen, setBrowseOpen] = useState(true)
+  const browserVisible = !sidebarCollapsed
   const pageRef = useRef<HTMLDivElement | null>(null)
   const readerRef = useRef<HTMLDivElement | null>(null)
   const readSeq = useRef(0)
@@ -200,7 +205,7 @@ export function SpecPage(): JSX.Element {
 
   const focusReader = (): void => {
     if ((pageRef.current?.clientWidth ?? 0) < 1000) {
-      setBrowseOpen(false)
+      if (!useMy.getState().sidebarCollapsed) useMy.getState().toggleSidebar()
       requestAnimationFrame(() => readerRef.current?.focus({ preventScroll: true }))
     }
   }
@@ -341,14 +346,15 @@ export function SpecPage(): JSX.Element {
   return (
     <div ref={pageRef} className="my-fade flex h-full min-h-0 min-w-0 flex-col bg-my-surface-1">
       <div className="flex shrink-0 items-center gap-3 border-b border-my-line px-4 py-2">
-        <button type="button" onClick={() => setBrowseOpen((v) => !v)} aria-expanded={browseOpen} aria-controls="spec-browser" className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
-          {browseOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 目录与检索
+        <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="spec-browser" className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
+          {browserVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 目录与检索
         </button>
         <span className="min-w-0 truncate text-my-xs text-my-secondary">规范可编辑 · 工作区日志与共享索引只读</span>
       </div>
       <div className="flex min-h-0 min-w-0 flex-1">
       {/* 左栏：检索 + 规范树 / 命中列表 / 工作区日志 */}
-      <div id="spec-browser" className={clsx('w-80 max-w-[45%] shrink-0 flex-col border-r border-my-line bg-my-layer-1', browseOpen ? 'flex' : 'hidden')}>
+      <div id="spec-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line bg-my-layer-1', browserVisible ? 'flex' : 'hidden')}>
+        <SidebarResizeHandle />
         <div className="space-y-2 border-b border-my-line p-2.5">
           <SearchInput value={query} onChange={setQuery} placeholder="全文搜索规范 / 日志 / 共享文档…" />
           {searching_ && (

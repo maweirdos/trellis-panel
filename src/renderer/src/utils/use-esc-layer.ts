@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import { activateEscLayer, type EscLayerKind } from './esc-layer'
+import { useInteractionActive, useInteractionGuard } from './interaction-scope'
 
 /**
  * useEscLayer（S0 G2 第三片）：组件级 Esc 层登记的 React 封装。
@@ -22,16 +23,19 @@ export interface UseEscLayerInput {
 }
 
 export function useEscLayer(active: boolean, input: UseEscLayerInput): void {
+  const interactive = useInteractionActive()
+  const canInteract = useInteractionGuard()
   const { kind, id, onClose, returnFocusRef, deferWhenInputFocused } = input
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   // 稳定代理：登记的层始终读 holderRef；派发时刻从调用方 ref 中转最新目标
   const holderRef = useRef<HTMLElement | null>(null)
+  if (!interactive) holderRef.current = null
   const latestTargetRef = useRef<RefObject<HTMLElement | null> | null>(returnFocusRef ?? null)
   latestTargetRef.current = returnFocusRef ?? null
 
-  useEffect(() => {
-    if (!active) return
+  useLayoutEffect(() => {
+    if (!active || !interactive) return
     // 派发时经 holder 中转读取调用方的 ref（保持单一稳定对象注册）
     const sync = (): void => {
       holderRef.current = latestTargetRef.current?.current ?? null
@@ -43,9 +47,9 @@ export function useEscLayer(active: boolean, input: UseEscLayerInput): void {
       deferWhenInputFocused,
       onClose: () => {
         sync()
-        onCloseRef.current()
+        if (canInteract()) onCloseRef.current()
       },
       returnFocusRef: holderRef
     })
-  }, [active, id, kind])
+  }, [active, interactive, id, kind, canInteract])
 }

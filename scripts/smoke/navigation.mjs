@@ -39,6 +39,22 @@ try {
   ], { stdio: 'inherit' })
   const m = await import(pathToFileURL(bundle).href)
 
+  // Actual appearance store writes remain application-scoped and preserve older UI fields.
+  assert.equal(m.useMy.getState().fontSize, 'small')
+  m.useMy.getState().setFontSize('large')
+  assert.equal(JSON.parse(storage.getItem('tpanel.my.ui')).fontSize, 'large')
+  assert.deepEqual(JSON.parse(storage.getItem('tpanel.my.ui')).favorites, ['embedded-legacy'])
+  m.useMy.getState().setLayout('board')
+  assert.equal(JSON.parse(storage.getItem('tpanel.my.ui')).fontSize, 'large', 'another preference write retains appearance')
+  const savedUi = storage.getItem('tpanel.my.ui')
+  storage.setItem('tpanel.my.ui', '{broken')
+  m.useMy.getState().syncFontSizeFromStorage()
+  assert.equal(m.useMy.getState().fontSize, 'small', 'invalid storage falls back without corrupting the store')
+  assert.equal(m.useMy.getState().layout, 'board', 'appearance synchronization does not replace other preferences')
+  storage.setItem('tpanel.my.ui', savedUi)
+  m.useMy.getState().syncFontSizeFromStorage()
+  assert.equal(m.useMy.getState().fontSize, 'large', 'other-window appearance synchronization uses the persisted value')
+
   // Read the actual Page type so additions cannot quietly become unreachable.
   const source = ts.createSourceFile('types.ts', readFileSync('src/renderer/src/store/types.ts', 'utf8'), ts.ScriptTarget.Latest, true)
   const pageType = source.statements.find((node) => ts.isTypeAliasDeclaration(node) && node.name.text === 'Page')
@@ -132,6 +148,7 @@ try {
   assert.equal(m.useMy.getState().groupBy, 'state')
   assert.deepEqual(m.useMy.getState().filters.priority, [])
   assert.deepEqual(m.useMy.getState().favorites, ['different-task'])
+  assert.equal(m.useMy.getState().fontSize, 'large', 'project switching does not reset application appearance')
   assert.deepEqual(m.useMy.getState().savedViews, [])
   m.useMy.getState().toggleFavorite('same-task')
   m.useApp.setState({ snapshot: first })

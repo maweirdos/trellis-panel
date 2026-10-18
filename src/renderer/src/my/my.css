@@ -14,6 +14,18 @@
   --my-text-md: 13px;
   --my-text-lg: 14px;
   --my-text-xl: 16px;
+  --my-text-ui: var(--my-text-md);
+  --my-text-chat: 14px;
+  --my-text-document: 15px;
+  --my-line-chat: 1.8;
+  --my-line-document: 1.78;
+  --my-control-height: 28px;
+  --my-control-height-sm: 24px;
+  --my-control-height-lg: 32px;
+  --my-session-row-height: 32px;
+  --my-workspace-header-height: 48px;
+  --my-agent-avatar-size: 44px;
+  --my-sidebar-width: 260px;
   /* 品牌强调色引用面板全局 leaf 变量，自动随深浅主题切换 */
   --my-bg-accent-primary: rgb(var(--leaf-dim-rgb));
   --my-bg-accent-primary-hover: rgb(var(--leaf-rgb));
@@ -35,6 +47,40 @@
   font-feature-settings: 'cv02', 'cv03', 'cv04';
 }
 
+.my-root[data-my-font-size='standard'] {
+  --my-text-2xs: 11px;
+  --my-text-xs: 12px;
+  --my-text-sm: 13px;
+  --my-text-md: 14px;
+  --my-text-lg: 15px;
+  --my-text-xl: 18px;
+  --my-text-chat: 15px;
+  --my-text-document: 16px;
+  --my-control-height: 30px;
+  --my-control-height-sm: 26px;
+  --my-control-height-lg: 34px;
+  --my-session-row-height: 36px;
+  --my-workspace-header-height: 50px;
+  --my-agent-avatar-size: 48px;
+}
+
+.my-root[data-my-font-size='large'] {
+  --my-text-2xs: 12px;
+  --my-text-xs: 12px;
+  --my-text-sm: 14px;
+  --my-text-md: 15px;
+  --my-text-lg: 16px;
+  --my-text-xl: 20px;
+  --my-text-chat: 16px;
+  --my-text-document: 17px;
+  --my-control-height: 32px;
+  --my-control-height-sm: 28px;
+  --my-control-height-lg: 36px;
+  --my-session-row-height: 40px;
+  --my-workspace-header-height: 52px;
+  --my-agent-avatar-size: 52px;
+}
+
 .my-root[data-my-theme='dark'] {
   --my-txt-accent-primary: rgb(var(--leaf-soft-rgb));
 }
@@ -49,16 +95,16 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 28px;
+  height: var(--my-control-height);
   padding: 0 10px;
   border-radius: var(--my-radius-md);
-  font-size: 12.5px;
+  font-size: var(--my-text-sm);
   font-weight: 500;
   white-space: nowrap;
   transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
-.my-root .my-control-sm { height: 24px; padding: 0 8px; gap: 4px; font-size: 12px; }
-.my-root .my-control-lg { height: 32px; padding: 0 12px; }
+.my-root .my-control-sm { height: var(--my-control-height-sm); padding: 0 8px; gap: 4px; font-size: var(--my-text-sm); }
+.my-root .my-control-lg { height: var(--my-control-height-lg); padding: 0 12px; }
 .my-root button:not(:disabled), .my-root [role='button']:not(:disabled) { cursor: pointer; }
 
 /* 滚动条（隐藏式轨道 + 悬浮显 thumb） */
@@ -135,7 +181,7 @@
   border: 1px solid var(--my-border-subtle);
   border-radius: var(--my-radius-md);
   background: var(--my-bg-layer-2);
-  font-size: 13px;
+  font-size: var(--my-text-ui);
   color: var(--my-txt-primary);
   outline: none;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
@@ -168,7 +214,35 @@
 .my-root .my-module-rail > nav { scrollbar-gutter: auto; scrollbar-width: none; }
 .my-root .my-module-rail > nav::-webkit-scrollbar { display: none; }
 .my-root .my-module-button { line-height: 1; }
-.my-root .my-context-sidebar { background: var(--my-bg-layer-1); }
+.my-root .my-context-sidebar {
+  position: relative;
+  width: min(var(--my-sidebar-width, 260px), max(220px, calc(100vw - 360px)));
+  min-width: 0;
+  background: var(--my-bg-layer-1);
+}
+.my-root .my-sidebar-resize-handle {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.my-root .my-sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.my-root .my-sidebar-resize-handle:hover::after,
+.my-root .my-sidebar-resize-handle:active::after,
+.my-root .my-sidebar-resize-handle:focus-visible::after { background: var(--my-border-accent-strong); }
+.my-root .my-sidebar-resize-handle:focus-visible { outline: 2px solid var(--my-border-accent-strong); outline-offset: 1px; }
 .my-root .my-workspace-center { background: var(--my-bg-surface-1); }
 .my-root .my-project-switcher { border: 0; background: transparent; }
 .my-root .my-project-switcher:hover,
@@ -182,7 +256,6 @@
 }
 .my-root .my-task-surface { min-width: 0; }
 @media (max-width: 1100px) {
-  .my-root .my-context-sidebar { width: 200px; }
   .my-root .my-work-items-header { gap: 8px; padding-inline: 12px; }
   .my-root .my-project-switcher-name { max-width: 190px; }
   .my-root .my-window-search { margin-right: 8px; gap: 8px; }

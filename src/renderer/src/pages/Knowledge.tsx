@@ -29,6 +29,8 @@ import { MarkdownView } from '../components/MarkdownView'
 import { DocumentReader } from '../reader/DocumentReader'
 import { relativePathUnderRoot } from '../reader/reader-paths'
 import { Button, SearchInput } from '../my/ui'
+import { useMy } from '../my/store'
+import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult, WeknoraDocSummary, WeknoraHit } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -85,6 +87,9 @@ function highlight(text: string): JSX.Element {
 }
 
 export function KnowledgePage(): JSX.Element {
+  const sidebarStyle = useSidebarWidthStyle()
+  const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
+  const toggleSidebar = useMy((state) => state.toggleSidebar)
   const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
   const viewerTabs = useApp((s) => s.viewerTabs)
@@ -104,7 +109,7 @@ export function KnowledgePage(): JSX.Element {
   const docSeq = useRef(0)
   const pageRef = useRef<HTMLDivElement | null>(null)
   const readerRef = useRef<HTMLDivElement | null>(null)
-  const [browseOpen, setBrowseOpen] = useState(true)
+  const browserVisible = !sidebarCollapsed
 
   /* 公司库（WeKnora）——独立状态与序号，异步追加，绝不阻塞本地检索 */
   const weknoraEnabled = useApp((s) => s.settings?.weknora?.enabled ?? false)
@@ -229,7 +234,7 @@ export function KnowledgePage(): JSX.Element {
   const focusReader = (): void => {
     // Preserve the browser/results state while giving narrow windows a full-width reader.
     if ((pageRef.current?.clientWidth ?? 0) < 1000) {
-      setBrowseOpen(false)
+      if (!useMy.getState().sidebarCollapsed) useMy.getState().toggleSidebar()
       requestAnimationFrame(() => readerRef.current?.focus({ preventScroll: true }))
     }
   }
@@ -472,14 +477,15 @@ export function KnowledgePage(): JSX.Element {
   return (
     <div ref={pageRef} className="my-fade flex h-full min-h-0 min-w-0 flex-col bg-my-surface-1">
       <div className="flex shrink-0 items-center gap-3 border-b border-my-line bg-my-surface-1 px-4 py-2">
-        <button type="button" onClick={() => setBrowseOpen((v) => !v)} aria-expanded={browseOpen} aria-controls="knowledge-browser" title={browseOpen ? '收起来源与检索' : '展开来源与检索'} className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
-          {browseOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 来源与检索
+        <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="knowledge-browser" title={browserVisible ? '收起来源与检索' : '展开来源与检索'} className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
+          {browserVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 来源与检索
         </button>
         <span className="min-w-0 truncate text-my-xs text-my-secondary">{snapshot ? '项目文件保留原始位置 · 公司知识单独标明来源' : '未绑定本地项目 · 知识检索需在桌面打开项目'}</span>
       </div>
       <div className="flex min-h-0 min-w-0 flex-1">
       {/* 左列：检索与列表 */}
-      <div id="knowledge-browser" className={clsx('w-80 max-w-[45%] shrink-0 flex-col border-r border-my-line bg-my-layer-1', browseOpen ? 'flex' : 'hidden')}>
+      <div id="knowledge-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line bg-my-layer-1', browserVisible ? 'flex' : 'hidden')}>
+        <SidebarResizeHandle />
         <div className="space-y-2.5 border-b border-my-line px-4 py-3">
           <div className="flex flex-wrap gap-1.5">
             {LIBS.map((l) => (

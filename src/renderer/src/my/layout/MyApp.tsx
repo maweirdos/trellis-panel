@@ -12,6 +12,7 @@ import { CreateIssueModal } from '../pages/work-items/CreateIssueModal'
 import { PageFrame } from './PageFrame'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { useEscLayer } from '../../utils/use-esc-layer'
+import { InteractionScope, useInteractionActive } from '../../utils/interaction-scope'
 import '@fontsource-variable/inter'
 import '../my.css'
 
@@ -63,23 +64,80 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   settings: <SettingsPage />
 }
 
-function PageBody(): JSX.Element {
+export function PageBody(): JSX.Element {
+  const outerInteractive = useInteractionActive()
   const page = useApp((s) => s.page)
   const root = useApp((s) => projectRootKey(s.snapshot?.meta.root))
   const scope = getPageNavigation(page).scope
   const contentKey = scope === 'project' || scope === 'mixed' ? `${page}:${root ?? 'preview'}` : page
   const framed = FRAMED_PAGES[page]
+  const [rootGeneration, setRootGeneration] = useState(0)
+  const sequence = useRef(0)
+  const [acpSource, setAcpSource] = useState<{ root: string | null; generation: number; owner: number } | null>(() => page === 'acp' ? { root, generation: rootGeneration, owner: ++sequence.current } : null)
+  const sourceRef = useRef<HTMLDivElement | null>(null)
+  const sourceFocus = useRef<HTMLElement | null>(null)
+  const sourceScroll = useRef<Array<{ element: HTMLElement; top: number; left: number }>>([])
+  const wasDetour = useRef(false)
+  // Finite prop-derived state: React retries this component before committing a replacement owner.
+  const sameOwner = acpSource?.root === root && acpSource.generation === rootGeneration
+  if (acpSource && (!sameOwner || (page !== 'acp' && page !== 'settings'))) setAcpSource(null)
+  else if (page === 'acp' && !acpSource) setAcpSource({ root, generation: rootGeneration, owner: ++sequence.current })
+  const acpActive = page === 'acp'
+  const retained = acpSource !== null && sameOwner && (acpActive || page === 'settings')
+
+  useLayoutEffect(() => {
+    const rememberFocus = (event: FocusEvent): void => {
+      const source = sourceRef.current
+      if (source && !source.hidden && !source.inert && event.target instanceof HTMLElement && source.contains(event.target)) sourceFocus.current = event.target
+    }
+    document.addEventListener('focusin', rememberFocus)
+    const off = useApp.subscribe((state, previous) => {
+      const sameRoot = projectRootKey(state.snapshot?.meta.root) === projectRootKey(previous.snapshot?.meta.root)
+      if (!sameRoot) {
+        setRootGeneration((generation) => generation + 1)
+        setAcpSource(null)
+        sourceFocus.current = null; sourceScroll.current = []
+      } else if (previous.page === 'acp' && state.page === 'settings') {
+        const source = sourceRef.current
+        if (!source) return
+        sourceScroll.current = [source, ...source.querySelectorAll<HTMLElement>('.my-scrollbar,[data-page-scroll],.acp-document__body,textarea')]
+          .map((element) => ({ element, top: element.scrollTop, left: element.scrollLeft }))
+        // A native sidebar opener receives focus before its click changes the route.
+        // Retain the last source focus rather than replacing it with that outside target.
+        if (document.activeElement instanceof HTMLElement && source.contains(document.activeElement)) sourceFocus.current = document.activeElement
+      } else if (state.page !== 'acp' && state.page !== 'settings') {
+        setAcpSource(null)
+        sourceFocus.current = null; sourceScroll.current = []
+      }
+    })
+    return () => { off(); document.removeEventListener('focusin', rememberFocus) }
+  }, [])
+  useLayoutEffect(() => {
+    if (sourceRef.current) sourceRef.current.inert = !acpActive || !outerInteractive
+    if (outerInteractive && acpActive && wasDetour.current) {
+      for (const saved of sourceScroll.current) if (saved.element.isConnected) { saved.element.scrollTop = saved.top; saved.element.scrollLeft = saved.left }
+      if (sourceFocus.current?.isConnected) sourceFocus.current.focus({ preventScroll: true })
+    }
+    wasDetour.current = retained && !acpActive
+  }, [acpActive, outerInteractive, retained, acpSource?.owner])
   return (
-    <Suspense fallback={<PageLoading />}>
+    <>
+      <Suspense fallback={acpActive && outerInteractive ? <PageLoading /> : null}>
+      <InteractionScope key={acpSource?.owner ?? 'empty'} active={acpActive}>
+        {retained && <div ref={(element) => { sourceRef.current = element; if (element) element.inert = !acpActive || !outerInteractive }} data-acp-source-owner={acpSource.owner} hidden={!acpActive} aria-hidden={!acpActive || undefined} className="h-full min-h-0 min-w-0">
+          <ErrorBoundary key={`acp:${acpSource.root ?? 'preview'}:${acpSource.owner}`}><AcpConsolePage /></ErrorBoundary>
+        </div>}
+      </InteractionScope>
+      </Suspense>
       {/* 页面级兜底：单页崩溃只换掉内容区（错误卡片可重试），外壳与侧栏存活；
           项目页面同时按真实 root 重挂，清除旧项目页面状态和错误态 */}
-      <ErrorBoundary key={contentKey}>
+      {!acpActive && <Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
         {page === 'dashboard' && <YourWorkPage />}
         {page === 'tasks' && <WorkItemsPage />}
         {page === 'analytics' && <AnalyticsPage />}
         {framed && <PageFrame page={page}>{framed}</PageFrame>}
-      </ErrorBoundary>
-    </Suspense>
+      </ErrorBoundary></Suspense>}
+    </>
   )
 }
 
@@ -197,7 +255,7 @@ export function MyApp(): JSX.Element {
         {/* Keep the source instance mounted, with its local tabs/filter/scroll intact. */}
         <div ref={sourceRef} data-page-scroll tabIndex={-1} aria-label="来源工作视图" aria-hidden={workspace || undefined}
           className={`my-scrollbar min-h-0 min-w-0 flex-1 ${workspace ? 'invisible pointer-events-none absolute inset-0' : ''}`}>
-          <PageBody />
+          <InteractionScope active={!workspace}><PageBody /></InteractionScope>
         </div>
         {openTaskDir !== null && (
           <div data-task-presentation={workspace ? 'workspace' : 'preview'}
