@@ -26,6 +26,7 @@ Keep the default composer to plus/current mode at left and usage/combined model+
 
 The non-actionable local-execution row is omitted from plus. Binary native default/plan choices become one on/off action, not separate choices/group titles. Turn off only to a known actual counterpart/prior native mode; never guess a permission policy. The unified model popup defaults to compact strength settings; clicking the model caption switches to the model list, with back and acknowledgement-backed return to settings. Dropdown layoutKey repositions changing views/widths while retaining menu ownership. Use a16px rail,20px visual thumb/24px hit area and3px dots rather than the earlier thick strength bar; option names remain in title/ARIA.
 
+Real image attachments are available through plus, clipboard image paste and composer file drop. Show rounded thumbnails above the textarea, an accessible hover/focus remove action and explicit shared-Modal preview; sent images remain above their user message and persist in history. `useComposerImages` owns in-memory drafts per root/session, never base64 in localStorage. Async reads/file-picker completions require the exact active source/session/connection/interaction owner; switching away and back cannot revive an old operation. Hidden/unmounted sources cannot open previews or steal focus. Only accepted submitted IDs are consumed; rejected sends preserve attachments and later additions survive acknowledgement. Block submission while image reads are pending. Permit image-only input, check the actual advertised image capability and explain unsupported/unknown capability without silently dropping attachments. Share count/byte/MIME limits with main; provider-specific vision is not implied by the engine capability.
 
 Filter explicitly connection-scoped events and recognized structured historical connection observations out of the transcript without deleting them. Do not hide arbitrary unknown diagnostics using broad text matching. Connection/protocol details remain available in the session inspector. The header alone shows background connection progress; no startup checklist is appended after an old answer. Track automatic attempts over the source lifetime, not individual selections; records with failed status require explicit retry, even after remount. History, draft text and source references remain readable while connecting.
 
@@ -85,6 +86,7 @@ Heading discovery must use the same CommonMark line-ending semantics as body ren
 | Hover/focus without click | Hint only; no session/start/send |
 | Topmost hint/menu/diff + Escape | Close that layer only |
 | CRLF/LF/CR Markdown with headings | Same outline, stable IDs/line numbers and version-bound section quotation |
+| Image selection/read/send across session or root changes | No cross-source attachment/focus, rejected drafts retained, only accepted submitted IDs removed |
 
 ## 5. Good / Base / Bad Cases
 

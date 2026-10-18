@@ -43,7 +43,9 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
 
 ### Task materials and source-bound prompts
 
+`AcpPromptOptions.images?: AcpImageAttachment[]` carries `{id,name,mimeType,data}` with raw base64 (no data URL). `shared/acp-images.ts` defines raster MIME types PNG/JPEG/WebP/GIF and per-message bounds: eight images, 10 MiB per image, 20 MiB combined. `services/acp/images.ts` independently validates shape/unique IDs/base64/decoded byte count and file signature before any turn publication. This is signature checking, not full image decoding. Text may be empty only with valid images. Use the initialized runtime record's `agentCapabilities.promptCapabilities.image === true`; expose the same explicit fact as `session.capabilities.promptCapabilities.image`. Missing/false capability rejects attachments with `E_INVALID_ARG`, without changing connection state or dispatching a turn. Do not infer image support from agent/model names.
 
+Pass admitted bytes through existing public `runtime.startTurn({text,attachments:images.map(({mimeType,data})=>({mediaType:mimeType,data})),...})`. acpx already emits actual ACP image content blocks and supports image-only input; no additional transport/compat patch is needed. After `promptStarted`, attach the submitted images to the app user message's `payload.images` and retain them in schema2 history. Provider-specific model/image restrictions remain provider errors, not a reason to silently send text alone. Existing root/generation/reference/admission/cancellation guards apply unchanged.
 
 `acpSessionBindTask(sessionId,input)` is explicit and requires an idle ready owned session/current connection generation and an actual active task/path. It changes future material assembly only; prior events/snapshots/native identity are not rewritten. Busy/stale binding rejects with `E_CONFLICT`.
 
@@ -193,10 +195,12 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 | Runtime cleanup fails | Visible error; retain End/retry and process ownership |
 | Patch/SDK version or hash mismatch | Fail preparation/build; never report ready |
 | Changed/unavailable referenced bytes | `E_CONFLICT` + `SOURCE_CHANGED`; no turn/events; caller retains draft |
+| Invalid, oversized, duplicate or unadvertised image attachment | `E_INVALID_ARG`; no prompt/event dispatch or status change; caller retains attachments |
 | Idle task association / later prompt | Future-only materials; preserve history and native identity |
 
 ## 5. Good / Base / Bad Cases
 
+- Image input: good is image-only content arriving on the ACP wire and in saved user-message history; base is an unsupported engine rejecting before publication; bad is dropping the image or replacing it with a local path/text assertion.
 
 - Good: two idle profiles share a directory; one turn acquires its lease, displays
   the adapter's exact approval choices and releases only after canonical result.
@@ -207,6 +211,7 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 
 ## 6. Tests Required
 
+- `acp-images.mjs`: isolated actual facade + public runtime + owned peer; verify MIME/signature/base64/duplicate/count/byte bounds, stale generation and unsupported capability with zero dispatch, image-only and mixed wire blocks, next-turn continuity, disk history and renderer timeline projection. This fixture does not establish real provider/model vision or native UI acceptance.
 
 - `acp-materials.mjs`: source/included digests, zero-dispatch drift, future-only binding, junction fences, material add/delete and delayed project/watcher generations.
 

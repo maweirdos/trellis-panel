@@ -1,6 +1,6 @@
 /** Page-owned ACP profiles and explicitly started project conversations. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { ArrowDown, Bot, ChevronRight, CircleStop, FileText, Folder, GitBranch, History, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
+import { ArrowDown, Bot, ChevronRight, CircleStop, FileText, Folder, GitBranch, History, ImagePlus, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
@@ -25,6 +25,8 @@ import { isStarterRole, rolesForDisplay } from './role-presentation'
 import { EventRow } from './TranscriptRow'
 import { ComposerModelPicker } from './ComposerModelPicker'
 import { ComposerUsageIndicator } from './ComposerUsageIndicator'
+import { ImageAttachments } from './ImageAttachments'
+import { useComposerImages } from './useComposerImages'
 import { ConnectionNotice } from './ConnectionNotice'
 import { JiraPickerModal } from './JiraPicker'
 import { compileItems, isLiveStatus, mergeEvents, SESSION_LABEL } from './timeline'
@@ -112,6 +114,7 @@ export function AcpConsolePage(): JSX.Element {
   const sessionsRef = useRef(projectSessions)
   sessionsRef.current = projectSessions
   const activeSession = projectSessions.find((session) => session.sessionId === activeId) ?? null
+  const composerImages = useComposerImages({ root, sessionId: view === 'conversation' ? activeId ?? undefined : undefined, generation: activeSession?.connectionGeneration, isCurrent })
   const activeSelection = useRef({ id: activeId, generation: activeSession?.connectionGeneration, view })
   activeSelection.current = { id: activeId, generation: activeSession?.connectionGeneration, view }
   const activeEvents = useMemo(() => activeSession ? events[activeSession.sessionId] ?? [] : [], [events, activeSession])
@@ -297,17 +300,22 @@ export function AcpConsolePage(): JSX.Element {
   }, [root, scope, isCurrent, pushToast, reloadSessions])
 
   const send = useCallback(async (): Promise<void> => {
-    if (!isCurrent() || !activeSession || !activeId || !canSend(activeSession) || scope.sends.has(activeId) || !input.trim()) return
+    if (!isCurrent() || !canInteract() || !activeSession || !activeId || !canSend(activeSession) || scope.sends.has(activeId) || composerImages.pending || (!input.trim() && !composerImages.images.length)) return
     const id = activeId, text = input.trim(), submittedDraft = input
     const submittedReferences = references
+    const submittedImages = composerImages.images
+    if (submittedImages.length && activeSession.capabilities?.promptCapabilities?.image !== true) {
+      setFeedback((previous) => ({ ...previous, [id]: { error: true, text: '当前执行引擎未声明支持图片输入。草稿已保留，请切换支持图片的会话。' } })); return
+    }
     if (submittedReferences.some((source) => projectRootKey(source.projectRoot) !== projectRootKey(root) || source.targetSessionId !== id || source.taskDir !== activeSession.taskDir || source.targetConnectionGeneration !== activeSession.connectionGeneration)) {
       setFeedback((previous) => ({ ...previous, [id]: { error: true, text: '引用的项目、任务或会话已变化。草稿已保留，请重新阅读并引用来源。' } })); return
     }
     scope.sends.add(id); setSending((previous) => ({ ...previous, [id]: true })); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '请求确认中，草稿暂时保留。' } }))
     try {
-      const response = await api.acpSessionPrompt(id, text, { expectedConnectionGeneration: activeSession.connectionGeneration, sourceReferences: submittedReferences })
+      const response = await api.acpSessionPrompt(id, text, { expectedConnectionGeneration: activeSession.connectionGeneration, sourceReferences: submittedReferences, images: submittedImages })
       if (!isCurrent()) return
       if (response.ok) {
+        composerImages.consume(id, submittedImages)
         const latestDraft = draftsRef.current[id] ?? readSessionView(root, id).draft
         const latestReferences = draftReferencesRef.current[id] ?? readSessionView(root, id).sourceReferences ?? []
         if (latestDraft === submittedDraft && JSON.stringify(latestReferences) === JSON.stringify(submittedReferences)) {
@@ -318,7 +326,7 @@ export function AcpConsolePage(): JSX.Element {
       } else setFeedback((previous) => ({ ...previous, [id]: { error: true, text: response.reason === 'SOURCE_CHANGED' ? `引用文件已变化，尚未发送。草稿与原版本引用已保留，请查看变化后重新引用。${response.sources?.map((source) => ` ${source.relativePath}`).join('') ?? ''}` : response.error ?? '发送被拒绝，草稿已保留。' } }))
     } catch (error) { if (isCurrent()) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })) }
     finally { scope.sends.delete(id); if (isCurrent()) setSending((previous) => ({ ...previous, [id]: false })) }
-  }, [input, activeId, activeSession, references, root, scope, isCurrent])
+  }, [input, activeId, activeSession, references, root, scope, isCurrent, canInteract, composerImages])
 
   const sessionAction = async (action: 'cancel' | 'kill' | 'resume'): Promise<void> => {
     if (!activeSession || !isCurrent() || scope.actions.has(activeSession.sessionId)) return
@@ -541,7 +549,13 @@ export function AcpConsolePage(): JSX.Element {
         {!isReadOnly && <footer className="acp-composer-region">
           {(feedback[activeSession.sessionId]?.error || activeSession.error) && <ConnectionNotice message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error ?? ''} />}
           {activeSession.canResume && !isLiveStatus(activeSession.status) && operations[activeSession.sessionId] !== 'resume' && <div className="acp-reconnect-status" role="status">连接尚未就绪<Button size="sm" variant="ghost" onClick={() => void sessionAction('resume')}>重试连接</Button></div>}
-          <div className="acp-composer">
+          <div className={clsx('acp-composer', composerImages.dragging && 'acp-composer-dragging')} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>
+            {composerImages.fileInput}
+            {composerImages.dragging && <div className="acp-image-drop-hint" aria-hidden="true"><ImagePlus size={22} /><span>松开以添加图片</span></div>}
+            <ImageAttachments key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} images={composerImages.images} onRemove={composerImages.remove} />
+            {composerImages.pending && <p className="acp-image-status" role="status"><Loader2 size={12} className="animate-spin" />正在添加图片…</p>}
+            {composerImages.error && <p className="acp-image-status text-my-danger-text" role="alert">{composerImages.error}</p>}
+            {composerImages.images.length > 0 && !composerImages.pending && !composerImages.error && activeSession.capabilities?.promptCapabilities?.image !== true && <p className="acp-image-status text-my-warning-text" role="status">{activeSession.status === 'starting' ? '连接就绪后确认图片输入支持' : '当前执行引擎未声明支持图片输入，图片草稿已保留'}</p>}
             {draftIntent !== 'plain' && <p className={clsx('px-3 pt-3 text-my-sm', draftIntent === 'implementation' ? 'text-my-warning-text' : 'text-my-secondary')}>{draftIntent === 'implementation' ? '实施授权草稿 · 审阅后手动发送' : draftIntent === 'planning' ? '仅完善方案 · 暂不开始实现' : '文档反馈 · 引用版本将在发送前校验'}</p>}
             {draftBackup && <p className="px-3 pt-2 text-my-sm text-my-tertiary">原草稿已保留。<button className="ml-2 underline" onClick={() => {
               const saved = readSessionView(root, activeSession.sessionId), restoredReferences = saved.backupReferences ?? []
@@ -550,7 +564,7 @@ export function AcpConsolePage(): JSX.Element {
             }}>恢复原稿</button></p>}
             {references.length > 0 && <div className="acp-source-references">{references.map((source) => <div className="acp-source-chip" key={`${source.relativePath}:${source.displayedRevision}`}><FileText size={12} /><span title={`${source.relativePath} · ${source.displayedRevision}`}>{source.relativePath.split('/').at(-1)} · {source.displayedRevision.slice(0, 8)}</span><button aria-label={`移除引用 ${source.relativePath}`} onClick={() => { const next = references.filter((item) => item !== source); setReferences(next); draftReferencesRef.current[activeSession.sessionId] = next; writeSessionView(root, activeSession.sessionId, { sourceReferences: next }) }}><X size={11} /></button></div>)}</div>}
             <textarea ref={composerRef} aria-label="Agent 指令" title="Enter 发送 · Shift Enter 换行" rows={2} value={input} placeholder={canSend(activeSession) ? '告诉我你的想法，或引用文档中的内容…' : '可先准备下一条草稿，就绪后手动发送'} onChange={(event) => changeDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send() } }} />
-            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={<Button variant="primary" size="sm" title="发送指令" disabled={!canSend(activeSession) || Boolean(sending[activeSession.sessionId]) || !input.trim()} onClick={() => void send()}>{sending[activeSession.sessionId] ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}</Button>} /></div>
+            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={<Button variant="primary" size="sm" title="发送指令" disabled={!canSend(activeSession) || Boolean(sending[activeSession.sessionId]) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}>{sending[activeSession.sessionId] ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}</Button>} /></div>
           </div>
         </footer>}
         {activeSession.historyKind === 'live' && activeSession.status === 'error' && <div className="px-6 pb-4"><Button variant="outline" size="sm" title="停止当前会话及其拥有的进程" disabled={Boolean(operations[activeSession.sessionId])} onClick={() => void sessionAction('kill')}>停止会话进程</Button></div>}

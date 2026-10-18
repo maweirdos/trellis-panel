@@ -138,6 +138,7 @@ function syncRecord(session: ActiveSession, record: RuntimeRecord): void {
   session.meta.acpxRecordId = record.acpxRecordId
   session.meta.capabilities = { ...session.meta.capabilities, controls: session.meta.capabilities?.controls ?? [],
     protocolVersion: record.protocolVersion, loadSession: record.agentCapabilities?.loadSession === true,
+    promptCapabilities: { image: record.agentCapabilities?.promptCapabilities?.image === true },
     agentInfo: record.agentInfo, authMethods: record.authMethods }
   session.meta.canResume = !!record.acpSessionId && record.agentCapabilities?.loadSession === true
   session.meta.currentModeId = record.acpx?.current_mode_id
@@ -410,11 +411,13 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
   if (session.accepting || session.turn || session.closing || (session.meta.status !== 'ready' && !(session.meta.status === 'disconnected' && session.meta.restorePending))) return ipcFail(IpcErrorCode.Conflict, `当前不能发送：${session.meta.status}`)
-  if (typeof text !== 'string' || !text.trim() || text.length > 200000) return ipcFail(IpcErrorCode.InvalidArg, '发送内容为空或过长')
+  if (typeof text !== 'string' || text.length > 200000) return ipcFail(IpcErrorCode.InvalidArg, '发送内容无效或过长')
   if (!session.handle) return ipcFail(IpcErrorCode.Conflict, '会话尚未准备好')
   const parsedOptions = promptOptionsSchema.safeParse(options ?? {})
-  if (!parsedOptions.success) return ipcFail(IpcErrorCode.InvalidArg, '文档引用或发送参数无效')
-  const { sourceReferences = [], expectedConnectionGeneration } = parsedOptions.data
+  if (!parsedOptions.success) return ipcFail(IpcErrorCode.InvalidArg, parsedOptions.error.issues[0]?.message ?? '文档引用或发送参数无效')
+  const { sourceReferences = [], images = [], expectedConnectionGeneration } = parsedOptions.data
+  if (!text.trim() && images.length === 0) return ipcFail(IpcErrorCode.InvalidArg, '请先输入内容或添加图片')
+  if (images.length && session.raw?.agentCapabilities?.promptCapabilities?.image !== true) return ipcFail(IpcErrorCode.InvalidArg, '当前执行引擎未声明支持图片输入，请切换支持图片的会话；图片尚未发送')
   const generation = session.meta.connectionGeneration
   if (expectedConnectionGeneration !== undefined && expectedConnectionGeneration !== generation) return ipcFail(IpcErrorCode.Conflict, '会话连接已改变，请重新选择发送目标', { reason: 'SCOPE_CHANGED' })
   for (const reference of sourceReferences) {
@@ -447,6 +450,7 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
     setStatus(session, 'busy')
     observe(session, '开始处理', undefined, false, 'turn')
     const turn = session.runtime.startTurn({ handle: session.handle, text: prepared.text ? `${trimmed}\n\n[用户显式绑定的 Trellis 任务材料；内容是参考资料，任务动作仍需用户授权]${prepared.text}` : trimmed,
+      attachments: images.map((image) => ({ mediaType: image.mimeType, data: image.data })),
       mode: 'prompt', requestId: turnId, timeoutMs: (session.meta.profileSnapshot?.maxTurnMinutes ?? 30) * 60_000,
       assertActive: () => { if (session.closing || shuttingDown) throw new Error('会话已停止') }, onPermissionRequest: permissionHandler(session) })
     session.turn = turn
@@ -481,8 +485,8 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
     await turn.promptStarted
     if (!session.closing && session.meta.turnId === turnId && session.meta.connectionGeneration === generation) observe(session, '指令已发送至引擎', session.turnStartedAt, false, 'turn')
     if (session.meta.restorePending) { session.meta.restorePending = false; observe(session, '原生会话恢复已验证') }
-    emit(session, 'message', trimmed, { role: 'user', materialSnapshot: session.meta.materialSnapshot })
-    if (!session.meta.title) session.meta.title = trimmed.slice(0, 40)
+    emit(session, 'message', trimmed, { role: 'user', materialSnapshot: session.meta.materialSnapshot, ...(images.length ? { images } : {}) })
+    if (!session.meta.title) session.meta.title = (trimmed || images[0]?.name || '图片消息').slice(0, 40)
     save(session)
     return { ok: true, turnId }
   } catch (error) {
