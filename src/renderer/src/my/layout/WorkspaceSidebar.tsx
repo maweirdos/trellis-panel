@@ -12,9 +12,9 @@ import {
 } from '../navigation'
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
-  overview: <House size={22} strokeWidth={1.8} />, intake: <FolderInput size={22} strokeWidth={1.8} />, work: <ListTodo size={22} strokeWidth={1.8} />,
-  iterations: <RotateCw size={22} strokeWidth={1.8} />, knowledge: <BookOpen size={22} strokeWidth={1.8} />, conversations: <MessageSquare size={22} strokeWidth={1.8} />,
-  team: <Users size={22} strokeWidth={1.8} />, analytics: <ChartColumn size={22} strokeWidth={1.8} />, tools: <Settings2 size={22} strokeWidth={1.8} />
+  overview: <House className="my-module-icon" aria-hidden="true" />, intake: <FolderInput className="my-module-icon" aria-hidden="true" />, work: <ListTodo className="my-module-icon" aria-hidden="true" />,
+  iterations: <RotateCw className="my-module-icon" aria-hidden="true" />, knowledge: <BookOpen className="my-module-icon" aria-hidden="true" />, conversations: <MessageSquare className="my-module-icon" aria-hidden="true" />,
+  team: <Users className="my-module-icon" aria-hidden="true" />, analytics: <ChartColumn className="my-module-icon" aria-hidden="true" />, tools: <Settings2 className="my-module-icon" aria-hidden="true" />
 }
 
 /** The rail remains fixed; context contains only useful views of its active module. */
@@ -28,11 +28,11 @@ export function WorkspaceSidebar(): JSX.Element {
   const theme = useMy((s) => s.theme)
   const toggleTheme = useMy((s) => s.toggleTheme)
   const current = activeModule(page, view)
-  const railClass = (selected: boolean): string => clsx('my-module-button relative grid h-10 w-10 shrink-0 place-items-center rounded-my-lg transition-colors',
-    selected ? 'bg-my-layer-transparent-selected text-my-primary' : 'text-my-icon-secondary hover:bg-my-layer-transparent-hover hover:text-my-primary')
+  const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center transition-colors hover:text-my-primary',
+    selected ? 'is-selected text-my-primary' : 'text-my-icon-secondary')
   return <>
-    <aside aria-label="固定模块栏" className="my-module-rail flex h-full w-14 shrink-0 flex-col items-center py-3">
-      <nav aria-label="项目模块" className="my-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-2">
+    <aside aria-label="固定模块栏" className="my-module-rail flex h-full shrink-0 flex-col items-center">
+      <nav aria-label="项目模块" className="my-scrollbar flex min-h-0 w-full flex-1 flex-col items-center">
         {PRIMARY_NAVIGATION.map((item) => (
           <button key={item.id} type="button" aria-label={item.label} title={item.label}
             aria-current={current === item.id ? 'page' : undefined}
@@ -41,14 +41,14 @@ export function WorkspaceSidebar(): JSX.Element {
           </button>
         ))}
       </nav>
-      <div className="mt-4 flex w-full shrink-0 flex-col items-center gap-3">
+      <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">
         <button type="button" aria-label="工具与设置" title="工具与设置" aria-current={current === 'tools' ? 'page' : undefined}
           onClick={() => setPage('settings')} className={railClass(current === 'tools')}>
           {MODULE_ICONS.tools}
         </button>
         <Dropdown width={210} trigger={({ open, toggle }) => (
           <button type="button" aria-label="用户与主题" title="用户与主题" aria-expanded={open} onClick={toggle}
-            className="grid h-10 w-10 place-items-center rounded-my-lg hover:bg-my-layer-transparent-hover">
+            className="my-module-button my-nav-item grid place-items-center">
             <Avatar name={snapshot?.meta.developer ?? '本机用户'} color="var(--my-bg-accent-primary)" tone="accent" size={28} />
           </button>
         )}>
@@ -83,8 +83,8 @@ function ContextSidebar(): JSX.Element {
   const domain = getPageNavigation(page).domain
   const title = domain === 'work' ? view === 'iterations' && page === 'tasks' ? '自然周计划' : '工作视图' : domain === 'intake' ? '需求来源'
     : domain === 'overview' ? '项目概览' : domain === 'team' ? '团队协作' : domain === 'analytics' ? '项目统计' : '工具与设置'
-  const buttonClass = (selected: boolean): string => clsx('my-context-button mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-my-md px-3 py-2 text-left text-my-sm transition-colors',
-    selected ? 'bg-my-layer-transparent-selected text-my-primary font-medium' : 'text-my-secondary hover:bg-my-layer-transparent-hover')
+  const buttonClass = (selected: boolean): string => clsx('my-context-button my-nav-item mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-my-md px-3 py-2 text-left text-my-sm transition-colors',
+    selected ? 'is-selected text-my-primary font-medium' : 'text-my-secondary')
   const routeButton = (target: Page): JSX.Element => <button key={target} type="button" aria-current={page === target ? 'page' : undefined}
     onClick={() => { if (target === 'tasks' || target === 'archive') setView('items'); setPage(target) }} className={buttonClass(page === target)}>
     <NavIcon name={getPageNavigation(target).icon} size={16} />{getPageNavigation(target).title}

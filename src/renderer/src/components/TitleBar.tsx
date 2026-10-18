@@ -30,7 +30,7 @@ export function TitleBar(): JSX.Element {
   useEffect(() => hasIpc ? api.onWindowMaximized(setMaximized) : undefined, [])
   return (
     <header className={clsx('my-window-header relative z-50 flex h-my-header shrink-0 items-center', hasIpc && 'drag-region')}>
-      <div className="flex h-full w-14 shrink-0 items-center justify-center" title="Trellis Panel">
+      <div className="my-module-brand flex h-full shrink-0 items-center justify-center" title="Trellis Panel">
         <BrandMark size={22} className="text-my-primary" />
         <span className="sr-only">Trellis Panel</span>
       </div>

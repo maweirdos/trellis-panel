@@ -40,7 +40,7 @@ assert.ok(read('src/renderer/public/favicon.svg').includes(markPath), 'favicon d
 assert.ok(read('src/renderer/src/my/BrandMark.tsx').includes('resources/brand/mark.svg?url'))
 const ico = readFileSync('resources/brand/icon.ico')
 const appId = read('electron-builder.yml').match(/^appId:\s*(\S+)/m)[1]
-assert.ok(read('src/main/index.ts').includes(`app.setAppUserModelId('${appId}')`), 'native taskbar identity matches the packaged application')
+assert.ok(read('src/main/services/window-branding.ts').includes(`APPLICATION_ID = '${appId}'`), 'native taskbar identity matches the packaged application')
 assert.equal(ico.readUInt16LE(2), 1)
 assert.equal(ico.readUInt16LE(4), 7)
 for (const size of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
@@ -58,6 +58,7 @@ import{Button,Checkbox,Dropdown,DropdownItem,Modal,SearchInput,Avatar}from '${ab
 import{BrandMark}from '${absolute(root + 'my/BrandMark.tsx')}';
 function Fixture(){const[cfg,set]=useState({theme:'dark',size:'standard'});window.setFixture=set;return <div id="fixture" className="my-root" data-my-theme={cfg.theme} data-my-font-size={cfg.size} style={{minHeight:'100%',padding:24}}>
 <BrandMark/><Avatar name="本" color="var(--my-bg-accent-primary)" tone="accent"/>
+<div className="my-chat-prose"><div className="md"><h3>正文小标题</h3><p>正文与标题保持清楚的排版层级。</p></div></div>
 <Button variant="primary" data-test="primary">开始工作</Button><Button variant="danger" data-test="danger">删除</Button><Button disabled>禁用</Button>
 <Checkbox checked onChange={()=>{}}/><input data-test="field" className="my-input" placeholder="输入内容"/><select className="my-input"><option>选择项目</option></select><textarea className="my-input" rows={2}/>
 <SearchInput value="" onChange={()=>{}} placeholder="搜索"/>
@@ -93,6 +94,7 @@ for(const theme of ['dark','light'])for(const[size,px]of[['small',13],['standard
 window.setFixture({theme,size});await wait();const f=document.getElementById('fixture'),p=f.querySelector('[data-test=primary]'),d=f.querySelector('[data-test=danger]'),c=getComputedStyle(p);
 passed.push(check(theme+'/'+size+' shared font and inverse contrast',getComputedStyle(f).fontSize===px+'px'&&contrast(c.color,c.backgroundColor)>=7&&contrast(getComputedStyle(d).color,getComputedStyle(d).backgroundColor)>=4.5,{font:getComputedStyle(f).fontSize,primary:contrast(c.color,c.backgroundColor),danger:contrast(getComputedStyle(d).color,getComputedStyle(d).backgroundColor)}));
 const fields=f.querySelectorAll('input.my-input:not(.my-search-input),select.my-input');passed.push(check(theme+'/'+size+' field geometry',Math.abs(fields[0].getBoundingClientRect().height-fields[1].getBoundingClientRect().height)<.1&&c.borderRadius==='10px'&&getComputedStyle(f.querySelector('[data-test=composer]')).borderRadius==='20px'));
+const prose=getComputedStyle(f.querySelector('.my-chat-prose .md p')),heading=getComputedStyle(f.querySelector('.my-chat-prose h3'));passed.push(check(theme+'/'+size+' chat typography hierarchy',parseFloat(prose.fontSize)===px+1&&parseFloat(heading.fontSize)>parseFloat(prose.fontSize)&&parseFloat(prose.lineHeight)/parseFloat(prose.fontSize)>=1.6));
 passed.push(check(theme+'/'+size+' transparent utility root',getComputedStyle(f.querySelector('[data-test=utility]')).backgroundColor==='rgba(0, 0, 0, 0)'&&getComputedStyle(f.querySelector('[data-test=utility]')).fontSize===px+'px',{background:getComputedStyle(f.querySelector('[data-test=utility]')).backgroundColor,font:getComputedStyle(f.querySelector('[data-test=utility]')).fontSize,expected:px}));}
 window.setFixture({theme:'light',size:'standard'});await wait();[...document.querySelectorAll('button')].find(b=>b.textContent==='打开菜单').click();await wait();const m=document.querySelector('.my-menu'),rect=m.getBoundingClientRect();passed.push(check('actual shared menu radius and viewport clamp',getComputedStyle(m).borderRadius==='18px'&&rect.left>=0&&rect.right<=innerWidth&&rect.top>=0&&rect.bottom<=innerHeight));
 passed.push(check('selected and disabled menu states',[...m.querySelectorAll('button')].some(b=>b.dataset.selected==='true')&&[...m.querySelectorAll('button')].some(b=>b.disabled)));

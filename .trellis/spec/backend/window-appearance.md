@@ -43,8 +43,17 @@ applyMainWindowAppearance(
   relative to `out/main` via `../../resources/brand`; electron-builder includes that
   directory inside the app and applies `icon.ico` to the Windows executable and NSIS.
   All BrowserWindows use the application icon; the tray uses the 32px tile. Keep the
-  runtime Windows AppUserModelID synchronized with `electron-builder.yml` appId
-  (`com.mindfold.trellispanel`) so taskbar grouping identifies this application.
+  packaged Windows AppUserModelID synchronized with `electron-builder.yml` appId
+  (`com.mindfold.trellispanel`). Development uses the stable `.dev` suffix so the
+  generic Electron host cannot seed or reuse the installed app's taskbar group.
+  Set the process identity before readiness and before creating any windows.
+- Every BrowserWindow receives `applyWindowsTaskbarBranding` through the central
+  `browser-window-created` listener before showing. A BrowserWindow icon and a
+  process AppUserModelID alone do not establish the taskbar group's Shell icon in
+  development. Set the window AppUserModelID, relaunch icon, command and display
+  name together. Development uses the committed ICO and a quoted Electron + app
+  path command; packaged windows use the branded EXE's icon and command. Shell
+  icon paths must be real OS files, never paths inside `app.asar`.
 
 ## 4. Validation and error matrix
 
@@ -56,6 +65,8 @@ applyMainWindowAppearance(
 | Null or destroyed window | No-op, no native method call |
 | Non-Windows | Background update only; no Windows accent API |
 | Native capture unavailable/interrupted | Record unverified; do not claim border visually fixed |
+| Development taskbar icon | Independent `.dev` identity; Shell properties point to the ICO and application path |
+| Packaged taskbar icon | Window Shell properties point to the branded EXE, outside `app.asar` |
 
 ## 5. Good / base / bad cases
 
@@ -70,6 +81,15 @@ Typecheck/build the main and renderer packages. Exercise theme/platform/window-l
 branches and compare the centralized colors against the existing token source. Native
 focused/unfocused light/dark captures and resizing/maximize/restore must establish the
 actual visual outcome; browser screenshots cannot do that.
+
+For branding changes, inspect the actual Windows window property store for the
+AppUserModelID and all three relaunch properties in development and packaged
+fixtures. Also capture the real taskbar with a visible window: readable NativeImage,
+correct Shell properties, and a branded EXE do not prove the group's displayed icon.
+A reproduced Windows 11 case had the correct HICON and all relaunch properties,
+yet kept the old Electron group icon; a distinct development identity displayed TP.
+Do not repeatedly clear system caches or change arbitrary IDs. Renderer refresh is
+insufficient to load main-process changes.
 
 ## 7. Wrong vs correct
 

@@ -23,6 +23,11 @@ export default {
         // 外壳语义色板（值见 src/renderer/src/my/my-tokens.css，
         // 随 [data-my-theme] 浅/深切换；不支持 alpha 修饰符）
         my: {
+          shell: 'var(--my-bg-shell)',
+          sidebar: 'var(--my-bg-sidebar)',
+          'shell-line': 'var(--my-border-shell)',
+          'navigation-hover': 'var(--my-bg-navigation-hover)',
+          'navigation-selected': 'var(--my-bg-navigation-selected)',
           canvas: 'var(--my-bg-canvas)',
           'surface-1': 'var(--my-bg-surface-1)',
           'surface-2': 'var(--my-bg-surface-2)',

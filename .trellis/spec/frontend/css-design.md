@@ -22,6 +22,8 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
 ## 2. Public style and component API
 
 - Colors: existing `bg-my-*`, `text-my-*`, `border-my-*` map to `--my-*` variables.
+  Shell/sidebar/navigation roles are also available as `bg-my-shell`,
+  `bg-my-sidebar`, `bg-my-navigation-hover/selected`, and `border-my-shell-line`.
 - Type: `text-my-2xs/xs/sm/md/lg/title/xl/display`; body roles are
   `--my-text-ui/chat/document/activity`, with matching line-height variables.
 - Radii: `rounded-my-xs/sm/inset/md/lg/xl/menu/3xl/4xl` map to
@@ -31,7 +33,19 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   for semantic layout metrics. Do not introduce unrelated local pixel scales.
 - State: `my-control`, `my-input`, `my-menu`, `my-menu-item`, `my-tooltip`,
   `my-modal-backdrop`, `my-modal-panel`, `my-segmented`, `my-segment`,
-  `my-chip`, `my-kbd`, `my-scrollbar`.
+  `my-chip`, `my-kbd`, `my-scrollbar`, `my-nav-item`, `my-activity-note`, `my-chat-prose`.
+- Ordinary window surfaces: `--my-bg-shell` belongs to the title bar and module
+  rail; `--my-bg-sidebar` belongs to contextual navigation; canvas belongs to the
+  content. Light roles are #f6f6f6 / #fcfcfc / #ffffff; dark roles are #101010 /
+  #141414 / #181818. `my-app-window` and `my-shell-layout` paint the shell with
+  shared inset/radius/border tokens. Utility-window roots do not acquire that frame.
+- Conversation geometry: place `my-conversation-column` inside
+  `my-conversation-frame`. Transcript and composer use the same 760px maximum and
+  24px gutters (20px at the compact breakpoint), including when an inspector changes
+  the available width. Symmetric scrollbar gutters keep the center shared.
+- Navigation hover/selected states consume dedicated navigation roles. Do not use
+  general-purpose panel selection as the navigation background. Ordinary activity
+  uses `my-activity-note`; failures and pending permissions retain semantic emphasis.
 - Shared React primitives live in `my/ui.tsx`: Button, Dropdown, Modal,
   Checkbox, SearchInput, Tabs, Avatar, Tooltip and EmptyState.
 - `Avatar({ tone?: 'color'|'accent' })`: use `tone="accent"` with a neutral
@@ -63,11 +77,14 @@ The default font is the platform system stack, including Segoe UI and Chinese
 fallbacks on Windows. Code uses the global mono stack; box-drawing content uses
 `--my-font-diagram` for its CJK character-width requirements. There is no font CDN.
 
-Unspecified/invalid font preference means standard (14px UI/chat/document).
+Unspecified/invalid font preference means standard (14px UI/document, 15px chat).
 Explicit small/large remain 13/15px. Keep stored values, unrelated settings and
 cross-window storage synchronization. Font controls remain in Settings only.
 Metadata and activity use a smaller global text role. Heading line-height is1.2. Changing type never changes
-reader/session identity. The 46px toolbar does not grow per font preset; fields
+reader/session identity. Chat uses 1.65 line height and a shared paragraph gap;
+the same font step produces 14/15/16px chat across the three presets.
+The 48px toolbar and module-rail width share `--my-shell-chrome-size` and do not
+grow per font preset; fields
 and buttons derive their heights from the type and padding metrics.
 
 ## 4. Interaction and validation matrix

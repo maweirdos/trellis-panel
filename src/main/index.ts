@@ -15,6 +15,7 @@ import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
 import { applyChromiumProxy } from './services/proxy'
 import { mainWindowAppearance } from './services/window-appearance'
+import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding } from './services/window-branding'
 import { ipcEvent } from '../shared/ipc-channels'
 import {
   setUiHooks,
@@ -463,6 +464,9 @@ function bridgeHandlers() {
 
 /* ---------------- boot ---------------- */
 
+// Establish Shell identity before readiness and before any window can join a group.
+if (process.platform === 'win32') app.setAppUserModelId(TASKBAR_APPLICATION_ID)
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
@@ -481,7 +485,9 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
-    if (process.platform === 'win32') app.setAppUserModelId('com.mindfold.trellispanel')
+    app.on('browser-window-created', (_event, window) => {
+      applyWindowsTaskbarBranding(window, join(BRAND_RESOURCES, 'icon.ico'))
+    })
     Menu.setApplicationMenu(null)
     if (process.defaultApp) {
       app.setAsDefaultProtocolClient('trellis-panel', process.execPath, [resolve(process.argv[1] ?? '.')])

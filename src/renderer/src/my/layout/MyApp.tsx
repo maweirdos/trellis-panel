@@ -247,7 +247,7 @@ export function MyApp(): JSX.Element {
   }, [toggleSidebar])
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1">
+    <div className="my-shell-layout flex h-full min-h-0 min-w-0 flex-1">
       <WorkspaceSidebar />
       <main className="my-workspace-center relative flex min-w-0 flex-1 flex-col overflow-hidden bg-my-surface-1">
         {/* Keep the source instance mounted, with its local tabs/filter/scroll intact. */}

@@ -193,7 +193,7 @@ export default function App(): JSX.Element {
   // 预览入口：?my=1 且无 IPC 环境（浏览器）时直接渲染外壳，便于界面级验证
   if (!hasIpc && window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
     return (
-      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
+      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full w-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <Suspense fallback={null}>
           <MyApp />
@@ -204,7 +204,7 @@ export default function App(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root flex h-full flex-col bg-my-canvas text-my-md text-my-primary">
+      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <MainApp />
         <Toasts />

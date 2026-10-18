@@ -1,10 +1,10 @@
 /** Page-owned ACP profiles and explicitly started project conversations. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { ArrowDown, Bot, ChevronRight, CircleStop, FileText, Folder, GitBranch, History, ImagePlus, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
+import { ArrowDown, Bot, ChevronRight, CircleStop, Ellipsis, FileText, Folder, GitBranch, History, ImagePlus, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
-import { Button } from '../my/ui'
+import { Button, Dropdown, DropdownItem } from '../my/ui'
 import { useMy } from '../my/store'
 import { useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { projectRootKey } from '../my/navigation'
@@ -35,7 +35,7 @@ import type { AcpAgentProfile, AcpAgentStatus, AcpMaterialChange, AcpPermissionP
 import './workspace.css'
 
 const STATUS_COLOR: Record<string, string> = {
-  starting: 'text-my-warning-text', ready: 'text-my-success-text', busy: 'text-my-info-text',
+  starting: 'text-my-warning-text', ready: 'text-my-tertiary', busy: 'text-my-info-text',
   awaiting_permission: 'text-my-warning-text', cancelling: 'text-my-warning-text',
   error: 'text-my-danger-text', closed: 'text-my-tertiary', disconnected: 'text-my-tertiary', legacy: 'text-my-tertiary'
 }
@@ -48,6 +48,7 @@ export function AcpConsolePage(): JSX.Element {
   const interactionSignal = useInteractionSignal()
   const sidebarWidthStyle = useSidebarWidthStyle()
   const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
+  const fontSize = useMy((state) => state.fontSize)
   const snapshot = useApp((state) => state.snapshot)
   const pushToast = useApp((state) => state.pushToast)
   const setPage = useApp((state) => state.setPage)
@@ -114,6 +115,24 @@ export function AcpConsolePage(): JSX.Element {
   const sessionsRef = useRef(projectSessions)
   sessionsRef.current = projectSessions
   const activeSession = projectSessions.find((session) => session.sessionId === activeId) ?? null
+  useLayoutEffect(() => {
+    const field = composerRef.current
+    if (!interactive || view !== 'conversation' || !field) return
+    const resize = (): void => {
+      field.style.height = 'auto'
+      field.style.height = `${field.scrollHeight}px`
+    }
+    resize()
+    let width = field.getBoundingClientRect().width
+    const observer = new ResizeObserver(() => {
+      const nextWidth = field.getBoundingClientRect().width
+      if (nextWidth === width) return
+      width = nextWidth
+      resize()
+    })
+    observer.observe(field)
+    return () => observer.disconnect()
+  }, [input, activeId, activeSession?.status, view, interactive, fontSize])
   const composerImages = useComposerImages({ root, sessionId: view === 'conversation' ? activeId ?? undefined : undefined, generation: activeSession?.connectionGeneration, isCurrent })
   const activeSelection = useRef({ id: activeId, generation: activeSession?.connectionGeneration, view })
   activeSelection.current = { id: activeId, generation: activeSession?.connectionGeneration, view }
@@ -503,21 +522,24 @@ export function AcpConsolePage(): JSX.Element {
 
   if (!root) return <div className="acp-empty text-my-sm">请先打开项目，再查看该项目的 Agent 会话。</div>
   return <div className={clsx('acp-workspace', sidebarCollapsed && !sidebarOpen && 'is-sidebar-collapsed')} style={sidebarWidthStyle}>
-    <div ref={navigationRef} className={clsx('acp-navigation-host flex min-h-0 shrink-0', sidebarCollapsed && !sidebarOpen && 'is-collapsed')}><ConversationNavigation sessions={projectSessions} activeId={activeId} view={view} onView={showView} onSelect={selectSession} onNew={() => openNewConversation()} collapsed={sidebarCollapsed} open={sidebarOpen} onClose={() => setSidebarOpen(false)} /></div>
-    <main ref={mainRef} className="acp-main">
+    <div ref={navigationRef} className={clsx('acp-navigation-host flex min-h-0 shrink-0', sidebarCollapsed && !sidebarOpen && 'is-collapsed')}><ConversationNavigation sessions={projectSessions} activeId={activeId} view={view} onView={showView} onSelect={selectSession} onNew={() => openNewConversation()} onChannels={() => setPage('channels')} collapsed={sidebarCollapsed} open={sidebarOpen} onClose={() => setSidebarOpen(false)} /></div>
+    <main ref={mainRef} className="acp-main my-conversation-frame">
       <header className="acp-workspace-header">
         <Button size="sm" variant="ghost" className={clsx('acp-mobile-only acp-sidebar-toggle', sidebarCollapsed && 'is-visible')} title="展开会话侧栏" onClick={() => { if (window.innerWidth > 900) useMy.getState().toggleSidebar(); else setSidebarOpen(true) }}><Menu size={16} /></Button>
-        <nav className="acp-module-switch" aria-label="会话类型"><button className="is-selected" aria-current="page">Agent</button><button onClick={() => setPage('channels')}>Channels</button></nav>
-        <div className="acp-header-identity">{view === 'conversation' && activeSession ? <><span className="acp-avatar"><Bot size={17} /></span><strong>{activeSession.title ?? activeSession.profileSnapshot?.name ?? activeSession.agentName}</strong></> : <strong>{view === 'history' ? '历史与诊断' : '我的 Agent 角色'}</strong>}</div>
+        <div className="acp-header-identity">{view === 'conversation' && activeSession ? <><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" aria-hidden="true" /><strong>{activeSession.title ?? activeSession.profileSnapshot?.name ?? activeSession.agentName}</strong></> : <strong>{view === 'history' ? '历史与诊断' : '我的 Agent 角色'}</strong>}</div>
         <div className="acp-header-actions">
           {view === 'conversation' && activeSession && <>
             <span role="status" className={clsx('acp-session-status inline-flex items-center gap-1 text-my-sm', STATUS_COLOR[activeSession.status])}>{(activeSession.status === 'starting' || operations[activeSession.sessionId] === 'resume') && <Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" />}{operations[activeSession.sessionId] === 'resume' ? '正在连接…' : SESSION_LABEL[activeSession.status]}</span>
             {['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status) && <Button variant="ghost" size="sm" title={activeSession.status === 'cancelling' ? '正在中止本轮' : '中止本轮'} disabled={Boolean(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /></Button>}
-            {(isLiveStatus(activeSession.status) || activeSession.restorePending) && <Button variant="ghost" size="sm" title="结束当前会话" disabled={Boolean(operations[activeSession.sessionId])} onClick={() => void sessionAction('kill')}><X size={14} /></Button>}
           </>}
-          {view === 'conversation' && activeSession && <><button className="acp-header-task" title="查看任务与材料" onClick={() => openTask()}><Folder size={14} /><span>{boundTask?.record?.title ?? activeSession.taskDir ?? '关联任务'}</span>{conversationArtifacts.length > 0 && <small>{conversationArtifacts.length}</small>}</button><Button variant="ghost" size="sm" title="会话配置与材料" onClick={() => openAgent()}><Settings2 size={15} /></Button></>}
+          {view === 'conversation' && activeSession && <><button type="button" className="acp-header-task my-icon-control" title={boundTask?.record?.title ?? activeSession.taskDir ?? '查看任务与材料'} aria-label="查看任务与材料" onClick={() => openTask()}><Folder size={16} /></button><button type="button" className="my-icon-control" title="会话配置与材料" aria-label="会话配置与材料" onClick={() => openAgent()}><Settings2 size={16} /></button></>}
           {view !== 'conversation' && <Button size="sm" variant="ghost" title="执行引擎与本机环境" onClick={() => { showView('agents'); setEngineSetupOpen((current) => !current) }}><Settings2 size={15} /></Button>}
-          <Button size="sm" variant="ghost" title="刷新" onClick={() => { void reloadSessions(); void reloadCatalogue() }}><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></Button>
+          <Dropdown align="right" trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="更多会话操作" aria-expanded={open} onClick={toggle}><Ellipsis size={17} /></button>}>
+            {(close) => <>
+              <DropdownItem icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />} onClick={() => { close(); void reloadSessions(); void reloadCatalogue() }}>刷新</DropdownItem>
+              {view === 'conversation' && activeSession && (isLiveStatus(activeSession.status) || activeSession.restorePending) && <DropdownItem danger icon={<X size={14} />} disabled={Boolean(operations[activeSession.sessionId])} onClick={() => { close(); void sessionAction('kill') }}>结束当前会话</DropdownItem>}
+            </>}
+          </Dropdown>
         </div>
       </header>
       {loadError && <div role="alert" className="acp-notice">{loadError}<button className="ml-3 underline" onClick={() => { void reloadCatalogue(); void reloadSessions() }}>重试加载</button></div>}
@@ -534,7 +556,7 @@ export function AcpConsolePage(): JSX.Element {
         <div ref={streamRef} className="acp-transcript my-scrollbar" onScroll={(event) => {
           const element = event.currentTarget, follow = element.scrollHeight - element.scrollTop - element.clientHeight < 48
           followRef.current = follow; setAtBottom(follow); writeSessionView(root, activeSession.sessionId, { scrollTop: element.scrollTop, follow })
-        }}><div className="acp-transcript-content acp-chat-copy">
+        }}><div className="acp-transcript-content my-conversation-column acp-chat-copy">
           {activeSession.directoryLeaseReason && <p className="rounded-my-md bg-my-warning-subtle px-3 py-2 text-my-sm text-my-warning-text">目录占用：{activeSession.directoryLeaseReason}</p>}
           {isReadOnly && <div className="acp-history-note"><p>此记录没有可恢复的远端会话，仅供阅读。</p><Button size="sm" variant="ghost" onClick={() => openNewConversation()}>新建会话</Button>{activeSession.error && <ConnectionNotice message={activeSession.error} />}</div>}
           {items.map((item) => <EventRow key={item.key} item={item} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={(directory) => openTask(directory)} onOpenArtifact={(file) => {
@@ -546,7 +568,7 @@ export function AcpConsolePage(): JSX.Element {
           {items.length === 0 && !isReadOnly && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{activeSession.status === 'starting' ? '正在准备环境，就绪后可以下达指令。' : '从一条清晰的指令开始。'}</p></div>}
         </div></div>
         {!atBottom && <div className="flex justify-center"><Button size="sm" variant="outline" onClick={() => { const element = streamRef.current; followRef.current = true; setAtBottom(true); if (element) element.scrollTop = element.scrollHeight; writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} />回到最新</Button></div>}
-        {!isReadOnly && <footer className="acp-composer-region">
+        {!isReadOnly && <footer className="acp-composer-region my-conversation-column">
           {(feedback[activeSession.sessionId]?.error || activeSession.error) && <ConnectionNotice message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error ?? ''} />}
           {activeSession.canResume && !isLiveStatus(activeSession.status) && operations[activeSession.sessionId] !== 'resume' && <div className="acp-reconnect-status" role="status">连接尚未就绪<Button size="sm" variant="ghost" onClick={() => void sessionAction('resume')}>重试连接</Button></div>}
           <div className={clsx('acp-composer', composerImages.dragging && 'acp-composer-dragging')} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>

@@ -6,6 +6,20 @@ Profiles are named local project-scoped assistant roles; Codex/Claude Code are e
 
 ### Conversation continuity and compact controls
 
+The conversation header prioritizes the title. Channels remains reachable from
+context navigation; Refresh and End Conversation use the shared More dropdown.
+The current-turn Cancel action stays directly visible while applicable. Keep all
+existing operation guards and exact session/connection authority.
+
+Transcript and composer share `my-conversation-column` within the same
+`my-conversation-frame`. Use symmetric scrollbar gutters, explicitly overriding
+the generic shared scrollbar rule, so both columns have the same measured edges.
+The composer grows/shrinks within global height limits after draft, font or width
+changes; it must preserve its DOM/ref, draft, IME submission and reader ownership.
+Disconnect its width observer while the retained source is inactive. Ordinary
+Trellis events use the neutral `my-activity-note`; errors and pending permission
+choices retain their distinct semantic presentation.
+
 Opening a selected resumable history connects it once, with history/drafts visible while connecting. No manual restore landing page, prompt replay, replacement conversation, automatic retry loop or hidden Settings-source reconnect. Explicit Stop must not immediately reconnect from a status update. Legacy transcript-only records remain clearly read-only. Failed native load offers an inline retry and preserves raw details; external locks/provider restrictions are not bypassed.
 
 The composer hosts native mode, collaboration, model, reasoning and remaining advertised configuration through anchored shared Dropdowns. Prefer a unique advertised category=model/mode config option when session/set_config_option is supported; fall back to legacy controls only when advertised. Use one local configuration lock and apply choices only after acknowledgement. A reasoning track contains exactly the engine's returned options, never invented strengths, permission presets or default reset. Remove duplicate current-session forms/select autofocus from the inspector; retain environment context and a return-to-composer action. Internal menu scrolling must not dismiss the shared Dropdown. Do not restore below-composer task/keyboard hint rows; retain actual task entry and IME-safe submission.

@@ -34,15 +34,21 @@ double-click reset and globally reachable expand/collapse behavior.
   fill with white ink. Use `text-my-on-accent` on accent fills, and
   `text-my-on-color` on semantic colored fills. No leaf palette/brand override.
   Green remains success/completion or user-label data only.
-- Standard type is14px; small/large are13/15px. Metadata, body, chat, document and
+- Standard UI/document type is14px; small/large are13/15px. Chat uses14/15/16px
+  with1.65 line height and a shared paragraph gap. Metadata, body, chat, document and
   activity consume global semantic roles. Default font is the platform sans stack
   (Segoe UI and CJK fallbacks on Windows); code and diagrams use their global mono
   roles. No bundled Inter or network font service.
 - Type/radius classes are `text-my-*` and `rounded-my-*`. Buttons/rows use10px,
   panels12/16px, menus18px, composer20px and dialogs24px. Small badges keep4/6px.
 - Existing Tailwind spacing steps consume global `--my-space-*`. Headers use the
-  shared46px metric; icon controls28px. Fields derive from type and padding. Add
+  shared48px chrome metric; icon controls28px. Fields derive from type and padding. Add
   semantic metrics before introducing private geometry in a new component.
+- Ordinary title bar and icon rail share `--my-bg-shell`; context navigation uses
+  `--my-bg-sidebar`, and main content uses canvas. The shell owns a6px inset and16px
+  radius through global tokens. Context/main panels join without double rounded
+  corners. Navigation selection uses its dedicated subtle role. Transparent
+  document/capsule/quick-todo roots do not inherit the ordinary shell frame.
 - All roots expose `.my-root` plus theme and font-size attributes. Normal content
   wrappers inherit; do not nest an unconfigured style root that resets font size.
   Capsule/quick-todo roots preserve their transparent background.
@@ -154,8 +160,10 @@ knowledge, conversations, team and analytics are peers. The former task-parent t
   workspace re-registers preview so the next Escape can close it. Do not combine independent
   component Escape listeners with global task dismissal.
 - Retain the shared design language and canonical tokens. Use canvas for periphery, layers for
-  context and surface-1 for the central task workspace. The desktop rail uses 40px icon
-  targets with 22px icons, full accessible names and hover labels rather than permanent
+  context and surface-1 for the central task workspace. The desktop rail uses global
+  geometry tokens: 48px rail/header chrome, 32px targets, 18px icons with 1.7 stroke,
+  and 8px gaps/insets. Rail width and header height share `--my-shell-chrome-size`.
+  The header brand slot shares the rail width. Keep full accessible names and hover labels rather than permanent
   10px captions; selected backgrounds/icons are restrained and neutral. Use neutral inversion for
   product emphasis; green remains a semantic success/completion or label color. The project name is a borderless title at rest, not a select/input;
   context rows use soft selection without persistent card borders/shadows. Measure actual

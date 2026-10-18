@@ -52,7 +52,7 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
     {item.images && <ImageAttachments images={item.images} />}
     {item.text && <div className="acp-chat-copy whitespace-pre-wrap break-words rounded-my-lg bg-my-layer-1 px-4 py-3 text-my-primary">{item.text}</div>}
   </div></div>
-  if (item.type === 'agent') return <div className={clsx('acp-chat-copy min-w-0 break-words px-1 py-2 text-my-primary', item.startsAnswer && 'acp-answer-start')}><MarkdownView content={item.text} /></div>
+  if (item.type === 'agent') return <div className={clsx('my-chat-prose acp-chat-copy min-w-0 break-words py-2 text-my-primary', item.startsAnswer && 'acp-answer-start')}><MarkdownView content={item.text} /></div>
   if (item.type === 'thought') {
     const originIndex = events?.findIndex((event) => event.id === item.key) ?? -1
     const origin = originIndex >= 0 ? events?.[originIndex] : undefined
@@ -112,9 +112,9 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   const ev = item.ev
   const taskDir = ev.taskDir ?? (typeof ev.payload?.taskDir === 'string' ? ev.payload.taskDir : undefined)
   const filePath = typeof ev.payload?.path === 'string' ? ev.payload.path : undefined
-  return <div className="flex flex-wrap items-center gap-2 rounded-my-md border border-my-line-info bg-my-info-subtle px-3 py-2 text-my-sm text-my-info-text">
+  return <div className="my-activity-note">
     {TRELLIS_ICON[ev.kind] ?? <Sparkles size={13} />}<span className="min-w-0 break-words">{ev.text}</span>
-    <span className="text-my-sm">{taskDir ? `任务：${taskDir}` : '项目活动'}</span>
+    <span>{taskDir ? `任务：${taskDir}` : '项目活动'}</span>
     {ev.kind === 'task-status' && taskDir && <button className="underline underline-offset-2" onClick={() => onOpenTask(taskDir)}>查看任务</button>}
     {ev.kind === 'doc-created' && filePath && <button className="underline underline-offset-2" onClick={() => onOpenArtifact({ name: String(ev.payload?.file ?? 'artifact.md'), path: filePath, kind: 'file', size: 0, mtime: ev.ts, ext: (String(ev.payload?.file ?? '.md').split('.').pop() ?? 'md').toLowerCase() })}>阅读</button>}
     {(ev.kind === 'spec-injected' || ev.kind === 'spec-updated') && <button className="underline underline-offset-2" onClick={onOpenSpec}>规范页</button>}

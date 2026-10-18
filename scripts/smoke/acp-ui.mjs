@@ -120,7 +120,10 @@ try {
   const library = () => { navigation().props.onView('agents'); page.render() }
   const textarea = () => find(page, (node) => node.type === 'textarea')
   const draft = (text) => { textarea().props.onChange({ target: { value: text } }); page.render() }
-  const refresh = () => find(page, (node) => node.props?.title === '刷新').props.onClick()
+  const refresh = () => {
+    const menu = find(page, (node) => node.type?.name === 'Dropdown' && node.props.align === 'right')
+    return find({ tree: menu.props.children(() => {}) }, (node) => node.props?.children === '刷新').props.onClick()
+  }
   const startNew = () => { navigation().props.onNew(); page.render(); const picker=find(page,node=>node.type?.name==='NewConversationPicker'); picker.props.onStart(picker.props.profiles[0], undefined, false) }
   const sendButton = () => find(page, (node) => node.props?.title === '发送指令')
   page.render()

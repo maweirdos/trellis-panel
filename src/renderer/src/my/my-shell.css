@@ -1,9 +1,36 @@
 /* Project workspace hierarchy: semantic surfaces, with no new palette. */
-.my-root .my-window-header { background: var(--my-bg-canvas); }
-.my-root .my-module-rail { background: var(--my-bg-sidebar); }
-.my-root .my-module-rail > nav { scrollbar-gutter: auto; scrollbar-width: none; }
+.my-root.my-app-window,
+.my-root .my-shell-layout,
+.my-root .my-window-header { background: var(--my-bg-shell); }
+.my-root .my-shell-layout { padding-right: var(--my-shell-inset); padding-bottom: var(--my-shell-inset); }
+.my-root .my-workspace-center { border: 1px solid var(--my-border-shell); border-radius: var(--my-shell-radius); }
+.my-root .my-shell-layout > .my-context-sidebar {
+  border: 1px solid var(--my-border-shell);
+  border-right: 0;
+  border-radius: var(--my-shell-radius) 0 0 var(--my-shell-radius);
+}
+.my-root .my-shell-layout > .my-context-sidebar + .my-workspace-center { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.my-root .my-module-brand { width: var(--my-module-rail-width); }
+.my-root .my-module-rail {
+  width: var(--my-module-rail-width);
+  padding-block: var(--my-module-rail-padding);
+  background: var(--my-bg-shell);
+}
+.my-root .my-module-rail > nav { gap: var(--my-module-gap); scrollbar-gutter: auto; scrollbar-width: none; }
 .my-root .my-module-rail > nav::-webkit-scrollbar { display: none; }
-.my-root .my-module-button { line-height: 1; }
+.my-root .my-module-footer { gap: var(--my-module-gap); }
+.my-root .my-module-button {
+  width: var(--my-module-button-size);
+  height: var(--my-module-button-size);
+  border-radius: var(--my-radius-md);
+  line-height: 1;
+}
+.my-root .my-module-icon {
+  width: var(--my-module-icon-size);
+  height: var(--my-module-icon-size);
+  stroke-width: var(--my-module-icon-stroke);
+  flex-shrink: 0;
+}
 .my-root .my-context-sidebar {
   position: relative;
   width: min(var(--my-sidebar-width), max(220px, calc(100vw - 360px)));

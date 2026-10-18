@@ -7,6 +7,9 @@ import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { build } from 'esbuild'
+import postcss from 'postcss'
+import tailwind from 'tailwindcss'
+import tailwindConfig from '../../tailwind.config.js'
 
 const directory = mkdtempSync(join(tmpdir(), 'tpanel-settings-host-'))
 const absolute = (file) => resolve(file).replace(/\\/g, '/')
@@ -47,7 +50,19 @@ const byText=(label)=>[...document.querySelectorAll('button')].find(button=>butt
 const textarea=()=>document.querySelector('[aria-label="Agent 指令"]');
 async function run(){
 await wait(()=>document.querySelector('[data-acp-session="session"]'),'ACP mount');click(document.querySelector('[data-acp-session="session"]'));
-await wait(()=>textarea(),'conversation');click(document.querySelector('.acp-artifact'));
+await wait(()=>textarea(),'conversation');
+const messageColumn=document.querySelector('.acp-transcript-content').getBoundingClientRect(),inputColumn=document.querySelector('.acp-composer-region').getBoundingClientRect();
+check('transcript and composer share the exact conversation column '+JSON.stringify({messageLeft:messageColumn.left,inputLeft:inputColumn.left,messageWidth:messageColumn.width,inputWidth:inputColumn.width}),Math.abs(messageColumn.left-inputColumn.left)<1&&Math.abs(messageColumn.width-inputColumn.width)<1);
+const inputSetter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;
+const setDraft=(value)=>{inputSetter.call(textarea(),value);textarea().dispatchEvent(new Event('input',{bubbles:true}))};
+const compactHeight=textarea().getBoundingClientRect().height;
+setDraft(Array.from({length:20},(_,i)=>'Draft line '+i).join('\\n'));
+await wait(()=>textarea().getBoundingClientRect().height>compactHeight,'composer growth');
+check('composer grows to the global height limit with internal scrolling',textarea().getBoundingClientRect().height<=220&&textarea().scrollHeight>textarea().clientHeight);
+setDraft('Short editable draft');await wait(()=>textarea().getBoundingClientRect().height===compactHeight,'composer shrink');
+check('composer contracts without replacing its draft',textarea().value==='Short editable draft');
+setDraft('');await wait(()=>textarea().value==='','empty composer');
+click(document.querySelector('.acp-artifact'));
 await wait(()=>Object.keys(useApp.getState().readingSessions).length===1&&watchCount===1,'reader A');
 const readerKey=Object.keys(useApp.getState().readingSessions)[0];const originalReader=useApp.getState().readingSessions[readerKey];
 click(byText('引用到草稿'));await wait(()=>textarea().value.length>0,'reference draft');
@@ -120,7 +135,7 @@ try {
     })
     builder.onLoad({filter:/.*/,namespace:'fixture'},args=>({loader:'tsx',resolveDir:process.cwd(),contents:args.path==='fixture-api'?'export const hasIpc=true;export const api=new Proxy({},{get:(_target,key)=>(...args)=>window.trellis[key](...args)});':args.path==='fixture-store'?storeSource:args.path==='fixture-my'?mySource:args.path==='fixture-settings'?settingsSource:args.path==='fixture-acp-load'?`import {AcpConsolePage as ActualAcpPage} from '${absolute('src/renderer/src/pages/AcpConsole.tsx')}'; export function AcpConsolePage(){if(window.__acpLoadingGate)throw window.__acpLoadingGate;return <ActualAcpPage/>}`:args.path==='fixture-other'?emptyExports.map(name=>'export const '+name+'=()=>null;').join('\n'):''}))
   }}]})
-  const css=['my/my-tokens.css','my/my-components.css','my/my-shell.css','acp/workspace.css'].map(file=>readFileSync('src/renderer/src/'+file,'utf8')).join('\n')
+  const css=(await postcss([tailwind(tailwindConfig)]).process(['my/my-tokens.css','my/my-components.css','my/my-shell.css','styles.css','acp/workspace.css'].map(file=>readFileSync('src/renderer/src/'+file,'utf8')).join('\n'),{from:undefined})).css
   writeFileSync(join(directory,'index.html'),`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; font-src data:"><style>${css}\nhtml,body,#root,.my-root{height:100%;margin:0}[hidden]{display:none!important}.h-full{height:100%}.flex{display:flex}.flex-col{flex-direction:column}.flex-1{flex:1}.min-h-0{min-height:0}.min-w-0{min-width:0}.overflow-auto{overflow:auto}</style></head><body><div id="root"></div><script src="renderer.js"></script></body></html>`)
   mkdirSync(join(directory,'profile'))
   writeFileSync(join(directory,'main.cjs'),`const{app,BrowserWindow}=require('electron'); app.setPath('userData',${JSON.stringify(join(directory,'profile'))});app.disableHardwareAcceleration();app.whenReady().then(async()=>{const w=new BrowserWindow({show:false,width:1440,height:1000,webPreferences:{contextIsolation:false,nodeIntegration:false}});w.webContents.on('console-message',event=>{if(event.message.includes('PASS')||event.message.startsWith('Error:'))console.log(event.message)});w.webContents.on('did-finish-load',()=>{const timer=setInterval(async()=>{const state=await w.webContents.executeJavaScript('({done:window.__done,failed:window.__failed})');if(state.done){clearInterval(timer);app.exit(state.failed?1:0)}},30)});await w.loadFile(${JSON.stringify(join(directory,'index.html'))});});setTimeout(()=>{console.error('hidden host timed out');app.exit(1)},45000);`)
