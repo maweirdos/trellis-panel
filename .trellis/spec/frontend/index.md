@@ -28,6 +28,8 @@
 | [css-design.md](./css-design.md)                                               | CSS organization and design tokens              | Reference     |
 | [quality.md](./quality.md)                                                     | Code quality and performance standards          | Reference     |
 | [my-ui-module.md](./my-ui-module.md)                                     | Shell module tokens & conventions               | Module-scoped |
+| [conversation-workspace.md](./conversation-workspace.md)                   | ACP inspector/PRD/appearance and source ownership | Conversation / reader / Settings |
+| [retained-source-interactions.md](./retained-source-interactions.md)       | Bounded Settings detours, reader continuity and hidden interaction ownership | Retained source pages |
 
 ---
 
