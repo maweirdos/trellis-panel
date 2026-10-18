@@ -54,6 +54,43 @@ applyMainWindowAppearance(
   name together. Development uses the committed ICO and a quoted Electron + app
   path command; packaged windows use the branded EXE's icon and command. Shell
   icon paths must be real OS files, never paths inside `app.asar`.
+- Development additionally calls `prepareWindowsTaskbarShortcut(iconPath)` after
+  readiness, before any window, IPC notification producer or UI hook is started.
+  Electron44.4.3's native notification activator uses the executable ProductName
+  (`Electron`) for `Programs/Electron.lnk`, not `app.getName()`. Its fallback link
+  has no icon and empty arguments; matching `.dev` identity then associates the
+  taskbar with that generic shortcut. Process/window IDs alone do not prevent this.
+- Prepare that exact development link with the real ICO, quoted application path,
+  `.dev` AppUserModelID, EXE-directory working directory and a toast activator CLSID.
+  Preserve an existing owned link's CLSID: native validation adopts it and accepts
+  the matching target/cwd/IDs instead of recreating a link without the icon/args.
+  Only update an existing link when both its target is this Electron host and its
+  identity is this app's development/legacy ID. Leave foreign links alone. A failed
+  shortcut read/write warns and never blocks startup. Installed/other-platform
+  applications skip this development repair; never rewrite the installed Electron SDK, clear
+  global icon caches, change pinned-item settings or rotate arbitrary AppIDs.
+- Windows `npm run dev` goes through `scripts/dev.mjs` and
+  `prepare-dev-host.mjs`. It uses a content-addressed private runtime with all
+  FileDescription translations set to `identity.json`'s application name, the
+  canonical ICO, and a distinct development ProductName. Main/GPU/renderer/utility
+  processes inherit that same executable metadata; `BrowserWindow.title` and
+  `app.setName` alone cannot change the host's Task Manager description.
+- Keep the private host filename `electron.exe`. Electron44's `app.isPackaged`
+  checks that basename on Windows; renaming the binary changes runtime behavior.
+  Do not override the property or rename/migrate userData to compensate. Source
+  SDK files and release signing remain unchanged. Only the copied development
+  EXE is resource-edited; shared companion files are read-only to the preparer.
+- `TPANEL_BRANDED_DEV_HOST=1` selects the shortcut matching the branded host's
+  development ProductName instead of `Electron.lnk`. Both values come from
+  `resources/brand/identity.json`, included by the existing brand resources rule.
+  Migrate a prior generic link only when its AppID, SDK target and quoted app
+  argument all belong to this repository. A branded link may move to a new cached
+  executable only within this repository's managed cache, with matching arguments
+  and identity. Preserve the native-compatible cwd and toast CLSID throughout.
+- Host preparation failure aborts the dev launcher rather than silently returning
+  to generic Electron branding. An explicit `ELECTRON_EXEC_PATH` is an opt-out;
+  other platforms keep the normal dev command. Never run preparation on build or
+  distribution paths, and never delete/rewrite a running cached runtime.
 
 ## 4. Validation and error matrix
 
@@ -66,6 +103,12 @@ applyMainWindowAppearance(
 | Non-Windows | Background update only; no Windows accent API |
 | Native capture unavailable/interrupted | Record unverified; do not claim border visually fixed |
 | Development taskbar icon | Independent `.dev` identity; Shell properties point to the ICO and application path |
+| First development notification / restart | Owned Electron.lnk retains ICO, quoted app argument, native-compatible cwd and toast CLSID |
+| Foreign Electron shortcut | No overwrite; warn while allowing application startup |
+| Windows normal dev launch | Task Manager display metadata uses Trellis Panel for the host and its children |
+| Branded development host | app.isPackaged stays false; existing userData and session locations are retained |
+| Icon / identity / runtime update | New content-addressed host; previous running cache directory remains intact |
+| Development ProductName shortcut | Distinct from installed app; native notification validation preserves icon/args |
 | Packaged taskbar icon | Window Shell properties point to the branded EXE, outside `app.asar` |
 
 ## 5. Good / base / bad cases
@@ -90,6 +133,13 @@ A reproduced Windows 11 case had the correct HICON and all relaunch properties,
 yet kept the old Electron group icon; a distinct development identity displayed TP.
 Do not repeatedly clear system caches or change arbitrary IDs. Renderer refresh is
 insufficient to load main-process changes.
+
+Notification regression evidence: inspect `Programs/Electron.lnk` before and after
+the first actual notification and on a subsequent launch. Check target, arguments,
+icon/index, working directory, AppUserModelID and preserved toast CLSID. The
+2026-10-18 recurrence had `.dev` on an `Electron.lnk` with empty arguments and no
+icon. See Electron44.4.3's
+[native notification registration](https://github.com/electron/electron/blob/v44.4.3/shell/browser/notifications/win/windows_toast_activator.cc).
 
 ## 7. Wrong vs correct
 

@@ -15,7 +15,7 @@ import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
 import { applyChromiumProxy } from './services/proxy'
 import { mainWindowAppearance } from './services/window-appearance'
-import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding } from './services/window-branding'
+import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTaskbarShortcut } from './services/window-branding'
 import { ipcEvent } from '../shared/ipc-channels'
 import {
   setUiHooks,
@@ -485,6 +485,8 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    // Notifications may otherwise register the generic Electron host as our app.
+    prepareWindowsTaskbarShortcut(join(BRAND_RESOURCES, 'icon.ico'))
     app.on('browser-window-created', (_event, window) => {
       applyWindowsTaskbarBranding(window, join(BRAND_RESOURCES, 'icon.ico'))
     })

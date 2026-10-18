@@ -7,7 +7,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/dev.mjs",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "check:ui": "node scripts/smoke/design-system.mjs",
@@ -34,6 +34,7 @@
     "electron-builder": "^25.1.8",
     "electron-vite": "^5.0.0",
     "postcss": "^8.4.49",
+    "resedit": "1.7.2",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^8.3.0"
