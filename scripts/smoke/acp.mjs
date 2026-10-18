@@ -91,8 +91,8 @@ try {
   assert.equal(stored.backendSessionId, 'mock-remote-wire-id')
   assert.equal(stored.status, 'closed')
   assert.equal((await acp.resumeAcpSession(root, sid)).ok, true)
-  assert.equal(get().status, 'disconnected')
-  assert.equal(get().restorePending, true)
+  assert.equal(get().status, 'ready')
+  assert.equal(get().restorePending, false)
   const beforeRestore = events('acp:permission').length
   const restoreTurn = await acp.promptAcpSession(root, sid, 'restore fixture')
   assert.equal(restoreTurn.ok, true)

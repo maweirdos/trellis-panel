@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
+import { appendFileSync, existsSync } from 'node:fs'
 import assert from 'node:assert/strict'
 const SELF = fileURLToPath(import.meta.url)
 const REMOTE = 'mock-remote-wire-id'
@@ -35,6 +36,7 @@ function serve() {
   }
   const handle = (message) => {
     const { id, method, params } = message
+    if (method && process.env.TRELLIS_ACP_FIXTURE_JOURNAL) appendFileSync(process.env.TRELLIS_ACP_FIXTURE_JOURNAL, JSON.stringify({ method, pid: process.pid, sessionId: params?.sessionId }) + '\n')
     if (!method && active && id === active.permissionId) { finish(message.result?.outcome); return }
     if (method === 'initialize') {
       // acpx explicitly sends false rather than omitting unsupported capabilities.
@@ -46,6 +48,7 @@ function serve() {
     }
     if (method === 'session/new' || method === 'session/load') {
       if (method === 'session/load' && params.sessionId !== REMOTE) { error(id, 'unknown remote session'); return }
+      if (method === 'session/load' && process.env.TRELLIS_ACP_FIXTURE_BLOCK_LOAD && existsSync(process.env.TRELLIS_ACP_FIXTURE_BLOCK_LOAD)) { error(id, 'This Codex session is in use by another Codex client'); return }
       reply(id, { ...(method === 'session/new' ? { sessionId: REMOTE } : {}), modes: { currentModeId, availableModes: [{ id: 'read', name: 'Read only' }, { id: 'edit', name: 'Edit with permission' }] },
         ...(categorized ? { models: { currentModelId: 'small', availableModels: [{ modelId: 'small', name: 'Legacy Small' }, { modelId: 'large', name: 'Legacy Large' }] }, configOptions: configOptions() } : {}) }); return
     }
@@ -71,6 +74,15 @@ function serve() {
     if (method === 'session/cancel') { finish({ outcome: 'cancelled' }); return }
     if (method === 'session/prompt') {
       if (active) { error(id, 'prompt already active'); return }
+      if (params.prompt?.some((content) => content.type === 'text' && content.text === 'fixture-usage-before-reply')) {
+        notify({ sessionUpdate: 'usage_update', used: 25, size: 100 })
+        setTimeout(() => {
+          notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'MODEL-RESPONSE-AFTER-USAGE' } })
+          reply(id, { stopReason: 'end_turn' })
+        }, 120)
+        return
+      }
+      if (params.prompt?.some((content) => content.type === 'text' && content.text === 'fixture-provider-error')) { error(id, 'Fixture provider rejected request: 403 Forbidden', -32000); return }
       if (params.prompt?.some((content) => content.type === 'text' && content.text === 'review-unfinished-tool')) {
         notify({ sessionUpdate: 'tool_call', toolCallId: 'unfinished-review-tool', title: 'Unfinished fixture native tool', kind: 'execute', status: 'pending' })
         notify({ sessionUpdate: 'tool_call_update', toolCallId: 'unfinished-review-tool', status: 'in_progress' })

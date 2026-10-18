@@ -5,7 +5,7 @@ published npm package `acpx@0.19.5`, MIT, copyright retained in the installed
 `acpx/LICENSE`. The checked-in diff is our locally authored compatibility patch,
 not a vendored source tree. `acpx/runtime` remains the public application boundary.
 
-Compatibility revision **1** changes only three boundary areas:
+Compatibility revision **2** retains these three protocol boundary areas:
 
 - Validate ACP v1 initialize metadata and nonempty new-session identity before readiness.
   Retain only public agent identity, authentication-method display fields and
@@ -19,7 +19,7 @@ Compatibility revision **1** changes only three boundary areas:
 - Add `{outcome:'selected', optionId:string}` to `AcpPermissionDecision`, preserving
   kind/cancel decisions. Unknown or duplicate IDs cancel without mode fallback.
 
-The patch also exports `TRELLIS_ACPX_COMPAT_VERSION = 1` and its public declaration
+The patch also exports `TRELLIS_ACPX_COMPAT_VERSION = 2` and its public declaration
 as an explicit integration guard. SDK1.8.0 is scoped via an acpx override to keep
 the protocol dependency aligned with the original isolated validation. Preparation
 checks both the requested override and the actual SDK resolved from acpx's public
@@ -49,6 +49,18 @@ Behavioral checks: `node scripts/smoke/acpx-runtime.mjs` and
 `node scripts/smoke/acpx-preparation.mjs`. Historical stock failure evidence under
 the task's `research/validation/` is immutable and remains distinct from these
 patched regressions.
+
+## Eager persistent connection (revision 2)
+
+`AcpxRuntime.connectSession({handle, assertActive?})` loads the existing persistent
+remote session without recording/submitting a prompt or choosing a new session.
+It reuses the manager's operation lock, `connectAndLoadSession` same-session-only
+policy, preference replay, owner projection/checkpoint and canonical cleanup.
+A live retained owner is reused; a newly loaded owner is retained for controls
+and later turns. The app calls this when opening history, then publishes ready
+only after actual load and metadata refresh. Failed load preserves history and
+identity. Application prompt failures no longer end a healthy transport.
+Focused regression: `node scripts/smoke/acp-continuity.mjs` (local fixture only).
 
 Text checksums normalize CRLF and a single final newline, matching Git and
 patch-package's Windows text handling; all other bytes must match.

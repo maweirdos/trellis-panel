@@ -23,7 +23,8 @@ listAcpProfiles(root)
 saveAcpProfile(root, input)
 deleteAcpProfile(root, profileId)
 newAcpSession(root, { agentId, profileId?, taskDir? })
-promptAcpSession(root, sessionId, text)
+promptAcpSession(root, sessionId, text, options?, isCurrent?)
+bindAcpSessionTask(root, sessionId, { taskDir, expectedConnectionGeneration }, isCurrent?)
 cancelAcpSession(root, sessionId)
 killAcpSession(root, sessionId)
 resumeAcpSession(root, sessionId)
@@ -39,6 +40,16 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
 `api.acpSessions()` currently exposes the service's default history limit.
 
 ## 3. Contracts
+
+### Task materials and source-bound prompts
+
+
+
+`acpSessionBindTask(sessionId,input)` is explicit and requires an idle ready owned session/current connection generation and an actual active task/path. It changes future material assembly only; prior events/snapshots/native identity are not rewritten. Busy/stale binding rejects with `E_CONFLICT`.
+
+`acpSessionPrompt(sessionId,text,options?)` retains two-argument callers. Options may carry expectedConnectionGeneration and sourceReferences. Each AcpSourceReference captures projectRoot/taskDir/relativePath/displayedRevision/targetSessionId/targetConnectionGeneration and optional sectionAnchor/quote. Main independently validates trusted root/generation/path/session/binding, and compares the modern raw-byte sha256-prefix16 identity against the same read used for assembly before turn publication. Drift/unavailability returns `E_CONFLICT`, reason `SOURCE_CHANGED`, and sources[] expected/actual/available details with no new turn/event/snapshot consumption.
+
+Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/includedChars/truncation/availability; whole-file identity differs from a truncated included-segment digest. Unknown old metadata stays unknown. Material events use `kind='material-change',source='trellis',payload.materialChange` with actual scoped add/change/unlink facts. Rootless old notices are generic attention, not verified artifact input. Project generation gates delayed notices/imports/reads; unlink reaches the modern reader. These facts prove neither Agent authorship/compliance nor approval/phase completion.
 
 ### Dependencies and launch
 
@@ -84,8 +95,26 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
   records remain new transcript/error records. Restart normalizes stale active
   state and clears historical pending approvals.
 - `resume` locates the same remote identity without prompt replay or replacement.
-  The public runtime loads lazily on the next explicit send: expose
-  `disconnected + restorePending`, “发送时验证恢复”, until native load succeeds.
+  Opening a selected resumable conversation requests native load immediately.
+  The pinned revision2 `connectSession` reuses acpx's owner/lock/checkpoint and
+  same-session-only load without a prompt. Publish ready only after load and
+  metadata refresh. Do not manufacture readiness from a stored handle.
+- Resumes for the same session/canonical root share one in-flight promise;
+  foreign roots cannot join. Ready owners are reused without load/spawn.
+  A new connection clears active turn identity and startup observations.
+  Connection observations/capability facts carry payload activityScope=connection
+  and no turnId; first response observations remain activityScope=turn.
+  Preserve diagnostics in history without presenting connection work as a new
+  message turn. Do not retry a failed background load merely on view selection.
+- Normal turn completion retains a healthy persistent connection. A failed
+  provider/model request is a turn failure, not a reason to terminate or replace
+  the native session. Keep subsequent explicit prompts/configuration available
+  when the transport survives; disconnected/cleanup failures remain distinct.
+- First model response timing requires meaningful text/thought, tool or plan;
+  status/configuration/usage metadata cannot establish it. Observe turn admission
+  and actual prompt-written acknowledgement independently. Process launch timing
+  uses onBeforeSpawn/onSpawned; protocol initialization and session readiness are
+  combined unless the public runtime supplies independently observed milestones.
 - Reserve connection capacity and ownership before asynchronous resume work.
   Recheck after new-session discovery. Concurrent resumes cannot replace a map
   owner or exceed the cap of four. Idle crash recovery canonically stops the old
@@ -163,8 +192,11 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
 | Unsupported profile schema | Preserve original bytes; refuse overwrite |
 | Runtime cleanup fails | Visible error; retain End/retry and process ownership |
 | Patch/SDK version or hash mismatch | Fail preparation/build; never report ready |
+| Changed/unavailable referenced bytes | `E_CONFLICT` + `SOURCE_CHANGED`; no turn/events; caller retains draft |
+| Idle task association / later prompt | Future-only materials; preserve history and native identity |
 
 ## 5. Good / Base / Bad Cases
+
 
 - Good: two idle profiles share a directory; one turn acquires its lease, displays
   the adapter's exact approval choices and releases only after canonical result.
@@ -174,6 +206,9 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
   resolver before validating its ID, or allowing new work after failed cleanup.
 
 ## 6. Tests Required
+
+
+- `acp-materials.mjs`: source/included digests, zero-dispatch drift, future-only binding, junction fences, material add/delete and delayed project/watcher generations.
 
 - `acpx-runtime.mjs`: original strict failures, valid/foreign/early/replay identity,
   bounded buffering, duplicate-kind exact IDs, invalid decisions, cancellation,

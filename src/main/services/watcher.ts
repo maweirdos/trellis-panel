@@ -5,18 +5,21 @@ export class TrellisWatcher {
   private watcher: watch.FSWatcher | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
   private onChange: (() => void) | null = null
-  private onFile: ((path: string, ev: 'add' | 'change') => void) | null = null
+  private onFile: ((path: string, ev: 'add' | 'change' | 'unlink') => void) | null = null
+  private generation = 0
 
   /**
    * @param onFile 文件级事件探针（不防抖，add/change 直通）——供 spec 同步等
    *   需要具体文件路径的消费方使用；不传则行为与原先完全一致。
    */
-  start(root: string, onChange: () => void, onFile?: (path: string, ev: 'add' | 'change') => void): void {
+  start(root: string, onChange: () => void, onFile?: (path: string, ev: 'add' | 'change' | 'unlink') => void): void {
     this.stop()
+    const generation = this.generation
     this.onChange = onChange
     this.onFile = onFile ?? null
     // Lazy import keeps startup light and avoids loading chokidar when unused.
     import('chokidar').then(({ watch }) => {
+      if (this.generation !== generation) return
       this.watcher = watch(joinSafe(root, '.trellis'), {
         ignoreInitial: true,
         persistent: true,
@@ -32,11 +35,12 @@ export class TrellisWatcher {
         ]
       })
       const debounced = () => {
+        if (this.generation !== generation) return
         if (this.timer) clearTimeout(this.timer)
-        this.timer = setTimeout(() => this.onChange?.(), 300)
+        this.timer = setTimeout(() => { if (this.generation === generation) this.onChange?.() }, 300)
       }
-      const fileEvent = (ev: 'add' | 'change') => (path: string): void => {
-        this.onFile?.(path, ev)
+      const fileEvent = (ev: 'add' | 'change' | 'unlink') => (path: string): void => {
+        if (this.generation === generation) this.onFile?.(path, ev)
       }
       this.watcher.on('add', (p) => {
         debounced()
@@ -46,13 +50,14 @@ export class TrellisWatcher {
         debounced()
         fileEvent('change')(p)
       })
-      this.watcher.on('unlink', debounced)
+      this.watcher.on('unlink', (p) => { debounced(); fileEvent('unlink')(p) })
       this.watcher.on('addDir', debounced)
       this.watcher.on('unlinkDir', debounced)
     })
   }
 
   stop(): void {
+    this.generation += 1
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     if (this.watcher) {

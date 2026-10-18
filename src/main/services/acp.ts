@@ -2,7 +2,7 @@
 import { app } from 'electron'
 import { randomUUID } from 'crypto'
 import { existsSync, readFileSync, statSync } from 'fs'
-import { join } from 'path'
+import { relative } from 'path'
 import { createAcpRuntime, createFileSessionStore, type AcpRuntimeHandle, type AcpRuntimeTurn, type AcpRuntimeEvent, type AcpPermissionHandler, type AcpPermissionDecision, type AcpSessionRecord as RuntimeRecord } from 'acpx/runtime'
 import * as AcpxRuntime from 'acpx/runtime'
 import { createAgentRegistry } from 'acpx/agent-registry'
@@ -11,9 +11,11 @@ import { noteTaskDir } from './observability/service'
 import { parseTrellisTaskPath } from './task-identity'
 import { ipcEvent } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
-import type { AcpAgentConfig, AcpAgentProfile, AcpConfigureInput, AcpPermissionPayload, AcpSessionRecord, AcpSessionStatus, TimelineEvent, TimelineEventKind } from '../../shared/types'
+import type { AcpAgentConfig, AcpAgentProfile, AcpBindTaskInput, AcpConfigureInput, AcpMaterialChange, AcpPermissionPayload, AcpPromptOptions, AcpSessionRecord, AcpSessionStatus, TimelineEvent, TimelineEventKind } from '../../shared/types'
 import { acpDataPath, canonicalDirectory, persistRecord, readProfiles, readRecords, saveProfiles } from './acp/metadata'
-import { configureSchema, errorMessage, idSchema, newSessionSchema, objectValue, profileSchema } from './acp/types'
+import { bindTaskSchema, configureSchema, errorMessage, idSchema, newSessionSchema, objectValue, profileSchema, promptOptionsSchema } from './acp/types'
+import { activeTaskExists, preparePromptMaterials, sourceBelongs } from './acp/materials'
+import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { launchArgv, listAcpAgents, NATIVE_TOOLS_DIAGNOSTIC } from './acp/setup'
 export { listAcpAgents, setupAcpRuntime, pickAcpNode } from './acp/setup'
 
@@ -27,7 +29,9 @@ const CANCEL_TIMEOUT_MS = 10_000
 const sessions = new Map<string, ActiveSession>()
 // Reserve before discovery yields so two restores cannot replace one owner.
 const resuming = new Set<string>()
-const leases = new Map<string, string>()
+type ResumeResult = { ok: true; sessionId: string } | IpcFail
+const resumeRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
+const leases = new Map<string, ActiveSession>()
 let shuttingDown = false
 let eventSeq = 0
 
@@ -55,6 +59,7 @@ interface ActiveSession {
   leaseHeld: boolean
   closingTask?: Promise<{ ok: true } | IpcFail>
   settling: boolean
+  promptAbort?: AbortController
 }
 
 function failure(error: unknown): IpcFail { return ipcFail(IpcErrorCode.Upstream, errorMessage(error)) }
@@ -65,15 +70,15 @@ function belongs(root: string, record: AcpSessionRecord): boolean {
 function owned(root: string, sessionId: string): ActiveSession | IpcFail {
   if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const session = sessions.get(sessionId)
-  if (!session) return ipcFail(IpcErrorCode.NotFound, '会话未连接；请查看历史或显式恢复')
+  if (!session) return ipcFail(IpcErrorCode.NotFound, '会话尚未连接，请重新打开会话以连接')
   if (!belongs(root, session.meta)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
   return session
 }
 function acquire(session: ActiveSession): IpcFail | undefined {
   const key = keyFor(session)
-  const ownerId = leases.get(key)
-  if (ownerId && ownerId !== session.meta.sessionId) return ipcFail(IpcErrorCode.Conflict, '此目录正在被另一个 Agent 使用，请停止占用会话后重试', { ownerSessionId: ownerId })
-  leases.set(key, session.meta.sessionId)
+  const owner = leases.get(key)
+  if (owner && owner !== session) return ipcFail(IpcErrorCode.Conflict, '此目录正在被另一个 Agent 使用，请停止占用会话后重试', { ownerSessionId: owner.meta.sessionId })
+  leases.set(key, session)
   session.leaseHeld = true
   return undefined
 }
@@ -88,7 +93,7 @@ function release(session: ActiveSession): void {
       : 'Runtime 报告的后台工具尚未确认结束，请停止会话以释放目录'
     return
   }
-  if (leases.get(keyFor(session)) === session.meta.sessionId) leases.delete(keyFor(session))
+  if (leases.get(keyFor(session)) === session) leases.delete(keyFor(session))
   session.leaseHeld = false
   delete session.meta.directoryLeaseReason
 }
@@ -102,7 +107,7 @@ function save(session: ActiveSession): void {
 function eventFor(session: ActiveSession, kind: TimelineEventKind, text?: string, payload?: Record<string, unknown>): TimelineEvent {
   return { id: `te-${Date.now().toString(36)}-${eventSeq++}`, ts: Date.now(), source: 'acp', sessionId: session.meta.sessionId,
     projectRoot: session.meta.projectRoot, taskDir: session.meta.taskDir, connectionGeneration: session.meta.connectionGeneration,
-    turnId: session.meta.turnId, kind, text, payload }
+    turnId: payload?.activityScope === 'connection' ? undefined : session.meta.turnId, kind, text, payload }
 }
 function emit(session: ActiveSession, kind: TimelineEventKind, text?: string, payload?: Record<string, unknown>): void {
   const event = eventFor(session, kind, text, payload)
@@ -120,11 +125,11 @@ function setStatus(session: ActiveSession, status: AcpSessionStatus, error?: str
   broadcastToWindows(terminal ? ipcEvent.acpDone : ipcEvent.acpState, payload)
   save(session)
 }
-function observe(session: ActiveSession, label: string, since?: number, failed = false): void {
+function observe(session: ActiveSession, label: string, since?: number, failed = false, activityScope: 'connection' | 'turn' = 'connection'): void {
   const atMs = Date.now()
   session.meta.startup ??= []
   session.meta.startup.push({ label, atMs, durationMs: since ? atMs - since : undefined, status: failed ? 'failed' : 'observed' })
-  emit(session, 'session-status', label, { observation: session.meta.startup.at(-1) })
+  emit(session, 'session-status', label, { observation: session.meta.startup.at(-1), activityScope })
 }
 function syncRecord(session: ActiveSession, record: RuntimeRecord): void {
   session.raw = record
@@ -259,7 +264,7 @@ export function respondAcpPermission(projectRoot: string, requestId: string, opt
 }
 
 async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConfig, argv: string[]): Promise<ActiveSession> {
-  if (!('TRELLIS_ACPX_COMPAT_VERSION' in AcpxRuntime) || AcpxRuntime.TRELLIS_ACPX_COMPAT_VERSION !== 1) throw new Error('acpx 兼容补丁未准备好；请重新安装应用依赖')
+  if (!('TRELLIS_ACPX_COMPAT_VERSION' in AcpxRuntime) || AcpxRuntime.TRELLIS_ACPX_COMPAT_VERSION !== 2) throw new Error('acpx 兼容补丁未准备好；请重新安装应用依赖')
   const store = createFileSessionStore({ stateDir: acpDataPath('runtime-store') })
   let session: ActiveSession
   const runtime = createAcpRuntime({ cwd: meta.cwd ?? meta.projectRoot,
@@ -277,9 +282,10 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
         if (shuttingDown || session.closing) throw new Error('会话已停止')
         const conflict = acquire(session)
         if (conflict) throw new Error(conflict.error)
+        session.lastStatusAt.set('process-start', Date.now())
         observe(session, '启动 Runtime')
       },
-      onSpawned: () => { session.hasProcess = true; session.disconnected = false; observe(session, 'Runtime 进程已启动') },
+      onSpawned: () => { session.hasProcess = true; session.disconnected = false; observe(session, 'Runtime 进程已启动', session.lastStatusAt.get('process-start')) },
       onSpawnFailed: (error) => observe(session, `Runtime 启动失败：${errorMessage(error.error)}`, undefined, true),
       onExit: () => {
         session.hasProcess = false
@@ -296,7 +302,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
 }
 
 function describeClientServices(session: ActiveSession): void {
-  emit(session, 'diagnostic', NATIVE_TOOLS_DIAGNOSTIC, { toolExecution: 'adapter-native', clientServices: { fs: false, terminal: false } })
+  emit(session, 'diagnostic', NATIVE_TOOLS_DIAGNOSTIC, { toolExecution: 'adapter-native', clientServices: { fs: false, terminal: false }, activityScope: 'connection' })
 }
 
 async function refreshSessionMetadata(session: ActiveSession): Promise<void> {
@@ -323,7 +329,7 @@ export async function newAcpSession(projectRoot: string, input: unknown): Promis
     if (!config?.enabled || !config.available) return ipcFail(IpcErrorCode.InvalidArg, config?.diagnostics?.join('；') ?? 'Runtime 未启用或不可用')
     const cwd = profile?.cwd || projectRoot
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return ipcFail(IpcErrorCode.NotFound, '工作目录不可用')
-    if (taskDir && !existsSync(join(projectRoot, '.trellis', 'tasks', taskDir, 'task.json'))) return ipcFail(IpcErrorCode.InvalidArg, '绑定任务不属于当前项目的活动任务目录')
+    if (taskDir && !await activeTaskExists(projectRoot, taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '绑定任务不属于当前项目的活动任务目录或记录不可读')
     const argv = await launchArgv(config)
     // Recheck the cap after asynchronous discovery; admission is otherwise atomic.
     if (sessions.size + resuming.size >= MAX_ACTIVE || shuttingDown) return ipcFail(IpcErrorCode.Conflict, 'ACP 连接数量已达上限')
@@ -335,6 +341,8 @@ export async function newAcpSession(projectRoot: string, input: unknown): Promis
     const conflict = acquire(session)
     if (conflict) { await session.runtime.shutdown(); return conflict }
     sessions.set(meta.sessionId, session)
+    session.lastStatusAt.set('connection-start', Date.now())
+    observe(session, '开始准备会话')
     describeClientServices(session)
     setStatus(session, 'starting')
     session.preparing = (async () => {
@@ -343,7 +351,7 @@ export async function newAcpSession(projectRoot: string, input: unknown): Promis
           ...(profile?.instructions ? { sessionOptions: { systemPrompt: { append: profile.instructions } } } : {}) })
         if (session.closing) { await session.runtime.shutdown(); return }
         await refreshSessionMetadata(session)
-        observe(session, 'ACP 会话已就绪', meta.startedAt)
+        observe(session, 'ACP 会话已就绪', session.lastStatusAt.get('connection-start'))
         release(session)
         setStatus(session, 'ready')
       } catch (error) {
@@ -358,7 +366,8 @@ export async function newAcpSession(projectRoot: string, input: unknown): Promis
 
 function mapEvent(session: ActiveSession, event: AcpRuntimeEvent): void {
   if (session.closing) return
-  if (!session.firstResponseAt) { session.firstResponseAt = Date.now(); observe(session, '收到首次响应', session.turnStartedAt) }
+  const isModelResponse = (event.type === 'text_delta' && event.text.trim().length > 0) || event.type === 'tool_call' || (event.type === 'status' && event.tag === 'plan')
+  if (!session.firstResponseAt && isModelResponse) { session.firstResponseAt = Date.now(); observe(session, '收到首次模型响应', session.turnStartedAt, false, 'turn') }
   if (event.type === 'text_delta') emit(session, event.stream === 'thought' ? 'thought' : 'message', event.text, { messageId: event.messageId, meta: event.meta })
   else if (event.type === 'tool_call') {
     if (event.toolCallId) {
@@ -375,36 +384,73 @@ function mapEvent(session: ActiveSession, event: AcpRuntimeEvent): void {
   else emit(session, 'diagnostic', 'Runtime 更新', { ...event })
 }
 
-export async function promptAcpSession(projectRoot: string, sessionId: string, text: string): Promise<{ ok: true; turnId: string } | IpcFail> {
+export async function bindAcpSessionTask(projectRoot: string, sessionId: string, input: AcpBindTaskInput, isCurrent?: () => boolean): Promise<{ ok: true; session: AcpSessionRecord } | IpcFail> {
+  const session = owned(projectRoot, sessionId)
+  if ('ok' in session) return session
+  const parsed = bindTaskSchema.safeParse(input)
+  if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '任务绑定参数无效')
+  if (parsed.data.expectedConnectionGeneration !== session.meta.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '会话连接已改变，请重新选择')
+  if (session.meta.status !== 'ready' || session.accepting || session.turn || session.closing || session.pendingPermissions.size > 0) return ipcFail(IpcErrorCode.Conflict, '请在空闲且就绪的会话绑定任务')
+  session.accepting = true
+  try {
+    if (parsed.data.taskDir !== null && !await activeTaskExists(projectRoot, parsed.data.taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '当前项目没有此活动任务或任务记录不可读')
+    if (isCurrent?.() === false || sessions.get(sessionId) !== session || session.closing || session.meta.connectionGeneration !== parsed.data.expectedConnectionGeneration) return ipcFail(IpcErrorCode.Conflict, '项目或会话已改变，未应用任务绑定')
+    const previousTaskDir = session.meta.taskDir
+    session.meta.taskDir = parsed.data.taskDir ?? undefined
+    // Earlier event/task/material snapshots retain their original provenance.
+    emit(session, 'session-status', parsed.data.taskDir ? `已关联任务：${parsed.data.taskDir}（后续发送生效）` : '已解除任务关联（后续发送生效）',
+      { binding: { previousTaskDir, taskDir: parsed.data.taskDir, source: 'user' } })
+    setStatus(session, 'ready')
+    return { ok: true, session: session.meta }
+  } catch (error) { return failure(error) }
+  finally { session.accepting = false }
+}
+
+export async function promptAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean): Promise<{ ok: true; turnId: string } | IpcFail> {
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
   if (session.accepting || session.turn || session.closing || (session.meta.status !== 'ready' && !(session.meta.status === 'disconnected' && session.meta.restorePending))) return ipcFail(IpcErrorCode.Conflict, `当前不能发送：${session.meta.status}`)
   if (typeof text !== 'string' || !text.trim() || text.length > 200000) return ipcFail(IpcErrorCode.InvalidArg, '发送内容为空或过长')
   if (!session.handle) return ipcFail(IpcErrorCode.Conflict, '会话尚未准备好')
+  const parsedOptions = promptOptionsSchema.safeParse(options ?? {})
+  if (!parsedOptions.success) return ipcFail(IpcErrorCode.InvalidArg, '文档引用或发送参数无效')
+  const { sourceReferences = [], expectedConnectionGeneration } = parsedOptions.data
+  const generation = session.meta.connectionGeneration
+  if (expectedConnectionGeneration !== undefined && expectedConnectionGeneration !== generation) return ipcFail(IpcErrorCode.Conflict, '会话连接已改变，请重新选择发送目标', { reason: 'SCOPE_CHANGED' })
+  for (const reference of sourceReferences) {
+    if (!sourceBelongs(projectRoot, session.meta.taskDir, reference) || reference.targetSessionId !== sessionId) return ipcFail(IpcErrorCode.Denied, '文档引用不属于此项目、任务或会话')
+    if ((reference.targetConnectionGeneration ?? expectedConnectionGeneration) !== generation) return ipcFail(IpcErrorCode.Conflict, '文档引用的会话连接已改变', { reason: 'SCOPE_CHANGED' })
+  }
   const conflict = acquire(session)
   if (conflict) return conflict
   session.accepting = true
-  for (const [id, state] of session.toolStates) if (state === 'settled') session.toolStates.delete(id)
+  const abort = new AbortController()
+  session.promptAbort = abort
   const turnId = `turn-${randomUUID()}`
-  session.meta.turnId = turnId
-  session.turnStartedAt = Date.now()
-  session.firstResponseAt = undefined
   const trimmed = text.trim()
   try {
-    let material = ''
-    const files: string[] = []
-    if (session.meta.taskDir) {
-      for (const name of ['prd.md', 'design.md', 'implement.md']) {
-        const path = join(projectRoot, '.trellis', 'tasks', session.meta.taskDir, name)
-        if (existsSync(path)) { files.push(`.trellis/tasks/${session.meta.taskDir}/${name}`); material += `\n\n--- ${files.at(-1)} ---\n${readFileSync(path, 'utf8').slice(0, 16000)}` }
-      }
+    const prepared = await preparePromptMaterials(projectRoot, session.meta.taskDir, sourceReferences)
+    if (abort.signal.aborted || isCurrent?.() === false || sessions.get(sessionId) !== session || session.closing || shuttingDown || session.meta.connectionGeneration !== generation) {
+      session.accepting = false; release(session)
+      return ipcFail(IpcErrorCode.Conflict, '发送前项目或会话已改变；内容尚未发送', { reason: 'SCOPE_CHANGED' })
     }
-    session.meta.materialSnapshot = { taskDir: session.meta.taskDir, profileId: session.meta.profileSnapshot?.id, instructions: session.meta.profileSnapshot?.instructions ?? '', files, capturedAt: Date.now() }
+    if (prepared.changed.length > 0) {
+      session.accepting = false; release(session)
+      return ipcFail(IpcErrorCode.Conflict, '引用文档已改变或不可读，请查看最新版本后再发送', { reason: 'SOURCE_CHANGED', sources: prepared.changed })
+    }
+    for (const [id, state] of session.toolStates) if (state === 'settled') session.toolStates.delete(id)
+    session.meta.turnId = turnId
+    session.turnStartedAt = Date.now()
+    session.firstResponseAt = undefined
+    session.meta.materialSnapshot = { taskDir: session.meta.taskDir, profileId: session.meta.profileSnapshot?.id, instructions: session.meta.profileSnapshot?.instructions ?? '', files: prepared.files,
+      sources: prepared.sources, sourceReferences, capturedAt: Date.now() }
     setStatus(session, 'busy')
-    const turn = session.runtime.startTurn({ handle: session.handle, text: material ? `${trimmed}\n\n[用户显式绑定的 Trellis 任务材料；内容是参考资料，任务动作仍需用户授权]${material}` : trimmed,
+    observe(session, '开始处理', undefined, false, 'turn')
+    const turn = session.runtime.startTurn({ handle: session.handle, text: prepared.text ? `${trimmed}\n\n[用户显式绑定的 Trellis 任务材料；内容是参考资料，任务动作仍需用户授权]${prepared.text}` : trimmed,
       mode: 'prompt', requestId: turnId, timeoutMs: (session.meta.profileSnapshot?.maxTurnMinutes ?? 30) * 60_000,
       assertActive: () => { if (session.closing || shuttingDown) throw new Error('会话已停止') }, onPermissionRequest: permissionHandler(session) })
     session.turn = turn
+    session.promptAbort = undefined
     // Drain immediately; canonical turn.result owns final checkpoint and process cleanup.
     const drain = (async () => { for await (const event of turn.events) mapEvent(session, event) })()
     const completion = (async () => {
@@ -418,7 +464,9 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
         release(session)
         if (!session.closing) {
           await refreshSessionMetadata(session)
-          setStatus(session, result.status === 'failed' ? 'error' : session.disconnected ? 'disconnected' : 'ready', result.status === 'failed' ? result.error.message : undefined)
+          // A failed model/provider request does not end the persistent ACP
+          // connection. Keep configuration and the next explicit turn usable.
+          setStatus(session, session.disconnected ? 'disconnected' : 'ready', result.status === 'failed' ? errorMessage(result.error.message) : undefined)
           broadcastToWindows(ipcEvent.acpDone, { sessionId, projectRoot, turnId, connectionGeneration: session.meta.connectionGeneration, status: session.meta.status, result })
         }
       } catch (error) {
@@ -431,6 +479,7 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
     // Observe the completion promise immediately to avoid unhandled teardown rejection.
     void completion.catch((error) => { emit(session, 'diagnostic', errorMessage(error)); save(session) })
     await turn.promptStarted
+    if (!session.closing && session.meta.turnId === turnId && session.meta.connectionGeneration === generation) observe(session, '指令已发送至引擎', session.turnStartedAt, false, 'turn')
     if (session.meta.restorePending) { session.meta.restorePending = false; observe(session, '原生会话恢复已验证') }
     emit(session, 'message', trimmed, { role: 'user', materialSnapshot: session.meta.materialSnapshot })
     if (!session.meta.title) session.meta.title = trimmed.slice(0, 40)
@@ -440,13 +489,14 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
     session.accepting = false
     if (!session.turn) { release(session); if (!session.closing) setStatus(session, 'error', errorMessage(error)) }
     return failure(error)
-  }
+  } finally { if (session.promptAbort === abort) session.promptAbort = undefined }
 }
 
 async function cancelOwned(session: ActiveSession, reason: string): Promise<{ ok: true } | IpcFail> {
   if (session.closing) return { ok: true }
   if (session.meta.status === 'starting') return killOwned(session, reason)
   const turn = session.turn
+  if (!turn && session.promptAbort) { session.promptAbort.abort(); return { ok: true } }
   if (!turn) return ipcFail(IpcErrorCode.Conflict, '当前没有运行中的回合')
   setStatus(session, 'cancelling')
   settlePermissions(session, 'cancelled')
@@ -489,7 +539,7 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
     sessions.delete(session.meta.sessionId)
     session.meta.historyKind = session.meta.canResume ? 'resumable' : 'transcript'
     setStatus(session, 'closed', undefined, true)
-    emit(session, 'session-status', reason)
+    emit(session, 'session-status', reason, { activityScope: 'connection' })
     save(session)
     return { ok: true }
   } catch (error) {
@@ -503,17 +553,36 @@ export async function killAcpSession(projectRoot: string, sessionId: string): Pr
   return 'ok' in session ? session : killOwned(session, '会话已停止')
 }
 
-export async function resumeAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true; sessionId: string } | IpcFail> {
+export function resumeAcpSession(projectRoot: string, sessionId: string): Promise<ResumeResult> {
+  if (!projectRoot) return Promise.resolve(ipcFail(IpcErrorCode.NoProject, '未打开项目'))
+  if (!idSchema.safeParse(sessionId).success) return Promise.resolve(ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效'))
+  const root = canonicalDirectory(projectRoot)
+  const pending = resumeRequests.get(sessionId)
+  if (pending) return pending.root === root ? pending.promise : Promise.resolve(ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目'))
+  const promise: Promise<ResumeResult> = resumeOwnedSession(projectRoot, sessionId).finally(() => {
+    if (resumeRequests.get(sessionId)?.promise === promise) resumeRequests.delete(sessionId)
+  })
+  resumeRequests.set(sessionId, { root, promise })
+  return promise
+}
+
+async function resumeOwnedSession(projectRoot: string, sessionId: string): Promise<ResumeResult> {
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const existing = sessions.get(sessionId)
   if (existing) {
     if (!belongs(projectRoot, existing.meta)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
-    if (existing.closing || existing.accepting || existing.turn || existing.meta.status === 'starting') return ipcFail(IpcErrorCode.Conflict, '此会话仍有未结束的操作，请等待或显式停止')
+    if (existing.meta.status === 'starting' && existing.preparing) {
+      await existing.preparing
+      const connected = sessions.get(sessionId)
+      if (!connected || connected !== existing || connected.closing || connected.meta.status !== 'ready') return ipcFail(IpcErrorCode.Upstream, existing.meta.error ?? '会话连接未完成，请重试')
+      return { ok: true, sessionId }
+    }
+    if (existing.closing || existing.accepting || existing.turn) return ipcFail(IpcErrorCode.Conflict, '此会话仍有未结束的操作，请等待或停止')
     if ((existing.meta.status === 'error' || existing.meta.status === 'disconnected') && !existing.meta.restorePending) {
       if (!existing.meta.canResume) return ipcFail(IpcErrorCode.InvalidArg, '此记录仅供查看，不支持原会话恢复')
       const stopped = await killOwned(existing, '停止旧连接，显式恢复原会话')
       if (!stopped.ok) return stopped
-      return resumeAcpSession(projectRoot, sessionId)
+      return resumeOwnedSession(projectRoot, sessionId)
     }
     return { ok: true, sessionId }
   }
@@ -528,14 +597,17 @@ export async function resumeAcpSession(projectRoot: string, sessionId: string): 
     const argv = await launchArgv(meta.runtimeSnapshot)
     if (shuttingDown) return ipcFail(IpcErrorCode.Conflict, '应用正在退出')
     const runtimeId = meta.runtimeSnapshot.id
-    session = await createSessionRuntime({ ...meta, connectionGeneration: randomUUID(), status: 'starting', historyKind: 'live', endedAt: undefined }, meta.runtimeSnapshot, argv)
+    session = await createSessionRuntime({ ...meta, connectionGeneration: randomUUID(), status: 'starting', historyKind: 'live', endedAt: undefined, turnId: undefined, restorePending: false, startup: [] }, meta.runtimeSnapshot, argv)
     if (shuttingDown) { await session.runtime.shutdown(); return ipcFail(IpcErrorCode.Conflict, '应用正在退出') }
     const conflict = acquire(session)
     if (conflict) { await session.runtime.shutdown(); return conflict }
     sessions.set(sessionId, session)
     resuming.delete(sessionId)
+    session.lastStatusAt.set('connection-start', Date.now())
+    observe(session, '开始恢复原会话')
     describeClientServices(session)
     const restoring = session
+    setStatus(restoring, 'starting')
     let preparationError: unknown
     restoring.preparing = (async () => {
       try {
@@ -544,11 +616,16 @@ export async function resumeAcpSession(projectRoot: string, sessionId: string): 
         if (!handle || handle.backendSessionId !== meta.backendSessionId) throw new Error('原 Runtime 身份不可用，历史保留；请显式创建新会话')
         restoring.handle = await restoring.runtime.ensureSession({ sessionKey: sessionId, agent: runtimeId, mode: 'persistent', cwd: meta.cwd, resumeSessionId: meta.backendSessionId })
         if (restoring.closing) return
+        await restoring.runtime.connectSession({ handle: restoring.handle,
+          assertActive: () => { if (restoring.closing || shuttingDown) throw new Error('会话连接已停止') } })
+        if (restoring.closing) return
+        await refreshSessionMetadata(restoring)
+        if (restoring.closing) return
+        restoring.meta.restorePending = false
+        restoring.disconnected = false
+        observe(restoring, '原会话已连接，可以继续对话', restoring.lastStatusAt.get('connection-start'))
         release(restoring)
-        // Public acpx restores the stored remote identity lazily at the next turn.
-        observe(restoring, '原会话记录已定位；发送时验证原生恢复，失败不会新建会话')
-        restoring.meta.restorePending = true
-        setStatus(restoring, 'disconnected')
+        setStatus(restoring, 'ready')
       } catch (error) {
         preparationError = error
         if (!restoring.closing) await closeAfterFailure(restoring, error, true)
@@ -621,11 +698,20 @@ export function emitTrellisTimeline(
     if (taskDir && s.meta.taskDir !== taskDir) continue
     s.meta.events.push(ev)
     if (s.meta.events.length > MAX_RECORD_EVENTS) s.meta.events.splice(0, s.meta.events.length - MAX_RECORD_EVENTS)
+    if (kind === 'material-change') save(s)
   }
 }
 
+/** First-party verified filesystem fact; no Agent/session/turn authorship is inferred. */
+export function emitAcpMaterialChange(material: AcpMaterialChange): void {
+  const verb = material.kind === 'add' ? '创建' : material.kind === 'unlink' ? '移除' : '更新'
+  emitTrellisTimeline(material.projectRoot, 'material-change', `文件已${verb}：${material.relativePath}`, { materialChange: material }, material.taskDir)
+}
+
 /** watcher 文件级探针 → trellis 轨道事件（task.json 状态 / 任务文档新增 / spec 变更） */
-export function routeWatcherEvent(projectRoot: string, rawPath: string, ev: 'add' | 'change'): void {
+export function routeWatcherEvent(projectRoot: string, rawPath: string, ev: 'add' | 'change' | 'unlink'): void {
+  const rel = relative(projectRoot, rawPath).replace(/\\/g, '/')
+  if (!rel.startsWith('.trellis/') || !resolveAuthorizedDocumentPath(projectRoot, rel).ok) return
   // S0 G3：路径解析收敛到 task-identity（吸收原内联正则；archive 结构显式识别）
   const parsed = parseTrellisTaskPath(projectRoot, rawPath)
   if (parsed !== null) {
@@ -652,7 +738,7 @@ export function routeWatcherEvent(projectRoot: string, rawPath: string, ev: 'add
       noteTaskDir(projectRoot, taskDir)
       return
     }
-    if (ev === 'add' && (rest === 'prd.md' || rest === 'PRD.md' || rest === 'design.md' || rest.startsWith('research/'))) {
+    if (ev === 'add' && (rest === 'prd.md' || rest === 'PRD.md' || rest === 'design.md' || rest === 'implement.md' || rest.startsWith('research/'))) {
       emitTrellisTimeline(projectRoot, 'doc-created', `创建文档：${rest}`, { taskDir, file: rest, path: rawPath }, taskDir)
       noteTaskDir(projectRoot, taskDir)
     }

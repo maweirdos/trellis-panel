@@ -4,7 +4,8 @@
  */
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { noProject } from '../../shared/ipc-errors'
-import { getProjectRoot } from '../state'
+import { getProjectRoot, getProjectGeneration } from '../state'
+import type { AcpBindTaskInput, AcpPromptOptions } from '../../shared/types'
 import {
   cancelAcpSession,
   killAcpSession,
@@ -13,7 +14,7 @@ import {
   newAcpSession,
   promptAcpSession,
   respondAcpPermission,
-  listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, resumeAcpSession, configureAcpSession
+  listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, resumeAcpSession, configureAcpSession, bindAcpSessionTask
 } from '../services/acp'
 import { handle } from './registry'
 
@@ -32,7 +33,16 @@ export function registerAcpIpc(): void {
     return newAcpSession(root, input)
   })
 
-  handle(ipcInvoke.acp.sessionPrompt, (_e, sessionId: string, text: string) => promptAcpSession(getProjectRoot() ?? '', sessionId, text))
+  handle(ipcInvoke.acp.sessionPrompt, (_e, sessionId: string, text: string, options?: AcpPromptOptions) => {
+    const root = getProjectRoot() ?? ''
+    const generation = getProjectGeneration()
+    return promptAcpSession(root, sessionId, text, options, () => getProjectRoot() === root && getProjectGeneration() === generation)
+  })
+  handle(ipcInvoke.acp.sessionBindTask, (_e, sessionId: string, input: AcpBindTaskInput) => {
+    const root = getProjectRoot() ?? ''
+    const generation = getProjectGeneration()
+    return bindAcpSessionTask(root, sessionId, input, () => getProjectRoot() === root && getProjectGeneration() === generation)
+  })
 
   handle(ipcInvoke.acp.sessionCancel, (_e, sessionId: string) => cancelAcpSession(getProjectRoot() ?? '', sessionId))
 
