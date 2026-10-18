@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Check } from 'lucide-react'
+import { useRef, useId, type JSX, type ReactNode, type KeyboardEvent, type FocusEvent } from 'react'
+import { Check, ChevronDown } from 'lucide-react'
 import { clsx } from 'clsx'
-import type { JSX, ReactNode } from 'react'
+import { Dropdown } from '../my/ui'
 
 export interface SelectOption<T extends string = string> {
   value: T
   label: string
   icon?: ReactNode
   dot?: string
+  disabled?: boolean
 }
 
+/** Theme-aware replacement for platform-native select menus. */
 export function Select<T extends string = string>({
   value,
   onChange,
@@ -17,7 +19,11 @@ export function Select<T extends string = string>({
   placeholder = '请选择',
   className,
   size = 'md',
-  disabled = false
+  disabled = false,
+  autoFocus = false,
+  ariaLabel,
+  title,
+  onBlur
 }: {
   value: T
   onChange: (value: T) => void
@@ -26,97 +32,131 @@ export function Select<T extends string = string>({
   className?: string
   size?: 'sm' | 'md'
   disabled?: boolean
+  autoFocus?: boolean
+  ariaLabel?: string
+  title?: string
+  onBlur?: () => void
 }): JSX.Element {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  const normalizedOptions: SelectOption<T>[] = options.map((opt) =>
-    typeof opt === 'string' ? { value: opt as T, label: opt } : opt
+  const id = useId()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const normalizedOptions: SelectOption<T>[] = options.map((option) =>
+    typeof option === 'string' ? { value: option as T, label: option } : option
   )
+  const selectedOption = normalizedOptions.find((option) => option.value === value)
+  const enabledIndexes = normalizedOptions.flatMap((option, index) => option.disabled ? [] : [index])
+  const selectedIndex = normalizedOptions.findIndex((option) => option.value === value && !option.disabled)
+  const fill = /(^|\s)(w-full|flex-1)(\s|$)/.test(className ?? '')
+  const triggerLayoutClasses = (className ?? '').split(/\s+/).filter((name) => /^(?:[a-z]+:)?(?:h-|w-|min-w-|max-w-|flex-1)/.test(name))
 
-  const selectedOption = normalizedOptions.find((o) => o.value === value)
+  const focusOption = (index: number): void => {
+    const option = menuRef.current?.querySelector<HTMLButtonElement>(`[data-select-index="${index}"]`)
+    option?.focus()
+  }
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent): void => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+  const moveFocus = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const current = enabledIndexes.indexOf(index)
+      const direction = event.key === 'ArrowDown' ? 1 : -1
+      const next = current < 0
+        ? (direction > 0 ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1])
+        : enabledIndexes[(current + direction + enabledIndexes.length) % enabledIndexes.length]
+      if (next !== undefined) focusOption(next)
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      const target = event.key === 'Home' ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1]
+      if (target !== undefined) focusOption(target)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      triggerRef.current?.focus()
     }
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [open])
+  }
+
+  const handleBlur = (event: FocusEvent<HTMLDivElement>): void => {
+    const next = event.relatedTarget
+    if (!(next instanceof Node) || !event.currentTarget.contains(next)) onBlur?.()
+  }
 
   return (
-    <div className={clsx('relative inline-block text-left', className)} ref={containerRef}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-        className={clsx(
-          'flex w-full items-center justify-between gap-1.5 rounded-my-md border bg-my-surface-1 px-2.5 text-left text-my-sm transition-colors cursor-pointer select-none outline-none',
-          size === 'sm' ? 'h-7 py-1' : 'h-8 py-1.5',
-          open
-            ? 'border-my-line-accent text-my-primary'
-            : 'border-my-line text-my-primary hover:border-my-line-strong hover:bg-my-layer-1-hover',
-          disabled && 'opacity-50 cursor-not-allowed'
-        )}
-      >
-        <span className="flex min-w-0 items-center gap-1.5 truncate">
-          {selectedOption?.dot && (
-            <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', selectedOption.dot)} />
-          )}
-          {selectedOption?.icon && (
-            <span className="shrink-0 text-my-icon-tertiary">{selectedOption.icon}</span>
-          )}
-          <span className="truncate">
-            {selectedOption ? selectedOption.label : placeholder}
-          </span>
-        </span>
-        <ChevronDown
-          size={12}
-          className={clsx(
-            'shrink-0 text-my-icon-tertiary transition-transform duration-150',
-            open && 'rotate-180 text-my-icon-accent'
-          )}
-        />
-      </button>
+    <div className="contents" onBlur={onBlur ? handleBlur : undefined}>
+    <Dropdown
+      className={clsx('my-select-host min-w-0', fill && 'w-full', className)}
+      trigger={({ open, toggle }) => {
+        const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+          event.preventDefault()
+          if (open) {
+            const target = selectedIndex >= 0 ? selectedIndex : event.key === 'ArrowDown' ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1]
+            if (target !== undefined) focusOption(target)
+            return
+          }
+          toggle()
+          const target = selectedIndex >= 0 ? selectedIndex : event.key === 'ArrowDown' ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1]
+          requestAnimationFrame(() => { if (target !== undefined) focusOption(target) })
+        }
 
-      {open && (
-        <div className="my-pop absolute left-0 top-full z-50 mt-1 max-h-60 min-w-full w-max overflow-y-auto rounded-my-lg border border-my-line bg-my-layer-2 p-1 shadow-[var(--my-shadow-overlay-200)]">
-          {normalizedOptions.map((opt) => {
-            const isSelected = opt.value === value
+        return (
+          <button
+            ref={triggerRef}
+            type="button"
+            autoFocus={autoFocus}
+            disabled={disabled}
+            title={title}
+            aria-label={ariaLabel}
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-controls={open ? `${id}-options` : undefined}
+            onKeyDown={onTriggerKeyDown}
+            onClick={toggle}
+            className={clsx('my-select-trigger', fill && 'w-full', triggerLayoutClasses, size === 'sm' && 'my-select-trigger-sm')}
+          >
+            <span className="my-select-value">
+              {selectedOption?.dot && <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', selectedOption.dot)} />}
+              {selectedOption?.icon && <span className="shrink-0 text-my-icon-tertiary">{selectedOption.icon}</span>}
+              <span className="truncate">{selectedOption?.label ?? placeholder}</span>
+            </span>
+            <ChevronDown size={13} className={clsx('my-select-chevron shrink-0 transition-transform', open && 'rotate-180')} />
+          </button>
+        )
+      }}
+    >
+      {(close) => (
+        <div
+          ref={menuRef}
+          id={`${id}-options`}
+          role="listbox"
+          aria-label={ariaLabel ?? title ?? '选择一项'}
+          className="my-select-menu my-scrollbar max-h-60 overflow-y-auto"
+        >
+          {normalizedOptions.map((option, index) => {
+            const selected = option.value === value
             return (
               <button
-                key={opt.value}
+                key={`${option.value}-${index}`}
                 type="button"
+                role="option"
+                data-select-index={index}
+                aria-selected={selected}
+                disabled={option.disabled}
+                onKeyDown={(event) => moveFocus(event, index)}
                 onClick={() => {
-                  onChange(opt.value)
-                  setOpen(false)
+                  onChange(option.value)
+                  close()
+                  requestAnimationFrame(() => triggerRef.current?.focus())
                 }}
-                className={clsx(
-                  'flex w-full items-center gap-2 rounded-my-sm px-2.5 py-1.5 text-left text-my-sm transition-colors cursor-pointer',
-                  isSelected
-                    ? 'bg-my-accent-subtle font-medium text-my-accent-text'
-                    : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary'
-                )}
+                className={clsx('my-select-option', selected && 'is-selected')}
               >
-                {opt.dot && (
-                  <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', opt.dot)} />
-                )}
-                {opt.icon && (
-                  <span className="shrink-0 text-my-icon-tertiary">{opt.icon}</span>
-                )}
-                <span className="flex-1 truncate">{opt.label}</span>
-                {isSelected && <Check size={12} className="shrink-0 text-my-accent-text" />}
+                {option.dot && <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', option.dot)} />}
+                {option.icon && <span className="shrink-0 text-my-icon-tertiary">{option.icon}</span>}
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                {selected && <Check size={13} className="shrink-0" />}
               </button>
             )
           })}
         </div>
       )}
+    </Dropdown>
     </div>
   )
 }

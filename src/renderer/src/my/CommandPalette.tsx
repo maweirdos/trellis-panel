@@ -1,5 +1,5 @@
 // 全局命令面板（Ctrl+K）：页面导航 + 工作项搜索 + 主题切换，键盘上下循环选择。
-import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { Search } from 'lucide-react'
 import { useApp, type Page } from '../store'
@@ -30,6 +30,7 @@ export function CommandPalette(): JSX.Element | null {
   const setPageMain = useApp((s) => s.setPage)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
+  const selectedItemRef = useRef<HTMLButtonElement>(null)
 
   const go = useCallback((page: Page): void => {
     const ui = useMy.getState()
@@ -71,7 +72,7 @@ export function CommandPalette(): JSX.Element | null {
         run: () => { useMy.getState().setTeamView(section); setPageMain('team'); setOpen(false) }
       })),
       { id: 'n-roles', section: '导航 · 智能体', label: '角色', icon: <NavIcon name="inbox" size={14} />, hint: '当前项目', keywords: 'Agent 我的角色', run: () => { useMy.getState().requestAgentView('roles'); setPageMain('acp'); setOpen(false) } },
-      { id: 'n-company', section: '导航 · 知识', label: '公司库', icon: <NavIcon name="pages" size={14} />, hint: '跨项目资料', run: () => { useMy.getState().setKnowledgeView('company'); setPageMain('knowledge'); setOpen(false) } },
+      { id: 'n-company', section: '导航 · 知识', label: '知识库', icon: <NavIcon name="pages" size={14} />, hint: '跨项目资料', run: () => { useMy.getState().setKnowledgeView('company'); setPageMain('knowledge'); setOpen(false) } },
       { id: 'n-engines', section: '导航 · 设置', label: '引擎', icon: <NavIcon name="modules" size={14} />, hint: '本机', keywords: 'Runtime ACP Codex Claude 环境', run: () => { useMy.getState().setSettingsView('engines'); setPageMain('settings'); setOpen(false) } },
       { id: 'n-run', section: '导航 · 任务', label: '运行', icon: <NavIcon name="views" size={14} />, hint: '本机项目工具', run: () => { useMy.getState().setToolView('run'); setPageMain('devtools'); setOpen(false) } },
       { id: 'n-git', section: '导航 · 任务', label: 'Git', icon: <NavIcon name="views" size={14} />, hint: '当前项目 · 只读', run: () => { useMy.getState().setToolView('git'); setPageMain('devtools'); setOpen(false) } }
@@ -158,32 +159,47 @@ export function CommandPalette(): JSX.Element | null {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [open, filtered, selected, setOpen])
 
+  useEffect(() => {
+    selectedItemRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [selected, open])
+
   if (!open) return null
 
   let lastSection = ''
 
   return (
-    <div className="my-fade my-modal-backdrop fixed inset-0" onMouseDown={() => setOpen(false)}>
+    <div className="my-fade my-modal-backdrop my-command-backdrop fixed inset-0" onMouseDown={() => setOpen(false)}>
       <div
-        className="my-pop my-modal-panel mx-auto mt-[14vh] w-[560px] overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="搜索页面与命令"
+        className="my-pop my-modal-panel my-command-panel overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex h-my-header items-center gap-2 border-b border-my-line px-3">
-          <Search size={15} className="text-my-icon-tertiary" />
-          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value)
-              setSelected(0)
-            }}
-            placeholder="搜索或输入命令..."
-            className="min-w-0 flex-1 bg-transparent text-my-lg text-my-primary outline-none placeholder:text-my-placeholder"
-          />
-          <span className="my-kbd">Esc</span>
+        <div className="shrink-0 border-b border-my-line p-2.5">
+          <div className="my-command-search flex h-9 items-center gap-2.5 rounded-my-lg border border-transparent px-3">
+            <Search size={15} className="shrink-0 text-my-icon-tertiary" />
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setSelected(0)
+              }}
+              placeholder="搜索或输入命令..."
+              aria-label="搜索页面与命令"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="palette-results"
+              aria-activedescendant={filtered[selected] ? `palette-option-${selected}` : undefined}
+              aria-autocomplete="list"
+              className="min-w-0 flex-1 bg-transparent text-my-lg text-my-primary outline-none placeholder:text-my-placeholder"
+            />
+            <span className="my-kbd">Esc</span>
+          </div>
         </div>
-        <div className="my-scrollbar max-h-[46vh] p-1.5">
+        <div id="palette-results" role="listbox" aria-label="搜索结果" className="my-scrollbar my-command-results min-h-0 p-1.5">
           {filtered.length === 0 && (
             <div className="px-2.5 py-6 text-center text-my-sm text-my-tertiary">无匹配结果</div>
           )}
@@ -195,6 +211,10 @@ export function CommandPalette(): JSX.Element | null {
                 {header && <div className="px-2.5 pb-1 pt-2 text-my-xs text-my-tertiary">{header}</div>}
                 <button
                   type="button"
+                  id={`palette-option-${index}`}
+                  role="option"
+                  aria-selected={selected === index}
+                  ref={selected === index ? selectedItemRef : undefined}
                   onMouseEnter={() => setSelected(index)}
                   onClick={item.run}
                   className={clsx(

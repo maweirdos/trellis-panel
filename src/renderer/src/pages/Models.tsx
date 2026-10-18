@@ -15,11 +15,11 @@ import {
   EyeOff,
   MoreHorizontal,
   Loader2,
-  ChevronDown,
   Bot,
   X
 } from 'lucide-react'
 import { useApp } from '../store'
+import { Select } from '../components/Select'
 import { api } from '../api'
 import { Button, Dropdown, DropdownItem } from '../my/ui'
 import type { ModelItem, ModelProvider, AiApiFormat } from '../../../shared/types'
@@ -725,19 +725,18 @@ export function ModelsPage(): JSX.Element {
               {/* API 格式 */}
               <div>
                 <label className="mb-1.5 block text-my-xs font-medium text-my-tertiary">API 格式</label>
-                <div className="relative">
-                  <select
-                    value={currentProvider.apiFormat}
-                    onChange={(e) => updateCurrentProvider({ apiFormat: e.target.value as AiApiFormat })}
-                    className="my-input appearance-none pr-8 [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
-                  >
-                    <option value="openai">OpenAI Compatible (/v1/chat/completions)</option>
-                    <option value="response">OpenAI Response (/v1/responses)</option>
-                    <option value="anthropic">Anthropic Messages (/v1/messages)</option>
-                    <option value="ollama">Ollama (/api/tags)</option>
-                  </select>
-                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-3 text-my-tertiary" />
-                </div>
+                <Select
+                  ariaLabel="API 格式"
+                  value={currentProvider.apiFormat}
+                  onChange={(apiFormat) => updateCurrentProvider({ apiFormat: apiFormat as AiApiFormat })}
+                  className="w-full"
+                  options={[
+                    { value: 'openai', label: 'OpenAI Compatible (/v1/chat/completions)' },
+                    { value: 'response', label: 'OpenAI Response (/v1/responses)' },
+                    { value: 'anthropic', label: 'Anthropic Messages (/v1/messages)' },
+                    { value: 'ollama', label: 'Ollama (/api/tags)' }
+                  ]}
+                />
               </div>
 
               {/* API Key */}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { Check, ChevronDown, Loader2, ShieldCheck, SlidersHorizontal, Plus, Lightbulb, ChevronRight, ArrowLeft } from 'lucide-react'
 import { api } from '../api'
 import { Dropdown, DropdownHeader, DropdownItem } from '../my/ui'
+import { Select } from '../components/Select'
 import { ConnectionNotice } from './ConnectionNotice'
 import type { AcpConfigureInput, AcpSessionRecord } from '../../../shared/types'
 
@@ -89,7 +90,7 @@ export function ComposerModelPicker({ session, isCurrent, onUpdated, contextActi
             if (collaborationToggle && collaboration && planChoice && normalChoice) void configure({ kind: 'config', id: collaboration.id, value: planActive ? normalChoice.value : planChoice.value }, close)
             else { const next = planActive ? nativeNormal?.id : planModes[0]?.id; if (next) selectMode(next, close) }
           }}><Lightbulb size={14} /><span>计划模式</span><small>{planActive ? '已开启，点击关闭' : '开启计划模式'}</small>{planActive && <Check size={13} />}</button>}
-          {advancedOptions.length > 0 && <details className="acp-add-advanced"><summary><SlidersHorizontal size={14} />其他会话参数<ChevronDown size={12} /></summary><div className="acp-model-options">{advancedOptions.map((option) => <label key={option.id}>{option.name}<select className="my-input" value={option.currentValue} disabled={!canConfigure || !canSetConfig} onChange={(event) => void configure({ kind: 'config', id: option.id, value: event.target.value })}>{option.options.map((value) => <option key={value.value} value={value.value}>{choiceLabel(value.name)}</option>)}</select></label>)}</div></details>}
+          {advancedOptions.length > 0 && <details className="acp-add-advanced"><summary><SlidersHorizontal size={14} />其他会话参数<ChevronDown size={12} /></summary><div className="acp-model-options">{advancedOptions.map((option) => <label key={option.id}>{option.name}<Select ariaLabel={option.name} className="w-full" value={option.currentValue} disabled={!canConfigure || !canSetConfig} onChange={(value) => void configure({ kind: 'config', id: option.id, value })} options={option.options.map((value) => ({ value: value.value, label: choiceLabel(value.name) }))} /></label>)}</div></details>}
           {pending && <p role="status" className="px-3 py-2 text-my-sm text-my-tertiary">等待引擎确认…</p>}
         </div>}
       </Dropdown>

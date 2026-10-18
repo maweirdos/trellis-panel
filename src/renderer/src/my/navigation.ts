@@ -41,8 +41,8 @@ export const PAGE_NAVIGATION = {
   },
   knowledge: {
     title: '资料', domain: 'knowledge', scope: 'project', icon: 'pages', keywords: '文档 知识库',
-    scopeNote: '项目资料来自当前目录；公司库与个人问答历史可跨项目访问。',
-    commandHint: '当前项目 · 公司与个人资料'
+    scopeNote: '项目资料来自当前目录；知识库与个人问答历史可跨项目访问。',
+    commandHint: '当前项目 · 知识库与个人资料'
   },
   spec: { title: '规范', domain: 'knowledge', scope: 'project', icon: 'views', keywords: '规范文档 日志' },
   architecture: { title: '架构', domain: 'tasks', scope: 'project', icon: 'views' },

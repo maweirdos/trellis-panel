@@ -36,7 +36,6 @@
 .acp-transcript-content .md p { line-height: inherit; }
 .acp-composer-region { padding-block: var(--my-space-10) var(--my-space-16); }
 .acp-composer { border: 1px solid var(--my-border-shell); border-radius: var(--my-radius-3xl); background: var(--my-bg-composer); box-shadow: var(--my-shadow-composer); }
-.acp-composer:focus-within { box-shadow: var(--my-shadow-composer), var(--my-focus-shadow); }
 .acp-composer textarea {
   display: block;
   width: 100%;
@@ -53,6 +52,7 @@
   line-height: var(--my-line-chat);
 }
 .acp-composer textarea::placeholder { color: var(--my-txt-placeholder); }
+.my-root .acp-composer textarea:focus-visible { outline: none; }
 .acp-composer-toolbar { display: flex; align-items: center; gap: var(--my-space-10); padding: 0 var(--my-space-12) var(--my-space-10); color: var(--my-txt-tertiary); font-size: var(--my-text-sm); }
 .acp-composer-toolbar .spacer { flex: 1; }
 .acp-composer-context { display: flex; align-items: center; gap: var(--my-space-5); min-width: 0; }

@@ -1,6 +1,7 @@
 import { useRef, useState, type JSX } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api } from '../api'
+import { Select } from '../components/Select'
 import { RunActivity } from './RunActivity'
 import { isConnectionTimelineEvent } from './timeline'
 import type { AcpConfigureInput, AcpSessionRecord } from '../../../shared/types'
@@ -54,13 +55,15 @@ export function SessionDetails({ session, isCurrent, onUpdated, controlsOnly = f
       <div><dt className="text-my-tertiary">工作目录</dt><dd className="font-mono">{session.cwd ?? session.projectRoot}</dd></div>
       <div><dt className="text-my-tertiary">单轮最长运行</dt><dd>{session.profileSnapshot?.maxTurnMinutes ?? 30} 分钟</dd></div>
     </dl>}
-    {!detailsOnly && <><label className="block">模型{(session.models?.length ?? 0) > 0 ? <select aria-label="会话模型" className="my-input mt-1 w-full" disabled={disabled || (!modelConfig && !controls.includes('session/set_model'))} value={session.currentModelId ?? ''} onChange={(event) => void configure(modelConfig ? { kind: 'config', id: modelConfig.id, value: event.target.value } : { kind: 'model', id: event.target.value })}>
-      {!session.currentModelId && <option value="">未报告当前模型</option>}{session.models?.map((model) => <option key={model.modelId} value={model.modelId}>{model.name}</option>)}
-    </select> : <p className="mt-1 text-my-sm text-my-tertiary">{session.currentModelId ?? '执行引擎未提供可切换模型'}</p>}</label>
-    <label className="block">模式{(session.modes?.length ?? 0) > 0 ? <select aria-label="会话模式" className="my-input mt-1 w-full" disabled={disabled || (!modeConfig && !controls.includes('session/set_mode'))} value={session.currentModeId ?? ''} onChange={(event) => void configure(modeConfig ? { kind: 'config', id: modeConfig.id, value: event.target.value } : { kind: 'mode', id: event.target.value })}>
-      {!session.currentModeId && <option value="">未报告当前模式</option>}{session.modes?.map((mode) => <option key={mode.id} value={mode.id}>{mode.name}</option>)}
-    </select> : <p className="mt-1 text-my-sm text-my-tertiary">执行引擎未提供可切换模式</p>}</label>
-    {session.configOptions?.filter((option) => !dedicatedIds.has(option.id)).map((option) => <label key={option.id} className="block">{option.name}<select aria-label={option.name} className="my-input mt-1 w-full" disabled={disabled || !controls.includes('session/set_config_option')} value={option.currentValue} onChange={(event) => void configure({ kind: 'config', id: option.id, value: event.target.value })}>{option.options.map((value) => <option key={value.value} value={value.value}>{value.name}</option>)}</select></label>)}
+    {!detailsOnly && <><label className="block">模型{(session.models?.length ?? 0) > 0 ? <Select ariaLabel="会话模型" className="mt-1 w-full" disabled={disabled || (!modelConfig && !controls.includes('session/set_model'))} value={session.currentModelId ?? ''} onChange={(value) => void configure(modelConfig ? { kind: 'config', id: modelConfig.id, value } : { kind: 'model', id: value })} options={[
+      ...(!session.currentModelId ? [{ value: '', label: '未报告当前模型' }] : []),
+      ...(session.models ?? []).map((model) => ({ value: model.modelId, label: model.name }))
+    ]} /> : <p className="mt-1 text-my-sm text-my-tertiary">{session.currentModelId ?? '执行引擎未提供可切换模型'}</p>}</label>
+    <label className="block">模式{(session.modes?.length ?? 0) > 0 ? <Select ariaLabel="会话模式" className="mt-1 w-full" disabled={disabled || (!modeConfig && !controls.includes('session/set_mode'))} value={session.currentModeId ?? ''} onChange={(value) => void configure(modeConfig ? { kind: 'config', id: modeConfig.id, value } : { kind: 'mode', id: value })} options={[
+      ...(!session.currentModeId ? [{ value: '', label: '未报告当前模式' }] : []),
+      ...(session.modes ?? []).map((mode) => ({ value: mode.id, label: mode.name }))
+    ]} /> : <p className="mt-1 text-my-sm text-my-tertiary">执行引擎未提供可切换模式</p>}</label>
+    {session.configOptions?.filter((option) => !dedicatedIds.has(option.id)).map((option) => <label key={option.id} className="block">{option.name}<Select ariaLabel={option.name} className="mt-1 w-full" disabled={disabled || !controls.includes('session/set_config_option')} value={option.currentValue} onChange={(value) => void configure({ kind: 'config', id: option.id, value })} options={option.options.map((value) => ({ value: value.value, label: value.name }))} /></label>)}
     {pending && <p role="status" className="flex items-center gap-1 text-my-sm"><Loader2 size={12} className="animate-spin" />等待执行引擎确认…</p>}
     {error && <p role="alert" className="text-my-sm text-my-danger-text">{error}</p>}{notice && <p role="status" className="text-my-sm text-my-success-text">{notice}</p>}</>}
     {!controlsOnly && <><details className="border-t border-my-line pt-3"><summary className="cursor-pointer">发送材料与指令快照</summary><div className="mt-2 space-y-2 text-my-sm">

@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react'
 import { Bot, ChevronRight, Loader2, Plus, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Button, Modal } from '../my/ui'
+import { Select } from '../components/Select'
 import { RuntimePanel, runtimeHealthLabel } from './RuntimePanel'
 import { isStarterRole, rolesForDisplay } from './role-presentation'
 import type { AcpAgentProfile, AcpAgentStatus, TaskInfo } from '../../../shared/types'
@@ -32,7 +33,7 @@ export function NewConversationPicker({ profiles, agents, initialProfileId, init
       <section className="acp-picker-context my-scrollbar" aria-label="新会话上下文">
         {selected ? <><h3 className="font-medium text-my-primary">{selected.name}</h3><p className="mt-2 text-my-sm leading-relaxed text-my-secondary">{selected.description || '尚未填写角色职责'}</p><p className="mt-3 text-my-sm text-my-tertiary">本机私有 · 当前项目</p>
           <dl className="mt-4 space-y-3 text-my-sm"><div><dt className="text-my-tertiary">执行引擎</dt><dd className="mt-1 text-my-primary">{engine?.name ?? selected.runtimeId} · {runtimeHealthLabel(engine)}</dd></div><div><dt className="text-my-tertiary">工作目录</dt><dd className="mt-1 break-all text-my-secondary">{selected.cwd || root}</dd></div></dl>
-          <label className="mt-4 block text-my-sm text-my-secondary">关联任务<select className="my-input mt-2 w-full" value={selectedTask} disabled={starting} onChange={(event) => setSelectedTask(event.target.value)}><option value="">不关联任务</option>{tasks.map((task) => <option key={task.dirName} value={task.dirName}>{task.record?.title ?? task.dirName}</option>)}</select></label>
+          <label className="mt-4 block text-my-sm text-my-secondary">关联任务<Select ariaLabel="关联任务" className="mt-2 w-full" value={selectedTask} disabled={starting} onChange={setSelectedTask} options={[{ value: '', label: '不关联任务' }, ...tasks.map((task) => ({ value: task.dirName, label: task.record?.title ?? task.dirName }))]} /></label>
           <details className="acp-setting mt-4"><summary><span><strong>角色指令</strong><small>本次会话开始时保存角色快照</small></span></summary><div className="acp-setting-content"><pre>{selected.instructions || '未配置额外指令'}</pre></div></details>
           {!ready && <div className="mt-4"><RuntimePanel agents={agents} runtimeId={selected.runtimeId} onChange={onAgentsChange} isCurrent={isCurrent} heading={false} /></div>}
           <p className="mt-4 text-my-sm leading-relaxed text-my-tertiary">模型与模式由实际引擎连接后返回。你可以先连接，再选择它确实支持的模型。</p><Button size="sm" variant="outline" className="mt-2" disabled={!ready || starting} onClick={() => onStart(selected, selectedTask || undefined, true)}>连接后选择模型</Button>

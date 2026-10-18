@@ -16,6 +16,7 @@ import {
   FolderPlus
 } from 'lucide-react'
 import { useApp } from '../store'
+import { Select } from '../components/Select'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, EmptyState } from '../my/ui'
@@ -452,17 +453,14 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
         </div>
         {linking && !linked && (
           <div className="mt-2 flex items-center gap-1.5">
-            <select
+            <Select
               autoFocus
               value={linkTargets[issue.key] ?? ''}
-              onChange={(e) => setLinkTargets((m) => ({ ...m, [issue.key]: e.target.value }))}
-              className="h-8 min-w-0 flex-1 rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
-            >
-              <option value="">选择要关联的本地任务…</option>
-              {snapshot.tasks.map((t) => (
-                <option key={t.dirName} value={t.dirName}>{t.dirName}</option>
-              ))}
-            </select>
+              onChange={(value) => setLinkTargets((previous) => ({ ...previous, [issue.key]: value }))}
+              className="h-8 min-w-0 flex-1"
+              ariaLabel="选择要关联的本地任务"
+              options={[{ value: '', label: '选择要关联的本地任务…' }, ...snapshot.tasks.map((task) => ({ value: task.dirName, label: task.dirName }))]}
+            />
             <Button
               variant="outline"
               size="sm"

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PageContent, PageLayout } from '../my/layout/PageLayout'
+import { Select } from '../components/Select'
 import {
   X,
   FolderOpen,
@@ -200,21 +201,19 @@ function FieldRow({
       {editing ? (
         <div className="space-y-1.5">
           {options ? (
-            <select
+            <Select
               autoFocus
               value={draft}
-              onChange={(e) => {
-                setDraft(e.target.value)
-                onChange(field, e.target.value)
+              onChange={(value) => {
+                setDraft(value)
+                onChange(field, value)
                 setEditing(false)
               }}
               onBlur={() => setEditing(false)}
-              className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none focus:border-my-line-accent"
-            >
-              {options.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+              className="h-8 w-full"
+              ariaLabel={label}
+              options={options}
+            />
           ) : multiline ? (
             <textarea
               autoFocus
@@ -329,14 +328,14 @@ function HandoffSection({ dirName, status }: { dirName: string; status: string |
       </div>
       <p className="mb-2 px-1 text-my-xs leading-5 text-my-secondary">{statusHint}</p>
       <div className="flex flex-wrap items-center gap-2 px-1">
-        <select
+        <Select
           value={intent}
-          onChange={(e) => setIntent(e.target.value)}
-          className="my-control my-control-sm max-w-52"
-          aria-label="交接意图"
-        >
-          {HANDOFF_INTENTS.map((i) => <option key={i} value={i}>{i}</option>)}
-        </select>
+          onChange={setIntent}
+          className="max-w-52"
+          size="sm"
+          ariaLabel="交接意图"
+          options={HANDOFF_INTENTS.map((item) => ({ value: item, label: item }))}
+        />
         <label className="flex items-center gap-1.5 text-my-xs text-my-secondary">
           <input type="checkbox" checked={includePrd} onChange={(e) => setIncludePrd(e.target.checked)} />
           携带 PRD 原文（内容将离开本机）

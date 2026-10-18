@@ -11,6 +11,7 @@ import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { CommandPalette } from '../CommandPalette'
 import { IssuePeek } from '../pages/IssuePeek'
 import { CreateIssueModal } from '../pages/work-items/CreateIssueModal'
+import { SpecPage } from '../../pages/Spec'
 import { PageFrame } from './PageFrame'
 import { PAGE_LAYOUTS, PageLayout } from './PageLayout'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
@@ -22,7 +23,6 @@ const AnalyticsPage = lazy(() => import('../pages/AnalyticsPage').then((m) => ({
 const WorkItemsPage = lazy(() => import('../pages/WorkItemsPage').then((m) => ({ default: m.WorkItemsPage })))
 
 const KnowledgePage = lazy(() => import('../../pages/Knowledge').then((m) => ({ default: m.KnowledgePage })))
-const SpecPage = lazy(() => import('../../pages/Spec').then((m) => ({ default: m.SpecPage })))
 const ArchivePage = lazy(() => import('../../pages/Archive').then((m) => ({ default: m.ArchivePage })))
 const InboxPage = lazy(() => import('../../pages/Inbox').then((m) => ({ default: m.InboxPage })))
 const ChannelsPage = lazy(() => import('../../pages/Channels').then((m) => ({ default: m.ChannelsPage })))

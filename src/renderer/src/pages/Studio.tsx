@@ -25,6 +25,7 @@ import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, SearchInput } from '../my/ui'
+import { Select } from '../components/Select'
 import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
 import { confirmDialog, promptDialog } from '../components/Dialogs'
@@ -673,17 +674,18 @@ function WorkflowSection({
             <div className="text-my-xs font-semibold uppercase tracking-wide text-my-accent-text">2 · 个人默认</div>
             <div className="mt-1 flex items-center gap-2">
               <span className="font-mono text-my-sm text-my-primary">{chain.developerWorkflow ?? '—'}</span>
-              <select
+              <Select
                 value=""
-                onChange={(e) => void setDeveloperWorkflow(e.target.value)}
-                className="ml-auto h-7 w-28 rounded-my-md border border-my-line bg-my-surface-1 px-1.5 text-my-xs text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
-              >
-                <option value="">修改…</option>
-                <option value="">清除</option>
-                {scan.workflows.filter((w) => w.scope === 'saved').map((w) => (
-                  <option key={w.id} value={w.id}>{w.id}</option>
-                ))}
-              </select>
+                onChange={(value) => void setDeveloperWorkflow(value === '__clear__' ? '' : value)}
+                className="ml-auto h-7 w-28"
+                size="sm"
+                ariaLabel="修改个人默认工作流"
+                placeholder="修改…"
+                options={[
+                  { value: '__clear__', label: '清除' },
+                  ...scan.workflows.filter((workflow) => workflow.scope === 'saved').map((workflow) => ({ value: workflow.id, label: workflow.id }))
+                ]}
+              />
             </div>
             <div className="mt-1 text-my-xs leading-4 text-my-tertiary">.trellis/.developer（gitignored）</div>
           </div>
@@ -691,17 +693,18 @@ function WorkflowSection({
             <div className="text-my-xs font-semibold uppercase tracking-wide text-my-accent-text">3 · 团队默认</div>
             <div className="mt-1 flex items-center gap-2">
               <span className="font-mono text-my-sm text-my-primary">{chain.configDefault ?? '—'}</span>
-              <select
+              <Select
                 value=""
-                onChange={(e) => void setConfigDefault(e.target.value)}
-                className="ml-auto h-7 w-28 rounded-my-md border border-my-line bg-my-surface-1 px-1.5 text-my-xs text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
-              >
-                <option value="">修改…</option>
-                <option value="">清除</option>
-                {scan.workflows.filter((w) => w.scope === 'saved').map((w) => (
-                  <option key={w.id} value={w.id}>{w.id}</option>
-                ))}
-              </select>
+                onChange={(value) => void setConfigDefault(value === '__clear__' ? '' : value)}
+                className="ml-auto h-7 w-28"
+                size="sm"
+                ariaLabel="修改团队默认工作流"
+                placeholder="修改…"
+                options={[
+                  { value: '__clear__', label: '清除' },
+                  ...scan.workflows.filter((workflow) => workflow.scope === 'saved').map((workflow) => ({ value: workflow.id, label: workflow.id }))
+                ]}
+              />
             </div>
             <div className="mt-1 text-my-xs leading-4 text-my-tertiary">config.yaml 的 default_workflow</div>
           </div>
@@ -1172,15 +1175,17 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-my-xs text-my-tertiary">session_auto_commit</span>
-            <select
+            <Select
+              ariaLabel="session_auto_commit"
               value={form.session_auto_commit === null ? 'default' : form.session_auto_commit ? 'true' : 'false'}
-              onChange={(e) => setForm((f) => ({ ...f, session_auto_commit: e.target.value === 'default' ? null : e.target.value === 'true' }))}
-              className="my-input"
-            >
-              <option value="default">默认（true）</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
+              onChange={(value) => setForm((f) => ({ ...f, session_auto_commit: value === 'default' ? null : value === 'true' }))}
+              className="w-full"
+              options={[
+                { value: 'default', label: '默认（true）' },
+                { value: 'true', label: 'true' },
+                { value: 'false', label: 'false' }
+              ]}
+            />
           </label>
           <label className="block">
             <span className="mb-1 block text-my-xs text-my-tertiary">max_journal_lines — journal 轮转行数</span>
@@ -1203,21 +1208,17 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-my-xs text-my-tertiary">default_workflow — 团队默认 workflow</span>
-            <select value={form.default_workflow} onChange={(e) => setForm((f) => ({ ...f, default_workflow: e.target.value }))} className="my-input">
-              <option value="">（未设置）</option>
-              {scan.workflows.filter((w) => w.scope === 'saved').map((w) => (
-                <option key={w.id} value={w.id}>{w.id}</option>
-              ))}
-            </select>
+            <Select ariaLabel="default_workflow" value={form.default_workflow} onChange={(value) => setForm((f) => ({ ...f, default_workflow: value }))} className="w-full" options={[
+              { value: '', label: '（未设置）' },
+              ...scan.workflows.filter((workflow) => workflow.scope === 'saved').map((workflow) => ({ value: workflow.id, label: workflow.id }))
+            ]} />
           </label>
           <label className="block">
             <span className="mb-1 block text-my-xs text-my-tertiary">default_package</span>
-            <select value={form.default_package} onChange={(e) => setForm((f) => ({ ...f, default_package: e.target.value }))} className="my-input">
-              <option value="">（未设置）</option>
-              {packages.filter((p) => p.name.trim()).map((p) => (
-                <option key={p.name} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+            <Select ariaLabel="default_package" value={form.default_package} onChange={(value) => setForm((f) => ({ ...f, default_package: value }))} className="w-full" options={[
+              { value: '', label: '（未设置）' },
+              ...packages.filter((item) => item.name.trim()).map((item) => ({ value: item.name, label: item.name }))
+            ]} />
           </label>
         </div>
         <div>
@@ -1246,11 +1247,11 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
         </div>
         <label className="block">
           <span className="mb-1 block text-my-xs text-my-tertiary">codex.dispatch_mode — Codex 调度方式</span>
-          <select value={form.codex_dispatch_mode} onChange={(e) => setForm((f) => ({ ...f, codex_dispatch_mode: e.target.value }))} className="my-input md:w-64">
-            <option value="">默认（inline）</option>
-            <option value="inline">inline — 主 agent 实现</option>
-            <option value="sub-agent">sub-agent — trellis-implement / trellis-check 分发</option>
-          </select>
+          <Select ariaLabel="codex.dispatch_mode" value={form.codex_dispatch_mode} onChange={(value) => setForm((f) => ({ ...f, codex_dispatch_mode: value }))} className="w-full md:w-64" options={[
+            { value: '', label: '默认（inline）' },
+            { value: 'inline', label: 'inline — 主 agent 实现' },
+            { value: 'sub-agent', label: 'sub-agent — trellis-implement / trellis-check 分发' }
+          ]} />
         </label>
       </div>
 

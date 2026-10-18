@@ -14,6 +14,7 @@ import {
   X
 } from 'lucide-react'
 import { useApp } from '../store'
+import { Select } from '../components/Select'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button } from '../my/ui'
@@ -507,14 +508,10 @@ export function ChannelsPage(): JSX.Element {
             <div className="space-y-3.5 p-5">
               <div>
                 <label className="mb-1.5 block text-my-xs text-my-tertiary">派发一个看板任务（可选）</label>
-                <select value={dispatchTask} onChange={(e) => setDispatchTask(e.target.value)} className="h-9 w-full rounded-my-md border border-my-line bg-my-surface-1 px-3 text-my-md text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary">
-                  <option value="">— 不派任务，派一句话需求 —</option>
-                  {snapshot?.tasks.map((t) => (
-                    <option key={t.dirName} value={t.dirName}>
-                      {t.record?.title ?? t.dirName}（{t.record?.status ?? ''}）
-                    </option>
-                  ))}
-                </select>
+                <Select ariaLabel="派发一个看板任务" value={dispatchTask} onChange={setDispatchTask} className="h-9 w-full" options={[
+                  { value: '', label: '— 不派任务，派一句话需求 —' },
+                  ...(snapshot?.tasks ?? []).map((task) => ({ value: task.dirName, label: `${task.record?.title ?? task.dirName}（${task.record?.status ?? ''}）` }))
+                ]} />
                 <p className="mt-1 text-my-2xs leading-4 text-my-placeholder">
                   选中任务后，指令会自动携带任务目录、PRD 摘录与子任务清单，AI worker 可直接开工。
                 </p>

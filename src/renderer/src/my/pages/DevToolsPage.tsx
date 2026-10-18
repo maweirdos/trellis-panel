@@ -9,6 +9,7 @@ import { useApp } from '../../store'
 import { useMy } from '../store'
 import { projectRootKey } from '../navigation'
 import { Button } from '../ui'
+import { Select } from '../../components/Select'
 import type { DevRunInfo, DevScriptInfo, GitReadonlyFileDiff, GitReadonlyStatus } from '../../../../shared/types'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -334,14 +335,14 @@ function RunSection(): JSX.Element {
                 <div key={dir} className="flex flex-wrap items-center gap-2 rounded-my-md border border-my-line bg-my-layer-1 px-2 py-1.5">
                   <span className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-secondary" title={dir}>{dirName(dir)}<span className="ml-1.5 text-my-tertiary">{dir}</span></span>
                   {list && list.length > 0 && (
-                    <select
+                    <Select
                       value={picked[dir] ?? ''}
-                      onChange={(e) => setPicked((prev) => ({ ...prev, [dir]: e.target.value }))}
-                      className="my-control my-control-sm max-w-56"
-                      aria-label={`${dirName(dir)} 的启动脚本`}
-                    >
-                      {list.map((s) => <option key={s.name} value={s.name}>{s.name} = {s.command}</option>)}
-                    </select>
+                      onChange={(value) => setPicked((previous) => ({ ...previous, [dir]: value }))}
+                      className="max-w-56"
+                      size="sm"
+                      ariaLabel={`${dirName(dir)} 的启动脚本`}
+                      options={list.map((script) => ({ value: script.name, label: `${script.name} = ${script.command}` }))}
+                    />
                   )}
                   {list && list.length === 0 && <span className="text-my-xs text-my-tertiary">package.json 没有脚本</span>}
                   {err && <span className="text-my-xs text-my-warning-text">{err}</span>}

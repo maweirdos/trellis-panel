@@ -26,7 +26,7 @@ import { MarkdownView } from '../components/MarkdownView'
 import { DocumentReader } from '../reader/DocumentReader'
 import { relativePathUnderRoot } from '../reader/reader-paths'
 import { readingSessionKey } from '../reader/reading-session'
-import { projectRootKey } from '../my/navigation'
+import { getPageNavigation, projectRootKey } from '../my/navigation'
 import { Button, SearchInput } from '../my/ui'
 import { useMy } from '../my/store'
 import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
@@ -346,20 +346,21 @@ export function SpecPage(): JSX.Element {
   }, [hits])
 
   const searching_ = query.trim().length > 0
+  const scopeNote = getPageNavigation('knowledge').scopeNote
 
   return (
-    <div ref={pageRef} className="my-fade flex h-full min-h-0 min-w-0 flex-col bg-my-surface-1">
-      <div className="my-page-toolbar-row">
-        <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="spec-browser" className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
-          {browserVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 目录与检索
-        </button>
-        <span className="min-w-0 truncate text-my-xs text-my-secondary">规范可编辑 · 工作区日志与共享索引只读</span>
-      </div>
-      <div className="flex min-h-0 min-w-0 flex-1">
-      {/* 左栏：检索 + 规范树 / 命中列表 / 工作区日志 */}
-      <div id="spec-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line bg-my-layer-1', browserVisible ? 'flex' : 'hidden')}>
+    <div ref={pageRef} className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
+      {/* 左栏：知识导航、检索与规范树 */}
+      <div id="spec-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line', browserVisible ? 'flex' : 'hidden')}>
         <SidebarResizeHandle />
+        <div className="shrink-0 px-4 py-3">
+          <h1 className="text-my-md font-semibold text-my-primary">知识</h1>
+        </div>
         <ModuleLinks domain="knowledge" />
+        <div className="shrink-0 space-y-2 px-4 py-3 text-my-xs leading-relaxed text-my-tertiary">
+          {scopeNote && <p>{scopeNote}</p>}
+          <p>规范可编辑；工作区日志与共享索引只读。</p>
+        </div>
         <div className="space-y-2 border-b border-my-line p-2.5">
           <SearchInput value={query} onChange={setQuery} placeholder="全文搜索规范 / 日志 / 共享文档…" />
           {searching_ && (
@@ -520,8 +521,15 @@ export function SpecPage(): JSX.Element {
         </div>
       </div>
 
-      {/* 右栏：阅读 / 编辑 */}
-      <div ref={readerRef} tabIndex={-1} aria-label="文档阅读区" className="my-scrollbar relative min-w-0 flex-1 overflow-y-auto bg-my-surface-1 outline-none">
+      {/* 右栏：规范阅读 / 编辑 */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
+        <div className="my-page-toolbar-row">
+          <h1 className="text-my-md font-semibold text-my-primary">规范</h1>
+          <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="spec-browser" aria-label={browserVisible ? '收起目录与检索' : '展开目录与检索'} title={browserVisible ? '收起目录与检索' : '展开目录与检索'} className="my-icon-control ml-auto">
+            {browserVisible ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+          </button>
+        </div>
+      <div ref={readerRef} tabIndex={-1} aria-label="文档阅读区" className="my-scrollbar relative min-h-0 min-w-0 flex-1 overflow-y-auto bg-my-surface-1 outline-none">
         {selected && (!specSelected || specSelected.type === 'file') ? (
           <>
             <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-my-line bg-my-surface-1 px-5 py-2.5">

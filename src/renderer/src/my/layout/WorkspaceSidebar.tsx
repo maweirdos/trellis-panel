@@ -30,7 +30,7 @@ export function WorkspaceSidebar(): JSX.Element {
   return <>
     <aside aria-label="模块栏" className="my-module-rail flex h-full shrink-0 flex-col items-center">
       <nav aria-label="项目模块" className="my-scrollbar flex min-h-0 w-full flex-1 flex-col items-center">
-        {PRIMARY_NAVIGATION.map((item) => <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={current === item.id ? 'page' : undefined} onClick={() => setPage(useMy.getState().modulePages[item.id] ?? item.page)} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
+        {PRIMARY_NAVIGATION.map((item) => <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={current === item.id ? 'page' : undefined} onClick={() => { const target = useMy.getState().modulePages[item.id] ?? item.page; if (useApp.getState().page !== target) setPage(target) }} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
       </nav>
       <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">
         <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => setPage(useMy.getState().modulePages.settings ?? 'settings')} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>
@@ -55,7 +55,7 @@ function ContextSidebar(): JSX.Element {
   const domain = getPageNavigation(page).domain
   const buttonClass = contextButtonClass
   const row = (key: string, label: string, selected: boolean, icon: ReactNode, action: () => void): JSX.Element => <button key={key} type="button" aria-current={selected ? 'page' : undefined} onClick={action} className={buttonClass(selected)}>{icon}{label}</button>
-  const route = (target: Page): JSX.Element => row(target, getPageNavigation(target).title, page === target, <NavIcon name={getPageNavigation(target).icon} size={16} />, () => setPage(target))
+  const route = (target: Page): JSX.Element => row(target, getPageNavigation(target).title, page === target, <NavIcon name={getPageNavigation(target).icon} size={16} />, () => { if (useApp.getState().page !== target) setPage(target) })
   return <aside aria-label={`${DOMAIN_LABELS[domain]}导航`} style={sidebarStyle} className="my-context-sidebar flex h-full shrink-0 flex-col border-r border-my-line">
     <SidebarResizeHandle />
     <header className="flex h-my-header shrink-0 items-center gap-2 px-4">

@@ -8,6 +8,7 @@ import { api, hasIpc } from '../api'
 import { useChatEntries } from '../chat/useChatEntries'
 import { useTranscriptScroll, useTranscriptWindow } from '../chat/useTranscriptScroll'
 import { MarkdownView } from '../components/MarkdownView'
+import { Select } from '../components/Select'
 import { Button } from '../my/ui'
 import { useMy } from '../my/store'
 import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
@@ -59,36 +60,26 @@ function ComposerModelPicker(): { provider: ModelProvider | null; modelId: strin
 
   const picker = (
     <div className="flex items-center gap-1">
-      <select
+      <Select
         value={providerId}
-        onChange={(e) => {
-          const p = providers.find((x) => x.id === e.target.value)
-          setProviderId(e.target.value)
-          setModelId(p?.models?.find((m) => m.enabled)?.id ?? p?.models?.[0]?.id ?? '')
+        onChange={(nextId) => {
+          const nextProvider = providers.find((item) => item.id === nextId)
+          setProviderId(nextId)
+          setModelId(nextProvider?.models?.find((model) => model.enabled)?.id ?? nextProvider?.models?.[0]?.id ?? '')
         }}
-        className="h-8 max-w-[130px] rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+        className="h-8 max-w-[130px]"
         title="供应商"
-      >
-        {providers.length === 0 && <option value="">未配置供应商</option>}
-        {providers.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
-      <select
+        ariaLabel="供应商"
+        options={providers.length === 0 ? [{ value: '', label: '未配置供应商' }] : providers.map((item) => ({ value: item.id, label: item.name }))}
+      />
+      <Select
         value={modelId}
-        onChange={(e) => setModelId(e.target.value)}
-        className="h-8 max-w-[170px] rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+        onChange={setModelId}
+        className="h-8 max-w-[170px]"
         title="模型"
-      >
-        {(!provider || provider.models.length === 0) && <option value="">未选择模型</option>}
-        {provider?.models.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.id}
-          </option>
-        ))}
-      </select>
+        ariaLabel="模型"
+        options={!provider || provider.models.length === 0 ? [{ value: '', label: '未选择模型' }] : provider.models.map((model) => ({ value: model.id, label: model.id }))}
+      />
     </div>
   )
 
@@ -459,32 +450,23 @@ export function ChatPage(): JSX.Element {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="my-page-toolbar-row">
           <span className="min-w-0 max-w-[240px] flex-1 truncate text-my-xs font-semibold text-my-secondary">{activeSession?.title ?? '新对话'}</span>
-          <select
+          <Select
             value={taskDir}
-            onChange={(e) => setTaskDir(e.target.value)}
+            onChange={setTaskDir}
             disabled={!snapshot?.tasks?.length}
-            className="h-8 max-w-[190px] rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent disabled:opacity-40 [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+            className="h-8 max-w-[190px]"
+            ariaLabel="关联任务"
             title="把对话聚焦到某个任务：AI 会自动携带该任务的描述、备注与子任务作为上下文"
-          >
-            <option value="">📌 不关联任务</option>
-            {snapshot?.tasks?.map((t) => (
-              <option key={t.dirName} value={t.dirName}>
-                {t.record?.title ?? t.dirName}
-              </option>
-            ))}
-          </select>
-          <select
+            options={[{ value: '', label: '📌 不关联任务' }, ...(snapshot?.tasks ?? []).map((task) => ({ value: task.dirName, label: task.record?.title ?? task.dirName }))]}
+          />
+          <Select
             value={thinkingLevel}
-            onChange={(e) => setThinkingLevel(e.target.value as ThinkingLevel)}
-            className="h-8 rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary"
+            onChange={setThinkingLevel}
+            className="h-8"
+            ariaLabel="思考档位"
             title="思考档位（按供应商协议映射；reasoning 模型的思考流独立折叠展示）"
-          >
-            {THINKING_VALUES.map((v) => (
-              <option key={v} value={v}>
-                思考: {THINKING_LABEL[v]}
-              </option>
-            ))}
-          </select>
+            options={THINKING_VALUES.map((level) => ({ value: level, label: `思考: ${THINKING_LABEL[level]}` }))}
+          />
           <label
             className={clsx(
               'flex cursor-pointer select-none items-center gap-1 rounded-my-md border px-2 py-1 text-my-xs transition-colors',

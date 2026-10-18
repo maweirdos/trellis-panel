@@ -33,6 +33,7 @@ import { DocumentReader } from '../reader/DocumentReader'
 import { relativePathUnderRoot } from '../reader/reader-paths'
 import { Button, SearchInput } from '../my/ui'
 import { useMy } from '../my/store'
+import { getPageNavigation } from '../my/navigation'
 import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult, WeknoraDocSummary, WeknoraHit } from '../../../shared/types'
 import type { JSX } from 'react'
@@ -61,8 +62,8 @@ const LIBS: Array<{ id: LibFilter; label: string; icon: JSX.Element; desc: strin
   { id: 'spec', label: '规范库', icon: <BookOpenText size={14} />, desc: '.trellis/spec 团队规范' },
   { id: 'wiki', label: '文档', icon: <FileText size={14} />, desc: 'README / docs / wiki 等仓库文档' },
   { id: 'archive', label: '归档', icon: <Archive size={14} />, desc: '已归档任务的沉淀经验' },
-  { id: 'company', label: '公司库', icon: <Cloud size={14} />, desc: 'WeKnora 公司级知识（跨项目规范 / 历史归档 / 接口文档）' },
-  { id: 'all', label: '全部', icon: <Library size={14} />, desc: '跨库联合检索（本地五库 + 公司库异步追加）' }
+  { id: 'company', label: '知识库', icon: <Cloud size={14} />, desc: 'WeKnora 跨项目知识（规范 / 历史归档 / 接口文档）' },
+  { id: 'all', label: '全部', icon: <Library size={14} />, desc: '跨库联合检索（本地五库 + 知识库异步追加）' }
 ]
 
 const LIB_CHIP: Record<KbLibrary, string> = {
@@ -187,7 +188,7 @@ export function KnowledgePage(): JSX.Element {
           setCompanyError(docs.length === 0 ? err : null)
         }
       } catch (error) {
-        if (seq === companySeq.current) setCompanyError(error instanceof Error ? error.message : '公司库读取失败')
+        if (seq === companySeq.current) setCompanyError(error instanceof Error ? error.message : '知识库读取失败')
       } finally {
         if (seq === companySeq.current) setCompanyLoading(false)
       }
@@ -290,7 +291,7 @@ export function KnowledgePage(): JSX.Element {
           : cur
       )
     } catch (error) {
-      if (seq === docSeq.current) setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: error instanceof Error ? error.message : '公司文档读取失败' })
+      if (seq === docSeq.current) setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: error instanceof Error ? error.message : '知识库文档读取失败' })
     }
   }, [])
 
@@ -322,7 +323,7 @@ export function KnowledgePage(): JSX.Element {
         const remote = await api.weknoraSearch(q, 3)
         if (remote.ok) {
           for (const h of remote.hits.slice(0, 3)) {
-            context += `\n\n--- 来源 [公司库]：${h.title || h.filename}（WeKnora）---\n${h.content.slice(0, 3000)}`
+            context += `\n\n--- 来源 [知识库]：${h.title || h.filename}（WeKnora）---\n${h.content.slice(0, 3000)}`
             remoteSources.push(h)
           }
           setAiRemoteSources(remoteSources)
@@ -332,7 +333,7 @@ export function KnowledgePage(): JSX.Element {
         {
           role: 'system',
           content:
-            '你是项目知识助手。仅依据提供的知识库上下文回答问题；上下文不足时明确说明并给出建议去哪里补充。用中文回答，引用来源时标注标题（公司库来源注明 [公司库]）。'
+            '你是项目知识助手。仅依据提供的知识库上下文回答问题；上下文不足时明确说明并给出建议去哪里补充。用中文回答，引用来源时标注标题（WeKnora 来源注明 [知识库]）。'
         },
         { role: 'user', content: `知识库上下文：\n${context || '（未检索到相关内容）'}\n\n问题：${q}` }
       ])
@@ -341,7 +342,7 @@ export function KnowledgePage(): JSX.Element {
         // 问答历史落盘（userData，个人维度）
         const sourcesForHistory = [
           ...sources.map((s) => ({ title: s.title, path: s.path, library: s.library })),
-          ...remoteSources.map((h) => ({ title: h.title || h.filename || '公司库文档', path: h.knowledgeId, library: '公司库' }))
+          ...remoteSources.map((h) => ({ title: h.title || h.filename || '知识库文档', path: h.knowledgeId, library: '知识库' }))
         ]
         void api.kbQaSave({ question: q, answer: res.content, sources: sourcesForHistory }).then((r) => {
           if (r.ok && r.entries) setQaHistory(r.entries)
@@ -479,20 +480,18 @@ export function KnowledgePage(): JSX.Element {
   }
 
   const relativePath = active && !active.synthetic ? relativePathUnderRoot(snapshot?.meta.root ?? '', active.path) : null
+  const scopeNote = getPageNavigation('knowledge').scopeNote
 
   return (
-    <div ref={pageRef} className="my-fade flex h-full min-h-0 min-w-0 flex-col bg-my-surface-1">
-      <div className="my-page-toolbar-row">
-        <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="knowledge-browser" title={browserVisible ? '收起来源与检索' : '展开来源与检索'} className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
-          {browserVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 来源与检索
-        </button>
-        <span className="min-w-0 truncate text-my-xs text-my-secondary">{snapshot ? '项目文件保留原始位置 · 公司知识单独标明来源' : '未绑定本地项目 · 知识检索需在桌面打开项目'}</span>
-      </div>
-      <div className="flex min-h-0 min-w-0 flex-1">
-      {/* 左列：检索与列表 */}
-      <div id="knowledge-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line bg-my-layer-1', browserVisible ? 'flex' : 'hidden')}>
+    <div ref={pageRef} className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
+      {/* 左列：知识导航、来源与检索 */}
+      <div id="knowledge-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line', browserVisible ? 'flex' : 'hidden')}>
         <SidebarResizeHandle />
+        <div className="shrink-0 px-4 py-3">
+          <h1 className="text-my-md font-semibold text-my-primary">知识</h1>
+        </div>
         <ModuleLinks domain="knowledge" />
+        {scopeNote && <p className="shrink-0 px-4 pb-3 pt-2 text-my-xs leading-relaxed text-my-tertiary">{scopeNote}</p>}
         <div className="space-y-2.5 border-b border-my-line px-4 py-3">
           <div className="flex flex-wrap gap-1.5">
             {LIBS.filter((l) => knowledgeView === 'company' ? l.id === 'company' : l.id !== 'company' && l.id !== 'spec').map((l) => (
@@ -573,7 +572,7 @@ export function KnowledgePage(): JSX.Element {
             <>
               {lib === 'all' && list.length > 0 && companyList.length > 0 && (
                 <div className="my-2 flex items-center gap-2 px-1">
-                  <span className="text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">公司库（WeKnora）</span>
+                  <span className="text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">知识库（WeKnora）</span>
                   <span className="h-px flex-1 bg-my-line" />
                 </div>
               )}
@@ -592,7 +591,7 @@ export function KnowledgePage(): JSX.Element {
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="my-chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
-                      <Cloud size={12} /> 公司
+                      <Cloud size={12} /> 知识库
                     </span>
                     <span className="min-w-0 flex-1 truncate text-my-xs font-medium text-my-primary">{c.title}</span>
                     {c.score !== undefined && <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{c.score.toFixed(2)}</span>}
@@ -606,19 +605,19 @@ export function KnowledgePage(): JSX.Element {
               ))}
               {companyLoading && (
                 <div className="flex items-center gap-2 px-2 py-3 text-my-xs text-my-tertiary">
-                  <Loader2 size={12} className="animate-spin" /> 正在检索公司库（WeKnora）…
+                  <Loader2 size={12} className="animate-spin" /> 正在检索知识库（WeKnora）…
                 </div>
               )}
               {companyError && (
                 <div className="mx-1 mb-1.5 rounded-my-lg border border-my-line-warning bg-my-warning-subtle px-2.5 py-2 text-my-xs leading-4 text-my-warning-text">
-                  公司库不可用：{companyError}
+                  知识库不可用：{companyError}
                   {lib === 'all' && '（本地结果不受影响）'}
                 </div>
               )}
               {lib === 'company' && !weknoraEnabled && (
                 <div className="grid place-items-center gap-2 py-10 text-center text-my-xs text-my-tertiary">
                   <Cloud size={20} className="text-my-icon-tertiary" />
-                  未启用公司库联动
+                  未启用知识库联动
                   <Button variant="outline" size="sm" onClick={() => setPage('settings')}>
                     到设置页接入 WeKnora
                   </Button>
@@ -636,8 +635,15 @@ export function KnowledgePage(): JSX.Element {
         </div>
       </div>
 
-      {/* 右列：阅读器 */}
-      <div ref={readerRef} tabIndex={-1} aria-label="知识阅读区" className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1 outline-none">
+      {/* 右列：当前知识视图与阅读器 */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
+        <div className="my-page-toolbar-row">
+          <h1 className="text-my-md font-semibold text-my-primary">{knowledgeView === 'company' ? '知识库' : '资料'}</h1>
+          <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="knowledge-browser" aria-label={browserVisible ? '收起来源与检索' : '展开来源与检索'} title={browserVisible ? '收起来源与检索' : '展开来源与检索'} className="my-icon-control ml-auto">
+            {browserVisible ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+          </button>
+        </div>
+        <div ref={readerRef} tabIndex={-1} aria-label="知识阅读区" className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1 outline-none">
         {noteDraft ? (
           <>
             <div className="my-page-toolbar-row">
@@ -674,7 +680,7 @@ export function KnowledgePage(): JSX.Element {
           <>
             <div className="my-page-toolbar-row">
               <span className="my-chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
-                <Cloud size={12} /> 公司库
+                <Cloud size={12} /> 知识库
               </span>
               <span className="min-w-0 truncate text-my-xs font-semibold text-my-primary">{remoteDoc.title}</span>
               <div className="ml-auto flex items-center gap-1.5">
@@ -688,7 +694,7 @@ export function KnowledgePage(): JSX.Element {
                 {remoteDoc.fileName && <div className="mb-3 truncate font-mono text-my-xs text-my-tertiary">{remoteDoc.fileName}</div>}
                 {remoteDoc.loading && (
                   <div className="flex items-center gap-2 py-8 text-my-xs text-my-tertiary">
-                    <Loader2 size={14} className="animate-spin" /> 正在从公司库读取正文…
+                    <Loader2 size={14} className="animate-spin" /> 正在从知识库读取正文…
                   </div>
                 )}
                 {remoteDoc.error && (
@@ -769,24 +775,23 @@ export function KnowledgePage(): JSX.Element {
             </div>
           </>
         ) : (
-          <div className="grid h-full place-items-center">
-            <div className="max-w-md space-y-3 p-8 text-center">
-              <Library size={36} className="mx-auto text-my-icon-tertiary" />
-              <div className="text-my-sm font-semibold text-my-primary">从材料找到答案</div>
-              <p className="text-my-xs leading-5 text-my-secondary">选择项目笔记、需求、规范、仓库文档或归档材料阅读原文。公司知识来自配置的 WeKnora，范围独立于当前项目。</p>
-              {!aiEnabled && (
-                <div>
-                  <Button variant="ghost" size="sm" className="mx-auto" onClick={() => setPage('settings')}>
-                    <Sparkles size={12} /> 到设置页接入 AI 模型（baseUrl 自定义）
-                  </Button>
-                </div>
-              )}
-              <div>
-                <Button variant="outline" size="sm" className="mx-auto" onClick={() => setPage('gateway')} title="到 MCP 网关查看与配置本地 MCP 服务">
+          <div className="my-scrollbar grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-8">
+            <section className="w-full max-w-lg rounded-my-xl border border-my-line bg-my-layer-1 px-7 py-8 text-center shadow-[var(--my-shadow-raised-100)]">
+              <span className="mx-auto grid h-11 w-11 place-items-center rounded-my-xl bg-my-layer-2 text-my-icon-tertiary">
+                <Library size={22} />
+              </span>
+              <p className="mt-4 text-my-xs font-medium text-my-tertiary">{lib === 'company' ? '知识库' : '项目知识库'}</p>
+              <h2 className="mt-1 text-my-lg font-semibold text-my-primary">从材料中找到答案</h2>
+              <p className="mx-auto mt-2 max-w-md text-my-sm leading-relaxed text-my-secondary">
+                选择左侧的笔记、需求或文档开始阅读；也可以在下方直接提问。WeKnora 知识库按独立配置检索。
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                {!aiEnabled && <Button variant="primary" size="sm" onClick={() => setPage('settings')}><Sparkles size={12} />配置 AI 问答</Button>}
+                <Button variant="outline" size="sm" onClick={() => setPage('gateway')} title="到 MCP 网关查看与配置本地 MCP 服务">
                   <BrainCircuit size={12} /> 前往 MCP 知识网关
                 </Button>
               </div>
-            </div>
+            </section>
           </div>
         )}
 
@@ -888,7 +893,7 @@ export function KnowledgePage(): JSX.Element {
             </PageSection>
           </div>
         )}
-      </div>
+        </div>
       </div>
       {/* 打开的产物查看器标签保留在最上层（外部组件渲染） */}
       {viewerTabs.length > 0 && null}

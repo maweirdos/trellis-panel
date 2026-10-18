@@ -125,6 +125,37 @@
 .my-root .my-menu-item[data-danger='true'] { color: var(--my-txt-danger-primary); }
 .my-root .my-menu-item:disabled { color: var(--my-txt-disabled); background: transparent; }
 .my-root .my-menu-header { padding: var(--my-space-8) var(--my-space-10) var(--my-space-4); font-size: var(--my-text-xs); color: var(--my-txt-tertiary); font-weight: var(--my-weight-medium); }
+.my-root :where(.my-select-host) { display: inline-flex; min-width: 0; max-width: 100%; vertical-align: middle; }
+.my-root :where(.my-select-trigger) {
+  display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: var(--my-space-8);
+  height: var(--my-field-height); padding: 0 var(--my-space-10);
+  border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-md);
+  background: var(--my-bg-layer-1); color: var(--my-txt-primary); text-align: left; font-size: var(--my-text-sm);
+  transition: background var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-select-trigger:hover:not(:disabled) { background: var(--my-bg-layer-1-hover); border-color: var(--my-border-strong); }
+.my-root .my-select-trigger[aria-expanded='true'] { border-color: var(--my-border-accent-subtle); background: var(--my-bg-layer-2); }
+.my-root .my-select-trigger:focus-visible { outline: none; border-color: var(--my-border-accent-subtle); box-shadow: var(--my-focus-shadow); }
+.my-root .my-select-trigger:disabled { color: var(--my-txt-disabled); cursor: default; opacity: .65; }
+.my-root :where(.my-select-trigger-sm) { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); font-size: var(--my-text-xs); }
+.my-root .my-select-value { display: flex; min-width: 0; align-items: center; gap: var(--my-space-6); }
+.my-root .my-select-chevron { color: var(--my-txt-tertiary); }
+.my-root .my-select-menu { width: max-content; min-width: 100%; max-width: min(420px, calc(100vw - var(--my-space-24))); }
+.my-root .my-select-option {
+  display: flex; width: 100%; min-height: var(--my-control-height-sm); align-items: center; gap: var(--my-space-8);
+  padding: var(--my-space-6) var(--my-space-10); border-radius: var(--my-radius-md);
+  color: var(--my-txt-secondary); text-align: left; font-size: var(--my-text-sm);
+  transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-select-option:hover:not(:disabled),
+.my-root .my-select-option:focus-visible { outline: none; background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); box-shadow: inset 0 0 0 1px var(--my-border-accent-subtle); }
+.my-root .my-select-option.is-selected { background: var(--my-bg-accent-subtle); color: var(--my-txt-accent-primary); }
+.my-root .my-select-option:disabled { color: var(--my-txt-disabled); cursor: default; }
+.my-root .my-command-backdrop { display: flex; justify-content: center; align-items: flex-start; padding: clamp(24px, 14vh, 112px) var(--my-space-16) var(--my-space-16); }
+.my-root .my-command-panel { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100dvh - var(--my-space-32)); margin: 0; }
+.my-root .my-command-search { background: var(--my-bg-layer-1); transition: border-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-command-search input:focus-visible { outline: none; }
+.my-root .my-command-results { flex: 1 1 auto; max-height: min(52vh, 520px); }
 .my-root .my-tooltip { z-index: var(--my-z-tooltip); border-radius: var(--my-radius-inset); background: var(--my-bg-layer-3); box-shadow: var(--my-shadow-raised-200); }
 .my-root .my-modal-backdrop { z-index: var(--my-z-modal); background: var(--my-bg-backdrop); padding-inline: var(--my-space-16); }
 .my-root .my-modal-panel { max-width: 100%; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-4xl); background: var(--my-bg-layer-2); box-shadow: var(--my-shadow-overlay-200); }

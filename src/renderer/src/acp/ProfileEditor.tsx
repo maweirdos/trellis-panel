@@ -3,6 +3,7 @@ import { Loader2, Save, Trash2, X } from 'lucide-react'
 import { api } from '../api'
 import { Button, Modal } from '../my/ui'
 import { confirmDialog } from '../components/Dialogs'
+import { Select } from '../components/Select'
 import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { RuntimePanel, runtimeHealthLabel } from './RuntimePanel'
 import type { AcpAgentProfile, AcpAgentStatus } from '../../../shared/types'
@@ -63,10 +64,10 @@ export function ProfileEditor({ initial, agents, root, isNew = false, inline = f
         <p className="text-my-sm leading-relaxed text-my-tertiary">角色定义“谁来做、怎么做”；Codex、Claude Code 只负责实际执行。本配置仅保存到本机当前项目，暂不支持团队共享。</p>
         <label className="block text-my-sm text-my-secondary">角色名称<input autoFocus required maxLength={100} placeholder="例如：产品助手、前端研发" className="my-input mt-1 w-full" value={draft.name} disabled={pending} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
         <label className="block text-my-sm text-my-secondary">角色职责<input placeholder="用一句话说明这个角色负责什么" className="my-input mt-1 w-full" value={draft.description} disabled={pending} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
-        <label className="block text-my-sm text-my-secondary">执行引擎<select aria-label="角色执行引擎" className="my-input mt-1 w-full" value={draft.runtimeId} disabled={pending} onChange={(event) => setDraft({ ...draft, runtimeId: event.target.value })}>
-          {!agents.some((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId) && <option value={draft.runtimeId}>{draft.runtimeId || '选择执行引擎'}</option>}
-          {agents.map((agent) => <option key={agent.id} value={agent.runtimeId ?? agent.id}>{agent.name} · {runtimeHealthLabel(agent)}</option>)}
-        </select></label>
+        <label className="block text-my-sm text-my-secondary">执行引擎<Select ariaLabel="角色执行引擎" className="mt-1 w-full" value={draft.runtimeId} disabled={pending} onChange={(runtimeId) => setDraft({ ...draft, runtimeId })} options={[
+          ...(!agents.some((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId) ? [{ value: draft.runtimeId, label: draft.runtimeId || '选择执行引擎' }] : []),
+          ...agents.map((agent) => ({ value: agent.runtimeId ?? agent.id, label: `${agent.name} · ${runtimeHealthLabel(agent)}` }))
+        ]} /></label>
         {onAgentsChange && <details className="acp-setting" open={!agents.find((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId)?.available}><summary><span><strong>引擎安装与本机环境</strong><small>{runtimeHealthLabel(agents.find((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId))}</small></span></summary><div className="acp-setting-content"><RuntimePanel agents={agents} onChange={onAgentsChange} isCurrent={isCurrent} runtimeId={draft.runtimeId} heading={false} /></div></details>}
         <p className="text-my-sm text-my-tertiary">模型与运行模式由引擎在连接后提供。保存角色不会连接，也不会预选虚构的模型。</p>
         <label className="block text-my-sm text-my-secondary">角色指令<textarea rows={5} className="my-input mt-1 !h-auto w-full resize-y py-2" value={draft.instructions} disabled={pending} placeholder="写明工作边界、处理步骤和输出要求。例如：先澄清需求，完成 PRD 后等待我确认。" onChange={(event) => setDraft({ ...draft, instructions: event.target.value })} /></label>

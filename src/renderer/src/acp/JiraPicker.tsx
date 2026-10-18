@@ -3,6 +3,7 @@ import { GitBranch, Loader2, X } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { Button, Modal } from '../my/ui'
+import { Select } from '../components/Select'
 import type { AcpAgentStatus, JiraIssue } from '../../../shared/types'
 
 /* ---------------- 工单选择器（人工审查流） ---------------- */
@@ -126,13 +127,7 @@ export function JiraPickerModal(props: { onClose: () => void; onStarted: (sessio
           <GitBranch size={15} className="text-my-info-text" />
           <span className="text-my-sm font-medium text-my-primary">从 Jira 选工单开始</span>
           <div className="flex-1" />
-          <select aria-label="Jira 工单 Runtime" disabled={importing !== null} className="h-8 min-w-0 max-w-44 rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-xs text-my-primary outline-none focus:border-my-line-accent [&>option]:bg-my-layer-2 [&>option]:text-my-primary" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-            {agents.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <Select ariaLabel="Jira 工单 Runtime" disabled={importing !== null} className="h-8 min-w-0 max-w-44" size="sm" value={agentId} onChange={setAgentId} options={agents.map((agent) => ({ value: agent.id, label: agent.name }))} />
           <Button variant="ghost" size="sm" title="关闭 Jira 选择器" disabled={importing !== null} onClick={close}>
             <X size={14} />
           </Button>
