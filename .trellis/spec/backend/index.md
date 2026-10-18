@@ -21,6 +21,7 @@
 | [database.md](./database.md)                       | Drizzle ORM, schema, migrations                   | Database operations                |
 | [environment.md](./environment.md)                 | Dev/prod isolation, userData separation           | Setting up environment, debugging  |
 | [window-appearance.md](./window-appearance.md)     | Ordinary native frame/theme decoration, resize preservation | Changing main-window chrome or theme updates |
+| [document-watch.md](./document-watch.md)           | Opaque watch leases, project generations and exact release | Modern reader watch/IPC cleanup |
 | [type-safety.md](./type-safety.md)                 | Zod schemas, discriminated unions, type patterns  | Type-related decisions             |
 | [logging.md](./logging.md)                         | Logging and native module packaging               | Debugging, packaging               |
 | [pagination.md](./pagination.md)                   | Cursor vs offset pagination guidelines            | Implementing list APIs             |

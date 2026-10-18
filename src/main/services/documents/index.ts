@@ -14,6 +14,7 @@ export { parseContextManifest, parseTaskJsonText } from './parse'
 export { PANEL_RUNTIME_PATH_RE, isPanelRuntimePath, resolveAuthorizedDocumentPath } from './paths'
 export {
   clearReaderDocuments,
+  clearReaderDocumentOwner,
   onReaderDocumentChanged,
   routeReaderDocumentChange,
   unwatchReaderDocument,

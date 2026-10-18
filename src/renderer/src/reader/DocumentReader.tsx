@@ -6,6 +6,7 @@ import { ArtifactReader } from './ArtifactReader'
 import { DocumentDiffPanel } from './DocumentDiffPanel'
 import { ReaderNoticeStrip, ReaderVersionBar } from './ReaderVersionBar'
 import { useDocumentReader } from './use-document-reader'
+import type { DocumentReaderController } from './use-document-reader'
 
 /**
  * DocumentReader（S0 G2 第三片，design §6.1）：三入口共享的文档阅读容器——
@@ -38,9 +39,19 @@ export function DocumentReader({
   relativePath,
   variant = 'full',
   onExpand,
-  expandLabel = '展开为完整工作区'
+  expandLabel = '展开为完整工作区',
+  headerExtra
 }: DocumentReaderProps): JSX.Element {
   const reader = useDocumentReader({ workspaceId, taskRef, relativePath })
+  return <DocumentReaderSurface reader={reader} relativePath={relativePath} variant={variant} onExpand={onExpand} expandLabel={expandLabel} headerExtra={headerExtra} />
+}
+
+/** The same renderer/chrome with a host-owned controller; no second load/version engine. */
+export function DocumentReaderSurface({
+  reader, relativePath, variant = 'full', onExpand, expandLabel = '展开为完整工作区', headerExtra
+}: Pick<DocumentReaderProps, 'relativePath' | 'variant' | 'onExpand' | 'expandLabel' | 'headerExtra'> & {
+  reader: DocumentReaderController
+}): JSX.Element {
   const widthPref = useApp((s) => s.readerWidthPref)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const diffTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -90,7 +101,9 @@ export function DocumentReader({
         onRebase={() => reader.rebaseToCurrent()}
         showWidthPref={variant === 'full'}
         extra={
-          onExpand !== undefined ? (
+          <>
+          {headerExtra}
+          {onExpand !== undefined ? (
             <button
               type="button"
               onClick={onExpand}
@@ -100,7 +113,8 @@ export function DocumentReader({
               <Maximize2 size={11} className="mr-1 inline align-[-1px]" />
               {expandLabel}
             </button>
-          ) : undefined
+          ) : null}
+          </>
         }
       />
 

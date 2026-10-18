@@ -187,6 +187,10 @@ try {
   check('列表后的 --- 不算 setext 标题', !anchors.some((a) => a.text === 'item'))
   const byLine = headingAnchorsByLine(md)
   check('行号映射表（ATX=井号行，setext=文本行）', byLine.get(1) === 'hello-world' && byLine.get(11) === 'title' && byLine.get(14) === 'sub')
+  check('CRLF 标题与 LF 的文本、层级、去重 ID 和源行号完全一致（含围栏与 setext）', JSON.stringify(computeHeadingAnchors(md.replace(/\n/g, '\r\n'))) === JSON.stringify(anchors))
+  check('混合 CRLF/LF/单独 CR 行尾保持标题与渲染器一致的源行号', JSON.stringify(computeHeadingAnchors('# One\r\n\r\n## Two\r\n\rTitle\r===\n')) === JSON.stringify([
+    { level: 1, text: 'One', id: 'one', line: 1 }, { level: 2, text: 'Two', id: 'two', line: 3 }, { level: 1, text: 'Title', id: 'title', line: 5 }
+  ]))
   check('空 slug 回退 section', headingSlug('!!!') === 'section')
 
   /* ---------------- 3. 阅读宽度偏好 ---------------- */

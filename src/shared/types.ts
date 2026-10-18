@@ -1273,8 +1273,8 @@ export interface TrellisApi {
     scope: DocumentReadScope,
     input: { relativePath: string; knownRevision: string | null }
   ) => Promise<DocumentWatchOutcome>
-  /** 解除监听（引用计数归零才停发） */
-  documentUnwatch: (canonicalPath: string) => Promise<void>
+  /** 精确解除 watchId；旧路径单参调用安全忽略，监听由项目/窗口清理收口。 */
+  documentUnwatch: (canonicalPath: string, watchId?: string) => Promise<void>
   /** 定向文档变更事件（只针对已注册的 canonicalPath） */
   onDocumentChanged: (cb: (e: DocumentChangedEvent) => void) => () => void
   /** S0 G3：观测事件查询（limit≤100；cursor epoch 不符 → resetRequired 全量重拉，design §5.1） */

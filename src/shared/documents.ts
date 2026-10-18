@@ -182,7 +182,9 @@ export const documentWatchRequestSchema = z.object({
 
 export interface DocumentWatchSuccess {
   ok: true
-  /** realpath 后的绝对路径——渲染端会话注册与解除监听的定向键。 */
+  /** Opaque main-process lease. Release this exact registration, never just its path. */
+  watchId: string
+  /** realpath 后的绝对路径——变更定向键；不单独授予解除其他监听的权限。 */
   canonicalPath: string
   relativePath: string
 }

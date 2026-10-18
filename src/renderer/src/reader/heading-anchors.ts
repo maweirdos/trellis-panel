@@ -38,7 +38,9 @@ const LIST_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]/
 
 /** 解析 markdown 源的标题锚点（纯函数）。 */
 export function computeHeadingAnchors(markdown: string): HeadingAnchor[] {
-  const lines = markdown.split('\n')
+  // CommonMark treats CRLF, LF and a lone CR as line endings. Normalize only
+  // this parser's line view so Windows files retain the reader's exact bytes/hash.
+  const lines = markdown.split(/\r\n|\r|\n/)
   const anchors: HeadingAnchor[] = []
   const seen = new Map<string, number>()
 
