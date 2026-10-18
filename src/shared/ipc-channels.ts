@@ -266,7 +266,8 @@ export const ipcInvoke = {
     runtimeSetup: 'acp:runtime.setup',
     runtimeNodePick: 'acp:runtime.node-pick',
     sessionResume: 'acp:session.resume',
-    sessionConfigure: 'acp:session.configure'
+    sessionConfigure: 'acp:session.configure',
+    sessionBindTask: 'acp:session.bind-task'
   }
 } as const
 

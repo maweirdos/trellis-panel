@@ -202,6 +202,10 @@ export interface ContextExpectEntry {
 }
 
 export interface MaterialUpdatedEvent {
+  /** Missing on legacy attention signals; those are not verified artifact facts. */
+  projectRoot?: string
+  projectGeneration?: number
+  changes?: AcpMaterialChange[]
   dirName: string
   title: string
   count: number
@@ -1419,7 +1423,8 @@ export interface TrellisApi {
   acpAgents: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>
   acpSessionNew: (input: { agentId: string; profileId?: string; taskDir?: string }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
-  acpSessionPrompt: (sessionId: string, text: string) => Promise<{ ok: boolean; error?: string }>
+  acpSessionPrompt: (sessionId: string, text: string, options?: AcpPromptOptions) => Promise<AcpPromptResult>
+  acpSessionBindTask: (sessionId: string, input: AcpBindTaskInput) => Promise<{ ok: boolean; error?: string; code?: string; session?: AcpSessionRecord }>
   acpSessionCancel: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
   acpSessionKill: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
   acpPermissionRespond: (requestId: string, optionId: string) => Promise<{ ok: boolean; error?: string }>
@@ -1744,6 +1749,70 @@ export interface AcpConfigOption {
 }
 
 export type AcpConfigureInput = { kind: 'model' | 'mode' | 'config'; id: string; value?: string }
+
+/** Captured from a modern document read, never from Agent prose. */
+export interface AcpSourceReference {
+  projectRoot: string
+  taskDir: string
+  relativePath: string
+  displayedRevision: string
+  targetSessionId: string
+  targetConnectionGeneration?: string
+  sectionAnchor?: string
+  quote?: string
+}
+
+export interface AcpPromptOptions {
+  expectedConnectionGeneration?: string
+  sourceReferences?: AcpSourceReference[]
+}
+
+export interface AcpSourceChange {
+  relativePath: string
+  expectedRevision: string
+  actualRevision: string | null
+  available: boolean
+}
+
+export interface AcpPromptResult {
+  ok: boolean
+  error?: string
+  code?: string
+  reason?: 'SOURCE_CHANGED' | 'SCOPE_CHANGED'
+  sources?: AcpSourceChange[]
+  turnId?: string
+}
+
+export interface AcpBindTaskInput {
+  taskDir: string | null
+  expectedConnectionGeneration: string
+}
+
+export interface AcpMaterialSource {
+  relativePath: string
+  sourceRevision: string | null
+  includedRevision: string | null
+  sourceBytes: number | null
+  includedBytes: number
+  includedChars: number
+  included: boolean
+  truncated: boolean
+  extent: { start: number; end: number; unit: 'utf16-code-units' }
+  status: 'included' | 'missing' | 'unreadable' | 'omitted'
+  diagnostics?: string[]
+}
+
+export interface AcpMaterialChange {
+  projectRoot: string
+  projectGeneration: number
+  taskDir: string
+  relativePath: string
+  kind: 'add' | 'change' | 'unlink'
+  source: 'filesystem-event'
+  observedAt: number
+  revision: string | null
+  availability: 'readable' | 'missing' | 'unreadable'
+}
 export type AcpSessionStatus = 'starting' | 'ready' | 'busy' | 'awaiting_permission' | 'cancelling' | 'disconnected' | 'legacy' | 'error' | 'closed'
 
 export interface AcpStateEvent {
@@ -1799,7 +1868,7 @@ export interface AcpSessionMeta {
   currentModelId?: string
   currentModeId?: string
   configOptions?: AcpConfigOption[]
-  materialSnapshot?: { taskDir?: string; profileId?: string; instructions: string; files: string[]; capturedAt: number }
+  materialSnapshot?: { taskDir?: string; profileId?: string; instructions: string; files: string[]; capturedAt: number; sources?: AcpMaterialSource[]; sourceReferences?: AcpSourceReference[] }
   directoryLeaseReason?: string
 }
 
@@ -1847,6 +1916,7 @@ export type TimelineEventKind =
   | 'plan'
   | 'diagnostic'
   | 'config'
+  | 'material-change'
 
 export interface TimelineEvent {
   id: string

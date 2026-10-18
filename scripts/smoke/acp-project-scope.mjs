@@ -86,9 +86,9 @@ try {
 
   const handlers = new Map()
   globalThis.__ACP_IPC_SCOPE__ = { root: projectA, handlers, calls: [] }
-  const methodNames = ['listAcpSessions', 'cancelAcpSession', 'killAcpSession', 'listAcpAgents', 'newAcpSession', 'promptAcpSession', 'respondAcpPermission', 'listAcpProfiles', 'saveAcpProfile', 'deleteAcpProfile', 'setupAcpRuntime', 'pickAcpNode', 'resumeAcpSession', 'configureAcpSession']
+  const methodNames = ['listAcpSessions', 'cancelAcpSession', 'killAcpSession', 'listAcpAgents', 'newAcpSession', 'promptAcpSession', 'respondAcpPermission', 'listAcpProfiles', 'saveAcpProfile', 'deleteAcpProfile', 'setupAcpRuntime', 'pickAcpNode', 'resumeAcpSession', 'configureAcpSession', 'bindAcpSessionTask']
   const mocks = {
-    '../state': 'export const getProjectRoot = () => globalThis.__ACP_IPC_SCOPE__.root',
+    '../state': 'export const getProjectRoot = () => globalThis.__ACP_IPC_SCOPE__.root; export const getProjectGeneration = () => globalThis.__ACP_IPC_SCOPE__.generation ?? 1;',
     './registry': 'export const handle = (key, fn) => globalThis.__ACP_IPC_SCOPE__.handlers.set(key, fn)',
     '../services/acp': methodNames.map((name) => `export const ${name} = (...args) => {globalThis.__ACP_IPC_SCOPE__.calls.push({name:'${name}',args});return {ok:true}};`).join('\n')
   }
@@ -101,7 +101,7 @@ try {
   for (const [channel, args] of [
     ['acp:sessions', [7]], ['acp:session.new', [{ agentId: 'mock' }]], ['acp:session.prompt', ['s', 'text']],
     ['acp:session.cancel', ['s']], ['acp:session.kill', ['s']], ['acp:permission.respond', ['p', 'allow']],
-    ['acp:profiles', []], ['acp:profile.save', [{}]], ['acp:profile.delete', ['id']], ['acp:session.resume', ['s']], ['acp:session.configure', ['s', {}]]
+    ['acp:profiles', []], ['acp:profile.save', [{}]], ['acp:profile.delete', ['id']], ['acp:session.resume', ['s']], ['acp:session.configure', ['s', {}]], ['acp:session.bind-task', ['s', { taskDir: null, expectedConnectionGeneration: 'g' }]]
   ]) {
     handlers.get(channel)(null, ...args)
     assert.equal(globalThis.__ACP_IPC_SCOPE__.calls.at(-1).args[0], projectA, `Current root injected for ${channel}`)

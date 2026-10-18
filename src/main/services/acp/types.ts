@@ -2,7 +2,15 @@ import { z } from 'zod'
 import { isAbsolute } from 'path'
 
 export const idSchema = z.string().min(1).max(200).regex(/^[\w.-]+$/)
-export const newSessionSchema = z.object({ agentId: idSchema, profileId: idSchema.optional(), taskDir: z.string().min(1).max(200).regex(/^[^\\/]+$/).refine((value) => value !== '.' && value !== '..').optional() })
+export const taskDirSchema = z.string().min(1).max(200).regex(/^[^\\/]+$/).refine((value) => value !== '.' && value !== '..' && value !== 'archive')
+export const newSessionSchema = z.object({ agentId: idSchema, profileId: idSchema.optional(), taskDir: taskDirSchema.optional() })
+export const bindTaskSchema = z.object({ taskDir: taskDirSchema.nullable(), expectedConnectionGeneration: z.string().min(1).max(200) })
+export const sourceReferenceSchema = z.object({
+  projectRoot: z.string().min(1).max(4096), taskDir: taskDirSchema, relativePath: z.string().min(1).max(4096),
+  displayedRevision: z.string().regex(/^[a-f0-9]{16}$/), targetSessionId: idSchema,
+  targetConnectionGeneration: z.string().min(1).max(200).optional(), sectionAnchor: z.string().max(500).optional(), quote: z.string().max(8000).optional()
+})
+export const promptOptionsSchema = z.object({ expectedConnectionGeneration: z.string().min(1).max(200).optional(), sourceReferences: z.array(sourceReferenceSchema).max(8).optional() })
 export const profileSchema = z.object({
   id: idSchema, name: z.string().trim().min(1).max(100), description: z.string().max(2000),
   instructions: z.string().max(32000), runtimeId: idSchema,

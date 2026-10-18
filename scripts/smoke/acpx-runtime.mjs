@@ -29,7 +29,7 @@ for (const [key, leaf] of Object.entries({ HOME: 'home', USERPROFILE: 'home', LO
 process.env = safeEnvironment
 const { createAcpRuntime, createFileSessionStore, TRELLIS_ACPX_COMPAT_VERSION } = await import('acpx/runtime')
 const { createAgentRegistry } = await import('acpx/agent-registry')
-assert.equal(TRELLIS_ACPX_COMPAT_VERSION, 1)
+assert.equal(TRELLIS_ACPX_COMPAT_VERSION, 2)
 const peerPath = join(dirname(fileURLToPath(import.meta.url)), 'fixtures/acpx-strict-peer.mjs')
 const livePids = new Set()
 const observations = []
@@ -403,7 +403,7 @@ try {
   for (const fixture of [...fixtures]) await fixture.close()
   clearTimeout(watchdog)
   assert.equal(livePids.size, 0, 'Every owned fixture process must exit')
-  writeFileSync(join(runRoot, 'results.json'), JSON.stringify({ acpx: '0.19.5', compatVersion: 1, node: process.version, observations }, null, 2))
+  writeFileSync(join(runRoot, 'results.json'), JSON.stringify({ acpx: '0.19.5', compatVersion: 2, node: process.version, observations }, null, 2))
   console.log(`EVIDENCE ${join(runRoot, 'results.json')}`)
 }
 process.exitCode = observations.some(observation => observation.status === 'failed') ? 1 : 0

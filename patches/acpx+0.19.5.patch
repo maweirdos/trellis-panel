@@ -1,58 +1,7 @@
-diff --git a/node_modules/acpx/dist/ipc-C96eDxkW.js b/node_modules/acpx/dist/ipc-C96eDxkW.js
-index a2f5ea8..5a13199 100644
---- a/node_modules/acpx/dist/ipc-C96eDxkW.js
-+++ b/node_modules/acpx/dist/ipc-C96eDxkW.js
-@@ -1323,6 +1323,8 @@ function serializeSessionRecordForDisk(record) {
- 		last_agent_disconnect_reason: record.lastAgentDisconnectReason,
- 		protocol_version: record.protocolVersion,
- 		agent_capabilities: record.agentCapabilities,
-+		agent_info: trellisParseDisplayAgentInfo(record.agentInfo),
-+		auth_methods: trellisParseDisplayList(record.authMethods),
- 		title: record.title,
- 		messages: record.messages,
- 		updated_at: record.updated_at,
-@@ -1676,6 +1678,8 @@ function parseAcpxState(raw) {
- 	if (record.session_origin === "new" || record.session_origin === "resume") state.session_origin = record.session_origin;
- 	if (record.reset_on_next_ensure === true) state.reset_on_next_ensure = true;
- 	assignStringState(state, "current_mode_id", record.current_mode_id);
-+	const availableModes = trellisParseDisplayList(record.available_modes);
-+	if (availableModes) state.available_modes = availableModes;
- 	assignStringState(state, "desired_mode_id", record.desired_mode_id);
- 	const desiredConfigOptions = parseStringMap(record.desired_config_options);
- 	if (desiredConfigOptions) state.desired_config_options = desiredConfigOptions;
-@@ -1763,6 +1767,18 @@ function parseSessionRecordMetadata(record) {
- 		importedFrom
- 	};
- }
-+function trellisParseDisplayAgentInfo(raw) {
-+	const info = asRecord$2(raw);
-+	if (!info || typeof info.name !== "string" || typeof info.version !== "string") return;
-+	return { name: info.name, version: info.version, ...typeof info.title === "string" ? { title: info.title } : {} };
-+}
-+function trellisParseDisplayList(raw) {
-+	if (!Array.isArray(raw)) return;
-+	return raw.flatMap((value) => {
-+		const entry = asRecord$2(value);
-+		return entry && typeof entry.id === "string" && typeof entry.name === "string" ? [{ id: entry.id, name: entry.name, ...typeof entry.description === "string" ? { description: entry.description } : {} }] : [];
-+	});
-+}
- function normalizeOptionalName(value) {
- 	if (value == null) return;
- 	if (typeof value !== "string") return null;
-@@ -1841,6 +1857,8 @@ function parseSessionRecord(raw) {
- 		lastAgentDisconnectReason: optionals.lastAgentDisconnectReason,
- 		protocolVersion: typeof record.protocol_version === "number" ? record.protocol_version : void 0,
- 		agentCapabilities: asRecord$2(record.agent_capabilities),
-+		agentInfo: trellisParseDisplayAgentInfo(record.agent_info),
-+		authMethods: trellisParseDisplayList(record.auth_methods),
- 		title: conversation.title,
- 		messages: conversation.messages,
- 		updated_at: conversation.updated_at,
 diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
-index 4eb7bc1..fe8b64e 100644
 --- a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
 +++ b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
-@@ -16,6 +16,24 @@ import { FsSafeError } from "@openclaw/fs-safe/errors";
+@@ -16,6 +16,24 @@
  import { isPathInside } from "@openclaw/fs-safe/path";
  import { root } from "@openclaw/fs-safe/root";
  import readline from "node:readline/promises";
@@ -77,7 +26,7 @@ index 4eb7bc1..fe8b64e 100644
  //#region src/async-control.ts
  var TimeoutError = class extends Error {
  	constructor(timeoutMs) {
-@@ -1103,6 +1121,11 @@ const DECISION_FALLBACK_ORDER = {
+@@ -1103,6 +1121,11 @@
  };
  function decisionToResponse(params, decision) {
  	if (decision.outcome === "cancel") return cancelled();
@@ -89,7 +38,7 @@ index 4eb7bc1..fe8b64e 100644
  	const matched = pickOption(params.options ?? [], DECISION_FALLBACK_ORDER[decision.outcome]);
  	return matched ? selected(matched.optionId) : cancelled();
  }
-@@ -1802,7 +1825,7 @@ function observeAcpStream(base, options) {
+@@ -1802,7 +1825,7 @@
  			elicitationRequestIds.add(requestId);
  			return;
  		}
@@ -98,7 +47,7 @@ index 4eb7bc1..fe8b64e 100644
  	};
  	return {
  		readable: new ReadableStream({ async start(controller) {
-@@ -1812,7 +1835,7 @@ function observeAcpStream(base, options) {
+@@ -1812,7 +1835,7 @@
  					const { value, done } = await reader.read();
  					if (done) break;
  					if (!value) continue;
@@ -107,7 +56,7 @@ index 4eb7bc1..fe8b64e 100644
  					if (isExtensionNotification(value)) continue;
  					controller.enqueue(value);
  				}
-@@ -2466,6 +2489,7 @@ function toReconnectedSessionResult(response) {
+@@ -2466,6 +2489,7 @@
  	const configOptions = normalizeResponseConfigOptions(response);
  	return {
  		agentSessionId: extractAgentSessionId(response?._meta),
@@ -115,7 +64,7 @@ index 4eb7bc1..fe8b64e 100644
  		configOptions,
  		models: modelStateFromSessionResponse({
  			configOptions,
-@@ -2511,6 +2535,8 @@ var AcpClient = class {
+@@ -2511,6 +2535,8 @@
  	commandProbes = /* @__PURE__ */ new Set();
  	initResult;
  	loadedSessionId;
@@ -124,7 +73,7 @@ index 4eb7bc1..fe8b64e 100644
  	eventHandlers;
  	permissionStats = {
  		requested: 0,
-@@ -2929,12 +2955,16 @@ var AcpClient = class {
+@@ -2929,12 +2955,16 @@
  		if (capabilities.terminal) app.onRequest(methods.client.terminal.create, async ({ params, signal }) => {
  			return await this.handleCreateTerminal(params, signal);
  		}).onRequest(methods.client.terminal.output, async ({ params }) => {
@@ -141,7 +90,7 @@ index 4eb7bc1..fe8b64e 100644
  			return await this.terminalManager.releaseTerminal(params);
  		});
  		if (launch.devinAcp) app.onRequest("_cognition.ai/request_diagnostics", (params) => {
-@@ -2962,6 +2992,8 @@ var AcpClient = class {
+@@ -2962,6 +2992,8 @@
  			clientInfo: resolveClientInfo(launch.devinAcp)
  		});
  		const initialized = launch.geminiAcp ? await withTimeout(initializePromise, resolveGeminiAcpStartupTimeoutMs()) : await initializePromise;
@@ -150,7 +99,7 @@ index 4eb7bc1..fe8b64e 100644
  		await this.authenticateIfRequired(connection, initialized.authMethods ?? []);
  		return initialized;
  	}
-@@ -2978,7 +3010,18 @@ var AcpClient = class {
+@@ -2978,7 +3010,18 @@
  	}
  	createTappedStream(base) {
  		return observeAcpStream(base, {
@@ -170,7 +119,7 @@ index 4eb7bc1..fe8b64e 100644
  				this.eventHandlers.onAcpOutputMessage?.(direction, message);
  				this.eventHandlers.onAcpMessage?.(direction, message);
  			},
-@@ -2998,6 +3041,7 @@ var AcpClient = class {
+@@ -2998,6 +3041,7 @@
  		const { command, args } = resolveAgentCommandParts(this.options.agentCommand, this.options.agentArgv);
  		const claudeAcp = isClaudeAcpCommand(command, args);
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
@@ -178,7 +127,7 @@ index 4eb7bc1..fe8b64e 100644
  		let result;
  		try {
  			const createPromise = this.runConnectionRequest(() => connection.agent.request(methods.agent.session.new, {
-@@ -3007,13 +3051,18 @@ var AcpClient = class {
+@@ -3007,13 +3051,18 @@
  			}), authority);
  			result = claudeAcp ? await withTimeout(createPromise, resolveClaudeAcpSessionCreateTimeoutMs()) : await createPromise;
  		} catch (error) {
@@ -198,7 +147,7 @@ index 4eb7bc1..fe8b64e 100644
  		const configOptions = normalizeResponseConfigOptions(result);
  		const models = modelStateFromSessionResponse({
  			configOptions,
-@@ -3023,6 +3072,7 @@ var AcpClient = class {
+@@ -3023,6 +3072,7 @@
  		return {
  			sessionId: result.sessionId,
  			agentSessionId: extractAgentSessionId(result._meta),
@@ -206,7 +155,7 @@ index 4eb7bc1..fe8b64e 100644
  			configOptions,
  			models,
  			configOptionsPresent: configOptions !== void 0,
-@@ -3037,6 +3087,7 @@ var AcpClient = class {
+@@ -3037,6 +3087,7 @@
  		const connection = this.getConnection();
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
  		assertControlAuthority(options.authority);
@@ -214,7 +163,7 @@ index 4eb7bc1..fe8b64e 100644
  		const previousSuppression = this.applySessionUpdateSuppression(Boolean(options.suppressReplayUpdates));
  		let response;
  		try {
-@@ -3046,11 +3097,12 @@ var AcpClient = class {
+@@ -3046,11 +3097,12 @@
  				mcpServers: this.options.mcpServers ?? [],
  				_meta: this.sessionMeta()
  			}), options.authority);
@@ -228,7 +177,7 @@ index 4eb7bc1..fe8b64e 100644
  		const result = toReconnectedSessionResult(response);
  		await this.captureAgentDescendants(this.agent);
  		return result;
-@@ -3059,13 +3111,19 @@ var AcpClient = class {
+@@ -3059,13 +3111,19 @@
  		assertControlAuthority(authority);
  		const connection = this.getConnection();
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
@@ -250,7 +199,7 @@ index 4eb7bc1..fe8b64e 100644
  		const result = toReconnectedSessionResult(response);
  		await this.captureAgentDescendants(this.agent);
  		return result;
-@@ -3290,6 +3348,7 @@ var AcpClient = class {
+@@ -3290,6 +3348,7 @@
  	close() {
  		this.closing = true;
  		this.closeEpoch += 1;
@@ -258,7 +207,7 @@ index 4eb7bc1..fe8b64e 100644
  		if (this.closeTask) return this.closeTask;
  		this.closeTask = Promise.resolve().then(() => this.finishClose()).finally(() => {
  			this.closeTask = void 0;
-@@ -3554,6 +3613,7 @@ var AcpClient = class {
+@@ -3554,6 +3613,7 @@
  		this.log(`authenticated with method ${selected.methodId} (${selected.source})`);
  	}
  	async handlePermissionRequest(params, requestSignal) {
@@ -266,7 +215,7 @@ index 4eb7bc1..fe8b64e 100644
  		const owner = this.captureDelegatedRequestOwner(params.sessionId, requestSignal);
  		if (!this.isDelegatedRequestActive(owner)) return cancelledPermissionResponse();
  		if (!this.hasPermissionOwner(params.sessionId)) return this.finishPermissionRequest(params, owner, cancelledPermissionResponse());
-@@ -3634,7 +3694,7 @@ var AcpClient = class {
+@@ -3634,7 +3694,7 @@
  			signal,
  			permissionHandler: active?.permissionHandler ?? this.options.onPermissionRequest,
  			assertActive: () => {
@@ -275,7 +224,7 @@ index 4eb7bc1..fe8b64e 100644
  			}
  		};
  	}
-@@ -3900,11 +3960,59 @@ var AcpClient = class {
+@@ -3900,11 +3960,59 @@
  		}
  		if (error instanceof PermissionDeniedError) this.recordPermissionDecision("denied");
  	}
@@ -337,7 +286,7 @@ index 4eb7bc1..fe8b64e 100644
  			} catch (error) {
  				const message = error instanceof Error ? error.message : String(error);
  				this.log(`session update handler failed: ${message}`);
-@@ -4315,6 +4423,7 @@ function cloneSessionAcpxState(state) {
+@@ -4315,6 +4423,7 @@
  	return {
  		...state.session_origin ? { session_origin: state.session_origin } : {},
  		current_mode_id: state.current_mode_id,
@@ -345,7 +294,7 @@ index 4eb7bc1..fe8b64e 100644
  		desired_mode_id: state.desired_mode_id,
  		desired_config_options: state.desired_config_options ? { ...state.desired_config_options } : void 0,
  		current_model_id: state.current_model_id,
-@@ -4766,6 +4875,16 @@ function applyConfigOptionsToState(state, configOptions) {
+@@ -4766,6 +4875,16 @@
  	return acpxState;
  }
  function applyConfigOptionsToRecord(record, result) {
@@ -362,39 +311,15 @@ index 4eb7bc1..fe8b64e 100644
  	const configOptions = result?.configOptions;
  	if (!Array.isArray(configOptions)) return;
  	record.acpx = applyConfigOptionsToState(record.acpx, configOptions);
-diff --git a/node_modules/acpx/dist/runtime.d.ts b/node_modules/acpx/dist/runtime.d.ts
-index d98dcfe..3b5d48d 100644
---- a/node_modules/acpx/dist/runtime.d.ts
-+++ b/node_modules/acpx/dist/runtime.d.ts
-@@ -242,6 +242,11 @@ type AcpRuntimeEvent = {
-   type: "status";
-   text: string;
-   tag?: AcpSessionUpdateTag;
-+  /** Passive, owned-session unknown-update diagnostic; bounded and secret-key redacted. */
-+  rawUpdate?: Record<string, unknown>;
-+  /** True when only the rejected tag is available; original SDK-rejected payload is omitted. */
-+  payloadUnavailable?: boolean;
-+  rawUpdateTruncated?: boolean;
-   used?: number;
-   size?: number;
-   /** Populated on `usage_update` events when the agent reported a cost. */
-@@ -855,4 +860,6 @@ export declare function createRuntimeStore(options: {
- }): AcpSessionStore;
- //#endregion
- export { type AcpAgentInspection, type AcpAgentInspectionOptions, type AcpAgentRegistry, type AcpElicitationContext, type AcpElicitationHandler, type AcpElicitationMode, type AcpElicitationRequest, type AcpElicitationResponse, type AcpFileSessionStoreOptions, type AcpInspectableAgentRegistry, type AcpPermissionDecision, type AcpPermissionHandler, type AcpPermissionRequest, type AcpProcessExit, type AcpProcessLaunch, type AcpProcessLaunchScope, type AcpProcessLifecycle, type AcpProcessSpawnFailure, type AcpProcessStarted, type AcpRuntime, type AcpRuntimeAvailableCommand, type AcpRuntimeCapabilities, type AcpRuntimeDoctorReport, type AcpRuntimeEnsureInput, type AcpRuntimeErrorCode, type AcpRuntimeEvent, type AcpRuntimeHandle, type AcpRuntimeOptions, type AcpRuntimePlanEntry, type AcpRuntimePromptMode, type AcpRuntimeSessionContext, type AcpRuntimeSessionMode, type AcpRuntimeSessionModels, type AcpRuntimeSessionPermissions, type AcpRuntimeSessionUsage, type AcpRuntimeStatus, type AcpRuntimeTurn, type AcpRuntimeTurnAttachment, type AcpRuntimeTurnInput, type AcpRuntimeTurnResult, type AcpRuntimeTurnResultError, type AcpRuntimeUsageBreakdown, type AcpRuntimeUsageCost, type AcpSessionRecord, type AcpSessionStore, type AcpSessionUpdateTag, type AcpTextDeltaOriginMeta, DEFAULT_AGENT_NAME, type InspectAgentModelsOptions, type PermissionPolicy, type RequestedModelUnsupportedErrorCode, type RequestedModelUnsupportedReason, type SessionAgentOptions, type SessionWatchEvent, type SessionWatchResult, type SharedAcpRuntimeOptions, type SystemPromptOption, createAgentRegistry };
-+/** Trellis-maintained compatibility contract for exact acpx@0.19.5. */
-+export declare const TRELLIS_ACPX_COMPAT_VERSION: 1;
- //# sourceMappingURL=runtime.d.ts.map
 diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.js
-index 5787968..cdb4f29 100644
 --- a/node_modules/acpx/dist/runtime.js
 +++ b/node_modules/acpx/dist/runtime.js
-@@ -7,6 +7,22 @@ import path from "node:path";
+@@ -7,6 +7,22 @@
  import fs from "node:fs/promises";
  import { randomUUID } from "node:crypto";
  import { isDeepStrictEqual } from "node:util";
 +// Trellis-maintained acpx@0.19.5 compatibility patch; see patches/README.md.
-+export const TRELLIS_ACPX_COMPAT_VERSION = 1;
++export const TRELLIS_ACPX_COMPAT_VERSION = 2;
 +// Keep only non-secret protocol display fields in the public record/store.
 +function trellisRetainHandshakeDisplay(record, initialized) {
 +	const info = initialized?.agentInfo;
@@ -412,7 +337,7 @@ index 5787968..cdb4f29 100644
  //#region src/runtime/public/errors.ts
  var AcpRuntimeError = class extends Error {
  	code;
-@@ -413,7 +429,72 @@ function parsePromptEventLine(line) {
+@@ -413,7 +429,72 @@
  	const payload = structured.payload;
  	const tag = structured.tag;
  	const parser = promptEventParser(type);
@@ -486,7 +411,7 @@ index 5787968..cdb4f29 100644
  }
  const PROMPT_EVENT_PARSERS = {
  	text: (payload, tag) => createTextDeltaEvent({
-@@ -1378,6 +1459,7 @@ var AcpRuntimeManager = class {
+@@ -1378,10 +1459,41 @@
  		record.closedAt = void 0;
  		record.protocolVersion = owner.client.initializeResult?.protocolVersion;
  		record.agentCapabilities = owner.client.initializeResult?.agentCapabilities;
@@ -494,7 +419,41 @@ index 5787968..cdb4f29 100644
  		applyLifecycleSnapshotToRecord(record, owner.client.getAgentLifecycleSnapshot());
  	}
  	async ensureSession(input) {
-@@ -1560,6 +1642,7 @@ var AcpRuntimeManager = class {
+ 		return await this.withEnsureSessionLock(input, async () => this.ensureSessionWithOwnership(input));
++	}
++	// Explicit eager native load, without recording/submitting a prompt. Keep
++	// the existing persistent owner for configuration and subsequent turns.
++	async connectSession(handle, authority) {
++		const recordId = handle.acpxRecordId ?? handle.sessionKey;
++		this.assertRuntimeSessionIdle(recordId);
++		return await this.trackTask(this.withManagerLock(this.runtimeOperationLocks, recordId, async () => {
++			await this.retrySessionCleanup(recordId);
++			assertControlAuthority(authority);
++			const record = await this.requireRecord(recordId);
++			if (await this.readRetainedSessionOwner(record, { consume: false })) return;
++			const client = this.createTurnClient(record);
++			const owner = this.createSessionOwner({ client, sessionKey: record.name ?? handle.sessionKey, mode: "persistent" });
++			this.attachIdleProjection(owner, record);
++			let retained = false;
++			try {
++				await connectAndLoadSession({ client, record, resumePolicy: "same-session-only", timeoutMs: this.options.timeoutMs, authority });
++				assertControlAuthority(authority);
++				this.assertOpen();
++				this.refreshOwnedRecordLifecycle(owner, record);
++				await this.retainInitializedSessionOwner(owner, record);
++				retained = true;
++			} finally {
++				if (!retained) {
++					this.removeRetainedSessionOwner(owner);
++					const cleanup = await this.stopSessionOwner(owner);
++					if (cleanup) { this.retiringSessionOwners.add(owner); throw cleanup.error; }
++				}
++			}
++		}, authority));
+ 	}
+ 	async withEnsureSessionLock(input, run) {
+ 		const key = `${input.mode}\0${input.sessionKey}`;
+@@ -1560,6 +1672,7 @@
  		this.closingActiveRecords.delete(record.acpxRecordId);
  		record.protocolVersion = client.initializeResult?.protocolVersion;
  		record.agentCapabilities = client.initializeResult?.agentCapabilities;
@@ -502,7 +461,7 @@ index 5787968..cdb4f29 100644
  		this.attachIdleProjection(owner, record);
  		applyConfigOptionsToRecord(record, session.sessionResult);
  		const modelApplication = await applyRequestedModelIfAdvertised({
-@@ -1966,6 +2049,7 @@ var AcpRuntimeManager = class {
+@@ -1966,6 +2079,7 @@
  		reconcileAgentSessionId(turn.record, turn.record.agentSessionId);
  		turn.record.protocolVersion = turn.client.initializeResult?.protocolVersion;
  		turn.record.agentCapabilities = turn.client.initializeResult?.agentCapabilities;
@@ -510,11 +469,70 @@ index 5787968..cdb4f29 100644
  	}
  	handleRuntimeTurnFailure(task, error) {
  		if (!task.input.signal?.aborted || error !== task.input.signal.reason) return this.failRuntimeTurn(task, error);
+@@ -2780,6 +2894,11 @@
+ 		const { handle, state } = this.resolveManagerHandle(input.handle);
+ 		await (await this.getManager()).setMode(handle, input.mode, state.mode, input);
+ 	}
++	async connectSession(input) {
++		const { handle, state } = this.resolveManagerHandle(input.handle);
++		if (state.mode !== "persistent") throw new AcpRuntimeError("ACP_SESSION_INIT_FAILED", "Only persistent sessions can be reconnected.");
++		await (await this.getManager()).connectSession(handle, input);
++	}
+ 	async setModel(input) {
+ 		const { handle, state } = this.resolveManagerHandle(input.handle);
+ 		await (await this.getManager()).setModel(handle, input.model, state.mode, input);
+@@ -2871,4 +2990,4 @@
+ //#endregion
+ export { ACPX_BACKEND_ID, AcpRuntimeError, AcpxRuntime, DEFAULT_AGENT_NAME, REQUESTED_MODEL_UNSUPPORTED_ERROR_CODE, REQUESTED_MODEL_UNSUPPORTED_REASONS, RequestedModelUnsupportedError, SharedAcpRuntime, createAcpRuntime, createAgentRegistry, createFileSessionStore, createRuntimeStore, createSharedAcpRuntime, decodeAcpxRuntimeHandleState, encodeAcpxRuntimeHandleState, inspectAgentModels, isAcpRuntimeError, isRequestedModelUnsupportedError };
+ 
+-//# sourceMappingURL=runtime.js.map
+\ No newline at end of file
++//# sourceMappingURL=runtime.js.map
+diff --git a/node_modules/acpx/dist/runtime.d.ts b/node_modules/acpx/dist/runtime.d.ts
+--- a/node_modules/acpx/dist/runtime.d.ts
++++ b/node_modules/acpx/dist/runtime.d.ts
+@@ -242,6 +242,11 @@
+   type: "status";
+   text: string;
+   tag?: AcpSessionUpdateTag;
++  /** Passive, owned-session unknown-update diagnostic; bounded and secret-key redacted. */
++  rawUpdate?: Record<string, unknown>;
++  /** True when only the rejected tag is available; original SDK-rejected payload is omitted. */
++  payloadUnavailable?: boolean;
++  rawUpdateTruncated?: boolean;
+   used?: number;
+   size?: number;
+   /** Populated on `usage_update` events when the agent reported a cost. */
+@@ -581,6 +586,7 @@
+   private refreshOwnedRecordLifecycle;
+   ensureSession(input: RuntimeEnsureInput): Promise<SessionRecord>;
+   private withEnsureSessionLock;
++  connectSession(handle: AcpRuntimeHandle, authority?: AcpControlAuthority): Promise<void>;
+   private withManagerLock;
+   private serializeManagerOperation;
+   private ensureSessionWithOwnership;
+@@ -796,6 +802,8 @@
+   }): Promise<AcpRuntimeHandle | undefined>;
+   ensureSession(input: AcpRuntimeEnsureInput): Promise<AcpRuntimeHandle>;
+   private createSessionHandle;
++  /** Eagerly load the same persistent remote session, retaining its transport without a prompt. */
++  connectSession(input: AcpControlAuthority & { handle: AcpRuntimeHandle }): Promise<void>;
+   startTurn(input: AcpRuntimeTurnInput): {
+     requestId: string;
+     readonly promptStarted: Promise<void>;
+@@ -855,4 +863,6 @@
+ }): AcpSessionStore;
+ //#endregion
+ export { type AcpAgentInspection, type AcpAgentInspectionOptions, type AcpAgentRegistry, type AcpElicitationContext, type AcpElicitationHandler, type AcpElicitationMode, type AcpElicitationRequest, type AcpElicitationResponse, type AcpFileSessionStoreOptions, type AcpInspectableAgentRegistry, type AcpPermissionDecision, type AcpPermissionHandler, type AcpPermissionRequest, type AcpProcessExit, type AcpProcessLaunch, type AcpProcessLaunchScope, type AcpProcessLifecycle, type AcpProcessSpawnFailure, type AcpProcessStarted, type AcpRuntime, type AcpRuntimeAvailableCommand, type AcpRuntimeCapabilities, type AcpRuntimeDoctorReport, type AcpRuntimeEnsureInput, type AcpRuntimeErrorCode, type AcpRuntimeEvent, type AcpRuntimeHandle, type AcpRuntimeOptions, type AcpRuntimePlanEntry, type AcpRuntimePromptMode, type AcpRuntimeSessionContext, type AcpRuntimeSessionMode, type AcpRuntimeSessionModels, type AcpRuntimeSessionPermissions, type AcpRuntimeSessionUsage, type AcpRuntimeStatus, type AcpRuntimeTurn, type AcpRuntimeTurnAttachment, type AcpRuntimeTurnInput, type AcpRuntimeTurnResult, type AcpRuntimeTurnResultError, type AcpRuntimeUsageBreakdown, type AcpRuntimeUsageCost, type AcpSessionRecord, type AcpSessionStore, type AcpSessionUpdateTag, type AcpTextDeltaOriginMeta, DEFAULT_AGENT_NAME, type InspectAgentModelsOptions, type PermissionPolicy, type RequestedModelUnsupportedErrorCode, type RequestedModelUnsupportedReason, type SessionAgentOptions, type SessionWatchEvent, type SessionWatchResult, type SharedAcpRuntimeOptions, type SystemPromptOption, createAgentRegistry };
+-//# sourceMappingURL=runtime.d.ts.map
+\ No newline at end of file
++/** Trellis-maintained compatibility contract for exact acpx@0.19.5. */
++export declare const TRELLIS_ACPX_COMPAT_VERSION: 2;
++//# sourceMappingURL=runtime.d.ts.map
 diff --git a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts b/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
-index 41c4e52..147e50e 100644
 --- a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
 +++ b/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
-@@ -9,6 +9,10 @@ type AcpPermissionRequest = {
+@@ -9,6 +9,10 @@
    inferredKind: ToolKind | undefined;
  };
  type AcpPermissionDecision = {
@@ -525,7 +543,7 @@ index 41c4e52..147e50e 100644
    outcome: "allow_once";
  } | {
    outcome: "allow_always";
-@@ -264,6 +268,7 @@ type SessionAcpxState = {
+@@ -264,6 +268,7 @@
    session_origin?: "new" | "resume";
    reset_on_next_ensure?: boolean;
    current_mode_id?: string;
@@ -533,7 +551,7 @@ index 41c4e52..147e50e 100644
    desired_mode_id?: string;
    desired_config_options?: Record<string, string>;
    current_model_id?: string;
-@@ -313,6 +318,9 @@ type SessionRecord = {
+@@ -313,6 +318,9 @@
    lastAgentDisconnectReason?: string;
    protocolVersion?: number;
    agentCapabilities?: AgentCapabilities;
@@ -543,3 +561,52 @@ index 41c4e52..147e50e 100644
    title?: string | null;
    messages: SessionMessage[];
    updated_at: string;
+diff --git a/node_modules/acpx/dist/ipc-C96eDxkW.js b/node_modules/acpx/dist/ipc-C96eDxkW.js
+--- a/node_modules/acpx/dist/ipc-C96eDxkW.js
++++ b/node_modules/acpx/dist/ipc-C96eDxkW.js
+@@ -1323,6 +1323,8 @@
+ 		last_agent_disconnect_reason: record.lastAgentDisconnectReason,
+ 		protocol_version: record.protocolVersion,
+ 		agent_capabilities: record.agentCapabilities,
++		agent_info: trellisParseDisplayAgentInfo(record.agentInfo),
++		auth_methods: trellisParseDisplayList(record.authMethods),
+ 		title: record.title,
+ 		messages: record.messages,
+ 		updated_at: record.updated_at,
+@@ -1676,6 +1678,8 @@
+ 	if (record.session_origin === "new" || record.session_origin === "resume") state.session_origin = record.session_origin;
+ 	if (record.reset_on_next_ensure === true) state.reset_on_next_ensure = true;
+ 	assignStringState(state, "current_mode_id", record.current_mode_id);
++	const availableModes = trellisParseDisplayList(record.available_modes);
++	if (availableModes) state.available_modes = availableModes;
+ 	assignStringState(state, "desired_mode_id", record.desired_mode_id);
+ 	const desiredConfigOptions = parseStringMap(record.desired_config_options);
+ 	if (desiredConfigOptions) state.desired_config_options = desiredConfigOptions;
+@@ -1762,6 +1766,18 @@
+ 		lastRequestId,
+ 		importedFrom
+ 	};
++}
++function trellisParseDisplayAgentInfo(raw) {
++	const info = asRecord$2(raw);
++	if (!info || typeof info.name !== "string" || typeof info.version !== "string") return;
++	return { name: info.name, version: info.version, ...typeof info.title === "string" ? { title: info.title } : {} };
++}
++function trellisParseDisplayList(raw) {
++	if (!Array.isArray(raw)) return;
++	return raw.flatMap((value) => {
++		const entry = asRecord$2(value);
++		return entry && typeof entry.id === "string" && typeof entry.name === "string" ? [{ id: entry.id, name: entry.name, ...typeof entry.description === "string" ? { description: entry.description } : {} }] : [];
++	});
+ }
+ function normalizeOptionalName(value) {
+ 	if (value == null) return;
+@@ -1841,6 +1857,8 @@
+ 		lastAgentDisconnectReason: optionals.lastAgentDisconnectReason,
+ 		protocolVersion: typeof record.protocol_version === "number" ? record.protocol_version : void 0,
+ 		agentCapabilities: asRecord$2(record.agent_capabilities),
++		agentInfo: trellisParseDisplayAgentInfo(record.agent_info),
++		authMethods: trellisParseDisplayList(record.auth_methods),
+ 		title: conversation.title,
+ 		messages: conversation.messages,
+ 		updated_at: conversation.updated_at,

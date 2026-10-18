@@ -38,7 +38,7 @@ async function check(name, action) {
 }
 
 await check('pinned public runtime and checksums match', async () => {
-  assert.deepEqual(await checkAcpxCompatibility(), { version: '0.19.5', compatVersion: 1 })
+  assert.deepEqual(await checkAcpxCompatibility(), { version: '0.19.5', compatVersion: 2 })
 })
 await check('dependency preparation is available for production installs and standard entrypoints', async () => {
   assert.equal(project.dependencies.acpx, '0.19.5')
@@ -111,14 +111,14 @@ if (process.argv.includes('--clean-install')) {
       writeFileSync(join(root, `prepare-${attempt}.log`), `${prepared.stdout ?? ''}\n${prepared.stderr ?? ''}`)
       assert.equal(prepared.status, 0, prepared.error?.message ?? prepared.stderr)
     }
-    assert.deepEqual(await checkAcpxCompatibility(root), { version: '0.19.5', compatVersion: 1 })
+    assert.deepEqual(await checkAcpxCompatibility(root), { version: '0.19.5', compatVersion: 2 })
     const automatic = spawnSync(process.execPath, [npmCli, 'ci', '--legacy-peer-deps', '--omit=dev', '--no-audit', '--no-fund'], {
       cwd: root, encoding: 'utf8', windowsHide: true, timeout: 180000
     })
     writeFileSync(join(root, 'automatic-install.log'), `${automatic.stdout ?? ''}\n${automatic.stderr ?? ''}`)
     assert.equal(automatic.status, 0, `Production postinstall failed: ${automatic.error?.message ?? automatic.stderr}`)
-    assert.ok(automatic.stdout.includes('Prepared acpx 0.19.5 compatibility v1'))
-    assert.deepEqual(await checkAcpxCompatibility(root), { version: '0.19.5', compatVersion: 1 })
+    assert.ok(automatic.stdout.includes('Prepared acpx 0.19.5 compatibility v2'))
+    assert.deepEqual(await checkAcpxCompatibility(root), { version: '0.19.5', compatVersion: 2 })
   })
 }
 writeJson(join(directory, 'results.json'), { observations, cleanInstallRequested: process.argv.includes('--clean-install') })

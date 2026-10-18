@@ -6,17 +6,18 @@
  * 主窗口聚焦）通过 setUiHooks / setMainWindow 由 index.ts 启动时注入。
  */
 import { app, Notification } from 'electron'
-import { join, resolve, sep, extname } from 'path'
+import { join, resolve, relative, sep, extname } from 'path'
 import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, rmSync } from 'fs'
 import { BrowserWindow } from 'electron'
 import { scanProject, TEXT_EXTS } from './services/scan'
 import { TrellisWatcher } from './services/watcher'
-import { clearDocumentCache, clearReaderDocuments, routeReaderDocumentChange } from './services/documents'
+import { clearDocumentCache, clearReaderDocuments, routeReaderDocumentChange, resolveAuthorizedDocumentPath } from './services/documents'
 import { getSettings, pushRecentProject } from './services/store'
 import { clearGitCache } from './services/git'
 import { recordActivity } from './services/activity'
 import { broadcastToWindows } from './services/bridge'
-import { routeWatcherEvent } from './services/acp'
+import { routeWatcherEvent, emitAcpMaterialChange } from './services/acp'
+import { eventTaskMaterial, verifyMaterialChange } from './services/acp/materials'
 import { closeObservationForProject, initObservationForRoot } from './services/observability'
 import { startHttpApi, stopHttpApi } from './services/httpapi'
 import { WeknoraSpecSyncer } from './services/weknora'
@@ -24,13 +25,14 @@ import { accessEventLog } from './services/access/event-log'
 import { errorText, errorMessage } from '../shared/errors'
 import { ipcEvent } from '../shared/ipc-channels'
 import { IpcErrorCode, ipcFail, noProject, notFound, type IpcFail } from '../shared/ipc-errors'
-import type { ProjectSnapshot, SpecNode, ToastEvent } from '../shared/types'
+import type { AcpMaterialChange, MaterialUpdatedEvent, ProjectSnapshot, SpecNode, ToastEvent } from '../shared/types'
 
 export const MAX_TEXT_BYTES = 5 * 1024 * 1024
 
 /* ---------------- core state ---------------- */
 
 let projectRoot: string | null = null
+let projectGeneration = 0
 let latestSnapshot: ProjectSnapshot | null = null
 /** task dirs seen in the current project — drives the Inbox "new task" diff */
 let knownTaskDirs = new Set<string>()
@@ -69,7 +71,7 @@ export function routeSpecFileSync(absPath: string): void {
 const MATERIAL_SETTLE_MS = 8000
 const PANEL_WRITE_GRACE_MS = 5000
 const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
-const materialFiles = new Map<string, Set<string>>()
+const materialFiles = new Map<string, Map<string, { path: string; kind: AcpMaterialChange['kind'] }>>()
 /** 面板自己刚写过的文件（绝对路径 → 时间戳），提醒管道据此过滤自嗨通知 */
 const panelWrittenAt = new Map<string, number>()
 
@@ -83,58 +85,49 @@ export function markPanelWrite(absPath: string): void {
   }
 }
 
-export function routeMaterialNotice(absPath: string): void {
+export function routeMaterialNotice(absPath: string, kind: AcpMaterialChange['kind'] = 'change'): void {
   if (!projectRoot) return
-  const tasksRoot = resolve(projectRoot, '.trellis', 'tasks') + sep
-  const p = resolve(absPath)
-  if (!p.startsWith(tasksRoot)) return
-  const written = panelWrittenAt.get(p)
+  const capturedRoot = projectRoot
+  const capturedGeneration = projectGeneration
+  const target = eventTaskMaterial(capturedRoot, absPath)
+  if (!target) return
+  const written = panelWrittenAt.get(resolve(absPath))
   if (written && Date.now() - written < PANEL_WRITE_GRACE_MS) return
-  const rel = p.slice(tasksRoot.length)
-  const parts = rel.split(/[\\/]/).filter(Boolean)
-  if (parts.length < 2) return
-  // 只提醒活跃任务（tasks/<dir>/…）；归档目录的变化不打扰
-  if (parts[0] === 'archive') return
-  const dirName = parts[0]
+  const dirName = target.taskDir
   let files = materialFiles.get(dirName)
-  if (!files) {
-    files = new Set()
-    materialFiles.set(dirName, files)
-  }
-  files.add(parts.slice(1).join('/'))
+  if (!files) { files = new Map(); materialFiles.set(dirName, files) }
+  if (files.size < 128 || files.has(target.relativePath)) files.set(target.relativePath, { path: absPath, kind })
   const prev = materialTimers.get(dirName)
   if (prev) clearTimeout(prev)
-  materialTimers.set(
-    dirName,
-    setTimeout(() => {
+  materialTimers.set(dirName, setTimeout(() => {
+    void (async () => {
+      if (projectRoot !== capturedRoot || projectGeneration !== capturedGeneration) return
       materialTimers.delete(dirName)
-      const fs = materialFiles.get(dirName) ?? new Set<string>()
+      const pending = materialFiles.get(dirName)
       materialFiles.delete(dirName)
-      if (fs.size === 0) return
-      // 审阅修复#7：合并窗口内任务可能已被外部归档——仅活跃任务提醒
-      const stillActive = latestSnapshot?.tasks.some((x) => x.dirName === dirName) ?? false
-      if (!stillActive) return
-      const t = latestSnapshot?.tasks.find((x) => x.dirName === dirName)
-      const payload = {
-        dirName,
-        title: t?.record?.title ?? dirName,
-        count: fs.size,
-        files: [...fs].slice(0, 5),
-        at: Date.now()
+      if (!pending?.size || projectRoot !== capturedRoot || projectGeneration !== capturedGeneration) return
+      const task = latestSnapshot?.tasks.find((item) => item.dirName === dirName)
+      if (!task) return
+      const changes = (await Promise.all([...pending.values()].map((item) => verifyMaterialChange(capturedRoot, capturedGeneration, item.path, item.kind))))
+        .filter((change): change is AcpMaterialChange => change !== null)
+      if (changes.length === 0 || projectRoot !== capturedRoot || projectGeneration !== capturedGeneration) return
+      const payload: MaterialUpdatedEvent = {
+        projectRoot: capturedRoot, projectGeneration: capturedGeneration, changes, dirName,
+        title: task.record?.title ?? dirName, count: changes.length,
+        files: changes.slice(0, 5).map((change) => change.relativePath.slice(`.trellis/tasks/${dirName}/`.length)), at: Date.now()
       }
       broadcastToWindows(ipcEvent.materialUpdated, payload)
-      // T1：主窗隐藏/失焦时补发系统通知，点击直达该任务（窗口可见且聚焦时应用内 toast 足够）
+      for (const change of changes) emitAcpMaterialChange(change)
       const mw = getMainWindow()
       const visibleFocused = Boolean(mw && mw.isVisible() && mw.isFocused())
-      if (!visibleFocused) {
-        toastFocusTask(dirName, {
-          kind: 'info',
-          title: `任务更新：${payload.title}`,
-          body: `${payload.count} 个文件：${payload.files.join('、')}${payload.count > payload.files.length ? ' 等' : ''}`
-        })
-      }
-    }, MATERIAL_SETTLE_MS)
-  )
+      if (!visibleFocused) toastFocusTask(dirName, {
+        kind: 'info', title: `任务更新：${payload.title}`,
+        body: `${payload.count} 个文件：${payload.files.join('、')}${payload.count > payload.files.length ? ' 等' : ''}`
+      })
+    })().catch((error: unknown) => {
+      if (projectRoot === capturedRoot && projectGeneration === capturedGeneration) toast({ kind: 'warn', title: '任务材料校验失败', body: errorMessage(error) })
+    })
+  }, MATERIAL_SETTLE_MS))
 }
 
 function clearMaterialTimers(): void {
@@ -170,6 +163,8 @@ export function getMainWindow(): BrowserWindow | null {
 export function getProjectRoot(): string | null {
   return projectRoot
 }
+
+export function getProjectGeneration(): number { return projectGeneration }
 
 export function getSnapshot(): ProjectSnapshot | null {
   return latestSnapshot
@@ -292,17 +287,22 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
       return ipcFail(IpcErrorCode.InvalidArg, '该目录下没有 .trellis/ —— 请先在项目中运行 trellis init')
     }
     projectRoot = snap.meta.root
+    projectGeneration += 1
+    clearMaterialTimers()
+    const openedGeneration = projectGeneration
     pushRecentProject(projectRoot)
     // S0 G2：切换项目清空文档缓存（缓存键含 canonicalPath，但避免旧项目全文驻留）；
     // 同时清空变更信号桥的会话监听（渲染端同步清空全部阅读会话）
     clearDocumentCache()
     clearReaderDocuments()
-    watcher.start(projectRoot, sendSnapshot, (path, ev) => {
-      routeSpecFileSync(path)
-      routeMaterialNotice(path)
+    watcher.start(projectRoot, () => { if (projectRoot === snap.meta.root && projectGeneration === openedGeneration) sendSnapshot() }, (path, ev) => {
+      if (projectRoot !== snap.meta.root || projectGeneration !== openedGeneration) return
+      if (ev !== 'unlink') routeSpecFileSync(path)
+      routeMaterialNotice(path, ev)
       routeWatcherEvent(snap.meta.root, path, ev)
       // S0 G2 第三片：只对已注册阅读会话的文档定向通知（无关文档零开销）
-      routeReaderDocumentChange(path)
+      const readerPath = resolveAuthorizedDocumentPath(snap.meta.root, relative(snap.meta.root, path))
+      if (readerPath.ok) routeReaderDocumentChange(readerPath.canonicalPath)
     })
     syncWeknoraSpecConfig()
     clearGitCache()
@@ -321,6 +321,7 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
 }
 
 export function closeProjectAt(): void {
+  projectGeneration += 1
   watcher.stop()
   projectRoot = null
   knownTaskDirs = new Set()
