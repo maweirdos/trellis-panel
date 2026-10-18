@@ -1,9 +1,14 @@
 import type { Page } from '../store'
 
-export type NavigationDomain = 'overview' | 'intake' | 'work' | 'knowledge' | 'conversations' | 'team' | 'analytics' | 'tools'
+export type NavigationDomain = 'home' | 'agents' | 'tasks' | 'team' | 'knowledge' | 'settings'
 export type NavigationScope = 'project' | 'application' | 'local' | 'mixed'
 export type WorkItemsView = 'items' | 'iterations'
-export type ModuleId = NavigationDomain | 'iterations'
+export type ModuleId = NavigationDomain
+export type TeamView = 'overview' | 'members' | 'activity' | 'reports'
+export type ToolView = 'git' | 'run' | 'architecture' | 'studio'
+export type AgentView = 'conversation' | 'roles'
+export type KnowledgeView = 'materials' | 'company'
+export type SettingsView = 'preferences' | 'engines'
 
 interface PageNavigation {
   title: string
@@ -17,73 +22,63 @@ interface PageNavigation {
 
 /** The existing route remains the fact; modules never create another project context. */
 export const PAGE_NAVIGATION = {
-  tasks: { title: '工作项', domain: 'work', scope: 'project', icon: 'work-items', keywords: '任务' },
-  dashboard: { title: '概览', domain: 'overview', scope: 'project', icon: 'your-work', keywords: '我的工作' },
-  inbox: { title: '需求接入', domain: 'intake', scope: 'project', icon: 'inbox', keywords: '待办池 收件箱' },
+  tasks: { title: '全部', domain: 'tasks', scope: 'project', icon: 'work-items', keywords: '任务 工作项 全部工作项' },
+  dashboard: { title: '首页', domain: 'home', scope: 'project', icon: 'your-work', keywords: '我的工作 概览 个人记录 收藏' },
+  inbox: { title: '接入', domain: 'tasks', scope: 'project', icon: 'inbox', keywords: '需求接入 待办池 收件箱' },
   jira: {
-    title: 'Jira 来源', domain: 'intake', scope: 'project', icon: 'work-items',
+    title: '接入', domain: 'tasks', scope: 'project', icon: 'work-items', keywords: 'Jira 来源 外部查询',
     scopeNote: 'Jira 结果遵循外部查询条件；导入目标是顶栏所选项目。',
     commandHint: '导入当前项目 · 外部查询'
   },
-  team: { title: '团队', domain: 'team', scope: 'project', icon: 'views', keywords: '协作' },
-  analytics: { title: '统计', domain: 'analytics', scope: 'project', icon: 'analytics', keywords: '统计分析' },
-  archive: { title: '工作项归档', domain: 'work', scope: 'project', icon: 'intake' },
-  acp: { title: 'Agent 会话', domain: 'conversations', scope: 'project', icon: 'inbox', keywords: 'Agent 对话 ACP' },
-  channels: { title: '协作频道', domain: 'conversations', scope: 'project', icon: 'inbox', keywords: 'AI 频道' },
+  team: { title: '概况', domain: 'team', scope: 'project', icon: 'views', keywords: '协作' },
+  analytics: { title: '统计', domain: 'team', scope: 'project', icon: 'analytics', keywords: '统计分析' },
+  archive: { title: '归档', domain: 'tasks', scope: 'project', icon: 'intake' },
+  acp: { title: '对话', domain: 'agents', scope: 'project', icon: 'inbox', keywords: 'Agent 对话 ACP' },
+  channels: { title: '频道', domain: 'agents', scope: 'project', icon: 'inbox', keywords: 'AI 协作频道' },
   chat: {
-    title: '通用 API 问答', domain: 'tools', scope: 'local', icon: 'inbox', keywords: '本机 跨项目 会话',
+    title: '问答', domain: 'agents', scope: 'local', icon: 'inbox', keywords: '通用 API 问答 本机 跨项目 会话',
     scopeNote: '本机通用 API 问答 · 会话历史跨项目共享'
   },
   knowledge: {
-    title: '知识', domain: 'knowledge', scope: 'project', icon: 'pages', keywords: '文档 知识库',
+    title: '资料', domain: 'knowledge', scope: 'project', icon: 'pages', keywords: '文档 知识库',
     scopeNote: '项目资料来自当前目录；公司库与个人问答历史可跨项目访问。',
     commandHint: '当前项目 · 公司与个人资料'
   },
-  spec: { title: '规范文档', domain: 'knowledge', scope: 'project', icon: 'views' },
-  architecture: { title: '架构图', domain: 'tools', scope: 'project', icon: 'views' },
-  studio: { title: '定制中心', domain: 'tools', scope: 'project', icon: 'modules' },
-  models: { title: '模型管理', domain: 'tools', scope: 'application', icon: 'cycles' },
-  settings: { title: '设置', domain: 'tools', scope: 'application', icon: 'work-items', scopeNote: '个人偏好和连接配置在本机保存；项目绑定按设置项注明的目标生效。' },
-  gateway: { title: 'MCP 网关', domain: 'tools', scope: 'mixed', icon: 'analytics', keywords: '应用 项目' },
+  spec: { title: '规范', domain: 'knowledge', scope: 'project', icon: 'views', keywords: '规范文档 日志' },
+  architecture: { title: '架构', domain: 'tasks', scope: 'project', icon: 'views' },
+  studio: { title: '定制', domain: 'tasks', scope: 'project', icon: 'modules' },
+  models: { title: '模型', domain: 'settings', scope: 'application', icon: 'cycles' },
+  settings: { title: '偏好', domain: 'settings', scope: 'application', icon: 'work-items', scopeNote: '个人偏好和连接配置在本机保存；项目绑定按设置项注明的目标生效。' },
+  gateway: { title: 'MCP', domain: 'settings', scope: 'mixed', icon: 'analytics', keywords: '应用 项目' },
   devtools: {
-    title: '本机开发工具', domain: 'tools', scope: 'local', icon: 'views', keywords: 'Git 只读 运行 日志 脚本 多工程',
+    title: '工具', domain: 'tasks', scope: 'local', icon: 'views', keywords: 'Git 只读 运行 日志 脚本 多工程',
     scopeNote: 'Git 仅为只读查看（无写操作）；运行只管理面板自己启动的进程，进程存活不代表服务就绪。'
   }
 } satisfies Record<Page, PageNavigation>
 
 export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
-  overview: '概览', intake: '需求接入', work: '工作项', knowledge: '知识',
-  conversations: '会话', team: '团队', analytics: '统计', tools: '工具与设置'
+  home: '首页', agents: '智能体', tasks: '任务', team: '团队', knowledge: '知识', settings: '设置'
 }
 
-export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string; view?: WorkItemsView }> = [
-  { id: 'overview', page: 'dashboard', label: '概览', shortLabel: '概览' },
-  { id: 'intake', page: 'inbox', label: '需求接入', shortLabel: '接入' },
-  { id: 'work', page: 'tasks', label: '工作项', shortLabel: '工作项', view: 'items' },
-  { id: 'iterations', page: 'tasks', label: '迭代', shortLabel: '迭代', view: 'iterations' },
-  { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' },
-  { id: 'conversations', page: 'acp', label: '会话', shortLabel: '会话' },
+export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string }> = [
+  { id: 'home', page: 'dashboard', label: '首页', shortLabel: '首页' },
+  { id: 'agents', page: 'acp', label: '智能体', shortLabel: '智能体' },
+  { id: 'tasks', page: 'tasks', label: '任务', shortLabel: '任务' },
   { id: 'team', page: 'team', label: '团队', shortLabel: '团队' },
-  { id: 'analytics', page: 'analytics', label: '统计', shortLabel: '统计' }
+  { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' }
 ]
-
-export const INTAKE_PAGES: readonly Page[] = ['inbox', 'jira']
-export const WORK_PAGES: readonly Page[] = ['tasks', 'archive']
-export const AI_MODES: readonly Page[] = ['acp', 'channels']
-export const PROJECT_TOOLS: readonly Page[] = ['architecture', 'studio']
-export const APPLICATION_TOOLS: readonly Page[] = ['chat', 'models', 'settings', 'devtools']
 
 export function getPageNavigation(page: Page): PageNavigation {
   return PAGE_NAVIGATION[page]
 }
 
-export function activeModule(page: Page, view: WorkItemsView): ModuleId {
-  return page === 'tasks' && view === 'iterations' ? 'iterations' : getPageNavigation(page).domain
+export function activeModule(page: Page): ModuleId {
+  return getPageNavigation(page).domain
 }
 
 /** Knowledge and conversation pages already own their real source/session browsers. */
 export function hasShellContext(page: Page): boolean {
-  return page !== 'chat' && !['knowledge', 'conversations'].includes(getPageNavigation(page).domain)
+  return !['home', 'knowledge', 'agents'].includes(getPageNavigation(page).domain)
 }
 
 export function navigationScopeLabel(scope: NavigationScope): string {

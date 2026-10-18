@@ -1,6 +1,7 @@
+import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
 import { createPortal } from 'react-dom'
-import { Bot, ChevronDown, Hash, History, MessageSquare, Plus, Search, X } from 'lucide-react'
+import { ChevronDown, History, MessageSquare, Plus, Search, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Button } from '../my/ui'
 import { SidebarResizeHandle } from '../my/layout/SidebarResizeHandle'
@@ -12,9 +13,9 @@ import type { WorkspaceView } from './view-state'
 
 interface HoverPreview { session: AcpSessionRecord; left: number; top: number; host: Element }
 
-export function ConversationNavigation({ sessions, activeId, view, onView, onSelect, onNew, onChannels, open, onClose, collapsed = false }: {
+export function ConversationNavigation({ sessions, activeId, view, onView, onSelect, onNew, open, onClose, collapsed = false }: {
   sessions: AcpSessionRecord[]; activeId: string | null; view: WorkspaceView
-  onView: (view: WorkspaceView) => void; onSelect: (sessionId: string) => void; onNew: () => void; onChannels: () => void
+  onView: (view: WorkspaceView) => void; onSelect: (sessionId: string) => void; onNew: () => void
   open: boolean; onClose: () => void
   collapsed?: boolean
 }): JSX.Element {
@@ -56,18 +57,15 @@ export function ConversationNavigation({ sessions, activeId, view, onView, onSel
   return <>
     {open && <button className="acp-sidebar-scrim" aria-label="关闭会话导航" onClick={onClose} />}
     <aside className={clsx('my-context-sidebar acp-navigation', open && 'is-open')} aria-label="角色与会话导航">
-      <div className="acp-navigation-title"><strong>Agent 会话</strong><Button size="sm" variant="ghost" className="acp-mobile-only" title="关闭会话导航" onClick={onClose}><X size={14} /></Button></div>
-      <div className="acp-navigation-primary">
-        <button className="my-nav-item" onClick={onNew}><Plus size={15} />新建会话</button>
-        <button className={clsx('my-nav-item', view === 'agents' && 'is-selected')} aria-current={view === 'agents' ? 'page' : undefined} onClick={() => { dismiss(); onView('agents') }}><Bot size={15} />我的 Agent 角色</button>
-        <button className="my-nav-item" onClick={() => { dismiss(); onChannels() }}><Hash size={15} />协作频道</button>
-      </div>
+      <div className="acp-navigation-title"><strong>智能体</strong><Button size="sm" variant="ghost" className="acp-mobile-only" title="关闭会话导航" onClick={onClose}><X size={14} /></Button></div>
+      <ModuleLinks domain="agents" agentView={view === 'agents' ? 'roles' : 'conversation'} onAgentView={(next) => { dismiss(); onView(next === 'roles' ? 'agents' : 'conversation') }} />
+      <div className="acp-navigation-primary"><button className="my-nav-item" onClick={onNew}><Plus size={15} />新建对话</button></div>
       <div className="acp-navigation-label"><span>最近会话</span><span className="text-my-sm text-my-tertiary">{recent.length}</span></div>
       <label className="acp-navigation-search" title="仅搜索当前项目已加载的会话"><Search size={13} /><input aria-label="搜索已加载的会话" value={query} onChange={(event) => { dismiss(); setQuery(event.target.value) }} placeholder="搜索最近会话" /></label>
       <div className="acp-navigation-scroll my-scrollbar" onScroll={dismiss}>{recent.map(row)}{recent.length === 0 && <p className="px-3 py-3 text-my-sm text-my-tertiary">暂无匹配的会话</p>}
         {(historyExpanded || view === 'history') && <div className="acp-secondary-history"><div className="acp-navigation-label">历史与诊断记录</div>{old.map(row)}{old.length === 0 && <p className="px-3 py-3 text-my-sm text-my-tertiary">暂无旧版记录</p>}</div>}
       </div>
-      <div className="acp-navigation-bottom"><button className="my-nav-item" onClick={() => { dismiss(); setHistoryExpanded((current) => !current); onView('history') }}><History size={14} />历史与诊断<ChevronDown size={13} /></button></div>
+      <div className="acp-navigation-bottom"><button className="my-nav-item" onClick={() => { dismiss(); setHistoryExpanded((current) => !current); onView('history') }}><History size={14} />历史<ChevronDown size={13} /></button></div>
       <SidebarResizeHandle label="调整会话侧栏宽度" />
     </aside>
     {preview && interactive && (!collapsed || open) && createPortal(<div role="tooltip" id={tooltipId} className="acp-recent-tooltip" style={{ left: preview.left, top: preview.top }}><div><strong>{preview.session.title ?? preview.session.agentName}</strong><time>{new Date(preview.session.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><p>{conversationSummary(preview.session)}</p><small>{preview.session.profileSnapshot?.name ?? preview.session.agentName}{preview.session.taskDir ? ` · ${preview.session.taskDir}` : ' · 未关联任务'}</small></div>, preview.host)}

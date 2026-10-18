@@ -1,3 +1,4 @@
+import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { PageContent, PageSection } from '../my/layout/PageLayout'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -179,6 +180,7 @@ export function ChannelsPage(): JSX.Element {
       {/* 左列：频道列表 */}
       {!sidebarCollapsed && <div style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
         <SidebarResizeHandle />
+        <ModuleLinks domain="agents" />
         <div className="space-y-2.5 border-b border-my-line px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="my-chip bg-my-layer-2 text-my-tertiary">{visible.length}</span>

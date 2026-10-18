@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX,
 import { Keyboard, Loader2 } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
+import { rememberVisit } from '../personal-history'
+import { loadNavigationLocation, saveNavigationLocation } from '../navigation-preferences'
 import { getPageNavigation, projectRootKey } from '../navigation'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { CommandPalette } from '../CommandPalette'
@@ -53,6 +55,7 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   channels: <ChannelsPage />,
   acp: <AcpConsolePage />,
   team: <TeamPage />,
+  analytics: <AnalyticsPage />,
   jira: <JiraPage />,
   architecture: <ArchitecturePage />,
   studio: <StudioPage />,
@@ -60,7 +63,7 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   gateway: <GatewayPage />,
   chat: <ChatPage />,
   devtools: <DevToolsPage />,
-  settings: <SettingsPage />
+  settings: <SettingsPage />,
 }
 
 export function PageBody(): JSX.Element {
@@ -133,7 +136,6 @@ export function PageBody(): JSX.Element {
       {!acpActive && <Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
         {page === 'dashboard' && <YourWorkPage />}
         {page === 'tasks' && <WorkItemsPage />}
-        {page === 'analytics' && <AnalyticsPage />}
         {framed && <PageFrame page={page}>{framed}</PageFrame>}
       </ErrorBoundary></Suspense>}
     </>
@@ -203,6 +205,59 @@ export function MyApp(): JSX.Element {
     })
     return () => off()
   }, [syncFromSnapshot])
+
+  // Restore presentation once at startup; explicit task/document links win.
+  // Opening a different project keeps the main store's existing reset behavior.
+  const navigationRestored = useRef(false)
+  useLayoutEffect(() => {
+    const app = useApp.getState()
+    const snapshot = app.snapshot
+    if (navigationRestored.current || !snapshot) return
+    navigationRestored.current = true
+    const saved = loadNavigationLocation(snapshot.meta.root, snapshot.meta.developer)
+    if (saved && app.page === 'dashboard' && !app.openTaskDir && !app.pendingFocusDir && !app.specDocumentTarget && !app.taskExpandOrigin) {
+      const { page: savedPage, ...views } = saved
+      useMy.setState({ ...views, groupBy: views.workItemsView === 'iterations' ? 'cycle' : useMy.getState().itemsGroupBy })
+      if (savedPage !== app.page) app.setPage(savedPage)
+    }
+  }, [root])
+  useEffect(() => {
+    const persist = (): void => {
+      const app = useApp.getState()
+      const snapshot = app.snapshot
+      if (!snapshot || !navigationRestored.current || useMy.getState().projectRoot !== projectRootKey(snapshot.meta.root)) return
+      saveNavigationLocation(snapshot.meta.root, snapshot.meta.developer, app.page, useMy.getState())
+    }
+    const offApp = useApp.subscribe((state, previous) => {
+      if (state.page !== previous.page) {
+        useMy.getState().rememberModulePage(state.page)
+        if (state.page !== 'acp') {
+          useMy.getState().requestAgentView(null)
+          useMy.getState().setAgentSessionTarget(null)
+        }
+      }
+      persist()
+    })
+    const offMy = useMy.subscribe((state, previous) => {
+      if (state.modulePages !== previous.modulePages || state.workItemsView !== previous.workItemsView || state.workItemsTab !== previous.workItemsTab || state.teamView !== previous.teamView || state.toolView !== previous.toolView || state.knowledgeView !== previous.knowledgeView || state.settingsView !== previous.settingsView) persist()
+    })
+    useMy.getState().rememberModulePage(useApp.getState().page)
+    persist()
+    return () => { offApp(); offMy() }
+  }, [])
+
+  useEffect(() => useApp.subscribe((state, previous) => {
+    if (projectRootKey(state.snapshot?.meta.root) !== projectRootKey(previous.snapshot?.meta.root)) return
+    if (state.openTaskDir && (state.openTaskDir !== previous.openTaskDir || state.openTaskArchived !== previous.openTaskArchived)) {
+      const tasks = state.openTaskArchived ? state.snapshot?.archived : state.snapshot?.tasks
+      const task = tasks?.find((item) => item.dirName === state.openTaskDir || item.path === state.openTaskDir)
+      if (task) rememberVisit({ kind: 'task', target: state.openTaskDir, archived: state.openTaskArchived, title: task.record?.title || task.dirName })
+    }
+    if (state.specDocumentTarget && state.specDocumentTarget !== previous.specDocumentTarget) {
+      const path = state.specDocumentTarget.path
+      rememberVisit({ kind: 'document', target: path, title: path.replace(/\\/g, '/').split('/').pop() || path })
+    }
+  }), [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

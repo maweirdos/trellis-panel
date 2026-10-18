@@ -122,8 +122,10 @@ The old ink/mist/leaf and private pixel font/radius classes are forbidden.
 ### 1. Scope / trigger
 
 The ordinary window has one real project selector in the shared TitleBar, a fixed module
-rail and a collapsible contextual sidebar. Overview, intake, work items, iterations,
-knowledge, conversations, team and analytics are peers. The former task-parent tree and
+rail and a collapsible contextual sidebar. Its five primary modules, in order, are
+首页 (home), 智能体 (agents), 任务 (tasks), 团队 (team), 知识 (knowledge); 设置
+(settings) remains at the bottom. Iterations/intake/tools belong to tasks; analytics
+and reports belong to team. Home has no context sidebar. The former task-parent tree and
 `ProjectSidebar` are retired. Preserve the frontend and ACP contracts below.
 
 ### 2. Signatures
@@ -131,7 +133,7 @@ knowledge, conversations, team and analytics are peers. The former task-parent t
 - `my/navigation.ts`: `PAGE_NAVIGATION satisfies Record<Page, PageNavigation>` is the shared
   source for route title, domain, scope, source notes, and command hints. Sidebar, PageFrame,
   and CommandPalette consume it. The route remains `useApp.page`.
-- `PRIMARY_NAVIGATION` defines peer order. `activeModule(page, workItemsView)` resolves
+- `PRIMARY_NAVIGATION` defines peer order. `activeModule(page)` resolves
   selection; `hasShellContext(page)` excludes page-owned knowledge/session browsers and
   modules without useful contextual navigation.
 - `useMy.workItemsView: 'items' | 'iterations'` / `setWorkItemsView(view)` express navigation
@@ -230,7 +232,7 @@ knowledge, conversations, team and analytics are peers. The former task-parent t
 | Pending permission after returning to its root | Restore only while the current process still owns the pending request |
 | Resolved, expired, or historical permission | Read-only history; never actionable |
 | Recent-project read failure | Keep successful project open and existing settings |
-| Work items grouped by cycle | Keep work-items module selected |
+| Task items or iterations | Keep the task module selected |
 | Context collapsed | Keep fixed module order and accessible names |
 | Pending update across preview/expand/return | Preserve displayed/base/latest and notice |
 | Close task / deliberate navigation / actual root change | Clear presentation and one-shot targets |
@@ -285,3 +287,90 @@ select projects from real snapshots/settings, and consume typed route metadata t
 Wrong: `{workspace ? <Reader key="full" /> : <Reader key="preview" />}` creates separate
 lifetimes. Correct: retain one task/reader instance, vary presentation/container props, and
 register floating layers in the common Escape stack so only its top layer consumes Escape.
+
+
+## Consolidated module navigation and personal home (2026-10-18)
+
+### 1. Scope / trigger
+
+Use the five-module ownership above for all existing routes and future roadmap entries.
+Short fixed labels identify one concept; actual task/document names retain their full
+values with truncation only in presentation. The project selector remains unique.
+
+### 2. Signatures
+
+- `ModuleLinks({domain:'agents'|'knowledge',agentView?,onAgentView?})` embeds in each
+  existing source/session sidebar. It must not add a second shell sidebar or reader.
+- `useMy.teamView`: `overview|members|activity|reports`; analytics is the existing
+  `analytics` route owned by team. `toolView`: `git|run|architecture|studio`.
+- `requestAgentView(view|null)` and `setAgentSessionTarget(id|null)` are one-shot
+  presentation targets, reset on root changes and consumed in the active ACP scope.
+- `loadNavigationLocation(root,developer)` / `saveNavigationLocation(...)` persist
+  validated route/view preferences; `rememberModulePage(page)` remembers the last
+  route of each module within the current project session.
+- `rememberVisit({kind,target,title,archived?})`, `usePersonalHistory()` and
+  `clearPersonalHistory()` own the local personal recent list.
+
+### 3. Contracts
+
+- Secondary navigation: agents 对话/角色/频道/问答; tasks 全部/迭代/接入/归档/工具
+  plus separate collapsible 视图 and 收藏; team 概况/成员/动态/统计/报告;
+  knowledge 资料/规范/公司库; settings 偏好/模型/引擎/集成/MCP.
+- Task filters remain reachable in the page header with the sidebar open or closed.
+  Intake switches 待办/Jira in the content header; tools switch Git/运行/架构/定制.
+- Team is a people/workload/activity projection over existing tasks and developer
+  records, without a second task lifecycle, priority, iteration or assignment editor.
+  All previews reuse the existing task detail and preserve the source route.
+- Statistics owns snapshot/flow/workflow views; label their denominators: snapshot
+  excludes archived tasks and closed means completed; flow totals use the persisted
+  transition log, daily trend 14 days, cycle metrics use current completed tasks.
+  Workflow inactivity excludes planning, while efficiency inactivity includes it.
+- Reports share one entry with 日报/周报 switches and reuse existing generators.
+- Home defaults to real local access history; 收藏/我负责/我创建 use the existing
+  task facts. Never relabel project-wide file updates as personal activity.
+- Local keys are `tpanel.my.history.v1:<encoded normalized root>:<encoded developer>`
+  (60 explicit opens max) and `tpanel.my.navigation.v1:<root>:<developer>`.
+  Missing developer uses `local`, not a fabricated team identity. No document bytes,
+  conversation messages, permissions, passwords or execution authorization are stored.
+- Startup may restore validated presentation only once, when no explicit task/document
+  target exists. Actual project-open/reset behavior remains owned by the main store.
+  Restoration never sends, creates or starts an Agent. ACP history uses its original
+  root/session/draft/reader identity; only explicit selection updates personal history.
+- API Q&A remains local and cross-project; company sources retain their own scope.
+  Existing reader/controller ownership and Settings-only ACP retention remain unchanged.
+
+### 4. Validation / error matrix
+
+| Input | Result |
+| --- | --- |
+| Unknown/corrupt stored navigation | Ignore it; retain the normal startup route |
+| Initial task or document deep link | It takes precedence over saved navigation |
+| Module switch within current root | Return to its last route and current view |
+| Actual project/root switch | Clear transient section targets and preserve existing project reset |
+| Same paths in different roots or developer names | Separate local history and navigation keys |
+| No root, or storage denied | No project history is claimed; in-memory behavior remains usable |
+| Empty personal history | Honest empty state; no mtime-based backfill |
+| Removed task/history session | Hide missing task or show unavailable conversation without launching |
+| Document history outside the current root/with parent traversal | Do not replay the read |
+
+### 5. Good / base / bad cases
+
+Good: 团队→成员→task preview retains the team source; iteration stays in tasks.
+Base: choose 智能体→问答 and retain its existing cross-project history.
+Bad: placing tasks in a second team editor, or restoring a conversation by creating a
+new runtime session, or inferring personal reads from task modification times.
+
+### 6. Review / validation
+
+Keep `scripts/smoke/navigation.mjs` ownership assertions aligned with the five modules.
+When checks are authorized, cover malformed navigation storage, initial deep-link
+precedence, root/developer isolation, stored iteration grouping, one-shot ACP targets,
+and personal recent replay. For this delivery the user explicitly requested no tests,
+type-check, builds or app launches; only source review was performed. Runtime review
+remains pending and must not be represented as a passed quality gate.
+
+### 7. Wrong vs correct
+
+Wrong: selecting 迭代 highlights a separate rail item or team navigation links to a
+second task manager. Correct: the rail highlights 任务 for items and iterations, team
+owns its people/activity/statistics/report projections, and task actions share one owner.

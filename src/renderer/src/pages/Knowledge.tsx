@@ -1,3 +1,5 @@
+import { rememberVisit } from '../my/personal-history'
+import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { PageContent, PageSection } from '../my/layout/PageLayout'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -54,11 +56,11 @@ interface RemoteDoc {
 const NO_KB_IDS: string[] = []
 
 const LIBS: Array<{ id: LibFilter; label: string; icon: JSX.Element; desc: string }> = [
-  { id: 'notes', label: '项目笔记', icon: <StickyNote size={14} />, desc: '当前项目 .trellis/notes 文件，可新建 / 编辑 / 删除；不提供个人私密权限' },
-  { id: 'requirements', label: '需求库', icon: <ScrollText size={14} />, desc: '原始需求文档（活动任务 PRD / task.json 提炼）' },
+  { id: 'notes', label: '笔记', icon: <StickyNote size={14} />, desc: '当前项目 .trellis/notes 文件，可新建 / 编辑 / 删除；不提供个人私密权限' },
+  { id: 'requirements', label: '需求', icon: <ScrollText size={14} />, desc: '原始需求文档（活动任务 PRD / task.json 提炼）' },
   { id: 'spec', label: '规范库', icon: <BookOpenText size={14} />, desc: '.trellis/spec 团队规范' },
-  { id: 'wiki', label: 'Wiki 库', icon: <FileText size={14} />, desc: 'README / docs / wiki 等仓库文档' },
-  { id: 'archive', label: '归档库', icon: <Archive size={14} />, desc: '已归档任务的沉淀经验' },
+  { id: 'wiki', label: '文档', icon: <FileText size={14} />, desc: 'README / docs / wiki 等仓库文档' },
+  { id: 'archive', label: '归档', icon: <Archive size={14} />, desc: '已归档任务的沉淀经验' },
   { id: 'company', label: '公司库', icon: <Cloud size={14} />, desc: 'WeKnora 公司级知识（跨项目规范 / 历史归档 / 接口文档）' },
   { id: 'all', label: '全部', icon: <Library size={14} />, desc: '跨库联合检索（本地五库 + 公司库异步追加）' }
 ]
@@ -98,7 +100,9 @@ export function KnowledgePage(): JSX.Element {
   const setPage = useApp((s) => s.setPage)
   const openSpecDocument = useApp((s) => s.openSpecDocument)
 
-  const [lib, setLib] = useState<LibFilter>('requirements')
+  const knowledgeView = useMy((state) => state.knowledgeView)
+  const [lib, setLib] = useState<LibFilter>(() => knowledgeView === 'company' ? 'company' : 'requirements')
+  useEffect(() => { setLib(knowledgeView === 'company' ? 'company' : 'requirements') }, [knowledgeView])
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [result, setResult] = useState<KbSearchResult | null>(null)
@@ -241,6 +245,7 @@ export function KnowledgePage(): JSX.Element {
   }
 
   const openDoc = useCallback(async (doc: KbDoc): Promise<void> => {
+    if (!doc.synthetic && relativePathUnderRoot(snapshot?.meta.root ?? '', doc.path) !== null) rememberVisit({ kind: 'document', target: doc.path, title: doc.title })
     const seq = ++docSeq.current
     setRemoteDoc(null)
     setNoteDraft(null)
@@ -487,9 +492,10 @@ export function KnowledgePage(): JSX.Element {
       {/* 左列：检索与列表 */}
       <div id="knowledge-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line bg-my-layer-1', browserVisible ? 'flex' : 'hidden')}>
         <SidebarResizeHandle />
+        <ModuleLinks domain="knowledge" />
         <div className="space-y-2.5 border-b border-my-line px-4 py-3">
           <div className="flex flex-wrap gap-1.5">
-            {LIBS.map((l) => (
+            {LIBS.filter((l) => knowledgeView === 'company' ? l.id === 'company' : l.id !== 'company' && l.id !== 'spec').map((l) => (
               <button
                 key={l.id}
                 type="button"

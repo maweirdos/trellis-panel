@@ -6,6 +6,7 @@ import { clsx } from 'clsx'
 import { FolderPlus, Loader2, Pause, Play, Plus, RefreshCw, Square, X } from 'lucide-react'
 import { api, hasIpc } from '../../api'
 import { useApp } from '../../store'
+import { useMy } from '../store'
 import { projectRootKey } from '../navigation'
 import { Button } from '../ui'
 import type { DevRunInfo, DevScriptInfo, GitReadonlyFileDiff, GitReadonlyStatus } from '../../../../shared/types'
@@ -415,10 +416,10 @@ function RunSection(): JSX.Element {
 export function DevToolsPage(): JSX.Element {
   const root = useApp((s) => s.snapshot?.meta.root ?? null)
   const rootKey = projectRootKey(root)
+  const toolView = useMy((state) => state.toolView)
   return (
     <div key={rootKey ?? 'preview'} className="space-y-4">
-      <GitSection />
-      <RunSection />
+      {toolView === 'run' ? <RunSection /> : <GitSection />}
     </div>
   )
 }

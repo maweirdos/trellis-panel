@@ -1,60 +1,43 @@
 import { type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, ChartColumn, CircleUser, FolderInput, House, ListTodo, MessageSquare, Moon, Plus, RotateCw, Settings2, Star, Sun, Users, X } from 'lucide-react'
+import { BookOpen, Bot, CircleUser, FolderInput, House, ListTodo, Moon, Plus, RotateCw, Settings2, Star, Sun, Users, X, Wrench, Activity, FileText } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { Avatar, Dropdown, DropdownItem } from '../ui'
 import { NavIcon } from '../icons'
 import { SidebarResizeHandle, useSidebarWidthStyle } from './SidebarResizeHandle'
-import {
-  activeModule, APPLICATION_TOOLS, getPageNavigation, hasShellContext, INTAKE_PAGES,
-  PRIMARY_NAVIGATION, PROJECT_TOOLS, type ModuleId
-} from '../navigation'
+import { contextButtonClass } from './ModuleLinks'
+import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, PRIMARY_NAVIGATION, type ModuleId, type TeamView } from '../navigation'
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
-  overview: <House className="my-module-icon" aria-hidden="true" />, intake: <FolderInput className="my-module-icon" aria-hidden="true" />, work: <ListTodo className="my-module-icon" aria-hidden="true" />,
-  iterations: <RotateCw className="my-module-icon" aria-hidden="true" />, knowledge: <BookOpen className="my-module-icon" aria-hidden="true" />, conversations: <MessageSquare className="my-module-icon" aria-hidden="true" />,
-  team: <Users className="my-module-icon" aria-hidden="true" />, analytics: <ChartColumn className="my-module-icon" aria-hidden="true" />, tools: <Settings2 className="my-module-icon" aria-hidden="true" />
+  home: <House className="my-module-icon" aria-hidden="true" />,
+  agents: <Bot className="my-module-icon" aria-hidden="true" />,
+  tasks: <ListTodo className="my-module-icon" aria-hidden="true" />,
+  team: <Users className="my-module-icon" aria-hidden="true" />,
+  knowledge: <BookOpen className="my-module-icon" aria-hidden="true" />,
+  settings: <Settings2 className="my-module-icon" aria-hidden="true" />
 }
 
-/** The rail remains fixed; context contains only useful views of its active module. */
 export function WorkspaceSidebar(): JSX.Element {
-  const page = useApp((s) => s.page)
-  const setPage = useApp((s) => s.setPage)
-  const snapshot = useApp((s) => s.snapshot)
-  const view = useMy((s) => s.workItemsView)
-  const setView = useMy((s) => s.setWorkItemsView)
-  const collapsed = useMy((s) => s.sidebarCollapsed)
-  const theme = useMy((s) => s.theme)
-  const toggleTheme = useMy((s) => s.toggleTheme)
-  const current = activeModule(page, view)
-  const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center transition-colors hover:text-my-primary',
-    selected ? 'is-selected text-my-primary' : 'text-my-icon-secondary')
+  const page = useApp((state) => state.page)
+  const setPage = useApp((state) => state.setPage)
+  const snapshot = useApp((state) => state.snapshot)
+  const collapsed = useMy((state) => state.sidebarCollapsed)
+  const theme = useMy((state) => state.theme)
+  const toggleTheme = useMy((state) => state.toggleTheme)
+  const current = activeModule(page)
+  const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center transition-colors hover:text-my-primary', selected ? 'is-selected text-my-primary' : 'text-my-icon-secondary')
   return <>
-    <aside aria-label="固定模块栏" className="my-module-rail flex h-full shrink-0 flex-col items-center">
+    <aside aria-label="模块栏" className="my-module-rail flex h-full shrink-0 flex-col items-center">
       <nav aria-label="项目模块" className="my-scrollbar flex min-h-0 w-full flex-1 flex-col items-center">
-        {PRIMARY_NAVIGATION.map((item) => (
-          <button key={item.id} type="button" aria-label={item.label} title={item.label}
-            aria-current={current === item.id ? 'page' : undefined}
-            onClick={() => { if (item.view) setView(item.view); setPage(item.page) }} className={railClass(current === item.id)}>
-            {MODULE_ICONS[item.id]}
-          </button>
-        ))}
+        {PRIMARY_NAVIGATION.map((item) => <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={current === item.id ? 'page' : undefined} onClick={() => setPage(useMy.getState().modulePages[item.id] ?? item.page)} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
       </nav>
       <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">
-        <button type="button" aria-label="工具与设置" title="工具与设置" aria-current={current === 'tools' ? 'page' : undefined}
-          onClick={() => setPage('settings')} className={railClass(current === 'tools')}>
-          {MODULE_ICONS.tools}
-        </button>
-        <Dropdown width={210} trigger={({ open, toggle }) => (
-          <button type="button" aria-label="用户与主题" title="用户与主题" aria-expanded={open} onClick={toggle}
-            className="my-module-button my-nav-item grid place-items-center">
-            <Avatar name={snapshot?.meta.developer ?? '本机用户'} color="var(--my-bg-accent-primary)" tone="accent" size={28} />
-          </button>
-        )}>
+        <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => setPage(useMy.getState().modulePages.settings ?? 'settings')} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>
+        <Dropdown width={210} trigger={({ open, toggle }) => <button type="button" aria-label="用户与主题" title="用户与主题" aria-expanded={open} onClick={toggle} className="my-module-button my-nav-item grid place-items-center"><Avatar name={snapshot?.meta.developer ?? '本机用户'} color="var(--my-bg-accent-primary)" tone="accent" size={28} /></button>}>
           {(close) => <>
             <div className="px-3 py-2 text-my-sm font-medium text-my-primary">{snapshot?.meta.developer ?? '本机用户'}</div>
-            <DropdownItem icon={<CircleUser size={14} />} onClick={() => { setPage('settings'); close() }}>个人与应用设置</DropdownItem>
+            <DropdownItem icon={<CircleUser size={14} />} onClick={() => { useMy.getState().setSettingsView('preferences'); setPage('settings'); close() }}>偏好</DropdownItem>
             <DropdownItem icon={theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />} onClick={() => { toggleTheme(); close() }}>切换{theme === 'dark' ? '亮色' : '深色'}主题</DropdownItem>
           </>}
         </Dropdown>
@@ -66,120 +49,58 @@ export function WorkspaceSidebar(): JSX.Element {
 
 function ContextSidebar(): JSX.Element {
   const sidebarStyle = useSidebarWidthStyle()
-  const page = useApp((s) => s.page)
-  const setPage = useApp((s) => s.setPage)
-  const data = useMy((s) => s.data)
-  const view = useMy((s) => s.workItemsView)
-  const tab = useMy((s) => s.workItemsTab)
-  const setTab = useMy((s) => s.setWorkItemsTab)
-  const setView = useMy((s) => s.setWorkItemsView)
-  const setCreate = useMy((s) => s.setCreateIssueOpen)
-  const favorites = useMy((s) => s.favorites)
-  const toggleFavorite = useMy((s) => s.toggleFavorite)
-  const openIssue = useMy((s) => s.openIssue)
-  const savedViews = useMy((s) => s.savedViews)
-  const applyView = useMy((s) => s.applyView)
-  const removeView = useMy((s) => s.removeView)
+  const page = useApp((state) => state.page)
+  const setPage = useApp((state) => state.setPage)
+  const { data, workItemsView: view, setWorkItemsView: setView, setWorkItemsTab: setTab, setCreateIssueOpen: setCreate, favorites, toggleFavorite, openIssue, savedViews, applyView, removeView, teamView, setTeamView, settingsView, setSettingsView } = useMy()
   const domain = getPageNavigation(page).domain
-  const title = domain === 'work' ? view === 'iterations' && page === 'tasks' ? '自然周计划' : '工作视图' : domain === 'intake' ? '需求来源'
-    : domain === 'overview' ? '项目概览' : domain === 'team' ? '团队协作' : domain === 'analytics' ? '项目统计' : '工具与设置'
-  const buttonClass = (selected: boolean): string => clsx('my-context-button my-nav-item mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-my-md px-3 py-2 text-left text-my-sm transition-colors',
-    selected ? 'is-selected text-my-primary font-medium' : 'text-my-secondary')
-  const routeButton = (target: Page): JSX.Element => <button key={target} type="button" aria-current={page === target ? 'page' : undefined}
-    onClick={() => { if (target === 'tasks' || target === 'archive') setView('items'); setPage(target) }} className={buttonClass(page === target)}>
-    <NavIcon name={getPageNavigation(target).icon} size={16} />{getPageNavigation(target).title}
-  </button>
-  return (
-    <aside aria-label={`${title}上下文`} style={sidebarStyle} className="my-context-sidebar flex h-full shrink-0 flex-col border-r border-my-line">
-      <SidebarResizeHandle />
-      <header className="flex h-my-header shrink-0 items-center gap-2 px-4">
-        <h2 className="my-sidebar-heading flex-1 font-medium text-my-primary">{title}</h2>
-        {domain === 'work' && <button type="button" aria-label="新建工作项" title="新建工作项 (C)" onClick={() => setCreate(true)}
-          className="grid h-7 w-7 place-items-center rounded-my-md text-my-icon-secondary hover:bg-my-layer-transparent-hover"><Plus size={18} /></button>}
-      </header>
-      <div className="my-scrollbar min-h-0 flex-1 px-2 pb-4">
-        {domain === 'overview' && <>
-          {routeButton('dashboard')}
-          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">开始工作</h3>
-          <button type="button" onClick={() => { setView('items'); setTab('active'); setPage('tasks') }} className={buttonClass(false)}>
-            <ListTodo size={16} />进行与待开始
-          </button>
-          {routeButton('inbox')}
-          {routeButton('acp')}
-          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">项目工作项</h3>
-          {data.issues.slice(0, 6).map((issue) => <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} className={buttonClass(false)}>
-            <ListTodo size={15} className="shrink-0" /><span className="truncate" title={issue.name}>{issue.name}</span>
-          </button>)}
-          {data.issues.length === 0 && <p className="px-3 py-2 text-my-sm text-my-tertiary">当前项目暂无工作项</p>}
-        </>}
-        {domain === 'team' && <>
-          {routeButton('team')}
-          {routeButton('channels')}
-          {routeButton('tasks')}
-          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">项目成员</h3>
-          {data.members.map((member) => <div key={member.id} className="flex min-h-9 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary">
-            <Avatar name={member.name} color={member.avatarColor} size={22} /><span className="min-w-0 flex-1 truncate" title={member.name}>{member.name}</span>
-            <span className="text-my-xs text-my-tertiary" title="已分配工作项">{data.issues.filter((issue) => issue.assigneeId === member.id).length}</span>
-          </div>)}
-          {data.members.length === 0 && <p className="px-3 py-2 text-my-sm text-my-tertiary">成员来自当前项目记录</p>}
-        </>}
-        {domain === 'analytics' && <>
-          {routeButton('analytics')}
-          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">查看明细</h3>
-          {routeButton('tasks')}
-          {routeButton('team')}
-          {routeButton('archive')}
-          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">工作项状态</h3>
-          {data.states.map((state) => <div key={state.id} className="flex min-h-8 items-center gap-2.5 px-3 text-my-sm text-my-secondary">
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: state.color }} />
-            <span className="min-w-0 flex-1 truncate">{state.name}</span><span className="text-my-xs text-my-tertiary">{data.issues.filter((issue) => issue.stateId === state.id).length}</span>
-          </div>)}
-        </>}
-        {domain === 'intake' && <>
-          {INTAKE_PAGES.map(routeButton)}
-          <p className="px-2.5 pt-4 text-my-xs leading-relaxed text-my-tertiary">查看收集的线索或 Jira 粗需求，再整理为可确认的项目工作项。</p>
-        </>}
-        {domain === 'work' && <>
-          {(['all', 'active', 'backlog'] as const).map((id) => <button key={id} type="button" aria-current={page === 'tasks' && tab === id ? 'page' : undefined}
-            onClick={() => { setTab(id); setPage('tasks') }} className={buttonClass(page === 'tasks' && tab === id)}>
-            <NavIcon name={id === 'all' ? 'work-items' : id === 'active' ? 'cycles' : 'inbox'} size={16} />
-            {id === 'all' ? '全部工作项' : id === 'active' ? '进行与待开始' : '未规划'}
-          </button>)}
-          {page === 'tasks' && view === 'iterations' && <p className="px-2.5 py-3 text-my-xs leading-relaxed text-my-tertiary">按自然周安排与结转。分组说明排期，不代表工作已开始或完成。</p>}
-          <div className="mx-3 my-3 border-t border-my-line" />
-          {routeButton('archive')}
-          {savedViews.length > 0 && <section className="mt-5">
-            <h3 className="px-2.5 pb-1.5 text-my-xs text-my-tertiary">保存的视图</h3>
+  const buttonClass = contextButtonClass
+  const row = (key: string, label: string, selected: boolean, icon: ReactNode, action: () => void): JSX.Element => <button key={key} type="button" aria-current={selected ? 'page' : undefined} onClick={action} className={buttonClass(selected)}>{icon}{label}</button>
+  const route = (target: Page): JSX.Element => row(target, getPageNavigation(target).title, page === target, <NavIcon name={getPageNavigation(target).icon} size={16} />, () => setPage(target))
+  return <aside aria-label={`${DOMAIN_LABELS[domain]}导航`} style={sidebarStyle} className="my-context-sidebar flex h-full shrink-0 flex-col border-r border-my-line">
+    <SidebarResizeHandle />
+    <header className="flex h-my-header shrink-0 items-center gap-2 px-4">
+      <h2 className="my-sidebar-heading flex-1 font-medium text-my-primary">{DOMAIN_LABELS[domain]}</h2>
+      {domain === 'tasks' && <button type="button" aria-label="新建任务" title="新建任务 (C)" onClick={() => setCreate(true)} className="grid h-7 w-7 place-items-center rounded-my-md text-my-icon-secondary hover:bg-my-layer-transparent-hover"><Plus size={18} /></button>}
+    </header>
+    <div className="my-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
+      {domain === 'tasks' && <>
+        {row('all', '全部', page === 'tasks' && view === 'items', <ListTodo size={16} />, () => { setView('items'); setTab('all'); setPage('tasks') })}
+        {row('iterations', '迭代', page === 'tasks' && view === 'iterations', <RotateCw size={16} />, () => { setView('iterations'); setTab('all'); setPage('tasks') })}
+        {row('intake', '接入', page === 'inbox' || page === 'jira', <FolderInput size={16} />, () => setPage('inbox'))}
+        {route('archive')}
+        {row('tools', '工具', ['devtools', 'architecture', 'studio'].includes(page), <Wrench size={16} />, () => { const tool = useMy.getState().toolView; setPage(tool === 'architecture' || tool === 'studio' ? tool : 'devtools') })}
+          {savedViews.length > 0 && <details open className="mt-5">
+            <summary className="cursor-pointer px-2.5 pb-1.5 text-my-xs text-my-tertiary">视图</summary>
             {savedViews.map((saved) => <div key={saved.id} className="group/view flex items-center gap-1 rounded-my-md hover:bg-my-layer-transparent-hover">
-              <button type="button" className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-lg text-my-secondary" onClick={() => { applyView(saved.id); setPage('tasks') }}>
+              <button type="button" className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary" onClick={() => { applyView(saved.id); setPage('tasks') }}>
                 <NavIcon name="views" size={16} /><span className="truncate" title={saved.name}>{saved.name}</span>
               </button>
               <button type="button" aria-label={`删除视图 ${saved.name}`} onClick={() => removeView(saved.id)} className="mr-1 p-1 text-my-icon-tertiary opacity-0 group-hover/view:opacity-100 focus:opacity-100"><X size={12} /></button>
             </div>)}
-          </section>}
-          {data.issues.some((issue) => favorites.includes(issue.id)) && <section className="mt-5">
-            <h3 className="px-2.5 pb-1.5 text-my-xs text-my-tertiary">收藏的工作项</h3>
+          </details>}
+          {data.issues.some((issue) => favorites.includes(issue.id)) && <details open className="mt-5">
+            <summary className="cursor-pointer px-2.5 pb-1.5 text-my-xs text-my-tertiary">收藏</summary>
             {data.issues.filter((issue) => favorites.includes(issue.id)).map((issue) => <div key={issue.id} className="group/favorite flex items-center gap-1 rounded-my-md hover:bg-my-layer-transparent-hover">
-              <button type="button" onClick={() => openIssue(issue.id)} className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-lg text-my-secondary">
+              <button type="button" onClick={() => openIssue(issue.id)} className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary">
                 <Star size={16} className="shrink-0 text-my-icon-tertiary" /><span className="truncate" title={issue.name}>{issue.name}</span>
               </button>
               <button type="button" aria-label={`取消收藏 ${issue.name}`} onClick={() => toggleFavorite(issue.id)} className="mr-1 p-1 text-my-icon-tertiary opacity-0 group-hover/favorite:opacity-100 focus:opacity-100"><X size={12} /></button>
             </div>)}
-          </section>}
-        </>}
-        {domain === 'tools' && <>
-          <h3 className="px-2.5 pb-1.5 pt-1 text-my-xs text-my-tertiary">当前项目</h3>
-          {PROJECT_TOOLS.map(routeButton)}
-          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">本机与应用</h3>
-          {APPLICATION_TOOLS.map(routeButton)}
-          <h3 className="px-2.5 pb-1.5 pt-5 text-my-xs text-my-tertiary">应用与项目</h3>
-          {routeButton('gateway')}
-          <div className="mx-2.5 mt-6 border-t border-my-line pt-3 text-my-xs leading-relaxed text-my-tertiary">
-            外部应用将统一接入。现有 Jira 来源可在「需求接入」查看；连接配置仍在设置中管理。
-            <p className="mt-2">多工程启动、命令日志与只读 Git 查看在「本机开发工具」提供；边界说明见该页。</p>
-          </div>
-        </>}
-      </div>
-    </aside>
-  )
+          </details>}
+
+      </>}
+      {domain === 'team' && <>
+        {([['overview', '概况', <Users size={16} />], ['members', '成员', <CircleUser size={16} />], ['activity', '动态', <Activity size={16} />]] as Array<[TeamView, string, ReactNode]>).map(([id, label, icon]) => row(id, label, page === 'team' && teamView === id, icon, () => { setTeamView(id); setPage('team') }))}
+        {route('analytics')}
+        {row('reports', '报告', page === 'team' && teamView === 'reports', <FileText size={16} />, () => { setTeamView('reports'); setPage('team') })}
+        <p className="px-3 pt-4 text-my-xs leading-relaxed text-my-tertiary">当前项目的成员责任、协作记录与交付情况。</p>
+      </>}
+      {domain === 'settings' && <>
+        {row('preferences', '偏好', page === 'settings' && settingsView === 'preferences', <Settings2 size={16} />, () => { setSettingsView('preferences'); setPage('settings') })}
+        {route('models')}
+        {row('engines', '引擎', page === 'settings' && settingsView === 'engines', <Bot size={16} />, () => { setSettingsView('engines'); setPage('settings') })}
+        {route('gateway')}
+      </>}
+    </div>
+  </aside>
 }

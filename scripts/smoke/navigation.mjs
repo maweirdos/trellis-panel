@@ -64,26 +64,19 @@ try {
   assert.ok(pageType && ts.isUnionTypeNode(pageType.type))
   const pages = pageType.type.types.map((node) => node.literal.text).sort()
   assert.deepEqual(Object.keys(m.PAGE_NAVIGATION).sort(), pages)
-  const reachable = new Set([
-    ...m.PRIMARY_NAVIGATION.map((item) => item.page), ...m.INTAKE_PAGES, ...m.WORK_PAGES,
-    ...m.AI_MODES, 'spec', ...m.PROJECT_TOOLS, ...m.APPLICATION_TOOLS, 'gateway'
-  ])
-  assert.deepEqual([...reachable].sort(), pages)
-  assert.deepEqual(m.PRIMARY_NAVIGATION.map((item) => item.label), ['概览', '需求接入', '工作项', '迭代', '知识', '会话', '团队', '统计'])
-  assert.equal(new Set(m.PRIMARY_NAVIGATION.map((item) => item.id)).size, 8)
-  assert.equal(m.activeModule('tasks', 'items'), 'work')
-  assert.equal(m.activeModule('tasks', 'iterations'), 'iterations')
-  assert.equal(m.activeModule('jira', 'items'), 'intake')
-  assert.equal(m.activeModule('spec', 'items'), 'knowledge')
-  assert.equal(m.activeModule('chat', 'items'), 'tools', 'cross-project API history is not project Agent sessions')
-  assert.equal(m.hasShellContext('tasks'), true)
-  assert.equal(m.hasShellContext('jira'), true)
-  for (const page of ['dashboard', 'team', 'analytics']) assert.equal(m.hasShellContext(page), true, `${page} retains its existing contextual navigation`)
-  for (const page of ['knowledge', 'spec', 'acp', 'channels']) {
-    assert.equal(m.hasShellContext(page), false, `${page} does not receive an empty or duplicate context browser`)
+  const owners = {
+    dashboard: 'home', acp: 'agents', channels: 'agents', chat: 'agents',
+    tasks: 'tasks', inbox: 'tasks', jira: 'tasks', archive: 'tasks', devtools: 'tasks', architecture: 'tasks', studio: 'tasks',
+    team: 'team', analytics: 'team', knowledge: 'knowledge', spec: 'knowledge',
+    settings: 'settings', models: 'settings', gateway: 'settings'
   }
-  assert.equal(m.PAGE_NAVIGATION.archive.domain, 'work')
-  assert.equal(m.PAGE_NAVIGATION.chat.scope, 'local')
+  assert.deepEqual(Object.keys(owners).sort(), pages)
+  for (const [page, owner] of Object.entries(owners)) assert.equal(m.activeModule(page), owner, `${page} belongs to one stable module`)
+  assert.deepEqual(m.PRIMARY_NAVIGATION.map((item) => item.label), ['首页', '智能体', '任务', '团队', '知识'])
+  assert.equal(new Set(m.PRIMARY_NAVIGATION.map((item) => item.id)).size, 5)
+  for (const page of ['tasks', 'jira', 'team', 'analytics', 'settings']) assert.equal(m.hasShellContext(page), true)
+  for (const page of ['dashboard', 'knowledge', 'spec', 'acp', 'channels', 'chat']) assert.equal(m.hasShellContext(page), false, `${page} has no duplicate context browser`)
+  assert.equal(m.PAGE_NAVIGATION.chat.scope, 'local', 'moving API Q&A into agents does not change its cross-project history')
   assert.equal(m.PAGE_NAVIGATION.models.scope, 'application')
   assert.equal(m.PAGE_NAVIGATION.gateway.scope, 'mixed')
 
@@ -124,7 +117,7 @@ try {
   m.useMy.getState().setGroupBy('priority')
   m.useMy.getState().setWorkItemsView('iterations')
   assert.equal(m.useMy.getState().groupBy, 'cycle')
-  assert.equal(m.activeModule('tasks', m.useMy.getState().workItemsView), 'iterations')
+  assert.equal(m.activeModule('tasks'), 'tasks', 'iteration is a task view, not another primary module')
   m.useMy.getState().setWorkItemsView('items')
   assert.equal(m.useMy.getState().groupBy, 'priority', 'leaving iterations restores ordinary work grouping')
   m.useMy.getState().setGroupBy('cycle')
@@ -234,7 +227,7 @@ try {
   historyReads.shift().resolve({ recentProjects: ['D:/FastCurrent'], theme: 'dark' })
   await flush()
   assert.deepEqual(m.useApp.getState().settings.recentProjects, ['D:/FastCurrent'])
-  console.log('Navigation smoke passed: 17 routes, scope isolation, initial focus, project transitions and asynchronous recent-project refresh.')
+  console.log(`Navigation smoke passed: ${pages.length} routes, five primary modules, scope isolation, initial focus and project transitions.`)
 } finally {
   rmSync(temporary, { recursive: true, force: true })
 }

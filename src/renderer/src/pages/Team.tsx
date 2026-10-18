@@ -15,6 +15,7 @@ import {
   Sparkles
 } from 'lucide-react'
 import { useApp } from '../store'
+import { useMy } from '../my/store'
 import { api, hasIpc } from '../api'
 import { Button, EmptyState, Tabs } from '../my/ui'
 import { StatusBadge, PriorityBadge } from '../components/badges'
@@ -46,8 +47,6 @@ interface MemberStat {
   byStatus: Record<string, number>
   lastRecordAt: number
 }
-
-type Tab = 'board' | 'efficiency' | 'report' | 'standup' | 'workflow'
 
 const AVATAR_STYLES = [
   'bg-my-label-emerald text-my-label-emerald-text',
@@ -98,35 +97,37 @@ function dayOrder(label: string): number {
 const STATUS_ORDER: Record<string, number> = { in_progress: 0, review: 1, planning: 2 }
 const PRIORITY_ORDER: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 }
 
-/* ---------------- 工作台：成员负载 + 动态时间线 ---------------- */
+/* ---------------- 协作投影：成员负载 + 动态时间线 ---------------- */
 
-function BoardTab({ feed, members, snapshot }: {
+function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
+  mode?: 'overview' | 'members' | 'activity'
   feed: FeedItem[]
   members: MemberStat[]
   snapshot: NonNullable<ReturnType<typeof useApp.getState>['snapshot']>
 }): JSX.Element {
   const showTask = useApp((s) => s.showTask)
   const [responsibility, setResponsibility] = useState<'all' | 'mine' | 'unassigned'>('all')
-  const visibleMembers = members.filter((member) => responsibility === 'all' || (responsibility === 'unassigned' ? member.name === '未分配' : member.name === snapshot.meta.developer))
+  const filteredMembers = members.filter((member) => responsibility === 'all' || (responsibility === 'unassigned' ? member.name === '未分配' : member.name === snapshot.meta.developer))
+  const visibleMembers = mode === 'overview' ? filteredMembers.slice(0, 4) : filteredMembers
   const unassignedCount = snapshot.tasks.filter((task) => !task.record?.assignee && !isFinished(task)).length
 
   const feedGroups = useMemo(() => {
     const groups = new Map<string, FeedItem[]>()
-    for (const it of feed) {
+    for (const it of (mode === 'overview' ? feed.slice(0, 6) : feed)) {
       const label = dayLabel(it.at)
       const list = groups.get(label) ?? []
       list.push(it)
       groups.set(label, list)
     }
     return [...groups.entries()].sort((a, b) => dayOrder(a[0]) - dayOrder(b[0]))
-  }, [feed])
+  }, [feed, mode])
 
   return (
-    <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
+    <div className={clsx("grid grid-cols-1 gap-5", mode === 'overview' && "xl:grid-cols-5")}>
       {/* 成员负载：谁在做什么（人多时自动铺成两列网格） */}
-      <div className="xl:col-span-3">
+      {mode !== 'activity' && <div className={mode === 'overview' ? 'xl:col-span-3' : ''}>
         <div className="mb-3 flex flex-wrap items-center gap-2 text-my-xs font-semibold text-my-primary">
-          <Users2 size={13} className="text-my-icon-secondary" /> 工作责任
+          <Users2 size={13} className="text-my-icon-secondary" /> 成员负载
           <div className="ml-auto flex items-center gap-1" role="group" aria-label="按任务负责人筛选">
             {([
               ['all', '全部'],
@@ -178,9 +179,9 @@ function BoardTab({ feed, members, snapshot }: {
                     })}
                   </div>
                 </div>
-                {/* 全量列出，超出高度滚动——不再截断 */}
+                {mode === 'overview' && inflight.length > 3 && <p className="mb-1 text-my-xs text-my-tertiary">另有 {inflight.length - 3} 项，前往成员查看</p>}
                 <div className="max-h-64 space-y-1 overflow-y-auto">
-                  {inflight.map((t) => (
+                  {(mode === 'overview' ? inflight.slice(0, 3) : inflight).map((t) => (
                     <button
                       key={t.dirName}
                       onClick={() => showTask(t.dirName)}
@@ -206,10 +207,10 @@ function BoardTab({ feed, members, snapshot }: {
         {visibleMembers.length === 0 && (
           <div className="rounded-my-lg border border-my-line bg-my-surface-1 py-10 text-center text-my-sm text-my-secondary">{responsibility === 'mine' && !snapshot.meta.developer ? '当前项目未设置开发者身份' : '此范围暂无任务负责人'}</div>
         )}
-      </div>
+      </div>}
 
       {/* 动态时间线：按日分组 */}
-      <div className="xl:col-span-2">
+      {mode !== 'members' && <div className={mode === 'overview' ? 'xl:col-span-2' : ''}>
         <div className="overflow-hidden rounded-my-lg border border-my-line bg-my-surface-1">
           <div className="flex items-center gap-1.5 border-b border-my-line px-4 py-2.5 text-my-xs font-semibold text-my-secondary">
             <GitCommitHorizontal size={13} className="text-my-tertiary" /> 最近记录
@@ -271,7 +272,7 @@ function BoardTab({ feed, members, snapshot }: {
             {feed.length === 0 && <div className="py-10 text-center text-my-xs text-my-tertiary">暂无记录</div>}
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }
@@ -303,7 +304,7 @@ function feedDot(kind: FeedItem['kind']): JSX.Element {
 
 /* ---------------- 效率 ---------------- */
 
-function EfficiencyTab(): JSX.Element {
+export function TeamEfficiency(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
   const aiEnabled = useApp((s) => s.settings?.ai.enabled ?? false)
@@ -353,7 +354,7 @@ function EfficiencyTab(): JSX.Element {
     }
   }
 
-  if (!data) return <div className="p-8 text-my-xs text-my-tertiary">分析中…</div>
+  if (!data) return <div className="p-8 text-my-xs text-my-tertiary">{hasIpc ? '分析中…' : '连接桌面项目后可读取流转记录'}</div>
 
   return (
     <div className="space-y-4 lg:col-span-5">
@@ -561,7 +562,9 @@ export function TeamPage(): JSX.Element {
 function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element {
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
-  const [tab, setTab] = useState<Tab>('board')
+  const section = useMy((state) => state.teamView)
+  const setSection = useMy((state) => state.setTeamView)
+  const [reportType, setReportType] = useState<'daily' | 'weekly'>('daily')
 
   const feed = useMemo<FeedItem[]>(() => {
     const items: FeedItem[] = []
@@ -646,7 +649,7 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
             {[
               ['已知成员', members.filter((member) => member.name !== '未分配').length],
               ['未结束', inflightCount],
-              ['本周完成', doneThisWeek],
+              ['近 7 天完成', doneThisWeek],
               ['AI 会话', snapshot.sessions.length]
             ].map(([label, v]) => (
               <span key={label as string} className="my-chip bg-my-layer-2 text-my-tertiary">
@@ -654,22 +657,10 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
               </span>
             ))}
           </div>
-          <div className="ml-auto">
-            <Tabs
-              tabs={[
-                { id: 'board', label: '责任与记录' },
-                { id: 'efficiency', label: '效率分析' },
-                { id: 'standup', label: '站会' },
-                { id: 'report', label: '周报' },
-                { id: 'workflow', label: '工作流洞察' }
-              ]}
-              active={tab}
-              onChange={setTab}
-            />
-          </div>
+
         </div>
 
-        {currentTask?.record && tab === 'board' && (
+        {currentTask?.record && section === 'overview' && (
           <div className="my-card flex items-center gap-4 px-5 py-3.5">
             <Star size={15} className="shrink-0 text-my-accent-text" fill="currentColor" />
             <div className="min-w-0 flex-1">
@@ -685,11 +676,21 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
           </div>
         )}
 
-        {tab === 'board' && <BoardTab feed={feed} members={members} snapshot={snapshot} />}
-        {tab === 'efficiency' && <EfficiencyTab />}
-        {tab === 'standup' && <StandupTab />}
-        {tab === 'report' && <ReportTab />}
-        {tab === 'workflow' && <WorkflowInsightTab snapshot={snapshot} />}
+        {section === 'overview' && <>
+          <p className="text-my-sm text-my-secondary">成员来自当前项目开发者与任务负责人记录；负载按未结束任务汇总。</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setSection('members')}>查看成员</Button>
+            <Button variant="ghost" onClick={() => setSection('activity')}>查看动态</Button>
+          </div>
+          <BoardTab feed={feed} members={members} snapshot={snapshot} />
+        </>}
+        {section === 'members' && <BoardTab feed={feed} members={members} snapshot={snapshot} mode="members" />}
+        {section === 'activity' && <BoardTab feed={feed} members={members} snapshot={snapshot} mode="activity" />}
+        {section === 'reports' && <>
+          <Tabs tabs={[{ id: 'daily', label: '日报' }, { id: 'weekly', label: '周报' }]} active={reportType} onChange={setReportType} />
+          {reportType === 'daily' ? <StandupTab /> : <ReportTab />}
+        </>}
+
       </div>
     </div>
   )
@@ -874,4 +875,9 @@ function WorkflowInsightTab({ snapshot }: { snapshot: ProjectSnapshot }): JSX.El
       )}
     </div>
   )
+}
+
+export function TeamWorkflow(): JSX.Element {
+  const snapshot = useApp((state) => state.snapshot)
+  return snapshot ? <WorkflowInsightTab snapshot={snapshot} /> : <EmptyState title="项目未加载" />
 }

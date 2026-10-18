@@ -731,7 +731,7 @@ function ListLayout({
                 <span className="shrink-0 text-my-xs text-my-tertiary">{g.issues.length}</span>
               </button>
               <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                <Tooltip label="新建工作项">
+                <Tooltip label="新建任务">
                   <button
                     type="button"
                     onClick={onCreate}
@@ -1375,7 +1375,7 @@ function SaveViewBody({ onSave }: { onSave: (name: string) => void }): JSX.Eleme
 
 function WorkItemsPageInner(): JSX.Element {
   const store = useMy()
-  const { data, layout, groupBy, orderBy, filters, display, workItemsView, workItemsTab: tab, setWorkItemsTab: setTab, sidebarCollapsed } = store
+  const { data, layout, groupBy, orderBy, filters, display, workItemsView, workItemsTab: tab, setWorkItemsTab: setTab } = store
   const project = data.projects[0]
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set<string>())
 
@@ -1403,8 +1403,8 @@ function WorkItemsPageInner(): JSX.Element {
   const countIn = (predicate: (g: StateGroup | undefined) => boolean): number =>
     visible.filter((i) => predicate(stateOf(i.stateId)?.group)).length
   const tabs: Array<{ id: IssueTab; label: string; count?: number }> = [
-    { id: 'all', label: '全部', count: visible.length },
-    { id: 'active', label: '未完结', count: countIn((g) => g === 'unstarted' || g === 'started') },
+    { id: 'all', label: '不限', count: visible.length },
+    { id: 'active', label: '待推进', count: countIn((g) => g === 'unstarted' || g === 'started') },
     { id: 'backlog', label: '未规划', count: countIn((g) => g === 'backlog') }
   ]
 
@@ -1541,8 +1541,8 @@ function WorkItemsPageInner(): JSX.Element {
   return (
     <PageLayout variant={PAGE_LAYOUTS.tasks}>
       <PageHeader className="my-work-items-header">
-        <h1 className="shrink-0 text-my-md font-semibold text-my-primary">{workItemsView === 'iterations' ? '迭代' : '工作项'}</h1>
-        {sidebarCollapsed ? <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id)} /> : <span className="text-my-sm text-my-tertiary">{tabs.find((item) => item.id === tab)?.label} · {tabbed.length}</span>}
+        <h1 className="shrink-0 text-my-md font-semibold text-my-primary">{workItemsView === 'iterations' ? '迭代' : '全部'}</h1>
+        <Tabs tabs={tabs} active={tab} onChange={setTab} />
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
           {/* 布局切换器 */}
           <div className="my-segmented" role="group" aria-label="工作项布局">
@@ -1729,7 +1729,7 @@ function WorkItemsPageInner(): JSX.Element {
           {/* 主按钮 */}
           <Button variant="primary" onClick={() => store.setCreateIssueOpen(true)}>
             <Plus size={13} />
-            新建工作项
+            新建任务
           </Button>
         </div>
       </PageHeader>

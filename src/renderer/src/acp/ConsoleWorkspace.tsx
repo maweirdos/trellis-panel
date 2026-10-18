@@ -1,3 +1,4 @@
+import { rememberVisit } from '../my/personal-history'
 /** Page-owned ACP profiles and explicitly started project conversations. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { ArrowDown, Bot, ChevronRight, CircleStop, Ellipsis, FileText, Folder, GitBranch, History, ImagePlus, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
@@ -289,6 +290,8 @@ export function AcpConsolePage(): JSX.Element {
     if (interactive && element && followRef.current) element.scrollTop = element.scrollHeight
   }, [activeEvents, activeSession?.startup, interactive])
   const selectSession = (id: string): void => {
+    const record = projectSessions.find((item) => item.sessionId === id)
+    if (record) rememberVisit({ kind: 'agent', target: id, title: record.title || record.profileSnapshot?.name || record.agentName })
     const element = streamRef.current
     if (activeId && element) writeSessionView(root, activeId, { scrollTop: element.scrollTop, follow: followRef.current })
     scope.entryResolved = true
@@ -296,6 +299,15 @@ export function AcpConsolePage(): JSX.Element {
     setDocumentTarget(null); setDocumentExpanded(false); setReadableReferences({})
     writeActiveSession(root, id); writeWorkspaceView(root, 'conversation')
   }
+  const agentSessionTarget = useMy((state) => state.agentSessionTarget)
+  useEffect(() => {
+    if (!agentSessionTarget || !interactive || !scope.entryResolved) return
+    if (projectSessions.some((item) => item.sessionId === agentSessionTarget)) selectSession(agentSessionTarget)
+    else pushToast({ kind: 'error', title: '该对话已不可用', body: '可从最近对话中重新选择。' })
+    useMy.getState().setAgentSessionTarget(null)
+    // A one-shot user target; selecting reads history and never starts an engine.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentSessionTarget, sessions, interactive, scope])
   const changeDraft = (text: string): void => {
     setInput(text)
     if (!activeId) return
@@ -314,6 +326,7 @@ export function AcpConsolePage(): JSX.Element {
         setDocumentTarget(null); setDocumentExpanded(false); setReadableReferences({})
         writeActiveSession(root, response.sessionId); writeWorkspaceView(root, 'conversation')
         await reloadSessions()
+        if (isCurrent()) rememberVisit({ kind: 'agent', target: response.sessionId, title: '新对话' })
       } else { setNewConversationError(response.error ?? '创建失败，请检查执行引擎状态。'); pushToast({ kind: 'error', title: '会话创建失败', body: response.error ?? '' }) }
     } catch (error) { if (isCurrent()) { setNewConversationError(failureText(error)); pushToast({ kind: 'error', title: '会话创建失败', body: failureText(error) }) } }
     finally { scope.createPending = false; if (isCurrent()) setCreating(false) }
@@ -386,9 +399,18 @@ export function AcpConsolePage(): JSX.Element {
   }, [pendingPerm, scope, isCurrent, reloadSessions])
 
   const showView = (next: WorkspaceView): void => {
+    useMy.getState().requestAgentView(null)
     scope.entryResolved = true; setView(next); writeWorkspaceView(root, next); setSidebarOpen(false)
     if (next !== 'conversation') setInspectorOpen(false)
   }
+  const agentTarget = useMy((state) => state.agentTarget)
+  useEffect(() => {
+    if (!agentTarget || !canInteract() || (hasIpc && !scope.entryResolved)) return
+    const next = agentTarget === 'roles' ? 'agents' : 'conversation'
+    scope.entryResolved = true
+    setView(next); writeWorkspaceView(root, next); setSidebarOpen(false); setInspectorOpen(false)
+    useMy.getState().requestAgentView(null)
+  }, [agentTarget, root, scope, canInteract, sessions])
   const returnInspectorFocus = (): void => { requestAnimationFrame(() => { if (!canInteract()) return; const target = inspectorReturnFocus.current; if (target?.isConnected && target.getClientRects().length > 0) target.focus(); else composerRef.current?.focus() }) }
   const closeInspector = (): void => { setInspectorOpen(false); setDocumentTarget(null); setDocumentExpanded(false); returnInspectorFocus() }
   const closeDocument = (): void => {
@@ -523,11 +545,11 @@ export function AcpConsolePage(): JSX.Element {
 
   if (!root) return <div className="acp-empty text-my-sm">请先打开项目，再查看该项目的 Agent 会话。</div>
   return <div className={clsx('acp-workspace', sidebarCollapsed && !sidebarOpen && 'is-sidebar-collapsed')} style={sidebarWidthStyle}>
-    <div ref={navigationRef} className={clsx('acp-navigation-host flex min-h-0 shrink-0', sidebarCollapsed && !sidebarOpen && 'is-collapsed')}><ConversationNavigation sessions={projectSessions} activeId={activeId} view={view} onView={showView} onSelect={selectSession} onNew={() => openNewConversation()} onChannels={() => setPage('channels')} collapsed={sidebarCollapsed} open={sidebarOpen} onClose={() => setSidebarOpen(false)} /></div>
+    <div ref={navigationRef} className={clsx('acp-navigation-host flex min-h-0 shrink-0', sidebarCollapsed && !sidebarOpen && 'is-collapsed')}><ConversationNavigation sessions={projectSessions} activeId={activeId} view={view} onView={showView} onSelect={selectSession} onNew={() => openNewConversation()} collapsed={sidebarCollapsed} open={sidebarOpen} onClose={() => setSidebarOpen(false)} /></div>
     <main ref={mainRef} className="acp-main my-conversation-frame">
       <header className="acp-workspace-header">
         <Button size="sm" variant="ghost" className={clsx('acp-mobile-only acp-sidebar-toggle', sidebarCollapsed && 'is-visible')} title="展开会话侧栏" onClick={() => { if (window.innerWidth > 900) useMy.getState().toggleSidebar(); else setSidebarOpen(true) }}><Menu size={16} /></Button>
-        <div className="acp-header-identity">{view === 'conversation' && activeSession ? <><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" aria-hidden="true" /><strong>{activeSession.title ?? activeSession.profileSnapshot?.name ?? activeSession.agentName}</strong></> : <strong>{view === 'history' ? '历史与诊断' : '我的 Agent 角色'}</strong>}</div>
+        <div className="acp-header-identity">{view === 'conversation' && activeSession ? <><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" aria-hidden="true" /><strong>{activeSession.title ?? activeSession.profileSnapshot?.name ?? activeSession.agentName}</strong></> : <strong>{view === 'history' ? '历史' : view === 'agents' ? '角色' : '对话'}</strong>}</div>
         <div className="acp-header-actions">
           {view === 'conversation' && activeSession && <>
             <span role="status" className={clsx('acp-session-status inline-flex items-center gap-1 text-my-sm', STATUS_COLOR[activeSession.status])}>{(activeSession.status === 'starting' || operations[activeSession.sessionId] === 'resume') && <Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" />}{operations[activeSession.sessionId] === 'resume' ? '正在连接…' : SESSION_LABEL[activeSession.status]}</span>
@@ -545,9 +567,9 @@ export function AcpConsolePage(): JSX.Element {
       </header>
       {loadError && <div role="alert" className="acp-notice">{loadError}<button className="ml-3 underline" onClick={() => { void reloadCatalogue(); void reloadSessions() }}>重试加载</button></div>}
       {view === 'agents' ? <section className="acp-catalogue my-scrollbar"><PageContent variant="centered">
-        <div className="acp-catalogue-heading"><div><h1>我的 Agent 角色</h1><p className="mt-1 text-my-sm text-my-secondary">定义产品助手、研发助手等工作角色，再选择 Codex 或 Claude Code 为它执行。</p></div><Button size="sm" variant="outline" onClick={() => openNewConversation()}><MessageSquare size={14} />新建会话</Button><Button size="sm" variant="primary" disabled={!hasIpc} onClick={() => createProfile()}><Plus size={14} />创建角色</Button></div>
+        <div className="acp-catalogue-heading"><div><h1>角色</h1><p className="mt-1 text-my-sm text-my-secondary">定义产品助手、研发助手等工作角色，再选择 Codex 或 Claude Code 为它执行。</p></div><Button size="sm" variant="outline" onClick={() => openNewConversation()}><MessageSquare size={14} />新建会话</Button><Button size="sm" variant="primary" disabled={!hasIpc} onClick={() => createProfile()}><Plus size={14} />创建角色</Button></div>
         <ol className="acp-onboarding" aria-label="开始使用 Agent"><li><button onClick={() => setEngineSetupOpen(true)}><span>1</span><strong>配置执行引擎</strong><small>安装、登录与本机环境</small></button></li><li><button onClick={() => createProfile()}><span>2</span><strong>创建工作角色</strong><small>名称、职责与工作指令</small></button></li><li><button onClick={() => openNewConversation()}><span>3</span><strong>选择角色开始会话</strong><small>明确连接后再选择模型</small></button></li></ol>
-        {engineSetupOpen && <section className="acp-library-engines"><div className="mb-3 flex items-center gap-2"><h2 className="min-w-0 flex-1 text-my-sm font-medium text-my-primary">执行引擎与本机环境</h2><Button size="sm" variant="ghost" title="收起本机环境" onClick={() => setEngineSetupOpen(false)}><X size={14} /></Button></div><RuntimePanel agents={agents} onChange={setAgents} isCurrent={isCurrent} /><Button size="sm" variant="ghost" className="mt-3" onClick={() => setPage('settings')}>管理自定义执行命令</Button></section>}
+        {engineSetupOpen && <section className="acp-library-engines"><div className="mb-3 flex items-center gap-2"><h2 className="min-w-0 flex-1 text-my-sm font-medium text-my-primary">执行引擎与本机环境</h2><Button size="sm" variant="ghost" title="收起本机环境" onClick={() => setEngineSetupOpen(false)}><X size={14} /></Button></div><RuntimePanel agents={agents} onChange={setAgents} isCurrent={isCurrent} /><Button size="sm" variant="ghost" className="mt-3" onClick={() => { useMy.getState().setSettingsView('engines'); setPage('settings') }}>管理自定义执行命令</Button></section>}
         <div className="acp-catalogue-tools"><span>本机私有 · 当前项目 · {profiles.filter((item) => !isStarterRole(item)).length} 个自定义角色</span><div className="flex-1" /><label className="flex min-w-0 items-center gap-2"><Search size={14} /><input className="my-input min-w-0 max-w-44" aria-label="搜索已加载的角色" value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} placeholder="搜索角色名称或职责" /></label></div>
         <div className="acp-agent-grid">{customRoles.map(renderRole)}</div>
         {customRoles.length === 0 && <div className="acp-role-empty"><Bot size={24} /><div><strong>{loading ? '正在加载角色…' : libraryQuery ? '没有匹配的自定义角色' : '创建属于你的第一个角色'}</strong><p>{libraryQuery ? '可以修改搜索内容，或查看下方的预置起点。' : '执行引擎只负责运行。把角色的职责、工作边界与输出要求保存在这里，下次可以直接复用。'}</p></div><Button size="sm" variant="primary" disabled={!hasIpc} onClick={() => createProfile()}>创建角色</Button></div>}

@@ -2,9 +2,10 @@
 // 视图偏好（布局/分组/排序/筛选）、弹层（peek/命令面板/新建）与数据镜像。
 import { create } from 'zustand'
 import { api } from '../api'
-import { useApp } from '../store'
+import { rememberVisit } from './personal-history'
+import { useApp, type Page } from '../store'
 import { deriveDataset, issueToTaskPatch, todayIso, TRELLIS_PROJECT_ID } from './adapter'
-import { projectRootKey, type WorkItemsView } from './navigation'
+import { getPageNavigation, projectRootKey, type WorkItemsView, type TeamView, type ToolView, type AgentView, type NavigationDomain, type KnowledgeView, type SettingsView } from './navigation'
 import { loadProjectPreferences, saveProjectPreferences, type SavedView } from './project-preferences'
 import { normalizeSidebarWidth, normalizeUiFontSize, UI_PREFERENCES_KEY, type UiFontSize } from './appearance'
 import type { GroupBy, Issue, IssueFilters, OrderBy, Priority, ThemeMode, WorkItemLayout } from './types'
@@ -61,6 +62,20 @@ export interface MyStore {
   syncFontSizeFromStorage: () => void
 
   layout: WorkItemLayout
+  teamView: TeamView
+  setTeamView: (view: TeamView) => void
+  toolView: ToolView
+  setToolView: (view: ToolView) => void
+  agentSessionTarget: string | null
+  setAgentSessionTarget: (id: string | null) => void
+  agentTarget: AgentView | null
+  requestAgentView: (view: AgentView | null) => void
+  knowledgeView: KnowledgeView
+  setKnowledgeView: (view: KnowledgeView) => void
+  settingsView: SettingsView
+  setSettingsView: (view: SettingsView) => void
+  modulePages: Partial<Record<NavigationDomain, Page>>
+  rememberModulePage: (page: Page) => void
   workItemsView: WorkItemsView
   workItemsTab: 'all' | 'active' | 'backlog'
   itemsGroupBy: GroupBy
@@ -126,6 +141,13 @@ export const useMy = create<MyStore>()((set, get) => ({
         filters: { ...defaultFilters },
         groupBy: 'state' as const,
         itemsGroupBy: 'state' as const,
+        teamView: 'overview' as const,
+        toolView: 'git' as const,
+        agentSessionTarget: null,
+        agentTarget: null,
+        knowledgeView: 'materials' as const,
+        settingsView: 'preferences' as const,
+        modulePages: {},
         workItemsView: 'items' as const,
         workItemsTab: 'all' as const,
         orderBy: 'manual' as const,
@@ -163,6 +185,23 @@ export const useMy = create<MyStore>()((set, get) => ({
   },
 
   layout: prefs.layout ?? 'list',
+  teamView: 'overview',
+  setTeamView: (teamView) => set({ teamView }),
+  toolView: 'git',
+  setToolView: (toolView) => set({ toolView }),
+  agentSessionTarget: null,
+  setAgentSessionTarget: (agentSessionTarget) => set({ agentSessionTarget }),
+  agentTarget: null,
+  requestAgentView: (agentTarget) => set({ agentTarget }),
+  knowledgeView: 'materials',
+  setKnowledgeView: (knowledgeView) => set({ knowledgeView }),
+  settingsView: 'preferences',
+  setSettingsView: (settingsView) => set({ settingsView }),
+  modulePages: {},
+  rememberModulePage: (page) => {
+    const domain = getPageNavigation(page).domain
+    if (get().modulePages[domain] !== page) set({ modulePages: { ...get().modulePages, [domain]: page }, ...(page === 'architecture' || page === 'studio' ? { toolView: page } : {}) })
+  },
   workItemsView: 'items',
   workItemsTab: 'all',
   itemsGroupBy: 'state',
@@ -196,7 +235,11 @@ export const useMy = create<MyStore>()((set, get) => ({
   setDisplay: (patch) => set({ display: { ...get().display, ...patch } }),
 
   peekIssueId: null,
-  openIssue: (id) => set({ peekIssueId: id }),
+  openIssue: (id) => {
+    const issue = get().data.issues.find((item) => item.id === id)
+    if (issue) rememberVisit({ kind: 'task', target: id, title: issue.name })
+    set({ peekIssueId: id })
+  },
   closeIssue: () => set({ peekIssueId: null }),
   createIssueOpen: false,
   setCreateIssueOpen: (v) => set({ createIssueOpen: v }),
@@ -241,7 +284,7 @@ export const useMy = create<MyStore>()((set, get) => ({
   applyView: (id) => {
     const view = get().savedViews.find((v) => v.id === id)
     if (!view) return
-    set({ filters: { ...defaultFilters, ...view.filters }, groupBy: view.groupBy, itemsGroupBy: view.groupBy, workItemsView: 'items' })
+    set({ filters: { ...defaultFilters, ...view.filters }, groupBy: view.groupBy, itemsGroupBy: view.groupBy, workItemsView: 'items', workItemsTab: 'all' })
   },
   removeView: (id) => {
     const next = get().savedViews.filter((v) => v.id !== id)

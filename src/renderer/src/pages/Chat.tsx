@@ -1,3 +1,5 @@
+import { rememberVisit } from '../my/personal-history'
+import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { PageContent, PageSection } from '../my/layout/PageLayout'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
@@ -410,11 +412,12 @@ export function ChatPage(): JSX.Element {
       {/* 会话列表 */}
       {!sidebarCollapsed && <aside style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
         <SidebarResizeHandle />
+        <ModuleLinks domain="agents" />
         <div className="flex items-center px-3 py-2.5">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => void chatNewSession({ providerId: provider?.id, modelId })}
+            onClick={() => { const root = useApp.getState().snapshot?.meta.root; void chatNewSession({ providerId: provider?.id, modelId }).then((session) => { if (session && useApp.getState().snapshot?.meta.root === root) rememberVisit({ kind: 'chat', target: session.id, title: session.title || '新问答' }) }) }}
             title="新建会话"
           >
             <Plus size={14} />
@@ -431,7 +434,7 @@ export function ChatPage(): JSX.Element {
                 'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-my-lg px-2 py-1.5 text-my-xs transition-colors',
                 s.id === activeId ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1'
               )}
-              onClick={() => void chatOpenSession(s.id)}
+              onClick={() => { rememberVisit({ kind: 'chat', target: s.id, title: s.title || '问答' }); void chatOpenSession(s.id) }}
             >
               <span className="min-w-0 flex-1 truncate" title={s.title}>
                 {s.title}

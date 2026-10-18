@@ -32,7 +32,13 @@ export function CommandPalette(): JSX.Element | null {
   const [selected, setSelected] = useState(0)
 
   const go = useCallback((page: Page): void => {
-    if (page === 'tasks') setWorkItemsView('items')
+    const ui = useMy.getState()
+    if (page === 'tasks') { setWorkItemsView('items'); ui.setWorkItemsTab('all') }
+    if (page === 'team') ui.setTeamView('overview')
+    if (page === 'settings') ui.setSettingsView('preferences')
+    if (page === 'knowledge') ui.setKnowledgeView('materials')
+    if (page === 'devtools') ui.setToolView('git')
+    if (page === 'acp') ui.requestAgentView('conversation')
     setPageMain(page)
     setOpen(false)
   }, [setWorkItemsView, setPageMain, setOpen])
@@ -49,19 +55,30 @@ export function CommandPalette(): JSX.Element | null {
         section: `导航 · ${DOMAIN_LABELS[entry.domain]}`,
         label: entry.title,
         icon: <NavIcon name={entry.icon} size={14} />,
-        hint: entry.commandHint ?? navigationScopeLabel(entry.scope),
+        hint: page === 'jira' ? 'Jira · 导入当前项目' : entry.commandHint ?? navigationScopeLabel(entry.scope),
         keywords: `${DOMAIN_LABELS[entry.domain]} ${entry.keywords ?? ''}`,
         run: () => go(page)
       }
     })
     nav.splice(1, 0, {
-      id: 'n-task-cycle', section: '导航 · 迭代', label: '迭代', icon: <NavIcon name="cycles" size={14} />,
+      id: 'n-task-cycle', section: '导航 · 任务', label: '迭代', icon: <NavIcon name="cycles" size={14} />,
       hint: '当前项目', keywords: '排期 自然周',
       run: () => { setWorkItemsView('iterations'); setPageMain('tasks'); setOpen(false) }
     })
+    const extra: PaletteItem[] = [
+      ...(['members', 'activity', 'reports'] as const).map((section) => ({
+        id: `n-team-${section}`, section: '导航 · 团队', label: { members: '成员', activity: '动态', reports: '报告' }[section], icon: <NavIcon name="views" size={14} />, hint: '当前项目',
+        run: () => { useMy.getState().setTeamView(section); setPageMain('team'); setOpen(false) }
+      })),
+      { id: 'n-roles', section: '导航 · 智能体', label: '角色', icon: <NavIcon name="inbox" size={14} />, hint: '当前项目', keywords: 'Agent 我的角色', run: () => { useMy.getState().requestAgentView('roles'); setPageMain('acp'); setOpen(false) } },
+      { id: 'n-company', section: '导航 · 知识', label: '公司库', icon: <NavIcon name="pages" size={14} />, hint: '跨项目资料', run: () => { useMy.getState().setKnowledgeView('company'); setPageMain('knowledge'); setOpen(false) } },
+      { id: 'n-engines', section: '导航 · 设置', label: '引擎', icon: <NavIcon name="modules" size={14} />, hint: '本机', keywords: 'Runtime ACP Codex Claude 环境', run: () => { useMy.getState().setSettingsView('engines'); setPageMain('settings'); setOpen(false) } },
+      { id: 'n-run', section: '导航 · 任务', label: '运行', icon: <NavIcon name="views" size={14} />, hint: '本机项目工具', run: () => { useMy.getState().setToolView('run'); setPageMain('devtools'); setOpen(false) } },
+      { id: 'n-git', section: '导航 · 任务', label: 'Git', icon: <NavIcon name="views" size={14} />, hint: '当前项目 · 只读', run: () => { useMy.getState().setToolView('git'); setPageMain('devtools'); setOpen(false) } }
+    ]
     const issues: PaletteItem[] = data.issues.slice(0, 60).map((issue) => ({
       id: `i-${issue.id}`,
-      section: '工作项',
+      section: '任务',
       label: issue.name,
       icon: stateIcon(issue.stateId),
       keywords: issue.id,
@@ -88,7 +105,7 @@ export function CommandPalette(): JSX.Element | null {
       {
         id: 'a-new',
         section: '操作',
-        label: '新建工作项',
+        label: '新建任务',
         icon: stateIcon('st-planning'),
         run: () => {
           setWorkItemsView('items')
@@ -98,7 +115,8 @@ export function CommandPalette(): JSX.Element | null {
         }
       }
     ]
-    return [...nav, ...issues, ...actions]
+    const sections = ['首页', '智能体', '任务', '团队', '知识', '设置'].map((label) => `导航 · ${label}`)
+    return [...nav, ...extra].sort((a, b) => sections.indexOf(a.section) - sections.indexOf(b.section)).concat(issues, actions)
   }, [data, theme, go, setWorkItemsView, setPageMain, openIssue, setOpen, setCreateIssueOpen])
 
   const filtered = useMemo(() => {

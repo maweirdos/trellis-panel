@@ -1,9 +1,9 @@
 // 分析页（R9）：指标卡 + 手写 SVG 柱状图（创建 vs 关闭）+ 状态/优先级分布 + 成员排行。
-import { useMemo, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { PRIORITY_ORDER, useMy } from '../store'
-import { Avatar } from '../ui'
+import { Avatar, Tabs } from '../ui'
+import { TeamEfficiency, TeamWorkflow } from '../../pages/Team'
 import { PriorityIcon, StateGroupIcon } from '../icons'
-import { PAGE_LAYOUTS, PageBody, PageContent, PageLayout } from '../layout/PageLayout'
 import type { Issue, Priority, WorkItemState } from '../types'
 
 const PRIORITY_KEYS: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
@@ -118,6 +118,7 @@ function MetricCard({ label, value }: { label: string; value: number }): JSX.Ele
 /* ---------------- 页面 ---------------- */
 
 export function AnalyticsPage(): JSX.Element {
+  const [section, setSection] = useState<'snapshot' | 'flow' | 'workflow'>('snapshot')
   const { data } = useMy()
   const issues = data.issues
 
@@ -192,13 +193,10 @@ export function AnalyticsPage(): JSX.Element {
   }
 
   return (
-    <PageLayout variant={PAGE_LAYOUTS.analytics}>
-    <PageBody>
-    <PageContent>
-      {/* 顶栏 */}
-      <header className="pb-4">
-        <h1 className="text-my-xl font-semibold text-my-primary">统计分析</h1>
-      </header>
+    <div className="space-y-5">
+      <Tabs tabs={[{ id: 'snapshot', label: '概览' }, { id: 'flow', label: '流转' }, { id: 'workflow', label: '流程' }]} active={section} onChange={setSection} />
+      {section === 'flow' ? <><p className="text-my-xs text-my-secondary">流转数来自项目历史日志，日趋势为近 14 天；周期按当前未归档的已完成任务计算，停滞包含规划中、进行中与评审中任务。</p><TeamEfficiency /></> : section === 'workflow' ? <><p className="text-my-xs text-my-secondary">当前项目任务的流程配置与停滞情况。</p><TeamWorkflow /></> : <>
+        <p className="text-my-xs text-my-secondary">当前未归档任务的快照；关闭数仅计已完成，近 8 周按创建和完成日期汇总。</p>
 
       <div className="space-y-3">
         {/* 指标卡 */}
@@ -344,8 +342,7 @@ export function AnalyticsPage(): JSX.Element {
           </div>
         </div>
       </div>
-    </PageContent>
-    </PageBody>
-    </PageLayout>
+      </>}
+    </div>
   )
 }

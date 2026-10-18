@@ -19,6 +19,7 @@ import {
   Bot
 } from 'lucide-react'
 import { useApp } from '../store'
+import { useMy } from '../my/store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, Checkbox, EmptyState } from '../my/ui'
@@ -91,6 +92,7 @@ function JiraStatusMapEditor({ settings }: { settings: Settings }): JSX.Element 
 }
 
 export function SettingsPage(): JSX.Element {
+  const settingsView = useMy((state) => state.settingsView)
   const settings = useApp((s) => s.settings)
   // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态而非在渲染期解引用崩溃（真机 bootstrap 后恒非空）
   if (!settings) return (
@@ -101,7 +103,7 @@ export function SettingsPage(): JSX.Element {
       <EmptyState title="设置未加载" description="连接桌面应用后可查看其余设置。" />
     </div>
   )
-  return <SettingsPageBody settings={settings} />
+  return settingsView === 'engines' ? <AcpAgentsSection /> : <SettingsPageBody settings={settings} />
 }
 
 function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
@@ -331,7 +333,6 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
     <div className="my-fade">
       <div className="space-y-4">
         {/* Web 看板 HTTP 服务 */}
-        <AcpAgentsSection />
 
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">

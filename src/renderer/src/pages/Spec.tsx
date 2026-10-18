@@ -1,3 +1,5 @@
+import { rememberVisit } from '../my/personal-history'
+import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageContent } from '../my/layout/PageLayout'
 import {
@@ -232,6 +234,7 @@ export function SpecPage(): JSX.Element {
   }
 
   const loadDoc = (d: SelectedDoc): void => {
+    rememberVisit({ kind: 'document', target: d.path, title: d.name })
     const node = d.group === 'spec' ? files.find((file) => file.path === d.path) : undefined
     if (node) {
       loadSpec(node)
@@ -356,6 +359,7 @@ export function SpecPage(): JSX.Element {
       {/* 左栏：检索 + 规范树 / 命中列表 / 工作区日志 */}
       <div id="spec-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line bg-my-layer-1', browserVisible ? 'flex' : 'hidden')}>
         <SidebarResizeHandle />
+        <ModuleLinks domain="knowledge" />
         <div className="space-y-2 border-b border-my-line p-2.5">
           <SearchInput value={query} onChange={setQuery} placeholder="全文搜索规范 / 日志 / 共享文档…" />
           {searching_ && (
@@ -451,7 +455,7 @@ export function SpecPage(): JSX.Element {
                 <div className="px-2 py-4 text-center text-my-xs text-my-tertiary">没有规范文档</div>
               )}
               {snapshot?.spec.map((n) => (
-                <TreeItem key={n.path} node={n} depth={0} selected={selected?.path ?? null} refCount={refCount} onSelect={loadSpec} />
+                <TreeItem key={n.path} node={n} depth={0} selected={selected?.path ?? null} refCount={refCount} onSelect={(node) => { if (node.type === 'file') rememberVisit({ kind: 'document', target: node.path, title: node.name }); loadSpec(node) }} />
               ))}
 
               {(snapshot?.developers.length ?? 0) > 0 && (
