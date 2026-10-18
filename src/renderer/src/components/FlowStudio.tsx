@@ -1,3 +1,4 @@
+import { PageContent } from '../my/layout/PageLayout'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Sparkles,
@@ -328,8 +329,8 @@ export function FlowStudio(): JSX.Element {
       {/* 主区 */}
       <div className="flex min-w-0 flex-1 flex-col">
         {panel === 'design' && (
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            <div className="mx-auto max-w-2xl space-y-4">
+          <div className="my-scrollbar min-h-0 flex-1">
+            <PageContent variant="centered" className="space-y-4">
               <div>
                 <h2 className="flex items-center gap-2 text-my-sm font-semibold text-my-primary">
                   <Wand2 size={15} className="text-my-accent-text" /> 用一句话让 AI 设计工作流
@@ -388,13 +389,13 @@ export function FlowStudio(): JSX.Element {
                   </div>
                 </div>
               )}
-            </div>
+            </PageContent>
           </div>
         )}
 
         {panel === 'detail' && selected && (
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            <div className="mx-auto max-w-2xl space-y-4">
+          <div className="my-scrollbar min-h-0 flex-1">
+            <PageContent variant="centered" className="space-y-4">
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" className="text-my-xs" onClick={() => { setSelected(null); setPanel('design') }}>← 返回</Button>
                 <h2 className="text-my-sm font-semibold text-my-primary">{selected.name}</h2>
@@ -426,7 +427,7 @@ export function FlowStudio(): JSX.Element {
               )}
 
               <FlowVisual def={selected} />
-            </div>
+            </PageContent>
           </div>
         )}
 
@@ -453,8 +454,8 @@ export function FlowStudio(): JSX.Element {
               <div className="mx-4 mt-3 rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-2.5 text-my-xs text-my-danger-text">{runError}</div>
             )}
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-              <div className="mx-auto max-w-2xl space-y-1">
+            <div className="my-scrollbar min-h-0 flex-1">
+              <PageContent variant="centered" className="space-y-1">
                 {events.length === 0 && <p className="py-8 text-center text-my-xs text-my-tertiary">等待事件…</p>}
                 {events.map((e, i) => {
                   const isPhase = e.kind === 'phase-start' || e.kind === 'phase-done'
@@ -497,7 +498,7 @@ export function FlowStudio(): JSX.Element {
                     ))}
                   </div>
                 )}
-              </div>
+              </PageContent>
             </div>
           </div>
         )}

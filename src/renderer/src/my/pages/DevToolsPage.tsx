@@ -416,7 +416,7 @@ export function DevToolsPage(): JSX.Element {
   const root = useApp((s) => s.snapshot?.meta.root ?? null)
   const rootKey = projectRootKey(root)
   return (
-    <div key={rootKey ?? 'preview'} className="mx-auto w-full max-w-5xl space-y-4 px-5 pb-12 pt-5 lg:px-8">
+    <div key={rootKey ?? 'preview'} className="space-y-4">
       <GitSection />
       <RunSection />
     </div>

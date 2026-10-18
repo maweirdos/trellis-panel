@@ -3,6 +3,7 @@ import { useMemo, type JSX } from 'react'
 import { PRIORITY_ORDER, useMy } from '../store'
 import { Avatar } from '../ui'
 import { PriorityIcon, StateGroupIcon } from '../icons'
+import { PAGE_LAYOUTS, PageBody, PageContent, PageLayout } from '../layout/PageLayout'
 import type { Issue, Priority, WorkItemState } from '../types'
 
 const PRIORITY_KEYS: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
@@ -191,13 +192,15 @@ export function AnalyticsPage(): JSX.Element {
   }
 
   return (
-    <div className="mx-auto max-w-[1024px]">
+    <PageLayout variant={PAGE_LAYOUTS.analytics}>
+    <PageBody>
+    <PageContent>
       {/* 顶栏 */}
-      <header className="px-8 pb-4 pt-6">
+      <header className="pb-4">
         <h1 className="text-my-xl font-semibold text-my-primary">统计分析</h1>
       </header>
 
-      <div className="space-y-3 px-8 pb-16">
+      <div className="space-y-3">
         {/* 指标卡 */}
         <div className="grid grid-cols-4 gap-3">
           <MetricCard label="已创建" value={createdCount} />
@@ -341,6 +344,8 @@ export function AnalyticsPage(): JSX.Element {
           </div>
         </div>
       </div>
-    </div>
+    </PageContent>
+    </PageBody>
+    </PageLayout>
   )
 }

@@ -3,6 +3,7 @@ import { Inbox as InboxIcon, Sparkles, FileText, Trash2, Copy, ExternalLink, Lin
 import { useApp } from '../store'
 import { api } from '../api'
 import { Button } from '../my/ui'
+import { PageContent, PageToolbar } from '../my/layout/PageLayout'
 import { PriorityBadge } from '../components/badges'
 import { confirmDialog } from '../components/Dialogs'
 import type { JSX } from 'react'
@@ -68,9 +69,9 @@ export function InboxPage(): JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col my-fade">
+    <div className="my-fade flex h-full min-h-0 min-w-0 flex-col">
       {/* toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
+      <PageToolbar>
         <span className="my-chip border border-my-line-warning bg-my-warning-subtle text-my-warning-text">
           {pending.length} 待规划
         </span>
@@ -82,9 +83,10 @@ export function InboxPage(): JSX.Element {
             <Sparkles size={12} /> 新建待办
           </Button>
         </div>
-      </div>
+      </PageToolbar>
 
-      <div className="my-scrollbar min-h-0 flex-1 p-5">
+      <div className="my-scrollbar min-h-0 flex-1">
+        <PageContent variant="full">
         {todos.length === 0 && (
           <div className="grid place-items-center gap-3 py-24 text-my-tertiary">
             <InboxIcon size={36} strokeWidth={1.2} />
@@ -136,6 +138,7 @@ export function InboxPage(): JSX.Element {
             </div>
           </>
         )}
+        </PageContent>
       </div>
     </div>
   )

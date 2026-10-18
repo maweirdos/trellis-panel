@@ -544,7 +544,7 @@ export function ModelsPage(): JSX.Element {
   }, [providers])
 
   return (
-    <div className="flex h-full flex-col p-6">
+    <div className="my-page-workspace-padding flex h-full min-h-0 min-w-0 flex-col">
       {/* 顶部操作栏 */}
       <div className="mb-4 flex items-center justify-end gap-2">
         <Button variant="neutral" onClick={() => void persistProviders(providers)} title="刷新与重新同步">

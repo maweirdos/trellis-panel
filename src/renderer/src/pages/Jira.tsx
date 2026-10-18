@@ -19,6 +19,7 @@ import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, EmptyState } from '../my/ui'
+import { PageContent, PageToolbar } from '../my/layout/PageLayout'
 import { JIRA_CATEGORY_STATUS, statusLabel } from '../utils/labels'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import type { JSX } from 'react'
@@ -498,8 +499,8 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <PageToolbar>
         <span className="my-chip bg-my-label-indigo font-mono text-my-label-indigo-text">{cfg.baseUrl.replace(/^https?:\/\//, '')}</span>
         <div className="flex overflow-hidden rounded-my-md border border-my-line">
           <button
@@ -566,15 +567,16 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
             样本 · {SAMPLE_REASON[searchMeta.incompleteReason ?? ''] ?? '未取全'}
           </span>
         )}
-      </div>
+      </PageToolbar>
 
-      <div className="p-5">
+      <div className="my-scrollbar min-h-0 flex-1">
+      <PageContent variant="full">
         {error && (
-          <div className="mx-auto mb-4 max-w-3xl rounded-my-lg border border-my-line-danger bg-my-danger-subtle px-4 py-2.5 text-my-xs text-my-danger-text">
+          <div className="mb-4 rounded-my-lg border border-my-line-danger bg-my-danger-subtle px-4 py-2.5 text-my-xs text-my-danger-text">
             {error}
           </div>
         )}
-        <div className="mx-auto max-w-3xl space-y-2">
+        <div className="space-y-2">
           {groupByVersion
             ? versionGroups.map((g) => (
                 <div key={g.version} className="space-y-2">
@@ -592,6 +594,7 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
             <div className={clsx('py-16 text-center text-my-xs text-my-tertiary')}>没有匹配的 Jira 问题</div>
           )}
         </div>
+      </PageContent>
       </div>
 
       {planSeed && <PlanningModal seed={planSeed} onClose={() => setPlanSeed(null)} />}

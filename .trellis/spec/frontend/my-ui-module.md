@@ -22,6 +22,30 @@ double-click reset and globally reachable expand/collapse behavior.
 - `?my=1` is the no-IPC development preview. It is not evidence that native project,
   connected-session or window interactions have succeeded.
 
+## Page layout contracts
+
+All routes choose `full` or `centered` in `layout/PageLayout.tsx`'s exhaustive
+`PAGE_LAYOUTS` registry. Page identity still belongs to navigation metadata; the
+layout registry owns only geometry. `PageFrame` and pages with custom module
+headers use the same `PageLayout`/`PageHeader`/`PageBody`/`PageContent` components.
+
+- Centered: overview, analytics, team, archive, Settings, integrations, gateway and
+  local developer tools. Shared content width is1120px plus24px horizontal gutters
+  (16px at960px). The body scrolls while frame headers and scope notes stay fixed.
+- Full: work items/iterations, intake, Jira, knowledge, spec, ACP, channels, API chat,
+  architecture, Studio and models. Workspaces fill the available width/height;
+  their actual tables, boards, source browsers and editors retain scroll ownership.
+- Nested Studio/flow/document/catalogue panes reuse `PageContent` with an explicit
+  standard variant. Compact footers use `PageSection`, with no extra page padding.
+  Task preview/expanded presentation changes only the shared content variant; do
+  not change reader keys or mount another reader. Standalone documents also use
+  the shared centered content container. ACP text measure remains its canonical
+  conversation token inside the full workspace, rather than a private page width.
+
+Do not add a leaf page max-width or compensate with nested outer padding. Change
+the canonical page tokens and shared layout once. See [css-design.md](./css-design.md)
+for component signatures, spacing and scroll alignment.
+
 ## Canonical design tokens
 
 - `my-tokens.css` is hand-maintained and owns every visual value: dark/light
@@ -119,6 +143,10 @@ knowledge, conversations, team and analytics are peers. The former task-parent t
 - `openSpecDocument(path)` captures `{ projectRoot, path }` in `specDocumentTarget`.
 - Dropdown/Modal register stable `useId` layers through `useEscLayer`; a single ordinary
   App listener calls `dispatchEscKey`. Doc/capsule/quicktodo modes remain independent.
+- Modal's DOM host is the nearest App-owned `.my-root`, found through its source
+  anchor. Portals retain React context, so inactive retained sources still render
+  no modal and do not restore focus. The backdrop must cover the whole native
+  window's web surface, including the HTML title bar, without enabling dragging.
 - `projectRootKey(root: string | null | undefined): string | null` is the frontend identity
   helper. Windows drive/UNC paths normalize separators and case; POSIX paths preserve case.
 - `loadProjectPreferences(root, storage?)` / `saveProjectPreferences(root, prefs, storage?)`

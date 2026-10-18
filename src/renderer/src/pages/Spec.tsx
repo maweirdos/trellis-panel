@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { PageContent } from '../my/layout/PageLayout'
 import {
   ChevronRight,
   ChevronDown,
@@ -345,7 +346,7 @@ export function SpecPage(): JSX.Element {
 
   return (
     <div ref={pageRef} className="my-fade flex h-full min-h-0 min-w-0 flex-col bg-my-surface-1">
-      <div className="flex shrink-0 items-center gap-3 border-b border-my-line px-4 py-2">
+      <div className="my-page-toolbar-row">
         <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="spec-browser" className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
           {browserVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 目录与检索
         </button>
@@ -574,10 +575,10 @@ export function SpecPage(): JSX.Element {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 spellCheck={false}
-                className="h-[calc(100vh-140px)] w-full resize-none bg-my-canvas p-5 font-mono text-my-sm leading-5 text-my-secondary outline-none"
+                className="my-page-workspace-padding h-[calc(100vh-140px)] w-full resize-none bg-my-canvas font-mono text-my-sm leading-5 text-my-secondary outline-none"
               />
             )}
-              <div className={clsx('mx-auto max-w-3xl px-6 py-5', editing && 'hidden')}>
+              <PageContent variant="centered" className={clsx(editing && 'hidden')}>
                 {relativePath !== null && snapshot ? (
                   <DocumentReader key={`${snapshot.meta.root}:${selected.path}`} workspaceId={snapshot.meta.root} relativePath={relativePath} />
                 ) : state.loading ? <div className="text-my-xs text-my-tertiary">加载中…</div> : state.error ? <div className="text-my-xs text-my-danger-text">{state.error}</div> : (
@@ -589,7 +590,7 @@ export function SpecPage(): JSX.Element {
                     </pre>
                   )
                 )}
-              </div>
+              </PageContent>
           </>
         ) : (
           <div className="grid h-full place-items-center text-my-xs text-my-tertiary">

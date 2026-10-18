@@ -204,8 +204,8 @@ export function GatewayPage(): JSX.Element {
   const recentLogs = gatewayStatus?.recentLogs || []
 
   return (
-    <div className="min-w-0 p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="min-w-0">
+      <div className="space-y-6">
         {/* 状态徽标与操作栏 */}
         <div className="flex flex-col gap-3 border-b border-my-line pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">

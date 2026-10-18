@@ -10,6 +10,7 @@ import { CommandPalette } from '../CommandPalette'
 import { IssuePeek } from '../pages/IssuePeek'
 import { CreateIssueModal } from '../pages/work-items/CreateIssueModal'
 import { PageFrame } from './PageFrame'
+import { PAGE_LAYOUTS, PageLayout } from './PageLayout'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { useEscLayer } from '../../utils/use-esc-layer'
 import { InteractionScope, useInteractionActive } from '../../utils/interaction-scope'
@@ -123,7 +124,7 @@ export function PageBody(): JSX.Element {
       <Suspense fallback={acpActive && outerInteractive ? <PageLoading /> : null}>
       <InteractionScope key={acpSource?.owner ?? 'empty'} active={acpActive}>
         {retained && <div ref={(element) => { sourceRef.current = element; if (element) element.inert = !acpActive || !outerInteractive }} data-acp-source-owner={acpSource.owner} hidden={!acpActive} aria-hidden={!acpActive || undefined} className="h-full min-h-0 min-w-0">
-          <ErrorBoundary key={`acp:${acpSource.root ?? 'preview'}:${acpSource.owner}`}><AcpConsolePage /></ErrorBoundary>
+          <ErrorBoundary key={`acp:${acpSource.root ?? 'preview'}:${acpSource.owner}`}><PageLayout variant={PAGE_LAYOUTS.acp}><AcpConsolePage /></PageLayout></ErrorBoundary>
         </div>}
       </InteractionScope>
       </Suspense>
@@ -252,7 +253,7 @@ export function MyApp(): JSX.Element {
       <main className="my-workspace-center relative flex min-w-0 flex-1 flex-col overflow-hidden bg-my-surface-1">
         {/* Keep the source instance mounted, with its local tabs/filter/scroll intact. */}
         <div ref={sourceRef} data-page-scroll tabIndex={-1} aria-label="来源工作视图" aria-hidden={workspace || undefined}
-          className={`my-scrollbar min-h-0 min-w-0 flex-1 ${workspace ? 'invisible pointer-events-none absolute inset-0' : ''}`}>
+          className={`min-h-0 min-w-0 flex-1 overflow-hidden ${workspace ? 'invisible pointer-events-none absolute inset-0' : ''}`}>
           <InteractionScope active={!workspace}><PageBody /></InteractionScope>
         </div>
         {openTaskDir !== null && (

@@ -127,8 +127,8 @@ export function ArchitecturePage(): JSX.Element {
   }, [snapshot])
 
   return (
-    <div className="flex h-full min-w-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-2">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <div className="my-page-toolbar-row">
         {currentNode && (
           <span className="my-chip bg-my-accent-subtle text-my-accent-text">
             会话最后绑定 · {currentNode.dir}
@@ -140,7 +140,7 @@ export function ArchitecturePage(): JSX.Element {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="my-scrollbar min-w-0 flex-1 overflow-auto p-3">
+        <div className="my-page-workspace-padding my-scrollbar min-w-0 flex-1 overflow-auto">
           <svg key={runId} viewBox={`0 0 ${W} ${H}`} className="arch-svg h-full min-h-[520px] w-full">
             <defs>
               {/* 虚线箭头（默认） */}

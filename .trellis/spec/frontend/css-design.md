@@ -48,6 +48,35 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   uses `my-activity-note`; failures and pending permissions retain semantic emphasis.
 - Shared React primitives live in `my/ui.tsx`: Button, Dropdown, Modal,
   Checkbox, SearchInput, Tabs, Avatar, Tooltip and EmptyState.
+- `Modal` portals into its owning App `.my-root`, outside page stacking and
+  clipping contexts. Keep the root's theme/font inheritance and React interaction
+  scope; do not portal to an unthemed body or add a nested `.my-root`. Its fixed
+  `no-drag` backdrop covers the title bar as well as the page. Keep the existing
+  modal stacking token, Escape dispatcher and focus containment/return behavior.
+- Page geometry lives in `my/layout/PageLayout.tsx`, with exactly two variants:
+  `PageLayout({ variant: 'full'|'centered', ...divProps })`. The exhaustive
+  `PAGE_LAYOUTS satisfies Record<Page, PageLayoutVariant>` registry classifies
+  every route, including new routes. `PageFrame` consumes that registry; pages
+  with their own module header compose the same layout directly.
+- `PageHeader`, `PageToolbar` and `PageNotice` provide fixed, aligned bands.
+  `PageBody` fills the remaining height. A centered body owns one scrollbar;
+  a full body delegates scrolling to its real workspace panes. Do not restore
+  an additional scrolling wrapper around `PageBody` in `MyApp`.
+- `PageContent({ variant?: 'full'|'centered', ...divProps })` provides the page's
+  horizontal and vertical insets; `PageSection` provides horizontal alignment for
+  compact controls and footers. Without a variant they inherit the page contract.
+  Nested reader/editor panes explicitly select one of the same two variants.
+  Full workspaces can retain edge-to-edge tables, boards and split panes; their
+  controls use `PageToolbar` or `my-page-toolbar-row`, and padded workspaces use
+  `my-page-workspace-padding`.
+- Canonical page content width is1120px, excluding the two24px gutters. The
+  gutters become16px at960px. Content starts24px below its band and has48px
+  bottom space. These values live only in `my-tokens.css`; headers, scope notes,
+  toolbars and contents consume them from `my-shell.css`. Centered fixed bands
+  reserve the same symmetric scrollbar gutter as their body. Remove old leaf
+  `max-w-*`, `mx-auto`, `px-*`/`p-*` page wrappers when migrating; never stack
+  page padding inside `PageContent`. Dialogs, table columns, individual controls
+  and message bubbles may retain their own functional dimensions.
 - `Avatar({ tone?: 'color'|'accent' })`: use `tone="accent"` with a neutral
   accent background. Arbitrary user identity colors retain semantic on-color ink.
 - `BrandMark({ size?: number, className?: string })` uses the canonical SVG.
@@ -97,6 +126,9 @@ and buttons derive their heights from the type and padding metrics.
 | Keyboard focus | Neutral visible outline or token focus shadow |
 | Menu near viewport edge | Actual measured menu remains inside the viewport |
 | Narrow dialog | Panel fits the viewport without a document horizontal scrollbar |
+| Centered route | Header, scope note and body share1120px content width and the same gutter; body alone scrolls |
+| Full route | Header stays fixed; tables/editors/panes fill the remaining space and retain their own scroll owners |
+| Page migration | No old outer max-width or duplicate page padding; reader/session keys and interaction scopes are unchanged |
 | Font/theme change | Drafts, reading state and existing choices stay intact |
 | Transparent utility root | Canonical font/colors without an opaque root background |
 | Reduced motion | Remove nonessential playback; transition-duration is0s |

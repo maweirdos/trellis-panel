@@ -94,7 +94,7 @@ export function SettingsPage(): JSX.Element {
   const settings = useApp((s) => s.settings)
   // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态而非在渲染期解引用崩溃（真机 bootstrap 后恒非空）
   if (!settings) return (
-    <div className="my-scrollbar h-full space-y-4 p-5">
+    <div className="space-y-4">
       <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
         <AppearancePreferences />
       </section>
@@ -329,7 +329,7 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
 
   return (
     <div className="my-fade">
-      <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
+      <div className="space-y-4">
         {/* Web 看板 HTTP 服务 */}
         <AcpAgentsSection />
 

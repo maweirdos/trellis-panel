@@ -11,7 +11,7 @@ export function ArchivePage(): JSX.Element {
 
   return (
     <div className="my-fade">
-      <div className="mx-auto max-w-4xl px-6 py-6">
+      <div>
         {archived.length === 0 ? (
           <EmptyState title="暂无归档任务" description="由 task.py archive 移入 .trellis/archive 的任务会显示在这里" />
         ) : (

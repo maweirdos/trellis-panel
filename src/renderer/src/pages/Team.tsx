@@ -639,8 +639,8 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
   }
 
   return (
-    <div className="p-6">
-      <div className="mx-auto max-w-6xl space-y-5">
+    <div>
+      <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5">
             {[

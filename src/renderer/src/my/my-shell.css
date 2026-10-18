@@ -67,7 +67,6 @@
 .my-root .my-context-button { border: 0; box-shadow: none; }
 .my-root .my-task-surface { min-width: 0; }
 @media (max-width: 1100px) {
-  .my-root .my-work-items-header { gap: 8px; padding-inline: 12px; }
   .my-root .my-project-switcher-name { max-width: 190px; }
   .my-root .my-window-search { margin-right: 8px; gap: 8px; }
 }
@@ -76,3 +75,78 @@
 .my-root .my-page-header { min-height: var(--my-workspace-header-height); }
 .my-root .my-context-button { font-size: var(--my-text-sm); line-height: var(--my-line-ui); }
 .my-root .my-sidebar-heading { font-size: var(--my-text-sm); }
+
+/* Two page contracts. Only these containers own page width and outer spacing. */
+.my-root .my-page-layout {
+  --my-page-max-width: none;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--my-bg-surface-1);
+}
+.my-root .my-page-layout--centered {
+  --my-page-max-width: calc(var(--my-page-content-width) + var(--my-page-inset) * 2);
+}
+.my-root .my-page-container {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--my-page-max-width, none);
+  min-width: 0;
+  margin-inline: auto;
+  padding-inline: var(--my-page-inset);
+}
+.my-root .my-page-container[data-content-layout='centered'] { max-width: calc(var(--my-page-content-width) + var(--my-page-inset) * 2); }
+.my-root .my-page-container[data-content-layout='full'] { max-width: none; }
+.my-root .my-page-header,
+.my-root .my-page-toolbar {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--my-border-subtle);
+  background: var(--my-bg-surface-1);
+}
+.my-root .my-page-header-inner,
+.my-root .my-page-toolbar-inner,
+.my-root .my-page-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--my-space-12);
+  min-height: var(--my-workspace-header-height);
+  padding-block: var(--my-space-6);
+}
+.my-root .my-page-toolbar-inner,
+.my-root .my-page-toolbar-row { gap: var(--my-space-8); }
+.my-root .my-page-header-inner,
+.my-root .my-page-toolbar-inner { min-height: calc(var(--my-workspace-header-height) - 1px); }
+.my-root .my-page-toolbar-row {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--my-border-subtle);
+  padding-inline: var(--my-page-inset);
+  background: var(--my-bg-surface-1);
+}
+.my-root .my-page-notice {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--my-border-subtle);
+  background: var(--my-bg-layer-1);
+  color: var(--my-txt-tertiary);
+  font-size: var(--my-text-xs);
+}
+.my-root .my-page-notice > .my-page-container { padding-block: var(--my-space-8); }
+.my-root .my-page-body { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.my-root .my-page-layout--full > .my-page-body { scrollbar-gutter: auto; }
+.my-root .my-page-layout--centered > .my-page-body { overflow-y: auto; scrollbar-gutter: stable both-edges; }
+/* Reserve the body's scrollbar space in the fixed bands, including short pages. */
+.my-root .my-page-layout--centered > .my-page-header,
+.my-root .my-page-layout--centered > .my-page-notice { overflow-y: hidden; scrollbar-gutter: stable both-edges; }
+.my-root .my-page-layout--centered > .my-page-header::-webkit-scrollbar,
+.my-root .my-page-layout--centered > .my-page-notice::-webkit-scrollbar { width: var(--my-space-10); }
+.my-root .my-page-content { padding-top: var(--my-page-block-inset); padding-bottom: var(--my-page-bottom-inset); }
+.my-root .my-page-with-bottom-actions { --my-page-bottom-inset: var(--my-space-80); }
+.my-root .my-page-composer { padding-block: var(--my-space-12); }
+.my-root .my-page-workspace-padding { padding: var(--my-page-block-inset) var(--my-page-inset); }
+@media (max-width: 960px) {
+  .my-root { --my-page-inset: var(--my-space-16); }
+}

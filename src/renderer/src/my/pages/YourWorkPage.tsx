@@ -6,6 +6,7 @@ import { useMy } from '../store'
 import { Avatar, Button, EmptyState, formatDate } from '../ui'
 import { PriorityIcon, StateGroupIcon } from '../icons'
 import type { Issue, Member, WorkItemState } from '../types'
+import { PAGE_LAYOUTS, PageBody, PageContent, PageLayout } from '../layout/PageLayout'
 
 type WorkView = 'assigned' | 'created' | 'recent'
 
@@ -83,7 +84,9 @@ export function YourWorkPage(): JSX.Element {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-5 pb-12 pt-6 lg:px-8">
+    <PageLayout variant={PAGE_LAYOUTS.dashboard}>
+    <PageBody>
+    <PageContent>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-my-xl font-semibold text-my-primary">我的工作</h1>
@@ -141,6 +144,8 @@ export function YourWorkPage(): JSX.Element {
           )}
         </section>
       )}
-    </div>
+    </PageContent>
+    </PageBody>
+    </PageLayout>
   )
 }

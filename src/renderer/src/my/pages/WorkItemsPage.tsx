@@ -31,6 +31,7 @@ import {
   formatDate
 } from '../ui'
 import { LayoutIcon, PriorityIcon, StateGroupIcon } from '../icons'
+import { PAGE_LAYOUTS, PageHeader, PageLayout } from '../layout/PageLayout'
 import type {
   GroupBy,
   Issue,
@@ -1445,7 +1446,7 @@ function WorkItemsPageInner(): JSX.Element {
     const total = Math.max(weekIssues.length, 1)
     const maxDay = Math.max(1, ...doneByDay.map((d) => d.count))
     cycleOverview = (
-      <div className="flex shrink-0 items-center gap-4 border-b border-my-line bg-my-layer-1 px-4 py-2.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-4 border-b border-my-line bg-my-layer-1 px-my-page py-2.5">
         <span className="flex items-center gap-1.5 text-my-sm font-medium text-my-primary">
           <Calendar size={13} className="text-my-icon-secondary" />
           本周 {isoWeekRangeTitle(thisWeek)}
@@ -1538,11 +1539,11 @@ function WorkItemsPageInner(): JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="my-work-items-header my-page-header flex shrink-0 flex-wrap items-center gap-3 border-b border-my-line bg-my-surface-1 px-4 py-1.5">
+    <PageLayout variant={PAGE_LAYOUTS.tasks}>
+      <PageHeader className="my-work-items-header">
         <h1 className="shrink-0 text-my-md font-semibold text-my-primary">{workItemsView === 'iterations' ? '迭代' : '工作项'}</h1>
         {sidebarCollapsed ? <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id)} /> : <span className="text-my-sm text-my-tertiary">{tabs.find((item) => item.id === tab)?.label} · {tabbed.length}</span>}
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
           {/* 布局切换器 */}
           <div className="my-segmented" role="group" aria-label="工作项布局">
             {LAYOUTS.map((l) => (
@@ -1731,11 +1732,11 @@ function WorkItemsPageInner(): JSX.Element {
             新建工作项
           </Button>
         </div>
-      </header>
+      </PageHeader>
       {cycleOverview}
       {/* 布局主体 */}
       <div className="min-h-0 flex-1 bg-my-surface-1">{body}</div>
-    </div>
+    </PageLayout>
   )
 }
 

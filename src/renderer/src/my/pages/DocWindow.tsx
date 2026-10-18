@@ -4,6 +4,7 @@ import { useEffect, useState, type JSX } from 'react'
 import { Copy, FileText, Minus, Pin, PinOff, Square, X } from 'lucide-react'
 import { api } from '../../api'
 import { MarkdownView } from '../../components/MarkdownView'
+import { PageContent } from '../layout/PageLayout'
 
 export function DocWindowApp(): JSX.Element {
   const [params] = useState(() => new URLSearchParams(window.location.search))
@@ -89,15 +90,15 @@ export function DocWindowApp(): JSX.Element {
       </header>
       {/* 正文 */}
       <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <PageContent variant="centered">
         {error ? (
-          <div className="px-7 py-6 text-my-sm text-my-danger-text">{error}</div>
+          <div className="text-my-sm text-my-danger-text">{error}</div>
         ) : content === null ? (
-          <div className="px-7 py-6 text-my-sm text-my-tertiary">加载中…</div>
+          <div className="text-my-sm text-my-tertiary">加载中…</div>
         ) : (
-          <div className="px-my-page py-6">
-            <MarkdownView content={content} />
-          </div>
+          <MarkdownView content={content} />
         )}
+        </PageContent>
       </div>
     </div>
   )

@@ -1,3 +1,4 @@
+import { PageContent, PageSection } from '../my/layout/PageLayout'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   RefreshCw,
@@ -174,7 +175,7 @@ export function ChannelsPage(): JSX.Element {
   }
 
   return (
-    <div className="relative flex h-full min-w-0">
+    <div className="relative flex h-full min-h-0 min-w-0">
       {/* 左列：频道列表 */}
       {!sidebarCollapsed && <div style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
         <SidebarResizeHandle />
@@ -259,7 +260,7 @@ export function ChannelsPage(): JSX.Element {
       {/* 右列：事件流 */}
       {active ? (
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-4 py-2.5">
+          <div className="my-page-toolbar-row">
             <span className="font-mono text-my-xs font-semibold text-my-primary">{active.name}</span>
             <span className="my-chip bg-my-layer-2 text-my-tertiary">{active.bucket}</span>
             <div className="ml-auto flex items-center gap-1.5">
@@ -290,7 +291,7 @@ export function ChannelsPage(): JSX.Element {
 
           {/* forum 线程概览 */}
           {threadGroups && (
-            <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-my-line px-4 py-2">
+            <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-my-line px-my-page py-2">
               {[...threadGroups.entries()].map(([thread, evs]) => (
                 <span key={thread} className="my-chip shrink-0 bg-my-info-subtle text-my-info-text">
                   {thread} · {evs.length}
@@ -299,7 +300,8 @@ export function ChannelsPage(): JSX.Element {
             </div>
           )}
 
-          <div ref={streamRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <div ref={streamRef} className="my-scrollbar min-h-0 flex-1">
+            <PageContent variant="centered">
             {(() => {
             // 对话视图 v3（产品化）：系统事件转人话、按 worker 回合折叠、
             // output 增量拼接为实时打字气泡。后端 newest-first → 反转为时间正序。
@@ -452,6 +454,7 @@ export function ChannelsPage(): JSX.Element {
             })
             })()}
             {active.events.length === 0 && <div className="py-10 text-center text-my-xs text-my-tertiary">暂无事件</div>}
+            </PageContent>
           </div>
 
           {actionOutput && (
@@ -466,7 +469,8 @@ export function ChannelsPage(): JSX.Element {
             </div>
           )}
 
-          <div className="flex shrink-0 items-center gap-2 border-t border-my-line px-4 py-2.5">
+          <div className="shrink-0 border-t border-my-line">
+          <PageSection variant="centered" className="my-page-composer flex items-center gap-2">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -479,6 +483,7 @@ export function ChannelsPage(): JSX.Element {
             <Button variant="primary" onClick={() => void send()} disabled={busy || !input.trim()}>
               <Send size={12} /> 发送
             </Button>
+          </PageSection>
           </div>
         </div>
       ) : (

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { PageContent, PageLayout } from '../my/layout/PageLayout'
 import {
   X,
   FolderOpen,
@@ -626,9 +627,9 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
   }
 
   return (
-    <div
+    <PageLayout variant="full"
       data-task-detail-presentation={presentation}
-      className={clsx('relative flex h-full min-w-0 shrink-0 flex-col', workspace ? 'w-full bg-my-surface-1' : 'animate-slide-in bg-my-canvas')}
+      className={clsx('relative flex h-full min-w-0 shrink-0 flex-col', pendingCount > 0 && 'my-page-with-bottom-actions', workspace ? 'w-full bg-my-surface-1' : 'animate-slide-in bg-my-canvas')}
       style={workspace ? undefined : { width, maxWidth: '100%' }}
     >
       {/* 左缘拖拽调宽手柄 */}
@@ -637,7 +638,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
         className="absolute inset-y-0 left-0 z-30 w-1.5 cursor-ew-resize transition-colors hover:bg-my-line-strong"
         title="拖拽调整宽度"
       />}
-      <div className="flex shrink-0 items-start gap-2 border-b border-my-line px-4 py-3">
+      <div className="my-page-toolbar-row items-start">
         {workspace && (
           <Button variant="ghost" size="sm" onClick={() => { useApp.getState().returnFromWorkspace() }} title="返回来源视图的任务预览">
             <ArrowLeft size={14} /> 返回
@@ -722,7 +723,8 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
         </div>
       </div>
 
-      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-4 pb-20">
+      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <PageContent variant={workspace ? 'centered' : 'full'}>
         {activeDoc && (
           <DocPane
             key={activeDoc.path}
@@ -1054,6 +1056,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
             {r && <HandoffSection dirName={task.dirName} status={r.status ?? null} />}
           </div>
         )}
+        </PageContent>
       </div>
 
       {contextOpen && (
@@ -1107,6 +1110,6 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
           onSave={() => void saveAll()}
         />
       )}
-    </div>
+    </PageLayout>
   )
 }

@@ -1,3 +1,4 @@
+import { PageContent } from '../my/layout/PageLayout'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Workflow,
@@ -141,7 +142,7 @@ function FileEditor({
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-my-canvas">
-      <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-4 py-2.5">
+      <div className="my-page-toolbar-row">
         <FileCode2 size={14} className="text-my-accent-text" />
         <span className="text-my-xs font-semibold text-my-primary">{title}</span>
         <span className="truncate font-mono text-my-xs text-my-tertiary">{path}</span>
@@ -191,10 +192,10 @@ function FileEditor({
         </div>
       )}
       {view === 'preview' && renderable ? (
-        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-4">
-          <div className="mx-auto max-w-[860px]">
+        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto">
+          <PageContent variant="centered">
             <MarkdownView content={content} />
-          </div>
+          </PageContent>
         </div>
       ) : (
         <textarea
@@ -347,7 +348,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-my-canvas">
-      <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-4 py-2.5">
+      <div className="my-page-toolbar-row">
         <span className="my-chip bg-my-accent-subtle text-my-xs text-my-accent-text">{ext.platformName}</span>
         <span className="text-my-xs font-semibold text-my-primary">{ext.name}</span>
         {ext.invocation && <span className="font-mono text-my-xs text-my-tertiary">{ext.invocation}</span>}
@@ -373,16 +374,18 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
           <AlertTriangle size={13} /> {error}
         </div>
       )}
-      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto">
         {editingRaw || ext.format !== 'md' ? (
+          <PageContent variant="full" className="h-full">
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             spellCheck={false}
             className="h-full min-h-[320px] w-full resize-none rounded-my-md border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-primary outline-none"
           />
+          </PageContent>
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-4">
+          <PageContent variant="centered" className="flex flex-col gap-4">
             {fmKeys.map((k) => (
               <label key={k} className="block">
                 <span className="mb-1 block font-mono text-my-xs text-my-tertiary">{k}</span>
@@ -440,7 +443,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
                 />
               )}
             </div>
-          </div>
+          </PageContent>
         )}
       </div>
     </div>
@@ -522,7 +525,7 @@ export function StudioPage(): JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-w-0">
+    <div className="flex h-full min-h-0 min-w-0">
       {/* 左侧子导航 */}
       <div className="flex w-48 shrink-0 flex-col border-r border-my-line">
         <div className="flex items-center px-4 py-3">
@@ -652,7 +655,7 @@ function WorkflowSection({
   const totalPins = scan.workflows.reduce((n, w) => n + w.pinnedTasks.length, 0)
 
   return (
-    <div className="space-y-4 p-5">
+    <PageContent variant="centered" className="space-y-4">
       {/* 优先级链 */}
       <div className="my-card p-4">
         <div className="mb-1 flex items-center gap-2">
@@ -789,7 +792,7 @@ function WorkflowSection({
           </div>
         )}
       </div>
-    </div>
+    </PageContent>
   )
 }
 
@@ -867,7 +870,7 @@ function ExtSection({
   }
 
   return (
-    <div className="space-y-4 p-5">
+    <PageContent variant="centered" className="space-y-4">
       <div className="flex items-center gap-2">
         <div className="w-64">
           <SearchInput value={query} onChange={setQuery} placeholder="搜索名称 / 平台 / 路径…" />
@@ -951,7 +954,7 @@ function ExtSection({
           未发现{meta.label}文件。用「新建」创建，或在项目里运行 <code>trellis init --&lt;platform&gt;</code> 安装平台扩展。
         </div>
       )}
-    </div>
+    </PageContent>
   )
 }
 
@@ -994,7 +997,7 @@ function HooksSection({
   }
 
   return (
-    <div className="space-y-4 p-5">
+    <PageContent variant="centered" className="space-y-4">
       {/* 生命周期钩子 */}
       <div className="my-card p-4">
         <div className="mb-1 flex items-center gap-2">
@@ -1099,7 +1102,7 @@ function HooksSection({
           </div>
         )}
       </div>
-    </div>
+    </PageContent>
   )
 }
 
@@ -1151,7 +1154,7 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
   }
 
   return (
-    <div className="max-w-3xl space-y-4 p-5">
+    <PageContent variant="centered" className="space-y-4">
       {!c.exists && (
         <div className="flex items-center gap-2 rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-sm text-my-warning-text">
           <AlertTriangle size={13} /> .trellis/config.yaml 不存在——保存时将创建（团队共享文件，建议提交评审）。
@@ -1259,7 +1262,7 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
           不要把 token / API key 写入此文件——它是 git 跟踪的团队共享配置。
         </span>
       </div>
-    </div>
+    </PageContent>
   )
 }
 
@@ -1268,7 +1271,7 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
 function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
   const detected = scan.platforms.filter((p) => p.detected)
   return (
-    <div className="space-y-4 p-5">
+    <PageContent variant="centered" className="space-y-4">
       <div className="my-card p-4">
         <div className="mb-2 flex items-center gap-2">
           <MonitorSmartphone size={14} className="text-my-accent-text" />
@@ -1330,7 +1333,7 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
           版本升级用 <code>trellis update</code>（--dry-run 预览 / --migrate 兼容破坏性变更），模板哈希机制会保护本地修改。
         </div>
       </div>
-    </div>
+    </PageContent>
   )
 }
 

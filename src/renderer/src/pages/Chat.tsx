@@ -1,3 +1,4 @@
+import { PageContent, PageSection } from '../my/layout/PageLayout'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { useApp } from '../store'
@@ -405,7 +406,7 @@ export function ChatPage(): JSX.Element {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-h-0 min-w-0">
       {/* 会话列表 */}
       {!sidebarCollapsed && <aside style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
         <SidebarResizeHandle />
@@ -453,7 +454,7 @@ export function ChatPage(): JSX.Element {
 
       {/* 转录 + Composer */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center gap-2 border-b border-my-line px-4 py-2">
+        <div className="my-page-toolbar-row">
           <span className="min-w-0 max-w-[240px] flex-1 truncate text-my-xs font-semibold text-my-secondary">{activeSession?.title ?? '新对话'}</span>
           <select
             value={taskDir}
@@ -504,7 +505,7 @@ export function ChatPage(): JSX.Element {
 
         <div className="relative min-h-0 flex-1">
           <div ref={containerRef} className="absolute inset-0 overflow-y-auto">
-            <div className="mx-auto max-w-3xl space-y-3 px-4 py-4">
+            <PageContent variant="centered" className="space-y-3">
               {hasOlder && (
                 <div className="text-center">
                   <Button variant="ghost" size="sm" onClick={showOlder}>
@@ -649,7 +650,7 @@ export function ChatPage(): JSX.Element {
                   )}
                 </div>
               )}
-            </div>
+            </PageContent>
           </div>
           {!atBottom && (
             <button
@@ -662,7 +663,8 @@ export function ChatPage(): JSX.Element {
         </div>
 
         {/* Composer */}
-        <div className="border-t border-my-line p-3">
+        <div className="shrink-0 border-t border-my-line">
+        <PageSection variant="centered" className="my-page-composer">
           {!aiEnabled && (
             <p className="mb-2 text-my-xs text-my-warning-text">应用内 AI 未启用（设置 → AI 模型）。启用并配置供应商后即可对话。</p>
           )}
@@ -770,6 +772,7 @@ export function ChatPage(): JSX.Element {
               </Button>
             )}
           </div>
+        </PageSection>
         </div>
       </div>
     </div>

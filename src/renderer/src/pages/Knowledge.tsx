@@ -1,3 +1,4 @@
+import { PageContent, PageSection } from '../my/layout/PageLayout'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Library,
@@ -476,7 +477,7 @@ export function KnowledgePage(): JSX.Element {
 
   return (
     <div ref={pageRef} className="my-fade flex h-full min-h-0 min-w-0 flex-col bg-my-surface-1">
-      <div className="flex shrink-0 items-center gap-3 border-b border-my-line bg-my-surface-1 px-4 py-2">
+      <div className="my-page-toolbar-row">
         <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="knowledge-browser" title={browserVisible ? '收起来源与检索' : '展开来源与检索'} className="my-control text-my-secondary hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-my-line-accent">
           {browserVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />} 来源与检索
         </button>
@@ -633,7 +634,7 @@ export function KnowledgePage(): JSX.Element {
       <div ref={readerRef} tabIndex={-1} aria-label="知识阅读区" className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1 outline-none">
         {noteDraft ? (
           <>
-            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
+            <div className="my-page-toolbar-row">
               <span className="my-chip bg-my-label-emerald text-my-label-emerald-text">
                 <StickyNote size={12} /> {noteDraft.isNew ? '新建笔记' : '编辑笔记'}
               </span>
@@ -653,7 +654,7 @@ export function KnowledgePage(): JSX.Element {
                 </Button>
               </div>
             </div>
-            <div className="min-h-0 flex-1 p-4">
+            <div className="my-page-workspace-padding min-h-0 flex-1">
               <textarea
                 value={noteDraft.content}
                 onChange={(e) => setNoteDraft({ ...noteDraft, content: e.target.value })}
@@ -665,7 +666,7 @@ export function KnowledgePage(): JSX.Element {
           </>
         ) : remoteDoc ? (
           <>
-            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
+            <div className="my-page-toolbar-row">
               <span className="my-chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
                 <Cloud size={12} /> 公司库
               </span>
@@ -676,8 +677,8 @@ export function KnowledgePage(): JSX.Element {
                 </Button>
               </div>
             </div>
-            <div className="my-scrollbar min-h-0 flex-1 px-5 py-4">
-              <div className="mx-auto max-w-[760px]">
+            <div className="my-scrollbar min-h-0 flex-1">
+              <PageContent variant="centered">
                 {remoteDoc.fileName && <div className="mb-3 truncate font-mono text-my-xs text-my-tertiary">{remoteDoc.fileName}</div>}
                 {remoteDoc.loading && (
                   <div className="flex items-center gap-2 py-8 text-my-xs text-my-tertiary">
@@ -694,12 +695,12 @@ export function KnowledgePage(): JSX.Element {
                     <pre className="whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{remoteDoc.content}</pre>
                   )
                 )}
-              </div>
+              </PageContent>
             </div>
           </>
         ) : active ? (
           <>
-            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-5 py-2.5">
+            <div className="my-page-toolbar-row">
               <span className={clsx('my-chip', LIB_CHIP[active.library])}>
                 {LIB_ICON[active.library]} {LIB_LABEL[active.library]}
               </span>
@@ -733,8 +734,8 @@ export function KnowledgePage(): JSX.Element {
                 </Button>
               </div>
             </div>
-            <div className="my-scrollbar min-h-0 flex-1 px-5 py-4">
-              <div className="mx-auto max-w-[760px]">
+            <div className="my-scrollbar min-h-0 flex-1">
+              <PageContent variant="centered">
                 <div className="mb-3 truncate font-mono text-my-xs text-my-tertiary" title={active.path}>{active.path}</div>
                 {docError && <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{docError}</div>}
                 {active.synthetic && (
@@ -758,7 +759,7 @@ export function KnowledgePage(): JSX.Element {
                 ) : (
                   <pre className="whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{docContent}</pre>
                 ))}
-              </div>
+              </PageContent>
             </div>
           </>
         ) : (
@@ -785,9 +786,9 @@ export function KnowledgePage(): JSX.Element {
 
         {/* AI 问答条 */}
         {aiEnabled && (
-          <div className="shrink-0 border-t border-my-line bg-my-layer-1 px-4 py-2.5">
+          <div className="shrink-0 border-t border-my-line bg-my-layer-1 py-2.5">
             {qaHistory.length > 0 && (
-              <div className="mx-auto mb-2 max-w-3xl">
+              <PageSection variant="centered" className="mb-2">
                 <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -832,10 +833,10 @@ export function KnowledgePage(): JSX.Element {
                     ))}
                   </div>
                 )}
-              </div>
+              </PageSection>
             )}
             {aiAnswer && (
-              <div className="mx-auto mb-2.5 max-w-3xl">
+              <PageSection variant="centered" className="mb-2.5">
                 <div className="rounded-my-lg border border-my-line-accent-subtle bg-my-accent-subtle p-3">
                   <MarkdownView content={aiAnswer} />
                   {aiSources.length > 0 && (
@@ -862,9 +863,9 @@ export function KnowledgePage(): JSX.Element {
                     </div>
                   )}
                 </div>
-              </div>
+              </PageSection>
             )}
-            <div className="mx-auto flex max-w-3xl items-center gap-2">
+            <PageSection variant="centered" className="flex items-center gap-2">
               <Sparkles size={13} className="shrink-0 text-my-icon-accent" />
               <input
                 value={aiQuestion}
@@ -878,7 +879,7 @@ export function KnowledgePage(): JSX.Element {
               <Button variant="primary" onClick={() => void aiAsk()} disabled={aiBusy || !aiQuestion.trim()}>
                 {aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} 提问
               </Button>
-            </div>
+            </PageSection>
           </div>
         )}
       </div>

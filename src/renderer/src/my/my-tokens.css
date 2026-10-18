@@ -113,8 +113,10 @@
   --my-conversation-gutter: var(--my-space-24);
   --my-composer-min-height: 72px;
   --my-composer-max-height: 220px;
-  --my-page-inset: 24px;
-  --my-content-width: 820px;
+  --my-page-inset: var(--my-space-24);
+  --my-page-content-width: 1120px;
+  --my-page-block-inset: var(--my-space-24);
+  --my-page-bottom-inset: var(--my-space-48);
   --my-inspector-width: 420px;
   --my-inspector-width-wide: 460px;
   --my-inspector-width-compact: 390px;

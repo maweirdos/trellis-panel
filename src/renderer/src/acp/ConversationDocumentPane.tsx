@@ -5,6 +5,7 @@ import type { AcpSourceReference } from '../../../shared/types'
 import { api } from '../api'
 import { useApp } from '../store'
 import { Button } from '../my/ui'
+import { PageContent } from '../my/layout/PageLayout'
 import { projectRootKey } from '../my/navigation'
 import { DocumentReaderSurface } from '../reader/DocumentReader'
 import { useDocumentReader } from '../reader/use-document-reader'
@@ -85,7 +86,7 @@ export function ConversationDocumentPane(props: ConversationDocumentPaneProps): 
 
   return (
     <section className="acp-document flex h-full min-h-0 min-w-0 flex-col bg-my-layer-2" aria-label="任务文档阅读器">
-      <header className="flex shrink-0 items-center gap-2 border-b border-my-line px-4 py-3">
+      <header className="my-page-toolbar-row">
         <FileText size={16} className="shrink-0 text-my-accent-text" />
         <div className="min-w-0 flex-1">
           <h2 ref={headingRef} tabIndex={-1} className="truncate text-my-sm font-semibold text-my-primary">{relativePath.split('/').pop()}</h2>
@@ -96,7 +97,7 @@ export function ConversationDocumentPane(props: ConversationDocumentPaneProps): 
         </Button>
         <Button size="sm" variant="ghost" title="关闭文档" onClick={onClose}><X size={15} /></Button>
       </header>
-      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-my-line px-3 py-2">
+      <div className="my-page-toolbar-row">
         <Button size="sm" variant="ghost" onClick={() => setOutlineOpen((value) => !value)} disabled={headings.length === 0}><List size={13} /> 目录</Button>
         <Button size="sm" variant="ghost" disabled={reader.displayedText === null} onClick={() => {
           if (reader.displayedText === null) return
@@ -116,9 +117,11 @@ export function ConversationDocumentPane(props: ConversationDocumentPaneProps): 
           <Button size="sm" variant="ghost" title={`引用章节：${heading.text}`} onClick={() => { selectedText.current = ''; quote(heading.id) }}><Quote size={11} /></Button>
         </div>)}
       </nav>}
-      <div ref={bodyRef} onMouseUp={captureSelection} onKeyUp={captureSelection} className="acp-document__body min-h-0 flex-1 overflow-auto px-5 py-4" style={{ scrollbarGutter: 'stable', fontSize: 'var(--my-text-document)', lineHeight: 'var(--my-line-document)' }}>
+      <div ref={bodyRef} onMouseUp={captureSelection} onKeyUp={captureSelection} className="acp-document__body my-scrollbar min-h-0 flex-1 overflow-auto" style={{ fontSize: 'var(--my-text-document)', lineHeight: 'var(--my-line-document)' }}>
+        <PageContent variant={expanded ? 'centered' : 'full'}>
         {!validPath ? <p role="alert" className="text-my-sm text-my-danger-text">此路径不属于当前任务，已拒绝读取。</p> :
           <DocumentReaderSurface reader={reader} relativePath={relativePath} variant="compact" />}
+        </PageContent>
       </div>
     </section>
   )
