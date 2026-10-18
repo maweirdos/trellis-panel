@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Leaf, Minus, Square, X, Copy, PictureInPicture2, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
+import { Minus, Square, X, Copy, PictureInPicture2, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { ProjectSwitcher } from '../my/layout/ProjectSwitcher'
+import { BrandMark } from '../my/BrandMark'
 import { clsx } from 'clsx'
 
 function WinButton({ onClick, children, label, danger }: {
@@ -28,9 +29,9 @@ export function TitleBar(): JSX.Element {
   const [maximized, setMaximized] = useState(false)
   useEffect(() => hasIpc ? api.onWindowMaximized(setMaximized) : undefined, [])
   return (
-    <header className={clsx('my-window-header relative z-50 flex h-12 shrink-0 items-center border-b border-my-line', hasIpc && 'drag-region')}>
+    <header className={clsx('my-window-header relative z-50 flex h-my-header shrink-0 items-center', hasIpc && 'drag-region')}>
       <div className="flex h-full w-14 shrink-0 items-center justify-center" title="Trellis Panel">
-        <Leaf size={22} className="text-my-icon-accent" strokeWidth={1.8} />
+        <BrandMark size={22} className="text-my-primary" />
         <span className="sr-only">Trellis Panel</span>
       </div>
       <ProjectSwitcher />
@@ -39,12 +40,12 @@ export function TitleBar(): JSX.Element {
       <div className="no-drag ml-1 flex shrink-0 items-center">
         <button type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
           title="收起 / 展开上下文栏 (Ctrl+B)" onClick={toggleSidebar}
-          className="grid h-8 w-8 place-items-center rounded-my-md text-my-icon-tertiary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary">
+          className="my-icon-control">
           {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.7} /> : <PanelLeftClose size={18} strokeWidth={1.7} />}
         </button>
       </div>
       <button type="button" disabled={hasIpc && !snapshot} onClick={() => setPaletteOpen(true)}
-        className="my-window-search no-drag ml-auto mr-3 flex h-8 min-w-0 items-center gap-2.5 rounded-my-md px-2.5 text-my-secondary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary disabled:cursor-not-allowed disabled:opacity-50"
+        className="my-window-search no-drag ml-auto mr-3 flex h-my-icon min-w-0 items-center gap-2.5 rounded-my-md px-2.5 text-my-secondary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="搜索或输入命令 (Ctrl+K)">
         <Search size={16} strokeWidth={1.8} /><span className="truncate text-left text-my-md">搜索或输入命令</span><kbd className="ml-2 whitespace-nowrap font-sans text-my-xs text-my-tertiary">Ctrl K</kbd>
       </button>

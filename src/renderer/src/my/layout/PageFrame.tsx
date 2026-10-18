@@ -8,7 +8,7 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
   const navigation = getPageNavigation(page)
   return (
     <div className="flex h-full min-w-0 flex-col bg-my-surface-1">
-      <header className="flex min-h-[52px] shrink-0 flex-wrap items-center gap-3 border-b border-my-line px-5 py-2">
+      <header className="my-page-header flex shrink-0 flex-wrap items-center gap-3 border-b border-my-line px-my-page py-1.5">
         <h1 className="text-my-md font-semibold text-my-primary">{navigation.title}</h1>
         {navigation.scope !== 'project' && <span className="my-chip bg-my-layer-1 text-my-secondary">{navigationScopeLabel(navigation.scope)}</span>}
         {navigation.domain === 'conversations' && <nav aria-label="会话类型" className="ml-auto flex items-center gap-1">

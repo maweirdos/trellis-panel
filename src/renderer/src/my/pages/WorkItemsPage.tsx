@@ -287,7 +287,7 @@ function GroupBadge({ meta, size = 12 }: { meta: GroupMeta; size?: number }): JS
     return (
       <span
         title={`模块：${meta.pkg || '未分组'}`}
-        className="flex shrink-0 items-center justify-center rounded-[3px] border border-my-line-strong text-[9px] font-semibold text-my-tertiary"
+        className="flex shrink-0 items-center justify-center rounded-my-sm border border-my-line-strong text-my-2xs font-semibold text-my-tertiary"
         style={{ width: size + 6, height: size + 6 }}
       >
         {(meta.pkg || '·').slice(0, 1)}
@@ -1277,7 +1277,7 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
                 className={clsx(
                   'inline-flex h-5 min-w-5 items-center justify-end self-end rounded-full px-1 text-my-xs',
                   isToday
-                    ? 'bg-my-accent font-medium text-my-on-color'
+                    ? 'bg-my-accent font-medium text-my-on-accent'
                     : inMonth
                       ? 'text-my-tertiary'
                       : 'text-my-disabled'
@@ -1482,7 +1482,7 @@ function WorkItemsPageInner(): JSX.Element {
                     style={{ height: 4 + (d.count / maxDay) * 16 }}
                     className={clsx('w-3 rounded-sm', d.count > 0 ? 'bg-my-success' : 'bg-my-layer-3')}
                   />
-                  <span className="text-[9px] leading-none text-my-disabled">{d.label}</span>
+                  <span className="text-my-2xs leading-none text-my-disabled">{d.label}</span>
                 </div>
               ))}
             </div>
@@ -1539,20 +1539,22 @@ function WorkItemsPageInner(): JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* 顶栏 52px */}
-      <header className="my-work-items-header flex min-h-[52px] shrink-0 flex-wrap items-center gap-3 border-b border-my-line bg-my-surface-1 px-4 py-2">
+      <header className="my-work-items-header my-page-header flex shrink-0 flex-wrap items-center gap-3 border-b border-my-line bg-my-surface-1 px-4 py-1.5">
         <h1 className="shrink-0 text-my-md font-semibold text-my-primary">{workItemsView === 'iterations' ? '迭代' : '工作项'}</h1>
         {sidebarCollapsed ? <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id)} /> : <span className="text-my-sm text-my-tertiary">{tabs.find((item) => item.id === tab)?.label} · {tabbed.length}</span>}
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {/* 布局切换器 */}
-          <div className="flex items-center gap-0.5 rounded-my-md border border-my-line bg-my-layer-1 p-0.5">
+          <div className="my-segmented" role="group" aria-label="工作项布局">
             {LAYOUTS.map((l) => (
-              <Tooltip key={l.id} label={l.label}>
+              <Tooltip key={l.id} label={l.label} side="bottom">
                 <button
                   type="button"
+                  aria-label={`布局：${l.label}`}
+                  aria-pressed={layout === l.id}
+                  title={l.label}
                   onClick={() => store.setLayout(l.id)}
                   className={clsx(
-                    'flex h-6 w-7 items-center justify-center rounded',
+                    'my-segment',
                     layout === l.id
                       ? 'bg-my-layer-1-active text-my-primary'
                       : 'text-my-icon-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary'
@@ -1572,7 +1574,7 @@ function WorkItemsPageInner(): JSX.Element {
                 <SlidersHorizontal size={13} className="text-my-icon-secondary" />
                 筛选
                 {filterCount > 0 && (
-                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-my-accent px-1 text-my-2xs font-medium text-my-on-color">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-my-accent px-1 text-my-2xs font-medium text-my-on-accent">
                     {filterCount}
                   </span>
                 )}

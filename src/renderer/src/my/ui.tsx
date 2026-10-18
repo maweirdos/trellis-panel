@@ -11,18 +11,20 @@ import { useInteractionActive, useInteractionGuard } from '../utils/interaction-
 export function Avatar({
   name,
   color,
+  tone = 'color',
   size = 20,
   className
 }: {
   name: string
   color: string
+  tone?: 'color' | 'accent'
   size?: number
   className?: string
 }): JSX.Element {
   return (
     <div
       title={name}
-      className={clsx('flex shrink-0 select-none items-center justify-center rounded-full font-medium text-white', className)}
+      className={clsx('flex shrink-0 select-none items-center justify-center rounded-full font-medium', tone === 'accent' ? 'text-my-on-accent' : 'text-my-on-color', className)}
       style={{ width: size, height: size, background: color, fontSize: Math.max(9, size * 0.42) }}
     >
       {name.slice(0, 1)}
@@ -77,13 +79,11 @@ export function Button({
   autoFocus?: boolean
 }): JSX.Element {
   const variants: Record<ButtonVariant, string> = {
-    primary: 'bg-[var(--my-bg-accent-primary)] text-[var(--my-txt-on-color)] hover:bg-[var(--my-bg-accent-primary-hover)]',
-    neutral:
-      'bg-[var(--my-bg-layer-1)] text-[var(--my-txt-secondary)] hover:bg-[var(--my-bg-layer-1-hover)] border border-[var(--my-border-subtle)]',
-    ghost: 'text-[var(--my-txt-secondary)] hover:bg-[var(--my-bg-layer-transparent-hover)]',
-    outline:
-      'border border-[var(--my-border-subtle)] text-[var(--my-txt-secondary)] hover:bg-[var(--my-bg-layer-transparent-hover)]',
-    danger: 'bg-[var(--my-bg-danger-primary)] text-white hover:bg-[var(--my-bg-danger-primary-hover)]'
+    primary: 'my-button-primary',
+    neutral: 'my-button-neutral',
+    ghost: 'my-button-ghost',
+    outline: 'my-button-outline',
+    danger: 'my-button-danger'
   }
   return (
     <button
@@ -196,7 +196,7 @@ export function Dropdown({
             width,
             visibility: pos ? 'visible' : 'hidden'
           }}
-          className="my-pop fixed z-[80] overflow-hidden rounded-my-lg border border-my-line bg-my-layer-2 py-1 shadow-[var(--my-shadow-overlay-200)]"
+          className="my-pop my-menu fixed"
         >
           {children(() => setOpen(false))}
         </div>
@@ -224,12 +224,12 @@ export function DropdownItem({
     <button
       type="button"
       disabled={disabled}
+      data-selected={selected || undefined}
+      data-danger={danger || undefined}
       onClick={disabled ? undefined : onClick}
       className={clsx(
-        'flex w-full items-center gap-2 px-3 py-1.5 text-left text-my-sm text-[var(--my-txt-secondary)] hover:bg-[var(--my-bg-layer-1-hover)]',
-        selected && 'text-[var(--my-txt-accent-primary)]',
-        danger && 'text-[var(--my-txt-danger-primary)]',
-        disabled && 'cursor-default opacity-50 hover:bg-transparent'
+        'my-menu-item',
+        disabled && 'cursor-default'
       )}
     >
       {icon && <span className="flex h-4 w-4 items-center justify-center">{icon}</span>}
@@ -240,7 +240,7 @@ export function DropdownItem({
 
 export function DropdownHeader({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="px-3 pb-1 pt-2 text-my-xs font-medium text-[var(--my-txt-tertiary)]">
+    <div className="my-menu-header">
       {children}
     </div>
   )
@@ -255,7 +255,7 @@ export function Tooltip({ label, children, side = 'top', align = 'center', wrap 
       <span
         style={wrap ? { width: 'max-content', maxWidth: 'min(360px, calc(100vw - 24px))', whiteSpace: 'normal' } : undefined}
         className={clsx(
-          'pointer-events-none absolute z-[90] hidden whitespace-nowrap rounded-my-md border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] px-2 py-1 text-my-xs text-[var(--my-txt-secondary)] shadow-[var(--my-shadow-raised-200)] group-hover/tt:block group-focus-within/tt:block',
+          'my-tooltip pointer-events-none absolute hidden whitespace-nowrap border border-my-line px-2 py-1 text-my-xs text-my-secondary group-hover/tt:block group-focus-within/tt:block',
           align === 'right' ? 'right-0' : 'left-1/2 -translate-x-1/2',
           side === 'top' ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]'
         )}
@@ -285,10 +285,10 @@ export function Modal({
 
   if (!open || !interactive) return null
   return (
-    <div className="my-fade fixed inset-0 z-[70] flex items-start justify-center bg-[var(--my-bg-backdrop)] pt-[12vh]" onMouseDown={onClose}>
+    <div className="my-fade my-modal-backdrop fixed inset-0 flex items-start justify-center pt-[12vh]" onMouseDown={onClose}>
       <div
         style={{ width }}
-        className="my-peek-in max-h-[76vh] overflow-hidden rounded-my-xl border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] shadow-[var(--my-shadow-overlay-200)]"
+        className="my-peek-in my-modal-panel max-h-[76vh] overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {children}
@@ -307,9 +307,9 @@ export function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={clsx(
-        'flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-my-sm border transition-colors',
+        'my-checkbox flex shrink-0 items-center justify-center border transition-colors',
         checked
-          ? 'border-[var(--my-bg-accent-primary)] bg-[var(--my-bg-accent-primary)] text-white'
+          ? 'border-my-line-accent bg-my-accent text-my-on-accent'
           : 'border-[var(--my-border-strong)] hover:border-[var(--my-border-accent-strong)]'
       )}
     >
@@ -379,7 +379,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-8 w-full rounded-my-md border border-[var(--my-border-subtle)] bg-[var(--my-bg-surface-1)] pl-7 pr-2 text-my-sm text-[var(--my-txt-primary)] outline-none placeholder:text-[var(--my-txt-placeholder)] focus:border-[var(--my-border-accent-strong)]"
+        className="my-input my-search-input"
       />
     </div>
   )

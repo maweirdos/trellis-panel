@@ -7,17 +7,21 @@ files:
   - out/**
   - "!out/worker-only/**"
   - package.json
+  - resources/brand/**
 # worker_threads 无法从 asar 内加载文件：邻位 worker 产物解包到 app.asar.unpacked
 # （加载侧由 services/worker-path.ts 重写路径）
 asarUnpack:
   - "out/main/*-worker.js"
 win:
+  icon: resources/brand/icon.ico
   target:
     - target: nsis
       arch:
         - x64
   artifactName: TrellisPanel-Setup-${version}.exe
 nsis:
+  installerIcon: resources/brand/icon.ico
+  uninstallerIcon: resources/brand/icon.ico
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true

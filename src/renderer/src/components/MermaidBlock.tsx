@@ -23,7 +23,7 @@ async function getMermaid() {
           // 渲染产物仍会过一遍 DOMPurify 再注入，双保险。
           securityLevel: 'strict',
           theme: isDark() ? 'dark' : 'neutral',
-          fontFamily: '"Segoe UI", "Microsoft YaHei UI", sans-serif'
+          fontFamily: getComputedStyle(document.querySelector('.my-root') ?? document.documentElement).getPropertyValue('--my-font-sans').trim()
         })
         initialized = true
       }

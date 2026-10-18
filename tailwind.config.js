@@ -20,32 +20,6 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: {
-          950: 'rgb(var(--ink-950-rgb) / <alpha-value>)',
-          900: 'rgb(var(--ink-900-rgb) / <alpha-value>)',
-          850: 'rgb(var(--ink-850-rgb) / <alpha-value>)',
-          800: 'rgb(var(--ink-800-rgb) / <alpha-value>)',
-          750: 'rgb(var(--ink-750-rgb) / <alpha-value>)',
-          700: 'rgb(var(--ink-700-rgb) / <alpha-value>)',
-          600: 'rgb(var(--ink-600-rgb) / <alpha-value>)',
-          500: 'rgb(var(--ink-500-rgb) / <alpha-value>)',
-          400: 'rgb(var(--ink-400-rgb) / <alpha-value>)'
-        },
-        mist: {
-          50: 'rgb(var(--mist-50-rgb) / <alpha-value>)',
-          100: 'rgb(var(--mist-100-rgb) / <alpha-value>)',
-          200: 'rgb(var(--mist-200-rgb) / <alpha-value>)',
-          300: 'rgb(var(--mist-300-rgb) / <alpha-value>)',
-          400: 'rgb(var(--mist-400-rgb) / <alpha-value>)',
-          500: 'rgb(var(--mist-500-rgb) / <alpha-value>)',
-          600: 'rgb(var(--mist-600-rgb) / <alpha-value>)'
-        },
-        leaf: {
-          DEFAULT: 'rgb(var(--leaf-rgb) / <alpha-value>)',
-          soft: 'rgb(var(--leaf-soft-rgb) / <alpha-value>)',
-          dim: 'rgb(var(--leaf-dim-rgb) / <alpha-value>)',
-          deep: 'rgb(var(--leaf-deep-rgb) / <alpha-value>)'
-        },
         // 外壳语义色板（值见 src/renderer/src/my/my-tokens.css，
         // 随 [data-my-theme] 浅/深切换；不支持 alpha 修饰符）
         my: {
@@ -93,6 +67,7 @@ export default {
           'accent-text': 'var(--my-txt-accent-primary)',
           'accent-text-secondary': 'var(--my-txt-accent-secondary)',
           'on-color': 'var(--my-txt-on-color)',
+          'on-accent': 'var(--my-txt-on-accent)',
           'success-text': 'var(--my-txt-success-primary)',
           'warning-text': 'var(--my-txt-warning-primary)',
           'danger-text': 'var(--my-txt-danger-primary)',
@@ -122,20 +97,11 @@ export default {
           ...labelColorSet()
         }
       },
-      fontFamily: {
-        sans: [
-          '"Segoe UI Variable Display"',
-          '"Segoe UI"',
-          '"Microsoft YaHei UI"',
-          '"Microsoft YaHei"',
-          'system-ui',
-          'sans-serif'
-        ],
-        mono: ['"Cascadia Code"', '"JetBrains Mono"', 'Consolas', 'monospace']
-      },
+      fontFamily: { sans: ['var(--my-font-sans)'], mono: ['var(--my-font-mono)'] },
+      fontWeight: { normal: 'var(--my-weight-normal)', medium: 'var(--my-weight-medium)', semibold: 'var(--my-weight-semibold)', bold: 'var(--my-weight-semibold)' },
       animation: {
-        'fade-in': 'fadeIn .18s ease-out',
-        'slide-in': 'slideIn .22s cubic-bezier(.2,.8,.3,1)'
+        'fade-in': 'fadeIn var(--my-motion-fast) var(--my-ease-out)',
+        'slide-in': 'slideIn var(--my-motion-normal) var(--my-ease-out)'
       },
       keyframes: {
         fadeIn: {
@@ -148,23 +114,37 @@ export default {
         }
       },
       boxShadow: {
-        xs: '0 1px 2px 0 rgb(0 0 0 / 0.05)'
+        xs: 'var(--my-shadow-raised-100)', sm: 'var(--my-shadow-raised-100)',
+        DEFAULT: 'var(--my-shadow-raised-100)', md: 'var(--my-shadow-raised-200)',
+        lg: 'var(--my-shadow-raised-300)', xl: 'var(--my-shadow-overlay-100)', '2xl': 'var(--my-shadow-overlay-200)'
       },
-      // 外壳排版/圆角令牌（值见 src/renderer/src/my/my.css）
-      fontSize: {
-        'my-2xs': ['var(--my-text-2xs)', { lineHeight: '1.4' }],
-        'my-xs': ['var(--my-text-xs)', { lineHeight: '1.45' }],
-        'my-sm': ['var(--my-text-sm)', { lineHeight: '1.5' }],
-        'my-md': ['var(--my-text-md)', { lineHeight: '1.5' }],
-        'my-lg': ['var(--my-text-lg)', { lineHeight: '1.5' }],
-        'my-xl': ['var(--my-text-xl)', { lineHeight: '1.4' }]
+      transitionDuration: { DEFAULT: 'var(--my-motion-fast)', 150: 'var(--my-motion-fast)', 200: 'var(--my-motion-normal)', 300: 'var(--my-motion-slow)' },
+      transitionTimingFunction: { DEFAULT: 'var(--my-ease-out)', out: 'var(--my-ease-out)', 'in-out': 'var(--my-ease-standard)' },
+      // The same variables drive existing utilities and every future UI consumer.
+      spacing: {
+        '0.5': 'var(--my-space-2)', 1: 'var(--my-space-4)', '1.5': 'var(--my-space-6)',
+        2: 'var(--my-space-8)', '2.5': 'var(--my-space-10)', 3: 'var(--my-space-12)',
+        '3.5': 'var(--my-space-14)', 4: 'var(--my-space-16)', 5: 'var(--my-space-20)',
+        6: 'var(--my-space-24)', 7: 'var(--my-space-28)', 8: 'var(--my-space-32)',
+        9: 'var(--my-space-36)', 10: 'var(--my-space-40)', 11: 'var(--my-space-44)',
+        12: 'var(--my-space-48)', 14: 'var(--my-space-56)', 16: 'var(--my-space-64)',
+        ...Object.fromEntries([20,24,28,32,36,40,44,48,52,56,60,64,72,80,96].map(step=>[step, `var(--my-space-${step * 4})`])),
+        'my-header': 'var(--my-workspace-header-height)', 'my-icon': 'var(--my-icon-control-size)',
+        'my-control': 'var(--my-control-height)', 'my-field': 'var(--my-field-height)',
+        'my-page': 'var(--my-page-inset)'
       },
-      borderRadius: {
-        'my-sm': 'var(--my-radius-sm)',
-        'my-md': 'var(--my-radius-md)',
-        'my-lg': 'var(--my-radius-lg)',
-        'my-xl': 'var(--my-radius-xl)'
-      }
+      fontSize: Object.fromEntries(['2xs', 'xs', 'sm', 'md', 'lg', 'title', 'xl', 'display'].map((size) => [
+        `my-${size}`, [`var(--my-text-${size})`, {
+          lineHeight: ['lg', 'title', 'xl', 'display'].includes(size) ? 'var(--my-line-heading)' : 'var(--my-line-ui)',
+          letterSpacing: ['title', 'xl', 'display'].includes(size) ? 'var(--my-tracking-tight)' : 'var(--my-tracking-normal)'
+        }]
+      ])),
+      lineHeight: { normal: 'var(--my-line-ui)', tight: 'var(--my-line-tight)', relaxed: 'var(--my-line-document)', 'my-ui': 'var(--my-line-ui)', 'my-chat': 'var(--my-line-chat)', 'my-document': 'var(--my-line-document)' },
+      borderRadius: Object.fromEntries([
+        ...['xs', 'sm', 'inset', 'md', 'lg', 'xl', 'menu', '3xl', '4xl'].map((size) => [`my-${size}`, `var(--my-radius-${size})`]),
+        ...[['none','none'],['sm','sm'],['DEFAULT','inset'],['md','md'],['lg','lg'],['xl','xl'],['2xl','3xl'],['3xl','4xl'],['full','full']].map(([name, token]) => [name, `var(--my-radius-${token})`])
+      ]),
+      zIndex: { 'my-modal': 'var(--my-z-modal)', 'my-menu': 'var(--my-z-menu)', 'my-tooltip': 'var(--my-z-tooltip)' }
     }
   },
   plugins: []

@@ -1,10 +1,11 @@
 /** Real component hook/event wiring; this does not mount DOM or prove native/visual acceptance. */
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { lucideMockSource } from './icon-mocks.mjs'
 
 const temporary = mkdtempSync(join(tmpdir(), 'tpanel-uiux-wiring-'))
 let nextId = 0
@@ -76,12 +77,13 @@ const settle = async (h) => { await Promise.resolve(); await Promise.resolve(); 
 
 try {
   const targets = ['src/renderer/src/my/ui.tsx', 'src/renderer/src/pages/TaskDetail.tsx', 'src/renderer/src/pages/Knowledge.tsx', 'src/renderer/src/pages/Spec.tsx']
-  const iconNames = new Set(targets.flatMap((file) => [...readFileSync(file, 'utf8').matchAll(/import\s*\{([^}]+)\}\s*from 'lucide-react'/gs)].flatMap((match) => match[1].split(',').map((name) => name.trim()))))
+  const iconMock = lucideMockSource([...globSync('src/renderer/src/**/*.tsx')])
   const mocks = {
     react: `const r = globalThis.__UIUX_WIRING__; ${['useState', 'useRef', 'useId', 'useMemo', 'useCallback', 'useEffect'].map((name) => `export const ${name} = (...args) => r.current.${name}(...args);`).join('\n')} export const createContext = (value) => ({ _value:value, Provider:() => null }); export const useContext = (context) => context._value; export const useLayoutEffect = useEffect; export default { memo: (component) => component };`,
     'react/jsx-runtime': 'export const jsx = (type, props, key) => ({ type, props, key }); export const jsxs = jsx; export const Fragment = "fragment";',
-    'lucide-react': [...iconNames].map((name) => `export const ${name} = () => null;`).join('\n'),
-    '../store': 'const r = globalThis.__UIUX_WIRING__; export const useApp = (selector) => selector(r.state); useApp.getState = () => r.state;',
+    'lucide-react': iconMock,
+    '../store': 'const r = globalThis.__UIUX_WIRING__; export const useApp = (selector) => selector(r.state); useApp.getState = () => r.state; export const useMy = (selector) => selector({ sidebarWidth:275, setSidebarWidth(){} });',
+    '../my/store': 'const state = {sidebarWidth:275,sidebarCollapsed:false,setSidebarWidth(){},toggleSidebar(){}}; export const useMy = (selector) => selector(state); useMy.getState=()=>state;',
     '../api': 'export const api = globalThis.__UIUX_WIRING__.api; export const hasIpc = true;',
     '../components/MarkdownView': 'export function MarkdownView() {}',
     '../reader/DocumentReader': 'export function DocumentReader() {}',

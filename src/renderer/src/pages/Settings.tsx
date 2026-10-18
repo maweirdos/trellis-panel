@@ -5,7 +5,6 @@ import {
   Terminal,
   FolderOpen,
   X,
-  Leaf,
   Link2,
   Plug,
   TerminalSquare,
@@ -25,6 +24,7 @@ import { clsx } from 'clsx'
 import { Button, Checkbox, EmptyState } from '../my/ui'
 import { RuntimePanel } from '../acp/RuntimePanel'
 import { AppearancePreferences } from '../my/AppearancePreferences'
+import { BrandMark } from '../my/BrandMark'
 import type { JSX } from 'react'
 import type { AcpAgentConfig, AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, Settings, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
 import { WEKNORA_DEFAULTS } from '../../../shared/types'
@@ -347,7 +347,7 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
               onClick={() => void toggleMcp(!(mcpInfo?.running ?? false))}
               className={clsx(
                 'my-control',
-                mcpInfo?.running ? 'bg-my-danger-subtle text-my-danger-text hover:bg-my-danger-subtle-hover' : 'bg-my-accent text-my-on-color hover:bg-my-accent-hover'
+                mcpInfo?.running ? 'bg-my-danger-subtle text-my-danger-text hover:bg-my-danger-subtle-hover' : 'bg-my-accent text-my-on-accent hover:bg-my-accent-hover'
               )}
             >
               {mcpInfo?.running ? '停止服务' : '启动 Web 看板'}
@@ -411,7 +411,7 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
               onClick={() => toggleAccess(!(settings.access?.enabled ?? false))}
               className={clsx(
                 'my-control',
-                settings.access?.enabled ? 'bg-my-danger-subtle text-my-danger-text hover:bg-my-danger-subtle-hover' : 'bg-my-accent text-my-on-color hover:bg-my-accent-hover'
+                settings.access?.enabled ? 'bg-my-danger-subtle text-my-danger-text hover:bg-my-danger-subtle-hover' : 'bg-my-accent text-my-on-accent hover:bg-my-accent-hover'
               )}
             >
               {settings.access?.enabled ? '停止接入服务' : '启动接入服务'}
@@ -1075,7 +1075,7 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
         {/* about */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-2 flex items-center gap-2 text-my-xs font-semibold text-my-secondary">
-            <Leaf size={13} className="text-my-icon-accent" /> 关于
+            <BrandMark size={16} className="text-my-primary" /> 关于
           </div>
           <div className="grid grid-cols-2 gap-y-1.5 text-my-xs text-my-tertiary">
             <span>Trellis Panel</span>

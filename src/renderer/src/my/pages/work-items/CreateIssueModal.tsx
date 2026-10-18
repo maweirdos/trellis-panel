@@ -43,7 +43,7 @@ function CreateIssueForm(): JSX.Element {
     <Modal open onClose={() => setCreateIssueOpen(false)} width={560}>
       <div className="flex flex-col">
         {/* 标题行 */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-my-line px-4">
+        <div className="flex h-my-header shrink-0 items-center justify-between border-b border-my-line px-4">
           <span className="text-my-lg font-semibold text-my-primary">新建工作项</span>
           <button
             type="button"

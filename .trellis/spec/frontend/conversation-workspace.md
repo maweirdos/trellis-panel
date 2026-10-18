@@ -48,9 +48,9 @@ Read before changing `acp/`, conversation framing, reader hosts or Settings appe
 
 ACP owns one internal module header and bypasses the former outer PageFrame; retain the fixed module rail and reachable Agent/channel switch. One inspector selects Agent/task/document. Keep the same document host across inspector tabs, expansion, responsive and font changes; explicit close/file/session/root changes end the appropriate lifetime.
 
-Use shared Button/Dropdown/Modal/Escape layers and `my.*` tokens. Standard Button forwards accessible/data attributes. Font controls exist **only in Settings**, never the home/conversation top bar. Small defaults to UI/chat/document 13/14/15px; standard 14/15/16px; large 15/16/17px. Consumers use `--my-text-ui/chat/document`, line-height and control/row/header/avatar variables. Shared inputs consume the UI font variable; multiline inputs explicitly override single-line height.
+Use shared Button/Dropdown/Modal/Escape layers and `my.*` tokens. Standard Button forwards accessible/data attributes. Font controls exist **only in Settings**, never the home/conversation top bar. Standard is the unset/invalid default: UI/chat/document all use14px; explicit small/large use13/15px respectively. Activity uses --my-text-activity (standard12px). Consumers use `--my-text-ui/chat/document`, line-height and control/row/header/avatar variables. Shared inputs consume the UI font variable; multiline inputs explicitly override single-line height.
 
-Recent rows are single-line titles (small32px). After about350ms hover/focus, show a small viewport-clamped hint with existing title/description/context; do not activate the conversation. Attach `aria-describedby` while visible. Escape, scrolling, navigation and scope changes dismiss it. No persistent description/metadata rows.
+Recent rows are single-line titles (standard32px, from the global row metric). After about350ms hover/focus, show a small viewport-clamped hint with existing title/description/context; do not activate the conversation. Attach `aria-describedby` while visible. Escape, scrolling, navigation and scope changes dismiss it. No persistent description/metadata rows.
 
 The hint summarizes the coherent latest message/response, not the last streamed token event. Assemble only compatible role/turn/session/connection chunks, exclude thought/tool/diagnostic text and older turns, then normalize whitespace and apply the display bound. Verify with actual fragmented streaming records; a single static message test cannot catch a one-word summary.
 
@@ -76,7 +76,7 @@ Heading discovery must use the same CommonMark line-ending semantics as body ren
 
 | Condition | Required behavior |
 | --- | --- |
-| Missing/invalid appearance | Small; retain unrelated/legacy preferences |
+| Missing/invalid appearance | Standard; retain unrelated/legacy preferences |
 | Font change | Tokens update, draft/reader/runtime identity retained |
 | Stale/empty diagnostic active ID | Useful library entry, secondary history preserved |
 | Root/session/generation drift | Reject stale callbacks/refs, preserve scoped draft |

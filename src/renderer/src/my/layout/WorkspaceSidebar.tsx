@@ -49,7 +49,7 @@ export function WorkspaceSidebar(): JSX.Element {
         <Dropdown width={210} trigger={({ open, toggle }) => (
           <button type="button" aria-label="用户与主题" title="用户与主题" aria-expanded={open} onClick={toggle}
             className="grid h-10 w-10 place-items-center rounded-my-lg hover:bg-my-layer-transparent-hover">
-            <Avatar name={snapshot?.meta.developer ?? '本机用户'} color="var(--my-bg-accent-primary)" size={28} />
+            <Avatar name={snapshot?.meta.developer ?? '本机用户'} color="var(--my-bg-accent-primary)" tone="accent" size={28} />
           </button>
         )}>
           {(close) => <>
@@ -83,7 +83,7 @@ function ContextSidebar(): JSX.Element {
   const domain = getPageNavigation(page).domain
   const title = domain === 'work' ? view === 'iterations' && page === 'tasks' ? '自然周计划' : '工作视图' : domain === 'intake' ? '需求来源'
     : domain === 'overview' ? '项目概览' : domain === 'team' ? '团队协作' : domain === 'analytics' ? '项目统计' : '工具与设置'
-  const buttonClass = (selected: boolean): string => clsx('my-context-button mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-my-md px-3 py-2 text-left text-my-lg transition-colors',
+  const buttonClass = (selected: boolean): string => clsx('my-context-button mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-my-md px-3 py-2 text-left text-my-sm transition-colors',
     selected ? 'bg-my-layer-transparent-selected text-my-primary font-medium' : 'text-my-secondary hover:bg-my-layer-transparent-hover')
   const routeButton = (target: Page): JSX.Element => <button key={target} type="button" aria-current={page === target ? 'page' : undefined}
     onClick={() => { if (target === 'tasks' || target === 'archive') setView('items'); setPage(target) }} className={buttonClass(page === target)}>
@@ -92,8 +92,8 @@ function ContextSidebar(): JSX.Element {
   return (
     <aside aria-label={`${title}上下文`} style={sidebarStyle} className="my-context-sidebar flex h-full shrink-0 flex-col border-r border-my-line">
       <SidebarResizeHandle />
-      <header className="flex h-[52px] shrink-0 items-center gap-2 px-4">
-        <h2 className="flex-1 text-my-xl font-semibold text-my-primary">{title}</h2>
+      <header className="flex h-my-header shrink-0 items-center gap-2 px-4">
+        <h2 className="my-sidebar-heading flex-1 font-medium text-my-primary">{title}</h2>
         {domain === 'work' && <button type="button" aria-label="新建工作项" title="新建工作项 (C)" onClick={() => setCreate(true)}
           className="grid h-7 w-7 place-items-center rounded-my-md text-my-icon-secondary hover:bg-my-layer-transparent-hover"><Plus size={18} /></button>}
       </header>

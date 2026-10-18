@@ -40,7 +40,10 @@ try {
   const m = await import(pathToFileURL(bundle).href)
 
   // Actual appearance store writes remain application-scoped and preserve older UI fields.
-  assert.equal(m.useMy.getState().fontSize, 'small')
+  assert.equal(m.useMy.getState().fontSize, 'standard')
+  assert.equal(m.useMy.getState().sidebarWidth, 275, 'unset sidebar preference uses the shared baseline')
+  m.useMy.getState().setFontSize('small')
+  assert.equal(m.useMy.getState().fontSize, 'small', 'an explicit compact preference remains valid')
   m.useMy.getState().setFontSize('large')
   assert.equal(JSON.parse(storage.getItem('tpanel.my.ui')).fontSize, 'large')
   assert.deepEqual(JSON.parse(storage.getItem('tpanel.my.ui')).favorites, ['embedded-legacy'])
@@ -49,7 +52,7 @@ try {
   const savedUi = storage.getItem('tpanel.my.ui')
   storage.setItem('tpanel.my.ui', '{broken')
   m.useMy.getState().syncFontSizeFromStorage()
-  assert.equal(m.useMy.getState().fontSize, 'small', 'invalid storage falls back without corrupting the store')
+  assert.equal(m.useMy.getState().fontSize, 'standard', 'invalid storage falls back without corrupting the store')
   assert.equal(m.useMy.getState().layout, 'board', 'appearance synchronization does not replace other preferences')
   storage.setItem('tpanel.my.ui', savedUi)
   m.useMy.getState().syncFontSizeFromStorage()
@@ -75,7 +78,8 @@ try {
   assert.equal(m.activeModule('chat', 'items'), 'tools', 'cross-project API history is not project Agent sessions')
   assert.equal(m.hasShellContext('tasks'), true)
   assert.equal(m.hasShellContext('jira'), true)
-  for (const page of ['dashboard', 'knowledge', 'spec', 'acp', 'channels', 'team', 'analytics']) {
+  for (const page of ['dashboard', 'team', 'analytics']) assert.equal(m.hasShellContext(page), true, `${page} retains its existing contextual navigation`)
+  for (const page of ['knowledge', 'spec', 'acp', 'channels']) {
     assert.equal(m.hasShellContext(page), false, `${page} does not receive an empty or duplicate context browser`)
   }
   assert.equal(m.PAGE_NAVIGATION.archive.domain, 'work')

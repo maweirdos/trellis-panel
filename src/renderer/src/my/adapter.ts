@@ -6,11 +6,11 @@ import type { Issue, IssueActivity, Member, MyDataset, Priority, WorkItemState }
 export const TRELLIS_PROJECT_ID = 'trellis'
 
 export const MY_STATES: WorkItemState[] = [
-  { id: 'st-backlog', name: '未规划', color: '#A3A3A3', group: 'backlog', sequence: 15000 },
-  { id: 'st-planning', name: '规划中', color: '#3A3A3A', group: 'unstarted', sequence: 25000 },
-  { id: 'st-progress', name: '进行中', color: '#F59E0B', group: 'started', sequence: 35000 },
-  { id: 'st-review', name: '评审中', color: '#3F76FF', group: 'started', sequence: 40000 },
-  { id: 'st-done', name: '已完成', color: '#16A34A', group: 'completed', sequence: 45000 }
+  { id: 'st-backlog', name: '未规划', color: 'var(--my-txt-icon-states-backlog)', group: 'backlog', sequence: 15000 },
+  { id: 'st-planning', name: '规划中', color: 'var(--my-txt-icon-states-unstarted)', group: 'unstarted', sequence: 25000 },
+  { id: 'st-progress', name: '进行中', color: 'var(--my-txt-icon-states-started)', group: 'started', sequence: 35000 },
+  { id: 'st-review', name: '评审中', color: 'var(--my-txt-icon-states-monitoring)', group: 'started', sequence: 40000 },
+  { id: 'st-done', name: '已完成', color: 'var(--my-txt-icon-states-completed)', group: 'completed', sequence: 45000 }
 ]
 
 export function statusToStateId(status: string | null | undefined): string {
@@ -152,13 +152,13 @@ export function deriveDataset(snapshot: ProjectSnapshot | null): MyDataset {
       slug: 'trellis',
       memberId: snapshot.meta.developer ?? members[0]?.id ?? '我'
     },
-    members: members.length > 0 ? members : [{ id: '我', name: '我', avatarColor: '#059669', role: 'Admin' }],
+    members: members.length > 0 ? members : [{ id: '我', name: '我', avatarColor: 'var(--my-avatar-bg)', role: 'Admin' }],
     projects: [
       {
         id: TRELLIS_PROJECT_ID,
         name: snapshot.meta.name || 'Trellis 项目',
         icon: (snapshot.meta.name || 'T').slice(0, 1),
-        color: '#059669',
+        color: 'var(--my-avatar-bg)',
         description: `${createdCount} 个工作项 · ${snapshot.archived.length} 个已归档`,
         cycleEnabled: false,
         moduleEnabled: false,

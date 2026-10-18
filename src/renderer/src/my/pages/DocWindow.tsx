@@ -42,9 +42,9 @@ export function DocWindowApp(): JSX.Element {
   }
 
   return (
-    <div data-my-theme={theme} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
+    <div data-my-theme={theme} className="flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
       {/* 标题栏：拖动区 + 文档名 + 置顶/关闭 */}
-      <header className="drag-region flex h-10 shrink-0 items-center gap-2 border-b border-my-line bg-my-layer-1 px-3">
+      <header className="drag-region flex h-my-header shrink-0 items-center gap-2 border-b border-my-line bg-my-layer-1 px-3">
         <FileText size={13} className="shrink-0 text-my-icon-secondary" />
         <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary" title={taskTitle}>
           {taskTitle}
@@ -94,7 +94,7 @@ export function DocWindowApp(): JSX.Element {
         ) : content === null ? (
           <div className="px-7 py-6 text-my-sm text-my-tertiary">加载中…</div>
         ) : (
-          <div className="px-8 py-6 [&_.md]:text-[14px] [&_blockquote]:border-l-2 [&_blockquote]:border-my-line-strong [&_blockquote]:pl-3 [&_blockquote]:text-my-secondary [&_code]:rounded-my-sm [&_code]:bg-my-layer-3 [&_code]:px-1 [&_h1]:mb-2 [&_h1]:mt-5 [&_h1]:text-[17px] [&_h1]:font-semibold [&_h1]:text-my-primary [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-my-md [&_h2]:font-semibold [&_h2]:text-my-primary [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-my-md [&_h3]:font-medium [&_h3]:text-my-primary [&_li]:leading-6 [&_p]:my-2.5 [&_p]:leading-6 [&_pre]:my-2.5 [&_pre]:overflow-x-auto [&_pre]:rounded-my-md [&_pre]:bg-my-layer-2 [&_pre]:p-3 [&_strong]:text-my-primary">
+          <div className="px-my-page py-6">
             <MarkdownView content={content} />
           </div>
         )}

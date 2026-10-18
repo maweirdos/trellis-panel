@@ -13,8 +13,6 @@ import { PageFrame } from './PageFrame'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { useEscLayer } from '../../utils/use-esc-layer'
 import { InteractionScope, useInteractionActive } from '../../utils/interaction-scope'
-import '@fontsource-variable/inter'
-import '../my.css'
 
 const YourWorkPage = lazy(() => import('../pages/YourWorkPage').then((m) => ({ default: m.YourWorkPage })))
 const AnalyticsPage = lazy(() => import('../pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })))

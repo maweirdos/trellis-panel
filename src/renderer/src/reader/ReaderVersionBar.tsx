@@ -110,7 +110,7 @@ export function ReaderVersionBar({
           <button
             type="button"
             onClick={(e) => onReadNew(e.currentTarget)}
-            className="rounded-my-md bg-my-accent px-2 py-0.5 text-my-xs font-medium text-my-on-color transition-colors hover:bg-my-accent-hover"
+            className="rounded-my-md bg-my-accent px-2 py-0.5 text-my-xs font-medium text-my-on-accent transition-colors hover:bg-my-accent-hover"
           >
             阅读新版
           </button>

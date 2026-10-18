@@ -1,10 +1,11 @@
 /** Actual ACP component hook/event handlers, without mounting DOM or claiming native acceptance. */
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { globSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { lucideMockSource } from './icon-mocks.mjs'
 
 const temporary = mkdtempSync(join(tmpdir(), 'tpanel-acp-ui-'))
 const storage = new Map()
@@ -68,7 +69,7 @@ const runtime = {
   }
 }
 globalThis.__ACP_UI__ = runtime
-const nodes = (tree) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props?.children)]
+const nodes = (tree) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props?.children), ...nodes(tree.props?.sendAction), ...nodes(tree.props?.usage)]
 const find = (harness, predicate) => { const result = nodes(harness.tree).find(predicate); assert.ok(result, 'expected ACP interactive element'); return result }
 const findAll = (harness, predicate) => nodes(harness.tree).filter(predicate)
 const settle = async (harness) => { for (let index = 0; index < 7; index++) await Promise.resolve(); harness.render() }
@@ -78,15 +79,16 @@ const permission = (id, sessionId, root = rootA) => ({ id, ts: 10, source: 'acp'
 const check = (name, condition) => { assert.ok(condition, name); console.log(`PASS ${name}`) }
 
 try {
-  const files = ['ConsoleWorkspace', 'ProfileEditor', 'RuntimePanel', 'SessionDetails', 'TranscriptRow', 'JiraPicker', 'ConversationArtifactCard', 'ConversationNavigation'].map((name) => `src/renderer/src/acp/${name}.tsx`)
-  const icons = new Set(files.flatMap((file) => [...readFileSync(file, 'utf8').matchAll(/import\s*\{([^}]+)\}\s*from 'lucide-react'/gs)].flatMap((match) => match[1].split(',').map((name) => name.trim()))))
+  const files = [...globSync('src/renderer/src/**/*.tsx')]
+  const iconMock = lucideMockSource(files)
   const mocks = {
     react: `const r = globalThis.__ACP_UI__; ${['useState', 'useRef', 'useMemo', 'useCallback', 'useEffect'].map((name) => `export const ${name} = (...args) => r.current.${name}(...args);`).join('\n')} export const useId = () => 'acp-test'; export const createContext = (value) => ({ _value:value, Provider:() => null }); export const useContext = (context) => context._value; export const useLayoutEffect = useEffect; export default { memo: (component) => component };`,
     'react/jsx-runtime': 'export const jsx = (type, props, key) => ({ type, props, key }); export const jsxs = jsx; export const Fragment = "fragment";',
-    'lucide-react': [...icons].map((name) => `export const ${name} = () => null;`).join('\n'),
+    'lucide-react': iconMock,
+    '../my/store': 'const state = {sidebarWidth:275,sidebarCollapsed:false,setSidebarWidth(){},toggleSidebar(){}}; export const useMy = (selector) => selector(state); useMy.getState=()=>state;',
     '../api': 'export const api = globalThis.__ACP_UI__.api; export const hasIpc = true;',
-    '../store': 'const r = globalThis.__ACP_UI__; export const useApp = (selector) => selector(r.state); useApp.getState = () => r.state;',
-    '../my/ui': 'export function Button() {} export function Modal() {}',
+    '../store': 'const r = globalThis.__ACP_UI__; export const useApp = (selector) => selector(r.state); useApp.getState = () => r.state; export const useMy = (selector) => selector({sidebarWidth:275,sidebarCollapsed:false,setSidebarWidth(){},toggleSidebar(){}});',
+    '../my/ui': 'export function Button() {} export function Modal() {} export function Dropdown() {} export function DropdownHeader() {} export function DropdownItem() {} export function Tooltip() {}',
     '../components/MarkdownView': 'export function MarkdownView() {}',
     '../components/Dialogs': 'export const confirmDialog = async () => globalThis.__ACP_UI__.confirm;',
     '../observation/ObservationPanel': 'export function ObservationPanel() {}'
@@ -119,7 +121,7 @@ try {
   const textarea = () => find(page, (node) => node.type === 'textarea')
   const draft = (text) => { textarea().props.onChange({ target: { value: text } }); page.render() }
   const refresh = () => find(page, (node) => node.props?.title === '刷新').props.onClick()
-  const newRuntime = () => find(page, (node) => node.props?.['aria-label'] === '新会话 Runtime')
+  const startNew = () => { navigation().props.onNew(); page.render(); const picker=find(page,node=>node.type?.name==='NewConversationPicker'); picker.props.onStart(picker.props.profiles[0], undefined, false) }
   const sendButton = () => find(page, (node) => node.props?.title === '发送指令')
   page.render()
   const early = permission('early', 'a1')
@@ -185,7 +187,7 @@ try {
   lists.shift().resolve({ ok: true, sessions: [record('b1', rootB)] }); await settle(page)
   select('b1'); check('project switch has no foreign draft/events/approval', textarea().props.value === '' && rows().length === 0)
   library()
-  newRuntime().props.onChange({ target: { value: 'codex' } }); const oldCreate = creates.shift()
+  startNew(); const oldCreate = creates.shift()
   runtime.state.snapshot = { meta: { root: rootA }, tasks: [] }; page.render()
   oldCreate.resolve({ ok: true, sessionId: 'foreign-created' })
   lists.shift().resolve({ ok: true, sessions: [record('a1'), record('a2')] }); await settle(page)
@@ -193,7 +195,7 @@ try {
   check('A to B to A rejects original list/create/output closures', navigation().props.sessions.every((session) => !['stale-return-a', 'foreign-created', 'stale-a'].includes(session.sessionId)) && lists.length === 0)
 
   library()
-  newRuntime().props.onChange({ target: { value: 'codex' } }); const currentCreate = creates.shift()
+  startNew(); const currentCreate = creates.shift()
   const createdPermission = permission('created-permission', 'created-a')
   emit(outputs, createdPermission); emit(states, { sessionId: 'created-a', projectRoot: rootA, status: 'awaiting_permission' })
   currentCreate.resolve({ ok: true, sessionId: 'created-a' }); await settle(page)
@@ -307,9 +309,10 @@ try {
   implementationButton().props.onClick(); await settle(workspace)
   const authorization = find(workspace, (node) => node.type === 'textarea').props.value
   check('implementation draft cites only reviewed principal materials and never auto-sends', ['prd.md', 'design.md', 'implement.md'].every((name) => authorization.includes(`.trellis/tasks/${taskDir}/${name}`)) && !authorization.includes('/research/') && sends.length === 0)
-  emit(states, { sessionId: 'material', projectRoot: materialRoot, status: 'disconnected', connectionGeneration: 'conn-restored', session: { ...materialSession, historyKind: 'live', status: 'disconnected', connectionGeneration: 'conn-restored', restorePending: true } }); workspace.render()
+  emit(states, { sessionId: 'material', projectRoot: materialRoot, status: 'disconnected', connectionGeneration: 'conn-restored', session: { ...materialSession, historyKind: 'live', status: 'disconnected', canResume: true, connectionGeneration: 'conn-restored', restorePending: true } }); workspace.render()
   find(workspace, (node) => node.props?.title === '发送指令').props.onClick(); await settle(workspace)
   check('restored connection never silently retargets or sends an existing source-bound draft', find(workspace, (node) => node.type === 'textarea').props.value === authorization && views.readSessionView(materialRoot, 'material').sourceReferences.every((source) => source.targetConnectionGeneration === 'conn-material') && sends.length === 0)
+  emit(states, { sessionId:'material', projectRoot:materialRoot, status:'ready', connectionGeneration:'conn-restored', session:{...materialSession,historyKind:'live',status:'ready',canResume:true,connectionGeneration:'conn-restored'} }); workspace.render()
   find(workspace, (node) => node.type?.name === 'Button' && node.props.children === '继续完善方案').props.onClick(); await settle(workspace)
   find(workspace, (node) => node.props?.title === '发送指令').props.onClick()
   const restoredPlanningSend = sends.shift()
@@ -373,17 +376,15 @@ try {
   check('activity grouping preserves visible tool, approval and runtime error rows', grouped.some((item) => item.type === 'tool') && grouped.some((item) => item.type === 'perm') && grouped.some((item) => item.type === 'detail' && item.ev.id === 'runtime-error'))
   const activityView = new Harness(EventRow, { item: activity[0], pendingPerm: {}, permissionPending: {}, permissionErrors: {} })
   activityView.render()
-  check('runtime activity is collapsed by default with Chinese count and raw detail access', activityView.tree.type === 'details' && activityView.tree.props.open !== true && JSON.stringify(activityView.tree.props.children[0]).includes('运行活动') && findAll(activityView, (node) => node.type?.name === 'RawData').length === 5)
+  check('sessionless activity fallback stays collapsed and retains every original event in one diagnostic record', activityView.tree.type === 'details' && activityView.tree.props.open !== true && JSON.stringify(activityView.tree.props.children[0]).includes('处理记录') && findAll(activityView,node=>node.type?.name==='RawData').length===1 && find(activityView,node=>node.type?.name==='RawData').props.value===activity[0].events)
   const errorView = new Harness(EventRow, { item: grouped.find((item) => item.type === 'detail' && item.ev.id === 'runtime-error'), pendingPerm: {}, permissionPending: {}, permissionErrors: {} })
   errorView.render()
-  check('runtime error stays visible outside collapsed activity with expandable raw data', errorView.tree.props.role === 'alert' && JSON.stringify(errorView.tree).includes('运行连接失败') && findAll(errorView, (node) => node.type?.name === 'RawData').length === 1)
+  check('runtime error stays visible outside collapsed activity with expandable raw data', find(errorView,node=>node.type?.name==='ConnectionNotice').type(find(errorView,node=>node.type?.name==='ConnectionNotice').props).props.role==='alert' && JSON.stringify(errorView.tree).includes('运行连接失败') && findAll(errorView, (node) => node.type?.name === 'RawData').length === 1)
 
   const nativeToolPayload = { toolExecution: 'adapter-native', clientServices: { fs: false, terminal: false } }
   const nativeToolsInfo = metadata('native-tools-info', 'diagnostic', nativeToolPayload, '工具由适配器原生能力提供；ACP 客户端文件和终端回调未启用，实际工具以该适配器报告和运行结果为准。')
   const nativeToolItems = compileItems([nativeToolsInfo])
-  check('known native-tool capability information is routine setup detail rather than an error', nativeToolItems.length === 1 && nativeToolItems[0].type === 'activity' && nativeToolItems[0].events[0] === nativeToolsInfo)
-  const nativeToolsView = new Harness(EventRow, { item: nativeToolItems[0], pendingPerm: {}, permissionPending: {}, permissionErrors: {} }); nativeToolsView.render()
-  check('native-tool information is neutral collapsed detail with original text and raw payload intact', nativeToolsView.tree.type === 'details' && nativeToolsView.tree.props.open !== true && !findAll(nativeToolsView, (node) => node.props?.role === 'alert').length && JSON.stringify(nativeToolsView.tree).includes('工具能力说明') && JSON.stringify(nativeToolsView.tree).includes(nativeToolsInfo.text) && find(nativeToolsView, (node) => node.type?.name === 'RawData').props.value === nativeToolsInfo)
+  check('known native-tool capability facts stay in connection records rather than occupying the transcript', nativeToolItems.length===0 && nativeToolsInfo.payload===nativeToolPayload && nativeToolsInfo.text.includes('适配器原生能力'))
   const protectedDiagnostics = [
     metadata('native-tools-warning', 'diagnostic', { ...nativeToolPayload, severity: 'warning' }, '工具能力存在警告'),
     metadata('native-tools-level-warning', 'diagnostic', { ...nativeToolPayload, level: 'warning' }, '工具配置存在警告'),
@@ -397,7 +398,7 @@ try {
   check('capability-shaped warnings, authentication failures and unknown diagnostics remain visible outside activity', protectedDiagnostics.every((event) => protectedItems.some((item) => item.type === 'detail' && item.ev === event)) && protectedItems.some((item) => item.type === 'tool' && item.tool.status === 'failed'))
   for (const event of protectedDiagnostics) {
     const view = new Harness(EventRow, { item: protectedItems.find((item) => item.type === 'detail' && item.ev === event), pendingPerm: {}, permissionPending: {}, permissionErrors: {} }); view.render()
-    assert.equal(view.tree.props.role, 'alert', `actual warning/error remains prominent: ${event.id}`)
+    const notice=find(view,node=>node.type?.name==='ConnectionNotice'); assert.equal(notice.type(notice.props).props.role, 'alert', `actual warning/error remains prominent: ${event.id}`)
     assert.equal(find(view, (node) => node.type?.name === 'RawData').props.value, event)
   }
   check('actual warning/error/auth diagnostics retain prominent alerts and exact raw data', true)

@@ -1,0 +1,51 @@
+/* Project workspace hierarchy: semantic surfaces, with no new palette. */
+.my-root .my-window-header { background: var(--my-bg-canvas); }
+.my-root .my-module-rail { background: var(--my-bg-sidebar); }
+.my-root .my-module-rail > nav { scrollbar-gutter: auto; scrollbar-width: none; }
+.my-root .my-module-rail > nav::-webkit-scrollbar { display: none; }
+.my-root .my-module-button { line-height: 1; }
+.my-root .my-context-sidebar {
+  position: relative;
+  width: min(var(--my-sidebar-width), max(220px, calc(100vw - 360px)));
+  min-width: 0;
+  background: var(--my-bg-sidebar);
+}
+.my-root .my-sidebar-resize-handle {
+  position: absolute;
+  z-index: var(--my-z-resize);
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.my-root .my-sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  background: transparent;
+  transition: background var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-sidebar-resize-handle:hover::after,
+.my-root .my-sidebar-resize-handle:active::after,
+.my-root .my-sidebar-resize-handle:focus-visible::after { background: var(--my-border-accent-strong); }
+.my-root .my-sidebar-resize-handle:focus-visible { outline: 2px solid var(--my-focus-ring); outline-offset: 1px; }
+.my-root .my-workspace-center { background: var(--my-bg-surface-1); }
+.my-root .my-project-switcher { border: 0; background: transparent; }
+.my-root .my-project-switcher:hover,
+.my-root .my-project-switcher[aria-expanded='true'] { background: var(--my-bg-layer-transparent-hover); }
+.my-root .my-context-button { border: 0; box-shadow: none; }
+.my-root .my-task-surface { min-width: 0; }
+@media (max-width: 1100px) {
+  .my-root .my-work-items-header { gap: 8px; padding-inline: 12px; }
+  .my-root .my-project-switcher-name { max-width: 190px; }
+  .my-root .my-window-search { margin-right: 8px; gap: 8px; }
+}
+
+.my-root .my-window-header { height: var(--my-workspace-header-height); border-bottom-color: transparent; }
+.my-root .my-page-header { min-height: var(--my-workspace-header-height); }
+.my-root .my-context-button { font-size: var(--my-text-sm); line-height: var(--my-line-ui); }
+.my-root .my-sidebar-heading { font-size: var(--my-text-sm); }

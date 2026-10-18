@@ -101,8 +101,7 @@ export const AsciiDiagramBlock = React.memo(function AsciiDiagramBlock({ chart }
       <div
         className="m-0 max-w-full overflow-x-auto p-3.5 font-mono select-text transition-all leading-[1.18] text-my-xs text-my-secondary"
         style={{
-          fontFamily:
-            "'Cascadia Code', 'Cascadia Mono', Consolas, 'Fira Code', 'SimSun', 'NSimSun', monospace",
+          fontFamily: 'var(--my-font-diagram)',
           fontVariantLigatures: 'none'
         }}
       >

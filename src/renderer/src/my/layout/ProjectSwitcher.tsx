@@ -21,8 +21,8 @@ export function ProjectSwitcher(): JSX.Element {
     <Dropdown width={340} className="no-drag min-w-0" trigger={({ open, toggle }) => (
       <button type="button" aria-label={`选择项目，当前${name}`} aria-expanded={open} onClick={toggle}
         title={root ?? '未绑定本地项目'}
-        className="my-project-switcher flex h-9 min-w-0 items-center gap-2 rounded-my-md px-2.5 text-my-xl text-my-primary transition-colors hover:bg-my-layer-transparent-hover">
-        <span className="my-project-switcher-name max-w-[260px] truncate font-semibold">{name}</span>
+        className="my-project-switcher flex h-my-control min-w-0 items-center gap-2 rounded-my-md px-2.5 text-my-md text-my-primary transition-colors hover:bg-my-layer-transparent-hover">
+        <span className="my-project-switcher-name max-w-[260px] truncate font-medium">{name}</span>
         <ChevronDown size={14} strokeWidth={1.7} className={clsx('shrink-0 text-my-icon-tertiary transition-transform', open && 'rotate-180')} />
       </button>
     )}>

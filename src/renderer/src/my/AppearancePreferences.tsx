@@ -15,7 +15,7 @@ export function AppearancePreferences(): JSX.Element {
           <Button key={option.value} variant={fontSize === option.value ? 'primary' : 'neutral'}
             aria-label={`字号：${option.label}`} aria-pressed={fontSize === option.value}
             title={option.description} onClick={() => setFontSize(option.value)}>
-            {option.label}{option.value === 'small' ? '（默认）' : ''}
+            {option.label}{option.value === 'standard' ? '（默认）' : ''}
           </Button>
         ))}
       </div>

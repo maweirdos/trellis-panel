@@ -1,393 +1,123 @@
-# CSS & Design System
+# Global CSS and design system
 
-> CSS modularization and design tokens.
+## 1. Scope and ownership
 
----
+Every renderer surface, including document/capsule/quick-todo windows, uses the
+`my` design system. Read this before adding UI or changing a visual value.
 
-## CSS Organization
+The only bootstrap imports are `my/my.css` then `styles.css` in `main.tsx`.
+`my.css` imports these files in order:
 
-### Entry Point
+- `my-tokens.css`: canonical colors, fonts, type scale, line heights, weights,
+  spacing, radii, control/layout metrics, shadows, motion and stacking levels.
+- `my-components.css`: shared control, field, menu, tooltip, modal, focus and
+  selection rules. Values come from the token file.
+- `my-shell.css`: shell composition and responsive geometry using those tokens.
 
-`src/renderer/src/styles/index.css` is the single CSS entrypoint imported by the renderer bootstrap.
+`styles.css` owns Tailwind directives, reset/native-window rules and Markdown/
+architecture presentation. It consumes the same tokens; it is not another palette.
+Domain sheets such as `acp/workspace.css` compose these roles without overriding
+brand, typography or radius values. Keep theme values in `my-tokens.css` only.
 
-**Folder structure**:
+## 2. Public style and component API
 
-```
-src/renderer/src/styles/
-├── index.css            # Entry point (imports in a stable order)
-├── tokens.css           # :root tokens + .dark overrides
-├── base.css             # html/body/typography/focus/scrollbars
-├── components/          # Component-scoped classes
-│   ├── sidebar.css
-│   ├── tabbar.css
-│   └── ...
-├── layout/              # Shell-level layout helpers
-└── pages/               # Page-specific styling
-```
+- Colors: existing `bg-my-*`, `text-my-*`, `border-my-*` map to `--my-*` variables.
+- Type: `text-my-2xs/xs/sm/md/lg/title/xl/display`; body roles are
+  `--my-text-ui/chat/document/activity`, with matching line-height variables.
+- Radii: `rounded-my-xs/sm/inset/md/lg/xl/menu/3xl/4xl` map to
+  2/4/6/10/12/16/18/20/24px. Round avatars and progress rings are geometric exceptions.
+- Spacing: ordinary Tailwind 0.5 through 16 steps consume `--my-space-*`.
+  Use `px-my-page`, `h-my-header`, `h-my-icon`, `h-my-control`, `h-my-field`
+  for semantic layout metrics. Do not introduce unrelated local pixel scales.
+- State: `my-control`, `my-input`, `my-menu`, `my-menu-item`, `my-tooltip`,
+  `my-modal-backdrop`, `my-modal-panel`, `my-segmented`, `my-segment`,
+  `my-chip`, `my-kbd`, `my-scrollbar`.
+- Shared React primitives live in `my/ui.tsx`: Button, Dropdown, Modal,
+  Checkbox, SearchInput, Tabs, Avatar, Tooltip and EmptyState.
+- `Avatar({ tone?: 'color'|'accent' })`: use `tone="accent"` with a neutral
+  accent background. Arbitrary user identity colors retain semantic on-color ink.
+- `BrandMark({ size?: number, className?: string })` uses the canonical SVG.
 
-**Rules**:
+Example:
 
-- Keep `index.css` import order stable to avoid cascade regressions
-- When adding new styles, put them in the closest domain file (components/layout/pages)
-- If a file grows beyond ~300-500 lines, split it
-
-### Index.css Structure
-
-```css
-/* src/renderer/src/styles/index.css */
-
-/* 1. Design tokens first */
-@import './tokens.css';
-
-/* 2. Base styles (reset, typography) */
-@import './base.css';
-
-/* 3. Layout helpers */
-@import './layout/shell.css';
-
-/* 4. Component styles */
-@import './components/sidebar.css';
-@import './components/tabbar.css';
-@import './components/dialog.css';
-
-/* 5. Page-specific styles */
-@import './pages/home.css';
-@import './pages/settings.css';
+```tsx
+<Button variant="primary" onClick={save}>保存</Button>
+<input className="my-input" aria-label="名称" />
+<div className="rounded-my-lg bg-my-layer-2 p-4 text-my-sm text-my-secondary" />
 ```
 
----
+## 3. Theme and typography contracts
 
-## Design Tokens
+Application roots carry `.my-root`, `data-my-theme="light|dark"` and
+`data-my-font-size="small|standard|large"`. Root document colors also follow
+`html.dark` for initial paint. A nested `.my-root` must not reset a parent's
+font step: use an ordinary content container inside the App-owned root.
 
-### CSS Custom Properties
+The accent is neutral inversion: white on dark, dark ink on light. Filled accent
+controls use `text-my-on-accent`; danger/colored controls use `text-my-on-color`.
+Do not reuse constant white text on a white accent fill. Green is a success/
+completion or user-label semantic color, never an application brand setting.
+No legacy leaf variables/classes, private accent overrides or bundled Inter.
 
-Define design tokens as CSS custom properties in `:root`:
+The default font is the platform system stack, including Segoe UI and Chinese
+fallbacks on Windows. Code uses the global mono stack; box-drawing content uses
+`--my-font-diagram` for its CJK character-width requirements. There is no font CDN.
 
-```css
-/* src/renderer/src/styles/tokens.css */
-:root {
-  /* Colors */
-  --color-background: 0 0% 100%; /* HSL format for Tailwind */
-  --color-foreground: 20 14% 4%;
-  --color-primary: 24 10% 10%;
-  --color-primary-foreground: 60 9% 98%;
-  --color-muted: 60 5% 96%;
-  --color-muted-foreground: 25 5% 45%;
-  --color-border: 20 6% 90%;
-  --color-destructive: 0 84% 60%;
+Unspecified/invalid font preference means standard (14px UI/chat/document).
+Explicit small/large remain 13/15px. Keep stored values, unrelated settings and
+cross-window storage synchronization. Font controls remain in Settings only.
+Metadata and activity use a smaller global text role. Heading line-height is1.2. Changing type never changes
+reader/session identity. The 46px toolbar does not grow per font preset; fields
+and buttons derive their heights from the type and padding metrics.
 
-  /* Spacing */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
+## 4. Interaction and validation matrix
 
-  /* Border radius */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-full: 9999px;
+| Case | Required result |
+| --- | --- |
+| Dark/light primary control | Correct inverse ink; normal text contrast at least 4.5:1 |
+| Danger control | On-color text stays readable in every theme |
+| Input/select | Same single-line height; textarea may grow |
+| Keyboard focus | Neutral visible outline or token focus shadow |
+| Menu near viewport edge | Actual measured menu remains inside the viewport |
+| Narrow dialog | Panel fits the viewport without a document horizontal scrollbar |
+| Font/theme change | Drafts, reading state and existing choices stay intact |
+| Transparent utility root | Canonical font/colors without an opaque root background |
+| Reduced motion | Remove nonessential playback; transition-duration is0s |
+| Text/code/message selection | Copyable content remains selectable |
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+## 5. Good, base and bad cases
 
-  /* Typography */
-  --font-sans: system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, monospace;
+Good: add a missing semantic role in `my-tokens.css`, map it in Tailwind, and
+compose the shared primitive. Update consumers and the spec together.
 
-  /* Transitions */
-  --transition-fast: 150ms ease;
-  --transition-normal: 200ms ease;
-  --transition-slow: 300ms ease;
-}
+Base: user-defined label/identity/chart data may contain colors. They do not
+establish a second application palette or justify a green brand fallback.
 
-/* Dark mode overrides */
-.dark {
-  --color-background: 20 14% 4%;
-  --color-foreground: 60 9% 98%;
-  --color-primary: 60 9% 98%;
-  --color-primary-foreground: 24 10% 10%;
-  --color-muted: 12 6% 15%;
-  --color-muted-foreground: 24 5% 64%;
-  --color-border: 12 6% 15%;
-}
-```
+Bad: add a final CSS override block in a page to defeat the shared theme; write
+`text-[13px]`/`rounded-[7px]`; define another local font stack; use a tint/focus
+color unrelated to the global accent. Do not use `my.*` alpha suffixes such as
+`bg-my-accent/20`; use the corresponding subtle/hover semantic role.
 
-### Using Tokens with Tailwind
+## 6. Required checks
 
-```css
-/* tailwind.config.js */
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        background: "hsl(var(--color-background))",
-        foreground: "hsl(var(--color-foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--color-primary))",
-          foreground: "hsl(var(--color-primary-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--color-muted))",
-          foreground: "hsl(var(--color-muted-foreground))",
-        },
-        border: "hsl(var(--color-border))",
-        destructive: "hsl(var(--color-destructive))",
-      },
-      borderRadius: {
-        sm: "var(--radius-sm)",
-        md: "var(--radius-md)",
-        lg: "var(--radius-lg)",
-      },
-    },
-  },
-};
-```
+Run `npm run typecheck`, `npm run build` and `npm run check:ui`.
+`check:ui` detects missing/cyclic token dependencies and legacy brand usage,
+verifies same-source SVG/PNG/ICO resources, then mounts real shared primitives
+in Chromium across six theme/font combinations. It tests contrast, geometry,
+focus, viewport-clamped menus, narrow dialogs and transparent utility roots.
+Hidden-window focus uses Chromium focus emulation rather than OS focus stealing.
 
----
+Run navigation, UIUX wiring, ACP and reader smoke checks for affected consumers.
+Keep native appearance mapping synchronized with the canvas token (see backend
+`window-appearance.md`). Browser captures do not establish Windows DWM/tray
+visual behavior. Verify the actual UI with screenshots, including open states.
 
-## CSS Class Naming Convention (BEM)
+After changing Tailwind configuration, use a freshly loaded development process
+or the production CSS; an existing process may retain the old configuration.
 
-Use **BEM naming convention** to prevent class name conflicts:
+## 7. Wrong versus correct
 
-### BEM Structure
+Wrong: `bg-my-accent text-white` or a nested unconfigured `.my-root` in a document.
 
-```
-.block                    /* Independent component */
-.block__element           /* Internal element */
-.block__element--modifier /* Element variant */
-```
-
-### Naming Rules
-
-| Type               | Format              | Example                           |
-| ------------------ | ------------------- | --------------------------------- |
-| Block (container)  | `component-name`    | `.sidebar-dropdown`               |
-| Element (child)    | `block__element`    | `.sidebar-dropdown__menu`         |
-| Modifier (variant) | `element--modifier` | `.sidebar-dropdown__item--danger` |
-
-### Example
-
-```css
-/* Good: BEM clearly distinguishes elements */
-.sidebar-dropdown {
-} /* Block: entire dropdown component */
-.sidebar-dropdown__menu {
-} /* Element: menu container */
-.sidebar-dropdown__item {
-} /* Element: menu item */
-.sidebar-dropdown__item--danger {
-} /* Modifier: danger variant */
-
-/* Bad: easy to confuse */
-.sidebar-dropdown-menu {
-} /* Is this a container or a menu item? */
-.sidebar-dropdown-item {
-}
-.sidebar-dropdown-item--danger {
-}
-```
-
-### Guidelines
-
-1. **Block naming**: Use kebab-case, describe component function (e.g., `entity-menu`, `doc-tree`)
-2. **Element naming**: Double underscore `__`, describe child role (e.g., `__header`, `__item`, `__icon`)
-3. **Modifier naming**: Double hyphen `--`, describe state or variant (e.g., `--active`, `--disabled`, `--danger`)
-4. **Avoid deep nesting**: Maximum one level of element, don't write `.block__element__subelement`
-
-### When to Use BEM vs Tailwind
-
-| Scenario                          | Recommended              |
-| --------------------------------- | ------------------------ |
-| Simple components, one-off styles | Tailwind utility classes |
-| Complex components, reusable      | BEM + CSS file           |
-| Dynamic state toggling in JS      | BEM modifier classes     |
-| Component library (shadcn/ui)     | Use built-in variants    |
-
----
-
-## Portal Components
-
-Components using `createPortal` to render to `document.body` need special handling:
-
-```css
-.sidebar-dropdown__menu--portal {
-  position: fixed;
-  z-index: 9999;
-}
-```
-
----
-
-## Base Styles
-
-### Typography
-
-```css
-/* src/renderer/src/styles/base.css */
-html {
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
-
-body {
-  background-color: hsl(var(--color-background));
-  color: hsl(var(--color-foreground));
-}
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-h1 {
-  font-size: 2rem;
-}
-h2 {
-  font-size: 1.5rem;
-}
-h3 {
-  font-size: 1.25rem;
-}
-h4 {
-  font-size: 1rem;
-}
-```
-
-### Focus States
-
-```css
-/* Consistent focus ring */
-:focus-visible {
-  outline: 2px solid hsl(var(--color-primary));
-  outline-offset: 2px;
-}
-
-/* Remove default focus for mouse users */
-:focus:not(:focus-visible) {
-  outline: none;
-}
-```
-
-### Scrollbars (Notion-style)
-
-```css
-/* Hide scrollbars by default, show on hover */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--color-foreground) / 0);
-  border-radius: 5px;
-  transition: background 0.4s ease;
-}
-
-/* Show on container hover */
-.scrollable:hover::-webkit-scrollbar-thumb {
-  background: hsl(var(--color-foreground) / 0.12);
-  transition: background 0.15s ease;
-}
-
-/* Darker on scrollbar hover */
-.scrollable::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--color-foreground) / 0.22);
-}
-
-/* Even darker when dragging */
-.scrollable::-webkit-scrollbar-thumb:active {
-  background: hsl(var(--color-foreground) / 0.32);
-}
-```
-
----
-
-## Component Styles Example
-
-```css
-/* src/renderer/src/styles/components/sidebar.css */
-
-/* Block */
-.sidebar {
-  width: var(--sidebar-width, 240px);
-  height: 100%;
-  background: hsl(var(--color-background));
-  border-right: 1px solid hsl(var(--color-border));
-  display: flex;
-  flex-direction: column;
-}
-
-/* Elements */
-.sidebar__header {
-  padding: var(--spacing-md);
-  border-bottom: 1px solid hsl(var(--color-border));
-}
-
-.sidebar__content {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--spacing-sm);
-}
-
-.sidebar__footer {
-  padding: var(--spacing-md);
-  border-top: 1px solid hsl(var(--color-border));
-}
-
-/* Item element */
-.sidebar__item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-/* Modifiers */
-.sidebar__item:hover {
-  background: hsl(var(--color-muted));
-}
-
-.sidebar__item--active {
-  background: hsl(var(--color-muted));
-  font-weight: 500;
-}
-
-.sidebar__item--disabled {
-  opacity: 0.5;
-  pointer-events: none;
-}
-```
-
----
-
-## Quick Reference
-
-| Question                       | Answer                                    |
-| ------------------------------ | ----------------------------------------- |
-| Where to define colors?        | `tokens.css` as CSS custom properties     |
-| Where to put component styles? | `styles/components/{name}.css`            |
-| How to name CSS classes?       | BEM: `.block__element--modifier`          |
-| When to use Tailwind vs BEM?   | Simple = Tailwind, Complex/Reusable = BEM |
-| How to support dark mode?      | Override tokens in `.dark` class          |
-
----
-
-**Language**: All documentation must be written in **English**.
+Correct: `bg-my-accent text-my-on-accent`, and a single App-owned typography root
+with normal content wrappers inheriting its selected font scale.

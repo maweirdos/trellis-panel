@@ -229,8 +229,8 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
       onMouseDown={(e) => e.stopPropagation()}
     >
       {/* 头部 */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-my-line px-4">
-        <WorkspaceMark color={peekProject?.color ?? '#006399'} letter={peekProject?.icon ?? 'P'} size={16} />
+      <div className="flex h-my-header shrink-0 items-center gap-2 border-b border-my-line px-4">
+        <WorkspaceMark color={peekProject?.color ?? 'var(--my-avatar-bg)'} letter={peekProject?.icon ?? 'P'} size={16} />
         <span className="shrink-0 text-my-sm text-my-tertiary">
           {ident}-{issue.sequenceId}
         </span>
@@ -352,7 +352,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                   const actor = memberOf(c.actorId)
                   return (
                     <div key={c.id} className="flex items-start gap-2 py-2">
-                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={20} /> : <Avatar name="？" color="#848890" size={20} />}
+                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={20} /> : <Avatar name="？" color="var(--my-avatar-bg)" size={20} />}
                       <div className="min-w-0">
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-my-sm font-medium text-my-primary">{actor?.name ?? '未知成员'}</span>
@@ -366,7 +366,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                 <div className="mt-1 flex items-center gap-2 rounded-my-md px-2 py-1 hover:bg-my-layer-1">
                   <Avatar
                     name={memberOf(data.workspace.memberId)?.name ?? '我'}
-                    color={memberOf(data.workspace.memberId)?.avatarColor ?? '#006399'}
+                    color={memberOf(data.workspace.memberId)?.avatarColor ?? 'var(--my-avatar-bg)'}
                     size={20}
                   />
                   <input
@@ -388,7 +388,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                   const detailState = a.detail ? stateOf(a.detail) : undefined
                   return (
                     <div key={a.id} className="flex items-start gap-2 py-1.5">
-                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={16} /> : <Avatar name="？" color="#848890" size={16} />}
+                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={16} /> : <Avatar name="？" color="var(--my-avatar-bg)" size={16} />}
                       <div className="min-w-0 text-my-sm leading-5 text-my-secondary">
                         <span className="font-medium text-my-primary">{actor?.name ?? '未知成员'}</span> {a.verb}
                         {detailState && (

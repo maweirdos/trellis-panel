@@ -157,12 +157,12 @@ export function DialogHost(): JSX.Element | null {
   }
 
   return (
-    <div className="absolute inset-0 z-50 grid my-fade place-items-center bg-my-backdrop" onClick={closeOnBackdrop}>
+    <div className="my-modal-backdrop absolute inset-0 grid my-fade place-items-center" onClick={closeOnBackdrop}>
       <div
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="w-[420px] max-w-[90%] rounded-my-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]"
+        className="my-modal-panel w-[420px] max-w-[90%] p-5"
       >
         {req.kind === 'confirm' ? <ConfirmPanel key={req.id} req={req} onCancel={cancel} /> : <PromptPanel key={req.id} req={req} onCancel={cancel} />}
       </div>

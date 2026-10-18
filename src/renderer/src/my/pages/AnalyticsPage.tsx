@@ -108,7 +108,7 @@ function CreatedClosedChart({ bars }: { bars: WeekBar[] }): JSX.Element {
 function MetricCard({ label, value }: { label: string; value: number }): JSX.Element {
   return (
     <div className="my-card p-3">
-      <div className="text-[22px] font-semibold text-my-primary">{value}</div>
+      <div className="text-my-display font-semibold text-my-primary">{value}</div>
       <div className="mt-0.5 text-my-sm text-my-tertiary">{label}</div>
     </div>
   )
@@ -213,11 +213,11 @@ export function AnalyticsPage(): JSX.Element {
               <h2 className="text-my-md font-medium text-my-secondary">创建 vs 关闭（近 8 周）</h2>
               <div className="flex items-center gap-3 text-my-xs text-my-tertiary">
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-[2px] bg-my-accent" />
+                  <span className="h-2 w-2 rounded-my-xs bg-my-accent" />
                   创建
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-[2px] bg-[var(--my-txt-icon-states-completed)]" />
+                  <span className="h-2 w-2 rounded-my-xs bg-[var(--my-txt-icon-states-completed)]" />
                   关闭
                 </span>
               </div>
@@ -309,12 +309,12 @@ export function AnalyticsPage(): JSX.Element {
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-my-md border border-my-line p-3">
                 <div className="text-my-xs text-my-tertiary">本周新增</div>
-                <div className="mt-1 text-[20px] font-semibold text-my-primary">{weekStats.createdThis}</div>
+                <div className="mt-1 text-my-xl font-semibold text-my-primary">{weekStats.createdThis}</div>
                 <div className="text-my-xs text-my-tertiary">上周 {weekStats.createdLast}</div>
               </div>
               <div className="rounded-my-md border border-my-line p-3">
                 <div className="text-my-xs text-my-tertiary">本周完成</div>
-                <div className="mt-1 text-[20px] font-semibold text-my-primary">{weekStats.doneThis}</div>
+                <div className="mt-1 text-my-xl font-semibold text-my-primary">{weekStats.doneThis}</div>
                 <div className="text-my-xs text-my-tertiary">上周 {weekStats.doneLast}</div>
               </div>
             </div>

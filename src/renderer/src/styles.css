@@ -2,54 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Theme variables (RGB triplets for Tailwind alpha support) ---------- */
-:root,
-html.dark {
-  --ink-950-rgb: 10 12 16;
-  --ink-900-rgb: 14 17 23;
-  --ink-850-rgb: 18 22 30;
-  --ink-800-rgb: 24 29 40;
-  --ink-750-rgb: 30 36 50;
-  --ink-700-rgb: 38 46 64;
-  --ink-600-rgb: 50 60 82;
-  --ink-500-rgb: 68 80 106;
-  --ink-400-rgb: 90 104 134;
-  --mist-50-rgb: 244 246 250;
-  --mist-100-rgb: 230 234 242;
-  --mist-200-rgb: 201 209 224;
-  --mist-300-rgb: 154 165 189;
-  --mist-400-rgb: 107 118 145;
-  --mist-500-rgb: 122 130 150;
-  --mist-600-rgb: 96 104 124;
-  --leaf-rgb: 52 211 153;
-  --leaf-soft-rgb: 110 231 183;
-  --leaf-dim-rgb: 5 150 105;
-  --leaf-deep-rgb: 6 78 59;
-}
-
-html:not(.dark) {
-  --ink-950-rgb: 255 255 255;
-  --ink-900-rgb: 242 244 248;
-  --ink-850-rgb: 232 236 242;
-  --ink-800-rgb: 255 255 255;
-  --ink-750-rgb: 245 247 251;
-  --ink-700-rgb: 214 220 230;
-  --ink-600-rgb: 194 202 216;
-  --ink-500-rgb: 156 167 185;
-  --ink-400-rgb: 120 132 152;
-  --mist-50-rgb: 15 20 30;
-  --mist-100-rgb: 28 35 48;
-  --mist-200-rgb: 51 62 82;
-  --mist-300-rgb: 78 90 114;
-  --mist-400-rgb: 105 118 142;
-  --mist-500-rgb: 132 144 168;
-  --mist-600-rgb: 160 170 190;
-  --leaf-rgb: 16 185 129;
-  --leaf-soft-rgb: 13 148 102;
-  --leaf-dim-rgb: 4 120 87;
-  --leaf-deep-rgb: 209 250 229;
-}
-
 html,
 body,
 #root {
@@ -64,16 +16,19 @@ html.is-capsule #root {
 }
 
 body {
-  @apply bg-ink-900 text-mist-100 font-sans antialiased select-none;
-  font-size: 13px;
+  @apply font-sans antialiased select-none;
+  background: var(--my-bg-canvas);
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-ui);
+  line-height: var(--my-line-ui);
 }
 
 .capsule-pill {
-  box-shadow: 0 8px 28px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: var(--my-shadow-overlay-100);
 }
 
 .capsule-card {
-  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: var(--my-shadow-overlay-200);
 }
 
 .drag-region {
@@ -90,12 +45,12 @@ body {
   height: 5px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgb(var(--ink-500-rgb) / 0.35);
-  border-radius: 9999px;
-  transition: background 0.2s ease;
+  background: var(--my-scrollbar-thumb);
+  border-radius: var(--my-radius-full);
+  transition: background var(--my-motion-normal) var(--my-ease-out);
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--ink-400-rgb) / 0.7);
+  background: var(--my-scrollbar-thumb-hover);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -113,8 +68,8 @@ select {
 
 /* ---------- Markdown viewer（壳内排版，消费方均渲染于 .my-root，走外壳令牌） ---------- */
 .md {
-  font-size: var(--my-text-md, 13px);
-  line-height: 1.65;
+  font-size: var(--my-text-document);
+  line-height: var(--my-line-document);
   color: var(--my-txt-primary, inherit);
   user-select: text;
 }
@@ -122,39 +77,39 @@ select {
   margin-top: 0;
 }
 .md h1 {
-  margin: 24px 0 12px;
-  padding-bottom: 8px;
+  margin: var(--my-space-24) 0 var(--my-space-12);
+  padding-bottom: var(--my-space-8);
   border-bottom: 1px solid var(--my-border-subtle);
-  font-size: var(--my-text-xl, 16px);
-  line-height: 1.4;
-  font-weight: 600;
+  font-size: var(--my-text-xl);
+  line-height: var(--my-line-heading);
+  font-weight: var(--my-weight-semibold);
   color: var(--my-txt-primary);
 }
 .md h2 {
-  margin: 24px 0 10px;
-  padding-bottom: 6px;
+  margin: var(--my-space-24) 0 var(--my-space-10);
+  padding-bottom: var(--my-space-6);
   border-bottom: 1px solid var(--my-border-subtle);
-  font-size: var(--my-text-lg, 14px);
-  line-height: 1.45;
-  font-weight: 600;
+  font-size: var(--my-text-lg);
+  line-height: var(--my-line-ui);
+  font-weight: var(--my-weight-semibold);
   color: var(--my-txt-primary);
 }
 .md h3 {
-  margin: 20px 0 8px;
-  font-size: var(--my-text-md, 13px);
-  font-weight: 600;
+  margin: var(--my-space-20) 0 var(--my-space-8);
+  font-size: var(--my-text-document);
+  font-weight: var(--my-weight-semibold);
   color: var(--my-txt-primary);
 }
 .md h4,
 .md h5,
 .md h6 {
-  margin: 16px 0 6px;
-  font-size: var(--my-text-sm, 12px);
-  font-weight: 600;
+  margin: var(--my-space-16) 0 var(--my-space-6);
+  font-size: var(--my-text-sm);
+  font-weight: var(--my-weight-semibold);
   color: var(--my-txt-primary);
 }
 .md p {
-  margin: 10px 0;
+  margin: var(--my-space-10) 0;
 }
 .md a {
   color: var(--my-txt-accent-primary);
@@ -166,7 +121,7 @@ select {
   text-decoration-color: var(--my-txt-accent-primary);
 }
 .md strong {
-  font-weight: 600;
+  font-weight: var(--my-weight-semibold);
   color: var(--my-txt-primary);
 }
 .md em {
@@ -177,79 +132,79 @@ select {
   text-decoration: line-through;
 }
 .md ul {
-  margin: 10px 0;
+  margin: var(--my-space-10) 0;
   list-style: disc;
-  padding-left: 20px;
+  padding-left: var(--my-space-20);
 }
 .md ul > li {
-  margin-top: 4px;
+  margin-top: var(--my-space-4);
 }
 .md ol {
-  margin: 10px 0;
+  margin: var(--my-space-10) 0;
   list-style: decimal;
-  padding-left: 20px;
+  padding-left: var(--my-space-20);
 }
 .md ol > li {
-  margin-top: 4px;
+  margin-top: var(--my-space-4);
 }
 .md li > ul,
 .md li > ol {
-  margin: 4px 0;
+  margin: var(--my-space-4) 0;
 }
 .md blockquote {
-  margin: 12px 0;
+  margin: var(--my-space-12) 0;
   border-left: 2px solid var(--my-border-accent-subtle);
   background: var(--my-bg-layer-1);
-  padding: 4px 8px 4px 12px;
+  padding: var(--my-space-4) var(--my-space-8) var(--my-space-4) var(--my-space-12);
   color: var(--my-txt-secondary);
 }
 .md hr {
-  margin: 16px 0;
+  margin: var(--my-space-16) 0;
   border: 0;
   border-top: 1px solid var(--my-border-subtle);
 }
 .md code {
   border-radius: var(--my-radius-sm);
   background: var(--my-bg-layer-3);
-  padding: 2px 6px;
-  font-family: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
-  font-size: var(--my-text-sm, 12px);
+  padding: var(--my-space-2) var(--my-space-6);
+  font-family: var(--my-font-mono);
+  font-size: var(--my-text-sm);
   color: var(--my-txt-accent-primary);
 }
 .md pre {
-  margin: 12px 0;
+  margin: var(--my-space-12) 0;
   overflow: auto;
   border-radius: var(--my-radius-md);
   border: 1px solid var(--my-border-subtle);
   background: var(--my-bg-canvas);
-  padding: 12px;
+  padding: var(--my-space-12);
 }
 .md pre code {
   background: transparent;
   padding: 0;
-  font-size: var(--my-text-sm, 12px);
-  line-height: 1.5;
+  font-size: var(--my-text-sm);
+  line-height: var(--my-line-chat);
   color: var(--my-txt-secondary);
 }
 .md table {
-  margin: 16px 0;
+  margin: var(--my-space-16) 0;
   min-width: 100%;
   width: max-content;
   border-collapse: collapse;
-  font-size: var(--my-text-sm, 12px);
+  font-size: var(--my-text-sm);
 }
 .md thead {
   border-bottom: 1px solid var(--my-border-subtle);
   background: var(--my-bg-layer-2);
   color: var(--my-txt-primary);
-  font-weight: 600;
+  font-weight: var(--my-weight-semibold);
 }
 .md th {
   border-right: 1px solid var(--my-border-subtle);
-  padding: 10px 16px;
+  padding: var(--my-space-10) var(--my-space-16);
   text-align: left;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-weight: var(--my-weight-semibold);
+  letter-spacing: var(--my-tracking-normal);
   color: var(--my-txt-primary);
   user-select: none;
   word-break: keep-all;
@@ -259,7 +214,7 @@ select {
 }
 .md tr {
   border-bottom: 1px solid var(--my-border-subtle);
-  transition: background-color 0.12s ease;
+  transition: background-color var(--my-motion-fast) var(--my-ease-out);
 }
 .md tr:nth-child(even) {
   background: color-mix(in srgb, var(--my-bg-layer-2) 45%, transparent);
@@ -269,10 +224,10 @@ select {
 }
 .md td {
   border-right: 1px solid var(--my-border-subtle);
-  padding: 10px 16px;
+  padding: var(--my-space-10) var(--my-space-16);
   vertical-align: top;
   color: var(--my-txt-secondary);
-  line-height: 1.6;
+  line-height: var(--my-line-document);
   word-break: keep-all;
   overflow-wrap: break-word;
 }
@@ -283,77 +238,36 @@ select {
   word-break: break-all;
 }
 .md input[type='checkbox'] {
-  margin-right: 6px;
+  margin-right: var(--my-space-6);
   accent-color: var(--my-bg-accent-primary);
 }
 
 /* ---------- Toast ---------- */
 .toast-enter {
-  animation: toastIn .22s cubic-bezier(.2,.8,.3,1);
+  animation: toastIn var(--my-motion-normal) var(--my-ease-out);
 }
 @keyframes toastIn {
   from { opacity: 0; transform: translateX(16px) scale(.97); }
   to { opacity: 1; transform: translateX(0) scale(1); }
 }
 
-/* ---------- Architecture（工作流架构图，跟随明暗主题） ---------- */
-.arch-svg { font-family: ui-sans-serif, system-ui, sans-serif; }
-
-/* 浅色主题（默认） */
-.arch-lane { fill: #8b93a2; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
-.arch-lane-line { stroke: #d7dce4; stroke-width: 1; }
-.arch-edge-path { stroke: #9aa3b2; stroke-width: 1.4; fill: none; }
-.arch-edge-main .arch-edge-path { stroke: #5d6a80; stroke-width: 1.6; }
+/* Architecture diagrams share application surfaces; node kinds keep semantic accents. */
+.arch-svg { font-family: var(--my-font-sans); }
+.arch-lane { fill: var(--my-txt-tertiary); font-size: var(--my-text-2xs); font-weight: var(--my-weight-semibold); }
+.arch-lane-line { stroke: var(--my-border-subtle); stroke-width: 1; }
+.arch-edge-path { stroke: var(--my-border-strong); stroke-width: 1.4; fill: none; }
+.arch-edge-main .arch-edge-path { stroke: var(--my-txt-secondary); stroke-width: 1.6; }
 .arch-edge-dashed { stroke-dasharray: 5 4; }
-.arch-edge-active .arch-edge-path { stroke: #2f8a55; stroke-width: 2; }
-.arch-edge-label { fill: #79828f; font-size: 9.5px; text-anchor: middle; paint-order: stroke fill; stroke: #f6f8fa; stroke-width: 3px; stroke-linejoin: round; }
-.arch-flow-dot { fill: #2f9e5f; filter: drop-shadow(0 0 3px rgba(47,158,95,.7)); }
-.arch-marker-dashed { fill: #9aa3b2; transition: fill .18s; }
-.arch-marker-active { fill: #2f8a55; transition: fill .18s; }
-
-.arch-node rect { transition: opacity .18s ease, filter .18s ease; }
-rect.arch-node-tool { fill: #ffffff; stroke: #8fa0b5; }
-rect.arch-node-hook { fill: #f0f7fc; stroke: #3e7fae; }
-rect.arch-node-agent { fill: #f5f0fc; stroke: #8168cf; }
-rect.arch-node-file { fill: #f0f8f3; stroke: #47946a; }
-rect.arch-node-state { fill: #eef8f1; stroke: #2f9e5f; }
-.arch-node-title { fill: #222b38; font-size: 12px; font-weight: 600; }
-.arch-node-sub { fill: #6d7684; font-size: 9.5px; font-family: ui-monospace, monospace; }
-.arch-node:hover rect { stroke: #2f9e5f; stroke-width: 1.6; }
+.arch-edge-active .arch-edge-path { stroke: var(--my-txt-accent-primary); stroke-width: 2; }
+.arch-edge-label { fill: var(--my-txt-tertiary); font-size: var(--my-text-2xs); text-anchor: middle; paint-order: stroke fill; stroke: var(--my-bg-canvas); stroke-width: 3px; stroke-linejoin: round; }
+.arch-flow-dot, .arch-marker-active { fill: var(--my-txt-accent-primary); }
+.arch-marker-dashed { fill: var(--my-txt-tertiary); }
+.arch-node rect { transition: opacity var(--my-motion-fast) var(--my-ease-out); }
+rect.arch-node-tool, rect.arch-node-file, rect.arch-node-state { fill: var(--my-bg-layer-2); stroke: var(--my-border-strong); }
+rect.arch-node-hook { fill: var(--my-bg-info-subtle); stroke: var(--my-border-info-strong); }
+rect.arch-node-agent { fill: var(--my-label-purple-bg); stroke: var(--my-label-purple-border); }
+.arch-node-title { fill: var(--my-txt-primary); font-size: var(--my-text-sm); font-weight: var(--my-weight-semibold); }
+.arch-node-sub { fill: var(--my-txt-secondary); font-size: var(--my-text-2xs); font-family: var(--my-font-mono); }
+.arch-node:hover rect { stroke: var(--my-txt-accent-primary); stroke-width: 1.6; }
 .arch-node-dim { opacity: .38; }
-.arch-node-live rect {
-  stroke: #2f9e5f;
-  stroke-width: 2;
-  animation: archPulseLight 2s ease-in-out infinite;
-}
-@keyframes archPulseLight {
-  0%, 100% { filter: drop-shadow(0 0 3px rgba(47,158,95,.35)); }
-  50% { filter: drop-shadow(0 0 8px rgba(47,158,95,.75)); }
-}
-
-/* 深色主题覆盖（外壳 data-my-theme） */
-[data-my-theme='dark'] .arch-lane { fill: #5b6472; }
-[data-my-theme='dark'] .arch-lane-line { stroke: #2a2f3a; }
-[data-my-theme='dark'] .arch-edge-path { stroke: #3a4150; }
-[data-my-theme='dark'] .arch-edge-main .arch-edge-path { stroke: #4d5a70; }
-[data-my-theme='dark'] .arch-edge-active .arch-edge-path { stroke: #7fc4a4; }
-[data-my-theme='dark'] .arch-edge-label { fill: #8b94a5; stroke: #12151b; }
-[data-my-theme='dark'] .arch-flow-dot { fill: #9fe0be; filter: drop-shadow(0 0 4px rgba(127,196,164,.9)); }
-[data-my-theme='dark'] .arch-marker-dashed { fill: #6d7684; }
-[data-my-theme='dark'] .arch-marker-active { fill: #7fc4a4; }
-[data-my-theme='dark'] rect.arch-node-tool { fill: #1d222c; stroke: #4a5468; }
-[data-my-theme='dark'] rect.arch-node-hook { fill: #17202b; stroke: #3d6b8f; }
-[data-my-theme='dark'] rect.arch-node-agent { fill: #201a2b; stroke: #6b5a9e; }
-[data-my-theme='dark'] rect.arch-node-file { fill: #1a2029; stroke: #3f5a4d; }
-[data-my-theme='dark'] rect.arch-node-state { fill: #142018; stroke: #3f7a58; }
-[data-my-theme='dark'] .arch-node-title { fill: #e6eaf2; }
-[data-my-theme='dark'] .arch-node-sub { fill: #79828f; }
-[data-my-theme='dark'] .arch-node:hover rect { stroke: #9fe0be; }
-[data-my-theme='dark'] .arch-node-live rect {
-  stroke: #7fc4a4;
-  animation: archPulse 2s ease-in-out infinite;
-}
-@keyframes archPulse {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(127,196,164,.4)); }
-  50% { filter: drop-shadow(0 0 10px rgba(127,196,164,.85)); }
-}
+.arch-node-live rect { stroke: var(--my-txt-accent-primary); stroke-width: 2; }

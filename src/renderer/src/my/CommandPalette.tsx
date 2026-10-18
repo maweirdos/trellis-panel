@@ -145,12 +145,12 @@ export function CommandPalette(): JSX.Element | null {
   let lastSection = ''
 
   return (
-    <div className="my-fade fixed inset-0 z-[85] bg-my-backdrop" onMouseDown={() => setOpen(false)}>
+    <div className="my-fade my-modal-backdrop fixed inset-0" onMouseDown={() => setOpen(false)}>
       <div
-        className="my-pop mx-auto mt-[14vh] w-[560px] overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
+        className="my-pop my-modal-panel mx-auto mt-[14vh] w-[560px] overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex h-12 items-center gap-2 border-b border-my-line px-3">
+        <div className="flex h-my-header items-center gap-2 border-b border-my-line px-3">
           <Search size={15} className="text-my-icon-tertiary" />
           {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
           <input

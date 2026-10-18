@@ -51,8 +51,8 @@ const { autoUpdater } = (() => {
 
 /* ---------------- windows ---------------- */
 
-const TRAY_ICON_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXUlEQVR4nGNgrQj/TwlmABEml2fCscDORrwYWS1WA/AZgq4OpwHYDMGmBm4ALgX4NIPEUQzApRCfwRgGEGMIslqsBuAzBF0dbQygyAsUBSJF0UhxQqJqUiYrM1GCAVVSVG+cKoQ/AAAAAElFTkSuQmCC'
+const BRAND_RESOURCES = join(__dirname, '../../resources/brand')
+const APPLICATION_ICON = join(BRAND_RESOURCES, 'icon-256.png')
 
 /** 文档小窗登记表：key（文件绝对路径）→ 窗口；重复打开即聚焦 */
 const docWindows = new Map<string, BrowserWindow>()
@@ -92,6 +92,7 @@ function openDocWindow(opts: { key: string; title: string; file: string; theme: 
     workArea.y + workArea.height - height - DOC_WIN_MARGIN
   )
   const w = new BrowserWindow({
+    icon: APPLICATION_ICON,
     width,
     height,
     minWidth: 480,
@@ -102,7 +103,7 @@ function openDocWindow(opts: { key: string; title: string; file: string; theme: 
     resizable: true,
     show: false,
     alwaysOnTop: true,
-    backgroundColor: opts.theme === 'light' ? '#f2f2f3' : '#0f0f10',
+    backgroundColor: mainWindowAppearance(opts.theme === 'light' ? 'light' : 'dark').backgroundColor,
     title: opts.title,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -131,6 +132,7 @@ function openDocWindow(opts: { key: string; title: string; file: string; theme: 
 
 function createWindow(): void {
   win = new BrowserWindow({
+    icon: APPLICATION_ICON,
     width: 1360,
     height: 860,
     minWidth: 960,
@@ -183,6 +185,7 @@ function createCapsule(initialShape?: 'pill' | 'card'): void {
   }
   const sz = getCapsuleBounds(capsuleShape)
   capsule = new BrowserWindow({
+    icon: APPLICATION_ICON,
     width: sz.width,
     height: sz.height,
     frame: false,
@@ -235,6 +238,7 @@ function ensureQuickTodo(): BrowserWindow {
   const height = 420
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
   quickTodo = new BrowserWindow({
+    icon: APPLICATION_ICON,
     width,
     height,
     minWidth: 420,
@@ -292,7 +296,7 @@ function toggleQuickTodo(): void {
 
 function createTray(): void {
   if (tray) return
-  const icon = nativeImage.createFromDataURL(`data:image/png;base64,${TRAY_ICON_BASE64}`)
+  const icon = nativeImage.createFromPath(join(BRAND_RESOURCES, 'icon-32.png'))
   tray = new Tray(icon)
   tray.setToolTip('Trellis Panel')
   rebuildTrayMenu()
@@ -477,6 +481,7 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    if (process.platform === 'win32') app.setAppUserModelId('com.mindfold.trellispanel')
     Menu.setApplicationMenu(null)
     if (process.defaultApp) {
       app.setAsDefaultProtocolClient('trellis-panel', process.execPath, [resolve(process.argv[1] ?? '.')])

@@ -1,83 +1,91 @@
-# 外壳 UI 约定（src/renderer/src/my/）
+# Global shell UI conventions (`src/renderer/src/my/`)
 
-> 外壳 UI 约定。改动该模块或新增 `my.*` 色板消费前必读。
+Read this before modifying the shell or adding a `my.*` style consumer. Detailed
+style ownership and executable checks live in [css-design.md](./css-design.md).
 
-## 共享侧栏尺寸
+## Shared sidebar geometry
 
-模块上下文侧栏统一消费 `useSidebarWidthStyle` 与 `SidebarResizeHandle`，宽度保存在 `tpanel.my.ui`：默认260px，范围220–400px；沿用字体、折叠等既有偏好。外壳拥有的侧栏与 Knowledge/Spec/Channels/Chat/ACP 页面拥有的侧栏不重复渲染，不另设页面宽度；标题栏统一折叠/展开，页面不得再用独立布尔值阻断全局展开。拖动、键盘微调和双击复位使用同一组件，配色使用全局语义 token。
+Context owners consume `useSidebarWidthStyle` and `SidebarResizeHandle`.
+`tpanel.my.ui` stores a default275px width, clamped to220–400px, alongside existing
+font/collapse preferences. Never replace an already stored width when the default
+changes. Shell context and Knowledge/Spec/Channels/Chat/ACP-owned browsers must not
+render duplicate sidebars or invent a separate width. Preserve drag, keyboard,
+double-click reset and globally reachable expand/collapse behavior.
 
-## 模块边界
+## Module boundaries
 
-- 整个模块自包含在 `src/renderer/src/my/`：类型(`types.ts`)、演示数据(`data.ts`)、
-  自治 zustand store(`store.ts`)、图标(`icons.tsx`)、基础件(`ui.tsx`)、
-  令牌与样式(`my-tokens.css` / `my.css`)、外壳(`layout/`)、界面(`pages/`)。
-- 集成点：`App.tsx` 直接渲染 `my/layout/MyApp`（唯一应用壳，路由以主 store `page` 为事实）。
-  **禁止在模块内 import 主 store 之外的跨域逻辑；window.api 仅经 `my/store.ts` 的动作桥接使用。**
-- 开发验证入口：dev 渲染层 URL 加 `?my=1` 直渲染模块（无 IPC 依赖，可用浏览器截图；
-  打包后 file: 协议自然失效）。
+- `App.tsx` renders `my/layout/MyApp` as the sole shell; main `useApp.page` is the
+  route authority. Keep data, store, icons, UI primitives, layout and pages in their
+  current modules. Renderer native actions retain their existing IPC boundaries.
+- `main.tsx` imports `my/my.css` once, including for independent windows; MyApp does
+  not own a font import or a second style entry point.
+- `?my=1` is the no-IPC development preview. It is not evidence that native project,
+  connected-session or window interactions have succeeded.
 
-## 设计令牌（p.* 色板）
+## Canonical design tokens
 
-- `my-tokens.css` 为外壳自有设计令牌（浅/深两组挂在 `[data-my-theme='light'|'dark']`），**勿手改色值**。
-- Tailwind 侧 `colors.my.*`（tailwind.config.js）映射到 `var(--my-…)`，**不支持 alpha 修饰符**。
-- **品牌强调色 = 面板 leaf 绿**：`--my-bg-accent-*` / `--my-border-accent-*` / `--my-txt-accent-*`
-  在 my.css 中覆写为 `rgb(var(--leaf-*-rgb))` 引用（非硬编码），自动随面板深浅主题切换；
-  改品牌色只动 styles.css 的 leaf 变量。
-- **排版/圆角令牌**：`--my-text-2xs..xl`（10/11/12/13/14/16px）与 `--my-radius-sm..xl`（4/6/8/12px）
-  定义在 my.css，Tailwind 侧对应 `text-my-2xs..my-xl`、`rounded-my-sm..my-xl`。
-  外壳与页面**禁止写死字号/圆角**（text-[13px]/rounded-md 等），一律用令牌类。
-- 常用类：`bg-my-canvas`、`bg-my-layer-1(-hover/-active/-selected)`、`bg-my-layer-2/3`、
-  `bg-my-surface-1/2`、`text-my-primary/-secondary/-tertiary/-placeholder`、
-  `text-my-accent-text`、`bg-my-accent(-hover)`、`border-my-line(-1/-strong/-accent)`、
-  `text-my-icon-*`、`text-my-danger-text/-warning-text/-success-text/-info-text`、
-  `text-my-urgent/high/medium/low/none`（优先级色）、
-  `bg-my-label-<fam>` / `text-my-label-<fam>-text` 等（fam: indigo emerald grey crimson yellow orange pink purple）。
+- `my-tokens.css` is hand-maintained and owns every visual value: dark/light
+  colors, platform font stacks, text/line/weight scales, spaces, radii, dimensions,
+  shadows, motion and stacking. Change a visual value there, not in a late page
+  override. `my.css` imports tokens, shared components and shell composition.
+- Tailwind `colors.my.*` maps variables and does not support alpha suffixes. Use
+  semantic subtle/hover roles, never `bg-my-accent/20`.
+- Accent is neutral inversion: dark mode white fill with dark ink, light mode dark
+  fill with white ink. Use `text-my-on-accent` on accent fills, and
+  `text-my-on-color` on semantic colored fills. No leaf palette/brand override.
+  Green remains success/completion or user-label data only.
+- Standard type is14px; small/large are13/15px. Metadata, body, chat, document and
+  activity consume global semantic roles. Default font is the platform sans stack
+  (Segoe UI and CJK fallbacks on Windows); code and diagrams use their global mono
+  roles. No bundled Inter or network font service.
+- Type/radius classes are `text-my-*` and `rounded-my-*`. Buttons/rows use10px,
+  panels12/16px, menus18px, composer20px and dialogs24px. Small badges keep4/6px.
+- Existing Tailwind spacing steps consume global `--my-space-*`. Headers use the
+  shared46px metric; icon controls28px. Fields derive from type and padding. Add
+  semantic metrics before introducing private geometry in a new component.
+- All roots expose `.my-root` plus theme and font-size attributes. Normal content
+  wrappers inherit; do not nest an unconfigured style root that resets font size.
+  Capsule/quick-todo roots preserve their transparent background.
 
-## 主题机制
+## Theme, state and shared primitives
 
-- 主题 = 模块根节点 `data-my-theme` 属性（不是主站的 `dark` 类）；初始值取持久化偏好，
-  键 `tpanel.my.ui`（localStorage，遵循 `tpanel.` 前缀约定），存 theme/layout/groupBy/orderBy/customAccent。
-- 自定义强调色通过根节点内联覆盖 `--my-bg-accent-primary` 实现。
+Theme comes from existing application settings and `data-my-theme`; the initial
+root document also follows `html.dark`. `tpanel.my.ui` stores font/layout/group/
+order/sidebar preferences and preserves unrelated legacy values. There is no
+custom accent editor. Invalid/missing font size normalizes to standard; explicit
+small/large and cross-window storage synchronization remain supported.
 
-## 视觉签名组件（icons.tsx，自绘 SVG）
+Use `my/ui.tsx` Button/Dropdown/Modal/Checkbox/Tabs/SearchInput/Avatar/Tooltip/
+EmptyState. `Avatar tone="accent"` is mandatory for a neutral accent background;
+user-colored identities retain on-color text. Work-item layout controls have
+accessible names and pressed state. Use `my-control`, `my-input`, `my-chip`,
+`my-kbd`, `my-scrollbar`, `my-pop`, `my-fade`, `my-peek-in` and shared component
+classes instead of copying visual values. Keep visible neutral keyboard focus,
+text selection for documents/input, reduced motion and disabled/error states.
 
-- `StateGroupIcon`（backlog 虚线环 / unstarted 空环 / started 进度环+内圈 / completed 实心勾 / cancelled 实心叉）
-- `PriorityIcon`（urgent 方块感叹号 / high·medium·low 三阶竖条 / none 横杠）
-- `LayoutIcon`：List/Columns3/Table2/ChartGantt/Calendar；`NavIcon`：LayoutDashboard/Inbox/
-  ChartColumn/ListTodo/RotateCw/Box/Eye/FileText/CircleAlert；`WorkspaceMark` 为自拟色块标记。
-- 默认状态色：Backlog #A3A3A3 / Todo #3A3A3A / In Progress #F59E0B / Done #16A34A / Cancelled #EF4444。
+Dropdown measures actual menu dimensions, clamps to the viewport and closes on
+outside click/Escape/outer scroll. Menu-internal scrolling stays usable. Near a
+header, position tooltip content below the trigger to avoid the window chrome.
 
-## 交互约定
+## Brand and graphics
 
-- 控制高度体系：`my-control`（28px）/`my-control-sm`（24px）/`my-control-lg`（32px）。
-- 弹层动画类：`my-pop`（下拉）、`my-fade`、`my-peek-in`（peek 浮层）；滚动容器用 `my-scrollbar`。
-- 下拉统一用 `my/ui.tsx` 的 `Dropdown`（fixed 定位 + 外点/Esc/滚动关闭；开箱后按菜单实测高度定位，
-  下方空间不足贴上缘，水平收进视口——不要回退成估算高度）；
-  已知测试陷阱：截图工具会触发 resize 导致弹层关闭——自动化验证时用「打开后立即
-  evaluate 读取 `.my-pop` 内容或坐标点击」而非截图中间态。
-- 字体：Inter Variable（`@fontsource-variable/inter`，注意本仓库 npm install 需 `--legacy-peer-deps`）。
+`resources/brand/mark.svg` is the canonical TP grid mark. `my/BrandMark.tsx` masks
+that source with currentColor; PNG/ICO/favicon/tray assets are generated from the
+same path. See `resources/brand/README.md`. TitleBar and Settings use BrandMark,
+not Leaf. Windows packaging and runtime window/tray icons use committed assets.
 
-## 旧体系禁用与迁移映射（2026-10 全量统一后生效）
+State/priority/label colors are semantic tokens, including default state objects.
+Custom label, identity and chart data can retain their own color values without
+becoming an application brand palette. `StateGroupIcon`, `PriorityIcon`,
+`LayoutIcon`, `NavIcon` and `WorkspaceMark` retain their existing semantics.
 
-旧面板样式体系（`styles.css` 的 ink/mist/leaf 色板与 `.card/.btn*/.field/.chip` 组件类）已清除，
-壳内**禁止再引入**。等价对照：
+## Quality gates
 
-- 亮/中/暗文本：`text-my-primary / secondary / tertiary / placeholder`；表面：`bg-my-canvas`（页底）、
-  `bg-my-layer-1/2/3`（凹→凸）、`bg-my-surface-1/2`（输入/嵌入面）、`border-my-line(-strong)`。
-- 品牌强调（原 leaf 系）：`bg-my-accent(-hover)`、`bg-my-accent-subtle(-hover)`、`text-my-accent-text`、
-  `border-my-line-accent(-subtle)`。语义彩色一律成对：`bg-my-<sem>-subtle + text-my-<sem>-text`
-  （sem: success/warning/danger/info），描边用 `border-my-line-<sem>`。
-- 徽标基类 `my-chip`（my.css，20px 高）+ 语义色类；彩色标签用 label 族
-  `bg-my-label-<fam> / text-my-label-<fam>-text / border-my-label-<fam>-border`。
-- **`my.*` 色板不支持 alpha 修饰符**（禁写 `bg-my-accent/20`），半透明场景用 subtle/hover 令牌。
-- 字号/圆角只用令牌类（`text-my-2xs..my-xl`、`rounded-my-sm..my-xl`），禁写死 px 与裸 tailwind 档位；
-  按钮统一 `my/ui.tsx` 的 `Button`，输入用 SearchInput 同款工具类。
-- styles.css 现仅存：leaf 变量（品牌色桥）、全局基础、令牌化的 `.md` 排版块、
-  `[data-my-theme='dark']` 祖先选择器的 `.arch-*`、透明窗阴影类（`.capsule-*`）。
-- 令牌作用域在 `.my-root`：CapsuleView/QuickTodoView 等独立窗口的根节点必须带
-  `my-root` + `data-my-theme`（App.tsx 已处理，新增窗体时照做）。
-- 类有效性自查：TSX 用到的 `my-*` 类必须能在构建产物 CSS 中找到（脚本
-  `.trellis/tasks/10-15-unify-plane-uiux/check_my_classes.py`，可复用为门禁）。
+Run `npm run check:ui` plus typecheck/build and the relevant navigation, ACP and
+reader smoke checks. The UI gate checks token closure/cycles, contrast, actual
+Chromium geometry/focus, six theme/font cases and same-source image assets.
+Do not treat a synthetic/no-IPC preview as proof of vendor/native behavior.
+The old ink/mist/leaf and private pixel font/radius classes are forbidden.
 
 ## Navigation and project scope contract (2026-10-16)
 
@@ -145,11 +153,11 @@ knowledge, conversations, team and analytics are peers. The former task-parent t
 - Escape dismisses only the top layer: dropdown/context/diff before task. Returning from
   workspace re-registers preview so the next Escape can close it. Do not combine independent
   component Escape listeners with global task dismissal.
-- Retain current design language and generated tokens. Use canvas for periphery, layers for
+- Retain the shared design language and canonical tokens. Use canvas for periphery, layers for
   context and surface-1 for the central task workspace. The desktop rail uses 40px icon
   targets with 22px icons, full accessible names and hover labels rather than permanent
-  10px captions; selected backgrounds/icons are restrained and neutral. Keep green for
-  product emphasis. The project name is a borderless title at rest, not a select/input;
+  10px captions; selected backgrounds/icons are restrained and neutral. Use neutral inversion for
+  product emphasis; green remains a semantic success/completion or label color. The project name is a borderless title at rest, not a select/input;
   context rows use soft selection without persistent card borders/shadows. Measure actual
   foreground/background pairs; keyboard focus remains distinct from hover/selection.
 - Scope identifies the page context, not a promise that every external result is filtered:

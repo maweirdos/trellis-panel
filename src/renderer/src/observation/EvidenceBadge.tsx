@@ -14,7 +14,7 @@ const TONE_CLASS: Record<EvidenceTone, string> = {
   // L1：灰描边
   l1: 'border border-my-line-strong bg-my-layer-2 text-my-primary',
   // L2：实心蓝
-  l2: 'border border-my-line-info bg-my-info text-my-on-color',
+  l2: 'border border-my-line-info bg-my-info-subtle text-my-info-text',
   // 输出失败：错误色（仅明确故障）
   fail: 'border border-my-line-danger bg-my-danger-subtle text-my-danger-text'
 }

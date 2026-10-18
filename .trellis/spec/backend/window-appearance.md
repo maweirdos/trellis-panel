@@ -36,6 +36,15 @@ applyMainWindowAppearance(
   new dependencies, OS setting changes or application-wide nativeTheme overrides.
 - Document/capsule/quicktodo windows keep independent behavior. No new channel, settings
   schema or persistence field is needed.
+- Canonical renderer paint is dark `#181818` / light `#ffffff`; the supported native
+  perimeter mirrors the subtle-border composite (`#2a2a2a` / `#ededed`). Document
+  creation reuses the background mapping; transparent utilities keep `#00000000`.
+- `resources/brand/mark.svg` owns the application glyph. Main resolves committed PNGs
+  relative to `out/main` via `../../resources/brand`; electron-builder includes that
+  directory inside the app and applies `icon.ico` to the Windows executable and NSIS.
+  All BrowserWindows use the application icon; the tray uses the 32px tile. Keep the
+  runtime Windows AppUserModelID synchronized with `electron-builder.yml` appId
+  (`com.mindfold.trellispanel`) so taskbar grouping identifies this application.
 
 ## 4. Validation and error matrix
 
