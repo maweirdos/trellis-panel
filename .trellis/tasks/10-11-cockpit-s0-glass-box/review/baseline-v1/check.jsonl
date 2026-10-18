@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/quality.md", "reason": "前端质量检查清单：新组件/IPC 订阅渲染正确性"}
-{"file": ".trellis/spec/backend/quality.md", "reason": "主进程质量检查：eventlog/taskgraph 模块、错误处理与日志"}
-{"file": ".trellis/spec/shared/code-quality.md", "reason": "共享代码质量基线：类型、命名、重复"}
-{"file": ".trellis/spec/backend/type-safety.md", "reason": "zod schema 与 IPC 边界类型安全复核"}
-{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "React 常见坑：订阅泄漏/滚动恢复/重渲染审查"}
-{"file": "docs/proposals/2026-10-11-cockpit-convergence/06-feasibility-and-pilot.md", "reason": "AC 验收时对照第 3 节三问、第 5 节 S0 阻断项与第 7 节验证卡"}

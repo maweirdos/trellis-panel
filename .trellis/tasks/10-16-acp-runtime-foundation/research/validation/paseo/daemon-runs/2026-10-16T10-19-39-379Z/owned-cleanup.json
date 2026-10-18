@@ -1,8 +1,0 @@
-{
-  "pid": 60392,
-  "scriptOwnershipVerified": true,
-  "publicDaemonStopRecorded": true,
-  "publicClientCloseRecorded": true,
-  "harnessStoppedAfterPublicCleanup": true,
-  "unrelatedProcessesTouched": false
-}

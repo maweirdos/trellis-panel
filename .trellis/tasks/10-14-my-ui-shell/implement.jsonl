@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "React 陷阱：useState 存函数需包 () =>、useMemo、初载与重取区分"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "语义 HTML、空状态、滚动条模式"}
-{"file": ".trellis/spec/frontend/store-conventions.md", "reason": "zustand 约定与 tpanel. 持久化键前缀"}

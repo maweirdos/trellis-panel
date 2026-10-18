@@ -1,2 +1,0 @@
-@echo off
-"D:\my_demo\trellis-panel\.trellis\tasks\10-16-acp-runtime-foundation\research\validation\lifecycle\node_modules\Node Runtime With Spaces\node.exe" "D:\my_demo\trellis-panel\.trellis\tasks\10-16-acp-runtime-foundation\research\validation\lifecycle\agent fixture.mjs" --root "D:\my_demo\trellis-panel\.trellis\tasks\10-16-acp-runtime-foundation\research\validation\lifecycle\runs\2026-10-16T09-57-37-020Z\cmd_launcher with spaces" --nonce "059ef224-57f1-4b13-ab08-933931ad2d10" --mode normal --stage main

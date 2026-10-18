@@ -1,9 +1,0 @@
-{
-  "code_commit": "519c69ca9d103f20be74fd5dda8718a2485338ff",
-  "visual_qa": "blocked_pending_native_capture",
-  "authorization": "User: 先提交这一版吧",
-  "push": false,
-  "task_archive": false,
-  "docs_commit": "b779e55af8ec82ece26465bdae6ce61e6b3505e1",
-  "status": "checkpoint_committed_native_visual_followup_pending"
-}
