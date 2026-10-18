@@ -727,3 +727,41 @@ Native system-IME, profile/draft-switch and final visual checks remain open afte
 ### Next Steps
 
 - 完成系统 IME、原生 profile/draft-switch 与最终视觉验收后再关闭任务。
+
+
+## Session 22: 统一 my 全局 UI 与 App 图标
+<!-- trellis-session: v=2 fp=3e118b5b130a03e4 -->
+
+**Date**: 2026-10-18
+**Task**: 统一 my 全局 UI 与 App 图标
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+参照 pi-desktop 落地中性色全局设计系统与同源 TP 品牌资源，完成自动验证、Windows 打包及任务归档；未推送。
+
+### Main Changes
+
+- 统一系统字体、深浅主题、间距、圆角、组件状态和全局 tokens，移除 leaf 品牌绿与 Inter。
+- 替换应用、窗口、托盘、favicon 与安装器图标；验证最终 EXE 七帧及打包资源原生读取。
+- 更新全局样式、会话外观与原生窗口规范，新增可重复 UI 门禁。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b3e39b7` | feat(ui): 统一全局中性设计系统并替换应用图标 |
+
+### Testing
+
+- [OK] 类型检查、生产构建与 Windows 免安装打包通过。
+- [OK] 六组主题字号、九组回归脚本通过；构建中100个 my 类无缺失。
+- [OK] 浏览器视觉检查通过；未启动真实第三方会话，未做 DWM/托盘桌面截图复验。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 后续 UI 继续使用 my 全局 tokens 与共享组件；按需进行原生桌面人工复验。
