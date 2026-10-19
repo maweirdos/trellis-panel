@@ -17,6 +17,7 @@ import { applyChromiumProxy } from './services/proxy'
 import { mainWindowAppearance } from './services/window-appearance'
 import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTaskbarShortcut } from './services/window-branding'
 import { ipcEvent } from '../shared/ipc-channels'
+import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
 import {
   setUiHooks,
   setMainWindow,
@@ -37,7 +38,7 @@ import type { CapsuleApi } from './ipc/deps'
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
 let capsuleOnTop = true
-let capsuleShape: 'pill' | 'card' = 'pill'
+let capsuleShape: 'pill' | 'card' = 'card'
 let quickTodo: BrowserWindow | null = null
 let tray: Tray | null = null
 
@@ -169,13 +170,6 @@ function createWindow(): void {
   }
 }
 
-function getCapsuleBounds(shape: 'pill' | 'card'): { width: number; height: number } {
-  if (shape === 'pill') {
-    return { width: 360, height: 44 }
-  }
-  return { width: 380, height: 260 }
-}
-
 function createCapsule(initialShape?: 'pill' | 'card'): void {
   if (initialShape) capsuleShape = initialShape
   if (capsule && !capsule.isDestroyed()) {
@@ -184,11 +178,13 @@ function createCapsule(initialShape?: 'pill' | 'card'): void {
     win?.hide()
     return
   }
-  const sz = getCapsuleBounds(capsuleShape)
+  const sz = FLOATING_TASK_WINDOWS[capsuleShape]
   capsule = new BrowserWindow({
     icon: APPLICATION_ICON,
     width: sz.width,
     height: sz.height,
+    minWidth: sz.minWidth,
+    minHeight: sz.minHeight,
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -197,7 +193,7 @@ function createCapsule(initialShape?: 'pill' | 'card'): void {
     alwaysOnTop: capsuleOnTop,
     skipTaskbar: false,
     backgroundColor: '#00000000',
-    title: 'Trellis 胶囊',
+    title: sz.title,
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -219,9 +215,9 @@ function createCapsule(initialShape?: 'pill' | 'card'): void {
   })
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
-    capsule.loadURL(devUrl + `?mode=capsule&shape=${capsuleShape}`)
+    capsule.loadURL(devUrl + `?mode=capsule&shape=${capsuleShape}&pinned=${capsuleOnTop}&theme=${getSettings().theme}`)
   } else {
-    capsule.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'capsule', shape: capsuleShape } })
+    capsule.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'capsule', shape: capsuleShape, pinned: String(capsuleOnTop), theme: getSettings().theme } })
   }
 }
 
@@ -243,7 +239,7 @@ function ensureQuickTodo(): BrowserWindow {
     width,
     height,
     minWidth: 420,
-    minHeight: 320,
+    minHeight: 360,
     x: area.x + Math.round((area.width - width) / 2),
     y: area.y + Math.round((area.height - height) / 2),
     frame: false,
@@ -274,9 +270,9 @@ function ensureQuickTodo(): BrowserWindow {
   })
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
-    quickTodo.loadURL(devUrl + '?mode=quicktodo')
+    quickTodo.loadURL(devUrl + `?mode=quicktodo&theme=${getSettings().theme}`)
   } else {
-    quickTodo.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'quicktodo' } })
+    quickTodo.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'quicktodo', theme: getSettings().theme } })
   }
   return quickTodo
 }
@@ -317,7 +313,7 @@ function rebuildTrayMenu(): void {
       }
     },
     {
-      label: '胶囊模式',
+      label: '任务悬浮窗',
       click: () => {
         if (capsule && !capsule.isDestroyed() && capsule.isVisible()) {
           capsule.hide()

@@ -10,7 +10,6 @@ export function DocWindowApp(): JSX.Element {
   const [params] = useState(() => new URLSearchParams(window.location.search))
   const path = params.get('path') ?? ''
   const taskTitle = params.get('title') ?? '文档'
-  const theme = params.get('theme') === 'light' ? 'light' : 'dark'
   const docName = path.split(/[\\/]/).pop() ?? '文档'
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -36,14 +35,8 @@ export function DocWindowApp(): JSX.Element {
     })
   }, [path])
 
-  const togglePin = (): void => {
-    const next = !pinned
-    setPinned(next)
-    void api.docSetPin(next)
-  }
-
   return (
-    <div data-my-theme={theme} className="flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
+    <div className="flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
       {/* 标题栏：拖动区 + 文档名 + 置顶/关闭 */}
       <header className="drag-region flex h-my-header shrink-0 items-center gap-2 border-b border-my-line bg-my-layer-1 px-3">
         <FileText size={13} className="shrink-0 text-my-icon-secondary" />

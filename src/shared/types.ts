@@ -1313,6 +1313,7 @@ export interface TrellisApi {
   openExternal: (url: string) => Promise<void>
 
   getSettings: () => Promise<Settings>
+  onThemeChanged: (cb: (theme: Settings['theme']) => void) => () => void
   setSettings: (patch: Partial<Settings>) => Promise<Settings>
 
   runCli: (args: string[]) => Promise<number>

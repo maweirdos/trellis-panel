@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from 'react'
+import { useEffect, useLayoutEffect, useState, lazy, Suspense } from 'react'
 import { useApp } from './store'
 import { api, hasIpc } from './api'
 import { useMy } from './my/store'
@@ -28,13 +28,11 @@ function PageLoading(): JSX.Element {
 
 function MainApp(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
-  const openTaskDir = useApp((s) => s.openTaskDir)
   const viewerTabs = useApp((s) => s.viewerTabs)
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
   const inboxAdd = useApp((s) => s.inboxAdd)
   const projectRoot = snapshot?.meta.root
-  const theme = useMy((s) => s.theme)
 
   // 文档会话集线器：定向变更事件 → 各阅读会话
   useEffect(() => {
@@ -125,6 +123,9 @@ export default function App(): JSX.Element {
   const quickTodoMode = useApp((s) => s.quickTodoMode)
   const theme = useMy((s) => s.theme)
   const fontSize = useMy((s) => s.fontSize)
+  const docMode = new URLSearchParams(window.location.search).get('mode') === 'doc'
+  const [windowTheme, setWindowTheme] = useState<'light' | 'dark'>(() => new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark')
+  const effectiveTheme = settings?.theme ?? (docMode || capsuleMode || quickTodoMode ? windowTheme : theme)
 
   useEffect(() => {
     const onStorage = (event: StorageEvent): void => {
@@ -134,47 +135,47 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
-  // 文档小窗模式：主进程以 ?mode=doc 拉起的独立置顶阅读窗（不跑 bootstrap/IPC 订阅；
-  // location.search 按窗口固定，早退不会造成同根 hooks 错序）。
-  // index.html 默认带 html.dark，本分支不跑主题 effect，必须按 URL 参数同步，
-  // 否则 .md 的 mist/ink 调色板与浅色窗底错配（正文发灰看不清）。
-  const docParams = new URLSearchParams(window.location.search)
-  if (docParams.get('mode') === 'doc') {
-    const docTheme = docParams.get('theme') === 'light' ? 'light' : 'dark'
-    document.documentElement.classList.toggle('dark', docTheme !== 'light')
-    document.documentElement.style.colorScheme = docTheme
-    return (
-      <div data-my-theme={docTheme} data-my-font-size={fontSize} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary">
-        <DocWindowApp />
-      </div>
-    )
-  }
-
   useEffect(() => {
-    if (hasIpc) void bootstrap()
+    if (hasIpc && !docMode) void bootstrap()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // One dispatcher for the ordinary shell, including no-IPC preview. Independent
-  // capsule/quicktodo windows keep their own key behavior; doc mode returns above.
   useEffect(() => {
-    if (capsuleMode || quickTodoMode) return
+    if (!hasIpc || typeof api.onThemeChanged !== 'function') return
+    return api.onThemeChanged((nextTheme) => {
+      // Keep every renderer in sync without persisting the same setting again.
+      useMy.setState({ theme: nextTheme })
+      setWindowTheme(nextTheme)
+      const current = useApp.getState().settings
+      if (current) useApp.setState({ settings: { ...current, theme: nextTheme } })
+    })
+  }, [])
+
+  // One dispatcher for the ordinary shell, including no-IPC preview. Independent
+  // Floating utilities and document windows keep their own key behavior.
+  useEffect(() => {
+    if (docMode || capsuleMode || quickTodoMode) return
     const onEsc = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && dispatchEscKey()) e.preventDefault()
     }
     window.addEventListener('keydown', onEsc)
     return () => window.removeEventListener('keydown', onEsc)
-  }, [capsuleMode, quickTodoMode])
+  }, [docMode, capsuleMode, quickTodoMode])
 
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', (settings?.theme ?? theme) !== 'light')
-    // 速记窗与胶囊一样是无框透明窗，html/body 需要透明背景
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('dark', effectiveTheme !== 'light')
+    document.documentElement.style.colorScheme = effectiveTheme
     document.documentElement.classList.toggle('is-capsule', capsuleMode || quickTodoMode)
-  }, [settings?.theme, theme, capsuleMode, quickTodoMode])
+    if (useMy.getState().theme !== effectiveTheme) useMy.setState({ theme: effectiveTheme })
+  }, [effectiveTheme, capsuleMode, quickTodoMode])
+
+  if (docMode) {
+    return <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary"><DocWindowApp /></div>
+  }
 
   if (quickTodoMode) {
     return (
-      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root h-full w-full overflow-hidden bg-transparent p-0">
+      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root h-full w-full overflow-hidden bg-transparent p-0">
         <QuickTodoView />
       </div>
     )
@@ -182,9 +183,8 @@ export default function App(): JSX.Element {
 
   if (capsuleMode) {
     return (
-      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root h-full w-full bg-transparent p-0 overflow-hidden">
-        {/* eslint-disable-next-line @typescript-eslint/no-unsafe-call */}
-        <CapsuleLazy />
+      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root h-full w-full bg-transparent p-0 overflow-hidden">
+        <Suspense fallback={null}><CapsuleLazy /></Suspense>
         <Toasts />
       </div>
     )
@@ -193,7 +193,7 @@ export default function App(): JSX.Element {
   // 预览入口：?my=1 且无 IPC 环境（浏览器）时直接渲染外壳，便于界面级验证
   if (!hasIpc && window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
     return (
-      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full w-full flex-col text-my-md text-my-primary">
+      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full w-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <Suspense fallback={null}>
           <MyApp />
@@ -204,7 +204,7 @@ export default function App(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div data-my-theme={theme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full flex-col text-my-md text-my-primary">
+      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <MainApp />
         <Toasts />

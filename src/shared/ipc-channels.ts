@@ -273,6 +273,9 @@ export const ipcInvoke = {
 
 /** 主进程 → 渲染层的事件通道（广播/推送） */
 export const ipcEvent = {
+  /** Appearance only; never broadcast settings containing credentials. */
+  themeChanged: 'settings:themeChanged',
+  integrationsChanged: 'integration:changed',
   /** 项目快照刷新（全量推送） */
   snapshotUpdated: 'project:snapshot',
   /** S0 G2 第三片：阅读会话定向文档变更（只发给已注册的 canonicalPath，design §5.2） */

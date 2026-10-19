@@ -2,6 +2,7 @@ import { BrowserWindow, screen } from 'electron'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { on, handle } from './registry'
 import type { WindowDeps } from './deps'
+import { FLOATING_TASK_WINDOWS } from '../../shared/floating-window'
 
 export function registerWindowIpc(deps: WindowDeps): void {
   on(ipcInvoke.win.capsule, (_e, onOff: boolean) => {
@@ -29,7 +30,7 @@ export function registerWindowIpc(deps: WindowDeps): void {
     deps.capsule.setShape(shape)
     const capsule = deps.getCapsule()
     if (!capsule) return
-    const sz = shape === 'pill' ? { width: 360, height: 44 } : { width: 380, height: 260 }
+    const sz = FLOATING_TASK_WINDOWS[shape]
 
     const start = capsule.getBounds()
     const currentDisplay = screen.getDisplayMatching(start)
@@ -57,6 +58,8 @@ export function registerWindowIpc(deps: WindowDeps): void {
     capsule.setMinimumSize(0, 0)
     capsule.setMaximumSize(10000, 10000)
     capsule.setBounds({ x: targetX, y: targetY, width: sz.width, height: sz.height })
+    capsule.setMinimumSize(sz.minWidth, sz.minHeight)
+    capsule.setTitle(sz.title)
   })
 
   handle(ipcInvoke.capsule.resize, (_e, width: number, height: number) => {

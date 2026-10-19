@@ -143,13 +143,10 @@ export function PageBody(): JSX.Element {
 }
 
 export function MyApp(): JSX.Element {
-  const setTheme = useMy((s) => s.setTheme)
   const syncFromSnapshot = useMy((s) => s.syncFromSnapshot)
   const setPaletteOpen = useMy((s) => s.setPaletteOpen)
-  const panelTheme = useApp((s) => (s.settings?.theme === 'light' ? 'light' : 'dark'))
   const openTaskDir = useApp((s) => s.openTaskDir)
   const root = useApp((s) => projectRootKey(s.snapshot?.meta.root))
-  const theme = useMy((s) => s.theme)
   const toggleSidebar = useMy((s) => s.toggleSidebar)
   const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -190,12 +187,6 @@ export function MyApp(): JSX.Element {
     }
     wasWorkspace.current = workspace
   }, [workspace])
-
-  useEffect(() => {
-    if (panelTheme !== theme) setTheme(panelTheme)
-    // 主题以面板设置为准，此处仅在漂移时校正
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panelTheme])
 
   useLayoutEffect(() => {
     // Bootstrap may have supplied the first snapshot before this shell mounted.

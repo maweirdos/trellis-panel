@@ -4,6 +4,8 @@ import { useApp } from '../store'
 import { api } from '../api'
 import { Button } from '../my/ui'
 import { clsx } from 'clsx'
+import { errorMessage } from '../../../shared/errors'
+import { FloatingFrame, FloatingIconButton, readFloatingPreference, writeFloatingPreference } from './FloatingWindow'
 import type { JSX } from 'react'
 
 const DRAFT_KEY = 'trellis:quickTodoDraft'
@@ -47,26 +49,35 @@ export function QuickTodoView(): JSX.Element {
   const todos = useApp((s) => s.todos)
   const loadTodos = useApp((s) => s.loadTodos)
 
-  const [text, setText] = useState(() => localStorage.getItem(DRAFT_KEY) ?? '')
+  const [text, setText] = useState(() => readFloatingPreference(DRAFT_KEY) ?? '')
   const [priority, setPriority] = useState('P2')
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState<string | null>(null)
-  const [listOpen, setListOpen] = useState(() => localStorage.getItem(LIST_OPEN_KEY) !== 'false')
+  const [error, setError] = useState<string | null>(null)
+  const [listOpen, setListOpen] = useState(() => readFloatingPreference(LIST_OPEN_KEY) !== 'false')
+  const saveLock = useRef(false)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const projectRoot = snapshot?.meta.root
 
   useEffect(() => {
-    void loadTodos()
+    if (projectRoot) textareaRef.current?.focus()
+  }, [projectRoot])
+
+  useEffect(() => {
+    void loadTodos().catch((cause: unknown) => setError(errorMessage(cause)))
     textareaRef.current?.focus()
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') void api.closeQuickTodo()
     }
     window.addEventListener('keydown', onKey)
     // 窗口常驻复用（隐藏而非销毁），每次热键呼出后把焦点放回编辑区
-    const offShown = api.onQuickTodoShown(() => textareaRef.current?.focus())
+    const offShown = api.onQuickTodoShown(() => { textareaRef.current?.focus(); void loadTodos().catch((cause: unknown) => setError(errorMessage(cause))) })
+    const offSnapshot = api.onSnapshotUpdated((next) => useApp.getState().setSnapshot(next))
     return () => {
       window.removeEventListener('keydown', onKey)
       offShown()
+      offSnapshot()
       if (flashTimer.current) clearTimeout(flashTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,88 +91,89 @@ export function QuickTodoView(): JSX.Element {
 
   const updateText = (next: string): void => {
     setText(next)
-    try {
-      localStorage.setItem(DRAFT_KEY, next)
-    } catch {}
+    writeFloatingPreference(DRAFT_KEY, next)
   }
 
   const points = splitLines(text)
   const canSave = text.trim().length > 0 && !!snapshot && !busy
 
   const save = async (): Promise<void> => {
-    if (!canSave) return
+    if (!canSave || saveLock.current) return
+    saveLock.current = true
     setBusy(true)
-    const res = await api.todoSave({ title: deriveTitle(text), description: text.trim(), priority, source: 'manual' })
-    setBusy(false)
-    if (!res.ok) return
-    updateText('')
-    await loadTodos()
-    showToast('已保存')
+    setError(null)
+    try {
+      const res = await api.todoSave({ title: deriveTitle(text), description: text.trim(), priority, source: 'manual' })
+      if (!res.ok) throw new Error(res.error || '保存失败，请重试')
+      updateText('')
+      showToast('已保存到收件箱')
+      await loadTodos()
+    } catch (cause) { setError(errorMessage(cause)) } finally { saveLock.current = false; setBusy(false) }
   }
 
   const saveSplit = async (): Promise<void> => {
-    if (!canSave || points.length < 2) return
+    if (!canSave || points.length < 2 || saveLock.current) return
+    saveLock.current = true
     setBusy(true)
+    setError(null)
     let ok = 0
-    for (const line of points) {
-      const res = await api.todoSave({ title: line.slice(0, 60), description: '', priority, source: 'manual' })
-      if (res.ok) ok += 1
-    }
-    setBusy(false)
-    if (ok === 0) return
-    updateText('')
-    await loadTodos()
-    showToast(ok >= 2 ? `已拆分保存 ${ok} 条` : '已保存')
+    const remaining: string[] = []
+    try {
+      for (const line of points) {
+        try {
+          const res = await api.todoSave({ title: line.slice(0, 60), description: line, priority, source: 'manual' })
+          if (res.ok) ok += 1
+          else remaining.push(line)
+        } catch { remaining.push(line) }
+      }
+      // Failed lines remain editable so a partial save never discards the draft.
+      updateText(remaining.join('\n'))
+      if (ok) showToast(`已保存 ${ok} 条`)
+      if (remaining.length) setError(`${remaining.length} 条未保存，已保留在编辑区，请重试。`)
+      await loadTodos()
+    } catch (cause) { setError(errorMessage(cause)) } finally { saveLock.current = false; setBusy(false) }
   }
 
   const remove = async (id: string): Promise<void> => {
-    await api.todoDelete(id)
-    await loadTodos()
+    try {
+      const result = await api.todoDelete(id)
+      if (!result.ok) throw new Error(result.error || '删除失败')
+      await loadTodos()
+    } catch (cause) { setError(errorMessage(cause)) }
   }
 
   const toggleList = (): void => {
     const next = !listOpen
     setListOpen(next)
-    try {
-      localStorage.setItem(LIST_OPEN_KEY, String(next))
-    } catch {}
+    writeFloatingPreference(LIST_OPEN_KEY, String(next))
   }
 
   const pending = todos.filter((t) => t.status === 'pending')
 
   return (
-    <div className="capsule-card flex h-full w-full flex-col overflow-hidden rounded-my-xl border border-my-line-strong bg-my-layer-2 text-my-primary select-none">
+    <FloatingFrame>
       {/* 顶栏：可拖拽 + 折叠列表 + 关闭 */}
-      <div className="drag-region flex shrink-0 items-center gap-1.5 border-b border-my-line bg-my-layer-3 px-3 py-2">
-        <ClipboardList size={12} className="text-my-icon-accent" />
-        <span className="text-my-xs font-semibold text-my-accent-text">速记待办</span>
-        {snapshot && (
-          <span className="max-w-[140px] truncate text-my-2xs text-my-secondary" title={snapshot.meta.name}>
-            · {snapshot.meta.name}
-          </span>
-        )}
-        <span className="ml-auto font-mono text-my-2xs text-my-secondary">{pending.length} 条待处理</span>
-        <button
-          onClick={toggleList}
-          className="no-drag p-1 text-my-secondary transition-colors hover:text-my-primary"
-          title={listOpen ? '收起最近待办' : '展开最近待办'}
-        >
+      <div className="drag-region my-floating-header">
+        <ClipboardList size={16} className="shrink-0 text-my-icon-secondary" />
+        <span className="shrink-0 text-my-sm font-medium">速记待办</span>
+        <span className="min-w-0 flex-1 truncate text-my-xs text-my-secondary" title={snapshot?.meta.name}>{snapshot?.meta.name ?? '未打开项目'}</span>
+        <FloatingIconButton onClick={toggleList} aria-expanded={listOpen} label={listOpen ? '收起最近待办' : '展开最近待办'}>
           {listOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        </button>
-        <button
+        </FloatingIconButton>
+        <FloatingIconButton
           onClick={() => void api.closeQuickTodo()}
-          className="no-drag p-1 text-my-secondary transition-colors hover:text-my-danger-text"
-          title="隐藏 (Esc)"
+          label="隐藏速记待办 (Esc)"
         >
           <X size={12} />
-        </button>
+        </FloatingIconButton>
       </div>
 
       {/* Markdown 编辑区 */}
       <textarea
         ref={textareaRef}
         value={text}
-        disabled={!snapshot}
+        disabled={!snapshot || busy}
+        aria-label="待办内容"
         onChange={(e) => updateText(e.target.value)}
         onKeyDown={(e) => {
           if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -171,16 +183,17 @@ export function QuickTodoView(): JSX.Element {
         }}
         placeholder={
           snapshot
-            ? '随手记录，支持多行 Markdown，如：\n1. 切换药品后未清除免试标识\n2. 皮试医嘱没有开嘱时间\n\nCtrl+Enter 保存 · 每行可拆分为独立待办'
+            ? '记下想法、问题或下一步行动…\n\n支持 Markdown，多行内容可拆分为独立待办。'
             : '未打开项目 — 先在主面板打开项目'
         }
-        className="no-drag min-h-0 flex-1 resize-none bg-transparent px-3.5 py-2.5 text-my-sm leading-relaxed text-my-primary placeholder:text-my-placeholder focus:outline-none select-text"
+        className="my-floating-editor no-drag min-h-0 flex-1 resize-none bg-transparent text-my-md leading-relaxed text-my-primary placeholder:text-my-placeholder select-text"
         spellCheck={false}
       />
 
       {/* 最近待办列表（可折叠） */}
       {listOpen && (
-        <div className="max-h-[112px] shrink-0 overflow-y-auto border-t border-my-line px-2 py-1.5">
+        <div className="my-floating-recent my-scrollbar">
+          <div className="mb-1 flex justify-between px-2 text-my-xs text-my-secondary"><span>待处理</span><span className="tabular-nums">{pending.length}</span></div>
           {pending.length === 0 ? (
             <div className="py-2 text-center text-my-xs text-my-tertiary">
               {snapshot ? '暂无待处理待办' : '打开项目后即可随手速记'}
@@ -206,14 +219,12 @@ export function QuickTodoView(): JSX.Element {
                     )}
                   />
                   <span className="min-w-0 flex-1 truncate text-my-xs text-my-primary">{t.title}</span>
-                  <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{t.createdAt}</span>
-                  <button
+                  <FloatingIconButton
                     onClick={() => void remove(t.id)}
-                    className="no-drag shrink-0 p-0.5 text-my-tertiary opacity-0 transition-opacity hover:text-my-danger-text group-hover:opacity-100"
-                    title="删除"
+                    label={`删除待办：${t.title}`}
                   >
                     <Trash2 size={11} />
-                  </button>
+                  </FloatingIconButton>
                 </div>
               ))}
             </div>
@@ -222,7 +233,11 @@ export function QuickTodoView(): JSX.Element {
       )}
 
       {/* 底栏：优先级 + 保存动作 */}
-      <div className="flex shrink-0 items-center gap-1.5 border-t border-my-line bg-my-layer-3 px-3 py-2">
+      <div className="my-floating-feedback" role={error ? 'alert' : 'status'}>
+        {error ? <span className="text-my-danger-text">{error}</span> : flash ? <span className="flex items-center gap-1 text-my-success-text"><Check size={13} />{flash}</span> : 'Ctrl+Enter 保存 · Esc 隐藏 · 草稿自动保留'}
+      </div>
+      <div className="my-floating-footer flex-wrap gap-y-2">
+        <div className="my-segmented" role="group" aria-label="待办优先级">
         {(
           [
             ['P0', 'text-my-urgent'],
@@ -234,10 +249,11 @@ export function QuickTodoView(): JSX.Element {
           <button
             key={p}
             onClick={() => setPriority(p)}
-            disabled={!snapshot}
+            disabled={!snapshot || busy}
+            aria-pressed={priority === p}
+            title={`优先级 ${p}`}
             className={clsx(
-              'no-drag rounded-my-sm px-1.5 py-0.5 font-mono text-my-2xs disabled:opacity-40',
-              priority === p ? 'bg-my-layer-2 ring-1 ring-my-line-accent' : 'hover:text-my-primary',
+              'no-drag my-segment font-mono disabled:opacity-40',
               tone
             )}
           >
@@ -245,16 +261,8 @@ export function QuickTodoView(): JSX.Element {
           </button>
         ))}
 
-        <span className="ml-2 flex items-center gap-1 text-my-2xs text-my-tertiary">
-          {flash ? (
-            <span className="flex items-center gap-1 text-my-accent-text animate-fade-in">
-              <Check size={11} /> {flash}
-            </span>
-          ) : (
-            <>Ctrl+Enter 保存 · Esc 隐藏</>
-          )}
-        </span>
-
+        </div>
+        <div className="ml-auto flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -276,7 +284,8 @@ export function QuickTodoView(): JSX.Element {
         >
           {busy ? '保存中…' : '保存'}
         </Button>
+        </div>
       </div>
-    </div>
+    </FloatingFrame>
   )
 }

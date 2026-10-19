@@ -1,4 +1,4 @@
-import { ipcInvoke } from '../../shared/ipc-channels'
+import { ipcEvent, ipcInvoke } from '../../shared/ipc-channels'
 import type { AiConfig, GitLabConfig, JiraConfig, WeknoraConfig } from '../../shared/types'
 import { getSettings, setSettings } from '../services/store'
 import { protectPassword } from '../services/jira'
@@ -6,6 +6,7 @@ import { protectGitlabPassword, clearGitlabTokenCache, clearGitlabStatusCache } 
 import { protectAiKey } from '../services/ai'
 import { protectWeknoraKey, protectWeknoraMcpToken } from '../services/weknora'
 import { applyAutoStart, getMainWindow, syncWeknoraSpecConfig } from '../state'
+import { broadcastToWindows } from '../services/bridge'
 import { accessServer } from '../services/access/server'
 import { applyChromiumProxy } from '../services/proxy'
 import { explorerMenuSupported, setExplorerMenu } from '../services/explorer-menu'
@@ -55,7 +56,10 @@ export function registerSettingsIpc(): void {
       if (!Array.isArray(weknora.searchKbIds)) weknora = { ...weknora, searchKbIds: [] }
     }
     const next = setSettings({ ...patch, jira, gitlab, ai, weknora })
-    if (patch.theme !== undefined) applyMainWindowAppearance(getMainWindow(), next.theme)
+    if (patch.theme !== undefined) {
+      applyMainWindowAppearance(getMainWindow(), next.theme)
+      broadcastToWindows(ipcEvent.themeChanged, next.theme)
+    }
     if (gitlab) {
       clearGitlabTokenCache()
       clearGitlabStatusCache()

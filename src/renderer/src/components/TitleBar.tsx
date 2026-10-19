@@ -50,7 +50,7 @@ export function TitleBar(): JSX.Element {
         <Search size={16} strokeWidth={1.8} /><span className="truncate text-left text-my-md">搜索或输入命令</span><kbd className="ml-2 whitespace-nowrap font-sans text-my-xs text-my-tertiary">Ctrl K</kbd>
       </button>
       {hasIpc && <div className="no-drag flex h-full items-stretch">
-        {snapshot && <WinButton label="切换到胶囊模式" onClick={() => api.setCapsuleMode(true)}><PictureInPicture2 size={14} /></WinButton>}
+            {snapshot && <WinButton label="打开任务悬浮窗" onClick={() => api.setCapsuleMode(true)}><PictureInPicture2 size={14} /></WinButton>}
         <WinButton label="最小化窗口" onClick={() => api.windowMinimize()}><Minus size={14} /></WinButton>
         <WinButton label={maximized ? '还原窗口' : '最大化窗口'} onClick={() => api.windowMaximize()}>{maximized ? <Copy size={12} className="-scale-x-100" /> : <Square size={12} />}</WinButton>
         <WinButton label="关闭窗口" onClick={() => api.windowClose()} danger><X size={15} /></WinButton>

@@ -23,14 +23,6 @@ body {
   line-height: var(--my-line-ui);
 }
 
-.capsule-pill {
-  box-shadow: var(--my-shadow-overlay-100);
-}
-
-.capsule-card {
-  box-shadow: var(--my-shadow-overlay-200);
-}
-
 .drag-region {
   -webkit-app-region: drag;
 }

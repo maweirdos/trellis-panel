@@ -119,6 +119,7 @@ const api = {
   openExternal: (url: string) => ipcRenderer.invoke(ipcInvoke.shell.openExternal, url),
 
   getSettings: () => ipcRenderer.invoke(ipcInvoke.settings.get),
+  onThemeChanged: (cb: (theme: Settings['theme']) => void) => subscribe(ipcEvent.themeChanged, cb),
   setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(ipcInvoke.settings.set, patch),
 
   runCli: (args: string[]) => ipcRenderer.invoke(ipcInvoke.cli.run, args),
