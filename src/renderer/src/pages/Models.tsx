@@ -21,10 +21,11 @@ import {
 import { useApp } from '../store'
 import { Select } from '../components/Select'
 import { api } from '../api'
-import { Button, Dropdown, DropdownItem } from '../my/ui'
+import { Button, Dropdown, DropdownItem, Modal, Switch } from '../my/ui'
 import type { ModelItem, ModelProvider, AiApiFormat } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors'
 import { clsx } from 'clsx'
+import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 
 export interface ProviderTemplate {
   id: string
@@ -89,7 +90,7 @@ function getProviderStatus(p: ModelProvider, isTesting: boolean) {
   }
   if (isTesting) {
     return {
-      dotClass: 'bg-my-info animate-pulse shadow-[0_0_6px_var(--my-bg-info-primary)]',
+      dotClass: 'bg-my-info animate-pulse',
       badgeClass: 'border-my-line-info bg-my-info-subtle text-my-info-text',
       label: '测试中…',
       tooltip: '正在测试接口连通性…'
@@ -105,7 +106,7 @@ function getProviderStatus(p: ModelProvider, isTesting: boolean) {
   }
   if (p.status === 'connected') {
     return {
-      dotClass: 'bg-my-success shadow-[0_0_6px_var(--my-bg-success-primary)]',
+      dotClass: 'bg-my-success',
       badgeClass: 'border-my-line-success bg-my-success-subtle text-my-success-text',
       label: p.latencyMs ? `已连通 ${p.latencyMs}ms` : '已连通',
       tooltip: `连通正常${p.latencyMs ? `，耗时 ${p.latencyMs}ms` : ''}`
@@ -113,7 +114,7 @@ function getProviderStatus(p: ModelProvider, isTesting: boolean) {
   }
   if (p.status === 'error') {
     return {
-      dotClass: 'bg-my-danger shadow-[0_0_6px_var(--my-bg-danger-primary)]',
+      dotClass: 'bg-my-danger',
       badgeClass: 'border-my-line-danger bg-my-danger-subtle text-my-danger-text',
       label: '连接异常',
       tooltip: '无法连接到供应商服务器，请检查 Base URL 与 API Key'
@@ -170,6 +171,7 @@ function reconcileProviders(saved: ModelProvider[]): ModelProvider[] {
 }
 
 export function ModelsPage(): JSX.Element {
+  const sidebarStyle = useSidebarWidthStyle()
   const settings = useApp((s) => s.settings)
   const saveSettings = useApp((s) => s.saveSettings)
   const pushToast = useApp((s) => s.pushToast)
@@ -559,7 +561,7 @@ export function ModelsPage(): JSX.Element {
       {/* 主双栏容器 */}
       <div className="flex min-h-0 flex-1 overflow-hidden rounded-my-lg border border-my-line bg-my-layer-2">
         {/* 左栏：供应商分组列表 */}
-        <div className="flex w-64 shrink-0 flex-col border-r border-my-line p-3">
+        <div style={sidebarStyle} className="my-context-sidebar relative flex shrink-0 flex-col border-r border-my-line p-3">
           <div className="my-scrollbar flex-1 space-y-4 overflow-y-auto pr-1">
             {providers.length > 0 ? (
               Object.entries(groupedProviders).map(([groupName, groupItems]) => (
@@ -621,20 +623,22 @@ export function ModelsPage(): JSX.Element {
               </div>
             )}
           </div>
+          <SidebarResizeHandle label="调整供应商列表宽度" />
         </div>
 
         {/* 右栏：供应商配置详情与模型列表 */}
         {currentProvider ? (
-          <div className="my-scrollbar flex min-w-0 flex-1 flex-col overflow-y-auto p-7">
+          <div className="my-scrollbar my-pane-content flex min-w-0 flex-1 flex-col overflow-y-auto">
             {/* 供应商头部 */}
-            <div className="mb-6 flex items-center justify-between border-b border-my-line pb-5">
-              <div className="flex items-center gap-3">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-my-line pb-5">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <Box size={22} className="text-my-secondary" />
                 <input
                   type="text"
                   value={currentProvider.name}
                   onChange={(e) => updateCurrentProvider({ name: e.target.value })}
-                  className="rounded-my-sm px-1 bg-transparent text-my-xl font-bold text-my-primary outline-none focus:ring-1 focus:ring-my-line-accent"
+                  aria-label="供应商名称"
+                  className="min-w-0 flex-1 rounded-my-sm px-1 bg-transparent text-my-xl font-semibold text-my-primary outline-none focus:shadow-[var(--my-focus-shadow)]"
                 />
                 {(() => {
                   const statusInfo = getProviderStatus(currentProvider, testingProviderId === currentProvider.id)
@@ -668,15 +672,7 @@ export function ModelsPage(): JSX.Element {
                 </Button>
 
                 {/* 供应商总开关 */}
-                <label className="relative inline-flex cursor-pointer items-center" title={currentProvider.enabled ? '已启用' : '已停用'}>
-                  <input
-                    type="checkbox"
-                    checked={currentProvider.enabled}
-                    onChange={(e) => updateCurrentProvider({ enabled: e.target.checked })}
-                    className="peer sr-only"
-                  />
-                  <div className="h-5 w-9 rounded-full bg-my-layer-3 transition-colors peer-checked:bg-my-success after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-all peer-checked:after:translate-x-4 after:content-['']" />
-                </label>
+                <Switch checked={currentProvider.enabled} onChange={(enabled) => updateCurrentProvider({ enabled })} label={`启用供应商 ${currentProvider.name}`} />
 
                 {/* 更多菜单 */}
                 <Dropdown
@@ -871,20 +867,12 @@ export function ModelsPage(): JSX.Element {
                             </button>
 
                             {/* 启用/禁用 Toggle */}
-                            <label className="relative inline-flex cursor-pointer items-center">
-                              <input
-                                type="checkbox"
-                                checked={m.enabled}
-                                onChange={(e) => {
+                            <Switch checked={m.enabled} label={`启用模型 ${m.name || m.id}`} onChange={(enabled) => {
                                   const next = currentProvider.models.map((item) =>
-                                    item.id === m.id ? { ...item, enabled: e.target.checked } : item
+                                    item.id === m.id ? { ...item, enabled } : item
                                   )
                                   updateCurrentProvider({ models: next })
-                                }}
-                                className="peer sr-only"
-                              />
-                              <div className="h-4 w-7 rounded-full bg-my-layer-3 transition-colors peer-checked:bg-my-success after:absolute after:left-[2px] after:top-[2px] after:h-3 after:w-3 after:rounded-full after:bg-white after:shadow-sm after:transition-all peer-checked:after:translate-x-3 after:content-['']" />
-                            </label>
+                                }} />
                           </div>
                         </div>
                       )
@@ -911,12 +899,11 @@ export function ModelsPage(): JSX.Element {
       </div>
 
       {/* 选择添加供应商模板模态框 */}
-      {showAddProviderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop p-4">
-          <div className="w-full max-w-xl rounded-my-xl border border-my-line bg-my-layer-2 p-6 shadow-[var(--my-shadow-overlay-200)]">
+      <Modal open={showAddProviderModal} onClose={() => setShowAddProviderModal(false)}>
+          <div className="my-modal-content">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-my-xl font-bold text-my-primary">选择供应商模板</h3>
+                <h3 className="text-my-xl font-semibold text-my-primary">选择供应商模板</h3>
                 <p className="mt-0.5 text-my-xs text-my-tertiary">选择官方预设模板快速接入，或创建空白自定义供应商</p>
               </div>
               <button
@@ -981,13 +968,11 @@ export function ModelsPage(): JSX.Element {
               </Button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 手动添加模型模态框 */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop">
-          <div className="w-96 rounded-my-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]">
+      <Modal open={showAddModal} onClose={() => setShowAddModal(false)}>
+          <div className="my-modal-content">
             <h3 className="mb-4 text-my-sm font-semibold text-my-primary">添加模型</h3>
             <div className="space-y-3 text-my-xs">
               <div>
@@ -1038,13 +1023,12 @@ export function ModelsPage(): JSX.Element {
               </Button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 编辑模型模态框 */}
       {editingModel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop">
-          <div className="w-96 rounded-my-xl border border-my-line bg-my-layer-2 p-5 shadow-[var(--my-shadow-overlay-200)]">
+        <Modal open={Boolean(editingModel)} onClose={() => setEditingModel(null)}>
+          <div className="my-modal-content">
             <h3 className="mb-4 text-my-sm font-semibold text-my-primary">编辑模型</h3>
             <div className="space-y-3 text-my-xs">
               <div>
@@ -1101,7 +1085,7 @@ export function ModelsPage(): JSX.Element {
               </Button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

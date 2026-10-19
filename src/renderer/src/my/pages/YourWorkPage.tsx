@@ -1,126 +1,453 @@
-import { useMemo, useState, type JSX } from 'react'
-import { ArrowUpRight, BookOpen, Bot, Clock3, ListTodo, MessageSquare, Star } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
+import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, MessageSquare, Plus, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
 import { useApp } from '../../store'
 import { hasIpc } from '../../api'
+import { Select } from '../../components/Select'
 import { relTime } from '../../utils/format'
 import { relativePathUnderRoot } from '../../reader/reader-paths'
+import { priorityFromTask, statusToStateId } from '../adapter'
 import { useMy } from '../store'
-import { Avatar, Button, EmptyState, formatDate } from '../ui'
+import { Button, Modal, SearchInput } from '../ui'
 import { PriorityIcon, StateGroupIcon } from '../icons'
 import { clearPersonalHistory, rememberVisit, usePersonalHistory, type PersonalVisit } from '../personal-history'
-import type { Issue, Member, WorkItemState } from '../types'
+import type { Priority, WorkItemState } from '../types'
 import { PAGE_LAYOUTS, PageBody, PageContent, PageLayout } from '../layout/PageLayout'
+import type { FileEntry, TaskInfo } from '../../../../shared/types'
+import { errorMessage } from '../../../../shared/errors'
 
-type HomeView = 'recent' | 'favorites' | 'assigned' | 'created'
+type HomeView = 'assigned' | 'created' | 'favorites' | 'completed'
+type StatusFilter = 'open' | 'all' | 'ready' | 'active' | 'review' | 'completed'
+type TaskOrder = 'priority' | 'updated'
+type StatusTone = 'neutral' | 'info' | 'warning' | 'success'
+
+export interface HomeTask {
+  id: string
+  title: string
+  description: string
+  path: string | null
+  stateId: string
+  priority: Priority
+  assignee: string | null
+  creator: string | null
+  updatedAt: number | null
+  completedAt: string | null
+  archived: boolean
+  jiraKey: string | null
+  pkg: string | null
+  scope: string | null
+  branch: string | null
+  artifacts: FileEntry[]
+}
+
+const TASK_LIMIT = 8
+const PRIORITY_ORDER: Record<Priority, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
+const PRIORITY_LABELS: Record<Priority, string> = { urgent: '紧急', high: '高', medium: '中', low: '低', none: '无' }
 const VISIT_LABELS = { task: '任务', document: '文档', agent: '对话', chat: '问答' }
 const VISIT_ICONS = { task: ListTodo, document: BookOpen, agent: Bot, chat: MessageSquare }
+const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
+  { value: 'open', label: '未结束' },
+  { value: 'all', label: '全部状态' },
+  { value: 'ready', label: '待推进' },
+  { value: 'active', label: '进行中' },
+  { value: 'review', label: '待评审' },
+  { value: 'completed', label: '已完成' }
+]
 
-function isIssueOpen(issue: Issue, states: Map<string, WorkItemState>): boolean {
-  const group = states.get(issue.stateId)?.group
-  return group !== 'completed' && group !== 'cancelled'
+function buildHomeTask(task: TaskInfo, archived: boolean): HomeTask {
+  return {
+    id: task.dirName,
+    title: task.record?.title || task.dirName,
+    description: task.record?.description || '',
+    path: task.path,
+    stateId: statusToStateId(task.record?.status),
+    priority: priorityFromTask(task.record?.priority),
+    assignee: task.record?.assignee || null,
+    creator: task.record?.creator || null,
+    updatedAt: task.updatedAt,
+    completedAt: task.record?.completedAt || null,
+    archived,
+    jiraKey: task.jiraKey ?? null,
+    pkg: task.record?.package ?? null,
+    scope: task.record?.scope ?? null,
+    branch: task.record?.branch ?? null,
+    artifacts: task.artifacts ?? []
+  }
 }
 
-function IssueRow({ issue, members, states, updatedAt, onOpen }: {
-  issue: Issue
-  members: Map<string, Member>
-  states: Map<string, WorkItemState>
-  updatedAt?: number
-  onOpen: (id: string) => void
+function matchesStatus(task: HomeTask, filter: StatusFilter, states: Map<string, WorkItemState>): boolean {
+  const group = states.get(task.stateId)?.group
+  switch (filter) {
+    case 'all': return true
+    case 'open': return !task.archived && group !== 'completed' && group !== 'cancelled'
+    case 'ready': return !task.archived && (group === 'backlog' || group === 'unstarted' || group === undefined)
+    case 'active': return !task.archived && group === 'started' && task.stateId !== 'st-review'
+    case 'review': return !task.archived && task.stateId === 'st-review'
+    case 'completed': return group === 'completed'
+  }
+}
+
+function taskStatus(task: HomeTask, state?: WorkItemState): { label: string; tone: StatusTone } {
+  if (task.archived) return { label: '已归档', tone: 'neutral' }
+  const tone = state?.group === 'completed' ? 'success'
+    : task.stateId === 'st-review' ? 'warning'
+      : state?.group === 'started' ? 'info' : 'neutral'
+  return { label: state?.name ?? '状态未记录', tone }
+}
+
+function completedInWeek(task: HomeTask, now: Date, states: Map<string, WorkItemState>): boolean {
+  if (!task.completedAt || !matchesStatus(task, 'completed', states)) return false
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(task.completedAt)
+  const completed = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])).getTime() : new Date(task.completedAt).getTime()
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime()
+  return Number.isFinite(completed) && completed >= weekStart && completed <= now.getTime()
+}
+
+function greetingByHour(hour: number): string {
+  if (hour < 6) return '夜深了'
+  if (hour < 12) return '早上好'
+  if (hour < 14) return '中午好'
+  if (hour < 18) return '下午好'
+  return '晚上好'
+}
+
+function SummaryCard({ label, value, unit, note, icon: Icon }: {
+  label: string; value: number; unit: string; note: string; icon: LucideIcon
 }): JSX.Element {
-  const state = states.get(issue.stateId)
-  const assignee = issue.assigneeId ? members.get(issue.assigneeId) : undefined
-  const due = formatDate(issue.dueDate)
-  return (
-    <button
-      type="button"
-      onClick={() => onOpen(issue.id)}
-      className="group flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-my-layer-1-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-my-line-accent"
-    >
-      {state && <StateGroupIcon stateGroup={state.group} color={state.color} />}
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-my-md font-medium text-my-primary">{issue.name}</span>
-        <span className="mt-0.5 block truncate text-my-xs text-my-secondary">
-          {state?.name ?? '状态未记录'}{assignee ? ` · ${assignee.name}` : ' · 未分配'}
-        </span>
-      </span>
-      <PriorityIcon priority={issue.priority} size={13} />
-      <span className="hidden shrink-0 text-my-xs text-my-secondary sm:block">
-        {updatedAt ? `更新于 ${relTime(updatedAt)}` : due}
-      </span>
-      {assignee && <Avatar name={assignee.name} color={assignee.avatarColor} size={20} />}
-      <ArrowUpRight size={13} className="shrink-0 text-my-icon-tertiary group-hover:text-my-icon-accent" />
-    </button>
-  )
+  return <article className="my-home-pulse-card">
+    <div className="my-home-pulse-top"><h2 className="my-home-pulse-label">{label}</h2><Icon size={14} className="text-my-icon-tertiary" /></div>
+    <div className="my-home-pulse-value-row"><span className="my-home-pulse-value">{value}</span><span className="my-home-pulse-unit">{unit}</span></div>
+    <p className="my-home-pulse-hint">{note}</p>
+  </article>
 }
 
-/** Personal records are explicit local opens, scoped by project and developer. */
+/** One task to return to. The banner never filters or advances a workflow. */
+function ContinueTaskBar({ task, source, state, onInspect }: {
+  task: HomeTask; source: 'binding' | 'history'; state?: WorkItemState; onInspect: (task: HomeTask) => void
+}): JSX.Element {
+  const status = taskStatus(task, state)
+  return <section className="my-home-spotlight" aria-label="继续任务">
+    <div className="my-home-spotlight-identity">
+      <span className="my-home-spotlight-tag">{source === 'binding' ? '当前绑定' : '上次访问'}</span>
+      <h2 className="my-home-spotlight-title" title={task.title}>{task.title}</h2>
+      <span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span>
+    </div>
+    <Button variant="neutral" size="sm" onClick={() => onInspect(task)}>打开任务<ArrowUpRight size={13} /></Button>
+  </section>
+}
+
+/** The open and favorite actions are sibling buttons, including for keyboard users. */
+function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite }: {
+  task: HomeTask; state?: WorkItemState; favorite: boolean; onInspect: (task: HomeTask) => void; onToggleFavorite: (id: string) => void
+}): JSX.Element {
+  const status = taskStatus(task, state)
+  const scope = task.scope || task.pkg || task.jiraKey
+  const completed = task.completedAt ? new Date(task.completedAt) : null
+  const showCompletion = (task.archived || state?.group === 'completed') && completed && Number.isFinite(completed.getTime())
+  const updatedAt = task.updatedAt && Number.isFinite(task.updatedAt) ? task.updatedAt : null
+  const timeText = showCompletion && completed ? completed.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : updatedAt ? relTime(updatedAt) : '—'
+  const timeTitle = showCompletion ? `完成于 ${task.completedAt}` : updatedAt ? `文件更新于 ${new Date(updatedAt).toLocaleString('zh-CN')}` : '暂无更新时间'
+
+  return <li className="my-home-task-row">
+    <button type="button" className="my-home-task-open" onClick={() => onInspect(task)}>
+      <span className="my-home-task-left">
+        <span title={`优先级：${PRIORITY_LABELS[task.priority]}`} className="flex shrink-0 items-center"><PriorityIcon priority={task.priority} size={13} /></span>
+        {state && <StateGroupIcon stateGroup={state.group} color={state.color} size={13} />}
+        <span className="my-home-task-title" title={task.title}>{task.title}</span>
+        {scope && <span className="my-home-task-scope" title={scope}>{scope}</span>}
+      </span>
+      <span className="my-home-task-right">
+        <span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span>
+        <span className="my-home-task-time" title={timeTitle}>{timeText}</span>
+      </span>
+    </button>
+    <button type="button" className="my-home-star-btn" data-starred={favorite} aria-pressed={favorite} aria-label={favorite ? '取消收藏' : '收藏任务'} onClick={() => onToggleFavorite(task.id)}>
+      <Star size={13} fill={favorite ? 'currentColor' : 'none'} />
+    </button>
+  </li>
+}
+
+function HomeQuickPeekModal({ task, state, onClose }: { task: HomeTask | null; state?: WorkItemState; onClose: () => void }): JSX.Element | null {
+  if (!task) return null
+  const status = taskStatus(task, state)
+  const docNames = task.artifacts.filter((file) => file.kind === 'file').map((file) => file.name)
+  return <Modal open onClose={onClose} width={520}>
+    <div className="my-modal-content flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2"><span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span>{task.completedAt && <span className="text-my-xs text-my-tertiary">完成于 {task.completedAt}</span>}</div>
+          <h3 className="text-my-lg font-semibold text-my-primary">{task.title}</h3>
+        </div>
+        <Button variant="ghost" size="sm" aria-label="关闭任务预览" onClick={onClose}><X size={15} /></Button>
+      </div>
+      <p className="whitespace-pre-wrap break-words text-my-sm leading-relaxed text-my-secondary">{task.description || '暂无任务描述'}</p>
+      {docNames.length > 0 && <div className="flex flex-wrap items-center gap-1.5"><span className="text-my-xs text-my-tertiary">任务材料</span>{docNames.slice(0, 5).map((name, index) => <span key={`${name}:${index}`} className="my-chip bg-my-layer-1 text-my-secondary"><FileText size={11} />{name}</span>)}</div>}
+      <div className="flex justify-end gap-2 border-t border-my-line pt-3">
+        <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
+        {task.path && <Button variant="neutral" size="sm" onClick={() => { if (!task.path) return; onClose(); useApp.getState().showTask(task.path, task.archived) }}>查看完整任务<ArrowUpRight size={13} /></Button>}
+      </div>
+    </div>
+  </Modal>
+}
+
+/** Real work summaries, one task filter, and project-scoped continuation records. */
 export function YourWorkPage(): JSX.Element {
-  const { data, openIssue, favorites, setAgentSessionTarget } = useMy()
+  const data = useMy((state) => state.data)
+  const favorites = useMy((state) => state.favorites)
+  const toggleFavorite = useMy((state) => state.toggleFavorite)
+  const openIssue = useMy((state) => state.openIssue)
   const snapshot = useApp((state) => state.snapshot)
+  const todos = useApp((state) => state.todos)
+  const saveTodo = useApp((state) => state.saveTodo)
   const history = usePersonalHistory()
-  const [view, setView] = useState<HomeView>('recent')
-  const members = useMemo(() => new Map(data.members.map((member) => [member.id, member])), [data.members])
+  const [view, setView] = useState<HomeView>('assigned')
+  const [status, setStatus] = useState<StatusFilter>('open')
+  const [order, setOrder] = useState<TaskOrder>('priority')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [expanded, setExpanded] = useState(false)
+  const [quickTodoText, setQuickTodoText] = useState('')
+  const [savingTodo, setSavingTodo] = useState(false)
+  const [todoFeedback, setTodoFeedback] = useState<{ error: boolean; message: string } | null>(null)
+  const [inspectedTask, setInspectedTask] = useState<HomeTask | null>(null)
+  const [now, setNow] = useState(() => new Date())
+  const todoSaveLock = useRef(false)
+  const projectRoot = snapshot?.meta.root
+  const me = snapshot?.meta.developer ?? null
   const states = useMemo(() => new Map(data.states.map((state) => [state.id, state])), [data.states])
-  const tasks = useMemo(() => new Map(snapshot?.tasks.map((task) => [task.dirName, task]) ?? []), [snapshot?.tasks])
-  const me = snapshot?.meta.developer
-  const recent = history.filter((entry) => {
+  const sourceTasks = useMemo(() => new Map(snapshot?.tasks.map((task) => [task.dirName, task]) ?? []), [snapshot?.tasks])
+  const currentTasks = useMemo<HomeTask[]>(() => data.issues.map((issue) => {
+    const task = sourceTasks.get(issue.id)
+    return task ? buildHomeTask(task, false) : {
+      id: issue.id, title: issue.name, description: issue.description, path: null,
+      stateId: issue.stateId, priority: issue.priority, assignee: issue.assigneeId, creator: null,
+      updatedAt: null, completedAt: issue.completedAt, archived: false,
+      jiraKey: null, pkg: issue.pkg, scope: issue.scope, branch: null, artifacts: []
+    }
+  }), [data.issues, sourceTasks])
+  const allTasks = useMemo(() => [...currentTasks, ...(snapshot?.archived.map((task) => buildHomeTask(task, true)) ?? [])], [currentTasks, snapshot?.archived])
+  const personalTasks = me ? currentTasks.filter((task) => task.assignee === me) : currentTasks
+  const completedTasks = allTasks.filter((task) => (!me || task.assignee === me) && completedInWeek(task, now, states))
+  const pendingTodos = todos.filter((todo) => todo.status === 'pending')
+  const recent = useMemo(() => history.filter((entry) => {
     if (entry.kind === 'task') return (entry.archived ? snapshot?.archived : snapshot?.tasks)?.some((task) => task.dirName === entry.target || task.path === entry.target)
     if (entry.kind === 'document') {
-      const relative = relativePathUnderRoot(snapshot?.meta.root ?? '', entry.target)
+      const relative = relativePathUnderRoot(projectRoot ?? '', entry.target)
       return relative !== null && !relative.split('/').includes('..')
     }
     return true
-  })
-  const queues = {
-    favorites: data.issues.filter((issue) => favorites.includes(issue.id)),
-    assigned: data.issues.filter((issue) => me && issue.assigneeId === me && isIssueOpen(issue, states)),
-    created: data.issues.filter((issue) => me && tasks.get(issue.id)?.record?.creator === me)
+  }), [history, snapshot?.archived, snapshot?.tasks, projectRoot])
+  const continueTask = useMemo<{ task: HomeTask; source: 'binding' | 'history' } | null>(() => {
+    const binding = snapshot?.meta.currentTask?.replace(/\\/g, '/')
+    if (binding) {
+      const task = currentTasks.find((item) => item.id === binding || item.path?.replace(/\\/g, '/') === binding || item.path?.replace(/\\/g, '/').endsWith(`/${binding}`))
+      if (task) return { task, source: 'binding' }
+    }
+    const entry = recent.find((item) => item.kind === 'task')
+    if (!entry) return null
+    const task = allTasks.find((item) => item.archived === Boolean(entry.archived) && (item.id === entry.target || item.path === entry.target))
+    return task ? { task, source: 'history' } : null
+  }, [snapshot?.meta.currentTask, currentTasks, allTasks, recent])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60000)
+    return () => window.clearInterval(timer)
+  }, [])
+  useEffect(() => {
+    setView('assigned')
+    setStatus('open')
+    setSearchQuery('')
+    setExpanded(false)
+    setInspectedTask(null)
+    setTodoFeedback(null)
+  }, [projectRoot, me])
+
+  const viewTasks = view === 'assigned' ? personalTasks
+    : view === 'created' ? currentTasks.filter((task) => me && task.creator === me)
+      : view === 'favorites' ? allTasks.filter((task) => favorites.includes(task.id)) : completedTasks
+  const query = searchQuery.trim().toLowerCase()
+  const filteredTasks = viewTasks.filter((task) => matchesStatus(task, status, states))
+    .filter((task) => !query || task.title.toLowerCase().includes(query) || task.id.toLowerCase().includes(query))
+    .sort((a, b) => {
+      if (order === 'priority') {
+        const priority = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+        if (priority) return priority
+      }
+      return (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || a.title.localeCompare(b.title, 'zh-CN')
+    })
+  const visibleTasks = expanded ? filteredTasks : filteredTasks.slice(0, TASK_LIMIT)
+  const inspectTask = (task: HomeTask): void => {
+    if (!task.archived && data.issues.some((issue) => issue.id === task.id)) openIssue(task.id)
+    else {
+      setInspectedTask(task)
+      rememberVisit({ kind: 'task', target: task.id, title: task.title, archived: task.archived })
+    }
+  }
+  const startAgentConversation = (): void => {
+    useMy.getState().requestAgentView('conversation')
+    useApp.getState().setPage('acp')
   }
   const openVisit = (entry: PersonalVisit): void => {
     const app = useApp.getState()
+    if (app.snapshot?.meta.root !== projectRoot) return
     if (entry.kind === 'task') {
-      if (entry.archived) app.showTask(entry.target, true)
-      else openIssue(entry.target)
-    } else if (entry.kind === 'document') app.openSpecDocument(entry.target)
-    else if (entry.kind === 'agent') { useMy.getState().requestAgentView(null); setAgentSessionTarget(entry.target); app.setPage('acp') }
-    else if (hasIpc) {
-      void app.chatOpenSession(entry.target).then(() => {
-        if (useApp.getState().snapshot?.meta.root !== snapshot?.meta.root || useApp.getState().page !== 'dashboard' || useApp.getState().openTaskDir) return
-        if (useApp.getState().chatActiveId !== entry.target) { useApp.getState().pushToast({ kind: 'error', title: '该问答已不可用' }); return }
-        useApp.getState().setPage('chat')
-      }).catch(() => { if (useApp.getState().page === 'dashboard') useApp.getState().pushToast({ kind: 'error', title: '问答打开失败' }) })
+      const found = allTasks.find((task) => task.archived === Boolean(entry.archived) && (task.id === entry.target || task.path === entry.target))
+      if (found) inspectTask(found)
+      return
     }
+    if (entry.kind === 'document') app.openSpecDocument(entry.target)
+    else if (entry.kind === 'agent') {
+      useMy.getState().requestAgentView(null)
+      useMy.getState().setAgentSessionTarget(entry.target)
+      app.setPage('acp')
+    } else if (hasIpc) {
+      void app.chatOpenSession(entry.target).then(() => {
+        const current = useApp.getState()
+        if (current.snapshot?.meta.root !== projectRoot || current.page !== 'dashboard' || current.openTaskDir) return
+        if (current.chatActiveId !== entry.target) { current.pushToast({ kind: 'error', title: '该问答已不可用' }); return }
+        current.setPage('chat')
+        rememberVisit(entry)
+      }).catch(() => {
+        const current = useApp.getState()
+        if (current.snapshot?.meta.root === projectRoot && current.page === 'dashboard') current.pushToast({ kind: 'error', title: '问答打开失败' })
+      })
+      return
+    } else return
     rememberVisit(entry)
   }
-  const views: Array<{ id: HomeView; label: string; count: number; description: string; empty: string }> = [
-    { id: 'recent', label: '最近', count: recent.length, description: '本机在当前项目中打开的任务、文档和对话，按访问时间排列。', empty: '还没有访问记录' },
-    { id: 'favorites', label: '收藏', count: queues.favorites.length, description: '你在当前项目收藏的任务。', empty: '还没有收藏' },
-    { id: 'assigned', label: '我负责', count: queues.assigned.length, description: '当前项目分配给你的未结束任务。', empty: me ? '没有分配给你的未结束任务' : '当前项目未设置开发者身份' },
-    { id: 'created', label: '我创建', count: queues.created.length, description: '任务创建者字段与你的当前开发者身份一致的记录。', empty: me ? '还没有由你创建的任务' : '当前项目未设置开发者身份' }
+  const submitQuickTodo = async (): Promise<void> => {
+    const text = quickTodoText.trim()
+    if (!text || !hasIpc || !projectRoot || todoSaveLock.current) return
+    const targetRoot = projectRoot
+    todoSaveLock.current = true
+    setSavingTodo(true)
+    setTodoFeedback(null)
+    try {
+      const saved = await saveTodo({ title: text, description: '' })
+      if (useApp.getState().snapshot?.meta.root !== targetRoot) return
+      if (saved) {
+        setQuickTodoText('')
+        setTodoFeedback({ error: false, message: '已保存到收件箱' })
+      } else setTodoFeedback({ error: true, message: '保存失败，内容已保留，请重试。' })
+    } catch (cause) {
+      if (useApp.getState().snapshot?.meta.root === targetRoot) setTodoFeedback({ error: true, message: `保存失败：${errorMessage(cause)}` })
+    } finally {
+      todoSaveLock.current = false
+      setSavingTodo(false)
+    }
+  }
+  const onQuickTodoSubmit = (event: FormEvent): void => { event.preventDefault(); void submitQuickTodo() }
+  const taskScope = me ? '我负责' : '项目任务'
+  const projectName = snapshot?.meta.name || data.workspace.name || '当前项目'
+  const branch = continueTask?.task.branch
+  const activeCount = personalTasks.filter((task) => matchesStatus(task, 'active', states)).length
+  const reviewCount = personalTasks.filter((task) => matchesStatus(task, 'review', states)).length
+  const openCount = personalTasks.filter((task) => matchesStatus(task, 'open', states)).length
+  const tabs: Array<{ id: HomeView; label: string; count: number; disabled?: boolean }> = [
+    { id: 'assigned', label: taskScope, count: personalTasks.length },
+    { id: 'created', label: '我创建', count: currentTasks.filter((task) => me && task.creator === me).length, disabled: !me },
+    { id: 'favorites', label: '收藏', count: allTasks.filter((task) => favorites.includes(task.id)).length },
+    { id: 'completed', label: '近 7 天完成', count: completedTasks.length }
   ]
-  const selected = views.find((item) => item.id === view) ?? views[0]
-  const last = recent[0]
-  return <PageLayout variant={PAGE_LAYOUTS.dashboard}><PageBody><PageContent>
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div><h1 className="text-my-xl font-semibold text-my-primary">首页</h1><p className="mt-1 text-my-sm text-my-secondary">{me ? `${me}，从上次停下的地方继续。` : '你的访问记录与收藏。'}</p></div>
-      <span className="text-my-xs text-my-secondary">{new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}</span>
-    </header>
-    {last && <button type="button" onClick={() => openVisit(last)} className="my-card mb-6 flex w-full items-center gap-3 p-4 text-left hover:bg-my-layer-1-hover">
-      <Clock3 size={18} className="shrink-0 text-my-icon-secondary" /><span className="min-w-0 flex-1"><span className="block text-my-xs text-my-tertiary">继续 · {VISIT_LABELS[last.kind]}</span><span className="mt-1 block truncate text-my-md font-medium text-my-primary" title={last.title}>{last.title}</span></span><ArrowUpRight size={16} className="text-my-icon-tertiary" />
-    </button>}
-    <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-my-line" role="tablist" aria-label="个人记录">
-      {views.map((item) => <button key={item.id} id={`home-${item.id}`} type="button" role="tab" aria-selected={view === item.id} aria-controls="home-records" onClick={() => setView(item.id)} className={`flex items-center gap-2 border-b-2 px-3 py-2.5 text-my-sm font-medium ${view === item.id ? 'border-my-line-accent text-my-primary' : 'border-transparent text-my-secondary hover:bg-my-layer-1-hover'}`}>
-        {item.id === 'favorites' && <Star size={13} />}{item.label}<span className="text-my-xs tabular-nums text-my-tertiary">{item.count}</span>
-      </button>)}
-    </div>
-    <div className="mb-3 flex items-center justify-between gap-3"><p className="text-my-xs text-my-secondary">{selected.description}</p>{view === 'recent' && recent.length > 0 && <Button variant="ghost" size="sm" onClick={clearPersonalHistory}>清空记录</Button>}</div>
-    <section id="home-records" role="tabpanel" aria-labelledby={`home-${view}`} className="overflow-hidden rounded-my-lg border border-my-line bg-my-surface-1">
-      {selected.count === 0 ? <EmptyState title={selected.empty} description={view === 'recent' ? '记录从本次使用开始积累，仅保存在本机，不回填项目文件的历史更新时间。' : undefined} /> : <div className="divide-y divide-my-line">
-        {view === 'recent' ? recent.map((entry) => {
-          const Icon = VISIT_ICONS[entry.kind]
-          return <button key={`${entry.kind}:${entry.target}:${Boolean(entry.archived)}`} type="button" onClick={() => openVisit(entry)} className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-my-layer-1-hover"><Icon size={16} className="shrink-0 text-my-icon-secondary" /><span className="min-w-0 flex-1"><span className="block truncate text-my-sm font-medium text-my-primary" title={entry.title}>{entry.title}</span><span className="text-my-xs text-my-tertiary">{VISIT_LABELS[entry.kind]}{entry.archived ? ' · 已归档' : ''}</span></span><span className="shrink-0 text-my-xs text-my-tertiary">{relTime(entry.at)}</span><ArrowUpRight size={13} className="text-my-icon-tertiary" /></button>
-        }) : queues[view].map((issue) => <IssueRow key={issue.id} issue={issue} members={members} states={states} updatedAt={tasks.get(issue.id)?.updatedAt} onOpen={openIssue} />)}
-      </div>}
-    </section>
-  </PageContent></PageBody></PageLayout>
+
+  return <PageLayout variant={PAGE_LAYOUTS.dashboard}>
+    <PageBody className="my-home-body">
+      <PageContent>
+        <div className="my-home-shell">
+          <header className="my-home-header">
+            <div className="my-home-header-main">
+              <div className="my-home-eyebrow">
+                <span>{now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}</span>
+                <span className="my-home-eyebrow-dot" /><span>{projectName}</span>
+                {branch && <span className="my-home-branch-pill" title="继续任务中记录的分支"><GitBranch size={11} />{branch}</span>}
+              </div>
+              <h1 className="my-home-greeting">{greetingByHour(now.getHours())}，{me || '开发者'}</h1>
+            </div>
+            <div className="my-home-header-actions">
+              <Button variant="neutral" size="sm" onClick={startAgentConversation}><Bot size={14} />打开对话</Button>
+              <Button variant="primary" size="sm" onClick={() => useMy.getState().setCreateIssueOpen(true)}><Plus size={14} />新建任务</Button>
+            </div>
+          </header>
+
+          <section className="my-home-pulse-grid" aria-label="当前项目的工作概况">
+            <SummaryCard label="进行中工作" value={activeCount} unit="项正推进" note={`${taskScope} · 未结束共 ${openCount} 项`} icon={Clock3} />
+            <SummaryCard label="待办收件箱" value={pendingTodos.length} unit="项待处理" note="当前项目中的待办记录" icon={Inbox} />
+            <SummaryCard label="待评审" value={reviewCount} unit="项待确认" note={`${taskScope} · 等待评审的任务`} icon={CheckCircle2} />
+            <SummaryCard label="近 7 天完成" value={completedTasks.length} unit="项已完成" note={`${taskScope} · 包含已归档任务`} icon={Check} />
+          </section>
+
+          <div className="my-home-workspace">
+            <div className="my-home-main-col">
+              {continueTask && <ContinueTaskBar task={continueTask.task} source={continueTask.source} state={states.get(continueTask.task.stateId)} onInspect={inspectTask} />}
+              <section className="my-home-list-panel" aria-label="个人工作项列表">
+                <header className="my-home-list-toolbar">
+                  <div className="my-home-tabs" role="group" aria-label="任务来源">
+                    {tabs.map((tab) => <button key={tab.id} type="button" aria-pressed={view === tab.id} disabled={tab.disabled} data-active={view === tab.id} className="my-home-tab" title={tab.disabled ? '当前项目尚未设置开发者身份' : undefined} onClick={() => { setView(tab.id); setStatus(tab.id === 'assigned' ? 'open' : 'all'); setExpanded(false) }}>
+                      <span>{tab.label}</span><span className="my-home-tab-count">{tab.count}</span>
+                    </button>)}
+                  </div>
+                  <div className="my-home-list-controls">
+                    <SearchInput value={searchQuery} onChange={(next) => { setSearchQuery(next); setExpanded(false) }} placeholder="筛选当前列表…" ariaLabel="按标题或任务编号筛选当前列表" size="sm" className="my-home-search" />
+                    {view !== 'completed' && <Select<StatusFilter> value={status} onChange={(next) => { setStatus(next); setExpanded(false) }} options={STATUS_OPTIONS} size="sm" ariaLabel="任务状态" />}
+                    <Select<TaskOrder> value={order} onChange={setOrder} options={[{ value: 'priority', label: '按优先级' }, { value: 'updated', label: '按更新时间' }]} size="sm" ariaLabel="排序方式" />
+                  </div>
+                </header>
+                {!me && <p className="my-home-scope-note">当前项目未设置开发者身份，暂展示项目任务。</p>}
+                {filteredTasks.length > 0 ? <ul className="my-home-task-rows" aria-label="筛选后的任务">
+                  {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} />)}
+                </ul> : <div className="my-home-empty" role="status">
+                  <ListTodo size={18} /><span>当前筛选条件下暂无任务</span>
+                  {(status !== 'all' || searchQuery) && <Button variant="ghost" size="sm" onClick={() => { setStatus('all'); setSearchQuery(''); setExpanded(false) }}>重置筛选条件</Button>}
+                </div>}
+                <footer className="my-home-list-footer">
+                  <span>显示 {visibleTasks.length} / {filteredTasks.length} 项</span>
+                  <div className="flex items-center gap-2">
+                    {filteredTasks.length > TASK_LIMIT && <Button variant="ghost" size="sm" onClick={() => setExpanded((value) => !value)}>{expanded ? '收起列表' : `展开全部 (${filteredTasks.length})`}</Button>}
+                    <Button variant="ghost" size="sm" onClick={() => { useMy.getState().setWorkItemsView('items'); useApp.getState().setPage('tasks') }}>全部工作项<ArrowUpRight size={12} /></Button>
+                  </div>
+                </footer>
+              </section>
+            </div>
+
+            <aside className="my-home-side-col" aria-label="待办与最近访问">
+              <section className="my-home-side-card" aria-labelledby="home-inbox-title">
+                <header className="my-home-side-header">
+                  <div className="flex items-center gap-2"><h2 id="home-inbox-title" className="my-home-side-title">待办收件箱</h2><span className="my-home-tab-count">{pendingTodos.length}</span></div>
+                  <Button variant="ghost" size="sm" onClick={() => useApp.getState().setPage('inbox')}>查看全部<ArrowUpRight size={12} /></Button>
+                </header>
+                {pendingTodos.length > 0 ? <ul className="my-home-side-list">{pendingTodos.slice(0, 3).map((todo) => <li key={todo.id}>
+                  <button type="button" className="my-home-signal-row" onClick={() => useApp.getState().setPage('inbox')}>
+                    <span className="my-home-signal-left"><PriorityIcon priority={priorityFromTask(todo.priority)} size={13} /><span className="my-home-signal-text" title={todo.title}>{todo.title}</span></span><ArrowUpRight size={12} className="shrink-0 text-my-icon-tertiary" />
+                  </button>
+                </li>)}</ul> : <p className="my-home-side-empty">暂无待处理待办</p>}
+                {pendingTodos.length > 3 && <Button variant="ghost" size="sm" className="my-home-more-todos" onClick={() => useApp.getState().setPage('inbox')}>查看其余 {pendingTodos.length - 3} 条<ArrowUpRight size={12} /></Button>}
+                <form className="my-home-quick-todo-form" onSubmit={onQuickTodoSubmit} aria-label="快速记录待办">
+                  <Plus size={13} className="shrink-0 text-my-icon-tertiary" />
+                  <input type="text" value={quickTodoText} disabled={savingTodo || !hasIpc || !projectRoot} onChange={(event) => { setQuickTodoText(event.target.value); setTodoFeedback(null) }} placeholder={hasIpc && projectRoot ? '记一条待办，回车保存…' : '打开项目后记录待办'} aria-label="待办内容" className="my-home-quick-todo-input" />
+                  <Button variant="ghost" size="sm" disabled={savingTodo || !quickTodoText.trim() || !hasIpc || !projectRoot} onClick={() => void submitQuickTodo()}>{savingTodo ? '保存中…' : '保存'}</Button>
+                </form>
+                {todoFeedback && <p className={`my-home-todo-feedback ${todoFeedback.error ? 'text-my-danger-text' : 'text-my-success-text'}`} role={todoFeedback.error ? 'alert' : 'status'}>{todoFeedback.message}</p>}
+              </section>
+
+              <section className="my-home-side-card" aria-labelledby="home-recent-title">
+                <header className="my-home-side-header"><h2 id="home-recent-title" className="my-home-side-title">最近访问</h2>{recent.length > 0 && <Button variant="ghost" size="sm" onClick={clearPersonalHistory}>清空</Button>}</header>
+                {recent.length > 0 ? <ul className="my-home-side-list">{recent.slice(0, 3).map((entry) => {
+                  const Icon = VISIT_ICONS[entry.kind]
+                  return <li key={`${entry.kind}:${entry.target}:${Boolean(entry.archived)}`}><button type="button" className="my-home-signal-row" onClick={() => openVisit(entry)}>
+                    <span className="my-home-signal-left"><Icon size={13} className="shrink-0 text-my-icon-tertiary" /><span className="my-home-signal-text" title={entry.title}>{entry.title}</span></span>
+                    <span className="my-home-visit-time">{VISIT_LABELS[entry.kind]} · {relTime(entry.at)}</span>
+                  </button></li>
+                })}</ul> : <p className="my-home-side-empty">暂无近期访问记录</p>}
+                <nav className="my-home-shortcuts-grid" aria-label="常用模块入口">
+                  <button type="button" className="my-home-shortcut-btn" onClick={() => { useMy.getState().requestAgentView('roles'); useApp.getState().setPage('acp') }}><Bot size={14} /><span>岗位智能体</span></button>
+                  <button type="button" className="my-home-shortcut-btn" onClick={() => useApp.getState().setPage('spec')}><BookOpen size={14} /><span>项目规范库</span></button>
+                  <button type="button" className="my-home-shortcut-btn" onClick={() => { useMy.getState().setTeamView('overview'); useApp.getState().setPage('team') }}><Users size={14} /><span>团队与周报</span></button>
+                  <button type="button" className="my-home-shortcut-btn" onClick={() => { useMy.getState().setToolView('git'); useApp.getState().setPage('devtools') }}><Terminal size={14} /><span>工程与运行</span></button>
+                </nav>
+              </section>
+            </aside>
+          </div>
+          <HomeQuickPeekModal task={inspectedTask} state={inspectedTask ? states.get(inspectedTask.stateId) : undefined} onClose={() => setInspectedTask(null)} />
+        </div>
+      </PageContent>
+    </PageBody>
+  </PageLayout>
 }

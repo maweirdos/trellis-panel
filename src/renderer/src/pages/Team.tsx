@@ -405,7 +405,7 @@ export function TeamEfficiency(): JSX.Element {
             <div key={d.date} className="group relative flex-1">
               <div
                 className="w-full rounded-t bg-my-accent transition-[filter] group-hover:brightness-110"
-                style={{ height: `${(d.count / maxDaily) * 96}px`, minHeight: d.count ? '4px' : '2px' }}
+                style={{ height: `calc(var(--my-space-96) * ${d.count / maxDaily})`, minHeight: d.count ? 'var(--my-space-4)' : 'var(--my-space-2)' }}
                 title={`${d.date}: ${d.count} 次`}
               />
               <div className="mt-1 truncate text-center text-my-2xs text-my-placeholder">{d.date.slice(5)}</div>

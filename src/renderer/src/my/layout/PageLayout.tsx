@@ -6,7 +6,7 @@ export type PageLayoutVariant = 'full' | 'centered'
 
 /** Every route explicitly chooses one of the two page-width contracts. */
 export const PAGE_LAYOUTS = {
-  dashboard: 'centered',
+  dashboard: 'full',
   tasks: 'full',
   inbox: 'full',
   jira: 'full',

@@ -62,6 +62,10 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   `PageBody` fills the remaining height. A centered body owns one scrollbar;
   a full body delegates scrolling to its real workspace panes. Do not restore
   an additional scrolling wrapper around `PageBody` in `MyApp`.
+  The full-width personal homepage explicitly owns scrolling in
+  `PageBody.my-home-body`; it keeps global gutters and does not add a private
+  maximum width. Its compact metrics and 9:3 task/record composition share one
+  12-column grid. The standalone onboarding screen stays centered.
 - `PageContent({ variant?: 'full'|'centered', ...divProps })` provides the page's
   horizontal and vertical insets; `PageSection` provides horizontal alignment for
   compact controls and footers. Without a variant they inherit the page contract.
@@ -124,6 +128,7 @@ and buttons derive their heights from the type and padding metrics.
 | Danger control | On-color text stays readable in every theme |
 | Input/select | Same single-line height; textarea may grow |
 | Keyboard focus | Neutral visible outline or token focus shadow |
+| Text-field focus | One subtle border, without an extra outline/shadow; preserve faint keyboard focus on buttons and non-text controls |
 | Menu near viewport edge | Actual measured menu remains inside the viewport |
 | Narrow dialog | Panel fits the viewport without a document horizontal scrollbar |
 | Centered route | Header, scope note and body share1120px content width and the same gutter; body alone scrolls |

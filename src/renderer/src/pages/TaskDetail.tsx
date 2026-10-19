@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
+import { WorkItemIntegrations } from '../my/pages/integrations/WorkItemIntegrations'
 import { clsx } from 'clsx'
 import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
 import { Button } from '../my/ui'
@@ -821,6 +822,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                 )}
 
                 {/* Git 集成 */}
+                <WorkItemIntegrations key={task.path} taskDir={task.path} />
                 {!archived && (
                   <div className="pt-3">
                     <div className="mb-1.5 flex items-center gap-1.5 text-my-xs text-my-tertiary">

@@ -147,6 +147,7 @@
 .my-root .my-page-with-bottom-actions { --my-page-bottom-inset: var(--my-space-80); }
 .my-root .my-page-composer { padding-block: var(--my-space-12); }
 .my-root .my-page-workspace-padding { padding: var(--my-page-block-inset) var(--my-page-inset); }
+.my-root .my-pane-content { padding: var(--my-page-block-inset) var(--my-page-inset); }
 @media (max-width: 960px) {
   .my-root { --my-page-inset: var(--my-space-16); }
 }

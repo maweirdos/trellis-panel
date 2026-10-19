@@ -18,9 +18,11 @@
 }
 .my-root ::selection { background: var(--my-selection-bg); color: var(--my-txt-primary); }
 .my-root :where(button, [role='button'], a, input, select, textarea, summary):focus-visible {
-  outline: 2px solid var(--my-focus-ring);
-  outline-offset: var(--my-space-2);
+  outline: var(--my-space-1) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-0);
 }
+/* Text fields use their single border; never stack an outer ring over it. */
+.my-root :where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']), textarea, select, [contenteditable='true']):focus-visible { outline: none; }
 .my-root button:not(:disabled), .my-root [role='button']:not([aria-disabled='true']) { cursor: pointer; }
 
 /* Shared navigation states and conversation geometry, independent of page owners. */
@@ -101,6 +103,12 @@
 .my-root .my-segmented { display: inline-flex; align-items: center; gap: var(--my-space-2); padding: var(--my-space-2); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-transparent-hover); }
 .my-root .my-segment { display: inline-flex; align-items: center; justify-content: center; width: var(--my-icon-control-size); height: var(--my-icon-control-size); border-radius: var(--my-radius-md); }
 .my-root .my-segment[aria-pressed='true'] { background: var(--my-bg-layer-2); box-shadow: var(--my-shadow-raised-100); color: var(--my-txt-primary); }
+.my-root .my-switch { display: inline-flex; flex-shrink: 0; align-items: center; width: var(--my-switch-width); height: var(--my-switch-height); padding: var(--my-switch-inset); border-radius: var(--my-radius-full); background: var(--my-bg-layer-3); box-shadow: inset 0 0 0 1px var(--my-border-strong); transition: background var(--my-motion-fast); }
+.my-root .my-switch > span { width: var(--my-switch-thumb-size); height: var(--my-switch-thumb-size); border-radius: var(--my-radius-full); background: var(--my-txt-secondary); transition: transform var(--my-motion-fast), background var(--my-motion-fast); }
+.my-root .my-switch[aria-checked='true'] { background: var(--my-bg-accent-primary); box-shadow: none; }
+.my-root .my-switch[aria-checked='true'] > span { background: var(--my-txt-on-accent); transform: translateX(calc(var(--my-switch-width) - var(--my-switch-inset) * 2 - var(--my-switch-thumb-size))); }
+.my-root .my-switch:disabled { opacity: .5; }
+.my-root .my-modal-content { max-height: inherit; overflow-y: auto; padding: var(--my-space-24); }
 .my-root .my-scrollbar { overflow-y: auto; scrollbar-gutter: stable; }
 .my-root .my-scrollbar::-webkit-scrollbar { width: var(--my-space-10); height: var(--my-space-10); display: block; }
 .my-root .my-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -135,7 +143,7 @@
 }
 .my-root .my-select-trigger:hover:not(:disabled) { background: var(--my-bg-layer-1-hover); border-color: var(--my-border-strong); }
 .my-root .my-select-trigger[aria-expanded='true'] { border-color: var(--my-border-accent-subtle); background: var(--my-bg-layer-2); }
-.my-root .my-select-trigger:focus-visible { outline: none; border-color: var(--my-border-accent-subtle); box-shadow: var(--my-focus-shadow); }
+.my-root .my-select-trigger:focus-visible { outline: none; border-color: var(--my-border-accent-subtle); box-shadow: none; }
 .my-root .my-select-trigger:disabled { color: var(--my-txt-disabled); cursor: default; opacity: .65; }
 .my-root :where(.my-select-trigger-sm) { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); font-size: var(--my-text-xs); }
 .my-root .my-select-value { display: flex; min-width: 0; align-items: center; gap: var(--my-space-6); }
@@ -176,9 +184,10 @@
 }
 .my-root textarea.my-input { height: auto; min-height: var(--my-field-height); line-height: var(--my-line-document); }
 .my-root .my-input::placeholder { color: var(--my-txt-placeholder); }
-.my-root .my-input:focus { background: var(--my-bg-layer-3); box-shadow: var(--my-focus-shadow); }
+.my-root .my-input:focus { border-color: var(--my-border-accent-subtle); background: var(--my-bg-layer-3); box-shadow: none; }
 .my-root .my-input:disabled { color: var(--my-txt-disabled); cursor: default; }
 .my-root .my-search-input { height: var(--my-control-height); padding-block: 0; padding-left: var(--my-space-28); font-size: var(--my-text-sm); }
+.my-root .my-search-input-sm { height: var(--my-control-height-sm); }
 .my-root .my-card { border: 1px solid transparent; border-radius: var(--my-radius-lg); background: var(--my-bg-layer-2); transition: background var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out); }
 .my-root .my-card:hover { background: var(--my-bg-layer-2-hover); box-shadow: var(--my-shadow-raised-100); }
 .my-root .my-editor:empty::before { content: attr(data-placeholder); color: var(--my-txt-placeholder); }

@@ -29,12 +29,24 @@ All routes choose `full` or `centered` in `layout/PageLayout.tsx`'s exhaustive
 layout registry owns only geometry. `PageFrame` and pages with custom module
 headers use the same `PageLayout`/`PageHeader`/`PageBody`/`PageContent` components.
 
-- Centered: overview, analytics, team, archive, Settings, integrations, gateway and
+- Centered: analytics, team, archive, Settings, integrations, gateway and
   local developer tools. Shared content width is1120px plus24px horizontal gutters
   (16px at960px). The body scrolls while frame headers and scope notes stay fixed.
-- Full: work items/iterations, intake, Jira, knowledge, spec, ACP, channels, API chat,
+- Full: personal home, work items/iterations, intake, Jira, knowledge, spec, ACP, channels, API chat,
   architecture, Studio and models. Workspaces fill the available width/height;
   their actual tables, boards, source browsers and editors retain scroll ownership.
+- Personal home uses the full width with global PageContent gutters, a shared
+  12-column grid (task list 9, recent/todo sidebar 3), compact four-column metrics,
+  and one explicit `PageBody.my-home-body` vertical scroll owner. Narrow windows
+  stack the sidebar below the task list. Onboarding retains its own centered
+  layout and must not inherit the dashboard route's width contract.
+- Home summary cards are read-only. Source/status/text/order filters live only in
+  the task list; status-derived phase aliases must not add another filter layer.
+  Continue-task banners use an actual project binding or explicit local visit,
+  never an inferred highest-priority task or an unverified online indicator.
+  Task completion and physical archival stay distinct. Reminders and percentages
+  require real records and defined denominators; never append demo signals to
+  production queues. Todo drafts clear only after successful persistent saves.
 - Nested Studio/flow/document/catalogue panes reuse `PageContent` with an explicit
   standard variant. Compact footers use `PageSection`, with no extra page padding.
   Task preview/expanded presentation changes only the shared content variant; do

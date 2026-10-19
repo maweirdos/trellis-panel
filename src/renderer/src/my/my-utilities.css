@@ -1,0 +1,45 @@
+/* Desktop utilities share the same colors, type and controls as the workspace. */
+.my-root .my-floating-window {
+  width: 100%; height: 100%; padding: var(--my-floating-gutter);
+  color: var(--my-txt-primary); font-size: var(--my-text-ui); user-select: none;
+}
+.my-root .my-floating-surface {
+  display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; overflow: hidden;
+  border: 1px solid var(--my-border-strong); border-radius: var(--my-radius-xl);
+  background: var(--my-bg-elevated); box-shadow: var(--my-shadow-raised-200);
+}
+.my-root .my-floating-surface--strip { border-radius: var(--my-radius-full); }
+.my-root .my-floating-header {
+  display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-8);
+  min-height: var(--my-floating-header-height); padding: var(--my-space-6) var(--my-space-12);
+  border-bottom: 1px solid var(--my-border-subtle); background: var(--my-bg-surface-1);
+}
+.my-root .my-floating-icon {
+  display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center;
+  width: var(--my-icon-control-size); height: var(--my-icon-control-size);
+  border-radius: var(--my-radius-inset); color: var(--my-txt-secondary);
+  transition: color var(--my-motion-fast), background var(--my-motion-fast);
+}
+.my-root .my-floating-icon:hover:not(:disabled),
+.my-root .my-floating-icon[aria-pressed='true'] { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-floating-icon:disabled { color: var(--my-txt-disabled); }
+.my-root .my-floating-body { min-height: 0; flex: 1; padding: var(--my-space-12) var(--my-space-16); overflow-y: auto; }
+.my-root .my-floating-footer {
+  display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: var(--my-space-8);
+  padding: var(--my-space-10) var(--my-space-12); border-top: 1px solid var(--my-border-subtle); background: var(--my-bg-surface-1);
+}
+.my-root .my-floating-strip { display: flex; align-items: center; flex: 1; gap: var(--my-space-8); min-height: 0; padding: var(--my-space-4) var(--my-space-12); }
+.my-root .my-floating-dot { width: var(--my-space-6); height: var(--my-space-6); flex-shrink: 0; border-radius: var(--my-radius-full); }
+.my-root .my-floating-count { border-radius: var(--my-radius-inset); padding: var(--my-space-4); font-size: var(--my-text-2xs); font-variant-numeric: tabular-nums; color: var(--my-txt-secondary); }
+.my-root .my-floating-count:hover { background: var(--my-bg-layer-transparent-hover); }
+.my-root .my-floating-progress { margin-top: var(--my-space-16); padding-top: var(--my-space-12); border-top: 1px solid var(--my-border-subtle); }
+.my-root .my-floating-progress-track { height: var(--my-space-4); overflow: hidden; border-radius: var(--my-radius-full); background: var(--my-bg-layer-3); }
+.my-root .my-floating-progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--my-bg-accent-primary); transition: width var(--my-motion-normal); }
+.my-root .my-floating-subtask { display: flex; align-items: flex-start; width: 100%; gap: var(--my-space-8); padding: var(--my-space-6) var(--my-space-4); border-radius: var(--my-radius-inset); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
+.my-root .my-floating-subtask:hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-floating-subtask:disabled { opacity: .65; }
+.my-root .my-floating-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: var(--my-space-12); padding: var(--my-space-24) var(--my-space-8); text-align: center; }
+.my-root .my-floating-editor { min-height: var(--my-floating-editor-min-height); padding: var(--my-space-16); }
+.my-root .my-floating-editor:focus-visible { outline: none; }
+.my-root .my-floating-recent { flex-shrink: 0; max-height: var(--my-floating-recent-max-height); overflow-y: auto; border-top: 1px solid var(--my-border-subtle); padding: var(--my-space-8); }
+.my-root .my-floating-feedback { flex-shrink: 0; padding: var(--my-space-6) var(--my-space-16); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }

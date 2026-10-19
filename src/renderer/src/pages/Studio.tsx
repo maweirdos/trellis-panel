@@ -742,7 +742,7 @@ function WorkflowSection({
         {scan.workflows.map((wf) => (
           <div key={wf.path} className={clsx('my-card p-4', wf.scope === 'global' && 'border-my-line-accent-subtle')}>
             <div className="flex items-center gap-2">
-              <span className={clsx('my-chiptext-my-2xs', wf.scope === 'global' ? 'bg-my-accent-subtle text-my-accent-text' : 'bg-my-layer-2 text-my-secondary')}>
+              <span className={clsx('my-chip text-my-2xs', wf.scope === 'global' ? 'bg-my-accent-subtle text-my-accent-text' : 'bg-my-layer-2 text-my-secondary')}>
                 {wf.scope === 'global' ? '全局回退' : '变体'}
               </span>
               <span className="font-mono text-my-xs font-semibold text-my-primary">{wf.name}</span>

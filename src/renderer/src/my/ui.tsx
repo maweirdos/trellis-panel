@@ -1,5 +1,6 @@
 // 外壳共享基础件。所有页面从本文件取用，勿各自造轮子。
 import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type ButtonHTMLAttributes } from 'react'
+import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
 import { ChevronDown, Search } from 'lucide-react'
 import type { Label, Member } from './types'
@@ -272,7 +273,7 @@ export function Modal({
   open,
   onClose,
   children,
-  width = 560
+  width
 }: {
   open: boolean
   onClose: () => void
@@ -281,23 +282,75 @@ export function Modal({
 }): JSX.Element | null {
   const escId = useId()
   const interactive = useInteractionActive()
+  const anchorRef = useRef<HTMLSpanElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const canInteract = useInteractionGuard()
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
   useEscLayer(open, { kind: 'modal', id: `modal-${escId}`, onClose })
 
-  if (!open || !interactive) return null
+  useLayoutEffect(() => {
+    // Stay inside the owning theme root, but outside page animations, clipping
+    // and stacking contexts. React context (including InteractionScope) survives.
+    if (open && interactive) returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setPortalRoot(open && interactive ? anchorRef.current?.closest<HTMLElement>('.my-root') ?? null : null)
+  }, [open, interactive])
+
+  useLayoutEffect(() => {
+    if (!open || !interactive || !portalRoot) return
+    const panel = panelRef.current
+    if (panel && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true })
+    return () => {
+      const previousFocus = returnFocusRef.current
+      if (canInteract() && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true })
+    }
+  }, [open, interactive, portalRoot, canInteract])
+
   return (
-    <div className="my-fade my-modal-backdrop fixed inset-0 flex items-start justify-center pt-[12vh]" onMouseDown={onClose}>
-      <div
-        style={{ width }}
-        className="my-peek-in my-modal-panel max-h-[76vh] overflow-hidden"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
+    <>
+      <span ref={anchorRef} hidden />
+      {open && interactive && portalRoot && createPortal(
+        <div
+          className="my-fade my-modal-backdrop no-drag fixed inset-0 flex items-start justify-center px-[var(--my-page-inset)] pt-[var(--my-modal-top-inset)]"
+          onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose() }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            style={{ width: width ?? 'var(--my-modal-width)' }}
+            className="my-peek-in my-modal-panel max-h-[var(--my-modal-max-height)] overflow-hidden"
+            onKeyDown={(e) => {
+              if (e.key !== 'Tab' || e.defaultPrevented) return
+              const controls = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(
+                'button, a[href], input, select, textarea, [tabindex]'
+              )).filter((el) => el.tabIndex >= 0 && !el.matches(':disabled, [hidden]') && el.getClientRects().length > 0)
+              const first = controls[0]
+              const last = controls[controls.length - 1]
+              if (!first) { e.preventDefault(); e.currentTarget.focus(); return }
+              if (e.shiftKey && (document.activeElement === first || document.activeElement === e.currentTarget)) {
+                e.preventDefault(); last.focus()
+              } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault(); first.focus()
+              }
+            }}
+          >
+            {children}
+          </div>
+        </div>,
+        portalRoot
+      )}
+    </>
   )
 }
 
-/* ---------------- Checkbox ---------------- */
+/* ---------------- Switch / Checkbox ---------------- */
+
+export function Switch({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }): JSX.Element {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} title={label} disabled={disabled} onClick={() => onChange(!checked)} className="my-switch"><span /></button>
+}
 
 export function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }): JSX.Element {
   return (
@@ -364,22 +417,29 @@ export function SearchInput({
   value,
   onChange,
   placeholder,
-  autoFocus
+  autoFocus,
+  ariaLabel,
+  className,
+  size = 'md'
 }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
   autoFocus?: boolean
+  ariaLabel?: string
+  className?: string
+  size?: 'sm' | 'md'
 }): JSX.Element {
   return (
-    <div className="relative">
+    <div className={clsx('relative', className)}>
       <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--my-txt-tertiary)]" />
       <input
         autoFocus={autoFocus}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="my-input my-search-input"
+        aria-label={ariaLabel ?? placeholder ?? '搜索'}
+        className={clsx('my-input my-search-input', size === 'sm' && 'my-search-input-sm')}
       />
     </div>
   )

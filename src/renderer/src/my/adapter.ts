@@ -59,7 +59,7 @@ export function priorityToTaskPriority(priority: Priority): string | null {
   }
 }
 
-const AVATAR_COLORS = ['#006399', '#7e22ce', '#c2410c', '#15803d', '#b91c1c', '#0f766e', '#a16207', '#2563eb']
+const AVATAR_COLORS = ['indigo', 'purple', 'orange', 'emerald', 'crimson', 'grey', 'pink', 'yellow'].map((family) => `var(--my-label-${family}-bg-strong)`)
 
 function colorFor(name: string): string {
   let h = 0
