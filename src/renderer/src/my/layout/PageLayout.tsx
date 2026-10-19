@@ -22,6 +22,7 @@ export const PAGE_LAYOUTS = {
   studio: 'full',
   models: 'full',
   settings: 'centered',
+  integrations: 'centered',
   gateway: 'centered',
   devtools: 'centered'
 } satisfies Record<Page, PageLayoutVariant>

@@ -224,6 +224,34 @@ export class LocalControlStore {
     )
   }
 
+  /** TPD-025: integration links share stable task aliases, never observation retention. */
+  listIntegrationLinks(workspaceId: string, taskRef: string): Array<{ id: number; payload: unknown; createdAt: number }> {
+    return this.requireDb().prepare("SELECT id, payloadJson, createdAtMs FROM source_links WHERE workspaceId=? AND taskRef=? AND sourceKind='integration.pull_request' ORDER BY id DESC LIMIT 100").all(workspaceId, taskRef).map((row) => {
+      let payload: unknown = null
+      try { payload = JSON.parse(String(row.payloadJson)) } catch { /* malformed entries remain on disk */ }
+      return { id: Number(row.id), payload, createdAt: Number(row.createdAtMs) }
+    })
+  }
+
+  upsertIntegrationLink(workspaceId: string, taskRef: string, sourceKey: string, payload: Record<string, unknown>): void {
+    const db = this.requireDb()
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const found = db.prepare("SELECT id FROM source_links WHERE workspaceId=? AND taskRef=? AND sourceKind='integration.pull_request' AND sourceKey=? LIMIT 1").get(workspaceId, taskRef, sourceKey)
+      if (found) db.prepare('UPDATE source_links SET payloadJson=? WHERE id=?').run(JSON.stringify(payload), found.id)
+      else {
+        const count = db.prepare("SELECT count(*) AS n FROM source_links WHERE workspaceId=? AND taskRef=? AND sourceKind='integration.pull_request'").get(workspaceId, taskRef)
+        if (Number(count?.n ?? 0) >= 100) throw new Error('一个工作项最多关联 100 个远端对象')
+        this.insertSourceLink({ workspaceId, taskRef, sourceKind: 'integration.pull_request', sourceKey, payload })
+      }
+      db.exec('COMMIT')
+    } catch (error) { db.exec('ROLLBACK'); throw error }
+  }
+
+  removeIntegrationLink(workspaceId: string, taskRef: string, id: number): void {
+    this.requireDb().prepare("DELETE FROM source_links WHERE id=? AND workspaceId=? AND taskRef=? AND sourceKind='integration.pull_request'").run(id, workspaceId, taskRef)
+  }
+
   upsertAlias(taskRef: string, trellisTaskId: string | null, dir: string): TaskAliasRecord | null {
     const db = this.requireDb()
     return upsertTaskAliasRecord(db, taskRef, trellisTaskId, dir)

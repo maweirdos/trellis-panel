@@ -4,6 +4,7 @@ import { join, dirname } from 'path'
 import { randomBytes } from 'crypto'
 import { WEKNORA_DEFAULTS } from '../../shared/types'
 import type { Settings } from '../../shared/types'
+import { atomicWriteText } from './local-task/prd'
 
 const DEFAULTS: Settings = {
   recentProjects: [],
@@ -79,18 +80,20 @@ export function getSettings(): Settings {
   return cache
 }
 
-function persist(): void {
+function persist(strict = false): void {
   if (!cache) return
   try {
     const p = settingsPath()
     mkdirSync(dirname(p), { recursive: true })
-    writeFileSync(p, JSON.stringify(cache, null, 2), 'utf-8')
+    if (strict) atomicWriteText(p, JSON.stringify(cache, null, 2))
+    else writeFileSync(p, JSON.stringify(cache, null, 2), 'utf-8')
   } catch {
+    if (strict) throw new Error('设置文件保存失败')
     // settings persistence is best-effort
   }
 }
 
-export function setSettings(patch: Partial<Settings>): Settings {
+export function setSettings(patch: Partial<Settings>, strict = false): Settings {
   const cur = getSettings()
   const next: Settings = {
     ...cur,
@@ -105,7 +108,7 @@ export function setSettings(patch: Partial<Settings>): Settings {
     desktop: patch.desktop ? { ...cur.desktop, ...patch.desktop } : cur.desktop
   }
   cache = next
-  persist()
+  try { persist(strict) } catch (error) { cache = cur; throw error }
   return next
 }
 

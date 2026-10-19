@@ -19,6 +19,7 @@ import type {
   ObservationSubscriptionEvent
 } from '../shared/observability/store'
 import type { IpcFail } from '../shared/ipc-errors'
+import type { IntegrationApi } from '../shared/integrations'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
@@ -52,6 +53,30 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 const api = {
+  integrations: {
+    authorize: (input) => ipcRenderer.invoke(ipcInvoke.integration.authorize, input),
+    cancelAuthorization: (requestId) => ipcRenderer.invoke(ipcInvoke.integration.cancelAuthorization, { requestId }),
+    onChanged: (callback) => subscribe(ipcEvent.integrationsChanged, () => callback()),
+    cancelRead: (requestId) => ipcRenderer.invoke(ipcInvoke.integration.cancelRead, { requestId }),
+    list: () => ipcRenderer.invoke(ipcInvoke.integration.list),
+    saveConnection: (input) => ipcRenderer.invoke(ipcInvoke.integration.saveConnection, input),
+    removeConnection: (input) => ipcRenderer.invoke(ipcInvoke.integration.removeConnection, input),
+    inspect: (input) => ipcRenderer.invoke(ipcInvoke.integration.inspect, input),
+    saveBinding: (input) => ipcRenderer.invoke(ipcInvoke.integration.saveBinding, input),
+    removeBinding: (input) => ipcRenderer.invoke(ipcInvoke.integration.removeBinding, input),
+    repositories: (input) => ipcRenderer.invoke(ipcInvoke.integration.repositories, input),
+    pullRequests: (input) => ipcRenderer.invoke(ipcInvoke.integration.pullRequests, input),
+    links: (input) => ipcRenderer.invoke(ipcInvoke.integration.links, input),
+    attach: (input) => ipcRenderer.invoke(ipcInvoke.integration.attach, input),
+    unlink: (input) => ipcRenderer.invoke(ipcInvoke.integration.unlink, input),
+    previewNotification: (input) => ipcRenderer.invoke(ipcInvoke.integration.previewNotification, input),
+    sendNotification: (input) => ipcRenderer.invoke(ipcInvoke.integration.sendNotification, input),
+    jiraContext: (input) => ipcRenderer.invoke(ipcInvoke.integration.jiraContext, input),
+    jiraSearch: (input) => ipcRenderer.invoke(ipcInvoke.integration.jiraSearch, input),
+    jiraTransitions: (input) => ipcRenderer.invoke(ipcInvoke.integration.jiraTransitions, input),
+    jiraTransition: (input) => ipcRenderer.invoke(ipcInvoke.integration.jiraTransition, input),
+    jiraComment: (input) => ipcRenderer.invoke(ipcInvoke.integration.jiraComment, input)
+  } satisfies IntegrationApi,
   pickProject: () => ipcRenderer.invoke(ipcInvoke.project.pick),
   openProject: (root: string) => ipcRenderer.invoke(ipcInvoke.project.open, root),
   getSnapshot: () => ipcRenderer.invoke(ipcInvoke.project.snapshot),

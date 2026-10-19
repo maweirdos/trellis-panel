@@ -23,6 +23,7 @@ import { registerCliIpc } from './cli'
 import { registerBridgeIpc } from './bridge'
 import { registerJiraIpc } from './jira'
 import { registerGitlabIpc } from './gitlab'
+import { registerIntegrationsIpc } from './integrations'
 import { registerHttpApiIpc } from './httpapi'
 import { registerChatIpc } from './chat'
 import { registerFlowIpc } from './flow'
@@ -55,6 +56,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerBridgeIpc()
   registerJiraIpc()
   registerGitlabIpc()
+  registerIntegrationsIpc()
   registerHttpApiIpc()
   registerChatIpc(deps)
   registerFlowIpc()

@@ -15,6 +15,14 @@
 
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
+  integration: {
+    authorize: 'integration:authorize', cancelAuthorization: 'integration:cancelAuthorization',
+    cancelRead: 'integration:cancelRead',
+    list: 'integration:list', saveConnection: 'integration:saveConnection', removeConnection: 'integration:removeConnection', inspect: 'integration:inspect',
+    saveBinding: 'integration:saveBinding', removeBinding: 'integration:removeBinding', repositories: 'integration:repositories', pullRequests: 'integration:pullRequests',
+    links: 'integration:links', attach: 'integration:attach', unlink: 'integration:unlink', previewNotification: 'integration:previewNotification', sendNotification: 'integration:sendNotification',
+    jiraContext: 'integration:jiraContext', jiraSearch: 'integration:jiraSearch', jiraTransitions: 'integration:jiraTransitions', jiraTransition: 'integration:jiraTransition', jiraComment: 'integration:jiraComment'
+  },
   project: {
     pick: 'project:pick',
     open: 'project:open',

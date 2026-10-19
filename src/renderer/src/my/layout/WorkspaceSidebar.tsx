@@ -99,6 +99,7 @@ function ContextSidebar(): JSX.Element {
         {row('preferences', '偏好', page === 'settings' && settingsView === 'preferences', <Settings2 size={16} />, () => { setSettingsView('preferences'); setPage('settings') })}
         {route('models')}
         {row('engines', '引擎', page === 'settings' && settingsView === 'engines', <Bot size={16} />, () => { setSettingsView('engines'); setPage('settings') })}
+        {route('integrations')}
         {route('gateway')}
       </>}
     </div>

@@ -1194,6 +1194,7 @@ export interface SyncExtensionResult {
 
 /** APIs exposed to the renderer via contextBridge. */
 export interface TrellisApi {
+  integrations: import('./integrations').IntegrationApi
   /** 置顶文档小窗：打开/聚焦（支持多开，key 去重）；theme 跟随面板主题 */
   docOpen: (opts: { key: string; title: string; file: string; theme: string }) => Promise<{
     ok: boolean

@@ -133,9 +133,10 @@ async function jiraFetch(
 }
 
 export async function jiraTest(
-  cfg: JiraConfig
+  cfg: JiraConfig,
+  opts?: JiraFetchOptions
 ): Promise<{ ok: boolean; error?: string; displayName?: string }> {
-  const res = await jiraFetch(cfg, '/rest/api/2/myself')
+  const res = await jiraFetch(cfg, '/rest/api/2/myself', undefined, opts)
   if (!res.ok) return { ok: false, error: res.error }
   const u = res.data && typeof res.data === 'object' ? (res.data as { displayName?: unknown; name?: unknown }) : null
   const displayName = typeof u?.displayName === 'string' ? u.displayName : undefined
@@ -593,11 +594,12 @@ export async function jiraTransitionVerified(
 export async function jiraComment(
   cfg: JiraConfig,
   key: string,
-  body: string
+  body: string,
+  opts?: JiraFetchOptions
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await jiraFetch(cfg, `/rest/api/2/issue/${encodeURIComponent(key)}/comment`, {
     method: 'POST',
     body: JSON.stringify({ body })
-  })
+  }, opts)
   return res.ok ? { ok: true } : { ok: false, error: res.error }
 }

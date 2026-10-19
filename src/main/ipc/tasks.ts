@@ -12,6 +12,9 @@ import { getSettings } from '../services/store'
 import { createOrOpenTaskFromJira } from '../services/local-task'
 import { runTaskSubtaskCli } from '../services/local-task/cli-runner'
 import { jiraInstanceIdFor } from '../services/jira-instance'
+import { resolveBinding, requireProject } from '../services/integrations/service'
+import { jiraConfig } from '../services/integrations/legacy'
+import { bindingRequestSchema } from '../../shared/integrations'
 import {
   getProjectRoot,
   getSnapshot,
@@ -94,8 +97,18 @@ export function registerTasksIpc(): void {
   handle(ipcInvoke.task.createFromJira, async (_e, input) => {
     const root = getProjectRoot()
     if (!root) return noProject()
-    const jira = getSettings().jira
+    let jira = getSettings().jira
     const raw = (input ?? {}) as Record<string, unknown>
+    if (raw.integration !== undefined) {
+      const parsed = bindingRequestSchema.safeParse(raw.integration)
+      if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, 'Jira 绑定参数无效')
+      try {
+        const resolved = resolveBinding(parsed.data)
+        if (resolved.connection.public.providerId !== 'jira') return ipcFail(IpcErrorCode.InvalidArg, '此绑定不是 Jira 来源')
+        jira = jiraConfig(resolved.connection)
+        requireProject(parsed.data.expectedRoot)
+      } catch { return ipcFail(IpcErrorCode.Conflict, 'Jira 绑定或当前项目已变化，请刷新后重试') }
+    }
     const issueKey = String(raw.jiraKey ?? '').trim()
     if (issueKey === '') return ipcFail(IpcErrorCode.InvalidArg, '缺少 jiraKey')
     const issueIdRaw = raw.issueId

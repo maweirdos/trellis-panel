@@ -5,13 +5,11 @@ import {
   Terminal,
   FolderOpen,
   X,
-  Link2,
   Plug,
   TerminalSquare,
   CheckCircle2,
   Server,
   MonitorSmartphone,
-  GitMerge,
   Sparkles,
   BrainCircuit,
   Cloud,
@@ -30,67 +28,6 @@ import { BrandMark } from '../my/BrandMark'
 import type { JSX } from 'react'
 import type { AcpAgentConfig, AcpAgentStatus, KbMcpInstallResult, KbMcpStatus, McpInfo, Settings, WeknoraConfig, WeknoraKbSummary } from '../../../shared/types'
 import { WEKNORA_DEFAULTS } from '../../../shared/types'
-
-function JiraStatusMapEditor({ settings }: { settings: Settings }): JSX.Element {
-  const saveSettings = useApp((s) => s.saveSettings)
-  const [rows, setRows] = useState<Array<[string, string]>>([])
-
-  useEffect(() => {
-    setRows(Object.entries(settings.jira.statusMap ?? {}))
-  }, [settings.jira.statusMap])
-
-  const apply = (next: Array<[string, string]>): void => {
-    setRows(next)
-    const map: Record<string, string> = {}
-    for (const [k, v] of next) if (k.trim() && v) map[k.trim()] = v
-    void saveSettings({ jira: { ...settings.jira, statusMap: map } })
-  }
-
-  return (
-    <div className="space-y-1.5">
-      {rows.map(([k, v], i) => (
-        <div key={i} className="flex items-center gap-1.5">
-          <input
-            value={k}
-            onChange={(e) => {
-              const next = [...rows]
-              next[i] = [e.target.value, v]
-              setRows(next)
-            }}
-            onBlur={() => apply(rows)}
-            placeholder="Jira 状态名，如 待测试"
-            className="my-input flex-1"
-          />
-          <span className="text-my-tertiary">→</span>
-          <select
-            value={v}
-            onChange={(e) => {
-              const next = [...rows]
-              next[i] = [k, e.target.value]
-              apply(next)
-            }}
-            className="my-input !w-32"
-          >
-            <option value="planning">规划中</option>
-            <option value="in_progress">进行中</option>
-            <option value="review">评审中</option>
-            <option value="completed">已完成</option>
-          </select>
-          <button
-            type="button"
-            onClick={() => apply(rows.filter((_, j) => j !== i))}
-            className="shrink-0 text-my-placeholder hover:text-my-danger-text"
-          >
-            <X size={12} />
-          </button>
-        </div>
-      ))}
-      <Button variant="ghost" onClick={() => apply([...rows, ['', 'in_progress']])}>
-        + 添加映射（优先于内置规则；未配置的状态按类别自动映射）
-      </Button>
-    </div>
-  )
-}
 
 export function SettingsPage(): JSX.Element {
   const settingsView = useMy((state) => state.settingsView)
@@ -113,9 +50,6 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
 
   const [cliDraft, setCliDraft] = useState(settings.cliCommand)
-  const [jira, setJira] = useState({ ...settings.jira, password: settings.jira.passwordEncrypted ? '' : settings.jira.password })
-  const [jiraTesting, setJiraTesting] = useState(false)
-  const [jiraOk, setJiraOk] = useState<string | null>(null)
   const [hookMsg, setHookMsg] = useState<string | null>(null)
   const [mcpInfo, setMcpInfo] = useState<McpInfo | null>(null)
   const [shortcut, setShortcut] = useState(settings.desktop.globalShortcut)
@@ -143,47 +77,6 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
     refreshAccess()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.access?.enabled, settings.access?.port])
-
-  const testJira = async (): Promise<void> => {
-    setJiraTesting(true)
-    setJiraOk(null)
-    const res = await api.jiraTest({ ...jira, enabled: true })
-    setJiraTesting(false)
-    if (res.ok) setJiraOk(`✓ 连接成功：${res.displayName}`)
-    else {
-      setJiraOk(null)
-      pushToast({ kind: 'error', title: 'Jira 连接失败', body: res.error })
-    }
-  }
-
-  const saveJira = async (): Promise<void> => {
-    await saveSettings({ jira: { ...jira, enabled: !!jira.baseUrl && !!jira.user } })
-    pushToast({ kind: 'success', title: 'Jira 配置已保存' })
-  }
-
-  const [gitlab, setGitlab] = useState({
-    ...settings.gitlab,
-    password: settings.gitlab.passwordEncrypted ? '' : settings.gitlab.password
-  })
-  const [gitlabTesting, setGitlabTesting] = useState(false)
-  const [gitlabOk, setGitlabOk] = useState<string | null>(null)
-
-  const testGitlab = async (): Promise<void> => {
-    setGitlabTesting(true)
-    setGitlabOk(null)
-    const res = await api.gitlabTest({ ...gitlab, enabled: true })
-    setGitlabTesting(false)
-    if (res.ok) setGitlabOk(`✓ ${res.displayName}`)
-    else {
-      setGitlabOk(null)
-      pushToast({ kind: 'error', title: 'GitLab 连接失败', body: res.error })
-    }
-  }
-
-  const saveGitlab = async (): Promise<void> => {
-    await saveSettings({ gitlab: { ...gitlab, enabled: gitlab.enabled && !!gitlab.baseUrl && !!gitlab.user && !!gitlab.project } })
-    pushToast({ kind: 'success', title: 'GitLab 配置已保存' })
-  }
 
   /* ---- 知识库 MCP ---- */
   const [mcpKbStatus, setMcpKbStatus] = useState<KbMcpStatus | null>(null)
@@ -578,135 +471,14 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
           {hookMsg && <div className="mt-2 text-my-xs text-my-tertiary">{hookMsg}</div>}
         </section>
 
-        {/* Jira */}
+        {/* TPD-025: one credential editor for all external applications. */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
-            <Link2 size={13} /> Jira 连接
-          </div>
-          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
-            Jira Server / Data Center（REST v2）。密码经系统凭据加密（DPAPI）存储。
-          </p>
-          <div className="grid grid-cols-2 gap-2.5">
-            <label className="col-span-2 space-y-1">
-              <span className="text-my-xs text-my-tertiary">服务器地址</span>
-              <input
-                value={jira.baseUrl}
-                onChange={(e) => setJira({ ...jira, baseUrl: e.target.value })}
-                placeholder="http://192.168.1.202:8083"
-                className="my-input font-mono"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-my-xs text-my-tertiary">用户名</span>
-              <input value={jira.user} onChange={(e) => setJira({ ...jira, user: e.target.value })} className="my-input" />
-            </label>
-            <label className="space-y-1">
-              <span className="text-my-xs text-my-tertiary">密码 / Token {settings.jira.passwordEncrypted && <span className="text-my-success-text">（已加密保存）</span>}</span>
-              <input
-                type="password"
-                value={jira.password}
-                onChange={(e) => setJira({ ...jira, password: e.target.value })}
-                placeholder={settings.jira.passwordEncrypted ? '••••••••（输入新值覆盖）' : ''}
-                className="my-input"
-              />
-            </label>
-            <label className="col-span-2 space-y-1">
-              <span className="text-my-xs text-my-tertiary">默认 JQL（留空 = assignee = currentUser()）</span>
-              <input
-                value={jira.jql}
-                onChange={(e) => setJira({ ...jira, jql: e.target.value })}
-                placeholder="project = XXX AND status != 完成 ORDER BY updated DESC"
-                className="my-input font-mono"
-              />
-            </label>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => void testJira()} disabled={jiraTesting || !jira.baseUrl}>
-              {jiraTesting ? '测试中…' : '测试连接'}
-            </Button>
-            <Button variant="primary" onClick={() => void saveJira()}>保存配置</Button>
-            {/* R0：Jira 后台自动回写任务状态已停用（生命周期收归外部工作流），开关一并移除 */}
-            {jiraOk && (
-              <span className="flex items-center gap-1 text-my-xs text-my-success-text">
-                <CheckCircle2 size={12} /> {jiraOk}
-              </span>
-            )}
-          </div>
-
-          <div className="mt-4 border-t border-my-line pt-3">
-            <div className="mb-2 text-my-xs font-semibold text-my-secondary">状态映射（Jira 状态名 → Trellis 状态）</div>
-            <JiraStatusMapEditor settings={settings} />
-          </div>
+          <div className="mb-2 flex items-center gap-2 text-my-sm font-semibold"><Plug size={14} />外部应用连接</div>
+          <p className="mb-3 text-my-sm text-my-tertiary">统一管理 Jira、GitHub、GitLab、Gitee、钉钉与飞书连接，并绑定当前项目。原有 Jira / GitLab 配置已保留。</p>
+          <Button variant="outline" onClick={() => useApp.getState().setPage('integrations')}>管理外部应用</Button>
         </section>
 
-        {/* GitLab connector */}
-        <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
-          <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
-            <GitMerge size={13} /> GitLab 集成
-            <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-my-xs font-normal text-my-tertiary">
-              <Checkbox
-                checked={gitlab.enabled}
-                onChange={(v) => setGitlab({ ...gitlab, enabled: v })}
-              />
-              启用（任务卡显示 MR / 构建状态）
-            </label>
-          </div>
-          <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
-            自建 GitLab（OAuth 密码模式自动换 token）。关联分支的任务会显示 MR 与流水线状态，可一键创建 MR。密码经系统凭据加密（DPAPI）存储。
-          </p>
-          <div className="grid grid-cols-2 gap-2.5">
-            <label className="col-span-2 space-y-1">
-              <span className="text-my-xs text-my-tertiary">GitLab 地址</span>
-              <input
-                value={gitlab.baseUrl}
-                onChange={(e) => setGitlab({ ...gitlab, baseUrl: e.target.value })}
-                placeholder="http://192.168.1.202:8929"
-                className="my-input font-mono"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-my-xs text-my-tertiary">账号</span>
-              <input
-                value={gitlab.user}
-                onChange={(e) => setGitlab({ ...gitlab, user: e.target.value })}
-                placeholder="1786487276@qq.com"
-                className="my-input"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-my-xs text-my-tertiary">密码 {settings.gitlab.passwordEncrypted && <span className="text-my-success-text">（已加密保存）</span>}</span>
-              <input
-                type="password"
-                value={gitlab.password}
-                onChange={(e) => setGitlab({ ...gitlab, password: e.target.value })}
-                placeholder={settings.gitlab.passwordEncrypted ? '••••••••（输入新值覆盖）' : ''}
-                className="my-input"
-              />
-            </label>
-            <label className="col-span-2 space-y-1">
-              <span className="text-my-xs text-my-tertiary">项目路径（含命名空间，任务分支将在此项目下匹配 MR / 流水线）</span>
-              <input
-                value={gitlab.project}
-                onChange={(e) => setGitlab({ ...gitlab, project: e.target.value })}
-                placeholder="huachuang/honsky-lis"
-                className="my-input font-mono"
-              />
-            </label>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => void testGitlab()} disabled={gitlabTesting || !gitlab.baseUrl || !gitlab.user}>
-              {gitlabTesting ? '测试中…' : '测试连接'}
-            </Button>
-            <Button variant="primary" onClick={() => void saveGitlab()}>保存配置</Button>
-            {gitlabOk && (
-              <span className="flex items-center gap-1 text-my-xs text-my-success-text">
-                <CheckCircle2 size={12} /> {gitlabOk}
-              </span>
-            )}
-          </div>
-        </section>
-
-        {/* WeKnora 公司库联动 */}
+        {/* WeKnora 知识库联动 */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
             <Cloud size={13} /> WeKnora 知识库联动

@@ -8,6 +8,7 @@ files:
   - "!out/worker-only/**"
   - package.json
   - resources/brand/**
+  - resources/licenses/**
 # worker_threads 无法从 asar 内加载文件：邻位 worker 产物解包到 app.asar.unpacked
 # （加载侧由 services/worker-path.ts 重写路径）
 asarUnpack:

@@ -58,6 +58,9 @@ interface TaskMetaOnDisk {
   panelOperationId: string | null
   panelIssueKey: string | null
   legacyJiraKey: string | null
+  jiraInstanceId: string | null
+  jiraIssueId: string | null
+  jiraUrl: string | null
 }
 
 function readTaskMeta(root: string, repoRelativeDir: string): TaskMetaOnDisk | null {
@@ -73,7 +76,10 @@ function readTaskMeta(root: string, repoRelativeDir: string): TaskMetaOnDisk | n
       taskJsonId: id,
       panelOperationId: typeof meta.panel_operation_id === 'string' ? meta.panel_operation_id : null,
       panelIssueKey: typeof meta.panel_jira_issue_key === 'string' ? meta.panel_jira_issue_key : null,
-      legacyJiraKey: typeof meta.jiraKey === 'string' ? meta.jiraKey : null
+      legacyJiraKey: typeof meta.jiraKey === 'string' ? meta.jiraKey : null,
+      jiraInstanceId: typeof meta.panel_jira_instance_id === 'string' ? meta.panel_jira_instance_id : null,
+      jiraIssueId: /^(?:[1-9]\d*)$/.test(String(meta.panel_jira_issue_id ?? '')) ? String(meta.panel_jira_issue_id) : null,
+      jiraUrl: typeof meta.jiraUrl === 'string' ? meta.jiraUrl : typeof meta.panel_jira_issue_url === 'string' ? meta.panel_jira_issue_url : null
     }
   } catch {
     return null

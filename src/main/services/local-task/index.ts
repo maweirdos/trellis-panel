@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
+import { jiraSourceMatch } from '../../../shared/jira-source'
 import { LocalControlStore } from './control-store'
 import {
   dirExists,
@@ -165,6 +166,7 @@ async function runCreateOrOpen(
   hooks: LocalTaskRunHooks
 ): Promise<CreateOrOpenResult> {
   const root = resolve(input.root)
+  const sourceIssueId = input.issueId ?? null
   const tasksRoot = tasksDirOf(root)
   const cliRunner = hooks.cliRunner ?? runTaskCreateCli
   const cliOptions = { root, pythonCommand: hooks.pythonCommand }
@@ -186,7 +188,12 @@ async function runCreateOrOpen(
     // ③ 重复点击默认打开已有任务：优先真实磁盘（含旧流程创建、无 op 记录的任务）。
     //    但存在可续跑（中断中）操作时不得短路——必须走 ④⑤ 的恢复管线补完创建。
     if (input.allowAdditional === false) {
-      const byKey = disk.byIssueKey.get(input.issueKey.toUpperCase()) ?? []
+      const candidates = disk.byIssueKey.get(input.issueKey.toUpperCase()) ?? []
+      const matching = disk.known.filter((item) => (candidates.includes(item.dir) || (sourceIssueId !== null && item.jiraIssueId === String(sourceIssueId) && item.jiraInstanceId === input.instanceId)) && !(sourceIssueId !== null && item.jiraIssueId !== null && item.jiraIssueId !== String(sourceIssueId)))
+      const byKey = matching.filter((item) => jiraSourceMatch(item.jiraInstanceId, item.jiraUrl, input.instanceId, input.url) === 'same').map((item) => item.dir)
+      if (matching.some((item) => jiraSourceMatch(item.jiraInstanceId, item.jiraUrl, input.instanceId, input.url) === 'ambiguous')) {
+        return { ok: false, code: 'conflict', error: '发现同编号的历史关联，但其 Jira 实例不明确，请先补充来源链接或实例身份' }
+      }
       const hasResumable = priorOps.some((r) => RESUMABLE_STAGES.includes(r.stage))
       if (!hasResumable) {
         if (byKey.length === 1) {
@@ -215,7 +222,8 @@ async function runCreateOrOpen(
     } else {
       const ordinal = store.maxOrdinal(keyBase) + 1
       // 一单多任务的显式新增序号也体现在 slug 上（同日同名会被 CLI 拒绝；用户未显式命名时追加序号）
-      const derived = slugFor(input.issueKey, input.title)
+      const sameKeyDifferentSource = disk.known.some((item) => [item.panelIssueKey, item.legacyJiraKey].some((key) => key?.toUpperCase() === input.issueKey.toUpperCase()) && (jiraSourceMatch(item.jiraInstanceId, item.jiraUrl, input.instanceId, input.url) === 'other' || (sourceIssueId !== null && item.jiraIssueId !== null && item.jiraIssueId !== String(sourceIssueId))))
+      const derived = slugFor(input.issueKey, input.title) + (sameKeyDifferentSource ? `-${sha256Hex(`${input.instanceId}#${sourceIssueId ?? input.issueKey}`).slice(0, 6)}` : '')
       const slug = input.slug ?? (ordinal > 1 ? `${derived}-${ordinal}` : derived)
       const key: LocalOperationKey = { ...keyBase, ordinal }
       const operationId = operationIdFor(key)

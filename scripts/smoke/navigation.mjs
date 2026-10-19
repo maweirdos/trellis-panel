@@ -68,7 +68,7 @@ try {
     dashboard: 'home', acp: 'agents', channels: 'agents', chat: 'agents',
     tasks: 'tasks', inbox: 'tasks', jira: 'tasks', archive: 'tasks', devtools: 'tasks', architecture: 'tasks', studio: 'tasks',
     team: 'team', analytics: 'team', knowledge: 'knowledge', spec: 'knowledge',
-    settings: 'settings', models: 'settings', gateway: 'settings'
+    settings: 'settings', models: 'settings', integrations: 'settings', gateway: 'settings'
   }
   assert.deepEqual(Object.keys(owners).sort(), pages)
   for (const [page, owner] of Object.entries(owners)) assert.equal(m.activeModule(page), owner, `${page} belongs to one stable module`)

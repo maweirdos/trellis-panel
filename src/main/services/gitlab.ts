@@ -1,5 +1,6 @@
 import { safeStorage } from 'electron'
 import { errorText } from '../../shared/errors'
+import { proxiedFetch } from './proxy'
 import type { GitLabConfig, GitLabMrInfo, GitLabPipelineInfo, GitLabTaskStatus } from '../../shared/types'
 
 /* ---------------- password protection (same scheme as Jira) ---------------- */
@@ -48,8 +49,10 @@ function normalizeBase(cfg: GitLabConfig): string {
 
 async function requestToken(cfg: GitLabConfig, grant: 'password' | 'refresh_token', extra: string): Promise<TokenEntry | null> {
   try {
-    const res = await fetch(`${normalizeBase(cfg)}/oauth/token`, {
+    const res = await proxiedFetch(`${normalizeBase(cfg)}/oauth/token`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15000),
+      redirect: 'error',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: grant,
@@ -73,12 +76,8 @@ async function requestToken(cfg: GitLabConfig, grant: 'password' | 'refresh_toke
 }
 
 function extraObj(query: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const pair of query.split('&')) {
-    const i = pair.indexOf('=')
-    if (i > 0) out[pair.slice(0, i)] = pair.slice(i + 1)
-  }
-  return out
+  // Decode the intermediate query once before URLSearchParams encodes the final form.
+  return Object.fromEntries(new URLSearchParams(query))
 }
 
 async function getToken(cfg: GitLabConfig): Promise<string | null> {
@@ -100,6 +99,9 @@ async function getToken(cfg: GitLabConfig): Promise<string | null> {
   if (fresh) tokenCache.set(key, fresh)
   return fresh?.accessToken ?? null
 }
+
+/** Integration compatibility bridge; token stays in main process. */
+export const getGitlabAccessToken = getToken
 
 export function clearGitlabTokenCache(): void {
   tokenCache.clear()

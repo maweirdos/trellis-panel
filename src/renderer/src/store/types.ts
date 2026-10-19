@@ -39,6 +39,7 @@ export type Page =
   | 'acp'
   | 'gateway'
   | 'settings'
+  | 'integrations'
   | 'analytics'
   | 'devtools'
 

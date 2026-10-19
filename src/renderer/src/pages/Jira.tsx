@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   RefreshCw,
   Download,
@@ -24,7 +24,10 @@ import { PageContent, PageToolbar } from '../my/layout/PageLayout'
 import { JIRA_CATEGORY_STATUS, statusLabel } from '../utils/labels'
 import { PlanningModal, type PlanningSeed } from '../components/PlanningModal'
 import type { JSX } from 'react'
-import type { JiraIssue, JiraIssueDetail, JiraPagedSearchMeta, Settings, TaskInfo } from '../../../shared/types'
+import type { JiraIssue, JiraIssueDetail, JiraPagedSearchMeta, ProjectSnapshot, Settings, TaskInfo } from '../../../shared/types'
+import type { JiraContext } from '../../../shared/integrations'
+import { jiraSourceMatch } from '../../../shared/jira-source'
+import { integrationBridgeMessage, integrationBridgeState } from '../my/pages/integrations/bridge'
 
 function priorityOf(name: string): string {
   if (/highest|最高/i.test(name)) return 'P0'
@@ -92,14 +95,15 @@ const NO_VERSION = '无版本'
 
 export function JiraPage(): JSX.Element {
   const settings = useApp((s) => s.settings)
+  const snapshot = useApp((s) => s.snapshot)
   // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态，页面体不挂载
   // （渲染期 settings.jira / snapshot 解引用都在 Body 内，此时已收窄为非空）
   if (!settings) return <EmptyState title="设置未加载" />
-  return <JiraPageBody settings={settings} />
+  if (!snapshot) return <EmptyState title="尚未打开项目" description="打开项目后，可查询并导入 Jira 来源。" />
+  return <JiraPageBody key={snapshot.meta.root} settings={settings} snapshot={snapshot} />
 }
 
-function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: ProjectSnapshot }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const saveTodo = useApp((s) => s.saveTodo)
   const todos = useApp((s) => s.todos)
@@ -128,39 +132,67 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
   const [creatingKey, setCreatingKey] = useState<string | null>(null)
   /** G4 轻任务入口：服务返回的本地任务定位（created/already 共用；键为 issue.key 大写） */
   const [localTasks, setLocalTasks] = useState<Record<string, { dirName: string; archived: boolean }>>({})
-
-  const cfg = settings.jira
+  const [context, setContext] = useState<JiraContext | null>(null)
+  const [contextReady, setContextReady] = useState(false)
+  const [contextEpoch, setContextEpoch] = useState(0)
+  const requestSequence = useRef(0)
+  const pendingSearchId = useRef<string | null>(null)
+  const alive = useRef(true)
+  const owner = useRef('')
+  owner.current = context ? `${context.bindingId}:${context.bindingRevision}:${context.connectionRevision}` : ''
+  const cfg = { enabled: Boolean(context), baseUrl: context?.baseUrl || '' }
+  useEffect(() => {
+    if (integrationBridgeState() !== 'ready') return
+    return api.integrations.onChanged(() => setContextEpoch((value) => value + 1))
+  }, [])
+  useEffect(() => {
+    alive.current = true
+    return () => { alive.current = false; requestSequence.current++; if (pendingSearchId.current) void api.integrations.cancelRead(pendingSearchId.current).catch(() => undefined) }
+  }, [])
+  useEffect(() => {
+    let cancelled = false
+    setContextReady(false)
+    if (integrationBridgeState() !== 'ready') { setContextReady(true); setContext(null); setError(integrationBridgeMessage(integrationBridgeState())); return }
+    void api.integrations.jiraContext({ expectedRoot: snapshot.meta.root }).then((result) => {
+      if (cancelled) return
+      if (result.ok) setContext(result.data)
+      else { setContext(null); setError(result.error) }
+      setContextReady(true)
+    }).catch(() => { if (!cancelled) { setContextReady(true); setError('无法读取 Jira 项目绑定') } })
+    return () => { cancelled = true; requestSequence.current++; if (pendingSearchId.current) void api.integrations.cancelRead(pendingSearchId.current).catch(() => undefined) }
+  }, [snapshot.meta.root, settings.jira, contextEpoch])
+  useEffect(() => { setLocalTasks({}); setIssues([]); setBusyKey(null); setCreatingKey(null) }, [context?.instanceId, context?.bindingRevision, context?.connectionRevision])
 
   const search = useCallback(
     async (query: string, hideOverride?: boolean): Promise<void> => {
-      if (!cfg?.enabled || !cfg.baseUrl) {
-        setError('尚未配置 Jira 连接 —— 请先到「设置 → Jira 连接」填写并保存')
+      if (!context) {
+        setError('尚未配置 Jira 连接，请到外部应用集成添加连接和项目绑定')
         return
       }
+      const token = ++requestSequence.current
+      if (pendingSearchId.current) void api.integrations.cancelRead(pendingSearchId.current).catch(() => undefined)
+      const requestId = crypto.randomUUID()
+      pendingSearchId.current = requestId
       setLoading(true)
       setError(null)
       // G4 第二片：分页查询（完整字段 issueId/description/updatedAtMs 供本地任务创建消费；
       // 旧单页 jira:search 保留给 AcpConsole 等既有调用方，零回归）
-      const res = await api.jiraSearchPaged(cfg, composeJql(query, hideOverride ?? hideDone))
-      setLoading(false)
-      if (res.ok && res.issues) {
-        setIssues(res.issues)
-        setTotal(res.total ?? res.issues.length)
-        setSearchMeta(res.meta ?? null)
-      } else {
-        setError(res.error ?? '查询失败')
-        setIssues([])
-        setSearchMeta(null)
-      }
+      try {
+        const res = await api.integrations.jiraSearch({ ...context, requestId, jql: composeJql(query || context.jql, hideOverride ?? hideDone) })
+        if (token !== requestSequence.current || !alive.current) return
+        if (res.ok) { setIssues(res.data.issues); setTotal(res.data.total); setSearchMeta(res.data.meta) }
+        else { setError(res.error); setIssues([]); setSearchMeta(null) }
+      } catch { if (token === requestSequence.current && alive.current) setError('Jira 查询未完成，请刷新后重试') }
+      finally { if (pendingSearchId.current === requestId) pendingSearchId.current = null; if (token === requestSequence.current && alive.current) setLoading(false) }
     },
-    [cfg, hideDone]
+    [context, hideDone]
   )
 
   useEffect(() => {
     if (!hasIpc) return
-    if (cfg?.enabled && cfg.baseUrl) void search('')
+    if (context) void search('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg?.enabled, cfg?.baseUrl])
+  }, [context?.bindingId, context?.bindingRevision, context?.connectionRevision])
 
   const quickSearch = (preset: 'mine' | 'sprint'): void => {
     const q =
@@ -192,14 +224,20 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
   /* 本地关联索引：旧 meta.jiraKey（手动关联/旧流程）+ 新 panel_jira_issue_key（G4 服务创建）双索引 */
   const linkedByKey = useMemo(() => {
     const map = new Map<string, TaskInfo>()
+    const ambiguous = new Set<string>()
     for (const t of [...snapshot.tasks, ...snapshot.archived]) {
       const meta = t.record?.meta
+      if (!context || jiraSourceMatch(typeof meta?.panel_jira_instance_id === 'string' ? meta.panel_jira_instance_id : null, typeof meta?.jiraUrl === 'string' ? meta.jiraUrl : null, context.instanceId, `${context.baseUrl}/browse/source-1`) !== 'same') continue
       for (const k of [meta?.jiraKey, meta?.panel_jira_issue_key]) {
-        if (typeof k === 'string' && k) map.set(k.toUpperCase(), t)
+        if (typeof k === 'string' && k) {
+          const key = k.toUpperCase()
+          if (map.has(key) && map.get(key)?.path !== t.path) { map.delete(key); ambiguous.add(key) }
+          else if (!ambiguous.has(key)) map.set(key, t)
+        }
       }
     }
     return map
-  }, [snapshot.tasks, snapshot.archived])
+  }, [snapshot.tasks, snapshot.archived, context])
 
   /* G4 轻任务入口的已知定位：快照关联 ∪ 服务返回（服务结果覆盖，避免快照竞态） */
   const entryByKey = useMemo(() => {
@@ -230,6 +268,8 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
    * - 入口只作用于当前已打开项目（换仓库须显式选择，不在本入口隐式切换）。
    */
   const createOrOpenLocal = async (issue: JiraIssueDetail): Promise<void> => {
+    if (!context) return
+    const capturedOwner = owner.current
     const key = issue.key.toUpperCase()
     const known = entryByKey.get(key)
     if (known) {
@@ -242,6 +282,7 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
     let res
     try {
       res = await api.createTaskFromJira({
+        integration: context,
         jiraKey: issue.key,
         issueId: issue.issueId,
         title: `[${issue.key}] ${issue.summary}`,
@@ -255,9 +296,9 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
       })
     } finally {
       // invoke 意外 reject 也必须复位入口，否则全部行卡在禁用（check P3-2）
-      setCreatingKey(null)
-      setBusyKey(null)
+      if (alive.current && capturedOwner === owner.current) { setCreatingKey(null); setBusyKey(null) }
     }
+    if (!alive.current || capturedOwner !== owner.current || useApp.getState().snapshot?.meta.root !== snapshot.meta.root) return
     if (res.ok && res.dirName) {
       const archived = res.archived === true
       setLocalTasks((m) => ({ ...m, [key]: { dirName: res.dirName as string, archived } }))
@@ -283,7 +324,7 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
   const importToBacklog = async (issue: JiraIssue): Promise<void> => {
     setBusyKey(issue.key)
     const ok = await saveTodo({
-      id: issue.key,
+      id: context?.legacy ? issue.key : `${context?.instanceId}:${issue.key}`,
       title: `[${issue.key}] ${issue.summary}`,
       description: `### Jira 信息\n- 关键标识：${issue.key}\n- 需求类型：${issue.issueType}\n- 优先级：${issue.priority}\n- 负责人：${issue.assignee}\n- 原始链接：${issue.url}\n\n### 需求描述\n${issue.summary}\n`,
       priority: priorityOf(issue.priority),
@@ -298,10 +339,15 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
   }
 
   const pushStatusToJira = async (issue: JiraIssue): Promise<void> => {
+    if (!context) return
+    const capturedOwner = owner.current
     const linked = linkedByKey.get(issue.key.toUpperCase())
     if (!linked?.record) return
     setBusyKey(issue.key)
-    const tr = await api.jiraTransitions(cfg, issue.key)
+    const result = await api.integrations.jiraTransitions({ ...context, key: issue.key }).catch(() => null)
+    if (!alive.current || owner.current !== capturedOwner) return
+    if (!result) { setBusyKey(null); pushToast({ kind: 'error', title: '无法读取 Jira 流转，请刷新后重试' }); return }
+    const tr = result.ok ? { ok: true, transitions: result.data, error: undefined } : { ok: false, transitions: undefined, error: result.error }
     if (!tr.ok || !tr.transitions?.length) {
       setBusyKey(null)
       pushToast({ kind: 'error', title: `${issue.key} 无可用流转`, body: tr.error })
@@ -318,8 +364,11 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
       pushToast({ kind: 'warn', title: `${issue.key} 未找到匹配的流转`, body: `可用：${tr.transitions.map((t) => t.name).join('、')}` })
       return
     }
-    const res = await api.jiraTransition(cfg, issue.key, target.id)
+    if (!target.toStatusName) { setBusyKey(null); pushToast({ kind: 'warn', title: '目标状态不明确，请在 Jira 中核实可用流转' }); return }
+    const res = await api.integrations.jiraTransition({ ...context, key: issue.key, transitionId: target.id, expectedToStatus: target.toStatusName }).catch(() => null)
+    if (!alive.current || owner.current !== capturedOwner) return
     setBusyKey(null)
+    if (!res) { pushToast({ kind: 'warn', title: 'Jira 流转结果未知，请先在 Jira 核实' }); return }
     if (res.ok) {
       pushToast({ kind: 'success', title: `${issue.key} → ${target.name}`, body: '已推送 Trellis 状态到 Jira' })
       void search(jql)
@@ -329,12 +378,16 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
   }
 
   const addProgressComment = async (issue: JiraIssue): Promise<void> => {
+    if (!context) return
+    const capturedOwner = owner.current
     const linked = linkedByKey.get(issue.key.toUpperCase())
     if (!linked?.record) return
     setBusyKey(issue.key)
     const body = `[Trellis Panel] 任务进度同步\n- Trellis 状态：${statusLabel(linked.record.status)}\n- 目录：${linked.dirName}\n- 分支：${linked.record.branch ?? '—'}\n- 更新时间：${new Date().toLocaleString('zh-CN')}`
-    const res = await api.jiraComment(cfg, issue.key, body)
+    const res = await api.integrations.jiraComment({ ...context, key: issue.key, body }).catch(() => null)
+    if (!alive.current || owner.current !== capturedOwner) return
     setBusyKey(null)
+    if (!res) { pushToast({ kind: 'warn', title: '评论提交结果未知，请先在 Jira 核实' }); return }
     if (res.ok) pushToast({ kind: 'success', title: `已评论 ${issue.key}`, body: '进度评论已发布到 Jira' })
     else pushToast({ kind: 'error', title: `评论 ${issue.key} 失败`, body: res.error })
   }
@@ -344,7 +397,7 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
     if (!t?.record) return
     setBusyKey(issue.key)
     const notes = `${t.record.notes ? t.record.notes + '\n' : ''}关联 Jira：${issue.key}（${issue.status}）\n${issue.url}`
-    const patch = { notes, meta: { ...t.record.meta, jiraKey: issue.key, jiraUrl: issue.url } }
+    const patch = { notes, meta: { ...t.record.meta, jiraKey: issue.key, jiraUrl: issue.url, panel_jira_instance_id: context?.instanceId } }
     const res = await api.updateTask(t.path, patch as never)
     setBusyKey(null)
     if (res.ok) {
@@ -369,7 +422,7 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
     const versionChips = groupByVersion
       ? issue.fixVersions.filter((v) => v !== groupVersion)
       : issue.fixVersions
-    const inTodos = todos.some((t) => t.jiraKey === issue.key || t.id === issue.key)
+    const inTodos = todos.some((t) => (t.jiraKey === issue.key && t.jiraUrl === issue.url) || t.id === (context?.legacy ? issue.key : `${context?.instanceId}:${issue.key}`))
     return (
       <div key={issue.key} className="my-card px-3.5 py-2.5">
         <div className="flex items-center gap-2">
@@ -478,19 +531,20 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
     )
   }
 
-  if (!cfg?.enabled) {
+  if (!contextReady) return <EmptyState title="正在读取 Jira 项目绑定…" />
+  if (!cfg.enabled) {
     return (
       <div className="grid h-full place-items-center p-6">
         <div className="max-w-sm text-center">
           <Link2 size={28} className="mx-auto mb-3 text-my-tertiary" />
           <div className="mb-1.5 text-my-sm font-medium text-my-primary">尚未启用 Jira 连接</div>
           <p className="mb-4 text-my-xs leading-5 text-my-tertiary">
-            在「设置 → Jira 连接」中填写服务器地址与账号，即可把 Jira 待办导入为 Trellis 任务、
-            双向同步状态，并把 Trellis 进度以评论形式回写到 Jira。
+            在外部应用集成中添加 Jira 连接，并为当前项目选择来源。查询、导入、评论和状态流转均由明确操作触发。
           </p>
-          <Button variant="primary" onClick={() => useApp.getState().setPage('settings')}>
-            前往设置
+          <Button variant="primary" onClick={() => useApp.getState().setPage('integrations')}>
+            配置外部应用
           </Button>
+          {error && <p role="alert" className="mt-3 text-my-xs text-my-danger-text">{error}</p>}
         </div>
       </div>
     )
@@ -500,6 +554,7 @@ function JiraPageBody({ settings }: { settings: Settings }): JSX.Element {
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <PageToolbar>
         <span className="my-chip bg-my-label-indigo font-mono text-my-label-indigo-text">{cfg.baseUrl.replace(/^https?:\/\//, '')}</span>
+        <span className="text-my-xs text-my-tertiary">{context?.name}</span>
         <div className="flex overflow-hidden rounded-my-md border border-my-line">
           <button
             onClick={() => quickSearch('mine')}
