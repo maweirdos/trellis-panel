@@ -765,3 +765,73 @@ Native system-IME, profile/draft-switch and final visual checks remain open afte
 ### Next Steps
 
 - 后续 UI 继续使用 my 全局 tokens 与共享组件；按需进行原生桌面人工复验。
+
+
+## Session 23: 会话历史、界面与运行时反馈收尾
+<!-- trellis-session: v=2 fp=882734552f925e17 -->
+
+**Date**: 2026-10-20
+**Task**: 会话历史、界面与运行时反馈收尾
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+完成会话历史与管理、全局交互规范、连续状态反馈和桌面稳定性修复，隔离并行改动并归档三个相关任务。
+
+### Main Changes
+
+Delivered the original conversation-history/workspace tasks and the explicitly
+authorized continuation revisions, then completed the user's confirmed batch.
+
+- Work commits: `1b1c927` (38 history/runtime/desktop files) and `bdad490`
+  (47 renderer/UI files). Reviewed candidate blobs were staged through the index;
+  the original working files were never replaced. Parallel knowledge/MCP,
+  integrations, local-document links and floating-window work remains unstaged.
+- Durable SQLite history is independent of the live tail cache. Whole-turn paging
+  prevents truncated replies; catalogue search, direct reads, migration and
+  persistence failures retain honest scope and live permission ownership.
+- Conversation rename/pin/archive preferences persist separately from runtime
+  state. Global theme/menu/hover/placeholder/context roles, folded change results,
+  body typography and rail spacing were standardized and captured in specs.
+- Text, thoughts and tool activity retain occurrence order. Current-turn feedback
+  starts immediately on send and remains continuous through silent transitions,
+  with exact stale-result/permission/terminal guards and preserved drafts/scroll.
+- External links cannot replace an owned app window. Hook-bearing TypeScript
+  receives real React Refresh signatures; the reproduced queue crash and actual
+  ErrorBoundary retry/cold reopening are covered.
+
+The isolated 85-file candidate passed build/acpx, history, UI, project-scope,
+session-management, chronology, continuous-status, external-links, design-system
+and hook-refresh checks. Fourteen current-turn native scenarios, six theme/font
+combinations and eight external-link window cases (564 assertions) passed. Both
+candidate patches passed diff checks. Closeout synchronized one missing service
+mock export and removed insignificant EOF whitespace.
+
+Candidate typechecks reproduce only the previously recorded baseline errors in
+integration repositories, CapsuleView, QuickTodoView and Jira. Their unrelated
+working-tree fixes were excluded; the integrated working tree had already passed
+typecheck during implementation. Controlled peers/OS-opener stubs do not establish
+live provider credentials, native OS IME or complete vendor packaging acceptance.
+
+Archived both completed children and their parent under
+`.trellis/tasks/archive/2026-10/`. Task plans/research/recovery payloads are
+intentionally Git-ignored and remain local; no force-add or archive commit was
+created. The parent branch record was repaired to the actual existing branch
+before archive. Validation and precise commit/exclusion manifests are in the
+archived parent's `final-validation.md` and `research/`.
+
+No push, amend, remote publication or automatic prompt replay was performed.
+Main/preload/development-plugin changes require a full development-service restart
+to load. Other active tasks were preserved.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1b1c927f3c6ea0070ce4a5fb1b612c684229227b` | 完善会话历史、管理接口与桌面稳定性 |
+| `bdad49069d419879802447f6f5d3336a0ac09afb` | 统一会话界面、回合顺序与连续状态反馈 |
+
+### Status
+
+[OK] **Completed**
