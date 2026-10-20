@@ -835,3 +835,39 @@ to load. Other active tasks were preserved.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 24: 本地应用运行面板交付
+<!-- trellis-session: v=2 fp=e65c2a1bc706d8ab -->
+
+**Date**: 2026-10-20
+**Task**: 本地应用运行面板交付
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+交付项目级应用配置、环境文件重读、受控启停重启、右上角面板与 Agent CLI；完成真实 Windows 服务、IPC、主题与恢复竞态验证。
+
+### Main Changes
+
+- 复用原工程运行，统一单实例、进程归属、端口诊断与持续就绪检查。
+- 共享全局 tokens 与组件，保留并行工作区修改，独立提交 58 个任务文件。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `73ca243` | feat(runtime): 新增本地应用运行面板与 Agent 启停入口 |
+
+### Testing
+
+- [OK] 运行核心、进程树、恢复竞态、readiness、HTTP/CLI、IPC、原生退出及真实 UI E2E 均通过。
+- [OK] 最终类型检查、构建、全局 UI 检查通过；应用 UI 216 项布局及 16 项交互断言通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 可在实际微服务项目配置启动脚本与 .env，并按真实工作负载测量内存收益。
