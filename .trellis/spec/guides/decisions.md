@@ -33,6 +33,7 @@
 | [TPD-023](#tpd-023) | 分支切换下潜到最深叶（局部视图语义） | 已采纳 | 2026-09-22 |
 | [TPD-024](#tpd-024) | agent 循环按 activeTools 恢复工具 schema | 已采纳 | 2026-09-22 |
 | [TPD-025](#tpd-025) | 外部集成采用能力端口、注册表与内置适配器 | 已采纳 | 2026-10-18 |
+| [TPD-026](#tpd-026-managed-workflow-contracts-preserve-scoped-identity-and-separate-authorities) | Managed workflow contracts preserve scoped identity and separate authorities | Accepted | 2026-10-20 |
 
 ---
 
@@ -276,3 +277,13 @@
 - 用户明确选择浏览器授权登录。GitLab 新连接提供 OAuth PKCE 与 PAT 两种声明式认证方式；未带认证方式的旧 PAT 连接仍按 PAT 解析，旧密码授权设置保持兼容。
 - 协议校验复用 oauth4webapi，API 仍复用 Gitbeaker；授权使用外部浏览器、仅环回监听、一次性 state/PKCE 和超时取消。令牌兑换、加密落盘、串行刷新与轮换守卫都在主进程，渲染层只得到脱敏连接状态。
 - 自建实例的 OAuth Application ID 来自该实例注册的公开客户端应用，不复用其他应用 ID，不内置 Client Secret，不把用户 GitLab 密码交给渲染层。
+
+## TPD-026: Managed workflow contracts preserve scoped identity and separate authorities
+
+- **Decision**: introduce an additive, runtime-validated shared workflow contract boundary. Jira issue/version state, local Trellis task state, managed run/step state and material publication are separate facts. One issue may bind several local tasks; an archived local task never implies final issue QA completion.
+- **Identity**: include the actual project, Jira instance, repository/workspace and stable task scope where applicable. Unknown attribution remains explicit. Moving or archiving a local task uses the existing stable identity/alias authority rather than matching its title or the current UI selection.
+- **Definition and projection**: derive the execution-plan and graph identities from one validated definition. Presentation layout cannot change executable topology or reuse identity. Input identity includes the effective instruction, role/engine/capability and material versions; a display revision is not a substitute for a full material digest.
+- **Compatibility**: legacy adapters preserve unknown fields and custom statuses without rewriting original files. Unsupported legacy semantics are diagnosed. Existing Flow/ACP/Jira execution remains unchanged during R0; persistence, scheduling, actual engine driving and the conversation graph are subsequent tasks.
+- **Reuse boundary**: follow TPD-009 for independently authored product code and documentation. Fixed ZCode/DSH sources inform adapter boundaries and later library evaluation; their prototype results or source availability are not claims that a production scheduler, driver or plugin runtime is installed.
+- **Reason**: later runtime, team, Jira and UI consumers need matching identities and failure semantics without creating a second source of truth or prematurely reporting business completion.
+- **Validation**: the owning R0-01 task requires executable scope-collision, legacy-preservation, multi-local-task and plan/graph-layout-invariance checks. The actual public APIs and failure matrix belong in the shared workflow code-spec once implementation signatures are frozen.

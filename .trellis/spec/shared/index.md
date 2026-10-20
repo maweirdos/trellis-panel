@@ -10,6 +10,7 @@
 | -------------------------------------------------- | --------------------------------- | ---------------------- |
 | [code-quality.md](./code-quality.md)               | Code quality mandatory rules      | Always                 |
 | [typescript.md](./typescript.md)                   | TypeScript best practices         | Type-related decisions |
+| [workflow-contracts.md](./workflow-contracts.md)   | Managed workflow identity, schemas, legacy adapters and plan/graph contracts | Workflow/runtime/team integration |
 | [git-conventions.md](./git-conventions.md)         | Git commit and branch conventions | Before committing      |
 | [timestamp.md](./timestamp.md)                     | Timestamp format specification    | Date/time handling     |
 | [pnpm-electron-setup.md](./pnpm-electron-setup.md) | pnpm + Electron project setup     | Project initialization |
