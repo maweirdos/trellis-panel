@@ -871,3 +871,26 @@ to load. Other active tasks were preserved.
 ### Next Steps
 
 - 可在实际微服务项目配置启动脚本与 .env，并按真实工作负载测量内存收益。
+
+
+## Session 25: 完成 R0 工作流契约与独立复核
+<!-- trellis-session: v=2 fp=5c9c7f083ef8c005 -->
+
+**Date**: 2026-10-20
+**Task**: 完成 R0 工作流契约与独立复核
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+完成版本化身份、材料、纯编译投影和驱动/日志端口，30场景与全仓类型/构建通过；只提交本轮范围，后续R0—R7继续执行。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c48e865` | feat(workflow): 建立版本化工作流契约与兼容投影 |
+| `71a9308` | docs(roadmap): 关联完整任务树与首项实施进度 |
+
+### Status
+
+[OK] **Completed**
