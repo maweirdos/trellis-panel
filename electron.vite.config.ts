@@ -88,6 +88,12 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    resolve: {
+      alias: {
+        '@shared': resolve(__dirname, 'src/shared'),
+        '@': resolve(__dirname, 'src/renderer/src')
+      }
+    },
     server: {
       port: 5373,
       strictPort: true

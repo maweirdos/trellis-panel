@@ -164,6 +164,18 @@ import { useAuth } from '../../auth/hooks/useAuth';
 
 ### Vite Configuration
 
+In this repository, runtime aliases belong in `renderer.resolve.alias` in
+`electron.vite.config.ts` and must mirror `tsconfig.web.json`: `@shared` resolves
+to `src/shared`, and `@` resolves to `src/renderer/src`. TypeScript `paths` alone
+does not establish development-server resolution. Type-only imports disappear
+during transformation and can hide a missing runtime alias until a schema/value
+import is added. Keep main/preload shared imports relative.
+
+Run `node scripts/smoke/renderer-aliases.mjs` after changing aliases. It loads the
+actual Electron renderer config and checks development HTTP transforms of the
+application configuration dialog and shared runtime module. Typecheck or a
+production build alone does not cover this development import-analysis path.
+
 For Vite projects, also configure the alias in `vite.config.ts`:
 
 ```typescript
