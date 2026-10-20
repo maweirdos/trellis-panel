@@ -1,6 +1,14 @@
-# 基于当前项目的场景化 Roadmap
+# Trellis 团队研发平台 Roadmap
 
-当前入口：[场景化规划](proposals/2026-10-17-project-first-roadmap/01-main-roadmap.md) · [完整目录](proposals/2026-10-17-project-first-roadmap/README.md) · [HTML阅读版](proposals/2026-10-17-project-first-roadmap/Trellis-Project-Roadmap.html)。v0.6，2026-10-17。
+当前正式方案：**[完整产品蓝图与Roadmap v2.0](proposals/2026-10-19-team-workflow-platform/roadmap.md)** · [HTML阅读版](proposals/2026-10-19-team-workflow-platform/roadmap.html) · [主文与附录目录](proposals/2026-10-19-team-workflow-platform/README.md)。2026-10-19。
+
+本版整合全角色流程、会话节点交互、ZCode/DSH复用、插件与UI产物、个人共享、上下文与恢复、阶段交付和验收。它是当前产品与技术规划入口，不表示整套功能已实现，不自动更改既有任务的完成状态或启动实施。
+
+**完整 Trellis 任务已建立（2026-10-20）**：[父任务与 28 个子任务](../.trellis/tasks/10-20-team-workflow-platform/README.md) · [依赖顺序](../.trellis/tasks/10-20-team-workflow-platform/task-map.md) · [规则与验收覆盖](../.trellis/tasks/10-20-team-workflow-platform/traceability.md)。覆盖 R0—R7；用户随后回复“继续”，R0-01 已进入实施，其余子任务保持 planning。
+
+以下保留上一轮规划与实施记录，供追溯；与新方案冲突的产品假设以v2.0为准。
+
+上一轮入口：[场景化规划](proposals/2026-10-17-project-first-roadmap/01-main-roadmap.md) · [完整目录](proposals/2026-10-17-project-first-roadmap/README.md) · [HTML阅读版](proposals/2026-10-17-project-first-roadmap/Trellis-Project-Roadmap.html)。v0.6，2026-10-17。
 
 **实施记录（2026-10-17）**：A3（F01–F03 一致性）、B1/B2/B3、C1/C2/C3（新「本机开发工具」页）、D1、F04 已按蓝图实现并通过 typecheck/build/冒烟；同日完成桌面原生走查与真实使用验证（原生外框/亮色层级、只读 Git 实测一致、typecheck 真实运行退出码 0、状态工作流入口与接续交接端到端复制核对）；第二轮对照蓝图逐条复核补齐：接续说明补"本次变化（Git）/检查记录与未完成项/待确认问题"三块、peek 新增"资料引入（添加项目资料）"、PF-01 切工程 A→B→A 原生验证通过（含失败路径如实报错）；ACP 会话功能按要求未动。明细见 [roadmap_v2 第 1 章](roadmap_v2.md)。
 
