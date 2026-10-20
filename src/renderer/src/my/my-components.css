@@ -50,7 +50,7 @@
 .my-root .my-activity-note button { color: var(--my-txt-secondary); text-underline-offset: var(--my-space-3); }
 .my-root .my-activity-note button:hover { color: var(--my-txt-primary); text-decoration: underline; }
 .my-root .my-chat-prose,
-.my-root .my-chat-prose .md { font-size: var(--my-text-chat); line-height: var(--my-line-chat); }
+.my-root .my-chat-prose .md { font-size: var(--my-text-chat); line-height: var(--my-line-chat); color: var(--my-txt-chat); }
 .my-root .my-chat-prose .md :is(h1, h2, h3, h4, h5, h6) {
   margin-block: var(--my-space-24) var(--my-space-12);
   padding: 0;
@@ -62,7 +62,12 @@
 .my-root .my-chat-prose .md h3 { font-size: var(--my-text-lg); }
 .my-root .my-chat-prose .md :is(h4, h5, h6) { font-size: var(--my-text-chat); }
 .my-root .my-chat-prose .md p { margin-block: var(--my-chat-paragraph-gap); line-height: inherit; }
+.my-root .my-chat-prose .md :is(ul, ol) { margin-block: var(--my-chat-paragraph-gap); padding-left: var(--my-space-24); }
+.my-root .my-chat-prose .md li { margin-block: var(--my-space-2); padding-left: var(--my-space-2); }
+.my-root .my-chat-prose .md li>p { margin-block: var(--my-space-4); }
+.my-root .my-chat-prose .md :is(ul, ol) :is(ul, ol) { margin-block: var(--my-space-4); }
 .my-root .my-chat-prose .md > :first-child { margin-top: 0; }
+.my-root .my-chat-prose .md > :last-child { margin-bottom: 0; }
 .my-root button:disabled { cursor: default; }
 
 .my-root .my-control {
@@ -72,7 +77,7 @@
   gap: var(--my-space-6);
   height: var(--my-control-height);
   padding: 0 var(--my-space-12);
-  border-radius: var(--my-radius-md);
+  border-radius: var(--my-control-radius);
   font-size: var(--my-text-sm);
   font-weight: var(--my-weight-medium);
   white-space: nowrap;
@@ -96,12 +101,26 @@
 .my-root .my-icon-control {
   display: inline-flex; align-items: center; justify-content: center;
   flex: 0 0 var(--my-icon-control-size); width: var(--my-icon-control-size); height: var(--my-icon-control-size);
-  border-radius: var(--my-radius-md); color: var(--my-txt-secondary);
+  border-radius: var(--my-control-radius); color: var(--my-txt-secondary);
   transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root .my-icon-control:hover { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-composer-control {
+  border-radius: var(--my-control-radius);
+  background: var(--my-bg-layer-transparent);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+}
+/* Keep text-trigger layout footprints while giving feedback room around the label. */
+.my-root .my-composer-control-label {
+  padding: var(--my-space-4) var(--my-space-6);
+  margin: calc(var(--my-space-4) * -1) calc(var(--my-space-6) * -1);
+}
+.my-root .my-composer-control:hover:not(:disabled),
+.my-root .my-composer-control[aria-expanded='true']:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-composer-control:active:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
+.my-root .my-composer-control:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
 .my-root .my-segmented { display: inline-flex; align-items: center; gap: var(--my-space-2); padding: var(--my-space-2); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-transparent-hover); }
-.my-root .my-segment { display: inline-flex; align-items: center; justify-content: center; width: var(--my-icon-control-size); height: var(--my-icon-control-size); border-radius: var(--my-radius-md); }
+.my-root .my-segment { display: inline-flex; align-items: center; justify-content: center; width: var(--my-icon-control-size); height: var(--my-icon-control-size); border-radius: var(--my-control-radius); }
 .my-root .my-segment[aria-pressed='true'] { background: var(--my-bg-layer-2); box-shadow: var(--my-shadow-raised-100); color: var(--my-txt-primary); }
 .my-root .my-switch { display: inline-flex; flex-shrink: 0; align-items: center; width: var(--my-switch-width); height: var(--my-switch-height); padding: var(--my-switch-inset); border-radius: var(--my-radius-full); background: var(--my-bg-layer-3); box-shadow: inset 0 0 0 1px var(--my-border-strong); transition: background var(--my-motion-fast); }
 .my-root .my-switch > span { width: var(--my-switch-thumb-size); height: var(--my-switch-thumb-size); border-radius: var(--my-radius-full); background: var(--my-txt-secondary); transition: transform var(--my-motion-fast), background var(--my-motion-fast); }
@@ -118,6 +137,7 @@
 .my-root .my-scrollbar::-webkit-scrollbar-thumb:hover { background-color: var(--my-scrollbar-thumb-hover); }
 
 .my-root .my-menu {
+  max-width: calc(100vw - var(--my-space-16));
   z-index: var(--my-z-menu); overflow: hidden; padding: var(--my-space-6);
   border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-menu);
   background: var(--my-bg-elevated); box-shadow: var(--my-shadow-overlay-200);
@@ -125,19 +145,20 @@
 .my-root .my-menu-item {
   display: flex; width: 100%; align-items: center; gap: var(--my-space-8);
   min-height: var(--my-control-height-sm); padding: var(--my-space-6) var(--my-space-10);
-  border-radius: var(--my-radius-md); text-align: left;
-  font-size: var(--my-text-sm); color: var(--my-txt-secondary);
+  border-radius: var(--my-control-radius); text-align: left;
+  font-size: var(--my-menu-option-size); color: var(--my-menu-option-color);
   transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-menu-item:hover, .my-root .my-menu-item[data-selected='true'] { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-menu-item:hover, .my-root .my-menu-item[data-selected='true'], .my-root .my-menu-item[aria-pressed='true'] { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
 .my-root .my-menu-item[data-danger='true'] { color: var(--my-txt-danger-primary); }
 .my-root .my-menu-item:disabled { color: var(--my-txt-disabled); background: transparent; }
-.my-root .my-menu-header { padding: var(--my-space-8) var(--my-space-10) var(--my-space-4); font-size: var(--my-text-xs); color: var(--my-txt-tertiary); font-weight: var(--my-weight-medium); }
+.my-root .my-menu-header { padding: var(--my-space-8) var(--my-space-10) var(--my-space-6); font-size: var(--my-menu-title-size); color: var(--my-menu-title-color); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); cursor: default; }
+.my-root .my-menu-header:not(:first-child) { margin-top: var(--my-space-6); }
 .my-root :where(.my-select-host) { display: inline-flex; min-width: 0; max-width: 100%; vertical-align: middle; }
 .my-root :where(.my-select-trigger) {
   display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: var(--my-space-8);
   height: var(--my-field-height); padding: 0 var(--my-space-10);
-  border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-md);
+  border: 1px solid var(--my-border-subtle); border-radius: var(--my-control-radius);
   background: var(--my-bg-layer-1); color: var(--my-txt-primary); text-align: left; font-size: var(--my-text-sm);
   transition: background var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out);
 }
@@ -151,8 +172,8 @@
 .my-root .my-select-menu { width: max-content; min-width: 100%; max-width: min(420px, calc(100vw - var(--my-space-24))); }
 .my-root .my-select-option {
   display: flex; width: 100%; min-height: var(--my-control-height-sm); align-items: center; gap: var(--my-space-8);
-  padding: var(--my-space-6) var(--my-space-10); border-radius: var(--my-radius-md);
-  color: var(--my-txt-secondary); text-align: left; font-size: var(--my-text-sm);
+  padding: var(--my-space-6) var(--my-space-10); border-radius: var(--my-control-radius);
+  color: var(--my-menu-option-color); text-align: left; font-size: var(--my-menu-option-size);
   transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root .my-select-option:hover:not(:disabled),
@@ -178,12 +199,12 @@
 .my-root .my-row-handle { opacity: 0; transition: opacity var(--my-motion-fast) var(--my-ease-out); }
 .my-root .my-input {
   width: 100%; height: var(--my-field-height); padding: var(--my-space-9) var(--my-space-11);
-  border: 1px solid transparent; border-radius: var(--my-radius-md);
+  border: 1px solid transparent; border-radius: var(--my-control-radius);
   background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); font-size: var(--my-text-ui);
   outline: none; transition: background var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root textarea.my-input { height: auto; min-height: var(--my-field-height); line-height: var(--my-line-document); }
-.my-root .my-input::placeholder { color: var(--my-txt-placeholder); }
+.my-root .my-input::placeholder { color: var(--my-txt-placeholder); opacity: 1; }
 .my-root .my-input:focus { border-color: var(--my-border-accent-subtle); background: var(--my-bg-layer-3); box-shadow: none; }
 .my-root .my-input:disabled { color: var(--my-txt-disabled); cursor: default; }
 .my-root .my-search-input { height: var(--my-control-height); padding-block: 0; padding-left: var(--my-space-28); font-size: var(--my-text-sm); }

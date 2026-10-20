@@ -70,8 +70,8 @@ for component signatures, spacing and scroll alignment.
   fill with white ink. Use `text-my-on-accent` on accent fills, and
   `text-my-on-color` on semantic colored fills. No leaf palette/brand override.
   Green remains success/completion or user-label data only.
-- Standard UI/document type is14px; small/large are13/15px. Chat uses14/15/16px
-  with1.65 line height and a shared paragraph gap. Metadata, body, chat, document and
+- Standard UI/document type is14px; small/large are13/15px. Chat uses13/14/15px
+  with1.75 line height and the shared16px paragraph gap. Metadata, body, chat, document and
   activity consume global semantic roles. Default font is the platform sans stack
   (Segoe UI and CJK fallbacks on Windows); code and diagrams use their global mono
   roles. No bundled Inter or network font service.
@@ -203,9 +203,13 @@ and reports belong to team. Home has no context sidebar. The former task-parent 
   component Escape listeners with global task dismissal.
 - Retain the shared design language and canonical tokens. Use canvas for periphery, layers for
   context and surface-1 for the central task workspace. The desktop rail uses global
-  geometry tokens: 48px rail/header chrome, 32px targets, 18px icons with 1.7 stroke,
-  and 8px gaps/insets. Rail width and header height share `--my-shell-chrome-size`.
-  The header brand slot shares the rail width. Keep full accessible names and hover labels rather than permanent
+  geometry tokens: 56px module rail, 40px targets, 20px icons with 1.7 stroke,
+  and 8px gaps/insets (48px vertical center pitch). The 48px header chrome keeps
+  `--my-shell-chrome-size`; rail width uses its own `--my-module-rail-width` so a
+  spacing adjustment does not increase every page header.
+  The header brand slot shares the rail width. All module buttons inherit the shared
+  `--my-control-radius`. Keep these geometry metrics fixed across font presets;
+  on short windows let primary navigation scroll while footer actions stay reachable. Keep full accessible names and hover labels rather than permanent
   10px captions; selected backgrounds/icons are restrained and neutral. Use neutral inversion for
   product emphasis; green remains a semantic success/completion or label color. The project name is a borderless title at rest, not a select/input;
   context rows use soft selection without persistent card borders/shadows. Measure actual

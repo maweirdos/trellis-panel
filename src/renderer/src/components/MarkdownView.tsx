@@ -4,6 +4,8 @@ import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
 import { MermaidBlock } from './MermaidBlock'
 import { AsciiDiagramBlock } from './AsciiDiagramBlock'
+import { api, hasIpc } from '../api'
+import { externalHttpUrl } from '../../../shared/external-url'
 
 /** Heuristic: ASCII 线框图（box-drawing / +--- 风格）加宽展示并保持可横向滚动。 */
 function looksLikeAsciiDiagram(text: string): boolean {
@@ -51,12 +53,23 @@ export interface MarkdownViewProps {
 }
 
 export const MarkdownView = React.memo(function MarkdownView({ content, headingAnchorsByLine }: MarkdownViewProps): JSX.Element {
+  const openMarkdownLink = (event: React.MouseEvent<HTMLAnchorElement>): void => {
+    if (event.type === 'auxclick' && event.button !== 1) return
+    const href = event.currentTarget.getAttribute('href')
+    if (href?.startsWith('#')) return
+    event.preventDefault()
+    const url = externalHttpUrl(href)
+    if (url && hasIpc) void api.openExternal(url)
+  }
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}
         components={{
+          a({ node: _node, ...props }) {
+            return <a {...props} onClick={openMarkdownLink} onAuxClick={openMarkdownLink} />
+          },
           h1: headingComponent(1, headingAnchorsByLine),
           h2: headingComponent(2, headingAnchorsByLine),
           h3: headingComponent(3, headingAnchorsByLine),

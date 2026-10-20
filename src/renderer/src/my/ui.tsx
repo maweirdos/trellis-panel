@@ -1,8 +1,8 @@
 // 外壳共享基础件。所有页面从本文件取用，勿各自造轮子。
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type ButtonHTMLAttributes } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, Search } from 'lucide-react'
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
@@ -116,6 +116,9 @@ export function Dropdown({
   align = 'left',
   width,
   layoutKey,
+  positionAnchorRef,
+  placement = 'auto',
+  gap = 4,
   className
 }: {
   trigger: (props: { open: boolean; toggle: () => void }) => ReactNode
@@ -123,6 +126,9 @@ export function Dropdown({
   align?: 'left' | 'right'
   width?: number
   layoutKey?: string | number
+  positionAnchorRef?: RefObject<HTMLElement | null>
+  placement?: 'auto' | 'top' | 'bottom'
+  gap?: number
   className?: string
 }): JSX.Element {
   const [open, setOpen] = useState(false)
@@ -141,7 +147,7 @@ export function Dropdown({
     returnFocusRef
   })
 
-  // 渲染后按菜单实际尺寸定位：优先贴触发器下缘，空间不足则贴上缘，并收进视口
+  // 默认向下展开；可按另一元素对齐，空间不足时翻转并收进视口。
   useLayoutEffect(() => {
     if (!open || !interactive) {
       setPos(null)
@@ -152,14 +158,28 @@ export function Dropdown({
     if (!anchor || !menu) return
     returnFocusRef.current = anchor.querySelector<HTMLElement>('button, [tabindex]')
     const r = anchor.getBoundingClientRect()
+    const alignment = positionAnchorRef?.current?.getBoundingClientRect() ?? r
+    const triggerRect = returnFocusRef.current?.getBoundingClientRect() ?? r
+    const topEdge = positionAnchorRef ? Math.min(alignment.top, triggerRect.top) : r.top
+    const bottomEdge = positionAnchorRef ? Math.max(alignment.bottom, triggerRect.bottom) : r.bottom
+    // offset 尺寸不受菜单入场动画的 transform 影响，也包含 CSS 限宽后的实际宽度。
     const h = menu.offsetHeight
     const w = menu.offsetWidth
-    const spaceBelow = window.innerHeight - r.bottom
-    const flip = h + 8 > spaceBelow && r.top - 8 > h
-    const top = flip ? Math.max(8, r.top - h - 4) : Math.min(r.bottom + 4, window.innerHeight - h - 8)
-    const left = align === 'right' ? r.right - w : r.left
-    setPos({ top, left: Math.min(Math.max(8, left), window.innerWidth - w - 8) })
-  }, [open, align, interactive, width, layoutKey])
+    const spaceBelow = window.innerHeight - bottomEdge
+    const roomAbove = topEdge - gap - 8
+    const roomBelow = spaceBelow - gap - 8
+    const above = placement === 'auto'
+      ? h + 8 > spaceBelow && topEdge - 8 > h
+      : placement === 'top'
+        ? h <= roomAbove || (h > roomBelow && roomAbove >= roomBelow)
+        : h > roomBelow && (h <= roomAbove || roomAbove > roomBelow)
+    const top = above ? topEdge - h - gap : bottomEdge + gap
+    const left = align === 'right' ? alignment.right - w : alignment.left
+    setPos({
+      top: Math.max(8, Math.min(top, window.innerHeight - h - 8)),
+      left: Math.max(8, Math.min(left, window.innerWidth - w - 8))
+    })
+  }, [open, align, interactive, width, layoutKey, positionAnchorRef, placement, gap])
 
   const toggle = (): void => { if (canInteract()) setOpen((v) => !v) }
   useEffect(() => { if (!interactive) setOpen(false) }, [interactive])
@@ -226,6 +246,7 @@ export function DropdownItem({
       type="button"
       disabled={disabled}
       data-selected={selected || undefined}
+      aria-pressed={selected}
       data-danger={danger || undefined}
       onClick={disabled ? undefined : onClick}
       className={clsx(
@@ -233,8 +254,9 @@ export function DropdownItem({
         disabled && 'cursor-default'
       )}
     >
-      {icon && <span className="flex h-4 w-4 items-center justify-center">{icon}</span>}
+      {icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>}
       <span className="min-w-0 flex-1 truncate">{children}</span>
+      {selected && <Check size={13} className="shrink-0" aria-hidden="true" />}
     </button>
   )
 }
@@ -273,12 +295,16 @@ export function Modal({
   open,
   onClose,
   children,
-  width
+  width,
+  ariaLabel,
+  placement = 'top'
 }: {
   open: boolean
   onClose: () => void
   children: ReactNode
   width?: number
+  ariaLabel?: string
+  placement?: 'top' | 'center'
 }): JSX.Element | null {
   const escId = useId()
   const interactive = useInteractionActive()
@@ -311,7 +337,7 @@ export function Modal({
       <span ref={anchorRef} hidden />
       {open && interactive && portalRoot && createPortal(
         <div
-          className="my-fade my-modal-backdrop no-drag fixed inset-0 flex items-start justify-center px-[var(--my-page-inset)] pt-[var(--my-modal-top-inset)]"
+          className={clsx('my-fade my-modal-backdrop no-drag fixed inset-0 flex justify-center px-[var(--my-page-inset)]', placement === 'center' ? 'items-center' : 'items-start pt-[var(--my-modal-top-inset)]')}
           onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose() }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -319,6 +345,7 @@ export function Modal({
             ref={panelRef}
             role="dialog"
             aria-modal="true"
+            aria-label={ariaLabel}
             tabIndex={-1}
             style={{ width: width ?? 'var(--my-modal-width)' }}
             className="my-peek-in my-modal-panel max-h-[var(--my-modal-max-height)] overflow-hidden"

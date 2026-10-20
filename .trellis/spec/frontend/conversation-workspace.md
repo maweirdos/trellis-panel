@@ -7,8 +7,9 @@ Profiles are named local project-scoped assistant roles; Codex/Claude Code are e
 ### Conversation continuity and compact controls
 
 The conversation header prioritizes the title. Channels remains reachable from
-context navigation; Refresh and End Conversation use the shared More dropdown.
-The current-turn Cancel action stays directly visible while applicable. Keep all
+the compact module switch; Refresh is direct when it is the only management action,
+and End Conversation uses the shared More dropdown. The current-turn Cancel action
+stays directly visible in the composer action position while applicable. Keep all
 existing operation guards and exact session/connection authority.
 
 Transcript and composer share `my-conversation-column` within the same
@@ -26,15 +27,89 @@ The composer hosts native mode, collaboration, model, reasoning and remaining ad
 
 Tools/thoughts/startup/activity use compact icon+label+one chevron rows with details behind explicit expansion. Do not insert successful turn-end separators or giant bordered activity boxes. Request failure details remain accessible. A completed response does not remove the input or disable a live connection.
 
-RunActivity is secondary to the answer: use the shared small font/tertiary label color (default12px versus answer14px), 14px icons in16px slots, 12px chevrons, consistent stroke and24px rows. Completed turns default to a muted duration disclosure; running labels describe the actual current action with a spinner. Explicit user expansion is respected. Expanding the first level directly shows readable observations/metadata and thought/tool details, never answers, errors or actionable permissions. Remove a sparse intermediate response-record accordion. Secondary styling must not omit readable content: preserve configuration/session/command/usage reports, actual values when available, and update counts for repetitions. Show real latency once. Use a neutral node for informational updates, not a fabricated completed step; full raw records remain opt-in after the readable content. No arrow for an empty disclosure. Legacy records without reliable turn identity are not silently regrouped. A thin semantic border separates the first answer block from processing.
+Process records follow chronological transcript order. A preceding assistant message stays above a subsequent search/read/tool/thought, followed by the next assistant message. Group only contiguous observations in the same source/session/connection/turn; never collect an entire turn's tools and thoughts into its first status row. Tool patches update their original scoped row without moving intervening messages or another tool. Keep message bytes intact and stable first-event keys across live appends and archive replay. A terminal event may append its own duration disclosure at its recorded position; it never relocates earlier records below the final answer.
+
+Use the same `event-order.ts` reconciliation in live and paged-history merging.
+Saved sequence is canonical, while overlap IDs anchor already delivered unsaved
+prefixes before the saved suffix. New unacknowledged tails retain delivery order
+even when the clock regresses. Never sort all sequenced events ahead of every
+unsequenced event: a suffix refresh would move older live turns below newer ones.
+An in-place patch that adds no visible row must not split one native Markdown
+message (especially a code fence); actual new tool/thought/status rows remain
+visible boundaries. Test partial sequence upgrades and full replay, not just
+entirely sequenced or entirely live arrays.
+
+RunActivity is secondary to the answer: use the shared small font/tertiary label color (default12px versus answer14px), 14px icons in16px slots, 12px chevrons, consistent stroke and24px rows. An earlier observation segment becomes static after later content arrives; only an actual active tail segment can show a current-action spinner/timer. Explicit expansion stays local to that segment. Tools, thoughts, errors and actionable permissions retain their own chronological rows and remain accessible. Hide routine synchronization chatter from the default transcript while preserving its saved events. Never fabricate a completed step or start/duration for an uncorrelated partial prefix; no arrow on an empty disclosure.
+
+The same compact leading-icon geometry applies to top-level file reads, commands (including failures), thoughts and the current-turn status:
+one column-edge 16px slot containing the 14px glyph, followed by a 6px gap and a
+shared first-label origin. Do not give these row types independent 6px/4px/0px
+horizontal inset or rely on their JSX SVG size props alone. Preserve 12px
+chevrons and matching vertical centering/stroke. Intentional nested source/detail
+indentation and step rails remain nested; an iconless completion footer does not
+acquire a fake slot. Mounted geometry tests must compare actual SVG-slot/label
+bounding rectangles between row types in light/dark, each supported font size and
+narrow layout. A font-only or string-presence check cannot prove alignment.
+
+### Continuous current-turn feedback
+
+The current-turn status is a separate, ephemeral tail affordance, not another
+persisted timeline event or a placeholder in the composer. It appears immediately
+when a valid send starts, before RPC acknowledgement or any engine token. It
+remains visible through genuine processing gaps between thought/tool output and
+the next assistant text, using actual local request/current session state rather
+than requiring a newly received transcript event for every frame.
+
+Use one compact neutral icon/text status (`role=status`, labelled `当前回合状态`)
+after the latest content. Local submission can say `正在发送…`; current-turn facts
+may select waiting/thought/tool/reply wording. A label may not claim an unreported
+search or phase. Awaiting permission is an explicit user wait without a working
+spinner; cancellation reflects the actual stop request. Honor reduced motion and
+suspend hidden-source animation. Historical observation rows retain their anchors
+and wording; avoid duplicating the overall running indicator in those rows.
+
+Correlate local submission and acknowledged handoff by exact root, session,
+connection generation and returned turn ID. An acknowledgement arriving before
+the corresponding busy state must not create a blank gap or re-enable duplicate
+submission. A previous turn's completion must not hide a new local send. A matching
+terminal event ends the status even if metadata still says busy; rejection, throw,
+failure, disconnect and owner replacement clear it without losing the unsent draft.
+Never revive an old spinner from completed history or a foreign/stale result.
+
+Hide the initial empty-conversation invitation while a request is active. An
+explicit valid Send opts into following the latest content so its immediate
+status is visible. If the user then scrolls up, passive chunks/phase changes
+respect that reading position; they never opt back into following on their own.
+Tests must hold IPC/state/output separately to prove immediate
+submission, acknowledgement handoff, silent gaps, terminal-before-ready, failure,
+selection/generation/root drift and Settings suspension using actual components.
+`acp-ui.mjs` covers projection and real controller callback races;
+`acp-turn-status.mjs` mounts the actual Console in hidden Electron with independently
+delayed IPC, state and output, including silent gaps and reduced-motion behavior.
+
+### Explicit new-conversation focus
+
+Successful turn-scoped `开始处理`, `指令已发送至引擎` and `收到首次模型响应`
+observations remain stored but appear only in the terminal processing disclosure,
+not as pre-question or standalone success rows. Preserve meaningful thought/tool
+chronology and explicit failures/permissions; do not rewrite history ordering.
+
+After explicit conversation creation, retain one focus intent scoped to root,
+returned session, connection generation and interaction signal. Focus the mounted
+editable composer after the chooser closes and the session becomes ready, once.
+Opening Settings/another dialog, changing source/session, or deliberate keyboard/
+pointer interaction cancels pending autofocus. Passive refresh/streaming never
+refocuses. Preserve IME and drafts. An explicitly selected empty conversation
+remains in conversation view on list refresh/remount; paged-history hydration
+must not run against an empty legacy list before that list has returned.
 
 Running headers show actual elapsed time with a visible current-step spinner; terminal completion/duration requires an actual turn-done event. Busy/permission/cancel/tool/thought/reply labels use matching live facts, never another turn. Raw JSON is separately requested and lazily rendered; it cannot substitute for readable status content. The subtle vertical rail connects actual nodes only; a single node has no dangling rail. Suspend the timer for hidden retained sources and honor reduced-motion. Actual setup observations may be shown as context for the first real turn of that exact connection only, without generating a new transcript entry or reassigning their original identity. Do not duplicate the same startup facts in a top-level startup panel and the timeline group.
 
 Latest user override: do not render raw activity/connection JSON entry points. Usage_update is not an activity step; ComposerUsageIndicator sits immediately before model selection and shows actual context occupancy in a static ring with hover/focus details. Use only the current connection's reports, clear stale values on acknowledged model changes, preserve unknown as unknown, and never infer model capacity or sum updates. Other readable process/tool/thought content is retained.
 
-The connected rail represents sequential current-turn stages only, via projectRunProgress. A start is not completion: admission starts sending; prompt-written starts waiting; actual model content starts generating; terminal completion finishes the current stage. Show only reached stages and exactly one current stage; unknown history, failure and cancellation cannot appear checked. Metadata and empty thoughts cannot advance the rail. Connection preparation occurred before sending: retain it in a separate collapsed summary explicitly labeled as such, never intermixed into the current-turn rail. Informational updates remain readable outside the rail without pending/completed icons. Do not animate/replay stored milestones to simulate execution.
+ProjectRunProgress represents only actual scoped stages, not a reason to reorder the transcript. Admission starts sending; prompt-written starts waiting; actual model content starts generating; terminal completion finishes the current stage. Unknown history, failure, cancellation, routine metadata and empty thoughts cannot acquire successful checks. Connection preparation occurred before sending and remains available as its own earlier segment or in connection inspection; do not duplicate it inside every later processing segment. Do not animate/replay stored milestones to simulate execution.
 
-Latest compact-presentation refinement: constant sync/available-command notifications do not occupy the transcript (retain stored facts). Prior connection context uses a concise confirmed-ready summary with real duration and a neutral historical timeline on expansion. Do not change the working sequential rail. Only the active thought segment includes a bounded, rolling preview revealing already-received characters; hide that line on reply/tool/plan output or turn end, and never show it for history. Full thought content remains expandable. Stop presentation timers after catch-up, when hidden/open, and on unmount; reduced-motion skips typing.
+Latest compact-presentation refinement: constant sync/available-command notifications do not occupy the transcript (retain stored facts). Prior connection context uses a concise confirmed-ready summary with real duration and readable observations on expansion. Segment details describe their own real observations, rather than replaying a global phase rail. Only the active thought segment includes a bounded, rolling preview revealing already-received characters; hide that line on reply/tool/plan output or turn end, and never show it for history. Full thought content remains expandable. Stop presentation timers after catch-up, when hidden/open, and on unmount; reduced-motion skips typing.
 
 Keep the default composer to plus/current mode at left and usage/combined model+reasoning/send at right. Existing task/machine context, actual advertised plan/collaboration choices and other parameters move into plus. No reference-only attachments, plugins or fictional plan mode. An active plan may have a small acknowledgement-backed badge, avoiding duplicate labels. The one model dropdown contains native model choices and the native reasoning selector. Exact original IDs, shared configure lock and runtime acknowledgement are unchanged.
 
@@ -115,3 +190,163 @@ Good: A displayed, B pending, font/expand changes retain A and draft. Base: unbo
 Wrong: transplant demo state/palette/Markdown, add a font switch to the conversation header, or equate basename/read facts with approval.
 
 Correct: compose production shared components/controllers/readers, change semantic tokens from Settings, capture exact current source/target refs and preserve workflow authority.
+
+## 8. History-first reading and recovery presentation
+
+The conversation surface reads compact `AcpHistorySummary` records and loads transcript pages independently from native connection state. A selected history record stays readable while an eager one-shot resume is attempted; a failed attempt requires explicit retry and never sends a draft. Older pages are prepended with anchor/scroll compensation; live appends follow only when the reader was already at the bottom.
+
+Partial loading means fewer complete turns, never the middle of a saved reply.
+`acpHistoryEvents` aligns both page edges to turn boundaries; its count/byte targets
+may be exceeded for one intact turn. Render and merge that whole page without
+reapplying a local event cap or slicing Markdown text. `startsMidTurn` is reserved
+for a source whose opening is already missing/unverifiable, and its optional
+explanation says `未找到这一回合的开头记录`. It must not excuse ordinary pagination
+cuts. Keep running tails genuinely running; loading history does not create a
+completion result or a missing original prompt.
+With the versioned history APIs available, `updateSession` uses state/resume
+snapshots for session metadata only. Their bounded `record.events` tails must not
+be merged back into the transcript, since they may reintroduce half an older
+turn outside the selected page. Saved content comes from history pages and fresh
+content from scoped `onAcpOutput`; the legacy API path retains its snapshot
+fallback. Test both suppression of a truncated snapshot and admission of live
+output after the same state update.
+
+The sidebar contains one compact single-line conversation list. Legacy/diagnostic records use an explicit filter; an independent History destination, loaded-count filler, persistent multiline previews and invented notification actions are not allowed. Rows keep the delayed coherent hover/focus hint and existing resize/collapsed/mobile behavior. Metadata search must state its actual scope.
+
+Conversation rows expose a compact menu for `重命名`, `置顶`/`取消置顶` and
+`归档`/`取消归档` only when the actual mutation API exists. Use sibling selection
+and menu buttons, never nested buttons; hover, keyboard focus and an open menu
+keep the action reachable. Use shared Dropdown/menu items, trailing state cues,
+global neutral hover/radius and existing caption/option hierarchy in both themes.
+The three-action row menu uses a192px width through shared Dropdown positioning,
+with viewport clamping. Do not copy unsupported reference actions or shortcut labels.
+
+Rename uses a source-scoped shared modal with an editable title, trimmed 1–200
+character validation and IME-safe submission. Mutation callbacks retain exact
+root/session/interaction ownership, lock duplicate writes and show failures
+without discarding edits or claiming success. After acknowledgement, sidebar,
+header and search reflect the effective custom title; stale live metadata cannot
+restore the generated title. Keep drafts, history, reader ownership and runtime
+configuration independent of organization preferences.
+Track the local management revision captured by asynchronous history reads: only
+reads started before a later acknowledgement need that acknowledgement's overlay.
+Fresh reads remain authoritative. A save finishing while Settings suspends its
+source must not reopen a modal or steal focus, and returning must show the actual
+saved title rather than permanently freezing an older acknowledgement.
+
+The archived filter requests `archive:'archived'` from history rather than only
+filtering loaded rows. Normal lists request active records and preserve global
+pinned-first order across pagination. Archiving the selected record chooses a
+remaining active conversation or returns to roles; do not silently reconnect an
+archived selection. Restore is available from its row menu and retains saved
+content. Archive never stops an existing turn or deletes any record.
+
+Unloaded catalogue rows use the archive's bounded `conversationPreview`, full date/time and actual role/engine context in their hover/focus hint, without hydrating transcript/image bodies. Default entry uses `hasConversation` or actual loaded meaningful message/tool/permission events; `eventCount` alone includes startup diagnostics and cannot select an otherwise empty conversation.
+
+The recovery region separates current connection failure, historical turn outcome, persistence degradation and cleanup ownership. A read-only history state must not imply a second transcript or silently disable drafting. Do not render raw activity/connection JSON entry points. If the only applicable header action is refresh, render a direct refresh control.
+
+Keep earlier-page access and coverage in one compact boundary, visually separate from message prose. Show `加载更早消息` only when `hasEarlier` exposes a real page: use a shared neutral button with an upward arrow, small activity text and subtle horizontal separators. While loading, retain its label/width, replace the arrow with a spinner, expose `aria-busy` and disable repeated clicks. Coverage is metadata, not a second navigation action: do not show `部分历史`, `完整性待确认` or `回合中途` as persistent adjacent labels. A labelled information icon (`历史记录说明`) with `aria-expanded`/`aria-controls` exposes a `hidden` explanation to pointer and keyboard users, including when no earlier page exists. Keep the controls row stable and the explanation in a separate neutral inset row so expansion cannot move the earlier-load action. Partial coverage is `仅能确认部分历史，完整范围未确认`; it can arise from failed capture or uncertain ordering and must not imply successful recovery. Loading another page never guarantees a complete archive. Preserve real paging, source-scoped keys and reading anchors; verify light/dark, narrow, loading and keyboard disclosure states.
+
+The composer recovery strip uses the existing neutral surface, symmetric 12px insets and rounded upper corners, extending 14px behind the composer shell. The status label itself is the accessible disclosure button (`aria-expanded` / `aria-controls`); there is no separate right-aligned “详情” action. Expansion stays inside the strip and contains only the error explanation, bounded original error text and relevant connection/environment actions. Never put model-choice lists in error details. Closing hides the whole optional strip until its state changes; cleanup/storage facts remain non-dismissible. Preserve the composer's surface, shell border and `--my-shadow-composer`; indicate textarea focus on the rounded outer shell, without a second rectangular outline/shadow on the inner textarea. Verify light/dark, compact/expanded, narrow and font-scaled rendering.
+
+Model recovery belongs to the existing composer model popup. On an eligible offline model failure it opens directly to exact saved candidates under `选择模型`; saved-candidate/validation context appears in a recovery info tooltip rather than permanent prose; selection explicitly validates and reconnects the same session through its original connection-generation contract. The shared renderer classifier handles structured and bounded legacy errors without parsing candidate lists from error prose. Missing generation, cleanup, authentication and concurrent operations prevent recovery. Offline mode/reasoning controls stay disabled. Connected configuration retains its original acknowledgement path; recovery never sends the draft.
+
+Completed duration belongs to the actual terminal event's position, ordinarily below its answer. When directly adjacent, target8–12 CSS px from answer to duration and24–32px between complete turns; do not move or conceal intervening tools/observations to enforce that spacing. Legacy/partial pages without reliable turn identity never receive fabricated duration or completion.
+
+Explicit model recovery presents exact saved candidates, with the saved/validation explanation available from an accessible info tooltip. The UI never parses an error's model list, guesses aliases, silently switches providers or offers a replacement conversation as if it were resume. A confirmed model and a successful connection are separate states. Process-stop/cleanup controls appear only from ephemeral backend ownership facts; an error status alone is insufficient.
+
+Run `acp-ui.mjs`, `acp-settings-detour.mjs`, `navigation.mjs`, `render-contract.mjs`, `uiux-wiring.mjs`, `acp-progress.mjs`, and actual light/dark/narrow rendered captures. Report fixture/native/vendor/packaged gaps separately. Generic design-system focus failures must not be relabeled as ACP failures; ACP touched inputs require an explicit visible focus ring.
+
+## Composer and result refinements (2026-10-20)
+
+Follow the global selection/hover/result contract in `css-design.md`. Model and
+mode menus pass `DropdownItem.selected`; the primitive draws a single trailing
+check without a leading empty icon slot. Composer triggers expose a subtle neutral
+hover/open surface without layout movement. Recorded file edits and Trellis Hook/
+project events use `ActivityResult` with actual title/context and supported view
+actions. Editing/failed states never claim “已编辑”; pending work remains pending.
+Errors and persistence warnings use a neutral complete frame with semantic icons,
+not a colored left border. Preserve the neutral sequential progress connectors.
+
+Default conversation copy is concise: use `说说你的想法…` for the composer
+placeholder regardless of connection/busy status. Model menus do not permanently
+show procedural recovery text or paragraphs about unsupported reasoning controls.
+### Measured composer popup and context geometry
+
+The model and strength views share a 256px menu. Position it above the actual
+trigger/control group with an 8px gap and align its right edge with the right
+control group including Send. Keep this anchor when changing views/widths, and
+clamp at 8px viewport gutters; use the shared Dropdown positioning props rather
+than a page transform. Strength content has compact symmetric 6px inner padding
+inside the shared menu shell. Candidate lists use only the outer choices panel
+as the scroll owner, with symmetric scrollbar allocation; do not stack two
+`my-scrollbar` owners or leave a one-sided reserved gutter.
+
+The context ring has a quiet pale base rather than a dark complete ring. Unknown
+reports use an unanimated open outline and `上下文用量暂无数据`; actual zero uses a
+complete pale outline. Neither has an active arc or a center minus. Positive
+reported usage draws only its proportional arc, neutral below75%, amber at75%
+and red at90%; these thresholds affect presentation only. Keep exact current-
+generation reports and acknowledgement-backed model resets. Verify normal and
+threshold colors in both themes through `acp-composer-geometry.mjs`.
+
+### Mode labels and compact change records
+
+Translate known native mode names (`Read-only`, `Workspace access`, `Auto review`,
+`Full access`) to `只读`, `工作区访问`, `自动审核`, `完全访问`. Case, spaces, hyphens
+and underscores do not change a known label's presentation. Submission always
+uses the exact original native mode ID; custom names and capabilities remain
+untouched.
+
+`compileItems` projects adjacent reliable Trellis file facts into
+`{type:'change-group',key:firstEvent.id,events,files:[{path,events}]}`. Only
+`spec-updated`, `doc-created` and `material-change` with real path metadata and
+compatible project/session/connection/turn/task scope qualify. A non-change event,
+an unknown/contradictory scope or an explicit failed/warn/error fact breaks the
+run. Never infer a path from prose, assign project watcher changes to the current
+Agent or erase source events. Deduplicate file rows using the existing
+project-aware path equivalence while retaining every update and its actual count.
+
+The native `details.acp-change-group` is closed by default, with one neutral
+`ActivityResult` summary and a compact expanded file list. Keep the first-event
+key on appends so updates preserve expansion. Prefer supplied relative display
+names while retaining exact path identities. Show only supported view/read
+actions; deleted/unreadable material has no fake read action. Warnings/errors
+remain outside the fold. `acp-ui.mjs` covers projection scopes, ordering, source
+retention and real callbacks; `acp-composer-geometry.mjs` mounts the group to check
+default folding, two rows for four updates, append retention and narrow layout.
+
+### Theme-safe menu hierarchy and invitation text
+
+Composer menus inherit the shared caption/option roles from `my-components.css`
+and `my-tokens.css`: standard12px tertiary captions versus14px primary options.
+Use `DropdownHeader` for plain section captions and `my-menu-header` on the model
+navigation header; plus-menu actions and parameter disclosures are choices, not
+captions. Keep the back button's24px target while reducing unnecessary leading
+padding/gap. Plan mode needs a single clear label and its selected state, without
+an inline duplicate “开启计划模式” instruction.
+
+`说说你的想法…` uses the global theme-specific placeholder color. Do not change
+entered text color or apply extra local opacity. Shared palette audit, six
+theme/font contrast checks and actual composer menu captures must pass when
+changing these roles; a light-only screenshot is insufficient theme validation.
+
+### Transcript chrome and reading rhythm
+
+Hide the visible scrollbar only on `.acp-transcript.my-scrollbar` through native
+scrollbar-width and its scoped WebKit pseudo element. Keep `overflow-y:auto`,
+actual scroll events, source-scoped follow/earlier-page anchors and wheel/keyboard
+scrolling; never replace it with `overflow:hidden` or hide every shared scrollbar.
+The transcript no longer reserves a scrollbar gutter. Model menus, code/table
+scrolling, document readers and the draft textarea retain their own scroll roles.
+Check that transcript and composer still share the same centered760px column
+through narrow/font/settings and inspector changes.
+
+The global chat role uses13/14/15px across the font presets,1.75 line height and
+16px paragraph separation. `--my-txt-chat` is theme-owned (light ink96%, dark
+white92%); headings/strong text remain primary. Paragraphs and lists have separate
+rhythms, so loose Markdown lists do not inherit a full paragraph gap for every
+item. Preserve actual message content and the existing Markdown renderer; do not
+rewrite replies or inject headings merely to make a screenshot look structured.
+
+History-boundary keys retain the distinct `history:<root>:<session>` namespace; never reuse peer keys to accidentally retain orphan DOM.

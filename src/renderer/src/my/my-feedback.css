@@ -1,0 +1,11 @@
+/* Recorded activity results: neutral frame, semantic icon, real trailing action. */
+.my-root .my-result-card { display: flex; align-items: center; gap: var(--my-space-12); min-width: 0; padding: var(--my-space-12); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-2); color: var(--my-txt-primary); }
+.my-root .my-result-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 var(--my-space-36); width: var(--my-space-36); height: var(--my-space-36); border-radius: var(--my-radius-md); background: var(--my-bg-layer-1); color: var(--my-txt-secondary); }
+.my-root .my-result-icon>svg { width: var(--my-space-18); height: var(--my-space-18); }
+.my-root .my-result-content { flex: 1; min-width: 0; }
+.my-root .my-result-title { font-size: var(--my-text-sm); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); overflow-wrap: anywhere; }
+.my-root .my-result-description { margin-top: var(--my-space-3); font-size: var(--my-text-activity); line-height: var(--my-line-document); color: var(--my-txt-tertiary); overflow-wrap: anywhere; }
+.my-root .my-result-action { flex: 0 0 auto; margin-left: auto; }
+.my-root .my-result-card.is-danger .my-result-icon { color: var(--my-txt-danger-primary); }
+.my-root .my-result-card.is-warning .my-result-icon { color: var(--my-txt-warning-primary); }
+@media (max-width: 480px) { .my-root .my-result-card { flex-wrap: wrap; gap: var(--my-space-8); }.my-root .my-result-content { flex-basis: calc(100% - var(--my-space-44)); } }

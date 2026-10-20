@@ -5,7 +5,6 @@ import { Bookmark, Calendar, Star } from 'lucide-react'
 import { currentWeekKey, isoWeekRangeTitle, nextWeekKey } from '../isoWeek'
 import {
   CalendarDays,
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -1324,21 +1323,10 @@ function FilterCheckRow({
   icon?: JSX.Element
 }): JSX.Element {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-my-layer-1-hover"
-    >
-      <Checkbox checked={checked} onChange={() => onToggle()} />
-      {icon && <span className="flex h-4 w-4 items-center justify-center">{icon}</span>}
-      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{label}</span>
-    </button>
+    <DropdownItem selected={checked} icon={icon} onClick={onToggle}>
+      {label}
+    </DropdownItem>
   )
-}
-
-/** 选中项标记（单选下拉里用） */
-function CheckMark({ show }: { show: boolean }): JSX.Element {
-  return <Check size={12} className={clsx('text-my-accent-text', !show && 'opacity-0')} />
 }
 
 /* ---------------- 保存视图表单 ---------------- */
@@ -1682,7 +1670,6 @@ function WorkItemsPageInner(): JSX.Element {
                   <DropdownItem
                     key={l.id}
                     selected={layout === l.id}
-                    icon={<CheckMark show={layout === l.id} />}
                     onClick={() => store.setLayout(l.id)}
                   >
                     {l.label}
@@ -1694,7 +1681,6 @@ function WorkItemsPageInner(): JSX.Element {
                   <DropdownItem
                     key={o.id}
                     selected={groupBy === o.id}
-                    icon={<CheckMark show={groupBy === o.id} />}
                     onClick={() => store.setGroupBy(o.id)}
                   >
                     {o.label}
@@ -1705,7 +1691,6 @@ function WorkItemsPageInner(): JSX.Element {
                   <DropdownItem
                     key={o.id}
                     selected={orderBy === o.id}
-                    icon={<CheckMark show={orderBy === o.id} />}
                     onClick={() => store.setOrderBy(o.id)}
                   >
                     {o.label}

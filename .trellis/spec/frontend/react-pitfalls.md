@@ -2,6 +2,28 @@
 
 > Critical React patterns that cause bugs if not followed.
 
+## TypeScript hooks and development refresh
+
+The installed Vite8/Oxc React pipeline skips ordinary `.ts` hook refresh
+signatures without JSX. A hook-layout edit can then reuse an importing component's
+old hook slots and throw `Should have a queue`, despite a clean cold mount and
+unconditional source hooks. Do not label this a React/preload defect from the
+stack alone, disable error handling, or assume a passing production build covers it.
+
+`scripts/vite-hook-refresh.ts` is a serve-only pre-plugin scoped to renderer
+source. It instruments hook-bearing `.ts` modules with Oxc and binds generated
+signatures to the real `/@react-refresh` runtime, allowing ordinary importer
+invalidation. The global preamble signature function is a no-op in hook-only
+modules; signature text alone is insufficient evidence. Preserve source maps and
+canonical Windows paths (including8.3 aliases). Do not instrument main/preload,
+dependencies or production output. Keep this plugin in the renderer plugin chain.
+
+Run `scripts/smoke/react-hook-refresh.mjs` after changes here: its unpatched
+baseline must reproduce the actual queue error, while the patched structural
+hook edit and a full reload retain the persisted draft. It also mounts the real
+ErrorBoundary: useful retry controls stay available, technical details default
+closed, and the UI does not guess a fixed preload cause.
+
 ---
 
 ## Storing Functions in useState

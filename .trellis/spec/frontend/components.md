@@ -4,6 +4,16 @@
 
 ---
 
+## Shared choices and recorded results
+
+Follow [CSS/design contracts](./css-design.md#selection-hover-and-result-presentation)
+when adding or changing choices, composer buttons and Hook/file-result feedback.
+Use `DropdownItem.selected` for a right-side check; do not reserve an empty leading
+check slot. Give enabled compact actions neutral rounded hover feedback.
+`ActivityResult` owns icon/content/trailing-action geometry; compose real actions
+without nested buttons or invented undo/completion facts. Severity never uses a
+colored left-edge border. Keep focus and disabled behavior accessible.
+
 ## Semantic HTML
 
 Use proper HTML elements for accessibility and native browser behavior:
@@ -477,3 +487,23 @@ function Button({ isLoading, children, ...props }: ButtonProps) {
 ---
 
 **Language**: All documentation must be written in **English**.
+
+## Markdown links and render recovery
+
+MarkdownView owns external-link click/auxiliary-click routing. Valid absolute
+HTTP(S) URLs use the existing main-process `openExternal` bridge to the system
+browser. Preserve native same-document heading/footnote anchors and copyable
+hrefs.
+Malformed and unsupported schemes must not navigate the app; keep sanitization
+enabled. Never use a bare external anchor that replaces the
+frameless application, or construct an unclosable embedded browser surface.
+
+The main-window navigation boundary is independently required for every app
+window, including documents, capsule and quick todo. Renderer prevention alone
+does not protect plain anchors, redirects or `window.open`.
+
+ErrorBoundary keeps the shell available, offers page retry/application reload and
+stores the real error for a default-closed details disclosure. Use neutral shared
+surfaces and semantic icons; avoid a permanent stack dump or a guessed cause as
+the main product message. Tests must include actual retry behavior, not only
+matching the error heading.

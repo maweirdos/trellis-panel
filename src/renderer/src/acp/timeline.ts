@@ -1,5 +1,8 @@
 import type { AcpSessionStatus, TimelineEvent } from '../../../shared/types'
 import { readAcpImages, type AcpImageAttachment } from '../../../shared/acp-images'
+import { relativePathUnderRoot, sameRelativeDocumentPath } from '../reader/reader-paths'
+import { projectRootKey } from '../my/navigation'
+import { orderTimelineEvents } from './event-order'
 
 export interface ToolItemState {
   toolCallId: string
@@ -8,10 +11,16 @@ export interface ToolItemState {
   payload: Record<string, unknown>
 }
 
+export interface FileChangeItem {
+  path: string
+  events: TimelineEvent[]
+}
+
 export type RenderItem =
   | { type: 'user' | 'agent' | 'thought'; key: string; text: string; startsAnswer?: boolean; images?: AcpImageAttachment[] }
   | { type: 'tool'; key: string; tool: ToolItemState }
-  | { type: 'activity'; key: string; events: TimelineEvent[]; children?: RenderItem[]; turnId?: string; connectionGeneration?: string; startedAt?: number; endedAt?: number; outcome?: 'completed' | 'cancelled' | 'failed' }
+  | { type: 'change-group'; key: string; events: TimelineEvent[]; files: FileChangeItem[] }
+  | { type: 'activity'; key: string; events: TimelineEvent[]; scope?: 'connection'; turnId?: string; connectionGeneration?: string; sessionId?: string; projectRoot?: string; startedAt?: number; endedAt?: number; outcome?: 'completed' | 'cancelled' | 'failed'; active?: boolean }
   | { type: 'perm' | 'trellis' | 'detail'; key: string; ev: TimelineEvent }
   | { type: 'turn'; key: string; text: string }
 
@@ -20,56 +29,81 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
   // Connection history stays available to diagnostics; it is not a user turn.
   // This also isolates old restores that accidentally reused the last turnId.
   const transcriptEvents = events.filter((event) => !isConnectionTimelineEvent(event))
+  const sourceEvents = new Map(transcriptEvents.map((event) => [event.id, event]))
   const items: RenderItem[] = []
-  const toolIndex = new Map<string, number>()
-  const activityGroups = new Map<string, Extract<RenderItem, { type: 'activity' }>>()
-  const identityOf = (event: TimelineEvent): string => `${event.connectionGeneration ?? ''}:${event.turnId ?? ''}`
-  const userTurns = new Set(transcriptEvents.filter((event) => event.source === 'acp' && event.kind === 'message' && event.payload?.role === 'user').map(identityOf))
-  const renderedActivity = new Set<string>()
-  // Project turn timing before rendering, so a completed header stays beside
-  // its user message even when later metadata arrives after the answer.
+  const toolIndex = new Map<string, Extract<RenderItem, { type: 'tool' }>>()
+  const identityOf = (event: TimelineEvent): string => JSON.stringify([event.source, projectRootKey(event.projectRoot), event.sessionId, event.connectionGeneration, event.turnId])
+  const turnStarts = new Map<string, number>()
+  const transportObservations = new Map<string, TimelineEvent[]>()
+  // Only an actual user/start boundary establishes elapsed time. A paged suffix
+  // must not acquire a fabricated start from its first loaded token.
   for (const event of transcriptEvents) {
     if (event.source !== 'acp') continue
     const identity = identityOf(event)
-    let group = activityGroups.get(identity)
-    if (!group) {
-      group = { type: 'activity', key: `activity:${identity}`, events: [], turnId: event.turnId, connectionGeneration: event.connectionGeneration, startedAt: event.ts }
-      activityGroups.set(identity, group)
-    }
-    if (isRoutineRuntimeEvent(event)) group.events.push(event)
-    if (event.kind === 'turn-done') {
-      const result = asObject(event.payload?.result)
-      group.endedAt = event.ts
-      group.outcome = result?.status === 'failed' ? 'failed' : result?.status === 'cancelled' || event.text === '回合已取消' ? 'cancelled' : result?.status === 'completed' || event.text === '回合已结束' ? 'completed' : undefined
-    }
+    const startsTurn = event.kind === 'message' && event.payload?.role === 'user' || asObject(event.payload?.observation)?.label === '开始处理'
+    if (event.turnId && startsTurn && !turnStarts.has(identity)) turnStarts.set(identity, event.ts)
   }
-  for (const ev of transcriptEvents) {
+  let activityGroup: Extract<RenderItem, { type: 'activity' }> | undefined
+  let activityScope: string | undefined
+  let changeGroup: Extract<RenderItem, { type: 'change-group' }> | undefined
+  let changeScope: string | undefined
+  // Inspect the original order: even a hidden connection/status fact ends a run.
+  for (const ev of events) {
     const key = ev.id
+    if (!isRoutineRuntimeEvent(ev) || isConnectionTimelineEvent(ev)) { activityGroup = undefined; activityScope = undefined }
+    const change = readFileChange(ev)
+    if (change) {
+      if (!changeGroup || changeScope !== change.scope) {
+        changeGroup = { type: 'change-group', key, events: [], files: [] }
+        changeScope = change.scope
+        items.push(changeGroup)
+      }
+      changeGroup.events.push(ev)
+      const projectPath = (path: string): string => relativePathUnderRoot(ev.projectRoot, path) ?? path
+      const file = changeGroup.files.find((entry) => sameRelativeDocumentPath(ev.projectRoot, projectPath(entry.path), projectPath(change.path)))
+      if (file) file.events.push(ev)
+      else changeGroup.files.push({ path: change.path, events: [ev] })
+      continue
+    }
+    changeGroup = undefined
+    changeScope = undefined
+    if (isConnectionTimelineEvent(ev)) continue
     if (ev.source === 'trellis') {
       items.push({ type: 'trellis', key, ev })
       continue
     }
     if (isRoutineRuntimeEvent(ev)) {
+      // Routine synchronization stays recorded but does not occupy the transcript.
+      if (!ev.payload?.observation) continue
       const identity = identityOf(ev)
-      const group = activityGroups.get(identity)
-      if (group?.turnId && !userTurns.has(identity) && !renderedActivity.has(identity)) { items.push(group); renderedActivity.add(identity) }
+      if (isTurnTransportObservation(ev)) {
+        const observations = transportObservations.get(identity) ?? []
+        observations.push(ev); transportObservations.set(identity, observations)
+        continue
+      }
+      if (!activityGroup || activityScope !== identity) {
+        activityGroup = { type: 'activity', key: `activity:${key}`, events: [], turnId: ev.turnId, connectionGeneration: ev.connectionGeneration, sessionId: ev.sessionId, projectRoot: ev.projectRoot, startedAt: turnStarts.get(identity) }
+        activityScope = identity
+        items.push(activityGroup)
+      }
+      activityGroup.events.push(ev)
       continue
     }
     if (ev.kind === 'message' || ev.kind === 'thought') {
       const type = ev.kind === 'thought' ? 'thought' : ev.payload?.role === 'user' ? 'user' : 'agent'
       const last = items[items.length - 1]
-      if (type !== 'user' && last?.type === type) last.text += ev.text ?? ''
-      else items.push({ type, key, text: ev.text ?? '', ...(type === 'user' ? { images: readAcpImages(ev.payload?.images) } : {}) })
-      if (type === 'user') {
-        const identity = identityOf(ev), group = activityGroups.get(identity)
-        if (group && !renderedActivity.has(identity)) { items.push(group); renderedActivity.add(identity) }
+      const previousSource = last && sourceEvents.get(last.key)
+      const sameMessage = previousSource && identityOf(previousSource) === identityOf(ev) && previousSource.payload?.messageId === ev.payload?.messageId
+      if (type !== 'user' && last?.type === type && sameMessage) last.text += ev.text ?? ''
+      else {
+        const item: Extract<RenderItem, { type: 'user' | 'agent' | 'thought' }> = { type, key, text: ev.text ?? '', ...(type === 'user' ? { images: readAcpImages(ev.payload?.images) } : {}) }
+        items.push(item)
       }
     } else if (ev.kind === 'tool-call') {
       const toolCallId = String(ev.payload?.toolCallId ?? key)
       // Turn IDs prevent a vendor reusing a tool ID from mutating an earlier turn.
-      const identity = `${ev.turnId ?? ''}:${toolCallId}`
-      const at = toolIndex.get(identity)
-      const previous = at === undefined ? undefined : items[at]
+      const identity = `${identityOf(ev)}:${toolCallId}`
+      const previous = toolIndex.get(identity)
       const prior = previous?.type === 'tool' ? previous.tool : undefined
       const payload = { ...prior?.payload, ...ev.payload }
       // acpx normalizes an omitted patch title to this placeholder. Keep the known
@@ -77,36 +111,61 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
       const isDefaultPatchTitle = ev.payload?.tag === 'tool_call_update' && ev.payload?.title === 'tool call'
       const state: ToolItemState = {
         toolCallId,
-        title: isDefaultPatchTitle && prior ? prior.title : ev.text ?? prior?.title ?? '工具调用',
+        title: isDefaultPatchTitle && prior ? prior.title : ev.text || prior?.title || '工具调用',
         status: typeof payload.status === 'string' ? payload.status : prior?.status ?? 'pending',
         payload
       }
       if (previous?.type === 'tool') previous.tool = state
       else {
-        toolIndex.set(identity, items.length)
-        items.push({ type: 'tool', key, tool: state })
+        const item: Extract<RenderItem, { type: 'tool' }> = { type: 'tool', key, tool: state }
+        toolIndex.set(identity, item)
+        items.push(item)
       }
     } else if (ev.kind === 'permission') items.push({ type: 'perm', key, ev })
-    else if (ev.kind === 'turn-done') items.push({ type: 'turn', key, text: ev.text ?? '本轮结束' })
+    else if (ev.kind === 'turn-done') {
+      const result = asObject(ev.payload?.result)
+      const outcome = result?.status === 'failed' ? 'failed' : result?.status === 'cancelled' || ev.text === '回合已取消' ? 'cancelled' : result?.status === 'completed' || ev.text === '回合已结束' ? 'completed' : undefined
+      if (ev.source === 'acp' && ev.turnId) items.push({ type: 'activity', key: `activity:${key}`, events: [...(transportObservations.get(identityOf(ev)) ?? []), ev], turnId: ev.turnId, connectionGeneration: ev.connectionGeneration, sessionId: ev.sessionId, projectRoot: ev.projectRoot, startedAt: turnStarts.get(identityOf(ev)), endedAt: ev.ts, outcome })
+      items.push({ type: 'turn', key, text: ev.text ?? '本轮结束' })
+    }
     else items.push({ type: 'detail', key, ev })
   }
-  // One processing disclosure owns its thoughts/tools. Answers, errors and
-  // actionable permission requests remain outside this collapsible container.
-  const sourceEvents = new Map(transcriptEvents.map((event) => [event.id, event]))
+  // Tool patches mutate only their original scoped row. No turn-wide collection
+  // or terminal relocation: each visible segment keeps its first event anchor.
   const answers = new Set<string>()
-  return items.filter((item) => {
+  const projected = items.filter((item) => {
     const source = sourceEvents.get(item.key)
     if (!source?.turnId) return true // Old records have no reliable turn identity.
-    const identity = identityOf(source), group = activityGroups.get(identity)
-    if (!group || !renderedActivity.has(identity)) return true
-    if (item.type === 'thought' || (item.type === 'tool' && item.tool.status !== 'failed')) {
-      group.children ??= []
-      group.children.push(item)
-      return false
-    }
+    const identity = identityOf(source)
     if (item.type === 'agent' && !answers.has(identity)) { item.startsAnswer = true; answers.add(identity) }
     return true
   })
+  const tail = projected.at(-1)
+  if (tail?.type === 'activity' && tail.endedAt === undefined) tail.active = true
+  return projected
+}
+
+/** Successful transport milestones are detail-only, not steps competing with the answer. */
+function isTurnTransportObservation(event: TimelineEvent): boolean {
+  return event.source === 'acp' && event.kind === 'session-status' && Boolean(event.turnId) && ['开始处理', '指令已发送至引擎', '收到首次模型响应'].includes(String(asObject(event.payload?.observation)?.label))
+}
+
+/** Only structured file facts establish identity; prose never supplies a path or scope. */
+export function readFileChange(event: TimelineEvent): { path: string; scope: string } | undefined {
+  if (event.source !== 'trellis' || !['spec-updated', 'doc-created', 'material-change'].includes(event.kind) || !event.id?.trim() || !event.projectRoot?.trim()) return undefined
+  const payload = event.payload
+  const material = asObject(payload?.materialChange)
+  const problem = (value: unknown): boolean => typeof value === 'string' && ['failed', 'failure', 'error', 'warn', 'warning'].includes(value.trim().toLowerCase())
+  for (const fact of [payload, asObject(payload?.result), material]) {
+    if (fact && ([fact.type, fact.status, fact.severity, fact.level, fact.outcome].some(problem) || fact.error || fact.ok === false || fact.success === false)) return undefined
+  }
+  const paths = [payload?.path, material?.relativePath, payload?.file]
+  const path = paths.find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+  if (!path) return undefined
+  // A payload scope may fill an absent task scope, but contradictory facts stay separate.
+  const tasks = [event.taskDir, payload?.taskDir, material?.taskDir].filter((value): value is string => typeof value === 'string')
+  if (new Set(tasks).size > 1 || (material?.projectRoot !== undefined && material.projectRoot !== event.projectRoot)) return undefined
+  return { path, scope: JSON.stringify([event.projectRoot, event.sessionId, event.connectionGeneration, event.turnId, tasks[0]]) }
 }
 
 /** Known connection facts only: retain unrecognized/error content for inspection. */
@@ -125,11 +184,11 @@ export function isConnectionTimelineEvent(event: TimelineEvent): boolean {
 function isRoutineRuntimeEvent(event: TimelineEvent): boolean {
   const payload = event.payload
   const isProblemLevel = (value: unknown): boolean => value === 'error' || value === 'warning' || value === 'warn'
-  if (isProblemLevel(payload?.type) || payload?.error || payload?.code !== undefined || payload?.status === 'failed' || isProblemLevel(payload?.status) || isProblemLevel(payload?.severity) || isProblemLevel(payload?.level)) return false
+  if (isProblemLevel(payload?.type) || payload?.error || payload?.code !== undefined || payload?.status === 'failed' || asObject(payload?.observation)?.status === 'failed' || isProblemLevel(payload?.status) || isProblemLevel(payload?.severity) || isProblemLevel(payload?.level)) return false
   if (event.kind === 'config') return true
   if (event.kind === 'diagnostic') return isNativeToolsInformation(event) || event.text === 'Runtime 更新'
   if (event.kind !== 'session-status') return false
-  if (payload?.observation) return true // Actual observations remain visible in StartupGroup.
+  if (payload?.observation) return true // Actual turn observations retain their event segment.
   const tag = payload?.tag
   return tag === 'usage_update' || tag === 'session_info_update' || tag === 'available_commands_update' || tag === 'current_mode_update' || tag === 'config_option_update' || tag === 'update'
     || event.text === 'session updated' || event.text?.startsWith('usage updated') === true
@@ -164,8 +223,12 @@ export function runtimeActivityLabel(event: TimelineEvent): string {
 export function mergeEvents(recorded: TimelineEvent[], live: TimelineEvent[]): TimelineEvent[] {
   const byId = new Map(recorded.map((ev) => [ev.id, ev]))
   // The authoritative list may invalidate a pending request without changing its event ID.
-  for (const ev of live) if (!byId.has(ev.id)) byId.set(ev.id, ev)
-  return [...byId.values()].sort((a, b) => a.ts - b.ts)
+  for (const ev of live) {
+    const prior = byId.get(ev.id)
+    if (!prior) byId.set(ev.id, ev)
+    else if (prior.historySeq === undefined && ev.historySeq !== undefined) byId.set(ev.id, { ...prior, historySeq: ev.historySeq })
+  }
+  return orderTimelineEvents(byId, [recorded, live])
 }
 
 export const SESSION_LABEL: Record<AcpSessionStatus, string> = {

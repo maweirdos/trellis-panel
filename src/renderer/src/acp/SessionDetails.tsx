@@ -3,12 +3,19 @@ import { Loader2 } from 'lucide-react'
 import { api } from '../api'
 import { Select } from '../components/Select'
 import { RunActivity } from './RunActivity'
-import { isConnectionTimelineEvent } from './timeline'
+import { asObject, isConnectionTimelineEvent } from './timeline'
+import { projectRootKey } from '../my/navigation'
 import type { AcpConfigureInput, AcpSessionRecord } from '../../../shared/types'
 
 export function StartupGroup({ session }: { session: AcpSessionRecord }): JSX.Element {
-  const events = session.events.filter((event) => event.source === 'acp' && !event.turnId)
-  return <RunActivity session={session} events={events} item={{ type: 'activity', key: `startup:${session.sessionId}:${session.connectionGeneration}`, events, connectionGeneration: session.connectionGeneration, startedAt: session.startedAt }} />
+  const events = session.events.filter((event) => event.source === 'acp' && event.sessionId === session.sessionId && projectRootKey(event.projectRoot) === projectRootKey(session.projectRoot) && event.connectionGeneration === session.connectionGeneration && isConnectionTimelineEvent(event))
+  if (!events.length) return <></>
+  const label = (event: typeof events[number]): unknown => asObject(event.payload?.observation)?.label
+  const start = events.find((event) => ['开始准备会话', '开始恢复原会话'].includes(String(label(event))))
+  const ready = events.find((event) => ['ACP 会话已就绪', '原会话已连接，可以继续对话'].includes(String(label(event))))
+  const failure = events.find((event) => asObject(event.payload?.observation)?.status === 'failed')
+  const terminal = failure ?? ready
+  return <RunActivity session={session} item={{ type: 'activity', scope: 'connection', key: `startup:${session.sessionId}:${session.connectionGeneration}`, events, sessionId: session.sessionId, projectRoot: session.projectRoot, connectionGeneration: session.connectionGeneration, startedAt: start?.ts, endedAt: terminal?.ts, outcome: failure ? 'failed' : ready ? 'completed' : undefined, active: !terminal }} />
 }
 
 export function SessionDetails({ session, isCurrent, onUpdated, controlsOnly = false, detailsOnly = false }: {

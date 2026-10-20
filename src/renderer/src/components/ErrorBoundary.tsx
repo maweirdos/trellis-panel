@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react'
+import { CircleAlert, ChevronRight } from 'lucide-react'
 import { Button } from '../my/ui'
 
 /**
@@ -30,25 +31,23 @@ export class ErrorBoundary extends Component<Props, State> {
   render(): ReactNode {
     if (this.state.error) {
       return (
-        <div className="grid h-full place-items-center bg-my-canvas p-8">
-          <div className="w-full max-w-2xl space-y-3 rounded-my-xl border border-my-line-danger bg-my-danger-subtle p-5">
-            <div className="text-my-md font-semibold text-my-danger-text">界面渲染崩溃（已被拦截，未白屏）</div>
-            <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all rounded-my-md bg-my-canvas p-3 font-mono text-my-xs leading-4 text-my-secondary">
-              {`${this.state.error.message}\n\n${this.state.error.stack ?? ''}`}
-            </pre>
+        <div className="grid h-full min-h-0 overflow-auto place-items-center bg-my-canvas p-8">
+          <section role="alert" className="w-full max-w-xl space-y-4 rounded-my-xl border border-my-line bg-my-surface-1 p-5">
+            <div className="flex items-center gap-2"><CircleAlert size={18} className="shrink-0 text-my-danger-text" aria-hidden="true" /><h2 className="text-my-lg font-medium text-my-primary">页面暂时无法显示</h2></div>
+            <p className="text-my-sm leading-relaxed text-my-secondary">请重试当前页面；如仍无法恢复，可重载应用。</p>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => this.setState({ error: null })}>
-                重试渲染
+                重试页面
               </Button>
               <Button variant="primary" onClick={() => location.reload()}>
                 重载应用
               </Button>
             </div>
-            <div className="text-my-2xs leading-4 text-my-tertiary">
-              常见原因：dev 会话跨过了 preload/主进程改动（preload 只在应用启动时加载）——重启 <code>npm run dev</code> 即可同步。
-              若重启后仍复现，请复制上方错误信息反馈。
-            </div>
-          </div>
+            <details className="group text-my-sm text-my-tertiary">
+              <summary className="flex cursor-pointer list-none items-center gap-1"><ChevronRight size={12} className="transition-transform group-open:rotate-90" aria-hidden="true" />错误详情</summary>
+              <pre className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-all rounded-my-md bg-my-canvas p-3 font-mono text-my-xs leading-relaxed text-my-secondary">{`${this.state.error.message}\n\n${this.state.error.stack ?? ''}`}</pre>
+            </details>
+          </section>
         </div>
       )
     }

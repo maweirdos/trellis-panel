@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { Check, ChevronDown, Loader2, ShieldCheck, SlidersHorizontal, Plus, Lightbulb, ChevronRight, ArrowLeft } from 'lucide-react'
+import { Check, ChevronDown, Loader2, ShieldCheck, SlidersHorizontal, Plus, Lightbulb, ChevronRight, ArrowLeft, Info } from 'lucide-react'
 import { api } from '../api'
-import { Dropdown, DropdownHeader, DropdownItem } from '../my/ui'
+import { Dropdown, DropdownHeader, DropdownItem, Tooltip } from '../my/ui'
 import { Select } from '../components/Select'
 import { ConnectionNotice } from './ConnectionNotice'
+import { getModelRecovery } from './model-recovery'
 import type { AcpConfigureInput, AcpSessionRecord } from '../../../shared/types'
 
 function choiceLabel(name: string): string {
-  const labels: Record<string, string> = { low: '低', medium: '中', high: '高', xhigh: '极高', max: '最高', minimal: '最低', none: '关闭', default: '默认', plan: '计划模式', 'auto review': '自动审核', 'read only': '只读' }
-  return labels[name.toLowerCase()] ?? name
+  const labels: Record<string, string> = { low: '低', medium: '中', high: '高', xhigh: '极高', max: '最高', minimal: '最低', none: '关闭', default: '默认', plan: '计划模式', 'auto review': '自动审核', 'read only': '只读', readonly: '只读', 'workspace access': '工作区访问', 'workspace write': '工作区读写', 'full access': '完全访问' }
+  const key = name.trim().toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ')
+  return labels[key] ?? name
 }
 
 /** All advertised current-session controls live inside the composer. */
-export function ComposerModelPicker({ session, isCurrent, onUpdated, contextActions, usage, sendAction }: {
+export function ComposerModelPicker({ session, message, operationPending = false, isCurrent, onUpdated, onRecoverModel, contextActions, usage, sendAction }: {
   session: AcpSessionRecord
+  message?: string
+  operationPending?: boolean
   isCurrent: () => boolean
   onUpdated: (session: AcpSessionRecord) => void
+  onRecoverModel: (modelId: string) => Promise<void>
   contextActions?: (close: () => void) => ReactNode
   usage?: ReactNode
   sendAction?: ReactNode
@@ -25,8 +30,12 @@ export function ComposerModelPicker({ session, isCurrent, onUpdated, contextActi
   const [modelView, setModelView] = useState<'settings' | 'models'>('settings')
   const lock = useRef(false)
   const mounted = useRef(true)
+  const controlsRightRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const controls = session.capabilities?.controls ?? []
+  const recovery = getModelRecovery(session, message)
+  const recoveryMode = recovery.canRecoverModel
+  const busy = pending || operationPending
   const options = session.configOptions ?? []
   const modelConfigs = options.filter((option) => option.category === 'model')
   const modeConfigs = options.filter((option) => option.category === 'mode')
@@ -34,15 +43,17 @@ export function ComposerModelPicker({ session, isCurrent, onUpdated, contextActi
   const modelConfig = modelConfigs.length === 1 && canSetConfig ? modelConfigs[0] : undefined
   const modeConfig = modeConfigs.length === 1 && canSetConfig ? modeConfigs[0] : undefined
   const reasoning = options.find((option) => /reasoning|effort|thinking/i.test(`${option.id} ${option.name} ${option.category ?? ''}`) && option.category !== 'model' && option.category !== 'mode')
+  const hasReasoning = Boolean(reasoning?.options.length)
+  const showModels = recoveryMode || !hasReasoning || modelView === 'models'
   const collaboration = options.find((option) => option.options.length > 0 && /collaboration/i.test(`${option.id} ${option.name}`))
-  const models = modelConfig ? modelConfig.options.map((option) => ({ modelId: option.value, name: option.name })) : session.models ?? []
+  const models = recoveryMode ? recovery.models : modelConfig ? modelConfig.options.map((option) => ({ modelId: option.value, name: option.name })) : session.models ?? []
   const modes = modeConfig ? modeConfig.options.map((option) => ({ id: option.value, name: option.name })) : session.modes ?? []
-  const currentId = modelConfig?.currentValue ?? session.currentModelId
+  const currentId = (recoveryMode && modelConfigs.length === 1 ? modelConfigs[0].currentValue : modelConfig?.currentValue) ?? session.currentModelId
   const currentMode = modeConfig?.currentValue ?? session.currentModeId
   const currentName = models.find((model) => model.modelId === currentId)?.name ?? currentId
   const excluded = new Set([modelConfig?.id, modeConfig?.id, reasoning?.id, collaboration?.id])
-  const extraOptions = options.filter((option) => option.options.length > 0 && !excluded.has(option.id) && !(option.category === 'model' && controls.includes('session/set_model')) && !(option.category === 'mode' && controls.includes('session/set_mode')))
-  const canConfigure = session.status === 'ready' && !pending
+  const extraOptions = options.filter((option) => option.options.length > 0 && !excluded.has(option.id) && !(option.category === 'model' && (recoveryMode || controls.includes('session/set_model'))) && !(option.category === 'mode' && controls.includes('session/set_mode')))
+  const canConfigure = session.status === 'ready' && !busy
   const configure = async (input: AcpConfigureInput, close?: () => void): Promise<void> => {
     if (lock.current || !isCurrent() || !canConfigure) return
     lock.current = true; setPending(true); setError('')
@@ -52,6 +63,15 @@ export function ComposerModelPicker({ session, isCurrent, onUpdated, contextActi
       if (response.ok && response.session) { onUpdated(response.session); close?.() }
       else setError(response.error ?? '执行引擎未确认修改，保留原配置。')
     } catch (cause) { if (isCurrent()) setError(cause instanceof Error ? cause.message : '配置修改失败') }
+    finally { lock.current = false; if (mounted.current) setPending(false) }
+  }
+  const recoverModel = async (modelId: string, close: () => void): Promise<void> => {
+    if (lock.current || !isCurrent() || busy || !recoveryMode || !recovery.models.some((model) => model.modelId === modelId)) return
+    lock.current = true; setPending(true); setError('')
+    try {
+      await onRecoverModel(modelId)
+      if (isCurrent()) close()
+    } catch (cause) { if (isCurrent()) setError(cause instanceof Error ? cause.message : '模型恢复失败') }
     finally { lock.current = false; if (mounted.current) setPending(false) }
   }
   const selectedEffort = reasoning?.options.findIndex((option) => option.value === reasoning.currentValue) ?? -1
@@ -82,34 +102,33 @@ export function ComposerModelPicker({ session, isCurrent, onUpdated, contextActi
   }
   return <div className="acp-composer-controls">
     <div className="acp-composer-controls-left">
-      <Dropdown align="left" width={290} trigger={({ open, toggle }) => <button type="button" className="acp-composer-add" aria-label="添加与会话选项" aria-expanded={open} onClick={toggle}><Plus size={19} /></button>}>
+      <Dropdown align="left" width={290} trigger={({ open, toggle }) => <button type="button" className="acp-composer-add my-composer-control" aria-label="添加与会话选项" aria-expanded={open} onClick={toggle}><Plus size={19} /></button>}>
         {(close) => <div className="acp-add-menu my-scrollbar">
           <DropdownHeader>添加</DropdownHeader>
           {contextActions?.(close)}
-          {showPlan && <button type="button" className="acp-plan-toggle" aria-pressed={Boolean(planActive)} disabled={!canTogglePlan} onClick={() => {
+          {showPlan && <button type="button" className="acp-plan-toggle my-menu-item" aria-pressed={Boolean(planActive)} disabled={!canTogglePlan} onClick={() => {
             if (collaborationToggle && collaboration && planChoice && normalChoice) void configure({ kind: 'config', id: collaboration.id, value: planActive ? normalChoice.value : planChoice.value }, close)
             else { const next = planActive ? nativeNormal?.id : planModes[0]?.id; if (next) selectMode(next, close) }
-          }}><Lightbulb size={14} /><span>计划模式</span><small>{planActive ? '已开启，点击关闭' : '开启计划模式'}</small>{planActive && <Check size={13} />}</button>}
-          {advancedOptions.length > 0 && <details className="acp-add-advanced"><summary><SlidersHorizontal size={14} />其他会话参数<ChevronDown size={12} /></summary><div className="acp-model-options">{advancedOptions.map((option) => <label key={option.id}>{option.name}<Select ariaLabel={option.name} className="w-full" value={option.currentValue} disabled={!canConfigure || !canSetConfig} onChange={(value) => void configure({ kind: 'config', id: option.id, value })} options={option.options.map((value) => ({ value: value.value, label: choiceLabel(value.name) }))} /></label>)}</div></details>}
-          {pending && <p role="status" className="px-3 py-2 text-my-sm text-my-tertiary">等待引擎确认…</p>}
+          }}><Lightbulb size={14} /><span className="flex-1">计划模式</span>{planActive && <Check size={13} />}</button>}
+          {advancedOptions.length > 0 && <details className="acp-add-advanced"><summary className="my-menu-item"><SlidersHorizontal size={14} />其他会话参数<ChevronDown size={12} /></summary><div className="acp-model-options">{advancedOptions.map((option) => <label key={option.id}>{option.name}<Select ariaLabel={option.name} className="w-full" value={option.currentValue} disabled={!canConfigure || !canSetConfig} onChange={(value) => void configure({ kind: 'config', id: option.id, value })} options={option.options.map((value) => ({ value: value.value, label: choiceLabel(value.name) }))} /></label>)}</div></details>}
+          {busy && <div role="status" className="flex items-center gap-2 px-3 py-2 text-my-sm text-my-tertiary"><Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" /><span>{recoveryMode || session.status === 'starting' ? '连接中…' : '更新中…'}</span></div>}
         </div>}
       </Dropdown>
-      {regularModes.length > 0 && <Dropdown align="left" width={240} trigger={({ open, toggle }) => <button type="button" className="acp-composer-context" aria-label="选择会话模式" aria-expanded={open} onClick={toggle}><ShieldCheck size={14} /><span>{choiceLabel(modes.find((mode) => mode.id === currentMode)?.name ?? '选择模式')}</span><ChevronDown size={12} /></button>}>
-        {(close) => <><DropdownHeader>会话模式</DropdownHeader>{regularModes.map((mode) => <DropdownItem key={mode.id} selected={mode.id === currentMode} disabled={!canConfigure || (!modeConfig && !controls.includes('session/set_mode'))} icon={mode.id === currentMode ? <Check size={13} /> : <span />} onClick={() => selectMode(mode.id, close)}>{choiceLabel(mode.name)}</DropdownItem>)}{regularModes.length === 0 && <p className="px-3 py-2 text-my-sm text-my-tertiary">计划选项位于“＋”菜单。</p>}</>}
+      {regularModes.length > 0 && <Dropdown align="left" width={240} trigger={({ open, toggle }) => <button type="button" className="acp-composer-context my-composer-control my-composer-control-label" aria-label="选择会话模式" aria-expanded={open} onClick={toggle}><ShieldCheck size={14} /><span>{choiceLabel(modes.find((mode) => mode.id === currentMode)?.name ?? '选择模式')}</span><ChevronDown size={12} /></button>}>
+        {(close) => <><DropdownHeader>会话模式</DropdownHeader>{regularModes.map((mode) => <DropdownItem key={mode.id} selected={mode.id === currentMode} disabled={!canConfigure || (!modeConfig && !controls.includes('session/set_mode'))} onClick={() => selectMode(mode.id, close)}>{choiceLabel(mode.name)}</DropdownItem>)}{regularModes.length === 0 && <p className="px-3 py-2 text-my-sm text-my-tertiary">计划选项位于“＋”菜单。</p>}</>}
       </Dropdown>}
       {planActive && !(nativePlanMode && regularModes.length > 0) && <span className="acp-plan-active"><Lightbulb size={12} />计划</span>}
     </div>
-    <div className="acp-composer-controls-right">
+    <div ref={controlsRightRef} className="acp-composer-controls-right">
       {usage}
-      <Dropdown align="right" width={modelView === 'models' ? 330 : 270} layoutKey={modelView} trigger={({ open, toggle }) => <button type="button" className="acp-composer-context acp-model-trigger" aria-label="选择模型与推理强度" aria-expanded={open} aria-haspopup="true" title={currentName} onClick={() => { if (!open) setModelView('settings'); toggle() }}>{pending && <Loader2 size={12} className="acp-progress-spinner" />}<span>{currentName?.split(' · ')[0] ?? (session.status === 'starting' ? '正在连接…' : '选择模型')}</span>{reasoning && reasoning.options.length > 0 && effortName && <small className="acp-model-effort">{choiceLabel(effortName)}</small>}<ChevronDown size={12} /></button>}>
-        {(close) => <div className="acp-model-menu my-scrollbar">
-          {modelView === 'models' ? <><div className="acp-model-view-header"><button type="button" aria-label="返回推理强度" onClick={() => setModelView('settings')}><ArrowLeft size={14} /></button><span>选择模型</span></div><div className="acp-model-list my-scrollbar">{models.length > 0 ? models.map((model) => <DropdownItem key={model.modelId} selected={currentId === model.modelId} disabled={!canConfigure || (!modelConfig && !controls.includes('session/set_model'))} icon={currentId === model.modelId ? <Check size={13} /> : <span />} onClick={() => { if (currentId === model.modelId) setModelView('settings'); else void configure(modelConfig ? { kind: 'config', id: modelConfig.id, value: model.modelId } : { kind: 'model', id: model.modelId }, () => setModelView('settings')) }}>{model.name}</DropdownItem>) : <p className="px-3 py-2 text-my-sm text-my-secondary">{session.status === 'starting' ? '连接后载入模型列表。' : '执行引擎未提供可切换模型。'}</p>}</div></> : <section className="acp-reasoning-menu acp-model-settings">
-            <strong>{reasoning && reasoning.options.length > 0 ? choiceLabel(effortName ?? reasoning.currentValue) : '模型设置'}</strong>
-            <button type="button" className="acp-model-caption" aria-label="进入模型选择" title={currentName} onClick={() => setModelView('models')}><span>{currentName?.split(' · ')[0] ?? '选择模型'}</span><ChevronRight size={12} /></button>
-            {reasoning && reasoning.options.length > 0 ? <div className="acp-effort-track" role="radiogroup" aria-label="推理强度"><span className="acp-effort-fill" style={{ width: selectedEffort < 0 ? '0px' : `calc(${effortFraction * 100}% ${effortInset < 0 ? '-' : '+'} ${Math.abs(effortInset)}px)` }} />{reasoning.options.map((option, index) => <button key={option.value} type="button" role="radio" aria-checked={option.value === reasoning.currentValue} aria-label={choiceLabel(option.name)} title={choiceLabel(option.name)} disabled={!canConfigure || !canSetConfig} className={option.value === reasoning.currentValue ? 'is-selected' : index < selectedEffort ? 'is-before' : ''} onClick={() => void configure({ kind: 'config', id: reasoning.id, value: option.value }, close)}><span /></button>)}</div> : <p className="acp-no-reasoning">此引擎未提供推理强度选项</p>}
+      <Dropdown align="right" width={256} positionAnchorRef={controlsRightRef} placement="top" gap={8} layoutKey={recoveryMode ? 'recovery' : showModels ? 'models' : 'settings'} trigger={({ open, toggle }) => <button type="button" className="acp-composer-context acp-model-trigger my-composer-control my-composer-control-label" aria-label={hasReasoning && !recoveryMode ? '选择模型与推理强度' : '选择模型'} aria-expanded={open} aria-haspopup="true" title={currentName} onClick={() => { if (!open) setModelView(recoveryMode ? 'models' : 'settings'); toggle() }}>{busy && <Loader2 size={12} className="acp-progress-spinner" />}<span>{currentName?.split(' · ')[0] ?? (session.status === 'starting' ? '连接中…' : '选择模型')}</span>{!recoveryMode && reasoning && reasoning.options.length > 0 && effortName && <small className="acp-model-effort">{choiceLabel(effortName)}</small>}<ChevronDown size={12} /></button>}>
+        {(close) => <div className={showModels ? 'acp-model-menu my-scrollbar acp-model-choices' : 'acp-model-menu'}>
+          {showModels ? <><div className="acp-model-view-header my-menu-header">{!recoveryMode && hasReasoning && <button type="button" className="my-composer-control" aria-label="返回推理强度" onClick={() => setModelView('settings')}><ArrowLeft size={14} /></button>}<span className="flex-1">选择模型</span>{recoveryMode && <Tooltip label="历史候选；选择后重连，由执行引擎验证可用性。" side="bottom" align="right" wrap><button type="button" className="my-icon-control my-composer-control" aria-label="模型恢复说明"><Info size={14} aria-hidden="true" /></button></Tooltip>}</div><div className="acp-model-list">{models.length > 0 ? models.map((model) => <DropdownItem key={model.modelId} selected={currentId === model.modelId} disabled={recoveryMode ? busy : !canConfigure || (!modelConfig && !controls.includes('session/set_model'))} onClick={() => { if (recoveryMode) void recoverModel(model.modelId, close); else if (currentId === model.modelId) setModelView('settings'); else void configure(modelConfig ? { kind: 'config', id: modelConfig.id, value: model.modelId } : { kind: 'model', id: model.modelId }, () => setModelView('settings')) }}>{model.name}</DropdownItem>) : <div role="status" className="flex items-center gap-2 px-3 py-2 text-my-sm text-my-secondary">{session.status === 'starting' ? <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" /> : <Info size={14} aria-hidden="true" />}<span>{session.status === 'starting' ? '加载中…' : '暂无可用模型'}</span></div>}</div></> : <section className="acp-reasoning-menu acp-model-settings">
+            {reasoning && <strong>{choiceLabel(effortName ?? reasoning.currentValue)}</strong>}
+            <button type="button" className="acp-model-caption my-composer-control" aria-label="进入模型选择" title={currentName} onClick={() => setModelView('models')}><span>{currentName?.split(' · ')[0] ?? '选择模型'}</span><ChevronRight size={12} /></button>
+            {reasoning && reasoning.options.length > 0 && <div className="acp-effort-track" role="radiogroup" aria-label="推理强度"><span className="acp-effort-fill" style={{ width: selectedEffort < 0 ? '0px' : `calc(${effortFraction * 100}% ${effortInset < 0 ? '-' : '+'} ${Math.abs(effortInset)}px)` }} />{reasoning.options.map((option, index) => <button key={option.value} type="button" role="radio" aria-checked={option.value === reasoning.currentValue} aria-label={choiceLabel(option.name)} title={choiceLabel(option.name)} disabled={!canConfigure || !canSetConfig} className={option.value === reasoning.currentValue ? 'is-selected' : index < selectedEffort ? 'is-before' : ''} onClick={() => void configure({ kind: 'config', id: reasoning.id, value: option.value }, close)}><span /></button>)}</div>}
           </section>}
-          {!canConfigure && <p className="px-3 py-2 text-my-sm text-my-tertiary">连接就绪且当前回复结束后可以修改。</p>}
-          {pending && <p role="status" className="px-3 py-2 text-my-sm text-my-tertiary">等待引擎确认…</p>}
+          {busy && (!showModels || models.length > 0) && <div role="status" className="flex items-center gap-2 px-3 py-2 text-my-sm text-my-tertiary"><Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" /><span>{recoveryMode || session.status === 'starting' ? '连接中…' : '更新中…'}</span></div>}
         </div>}
       </Dropdown>
       {sendAction}

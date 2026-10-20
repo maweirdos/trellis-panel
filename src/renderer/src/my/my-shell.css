@@ -22,7 +22,7 @@
 .my-root .my-module-button {
   width: var(--my-module-button-size);
   height: var(--my-module-button-size);
-  border-radius: var(--my-radius-md);
+  border-radius: var(--my-control-radius);
   line-height: 1;
 }
 .my-root .my-module-icon {

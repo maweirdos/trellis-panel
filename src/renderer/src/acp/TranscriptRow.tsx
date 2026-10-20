@@ -2,11 +2,13 @@ import { ChevronRight, FileText, GitBranch, Loader2, Pencil, Search, ShieldQuest
 import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
 import { Button } from '../my/ui'
-import { asObject, type RenderItem } from './timeline'
+import { ActivityResult } from '../my/ActivityResult'
+import { asObject, runtimeActivityLabel, type RenderItem } from './timeline'
 import { ConnectionNotice } from './ConnectionNotice'
 import { RunActivity } from './RunActivity'
 import { ThoughtActivity } from './ThoughtActivity'
 import { ImageAttachments } from './ImageAttachments'
+import { projectRootKey } from '../my/navigation'
 import type { AcpPermissionPayload, AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -35,10 +37,11 @@ function ToolContent({ value }: { value: unknown }): JSX.Element | null {
   })}</div>
 }
 
-export function EventRow({ item, session, events, pendingPerm, permissionPending, permissionErrors, onRespond, onOpenTask, onOpenArtifact, onOpenSpec, onOpenJira }: {
+export function EventRow({ item, session, events, pendingPerm, permissionPending, permissionErrors, onRespond, onOpenTask, onOpenArtifact, onOpenSpec, onOpenJira, suppressWorkingIndicator = false }: {
   item: RenderItem
   session?: AcpSessionRecord
   events?: TimelineEvent[]
+  suppressWorkingIndicator?: boolean
   pendingPerm: Record<string, AcpPermissionPayload>
   permissionPending: Record<string, boolean>
   permissionErrors: Record<string, string>
@@ -48,36 +51,78 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   onOpenSpec: () => void
   onOpenJira: () => void
 }): JSX.Element {
-  if (item.type === 'user') return <div className="flex justify-end"><div className="acp-user-message max-w-[88%]">
-    {item.images && <ImageAttachments images={item.images} />}
-    {item.text && <div className="acp-chat-copy whitespace-pre-wrap break-words rounded-my-lg bg-my-layer-1 px-4 py-3 text-my-primary">{item.text}</div>}
-  </div></div>
-  if (item.type === 'agent') return <div className={clsx('my-chat-prose acp-chat-copy min-w-0 break-words py-2 text-my-primary', item.startsAnswer && 'acp-answer-start')}><MarkdownView content={item.text} /></div>
+  if (item.type === 'user') {
+    return <div data-acp-item={item.key} className="acp-turn-start flex justify-end"><div className="acp-user-message max-w-[88%]">
+      {item.images && <ImageAttachments images={item.images} />}
+      {item.text && <div className="acp-chat-copy whitespace-pre-wrap break-words rounded-my-lg bg-my-layer-1 px-4 py-3 text-my-primary">{item.text}</div>}
+    </div></div>
+  }
+  if (item.type === 'agent') return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-answer acp-chat-copy min-w-0 break-words text-my-primary', item.startsAnswer && 'acp-answer-start')}><MarkdownView content={item.text} /></div>
   if (item.type === 'thought') {
     const originIndex = events?.findIndex((event) => event.id === item.key) ?? -1
     const origin = originIndex >= 0 ? events?.[originIndex] : undefined
     const segmentEnded = origin && events?.slice(originIndex + 1).some((event) =>
-      event.sessionId === origin.sessionId && event.turnId === origin.turnId && event.connectionGeneration === origin.connectionGeneration && (
+      event.source === origin.source && projectRootKey(event.projectRoot) === projectRootKey(origin.projectRoot) && event.sessionId === origin.sessionId && event.turnId === origin.turnId && event.connectionGeneration === origin.connectionGeneration && (
         (event.kind === 'message' && Boolean(event.text?.trim())) ||
         event.kind === 'tool-call' || event.kind === 'plan' || event.kind === 'turn-done'
       ))
-    return <ThoughtActivity text={item.text} streaming={Boolean(origin && session?.status === 'busy' && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && !segmentEnded)} />
+    return <div data-acp-item={item.key}><ThoughtActivity text={item.text} streaming={Boolean(origin?.source === 'acp' && session?.status === 'busy' && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && !segmentEnded)} /></div>
   }
-  if (item.type === 'activity') return session ? <RunActivity item={item} session={session} events={events ?? item.events} renderDetail={(child) => <EventRow key={child.key} item={child} session={session} events={events} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={onRespond} onOpenTask={onOpenTask} onOpenArtifact={onOpenArtifact} onOpenSpec={onOpenSpec} onOpenJira={onOpenJira} />} /> : <details className="acp-activity-row"><summary><Workflow size={14} /><span>处理记录</span><ChevronRight size={13} className="acp-disclosure-arrow" /></summary><details className="acp-run-diagnostics"><summary>查看诊断记录</summary><RawData value={item.events} /></details></details>
+  if (item.type === 'activity') return session ? <RunActivity item={item} session={session} /> : <details data-acp-item={item.key} className="acp-activity-row"><summary><Workflow size={14} /><span>处理记录</span><ChevronRight size={13} className="acp-disclosure-arrow" /></summary><div className="acp-activity-body">{item.events.map((event) => <p key={event.id}>{String(asObject(event.payload?.observation)?.label ?? event.text ?? runtimeActivityLabel(event))}</p>)}</div></details>
+  if (item.type === 'change-group') return <details data-acp-item={item.key} className="acp-result-disclosure acp-change-group">
+    <summary><ActivityResult
+      icon={<FileText size={18} />}
+      title={`${item.files.length} 个文件变更`}
+      description={item.events.length > 1 ? <span className="acp-change-count">{item.events.length} 次更新</span> : undefined}
+      action={<span className="acp-result-view"><span className="acp-change-expand">展开记录</span><span className="acp-change-collapse">收起记录</span><ChevronRight size={13} className="acp-disclosure-arrow" /></span>}
+    /></summary>
+    <div className="acp-result-body acp-change-list">{item.files.map((file) => {
+      const latest = file.events[file.events.length - 1]
+      const material = asObject(latest.payload?.materialChange)
+      const relative = typeof material?.relativePath === 'string' ? material.relativePath : undefined
+      const displayPath = [latest.payload?.file, relative].find((value): value is string => typeof value === 'string' && Boolean(value.trim())) ?? file.path
+      const readableMaterial = latest.kind === 'material-change' && material?.availability === 'readable' && material.kind !== 'unlink'
+      const materialPath = readableMaterial && relative && relative.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..' && !part.includes(':'))
+        ? `${latest.projectRoot.replace(/[\\/]+$/, '')}/${relative}` : undefined
+      const path = latest.kind === 'doc-created' && typeof latest.payload?.path === 'string' && latest.payload.path.trim() ? latest.payload.path : materialPath
+      const name = path?.split(/[\\/]/).at(-1) ?? file.path
+      const action = file.events.some((event) => event.kind === 'spec-updated')
+        ? <Button size="sm" variant="outline" onClick={onOpenSpec}>查看规范</Button>
+        : path ? <Button size="sm" variant="outline" onClick={() => onOpenArtifact({ name, path, kind: 'file', size: 0, mtime: latest.ts, ext: name.includes('.') ? (name.split('.').pop() ?? '').toLowerCase() : '' })}>阅读文件</Button> : undefined
+      return <div key={file.path} className="acp-change-row">
+        <FileText size={14} aria-hidden="true" /><span className="acp-change-file" title={file.path}>{displayPath}</span>
+        {file.events.length > 1 && <span className="acp-change-count">{file.events.length} 次更新</span>}{action}
+      </div>
+    })}</div>
+  </details>
   if (item.type === 'tool') {
     const { title, status, payload } = item.tool
     const kind = String(payload.kind ?? '')
-    const path = Array.isArray(payload.locations) ? asObject(payload.locations[0])?.path : undefined
+    const diff = Array.isArray(payload.content) ? payload.content.map(asObject).find((entry) => entry?.type === 'diff') : undefined
+    const path = (Array.isArray(payload.locations) ? asObject(payload.locations[0])?.path : undefined) ?? diff?.path
     const fileName = typeof path === 'string' ? path.split(/[\\/]/).at(-1) : undefined
-    const label = kind === 'execute' ? '运行了命令' : kind === 'edit' ? `编辑了文件${fileName ? ` ${fileName}` : ''}` : kind === 'read' ? `读取了文件${fileName ? ` ${fileName}` : ''}` : kind === 'search' ? '搜索了项目' : title
     const Icon = kind === 'execute' ? Terminal : kind === 'edit' ? Pencil : kind === 'search' ? Search : FileText
-    const running = status !== 'completed' && status !== 'failed'
-    return <details className={clsx('acp-activity-row', status === 'failed' && 'is-failed')}>
+    const pending = !['completed', 'failed', 'cancelled'].includes(status)
+    const origin = events?.find((event) => event.id === item.key)
+    const sameTurn = (event: TimelineEvent): boolean => Boolean(origin && event.source === origin.source && event.sessionId === origin.sessionId && projectRootKey(event.projectRoot) === projectRootKey(origin.projectRoot) && event.turnId === origin.turnId && event.connectionGeneration === origin.connectionGeneration)
+    const running = Boolean(pending && origin?.turnId && origin.connectionGeneration && session && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status) && !events?.some((event) => event.kind === 'turn-done' && sameTurn(event)))
+    const unfinished = pending && !running
+    const label = kind === 'execute' ? running ? '正在运行命令' : unfinished ? '命令执行未完成' : '运行了命令' : kind === 'read' ? `${running ? '正在读取文件' : unfinished ? '文件读取未完成' : '读取了文件'}${fileName ? ` ${fileName}` : ''}` : kind === 'search' ? running ? '正在搜索项目' : unfinished ? '项目搜索未完成' : '搜索了项目' : title
+    const editing = kind === 'edit'
+    return <details data-acp-item={item.key} className={clsx(editing ? 'acp-result-disclosure' : 'acp-activity-row', status === 'failed' && 'is-failed')}>
       <summary title={title}>
-        {running ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <Icon size={14} />}
-        <span className="truncate">{label}{status === 'failed' ? ' · 失败' : ''}</span><ChevronRight size={13} className="acp-disclosure-arrow" />
+        {editing ? <ActivityResult
+          icon={running && !suppressWorkingIndicator ? <Loader2 size={18} className="animate-spin" /> : <Pencil size={18} />}
+          title={`${running ? '正在编辑' : unfinished ? '编辑未完成' : status === 'failed' ? '编辑失败' : status === 'cancelled' ? '编辑已取消' : '已编辑'} ${fileName ?? title}`}
+          description={typeof path === 'string' ? path : undefined}
+          tone={status === 'failed' ? 'danger' : 'default'}
+          action={<span className="acp-result-view">{diff ? '查看变更' : '查看记录'}<ChevronRight size={13} className="acp-disclosure-arrow" /></span>}
+        /> : <>
+          {running && !suppressWorkingIndicator ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <Icon size={14} />}
+          <span className="truncate">{label}{status === 'failed' ? ' · 失败' : status === 'cancelled' ? ' · 已取消' : ''}</span><ChevronRight size={13} className="acp-disclosure-arrow" />
+        </>}
       </summary>
-      <div className="acp-activity-body space-y-2">
+      <div className={clsx(editing ? 'acp-result-body' : 'acp-activity-body', 'space-y-2')}>
         <p className="break-words font-mono text-my-sm text-my-secondary">{title}</p>
         {typeof payload.preview === 'string' && <p className="whitespace-pre-wrap break-words text-my-secondary">{payload.preview}</p>}
         <ToolContent value={payload.content} />
@@ -103,21 +148,16 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   }
   if (item.type === 'turn') return /^(回合已结束|本轮结束|回合已取消)$/.test(item.text) ? <></> : <ConnectionNotice message={item.text} />
   if (item.type === 'detail') {
-    if (item.ev.kind === 'diagnostic' || item.ev.payload?.type === 'error' || item.ev.payload?.error || item.ev.payload?.status === 'failed' || item.ev.payload?.status === 'error') return <div>
-      <ConnectionNotice message={item.ev.text ?? '执行引擎返回错误'} /><details className="text-my-sm text-my-tertiary"><summary className="cursor-pointer">诊断数据</summary><RawData value={item.ev} /></details>
-    </div>
-    return <details className="rounded-my-md px-2 py-1 text-my-sm text-my-tertiary"><summary className="cursor-pointer break-words">{item.ev.text ?? item.ev.kind}</summary><RawData value={item.ev} /></details>
+    if (item.ev.kind === 'diagnostic' || item.ev.payload?.type === 'error' || item.ev.payload?.error || item.ev.payload?.status === 'failed' || item.ev.payload?.status === 'error' || asObject(item.ev.payload?.observation)?.status === 'failed') return <ConnectionNotice message={item.ev.text || String(asObject(item.ev.payload?.observation)?.label ?? '执行引擎返回错误')} />
+    return <details className="rounded-my-md px-2 py-1 text-my-sm text-my-tertiary"><summary className="cursor-pointer break-words">{item.ev.text ?? item.ev.kind}</summary><p className="mt-2 whitespace-pre-wrap break-words">{item.ev.text ?? '执行引擎记录了此项状态更新。'}</p></details>
   }
   if (item.type !== 'trellis') return <></>
   const ev = item.ev
   const taskDir = ev.taskDir ?? (typeof ev.payload?.taskDir === 'string' ? ev.payload.taskDir : undefined)
   const filePath = typeof ev.payload?.path === 'string' ? ev.payload.path : undefined
-  return <div className="my-activity-note">
-    {TRELLIS_ICON[ev.kind] ?? <Sparkles size={13} />}<span className="min-w-0 break-words">{ev.text}</span>
-    <span>{taskDir ? `任务：${taskDir}` : '项目活动'}</span>
-    {ev.kind === 'task-status' && taskDir && <button className="underline underline-offset-2" onClick={() => onOpenTask(taskDir)}>查看任务</button>}
-    {ev.kind === 'doc-created' && filePath && <button className="underline underline-offset-2" onClick={() => onOpenArtifact({ name: String(ev.payload?.file ?? 'artifact.md'), path: filePath, kind: 'file', size: 0, mtime: ev.ts, ext: (String(ev.payload?.file ?? '.md').split('.').pop() ?? 'md').toLowerCase() })}>阅读</button>}
-    {(ev.kind === 'spec-injected' || ev.kind === 'spec-updated') && <button className="underline underline-offset-2" onClick={onOpenSpec}>规范页</button>}
-    {ev.kind === 'jira-sync' && <button className="underline underline-offset-2" onClick={onOpenJira}>Jira</button>}
-  </div>
+  const action = ev.kind === 'task-status' && taskDir ? <Button size="sm" variant="outline" onClick={() => onOpenTask(taskDir)}>查看任务</Button>
+    : ev.kind === 'doc-created' && filePath ? <Button size="sm" variant="outline" onClick={() => onOpenArtifact({ name: String(ev.payload?.file ?? 'artifact.md'), path: filePath, kind: 'file', size: 0, mtime: ev.ts, ext: (String(ev.payload?.file ?? '.md').split('.').pop() ?? 'md').toLowerCase() })}>阅读文件</Button>
+    : ev.kind === 'spec-injected' || ev.kind === 'spec-updated' ? <Button size="sm" variant="outline" onClick={onOpenSpec}>查看规范</Button>
+    : ev.kind === 'jira-sync' ? <Button size="sm" variant="outline" onClick={onOpenJira}>查看 Jira</Button> : undefined
+  return <ActivityResult icon={TRELLIS_ICON[ev.kind] ?? <Sparkles size={16} />} title={ev.text ?? ev.kind} description={taskDir ? `任务：${taskDir}` : '项目活动'} action={action} />
 }

@@ -1,5 +1,6 @@
 import type { TimelineEvent } from '../../../shared/types'
 import type { RenderItem } from './timeline'
+import { projectRootKey } from '../my/navigation'
 
 type Activity = Extract<RenderItem, { type: 'activity' }>
 export interface RunProgressStep {
@@ -10,23 +11,18 @@ export interface RunProgressStep {
   endedAt?: number
 }
 
-/** Show only reached stages. A reported start is not proof of completion. */
+/** Project recorded observations in this segment only. Later output is not a step here. */
 export function projectRunProgress(item: Activity, events: TimelineEvent[], running: boolean, activeLabel: string): RunProgressStep[] {
-  const scoped = events.filter((event) => event.source === 'acp' && event.turnId === item.turnId && event.connectionGeneration === item.connectionGeneration && event.payload?.activityScope !== 'connection')
-  const observation = (name: string): TimelineEvent | undefined => scoped.find((event) => {
-    const value = event.payload?.observation
-    return value !== null && typeof value === 'object' && 'label' in value && value.label === name
+  const segmentIds = new Set(item.events.map((event) => event.id))
+  const scoped = events.filter((event) => segmentIds.has(event.id) && event.source === 'acp' && event.sessionId === item.sessionId && projectRootKey(event.projectRoot) === projectRootKey(item.projectRoot) && (item.scope === 'connection' || event.turnId === item.turnId) && event.connectionGeneration === item.connectionGeneration && (item.scope === 'connection' || event.payload?.activityScope !== 'connection'))
+  return scoped.flatMap((event, index): RunProgressStep[] => {
+    const observation = event.payload?.observation
+    if (!observation || typeof observation !== 'object' || !('label' in observation) || typeof observation.label !== 'string' || !observation.label.trim()) return []
+    const failed = 'status' in observation && observation.status === 'failed'
+    const reached = ['指令已发送至引擎', '收到首次模型响应', 'ACP 会话已就绪', '原会话已连接，可以继续对话'].includes(observation.label)
+    const current = running && index === scoped.length - 1 && !failed
+    // A duration is a recorded latency, never a guessed interval between updates.
+    const duration = 'durationMs' in observation && typeof observation.durationMs === 'number' && Number.isFinite(observation.durationMs) && observation.durationMs >= 0 ? observation.durationMs : undefined
+    return [{ id: event.id, label: current ? activeLabel : observation.label, state: failed ? 'failed' : current ? 'running' : reached ? 'completed' : 'unknown', ...(duration === undefined ? {} : { startedAt: event.ts - duration, endedAt: event.ts }) }]
   })
-  const started = observation('开始处理')
-  const sent = observation('指令已发送至引擎') ?? scoped.find((event) => event.kind === 'message' && event.payload?.role === 'user')
-  // Legacy first-response observations included metadata; use actual content
-  // instead when the new model-response marker is absent.
-  const response = observation('收到首次模型响应') ?? scoped.find((event) => ((event.kind === 'message' && event.payload?.role !== 'user') || event.kind === 'thought') && Boolean(event.text?.trim()) || event.kind === 'tool-call' || event.kind === 'plan')
-  const terminal = item.outcome
-  const unfinishedState = (): RunProgressStep['state'] => terminal === 'failed' ? 'failed' : terminal === 'cancelled' ? 'cancelled' : running ? 'running' : 'unknown'
-  const steps: RunProgressStep[] = []
-  if (started || sent) steps.push({ id: 'dispatch', label: sent ? '指令已发送' : terminal === 'failed' ? '发送指令 · 未完成' : terminal === 'cancelled' ? '发送指令 · 已中止' : running ? '正在发送指令' : '指令发送记录', state: sent ? 'completed' : unfinishedState(), startedAt: started?.ts, endedAt: sent?.ts ?? item.endedAt })
-  if (sent || response) steps.push({ id: 'response', label: response ? '已收到模型响应' : terminal === 'failed' ? '等待模型响应 · 未完成' : terminal === 'cancelled' ? '等待模型响应 · 已中止' : running ? '等待模型响应' : '模型响应未记录', state: response ? 'completed' : unfinishedState(), startedAt: sent?.ts, endedAt: response?.ts ?? item.endedAt })
-  if (response) steps.push({ id: 'generation', label: terminal === 'completed' ? '本次回复已完成' : terminal === 'failed' ? '本次回复未完成' : terminal === 'cancelled' ? '本次回复已中止' : running ? activeLabel : '处理记录 · 结束状态未记录', state: terminal === 'completed' ? 'completed' : unfinishedState(), startedAt: response.ts, endedAt: item.endedAt })
-  return steps
 }

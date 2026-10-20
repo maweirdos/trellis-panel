@@ -12,6 +12,8 @@ The only bootstrap imports are `my/my.css` then `styles.css` in `main.tsx`.
   spacing, radii, control/layout metrics, shadows, motion and stacking levels.
 - `my-components.css`: shared control, field, menu, tooltip, modal, focus and
   selection rules. Values come from the token file.
+- `my-feedback.css`: neutral activity/result cards, semantic icon tiles and real
+  trailing actions; imported by the same global `my.css` entry.
 - `my-shell.css`: shell composition and responsive geometry using those tokens.
 
 `styles.css` owns Tailwind directives, reset/native-window rules and Markdown/
@@ -93,6 +95,123 @@ Example:
 <div className="rounded-my-lg bg-my-layer-2 p-4 text-my-sm text-my-secondary" />
 ```
 
+## Selection, hover and result presentation
+
+- `DropdownItem({ selected?, icon?, ... })` owns the selected check and renders it
+  at the trailing edge. Callers pass `selected`, not a leading Check component or
+  an empty placeholder icon. Semantic icons (avatar, priority, file type) may stay
+  at the leading edge; icon-free items begin directly with their label. The shared
+  `Select` follows the same trailing-check convention. Table bulk-selection and
+  form checkboxes retain their actual checkbox semantics.
+- Menu captions use the shared `my-menu-header` role: `--my-menu-title-size`
+  (`--my-text-xs`, standard12px), `--my-menu-title-color` (tertiary), medium weight
+  and no option hover treatment. Options use `my-menu-item` / `my-select-option`:
+  `--my-menu-option-size` (`--my-text-ui`, standard14px),
+  `--my-menu-option-color` (primary). Both scale through the same font preset;
+  captions remain 2px smaller. Do not use secondary color and the same type size
+  for both a caption and an enabled choice. Actual page/dialog headings and the
+  selected strength value retain their own stronger heading/value roles.
+- Custom navigation headers (such as the model chooser) compose `my-menu-header`
+  rather than inventing a local text style. Keep back-control hit targets, but
+  avoid excess leading padding/gaps that push the caption far right. Actions in
+  the plus menu, including plan mode and expandable parameters, use the same
+  option role. A short action label does not need a duplicate inline instruction.
+- All placeholder consumers use `--my-txt-placeholder` with explicit opacity1.
+  The palette defines light ink42% and dark white36%; pages must not stack extra
+  opacity or hard-code a grey. The invitation is intentionally quieter than
+  entered text, while labels and actual text keep their full readable roles.
+  Renderer checks composite alpha against the real surface: menu title/option
+  text must reach4.5:1, options must have stronger contrast, and placeholder
+  contrast stays between2.2:1 and4.5:1 (separate from actual text).
+- Compact controls share `--my-control-radius` (an alias of `--my-radius-md`,
+  currently 10px). Button, icon button, menu option, Select and composer actions
+  consume this semantic token. Hover, active, expanded and selected states keep
+  the same base radius; do not introduce a page-specific 4px/6px hover corner or
+  change geometry on hover. Cards, menu containers and genuinely circular widgets
+  retain their own surface/shape roles.
+- Enabled composer actions use the shared neutral hover surface and rounded hit
+  area, including plus, session mode/permission, model, popup back and caption
+  controls. Hover must not move adjacent controls; open/pressed and keyboard-focus
+  feedback remain visible. Disabled controls do not acquire enabled hover states.
+  Never apply a blanket background that overrides danger/filled/button variants.
+- Composer model/strength popups share a 256px width and prefer placement above
+  the visual trigger with an 8px gap. Align their right edge to the composer right
+  control group, including Send, not just to the model caption. Shared
+  `Dropdown({ positionAnchorRef?, placement?: 'auto'|'top'|'bottom', gap? })`
+  preserves the default auto/4px behavior for other callers. Use measured popup
+  dimensions and the actual trigger bounds; negative trigger margins and entry
+  animation transforms must not corrupt alignment. Clamp to 8px viewport gutters,
+  shrinking to viewport width minus 16px where necessary.
+- Model choices have one scrolling owner: `.acp-model-menu.acp-model-choices`.
+  Allocate scrollbar space symmetrically (`stable both-edges`), and keep the
+  inner `.acp-model-list` free of a second scrollbar/gutter. Short and overflowing
+  lists must have equal visual row insets on both sides; an auto-hidden scrollbar
+  can still reserve layout width. The compact strength view has no list gutter.
+- The context ring has a quiet pale base (`--my-context-track`), never a dark
+  full ring or a center minus that resembles “full/disabled”. Unknown reports use
+  a static open outline and a `暂无数据` accessible description; a reported zero
+  has a complete pale outline. Neither draws an active progress arc. Actual
+  positive usage draws the proportional arc: neutral (`--my-context-used`) below
+  75%, warning (`--my-context-warning`) from 75% and critical
+  (`--my-context-critical`) from 90%. These are presentation thresholds, not
+  runtime limits. Active arcs must contrast at least 3:1; the decorative base is
+  deliberately lighter (renderer checks 1.3:1 to below 3:1). Keep the current
+  connection/model ownership and exact reported percentage; never invent capacity
+  or treat a missing report as zero. No spinning placeholder or center minus.
+- Known native mode labels are localized for people, while IDs/capability checks
+  remain untouched: `Read-only` → `只读`, `Workspace access` → `工作区访问`,
+  `Auto review` → `自动审核`, `Full access` → `完全访问`. Recognize the same known
+  labels with case/hyphen/underscore/spacing variation; preserve unknown custom
+  names and never infer or broaden their permissions from translated wording.
+- Consecutive, structured file-change facts use a single default-closed change
+  group, with one row per actual path and real update counts. Preserve original
+  events and scope boundaries; keep warnings/errors independently visible.
+  Append updates without resetting the user's expansion state. Show concise
+  source-relative names where supplied and keep exact identities accessible.
+  Real view actions belong inside the expanded list; never invent undo or line
+  statistics. A watcher event is a file fact, not proof the current Agent edited
+  it or the user approved it.
+- Default UI copy names the user's action or an actual state; do not stack
+  implementation explanations, internal contracts or defensive caveats in menus,
+  placeholders or conversation content. Put optional help behind a labelled info
+  icon with hover/focus support or a deliberate disclosure. Keep failure and
+  persistence facts discoverable and actionable. Use compact icon + status text
+  for real loading/empty/error states. The composer invitation is
+  `说说你的想法…` in ready, offline and busy states; connection state belongs to
+  its status control. Model menus use the short `选择模型` title; saved-candidate
+  validation belongs to recovery help, not a permanent second paragraph.
+- Asynchronous conversation work has continuous, compact feedback from local
+  submission until authoritative completion. Put one current-status affordance
+  after the latest content, independent of recorded process rows; do not wait for
+  the first token or leave silent gaps between phases. Use neutral theme roles
+  and a reduced-motion-aware spinner for actual engine work, with nonspinning
+  user-confirmation states. Do not invent progress percentages, saved events,
+  phase transitions or elapsed times to fill a wait.
+- Paging actions inside a transcript must look actionable: use a shared neutral
+  icon button and a subtle horizontal boundary, with activity-sized text distinct
+  from prose. Keep optional coverage metadata behind a labelled information
+  disclosure, not a second ambiguous navigation label. Preserve semantic theme
+  colors, shared hover radius, loading feedback and the reader's scroll anchor.
+- Use `ActivityResult({ icon, title, description?, action?, tone? })` from
+  `my/ActivityResult.tsx` for recorded Hook/project/file results. Its neutral full
+  border and quiet icon tile align the content with a real action on the right.
+  Long paths wrap, narrow layouts can wrap actions, and current font/theme roles
+  are inherited. Only show actual operation outcomes: pending/failed edits cannot
+  claim completion, file changes do not prove approval, and an injection receipt
+  does not prove the model read or obeyed its contents. Do not fabricate Undo,
+  change counts or View Changes without the corresponding data/action.
+- **No colored left-edge borders or inset colored rails** on notices, result
+  cards, errors, warnings, selected items or diff lines. Convey severity with the
+  semantic icon/text and, when needed, a subtle surface. Keep frames neutral and
+  uniform on all sides. Diff additions/removals retain +/- markers, line numbers
+  and subtle row surfaces. Neutral structural pane separators and actual timeline
+  connectors are separate layout roles, not severity decoration.
+
+Verify in light/dark and narrow/font-scaled Chromium: label alignment without a
+leading check gutter; exactly one trailing check; a subtle stable hover surface;
+accessible disabled/selected/focus states; result title/action readability; no
+colored left stripe. Run `check:ui`, actual consumer regressions, typecheck/build.
+
 ## 3. Theme and typography contracts
 
 Application roots carry `.my-root`, `data-my-theme="light|dark"` and
@@ -110,15 +229,26 @@ The default font is the platform system stack, including Segoe UI and Chinese
 fallbacks on Windows. Code uses the global mono stack; box-drawing content uses
 `--my-font-diagram` for its CJK character-width requirements. There is no font CDN.
 
-Unspecified/invalid font preference means standard (14px UI/document, 15px chat).
+Unspecified/invalid font preference means standard (14px UI/document/chat).
 Explicit small/large remain 13/15px. Keep stored values, unrelated settings and
 cross-window storage synchronization. Font controls remain in Settings only.
-Metadata and activity use a smaller global text role. Heading line-height is1.2. Changing type never changes
-reader/session identity. Chat uses 1.65 line height and a shared paragraph gap;
-the same font step produces 14/15/16px chat across the three presets.
-The 48px toolbar and module-rail width share `--my-shell-chrome-size` and do not
-grow per font preset; fields
-and buttons derive their heights from the type and padding metrics.
+Metadata and activity use a smaller global text role. Heading line-height is1.2.
+Changing type never changes reader/session identity. Chat uses the UI font-size
+role (13/14/15px), 1.75 line height and the shared16px paragraph gap. Its light
+ink96% / dark white92% foreground is the canonical `--my-txt-chat` token; do not
+fade the entire Markdown container. Titles and strong emphasis retain their
+primary text role. Chat lists use compact2px item gaps and4px inner-paragraph gaps,
+with deliberate nested-list spacing; do not stack full prose paragraph margins
+inside every list item. Document readers retain their own typography contract.
+The 48px toolbar uses `--my-shell-chrome-size`. The module rail is independent:
+`--my-module-rail-width` is56px, `--my-module-button-size` is40px and
+`--my-module-icon-size` is20px, with1.7 icon stroke and8px gaps/insets. The resulting
+48px center pitch leaves breathing room around the icon. The header brand slot
+shares rail width, not rail height; changing the rail must not raise the toolbar.
+Rail geometry stays fixed across font presets. Its buttons inherit the shared
+control radius and existing neutral hover/selection colors. Short windows retain
+an independently scrollable primary nav and reachable footer controls. Fields
+and ordinary buttons retain their existing type/padding-derived heights.
 
 ## 4. Interaction and validation matrix
 
@@ -138,6 +268,7 @@ and buttons derive their heights from the type and padding metrics.
 | Transparent utility root | Canonical font/colors without an opaque root background |
 | Reduced motion | Remove nonessential playback; transition-duration is0s |
 | Text/code/message selection | Copyable content remains selectable |
+| Conversation viewport | Hide only the transcript scrollbar chrome; retain overflow scrolling, keyboard/wheel access, reading anchors and centered composer alignment |
 
 ## 5. Good, base and bad cases
 
@@ -155,11 +286,24 @@ color unrelated to the global accent. Do not use `my.*` alpha suffixes such as
 ## 6. Required checks
 
 Run `npm run typecheck`, `npm run build` and `npm run check:ui`.
-`check:ui` detects missing/cyclic token dependencies and legacy brand usage,
+`check:ui` detects missing/cyclic token dependencies, private palette literals in
+the affected shared/domain sheets, and legacy brand usage,
 verifies same-source SVG/PNG/ICO resources, then mounts real shared primitives
 in Chromium across six theme/font combinations. It tests contrast, geometry,
 focus, viewport-clamped menus, narrow dialogs and transparent utility roots.
 Hidden-window focus uses Chromium focus emulation rather than OS focus stealing.
+
+Run `node scripts/smoke/acp-composer-geometry.mjs` for popup/usage changes. It
+measures settings/model width, right-group alignment, 8px gap, short/scrolling
+list symmetry, 320/240px viewport clamping and unknown/zero/25%/75%/90%/100% usage across
+light/dark and three font presets. It also verifies mode localization and native
+change-group folding, per-file deduplication and expansion retention on append. Geometry snapshots disable the transient menu
+entry transform. Optional `TPANEL_COMPOSER_CAPTURE_DIR` saves actual renderer
+captures without opening a provider session.
+
+For module-rail geometry changes, inspect actual rendered icons, symmetric
+insets, header-brand alignment and short-window scroll/footer reachability in
+both themes; keep using the existing navigation and shared-UI checks.
 
 Run navigation, UIUX wiring, ACP and reader smoke checks for affected consumers.
 Keep native appearance mapping synchronized with the canvas token (see backend

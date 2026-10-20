@@ -1,7 +1,7 @@
 import { rememberVisit } from '../my/personal-history'
 /** Page-owned ACP profiles and explicitly started project conversations. */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { ArrowDown, Bot, ChevronRight, CircleStop, Ellipsis, FileText, Folder, GitBranch, History, ImagePlus, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { ArrowDown, ArrowUp, Bot, ChevronRight, CircleStop, Ellipsis, FileText, Folder, GitBranch, ImagePlus, Info, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
@@ -26,11 +26,15 @@ import { AgentRoleDetails, type RoleDetailsSection } from './AgentRoleDetails'
 import { NewConversationPicker } from './NewConversationPicker'
 import { isStarterRole, rolesForDisplay } from './role-presentation'
 import { EventRow } from './TranscriptRow'
+import { CurrentTurnStatus } from './CurrentTurnStatus'
+import { ownsCurrentTurnRequest, projectCurrentTurnActivity, type CurrentTurnIdentity, type CurrentTurnRequest } from './current-turn-activity'
 import { ComposerModelPicker } from './ComposerModelPicker'
 import { ComposerUsageIndicator } from './ComposerUsageIndicator'
 import { ImageAttachments } from './ImageAttachments'
 import { useComposerImages } from './useComposerImages'
-import { ConnectionNotice } from './ConnectionNotice'
+import { ConnectionNotice, ConnectionRecovery } from './ConnectionNotice'
+import { compareConversationSessions, conversationManagement, useConversationHistory, type ConversationUpdate } from './useConversationHistory'
+import { captureTranscriptAnchor, restoreTranscriptAnchor, type TranscriptScrollAnchor } from './transcript-scroll'
 import { JiraPickerModal } from './JiraPicker'
 import { compileItems, isLiveStatus, mergeEvents, SESSION_LABEL } from './timeline'
 import { readActiveSession, readSessionView, readWorkspaceView, writeWorkspaceView, writeActiveSession, writeSessionView, type WorkspaceView, type DraftIntent } from './view-state'
@@ -43,7 +47,27 @@ const STATUS_COLOR: Record<string, string> = {
   error: 'text-my-danger-text', closed: 'text-my-tertiary', disconnected: 'text-my-tertiary', legacy: 'text-my-tertiary'
 }
 const failureText = (error: unknown): string => error instanceof Error ? error.message : '请求失败，请重试'
-const canSend = (session: AcpSessionRecord): boolean => session.status === 'ready'
+const canSend = (session: AcpSessionRecord): boolean => session.status === 'ready' && !session.archivedAt
+const supportsPagedHistory = (): boolean => typeof api.acpHistoryList === 'function' && typeof api.acpHistorySession === 'function' && typeof api.acpHistoryEvents === 'function'
+
+function HistoryBoundary({ hasEarlier, startsMidTurn, coverage, loading, onLoadEarlier }: {
+  hasEarlier: boolean; startsMidTurn: boolean; coverage?: 'complete' | 'partial' | 'unknown'; loading: boolean; onLoadEarlier: () => void
+}): JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const detailId = useId()
+  const hasDetails = startsMidTurn || coverage === 'partial' || coverage === 'unknown'
+  const description = [startsMidTurn ? '未找到这一回合的开头记录' : '', coverage === 'partial' ? '仅能确认部分历史，完整范围未确认' : coverage === 'unknown' ? '旧版记录的完整性尚无法验证' : ''].filter(Boolean).join('；')
+  return <div className="acp-history-boundary">
+    <div className="acp-history-controls" role="group" aria-label="对话历史">
+      {hasEarlier && <Button size="sm" variant="neutral" className="acp-history-load" disabled={loading} aria-busy={loading} aria-label={loading ? '正在加载更早消息' : undefined} onClick={onLoadEarlier}>
+        {loading ? <Loader2 size={14} aria-hidden="true" className="animate-spin" /> : <ArrowUp size={14} aria-hidden="true" />}
+        加载更早消息
+      </Button>}
+      {hasDetails && <Button size="sm" variant="ghost" className="acp-history-coverage" aria-label="历史记录说明" title="历史记录说明" aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpanded((value) => !value)}><Info size={14} aria-hidden="true" /></Button>}
+    </div>
+    {hasDetails && <p id={detailId} hidden={!expanded} className="acp-history-explanation">{description}。</p>}
+  </div>
+}
 
 export function AcpConsolePage(): JSX.Element {
   const interactive = useInteractionActive()
@@ -61,11 +85,25 @@ export function AcpConsolePage(): JSX.Element {
   const [profiles, setProfiles] = useState<AcpAgentProfile[]>([])
   const [sessions, setSessions] = useState<AcpSessionRecord[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const history = useConversationHistory(root, activeId)
   const [events, setEvents] = useState<Record<string, TimelineEvent[]>>({})
   const [view, setView] = useState<WorkspaceView>('agents')
   const [input, setInput] = useState('')
   const [creating, setCreating] = useState(false)
   const [sending, setSending] = useState<Record<string, boolean>>({})
+  const [turnRequests, setTurnRequests] = useState<Record<string, CurrentTurnRequest>>({})
+  const turnRequestsRef = useRef(turnRequests)
+  const [terminalTurns, setTerminalTurns] = useState<CurrentTurnIdentity[]>([])
+  const changeTurnRequest = useCallback((id: string, update: (current: CurrentTurnRequest | undefined) => CurrentTurnRequest | undefined): void => {
+    const current = turnRequestsRef.current[id]
+    const next = update(current)
+    if (next === current) return
+    const requests = { ...turnRequestsRef.current }
+    if (next) requests[id] = next
+    else delete requests[id]
+    turnRequestsRef.current = requests
+    setTurnRequests(requests)
+  }, [])
   const [operations, setOperations] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState<Record<string, { error: boolean; text: string }>>({})
   const [permissionPending, setPermissionPending] = useState<Record<string, boolean>>({})
@@ -98,7 +136,9 @@ export function AcpConsolePage(): JSX.Element {
   const [taskDir, setTaskDir] = useState('')
   const [atBottom, setAtBottom] = useState(true)
   const streamRef = useRef<HTMLDivElement>(null)
+  const earlierAnchor = useRef<{ sessionId: string; snapshot: TranscriptScrollAnchor } | null>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const newComposerFocus = useRef<{ root: string; sessionId: string; generation?: string; signal?: AbortSignal } | null>(null)
   const mainRef = useRef<HTMLElement>(null)
   const navigationRef = useRef<HTMLDivElement>(null)
   const inspectorReturnFocus = useRef<HTMLElement | null>(null)
@@ -109,15 +149,28 @@ export function AcpConsolePage(): JSX.Element {
   const draftsRef = useRef<Record<string, string>>({})
   const scope = useMemo(() => ({
     root, live: true, sessionIds: new Set<string>(), states: new Map<string, AcpStateEvent>(),
-    reloadSerial: 0, createPending: false, entryResolved: false, sends: new Set<string>(), permissions: new Set<string>(), actions: new Set<string>(), autoResumes: new Set<string>()
+    reloadSerial: 0, createPending: false, entryResolved: false, sends: new Set<string>(), permissions: new Set<string>(), actions: new Set<string>(), actionTokens: new Map<string, symbol>(), autoResumes: new Set<string>()
   }), [root])
   const scopeRef = useRef(scope)
   scopeRef.current = scope
   const isCurrent = useCallback((): boolean => scope.live && scopeRef.current === scope && (useApp.getState().snapshot?.meta.root ?? '') === root, [root, scope])
-  const projectSessions = useMemo(() => sessions.filter((session) => root && projectRootKey(session.projectRoot) === projectRootKey(root)), [sessions, root])
+  const projectSessions = useMemo(() => {
+    const records = new Map<string, AcpSessionRecord>(history.sessions.map((session) => [session.sessionId, { ...session, events: [] }]))
+    if (history.selectedSession) records.set(history.selectedSession.sessionId, { ...history.selectedSession, events: [] })
+    for (const session of sessions) {
+      const archived = records.get(session.sessionId)
+      const latest = archived && (archived.stateRevision ?? 0) > (session.stateRevision ?? 0) ? { ...session, ...archived, events: session.events } : { ...archived, ...session }
+      records.set(session.sessionId, latest)
+    }
+    return [...records.values()].filter((session) => root && projectRootKey(session.projectRoot) === projectRootKey(root)).map((session) => {
+      const summary = history.knownSessions[session.sessionId]
+      return summary ? { ...session, ...conversationManagement(summary), lastActivityAt: summary.lastActivityAt } : session
+    }).sort(compareConversationSessions)
+  }, [sessions, history.sessions, history.knownSessions, history.selectedSession, root])
   const sessionsRef = useRef(projectSessions)
   sessionsRef.current = projectSessions
   const activeSession = projectSessions.find((session) => session.sessionId === activeId) ?? null
+  const selectedArchiveKnown = !supportsPagedHistory() || !!history.knownSessions[activeId ?? '']
   useLayoutEffect(() => {
     const field = composerRef.current
     if (!interactive || view !== 'conversation' || !field) return
@@ -139,22 +192,68 @@ export function AcpConsolePage(): JSX.Element {
   const composerImages = useComposerImages({ root, sessionId: view === 'conversation' ? activeId ?? undefined : undefined, generation: activeSession?.connectionGeneration, isCurrent })
   const activeSelection = useRef({ id: activeId, generation: activeSession?.connectionGeneration, view })
   activeSelection.current = { id: activeId, generation: activeSession?.connectionGeneration, view }
-  const activeEvents = useMemo(() => activeSession ? events[activeSession.sessionId] ?? [] : [], [events, activeSession])
+  useLayoutEffect(() => {
+    const intent = newComposerFocus.current
+    if (!intent) return
+    if (!interactive || intent.signal?.aborted || intent.root !== root || intent.sessionId !== activeId || view !== 'conversation' || inspectorOpen || editor || jiraOpen) { newComposerFocus.current = null; return }
+    if (!activeSession || newConversation) return
+    if (intent.generation && intent.generation !== activeSession.connectionGeneration) { newComposerFocus.current = null; return }
+    intent.generation = activeSession.connectionGeneration
+    if (activeSession.status !== 'ready' || !composerRef.current) return
+    const frame = requestAnimationFrame(() => {
+      const field = composerRef.current
+      const focused = document.activeElement
+      if (newComposerFocus.current !== intent || !isCurrent() || !canInteract() || intent.signal?.aborted || activeSelection.current.id !== intent.sessionId || activeSelection.current.generation !== intent.generation || !field?.isConnected || !field.checkVisibility() || document.querySelector('[role="dialog"]')) return
+      newComposerFocus.current = null
+      if (focused instanceof HTMLElement && focused !== field && (focused.matches('input,textarea,[contenteditable="true"]') || focused.closest('.acp-inspector,.acp-transcript'))) return
+      field.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [root, activeId, activeSession, view, interactive, newConversation, inspectorOpen, editor, jiraOpen, isCurrent, canInteract])
+  useEffect(() => {
+    const cancelFocus = (): void => { newComposerFocus.current = null }
+    document.addEventListener('pointerdown', cancelFocus, true)
+    document.addEventListener('keydown', cancelFocus, true)
+    return () => { document.removeEventListener('pointerdown', cancelFocus, true); document.removeEventListener('keydown', cancelFocus, true) }
+  }, [])
+  const activeEvents = useMemo(() => activeSession ? mergeEvents(history.events[activeSession.sessionId] ?? [], events[activeSession.sessionId] ?? []) : [], [events, history.events, activeSession])
   const items = useMemo(() => compileItems(activeEvents), [activeEvents])
+  const currentTurnRequest = ownsCurrentTurnRequest(turnRequests[activeId ?? ''], activeSession, root) ? turnRequests[activeId ?? ''] : undefined
+  const currentTurnActivity = useMemo(() => projectCurrentTurnActivity({ root, session: activeSession, events: activeEvents, request: currentTurnRequest, terminalTurns, interactive: interactive && view === 'conversation' }), [root, activeSession, activeEvents, currentTurnRequest, terminalTurns, interactive, view])
+  useLayoutEffect(() => {
+    for (const [id, request] of Object.entries(turnRequestsRef.current)) {
+      const owner = sessionsRef.current.find((session) => session.sessionId === id) ?? null
+      const ended = request.turnId && terminalTurns.some((fact) => fact.turnId === request.turnId && fact.sessionId === request.sessionId && fact.connectionGeneration === request.connectionGeneration && projectRootKey(fact.projectRoot) === projectRootKey(request.projectRoot))
+      const disconnected = owner && ['error', 'closed', 'disconnected'].includes(owner.status)
+      if (!ownsCurrentTurnRequest(request, owner, root) || ended || disconnected) changeTurnRequest(id, () => undefined)
+    }
+  }, [root, projectSessions, turnRequests, terminalTurns, changeTurnRequest])
+  const recordTurnFact = useCallback((fact: { projectRoot: string; sessionId: string; connectionGeneration?: string; turnId?: string; status?: string }, terminal = false): void => {
+    if (terminal && fact.turnId && fact.connectionGeneration) {
+      const identity = { projectRoot: fact.projectRoot, sessionId: fact.sessionId, connectionGeneration: fact.connectionGeneration, turnId: fact.turnId }
+      setTerminalTurns((previous) => previous.some((item) => projectRootKey(item.projectRoot) === projectRootKey(identity.projectRoot) && item.sessionId === identity.sessionId && item.connectionGeneration === identity.connectionGeneration && item.turnId === identity.turnId) ? previous : [...previous, identity])
+    }
+    changeTurnRequest(fact.sessionId, (request) => {
+      if (!request || projectRootKey(request.projectRoot) !== projectRootKey(fact.projectRoot) || request.connectionGeneration !== fact.connectionGeneration) return request
+      if (fact.status && ['error', 'closed', 'disconnected'].includes(fact.status)) return undefined
+      if (!fact.turnId || fact.turnId === request.previousTurnId || (request.turnId && fact.turnId !== request.turnId)) return request
+      if (!request.turnId && !fact.status) return request
+      if (fact.status === 'ready' && request.turnId !== fact.turnId) return request
+      if (terminal) return undefined
+      // A ready snapshot with a different old ID is not admission of this request.
+      if (fact.status && !['busy', 'awaiting_permission', 'cancelling'].includes(fact.status)) return request
+      return request.turnId === fact.turnId ? request : { ...request, turnId: fact.turnId }
+    })
+  }, [changeTurnRequest])
   const pendingPerm = useMemo(() => {
     const pending: Record<string, AcpPermissionPayload> = {}
     for (const session of projectSessions) {
       if (!isLiveStatus(session.status) || session.historyKind === 'legacy' || session.historyKind === 'transcript') continue
-      for (const event of events[session.sessionId] ?? []) {
-        if (event.kind !== 'permission' || !event.payload?.requestId) continue
-        const requestId = String(event.payload.requestId)
-        const permission = event.payload.permission as AcpPermissionPayload | undefined
-        if (event.payload.pending === true && permission?.sessionId === session.sessionId && (!permission.connectionGeneration || !session.connectionGeneration || permission.connectionGeneration === session.connectionGeneration)) pending[requestId] = permission
-        else delete pending[requestId]
-      }
+      const livePermissions = session.pendingPermissions ?? scope.states.get(session.sessionId)?.pendingPermissions ?? []
+      for (const permission of livePermissions) if (permission.sessionId === session.sessionId && (!permission.connectionGeneration || !session.connectionGeneration || permission.connectionGeneration === session.connectionGeneration) && (!permission.turnId || permission.turnId === session.turnId)) pending[permission.requestId] = permission
     }
     return pending
-  }, [projectSessions, events])
+  }, [projectSessions, scope])
   const boundTask = activeSession?.taskDir ? [...(snapshot?.tasks ?? []), ...(snapshot?.archived ?? [])].find((task) => task.dirName === activeSession.taskDir) ?? null : null
   const inspectorTask = inspectedTaskDir ? [...(snapshot?.tasks ?? []), ...(snapshot?.archived ?? [])].find((task) => task.dirName === inspectedTaskDir) ?? null : boundTask
   const conversationArtifacts = useMemo(() => activeSession?.taskDir ? projectConversationArtifacts({ projectRoot: root, taskDir: activeSession.taskDir, artifacts: boundTask?.artifacts ?? [], changes: materialChanges, events: activeEvents }) : [], [root, activeSession?.taskDir, boundTask, materialChanges, activeEvents])
@@ -163,6 +262,13 @@ export function AcpConsolePage(): JSX.Element {
 
   const reloadSessions = useCallback(async (): Promise<void> => {
     if (!hasIpc || !root || !isCurrent()) return
+    // Versioned history is metadata-first. The legacy catalogue is a full
+    // transcript snapshot and must remain a compatibility fallback only.
+    if (supportsPagedHistory()) {
+      await history.refresh()
+      if (isCurrent()) history.reloadSelected()
+      return
+    }
     const serial = ++scope.reloadSerial
     try {
       const response = await api.acpSessions()
@@ -170,7 +276,7 @@ export function AcpConsolePage(): JSX.Element {
       if (!response.ok || !response.sessions) { setLoadError(response.error ?? '会话列表加载失败'); return }
       const records = response.sessions.filter((record) => projectRootKey(record.projectRoot) === projectRootKey(root)).map((record) => {
         const state = scope.states.get(record.sessionId)
-        return state ? { ...record, ...state.session, status: state.status, error: state.error } : record
+        return state && (state.stateRevision ?? 0) >= (record.stateRevision ?? 0) ? { ...record, ...state.session, status: state.status, error: state.error, pendingPermissions: state.pendingPermissions ?? state.session?.pendingPermissions ?? record.pendingPermissions, stateRevision: state.stateRevision ?? state.session?.stateRevision ?? record.stateRevision } : record
       })
       for (const record of records) scope.sessionIds.add(record.sessionId)
       setSessions(records)
@@ -180,14 +286,22 @@ export function AcpConsolePage(): JSX.Element {
         for (const id of scope.sessionIds) if (!next[id] && previous[id]) next[id] = previous[id]
         return next
       })
-      if (!scope.entryResolved) {
+      if (!scope.entryResolved && (!readActiveSession(root) || records.some((record) => record.sessionId === readActiveSession(root)) || typeof api.acpHistorySession !== 'function')) {
         scope.entryResolved = true
-        const entry = resolveWorkspaceEntry(readWorkspaceView(root), readActiveSession(root), records)
+        const entry = resolveWorkspaceEntry(readWorkspaceView(root), readActiveSession(root), records.filter((session) => !session.archivedAt))
         setActiveId(entry.activeId); setView(entry.view)
-      } else setActiveId((current) => records.some((record) => record.sessionId === current) || (current && scope.sessionIds.has(current)) ? current : null)
+      } else if (scope.entryResolved) setActiveId((current) => records.some((record) => record.sessionId === current) || (current && (scope.sessionIds.has(current) || current === readActiveSession(root))) ? current : null)
       setLoadError('')
     } catch (error) { if (isCurrent() && serial === scope.reloadSerial) setLoadError(failureText(error)) }
-  }, [root, scope, isCurrent])
+  }, [root, scope, isCurrent, history.refresh, history.reloadSelected])
+
+  useEffect(() => {
+    if (!supportsPagedHistory() || !isCurrent() || scope.entryResolved || history.loading) return
+    const entry = resolveWorkspaceEntry(readWorkspaceView(root), readActiveSession(root), projectSessions.filter((session) => !session.archivedAt))
+    if (readActiveSession(root) && !projectSessions.some((session) => session.sessionId === readActiveSession(root)) && !history.selectionResolved) return
+    scope.entryResolved = true
+    setActiveId(entry.activeId); setView(entry.view)
+  }, [root, scope, isCurrent, history.loading, history.selectionResolved, history.sessions, projectSessions])
 
   const reloadCatalogue = useCallback(async (): Promise<void> => {
     if (!hasIpc || !root || !isCurrent()) return
@@ -208,19 +322,24 @@ export function AcpConsolePage(): JSX.Element {
   const updateSession = useCallback((record: AcpSessionRecord): void => {
     if (!isCurrent() || projectRootKey(record.projectRoot) !== projectRootKey(root)) return
     scope.sessionIds.add(record.sessionId)
-    scope.states.set(record.sessionId, { sessionId: record.sessionId, projectRoot: record.projectRoot, status: record.status, error: record.error, connectionGeneration: record.connectionGeneration, session: record })
+    recordTurnFact(record, record.status === 'ready')
+    scope.states.set(record.sessionId, { sessionId: record.sessionId, projectRoot: record.projectRoot, status: record.status, error: record.error, connectionGeneration: record.connectionGeneration, pendingPermissions: record.pendingPermissions, stateRevision: record.stateRevision, session: record })
     setSessions((previous) => previous.some((item) => item.sessionId === record.sessionId) ? previous.map((item) => item.sessionId === record.sessionId ? record : item) : [record, ...previous])
-    setEvents((previous) => ({ ...previous, [record.sessionId]: mergeEvents(record.events ?? [], previous[record.sessionId] ?? []) }))
-  }, [root, scope, isCurrent])
+    // Resume/state snapshots are bounded tails and may begin inside an older
+    // answer. Modern history owns saved content; onAcpOutput owns live content.
+    if (!supportsPagedHistory()) setEvents((previous) => ({ ...previous, [record.sessionId]: mergeEvents(record.events ?? [], previous[record.sessionId] ?? []) }))
+  }, [root, scope, isCurrent, recordTurnFact])
 
   useEffect(() => {
     scope.live = true
+    earlierAnchor.current = null
     setSessions([]); setProfiles([]); setAgents([]); setEvents({}); setActiveId(readActiveSession(root)); setInput('')
     setCreating(false); setSending({}); setOperations({}); setFeedback({}); setPermissionPending({}); setPermissionErrors({}); setLoadError('')
+    turnRequestsRef.current = {}; setTurnRequests({}); setTerminalTurns([])
     setJiraOpen(false); setEditor(null); setEngineSetupOpen(false); setNewConversation(null); setNewConversationError(''); setReturnToPicker(false); setInspectedSessionId(null); setRoleSection('overview'); setInspectorOpen(false); setSidebarOpen(false); setTaskDir('')
     setView('agents'); setReferences([]); setDraftIntent('plain'); setDraftBackup(''); setInspectedProfileId(null); setInspectedTaskDir(null)
     setMaterialChanges([]); setDocumentTarget(null); setDocumentExpanded(false); setReadableReferences({}); setLightweightPlan(false)
-    draftsRef.current = {}; draftReferencesRef.current = {}; composing.current = false
+    draftsRef.current = {}; draftReferencesRef.current = {}; composing.current = false; newComposerFocus.current = null
     if (!hasIpc || !root) return () => { scope.live = false }
     const offOut = api.onAcpOutput((event) => {
       if (!isCurrent() || projectRootKey(event.projectRoot) !== projectRootKey(root)) return
@@ -238,6 +357,7 @@ export function AcpConsolePage(): JSX.Element {
       const id = event.sessionId
       const knownGeneration = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
       if (knownGeneration && event.connectionGeneration && knownGeneration !== event.connectionGeneration) return
+      if (event.source === 'acp') recordTurnFact({ ...event, sessionId: id }, event.kind === 'turn-done')
       scope.sessionIds.add(id)
       setEvents((previous) => ({ ...previous, [id]: mergeEvents(previous[id] ?? [], [event]) }))
       const observation = event.payload?.observation as AcpStartupObservation | undefined
@@ -248,9 +368,12 @@ export function AcpConsolePage(): JSX.Element {
     })
     const offState = api.onAcpState((state) => {
       if (!isCurrent() || projectRootKey(state.projectRoot) !== projectRootKey(root)) return
+      const known = scope.states.get(state.sessionId)
+      if (known?.stateRevision !== undefined && state.stateRevision !== undefined && state.stateRevision < known.stateRevision) return
+      recordTurnFact(state, state.status === 'ready')
       scope.sessionIds.add(state.sessionId); scope.states.set(state.sessionId, state)
       if (state.session) updateSession(state.session)
-      else setSessions((previous) => previous.map((session) => session.sessionId === state.sessionId ? { ...session, status: state.status, error: state.error, connectionGeneration: state.connectionGeneration ?? session.connectionGeneration } : session))
+      else setSessions((previous) => previous.map((session) => session.sessionId === state.sessionId ? { ...session, status: state.status, error: state.error, connectionGeneration: state.connectionGeneration ?? session.connectionGeneration, turnId: state.turnId ?? session.turnId, pendingPermissions: state.pendingPermissions ?? [], stateRevision: state.stateRevision, historyPersistence: state.historyPersistence ?? session.historyPersistence } : session))
     })
     const offMaterials = api.onMaterialUpdated((event) => {
       if (!isCurrent() || !event.projectRoot || projectRootKey(event.projectRoot) !== projectRootKey(root) || !event.changes) return
@@ -264,7 +387,17 @@ export function AcpConsolePage(): JSX.Element {
       if (!isCurrent()) return
       if (event.projectRoot && projectRootKey(event.projectRoot) !== projectRootKey(root)) return
       const known = scope.states.get(event.sessionId)
-      if (known?.connectionGeneration && event.connectionGeneration && known.connectionGeneration !== event.connectionGeneration) return
+      const record = sessionsRef.current.find((session) => session.sessionId === event.sessionId)
+      const generation = known?.connectionGeneration ?? record?.connectionGeneration
+      if (generation && event.connectionGeneration && generation !== event.connectionGeneration) return
+      const request = turnRequestsRef.current[event.sessionId]
+      if (request && (!event.projectRoot || event.connectionGeneration !== request.connectionGeneration)) return
+      const currentTurnId = request?.turnId ?? known?.turnId ?? known?.session?.turnId ?? record?.turnId
+      if (event.projectRoot && event.turnId) recordTurnFact({ projectRoot: event.projectRoot, sessionId: event.sessionId, connectionGeneration: event.connectionGeneration, turnId: event.turnId }, true)
+      // A delayed terminal callback belongs to its original turn, even when the
+      // next submission is still bridging an old ready metadata snapshot.
+      if (request && (!request.turnId || event.turnId !== request.turnId)) return
+      if (currentTurnId && event.turnId !== currentTurnId) return
       if (event.session) updateSession(event.session)
       scope.states.set(event.sessionId, { ...known, ...event, projectRoot: root, session: event.session ?? (known?.session ? { ...known.session, status: event.status, error: event.error } : undefined) })
       if (scope.states.size > 64) { const oldest = scope.states.keys().next().value; if (oldest) scope.states.delete(oldest) }
@@ -273,7 +406,7 @@ export function AcpConsolePage(): JSX.Element {
     })
     void reloadCatalogue(); void reloadSessions()
     return () => { scope.live = false; offOut(); offState(); offDone(); offMaterials() }
-  }, [root, scope, isCurrent, reloadCatalogue, reloadSessions, updateSession])
+  }, [root, scope, isCurrent, reloadCatalogue, reloadSessions, updateSession, recordTurnFact])
 
   useLayoutEffect(() => {
     if (!activeId || !isCurrent()) return
@@ -288,9 +421,25 @@ export function AcpConsolePage(): JSX.Element {
   }, [root, activeId, view, isCurrent])
   useLayoutEffect(() => {
     const element = streamRef.current
+    const anchor = earlierAnchor.current
+    if (element && anchor && anchor.sessionId === activeId && !history.loadingEarlier) {
+      earlierAnchor.current = null
+      restoreTranscriptAnchor(element, anchor.snapshot)
+      writeSessionView(root, anchor.sessionId, { scrollTop: element.scrollTop, follow: false })
+      return
+    }
     if (interactive && element && followRef.current) element.scrollTop = element.scrollHeight
-  }, [activeEvents, activeSession?.startup, interactive])
+  }, [activeEvents, activeSession?.startup, activeId, history.loadingEarlier, interactive, currentTurnActivity?.phase])
+  const loadEarlier = (): void => {
+    const stream = streamRef.current
+    if (!stream || !activeId || history.loadingEarlier) return
+    earlierAnchor.current = { sessionId: activeId, snapshot: captureTranscriptAnchor(stream) }
+    followRef.current = false; setAtBottom(false)
+    void history.loadEarlier()
+  }
   const selectSession = (id: string): void => {
+    newComposerFocus.current = null
+    earlierAnchor.current = null
     const record = projectSessions.find((item) => item.sessionId === id)
     if (record) rememberVisit({ kind: 'agent', target: id, title: record.title || record.profileSnapshot?.name || record.agentName })
     const element = streamRef.current
@@ -299,6 +448,25 @@ export function AcpConsolePage(): JSX.Element {
     setActiveId(id); setView('conversation'); setSidebarOpen(false); setInspectorOpen(false); setEditor(null)
     setDocumentTarget(null); setDocumentExpanded(false); setReadableReferences({})
     writeActiveSession(root, id); writeWorkspaceView(root, 'conversation')
+  }
+  const updateConversation = async (id: string, patch: ConversationUpdate) => {
+    const requestedSelection = activeSelection.current
+    const result = await history.update(id, patch)
+    if (!result || !isCurrent() || !canInteract() || interactionSignal?.aborted || activeSelection.current.id !== requestedSelection.id || activeSelection.current.view !== requestedSelection.view) return null
+    if (patch.archived === true && requestedSelection.id === id) {
+      const next = sessionsRef.current.find((session) => session.sessionId !== id && !session.archivedAt && !isDiagnosticConversation(session))
+      if (next) selectSession(next.sessionId)
+      else {
+        earlierAnchor.current = null
+        if (streamRef.current) writeSessionView(root, id, { scrollTop: streamRef.current.scrollTop, follow: followRef.current })
+        scope.entryResolved = true
+        setActiveId(null); setView('agents'); setSidebarOpen(false); setInspectorOpen(false); setEditor(null)
+        setDocumentTarget(null); setDocumentExpanded(false); setReadableReferences({})
+        writeActiveSession(root, null); writeWorkspaceView(root, 'agents')
+      }
+    }
+    if (patch.archived === false) history.setArchive('active')
+    return result
   }
   const agentSessionTarget = useMy((state) => state.agentSessionTarget)
   useEffect(() => {
@@ -321,6 +489,7 @@ export function AcpConsolePage(): JSX.Element {
       const response = await api.acpSessionNew({ agentId, taskDir: selectedTask, profileId })
       if (!isCurrent()) return
       if (response.ok && response.sessionId) {
+        if (canInteract() && !interactionSignal?.aborted) newComposerFocus.current = { root, sessionId: response.sessionId, signal: interactionSignal }
         scope.entryResolved = true
         scope.sessionIds.add(response.sessionId); setActiveId(response.sessionId); setView('conversation'); setSidebarOpen(false); setInspectorOpen(false); setNewConversation(null)
         setInspectorTab('agent'); setInspectedSessionId(null); setInspectedProfileId(profileId ?? null); setRoleSection('overview')
@@ -331,10 +500,10 @@ export function AcpConsolePage(): JSX.Element {
       } else { setNewConversationError(response.error ?? '创建失败，请检查执行引擎状态。'); pushToast({ kind: 'error', title: '会话创建失败', body: response.error ?? '' }) }
     } catch (error) { if (isCurrent()) { setNewConversationError(failureText(error)); pushToast({ kind: 'error', title: '会话创建失败', body: failureText(error) }) } }
     finally { scope.createPending = false; if (isCurrent()) setCreating(false) }
-  }, [root, scope, isCurrent, pushToast, reloadSessions])
+  }, [root, scope, isCurrent, canInteract, interactionSignal, pushToast, reloadSessions])
 
   const send = useCallback(async (): Promise<void> => {
-    if (!isCurrent() || !canInteract() || !activeSession || !activeId || !canSend(activeSession) || scope.sends.has(activeId) || composerImages.pending || (!input.trim() && !composerImages.images.length)) return
+    if (!isCurrent() || !canInteract() || !activeSession || !activeId || !selectedArchiveKnown || !canSend(activeSession) || scope.sends.has(activeId) || ownsCurrentTurnRequest(turnRequestsRef.current[activeId], activeSession, root) || composerImages.pending || (!input.trim() && !composerImages.images.length)) return
     const id = activeId, text = input.trim(), submittedDraft = input
     const submittedReferences = references
     const submittedImages = composerImages.images
@@ -344,11 +513,25 @@ export function AcpConsolePage(): JSX.Element {
     if (submittedReferences.some((source) => projectRootKey(source.projectRoot) !== projectRootKey(root) || source.targetSessionId !== id || source.taskDir !== activeSession.taskDir || source.targetConnectionGeneration !== activeSession.connectionGeneration)) {
       setFeedback((previous) => ({ ...previous, [id]: { error: true, text: '引用的项目、任务或会话已变化。草稿已保留，请重新阅读并引用来源。' } })); return
     }
+    const request: CurrentTurnRequest = { requestId: crypto.randomUUID(), projectRoot: root, sessionId: id, connectionGeneration: activeSession.connectionGeneration, previousTurnId: activeSession.turnId, phase: 'submitting' }
+    const clearRequest = (): void => changeTurnRequest(id, (current) => current?.requestId === request.requestId ? undefined : current)
+    // Explicit submission returns to the current turn. Later passive updates
+    // still obey onScroll if the reader chooses to leave the bottom again.
+    earlierAnchor.current = null; followRef.current = true; setAtBottom(true)
+    writeSessionView(root, id, { follow: true })
+    changeTurnRequest(id, () => request)
     scope.sends.add(id); setSending((previous) => ({ ...previous, [id]: true })); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '请求确认中，草稿暂时保留。' } }))
     try {
       const response = await api.acpSessionPrompt(id, text, { expectedConnectionGeneration: activeSession.connectionGeneration, sourceReferences: submittedReferences, images: submittedImages })
       if (!isCurrent()) return
+      const generation = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
+      if (generation !== request.connectionGeneration) { clearRequest(); return }
       if (response.ok) {
+        changeTurnRequest(id, (current) => {
+          if (current?.requestId !== request.requestId) return current
+          const turnId = current.turnId ?? response.turnId
+          return turnId ? { ...current, phase: 'accepted', turnId } : undefined
+        })
         composerImages.consume(id, submittedImages)
         const latestDraft = draftsRef.current[id] ?? readSessionView(root, id).draft
         const latestReferences = draftReferencesRef.current[id] ?? readSessionView(root, id).sourceReferences ?? []
@@ -357,35 +540,71 @@ export function AcpConsolePage(): JSX.Element {
           if (readActiveSession(root) === id) { setInput(''); setReferences([]); setDraftIntent('plain') }
         }
         setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } }))
-      } else setFeedback((previous) => ({ ...previous, [id]: { error: true, text: response.reason === 'SOURCE_CHANGED' ? `引用文件已变化，尚未发送。草稿与原版本引用已保留，请查看变化后重新引用。${response.sources?.map((source) => ` ${source.relativePath}`).join('') ?? ''}` : response.error ?? '发送被拒绝，草稿已保留。' } }))
-    } catch (error) { if (isCurrent()) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })) }
+      } else { clearRequest(); setFeedback((previous) => ({ ...previous, [id]: { error: true, text: response.reason === 'SOURCE_CHANGED' ? `引用文件已变化，尚未发送。草稿与原版本引用已保留，请查看变化后重新引用。${response.sources?.map((source) => ` ${source.relativePath}`).join('') ?? ''}` : response.error ?? '发送被拒绝，草稿已保留。' } })) }
+    } catch (error) {
+      if (isCurrent()) {
+        clearRequest()
+        const generation = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
+        if (generation === request.connectionGeneration) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } }))
+      }
+    }
     finally { scope.sends.delete(id); if (isCurrent()) setSending((previous) => ({ ...previous, [id]: false })) }
-  }, [input, activeId, activeSession, references, root, scope, isCurrent, canInteract, composerImages])
+  }, [input, activeId, activeSession, selectedArchiveKnown, references, root, scope, isCurrent, canInteract, composerImages, changeTurnRequest])
 
   const sessionAction = async (action: 'cancel' | 'kill' | 'resume'): Promise<void> => {
-    if (!activeSession || !isCurrent() || scope.actions.has(activeSession.sessionId)) return
+    if (!activeSession || !isCurrent() || !canInteract() || (scope.actions.has(activeSession.sessionId) && (action !== 'kill' || scope.actionTokens.get(activeSession.sessionId)?.description === 'kill'))) return
+    if (action === 'resume' && (activeSession.archivedAt || !selectedArchiveKnown)) return
     const id = activeSession.sessionId
+    const operationToken = Symbol(action)
+    scope.actionTokens.set(id, operationToken)
     if (action === 'resume') scope.autoResumes.add(id)
     scope.actions.add(id); setOperations((previous) => ({ ...previous, [id]: action }))
     setFeedback((previous) => ({ ...previous, [id]: { error: false, text: action === 'resume' ? '正在连接原会话…' : '正在请求停止…' } }))
     try {
       const response = await (action === 'cancel' ? api.acpSessionCancel(id) : action === 'kill' ? api.acpSessionKill(id) : api.acpSessionResume(id))
-      if (!isCurrent()) return
+      if (!isCurrent() || scope.actionTokens.get(id) !== operationToken) return
       setFeedback((previous) => ({ ...previous, [id]: { error: !response.ok, text: response.ok ? action === 'resume' ? '' : action === 'kill' ? '会话已停止。' : '正在中止本轮…' : response.error ?? '操作失败，可以重试。' } }))
       if (response.ok) await reloadSessions()
+    } catch (error) { if (isCurrent() && scope.actionTokens.get(id) === operationToken) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })) }
+    finally { if (scope.actionTokens.get(id) === operationToken) { scope.actionTokens.delete(id); scope.actions.delete(id); if (isCurrent()) setOperations((previous) => ({ ...previous, [id]: '' })) } }
+  }
+
+  const recoverModel = async (modelId: string): Promise<void> => {
+    if (!activeSession?.connectionGeneration || !selectedArchiveKnown || activeSession.archivedAt || !isCurrent() || !canInteract() || scope.actions.has(activeSession.sessionId)) return
+    const id = activeSession.sessionId, operationToken = Symbol('recover-model')
+    scope.actions.add(id); scope.actionTokens.set(id, operationToken); scope.autoResumes.add(id)
+    setOperations((previous) => ({ ...previous, [id]: 'recover-model' })); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } }))
+    try {
+      const response = await api.acpSessionRecoverModel(id, { modelId, expectedConnectionGeneration: activeSession.connectionGeneration })
+      if (!isCurrent() || scope.actionTokens.get(id) !== operationToken) return
+      if (response.session) updateSession(response.session)
+      setFeedback((previous) => ({ ...previous, [id]: { error: !response.ok, text: response.ok ? '' : response.error ?? '执行引擎未确认恢复，请查看连接详情。' } }))
+      if (response.ok) await reloadSessions()
+    } catch (error) { if (isCurrent() && scope.actionTokens.get(id) === operationToken) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })) }
+    finally { if (scope.actionTokens.get(id) === operationToken) { scope.actionTokens.delete(id); scope.actions.delete(id); if (isCurrent()) setOperations((previous) => ({ ...previous, [id]: '' })) } }
+  }
+
+  const retryHistory = async (): Promise<void> => {
+    if (!activeSession || !isCurrent() || !canInteract()) return
+    const id = activeSession.sessionId
+    try {
+      const result = await api.acpHistoryRetry(id)
+      if (!isCurrent()) return
+      if (result.ok) { updateSession({ ...activeSession, historyPersistence: result.historyPersistence }); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } })); history.reloadSelected() }
+      else setFeedback((previous) => ({ ...previous, [id]: { error: true, text: result.error } }))
     } catch (error) { if (isCurrent()) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })) }
-    finally { scope.actions.delete(id); if (isCurrent()) setOperations((previous) => ({ ...previous, [id]: '' })) }
   }
 
   useEffect(() => {
     if (view !== 'conversation') return
-    if (!interactive || !canInteract() || !isCurrent() || !activeSession) return
+    if (!interactive || !canInteract() || !isCurrent() || !activeSession || activeSession.archivedAt) return
+    if (supportsPagedHistory() && history.selectedSession?.sessionId !== activeSession.sessionId) return
     if (scope.autoResumes.has(activeSession.sessionId)) return
     // A view switch is not retry authority. Failed loads need the visible
     // retry action; a ready owner and an explicit Stop are never restarted.
     scope.autoResumes.add(activeSession.sessionId)
     if (activeSession.canResume && !isLiveStatus(activeSession.status) && activeSession.status !== 'error') void sessionAction('resume')
-  }, [interactive, view, activeSession?.sessionId, activeSession?.status, activeSession?.canResume, isCurrent, canInteract])
+  }, [interactive, view, activeSession?.sessionId, activeSession?.status, activeSession?.canResume, activeSession?.archivedAt, history.selectedSession?.sessionId, isCurrent, canInteract])
 
   const respondPerm = useCallback(async (requestId: string, optionId: string): Promise<void> => {
     const permission = pendingPerm[requestId]
@@ -400,6 +619,7 @@ export function AcpConsolePage(): JSX.Element {
   }, [pendingPerm, scope, isCurrent, reloadSessions])
 
   const showView = (next: WorkspaceView): void => {
+    if (next === 'history') next = 'conversation'
     useMy.getState().requestAgentView(null)
     scope.entryResolved = true; setView(next); writeWorkspaceView(root, next); setSidebarOpen(false)
     if (next !== 'conversation') setInspectorOpen(false)
@@ -521,7 +741,8 @@ export function AcpConsolePage(): JSX.Element {
     } catch (error) { if (isCurrent()) setFeedback((previous) => ({ ...previous, [sessionId]: { error: true, text: failureText(error) } })) }
     finally { scope.actions.delete(sessionId); if (isCurrent()) setBinding(false) }
   }
-  const inspectorSession = inspectedSessionId ? projectSessions.find((session) => session.sessionId === inspectedSessionId) : undefined
+  const inspectedSession = inspectedSessionId ? projectSessions.find((session) => session.sessionId === inspectedSessionId) : undefined
+  const inspectorSession = useMemo(() => inspectedSession ? { ...inspectedSession, events: mergeEvents(history.events[inspectedSession.sessionId] ?? [], events[inspectedSession.sessionId] ?? []) } : undefined, [inspectedSession, events, history.events])
   const currentProfile = profiles.find((item) => item.id === (inspectorSession?.profileSnapshot?.id ?? inspectedProfileId))
   const profile = inspectorSession?.profileSnapshot ?? currentProfile
   const profileSessions = profile ? projectSessions.filter((session) => session.profileSnapshot?.id === profile.id && !isDiagnosticConversation(session)) : []
@@ -535,8 +756,15 @@ export function AcpConsolePage(): JSX.Element {
   const editProfile = (selected: AcpAgentProfile, resumePicker = false): void => {
     setNewConversation(null); setReturnToPicker(resumePicker); setInspectedSessionId(null); setInspectedProfileId(selected.id); setEditor(selected); setInspectorTab('agent'); setInspectorOpen(true)
   }
-  const isReadOnly = Boolean(activeSession && !isLiveStatus(activeSession.status) && !activeSession.canResume)
-  const historyRecords = projectSessions.filter((session) => isDiagnosticConversation(session) || session.historyKind === 'legacy')
+  const isReadOnly = Boolean(activeSession && (activeSession.archivedAt || (!isLiveStatus(activeSession.status) && !activeSession.canResume && !activeSession.cleanupRequired)))
+  const canEndSession = view === 'conversation' && activeSession && (isLiveStatus(activeSession.status) || activeSession.restorePending)
+  const visiblePermissions = Object.values(pendingPerm).filter((permission) => permission.sessionId === activeId && !items.some((item) => item.type === 'perm' && item.ev.payload?.requestId === permission.requestId))
+  const openRecordedArtifact = (file: { path: string }): void => {
+    if (!isCurrent() || !canInteract()) return
+    const artifact = [...conversationArtifacts, ...projectArtifacts].find((candidate) => projectRootKey(`${root}/${candidate.relativePath}`) === projectRootKey(file.path))
+    if (artifact) { openDocument(artifact) }
+    else pushToast({ kind: 'info', title: '正在核对任务材料', body: '该路径尚未出现在当前任务的可验证材料清单，请刷新后从任务详情阅读。' })
+  }
   const customRoles = filteredProfiles.filter((item) => !isStarterRole(item))
   const starterRoles = filteredProfiles.filter(isStarterRole)
   const renderRole = (item: AcpAgentProfile): JSX.Element => {
@@ -546,27 +774,21 @@ export function AcpConsolePage(): JSX.Element {
 
   if (!root) return <div className="acp-empty text-my-sm">请先打开项目，再查看该项目的 Agent 会话。</div>
   return <div className={clsx('acp-workspace', sidebarCollapsed && !sidebarOpen && 'is-sidebar-collapsed')} style={sidebarWidthStyle}>
-    <div ref={navigationRef} className={clsx('acp-navigation-host flex min-h-0 shrink-0', sidebarCollapsed && !sidebarOpen && 'is-collapsed')}><ConversationNavigation sessions={projectSessions} activeId={activeId} view={view} onView={showView} onSelect={selectSession} onNew={() => openNewConversation()} collapsed={sidebarCollapsed} open={sidebarOpen} onClose={() => setSidebarOpen(false)} /></div>
+    <div ref={navigationRef} className={clsx('acp-navigation-host flex min-h-0 shrink-0', sidebarCollapsed && !sidebarOpen && 'is-collapsed')}><ConversationNavigation sessions={projectSessions} activeId={activeId} view={view} onView={showView} onSelect={selectSession} onNew={() => openNewConversation()} query={history.query} onQuery={history.setQuery} archive={history.archive} onArchive={history.setArchive} canManage={history.canManage} mutationBusy={history.mutationBusy} mutationErrors={history.mutationErrors} onUpdate={updateConversation} hasMore={history.hasMore} loadingMore={history.loadingMore} onLoadMore={() => void history.loadMore()} collapsed={sidebarCollapsed} open={sidebarOpen} onClose={() => setSidebarOpen(false)} /></div>
     <main ref={mainRef} className="acp-main my-conversation-frame">
       <header className="acp-workspace-header">
         <Button size="sm" variant="ghost" className={clsx('acp-mobile-only acp-sidebar-toggle', sidebarCollapsed && 'is-visible')} title="展开会话侧栏" onClick={() => { if (window.innerWidth > 900) useMy.getState().toggleSidebar(); else setSidebarOpen(true) }}><Menu size={16} /></Button>
-        <div className="acp-header-identity">{view === 'conversation' && activeSession ? <><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" aria-hidden="true" /><strong>{activeSession.title ?? activeSession.profileSnapshot?.name ?? activeSession.agentName}</strong></> : <strong>{view === 'history' ? '历史' : view === 'agents' ? '角色' : '对话'}</strong>}</div>
+        <div className="acp-header-identity">{view === 'conversation' && activeSession ? <><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" aria-hidden="true" /><strong>{activeSession.title ?? activeSession.profileSnapshot?.name ?? activeSession.agentName}</strong></> : <strong>{view === 'agents' ? '角色' : '对话'}</strong>}</div>
         <div className="acp-header-actions">
           {view === 'conversation' && activeSession && <>
-            <span role="status" className={clsx('acp-session-status inline-flex items-center gap-1 text-my-sm', STATUS_COLOR[activeSession.status])}>{(activeSession.status === 'starting' || operations[activeSession.sessionId] === 'resume') && <Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" />}{operations[activeSession.sessionId] === 'resume' ? '正在连接…' : SESSION_LABEL[activeSession.status]}</span>
-            {['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status) && <Button variant="ghost" size="sm" title={activeSession.status === 'cancelling' ? '正在中止本轮' : '中止本轮'} disabled={Boolean(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /></Button>}
+            <span role="status" className={clsx('acp-session-status inline-flex items-center gap-1 text-my-sm', STATUS_COLOR[activeSession.status])}>{(activeSession.status === 'starting' || ['resume', 'recover-model'].includes(operations[activeSession.sessionId])) && <Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" />}{operations[activeSession.sessionId] === 'recover-model' ? '验证模型…' : operations[activeSession.sessionId] === 'resume' ? '正在连接…' : activeSession.status === 'error' ? '当前未连接' : SESSION_LABEL[activeSession.status]}</span>
           </>}
           {view === 'conversation' && activeSession && <><button type="button" className="acp-header-task my-icon-control" title={boundTask?.record?.title ?? activeSession.taskDir ?? '查看任务与材料'} aria-label="查看任务与材料" onClick={() => openTask()}><Folder size={16} /></button><button type="button" className="my-icon-control" title="会话配置与材料" aria-label="会话配置与材料" onClick={() => openAgent()}><Settings2 size={16} /></button></>}
           {view !== 'conversation' && <Button size="sm" variant="ghost" title="执行引擎与本机环境" onClick={() => { showView('agents'); setEngineSetupOpen((current) => !current) }}><Settings2 size={15} /></Button>}
-          <Dropdown align="right" trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="更多会话操作" aria-expanded={open} onClick={toggle}><Ellipsis size={17} /></button>}>
-            {(close) => <>
-              <DropdownItem icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />} onClick={() => { close(); void reloadSessions(); void reloadCatalogue() }}>刷新</DropdownItem>
-              {view === 'conversation' && activeSession && (isLiveStatus(activeSession.status) || activeSession.restorePending) && <DropdownItem danger icon={<X size={14} />} disabled={Boolean(operations[activeSession.sessionId])} onClick={() => { close(); void sessionAction('kill') }}>结束当前会话</DropdownItem>}
-            </>}
-          </Dropdown>
+          {!canEndSession && !(view === 'conversation' && activeSession) ? <Button size="sm" variant="ghost" className="acp-refresh-control" aria-label="刷新会话" title="刷新会话" onClick={() => { void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}><RefreshCw size={14} className={loading || history.loading ? 'animate-spin' : ''} />刷新</Button> : activeSession && <Dropdown align="right" trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="更多会话操作" aria-expanded={open} onClick={toggle}><Ellipsis size={17} /></button>}>{(close) => <><DropdownItem icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />} onClick={() => { close(); void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}>刷新</DropdownItem>{canEndSession && <DropdownItem danger icon={<X size={14} />} disabled={operations[activeSession.sessionId] === 'kill' || operations[activeSession.sessionId] === 'cancel'} onClick={() => { close(); void sessionAction('kill') }}>结束当前会话</DropdownItem>}</>}</Dropdown>}
         </div>
       </header>
-      {loadError && <div role="alert" className="acp-notice">{loadError}<button className="ml-3 underline" onClick={() => { void reloadCatalogue(); void reloadSessions() }}>重试加载</button></div>}
+      {(loadError || history.error) && <div role="alert" className="acp-notice">{loadError || history.error}<button className="ml-3 underline" onClick={() => { void reloadCatalogue(); void reloadSessions(); void history.refresh(); history.reloadSelected() }}>重试加载</button></div>}
       {view === 'agents' ? <section className="acp-catalogue my-scrollbar"><PageContent variant="centered">
         <div className="acp-catalogue-heading"><div><h1>角色</h1><p className="mt-1 text-my-sm text-my-secondary">定义产品助手、研发助手等工作角色，再选择 Codex 或 Claude Code 为它执行。</p></div><Button size="sm" variant="outline" onClick={() => openNewConversation()}><MessageSquare size={14} />新建会话</Button><Button size="sm" variant="primary" disabled={!hasIpc} onClick={() => createProfile()}><Plus size={14} />创建角色</Button></div>
         <ol className="acp-onboarding" aria-label="开始使用 Agent"><li><button onClick={() => setEngineSetupOpen(true)}><span>1</span><strong>配置执行引擎</strong><small>安装、登录与本机环境</small></button></li><li><button onClick={() => createProfile()}><span>2</span><strong>创建工作角色</strong><small>名称、职责与工作指令</small></button></li><li><button onClick={() => openNewConversation()}><span>3</span><strong>选择角色开始会话</strong><small>明确连接后再选择模型</small></button></li></ol>
@@ -576,26 +798,25 @@ export function AcpConsolePage(): JSX.Element {
         {customRoles.length === 0 && <div className="acp-role-empty"><Bot size={24} /><div><strong>{loading ? '正在加载角色…' : libraryQuery ? '没有匹配的自定义角色' : '创建属于你的第一个角色'}</strong><p>{libraryQuery ? '可以修改搜索内容，或查看下方的预置起点。' : '执行引擎只负责运行。把角色的职责、工作边界与输出要求保存在这里，下次可以直接复用。'}</p></div><Button size="sm" variant="primary" disabled={!hasIpc} onClick={() => createProfile()}>创建角色</Button></div>}
         {starterRoles.length > 0 && <details className="acp-starter-roles" open={customRoles.length === 0}><summary>预置起点 · 保留已有配置和历史会话</summary><p className="mb-3 mt-2 text-my-sm text-my-tertiary">这些是原有的预置角色，可继续使用，也可编辑名称和指令形成自己的工作角色。</p><div className="acp-agent-grid">{starterRoles.map(renderRole)}</div></details>}
         <details className="mt-8 border-t border-my-line pt-4 text-my-sm text-my-tertiary"><summary className="cursor-pointer">Jira 工单与已有对话</summary><div className="mt-3 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => openNewConversation()}>选择角色新建会话</Button><Button size="sm" variant="ghost" onClick={() => setJiraOpen(true)}><GitBranch size={13} />从 Jira 选工单开始</Button></div></details>
-      </PageContent></section> : view === 'history' ? <section className="acp-catalogue my-scrollbar"><PageContent variant="centered"><h1>历史与诊断记录</h1><p className="mb-5 mt-2 text-my-sm text-my-secondary">旧版与开发诊断记录保留供阅读。打开记录不会启动执行引擎。</p>{historyRecords.map((session) => <button className="acp-recent-row" key={session.sessionId} data-acp-session={session.sessionId} onClick={() => selectSession(session.sessionId)}><History size={14} /><span>{session.title ?? `${session.agentName} 会话`}</span></button>)}{historyRecords.length === 0 && <p className="text-my-sm text-my-tertiary">暂无旧版或诊断记录</p>}</PageContent></section> : !activeSession ? <div className="acp-empty"><MessageSquare size={25} className="mx-auto" /><p>选择最近会话，或选择 Agent 开始新对话。</p><Button variant="outline" onClick={() => openNewConversation()}>选择角色新建会话</Button></div> : <section className="acp-content">
+      </PageContent></section> : !activeSession ? <div className="acp-empty"><MessageSquare size={25} className="mx-auto" /><p>选择最近会话，或选择 Agent 开始新对话。</p><Button variant="outline" onClick={() => openNewConversation()}>选择角色新建会话</Button></div> : <section className="acp-content">
         <div ref={streamRef} className="acp-transcript my-scrollbar" onScroll={(event) => {
           const element = event.currentTarget, follow = element.scrollHeight - element.scrollTop - element.clientHeight < 48
+          if (history.loadingEarlier && earlierAnchor.current?.sessionId === activeSession.sessionId) earlierAnchor.current.snapshot = captureTranscriptAnchor(element)
           followRef.current = follow; setAtBottom(follow); writeSessionView(root, activeSession.sessionId, { scrollTop: element.scrollTop, follow })
         }}><div className="acp-transcript-content my-conversation-column acp-chat-copy">
+          {(history.hasEarlier || history.startsMidTurn || history.coverage?.state === 'partial' || history.coverage?.state === 'unknown') && <HistoryBoundary key={`history:${root}:${activeSession.sessionId}`} hasEarlier={history.hasEarlier} startsMidTurn={history.startsMidTurn} coverage={history.coverage?.state} loading={history.loadingEarlier} onLoadEarlier={loadEarlier} />}
           {activeSession.directoryLeaseReason && <p className="rounded-my-md bg-my-warning-subtle px-3 py-2 text-my-sm text-my-warning-text">目录占用：{activeSession.directoryLeaseReason}</p>}
-          {isReadOnly && <div className="acp-history-note"><p>此记录没有可恢复的远端会话，仅供阅读。</p><Button size="sm" variant="ghost" onClick={() => openNewConversation()}>新建会话</Button>{activeSession.error && <ConnectionNotice message={activeSession.error} />}</div>}
-          {items.map((item) => <EventRow key={item.key} item={item} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={(directory) => openTask(directory)} onOpenArtifact={(file) => {
-            const artifact = [...conversationArtifacts, ...projectArtifacts].find((candidate) => projectRootKey(`${root}/${candidate.relativePath}`) === projectRootKey(file.path))
-            if (artifact) openDocument(artifact)
-            else pushToast({ kind: 'info', title: '正在核对任务材料', body: '该路径尚未出现在当前任务的可验证材料清单，请刷新后从任务详情阅读。' })
-          }} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />)}
+          {isReadOnly && <div className="acp-history-note"><p>{activeSession.archivedAt ? '此会话已归档，取消归档后可继续。' : '此记录没有可恢复的远端会话，仅供阅读。'}</p><Button size="sm" variant="ghost" onClick={() => openNewConversation()}>新建会话</Button>{activeSession.error && <ConnectionNotice message={activeSession.error} />}</div>}
+          {items.map((item) => <EventRow key={item.key} item={item.type === 'activity' ? { ...item, active: false } : item} suppressWorkingIndicator={Boolean(currentTurnActivity)} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={(directory) => openTask(directory)} onOpenArtifact={openRecordedArtifact} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />)}
+          {visiblePermissions.map((permission) => <EventRow key={`current-permission:${permission.requestId}`} item={{ type: 'perm', key: `current-permission:${permission.requestId}`, ev: { id: `current-permission:${permission.requestId}`, ts: 0, source: 'acp', kind: 'permission', sessionId: activeSession.sessionId, projectRoot: root, text: permission.toolCall?.title ?? '等待你的授权', payload: { requestId: permission.requestId } } }} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={openTask} onOpenArtifact={() => {}} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />)}
           {conversationArtifacts.length > 0 && <section className="acp-material-shelf" aria-label="当前任务材料"><p className="mb-3 text-my-sm text-my-tertiary">任务材料 · 当前文件，文件变化不代表任务已验收</p><div className="space-y-2">{conversationArtifacts.slice(0, 6).map((artifact) => <ConversationArtifactCard key={artifact.relativePath} artifact={artifact} onOpen={openDocument} selected={documentTarget?.artifact.relativePath === artifact.relativePath && inspectorTab === 'document' && inspectorOpen} />)}</div><div className="mt-4 flex flex-wrap items-center gap-3 text-my-sm text-my-tertiary"><button onClick={preparePlanning}>继续完善方案<ChevronRight size={12} className="ml-1 inline" /></button><button onClick={() => openTask()}>复核规划材料<ChevronRight size={12} className="ml-1 inline" /></button></div></section>}
-          {items.length === 0 && !isReadOnly && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{activeSession.status === 'starting' ? '正在准备环境，就绪后可以下达指令。' : '从一条清晰的指令开始。'}</p></div>}
+          {items.length === 0 && !isReadOnly && !currentTurnActivity && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{activeSession.status === 'starting' ? '正在准备环境，就绪后可以下达指令。' : '从一条清晰的指令开始。'}</p></div>}
+          <CurrentTurnStatus activity={currentTurnActivity} />
         </div></div>
-        {!atBottom && <div className="flex justify-center"><Button size="sm" variant="outline" onClick={() => { const element = streamRef.current; followRef.current = true; setAtBottom(true); if (element) element.scrollTop = element.scrollHeight; writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} />回到最新</Button></div>}
-        {!isReadOnly && <footer className="acp-composer-region my-conversation-column">
-          {(feedback[activeSession.sessionId]?.error || activeSession.error) && <ConnectionNotice message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error ?? ''} />}
-          {activeSession.canResume && !isLiveStatus(activeSession.status) && operations[activeSession.sessionId] !== 'resume' && <div className="acp-reconnect-status" role="status">连接尚未就绪<Button size="sm" variant="ghost" onClick={() => void sessionAction('resume')}>重试连接</Button></div>}
-          <div className={clsx('acp-composer', composerImages.dragging && 'acp-composer-dragging')} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>
+        {!atBottom && <div className="flex justify-center"><Button size="sm" variant="outline" onClick={() => { const element = streamRef.current; earlierAnchor.current = null; followRef.current = true; setAtBottom(true); if (element) element.scrollTop = element.scrollHeight; writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} />回到最新</Button></div>}
+        {(!isReadOnly || activeSession.historyPersistence?.state === 'degraded') && <footer className="acp-composer-region my-conversation-column">
+          <ConnectionRecovery session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} pending={operations[activeSession.sessionId]} onRetry={() => void sessionAction('resume')} onCleanup={() => void sessionAction('kill')} onRetryHistory={() => void retryHistory()} onNew={() => openNewConversation()} onEnvironment={() => { showView('agents'); setEngineSetupOpen(true) }} />
+          {!isReadOnly && <div className={clsx('acp-composer', composerImages.dragging && 'acp-composer-dragging')} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>
             {composerImages.fileInput}
             {composerImages.dragging && <div className="acp-image-drop-hint" aria-hidden="true"><ImagePlus size={22} /><span>松开以添加图片</span></div>}
             <ImageAttachments key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} images={composerImages.images} onRemove={composerImages.remove} />
@@ -609,11 +830,10 @@ export function AcpConsolePage(): JSX.Element {
               writeSessionView(root, activeSession.sessionId, { draft: draftBackup, sourceReferences: restoredReferences, intent: saved.backupIntent ?? 'plain', draftBackup: '', backupReferences: [] })
             }}>恢复原稿</button></p>}
             {references.length > 0 && <div className="acp-source-references">{references.map((source) => <div className="acp-source-chip" key={`${source.relativePath}:${source.displayedRevision}`}><FileText size={12} /><span title={`${source.relativePath} · ${source.displayedRevision}`}>{source.relativePath.split('/').at(-1)} · {source.displayedRevision.slice(0, 8)}</span><button aria-label={`移除引用 ${source.relativePath}`} onClick={() => { const next = references.filter((item) => item !== source); setReferences(next); draftReferencesRef.current[activeSession.sessionId] = next; writeSessionView(root, activeSession.sessionId, { sourceReferences: next }) }}><X size={11} /></button></div>)}</div>}
-            <textarea ref={composerRef} aria-label="Agent 指令" title="Enter 发送 · Shift Enter 换行" rows={2} value={input} placeholder={canSend(activeSession) ? '告诉我你的想法，或引用文档中的内容…' : '可先准备下一条草稿，就绪后手动发送'} onChange={(event) => changeDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send() } }} />
-            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={<Button variant="primary" size="sm" title="发送指令" disabled={!canSend(activeSession) || Boolean(sending[activeSession.sessionId]) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}>{sending[activeSession.sessionId] ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}</Button>} /></div>
-          </div>
+            <textarea ref={composerRef} aria-label="Agent 指令" title="Enter 发送 · Shift Enter 换行" rows={2} value={input} placeholder="说说你的想法…" onChange={(event) => changeDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send() } }} />
+            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId])} onRecoverModel={recoverModel} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={Boolean(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={!selectedArchiveKnown || !canSend(activeSession) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
+          </div>}
         </footer>}
-        {activeSession.historyKind === 'live' && activeSession.status === 'error' && <div className="px-6 pb-4"><Button variant="outline" size="sm" title="停止当前会话及其拥有的进程" disabled={Boolean(operations[activeSession.sessionId])} onClick={() => void sessionAction('kill')}>停止会话进程</Button></div>}
       </section>}
     </main>
     <WorkspaceInspector open={inspectorOpen} tab={inspectorTab} onTab={setInspectorTab} onClose={inspectorTab === 'document' ? closeDocument : closeInspector} expanded={documentExpanded && inspectorTab === 'document'} hasDocument={documentTarget !== null} returnFocusRef={inspectorReturnFocus} backgroundRefs={[mainRef, navigationRef]}>

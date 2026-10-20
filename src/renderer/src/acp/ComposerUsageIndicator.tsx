@@ -26,16 +26,17 @@ export function ComposerUsageIndicator({ session, events }: { session: AcpSessio
   const known = usage.used !== undefined && usage.size !== undefined
   const fraction = known ? (usage.used ?? 0) / (usage.size ?? 1) : undefined
   const percent = fraction === undefined ? undefined : Math.round(fraction * 1000) / 10
+  const level = fraction === undefined ? 'unknown' : fraction >= 0.9 ? 'critical' : fraction >= 0.75 ? 'warning' : 'normal'
   const tokenDetails = [['输入', usage.breakdown?.inputTokens], ['输出', usage.breakdown?.outputTokens], ['缓存读取', usage.breakdown?.cachedReadTokens]]
     .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]))
     .map(([name, count]) => `${name} ${count.toLocaleString()}`).join(' · ')
   const label = known ? `上下文已用 ${percent}% · ${usage.used?.toLocaleString()} / ${usage.size?.toLocaleString()} tokens${tokenDetails ? `；${tokenDetails}` : ''}`
-    : `执行引擎尚未提供上下文占用${tokenDetails ? `；最近报告：${tokenDetails}` : ''}`
+    : `上下文用量暂无数据${tokenDetails ? `；最近报告：${tokenDetails}` : ''}`
   const circumference = 2 * Math.PI * 7
-  return <Tooltip label={label} side="top" align="right" wrap><span className="acp-usage-indicator" tabIndex={0} role="img" aria-label={label}>
+  return <Tooltip label={label} side="top" align="right" wrap><span className="acp-usage-indicator" data-usage-state={known ? 'known' : 'unknown'} data-usage-level={level} tabIndex={0} role="img" aria-label={label}>
     <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
-      <circle className="acp-usage-track" cx="10" cy="10" r="7" fill="none" strokeWidth="2.4" strokeDasharray={known ? undefined : '2 2'} />
-      {fraction !== undefined && <circle className="acp-usage-fill" cx="10" cy="10" r="7" fill="none" strokeWidth="2.4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - Math.max(0, Math.min(1, fraction)))} transform="rotate(-90 10 10)" />}
+      <circle className="acp-usage-track" cx="10" cy="10" r="7" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeDasharray={known ? undefined : `${circumference - 6} 6`} />
+      {fraction !== undefined && fraction > 0 && <circle className="acp-usage-fill" cx="10" cy="10" r="7" fill="none" strokeWidth="2" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - Math.min(1, fraction))} transform="rotate(-90 10 10)" />}
     </svg>
   </span></Tooltip>
 }

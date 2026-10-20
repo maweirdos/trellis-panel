@@ -72,7 +72,11 @@ export function writeActiveSession(root: string, sessionId: string | null): void
   persist(root, view)
 }
 
-export function readWorkspaceView(root: string): WorkspaceView | undefined { return projectView(root).view }
+export function readWorkspaceView(root: string): WorkspaceView | undefined {
+  const view = projectView(root)
+  if (view.view === 'history') { view.view = 'conversation'; persist(root, view) }
+  return view.view
+}
 export function writeWorkspaceView(root: string, value: WorkspaceView): void {
   const view = projectView(root)
   view.view = value

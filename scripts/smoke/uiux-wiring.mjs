@@ -45,11 +45,13 @@ class Harness {
 const listeners = new Map()
 globalThis.window = {
   innerWidth: 1440,
+  location: { search: '' },
   addEventListener: (type, listener) => { const set = listeners.get(type) ?? new Set(); set.add(listener); listeners.set(type, set) },
   removeEventListener: (type, listener) => listeners.get(type)?.delete(listener)
 }
 globalThis.document = { activeElement: null, querySelector: () => null }
 globalThis.localStorage = { getItem: () => null, setItem() {} }
+globalThis.HTMLElement = class {}
 globalThis.requestAnimationFrame = (callback) => callback()
 const root = 'D:/project'
 const runtime = {
@@ -64,7 +66,14 @@ const runtime = {
     gitTaskInfo: async () => null, kbQaHistory: async () => ({ ok: true, entries: [] }),
     readTextFile: (path) => new Promise((resolveRead) => runtime.reads.push({ path, resolve: resolveRead })),
     kbSearch: async (_library, query) => ({ ok: true, docs: runtime.docs, hits: query ? runtime.docs.map((doc) => ({ doc, snippet: 'local result', score: 1 })) : [], totalDocs: runtime.docs.length, elapsedMs: 1 }),
-    weknoraSearch: async () => { throw new Error('company unavailable') },
+    weknoraSearch: async () => { throw new Error('Unexpected legacy global knowledge fallback') },
+    knowledgeAccess: {
+      context: async ({ expectedRoot }) => ({ ok: true, data: { scope: { root: expectedRoot, connectionId: runtime.projectKnowledgeBound ? 'project-connection' : null, collectionIds: runtime.projectKnowledgeBound ? ['company'] : [], status: runtime.projectKnowledgeBound ? 'ok' : 'not_configured' }, legacyImportAvailable: false } }),
+      search: async ({ expectedRoot }) => {
+        assert.equal(expectedRoot, root, 'federated lookup retains its project owner')
+        return { ok: true, data: { status: 'unavailable', detail: 'company unavailable', sources: [], elapsedMs: 1, persistence: 'durable' } }
+      }
+    },
     specBacklinks: async () => ({ ok: true, counts: {} }),
     docsSearch: async () => ({ ok: true, hits: [] })
   },
@@ -79,10 +88,12 @@ try {
   const targets = ['src/renderer/src/my/ui.tsx', 'src/renderer/src/pages/TaskDetail.tsx', 'src/renderer/src/pages/Knowledge.tsx', 'src/renderer/src/pages/Spec.tsx']
   const iconMock = lucideMockSource([...globSync('src/renderer/src/**/*.tsx')])
   const mocks = {
-    react: `const r = globalThis.__UIUX_WIRING__; ${['useState', 'useRef', 'useId', 'useMemo', 'useCallback', 'useEffect'].map((name) => `export const ${name} = (...args) => r.current.${name}(...args);`).join('\n')} export const createContext = (value) => ({ _value:value, Provider:() => null }); export const useContext = (context) => context._value; export const useLayoutEffect = useEffect; export default { memo: (component) => component };`,
+    react: `const r = globalThis.__UIUX_WIRING__; ${['useState', 'useRef', 'useId', 'useMemo', 'useCallback', 'useEffect'].map((name) => `export const ${name} = (...args) => r.current.${name}(...args);`).join('\n')} export const useSyncExternalStore = (_subscribe, getSnapshot) => getSnapshot(); export const createContext = (value) => ({ _value:value, Provider:() => null }); export const useContext = (context) => context._value; export const useLayoutEffect = useEffect; export default { memo: (component) => component };`,
     'react/jsx-runtime': 'export const jsx = (type, props, key) => ({ type, props, key }); export const jsxs = jsx; export const Fragment = "fragment";',
+    'react-dom': 'export const createPortal = (children) => children;',
     'lucide-react': iconMock,
-    '../store': 'const r = globalThis.__UIUX_WIRING__; export const useApp = (selector) => selector(r.state); useApp.getState = () => r.state; export const useMy = (selector) => selector({ sidebarWidth:275, setSidebarWidth(){} });',
+    '../store': 'const r = globalThis.__UIUX_WIRING__; export const useApp = (selector) => selector(r.state); useApp.getState = () => r.state; useApp.subscribe = () => () => {}; export const useMy = (selector) => selector({ sidebarWidth:275, setSidebarWidth(){} });',
+    '../../store': 'const r = globalThis.__UIUX_WIRING__; export const useApp = (selector) => selector(r.state); useApp.getState = () => r.state; useApp.subscribe = () => () => {};',
     '../my/store': 'const state = {sidebarWidth:275,sidebarCollapsed:false,setSidebarWidth(){},toggleSidebar(){}}; export const useMy = (selector) => selector(state); useMy.getState=()=>state;',
     '../api': 'export const api = globalThis.__UIUX_WIRING__.api; export const hasIpc = true;',
     '../components/MarkdownView': 'export function MarkdownView() {}',
@@ -161,7 +172,7 @@ try {
   assert.equal(find(knowledge, (node) => node.type === 'textarea').props.value, '# 新笔记\n\n', 'new note survives a superseded edit response')
   knowledge.dispose()
 
-  runtime.state.settings.weknora = { enabled: true, searchKbIds: ['company'] }
+  runtime.projectKnowledgeBound = true
   const federated = new Harness(KnowledgePage)
   federated.render(); await settle(federated)
   find(federated, (node) => node.type === 'button' && node.props?.title?.startsWith('跨库联合检索')).props.onClick(); federated.render()

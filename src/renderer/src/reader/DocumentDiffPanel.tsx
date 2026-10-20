@@ -58,10 +58,9 @@ function DiffBody({ result }: { result: DocumentDiffResult }): JSX.Element {
               <div
                 key={li}
                 className={clsx(
-                  'flex items-start gap-2 border-l-2 px-3 py-0.5 font-mono text-my-xs leading-5',
-                  line.type === 'added' && 'border-my-line-success',
-                  line.type === 'removed' && 'border-my-line-danger',
-                  line.type === 'context' && 'border-transparent'
+                  'flex items-start gap-2 px-3 py-0.5 font-mono text-my-xs leading-5',
+                  line.type === 'added' && 'bg-my-success-subtle',
+                  line.type === 'removed' && 'bg-my-danger-subtle'
                 )}
               >
                 <span className="w-10 shrink-0 select-none text-right text-my-secondary">{line.oldLine ?? ''}</span>
