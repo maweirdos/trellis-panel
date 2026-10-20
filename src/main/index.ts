@@ -2,8 +2,9 @@
  * 应用壳（薄编排层，决策 TPD-004）：窗口、托盘、全局快捷键、更新器、生命周期、深链。
  * IPC 注册全部在 src/main/ipc/；项目状态与跨域助手在 src/main/state.ts。
  */
-import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, screen, shell, dialog } from 'electron'
+import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, screen, dialog } from 'electron'
 import { join, resolve, basename, dirname, sep } from 'path'
+import { pathToFileURL } from 'url'
 import { existsSync } from 'fs'
 import { abortAll } from './services/cli'
 import { getSettings } from './services/store'
@@ -15,6 +16,7 @@ import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
 import { applyChromiumProxy } from './services/proxy'
 import { mainWindowAppearance } from './services/window-appearance'
+import { installWindowNavigation, openExternalHttpUrl } from './services/window-navigation'
 import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTaskbarShortcut } from './services/window-branding'
 import { ipcEvent } from '../shared/ipc-channels'
 import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
@@ -55,6 +57,16 @@ const { autoUpdater } = (() => {
 
 const BRAND_RESOURCES = join(__dirname, '../../resources/brand')
 const APPLICATION_ICON = join(BRAND_RESOURCES, 'icon-256.png')
+
+function loadAppWindow(window: BrowserWindow, query?: Record<string, string>): void {
+  const file = join(__dirname, '../renderer/index.html')
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  const url = new URL(devUrl || pathToFileURL(file).href)
+  for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value)
+  installWindowNavigation(window, url.href)
+  const loading = devUrl ? window.loadURL(url.href) : window.loadFile(file, { query })
+  void loading.catch((error: unknown) => console.warn('Unable to load app window', error))
+}
 
 /** 文档小窗登记表：key（文件绝对路径）→ 窗口；重复打开即聚焦 */
 const docWindows = new Map<string, BrowserWindow>()
@@ -121,13 +133,7 @@ function openDocWindow(opts: { key: string; title: string; file: string; theme: 
   // 最大化状态广播给本窗（标题栏还原图标随动；双击拖动区原生切换也走这里）
   w.on('maximize', () => w.webContents.send(ipcEvent.windowMaximized, true))
   w.on('unmaximize', () => w.webContents.send(ipcEvent.windowMaximized, false))
-  const query = `mode=doc&path=${encodeURIComponent(opts.file)}&title=${encodeURIComponent(opts.title)}&theme=${encodeURIComponent(opts.theme)}`
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) {
-    w.loadURL(devUrl + `?${query}`)
-  } else {
-    w.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'doc', path: opts.file, title: opts.title, theme: opts.theme } })
-  }
+  loadAppWindow(w, { mode: 'doc', path: opts.file, title: opts.title, theme: opts.theme })
   w.once('ready-to-show', () => w.show())
   return { ok: true }
 }
@@ -162,12 +168,7 @@ function createWindow(): void {
     setMainWindow(null)
   })
 
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) {
-    win.loadURL(devUrl)
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  loadAppWindow(win)
 }
 
 function createCapsule(initialShape?: 'pill' | 'card'): void {
@@ -213,12 +214,7 @@ function createCapsule(initialShape?: 'pill' | 'card'): void {
       win?.hide()
     }
   })
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) {
-    capsule.loadURL(devUrl + `?mode=capsule&shape=${capsuleShape}&pinned=${capsuleOnTop}&theme=${getSettings().theme}`)
-  } else {
-    capsule.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'capsule', shape: capsuleShape, pinned: String(capsuleOnTop), theme: getSettings().theme } })
-  }
+  loadAppWindow(capsule, { mode: 'capsule', shape: capsuleShape, pinned: String(capsuleOnTop), theme: getSettings().theme })
 }
 
 function getQuickTodo(): BrowserWindow | null {
@@ -268,12 +264,7 @@ function ensureQuickTodo(): BrowserWindow {
     const w = getQuickTodo()
     if (w && w.isVisible()) w.hide()
   })
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) {
-    quickTodo.loadURL(devUrl + `?mode=quicktodo&theme=${getSettings().theme}`)
-  } else {
-    quickTodo.loadFile(join(__dirname, '../renderer/index.html'), { query: { mode: 'quicktodo', theme: getSettings().theme } })
-  }
+  loadAppWindow(quickTodo, { mode: 'quicktodo', theme: getSettings().theme })
   return quickTodo
 }
 
@@ -334,7 +325,7 @@ function rebuildTrayMenu(): void {
       enabled: httpApiStatus().running,
       click: () => {
         const port = httpApiStatus().port
-        if (port) shell.openExternal(`http://127.0.0.1:${port}/`)
+        if (port) void openExternalHttpUrl(`http://127.0.0.1:${port}/`)
       }
     },
     { type: 'separator' },
@@ -570,10 +561,10 @@ if (!gotLock) {
     stopTimers()
     stopInbox()
     abortAll()
-    // Let acpx join admitted turns and stop its owned children before Electron exits.
+    // Join owned Runtime cleanup and the acknowledged history drain before Electron exits.
     void shutdownAcp().then(() => { acpQuitSettled = true; app.quit() }).catch((error: unknown) => {
       acpQuitPending = false
-      dialog.showErrorBox('Agent 清理未完成', `尚未确认 Runtime 已退出，请停止 Agent 后重试退出。\n${error instanceof Error ? error.message : String(error)}`)
+      dialog.showErrorBox('会话收尾未完成', `会话清理或历史保存尚未完成，请处理后重试退出。\n${error instanceof Error ? error.message : String(error)}`)
     })
     // S0 G2：diff worker 线程收口（worker 无子进程，terminate 即完整清理）
     stopDiffWorker()

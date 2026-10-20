@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { prepareAcpHistoryWorker } from './prepare-acp-history-worker.mjs'
 const directory = mkdtempSync(join(tmpdir(), 'tpanel-acp-service-'))
+await prepareAcpHistoryWorker(directory)
 process.env.TPAP_SMOKE_DIR = directory
 const root = join(directory, 'fixture project')
 mkdirSync(join(root, '.trellis', 'tasks', 'demo'), { recursive: true })

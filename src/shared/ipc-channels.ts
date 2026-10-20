@@ -262,6 +262,12 @@ export const ipcInvoke = {
   acp: {
     agents: 'acp:agents',
     sessions: 'acp:sessions',
+    historyList: 'acp:history.list',
+    historySession: 'acp:history.session',
+    historyUpdate: 'acp:history.update',
+    historyEvents: 'acp:history.events',
+    historyRetry: 'acp:history.retry',
+    sessionRecoverModel: 'acp:session.recover-model',
     sessionNew: 'acp:session.new',
     sessionPrompt: 'acp:session.prompt',
     sessionCancel: 'acp:session.cancel',

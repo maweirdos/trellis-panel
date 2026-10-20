@@ -6,8 +6,10 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { build, transform } from 'esbuild'
+import { prepareAcpHistoryWorker } from './prepare-acp-history-worker.mjs'
 
 const temporary = mkdtempSync(join(tmpdir(), 'trellis-acp-images-'))
+await prepareAcpHistoryWorker(temporary)
 process.env.TPAP_SMOKE_DIR = temporary
 const root = join(temporary, 'project')
 mkdirSync(root)

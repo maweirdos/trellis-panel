@@ -12,12 +12,18 @@ import { parseTrellisTaskPath } from './task-identity'
 import { ipcEvent } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
 import type { AcpAgentConfig, AcpAgentProfile, AcpBindTaskInput, AcpConfigureInput, AcpMaterialChange, AcpPermissionPayload, AcpPromptOptions, AcpSessionRecord, AcpSessionStatus, TimelineEvent, TimelineEventKind } from '../../shared/types'
+import type { AcpRecoverModelInput, AcpRecoverModelResult } from '../../shared/acp-recovery'
 import { acpDataPath, canonicalDirectory, persistRecord, readProfiles, readRecords, saveProfiles } from './acp/metadata'
 import { bindTaskSchema, configureSchema, errorMessage, idSchema, newSessionSchema, objectValue, profileSchema, promptOptionsSchema } from './acp/types'
 import { activeTaskExists, preparePromptMaterials, sourceBelongs } from './acp/materials'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { launchArgv, listAcpAgents, NATIVE_TOOLS_DIAGNOSTIC } from './acp/setup'
+import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, listAcpHistory, onHistoryPersistence, readAcpHistoryEvents, readAcpHistorySession, retryAcpHistory, stopAcpHistory } from './acp/history-service'
+import { acpHistoryUpdateInputSchema, type AcpHistoryEventPage, type AcpHistoryListResult, type AcpHistorySummary, type AcpHistoryUpdateResult } from '../../shared/acp-history'
+import { snapshotHistoryEvents, snapshotHistoryList, snapshotHistorySession } from './acp/history-fallback'
+import { applySessionPreferences, readSessionPreferences, updateSessionPreferences } from './acp/session-preferences'
 export { listAcpAgents, setupAcpRuntime, pickAcpNode } from './acp/setup'
+export { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, retryAcpHistory, stopAcpHistory } from './acp/history-service'
 
 // acpx reads this host flag during runtime construction, not from child overlays.
 // Inherit local user/project Claude settings without copying credential values.
@@ -31,6 +37,7 @@ const sessions = new Map<string, ActiveSession>()
 const resuming = new Set<string>()
 type ResumeResult = { ok: true; sessionId: string } | IpcFail
 const resumeRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
+const recoveryRequests = new Map<string, { root: string; operation: ModelRecoveryOperation; promise: Promise<AcpRecoverModelResult> }>()
 const leases = new Map<string, ActiveSession>()
 let shuttingDown = false
 let eventSeq = 0
@@ -60,11 +67,14 @@ interface ActiveSession {
   closingTask?: Promise<{ ok: true } | IpcFail>
   settling: boolean
   promptAbort?: AbortController
+  cleanupRequired?: boolean
+  snapshotDirty: number
+  snapshotTimer?: NodeJS.Timeout
 }
 
 function failure(error: unknown): IpcFail { return ipcFail(IpcErrorCode.Upstream, errorMessage(error)) }
 function keyFor(session: ActiveSession): string { return canonicalDirectory(session.meta.cwd ?? session.meta.projectRoot) }
-function belongs(root: string, record: AcpSessionRecord): boolean {
+function belongs(root: string, record: Pick<AcpSessionRecord, 'projectRoot'>): boolean {
   return !!root && canonicalDirectory(root) === canonicalDirectory(record.projectRoot)
 }
 function owned(root: string, sessionId: string): ActiveSession | IpcFail {
@@ -97,7 +107,24 @@ function release(session: ActiveSession): void {
   session.leaseHeld = false
   delete session.meta.directoryLeaseReason
 }
+function projectConnectionOwnership(session: ActiveSession): void {
+  session.meta.connectionOwned = sessions.get(session.meta.sessionId) === session
+  session.meta.cleanupRequired = session.meta.connectionOwned && session.cleanupRequired === true
+}
+
+function modelUnavailable(error: unknown): boolean {
+  const visited = new Set<unknown>()
+  for (let current = error; current && !visited.has(current) && visited.size < 8;) {
+    visited.add(current)
+    if (AcpxRuntime.isRequestedModelUnsupportedError(current)) return true
+    current = typeof current === 'object' && 'cause' in current ? current.cause : undefined
+  }
+  return false
+}
 function save(session: ActiveSession): void {
+  if (session.snapshotTimer) { clearTimeout(session.snapshotTimer); session.snapshotTimer = undefined }
+  session.snapshotDirty = 0
+  archiveAcpEvent(session.meta)
   try { persistRecord(session.meta) }
   catch (error) {
     // Keep live work and expose a persistence failure without recursive writes.
@@ -111,20 +138,44 @@ function eventFor(session: ActiveSession, kind: TimelineEventKind, text?: string
 }
 function emit(session: ActiveSession, kind: TimelineEventKind, text?: string, payload?: Record<string, unknown>): void {
   const event = eventFor(session, kind, text, payload)
+  archiveAcpEvent(session.meta, event)
   session.meta.events.push(event)
   if (session.meta.events.length > MAX_RECORD_EVENTS) session.meta.events.splice(0, session.meta.events.length - MAX_RECORD_EVENTS)
   broadcastToWindows(ipcEvent.acpOutput, event)
-  if (session.meta.events.length % 20 === 0) save(session)
+  session.snapshotDirty += 1
+  if (session.snapshotDirty >= 20 && !session.snapshotTimer) {
+    session.snapshotTimer = setTimeout(() => save(session), 250)
+    session.snapshotTimer.unref()
+  }
 }
 function setStatus(session: ActiveSession, status: AcpSessionStatus, error?: string, terminal = false): void {
   session.meta.status = status
   session.meta.error = error
   if (terminal) session.meta.endedAt = Date.now()
+  projectConnectionOwnership(session)
+  session.meta.pendingPermissions = [...session.pendingPermissions.values()].map((pending) => pending.payload)
+  session.meta.stateRevision = (session.meta.stateRevision ?? 0) + 1
+  session.meta.historyPersistence = historyPersistence(session.meta.sessionId)
+  const { events: _cache, ...metadata } = session.meta
+  let presentation: typeof metadata | undefined
+  try { presentation = applySessionPreferences(metadata, readSessionPreferences(acpDataPath(), metadata.projectRoot)) }
+  catch (error) { broadcastToWindows(ipcEvent.acpOutput, eventFor(session, 'diagnostic', `会话偏好读取失败：${errorMessage(error)}`)) }
   const payload = { sessionId: session.meta.sessionId, projectRoot: session.meta.projectRoot, status, error,
-    connectionGeneration: session.meta.connectionGeneration, turnId: session.meta.turnId, session: session.meta }
+    pendingPermissions: session.meta.pendingPermissions, stateRevision: session.meta.stateRevision, historyPersistence: session.meta.historyPersistence,
+    connectionGeneration: session.meta.connectionGeneration, turnId: session.meta.turnId, ...(presentation ? { session: { ...presentation, events: [] } } : {}) }
   broadcastToWindows(terminal ? ipcEvent.acpDone : ipcEvent.acpState, payload)
   save(session)
 }
+onHistoryPersistence((sessionId, persistence) => {
+  const session = sessions.get(sessionId)
+  if (!session) return
+  session.meta.historyPersistence = persistence
+  session.meta.pendingPermissions = [...session.pendingPermissions.values()].map((pending) => pending.payload)
+  session.meta.stateRevision = (session.meta.stateRevision ?? 0) + 1
+  broadcastToWindows(ipcEvent.acpState, { sessionId, projectRoot: session.meta.projectRoot, status: session.meta.status, error: session.meta.error,
+    connectionGeneration: session.meta.connectionGeneration, turnId: session.meta.turnId,
+    pendingPermissions: session.meta.pendingPermissions, stateRevision: session.meta.stateRevision, historyPersistence: persistence })
+})
 function observe(session: ActiveSession, label: string, since?: number, failed = false, activityScope: 'connection' | 'turn' = 'connection'): void {
   const atMs = Date.now()
   session.meta.startup ??= []
@@ -166,12 +217,79 @@ function projectCategorizedSelections(meta: AcpSessionRecord): void {
   }
 }
 
-export function listAcpSessions(projectRoot: string, limit = 20): { ok: true; sessions: AcpSessionRecord[] } {
+export function listAcpSessions(projectRoot: string, limit = 20): { ok: true; sessions: AcpSessionRecord[] } | IpcFail {
   if (!projectRoot) return { ok: true, sessions: [] }
   const active = [...sessions.values()].filter((session) => belongs(projectRoot, session.meta)).map((session) => session.meta)
   const history = readRecords().filter((record) => belongs(projectRoot, record) && !sessions.has(record.sessionId)).sort((a, b) => b.startedAt - a.startedAt).slice(0, Math.max(0, Math.min(limit, 100)))
-  return { ok: true, sessions: [...active, ...history].map((record) => ({ ...record, events: record.events.map((event) => event.kind === 'permission' && event.payload?.pending === true
-    ? { ...event, payload: { ...event.payload, pending: sessions.get(record.sessionId)?.pendingPermissions.has(String(event.payload.requestId)) === true } } : event) })) }
+  try {
+    const preferences = readSessionPreferences(acpDataPath(), projectRoot)
+    return { ok: true, sessions: [...active, ...history].map((record) => ({ ...applySessionPreferences(record, preferences), events: record.events.map((event) => event.kind === 'permission' && event.payload?.pending === true
+      ? { ...event, payload: { ...event.payload, pending: sessions.get(record.sessionId)?.pendingPermissions.has(String(event.payload.requestId)) === true } } : event) })) }
+  } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
+}
+
+function liveHistorySummary(summary: AcpHistorySummary): AcpHistorySummary {
+  const live = sessions.get(summary.sessionId)
+  if (!live || !belongs(summary.projectRoot, live.meta)) return summary
+  const { events: _events, ...meta } = live.meta
+  return { ...summary, ...meta, title: summary.customTitle ?? meta.title ?? summary.title,
+    customTitle: summary.customTitle, pinnedAt: summary.pinnedAt, archivedAt: summary.archivedAt, historyPersistence: historyPersistence(summary.sessionId),
+    pendingPermissions: [...live.pendingPermissions.values()].map((pending) => pending.payload), stateRevision: meta.stateRevision ?? 0 }
+}
+export async function listAcpHistorySessions(root: string, input?: unknown): Promise<AcpHistoryListResult | IpcFail> {
+  if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
+  try {
+    let result = await listAcpHistory(root, input)
+    if (!result.ok && result.code === IpcErrorCode.Io) result = snapshotHistoryList(root, input, result.error)
+    return result.ok ? { ...result, sessions: result.sessions.map(liveHistorySummary) } : result
+  } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
+}
+export async function getAcpHistorySession(root: string, id: string): Promise<{ ok: true; version: 1; session: AcpHistorySummary } | IpcFail> {
+  if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
+  if (!idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
+  try {
+    let result = await readAcpHistorySession(root, id)
+    if (!result.ok && result.code === IpcErrorCode.Io) result = snapshotHistorySession(root, id, result.error)
+    return result.ok ? { ...result, session: liveHistorySummary(result.session) } : result
+  } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
+}
+/** Metadata only: no transport connection, turn, transcript or permission mutation. */
+export async function updateAcpHistorySession(root: string, id: string, input: unknown, isCurrent: () => boolean = () => true): Promise<AcpHistoryUpdateResult | IpcFail> {
+  if (!root || !isCurrent()) return ipcFail(IpcErrorCode.NoProject, '项目已切换或未打开项目')
+  const parsed = acpHistoryUpdateInputSchema.safeParse(input)
+  if (!idSchema.safeParse(id).success || !parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 或偏好参数无效')
+  const active = sessions.get(id)
+  if (active && !belongs(root, active.meta)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
+  const existing = await getAcpHistorySession(root, id)
+  if (!isCurrent()) return ipcFail(IpcErrorCode.NoProject, '项目已切换')
+  if (!existing.ok) return existing
+  if (existing.session.sessionId !== id || !belongs(root, existing.session)) return ipcFail(IpcErrorCode.NotFound, '当前项目没有此会话')
+  try {
+    // Synchronous read/merge/atomic rename: another main-process edit cannot interleave.
+    const preferences = updateSessionPreferences(acpDataPath(), root, id, parsed.data)
+    if (!isCurrent()) return ipcFail(IpcErrorCode.NoProject, '项目已切换')
+    return { ok: true, version: 1, session: applySessionPreferences(existing.session, preferences) }
+  } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
+}
+export async function getAcpHistoryEvents(root: string, id: string, input?: unknown): Promise<AcpHistoryEventPage | IpcFail> {
+  if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
+  if (!idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
+  try {
+    let result = await readAcpHistoryEvents(root, id, input)
+    if (!result.ok && result.code === IpcErrorCode.Io) result = snapshotHistoryEvents(root, id, input, result.error)
+    if (!result.ok) return result
+    const session = liveHistorySummary(result.session)
+    return { ...result, session, historyPersistence: session.historyPersistence }
+  } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
+}
+export async function retryAcpHistorySession(root: string, id: string): Promise<{ ok: true; historyPersistence: import('../../shared/acp-history').AcpHistoryPersistence } | IpcFail> {
+  if (!root || !idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '项目或会话 ID 无效')
+  const active = sessions.get(id)
+  if (active && !belongs(root, active.meta)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
+  const existing = await getAcpHistorySession(root, id)
+  if (!existing.ok) return existing
+  try { await retryAcpHistory(); const saved = await getAcpHistorySession(root, id); return saved.ok ? { ok: true, historyPersistence: saved.session.historyPersistence } : saved }
+  catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
 }
 
 export function listAcpProfiles(projectRoot: string): { ok: true; profiles: AcpAgentProfile[] } | IpcFail {
@@ -204,12 +322,18 @@ function settlePermissions(session: ActiveSession, reason: string): void {
 
 async function closeAfterFailure(session: ActiveSession, error: unknown, remove: boolean): Promise<void> {
   let message = errorMessage(error)
+  session.meta.recovery = { ...session.meta.recovery, kind: modelUnavailable(error) ? 'model-unavailable' : 'connection-failed' }
   try {
     await session.runtime.shutdown()
+    session.hasProcess = false
+    session.backgroundWork = false
+    session.toolStates.clear()
+    session.cleanupRequired = false
     release(session)
-    if (remove) sessions.delete(session.meta.sessionId)
+    if (remove && sessions.get(session.meta.sessionId) === session) sessions.delete(session.meta.sessionId)
   } catch (cleanupError) {
     message += `；Runtime 清理尚未完成：${errorMessage(cleanupError)}`
+    session.cleanupRequired = true
     session.meta.directoryLeaseReason = '清理未确认，目录占用保留；请显式停止 Runtime 后重试'
   }
   setStatus(session, 'error', message, true)
@@ -232,8 +356,6 @@ function permissionHandler(session: ActiveSession): AcpPermissionHandler {
         clearTimeout(timer)
         context.signal.removeEventListener('abort', onAbort)
         session.pendingPermissions.delete(requestId)
-        const original = session.meta.events.find((event) => event.payload?.requestId === requestId && event.payload.pending === true)
-        if (original?.payload) original.payload.pending = false
     emit(session, 'permission', outcome === 'selected' ? '权限决定已提交' : `权限请求已结束：${outcome}`, { requestId, pending: false, outcome, decision, ...('optionId' in decision ? { optionId: decision.optionId } : {}) })
         if (session.meta.connectionGeneration === generation && session.meta.turnId === turnId && session.meta.status === 'awaiting_permission') setStatus(session, 'busy')
         resolve(decision)
@@ -265,6 +387,8 @@ export function respondAcpPermission(projectRoot: string, requestId: string, opt
 }
 
 async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConfig, argv: string[]): Promise<ActiveSession> {
+  // Import original snapshots before a resumed compatibility snapshot replaces them.
+  await ensureAcpHistory().catch(() => {})
   if (!('TRELLIS_ACPX_COMPAT_VERSION' in AcpxRuntime) || AcpxRuntime.TRELLIS_ACPX_COMPAT_VERSION !== 2) throw new Error('acpx 兼容补丁未准备好；请重新安装应用依赖')
   const store = createFileSessionStore({ stateDir: acpDataPath('runtime-store') })
   let session: ActiveSession
@@ -298,7 +422,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
       }
     }
   })
-  session = { meta, runtime, accepting: false, closing: false, disconnected: false, pendingPermissions: new Map(), lastStatusAt: new Map(), hasProcess: false, backgroundWork: false, toolStates: new Map(), leaseHeld: false, settling: false }
+  session = { meta, runtime, accepting: false, closing: false, disconnected: false, pendingPermissions: new Map(), lastStatusAt: new Map(), hasProcess: false, backgroundWork: false, toolStates: new Map(), leaseHeld: false, settling: false, snapshotDirty: 0 }
   return session
 }
 
@@ -455,14 +579,25 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
       assertActive: () => { if (session.closing || shuttingDown) throw new Error('会话已停止') }, onPermissionRequest: permissionHandler(session) })
     session.turn = turn
     session.promptAbort = undefined
+    // Register this checkpoint before terminal completion can clear its owned scope.
+    const delivery = turn.promptStarted.then(async () => {
+      if (!session.closing && session.meta.turnId === turnId && session.meta.connectionGeneration === generation) observe(session, '指令已发送至引擎', session.turnStartedAt, false, 'turn')
+      if (session.meta.restorePending) { session.meta.restorePending = false; observe(session, '原生会话恢复已验证') }
+      emit(session, 'message', trimmed, { role: 'user', materialSnapshot: session.meta.materialSnapshot, ...(images.length ? { images } : {}) })
+      if (!session.meta.title) session.meta.title = (trimmed || images[0]?.name || '图片消息').slice(0, 40)
+      save(session)
+    })
+    void delivery.catch(() => {})
     // Drain immediately; canonical turn.result owns final checkpoint and process cleanup.
     const drain = (async () => { for await (const event of turn.events) mapEvent(session, event) })()
     const completion = (async () => {
       try {
         const result = await turn.result
+        await delivery.catch(() => {})
         await drain
         settlePermissions(session, 'turn-ended')
         emit(session, 'turn-done', result.status === 'failed' ? result.error.message : result.status === 'cancelled' ? '回合已取消' : '回合已结束', { result, stopReason: result.status !== 'failed' ? result.stopReason : undefined })
+        await flushAcpHistory().catch(() => {})
         session.turn = undefined
         session.accepting = false
         release(session)
@@ -474,6 +609,7 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
           broadcastToWindows(ipcEvent.acpDone, { sessionId, projectRoot, turnId, connectionGeneration: session.meta.connectionGeneration, status: session.meta.status, result })
         }
       } catch (error) {
+        await delivery.catch(() => {})
         session.settling = true
         session.turn = undefined; session.accepting = false; settlePermissions(session, 'failed')
         if (!session.closing) await closeAfterFailure(session, error, false)
@@ -482,12 +618,7 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
     })()
     // Observe the completion promise immediately to avoid unhandled teardown rejection.
     void completion.catch((error) => { emit(session, 'diagnostic', errorMessage(error)); save(session) })
-    await turn.promptStarted
-    if (!session.closing && session.meta.turnId === turnId && session.meta.connectionGeneration === generation) observe(session, '指令已发送至引擎', session.turnStartedAt, false, 'turn')
-    if (session.meta.restorePending) { session.meta.restorePending = false; observe(session, '原生会话恢复已验证') }
-    emit(session, 'message', trimmed, { role: 'user', materialSnapshot: session.meta.materialSnapshot, ...(images.length ? { images } : {}) })
-    if (!session.meta.title) session.meta.title = (trimmed || images[0]?.name || '图片消息').slice(0, 40)
-    save(session)
+    await delivery
     return { ok: true, turnId }
   } catch (error) {
     session.accepting = false
@@ -537,6 +668,8 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
   try {
     await session.runtime.shutdown()
     await session.preparing
+    session.hasProcess = false
+    session.cleanupRequired = false
     session.backgroundWork = false
     session.toolStates.clear()
     release(session)
@@ -545,14 +678,23 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
     setStatus(session, 'closed', undefined, true)
     emit(session, 'session-status', reason, { activityScope: 'connection' })
     save(session)
+    await flushAcpHistory().catch(() => {})
     return { ok: true }
   } catch (error) {
+    session.cleanupRequired = true
     if (session.leaseHeld) session.meta.directoryLeaseReason = '停止清理尚未确认，目录占用保留；请重试结束会话'
     setStatus(session, 'error', `停止失败：${errorMessage(error)}`)
     return failure(error)
   }
 }
 export async function killAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true } | IpcFail> {
+  if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
+  const recovery = recoveryRequests.get(sessionId)
+  if (recovery) {
+    if (recovery.root !== canonicalDirectory(projectRoot)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
+    recovery.operation.cancelled = true
+    if (!sessions.has(sessionId)) { await recovery.promise; return { ok: true } }
+  }
   const session = owned(projectRoot, sessionId)
   return 'ok' in session ? session : killOwned(session, '会话已停止')
 }
@@ -561,6 +703,7 @@ export function resumeAcpSession(projectRoot: string, sessionId: string): Promis
   if (!projectRoot) return Promise.resolve(ipcFail(IpcErrorCode.NoProject, '未打开项目'))
   if (!idSchema.safeParse(sessionId).success) return Promise.resolve(ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效'))
   const root = canonicalDirectory(projectRoot)
+  if (recoveryRequests.has(sessionId)) return Promise.resolve(ipcFail(IpcErrorCode.Conflict, '此会话正在验证模型，请等待当前请求完成'))
   const pending = resumeRequests.get(sessionId)
   if (pending) return pending.root === root ? pending.promise : Promise.resolve(ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目'))
   const promise: Promise<ResumeResult> = resumeOwnedSession(projectRoot, sessionId).finally(() => {
@@ -570,12 +713,53 @@ export function resumeAcpSession(projectRoot: string, sessionId: string): Promis
   return promise
 }
 
-async function resumeOwnedSession(projectRoot: string, sessionId: string): Promise<ResumeResult> {
+interface ModelRecoveryOperation {
+  input: AcpRecoverModelInput
+  isCurrent?: () => boolean
+  cancelled?: boolean
+  modelConfirmed?: boolean
+}
+
+/** Separate from normal configuration: cold controls must never imply a ready connection. */
+export function recoverAcpSessionModel(projectRoot: string, sessionId: string, input: AcpRecoverModelInput, isCurrent?: () => boolean): Promise<AcpRecoverModelResult> {
+  const reject = (code: typeof IpcErrorCode[keyof typeof IpcErrorCode], message: string): Promise<AcpRecoverModelResult> => Promise.resolve(ipcFail(code, message))
+  if (!projectRoot) return reject(IpcErrorCode.NoProject, '未打开项目')
+  if (!idSchema.safeParse(sessionId).success || !input || typeof input.modelId !== 'string' || !input.modelId.trim() || input.modelId.length > 512 || typeof input.expectedConnectionGeneration !== 'string' || !input.expectedConnectionGeneration) return reject(IpcErrorCode.InvalidArg, '模型恢复参数无效')
+  const root = canonicalDirectory(projectRoot)
+  const pending = recoveryRequests.get(sessionId)
+  if (pending) {
+    if (pending.root !== root) return reject(IpcErrorCode.Denied, '此会话不属于当前项目')
+    return pending.operation.input.modelId === input.modelId && pending.operation.input.expectedConnectionGeneration === input.expectedConnectionGeneration
+      ? pending.promise : reject(IpcErrorCode.Conflict, '此会话正在验证另一个模型，请等待当前请求完成')
+  }
+  if (resumeRequests.has(sessionId) || resuming.has(sessionId)) return reject(IpcErrorCode.Conflict, '此会话正在连接，请等待当前请求完成')
+  const meta = sessions.get(sessionId)?.meta ?? readRecords().find((record) => record.sessionId === sessionId)
+  if (!meta || !belongs(projectRoot, meta)) return reject(IpcErrorCode.NotFound, '当前项目没有此会话')
+  if (meta.connectionGeneration !== input.expectedConnectionGeneration || isCurrent?.() === false) return reject(IpcErrorCode.Conflict, '项目或会话连接已改变，请重新选择')
+  if (!['error', 'disconnected', 'closed'].includes(meta.status) || !meta.canResume) return reject(IpcErrorCode.Conflict, '请在已断开的原会话中恢复模型')
+  const categorized = meta.configOptions?.filter((option) => option.category === 'model') ?? []
+  const candidates = categorized.length === 1 ? categorized[0].options.map((option) => option.value) : meta.models?.map((model) => model.modelId) ?? []
+  if (!candidates.includes(input.modelId)) return reject(IpcErrorCode.InvalidArg, '请选择此会话上次引擎提供的完整模型 ID；新模型需要执行引擎重新确认')
+  const operation: ModelRecoveryOperation = { input: { ...input }, isCurrent }
+  const promise: Promise<AcpRecoverModelResult> = (async (): Promise<AcpRecoverModelResult> => {
+    const result = await resumeOwnedSession(projectRoot, sessionId, operation)
+    const restored = sessions.get(sessionId)?.meta ?? readRecords().find((record) => record.sessionId === sessionId)
+    const modelConfirmed = operation.modelConfirmed === true
+    if (!result.ok) return { ...result, modelConfirmed, session: restored }
+    if (!restored) return ipcFail(IpcErrorCode.Conflict, '会话恢复已停止')
+    return { ok: true, sessionId, modelConfirmed, session: restored }
+  })().finally(() => { if (recoveryRequests.get(sessionId)?.promise === promise) recoveryRequests.delete(sessionId) })
+  recoveryRequests.set(sessionId, { root, operation, promise })
+  return promise
+}
+
+async function resumeOwnedSession(projectRoot: string, sessionId: string, recovery?: ModelRecoveryOperation): Promise<ResumeResult> {
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const existing = sessions.get(sessionId)
   if (existing) {
     if (!belongs(projectRoot, existing.meta)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
     if (existing.meta.status === 'starting' && existing.preparing) {
+      if (recovery) return ipcFail(IpcErrorCode.Conflict, '此会话正在连接，请等待当前请求完成')
       await existing.preparing
       const connected = sessions.get(sessionId)
       if (!connected || connected !== existing || connected.closing || connected.meta.status !== 'ready') return ipcFail(IpcErrorCode.Upstream, existing.meta.error ?? '会话连接未完成，请重试')
@@ -586,7 +770,7 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string): Promi
       if (!existing.meta.canResume) return ipcFail(IpcErrorCode.InvalidArg, '此记录仅供查看，不支持原会话恢复')
       const stopped = await killOwned(existing, '停止旧连接，显式恢复原会话')
       if (!stopped.ok) return stopped
-      return resumeOwnedSession(projectRoot, sessionId)
+      return resumeOwnedSession(projectRoot, sessionId, recovery)
     }
     return { ok: true, sessionId }
   }
@@ -594,15 +778,16 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string): Promi
   const meta = readRecords().find((record) => record.sessionId === sessionId)
   if (!meta || !belongs(projectRoot, meta)) return ipcFail(IpcErrorCode.NotFound, '当前项目没有此会话')
   if (!meta.canResume || !meta.backendSessionId || !meta.runtimeSnapshot) return ipcFail(IpcErrorCode.InvalidArg, '此记录仅供查看，不支持原会话恢复')
+  if (recovery && (recovery.cancelled || meta.connectionGeneration !== recovery.input.expectedConnectionGeneration || recovery.isCurrent?.() === false)) return ipcFail(IpcErrorCode.Conflict, '项目或会话连接已改变，请重新选择')
   if (sessions.size + resuming.size >= MAX_ACTIVE || shuttingDown) return ipcFail(IpcErrorCode.Conflict, '连接数量已达上限')
   resuming.add(sessionId)
   let session: ActiveSession | undefined
   try {
     const argv = await launchArgv(meta.runtimeSnapshot)
-    if (shuttingDown) return ipcFail(IpcErrorCode.Conflict, '应用正在退出')
+    if (shuttingDown || recovery?.cancelled || recovery?.isCurrent?.() === false) return ipcFail(IpcErrorCode.Conflict, '项目已改变或会话连接已停止')
     const runtimeId = meta.runtimeSnapshot.id
-    session = await createSessionRuntime({ ...meta, connectionGeneration: randomUUID(), status: 'starting', historyKind: 'live', endedAt: undefined, turnId: undefined, restorePending: false, startup: [] }, meta.runtimeSnapshot, argv)
-    if (shuttingDown) { await session.runtime.shutdown(); return ipcFail(IpcErrorCode.Conflict, '应用正在退出') }
+    session = await createSessionRuntime({ ...meta, connectionGeneration: randomUUID(), status: 'starting', historyKind: 'live', endedAt: undefined, turnId: undefined, restorePending: false, startup: [], recovery: recovery ? undefined : meta.recovery, connectionOwned: false, cleanupRequired: false }, meta.runtimeSnapshot, argv)
+    if (shuttingDown || recovery?.cancelled || recovery?.isCurrent?.() === false) { await session.runtime.shutdown(); return ipcFail(IpcErrorCode.Conflict, '项目已改变或会话连接已停止') }
     const conflict = acquire(session)
     if (conflict) { await session.runtime.shutdown(); return conflict }
     sessions.set(sessionId, session)
@@ -611,22 +796,51 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string): Promi
     observe(session, '开始恢复原会话')
     describeClientServices(session)
     const restoring = session
+    const generation = restoring.meta.connectionGeneration
+    const assertActive = (): void => {
+      if (restoring.closing || shuttingDown || recovery?.cancelled || sessions.get(sessionId) !== restoring || restoring.meta.connectionGeneration !== generation || recovery?.isCurrent?.() === false) throw new Error('项目或会话连接已停止')
+    }
+    const assertIdentity = (): void => {
+      assertActive()
+      if (restoring.handle?.backendSessionId !== meta.backendSessionId || restoring.meta.backendSessionId !== meta.backendSessionId || (meta.agentSessionId && restoring.meta.agentSessionId !== meta.agentSessionId)) throw new Error('原 Runtime 身份已改变，不能恢复此会话')
+    }
     setStatus(restoring, 'starting')
     let preparationError: unknown
     restoring.preparing = (async () => {
       try {
         const handle = await restoring.runtime.findSession({ sessionKey: sessionId, agent: runtimeId })
-        if (restoring.closing) return
+        assertActive()
         if (!handle || handle.backendSessionId !== meta.backendSessionId) throw new Error('原 Runtime 身份不可用，历史保留；请显式创建新会话')
+        if (recovery) {
+          // Public cold controls may recreate an unprompted startup on load failure.
+          // Only records with real runtime conversation history are eligible here.
+          const record = await createFileSessionStore({ stateDir: acpDataPath('runtime-store') }).load(handle.acpxRecordId ?? sessionId)
+          assertActive()
+          if (!record || record.acpSessionId !== meta.backendSessionId || !record.messages.some((message) => typeof message === 'object' && ('User' in message || 'Agent' in message))) throw new Error('原会话缺少已确认的对话记录，无法安全恢复模型；请显式新建会话')
+        }
         restoring.handle = await restoring.runtime.ensureSession({ sessionKey: sessionId, agent: runtimeId, mode: 'persistent', cwd: meta.cwd, resumeSessionId: meta.backendSessionId })
-        if (restoring.closing) return
-        await restoring.runtime.connectSession({ handle: restoring.handle,
-          assertActive: () => { if (restoring.closing || shuttingDown) throw new Error('会话连接已停止') } })
-        if (restoring.closing) return
+        assertIdentity()
+        if (recovery) {
+          await restoring.runtime.setModel({ handle: restoring.handle, model: recovery.input.modelId, assertActive })
+          if (restoring.meta.currentModelId === recovery.input.modelId) {
+            recovery.modelConfirmed = true
+            restoring.meta.recovery = { kind: 'connection-failed', modelConfirmed: true, confirmedModelId: recovery.input.modelId }
+          }
+          assertIdentity()
+          await refreshSessionMetadata(restoring)
+          assertIdentity()
+          if (restoring.meta.currentModelId !== recovery.input.modelId) throw new Error('引擎未确认请求的完整模型 ID，连接未恢复')
+          restoring.meta.recovery = { kind: 'connection-failed', modelConfirmed: true, confirmedModelId: recovery.input.modelId }
+          observe(restoring, '模型已确认，正在重新连接原会话')
+          setStatus(restoring, 'starting')
+        }
+        await restoring.runtime.connectSession({ handle: restoring.handle, assertActive })
+        assertIdentity()
         await refreshSessionMetadata(restoring)
-        if (restoring.closing) return
+        assertIdentity()
         restoring.meta.restorePending = false
         restoring.disconnected = false
+        delete restoring.meta.recovery
         observe(restoring, '原会话已连接，可以继续对话', restoring.lastStatusAt.get('connection-start'))
         release(restoring)
         setStatus(restoring, 'ready')
@@ -673,6 +887,7 @@ export async function shutdownAcp(): Promise<void> {
   const results = await Promise.all([...sessions.values()].map((session) => killOwned(session, '应用退出')))
   const failed = results.find((result) => result.ok === false)
   if (failed?.ok === false) throw new Error(failed.error)
+  await stopAcpHistory()
 }
 
 /**
@@ -700,9 +915,11 @@ export function emitTrellisTimeline(
   for (const s of sessions.values()) {
     if (!belongs(projectRoot, s.meta)) continue
     if (taskDir && s.meta.taskDir !== taskDir) continue
+    archiveAcpEvent(s.meta, ev)
     s.meta.events.push(ev)
     if (s.meta.events.length > MAX_RECORD_EVENTS) s.meta.events.splice(0, s.meta.events.length - MAX_RECORD_EVENTS)
     if (kind === 'material-change') save(s)
+    else { s.snapshotDirty += 1; if (s.snapshotDirty >= 20 && !s.snapshotTimer) { s.snapshotTimer = setTimeout(() => save(s), 250); s.snapshotTimer.unref() } }
   }
 }
 

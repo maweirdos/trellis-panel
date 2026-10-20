@@ -5,6 +5,7 @@ import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
 import { writeSpecFile, computeSpecBacklinks, readTextWithMtime, searchDocs } from '../services/scan'
 import { getProjectRoot, sendSnapshot, safeReadText } from '../state'
 import { handle } from './registry'
+import { openExternalHttpUrl } from '../services/window-navigation'
 
 export function registerFilesIpc(): void {
   handle(ipcInvoke.fs.readText, (_e, absPath: string) => {
@@ -60,9 +61,7 @@ export function registerFilesIpc(): void {
     else shell.openPath(p)
   })
 
-  handle(ipcInvoke.shell.openExternal, (_e, url: string) => {
-    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
-  })
+  handle(ipcInvoke.shell.openExternal, (_e, url: unknown) => openExternalHttpUrl(url))
 
   handle(ipcInvoke.util.clipboard, (_e, text: string) => {
     clipboard.writeText(text)

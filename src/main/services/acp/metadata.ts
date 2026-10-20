@@ -44,8 +44,20 @@ export function saveProfiles(root: string, profiles: AcpAgentProfile[]): void {
 
 export function persistRecord(record: AcpSessionRecord): void {
   idSchema.parse(record.sessionId)
-  writeJson(join(app.getPath('userData'), 'acp-sessions', `${record.sessionId}.json`), record)
+  const path = join(app.getPath('userData'), 'acp-sessions', `${record.sessionId}.json`)
+  if (!backedUp.has(path) && existsSync(path)) {
+    const bytes = readFileSync(path)
+    const sha = createHash('sha256').update(bytes).digest('hex')
+    const directory = acpDataPath('history-originals')
+    mkdirSync(directory, { recursive: true })
+    const backup = join(directory, `${sha}.json`)
+    if (!existsSync(backup)) writeFileSync(backup, bytes, { flag: 'wx' })
+    if (createHash('sha256').update(readFileSync(backup)).digest('hex') !== sha) throw new Error('历史原始记录备份校验失败')
+    backedUp.add(path)
+  }
+  writeJson(path, record)
 }
+const backedUp = new Set<string>()
 
 export function readRecords(): AcpSessionRecord[] {
   const dir = join(app.getPath('userData'), 'acp-sessions')
@@ -62,7 +74,7 @@ export function readRecords(): AcpSessionRecord[] {
       const canResume = !legacy && typeof record.backendSessionId === 'string' && record.backendSessionId.trim().length > 0 && record.canResume === true
       records.push({ ...record, status: legacy ? 'legacy' : record.status === 'closed' || record.status === 'error' ? record.status : 'disconnected',
         historyKind: legacy ? 'legacy' : canResume ? 'resumable' : 'transcript',
-        canResume, restorePending: false,
+        canResume, restorePending: false, connectionOwned: false, cleanupRequired: false,
         events: record.events.map((event) => event.kind === 'permission' ? { ...event, payload: { ...event.payload, pending: false } } : event)
       })
     } catch { /* One damaged historical record must not hide other conversations. */ }

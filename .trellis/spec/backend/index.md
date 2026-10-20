@@ -21,6 +21,7 @@
 | [database.md](./database.md)                       | Drizzle ORM, schema, migrations                   | Database operations                |
 | [environment.md](./environment.md)                 | Dev/prod isolation, userData separation           | Setting up environment, debugging  |
 | [window-appearance.md](./window-appearance.md)     | Ordinary native frame/theme decoration, resize preservation | Changing main-window chrome or theme updates |
+| [window-navigation.md](./window-navigation.md) | Trusted app documents, external links, redirects and popup routing | Adding windows or link navigation |
 | [document-watch.md](./document-watch.md)           | Opaque watch leases, project generations and exact release | Modern reader watch/IPC cleanup |
 | [type-safety.md](./type-safety.md)                 | Zod schemas, discriminated unions, type patterns  | Type-related decisions             |
 | [logging.md](./logging.md)                         | Logging and native module packaging               | Debugging, packaging               |
@@ -30,7 +31,7 @@
 | [text-input.md](./text-input.md)                   | Text insertion without clipboard pollution        | Voice-to-text, paste features      |
 | [ipc-conventions.md](./ipc-conventions.md)         | IPC channel registry, error codes, event streams (TPD-001/002/003) | Adding or modifying any IPC channel |
 | [integrations.md](./integrations.md) | Provider ports, protected connections, project bindings, source identity, SDK transport and manual notifications (TPD-025) | External app integration changes |
-| [acp-runtime.md](./acp-runtime.md)                 | Pinned runtime, exact approvals, setup, identity, restore, workspace and acceptance contracts | ACP Agent, dependency or packaging changes |
+| [acp-runtime.md](./acp-runtime.md)                 | Pinned runtime, exact approvals, full history archive/paging, explicit model recovery, cleanup and acceptance | ACP Agent, history, dependency or packaging changes |
 | [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |
 
 ---

@@ -8,8 +8,10 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createFileSessionStore } from 'acpx/runtime'
 import { build } from 'esbuild'
+import { prepareAcpHistoryWorker } from './prepare-acp-history-worker.mjs'
 
 const temporary = mkdtempSync(join(tmpdir(), 'trellis-acp-review-'))
+await prepareAcpHistoryWorker(temporary)
 process.env.TPAP_SMOKE_DIR = temporary
 const root = join(temporary, 'fixture project')
 mkdirSync(root)

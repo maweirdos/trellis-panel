@@ -36,3 +36,9 @@ src/main/ipc/
 产生"外部工具关心的状态变更"时（如快照刷新、网关调用），除 IPC 广播外同步追加一条
 `accessEventLog.append(type, summaryPayload)`（`src/main/services/access/event-log.ts`）——
 只发摘要不发全量，外部客户端按游标增量拉取，需要全量时再读 session。
+
+### ACP history and recovery IPC
+
+History list/session/events/retry and explicit model recovery channels are registered in `src/shared/ipc-channels.ts`, validated at the main-process boundary and exposed through preload. The renderer supplies no trusted project root; main derives it from current project state and rejects foreign roots, malformed cursors and stale connection generations with `ipcFail`.
+
+History summaries omit transcript bodies and attachment base64. Event pages carry opaque archive cursors and coverage/persistence facts. Live permission snapshots use the existing ACP state path and are the only source of actionable request IDs; a page read must never recreate a resolver. See [ACP archive and recovery contracts](acp-runtime.md#8-conversation-history-archive-and-explicit-model-recovery).

@@ -1424,6 +1424,11 @@ export interface TrellisApi {
   /* --- ACP Agent 控制台 --- */
   acpAgents: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>
+  acpHistoryList: (input?: { limit?: number; cursor?: string; query?: string; filter?: 'all' | 'resumable' | 'transcript'; archive?: 'active' | 'archived' | 'all' }) => Promise<import('./acp-history').AcpHistoryListResult | IpcFail>
+  acpHistoryUpdate: (sessionId: string, input: import('./acp-history').AcpHistoryUpdateInput) => Promise<import('./acp-history').AcpHistoryUpdateResult | IpcFail>
+  acpHistorySession: (sessionId: string) => Promise<{ ok: true; version: 1; session: import('./acp-history').AcpHistorySummary } | IpcFail>
+  acpHistoryEvents: (sessionId: string, input?: { before?: string; after?: string; limit?: number }) => Promise<import('./acp-history').AcpHistoryEventPage | IpcFail>
+  acpHistoryRetry: (sessionId: string) => Promise<{ ok: true; historyPersistence: import('./acp-history').AcpHistoryPersistence } | IpcFail>
   acpSessionNew: (input: { agentId: string; profileId?: string; taskDir?: string }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
   acpSessionPrompt: (sessionId: string, text: string, options?: AcpPromptOptions) => Promise<AcpPromptResult>
   acpSessionBindTask: (sessionId: string, input: AcpBindTaskInput) => Promise<{ ok: boolean; error?: string; code?: string; session?: AcpSessionRecord }>
@@ -1438,6 +1443,7 @@ export interface TrellisApi {
   acpRuntimeNodePick: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; nodePath?: string; agents?: AcpAgentStatus[] }>
   acpSessionResume: (sessionId: string) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
   acpSessionConfigure: (sessionId: string, input: AcpConfigureInput) => Promise<{ ok: boolean; error?: string; session?: AcpSessionRecord }>
+  acpSessionRecoverModel: (sessionId: string, input: import('./acp-recovery').AcpRecoverModelInput) => Promise<import('./acp-recovery').AcpRecoverModelResult>
   onAcpState: (cb: (e: AcpStateEvent) => void) => () => void
   onAcpOutput: (cb: (e: TimelineEvent) => void) => () => void
   onAcpPermission: (cb: (e: AcpPermissionPayload) => void) => () => void
@@ -1826,6 +1832,9 @@ export interface AcpStateEvent {
   status: AcpSessionStatus
   error?: string
   session?: AcpSessionRecord
+  pendingPermissions?: AcpPermissionPayload[]
+  stateRevision?: number
+  historyPersistence?: import('./acp-history').AcpHistoryPersistence
 }
 
 /** Legacy terminal records may lack scope; new service emissions include it. */
@@ -1851,7 +1860,14 @@ export interface AcpSessionMeta {
   startedAt: number
   endedAt?: number
   error?: string
+  /** Effective title; a human customTitle takes precedence over the automatic title. */
   title?: string
+  customTitle?: string
+  pinnedAt?: number
+  archivedAt?: number
+  /** Bounded coherent latest-message text for catalogue rows/tooltips. */
+  conversationPreview?: string
+  conversationPreviewAt?: number
   schemaVersion?: number
   backendSessionId?: string
   agentSessionId?: string
@@ -1873,6 +1889,12 @@ export interface AcpSessionMeta {
   configOptions?: AcpConfigOption[]
   materialSnapshot?: { taskDir?: string; profileId?: string; instructions: string; files: string[]; capturedAt: number; sources?: AcpMaterialSource[]; sourceReferences?: AcpSourceReference[] }
   directoryLeaseReason?: string
+  pendingPermissions?: AcpPermissionPayload[]
+  stateRevision?: number
+  historyPersistence?: import('./acp-history').AcpHistoryPersistence
+  connectionOwned?: boolean
+  cleanupRequired?: boolean
+  recovery?: import('./acp-recovery').AcpRecoveryState
 }
 
 /** 会话持久化记录（userData/acp-sessions/<sessionId>.json，原子写） */
@@ -1933,4 +1955,6 @@ export interface TimelineEvent {
   payload?: Record<string, unknown>
   connectionGeneration?: string
   turnId?: string
+  /** Archive read projection; excluded from original event identity. */
+  historySeq?: number
 }

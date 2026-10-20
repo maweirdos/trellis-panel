@@ -14,7 +14,8 @@ import {
   newAcpSession,
   promptAcpSession,
   respondAcpPermission,
-  listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, resumeAcpSession, configureAcpSession, bindAcpSessionTask
+  listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, resumeAcpSession, configureAcpSession, bindAcpSessionTask,
+  listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel
 } from '../services/acp'
 import { handle } from './registry'
 
@@ -25,6 +26,28 @@ export function registerAcpIpc(): void {
     const root = getProjectRoot()
     if (!root) return noProject()
     return listAcpSessions(root, limit)
+  })
+  const scopedHistory = async (operation: (root: string) => Promise<unknown>): Promise<unknown> => {
+    const root = getProjectRoot()
+    const generation = getProjectGeneration()
+    if (!root) return noProject()
+    const result = await operation(root)
+    if (getProjectRoot() !== root || getProjectGeneration() !== generation) return noProject()
+    return result
+  }
+  handle(ipcInvoke.acp.historyList, (_e, input) => scopedHistory((root) => listAcpHistorySessions(root, input)))
+  handle(ipcInvoke.acp.historySession, (_e, id) => scopedHistory((root) => getAcpHistorySession(root, id)))
+  handle(ipcInvoke.acp.historyUpdate, (_e, id, input) => {
+    const root = getProjectRoot() ?? ''
+    const generation = getProjectGeneration()
+    return updateAcpHistorySession(root, id, input, () => getProjectRoot() === root && getProjectGeneration() === generation)
+  })
+  handle(ipcInvoke.acp.historyEvents, (_e, id, input) => scopedHistory((root) => getAcpHistoryEvents(root, id, input)))
+  handle(ipcInvoke.acp.historyRetry, (_e, id) => scopedHistory((root) => retryAcpHistorySession(root, id)))
+  handle(ipcInvoke.acp.sessionRecoverModel, (_e, id, input) => {
+    const root = getProjectRoot() ?? ''
+    const generation = getProjectGeneration()
+    return recoverAcpSessionModel(root, id, input, () => getProjectRoot() === root && getProjectGeneration() === generation)
   })
 
   handle(ipcInvoke.acp.sessionNew, (_e, input: { agentId: string; taskDir?: string }) => {

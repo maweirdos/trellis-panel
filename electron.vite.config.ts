@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import esbuild from 'esbuild'
 import type { Plugin } from 'vite'
+import { reactHookRefresh } from './scripts/vite-hook-refresh'
 
 /**
  * S0 G2：diff worker 单独 esbuild 打包（不走 rollup 多入口——实测 vite 会给第二入口
@@ -14,8 +15,8 @@ function bundleDiffWorker(): Plugin {
   return {
     name: 'bundle-diff-worker',
     apply: 'build',
-    closeBundle() {
-      return esbuild.build({
+    async closeBundle() {
+      await esbuild.build({
         entryPoints: [resolve(__dirname, 'src/main/services/documents/diff-worker.ts')],
         outfile: resolve(__dirname, 'out/main/diff-worker.js'),
         bundle: true,
@@ -36,8 +37,8 @@ function bundleObservationWorker(): Plugin {
   return {
     name: 'bundle-observation-worker',
     apply: 'build',
-    closeBundle() {
-      return esbuild.build({
+    async closeBundle() {
+      await esbuild.build({
         entryPoints: [resolve(__dirname, 'src/main/services/observability/observation-worker.ts')],
         outfile: resolve(__dirname, 'out/main/observation-worker.js'),
         bundle: true,
@@ -52,7 +53,15 @@ function bundleObservationWorker(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), bundleDiffWorker(), bundleObservationWorker()],
+    plugins: [externalizeDepsPlugin(), bundleDiffWorker(), bundleObservationWorker(), {
+      name: 'bundle-history-worker',
+      apply: 'build',
+      closeBundle: () => esbuild.build({
+        entryPoints: [resolve(__dirname, 'src/main/services/acp/history-worker.ts')],
+        outfile: resolve(__dirname, 'out/main/history-worker.js'),
+        bundle: true, format: 'cjs', platform: 'node', target: 'node22', logLevel: 'warning'
+      }).then(() => {})
+    }],
     build: {
       // electron-vite 5 / vite 8 默认输出 ESM(.mjs)；本项目为 CJS（package.json 无 type:module），
       // 强制回 CJS 以匹配 out/main/index.js 入口（Electron 44 + CJS 主进程）
@@ -83,7 +92,7 @@ export default defineConfig({
       port: 5373,
       strictPort: true
     },
-    plugins: [react()],
+    plugins: [reactHookRefresh(resolve(__dirname, 'src/renderer/src')), react()],
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/renderer/index.html') }

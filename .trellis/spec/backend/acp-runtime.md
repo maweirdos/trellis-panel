@@ -240,3 +240,118 @@ an installed command; bundle acpx; claim all tests passed because the mock worke
 Correct: select the unique original option ID, show measured readiness only,
 retain the public dependency boundary, and report fixture, vendor, native and
 packaged evidence separately with their actual limits.
+
+## 8. Conversation history archive and explicit model recovery
+
+Read this section when changing ACP transcript retention, history paging, recovery actions, or the worker lifecycle. The panel event archive is a reader/persistence authority for events admitted by Trellis; acpx remains the sole native transport/session authority.
+
+### Signatures and contracts
+
+```ts
+acpHistoryList({ limit?, cursor?, query?, filter? })
+acpHistorySession(sessionId)
+acpHistoryEvents(sessionId, { before?, after?, limit? })
+acpHistoryRetry(sessionId)
+acpSessionRecoverModel(sessionId, { modelId, expectedConnectionGeneration })
+```
+
+`acpHistoryList` searches project metadata and returns an opaque root/query/snapshot-bound cursor. `acpHistoryEvents` returns chronological pages of whole conversational turns with immutable `historySeq`, coverage, `startsMidTurn`, soft byte/count targets and persistence state. `limit` is an event-count target, not permission to cut a turn. Initial/latest, before and after pages preserve each saved user prompt together with all of its saved assistant fragments, tools, permissions and outcome. Summaries contain no event bodies or base64 attachments. Current actionable permissions are a separate live snapshot (`pendingPermissions`, `stateRevision`, connection/turn generation); historical permission events are never actionable, including the snapshot fallback.
+
+Summaries carry `hasConversation`, derived from actual scoped message text, tool or permission events; a diagnostic/status event count cannot establish conversational content. They also carry a bounded `conversationPreview` and `conversationPreviewAt` for unloaded sidebar hints. Assemble only the coherent latest real message across exact role/turn/connection/producer-message boundaries, including fragments from prior archive batches. Exclude thoughts, tools, diagnostics and attachment bodies. Preview text does not extend the declared title/role/task metadata search scope.
+
+- Every admitted panel/Trellis event enters `userData/acp/history.sqlite` before the bounded compatibility snapshot is trimmed. Worker acknowledgement advances `committedThroughSeq`; a live view never implies durable history without this acknowledgement.
+- Schema2 JSON and legacy sources are imported non-destructively. Original bytes are backed up by SHA-256. Repeated `(source,digest)` imports are idempotent; unsupported/damaged sources remain available for diagnosis and are not overwritten.
+- Imported bounded records have `historyCoverage=unknown`; exact verified native prefixes may be `partial` with provenance. A verified prefix import is allowed only before an archive sequence exists for that session; otherwise return a conflict rather than reorder cursors.
+- A changed compatibility snapshot may contain events not acknowledged before a crash. Re-import its safe suffix after the archive's known last original event ID, deduplicating by original ID/digest. Retain first-seen bytes on conflicts and report them without blocking safe new tail events. Do not append uncertain earlier events after a canonical suffix: preserve the original source/backup, report the unresolved ordering and mark coverage partial. Import markers, safe rows and metadata commit together; repeating the same source digest remains idempotent.
+- Persisted event canonicalization is a storage contract. New hashes use ordinal key ordering, not locale-sensitive sorting. Early version1 rows may use recursive `localeCompare` ordering: accept that known digest only when the stored payload verifies against it and canonical stored/incoming content is identical. Apply this comparison to append and snapshot import. Preserve original payload, digest and sequence; never treat an unexplained digest mismatch or changed body as an upgrade artifact. Test an actual old-format row across reopen/import, not only a freshly created archive.
+- Archive pages target 200 events/2 MiB, stopping only between turns. If one turn exceeds either target, return that entire saved turn and mark the page `oversized`; never split its streamed answer, Markdown, attachments or tools. Native identity includes connection generation and turn ID; retain turn-scoped preparation before the user event. Legacy records without turn IDs use actual user/outcome boundaries, without inventing a user prompt or successful completion. The SQLite worker and degraded snapshot reader follow the same boundary rules. Derive boundaries from lightweight metadata before reading selected payloads; do not hydrate the full archive just to select a page. Full history has no 800-event retention cap. During sustained worker failure, explicit write-queue bounds change coverage to partial/degraded and never report saved.
+- `startsMidTurn` describes an already incomplete saved prefix, not ordinary pagination. A page beginning with legitimate preparation/connection facts must not be classified incomplete solely because its first event is not a user message. A running turn returns all currently saved content with its actual running state; paging cannot manufacture an ending. Immutable sequence cursors remain scoped and monotonic; concurrent tail appends and old cursors must not lose or duplicate events when pages merge. A cursor at a valid turn edge remains usable; an old interior cursor or a tail edge invalidated by growth returns a typed conflict/reset instead of silently returning half a turn.
+- `acpSessionRecoverModel` accepts only an exact last-known candidate ID and current connection generation. It uses public acpx `setModel`/same-session load plus a subsequent same-session connect; it never parses error text, creates a replacement session, replays a prompt, or silently changes provider. `modelConfirmed` may be true while connection remains failed.
+- `connectionOwned`/`cleanupRequired` are ephemeral lifecycle facts derived from the active owner, never inferred from persisted `status='error'`.
+
+### Validation matrix
+
+| Condition | Required result |
+| --- | --- |
+| More than 800 streamed events | First/middle/last events survive a fresh archive reopen |
+| One turn exceeds count/byte target | Its prompt, all saved fragments/tools and outcome remain in one oversized page |
+| Multiple turns, latest/before/after pages | Boundaries preserve turns; concatenated event IDs/bytes match the archive exactly |
+| Legacy/no turn ID or reused ID after reconnect | Use real user/outcome boundaries and generation scope; never merge unrelated turns |
+| Missing saved opening / currently running tail | Truthful prefix/running metadata; no fabricated prompt or completion |
+| Archive worker unavailable/write failure | Current content remains visible; persistence becomes degraded with pending/unarchived count and retry |
+| Root/session/epoch/cursor mismatch | Typed conflict/reset; no cross-project read |
+| Historical pending permission | Read-only/expired display; no resolver or actionable approval |
+| Exact model candidate rejected | No prompt/new session; effective model unchanged |
+| Model acknowledged, second load fails | Preserve confirmed candidate metadata and report connection failure separately |
+| Stop/project change during recovery | Cancel/retain ownership; reject late result and do not revive stopped source |
+
+### Tests and wrong/correct pair
+
+Run `acp-history.mjs` for >800 exact events, >20 catalogue/search/direct-ID, cursor races, oversized images, migration/backup/damage, verified prefix recovery, worker/write failure and live permissions. Run `acp-recovery.mjs` for exact-ID same-session two-load, zero `session/new`/prompt dispatch, confirmed-but-connect-failed split, stale/root/generation/stop/lease/cap/cleanup cases. Native/vendor acceptance remains separate.
+
+Wrong: use the 800-event `AcpSessionRecord.events` array as the full archive, slice an assistant reply at the 200th event, or make `pending:true` in a historical page clickable.
+
+Correct: write to the acknowledged archive, page whole saved turns from immutable sequence, and derive actionability only from the current live permission map.
+
+## Conversation organization
+
+### 1. Scope / Trigger
+
+Read before adding conversation rename, pin or archive actions. These are local
+organization preferences, independent of native process/turn state and saved
+transcript bytes. Archive is reversible and never implies deletion or shutdown.
+
+### 2. Signatures
+
+```ts
+acpHistoryUpdate(sessionId, { title?: string, pinned?: boolean, archived?: boolean })
+// -> { ok: true, version: 1, session: AcpHistorySummary } | IpcFail
+acpHistoryList({ archive?: 'active' | 'archived' | 'all', ...existingInput })
+```
+
+### 3. Contracts
+
+- Default list scope is `active`. Apply archive selection, effective-title search
+  and pinned-first ordering before page slicing, including unloaded records.
+- Project/session preferences persist independently of runtime-generated session
+  metadata. Effective titles expose `customTitle`; pin/archive expose optional
+  `pinnedAt`/`archivedAt`. Later status, append, import and reconnect metadata
+  cannot overwrite human choices. List, direct session, event-page summary and
+  degraded snapshot reads apply the same preferences.
+- Capture the current root and project generation at IPC entry. Validate the
+  exact owned session and recheck the captured owner before mutation. Acknowledge
+  only a durable save; update no native lifecycle, prompt or permission state.
+- Preference changes invalidate stale catalogue snapshots rather than mixing old
+  cursors with changed filters/order. Keep existing event-sequence cursors intact.
+
+### 4. Validation / Error Matrix
+
+| Input or condition | Required behavior |
+| --- | --- |
+| Title with leading/trailing whitespace | Trim; require 1–200 characters |
+| Empty patch, unknown keys, non-boolean flags or invalid ID | Typed invalid-argument failure; no write |
+| Foreign/missing session or changed project owner | Reject without changing another source |
+| Save failure or malformed existing preferences | Visible failure; preserve original file and prior effective values |
+| Repeated pin/archive boolean | Idempotent state; unpin/unarchive reverses it |
+| Archived running session | Keep the actual running state; no implicit cancel/kill |
+
+### 5. Good / Base / Bad Cases
+
+Good: rename an old disconnected conversation, restart, and find it by its new
+title. Base: archive it and recover it through the archived filter. Bad: store a
+temporary row label that the next runtime event replaces, or hide only the first
+loaded page while search/pagination continue to return archived records.
+
+### 6. Tests Required
+
+Verify rename/pin/archive and inverse actions through real persistence/reopen,
+search and pagination; verify legacy and fallback reads, root isolation, stale
+project callbacks, invalid inputs, failed saves and unchanged transcript/native
+dispatch. The renderer must exercise actual row menus, modal validation,
+acknowledgement/failure, selected title updates and retrieval of archived rows.
+
+### 7. Wrong vs Correct
+
+Wrong: changing the title only in component state or interpreting archive as
+remote conversation deletion. Correct: persist scoped organization metadata,
+project it consistently on reads, and expose only the supported reversible actions.

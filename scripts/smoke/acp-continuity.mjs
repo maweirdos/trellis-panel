@@ -5,10 +5,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { prepareAcpHistoryWorker } from './prepare-acp-history-worker.mjs'
 import { checkAcpxCompatibility } from '../check-acpx-compat.mjs'
 
 await checkAcpxCompatibility()
 const directory = mkdtempSync(join(tmpdir(), 'trellis-acp-continuity-'))
+await prepareAcpHistoryWorker(directory)
 const root = join(directory, 'project')
 mkdirSync(root)
 const previousData = process.env.TPAP_SMOKE_DIR

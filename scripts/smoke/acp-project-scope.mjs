@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { prepareAcpHistoryWorker } from './prepare-acp-history-worker.mjs'
 const directory = mkdtempSync(join(tmpdir(), 'tpanel-acp-scope-'))
+await prepareAcpHistoryWorker(directory)
 process.env.TPAP_SMOKE_DIR = directory
 const projectA = join(directory, 'project-a')
 const projectB = join(directory, 'project-b')
@@ -86,7 +88,7 @@ try {
 
   const handlers = new Map()
   globalThis.__ACP_IPC_SCOPE__ = { root: projectA, handlers, calls: [] }
-  const methodNames = ['listAcpSessions', 'cancelAcpSession', 'killAcpSession', 'listAcpAgents', 'newAcpSession', 'promptAcpSession', 'respondAcpPermission', 'listAcpProfiles', 'saveAcpProfile', 'deleteAcpProfile', 'setupAcpRuntime', 'pickAcpNode', 'resumeAcpSession', 'configureAcpSession', 'bindAcpSessionTask']
+  const methodNames = ['listAcpSessions', 'cancelAcpSession', 'killAcpSession', 'listAcpAgents', 'newAcpSession', 'promptAcpSession', 'respondAcpPermission', 'listAcpProfiles', 'saveAcpProfile', 'deleteAcpProfile', 'setupAcpRuntime', 'pickAcpNode', 'resumeAcpSession', 'configureAcpSession', 'bindAcpSessionTask', 'listAcpHistorySessions', 'getAcpHistorySession', 'getAcpHistoryEvents', 'updateAcpHistorySession', 'retryAcpHistorySession', 'recoverAcpSessionModel']
   const mocks = {
     '../state': 'export const getProjectRoot = () => globalThis.__ACP_IPC_SCOPE__.root; export const getProjectGeneration = () => globalThis.__ACP_IPC_SCOPE__.generation ?? 1;',
     './registry': 'export const handle = (key, fn) => globalThis.__ACP_IPC_SCOPE__.handlers.set(key, fn)',
@@ -101,11 +103,16 @@ try {
   for (const [channel, args] of [
     ['acp:sessions', [7]], ['acp:session.new', [{ agentId: 'mock' }]], ['acp:session.prompt', ['s', 'text']],
     ['acp:session.cancel', ['s']], ['acp:session.kill', ['s']], ['acp:permission.respond', ['p', 'allow']],
-    ['acp:profiles', []], ['acp:profile.save', [{}]], ['acp:profile.delete', ['id']], ['acp:session.resume', ['s']], ['acp:session.configure', ['s', {}]], ['acp:session.bind-task', ['s', { taskDir: null, expectedConnectionGeneration: 'g' }]]
+    ['acp:profiles', []], ['acp:profile.save', [{}]], ['acp:profile.delete', ['id']], ['acp:session.resume', ['s']], ['acp:session.configure', ['s', {}]], ['acp:session.bind-task', ['s', { taskDir: null, expectedConnectionGeneration: 'g' }]],
+    ['acp:history.list', [{ query: 'older' }]], ['acp:history.session', ['s']], ['acp:history.events', ['s', {}]], ['acp:history.retry', ['s']], ['acp:session.recover-model', ['s', { modelId: 'small', expectedConnectionGeneration: 'g' }]]
   ]) {
-    handlers.get(channel)(null, ...args)
+    await handlers.get(channel)(null, ...args)
     assert.equal(globalThis.__ACP_IPC_SCOPE__.calls.at(-1).args[0], projectA, `Current root injected for ${channel}`)
   }
+  const lateHistory = handlers.get('acp:history.list')(null)
+  globalThis.__ACP_IPC_SCOPE__.root = projectB
+  assert.equal((await lateHistory).code, 'E_NO_PROJECT', 'A project change discards an old history response')
+  globalThis.__ACP_IPC_SCOPE__.root = projectA
   globalThis.__ACP_IPC_SCOPE__.root = null
   assert.equal(handlers.get('acp:sessions')(null).code, 'E_NO_PROJECT')
   handlers.get('acp:session.prompt')(null, 's', 'text')

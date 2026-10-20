@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { prepareAcpHistoryWorker } from './prepare-acp-history-worker.mjs'
 const temporary = mkdtempSync(join(tmpdir(), 'trellis-acp-materials-'))
+await prepareAcpHistoryWorker(temporary)
 process.env.TPAP_SMOKE_DIR = temporary
 process.env.TRELLIS_READER_SETTLE_MS = '0'
 const root = join(temporary, 'project a')

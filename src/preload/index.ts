@@ -20,6 +20,7 @@ import type {
 } from '../shared/observability/store'
 import type { IpcFail } from '../shared/ipc-errors'
 import type { IntegrationApi } from '../shared/integrations'
+import type { TrellisApi } from '../shared/types'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
@@ -154,6 +155,12 @@ const api = {
 
   acpAgents: () => ipcRenderer.invoke(ipcInvoke.acp.agents),
   acpSessions: () => ipcRenderer.invoke(ipcInvoke.acp.sessions),
+  acpHistoryList: (input?: Parameters<TrellisApi['acpHistoryList']>[0]) => ipcRenderer.invoke(ipcInvoke.acp.historyList, input),
+  acpHistorySession: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.acp.historySession, sessionId),
+  acpHistoryUpdate: (sessionId: string, input: Parameters<TrellisApi['acpHistoryUpdate']>[1]) => ipcRenderer.invoke(ipcInvoke.acp.historyUpdate, sessionId, input),
+  acpHistoryEvents: (sessionId: string, input?: Parameters<TrellisApi['acpHistoryEvents']>[1]) => ipcRenderer.invoke(ipcInvoke.acp.historyEvents, sessionId, input),
+  acpHistoryRetry: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.acp.historyRetry, sessionId),
+  acpSessionRecoverModel: (sessionId: string, input: import('../shared/acp-recovery').AcpRecoverModelInput) => ipcRenderer.invoke(ipcInvoke.acp.sessionRecoverModel, sessionId, input),
   acpSessionNew: (input: { agentId: string; profileId?: string; taskDir?: string }) => ipcRenderer.invoke(ipcInvoke.acp.sessionNew, input),
   acpSessionPrompt: (sessionId: string, text: string, options?: import('../shared/types').AcpPromptOptions) => ipcRenderer.invoke(ipcInvoke.acp.sessionPrompt, sessionId, text, options),
   acpSessionBindTask: (sessionId: string, input: import('../shared/types').AcpBindTaskInput) => ipcRenderer.invoke(ipcInvoke.acp.sessionBindTask, sessionId, input),
