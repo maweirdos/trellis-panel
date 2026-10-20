@@ -1,164 +1,90 @@
-/**
- * C2/C3/PF-10：本机开发命令的有归属运行。
- * 边界：只管理面板自己启动的进程；停止只作用于自己的进程树，绝不触碰外部进程；
- * 脚本必须真实存在于目标目录 package.json（不改脚本、不拼 shell 命令）；
- * 输出有界（超出截断并如实标注）；退出码/信号/存活如实呈现——
- * 进程存活 ≠ 服务就绪，没有就绪检查时不宣称服务可用。
- */
-import { spawn, type ChildProcess } from 'child_process'
-import { randomUUID } from 'crypto'
-import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
-import { errorText } from '../../shared/errors'
+/** Legacy npm entry points delegate to the common, project-owned application runtime. */
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import type { ApplicationFailure, ApplicationSummary } from '../../shared/app-runtime'
+import type { DevRunInfo } from '../../shared/types'
+import { IpcErrorCode, ipcFail, type IpcFail } from '../../shared/ipc-errors'
+import { appRuntime, type AppOperationOptions } from './app-runtime'
+export type { DevRunInfo as DevRun } from '../../shared/types'
 
 export interface DevScriptInfo {
   name: string
   command: string
 }
 
-export function listPackageScripts(dir: string): { ok: boolean; error?: string; scripts: DevScriptInfo[] } {
+export function listPackageScripts(dir: string): { ok: true; scripts: DevScriptInfo[] } | (IpcFail & { scripts: DevScriptInfo[] }) {
   const pkgPath = join(dir, 'package.json')
-  if (!existsSync(pkgPath)) return { ok: false, error: '该目录下没有 package.json', scripts: [] }
+  if (!existsSync(pkgPath)) return { ...ipcFail(IpcErrorCode.NotFound, '该目录下没有 package.json'), scripts: [] }
   try {
+    if (statSync(pkgPath).size > 1024 * 1024) return { ...ipcFail(IpcErrorCode.InvalidArg, 'package.json 超过读取限额'), scripts: [] }
     const pkg: { scripts?: Record<string, unknown> } = JSON.parse(readFileSync(pkgPath, 'utf-8'))
     const scripts = Object.entries(pkg.scripts ?? {})
       .filter(([, cmd]) => typeof cmd === 'string')
       .map(([name, cmd]) => ({ name, command: String(cmd) }))
     return { ok: true, scripts }
-  } catch (e) {
-    return { ok: false, error: `package.json 无法读取：${errorText(e, '未知错误')}`, scripts: [] }
+  } catch {
+    return { ...ipcFail(IpcErrorCode.Io, 'package.json 无法读取或格式无效'), scripts: [] }
   }
 }
 
-export type DevRunState = 'running' | 'exited' | 'failed' | 'killed'
-
-export interface DevRun {
-  id: string
-  dir: string
-  /** 展示用完整命令（= 实际执行的命令） */
-  command: string
-  script: string
-  startedAt: number
-  exitedAt: number | null
-  state: DevRunState
-  exitCode: number | null
-  pid: number | null
-  output: string
-  outputTruncated: boolean
-}
-
-const OUT_CAP_BYTES = 256 * 1024
-const MAX_RETAINED_RUNS = 30
-
-const runs = new Map<string, DevRun & { child?: ChildProcess }>()
-
-function append(run: { output: string; outputTruncated: boolean }, chunk: string): void {
-  const overflow = run.output.length + chunk.length - OUT_CAP_BYTES
-  if (overflow > 0) {
-    run.output = run.output.slice(Math.min(run.output.length, overflow))
-    run.outputTruncated = true
-  }
-  run.output += chunk
-}
-
-function pruneFinished(): void {
-  const finished = [...runs.values()].filter((r) => r.state !== 'running')
-  while (runs.size > MAX_RETAINED_RUNS && finished.length > 0) {
-    const oldest = finished.shift()
-    if (oldest) runs.delete(oldest.id)
+async function legacyRun(root: string, app: ApplicationSummary): Promise<DevRunInfo | null> {
+  if (!app.run) return null
+  const logs = await appRuntime.logs(root, app.definition.id)
+  const launch = app.definition.launch
+  return {
+    id: app.run.id,
+    dir: resolve(root, app.definition.cwd),
+    command: launch.kind === 'npm-script' ? `npm run ${launch.script}` : launch.kind === 'argv' ? launch.executable : '脚本命令',
+    script: launch.kind === 'npm-script' ? launch.script : app.definition.id,
+    startedAt: app.run.startedAt,
+    exitedAt: app.run.exitedAt,
+    state: app.processState,
+    exitCode: app.run.exitCode,
+    pid: app.run.pid,
+    output: logs.ok ? logs.output : '',
+    outputTruncated: logs.ok ? logs.outputTruncated : false
   }
 }
 
-export function devRunStart(dir: string, script: string): { ok: boolean; error?: string; run?: DevRun } {
-  if (!existsSync(dir)) return { ok: false, error: `目录不存在：${dir}` }
-  const listed = listPackageScripts(dir)
-  if (!listed.ok) return { ok: false, error: listed.error }
-  if (!listed.scripts.some((s) => s.name === script)) {
-    return { ok: false, error: `脚本 "${script}" 不在该工程 package.json 中——面板不代跑未声明脚本` }
-  }
-  const command = `npm run ${script}`
-  const id = randomUUID().slice(0, 8)
-  const isWin = process.platform === 'win32'
-  let child: ChildProcess
-  try {
-    child = isWin
-      ? spawn('cmd.exe', ['/d', '/s', '/c', command], { cwd: dir, windowsHide: true })
-      : spawn('npm', ['run', script], { cwd: dir, windowsHide: true })
-  } catch (e) {
-    return { ok: false, error: `进程启动失败：${errorText(e, '未知错误')}` }
-  }
-  const run: DevRun & { child?: ChildProcess } = { id, dir, command, script, startedAt: Date.now(), exitedAt: null as number | null, state: 'running' as DevRunState, exitCode: null as number | null, pid: child.pid ?? null, output: '', outputTruncated: false, child }
-  child.stdout?.on('data', (d: Buffer) => append(run, d.toString('utf-8')))
-  child.stderr?.on('data', (d: Buffer) => append(run, d.toString('utf-8')))
-  child.on('error', (e) => {
-    run.state = 'failed'
-    run.exitedAt = Date.now()
-    append(run, `\n[dev-run] 进程启动失败：${e.message}\n`)
-  })
-  child.on('close', (code, signal) => {
-    run.exitedAt = Date.now()
-    if (signal) {
-      run.state = 'killed'
-      run.exitCode = null
-      append(run, `\n[dev-run] 进程被终止（signal ${signal}）\n`)
-    } else {
-      run.state = code === 0 ? 'exited' : 'failed'
-      run.exitCode = code
-      append(run, `\n[dev-run] 进程退出，退出码 ${code ?? 'null'}\n`)
-    }
-    delete run.child
-  })
-  runs.set(id, run)
-  pruneFinished()
-  const { child: _c, ...summary } = run
-  return { ok: true, run: summary }
+export async function devRunStart(root: string, dir: string, script: string, options: AppOperationOptions = {}): Promise<{ ok: true; run: DevRunInfo } | ApplicationFailure> {
+  const imported = await appRuntime.importNpm(root, dir, script)
+  if (imported.ok === false) return imported
+  const result = await appRuntime.start(root, imported.app.definition.id, { ...options, expectedRevision: imported.app.definition.revision })
+  if (result.ok === false) return result
+  const run = await legacyRun(root, result.app)
+  return run ? { ok: true, run } : ipcFail(IpcErrorCode.Io, '运行尚未建立')
 }
 
-/** 停止只作用于面板自己启动的运行：按 id 找到自己的子进程树再终止。 */
-export function devRunStop(id: string): { ok: boolean; error?: string } {
-  const run = runs.get(id)
-  if (!run) return { ok: false, error: '运行不存在或已被清理' }
-  if (run.state !== 'running') return { ok: false, error: `该运行已结束（${run.state}）` }
-  if (!run.child || run.child.pid === undefined) return { ok: false, error: '进程句柄不可用' }
-  const pid = run.child.pid
-  try {
-    if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true })
-    } else {
-      run.child.kill('SIGTERM')
-      setTimeout(() => {
-        try {
-          if (run.state === 'running') run.child?.kill('SIGKILL')
-        } catch {
-          /* already gone */
-        }
-      }, 3_000).unref()
-    }
-    append(run, `\n[dev-run] 已请求停止（pid ${pid}，仅限面板自己启动的进程树）\n`)
-    return { ok: true }
-  } catch (e) {
-    return { ok: false, error: errorText(e, '停止失败') }
-  }
+export async function devRunStop(root: string, id: string): Promise<{ ok: true } | ApplicationFailure> {
+  const listed = await appRuntime.list(root)
+  if (listed.ok === false) return listed
+  const app = listed.apps.find((item) => item.run?.id === id || item.definition.id === id)
+  if (!app) return ipcFail(IpcErrorCode.NotFound, '当前项目中不存在该运行')
+  const result = await appRuntime.stop(root, app.definition.id)
+  return result.ok ? { ok: true } : result
 }
 
-/** 停止面板当前所有运行中的进程（组合运行的"全部停止"；同样只限自己的）。 */
-export function devRunStopAll(): { stopped: number } {
+export async function devRunStopAll(root: string): Promise<{ ok: boolean; stopped: number; error?: string }> {
+  const listed = await appRuntime.list(root)
+  if (listed.ok === false) return { ...listed, stopped: 0 }
   let stopped = 0
-  for (const run of runs.values()) {
-    if (run.state === 'running' && devRunStop(run.id).ok) stopped += 1
+  let failed = false
+  for (const app of listed.apps) {
+    if (!['starting', 'running', 'stopping', 'unknown', 'cleanup-required'].includes(app.processState)) continue
+    const result = await appRuntime.stop(root, app.definition.id)
+    if (result.ok) stopped += 1
+    else failed = true
   }
-  return { stopped }
+  return failed ? { ...ipcFail(IpcErrorCode.Io, '部分应用尚未停止，请在应用面板检查'), stopped } : { ok: true, stopped }
 }
 
-export function devRunList(): DevRun[] {
-  return [...runs.values()]
-    .sort((a, b) => b.startedAt - a.startedAt)
-    .map(({ child: _c, ...r }) => r)
+export async function devRunList(root: string): Promise<DevRunInfo[]> {
+  const listed = await appRuntime.list(root)
+  if (listed.ok === false) throw new Error(listed.error)
+  const runs = await Promise.all(listed.apps.map((app) => legacyRun(root, app)))
+  return runs.filter((run): run is DevRunInfo => run !== null).sort((a, b) => b.startedAt - a.startedAt)
 }
 
-export function devRunGet(id: string): DevRun | null {
-  const run = runs.get(id)
-  if (!run) return null
-  const { child: _c, ...r } = run
-  return r
+export async function devRunGet(root: string, id: string): Promise<DevRunInfo | null> {
+  return (await devRunList(root)).find((run) => run.id === id) ?? null
 }

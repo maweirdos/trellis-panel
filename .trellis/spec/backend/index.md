@@ -30,6 +30,7 @@
 | [macos-permissions.md](./macos-permissions.md)     | macOS system permissions (mic, accessibility)     | Features requiring permissions     |
 | [text-input.md](./text-input.md)                   | Text insertion without clipboard pollution        | Voice-to-text, paste features      |
 | [ipc-conventions.md](./ipc-conventions.md)         | IPC channel registry, error codes, event streams (TPD-001/002/003) | Adding or modifying any IPC channel |
+| [app-runtime.md](./app-runtime.md) | Owned local application lifecycle, environment, exact launch approval, CLI and quit contracts | Application run-panel or Agent startup changes |
 | [integrations.md](./integrations.md) | Provider ports, protected connections, project bindings, source identity, SDK transport and manual notifications (TPD-025) | External app integration changes |
 | [acp-runtime.md](./acp-runtime.md)                 | Pinned runtime, exact approvals, full history archive/paging, explicit model recovery, cleanup and acceptance | ACP Agent, history, dependency or packaging changes |
 | [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |

@@ -18,6 +18,8 @@ import { applyChromiumProxy } from './services/proxy'
 import { mainWindowAppearance } from './services/window-appearance'
 import { installWindowNavigation, openExternalHttpUrl } from './services/window-navigation'
 import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTaskbarShortcut } from './services/window-branding'
+import { appRuntime } from './services/app-runtime'
+import { createQuitGate } from './services/quit-gate'
 import { ipcEvent } from '../shared/ipc-channels'
 import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
 import {
@@ -512,6 +514,9 @@ if (!gotLock) {
       openDocWindow
     })
     createWindow()
+    void appRuntime.initialize().catch(() => {
+      toast({ kind: 'warn', title: '应用运行记录未能恢复', body: '请在应用面板检查本地配置与遗留运行状态' })
+    })
     // 速记窗启动即预创建（隐藏），热键首次按下瞬时显示
     ensureQuickTodo()
     startInbox({
@@ -551,26 +556,37 @@ if (!gotLock) {
     // keep running in tray — quit only via tray menu
   })
 
-  let acpQuitSettled = false
-  let acpQuitPending = false
-  app.on('before-quit', (event) => {
-    if (acpQuitSettled) return
-    event.preventDefault()
-    if (acpQuitPending) return
-    acpQuitPending = true
-    stopTimers()
-    stopInbox()
-    abortAll()
-    // Join owned Runtime cleanup and the acknowledged history drain before Electron exits.
-    void shutdownAcp().then(() => { acpQuitSettled = true; app.quit() }).catch((error: unknown) => {
-      acpQuitPending = false
-      dialog.showErrorBox('会话收尾未完成', `会话清理或历史保存尚未完成，请处理后重试退出。\n${error instanceof Error ? error.message : String(error)}`)
-    })
-    // S0 G2：diff worker 线程收口（worker 无子进程，terminate 即完整清理）
-    stopDiffWorker()
-    // S0 G3：观测 worker 收口（先 close 让库连接正常收尾，超时即 terminate）
-    stopObservationWorker()
-    globalShortcut.unregisterAll()
-    accessServer.stop()
+  const quitGate = createQuitGate({
+    hasApplications: () => appRuntime.hasOwnedApplications(),
+    confirmApplications: async () => {
+      const result = await dialog.showMessageBox({
+        type: 'question',
+        title: '退出 Trellis Panel',
+        message: '停止运行中的应用并退出？',
+        detail: '退出前会停止面板管理的应用。关闭窗口到托盘可继续运行。',
+        buttons: ['取消', '停止应用并退出'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true
+      })
+      return result.response === 1
+    },
+    setAdmissionClosed: (closed) => appRuntime.setAdmissionClosed(closed),
+    stopApplications: () => appRuntime.shutdown(),
+    stopSessions: shutdownAcp,
+    finalize: () => {
+      stopTimers()
+      stopInbox()
+      abortAll()
+      stopDiffWorker()
+      stopObservationWorker()
+      globalShortcut.unregisterAll()
+      accessServer.stop()
+    },
+    quit: () => app.quit(),
+    reportError: (error) => {
+      dialog.showErrorBox('退出收尾未完成', `应用清理或会话保存尚未完成，请处理后重试退出。\n${error instanceof Error ? error.message : '请检查应用与会话状态'}`)
+    }
   })
+  app.on('before-quit', quitGate.beforeQuit)
 }

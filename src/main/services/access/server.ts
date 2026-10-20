@@ -20,24 +20,33 @@ import { getSnapshot } from '../../state'
 import { GatewayManager } from '../gateway/manager'
 import { accessEventLog, type Cursor } from './event-log'
 import { IdempotencyCache } from './idempotency'
-import { rotateAccessToken, verifyToken } from './token'
+import { getAccessToken, rotateAccessToken, verifyToken } from './token'
+import { writeAccessEndpoint } from './endpoint'
+import { ApplicationAccessRoutes } from './app-routes'
 
 const PROTOCOL_VERSION = 'tpap/1'
 const MAX_BODY_BYTES = 1024 * 1024
+
+class AccessRequestError extends Error {
+  constructor(readonly code: string, readonly status: number, message: string) { super(message) }
+}
 
 interface AccessMeta {
   running: boolean
   port: number | null
   enabled: boolean
+  error?: string
 }
 
 class AccessServer {
   private server: Server | null = null
   private port: number | null = null
   private idempotency = new IdempotencyCache()
+  private lastError: string | undefined
+  private applications = new ApplicationAccessRoutes()
 
   status(): AccessMeta {
-    return { running: this.server !== null, port: this.port, enabled: !!getSettings().access?.enabled }
+    return { running: this.server?.listening === true, port: this.server?.listening ? this.port : null, enabled: !!getSettings().access?.enabled, ...(this.lastError ? { error: this.lastError } : {}) }
   }
 
   /** 面板内 IPC 与启动流程统一入口：按 settings 同步启停 */
@@ -56,16 +65,24 @@ class AccessServer {
     const server = createServer((req, res) => {
       void this.route(req, res)
     })
+    this.server = server
+    this.port = port
+    this.lastError = undefined
     server.once('error', () => {
       if (this.server === server) {
         this.server = null
         this.port = null
+        this.lastError = '本地接入服务启动失败，请检查端口和本地数据目录权限'
+        this.publishEndpoint()
       }
     })
     // 安全底线：无条件环回绑定
     server.listen(port, '127.0.0.1', () => {
-      this.server = server
-      this.port = port
+      if (this.server !== server) { server.close(); return }
+      const address = server.address()
+      this.port = typeof address === 'object' && address ? address.port : port
+      getAccessToken()
+      this.publishEndpoint()
     })
   }
 
@@ -75,6 +92,13 @@ class AccessServer {
       this.server = null
       this.port = null
     }
+    this.publishEndpoint()
+  }
+
+  private publishEndpoint(): void {
+    const state = this.status()
+    try { writeAccessEndpoint(state.running, state.port, state.enabled) }
+    catch { this.lastError = '接入信息未能保存，请检查本地数据目录权限' }
   }
 
   /* ---------------- routing ---------------- */
@@ -90,6 +114,11 @@ class AccessServer {
         return this.json(res, 404, { ok: false, error: { code: 'E_NOT_FOUND', message: '未知路径' } })
       }
       const op = segments.slice(2).join('/')
+
+      if (segments[2] === 'apps') {
+        const reply = await this.applications.route(req.method ?? '', segments.slice(3).join('/'), url, () => this.readBody(req))
+        return this.json(res, reply.status, reply.payload)
+      }
 
       switch (`${req.method} /${op}`) {
         case 'GET /host':
@@ -158,8 +187,9 @@ class AccessServer {
         default:
           return this.json(res, 404, { ok: false, error: { code: 'E_NOT_FOUND', message: '未知操作' } })
       }
-    } catch (e) {
-      this.json(res, 500, { ok: false, error: { code: 'E_UNKNOWN', message: e instanceof Error ? e.message : String(e) } })
+    } catch (error) {
+      const known = error instanceof AccessRequestError
+      this.json(res, known ? error.status : 500, { ok: false, error: { code: known ? error.code : 'E_UNKNOWN', message: known ? error.message : '接入请求未完成，请检查面板中的实际状态' } })
     }
   }
 
@@ -169,7 +199,7 @@ class AccessServer {
       name: 'trellis-panel',
       protocol: PROTOCOL_VERSION,
       project: snap ? { name: snap.meta.name, root: snap.meta.root } : null,
-      capabilities: ['session.read', 'events.pull', 'tools.list', 'tools.deferred', 'tools.call', 'tool_search', 'spec.read', 'task.read', 'token.rotate', 'chat.read']
+      capabilities: ['session.read', 'events.pull', 'tools.list', 'tools.deferred', 'tools.call', 'tool_search', 'spec.read', 'task.read', 'token.rotate', 'chat.read', 'apps.read', 'apps.start', 'apps.stop', 'apps.restart', 'apps.logs']
     }
   }
 
@@ -196,13 +226,15 @@ class AccessServer {
     let size = 0
     for await (const chunk of req) {
       size += (chunk as Buffer).length
-      if (size > MAX_BODY_BYTES) throw new Error('请求体超过 1MB')
+      if (size > MAX_BODY_BYTES) throw new AccessRequestError('E_INVALID_ARG', 413, '请求体超过 1MB')
       chunks.push(chunk as Buffer)
     }
     const raw = Buffer.concat(chunks).toString('utf-8').trim()
     if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
+    let parsed: unknown
+    try { parsed = JSON.parse(raw) } catch { throw new AccessRequestError('E_INVALID_ARG', 422, '请求体不是有效 JSON') }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new AccessRequestError('E_INVALID_ARG', 422, '请求体必须为 JSON 对象')
+    return parsed as Record<string, unknown>
   }
 
   private parseCursor(raw: string | null): Cursor | null {

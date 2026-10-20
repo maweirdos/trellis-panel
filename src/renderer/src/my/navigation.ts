@@ -52,8 +52,8 @@ export const PAGE_NAVIGATION = {
   integrations: { title: '集成', domain: 'settings', scope: 'mixed', icon: 'modules', keywords: 'Jira GitHub GitLab Gitee 钉钉 飞书 连接 仓库 通知', scopeNote: '连接在本机保存；查询、仓库与通知目的地绑定当前项目。' },
   gateway: { title: 'MCP', domain: 'settings', scope: 'mixed', icon: 'analytics', keywords: '应用 项目' },
   devtools: {
-    title: '工具', domain: 'tasks', scope: 'local', icon: 'views', keywords: 'Git 只读 运行 日志 脚本 多工程',
-    scopeNote: 'Git 仅为只读查看（无写操作）；运行只管理面板自己启动的进程，进程存活不代表服务就绪。'
+    title: '工具', domain: 'tasks', scope: 'project', icon: 'views', keywords: 'Git 只读 应用 运行 日志 脚本 启动 端口',
+    scopeNote: '当前项目的 Git 与本地应用。'
   }
 } satisfies Record<Page, PageNavigation>
 

@@ -10,6 +10,7 @@ import { registerDocumentsIpc } from './documents'
 import { registerObservationIpc } from './observability'
 import { registerGitIpc } from './git'
 import { registerDevtoolsIpc } from './devtools'
+import { registerAppRuntimeIpc } from './app-runtime'
 import { registerReportIpc } from './report'
 import { registerChannelsIpc } from './channels'
 import { registerStudioIpc } from './studio'
@@ -42,7 +43,8 @@ export function registerIpc(deps: WindowDeps): void {
   registerDocumentsIpc()
   registerObservationIpc()
   registerGitIpc()
-  registerDevtoolsIpc()
+  registerDevtoolsIpc(deps)
+  registerAppRuntimeIpc(deps)
   registerReportIpc()
   registerChannelsIpc()
   registerStudioIpc()

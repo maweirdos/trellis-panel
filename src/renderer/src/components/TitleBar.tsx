@@ -5,6 +5,7 @@ import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { ProjectSwitcher } from '../my/layout/ProjectSwitcher'
 import { BrandMark } from '../my/BrandMark'
+import { ApplicationPanel } from '../applications/ApplicationPanel'
 import { clsx } from 'clsx'
 
 function WinButton({ onClick, children, label, danger }: {
@@ -49,6 +50,7 @@ export function TitleBar(): JSX.Element {
         aria-label="搜索或输入命令 (Ctrl+K)">
         <Search size={16} strokeWidth={1.8} /><span className="truncate text-left text-my-md">搜索或输入命令</span><kbd className="ml-2 whitespace-nowrap font-sans text-my-xs text-my-tertiary">Ctrl K</kbd>
       </button>
+      <ApplicationPanel />
       {hasIpc && <div className="no-drag flex h-full items-stretch">
             {snapshot && <WinButton label="打开任务悬浮窗" onClick={() => api.setCapsuleMode(true)}><PictureInPicture2 size={14} /></WinButton>}
         <WinButton label="最小化窗口" onClick={() => api.windowMinimize()}><Minus size={14} /></WinButton>

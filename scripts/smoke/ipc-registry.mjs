@@ -15,7 +15,7 @@ const workDir = mkdtempSync(join(tmpdir(), 'tpanel-ipc-smoke-'))
 process.env.TPAP_SMOKE_DIR = workDir
 
 const bundle = join(workDir, 'ipc-bundle.mjs')
-const requireBanner = "import { createRequire as smokeRequire } from 'module'; const require = smokeRequire(import.meta.url);"
+const requireBanner = "import { createRequire as smokeRequire } from 'module'; import { fileURLToPath as smokeFilePath } from 'url'; import { dirname as smokeDirname } from 'path'; const require = smokeRequire(import.meta.url); const __dirname = smokeDirname(smokeFilePath(import.meta.url));"
 execFileSync(process.execPath, [
   join('node_modules', 'esbuild', 'bin', 'esbuild'),
   'src/main/ipc/index.ts',

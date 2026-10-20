@@ -17,7 +17,7 @@
   user-select: text;
 }
 .my-root ::selection { background: var(--my-selection-bg); color: var(--my-txt-primary); }
-.my-root :where(button, [role='button'], a, input, select, textarea, summary):focus-visible {
+.my-root :where(button, [role='button'], [role='dialog'], a, input, select, textarea, summary):focus-visible {
   outline: var(--my-space-1) solid var(--my-focus-ring);
   outline-offset: var(--my-space-0);
 }

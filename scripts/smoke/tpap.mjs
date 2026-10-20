@@ -21,7 +21,7 @@ process.env.TPAP_SMOKE_DIR = workDir
 writeFileSync(join(workDir, 'settings.json'), JSON.stringify({ access: { enabled: true, port: PORT } }), 'utf-8')
 
 const bundle = join(workDir, 'server-bundle.mjs')
-const requireBanner = "import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
+const requireBanner = "import { createRequire } from 'module'; import { fileURLToPath as smokeFilePath } from 'url'; import { dirname as smokeDirname } from 'path'; const require = createRequire(import.meta.url); const __dirname = smokeDirname(smokeFilePath(import.meta.url));"
 execFileSync(process.execPath, [
   join('node_modules', 'esbuild', 'bin', 'esbuild'),
   'src/main/services/access/server.ts',
@@ -82,21 +82,21 @@ const host = await req('GET', '/tpap/v1/host', { token })
 check('host 200 且协议版本 tpap/1', host.status === 200 && host.json?.data?.protocol === 'tpap/1', JSON.stringify(host.json))
 
 // 4. 变更缺 confirm → 422
-const noConfirm = await req('POST', '/tpap/v1/tools/call', { token, body: { toolName: 'db_list_tables', args: {} } })
+const noConfirm = await req('POST', '/tpap/v1/tools/call', { token, body: { toolName: 'trellis_list_specs', args: {} } })
 check('变更缺 confirm 返回 422 E_DENIED', noConfirm.status === 422 && noConfirm.json?.error?.code === 'E_DENIED')
 
 // 5. 变更带 confirm → 200
 const rid = 'smoke-rid-1'
 const call1 = await req('POST', '/tpap/v1/tools/call', {
   token,
-  body: { toolName: 'db_list_tables', args: {}, confirm: true, requestId: rid }
+  body: { toolName: 'trellis_list_specs', args: {}, confirm: true, requestId: rid }
 })
 check('tools/call 带 confirm 返回 200', call1.status === 200 && call1.json?.ok === true, JSON.stringify(call1.json))
 
 // 6. 同 requestId 重放 → 幂等
 const call2 = await req('POST', '/tpap/v1/tools/call', {
   token,
-  body: { toolName: 'db_list_tables', args: {}, confirm: true, requestId: rid }
+  body: { toolName: 'trellis_list_specs', args: {}, confirm: true, requestId: rid }
 })
 check('同 requestId 重放命中幂等缓存', call2.status === 200 && call2.json?.idempotentReplay === true)
 
@@ -104,7 +104,7 @@ check('同 requestId 重放命中幂等缓存', call2.status === 200 && call2.js
 const ev1 = await req('GET', '/tpap/v1/events', { token })
 check('events 无 cursor 返回 reset（首连语义）', ev1.json?.reset === true && typeof ev1.json?.nextCursor?.seq === 'number')
 const cursor = `${ev1.json.nextCursor.epoch}:${ev1.json.nextCursor.seq}`
-await req('POST', '/tpap/v1/tools/call', { token, body: { toolName: 'db_list_tables', args: {}, confirm: true, requestId: 'smoke-rid-2' } })
+await req('POST', '/tpap/v1/tools/call', { token, body: { toolName: 'trellis_list_specs', args: {}, confirm: true, requestId: 'smoke-rid-2' } })
 const ev2 = await req('GET', `/tpap/v1/events?cursor=${encodeURIComponent(cursor)}`, { token })
 check('游标之后能增量拉到新事件', ev2.json?.reset === false && ev2.json?.events?.some((e) => e.type === 'gateway.tool_called'), JSON.stringify(ev2.json))
 
@@ -157,10 +157,10 @@ check(
   deferredTools.status === 200 && deferredTools.json?.data?.length === 1 && deferredTools.json.data[0].name === 'tool_search',
   JSON.stringify(deferredTools.json).slice(0, 160)
 )
-const searchCall = await req('POST', '/tpap/v1/tool_search', { token: newToken, body: { query: 'sql' } })
+const searchCall = await req('POST', '/tpap/v1/tool_search', { token: newToken, body: { query: 'spec' } })
 check(
-  'tool_search 按关键词检索到 sql 工具',
-  searchCall.status === 200 && searchCall.json?.data?.some((t) => t.name === 'db_query_readonly'),
+  'tool_search 按关键词检索到规范工具',
+  searchCall.status === 200 && searchCall.json?.data?.some((t) => t.name === 'trellis_get_spec'),
   JSON.stringify(searchCall.json).slice(0, 160)
 )
 const fullTools = await req('GET', '/tpap/v1/tools', { token: newToken })

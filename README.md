@@ -38,7 +38,7 @@ Trellis Panel 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-fir
 | 应用内 AI | 设置页接入 **OpenAI 兼容 baseUrl 自定义模型**（Ollama / LM Studio / One-API / 云端均可用，Key 经 DPAPI 加密）；驱动 **AI 对话（Agent 模式默认开启：自动携带项目上下文与会话绑定任务，先查知识库再回答，回答附来源引用，可一键沉淀为知识笔记）**、知识库问答、PRD 草稿、任务摘要、任务规划 |
 | 知识库 MCP | **AI 编码工具的持久记忆大脑**：一键安装本地 stdio MCP 服务器（零依赖脚本），自动注册到 Claude Code（`.mcp.json`，随仓库共享）与 Codex（`~/.codex/config.toml`）；AI 写代码时随时 `kb_search` / `kb_read` / `kb_context` / `kb_overview` 查询四库——进程内倒排索引，**实测单查询 30~50ms**，无网络、无 embedding |
 | WeKnora 联动 | **公司级知识库联邦**：本地四库保持毫秒级不动，WeKnora 作为公司来源异步追加——知识库页「公司库」tab + 「全部」检索态追加命中，右侧直接读远程正文；AI 规划并行纳入公司库摘录（跨项目规范 / 历史归档）；`.trellis/spec` 变更静默同步（删旧推新）；一键注册 WeKnora 内置 MCP 端点给 Claude / Codex / ZCode；API Key 与端点令牌 DPAPI 加密，断网时本地检索零影响。归档任务自动沉淀公司库已停用——归档收归外部 Trellis 工作流后，沉淀能力待重设计后再接在官方归档路径之后 |
-| 本机开发工具 | **只读 Git**：当前分支与基线、暂存/未暂存/未跟踪分组、文件级差异（有界输出，无任何 Git 写操作，非 git 目录中性降级）；**工程运行**：从 package.json 选择脚本启动（多工程组合按顺序逐个启动），真实输出/退出码/进程归属，停止只作用于面板自己启动的进程树；进程存活不冒充服务就绪 |
+| 本机开发工具 | **只读 Git**：当前分支与基线、暂存/未暂存/未跟踪分组、文件级差异（有界输出，无任何 Git 写操作，非 git 目录中性降级）；**应用运行**：右上角应用面板与工具运行页共用本地应用配置，支持通用命令、npm 脚本、环境文件、受控启动/停止/重启、有界输出与独立就绪状态；Agent 可用 `tpanel app` 操作已批准应用，端口冲突不自动终止外部进程。见[使用说明](docs/local-app-runtime.md) |
 
 ## Web 看板（只读）
 

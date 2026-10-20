@@ -1,0 +1,44 @@
+/* Application surfaces compose the shared shell and control tokens. */
+.my-root .my-applications-popup {
+  display: flex;
+  flex-direction: column;
+  width: min(var(--my-application-panel-width), calc(100vw - var(--my-space-32)));
+  max-height: calc(100dvh - var(--my-workspace-header-height) - var(--my-space-32));
+  min-height: 0;
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-ui);
+  line-height: var(--my-line-ui);
+  -webkit-app-region: no-drag;
+}
+.my-root .my-application-popup-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.my-root .my-application-trigger { display: inline-flex; }
+.my-root .my-application-trigger[data-open='true'] .my-tooltip { display: none; }
+.my-root .my-application-list { display: grid; min-width: 0; gap: var(--my-space-12); }
+.my-root .my-application-popup-body > .my-application-list { gap: var(--my-space-8); padding: var(--my-space-4) var(--my-space-6) var(--my-space-12); }
+.my-root .my-application-card {
+  min-width: 0;
+  padding: var(--my-space-12);
+  border: var(--my-space-1) solid var(--my-border-subtle);
+  border-radius: var(--my-radius-lg);
+  background: var(--my-bg-layer-1);
+}
+.my-root .my-application-card > * { min-width: 0; }
+.my-root .my-application-empty { display: flex; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: var(--my-space-8); padding: var(--my-space-32) var(--my-space-16); color: var(--my-txt-secondary); font-size: var(--my-text-sm); text-align: center; }
+.my-root .my-application-message { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: var(--my-space-8); padding: var(--my-space-8); border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-md); font-size: var(--my-text-xs); line-height: var(--my-line-ui); overflow-wrap: anywhere; }
+.my-root .my-application-output { min-width: 0; margin-top: var(--my-space-12); overflow: hidden; border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-md); background: var(--my-bg-canvas); }
+.my-root .my-application-console { min-height: var(--my-space-80); max-height: var(--my-application-console-height); margin: 0; overflow: auto; padding: var(--my-space-12); color: var(--my-txt-secondary); font-family: var(--my-font-mono); font-size: var(--my-text-xs); line-height: var(--my-line-document); tab-size: 2; white-space: pre; }
+.my-root .my-application-console.is-compact { max-height: var(--my-space-192); }
+.my-root .my-application-dialog { display: flex; max-height: var(--my-modal-max-height); min-width: 0; flex-direction: column; }
+.my-root .my-application-form { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: var(--my-space-16); padding: var(--my-space-20); overflow-y: auto; overscroll-behavior: contain; }
+.my-root .my-application-form-grid { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--my-space-12); }
+.my-root .my-application-field { display: flex; min-width: 0; flex-direction: column; gap: var(--my-space-6); overflow-wrap: anywhere; }
+.my-root .my-application-field .my-input { min-width: 0; }
+.my-root .my-application-field textarea { resize: vertical; }
+.my-root .my-application-override { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; gap: var(--my-space-8); align-items: center; }
+.my-root .my-application-override input[type='password'] { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .my-root .my-application-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .my-root .my-application-trigger-label { display: none; }
+  .my-root .my-window-search { justify-content: center; flex-shrink: 0; padding-inline: var(--my-space-4); }
+  .my-root .my-window-search > span, .my-root .my-window-search > kbd { display: none; }
+}

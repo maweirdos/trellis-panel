@@ -21,6 +21,7 @@ import type {
 import type { IpcFail } from '../shared/ipc-errors'
 import type { IntegrationApi } from '../shared/integrations'
 import type { TrellisApi } from '../shared/types'
+import type { ApplicationRuntimeApi, ApplicationRuntimeEvent } from '../shared/app-runtime'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
@@ -53,7 +54,24 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
+const applicationApi: ApplicationRuntimeApi = {
+  appRuntimeList: (root) => ipcRenderer.invoke(ipcInvoke.appRuntime.list, root),
+  appRuntimeSave: (root, input) => ipcRenderer.invoke(ipcInvoke.appRuntime.save, root, input),
+  appRuntimeRemove: (root, id, revision) => ipcRenderer.invoke(ipcInvoke.appRuntime.remove, root, id, revision),
+  appRuntimeImportNpm: (root, dir, script, name) => ipcRenderer.invoke(ipcInvoke.appRuntime.importNpm, root, dir, script, name),
+  appRuntimeStart: (root, id, revision) => ipcRenderer.invoke(ipcInvoke.appRuntime.start, root, id, revision),
+  appRuntimeStop: (root, id) => ipcRenderer.invoke(ipcInvoke.appRuntime.stop, root, id),
+  appRuntimeRestart: (root, id, revision) => ipcRenderer.invoke(ipcInvoke.appRuntime.restart, root, id, revision),
+  appRuntimeLogs: (root, id, after) => ipcRenderer.invoke(ipcInvoke.appRuntime.logs, root, id, after),
+  onAppRuntimeEvent: (listener) => {
+    const release = [ipcEvent.appRuntimeChanged, ipcEvent.appRuntimeOutput, ipcEvent.appRuntimeDone]
+      .map((channel) => subscribe<ApplicationRuntimeEvent>(channel, listener))
+    return () => release.forEach((unsubscribe) => unsubscribe())
+  }
+}
+
 const api = {
+  ...applicationApi,
   integrations: {
     authorize: (input) => ipcRenderer.invoke(ipcInvoke.integration.authorize, input),
     cancelAuthorization: (requestId) => ipcRenderer.invoke(ipcInvoke.integration.cancelAuthorization, { requestId }),

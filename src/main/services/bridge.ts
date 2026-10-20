@@ -3,6 +3,8 @@ import { errorText } from '../../shared/errors'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync, copyFileSync } from 'fs'
 import { join } from 'path'
 import { watch, type FSWatcher } from 'chokidar'
+import { appCliPowerShell, appCliScript } from './access/app-cli'
+import { accessEndpointPath } from './access/endpoint'
 
 /**
  * AI-tool bridge: lets codex / zcode / trellis hooks talk to the panel.
@@ -132,6 +134,11 @@ export function installTpanel(token: string): { ok: boolean; error?: string; pat
   const npmDir = join(app.getPath('appData'), 'npm')
   try {
     mkdirSync(npmDir, { recursive: true })
+    const client = join(bridgeDir(), 'tpanel-app.cjs')
+    mkdirSync(bridgeDir(), { recursive: true })
+    writeFileSync(client, appCliScript(), 'utf-8')
+    // An ASCII PowerShell shim preserves Unicode installation/userData paths.
+    writeFileSync(join(npmDir, 'tpanel-app.ps1'), appCliPowerShell(process.execPath, client, accessEndpointPath()), 'ascii')
     const urls = {
       notify: `trellis-panel://notify?text=%MSG%&t=${token}`,
       open: `trellis-panel://open-task?dir=%DIR%&t=${token}`,
@@ -143,6 +150,10 @@ export function installTpanel(token: string): { ok: boolean; error?: string; pat
     const cmd = `@echo off
 rem Trellis Panel bridge CLI (trellis hooks -> panel)
 rem NOTE: keep this file ASCII-only; cmd.exe parses it in the OEM codepage.
+:try_app
+if /i not "%~1"=="app" goto :try_notify
+"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0tpanel-app.ps1" %*
+exit /b %errorlevel%
 :try_notify
 if /i not "%~1"=="notify" goto :try_open
 if "%~2"=="" goto :usage
@@ -168,7 +179,8 @@ set "P=%TASK_JSON_PATH%"
 start "" "${urls.taskEvent}"
 exit /b 0
 :usage
-echo Usage: tpanel notify "message" ^| tpanel open [taskDir] ^| tpanel task-event
+echo Usage: tpanel app list^|status^|start^|stop^|restart^|logs [appId] --project root
+echo        tpanel notify "message" ^| tpanel open [taskDir] ^| tpanel task-event
 exit /b 1
 `
     const p = join(npmDir, 'tpanel.cmd')

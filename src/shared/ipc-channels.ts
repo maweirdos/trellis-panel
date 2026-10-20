@@ -100,6 +100,16 @@ export const ipcInvoke = {
     devRunList: 'devtools:devRunList',
     devRunGet: 'devtools:devRunGet'
   },
+  appRuntime: {
+    list: 'appRuntime:list',
+    save: 'appRuntime:save',
+    remove: 'appRuntime:remove',
+    importNpm: 'appRuntime:importNpm',
+    start: 'appRuntime:start',
+    stop: 'appRuntime:stop',
+    restart: 'appRuntime:restart',
+    logs: 'appRuntime:logs'
+  },
   analytics: {
     get: 'analytics:get'
   },
@@ -287,6 +297,9 @@ export const ipcInvoke = {
 
 /** 主进程 → 渲染层的事件通道（广播/推送） */
 export const ipcEvent = {
+  appRuntimeChanged: 'appRuntime:changed',
+  appRuntimeOutput: 'appRuntime:output',
+  appRuntimeDone: 'appRuntime:done',
   /** Appearance only; never broadcast settings containing credentials. */
   themeChanged: 'settings:themeChanged',
   integrationsChanged: 'integration:changed',

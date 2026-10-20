@@ -109,3 +109,24 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 ```
 
 回归验证：`node scripts/smoke/tpap.mjs`（401 / 422 / 幂等重放 / 游标增量 / token 轮换全链路断言）。
+
+## 9. Local application resources
+
+These routes use the same application runtime as the header panel and Run tool page.
+
+| Method | Endpoint | Parameters |
+| --- | --- | --- |
+| GET | `/tpap/v1/apps/list` | `project=<absolute known project root>` |
+| GET | `/tpap/v1/apps/status` | `project`, `appId` |
+| GET | `/tpap/v1/apps/logs` | `project`, `appId`, optional nonnegative `after` cursor |
+| POST | `/tpap/v1/apps/start` | `project`, `appId`, `confirm: true`, `requestId` |
+| POST | `/tpap/v1/apps/stop` | Same mutation fields |
+| POST | `/tpap/v1/apps/restart` | Same mutation fields |
+
+All routes authenticate before routing. `project` is explicit and must already be known to the panel; no route opens a new project or accepts a shell command, configuration patch or environment override. Success is `{ok:true,data:<runtime result>}`. Failure uses the normal `error.code/message` envelope and may include `reason`, `root` and `appId`. Unapproved execution returns HTTP 403 / `E_DENIED` with `reason: APPROVAL_REQUIRED`; approval is available only through the human panel path, never through TPAP `confirm`.
+
+App mutations require a 1-64 character `requestId` containing letters, digits, `.`, `_`, `:` or `-`. Identical concurrent requests share an in-flight operation and later retries replay its completed result. Reusing the same ID for a different application/project/action returns HTTP 409 / `E_CONFLICT`. Completed entries use a bounded 256-entry, ten-minute cache; active entries are not evicted to permit duplicate execution. Client disconnection/timeout does not imply cancellation: inspect status or retry with the same ID.
+
+Application lifecycle events use `application.state`, `application.attention` and `application.done` with root/app/run identity, process state, readiness state and approval status only. Event history contains neither console output nor environment values. Read bounded output explicitly through `/apps/logs`, observing its run ID, cursor and truncation flag.
+
+The installed `tpanel app` client reads a non-secret `<userData>/access-endpoint.json` descriptor and the sibling token file. The descriptor advertises only the active loopback endpoint; disabling/stopping the service clears the running endpoint. Clients reread the credential after token rotation and reject non-loopback descriptors. Installation never enables the access setting. See [local application runtime](local-app-runtime.md) for startup examples, environment syntax, CLI usage and lifecycle limitations.

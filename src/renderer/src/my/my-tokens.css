@@ -129,6 +129,8 @@
   --my-inspector-width: 420px;
   --my-inspector-width-wide: 460px;
   --my-inspector-width-compact: 390px;
+  --my-application-panel-width: var(--my-inspector-width);
+  --my-application-console-height: var(--my-space-288);
   --my-floating-gutter: var(--my-space-6);
   --my-floating-header-height: var(--my-space-44);
   --my-floating-editor-min-height: var(--my-space-80);

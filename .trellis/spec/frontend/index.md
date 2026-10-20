@@ -27,6 +27,7 @@
 | [type-safety.md](./type-safety.md)                                             | Types, import paths, module constants           | Reference     |
 | [directory-structure.md](./directory-structure.md)                             | Project structure conventions                   | Reference     |
 | [css-design.md](./css-design.md)                                               | CSS organization and design tokens              | Reference     |
+| [applications.md](./applications.md)                                          | Shared compact application panel, project scope, state and execution UI | Application run-panel changes |
 | [quality.md](./quality.md)                                                     | Code quality and performance standards          | Reference     |
 | [my-ui-module.md](./my-ui-module.md)                                     | Shell module tokens & conventions               | Module-scoped |
 | [conversation-workspace.md](./conversation-workspace.md)                   | ACP history/paging/recovery, turn layout, inspector/appearance and source ownership | Conversation / reader / Settings |

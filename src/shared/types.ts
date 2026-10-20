@@ -23,6 +23,7 @@ import type {
   ObservationSubscriptionEvent
 } from './observability/store'
 import type { IpcFail } from './ipc-errors'
+import type { ApplicationRuntimeApi } from './app-runtime'
 
 export const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
@@ -117,7 +118,7 @@ export interface DevScriptInfo {
   command: string
 }
 
-export type DevRunState = 'running' | 'exited' | 'failed' | 'killed'
+export type DevRunState = import('./app-runtime').ApplicationProcessState | 'killed'
 
 export interface DevRunInfo {
   id: string
@@ -1193,7 +1194,7 @@ export interface SyncExtensionResult {
 }
 
 /** APIs exposed to the renderer via contextBridge. */
-export interface TrellisApi {
+export interface TrellisApi extends ApplicationRuntimeApi {
   integrations: import('./integrations').IntegrationApi
   /** 置顶文档小窗：打开/聚焦（支持多开，key 去重）；theme 跟随面板主题 */
   docOpen: (opts: { key: string; title: string; file: string; theme: string }) => Promise<{
