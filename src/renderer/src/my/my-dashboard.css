@@ -1,8 +1,11 @@
-/* Homepage composition. Shared PageContent owns page width and outer gutters. */
-.my-root .my-page-layout--full > .my-home-body { overflow-y: auto; scrollbar-gutter: stable; }
-.my-root .my-home-shell { display: flex; flex-direction: column; gap: var(--my-space-24); width: 100%; min-width: 0; container-type: inline-size; }
+/* Homepage composition. Shared PageContent owns page width and outer gutters.
+   The homepage is viewport-locked at desktop size: the shell fills the window and
+   never scrolls; the task list and side column own the only scrolling. */
+.my-root .my-page-layout--full > .my-home-body { display: flex; flex-direction: column; --my-page-bottom-inset: var(--my-page-block-inset); }
+.my-root .my-home-body > .my-page-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.my-root .my-home-shell { display: flex; flex-direction: column; gap: var(--my-space-24); flex: 1; min-height: 0; width: 100%; min-width: 0; container-type: inline-size; }
 
-.my-root .my-home-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--my-space-16); padding-bottom: var(--my-space-4); }
+.my-root .my-home-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--my-space-16); padding-bottom: var(--my-space-4); flex: none; }
 .my-root .my-home-header-main { display: flex; flex-direction: column; gap: var(--my-space-6); min-width: 0; }
 .my-root .my-home-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-8); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); line-height: var(--my-line-tight); }
 .my-root .my-home-eyebrow-dot { width: var(--my-space-4); height: var(--my-space-4); border-radius: var(--my-radius-round); background: var(--my-txt-disabled); }
@@ -11,7 +14,7 @@
 .my-root .my-home-header-actions { display: flex; align-items: center; gap: var(--my-space-8); }
 
 /* Read-only statistics. Counts have defined scopes and never imply progress percentages. */
-.my-root .my-home-pulse-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--my-space-24); }
+.my-root .my-home-pulse-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--my-space-24); flex: none; }
 .my-root .my-home-pulse-card { display: flex; flex-direction: column; justify-content: space-between; gap: var(--my-space-14); min-width: 0; padding: var(--my-space-18) var(--my-space-20); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); text-align: left; }
 .my-root .my-home-pulse-top { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-8); }
 .my-root .my-home-pulse-label { color: var(--my-txt-secondary); font-size: var(--my-text-xs); font-weight: var(--my-weight-medium); }
@@ -20,18 +23,18 @@
 .my-root .my-home-pulse-unit { color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
 .my-root .my-home-pulse-hint { margin: 0; color: var(--my-txt-tertiary); font-size: var(--my-text-2xs); line-height: var(--my-line-ui); }
 
-.my-root .my-home-workspace { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--my-space-24); align-items: start; }
-.my-root .my-home-main-col { grid-column: span 9; display: flex; flex-direction: column; gap: var(--my-space-20); min-width: 0; }
-.my-root .my-home-side-col { grid-column: span 3; display: flex; flex-direction: column; gap: var(--my-space-20); min-width: 0; }
+.my-root .my-home-workspace { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--my-space-24); flex: 1; min-height: 0; }
+.my-root .my-home-main-col { grid-column: span 9; display: flex; flex-direction: column; gap: var(--my-space-20); min-width: 0; min-height: 0; }
+.my-root .my-home-side-col { grid-column: span 3; display: flex; flex-direction: column; gap: var(--my-space-20); min-width: 0; min-height: 0; overscroll-behavior: contain; }
 
 /* The continuation banner is one real task with one explicit open action. */
-.my-root .my-home-spotlight { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-12); padding: var(--my-space-18) var(--my-space-20); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); }
+.my-root .my-home-spotlight { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-12); padding: var(--my-space-18) var(--my-space-20); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); flex: none; }
 .my-root .my-home-spotlight-identity { display: flex; align-items: center; gap: var(--my-space-10); min-width: 0; flex: 1; }
 .my-root .my-home-spotlight-tag { flex-shrink: 0; color: var(--my-txt-secondary); font-size: var(--my-text-xs); font-weight: var(--my-weight-medium); }
 .my-root .my-home-spotlight-title { min-width: 0; margin: 0; color: var(--my-txt-primary); font-size: var(--my-text-md); font-weight: var(--my-weight-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.my-root .my-home-list-panel { display: flex; flex-direction: column; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); overflow: hidden; }
-.my-root .my-home-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-12); padding: var(--my-space-12) var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); }
+.my-root .my-home-list-panel { display: flex; flex-direction: column; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); overflow: hidden; flex: 1; min-height: 0; }
+.my-root .my-home-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-12); padding: var(--my-space-12) var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); flex: none; }
 .my-root .my-home-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-4); min-width: 0; }
 .my-root .my-home-tab { display: inline-flex; align-items: center; gap: var(--my-space-6); min-height: var(--my-control-height-sm); padding: var(--my-space-4) var(--my-space-10); border-radius: var(--my-radius-inset); color: var(--my-txt-secondary); font-size: var(--my-text-xs); font-weight: var(--my-weight-medium); white-space: nowrap; transition: background var(--my-motion-fast), color var(--my-motion-fast); }
 .my-root .my-home-tab:hover:not(:disabled) { background: var(--my-bg-layer-1-hover); color: var(--my-txt-primary); }
@@ -42,8 +45,8 @@
 .my-root .my-home-search { width: var(--my-home-search-width); max-width: 100%; }
 .my-root .my-home-search .my-input { border-color: var(--my-border-subtle); border-radius: var(--my-radius-inset); background: var(--my-bg-surface-1); }
 .my-root .my-home-search .my-input:focus { border-color: var(--my-border-accent-subtle); box-shadow: none; }
-.my-root .my-home-scope-note { padding: var(--my-space-8) var(--my-space-16); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
-.my-root .my-home-task-rows { display: flex; flex-direction: column; }
+.my-root .my-home-scope-note { padding: var(--my-space-8) var(--my-space-16); color: var(--my-txt-secondary); font-size: var(--my-text-xs); flex: none; }
+.my-root .my-home-task-rows { display: flex; flex-direction: column; flex: 1; min-height: 0; overscroll-behavior: contain; }
 .my-root .my-home-task-row { display: flex; align-items: center; gap: var(--my-space-12); min-height: var(--my-home-task-row-height); padding: var(--my-space-8) var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); transition: background var(--my-motion-fast); }
 .my-root .my-home-task-row:last-child { border-bottom: none; }
 .my-root .my-home-task-row:hover { background: var(--my-bg-layer-1-hover); }
@@ -60,9 +63,9 @@
 .my-root .my-home-star-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: var(--my-icon-control-size); height: var(--my-icon-control-size); border-radius: var(--my-radius-sm); color: var(--my-txt-icon-tertiary); transition: color var(--my-motion-fast), background var(--my-motion-fast); }
 .my-root .my-home-star-btn:hover { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
 .my-root .my-home-star-btn[data-starred='true'] { color: var(--my-txt-warning-primary); }
-.my-root .my-home-list-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-8); padding: var(--my-space-10) var(--my-space-16); border-top: 1px solid var(--my-border-subtle); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
+.my-root .my-home-list-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-8); padding: var(--my-space-10) var(--my-space-16); border-top: 1px solid var(--my-border-subtle); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); flex: none; }
 
-.my-root .my-home-side-card { border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); overflow: hidden; }
+.my-root .my-home-side-card { display: flex; flex-direction: column; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); overflow: hidden; flex: 1 0 auto; }
 .my-root .my-home-side-header { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-8); min-height: var(--my-workspace-header-height); padding: var(--my-space-12) var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); }
 .my-root .my-home-side-title { color: var(--my-txt-primary); font-size: var(--my-text-sm); font-weight: var(--my-weight-semibold); }
 .my-root .my-home-side-list { display: flex; flex-direction: column; }
@@ -75,15 +78,15 @@
 .my-root .my-home-visit-time { flex-shrink: 0; color: var(--my-txt-tertiary); font-size: var(--my-text-2xs); white-space: nowrap; }
 .my-root .my-home-side-empty { display: flex; align-items: center; min-height: var(--my-space-48); padding: var(--my-space-12) var(--my-space-16); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
 .my-root .my-home-more-todos { margin: var(--my-space-4) var(--my-space-16); }
-.my-root .my-home-quick-todo-form { display: flex; align-items: center; gap: var(--my-space-8); padding: var(--my-space-8) var(--my-space-16); border-top: 1px solid var(--my-border-subtle); background: var(--my-bg-surface-1); }
+.my-root .my-home-quick-todo-form { display: flex; align-items: center; gap: var(--my-space-8); margin-top: auto; padding: var(--my-space-8) var(--my-space-16); border-top: 1px solid var(--my-border-subtle); background: var(--my-bg-surface-1); }
 .my-root .my-home-quick-todo-input { flex: 1; min-width: 0; min-height: var(--my-control-height-sm); padding-block: var(--my-space-4); border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; color: var(--my-txt-primary); font-size: var(--my-text-xs); outline: none; }
 .my-root .my-home-quick-todo-input:focus { border-bottom-color: var(--my-border-accent-subtle); box-shadow: none; }
 .my-root .my-home-quick-todo-input:disabled { color: var(--my-txt-disabled); }
 .my-root .my-home-todo-feedback { padding: var(--my-space-8) var(--my-space-16); font-size: var(--my-text-xs); overflow-wrap: anywhere; }
-.my-root .my-home-shortcuts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--my-space-8); padding: var(--my-space-12) var(--my-space-16); border-top: 1px solid var(--my-border-subtle); }
+.my-root .my-home-shortcuts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--my-space-8); margin-top: auto; padding: var(--my-space-12) var(--my-space-16); border-top: 1px solid var(--my-border-subtle); }
 .my-root .my-home-shortcut-btn { display: flex; align-items: center; gap: var(--my-space-8); min-width: 0; min-height: var(--my-control-height); padding: var(--my-space-8) var(--my-space-10); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-inset); background: var(--my-bg-surface-1); color: var(--my-txt-secondary); font-size: var(--my-text-xs); text-align: left; transition: background var(--my-motion-fast), border-color var(--my-motion-fast), color var(--my-motion-fast); }
 .my-root .my-home-shortcut-btn:hover { background: var(--my-bg-layer-1-hover); border-color: var(--my-border-strong); color: var(--my-txt-primary); }
-.my-root .my-home-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--my-space-8); min-height: var(--my-space-80); padding: var(--my-space-20); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); text-align: center; }
+.my-root .my-home-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--my-space-8); min-height: var(--my-space-80); padding: var(--my-space-20); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); text-align: center; flex: none; }
 
 /* The startup page shares this entry point and retains its centered composition. */
 .my-root .my-start { container-type: inline-size; }
@@ -109,4 +112,18 @@
   .my-root .my-home-task-open { flex-wrap: wrap; row-gap: var(--my-space-6); }
   .my-root .my-home-task-left { flex-basis: 100%; }
   .my-root .my-home-task-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+}
+
+/* Compact shells and short windows release the viewport lock and restore the
+   PageBody page scroll. The width query mirrors the 960px shell breakpoint
+   (viewport − 56px module rail − 2 × 24px gutters). */
+@media (max-width: 1064px), (max-height: 620px) {
+  .my-root .my-page-layout--full > .my-home-body { overflow-y: auto; scrollbar-gutter: stable; }
+  .my-root .my-home-body > .my-page-content { flex: none; }
+  .my-root .my-home-shell { flex: none; min-height: 0; }
+  .my-root .my-home-workspace { flex: none; align-items: start; }
+  .my-root .my-home-list-panel { flex: none; }
+  .my-root .my-home-task-rows { flex: none; overflow: visible; }
+  .my-root .my-home-side-col { overflow: visible; overscroll-behavior: auto; }
+  .my-root .my-home-side-card { flex: none; }
 }

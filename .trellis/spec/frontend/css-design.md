@@ -64,10 +64,20 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   `PageBody` fills the remaining height. A centered body owns one scrollbar;
   a full body delegates scrolling to its real workspace panes. Do not restore
   an additional scrolling wrapper around `PageBody` in `MyApp`.
-  The full-width personal homepage explicitly owns scrolling in
-  `PageBody.my-home-body`; it keeps global gutters and does not add a private
-  maximum width. Its compact metrics and 9:3 task/record composition share one
-  12-column grid. The standalone onboarding screen stays centered.
+  The full-width personal homepage is viewport-locked at desktop size:
+  `PageBody.my-home-body` never scrolls; the greeting header and metric cards
+  are fixed bands and the 9:3 task/record workspace fills the remaining height
+  with one 12-column grid. `.my-home-task-rows` is the main column's single
+  scroll owner and `.my-home-side-col` scrolls as one pane, both through the
+  shared `my-scrollbar` role with stable gutters and contained overscroll.
+  The two side cards share the column height with `flex: 1 0 auto`; each card's
+  action area (quick-todo form, shortcuts grid) pins to its card bottom, and
+  the column scrolls only when content exceeds it.
+  Compact shells (the 960px container breakpoint) and short windows
+  (≤620px viewport height) release the lock in `my-dashboard.css` and restore
+  the `PageBody` page scroll. The homepage keeps global gutters and adds no
+  private maximum width; its bottom inset is the block inset. The standalone
+  onboarding screen stays centered.
 - `PageContent({ variant?: 'full'|'centered', ...divProps })` provides the page's
   horizontal and vertical insets; `PageSection` provides horizontal alignment for
   compact controls and footers. Without a variant they inherit the page contract.
@@ -263,6 +273,7 @@ and ordinary buttons retain their existing type/padding-derived heights.
 | Narrow dialog | Panel fits the viewport without a document horizontal scrollbar |
 | Centered route | Header, scope note and body share1120px content width and the same gutter; body alone scrolls |
 | Full route | Header stays fixed; tables/editors/panes fill the remaining space and retain their own scroll owners |
+| Homepage viewport lock | At desktop width/height no page scrollbar appears: header and metrics stay fixed, the task list and side column own internal scrolling; compact width or a short window restores `PageBody` scroll |
 | Page migration | No old outer max-width or duplicate page padding; reader/session keys and interaction scopes are unchanged |
 | Font/theme change | Drafts, reading state and existing choices stay intact |
 | Transparent utility root | Canonical font/colors without an opaque root background |

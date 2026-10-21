@@ -391,7 +391,7 @@ export function YourWorkPage(): JSX.Element {
                   </div>
                 </header>
                 {!me && <p className="my-home-scope-note">当前项目未设置开发者身份，暂展示项目任务。</p>}
-                {filteredTasks.length > 0 ? <ul className="my-home-task-rows" aria-label="筛选后的任务">
+                {filteredTasks.length > 0 ? <ul className="my-home-task-rows my-scrollbar" aria-label="筛选后的任务">
                   {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} />)}
                 </ul> : <div className="my-home-empty" role="status">
                   <ListTodo size={18} /><span>当前筛选条件下暂无任务</span>
@@ -407,7 +407,7 @@ export function YourWorkPage(): JSX.Element {
               </section>
             </div>
 
-            <aside className="my-home-side-col" aria-label="待办与最近访问">
+            <aside className="my-home-side-col my-scrollbar" aria-label="待办与最近访问">
               <section className="my-home-side-card" aria-labelledby="home-inbox-title">
                 <header className="my-home-side-header">
                   <div className="flex items-center gap-2"><h2 id="home-inbox-title" className="my-home-side-title">待办收件箱</h2><span className="my-home-tab-count">{pendingTodos.length}</span></div>
