@@ -1,7 +1,7 @@
 /** C1–C3：本机开发工具 IPC——只读 Git、工程脚本发现、有归属的运行管理。 */
 import { isAbsolute, resolve } from 'path'
 import { getProjectGeneration, getProjectRoot } from '../state'
-import { gitReadonlyFileDiff, gitReadonlyStatus } from '../services/devtools-git'
+import { gitReadonlyCommit, gitReadonlyCommitDiff, gitReadonlyFileDiff, gitReadonlyHistory, gitReadonlyStatus } from '../services/devtools-git'
 import { devRunGet, devRunList, devRunStart, devRunStop, devRunStopAll, listPackageScripts } from '../services/dev-run'
 import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
 import { ipcInvoke } from '../../shared/ipc-channels'
@@ -10,6 +10,21 @@ import type { WindowDeps } from './deps'
 import { applicationConfirmation } from '../services/application-confirmation'
 
 export function registerDevtoolsIpc(deps: WindowDeps): void {
+  handle(ipcInvoke.devtools.gitHistory, (_e, request: unknown) => {
+    const root = getProjectRoot()
+    return root ? gitReadonlyHistory(root, request) : noProject()
+  })
+
+  handle(ipcInvoke.devtools.gitCommit, (_e, request: unknown) => {
+    const root = getProjectRoot()
+    return root ? gitReadonlyCommit(root, request) : noProject()
+  })
+
+  handle(ipcInvoke.devtools.gitCommitDiff, (_e, request: unknown) => {
+    const root = getProjectRoot()
+    return root ? gitReadonlyCommitDiff(root, request) : noProject()
+  })
+
   handle(ipcInvoke.devtools.gitStatus, () => {
     const root = getProjectRoot()
     if (!root) return noProject()

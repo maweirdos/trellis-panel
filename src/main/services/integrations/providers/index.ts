@@ -8,11 +8,12 @@ import { jiraTest } from '../../jira'
 import { jiraConfig } from '../legacy'
 import { IntegrationError } from '../types'
 import { integrationFetch, readRemoteJson, recordOf, textOf } from '../transport'
+import { weknoraKnowledgePort } from './weknora'
 
 export const integrationRegistry = new IntegrationRegistry()
 for (const manifest of INTEGRATION_CATALOG) {
   const repository = manifest.id === 'github' ? githubPort : manifest.id === 'gitlab' ? gitlabPort : manifest.id === 'gitee' ? giteePort : undefined
-  integrationRegistry.register({ manifest, repository, authorization: manifest.id === 'gitlab' ? gitlabAuthorization : undefined, tasks: manifest.id === 'jira' ? jiraSourcePort : undefined, notification: manifest.category === 'messaging' ? notificationPort : undefined,
+  integrationRegistry.register({ manifest, repository, knowledge: manifest.id === 'weknora' ? weknoraKnowledgePort : undefined, authorization: manifest.id === 'gitlab' ? gitlabAuthorization : undefined, tasks: manifest.id === 'jira' ? jiraSourcePort : undefined, notification: manifest.category === 'messaging' ? notificationPort : undefined,
     validate: manifest.category === 'messaging' ? (c) => { validateWebhook(manifest.id, c.secrets.webhook || '') } : undefined,
     inspect: manifest.id === 'jira' ? async (connection) => {
       const cfg = jiraConfig(connection)
@@ -25,5 +26,5 @@ for (const manifest of INTEGRATION_CATALOG) {
         version = ` · ${textOf(data.deploymentType)} ${textOf(data.version)}`
       } catch { /* Authentication remains verified; version metadata is optional. */ }
       return `${result.displayName || 'Jira 认证成功'}${version}`
-    } : undefined })
+    } : manifest.id === 'weknora' ? async (connection) => { const result = await weknoraKnowledgePort.collections(connection); return `知识库读取通过（本页 ${result.items.length} 个${result.hasMore ? '，还有更多' : ''}）；发布权限与索引状态尚未验证` } : undefined })
 }

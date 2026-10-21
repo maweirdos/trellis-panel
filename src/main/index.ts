@@ -18,6 +18,7 @@ import { applyChromiumProxy } from './services/proxy'
 import { mainWindowAppearance } from './services/window-appearance'
 import { installWindowNavigation, openExternalHttpUrl } from './services/window-navigation'
 import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTaskbarShortcut } from './services/window-branding'
+import { APPLICATION_ICON } from './services/notifications'
 import { appRuntime } from './services/app-runtime'
 import { createQuitGate } from './services/quit-gate'
 import { ipcEvent } from '../shared/ipc-channels'
@@ -37,7 +38,12 @@ import {
   getProjectRoot
 } from './state'
 import { registerIpc } from './ipc'
-import type { CapsuleApi } from './ipc/deps'
+import type { CapsuleApi, WindowDeps } from './ipc/deps'
+import { readerWindowBounds } from './services/document-window-placement'
+import { hasWorkflowApplications, setWorkflowAdmissionClosed, shutdownWorkflowApplications } from './services/workflow-desktop'
+import { stopWorkflowSubscriptions } from './ipc/workflow'
+import { closeTaskConversations } from './ipc/task-conversations'
+import { resumeDesktopTeamBackground, setDesktopTeamAdmissionClosed, closeDesktopTeamService } from './services/team-desktop'
 
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
@@ -58,7 +64,6 @@ const { autoUpdater } = (() => {
 /* ---------------- windows ---------------- */
 
 const BRAND_RESOURCES = join(__dirname, '../../resources/brand')
-const APPLICATION_ICON = join(BRAND_RESOURCES, 'icon-256.png')
 
 function loadAppWindow(window: BrowserWindow, query?: Record<string, string>): void {
   const file = join(__dirname, '../renderer/index.html')
@@ -72,12 +77,13 @@ function loadAppWindow(window: BrowserWindow, query?: Record<string, string>): v
 
 /** 文档小窗登记表：key（文件绝对路径）→ 窗口；重复打开即聚焦 */
 const docWindows = new Map<string, BrowserWindow>()
+const docPlacements = new Map<string, Electron.Rectangle>()
 
 /**
  * 置顶文档小窗：可拖出主窗口的 OS 级窗口，样式与 peek 同源（my 令牌）。
  * 位置锚定主窗口右缘级联排布，不落到屏幕角落。
  */
-function openDocWindow(opts: { key: string; title: string; file: string; theme: string }): {
+function openDocWindow(opts: Parameters<WindowDeps['openDocWindow']>[0]): {
   ok: boolean
   focused?: boolean
   error?: string
@@ -89,32 +95,15 @@ function openDocWindow(opts: { key: string; title: string; file: string; theme: 
     existing.focus()
     return { ok: true, focused: true }
   }
-  const mainBounds = win && !win.isDestroyed() ? win.getBounds() : screen.getPrimaryDisplay().workArea
-  const workArea = screen.getPrimaryDisplay().workArea
-  // 宽度按物理像素理解（高分屏下 BrowserWindow 用 DIP，需除以缩放倍率，否则 1400 会被放大到 2000+）；
-  // 高度沿用 DIP 并被工作区收敛。DOC_WIN_MARGIN 是弹窗距工作区四周的留白。
-  const DOC_WIN_MARGIN = 24
-  const scale = screen.getPrimaryDisplay().scaleFactor || 1
-  const width = Math.min(1400 / scale, workArea.width - DOC_WIN_MARGIN * 2)
-  const height = Math.min(1300, workArea.height - DOC_WIN_MARGIN * 2)
-  const cascade = (docWindows.size % 5) * 36
-  // 居中于主窗口弹出；多开时级联偏移避免完全重叠
-  const x = Math.min(
-    mainBounds.x + Math.round((mainBounds.width - width) / 2) + cascade,
-    workArea.x + workArea.width - width - DOC_WIN_MARGIN
-  )
-  const y = Math.min(
-    mainBounds.y + Math.round((mainBounds.height - height) / 2) + cascade,
-    workArea.y + workArea.height - height - DOC_WIN_MARGIN
-  )
+  const mainBounds = opts.anchorBounds ?? (win && !win.isDestroyed() ? win.getBounds() : screen.getPrimaryDisplay().workArea)
+  const retained = docPlacements.get(opts.placementKey ?? opts.key)
+  const workArea = screen.getDisplayMatching(retained ?? mainBounds).workArea
+  const bounds = readerWindowBounds(workArea, mainBounds, retained, (docWindows.size % 5) * 36)
   const w = new BrowserWindow({
     icon: APPLICATION_ICON,
-    width,
-    height,
-    minWidth: 480,
-    minHeight: 420,
-    x: Math.max(workArea.x + 8, x),
-    y: Math.max(workArea.y + 8, y),
+    ...bounds,
+    minWidth: Math.min(480, bounds.width),
+    minHeight: Math.min(420, bounds.height),
     frame: false,
     resizable: true,
     show: false,
@@ -131,11 +120,19 @@ function openDocWindow(opts: { key: string; title: string; file: string; theme: 
   })
   w.setAlwaysOnTop(true, 'screen-saver')
   docWindows.set(opts.key, w)
-  w.on('closed', () => docWindows.delete(opts.key))
+  opts.onCreated?.(w.webContents.id)
+  const remember = (): void => {
+    if (w.isDestroyed() || w.isMaximized() || w.isMinimized()) return
+    docPlacements.set(opts.placementKey ?? opts.key, w.getBounds())
+    if (docPlacements.size > 100) docPlacements.delete(docPlacements.keys().next().value as string)
+  }
+  w.on('move', remember)
+  w.on('resize', remember)
+  w.on('closed', () => { docWindows.delete(opts.key); opts.onClosed?.() })
   // 最大化状态广播给本窗（标题栏还原图标随动；双击拖动区原生切换也走这里）
   w.on('maximize', () => w.webContents.send(ipcEvent.windowMaximized, true))
   w.on('unmaximize', () => w.webContents.send(ipcEvent.windowMaximized, false))
-  loadAppWindow(w, { mode: 'doc', path: opts.file, title: opts.title, theme: opts.theme })
+  loadAppWindow(w, opts.readerViewId ? { mode: 'doc', viewId: opts.readerViewId, theme: getSettings().theme } : { mode: 'doc', path: opts.file, title: opts.title, theme: opts.theme })
   w.once('ready-to-show', () => w.show())
   return { ok: true }
 }
@@ -163,8 +160,8 @@ function createWindow(): void {
   // state 里的主窗口引用必须随创建/销毁同步，深链聚焦依赖它（getMainWindow 判活）
   setMainWindow(win)
   win.on('ready-to-show', () => win?.show())
-  win.on('maximize', () => broadcastToWindows(ipcEvent.windowMaximized, true))
-  win.on('unmaximize', () => broadcastToWindows(ipcEvent.windowMaximized, false))
+  win.on('maximize', () => win?.webContents.send(ipcEvent.windowMaximized, true))
+  win.on('unmaximize', () => win?.webContents.send(ipcEvent.windowMaximized, false))
   win.on('closed', () => {
     win = null
     setMainWindow(null)
@@ -270,16 +267,18 @@ function ensureQuickTodo(): BrowserWindow {
   return quickTodo
 }
 
-function toggleQuickTodo(): void {
+function showQuickTodo(): void {
   const w = ensureQuickTodo()
-  if (w.isVisible() && w.isFocused()) {
-    w.hide()
-    return
-  }
   w.show()
   w.focus()
   // 渲染层收到后把焦点放回编辑区（窗口复用，autoFocus 只在首挂载生效）
   w.webContents.send(ipcEvent.quickTodoShown)
+}
+
+function toggleQuickTodo(): void {
+  const w = getQuickTodo()
+  if (w?.isVisible() && w.isFocused()) w.hide()
+  else showQuickTodo()
 }
 
 /* ---------------- tray / shortcuts / autostart / updater ---------------- */
@@ -376,7 +375,6 @@ function setupUpdater(): void {
   autoUpdater.autoDownload = false
   autoUpdater.on('update-available', () => {
     toast({ kind: 'info', title: '发现新版本', body: '到「设置 → 关于」下载更新' })
-    broadcastToWindows(ipcEvent.toast, { kind: 'info', title: '发现新版本', body: '可在设置中下载更新' })
   })
   autoUpdater.on('update-not-available', () => undefined)
   autoUpdater.on('error', () => undefined)
@@ -386,14 +384,6 @@ function setupUpdater(): void {
 }
 
 /* ---------------- deep link ---------------- */
-
-function focusAndShow(): void {
-  const target = capsule && !capsule.isDestroyed() && capsule.isVisible() ? capsule : win
-  if (target && !target.isDestroyed()) {
-    target.show()
-    target.focus()
-  }
-}
 
 function focusMainAndOpenTask(taskDir: string): void {
   if (capsule && !capsule.isDestroyed()) capsule.hide()
@@ -434,15 +424,14 @@ function bridgeHandlers() {
   return {
     onTaskEvent: (taskDir: string | null, text: string | undefined, source: string) => {
       sendSnapshot()
-      broadcastToWindows(ipcEvent.toast, {
+      toast({
         kind: 'info',
         title: 'AI 工具更新了任务',
         body: text ?? `${source} → ${taskDir ? basename(taskDir) : ''}`
       })
     },
     onNotify: (text: string) => {
-      focusAndShow()
-      broadcastToWindows(ipcEvent.toast, { kind: 'info', title: '桥接消息', body: text })
+      toast({ kind: 'info', title: '桥接消息', body: text })
       // ACP 轨道：`acp:<kind>:` 前缀的钩子上报进会话时间线（spec 注入等），普通文本不受影响
       const railRoot = getProjectRoot()
       if (railRoot) routeNotifyRail(railRoot, text)
@@ -498,10 +487,12 @@ if (!gotLock) {
       },
       create: createCapsule
     }
+    resumeDesktopTeamBackground()
     registerIpc({
       getMain: () => (win && !win.isDestroyed() ? win : null),
       getCapsule: () => (capsule && !capsule.isDestroyed() ? capsule : null),
       getQuickTodo: () => (quickTodo && !quickTodo.isDestroyed() ? quickTodo : null),
+      showQuickTodo,
       showMain,
       createMain: createWindow,
       captureMain: async () => {
@@ -511,7 +502,8 @@ if (!gotLock) {
         return image.isEmpty() ? null : `data:image/png;base64,${image.toPNG().toString('base64')}`
       },
       capsule: capsuleApi,
-      openDocWindow
+      openDocWindow,
+      isDocWindowSender: (senderId) => [...docWindows.values()].some((w) => !w.isDestroyed() && w.webContents.id === senderId)
     })
     createWindow()
     void appRuntime.initialize().catch(() => {
@@ -522,15 +514,14 @@ if (!gotLock) {
     startInbox({
       onTaskEvent: (taskDir, text, source) => {
         sendSnapshot()
-        broadcastToWindows(ipcEvent.toast, {
+        toast({
           kind: 'info',
           title: 'AI 工具更新了任务',
           body: text ?? `${source} → ${taskDir ? basename(taskDir) : '任务'}`
         })
       },
       onNotify: (text) => {
-        focusAndShow()
-        broadcastToWindows(ipcEvent.toast, { kind: 'info', title: '桥接消息', body: text })
+        toast({ kind: 'info', title: '桥接消息', body: text })
         const railRoot = getProjectRoot()
         if (railRoot) routeNotifyRail(railRoot, text)
       },
@@ -557,13 +548,13 @@ if (!gotLock) {
   })
 
   const quitGate = createQuitGate({
-    hasApplications: () => appRuntime.hasOwnedApplications(),
+    hasApplications: async () => await appRuntime.hasOwnedApplications() || await hasWorkflowApplications(),
     confirmApplications: async () => {
       const result = await dialog.showMessageBox({
         type: 'question',
         title: '退出 Trellis Panel',
-        message: '停止运行中的应用并退出？',
-        detail: '退出前会停止面板管理的应用。关闭窗口到托盘可继续运行。',
+        message: '停止运行中的应用与工作流并退出？',
+        detail: '退出前会停止面板管理的应用与任务工作流，并核对停止结果。关闭窗口到托盘可继续运行。',
         buttons: ['取消', '停止应用并退出'],
         defaultId: 0,
         cancelId: 0,
@@ -571,14 +562,16 @@ if (!gotLock) {
       })
       return result.response === 1
     },
-    setAdmissionClosed: (closed) => appRuntime.setAdmissionClosed(closed),
+    setAdmissionClosed: (closed) => { appRuntime.setAdmissionClosed(closed); setWorkflowAdmissionClosed(closed); setDesktopTeamAdmissionClosed(closed) },
     stopApplications: () => appRuntime.shutdown(),
-    stopSessions: shutdownAcp,
+    stopSessions: async () => { await shutdownWorkflowApplications(); await shutdownAcp(); await closeDesktopTeamService() },
     finalize: () => {
       stopTimers()
       stopInbox()
       abortAll()
       stopDiffWorker()
+      stopWorkflowSubscriptions()
+      closeTaskConversations()
       stopObservationWorker()
       globalShortcut.unregisterAll()
       accessServer.stop()

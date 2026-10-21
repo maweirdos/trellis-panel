@@ -65,14 +65,14 @@ export function QuickTodoView(): JSX.Element {
   }, [projectRoot])
 
   useEffect(() => {
-    void loadTodos().catch((cause: unknown) => setError(errorMessage(cause)))
+    void loadTodos().catch((cause: unknown) => setError(errorMessage(cause) ?? '收件箱加载失败，请重试'))
     textareaRef.current?.focus()
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') void api.closeQuickTodo()
     }
     window.addEventListener('keydown', onKey)
     // 窗口常驻复用（隐藏而非销毁），每次热键呼出后把焦点放回编辑区
-    const offShown = api.onQuickTodoShown(() => { textareaRef.current?.focus(); void loadTodos().catch((cause: unknown) => setError(errorMessage(cause))) })
+    const offShown = api.onQuickTodoShown(() => { textareaRef.current?.focus(); void loadTodos().catch((cause: unknown) => setError(errorMessage(cause) ?? '收件箱加载失败，请重试')) })
     const offSnapshot = api.onSnapshotUpdated((next) => useApp.getState().setSnapshot(next))
     return () => {
       window.removeEventListener('keydown', onKey)
@@ -108,7 +108,7 @@ export function QuickTodoView(): JSX.Element {
       updateText('')
       showToast('已保存到收件箱')
       await loadTodos()
-    } catch (cause) { setError(errorMessage(cause)) } finally { saveLock.current = false; setBusy(false) }
+    } catch (cause) { setError(errorMessage(cause) ?? '保存失败，请重试') } finally { saveLock.current = false; setBusy(false) }
   }
 
   const saveSplit = async (): Promise<void> => {
@@ -131,7 +131,7 @@ export function QuickTodoView(): JSX.Element {
       if (ok) showToast(`已保存 ${ok} 条`)
       if (remaining.length) setError(`${remaining.length} 条未保存，已保留在编辑区，请重试。`)
       await loadTodos()
-    } catch (cause) { setError(errorMessage(cause)) } finally { saveLock.current = false; setBusy(false) }
+    } catch (cause) { setError(errorMessage(cause) ?? '拆分保存失败，请重试') } finally { saveLock.current = false; setBusy(false) }
   }
 
   const remove = async (id: string): Promise<void> => {
@@ -139,7 +139,7 @@ export function QuickTodoView(): JSX.Element {
       const result = await api.todoDelete(id)
       if (!result.ok) throw new Error(result.error || '删除失败')
       await loadTodos()
-    } catch (cause) { setError(errorMessage(cause)) }
+    } catch (cause) { setError(errorMessage(cause) ?? '删除失败，请重试') }
   }
 
   const toggleList = (): void => {

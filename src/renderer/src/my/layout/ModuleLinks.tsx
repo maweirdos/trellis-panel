@@ -29,7 +29,7 @@ export function ModuleLinks({ domain, agentView, onAgentView }: {
     <button key={key} type="button" className={contextButtonClass(selected)} aria-current={selected ? 'page' : undefined} onClick={action}>{icon}{label}</button>
   )
   const route = (target: Page, label: string, icon: JSX.Element): JSX.Element => row(target, label, page === target, icon, () => { if (useApp.getState().page !== target) setPage(target) })
-  return <nav aria-label={domain === 'agents' ? '智能体导航' : '知识导航'} className="shrink-0 space-y-0.5 border-b border-my-line px-2 py-2">
+  return <nav aria-label={domain === 'agents' ? '对话导航' : '知识导航'} className="shrink-0 space-y-0.5 border-b border-my-line px-2 py-2">
     {domain === 'agents' ? <>
       {row('conversation', '对话', page === 'acp' && agentView !== 'roles', <MessageSquare size={16} />, () => agent('conversation'))}
       {row('roles', '角色', page === 'acp' && agentView === 'roles', <Bot size={16} />, () => agent('roles'))}

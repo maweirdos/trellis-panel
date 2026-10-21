@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { CircleAlert, Maximize2, RefreshCw } from 'lucide-react'
 import { useApp } from '../store'
@@ -7,6 +7,9 @@ import { DocumentDiffPanel } from './DocumentDiffPanel'
 import { ReaderNoticeStrip, ReaderVersionBar } from './ReaderVersionBar'
 import { useDocumentReader } from './use-document-reader'
 import type { DocumentReaderController } from './use-document-reader'
+import type { ReaderOrigin } from '../../../shared/document-windows'
+import { FixedDocumentActions } from './FixedDocumentActions'
+import { computeHeadingAnchors } from './heading-anchors'
 
 /**
  * DocumentReader（S0 G2 第三片，design §6.1）：三入口共享的文档阅读容器——
@@ -31,6 +34,8 @@ export interface DocumentReaderProps {
   expandLabel?: string
   /** 头部右侧附加动作（宿主既有按钮，零回归保留）。 */
   headerExtra?: ReactNode
+  origin?: ReaderOrigin
+  showOutline?: boolean
 }
 
 export function DocumentReader({
@@ -40,19 +45,22 @@ export function DocumentReader({
   variant = 'full',
   onExpand,
   expandLabel = '展开为完整工作区',
-  headerExtra
+  headerExtra,
+  origin
 }: DocumentReaderProps): JSX.Element {
   const reader = useDocumentReader({ workspaceId, taskRef, relativePath })
-  return <DocumentReaderSurface reader={reader} relativePath={relativePath} variant={variant} onExpand={onExpand} expandLabel={expandLabel} headerExtra={headerExtra} />
+  return <DocumentReaderSurface reader={reader} relativePath={relativePath} variant={variant} onExpand={onExpand} expandLabel={expandLabel} headerExtra={headerExtra} origin={origin} />
 }
 
 /** The same renderer/chrome with a host-owned controller; no second load/version engine. */
 export function DocumentReaderSurface({
-  reader, relativePath, variant = 'full', onExpand, expandLabel = '展开为完整工作区', headerExtra
-}: Pick<DocumentReaderProps, 'relativePath' | 'variant' | 'onExpand' | 'expandLabel' | 'headerExtra'> & {
+  reader, relativePath, variant = 'full', onExpand, expandLabel = '展开为完整工作区', headerExtra, origin, showOutline = true
+}: Pick<DocumentReaderProps, 'relativePath' | 'variant' | 'onExpand' | 'expandLabel' | 'headerExtra' | 'origin' | 'showOutline'> & {
   reader: DocumentReaderController
 }): JSX.Element {
-  const widthPref = useApp((s) => s.readerWidthPref)
+  const [widthPref, setWidthPref] = useState(() => useApp.getState().readerWidthPref)
+  const [outlineOpen, setOutlineOpen] = useState(false)
+  const headings = useMemo(() => computeHeadingAnchors(reader.displayedText ?? ''), [reader.displayedText])
   const rootRef = useRef<HTMLDivElement | null>(null)
   const diffTriggerRef = useRef<HTMLButtonElement | null>(null)
   const [anchorNotice, setAnchorNotice] = useState<string | null>(null)
@@ -100,8 +108,12 @@ export function DocumentReaderSurface({
         onCompareGit={(trigger) => openDiffFrom('git-latest-commit', trigger)}
         onRebase={() => reader.rebaseToCurrent()}
         showWidthPref={variant === 'full'}
+        width={widthPref}
+        onWidthChange={setWidthPref}
         extra={
           <>
+          {showOutline && <button type="button" className="my-chip text-my-secondary hover:text-my-primary" disabled={headings.length === 0} onClick={() => setOutlineOpen((value) => !value)}>目录</button>}
+          <FixedDocumentActions version={reader.doc?.fixedVersion} unavailable={reader.doc?.fixedVersionError} origin={origin} />
           {headerExtra}
           {onExpand !== undefined ? (
             <button
@@ -117,6 +129,11 @@ export function DocumentReaderSurface({
           </>
         }
       />
+
+      {outlineOpen && <nav aria-label="阅读器文档目录" className="my-scrollbar max-h-48 overflow-auto border-b border-my-line py-2">{headings.map((heading) => <button key={heading.id} type="button" className="block w-full truncate py-1 text-left text-my-xs text-my-secondary hover:text-my-accent-text" style={{ paddingLeft: `${Math.min(heading.level - 1, 3) * 12}px` }} onClick={() => {
+        const target = [...(rootRef.current?.querySelectorAll<HTMLElement>('[id]') ?? [])].find((element) => element.id === heading.id)
+        if (target) target.scrollIntoView({ block: 'start' }); else setAnchorNotice('请切回渲染视图后定位章节')
+      }}>{heading.text}</button>)}</nav>}
 
       <ReaderNoticeStrip
         requestError={reader.requestError}
@@ -139,12 +156,13 @@ export function DocumentReaderSurface({
             returnFocusRef={diffTriggerRef}
           />
         </div>
-      ) : reader.loading ? (
+      ) : null}
+      {reader.loading ? (
         <div className="flex items-center gap-2 py-10 text-my-sm text-my-secondary">
           <RefreshCw size={13} className="animate-spin" /> 正在加载文档…
         </div>
       ) : (
-        <div className="min-h-0 flex-1 pt-3">
+        <div className={reader.diff !== null ? 'hidden' : 'min-h-0 flex-1 pt-3'}>
           <ArtifactReader
             relativePath={relativePath}
             rawText={reader.displayedText}

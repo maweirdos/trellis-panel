@@ -364,7 +364,7 @@ export function Modal({
   open: boolean
   onClose: () => void
   children: ReactNode
-  width?: number
+  width?: number | string
   ariaLabel?: string
   placement?: 'top' | 'center'
 }): JSX.Element | null {

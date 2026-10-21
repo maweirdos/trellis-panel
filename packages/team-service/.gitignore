@@ -1,0 +1,6 @@
+/team-data/
+/backups/
+/test-results/
+.env
+.env.*
+!.env.example

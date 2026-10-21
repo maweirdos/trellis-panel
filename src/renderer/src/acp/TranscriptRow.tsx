@@ -8,6 +8,9 @@ import { ConnectionNotice } from './ConnectionNotice'
 import { RunActivity } from './RunActivity'
 import { ThoughtActivity } from './ThoughtActivity'
 import { ImageAttachments } from './ImageAttachments'
+import { knowledgeObservation, knowledgeObservationLabel } from './conversation-convenience'
+import { KnowledgeOperationRow } from './KnowledgeOperationRow'
+import { SavedArtifactMessage } from './SavedArtifactMessage'
 import { projectRootKey } from '../my/navigation'
 import type { AcpPermissionPayload, AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import type { JSX } from 'react'
@@ -52,12 +55,16 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   onOpenJira: () => void
 }): JSX.Element {
   if (item.type === 'user') {
+    const origin = events?.find((event) => event.id === item.key)
+    const preparing = Boolean(origin && session && origin.source === 'acp' && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status))
     return <div data-acp-item={item.key} className="acp-turn-start flex justify-end"><div className="acp-user-message max-w-[88%]">
       {item.images && <ImageAttachments images={item.images} />}
       {item.text && <div className="acp-chat-copy whitespace-pre-wrap break-words rounded-my-lg bg-my-layer-1 px-4 py-3 text-my-primary">{item.text}</div>}
+      {item.delivery && item.delivery !== 'sent' && !(item.delivery === 'preparing' && preparing && suppressWorkingIndicator) && <span className={clsx('acp-prompt-delivery', item.delivery === 'not_sent' && 'is-not-sent')} title={item.delivery === 'preparing' ? preparing ? '正在准备项目知识参考，尚未发送给模型。' : '仅找到准备记录，尚未确认是否实际发送给模型。' : undefined}>{item.delivery === 'preparing' ? preparing ? '准备中…' : '发送状态未确认' : '未发送给模型'}</span>}
     </div></div>
   }
-  if (item.type === 'agent') return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-answer acp-chat-copy min-w-0 break-words text-my-primary', item.startsAnswer && 'acp-answer-start')}><MarkdownView content={item.text} /></div>
+  if (item.type === 'agent') return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-answer acp-chat-copy min-w-0 break-words text-my-primary', item.startsAnswer && 'acp-answer-start')}><SavedArtifactMessage text={item.text} messageId={item.key} events={events ?? []} session={session} /></div>
+  if (item.type === 'knowledge-operation') return <KnowledgeOperationRow item={item} session={session} onOpenTask={onOpenTask} suppressWorkingIndicator={suppressWorkingIndicator} />
   if (item.type === 'thought') {
     const originIndex = events?.findIndex((event) => event.id === item.key) ?? -1
     const origin = originIndex >= 0 ? events?.[originIndex] : undefined
@@ -148,6 +155,8 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   }
   if (item.type === 'turn') return /^(回合已结束|本轮结束|回合已取消)$/.test(item.text) ? <></> : <ConnectionNotice message={item.text} />
   if (item.type === 'detail') {
+    const knowledge = knowledgeObservation(item.ev)
+    if (knowledge) return <details className="rounded-my-md border border-my-line px-3 py-2 text-my-xs text-my-secondary"><summary className="cursor-pointer">{knowledgeObservationLabel(knowledge)}</summary><p className="mt-2 whitespace-pre-wrap break-words text-my-tertiary">{knowledge.detail || item.ev.text}</p><RawData value={item.ev.payload} /></details>
     if (item.ev.kind === 'diagnostic' || item.ev.payload?.type === 'error' || item.ev.payload?.error || item.ev.payload?.status === 'failed' || item.ev.payload?.status === 'error' || asObject(item.ev.payload?.observation)?.status === 'failed') return <ConnectionNotice message={item.ev.text || String(asObject(item.ev.payload?.observation)?.label ?? '执行引擎返回错误')} />
     return <details className="rounded-my-md px-2 py-1 text-my-sm text-my-tertiary"><summary className="cursor-pointer break-words">{item.ev.text ?? item.ev.kind}</summary><p className="mt-2 whitespace-pre-wrap break-words">{item.ev.text ?? '执行引擎记录了此项状态更新。'}</p></details>
   }

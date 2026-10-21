@@ -13,7 +13,7 @@ const READINESS_LABELS: Record<ApplicationReadinessState['state'], string> = {
   'not-configured': '未配置就绪检查', checking: '等待服务就绪', ready: '服务已就绪', unhealthy: '服务未就绪', unknown: '服务状态未知'
 }
 
-function ProcessStatus({ app }: { app: ApplicationSummary }): JSX.Element {
+export function ProcessStatus({ app }: { app: ApplicationSummary }): JSX.Element {
   const working = app.processState === 'starting' || app.processState === 'stopping'
   const failure = app.processState === 'failed' || app.processState === 'cleanup-required'
   const Icon = working ? Loader2 : failure ? CircleX : app.processState === 'unknown' ? CircleHelp : Terminal
@@ -22,14 +22,14 @@ function ProcessStatus({ app }: { app: ApplicationSummary }): JSX.Element {
   </span>
 }
 
-function ReadinessStatus({ readiness }: { readiness: ApplicationReadinessState }): JSX.Element {
+export function ReadinessStatus({ readiness }: { readiness: ApplicationReadinessState }): JSX.Element {
   const Icon = readiness.state === 'ready' ? CircleCheck : readiness.state === 'unhealthy' ? TriangleAlert : readiness.state === 'checking' ? Loader2 : CircleHelp
   return <span title={readiness.message} className={`inline-flex items-center gap-1.5 ${readiness.state === 'ready' ? 'text-my-success-text' : readiness.state === 'unhealthy' ? 'text-my-warning-text' : 'text-my-tertiary'}`} data-readiness-state={readiness.state}>
     <Icon size={13} aria-hidden="true" className={readiness.state === 'checking' ? 'animate-spin' : undefined} />{READINESS_LABELS[readiness.state]}
   </span>
 }
 
-function ApplicationOutput({ app, root, generation, compact }: { app: ApplicationSummary; root: string; generation: number; compact: boolean }): JSX.Element {
+export function ApplicationOutput({ app, root, generation, compact = false, docked = false }: { app: ApplicationSummary; root: string; generation: number; compact?: boolean; docked?: boolean }): JSX.Element {
   const [logs, setLogs] = useState<Extract<ApplicationLogsResult, { ok: true }> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [follow, setFollow] = useState(true)
@@ -48,9 +48,9 @@ function ApplicationOutput({ app, root, generation, compact }: { app: Applicatio
       try {
         const result = await api.appRuntimeLogs(root, id)
         if (!live || generation !== applicationsGeneration() || requested !== sequence) return
-        if (result.ok === true && matchesApplicationRoot(result.root)) { setLogs(result); setError(null) }
+        if (result.ok === true && matchesApplicationRoot(result.root) && result.appId === id && result.runId === (runId ?? null)) { setLogs(result); setError(null) }
         else if (result.ok === false) setError(result.error)
-      } catch { if (live && generation === applicationsGeneration()) setError('输出读取失败，请重新展开。') }
+      } catch { if (live && generation === applicationsGeneration() && requested === sequence) setError('输出读取失败，请重新展开。') }
     }
     const unsubscribe = api.onAppRuntimeEvent((event) => {
       if (event.appId !== id || !matchesApplicationRoot(event.root)) return
@@ -66,7 +66,7 @@ function ApplicationOutput({ app, root, generation, compact }: { app: Applicatio
     if (follow && preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight
   }, [logs?.output, follow])
 
-  return <section aria-label={`${app.definition.name} 输出`} className="my-application-output">
+  return <section aria-label={`${app.definition.name} 输出`} className={`my-application-output ${docked ? 'is-docked' : ''}`}>
     <div className="flex flex-wrap items-center gap-2 px-3 py-2">
       <h4 className="flex-1 text-my-xs font-medium text-my-secondary">运行输出</h4>
       <Button variant="ghost" size="sm" aria-pressed={follow} onClick={() => setFollow((value) => !value)}>{follow ? <Pause size={12} /> : <Play size={12} />}{follow ? '暂停跟随' : '继续跟随'}</Button>
@@ -114,7 +114,7 @@ export function ApplicationList({ compact = false, onOpenEditor }: { compact?: b
           <Button size="sm" variant="ghost" aria-expanded={outputOpen} aria-label={`${outputOpen ? '收起' : '查看'} ${definition.name} 输出`} onClick={() => setExpanded(outputOpen ? null : definition.id)}>{outputOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}输出</Button>
           <button type="button" className="my-icon-control ml-auto" aria-label={`删除 ${definition.name}`} disabled={Boolean(busy) || app.canStop || app.processState === 'unknown' || app.processState === 'cleanup-required'} onClick={(event) => { onOpenEditor?.(); openApplicationEditor({ kind: 'remove', definition }, state.generation, event.currentTarget) }}><Trash2 size={13} /></button>
         </div>
-        {outputOpen && state.root && <ApplicationOutput key={`${state.generation}:${definition.id}`} app={app} root={state.root} generation={state.generation} compact={compact} />}
+        {outputOpen && state.root && <ApplicationOutput key={`${state.generation}:${definition.id}:${app.run?.id ?? 'unstarted'}`} app={app} root={state.root} generation={state.generation} compact={compact} />}
       </article>
     })}
   </div>

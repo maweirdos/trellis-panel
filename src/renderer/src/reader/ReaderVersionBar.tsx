@@ -3,6 +3,7 @@ import { ArrowUpDown, CircleAlert, GitCompareArrows, RefreshCw, RotateCcw } from
 import { clsx } from 'clsx'
 import { useApp } from '../store'
 import { READER_WIDTH_PREFS } from './reader-prefs'
+import type { ReaderWidthPref } from './reader-prefs'
 
 /**
  * ReaderVersionBar（S0 G2 第三片）：三入口共用的版本工具条与「发现新版本」
@@ -30,6 +31,8 @@ export interface ReaderVersionBarProps {
   showWidthPref?: boolean
   /** 右侧附加内容（展开入口等）。 */
   extra?: ReactNode
+  width?: ReaderWidthPref
+  onWidthChange?: (width: ReaderWidthPref) => void
 }
 
 export function ReaderVersionBar({
@@ -42,7 +45,9 @@ export function ReaderVersionBar({
   onCompareGit,
   onRebase,
   showWidthPref = true,
-  extra
+  extra,
+  width,
+  onWidthChange
 }: ReaderVersionBarProps): JSX.Element {
   const widthPref = useApp((s) => s.readerWidthPref)
   const setWidthPref = useApp((s) => s.setReaderWidthPref)
@@ -76,10 +81,10 @@ export function ReaderVersionBar({
               <button
                 key={w}
                 type="button"
-                onClick={() => setWidthPref(w)}
+                onClick={() => { setWidthPref(w); onWidthChange?.(w) }}
                 className={clsx(
                   'rounded-my-sm px-1.5 text-my-2xs transition-colors',
-                  widthPref === w
+                  (width ?? widthPref) === w
                     ? 'bg-my-info-subtle font-medium text-my-info-text'
                     : 'text-my-secondary hover:text-my-primary'
                 )}
@@ -90,7 +95,7 @@ export function ReaderVersionBar({
             ))}
           </div>
         )}
-        {extra !== undefined && <div className="ml-auto flex shrink-0 items-center gap-1">{extra}</div>}
+        {extra !== undefined && <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1">{extra}</div>}
       </div>
 
       {pending && (

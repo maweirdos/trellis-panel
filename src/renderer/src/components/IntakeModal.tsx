@@ -5,6 +5,7 @@ import { api } from '../api'
 import { clsx } from 'clsx'
 import { Button } from '../my/ui'
 import { PlanningModal } from './PlanningModal'
+import { useKnowledgeRequest } from '../knowledge/request-intake'
 import type { JSX } from 'react'
 
 /**
@@ -145,6 +146,12 @@ export function IntakeModal(): JSX.Element | null {
         </div>
 
         <div className="flex items-center gap-2 border-t border-my-line px-5 py-3">
+          <Button variant="primary" disabled={!title.trim() || busy || !snapshot} onClick={() => {
+            if (!snapshot) return
+            if (useKnowledgeRequest.getState().stage({ root: snapshot.meta.root, title: title.trim(), description: desc.trim(), source: { kind: 'manual' } })) close()
+          }} title="携带可编辑需求进入现有 Agent；手动选择会话并发送，不创建任务">
+            <Sparkles size={12} /> Agent 需求梳理
+          </Button>
           <Button
             variant="outline"
             onClick={() => {
@@ -154,7 +161,7 @@ export function IntakeModal(): JSX.Element | null {
             disabled={!title.trim()}
             title="检索知识库 → AI 生成结构化任务计划（PRD/子任务/分支建议）→ 一键落成 Trellis 任务"
           >
-            <Wand2 size={12} /> AI 规划成任务
+            <Wand2 size={12} /> 兼容：一次规划
           </Button>
           <span className="ml-auto text-my-2xs text-my-tertiary">{snapshot?.meta.name}</span>
           <Button variant="outline" onClick={close} disabled={busy}>取消</Button>

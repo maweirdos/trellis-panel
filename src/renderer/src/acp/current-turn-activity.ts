@@ -1,5 +1,6 @@
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import { projectRootKey } from '../my/navigation'
+import { knowledgeOperationLabel, readKnowledgeOperation } from './knowledge-operations'
 
 export interface CurrentTurnIdentity {
   projectRoot: string
@@ -20,7 +21,7 @@ export interface CurrentTurnRequest {
 }
 
 export interface CurrentTurnActivity {
-  phase: 'submitting' | 'waiting' | 'thinking' | 'tool' | 'replying' | 'processing' | 'permission' | 'cancelling'
+  phase: 'submitting' | 'knowledge' | 'waiting' | 'thinking' | 'tool' | 'replying' | 'processing' | 'permission' | 'cancelling'
   label: string
   detail?: string
   spinning: boolean
@@ -62,7 +63,9 @@ export function projectCurrentTurnActivity({ root, session, events, request, ter
   if (local?.phase === 'submitting' && !local.turnId && !currentState) return { phase: 'submitting', label: '正在发送…', spinning: true }
   const latest = [...facts].reverse().find((event) =>
     (event.kind === 'message' && event.payload?.role !== 'user' && Boolean(event.text?.trim())) ||
-    (event.kind === 'thought' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'plan')
+    (event.kind === 'thought' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'plan' || readKnowledgeOperation(event))
+  const knowledge = latest && readKnowledgeOperation(latest)
+  if (knowledge?.phase === 'running') return { phase: 'knowledge', label: knowledgeOperationLabel(knowledge, true), detail: knowledge.query, spinning: true }
   if (latest?.kind === 'message') return { phase: 'replying', label: '正在生成回复', spinning: true }
   if (latest?.kind === 'thought') return { phase: 'thinking', label: '正在思考', spinning: true }
   if (latest?.kind === 'tool-call') {
@@ -72,5 +75,12 @@ export function projectCurrentTurnActivity({ root, session, events, request, ter
     return { phase: 'tool', label: '正在调用工具', spinning: true }
   }
   if (latest?.kind === 'plan') return { phase: 'processing', label: '处理中', spinning: true }
+  // Host lookup can finish before the native transport accepts its input.
+  // A recorded question alone does not establish that a model is answering it.
+  const preparing = facts.some((event) => event.kind === 'message' && event.payload?.role === 'user' && event.payload.delivery === 'preparing')
+  const delivered = facts.some((event) =>
+    event.kind === 'diagnostic' && event.payload?.activityScope === 'turn' && typeof event.payload.promptDelivery === 'object' && event.payload.promptDelivery !== null && 'state' in event.payload.promptDelivery && event.payload.promptDelivery.state === 'sent' ||
+    event.kind === 'session-status' && typeof event.payload?.observation === 'object' && event.payload.observation !== null && 'label' in event.payload.observation && event.payload.observation.label === '指令已发送至引擎')
+  if (preparing && !delivered) return { phase: 'processing', label: '正在准备回复', spinning: true }
   return { phase: 'waiting', label: '等待模型回复', spinning: true }
 }

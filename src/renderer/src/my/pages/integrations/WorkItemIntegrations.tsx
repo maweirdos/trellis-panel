@@ -30,7 +30,7 @@ export function WorkItemIntegrations({ taskDir }: { taskDir: string }): JSX.Elem
     if (integrationBridgeState() !== 'ready') return
     return api.integrations.onChanged(() => { void loadLinks() })
   }, [loadLinks])
-  const choices = data?.bindings.filter((binding) => binding.enabled && data.connections.some((c) => c.id === binding.connectionId && c.enabled && data.catalog.some((p) => p.id === c.providerId && p.category !== 'tasks'))) ?? []
+  const choices = data?.bindings.filter((binding) => binding.enabled && data.connections.some((c) => c.id === binding.connectionId && c.enabled && data.catalog.some((p) => p.id === c.providerId && (p.category === 'repositories' || p.category === 'messaging')))) ?? []
   const binding = choices.find((b) => b.id === selectedId) ?? choices[0]
   const connection = data?.connections.find((c) => c.id === binding?.connectionId)
   const provider = data?.catalog.find((p) => p.id === connection?.providerId)

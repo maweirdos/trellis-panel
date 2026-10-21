@@ -164,6 +164,9 @@ export interface DocumentReadSuccess {
   parsed: DocumentParsed | null
   diagnostics: DocumentDiagnostic[]
   source: DocumentSource
+  /** Main-owned exact version. The displayed reader retains it across later saves. */
+  fixedVersion?: import('./document-windows').FixedDocumentVersion
+  fixedVersionError?: string
 }
 
 export type DocumentReadOutcome = DocumentReadSuccess | IpcFail

@@ -11,6 +11,15 @@ import {
 } from '../observability/store-core'
 import type { LocalOperationKey, LocalOperationPayload, LocalOperationRow, LocalTaskStage } from './types'
 
+/** Legacy operations run on main: fail boundedly instead of blocking behind the workflow writer. */
+export const LOCAL_CONTROL_MAIN_BUSY_TIMEOUT_MS = 50
+
+function isTransientControlLock(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const detail = error as Error & { errcode?: number; code?: string }
+  return detail.errcode === 5 || detail.errcode === 6 || detail.code === 'SQLITE_BUSY' || detail.code === 'SQLITE_LOCKED' || /database (?:is )?(?:locked|busy)/i.test(detail.message)
+}
+
 /**
  * LocalTaskService 的控制库连接（design §7.2，复用 G3 control.sqlite 骨架）。
  *
@@ -20,8 +29,8 @@ import type { LocalOperationKey, LocalOperationPayload, LocalOperationRow, Local
  *    顺带打开/创建 observations.sqlite——未绑定项目经 worker 通道会制造观测库文件，
  *    或需要为 worker 增加 control-only 引导模式（更大的 G3 协议改动）。
  * 2. 控制库操作都是用户显式动作触发的单行短事务（synchronous=FULL 下毫秒级 fsync），
- *    频度低、时长有界，不构成 G1-B 关注的主进程长事务；busy_timeout=2000 与
- *    observation worker 的控制库连接共存（journal=DELETE 双连接短锁）。
+ *    频度低、时长有界；主线程锁等待最多 50ms，不同步循环重试。与 observation /
+ *    workflow worker 的控制库连接共存（journal=DELETE，SQLite 串行化短写事务）。
  * 3. schema 复用 store-core 导出的 CONTROL_SCHEMA_V1_DDL：单一建表权威，跨版本时
  *    高于本程序理解的版本只读拒绝（与 G3 口径一致）。
  *
@@ -30,7 +39,7 @@ import type { LocalOperationKey, LocalOperationPayload, LocalOperationRow, Local
 export class LocalControlStore {
   private readonly runtimeDir: string
   private db: DatabaseSync | null = null
-  private state: 'not_initialized' | 'active' | 'future_version' | 'corrupted' | 'closed' = 'not_initialized'
+  private state: 'not_initialized' | 'active' | 'busy' | 'future_version' | 'corrupted' | 'closed' = 'not_initialized'
 
   constructor(runtimeDir: string) {
     this.runtimeDir = runtimeDir
@@ -50,11 +59,11 @@ export class LocalControlStore {
     let db: DatabaseSync | null = null
     try {
       db = new DatabaseSync(path)
-      db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA busy_timeout=2000;')
+      db.exec(`PRAGMA busy_timeout=${LOCAL_CONTROL_MAIN_BUSY_TIMEOUT_MS}; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;`)
     } catch (e) {
       this.closeQuietly(db)
-      this.state = 'corrupted'
-      throw new Error(`控制库打开失败：${redactText(e instanceof Error ? e.message : String(e))}`)
+      this.state = isTransientControlLock(e) ? 'busy' : 'corrupted'
+      throw new Error(`${this.state === 'busy' ? '控制库暂时被占用，请重试' : '控制库打开失败'}：${redactText(e instanceof Error ? e.message : String(e))}`)
     }
     try {
       // 版本读取前先探表：全新库尚无 control_schema_meta（与 G3 openControl 同口径）
@@ -92,8 +101,8 @@ export class LocalControlStore {
     } catch (e) {
       this.closeQuietly(db)
       if (this.state === 'future_version') throw e
-      this.state = 'corrupted'
-      throw new Error(`控制库初始化失败：${redactText(e instanceof Error ? e.message : String(e))}`)
+      this.state = isTransientControlLock(e) ? 'busy' : 'corrupted'
+      throw new Error(`${this.state === 'busy' ? '控制库暂时被占用，请重试' : '控制库初始化失败'}：${redactText(e instanceof Error ? e.message : String(e))}`)
     }
   }
 

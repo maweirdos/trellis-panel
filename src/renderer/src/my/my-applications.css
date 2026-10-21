@@ -41,3 +41,60 @@
   .my-root .my-window-search { justify-content: center; flex-shrink: 0; padding-inline: var(--my-space-4); }
   .my-root .my-window-search > span, .my-root .my-window-search > kbd { display: none; }
 }
+
+/* The named selector, configuration manager and dock share application data. */
+.my-root .my-window-header .my-project-switcher { max-width: 100%; }
+.my-root .my-run-toolbar { display: flex; min-width: 0; flex-shrink: 0; align-items: center; gap: var(--my-space-2); margin-inline-end: var(--my-space-8); }
+.my-root .my-run-config-trigger { gap: var(--my-space-6); max-width: var(--my-space-224); min-width: 0; }
+.my-root .my-run-config-options { max-height: var(--my-space-288); overflow-y: auto; padding: var(--my-space-4) var(--my-space-6); }
+.my-root .my-run-config-manager { display: flex; min-width: 0; min-height: 0; height: min(var(--my-modal-max-height), calc(100dvh - var(--my-space-96))); flex-direction: column; }
+.my-root .my-run-config-header { display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-12); padding: var(--my-space-16) var(--my-space-20); border-bottom: var(--my-space-1) solid var(--my-border-subtle); }
+.my-root .my-run-config-layout { display: grid; min-height: 0; min-width: 0; flex: 1; grid-template-columns: var(--my-run-config-list-width) minmax(0, 1fr); }
+.my-root .my-run-config-layout[hidden] { display: none; }
+.my-root .my-run-config-sidebar { display: flex; min-height: 0; min-width: 0; flex-direction: column; border-right: var(--my-space-1) solid var(--my-border-subtle); background: var(--my-bg-layer-1); }
+.my-root .my-run-config-tools { display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-4); padding: var(--my-space-8); border-bottom: var(--my-space-1) solid var(--my-border-subtle); }
+.my-root .my-run-config-entries { min-height: 0; flex: 1; overflow: auto; padding: var(--my-space-4); }
+.my-root .my-run-config-entry { display: flex; width: 100%; min-width: 0; align-items: center; gap: var(--my-space-8); padding: var(--my-space-8); border-radius: var(--my-control-radius); color: var(--my-txt-secondary); text-align: left; font-size: var(--my-text-sm); }
+.my-root .my-run-config-entry:hover:not(:disabled) { background: var(--my-bg-navigation-hover); }
+.my-root .my-run-config-entry.is-selected { background: var(--my-bg-navigation-selected); color: var(--my-txt-primary); }
+.my-root .my-run-config-entry:disabled { cursor: wait; }
+.my-root .my-run-config-dirty { flex-shrink: 0; color: var(--my-txt-secondary); }
+.my-root .my-run-config-detail { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+.my-root .my-run-configuration-editor { flex: 1; min-height: 0; }
+.my-root .my-run-config-running { flex-shrink: 0; padding: var(--my-space-8) var(--my-space-20); border-bottom: var(--my-space-1) solid var(--my-border-subtle); }
+.my-root .my-run-config-notice { padding: var(--my-space-24); }
+.my-root .my-run-dock { position: relative; display: flex; min-width: 0; flex-shrink: 0; flex-direction: column; border-top: var(--my-space-1) solid var(--my-border-subtle); background: var(--my-bg-layer-2); color: var(--my-txt-primary); -webkit-app-region: no-drag; }
+.my-root .my-run-dock.is-expanded { height: var(--my-run-dock-default-height); min-height: min(var(--my-run-dock-min-height), var(--my-run-dock-max-height)); max-height: var(--my-run-dock-max-height); }
+.my-root .my-run-dock-header { display: flex; min-width: 0; flex-shrink: 0; align-items: center; gap: var(--my-space-4); min-height: var(--my-space-40); padding-inline: var(--my-space-8); border-bottom: var(--my-space-1) solid var(--my-border-subtle); }
+.my-root .my-run-dock-tabs { display: flex; min-width: 0; flex: 1; align-items: center; gap: var(--my-space-4); overflow-x: auto; }
+.my-root .my-run-dock-tab { display: inline-flex; min-width: 0; max-width: var(--my-space-224); flex-shrink: 0; align-items: center; border-radius: var(--my-control-radius); }
+.my-root .my-run-dock-tab.is-active { background: var(--my-bg-layer-1); }
+.my-root .my-run-dock-tab > [role='tab'] { min-width: 0; }
+.my-root .my-run-dock-tab > .my-tooltip-anchor { flex-shrink: 0; }
+.my-root .my-run-dock-content { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
+.my-root .my-run-dock-status { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: var(--my-space-12); padding: var(--my-space-6) var(--my-space-12); font-size: var(--my-text-xs); }
+.my-root .my-application-output.is-docked { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; margin: 0; border: 0; border-radius: 0; }
+.my-root .my-application-output.is-docked .my-application-console { flex: 1; min-height: 0; max-height: none; }
+.my-root .my-run-dock-probe { position: absolute; width: 0; visibility: hidden; pointer-events: none; }
+.my-root .my-run-dock-probe-min { height: var(--my-run-dock-min-height); }
+.my-root .my-run-dock-probe-max { height: var(--my-run-dock-max-height); }
+.my-root .my-run-dock-probe-default { height: var(--my-run-dock-default-height); }
+.my-root .my-run-dock-resize { position: absolute; z-index: var(--my-z-resize); inset-inline: 0; top: calc(var(--my-space-2) * -1); height: var(--my-space-6); cursor: ns-resize; touch-action: none; }
+.my-root .my-run-dock-resize:focus-visible { outline: var(--my-space-1) solid var(--my-focus-ring); outline-offset: var(--my-space-1); background: var(--my-bg-layer-1-active); }
+.my-root .my-run-dock.is-resizing { user-select: none; }
+@media (max-width: 1100px) {
+  .my-root .my-window-search > kbd { display: none; }
+}
+@media (max-width: 640px) {
+  .my-root .my-run-config-trigger { max-width: var(--my-space-112); }
+  .my-root .my-run-config-layout { display: flex; flex-direction: column; }
+  .my-root .my-run-config-sidebar { max-height: var(--my-space-160); flex-shrink: 0; border-right: 0; border-bottom: var(--my-space-1) solid var(--my-border-subtle); }
+  .my-root .my-run-config-layout[hidden] { display: none; }
+  .my-root .my-run-config-tools { padding: var(--my-space-4) var(--my-space-8); }
+  .my-root .my-run-config-entries { display: flex; max-height: var(--my-space-96); gap: var(--my-space-8); }
+  .my-root .my-run-config-entries > section { min-width: var(--my-space-112); }
+  .my-root .my-run-config-entry { padding: var(--my-space-6); }
+  .my-root .my-run-config-detail { flex: 1; }
+  .my-root .my-run-configuration-editor .my-application-form { padding: var(--my-space-12); gap: var(--my-space-12); }
+  .my-root .my-run-configuration-editor footer { padding: var(--my-space-8) var(--my-space-12); }
+}

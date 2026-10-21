@@ -1,43 +1,61 @@
-import { CheckCircle2, AlertTriangle, Info, XCircle, X } from 'lucide-react'
+import { useEffect, useState, type JSX } from 'react'
 import { useApp } from '../store'
-import { clsx } from 'clsx'
-import type { JSX } from 'react'
+import type { ToastItem } from '../store/types'
+import { NotificationCard } from '../my/NotificationCard'
+import { projectRootKey } from '../my/navigation'
 
-const STYLE: Record<string, { icon: JSX.Element; cls: string }> = {
-  success: { icon: <CheckCircle2 size={15} className="text-my-success-text" />, cls: 'border-my-line-success' },
-  info: { icon: <Info size={15} className="text-my-info-text" />, cls: 'border-my-line-info' },
-  warn: { icon: <AlertTriangle size={15} className="text-my-warning-text" />, cls: 'border-my-line-warning' },
-  error: { icon: <XCircle size={15} className="text-my-danger-text" />, cls: 'border-my-line-danger' }
+function Toast({ toast, hidden }: { toast: ToastItem; hidden: boolean }): JSX.Element {
+  const dismiss = useApp((s) => s.dismissToast)
+  const root = useApp((s) => s.snapshot?.meta.root)
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const paused = hidden || hovered || focused || expanded
+  const task = toast.task
+  const canOpenTask = Boolean(task && projectRootKey(task.projectRoot) === projectRootKey(root))
+
+  useEffect(() => {
+    if (paused) return
+    const timer = setTimeout(() => dismiss(toast.id), toast.kind === 'error' || toast.kind === 'warn' ? 9000 : 5000)
+    return () => clearTimeout(timer)
+  }, [dismiss, toast.id, toast.kind, paused])
+
+  const openTask = (): void => {
+    const state = useApp.getState()
+    if (!task || projectRootKey(task.projectRoot) !== projectRootKey(state.snapshot?.meta.root)) return
+    const archived = state.snapshot?.archived.some((item) => item.dirName === task.dirName) ?? false
+    const known = archived || state.snapshot?.tasks.some((item) => item.dirName === task.dirName)
+    if (!known) {
+      dismiss(toast.id)
+      state.pushToast({ kind: 'warn', title: '该任务已不可用', body: '任务可能已被移动或删除。' })
+      return
+    }
+    state.showTask(task.dirName, archived)
+    dismiss(toast.id)
+  }
+
+  return <div
+    className="my-toast"
+    onPointerEnter={() => setHovered(true)}
+    onPointerLeave={() => setHovered(false)}
+    onFocusCapture={() => setFocused(true)}
+    onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false) }}
+  >
+    <NotificationCard notification={toast} onDismiss={() => dismiss(toast.id)} onExpandedChange={setExpanded}
+      action={canOpenTask ? { label: '查看任务', onClick: openTask } : undefined} />
+  </div>
 }
 
-/** 右下角通知堆栈：AI 桥接事件、保存结果、Jira 同步等都走这里。 */
-export function Toasts(): JSX.Element | null {
+/** One bounded, themed stack shared by the main window and floating utilities. */
+export function Toasts(): JSX.Element {
   const toasts = useApp((s) => s.toasts)
-  const dismiss = useApp((s) => s.dismissToast)
-  if (toasts.length === 0) return null
-  return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-80 flex-col gap-2">
-      {toasts.map((t) => {
-        const st = STYLE[t.kind] ?? STYLE.info
-        return (
-          <div
-            key={t.id}
-            className={clsx(
-              'toast-enter pointer-events-auto flex items-start gap-2.5 rounded-my-xl border bg-my-layer-2 px-3.5 py-2.5 shadow-[var(--my-shadow-overlay-200)] backdrop-blur',
-              st.cls
-            )}
-          >
-            <span className="mt-0.5 shrink-0">{st.icon}</span>
-            <div className="min-w-0 flex-1">
-              <div className="text-my-xs font-medium text-my-primary">{t.title}</div>
-              {t.body && <div className="mt-0.5 break-words text-my-xs leading-4 text-my-secondary">{t.body}</div>}
-            </div>
-            <button onClick={() => dismiss(t.id)} className="shrink-0 text-my-icon-tertiary hover:text-my-primary">
-              <X size={12} />
-            </button>
-          </div>
-        )
-      })}
-    </div>
-  )
+  const [hidden, setHidden] = useState(document.hidden)
+  useEffect(() => {
+    const onVisibility = (): void => setHidden(document.hidden)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+  return <section className="my-notification-stack" aria-label="通知">
+    {toasts.map((toast) => <Toast key={toast.id} toast={toast} hidden={hidden} />)}
+  </section>
 }

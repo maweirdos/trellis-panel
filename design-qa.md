@@ -67,3 +67,13 @@ The user subsequently requested committing this version first. That checkpoint i
 with this blocked visual status preserved; it is not a claim that the native frame was verified.
 
 final result: blocked
+
+## Scoped addition: homepage task conversation continuation
+
+This result applies only to task `10-21-task-conversation-continuation`; the historical native outer-frame blocker above remains unchanged.
+
+- Source: `C:/Users/Maweirdos/.codex/generated_images/01a15eb6-ef02-7071-a4d6-02662d9b1e6e/exec-1c3304d2-801e-48c7-850c-f0695665f099.png`.
+- Production-component full/focused screenshots, normalization, fixed findings, required fidelity surfaces and limitations: [.trellis/tasks/10-21-task-conversation-continuation/research/design-qa.md](.trellis/tasks/10-21-task-conversation-continuation/research/design-qa.md).
+- Actual Electron renders passed 45 interaction/geometry checks, including six theme/font combinations and current-task identity regressions. Read-only native capability evidence is separate; client activation/focus is not claimed.
+
+final result: passed

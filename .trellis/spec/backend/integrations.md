@@ -2,13 +2,13 @@
 
 ## 1. Scope / Trigger
 
-Read before modifying external provider adapters, credentials, project bindings, source identities, task references, notifications, or the integration directory. The built-ins are Jira, GitHub, GitLab, Gitee, DingTalk, and Feishu. Connectors are trusted modules shipped with the app; runtime connection enablement is not an executable-plugin sandbox or hot installer.
+Read before modifying external provider adapters, credentials, project bindings, source identities, task references, notifications, or the integration directory. The built-ins are Jira, GitHub, GitLab, Gitee, DingTalk, Feishu, and WeKnora. Connectors are trusted modules shipped with the app; runtime connection enablement is not an executable-plugin sandbox or hot installer. Knowledge-specific contracts are in [knowledge-access.md](./knowledge-access.md).
 
 ## 2. Signatures
 
 - Shared boundary: `src/shared/integrations.ts`, `IntegrationApi`, `BindingRequest`, `ConnectionRequest`, and Zod request/connection/binding/receipt/reference schemas.
 - IPC: `ipcInvoke.integration.*` centrally registers explicit `integration:action` channels. Preload exposes `api.integrations`; failures use `ipcFail` with machine-readable codes.
-- Registry: `IntegrationRegistry.register(provider)` / `get(providerId)` / `catalog()`; declared capabilities must have corresponding task/repository/notification ports.
+- Registry: `IntegrationRegistry.register(provider)` / `get(providerId)` / `catalog()`; declared capabilities must have corresponding task/repository/notification/knowledge ports.
 - Configuration: `saveConnection(input)`, `saveBinding(input)`, `resolveConnection(input)`, `resolveBinding(input)` in `services/integrations/service.ts`.
 - Source: `jiraContext({expectedRoot})`, `jiraSearch({...BindingRequest,jql,requestId})`, `jiraTransitions`, `jiraTransition`, `jiraComment`. Local import extends existing `createTaskFromJira` with optional `integration: BindingRequest`.
 - Local associations: `links({expectedRoot,taskDir})`, `attach({...BindingRequest,taskDir,object})`, `unlink({expectedRoot,taskDir,linkId})`.
@@ -20,7 +20,7 @@ Read before modifying external provider adapters, credentials, project bindings,
 
 ### Credentials and persistence
 
-`userData/integrations.json` has schema version 1, at most 100 connection records, 500 bindings, 100 delivery receipts, and a 2 MiB file limit. Mutations use atomic replacement; corrupt/future-version data is preserved and rejected, never silently initialized over. New secrets use main-process `safeStorage`; public connections include only non-secret `config` and `hasSecrets` indicators. Full webhook URLs are secrets. Secret patches are `keep`, `replace(value)`, or explicit `clear`.
+`userData/integrations.json` has schema version 2 (validated v1 migration with `.v1.bak`), at most 100 connection records, 500 bindings, 100 notification delivery receipts, and a 2 MiB file limit. Version2 adds legacy-import identity and typed knowledge bindings; knowledge publication receipts are separate private project state. Mutations use atomic replacement; corrupt/future-version data is preserved and rejected, never silently initialized over. New secrets use main-process `safeStorage`; public connections include only non-secret `config` and `hasSecrets` indicators. Full webhook URLs are secrets. Secret patches are `keep`, `replace(value)`, or explicit `clear`.
 
 Legacy Jira/GitLab entries read from their existing settings as a single compatibility source. Strict integration saves use `setSettings(patch, true)` with atomic persistence and cache rollback on failure; old callers retain the best-effort default. A legacy name is fixed. New account connections are independent records. Configuration revision changes invalidate verification and stale caller revisions.
 

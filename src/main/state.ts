@@ -5,7 +5,7 @@
  * 周期任务等全部收敛在这里，供 src/main/ipc/<domain>.ts 引用。反向依赖（托盘重建、
  * 主窗口聚焦）通过 setUiHooks / setMainWindow 由 index.ts 启动时注入。
  */
-import { app, Notification } from 'electron'
+import { app } from 'electron'
 import { join, resolve, relative, sep, extname } from 'path'
 import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, rmSync } from 'fs'
 import { BrowserWindow } from 'electron'
@@ -16,6 +16,7 @@ import { getSettings, pushRecentProject } from './services/store'
 import { clearGitCache } from './services/git'
 import { recordActivity } from './services/activity'
 import { broadcastToWindows } from './services/bridge'
+import { deliverToast } from './services/notifications'
 import { routeWatcherEvent, emitAcpMaterialChange } from './services/acp'
 import { eventTaskMaterial, verifyMaterialChange } from './services/acp/materials'
 import { closeObservationForProject, initObservationForRoot } from './services/observability'
@@ -24,6 +25,7 @@ import { WeknoraSpecSyncer } from './services/weknora'
 import { accessEventLog } from './services/access/event-log'
 import { errorText, errorMessage } from '../shared/errors'
 import { ipcEvent } from '../shared/ipc-channels'
+import { formatMaterialToast } from '../shared/notifications'
 import { IpcErrorCode, ipcFail, noProject, notFound, type IpcFail } from '../shared/ipc-errors'
 import type { AcpMaterialChange, MaterialUpdatedEvent, ProjectSnapshot, SpecNode, ToastEvent } from '../shared/types'
 
@@ -42,7 +44,7 @@ export const watcher = new TrellisWatcher()
 const weknoraSpecSync = new WeknoraSpecSyncer({
   onReport: (r) => {
     if (r.pushed === 0 && r.duplicates === 0 && r.failed.length === 0) return
-    broadcastToWindows(ipcEvent.toast, {
+    toast({
       kind: r.failed.length > 0 ? 'warn' : 'success',
       title: '公司库（WeKnora）spec 同步',
       body: [
@@ -118,12 +120,7 @@ export function routeMaterialNotice(absPath: string, kind: AcpMaterialChange['ki
       }
       broadcastToWindows(ipcEvent.materialUpdated, payload)
       for (const change of changes) emitAcpMaterialChange(change)
-      const mw = getMainWindow()
-      const visibleFocused = Boolean(mw && mw.isVisible() && mw.isFocused())
-      if (!visibleFocused) toastFocusTask(dirName, {
-        kind: 'info', title: `任务更新：${payload.title}`,
-        body: `${payload.count} 个文件：${payload.files.join('、')}${payload.count > payload.files.length ? ' 等' : ''}`
-      })
+      toastFocusTask(dirName, formatMaterialToast(payload))
     })().catch((error: unknown) => {
       if (projectRoot === capturedRoot && projectGeneration === capturedGeneration) toast({ kind: 'warn', title: '任务材料校验失败', body: errorMessage(error) })
     })
@@ -173,30 +170,19 @@ export function getSnapshot(): ProjectSnapshot | null {
 /* ---------------- toast / snapshot ---------------- */
 
 export function toast(t: ToastEvent): void {
-  try {
-    if (Notification.isSupported()) {
-      const n = new Notification({ title: t.title, body: t.body ?? '', silent: true })
-      n.on('click', () => uiHooks?.showMain())
-      n.show()
-    }
-  } catch {
-    // notifications are best-effort
-  }
+  deliverToast(t, getMainWindow(), () => uiHooks?.showMain())
 }
 
-/** T1：带任务定向的系统通知——点击直达该任务（复用 bridgeTaskFocus 聚焦链路） */
+/** Task navigation uses the renderer action or the guarded native click path. */
 function toastFocusTask(dirName: string, t: ToastEvent): void {
-  try {
-    if (!Notification.isSupported()) return
-    const n = new Notification({ title: t.title, body: t.body ?? '', silent: true })
-    n.on('click', () => {
-      uiHooks?.showMain()
-      pushFocusTask(dirName)
-    })
-    n.show()
-  } catch {
-    // best-effort
-  }
+  const capturedRoot = projectRoot
+  const capturedGeneration = projectGeneration
+  const event: ToastEvent = capturedRoot ? { ...t, task: { projectRoot: capturedRoot, dirName } } : t
+  deliverToast(event, getMainWindow(), () => {
+    uiHooks?.showMain()
+    if (capturedRoot !== projectRoot || capturedGeneration !== projectGeneration) return
+    pushFocusTask(dirName)
+  })
 }
 
 export function sendSnapshot(): void {
@@ -216,7 +202,7 @@ export function sendSnapshot(): void {
   } catch (e) {
     // R0：重扫失败保留上一份快照（latestSnapshot 未被替换），并显式告知而非静默
     console.error('rescan failed:', errorMessage(e))
-    broadcastToWindows(ipcEvent.toast, {
+    toast({
       kind: 'warn',
       title: '重新扫描失败',
       body: `已保留上次结果（${errorText(e, '未知错误')}）`
@@ -337,12 +323,17 @@ export function closeProjectAt(): void {
 
 let pendingFocusTask: string | null = null
 let pendingFocusRoot: string | null = null
+let pendingFocusGeneration = 0
 
 export function pushFocusTask(dirName: string): void {
+  const capturedRoot = projectRoot
+  const capturedGeneration = projectGeneration
   pendingFocusTask = dirName
   pendingFocusRoot = projectRoot
+  pendingFocusGeneration = capturedGeneration
   const send = (): void => {
     if (pendingFocusTask !== dirName) return
+    if (projectRoot !== capturedRoot || projectGeneration !== capturedGeneration) return
     const win = getMainWindow()
     if (!win) return
     if (win.webContents.isLoading()) {
@@ -356,7 +347,8 @@ export function pushFocusTask(dirName: string): void {
 }
 
 export function pullPendingFocus(): { taskDir: string; root: string | null } | null {
-  const payload = pendingFocusTask ? { taskDir: pendingFocusTask, root: pendingFocusRoot } : null
+  const current = pendingFocusRoot === projectRoot && pendingFocusGeneration === projectGeneration
+  const payload = current && pendingFocusTask ? { taskDir: pendingFocusTask, root: pendingFocusRoot } : null
   pendingFocusTask = null
   pendingFocusRoot = null
   return payload

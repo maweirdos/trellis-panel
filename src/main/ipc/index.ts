@@ -4,6 +4,7 @@
  */
 import { registerProjectIpc } from './project'
 import { registerTasksIpc } from './tasks'
+import { registerTaskConversationsIpc } from './task-conversations'
 import { registerTodoIpc } from './todo'
 import { registerFilesIpc } from './files'
 import { registerDocumentsIpc } from './documents'
@@ -11,6 +12,7 @@ import { registerObservationIpc } from './observability'
 import { registerGitIpc } from './git'
 import { registerDevtoolsIpc } from './devtools'
 import { registerAppRuntimeIpc } from './app-runtime'
+import { registerGitWorkspaceIpc } from './git-workspace'
 import { registerReportIpc } from './report'
 import { registerChannelsIpc } from './channels'
 import { registerStudioIpc } from './studio'
@@ -28,9 +30,12 @@ import { registerIntegrationsIpc } from './integrations'
 import { registerHttpApiIpc } from './httpapi'
 import { registerChatIpc } from './chat'
 import { registerFlowIpc } from './flow'
+import { registerWorkflowIpc } from './workflow'
+import { registerTeamDesktopIpc } from './team-desktop'
 import { registerAcpIpc } from './acp'
 import { registerWindowIpc } from './window'
 import { registerDocsIpc } from './docs'
+import { registerKnowledgeAccessIpc } from './knowledge-access'
 import type { WindowDeps } from './deps'
 
 export function registerIpc(deps: WindowDeps): void {
@@ -38,6 +43,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerDocsIpc(deps)
   registerProjectIpc(deps)
   registerTasksIpc()
+  registerTaskConversationsIpc(deps)
   registerTodoIpc()
   registerFilesIpc()
   registerDocumentsIpc()
@@ -45,11 +51,13 @@ export function registerIpc(deps: WindowDeps): void {
   registerGitIpc()
   registerDevtoolsIpc(deps)
   registerAppRuntimeIpc(deps)
+  registerGitWorkspaceIpc(deps)
   registerReportIpc()
   registerChannelsIpc()
   registerStudioIpc()
   registerKnowledgeIpc()
   registerWeknoraIpc()
+  registerKnowledgeAccessIpc()
   registerGatewayIpc()
   registerAiIpc()
   registerPlanningIpc()
@@ -62,5 +70,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerHttpApiIpc()
   registerChatIpc(deps)
   registerFlowIpc()
+  registerWorkflowIpc()
+  registerTeamDesktopIpc()
   registerAcpIpc()
 }

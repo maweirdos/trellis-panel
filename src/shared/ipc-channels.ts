@@ -15,6 +15,14 @@
 
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
+  taskConversations: {
+    list: 'taskConversations:list',
+    discover: 'taskConversations:discover',
+    bind: 'taskConversations:bind',
+    setPrimary: 'taskConversations:setPrimary',
+    unbind: 'taskConversations:unbind',
+    open: 'taskConversations:open'
+  },
   integration: {
     authorize: 'integration:authorize', cancelAuthorization: 'integration:cancelAuthorization',
     cancelRead: 'integration:cancelRead',
@@ -93,12 +101,25 @@ export const ipcInvoke = {
   devtools: {
     gitStatus: 'devtools:gitStatus',
     gitFileDiff: 'devtools:gitFileDiff',
+    gitHistory: 'devtools:gitHistory',
+    gitCommit: 'devtools:gitCommit',
+    gitCommitDiff: 'devtools:gitCommitDiff',
     listScripts: 'devtools:listScripts',
     devRunStart: 'devtools:devRunStart',
     devRunStop: 'devtools:devRunStop',
     devRunStopAll: 'devtools:devRunStopAll',
     devRunList: 'devtools:devRunList',
     devRunGet: 'devtools:devRunGet'
+  },
+  gitWorkspace: {
+    status: 'gitWorkspace:status',
+    diff: 'gitWorkspace:diff',
+    stage: 'gitWorkspace:stage',
+    unstage: 'gitWorkspace:unstage',
+    commit: 'gitWorkspace:commit',
+    createBranch: 'gitWorkspace:createBranch',
+    switchBranch: 'gitWorkspace:switchBranch',
+    push: 'gitWorkspace:push'
   },
   appRuntime: {
     list: 'appRuntime:list',
@@ -143,6 +164,21 @@ export const ipcInvoke = {
     qaSave: 'kb:qaSave',
     qaClear: 'kb:qaClear'
   },
+  teamDesktop: {
+    connections: 'teamDesktop:connections', connectionContext: 'teamDesktop:connectionContext', beginPairing: 'teamDesktop:beginPairing', openPairing: 'teamDesktop:openPairing', pollPairing: 'teamDesktop:pollPairing',
+    disconnect: 'teamDesktop:disconnect', heartbeat: 'teamDesktop:heartbeat', queueAuthoredPublication: 'teamDesktop:queueAuthoredPublication', queueFeedback: 'teamDesktop:queueFeedback',
+    outbox: 'teamDesktop:outbox', cancelQueued: 'teamDesktop:cancelQueued', dispatch: 'teamDesktop:dispatch', reconcile: 'teamDesktop:reconcile',
+    readDocument: 'teamDesktop:readDocument', listMaterials: 'teamDesktop:listMaterials', listVersions: 'teamDesktop:listVersions', listFeedback: 'teamDesktop:listFeedback',
+    syncEvents: 'teamDesktop:syncEvents', refreshSharedSnapshot: 'teamDesktop:refreshSharedSnapshot', cachedSnapshot: 'teamDesktop:cachedSnapshot', queueWorkflowMaterial: 'teamDesktop:queueWorkflowMaterial'
+  },
+  workflow: {
+    templates: 'workflow:templates', preview: 'workflow:preview', start: 'workflow:start',
+    snapshot: 'workflow:snapshot', events: 'workflow:events', stop: 'workflow:stop',
+    artifact: 'workflow:artifact', subscribe: 'workflow:subscribe', unsubscribe: 'workflow:unsubscribe',
+    previewRevision: 'workflow:previewRevision', acceptRevision: 'workflow:acceptRevision',
+    cancelRevision: 'workflow:cancelRevision', revisionStatus: 'workflow:revisionStatus',
+    inspectRecovery: 'workflow:inspectRecovery', recoveryArtifact: 'workflow:recoveryArtifact'
+  },
   flow: {
     list: 'flow:list',
     read: 'flow:read',
@@ -165,6 +201,12 @@ export const ipcInvoke = {
     listDocs: 'weknora:listDocs',
     read: 'weknora:read',
     testMcp: 'weknora:testMcp'
+  },
+  knowledgeAccess: {
+    artifactImage: 'knowledge-access:artifact-image', artifactOpenLocal: 'knowledge-access:artifact-open-local',
+    context: 'knowledge-access:context', collections: 'knowledge-access:collections', updateScope: 'knowledge-access:update-scope',
+    search: 'knowledge-access:search', documents: 'knowledge-access:documents', read: 'knowledge-access:read', source: 'knowledge-access:source', sources: 'knowledge-access:sources', cancel: 'knowledge-access:cancel', importLegacy: 'knowledge-access:import-legacy',
+    saveArtifact: 'knowledge-access:save-artifact', artifacts: 'knowledge-access:artifacts', artifact: 'knowledge-access:artifact', taskPrd: 'knowledge-access:task-prd', handoff: 'knowledge-access:handoff', previewPublication: 'knowledge-access:preview-publication', confirmPublication: 'knowledge-access:confirm-publication', publications: 'knowledge-access:publications', publicationPage: 'knowledge-access:publication-page', resolvePublication: 'knowledge-access:resolve-publication', clearHistory: 'knowledge-access:clear-history'
   },
   gateway: {
     status: 'gateway:status',
@@ -217,7 +259,18 @@ export const ipcInvoke = {
   doc: {
     open: 'doc:open',
     read: 'doc:read',
-    setPin: 'doc:setPin'
+    setPin: 'doc:setPin',
+    versions: 'doc:versions',
+    captureVersion: 'doc:capture-version',
+    compareVersions: 'doc:compare-versions',
+    openVersion: 'doc:open-version',
+    bootstrap: 'doc:view-bootstrap',
+    sourceState: 'doc:source-state',
+    current: 'doc:view-current',
+    watch: 'doc:view-watch',
+    unwatch: 'doc:view-unwatch',
+    diff: 'doc:view-diff',
+    returnOrigin: 'doc:return-origin'
   },
   cli: {
     run: 'cli:run',
@@ -233,6 +286,7 @@ export const ipcInvoke = {
   },
   win: {
     capsule: 'win:capsule',
+    openTask: 'win:openTask',
     minimize: 'win:minimize',
     maximize: 'win:maximize',
     close: 'win:close'
@@ -244,6 +298,7 @@ export const ipcInvoke = {
     close: 'capsule:close'
   },
   quicktodo: {
+    show: 'quicktodo:show',
     close: 'quicktodo:close'
   },
   mcp: {
@@ -267,7 +322,8 @@ export const ipcInvoke = {
   shell: {
     reveal: 'shell:reveal',
     openInEditor: 'shell:openInEditor',
-    openExternal: 'shell:openExternal'
+    openExternal: 'shell:openExternal',
+    openLocalDocument: 'shell:openLocalDocument'
   },
   acp: {
     agents: 'acp:agents',
@@ -328,6 +384,9 @@ export const ipcEvent = {
   /** 工作流运行事件流（runId 关联，成对出现） */
   flowOutput: 'flow:output',
   flowDone: 'flow:done',
+  workflowOutput: 'workflow:output',
+  teamDesktopChanged: 'teamDesktop:changed',
+  workflowDone: 'workflow:done',
   /** 工具调用权限卡（请求决策）与 steer 注入 */
   chatPermission: 'chat:permission',
   chatSteer: 'chat:steer',
@@ -338,6 +397,7 @@ export const ipcEvent = {
   acpState: 'acp:state',
   /** 窗口最大化状态 */
   windowMaximized: 'window:maximized',
+  documentOriginReturn: 'doc:origin-return',
   /** 速记窗已显示（渲染层收到后重新聚焦编辑区） */
   quickTodoShown: 'quicktodo:shown',
   /**

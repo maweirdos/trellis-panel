@@ -24,7 +24,7 @@ export function registerPlanningIpc(): void {
       description: String(input?.description ?? ''),
       jiraKey: input?.jiraKey ? String(input.jiraKey) : undefined,
       jiraUrl: input?.jiraUrl ? String(input.jiraUrl) : undefined
-    }, getSettings().weknora)
+    })
   })
 
   handle(ipcInvoke.task.createFromPlan, (_e, input) => {

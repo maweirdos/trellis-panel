@@ -58,12 +58,12 @@ export const PAGE_NAVIGATION = {
 } satisfies Record<Page, PageNavigation>
 
 export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
-  home: '首页', agents: '智能体', tasks: '任务', team: '团队', knowledge: '知识', settings: '设置'
+  home: '首页', agents: '对话', tasks: '任务', team: '团队', knowledge: '知识', settings: '设置'
 }
 
 export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string }> = [
   { id: 'home', page: 'dashboard', label: '首页', shortLabel: '首页' },
-  { id: 'agents', page: 'acp', label: '智能体', shortLabel: '智能体' },
+  { id: 'agents', page: 'acp', label: '对话', shortLabel: '对话' },
   { id: 'tasks', page: 'tasks', label: '任务', shortLabel: '任务' },
   { id: 'team', page: 'team', label: '团队', shortLabel: '团队' },
   { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' }

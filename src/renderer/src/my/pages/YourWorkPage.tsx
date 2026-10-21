@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
-import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, MessageSquare, Plus, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, MessageSquare, Plus, RefreshCw, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
 import { useApp } from '../../store'
 import { hasIpc } from '../../api'
 import { Select } from '../../components/Select'
@@ -14,6 +14,10 @@ import type { Priority, WorkItemState } from '../types'
 import { PAGE_LAYOUTS, PageBody, PageContent, PageLayout } from '../layout/PageLayout'
 import type { FileEntry, TaskInfo } from '../../../../shared/types'
 import { errorMessage } from '../../../../shared/errors'
+import { TaskConversationEntry } from '../components/TaskConversationEntry'
+import { TaskConversationAssociationModal } from '../components/TaskConversationAssociationModal'
+import { TASK_CONVERSATION_SOURCE_LABELS, taskConversationDirectory, useTaskConversations, type TaskConversationController } from '../use-task-conversations'
+import { useInteractionActive, useInteractionGuard } from '../../utils/interaction-scope'
 
 type HomeView = 'assigned' | 'created' | 'favorites' | 'completed'
 type StatusFilter = 'open' | 'all' | 'ready' | 'active' | 'review' | 'completed'
@@ -136,8 +140,9 @@ function ContinueTaskBar({ task, source, state, onInspect }: {
 }
 
 /** The open and favorite actions are sibling buttons, including for keyboard users. */
-function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite }: {
+function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite, conversations, projectRoot, onManage }: {
   task: HomeTask; state?: WorkItemState; favorite: boolean; onInspect: (task: HomeTask) => void; onToggleFavorite: (id: string) => void
+  conversations: TaskConversationController; projectRoot: string; onManage: (task: HomeTask) => void
 }): JSX.Element {
   const status = taskStatus(task, state)
   const scope = task.scope || task.pkg || task.jiraKey
@@ -146,6 +151,12 @@ function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite }: {
   const updatedAt = task.updatedAt && Number.isFinite(task.updatedAt) ? task.updatedAt : null
   const timeText = showCompletion && completed ? completed.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : updatedAt ? relTime(updatedAt) : '—'
   const timeTitle = showCompletion ? `完成于 ${task.completedAt}` : updatedAt ? `文件更新于 ${new Date(updatedAt).toLocaleString('zh-CN')}` : '暂无更新时间'
+  const bindings = conversations.bindingsFor(task.path)
+  const binding = bindings.find((item) => item.primary)
+  const conversation = binding?.conversation
+  const ready = conversations.available && Boolean(task.path) && conversations.data !== null
+  const title = conversation?.title ?? (conversations.loading ? '读取会话…' : !ready ? '会话入口不可用' : bindings.length ? '选择主会话' : '关联会话')
+  const pending = conversations.pendingTaskDir !== null && taskConversationDirectory(projectRoot, conversations.pendingTaskDir) === taskConversationDirectory(projectRoot, task.path)
 
   return <li className="my-home-task-row">
     <button type="button" className="my-home-task-open" onClick={() => onInspect(task)}>
@@ -155,11 +166,15 @@ function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite }: {
         <span className="my-home-task-title" title={task.title}>{task.title}</span>
         {scope && <span className="my-home-task-scope" title={scope}>{scope}</span>}
       </span>
-      <span className="my-home-task-right">
-        <span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span>
-        <span className="my-home-task-time" title={timeTitle}>{timeText}</span>
-      </span>
     </button>
+    <TaskConversationEntry title={title} source={conversation?.source ?? 'unbound'} sourceLabel={conversation ? TASK_CONVERSATION_SOURCE_LABELS[conversation.source] : '未关联'}
+      capability={conversation?.capability ?? (ready ? 'associate' : 'unavailable')} destinationLabel={conversation?.destinationLabel}
+      unavailableReason={conversation?.unavailableReason ?? (!ready ? conversations.error ?? (!task.path ? '任务目录不可用。' : '打开项目并加载最新客户端后使用。') : undefined)}
+      pending={pending} disabled={!ready || conversations.pendingTaskDir !== null && !pending}
+      onOpen={() => { if (binding && task.path) void conversations.open(task.path, binding.id); else if (ready) onManage(task) }}
+      onManage={ready ? () => onManage(task) : undefined} />
+    <span className="my-home-task-status"><span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span></span>
+    <span className="my-home-task-time" title={timeTitle}>{timeText}</span>
     <button type="button" className="my-home-star-btn" data-starred={favorite} aria-pressed={favorite} aria-label={favorite ? '取消收藏' : '收藏任务'} onClick={() => onToggleFavorite(task.id)}>
       <Star size={13} fill={favorite ? 'currentColor' : 'none'} />
     </button>
@@ -208,9 +223,13 @@ export function YourWorkPage(): JSX.Element {
   const [savingTodo, setSavingTodo] = useState(false)
   const [todoFeedback, setTodoFeedback] = useState<{ error: boolean; message: string } | null>(null)
   const [inspectedTask, setInspectedTask] = useState<HomeTask | null>(null)
+  const [association, setAssociation] = useState<{ root: string; task: HomeTask } | null>(null)
   const [now, setNow] = useState(() => new Date())
   const todoSaveLock = useRef(false)
   const projectRoot = snapshot?.meta.root
+  const conversations = useTaskConversations(projectRoot)
+  const interactive = useInteractionActive()
+  const canInteract = useInteractionGuard()
   const me = snapshot?.meta.developer ?? null
   const states = useMemo(() => new Map(data.states.map((state) => [state.id, state])), [data.states])
   const sourceTasks = useMemo(() => new Map(snapshot?.tasks.map((task) => [task.dirName, task]) ?? []), [snapshot?.tasks])
@@ -257,8 +276,10 @@ export function YourWorkPage(): JSX.Element {
     setSearchQuery('')
     setExpanded(false)
     setInspectedTask(null)
+    setAssociation(null)
     setTodoFeedback(null)
   }, [projectRoot, me])
+  useEffect(() => { if (!interactive) setAssociation(null) }, [interactive])
 
   const viewTasks = view === 'assigned' ? personalTasks
     : view === 'created' ? currentTasks.filter((task) => me && task.creator === me)
@@ -274,6 +295,9 @@ export function YourWorkPage(): JSX.Element {
       return (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || a.title.localeCompare(b.title, 'zh-CN')
     })
   const visibleTasks = expanded ? filteredTasks : filteredTasks.slice(0, TASK_LIMIT)
+  const manageConversations = (task: HomeTask): void => {
+    if (projectRoot && task.path && conversations.available && canInteract()) setAssociation({ root: projectRoot, task })
+  }
   const inspectTask = (task: HomeTask): void => {
     if (!task.archived && data.issues.some((issue) => issue.id === task.id)) openIssue(task.id)
     else {
@@ -341,6 +365,8 @@ export function YourWorkPage(): JSX.Element {
   const activeCount = personalTasks.filter((task) => matchesStatus(task, 'active', states)).length
   const reviewCount = personalTasks.filter((task) => matchesStatus(task, 'review', states)).length
   const openCount = personalTasks.filter((task) => matchesStatus(task, 'open', states)).length
+  const conversationFeedback = conversations.feedback?.error ? conversations.feedback
+    : conversations.error ? { error: true, message: conversations.error } : conversations.feedback
   const tabs: Array<{ id: HomeView; label: string; count: number; disabled?: boolean }> = [
     { id: 'assigned', label: taskScope, count: personalTasks.length },
     { id: 'created', label: '我创建', count: currentTasks.filter((task) => me && task.creator === me).length, disabled: !me },
@@ -391,19 +417,24 @@ export function YourWorkPage(): JSX.Element {
                   </div>
                 </header>
                 {!me && <p className="my-home-scope-note">当前项目未设置开发者身份，暂展示项目任务。</p>}
-                {filteredTasks.length > 0 ? <ul className="my-home-task-rows my-scrollbar" aria-label="筛选后的任务">
-                  {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} />)}
+                {filteredTasks.length > 0 ? <ul className="my-home-task-rows my-scrollbar" aria-label="筛选后的任务" aria-description="窄窗口中可左右滚动查看全部字段" tabIndex={0}>
+                  {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} conversations={conversations} projectRoot={projectRoot ?? ''} onManage={manageConversations} />)}
                 </ul> : <div className="my-home-empty" role="status">
                   <ListTodo size={18} /><span>当前筛选条件下暂无任务</span>
                   {(status !== 'all' || searchQuery) && <Button variant="ghost" size="sm" onClick={() => { setStatus('all'); setSearchQuery(''); setExpanded(false) }}>重置筛选条件</Button>}
                 </div>}
                 <footer className="my-home-list-footer">
-                  <span>显示 {visibleTasks.length} / {filteredTasks.length} 项</span>
+                  <div className="my-home-conversation-refresh">
+                    <span>显示 {visibleTasks.length} / {filteredTasks.length} 项</span>
+                    {conversations.data && <time dateTime={new Date(conversations.data.refreshedAt).toISOString()}>会话读取于 {new Date(conversations.data.refreshedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>}
+                    <Button variant="ghost" size="sm" aria-label="刷新任务会话" disabled={!conversations.available || conversations.loading || conversations.refreshing || conversations.pendingTaskDir !== null} onClick={() => { void conversations.refresh() }}><RefreshCw size={12} />{conversations.loading || conversations.refreshing ? '读取中…' : '刷新'}</Button>
+                  </div>
                   <div className="flex items-center gap-2">
                     {filteredTasks.length > TASK_LIMIT && <Button variant="ghost" size="sm" onClick={() => setExpanded((value) => !value)}>{expanded ? '收起列表' : `展开全部 (${filteredTasks.length})`}</Button>}
                     <Button variant="ghost" size="sm" onClick={() => { useMy.getState().setWorkItemsView('items'); useApp.getState().setPage('tasks') }}>全部工作项<ArrowUpRight size={12} /></Button>
                   </div>
                 </footer>
+                {conversationFeedback && <p className={`my-home-conversation-feedback ${conversationFeedback.error ? 'text-my-danger-text' : 'text-my-secondary'}`} role={conversationFeedback.error ? 'alert' : 'status'}>{conversationFeedback.message}</p>}
               </section>
             </div>
 
@@ -446,6 +477,7 @@ export function YourWorkPage(): JSX.Element {
             </aside>
           </div>
           <HomeQuickPeekModal task={inspectedTask} state={inspectedTask ? states.get(inspectedTask.stateId) : undefined} onClose={() => setInspectedTask(null)} />
+          {association && association.root === projectRoot && association.task.path && interactive && <TaskConversationAssociationModal key={`${association.root}:${association.task.path}`} taskDir={association.task.path} taskTitle={association.task.title} controller={conversations} onClose={() => setAssociation(null)} />}
         </div>
       </PageContent>
     </PageBody>

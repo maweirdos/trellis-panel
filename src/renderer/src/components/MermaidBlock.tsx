@@ -49,6 +49,12 @@ async function renderMermaid(mermaid: typeof import('mermaid').default, chart: s
         resolve(svg)
       } catch (err) {
         reject(err)
+      } finally {
+        // Mermaid can leave its error SVG in the body when rendering rejects.
+        for (const temporaryId of [`d${id}`, `i${id}`]) {
+          const node = document.getElementById(temporaryId)
+          if (node?.parentElement === document.body) node.remove()
+        }
       }
     })
   })

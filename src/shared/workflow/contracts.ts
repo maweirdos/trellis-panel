@@ -155,6 +155,8 @@ export const operationStateSchema = z.enum(['pending', 'dispatched', 'confirmed'
 export const workflowOperationSchema = z.object({
   operationId: workflowIdSchema,
   commandId: workflowIdSchema,
+  /** Omitted legacy intents are ordinary execution, never implicit stop/reconcile. */
+  purpose: z.enum(['execute-step', 'stop-run', 'reconcile']).optional(),
   scope: workflowScopeSchema,
   run: runRefSchema,
   state: operationStateSchema,

@@ -42,7 +42,7 @@ try {
     export {verifyMaterialChange,eventTaskMaterial} from './src/main/services/acp/materials';
     export {openProjectAt,closeProjectAt,routeMaterialNotice,getProjectGeneration} from './src/main/state';
     export {watchReaderDocument,onReaderDocumentChanged} from './src/main/services/documents/change-bridge';`, loader: 'ts', resolveDir: process.cwd() },
-    bundle: true, format: 'esm', platform: 'node', banner: { js: "import {createRequire as smokeRequire} from 'node:module';const require=smokeRequire(import.meta.url);" },
+    bundle: true, format: 'esm', platform: 'node', banner: { js: "import {createRequire as smokeRequire} from 'node:module';import {dirname as smokeDirname} from 'node:path';import {fileURLToPath as smokeFilePath} from 'node:url';const require=smokeRequire(import.meta.url);const __dirname=smokeDirname(smokeFilePath(import.meta.url));" },
     alias: { electron: resolve('scripts/smoke/mock-electron.mjs') }, plugins: [watcherMock], outfile: join(temporary, 'materials.mjs') })
   service = await import(pathToFileURL(join(temporary, 'materials.mjs')).href)
   assert.equal(service.openProjectAt(root).ok, true)

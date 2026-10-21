@@ -1,0 +1,129 @@
+import { z } from 'zod'
+import { TEAM_MAX_REQUEST_BYTES, TEAM_MAX_RESPONSE_BYTES, teamApiReplySchema, teamCommandReplySchema, teamIdSchema, type TeamCommandReply, type TeamSession } from './contracts'
+
+export class ApiError extends Error {
+  constructor(readonly code: string, message: string, readonly status = 0, readonly uncertain = false) { super(message) }
+}
+export const authEvents = new EventTarget()
+type RequestOptions = { body?: unknown; signal?: AbortSignal; notifyDenied?: boolean; isCurrent?: () => boolean }
+export async function request<T>(path: string, schema: z.ZodType<T>, options: RequestOptions = {}): Promise<T> {
+  if (!/^\/(api|auth)\//.test(path) || path.includes('\\') || path.includes('#')) throw new ApiError('INVALID_PATH', '请求地址不属于团队接口')
+  const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15_000)
+  const abort = (): void => controller.abort()
+  options.signal?.addEventListener('abort', abort, { once: true })
+  if (options.signal?.aborted) controller.abort()
+  const encoded = options.body === undefined ? undefined : JSON.stringify(options.body)
+  if (encoded && new TextEncoder().encode(encoded).byteLength > TEAM_MAX_REQUEST_BYTES) { clearTimeout(timeout); options.signal?.removeEventListener('abort', abort); throw new ApiError('CAPACITY_EXCEEDED', '正文及请求信息超过传输限额') }
+  let dispatched = false
+  try {
+    dispatched = true
+    const response = await fetch(path, { method: encoded === undefined ? 'GET' : 'POST', credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal: controller.signal,
+      headers: encoded === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': currentSession?.csrfToken ?? '' }, body: encoded })
+    if (options.isCurrent?.() === false) { await response.body?.cancel().catch(() => {}); throw new ApiError('OWNER_CHANGED', '来源已改变，原操作结果仍需由原账号核对', 0, encoded !== undefined) }
+    const length = Number(response.headers.get('Content-Length'))
+    if (Number.isFinite(length) && length > TEAM_MAX_RESPONSE_BYTES) { await response.body?.cancel().catch(() => {}); throw new ApiError('INVALID_RESPONSE', '团队响应超过读取限额', response.status, encoded !== undefined) }
+    if (!response.body) throw new ApiError('INVALID_RESPONSE', '团队响应没有正文', response.status, encoded !== undefined)
+    const reader = response.body.getReader(), parts: Uint8Array[] = []; let size = 0
+    try { for (;;) { const part = await reader.read(); if (part.done) break; size += part.value.byteLength; if (size > TEAM_MAX_RESPONSE_BYTES) throw new ApiError('INVALID_RESPONSE', '团队响应超过读取限额', response.status, encoded !== undefined); parts.push(part.value) } }
+    catch (error) { await reader.cancel().catch(() => {}); throw error }
+    finally { reader.releaseLock() }
+    if (options.isCurrent?.() === false) throw new ApiError('OWNER_CHANGED', '来源已改变，原操作结果仍需由原账号核对', 0, encoded !== undefined)
+    const joined = new Uint8Array(size); let offset = 0; for (const part of parts) { joined.set(part, offset); offset += part.length }
+    let raw: unknown
+    try { raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(joined)) } catch { throw new ApiError('INVALID_RESPONSE', '无法核对团队响应，请查询原操作结果', response.status, encoded !== undefined) }
+    const parsed = teamApiReplySchema(schema).safeParse(raw)
+    if (!parsed.success) throw new ApiError('INVALID_RESPONSE', '团队响应与当前接口版本不符', response.status, encoded !== undefined)
+    if (!parsed.data.ok) {
+      if (options.notifyDenied !== false && !options.signal?.aborted && options.isCurrent?.() !== false && [401, 403].includes(response.status)) authEvents.dispatchEvent(new CustomEvent('denied', { detail: response.status }))
+      throw new ApiError(parsed.data.code, parsed.data.error, response.status, encoded !== undefined && response.status >= 500)
+    }
+    if (!response.ok) throw new ApiError('INVALID_RESPONSE', '团队返回的状态与内容不一致', response.status, encoded !== undefined)
+    return parsed.data.value
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError('NETWORK_UNAVAILABLE', controller.signal.aborted ? '读取超时或已取消；写入结果需核对' : '暂时无法连接团队服务', 0, dispatched && encoded !== undefined)
+  } finally { clearTimeout(timeout); options.signal?.removeEventListener('abort', abort) }
+}
+let currentSession: TeamSession | null = null
+export function setClientSession(session: TeamSession | null): void { currentSession = session }
+export async function digest(text: string): Promise<string> { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((byte) => byte.toString(16).padStart(2, '0')).join('') }
+export async function verifyDocument(text: string, expected: string, byteLength: number): Promise<void> {
+  if (new TextEncoder().encode(text).byteLength !== byteLength || await digest(text) !== expected) throw new ApiError('BODY_MISMATCH', '固定版本的正文与摘要不一致，已停止展示')
+}
+
+const journalSchema = z.array(z.object({ commandId: teamIdSchema, accountId: teamIdSchema, projectId: teamIdSchema.nullable(), path: z.string().max(300), digest: z.string().regex(/^[0-9a-f]{64}$/), createdAt: z.number().int(), state: z.enum(['pending', 'unknown']) }).strict()).max(50)
+export type PendingCommand = z.infer<typeof journalSchema>[number]
+const STORAGE = 'trellis-team-command-refs-v1'
+export const commandEvents = new EventTarget()
+function readJournal(): PendingCommand[] {
+  const raw = sessionStorage.getItem(STORAGE)
+  if (!raw) return []
+  try { return journalSchema.parse(JSON.parse(raw)) } catch { throw new ApiError('JOURNAL_INVALID', '本页保留的操作引用无法核对，请保留浏览器数据并联系管理员') }
+}
+function writeJournal(records: PendingCommand[]): void {
+  try { sessionStorage.setItem(STORAGE, JSON.stringify(records)) } catch { throw new ApiError('JOURNAL_UNAVAILABLE', '浏览器无法保留操作引用，暂不能提交写入') }
+  commandEvents.dispatchEvent(new Event('change'))
+}
+export function pendingCommands(accountId: string): PendingCommand[] { return readJournal().filter((entry) => entry.accountId === accountId) }
+const remembered = new Map<string, { path: string; body: Record<string, unknown>; schema: z.ZodType; accountId: string }>()
+const active = new Set<string>()
+const uncertainCommands = new Set<string>()
+export type PreparedCommand<T> = { entry: PendingCommand; body: Record<string, unknown>; schema: z.ZodType<T> }
+export async function prepareCommand<T>(path: string, body: Record<string, unknown>, schema: z.ZodType<T>, projectId: string | null): Promise<PreparedCommand<T>> {
+  if (!currentSession || currentSession.authentication !== 'browser') throw new ApiError('UNAUTHENTICATED', '请先登录')
+  const accountId = currentSession.person.userId
+  // Only references/digests persist in browser session storage; never bodies or credentials.
+  const commandId = crypto.randomUUID(), pinned = structuredClone({ ...body, commandId })
+  const entry: PendingCommand = { commandId, accountId, projectId, path, digest: await digest(JSON.stringify(pinned)), createdAt: Date.now(), state: 'pending' }
+  const entries = readJournal(); if (entries.length >= 50) throw new ApiError('CAPACITY_EXCEEDED', '待核对操作已达上限，请先核对保留的结果')
+  writeJournal([...entries, entry]); remembered.set(commandId, { path, body: pinned, schema, accountId })
+  return { entry, body: pinned, schema }
+}
+export async function sendCommand<T>(prepared: PreparedCommand<T>): Promise<TeamCommandReply<T>> {
+  const { entry, body, schema } = prepared
+  if (active.has(entry.commandId)) throw new ApiError('IN_FLIGHT', '此操作正在核对')
+  if (currentSession?.person.userId !== entry.accountId || await digest(JSON.stringify(body)) !== entry.digest) throw new ApiError('OWNER_CHANGED', '操作的账号或内容已改变')
+  // The digest awaited above; recheck the actual account immediately before fetch.
+  if (currentSession?.person.userId !== entry.accountId) throw new ApiError('OWNER_CHANGED', '操作账号在内容核对期间已改变，未发送')
+  if (active.has(entry.commandId)) throw new ApiError('IN_FLIGHT', '此操作正在核对')
+  const previouslyUnknown = uncertainCommands.has(entry.commandId) || entry.state === 'unknown' || readJournal().some((item) => item.commandId === entry.commandId && item.state === 'unknown')
+  active.add(entry.commandId)
+  try {
+    const reply = await request(entry.path, teamCommandReplySchema(schema), { body, isCurrent: () => currentSession?.person.userId === entry.accountId })
+    if (reply.commandId !== entry.commandId) throw new ApiError('INVALID_RESPONSE', '操作回执身份不匹配', 0, true)
+    try { writeJournal(readJournal().filter((item) => item.commandId !== entry.commandId)) }
+    catch { throw new ApiError('LOCAL_RECEIPT_UNAVAILABLE', '服务端已有回执，但浏览器未能保存核对结果；请保留原操作并再次核对', 0, true) }
+    remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId)
+    return reply
+  } catch (error) {
+    if (error instanceof ApiError && !error.uncertain && !previouslyUnknown) {
+      try { writeJournal(readJournal().filter((item) => item.commandId !== entry.commandId)); remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId) }
+      catch { throw new ApiError('LOCAL_RECEIPT_UNAVAILABLE', '浏览器未能保存操作核对结果；保留原标识，不创建重复操作', 0, true) }
+    } else {
+      // A rejected retry says nothing about the earlier unacknowledged write.
+      // Keep that uncertainty even if relabelling browser storage fails.
+      uncertainCommands.add(entry.commandId)
+      // The original pending reference was persisted before dispatch. Failure to
+      // label it unknown must not replace the original uncertain transport result.
+      try { writeJournal(readJournal().map((item) => item.commandId === entry.commandId ? { ...item, state: 'unknown' } : item)) } catch { /* Keep the original persisted reference and exact in-memory payload. */ }
+      if (error instanceof ApiError && !error.uncertain) throw new ApiError(error.code, error.message + '；原操作结果仍未确认，请保留原标识核对', error.status, true)
+    }
+    throw error
+  } finally { active.delete(entry.commandId) }
+}
+export async function reconcileCommand(entry: PendingCommand): Promise<'committed' | 'absent'> {
+  if (currentSession?.person.userId !== entry.accountId) throw new ApiError('OWNER_CHANGED', '请使用原操作账号核对')
+  const schema = z.object({ commandId: teamIdSchema, kind: z.string(), status: z.literal('committed'), recordedAt: z.number().int(), result: z.unknown() }).strict()
+  try {
+    const reply = await request(`/api/commands/${entry.commandId}`, schema, { isCurrent: () => currentSession?.person.userId === entry.accountId })
+    if (reply.commandId !== entry.commandId) throw new ApiError('INVALID_RESPONSE', '核对回执身份不匹配')
+    writeJournal(readJournal().filter((item) => item.commandId !== entry.commandId)); remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId)
+    return 'committed'
+  } catch (error) { if (error instanceof ApiError && error.status === 404) return 'absent'; throw error }
+}
+export async function retryCommand(entry: PendingCommand): Promise<void> {
+  const saved = remembered.get(entry.commandId)
+  if (!saved || saved.accountId !== currentSession?.person.userId) throw new ApiError('PAYLOAD_UNAVAILABLE', '页面重载后只保留操作引用，不能重构或猜测原请求；请继续核对服务端结果')
+  await sendCommand({ entry, body: saved.body, schema: saved.schema })
+}
+export function canRetry(entry: PendingCommand): boolean { return remembered.get(entry.commandId)?.accountId === currentSession?.person.userId }

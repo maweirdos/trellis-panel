@@ -11,6 +11,7 @@ import {
 } from '../services/documents'
 import { broadcastToWindows } from '../services/bridge'
 import { handle } from './registry'
+import { getDocumentViews } from '../services/document-views'
 
 const watchedSenders = new Set<number>()
 
@@ -23,10 +24,14 @@ const watchedSenders = new Set<number>()
  * （backend/ipc-conventions：广播统一 broadcastToWindows，channel 取 ipcEvent）。
  */
 export function registerDocumentsIpc(): void {
-  handle(ipcInvoke.document.read, (_e, scope: unknown, input: unknown) => {
+  handle(ipcInvoke.document.read, async (_e, scope: unknown, input: unknown) => {
     const root = getProjectRoot()
     if (!root) return noProject()
-    return readDocument(root, scope, input)
+    const generation = getProjectGeneration()
+    const read = await readDocument(root, scope, input)
+    const service = getDocumentViews()
+    const result = read.ok && service ? await service.captureRead(root, read) : read
+    return getProjectRoot() === root && getProjectGeneration() === generation ? result : { ok: false as const, code: 'E_CONFLICT' as const, error: '项目已切换，未采用这次读取' }
   })
   handle(ipcInvoke.document.diff, (_e, scope: unknown, input: unknown) => {
     const root = getProjectRoot()

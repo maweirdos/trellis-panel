@@ -131,6 +131,13 @@
   --my-inspector-width-compact: 390px;
   --my-application-panel-width: var(--my-inspector-width);
   --my-application-console-height: var(--my-space-288);
+  --my-run-config-width: 960px;
+  --my-run-config-list-width: 220px;
+  --my-run-dock-min-height: var(--my-space-160);
+  --my-run-dock-default-height: var(--my-space-256);
+  --my-run-dock-max-height: 55dvh;
+  --my-run-dock-occupied-height: 0px;
+  --my-git-workspace-width: var(--my-inspector-width-wide);
   --my-floating-gutter: var(--my-space-6);
   --my-floating-header-height: var(--my-space-44);
   --my-floating-editor-min-height: var(--my-space-80);
@@ -161,6 +168,12 @@
   --my-z-modal: 70;
   --my-z-menu: 80;
   --my-z-tooltip: 90;
+  --my-z-notification: 100;
+  --my-notification-width: var(--my-space-384);
+  --my-notification-inset: var(--my-space-20);
+  --my-notification-shadow-gutter: var(--my-space-16);
+  --my-notification-radius: var(--my-radius-lg);
+  --my-notification-detail-height: var(--my-space-192);
 }
 
 .my-root[data-my-font-size='small'] { --my-font-step: -1px; }

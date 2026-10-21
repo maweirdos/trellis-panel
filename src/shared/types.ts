@@ -3,6 +3,7 @@
  * Mirrors the canonical Trellis task.json schema (24 fields, see
  * @mindfoldhq/trellis-core task/schema).
  */
+import type { DocumentWindowApi } from './document-windows'
 import type {
   DocumentChangedEvent,
   DocumentDiffOutcome,
@@ -24,6 +25,8 @@ import type {
 } from './observability/store'
 import type { IpcFail } from './ipc-errors'
 import type { ApplicationRuntimeApi } from './app-runtime'
+import type { TaskConversationsApi } from './task-conversations'
+import type { GitHistoryRequest, GitHistoryResult, GitCommitRequest, GitCommitResult, GitCommitDiffRequest, GitCommitDiffResult } from './git-readonly'
 
 export const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
@@ -1121,6 +1124,8 @@ export interface ToastEvent {
   kind: 'info' | 'success' | 'warn' | 'error'
   title: string
   body?: string
+  /** Optional navigation target, valid only inside its originating project. */
+  task?: { projectRoot: string; dirName: string }
 }
 
 export interface BridgeEvent {
@@ -1194,7 +1199,9 @@ export interface SyncExtensionResult {
 }
 
 /** APIs exposed to the renderer via contextBridge. */
-export interface TrellisApi extends ApplicationRuntimeApi {
+export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, TaskConversationsApi {
+  gitWorkspace: import('./git-workspace').GitWorkspaceApi
+  knowledgeAccess: import('./knowledge-access').KnowledgeApi
   integrations: import('./integrations').IntegrationApi
   /** 置顶文档小窗：打开/聚焦（支持多开，key 去重）；theme 跟随面板主题 */
   docOpen: (opts: { key: string; title: string; file: string; theme: string }) => Promise<{
@@ -1205,7 +1212,7 @@ export interface TrellisApi extends ApplicationRuntimeApi {
   /** 读取项目内文本文件（路径必须位于项目根内） */
   docRead: (path: string) => Promise<{ ok: boolean; content?: string; mtime?: number; error?: string }>
   /** 切换调用方文档窗的置顶状态 */
-  docSetPin: (on: boolean) => Promise<{ ok: boolean }>
+  docSetPin: (on: boolean) => Promise<{ ok: boolean; pinned?: boolean; error?: string }>
   pickProject: () => Promise<string | null>
   openProject: (root: string) => Promise<{ ok: boolean; error?: string; snapshot?: ProjectSnapshot }>
   getSnapshot: () => Promise<ProjectSnapshot | null>
@@ -1222,6 +1229,9 @@ export interface TrellisApi extends ApplicationRuntimeApi {
   /* --- C1–C3：本机开发工具（只读 Git + 有归属的工程运行） --- */
   devtoolsGitStatus: () => Promise<GitReadonlyStatus>
   devtoolsGitFileDiff: (relPath: string, staged: boolean) => Promise<GitReadonlyFileDiff>
+  devtoolsGitHistory: (request: GitHistoryRequest) => Promise<GitHistoryResult>
+  devtoolsGitCommit: (request: GitCommitRequest) => Promise<GitCommitResult>
+  devtoolsGitCommitDiff: (request: GitCommitDiffRequest) => Promise<GitCommitDiffResult>
   devtoolsListScripts: (dir: string) => Promise<{ ok: boolean; error?: string; dir?: string; scripts: DevScriptInfo[] }>
   devRunStart: (dir: string, script: string) => Promise<{ ok: boolean; error?: string; run?: DevRunInfo }>
   devRunStop: (id: string) => Promise<{ ok: boolean; error?: string }>
@@ -1237,6 +1247,7 @@ export interface TrellisApi extends ApplicationRuntimeApi {
    * （control_store/cli_failed/conflict/interrupted/invalid/internal）供 UI 分级。
    */
   createTaskFromJira: (input: {
+    integration?: import('./integrations').BindingRequest
     /** 期望的任务 slug（旧字段，兼容既有调用）；缺省由服务按 issueKey+标题派生 */
     dirName?: string
     title: string
@@ -1313,6 +1324,7 @@ export interface TrellisApi extends ApplicationRuntimeApi {
   revealInExplorer: (absPath: string) => Promise<void>
   openInEditor: (absPath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
+  openLocalDocument: (href: string) => Promise<import('./local-document-link').LocalDocumentOpenResult>
 
   getSettings: () => Promise<Settings>
   onThemeChanged: (cb: (theme: Settings['theme']) => void) => () => void
@@ -1343,10 +1355,14 @@ export interface TrellisApi extends ApplicationRuntimeApi {
   pullPendingFocus: () => Promise<{ taskDir: string; root: string | null } | null>
   copyToClipboard: (text: string) => Promise<void>
   setCapsuleMode: (on: boolean) => void
+  /** Open the main window at a task only while its captured project is current. */
+  openMainTask: (projectRoot: string, taskDir: string) => Promise<{ ok: true } | IpcFail>
   setCapsuleOnTop: (on: boolean) => Promise<void>
   setCapsuleShape: (shape: 'pill' | 'card') => Promise<void>
   closeCapsule: () => Promise<void>
   resizeCapsule: (width: number, height: number) => Promise<void>
+  /** Show the quick-note window without toggling an already visible window. */
+  showQuickTodo: () => Promise<void>
   /** 隐藏速记窗（全局热键呼出的迷你待办速记窗，失焦/Esc 后由渲染层调用） */
   closeQuickTodo: () => Promise<void>
   onQuickTodoShown: (cb: () => void) => () => void
@@ -1497,6 +1513,8 @@ export interface TrellisApi extends ApplicationRuntimeApi {
   kbQaClear: () => Promise<{ ok: boolean }>
 
   /* --- AI 工作流（定制中心 Flow） --- */
+  managedWorkflow: import('./workflow-desktop').WorkflowDesktopApi
+  teamDesktop: import('./team-desktop-bridge').TeamDesktopBridgeApi
   flowList: () => Promise<{ ok: boolean; error?: string; flows?: FlowSummary[] }>
   flowRead: (id: string) => Promise<{ ok: boolean; error?: string; def?: FlowDef }>
   flowSave: (def: FlowDef) => Promise<{ ok: boolean; error?: string; path?: string }>
@@ -1732,6 +1750,18 @@ export interface AcpAgentStatus extends AcpAgentConfig {
 
 export type AcpRuntimeHealth = 'not_checked' | 'executable_missing' | 'adapter_missing' | 'launch_error' | 'incompatible' | 'auth_required' | 'directory_unavailable' | 'ready'
 
+/** 注入 Runtime 子进程的环境变量；仅保存在本机角色配置，不进入历史记录。 */
+export interface AcpProfileEnvVar {
+  key: string
+  value: string
+}
+
+/** 追加到 Runtime 启动命令之后的自定义参数。 */
+export interface AcpProfileArg {
+  name: string
+  value: string
+}
+
 export interface AcpAgentProfile {
   id: string
   name: string
@@ -1740,6 +1770,8 @@ export interface AcpAgentProfile {
   runtimeId: string
   cwd?: string
   maxTurnMinutes: number
+  env?: AcpProfileEnvVar[]
+  args?: AcpProfileArg[]
 }
 
 export interface AcpStartupObservation {

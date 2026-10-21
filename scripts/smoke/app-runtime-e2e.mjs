@@ -70,7 +70,7 @@ await evaluate('window.trellis.appRuntimeSave('+JSON.stringify(project)+','+JSON
 const click=async label=>{
 const clicked=await evaluate('(()=>{const b=[...document.querySelectorAll("button")].find(b=>b.getAttribute("aria-label")==='+JSON.stringify(label)+');if(!b||b.disabled)return false;b.click();return true})()');assert.equal(clicked,true,'button available: '+label);
 };
-const openPanel=async()=>{if(!await evaluate('Boolean(document.querySelector(".my-applications-popup"))')){const clicked=await evaluate('(()=>{const b=[...document.querySelectorAll("button")].find(b=>(b.getAttribute("aria-label")||"").startsWith("应用")&&b.getAttribute("aria-haspopup")==="dialog");if(!b)return false;b.click();return true})()');assert.equal(clicked,true,'header application trigger')}await wait(150)};
+const openPanel=async()=>{if(!await evaluate('Boolean(document.querySelector(".my-applications-popup"))')){const clicked=await evaluate('(()=>{const b=[...document.querySelectorAll("button")].find(b=>(b.getAttribute("aria-label")||"").startsWith("运行配置：")&&b.getAttribute("aria-haspopup")==="dialog");if(!b)return false;b.click();return true})()');assert.equal(clicked,true,'header application trigger')}await wait(150)};
 const appState=()=>evaluate('window.trellis.appRuntimeList('+JSON.stringify(project)+')');
 const until=async(predicate,label)=>{const deadline=Date.now()+30000;let state;while(Date.now()<deadline){state=await appState();if(state.ok&&predicate(state.apps[0]))return state.apps[0];await wait(120)}throw Error(label+': '+JSON.stringify(state))};
 const untilUI=async source=>{const deadline=Date.now()+5000;while(Date.now()<deadline){if(await evaluate(source))return;await wait(50)}throw Error('renderer state timed out: '+source)};
@@ -83,7 +83,7 @@ assert.equal(approvals,1,'first UI launch asks native human review (decision sim
 let body=await fetch(${JSON.stringify(`http://127.0.0.1:${port}/health`)}).then(r=>r.json());assert.equal(body.marker,'first-value');
 assert.equal(await evaluate('document.querySelector("[data-process-state=running]")!==null'),true);
 assert.equal(await evaluate('document.querySelector("[data-readiness-state=ready]")!==null'),true);
-await click('查看 本地后端服务 输出');await untilUI('Boolean(document.querySelector("[data-readiness-state=ready]"))&&[...document.querySelectorAll("button")].some(b=>b.getAttribute("aria-label")==="停止 本地后端服务"&&!b.disabled)');await capture('real-runtime-light-running');
+await click('显示运行窗口');await untilUI('Boolean(document.querySelector("[data-readiness-state=ready]"))&&[...document.querySelectorAll("button")].some(b=>b.getAttribute("aria-label")==="停止 本地后端服务"&&!b.disabled)');await capture('real-runtime-light-running');
 writeFileSync(join(project,'.env'),'PORT='+config.ports[0].port+'\\nAPP_MARKER=second-value\\n');
 await click('重启 本地后端服务');
 const second=await until(a=>a?.run?.id!==first.run.id&&a?.processState==='running'&&a?.readiness.state==='ready','service restarted');

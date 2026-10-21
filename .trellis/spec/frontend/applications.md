@@ -8,10 +8,13 @@ trigger or runtime IPC. The data/lifecycle contract is in `../backend/app-runtim
 
 ## 2. Signatures
 
-- `ApplicationPanel()` is the stable header popup/dialog owner.
+- `ApplicationPanel()` is the stable named run-selector/direct-action/dialog owner.
+- `ApplicationDock()` mounts once after ordinary main content; output tabs, resize
+  and collapse are presentation only. See `developer-tools-workbench.md`.
 - `ApplicationRuntimeView()` reuses the list inside the existing Run tool destination.
 - `ApplicationList({ compact?, onOpenEditor? })` projects app cards and output.
-- `ApplicationConfigDialog(...)` uses the shared Modal and write-only override fields.
+- `ApplicationConfigDialog(...)` reexports the grouped list/form configuration
+  manager, with independent drafts, shared Modal and write-only override fields.
 - `useApplications()` exposes one shared project-root/generation-scoped projection.
 - Use the root-first `ApplicationRuntimeApi` from `@shared/app-runtime` via `api`.
 
@@ -69,6 +72,10 @@ light/dark, all font presets, 960px desktop and narrow modal stress. Cover save
 without execution, approvals, delete, output/follow/bounds, per-app failure/busy,
 missing IPC, root generations, dismissal/focus and subscriptions. Capture open
 popup/config/error/output states and inspect the images.
+
+Also run `run-workbench-ui.mjs` for toolbar/dock, captured pointer/keyboard resize,
+draft switching and source retention, plus `developer-tools-e2e.mjs` for built
+UI/IPC with simultaneous real application and disposable Git operations.
 
 Run `node scripts/smoke/app-runtime-e2e.mjs` against a fresh production build for
 real renderer/preload/IPC/service behavior. UI fixtures with typed stub IPC prove

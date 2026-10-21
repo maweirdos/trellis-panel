@@ -32,10 +32,15 @@ import type {
 export type ReaderDiffMode = 'pending' | 'git-latest-commit'
 
 export interface ReaderDiffState {
-  mode: ReaderDiffMode
+  mode: ReaderDiffMode | 'selected-versions'
+  comparisonLabels?: { left: string; right: string }
   loading: boolean
   /** ok:false（请求级失败）或降级诊断都原样保留，由 UI 呈现。 */
   outcome: DocumentDiffOutcome | null
+}
+
+export type DocumentReaderTransport = Pick<typeof api, 'documentRead' | 'documentWatch' | 'documentDiff'> & {
+  documentUnwatch: (canonicalPath: string, watchId: string) => Promise<void>
 }
 
 export interface UseDocumentReaderParams {
@@ -47,6 +52,10 @@ export interface UseDocumentReaderParams {
   absolutePath?: string | null
   /** Explicit root for scoped hosts; workspaceId is only a namespace. */
   projectRoot?: string
+  /** Sender-bound native transport, retaining the same reading state machine. */
+  transport?: DocumentReaderTransport
+  /** Verified immutable main-process version; current reads become candidates. */
+  initialDocument?: DocumentReadSuccess
 }
 
 export interface DocumentReaderController {
@@ -82,7 +91,7 @@ export interface DocumentReaderController {
 }
 
 export function useDocumentReader(params: UseDocumentReaderParams): DocumentReaderController {
-  const { workspaceId, taskRef, relativePath, absolutePath = null, projectRoot } = params
+  const { workspaceId, taskRef, relativePath, absolutePath = null, projectRoot, transport = api, initialDocument } = params
   const legacy = relativePath === null
   const ownerId = useId()
   const key = relativePath !== null ? readingOwnerKey({ workspaceId, taskRef }, relativePath, ownerId) : null
@@ -171,7 +180,7 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
       releasedWatchIds.add(lease.watchId)
       // A canonical path may already belong to a newer A -> B -> A registration.
       // Only the acknowledged opaque registration may be released, never its path alone.
-      void api.documentUnwatch(lease.canonicalPath, lease.watchId).catch(() => undefined)
+      void transport.documentUnwatch(lease.canonicalPath, lease.watchId).catch(() => undefined)
     }
     // 此分支 relativePath 必为 string；key 在此处必然非空（与 relativePath 同源推导）
     const sessionKey = readingOwnerKey({ workspaceId, taskRef }, relativePath, ownerId)
@@ -189,7 +198,7 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
       const canonical = res.source.canonicalPath
       unregisterHub?.()
       unregisterHub = registerDocumentSession(sessionKey, canonical, () => consumeChange())
-      void api.documentWatch({ workspaceId, taskRef }, { relativePath, knownRevision: res.revision }).then((watched) => {
+      void transport.documentWatch({ workspaceId, taskRef }, { relativePath, knownRevision: res.revision }).then((watched) => {
         if (watched.ok) {
           if (typeof watched.watchId !== 'string' || watched.watchId === '') {
             if (alive && hasCurrentRoot()) setRequestError('文档监听未返回有效的注册标识，请重试')
@@ -209,7 +218,7 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
       if (!alive || !hasCurrentRoot()) return
       const ticket = requests.current.request('read')
       void (async () => {
-        const res = await api.documentRead({ workspaceId, taskRef }, { relativePath, requestId: `${baseReqId}-c${ticket.sequence}` })
+        const res = await transport.documentRead({ workspaceId, taskRef }, { relativePath, requestId: `${baseReqId}-c${ticket.sequence}` })
         if (!alive || !hasCurrentRoot() || !requests.current.accepts(ticket)) return
         setLoading(false)
         if (!res.ok) {
@@ -245,21 +254,31 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
     }
 
     refreshRef.current = consumeChange
+    const seeded = initialDocument !== undefined && acceptsSource(initialDocument) && initialDocument.rawText !== null && initialDocument.revision !== null
+    if (seeded) {
+      setDoc(initialDocument)
+      useApp.getState().readerOpenSession(sessionKey, { revision: initialDocument.revision as string, text: initialDocument.rawText as string })
+      setLoading(false)
+      ensureWatch(initialDocument)
+    }
     const ticket = requests.current.request('read')
     void (async () => {
       if (!hasCurrentRoot()) { setLoading(false); setRequestError('项目已切换，请返回原项目阅读此文档'); return }
-      const res = await api.documentRead({ workspaceId, taskRef }, { relativePath, requestId: baseReqId })
+      const res = await transport.documentRead({ workspaceId, taskRef }, { relativePath, requestId: baseReqId })
       if (!alive || !hasCurrentRoot() || !requests.current.accepts(ticket)) return
       setLoading(false)
       if (!res.ok) {
-        setDoc(null)
+        if (!seeded) setDoc(null)
         setRequestError(res.error)
         return
       }
       if (!acceptsSource(res)) { setRequestError('文档来源与当前项目不一致'); return }
-      setDoc(res)
+      if (!seeded) setDoc(res)
       if (res.revision !== null && res.rawText !== null) {
-        useApp.getState().readerOpenSession(sessionKey, { revision: res.revision, text: res.rawText })
+        if (seeded) useApp.getState().readerExternalChange(sessionKey, { revision: res.revision, text: res.rawText })
+        else useApp.getState().readerOpenSession(sessionKey, { revision: res.revision, text: res.rawText })
+      } else if (seeded) {
+        setUnreadableNotice(res.diagnostics[0]?.message ?? '文件暂不可读，已保留固定版本')
       }
       // 定向监听：canonicalPath 来自读取结果；knownRevision 闭合「读完→注册」竞态
       ensureWatch(res)
@@ -280,7 +299,7 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
       useApp.getState().readerCloseSession(sessionKey)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, taskRef, relativePath, absolutePath, ownerId, identity, hasCurrentRoot, acceptsSource])
+  }, [workspaceId, taskRef, relativePath, absolutePath, ownerId, identity, hasCurrentRoot, acceptsSource, transport, initialDocument])
 
   const openDiff = useCallback(
     (mode: ReaderDiffMode) => {
@@ -299,7 +318,7 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
       const requestId = `${ownerId}:diff:${ticket.sequence}`
       void (async () => {
         try {
-          const outcome = await api.documentDiff(
+          const outcome = await transport.documentDiff(
             { workspaceId, taskRef },
             {
               requestId,
@@ -325,7 +344,7 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
         }
       })()
     },
-    [workspaceId, taskRef, relativePath, key, identity, ownerId, hasCurrentRoot]
+    [workspaceId, taskRef, relativePath, key, identity, ownerId, hasCurrentRoot, transport]
   )
 
   const closeDiff = useCallback(() => { requests.current.request('diff'); setDiff(null) }, [])
@@ -337,7 +356,7 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
     const ticket = requests.current.request('read')
     let res: Awaited<ReturnType<typeof api.documentRead>>
     try {
-      res = await api.documentRead({ workspaceId, taskRef }, { relativePath, requestId: `${ownerId}:apply:${ticket.sequence}` })
+      res = await transport.documentRead({ workspaceId, taskRef }, { relativePath, requestId: `${ownerId}:apply:${ticket.sequence}` })
     } catch (error) {
       if (identityRef.current === identity && hasCurrentRoot() && requests.current.accepts(ticket)) setRequestError(error instanceof Error ? error.message : '读取失败')
       return false
@@ -363,7 +382,7 @@ export function useDocumentReader(params: UseDocumentReaderParams): DocumentRead
     setUnreadableNotice(null)
     closeDiff()
     return true
-  }, [workspaceId, taskRef, relativePath, key, identity, ownerId, hasCurrentRoot, acceptsSource, closeDiff])
+  }, [workspaceId, taskRef, relativePath, key, identity, ownerId, hasCurrentRoot, acceptsSource, closeDiff, transport])
 
   const rebaseToCurrent = useCallback(() => {
     if (key === null || !hasCurrentRoot()) return

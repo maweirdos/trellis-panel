@@ -6,6 +6,7 @@ import { writeSpecFile, computeSpecBacklinks, readTextWithMtime, searchDocs } fr
 import { getProjectRoot, sendSnapshot, safeReadText } from '../state'
 import { handle } from './registry'
 import { openExternalHttpUrl } from '../services/window-navigation'
+import { openLocalDocumentLink } from '../services/local-document-links'
 
 export function registerFilesIpc(): void {
   handle(ipcInvoke.fs.readText, (_e, absPath: string) => {
@@ -62,6 +63,7 @@ export function registerFilesIpc(): void {
   })
 
   handle(ipcInvoke.shell.openExternal, (_e, url: unknown) => openExternalHttpUrl(url))
+  handle(ipcInvoke.shell.openLocalDocument, (_e, href: unknown) => openLocalDocumentLink(href, getProjectRoot()))
 
   handle(ipcInvoke.util.clipboard, (_e, text: string) => {
     clipboard.writeText(text)

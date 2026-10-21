@@ -21,7 +21,7 @@ for (const file of globSync(root + '**/*.tsx')) {
 assert.doesNotMatch(sources, /border-(?:left|inline-start)(?:-color)?\s*:[^;}]*--my-(?:txt|border|bg)-(?:danger|warning|success|info|blue)/, 'severity never uses a colored leading border')
 assert.doesNotMatch(sources, /--leaf-|(?:bg|text|border)-leaf\b|@fontsource-variable\/inter/)
 assert.doesNotMatch(sources, /(?:text-\[\d+(?:\.\d+)?px\]|rounded-\[\d+(?:\.\d+)?px\])/)
-for (const sheet of ['acp/workspace.css', 'my/my-components.css', 'my/my-feedback.css']) {
+for (const sheet of ['acp/workspace.css', 'my/my-components.css', 'my/my-feedback.css', 'my/my-applications.css', 'git-workspace/git-workspace.css']) {
   assert.doesNotMatch(read(root + sheet), /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i, `palette values must come from my-tokens.css: ${sheet}`)
 }
 const declared = new Set([...sources.matchAll(/(--my-[\w-]+)['"]?\s*:/g)].map(match => match[1]))

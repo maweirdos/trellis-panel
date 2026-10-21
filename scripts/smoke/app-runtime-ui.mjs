@@ -21,7 +21,7 @@ const renderer = 'src/renderer/src/'
 const fixture = `import React from '${absolute('node_modules/react/index.js')}';
 import {createRoot} from '${absolute('node_modules/react-dom/client.js')}';
 import {flushSync} from '${absolute('node_modules/react-dom/index.js')}';
-import {TitleBar} from '${absolute(renderer + 'components/TitleBar.tsx')}';
+import {ApplicationPanel} from '${absolute(renderer + 'applications/ApplicationPanel.tsx')}';
 import {ApplicationRuntimeView} from '${absolute(renderer + 'applications/ApplicationPanel.tsx')}';
 import {refreshApplications,closeApplicationEditor} from '${absolute(renderer + 'applications/useApplications.ts')}';
 import {dispatchEscKey} from '${absolute(renderer + 'utils/esc-layer.ts')}';
@@ -39,7 +39,7 @@ const f={project,other,makeApp,calls,events,apps,deferLists:false,pendingLists:[
  escape:dispatchEscKey,
  failure:()=>{const failed=makeApp({processState:'failed',approval:'pending',lastError:'预期端口 8080 已被其他进程占用。'});failed.ports=[{host:'127.0.0.1',port:8080,state:'external-conflict',pid:404}];f.emit(failed,'attention')},
  switchRoot:root=>flushSync(()=>useApp.setState({snapshot:root?{meta:{root,name:root===project?'示例项目':'其他项目'}}:null})),
- mount:({theme='dark',size='standard',items=[makeApp()],root:projectRoot=project,ipc=true}={})=>{flushSync(()=>root.render(null));closeApplicationEditor();setCapability(ipc);calls.length=0;events.clear();apps.clear();apps.set(projectRoot,clone(items));f.deferLists=false;f.pendingLists=[];f.holdStart=false;f.startResolve=null;f.stopFailure=false;f.saveFailure=false;useApp.setState({snapshot:projectRoot?{meta:{root:projectRoot,name:'示例项目'}}:null});document.documentElement.classList.toggle('dark',theme==='dark');flushSync(()=>root.render(<div className="my-root" data-my-theme={theme} data-my-font-size={size} style={{height:'100%',background:'var(--my-bg-canvas)',display:'flex',flexDirection:'column'}}><TitleBar/><main className="my-application-fixture-body"><ApplicationRuntimeView/></main></div>))},
+ mount:({theme='dark',size='standard',items=[makeApp()],root:projectRoot=project,ipc=true}={})=>{flushSync(()=>root.render(null));closeApplicationEditor();setCapability(ipc);calls.length=0;events.clear();apps.clear();apps.set(projectRoot,clone(items));f.deferLists=false;f.pendingLists=[];f.holdStart=false;f.startResolve=null;f.stopFailure=false;f.saveFailure=false;useApp.setState({snapshot:projectRoot?{meta:{root:projectRoot,name:'示例项目'}}:null});document.documentElement.classList.toggle('dark',theme==='dark');flushSync(()=>root.render(<div className="my-root" data-my-theme={theme} data-my-font-size={size} style={{height:'100%',background:'var(--my-bg-canvas)',display:'flex',flexDirection:'column'}}><header className="my-window-header" style={{height:48,display:'flex',justifyContent:'flex-end',flexShrink:0}}><ApplicationPanel/></header><main className="my-application-fixture-body"><ApplicationRuntimeView/></main></div>))},
  reset:()=>flushSync(()=>root.render(null))};
 window.applicationsFixture=f;
 const find=(root,id)=>apps.get(root)?.find(app=>app.definition.id===id);
@@ -63,25 +63,25 @@ async function layoutChecks({ theme, size }) {
   const app = f.makeApp({ processState: 'running', canStart: false, canStop: true, canRestart: true, approval: 'approved', run: { id: 'run', pid: 100, startedAt: 1, exitedAt: null, exitCode: null, signal: null } })
   f.mount({ theme, size, items: [app] })
   await f.wait(() => document.querySelector('[data-app-id="backend"] [data-process-state="running"]'), 'mounted list')
-  const trigger = document.querySelector('button[aria-haspopup="dialog"]')
+  const trigger = [...document.querySelectorAll('button[aria-haspopup="dialog"]')].find(node => node.getAttribute('aria-label')?.startsWith('运行配置：'))
   check('compact trigger uses true live count', trigger?.getAttribute('aria-label').includes('1 个运行中'), trigger?.getAttribute('aria-label'))
   trigger.click(); await f.wait(() => document.querySelector('.my-applications-popup'), 'popup')
   await f.settle()
   const popup = document.querySelector('.my-applications-popup'), box = popup.parentElement.getBoundingClientRect()
-  check('open trigger tooltip cannot cover panel actions', getComputedStyle(document.querySelector('.my-application-trigger .my-tooltip')).display === 'none')
+  check('open trigger tooltip cannot cover panel actions', !document.querySelector('[role="tooltip"]'))
   check('popup fits viewport', box.left >= 0 && box.right <= innerWidth + 1 && box.top >= 0 && box.bottom <= innerHeight + 1, box.toJSON())
   check('header geometry is unchanged', Math.abs(document.querySelector('.my-window-header').getBoundingClientRect().height - 48) < 1)
-  check('process and readiness remain distinct', popup.querySelector('[data-process-state="running"]')?.textContent.includes('进程运行中') && popup.querySelector('[data-readiness-state="not-configured"]')?.textContent.includes('未配置'))
-  check('all lifecycle controls accessible', popup.querySelector('[aria-label="停止 后端服务"]') && popup.querySelector('[aria-label="重启 后端服务"]'))
-  check('card uses shared font scale', parseFloat(getComputedStyle(popup.querySelector('h3')).fontSize) === { small: 12, standard: 13, large: 14 }[size])
-  const card = popup.querySelector('.my-application-card'), style = getComputedStyle(card)
+  check('process and readiness remain distinct', document.querySelector('[data-app-id="backend"] [data-process-state="running"]')?.textContent.includes('进程运行中') && document.querySelector('[data-app-id="backend"] [data-readiness-state="not-configured"]')?.textContent.includes('未配置'))
+  check('all lifecycle controls accessible', document.querySelector('[aria-label="停止 后端服务"]') && document.querySelector('[aria-label="重启 后端服务"]'))
+  check('card uses shared font scale', parseFloat(getComputedStyle(document.querySelector('[data-app-id="backend"] h3')).fontSize) === { small: 12, standard: 13, large: 14 }[size])
+  const card = document.querySelector('.my-application-card'), style = getComputedStyle(card)
   check('uniform neutral card border', ['Top', 'Right', 'Bottom', 'Left'].every(side => style['border' + side + 'Color'] === style.borderTopColor && style['border' + side + 'Width'] === style.borderTopWidth))
-  popup.querySelector('[aria-label="查看 后端服务 输出"]').click()
-  await f.wait(() => popup.querySelector('pre')?.textContent.includes('OUTPUT_END'), 'bounded output')
-  check('output has own bounded keyboard scroll area', popup.querySelector('pre').tabIndex === 0 && popup.querySelector('pre').scrollHeight > popup.querySelector('pre').clientHeight)
-  check('truncation is explicit', popup.textContent.includes('早期输出已截断'))
-  popup.querySelector('[aria-label="编辑 后端服务"]').click()
-  await f.wait(() => document.querySelector('[role="dialog"][aria-label="编辑应用"]'), 'editor')
+  document.querySelector('[aria-label="查看 后端服务 输出"]').click()
+  await f.wait(() => document.querySelector('.my-application-fixture-body pre')?.textContent.includes('OUTPUT_END'), 'bounded output')
+  check('output has own bounded keyboard scroll area', document.querySelector('.my-application-fixture-body pre').tabIndex === 0 && document.querySelector('.my-application-fixture-body pre').scrollHeight > document.querySelector('.my-application-fixture-body pre').clientHeight)
+  check('truncation is explicit', document.querySelector('.my-application-fixture-body').textContent.includes('早期输出已截断'))
+  const editorOpener = document.querySelector('[aria-label="编辑 后端服务"]'); editorOpener.click()
+  await f.wait(() => document.querySelector('[role="dialog"][aria-label="编辑应用"]') && !document.querySelector('.my-applications-popup'), 'editor')
   check('popup closes without unmounting sibling editor', !document.querySelector('.my-applications-popup'))
   const modal = document.querySelector('[role="dialog"]'), modalBox = modal.getBoundingClientRect()
   check('editor fits viewport', modalBox.left >= 0 && modalBox.right <= innerWidth + 1 && modalBox.bottom <= innerHeight + 1, modalBox.toJSON())
@@ -95,7 +95,7 @@ async function layoutChecks({ theme, size }) {
   check('shared modal contains keyboard focus', document.activeElement === controls.at(-1))
   f.escape(); await f.wait(() => !document.querySelector('[role="dialog"]'), 'editor Escape')
   await f.settle()
-  check('editor returns focus to header trigger', document.activeElement === trigger, { active: document.activeElement?.outerHTML.slice(0, 220), connected: trigger.isConnected })
+  check('editor returns focus to its connected opener', document.activeElement === editorOpener, { active: document.activeElement?.outerHTML.slice(0, 220), connected: editorOpener.isConnected })
   check('no document horizontal overflow', document.documentElement.scrollWidth <= innerWidth + 1)
   return passed
 }
@@ -103,16 +103,16 @@ async function layoutChecks({ theme, size }) {
 async function interactionChecks() {
   const f = window.applicationsFixture, passed = []
   const check = (name, condition, detail) => { if (!condition) throw Error(name + ': ' + JSON.stringify(detail)); passed.push(name) }
-  f.mount(); await f.wait(() => f.button('启动 后端服务'), 'initial application')
+  f.mount(); await f.wait(() => f.button('启动 后端服务') && !f.button('启动 后端服务').disabled, 'initial application')
   f.holdStart = true; f.button('启动 后端服务').click()
   await f.wait(() => f.startResolve && document.body.textContent.includes('正在启动'), 'acknowledged start')
   check('start uses exact expected project and revision', JSON.stringify(f.calls.find(call => call[0] === 'start')) === JSON.stringify(['start', f.project, 'backend', 'revision-1']))
   check('start does not optimistically claim running', document.querySelector('[data-process-state="stopped"]') && !document.querySelector('[data-process-state="running"]'))
   f.startResolve('deny'); await f.wait(() => document.body.textContent.includes('等待你确认启动配置'), 'approval pending')
-  check('approval denial and attention remain visible', document.body.textContent.includes('请确认应用启动配置。') && f.button('启动 后端服务').textContent.includes('确认并启动'))
+  check('approval denial and attention remain visible', document.body.textContent.includes('请确认应用启动配置。') && document.querySelector('[data-app-id="backend"] [aria-label="启动 后端服务"]').textContent.includes('确认并启动'))
   f.holdStart = false; f.button('启动 后端服务').click(); await f.wait(() => document.querySelector('[data-process-state="running"]'), 'approved IPC result')
   f.stopFailure = true; f.button('停止 后端服务').click(); await f.wait(() => document.querySelector('[data-process-state="cleanup-required"]'), 'stop timeout')
-  check('cleanup failure stays visible and blocks restart', document.body.textContent.includes('停止超时') && !f.button('重启 后端服务'))
+  check('cleanup failure stays visible and blocks restart', document.body.textContent.includes('停止超时') && (!f.button('重启 后端服务') || f.button('重启 后端服务').disabled))
 
   f.mount({ items: [] }); await f.wait(() => document.body.textContent.includes('还没有应用'), 'empty list')
   const add = f.button('添加应用'); add.click(); await f.wait(() => document.querySelector('[aria-label="应用标识"]'), 'new editor')
@@ -144,14 +144,18 @@ async function interactionChecks() {
   const newer = f.makeApp({ processState: 'running', canStart: false, canStop: true }); f.emit(newer); await f.wait(() => document.querySelector('[data-process-state="running"]'), 'newer event'); f.pendingLists[0].resolve({ ok: true, root: f.project, apps: [f.makeApp()] }); await f.settle()
   check('older list snapshot cannot overwrite newer runtime event', document.querySelector('[data-process-state="running"]'))
 
-  f.mount(); await f.wait(() => f.button('启动 后端服务'), 'terminal-event race setup'); f.holdStart = true; f.button('启动 后端服务').click(); await f.wait(() => f.startResolve, 'start reply held')
+  f.mount(); await f.wait(() => f.button('启动 后端服务') && !f.button('启动 后端服务').disabled, 'terminal-event race setup'); f.holdStart = true; f.button('启动 后端服务').click(); await f.wait(() => f.startResolve, 'start reply held')
   f.emit(f.makeApp({ processState: 'exited', approval: 'approved', canStart: true, canStop: false, canRestart: true, run: { id: 'run-1', pid: 321, startedAt: 1, exitedAt: 2, exitCode: 0, signal: null } }), 'done')
   await f.wait(() => document.querySelector('[data-process-state="exited"]'), 'authoritative exit event'); f.startResolve('approve'); await f.settle()
   check('late start reply cannot overwrite a newer terminal event', document.querySelector('[data-process-state="exited"]') && !document.querySelector('[data-process-state="running"]'))
 
-  f.mount(); await f.wait(() => f.button('启动 后端服务'), 'late-action setup'); f.holdStart = true; f.button('启动 后端服务').click(); await f.wait(() => f.startResolve, 'old action held')
-  const resolveOld = f.startResolve; f.switchRoot(f.other); f.apps.set(f.project, [f.makeApp()]); f.switchRoot(f.project); await f.wait(() => f.button('启动 后端服务'), 'new A state'); resolveOld('approve'); await f.settle()
+  f.mount(); await f.wait(() => f.button('启动 后端服务') && !f.button('启动 后端服务').disabled, 'late-action setup'); f.holdStart = true; f.button('启动 后端服务').click(); await f.wait(() => f.startResolve, 'old action held')
+  const resolveOld = f.startResolve; f.switchRoot(f.other); f.apps.set(f.project, [f.makeApp()]); f.switchRoot(f.project); await f.wait(() => f.button('启动 后端服务') && !f.button('启动 后端服务').disabled, 'new A state'); resolveOld('approve'); await f.settle()
   check('late lifecycle result cannot overwrite replacement A owner', document.querySelector('[data-process-state="stopped"]') && !document.querySelector('[data-process-state="running"]'))
+
+  f.mount(); await f.wait(() => f.button('启动 后端服务') && !f.button('启动 后端服务').disabled, 'detached action setup'); f.holdStart = true; f.button('启动 后端服务').click(); await f.wait(() => f.startResolve, 'detached start held')
+  const resolveDetached = f.startResolve; f.reset(); f.mount(); await f.wait(() => document.querySelector('[data-process-state="stopped"]'), 'same-root remount'); resolveDetached('approve'); await f.settle()
+  check('last-consumer teardown invalidates late actions before same-root remount', document.querySelector('[data-process-state="stopped"]') && !document.querySelector('[data-process-state="running"]') && !f.button('启动 后端服务').disabled)
 
   f.mount({ root: null, items: [], ipc: false }); await f.wait(() => document.body.textContent.includes('桌面端可管理本地应用'), 'no bridge')
   check('no IPC preview is truthful and invokes no native API', f.calls.length === 0 && f.button('添加应用').disabled && !f.button('最小化窗口'))
@@ -189,8 +193,9 @@ app.whenReady().then(async()=>{const w=new BrowserWindow({show:false,frame:false
 w.webContents.debugger.attach('1.3');await w.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled',{enabled:true});await w.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
 const evaluate=(fn,arg)=>w.webContents.executeJavaScript(fn+'('+JSON.stringify(arg??null)+')');
 const resize=async(width,height)=>{w.setContentSize(width,height);for(let i=0;i<30;i++){const size=await w.webContents.executeJavaScript('({width:innerWidth,height:innerHeight})');if(size.width===width&&size.height===height){await new Promise(done=>setTimeout(done,80));return;}await new Promise(done=>setTimeout(done,20))}throw Error('viewport resize timed out: '+JSON.stringify(await w.webContents.executeJavaScript('({width:innerWidth,height:innerHeight})')))};
-const capture=async name=>{if(!screenshots)return;const image=await new Promise((accept,reject)=>{const timer=setTimeout(()=>reject(Error('offscreen paint timed out')),3000);w.webContents.once('paint',(_event,_dirty,image)=>{clearTimeout(timer);accept(image)});w.webContents.invalidate()});const path=join(screenshots,name+'.png');writeFileSync(path,image.toPNG());console.log('SCREENSHOT '+path)};
-let count=0;for(const[width,height]of [[960,720],[360,620]]){await resize(width,height);for(const theme of ['light','dark'])for(const size of ['small','standard','large']){const checks=await evaluate(layout,{theme,size});count+=checks.length;console.log('PASS '+theme+'/'+size+'/'+width+'x'+height+': '+checks.length+' mounted layout checks');if(size==='standard'||(width===360&&size==='large')){await w.webContents.executeJavaScript('document.querySelector("button[aria-haspopup=dialog]").click();window.applicationsFixture.settle()');await capture(theme+'-'+size+'-'+width+'x'+height+'-applications');await w.webContents.executeJavaScript('window.applicationsFixture.button("查看 后端服务 输出").click();window.applicationsFixture.wait(()=>document.querySelector(".my-applications-popup pre")?.textContent.includes("OUTPUT_END"),"output screenshot")');await capture(theme+'-'+size+'-'+width+'x'+height+'-output');await w.webContents.executeJavaScript('window.applicationsFixture.button("编辑 后端服务").click();window.applicationsFixture.settle()');await capture(theme+'-'+size+'-'+width+'x'+height+'-configuration');if(width===960){await w.webContents.executeJavaScript('window.applicationsFixture.escape();window.applicationsFixture.settle()');await w.webContents.executeJavaScript('window.applicationsFixture.failure();window.applicationsFixture.settle()');await w.webContents.executeJavaScript('document.querySelector("button[aria-haspopup=dialog]").click();window.applicationsFixture.settle()');await capture(theme+'-'+size+'-'+width+'x'+height+'-conflict-pending');}}}}
+// Wait for the committed state and compositor, not the next possibly stale offscreen paint.
+const capture=async name=>{if(!screenshots)return;await w.webContents.executeJavaScript('document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))');await new Promise(done=>setTimeout(done,250));const state=await w.webContents.executeJavaScript('({theme:document.querySelector(".my-root").dataset.myTheme,size:document.querySelector(".my-root").dataset.myFontSize})');assert.equal(state.theme,name.split('-')[0],'capture theme matches requested state');assert.equal(state.size,name.split('-')[1],'capture font matches requested state');const result=await w.webContents.debugger.sendCommand('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});const path=join(screenshots,name+'.png');writeFileSync(path,Buffer.from(result.data,'base64'));console.log('SCREENSHOT '+path)};
+let count=0;for(const[width,height]of [[960,720],[360,620]]){await resize(width,height);for(const theme of ['light','dark'])for(const size of ['small','standard','large']){const checks=await evaluate(layout,{theme,size});count+=checks.length;console.log('PASS '+theme+'/'+size+'/'+width+'x'+height+': '+checks.length+' mounted layout checks');if(screenshots&&(size==='standard'||(width===360&&size==='large'))){await w.webContents.executeJavaScript('document.querySelector("button[aria-haspopup=dialog]").click();window.applicationsFixture.settle()');await capture(theme+'-'+size+'-'+width+'x'+height+'-applications');await w.webContents.executeJavaScript('window.applicationsFixture.button("查看 后端服务 输出")?.click();window.applicationsFixture.wait(()=>document.querySelector(".my-application-fixture-body pre")?.textContent.includes("OUTPUT_END"),"output screenshot")');await capture(theme+'-'+size+'-'+width+'x'+height+'-output');await w.webContents.executeJavaScript('window.applicationsFixture.button("编辑 后端服务").click();window.applicationsFixture.settle()');await capture(theme+'-'+size+'-'+width+'x'+height+'-configuration');if(width===960){await w.webContents.executeJavaScript('window.applicationsFixture.escape();window.applicationsFixture.settle()');await w.webContents.executeJavaScript('window.applicationsFixture.failure();window.applicationsFixture.settle()');await w.webContents.executeJavaScript('document.querySelector("button[aria-haspopup=dialog]").click();window.applicationsFixture.settle()');await capture(theme+'-'+size+'-'+width+'x'+height+'-conflict-pending');}}}}
 await resize(960,720);const checks=await evaluate(interactions);checks.forEach(name=>console.log('PASS '+name));assert.deepEqual(errors,[],'renderer console errors');assert.equal(w.isVisible(),false);console.log('Applications UI smoke passed: '+count+' mounted layout checks and '+checks.length+' lifecycle/config/IPC-race checks.');w.destroy();app.exit(0);
 }).catch(error=>{console.error(error);app.exit(1)});setTimeout(()=>{console.error('application UI fixture timed out');app.exit(1)},55000);`)
   const env = { ...process.env }

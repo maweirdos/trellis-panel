@@ -1,7 +1,7 @@
 import type { AcpSessionStatus, TimelineEvent } from '../../../shared/types'
 import { readAcpImages, type AcpImageAttachment } from '../../../shared/acp-images'
 import { relativePathUnderRoot, sameRelativeDocumentPath } from '../reader/reader-paths'
-import { projectRootKey } from '../my/navigation'
+import { knowledgeOperationIdentity, nativeKnowledgeOperationId, readKnowledgeOperation, type ConversationKnowledgeOperation } from './knowledge-operations'
 import { orderTimelineEvents } from './event-order'
 
 export interface ToolItemState {
@@ -17,8 +17,9 @@ export interface FileChangeItem {
 }
 
 export type RenderItem =
-  | { type: 'user' | 'agent' | 'thought'; key: string; text: string; startsAnswer?: boolean; images?: AcpImageAttachment[] }
+  | { type: 'user' | 'agent' | 'thought'; key: string; text: string; startsAnswer?: boolean; images?: AcpImageAttachment[]; delivery?: 'preparing' | 'sent' | 'not_sent' }
   | { type: 'tool'; key: string; tool: ToolItemState }
+  | { type: 'knowledge-operation'; key: string; ev: TimelineEvent; operation: ConversationKnowledgeOperation }
   | { type: 'change-group'; key: string; events: TimelineEvent[]; files: FileChangeItem[] }
   | { type: 'activity'; key: string; events: TimelineEvent[]; scope?: 'connection'; turnId?: string; connectionGeneration?: string; sessionId?: string; projectRoot?: string; startedAt?: number; endedAt?: number; outcome?: 'completed' | 'cancelled' | 'failed'; active?: boolean }
   | { type: 'perm' | 'trellis' | 'detail'; key: string; ev: TimelineEvent }
@@ -32,7 +33,9 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
   const sourceEvents = new Map(transcriptEvents.map((event) => [event.id, event]))
   const items: RenderItem[] = []
   const toolIndex = new Map<string, Extract<RenderItem, { type: 'tool' }>>()
-  const identityOf = (event: TimelineEvent): string => JSON.stringify([event.source, projectRootKey(event.projectRoot), event.sessionId, event.connectionGeneration, event.turnId])
+  const knowledgeIndex = new Map<string, Extract<RenderItem, { type: 'knowledge-operation' }>>()
+  const preparingQuestions = new Map<string, Extract<RenderItem, { type: 'user' | 'agent' | 'thought' }>>()
+  const identityOf = (event: TimelineEvent): string => JSON.stringify([event.source, knowledgeOperationIdentity(event, '')])
   const turnStarts = new Map<string, number>()
   const transportObservations = new Map<string, TimelineEvent[]>()
   // Only an actual user/start boundary establishes elapsed time. A paged suffix
@@ -50,7 +53,25 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
   // Inspect the original order: even a hidden connection/status fact ends a run.
   for (const ev of events) {
     const key = ev.id
+    const delivery = readPromptDelivery(ev)
+    if (delivery) {
+      const question = preparingQuestions.get(identityOf(ev))
+      if (question?.delivery === 'preparing') question.delivery = delivery
+      continue
+    }
     if (!isRoutineRuntimeEvent(ev) || isConnectionTimelineEvent(ev)) { activityGroup = undefined; activityScope = undefined }
+    const operation = readKnowledgeOperation(ev)
+    if (operation) {
+      const identity = knowledgeOperationIdentity(ev, operation.operationId)
+      const previous = knowledgeIndex.get(identity)
+      if (previous) { previous.operation = operation; previous.ev = ev }
+      else {
+        const item: Extract<RenderItem, { type: 'knowledge-operation' }> = { type: 'knowledge-operation', key, ev, operation }
+        knowledgeIndex.set(identity, item); items.push(item)
+      }
+      changeGroup = undefined; changeScope = undefined
+      continue
+    }
     const change = readFileChange(ev)
     if (change) {
       if (!changeGroup || changeScope !== change.scope) {
@@ -97,6 +118,10 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
       if (type !== 'user' && last?.type === type && sameMessage) last.text += ev.text ?? ''
       else {
         const item: Extract<RenderItem, { type: 'user' | 'agent' | 'thought' }> = { type, key, text: ev.text ?? '', ...(type === 'user' ? { images: readAcpImages(ev.payload?.images) } : {}) }
+        if (type === 'user' && ev.source === 'acp' && hasPromptOwner(ev) && ev.payload?.delivery === 'preparing') {
+          item.delivery = 'preparing'
+          preparingQuestions.set(identityOf(ev), item)
+        }
         items.push(item)
       }
     } else if (ev.kind === 'tool-call') {
@@ -135,6 +160,10 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
   const answers = new Set<string>()
   const projected = items.filter((item) => {
     const source = sourceEvents.get(item.key)
+    if (source && item.type === 'tool') {
+      const operationId = nativeKnowledgeOperationId(item.tool.payload)
+      if (operationId && knowledgeIndex.has(knowledgeOperationIdentity(source, operationId))) return false
+    }
     if (!source?.turnId) return true // Old records have no reliable turn identity.
     const identity = identityOf(source)
     if (item.type === 'agent' && !answers.has(identity)) { item.startsAnswer = true; answers.add(identity) }
@@ -148,6 +177,17 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
 /** Successful transport milestones are detail-only, not steps competing with the answer. */
 function isTurnTransportObservation(event: TimelineEvent): boolean {
   return event.source === 'acp' && event.kind === 'session-status' && Boolean(event.turnId) && ['开始处理', '指令已发送至引擎', '收到首次模型响应'].includes(String(asObject(event.payload?.observation)?.label))
+}
+
+function hasPromptOwner(event: TimelineEvent): boolean {
+  return [event.projectRoot, event.sessionId, event.connectionGeneration, event.turnId].every((value) => typeof value === 'string' && Boolean(value.trim()))
+}
+
+/** Delivery acknowledgement can update only a host-admitted question in its exact turn. */
+function readPromptDelivery(event: TimelineEvent): 'sent' | 'not_sent' | undefined {
+  if (event.source !== 'acp' || event.kind !== 'diagnostic' || event.payload?.activityScope !== 'turn' || !hasPromptOwner(event)) return undefined
+  const state = asObject(event.payload.promptDelivery)?.state
+  return state === 'sent' || state === 'not_sent' ? state : undefined
 }
 
 /** Only structured file facts establish identity; prose never supplies a path or scope. */

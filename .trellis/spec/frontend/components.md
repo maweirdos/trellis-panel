@@ -493,7 +493,12 @@ function Button({ isLoading, children, ...props }: ButtonProps) {
 MarkdownView owns external-link click/auxiliary-click routing. Valid absolute
 HTTP(S) URLs use the existing main-process `openExternal` bridge to the system
 browser. Preserve native same-document heading/footnote anchors and copyable
-hrefs.
+hrefs. Supported local document links use the separate `openLocalDocument`
+bridge, including project-root-relative documents and native `/C:/...html`
+paths. Main authorizes them; renderer normalization is not permission. Absolute
+local hrefs must remain copyable `file:///` URLs. Local-document capability and
+opener failures are visible, with full-restart guidance for old preload. See the
+[local document contract](../backend/local-document-links.md).
 Malformed and unsupported schemes must not navigate the app; keep sanitization
 enabled. Never use a bare external anchor that replaces the
 frameless application, or construct an unclosable embedded browser surface.
@@ -507,3 +512,21 @@ stores the real error for a default-closed details disclosure. Use neutral share
 surfaces and semantic icons; avoid a permanent stack dump or a guessed cause as
 the main product message. Tests must include actual retry behavior, not only
 matching the error heading.
+## Retained Markdown component identities
+
+When a retained reader consumes InteractionScope or guarded document/image link
+context, context updates can rerender even a React.memo wrapper. ReactMarkdown
+component functions for headings, anchors, code and tables must retain their type
+identity while unchanged content stays mounted. Do not recreate render component
+factories on every interaction-signal change: that replaces descendant DOM and
+loses the user's selection/reading position.
+
+Keep stable renderer mappings and route mutable guarded link callbacks through
+latest refs/context. Stability must not retain obsolete authorization, source
+callbacks or KnowledgeDocument asset scope. Scope suspension invalidates pending
+action tickets and transient error/busy state, not the displayed source body.
+
+Verify the same heading DOM node, selected text and scroll across suspension;
+also change the source callback and verify a stable anchor uses the new guarded
+handler. See backend/workflow-reading.md and reading-window-renderer smoke.
+

@@ -6,6 +6,7 @@ import { useMy } from '../my/store'
 import { ProjectSwitcher } from '../my/layout/ProjectSwitcher'
 import { BrandMark } from '../my/BrandMark'
 import { ApplicationPanel } from '../applications/ApplicationPanel'
+import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { clsx } from 'clsx'
 
 function WinButton({ onClick, children, label, danger }: {
@@ -36,6 +37,7 @@ export function TitleBar(): JSX.Element {
         <span className="sr-only">Trellis Panel</span>
       </div>
       <ProjectSwitcher />
+      <GitBranchControl />
       {openError && <span role="status" title={openError} className="ml-2 shrink-0 text-my-xs text-my-danger-text">项目打开失败</span>}
       {!snapshot && <span className="ml-2 shrink-0 text-my-xs text-my-tertiary">{hasIpc ? '选择本地项目' : '演示预览'}</span>}
       <div className="no-drag ml-1 flex shrink-0 items-center">
@@ -48,7 +50,7 @@ export function TitleBar(): JSX.Element {
       <button type="button" disabled={hasIpc && !snapshot} onClick={() => setPaletteOpen(true)}
         className="my-window-search no-drag ml-auto mr-3 flex h-my-icon min-w-0 items-center gap-2.5 rounded-my-md px-2.5 text-my-secondary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="搜索或输入命令 (Ctrl+K)">
-        <Search size={16} strokeWidth={1.8} /><span className="truncate text-left text-my-md">搜索或输入命令</span><kbd className="ml-2 whitespace-nowrap font-sans text-my-xs text-my-tertiary">Ctrl K</kbd>
+        <Search size={16} strokeWidth={1.8} className="shrink-0" /><span className="truncate text-left text-my-md">搜索或输入命令</span><kbd className="ml-2 whitespace-nowrap font-sans text-my-xs text-my-tertiary">Ctrl K</kbd>
       </button>
       <ApplicationPanel />
       {hasIpc && <div className="no-drag flex h-full items-stretch">

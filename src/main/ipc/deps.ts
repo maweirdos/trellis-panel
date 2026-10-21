@@ -14,13 +14,15 @@ export interface WindowDeps {
   getCapsule(): BrowserWindow | null
   /** 全局热键呼出的速记窗（只隐藏不销毁，创建归 index.ts 的 toggleQuickTodo） */
   getQuickTodo(): BrowserWindow | null
+  showQuickTodo(): void
   showMain(): void
   createMain(): void
   /** 截取主窗口当前画面为 PNG dataURL（截图问 AI，TPD-022） */
   captureMain(): Promise<string | null>
   capsule: CapsuleApi
   /** 置顶文档小窗：打开/聚焦（创建与生命周期归 index.ts） */
-  openDocWindow(opts: { key: string; title: string; file: string; theme: string }): {
+  isDocWindowSender(senderId: number): boolean
+  openDocWindow(opts: { key: string; title: string; file: string; theme: string; readerViewId?: string; placementKey?: string; anchorBounds?: { x: number; y: number; width: number; height: number }; onCreated?: (senderId: number) => void; onClosed?: () => void }): {
     ok: boolean
     focused?: boolean
     error?: string

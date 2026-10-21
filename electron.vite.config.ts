@@ -11,36 +11,14 @@ import { reactHookRefresh } from './scripts/vite-hook-refresh'
  * ('electron') 崩溃）。与 scripts/smoke/reading-session.mjs 的 worker 打包路径一致。
  * dev（main 为 build --watch）与 build 均会触发 closeBundle。
  */
-function bundleDiffWorker(): Plugin {
+function bundleMainWorker(name: string, entry: string, filename: string): Plugin {
   return {
-    name: 'bundle-diff-worker',
+    name,
     apply: 'build',
     async closeBundle() {
       await esbuild.build({
-        entryPoints: [resolve(__dirname, 'src/main/services/documents/diff-worker.ts')],
-        outfile: resolve(__dirname, 'out/main/diff-worker.js'),
-        bundle: true,
-        format: 'cjs',
-        platform: 'node',
-        target: 'node22',
-        logLevel: 'warning'
-      })
-    }
-  }
-}
-
-/**
- * S0 G3：observation worker 同一先例单独 esbuild 打包（node:sqlite + 控制库核心，
- * 独立于主 bundle；service 侧按 __dirname 邻位定位 out/main/observation-worker.js）。
- */
-function bundleObservationWorker(): Plugin {
-  return {
-    name: 'bundle-observation-worker',
-    apply: 'build',
-    async closeBundle() {
-      await esbuild.build({
-        entryPoints: [resolve(__dirname, 'src/main/services/observability/observation-worker.ts')],
-        outfile: resolve(__dirname, 'out/main/observation-worker.js'),
+        entryPoints: [resolve(__dirname, entry)],
+        outfile: resolve(__dirname, 'out/main', filename),
         bundle: true,
         format: 'cjs',
         platform: 'node',
@@ -53,15 +31,14 @@ function bundleObservationWorker(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), bundleDiffWorker(), bundleObservationWorker(), {
-      name: 'bundle-history-worker',
-      apply: 'build',
-      closeBundle: () => esbuild.build({
-        entryPoints: [resolve(__dirname, 'src/main/services/acp/history-worker.ts')],
-        outfile: resolve(__dirname, 'out/main/history-worker.js'),
-        bundle: true, format: 'cjs', platform: 'node', target: 'node22', logLevel: 'warning'
-      }).then(() => {})
-    }],
+    plugins: [
+      externalizeDepsPlugin(),
+      bundleMainWorker('bundle-diff-worker', 'src/main/services/documents/diff-worker.ts', 'diff-worker.js'),
+      bundleMainWorker('bundle-observation-worker', 'src/main/services/observability/observation-worker.ts', 'observation-worker.js'),
+      bundleMainWorker('bundle-history-worker', 'src/main/services/acp/history-worker.ts', 'history-worker.js'),
+      bundleMainWorker('bundle-workflow-control-worker', 'src/main/services/workflow-control/worker.ts', 'workflow-control-worker.js'),
+      bundleMainWorker('bundle-team-desktop-worker', 'src/main/services/team-platform/store-worker.ts', 'team-desktop-worker.js')
+    ],
     build: {
       // electron-vite 5 / vite 8 默认输出 ESM(.mjs)；本项目为 CJS（package.json 无 type:module），
       // 强制回 CJS 以匹配 out/main/index.js 入口（Electron 44 + CJS 主进程）

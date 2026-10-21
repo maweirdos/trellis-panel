@@ -18,19 +18,25 @@
 | ------------------------------------------------------------------------------ | ----------------------------------------------- | ------------- |
 | [ipc-electron.md](./ipc-electron.md)                                           | IPC patterns, context isolation, title bar      | **Must Read** |
 | [Integration contracts](../backend/integrations.md)                           | Shared directory, owner-scoped requests, redacted fields and explicit notification preview | Integration UI |
+| [Knowledge contracts](../backend/knowledge-access.md)                         | Project defaults, temporary scope, provenance, material CAS/handoff and explicit publication | Knowledge / Agent / intake UI |
 | [store-conventions.md](./store-conventions.md)                                 | Zustand store slicing rules (TPD-006)           | **Must Read** |
 | [electron-browser-api-restrictions.md](./electron-browser-api-restrictions.md) | Browser APIs that don't work in Electron        | **Must Read** |
 | [react-pitfalls.md](./react-pitfalls.md)                                       | Critical React patterns and common mistakes     | **Must Read** |
 | [state-management.md](./state-management.md)                                   | Auth context, layout, navigation patterns       | Reference     |
 | [components.md](./components.md)                                               | Semantic HTML, empty states, scrollbar patterns | Reference     |
+| [Task conversation contracts](../backend/task-conversations.md)              | Equal entry geometry, native identity, destination labels and retained request ownership | Homepage session continuation |
+| [Git viewer contracts](../backend/git-viewer.md)                              | Auxiliary history graph, unified diff, stale-result ownership and source attribution | Git viewer UI |
 | [hooks.md](./hooks.md)                                                         | Query and mutation hook patterns                | Reference     |
 | [type-safety.md](./type-safety.md)                                             | Types, import paths, module constants           | Reference     |
 | [directory-structure.md](./directory-structure.md)                             | Project structure conventions                   | Reference     |
 | [css-design.md](./css-design.md)                                               | CSS organization and design tokens              | Reference     |
 | [applications.md](./applications.md)                                          | Shared compact application panel, project scope, state and execution UI | Application run-panel changes |
+| [developer-tools-workbench.md](./developer-tools-workbench.md)                  | Header Git/run controls, retained source, measured dock geometry and grouped config drafts | Developer-tool shell interactions |
 | [quality.md](./quality.md)                                                     | Code quality and performance standards          | Reference     |
 | [my-ui-module.md](./my-ui-module.md)                                     | Shell module tokens & conventions               | Module-scoped |
 | [conversation-workspace.md](./conversation-workspace.md)                   | ACP history/paging/recovery, turn layout, inspector/appearance and source ownership | Conversation / reader / Settings |
+| [workflow-conversation.md](./workflow-conversation.md)                     | Actual node/receipt provenance, frozen revisions, retained commands and sessionless recovery | Managed workflow / revision / source history |
+| [team-collaboration.md](./team-collaboration.md)                           | Fixed published reading, offline original intents, authority changes and selected-source publication | Desktop team sharing and native publish entries |
 | [retained-source-interactions.md](./retained-source-interactions.md)       | Bounded Settings detours, reader continuity and hidden interaction ownership | Retained source pages |
 
 ---

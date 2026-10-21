@@ -1,6 +1,6 @@
 import { type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, Bot, CircleUser, FolderInput, House, ListTodo, Moon, Plus, RotateCw, Settings2, Star, Sun, Users, X, Wrench, Activity, FileText } from 'lucide-react'
+import { BookOpen, Bot, CircleUser, FolderInput, House, ListTodo, MessageCircle, Moon, Plus, RotateCw, Settings2, Star, Sun, Users, X, Wrench, Activity, FileText } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { Avatar, Dropdown, DropdownItem } from '../ui'
@@ -11,7 +11,7 @@ import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, PRIMAR
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
   home: <House className="my-module-icon" aria-hidden="true" />,
-  agents: <Bot className="my-module-icon" aria-hidden="true" />,
+  agents: <MessageCircle className="my-module-icon" aria-hidden="true" />,
   tasks: <ListTodo className="my-module-icon" aria-hidden="true" />,
   team: <Users className="my-module-icon" aria-hidden="true" />,
   knowledge: <BookOpen className="my-module-icon" aria-hidden="true" />,

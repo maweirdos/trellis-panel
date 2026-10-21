@@ -108,7 +108,7 @@ export function DocumentDiffPanel({
   // 实例唯一层 ID：工作区与查看器可能同时各开一个对比面板，互不覆盖
   const escId = useId()
   useEscLayer(true, {
-    kind: 'overlay',
+    kind: state.mode === 'selected-versions' ? 'modal' : 'overlay',
     id: `reader-diff:${escId}`,
     onClose,
     returnFocusRef
@@ -120,7 +120,9 @@ export function DocumentDiffPanel({
   }, [])
 
   const baselineLabel =
-    state.mode === 'pending' ? (
+    state.mode === 'selected-versions' ? (
+      <span title={`${state.comparisonLabels?.left ?? ''} → ${state.comparisonLabels?.right ?? ''}`}>{state.comparisonLabels?.left} <ArrowRight size={11} className="mx-1 inline" /> {state.comparisonLabels?.right}</span>
+    ) : state.mode === 'pending' ? (
       <>
         本次展示版本 <span className="font-mono">{shortRev(displayedRevision)}</span>
         <ArrowRight size={11} className="mx-1 inline align-[-1px]" />

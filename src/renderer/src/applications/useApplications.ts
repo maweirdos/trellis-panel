@@ -17,12 +17,17 @@ type ApplicationProjection = {
   errors: Record<string, string>
   editor: ApplicationEditor | null
   editorFocus: HTMLElement | null
+  selectedId: string | null
+  dockOpen: boolean
+  dockTabs: string[]
+  dockHeight: number | null
 }
 
 const listeners = new Set<() => void>()
 let state: ApplicationProjection = {
   root: null, rootKey: null, generation: 0, apps: [], loading: false,
-  error: null, busy: {}, errors: {}, editor: null, editorFocus: null
+  error: null, busy: {}, errors: {}, editor: null, editorFocus: null,
+  selectedId: null, dockOpen: false, dockTabs: [], dockHeight: null
 }
 let canonicalKey: string | null = null
 let request = 0
@@ -36,13 +41,34 @@ function publish(patch: Partial<ApplicationProjection>): void {
   listeners.forEach((listener) => listener())
 }
 
+type RunPreferences = { selectedId: string | null; dockHeight: number | null }
+function preferenceKey(rootKey: string): string { return `tpanel.my.run.v1:${encodeURIComponent(rootKey)}` }
+function readPreferences(rootKey: string | null): RunPreferences {
+  if (!rootKey) return { selectedId: null, dockHeight: null }
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(preferenceKey(rootKey)) ?? 'null')
+    if (typeof parsed !== 'object' || parsed === null) return { selectedId: null, dockHeight: null }
+    const value = parsed as Record<string, unknown>
+    return { selectedId: typeof value.selectedId === 'string' && value.selectedId.length <= 80 ? value.selectedId : null, dockHeight: typeof value.dockHeight === 'number' && Number.isFinite(value.dockHeight) && value.dockHeight > 0 ? value.dockHeight : null }
+  } catch { return { selectedId: null, dockHeight: null } }
+}
+function writePreferences(): void {
+  if (!state.rootKey) return
+  try { localStorage.setItem(preferenceKey(state.rootKey), JSON.stringify({ selectedId: state.selectedId, dockHeight: state.dockHeight })) }
+  catch { /* Presentation still works when local storage is unavailable. */ }
+}
+function reconcilePresentation(apps: ApplicationSummary[]): Pick<ApplicationProjection, 'selectedId' | 'dockTabs'> {
+  const ids = new Set(apps.map((app) => app.definition.id))
+  return { selectedId: state.selectedId && ids.has(state.selectedId) ? state.selectedId : apps[0]?.definition.id ?? null, dockTabs: state.dockTabs.filter((id) => ids.has(id)) }
+}
+
 function setRoot(root: string | null): void {
   const rootKey = projectRootKey(root)
   if (rootKey === state.rootKey) return
   canonicalKey = null
   appVersions.clear()
   request += 1
-  publish({ root, rootKey, generation: state.generation + 1, apps: [], loading: false, error: null, busy: {}, errors: {}, editor: null, editorFocus: null })
+  publish({ root, rootKey, generation: state.generation + 1, apps: [], loading: false, error: null, busy: {}, errors: {}, editor: null, editorFocus: null, ...readPreferences(rootKey), dockOpen: false, dockTabs: [] })
   if (hasIpc && root) void refreshApplications()
 }
 
@@ -53,7 +79,8 @@ function current(generation: number): boolean {
 function applyApp(app: ApplicationSummary): void {
   appVersions.set(app.definition.id, (appVersions.get(app.definition.id) ?? 0) + 1)
   const existing = state.apps.some((item) => item.definition.id === app.definition.id)
-  publish({ apps: existing ? state.apps.map((item) => item.definition.id === app.definition.id ? app : item) : [...state.apps, app] })
+  const apps = existing ? state.apps.map((item) => item.definition.id === app.definition.id ? app : item) : [...state.apps, app]
+  publish({ apps, ...reconcilePresentation(apps) })
 }
 
 function receiveEvent(event: ApplicationRuntimeEvent): void {
@@ -81,6 +108,8 @@ function attach(): () => void {
       detachEvents?.()
       detachRoot = undefined
       detachEvents = undefined
+      // A later same-root mount is a new projection owner, not an old action's recipient.
+      publish({ generation: state.generation + 1, loading: false, busy: {}, editor: null, editorFocus: null, dockOpen: false, dockTabs: [] })
     }
   }
 }
@@ -100,7 +129,7 @@ export async function refreshApplications(): Promise<void> {
       const latest = new Map(state.apps.map((app) => [app.definition.id, app]))
       const refreshed = result.apps.map((app) => (appVersions.get(app.definition.id) ?? 0) !== (versions.get(app.definition.id) ?? 0) ? latest.get(app.definition.id) ?? app : app)
       for (const app of latest.values()) if (!refreshed.some((item) => item.definition.id === app.definition.id) && (appVersions.get(app.definition.id) ?? 0) !== (versions.get(app.definition.id) ?? 0)) refreshed.push(app)
-      publish({ apps: refreshed, loading: false })
+      publish({ apps: refreshed, loading: false, ...reconcilePresentation(refreshed) })
     } else publish({ loading: false, error: result.error })
   } catch {
     if (current(generation) && sequence === request) publish({ loading: false, error: '应用列表读取失败，请重试。' })
@@ -139,6 +168,7 @@ async function operate(id: string, label: string, action: (root: string) => Prom
 export async function runApplication(app: ApplicationSummary, action: 'start' | 'stop' | 'restart', generation: number): Promise<void> {
   if (generation !== state.generation) return
   const { id, revision } = app.definition
+  if (action !== 'stop') showApplicationOutput(id, generation)
   const labels = { start: '正在启动', stop: '正在停止', restart: '正在重启' }
   await operate(id, labels[action], (root) => action === 'stop'
     ? api.appRuntimeStop(root, id)
@@ -163,7 +193,8 @@ export async function removeApplication(definition: ApplicationDefinition): Prom
     if (!current(generation)) return '项目已切换。'
     if (result.ok === false) return result.error
     request += 1
-    publish({ apps: state.apps.filter((app) => app.definition.id !== definition.id), loading: false })
+    const apps = state.apps.filter((app) => app.definition.id !== definition.id)
+    publish({ apps, loading: false, ...reconcilePresentation(apps) })
     return null
   } catch { return '应用未删除，请重试。' }
   finally {
@@ -196,3 +227,31 @@ export function matchesApplicationRoot(root: string): boolean {
   const key = projectRootKey(root)
   return key !== null && (key === state.rootKey || key === canonicalKey)
 }
+
+export function selectApplication(id: string, generation: number): void {
+  if (generation !== state.generation || !state.apps.some((app) => app.definition.id === id)) return
+  publish({ selectedId: id })
+  writePreferences()
+}
+export function showApplicationOutput(id: string, generation: number): void {
+  if (generation !== state.generation || !state.apps.some((app) => app.definition.id === id)) return
+  publish({ selectedId: id, dockOpen: true, dockTabs: state.dockTabs.includes(id) ? state.dockTabs : [...state.dockTabs, id] })
+  writePreferences()
+}
+export function closeApplicationOutput(id?: string): void {
+  if (!id) { publish({ dockOpen: false }); return }
+  const dockTabs = state.dockTabs.filter((tab) => tab !== id)
+  publish({ dockTabs, dockOpen: dockTabs.length > 0 })
+}
+export function setApplicationDockHeight(height: number): void {
+  if (!Number.isFinite(height) || height <= 0) return
+  publish({ dockHeight: height })
+  writePreferences()
+}
+export async function runConfiguredApplication(id: string, action: 'start' | 'stop' | 'restart', generation: number): Promise<void> {
+  if (generation !== state.generation) return
+  const app = state.apps.find((candidate) => candidate.definition.id === id)
+  if (app) await runApplication(app, action, generation)
+}
+
+export function applicationById(id: string): ApplicationSummary | null { return state.apps.find((app) => app.definition.id === id) ?? null }

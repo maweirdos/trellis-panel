@@ -1,0 +1,40 @@
+/* Git presentation shares the shell's controls, surfaces and geometry tokens. */
+.my-root .my-git-branch-control { min-width: 0; max-width: var(--my-space-288); margin-inline-start: var(--my-space-4); }
+.my-root .my-git-branch-trigger { display: flex; min-width: 0; max-width: 100%; gap: var(--my-space-6); padding-inline: var(--my-space-8); }
+.my-root .my-git-branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--my-text-sm); }
+.my-root .my-git-branch-count { flex-shrink: 0; color: var(--my-txt-tertiary); }
+.my-root .my-git-branch-menu { width: min(var(--my-space-320), calc(100vw - var(--my-space-32))); color: var(--my-txt-primary); }
+.my-root .my-git-workspace-menu-rule { height: var(--my-space-1); margin-block: var(--my-space-6); background: var(--my-border-subtle); }
+.my-root .my-git-local-branches { max-height: var(--my-space-240); overflow-y: auto; scrollbar-gutter: stable; }
+.my-root .my-git-workspace-panel { position: fixed; z-index: var(--my-z-sidebar); top: var(--my-shell-chrome-size); bottom: calc(var(--my-shell-inset) + var(--my-run-dock-occupied-height)); left: var(--my-module-rail-width); display: flex; min-height: 0; flex-direction: column; width: min(var(--my-git-workspace-width), calc(100vw - var(--my-module-rail-width) - var(--my-space-16))); overflow: auto; border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-xl); background: var(--my-bg-layer-2); color: var(--my-txt-primary); box-shadow: var(--my-shadow-overlay-200); }
+.my-root .my-git-workspace-panel-header { display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-6); padding: var(--my-space-12); border-bottom: var(--my-space-1) solid var(--my-border-subtle); }
+.my-root .my-git-workspace-feedback { display: flex; flex-shrink: 0; flex-direction: column; gap: var(--my-space-6); padding: var(--my-space-8) var(--my-space-12); overflow-wrap: anywhere; }
+.my-root .my-git-workspace-changes { flex: 1 1 auto; min-height: var(--my-space-96); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.my-root .my-git-workspace-file-heading { display: flex; align-items: center; gap: var(--my-space-8); margin: 0; padding: var(--my-space-10) var(--my-space-12) var(--my-space-6); font-size: var(--my-text-xs); font-weight: var(--my-weight-semibold); color: var(--my-txt-secondary); }
+.my-root .my-git-workspace-files ul { margin: 0; padding: 0 var(--my-space-6); list-style: none; }
+.my-root .my-git-workspace-file-row { display: flex; align-items: center; gap: var(--my-space-4); min-width: 0; padding-inline-start: var(--my-space-6); }
+.my-root .my-git-workspace-checkbox { flex-shrink: 0; width: var(--my-checkbox-size); height: var(--my-checkbox-size); accent-color: var(--my-bg-accent-primary); }
+.my-root .my-git-workspace-file-button { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: var(--my-space-6); padding: var(--my-space-6); border-radius: var(--my-control-radius); color: var(--my-txt-secondary); text-align: left; }
+.my-root .my-git-workspace-file-button:hover { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-git-workspace-diff { margin: var(--my-space-6) var(--my-space-12) var(--my-space-12); overflow: hidden; border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-md); background: var(--my-bg-canvas); }
+.my-root .my-git-workspace-diff-lines { max-height: var(--my-space-256); margin: 0; padding: var(--my-space-8); overflow: auto; scrollbar-gutter: stable; font-family: var(--my-font-mono); font-size: var(--my-text-xs); line-height: var(--my-line-document); color: var(--my-txt-secondary); }
+.my-root .my-git-workspace-diff-lines > span { display: block; min-width: max-content; }
+.my-root .my-git-workspace-diff-add { color: var(--my-txt-success-primary); background: var(--my-bg-success-subtle); }
+.my-root .my-git-workspace-diff-remove { color: var(--my-txt-danger-primary); background: var(--my-bg-danger-subtle); }
+.my-root .my-git-workspace-diff-meta { color: var(--my-txt-tertiary); }
+.my-root .my-git-workspace-commit { display: flex; flex-shrink: 0; flex-direction: column; gap: var(--my-space-8); padding: var(--my-space-12); border-top: var(--my-space-1) solid var(--my-border-subtle); }
+.my-root .my-git-workspace-commit textarea { min-height: var(--my-space-80); max-height: var(--my-space-160); resize: vertical; }
+.my-root .my-git-workspace-panel-footer { flex-shrink: 0; padding: var(--my-space-6) var(--my-space-10); border-top: var(--my-space-1) solid var(--my-border-subtle); }
+.my-root .my-git-workspace-empty { padding: var(--my-space-20) var(--my-space-12); font-size: var(--my-text-sm); color: var(--my-txt-secondary); }
+.my-root .my-git-workspace-form { display: flex; max-height: var(--my-modal-max-height); flex-direction: column; gap: var(--my-space-16); padding: var(--my-space-20); overflow-y: auto; scrollbar-gutter: stable; }
+.my-root .my-git-workspace-field { display: flex; min-width: 0; flex-direction: column; gap: var(--my-space-6); font-size: var(--my-text-sm); color: var(--my-txt-secondary); }
+.my-root .my-git-workspace-field .my-input { min-width: 0; }
+@media (max-width: 1100px) {
+  .my-root .my-git-branch-control { max-width: var(--my-space-160); }
+}
+@media (max-width: 640px) {
+  .my-root .my-git-branch-control { max-width: var(--my-space-96); margin-inline-start: 0; }
+  .my-root .my-git-branch-name { max-width: var(--my-space-48); }
+  .my-root .my-git-branch-count { display: none; }
+  .my-root .my-git-workspace-panel { left: var(--my-space-8); right: var(--my-space-8); width: auto; }
+}

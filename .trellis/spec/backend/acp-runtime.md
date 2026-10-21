@@ -39,6 +39,18 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
 `acpRuntimeSetup(runtimeId)` and `acpRuntimeNodePick` manage local setup separately.
 `api.acpSessions()` currently exposes the service's default history limit.
 
+For a host-first project knowledge turn, the user row records a validated
+host-received question before lookup with `payload.delivery='preparing'`, not an
+already-written native prompt. Emit it once. A later owned diagnostic carries
+`activityScope='turn'` and `promptDelivery.state='sent'|'not_sent'` from actual
+submission facts. The renderer may project its label, never mutate/reorder the
+archived question or replay it as an automatic prompt. Preserve drafts/attachments
+on failed or cancelled admission. The existing post-write image-only/unbound
+contracts remain unchanged. `turn.promptStarted` is the public transport-write
+receipt; wait for its evidence checkpoint before ending the owned knowledge turn
+even when a native result completes immediately. See `knowledge-access.md` for
+bounded host-first retrieval and native configuration/Skills boundaries.
+
 ## 3. Contracts
 
 ### Task materials and source-bound prompts

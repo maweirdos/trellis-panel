@@ -1,6 +1,6 @@
 # Local application runtime
 
-The Applications control in the ordinary window header and Tasks > Tools > Run show the same project applications. The panel starts foreground commands, displays their process and readiness states, and lets you stop or restart the instances it owns. Closing a conversation or hiding the window to the tray leaves these applications running.
+The named application selector and direct run controls in the ordinary window header, the bottom run dock and Tasks > Tools > Run show the same project applications. The panel starts foreground commands, displays their process and readiness states, and lets you stop or restart the instances it owns. Closing a conversation, output tab/dock or hiding the window to the tray leaves these applications running. See the [developer tools workbench](developer-tools-workbench.md) for toolbar, resizable output and manual Git interactions.
 
 ## Configure an application
 

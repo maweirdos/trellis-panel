@@ -234,15 +234,6 @@ select {
   accent-color: var(--my-bg-accent-primary);
 }
 
-/* ---------- Toast ---------- */
-.toast-enter {
-  animation: toastIn var(--my-motion-normal) var(--my-ease-out);
-}
-@keyframes toastIn {
-  from { opacity: 0; transform: translateX(16px) scale(.97); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
-}
-
 /* Architecture diagrams share application surfaces; node kinds keep semantic accents. */
 .arch-svg { font-family: var(--my-font-sans); }
 .arch-lane { fill: var(--my-txt-tertiary); font-size: var(--my-text-2xs); font-weight: var(--my-weight-semibold); }

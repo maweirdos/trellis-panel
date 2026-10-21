@@ -481,18 +481,18 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
         {/* WeKnora 知识库联动 */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">
-            <Cloud size={13} /> WeKnora 知识库联动
+            <Cloud size={13} /> WeKnora 旧配置（规范同步兼容区）
             <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-my-xs font-normal text-my-tertiary">
               <Checkbox
                 checked={wk.enabled}
                 onChange={(v) => setWk({ ...wk, enabled: v })}
               />
-              启用（知识库联邦检索 · 规划喂料 · 归档沉淀 · spec 同步）
+              启用旧连接（仅供原有规范同步）
             </label>
           </div>
           <p className="mb-3 text-my-xs leading-5 text-my-tertiary">
-            本地四库保持毫秒级不动，WeKnora 作为跨项目知识来源异步追加：规范、历史归档、接口文档。
-            API Key 经系统凭据加密（DPAPI）存储；建议在 WeKnora 侧使用限定知识库的 scoped API Key。
+            交互检索、Agent 工具与人工发布现在使用「集成」中的项目绑定，不读取全局默认范围。
+            此处只维护旧规范同步连接与可显式导入的历史设置；保存或导入不启用任何自动归档上传。凭证仍由系统凭据加密保存。
           </p>
           <div className="grid grid-cols-2 gap-2.5">
             <label className="col-span-2 space-y-1">
@@ -535,7 +535,7 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
               知识库映射{wkKbs ? `（已加载 ${wkKbs.length} 个）` : '（测试连接后可选择，也可手填 ID）'}
             </div>
             <div className="space-y-1">
-              <div className="text-my-xs text-my-tertiary">联邦检索 / AI 规划范围（可多选）</div>
+              <div className="text-my-xs text-my-tertiary">历史检索范围（仅供显式导入，不再控制交互检索）</div>
               <div className="flex flex-wrap gap-1.5">
                 {(wkKbs ?? []).map((kb) => (
                   <button
@@ -576,8 +576,8 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
                     ]} />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-my-xs text-my-tertiary">归档沉淀目标库（L4）</span>
-                    <Select ariaLabel="归档沉淀目标库" value={wk.archiveKbId} onChange={(value) => setWk({ ...wk, archiveKbId: value })} className="w-full" options={[
+                    <span className="text-my-xs text-my-tertiary">历史归档目标（已停用，仅保留）</span>
+                    <Select ariaLabel="归档沉淀目标库" disabled value={wk.archiveKbId} onChange={(value) => setWk({ ...wk, archiveKbId: value })} className="w-full" options={[
                       { value: '', label: '（不沉淀）' },
                       ...wkKbs.map((kb) => ({ value: kb.id, label: kb.name }))
                     ]} />
@@ -590,20 +590,17 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
                     <input value={wk.specKbId} onChange={(e) => setWk({ ...wk, specKbId: e.target.value })} placeholder="kb-…" className="my-input font-mono" />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-my-xs text-my-tertiary">归档沉淀目标库 ID</span>
-                    <input value={wk.archiveKbId} onChange={(e) => setWk({ ...wk, archiveKbId: e.target.value })} placeholder="kb-…" className="my-input font-mono" />
+                    <span className="text-my-xs text-my-tertiary">历史归档目标 ID（已停用）</span>
+                    <input disabled value={wk.archiveKbId} onChange={(e) => setWk({ ...wk, archiveKbId: e.target.value })} placeholder="kb-…" className="my-input font-mono" />
                   </label>
                 </>
               )}
             </div>
             <div className="flex flex-col gap-1.5 pt-1">
-              <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
-              <Checkbox
-                checked={wk.autoPushArchive}
-                onChange={(v) => setWk({ ...wk, autoPushArchive: v })}
-              />
-                归档任务时自动沉淀到知识库（PRD + 交付信息，channel = trellis-panel）
-              </label>
+              <div className="flex items-start gap-1.5 rounded-my-md border border-my-line px-2 py-1.5 text-my-xs text-my-tertiary">
+                <Cloud size={12} className="mt-0.5 shrink-0" />
+                <span><strong className="font-medium text-my-secondary">归档自动沉淀：已停用</strong>。新方案只允许在知识页面预览并由用户明确发布；不会自动上传聊天、草稿或整个项目。保留旧配置仅用于兼容读取，不会重新启用。</span>
+              </div>
               <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
               <Checkbox
                 checked={wk.syncSpec}
@@ -616,7 +613,7 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
 
           {/* MCP 端点（L3A：注册 WeKnora 内置 MCP Server 给 AI 编码工具） */}
           <div className="mt-4 space-y-2.5 border-t border-my-line pt-3">
-            <div className="text-my-xs font-semibold text-my-secondary">MCP 端点（AI 编码工具直连知识库）</div>
+            <div className="text-my-xs font-semibold text-my-secondary">旧 MCP 端点（外部工具独立直连，不是平台 Agent 知识桥）</div>
             <p className="text-my-xs leading-4 text-my-placeholder">
               WeKnora「设置 → 发布与集成 → MCP Server」创建端点后填入。远程注册条目放在各工具的用户级配置，
               不写入随仓库共享的 .mcp.json（避免端点令牌进 git）。

@@ -1,6 +1,7 @@
 // 分析页（R9）：指标卡 + 手写 SVG 柱状图（创建 vs 关闭）+ 状态/优先级分布 + 成员排行。
 import { useMemo, useState, type JSX } from 'react'
 import { PRIORITY_ORDER, useMy } from '../store'
+import { PageContent } from '../layout/PageLayout'
 import { Avatar, Tabs } from '../ui'
 import { TeamEfficiency, TeamWorkflow } from '../../pages/Team'
 import { PriorityIcon, StateGroupIcon } from '../icons'
@@ -193,8 +194,10 @@ export function AnalyticsPage(): JSX.Element {
   }
 
   return (
-    <div className="space-y-5">
-      <Tabs tabs={[{ id: 'snapshot', label: '概览' }, { id: 'flow', label: '流转' }, { id: 'workflow', label: '流程' }]} active={section} onChange={setSection} />
+    <PageContent className="my-locked-canvas gap-5">
+      <div className="shrink-0"><Tabs tabs={[{ id: 'snapshot', label: '概览' }, { id: 'flow', label: '流转' }, { id: 'workflow', label: '流程' }]} active={section} onChange={setSection} /></div>
+      <div className="my-locked-scroll my-scrollbar">
+      <div className="space-y-5">
       {section === 'flow' ? <><p className="text-my-xs text-my-secondary">流转数来自项目历史日志，日趋势为近 14 天；周期按当前未归档的已完成任务计算，停滞包含规划中、进行中与评审中任务。</p><TeamEfficiency /></> : section === 'workflow' ? <><p className="text-my-xs text-my-secondary">当前项目任务的流程配置与停滞情况。</p><TeamWorkflow /></> : <>
         <p className="text-my-xs text-my-secondary">当前未归档任务的快照；关闭数仅计已完成，近 8 周按创建和完成日期汇总。</p>
 
@@ -343,6 +346,8 @@ export function AnalyticsPage(): JSX.Element {
         </div>
       </div>
       </>}
-    </div>
+      </div>
+      </div>
+    </PageContent>
   )
 }

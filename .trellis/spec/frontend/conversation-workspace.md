@@ -41,7 +41,8 @@ entirely sequenced or entirely live arrays.
 
 RunActivity is secondary to the answer: use the shared small font/tertiary label color (default12px versus answer14px), 14px icons in16px slots, 12px chevrons, consistent stroke and24px rows. An earlier observation segment becomes static after later content arrives; only an actual active tail segment can show a current-action spinner/timer. Explicit expansion stays local to that segment. Tools, thoughts, errors and actionable permissions retain their own chronological rows and remain accessible. Hide routine synchronization chatter from the default transcript while preserving its saved events. Never fabricate a completed step or start/duration for an uncorrelated partial prefix; no arrow on an empty disclosure.
 
-The same compact leading-icon geometry applies to top-level file reads, commands (including failures), thoughts and the current-turn status:
+The same compact leading-icon geometry applies to top-level knowledge results,
+file reads, commands (including failures), thoughts and the current-turn status:
 one column-edge 16px slot containing the 14px glyph, followed by a 6px gap and a
 shared first-label origin. Do not give these row types independent 6px/4px/0px
 horizontal inset or rely on their JSX SVG size props alone. Preserve 12px
@@ -87,12 +88,34 @@ selection/generation/root drift and Settings suspension using actual components.
 `acp-turn-status.mjs` mounts the actual Console in hidden Electron with independently
 delayed IPC, state and output, including silent gaps and reduced-motion behavior.
 
-### Explicit new-conversation focus
+### Knowledge-first turn and explicit new-conversation focus
+
+`projectCurrentTurnActivity` selects actual current `knowledgeOperation` facts
+before generic waiting. A preparing question and a completed lookup do not prove
+native delivery: remain in preparation until the exact turn's `promptDelivery`
+receipt has `state: 'sent'` (or its actual legacy transport observation). Then
+show waiting/generation as reported. One ephemeral current status owns working
+animation; corresponding knowledge/activity/tool rows stay readable but do not
+animate a second overall indicator. Incomplete historical tools are static and
+labelled unfinished, even when no completion patch exists.
 
 Successful turn-scoped `开始处理`, `指令已发送至引擎` and `收到首次模型响应`
 observations remain stored but appear only in the terminal processing disclosure,
 not as pre-question or standalone success rows. Preserve meaningful thought/tool
 chronology and explicit failures/permissions; do not rewrite history ordering.
+
+Completed `KnowledgeOperationRow` defaults to a single compact result disclosure.
+Only explicit expansion resolves its actual source IDs through the existing
+local source-snapshot API; never launch another retrieval. Put all real titles
+with source kind/full-or-excerpt mode and existing reader actions inside that
+disclosure. Collapse must hide the actual list, not merely a description while
+leaving documents outside it. Late snapshot completion may not reopen it.
+Successful generic scope chatter (for example `已检索本地与项目远端范围`) adds no
+information and is omitted; genuine failure/partial/degraded/omission detail
+remains accessible. Retain exact source/turn ownership, original bounded body and
+supplied/historical truth. Never infer sources or model reliance from answer
+prose. If the bridge or snapshot is unavailable, show the real read failure
+rather than invented titles.
 
 After explicit conversation creation, retain one focus intent scoped to root,
 returned session, connection generation and interaction signal. Focus the mounted
@@ -102,6 +125,13 @@ pointer interaction cancels pending autofocus. Passive refresh/streaming never
 refocuses. Preserve IME and drafts. An explicitly selected empty conversation
 remains in conversation view on list refresh/remount; paged-history hydration
 must not run against an empty legacy list before that list has returned.
+
+Mounted regressions must hold lookup completion and native dispatch separately,
+verify one status/working animation, default collapse/late completion/expanded
+source reading and actual list hiding, inspect
+light/dark reader title colors, retain static pending history, and test delayed
+ready/list/chooser focus with Settings and selection cancellation. Match the
+production themed host for portal tests, not just the embedded conversation.
 
 Running headers show actual elapsed time with a visible current-step spinner; terminal completion/duration requires an actual turn-done event. Busy/permission/cancel/tool/thought/reply labels use matching live facts, never another turn. Raw JSON is separately requested and lazily rendered; it cannot substitute for readable status content. The subtle vertical rail connects actual nodes only; a single node has no dangling rail. Suspend the timer for hidden retained sources and honor reduced-motion. Actual setup observations may be shown as context for the first real turn of that exact connection only, without generating a new transcript entry or reassigning their original identity. Do not duplicate the same startup facts in a top-level startup panel and the timeline group.
 
@@ -191,6 +221,34 @@ Wrong: transplant demo state/palette/Markdown, add a font switch to the conversa
 
 Correct: compose production shared components/controllers/readers, change semantic tokens from Settings, capture exact current source/target refs and preserve workflow authority.
 
+### Saved product-document Modal
+
+Saved knowledge artifacts use a dedicated read-only Modal presentation, not a
+task-file reader or a new sidebar/editor. Keep exact receipt ID/revision/body;
+disk B must never replace previewed A. The primary entry is a human-readable
+document-name/actual-format link backed by the saved record, not a second View
+Document button or a guessed file from model prose. A matching Agent-answer link
+may open that same saved revision only through its verified causal receipt.
+
+Use one main document title hierarchy, scoped reading width/paragraph/heading/
+table styles, optional real chapter navigation and secondary raw/document-info
+controls. Internal paths/hashes are not the default visual headline. Preserve
+raw bytes, heading line anchors, independent raw/rendered scroll and shared Modal
+focus/Escape behavior. Root/session/generation/Settings replacement invalidates
+late opens and resource results; passive document arrival never opens the Modal.
+
+`MarkdownView.documentAssetContext` activates the bounded project-relative image
+path only for saved-document reading. Ordinary Markdown/source/task readers do
+not acquire broader resource access. Valid Mermaid remains strict/sanitized.
+Pictures are current local resources, not archived image revisions; present that
+truth rather than promising Word/PPT layout or inventing diagram content.
+
+The optional local-open action is secondary and means the current local file.
+A different revision requires an explicit second action; keep the original
+preview unchanged. Missing new preload capability produces restart guidance,
+not a generic arbitrary-file fallback. Follow the full signatures, limits and
+error contract in [saved knowledge reading](../backend/knowledge-document-reading.md).
+
 ## 8. History-first reading and recovery presentation
 
 The conversation surface reads compact `AcpHistorySummary` records and loads transcript pages independently from native connection state. A selected history record stays readable while an eager one-shot resume is attempted; a failed attempt requires explicit retry and never sends a draft. Older pages are prepended with anchor/scroll compensation; live appends follow only when the reader was already at the bottom.
@@ -271,6 +329,12 @@ not a colored left border. Preserve the neutral sequential progress connectors.
 Default conversation copy is concise: use `说说你的想法…` for the composer
 placeholder regardless of connection/busy status. Model menus do not permanently
 show procedural recovery text or paragraphs about unsupported reasoning controls.
+Knowledge configuration, bridge observations and reference/material actions live
+inside the closed-by-default `知识与来源` disclosure, preserving their original
+scoped controllers, guards and actionable errors. Source persistence degradation
+stays visible as a concise fact in the disclosure header. Do not turn caveats
+such as “不强制生成 PRD” into persistent navigation labels.
+
 ### Measured composer popup and context geometry
 
 The model and strength views share a 256px menu. Position it above the actual
@@ -349,4 +413,53 @@ rhythms, so loose Markdown lists do not inherit a full paragraph gap for every
 item. Preserve actual message content and the existing Markdown renderer; do not
 rewrite replies or inject headings merely to make a screenshot look structured.
 
-History-boundary keys retain the distinct `history:<root>:<session>` namespace; never reuse peer keys to accidentally retain orphan DOM.
+The default transcript has no knowledge setup/editor disclosure. Input plus and
+conversation More open `ConversationKnowledgePanel` through the shared Modal;
+scope, sources and materials remain available without occupying message flow.
+Modal owner is exact root/session and the selected seed identity. Root/session
+changes or interaction suspension close the transient panel. History-boundary
+keys retain the distinct `history:<root>:<session>` namespace; never reuse peer
+keys to accidentally retain orphan DOM. Mounted tests assert zero inline
+knowledge disclosures and exactly one explicitly opened owned panel.
+
+`partitionConversationEvents` moves only validated, non-error Trellis file facts
+without a matching selected task or real same-session/connection/turn into the
+explicit Project Activity view. Preserve original events, unknown/error facts
+and actual native tool edits. A filesystem watcher fact does not prove Agent
+authorship. Project activity remains readable on demand.
+
+Remove the primary copy-answer editor action. Users request document synthesis,
+publication or developer handoff naturally; the same Agent executes scoped tools.
+Show compact owned activity and actual source/document links, never artifacts or
+progress inferred from prose. Synthesize relevant turns, not one copied answer.
+Management editors are secondary. Missing publication-history capability cannot
+block scope/read/save; each feature checks its own required methods.
+
+`knowledge-operations.ts` accepts only ACP diagnostic facts with exact project,
+session, connection generation and turn plus `activityScope='turn'`. Collapse
+repeated facts by this complete identity and operation ID. Hide a duplicate native
+tool only when its structured MCP result marker matches an actual owned host
+operation; handle direct structuredContent, Codex result wrappers and bounded
+JSON text content, not arbitrary model prose/tool names. Unknown tools remain
+visible. Source links use the operation's actual persisted IDs; lookup links
+must match that turn. Documents may reference earlier supplied sources from the
+same conversation, never foreign-session or unsupplied handles. Document links
+read the exact returned artifact version. `KnowledgeOperationRow` reuses
+the existing source/document readers and shared Modal, with no extra Save step.
+Owner changes close transient readers. Pending/failed/uncertain cannot say saved
+or published. Preserve native permission prompts and readable failure details.
+
+For host-first lookup, `delivery='preparing'` on the actual accepted user row is
+not native delivery. Project only exact-owned `promptDelivery.state` receipts
+onto that row: hide the extra label after `sent`, show `not_sent` after pre-send
+failure/cancel, and never add a duplicate question or change archived events.
+Native tools, model prose and a foreign receipt cannot establish that status.
+Actual lookup status/persistence fields distinguish empty, partial, unavailable
+and degraded results without opening a configuration form.
+
+Text tabs must use text-sized shared controls; icon-sized `my-segment` controls
+cannot hold multi-character labels. Knowledge material body editors retain a
+readable multiline height despite shared field min-height specificity. Test
+actual computed geometry, default transcript/action count, exact operation/source
+provenance, plus/More, background-fact access and unchanged composer draft/focus
+with `acp-knowledge-convenience.mjs` and `knowledge-ui.mjs`.

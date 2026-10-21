@@ -11,8 +11,8 @@ export const PAGE_LAYOUTS = {
   inbox: 'full',
   jira: 'full',
   archive: 'centered',
-  analytics: 'centered',
-  team: 'centered',
+  analytics: 'full',
+  team: 'full',
   knowledge: 'full',
   spec: 'full',
   acp: 'full',
@@ -24,7 +24,7 @@ export const PAGE_LAYOUTS = {
   settings: 'centered',
   integrations: 'centered',
   gateway: 'centered',
-  devtools: 'centered'
+  devtools: 'full'
 } satisfies Record<Page, PageLayoutVariant>
 
 type LayoutProps = ComponentPropsWithoutRef<'div'> & { variant: PageLayoutVariant }

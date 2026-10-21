@@ -27,6 +27,7 @@ import { clsx } from 'clsx'
 import { Button, Checkbox } from '../my/ui'
 import { relTime } from '../utils/format'
 import { errorMessage } from '../../../shared/errors'
+import { useProjectKnowledge } from '../knowledge/bridge'
 import type {
   GatewayLogEntry,
   GatewaySecurityConfig,
@@ -40,7 +41,7 @@ import type { JSX } from 'react'
 
 export function GatewayPage(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
-  const settings = useApp((s) => s.settings)
+  const knowledge = useProjectKnowledge(snapshot?.meta.root ?? '')
   const pushToast = useApp((s) => s.pushToast)
   const setPage = useApp((s) => s.setPage)
 
@@ -305,15 +306,15 @@ export function GatewayPage(): JSX.Element {
                     <Cloud className="h-4 w-4 text-my-info-text" />
                     <h3 className="text-my-xs font-semibold text-my-primary">WeKnora 知识库</h3>
                   </div>
-                  {settings?.weknora?.enabled ? (
+                  {knowledge.context?.scope.status === 'ok' ? (
                     <span className="my-chip bg-my-success-subtle text-my-success-text">
                       <CheckCircle2 className="h-3 w-3" />
-                      已连接
+                      项目已绑定（未证明工具可用）
                     </span>
                   ) : (
                     <span className="my-chip bg-my-layer-3 text-my-tertiary">
                       <AlertCircle className="h-3 w-3" />
-                      未启用
+                      项目知识不可用
                     </span>
                   )}
                 </div>
@@ -321,15 +322,15 @@ export function GatewayPage(): JSX.Element {
                   企业级 RAG 知识平台，提供业务规则文档、技术架构标准与跨团队规范向量检索。
                 </p>
                 <div className="mt-3 space-y-1 font-mono text-my-xs text-my-tertiary">
-                  <div className="truncate">端点: {settings?.weknora?.baseUrl || '未配置'}</div>
-                  <div>挂载: {settings?.weknora?.searchKbIds?.length || 0} 个知识库</div>
+                  <div className="truncate">连接: {knowledge.context?.scope.connectionName || '未绑定'}</div>
+                  <div>项目范围: {knowledge.context?.scope.collectionIds.length || 0} 个知识库</div>
                 </div>
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-my-line pt-3">
                 <button
                   onClick={() => handleTestUpstream('weknora')}
-                  disabled={testingUpstreamId === 'weknora' || !settings?.weknora?.enabled}
+                  disabled={testingUpstreamId === 'weknora' || knowledge.context?.scope.status !== 'ok'}
                   className="my-control my-control-sm text-my-info-text hover:text-[var(--my-txt-info-secondary)] disabled:opacity-40"
                 >
                   {testingUpstreamId === 'weknora' ? (
@@ -340,7 +341,7 @@ export function GatewayPage(): JSX.Element {
                   <span>连通性探测</span>
                 </button>
                 <button
-                  onClick={() => setPage('settings')}
+                  onClick={() => setPage('integrations')}
                   className="text-my-xs text-my-tertiary hover:text-my-primary"
                 >
                   配置 →

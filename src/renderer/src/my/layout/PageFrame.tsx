@@ -5,6 +5,8 @@ import { getPageNavigation, navigationScopeLabel, type ToolView } from '../navig
 import { PAGE_LAYOUTS, PageBody, PageContent, PageHeader, PageLayout, PageNotice } from './PageLayout'
 
 const TEAM_TITLES = { overview: '概况', members: '成员', activity: '动态', reports: '报告' }
+/** Framed pages that fill the window: fixed bands above one internal scroll owner. */
+const LOCKED_PAGES: readonly Page[] = ['team', 'analytics', 'devtools']
 const TOOLS: ReadonlyArray<{ id: ToolView; label: string; page: Page }> = [
   { id: 'git', label: 'Git', page: 'devtools' }, { id: 'run', label: '运行', page: 'devtools' },
   { id: 'architecture', label: '架构', page: 'architecture' }, { id: 'studio', label: '定制', page: 'studio' }
@@ -32,6 +34,6 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
       </nav>}
     </PageHeader>}
     {!embeddedKnowledgeLayout && navigation.scopeNote && <PageNotice>{navigation.scopeNote}</PageNotice>}
-    <PageBody>{variant === 'centered' ? <PageContent>{children}</PageContent> : children}</PageBody>
+    <PageBody className={LOCKED_PAGES.includes(page) ? 'my-locked-body' : undefined}>{variant === 'centered' ? <PageContent>{children}</PageContent> : children}</PageBody>
   </PageLayout>
 }

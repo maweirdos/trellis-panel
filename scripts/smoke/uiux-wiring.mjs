@@ -176,7 +176,7 @@ try {
   const federated = new Harness(KnowledgePage)
   federated.render(); await settle(federated)
   find(federated, (node) => node.type === 'button' && node.props?.title?.startsWith('跨库联合检索')).props.onClick(); federated.render()
-  find(federated, (node) => node.props?.placeholder === '全文检索：中文/英文关键词混排…').props.onChange('local')
+  find(federated, (node) => node.props?.placeholder === '搜索资料…').props.onChange('local')
   federated.render(); await new Promise((resolveTimer) => setTimeout(resolveTimer, 320)); await settle(federated); await settle(federated)
   assert.ok(nodes(federated.tree).some((node) => node.key === 'a'), 'company failure leaves local search hits visible')
   assert.ok(JSON.stringify(federated.tree).includes('company unavailable'), 'company failure remains explicit')

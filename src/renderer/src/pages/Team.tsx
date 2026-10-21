@@ -16,12 +16,14 @@ import {
 } from 'lucide-react'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
+import { PageContent } from '../my/layout/PageLayout'
 import { api, hasIpc } from '../api'
 import { Button, EmptyState, Tabs } from '../my/ui'
 import { StatusBadge, PriorityBadge } from '../components/badges'
 import { statusLabel } from '../utils/labels'
 import { fmtIso, relTime, taskDateLabel } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
+import { TeamCollaborationEntry } from '../team/TeamCollaboration'
 import { clsx } from 'clsx'
 import type { JSX } from 'react'
 import type { AnalyticsResult, ProjectSnapshot, TaskInfo } from '../../../shared/types'
@@ -216,7 +218,7 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
             <GitCommitHorizontal size={13} className="text-my-tertiary" /> 最近记录
           </div>
           <p className="border-b border-my-line bg-my-layer-1 px-4 py-2 text-my-xs leading-5 text-my-secondary">来自任务、工作区文件和会话时间记录；负责人不等于实际操作者。</p>
-          <div className="my-scrollbar max-h-[640px] overflow-y-auto px-4 py-3">
+          <div className="px-4 py-3">
             {feedGroups.map(([label, items]) => (
               <div key={label} className="mb-4 last:mb-0">
                 {/* 吸顶日期分割栏 */}
@@ -484,8 +486,8 @@ function ReportTab(): JSX.Element {
   }
 
   return (
-    <div className="space-y-3 lg:col-span-5">
-      <div className="flex items-center gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex shrink-0 items-center gap-2">
         <div className="flex overflow-hidden rounded-my-md border border-my-line">
           {(
             [
@@ -536,7 +538,7 @@ function ReportTab(): JSX.Element {
         )}
       </div>
       {markdown ? (
-        <pre className="max-h-[60vh] select-text overflow-auto rounded-my-xl border border-my-line bg-my-canvas p-4 font-mono text-my-sm leading-5 text-my-secondary">
+        <pre className="min-h-0 flex-1 select-text overflow-auto rounded-my-xl border border-my-line bg-my-canvas p-4 font-mono text-my-sm leading-5 text-my-secondary">
           {markdown}
         </pre>
       ) : (
@@ -642,57 +644,58 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
   }
 
   return (
-    <div>
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            {[
-              ['已知成员', members.filter((member) => member.name !== '未分配').length],
-              ['未结束', inflightCount],
-              ['近 7 天完成', doneThisWeek],
-              ['AI 会话', snapshot.sessions.length]
-            ].map(([label, v]) => (
-              <span key={label as string} className="my-chip bg-my-layer-2 text-my-tertiary">
-                {label} <span className="ml-0.5 font-mono text-my-secondary">{v}</span>
-              </span>
-            ))}
-          </div>
-
+    <PageContent className="my-locked-canvas gap-5">
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <TeamCollaborationEntry root={snapshot.meta.root} />
+        <div className="flex items-center gap-1.5">
+          {[
+            ['已知成员', members.filter((member) => member.name !== '未分配').length],
+            ['未结束', inflightCount],
+            ['近 7 天完成', doneThisWeek],
+            ['AI 会话', snapshot.sessions.length]
+          ].map(([label, v]) => (
+            <span key={label as string} className="my-chip bg-my-layer-2 text-my-tertiary">
+              {label} <span className="ml-0.5 font-mono text-my-secondary">{v}</span>
+            </span>
+          ))}
         </div>
 
-        {currentTask?.record && section === 'overview' && (
-          <div className="my-card flex items-center gap-4 px-5 py-3.5">
-            <Star size={15} className="shrink-0 text-my-accent-text" fill="currentColor" />
-            <div className="min-w-0 flex-1">
-              <div className="text-my-xs uppercase tracking-wider text-my-tertiary">最近会话绑定的任务</div>
-              <button onClick={() => showTask(currentTask.dirName)} className="truncate text-my-xs font-medium text-my-primary hover:text-my-accent-text">
-                {currentTask.record.title}
-              </button>
-            </div>
-            <StatusBadge status={currentTask.record.status} />
-            <Button variant="outline" className="shrink-0" onClick={() => void shareTask(currentTask)}>
-              <Share2 size={12} /> 分享
-            </Button>
-          </div>
-        )}
+      </div>
 
-        {section === 'overview' && <>
+      {currentTask?.record && section === 'overview' && (
+        <div className="my-card flex shrink-0 items-center gap-4 px-5 py-3.5">
+          <Star size={15} className="shrink-0 text-my-accent-text" fill="currentColor" />
+          <div className="min-w-0 flex-1">
+            <div className="text-my-xs uppercase tracking-wider text-my-tertiary">最近会话绑定的任务</div>
+            <button onClick={() => showTask(currentTask.dirName)} className="truncate text-my-xs font-medium text-my-primary hover:text-my-accent-text">
+              {currentTask.record.title}
+            </button>
+          </div>
+          <StatusBadge status={currentTask.record.status} />
+          <Button variant="outline" className="shrink-0" onClick={() => void shareTask(currentTask)}>
+            <Share2 size={12} /> 分享
+          </Button>
+        </div>
+      )}
+
+      {section === 'overview' && <div className="my-locked-scroll my-scrollbar">
+        <div className="space-y-5">
           <p className="text-my-sm text-my-secondary">成员来自当前项目开发者与任务负责人记录；负载按未结束任务汇总。</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setSection('members')}>查看成员</Button>
             <Button variant="ghost" onClick={() => setSection('activity')}>查看动态</Button>
           </div>
           <BoardTab feed={feed} members={members} snapshot={snapshot} />
-        </>}
-        {section === 'members' && <BoardTab feed={feed} members={members} snapshot={snapshot} mode="members" />}
-        {section === 'activity' && <BoardTab feed={feed} members={members} snapshot={snapshot} mode="activity" />}
-        {section === 'reports' && <>
-          <Tabs tabs={[{ id: 'daily', label: '日报' }, { id: 'weekly', label: '周报' }]} active={reportType} onChange={setReportType} />
-          {reportType === 'daily' ? <StandupTab /> : <ReportTab />}
-        </>}
+        </div>
+      </div>}
+      {section === 'members' && <div className="my-locked-scroll my-scrollbar"><BoardTab feed={feed} members={members} snapshot={snapshot} mode="members" /></div>}
+      {section === 'activity' && <div className="my-locked-scroll my-scrollbar"><BoardTab feed={feed} members={members} snapshot={snapshot} mode="activity" /></div>}
+      {section === 'reports' && <div className="my-locked-scroll my-scrollbar flex flex-col">
+        <div className="shrink-0"><Tabs tabs={[{ id: 'daily', label: '日报' }, { id: 'weekly', label: '周报' }]} active={reportType} onChange={setReportType} /></div>
+        <div className="mt-3 min-h-0 flex-1">{reportType === 'daily' ? <StandupTab /> : <ReportTab />}</div>
+      </div>}
 
-      </div>
-    </div>
+    </PageContent>
   )
 }
 
@@ -719,8 +722,8 @@ function StandupTab(): JSX.Element {
   }, [])
 
   return (
-    <div className="my-card p-4">
-      <div className="mb-3 flex items-center gap-2">
+    <div className="my-card flex min-h-0 flex-1 flex-col p-4">
+      <div className="mb-3 flex shrink-0 items-center gap-2">
         <span className="text-my-xs font-semibold text-my-primary">每日站会摘要</span>
         <span className="text-my-xs text-my-tertiary">完成 · 在途 · 阻塞</span>
         <div className="ml-auto flex gap-1.5">
@@ -753,7 +756,7 @@ function StandupTab(): JSX.Element {
           </Button>
         </div>
       </div>
-      <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-secondary">
+      <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-secondary">
         {markdown || '生成中…'}
       </pre>
     </div>

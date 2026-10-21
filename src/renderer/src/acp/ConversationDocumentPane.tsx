@@ -120,7 +120,7 @@ export function ConversationDocumentPane(props: ConversationDocumentPaneProps): 
       <div ref={bodyRef} onMouseUp={captureSelection} onKeyUp={captureSelection} className="acp-document__body my-scrollbar min-h-0 flex-1 overflow-auto" style={{ fontSize: 'var(--my-text-document)', lineHeight: 'var(--my-line-document)' }}>
         <PageContent variant={expanded ? 'centered' : 'full'}>
         {!validPath ? <p role="alert" className="text-my-sm text-my-danger-text">此路径不属于当前任务，已拒绝读取。</p> :
-          <DocumentReaderSurface reader={reader} relativePath={relativePath} variant="compact" />}
+          <DocumentReaderSurface reader={reader} relativePath={relativePath} variant="compact" showOutline={false} origin={{ sessionId, taskDir, ...(connectionGeneration ? { connectionGeneration } : {}) }} />}
         </PageContent>
       </div>
     </section>

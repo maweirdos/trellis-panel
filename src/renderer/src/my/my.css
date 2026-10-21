@@ -6,3 +6,5 @@
 @import './my-utilities.css';
 @import './my-dashboard.css';
 @import './my-applications.css';
+@import '../git-workspace/git-workspace.css';
+@import './git/git.css';

@@ -67,12 +67,12 @@ export const gitlabPort: RepositoryPort = {
   async inspect(c) { const client = await gitlab(c); const r = await client.Users.showCurrentUser(); return textOf(r.username) },
   async repositories(c, page, query) {
     const client = await gitlab(c)
-    const r = await client.Projects.all({ membership: true, search: query || undefined, page, perPage: SIZE, maxPages: 1 })
+    const r = await client.Projects.all({ membership: true, search: query || undefined, pagination: 'offset', page, perPage: SIZE, maxPages: 1 })
     return pageOf(rowsOf(r).map((v) => repositoryOf(v, 'path_with_namespace', 'web_url')), page)
   },
   async pullRequests(c, repo, page) {
     const client = await gitlab(c)
-    const r = await client.MergeRequests.all({ projectId: repo, page, perPage: SIZE, maxPages: 1, state: 'all', orderBy: 'updated_at' })
+    const r = await client.MergeRequests.all({ projectId: repo, page, perPage: SIZE, maxPages: 1, orderBy: 'updated_at' })
     return pageOf(rowsOf(r).map((v) => pullOf(c, repo, v, true)), page)
   }
 }

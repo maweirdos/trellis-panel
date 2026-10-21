@@ -57,6 +57,7 @@ function normalizedConfig(input: SaveConnectionInput, legacy: boolean): Record<s
     try { url = new URL(config.baseUrl) } catch { throw new IntegrationError('请输入有效的实例地址') }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new IntegrationError('实例地址只能包含 HTTP(S) 协议、主机和路径')
     config.baseUrl = url.href.replace(/\/+$/, '')
+    if (input.providerId === 'weknora') config.baseUrl = config.baseUrl.replace(/\/api\/v1$/i, '')
   }
   if (input.providerId === 'jira' && config.statusMap) {
     try { const map: unknown = JSON.parse(config.statusMap); if (!map || typeof map !== 'object' || Array.isArray(map) || Object.values(map).some((v) => typeof v !== 'string')) throw new Error('map') }
@@ -126,6 +127,23 @@ export async function authorizeConnection(input: ConnectionRequest, signal: Abor
     return toPublic(stored)
   })
 }
+/** Import origin and protected connection commit atomically; the old settings are never edited. */
+export function saveImportedKnowledgeConnection(input: SaveConnectionInput): IntegrationConnection {
+  if (input.providerId !== 'weknora' || input.id) throw new IntegrationError('只支持导入新的 WeKnora 连接')
+  const config = normalizedConfig(input, false)
+  const key = input.secrets.apiKey
+  if (key?.op !== 'replace') throw new IntegrationError('导入需要可解密的旧凭证', 'denied')
+  const secret = protectSecret(key.value)
+  return updateIntegrationState((state) => {
+    const imported = state.legacyImports['settings.weknora']
+    const previous = state.connections.find((connection) => connection.id === imported && !connection.deleted)
+    if (previous) return toPublic(previous)
+    if (imported) throw new IntegrationError('旧配置已导入且连接已删除，请显式新建连接', 'conflict')
+    const connection: StoredConnection = { id: randomUUID(), providerId: 'weknora', name: input.name, enabled: input.enabled, revision: 1, config, secrets: { apiKey: secret }, check: 'unverified', checkedAt: null, detail: '', deleted: false }
+    state.connections.push(connection); state.legacyImports['settings.weknora'] = connection.id
+    return toPublic(connection)
+  })
+}
 export function removeConnection(input: ConnectionRequest): null {
   const connection = integrationSnapshot().connections.find((c) => c.id === input.connectionId)
   if (!connection || connection.revision !== input.connectionRevision) throw new IntegrationError('连接已更新或不存在', 'conflict')
@@ -166,11 +184,15 @@ export function saveBinding(input: SaveBindingInput): IntegrationBinding {
   const root = canonicalRoot(requireProject(input.expectedRoot))
   const connection = resolveConnection(input)
   if (integrationRegistry.get(connection.public.providerId).repository && !input.scope) throw new IntegrationError('请先选择或填写项目绑定的仓库路径')
+  if (connection.public.providerId === 'weknora' && (!input.knowledge || (input.enabled && !input.knowledge.defaultCollectionIds.length))) throw new IntegrationError('请选择项目默认知识库；空范围不会检索远端')
+  if (connection.public.providerId === 'weknora' && input.scope) throw new IntegrationError('知识绑定使用类型化知识库选择，不接受仓库/JQL 范围')
+  if (connection.public.providerId !== 'weknora' && input.knowledge) throw new IntegrationError('此连接不支持知识库绑定')
   return updateIntegrationState((state) => {
     const previous = input.id ? state.bindings.find((b) => b.id === input.id && b.root === root) : undefined
     if (input.id && (!previous || previous.revision !== input.revision)) throw new IntegrationError('项目绑定已更新，请刷新', 'conflict')
-    const binding: IntegrationBinding = { id: previous?.id ?? randomUUID(), root, connectionId: input.connectionId, revision: (previous?.revision ?? 0) + 1, label: input.label, scope: input.scope, enabled: input.enabled }
+    const binding: IntegrationBinding = { id: previous?.id ?? randomUUID(), root, connectionId: input.connectionId, revision: (previous?.revision ?? 0) + 1, label: input.label, scope: input.scope, enabled: input.enabled, ...(input.knowledge ? { knowledge: input.knowledge } : {}) }
     if (connection.public.providerId === 'jira' && binding.enabled) state.bindings.filter((b) => b.root === root && b.id !== binding.id && b.enabled && [...legacyConnections(), ...state.connections.map(toPublic)].some((c) => c.id === b.connectionId && c.providerId === 'jira')).forEach((b) => { b.enabled = false; b.revision++ })
+    if (connection.public.providerId === 'weknora' && binding.enabled) state.bindings.filter((b) => b.root === root && b.id !== binding.id && b.enabled && state.connections.some((c) => c.id === b.connectionId && c.providerId === 'weknora')).forEach((b) => { b.enabled = false; b.revision++ })
     if (previous) state.bindings[state.bindings.indexOf(previous)] = binding; else state.bindings.push(binding)
     return binding
   })

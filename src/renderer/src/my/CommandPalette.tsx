@@ -71,7 +71,7 @@ export function CommandPalette(): JSX.Element | null {
         id: `n-team-${section}`, section: '导航 · 团队', label: { members: '成员', activity: '动态', reports: '报告' }[section], icon: <NavIcon name="views" size={14} />, hint: '当前项目',
         run: () => { useMy.getState().setTeamView(section); setPageMain('team'); setOpen(false) }
       })),
-      { id: 'n-roles', section: '导航 · 智能体', label: '角色', icon: <NavIcon name="inbox" size={14} />, hint: '当前项目', keywords: 'Agent 我的角色', run: () => { useMy.getState().requestAgentView('roles'); setPageMain('acp'); setOpen(false) } },
+      { id: 'n-roles', section: '导航 · 对话', label: '角色', icon: <NavIcon name="inbox" size={14} />, hint: '当前项目', keywords: 'Agent 我的角色', run: () => { useMy.getState().requestAgentView('roles'); setPageMain('acp'); setOpen(false) } },
       { id: 'n-company', section: '导航 · 知识', label: '知识库', icon: <NavIcon name="pages" size={14} />, hint: '跨项目资料', run: () => { useMy.getState().setKnowledgeView('company'); setPageMain('knowledge'); setOpen(false) } },
       { id: 'n-engines', section: '导航 · 设置', label: '引擎', icon: <NavIcon name="modules" size={14} />, hint: '本机', keywords: 'Runtime ACP Codex Claude 环境', run: () => { useMy.getState().setSettingsView('engines'); setPageMain('settings'); setOpen(false) } },
       { id: 'n-run', section: '导航 · 任务', label: '运行', icon: <NavIcon name="views" size={14} />, hint: '本机项目工具', run: () => { useMy.getState().setToolView('run'); setPageMain('devtools'); setOpen(false) } },
@@ -116,7 +116,7 @@ export function CommandPalette(): JSX.Element | null {
         }
       }
     ]
-    const sections = ['首页', '智能体', '任务', '团队', '知识', '设置'].map((label) => `导航 · ${label}`)
+    const sections = ['首页', '对话', '任务', '团队', '知识', '设置'].map((label) => `导航 · ${label}`)
     return [...nav, ...extra].sort((a, b) => sections.indexOf(a.section) - sections.indexOf(b.section)).concat(issues, actions)
   }, [data, theme, go, setWorkItemsView, setPageMain, openIssue, setOpen, setCreateIssueOpen])
 

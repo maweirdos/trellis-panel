@@ -22,17 +22,28 @@
 | [environment.md](./environment.md)                 | Dev/prod isolation, userData separation           | Setting up environment, debugging  |
 | [window-appearance.md](./window-appearance.md)     | Ordinary native frame/theme decoration, resize preservation | Changing main-window chrome or theme updates |
 | [window-navigation.md](./window-navigation.md) | Trusted app documents, external links, redirects and popup routing | Adding windows or link navigation |
+| [task-conversations.md](./task-conversations.md) | Native session metadata, durable task links, bounded editor navigation and equal-width homepage entries | Task conversation continuation |
+| [local-document-links.md](./local-document-links.md) | Narrow Markdown document opener, main-owned roots, safe paths and visible errors | Local HTML/PDF/Markdown/text links |
+| [knowledge-document-reading.md](./knowledge-document-reading.md) | Saved-revision Modal, project-relative images and version-aware local opening | Product-document preview and assets |
 | [document-watch.md](./document-watch.md)           | Opaque watch leases, project generations and exact release | Modern reader watch/IPC cleanup |
 | [type-safety.md](./type-safety.md)                 | Zod schemas, discriminated unions, type patterns  | Type-related decisions             |
 | [logging.md](./logging.md)                         | Logging and native module packaging               | Debugging, packaging               |
 | [pagination.md](./pagination.md)                   | Cursor vs offset pagination guidelines            | Implementing list APIs             |
+| [git-viewer.md](./git-viewer.md) | Bounded read-only history, commit files/diffs, request ownership and extracted algorithm provenance | Developer-tools Git viewer changes |
 | [quality.md](./quality.md)                         | Import paths, Vite config, code quality           | Before committing                  |
 | [macos-permissions.md](./macos-permissions.md)     | macOS system permissions (mic, accessibility)     | Features requiring permissions     |
 | [text-input.md](./text-input.md)                   | Text insertion without clipboard pollution        | Voice-to-text, paste features      |
 | [ipc-conventions.md](./ipc-conventions.md)         | IPC channel registry, error codes, event streams (TPD-001/002/003) | Adding or modifying any IPC channel |
 | [app-runtime.md](./app-runtime.md) | Owned local application lifecycle, environment, exact launch approval, CLI and quit contracts | Application run-panel or Agent startup changes |
+| [git-workspace.md](./git-workspace.md) | Main-only manual Git writes, reviewed index/HEAD fences, native confirmation and bounded recovery | Git stage/commit/branch/push changes |
 | [integrations.md](./integrations.md) | Provider ports, protected connections, project bindings, source identity, SDK transport and manual notifications (TPD-025) | External app integration changes |
+| [knowledge-access.md](./knowledge-access.md) | Project knowledge scope, evidence, native conversational document/publication/handoff actions, CAS and receipts | Knowledge / Agent / WeKnora changes |
 | [acp-runtime.md](./acp-runtime.md)                 | Pinned runtime, exact approvals, full history archive/paging, explicit model recovery, cleanup and acceptance | ACP Agent, history, dependency or packaging changes |
+| [workflow-control.md](./workflow-control.md) | Durable commands, leases, outbox, process recovery and committed event cursors | Workflow control/admission/reconciliation |
+| [workflow-runtime.md](./workflow-runtime.md) | Immutable input/output versions, native adapter, exact prompt receipts and stop finalization | Managed stages and ACP material composition |
+| [workflow-reading.md](./workflow-reading.md) | Fixed source/version registry, independent native views, exact origin and comparison | Workflow output/native document reading |
+| [workflow-application.md](./workflow-application.md) | Main-owned admission, source/execution fences, native session lineage and retained recovery protection | Workflow application/desktop API and quit |
+| [team-platform.md](./team-platform.md) | Separate team authority, explicit publication, protected device pairing, scoped cursors and offline command reconciliation | Team service, supplemental Web and desktop synchronization |
 | [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |
 
 ---

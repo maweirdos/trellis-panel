@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
+import type { DocumentWindowApi, DocumentOriginReturn } from '../shared/document-windows'
 import type {
   DocumentChangedEvent,
   DocumentDiffOutcome,
@@ -20,8 +21,12 @@ import type {
 } from '../shared/observability/store'
 import type { IpcFail } from '../shared/ipc-errors'
 import type { IntegrationApi } from '../shared/integrations'
+import type { KnowledgeApi } from '../shared/knowledge-access'
 import type { TrellisApi } from '../shared/types'
+import type { TaskConversationsApi } from '../shared/task-conversations'
 import type { ApplicationRuntimeApi, ApplicationRuntimeEvent } from '../shared/app-runtime'
+import type { GitHistoryRequest, GitCommitRequest, GitCommitDiffRequest } from '../shared/git-readonly'
+import type { GitWorkspaceApi } from '../shared/git-workspace'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
@@ -70,8 +75,53 @@ const applicationApi: ApplicationRuntimeApi = {
   }
 }
 
+const taskConversationsApi: TaskConversationsApi = {
+  taskConversationsList: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.list, input),
+  taskConversationsDiscover: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.discover, input),
+  taskConversationsBind: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.bind, input),
+  taskConversationsSetPrimary: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.setPrimary, input),
+  taskConversationsUnbind: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.unbind, input),
+  taskConversationsOpen: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.open, input)
+}
+
 const api = {
+  gitWorkspace: {
+    status: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.status, input),
+    diff: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.diff, input),
+    stage: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.stage, input),
+    unstage: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.unstage, input),
+    commit: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.commit, input),
+    createBranch: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.createBranch, input),
+    switchBranch: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.switchBranch, input),
+    push: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.push, input)
+  } satisfies GitWorkspaceApi,
   ...applicationApi,
+  ...taskConversationsApi,
+  knowledgeAccess: {
+    artifactImage: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.artifactImage, input),
+    artifactOpenLocal: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.artifactOpenLocal, input),
+    context: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.context, input),
+    collections: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.collections, input),
+    updateScope: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.updateScope, input),
+    search: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.search, input),
+    documents: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.documents, input),
+    read: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.read, input),
+    source: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.source, input),
+    sources: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.sources, input),
+    cancel: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.cancel, input),
+    importLegacy: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.importLegacy, input),
+    saveArtifact: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.saveArtifact, input),
+    artifacts: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.artifacts, input),
+    artifact: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.artifact, input),
+    taskPrd: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.taskPrd, input),
+    handoff: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.handoff, input),
+    previewPublication: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.previewPublication, input),
+    confirmPublication: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.confirmPublication, input),
+    publications: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.publications, input),
+    publicationPage: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.publicationPage, input),
+    resolvePublication: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.resolvePublication, input),
+    clearHistory: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.clearHistory, input)
+  } satisfies KnowledgeApi,
   integrations: {
     authorize: (input) => ipcRenderer.invoke(ipcInvoke.integration.authorize, input),
     cancelAuthorization: (requestId) => ipcRenderer.invoke(ipcInvoke.integration.cancelAuthorization, { requestId }),
@@ -108,6 +158,9 @@ const api = {
   devtoolsGitStatus: () => ipcRenderer.invoke(ipcInvoke.devtools.gitStatus),
   devtoolsGitFileDiff: (relPath: string, staged: boolean) =>
     ipcRenderer.invoke(ipcInvoke.devtools.gitFileDiff, relPath, staged),
+  devtoolsGitHistory: (request: GitHistoryRequest) => ipcRenderer.invoke(ipcInvoke.devtools.gitHistory, request),
+  devtoolsGitCommit: (request: GitCommitRequest) => ipcRenderer.invoke(ipcInvoke.devtools.gitCommit, request),
+  devtoolsGitCommitDiff: (request: GitCommitDiffRequest) => ipcRenderer.invoke(ipcInvoke.devtools.gitCommitDiff, request),
   devtoolsListScripts: (dir: string) => ipcRenderer.invoke(ipcInvoke.devtools.listScripts, dir),
   devRunStart: (dir: string, script: string) => ipcRenderer.invoke(ipcInvoke.devtools.devRunStart, dir, script),
   devRunStop: (id: string) => ipcRenderer.invoke(ipcInvoke.devtools.devRunStop, id),
@@ -161,6 +214,7 @@ const api = {
   revealInExplorer: (p: string) => ipcRenderer.invoke(ipcInvoke.shell.reveal, p),
   openInEditor: (p: string) => ipcRenderer.invoke(ipcInvoke.shell.openInEditor, p),
   openExternal: (url: string) => ipcRenderer.invoke(ipcInvoke.shell.openExternal, url),
+  openLocalDocument: (href: string) => ipcRenderer.invoke(ipcInvoke.shell.openLocalDocument, href),
 
   getSettings: () => ipcRenderer.invoke(ipcInvoke.settings.get),
   onThemeChanged: (cb: (theme: Settings['theme']) => void) => subscribe(ipcEvent.themeChanged, cb),
@@ -232,6 +286,49 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.kb.qaSave, entry),
   kbQaClear: () => ipcRenderer.invoke(ipcInvoke.kb.qaClear),
 
+  teamDesktop: {
+    connections: () => ipcRenderer.invoke(ipcInvoke.teamDesktop.connections),
+    connectionContext: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.connectionContext, id),
+    beginPairing: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.beginPairing, input),
+    openPairing: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.openPairing, id),
+    pollPairing: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.pollPairing, id),
+    disconnect: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.disconnect, id),
+    heartbeat: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.heartbeat, id),
+    queueAuthoredPublication: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.queueAuthoredPublication, input),
+    queueFeedback: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.queueFeedback, input),
+    outbox: (id, options) => ipcRenderer.invoke(ipcInvoke.teamDesktop.outbox, id, options),
+    cancelQueued: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.cancelQueued, id),
+    dispatch: (id, options) => ipcRenderer.invoke(ipcInvoke.teamDesktop.dispatch, id, options),
+    reconcile: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.reconcile, id),
+    readDocument: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.readDocument, input),
+    listMaterials: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.listMaterials, input),
+    listVersions: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.listVersions, input),
+    listFeedback: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.listFeedback, input),
+    syncEvents: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.syncEvents, id),
+    refreshSharedSnapshot: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.refreshSharedSnapshot, id),
+    cachedSnapshot: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.cachedSnapshot, id),
+    queueWorkflowMaterial: (root, input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.queueWorkflowMaterial, root, input),
+    onChanged: (callback) => subscribe(ipcEvent.teamDesktopChanged, callback)
+  } satisfies import('../shared/team-desktop-bridge').TeamDesktopBridgeApi,
+  managedWorkflow: {
+    templates: (root) => ipcRenderer.invoke(ipcInvoke.workflow.templates, root),
+    preview: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.preview, root, input),
+    start: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.start, root, input),
+    snapshot: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.snapshot, root, input),
+    events: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.events, root, input),
+    stop: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.stop, root, input),
+    artifact: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.artifact, root, input),
+    previewRevision: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.previewRevision, root, input),
+    acceptRevision: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.acceptRevision, root, input),
+    cancelRevision: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.cancelRevision, root, input),
+    revisionStatus: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.revisionStatus, root, input),
+    inspectRecovery: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.inspectRecovery, root, input),
+    recoveryArtifact: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.recoveryArtifact, root, input),
+    subscribe: (root, input) => ipcRenderer.invoke(ipcInvoke.workflow.subscribe, root, input),
+    unsubscribe: (leaseId) => ipcRenderer.invoke(ipcInvoke.workflow.unsubscribe, leaseId),
+    onOutput: (callback) => subscribe(ipcEvent.workflowOutput, callback),
+    onDone: (callback) => subscribe(ipcEvent.workflowDone, callback)
+  } satisfies import('../shared/workflow-desktop').WorkflowDesktopApi,
   flowList: () => ipcRenderer.invoke(ipcInvoke.flow.list),
   flowRead: (id: string) => ipcRenderer.invoke(ipcInvoke.flow.read, id),
   flowSave: (def: import('../shared/types').FlowDef) => ipcRenderer.invoke(ipcInvoke.flow.save, def),
@@ -388,10 +485,12 @@ const api = {
   pullPendingFocus: () => ipcRenderer.invoke(ipcInvoke.bridge.pullFocus),
   copyToClipboard: (text: string) => ipcRenderer.invoke(ipcInvoke.util.clipboard, text),
   setCapsuleMode: (on: boolean) => ipcRenderer.send(ipcInvoke.win.capsule, on),
+  openMainTask: (projectRoot: string, taskDir: string) => ipcRenderer.invoke(ipcInvoke.win.openTask, projectRoot, taskDir),
   setCapsuleOnTop: (on: boolean) => ipcRenderer.invoke(ipcInvoke.capsule.onTop, on),
   setCapsuleShape: (shape: 'pill' | 'card') => ipcRenderer.invoke(ipcInvoke.capsule.setShape, shape),
   closeCapsule: () => ipcRenderer.invoke(ipcInvoke.capsule.close),
   resizeCapsule: (width: number, height: number) => ipcRenderer.invoke(ipcInvoke.capsule.resize, width, height),
+  showQuickTodo: () => ipcRenderer.invoke(ipcInvoke.quicktodo.show),
   closeQuickTodo: () => ipcRenderer.invoke(ipcInvoke.quicktodo.close),
   onQuickTodoShown: (cb: () => void) => subscribe(ipcEvent.quickTodoShown, cb),
   onToast: (cb: (e: ToastEvent) => void) => subscribe(ipcEvent.toast, cb),
@@ -450,7 +549,19 @@ const api = {
       mtime?: number
       error?: string
     }>,
-  docSetPin: (on: boolean) => ipcRenderer.invoke(ipcInvoke.doc.setPin, on) as Promise<{ ok: boolean }>
+  docSetPin: (on: boolean) => ipcRenderer.invoke(ipcInvoke.doc.setPin, on) as Promise<{ ok: boolean; pinned?: boolean; error?: string }>,
+  documentVersions: (...args: Parameters<DocumentWindowApi['documentVersions']>) => ipcRenderer.invoke(ipcInvoke.doc.versions, ...args),
+  documentCaptureVersion: (...args: Parameters<DocumentWindowApi['documentCaptureVersion']>) => ipcRenderer.invoke(ipcInvoke.doc.captureVersion, ...args),
+  documentCompareVersions: (...args: Parameters<DocumentWindowApi['documentCompareVersions']>) => ipcRenderer.invoke(ipcInvoke.doc.compareVersions, ...args),
+  documentOpenWindow: (...args: Parameters<DocumentWindowApi['documentOpenWindow']>) => ipcRenderer.invoke(ipcInvoke.doc.openVersion, ...args),
+  documentWindowBootstrap: () => ipcRenderer.invoke(ipcInvoke.doc.bootstrap),
+  documentWindowSourceState: () => ipcRenderer.invoke(ipcInvoke.doc.sourceState),
+  documentWindowRead: (...args: Parameters<DocumentWindowApi['documentWindowRead']>) => ipcRenderer.invoke(ipcInvoke.doc.current, ...args),
+  documentWindowWatch: (...args: Parameters<DocumentWindowApi['documentWindowWatch']>) => ipcRenderer.invoke(ipcInvoke.doc.watch, ...args),
+  documentWindowUnwatch: (...args: Parameters<DocumentWindowApi['documentWindowUnwatch']>) => ipcRenderer.invoke(ipcInvoke.doc.unwatch, ...args),
+  documentWindowDiff: (...args: Parameters<DocumentWindowApi['documentWindowDiff']>) => ipcRenderer.invoke(ipcInvoke.doc.diff, ...args),
+  documentWindowReturn: () => ipcRenderer.invoke(ipcInvoke.doc.returnOrigin),
+  onDocumentOriginReturn: (callback: (origin: DocumentOriginReturn) => void) => subscribe(ipcEvent.documentOriginReturn, callback)
 }
 
 export type Api = typeof api

@@ -98,6 +98,11 @@ untrusted data at the receiving application boundary, not only in the renderer.
   owner fencing, durable recovery or remote reconciliation; R1 provides those.
   `verifyWorkflowCommand` recomputes the canonical payload digest and rejects a
   mismatch; this verification alone does not admit or dispatch the command.
+- Operation `purpose` is optionally `execute-step`, `stop-run` or `reconcile`.
+  Missing legacy purpose means ordinary execution. Persist it with admitted
+  intent; an operation ID/name cannot imply permission to dispatch superseded
+  work. The durable store fences ordinary dispatch to the active head while
+  explicitly scoped stop/reconcile can address an admitted old run.
 
 ### Driver, report and journal ports
 

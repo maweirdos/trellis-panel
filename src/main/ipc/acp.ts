@@ -3,7 +3,7 @@
  * projectRoot 统一取自 state（本层允许 import state；acp 服务保持无环叶子）。
  */
 import { ipcInvoke } from '../../shared/ipc-channels'
-import { noProject } from '../../shared/ipc-errors'
+import { noProject, ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
 import { getProjectRoot, getProjectGeneration } from '../state'
 import type { AcpBindTaskInput, AcpPromptOptions } from '../../shared/types'
 import {
@@ -18,6 +18,7 @@ import {
   listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel
 } from '../services/acp'
 import { handle } from './registry'
+import { isManagedWorkflowOrigin, withOrdinaryWorkflowAdmission, withOrdinaryConnectionAdmission } from '../services/workflow-desktop'
 
 export function registerAcpIpc(): void {
   handle(ipcInvoke.acp.agents, () => listAcpAgents())
@@ -44,32 +45,52 @@ export function registerAcpIpc(): void {
   })
   handle(ipcInvoke.acp.historyEvents, (_e, id, input) => scopedHistory((root) => getAcpHistoryEvents(root, id, input)))
   handle(ipcInvoke.acp.historyRetry, (_e, id) => scopedHistory((root) => retryAcpHistorySession(root, id)))
+  const connection = async <T extends { ok: boolean }>(root: string, target: { sessionId?: string; profileId?: string }, action: () => Promise<T>): Promise<T | IpcFail> => {
+    if (!root) return noProject()
+    try { return await withOrdinaryConnectionAdmission(root, target, action) }
+    catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+      return ipcFail(code === 'E_CONFLICT' || code === 'SCOPE_CHANGED' ? IpcErrorCode.Conflict : IpcErrorCode.Io, error instanceof Error ? error.message : '工作区暂不能接纳原生连接')
+    }
+  }
   handle(ipcInvoke.acp.sessionRecoverModel, (_e, id, input) => {
     const root = getProjectRoot() ?? ''
     const generation = getProjectGeneration()
-    return recoverAcpSessionModel(root, id, input, () => getProjectRoot() === root && getProjectGeneration() === generation)
+    return connection(root, { sessionId: id }, () => recoverAcpSessionModel(root, id, input, () => getProjectRoot() === root && getProjectGeneration() === generation))
   })
 
-  handle(ipcInvoke.acp.sessionNew, (_e, input: { agentId: string; taskDir?: string }) => {
+  handle(ipcInvoke.acp.sessionNew, (_e, input: { agentId: string; taskDir?: string; profileId?: string }) => {
     const root = getProjectRoot()
     if (!root) return noProject()
-    return newAcpSession(root, input)
+    return connection(root, { profileId: typeof input?.profileId === 'string' ? input.profileId : undefined }, () => newAcpSession(root, input))
   })
 
-  handle(ipcInvoke.acp.sessionPrompt, (_e, sessionId: string, text: string, options?: AcpPromptOptions) => {
+  handle(ipcInvoke.acp.sessionPrompt, async (_e, sessionId: string, text: string, options?: AcpPromptOptions) => {
     const root = getProjectRoot() ?? ''
     const generation = getProjectGeneration()
-    return promptAcpSession(root, sessionId, text, options, () => getProjectRoot() === root && getProjectGeneration() === generation)
+    if (!root) return noProject()
+    try {
+      return await withOrdinaryWorkflowAdmission(root, sessionId, options?.expectedConnectionGeneration, (admitted) =>
+        promptAcpSession(root, sessionId, text, options, () => getProjectRoot() === root && getProjectGeneration() === generation && admitted(), generation))
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+      return ipcFail(code === 'E_CONFLICT' || code === 'SCOPE_CHANGED' ? IpcErrorCode.Conflict : IpcErrorCode.Io, error instanceof Error ? error.message : '工作区暂不能接纳新的修改指令')
+    }
   })
-  handle(ipcInvoke.acp.sessionBindTask, (_e, sessionId: string, input: AcpBindTaskInput) => {
+  handle(ipcInvoke.acp.sessionBindTask, async (_e, sessionId: string, input: AcpBindTaskInput) => {
     const root = getProjectRoot() ?? ''
     const generation = getProjectGeneration()
+    if (root && await isManagedWorkflowOrigin(root, sessionId, undefined, true)) return ipcFail(IpcErrorCode.Conflict, '请先停止托管工作流，再更改会话绑定的任务')
     return bindAcpSessionTask(root, sessionId, input, () => getProjectRoot() === root && getProjectGeneration() === generation)
   })
 
   handle(ipcInvoke.acp.sessionCancel, (_e, sessionId: string) => cancelAcpSession(getProjectRoot() ?? '', sessionId))
 
-  handle(ipcInvoke.acp.sessionKill, (_e, sessionId: string) => killAcpSession(getProjectRoot() ?? '', sessionId))
+  handle(ipcInvoke.acp.sessionKill, async (_e, sessionId: string) => {
+    const root = getProjectRoot() ?? ''
+    if (root && await isManagedWorkflowOrigin(root, sessionId, undefined, true)) return ipcFail(IpcErrorCode.Conflict, '请先停止托管工作流，再结束关联会话')
+    return killAcpSession(root, sessionId)
+  })
 
   handle(ipcInvoke.acp.permissionRespond, (_e, requestId: string, optionId: string) => respondAcpPermission(getProjectRoot() ?? '', requestId, optionId))
   handle(ipcInvoke.acp.profiles, () => listAcpProfiles(getProjectRoot() ?? ''))
@@ -78,6 +99,6 @@ export function registerAcpIpc(): void {
   handle(ipcInvoke.acp.runtimeRefresh, () => listAcpAgents(true))
   handle(ipcInvoke.acp.runtimeSetup, (_e, id: string) => setupAcpRuntime(id))
   handle(ipcInvoke.acp.runtimeNodePick, () => pickAcpNode())
-  handle(ipcInvoke.acp.sessionResume, (_e, id: string) => resumeAcpSession(getProjectRoot() ?? '', id))
-  handle(ipcInvoke.acp.sessionConfigure, (_e, id: string, input) => configureAcpSession(getProjectRoot() ?? '', id, input))
+  handle(ipcInvoke.acp.sessionResume, (_e, id: string) => { const root = getProjectRoot() ?? ''; return connection(root, { sessionId: id }, () => resumeAcpSession(root, id)) })
+  handle(ipcInvoke.acp.sessionConfigure, (_e, id: string, input) => { const root = getProjectRoot() ?? ''; return connection(root, { sessionId: id }, () => configureAcpSession(root, id, input)) })
 }

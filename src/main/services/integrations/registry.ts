@@ -11,6 +11,7 @@ export class IntegrationRegistry {
     if (provider.manifest.authentication?.some((method) => method.oauth) && !provider.authorization) throw new Error('浏览器授权方式必须提供授权适配器')
     if (provider.manifest.capabilities.includes('notification.send') && !provider.notification) throw new Error('通知能力必须提供通知适配器')
     if (provider.manifest.capabilities.some((capability) => capability.startsWith('task.')) && !provider.tasks) throw new Error('任务能力必须提供任务来源适配器')
+    if (provider.manifest.capabilities.some((capability) => capability.startsWith('knowledge.')) && !provider.knowledge) throw new Error('知识能力必须提供知识适配器')
     this.providers.set(provider.manifest.id, provider)
   }
   get(id: ProviderId): IntegrationProvider {

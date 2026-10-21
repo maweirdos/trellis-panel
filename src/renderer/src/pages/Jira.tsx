@@ -28,6 +28,7 @@ import type { JiraIssue, JiraIssueDetail, JiraPagedSearchMeta, ProjectSnapshot, 
 import type { JiraContext } from '../../../shared/integrations'
 import { jiraSourceMatch } from '../../../shared/jira-source'
 import { integrationBridgeMessage, integrationBridgeState } from '../my/pages/integrations/bridge'
+import { useKnowledgeRequest } from '../knowledge/request-intake'
 
 function priorityOf(name: string): string {
   if (/highest|最高/i.test(name)) return 'P0'
@@ -482,8 +483,14 @@ function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: Pr
                     <Download size={10} /> {busy ? '加入中…' : '加入待办池'}
                   </Button>
                 )}
-                <Button variant="outline" size="sm" onClick={() => setPlanSeed({ title: issue.summary, description: `从 Jira ${issue.key} 规划（类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}）\n\n${issue.summary}`, jiraKey: issue.key, jiraUrl: issue.url })} title="知识库 → AI 任务规划">
-                  <Wand2 size={10} /> AI 规划
+                <Button variant="outline" size="sm" disabled={!context} onClick={() => {
+                  if (!context) return
+                  useKnowledgeRequest.getState().stage({ root: snapshot.meta.root, title: issue.summary, description: issue.description || issue.summary, source: { kind: 'jira', key: issue.key, url: issue.url, instanceId: context.instanceId, issueId: issue.issueId } })
+                }} title="携带真实工单来源进入现有 Agent，多轮澄清后再明确保存产品说明">
+                  <Wand2 size={10} /> 需求梳理
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setPlanSeed({ title: issue.summary, description: `从 Jira ${issue.key} 规划（类型：${issue.issueType} · 优先级：${issue.priority} · 负责人：${issue.assignee}）\n\n${issue.summary}`, jiraKey: issue.key, jiraUrl: issue.url })} title="兼容入口：独立模型一次规划，不是原生 Agent 多轮需求梳理">
+                  兼容规划
                 </Button>
                 {!linking && (
                   <Button variant="ghost" size="sm" onClick={() => setLinkingKey(issue.key)} title="关联到已有本地任务">

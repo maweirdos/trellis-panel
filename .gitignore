@@ -7,6 +7,7 @@ dist/
 examples/demo-project
 .idea/
 /docs/todo
+/docs/proposals
 .tmp-*
 
 # Python hooks 缓存（.codex/.zcode hooks 首次运行产生）

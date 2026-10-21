@@ -16,7 +16,9 @@ export const profileSchema = z.object({
   id: idSchema, name: z.string().trim().min(1).max(100), description: z.string().max(2000),
   instructions: z.string().max(32000), runtimeId: idSchema,
   cwd: z.string().max(4096).refine((value) => !value || isAbsolute(value), '请填写完整的绝对工作目录；留空则使用当前项目').optional(),
-  maxTurnMinutes: z.number().int().min(1).max(120)
+  maxTurnMinutes: z.number().int().min(1).max(120),
+  env: z.array(z.object({ key: z.string().trim().min(1).max(200).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, '环境变量名只能包含字母、数字和下划线，且不以数字开头'), value: z.string().max(4000) })).max(50).optional(),
+  args: z.array(z.object({ name: z.string().trim().min(1).max(200), value: z.string().max(4000) })).max(50).optional()
 })
 export const configureSchema = z.object({ kind: z.enum(['model', 'mode', 'config']), id: z.string().min(1).max(300), value: z.string().max(1000).optional() })
 

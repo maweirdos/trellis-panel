@@ -3,10 +3,10 @@ import type { IpcFail } from './ipc-errors'
 import type { JiraIssueDetail, JiraPagedSearchMeta, JiraTransition } from './types'
 
 /** TPD-025: public integration contracts never include stored credentials. */
-export const providerIdSchema = z.enum(['jira', 'github', 'gitlab', 'gitee', 'dingtalk', 'feishu'])
+export const providerIdSchema = z.enum(['jira', 'github', 'gitlab', 'gitee', 'dingtalk', 'feishu', 'weknora'])
 export type ProviderId = z.infer<typeof providerIdSchema>
-export type IntegrationCategory = 'tasks' | 'repositories' | 'messaging'
-export type Capability = 'task.search' | 'task.import' | 'task.comment' | 'task.transition' | 'repository.read' | 'notification.send'
+export type IntegrationCategory = 'tasks' | 'repositories' | 'messaging' | 'knowledge'
+export type Capability = 'task.search' | 'task.import' | 'task.comment' | 'task.transition' | 'repository.read' | 'notification.send' | 'knowledge.read' | 'knowledge.publish'
 export interface ConfigField { key: string; label: string; secret?: boolean; required?: boolean; placeholder?: string; defaultValue?: string; multiline?: boolean }
 export interface AuthenticationMethod { id: 'token' | 'oauth2'; name: string; fields: ConfigField[]; oauth?: { registrationPath: string; redirectUri: string; scopes: string[] } }
 export interface ProviderManifest { id: ProviderId; name: string; category: IntegrationCategory; description: string; capabilities: Capability[]; fields: ConfigField[]; instanceUrl?: string; authentication?: AuthenticationMethod[] }
@@ -14,6 +14,7 @@ export const GITLAB_OAUTH_REDIRECT_URI = 'http://127.0.0.1:17654/oauth/callback/
 export const GITLAB_OAUTH_SCOPES = ['read_api', 'read_user'] as const
 const baseFields: ConfigField[] = [{ key: 'baseUrl', label: '实例地址', required: true, placeholder: 'https://…' }]
 export const INTEGRATION_CATALOG: readonly ProviderManifest[] = [
+  { id: 'weknora', name: 'WeKnora', category: 'knowledge', description: '项目知识检索与人工确认成果发布；不启用自动归档或规范同步。', capabilities: ['knowledge.read', 'knowledge.publish'], fields: [...baseFields, { key: 'apiKey', label: 'API Key', secret: true, required: true }] },
   { id: 'jira', name: 'Jira', category: 'tasks', description: '兼容自建 Jira Server 8.1，查询、导入并显式回写工单。', capabilities: ['task.search', 'task.import', 'task.comment', 'task.transition'], fields: [...baseFields, { key: 'user', label: '用户名', required: true }, { key: 'password', label: '密码', secret: true, required: true }, { key: 'jql', label: '默认 JQL', multiline: true }, { key: 'statusMap', label: '状态映射（JSON 对象）', placeholder: '{"处理中":"in_progress"}' }] },
   { id: 'github', name: 'GitHub', category: 'repositories', description: '查询仓库与 Pull Request，关联到本地工作项。', capabilities: ['repository.read'], fields: [{ key: 'baseUrl', label: 'API 地址', placeholder: 'https://api.github.com', defaultValue: 'https://api.github.com' }, { key: 'token', label: '访问令牌', secret: true, required: true }] },
   { id: 'gitlab', name: 'GitLab', category: 'repositories', description: '通过浏览器授权连接自建实例，查询项目与 Merge Request。', capabilities: ['repository.read'], fields: [...baseFields], authentication: [
@@ -46,9 +47,10 @@ export const connectionRequestSchema = z.object({ connectionId: z.string().min(1
 export type ConnectionRequest = z.infer<typeof connectionRequestSchema>
 export const authorizationRequestSchema = connectionRequestSchema.extend({ requestId: z.string().uuid() })
 export type AuthorizationRequest = z.infer<typeof authorizationRequestSchema>
-export const saveBindingSchema = projectContextSchema.extend({ id: z.string().optional(), revision: z.number().int().positive().optional(), connectionId: z.string().min(1), connectionRevision: z.number().int().positive(), label: z.string().trim().min(1).max(100), scope: z.string().trim().max(4000), enabled: z.boolean() })
+export const knowledgeBindingSchema = z.object({ defaultCollectionIds: z.array(z.string().trim().min(1).max(256)).max(20).refine((ids) => new Set(ids).size === ids.length, '知识库不能重复') })
+export const saveBindingSchema = projectContextSchema.extend({ id: z.string().optional(), revision: z.number().int().positive().optional(), connectionId: z.string().min(1), connectionRevision: z.number().int().positive(), label: z.string().trim().min(1).max(100), scope: z.string().trim().max(4000), enabled: z.boolean(), knowledge: knowledgeBindingSchema.optional() })
 export type SaveBindingInput = z.infer<typeof saveBindingSchema>
-export const integrationBindingSchema = z.object({ id: z.string(), root: z.string(), connectionId: z.string(), revision: z.number().int().positive(), label: z.string(), scope: z.string(), enabled: z.boolean() })
+export const integrationBindingSchema = z.object({ id: z.string(), root: z.string(), connectionId: z.string(), revision: z.number().int().positive(), label: z.string(), scope: z.string(), enabled: z.boolean(), knowledge: knowledgeBindingSchema.optional() })
 export type IntegrationBinding = z.infer<typeof integrationBindingSchema>
 export const bindingRequestSchema = projectContextSchema.extend({ bindingId: z.string().min(1), bindingRevision: z.number().int().positive(), connectionRevision: z.number().int().positive() })
 export type BindingRequest = z.infer<typeof bindingRequestSchema>

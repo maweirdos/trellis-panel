@@ -1,5 +1,5 @@
 import { rememberVisit } from '../my/personal-history'
-import { ModuleLinks } from '../my/layout/ModuleLinks'
+import { ModuleLinks, contextButtonClass } from '../my/layout/ModuleLinks'
 import { PageContent, PageSection } from '../my/layout/PageLayout'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -14,7 +14,6 @@ import {
   Loader2,
   Send,
   X,
-  BrainCircuit,
   Cloud,
   StickyNote,
   Plus,
@@ -31,17 +30,22 @@ import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
 import { DocumentReader } from '../reader/DocumentReader'
 import { relativePathUnderRoot } from '../reader/reader-paths'
-import { Button, SearchInput } from '../my/ui'
+import { Button, Modal, SearchInput } from '../my/ui'
 import { useMy } from '../my/store'
-import { getPageNavigation } from '../my/navigation'
 import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
-import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult, WeknoraDocSummary, WeknoraHit } from '../../../shared/types'
+import { ProductMaterialActions } from '../knowledge/ProductMaterialActions'
+import { useKnowledgeRequest } from '../knowledge/request-intake'
+import { KnowledgeScopeControl } from '../knowledge/KnowledgeScopeControl'
+import { KnowledgeSourceView } from '../knowledge/KnowledgeSourceView'
+import { knowledgeBridge, knowledgeError, knowledgeStatusLabel, requireKnowledge, useProjectKnowledge } from '../knowledge/bridge'
+import type { KnowledgeDocument, KnowledgeSource } from '../../../shared/knowledge-access'
+import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult } from '../../../shared/types'
 import type { JSX } from 'react'
 
 type LibFilter = KbLibrary | 'all' | 'company'
 
 /** 公司库文档在浏览态聚合多个 WeKnora 知识库，额外携带来源库名 */
-type CompanyDoc = WeknoraDocSummary & { kbName: string }
+type CompanyDoc = KnowledgeDocument & { kbName: string }
 
 /** 右侧阅读器当前打开的远程（WeKnora）文档 */
 interface RemoteDoc {
@@ -51,6 +55,7 @@ interface RemoteDoc {
   content: string | null
   loading: boolean
   error?: string
+  snapshot?: KnowledgeSource
 }
 
 /** zustand 选择器兜底用的稳定空数组（每次返回新 [] 会触发 getSnapshot 重渲染问题） */
@@ -73,6 +78,9 @@ const LIB_CHIP: Record<KbLibrary, string> = {
   notes: 'bg-my-label-orange text-my-label-orange-text',
   archive: 'bg-my-label-purple text-my-label-purple-text'
 }
+
+/** 左栏资料分类导航的固定顺序；spec 走独立规范页，company 在知识库视图独占侧栏 */
+const LIB_NAV: LibFilter[] = ['requirements', 'notes', 'wiki', 'archive', 'all']
 
 function highlight(text: string): JSX.Element {
   const parts = text.split(/[\u0000\u0001]/)
@@ -118,9 +126,10 @@ export function KnowledgePage(): JSX.Element {
   const browserVisible = !sidebarCollapsed
 
   /* 公司库（WeKnora）——独立状态与序号，异步追加，绝不阻塞本地检索 */
-  const weknoraEnabled = useApp((s) => s.settings?.weknora?.enabled ?? false)
-  const weknoraKbIds = useApp((s) => s.settings?.weknora?.searchKbIds ?? NO_KB_IDS)
-  const [companyHits, setCompanyHits] = useState<WeknoraHit[]>([])
+  const knowledge = useProjectKnowledge(snapshot?.meta.root ?? '')
+  const weknoraEnabled = Boolean(knowledge.context?.scope.connectionId)
+  const weknoraKbIds = knowledge.context?.scope.collectionIds ?? NO_KB_IDS
+  const [companyHits, setCompanyHits] = useState<KnowledgeSource[]>([])
   const [companyDocs, setCompanyDocs] = useState<CompanyDoc[]>([])
   const [companyLoading, setCompanyLoading] = useState(false)
   const [companyError, setCompanyError] = useState<string | null>(null)
@@ -134,13 +143,22 @@ export function KnowledgePage(): JSX.Element {
   const [aiAnswer, setAiAnswer] = useState<string | null>(null)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiSources, setAiSources] = useState<KbDoc[]>([])
-  const [aiRemoteSources, setAiRemoteSources] = useState<WeknoraHit[]>([])
+  const [aiRemoteSources, setAiRemoteSources] = useState<KnowledgeSource[]>([])
   const [qaHistory, setQaHistory] = useState<KbQaEntry[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [showLegacyQa, setShowLegacyQa] = useState(false)
+  const [showMaterials, setShowMaterials] = useState(false)
 
   /* Project notes are repository files, not private personal storage. */
   const [noteDraft, setNoteDraft] = useState<{ name: string; content: string; isNew: boolean } | null>(null)
   const [noteSaving, setNoteSaving] = useState(false)
+  useEffect(() => { setShowMaterials(false); setShowLegacyQa(false); setAiAnswer(null); setAiSources([]); setAiRemoteSources([]); setAiBusy(false) }, [knowledge.current])
+  const discussWithAgent = (): void => {
+    const root = snapshot?.meta.root
+    if (!root || !knowledge.current()) return
+    const topic = query.trim() || remoteDoc?.title || active?.title || ''
+    useKnowledgeRequest.getState().stage({ root, title: topic || '结合项目知识讨论', description: topic ? `请围绕「${topic}」展开讨论，按需查找相关资料并说明实际来源。` : '请结合项目知识，帮我梳理问题、查找历史方案或核对业务规则。', intent: 'discussion', source: { kind: 'manual' } })
+  }
 
   useEffect(() => () => {
     searchSeq.current += 1
@@ -168,24 +186,28 @@ export function KnowledgePage(): JSX.Element {
       setCompanyError(null)
       try {
         if (mode === 'search') {
-          const res = await api.weknoraSearch(debounced, 10)
-          if (seq !== companySeq.current) return
-          setCompanyHits(res.ok ? res.hits : [])
-          setCompanyMs(res.elapsedMs ?? 0)
-          setCompanyError(res.ok ? null : res.error ?? null)
+          const bridge = knowledgeBridge(['search'])
+          if (!bridge) throw new Error('项目知识服务未加载；不会回退到全局连接')
+          const res = requireKnowledge(await bridge.search({ ...knowledge.input, requestId: crypto.randomUUID(), query: debounced, limit: 10 }))
+          if (seq !== companySeq.current || !knowledge.current()) return
+          setCompanyHits(res.sources.filter((source) => source.kind === 'weknora'))
+          setCompanyMs(res.elapsedMs)
+          setCompanyError(res.status === 'ok' || res.status === 'empty' ? (res.persistence === 'degraded' ? '证据保存降级，不保证重开可读' : null) : `${knowledgeStatusLabel[res.status]}：${res.detail}`)
         } else {
           const docs: CompanyDoc[] = []
-          let err: string | null = null
+          const warnings: string[] = []
           const t0 = Date.now()
-          for (const kbId of weknoraKbIds) {
-            const res = await api.weknoraListDocs(kbId)
-            if (seq !== companySeq.current) return
-            if (res.ok && res.docs) docs.push(...res.docs.map((d) => ({ ...d, kbName: kbId })))
-            else err = res.error ?? null
+          const bridge = knowledgeBridge(['documents'])
+          if (!bridge) throw new Error('项目知识服务未加载；不会回退到全局连接')
+          for (const collectionId of weknoraKbIds) {
+            const res = await bridge.documents({ ...knowledge.input, collectionId, page: 1 })
+            if (seq !== companySeq.current || !knowledge.current()) return
+            if (res.ok) { docs.push(...res.data.items.map((doc) => ({ ...doc, kbName: collectionId }))); if (res.data.hasMore) warnings.push(`${collectionId} 仅显示第一页，请检索定位更多文档`) }
+            else warnings.push(res.error)
           }
           setCompanyDocs(docs)
           setCompanyMs(Date.now() - t0)
-          setCompanyError(docs.length === 0 ? err : null)
+          setCompanyError(warnings.join('；') || null)
         }
       } catch (error) {
         if (seq === companySeq.current) setCompanyError(error instanceof Error ? error.message : '知识库读取失败')
@@ -193,7 +215,7 @@ export function KnowledgePage(): JSX.Element {
         if (seq === companySeq.current) setCompanyLoading(false)
       }
     },
-    [debounced, weknoraEnabled, weknoraKbIds]
+    [debounced, weknoraEnabled, weknoraKbIds, knowledge.input, knowledge.current]
   )
 
   const runSearch = useCallback(async () => {
@@ -274,26 +296,16 @@ export function KnowledgePage(): JSX.Element {
     focusReader()
     setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: true })
     try {
-      const res = await api.weknoraRead(hit.knowledgeId)
-      if (seq !== docSeq.current) return
-      setRemoteDoc((cur) =>
-        cur && cur.knowledgeId === hit.knowledgeId
-          ? res.ok
-            ? {
-                knowledgeId: hit.knowledgeId,
-                title: res.title || hit.title,
-                fileName: res.fileName ?? '',
-                content: res.content ?? null,
-                loading: false,
-                error: res.content === undefined ? '非文本文档——请在 WeKnora 中查看' : undefined
-              }
-            : { knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: res.error }
-          : cur
-      )
+      const bridge = knowledgeBridge(['read'])
+      if (!bridge) throw new Error('项目知识读取服务不可用')
+      const res = requireKnowledge(await bridge.read({ ...knowledge.input, requestId: crypto.randomUUID(), sourceHandle: hit.knowledgeId }))
+      if (seq !== docSeq.current || !knowledge.current()) return
+      const source = res.source
+      setRemoteDoc({ knowledgeId: hit.knowledgeId, title: source?.title || hit.title, fileName: '', content: source?.text ?? null, loading: false, snapshot: source ?? undefined, error: res.status === 'ok' ? undefined : `${knowledgeStatusLabel[res.status]}：${res.detail}` })
     } catch (error) {
-      if (seq === docSeq.current) setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: error instanceof Error ? error.message : '知识库文档读取失败' })
+      if (seq === docSeq.current && knowledge.current()) setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: error instanceof Error ? error.message : '知识库文档读取失败' })
     }
-  }, [])
+  }, [knowledge.input, knowledge.current])
 
   /* AI 问答（本地 + 公司库上下文） */
   const aiAsk = async (): Promise<void> => {
@@ -305,12 +317,15 @@ export function KnowledgePage(): JSX.Element {
     setAiRemoteSources([])
     try {
       let context = ''
+      if (lib === 'company' && !weknoraEnabled) throw new Error(knowledge.error || knowledge.context?.scope.detail || '当前项目未配置可用远端范围，未检查公司知识')
       const sources: KbDoc[] = []
       if (lib !== 'company') {
         const search = await api.kbSearch(lib === 'all' ? 'all' : lib, q)
+        if (!knowledge.current()) return
         const top = search.ok ? search.hits.slice(0, 6) : []
         for (const h of top) {
           const res = await api.readTextFile(h.doc.path)
+          if (!knowledge.current()) return
           const content = res.ok && res.content ? res.content.slice(0, 4000) : h.snippet.replace(/[\u0000\u0001]/g, '')
           context += `\n\n--- 来源：${h.doc.title}（${h.doc.path}）---\n${content}`
           sources.push(h.doc)
@@ -318,16 +333,18 @@ export function KnowledgePage(): JSX.Element {
         setAiSources(sources)
       }
       // 公司库补充上下文（启用且配置了检索范围时）
-      const remoteSources: WeknoraHit[] = []
+      const remoteSources: KnowledgeSource[] = []
       if (weknoraEnabled && weknoraKbIds.length > 0 && (lib === 'all' || lib === 'company')) {
-        const remote = await api.weknoraSearch(q, 3)
-        if (remote.ok) {
-          for (const h of remote.hits.slice(0, 3)) {
-            context += `\n\n--- 来源 [知识库]：${h.title || h.filename}（WeKnora）---\n${h.content.slice(0, 3000)}`
-            remoteSources.push(h)
-          }
-          setAiRemoteSources(remoteSources)
+        const bridge = knowledgeBridge(['search'])
+        if (!bridge) throw new Error('项目知识服务未加载，未检查远端来源')
+        const remote = requireKnowledge(await bridge.search({ ...knowledge.input, requestId: crypto.randomUUID(), query: q, limit: 3 }))
+        if (!knowledge.current()) return
+        if (!['ok', 'empty'].includes(remote.status)) throw new Error(`${knowledgeStatusLabel[remote.status]}：${remote.detail}；未生成“已核对来源”的回答`)
+        for (const source of remote.sources.filter((item) => item.kind === 'weknora')) {
+          context += `\n\n--- 来源 [知识库]：${source.title}（摘录 ${source.contentHash}）---\n${source.text}`
+          remoteSources.push(source)
         }
+        setAiRemoteSources(remoteSources)
       }
       const res = await api.aiChat([
         {
@@ -337,21 +354,22 @@ export function KnowledgePage(): JSX.Element {
         },
         { role: 'user', content: `知识库上下文：\n${context || '（未检索到相关内容）'}\n\n问题：${q}` }
       ])
+      if (!knowledge.current()) return
       if (res.ok && res.content) {
         setAiAnswer(res.content)
         // 问答历史落盘（userData，个人维度）
         const sourcesForHistory = [
           ...sources.map((s) => ({ title: s.title, path: s.path, library: s.library })),
-          ...remoteSources.map((h) => ({ title: h.title || h.filename || '知识库文档', path: h.knowledgeId, library: '知识库' }))
+          ...remoteSources.map((source) => ({ title: source.title, path: source.id, library: '知识库快照' }))
         ]
         void api.kbQaSave({ question: q, answer: res.content, sources: sourcesForHistory }).then((r) => {
-          if (r.ok && r.entries) setQaHistory(r.entries)
+          if (knowledge.current() && r.ok && r.entries) setQaHistory(r.entries)
         })
       } else {
         pushToast({ kind: 'error', title: 'AI 回答失败', body: res.error })
       }
-    } finally {
-      setAiBusy(false)
+    } catch (failure) { if (knowledge.current()) pushToast({ kind: 'error', title: '兼容问答未完成', body: knowledgeError(failure) }) } finally {
+      if (knowledge.current()) setAiBusy(false)
     }
   }
 
@@ -432,33 +450,33 @@ export function KnowledgePage(): JSX.Element {
   }, [result, isSearch])
 
   /** 公司库条目：company tab 直接作为主体列表；all 检索态作为追加区域 */
-  const companyList: Array<{ key: string; title: string; sub: string; snippet?: string; score?: number; knowledgeId: string }> = useMemo(() => {
+  const companyList: Array<{ key: string; title: string; sub: string; tag?: string; snippet?: string; score?: number; knowledgeId: string }> = useMemo(() => {
     if (lib === 'company') {
       if (isSearch) {
         return companyHits.map((h, i) => ({
-          key: `${h.knowledgeId}-${i}`,
-          title: h.title || h.filename || h.knowledgeId,
-          sub: h.filename || h.sourceType,
-          snippet: h.content,
-          score: h.score,
-          knowledgeId: h.knowledgeId
+          key: `${h.id}-${i}`,
+          title: h.title,
+          sub: `${h.collectionId || '库未知'} · ${h.mode}${h.truncated ? ' · 已截断' : ''}`,
+          snippet: h.text,
+          knowledgeId: h.sourceHandle
         }))
       }
       return companyDocs.map((d, i) => ({
         key: `${d.id}-${i}`,
-        title: d.title || d.fileName,
-        sub: `${d.kbName} · ${d.fileName || d.fileType}${d.parseStatus && d.parseStatus !== 'completed' ? ` · ${d.parseStatus}` : ''}`,
-        knowledgeId: d.id
+        title: d.title,
+        sub: `${d.kbName} · ${d.fileType}${d.parseStatus && d.parseStatus !== 'completed' ? ` · ${d.parseStatus}` : ''}`,
+        tag: d.fileType,
+        knowledgeId: d.sourceHandle
       }))
     }
     if (lib === 'all' && isSearch) {
       return companyHits.map((h, i) => ({
-        key: `${h.knowledgeId}-${i}`,
-        title: h.title || h.filename || h.knowledgeId,
-        sub: h.filename || h.sourceType,
-        snippet: h.content,
-        score: h.score,
-        knowledgeId: h.knowledgeId
+        key: `${h.id}-${i}`,
+        title: h.title,
+        sub: `${h.collectionId || '库未知'} · ${h.mode}${h.truncated ? ' · 已截断' : ''}`,
+        snippet: h.text,
+        score: undefined,
+        knowledgeId: h.sourceHandle
       }))
     }
     return []
@@ -480,90 +498,93 @@ export function KnowledgePage(): JSX.Element {
   }
 
   const relativePath = active && !active.synthetic ? relativePathUnderRoot(snapshot?.meta.root ?? '', active.path) : null
-  const scopeNote = getPageNavigation('knowledge').scopeNote
+  const libLabel = lib === 'company' ? '知识库' : LIBS.find((l) => l.id === lib)?.label ?? '资料'
+  const listSummary = lib === 'company'
+    ? `${companyList.length} ${isSearch ? '条命中' : '篇文档'}${companyMs ? ` · ${companyMs}ms` : ''}`
+    : isSearch
+      ? `命中 ${list.length} 条 · 共 ${totalDocs} 篇 · ${result?.elapsedMs ?? 0}ms`
+      : `${list.length} 篇文档 · ${result?.elapsedMs ?? 0}ms`
 
   return (
     <div ref={pageRef} className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
       {/* 左列：知识导航、来源与检索 */}
       <div id="knowledge-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line', browserVisible ? 'flex' : 'hidden')}>
         <SidebarResizeHandle />
-        <div className="shrink-0 px-4 py-3">
-          <h1 className="text-my-md font-semibold text-my-primary">知识</h1>
-        </div>
+        <header className="flex h-my-header shrink-0 items-center px-4">
+          <h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">知识</h1>
+        </header>
         <ModuleLinks domain="knowledge" />
-        {scopeNote && <p className="shrink-0 px-4 pb-3 pt-2 text-my-xs leading-relaxed text-my-tertiary">{scopeNote}</p>}
-        <div className="space-y-2.5 border-b border-my-line px-4 py-3">
-          <div className="flex flex-wrap gap-1.5">
-            {LIBS.filter((l) => knowledgeView === 'company' ? l.id === 'company' : l.id !== 'company' && l.id !== 'spec').map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => setLib(l.id)}
-                aria-pressed={lib === l.id}
-                title={l.desc}
-                className={clsx(
-                  'my-control my-control-sm border',
-                  lib === l.id
-                    ? 'border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text'
-                    : 'border-transparent text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary'
-                )}
-              >
-                {l.icon} {l.label}
-              </button>
-            ))}
-          </div>
+        <div className="shrink-0 px-3 pb-2 pt-2.5">
           <div className="relative">
-            <SearchInput value={query} onChange={setQuery} placeholder="全文检索：中文/英文关键词混排…" />
+            <SearchInput value={query} onChange={setQuery} placeholder={lib === 'company' ? '搜索知识库…' : '搜索资料…'} />
             {loading && (
               <Loader2 size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-my-tertiary" />
             )}
           </div>
-          <div className="flex items-center gap-2 text-my-xs text-my-tertiary">
-            <span>
-              {lib === 'company'
-                ? `${companyList.length} 条${isSearch ? '命中' : '文档'}${companyMs ? ` · ${companyMs}ms` : ''}`
-                : `${isSearch ? `${list.length} 条命中` : `${list.length} 篇文档`} · 库内共 ${totalDocs} 篇 · ${result?.elapsedMs ?? 0}ms`}
-            </span>
-            {lib === 'notes' && (
-              <Button variant="neutral" size="sm" onClick={startNewNote} disabled={!hasIpc || !snapshot} title="新建项目笔记（写入 .trellis/notes/，不提供私密权限）">
-                <Plus size={10} /> 新建笔记
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" className="ml-auto px-1.5" onClick={() => void runSearch()} disabled={!hasIpc} title="重建检索">
-              <RefreshCw size={11} />
-            </Button>
+        </div>
+        {knowledgeView !== 'company' && (
+          <nav aria-label="资料分类" className="shrink-0 space-y-0.5 px-2 pb-1">
+            {LIB_NAV.map((id) => {
+              const item = LIBS.find((l) => l.id === id)
+              if (!item) return null
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setLib(item.id)}
+                  aria-pressed={lib === item.id}
+                  title={item.desc}
+                  className={contextButtonClass(lib === item.id)}
+                >
+                  {item.icon} {item.label}
+                </button>
+              )
+            })}
+          </nav>
+        )}
+        {(lib === 'company' || lib === 'all') && snapshot && (
+          <div className="shrink-0 px-3 pb-2.5">
+            <KnowledgeScopeControl root={snapshot.meta.root} />
           </div>
+        )}
+
+        {/* 分组头：当前库与统计，右侧挂当前库的操作 */}
+        <div className="flex shrink-0 items-center gap-1.5 px-4 pb-1.5 text-my-xs text-my-tertiary">
+          <span className="min-w-0 truncate">{libLabel} · {listSummary}</span>
+          {lib === 'notes' && (
+            <Button variant="neutral" size="sm" onClick={startNewNote} disabled={!hasIpc || !snapshot} title="新建项目笔记（写入 .trellis/notes/）">
+              <Plus size={10} /> 新建笔记
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" className="ml-auto shrink-0 px-1.5" onClick={() => void runSearch()} disabled={!hasIpc} title="重建检索">
+            <RefreshCw size={11} />
+          </Button>
         </div>
 
-        <div className="my-scrollbar min-h-0 flex-1 p-2">
+        <div className="my-scrollbar min-h-0 flex-1 px-2 pb-2">
           {list.map(({ doc, hit }) => (
             <button
               key={doc.id}
               type="button"
               onClick={() => void openDoc(doc)}
               aria-pressed={active?.id === doc.id}
+              title={doc.title}
               className={clsx(
-                'mb-1.5 w-full rounded-my-lg border px-3 py-2 text-left transition-colors',
-                active?.id === doc.id
-                  ? 'border-my-line-accent-subtle bg-my-accent-subtle'
-                  : 'border-transparent hover:border-my-line hover:bg-my-layer-1'
+                'flex w-full flex-col rounded-my-md px-2.5 py-1.5 text-left transition-colors',
+                active?.id === doc.id ? 'bg-my-accent-subtle' : 'hover:bg-my-layer-transparent-hover'
               )}
             >
-              <div className="flex items-center gap-1.5">
-                <span className={clsx('my-chip', LIB_CHIP[doc.library])}>
-                  {LIB_ICON[doc.library]} {LIB_LABEL[doc.library]}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-my-xs font-medium text-my-primary">{doc.title}</span>
-                {hit && <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{hit.score.toFixed(1)}</span>}
-              </div>
-              {hit ? (
-                <div className="mt-1 line-clamp-2 text-my-xs leading-4 text-my-tertiary">{highlight(hit.snippet)}</div>
-              ) : (
-                <div className="mt-1 flex items-center gap-1.5 text-my-xs text-my-tertiary">
-                  <span className="truncate font-mono">{doc.group}/{doc.name}</span>
-                  <span className="ml-auto shrink-0">{relTime(doc.mtime)}</span>
-                </div>
-              )}
+              <span className="flex w-full items-center gap-2">
+                <span className="shrink-0 text-my-icon-tertiary">{LIB_ICON[doc.library]}</span>
+                {lib === 'all' && <span className={clsx('my-chip shrink-0 text-my-2xs', LIB_CHIP[doc.library])}>{LIB_LABEL[doc.library]}</span>}
+                <span className={clsx('min-w-0 flex-1 truncate text-my-sm', active?.id === doc.id ? 'font-medium text-my-primary' : 'text-my-secondary')}>{doc.title}</span>
+                {hit ? (
+                  <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{hit.score.toFixed(1)}</span>
+                ) : (
+                  <span className="shrink-0 text-my-2xs text-my-tertiary">{relTime(doc.mtime)}</span>
+                )}
+              </span>
+              {hit && <span className="mt-0.5 line-clamp-2 pl-5 text-my-xs leading-4 text-my-tertiary">{highlight(hit.snippet)}</span>}
             </button>
           ))}
 
@@ -571,8 +592,8 @@ export function KnowledgePage(): JSX.Element {
           {(lib === 'company' || (lib === 'all' && isSearch)) && (
             <>
               {lib === 'all' && list.length > 0 && companyList.length > 0 && (
-                <div className="my-2 flex items-center gap-2 px-1">
-                  <span className="text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">知识库（WeKnora）</span>
+                <div className="mb-1 mt-2 flex items-center gap-2 px-1.5">
+                  <span className="text-my-2xs font-medium text-my-tertiary">知识库（WeKnora）</span>
                   <span className="h-px flex-1 bg-my-line" />
                 </div>
               )}
@@ -582,25 +603,23 @@ export function KnowledgePage(): JSX.Element {
                   type="button"
                   onClick={() => void openRemoteDoc({ knowledgeId: c.knowledgeId, title: c.title })}
                   aria-pressed={remoteDoc?.knowledgeId === c.knowledgeId}
+                  title={c.sub}
                   className={clsx(
-                    'mb-1.5 w-full rounded-my-lg border px-3 py-2 text-left transition-colors',
-                    remoteDoc?.knowledgeId === c.knowledgeId
-                      ? 'border-my-line-accent-subtle bg-my-accent-subtle'
-                      : 'border-transparent hover:border-my-line hover:bg-my-layer-1'
+                    'flex w-full flex-col rounded-my-md px-2.5 py-1.5 text-left transition-colors',
+                    remoteDoc?.knowledgeId === c.knowledgeId ? 'bg-my-accent-subtle' : 'hover:bg-my-layer-transparent-hover'
                   )}
                 >
-                  <div className="flex items-center gap-1.5">
-                    <span className="my-chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
-                      <Cloud size={12} /> 知识库
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-my-xs font-medium text-my-primary">{c.title}</span>
-                    {c.score !== undefined && <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{c.score.toFixed(2)}</span>}
-                  </div>
-                  {c.snippet ? (
-                    <div className="mt-1 line-clamp-2 text-my-xs leading-4 text-my-tertiary">{c.snippet.replace(/\s+/g, ' ').slice(0, 200)}</div>
-                  ) : (
-                    <div className="mt-1 truncate font-mono text-my-xs text-my-tertiary">{c.sub}</div>
-                  )}
+                  <span className="flex w-full items-center gap-2">
+                    <span className="shrink-0 text-my-icon-tertiary"><Cloud size={12} /></span>
+                    {lib === 'all' && (
+                      <span className="my-chip shrink-0 bg-my-accent-subtle text-my-2xs text-my-accent-text">
+                        <Cloud size={12} /> 知识库
+                      </span>
+                    )}
+                    <span className={clsx('min-w-0 flex-1 truncate text-my-sm', remoteDoc?.knowledgeId === c.knowledgeId ? 'font-medium text-my-primary' : 'text-my-secondary')}>{c.title}</span>
+                    {c.tag && <span className="shrink-0 font-mono text-my-2xs uppercase text-my-tertiary">{c.tag}</span>}
+                  </span>
+                  {c.snippet && <span className="mt-0.5 line-clamp-2 pl-5 text-my-xs leading-4 text-my-tertiary">{c.snippet.replace(/\s+/g, ' ').slice(0, 200)}</span>}
                 </button>
               ))}
               {companyLoading && (
@@ -617,19 +636,25 @@ export function KnowledgePage(): JSX.Element {
               {lib === 'company' && !weknoraEnabled && (
                 <div className="grid place-items-center gap-2 py-10 text-center text-my-xs text-my-tertiary">
                   <Cloud size={20} className="text-my-icon-tertiary" />
-                  未启用知识库联动
-                  <Button variant="outline" size="sm" onClick={() => setPage('settings')}>
-                    到设置页接入 WeKnora
+                  未绑定可用的项目知识库
+                  <Button variant="outline" size="sm" onClick={() => setPage('integrations')}>
+                    到集成接入并绑定项目
                   </Button>
+                </div>
+              )}
+              {lib === 'company' && weknoraEnabled && !companyLoading && companyList.length === 0 && (
+                <div className="grid place-items-center gap-1.5 px-4 py-12 text-center text-my-xs text-my-tertiary">
+                  <Cloud size={18} className="text-my-icon-tertiary" />
+                  {isSearch ? '知识库中没有匹配的内容' : '绑定范围内暂无文档'}
                 </div>
               )}
             </>
           )}
 
           {list.length === 0 && !loading && lib !== 'company' && (
-            <div className="grid place-items-center gap-2 py-14 text-center text-my-xs text-my-tertiary">
-              <Library size={20} className="text-my-icon-tertiary" />
-              {isSearch ? '没有匹配的文档——试试更短的关键词' : '该库暂无文档'}
+            <div className="grid place-items-center gap-1.5 px-4 py-12 text-center text-my-xs text-my-tertiary">
+              <Library size={18} className="text-my-icon-tertiary" />
+              {isSearch ? '没有匹配的资料，试试更短的关键词' : '该库暂无文档'}
             </div>
           )}
         </div>
@@ -637,9 +662,14 @@ export function KnowledgePage(): JSX.Element {
 
       {/* 右列：当前知识视图与阅读器 */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
-        <div className="my-page-toolbar-row">
+        <div className="my-page-toolbar-row flex-wrap">
           <h1 className="text-my-md font-semibold text-my-primary">{knowledgeView === 'company' ? '知识库' : '资料'}</h1>
-          <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="knowledge-browser" aria-label={browserVisible ? '收起来源与检索' : '展开来源与检索'} title={browserVisible ? '收起来源与检索' : '展开来源与检索'} className="my-icon-control ml-auto">
+          <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
+            <Button size="sm" variant="ghost" disabled={!snapshot?.meta.root} onClick={() => setShowMaterials(true)}><FileText size={13} />需求材料</Button>
+            <Button size="sm" variant="outline" disabled={!snapshot?.meta.root} onClick={discussWithAgent}><Sparkles size={13} />在 Agent 中讨论</Button>
+            {aiEnabled && <Button size="sm" variant="ghost" aria-expanded={showLegacyQa} onClick={() => setShowLegacyQa((value) => !value)}>旧版问答</Button>}
+          </div>
+          <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="knowledge-browser" aria-label={browserVisible ? '收起来源与检索' : '展开来源与检索'} title={browserVisible ? '收起来源与检索' : '展开来源与检索'} className="my-icon-control">
             {browserVisible ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
           </button>
         </div>
@@ -691,6 +721,7 @@ export function KnowledgePage(): JSX.Element {
             </div>
             <div className="my-scrollbar min-h-0 flex-1">
               <PageContent variant="centered">
+                {remoteDoc.snapshot && snapshot && <KnowledgeSourceView key={remoteDoc.snapshot.id} root={snapshot.meta.root} initial={remoteDoc.snapshot} />}
                 {remoteDoc.fileName && <div className="mb-3 truncate font-mono text-my-xs text-my-tertiary">{remoteDoc.fileName}</div>}
                 {remoteDoc.loading && (
                   <div className="flex items-center gap-2 py-8 text-my-xs text-my-tertiary">
@@ -700,7 +731,7 @@ export function KnowledgePage(): JSX.Element {
                 {remoteDoc.error && (
                   <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{remoteDoc.error}</div>
                 )}
-                {remoteDoc.content !== null && (
+                {!remoteDoc.snapshot && remoteDoc.content !== null && (
                   remoteDoc.fileName.endsWith('.md') || remoteDoc.fileName.endsWith('.markdown') ? (
                     <MarkdownView content={remoteDoc.content} />
                   ) : (
@@ -775,29 +806,27 @@ export function KnowledgePage(): JSX.Element {
             </div>
           </>
         ) : (
-          <div className="my-scrollbar grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-8">
-            <section className="w-full max-w-lg rounded-my-xl border border-my-line bg-my-layer-1 px-7 py-8 text-center shadow-[var(--my-shadow-raised-100)]">
-              <span className="mx-auto grid h-11 w-11 place-items-center rounded-my-xl bg-my-layer-2 text-my-icon-tertiary">
+          <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
+            <section className="grid min-h-64 place-content-center gap-2 text-center" aria-label="知识阅读提示">
+              <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-my-lg bg-my-layer-2 text-my-icon-tertiary">
                 <Library size={22} />
-              </span>
-              <p className="mt-4 text-my-xs font-medium text-my-tertiary">{lib === 'company' ? '知识库' : '项目知识库'}</p>
-              <h2 className="mt-1 text-my-lg font-semibold text-my-primary">从材料中找到答案</h2>
-              <p className="mx-auto mt-2 max-w-md text-my-sm leading-relaxed text-my-secondary">
-                选择左侧的笔记、需求或文档开始阅读；也可以在下方直接提问。WeKnora 知识库按独立配置检索。
-              </p>
-              <div className="mt-5 flex flex-wrap justify-center gap-2">
-                {!aiEnabled && <Button variant="primary" size="sm" onClick={() => setPage('settings')}><Sparkles size={12} />配置 AI 问答</Button>}
-                <Button variant="outline" size="sm" onClick={() => setPage('gateway')} title="到 MCP 网关查看与配置本地 MCP 服务">
-                  <BrainCircuit size={12} /> 前往 MCP 知识网关
-                </Button>
               </div>
+              <h2 className="text-my-md font-medium text-my-primary">选择资料阅读</h2>
+              <p className="text-my-sm text-my-tertiary">{snapshot?.meta.root ? '从左侧查找资料，或带着问题到 Agent 中持续讨论。' : '打开一个 Trellis 项目后，可使用项目知识。'}</p>
+              {snapshot?.meta.root && (
+                <div className="mt-2 flex flex-wrap justify-center gap-2">
+                  <Button size="sm" onClick={() => { if (sidebarCollapsed) toggleSidebar(); pageRef.current?.querySelector<HTMLInputElement>('input[placeholder^="搜索"]')?.focus() }}>查找资料</Button>
+                  <Button size="sm" variant="primary" onClick={discussWithAgent}>在 Agent 中讨论</Button>
+                </div>
+              )}
             </section>
           </div>
         )}
 
         {/* AI 问答条 */}
-        {aiEnabled && (
+        {aiEnabled && showLegacyQa && (
           <div className="shrink-0 border-t border-my-line bg-my-layer-1 py-2.5">
+            <p className="px-4 pb-2 text-my-2xs text-my-tertiary">兼容：一次性知识问答（独立模型，不是可恢复的 Agent 对话）；需要持续追问请前往 Agent。</p>
             {qaHistory.length > 0 && (
               <PageSection variant="centered" className="mb-2">
                 <div className="flex items-center gap-2">
@@ -863,12 +892,12 @@ export function KnowledgePage(): JSX.Element {
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {aiRemoteSources.map((h, i) => (
                         <button
-                          key={`${h.knowledgeId}-${i}`}
+                          key={`${h.id}-${i}`}
                           type="button"
-                          onClick={() => void openRemoteDoc({ knowledgeId: h.knowledgeId, title: h.title })}
+                          onClick={() => void openRemoteDoc({ knowledgeId: h.sourceHandle, title: h.title })}
                           className="my-chip border border-my-line-accent-subtle bg-my-surface-1 text-my-2xs text-my-accent-text hover:bg-my-accent-subtle"
                         >
-                          <Cloud size={10} /> {h.title || h.filename}
+                          <Cloud size={10} /> {h.title}
                         </button>
                       ))}
                     </div>
@@ -897,6 +926,10 @@ export function KnowledgePage(): JSX.Element {
       </div>
       {/* 打开的产物查看器标签保留在最上层（外部组件渲染） */}
       {viewerTabs.length > 0 && null}
+      <Modal open={showMaterials && Boolean(snapshot?.meta.root)} onClose={() => setShowMaterials(false)} width={760} ariaLabel="项目需求材料">
+        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-semibold">需求材料</h2><Button size="sm" variant="ghost" onClick={() => setShowMaterials(false)} aria-label="关闭需求材料"><X size={15} /></Button></div>
+        <div className="my-scrollbar max-h-[65vh] overflow-y-auto p-5">{snapshot?.meta.root && <ProductMaterialActions key={snapshot.meta.root} root={snapshot.meta.root} sources={[]} />}</div>
+      </Modal>
     </div>
   )
 }

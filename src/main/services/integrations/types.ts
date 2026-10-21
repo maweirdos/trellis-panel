@@ -1,5 +1,15 @@
 import type { IntegrationConnection, PageResult, RemoteRepository, ExternalObject, ProviderManifest, JiraSearchData } from '../../../shared/integrations'
 import type { JiraTransition } from '../../../shared/types'
+import type { KnowledgeCollection } from '../../../shared/knowledge-access'
+
+export interface KnowledgeRemoteHit { documentId: string; collectionId: string; title: string; text: string; truncated: boolean }
+export interface KnowledgePort {
+  collections(connection: ResolvedConnection, signal?: AbortSignal): Promise<{ items: KnowledgeCollection[]; hasMore: boolean }>
+  documents(connection: ResolvedConnection, collectionId: string, page: number, signal?: AbortSignal): Promise<{ items: { id: string; title: string; fileType: string; parseStatus: string }[]; page: number; hasMore: boolean }>
+  search(connection: ResolvedConnection, collectionIds: string[], query: string, limit: number, signal?: AbortSignal): Promise<{ items: KnowledgeRemoteHit[]; partial: boolean }>
+  read(connection: ResolvedConnection, documentId: string, collectionId: string, signal?: AbortSignal): Promise<{ title: string; text: string; mode: 'full' | 'unsupported'; truncated: boolean }>
+  publish(connection: ResolvedConnection, collectionId: string, input: { title: string; content: string }, signal?: AbortSignal): Promise<{ documentId: string }>
+}
 
 export interface ResolvedConnection {
   public: IntegrationConnection
@@ -30,6 +40,7 @@ export interface IntegrationProvider {
   repository?: RepositoryPort
   notification?: NotificationPort
   tasks?: TaskSourcePort
+  knowledge?: KnowledgePort
   authorization?: AuthorizationPort
   validate?: (connection: ResolvedConnection) => void
   inspect?: (connection: ResolvedConnection) => Promise<string>

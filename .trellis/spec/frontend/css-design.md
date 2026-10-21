@@ -87,6 +87,15 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   the `PageBody` page scroll. The homepage keeps global gutters and adds no
   private maximum width; its bottom inset is the block inset. The standalone
   onboarding screen stays centered.
+  Framed dashboard routes (`team`, `analytics`, `devtools`) share the same
+  viewport-lock through shell classes: `PageFrame` marks their `PageBody` with
+  `my-locked-body`, the page root is a `my-locked-canvas` `PageContent` that
+  fills the height, and each view owns one `my-locked-scroll` region (add the
+  `my-scrollbar` role when that region is the scroll owner). Tool views
+  (`GitViewer`, `ApplicationRuntimeView`) fill the region and pin their headers,
+  owning their own scroll panes; `architecture` and `studio` already fill the
+  body with their own pane chains. Short windows (≤620px viewport height)
+  release every locked page to the `PageBody` scroll in `my-shell.css`.
 - `PageContent({ variant?: 'full'|'centered', ...divProps })` provides the page's
   horizontal and vertical insets; `PageSection` provides horizontal alignment for
   compact controls and footers. Without a variant they inherit the page contract.
@@ -282,7 +291,7 @@ and ordinary buttons retain their existing type/padding-derived heights.
 | Narrow dialog | Panel fits the viewport without a document horizontal scrollbar |
 | Centered route | Header, scope note and body share1120px content width and the same gutter; body alone scrolls |
 | Full route | Header stays fixed; tables/editors/panes fill the remaining space and retain their own scroll owners |
-| Homepage viewport lock | At desktop width/height no page scrollbar appears: header and metrics stay fixed, the task list and side column own internal scrolling; compact width or a short window restores `PageBody` scroll |
+| Viewport-locked pages | Homepage, team, analytics and tools keep page-level scrollbars away at desktop size: fixed bands stay put and each workspace region owns its internal scrolling; a short window (≤620px height) restores `PageBody` scroll |
 | Page migration | No old outer max-width or duplicate page padding; reader/session keys and interaction scopes are unchanged |
 | Font/theme change | Drafts, reading state and existing choices stay intact |
 | Transparent utility root | Canonical font/colors without an opaque root background |
@@ -339,3 +348,76 @@ Wrong: `bg-my-accent text-white` or a nested unconfigured `.my-root` in a docume
 
 Correct: `bg-my-accent text-my-on-accent`, and a single App-owned typography root
 with normal content wrappers inheriting its selected font scale.
+
+## 8. Foreground and desktop notifications
+
+### Scope / trigger
+
+Use this contract for transient application feedback, task-material changes,
+bridge messages, update availability and notifications while minimized or hidden.
+Windows owns native notification chrome; CSS tokens apply to renderer surfaces.
+
+### Signatures
+
+- `ToastEvent`: `kind`, `title`, optional `body` and optional
+  `task: { projectRoot: string; dirName: string }` navigation target.
+- `formatMaterialToast(Pick<MaterialUpdatedEvent, 'title'|'count'|'files'>)` in
+  `src/shared/notifications.ts` supplies identical concise foreground/native copy.
+- `deliverToast(toast, mainWindow, onClick)` owns main-process delivery.
+- `NotificationCard({ notification, onDismiss?, action?, onExpandedChange? })`
+  and the App-owned `Toasts` host own renderer presentation and lifetime.
+
+### Contracts
+
+- A live, visible, focused, non-minimized main window receives one toast event.
+  Otherwise use one silent native notification with the canonical application icon.
+  Bridge notifications never force the window into focus. Do not pair delivery
+  with a second toast broadcast or generate toast UI from `materialUpdated`.
+  That domain broadcast remains available to conversation/material consumers.
+- Native task clicks capture project root and generation; only a matching current
+  project may receive the task focus. Renderer actions validate the current root
+  again at click time and handle removed tasks visibly.
+- Cards use `my-feedback.css` and canonical `--my-notification-*` geometry/stacking
+  tokens, shared neutral layer/border/shadow roles, semantic icons and global
+  font presets. Titles and descriptions have distinct type roles. Frames never
+  carry severity color. Preserve shadow gutters and narrow/short viewport access.
+- Clamp title/body to two lines at rest, offer expansion on measured overflow,
+  and retain the full message in a bounded keyboard-scrollable expanded area.
+  Closing has an accessible name; actions have hover/pressed/focus states.
+- The toast slice retains at most three cards and coalesces exact duplicates,
+  including their task identities. Mounted items own cancellable timers: 5 seconds
+  for info/success, 9 seconds for warn/error. Hover, descendant focus, expansion
+  and hidden documents pause dismissal; resuming gives a full reading interval.
+
+### Validation / error matrix
+
+| Condition | Expected result |
+| --- | --- |
+| Main focused | One renderer toast; no native notification |
+| Minimized, hidden, unfocused or missing main | One native notification; no duplicate renderer toast |
+| Native API unsupported or fails | Best-effort delivery; no application failure |
+| Old native task click after root switch or A→B→A | Show main without focusing a stale task |
+| Foreign renderer task target / removed task | Hide foreign action / show unavailable feedback |
+| Long paths, large fonts or narrow window | Bounded card, recoverable full content, operable controls |
+| Hover/focus/expansion/hidden document | No auto-dismiss until interaction ends |
+
+### Good / base / bad cases
+
+Good: a five-file task update shows the real count and two concise file names,
+with a real task action. Base: a save result uses a short neutral card with a
+success icon. Bad: long paths grow an unbounded card, or one event fires native
+and renderer notifications together.
+
+### Required checks
+
+Run `scripts/smoke/notifications-native.mjs` (mocked OS boundary) and
+`scripts/smoke/notifications-ui.mjs` (mounted Chromium), plus `npm run check:ui`,
+typecheck/build and affected navigation checks. The UI smoke covers six theme/font
+combinations, clamping/expansion, viewport bounds, dismissal/pause/dedup and task
+actions. Synthetic native checks do not prove Windows notification-center visuals.
+
+### Wrong versus correct
+
+Wrong: each producer constructs `new Notification` or broadcasts a toast and also
+invokes native delivery. Correct: main producers call the common delivery route;
+local operation results use the same renderer queue and themed card.

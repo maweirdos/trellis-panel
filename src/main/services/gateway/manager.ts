@@ -1,7 +1,8 @@
-import { getSettings } from '../store'
-import { weknoraReadDoc, weknoraSearch, weknoraTest } from '../weknora'
+import { knowledgeAccess } from '../knowledge-access/service'
+import { materialWrite } from '../knowledge-access/materials'
+import { randomUUID } from 'node:crypto'
 import { kbDocById, kbSearch } from '../knowledge'
-import { getSnapshot } from '../../state'
+import { getSnapshot, getProjectGeneration } from '../../state'
 import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { errorMessage } from '../../../shared/errors'
@@ -173,10 +174,10 @@ class GatewayManagerClass {
       },
       {
         name: 'weknora_read_doc',
-        description: '按文档 ID 获取 WeKnora 远端企业知识文档的完整正文内容。',
+        description: '读取本次项目知识检索签发的来源句柄；支持格式才返回正文，不接受任意远端文档 ID。',
         upstreamId: 'weknora',
         parameters: {
-          knowledgeId: { type: 'string', description: 'WeKnora 知识文档 ID', required: true }
+          knowledgeId: { type: 'string', description: 'weknora_search 返回的 sourceHandle（不是远端 ID）', required: true }
         },
         isReadOnly: true,
         securityRule: '2.0s 熔断保护'
@@ -272,10 +273,12 @@ class GatewayManagerClass {
     }
 
     // 2. 执行具体工具逻辑（包装超时熔断）
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      const execPromise = this.dispatchTool(toolName, args, root)
+      const execPromise = this.dispatchTool(toolName, args, root, controller.signal)
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`上游调用超时 (触发网关 ${this.security.timeoutMs}ms 熔断保护)`)), this.security.timeoutMs)
+        { timer = setTimeout(() => { controller.abort(); reject(new Error(`上游调用超时 (触发网关 ${this.security.timeoutMs}ms 熔断保护)`)) }, this.security.timeoutMs) }
       )
 
       const result = await Promise.race([execPromise, timeoutPromise])
@@ -326,12 +329,10 @@ class GatewayManagerClass {
         elapsedMs,
         error
       }
-    }
+    } finally { if (timer) clearTimeout(timer) }
   }
 
-  private async dispatchTool(toolName: string, args: Record<string, unknown>, root: string): Promise<unknown> {
-    const s = getSettings()
-
+  private async dispatchTool(toolName: string, args: Record<string, unknown>, root: string, signal?: AbortSignal): Promise<unknown> {
     switch (toolName) {
       // --- Local Knowledge Base Tools ---
       case 'kb_search': {
@@ -374,18 +375,14 @@ class GatewayManagerClass {
       case 'weknora_search': {
         const query = String(args.query || '').trim()
         const limit = typeof args.limit === 'number' ? args.limit : 10
-        if (!s?.weknora?.enabled) {
-          return { ok: false, error: 'WeKnora 企业知识库插件未启用（可在系统设置中开启）', hits: [] }
-        }
-        return await weknoraSearch(s.weknora, query, limit)
+        const owner = { root, projectGeneration: getProjectGeneration(), sessionId: 'gateway', turnId: `gateway-${randomUUID()}` }
+        return knowledgeAccess.search(owner, knowledgeAccess.capture(owner), { requestId: randomUUID(), query, limit }, signal)
       }
 
       case 'weknora_read_doc': {
         const knowledgeId = String(args.knowledgeId || '').trim()
-        if (!s?.weknora?.enabled) {
-          return { ok: false, error: 'WeKnora 企业知识库插件未启用' }
-        }
-        return await weknoraReadDoc(s.weknora, knowledgeId)
+        const owner = { root, projectGeneration: getProjectGeneration(), sessionId: 'gateway', turnId: `gateway-${randomUUID()}` }
+        return knowledgeAccess.read(owner, knowledgeAccess.capture(owner), { requestId: randomUUID(), sourceHandle: knowledgeId }, signal)
       }
 
       // --- Trellis Tools ---
@@ -466,8 +463,8 @@ class GatewayManagerClass {
   }
 
   async getStatus(root: string): Promise<GatewayStatus> {
-    const s = getSettings()
     const tools = this.getStandardTools()
+    const knowledge = root ? await knowledgeAccess.context({ expectedRoot: root }).catch(() => null) : null
 
     const upstreams: GatewayUpstream[] = [
       // 1. 本地知识库（四库）
@@ -490,14 +487,14 @@ class GatewayManagerClass {
         name: 'WeKnora 企业知识库',
         category: 'knowledge',
         description: '企业级 RAG 知识平台，提供业务规则文档、技术架构标准与跨团队规范向量检索',
-        status: s?.weknora?.enabled ? 'connected' : 'disabled',
-        endpoint: s?.weknora?.baseUrl || '未配置',
+        status: knowledge?.scope.status === 'ok' ? 'disconnected' : 'disabled',
+        endpoint: knowledge?.scope.connectionName || '当前项目未绑定',
         isRemote: true,
-        enabled: !!s?.weknora?.enabled,
-        lastChecked: Date.now(),
+        enabled: knowledge?.scope.status === 'ok',
+        error: knowledge?.scope.status === 'ok' ? '已配置项目范围；尚未通过本次实际检索验证连接' : knowledge?.scope.detail,
         tools: tools.filter((t) => t.upstreamId === 'weknora'),
         config: {
-          kbIds: s?.weknora?.searchKbIds || []
+          kbIds: knowledge?.scope.collectionIds || []
         }
       },
 
@@ -546,18 +543,19 @@ class GatewayManagerClass {
     query: string,
     options: { limit?: number; root: string }
   ): Promise<{ hits: ContextHit[]; elapsedMs: number; sources: Array<{ source: string; label: string; count: number }> }> {
-    const s = getSettings()
     const start = Date.now()
-    if (s?.weknora?.enabled) {
-      const res = await weknoraSearch(s.weknora, query, options.limit || 10)
-      const hits = (res.hits || []).map((h, i) => ({
-        id: `weknora:${h.knowledgeId || i}`,
-        title: h.title || h.filename || '企业知识文档',
+    if (options.root) {
+      const owner = { root: options.root, projectGeneration: getProjectGeneration(), sessionId: 'gateway', turnId: `gateway-${randomUUID()}` }
+      const res = await knowledgeAccess.search(owner, knowledgeAccess.capture(owner), { requestId: randomUUID(), query, limit: options.limit || 10 })
+      if (!['ok', 'empty'].includes(res.status)) throw new Error(res.detail)
+      const hits = res.sources.filter((h) => h.kind === 'weknora').map((h) => ({
+        id: h.id,
+        title: h.title,
         source: 'weknora',
         sourceLabel: 'WeKnora 公司库',
-        path: h.filename,
-        snippet: h.content,
-        score: h.score
+        path: h.sourceHandle,
+        snippet: h.text,
+        score: 0
       }))
       return {
         hits,
@@ -570,13 +568,11 @@ class GatewayManagerClass {
 
   async syncSpecFromRemote(root: string, remoteDocId: string, targetFileName: string): Promise<{ ok: boolean; error?: string; path?: string }> {
     if (!root) return { ok: false, error: '未打开项目' }
-    const s = getSettings()
-    if (!s?.weknora?.enabled) return { ok: false, error: 'WeKnora 插件未启用' }
-
     try {
-      const res = await weknoraReadDoc(s.weknora, remoteDocId)
-      if (!res.ok || !res.content) {
-        return { ok: false, error: res.error || '无法读取远端文档内容' }
+      const owner = { root, projectGeneration: getProjectGeneration(), sessionId: 'gateway', turnId: `gateway-${randomUUID()}` }
+      const res = await knowledgeAccess.read(owner, knowledgeAccess.capture(owner), { requestId: randomUUID(), sourceHandle: remoteDocId })
+      if (res.status !== 'ok' || !res.source?.text || res.source.truncated) {
+        return { ok: false, error: res.detail || '无法取得完整远端正文' }
       }
 
       const specDir = join(root, '.trellis', 'spec')
@@ -590,7 +586,7 @@ class GatewayManagerClass {
       if (!filePath) {
         return { ok: false, error: `目标文件名越界: ${targetFileName}` }
       }
-      writeFileSync(filePath, res.content, 'utf-8')
+      materialWrite(root, join('.trellis', 'spec', fileName), res.source.text, null)
 
       return { ok: true, path: filePath }
     } catch (e) {
@@ -605,10 +601,9 @@ class GatewayManagerClass {
       return { ok: res.ok }
     }
     if (providerId === 'weknora') {
-      const s = getSettings()
-      if (!s?.weknora?.enabled) return { ok: false, error: 'WeKnora 未启用' }
-      const res = await weknoraTest(s.weknora)
-      return { ok: res.ok, error: res.error }
+      if (!root) return { ok: false, error: '未打开项目' }
+      try { const context = await knowledgeAccess.context({ expectedRoot: root }); if (context.scope.status !== 'ok') return { ok: false, error: context.scope.detail }; await knowledgeAccess.collections({ expectedRoot: root }); return { ok: true } }
+      catch { return { ok: false, error: '项目知识连接读取失败' } }
     }
     if (providerId === 'trellis') {
       if (!root || !existsSync(join(root, '.trellis'))) {

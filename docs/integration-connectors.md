@@ -1,6 +1,53 @@
 # External Application Connectors
 
-The desktop app's **Tools and Settings → External application integrations** directory manages Jira, GitHub, GitLab, Gitee, DingTalk, and Feishu connections. Connection secrets are stored on this machine; project bindings select a Jira default query, repository, or group-notification destination. WeChat/WeCom is deferred.
+The desktop app's **Tools and Settings → External application integrations** directory manages Jira, GitHub, GitLab, Gitee, DingTalk, Feishu, and WeKnora connections. Connection secrets are stored on this machine; project bindings select a Jira default query, repository, group-notification destination, or default knowledge collections. WeChat/WeCom is deferred.
+
+## Project knowledge and WeKnora
+
+Add/test the WeKnora connection in Integrations, then bind its default collections
+to the selected project. A saved connection alone does not enable knowledge for
+every project. The Knowledge page and existing Agent conversation use the same
+project scope; a per-use adjustment is visible and temporary, and resets on
+application restart. No binding or an empty selection never means all libraries.
+
+Requirements intake can seed an editable, unsent draft in the existing native
+Agent conversation. The user discusses normally, then asks the same Agent to
+organize the requirements. Native tools let it actually save a complete document
+under `.trellis/notes/`, without copying an answer into a form. Compact real
+lookup/source and document results appear in the turn. Attachment, discovery and
+actual calls remain separate observed states.
+
+When requested, the Agent can hand the saved version to an existing task with
+revision checks, or create a new planning task and its developer PRD. This never
+starts implementation or changes Jira state. Saving a conversational document
+records its origin and unresolved questions, not formal business approval.
+
+On an explicit conversational publication request, the Agent publishes the exact
+saved version to the unique eligible project library, or asks which destination
+when ambiguous. Manual management previews are still available but are not
+required for this path. A create acknowledgement retains the remote document ID, not a claim of
+completed indexing. Lost responses stay uncertain across restart and are not
+automatically reposted. Publication history loads older pages explicitly so an
+older unresolved result can still be checked and resolved. Local saving does not
+publish. Legacy opt-in spec sync stays
+in a separate compatibility area; automatic archive deposition remains disabled.
+
+Existing WeKnora settings can be explicitly imported and optionally bound only to
+the selected project. Integration storage v1 is backed up before v2 migration.
+Private source evidence and publication receipts stay in application data;
+project Markdown may be shared with the repository. A full application restart
+is required when the loaded main/preload lacks the new knowledge API.
+
+The MCP server uses exact dependency `@modelcontextprotocol/sdk` 1.32.1 (MIT).
+Its license notice is retained in `resources/licenses/modelcontextprotocol-sdk.txt`
+and the dependency's own license must remain in packaged distributions. Controlled
+core/MCP/ReactDOM checks are not proof of deployed WeKnora response compatibility,
+real model behavior, corporate proxy/CA or packaged-app acceptance. Separate
+synthetic real Codex checks verify discussion synthesis and actual local
+document/planning outputs; they do not verify production WeKnora publication.
+The host scopes its own tools, not other globally installed native MCP plugins.
+Shared instructions require project knowledge lookup through the project bridge;
+they are model guidance rather than an external-plugin ACL.
 
 ## Supported workflows
 
@@ -28,7 +75,7 @@ Connection configuration, authentication verification, and real business capabil
 The integration subsystem is a modular desktop service using capability ports and adapters (TPD-025). It does not load arbitrary third-party executables.
 
 1. Add a provider identity and its manifest/fields/capabilities in `src/shared/integrations.ts`.
-2. Implement the relevant `TaskSourcePort`, `RepositoryPort`, or `NotificationPort` in `src/main/services/integrations/providers/`.
+2. Implement the relevant `TaskSourcePort`, `RepositoryPort`, `NotificationPort`, or `KnowledgePort` in `src/main/services/integrations/providers/`.
 3. Register the adapter in `providers/index.ts`. Supply provider validation for special auth/URL requirements. Declare a stable instance URL for fixed-host providers.
 4. Use factory/transport injection and the app's bounded `integrationFetch`; do not put SDKs, decrypted secrets, or vendor HTTP branches in renderer components.
 5. The directory renders the manifest. New specialized business views can consume the typed integration API. Ship new connector code in an application release; users can enable/disable its connection and project bindings at runtime.
@@ -54,9 +101,9 @@ write, or real group delivery was executed. Static review is recorded in the tas
 The user later explicitly permitted the development compilation/restart necessary
 for GitLab OAuth and its application registration. The GitLab application was
 registered with read_api/read_user, and the real desktop editor saved its public
-client metadata and opened GitLab's browser consent page. Final account consent
-is handed to the user; token exchange/refresh remains unverified. Anonymous Jira
-serverInfo established Server 8.1.0 metadata only.
+client metadata. The user completed browser consent, and the desktop app loaded a
+read-only GitLab membership-repository page. Refresh-token rotation was not
+exercised. Anonymous Jira serverInfo established Server 8.1.0 metadata only.
 
 During an authorized desktop startup repair, the actual directory and Jira editor
 were opened without entering or saving credentials. Shared modal coverage was

@@ -4,6 +4,7 @@ import { api, hasIpc } from './api'
 import { useMy } from './my/store'
 import { UI_PREFERENCES_KEY } from './my/appearance'
 import { TitleBar } from './components/TitleBar'
+import { ApplicationDock } from './applications/ApplicationDock'
 import { Onboarding } from './components/Onboarding'
 import { Toasts } from './components/Toasts'
 import { DialogHost } from './components/Dialogs'
@@ -17,6 +18,7 @@ import { dispatchEscKey } from './utils/esc-layer'
 import { MyApp } from './my/layout/MyApp'
 import { DocWindowApp } from './my/pages/DocWindow'
 import { Loader2 } from 'lucide-react'
+import { projectRootKey } from './my/navigation'
 
 function PageLoading(): JSX.Element {
   return (
@@ -42,6 +44,23 @@ function MainApp(): JSX.Element {
   useEffect(() => {
     const off = api.onSnapshotUpdated((snap) => useApp.getState().setSnapshot(snap))
     const offToast = api.onToast((t) => useApp.getState().pushToast(t))
+    const offDocumentReturn = api.onDocumentOriginReturn((origin) => {
+      const state = useApp.getState()
+      if (projectRootKey(state.snapshot?.meta.root ?? '') !== projectRootKey(origin.projectRoot)) {
+        state.pushToast({ kind: 'error', title: '来源项目尚未就绪', body: '请重新点击文档窗口的返回来源' })
+        return
+      }
+      if (origin.sessionId) {
+        useMy.getState().setAgentSessionTarget(origin.sessionId)
+        useMy.getState().requestAgentView(null)
+        state.setPage('acp')
+      } else if (origin.taskDir) {
+        const snapshot = state.snapshot
+        const task = snapshot && [...snapshot.tasks, ...snapshot.archived].find((item) => item.dirName === origin.taskDir || item.path === origin.taskDir)
+        if (task && snapshot) { state.showTask(task.dirName, snapshot.archived.includes(task)); state.setPage('tasks') }
+        else state.pushToast({ kind: 'error', title: '来源任务已不可用', body: origin.taskDir })
+      }
+    })
     const offFocus = api.onBridgeTaskFocus((taskDir) => {
       const st = useApp.getState()
       // bootstrap 未完成时先暂存，否则随后 openProjectPath 会把 page/openTaskDir 重置掉
@@ -62,16 +81,6 @@ function MainApp(): JSX.Element {
       inboxAdd(e.items)
       useApp.setState({ page: 'inbox' })
     })
-    // 任务材料更新（主进程按任务防抖合并）——正在阅读的任务给轻提示，其余正常提醒
-    const offMaterial = api.onMaterialUpdated((e) => {
-      const st = useApp.getState()
-      const readingIt = st.openTaskDir === e.dirName
-      pushToast({
-        kind: 'info',
-        title: readingIt ? '当前阅读任务有更新' : `任务更新：${e.title}`,
-        body: `${e.count} 个文件：${e.files.join('、')}${e.count > e.files.length ? ' 等' : ''}`
-      })
-    })
     // 全局热键唤起 → 回到上次阅读位置（不新开、不跳最新）
     const offFocusReading = api.onFocusLastReading(() => {
       useApp.getState().setPage('tasks')
@@ -86,9 +95,9 @@ function MainApp(): JSX.Element {
     return () => {
       off()
       offToast()
+      offDocumentReturn()
       offFocus()
       offInbox()
-      offMaterial()
       offFocusReading()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,6 +207,7 @@ export default function App(): JSX.Element {
         <Suspense fallback={null}>
           <MyApp />
         </Suspense>
+        <ApplicationDock />
       </div>
     )
   }
@@ -207,6 +217,7 @@ export default function App(): JSX.Element {
       <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <MainApp />
+        <ApplicationDock />
         <Toasts />
         <DialogHost />
       </div>
