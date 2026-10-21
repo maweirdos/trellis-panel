@@ -12,7 +12,6 @@
 }
 .my-root .my-application-popup-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .my-root .my-application-trigger { display: inline-flex; }
-.my-root .my-application-trigger[data-open='true'] .my-tooltip { display: none; }
 .my-root .my-application-list { display: grid; min-width: 0; gap: var(--my-space-12); }
 .my-root .my-application-popup-body > .my-application-list { gap: var(--my-space-8); padding: var(--my-space-4) var(--my-space-6) var(--my-space-12); }
 .my-root .my-application-card {

@@ -55,6 +55,15 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   scope; do not portal to an unthemed body or add a nested `.my-root`. Its fixed
   `no-drag` backdrop covers the title bar as well as the page. Keep the existing
   modal stacking token, Escape dispatcher and focus containment/return behavior.
+- `Tooltip` also portals into the owning `.my-root` and positions with
+  `position: fixed`, so page `overflow: hidden` bands and the `z-50` window
+  header can never clip or cover it. It flips to the opposite side when the
+  preferred side lacks viewport space and clamps into the viewport. It shows on
+  hover and keyboard `:focus-visible` only, hides on trigger activation
+  (pointerdown) until the pointer leaves, and dismisses on scroll, resize and
+  Escape. Do not reintroduce pure-CSS absolute tooltips inside clipping page
+  bands; wrap disabled buttons behind a tooltip with `.my-tooltip-anchor >
+  button:disabled { pointer-events: none }` already handled globally.
 - Page geometry lives in `my/layout/PageLayout.tsx`, with exactly two variants:
   `PageLayout({ variant: 'full'|'centered', ...divProps })`. The exhaustive
   `PAGE_LAYOUTS satisfies Record<Page, PageLayoutVariant>` registry classifies

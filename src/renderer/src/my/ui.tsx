@@ -269,22 +269,84 @@ export function DropdownHeader({ children }: { children: ReactNode }): JSX.Eleme
   )
 }
 
-/* ---------------- Tooltip（纯 CSS hover） ---------------- */
+/* ---------------- Tooltip（portal 渲染 + 视口碰撞规避） ---------------- */
+
+const TOOLTIP_GAP = 6
 
 export function Tooltip({ label, children, side = 'top', align = 'center', wrap = false }: { label: string; children: ReactNode; side?: 'top' | 'bottom'; align?: 'center' | 'right'; wrap?: boolean }): JSX.Element {
+  const anchorRef = useRef<HTMLSpanElement>(null)
+  const tipRef = useRef<HTMLSpanElement>(null)
+  const suppressRef = useRef(false)
+  const [open, setOpen] = useState(false)
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
+  const [place, setPlace] = useState<{ top: number; left: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) { setPortalRoot(null); setPlace(null); return }
+    // 挂到 owning theme root：脱离页面 overflow 裁剪与标题栏等层叠上下文，悬浮层才不会被壳层遮挡。
+    setPortalRoot(anchorRef.current?.closest<HTMLElement>('.my-root') ?? null)
+  }, [open])
+
+  useLayoutEffect(() => {
+    if (!open || !portalRoot) return
+    const anchor = anchorRef.current
+    const tip = tipRef.current
+    if (!anchor || !tip) return
+    const a = anchor.getBoundingClientRect()
+    const t = tip.getBoundingClientRect()
+    const vh = window.innerHeight
+    const vw = window.innerWidth
+    const spaceTop = a.top - TOOLTIP_GAP
+    const spaceBottom = vh - a.bottom - TOOLTIP_GAP
+    const fits = { top: spaceTop >= t.height, bottom: spaceBottom >= t.height }
+    // 首选 side 放不下时翻转到另一侧；两侧都放不下则保持首选方向，最后统一夹取进视口。
+    const useTop = side === 'top' ? fits.top || !fits.bottom : fits.bottom || !fits.top
+    let top = useTop ? a.top - t.height - TOOLTIP_GAP : a.bottom + TOOLTIP_GAP
+    top = Math.min(Math.max(top, 8), Math.max(8, vh - t.height - 8))
+    let left = align === 'right' ? a.right - t.width : a.left + a.width / 2 - t.width / 2
+    left = Math.min(Math.max(left, 8), Math.max(8, vw - t.width - 8))
+    setPlace({ top: Math.round(top), left: Math.round(left) })
+  }, [open, portalRoot, label, side, align, wrap])
+
+  useEffect(() => {
+    if (!open) return
+    const hide = () => setOpen(false)
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') hide() }
+    window.addEventListener('scroll', hide, true)
+    window.addEventListener('resize', hide)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('scroll', hide, true)
+      window.removeEventListener('resize', hide)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   return (
-    <span className="group/tt relative inline-flex">
+    <span
+      ref={anchorRef}
+      className="my-tooltip-anchor relative inline-flex"
+      onMouseEnter={() => { if (!suppressRef.current) setOpen(true) }}
+      onMouseLeave={() => { suppressRef.current = false; setOpen(false) }}
+      onPointerDown={() => { suppressRef.current = true; setOpen(false) }}
+      onFocus={(e) => { if (e.target instanceof HTMLElement && e.target.matches(':focus-visible')) setOpen(true) }}
+      onBlur={() => setOpen(false)}
+    >
       {children}
-      <span
-        style={wrap ? { width: 'max-content', maxWidth: 'min(360px, calc(100vw - 24px))', whiteSpace: 'normal' } : undefined}
-        className={clsx(
-          'my-tooltip pointer-events-none absolute hidden whitespace-nowrap border border-my-line px-2 py-1 text-my-xs text-my-secondary group-hover/tt:block group-focus-within/tt:block',
-          align === 'right' ? 'right-0' : 'left-1/2 -translate-x-1/2',
-          side === 'top' ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]'
-        )}
-      >
-        {label}
-      </span>
+      {open && portalRoot && createPortal(
+        <span
+          ref={tipRef}
+          role="tooltip"
+          style={{
+            ...(place ?? { visibility: 'hidden' as const }),
+            ...(wrap ? { width: 'max-content', maxWidth: 'min(360px, calc(100vw - 24px))', whiteSpace: 'normal' as const } : {})
+          }}
+          className="my-tooltip my-fade no-drag pointer-events-none fixed left-0 top-0 whitespace-nowrap border border-my-line px-2 py-1 text-my-xs text-my-secondary"
+        >
+          {label}
+        </span>,
+        portalRoot
+      )}
     </span>
   )
 }
