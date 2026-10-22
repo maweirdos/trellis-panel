@@ -39,7 +39,9 @@ export const taskConversationsSnapshotSchema = z.object({
   projectRoot: z.string(),
   bindings: z.array(taskConversationBindingSchema),
   sources: z.array(taskConversationSourceStatusSchema),
-  refreshedAt: z.number().int().nonnegative()
+  refreshedAt: z.number().int().nonnegative(),
+  /** More bounded native-history work remains. Absence means false. */
+  indexing: z.boolean().optional()
 })
 export const taskConversationCandidatesSchema = z.object({
   projectRoot: z.string(),
@@ -61,6 +63,28 @@ export const taskConversationBindInputSchema = taskConversationProjectInputSchem
 export const taskConversationBindingInputSchema = taskConversationProjectInputSchema.extend({
   taskDir: z.string().min(1).max(1024), bindingId: z.string().min(1).max(256)
 }).strict()
+export const taskConversationTaskInputSchema = taskConversationProjectInputSchema.extend({
+  taskDir: z.string().min(1).max(1024)
+}).strict()
+export const taskConversationContinueInputSchema = taskConversationTaskInputSchema.extend({
+  bindingId: z.string().min(1).max(256).optional()
+}).strict()
+export const taskConversationContinuationSchema = z.object({
+  projectRoot: z.string(), taskDir: z.string(), taskTitle: z.string(),
+  status: z.string(), mode: z.enum(['continue', 'history']),
+  text: z.string().max(32768), issues: z.array(z.string()), files: z.array(z.string())
+})
+export const taskConversationContinueResultSchema = z.object({
+  packet: taskConversationContinuationSchema,
+  copied: z.literal(true),
+  opened: taskConversationOpenResultSchema.optional(),
+  openError: z.string().optional()
+})
+export const taskConversationPreviewSchema = z.object({
+  projectRoot: z.string(), conversationId: z.string(),
+  messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(4096) })).max(12),
+  truncated: z.boolean(), unavailableReason: z.string().optional()
+})
 
 export type TaskConversationSource = z.infer<typeof taskConversationSourceSchema>
 export type TaskConversationCapability = z.infer<typeof taskConversationCapabilitySchema>
@@ -73,6 +97,11 @@ export type TaskConversationOpenResult = z.infer<typeof taskConversationOpenResu
 export type TaskConversationProjectInput = z.infer<typeof taskConversationProjectInputSchema>
 export type TaskConversationBindInput = z.infer<typeof taskConversationBindInputSchema>
 export type TaskConversationBindingInput = z.infer<typeof taskConversationBindingInputSchema>
+export type TaskConversationTaskInput = z.infer<typeof taskConversationTaskInputSchema>
+export type TaskConversationContinueInput = z.infer<typeof taskConversationContinueInputSchema>
+export type TaskConversationContinuation = z.infer<typeof taskConversationContinuationSchema>
+export type TaskConversationContinueResult = z.infer<typeof taskConversationContinueResultSchema>
+export type TaskConversationPreview = z.infer<typeof taskConversationPreviewSchema>
 
 export interface TaskConversationsApi {
   taskConversationsList(input: TaskConversationProjectInput): Promise<{ ok: true; value: TaskConversationsSnapshot } | IpcFail>
@@ -81,4 +110,8 @@ export interface TaskConversationsApi {
   taskConversationsSetPrimary(input: TaskConversationBindingInput): Promise<{ ok: true; value: TaskConversationsSnapshot } | IpcFail>
   taskConversationsUnbind(input: TaskConversationBindingInput): Promise<{ ok: true; value: TaskConversationsSnapshot } | IpcFail>
   taskConversationsOpen(input: TaskConversationBindingInput): Promise<{ ok: true; value: TaskConversationOpenResult } | IpcFail>
+  taskConversationsPrepare(input: TaskConversationTaskInput): Promise<{ ok: true; value: TaskConversationContinuation } | IpcFail>
+  taskConversationsContinue(input: TaskConversationContinueInput): Promise<{ ok: true; value: TaskConversationContinueResult } | IpcFail>
+  taskConversationsPreview(input: TaskConversationBindInput): Promise<{ ok: true; value: TaskConversationPreview } | IpcFail>
+  taskConversationsInspect(input: TaskConversationBindInput): Promise<{ ok: true; value: TaskConversationOpenResult } | IpcFail>
 }

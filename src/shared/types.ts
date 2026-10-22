@@ -806,8 +806,8 @@ export interface Settings {
   desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean; quickTodoShortcut: string; explorerContextMenu?: boolean }
   /** T4 派单：codex worker 显式模型（账号默认模型不可用时在此指定；留空用 CLI 默认） */
   dispatch: { codexModel?: string }
-  /** ACP agent 注册表（10-09：缺省用内置预置项） */
-  acp?: { agents?: AcpAgentConfig[]; nodePath?: string }
+  /** ACP agent 注册表（10-09：缺省用内置预置项）；nativePaths 为原生直连 Runtime 的手动 CLI 路径（优先于 PATH 自动检测） */
+  acp?: { agents?: AcpAgentConfig[]; nodePath?: string; nativePaths?: Record<string, string> }
 }
 
 /* ---------- Studio（定制中心：workflow / 命令 / 子代理 / 技能 / 钩子 / 配置 / 平台） ---------- */
@@ -1458,6 +1458,10 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   acpRuntimeRefresh: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpRuntimeSetup: (runtimeId: string) => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpRuntimeNodePick: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; nodePath?: string; agents?: AcpAgentStatus[] }>
+  /** 测试连接：initialize-only 握手探测，零会话副作用；probe.ok 表示握手是否成功 */
+  acpRuntimeTestConnection: (runtimeId: string) => Promise<{ ok: boolean; error?: string; probe?: AcpConnectionProbeResult }>
+  /** 配置原生直连 Runtime 的 CLI 路径；取消返回 cancelled，路径无效返回失败且不保存 */
+  acpRuntimePathPick: (runtimeId: string) => Promise<{ ok: boolean; error?: string; cancelled?: boolean; agents?: AcpAgentStatus[] }>
   acpSessionResume: (sessionId: string) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
   acpSessionConfigure: (sessionId: string, input: AcpConfigureInput) => Promise<{ ok: boolean; error?: string; session?: AcpSessionRecord }>
   acpSessionRecoverModel: (sessionId: string, input: import('./acp-recovery').AcpRecoverModelInput) => Promise<import('./acp-recovery').AcpRecoverModelResult>
@@ -1731,7 +1735,7 @@ export interface AcpAgentConfig {
   command: string
   enabled: boolean
   /** Frozen launch provenance; Settings overrides are always user-managed. */
-  launchKind?: 'managed' | 'custom'
+  launchKind?: 'managed' | 'custom' | 'native'
   executable?: string
   args?: string[]
 }
@@ -1743,12 +1747,25 @@ export interface AcpAgentStatus extends AcpAgentConfig {
   health?: AcpRuntimeHealth
   diagnostics?: string[]
   adapterVersion?: string
+  /** 原生直连条目：npm 注册表 latest 版本；查询失败留空即"未知"，UI 不据此提示升级。 */
+  latestVersion?: string
   nodePath?: string
   setupRequired?: boolean
   checkedAt?: number
 }
 
 export type AcpRuntimeHealth = 'not_checked' | 'executable_missing' | 'adapter_missing' | 'launch_error' | 'incompatible' | 'auth_required' | 'directory_unavailable' | 'ready'
+
+/** 测试连接（R7）：initialize-only 握手结果；绝不发送 session/new，authMethodIds 非空仅提示需认证，不做认证动作。 */
+export interface AcpConnectionProbeResult {
+  ok: boolean
+  agentInfo?: { name?: string; version?: string }
+  protocolVersion?: number
+  authMethodIds?: string[]
+  /** 精选能力白名单的中文标签（如「图片输入」「会话恢复」「MCP」）；未知能力如实忽略 */
+  capabilitiesSummary?: string[]
+  error?: string
+}
 
 /** 注入 Runtime 子进程的环境变量；仅保存在本机角色配置，不进入历史记录。 */
 export interface AcpProfileEnvVar {

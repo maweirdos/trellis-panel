@@ -21,7 +21,11 @@ export const ipcInvoke = {
     bind: 'taskConversations:bind',
     setPrimary: 'taskConversations:setPrimary',
     unbind: 'taskConversations:unbind',
-    open: 'taskConversations:open'
+    open: 'taskConversations:open',
+    prepare: 'taskConversations:prepare',
+    continue: 'taskConversations:continue',
+    preview: 'taskConversations:preview',
+    inspect: 'taskConversations:inspect'
   },
   integration: {
     authorize: 'integration:authorize', cancelAuthorization: 'integration:cancelAuthorization',
@@ -345,6 +349,8 @@ export const ipcInvoke = {
     runtimeRefresh: 'acp:runtime.refresh',
     runtimeSetup: 'acp:runtime.setup',
     runtimeNodePick: 'acp:runtime.node-pick',
+    runtimeTest: 'acp:runtime.test-connection',
+    runtimePathPick: 'acp:runtime.path-pick',
     sessionResume: 'acp:session.resume',
     sessionConfigure: 'acp:session.configure',
     sessionBindTask: 'acp:session.bind-task'

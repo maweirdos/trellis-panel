@@ -81,7 +81,11 @@ const taskConversationsApi: TaskConversationsApi = {
   taskConversationsBind: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.bind, input),
   taskConversationsSetPrimary: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.setPrimary, input),
   taskConversationsUnbind: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.unbind, input),
-  taskConversationsOpen: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.open, input)
+  taskConversationsOpen: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.open, input),
+  taskConversationsPrepare: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.prepare, input),
+  taskConversationsContinue: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.continue, input),
+  taskConversationsPreview: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.preview, input),
+  taskConversationsInspect: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.inspect, input)
 }
 
 const api = {
@@ -246,6 +250,8 @@ const api = {
   acpRuntimeRefresh: () => ipcRenderer.invoke(ipcInvoke.acp.runtimeRefresh),
   acpRuntimeSetup: (runtimeId: string) => ipcRenderer.invoke(ipcInvoke.acp.runtimeSetup, runtimeId),
   acpRuntimeNodePick: () => ipcRenderer.invoke(ipcInvoke.acp.runtimeNodePick),
+  acpRuntimeTestConnection: (runtimeId: string) => ipcRenderer.invoke(ipcInvoke.acp.runtimeTest, runtimeId),
+  acpRuntimePathPick: (runtimeId: string) => ipcRenderer.invoke(ipcInvoke.acp.runtimePathPick, runtimeId),
   acpSessionResume: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.acp.sessionResume, sessionId),
   acpSessionConfigure: (sessionId: string, input: import('../shared/types').AcpConfigureInput) => ipcRenderer.invoke(ipcInvoke.acp.sessionConfigure, sessionId, input),
   onAcpState: (cb: (e: import('../shared/types').AcpStateEvent) => void) => subscribe(ipcEvent.acpState, cb),

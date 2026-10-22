@@ -14,9 +14,10 @@ import {
   newAcpSession,
   promptAcpSession,
   respondAcpPermission,
-  listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, resumeAcpSession, configureAcpSession, bindAcpSessionTask,
+  listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath, resumeAcpSession, configureAcpSession, bindAcpSessionTask,
   listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel
 } from '../services/acp'
+import { testAcpRuntimeConnection } from '../services/acp/connection-probe'
 import { handle } from './registry'
 import { isManagedWorkflowOrigin, withOrdinaryWorkflowAdmission, withOrdinaryConnectionAdmission } from '../services/workflow-desktop'
 
@@ -99,6 +100,8 @@ export function registerAcpIpc(): void {
   handle(ipcInvoke.acp.runtimeRefresh, () => listAcpAgents(true))
   handle(ipcInvoke.acp.runtimeSetup, (_e, id: string) => setupAcpRuntime(id))
   handle(ipcInvoke.acp.runtimeNodePick, () => pickAcpNode())
+  handle(ipcInvoke.acp.runtimeTest, (_e, id: string) => testAcpRuntimeConnection(id))
+  handle(ipcInvoke.acp.runtimePathPick, (_e, id: string) => pickAcpRuntimePath(id))
   handle(ipcInvoke.acp.sessionResume, (_e, id: string) => { const root = getProjectRoot() ?? ''; return connection(root, { sessionId: id }, () => resumeAcpSession(root, id)) })
   handle(ipcInvoke.acp.sessionConfigure, (_e, id: string, input) => { const root = getProjectRoot() ?? ''; return connection(root, { sessionId: id }, () => configureAcpSession(root, id, input)) })
 }

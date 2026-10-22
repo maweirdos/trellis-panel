@@ -28,7 +28,8 @@ import { knowledgeMcpBridge, type KnowledgeMcpConnection } from './knowledge-mcp
 import { KNOWLEDGE_CONVERSATION_INSTRUCTIONS } from './knowledge-mcp/instructions'
 import { skipConversationActionLookup } from './knowledge-mcp/preflight'
 import type { KnowledgePreflight } from './knowledge-mcp/server'
-export { listAcpAgents, setupAcpRuntime, pickAcpNode } from './acp/setup'
+export { listAcpAgents, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath } from './acp/setup'
+export { testAcpRuntimeConnection } from './acp/connection-probe'
 export { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, retryAcpHistory, stopAcpHistory } from './acp/history-service'
 
 // acpx reads this host flag during runtime construction, not from child overlays.

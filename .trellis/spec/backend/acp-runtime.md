@@ -84,8 +84,34 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
   installed adapter's absolute entry, independently of GUI PATH.
 - Structured custom `{executable,args}` preserves argument boundaries. A legacy
   complete command keeps explicit platform shell semantics; never split it on
-  spaces. `launchKind: 'managed' | 'custom'` freezes snapshot provenance. Later
-  Settings overrides cannot reinterpret existing conversations.
+  spaces. `launchKind: 'managed' | 'custom' | 'native'` freezes snapshot
+  provenance. Later Settings overrides cannot reinterpret existing conversations.
+- Native presets (`NATIVES` in `services/acp/setup.ts`, currently `opencode` via
+  `acp` and `dsh` via `--profile acp`) are CLIs that ship their own ACP server
+  mode. Detection is read-only probe (settings `acp.nativePaths[id]` override,
+  then PATH via `findExecutable`, then version) and never installs; missing
+  CLIs render an actionable install hint with `executable_missing`. Native
+  launch argv is `[detectedPath, ...launchArgs]` re-resolved at launch time.
+  `AcpAgentStatus.adapterVersion` carries the CLI's own `--version` for native
+  entries, and diagnostics state the detection source (手动指定/自动检测).
+  Windows batch shims (`.cmd`/`.bat`) must never be fed to Node spawn or
+  `execFile` directly: route through `cmd.exe /d /s /c` (as `run()`, the
+  connection probe and acpx all do), and `findExecutable` must prefer
+  extensioned executables over the extensionless POSIX sh shims npm also
+  installs.
+- Native install/upgrade is the same explicit Setup action
+  (`setupAcpRuntime`): `npm install -g <npmPackage>` through the validated
+  external Node's npm-cli with `--loglevel=error` and a 600s timeout; install
+  equals upgrade (no version pin), and concurrent invocations reuse the
+  `setups` dedupe map. Discovery and Start still never install.
+- `services/acp/connection-probe.ts` implements 测试连接: it spawns the real
+  launch argv, sends exactly one ACP `initialize` over NDJSON (10s handshake
+  timeout), collects agentInfo/protocolVersion/capability labels/authMethod
+  ids, then tree-terminates (win32 `taskkill /T /F` with `child.kill()`
+  fallback, POSIX kill with post-grace `SIGKILL`). It must never send
+  `session/new` or any prompt — the probe has zero user-data side effects and
+  never authenticates; non-empty `authMethodIds` is surfaced as a hint only.
+  Probe business failures return `{ok:true, probe:{ok:false}}`, not IpcFail.
 - Set host `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1` once before runtime construction.
   Inherit user/project/local vendor settings through the adapter; never harvest
   tokens into instructions, profiles, diagnostics or records. A child-only env
