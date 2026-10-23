@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, lazy, Suspense } from 'react'
+import { useContext, useEffect, useLayoutEffect, useState, lazy, Suspense } from 'react'
 import { useApp } from './store'
 import { api, hasIpc } from './api'
 import { useMy } from './my/store'
@@ -19,6 +19,7 @@ import { MyApp } from './my/layout/MyApp'
 import { DocWindowApp } from './my/pages/DocWindow'
 import { Loader2 } from 'lucide-react'
 import { projectRootKey } from './my/navigation'
+import { StartupContext, StartupContentCommit } from './daemon/StartupContext'
 
 function PageLoading(): JSX.Element {
   return (
@@ -128,8 +129,10 @@ function MainApp(): JSX.Element {
     }
   }, [projectRoot])
 
+  if (hasIpc && !bootstrapped) return <PageLoading />
+
   if (!snapshot) {
-    return <Onboarding />
+    return <><Onboarding /><StartupContentCommit /></>
   }
 
   return (
@@ -150,10 +153,12 @@ export default function App(): JSX.Element {
   const quickTodoMode = useApp((s) => s.quickTodoMode)
   const theme = useMy((s) => s.theme)
   const fontSize = useMy((s) => s.fontSize)
+  const startup = useContext(StartupContext)
+  const [bootstrapFailure, setBootstrapFailure] = useState<{ error: unknown } | null>(null)
   const docMode = new URLSearchParams(window.location.search).get('mode') === 'doc'
   const [windowTheme, setWindowTheme] = useState<'light' | 'dark'>(() => new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark')
   const hasWindowTheme = new URLSearchParams(window.location.search).has('theme')
-  const effectiveTheme = settings?.theme ?? (hasWindowTheme || docMode || capsuleMode || quickTodoMode ? windowTheme : theme)
+  const effectiveTheme = settings?.theme ?? startup?.initialTheme ?? (hasWindowTheme || docMode || capsuleMode || quickTodoMode ? windowTheme : theme)
 
   useEffect(() => {
     const onStorage = (event: StorageEvent): void => {
@@ -164,7 +169,9 @@ export default function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    if (hasIpc && !docMode) void bootstrap()
+    let current = true
+    if (hasIpc && !docMode) void bootstrap().catch(error => { if (current) setBootstrapFailure({ error }) })
+    return () => { current = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -196,6 +203,10 @@ export default function App(): JSX.Element {
     document.documentElement.classList.toggle('is-capsule', capsuleMode || quickTodoMode)
     if (useMy.getState().theme !== effectiveTheme) useMy.setState({ theme: effectiveTheme })
   }, [effectiveTheme, capsuleMode, quickTodoMode])
+
+  // React boundaries cannot catch asynchronous effect rejections. Rethrow on
+  // render so the restricted outer recovery remains usable, even for falsy errors.
+  if (bootstrapFailure) throw bootstrapFailure.error
 
   if (docMode) {
     return <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary"><DocWindowApp /></div>

@@ -17,6 +17,7 @@ import { PAGE_LAYOUTS, PageLayout } from './PageLayout'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { useEscLayer } from '../../utils/use-esc-layer'
 import { InteractionScope, useInteractionActive } from '../../utils/interaction-scope'
+import { StartupContentCommit, StartupContentRegion } from '../../daemon/StartupContext'
 
 const YourWorkPage = lazy(() => import('../pages/YourWorkPage').then((m) => ({ default: m.YourWorkPage })))
 const AnalyticsPage = lazy(() => import('../pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })))
@@ -126,20 +127,23 @@ export function PageBody(): JSX.Element {
   }, [acpActive, outerInteractive, retained, acpSource?.owner])
   return (
     <>
+      <StartupContentRegion identity={`acp:${root}:${acpSource?.owner ?? 'empty'}`} active={outerInteractive && acpActive}>
       <Suspense fallback={acpActive && outerInteractive ? <PageLoading /> : null}>
       <InteractionScope key={acpSource?.owner ?? 'empty'} active={acpActive}>
         {retained && <div ref={(element) => { sourceRef.current = element; if (element) element.inert = !acpActive || !outerInteractive }} data-acp-source-owner={acpSource.owner} hidden={!acpActive} aria-hidden={!acpActive || undefined} className="h-full min-h-0 min-w-0">
-          <ErrorBoundary key={`acp:${acpSource.root ?? 'preview'}:${acpSource.owner}`}><PageLayout variant={PAGE_LAYOUTS.acp}><AcpConsolePage /></PageLayout></ErrorBoundary>
+          <ErrorBoundary key={`acp:${acpSource.root ?? 'preview'}:${acpSource.owner}`}><PageLayout variant={PAGE_LAYOUTS.acp}><AcpConsolePage /><StartupContentCommit active={acpActive} /></PageLayout></ErrorBoundary>
         </div>}
       </InteractionScope>
       </Suspense>
+      </StartupContentRegion>
       {/* 页面级兜底：单页崩溃只换掉内容区（错误卡片可重试），外壳与侧栏存活；
           项目页面同时按真实 root 重挂，清除旧项目页面状态和错误态 */}
-      {!acpActive && <Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
+      {!acpActive && <StartupContentRegion identity={contentKey} active={outerInteractive}><Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
         {page === 'dashboard' && <YourWorkPage />}
         {page === 'tasks' && <WorkItemsPage />}
         {framed && <PageFrame page={page}>{framed}</PageFrame>}
-      </ErrorBoundary></Suspense>}
+        <StartupContentCommit />
+      </ErrorBoundary></Suspense></StartupContentRegion>}
     </>
   )
 }
@@ -307,11 +311,14 @@ export function MyApp(): JSX.Element {
         {openTaskDir !== null && (
           <div data-task-presentation={workspace ? 'workspace' : 'preview'}
             className={`my-task-surface absolute inset-y-0 right-0 z-20 flex max-w-full bg-my-surface-1 ${workspace ? 'left-0' : 'border-l border-my-line-strong shadow-[var(--my-shadow-overlay-200)]'}`}>
-            <Suspense fallback={<PageLoading />}>
-              <ErrorBoundary key={`${root}:${openTaskDir}`}>
-                <TaskDetail presentation={workspace ? 'workspace' : 'preview'} />
-              </ErrorBoundary>
-            </Suspense>
+            <StartupContentRegion identity={`task:${root}:${openTaskDir}:${workspace}`}>
+              <Suspense fallback={<PageLoading />}>
+                <ErrorBoundary key={`${root}:${openTaskDir}`}>
+                  <TaskDetail presentation={workspace ? 'workspace' : 'preview'} />
+                  <StartupContentCommit />
+                </ErrorBoundary>
+              </Suspense>
+            </StartupContentRegion>
           </div>
         )}
       </main>

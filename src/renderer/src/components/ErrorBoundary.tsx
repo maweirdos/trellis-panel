@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from 'react'
 import { CircleAlert, ChevronRight } from 'lucide-react'
 import { Button } from '../my/ui'
+import { StartupContentCommit } from '../daemon/StartupContext'
 
 /**
  * App 级渲染崩溃兜底：任何子树抛错时显示错误卡片（含完整错误信息 + 重试/重载），
@@ -32,6 +33,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="grid h-full min-h-0 overflow-auto place-items-center bg-my-canvas p-8">
+          <StartupContentCommit />
           <section role="alert" className="w-full max-w-xl space-y-4 rounded-my-xl border border-my-line bg-my-surface-1 p-5">
             <div className="flex items-center gap-2"><CircleAlert size={18} className="shrink-0 text-my-danger-text" aria-hidden="true" /><h2 className="text-my-lg font-medium text-my-primary">页面暂时无法显示</h2></div>
             <p className="text-my-sm leading-relaxed text-my-secondary">请重试当前页面；如仍无法恢复，可重载应用。</p>
