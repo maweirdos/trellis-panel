@@ -31,6 +31,11 @@ export const PAGE_NAVIGATION = {
     commandHint: '导入当前项目 · 外部查询'
   },
   team: { title: '概况', domain: 'team', scope: 'project', icon: 'views', keywords: '协作' },
+  hifox: {
+    title: 'HiFox 协作', domain: 'team', scope: 'project', icon: 'modules',
+    keywords: 'HiFox 协作 空间 成员 任务 看板 专项 迭代 分拣台 收件箱 自动化 Agent 技能 小队',
+    scopeNote: '空间/任务/Agent 的独立协作域；Runtime 与集成模块接入前，Agent 派发止于等待状态。'
+  },
   analytics: { title: '统计', domain: 'team', scope: 'project', icon: 'analytics', keywords: '统计分析' },
   archive: { title: '归档', domain: 'tasks', scope: 'project', icon: 'intake' },
   acp: { title: '对话', domain: 'agents', scope: 'project', icon: 'inbox', keywords: 'Agent 对话 ACP' },

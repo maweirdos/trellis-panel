@@ -13,6 +13,7 @@ export const PAGE_LAYOUTS = {
   archive: 'centered',
   analytics: 'full',
   team: 'full',
+  hifox: 'full',
   knowledge: 'full',
   spec: 'full',
   acp: 'full',

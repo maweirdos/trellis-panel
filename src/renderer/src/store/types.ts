@@ -26,6 +26,7 @@ export type Page =
   | 'dashboard'
   | 'inbox'
   | 'tasks'
+  | 'hifox'
   | 'knowledge'
   | 'spec'
   | 'archive'

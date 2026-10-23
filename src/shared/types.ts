@@ -1202,6 +1202,8 @@ export interface SyncExtensionResult {
 export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, TaskConversationsApi {
   gitWorkspace: import('./git-workspace').GitWorkspaceApi
   knowledgeAccess: import('./knowledge-access').KnowledgeApi
+  /** HiFox 协作域：空间/成员/任务/专项/迭代/视图/分拣台/自动化/收件箱/Agent/技能/小队 */
+  hifox: import('./hifox').HifoxApi
   integrations: import('./integrations').IntegrationApi
   /** 置顶文档小窗：打开/聚焦（支持多开，key 去重）；theme 跟随面板主题 */
   docOpen: (opts: { key: string; title: string; file: string; theme: string }) => Promise<{

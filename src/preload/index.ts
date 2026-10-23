@@ -27,6 +27,7 @@ import type { TaskConversationsApi } from '../shared/task-conversations'
 import type { ApplicationRuntimeApi, ApplicationRuntimeEvent } from '../shared/app-runtime'
 import type { GitHistoryRequest, GitCommitRequest, GitCommitDiffRequest } from '../shared/git-readonly'
 import type { GitWorkspaceApi } from '../shared/git-workspace'
+import type { HifoxApi } from '../shared/hifox'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
@@ -89,6 +90,52 @@ const taskConversationsApi: TaskConversationsApi = {
 }
 
 const api = {
+  hifox: {
+    snapshot: () => ipcRenderer.invoke(ipcInvoke.hifox.snapshot),
+    resetDemo: () => ipcRenderer.invoke(ipcInvoke.hifox.resetDemo),
+    triageQueue: (spaceId) => ipcRenderer.invoke(ipcInvoke.hifox.triageQueue, spaceId),
+    createSpace: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createSpace, input),
+    updateSpace: (input) => ipcRenderer.invoke(ipcInvoke.hifox.updateSpace, input),
+    inviteMember: (input) => ipcRenderer.invoke(ipcInvoke.hifox.inviteMember, input),
+    updateMember: (input) => ipcRenderer.invoke(ipcInvoke.hifox.updateMember, input),
+    removeMember: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeMember, input),
+    setSpaceMembers: (input) => ipcRenderer.invoke(ipcInvoke.hifox.setSpaceMembers, input),
+    createTaskType: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createTaskType, input),
+    removeTaskType: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeTaskType, input),
+    createTaskStatus: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createTaskStatus, input),
+    removeTaskStatus: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeTaskStatus, input),
+    createLabel: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createLabel, input),
+    archiveLabel: (input) => ipcRenderer.invoke(ipcInvoke.hifox.archiveLabel, input),
+    createTask: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createTask, input),
+    updateTask: (input) => ipcRenderer.invoke(ipcInvoke.hifox.updateTask, input),
+    removeTask: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeTask, input),
+    addRelation: (input) => ipcRenderer.invoke(ipcInvoke.hifox.addRelation, input),
+    removeRelation: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeRelation, input),
+    addComment: (input) => ipcRenderer.invoke(ipcInvoke.hifox.addComment, input),
+    resolveComment: (input) => ipcRenderer.invoke(ipcInvoke.hifox.resolveComment, input),
+    createProject: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createProject, input),
+    updateProject: (input) => ipcRenderer.invoke(ipcInvoke.hifox.updateProject, input),
+    createIteration: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createIteration, input),
+    updateIteration: (input) => ipcRenderer.invoke(ipcInvoke.hifox.updateIteration, input),
+    completeIteration: (input) => ipcRenderer.invoke(ipcInvoke.hifox.completeIteration, input),
+    saveView: (input) => ipcRenderer.invoke(ipcInvoke.hifox.saveView, input),
+    removeView: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeView, input),
+    triage: (input) => ipcRenderer.invoke(ipcInvoke.hifox.triage, input),
+    saveAutomation: (input) => ipcRenderer.invoke(ipcInvoke.hifox.saveAutomation, input),
+    toggleAutomation: (input) => ipcRenderer.invoke(ipcInvoke.hifox.toggleAutomation, input),
+    removeAutomation: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeAutomation, input),
+    runAutomation: (input) => ipcRenderer.invoke(ipcInvoke.hifox.runAutomation, input),
+    markInboxRead: (input) => ipcRenderer.invoke(ipcInvoke.hifox.markInboxRead, input),
+    snoozeInbox: (input) => ipcRenderer.invoke(ipcInvoke.hifox.snoozeInbox, input),
+    clearInbox: (input) => ipcRenderer.invoke(ipcInvoke.hifox.clearInbox, input),
+    restoreInbox: (input) => ipcRenderer.invoke(ipcInvoke.hifox.restoreInbox, input),
+    saveAgent: (input) => ipcRenderer.invoke(ipcInvoke.hifox.saveAgent, input),
+    removeAgent: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeAgent, input),
+    saveSkill: (input) => ipcRenderer.invoke(ipcInvoke.hifox.saveSkill, input),
+    removeSkill: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeSkill, input),
+    saveCrew: (input) => ipcRenderer.invoke(ipcInvoke.hifox.saveCrew, input),
+    removeCrew: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeCrew, input)
+  } satisfies HifoxApi,
   gitWorkspace: {
     status: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.status, input),
     diff: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.diff, input),

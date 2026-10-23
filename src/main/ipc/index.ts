@@ -6,6 +6,7 @@ import { registerProjectIpc } from './project'
 import { registerTasksIpc } from './tasks'
 import { registerTaskConversationsIpc } from './task-conversations'
 import { registerTodoIpc } from './todo'
+import { registerHifoxIpc } from './hifox'
 import { registerFilesIpc } from './files'
 import { registerDocumentsIpc } from './documents'
 import { registerObservationIpc } from './observability'
@@ -45,6 +46,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerTasksIpc()
   registerTaskConversationsIpc(deps)
   registerTodoIpc()
+  registerHifoxIpc()
   registerFilesIpc()
   registerDocumentsIpc()
   registerObservationIpc()
