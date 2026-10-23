@@ -1,24 +1,13 @@
 import { useState, type JSX } from 'react'
 import { ChevronDown, ChevronRight, Laptop, MoreHorizontal, Wifi, WifiOff } from 'lucide-react'
 import { clsx } from 'clsx'
+import { ToolBrandIcon } from '../components/ToolBrandIcon'
 import { Dropdown, DropdownHeader } from '../my/ui'
 import { RuntimePanel, runtimeHealthLabel } from './RuntimePanel'
 import type { AcpAgentStatus } from '../../../shared/types'
 
-/** 本机 Runtime 的品牌示意。没有官方素材，用受控色相的字母牌保持识别度。 */
-const RUNTIME_MARKS: Record<string, { color: string }> = {
-  claude: { color: '#D97757' },
-  codex: { color: '#10A37F' },
-  opencode: { color: '#3B82F6' },
-  qoder: { color: '#8B5CF6' },
-  zcode: { color: '#111827' }
-}
-
 export function RuntimeMark({ runtimeId, size = 16 }: { runtimeId?: string; size?: number }): JSX.Element {
-  const id = (runtimeId ?? '').toLowerCase()
-  const mark = RUNTIME_MARKS[id]
-  const label = runtimeId ? runtimeId.charAt(0).toUpperCase() : '?'
-  return <span aria-hidden="true" className="acp-runtime-mark" style={{ width: size, height: size, background: mark?.color ? `${mark.color}1f` : undefined, color: mark?.color }}>{label}</span>
+  return <ToolBrandIcon brand={runtimeId} size={size} className="acp-runtime-mark" />
 }
 
 export function RuntimeConnectivity({ agent, showOff = false }: { agent: AcpAgentStatus | undefined; showOff?: boolean }): JSX.Element | null {

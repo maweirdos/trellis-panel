@@ -363,7 +363,7 @@
 .acp-runtime-option { display: flex; align-items: center; gap: var(--my-space-10); width: 100%; min-height: var(--my-space-36); padding: var(--my-space-6) var(--my-space-10); border-radius: var(--my-radius-menu); color: var(--my-txt-primary); font-size: var(--my-text-ui); text-align: left; }
 .acp-runtime-option:hover { background: var(--my-bg-layer-transparent-hover); }
 .acp-runtime-option.is-selected { background: var(--my-bg-layer-2); }
-.acp-runtime-mark { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: var(--my-radius-sm); font-size: var(--my-text-2xs); font-weight: var(--my-weight-semibold); }
+.acp-runtime-mark { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .acp-runtime-checked { flex-shrink: 0; color: var(--my-txt-success-primary); font-size: var(--my-text-sm); }
 .acp-runtime-online { flex-shrink: 0; color: var(--my-txt-success-primary); }
 .acp-runtime-offline { flex-shrink: 0; color: var(--my-txt-warning-primary); }

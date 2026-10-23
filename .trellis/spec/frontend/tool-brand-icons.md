@@ -1,0 +1,33 @@
+# Editor and coding-tool brand icons
+
+Read when displaying an editor/runtime/native-session identity. Semantic actions, task priorities and workflow states continue to use the existing Lucide system.
+
+## API and identity
+
+`src/shared/tool-brands.ts` owns `TOOL_BRANDS`, `ToolBrandId` and `getToolBrand(brand)`. Lookup is case-normalized with explicit aliases only. Do not infer brands from a session/task title, arbitrary substring, provider or executable path. The registry is presentation metadata; it does not register ACP adapters, discover native history or grant navigation capabilities.
+
+`src/renderer/src/components/ToolBrandIcon.tsx` renders `ToolBrandIcon({brand,size=16,className})`. It is decorative and square; adjacent text/the containing control owns the accessible name. An unknown brand gets a neutral mark. Unbound tasks and panel actions retain their semantic icons, never a guessed editor logo.
+
+Known products use actual local artwork. The initial catalog contains 49 product identities and 70 explicit aliases, backed by 44 SVGs and 5 PNGs. The exact coverage is in the registry and asset README; it is not a claim to exhaust every market product. Unverified brands remain neutral until a genuine source is obtained.
+
+## Color and layout
+
+Preserve original colored artwork in `image` mode. Use controlled `currentColor` masks for selected monochrome artwork so it follows the app theme. Do not globally gray/filter colored images, invent a green default, or tint one product to imitate another. The current Codex/Cursor/ZCode marks are monochrome; Claude Code and other colored assets keep their original colors.
+
+Static imports are required; no render-time CDN requests or dynamic URL from user data. Keep object-fit/mask contain in the existing square slot. The homepage entry remains 220×28 with unchanged source/text/trailing-action alignment, global control radius, task/status/priority and click ownership. Native source/destination text should not repeat the same brand name; retain meaningful terminal/workspace information.
+
+Use the same component for homepage native entries, association candidates/linked relationships, RuntimePicker/RuntimeMark and RuntimePanel. Avoid new per-page brand maps or letter badges.
+
+## Provenance and distribution
+
+Artwork and source records live in `src/renderer/src/assets/tool-brands/`: pinned repository revision or retrieval date, SHA-256, source path/URL, license status and original notices. Do not replace a dedicated product mark with a different company/model mark. Preserve the distinction between GitHub Copilot and Microsoft Copilot.
+
+Distribute the matching licenses, notices and provenance through `resources/licenses/tool-brands/`, which is included by the existing package resource glob. Keep the Kimi NOTICE. Some official website assets have no stated open license; preserve that fact instead of describing the entire catalog as MIT. Updating art or its attribution requires updating the distributed declaration copies as well.
+
+## Checks
+
+- `node scripts/smoke/tool-brands.mjs`: aliases, file identity/hash/provenance, SVG parsing/safety, offline asset decoding, 16/32 square slots, light/dark color preservation and packaged declarations.
+- `node scripts/smoke/task-conversations-ui.mjs`: production native-entry/candidate/runtime integration, neutral unknowns, source deduplication, no image gray filter, global radii and existing click/refresh ownership.
+- `npm run typecheck`, `npm run build`, `npm run check:ui`.
+
+Renderer tests must resolve the real static SVG/PNG files and component stylesheet; do not replace branded marks with placeholders in the test bundle.
