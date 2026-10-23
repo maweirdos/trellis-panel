@@ -1,5 +1,7 @@
 # Backend Development Guidelines Index
 
+Runtime provider/model changes must also follow [Provider source fidelity](./acp-provider-sources.md).
+
 > **Tech Stack**: Electron Main Process + Drizzle ORM + SQLite (better-sqlite3)
 
 ## Related Guidelines

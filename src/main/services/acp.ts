@@ -1,9 +1,9 @@
 /** Trellis application facade. ACP framing, turns, controls and child cleanup belong to acpx. */
 import { app } from 'electron'
 import { assertRuntimeExecutionHost } from './runtime-host'
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { existsSync, readFileSync, statSync } from 'fs'
-import { relative } from 'path'
+import { join, relative } from 'path'
 import { createAcpRuntime, createFileSessionStore, type AcpRuntimeHandle, type AcpRuntimeTurn, type AcpRuntimeEvent, type AcpPermissionHandler, type AcpPermissionDecision, type AcpSessionRecord as RuntimeRecord } from 'acpx/runtime'
 import * as AcpxRuntime from 'acpx/runtime'
 import { createAgentRegistry } from 'acpx/agent-registry'
@@ -25,6 +25,7 @@ import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence,
 import { acpHistoryUpdateInputSchema, type AcpHistoryEventPage, type AcpHistoryListResult, type AcpHistorySummary, type AcpHistoryUpdateResult } from '../../shared/acp-history'
 import { snapshotHistoryEvents, snapshotHistoryList, snapshotHistorySession } from './acp/history-fallback'
 import { applySessionPreferences, readSessionPreferences, updateSessionPreferences } from './acp/session-preferences'
+import { ModelMetadataContext } from './acp/cc-switch-models'
 import { knowledgeMcpBridge, type KnowledgeMcpConnection } from './knowledge-mcp'
 import { KNOWLEDGE_CONVERSATION_INSTRUCTIONS } from './knowledge-mcp/instructions'
 import { skipConversationActionLookup } from './knowledge-mcp/preflight'
@@ -93,6 +94,7 @@ interface ActiveSession {
   knowledge?: KnowledgeMcpConnection
   knowledgeSupport: 'http' | 'unsupported' | 'unknown'
   nativeCommands: Set<string>
+  modelMetadata: ModelMetadataContext
 }
 
 function failure(error: unknown): IpcFail { return ipcFail(IpcErrorCode.Upstream, knowledgeMcpBridge.redactText(errorMessage(error))) }
@@ -232,6 +234,7 @@ function syncRecord(session: ActiveSession, record: RuntimeRecord): void {
     options: option.options.flatMap((item) => 'options' in item ? item.options.map((child) => ({ value: child.value, name: child.name })) : [{ value: item.value, name: item.name }])
   }))
   projectCategorizedSelections(session.meta)
+  session.modelMetadata.project(session.meta)
 }
 
 /** Modern categorized config acknowledgements override stale legacy display fields. */
@@ -246,6 +249,12 @@ function projectCategorizedSelections(meta: AcpSessionRecord): void {
     meta.currentModelId = models[0].currentValue
     meta.models = models[0].options.map(({ value, name }) => ({ modelId: value, name }))
   }
+  // Equal display names must not conceal distinct provider/model wire selectors.
+  const names = new Map<string, number>()
+  for (const model of meta.models ?? []) names.set(model.name, (names.get(model.name) ?? 0) + 1)
+  meta.models = meta.models?.map((model) => (names.get(model.name) ?? 0) > 1 ? { ...model, name: `${model.name} · ${model.modelId}` } : model)
+  const labels = new Map(meta.models?.map(({ modelId, name }) => [modelId, name]))
+  if (models.length === 1) models[0].options = models[0].options.map((option) => ({ ...option, name: labels.get(option.value) ?? option.name }))
 }
 
 /** Main-only execution facts. Never read history/preferences or expose native objects. */
@@ -280,7 +289,7 @@ export function listOwnedAcpSessionFacts(): OwnedAcpSessionFacts[] {
 
 export function listAcpSessions(projectRoot: string, limit = 20): { ok: true; sessions: AcpSessionRecord[] } | IpcFail {
   if (!projectRoot) return { ok: true, sessions: [] }
-  const active = [...sessions.values()].filter((session) => belongs(projectRoot, session.meta)).map((session) => session.meta)
+  const active = [...sessions.values()].filter((session) => belongs(projectRoot, session.meta)).map((session) => { session.modelMetadata.project(session.meta, true); return session.meta })
   const history = readRecords().filter((record) => belongs(projectRoot, record) && !sessions.has(record.sessionId)).sort((a, b) => b.startedAt - a.startedAt).slice(0, Math.max(0, Math.min(limit, 100)))
   try {
     const preferences = readSessionPreferences(acpDataPath(), projectRoot)
@@ -292,6 +301,7 @@ export function listAcpSessions(projectRoot: string, limit = 20): { ok: true; se
 function liveHistorySummary(summary: AcpHistorySummary): AcpHistorySummary {
   const live = sessions.get(summary.sessionId)
   if (!live || !belongs(summary.projectRoot, live.meta)) return summary
+  live.modelMetadata.project(live.meta, true)
   const { events: _events, ...meta } = live.meta
   return { ...summary, ...meta, title: summary.customTitle ?? meta.title ?? summary.title,
     customTitle: summary.customTitle, pinnedAt: summary.pinnedAt, archivedAt: summary.archivedAt, historyPersistence: historyPersistence(summary.sessionId),
@@ -388,9 +398,36 @@ function settlePermissions(session: ActiveSession, reason: string): void {
   for (const pending of [...session.pendingPermissions.values()]) pending.finish({ outcome: 'cancel' }, reason)
 }
 
+const ADAPTER_LAST_ERROR_LOG = 'zcode-adapter-last-error.log'
+// 仅连接断开/启动失败类错误才读适配器尸检快照（真机遗留：连接断开错误此前不带任何现场信息）。
+const ADAPTER_FORENSIC_ERROR_PATTERN = /disconnected|connection[_ ]?clos|spawn|could not start|启动失败|启动超时|就绪前退出|意外退出|进程已退出/i
+
+/** 适配器现场快照（zcode-adapter-last-error.log）尾部 ≤30 行；读失败/不存在时静默返回空。
+ *  落盘位置随适配器模式：隔离启动=acpDataPath，默认真实用户态=系统临时目录（两处都探测）。 */
+function zcodeDiagnosticDirectory(meta: AcpSessionRecord): string | undefined {
+  if (meta.runtimeSnapshot?.id !== 'zcode' || meta.runtimeSnapshot.launchKind !== 'bundled' || !meta.connectionGeneration) return undefined
+  const owner = createHash('sha256').update(`${meta.sessionId}\0${meta.connectionGeneration}`).digest('hex')
+  return acpDataPath('diagnostics', owner)
+}
+function adapterForensicsSuffix(session: ActiveSession, error: unknown): string {
+  if (!ADAPTER_FORENSIC_ERROR_PATTERN.test(errorMessage(error))) return ''
+  try {
+    const directory = zcodeDiagnosticDirectory(session.meta)
+    if (!directory) return ''
+    const path = join(directory, ADAPTER_LAST_ERROR_LOG)
+    if (!existsSync(path) || statSync(path).size > 256 * 1024) return ''
+    const lines = readFileSync(path, 'utf8').split(/\r?\n/).filter((line) => line.trim().length > 0)
+    if (lines.length === 0) return ''
+    const body = knowledgeMcpBridge.redactText(lines.slice(-30).join('\n').slice(-4000))
+    return `；适配器现场快照${lines.length > 30 ? `（尾部 30/${lines.length} 行，truncated）` : ''}：\n${body}`
+  } catch { return '' }
+}
+
 async function closeAfterFailure(session: ActiveSession, error: unknown, remove: boolean): Promise<void> {
   session.knowledge?.revoke()
   let message = knowledgeMcpBridge.redactText(errorMessage(error))
+  const forensics = adapterForensicsSuffix(session, error)
+  if (forensics) message += forensics
   session.meta.recovery = { ...session.meta.recovery, kind: modelUnavailable(error) ? 'model-unavailable' : 'connection-failed' }
   try {
     await session.runtime.shutdown()
@@ -480,6 +517,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
   await ensureAcpHistory().catch(() => {})
   if (!('TRELLIS_ACPX_COMPAT_VERSION' in AcpxRuntime) || AcpxRuntime.TRELLIS_ACPX_COMPAT_VERSION !== 2) throw new Error('acpx 兼容补丁未准备好；请重新安装应用依赖')
   const store = createFileSessionStore({ stateDir: acpDataPath('runtime-store') })
+  const modelMetadata = new ModelMetadataContext({ agentId: config.id, launchKind: config.launchKind, cwd: meta.cwd ?? meta.projectRoot, env: meta.profileSnapshot?.env, args: meta.profileSnapshot?.args })
   let session: ActiveSession
   let knowledge: KnowledgeMcpConnection | undefined
   try {
@@ -492,7 +530,8 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
     })
   } catch { /* Ordinary native dialogue remains usable with an explicit unavailable diagnostic. */ }
   const runtime = createAcpRuntime({ cwd: meta.cwd ?? meta.projectRoot,
-    agentProcessEnv: profileProcessEnv(meta.profileSnapshot),
+    agentProcessEnv: { ...profileProcessEnv(meta.profileSnapshot),
+      ...(zcodeDiagnosticDirectory(meta) ? { TRELLIS_ZCODE_DIAGNOSTICS_DIR: zcodeDiagnosticDirectory(meta) } : {}) },
     agentRegistry: createAgentRegistry({ overrides: { [config.id]: [...argv, ...profileExtraArgv(meta.profileSnapshot)] } }),
     sessionStore: { load: (id) => store.load(id), save: async (record) => {
       const safe = knowledgeMcpBridge.redact(record)
@@ -516,6 +555,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
         if (shuttingDown || session.closing) throw new Error('会话已停止')
         const conflict = acquire(session)
         if (conflict) throw new Error(conflict.error)
+        modelMetadata.capture(session.meta.connectionGeneration)
         session.lastStatusAt.set('process-start', Date.now())
         observe(session, '启动 Runtime')
       },
@@ -532,7 +572,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
       }
     }
   })
-  session = { meta, runtime, knowledge, knowledgeSupport: 'unknown', nativeCommands: new Set(), accepting: false, closing: false, disconnected: false, pendingPermissions: new Map(), lastStatusAt: new Map(), hasProcess: false, backgroundWork: false, toolStates: new Map(), leaseHeld: false, settling: false, snapshotDirty: 0 }
+  session = { meta, runtime, modelMetadata, knowledge, knowledgeSupport: 'unknown', nativeCommands: new Set(), accepting: false, closing: false, disconnected: false, pendingPermissions: new Map(), lastStatusAt: new Map(), hasProcess: false, backgroundWork: false, toolStates: new Map(), leaseHeld: false, settling: false, snapshotDirty: 0 }
   return session
 }
 
@@ -543,13 +583,21 @@ function describeClientServices(session: ActiveSession): void {
 
 async function refreshSessionMetadata(session: ActiveSession): Promise<void> {
   if (!session.handle) return
-  const capabilities = await session.runtime.getCapabilities({ handle: session.handle })
+  const handle = session.handle
+  const generation = session.meta.connectionGeneration
+  const assertCurrent = (): void => { if (session.closing || session.handle !== handle || session.meta.connectionGeneration !== generation) throw new Error('会话连接已变化') }
+  const capabilities = await session.runtime.getCapabilities({ handle })
+  assertCurrent()
   session.meta.capabilities = { ...session.meta.capabilities, controls: capabilities.controls }
-  const status = await session.runtime.getStatus({ handle: session.handle })
+  const status = await session.runtime.getStatus({ handle })
+  assertCurrent()
   if (status.availableCommands) session.nativeCommands = new Set(status.availableCommands.map((command) => command.name.replace(/^\//, '')))
-  session.meta.models = status.models?.availableModels ?? status.models?.availableModelIds.map((modelId) => ({ modelId, name: modelId })) ?? session.meta.models
-  session.meta.currentModelId = status.models?.currentModelId ?? session.meta.currentModelId
+  if (status.models) {
+    session.meta.models = status.models.availableModels ?? status.models.availableModelIds.map((modelId) => ({ modelId, name: modelId }))
+    session.meta.currentModelId = status.models.currentModelId
+  }
   projectCategorizedSelections(session.meta)
+  session.modelMetadata.project(session.meta, true)
   const mcp = session.raw?.agentCapabilities?.mcpCapabilities
   const support = mcp?.http === true ? 'http' : mcp?.http === false || mcp?.sse === true || mcp?.acp === true ? 'unsupported' : 'unknown'
   if (support === 'unsupported' && session.knowledgeSupport !== support && session.knowledge) {
@@ -1047,16 +1095,23 @@ export async function configureAcpSession(projectRoot: string, sessionId: string
   const parsed = configureSchema.safeParse(input)
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '配置参数无效')
   if (session.turn || session.accepting || session.closing || session.meta.status !== 'ready' || !session.handle) return ipcFail(IpcErrorCode.Conflict, '请在空闲且就绪的会话修改配置')
+  session.modelMetadata.project(session.meta, true)
+  const modelOptions = session.meta.configOptions?.filter((option) => option.category === 'model') ?? []
+  const requestedModel = input.kind === 'model' ? input.id : input.kind === 'config' && modelOptions.length === 1 && modelOptions[0].id === input.id ? input.value : undefined
+  const problem = requestedModel === undefined ? undefined : session.modelMetadata.selectionProblem(requestedModel)
+  if (problem) { setStatus(session, 'ready'); return ipcFail(IpcErrorCode.Conflict, problem) }
   const conflict = acquire(session)
   if (conflict) return conflict
   session.accepting = true
   try {
     const handle = session.handle
-    const authority = { assertActive: (): void => { if (session.closing) throw new Error('会话已停止') } }
+    const generation = session.meta.connectionGeneration
+    const authority = { assertActive: (): void => { if (session.closing || sessions.get(sessionId) !== session || session.handle !== handle || session.meta.connectionGeneration !== generation) throw new Error('会话连接已变化或已停止') } }
     if (input.kind === 'model') await session.runtime.setModel({ handle, model: input.id, ...authority })
     else if (input.kind === 'mode') await session.runtime.setMode({ handle, mode: input.id, ...authority })
     else await session.runtime.setConfigOption({ handle, key: input.id, value: input.value ?? '', ...authority })
     await refreshSessionMetadata(session)
+    authority.assertActive()
     emit(session, 'config', 'Runtime 已确认配置变更', { input })
     setStatus(session, 'ready')
     return { ok: true, session: session.meta }

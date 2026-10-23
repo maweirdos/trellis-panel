@@ -17,6 +17,17 @@ const BUILTINS = {
 } as const
 
 /**
+ * 随应用打包的桥接适配器（launchKind 'bundled'，如 ZCode→ACP 翻译层）：entry 随 resources 复制，
+ * 无安装步骤；内部 CLI（zcode）由本模块检测并以 `--zcode-bin` 显式传给适配器。
+ */
+const BUNDLED = {
+  zcode: { name: 'ZCode', commandName: 'zcode' }
+} as const
+type BuiltinId = keyof typeof BUILTINS
+type NativeId = keyof typeof NATIVES
+type BundledId = keyof typeof BUNDLED
+
+/**
  * 原生 ACP CLI 直连预设：CLI 自身提供 ACP server 模式（启动参数证据见任务 research/native-acp-launch.md）。
  * 检测是只读探测；唯一的安装/升级写路径是 setupAcpRuntime 的 npm -g 安装（安装即升级，不 pin 版本）。
  */
@@ -24,8 +35,6 @@ const NATIVES = {
   opencode: { name: 'OpenCode', commandName: 'opencode', launchArgs: ['acp'], npmPackage: 'opencode-ai', installHint: 'npm install -g opencode-ai', missingHint: '未找到 opencode；可通过「安装执行引擎」（npm install -g opencode-ai）或官方安装脚本安装' },
   dsh: { name: 'DeepSeek DSH', commandName: 'dsh', launchArgs: ['--profile', 'acp'], npmPackage: '@deepseek-ai/dsh', installHint: 'npm install -g @deepseek-ai/dsh', missingHint: '未找到 dsh；可通过「安装执行引擎」（npm install -g @deepseek-ai/dsh）安装（需要 Node >=22.19）' }
 } as const
-type BuiltinId = keyof typeof BUILTINS
-type NativeId = keyof typeof NATIVES
 const setups = new Map<string, Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail>>()
 let lastProbe: Promise<AcpAgentStatus[]> | undefined
 
@@ -73,6 +82,12 @@ async function externalNode(): Promise<{ path: string; version: string }> {
   return { path, version }
 }
 
+async function assertZcodeNode(nodePath: string): Promise<void> {
+  try {
+    await run(nodePath, ['--input-type=module', '-e', 'import { DatabaseSync } from "node:sqlite"; const db = new DatabaseSync(":memory:"); db.close()'])
+  } catch { throw new Error('ZCode 需要支持 node:sqlite 的外部 Node.js；请选择包含 SQLite 的 Node >=22.13') }
+}
+
 /** 选定 Node 旁的 npm-cli.js：Windows 布局与 POSIX 全局布局两种（managed 安装与 native 一键安装共用）。 */
 function npmCliFor(nodePath: string): string | undefined {
   return [join(dirname(nodePath), 'node_modules', 'npm', 'bin', 'npm-cli.js'), join(dirname(nodePath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')].find(regularFile)
@@ -96,7 +111,8 @@ export function runtimeDefinitions(): AcpAgentConfig[] {
   const overrides = getSettings().acp?.agents ?? []
   const items: AcpAgentConfig[] = [
     ...Object.entries(BUILTINS).map(([id, spec]) => ({ id, name: spec.name, command: `${spec.packageName}@${spec.version}`, enabled: true, launchKind: 'managed' as const })),
-    ...Object.entries(NATIVES).map(([id, spec]) => ({ id, name: spec.name, command: [spec.commandName, ...spec.launchArgs].join(' '), enabled: true, launchKind: 'native' as const }))
+    ...Object.entries(NATIVES).map(([id, spec]) => ({ id, name: spec.name, command: [spec.commandName, ...spec.launchArgs].join(' '), enabled: true, launchKind: 'native' as const })),
+    ...Object.entries(BUNDLED).map(([id, spec]) => ({ id, name: spec.name, command: 'bundled ACP bridge（随应用提供）', enabled: true, launchKind: 'bundled' as const }))
   ]
   for (const config of overrides) {
     const index = items.findIndex((item) => item.id === config.id)
@@ -127,6 +143,10 @@ function isNative(config: AcpAgentConfig): config is AcpAgentConfig & { id: Nati
   return config.launchKind === 'native' && Object.hasOwn(NATIVES, config.id)
 }
 
+function isBundled(config: AcpAgentConfig): config is AcpAgentConfig & { id: BundledId } {
+  return config.launchKind === 'bundled' && Object.hasOwn(BUNDLED, config.id)
+}
+
 /** 宽松读取 CLI --version 输出中的首个版本号形态 token，避免把横幅文案当版本展示。 */
 function versionToken(output: string): string | undefined {
   const line = output.split(/\r?\n/).find((entry) => entry.trim().length > 0)
@@ -140,6 +160,35 @@ function nativeExecutable(id: NativeId): { path: string; manual: boolean } | und
   if (manual && isAbsolute(manual) && regularFile(manual)) return { path: manual, manual: true }
   const auto = findExecutable(NATIVES[id].commandName)
   return auto ? { path: auto, manual: false } : undefined
+}
+
+/** bundled 适配器 entry 解析（dev/prod 收敛一处）：dev 直读源码，打包读 electron-builder extraResources 复制产物。 */
+export function resolveAdapterEntry(): string | undefined {
+  const base = app.isPackaged
+    ? join(process.resourcesPath, 'adapters', 'zcode-acp')
+    : join(app.getAppPath(), 'adapters', 'zcode-acp')
+  const entry = join(base, 'src', 'index.mjs')
+  return regularFile(entry) ? entry : undefined
+}
+
+/** bundled 条目的内部 CLI 检测：nativePaths 手动指定 > 环境变量 ZCODE_BIN > PATH > 标准安装位置表（复刻 HiFox 发现顺序）。 */
+function zcodeExecutable(): { path: string; manual: boolean } | undefined {
+  const manual = getSettings().acp?.nativePaths?.zcode
+  if (manual && isAbsolute(manual) && regularFile(manual)) return { path: manual, manual: true }
+  // 环境变量与适配器同款语义（TRELLIS_ZCODE_BIN / ZCODE_BIN）：值指向 zcode.cjs/js 或可执行文件。
+  const envBin = process.env.TRELLIS_ZCODE_BIN ?? process.env.ZCODE_BIN
+  if (envBin && regularFile(envBin)) return { path: envBin, manual: true }
+  const onPath = findExecutable(BUNDLED.zcode.commandName)
+  if (onPath) return { path: onPath, manual: false }
+  const standardPaths = process.platform === 'win32' && process.env.LOCALAPPDATA
+    ? [join(process.env.LOCALAPPDATA, 'Programs', 'ZCode', 'resources', 'glm', 'zcode.cjs')]
+    : process.platform === 'darwin' ? ['/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'] : []
+  const standard = standardPaths.find(regularFile)
+  return standard ? { path: standard, manual: false } : undefined
+}
+
+function bundledAutomationAllowed(): boolean {
+  return getSettings().acp?.zcode?.enableAutomationTools === true
 }
 
 async function probe(): Promise<AcpAgentStatus[]> {
@@ -174,6 +223,35 @@ async function probe(): Promise<AcpAgentStatus[]> {
         diagnostics: [`${detected.manual ? '手动指定' : '自动检测'}：检测到 ${spec.name}：${detected.path}；协议与登录状态将在连接时验证`,
           ...(manual && !detected.manual ? ['手动指定路径无效，已回退 PATH 自动检测'] : []), NATIVE_TOOLS_DIAGNOSTIC] }
     }
+    if (isBundled(config)) {
+      const entry = resolveAdapterEntry()
+      const manual = getSettings().acp?.nativePaths?.zcode
+      const detected = zcodeExecutable()
+      let sqliteError = ''
+      if (node) try { await assertZcodeNode(node.path) } catch (error) { sqliteError = errorMessage(error) }
+      let version: string | undefined
+      if (detected && node) {
+        // zcode.cjs 需要 node 加载；PATH 命中的 shim 走既有批处理包装。版本失败不改变可用性。
+        try {
+          const cjs = /\.(?:cjs|mjs|js)$/i.test(detected.path)
+          version = versionToken(await run(cjs ? node.path : detected.path, cjs ? [detected.path, '--version'] : ['--version']))
+        } catch { /* 版本留空即"未知" */ }
+      }
+      const entryLine = entry ? `内置适配器就绪：${entry}` : '内置适配器文件缺失，请重新安装应用'
+      const cliLine = detected
+        ? `${detected.manual ? '手动指定' : '自动检测'}：ZCode CLI：${detected.path}${version ? `（v${version}）` : ''}；协议与登录状态将在连接时验证`
+        : manual
+          ? `手动指定的 zcode 路径不可用（${manual}），且环境变量、PATH 与标准安装位置均未检测到 ZCode CLI`
+          : '未检测到 ZCode CLI；请安装 ZCode（zcode 命令或标准安装位置），设置环境变量 ZCODE_BIN，或通过「配置路径」手动指定'
+      const safeLine = bundledAutomationAllowed()
+        ? '自动化计划工具（Cron*）已按设置放行'
+        : '安全默认：自动化计划工具（Cron*）已禁用'
+      return { ...base, available: !!entry && !!detected && !!node && !sqliteError,
+        health: !entry ? 'adapter_missing' : !node || !detected || sqliteError ? 'executable_missing' : 'not_checked',
+        setupRequired: false, adapterVersion: version,
+        diagnostics: [entryLine, cliLine, sqliteError, entry && detected && !node ? `未找到可用的外部 Node.js：${nodeError}` : '', safeLine,
+          ...(manual && detected && !detected.manual ? ['手动指定路径无效，已回退自动检测'] : []), NATIVE_TOOLS_DIAGNOSTIC].filter((line) => line.length > 0) }
+    }
     const executable = config.executable ? findExecutable(config.executable) : undefined
     const valid = config.executable ? !!executable : config.command.trim().length > 0
     return { ...base, available: valid, health: valid ? 'not_checked' : 'executable_missing', setupRequired: false,
@@ -200,6 +278,19 @@ export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
     if (!detected) throw new Error(`未找到 ${spec.commandName}，请安装后重新探测（${spec.installHint}）`)
     return [detected.path, ...spec.launchArgs]
   }
+  if (isBundled(config)) {
+    const node = await externalNode()
+    await assertZcodeNode(node.path)
+    const entry = resolveAdapterEntry()
+    if (!entry) throw new Error('内置适配器文件缺失，请重新安装应用')
+    const zcode = zcodeExecutable()
+    if (!zcode) throw new Error('未检测到 ZCode CLI，请安装 ZCode 后重新探测，或在设置中手动指定路径')
+    // 显式传参免 PATH 依赖。默认真实用户态（不传 --isolated）：模型目录与登录态复用本机
+    // ~/.zcode（2026-10-22 用户决策）；隔离是适配器 --isolated 显式可选项，测试/诊断用。
+    // translate.ts 依赖 Node 类型剥离：22.13–22.17 需显式旗标，22.18+ 冗余无害。
+    return [node.path, '--experimental-strip-types', entry, '--zcode-bin', zcode.path,
+      ...(bundledAutomationAllowed() ? ['--enable-automation-tools'] : [])]
+  }
   if (config.executable) {
     const executable = findExecutable(config.executable)
     if (!executable) throw new Error('指定可执行文件不存在，请刷新或修改 Runtime 配置')
@@ -220,6 +311,7 @@ function stderrTail(error: unknown): string {
 }
 
 export async function setupAcpRuntime(id: string): Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail> {
+  if (Object.hasOwn(BUNDLED, id)) return ipcFail(IpcErrorCode.InvalidArg, '内置 Runtime 随应用提供，无需安装')
   const native = Object.hasOwn(NATIVES, id)
   if (!Object.hasOwn(BUILTINS, id) && !native) return ipcFail(IpcErrorCode.InvalidArg, '自定义 Runtime 请在本机自行安装和配置')
   const pending = setups.get(id)
@@ -265,11 +357,12 @@ export async function pickAcpNode(write: AcpSettingsWriter = localSettingsWriter
   }
 }
 
-/** R8：为原生直连 Runtime 手动指定 CLI 可执行路径；校验通过才保存，保存后立即重新探测。 */
+/** 为原生直连与内置（bundled）Runtime 手动指定 CLI 可执行路径；校验通过才保存，保存后立即重新探测。 */
 export async function pickAcpRuntimePath(id: string, write: AcpSettingsWriter = localSettingsWriter): Promise<{ ok: true; cancelled?: boolean; agents?: AcpAgentStatus[] } | IpcFail> {
-  const spec = Object.hasOwn(NATIVES, id) ? NATIVES[id as NativeId] : undefined
-  if (!spec) return ipcFail(IpcErrorCode.InvalidArg, '仅原生直连 Runtime 支持配置 CLI 路径')
-  const selection = await dialog.showOpenDialog({ title: `选择 ${spec.name} 可执行文件`, properties: ['openFile'] })
+  const native = Object.hasOwn(NATIVES, id)
+  const spec = native ? NATIVES[id as NativeId] : Object.hasOwn(BUNDLED, id) ? BUNDLED[id as BundledId] : undefined
+  if (!spec) return ipcFail(IpcErrorCode.InvalidArg, '仅原生直连与内置 Runtime 支持配置 CLI 路径')
+  const selection = await dialog.showOpenDialog({ title: native ? `选择 ${spec.name} 可执行文件` : `选择 ${spec.name} CLI 可执行文件`, properties: ['openFile'] })
   const selected = selection.filePaths[0]
   if (selection.canceled || !selected) return { ok: true, cancelled: true }
   if (!isAbsolute(selected) || !regularFile(selected)) return ipcFail(IpcErrorCode.InvalidArg, '所选路径不是可执行文件，未保存')

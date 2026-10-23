@@ -1,0 +1,7 @@
+{
+  "name": "trellis-zcode-acp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ZCode ACP 桥接适配器：对 acpx 呈现 ACP v1（stdio/NDJSON），对内翻译 ZCode app-server 协议（方法映射以 research/protocol-mapping.md 为准）"
+}

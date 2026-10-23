@@ -106,6 +106,8 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
       {agents.filter((agent) => !runtimeId || (agent.runtimeId ?? agent.id) === runtimeId).map((agent) => {
         const id = agent.runtimeId ?? agent.id
         const native = agent.launchKind === 'native'
+        // bundled（内置桥接）也需要「配置路径」：内部 CLI 未检测到时用户可手动指定 zcode 可执行文件。
+        const bundled = agent.launchKind === 'bundled'
         const busySetup = pending === `setup:${id}`
         const updatePending = native && agent.available && agent.latestVersion !== undefined && agent.adapterVersion !== undefined && agent.latestVersion !== agent.adapterVersion
         const upToDate = native && agent.available && agent.latestVersion !== undefined && agent.latestVersion === agent.adapterVersion
@@ -133,16 +135,16 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
             <div><dt className="inline text-my-secondary">Node：</dt><dd className="inline">{agent.nodePath ?? '未确认（原生直连与自定义命令自行管理）'}</dd></div>
             <div><dt className="inline text-my-secondary">启动：</dt><dd className="inline font-mono">{agent.executable ? [agent.executable, ...(agent.args ?? [])].join(' ') : agent.command || '待配置'}</dd></div>
           </dl>
-          {native && agent.available && <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" disabled={pending !== null || !hasIpc} onClick={() => void run('test', id)}>
+          {(native || bundled) && <div className="mt-2 flex flex-wrap items-center gap-2">
+            {native && agent.available && <Button size="sm" variant="outline" disabled={pending !== null || !hasIpc} onClick={() => void run('test', id)}>
               {pending === `test:${id}` ? <Loader2 size={12} className="animate-spin" /> : <PlugZap size={12} />} 测试连接
-            </Button>
+            </Button>}
             <Button size="sm" variant="outline" disabled={pending !== null || !hasIpc} onClick={() => void run('path', id)}>
               {pending === `path:${id}` ? <Loader2 size={12} className="animate-spin" /> : <FolderOpen size={12} />} 配置路径
             </Button>
-            <Button size="sm" variant="ghost" disabled={pending !== null || !hasIpc} onClick={() => void run('setup', id)}>
+            {native && agent.available && <Button size="sm" variant="ghost" disabled={pending !== null || !hasIpc} onClick={() => void run('setup', id)}>
               {pending === `setup:${id}` ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} 重装
-            </Button>
+            </Button>}
           </div>}
           {rowFeedback && rowFeedback.id === id && <p role={rowFeedback.error ? 'alert' : 'status'} className={rowFeedback.error ? 'mt-2 break-words text-my-sm text-my-danger-text' : 'mt-2 break-words text-my-sm text-my-success-text'}>{rowFeedback.text}</p>}
           {(agent.diagnostics ?? []).map((message, index) => <p key={index} className="mt-1 break-words text-my-sm text-my-secondary">{message}</p>)}

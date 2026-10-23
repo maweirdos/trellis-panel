@@ -806,8 +806,12 @@ export interface Settings {
   desktop: { autoStart: boolean; globalShortcut: string; autoUpdate: boolean; quickTodoShortcut: string; explorerContextMenu?: boolean }
   /** T4 派单：codex worker 显式模型（账号默认模型不可用时在此指定；留空用 CLI 默认） */
   dispatch: { codexModel?: string }
-  /** ACP agent 注册表（10-09：缺省用内置预置项）；nativePaths 为原生直连 Runtime 的手动 CLI 路径（优先于 PATH 自动检测） */
-  acp?: { agents?: AcpAgentConfig[]; nodePath?: string; nativePaths?: Record<string, string> }
+  /**
+   * ACP agent 注册表（10-09：缺省用内置预置项）；nativePaths 为原生直连 Runtime 的手动 CLI 路径
+   * （优先于 PATH 自动检测，zcode bundled 条目同样读取 nativePaths.zcode）。
+   * zcode.enableAutomationTools：放行 ZCode 自动化计划工具（Cron*）；缺省禁用（安全默认）。
+   */
+  acp?: { agents?: AcpAgentConfig[]; nodePath?: string; nativePaths?: Record<string, string>; zcode?: { enableAutomationTools?: boolean } }
 }
 
 /* ---------- Studio（定制中心：workflow / 命令 / 子代理 / 技能 / 钩子 / 配置 / 平台） ---------- */
@@ -1739,8 +1743,11 @@ export interface AcpAgentConfig {
   /** 命令模板（整行交给 shell，如 `codex-acp` / `gemini --acp` / `node scripts/smoke/acp-mock-agent.mjs --serve`） */
   command: string
   enabled: boolean
-  /** Frozen launch provenance; Settings overrides are always user-managed. */
-  launchKind?: 'managed' | 'custom' | 'native'
+  /**
+   * Frozen launch provenance; Settings overrides are always user-managed.
+   * 'bundled'：随应用 resources 打包的桥接适配器（如 ZCode），entry 由 setup.ts 收敛解析。
+   */
+  launchKind?: 'managed' | 'custom' | 'native' | 'bundled'
   executable?: string
   args?: string[]
 }
@@ -1904,6 +1911,19 @@ export interface AcpDoneEvent {
   result?: unknown
 }
 
+/** Optional read-only metadata; native IDs and acknowledgements remain the selection authority. */
+export interface AcpModelCatalogMetadata {
+  connectionGeneration: string
+  source: 'engine' | 'codex-config' | 'claude-settings'
+  freshness: 'unchanged' | 'changed' | 'unknown'
+  reloadRequired: boolean
+  currentAvailable?: boolean
+  issue?: 'configuration-unknown' | 'catalog-changed' | 'catalog-not-advertised'
+  provenance?: { app: 'claude' | 'codex'; transportMode: 'direct' | 'proxy'; attached: boolean; aggregateEnabled: boolean }
+  /** Configured client selector/member only; not proof of the final answering upstream. */
+  mappings?: Array<{ modelId: string; configuredSelector?: string; configuredLabel?: string; providerKey?: string; providerId?: string; configuredModel: string }>
+}
+
 export interface AcpSessionMeta {
   sessionId: string
   agentId: string
@@ -1940,6 +1960,7 @@ export interface AcpSessionMeta {
   models?: Array<{ modelId: string; name: string }>
   modes?: Array<{ id: string; name: string }>
   currentModelId?: string
+  modelCatalog?: AcpModelCatalogMetadata
   currentModeId?: string
   configOptions?: AcpConfigOption[]
   materialSnapshot?: { taskDir?: string; profileId?: string; instructions: string; files: string[]; capturedAt: number; sources?: AcpMaterialSource[]; sourceReferences?: AcpSourceReference[] }
