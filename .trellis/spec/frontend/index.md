@@ -16,6 +16,7 @@
 
 | File                                                                           | Description                                     | Priority      |
 | ------------------------------------------------------------------------------ | ----------------------------------------------- | ------------- |
+| [前端视觉与交互设计规范](./design-principles.md) | 视觉优先、必要文案、完整设计、动效职责、连续性、真实状态、异常恢复与实际流程验收（中文） | **Must Read** |
 | [ipc-electron.md](./ipc-electron.md)                                           | IPC patterns, context isolation, title bar      | **Must Read** |
 | [daemon-bootstrap.md](./daemon-bootstrap.md)                                 | Restricted first-window shell, readiness, recovery, lazy App and authenticated attachment | Desktop startup / daemon changes |
 | [Integration contracts](../backend/integrations.md)                           | Shared directory, owner-scoped requests, redacted fields and explicit notification preview | Integration UI |
@@ -49,6 +50,7 @@
 
 | Task                         | Document                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------ |
+| 设计或调整任何前端界面 | [前端视觉与交互设计规范](./design-principles.md) |
 | Understand IPC patterns      | [ipc-electron.md](./ipc-electron.md)                                           |
 | Know browser API limitations | [electron-browser-api-restrictions.md](./electron-browser-api-restrictions.md) |
 | Avoid common React mistakes  | [react-pitfalls.md](./react-pitfalls.md)                                       |
@@ -66,6 +68,7 @@
 
 | Task                    | Document                         |
 | ----------------------- | -------------------------------- |
+| 审查视觉表达与交互连续性 | [前端视觉与交互设计规范](./design-principles.md) |
 | Check code quality      | [quality.md](./quality.md)       |
 | Verify CSS organization | [css-design.md](./css-design.md) |
 
@@ -75,6 +78,7 @@
 
 | Rule                                                         | Reference                                                                      |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| **视觉与交互先完成表达，文字保留给内容、操作和必要决策** | [前端视觉与交互设计规范](./design-principles.md) |
 | **Native APIs require IPC**                                  | [ipc-electron.md](./ipc-electron.md)                                           |
 | **NEVER use prompt/alert/confirm**                           | [electron-browser-api-restrictions.md](./electron-browser-api-restrictions.md) |
 | **Wrap functions with `() =>`** when storing in useState     | [react-pitfalls.md](./react-pitfalls.md)                                       |
@@ -118,7 +122,7 @@
 
 ## Getting Started
 
-1. **Read the Must-Read documents** - Especially IPC patterns and browser API restrictions
+1. **Read the Must-Read documents** - Start with [前端视觉与交互设计规范](./design-principles.md), then IPC patterns and browser API restrictions
 2. **Set up your project structure** - Follow [directory-structure.md](./directory-structure.md)
 3. **Configure TypeScript paths** - See [type-safety.md](./type-safety.md)
 4. **Implement IPC layer** - Use patterns from [ipc-electron.md](./ipc-electron.md)
@@ -126,4 +130,4 @@
 
 ---
 
-**Language**: All documentation is written in **English**.
+**Language**: Technical documentation uses **English** by default. 用户已确认的 [前端视觉与交互设计规范](./design-principles.md) 使用中文，作为前端开发与审查的必读规范。

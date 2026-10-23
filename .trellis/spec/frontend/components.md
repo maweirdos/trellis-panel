@@ -2,6 +2,8 @@
 
 > Semantic HTML, empty states, and scrollbar patterns.
 
+设计或调整组件前，先读 [前端视觉与交互设计规范](./design-principles.md)。优先通过控件、布局和状态反馈表达操作关系；新增解释性文案须有明确的用户决策用途。加载、空状态、异常恢复、键盘焦点和减弱动态效果应作为组件的一部分设计，并在实际使用流程中验收。
+
 ---
 
 ## Shared choices and recorded results

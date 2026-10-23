@@ -1,5 +1,7 @@
 # Global CSS and design system
 
+视觉目标与验收遵守 [前端视觉与交互设计规范](./design-principles.md)：通过比例、留白、对齐、层级和连续反馈建立完整设计；精简说明后仍保留内容与操作的清晰度。动效应有交互职责，不制造强制等待或布局抖动。具体颜色、字体、几何与动效值继续使用本文规定的统一设计令牌，不另建平行样式体系。
+
 ## 1. Scope and ownership
 
 Every renderer surface, including document/capsule/quick-todo windows, uses the
