@@ -68,7 +68,7 @@ async function layoutChecks({ theme, size }) {
   f.mount({ theme, size, items: [app] })
   await f.wait(() => document.querySelector('[data-app-id="backend"] [data-process-state="running"]'), 'runtime loaded')
   const source = document.querySelector('[aria-label="对话草稿"]'), mounts = f.sourceLife.mounts
-  f.button('显示运行窗口').click()
+  f.button('展开运行窗口').click()
   await f.wait(() => document.querySelector('.my-run-dock pre')?.textContent.includes('backend:run-current'), 'current run output')
   await f.settle()
   const dock = document.querySelector('.my-run-dock'), dockBox = dock.getBoundingClientRect(), main = document.querySelector('main').getBoundingClientRect()
@@ -131,7 +131,7 @@ async function interactionChecks() {
   check('selection changes label without running', selector().textContent.includes('前端服务') && !f.calls.some(call => call[0] === 'start'))
   f.button('启动 前端服务').click(); await f.wait(() => document.querySelector('.my-run-dock pre')?.textContent.includes('frontend:run-1'), 'manual start output')
   check('manual start opens console for the exact selected revision', JSON.stringify(f.calls.find(call => call[0] === 'start')) === JSON.stringify(['start', f.project, 'frontend', 'revision-1']) && document.querySelector('.my-run-dock [data-process-state="running"]'))
-  await choose('后端服务'); f.button('显示运行窗口').click(); await f.wait(() => document.querySelectorAll('[role="tab"]').length === 2, 'two output tabs')
+  await choose('后端服务'); f.button('折叠运行窗口').click(); await f.settle(); f.button('展开运行窗口').click(); await f.wait(() => document.querySelectorAll('[role="tab"]').length === 2, 'two output tabs')
   check('show output is presentation-only', f.calls.filter(call => call[0] === 'start').length === 1)
   const backendTab = [...document.querySelectorAll('[role="tab"]')].find(node => node.textContent.includes('后端服务'))
   backendTab.focus(); backendTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })); await f.settle()
@@ -168,7 +168,7 @@ async function interactionChecks() {
   check('save and run uses newly acknowledged revision', JSON.stringify(f.calls.filter(call => call[0] === 'start').at(-1)) === JSON.stringify(['start', f.project, 'frontend', 'saved-revision']))
   check('configuration save does not replace original source', source === document.querySelector('[aria-label="对话草稿"]') && f.sourceLife.mounts === mounts)
 
-  f.holdLogs = true; f.pendingLogs = []; f.button('关闭运行窗口').click(); await f.settle(); f.button('显示运行窗口').click(); await f.wait(() => f.pendingLogs.length === 1, 'old run logs held')
+  f.holdLogs = true; f.pendingLogs = []; f.button('关闭运行窗口').click(); await f.settle(); f.button('展开运行窗口').click(); await f.wait(() => f.pendingLogs.length === 1, 'old run logs held')
   const oldLog = f.pendingLogs[0], updated = structuredClone(f.apps.get(f.project).find(app => app.definition.id === 'frontend')); updated.run.id = 'run-new'; f.emit(updated)
   await f.wait(() => f.pendingLogs.some(row => row.runId === 'run-new'), 'new run logs requested')
   const newLog = f.pendingLogs.find(row => row.runId === 'run-new'); newLog.resolve({ ...newLog.value, output: 'CURRENT_RUN_ONLY' }); await f.wait(() => document.querySelector('.my-run-dock pre')?.textContent === 'CURRENT_RUN_ONLY', 'new run output applied')

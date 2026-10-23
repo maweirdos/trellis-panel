@@ -83,9 +83,9 @@ assert.equal(approvals,1,'first UI launch asks native human review (decision sim
 let body=await fetch(${JSON.stringify(`http://127.0.0.1:${port}/health`)}).then(r=>r.json());assert.equal(body.marker,'first-value');
 assert.equal(await evaluate('document.querySelector("[data-process-state=running]")!==null'),true);
 assert.equal(await evaluate('document.querySelector("[data-readiness-state=ready]")!==null'),true);
-await click('显示运行窗口');await untilUI('Boolean(document.querySelector("[data-readiness-state=ready]"))&&[...document.querySelectorAll("button")].some(b=>b.getAttribute("aria-label")==="停止 本地后端服务"&&!b.disabled)');await capture('real-runtime-light-running');
+await untilUI('Boolean(document.querySelector("[data-readiness-state=ready]"))&&[...document.querySelectorAll("button")].some(b=>b.getAttribute("aria-label")==="停止 本地后端服务"&&!b.disabled)');await capture('real-runtime-light-running');
 writeFileSync(join(project,'.env'),'PORT='+config.ports[0].port+'\\nAPP_MARKER=second-value\\n');
-await click('重启 本地后端服务');
+await click('运行窗口重启 本地后端服务');
 const second=await until(a=>a?.run?.id!==first.run.id&&a?.processState==='running'&&a?.readiness.state==='ready','service restarted');
 assert.notEqual(second.run.pid,first.run.pid);assert.equal(approvals,1,'env-value reload reuses unchanged command approval');
 body=await fetch(${JSON.stringify(`http://127.0.0.1:${port}/health`)}).then(r=>r.json());assert.equal(body.marker,'second-value');

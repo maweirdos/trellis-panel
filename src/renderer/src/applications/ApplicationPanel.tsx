@@ -6,7 +6,7 @@ import { useMy } from '../my/store'
 import { Button, Dropdown, Modal, Tooltip } from '../my/ui'
 import { ApplicationConfigDialog } from './ApplicationConfigDialog'
 import { ApplicationList } from './ApplicationList'
-import { closeApplicationEditor, openApplicationEditor, refreshApplications, removeApplication, runApplication, selectApplication, showApplicationOutput, useApplications } from './useApplications'
+import { closeApplicationEditor, openApplicationEditor, refreshApplications, removeApplication, runApplication, selectApplication, useApplications } from './useApplications'
 
 function ApplicationActions({ onOpen }: { onOpen?: () => void }): JSX.Element {
   const state = useApplications()
@@ -66,9 +66,10 @@ export function ApplicationPanel(): JSX.Element {
   const live = state.apps.filter((app) => ['starting', 'running', 'stopping'].includes(app.processState)).length
   const pending = state.apps.filter((app) => app.approval === 'pending').length
   const projectName = useApp((current) => current.snapshot?.meta.name)
-  const action = selected?.run && !selected.canStart ? 'restart' : 'start'
-  const actionLabel = selected ? `${action === 'start' ? '启动' : '重启'} ${selected.definition.name}` : '添加运行配置'
-  const actionDisabled = !enabled || state.loading && state.apps.length === 0 || Boolean(busy) || Boolean(selected && !(action === 'start' ? selected.canStart : selected.canRestart))
+  const running = Boolean(selected?.canStop || selected?.processState === 'stopping')
+  const runAction = running ? 'stop' : 'start'
+  const runLabel = !selected ? '添加运行配置' : running ? `停止 ${selected.definition.name}` : `启动 ${selected.definition.name}`
+  const runDisabled = !enabled || state.loading && state.apps.length === 0 || Boolean(busy) || Boolean(selected && !(running ? selected.canStop : selected.canStart))
   const label = `运行配置：${selected?.definition.name ?? '未选择'}${live ? ` · ${live} 个运行中` : ''}${pending ? ` · ${pending} 个待确认` : ''}`
 
   return <div className="my-run-toolbar no-drag" aria-label="应用运行控制">
@@ -96,9 +97,7 @@ export function ApplicationPanel(): JSX.Element {
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-my-line px-3 py-2"><span className="text-my-xs text-my-tertiary">当前项目</span><Button size="sm" variant="ghost" disabled={!state.root} onClick={() => { close(); useMy.getState().setToolView('run'); useApp.getState().setPage('devtools') }}>在运行页打开<ArrowUpRight size={12} /></Button></footer>
       </div>}
     </Dropdown>
-    <Tooltip label={actionLabel} side="bottom"><button type="button" className="my-icon-control" aria-label={actionLabel} disabled={actionDisabled} onClick={(event) => { if (selected) void runApplication(selected, action, state.generation); else openApplicationEditor({ kind: 'new' }, state.generation, event.currentTarget) }}>{busy ? <Loader2 size={15} className="animate-spin" /> : action === 'restart' ? <RefreshCw size={15} /> : <Play size={15} />}</button></Tooltip>
-    <Tooltip label={selected ? `停止 ${selected.definition.name}` : '停止应用'} side="bottom"><button type="button" className="my-icon-control text-my-danger-text" aria-label={selected ? `停止 ${selected.definition.name}` : '停止应用'} disabled={!enabled || !selected?.canStop || Boolean(busy)} onClick={() => selected && void runApplication(selected, 'stop', state.generation)}><Square size={15} /></button></Tooltip>
-    <Tooltip label="显示运行窗口" side="bottom"><button type="button" className="my-icon-control" aria-label="显示运行窗口" aria-pressed={state.dockOpen} disabled={!selected || !enabled} onClick={() => selected && showApplicationOutput(selected.definition.id, state.generation)}><Terminal size={15} /></button></Tooltip>
+    <Tooltip label={runLabel} side="bottom"><button type="button" className={running ? 'my-icon-control text-my-danger-text' : 'my-icon-control'} aria-label={runLabel} disabled={runDisabled} onClick={(event) => { if (selected) void runApplication(selected, runAction, state.generation); else openApplicationEditor({ kind: 'new' }, state.generation, event.currentTarget) }}>{busy ? <Loader2 size={15} className="animate-spin" /> : running ? <Square size={15} /> : <Play size={15} />}</button></Tooltip>
     <ApplicationDialogs key={`dialogs-${state.generation}`} />
   </div>
 }
