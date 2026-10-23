@@ -1,7 +1,7 @@
-import { join, isAbsolute } from 'node:path'
+import { join, isAbsolute, relative, resolve } from 'node:path'
 import { realpathSync } from 'node:fs'
 import { scanKnownTaskDirs, taskRefFor, type KnownTaskDir } from '../../task-identity'
-import { inside } from './paths'
+import { inside, ordinaryPath } from './paths'
 import { TaskConversationError } from '../types'
 
 export type TaskOwner = { key: string; taskRef: string; trellisId: string | null; currentDir: string; priorDirs: string[] }
@@ -21,6 +21,21 @@ export function resolveTask(root: string, taskDir: string, known: KnownTaskDir[]
   return task
 }
 export function displayTaskDir(dir: string): string { return dir.replace(/^\.trellis\/tasks\//, '') }
+/** Internal native metadata compatibility only; the public resolver stays strict. */
+export function nativeTaskDir(root: string, value: string): string | null {
+  if (!value || value.length > 4096 || /[\x00-\x1f]/.test(value)) return null
+  let normalized = ordinaryPath(value).replace(/\\/g, '/').replace(/\/$/, '')
+  if (isAbsolute(normalized)) {
+    if (!inside(root, normalized)) return null
+    normalized = relative(root, resolve(normalized)).replace(/\\/g, '/')
+  } else {
+    normalized = normalized.replace(/^\.\//, '')
+    if (normalized.startsWith('tasks/')) normalized = `.trellis/${normalized}`
+    else if (!normalized.startsWith('.trellis/')) normalized = `.trellis/tasks/${normalized}`
+  }
+  if (normalized.split('/').some(part => !part || part === '.' || part === '..')) return null
+  return /^\.trellis\/tasks\/(?:[^/]+|archive\/\d{4}-\d{2}\/[^/]+)$/.test(normalized) && normalized !== '.trellis/tasks/archive' ? normalized : null
+}
 export function sameTask(owner: TaskOwner, task: KnownTaskDir): boolean {
   return owner.currentDir === task.dir && owner.taskRef === taskRefFor(task.trellisTaskId, task.dir)
 }

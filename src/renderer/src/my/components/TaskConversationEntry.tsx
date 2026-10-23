@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpRight, Bot, Code2, Info, Link2, MessageSquare, Plus, Sparkles, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, Info, Link2, MessageSquare, FileText } from 'lucide-react'
+import { ToolBrandIcon } from '../../components/ToolBrandIcon'
 import { useEscLayer } from '../../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard } from '../../utils/interaction-scope'
 import '../task-conversation-entry.css'
@@ -13,24 +14,15 @@ export interface TaskConversationEntryProps {
   onOpen: () => void
   disabled?: boolean
   pending?: boolean
-  onManage?: () => void
+  actionDescription?: string
   destinationLabel?: string
   unavailableReason?: string
-}
-
-// Semantic library icons: vendor identity remains in the supplied source label.
-export const TASK_CONVERSATION_SOURCE_ICONS: Record<TaskConversationEntryProps['source'], LucideIcon> = {
-  codex: Bot,
-  'claude-code': Sparkles,
-  zcode: Code2,
-  panel: MessageSquare,
-  unbound: Link2
 }
 
 const DESTINATIONS: Record<TaskConversationEntryProps['capability'], string> = {
   session: '打开会话',
   workspace: '打开工作区',
-  associate: '关联会话',
+  associate: '查看接续说明',
   unavailable: '入口不可用'
 }
 
@@ -43,7 +35,7 @@ export function TaskConversationEntry({
   onOpen,
   disabled = false,
   pending = false,
-  onManage,
+  actionDescription,
   destinationLabel,
   unavailableReason
 }: TaskConversationEntryProps): JSX.Element {
@@ -57,14 +49,14 @@ export function TaskConversationEntry({
   const [open, setOpen] = useState(false)
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
-  // aria-disabled preserves keyboard access to the unavailable destination's explanation.
-  const blocked = disabled || pending || capability === 'unavailable'
+  // Navigation availability does not disable the task-instruction fallback.
+  const blocked = disabled || pending
   const destination = destinationLabel || DESTINATIONS[capability]
   const status = pending ? '处理中…' : capability === 'unavailable' && destinationLabel ? '入口不可用' : disabled && capability !== 'unavailable' ? '暂不可用' : ''
-  const description = [sourceLabel, destination, status, unavailableReason].filter(Boolean).join(' · ')
+  const distinctDestination = destination.trim().toLocaleLowerCase() !== sourceLabel.trim().toLocaleLowerCase() ? destination : null
+  const description = [sourceLabel, distinctDestination, actionDescription, status, unavailableReason].filter(Boolean).join(' · ')
   const destinationBadge = capability === 'workspace' ? '工作区' : destinationLabel && /终端|terminal|cli/i.test(destinationLabel) ? '终端' : null
-  const SourceIcon = TASK_CONVERSATION_SOURCE_ICONS[source]
-  const ActionIcon = capability === 'unavailable' ? Info : capability === 'associate' ? Plus : ArrowUpRight
+  const ActionIcon = capability === 'unavailable' ? Info : capability === 'associate' ? FileText : ArrowUpRight
   const visible = open && interactive && portalRoot !== null
 
   useEscLayer(visible, {
@@ -135,21 +127,6 @@ export function TaskConversationEntry({
         aria-describedby={visible ? tooltipId : undefined}
         aria-disabled={blocked || !interactive || undefined}
         aria-busy={pending || undefined}
-        aria-description={onManage ? '右键或按 Shift+F10 管理关联会话' : undefined}
-        onContextMenu={onManage ? (event) => {
-          if (!canInteract()) return
-          event.preventDefault()
-          event.stopPropagation()
-          setOpen(false)
-          onManage()
-        } : undefined}
-        onKeyDown={onManage ? (event) => {
-          if (!canInteract() || !(event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)) return
-          event.preventDefault()
-          event.stopPropagation()
-          setOpen(false)
-          onManage()
-        } : undefined}
         onPointerEnter={(event) => {
           if (event.pointerType === 'touch' || !canInteract()) return
           hovered.current = true
@@ -175,7 +152,9 @@ export function TaskConversationEntry({
           onOpen()
         }}
       >
-        <span className="my-task-conversation-entry__icon" aria-hidden="true"><SourceIcon /></span>
+        <span className="my-task-conversation-entry__icon" aria-hidden="true">
+          {source === 'unbound' ? <Link2 size={16} /> : source === 'panel' ? <MessageSquare size={16} /> : <ToolBrandIcon brand={source} size={16} />}
+        </span>
         <span className="my-task-conversation-entry__text" aria-hidden="true">
           <span className="my-task-conversation-entry__title">{pending ? '处理中…' : title}</span>
           {destinationBadge && <span className="my-task-conversation-entry__destination">{destinationBadge}</span>}
@@ -192,7 +171,7 @@ export function TaskConversationEntry({
           style={position ?? undefined}
         >
           <div className="my-task-conversation-tooltip__title">{title}</div>
-          <div className="my-task-conversation-tooltip__description">{description}{onManage ? ' · 右键管理关联' : ''}</div>
+          <div className="my-task-conversation-tooltip__description">{description}</div>
         </div>,
         portalRoot
       )}

@@ -45,10 +45,12 @@ function clip(line: string): string {
 }
 
 /** prd.md 中"待确认/开放问题/待问"小节下的未决项；无该小节返回空。 */
-function extractOpenQuestions(prdPath: string): string[] {
+function extractOpenQuestions(prdPath: string, readText?: (path: string) => string | null): string[] {
   let content: string
   try {
-    content = readFileSync(prdPath, 'utf-8')
+    const read = readText ? readText(prdPath) : readFileSync(prdPath, 'utf-8')
+    if (read === null) return []
+    content = read
   } catch {
     return []
   }
@@ -61,7 +63,7 @@ function extractOpenQuestions(prdPath: string): string[] {
       continue
     }
     if (!inSection) continue
-    const m = /^\s*-\s*\[ \]\s*(.+)$/.exec(line) ?? /^\s*-\s+(?![[\s])[^\s].+$/.exec(line)
+    const m = /^\s*-\s*\[ \]\s*(.+)$/.exec(line) ?? /^\s*-\s+((?![[\s])\S.*)$/.exec(line)
     if (m) {
       out.push(clip(m[1].trim()))
       if (out.length >= MAX_QUESTIONS) break
@@ -108,7 +110,7 @@ export async function buildHandoffPackage(
   root: string,
   task: TaskInfo,
   intent: string,
-  extra?: { prdContent?: string | null }
+  extra?: { prdContent?: string | null; readText?: (path: string) => string | null; omitGit?: boolean }
 ): Promise<HandoffBuildResult> {
   const relDir = toPosix(relative(root, task.path))
   const issues: string[] = []
@@ -152,14 +154,14 @@ export async function buildHandoffPackage(
   }
 
   // 接续说明补充块（PF-08/PF-11）：全部只读事实，缺哪块如实说未发现
-  const gitLines = await collectGitLines(root, task)
+  const gitLines = extra?.omitGit ? ['本接续说明未扫描 Git 变化；需要时请按当前任务范围只读核对'] : await collectGitLines(root, task)
   const checkFiles = ['validation.md', 'check.md', 'review.md', 'qa.md']
     .filter((f) => existsSync(join(task.path, f)))
     .slice(0, MAX_CHECK_FILES)
   const uncheckedSubtasks = (task.record?.subtasks ?? [])
     .filter((s): s is string => typeof s === 'string' && /^-?\s*\[ \]/.test(s.trim()))
     .slice(0, MAX_SUBTASKS)
-  const openQuestions = existsSync(join(task.path, 'prd.md')) ? extractOpenQuestions(join(task.path, 'prd.md')) : []
+  const openQuestions = existsSync(join(task.path, 'prd.md')) ? extractOpenQuestions(join(task.path, 'prd.md'), extra?.readText) : []
 
   const block: string[] = []
   if (gitLines.length > 0) {
@@ -171,7 +173,7 @@ export async function buildHandoffPackage(
     `- 检查记录：${checkFiles.length > 0 ? checkFiles.join('、') : '未发现检查记录文件（validation.md / check.md 等）'}`,
     uncheckedSubtasks.length > 0
       ? `- 未完成子任务 ${uncheckedSubtasks.length} 项：${uncheckedSubtasks.map((s) => clip(s.trim())).join('；')}`
-      : '- 未完成子任务：无（或子任务清单未维护）',
+      : extra?.readText ? '- 未完成子任务：未发现明确记录；这不证明任务已完成' : '- 未完成子任务：无（或子任务清单未维护）',
   )
   if (openQuestions.length > 0) {
     block.push(`待确认问题（来自 prd.md，${openQuestions.length} 项）：`, ...openQuestions.map((q) => `- [ ] ${q}`))

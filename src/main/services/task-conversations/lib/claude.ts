@@ -2,12 +2,13 @@ import { existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { ExternalConversation } from '../../../../shared/task-conversations'
-import type { NativeIdentity } from '../types'
+import type { NativeIdentity, NativeHistoryFile } from '../types'
 import { boundedEntries, MAX_ITEMS, ownedPath, pathKey, projectCwd, readBounded, readEdges, safeId, nativeSessionId, timestamp } from './paths'
 import { conversation } from './native-sqlite'
 
 const metadataSchema = z.object({
   type: z.string().optional(), sessionId: z.string().optional(), cwd: z.string().optional(),
+  isSidechain: z.boolean().optional(),
   customTitle: z.string().optional(), summary: z.string().optional(), timestamp: z.union([z.number(), z.string()]).optional()
 })
 const indexSchema = z.object({ entries: z.array(z.object({
@@ -31,6 +32,7 @@ function readSession(sourceRoot: string, file: string, root: string, id: string,
     const parsed = metadataSchema.safeParse(raw)
     if (!parsed.success) continue
     const item = parsed.data
+    if (item.isSidechain === true) return null
     if (item.sessionId && item.sessionId !== id) return null
     if (item.sessionId === id && item.cwd) {
       const canonical = projectCwd(root, item.cwd)
@@ -45,7 +47,7 @@ function readSession(sourceRoot: string, file: string, root: string, id: string,
   if (!cwd || (indexed?.projectPath && pathKey(indexed.projectPath) !== pathKey(cwd))) return null
   return conversation('claude-code', id, cwd, nativeTitle || summary || null, updatedAt || Math.floor(statSync(path).mtimeMs), nativeTitle ? 'native' : 'summary')
 }
-export function readClaude(sourceRoot: string, root: string, requested: NativeIdentity[]): { items: ExternalConversation[]; truncated: boolean } {
+export function readClaude(sourceRoot: string, root: string, requested: NativeIdentity[], histories: NativeHistoryFile[] = []): { items: ExternalConversation[]; truncated: boolean } {
   const projects = ownedPath(sourceRoot, join(sourceRoot, 'projects'))
   const listing = boundedEntries(projects)
   const items: ExternalConversation[] = []
@@ -79,7 +81,7 @@ export function readClaude(sourceRoot: string, root: string, requested: NativeId
       const file = join(dir, `${id}.jsonl`)
       if (!existsSync(file)) continue
       const item = readSession(sourceRoot, file, root, id, indexed.get(id))
-      if (item) items.push(item)
+      if (item) { items.push(item); histories.push({ conversation: item, sourceRoot, file }) }
     }
   }
   return { items, truncated }

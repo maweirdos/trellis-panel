@@ -9,11 +9,15 @@ import type { NativeIdentity } from '../types'
 const rowSchema = z.object({
   sessionId: z.string().max(256), cwd: z.string().max(4096), title: z.string().max(4096).nullable(),
   updatedAt: z.union([z.number(), z.string(), z.null()]), role: z.enum(['user', 'subagent', 'unknown']).optional(),
-  parentSessionId: z.string().max(256).nullable().optional()
+  parentSessionId: z.string().max(256).nullable().optional(),
+  historyPath: z.string().max(4096).nullable().optional(),
+  workspaceKey: z.string().max(256).nullable().optional(),
+  providerId: z.string().max(256).nullable().optional()
 })
 type NativeColumns = {
   table: 'threads' | 'tasks'; id: string; cwd: string; title: string; updated: string
   predicate?: string; discoveryPredicate?: string; role?: string; parentSessionId?: string
+  historyPath?: string; workspaceKey?: string; providerId?: string
 }
 export function conversation(source: TaskConversationSource, sessionId: string, cwd: string, title: string | null, updatedAt: unknown, titleSource: ExternalConversation['titleSource'] = 'native'): ExternalConversation {
   const trimmed = title?.trim().slice(0, 4096)
@@ -32,7 +36,7 @@ export function readNativeDatabase(sourceRoot: string, file: string, read: (db: 
     return read(db, table => new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(row => String(row.name))))
   } finally { db.close() }
 }
-export function projectRows(db: DatabaseSync, root: string, source: TaskConversationSource, columns: NativeColumns, requested: NativeIdentity[]): ExternalConversation[] {
+export function projectRows(db: DatabaseSync, root: string, source: TaskConversationSource, columns: NativeColumns, requested: NativeIdentity[], collect?: (row: z.infer<typeof rowSchema>, item: ExternalConversation) => void): ExternalConversation[] {
   const { table, id, cwd, title, updated, predicate, discoveryPredicate, role, parentSessionId } = columns
   // All SQL identifiers originate in the adapter's schema allowlist. Values are bound.
   const slashes = `replace(${cwd},char(92),'/')`
@@ -41,6 +45,10 @@ export function projectRows(db: DatabaseSync, root: string, source: TaskConversa
   const key = pathKey(root)
   const requestedIds = requested.filter(item => item.source === source && safeId(item.sessionId)).slice(0, MAX_ITEMS).map(item => item.sessionId)
   const metadata = `${role ? `,${role} AS role` : ''}${parentSessionId ? `,${parentSessionId} AS parentSessionId` : ''}`
+    + ['historyPath', 'workspaceKey', 'providerId'].map(field => {
+      const expression = columns[field as 'historyPath' | 'workspaceKey' | 'providerId']
+      return expression ? `,${expression} AS ${field}` : ''
+    }).join('')
   const select = `SELECT ${id} AS sessionId,${cwd} AS cwd,substr(${title},1,4096) AS title,${updated} AS updatedAt${metadata} FROM ${table}`
   const condition = predicate ? ` AND (${predicate})` : ''
   const defaultCondition = discoveryPredicate ? ` AND (${discoveryPredicate})` : ''
@@ -48,7 +56,11 @@ export function projectRows(db: DatabaseSync, root: string, source: TaskConversa
     ORDER BY ${updated} DESC LIMIT ?`
   const rows = db.prepare(sql).all(key, key.length + 1, `${key}/`, MAX_ITEMS + 1)
   // A saved old session must remain queryable even when the discovery page is full.
-  if (requestedIds.length) rows.push(...db.prepare(`${select} WHERE ${id} IN (${requestedIds.map(() => '?').join(',')})${condition} LIMIT ?`).all(...requestedIds, MAX_ITEMS))
+  if (requestedIds.length) {
+    const placeholders = requestedIds.map(() => '?').join(',')
+    const alias = columns.providerId ? ` OR ${columns.providerId} IN (${placeholders})` : ''
+    rows.unshift(...db.prepare(`${select} WHERE (${id} IN (${placeholders})${alias})${condition} LIMIT ?`).all(...requestedIds, ...(alias ? requestedIds : []), MAX_ITEMS))
+  }
   const seen = new Set<string>()
   return rows.flatMap(raw => {
     const parsed = rowSchema.safeParse(raw)
@@ -61,6 +73,7 @@ export function projectRows(db: DatabaseSync, root: string, source: TaskConversa
       ...(data.parentSessionId && nativeSessionId('codex', data.parentSessionId) ? { parentSessionId: data.parentSessionId } : {}) }
     if (seen.has(item.id)) return []
     seen.add(item.id)
+    collect?.(data, item)
     return [item]
   })
 }

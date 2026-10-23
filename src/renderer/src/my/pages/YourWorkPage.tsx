@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
-import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, MessageSquare, Plus, RefreshCw, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, MessageSquare, MoreHorizontal, Plus, RefreshCw, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
 import { useApp } from '../../store'
 import { hasIpc } from '../../api'
 import { Select } from '../../components/Select'
@@ -7,7 +7,7 @@ import { relTime } from '../../utils/format'
 import { relativePathUnderRoot } from '../../reader/reader-paths'
 import { priorityFromTask, statusToStateId } from '../adapter'
 import { useMy } from '../store'
-import { Button, Modal, SearchInput } from '../ui'
+import { Button, Dropdown, DropdownItem, Modal, SearchInput } from '../ui'
 import { PriorityIcon, StateGroupIcon } from '../icons'
 import { clearPersonalHistory, rememberVisit, usePersonalHistory, type PersonalVisit } from '../personal-history'
 import type { Priority, WorkItemState } from '../types'
@@ -16,6 +16,7 @@ import type { FileEntry, TaskInfo } from '../../../../shared/types'
 import { errorMessage } from '../../../../shared/errors'
 import { TaskConversationEntry } from '../components/TaskConversationEntry'
 import { TaskConversationAssociationModal } from '../components/TaskConversationAssociationModal'
+import { TaskContinuationModal } from '../components/TaskContinuationModal'
 import { TASK_CONVERSATION_SOURCE_LABELS, taskConversationDirectory, useTaskConversations, type TaskConversationController } from '../use-task-conversations'
 import { useInteractionActive, useInteractionGuard } from '../../utils/interaction-scope'
 
@@ -140,9 +141,9 @@ function ContinueTaskBar({ task, source, state, onInspect }: {
 }
 
 /** The open and favorite actions are sibling buttons, including for keyboard users. */
-function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite, conversations, projectRoot, onManage }: {
+function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite, conversations, projectRoot, onInstructions }: {
   task: HomeTask; state?: WorkItemState; favorite: boolean; onInspect: (task: HomeTask) => void; onToggleFavorite: (id: string) => void
-  conversations: TaskConversationController; projectRoot: string; onManage: (task: HomeTask) => void
+  conversations: TaskConversationController; projectRoot: string; onInstructions: (task: HomeTask) => void
 }): JSX.Element {
   const status = taskStatus(task, state)
   const scope = task.scope || task.pkg || task.jiraKey
@@ -152,10 +153,19 @@ function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite, conv
   const timeText = showCompletion && completed ? completed.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : updatedAt ? relTime(updatedAt) : '—'
   const timeTitle = showCompletion ? `完成于 ${task.completedAt}` : updatedAt ? `文件更新于 ${new Date(updatedAt).toLocaleString('zh-CN')}` : '暂无更新时间'
   const bindings = conversations.bindingsFor(task.path)
-  const binding = bindings.find((item) => item.primary)
+  const primaries = bindings.filter((item) => item.primary)
+  const binding = primaries.length === 1 ? primaries[0] : undefined
   const conversation = binding?.conversation
-  const ready = conversations.available && Boolean(task.path) && conversations.data !== null
-  const title = conversation?.title ?? (conversations.loading ? '读取会话…' : !ready ? '会话入口不可用' : bindings.length ? '选择主会话' : '关联会话')
+  const ready = conversations.available && Boolean(task.path)
+  const historyOnly = task.archived || state?.group === 'completed'
+  const searching = conversations.available && Boolean(task.path) && bindings.length === 0 && (conversations.loading || conversations.data?.indexing === true && !conversations.error)
+  const title = conversation?.title ?? (historyOnly ? '查看交接与历史' : searching ? '查找原会话…' : '接续此任务')
+  const sourceStatus = conversation?.unavailableReason ?? (searching ? '正在检索原会话，仍可复制当前任务的说明。' : conversations.error ?? (!binding ? '尚未恢复旧会话历史。' : undefined))
+  const actionDescription = binding && conversation?.capability !== 'unavailable'
+    ? historyOnly
+      ? conversation?.capability === 'workspace' ? '仅请求打开工作区，未恢复精确旧会话；不会复制接续说明或重新执行任务。' : '仅打开原会话查看历史，不复制接续说明或重新执行任务。'
+      : conversation?.capability === 'workspace' ? '复制当前任务的接续说明并请求打开工作区，未恢复精确旧会话；请粘贴并发送后继续。' : '复制当前任务的接续说明并请求打开原会话；请粘贴并发送后继续。'
+    : historyOnly ? '查看当前任务的交接与历史资料。' : '查看并复制当前任务的接续说明，在外部编辑器中粘贴并发送。'
   const pending = conversations.pendingTaskDir !== null && taskConversationDirectory(projectRoot, conversations.pendingTaskDir) === taskConversationDirectory(projectRoot, task.path)
 
   return <li className="my-home-task-row">
@@ -167,12 +177,17 @@ function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite, conv
         {scope && <span className="my-home-task-scope" title={scope}>{scope}</span>}
       </span>
     </button>
-    <TaskConversationEntry title={title} source={conversation?.source ?? 'unbound'} sourceLabel={conversation ? TASK_CONVERSATION_SOURCE_LABELS[conversation.source] : '未关联'}
-      capability={conversation?.capability ?? (ready ? 'associate' : 'unavailable')} destinationLabel={conversation?.destinationLabel}
-      unavailableReason={conversation?.unavailableReason ?? (!ready ? conversations.error ?? (!task.path ? '任务目录不可用。' : '打开项目并加载最新客户端后使用。') : undefined)}
+    <TaskConversationEntry title={title} source={conversation?.source ?? 'unbound'} sourceLabel={conversation ? TASK_CONVERSATION_SOURCE_LABELS[conversation.source] : '任务资料'}
+      capability={conversation?.capability ?? 'associate'} destinationLabel={conversation?.destinationLabel}
+      actionDescription={actionDescription} unavailableReason={sourceStatus}
       pending={pending} disabled={!ready || conversations.pendingTaskDir !== null && !pending}
-      onOpen={() => { if (binding && task.path) void conversations.open(task.path, binding.id); else if (ready) onManage(task) }}
-      onManage={ready ? () => onManage(task) : undefined} />
+      onOpen={() => {
+        if (!task.path) return
+        if (binding && conversation?.capability !== 'unavailable') {
+          if (historyOnly) void conversations.open(task.path, binding.id)
+          else void conversations.continueTask(task.path, binding.id).then((result) => { if (result?.openError) onInstructions(task) })
+        } else onInstructions(task)
+      }} />
     <span className="my-home-task-status"><span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span></span>
     <span className="my-home-task-time" title={timeTitle}>{timeText}</span>
     <button type="button" className="my-home-star-btn" data-starred={favorite} aria-pressed={favorite} aria-label={favorite ? '取消收藏' : '收藏任务'} onClick={() => onToggleFavorite(task.id)}>
@@ -181,18 +196,23 @@ function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite, conv
   </li>
 }
 
-function HomeQuickPeekModal({ task, state, onClose }: { task: HomeTask | null; state?: WorkItemState; onClose: () => void }): JSX.Element | null {
+function HomeQuickPeekModal({ task, state, onClose, onRepair }: { task: HomeTask | null; state?: WorkItemState; onClose: () => void; onRepair: (task: HomeTask) => void }): JSX.Element | null {
   if (!task) return null
   const status = taskStatus(task, state)
   const docNames = task.artifacts.filter((file) => file.kind === 'file').map((file) => file.name)
   return <Modal open onClose={onClose} width={520}>
-    <div className="my-modal-content flex flex-col gap-4">
+    <div className="my-modal-content my-home-task-preview flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2"><span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span>{task.completedAt && <span className="text-my-xs text-my-tertiary">完成于 {task.completedAt}</span>}</div>
           <h3 className="text-my-lg font-semibold text-my-primary">{task.title}</h3>
         </div>
-        <Button variant="ghost" size="sm" aria-label="关闭任务预览" onClick={onClose}><X size={15} /></Button>
+        <div className="flex items-center gap-1">
+          <Dropdown align="right" trigger={({ open, toggle }) => <Button variant="ghost" size="sm" aria-label="任务更多操作" aria-expanded={open} onClick={toggle}><MoreHorizontal size={15} /></Button>}>
+            {(close) => <DropdownItem disabled={!task.path} onClick={() => { close(); onRepair(task) }}>修复执行入口</DropdownItem>}
+          </Dropdown>
+          <Button variant="ghost" size="sm" aria-label="关闭任务预览" onClick={onClose}><X size={15} /></Button>
+        </div>
       </div>
       <p className="whitespace-pre-wrap break-words text-my-sm leading-relaxed text-my-secondary">{task.description || '暂无任务描述'}</p>
       {docNames.length > 0 && <div className="flex flex-wrap items-center gap-1.5"><span className="text-my-xs text-my-tertiary">任务材料</span>{docNames.slice(0, 5).map((name, index) => <span key={`${name}:${index}`} className="my-chip bg-my-layer-1 text-my-secondary"><FileText size={11} />{name}</span>)}</div>}
@@ -209,7 +229,6 @@ export function YourWorkPage(): JSX.Element {
   const data = useMy((state) => state.data)
   const favorites = useMy((state) => state.favorites)
   const toggleFavorite = useMy((state) => state.toggleFavorite)
-  const openIssue = useMy((state) => state.openIssue)
   const snapshot = useApp((state) => state.snapshot)
   const todos = useApp((state) => state.todos)
   const saveTodo = useApp((state) => state.saveTodo)
@@ -224,6 +243,7 @@ export function YourWorkPage(): JSX.Element {
   const [todoFeedback, setTodoFeedback] = useState<{ error: boolean; message: string } | null>(null)
   const [inspectedTask, setInspectedTask] = useState<HomeTask | null>(null)
   const [association, setAssociation] = useState<{ root: string; task: HomeTask } | null>(null)
+  const [continuation, setContinuation] = useState<{ root: string; task: HomeTask } | null>(null)
   const [now, setNow] = useState(() => new Date())
   const todoSaveLock = useRef(false)
   const projectRoot = snapshot?.meta.root
@@ -277,9 +297,10 @@ export function YourWorkPage(): JSX.Element {
     setExpanded(false)
     setInspectedTask(null)
     setAssociation(null)
+    setContinuation(null)
     setTodoFeedback(null)
   }, [projectRoot, me])
-  useEffect(() => { if (!interactive) setAssociation(null) }, [interactive])
+  useEffect(() => { if (!interactive) { setAssociation(null); setContinuation(null); setInspectedTask(null) } }, [interactive])
 
   const viewTasks = view === 'assigned' ? personalTasks
     : view === 'created' ? currentTasks.filter((task) => me && task.creator === me)
@@ -296,14 +317,14 @@ export function YourWorkPage(): JSX.Element {
     })
   const visibleTasks = expanded ? filteredTasks : filteredTasks.slice(0, TASK_LIMIT)
   const manageConversations = (task: HomeTask): void => {
-    if (projectRoot && task.path && conversations.available && canInteract()) setAssociation({ root: projectRoot, task })
+    if (projectRoot && task.path && conversations.available && canInteract()) { setInspectedTask(null); setAssociation({ root: projectRoot, task }) }
+  }
+  const showInstructions = (task: HomeTask): void => {
+    if (projectRoot && task.path && conversations.available && canInteract() && useApp.getState().snapshot?.meta.root === projectRoot) setContinuation({ root: projectRoot, task })
   }
   const inspectTask = (task: HomeTask): void => {
-    if (!task.archived && data.issues.some((issue) => issue.id === task.id)) openIssue(task.id)
-    else {
-      setInspectedTask(task)
-      rememberVisit({ kind: 'task', target: task.id, title: task.title, archived: task.archived })
-    }
+    setInspectedTask(task)
+    rememberVisit({ kind: 'task', target: task.id, title: task.title, archived: task.archived })
   }
   const startAgentConversation = (): void => {
     useMy.getState().requestAgentView('conversation')
@@ -418,7 +439,7 @@ export function YourWorkPage(): JSX.Element {
                 </header>
                 {!me && <p className="my-home-scope-note">当前项目未设置开发者身份，暂展示项目任务。</p>}
                 {filteredTasks.length > 0 ? <ul className="my-home-task-rows my-scrollbar" aria-label="筛选后的任务" aria-description="窄窗口中可左右滚动查看全部字段" tabIndex={0}>
-                  {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} conversations={conversations} projectRoot={projectRoot ?? ''} onManage={manageConversations} />)}
+                  {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} conversations={conversations} projectRoot={projectRoot ?? ''} onInstructions={showInstructions} />)}
                 </ul> : <div className="my-home-empty" role="status">
                   <ListTodo size={18} /><span>当前筛选条件下暂无任务</span>
                   {(status !== 'all' || searchQuery) && <Button variant="ghost" size="sm" onClick={() => { setStatus('all'); setSearchQuery(''); setExpanded(false) }}>重置筛选条件</Button>}
@@ -476,7 +497,8 @@ export function YourWorkPage(): JSX.Element {
               </section>
             </aside>
           </div>
-          <HomeQuickPeekModal task={inspectedTask} state={inspectedTask ? states.get(inspectedTask.stateId) : undefined} onClose={() => setInspectedTask(null)} />
+          <HomeQuickPeekModal task={inspectedTask} state={inspectedTask ? states.get(inspectedTask.stateId) : undefined} onClose={() => setInspectedTask(null)} onRepair={manageConversations} />
+          {continuation && continuation.root === projectRoot && continuation.task.path && interactive && <TaskContinuationModal key={`${continuation.root}:${continuation.task.path}`} projectRoot={continuation.root} taskDir={continuation.task.path} taskTitle={continuation.task.title} historyOnly={continuation.task.archived || states.get(continuation.task.stateId)?.group === 'completed'} reason={conversations.bindingsFor(continuation.task.path).find((binding) => binding.primary)?.conversation.unavailableReason} controller={conversations} onClose={() => setContinuation(null)} />}
           {association && association.root === projectRoot && association.task.path && interactive && <TaskConversationAssociationModal key={`${association.root}:${association.task.path}`} taskDir={association.task.path} taskTitle={association.task.title} controller={conversations} onClose={() => setAssociation(null)} />}
         </div>
       </PageContent>

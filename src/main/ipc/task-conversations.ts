@@ -6,14 +6,16 @@ import { IpcErrorCode, ipcFail, type IpcFail } from '../../shared/ipc-errors'
 import {
   taskConversationProjectInputSchema,
   taskConversationBindInputSchema,
-  taskConversationBindingInputSchema
+  taskConversationBindingInputSchema,
+  taskConversationTaskInputSchema,
+  taskConversationContinueInputSchema
 } from '../../shared/task-conversations'
 import { TaskConversationsService } from '../services/task-conversations'
 import { getProjectRoot, getProjectGeneration } from '../state'
 import { handle } from './registry'
 import type { WindowDeps } from './deps'
 
-export type TaskConversationsPort = Pick<TaskConversationsService, 'list' | 'discover' | 'bind' | 'setPrimary' | 'unbind' | 'open'>
+export type TaskConversationsPort = Pick<TaskConversationsService, 'list' | 'discover' | 'bind' | 'setPrimary' | 'unbind' | 'open' | 'prepare' | 'continue' | 'preview' | 'inspect'>
 type Owner = { root: string; generation: number; sender: Electron.WebContents; frame: Electron.WebFrameMain }
 let service: TaskConversationsService | null = null
 let admissionClosed = false
@@ -85,4 +87,8 @@ export function registerTaskConversationsIpc(deps: WindowDeps, injectedService?:
   scoped(channels.setPrimary, taskConversationBindingInputSchema, (port, owner, input) => port.setPrimary(owner.root, input.taskDir, input.bindingId))
   scoped(channels.unbind, taskConversationBindingInputSchema, (port, owner, input) => port.unbind(owner.root, input.taskDir, input.bindingId))
   scoped(channels.open, taskConversationBindingInputSchema, (port, owner, input) => port.open(owner.root, input.taskDir, input.bindingId, () => current(owner)))
+  scoped(channels.prepare, taskConversationTaskInputSchema, (port, owner, input) => port.prepare(owner.root, input.taskDir, () => current(owner)))
+  scoped(channels.continue, taskConversationContinueInputSchema, (port, owner, input) => port.continue(owner.root, input.taskDir, input.bindingId, () => current(owner)))
+  scoped(channels.preview, taskConversationBindInputSchema, (port, owner, input) => port.preview(owner.root, input.taskDir, input.conversationId, () => current(owner)))
+  scoped(channels.inspect, taskConversationBindInputSchema, (port, owner, input) => port.inspect(owner.root, input.taskDir, input.conversationId, () => current(owner)))
 }

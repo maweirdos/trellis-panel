@@ -159,3 +159,11 @@
 .my-root .my-task-conversation-association__sources summary { cursor: pointer; }
 .my-root .my-task-conversation-association__sources li { margin-block-start: var(--my-space-6); }
 .my-root .my-task-conversation-association__footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--my-space-8); padding-block-start: var(--my-space-12); border-top: var(--my-space-1) solid var(--my-border-subtle); }
+
+.my-root .my-task-continuation { display: flex; flex-direction: column; gap: var(--my-space-16); }
+.my-root .my-task-continuation__note { display: flex; align-items: flex-start; gap: var(--my-space-8); color: var(--my-txt-secondary); font-size: var(--my-text-sm); line-height: var(--my-line-ui); }
+.my-root .my-task-continuation__note > svg { flex: none; }
+.my-root .my-task-continuation__text { max-block-size: var(--my-space-320); padding: var(--my-space-12); border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-control-radius); background: var(--my-bg-layer-1); color: var(--my-txt-primary); font-family: var(--my-font-sans); font-size: var(--my-text-sm); line-height: var(--my-line-ui); white-space: pre-wrap; overflow-wrap: anywhere; }
+.my-root .my-task-conversation-preview { display: flex; flex-direction: column; gap: var(--my-space-8); padding: var(--my-space-12); border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-lg); }
+.my-root .my-task-conversation-preview__messages { display: flex; flex-direction: column; gap: var(--my-space-12); max-block-size: var(--my-space-224); }
+.my-root .my-task-conversation-preview__messages p { margin-block-start: var(--my-space-4); color: var(--my-txt-primary); font-size: var(--my-text-sm); line-height: var(--my-line-ui); white-space: pre-wrap; overflow-wrap: anywhere; }

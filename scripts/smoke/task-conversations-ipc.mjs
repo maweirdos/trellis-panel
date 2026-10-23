@@ -45,14 +45,23 @@ try {
   const event = { sender, senderFrame: frame }
   const snapshot = { projectRoot: root, bindings: [], sources: [], refreshedAt: 42 }
   const candidates = { projectRoot: root, items: [], sources: [], truncated: false }
-  const calls = [], launches = []
+  const calls = [], launches = [], copies = [], inspections = []
   let pause = null, serviceError = null
+  const packet = { projectRoot: root, taskDir: '10-21-example', taskTitle: 'Selected task', status: 'planning', mode: 'continue', text: 'Read selected task; preserve review barriers', issues: [], files: [] }
+  const guarded = async (name, args, isCurrent) => {
+    calls.push([name, ...args]); if (pause) await pause.promise
+    if (!isCurrent()) throw Object.assign(new Error('来源已变化'), { code: 'SCOPE_CHANGED' })
+  }
   const port = {
     async list(projectRoot) { calls.push(['list', projectRoot]); if (pause) await pause.promise; if (serviceError) throw serviceError; return snapshot },
     async discover(projectRoot) { calls.push(['discover', projectRoot]); return candidates },
     async bind(...args) { calls.push(['bind', ...args]); return snapshot },
     async setPrimary(...args) { calls.push(['setPrimary', ...args]); return snapshot },
     async unbind(...args) { calls.push(['unbind', ...args]); return snapshot },
+    async prepare(projectRoot, taskDir, current) { await guarded('prepare', [projectRoot, taskDir], current); return packet },
+    async continue(projectRoot, taskDir, bindingId, current) { await guarded('continue', [projectRoot, taskDir, bindingId], current); copies.push(taskDir); return { packet, copied: true } },
+    async preview(projectRoot, taskDir, conversationId, current) { await guarded('preview', [projectRoot, taskDir, conversationId], current); return { projectRoot, conversationId, messages: [], truncated: false, unavailableReason: 'fixture' } },
+    async inspect(projectRoot, taskDir, conversationId, current) { await guarded('inspect', [projectRoot, taskDir, conversationId], current); inspections.push(conversationId); return { source: 'codex', sessionId: 'native-1', capability: 'session' } },
     async open(projectRoot, taskDir, bindingId, isCurrent) {
       calls.push(['open', projectRoot, taskDir, bindingId])
       if (pause) await pause.promise
@@ -71,15 +80,21 @@ try {
     bind: { ...project, taskDir: binding.taskDir, conversationId: 'candidate-1' },
     setPrimary: binding,
     unbind: binding,
-    open: binding
+    open: binding,
+    prepare: { ...project, taskDir: binding.taskDir },
+    continue: binding,
+    preview: { ...project, taskDir: binding.taskDir, conversationId: 'candidate-1' },
+    inspect: { ...project, taskDir: binding.taskDir, conversationId: 'candidate-1' }
   }
-  assert.equal(state.handlers.size, 6)
+  assert.equal(state.handlers.size, 10)
   assert.deepEqual(await invoke('list', project), { ok: true, value: snapshot })
   assert.deepEqual(await invoke('discover', project), { ok: true, value: candidates })
   assert.equal((await invoke('bind', { ...project, taskDir: binding.taskDir, conversationId: 'candidate-1' })).ok, true)
   assert.deepEqual(calls.at(-1), ['bind', root, binding.taskDir, 'candidate-1'])
   for (const action of ['setPrimary', 'unbind', 'open']) assert.equal((await invoke(action, binding)).ok, true)
   assert.deepEqual(launches, [{ projectRoot: root, taskDir: binding.taskDir, bindingId: binding.bindingId }])
+  for (const action of ['prepare', 'continue', 'preview', 'inspect']) assert.equal((await invoke(action, inputs[action])).ok, true)
+  assert.equal(copies.length, 1); assert.equal(inspections.length, 1)
 
   const before = calls.length
   for (const [action, input] of Object.entries(inputs)) {
@@ -124,10 +139,13 @@ try {
     pause = deferred()
     const oldList = invoke('list', project)
     const oldOpen = invoke('open', binding)
+    const oldNew = ['prepare', 'continue', 'preview', 'inspect'].map(action => invoke(action, inputs[action]))
     change()
     pause.release()
     assert.equal((await oldList).code, 'E_CONFLICT', `stale snapshot is fenced when ${reason}`)
     assert.equal((await oldOpen).code, 'E_CONFLICT', `native launch is fenced when ${reason}`)
+    for (const pending of oldNew) assert.equal((await pending).code, 'E_CONFLICT', `new continuation/inspection action is fenced when ${reason}`)
+    assert.equal(copies.length, 1); assert.equal(inspections.length, 1)
     assert.equal(launches.length, 1, `no native launch when ${reason}`)
     restore()
     pause = null
@@ -145,9 +163,9 @@ try {
   const preloadFile = join(temporary, 'preload.mjs')
   await build({ entryPoints: ['src/preload/index.ts'], bundle: true, platform: 'node', format: 'esm', outfile: preloadFile, plugins: [plugin], logLevel: 'silent' })
   await import(pathToFileURL(preloadFile).href)
-  const methods = { List: 'list', Discover: 'discover', Bind: 'bind', SetPrimary: 'setPrimary', Unbind: 'unbind', Open: 'open' }
+  const methods = { List: 'list', Discover: 'discover', Bind: 'bind', SetPrimary: 'setPrimary', Unbind: 'unbind', Open: 'open', Prepare: 'prepare', Continue: 'continue', Preview: 'preview', Inspect: 'inspect' }
   for (const [method, channel] of Object.entries(methods)) {
-    const input = channel === 'list' || channel === 'discover' ? project : channel === 'bind' ? { ...project, taskDir: binding.taskDir, conversationId: 'candidate-1' } : binding
+    const input = inputs[channel]
     assert.deepEqual(await state.api[`taskConversations${method}`](input), { ok: true, value: 'forwarded' })
     assert.deepEqual(state.invokes.at(-1), { channel: `taskConversations:${channel}`, args: [input] })
   }
@@ -165,10 +183,14 @@ try {
   pause = deferred()
   const quittingList = invoke('list', project)
   const quittingOpen = invoke('open', binding)
+  const quittingContinue = invoke('continue', inputs.continue)
+  const quittingInspect = invoke('inspect', inputs.inspect)
   closeTaskConversations()
   pause.release()
   assert.equal((await quittingList).code, 'E_CONFLICT')
   assert.equal((await quittingOpen).code, 'E_CONFLICT')
+  assert.equal((await quittingContinue).code, 'E_CONFLICT'); assert.equal((await quittingInspect).code, 'E_CONFLICT')
+  assert.equal(copies.length, 1); assert.equal(inspections.length, 1)
   assert.equal(launches.length, 1, 'quit cancels a pending native launch')
   assert.equal(state.closed, 1, 'quit closes the lazy native service')
   for (const [action, input] of Object.entries(inputs)) {
@@ -177,7 +199,7 @@ try {
   closeTaskConversations()
   assert.equal(state.closed, 1, 'repeated cleanup must not close the native service twice')
   assert.equal(state.constructed, 1, 'closed admission must not recreate the native service')
-  console.log('Task conversations IPC/preload: strict payloads, ownership changes, stale responses, launch fences, lazy lifecycle and six method routes passed')
+  console.log('Task conversations IPC/preload: strict payloads, ownership changes, stale responses, clipboard/launch fences, lazy lifecycle and ten method routes passed')
 } finally {
   delete globalThis.__TASK_CONVERSATIONS_IPC_SMOKE__
   assert.equal(dirname(resolve(temporary)), resolve(tmpdir()))

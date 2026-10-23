@@ -2,12 +2,12 @@ import { join } from 'node:path'
 import { boundedEntries } from './paths'
 import { projectRows, readNativeDatabase } from './native-sqlite'
 import type { ExternalConversation } from '../../../../shared/task-conversations'
-import type { NativeIdentity } from '../types'
+import type { NativeIdentity, NativeHistoryFile } from '../types'
 
 export function isCodexSubagent(conversation: Pick<ExternalConversation, 'source' | 'role'>): boolean {
   return conversation.source === 'codex' && conversation.role === 'subagent'
 }
-export function readCodex(sourceRoot: string, root: string, requested: NativeIdentity[]): ExternalConversation[] {
+export function readCodex(sourceRoot: string, root: string, requested: NativeIdentity[], histories: NativeHistoryFile[] = []): ExternalConversation[] {
   const { names } = boundedEntries(sourceRoot)
   const file = names.filter(name => /^state_\d+\.sqlite$/.test(name))
     .sort((a, b) => Number(b.match(/\d+/)?.[0]) - Number(a.match(/\d+/)?.[0]))[0]
@@ -29,8 +29,11 @@ export function readCodex(sourceRoot: string, root: string, requested: NativeIde
       updated: fields.has('updated_at_ms') ? (fields.has('updated_at') ? 'coalesce(updated_at_ms,updated_at*1000)' : 'updated_at_ms') : 'updated_at*1000',
       role: `CASE WHEN ${explicitChild} THEN 'subagent' WHEN ${threadSource}='user' THEN 'user' ELSE 'unknown' END`,
       parentSessionId: `CASE WHEN typeof(${parent})='text' AND length(${parent})<=256 THEN ${parent} ELSE NULL END`,
+      historyPath: fields.has('rollout_path') ? 'rollout_path' : undefined,
       // Requested-ID reads intentionally omit this condition to preserve explicit old child bindings.
       discoveryPredicate: `NOT ${explicitChild}`
-    }, requested)
+    }, requested, (row, item) => {
+      if (row.historyPath && !isCodexSubagent(item)) histories.push({ conversation: item, sourceRoot, file: row.historyPath })
+    })
   })
 }
