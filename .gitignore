@@ -19,3 +19,10 @@ __pycache__/
 # Local Trellis task plans, research and session-specific project records
 /.trellis/tasks/
 /.trellis/task/
+
+# ZCode 本机会话产物（可视化、临时脚本）
+.zcode/v2/
+.zcode/tmp-*/
+
+# HiFox 调研资料（外部产品逆向 PRD，本机参考用）
+/prd-hifox/
