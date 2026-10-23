@@ -894,3 +894,91 @@ to load. Other active tasks were preserved.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 26: ZCode runtime 当前配置源与真实会话接入
+<!-- trellis-session: v=2 fp=f2e30974d3fc5832 -->
+
+**Date**: 2026-10-23
+**Task**: ZCode runtime 当前配置源与真实会话接入
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+保留 acpx；修正实际数据目录与 BigModel 账户上下文，真实多轮、取消、同原生会话恢复及进程清理通过。整体构建和类型检查被并行 daemon/集成改动阻塞。
+
+### Main Changes
+
+- 当前源解析与原生 schema/源变化保护，禁止旧 home MiMo 配置回退
+- 工具输出、失败语义、权限/事件顺序、持久输入 UUID 与独立错误日志
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 真实 GLM-5.3-Flash 四次新随机文件工具读取、取消与恢复、4个进程退出通过；research/live-acceptance.json
+- [OK] 账户、源、协议、Windows 启动、CC Switch 模型兼容测试通过；全局 build/typecheck 未通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 保留任务进行中；修复共享工作区 daemon/集成构建错误后做完整桌面安装包与实际权限验收，再审阅提交分组
+
+
+## Session 27: HiFox integrations daemon composition and provider wiring
+<!-- trellis-session: v=2 fp=83a8a9946c548342 -->
+
+**Date**: 2026-10-23
+**Task**: HiFox integrations daemon composition and provider wiring
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+Connected Jira/GitLab/DingTalk provider pages and typed native IPC to the independent daemon; added protected live-release settings cutover, legacy integration broker, cancellation, startup reconciliation, provider receipt inspection and guarded rollback. Fixed source-review blockers; final scoped reviewer found no remaining concrete blocker. Explicit restrictions retained: no executable checks, builds/restarts, provider operations or commits. Native/vendor/visual acceptance and parent task remain open.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 28: ZCode 权限终态与打包资源真实验收
+<!-- trellis-session: v=2 fp=980dd2e80b8d220a -->
+
+**Date**: 2026-10-23
+**Task**: ZCode 权限终态与打包资源真实验收
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+保留 acpx；真实多轮、严格取消和恢复、权限允许拒绝及打包资源调用通过。修复拒绝工具卡 pending 和验收断言漏洞。全量后端类型及隔离桌面启动仍受阻，任务进行中，无提交。
+
+### Main Changes
+
+- 映射原生 permission.resolved 拒绝到原工具 failed，约束回合、工具身份和重复事件
+- 收紧 completed/cancelled 断言，补实际 helper 自测并保留先前失败证据
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 真实 GLM-5.3-Flash：4个 completed 文件 nonce 回合、精确取消、同会话恢复、4个进程退出；真实权限 pending→failed 与原生拒绝、2个进程退出；打包 resources 实际完整回复、2个进程退出
+- [OK] 25翻译用例、协议/public acpx、自测、局部类型、前端类型、build 和 electron-builder 目录构建通过；完整 node 类型仍失败
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 保留 A7 未完成：修复并行 daemon/集成类型错误及实际打包程序 Windows 身份/目录保护启动失败后，再做完整 GUI 验收和提交分组审阅

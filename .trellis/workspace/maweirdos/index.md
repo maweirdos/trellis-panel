@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
-- **Last Active**: 2026-10-20
+- **Total Sessions**: 28
+- **Last Active**: 2026-10-23
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~896 | Active |
+| `journal-1.md` | ~984 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,9 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 28 | 2026-10-23 | ZCode 权限终态与打包资源真实验收 | - | `codex/trellis-team-refactor` |
+| 27 | 2026-10-23 | HiFox integrations daemon composition and provider wiring | - | `codex/trellis-team-refactor` |
+| 26 | 2026-10-23 | ZCode runtime 当前配置源与真实会话接入 | - | `codex/trellis-team-refactor` |
 | 25 | 2026-10-20 | 完成 R0 工作流契约与独立复核 | `c48e865`, `71a9308` | `codex/trellis-team-refactor` |
 | 24 | 2026-10-20 | 本地应用运行面板交付 | `73ca243` | `codex/trellis-team-refactor` |
 | 23 | 2026-10-20 | 会话历史、界面与运行时反馈收尾 | `1b1c927f3c6ea0070ce4a5fb1b612c684229227b`, `bdad49069d419879802447f6f5d3336a0ac09afb` | `codex/trellis-team-refactor` |
