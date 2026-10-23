@@ -2,7 +2,7 @@
 import { desktopWorkflowPublicationSchema, type DesktopWorkflowPublicationInput } from '../../shared/team-desktop-bridge'
 import type { StoredWorkflowMaterial } from './workflow-runtime/types'
 import { getDocumentViews } from './document-views'
-import { getWorkflowApplication } from './workflow-desktop'
+import { getWorkflowApplication } from './daemon-client/workflow'
 
 export async function resolveTeamPublicationSource(root: string, raw: DesktopWorkflowPublicationInput['source']): Promise<StoredWorkflowMaterial> {
   const source = desktopWorkflowPublicationSchema.shape.source.parse(raw)

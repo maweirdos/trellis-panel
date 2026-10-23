@@ -10,7 +10,9 @@ import { abortAll } from './services/cli'
 import { getSettings } from './services/store'
 import { stopDiffWorker } from './services/documents'
 import { stopObservationWorker } from './services/observability'
-import { routeNotifyRail, shutdownAcp } from './services/acp'
+import { routeNotifyRail } from './services/daemon-client/acp'
+import { detachRuntimeObservers, setRuntimeClientAdmissionClosed } from './services/daemon-client/runtime'
+import { configureDaemonQuitDialog } from './services/daemon-quit-dialog'
 import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindows } from './services/bridge'
 import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
@@ -20,7 +22,10 @@ import { installWindowNavigation, openExternalHttpUrl } from './services/window-
 import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTaskbarShortcut } from './services/window-branding'
 import { APPLICATION_ICON } from './services/notifications'
 import { appRuntime } from './services/app-runtime'
-import { createQuitGate } from './services/quit-gate'
+import { createDaemonQuitGate } from './services/daemon-quit-gate'
+import { DaemonError } from './daemon/errors'
+import { createGuiBootstrap, type GuiBootstrap } from './services/bootstrap'
+import { registerBootstrapIpc } from './ipc/bootstrap'
 import { ipcEvent } from '../shared/ipc-channels'
 import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
 import {
@@ -37,10 +42,9 @@ import {
   getSnapshot,
   getProjectRoot
 } from './state'
-import { registerIpc } from './ipc'
 import type { CapsuleApi, WindowDeps } from './ipc/deps'
 import { readerWindowBounds } from './services/document-window-placement'
-import { hasWorkflowApplications, setWorkflowAdmissionClosed, shutdownWorkflowApplications } from './services/workflow-desktop'
+import { setWorkflowAdmissionClosed } from './services/workflow-desktop'
 import { stopWorkflowSubscriptions } from './ipc/workflow'
 import { closeTaskConversations } from './ipc/task-conversations'
 import { resumeDesktopTeamBackground, setDesktopTeamAdmissionClosed, closeDesktopTeamService } from './services/team-desktop'
@@ -51,6 +55,16 @@ let capsuleOnTop = true
 let capsuleShape: 'pill' | 'card' = 'card'
 let quickTodo: BrowserWindow | null = null
 let tray: Tray | null = null
+let guiNativeStateReady = false
+let bootstrap: GuiBootstrap | undefined
+const pendingSecondInstances: string[][] = []
+const pendingTaskFocus: string[] = []
+let fullRendererAttached = false
+let fullRendererEverAttached = false
+let desktopCompositionStarted = false
+let guiApplicationsStarted = false
+let guiClosing = false
+let requestBootstrapExit = (): void => { app.exit(0) }
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { autoUpdater } = (() => {
@@ -138,6 +152,8 @@ function openDocWindow(opts: Parameters<WindowDeps['openDocWindow']>[0]): {
 }
 
 function createWindow(): void {
+  // Window creation has no dependency on protected settings/native context.
+  const theme = guiNativeStateReady ? getSettings().theme : bootstrap?.state().ui.theme ?? 'dark'
   win = new BrowserWindow({
     icon: APPLICATION_ICON,
     width: 1360,
@@ -146,7 +162,7 @@ function createWindow(): void {
     minHeight: 620,
     show: false,
     frame: false,
-    ...mainWindowAppearance(getSettings().theme),
+    ...mainWindowAppearance(theme),
     title: 'Trellis Panel',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -159,15 +175,29 @@ function createWindow(): void {
 
   // state 里的主窗口引用必须随创建/销毁同步，深链聚焦依赖它（getMainWindow 判活）
   setMainWindow(win)
-  win.on('ready-to-show', () => win?.show())
+  const window = win
+  fullRendererAttached = false
+  window.webContents.on('did-start-loading', () => { fullRendererAttached = false })
+  window.on('close', event => {
+    if (!guiNativeStateReady || !fullRendererEverAttached) { event.preventDefault(); requestBootstrapExit() }
+  })
+  window.once('show', () => bootstrap?.firstVisible())
+  window.once('ready-to-show', () => {
+    if (window.isDestroyed()) return
+    window.show()
+    // The restricted renderer has painted before native preparation starts.
+    // Yield once after showing so native work cannot hold the first show event.
+    setImmediate(() => { void bootstrap?.start() })
+  })
   win.on('maximize', () => win?.webContents.send(ipcEvent.windowMaximized, true))
   win.on('unmaximize', () => win?.webContents.send(ipcEvent.windowMaximized, false))
   win.on('closed', () => {
+    fullRendererAttached = false
     win = null
     setMainWindow(null)
   })
 
-  loadAppWindow(win)
+  loadAppWindow(win, { theme })
 }
 
 function createCapsule(initialShape?: 'pill' | 'card'): void {
@@ -393,6 +423,10 @@ function focusMainAndOpenTask(taskDir: string): void {
   if (!win || win.isDestroyed()) return
   win.show()
   win.focus()
+  if (!fullRendererAttached) {
+    if (pendingTaskFocus.length < 8 && taskDir.length <= 32_768) pendingTaskFocus.push(taskDir)
+    return
+  }
 
   const target = resolve(taskDir)
   // 深链任务可能来自另一个项目：向上找到最近的 .trellis 祖先作为项目根，
@@ -410,7 +444,11 @@ function focusMainAndOpenTask(taskDir: string): void {
   }
   if (root && (!getSnapshot() || resolve(getSnapshot()?.meta.root ?? '') !== resolve(root))) {
     // openProjectAt 内部完成 pushRecentProject / watcher 重挂 / git 缓存清理
-    openProjectAt(root)
+    const opened = openProjectAt(root)
+    if (!opened.ok) return
+    // App has already bootstrapped when deferred focus is delivered. Publish
+    // the new project before its focus event so it cannot use the old snapshot.
+    sendSnapshot()
     // fall through — focus still works if the project was already open
   }
   const snap = getSnapshot()
@@ -447,28 +485,97 @@ if (process.platform === 'win32') app.setAppUserModelId(TASKBAR_APPLICATION_ID)
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
+  console.info('[Trellis Panel] 已有桌面实例正在运行，启动请求已转交该实例；本次新进程正常退出。')
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    console.info('[Trellis Panel] 如需启动开发版，请先通过已有桌面的托盘菜单「退出」，在退出对话框中保留后台守护进程，再重新运行 npm run dev。')
+  }
   app.quit()
 } else {
   // 调试端口（CDP 截图/自动化验收用）：TPANEL_DEBUG_PORT=9333 npm run dev
   if (process.env.TPANEL_DEBUG_PORT) {
     app.commandLine.appendSwitch('remote-debugging-port', process.env.TPANEL_DEBUG_PORT)
   }
-  app.on('second-instance', (_e, argv) => {
+  let guiCleanupWork: Promise<void> | undefined
+  let guiExitWork: Promise<void> | undefined
+  const cleanupGui = (): Promise<void> => {
+    if (guiCleanupWork) return guiCleanupWork
+    guiClosing = true
+    const work = (async () => {
+      const errors: unknown[] = []
+      // GUI-owned work only. No daemon stop, restart, preference or quit dialog.
+      const closeSources = [
+        () => appRuntime.setAdmissionClosed(true),
+        () => setWorkflowAdmissionClosed(true),
+        () => setDesktopTeamAdmissionClosed(true),
+        () => setRuntimeClientAdmissionClosed(true),
+        stopTimers, stopInbox, abortAll, stopDiffWorker, stopWorkflowSubscriptions,
+        closeTaskConversations, stopObservationWorker, detachRuntimeObservers,
+        () => globalShortcut.unregisterAll(), () => accessServer.stop(),
+        () => { tray?.destroy(); tray = null }
+      ]
+      for (const close of closeSources) { try { close() } catch (error) { errors.push(error) } }
+      const results = await Promise.allSettled([
+        closeDesktopTeamService(),
+        ...(guiApplicationsStarted ? [appRuntime.shutdown()] : [])
+      ])
+      if (errors.length || results.some(result => result.status === 'rejected')) {
+        throw new DaemonError('E_UNKNOWN', 'GUI cleanup has not completed. Preserve this window and retry desktop exit after checking the original local operations.', 'unknown')
+      }
+    })()
+    guiCleanupWork = work
+    // A timeout keeps joining this original cleanup. Only a settled failure may
+    // be retried, using the services' own retained cleanup state.
+    void work.catch(() => { if (guiCleanupWork === work) guiCleanupWork = undefined })
+    return work
+  }
+  const waitForGuiCleanup = (): Promise<void> => new Promise((resolveCleanup, rejectCleanup) => {
+    const timer = setTimeout(() => rejectCleanup(new DaemonError('E_UNKNOWN', 'GUI cleanup is still pending. The retained daemon was not stopped; retry desktop exit to rejoin the original cleanup.', 'unknown')), 15_000)
+    cleanupGui().then(() => { clearTimeout(timer); resolveCleanup() }, error => { clearTimeout(timer); rejectCleanup(error) })
+  })
+  const reportGuiCleanupFailure = (error: unknown): void => {
+    guiNativeStateReady = false
+    try {
+      bootstrap?.fail(error)
+      // Keep an actionable shell even if OS close removed the last main window.
+      if (!win || win.isDestroyed()) showMain()
+    } catch { console.error('GUI cleanup remains incomplete; its recovery window could not be displayed.') }
+  }
+  const exitBootstrapGui = (): Promise<void> => {
+    if (guiExitWork) return guiExitWork
+    const work = (async () => {
+      guiClosing = true; fullRendererAttached = false; guiNativeStateReady = false
+      if (desktopCompositionStarted) {
+        try { await waitForGuiCleanup() }
+        catch (error) { reportGuiCleanupFailure(error); throw error }
+      }
+      app.exit(0)
+    })()
+    guiExitWork = work
+    void work.catch(() => { if (guiExitWork === work) guiExitWork = undefined })
+    return work
+  }
+  requestBootstrapExit = () => { void exitBootstrapGui().catch(reportGuiCleanupFailure) }
+  const dispatchSecondInstance = (argv: string[]): void => {
     const link = parseDeepLink(argv)
     if (link) handleDeepLink(link, bridgeHandlers(), getSettings().bridgeToken)
-    if (win) {
-      if (win.isMinimized()) win.restore()
-      win.focus()
+    showMain()
+  }
+  app.on('second-instance', (_e, argv) => {
+    if (!guiNativeStateReady || !fullRendererAttached) {
+      if (pendingSecondInstances.length < 8) pendingSecondInstances.push(argv.slice(0, 128).map(argument => argument.slice(0, 32_768)))
+      if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus() }
+      return
     }
+    dispatchSecondInstance(argv)
   })
 
-  app.whenReady().then(() => {
+  const composeDesktop = async (): Promise<void> => {
+    // One-shot full composition, reached only after native authority is ready.
+    const { registerIpc } = await import('./ipc')
+    if (guiClosing) throw new DaemonError('E_UNAVAILABLE', 'Desktop exit has closed GUI initialization.')
+    configureDaemonQuitDialog({ load: window => loadAppWindow(window, { mode: 'daemon-quit' }), getMain: () => win && !win.isDestroyed() ? win : null })
     // Notifications may otherwise register the generic Electron host as our app.
     prepareWindowsTaskbarShortcut(join(BRAND_RESOURCES, 'icon.ico'))
-    app.on('browser-window-created', (_event, window) => {
-      applyWindowsTaskbarBranding(window, join(BRAND_RESOURCES, 'icon.ico'))
-    })
-    Menu.setApplicationMenu(null)
     if (process.defaultApp) {
       app.setAsDefaultProtocolClient('trellis-panel', process.execPath, [resolve(process.argv[1] ?? '.')])
     } else {
@@ -487,7 +594,6 @@ if (!gotLock) {
       },
       create: createCapsule
     }
-    resumeDesktopTeamBackground()
     registerIpc({
       getMain: () => (win && !win.isDestroyed() ? win : null),
       getCapsule: () => (capsule && !capsule.isDestroyed() ? capsule : null),
@@ -505,66 +611,103 @@ if (!gotLock) {
       openDocWindow,
       isDocWindowSender: (senderId) => [...docWindows.values()].some((w) => !w.isDestroyed() && w.webContents.id === senderId)
     })
-    createWindow()
+    guiApplicationsStarted = true
     void appRuntime.initialize().catch(() => {
       toast({ kind: 'warn', title: '应用运行记录未能恢复', body: '请在应用面板检查本地配置与遗留运行状态' })
     })
     // 速记窗启动即预创建（隐藏），热键首次按下瞬时显示
     ensureQuickTodo()
-    startInbox({
-      onTaskEvent: (taskDir, text, source) => {
-        sendSnapshot()
-        toast({
-          kind: 'info',
-          title: 'AI 工具更新了任务',
-          body: text ?? `${source} → ${taskDir ? basename(taskDir) : '任务'}`
-        })
-      },
-      onNotify: (text) => {
-        toast({ kind: 'info', title: '桥接消息', body: text })
-        const railRoot = getProjectRoot()
-        if (railRoot) routeNotifyRail(railRoot, text)
-      },
-      onOpenTask: (taskDir) => focusMainAndOpenTask(taskDir)
-    })
     createTray()
     applyAutoStart()
     registerGlobalShortcut()
     setupUpdater()
     restartHttpApi()
-    void accessServer.syncFromSettings()
-    void applyChromiumProxy()
-    // 冷启动深链：进程首次以 trellis-panel:// 协议拉起时 argv 里带着 URL，
-    // 不经过 second-instance，需要在这里处理（项目切换由 focusMainAndOpenTask 完成）
-    const coldLink = parseDeepLink(process.argv)
-    if (coldLink) handleDeepLink(coldLink, bridgeHandlers(), getSettings().bridgeToken)
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    accessServer.syncFromSettings()
+    void applyChromiumProxy().catch(() => toast({ kind: 'warn', title: '代理配置未能应用', body: '请在设置中检查代理配置' }))
+    guiNativeStateReady = true
+  }
+  const installDesktop = async (): Promise<void> => {
+    desktopCompositionStarted = true
+    try { await composeDesktop() }
+    catch (error) {
+      // Stop new GUI side effects immediately on partial composition failure;
+      // do not leave team/observation work running behind the error shell.
+      void waitForGuiCleanup().catch(reportGuiCleanupFailure)
+      throw error
+    }
+  }
+  let desktopIngressStarted = false
+  const attachFullRenderer = (): void => {
+    if (guiClosing || !guiNativeStateReady) throw new DaemonError('E_UNAVAILABLE', 'GUI admission is closed; reload cannot restart partial initialization.')
+    fullRendererAttached = true; fullRendererEverAttached = true
+    if (!desktopIngressStarted) {
+      desktopIngressStarted = true
+      resumeDesktopTeamBackground()
+      const coldLink = parseDeepLink(process.argv)
+      if (coldLink) handleDeepLink(coldLink, bridgeHandlers(), getSettings().bridgeToken)
+      startInbox({
+        ...bridgeHandlers(),
+        onTaskEvent: (taskDir, text, source) => {
+          sendSnapshot()
+          toast({ kind: 'info', title: 'AI 工具更新了任务', body: text ?? `${source} → ${taskDir ? basename(taskDir) : '任务'}` })
+        }
+      })
+    }
+    for (const argv of pendingSecondInstances.splice(0)) dispatchSecondInstance(argv)
+    for (const taskDir of pendingTaskFocus.splice(0)) focusMainAndOpenTask(taskDir)
+  }
+
+  void app.whenReady().then(() => {
+    let nativeState: typeof import('./services/daemon-client/native-state') | undefined
+    bootstrap = createGuiBootstrap({
+      prepare: async (onPreparing, onAuthenticated) => {
+        nativeState = await import('./services/daemon-client/native-state')
+        await nativeState.prepareGuiNativeState(onPreparing, onAuthenticated)
+      },
+      migration: () => nativeState?.guiNativePreparationIdentity(),
+      installDesktop,
+      publish: state => {
+        const target = win && !win.isDestroyed() ? win : null
+        try {
+          if (target && !target.webContents.isDestroyed()) target.webContents.send(ipcEvent.bootstrapChanged, state)
+        } catch { /* A closing renderer does not change native preparation ownership. */ }
+      }
     })
+    registerBootstrapIpc({
+      getMain: () => win && !win.isDestroyed() ? win : null,
+      bootstrap,
+      exit: exitBootstrapGui,
+      attached: attachFullRenderer,
+      detached: () => { fullRendererAttached = false },
+      legacyInspect: async () => (await import('./services/daemon-client/legacy-upgrade')).inspectLegacyDaemon(),
+      legacyStop: async input => (await import('./services/daemon-client/legacy-upgrade')).stopLegacyDaemon(input),
+      legacyReconcile: async input => (await import('./services/daemon-client/legacy-upgrade')).reconcileLegacyDaemonStop(input)
+    })
+    // Native window identity/navigation are local shell concerns; no settings,
+    // OS preference changes, feature IPC or observers are installed here.
+    app.on('browser-window-created', (_event, window) => applyWindowsTaskbarBranding(window, join(BRAND_RESOURCES, 'icon.ico')))
+    Menu.setApplicationMenu(null)
+    createWindow()
+    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+  }).catch((error: unknown) => {
+    // Also catch native whenReady/window-setup failures. If a shell exists keep
+    // it available; backend failures are handled by the retryable coordinator.
+    guiNativeStateReady = false
+    try {
+      if (bootstrap && win && !win.isDestroyed()) bootstrap.fail(error)
+      else dialog.showErrorBox('Trellis Panel 桌面窗口未能打开', '请退出并重新打开桌面。原有后台与本机配置已保留。')
+    } catch { console.error('Trellis Panel could not display its desktop startup failure.') }
   })
 
   app.on('window-all-closed', () => {
+    if (!guiNativeStateReady || !fullRendererEverAttached) { requestBootstrapExit(); return }
     // keep running in tray — quit only via tray menu
   })
 
-  const quitGate = createQuitGate({
-    hasApplications: async () => await appRuntime.hasOwnedApplications() || await hasWorkflowApplications(),
-    confirmApplications: async () => {
-      const result = await dialog.showMessageBox({
-        type: 'question',
-        title: '退出 Trellis Panel',
-        message: '停止运行中的应用与工作流并退出？',
-        detail: '退出前会停止面板管理的应用与任务工作流，并核对停止结果。关闭窗口到托盘可继续运行。',
-        buttons: ['取消', '停止应用并退出'],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true
-      })
-      return result.response === 1
-    },
-    setAdmissionClosed: (closed) => { appRuntime.setAdmissionClosed(closed); setWorkflowAdmissionClosed(closed); setDesktopTeamAdmissionClosed(closed) },
-    stopApplications: () => appRuntime.shutdown(),
-    stopSessions: async () => { await shutdownWorkflowApplications(); await shutdownAcp(); await closeDesktopTeamService() },
+  const quitGate = createDaemonQuitGate({
+    closeGuiAdmission: (closed) => { appRuntime.setAdmissionClosed(closed); setWorkflowAdmissionClosed(closed); setDesktopTeamAdmissionClosed(closed) },
+    stopGuiWork: async () => { await appRuntime.shutdown(); await closeDesktopTeamService() },
+    detach: async () => { detachRuntimeObservers() },
     finalize: () => {
       stopTimers()
       stopInbox()
@@ -581,5 +724,10 @@ if (!gotLock) {
       dialog.showErrorBox('退出收尾未完成', `应用清理或会话保存尚未完成，请处理后重试退出。\n${error instanceof Error ? error.message : '请检查应用与会话状态'}`)
     }
   })
-  app.on('before-quit', quitGate.beforeQuit)
+  app.on('before-quit', event => {
+    // A bootstrap exit never queries/stops a retained daemon, changes its
+    // preference, or enters the full GUI's cleanup/dialog path.
+    if (!guiNativeStateReady || !fullRendererEverAttached) { event.preventDefault(); requestBootstrapExit(); return }
+    quitGate.beforeQuit(event)
+  })
 }

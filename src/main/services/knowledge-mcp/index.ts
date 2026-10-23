@@ -1,5 +1,6 @@
 import { KnowledgeMcpBridge } from './server'
 import type { KnowledgeMcpIdentity, KnowledgeMcpObservation } from './server'
+import { withKnowledgeOwner } from '../knowledge-access/workspace-host'
 
 let bridge: KnowledgeMcpBridge | undefined
 
@@ -9,7 +10,13 @@ export const knowledgeMcpBridge = {
   async connect(identity: KnowledgeMcpIdentity, observe: (observation: KnowledgeMcpObservation) => void) {
     if (!bridge) {
       const { knowledgeAccess } = await import('../knowledge-access/service')
-      bridge ??= new KnowledgeMcpBridge(knowledgeAccess)
+      bridge ??= new KnowledgeMcpBridge({
+        capture: owner => withKnowledgeOwner(owner, () => knowledgeAccess.capture(owner)),
+        search: (owner, scope, input, signal) => withKnowledgeOwner(owner, () => knowledgeAccess.search(owner, scope, input, signal)),
+        read: (owner, scope, input, signal) => withKnowledgeOwner(owner, () => knowledgeAccess.read(owner, scope, input, signal)),
+        markSupplied: (owner, sourceIds) => withKnowledgeOwner(owner, () => knowledgeAccess.markSupplied(owner, sourceIds)),
+        conversation: (owner, scope, input, signal) => withKnowledgeOwner(owner, () => knowledgeAccess.conversation(owner, scope, input, signal))
+      })
     }
     return bridge.connect(identity, observe)
   },

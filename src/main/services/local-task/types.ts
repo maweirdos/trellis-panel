@@ -34,6 +34,11 @@ export const META_JIRA_INSTANCE_ID = 'panel_jira_instance_id'
 export const META_JIRA_ISSUE_ID = 'panel_jira_issue_id'
 export const META_JIRA_ISSUE_KEY = 'panel_jira_issue_key'
 export const META_SOURCE_UPDATED_AT_MS = 'panel_source_updated_at_ms'
+export const META_SOURCE_PROVIDER = 'panel_source_provider'
+export const META_SOURCE_INSTANCE_ID = 'panel_source_instance_id'
+export const META_SOURCE_ID = 'panel_source_id'
+export const META_SOURCE_KEY = 'panel_source_key'
+export const META_SOURCE_URL = 'panel_source_url'
 
 export const createFromJiraInputSchema = z.object({
   /** 项目根（canonical root；IPC 层取当前项目）。 */
@@ -61,6 +66,19 @@ export const createFromJiraInputSchema = z.object({
 })
 export type CreateFromJiraInput = z.infer<typeof createFromJiraInputSchema>
 
+const externalSourceSchema = z.object({
+  provider: z.enum(['gitlab', 'dingtalk']),
+  id: z.string().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/)
+}).strict()
+/** Additive facade; the Jira entrypoint cannot accept or change source-provider identity. */
+export const createFromExternalInputSchema = createFromJiraInputSchema.extend({
+  instanceId: z.string().min(1).max(256),
+  issueKey: z.string().min(1).max(64).regex(/^[^\u0000-\u001f\u007f]+$/),
+  externalSource: externalSourceSchema
+})
+export type CreateFromExternalInput = z.infer<typeof createFromExternalInputSchema>
+export type LocalTaskImportInput = CreateFromJiraInput & { externalSource?: z.infer<typeof externalSourceSchema> }
+
 /** 操作键（design §7.2：workspaceId＋instanceId＋issueId＋显式新增序号）。 */
 export interface LocalOperationKey {
   workspaceId: string
@@ -72,6 +90,9 @@ export interface LocalOperationKey {
 
 /** 来源快照（控制库记录；描述只存摘要与摘要哈希，全文进 PRD）。 */
 export interface LocalOperationSource {
+  /** Absent on historical Jira operations; new external sources retain explicit provider/ID. */
+  provider?: 'gitlab' | 'dingtalk'
+  externalId?: string
   issueKey: string
   issueId: number | null
   instanceId: string

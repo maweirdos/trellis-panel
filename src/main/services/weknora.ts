@@ -1,4 +1,5 @@
-import { net, safeStorage } from 'electron'
+import { net } from 'electron'
+import { protectedStorage as safeStorage } from '../daemon/protected-storage'
 import { randomBytes } from 'crypto'
 import { existsSync, readFileSync } from 'fs'
 import { basename, join, relative, sep } from 'path'

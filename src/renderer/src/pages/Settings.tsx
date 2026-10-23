@@ -22,6 +22,7 @@ import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
 import { Button, Checkbox, EmptyState } from '../my/ui'
 import { RuntimePanel } from '../acp/RuntimePanel'
+import { DaemonSettings } from '../daemon/DaemonSettings'
 import { Select } from '../components/Select'
 import { AppearancePreferences } from '../my/AppearancePreferences'
 import { BrandMark } from '../my/BrandMark'
@@ -373,6 +374,7 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
           </div>
         </section>
 
+        <DaemonSettings />
         {/* 桌面 */}
         <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4">
           <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-secondary">

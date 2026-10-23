@@ -13,8 +13,21 @@
  * 改造的本质是"结构化收口"而非重命名。
  */
 
+import { JIRA_IPC } from './jira-integration'
+import { GITLAB_IPC } from './gitlab-integration'
+import { DINGTALK_IPC } from './dingtalk-integration'
+
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
+  bootstrap: { status: 'bootstrap:status', retry: 'bootstrap:retry', legacyInspect: 'bootstrap:legacyInspect', legacyStop: 'bootstrap:legacyStop', legacyReconcile: 'bootstrap:legacyReconcile', exit: 'bootstrap:exit', minimize: 'bootstrap:minimize', maximize: 'bootstrap:maximize', rendered: 'bootstrap:rendered', attached: 'bootstrap:attached', detached: 'bootstrap:detached', paint: 'bootstrap:paint' },
+  jiraIntegration: JIRA_IPC,
+  gitlabWorkspace: GITLAB_IPC,
+  dingtalkWorkspace: DINGTALK_IPC,
+  daemonQuit: { state: 'daemonQuit:state', decide: 'daemonQuit:decide' },
+  daemon: {
+    status: 'daemon:status', start: 'daemon:start', stop: 'daemon:stop', restart: 'daemon:restart',
+    preferences: 'daemon:preferences', setPreferences: 'daemon:setPreferences', reconcileStartup: 'daemon:reconcileStartup', logs: 'daemon:logs'
+  },
   taskConversations: {
     list: 'taskConversations:list',
     discover: 'taskConversations:discover',
@@ -359,6 +372,7 @@ export const ipcInvoke = {
 
 /** 主进程 → 渲染层的事件通道（广播/推送） */
 export const ipcEvent = {
+  bootstrapChanged: 'bootstrap:changed',
   appRuntimeChanged: 'appRuntime:changed',
   appRuntimeOutput: 'appRuntime:output',
   appRuntimeDone: 'appRuntime:done',
@@ -401,6 +415,8 @@ export const ipcEvent = {
   acpPermission: 'acp:permission',
   acpDone: 'acp:done',
   acpState: 'acp:state',
+  daemonRuntimeUnavailable: 'daemon:runtimeUnavailable',
+  daemonRuntimeReset: 'daemon:runtimeReset',
   /** 窗口最大化状态 */
   windowMaximized: 'window:maximized',
   documentOriginReturn: 'doc:origin-return',

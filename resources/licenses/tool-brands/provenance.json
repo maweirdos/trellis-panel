@@ -1,0 +1,953 @@
+{
+  "catalogVersion": 1,
+  "retrievedAt": "2026-10-22",
+  "assets": [
+    {
+      "id": "codex",
+      "label": "Codex",
+      "aliases": [
+        "codex-cli",
+        "openai-codex"
+      ],
+      "assetKey": "codex.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/codex.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/codex.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "d08b4e824cd6727e89617f59e4737273ff53e44c1da849d016dd64dfd08b33e1",
+      "bytes": 1368
+    },
+    {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "aliases": [
+        "claude",
+        "claudecode",
+        "claude_code",
+        "claude-code-cli"
+      ],
+      "assetKey": "claude-code.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/claudecode-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/claudecode-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "670b3d8d749d0815ad8f7e62a59d51cb5e2053cb19403f3541a8aed7036a877f",
+      "bytes": 424
+    },
+    {
+      "id": "cursor",
+      "label": "Cursor",
+      "aliases": [
+        "cursor-agent"
+      ],
+      "assetKey": "cursor.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/cursor.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/cursor.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "0cb51bddf264ae108926fd554c063ef40fc1aac3c5c921ddb39ad184e4e5d0ef",
+      "bytes": 547
+    },
+    {
+      "id": "windsurf",
+      "label": "Windsurf",
+      "aliases": [
+        "windsurf-editor"
+      ],
+      "assetKey": "windsurf.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/windsurf.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/windsurf.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "e3c836aae05a3741e33d5c5a38d4167aacfbb69e480d098b8b94cad8c90e0d08",
+      "bytes": 820
+    },
+    {
+      "id": "github-copilot",
+      "label": "GitHub Copilot",
+      "aliases": [
+        "copilot",
+        "githubcopilot",
+        "github_copilot",
+        "copilot-cli"
+      ],
+      "assetKey": "github-copilot.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/githubcopilot.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/githubcopilot.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "bbc7fddc13448236e5edea8c399d2072dc40aa5da5bca07f7a2f412405c500a3",
+      "bytes": 2019
+    },
+    {
+      "id": "gemini-cli",
+      "label": "Gemini CLI",
+      "aliases": [
+        "gemini",
+        "geminicli",
+        "gemini_cli"
+      ],
+      "assetKey": "gemini-cli.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/geminicli-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/geminicli-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "c2f54ebaa4c3b9191c6a07f7b0c66bc78e4abe486003dc564469cf650672663e",
+      "bytes": 921
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "aliases": [
+        "open-code",
+        "open_code"
+      ],
+      "assetKey": "opencode.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/opencode.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/opencode.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "7cfa6e9d6726f7c9fa26c7d9aef0dfec52d20a137380454340f30f12ccbfd302",
+      "bytes": 235
+    },
+    {
+      "id": "qoder",
+      "label": "Qoder",
+      "aliases": [
+        "qoder-cli"
+      ],
+      "assetKey": "qoder.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/qoder.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/qoder.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": "Original upstream monochrome variant; CSS mask inherits application theme color without redrawing paths.",
+      "sha256": "f8503aacc41a58e723430488d082f6730c8a6a9ffecdd0a00c522e6bcdb4abb9",
+      "bytes": 6214
+    },
+    {
+      "id": "kiro",
+      "label": "Kiro",
+      "aliases": [
+        "kiro-cli"
+      ],
+      "assetKey": "kiro.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/kiro-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/kiro-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "4eae4d6e818da7342c32c7d443ab7c97b93c544db9af379d5b5bf7f0a3127d66",
+      "bytes": 960
+    },
+    {
+      "id": "codebuddy",
+      "label": "CodeBuddy",
+      "aliases": [
+        "code-buddy",
+        "codebuddy-cli"
+      ],
+      "assetKey": "codebuddy.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/codebuddy-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/codebuddy-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "033d5da624460e686046f22b4e242b6b86484ad84ec4877e4efa15a9fb642b97",
+      "bytes": 1589
+    },
+    {
+      "id": "trae",
+      "label": "Trae",
+      "aliases": [
+        "trae-cn",
+        "trae-solo"
+      ],
+      "assetKey": "trae.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/trae-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/trae-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "e7aca314ce71b8fa0a7aece005d585772bac24266fc6688cf398e622d4acaf02",
+      "bytes": 377
+    },
+    {
+      "id": "cline",
+      "label": "Cline",
+      "aliases": [],
+      "assetKey": "cline.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/cline.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/cline.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "9003d2cdce82b016147b732abb4def60af55c348ba2cea2ba0b69a3c7d159b19",
+      "bytes": 750
+    },
+    {
+      "id": "roo-code",
+      "label": "Roo Code",
+      "aliases": [
+        "roo",
+        "roocode",
+        "roo_code"
+      ],
+      "assetKey": "roo-code.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/roocode.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/roocode.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "34904d40bfd976b5c1c7495d2fdfdca1c137cb416bff2000184e0ee27bfb5161",
+      "bytes": 763
+    },
+    {
+      "id": "kilo-code",
+      "label": "Kilo Code",
+      "aliases": [
+        "kilo",
+        "kilocode",
+        "kilo_code"
+      ],
+      "assetKey": "kilo-code.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/kilocode.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/kilocode.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "a2aef0e0bb992ebe768bfb8c3a3ab6ff2c2638448b09dd88db27877de1c07a22",
+      "bytes": 652
+    },
+    {
+      "id": "amp",
+      "label": "Amp",
+      "aliases": [
+        "ampcode",
+        "amp-code"
+      ],
+      "assetKey": "amp.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/amp-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/amp-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "6df4cced9e35703d6263d65968985e8afdff68b61358daf9cc09fa16dd9b2aad",
+      "bytes": 520
+    },
+    {
+      "id": "antigravity",
+      "label": "Antigravity",
+      "aliases": [
+        "google-antigravity"
+      ],
+      "assetKey": "antigravity.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/antigravity-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/antigravity-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "652128cf55a28bb958563ee372d0bd00208d9e6fd446f523f77aafd811eef8ca",
+      "bytes": 7634
+    },
+    {
+      "id": "openhands",
+      "label": "OpenHands",
+      "aliases": [
+        "open-hands"
+      ],
+      "assetKey": "openhands.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/openhands-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/openhands-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "bd25a937147d458634203f802bb3d92a361696b3e62d9e77dd23a3682c048b02",
+      "bytes": 5888
+    },
+    {
+      "id": "goose",
+      "label": "Goose",
+      "aliases": [
+        "block-goose"
+      ],
+      "assetKey": "goose.svg",
+      "mode": "mask",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/goose.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/goose.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "8779d9a61c5b0be78a3d36cab6843ba5af86218ba2ff1b18eb918c7a8d25bb99",
+      "bytes": 1807
+    },
+    {
+      "id": "replit",
+      "label": "Replit",
+      "aliases": [
+        "replit-agent"
+      ],
+      "assetKey": "replit.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/replit-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/replit-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "7d803ffdfc0d46aec134f656fd3c8815ee936a6726295eea5173d7122007eae5",
+      "bytes": 506
+    },
+    {
+      "id": "devin",
+      "label": "Devin",
+      "aliases": [],
+      "assetKey": "devin.svg",
+      "mode": "image",
+      "repository": "https://github.com/lobehub/lobe-icons",
+      "commit": "21b2144f4ebe87ead9b7c0e10067759ae261b03e",
+      "sourcePath": "packages/static-svg/icons/devin-color.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/packages/static-svg/icons/devin-color.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.lobe-icons.txt",
+      "note": null,
+      "sha256": "beb58575f94fda57a6c1f9ed5624e6407bff405f55b6258b53032b674aadd8c8",
+      "bytes": 3307
+    },
+    {
+      "id": "vscode",
+      "label": "Visual Studio Code",
+      "aliases": [
+        "vs-code",
+        "visual-studio-code",
+        "code"
+      ],
+      "assetKey": "vscode.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/vscode/vscode-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/vscode/vscode-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "503d580c442a7071aae180d9b4766e312e4600bf0e9d842b30f56d0e614eceb8",
+      "bytes": 3404
+    },
+    {
+      "id": "vscodium",
+      "label": "VSCodium",
+      "aliases": [
+        "codium"
+      ],
+      "assetKey": "vscodium.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/vscodium/vscodium-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/vscodium/vscodium-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "fe4bb60cff974b708746c1d62a9d5c620367c08420ad999af2439f3273079815",
+      "bytes": 1854
+    },
+    {
+      "id": "visual-studio",
+      "label": "Visual Studio",
+      "aliases": [
+        "visualstudio"
+      ],
+      "assetKey": "visual-studio.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/visualstudio/visualstudio-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/visualstudio/visualstudio-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "82646b70fd41ee1ff3a751c1c773d1428bd776829ec4169203e67a15948d50ad",
+      "bytes": 2082
+    },
+    {
+      "id": "jetbrains",
+      "label": "JetBrains",
+      "aliases": [],
+      "assetKey": "jetbrains.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/jetbrains/jetbrains-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/jetbrains/jetbrains-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "bdb59bef1e6569cdefdc5ade07443dd1e5702f73866a08f7ca91b056834cbfa5",
+      "bytes": 3593
+    },
+    {
+      "id": "intellij-idea",
+      "label": "IntelliJ IDEA",
+      "aliases": [
+        "intellij",
+        "idea"
+      ],
+      "assetKey": "intellij-idea.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/intellij/intellij-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/intellij/intellij-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "7ce573a86bc3e352295b8df8a09e1136700297e0add359f9d4d7e3aec77bc65f",
+      "bytes": 2617
+    },
+    {
+      "id": "webstorm",
+      "label": "WebStorm",
+      "aliases": [],
+      "assetKey": "webstorm.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/webstorm/webstorm-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/webstorm/webstorm-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "64d2b0f3db1b1f72f7eb28bb7e6957f79efa81ce24ae532ba616e34798e6058a",
+      "bytes": 1944
+    },
+    {
+      "id": "pycharm",
+      "label": "PyCharm",
+      "aliases": [],
+      "assetKey": "pycharm.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/pycharm/pycharm-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/pycharm/pycharm-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "e477243951215d340f7cfc32e44b99752b050a0896a7f3ead53bda43b15304df",
+      "bytes": 3789
+    },
+    {
+      "id": "neovim",
+      "label": "Neovim",
+      "aliases": [
+        "nvim"
+      ],
+      "assetKey": "neovim.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/neovim/neovim-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/neovim/neovim-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "64ce80cdfde0a0e0b65d4ad61655ca106bd00419e45f14f49cf8bfbc4f18fd70",
+      "bytes": 1422
+    },
+    {
+      "id": "vim",
+      "label": "Vim",
+      "aliases": [],
+      "assetKey": "vim.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/vim/vim-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/vim/vim-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "a32e2f318cb0778c61a0166232bb6a36554037eeb9861526a343fcf8b9bccf6c",
+      "bytes": 10132
+    },
+    {
+      "id": "emacs",
+      "label": "Emacs",
+      "aliases": [
+        "gnu-emacs"
+      ],
+      "assetKey": "emacs.svg",
+      "mode": "mask",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/emacs/emacs-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/emacs/emacs-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": "Original single-color artwork rendered as a CSS mask; no changes to upstream paths.",
+      "sha256": "dde9e1b6f0617baac3c14e4f7a6df9bbc971c9ab525680f7bcc5b9fc82d057cd",
+      "bytes": 1915
+    },
+    {
+      "id": "android-studio",
+      "label": "Android Studio",
+      "aliases": [
+        "androidstudio"
+      ],
+      "assetKey": "android-studio.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/androidstudio/androidstudio-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/androidstudio/androidstudio-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "abd43aac4a871ff8c1548cc5d3f54f1bc5123ad5510a7477d62ca048d4edea5a",
+      "bytes": 1852
+    },
+    {
+      "id": "eclipse",
+      "label": "Eclipse",
+      "aliases": [],
+      "assetKey": "eclipse.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/eclipse/eclipse-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/eclipse/eclipse-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "21380f01bc3ad1e2582b017b02ae593b31601fee50f645cbcdad6e9459f237c7",
+      "bytes": 2597
+    },
+    {
+      "id": "xcode",
+      "label": "Xcode",
+      "aliases": [],
+      "assetKey": "xcode.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/xcode/xcode-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/xcode/xcode-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "ea87b074c29282ed4d355370abc0bb2ccf02b80fec281a27c3333a5fe333b054",
+      "bytes": 21354
+    },
+    {
+      "id": "rider",
+      "label": "Rider",
+      "aliases": [
+        "jetbrains-rider"
+      ],
+      "assetKey": "rider.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/rider/rider-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/rider/rider-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "768dc8b8cbc5eb40758e0ee7616ec92d66209d4b5d7fcb48f2ea788684e17217",
+      "bytes": 1713
+    },
+    {
+      "id": "goland",
+      "label": "GoLand",
+      "aliases": [],
+      "assetKey": "goland.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/goland/goland-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/goland/goland-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "0a060685da614ef1feb3cad7b8d37620a134383ca7ad403e706268829058522f",
+      "bytes": 2805
+    },
+    {
+      "id": "phpstorm",
+      "label": "PhpStorm",
+      "aliases": [],
+      "assetKey": "phpstorm.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/phpstorm/phpstorm-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/phpstorm/phpstorm-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "72fd3e316ef3436a24c722a8802cccbb72dc42b1dd924e071233f136148b614d",
+      "bytes": 2708
+    },
+    {
+      "id": "clion",
+      "label": "CLion",
+      "aliases": [],
+      "assetKey": "clion.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/clion/clion-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/clion/clion-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "1c8c872fc2515a24881a9ab016be14178c71cb278fd962b4693cf31e18190e5a",
+      "bytes": 2415
+    },
+    {
+      "id": "rubymine",
+      "label": "RubyMine",
+      "aliases": [],
+      "assetKey": "rubymine.svg",
+      "mode": "image",
+      "repository": "https://github.com/devicons/devicon",
+      "commit": "6a37858047b0e8d9c9c0e68f4a071fc410652e89",
+      "sourcePath": "icons/rubymine/rubymine-original.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/icons/rubymine/rubymine-original.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.devicon.txt",
+      "note": null,
+      "sha256": "cd188f78355ad9625d54cb2fcb77563058dafbde4921121e489c96099f1c7dab",
+      "bytes": 2158
+    },
+    {
+      "id": "zed",
+      "label": "Zed",
+      "aliases": [
+        "zed-editor",
+        "zedindustries"
+      ],
+      "assetKey": "zed.svg",
+      "mode": "mask",
+      "repository": "https://github.com/simple-icons/simple-icons",
+      "commit": "c71c69e3a27e4436936b831c72643e6513b9f49b",
+      "sourcePath": "icons/zedindustries.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/simple-icons/simple-icons/c71c69e3a27e4436936b831c72643e6513b9f49b/icons/zedindustries.svg",
+      "license": "CC0-1.0",
+      "licenseFile": "LICENSE.simple-icons.txt",
+      "note": null,
+      "sha256": "90848d3e8d74d4fb3efc7137b8a5181139082e212566b025843379a7cb0550a0",
+      "bytes": 599
+    },
+    {
+      "id": "sublime-text",
+      "label": "Sublime Text",
+      "aliases": [
+        "sublime",
+        "sublimetext",
+        "subl"
+      ],
+      "assetKey": "sublime-text.svg",
+      "mode": "mask",
+      "repository": "https://github.com/simple-icons/simple-icons",
+      "commit": "c71c69e3a27e4436936b831c72643e6513b9f49b",
+      "sourcePath": "icons/sublimetext.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/simple-icons/simple-icons/c71c69e3a27e4436936b831c72643e6513b9f49b/icons/sublimetext.svg",
+      "license": "CC0-1.0",
+      "licenseFile": "LICENSE.simple-icons.txt",
+      "note": null,
+      "sha256": "f0aceff6d59cf0bae168ddd28b7e00682361d928767a8ef9a331054f92af4197",
+      "bytes": 520
+    },
+    {
+      "id": "zcode",
+      "label": "ZCode",
+      "aliases": [
+        "z-code"
+      ],
+      "assetKey": "zcode.png",
+      "mode": "image",
+      "repository": "https://github.com/zai-org/ZCode",
+      "commit": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+      "sourcePath": "packages/desktop/build/icons/64x64.png",
+      "sourceUrl": "https://raw.githubusercontent.com/zai-org/ZCode/3c5b227649371507ddc4eb46ac5133afe6db1cab/packages/desktop/build/icons/64x64.png",
+      "license": "Apache-2.0",
+      "licenseFile": "LICENSE.ZCode.txt",
+      "note": "Original desktop application icon, not a model/provider mark.",
+      "sha256": "769f896dfa661599edafe46e41a560edde5d9c05f773bcf8709758a62bb35aab",
+      "bytes": 3914
+    },
+    {
+      "id": "aider",
+      "label": "Aider",
+      "aliases": [],
+      "assetKey": "aider.png",
+      "mode": "image",
+      "repository": "https://github.com/Aider-AI/aider",
+      "commit": "5dc9490bb35f9729ef2c95d00a19ccd30c26339c",
+      "sourcePath": "aider/website/assets/icons/android-chrome-192x192.png",
+      "sourceUrl": "https://raw.githubusercontent.com/Aider-AI/aider/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/website/assets/icons/android-chrome-192x192.png",
+      "license": "Apache-2.0",
+      "licenseFile": "LICENSE.aider.txt",
+      "note": null,
+      "sha256": "9242d14983bd63790790581471f6e33ba09a143feb841598107635d58ea96018",
+      "bytes": 29475
+    },
+    {
+      "id": "continue",
+      "label": "Continue",
+      "aliases": [
+        "continue-dev",
+        "continuedev",
+        "cn"
+      ],
+      "assetKey": "continue.svg",
+      "mode": "mask",
+      "repository": "https://github.com/continuedev/continue",
+      "commit": "5522c6f44ca0ac3528b37244818fbfa39b5af470",
+      "sourcePath": "extensions/intellij/src/main/resources/icons/continue.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/continuedev/continue/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/intellij/src/main/resources/icons/continue.svg",
+      "license": "Apache-2.0",
+      "licenseFile": "LICENSE.continue.txt",
+      "note": null,
+      "sha256": "f81d0ca0355295cbc8de14cb32a95cb7abe91efa43bd4d5e16e6d1e3d7d3f362",
+      "bytes": 1597
+    },
+    {
+      "id": "kimi-code",
+      "label": "Kimi Code",
+      "aliases": [
+        "kimi",
+        "kimi-cli",
+        "kimi_code"
+      ],
+      "assetKey": "kimi-code.png",
+      "mode": "image",
+      "repository": "https://github.com/moonshotai/kimi-cli",
+      "commit": "9ab1286b8fe4e6bcd116949a27ce5e0ac3389c82",
+      "sourcePath": "web/public/logo.png",
+      "sourceUrl": "https://raw.githubusercontent.com/moonshotai/kimi-cli/9ab1286b8fe4e6bcd116949a27ce5e0ac3389c82/web/public/logo.png",
+      "license": "Apache-2.0",
+      "licenseFile": "LICENSE.kimi-cli.txt",
+      "note": "Official KimiCliBrand component uses this exact PNG alongside the Kimi Code label.",
+      "sha256": "dbd00e2ad61ea8832ef0b024662a4a8a5d1b66f0599d5d42e1c9688b9d4cfdf6",
+      "bytes": 11486
+    },
+    {
+      "id": "qwen-code",
+      "label": "Qwen Code",
+      "aliases": [
+        "qwen",
+        "qwen-cli",
+        "qwen_code"
+      ],
+      "assetKey": "qwen-code.svg",
+      "mode": "image",
+      "repository": "https://github.com/QwenLM/qwen-code",
+      "commit": "257b9f5413ca2606092cfd5bc58cae77271b0534",
+      "sourcePath": "packages/desktop/bootstrap/qwen-code-logo.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/QwenLM/qwen-code/257b9f5413ca2606092cfd5bc58cae77271b0534/packages/desktop/bootstrap/qwen-code-logo.svg",
+      "license": "Apache-2.0",
+      "licenseFile": "LICENSE.qwen-code.txt",
+      "note": "Original Qwen Code desktop bootstrap product asset.",
+      "sha256": "24156c849c9124505e13b38c6583a9d5d85a1f57d996c324d967f480a4d88696",
+      "bytes": 1117
+    },
+    {
+      "id": "pi",
+      "label": "Pi",
+      "aliases": [
+        "pi-agent",
+        "pi-coding-agent"
+      ],
+      "assetKey": "pi.svg",
+      "mode": "image",
+      "sourceUrl": "https://pi.dev/logo-auto.svg",
+      "license": "LicenseRef-Upstream-Trademark",
+      "licenseFile": "LICENSE.upstream-trademarks.md",
+      "retrievedAt": "2026-10-22",
+      "note": "Pi coding agent repository README links this official logo; not Inflection Pi.",
+      "sha256": "abd66e7868b2d24f0f0895f9237ee8a6dcb22337583b0dc54aeb595acecb4d6b",
+      "bytes": 334,
+      "identityEvidence": "https://github.com/badlogic/pi-mono/blob/58c0b02ce552adab76014e7ed712ab7981359aa8/README.md"
+    },
+    {
+      "id": "factory-droid",
+      "label": "Factory Droid",
+      "aliases": [
+        "factory",
+        "droid"
+      ],
+      "assetKey": "factory-droid.svg",
+      "mode": "image",
+      "sourceUrl": "https://factory.com/icon.svg",
+      "license": "LicenseRef-Upstream-Trademark",
+      "licenseFile": "LICENSE.upstream-trademarks.md",
+      "retrievedAt": "2026-10-22",
+      "note": "Factory documentation declares this product icon as its logo; retained as original full artwork. The light/dark media rules both set filter:none; appearance does not depend on OS theme.",
+      "sha256": "416ea4962d7b0b8be8bec7f7190c13c22d5f20fdcac401aa72886fd5c81d2fb2",
+      "bytes": 6348
+    },
+    {
+      "id": "augment",
+      "label": "Augment",
+      "aliases": [
+        "augment-code",
+        "augmentcode",
+        "auggie"
+      ],
+      "assetKey": "augment.png",
+      "mode": "image",
+      "sourceUrl": "https://docs.augmentcode.com/mintlify-assets/_mintlify/favicons/augment-mtje7p526w/MMO3uIP-KlW_55xJ/_generated/favicon/android-chrome-192x192.png",
+      "license": "LicenseRef-Upstream-Trademark",
+      "licenseFile": "LICENSE.upstream-trademarks.md",
+      "retrievedAt": "2026-10-22",
+      "note": "Official Augment documentation favicon, immutable generated asset path.",
+      "sha256": "6e228686571afb546021e43d62e215a192e38484d801d52ebf9e66671712f6c4",
+      "bytes": 11939
+    },
+    {
+      "id": "iflow",
+      "label": "iFlow CLI",
+      "aliases": [
+        "iflow-cli",
+        "i-flow"
+      ],
+      "assetKey": "iflow.png",
+      "mode": "image",
+      "sourceUrl": "https://cli.iflow.cn/img/favicon.ico",
+      "license": "LicenseRef-Upstream-Trademark",
+      "licenseFile": "LICENSE.upstream-trademarks.md",
+      "retrievedAt": "2026-10-22",
+      "note": "Official iFlow CLI favicon endpoint serves original PNG bytes, preserved unchanged with a PNG extension.",
+      "sha256": "990d1032ea7e66f8550581e4bb0980a90dcaf996a1de75d4272ab14220412f36",
+      "bytes": 2288
+    }
+  ],
+  "unverified": [
+    "dsh",
+    "snow",
+    "reasonix",
+    "omp",
+    "oh-my-pi",
+    "grok"
+  ],
+  "licenseSources": [
+    {
+      "file": "LICENSE.aider.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/Aider-AI/aider/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/LICENSE.txt",
+      "license": "Apache-2.0",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "LICENSE.continue.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/continuedev/continue/5522c6f44ca0ac3528b37244818fbfa39b5af470/LICENSE",
+      "license": "Apache-2.0",
+      "sha256": "b14a17598cb08c4c7c82c070731126304e0a75d001ed59fb9ea3955a0b561802"
+    },
+    {
+      "file": "LICENSE.devicon.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/devicons/devicon/6a37858047b0e8d9c9c0e68f4a071fc410652e89/LICENSE",
+      "license": "MIT",
+      "sha256": "121194741d4a915b9f5890fdd6dd95121f9b1f816517c792358d72d7c838d664"
+    },
+    {
+      "file": "LICENSE.kimi-cli.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/moonshotai/kimi-cli/9ab1286b8fe4e6bcd116949a27ce5e0ac3389c82/LICENSE",
+      "license": "Apache-2.0",
+      "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+    },
+    {
+      "file": "LICENSE.lobe-icons.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/lobehub/lobe-icons/21b2144f4ebe87ead9b7c0e10067759ae261b03e/LICENSE",
+      "license": "MIT",
+      "sha256": "add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a"
+    },
+    {
+      "file": "LICENSE.qwen-code.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/QwenLM/qwen-code/257b9f5413ca2606092cfd5bc58cae77271b0534/LICENSE",
+      "license": "Apache-2.0",
+      "sha256": "55367b61ccd2a016a0159ad886bd66a3ee6cb5e873d0c75c803c897dd245b075"
+    },
+    {
+      "file": "LICENSE.simple-icons.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/simple-icons/simple-icons/c71c69e3a27e4436936b831c72643e6513b9f49b/LICENSE.md",
+      "license": "CC0-1.0",
+      "sha256": "9046848b63a5c92bff14e4accca80bd987e0623b74adf9226ce5198d312b79d5"
+    },
+    {
+      "file": "LICENSE.ZCode.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/zai-org/ZCode/3c5b227649371507ddc4eb46ac5133afe6db1cab/LICENSE",
+      "license": "Apache-2.0",
+      "sha256": "606c36baf38b973227273df12a74930e4b4137280eea835c5cd623aa4553c13b"
+    },
+    {
+      "file": "NOTICE.kimi-cli.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/moonshotai/kimi-cli/9ab1286b8fe4e6bcd116949a27ce5e0ac3389c82/NOTICE",
+      "license": "Apache-2.0",
+      "sha256": "6bdd9ca6fd120dcd6ba5e16bf2bacc01f42781fd2d9754ec934c5db05fcdc395"
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import { Select } from '../../../components/Select'
 import { useIntegrationAction } from './hooks'
 import { integrationBridgeMessage, integrationBridgeState } from './bridge'
 import { OAuthSetup } from './ConnectionAuthorization'
+import { ConnectionStatusMapping } from './ConnectionStatusMapping'
 
 export function ConnectionEditor({ provider, connection, authorizationAvailable = false, onClose, onSaved }: { provider: ProviderManifest; connection?: IntegrationConnection; authorizationAvailable?: boolean; onClose: () => void; onSaved: () => Promise<void> }): JSX.Element {
   const [name, setName] = useState(connection?.name || provider.name)
@@ -14,6 +15,7 @@ export function ConnectionEditor({ provider, connection, authorizationAvailable 
   const [config, setConfig] = useState<Record<string, string>>(() => ({ ...connection?.config, ...(!connection && provider.authentication?.length ? { authMethod: provider.authentication[0].id } : {}) }))
   const [secrets, setSecrets] = useState<Record<string, string>>({})
   const [clear, setClear] = useState<string[]>([])
+  const [mappingValid, setMappingValid] = useState(true)
   const action = useIntegrationAction()
   const bridge = integrationBridgeState()
   const fields: ConfigField[] = connection?.legacy && provider.id === 'gitlab'
@@ -21,6 +23,7 @@ export function ConnectionEditor({ provider, connection, authorizationAvailable 
     : connectionFields(provider, config)
   const method = connectionAuthentication(provider, config)
   const save = async (): Promise<void> => {
+    if (!mappingValid) return
     if (bridge !== 'ready') { action.setError(integrationBridgeMessage(bridge)); return }
     if (!connection?.legacy && method?.oauth && !authorizationAvailable) { action.setError('当前主进程尚未加载 OAuth 服务，请完整退出应用并重新启动开发入口后保存。'); return }
     const input: SaveConnectionInput = { id: connection?.id, revision: connection?.revision, providerId: provider.id, name, enabled, config,
@@ -29,20 +32,22 @@ export function ConnectionEditor({ provider, connection, authorizationAvailable 
     if (result) {
       if (connection?.legacy) {
         const settings = await api.getSettings().catch(() => null)
+        if (!action.current()) return
         if (settings) useApp.setState({ settings })
       }
-      await onSaved(); onClose()
+      if (!action.current()) return
+      onClose(); await onSaved()
     }
   }
-  return <Modal open onClose={() => { if (!action.busy) onClose() }}>
-    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">{connection ? '编辑' : '添加'} {provider.name} 连接</h2><p className="mt-1 text-my-xs text-my-tertiary">凭证在本机主进程加密保存。留空保留已存凭证。</p></div>
+  return <Modal open ariaLabel={`${connection ? '编辑' : '添加'} ${provider.name} 连接`} onClose={() => { if (!action.busy) onClose() }}>
+    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">{connection ? '编辑' : '添加'} {provider.name} 连接</h2><p className="mt-1 text-my-xs text-my-tertiary">凭证通过本机桌面服务保存。留空保留已存凭证。</p></div>
     <div className="my-scrollbar max-h-[52vh] space-y-4 overflow-y-auto px-5 py-4">
       {bridge !== 'ready' && <p role="status" className="rounded-my-md border border-my-line p-3 text-my-sm text-my-secondary">{integrationBridgeMessage(bridge)}</p>}
       <label className="block space-y-1 text-my-sm"><span>连接名称{connection?.legacy ? '（兼容入口名称固定）' : ''}</span><input className="my-input w-full" value={name} disabled={connection?.legacy} onChange={(e) => setName(e.target.value)} maxLength={100} /></label>
       {!connection?.legacy && provider.authentication && <label className="block space-y-1 text-my-sm"><span>登录方式</span><Select ariaLabel="登录方式" className="w-full" value={method?.id || 'token'} disabled={action.busy} onChange={(value) => { setConfig({ ...config, authMethod: value }); action.setError('') }} options={provider.authentication.map((item) => ({ value: item.id, label: item.name }))} /></label>}
       {fields.map((field) => <div key={field.key} className="space-y-1">
-        <label className="block text-my-sm" htmlFor={`integration-${field.key}`}>{field.label}{field.required ? ' *' : ''}</label>
-        {field.multiline ? <textarea id={`integration-${field.key}`} className="my-input min-h-20 w-full" value={config[field.key] || ''} onChange={(e) => setConfig({ ...config, [field.key]: e.target.value })} placeholder={field.placeholder} />
+        {field.key !== 'statusMap' && <label className="block text-my-sm" htmlFor={`integration-${field.key}`}>{field.label}{field.required ? ' *' : ''}</label>}
+        {field.key === 'statusMap' ? <ConnectionStatusMapping value={config[field.key] || ''} disabled={action.busy} onChange={(value) => setConfig({ ...config, [field.key]: value })} onValidityChange={setMappingValid} /> : field.multiline ? <textarea id={`integration-${field.key}`} className="my-input min-h-20 w-full" value={config[field.key] || ''} onChange={(e) => setConfig({ ...config, [field.key]: e.target.value })} placeholder={field.placeholder} />
           : <input id={`integration-${field.key}`} className="my-input w-full" type={field.secret ? 'password' : 'text'} autoComplete="off" value={field.secret ? secrets[field.key] || '' : config[field.key] || ''} onChange={(e) => field.secret ? setSecrets({ ...secrets, [field.key]: e.target.value }) : setConfig({ ...config, [field.key]: e.target.value })} placeholder={field.secret && connection?.hasSecrets.includes(field.key) ? '已保存，输入新值替换' : field.placeholder} />}
         {field.secret && connection?.hasSecrets.includes(field.key) && <label className="flex items-center gap-2 text-my-xs text-my-tertiary"><Checkbox checked={clear.includes(field.key)} onChange={(checked) => setClear(checked ? [...clear, field.key] : clear.filter((key) => key !== field.key))} />明确清除此凭证（填写新值将替换）</label>}
       </div>)}
@@ -50,6 +55,6 @@ export function ConnectionEditor({ provider, connection, authorizationAvailable 
       <label className="flex items-center gap-2 text-my-sm"><Checkbox checked={enabled} onChange={setEnabled} />启用此连接</label>
       {action.error && <p role="alert" className="text-my-sm text-my-danger-text">{action.error}</p>}
     </div>
-    <div className="flex justify-end gap-2 border-t border-my-line px-5 py-3"><Button onClick={onClose} disabled={action.busy}>取消</Button><Button variant="primary" disabled={action.busy} onClick={() => void save()}>{action.busy ? '保存中…' : '保存连接'}</Button></div>
+    <div className="flex justify-end gap-2 border-t border-my-line px-5 py-3"><Button onClick={onClose} disabled={action.busy}>取消</Button><Button variant="primary" disabled={action.busy || !mappingValid} onClick={() => void save()}>{action.busy ? '保存中…' : '保存连接'}</Button></div>
   </Modal>
 }

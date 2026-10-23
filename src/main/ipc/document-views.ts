@@ -8,7 +8,7 @@ import { documentDiffRequestSchema, documentReadRequestSchema, documentReadScope
 import { fixedDocumentTokenSchema, readerOriginSchema, type ReaderOrigin } from '../../shared/document-windows'
 import { IpcErrorCode, ipcFail, noProject } from '../../shared/ipc-errors'
 import { getProjectRoot, getProjectGeneration, getSnapshot, openProjectAt } from '../state'
-import { getAcpHistorySession, listAcpSessions } from '../services/acp'
+import { getAcpHistorySession, listAcpSessions } from '../services/daemon-client/acp'
 import { readDocument, computeDocumentDiff, watchReaderDocument, unwatchReaderDocument, clearReaderDocumentOwner } from '../services/documents'
 import { configureDocumentViews } from '../services/document-views'
 import { sameRoot } from '../services/observability/identity'
@@ -27,7 +27,7 @@ export function registerDocumentViewIpc(deps: WindowDeps): void {
     if (!input) return null
     const value = readerOriginSchema.parse(input)
     if (value.sessionId) {
-      const live = listAcpSessions(root)
+      const live = await listAcpSessions(root)
       const current = live.ok ? live.sessions.find((session) => session.sessionId === value.sessionId) : undefined
       if (current) {
         if (value.connectionGeneration !== undefined && current.connectionGeneration !== value.connectionGeneration) throw new Error('来源会话连接已改变，未跳转到新的连接')

@@ -1,4 +1,5 @@
-import { app, safeStorage } from 'electron'
+import { app } from 'electron'
+import { protectedStorage as safeStorage } from '../../../daemon/protected-storage'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'

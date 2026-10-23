@@ -5,6 +5,8 @@ import { randomBytes } from 'crypto'
 import { WEKNORA_DEFAULTS } from '../../shared/types'
 import type { Settings } from '../../shared/types'
 import { atomicWriteText } from './local-task/prd'
+import { assertLegacySettingsWriter } from '../daemon/settings-owner'
+import { settingsPersistence } from './store-port'
 
 const DEFAULTS: Settings = {
   recentProjects: [],
@@ -52,24 +54,14 @@ function newToken(): string {
 }
 
 export function getSettings(): Settings {
+  const authority = settingsPersistence()
+  if (authority) return authority.read()
   if (cache) return cache
   let loaded: Settings
   try {
     const raw = readFileSync(settingsPath(), 'utf-8')
     const parsed = JSON.parse(raw)
-    loaded = {
-      ...DEFAULTS,
-      ...parsed,
-      jira: { ...DEFAULTS.jira, ...(parsed.jira ?? {}) },
-      gitlab: { ...DEFAULTS.gitlab, ...(parsed.gitlab ?? {}) },
-      ai: { ...DEFAULTS.ai, ...(parsed.ai ?? {}) },
-      weknora: { ...DEFAULTS.weknora, ...(parsed.weknora ?? {}) },
-      httpApi: { ...DEFAULTS.httpApi, ...(parsed.httpApi ?? {}) },
-      access: { ...DEFAULTS.access, ...(parsed.access ?? {}) },
-      proxy: { ...DEFAULTS.proxy, ...(parsed.proxy ?? {}) },
-      desktop: { ...DEFAULTS.desktop, ...(parsed.desktop ?? {}) },
-      dispatch: { ...DEFAULTS.dispatch, ...(parsed.dispatch ?? {}) }
-    }
+    loaded = mergeSettings(DEFAULTS, parsed)
   } catch {
     loaded = { ...DEFAULTS }
   }
@@ -82,6 +74,8 @@ export function getSettings(): Settings {
 
 function persist(strict = false): void {
   if (!cache) return
+  // Outside the legacy best-effort catch: a migration fence must never look like a successful save.
+  assertLegacySettingsWriter(app.getPath('userData'))
   try {
     const p = settingsPath()
     mkdirSync(dirname(p), { recursive: true })
@@ -94,8 +88,19 @@ function persist(strict = false): void {
 }
 
 export function setSettings(patch: Partial<Settings>, strict = false): Settings {
+  const authority = settingsPersistence()
+  if (authority) return authority.write(patch, strict)
+  assertLegacySettingsWriter(app.getPath('userData'))
   const cur = getSettings()
-  const next: Settings = {
+  const next = mergeSettings(cur, patch)
+  cache = next
+  try { persist(strict) } catch (error) { cache = cur; throw error }
+  return next
+}
+
+/** Preserve existing extension keys while sharing native default/patch interpretation. */
+export function mergeSettings(cur: Settings, patch: Partial<Settings>): Settings {
+  return {
     ...cur,
     ...patch,
     jira: patch.jira ? { ...cur.jira, ...patch.jira } : cur.jira,
@@ -105,12 +110,11 @@ export function setSettings(patch: Partial<Settings>, strict = false): Settings 
     httpApi: patch.httpApi ? { ...cur.httpApi, ...patch.httpApi } : cur.httpApi,
     access: patch.access ? { ...cur.access, ...patch.access } : cur.access,
     proxy: patch.proxy ? { ...cur.proxy, ...patch.proxy } : cur.proxy,
-    desktop: patch.desktop ? { ...cur.desktop, ...patch.desktop } : cur.desktop
+    desktop: patch.desktop ? { ...cur.desktop, ...patch.desktop } : cur.desktop,
+    dispatch: patch.dispatch ? { ...cur.dispatch, ...patch.dispatch } : cur.dispatch
   }
-  cache = next
-  try { persist(strict) } catch (error) { cache = cur; throw error }
-  return next
 }
+export function defaultSettings(): Settings { return structuredClone(DEFAULTS) }
 
 export function pushRecentProject(root: string): Settings {
   const s = getSettings()

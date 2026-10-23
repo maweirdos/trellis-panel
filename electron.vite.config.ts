@@ -1,6 +1,7 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
+import { readdirSync } from 'node:fs'
 import esbuild from 'esbuild'
 import type { Plugin } from 'vite'
 import { reactHookRefresh } from './scripts/vite-hook-refresh'
@@ -29,10 +30,39 @@ function bundleMainWorker(name: string, entry: string, filename: string): Plugin
   }
 }
 
+/** Isolated role bundles cannot share an eager GUI chunk with the headless host. */
+function bundleMainRole(entry: string, filename: string): Plugin {
+  return {
+    name: `bundle-${filename}`,
+    apply: 'build',
+    buildStart() {
+      const watch = (directory: string): void => {
+        for (const item of readdirSync(directory, { withFileTypes: true })) {
+          const file = resolve(directory, item.name)
+          if (item.isDirectory()) watch(file)
+          else if (item.name.endsWith('.ts')) this.addWatchFile(file)
+        }
+      }
+      watch(resolve(__dirname, 'src/main')); watch(resolve(__dirname, 'src/shared'))
+    },
+    async closeBundle() {
+      await esbuild.build({
+        entryPoints: [resolve(__dirname, entry)], outfile: resolve(__dirname, 'out/main', filename),
+        bundle: true, packages: 'external', external: ['electron'], format: 'cjs', platform: 'node',
+        target: 'node22', logLevel: 'warning'
+      })
+    }
+  }
+}
+
 export default defineConfig({
   main: {
     plugins: [
       externalizeDepsPlugin(),
+      bundleMainRole('src/main/index.ts', 'gui.js'),
+      bundleMainRole('src/main/daemon/host.ts', 'daemon-host.js'),
+      bundleMainRole('src/main/daemon/control.ts', 'daemon-control.js'),
+      bundleMainRole('src/main/daemon/cli.ts', 'daemon-cli.js'),
       bundleMainWorker('bundle-diff-worker', 'src/main/services/documents/diff-worker.ts', 'diff-worker.js'),
       bundleMainWorker('bundle-observation-worker', 'src/main/services/observability/observation-worker.ts', 'observation-worker.js'),
       bundleMainWorker('bundle-history-worker', 'src/main/services/acp/history-worker.ts', 'history-worker.js'),
@@ -43,12 +73,14 @@ export default defineConfig({
       // electron-vite 5 / vite 8 默认输出 ESM(.mjs)；本项目为 CJS（package.json 无 type:module），
       // 强制回 CJS 以匹配 out/main/index.js 入口（Electron 44 + CJS 主进程）
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.ts') },
+        input: { index: resolve(__dirname, 'src/main/bootstrap.ts') },
         // externalizeDepsPlugin v5 仅外置 dependencies；electron 位于 devDependencies，
         // 不显式 external 会把 npm 包 index.js 打进产物（运行时误触二进制下载逻辑）
         // Keep acpx's public CommonJS export and package-relative owner paths intact.
         // Bundling its ESM branch rewrites import.meta.resolve and breaks packaged launches.
-        external: ['electron', /^acpx(?:\/|$)/],
+        // These sibling bundles are emitted by bundleMainRole in closeBundle.
+        // Resolve them from the emitted bootstrap at runtime, not from src/main.
+        external: ['electron', /^acpx(?:\/|$)/, './gui.js', './daemon-host.js', './daemon-control.js'],
         output: { format: 'cjs', entryFileNames: '[name].js' }
       }
     }

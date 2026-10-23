@@ -1,0 +1,60 @@
+import { existsSync, lstatSync, mkdirSync, rmdirSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { z } from 'zod'
+import { daemonIdentitySchema, processOwnerSchema } from '../../shared/daemon'
+import type { DaemonContext } from './context'
+import { processIdentity, sameOwner } from './native'
+import { readBounded, writeAtomic } from './files'
+import { DaemonError } from './errors'
+
+export const daemonLeaseSchema = z.object({ version: z.literal(1), epoch: z.string().uuid(), nonce: z.string().uuid(), identity: daemonIdentitySchema, owner: processOwnerSchema, acquiredAt: z.number().int().nonnegative() }).strict()
+export type DaemonLease = z.infer<typeof daemonLeaseSchema>
+export function readLease(context: DaemonContext): DaemonLease | null {
+  const directory = join(context.directory, 'owner')
+  if (!existsSync(directory)) return null
+  const entry = lstatSync(directory)
+  if (!entry.isDirectory() || entry.isSymbolicLink()) throw new DaemonError('E_DENIED', 'Daemon ownership cannot be redirected to another directory.')
+  try { return daemonLeaseSchema.parse(JSON.parse(readBounded(join(directory, 'lease.json'), 8192))) }
+  catch { throw new DaemonError('E_UNAVAILABLE', 'Daemon ownership is incomplete, corrupt or from a future version. Preserve the owner directory and reconcile it before starting.') }
+}
+export async function verifiedLease(context: DaemonContext): Promise<DaemonLease | null> {
+  const lease = readLease(context)
+  if (!lease) return null
+  if (lease.identity.profileId !== context.identity.profileId || lease.identity.userId !== context.identity.userId || lease.identity.mode !== context.identity.mode || lease.owner.userId !== lease.identity.userId) throw new DaemonError('E_DENIED', 'Daemon ownership belongs to a different user or profile.')
+  const actual = await processIdentity(lease.owner.pid)
+  if (actual && sameOwner(actual, lease.owner)) {
+    if (lease.identity.appVersion !== context.identity.appVersion || lease.identity.installationId !== context.identity.installationId) throw new DaemonError('E_VERSION', 'A different installed version owns this daemon. Stop it with its original installation before upgrading.')
+    return lease
+  }
+  return null
+}
+/** Requires the native Electron daemon-role lock. Expiry never authorizes replacement. */
+export async function acquireLease(context: DaemonContext): Promise<DaemonLease> {
+  const previous = readLease(context)
+  if (await verifiedLease(context)) throw new DaemonError('E_CONFLICT', 'A verified daemon already owns this profile; attach to it.')
+  const directory = join(context.directory, 'owner')
+  if (previous) {
+    // Recheck the original owner immediately before preserving its stale record.
+    const current = await processIdentity(previous.owner.pid)
+    if (current && sameOwner(current, previous.owner)) throw new DaemonError('E_CONFLICT', 'The recorded daemon owner is still alive.')
+    if (JSON.stringify(readLease(context)) !== JSON.stringify(previous)) throw new DaemonError('E_CONFLICT', 'Daemon ownership changed during stale-owner verification. Preserve the current record.')
+    const archive = join(context.directory, 'previous-owner.json')
+    writeAtomic(archive, JSON.stringify(previous))
+    unlinkSync(join(directory, 'lease.json'))
+    rmdirSync(directory)
+  }
+  mkdirSync(directory)
+  const lease = daemonLeaseSchema.parse({ version: 1, epoch: randomUUID(), nonce: randomUUID(), identity: context.identity, owner: context.owner, acquiredAt: Date.now() })
+  writeAtomic(join(directory, 'lease.json'), JSON.stringify(lease))
+  return lease
+}
+export function assertLease(context: DaemonContext, lease: DaemonLease): void {
+  const current = readLease(context)
+  if (!current || JSON.stringify(current) !== JSON.stringify(lease) || !sameOwner(current.owner, context.owner)) throw new DaemonError('E_CONFLICT', 'Daemon ownership changed; writes are fenced.')
+}
+export function releaseLease(context: DaemonContext, lease: DaemonLease): void {
+  assertLease(context, lease)
+  unlinkSync(join(context.directory, 'owner', 'lease.json'))
+  rmdirSync(join(context.directory, 'owner'))
+}

@@ -4,7 +4,7 @@ import { api, hasIpc } from '../../../api'
 import { Button } from '../../ui'
 import { Select } from '../../../components/Select'
 import { boundRequest, PullRequestBrowser } from './RepositoryBrowser'
-import { useIntegrationAction, useIntegrationSnapshot } from './hooks'
+import { useIntegrationAction, useIntegrationOwner, useIntegrationSnapshot } from './hooks'
 import { integrationBridgeState } from './bridge'
 
 /** One reusable surface for task preview/workspace and the integration directory. */
@@ -15,16 +15,17 @@ export function WorkItemIntegrations({ taskDir }: { taskDir: string }): JSX.Elem
   const [preview, setPreview] = useState<NotificationPreview | null>(null)
   const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null)
   const [requestId, setRequestId] = useState('')
-  const action = useIntegrationAction()
+  const [linksError, setLinksError] = useState('')
+  const { current } = useIntegrationOwner(taskDir)
   const sequence = useRef(0)
   const loadLinks = useCallback(async (): Promise<void> => {
     const token = ++sequence.current
-    if (!root || integrationBridgeState() !== 'ready') return
+    if (!root || !current() || integrationBridgeState() !== 'ready') return
     const result = await api.integrations.links({ expectedRoot: root, taskDir }).catch(() => null)
-    if (token !== sequence.current) return
-    if (result?.ok) setLinks(result.data)
-    else action.setError(result && !result.ok ? result.error : '无法读取工作项关联')
-  }, [root, taskDir])
+    if (token !== sequence.current || !current()) return
+    if (result?.ok) { setLinks(result.data); setLinksError('') }
+    else setLinksError(result && !result.ok ? result.error : '无法读取工作项关联')
+  }, [root, taskDir, current])
   useEffect(() => { setLinks([]); void loadLinks(); return () => { sequence.current++ } }, [loadLinks])
   useEffect(() => {
     if (integrationBridgeState() !== 'ready') return
@@ -34,6 +35,7 @@ export function WorkItemIntegrations({ taskDir }: { taskDir: string }): JSX.Elem
   const binding = choices.find((b) => b.id === selectedId) ?? choices[0]
   const connection = data?.connections.find((c) => c.id === binding?.connectionId)
   const provider = data?.catalog.find((p) => p.id === connection?.providerId)
+  const action = useIntegrationAction(`${taskDir}:${binding?.id ?? ''}:${binding?.revision ?? 0}:${connection?.id ?? ''}:${connection?.revision ?? 0}`)
   useEffect(() => { setPreview(null); setReceipt(null); setRequestId('') }, [binding?.id, binding?.revision, connection?.revision, taskDir, root])
   if (!hasIpc || !root) return null
   const context = binding && connection ? { ...boundRequest(root, binding, connection), taskDir } : null
@@ -43,7 +45,7 @@ export function WorkItemIntegrations({ taskDir }: { taskDir: string }): JSX.Elem
     {links.length === 0 && <p className="text-my-xs text-my-tertiary">尚未关联远端 PR / MR。</p>}
     {choices.length > 0 ? <>
       <Select ariaLabel="工作项集成目的地" className="w-full" value={binding?.id ?? ''} disabled={action.busy} onChange={setSelectedId} options={choices.map((choice) => ({ value: choice.id, label: choice.label }))} />
-      {binding && connection && context && provider?.category === 'repositories' && <PullRequestBrowser key={`${binding.id}:${binding.revision}:${connection.revision}`} root={root} connection={connection} binding={binding} onAttach={async (object) => { const result = await api.integrations.attach({ ...context, object }); if (!result.ok) throw new Error(result.error); setLinks(result.data) }} />}
+      {binding && connection && context && provider?.category === 'repositories' && <PullRequestBrowser key={`${binding.id}:${binding.revision}:${connection.revision}`} root={root} connection={connection} binding={binding} onAttach={async (object) => { const result = await api.integrations.attach({ ...context, object }); if (!result.ok) throw new Error(result.error); if (action.current()) setLinks(result.data) }} />}
       {context && provider?.category === 'messaging' && <div className="space-y-2">
         <p className="text-my-xs text-my-tertiary">仅向所选群发送当前工作项摘要；先预览，再明确发送。</p>
         <Button size="sm" disabled={action.busy} onClick={() => void action.run(() => api.integrations.previewNotification(context)).then((result) => { if (result) { setPreview(result); setReceipt(null); setRequestId(crypto.randomUUID()) } })}>{preview ? '重新预览' : '预览通知'}</Button>
@@ -51,6 +53,6 @@ export function WorkItemIntegrations({ taskDir }: { taskDir: string }): JSX.Elem
         {receipt && <p role="status" className={receipt.state === 'delivered' ? 'text-my-xs text-my-success-text' : 'text-my-xs text-my-tertiary'}>{receipt.detail}{receipt.state === 'uncertain' ? '。重新发送前请先核实目标群。' : ''}</p>}
       </div>}
     </> : <p className="text-my-xs text-my-tertiary">在外部应用集成中为当前项目绑定仓库或群机器人后，可在这里关联与发送。</p>}
-    {(action.error || snapshotError) && <p role="alert" className="text-my-xs text-my-danger-text">{action.error || snapshotError}</p>}
+    {(action.error || linksError || snapshotError) && <p role="alert" className="text-my-xs text-my-danger-text">{action.error || linksError || snapshotError}</p>}
   </section>
 }

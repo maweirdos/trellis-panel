@@ -2,7 +2,8 @@ import { ipcInvoke } from '../../shared/ipc-channels'
 import { startHttpApi, stopHttpApi, httpApiStatus } from '../services/httpapi'
 import { accessServer } from '../services/access/server'
 import { getAccessToken, rotateAccessToken } from '../services/access/token'
-import { getSettings, setSettings } from '../services/store'
+import { getSettings } from '../services/store'
+import { writeNativeSettings } from '../services/daemon-client/native-state'
 import { getSnapshot } from '../state'
 import { handle } from './registry'
 
@@ -17,8 +18,8 @@ export function registerHttpApiIpc(): void {
     }
   })
 
-  handle(ipcInvoke.mcp.toggle, (_e, onOff: boolean) => {
-    setSettings({ httpApi: { ...getSettings().httpApi, enabled: onOff } })
+  handle(ipcInvoke.mcp.toggle, async (_e, onOff: boolean) => {
+    await writeNativeSettings({ httpApi: { ...getSettings().httpApi, enabled: onOff } })
     if (onOff) {
       const s = getSettings()
       void startHttpApi(s.httpApi.port, s.httpApi.lanAccess, () => getSnapshot())

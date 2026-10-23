@@ -9,7 +9,7 @@ import type { WorkflowDesktopUpdate } from '../../shared/workflow-desktop'
 import { workflowRevisionPreviewInputSchema, workflowRevisionAcceptInputSchema, workflowRevisionStatusInputSchema } from '../../shared/workflow-revisions'
 import { workflowWorkspaceRecoveryInputSchema, workflowRecoveryArtifactInputSchema } from '../../shared/workflow-recovery'
 import { getProjectRoot, getProjectGeneration } from '../state'
-import { getWorkflowApplication, workflowDesktopTemplates, isWorkflowAdmissionClosed, withManagedWorkflowAdmission } from '../services/workflow-desktop'
+import { getWorkflowApplication, workflowDesktopTemplates, isWorkflowAdmissionClosed } from '../services/daemon-client/workflow'
 import { getDocumentViews } from '../services/document-views'
 import { broadcastToWindows } from '../services/bridge'
 import { handle } from './registry'
@@ -76,7 +76,7 @@ export function registerWorkflowIpc(): void {
     const preview = await (await getWorkflowApplication(root)).preview(input)
     return { ...preview, limitations: [...(preview.limitations ?? []), '工作流执行会话首次创建时使用原生默认模型与模式，后续阶段可能复用该会话；原会话临时选择的模型、模式和推理选项不会自动沿用，实际配置在阶段就绪记录中核对。'] }
   }, true))
-  handle(ipcInvoke.workflow.start, scoped(workflowStartInputSchema, async (root, input) => withManagedWorkflowAdmission(root, async () => (await getWorkflowApplication(root)).start(input), input), true))
+  handle(ipcInvoke.workflow.start, scoped(workflowStartInputSchema, async (root, input) => (await getWorkflowApplication(root)).start(input), true))
   handle(ipcInvoke.workflow.snapshot, scoped(workflowSnapshotInputSchema, async (root, input) => (await getWorkflowApplication(root)).snapshot(input)))
   handle(ipcInvoke.workflow.events, scoped(workflowEventsInputSchema, async (root, input) => (await getWorkflowApplication(root)).events(input)))
   handle(ipcInvoke.workflow.stop, scoped(workflowStopInputSchema, async (root, input) => (await getWorkflowApplication(root)).stop(input)))

@@ -1,5 +1,6 @@
 /** Trellis application facade. ACP framing, turns, controls and child cleanup belong to acpx. */
 import { app } from 'electron'
+import { assertRuntimeExecutionHost } from './runtime-host'
 import { randomUUID } from 'crypto'
 import { existsSync, readFileSync, statSync } from 'fs'
 import { relative } from 'path'
@@ -45,6 +46,7 @@ const resuming = new Set<string>()
 type ResumeResult = { ok: true; sessionId: string } | IpcFail
 const resumeRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
 const recoveryRequests = new Map<string, { root: string; operation: ModelRecoveryOperation; promise: Promise<AcpRecoverModelResult> }>()
+const creatingRequests = new Set<Promise<{ ok: true; sessionId: string } | IpcFail>>()
 const leases = new Map<string, ActiveSession>()
 let shuttingDown = false
 let eventSeq = 0
@@ -296,6 +298,7 @@ function liveHistorySummary(summary: AcpHistorySummary): AcpHistorySummary {
     pendingPermissions: [...live.pendingPermissions.values()].map((pending) => pending.payload), stateRevision: meta.stateRevision ?? 0 }
 }
 export async function listAcpHistorySessions(root: string, input?: unknown): Promise<AcpHistoryListResult | IpcFail> {
+  assertRuntimeExecutionHost()
   if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   try {
     let result = await listAcpHistory(root, input)
@@ -304,6 +307,7 @@ export async function listAcpHistorySessions(root: string, input?: unknown): Pro
   } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
 }
 export async function getAcpHistorySession(root: string, id: string): Promise<{ ok: true; version: 1; session: AcpHistorySummary } | IpcFail> {
+  assertRuntimeExecutionHost()
   if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   if (!idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
   try {
@@ -314,6 +318,7 @@ export async function getAcpHistorySession(root: string, id: string): Promise<{ 
 }
 /** Metadata only: no transport connection, turn, transcript or permission mutation. */
 export async function updateAcpHistorySession(root: string, id: string, input: unknown, isCurrent: () => boolean = () => true): Promise<AcpHistoryUpdateResult | IpcFail> {
+  assertRuntimeExecutionHost()
   if (!root || !isCurrent()) return ipcFail(IpcErrorCode.NoProject, '项目已切换或未打开项目')
   const parsed = acpHistoryUpdateInputSchema.safeParse(input)
   if (!idSchema.safeParse(id).success || !parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 或偏好参数无效')
@@ -331,6 +336,7 @@ export async function updateAcpHistorySession(root: string, id: string, input: u
   } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
 }
 export async function getAcpHistoryEvents(root: string, id: string, input?: unknown): Promise<AcpHistoryEventPage | IpcFail> {
+  assertRuntimeExecutionHost()
   if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   if (!idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
   try {
@@ -342,6 +348,7 @@ export async function getAcpHistoryEvents(root: string, id: string, input?: unkn
   } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
 }
 export async function retryAcpHistorySession(root: string, id: string): Promise<{ ok: true; historyPersistence: import('../../shared/acp-history').AcpHistoryPersistence } | IpcFail> {
+  assertRuntimeExecutionHost()
   if (!root || !idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '项目或会话 ID 无效')
   const active = sessions.get(id)
   if (active && !belongs(root, active.meta)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
@@ -356,6 +363,7 @@ export function listAcpProfiles(projectRoot: string): { ok: true; profiles: AcpA
   try { return { ok: true, profiles: readProfiles(projectRoot) } } catch (error) { return failure(error) }
 }
 export function saveAcpProfile(projectRoot: string, input: unknown): { ok: true; profile: AcpAgentProfile } | IpcFail {
+  assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const parsed = profileSchema.safeParse(input)
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, parsed.error.issues[0]?.message ?? 'Agent 配置无效')
@@ -369,6 +377,7 @@ export function saveAcpProfile(projectRoot: string, input: unknown): { ok: true;
   } catch (error) { return failure(error) }
 }
 export function deleteAcpProfile(projectRoot: string, id: string): { ok: true } | IpcFail {
+  assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   if (!idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, 'Agent ID 无效')
   try { saveProfiles(projectRoot, readProfiles(projectRoot).filter((profile) => profile.id !== id)); return { ok: true } }
@@ -441,11 +450,13 @@ function permissionHandler(session: ActiveSession): AcpPermissionHandler {
   }
 }
 export function respondAcpPermission(projectRoot: string, requestId: string, optionId: string): { ok: true } | IpcFail {
+  assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   for (const session of sessions.values()) {
     const pending = session.pendingPermissions.get(requestId)
     if (!pending) continue
     if (!belongs(projectRoot, session.meta)) return ipcFail(IpcErrorCode.Denied, '此权限请求不属于当前项目')
+    if (pending.payload.expiresAt !== undefined && pending.payload.expiresAt <= Date.now()) { pending.finish({ outcome: 'cancel' }, 'timeout'); void cancelOwned(session, '权限等待超时'); return ipcFail(IpcErrorCode.NotFound, '权限请求已结束或超时') }
     if (session.closing || pending.payload.connectionGeneration !== session.meta.connectionGeneration || pending.payload.turnId !== session.meta.turnId) return ipcFail(IpcErrorCode.Conflict, '权限请求已失效')
     const choices = pending.payload.options.filter((option) => option.optionId === optionId)
     if (choices.length !== 1) return ipcFail(IpcErrorCode.InvalidArg, '权限选项无效或不唯一，请选择此请求提供的唯一选项')
@@ -550,7 +561,15 @@ async function refreshSessionMetadata(session: ActiveSession): Promise<void> {
   session.knowledgeSupport = support
 }
 
-export async function newAcpSession(projectRoot: string, input: unknown): Promise<{ ok: true; sessionId: string } | IpcFail> {
+export function newAcpSession(projectRoot: string, input: unknown): Promise<{ ok: true; sessionId: string } | IpcFail> {
+  assertRuntimeExecutionHost()
+  const pending = newOwnedAcpSession(projectRoot, input)
+  creatingRequests.add(pending)
+  void pending.finally(() => creatingRequests.delete(pending)).catch(() => {})
+  return pending
+}
+async function newOwnedAcpSession(projectRoot: string, input: unknown): Promise<{ ok: true; sessionId: string } | IpcFail> {
+  assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const parsed = newSessionSchema.safeParse(input)
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, parsed.error.issues[0]?.message ?? '启动参数无效')
@@ -621,6 +640,7 @@ function mapEvent(session: ActiveSession, event: AcpRuntimeEvent): void {
 }
 
 export async function bindAcpSessionTask(projectRoot: string, sessionId: string, input: AcpBindTaskInput, isCurrent?: () => boolean): Promise<{ ok: true; session: AcpSessionRecord } | IpcFail> {
+  assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
   const parsed = bindTaskSchema.safeParse(input)
@@ -643,6 +663,7 @@ export async function bindAcpSessionTask(projectRoot: string, sessionId: string,
 }
 
 export async function promptAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt): Promise<{ ok: true; turnId: string } | IpcFail> {
+  assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
   if (session.accepting || session.turn || session.closing || (session.meta.status !== 'ready' && !(session.meta.status === 'disconnected' && session.meta.restorePending))) return ipcFail(IpcErrorCode.Conflict, `当前不能发送：${session.meta.status}`)
@@ -800,6 +821,7 @@ async function cancelOwned(session: ActiveSession, reason: string): Promise<{ ok
   } finally { if (timer) clearTimeout(timer) }
 }
 export async function cancelAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true } | IpcFail> {
+  assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   return 'ok' in session ? session : cancelOwned(session, '用户取消')
 }
@@ -844,6 +866,7 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
   }
 }
 export async function killAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true } | IpcFail> {
+  assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const recovery = recoveryRequests.get(sessionId)
   if (recovery) {
@@ -856,6 +879,7 @@ export async function killAcpSession(projectRoot: string, sessionId: string): Pr
 }
 
 export function resumeAcpSession(projectRoot: string, sessionId: string): Promise<ResumeResult> {
+  assertRuntimeExecutionHost()
   if (!projectRoot) return Promise.resolve(ipcFail(IpcErrorCode.NoProject, '未打开项目'))
   if (!idSchema.safeParse(sessionId).success) return Promise.resolve(ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效'))
   const root = canonicalDirectory(projectRoot)
@@ -878,6 +902,7 @@ interface ModelRecoveryOperation {
 
 /** Separate from normal configuration: cold controls must never imply a ready connection. */
 export function recoverAcpSessionModel(projectRoot: string, sessionId: string, input: AcpRecoverModelInput, isCurrent?: () => boolean): Promise<AcpRecoverModelResult> {
+  assertRuntimeExecutionHost()
   const reject = (code: typeof IpcErrorCode[keyof typeof IpcErrorCode], message: string): Promise<AcpRecoverModelResult> => Promise.resolve(ipcFail(code, message))
   if (!projectRoot) return reject(IpcErrorCode.NoProject, '未打开项目')
   if (!idSchema.safeParse(sessionId).success || !input || typeof input.modelId !== 'string' || !input.modelId.trim() || input.modelId.length > 512 || typeof input.expectedConnectionGeneration !== 'string' || !input.expectedConnectionGeneration) return reject(IpcErrorCode.InvalidArg, '模型恢复参数无效')
@@ -1016,6 +1041,7 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string, recove
 }
 
 export async function configureAcpSession(projectRoot: string, sessionId: string, input: AcpConfigureInput): Promise<{ ok: true; session: AcpSessionRecord } | IpcFail> {
+  assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
   const parsed = configureSchema.safeParse(input)
@@ -1038,12 +1064,15 @@ export async function configureAcpSession(projectRoot: string, sessionId: string
   finally { session.accepting = false; release(session) }
 }
 
+export function closeAcpAdmission(): void { shuttingDown = true }
 export async function shutdownAcp(): Promise<void> {
   shuttingDown = true
   const results = await Promise.all([...sessions.values()].map((session) => killOwned(session, '应用退出')))
   const failed = results.find((result) => result.ok === false)
   await knowledgeMcpBridge.close()
   if (failed?.ok === false) throw new Error(failed.error)
+  await Promise.allSettled([...creatingRequests, ...[...resumeRequests.values()].map(request => request.promise), ...[...recoveryRequests.values()].map(request => request.promise)])
+  if (sessions.size || resuming.size) throw new Error('ACP 原有连接或启动操作尚未确认释放')
   await stopAcpHistory()
 }
 
@@ -1058,6 +1087,10 @@ export function emitTrellisTimeline(
   payload?: Record<string, unknown>,
   taskDir?: string
 ): void {
+  if (!process.argv.includes('--trellis-role=daemon')) {
+    void import('./daemon-client/acp').then(client => client.emitTrellisTimeline(projectRoot, kind, text, payload, taskDir)).catch(error => process.emitWarning(errorMessage(error), { code: 'TRELLIS_RUNTIME_OBSERVER' }))
+    return
+  }
   const ev: TimelineEvent = {
     id: `te-${Date.now().toString(36)}-${(eventSeq++).toString(36)}`,
     ts: Date.now(),

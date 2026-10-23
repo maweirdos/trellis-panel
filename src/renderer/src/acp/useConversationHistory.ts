@@ -220,8 +220,10 @@ export function useConversationHistory(root: string, activeId: string | null) {
       if (selection.current === state.sessionId && state.session) setSelectedSession((previous) => previous ? { ...previous, ...state.session, ...conversationManagement(scope.managed.get(state.sessionId)?.session ?? previous), pendingPermissions: state.pendingPermissions ?? state.session?.pendingPermissions ?? [], stateRevision: state.stateRevision ?? previous.stateRevision } : previous)
     })
     const offDone = api.onAcpDone((state) => { if (isCurrent() && (!state.projectRoot || sameRoot(root, state.projectRoot))) schedule() })
-    return () => { offState(); offDone(); if (pending) clearTimeout(pending) }
-  }, [root, scope, isCurrent, refresh])
+    const bridge = api as typeof api & { onDaemonRuntimeReset?: (callback: (event: { projectRoot: string }) => void) => () => void }
+    const offReset = bridge.onDaemonRuntimeReset?.(event => { if (isCurrent() && sameRoot(root, event.projectRoot)) { schedule(); reloadSelected() } })
+    return () => { offState(); offDone(); offReset?.(); if (pending) clearTimeout(pending) }
+  }, [root, scope, isCurrent, refresh, reloadSelected])
   const coverage: AcpHistoryCoverage | null = page?.coverage ?? selectedSession?.historyCoverage ?? null
   return { sessions, knownSessions, selectedSession, events, query, setQuery, archive, setArchive, update, mutationBusy, mutationErrors,
     canManage: hasIpc && typeof api.acpHistoryUpdate === 'function', loading, loadingMore, loadingEarlier, error, hasMore,

@@ -1,6 +1,8 @@
 import { ipcEvent, ipcInvoke } from '../../shared/ipc-channels'
 import type { AiConfig, GitLabConfig, JiraConfig, WeknoraConfig } from '../../shared/types'
 import { getSettings, setSettings } from '../services/store'
+import { writeNativeSettings } from '../services/daemon-client/native-state'
+import type { Settings } from '../../shared/types'
 import { protectPassword } from '../services/jira'
 import { protectGitlabPassword, clearGitlabTokenCache, clearGitlabStatusCache } from '../services/gitlab'
 import { protectAiKey } from '../services/ai'
@@ -16,7 +18,7 @@ import { handle } from './registry'
 export function registerSettingsIpc(): void {
   handle(ipcInvoke.settings.get, () => getSettings())
 
-  handle(ipcInvoke.settings.set, (_e, patch) => {
+  handle(ipcInvoke.settings.set, async (_e, patch: Partial<Settings>) => {
     const prevJira = getSettings().jira
     let jira = patch.jira as JiraConfig | undefined
     if (jira && typeof jira.password === 'string' && jira.password && !jira.passwordEncrypted && jira.password !== prevJira.password) {
@@ -55,7 +57,11 @@ export function registerSettingsIpc(): void {
       }
       if (!Array.isArray(weknora.searchKbIds)) weknora = { ...weknora, searchKbIds: [] }
     }
-    const next = setSettings({ ...patch, jira, gitlab, ai, weknora })
+    const { theme, desktop, recentProjects, ...runtimePatch } = { ...patch, jira, gitlab, ai, weknora }
+    if (Object.values(runtimePatch).some(value => value !== undefined)) await writeNativeSettings(runtimePatch)
+    const uiPatch = { ...(theme === undefined ? {} : { theme }), ...(desktop === undefined ? {} : { desktop }), ...(recentProjects === undefined ? {} : { recentProjects }) }
+    if (Object.keys(uiPatch).length) setSettings(uiPatch)
+    const next = getSettings()
     if (patch.theme !== undefined) {
       applyMainWindowAppearance(getMainWindow(), next.theme)
       broadcastToWindows(ipcEvent.themeChanged, next.theme)
@@ -80,7 +86,7 @@ export function registerSettingsIpc(): void {
     const ok = await setExplorerMenu(on, getSettings().bridgeToken)
     if (ok) {
       const cur = getSettings()
-      setSettings({ ...cur, desktop: { ...cur.desktop, explorerContextMenu: on } })
+      setSettings({ desktop: { ...cur.desktop, explorerContextMenu: on } })
     }
     return ok ? { ok: true as const, supported: true } : { ok: false as const, supported: true, reason: '注册表写入失败' }
   })

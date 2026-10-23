@@ -36,7 +36,7 @@ export function operationIdFor(key: {
 }
 
 /** slug 派生：issueKey+标题 → 安全目录名片段（CLI --slug 校验：无分隔符/无 ..）。 */
-export function slugFor(issueKey: string, title: string): string {
+export function slugFor(issueKey: string, title: string, fallback = 'jira-task'): string {
   const raw = `${issueKey}-${title}`
     .replace(/\[[^\]]*\]/g, (m) => m.replace(/[[\]]/g, '')) // "[KEY] title" → "KEY title"
     .trim()
@@ -47,12 +47,12 @@ export function slugFor(issueKey: string, title: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 48)
     .replace(/^-+|-+$/g, '')
-  return slug || 'jira-task'
+  return slug || fallback
 }
 
 const TASK_JSON_READ_LIMIT_BYTES = 256 * 1024
 
-interface TaskMetaOnDisk {
+export interface TaskMetaOnDisk {
   dir: string
   taskJsonId: string | null
   panelOperationId: string | null
@@ -61,9 +61,14 @@ interface TaskMetaOnDisk {
   jiraInstanceId: string | null
   jiraIssueId: string | null
   jiraUrl: string | null
+  sourceProvider: string | null
+  sourceInstanceId: string | null
+  sourceId: string | null
+  sourceKey: string | null
+  sourceUrl: string | null
 }
 
-function readTaskMeta(root: string, repoRelativeDir: string): TaskMetaOnDisk | null {
+export function readTaskMeta(root: string, repoRelativeDir: string): TaskMetaOnDisk | null {
   const file = join(resolve(root), ...repoRelativeDir.split('/'), 'task.json')
   try {
     const st = statSync(file)
@@ -79,7 +84,12 @@ function readTaskMeta(root: string, repoRelativeDir: string): TaskMetaOnDisk | n
       legacyJiraKey: typeof meta.jiraKey === 'string' ? meta.jiraKey : null,
       jiraInstanceId: typeof meta.panel_jira_instance_id === 'string' ? meta.panel_jira_instance_id : null,
       jiraIssueId: /^(?:[1-9]\d*)$/.test(String(meta.panel_jira_issue_id ?? '')) ? String(meta.panel_jira_issue_id) : null,
-      jiraUrl: typeof meta.jiraUrl === 'string' ? meta.jiraUrl : typeof meta.panel_jira_issue_url === 'string' ? meta.panel_jira_issue_url : null
+      jiraUrl: typeof meta.jiraUrl === 'string' ? meta.jiraUrl : typeof meta.panel_jira_issue_url === 'string' ? meta.panel_jira_issue_url : null,
+      sourceProvider: typeof meta.panel_source_provider === 'string' ? meta.panel_source_provider : null,
+      sourceInstanceId: typeof meta.panel_source_instance_id === 'string' ? meta.panel_source_instance_id : null,
+      sourceId: typeof meta.panel_source_id === 'string' ? meta.panel_source_id : null,
+      sourceKey: typeof meta.panel_source_key === 'string' ? meta.panel_source_key : null,
+      sourceUrl: typeof meta.panel_source_url === 'string' ? meta.panel_source_url : null
     }
   } catch {
     return null
@@ -99,7 +109,7 @@ function listTaskDirsUnder(dir: string): string[] {
 export interface DiskReconciliation {
   /** operationId → 实际目录（仓库相对，正斜杠；活跃+归档）。 */
   byOperationId: Map<string, string[]>
-  /** panel_jira_issue_key / 旧 meta.jiraKey（大写）→ 目录。 */
+  /** Source display keys only form candidates; adapters verify provider/instance/stable ID. */
   byIssueKey: Map<string, string[]>
   /** 全部已知任务目录（含归档）。 */
   known: TaskMetaOnDisk[]
@@ -136,7 +146,7 @@ export function scanDiskForReconciliation(root: string): DiskReconciliation {
       list.push(meta.dir)
       byOperationId.set(meta.panelOperationId, list)
     }
-    for (const key of [meta.panelIssueKey, meta.legacyJiraKey]) {
+    for (const key of [meta.panelIssueKey, meta.legacyJiraKey, meta.sourceKey]) {
       if (key === null) continue
       const upper = key.toUpperCase()
       const list = byIssueKey.get(upper) ?? []

@@ -49,7 +49,7 @@ export const PAGE_NAVIGATION = {
   studio: { title: '定制', domain: 'tasks', scope: 'project', icon: 'modules' },
   models: { title: '模型', domain: 'settings', scope: 'application', icon: 'cycles' },
   settings: { title: '偏好', domain: 'settings', scope: 'application', icon: 'work-items', scopeNote: '个人偏好和连接配置在本机保存；项目绑定按设置项注明的目标生效。' },
-  integrations: { title: '集成', domain: 'settings', scope: 'mixed', icon: 'modules', keywords: 'Jira GitHub GitLab Gitee 钉钉 飞书 连接 仓库 通知', scopeNote: '连接在本机保存；查询、仓库与通知目的地绑定当前项目。' },
+  integrations: { title: '集成', domain: 'settings', scope: 'mixed', icon: 'modules', keywords: 'Jira GitHub GitLab Issues Gitee 钉钉 飞书 WeKnora 连接 账号 同步 导入 仓库 通知', scopeNote: '连接在本机保存；任务来源、仓库、知识与通知目的地绑定当前项目。' },
   gateway: { title: 'MCP', domain: 'settings', scope: 'mixed', icon: 'analytics', keywords: '应用 项目' },
   devtools: {
     title: '工具', domain: 'tasks', scope: 'project', icon: 'views', keywords: 'Git 只读 应用 运行 日志 脚本 启动 端口',

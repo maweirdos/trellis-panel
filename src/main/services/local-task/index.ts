@@ -1,14 +1,14 @@
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
-import { jiraSourceMatch } from '../../../shared/jira-source'
+import { taskSourceAdapter } from './source-adapter'
 import { LocalControlStore } from './control-store'
 import {
   dirExists,
   expectedDefaultPrd,
-  issueIdentifierOf,
   isArchivedDir,
   operationIdFor,
   readTaskJsonId,
+  readTaskMeta,
   scanDiskForReconciliation,
   sha256Hex,
   slugFor,
@@ -18,14 +18,12 @@ import { runTaskCreateCli, runTaskArchiveCli } from './cli-runner'
 import { atomicWriteText, readFileHash, renderSourcePrd } from './prd'
 import {
   CREATED_STAGES,
-  META_JIRA_INSTANCE_ID,
-  META_JIRA_ISSUE_ID,
-  META_JIRA_ISSUE_KEY,
   META_OPERATION_ID,
   META_SOURCE_UPDATED_AT_MS,
   RESUMABLE_STAGES,
   createFromJiraInputSchema,
-  type CreateFromJiraInput,
+  createFromExternalInputSchema,
+  type LocalTaskImportInput,
   type CreateOrOpenResult,
   type LocalOperationKey,
   type LocalOperationPayload,
@@ -34,7 +32,7 @@ import {
 } from './types'
 
 /**
- * LocalTaskService（S0 G4 第一片，design §7.2）：Jira → 本地轻任务的单一创建器。
+ * LocalTaskService: one durable source-to-task pipeline, with provider identity adapters.
  *
  * 步骤链（每步落控制库，失败可恢复）：
  *   registered →（task.py create --no-start，--meta 扁平恢复标识，禁 --force）
@@ -55,6 +53,7 @@ import {
 
 export type {
   CreateFromJiraInput,
+  CreateFromExternalInput,
   CreateOrOpenResult,
   LocalOperationKey,
   LocalOperationPayload,
@@ -63,6 +62,7 @@ export type {
 } from './types'
 export { LocalControlStore, localRuntimeDirOf, controlDbExists } from './control-store'
 export { jiraInstanceIdFor } from '../jira-instance'
+export { externalSourceLinkKey } from './source-adapter'
 export {
   slugFor,
   todayPrefix,
@@ -114,7 +114,7 @@ function dirNameOf(repoRelativeDir: string): string {
   return parts[parts.length - 1]
 }
 
-function buildPayload(input: CreateFromJiraInput, key: LocalOperationKey, slug: string): LocalOperationPayload {
+function buildPayload(input: LocalTaskImportInput, key: LocalOperationKey, slug: string): LocalOperationPayload {
   const fetchedAtMs = input.fetchedAtMs ?? Date.now()
   const description = input.description ?? null
   return {
@@ -123,6 +123,7 @@ function buildPayload(input: CreateFromJiraInput, key: LocalOperationKey, slug: 
     prepDir: `${todayPrefix()}-${slug}`,
     finalDir: null,
     source: {
+      ...(input.externalSource ? { provider: input.externalSource.provider, externalId: input.externalSource.id } : {}),
       issueKey: input.issueKey,
       issueId: input.issueId ?? null,
       instanceId: input.instanceId,
@@ -140,6 +141,16 @@ function buildPayload(input: CreateFromJiraInput, key: LocalOperationKey, slug: 
   }
 }
 
+function operationMatchesSource(row: LocalOperationRow, input: LocalTaskImportInput, workspaceId: string): boolean {
+  const stored = row.payload.source
+  return row.workspaceId === workspaceId && row.payload.operationKey.workspaceId === workspaceId &&
+    row.payload.operationKey.instanceId === input.instanceId && stored.instanceId === input.instanceId &&
+    stored.provider === input.externalSource?.provider &&
+    (input.externalSource
+      ? stored.externalId === input.externalSource.id
+      : stored.issueId === null || input.issueId == null || stored.issueId === input.issueId)
+}
+
 /** 入口：从 Jira 行创建或打开本地任务。 */
 export async function createOrOpenTaskFromJira(rawInput: unknown, hooks: LocalTaskRunHooks = {}): Promise<CreateOrOpenResult> {
   const parsed = createFromJiraInputSchema.safeParse(rawInput ?? {})
@@ -147,10 +158,21 @@ export async function createOrOpenTaskFromJira(rawInput: unknown, hooks: LocalTa
     const first = parsed.error.issues[0]?.message ?? '参数不合法'
     return { ok: false, code: 'invalid', error: `创建参数非法：${first}` }
   }
-  const input = parsed.data
+  return createOrOpenValidated(parsed.data, hooks)
+}
+
+/** External provider facade; never relabels these tasks as Jira or reimplements creation. */
+export async function createOrOpenTaskFromExternal(rawInput: unknown, hooks: LocalTaskRunHooks = {}): Promise<CreateOrOpenResult> {
+  const parsed = createFromExternalInputSchema.safeParse(rawInput ?? {})
+  if (!parsed.success) return { ok: false, code: 'invalid', error: `创建参数非法：${parsed.error.issues[0]?.message ?? '参数不合法'}` }
+  return createOrOpenValidated(parsed.data, hooks)
+}
+
+async function createOrOpenValidated(input: LocalTaskImportInput, hooks: LocalTaskRunHooks): Promise<CreateOrOpenResult> {
   const workspaceId = workspaceIdForRoot(input.root)
-  const issueIdentifier = issueIdentifierOf(input.issueId ?? null, input.issueKey)
-  const mutexKey = `${workspaceId}|${input.instanceId}|${issueIdentifier}`
+  const issueIdentifier = taskSourceAdapter(input).identifier(input)
+  // External IDs are opaque: delimiters inside them must not merge unrelated requests.
+  const mutexKey = JSON.stringify([resolve(input.root), workspaceId, input.instanceId, issueIdentifier])
   const existing = inflight.get(mutexKey)
   if (existing !== undefined) return existing
   const run = runCreateOrOpen(input, { workspaceId, issueIdentifier }, hooks).finally(() => {
@@ -161,12 +183,12 @@ export async function createOrOpenTaskFromJira(rawInput: unknown, hooks: LocalTa
 }
 
 async function runCreateOrOpen(
-  input: CreateFromJiraInput,
+  input: LocalTaskImportInput,
   ids: { workspaceId: string; issueIdentifier: string },
   hooks: LocalTaskRunHooks
 ): Promise<CreateOrOpenResult> {
   const root = resolve(input.root)
-  const sourceIssueId = input.issueId ?? null
+  const source = taskSourceAdapter(input)
   const tasksRoot = tasksDirOf(root)
   const cliRunner = hooks.cliRunner ?? runTaskCreateCli
   const cliOptions = { root, pythonCommand: hooks.pythonCommand }
@@ -180,36 +202,56 @@ async function runCreateOrOpen(
     return { ok: false, code: 'control_store', error: e instanceof Error ? e.message : String(e) }
   }
   try {
-    // ② 磁盘对账（panel_operation_id / panel_jira_issue_key / 旧 meta.jiraKey 双索引）
+    // ② Reconcile operation markers and source keys across active and archived tasks.
     const disk = scanDiskForReconciliation(root)
     const keyBase = { workspaceId: ids.workspaceId, instanceId: input.instanceId, issueIdentifier: ids.issueIdentifier }
     const priorOps = store.findOperationsByKey(keyBase)
+    let matchedOperation: LocalOperationRow | null = null
 
     // ③ 重复点击默认打开已有任务：优先真实磁盘（含旧流程创建、无 op 记录的任务）。
     //    但存在可续跑（中断中）操作时不得短路——必须走 ④⑤ 的恢复管线补完创建。
     if (input.allowAdditional === false) {
       const candidates = disk.byIssueKey.get(input.issueKey.toUpperCase()) ?? []
-      const matching = disk.known.filter((item) => (candidates.includes(item.dir) || (sourceIssueId !== null && item.jiraIssueId === String(sourceIssueId) && item.jiraInstanceId === input.instanceId)) && !(sourceIssueId !== null && item.jiraIssueId !== null && item.jiraIssueId !== String(sourceIssueId)))
-      const byKey = matching.filter((item) => jiraSourceMatch(item.jiraInstanceId, item.jiraUrl, input.instanceId, input.url) === 'same').map((item) => item.dir)
-      if (matching.some((item) => jiraSourceMatch(item.jiraInstanceId, item.jiraUrl, input.instanceId, input.url) === 'ambiguous')) {
-        return { ok: false, code: 'conflict', error: '发现同编号的历史关联，但其 Jira 实例不明确，请先补充来源链接或实例身份' }
+      const matching = disk.known.filter((item) => source.compatible(item) && (candidates.includes(item.dir) || source.stableMatch(item, input)) && !source.differentId(item, input))
+      const byKey = matching.filter((item) => source.match(item, input) === 'same')
+      if (matching.some((item) => source.match(item, input) === 'ambiguous')) {
+        return { ok: false, code: 'conflict', error: `发现同编号的历史关联，但其 ${source.label} 实例不明确，请先补充来源链接或实例身份` }
       }
       const hasResumable = priorOps.some((r) => RESUMABLE_STAGES.includes(r.stage))
       if (!hasResumable) {
         if (byKey.length === 1) {
-          return {
-            ok: true,
-            dirName: dirNameOf(byKey[0]),
-            created: false,
-            already: true,
-            operationId: priorOps.length > 0 ? priorOps[priorOps.length - 1].operationId : '',
-            stage: 'ready',
-            notes: [isArchivedDir(byKey[0]) ? '该工单关联任务已归档' : '该工单已有本地任务，已直接打开'],
-            archived: isArchivedDir(byKey[0])
+          const task = byKey[0]
+          const recorded = task.panelOperationId !== null
+            ? store.getOperation(task.panelOperationId)
+            : priorOps.find((operation) => operation.payload.finalDir === task.dir) ?? null
+          if (task.panelOperationId !== null && recorded === null) {
+            return { ok: false, code: 'conflict', error: '关联任务携带操作标识，但控制库记录缺失；保留目录待人工对账，不猜测恢复阶段', operationId: task.panelOperationId }
+          }
+          if (recorded !== null && (!operationMatchesSource(recorded, input, ids.workspaceId) || (disk.byOperationId.get(recorded.operationId)?.length ?? 0) > 1)) {
+            return { ok: false, code: 'conflict', error: '关联任务与操作记录的工作区、来源或目录归属不一致，保持可见待人工确认', operationId: recorded.operationId }
+          }
+          if ((recorded === null || recorded.stage === 'ready') && readFileHash(join(root, ...task.dir.split('/'), 'prd.md')) === null) {
+            return { ok: false, code: 'conflict', error: '关联任务的 prd.md 缺失或不可读，保留目录待人工确认', operationId: task.panelOperationId ?? recorded?.operationId }
+          }
+          if (recorded !== null && recorded.stage !== 'ready') {
+            // A Jira key-only operation may now be requested with a numeric ID.
+            // Continue its original operation instead of claiming an unfinished task is ready.
+            matchedOperation = recorded
+          } else {
+            return {
+              ok: true,
+              dirName: dirNameOf(task.dir),
+              created: false,
+              already: true,
+              operationId: task.panelOperationId ?? recorded?.operationId ?? '',
+              stage: 'ready',
+              notes: [isArchivedDir(task.dir) ? '该工单关联任务已归档' : '该工单已有本地任务，已直接打开'],
+              archived: isArchivedDir(task.dir)
+            }
           }
         }
         if (byKey.length > 1) {
-          return { ok: false, code: 'conflict', error: `该工单关联了多个本地任务目录，无法自动选择：${byKey.map(dirNameOf).join(', ')}` }
+          return { ok: false, code: 'conflict', error: `该工单关联了多个本地任务目录，无法自动选择：${byKey.map((task) => dirNameOf(task.dir)).join(', ')}` }
         }
       }
     }
@@ -217,13 +259,23 @@ async function runCreateOrOpen(
     // ④ 选定操作记录：存在可续跑记录 → 恢复；否则新序号（allowAdditional 显式新增）
     let row: LocalOperationRow
     const resumable = input.allowAdditional === false ? priorOps.filter((r) => RESUMABLE_STAGES.includes(r.stage)) : []
-    if (resumable.length > 0) {
+    if (matchedOperation !== null) {
+      row = matchedOperation
+    } else if (resumable.length > 0) {
       row = resumable[resumable.length - 1] // 最近一次显式新增的序号
+    } else if (input.allowAdditional === false && priorOps.length > 0) {
+      // Terminal records still own their identity; a missing directory is not a new task.
+      row = priorOps[priorOps.length - 1]
     } else {
       const ordinal = store.maxOrdinal(keyBase) + 1
       // 一单多任务的显式新增序号也体现在 slug 上（同日同名会被 CLI 拒绝；用户未显式命名时追加序号）
-      const sameKeyDifferentSource = disk.known.some((item) => [item.panelIssueKey, item.legacyJiraKey].some((key) => key?.toUpperCase() === input.issueKey.toUpperCase()) && (jiraSourceMatch(item.jiraInstanceId, item.jiraUrl, input.instanceId, input.url) === 'other' || (sourceIssueId !== null && item.jiraIssueId !== null && item.jiraIssueId !== String(sourceIssueId))))
-      const derived = slugFor(input.issueKey, input.title) + (sameKeyDifferentSource ? `-${sha256Hex(`${input.instanceId}#${sourceIssueId ?? input.issueKey}`).slice(0, 6)}` : '')
+      const sameKeyDifferentSource = disk.known.some((item) => [item.panelIssueKey, item.legacyJiraKey, item.sourceKey].some((key) => key?.toUpperCase() === input.issueKey.toUpperCase()) && (source.match(item, input) === 'other' || source.differentId(item, input)))
+      const suffixIdentity = input.externalSource
+        ? JSON.stringify([source.kind, input.instanceId, source.remoteId(input)])
+        : `${input.instanceId}#${source.remoteId(input)}`
+      // External sources always reserve their namespace in the directory name,
+      // including concurrent allocations before either source appears on disk.
+      const derived = slugFor(input.issueKey, input.title, `${source.kind}-task`) + (sameKeyDifferentSource || input.externalSource ? `-${sha256Hex(suffixIdentity).slice(0, 6)}` : '')
       const slug = input.slug ?? (ordinal > 1 ? `${derived}-${ordinal}` : derived)
       const key: LocalOperationKey = { ...keyBase, ordinal }
       const operationId = operationIdFor(key)
@@ -231,9 +283,12 @@ async function runCreateOrOpen(
       row = store.insertOperation(operationId, ids.workspaceId, 'registered', buildPayload(input, key, slug))
     }
     const operationId = row.operationId
+    if (!operationMatchesSource(row, input, ids.workspaceId)) {
+      return { ok: false, code: 'conflict', error: '操作记录的工作区或来源身份不一致，保持可见待人工确认', operationId }
+    }
     const notes: string[] = []
-    // created 语义：进入本调用前 CLI 尚未成功（registered/failed）且本调用完成了创建
-    const creatingFresh = row.stage === 'registered' || row.stage === 'failed'
+    // Only a verified CLI create in this call may claim a newly created artifact.
+    let created = false
 
     // ⑤ 对账本 operationId 的真实目录
     const ownDirs = disk.byOperationId.get(operationId) ?? []
@@ -241,17 +296,28 @@ async function runCreateOrOpen(
       safeUpdate(store, operationId, 'conflict', { error: '发现多个目录带同一 operationId，需人工确认' })
       return { ok: false, code: 'conflict', error: `发现多个目录带同一 operationId（${ownDirs.join(', ')}），保持可见待人工确认`, operationId }
     }
+    const ownTask = ownDirs.length === 1 ? disk.known.find((task) => task.dir === ownDirs[0]) : undefined
+    if (ownTask !== undefined && (!source.compatible(ownTask) || source.differentId(ownTask, input) || source.match(ownTask, input) !== 'same')) {
+      safeUpdate(store, operationId, 'conflict', { error: '任务操作标识与来源身份不一致或来源不明确' })
+      return { ok: false, code: 'conflict', error: '关联任务的操作标识与来源身份不一致或来源不明确，保持可见待人工确认', operationId }
+    }
     if (ownDirs.length === 1 && isArchivedDir(ownDirs[0])) {
       return { ok: true, dirName: dirNameOf(ownDirs[0]), created: false, already: true, operationId, stage: row.stage, notes: ['关联任务已归档'], archived: true }
     }
 
     let finalDir: string | null = ownDirs.length === 1 ? ownDirs[0] : null
-    if (finalDir === null && CREATED_STAGES.includes(row.stage)) {
+    if (finalDir === null && (CREATED_STAGES.includes(row.stage) || row.payload.finalDir !== null || row.stage === 'missing')) {
       // 曾推进到创建后阶段但目录消失（活跃/归档均无）→ missing 可见，不自动重建
       safeUpdate(store, operationId, 'missing', { error: '关联任务目录消失（未在活跃/归档区找到）' })
       return { ok: false, code: 'conflict', error: '关联任务目录不存在（可能被移动或删除），已标记 missing 待人工确认，不自动重建', operationId }
     }
+    if (finalDir === null && row.stage === 'conflict') {
+      return { ok: false, code: 'conflict', error: row.payload.error ?? '关联操作仍有未解决的冲突，请先人工对账或显式新增任务', operationId }
+    }
     if (finalDir !== null && row.stage === 'ready') {
+      if (readFileHash(join(root, ...finalDir.split('/'), 'prd.md')) === null) {
+        return { ok: false, code: 'conflict', error: '关联任务的 prd.md 缺失或不可读，保留目录待人工确认', operationId }
+      }
       return { ok: true, dirName: dirNameOf(finalDir), created: false, already: true, operationId, stage: 'ready', notes, archived: false }
     }
     if (finalDir !== null && row.stage === 'registered') {
@@ -302,10 +368,8 @@ async function runCreateOrOpen(
       // --meta 扁平键：时间值显式校验（非法/缺失 → 整键省略，不写垃圾值）
       const meta: Array<[string, string]> = [
         [META_OPERATION_ID, operationId],
-        [META_JIRA_INSTANCE_ID, input.instanceId],
-        [META_JIRA_ISSUE_KEY, input.issueKey]
+        ...source.metadata(input)
       ]
-      if (input.issueId !== null && input.issueId !== undefined) meta.push([META_JIRA_ISSUE_ID, String(input.issueId)])
       const updatedAtMs = input.updatedAtMs ?? null
       if (updatedAtMs !== null && Number.isSafeInteger(updatedAtMs) && updatedAtMs > 0) {
         meta.push([META_SOURCE_UPDATED_AT_MS, String(updatedAtMs)])
@@ -335,14 +399,25 @@ async function runCreateOrOpen(
         safeUpdate(store, operationId, 'failed', { error: `CLI 成功但未找到可核实的任务目录${detail}` })
         return { ok: false, code: 'cli_failed', error: `CLI 成功但未找到携带本操作恢复标识的任务目录${detail}，不采纳`, operationId }
       }
+      const createdTask = fresh.known.find((task) => task.dir === finalDir)
+      if (createdTask === undefined || !source.compatible(createdTask) || source.differentId(createdTask, input) || source.match(createdTask, input) !== 'same') {
+        safeUpdate(store, operationId, 'conflict', { error: 'CLI 返回目录的来源身份不一致或不明确' })
+        return { ok: false, code: 'conflict', error: 'CLI 返回目录的来源身份不一致或不明确，不采纳，保持目录待人工确认', operationId }
+      }
+      created = true
       // 基线快照：CLI 默认 PRD 的哈希（后续判定用户是否改过）
-      const baseline = readFileHash(join(tasksRoot, dirNameOf(finalDir), 'prd.md'))
+      const baseline = readFileHash(join(root, ...finalDir.split('/'), 'prd.md'))
+      const defaultPrd = expectedDefaultPrd(input.title, input.summaryDescription.trim() !== '' ? input.summaryDescription : input.title)
       store.updateOperation(operationId, 'cli_created', {
         finalDir,
         prepDir: dirNameOf(finalDir),
-        prdBaselineSha256: baseline !== null ? baseline.sha256 : null
+        // An edit made while the CLI was running is authored content, not a baseline.
+        prdBaselineSha256: baseline !== null && baseline.content.replace(/\r\n/g, '\n') === defaultPrd ? baseline.sha256 : null
       })
       row = store.getOperation(operationId) ?? row
+      if (isArchivedDir(finalDir)) {
+        return { ok: true, dirName: dirNameOf(finalDir), created: false, already: true, operationId, stage: row.stage, notes: ['关联任务已归档'], archived: true }
+      }
       try {
         hooks.afterCliCreated?.(dirNameOf(finalDir))
       } catch (e) {
@@ -351,7 +426,7 @@ async function runCreateOrOpen(
     }
 
     const dirName = dirNameOf(finalDir)
-    const taskDirAbs = join(tasksRoot, dirName)
+    const taskDirAbs = join(root, ...finalDir.split('/'))
 
     // ⑦ PRD 来源草稿（原子替换；已过该阶段不重写；用户已改则保留）
     const prdPath = join(taskDirAbs, 'prd.md')
@@ -368,6 +443,7 @@ async function runCreateOrOpen(
               current.content.replace(/\r\n/g, '\n') === expected
       if (pristine) {
         const rendered = renderSourcePrd({
+          providerLabel: source.label,
           issueKey: input.issueKey,
           issueId: input.issueId ?? null,
           instanceId: input.instanceId,
@@ -393,13 +469,17 @@ async function runCreateOrOpen(
     // ⑧ 关联登记 + 别名（source_links / task_aliases；清理观测不得触碰）
     const trellisTaskId = readTaskJsonId(root, finalDir)
     const taskRef = trellisTaskId !== null ? `task:${trellisTaskId}` : `dir:${finalDir}`
-    store.insertSourceLink({
+    store.commitSourceLink({
+      operationId,
+      trellisTaskId,
+      dir: finalDir,
       workspaceId: ids.workspaceId,
-      sourceKind: 'jira',
-      sourceKey: `${input.instanceId}#${input.issueId ?? input.issueKey}`,
+      sourceKind: source.kind,
+      sourceKey: source.linkKey(input),
       taskRef,
       payload: {
         operationId,
+        ...(input.externalSource ? { provider: input.externalSource.provider, externalId: input.externalSource.id } : {}),
         issueKey: input.issueKey,
         issueId: input.issueId ?? null,
         url: input.url,
@@ -407,26 +487,17 @@ async function runCreateOrOpen(
         fetchedAtMs: row.payload.source.fetchedAtMs
       }
     })
-    store.upsertAlias(taskRef, trellisTaskId, finalDir)
-    store.updateOperation(operationId, 'linked', { finalDir })
 
     // ⑨ 最终验证 → ready（不凭阶段宣称，重读核实）
-    const taskJson = readFileHash(join(taskDirAbs, 'task.json'))
-    let metaOk = false
-    if (taskJson !== null) {
-      try {
-        const parsed = JSON.parse(taskJson.content) as { meta?: Record<string, unknown> }
-        metaOk = parsed.meta?.panel_operation_id === operationId
-      } catch {
-        metaOk = false
-      }
-    }
+    const taskMeta = readTaskMeta(root, finalDir)
+    const metaOk = taskMeta !== null && taskMeta.panelOperationId === operationId && source.compatible(taskMeta) &&
+      !source.differentId(taskMeta, input) && source.match(taskMeta, input) === 'same'
     if (!metaOk || readFileHash(prdPath) === null) {
       safeUpdate(store, operationId, 'failed', { error: '最终验证未通过（task.json 恢复标识或 prd.md 缺失）' })
       return { ok: false, code: 'conflict', error: '任务目录最终验证未通过（恢复标识或 prd.md 缺失），已保留目录待人工检查', operationId }
     }
     store.updateOperation(operationId, 'ready', { finalDir, error: undefined })
-    return { ok: true, dirName, created: creatingFresh, already: !creatingFresh, operationId, stage: 'ready', notes, archived: false }
+    return { ok: true, dirName, created, already: !created, operationId, stage: 'ready', notes, archived: false }
   } catch (e) {
     return { ok: false, code: 'internal', error: `操作失败：${stripAbsPaths(e instanceof Error ? e.message : String(e))}` }
   } finally {

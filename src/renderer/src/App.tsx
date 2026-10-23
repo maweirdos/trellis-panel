@@ -35,6 +35,13 @@ function MainApp(): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
   const inboxAdd = useApp((s) => s.inboxAdd)
   const projectRoot = snapshot?.meta.root
+  const bootstrapped = useApp((s) => s.bootstrapped)
+  useEffect(() => {
+    const bridge = api as typeof api & { onDaemonRuntimeUnavailable?: (callback: (event: { projectRoot: string; error: string }) => void) => () => void }
+    return bridge.onDaemonRuntimeUnavailable?.(event => {
+      if (projectRootKey(useApp.getState().snapshot?.meta.root ?? '') === projectRootKey(event.projectRoot)) useApp.getState().pushToast({ kind: 'warn', title: '后台 Runtime 连接中断', body: event.error })
+    })
+  }, [])
 
   // 文档会话集线器：定向变更事件 → 各阅读会话
   useEffect(() => {
@@ -103,6 +110,17 @@ function MainApp(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The subscriptions above and project bootstrap must both be complete before
+  // main drains cold/queued/inbox task-focus actions.
+  useEffect(() => {
+    if (!hasIpc || !bootstrapped || !api.bootstrap) return
+    let current = true
+    void api.bootstrap.attached().then(result => {
+      if (current && !result.ok) pushToast({ kind: 'warn', title: '桌面事件连接未完成', body: result.error })
+    }).catch(() => { if (current) pushToast({ kind: 'warn', title: '桌面事件连接未完成', body: '请重载桌面以重新连接启动事件' }) })
+    return () => { current = false; void api.bootstrap.detached().catch(() => undefined) }
+  }, [bootstrapped, pushToast])
+
   // 深链切换项目时（主进程直接打开，不经过 openProjectPath）同步收件箱与项目状态
   useEffect(() => {
     if (projectRoot && useApp.getState().inboxProjectRoot !== projectRoot) {
@@ -134,7 +152,8 @@ export default function App(): JSX.Element {
   const fontSize = useMy((s) => s.fontSize)
   const docMode = new URLSearchParams(window.location.search).get('mode') === 'doc'
   const [windowTheme, setWindowTheme] = useState<'light' | 'dark'>(() => new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark')
-  const effectiveTheme = settings?.theme ?? (docMode || capsuleMode || quickTodoMode ? windowTheme : theme)
+  const hasWindowTheme = new URLSearchParams(window.location.search).has('theme')
+  const effectiveTheme = settings?.theme ?? (hasWindowTheme || docMode || capsuleMode || quickTodoMode ? windowTheme : theme)
 
   useEffect(() => {
     const onStorage = (event: StorageEvent): void => {

@@ -1,4 +1,4 @@
-import { safeStorage } from 'electron'
+import { protectedStorage as safeStorage } from '../../daemon/protected-storage'
 import { IntegrationError } from './types'
 
 export function protectSecret(value: string): string {

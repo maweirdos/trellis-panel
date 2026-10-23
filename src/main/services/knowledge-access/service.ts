@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { safeStorage } from 'electron'
+import { protectedStorage as safeStorage } from '../../daemon/protected-storage'
 import { z } from 'zod'
 import type { KnowledgeArtifact, KnowledgeCollection, KnowledgeContext, KnowledgeDocument, KnowledgePublication, KnowledgeReadResult, KnowledgeScope, KnowledgeSearchResult, KnowledgeSource } from '../../../shared/knowledge-access'
 import { IpcErrorCode, ipcFail, type IpcFail } from '../../../shared/ipc-errors'
@@ -12,7 +12,7 @@ import { materialPath } from './materials'
 import { readKnowledgeState, updateKnowledgeState, knowledgeHash } from './repository'
 import { artifactRead, assertArtifactCurrent, handoffKnowledgeArtifact, readTaskPrd, saveKnowledgeArtifact } from './materials'
 import type { KnowledgeOwner } from './types'
-import * as hostState from '../../state'
+import { knowledgeWorkspaceRoot, knowledgeWorkspaceGeneration } from './workspace-host'
 import * as integrations from '../integrations/service'
 import * as providers from '../integrations/providers'
 import { getSettings } from '../store'
@@ -20,11 +20,10 @@ import { KnowledgeConversationWorkflow } from './conversation'
 import type { KnowledgeConversationInput, KnowledgeConversationResult } from '../../../shared/knowledge-conversation'
 
 const uuidSchema = z.string().uuid()
-function stateApi(): typeof hostState { return hostState }
 function integrationApi(): typeof integrations { return integrations }
 function registryApi(): typeof providers { return providers }
-function rootOf(): string | null { return stateApi().getProjectRoot() }
-function generationOf(): number { return stateApi().getProjectGeneration() }
+function rootOf(): string | null { return knowledgeWorkspaceRoot() }
+function generationOf(): number { return knowledgeWorkspaceGeneration() }
 function canonicalRoot(root: string): string { return integrationApi().canonicalRoot(root) }
 function publicFail(error: unknown): IpcFail {
   if (error instanceof IntegrationError) {

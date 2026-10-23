@@ -1,4 +1,4 @@
-import { safeStorage } from 'electron'
+import { protectedStorage as safeStorage } from '../daemon/protected-storage'
 import type {
   JiraConfig,
   JiraDistributionResult,
@@ -602,4 +602,56 @@ export async function jiraComment(
     body: JSON.stringify({ body })
   }, opts)
   return res.ok ? { ok: true } : { ok: false, error: res.error }
+}
+
+/** Additive Server 8.1 workspace operations. All use the existing auth/transport. */
+export class JiraV2Error extends Error {
+  constructor(readonly status: number | undefined, readonly uncertain: boolean) {
+    super(uncertain ? 'Jira operation outcome requires reconciliation' : `Jira REST v2 request failed${status ? ` (HTTP ${status})` : ''}`)
+  }
+}
+async function workspaceV2(cfg: JiraConfig, path: string, opts: JiraFetchOptions, init?: RequestInit): Promise<unknown> {
+  // Workspace consumers supply integrationFetch (proxy, 2 MiB cap, no redirects).
+  if (!opts.transport) throw new Error('Jira workspace requires an explicit bounded transport')
+  const result = await jiraFetch(cfg, `/rest/api/2/${path}`, init, opts)
+  if (!result.ok) throw new JiraV2Error(result.status, Boolean(init?.method && init.method !== 'GET' && (result.status === undefined || result.status >= 500)))
+  return result.data
+}
+export function jiraV2Myself(cfg: JiraConfig, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, 'myself', opts) }
+export function jiraV2ServerInfo(cfg: JiraConfig, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, 'serverInfo', opts) }
+export function jiraV2Projects(cfg: JiraConfig, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, 'project', opts) }
+export function jiraV2Fields(cfg: JiraConfig, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, 'field', opts) }
+export function jiraV2Priorities(cfg: JiraConfig, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, 'priority', opts) }
+export function jiraV2ProjectStatuses(cfg: JiraConfig, projectId: string, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, `project/${encodeURIComponent(projectId)}/statuses`, opts) }
+export function jiraV2Assignable(cfg: JiraConfig, projectId: string, query: string, opts: JiraFetchOptions): Promise<unknown> {
+  return workspaceV2(cfg, `user/assignable/search?project=${encodeURIComponent(projectId)}&username=${encodeURIComponent(query)}&startAt=0&maxResults=50`, opts)
+}
+export function jiraV2Permissions(cfg: JiraConfig, scope: { projectId: string; issueId?: string }, opts: JiraFetchOptions): Promise<unknown> {
+  const permissions = 'BROWSE_PROJECTS,CREATE_ISSUES,EDIT_ISSUES,TRANSITION_ISSUES,ASSIGN_ISSUES,ADD_COMMENTS'
+  return workspaceV2(cfg, `mypermissions?projectId=${encodeURIComponent(scope.projectId)}${scope.issueId ? `&issueId=${encodeURIComponent(scope.issueId)}` : ''}&permissions=${permissions}`, opts)
+}
+const WORKSPACE_FIELDS = 'summary,description,priority,status,assignee,labels,issuetype,updated,project,parent,attachment,comment'
+export function jiraV2SearchPage(cfg: JiraConfig, input: { jql: string; startAt: number; maxResults: number }, opts: JiraFetchOptions): Promise<unknown> {
+  return workspaceV2(cfg, `search?jql=${encodeURIComponent(input.jql)}&startAt=${input.startAt}&maxResults=${input.maxResults}&fields=${WORKSPACE_FIELDS}`, opts)
+}
+export function jiraV2Issue(cfg: JiraConfig, issueId: string, history: boolean, opts: JiraFetchOptions): Promise<unknown> {
+  return workspaceV2(cfg, `issue/${encodeURIComponent(issueId)}?fields=*all${history ? '&expand=changelog' : ''}`, opts)
+}
+export function jiraV2Comments(cfg: JiraConfig, issueId: string, startAt: number, opts: JiraFetchOptions): Promise<unknown> {
+  return workspaceV2(cfg, `issue/${encodeURIComponent(issueId)}/comment?startAt=${startAt}&maxResults=50`, opts)
+}
+export function jiraV2EditMeta(cfg: JiraConfig, issueId: string, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, `issue/${encodeURIComponent(issueId)}/editmeta`, opts) }
+export function jiraV2Transitions(cfg: JiraConfig, issueId: string, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, `issue/${encodeURIComponent(issueId)}/transitions?expand=transitions.fields`, opts) }
+export function jiraV2CreateMeta(cfg: JiraConfig, projectId: string, opts: JiraFetchOptions): Promise<unknown> {
+  return workspaceV2(cfg, `issue/createmeta?projectIds=${encodeURIComponent(projectId)}&expand=projects.issuetypes.fields`, opts)
+}
+export type JiraV2WriteFields = { summary?: string; description?: string | null; priority?: { id: string }; assignee?: { name: string } | null; labels?: string[]; issuetype?: { id: string } }
+export function jiraV2Update(cfg: JiraConfig, issueId: string, fields: JiraV2WriteFields, opts: JiraFetchOptions): Promise<unknown> {
+  return workspaceV2(cfg, `issue/${encodeURIComponent(issueId)}`, opts, { method: 'PUT', body: JSON.stringify({ fields }) })
+}
+export function jiraV2Create(cfg: JiraConfig, projectId: string, fields: JiraV2WriteFields & { summary: string; issuetype: { id: string } }, opts: JiraFetchOptions): Promise<unknown> {
+  return workspaceV2(cfg, 'issue', opts, { method: 'POST', body: JSON.stringify({ fields: { ...fields, project: { id: projectId } } }) })
+}
+export function jiraV2AddComment(cfg: JiraConfig, issueId: string, body: string, opts: JiraFetchOptions): Promise<unknown> {
+  return workspaceV2(cfg, `issue/${encodeURIComponent(issueId)}/comment`, opts, { method: 'POST', body: JSON.stringify({ body }) })
 }

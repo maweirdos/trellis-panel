@@ -1,4 +1,4 @@
-import { safeStorage } from 'electron'
+import { protectedStorage as safeStorage } from '../daemon/protected-storage'
 import type { AiApiFormat, AiChatResult, AiConfig, ChatImage, ChatMessage, ModelFetchResult, ModelItem, ThinkingLevel } from '../../shared/types'
 import { errorMessage, isAbortError } from '../../shared/errors'
 import { proxiedFetch } from './proxy'

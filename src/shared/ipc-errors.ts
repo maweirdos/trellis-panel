@@ -7,6 +7,10 @@
  */
 
 export const IpcErrorCode = {
+  Unavailable: 'E_UNAVAILABLE',
+  Version: 'E_VERSION',
+  Busy: 'E_BUSY',
+  ResetRequired: 'E_RESET_REQUIRED',
   /** 未打开项目 */
   NoProject: 'E_NO_PROJECT',
   /** 目标资源不存在 */

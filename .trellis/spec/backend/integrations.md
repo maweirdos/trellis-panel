@@ -18,6 +18,16 @@ Read before modifying external provider adapters, credentials, project bindings,
 
 ## 3. Contracts
 
+### Daemon authority cutover
+
+After `prepareGuiNativeState` completes, the protected daemon settings owner is the only runtime/integration writer. The legacy file/repository rules below describe compatibility migration inputs; they do not permit GUI writes behind a prepared/daemon checkpoint. Read [integration-daemon.md](./integration-daemon.md) for the concrete native ownership protocol and its unexecuted acceptance gates.
+
+The retained `IntegrationApi` forwards explicit operations through `integration.execute`: a bounded RuntimeWire body containing a native-generated cancellation owner UUID, an allowlisted operation and its schema-validated input. `createLegacyIntegrationActions(scope)` runs the existing services inside the actual authenticated workspace scope and validates feature responses. The GUI facade verifies main-window/main-frame identity and captures native project generation before allowing grant/effect submission. Secret patches and OAuth refresh publication remain in the same protected daemon repository.
+
+The Jira/GitLab/DingTalk workspace APIs are separately typed optional preload capabilities. Provider pages must feature-detect them and show unavailable/setup states honestly. Distinct GitLab presentation entries share the existing GitLab provider identity and protected connections. Catalog capability declarations do not prove credentials, permissions or receiver reachability.
+
+Provider mutation receipts live in the daemon's bounded `provider-commands` store; `native.provider.command({commandId})` inspects the original root/profile-scoped receipt. A changed epoch produces unknown rather than replaying an external effect. Common integration reads do not create effect receipts; common mutations preserve their original command UUID.
+
 ### Credentials and persistence
 
 `userData/integrations.json` has schema version 2 (validated v1 migration with `.v1.bak`), at most 100 connection records, 500 bindings, 100 notification delivery receipts, and a 2 MiB file limit. Version2 adds legacy-import identity and typed knowledge bindings; knowledge publication receipts are separate private project state. Mutations use atomic replacement; corrupt/future-version data is preserved and rejected, never silently initialized over. New secrets use main-process `safeStorage`; public connections include only non-secret `config` and `hasSecrets` indicators. Full webhook URLs are secrets. Secret patches are `keep`, `replace(value)`, or explicit `clear`.

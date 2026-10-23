@@ -1200,9 +1200,14 @@ export interface SyncExtensionResult {
 
 /** APIs exposed to the renderer via contextBridge. */
 export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, TaskConversationsApi {
+  bootstrap: import('./bootstrap').BootstrapApi
   gitWorkspace: import('./git-workspace').GitWorkspaceApi
   knowledgeAccess: import('./knowledge-access').KnowledgeApi
   integrations: import('./integrations').IntegrationApi
+  /** Feature guards still detect an older loaded preload independently. */
+  jiraIntegration?: import('./jira-integration').JiraIntegrationApi
+  gitlabWorkspace?: import('./gitlab-integration').GitlabWorkspaceApi
+  dingtalkWorkspace?: import('./dingtalk-integration').DingTalkApi
   /** 置顶文档小窗：打开/聚焦（支持多开，key 去重）；theme 跟随面板主题 */
   docOpen: (opts: { key: string; title: string; file: string; theme: string }) => Promise<{
     ok: boolean

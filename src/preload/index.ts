@@ -21,6 +21,12 @@ import type {
 } from '../shared/observability/store'
 import type { IpcFail } from '../shared/ipc-errors'
 import type { IntegrationApi } from '../shared/integrations'
+import { createJiraWorkspaceBridge } from '../shared/jira-integration'
+import { createGitlabWorkspaceBridge } from '../shared/gitlab-integration'
+import { createDingTalkBridge } from '../shared/dingtalk-integration'
+import type { DaemonApi } from '../shared/daemon'
+import type { DaemonQuitApi } from '../shared/daemon-quit'
+import type { BootstrapApi } from '../shared/bootstrap'
 import type { KnowledgeApi } from '../shared/knowledge-access'
 import type { TrellisApi } from '../shared/types'
 import type { TaskConversationsApi } from '../shared/task-conversations'
@@ -89,6 +95,24 @@ const taskConversationsApi: TaskConversationsApi = {
 }
 
 const api = {
+  bootstrap: {
+    status: () => ipcRenderer.invoke(ipcInvoke.bootstrap.status),
+    retry: () => ipcRenderer.invoke(ipcInvoke.bootstrap.retry),
+    legacyInspect: () => ipcRenderer.invoke(ipcInvoke.bootstrap.legacyInspect),
+    legacyStop: (input) => ipcRenderer.invoke(ipcInvoke.bootstrap.legacyStop, input),
+    legacyReconcile: (input) => ipcRenderer.invoke(ipcInvoke.bootstrap.legacyReconcile, input),
+    exit: () => ipcRenderer.invoke(ipcInvoke.bootstrap.exit),
+    minimize: () => ipcRenderer.invoke(ipcInvoke.bootstrap.minimize),
+    maximize: () => ipcRenderer.invoke(ipcInvoke.bootstrap.maximize),
+    rendered: () => ipcRenderer.invoke(ipcInvoke.bootstrap.rendered),
+    attached: () => ipcRenderer.invoke(ipcInvoke.bootstrap.attached),
+    detached: () => ipcRenderer.invoke(ipcInvoke.bootstrap.detached),
+    paint: (input) => ipcRenderer.invoke(ipcInvoke.bootstrap.paint, input),
+    onChanged: (listener) => subscribe(ipcEvent.bootstrapChanged, listener)
+  } satisfies BootstrapApi,
+  jiraIntegration: createJiraWorkspaceBridge((channel, input) => ipcRenderer.invoke(channel, input)),
+  gitlabWorkspace: createGitlabWorkspaceBridge((channel, input) => ipcRenderer.invoke(channel, input)),
+  dingtalkWorkspace: createDingTalkBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   gitWorkspace: {
     status: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.status, input),
     diff: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.diff, input),
@@ -126,6 +150,23 @@ const api = {
     resolvePublication: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.resolvePublication, input),
     clearHistory: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.clearHistory, input)
   } satisfies KnowledgeApi,
+  daemonQuit: {
+    state: () => ipcRenderer.invoke(ipcInvoke.daemonQuit.state),
+    decide: (input) => ipcRenderer.invoke(ipcInvoke.daemonQuit.decide, input)
+  } satisfies DaemonQuitApi,
+  onDaemonRuntimeUnavailable: (callback: (event: { projectRoot: string; error: string }) => void) => subscribe(ipcEvent.daemonRuntimeUnavailable, callback),
+  onDaemonRuntimeReset: (callback: (event: { projectRoot: string }) => void) => subscribe(ipcEvent.daemonRuntimeReset, callback),
+  daemon: {
+    protocolVersion: 1,
+    status: () => ipcRenderer.invoke(ipcInvoke.daemon.status),
+    start: () => ipcRenderer.invoke(ipcInvoke.daemon.start),
+    stop: () => ipcRenderer.invoke(ipcInvoke.daemon.stop),
+    restart: () => ipcRenderer.invoke(ipcInvoke.daemon.restart),
+    preferences: () => ipcRenderer.invoke(ipcInvoke.daemon.preferences),
+    setPreferences: (input) => ipcRenderer.invoke(ipcInvoke.daemon.setPreferences, input),
+    reconcileStartup: (originalCommandId) => ipcRenderer.invoke(ipcInvoke.daemon.reconcileStartup, { originalCommandId }),
+    logs: (input) => ipcRenderer.invoke(ipcInvoke.daemon.logs, input)
+  } satisfies DaemonApi,
   integrations: {
     authorize: (input) => ipcRenderer.invoke(ipcInvoke.integration.authorize, input),
     cancelAuthorization: (requestId) => ipcRenderer.invoke(ipcInvoke.integration.cancelAuthorization, { requestId }),

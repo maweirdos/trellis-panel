@@ -3,7 +3,7 @@ import { app, dialog } from 'electron'
 import { execFile } from 'child_process'
 import { existsSync, readFileSync, statSync } from 'fs'
 import { delimiter, dirname, isAbsolute, join } from 'path'
-import type { AcpAgentConfig, AcpAgentStatus } from '../../../shared/types'
+import type { AcpAgentConfig, AcpAgentStatus, Settings } from '../../../shared/types'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { getSettings, setSettings } from '../store'
 import { acpDataPath, writeJson } from './metadata'
@@ -248,23 +248,25 @@ export async function setupAcpRuntime(id: string): Promise<{ ok: true; agents: A
   try { return await task } finally { setups.delete(id) }
 }
 
-export async function pickAcpNode(): Promise<{ ok: true; cancelled?: boolean; nodePath?: string; agents?: AcpAgentStatus[] } | IpcFail> {
+export type AcpSettingsWriter = (patch: Partial<Settings>) => Promise<Settings>
+const localSettingsWriter: AcpSettingsWriter = async patch => setSettings(patch)
+export async function pickAcpNode(write: AcpSettingsWriter = localSettingsWriter): Promise<{ ok: true; cancelled?: boolean; nodePath?: string; agents?: AcpAgentStatus[] } | IpcFail> {
   const selection = await dialog.showOpenDialog({ title: '选择独立 Node.js（>=22.13）', properties: ['openFile'], filters: process.platform === 'win32' ? [{ name: 'Node.js', extensions: ['exe'] }] : [] })
   const nodePath = selection.filePaths[0]
   if (selection.canceled || !nodePath) return { ok: true, cancelled: true }
   const previous = getSettings().acp
-  setSettings({ acp: { ...previous, nodePath } })
+  await write({ acp: { ...previous, nodePath } })
   try {
     await externalNode()
     return { ...await listAcpAgents(true), nodePath }
   } catch (error) {
-    setSettings({ acp: previous })
+    await write({ acp: previous })
     return ipcFail(IpcErrorCode.InvalidArg, errorMessage(error))
   }
 }
 
 /** R8：为原生直连 Runtime 手动指定 CLI 可执行路径；校验通过才保存，保存后立即重新探测。 */
-export async function pickAcpRuntimePath(id: string): Promise<{ ok: true; cancelled?: boolean; agents?: AcpAgentStatus[] } | IpcFail> {
+export async function pickAcpRuntimePath(id: string, write: AcpSettingsWriter = localSettingsWriter): Promise<{ ok: true; cancelled?: boolean; agents?: AcpAgentStatus[] } | IpcFail> {
   const spec = Object.hasOwn(NATIVES, id) ? NATIVES[id as NativeId] : undefined
   if (!spec) return ipcFail(IpcErrorCode.InvalidArg, '仅原生直连 Runtime 支持配置 CLI 路径')
   const selection = await dialog.showOpenDialog({ title: `选择 ${spec.name} 可执行文件`, properties: ['openFile'] })
@@ -272,11 +274,11 @@ export async function pickAcpRuntimePath(id: string): Promise<{ ok: true; cancel
   if (selection.canceled || !selected) return { ok: true, cancelled: true }
   if (!isAbsolute(selected) || !regularFile(selected)) return ipcFail(IpcErrorCode.InvalidArg, '所选路径不是可执行文件，未保存')
   const previous = getSettings().acp
-  setSettings({ acp: { ...previous, nativePaths: { ...previous?.nativePaths, [id]: selected } } })
+  await write({ acp: { ...previous, nativePaths: { ...previous?.nativePaths, [id]: selected } } })
   try {
     return await listAcpAgents(true)
   } catch (error) {
-    setSettings({ acp: previous })
+    await write({ acp: previous })
     return ipcFail(IpcErrorCode.Io, `状态刷新失败，已还原路径设置：${errorMessage(error)}`)
   }
 }

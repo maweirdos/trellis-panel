@@ -50,6 +50,8 @@
 
 ## Quick Navigation
 
+For independent daemon ownership, protected settings migration and provider workspace composition, read [Integration daemon contracts](./integration-daemon.md).
+
 ### Service Module Structure
 
 | Task                          | File                                               |

@@ -1,5 +1,6 @@
 /** Desktop composition only; durable decisions and execution belong to the application. */
 import { createHash } from 'node:crypto'
+import { assertRuntimeExecutionHost } from './runtime-host'
 import { realpath, lstat } from 'node:fs/promises'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -90,6 +91,7 @@ export function workflowDesktopTemplates(root: string): Array<{ id: string; name
 }
 
 export async function getWorkflowApplication(root: string): Promise<WorkflowApplicationService> {
+  assertRuntimeExecutionHost()
   const canonical = await realpath(root)
   const key = process.platform === 'win32' ? canonical.toLowerCase() : canonical
   const existing = services.get(key)
@@ -319,6 +321,16 @@ export async function withManagedWorkflowAdmission<T>(root: string, action: () =
 export async function hasWorkflowApplications(): Promise<boolean> {
   for (const pending of services.values()) if ((await pending).activeRuns().length) return true
   return false
+}
+/** Copied counts from actual controllers; never inferred from historical rows. */
+export async function countOwnedWorkflowApplications(root?: string): Promise<number> {
+  let count = 0
+  const selected = root ? canonicalWorkspaceRoot(root) : null
+  for (const [key, pending] of services) {
+    if (selected && !samePhysicalWorkspace(key, selected)) continue
+    count += (await pending).activeRuns().length
+  }
+  return count
 }
 
 /** Check only existing controllers; an ordinary chat never creates a control DB. */

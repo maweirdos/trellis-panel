@@ -2,6 +2,7 @@ import { shell } from 'electron'
 import { createServer } from 'node:http'
 import { z } from 'zod'
 import { GITLAB_OAUTH_REDIRECT_URI, GITLAB_OAUTH_SCOPES } from '../../../../shared/integrations'
+import { GITLAB_WRITE_SCOPES } from '../../../../shared/gitlab-integration'
 import { protectSecret, revealSecret } from '../credentials'
 import { readIntegrationState, updateIntegrationState } from '../repository'
 import { integrationFetch, readRemoteJson, recordOf, textOf } from '../transport'
@@ -10,7 +11,8 @@ import type { AuthorizationServer, Client, TokenEndpointResponse } from 'oauth4w
 
 const tokenSchema = z.object({
   baseUrl: z.string(), clientId: z.string(), accessToken: z.string().min(1).max(8192),
-  refreshToken: z.string().min(1).max(8192), expiresAt: z.number().finite().positive()
+  refreshToken: z.string().min(1).max(8192), expiresAt: z.number().finite().positive(),
+  scopes: z.array(z.string().max(80)).max(30).optional()
 })
 type Tokens = z.infer<typeof tokenSchema>
 const refreshes = new Map<string, Promise<string>>()
@@ -24,14 +26,14 @@ function metadata(c: ResolvedConnection): { server: AuthorizationServer; client:
   return { server: { issuer: base, authorization_endpoint: `${base}/oauth/authorize`, token_endpoint: `${base}/oauth/token` }, client: { client_id: c.public.config.clientId } }
 }
 
-function tokensFrom(c: ResolvedConnection, response: TokenEndpointResponse): Tokens {
+function tokensFrom(c: ResolvedConnection, response: TokenEndpointResponse, requested: readonly string[] = GITLAB_OAUTH_SCOPES): Tokens {
   if (response.token_type !== 'bearer' || !response.refresh_token || !response.expires_in || !Number.isFinite(response.expires_in) || response.expires_in <= 0) {
     throw new IntegrationError('GitLab 未返回可刷新的 Bearer 凭证，请重新授权', 'upstream')
   }
-  if (response.scope && GITLAB_OAUTH_SCOPES.some((scope) => !response.scope?.split(' ').includes(scope))) {
-    throw new IntegrationError('GitLab 授权缺少 read_api / read_user 权限，请检查 OAuth 应用范围', 'denied')
+  if (response.scope && requested.some((scope) => !response.scope?.split(' ').includes(scope))) {
+    throw new IntegrationError('GitLab 授权缺少此次明确请求的权限，请检查 OAuth 应用范围', 'denied')
   }
-  const parsed = tokenSchema.safeParse({ baseUrl: c.public.config.baseUrl, clientId: c.public.config.clientId, accessToken: response.access_token, refreshToken: response.refresh_token, expiresAt: Date.now() + response.expires_in * 1000 })
+  const parsed = tokenSchema.safeParse({ baseUrl: c.public.config.baseUrl, clientId: c.public.config.clientId, accessToken: response.access_token, refreshToken: response.refresh_token, expiresAt: Date.now() + response.expires_in * 1000, scopes: response.scope?.split(' ').filter(Boolean) ?? [...requested] })
   if (!parsed.success) throw new IntegrationError('GitLab 返回的凭证格式无效', 'upstream')
   return parsed.data
 }
@@ -83,8 +85,8 @@ function browserCallback(authorizationUrl: URL, expectedState: string, signal: A
   })
 }
 
-export const gitlabAuthorization: AuthorizationPort = {
-  async authorize(c, signal) {
+function authorizationFor(scopes: readonly string[]): AuthorizationPort {
+  return { async authorize(c, signal) {
     if (authorizing) throw new IntegrationError('已有浏览器授权进行中，请先完成或取消该授权', 'conflict')
     authorizing = true
     try {
@@ -93,12 +95,12 @@ export const gitlabAuthorization: AuthorizationPort = {
       const state = oauth.generateRandomState()
       const verifier = oauth.generateRandomCodeVerifier()
       const authorizationUrl = new URL(server.authorization_endpoint || '')
-      authorizationUrl.search = new URLSearchParams({ client_id: client.client_id, redirect_uri: GITLAB_OAUTH_REDIRECT_URI, response_type: 'code', scope: GITLAB_OAUTH_SCOPES.join(' '), state, code_challenge: await oauth.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256' }).toString()
+      authorizationUrl.search = new URLSearchParams({ client_id: client.client_id, redirect_uri: GITLAB_OAUTH_REDIRECT_URI, response_type: 'code', scope: scopes.join(' '), state, code_challenge: await oauth.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256' }).toString()
       const callback = await browserCallback(authorizationUrl, state, signal)
       const params = oauth.validateAuthResponse(server, client, callback, state)
       const options = { [oauth.customFetch]: integrationFetch, [oauth.allowInsecureRequests]: c.public.config.baseUrl.startsWith('http:'), signal }
       const response = await oauth.authorizationCodeGrantRequest(server, client, oauth.None(), params, GITLAB_OAUTH_REDIRECT_URI, verifier, options)
-      const tokens = tokensFrom(c, await oauth.processAuthorizationCodeResponse(server, client, response))
+      const tokens = tokensFrom(c, await oauth.processAuthorizationCodeResponse(server, client, response), scopes)
       const user = await readRemoteJson(`${c.public.config.baseUrl}/api/v4/user`, { headers: { Authorization: `Bearer ${tokens.accessToken}` }, signal })
       const username = textOf(recordOf(user.body).username).slice(0, 100)
       if (!username) throw new IntegrationError('授权后未取得 GitLab 用户身份', 'upstream')
@@ -107,8 +109,11 @@ export const gitlabAuthorization: AuthorizationPort = {
       if (error instanceof IntegrationError) throw error
       throw new IntegrationError(signal.aborted ? '授权已取消或超时' : 'GitLab 授权未完成，请检查 Application ID、回调地址、应用是否为非保密客户端及授权权限', 'upstream')
     } finally { authorizing = false }
-  }
+  } }
 }
+export const gitlabAuthorization: AuthorizationPort = authorizationFor(GITLAB_OAUTH_SCOPES)
+/** Explicit alternate flow; caller must fence/save through the current credential owner. */
+export const gitlabWriteAuthorization: AuthorizationPort = authorizationFor(GITLAB_WRITE_SCOPES)
 
 function currentTokens(c: ResolvedConnection): { tokens: Tokens; encrypted: string } {
   metadata(c)
@@ -139,7 +144,7 @@ export async function gitlabOAuthAccessToken(c: ResolvedConnection): Promise<str
       const { server, client } = metadata(c)
       const options = { [oauth.customFetch]: integrationFetch, [oauth.allowInsecureRequests]: c.public.config.baseUrl.startsWith('http:') }
       const response = await oauth.refreshTokenGrantRequest(server, client, oauth.None(), current.tokens.refreshToken, options)
-      const tokens = tokensFrom(c, await oauth.processRefreshTokenResponse(server, client, response))
+      const tokens = tokensFrom(c, await oauth.processRefreshTokenResponse(server, client, response), current.tokens.scopes ?? GITLAB_OAUTH_SCOPES)
       const encrypted = protectSecret(JSON.stringify(tokens))
       updateIntegrationState((state) => {
         const latest = state.connections.find((item) => item.id === c.public.id && !item.deleted)

@@ -74,7 +74,7 @@ export function readRecords(): AcpSessionRecord[] {
       const canResume = !legacy && typeof record.backendSessionId === 'string' && record.backendSessionId.trim().length > 0 && record.canResume === true
       records.push({ ...record, status: legacy ? 'legacy' : record.status === 'closed' || record.status === 'error' ? record.status : 'disconnected',
         historyKind: legacy ? 'legacy' : canResume ? 'resumable' : 'transcript',
-        canResume, restorePending: false, connectionOwned: false, cleanupRequired: false,
+        canResume, restorePending: false, connectionOwned: false, cleanupRequired: false, pendingPermissions: [],
         events: record.events.map((event) => event.kind === 'permission' ? { ...event, payload: { ...event.payload, pending: false } } : event)
       })
     } catch { /* One damaged historical record must not hide other conversations. */ }

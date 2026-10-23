@@ -235,7 +235,16 @@ export function installTrellisHooks(projectRoot: string): { ok: boolean; error?:
   }
 }
 
+let hostEventSink: ((channel: string, payload: unknown) => void) | undefined
+/** Installed once by the rendererless execution host; observers cannot affect execution. */
+export function installHostEventSink(sink: (channel: string, payload: unknown) => void): () => void {
+  if (hostEventSink) throw new Error('A host event sink is already installed')
+  hostEventSink = sink
+  return () => { if (hostEventSink === sink) hostEventSink = undefined }
+}
 export function broadcastToWindows(channel: string, payload: unknown): void {
+  try { hostEventSink?.(channel, payload) }
+  catch { process.emitWarning('Host observation delivery failed; native execution remains owned.', { code: 'TRELLIS_HOST_OBSERVER' }) }
   for (const w of BrowserWindow.getAllWindows()) {
     if (!w.isDestroyed()) w.webContents.send(channel, payload)
   }

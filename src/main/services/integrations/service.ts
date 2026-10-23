@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { BindingRequest, ConnectionRequest, DeliveryReceipt, IntegrationBinding, IntegrationConnection, IntegrationSnapshot, JiraContext, NotificationPreview, SaveBindingInput, SaveConnectionInput } from '../../../shared/integrations'
 import { connectionFields, externalObjectSchema } from '../../../shared/integrations'
 import type { ExternalLink, ExternalObject } from '../../../shared/integrations'
-import { getSnapshot, getProjectRoot } from '../../state'
+import { integrationWorkspaceRoot, integrationWorkspaceSnapshot } from './workspace-host'
 import { getSettings, setSettings } from '../store'
 import { clearGitlabTokenCache, clearGitlabStatusCache } from '../gitlab'
 import { jiraInstanceIdFor } from '../jira-instance'
@@ -20,7 +20,7 @@ import { remoteUrl } from './transport'
 
 export function canonicalRoot(root: string): string { const normalized = resolve(root); return process.platform === 'win32' ? normalized.toLowerCase() : normalized }
 export function requireProject(expectedRoot: string): string {
-  const root = getProjectRoot()
+  const root = integrationWorkspaceRoot()
   if (!root || canonicalRoot(root) !== canonicalRoot(expectedRoot)) throw new IntegrationError('项目已切换，请在当前项目重新操作', 'conflict')
   return root
 }
@@ -29,7 +29,7 @@ function toPublic(c: StoredConnection): IntegrationConnection {
 }
 export function integrationSnapshot(): IntegrationSnapshot {
   const state = readIntegrationState()
-  const root = getProjectRoot()
+  const root = integrationWorkspaceRoot()
   return { catalog: integrationRegistry.catalog(), authorizationProviders: integrationRegistry.catalog().filter((manifest) => integrationRegistry.get(manifest.id).authorization).map((manifest) => manifest.id), connections: [...legacyConnections(), ...state.connections.filter((c) => !c.deleted).map(toPublic)], bindings: root ? state.bindings.filter((b) => b.root === canonicalRoot(root)) : [], receipts: state.receipts.filter((receipt) => state.bindings.some((b) => b.id === receipt.bindingId && root && b.root === canonicalRoot(root))).map((r): DeliveryReceipt => r.state === 'pending' ? { ...r, state: 'uncertain', detail: '上次发送尚未取得确定结果，请先在目标群核实' } : r), root }
 }
 export function resolveConnection(input: ConnectionRequest, allowDisabled = false): ResolvedConnection {
@@ -253,7 +253,8 @@ export async function commentJira(input: BindingRequest & { key: string; body: s
 }
 function taskContext(expectedRoot: string, taskDir: string) {
   const root = requireProject(expectedRoot)
-  const snapshot = getSnapshot()
+  const snapshot = integrationWorkspaceSnapshot()
+  if (!snapshot || canonicalRoot(snapshot.meta.root) !== canonicalRoot(root)) throw new IntegrationError('工作项快照与授权项目不一致，请重新读取来源项目', 'conflict')
   const candidates = [...(snapshot?.tasks ?? []), ...(snapshot?.archived ?? [])].filter((task) => task.path === taskDir || task.dirName === taskDir)
   if (candidates.length !== 1) throw new IntegrationError('工作项身份不唯一或已变化，请刷新后重试', 'conflict')
   const task = candidates[0]

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readdirSync } from 'node:fs'
 import type { KnowledgeArtifact, KnowledgeScope } from '../../../shared/knowledge-access'
 import type { KnowledgeConversationContext, KnowledgeConversationInput, KnowledgeConversationResult } from '../../../shared/knowledge-conversation'
-import * as hostState from '../../state'
+import { createKnowledgePlanningTask } from './workspace-host'
 import { IntegrationError } from '../integrations/types'
 import { artifactRead, assertArtifactCurrent, handoffKnowledgeArtifact, materialPath, materialRead, readTaskPrd, saveKnowledgeArtifact } from './materials'
 import { knowledgeHash, readKnowledgeState, readConversationActions, updateConversationActions, type ConversationAction } from './repository'
@@ -210,7 +210,7 @@ export class KnowledgeConversationWorkflow {
         // Fence the tasks directory before the global-root synchronous writer is entered.
         materialRead(owner.root, `.trellis/tasks/${slug}/task.json`)
         this.current(owner, signal)
-        const created = hostState.createTaskRecord({ dirName: slug, title: input.title ?? artifact.title, description: `Planning from ${artifact.relativePath}`, status: 'planning', priority: 'P2', assignee: '', origin: 'plan' })
+        const created = createKnowledgePlanningTask({ dirName: slug, title: input.title ?? artifact.title, description: `Planning from ${artifact.relativePath}`, status: 'planning', priority: 'P2', assignee: '', origin: 'plan' })
         if (!created.ok) throw new IntegrationError(created.error, 'io')
         taskDir = created.dirName
       }

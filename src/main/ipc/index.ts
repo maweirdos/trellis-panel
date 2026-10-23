@@ -3,6 +3,8 @@
  * index.ts 在 app.whenReady 后调用 registerIpc(deps)，其余任何模块不得直接触碰 ipcMain。
  */
 import { registerProjectIpc } from './project'
+import { registerDaemonIpc } from './daemon'
+import { registerDaemonQuitIpc } from './daemon-quit'
 import { registerTasksIpc } from './tasks'
 import { registerTaskConversationsIpc } from './task-conversations'
 import { registerTodoIpc } from './todo'
@@ -27,6 +29,7 @@ import { registerBridgeIpc } from './bridge'
 import { registerJiraIpc } from './jira'
 import { registerGitlabIpc } from './gitlab'
 import { registerIntegrationsIpc } from './integrations'
+import { registerProviderWorkspacesIpc } from './provider-workspaces'
 import { registerHttpApiIpc } from './httpapi'
 import { registerChatIpc } from './chat'
 import { registerFlowIpc } from './flow'
@@ -39,6 +42,8 @@ import { registerKnowledgeAccessIpc } from './knowledge-access'
 import type { WindowDeps } from './deps'
 
 export function registerIpc(deps: WindowDeps): void {
+  registerDaemonIpc(deps)
+  registerDaemonQuitIpc()
   registerWindowIpc(deps)
   registerDocsIpc(deps)
   registerProjectIpc(deps)
@@ -67,6 +72,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerJiraIpc()
   registerGitlabIpc()
   registerIntegrationsIpc()
+  registerProviderWorkspacesIpc(deps)
   registerHttpApiIpc()
   registerChatIpc(deps)
   registerFlowIpc()

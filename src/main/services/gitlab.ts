@@ -1,4 +1,5 @@
-import { safeStorage } from 'electron'
+import { protectedStorage as safeStorage } from '../daemon/protected-storage'
+import { createHash } from 'node:crypto'
 import { errorText } from '../../shared/errors'
 import { proxiedFetch } from './proxy'
 import type { GitLabConfig, GitLabMrInfo, GitLabPipelineInfo, GitLabTaskStatus } from '../../shared/types'
@@ -40,7 +41,7 @@ interface TokenEntry {
 const tokenCache = new Map<string, TokenEntry>()
 
 function cacheKey(cfg: GitLabConfig): string {
-  return `${cfg.baseUrl.replace(/\/+$/, '')}|${cfg.user}`
+  return createHash('sha256').update(JSON.stringify([cfg.baseUrl.replace(/\/+$/, ''), cfg.user, cfg.passwordEncrypted === true, cfg.password])).digest('hex')
 }
 
 function normalizeBase(cfg: GitLabConfig): string {

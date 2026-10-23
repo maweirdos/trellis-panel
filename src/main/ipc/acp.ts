@@ -16,10 +16,10 @@ import {
   respondAcpPermission,
   listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath, resumeAcpSession, configureAcpSession, bindAcpSessionTask,
   listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel
-} from '../services/acp'
-import { testAcpRuntimeConnection } from '../services/acp/connection-probe'
+} from '../services/daemon-client/acp'
+import { testAcpRuntimeConnection } from '../services/daemon-client/acp'
 import { handle } from './registry'
-import { isManagedWorkflowOrigin, withOrdinaryWorkflowAdmission, withOrdinaryConnectionAdmission } from '../services/workflow-desktop'
+import { isManagedWorkflowOrigin } from '../services/daemon-client/workflow'
 
 export function registerAcpIpc(): void {
   handle(ipcInvoke.acp.agents, () => listAcpAgents())
@@ -46,9 +46,9 @@ export function registerAcpIpc(): void {
   })
   handle(ipcInvoke.acp.historyEvents, (_e, id, input) => scopedHistory((root) => getAcpHistoryEvents(root, id, input)))
   handle(ipcInvoke.acp.historyRetry, (_e, id) => scopedHistory((root) => retryAcpHistorySession(root, id)))
-  const connection = async <T extends { ok: boolean }>(root: string, target: { sessionId?: string; profileId?: string }, action: () => Promise<T>): Promise<T | IpcFail> => {
+  const connection = async <T extends { ok: boolean }>(root: string, _target: { sessionId?: string; profileId?: string }, action: () => Promise<T>): Promise<T | IpcFail> => {
     if (!root) return noProject()
-    try { return await withOrdinaryConnectionAdmission(root, target, action) }
+    try { return await action() } // The daemon acquires the real ordinary connection admission.
     catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
       return ipcFail(code === 'E_CONFLICT' || code === 'SCOPE_CHANGED' ? IpcErrorCode.Conflict : IpcErrorCode.Io, error instanceof Error ? error.message : '工作区暂不能接纳原生连接')
@@ -71,8 +71,7 @@ export function registerAcpIpc(): void {
     const generation = getProjectGeneration()
     if (!root) return noProject()
     try {
-      return await withOrdinaryWorkflowAdmission(root, sessionId, options?.expectedConnectionGeneration, (admitted) =>
-        promptAcpSession(root, sessionId, text, options, () => getProjectRoot() === root && getProjectGeneration() === generation && admitted(), generation))
+      return await promptAcpSession(root, sessionId, text, options, () => getProjectRoot() === root && getProjectGeneration() === generation, generation)
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
       return ipcFail(code === 'E_CONFLICT' || code === 'SCOPE_CHANGED' ? IpcErrorCode.Conflict : IpcErrorCode.Io, error instanceof Error ? error.message : '工作区暂不能接纳新的修改指令')

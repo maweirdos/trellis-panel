@@ -37,6 +37,9 @@ export interface TaskSourcePort {
 }
 export interface IntegrationProvider {
   manifest: ProviderManifest
+  accounts?: import('./work-ports').IntegrationAccountPort
+  sync?: import('./work-ports').IntegrationSyncPort
+  work?: import('./work-ports').IntegrationWorkPort
   repository?: RepositoryPort
   notification?: NotificationPort
   tasks?: TaskSourcePort

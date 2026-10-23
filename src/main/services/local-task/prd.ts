@@ -15,6 +15,8 @@ import { sha256Hex } from './operations'
 export const PRD_DESCRIPTION_LIMIT_BYTES = 256 * 1024
 
 export interface SourcePrdInput {
+  /** Omitted for legacy Jira callers to preserve their generated content byte-for-byte. */
+  providerLabel?: string
   issueKey: string
   issueId: number | null
   instanceId: string
@@ -50,20 +52,21 @@ function utf8Bytes(text: string): number {
 }
 
 export function renderSourcePrd(input: SourcePrdInput): { content: string; truncated: boolean } {
+  const provider = input.providerLabel ?? 'Jira'
   const lines: string[] = []
   lines.push(`# [${input.issueKey}] ${input.title.replace(/^\[[^\]]*\]\s*/, '')}`)
   lines.push('')
-  lines.push('> 来源：Jira 工单导入草稿（待结合本机代码确认）。本文件由面板生成，业务描述按原文呈现。')
+  lines.push(`> 来源：${provider} 工单导入草稿（待结合本机代码确认）。本文件由面板生成，业务描述按原文呈现。`)
   lines.push('')
   lines.push('## 工单来源')
   lines.push('')
   lines.push(`- Issue：\`${input.issueKey}\`${input.issueId !== null ? `（数字 ID \`${input.issueId}\`）` : ''}`)
   if (input.url !== '') lines.push(`- 原始链接：${input.url}`)
-  lines.push(`- Jira 更新时间：${iso(input.updatedAtMs)}${input.updatedAtMs !== null ? `（Unix 毫秒 \`${input.updatedAtMs}\`）` : ''}`)
+  lines.push(`- ${provider} 更新时间：${iso(input.updatedAtMs)}${input.updatedAtMs !== null ? `（Unix 毫秒 \`${input.updatedAtMs}\`）` : ''}`)
   lines.push(`- 面板采集时间：${iso(input.fetchedAtMs)}（Unix 毫秒 \`${input.fetchedAtMs}\`）`)
   lines.push(`- 摘要：${input.summaryDescription.trim() !== '' ? input.summaryDescription.trim().split(/\r?\n/)[0] : input.title}`)
   lines.push('')
-  lines.push('## Jira 描述（原文呈现）')
+  lines.push(`## ${provider} 描述（原文呈现）`)
   lines.push('')
   if (input.description === null) {
     lines.push('（描述未取得——可能受接口字段权限限制或该字段为空。请打开原工单链接核对，勿凭摘要替代完整输入。）')
@@ -87,7 +90,7 @@ export function renderSourcePrd(input: SourcePrdInput): { content: string; trunc
       lines.push(`> 注意：描述超过 ${PRD_DESCRIPTION_LIMIT_BYTES} 字节限额，此处为截断样本（原文 ${bytes} 字节）。完整内容请打开原工单链接查看。`)
     }
     lines.push('')
-    lines.push('（Jira 富文本按原文保留；未能安全转换的格式请以上方原始链接为准。）')
+    lines.push(`（${provider} 富文本按原文保留；未能安全转换的格式请以上方原始链接为准。）`)
   }
   lines.push('')
   lines.push('## 待办')

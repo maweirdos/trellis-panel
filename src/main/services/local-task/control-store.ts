@@ -233,6 +233,31 @@ export class LocalControlStore {
     )
   }
 
+  /** Association, alias and linked checkpoint share one bounded control transaction. */
+  commitSourceLink(input: {
+    operationId: string; workspaceId: string; sourceKind: string; sourceKey: string
+    taskRef: string; trellisTaskId: string | null; dir: string; payload: Record<string, unknown>
+  }): void {
+    const db = this.requireDb()
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const operation = this.getOperation(input.operationId)
+      if (!operation || operation.workspaceId !== input.workspaceId || operation.payload.operationKey.workspaceId !== input.workspaceId) throw new Error('来源关联与原操作的工作区不一致')
+      const existing = db.prepare('SELECT id FROM source_links WHERE workspaceId=? AND sourceKind=? AND sourceKey=? AND taskRef=? LIMIT 1')
+        .get(input.workspaceId, input.sourceKind, input.sourceKey, input.taskRef)
+      if (!existing) this.insertSourceLink(input)
+      const alias = upsertTaskAliasRecord(db, input.taskRef, input.trellisTaskId, input.dir)
+      if (!alias) throw new Error('来源关联的任务别名无法确认')
+      const next: LocalOperationPayload = { ...operation.payload, finalDir: input.dir }
+      db.prepare('UPDATE local_operations SET stage=?, payloadJson=?, updatedAtMs=? WHERE operationId=?')
+        .run('linked', JSON.stringify(next), Date.now(), input.operationId)
+      db.exec('COMMIT')
+    } catch (error) {
+      db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
   /** TPD-025: integration links share stable task aliases, never observation retention. */
   listIntegrationLinks(workspaceId: string, taskRef: string): Array<{ id: number; payload: unknown; createdAt: number }> {
     return this.requireDb().prepare("SELECT id, payloadJson, createdAtMs FROM source_links WHERE workspaceId=? AND taskRef=? AND sourceKind='integration.pull_request' ORDER BY id DESC LIMIT 100").all(workspaceId, taskRef).map((row) => {

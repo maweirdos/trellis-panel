@@ -17,8 +17,9 @@ import { clearGitCache } from './services/git'
 import { recordActivity } from './services/activity'
 import { broadcastToWindows } from './services/bridge'
 import { deliverToast } from './services/notifications'
-import { routeWatcherEvent, emitAcpMaterialChange } from './services/acp'
 import { eventTaskMaterial, verifyMaterialChange } from './services/acp/materials'
+import { selectRuntimeObservationRoot } from './services/daemon-client/runtime'
+import { createTaskRecordAt } from './services/task-record'
 import { closeObservationForProject, initObservationForRoot } from './services/observability'
 import { startHttpApi, stopHttpApi } from './services/httpapi'
 import { WeknoraSpecSyncer } from './services/weknora'
@@ -119,7 +120,6 @@ export function routeMaterialNotice(absPath: string, kind: AcpMaterialChange['ki
         files: changes.slice(0, 5).map((change) => change.relativePath.slice(`.trellis/tasks/${dirName}/`.length)), at: Date.now()
       }
       broadcastToWindows(ipcEvent.materialUpdated, payload)
-      for (const change of changes) emitAcpMaterialChange(change)
       toastFocusTask(dirName, formatMaterialToast(payload))
     })().catch((error: unknown) => {
       if (projectRoot === capturedRoot && projectGeneration === capturedGeneration) toast({ kind: 'warn', title: '任务材料校验失败', body: errorMessage(error) })
@@ -273,6 +273,7 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
       return ipcFail(IpcErrorCode.InvalidArg, '该目录下没有 .trellis/ —— 请先在项目中运行 trellis init')
     }
     projectRoot = snap.meta.root
+    selectRuntimeObservationRoot(projectRoot)
     projectGeneration += 1
     clearMaterialTimers()
     const openedGeneration = projectGeneration
@@ -285,7 +286,7 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
       if (projectRoot !== snap.meta.root || projectGeneration !== openedGeneration) return
       if (ev !== 'unlink') routeSpecFileSync(path)
       routeMaterialNotice(path, ev)
-      routeWatcherEvent(snap.meta.root, path, ev)
+      // Native timeline/material observation is owned by the daemon's root watcher.
       // S0 G2 第三片：只对已注册阅读会话的文档定向通知（无关文档零开销）
       const readerPath = resolveAuthorizedDocumentPath(snap.meta.root, relative(snap.meta.root, path))
       if (readerPath.ok) routeReaderDocumentChange(readerPath.canonicalPath)
@@ -310,6 +311,7 @@ export function closeProjectAt(): void {
   projectGeneration += 1
   watcher.stop()
   projectRoot = null
+  selectRuntimeObservationRoot(null)
   knownTaskDirs = new Set()
   clearMaterialTimers()
   clearDocumentCache()
@@ -412,77 +414,7 @@ export interface CreateTaskResult {
 
 export function createTaskRecord(input: CreateTaskInput): CreateTaskResult | IpcFail {
   if (!projectRoot) return noProject()
-  const tasksRoot = join(projectRoot, '.trellis', 'tasks')
-  const today = new Date()
-  const pad = (x: number): string => String(x).padStart(2, '0')
-  const mm = pad(today.getMonth() + 1)
-  const dd = pad(today.getDate())
-  const finalDirName = `${mm}-${dd}-${input.dirName}`
-  const finalDir = join(tasksRoot, finalDirName)
-  if (existsSync(finalDir)) return ipcFail(IpcErrorCode.Conflict, `任务目录 ${finalDirName} 已存在`)
-  const jiraKey = input.jiraKey
-  if (jiraKey) {
-    const existing = [...(latestSnapshot?.tasks ?? []), ...(latestSnapshot?.archived ?? [])]
-      .find((t) => String(t.record?.meta?.jiraKey ?? '').toUpperCase() === jiraKey.toUpperCase())
-    if (existing) return ipcFail(IpcErrorCode.Conflict, `Jira ${jiraKey} 已关联任务 ${existing.dirName}`)
-  }
-  try {
-    mkdirSync(finalDir, { recursive: true })
-    const meta: Record<string, unknown> = {}
-    meta.origin = input.origin ?? (input.jiraKey ? 'jira' : 'panel')
-    if (input.jiraKey) {
-      meta.jiraKey = input.jiraKey
-      meta.jiraUrl = input.jiraUrl ?? ''
-    }
-    const record: Record<string, unknown> = {
-      id: input.dirName,
-      name: input.dirName,
-      title: input.title,
-      description: input.description,
-      status: input.status,
-      dev_type: input.devType ?? null,
-      scope: input.scope ?? null,
-      package: null,
-      priority: input.priority,
-      creator: latestSnapshot?.meta.developer ?? getSettings().jira.user ?? 'panel',
-      assignee: input.assignee,
-      createdAt: `${today.getFullYear()}-${mm}-${dd}`,
-      completedAt: null,
-      branch: input.branch ?? null,
-      base_branch: null,
-      worktree_path: null,
-      commit: null,
-      pr_url: null,
-      subtasks: input.subtasks ?? [],
-      children: [],
-      parent: null,
-      relatedFiles: [],
-      notes: input.jiraKey ? `从 Jira 导入：${input.jiraKey}\n${input.jiraUrl}` : '',
-      meta
-    }
-    if (input.workflow) record.workflow = input.workflow
-    writeFileSync(join(finalDir, 'task.json'), JSON.stringify(record, null, 2) + '\n', 'utf-8')
-    markPanelWrite(join(finalDir, 'task.json'))
-    const files = ['task.json']
-    const warnings: string[] = []
-    if (input.prdContent && input.prdContent.trim()) {
-      const prdPath = join(finalDir, 'prd.md')
-      // 目录为本面板新建，正常不存在同名文件；防御式检查避免覆盖用户内容
-      if (!existsSync(prdPath)) {
-        try {
-          writeFileSync(prdPath, input.prdContent, 'utf-8')
-          markPanelWrite(prdPath)
-          files.push('prd.md')
-        } catch (e) {
-          warnings.push(`prd.md 写入失败：${errorText(e, '未知错误')}（任务已创建，可手动补写）`)
-        }
-      }
-    }
-    sendSnapshot()
-    return { ok: true, dirName: finalDirName, files, warnings }
-  } catch (e) {
-    return ipcFail(IpcErrorCode.Io, errorText(e, '创建任务失败'))
-  }
+  return createTaskRecordAt(projectRoot, input, { snapshot: latestSnapshot, markWritten: markPanelWrite, changed: sendSnapshot })
 }
 
 export function deleteTaskRecord(taskDir: string, expectedMtime?: number): { ok: true } | (IpcFail & { conflict?: true }) {

@@ -1,0 +1,13 @@
+{
+  "retrievedAt": "2026-10-22",
+  "purpose": "Offline product identity for the integration directory; not editor/Agent brands or native capability declarations.",
+  "assets": [
+    { "file": "jira.svg", "source": "https://raw.githubusercontent.com/devicons/devicon/v2.17.0/icons/jira/jira-original.svg", "revision": "v2.17.0", "sha256": "e5010dd0056d130e32fa3d0dc589aa1288370b525b4123658ea6eb90f53ca1db", "license": "MIT (Devicon); product trademarks belong to their owners" },
+    { "file": "gitlab.svg", "source": "https://raw.githubusercontent.com/devicons/devicon/v2.17.0/icons/gitlab/gitlab-original.svg", "revision": "v2.17.0", "sha256": "d057a46d414f4edcb7edf96976ef7b91c2b347a990e99685e48d38de737967b0", "license": "MIT (Devicon); product trademarks belong to their owners" },
+    { "file": "github.svg", "source": "https://raw.githubusercontent.com/devicons/devicon/v2.17.0/icons/github/github-original.svg", "revision": "v2.17.0", "sha256": "45262793de6292206a895ed63593cdb1eaed82074173f7f4b5bdb3e427ca805a", "license": "MIT (Devicon); product trademarks belong to their owners", "presentation": "Monochrome mask follows the theme foreground; source is unmodified" },
+    { "file": "gitee.ico", "source": "https://gitee.com/favicon.ico", "sha256": "2d1a42d094476e3c893e430032d5371a40af1cc2a025e089383a94bf992c671e", "license": "Official website favicon; no explicit open artwork license identified" },
+    { "file": "dingtalk.ico", "source": "https://www.dingtalk.com/favicon.ico", "sha256": "12a8e74153c9331dfb091e086a88a20f8b417399d86adf5d18202b095e4d15b5", "license": "Official website favicon; no explicit open artwork license identified" },
+    { "file": "feishu.ico", "source": "https://www.feishu.cn/favicon.ico", "sha256": "69da9be6053530750202e4f674d621274bd86a9fc23f44a16c5e6c7aa56dfd9e", "license": "Official website favicon; no explicit open artwork license identified" },
+    { "file": "weknora.ico", "source": "https://raw.githubusercontent.com/Tencent/WeKnora/main/frontend/public/favicon.ico", "sha256": "bed4c794c3a4e9242c810f693a5e0d9e7a46c2e1abb615cbdde5ae4fb7c658a0", "license": "See LICENSE.WeKnora.txt; repository is MIT with third-party notices", "revision": "main retrieved 2026-10-22; exact content pinned by SHA-256" }
+  ]
+}

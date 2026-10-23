@@ -1,26 +1,25 @@
 import { app } from 'electron'
 import { copyFileSync, existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { z } from 'zod'
 import { atomicWriteText } from '../local-task/prd'
-import { providerIdSchema, integrationBindingSchema, deliveryReceiptSchema } from '../../../shared/integrations'
 import { IntegrationError } from './types'
-
-export const storedConnectionSchema = z.object({ id: z.string(), providerId: providerIdSchema, name: z.string(), enabled: z.boolean(), revision: z.number().int().positive(), config: z.record(z.string(), z.string()), secrets: z.record(z.string(), z.string()), checkedAt: z.number().nullable(), check: z.enum(['unverified', 'authenticated', 'configured', 'failed']), detail: z.string(), deleted: z.boolean().default(false) })
-export type StoredConnection = z.infer<typeof storedConnectionSchema>
-const records = { connections: z.array(storedConnectionSchema).max(100), bindings: z.array(integrationBindingSchema).max(500), receipts: z.array(deliveryReceiptSchema).max(100) }
-const stateV1Schema = z.object({ version: z.literal(1), ...records })
-const stateSchema = z.object({ version: z.literal(2), ...records, legacyImports: z.record(z.string().max(256), z.string().max(128)) })
-export type IntegrationState = z.infer<typeof stateSchema>
+import { assertLegacySettingsWriter } from '../../daemon/settings-owner'
+import { integrationStatePort } from './state-port'
+import { integrationStateSchema as stateSchema, integrationStateV1Schema as stateV1Schema, type IntegrationState } from './stored-schema'
+export { storedConnectionSchema } from './stored-schema'
+export type { StoredConnection, IntegrationState } from './stored-schema'
 
 function filePath(): string { return join(app.getPath('userData'), 'integrations.json') }
 export function readIntegrationState(): IntegrationState {
+  const authority = integrationStatePort()
+  if (authority) return authority.read()
   const path = filePath()
   if (!existsSync(path)) return { version: 2, connections: [], bindings: [], receipts: [], legacyImports: {} }
   try {
     if (statSync(path).size > 2 * 1024 * 1024) throw new Error('limit')
     const raw: unknown = JSON.parse(readFileSync(path, 'utf8'))
     if (raw && typeof raw === 'object' && 'version' in raw && raw.version === 1) {
+      assertLegacySettingsWriter(app.getPath('userData'))
       const previous = stateV1Schema.parse(raw)
       const next = stateSchema.parse({ ...previous, version: 2, legacyImports: {} })
       const backup = path + '.v1.bak'
@@ -33,6 +32,9 @@ export function readIntegrationState(): IntegrationState {
 }
 /** Short synchronous mutation: one main-process writer, atomic replacement, no optimistic success. */
 export function updateIntegrationState<T>(change: (state: IntegrationState) => T): T {
+  const authority = integrationStatePort()
+  if (authority) return authority.update(change)
+  assertLegacySettingsWriter(app.getPath('userData'))
   const state = readIntegrationState()
   const result = change(state)
   try {
