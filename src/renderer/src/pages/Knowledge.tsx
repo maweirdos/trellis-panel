@@ -1,5 +1,5 @@
 import { rememberVisit } from '../my/personal-history'
-import { ModuleLinks, contextButtonClass } from '../my/layout/ModuleLinks'
+import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { PageContent, PageSection } from '../my/layout/PageLayout'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -15,6 +15,7 @@ import {
   Send,
   X,
   Cloud,
+  ChevronDown,
   StickyNote,
   Plus,
   Save,
@@ -61,15 +62,16 @@ interface RemoteDoc {
 /** zustand 选择器兜底用的稳定空数组（每次返回新 [] 会触发 getSnapshot 重渲染问题） */
 const NO_KB_IDS: string[] = []
 
-const LIBS: Array<{ id: LibFilter; label: string; icon: JSX.Element; desc: string }> = [
-  { id: 'notes', label: '笔记', icon: <StickyNote size={14} />, desc: '当前项目 .trellis/notes 文件，可新建 / 编辑 / 删除；不提供个人私密权限' },
-  { id: 'requirements', label: '需求', icon: <ScrollText size={14} />, desc: '原始需求文档（活动任务 PRD / task.json 提炼）' },
-  { id: 'spec', label: '规范库', icon: <BookOpenText size={14} />, desc: '.trellis/spec 团队规范' },
-  { id: 'wiki', label: '文档', icon: <FileText size={14} />, desc: 'README / docs / wiki 等仓库文档' },
-  { id: 'archive', label: '归档', icon: <Archive size={14} />, desc: '已归档任务的沉淀经验' },
-  { id: 'company', label: '知识库', icon: <Cloud size={14} />, desc: 'WeKnora 跨项目知识（规范 / 历史归档 / 接口文档）' },
-  { id: 'all', label: '全部', icon: <Library size={14} />, desc: '跨库联合检索（本地五库 + 知识库异步追加）' }
-]
+const LIB_META: Record<KbLibrary, { label: string; icon: JSX.Element; desc: string }> = {
+  requirements: { label: '需求', icon: <ScrollText size={14} />, desc: '活动任务 PRD 与 task.json 提炼的需求文档' },
+  notes: { label: '笔记', icon: <StickyNote size={14} />, desc: '当前项目 .trellis/notes 文件，可新建 / 编辑 / 删除' },
+  spec: { label: '规范库', icon: <BookOpenText size={14} />, desc: '.trellis/spec 团队规范（在规范页管理）' },
+  wiki: { label: '文档', icon: <FileText size={14} />, desc: 'README / docs / wiki 等仓库文档' },
+  archive: { label: '归档', icon: <Archive size={14} />, desc: '已归档任务的沉淀经验' }
+}
+
+/** 侧栏资料分组的展示顺序；spec 走独立规范页，知识库（company）在知识库视图独占侧栏 */
+const GROUPS: KbLibrary[] = ['requirements', 'notes', 'wiki', 'archive']
 
 const LIB_CHIP: Record<KbLibrary, string> = {
   requirements: 'bg-my-label-yellow text-my-label-yellow-text',
@@ -78,9 +80,6 @@ const LIB_CHIP: Record<KbLibrary, string> = {
   notes: 'bg-my-label-orange text-my-label-orange-text',
   archive: 'bg-my-label-purple text-my-label-purple-text'
 }
-
-/** 左栏资料分类导航的固定顺序；spec 走独立规范页，company 在知识库视图独占侧栏 */
-const LIB_NAV: LibFilter[] = ['requirements', 'notes', 'wiki', 'archive', 'all']
 
 function highlight(text: string): JSX.Element {
   const parts = text.split(/[\u0000\u0001]/)
@@ -110,12 +109,15 @@ export function KnowledgePage(): JSX.Element {
   const openSpecDocument = useApp((s) => s.openSpecDocument)
 
   const knowledgeView = useMy((state) => state.knowledgeView)
-  const [lib, setLib] = useState<LibFilter>(() => knowledgeView === 'company' ? 'company' : 'requirements')
-  useEffect(() => { setLib(knowledgeView === 'company' ? 'company' : 'requirements') }, [knowledgeView])
+  /** 资料视图恒为全库联邦检索（分组树内折叠定位）；知识库视图单独检索 WeKnora */
+  const scope: LibFilter = knowledgeView === 'company' ? 'company' : 'all'
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [result, setResult] = useState<KbSearchResult | null>(null)
   const [loading, setLoading] = useState(false)
+  /** 侧栏资料分组的折叠状态（检索态忽略折叠，始终展示命中分组） */
+  const [collapsedLibs, setCollapsedLibs] = useState<string[]>([])
+  const [scopeOpen, setScopeOpen] = useState(false)
   const [active, setActive] = useState<KbDoc | null>(null)
   const [docContent, setDocContent] = useState<string | null>(null)
   const [docError, setDocError] = useState<string | null>(null)
@@ -221,7 +223,7 @@ export function KnowledgePage(): JSX.Element {
   const runSearch = useCallback(async () => {
     const seq = ++searchSeq.current
     if (!hasIpc) return
-    if (lib === 'company') {
+    if (scope === 'company') {
       setLoading(false)
       setResult(null)
       setActive(null)
@@ -230,7 +232,7 @@ export function KnowledgePage(): JSX.Element {
     }
     setLoading(true)
     try {
-      const res = await api.kbSearch(lib, debounced)
+      const res = await api.kbSearch('all', debounced)
       if (seq !== searchSeq.current) return
       if (res.ok) setResult(res)
       else pushToast({ kind: 'error', title: '检索失败', body: res.error })
@@ -241,8 +243,8 @@ export function KnowledgePage(): JSX.Element {
       if (seq === searchSeq.current) setLoading(false)
     }
     if (seq !== searchSeq.current) return
-    // 联邦检索：'all' 检索态下公司库命中异步追加
-    if (lib === 'all' && debounced) void runCompanySearch('search')
+    // 联邦检索：检索态下公司库命中异步追加
+    if (debounced) void runCompanySearch('search')
     else {
       companySeq.current += 1
       setCompanyHits([])
@@ -250,7 +252,7 @@ export function KnowledgePage(): JSX.Element {
       setCompanyLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lib, debounced, runCompanySearch])
+  }, [scope, debounced, runCompanySearch])
 
   useEffect(() => {
     if (!hasIpc) return
@@ -317,10 +319,10 @@ export function KnowledgePage(): JSX.Element {
     setAiRemoteSources([])
     try {
       let context = ''
-      if (lib === 'company' && !weknoraEnabled) throw new Error(knowledge.error || knowledge.context?.scope.detail || '当前项目未配置可用远端范围，未检查公司知识')
+      if (scope === 'company' && !weknoraEnabled) throw new Error(knowledge.error || knowledge.context?.scope.detail || '当前项目未配置可用远端范围，未检查公司知识')
       const sources: KbDoc[] = []
-      if (lib !== 'company') {
-        const search = await api.kbSearch(lib === 'all' ? 'all' : lib, q)
+      if (scope !== 'company') {
+        const search = await api.kbSearch('all', q)
         if (!knowledge.current()) return
         const top = search.ok ? search.hits.slice(0, 6) : []
         for (const h of top) {
@@ -334,7 +336,7 @@ export function KnowledgePage(): JSX.Element {
       }
       // 公司库补充上下文（启用且配置了检索范围时）
       const remoteSources: KnowledgeSource[] = []
-      if (weknoraEnabled && weknoraKbIds.length > 0 && (lib === 'all' || lib === 'company')) {
+      if (weknoraEnabled && weknoraKbIds.length > 0 && (scope === 'all' || scope === 'company')) {
         const bridge = knowledgeBridge(['search'])
         if (!bridge) throw new Error('项目知识服务未加载，未检查远端来源')
         const remote = requireKnowledge(await bridge.search({ ...knowledge.input, requestId: crypto.randomUUID(), query: q, limit: 3 }))
@@ -451,7 +453,7 @@ export function KnowledgePage(): JSX.Element {
 
   /** 公司库条目：company tab 直接作为主体列表；all 检索态作为追加区域 */
   const companyList: Array<{ key: string; title: string; sub: string; tag?: string; snippet?: string; score?: number; knowledgeId: string }> = useMemo(() => {
-    if (lib === 'company') {
+    if (scope === 'company') {
       if (isSearch) {
         return companyHits.map((h, i) => ({
           key: `${h.id}-${i}`,
@@ -469,7 +471,7 @@ export function KnowledgePage(): JSX.Element {
         knowledgeId: d.sourceHandle
       }))
     }
-    if (lib === 'all' && isSearch) {
+    if (isSearch) {
       return companyHits.map((h, i) => ({
         key: `${h.id}-${i}`,
         title: h.title,
@@ -480,7 +482,7 @@ export function KnowledgePage(): JSX.Element {
       }))
     }
     return []
-  }, [lib, isSearch, companyHits, companyDocs])
+  }, [scope, isSearch, companyHits, companyDocs])
 
   const LIB_ICON: Record<KbLibrary, JSX.Element> = {
     notes: <StickyNote size={12} />,
@@ -489,21 +491,45 @@ export function KnowledgePage(): JSX.Element {
     wiki: <FileText size={12} />,
     archive: <Archive size={12} />
   }
-  const LIB_LABEL: Record<KbLibrary, string> = {
-    notes: '笔记',
-    requirements: '需求',
-    spec: '规范',
-    wiki: 'Wiki',
-    archive: '归档'
-  }
 
   const relativePath = active && !active.synthetic ? relativePathUnderRoot(snapshot?.meta.root ?? '', active.path) : null
-  const libLabel = lib === 'company' ? '知识库' : LIBS.find((l) => l.id === lib)?.label ?? '资料'
-  const listSummary = lib === 'company'
-    ? `${companyList.length} ${isSearch ? '条命中' : '篇文档'}${companyMs ? ` · ${companyMs}ms` : ''}`
+  /** 浏览态按库分组（组内按修改时间倒序），供侧栏分组树与主区"最近更新"使用 */
+  const groups: Array<{ lib: KbLibrary; docs: KbDoc[] }> = useMemo(() => {
+    const byLib = new Map<KbLibrary, KbDoc[]>()
+    for (const doc of isSearch ? [] : result?.docs ?? []) {
+      const bucket = byLib.get(doc.library) ?? []
+      bucket.push(doc)
+      byLib.set(doc.library, bucket)
+    }
+    return GROUPS.map((lib) => ({ lib, docs: (byLib.get(lib) ?? []).sort((a, b) => b.mtime - a.mtime) }))
+  }, [result, isSearch])
+  /** 检索命中按库分组归类，保持分组树结构 */
+  const hitGroups: Array<{ lib: KbLibrary; hits: Array<{ doc: KbDoc; hit?: KbHit }> }> = useMemo(
+    () => GROUPS.map((lib) => ({ lib, hits: list.filter((row) => row.doc.library === lib) })),
+    [list]
+  )
+  const recentDocs: KbDoc[] = useMemo(
+    () => [...(result?.docs ?? [])].sort((a, b) => b.mtime - a.mtime).slice(0, 5),
+    [result]
+  )
+  const listTitle = scope === 'company'
+    ? `知识库 · ${companyList.length} ${isSearch ? '条命中' : '篇文档'}${companyMs ? ` · ${companyMs}ms` : ''}`
     : isSearch
-      ? `命中 ${list.length} 条 · 共 ${totalDocs} 篇 · ${result?.elapsedMs ?? 0}ms`
-      : `${list.length} 篇文档 · ${result?.elapsedMs ?? 0}ms`
+      ? `命中 ${list.length} 条 · ${result?.elapsedMs ?? 0}ms`
+      : `${result?.totalDocs ?? 0} 篇文档${result?.elapsedMs ? ` · ${result.elapsedMs}ms` : ''}`
+  const toggleCollapsed = (lib: KbLibrary): void =>
+    setCollapsedLibs((ids) => (ids.includes(lib) ? ids.filter((id) => id !== lib) : [...ids, lib]))
+  const scopeInfo = knowledge.context?.scope
+  const scopeSummary = knowledge.error
+    ? knowledge.error
+    : !scopeInfo
+      ? (knowledge.loading ? '读取范围…' : '不可用')
+      : scopeInfo.status === 'not_configured'
+        ? '未配置检索范围'
+        : `${knowledgeStatusLabel[scopeInfo.status]} · ${scopeInfo.collectionIds.length} 个库`
+  useEffect(() => {
+    setScopeOpen(Boolean(knowledge.error || knowledge.context?.scope.status === 'not_configured'))
+  }, [knowledge.error, knowledge.context])
 
   return (
     <div ref={pageRef} className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
@@ -514,84 +540,153 @@ export function KnowledgePage(): JSX.Element {
           <h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">知识</h1>
         </header>
         <ModuleLinks domain="knowledge" />
-        <div className="shrink-0 px-3 pb-2 pt-2.5">
+        {scope !== 'company' && (
+          <p className="shrink-0 px-4 pb-2 pt-2 text-my-xs leading-relaxed text-my-tertiary">资料来自当前项目目录；远端检索使用项目绑定的知识库。</p>
+        )}
+        <div className="shrink-0 px-3 pb-2 pt-1">
           <div className="relative">
-            <SearchInput value={query} onChange={setQuery} placeholder={lib === 'company' ? '搜索知识库…' : '搜索资料…'} />
+            <SearchInput value={query} onChange={setQuery} placeholder={scope === 'company' ? '搜索知识库…' : '搜索资料…'} />
             {loading && (
               <Loader2 size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-my-tertiary" />
             )}
           </div>
         </div>
-        {knowledgeView !== 'company' && (
-          <nav aria-label="资料分类" className="shrink-0 space-y-0.5 px-2 pb-1">
-            {LIB_NAV.map((id) => {
-              const item = LIBS.find((l) => l.id === id)
-              if (!item) return null
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setLib(item.id)}
-                  aria-pressed={lib === item.id}
-                  title={item.desc}
-                  className={contextButtonClass(lib === item.id)}
-                >
-                  {item.icon} {item.label}
-                </button>
-              )
-            })}
-          </nav>
-        )}
-        {(lib === 'company' || lib === 'all') && snapshot && (
-          <div className="shrink-0 px-3 pb-2.5">
-            <KnowledgeScopeControl root={snapshot.meta.root} />
+        {snapshot && (
+          <div className="shrink-0 px-3 pb-2">
+            <button
+              type="button"
+              onClick={() => setScopeOpen((open) => !open)}
+              aria-expanded={scopeOpen}
+              className={clsx(
+                'flex w-full items-center gap-2 rounded-my-md border px-2.5 py-1.5 text-left text-my-xs transition-colors',
+                scopeOpen ? 'border-my-line bg-my-layer-1' : 'border-transparent hover:bg-my-layer-transparent-hover'
+              )}
+            >
+              <Cloud size={13} className="shrink-0 text-my-icon-tertiary" />
+              <span className="min-w-0 truncate font-medium text-my-primary">{scopeInfo?.connectionName ?? '项目知识'}</span>
+              <span className={clsx('min-w-0 flex-1 truncate', knowledge.error ? 'text-my-warning-text' : 'text-my-tertiary')}>{scopeSummary}</span>
+              <ChevronDown size={12} className={clsx('shrink-0 text-my-icon-tertiary transition-transform', !scopeOpen && '-rotate-90')} />
+            </button>
+            <div className={clsx('pt-2', !scopeOpen && 'hidden')}>
+              <KnowledgeScopeControl root={snapshot.meta.root} />
+            </div>
           </div>
         )}
 
-        {/* 分组头：当前库与统计，右侧挂当前库的操作 */}
+        {/* 分组头：资料范围与统计，右侧挂重建检索 */}
         <div className="flex shrink-0 items-center gap-1.5 px-4 pb-1.5 text-my-xs text-my-tertiary">
-          <span className="min-w-0 truncate">{libLabel} · {listSummary}</span>
-          {lib === 'notes' && (
-            <Button variant="neutral" size="sm" onClick={startNewNote} disabled={!hasIpc || !snapshot} title="新建项目笔记（写入 .trellis/notes/）">
-              <Plus size={10} /> 新建笔记
-            </Button>
-          )}
+          <span className="min-w-0 truncate">{listTitle}</span>
           <Button variant="ghost" size="sm" className="ml-auto shrink-0 px-1.5" onClick={() => void runSearch()} disabled={!hasIpc} title="重建检索">
             <RefreshCw size={11} />
           </Button>
         </div>
 
         <div className="my-scrollbar min-h-0 flex-1 px-2 pb-2">
-          {list.map(({ doc, hit }) => (
-            <button
-              key={doc.id}
-              type="button"
-              onClick={() => void openDoc(doc)}
-              aria-pressed={active?.id === doc.id}
-              title={doc.title}
-              className={clsx(
-                'flex w-full flex-col rounded-my-md px-2.5 py-1.5 text-left transition-colors',
-                active?.id === doc.id ? 'bg-my-accent-subtle' : 'hover:bg-my-layer-transparent-hover'
+          {scope !== 'company' && (isSearch ? (
+            <>
+              {hitGroups.filter((g) => g.hits.length > 0).map((g) => (
+                <div key={g.lib} className="mb-1">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-my-xs text-my-tertiary">
+                    <ChevronDown size={12} className="shrink-0" />
+                    <span className="min-w-0 truncate font-medium">{LIB_META[g.lib].label}</span>
+                    <span className="shrink-0 tabular-nums">{g.hits.length}</span>
+                  </div>
+                  {g.hits.map(({ doc, hit }) => (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      onClick={() => void openDoc(doc)}
+                      aria-pressed={active?.id === doc.id}
+                      title={doc.title}
+                      className={clsx(
+                        'flex w-full flex-col rounded-my-md px-2.5 py-1.5 text-left transition-colors',
+                        active?.id === doc.id ? 'bg-my-accent-subtle' : 'hover:bg-my-layer-transparent-hover'
+                      )}
+                    >
+                      <span className="flex w-full items-center gap-2">
+                        <span className="shrink-0 text-my-icon-tertiary">{LIB_ICON[doc.library]}</span>
+                        <span className={clsx('min-w-0 flex-1 truncate text-my-sm', active?.id === doc.id ? 'font-medium text-my-primary' : 'text-my-secondary')}>{doc.title}</span>
+                        {hit && <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{hit.score.toFixed(1)}</span>}
+                      </span>
+                      {hit && <span className="mt-0.5 line-clamp-2 pl-5 text-my-xs leading-4 text-my-tertiary">{highlight(hit.snippet)}</span>}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {list.length === 0 && !loading && !companyLoading && (
+                <div className="grid place-items-center gap-1.5 px-4 py-12 text-center text-my-xs text-my-tertiary">
+                  <Library size={18} className="text-my-icon-tertiary" />
+                  没有匹配的资料，试试更短的关键词
+                </div>
               )}
-            >
-              <span className="flex w-full items-center gap-2">
-                <span className="shrink-0 text-my-icon-tertiary">{LIB_ICON[doc.library]}</span>
-                {lib === 'all' && <span className={clsx('my-chip shrink-0 text-my-2xs', LIB_CHIP[doc.library])}>{LIB_LABEL[doc.library]}</span>}
-                <span className={clsx('min-w-0 flex-1 truncate text-my-sm', active?.id === doc.id ? 'font-medium text-my-primary' : 'text-my-secondary')}>{doc.title}</span>
-                {hit ? (
-                  <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{hit.score.toFixed(1)}</span>
-                ) : (
-                  <span className="shrink-0 text-my-2xs text-my-tertiary">{relTime(doc.mtime)}</span>
-                )}
-              </span>
-              {hit && <span className="mt-0.5 line-clamp-2 pl-5 text-my-xs leading-4 text-my-tertiary">{highlight(hit.snippet)}</span>}
-            </button>
+            </>
+          ) : (
+            groups.map((g) => {
+              const collapsed = collapsedLibs.includes(g.lib)
+              return (
+                <div key={g.lib} className="mb-0.5">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={!collapsed}
+                    title={LIB_META[g.lib].desc}
+                    onClick={() => toggleCollapsed(g.lib)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      toggleCollapsed(g.lib)
+                    }}
+                    className="group flex w-full cursor-pointer select-none items-center gap-1.5 rounded-my-md px-2.5 py-1.5 text-my-xs text-my-tertiary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-secondary"
+                  >
+                    <ChevronDown size={12} className={clsx('shrink-0 transition-transform', collapsed && '-rotate-90')} />
+                    <span className="min-w-0 truncate font-medium">{LIB_META[g.lib].label}</span>
+                    <span className="shrink-0 tabular-nums">{g.docs.length}</span>
+                    {g.lib === 'notes' && (
+                      <button
+                        type="button"
+                        onClick={(event) => { event.stopPropagation(); startNewNote() }}
+                        disabled={!hasIpc || !snapshot}
+                        title="新建项目笔记（写入 .trellis/notes/）"
+                        aria-label="新建笔记"
+                        className="ml-auto grid h-5 w-5 shrink-0 place-items-center rounded-my-sm text-my-icon-tertiary opacity-0 transition-opacity hover:bg-my-layer-2 hover:text-my-primary focus:opacity-100 group-hover:opacity-100"
+                      >
+                        <Plus size={12} />
+                      </button>
+                    )}
+                  </div>
+                  {!collapsed && (
+                    g.docs.length > 0 ? g.docs.map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => void openDoc(doc)}
+                        aria-pressed={active?.id === doc.id}
+                        title={doc.title}
+                        className={clsx(
+                          'flex w-full flex-col rounded-my-md px-2.5 py-1.5 text-left transition-colors',
+                          active?.id === doc.id ? 'bg-my-accent-subtle' : 'hover:bg-my-layer-transparent-hover'
+                        )}
+                      >
+                        <span className="flex w-full items-center gap-2">
+                          <span className="shrink-0 text-my-icon-tertiary">{LIB_ICON[doc.library]}</span>
+                          <span className={clsx('min-w-0 flex-1 truncate text-my-sm', active?.id === doc.id ? 'font-medium text-my-primary' : 'text-my-secondary')}>{doc.title}</span>
+                          <span className="shrink-0 text-my-2xs text-my-tertiary">{relTime(doc.mtime)}</span>
+                        </span>
+                        <span className="mt-0.5 truncate pl-5 text-my-2xs text-my-tertiary" title={`${doc.group}/${doc.name}`}>{doc.group}/{doc.name}</span>
+                      </button>
+                    )) : (
+                      <p className="px-2.5 py-1 text-my-2xs text-my-tertiary">暂无文档</p>
+                    )
+                  )}
+                </div>
+              )
+            })
           ))}
 
-          {/* 公司库（WeKnora）区块：company tab 为主体；all 检索态作为追加段 */}
-          {(lib === 'company' || (lib === 'all' && isSearch)) && (
+          {/* 公司库（WeKnora）区块：company 视图为主体；资料检索态作为追加段 */}
+          {(scope === 'company' || isSearch) && (
             <>
-              {lib === 'all' && list.length > 0 && companyList.length > 0 && (
+              {scope !== 'company' && companyList.length > 0 && (
                 <div className="mb-1 mt-2 flex items-center gap-2 px-1.5">
                   <span className="text-my-2xs font-medium text-my-tertiary">知识库（WeKnora）</span>
                   <span className="h-px flex-1 bg-my-line" />
@@ -610,8 +705,8 @@ export function KnowledgePage(): JSX.Element {
                   )}
                 >
                   <span className="flex w-full items-center gap-2">
-                    <span className="shrink-0 text-my-icon-tertiary"><Cloud size={12} /></span>
-                    {lib === 'all' && (
+                    {scope === 'company' && <span className="shrink-0 text-my-icon-tertiary"><Cloud size={12} /></span>}
+                    {scope !== 'company' && (
                       <span className="my-chip shrink-0 bg-my-accent-subtle text-my-2xs text-my-accent-text">
                         <Cloud size={12} /> 知识库
                       </span>
@@ -630,10 +725,10 @@ export function KnowledgePage(): JSX.Element {
               {companyError && (
                 <div className="mx-1 mb-1.5 rounded-my-lg border border-my-line-warning bg-my-warning-subtle px-2.5 py-2 text-my-xs leading-4 text-my-warning-text">
                   知识库不可用：{companyError}
-                  {lib === 'all' && '（本地结果不受影响）'}
+                  {scope !== 'company' && '（本地结果不受影响）'}
                 </div>
               )}
-              {lib === 'company' && !weknoraEnabled && (
+              {scope === 'company' && !weknoraEnabled && (
                 <div className="grid place-items-center gap-2 py-10 text-center text-my-xs text-my-tertiary">
                   <Cloud size={20} className="text-my-icon-tertiary" />
                   未绑定可用的项目知识库
@@ -642,20 +737,13 @@ export function KnowledgePage(): JSX.Element {
                   </Button>
                 </div>
               )}
-              {lib === 'company' && weknoraEnabled && !companyLoading && companyList.length === 0 && (
+              {scope === 'company' && weknoraEnabled && !companyLoading && companyList.length === 0 && (
                 <div className="grid place-items-center gap-1.5 px-4 py-12 text-center text-my-xs text-my-tertiary">
                   <Cloud size={18} className="text-my-icon-tertiary" />
                   {isSearch ? '知识库中没有匹配的内容' : '绑定范围内暂无文档'}
                 </div>
               )}
             </>
-          )}
-
-          {list.length === 0 && !loading && lib !== 'company' && (
-            <div className="grid place-items-center gap-1.5 px-4 py-12 text-center text-my-xs text-my-tertiary">
-              <Library size={18} className="text-my-icon-tertiary" />
-              {isSearch ? '没有匹配的资料，试试更短的关键词' : '该库暂无文档'}
-            </div>
           )}
         </div>
       </div>
@@ -745,7 +833,7 @@ export function KnowledgePage(): JSX.Element {
           <>
             <div className="my-page-toolbar-row">
               <span className={clsx('my-chip', LIB_CHIP[active.library])}>
-                {LIB_ICON[active.library]} {LIB_LABEL[active.library]}
+                {LIB_ICON[active.library]} {LIB_META[active.library].label}
               </span>
               <span className="min-w-0 truncate text-my-xs font-semibold text-my-primary">{active.title}</span>
               <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{fmtBytes(active.size)} · {relTime(active.mtime)}</span>
@@ -807,19 +895,41 @@ export function KnowledgePage(): JSX.Element {
           </>
         ) : (
           <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
-            <section className="grid min-h-64 place-content-center gap-2 text-center" aria-label="知识阅读提示">
-              <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-my-lg bg-my-layer-2 text-my-icon-tertiary">
-                <Library size={22} />
-              </div>
-              <h2 className="text-my-md font-medium text-my-primary">选择资料阅读</h2>
-              <p className="text-my-sm text-my-tertiary">{snapshot?.meta.root ? '从左侧查找资料，或带着问题到 Agent 中持续讨论。' : '打开一个 Trellis 项目后，可使用项目知识。'}</p>
-              {snapshot?.meta.root && (
-                <div className="mt-2 flex flex-wrap justify-center gap-2">
-                  <Button size="sm" onClick={() => { if (sidebarCollapsed) toggleSidebar(); pageRef.current?.querySelector<HTMLInputElement>('input[placeholder^="搜索"]')?.focus() }}>查找资料</Button>
-                  <Button size="sm" variant="primary" onClick={discussWithAgent}>在 Agent 中讨论</Button>
+            <div className="mx-auto flex min-h-full w-full max-w-[620px] flex-col justify-center">
+              <section className="grid place-content-center gap-2 py-8 text-center" aria-label="知识阅读提示">
+                <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-my-lg bg-my-layer-2 text-my-icon-tertiary">
+                  <Library size={22} />
                 </div>
+                <h2 className="text-my-md font-medium text-my-primary">选择资料阅读</h2>
+                <p className="text-my-sm text-my-tertiary">{snapshot?.meta.root ? '从左侧查找资料，或带着问题到 Agent 中持续讨论。' : '打开一个 Trellis 项目后，可使用项目知识。'}</p>
+                {snapshot?.meta.root && (
+                  <div className="mt-2 flex flex-wrap justify-center gap-2">
+                    <Button size="sm" onClick={() => { if (sidebarCollapsed) toggleSidebar(); pageRef.current?.querySelector<HTMLInputElement>('input[placeholder^="搜索"]')?.focus() }}>查找资料</Button>
+                    <Button size="sm" variant="primary" onClick={discussWithAgent}>在 Agent 中讨论</Button>
+                  </div>
+                )}
+              </section>
+              {snapshot?.meta.root && recentDocs.length > 0 && (
+                <section aria-label="最近更新" className="mt-2">
+                  <h3 className="mb-1.5 px-1 text-my-xs font-medium text-my-tertiary">最近更新</h3>
+                  <div className="overflow-hidden rounded-my-lg border border-my-line">
+                    {recentDocs.map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => void openDoc(doc)}
+                        className="flex w-full items-center gap-2.5 border-b border-my-line px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-my-layer-1"
+                      >
+                        <span className="shrink-0 text-my-icon-tertiary">{LIB_ICON[doc.library]}</span>
+                        <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{doc.title}</span>
+                        <span className={clsx('my-chip shrink-0 text-my-2xs', LIB_CHIP[doc.library])}>{LIB_META[doc.library].label}</span>
+                        <span className="shrink-0 text-my-2xs text-my-tertiary">{relTime(doc.mtime)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               )}
-            </section>
+            </div>
           </div>
         )}
 
@@ -913,7 +1023,7 @@ export function KnowledgePage(): JSX.Element {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void aiAsk()
                 }}
-                placeholder={`向${LIBS.find((l) => l.id === lib)?.label ?? '知识库'}提问…`}
+                placeholder={scope === 'company' ? '向知识库提问…' : '向资料库提问…'}
                 className="my-input flex-1"
               />
               <Button variant="primary" onClick={() => void aiAsk()} disabled={aiBusy || !aiQuestion.trim()}>

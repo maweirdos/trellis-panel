@@ -153,8 +153,6 @@ try {
 
   const knowledge = new Harness(KnowledgePage)
   knowledge.render(); await settle(knowledge)
-  find(knowledge, (node) => node.type === 'button' && node.props?.title?.includes('当前项目 .trellis/notes')).props.onClick()
-  knowledge.render(); await settle(knowledge)
   find(knowledge, (node) => node.key === 'a').props.onClick(); knowledge.render()
   find(knowledge, (node) => node.props?.title === '编辑这篇笔记').props.onClick()
   const oldRead = runtime.reads.shift()
@@ -167,7 +165,7 @@ try {
   assert.equal(runtime.toasts.at(-1).title, '无法编辑笔记')
   find(knowledge, (node) => node.props?.title === '编辑这篇笔记').props.onClick()
   const supersededRead = runtime.reads.shift()
-  find(knowledge, (node) => node.props?.title?.startsWith('新建项目笔记')).props.onClick(); knowledge.render()
+  find(knowledge, (node) => node.props?.title?.startsWith('新建项目笔记')).props.onClick({ stopPropagation() {} }); knowledge.render()
   supersededRead.resolve({ ok: true, content: 'OLD B' }); await settle(knowledge)
   assert.equal(find(knowledge, (node) => node.type === 'textarea').props.value, '# 新笔记\n\n', 'new note survives a superseded edit response')
   knowledge.dispose()
@@ -175,7 +173,6 @@ try {
   runtime.projectKnowledgeBound = true
   const federated = new Harness(KnowledgePage)
   federated.render(); await settle(federated)
-  find(federated, (node) => node.type === 'button' && node.props?.title?.startsWith('跨库联合检索')).props.onClick(); federated.render()
   find(federated, (node) => node.props?.placeholder === '搜索资料…').props.onChange('local')
   federated.render(); await new Promise((resolveTimer) => setTimeout(resolveTimer, 320)); await settle(federated); await settle(federated)
   assert.ok(nodes(federated.tree).some((node) => node.key === 'a'), 'company failure leaves local search hits visible')
