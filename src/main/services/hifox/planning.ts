@@ -390,6 +390,15 @@ export function evaluateAutomationsForStatus(draft: HifoxSnapshot, task: HifoxTa
   }
 }
 
+/** 新任务创建触发的自动执行（由 core.createTask 调用） */
+export function evaluateAutomationsForTaskCreated(draft: HifoxSnapshot, task: HifoxTask): void {
+  for (const automation of draft.automations) {
+    if (!automation.enabled || automation.spaceId !== task.spaceId) continue
+    if (automation.trigger.kind !== 'task_created') continue
+    recordRun(draft, automation, `${task.id} 创建`)
+  }
+}
+
 /** 评论关键词触发的自动执行（由 core.addComment 调用） */
 export function evaluateAutomationsForComment(draft: HifoxSnapshot, task: HifoxTask, body: string): void {
   for (const automation of draft.automations) {

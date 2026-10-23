@@ -27,11 +27,12 @@ export function SpacesPage(): JSX.Element {
   const [statusName, setStatusName] = useState('')
   const [statusCategory, setStatusCategory] = useState<HifoxStatusCategory>('todo')
   const [labelName, setLabelName] = useState('')
+  const [labelAsOrg, setLabelAsOrg] = useState(false)
 
   const space = snapshot.spaces.find((s) => s.id === currentSpaceId)
   const types = snapshot.taskTypes.filter((t) => t.spaceId === currentSpaceId)
   const statuses = snapshot.taskStatuses.filter((s) => s.spaceId === currentSpaceId).sort((a, b) => a.order - b.order)
-  const labels = snapshot.taskLabels.filter((l) => l.spaceId === currentSpaceId)
+  const labels = snapshot.taskLabels.filter((l) => !l.spaceId || l.spaceId === currentSpaceId)
 
   const createSpace = async (): Promise<void> => {
     const result = await run('创建空间', () => api.hifox.createSpace({ name: name.trim(), key: key.trim(), description: description.trim() || undefined }))
@@ -75,20 +76,43 @@ export function SpacesPage(): JSX.Element {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <section className="flex flex-col gap-2 rounded-my-md border border-my-line p-3">
-          <h2 className="text-my-sm font-medium text-my-primary">任务类型（PRD 4.1）</h2>
-          <ul className="space-y-1">
+          <h2 className="text-my-sm font-medium text-my-primary">任务类型（PRD 4.1 / 4.4 两层模型）</h2>
+          <ul className="space-y-1.5">
             {types.map((type) => (
-              <li key={type.id} className="flex items-center gap-2 text-my-xs">
-                <span className={`min-w-0 flex-1 truncate text-my-secondary ${type.isDefault ? 'font-medium text-my-primary' : ''}`}>
-                  {type.name}{type.isDefault && '（默认）'}
-                  {type.requiredHints && <span className="ml-1 text-my-tertiary">需补：{type.requiredHints.join('、')}</span>}
-                </span>
-                {!type.isDefault && (
-                  <button type="button" aria-label={`删除类型 ${type.name}`} className="text-my-tertiary hover:text-red-400"
-                    onClick={() => void run('删除类型', () => api.hifox.removeTaskType({ id: type.id }))}>
-                    <Trash2 size={12} />
-                  </button>
-                )}
+              <li key={type.id} className="rounded-my-md bg-my-layer/60 p-2">
+                <div className="flex items-center gap-2 text-my-xs">
+                  <span className={`min-w-0 flex-1 truncate ${type.isDefault ? 'font-medium text-my-primary' : 'text-my-secondary'}`}>
+                    {type.name}{type.isDefault && '（默认）'}
+                    {type.requiredHints && <span className="ml-1 text-my-tertiary">需补：{type.requiredHints.join('、')}</span>}
+                  </span>
+                  {!type.isDefault && (
+                    <button type="button" aria-label={`删除类型 ${type.name}`} className="text-my-tertiary hover:text-red-400"
+                      onClick={() => void run('删除类型', () => api.hifox.removeTaskType({ id: type.id }))}>
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+                {/* PRD 4.4 规则1：每个类型可配置可用状态；点选保存 */}
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {statuses.map((status) => {
+                    const on = type.statusIds ? type.statusIds.includes(status.id) : true
+                    return (
+                      <button key={status.id} type="button"
+                        title={type.statusIds ? '配置该类型的可用状态' : '当前沿用空间全部状态，点选任一状态即开始自定义'}
+                        onClick={() => {
+                          const next = type.statusIds
+                            ? (type.statusIds.includes(status.id)
+                                ? type.statusIds.filter((x) => x !== status.id)
+                                : [...type.statusIds, status.id])
+                            : [status.id]
+                          void run('更新类型状态集', () => api.hifox.updateTaskType({ id: type.id, statusIds: next }))
+                        }}
+                        className={`rounded-my-sm px-1.5 py-0.5 text-[10px] transition-opacity ${on ? 'bg-indigo-500/20 text-indigo-300' : 'bg-my-layer text-my-tertiary opacity-50'}`}>
+                        {status.name}
+                      </button>
+                    )
+                  })}
+                </div>
               </li>
             ))}
           </ul>
@@ -132,7 +156,9 @@ export function SpacesPage(): JSX.Element {
           <ul className="space-y-1">
             {labels.map((label) => (
               <li key={label.id} className="flex items-center gap-2 text-my-xs">
-                <span className={`min-w-0 flex-1 ${label.archived ? 'opacity-40 line-through' : ''}`}><LabelChip label={label} /></span>
+                <span className={`min-w-0 flex-1 ${label.archived ? 'opacity-40 line-through' : ''}`}>
+                  <LabelChip label={label} />{!label.spaceId && <span className="ml-1 text-[10px] text-my-tertiary">组织</span>}
+                </span>
                 {!label.archived && (
                   <button type="button" aria-label={`归档标签 ${label.name}`} className="text-my-tertiary hover:text-amber-400"
                     onClick={() => void run('归档标签', () => api.hifox.archiveLabel({ id: label.id }))}>
@@ -143,12 +169,18 @@ export function SpacesPage(): JSX.Element {
             ))}
             {labels.length === 0 && <li className="text-my-xs text-my-tertiary">暂无标签</li>}
           </ul>
-          <div className="mt-auto flex gap-1.5 pt-2">
-            <input className={inputClass} placeholder="新标签名称" value={labelName} onChange={(e) => setLabelName(e.target.value)} />
-            <Button size="sm" disabled={!labelName.trim()} onClick={() => {
-              void run('创建标签', () => api.hifox.createLabel({ spaceId: space.id, name: labelName.trim() }))
-              setLabelName('')
+          <div className="mt-auto flex flex-col gap-1.5 pt-2">
+            <div className="flex gap-1.5">
+              <input className={inputClass} placeholder="新标签名称" value={labelName} onChange={(e) => setLabelName(e.target.value)} />
+              <Button size="sm" disabled={!labelName.trim()} onClick={() => {
+                void run('创建标签', () => api.hifox.createLabel({ spaceId: labelAsOrg ? undefined : space.id, name: labelName.trim() }))
+                setLabelName('')
             }}><Plus size={13} /></Button>
+            </div>
+            <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary" title="PRD 4.3 规则4：组织标签在所有空间可用">
+              <input type="checkbox" checked={labelAsOrg} onChange={(e) => setLabelAsOrg(e.target.checked)} />
+              创建为组织标签（所有空间可用）
+            </label>
           </div>
         </section>
       </div>

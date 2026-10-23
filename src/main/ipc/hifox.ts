@@ -8,7 +8,7 @@ import type { HifoxSnapshot } from '../../shared/hifox'
 import {
   addComment, addRelation, archiveLabel, clearInbox, createLabel, createSpace, createTask, createTaskStatus, createTaskType,
   inviteMember, markInboxRead, removeMember, removeRelation, removeTask, removeTaskStatus, removeTaskType,
-  resolveComment, restoreInbox, setSpaceMembers, snoozeInbox, updateMember, updateSpace, updateTask
+  resolveComment, restoreInbox, setSpaceMembers, snoozeInbox, updateMember, updateSpace, updateTask, updateTaskType
 } from '../services/hifox/core'
 import { loadSnapshot, resetDemoSnapshot } from '../services/hifox/store'
 import {
@@ -51,6 +51,7 @@ export function registerHifoxIpc(): void {
   handle(ipcInvoke.hifox.setSpaceMembers, (_e, input) => ok(() => setSpaceMembers(input)))
 
   handle(ipcInvoke.hifox.createTaskType, (_e, input) => ok(() => createTaskType(input)))
+  handle(ipcInvoke.hifox.updateTaskType, (_e, input) => ok(() => updateTaskType(input)))
   handle(ipcInvoke.hifox.removeTaskType, (_e, input) => ok(() => removeTaskType(input)))
   handle(ipcInvoke.hifox.createTaskStatus, (_e, input) => ok(() => createTaskStatus(input)))
   handle(ipcInvoke.hifox.removeTaskStatus, (_e, input) => ok(() => removeTaskStatus(input)))

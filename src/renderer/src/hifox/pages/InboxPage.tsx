@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { AlarmClock, ArchiveRestore, Check, Eraser } from 'lucide-react'
 import { api } from '../../api'
 import { useHifox, inboxGroups } from '../store'
-import { PageHeader, StatusBadge } from '../ui'
+import { PageHeader, StatusBadge, inputClass } from '../ui'
 import { Button, EmptyState, Tabs } from '../../my/ui'
 import { useNow, formatDate } from '../../my/ui'
 import type { HifoxInboxItem, HifoxInboxKind } from '@shared/hifox'
@@ -21,14 +21,20 @@ export function InboxPage(): JSX.Element {
   const openTask = useHifox((s) => s.openTask)
   const setModule = useHifox((s) => s.setModule)
   const [tab, setTab] = useState<'all' | 'important' | 'other' | 'snoozed' | 'cleared'>('all')
+  const [keyword, setKeyword] = useState('')
   const now = useNow()
 
   const groups = inboxGroups(snapshot.inbox, now)
-  const list: HifoxInboxItem[] =
+  const rawList: HifoxInboxItem[] =
     tab === 'all' ? [...groups.important, ...groups.other]
     : tab === 'snoozed' ? groups.snoozed
     : tab === 'cleared' ? groups.cleared
     : groups[tab]
+  // PRD 2.6：按任务标题/评论正文搜索（客户端过滤，聚合前生效）
+  const lowerKeyword = keyword.trim().toLowerCase()
+  const list = lowerKeyword
+    ? rawList.filter((i) => `${i.title} ${i.body ?? ''} ${i.taskId ?? ''}`.toLowerCase().includes(lowerKeyword))
+    : rawList
 
   // 任务级聚合：同一任务合并一行，角标显示条数（REA 实测）
   const aggregated = new Map<string, { first: HifoxInboxItem; count: number; unread: boolean }>()
@@ -73,6 +79,12 @@ export function InboxPage(): JSX.Element {
           { id: 'snoozed', label: '稍后', count: groups.snoozed.length },
           { id: 'cleared', label: '已清理', count: groups.cleared.length }
         ]}
+      />
+      <input
+        className={`${inputClass} w-64 shrink-0`}
+        placeholder="搜索任务标题 / 评论正文 / 任务号"
+        value={keyword}
+        onChange={(e) => setKeyword(e.target.value)}
       />
       <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto rounded-my-md border border-my-line bg-my-layer/40">
         {aggregated.size === 0

@@ -126,6 +126,24 @@ export function spaceTasks(snapshot: HifoxSnapshot, spaceId: HifoxID | null): Hi
   return spaceId ? snapshot.tasks.filter((t) => t.spaceId === spaceId) : snapshot.tasks
 }
 
+/** PRD 4.4 两层模型：任务可选状态 = 类型的状态集（未配置时为空间全部） */
+export function allowedStatusIdsFor(snapshot: HifoxSnapshot, spaceId: HifoxID | null, typeId?: string): Set<string> {
+  const type = typeId ? snapshot.taskTypes.find((t) => t.id === typeId) : undefined
+  if (type?.statusIds?.length) return new Set(type.statusIds)
+  return new Set(snapshot.taskStatuses.filter((s) => !spaceId || s.spaceId === spaceId).map((s) => s.id))
+}
+
+/** PRD 3.5 规则1：待分拣任务（Backlog 且无处理人无执行槽）默认排除出列表与看板 */
+export function isTriagePending(snapshot: HifoxSnapshot, task: HifoxTask): boolean {
+  const status = snapshot.taskStatuses.find((s) => s.id === task.statusId)
+  return status?.category === 'backlog' && task.assigneeIds.length === 0 && !task.executor
+}
+
+/** 空间可见标签 = 空间标签 + 组织标签（PRD 4.3 规则4） */
+export function visibleLabels(snapshot: HifoxSnapshot, spaceId: HifoxID | null) {
+  return snapshot.taskLabels.filter((l) => !l.archived && (!l.spaceId || l.spaceId === spaceId))
+}
+
 export function applyTaskFilter(tasks: HifoxTask[], snapshot: HifoxSnapshot, filter: HifoxTaskFilterState): HifoxTask[] {
   return tasks.filter((task) => {
     if (filter.keyword && !`${task.id} ${task.title}`.toLowerCase().includes(filter.keyword.toLowerCase())) return false

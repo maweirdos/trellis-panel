@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { api } from '../../api'
-import { useHifox, memberOf, statusOf } from '../store'
+import { useHifox, memberOf, statusOf, allowedStatusIdsFor, visibleLabels } from '../store'
 import { Drawer, Field, StatusBadge, PriorityBadge, LabelChip, MemberChip, ExecutorBadge, DispatchNote, inputClass } from '../ui'
 import { Button, Modal, Checkbox, EmptyState, formatDate } from '../../my/ui'
 import type { HifoxID, HifoxPriority, HifoxTask } from '@shared/hifox'
@@ -25,9 +25,13 @@ export function TaskDetailDrawer(): JSX.Element | null {
   const task = snapshot.tasks.find((t) => t.id === openTaskId)
   if (!task) return null
   const space = snapshot.spaces.find((s) => s.id === task.spaceId)!
-  const statuses = snapshot.taskStatuses.filter((s) => s.spaceId === task.spaceId).sort((a, b) => a.order - b.order)
+  // PRD 4.4 两层模型：状态可选集随任务类型收窄
+  const allowedStatuses = allowedStatusIdsFor(snapshot, task.spaceId, task.typeId)
+  const statuses = snapshot.taskStatuses
+    .filter((s) => s.spaceId === task.spaceId && allowedStatuses.has(s.id))
+    .sort((a, b) => a.order - b.order)
   const types = snapshot.taskTypes.filter((t) => t.spaceId === task.spaceId)
-  const labels = snapshot.taskLabels.filter((l) => l.spaceId === task.spaceId && !l.archived)
+  const labels = visibleLabels(snapshot, task.spaceId)
   const members = space.memberIds.map((id) => memberOf(snapshot, id)).filter((m): m is NonNullable<typeof m> => Boolean(m))
   const agents = snapshot.agents.filter((a) => a.spaceId === task.spaceId && a.enabled)
   const crews = snapshot.crews.filter((c) => c.spaceId === task.spaceId)
@@ -37,7 +41,8 @@ export function TaskDetailDrawer(): JSX.Element | null {
   const activities = snapshot.activities.filter((a) => a.taskId === task.id)
   const subtasks = snapshot.tasks.filter((t) => t.parentTaskId === task.id)
   const following = task.followerIds.includes(CURRENT_MEMBER)
-  const siblingTasks = snapshot.tasks.filter((t) => t.spaceId === task.spaceId && t.id !== task.id)
+  // PRD 4.5：同组织可跨空间关联
+  const siblingTasks = snapshot.tasks.filter((t) => t.id !== task.id)
 
   const patch = (input: Parameters<typeof api.hifox.updateTask>[0]['patch']) =>
     void run('更新任务', () => api.hifox.updateTask({ id: task.id, patch: input }))

@@ -77,6 +77,8 @@ export interface HifoxTaskType {
   name: string
   /** 需要补充的提示字段，如 Bug 需要复现步骤 */
   requiredHints?: string[]
+  /** 类型可用状态（两层模型，PRD 4.4 规则1）：未设置时沿用空间全部状态 */
+  statusIds?: HifoxID[]
   isDefault?: boolean
 }
 
@@ -90,7 +92,8 @@ export interface HifoxTaskStatus {
 
 export interface HifoxTaskLabel {
   id: HifoxID
-  spaceId: HifoxID
+  /** 空间标签归属空间；组织标签 spaceId 为空、所有空间可用（PRD 4.3 规则4） */
+  spaceId?: HifoxID
   name: string
   color: string
   archived?: boolean
@@ -416,11 +419,12 @@ export interface HifoxApi {
   removeMember: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
   setSpaceMembers: (input: { spaceId: HifoxID; memberIds: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
 
-  createTaskType: (input: { spaceId: HifoxID; name: string; requiredHints?: string[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  createTaskType: (input: { spaceId: HifoxID; name: string; requiredHints?: string[]; statusIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  updateTaskType: (input: { id: HifoxID; name?: string; statusIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
   removeTaskType: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
   createTaskStatus: (input: { spaceId: HifoxID; name: string; category: HifoxStatusCategory }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
   removeTaskStatus: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  createLabel: (input: { spaceId: HifoxID; name: string; color?: string }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  createLabel: (input: { spaceId?: HifoxID; name: string; color?: string }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
   archiveLabel: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
 
   createTask: (input: HifoxTaskInput) => Promise<{ ok: true; data: HifoxSnapshot; taskId: HifoxID } | { ok: false; error: string }>

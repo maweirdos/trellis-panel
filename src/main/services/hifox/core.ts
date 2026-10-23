@@ -19,7 +19,7 @@ import type {
   HifoxTaskRelation
 } from '../../../shared/hifox'
 import { mutate, nextId, nowIso } from './store'
-import { evaluateAutomationsForComment, evaluateAutomationsForStatus } from './planning'
+import { evaluateAutomationsForComment, evaluateAutomationsForStatus, evaluateAutomationsForTaskCreated } from './planning'
 
 export class HifoxError extends Error {}
 
@@ -184,14 +184,57 @@ export function setSpaceMembers(input: { spaceId: HifoxID; memberIds: HifoxID[] 
 
 /* ---------------- 任务配置：类型 / 状态 / 标签 ---------------- */
 
-export function createTaskType(input: { spaceId: HifoxID; name: string; requiredHints?: string[] }): HifoxSnapshot {
+export function createTaskType(input: { spaceId: HifoxID; name: string; requiredHints?: string[]; statusIds?: HifoxID[] }): HifoxSnapshot {
   return mutate((draft) => {
     spaceOf(draft, input.spaceId)
     if (!input.name.trim()) fail('类型名称不能为空')
     if (draft.taskTypes.some((t) => t.spaceId === input.spaceId && t.name === input.name.trim())) fail('同名类型已存在')
-    draft.taskTypes.push({ id: nextId('tt'), spaceId: input.spaceId, name: input.name.trim(), requiredHints: input.requiredHints })
+    if (input.statusIds) {
+      for (const id of input.statusIds) {
+        if (!draft.taskStatuses.some((s) => s.id === id && s.spaceId === input.spaceId)) fail('类型可用状态必须属于该空间')
+      }
+    }
+    draft.taskTypes.push({ id: nextId('tt'), spaceId: input.spaceId, name: input.name.trim(), requiredHints: input.requiredHints, statusIds: input.statusIds })
     return undefined
   }).snapshot
+}
+
+export function updateTaskType(input: { id: HifoxID; name?: string; statusIds?: HifoxID[] }): HifoxSnapshot {
+  return mutate((draft) => {
+    const type = draft.taskTypes.find((t) => t.id === input.id) ?? fail('类型不存在')
+    if (input.name !== undefined && input.name.trim()) type.name = input.name.trim()
+    if (input.statusIds !== undefined) {
+      for (const id of input.statusIds) {
+        if (!draft.taskStatuses.some((s) => s.id === id && s.spaceId === type.spaceId)) fail('类型可用状态必须属于该空间')
+      }
+      type.statusIds = input.statusIds
+      // 收窄后，已有任务若停在不再可用的状态，回退到该类型首个可用状态（或空间 Backlog）
+      for (const task of draft.tasks) {
+        if (task.typeId === type.id && !type.statusIds.includes(task.statusId)) {
+          const fallback = type.statusIds[0]
+            ?? statusIdOfCategoryLocal(draft, type.spaceId, 'backlog')
+          if (fallback) {
+            task.statusId = fallback
+            pushActivity(draft, task.id, 'status', `类型状态集调整，状态迁移为 ${draft.taskStatuses.find((s) => s.id === fallback)?.name}`)
+          }
+        }
+      }
+    }
+    return undefined
+  }).snapshot
+}
+
+/** 类型可用状态（两层模型，PRD 4.4）：未配置时为空间全部状态 */
+export function allowedStatusIds(draft: HifoxSnapshot, spaceId: HifoxID, typeId?: HifoxID): Set<HifoxID> {
+  const type = typeId ? draft.taskTypes.find((t) => t.id === typeId) : undefined
+  if (type?.statusIds?.length) return new Set(type.statusIds)
+  return new Set(draft.taskStatuses.filter((s) => s.spaceId === spaceId).map((s) => s.id))
+}
+
+function statusIdOfCategoryLocal(draft: HifoxSnapshot, spaceId: HifoxID, category: HifoxStatusCategory): HifoxID | undefined {
+  return draft.taskStatuses
+    .filter((s) => s.spaceId === spaceId && s.category === category)
+    .sort((a, b) => a.order - b.order)[0]?.id
 }
 
 export function removeTaskType(input: { id: HifoxID }): HifoxSnapshot {
@@ -230,13 +273,14 @@ export function removeTaskStatus(input: { id: HifoxID }): HifoxSnapshot {
   }).snapshot
 }
 
-export function createLabel(input: { spaceId: HifoxID; name: string; color?: string }): HifoxSnapshot {
+export function createLabel(input: { spaceId?: HifoxID; name: string; color?: string }): HifoxSnapshot {
   return mutate((draft) => {
-    spaceOf(draft, input.spaceId)
+    if (input.spaceId) spaceOf(draft, input.spaceId)
     if (!input.name.trim()) fail('标签名称不能为空')
     if (draft.taskLabels.some((l) => l.spaceId === input.spaceId && l.name === input.name.trim() && !l.archived)) fail('同名标签已存在')
     draft.taskLabels.push({
       id: nextId('lb'),
+      // spaceId 为空 = 组织标签，所有空间可用（PRD 4.3 规则4）
       spaceId: input.spaceId,
       name: input.name.trim(),
       color: input.color || ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'][draft.taskLabels.length % 6]
@@ -314,15 +358,19 @@ export function createTask(input: HifoxTaskInput): { snapshot: HifoxSnapshot; ta
     if (!input.title.trim()) fail('任务标题不能为空')
     space.taskSeq += 1
     const taskId = `${space.key}-${space.taskSeq}`
+    const typeId = input.typeId ?? draft.taskTypes.find((t) => t.spaceId === space.id && t.isDefault)?.id
+    // PRD 4.4 两层模型：状态必须在「该任务类型的可用状态」内
+    const allowed = allowedStatusIds(draft, space.id, typeId)
     const statusId = input.statusId ?? defaultStatusId(draft, space.id)
     if (!draft.taskStatuses.some((s) => s.id === statusId && s.spaceId === space.id)) fail('给定状态不属于该空间')
+    if (!allowed.has(statusId)) fail('该状态不在当前任务类型的可用状态里（PRD 4.4）')
     const assigneeIds = validateAssignees(draft, space, input.assigneeIds ?? [])
     const task: HifoxTask = {
       id: taskId,
       spaceId: space.id,
       title: input.title.trim(),
       description: input.description?.trim() || undefined,
-      typeId: input.typeId ?? draft.taskTypes.find((t) => t.spaceId === space.id && t.isDefault)?.id,
+      typeId,
       statusId,
       priority: input.priority ?? 'none',
       assigneeIds,
@@ -348,6 +396,7 @@ export function createTask(input: HifoxTaskInput): { snapshot: HifoxSnapshot; ta
     }
     pushActivity(draft, taskId, 'created', '任务创建')
     refreshDispatch(draft, task, '指派执行槽')
+    evaluateAutomationsForTaskCreated(draft, task)
     return taskId
   })
   return { snapshot, taskId: result }
@@ -373,6 +422,13 @@ export function updateTask(input: { id: HifoxID; patch: HifoxTaskPatchInput }): 
       else {
         if (!draft.taskTypes.some((t) => t.id === patch.typeId && t.spaceId === space.id)) fail('任务类型不属于该空间')
         task.typeId = patch.typeId
+      }
+      // 类型切换后状态可选集变化：当前状态不可用时回退（PRD 4.4 规则2）
+      const allowedAfterType = allowedStatusIds(draft, space.id, task.typeId)
+      if (!allowedAfterType.has(task.statusId)) {
+        const fallback = [...allowedAfterType][0] ?? defaultStatusId(draft, space.id)
+        task.statusId = fallback
+        pushActivity(draft, task.id, 'status', `类型变更后状态迁移为 ${draft.taskStatuses.find((s) => s.id === fallback)?.name}`)
       }
       changes.push('类型')
     }
@@ -444,6 +500,8 @@ export function updateTask(input: { id: HifoxID; patch: HifoxTaskPatchInput }): 
     if (patch.statusId !== undefined && patch.statusId !== task.statusId) {
       const nextStatus = draft.taskStatuses.find((s) => s.id === patch.statusId && s.spaceId === space.id)
       if (!nextStatus) fail('目标状态不属于该空间')
+      // PRD 4.4 两层模型：切类型后状态可选集随之收窄
+      if (!allowedStatusIds(draft, space.id, task.typeId).has(nextStatus.id)) fail('该状态不在当前任务类型的可用状态里（PRD 4.4）')
       const prev = draft.taskStatuses.find((s) => s.id === task.statusId)
       task.statusId = nextStatus.id
       if (nextStatus.category === 'done') task.completedAt = nowIso()
@@ -488,8 +546,10 @@ export function addRelation(input: { taskId: HifoxID; relation: HifoxTaskRelatio
     const task = taskOf(draft, input.taskId)
     if (input.relation.taskId === input.taskId) fail('不能与自身建立关联')
     const target = taskOf(draft, input.relation.taskId)
-    if (target.spaceId !== task.spaceId) fail('只能关联同一空间的任务')
+    // PRD 4.5 规则2：同组织内可跨空间关联（面板数据同属一个组织）
     if (task.relations.some((r) => r.taskId === input.relation.taskId)) fail('两个任务已存在关联')
+    // PRD 4.5 规则4：反向冲突关系拦截（对方已关联我）
+    if (target.relations.some((r) => r.taskId === input.taskId)) fail('两个任务已存在关联（反向）')
     task.relations.push({ kind: input.relation.kind, taskId: input.relation.taskId })
     // blocks 双向可读：目标侧登记 related 引用
     if (input.relation.kind === 'blocks' && !target.relations.some((r) => r.taskId === input.taskId)) {
@@ -542,6 +602,10 @@ export function addComment(input: { taskId: HifoxID; body: string; authorId: str
         pushInbox(draft, { section: 'important', kind: 'mention', title: `${authorLabel} 在 ${task.id} 提到了你`, body: input.body.trim().slice(0, 80), taskId: task.id })
         break
       }
+    }
+    // 关注任务的新评论 → 其他（PRD 2.6 事件清单：关注的任务有新评论）
+    if (task.followerIds.length > 0 && !task.followerIds.includes(input.authorId)) {
+      pushInbox(draft, { section: 'other', kind: 'status', title: `你关注的 ${task.id} 有新评论`, body: `${authorLabel}：${input.body.trim().slice(0, 60)}`, taskId: task.id })
     }
     evaluateAutomationsForComment(draft, task, input.body)
     task.updatedAt = nowIso()

@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react'
 import { BookmarkPlus, X } from 'lucide-react'
 import { api } from '../../api'
-import { useHifox, spaceTasks, applyTaskFilter, memberOf, statusOf } from '../store'
+import { useHifox, spaceTasks, applyTaskFilter, memberOf, statusOf, isTriagePending } from '../store'
 import { PageHeader, StatusBadge, PriorityBadge, ExecutorBadge, inputClass } from '../ui'
 import { Button, EmptyState } from '../../my/ui'
 import type { HifoxTask, HifoxView } from '@shared/hifox'
@@ -25,9 +25,15 @@ export function BoardPage(): JSX.Element {
   const [groupBy, setGroupBy] = useState<GroupBy>('status')
   const [viewName, setViewName] = useState('')
   const [saving, setSaving] = useState(false)
+  /** PRD 3.5 规则1：待分拣任务默认排除出看板 */
+  const [showTriage, setShowTriage] = useState(false)
 
   const space = snapshot.spaces.find((s) => s.id === currentSpaceId)
-  const tasks = useMemo(() => applyTaskFilter(spaceTasks(snapshot, currentSpaceId), snapshot, filter), [snapshot, currentSpaceId, filter])
+  const tasks = useMemo(
+    () => applyTaskFilter(spaceTasks(snapshot, currentSpaceId), snapshot, filter)
+      .filter((t) => showTriage || !isTriagePending(snapshot, t)),
+    [snapshot, currentSpaceId, filter, showTriage]
+  )
   const statuses = snapshot.taskStatuses.filter((s) => s.spaceId === currentSpaceId).sort((a, b) => a.order - b.order)
   const types = snapshot.taskTypes.filter((t) => t.spaceId === currentSpaceId)
   const members = space?.memberIds.map((id) => memberOf(snapshot, id)).filter(Boolean) ?? []
@@ -65,6 +71,10 @@ export function BoardPage(): JSX.Element {
         description="按分组维度摊开任务；筛选可保存为视图"
         actions={
           <div className="flex items-center gap-2">
+            <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary" title="PRD 3.5：待分拣任务默认排除">
+              <input type="checkbox" checked={showTriage} onChange={(e) => setShowTriage(e.target.checked)} />
+              显示待分拣
+            </label>
             <select className={`${inputClass} w-auto`} value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
               {(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => <option key={g} value={g}>{GROUP_LABEL[g]}</option>)}
             </select>

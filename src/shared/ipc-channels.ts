@@ -73,6 +73,7 @@ export const ipcInvoke = {
     removeMember: 'hifox:removeMember',
     setSpaceMembers: 'hifox:setSpaceMembers',
     createTaskType: 'hifox:createTaskType',
+    updateTaskType: 'hifox:updateTaskType',
     removeTaskType: 'hifox:removeTaskType',
     createTaskStatus: 'hifox:createTaskStatus',
     removeTaskStatus: 'hifox:removeTaskStatus',

@@ -101,6 +101,7 @@ const api = {
     removeMember: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeMember, input),
     setSpaceMembers: (input) => ipcRenderer.invoke(ipcInvoke.hifox.setSpaceMembers, input),
     createTaskType: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createTaskType, input),
+    updateTaskType: (input) => ipcRenderer.invoke(ipcInvoke.hifox.updateTaskType, input),
     removeTaskType: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeTaskType, input),
     createTaskStatus: (input) => ipcRenderer.invoke(ipcInvoke.hifox.createTaskStatus, input),
     removeTaskStatus: (input) => ipcRenderer.invoke(ipcInvoke.hifox.removeTaskStatus, input),

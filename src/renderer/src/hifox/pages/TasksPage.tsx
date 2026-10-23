@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { api } from '../../api'
-import { useHifox, spaceTasks, applyTaskFilter, memberOf, statusOf } from '../store'
+import { useHifox, spaceTasks, applyTaskFilter, memberOf, statusOf, isTriagePending, visibleLabels } from '../store'
 import { PageHeader, StatusBadge, PriorityBadge, LabelChip, MemberChip, ExecutorBadge, Field, inputClass } from '../ui'
 import { TaskDetailDrawer, NewTaskModal } from './TaskDetailDrawer'
 import { Button, EmptyState, SearchInput } from '../../my/ui'
@@ -18,11 +18,17 @@ export function TasksPage(): JSX.Element {
   const openTaskId = useHifox((s) => s.openTaskId)
   const openTask = useHifox((s) => s.openTask)
   const [createOpen, setCreateOpen] = useState(false)
+  /** PRD 3.5 规则1：待分拣任务默认排除，提供显示选项 */
+  const [showTriage, setShowTriage] = useState(false)
 
   const space = snapshot.spaces.find((s) => s.id === currentSpaceId)
-  const tasks = useMemo(() => applyTaskFilter(spaceTasks(snapshot, currentSpaceId), snapshot, filter), [snapshot, currentSpaceId, filter])
+  const tasks = useMemo(
+    () => applyTaskFilter(spaceTasks(snapshot, currentSpaceId), snapshot, filter)
+      .filter((t) => showTriage || !isTriagePending(snapshot, t)),
+    [snapshot, currentSpaceId, filter, showTriage]
+  )
   const types = snapshot.taskTypes.filter((t) => t.spaceId === currentSpaceId)
-  const labels = snapshot.taskLabels.filter((l) => l.spaceId === currentSpaceId && !l.archived)
+  const labels = visibleLabels(snapshot, currentSpaceId)
   const iterations = snapshot.iterations.filter((i) => i.spaceId === currentSpaceId)
   const members = space?.memberIds.map((id) => memberOf(snapshot, id)).filter(Boolean) ?? []
 
@@ -35,8 +41,16 @@ export function TasksPage(): JSX.Element {
     <div className="relative flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader
         title="任务"
-        description={`共 ${tasks.length} 条命中筛选`}
-        actions={<Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}><Plus size={14} />新建任务</Button>}
+        description={`共 ${tasks.length} 条命中筛选${showTriage ? '（含待分拣）' : ''}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary" title="PRD 3.5：待分拣任务默认排除，去分拣台处理">
+              <input type="checkbox" checked={showTriage} onChange={(e) => setShowTriage(e.target.checked)} />
+              显示待分拣
+            </label>
+            <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}><Plus size={14} />新建任务</Button>
+          </div>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-2">
