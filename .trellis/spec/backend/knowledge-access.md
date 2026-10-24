@@ -115,6 +115,9 @@ not arbitrary comma suffixes, quoted examples or inquiries. Keep knowledge-turn
 admission/action tools even when preflight is skipped. Mixed/actual evidence
 questions are not skipped by document/action noun matching; unmatched requests
 retain the existing policy, not a claim of complete intent understanding.
+Pure anchored greetings/acknowledgements that ask for no project facts also skip
+preflight. Mixed requests such as a greeting followed by a business inquiry must
+still retrieve normally; do not use message length or broad intent guessing.
 An API-assisted semantic router is proposed separately and must not be silently
 enabled from global AI settings or advertised as delivered by these exclusions.
 An actual Agent-advertised slash command is not an ordinary question: preserve
@@ -127,7 +130,7 @@ and returns `text`, `assertActive`, `delivered` and `notSent` checkpoints. The q
 uses at most2000 characters and discloses a prefix cut without splitting a
 surrogate pair. Initial limit3 applies to each existing provider, not a fictitious
 global ranking. Select at most4 whole original excerpts under a32 KiB UTF-8
-serialized envelope budget, including metadata/escaping. Report omissions and
+rendered reference budget, including labels and fences. Report omissions and
 source truncation distinctly. Never clip text while claiming the larger saved
 snapshot was supplied. This is not a token count or complete-document guarantee.
 Within this preflight budget, selected-project WeKnora excerpts get priority
@@ -135,6 +138,15 @@ over local supplemental hits, preserving order within each kind. Otherwise local
 matches could exhaust the budget and hide the very bound library requested by
 the user. Keep the search service's other callers/order unchanged; include total
 and per-kind omission counts. Retrieval order is still not business authority.
+
+Native clients may persist the complete ACP text turn. Use readable, explicitly
+untrusted reference sections with original excerpts and usable source IDs/handles;
+keep operation IDs, duplicate queries and hashes in host evidence rather than
+dumping a transport/debug JSON object into the native user message. Choose fences
+longer than any excerpt fence and keep excerpt bytes unchanged. The current public
+turn API still sends business references as text: formatting is not a hidden
+context channel. Existing native history is not silently rewritten. Delivery and
+not-sent checkpoints retain their original prompt-written meaning.
 
 The host lookup has a10-second wait bound and links to current-turn cancellation.
 Late, revoked or changed-scope results cannot enter the prompt. Empty, partial,

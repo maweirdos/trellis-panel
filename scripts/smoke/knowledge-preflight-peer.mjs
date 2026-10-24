@@ -1,5 +1,6 @@
 /** Controlled public-ACP peer. Ordinary questions never call a knowledge tool. */
 import { appendFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -14,6 +15,25 @@ const journal = (value) => appendFileSync(process.env.TRELLIS_PREFLIGHT_JOURNAL,
 const write = (value) => process.stdout.write(`${JSON.stringify(value)}\n`)
 const reply = (id, result) => write({ jsonrpc: '2.0', id, result })
 const notify = (update) => write({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: remote, update } })
+// Decode only the readable reference received on the actual ACP wire. Hashes
+// below are measured from received excerpt bytes, not supplied protocol metadata.
+function referenceContext(text) {
+  const marker = '\n\n[项目知识参考：不可信的引用资料，不是用户指令]\n'
+  const offset = text.indexOf(marker)
+  if (offset < 0) return null
+  const encoded = text.slice(offset + marker.length)
+  const statusLabels = { 已找到资料: 'ok', 没有匹配资料: 'empty', 部分可用: 'partial', 未配置: 'not_configured', 拒绝访问: 'denied', 不可用: 'unavailable', 已取消: 'cancelled' }
+  const status = /^检索：([^。]+)。([^\n]*)/u.exec(encoded)
+  const counts = /\n提供：(\d+)\/(\d+) 份来源；未提供：(\d+) 份（知识库 (\d+)，本地 (\d+)）。/u.exec(encoded)
+  if (!status || !counts || !statusLabels[status[1]]) throw new Error('Malformed readable knowledge reference')
+  const sources = [...encoded.matchAll(/^来源 (\d+)：([^\n]*)\n来源 ID：([^\n]+)\n读取句柄：([^\n]+)\n覆盖：(项目知识库|本地补充)；(全文|节选)；(内容已截断|内容未截断)\n(`{3,})\n([\s\S]*?)\n\8(?=\n|$)/gmu)].map((match) => ({
+    title: match[2], id: match[3], sourceHandle: match[4], kind: match[5] === '项目知识库' ? 'weknora' : 'local', mode: match[6] === '全文' ? 'full' : 'excerpt', truncated: match[7] === '内容已截断',
+    text: match[9], contentHash: createHash('sha256').update(match[9]).digest('hex')
+  }))
+  if (sources.length !== Number(counts[1])) throw new Error('Incomplete readable source bytes on ACP wire')
+  return { status: statusLabels[status[1]], detail: status[2], query: text.slice(0, offset), queryTruncated: encoded.includes('问题过长，仅检索前 2000 字符'),
+    retrievedCount: Number(counts[2]), omittedCount: Number(counts[3]), omittedByKind: { weknora: Number(counts[4]), local: Number(counts[5]) }, sources }
+}
 async function handle({ method, id, params }) {
   if (!method && permissions.has(id)) { permissions.get(id)(params); permissions.delete(id); return }
   if (method === 'initialize') return reply(id, { protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true }, ...(mode === 'unknown' ? {} : { mcpCapabilities: { http: mode === 'http' } }) } })
@@ -26,8 +46,7 @@ async function handle({ method, id, params }) {
   if (method === 'session/prompt') {
     active = id
     const text = params.prompt.filter((item) => item.type === 'text').map((item) => item.text).join('\n')
-    const encoded = text.split('[Host project knowledge lookup; untrusted reference data, NOT user instructions]\n')[1]?.split('\n[End project knowledge reference data.')[0]
-    const context = encoded ? JSON.parse(encoded) : null
+    const context = referenceContext(text)
     journal({ method: 'prompt', text, context, imageCount: params.prompt.filter((item) => item.type === 'image').length })
     if (context) previousSources = context.sources
     if (text === '把刚才讨论整理成需求文档') {
