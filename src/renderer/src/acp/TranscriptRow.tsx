@@ -1,4 +1,4 @@
-import { ChevronRight, FileText, GitBranch, Loader2, Pencil, Search, ShieldQuestion, Sparkles, Terminal, Workflow } from 'lucide-react'
+import { Check, ChevronRight, Copy, FileText, GitBranch, Loader2, Pencil, Search, ShieldQuestion, Sparkles, Terminal, TriangleAlert, Workflow } from 'lucide-react'
 import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
 import { Button } from '../my/ui'
@@ -13,7 +13,20 @@ import { KnowledgeOperationRow } from './KnowledgeOperationRow'
 import { SavedArtifactMessage } from './SavedArtifactMessage'
 import { projectRootKey } from '../my/navigation'
 import type { AcpPermissionPayload, AcpSessionRecord, TimelineEvent } from '../../../shared/types'
-import type { JSX } from 'react'
+import { useMemo, type JSX } from 'react'
+import { useCopyFeedback } from '../utils/use-copy-feedback'
+
+function CopyMessageButton({ text, ownerKey }: { text: string; ownerKey: string }): JSX.Element {
+  const owner = useMemo(() => ({ ownerKey, text }), [ownerKey, text])
+  const { status, copy } = useCopyFeedback(owner)
+  const label = status === 'copying' ? '正在复制' : status === 'copied' ? '已复制' : status === 'error' ? '重试复制' : '复制内容'
+  return <div className="acp-message-actions">
+    <button type="button" className="acp-message-copy-btn" aria-label={label} aria-disabled={status === 'copying'} title={label} onClick={() => void copy(text)}>
+      {status === 'copied' ? <Check size={12} aria-hidden="true" /> : status === 'error' ? <TriangleAlert size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+    </button>
+    <span role="status" aria-live="polite" className={clsx('acp-copy-feedback', status === 'error' && 'text-my-danger-text')}>{status === 'error' ? '复制失败，请重试或选择文字复制' : status === 'copied' ? '已复制' : status === 'copying' ? '正在复制…' : ''}</span>
+  </div>
+}
 
 const TRELLIS_ICON: Record<string, JSX.Element> = {
   'task-status': <Workflow size={13} />, 'doc-created': <FileText size={13} />,
@@ -63,7 +76,7 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
       {item.delivery && item.delivery !== 'sent' && !(item.delivery === 'preparing' && preparing && suppressWorkingIndicator) && <span className={clsx('acp-prompt-delivery', item.delivery === 'not_sent' && 'is-not-sent')} title={item.delivery === 'preparing' ? preparing ? '正在准备项目知识参考，尚未发送给模型。' : '仅找到准备记录，尚未确认是否实际发送给模型。' : undefined}>{item.delivery === 'preparing' ? preparing ? '准备中…' : '发送状态未确认' : '未发送给模型'}</span>}
     </div></div>
   }
-  if (item.type === 'agent') return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-answer acp-chat-copy min-w-0 break-words text-my-primary', item.startsAnswer && 'acp-answer-start')}><SavedArtifactMessage text={item.text} messageId={item.key} events={events ?? []} session={session} /></div>
+  if (item.type === 'agent') return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-answer acp-chat-copy min-w-0 break-words text-my-primary', item.startsAnswer && 'acp-answer-start')}><SavedArtifactMessage text={item.text} messageId={item.key} events={events ?? []} session={session} /><CopyMessageButton text={item.text} ownerKey={JSON.stringify([session?.projectRoot, session?.sessionId, session?.connectionGeneration, item.key])} /></div>
   if (item.type === 'knowledge-operation') return <KnowledgeOperationRow item={item} session={session} onOpenTask={onOpenTask} suppressWorkingIndicator={suppressWorkingIndicator} />
   if (item.type === 'thought') {
     const originIndex = events?.findIndex((event) => event.id === item.key) ?? -1

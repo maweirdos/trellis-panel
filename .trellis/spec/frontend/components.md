@@ -16,6 +16,32 @@ check slot. Give enabled compact actions neutral rounded hover feedback.
 without nested buttons or invented undo/completion facts. Severity never uses a
 colored left-edge border. Keep focus and disabled behavior accessible.
 
+## Desktop overlay ownership
+
+Use `Modal` from `my/ui.tsx` for modal tasks, including command palettes and
+imperative confirmations. It owns the themed portal, background isolation,
+focus containment/return and central Escape registration. A queued successor
+in `DialogHost` uses its request ID as the Modal key so Escape rearms.
+Nested and sibling confirmations must leave only the top modal interactive.
+
+`Dropdown` owns portal positioning, focus entry/return and keyboard option
+navigation. Keep embedded text fields' editing keys and composition intact;
+custom form content does not acquire menu semantics. `Select` reuses this
+ownership and supplies listbox semantics, selected focus and typeahead.
+
+`useCopyFeedback(ownerKey)` returns `status` (`idle`, `copying`, `copied`, `error`)
+and `copy(text)`. Pass the displayed source's stable identity. Success follows
+clipboard completion and clears after 2500ms; failure remains actionable.
+Changing the owner, suspending the scope or unmounting invalidates pending
+feedback without claiming that the operating-system write was cancelled.
+
+`usePointerResize({ axis, direction?, enabled?, owner?, getValue, onChange,
+onCancel })` returns `resizing` and pointer bindings. Pointer-up commits;
+Escape, pointer cancellation, lost capture, window blur, hidden scope and
+unmount restore the drag's original value and release capture. The cancellation
+callback must still target the original owner. Keep keyboard resizing on the
+separator and disable size transitions during the drag.
+
 ## Semantic HTML
 
 Use proper HTML elements for accessibility and native browser behavior:

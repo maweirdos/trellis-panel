@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Database,
   Cloud,
@@ -16,45 +16,60 @@ import {
   X,
   ShieldCheck,
   Play,
-  Settings2,
   Code,
-  FileCode,
-  ArrowUpRight
+  FileCode
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
-import { Button, Checkbox } from '../my/ui'
+import { Button, Checkbox, Modal } from '../my/ui'
 import { relTime } from '../utils/format'
 import { errorMessage } from '../../../shared/errors'
 import { useProjectKnowledge } from '../knowledge/bridge'
+import { useCopyFeedback } from '../utils/use-copy-feedback'
+import { useInteractionGuard } from '../utils/interaction-scope'
 import type {
-  GatewayLogEntry,
   GatewaySecurityConfig,
   GatewayStatus,
   GatewayTestToolResult,
   GatewayToolDef,
-  GatewayUpstream,
   KbMcpInstallResult
 } from '../../../shared/types'
 import type { JSX } from 'react'
 
 export function GatewayPage(): JSX.Element {
+  const root = useApp((s) => s.snapshot?.meta.root ?? '')
+  return <GatewayWorkspace key={root} root={root} />
+}
+
+function GatewayWorkspace({ root }: { root: string }): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
-  const knowledge = useProjectKnowledge(snapshot?.meta.root ?? '')
+  const knowledge = useProjectKnowledge(root)
   const pushToast = useApp((s) => s.pushToast)
   const setPage = useApp((s) => s.setPage)
 
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null)
-  const [loadingStatus, setLoadingStatus] = useState(false)
+  const canReadStatus = hasIpc && typeof api?.gatewayStatus === 'function'
+  const [loadingStatus, setLoadingStatus] = useState(canReadStatus)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<{ kind: 'mount' | 'upstream'; detail: string; upstreamId?: string } | null>(null)
   const [testingUpstreamId, setTestingUpstreamId] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const mounted = useRef(false)
+  const statusGeneration = useRef(0)
+  const debuggerGeneration = useRef(0)
+  const securityGeneration = useRef(0)
+  const securityInitialized = useRef(false)
+  const canInteract = useInteractionGuard()
+  const projectCurrent = knowledge.current
+  const ownsProject = useCallback(() => mounted.current && canInteract() && projectCurrent(), [canInteract, projectCurrent])
 
   // 调试器状态
   const [selectedTool, setSelectedTool] = useState<GatewayToolDef | null>(null)
   const [toolArgs, setToolArgs] = useState<Record<string, string>>({})
   const [executingTool, setExecutingTool] = useState(false)
   const [testResult, setTestResult] = useState<GatewayTestToolResult | null>(null)
+  const [executionError, setExecutionError] = useState<string | null>(null)
 
   // 过滤分类
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'knowledge' | 'project'>('all')
@@ -64,6 +79,10 @@ export function GatewayPage(): JSX.Element {
   const [showSecurityModal, setShowSecurityModal] = useState(false)
   const [mcpInstallResult, setMcpInstallResult] = useState<KbMcpInstallResult | null>(null)
   const [installingMcp, setInstallingMcp] = useState(false)
+  const [savingSecurity, setSavingSecurity] = useState(false)
+  const [securityError, setSecurityError] = useState<string | null>(null)
+  const copyOwner = useMemo(() => ({ root, result: mcpInstallResult, open: showMountModal }), [root, mcpInstallResult, showMountModal, projectCurrent])
+  const copyFeedback = useCopyFeedback(copyOwner)
 
   // 安全配置表单
   const [securityForm, setSecurityForm] = useState<GatewaySecurityConfig>({
@@ -72,47 +91,78 @@ export function GatewayPage(): JSX.Element {
     maxResponseChars: 12000
   })
 
-  const loadStatus = useCallback(async () => {
+  useLayoutEffect(() => {
+    mounted.current = true
+    // A batched A → B → A transition still revokes pending actions and dialogs.
+    setGatewayStatus(null)
+    setStatusError(null)
+    setActionError(null)
+    setTestingUpstreamId(null)
+    setSelectedTool(null)
+    setExecutingTool(false)
+    setTestResult(null)
+    setExecutionError(null)
+    setShowMountModal(false)
+    setShowSecurityModal(false)
+    setMcpInstallResult(null)
+    setInstallingMcp(false)
+    setSavingSecurity(false)
+    setSecurityError(null)
+    securityInitialized.current = false
+    return () => { mounted.current = false; statusGeneration.current++; debuggerGeneration.current++; securityGeneration.current++ }
+  }, [projectCurrent])
+
+  const loadStatus = useCallback(async (): Promise<void> => {
+    if (!canReadStatus || !ownsProject()) return
+    const ticket = ++statusGeneration.current
+    const isCurrent = (): boolean => ownsProject() && ticket === statusGeneration.current
     setLoadingStatus(true)
     try {
       const res = await api.gatewayStatus()
-      if (res && res.ok) {
-        setGatewayStatus(res)
-        if (res.security) {
-          setSecurityForm(res.security)
-        }
+      if (!isCurrent()) return
+      if (!res?.ok) throw new Error('网关未返回有效状态')
+      setGatewayStatus(res)
+      setStatusError(null)
+      if (!securityInitialized.current) {
+        securityInitialized.current = true
+        setSecurityForm(res.security)
       }
     } catch (e) {
-      console.error('Failed to load gateway status', e)
+      if (isCurrent()) setStatusError(errorMessage(e) || String(e))
     } finally {
-      setLoadingStatus(false)
+      if (isCurrent()) setLoadingStatus(false)
     }
-  }, [])
+  }, [canReadStatus, ownsProject])
 
   useEffect(() => {
-    if (!hasIpc) return
-    loadStatus()
+    void loadStatus()
   }, [loadStatus])
 
   const handleTestUpstream = async (upstreamId: string) => {
+    if (!root || !ownsProject() || !gatewayStatus || statusError || testingUpstreamId || typeof api?.gatewayTestProvider !== 'function') return
     setTestingUpstreamId(upstreamId)
+    setActionError(null)
     try {
       const res = await api.gatewayTestProvider(upstreamId)
+      if (!ownsProject()) return
       if (res.ok) {
         pushToast({ kind: 'success', title: `上游服务 [${upstreamId}] 连通性测试通过！` })
       } else {
-        pushToast({ kind: 'error', title: `测试失败: ${res.error || '未知错误'}` })
+        setActionError({ kind: 'upstream', upstreamId, detail: res.error || '未知错误' })
       }
-      loadStatus()
+      void loadStatus()
     } catch (e) {
-      pushToast({ kind: 'error', title: `测试失败: ${errorMessage(e) || String(e)}` })
+      if (ownsProject()) setActionError({ kind: 'upstream', upstreamId, detail: errorMessage(e) || String(e) })
     } finally {
-      setTestingUpstreamId(null)
+      if (ownsProject()) setTestingUpstreamId(null)
     }
   }
 
   const handleOpenDebugger = (tool: GatewayToolDef) => {
+    if (!root || !ownsProject() || statusError || typeof api?.gatewayTestTool !== 'function') return
+    debuggerGeneration.current++
     setSelectedTool(tool)
+    setExecutionError(null)
     setTestResult(null)
     // 设置默认参数
     const defaults: Record<string, string> = {}
@@ -132,9 +182,12 @@ export function GatewayPage(): JSX.Element {
   }
 
   const handleExecuteTool = async () => {
-    if (!selectedTool) return
+    if (!root || !selectedTool || !ownsProject() || executingTool || statusError || typeof api?.gatewayTestTool !== 'function') return
+    const ticket = ++debuggerGeneration.current
+    const isCurrent = (): boolean => ownsProject() && debuggerGeneration.current === ticket
     setExecutingTool(true)
     setTestResult(null)
+    setExecutionError(null)
     try {
       const parsedArgs: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(toolArgs)) {
@@ -146,6 +199,7 @@ export function GatewayPage(): JSX.Element {
       }
 
       const res = await api.gatewayTestTool(selectedTool.name, parsedArgs)
+      if (!isCurrent()) return
       setTestResult(res)
       if (res.blockedBySecurity) {
         pushToast({ kind: 'warn', title: '网关安全防线拦截：禁止破坏性操作！' })
@@ -154,44 +208,60 @@ export function GatewayPage(): JSX.Element {
       } else {
         pushToast({ kind: 'error', title: `执行失败: ${res.error || '未知错误'}` })
       }
-      loadStatus()
+      void loadStatus()
     } catch (e) {
-      pushToast({ kind: 'error', title: `执行异常: ${errorMessage(e) || String(e)}` })
+      if (isCurrent()) setExecutionError(errorMessage(e) || String(e))
     } finally {
-      setExecutingTool(false)
+      if (isCurrent()) setExecutingTool(false)
     }
   }
 
   const handleSaveSecurity = async () => {
+    if (!ownsProject() || savingSecurity || statusError || typeof api?.gatewayUpdateSecurity !== 'function') return
+    const ticket = ++securityGeneration.current
+    setSavingSecurity(true)
+    setSecurityError(null)
     try {
-      await api.gatewayUpdateSecurity(securityForm)
+      const res = await api.gatewayUpdateSecurity(securityForm)
+      if (!ownsProject() || securityGeneration.current !== ticket) return
+      if (!res.ok) throw new Error('安全策略未保存，请重试')
       pushToast({ kind: 'success', title: '网关安全策略已更新' })
       setShowSecurityModal(false)
-      loadStatus()
+      void loadStatus()
     } catch (e) {
-      pushToast({ kind: 'error', title: `更新失败: ${errorMessage(e) || String(e)}` })
+      if (ownsProject() && securityGeneration.current === ticket) setSecurityError(errorMessage(e) || String(e))
+    } finally {
+      if (ownsProject()) setSavingSecurity(false)
     }
   }
 
   const handleOpenMountModal = async () => {
+    if (!root || !ownsProject() || installingMcp || statusError || typeof api?.kbMcpInstall !== 'function') return
     setInstallingMcp(true)
+    setActionError(null)
     try {
       const res = await api.kbMcpInstall()
+      if (!ownsProject()) return
+      if (!res.ok) throw new Error(res.error || '接入配置生成失败')
       setMcpInstallResult(res)
       setShowMountModal(true)
     } catch (e) {
-      pushToast({ kind: 'error', title: `生成配置失败: ${errorMessage(e) || String(e)}` })
+      if (ownsProject()) setActionError({ kind: 'mount', detail: errorMessage(e) || String(e) })
     } finally {
-      setInstallingMcp(false)
+      if (ownsProject()) setInstallingMcp(false)
     }
   }
 
-  const copySnippet = (key: string, text: string) => {
-    navigator.clipboard.writeText(text)
+  const copySnippet = async (key: string, text: string): Promise<void> => {
+    if (copyFeedback.status === 'copying') return
     setCopiedKey(key)
-    setTimeout(() => setCopiedKey(null), 2000)
-    pushToast({ kind: 'info', title: '已复制到剪贴板' })
+    await copyFeedback.copy(text)
   }
+
+  const closeDebugger = (): void => { debuggerGeneration.current++; setSelectedTool(null); setExecutingTool(false) }
+  const closeSecurity = (): void => { securityGeneration.current++; setShowSecurityModal(false) }
+  const actionsAvailable = !!gatewayStatus && !statusError
+  const canTestUpstream = !!root && actionsAvailable && !testingUpstreamId && typeof api?.gatewayTestProvider === 'function'
 
   const upstreams = gatewayStatus?.upstreams || []
   const tools = gatewayStatus?.tools || []
@@ -210,35 +280,64 @@ export function GatewayPage(): JSX.Element {
         {/* 状态徽标与操作栏 */}
         <div className="flex flex-col gap-3 border-b border-my-line pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <span className="my-chip bg-my-success-subtle text-my-success-text">
-              <span className="h-1.5 w-1.5 rounded-full bg-my-success animate-pulse" />
-              Active · stdio
+            <span className={clsx('my-chip', gatewayStatus?.running && !statusError && !loadingStatus ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-layer-3 text-my-tertiary')}>
+              {loadingStatus ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
+              {!hasIpc ? '桌面功能不可用' : statusError ? '状态待确认' : loadingStatus ? '正在读取状态' : gatewayStatus ? `${gatewayStatus.running ? '运行中' : '已停止'} · ${gatewayStatus.transport}` : '状态未知'}
             </span>
-            <span className="my-chip bg-my-accent-subtle text-my-accent-text">
+            {hasIpc && !root && <span className="my-chip bg-my-layer-3 text-my-tertiary">未打开项目</span>}
+            {gatewayStatus && <span className="my-chip bg-my-accent-subtle text-my-accent-text">
               {tools.length} 个聚合工具
-            </span>
+            </span>}
           </div>
 
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               onClick={() => setShowSecurityModal(true)}
+              disabled={!actionsAvailable || savingSecurity && !showSecurityModal || installingMcp || typeof api?.gatewayUpdateSecurity !== 'function'}
               title="配置安全防护与熔断参数"
             >
               <ShieldCheck size={13} className="text-my-success-text" />
               <span>安全策略</span>
             </Button>
-            <Button variant="outline" onClick={loadStatus} disabled={loadingStatus} title="刷新网关状态">
+            <Button variant="outline" onClick={loadStatus} disabled={!canReadStatus || loadingStatus} title="刷新网关状态">
               <RefreshCw size={12} className={clsx(loadingStatus && 'animate-spin')} />
               <span>刷新</span>
             </Button>
-            <Button variant="primary" onClick={handleOpenMountModal} disabled={installingMcp}>
-              <Terminal size={12} />
-              <span>接入 AI 编辑器</span>
+            <Button variant="primary" onClick={handleOpenMountModal} disabled={!root || !actionsAvailable || installingMcp || typeof api?.kbMcpInstall !== 'function'}>
+              {installingMcp ? <Loader2 size={12} className="animate-spin" /> : <Terminal size={12} />}
+              <span>{installingMcp ? '正在生成配置' : '接入 AI 编辑器'}</span>
             </Button>
           </div>
         </div>
 
+        {statusError && (
+          <div role="alert" className="flex items-start gap-3 rounded-my-lg border border-my-line p-3 text-my-xs">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-my-danger-text" />
+            <div className="min-w-0 flex-1">
+              <div className="text-my-primary">{gatewayStatus ? '刷新失败，保留上次网关记录' : '无法读取网关状态'}</div>
+              <details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">错误详情</summary><p className="mt-1 whitespace-pre-wrap break-words">{statusError}</p></details>
+            </div>
+            <Button variant="outline" size="sm" onClick={loadStatus} disabled={loadingStatus}>{loadingStatus ? '读取中' : '重试'}</Button>
+          </div>
+        )}
+        {actionError && (
+          <div role="alert" className="flex items-start gap-3 rounded-my-lg border border-my-line p-3 text-my-xs">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-my-danger-text" />
+            <div className="min-w-0 flex-1">
+              <div className="text-my-primary">{actionError.kind === 'mount' ? '接入配置生成失败' : '上游连通性测试失败'}</div>
+              <details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">错误详情</summary><p className="mt-1 whitespace-pre-wrap break-words">{actionError.detail}</p></details>
+            </div>
+            <Button variant="outline" size="sm" disabled={!actionsAvailable || installingMcp || !!testingUpstreamId} onClick={() => actionError.kind === 'mount' ? void handleOpenMountModal() : actionError.upstreamId && void handleTestUpstream(actionError.upstreamId)}>重试</Button>
+          </div>
+        )}
+        {!gatewayStatus && !statusError && (
+          <div role="status" className="flex items-center gap-3 rounded-my-lg border border-my-line p-4 text-my-sm text-my-tertiary">
+            {loadingStatus ? <Loader2 size={18} className="shrink-0 animate-spin" /> : <Terminal size={18} className="shrink-0" />}
+            <span>{!hasIpc ? '网关需在桌面应用中使用' : !canReadStatus ? '请重启桌面应用以加载网关' : loadingStatus ? '正在读取网关状态…' : '尚未读取网关状态'}</span>
+          </div>
+        )}
+        {gatewayStatus && <>
         {/* 1. 上游服务治理 (Upstream Services) */}
         <div>
           <div className="mb-3 flex items-center justify-between">
@@ -260,7 +359,7 @@ export function GatewayPage(): JSX.Element {
                     <Database className="h-4 w-4 text-my-info-text" />
                     <h3 className="text-my-xs font-semibold text-my-primary">本地知识库</h3>
                   </div>
-                  {snapshot ? (
+                  {upstreams.find((u) => u.id === 'local-kb')?.status === 'connected' ? (
                     <span className="my-chip bg-my-success-subtle text-my-success-text">
                       <CheckCircle2 className="h-3 w-3" />
                       已连接
@@ -268,7 +367,7 @@ export function GatewayPage(): JSX.Element {
                   ) : (
                     <span className="my-chip bg-my-layer-3 text-my-tertiary">
                       <AlertCircle className="h-3 w-3" />
-                      未打开项目
+                      {root ? '未连接' : '未打开项目'}
                     </span>
                   )}
                 </div>
@@ -277,14 +376,14 @@ export function GatewayPage(): JSX.Element {
                 </p>
                 <div className="mt-3 space-y-1 font-mono text-my-xs text-my-tertiary">
                   <div className="truncate">端点: {snapshot?.meta?.root ? `${snapshot.meta.root}/.trellis` : '—'}</div>
-                  <div className="text-my-success-text">进程内倒排索引 · 离线可用</div>
+                  <div className={root ? 'text-my-success-text' : 'text-my-tertiary'}>{root ? '进程内倒排索引 · 离线可用' : '打开项目后使用本地知识库'}</div>
                 </div>
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-my-line pt-3">
                 <button
                   onClick={() => handleTestUpstream('local-kb')}
-                  disabled={testingUpstreamId === 'local-kb' || !snapshot}
+                  disabled={!canTestUpstream || !upstreams.find((u) => u.id === 'local-kb')?.enabled}
                   className="my-control my-control-sm text-my-info-text hover:text-[var(--my-txt-info-secondary)] disabled:opacity-40"
                 >
                   {testingUpstreamId === 'local-kb' ? (
@@ -294,7 +393,7 @@ export function GatewayPage(): JSX.Element {
                   )}
                   <span>连通性探测</span>
                 </button>
-                <span className="text-my-xs text-my-tertiary">2 个工具</span>
+                <span className="text-my-xs text-my-tertiary">{tools.filter((t) => t.upstreamId === 'local-kb').length} 个工具</span>
               </div>
             </div>
 
@@ -330,7 +429,7 @@ export function GatewayPage(): JSX.Element {
               <div className="mt-4 flex items-center justify-between border-t border-my-line pt-3">
                 <button
                   onClick={() => handleTestUpstream('weknora')}
-                  disabled={testingUpstreamId === 'weknora' || knowledge.context?.scope.status !== 'ok'}
+                  disabled={!canTestUpstream || knowledge.context?.scope.status !== 'ok'}
                   className="my-control my-control-sm text-my-info-text hover:text-[var(--my-txt-info-secondary)] disabled:opacity-40"
                 >
                   {testingUpstreamId === 'weknora' ? (
@@ -357,9 +456,9 @@ export function GatewayPage(): JSX.Element {
                     <FileCode className="h-4 w-4 text-my-success-text" />
                     <h3 className="text-my-xs font-semibold text-my-primary">Trellis 项目内核</h3>
                   </div>
-                  <span className="my-chip bg-my-success-subtle text-my-success-text">
-                    <CheckCircle2 className="h-3 w-3" />
-                    已挂载
+                  <span className={clsx('my-chip', upstreams.find((u) => u.id === 'trellis')?.status === 'connected' ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-layer-3 text-my-tertiary')}>
+                    {upstreams.find((u) => u.id === 'trellis')?.status === 'connected' ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+                    {upstreams.find((u) => u.id === 'trellis')?.status === 'connected' ? '已挂载' : root ? '未挂载' : '未打开项目'}
                   </span>
                 </div>
                 <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
@@ -374,13 +473,13 @@ export function GatewayPage(): JSX.Element {
               <div className="mt-4 flex items-center justify-between border-t border-my-line pt-3">
                 <button
                   onClick={() => handleTestUpstream('trellis')}
-                  disabled={testingUpstreamId === 'trellis'}
+                  disabled={!canTestUpstream || !upstreams.find((u) => u.id === 'trellis')?.enabled}
                   className="my-control my-control-sm text-my-success-text hover:text-[var(--my-txt-success-secondary)] disabled:opacity-40"
                 >
                   <Activity size={12} />
                   <span>状态探测</span>
                 </button>
-                <span className="text-my-xs text-my-tertiary">3 个工具</span>
+                <span className="text-my-xs text-my-tertiary">{tools.filter((t) => t.upstreamId === 'trellis').length} 个工具</span>
               </div>
             </div>
 
@@ -415,7 +514,7 @@ export function GatewayPage(): JSX.Element {
                 <Code className="h-4 w-4 text-my-accent-text" />
                 <h2 className="text-my-xs font-semibold text-my-primary">聚合工具目录 (Tool Catalog)</h2>
                 <span className="my-chip border border-my-line bg-my-canvas font-mono text-my-tertiary">
-                  {filteredTools.length} 个就绪
+                  {filteredTools.length} 个工具
                 </span>
               </div>
               <p className="mt-0.5 text-my-xs text-my-tertiary">
@@ -457,6 +556,7 @@ export function GatewayPage(): JSX.Element {
 
           {/* 工具列表 */}
           <div className="mt-4 divide-y divide-my-line">
+            {filteredTools.length === 0 && <div className="py-4 text-my-xs text-my-tertiary">当前分类没有工具</div>}
             {filteredTools.map((tool) => (
               <div
                 key={tool.name}
@@ -495,10 +595,11 @@ export function GatewayPage(): JSX.Element {
                 <div className="flex items-center gap-2 sm:self-center">
                   <button
                     onClick={() => handleOpenDebugger(tool)}
+                    disabled={!root || !actionsAvailable || !gatewayStatus.running || typeof api?.gatewayTestTool !== 'function'}
                     className="my-control border border-my-line bg-my-canvas text-my-secondary hover:border-my-line-accent-subtle hover:text-my-accent-text"
                   >
                     <Play size={11} className="text-my-accent-text" />
-                    <span>在线调试</span>
+                    <span>{root ? '在线调试' : '打开项目后调试'}</span>
                   </button>
                 </div>
               </div>
@@ -516,7 +617,7 @@ export function GatewayPage(): JSX.Element {
                 累计 {gatewayStatus?.totalQueries || 0} 次调用
               </span>
             </div>
-            <Button variant="ghost" size="sm" onClick={loadStatus} disabled={loadingStatus} title="刷新流水">
+            <Button variant="ghost" size="sm" onClick={loadStatus} disabled={!canReadStatus || loadingStatus} title="刷新流水" aria-label="刷新流水">
               <RefreshCw size={12} className={clsx(loadingStatus && 'animate-spin')} />
             </Button>
           </div>
@@ -577,28 +678,26 @@ export function GatewayPage(): JSX.Element {
             )}
           </div>
         </div>
+        </>}
       </div>
 
       {/* 模态框 1: 在线调试器 (Tool Debugger Drawer/Modal) */}
       {selectedTool && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop p-4"
-          onMouseDown={(e) => e.target === e.currentTarget && setSelectedTool(null)}
-        >
-          <div className="w-full max-w-2xl rounded-my-xl border border-my-line bg-my-layer-2 p-6 shadow-[var(--my-shadow-overlay-200)]">
-            <div className="flex items-center justify-between border-b border-my-line pb-3">
+        <Modal open onClose={closeDebugger} ariaLabel={`在线工具调试: ${selectedTool.name}`} width="42rem" placement="center">
+          <div className="flex max-h-[inherit] flex-col">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-my-line px-5 py-3">
               <div className="flex items-center gap-2">
                 <Play size={16} className="text-my-accent-text" />
                 <h3 className="text-my-sm font-semibold text-my-primary">
                   在线工具调试: <span className="font-mono text-my-accent-text">{selectedTool.name}</span>
                 </h3>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedTool(null)}>
+              <Button variant="ghost" size="sm" className="my-icon-control shrink-0" aria-label="关闭调试器" onClick={closeDebugger}>
                 <X size={14} />
               </Button>
             </div>
 
-            <div className="mt-4 space-y-4">
+            <div className="my-scrollbar min-h-0 overflow-y-auto p-5 space-y-4" style={{ scrollbarGutter: 'stable' }}>
               <p className="text-my-xs text-my-secondary leading-relaxed">{selectedTool.description}</p>
 
               {/* 参数输入 */}
@@ -611,7 +710,7 @@ export function GatewayPage(): JSX.Element {
                 ) : (
                   Object.entries(selectedTool.parameters).map(([pName, pMeta]) => (
                     <div key={pName} className="space-y-1">
-                      <label className="flex items-center justify-between text-my-xs font-medium text-my-secondary">
+                      <label htmlFor={`gateway-tool-${pName}`} className="flex items-center justify-between text-my-xs font-medium text-my-secondary">
                         <span>
                           {pName} ({pMeta.type})
                           {pMeta.required && <span className="text-my-danger-text ml-1">*</span>}
@@ -620,7 +719,9 @@ export function GatewayPage(): JSX.Element {
                       </label>
                       {pName === 'sql' ? (
                         <textarea
+                          id={`gateway-tool-${pName}`}
                           rows={3}
+                          disabled={executingTool}
                           value={toolArgs[pName] || ''}
                           onChange={(e) => setToolArgs({ ...toolArgs, [pName]: e.target.value })}
                           className="w-full rounded-my-md border border-my-line bg-my-surface-1 p-2.5 font-mono text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
@@ -628,7 +729,9 @@ export function GatewayPage(): JSX.Element {
                         />
                       ) : (
                         <input
+                          id={`gateway-tool-${pName}`}
                           type="text"
+                          disabled={executingTool}
                           value={toolArgs[pName] || ''}
                           onChange={(e) => setToolArgs({ ...toolArgs, [pName]: e.target.value })}
                           className="my-input font-mono text-my-sm"
@@ -645,6 +748,7 @@ export function GatewayPage(): JSX.Element {
                 <div className="flex items-center gap-2 text-my-xs text-my-tertiary">
                   <span>快捷填入:</span>
                   <button
+                    disabled={executingTool}
                     onClick={() => setToolArgs({ query: '项目规范', library: 'spec' })}
                     className="underline hover:text-my-secondary"
                   >
@@ -652,6 +756,7 @@ export function GatewayPage(): JSX.Element {
                   </button>
                   <span>·</span>
                   <button
+                    disabled={executingTool}
                     onClick={() => setToolArgs({ query: '归档任务', library: 'archive' })}
                     className="underline hover:text-my-secondary"
                   >
@@ -661,8 +766,9 @@ export function GatewayPage(): JSX.Element {
               )}
 
               {/* 调试执行结果 */}
+              {executionError && <div role="alert" className="rounded-my-lg border border-my-line p-3 text-my-xs text-my-danger-text"><span>执行失败，可重试调用</span><details className="mt-1"><summary className="cursor-pointer">错误详情</summary><p className="whitespace-pre-wrap break-words">{executionError}</p></details></div>}
               {testResult && (
-                <div className="space-y-2 border-t border-my-line pt-3">
+                <div role={testResult.ok ? 'status' : 'alert'} className="space-y-2 border-t border-my-line pt-3">
                   <div className="flex items-center justify-between">
                     <span className="text-my-xs font-semibold text-my-primary">执行结果</span>
                     <span className="font-mono text-my-xs text-my-success-text">
@@ -690,52 +796,54 @@ export function GatewayPage(): JSX.Element {
               )}
             </div>
 
-            <div className="mt-6 flex justify-end gap-2 border-t border-my-line pt-4">
-              <Button variant="ghost" onClick={() => setSelectedTool(null)}>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-my-line px-5 py-3">
+              <Button variant="ghost" onClick={closeDebugger}>
                 关闭
               </Button>
-              <Button variant="primary" onClick={handleExecuteTool} disabled={executingTool}>
+              <Button variant="primary" onClick={handleExecuteTool} disabled={executingTool || !actionsAvailable}>
                 {executingTool ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-                <span>执行调用 (Run)</span>
+                <span>{executingTool ? '正在执行' : executionError || testResult && !testResult.ok ? '重试调用' : '执行调用 (Run)'}</span>
               </Button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* 模态框 2: 网关安全策略设置 (Security Guardrails Modal) */}
       {showSecurityModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop p-4"
-          onMouseDown={(e) => e.target === e.currentTarget && setShowSecurityModal(false)}
-        >
-          <div className="w-full max-w-md rounded-my-xl border border-my-line bg-my-layer-2 p-6 shadow-[var(--my-shadow-overlay-200)]">
-            <div className="flex items-center justify-between border-b border-my-line pb-3">
+        <Modal open onClose={closeSecurity} ariaLabel="网关安全防线与熔断策略" width="28rem" placement="center">
+          <div className="flex max-h-[inherit] flex-col">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-my-line px-5 py-3">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={16} className="text-my-success-text" />
                 <h3 className="text-my-sm font-semibold text-my-primary">网关安全防线与熔断策略</h3>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setShowSecurityModal(false)}>
+              <Button variant="ghost" size="sm" className="my-icon-control shrink-0" aria-label="关闭安全策略" onClick={closeSecurity}>
                 <X size={14} />
               </Button>
             </div>
 
-            <div className="mt-4 space-y-4 text-my-xs">
+            <div className="my-scrollbar min-h-0 overflow-y-auto p-5 space-y-4 text-my-xs" style={{ scrollbarGutter: 'stable' }}>
+              {securityError && <div role="alert" className="rounded-my-lg border border-my-line p-3 text-my-danger-text">{securityError}</div>}
               <div className="flex items-center justify-between rounded-my-lg border border-my-line bg-my-canvas p-3">
                 <div>
                   <div className="font-semibold text-my-primary">SQL 只读安全拦截 (Strict Read-Only)</div>
                   <p className="mt-0.5 text-my-tertiary">强制阻断 DROP / DELETE / UPDATE / ALTER 等写操作</p>
                 </div>
-                <Checkbox
-                  checked={securityForm.sqlReadOnly}
-                  onChange={(v) => setSecurityForm({ ...securityForm, sqlReadOnly: v })}
-                />
+                <fieldset disabled={savingSecurity} className="border-0 p-0">
+                  <label><span className="sr-only">SQL 只读安全拦截</span><Checkbox
+                    checked={securityForm.sqlReadOnly}
+                    onChange={(v) => setSecurityForm({ ...securityForm, sqlReadOnly: v })}
+                  /></label>
+                </fieldset>
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold text-my-primary">上游调用硬超时熔断 (毫秒)</label>
+                <label htmlFor="gateway-timeout" className="font-semibold text-my-primary">上游调用硬超时熔断 (毫秒)</label>
                 <input
+                  id="gateway-timeout"
                   type="number"
+                  disabled={savingSecurity}
                   value={securityForm.timeoutMs}
                   onChange={(e) => setSecurityForm({ ...securityForm, timeoutMs: Number(e.target.value) || 2000 })}
                   className="my-input"
@@ -744,9 +852,11 @@ export function GatewayPage(): JSX.Element {
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold text-my-primary">最大响应字符截断限制</label>
+                <label htmlFor="gateway-response-limit" className="font-semibold text-my-primary">最大响应字符截断限制</label>
                 <input
+                  id="gateway-response-limit"
                   type="number"
+                  disabled={savingSecurity}
                   value={securityForm.maxResponseChars}
                   onChange={(e) => setSecurityForm({ ...securityForm, maxResponseChars: Number(e.target.value) || 12000 })}
                   className="my-input"
@@ -755,36 +865,33 @@ export function GatewayPage(): JSX.Element {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2 border-t border-my-line pt-4">
-              <Button variant="ghost" onClick={() => setShowSecurityModal(false)}>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-my-line px-5 py-3">
+              <Button variant="ghost" onClick={closeSecurity}>
                 取消
               </Button>
-              <Button variant="primary" onClick={handleSaveSecurity}>
-                保存策略
+              <Button variant="primary" onClick={handleSaveSecurity} disabled={savingSecurity || !actionsAvailable}>
+                {savingSecurity ? '正在保存' : securityError ? '重试保存' : '保存策略'}
               </Button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* 模态框 3: 接入 AI 编辑器 (Mount Config Modal) */}
       {showMountModal && mcpInstallResult && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-my-backdrop p-4"
-          onMouseDown={(e) => e.target === e.currentTarget && setShowMountModal(false)}
-        >
-          <div className="w-full max-w-xl rounded-my-xl border border-my-line bg-my-layer-2 p-6 shadow-[var(--my-shadow-overlay-200)]">
-            <div className="flex items-center justify-between border-b border-my-line pb-3">
+        <Modal open onClose={() => setShowMountModal(false)} ariaLabel="接入 AI 编程编辑器" width="36rem" placement="center">
+          <div className="flex max-h-[inherit] flex-col">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-my-line px-5 py-3">
               <div className="flex items-center gap-2">
                 <Terminal size={16} className="text-my-accent-text" />
                 <h3 className="text-my-sm font-semibold text-my-primary">接入 AI 编程编辑器 (MCP Client Config)</h3>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setShowMountModal(false)}>
+              <Button variant="ghost" size="sm" className="my-icon-control shrink-0" aria-label="关闭接入配置" onClick={() => setShowMountModal(false)}>
                 <X size={14} />
               </Button>
             </div>
 
-            <div className="mt-4 space-y-4 text-my-xs">
+            <div className="my-scrollbar min-h-0 overflow-y-auto p-5 space-y-4 text-my-xs" style={{ scrollbarGutter: 'stable' }}>
               <div className="rounded-my-lg border border-my-line-success bg-my-success-subtle p-3 text-my-success-text leading-relaxed">
                 网关脚本已就绪：<br />
                 <code className="font-mono text-my-xs break-all">{mcpInstallResult.scriptPath}</code>
@@ -797,6 +904,7 @@ export function GatewayPage(): JSX.Element {
                   <Button
                     variant="ghost"
                     size="sm"
+                    disabled={copyFeedback.status === 'copying'}
                     onClick={() =>
                       copySnippet(
                         'claude',
@@ -815,8 +923,8 @@ export function GatewayPage(): JSX.Element {
                       )
                     }
                   >
-                    {copiedKey === 'claude' ? <Check size={12} className="text-my-success-text" /> : <Copy size={12} />}
-                    <span>复制 JSON</span>
+                    {copiedKey === 'claude' && copyFeedback.status === 'copied' ? <Check size={12} className="text-my-success-text" /> : <Copy size={12} />}
+                    <span>{copiedKey === 'claude' && copyFeedback.status === 'copied' ? '已复制' : copiedKey === 'claude' && copyFeedback.status === 'copying' ? '复制中' : '复制 JSON'}</span>
                   </Button>
                 </div>
                 <pre className="mt-2 overflow-x-auto rounded-my-sm border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
@@ -838,6 +946,7 @@ export function GatewayPage(): JSX.Element {
                   <Button
                     variant="ghost"
                     size="sm"
+                    disabled={copyFeedback.status === 'copying'}
                     onClick={() =>
                       copySnippet(
                         'codex',
@@ -845,8 +954,8 @@ export function GatewayPage(): JSX.Element {
                       )
                     }
                   >
-                    {copiedKey === 'codex' ? <Check size={12} className="text-my-success-text" /> : <Copy size={12} />}
-                    <span>复制 TOML</span>
+                    {copiedKey === 'codex' && copyFeedback.status === 'copied' ? <Check size={12} className="text-my-success-text" /> : <Copy size={12} />}
+                    <span>{copiedKey === 'codex' && copyFeedback.status === 'copied' ? '已复制' : copiedKey === 'codex' && copyFeedback.status === 'copying' ? '复制中' : '复制 TOML'}</span>
                   </Button>
                 </div>
                 <pre className="mt-2 overflow-x-auto rounded-my-sm border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
@@ -857,13 +966,14 @@ args = ["${mcpInstallResult.scriptPath}", "--root", "${snapshot?.meta.root || '.
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end border-t border-my-line pt-4">
+            {copyFeedback.status === 'error' && <p role="alert" className="px-5 pb-3 text-my-xs text-my-danger-text">复制失败，请重试或选中文本复制。</p>}
+            <div className="flex shrink-0 justify-end border-t border-my-line px-5 py-3">
               <Button variant="primary" onClick={() => setShowMountModal(false)}>
                 完成
               </Button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

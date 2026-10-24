@@ -514,12 +514,16 @@ export function ChatPage(): JSX.Element {
                             value={editing.text}
                             onChange={(ev) => setEditing({ id: e.key, text: ev.target.value })}
                             onKeyDown={(ev) => {
-                              if (ev.key === 'Enter' && !ev.shiftKey && !ev.nativeEvent.isComposing) {
+                              if (ev.defaultPrevented || ev.nativeEvent.isComposing || ev.keyCode === 229) return
+                              if (ev.key === 'Enter' && !ev.shiftKey) {
                                 ev.preventDefault()
+                                ev.stopPropagation()
                                 const text = editing.text.trim()
                                 if (text && e.id) void chatEditResend(e.id, text)
                                 setEditing(null)
                               } else if (ev.key === 'Escape') {
+                                ev.preventDefault()
+                                ev.stopPropagation()
                                 setEditing(null)
                               }
                             }}
@@ -713,17 +717,22 @@ export function ChatPage(): JSX.Element {
               }}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
+                if (e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229) return
                 if (e.altKey && e.key === 'Enter' && draft.trim()) {
                   e.preventDefault()
+                  e.stopPropagation()
                   const text = draft.trim()
                   setDraft('')
                   void chatSteer(text)
                   return
                 }
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
+                  e.stopPropagation()
                   submit()
                 } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  e.stopPropagation()
                   setDraft('')
                 }
               }}

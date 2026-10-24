@@ -159,6 +159,7 @@
   --my-modal-top-inset: 12vh;
   --my-modal-max-height: 76vh;
   --my-motion-fast: 150ms;
+  --my-control-press-scale: .98;
   --my-motion-normal: 200ms;
   --my-motion-slow: 300ms;
   --my-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -439,7 +440,7 @@
   --my-bg-composer: #212121;
   --my-bg-elevated: #282828;
   --my-txt-on-accent: #181818;
-  --my-focus-ring: color-mix(in oklab, #ffffff 24%, transparent);
+  --my-focus-ring: color-mix(in oklab, #ffffff 55%, transparent);
   --my-focus-shadow: 0 0 0 1px color-mix(in oklab, #ffffff 12%, transparent);
   --my-selection-bg: color-mix(in oklab, #ffffff 18%, transparent);
   --my-shadow-raised-100: 0 1px 2px rgba(0, 0, 0, 0.35);
@@ -707,7 +708,7 @@
   --my-bg-composer: #ffffff;
   --my-bg-elevated: #ffffff;
   --my-txt-on-accent: #ffffff;
-  --my-focus-ring: color-mix(in oklab, #1a1c1f 18%, transparent);
+  --my-focus-ring: color-mix(in oklab, #1a1c1f 55%, transparent);
   --my-focus-shadow: 0 0 0 1px color-mix(in oklab, #1a1c1f 10%, transparent);
   --my-selection-bg: color-mix(in oklab, #1a1c1f 18%, transparent);
   --my-shadow-raised-100: 0 1px 2px rgba(0, 0, 0, 0.1);

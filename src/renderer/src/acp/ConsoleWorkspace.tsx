@@ -54,7 +54,7 @@ const STATUS_COLOR: Record<string, string> = {
 }
 const failureText = (error: unknown): string => error instanceof Error ? error.message : '请求失败，请重试'
 const canSend = (session: AcpSessionRecord): boolean => session.status === 'ready' && !session.archivedAt
-const supportsPagedHistory = (): boolean => typeof api.acpHistoryList === 'function' && typeof api.acpHistorySession === 'function' && typeof api.acpHistoryEvents === 'function'
+const supportsPagedHistory = (): boolean => typeof api?.acpHistoryList === 'function' && typeof api?.acpHistorySession === 'function' && typeof api?.acpHistoryEvents === 'function'
 
 function HistoryBoundary({ hasEarlier, startsMidTurn, coverage, loading, onLoadEarlier }: {
   hasEarlier: boolean; startsMidTurn: boolean; coverage?: 'complete' | 'partial' | 'unknown'; loading: boolean; onLoadEarlier: () => void
@@ -489,9 +489,9 @@ export function AcpConsolePage(): JSX.Element {
     return result
   }
   const agentSessionTarget = useMy((state) => state.agentSessionTarget)
-  const legacyTargetCatalogue = typeof api.acpHistorySession === 'function' ? null : projectSessions
+  const legacyTargetCatalogue = typeof api?.acpHistorySession === 'function' ? null : projectSessions
   useEffect(() => {
-    if (!agentSessionTarget || !interactive || !isCurrent() || (typeof api.acpHistorySession !== 'function' && !scope.entryResolved)) return
+    if (!hasIpc || !agentSessionTarget || !interactive || !isCurrent() || (typeof api.acpHistorySession !== 'function' && !scope.entryResolved)) return
     let live = true
     const target = agentSessionTarget
     const current = (): boolean => live && isCurrent() && canInteract() && !interactionSignal?.aborted && useMy.getState().agentSessionTarget === target
@@ -840,6 +840,10 @@ export function AcpConsolePage(): JSX.Element {
   }
 
   if (!root) return <div className="acp-empty text-my-sm">请先打开项目，再查看该项目的 Agent 会话。</div>
+  if (!hasIpc) return <div className="acp-workspace" style={sidebarWidthStyle}><main className="acp-main my-conversation-frame">
+    <header className="acp-workspace-header"><strong>Agent 会话</strong><Button size="sm" variant="ghost" disabled aria-label="刷新会话"><RefreshCw size={14} aria-hidden="true" />刷新</Button></header>
+    <section className="acp-empty" aria-label="会话连接不可用"><Bot size={25} className="mx-auto" aria-hidden="true" /><p role="status">会话功能需要桌面连接，当前无法读取角色与历史会话。</p><Button variant="outline" disabled>新建会话</Button></section>
+  </main></div>
   return <div className={clsx('acp-workspace', sidebarCollapsed && !sidebarOpen && 'is-sidebar-collapsed')} style={sidebarWidthStyle}>
     <div ref={navigationRef} className={clsx('acp-navigation-host flex min-h-0 shrink-0', sidebarCollapsed && !sidebarOpen && 'is-collapsed')}><ConversationNavigation sessions={projectSessions} activeId={activeId} view={view} onView={showView} onSelect={selectSession} onNew={() => openNewConversation()} query={history.query} onQuery={history.setQuery} archive={history.archive} onArchive={history.setArchive} canManage={history.canManage} mutationBusy={history.mutationBusy} mutationErrors={history.mutationErrors} onUpdate={updateConversation} hasMore={history.hasMore} loadingMore={history.loadingMore} onLoadMore={() => void history.loadMore()} collapsed={sidebarCollapsed} open={sidebarOpen} onClose={() => setSidebarOpen(false)} /></div>
     <main ref={mainRef} className="acp-main my-conversation-frame">
@@ -873,7 +877,7 @@ export function AcpConsolePage(): JSX.Element {
         {starterRoles.length > 0 && <details className="acp-starter-roles" open={customRoles.length === 0}><summary>预置起点 · 保留已有配置和历史会话</summary><p className="mb-3 mt-2 text-my-sm text-my-tertiary">这些是原有的预置角色，可继续使用，也可编辑名称和指令形成自己的工作角色。</p><div className="acp-agent-grid">{starterRoles.map(renderRole)}</div></details>}
         <details className="mt-8 border-t border-my-line pt-4 text-my-sm text-my-tertiary"><summary className="cursor-pointer">Jira 工单与已有对话</summary><div className="mt-3 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => openNewConversation()}>选择角色新建会话</Button><Button size="sm" variant="ghost" onClick={() => setJiraOpen(true)}><GitBranch size={13} />从 Jira 选工单开始</Button></div></details>
       </PageContent></section> : !activeSession ? <div className="acp-empty"><MessageSquare size={25} className="mx-auto" /><p>选择最近会话，或选择 Agent 开始新对话。</p><Button variant="outline" onClick={() => openNewConversation()}>选择角色新建会话</Button></div> : <section className="acp-content">
-        <div ref={streamRef} className="acp-transcript my-scrollbar" onScroll={(event) => {
+        <div ref={streamRef} className="acp-transcript my-scrollbar" role="region" aria-label="会话消息" tabIndex={0} onScroll={(event) => {
           const element = event.currentTarget, follow = element.scrollHeight - element.scrollTop - element.clientHeight < 48
           if (history.loadingEarlier && earlierAnchor.current?.sessionId === activeSession.sessionId) earlierAnchor.current.snapshot = captureTranscriptAnchor(element)
           followRef.current = follow; setAtBottom(follow); writeSessionView(root, activeSession.sessionId, { scrollTop: element.scrollTop, follow })
@@ -887,7 +891,7 @@ export function AcpConsolePage(): JSX.Element {
           {items.length === 0 && !isReadOnly && !currentTurnActivity && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{activeSession.status === 'starting' ? '正在准备环境，就绪后可以下达指令。' : '从一条清晰的指令开始。'}</p></div>}
           <CurrentTurnStatus activity={currentTurnActivity} />
         </div></div>
-        {!atBottom && <div className="flex justify-center"><Button size="sm" variant="outline" onClick={() => { const element = streamRef.current; earlierAnchor.current = null; followRef.current = true; setAtBottom(true); if (element) element.scrollTop = element.scrollHeight; writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} />回到最新</Button></div>}
+        {!atBottom && <div className="acp-scroll-to-bottom-container"><Button size="sm" variant="outline" className="acp-scroll-to-bottom-btn" onClick={(event) => { const element = streamRef.current; earlierAnchor.current = null; followRef.current = true; if (element) { if (document.activeElement === event.currentTarget) element.focus({ preventScroll: true }); element.scrollTop = element.scrollHeight }; setAtBottom(true); writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} aria-hidden="true" />回到最新</Button></div>}
         {(!isReadOnly || activeSession.historyPersistence?.state === 'degraded' || (workflow.available && activeSession.taskDir)) && <footer className="acp-composer-region my-conversation-column">
           <WorkflowPanel root={root} taskDir={activeSession.taskDir ?? ''} session={activeSession} controller={workflow} onOpenHistory={openWorkflowHistory} />
           <ConnectionRecovery session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} pending={operations[activeSession.sessionId]} onRetry={() => void sessionAction('resume')} onCleanup={() => void sessionAction('kill')} onRetryHistory={() => void retryHistory()} onNew={() => openNewConversation()} onEnvironment={() => { showView('agents'); setEngineSetupOpen(true) }} />

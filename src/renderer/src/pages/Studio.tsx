@@ -1,5 +1,5 @@
 import { PageContent } from '../my/layout/PageLayout'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Workflow,
   SlashSquare,
@@ -30,6 +30,8 @@ import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
 import { confirmDialog, promptDialog } from '../components/Dialogs'
 import { FlowStudio } from '../components/FlowStudio'
+import { errorMessage } from '../../../shared/errors'
+import { useKnowledgeOwner } from '../knowledge/bridge'
 import type { ExtEntry, ExtKind, StudioScan, WorkflowInfo } from '../../../shared/types'
 import type { JSX } from 'react'
 
@@ -454,26 +456,64 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
 /* ---------------- 页面 ---------------- */
 
 export function StudioPage(): JSX.Element {
-  const snapshot = useApp((s) => s.snapshot)!
+  const root = useApp((s) => s.snapshot?.meta.root ?? '')
+  if (!hasIpc || typeof api?.studioScan !== 'function' || !root) {
+    return (
+      <div className="flex items-start gap-3 p-6 text-my-sm text-my-tertiary" role="status">
+        <FolderOpen size={18} className="shrink-0" />
+        <span>{!hasIpc ? '定制资源需在桌面应用中读取' : !root ? '打开项目后查看定制资源' : '请重启桌面应用以加载定制资源'}</span>
+      </div>
+    )
+  }
+  return <StudioWorkspace key={root} root={root} />
+}
+
+function StudioWorkspace({ root }: { root: string }): JSX.Element {
   const pushToast = useApp((s) => s.pushToast)
+  const { current: ownsProject } = useKnowledgeOwner(root)
   const [scan, setScan] = useState<StudioScan | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const requestGeneration = useRef(0)
+  const mounted = useRef(false)
   const [section, setSection] = useState<Section>('workflow')
   const [editingPath, setEditingPath] = useState<string | null>(null)
   const [editingWf, setEditingWf] = useState<WorkflowInfo | null>(null)
   const [editingExt, setEditingExt] = useState<ExtEntry | null>(null)
   const [query, setQuery] = useState('')
 
+  useLayoutEffect(() => {
+    mounted.current = true
+    setScan(null)
+    setError(null)
+    setLoading(true)
+    setEditingPath(null)
+    setEditingWf(null)
+    setEditingExt(null)
+    return () => { mounted.current = false; requestGeneration.current++ }
+  }, [ownsProject])
+
   const reload = useCallback(async (): Promise<void> => {
-    const res = await api.studioScan()
-    if (res.ok && res.scan) setScan(res.scan)
-    else setError(res.error ?? '扫描失败')
-  }, [])
+    if (!mounted.current || !ownsProject()) return
+    const ticket = ++requestGeneration.current
+    const isCurrent = (): boolean => mounted.current && ticket === requestGeneration.current && ownsProject()
+    setLoading(true)
+    try {
+      const res = await api.studioScan()
+      if (!isCurrent()) return
+      if (!res.ok || !res.scan) throw new Error(res.error || '扫描未返回定制资源')
+      setScan(res.scan)
+      setError(null)
+    } catch (cause) {
+      if (isCurrent()) setError(errorMessage(cause) || String(cause))
+    } finally {
+      if (isCurrent()) setLoading(false)
+    }
+  }, [ownsProject])
 
   useEffect(() => {
-    if (!hasIpc) return
     void reload()
-  }, [reload, snapshot?.meta.root])
+  }, [reload])
 
   const extSection = section === 'command' || section === 'agent' || section === 'skill'
 
@@ -488,20 +528,23 @@ export function StudioPage(): JSX.Element {
     return list.sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name))
   }, [scan, section, query, extSection])
 
-  if (error && !scan) {
-    return (
-      <div className="grid h-full place-items-center">
-        <div className="text-center text-my-xs text-my-tertiary">
-          {error}
-          <Button variant="ghost" className="mt-3" onClick={() => void reload()}>
-            <RefreshCw size={12} /> 重试
-          </Button>
-        </div>
+  const errorNotice = error && (
+    <div role="alert" className="flex shrink-0 items-start gap-2 border-b border-my-line p-3 text-my-xs">
+      <AlertTriangle size={14} className="mt-1 shrink-0 text-my-danger-text" />
+      <div className="min-w-0 flex-1">
+        <div className="text-my-primary">{scan ? '刷新失败，保留上次扫描结果' : '无法扫描定制资源'}</div>
+        <details className="mt-1 text-my-tertiary">
+          <summary className="cursor-pointer">错误详情</summary>
+          <p className="mt-1 whitespace-pre-wrap break-words">{error}</p>
+        </details>
       </div>
-    )
-  }
+      <Button variant="outline" size="sm" disabled={loading} onClick={() => void reload()}>
+        <RefreshCw size={12} className={clsx(loading && 'animate-spin')} /> {loading ? '扫描中' : '重试'}
+      </Button>
+    </div>
+  )
   if (!scan) {
-    return <div className="grid h-full place-items-center text-my-xs text-my-tertiary">正在扫描定制资源…</div>
+    return errorNotice || <div role="status" className="flex items-center gap-2 p-6 text-my-xs text-my-tertiary"><RefreshCw size={14} className="animate-spin" />正在扫描定制资源…</div>
   }
 
   const createExt = async (kind: ExtKind): Promise<void> => {
@@ -526,12 +569,14 @@ export function StudioPage(): JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-h-0 min-w-0">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      {errorNotice}
+      <div className="flex min-h-0 flex-1">
       {/* 左侧子导航 */}
       <div className="flex w-48 shrink-0 flex-col border-r border-my-line">
         <div className="flex items-center px-4 py-3">
-          <Button variant="ghost" size="sm" className="ml-auto" title="重新扫描" onClick={() => void reload()}>
-            <RefreshCw size={12} />
+          <Button variant="ghost" size="sm" className="ml-auto" title="重新扫描" aria-label="重新扫描" disabled={loading} onClick={() => void reload()}>
+            <RefreshCw size={12} className={clsx(loading && 'animate-spin')} />
           </Button>
         </div>
         <div className="space-y-0.5 p-2 pt-0">
@@ -582,6 +627,7 @@ export function StudioPage(): JSX.Element {
         {editingPath && <FileEditor path={editingPath} title={editingPath.split(/[\\/]/).slice(-2).join('/')} onClose={() => setEditingPath(null)} onSaved={reload} />}
         {editingWf && <WorkflowEditor wf={editingWf} onClose={() => setEditingWf(null)} onSaved={reload} />}
         {editingExt && <ExtensionEditor ext={editingExt} onClose={() => setEditingExt(null)} onSaved={reload} />}
+      </div>
       </div>
     </div>
   )

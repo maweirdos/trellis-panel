@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { X, FileText, Copy, FileWarning, Code2, BookOpen, Pin, PinOff } from 'lucide-react'
-import { api } from '../api'
 import { useApp } from '../store'
 import { clsx } from 'clsx'
 import { JsonTree } from './JsonTree'
@@ -15,6 +14,7 @@ import { useDocumentReader } from '../reader/use-document-reader'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { Button } from '../my/ui'
 import type { FileEntry } from '../../../shared/types'
+import { useCopyFeedback } from '../utils/use-copy-feedback'
 
 /**
  * 产物查看器（图形化优先）：
@@ -106,11 +106,13 @@ export type ArtifactMode = 'graphic' | 'raw'
 function ViewerBody({
   file,
   mode,
-  relativePath
+  relativePath,
+  onDisplayedText
 }: {
   file: FileEntry
   mode: ArtifactMode
   relativePath: string | null
+  onDisplayedText: (text: string | null) => void
 }): JSX.Element {
   const projectRoot = useApp((s) => s.snapshot?.meta.root ?? '')
   const widthPref = useApp((s) => s.readerWidthPref)
@@ -121,6 +123,7 @@ function ViewerBody({
   })
 
   const content = reader.displayedText
+  useLayoutEffect(() => { onDisplayedText(content) }, [content, onDisplayedText])
   const isMd = /\.(md|markdown)$/i.test(file.ext || file.name)
   const isJson = /\.json$/i.test(file.name)
   const isJsonl = /\.jsonl$/i.test(file.name)
@@ -241,30 +244,22 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
   const pinArtifact = useApp((s) => s.pinArtifact)
   const setViewerActive = useApp((s) => s.setViewerActive)
   const projectRoot = useApp((s) => s.snapshot?.meta.root ?? '')
-  const [copied, setCopied] = useState(false)
   const [mode, setMode] = useState<ArtifactMode>('graphic')
 
   const activeTab = tabs.find((t) => t.file.path === active) ?? null
   const file = activeTab?.file
   const relativePath = file !== undefined ? relativePathUnderRoot(projectRoot, file.path) : null
+  const sourceOwner = useMemo(() => ({ projectRoot, path: file?.path }), [projectRoot, file?.path])
+  const [copySource, setCopySource] = useState<{ owner: typeof sourceOwner; text: string | null } | null>(null)
+  const onDisplayedText = useCallback((text: string | null): void => { setCopySource({ owner: sourceOwner, text }) }, [sourceOwner])
+  const contentForCopy = copySource?.owner === sourceOwner ? copySource.text : null
+  const copyOwner = useMemo(() => ({ sourceOwner, text: contentForCopy }), [sourceOwner, contentForCopy])
+  const { status: copyStatus, copy } = useCopyFeedback(copyOwner)
 
   // reset to graphic view when switching files
   useEffect(() => {
     setMode('graphic')
   }, [active])
-
-  // keep a copy of the active content for the copy button (loaded separately, cheap)
-  const [contentForCopy, setContentForCopy] = useState('')
-  useEffect(() => {
-    if (!file) return
-    let alive = true
-    api.readTextFile(file.path).then((res) => {
-      if (alive) setContentForCopy(res.ok ? res.content ?? '' : '')
-    })
-    return () => {
-      alive = false
-    }
-  }, [file])
 
   // S0 G2 第三片：Esc 关闭标签走全局 Esc 层（overlay），每次只关一层
   useEscLayer(activeTab !== null, {
@@ -278,12 +273,6 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
   if (tabs.length === 0 || !file || !activeTab) return null
 
   const hasGraphic = /\.(md|markdown|json|jsonl|ya?ml|toml|py|ts|tsx|js|mjs|cjs|sh|ps1|cmd|bat|log|sql|css|html|ini|cfg|env|txt)$/i.test(file.name)
-
-  const copy = async (): Promise<void> => {
-    await api.copyToClipboard(contentForCopy)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1600)
-  }
 
   return (
     <div className="absolute inset-0 z-40 flex animate-fade-in flex-col bg-my-canvas">
@@ -361,8 +350,8 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
               {mode === 'graphic' ? '源码视图' : '图形视图'}
             </button>
           )}
-          <Button variant="outline" onClick={() => void copy()}>
-            <Copy size={12} /> {copied ? '已复制' : '复制'}
+          <Button variant="outline" disabled={contentForCopy === null} aria-disabled={copyStatus === 'copying'} onClick={() => { if (contentForCopy !== null) void copy(contentForCopy) }}>
+            <Copy size={12} aria-hidden="true" /> {copyStatus === 'copied' ? '已复制' : copyStatus === 'copying' ? '正在复制…' : copyStatus === 'error' ? '重试复制' : '复制'}
           </Button>
           <button
             onClick={() => closeArtifact(file.path)}
@@ -374,8 +363,10 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
         </div>
       </div>
 
+      <div role="status" aria-live="polite" className={copyStatus === 'error' ? 'shrink-0 border-b border-my-line px-4 py-2 text-my-xs text-my-danger-text' : 'sr-only'}>{copyStatus === 'error' ? '复制失败，请重试或选择正文复制' : copyStatus === 'copied' ? '已复制当前展示版本' : ''}</div>
+
       <div className="min-h-0 flex-1 overflow-auto">
-        <ViewerBody key={file.path} file={file} mode={mode} relativePath={relativePath} />
+        <ViewerBody key={`${projectRoot}:${file.path}`} file={file} mode={mode} relativePath={relativePath} onDisplayedText={onDisplayedText} />
       </div>
     </div>
   )

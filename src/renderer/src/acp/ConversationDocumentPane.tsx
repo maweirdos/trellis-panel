@@ -13,6 +13,7 @@ import { computeHeadingAnchors } from '../reader/heading-anchors'
 import { relativePathUnderRoot } from '../reader/reader-paths'
 import { captureDocumentReference, isTaskMaterialPath } from './artifacts'
 import { useInteractionGuard } from '../utils/interaction-scope'
+import { useCopyFeedback } from '../utils/use-copy-feedback'
 
 export interface ConversationDocumentPaneProps {
   projectRoot: string
@@ -34,6 +35,8 @@ export function ConversationDocumentPane(props: ConversationDocumentPaneProps): 
   const { projectRoot, taskDir, relativePath, sessionId, connectionGeneration, expanded, onToggleExpanded, onClose, onReference } = props
   const validPath = isTaskMaterialPath(taskDir, relativePath)
   const reader = useDocumentReader({ workspaceId: projectRoot, taskRef: taskDir, relativePath: validPath ? relativePath : null, projectRoot })
+  const copyOwner = useMemo(() => ({ projectRoot, taskDir, relativePath, sessionId, connectionGeneration, text: reader.displayedText }), [projectRoot, taskDir, relativePath, sessionId, connectionGeneration, reader.displayedText])
+  const { status: copyStatus, copy } = useCopyFeedback(copyOwner)
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
   const selectedText = useRef('')
@@ -99,13 +102,14 @@ export function ConversationDocumentPane(props: ConversationDocumentPaneProps): 
       </header>
       <div className="my-page-toolbar-row">
         <Button size="sm" variant="ghost" onClick={() => setOutlineOpen((value) => !value)} disabled={headings.length === 0}><List size={13} /> 目录</Button>
-        <Button size="sm" variant="ghost" disabled={reader.displayedText === null} onClick={() => {
+        <Button size="sm" variant="ghost" disabled={reader.displayedText === null} aria-disabled={copyStatus === 'copying'} onClick={() => {
           if (reader.displayedText === null) return
-          void navigator.clipboard.writeText(reader.displayedText).then(() => setNotice('已复制当前展示版本')).catch(() => setNotice('复制失败，请手动选择正文复制'))
-        }}><Copy size={13} /> 复制</Button>
+          void copy(reader.displayedText)
+        }}><Copy size={13} aria-hidden="true" /> {copyStatus === 'copied' ? '已复制' : copyStatus === 'copying' ? '正在复制…' : copyStatus === 'error' ? '重试复制' : '复制'}</Button>
         <Button size="sm" variant="ghost" disabled={reader.doc === null} onClick={openEditor}><ExternalLink size={13} /> 编辑器</Button>
         <Button size="sm" variant="ghost" disabled={reference === null} onClick={() => quote()}><Quote size={13} /> 引用到草稿</Button>
       </div>
+      <div role="status" aria-live="polite" className={copyStatus === 'error' ? 'shrink-0 border-b border-my-line px-4 py-2 text-my-xs text-my-danger-text' : 'sr-only'}>{copyStatus === 'error' ? '复制失败，请重试或选择正文复制' : copyStatus === 'copied' ? '已复制当前展示版本' : ''}</div>
       {notice !== null && <p role="status" className="shrink-0 border-b border-my-line bg-my-layer-1 px-4 py-2 text-my-xs text-my-secondary">{notice}</p>}
       {outlineOpen && <nav aria-label="文档目录" className="max-h-48 shrink-0 overflow-y-auto border-b border-my-line bg-my-layer-1 px-3 py-2">
         {headings.map((heading) => <div key={heading.id} className="flex items-center gap-1">

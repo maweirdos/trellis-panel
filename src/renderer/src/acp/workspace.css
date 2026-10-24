@@ -128,7 +128,6 @@
 .acp-run-activity .acp-activity-body .md { font-size: var(--my-text-activity); line-height: var(--my-line-document); color: var(--my-txt-secondary); }
 .acp-run-children .acp-activity-row.is-failed>summary { color: var(--my-txt-danger-primary); }
 .acp-transcript-content>.acp-run-activity:not(.acp-response-footer)+.acp-answer-start { margin-top: var(--my-space-10); padding-top: var(--my-space-16); border-top: 1px solid var(--my-border-subtle); }
-@media (prefers-reduced-motion: reduce) { .acp-progress-spinner,.acp-thought-caret { animation: none; }.acp-run-chevron { transition: none; } }
 .acp-activity-row { min-width: 0; color: var(--my-txt-tertiary); font-size: var(--my-text-activity); line-height: var(--my-line-document); }
 .acp-activity-row>summary { display: inline-flex; align-items: center; gap: var(--my-space-6); max-width: 100%; min-height: var(--my-space-24); padding: var(--my-space-2) 0; list-style: none; cursor: pointer; border-radius: var(--my-radius-sm); }
 .acp-activity-row>summary::-webkit-details-marker { display: none; }
@@ -224,6 +223,28 @@
 .acp-user-message .acp-image-attachments { justify-content: flex-end; }
 .acp-prompt-delivery { color: var(--my-txt-tertiary); font-size: var(--my-text-activity); }
 .acp-current-turn-status { display: flex; align-items: center; gap: var(--my-space-6); min-height: var(--my-space-24); padding-block: var(--my-space-2); margin-block: var(--my-space-8); color: var(--my-txt-tertiary); font-size: var(--my-text-activity); line-height: var(--my-line-document); }
+.acp-waiting-dots { display: inline-flex; flex: 0 0 var(--my-space-16); width: var(--my-space-16); align-items: center; gap: var(--my-space-3); animation: none; }
+.acp-waiting-dot { display: inline-block; width: var(--my-space-3); height: var(--my-space-3); flex-shrink: 0; border-radius: var(--my-radius-full); background: currentColor; opacity: 0.4; animation: acp-dot-bounce 900ms ease-in-out infinite; }
+.acp-waiting-dot:nth-child(2) { animation-delay: 120ms; }
+.acp-waiting-dot:nth-child(3) { animation-delay: 240ms; }
+@keyframes acp-dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(calc(var(--my-space-4) * -1)); opacity: 1; }
+}
+.acp-scroll-to-bottom-container { height: 0; flex: 0 0 0; position: relative; z-index: var(--my-z-menu); pointer-events: none; }
+.acp-scroll-to-bottom-btn { position: absolute; bottom: var(--my-space-8); left: 50%; pointer-events: auto; transform: translateX(-50%); background: var(--my-bg-surface-1); box-shadow: var(--my-shadow-raised-200); border-radius: var(--my-radius-full); transition: background var(--my-motion-fast); }
+.acp-scroll-to-bottom-btn:hover { background: var(--my-bg-layer-1-hover); }
+.acp-message-actions { display: flex; align-items: center; gap: var(--my-space-6); min-height: var(--my-space-24); margin-top: var(--my-space-4); }
+.acp-message-copy-btn { display: inline-flex; flex: 0 0 var(--my-space-24); align-items: center; justify-content: center; width: var(--my-space-24); height: var(--my-space-24); border-radius: var(--my-radius-sm); color: var(--my-txt-tertiary); background: transparent; border: 1px solid transparent; transition: color var(--my-motion-fast), background var(--my-motion-fast); }
+.acp-message-copy-btn:hover { color: var(--my-txt-primary); background: var(--my-bg-layer-1-hover); border-color: var(--my-border-strong); }
+.acp-message-copy-btn[aria-disabled="true"] { cursor: progress; }
+.acp-copy-feedback { min-width: 0; overflow-wrap: anywhere; font-size: var(--my-text-activity); line-height: var(--my-line-document); color: var(--my-txt-tertiary); }
+.acp-copy-feedback.text-my-danger-text { color: var(--my-txt-danger-primary); }
+@media (prefers-reduced-motion: reduce) {
+  .acp-progress-spinner,.acp-thought-caret,.acp-waiting-dot { animation: none; }
+  .acp-waiting-dot { transform: none; opacity: 0.7; }
+  .acp-run-chevron,.acp-scroll-to-bottom-btn,.acp-message-copy-btn { transition: none; }
+}
 .acp-prompt-delivery.is-not-sent { color: var(--my-txt-warning-primary); }
 .acp-image-preview header { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-12); padding: var(--my-space-12) var(--my-space-16); color: var(--my-txt-secondary); font-size: var(--my-text-sm); }
 .acp-image-preview header span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

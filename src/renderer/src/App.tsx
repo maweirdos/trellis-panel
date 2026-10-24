@@ -191,6 +191,7 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (docMode || capsuleMode || quickTodoMode) return
     const onEsc = (e: KeyboardEvent): void => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat) return
       if (e.key === 'Escape' && dispatchEscKey()) e.preventDefault()
     }
     window.addEventListener('keydown', onEsc)

@@ -1,7 +1,7 @@
 // 项目工作区：固定模块栏 + 按需上下文 + 稳定的来源页与任务阅读面。
 // 路由唯一事实是主 store 的 useApp.page，IPC 事件联动不受换壳影响。
 import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
-import { Keyboard, Loader2 } from 'lucide-react'
+import { Keyboard, Loader2, X } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { rememberVisit } from '../personal-history'
@@ -9,15 +9,20 @@ import { loadNavigationLocation, saveNavigationLocation } from '../navigation-pr
 import { getPageNavigation, projectRootKey } from '../navigation'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { CommandPalette } from '../CommandPalette'
+import { Button, Modal } from '../ui'
 import { IssuePeek } from '../pages/IssuePeek'
 import { CreateIssueModal } from '../pages/work-items/CreateIssueModal'
 import { SpecPage } from '../../pages/Spec'
 import { PageFrame } from './PageFrame'
 import { PAGE_LAYOUTS, PageLayout } from './PageLayout'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
-import { useEscLayer } from '../../utils/use-esc-layer'
+import { escLayerCount } from '../../utils/esc-layer'
 import { InteractionScope, useInteractionActive } from '../../utils/interaction-scope'
 import { StartupContentCommit, StartupContentRegion } from '../../daemon/StartupContext'
+
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || Boolean(target.closest('input, textarea, select, [role="textbox"], .monaco-editor, .cm-editor')))
+}
 
 const YourWorkPage = lazy(() => import('../pages/YourWorkPage').then((m) => ({ default: m.YourWorkPage })))
 const AnalyticsPage = lazy(() => import('../pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })))
@@ -258,6 +263,7 @@ export function MyApp(): JSX.Element {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || document.querySelector('[aria-modal="true"]')) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         e.stopPropagation()
@@ -270,11 +276,8 @@ export function MyApp(): JSX.Element {
 
   // 全局快捷键：C 新建 / / 面板 / ? 帮助 / Ctrl+B 折叠侧栏（输入态不拦截）
   useEffect(() => {
-    const isTyping = (t: EventTarget | null): boolean =>
-      t instanceof HTMLElement &&
-      (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
     const onKey = (e: KeyboardEvent): void => {
-      if (e.isComposing || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || escLayerCount() > 0 || document.querySelector('[aria-modal="true"]') || isTextEditingTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'c' || e.key === 'C') {
         setCreateIssueOpen(true)
       } else if (e.key === '/') {
@@ -290,6 +293,7 @@ export function MyApp(): JSX.Element {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || document.querySelector('[aria-modal="true"]') || isTextEditingTarget(e.target)) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         toggleSidebar()
@@ -342,19 +346,17 @@ const SHORTCUTS: Array<[string, string]> = [
 ]
 
 function HelpOverlay({ onClose }: { onClose: () => void }): JSX.Element {
-  useEscLayer(true, { kind: 'modal', id: 'keyboard-help', onClose })
   return (
-    <div className="p-fade fixed inset-0 z-[88] flex items-center justify-center bg-my-backdrop" onMouseDown={onClose}>
-      <div
-        className="w-[380px] rounded-my-xl border border-my-line bg-my-layer-2 p-4 shadow-[var(--my-shadow-overlay-200)]"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <Modal open onClose={onClose} width={380} placement="center" ariaLabel="键盘快捷键">
+      <div className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-my-md font-semibold text-my-primary">
             <Keyboard size={15} className="text-my-icon-secondary" />
             键盘快捷键
           </span>
-          <span className="my-kbd">Esc 关闭</span>
+          <Button variant="ghost" aria-label="关闭快捷键帮助" onClick={onClose}>
+            <X size={14} />
+          </Button>
         </div>
         <div className="flex flex-col gap-1.5">
           {SHORTCUTS.map(([keys, label]) => (
@@ -365,6 +367,6 @@ function HelpOverlay({ onClose }: { onClose: () => void }): JSX.Element {
           ))}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

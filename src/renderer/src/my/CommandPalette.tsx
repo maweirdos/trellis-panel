@@ -5,6 +5,7 @@ import { Search } from 'lucide-react'
 import { useApp, type Page } from '../store'
 import { useMy } from './store'
 import { NavIcon, StateGroupIcon } from './icons'
+import { Modal } from './ui'
 import { DOMAIN_LABELS, getPageNavigation, navigationScopeLabel, PAGE_NAVIGATION } from './navigation'
 
 interface PaletteItem {
@@ -31,6 +32,7 @@ export function CommandPalette(): JSX.Element | null {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const selectedItemRef = useRef<HTMLButtonElement>(null)
+  const composing = useRef(false)
 
   const go = useCallback((page: Page): void => {
     const ui = useMy.getState()
@@ -132,50 +134,28 @@ export function CommandPalette(): JSX.Element | null {
   }, [items, query])
 
   useEffect(() => {
+    composing.current = false
     if (open) {
       setQuery('')
       setSelected(0)
     }
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        setOpen(false)
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelected((s) => (filtered.length === 0 ? 0 : (s + 1) % filtered.length))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelected((s) => (filtered.length === 0 ? 0 : (s - 1 + filtered.length) % filtered.length))
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        filtered[selected]?.run()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [open, filtered, selected, setOpen])
+  const activeSelected = Math.min(selected, Math.max(0, filtered.length - 1))
+
+  useEffect(() => { setSelected(activeSelected) }, [activeSelected])
 
   useEffect(() => {
     selectedItemRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [selected, open])
+  }, [activeSelected, filtered, open])
 
   if (!open) return null
 
   let lastSection = ''
 
   return (
-    <div className="my-fade my-modal-backdrop my-command-backdrop fixed inset-0" onMouseDown={() => setOpen(false)}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="搜索页面与命令"
-        className="my-pop my-modal-panel my-command-panel overflow-hidden"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <Modal open={open} onClose={() => setOpen(false)} width={560} ariaLabel="搜索页面与命令">
+      <div className="my-command-panel overflow-hidden">
         <div className="shrink-0 border-b border-my-line p-2.5">
           <div className="my-command-search flex h-9 items-center gap-2.5 rounded-my-lg border border-transparent px-3">
             <Search size={15} className="shrink-0 text-my-icon-tertiary" />
@@ -183,6 +163,22 @@ export function CommandPalette(): JSX.Element | null {
             <input
               autoFocus
               value={query}
+              onCompositionStart={() => { composing.current = true }}
+              onCompositionEnd={() => { composing.current = false }}
+              onKeyDown={(e) => {
+                if (composing.current || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) {
+                  e.stopPropagation()
+                  return
+                }
+                if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setSelected(filtered.length === 0 ? 0 : (activeSelected + (e.key === 'ArrowDown' ? 1 : -1) + filtered.length) % filtered.length)
+                } else if (e.key === 'Enter') {
+                  e.preventDefault()
+                  filtered[activeSelected]?.run()
+                }
+              }}
               onChange={(e) => {
                 setQuery(e.target.value)
                 setSelected(0)
@@ -192,7 +188,7 @@ export function CommandPalette(): JSX.Element | null {
               role="combobox"
               aria-expanded="true"
               aria-controls="palette-results"
-              aria-activedescendant={filtered[selected] ? `palette-option-${selected}` : undefined}
+              aria-activedescendant={filtered[activeSelected] ? `palette-option-${activeSelected}` : undefined}
               aria-autocomplete="list"
               className="min-w-0 flex-1 bg-transparent text-my-lg text-my-primary outline-none placeholder:text-my-placeholder"
             />
@@ -213,13 +209,15 @@ export function CommandPalette(): JSX.Element | null {
                   type="button"
                   id={`palette-option-${index}`}
                   role="option"
-                  aria-selected={selected === index}
-                  ref={selected === index ? selectedItemRef : undefined}
+                  aria-selected={activeSelected === index}
+                  ref={activeSelected === index ? selectedItemRef : undefined}
+                  tabIndex={-1}
+                  onMouseDown={(e) => e.preventDefault()}
                   onMouseEnter={() => setSelected(index)}
                   onClick={item.run}
                   className={clsx(
                     'flex h-9 w-full items-center gap-2.5 rounded-my-md px-2.5 text-left text-my-md',
-                    selected === index ? 'bg-my-layer-1-active text-my-primary' : 'text-my-secondary'
+                    activeSelected === index ? 'bg-my-layer-1-active text-my-primary' : 'text-my-secondary'
                   )}
                 >
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center">{item.icon}</span>
@@ -234,6 +232,6 @@ export function CommandPalette(): JSX.Element | null {
           })}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

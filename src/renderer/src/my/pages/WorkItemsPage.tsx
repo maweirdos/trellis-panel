@@ -602,8 +602,10 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
       data-row-idx={rowIdx}
       onClick={() => openIssue(issue.id)}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
+          e.stopPropagation()
           openIssue(issue.id)
         }
       }}
@@ -685,6 +687,7 @@ function ListLayout({
     containerRef.current?.querySelector(`[data-row-idx="${focusIdx}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [focusIdx])
   const onContainerKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.target !== e.currentTarget || e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229) return
     if (rows.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -783,8 +786,10 @@ function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Eleme
       }}
       onClick={() => openIssue(issue.id)}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
+          e.stopPropagation()
           openIssue(issue.id)
         }
       }}
@@ -925,8 +930,10 @@ function SpreadsheetRow({
       tabIndex={0}
       onClick={() => openIssue(issue.id)}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
+          e.stopPropagation()
           openIssue(issue.id)
         }
       }}
@@ -1347,7 +1354,10 @@ function SaveViewBody({ onSave }: { onSave: (name: string) => void }): JSX.Eleme
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') submit()
+          if (e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229 || e.key !== 'Enter') return
+          e.preventDefault()
+          e.stopPropagation()
+          submit()
         }}
         placeholder="视图名称，如：我的紧急项"
         className="my-input h-8"

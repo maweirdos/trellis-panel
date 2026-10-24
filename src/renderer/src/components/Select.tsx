@@ -40,62 +40,42 @@ export function Select<T extends string = string>({
   const id = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef({ text: '', at: 0 })
   const normalizedOptions: SelectOption<T>[] = options.map((option) =>
     typeof option === 'string' ? { value: option as T, label: option } : option
   )
   const selectedOption = normalizedOptions.find((option) => option.value === value)
-  const enabledIndexes = normalizedOptions.flatMap((option, index) => option.disabled ? [] : [index])
-  const selectedIndex = normalizedOptions.findIndex((option) => option.value === value && !option.disabled)
   const fill = /(^|\s)(w-full|flex-1)(\s|$)/.test(className ?? '')
   const triggerLayoutClasses = (className ?? '').split(/\s+/).filter((name) => /^(?:[a-z]+:)?(?:h-|w-|min-w-|max-w-|flex-1)/.test(name))
 
-  const focusOption = (index: number): void => {
-    const option = menuRef.current?.querySelector<HTMLButtonElement>(`[data-select-index="${index}"]`)
-    option?.focus()
-  }
-
-  const moveFocus = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault()
-      const current = enabledIndexes.indexOf(index)
-      const direction = event.key === 'ArrowDown' ? 1 : -1
-      const next = current < 0
-        ? (direction > 0 ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1])
-        : enabledIndexes[(current + direction + enabledIndexes.length) % enabledIndexes.length]
-      if (next !== undefined) focusOption(next)
-    } else if (event.key === 'Home' || event.key === 'End') {
-      event.preventDefault()
-      const target = event.key === 'Home' ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1]
-      if (target !== undefined) focusOption(target)
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      triggerRef.current?.focus()
-    }
+  const searchOptions = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229 || event.ctrlKey || event.altKey || event.metaKey || event.key.length !== 1 || event.key === ' ') return
+    const now = performance.now()
+    const previous = searchRef.current
+    const text = (now - previous.at > 700 ? '' : previous.text) + event.key.toLocaleLowerCase()
+    searchRef.current = { text, at: now }
+    const query = [...text].every((key) => key === text[0]) ? text[0] : text
+    const current = Number((document.activeElement as HTMLElement | null)?.dataset.selectIndex ?? -1)
+    const indexes = normalizedOptions.map((_, index) => (index + current + 1) % normalizedOptions.length)
+    const target = indexes.find((index) => !normalizedOptions[index].disabled && normalizedOptions[index].label.trim().toLocaleLowerCase().startsWith(query))
+    if (target === undefined) return
+    event.preventDefault()
+    const option = menuRef.current?.querySelector<HTMLButtonElement>(`[data-select-index="${target}"]`)
+    option?.focus({ preventScroll: true })
+    option?.scrollIntoView({ block: 'nearest' })
   }
 
   const handleBlur = (event: FocusEvent<HTMLDivElement>): void => {
     const next = event.relatedTarget
-    if (!(next instanceof Node) || !event.currentTarget.contains(next)) onBlur?.()
+    if (!(next instanceof Node) || (!triggerRef.current?.contains(next) && !menuRef.current?.contains(next))) onBlur?.()
   }
 
   return (
     <div className="contents" onBlur={onBlur ? handleBlur : undefined}>
     <Dropdown
+      disabled={disabled}
       className={clsx('my-select-host min-w-0', fill && 'w-full', className)}
       trigger={({ open, toggle }) => {
-        const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
-          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-          event.preventDefault()
-          if (open) {
-            const target = selectedIndex >= 0 ? selectedIndex : event.key === 'ArrowDown' ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1]
-            if (target !== undefined) focusOption(target)
-            return
-          }
-          toggle()
-          const target = selectedIndex >= 0 ? selectedIndex : event.key === 'ArrowDown' ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1]
-          requestAnimationFrame(() => { if (target !== undefined) focusOption(target) })
-        }
-
         return (
           <button
             ref={triggerRef}
@@ -107,8 +87,7 @@ export function Select<T extends string = string>({
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? `${id}-options` : undefined}
-            onKeyDown={onTriggerKeyDown}
-            onClick={toggle}
+            onClick={() => { searchRef.current = { text: '', at: 0 }; toggle() }}
             className={clsx('my-select-trigger', fill && 'w-full', triggerLayoutClasses, size === 'sm' && 'my-select-trigger-sm')}
           >
             <span className="my-select-value">
@@ -128,6 +107,7 @@ export function Select<T extends string = string>({
           role="listbox"
           aria-label={ariaLabel ?? title ?? '选择一项'}
           className="my-select-menu my-scrollbar max-h-60 overflow-y-auto"
+          onKeyDown={searchOptions}
         >
           {normalizedOptions.map((option, index) => {
             const selected = option.value === value
@@ -139,11 +119,9 @@ export function Select<T extends string = string>({
                 data-select-index={index}
                 aria-selected={selected}
                 disabled={option.disabled}
-                onKeyDown={(event) => moveFocus(event, index)}
                 onClick={() => {
                   onChange(option.value)
                   close()
-                  requestAnimationFrame(() => triggerRef.current?.focus())
                 }}
                 className={clsx('my-select-option', selected && 'is-selected')}
               >

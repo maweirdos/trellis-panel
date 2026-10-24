@@ -1,9 +1,10 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, type JSX, type KeyboardEvent } from 'react'
 import { ChevronDown, ChevronUp, RefreshCw, Square, Terminal, X } from 'lucide-react'
 import { hasIpc } from '../api'
 import { Tooltip } from '../my/ui'
 import { ApplicationOutput, ProcessStatus, ReadinessStatus } from './ApplicationList'
-import { closeApplicationOutput, runApplication, selectApplication, setApplicationDockHeight, showApplicationOutput, useApplications } from './useApplications'
+import { applicationsGeneration, closeApplicationOutput, runApplication, selectApplication, setApplicationDockHeight, showApplicationOutput, useApplications } from './useApplications'
+import { usePointerResize } from '../utils/use-pointer-resize'
 
 /** The dock owns presentation only; no cleanup or tab-close path stops a process. */
 export function ApplicationDock(): JSX.Element | null {
@@ -15,8 +16,6 @@ export function ApplicationDock(): JSX.Element | null {
   const minProbe = useRef<HTMLSpanElement>(null)
   const maxProbe = useRef<HTMLSpanElement>(null)
   const defaultProbe = useRef<HTMLSpanElement>(null)
-  const drag = useRef<{ pointer: number; y: number; height: number } | null>(null)
-  const [resizing, setResizing] = useState(false)
   const tabs = state.dockTabs.map((id) => state.apps.find((app) => app.definition.id === id)).filter((app) => app !== undefined)
   const active = tabs.find((app) => app.definition.id === state.selectedId) ?? tabs[0]
   const selected = state.apps.find((app) => app.definition.id === state.selectedId) ?? state.apps[0]
@@ -58,6 +57,12 @@ export function ApplicationDock(): JSX.Element | null {
     const { minimum, maximum } = limits()
     if (maximum > 0) setApplicationDockHeight(Math.min(maximum, Math.max(minimum, height)))
   }
+  const { resizing, bindings } = usePointerResize({
+    axis: 'y', direction: -1, enabled: visible && state.dockOpen && active !== undefined,
+    owner: state.generation, getValue: () => dock.current?.getBoundingClientRect().height ?? 0,
+    onChange: resize,
+    onCancel: (height) => { if (applicationsGeneration() === state.generation) setApplicationDockHeight(height) }
+  })
 
   useEffect(() => {
     if (!state.dockOpen) return
@@ -73,20 +78,10 @@ export function ApplicationDock(): JSX.Element | null {
     return () => window.removeEventListener('resize', clamp)
   }, [state.dockOpen, state.dockHeight, state.generation])
 
-  useEffect(() => {
-    drag.current = null
-    setResizing(false)
-  }, [state.generation, state.dockOpen])
-
   if (!visible || !state.root) return null
   const expanded = state.dockOpen && active !== undefined
-  const endResize = (event: PointerEvent<HTMLDivElement>): void => {
-    if (drag.current?.pointer !== event.pointerId) return
-    drag.current = null
-    setResizing(false)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-  }
   const onResizeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return
     const { minimum, maximum } = limits()
     const current = dock.current?.getBoundingClientRect().height ?? 0
     const step = minProbe.current ? Number.parseFloat(getComputedStyle(minProbe.current).getPropertyValue('--my-space-16')) : 0
@@ -96,22 +91,14 @@ export function ApplicationDock(): JSX.Element | null {
     else if (event.key === 'End') resize(maximum)
     else return
     event.preventDefault()
+    event.stopPropagation()
   }
 
   return <section ref={dock} aria-label="运行窗口" className={`my-run-dock ${expanded ? 'is-expanded' : 'is-collapsed'} ${resizing ? 'is-resizing' : ''}`} style={expanded && state.dockHeight !== null ? { height: state.dockHeight } : undefined}>
     <span ref={minProbe} className="my-run-dock-probe my-run-dock-probe-min" aria-hidden="true" />
     <span ref={maxProbe} className="my-run-dock-probe my-run-dock-probe-max" aria-hidden="true" />
     <span ref={defaultProbe} className="my-run-dock-probe my-run-dock-probe-default" aria-hidden="true" />
-    {expanded && <div role="separator" aria-label="调整运行窗口高度" aria-orientation="horizontal" aria-valuemin={Math.round(limits().minimum)} aria-valuemax={Math.round(limits().maximum)} aria-valuenow={Math.round(state.dockHeight ?? 0)} aria-controls={panelId} tabIndex={0} className="my-run-dock-resize" onKeyDown={onResizeKey}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return
-        drag.current = { pointer: event.pointerId, y: event.clientY, height: dock.current?.getBoundingClientRect().height ?? 0 }
-        event.currentTarget.setPointerCapture(event.pointerId)
-        setResizing(true)
-        event.preventDefault()
-      }}
-      onPointerMove={(event) => { const current = drag.current; if (current?.pointer === event.pointerId) resize(current.height + current.y - event.clientY) }}
-      onPointerUp={endResize} onPointerCancel={endResize} onLostPointerCapture={() => { drag.current = null; setResizing(false) }} />}
+    {expanded && <div role="separator" aria-label="调整运行窗口高度" aria-orientation="horizontal" aria-valuemin={Math.round(limits().minimum)} aria-valuemax={Math.round(limits().maximum)} aria-valuenow={Math.round(state.dockHeight ?? limits().initial)} aria-controls={panelId} tabIndex={0} className="my-run-dock-resize" onKeyDown={onResizeKey} {...bindings} />}
     <header className="my-run-dock-header">
       <button ref={toggle} type="button" className="my-control my-button-ghost shrink-0" aria-label={expanded ? '折叠运行窗口' : '展开运行窗口'} aria-expanded={expanded} aria-controls={panelId} onClick={() => expanded ? closeApplicationOutput() : selected && showApplicationOutput(selected.definition.id, state.generation)}><Terminal size={14} />运行{expanded ? <ChevronDown size={13} /> : <ChevronUp size={13} />}</button>
       <div className="my-run-dock-tabs my-scrollbar" role="tablist" aria-label="运行应用" onKeyDown={(event) => {

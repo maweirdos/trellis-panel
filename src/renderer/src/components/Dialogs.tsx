@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useEscLayer } from '../utils/use-esc-layer'
 import type { JSX } from 'react'
-import { Button } from '../my/ui'
+import { Button, Modal } from '../my/ui'
 
 /**
  * 命令式对话框（Promise API）。
@@ -134,39 +133,19 @@ export function DialogHost(): JSX.Element | null {
     }
   }, [])
 
-  // Esc 取消走全局 Esc 层（modal 最高优先级；焦点不在面板内也能生效）。
-  // 层协调器保证与查看器/预览等下层同按时只关最上层一层（design §6.3）。
-  useEscLayer(req !== null, {
-    kind: 'modal',
-    // Esc consumes its registration. A queued successor remains active=true,
-    // so its request identity must rearm a distinct layer after promotion.
-    id: `dialog-host-${req?.id ?? 'idle'}`,
-    onClose: () => {
-      if (req) cancelIfCurrent(req)
-    }
-  })
-
   if (!req) return null
 
   const cancel = (): void => {
     cancelIfCurrent(req)
   }
 
-  const closeOnBackdrop = (e: React.MouseEvent): void => {
-    if (e.target === e.currentTarget) cancel()
-  }
-
   return (
-    <div className="my-modal-backdrop absolute inset-0 grid my-fade place-items-center" onClick={closeOnBackdrop}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-        className="my-modal-panel w-[420px] max-w-[90%] p-5"
-      >
-        {req.kind === 'confirm' ? <ConfirmPanel key={req.id} req={req} onCancel={cancel} /> : <PromptPanel key={req.id} req={req} onCancel={cancel} />}
+    // A successor needs its own Modal registration: Escape consumes the old layer.
+    <Modal key={req.id} open onClose={cancel} width={420} ariaLabel={req.opts.title} placement="center">
+      <div className="max-h-[var(--my-modal-max-height)] overflow-y-auto p-5">
+        {req.kind === 'confirm' ? <ConfirmPanel req={req} onCancel={cancel} /> : <PromptPanel req={req} onCancel={cancel} />}
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -177,11 +156,11 @@ function ConfirmPanel({ req, onCancel }: { req: ConfirmRequest; onCancel: () => 
       <div className="text-my-sm font-semibold text-my-primary">{title}</div>
       {message && <div className="mt-2 whitespace-pre-line text-my-xs leading-5 text-my-secondary">{message}</div>}
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={onCancel}>
+        <Button variant="outline" autoFocus={danger} onClick={onCancel}>
           取消
         </Button>
         <Button
-          // autoFocus 让 Enter 直接触发确认（按钮聚焦时原生响应 Enter）
+          autoFocus={!danger}
           variant={danger ? 'danger' : 'primary'}
           onClick={() => settleIfCurrent(req, true)}
         >
@@ -196,6 +175,8 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
   const { title, label, placeholder, defaultValue, multiline } = req.opts
   const [value, setValue] = useState(defaultValue ?? '')
   const [error, setError] = useState<string | null>(null)
+  const fieldId = `dialog-prompt-${req.id}`
+  const errorId = `${fieldId}-error`
 
   const submit = (): void => {
     const v = value.trim()
@@ -210,22 +191,27 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
   }
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key !== 'Enter') return
+    if (e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229 || e.key !== 'Enter') return
     // 多行模式下 Enter 换行，Ctrl/Cmd+Enter 提交
     if (multiline && !e.ctrlKey && !e.metaKey) return
     e.preventDefault()
+    e.stopPropagation()
     submit()
   }
 
   return (
     <>
       <div className="text-my-sm font-semibold text-my-primary">{title}</div>
-      {label && <label className="mt-3 mb-1.5 block text-my-xs text-my-secondary">{label}</label>}
+      {label && <label htmlFor={fieldId} className="mt-3 mb-1.5 block text-my-xs text-my-secondary">{label}</label>}
       {multiline ? (
         <textarea
           autoFocus
+          id={fieldId}
+          aria-label={label ? undefined : title}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => { setValue(e.target.value); setError(null) }}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           rows={4}
@@ -234,6 +220,10 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
       ) : (
         <input
           autoFocus
+          id={fieldId}
+          aria-label={label ? undefined : title}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
           value={value}
           onChange={(e) => {
             setValue(e.target.value)
@@ -244,7 +234,7 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
           className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
         />
       )}
-      {error && <div className="mt-1.5 text-my-xs text-my-danger-text">{error}</div>}
+      {error && <div id={errorId} role="alert" className="mt-1.5 text-my-xs text-my-danger-text">{error}</div>}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>
           取消

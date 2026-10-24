@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
-import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, MessageSquare, MoreHorizontal, Plus, RefreshCw, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
+import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, Loader2, MessageSquare, MoreHorizontal, Plus, RefreshCw, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
 import { useApp } from '../../store'
-import { hasIpc } from '../../api'
+import { api, hasIpc } from '../../api'
 import { Select } from '../../components/Select'
 import { relTime } from '../../utils/format'
 import { relativePathUnderRoot } from '../../reader/reader-paths'
@@ -231,7 +231,6 @@ export function YourWorkPage(): JSX.Element {
   const toggleFavorite = useMy((state) => state.toggleFavorite)
   const snapshot = useApp((state) => state.snapshot)
   const todos = useApp((state) => state.todos)
-  const saveTodo = useApp((state) => state.saveTodo)
   const history = usePersonalHistory()
   const [view, setView] = useState<HomeView>('assigned')
   const [status, setStatus] = useState<StatusFilter>('open')
@@ -246,6 +245,12 @@ export function YourWorkPage(): JSX.Element {
   const [continuation, setContinuation] = useState<{ root: string; task: HomeTask } | null>(null)
   const [now, setNow] = useState(() => new Date())
   const todoSaveLock = useRef(false)
+  const todoComposing = useRef(false)
+  const todoMounted = useRef(false)
+  const todoOwner = useRef(0)
+  const todoDraftRevision = useRef(0)
+  const todoInput = useRef<HTMLInputElement>(null)
+  const feedbackTimerRef = useRef<number | null>(null)
   const projectRoot = snapshot?.meta.root
   const conversations = useTaskConversations(projectRoot)
   const interactive = useInteractionActive()
@@ -287,9 +292,44 @@ export function YourWorkPage(): JSX.Element {
   }, [snapshot?.meta.currentTask, currentTasks, allTasks, recent])
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 60000)
-    return () => window.clearInterval(timer)
+    let timer: number | null = null
+    const update = (): void => {
+      if (timer !== null) window.clearInterval(timer)
+      timer = null
+      if (!interactive || document.visibilityState === 'hidden') return
+      setNow(new Date())
+      timer = window.setInterval(() => setNow(new Date()), 60000)
+    }
+    update()
+    document.addEventListener('visibilitychange', update)
+    return () => {
+      if (timer !== null) window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', update)
+      if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current)
+    }
+  }, [interactive])
+  useLayoutEffect(() => {
+    todoMounted.current = true
+    const off = useApp.subscribe((next, previous) => {
+      if (next.snapshot?.meta.root !== previous.snapshot?.meta.root || next.page !== previous.page) {
+        todoOwner.current += 1
+        todoComposing.current = false
+      }
+    })
+    return () => { todoMounted.current = false; todoOwner.current += 1; off() }
   }, [])
+  useEffect(() => {
+    const clearFeedback = (): void => {
+      if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current)
+      feedbackTimerRef.current = null
+      setTodoFeedback(null)
+      todoComposing.current = false
+    }
+    const hidden = (): void => { if (document.visibilityState === 'hidden') clearFeedback() }
+    if (!interactive) clearFeedback()
+    document.addEventListener('visibilitychange', hidden)
+    return () => document.removeEventListener('visibilitychange', hidden)
+  }, [interactive])
   useEffect(() => {
     setView('assigned')
     setStatus('open')
@@ -298,6 +338,10 @@ export function YourWorkPage(): JSX.Element {
     setInspectedTask(null)
     setAssociation(null)
     setContinuation(null)
+    if (feedbackTimerRef.current !== null) {
+      window.clearTimeout(feedbackTimerRef.current)
+      feedbackTimerRef.current = null
+    }
     setTodoFeedback(null)
   }, [projectRoot, me])
   useEffect(() => { if (!interactive) { setAssociation(null); setContinuation(null); setInspectedTask(null) } }, [interactive])
@@ -360,26 +404,59 @@ export function YourWorkPage(): JSX.Element {
   }
   const submitQuickTodo = async (): Promise<void> => {
     const text = quickTodoText.trim()
-    if (!text || !hasIpc || !projectRoot || todoSaveLock.current) return
+    if (!text || !hasIpc || !projectRoot || todoSaveLock.current || todoComposing.current || !canInteract()) return
     const targetRoot = projectRoot
+    if (useApp.getState().snapshot?.meta.root !== targetRoot) return
+    const owner = todoOwner.current
+    const revision = todoDraftRevision.current
+    const ownsDraft = (): boolean => todoMounted.current && todoOwner.current === owner && useApp.getState().snapshot?.meta.root === targetRoot
+    const visible = (): boolean => ownsDraft() && canInteract() && document.visibilityState !== 'hidden' && todoDraftRevision.current === revision
+    const focusOwner = document.activeElement
     todoSaveLock.current = true
     setSavingTodo(true)
+    if (feedbackTimerRef.current !== null) {
+      window.clearTimeout(feedbackTimerRef.current)
+      feedbackTimerRef.current = null
+    }
     setTodoFeedback(null)
     try {
-      const saved = await saveTodo({ title: text, description: '' })
-      if (useApp.getState().snapshot?.meta.root !== targetRoot) return
-      if (saved) {
-        setQuickTodoText('')
+      const saved = await api.todoSave({ title: text, description: '' })
+      if (!ownsDraft()) return
+      if (!saved.ok) throw new Error(saved.error || '保存失败，内容已保留，请重试。')
+      if (todoDraftRevision.current === revision) setQuickTodoText('')
+      if (visible()) {
         setTodoFeedback({ error: false, message: '已保存到收件箱' })
-      } else setTodoFeedback({ error: true, message: '保存失败，内容已保留，请重试。' })
+        feedbackTimerRef.current = window.setTimeout(() => {
+          setTodoFeedback(null)
+          feedbackTimerRef.current = null
+        }, 2500)
+      }
+      // Persistence has succeeded. A read failure must never invite saving it again.
+      try {
+        const refreshed = await api.todoList()
+        if (!ownsDraft()) return
+        if (!refreshed.ok || !refreshed.todos) throw new Error(refreshed.error || '列表刷新失败')
+        useApp.setState({ todos: refreshed.todos })
+      } catch {
+        if (visible()) {
+          if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current)
+          feedbackTimerRef.current = null
+          setTodoFeedback({ error: true, message: '待办已保存，列表刷新失败，请前往收件箱刷新。' })
+        }
+      }
     } catch (cause) {
-      if (useApp.getState().snapshot?.meta.root === targetRoot) setTodoFeedback({ error: true, message: `保存失败：${errorMessage(cause)}` })
+      if (visible()) setTodoFeedback({ error: true, message: `保存失败：${errorMessage(cause)}` })
     } finally {
       todoSaveLock.current = false
-      setSavingTodo(false)
+      if (todoMounted.current) setSavingTodo(false)
+      if (visible() && (document.activeElement === focusOwner || document.activeElement === document.body)) todoInput.current?.focus({ preventScroll: true })
     }
   }
-  const onQuickTodoSubmit = (event: FormEvent): void => { event.preventDefault(); void submitQuickTodo() }
+  const onQuickTodoSubmit = (event: FormEvent): void => {
+    event.preventDefault()
+    if (todoComposing.current) return
+    void submitQuickTodo()
+  }
   const taskScope = me ? '我负责' : '项目任务'
   const projectName = snapshot?.meta.name || data.workspace.name || '当前项目'
   const branch = continueTask?.task.branch
@@ -471,12 +548,44 @@ export function YourWorkPage(): JSX.Element {
                   </button>
                 </li>)}</ul> : <p className="my-home-side-empty">暂无待处理待办</p>}
                 {pendingTodos.length > 3 && <Button variant="ghost" size="sm" className="my-home-more-todos" onClick={() => useApp.getState().setPage('inbox')}>查看其余 {pendingTodos.length - 3} 条<ArrowUpRight size={12} /></Button>}
-                <form className="my-home-quick-todo-form" onSubmit={onQuickTodoSubmit} aria-label="快速记录待办">
+                <form className="my-home-quick-todo-form" onSubmit={onQuickTodoSubmit} aria-label="快速记录待办" aria-busy={savingTodo}>
                   <Plus size={13} className="shrink-0 text-my-icon-tertiary" />
-                  <input type="text" value={quickTodoText} disabled={savingTodo || !hasIpc || !projectRoot} onChange={(event) => { setQuickTodoText(event.target.value); setTodoFeedback(null) }} placeholder={hasIpc && projectRoot ? '记一条待办，回车保存…' : '打开项目后记录待办'} aria-label="待办内容" className="my-home-quick-todo-input" />
-                  <Button variant="ghost" size="sm" disabled={savingTodo || !quickTodoText.trim() || !hasIpc || !projectRoot} onClick={() => void submitQuickTodo()}>{savingTodo ? '保存中…' : '保存'}</Button>
+                  <input
+                    ref={todoInput}
+                    type="text"
+                    value={quickTodoText}
+                    disabled={!hasIpc || !projectRoot}
+                    onChange={(event) => {
+                      todoDraftRevision.current += 1
+                      setQuickTodoText(event.target.value)
+                      setTodoFeedback(null)
+                      if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current)
+                      feedbackTimerRef.current = null
+                    }}
+                    onCompositionStart={() => { todoComposing.current = true }}
+                    onCompositionEnd={() => { todoComposing.current = false }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && (todoComposing.current || event.nativeEvent.isComposing || event.keyCode === 229)) {
+                        event.preventDefault()
+                        return
+                      }
+                    }}
+                    placeholder={hasIpc && projectRoot ? '记一条待办，回车保存…' : '打开项目后记录待办'}
+                    aria-label="待办内容"
+                    aria-describedby={todoFeedback ? 'home-todo-feedback' : undefined}
+                    className="my-home-quick-todo-input"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="my-home-quick-todo-save"
+                    disabled={savingTodo || !quickTodoText.trim() || !hasIpc || !projectRoot}
+                    onClick={() => void submitQuickTodo()}
+                  >
+                    {savingTodo ? <><Loader2 size={12} className="animate-spin motion-reduce:animate-none mr-1 inline" aria-hidden="true" />保存中…</> : '保存'}
+                  </Button>
                 </form>
-                {todoFeedback && <p className={`my-home-todo-feedback ${todoFeedback.error ? 'text-my-danger-text' : 'text-my-success-text'}`} role={todoFeedback.error ? 'alert' : 'status'}>{todoFeedback.message}</p>}
+                {todoFeedback && <p id="home-todo-feedback" className={`my-home-todo-feedback ${todoFeedback.error ? 'text-my-danger-text' : 'text-my-success-text'}`} role={todoFeedback.error ? 'alert' : 'status'}>{todoFeedback.message}</p>}
               </section>
 
               <section className="my-home-side-card" aria-labelledby="home-recent-title">

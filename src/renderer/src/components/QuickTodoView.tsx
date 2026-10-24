@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ClipboardList, X, Trash2, Check, ChevronDown, ChevronUp, Split } from 'lucide-react'
 import { useApp } from '../store'
 import { api } from '../api'
@@ -47,7 +47,6 @@ function splitLines(text: string): string[] {
 export function QuickTodoView(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
   const todos = useApp((s) => s.todos)
-  const loadTodos = useApp((s) => s.loadTodos)
 
   const [text, setText] = useState(() => readFloatingPreference(DRAFT_KEY) ?? '')
   const [priority, setPriority] = useState('P2')
@@ -55,41 +54,130 @@ export function QuickTodoView(): JSX.Element {
   const [flash, setFlash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [listOpen, setListOpen] = useState(() => readFloatingPreference(LIST_OPEN_KEY) !== 'false')
+  const [listState, setListState] = useState<{ root: string; status: 'loading' | 'ready' | 'error' } | null>(null)
   const saveLock = useRef(false)
+  const composing = useRef(false)
+  const mounted = useRef(false)
+  const owner = useRef(0)
+  const activation = useRef(0)
+  const visible = useRef(document.visibilityState !== 'hidden')
+  const draftRevision = useRef(0)
+  const readRequest = useRef(0)
+  const deleteLocks = useRef(new Set<string>())
+  const [deleting, setDeleting] = useState<string[]>([])
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const projectRoot = snapshot?.meta.root
 
-  useEffect(() => {
-    if (projectRoot) textareaRef.current?.focus()
-  }, [projectRoot])
+  const clearFlash = useCallback((): void => {
+    if (flashTimer.current !== null) clearTimeout(flashTimer.current)
+    flashTimer.current = null
+    setFlash(null)
+  }, [])
+  const hide = useCallback((): void => {
+    visible.current = false
+    activation.current += 1
+    composing.current = false
+    clearFlash()
+    setError(null)
+  }, [clearFlash])
+  const close = useCallback((): void => {
+    hide()
+    const currentActivation = activation.current
+    void api.closeQuickTodo().catch((cause: unknown) => {
+      if (mounted.current && activation.current === currentActivation) setError(errorMessage(cause) ?? '隐藏速记待办失败，请重试')
+    })
+  }, [hide])
+
+  const refreshTodos = useCallback(async (): Promise<string | null> => {
+    const root = useApp.getState().snapshot?.meta.root
+    if (!root) return null
+    const currentOwner = owner.current
+    const request = ++readRequest.current
+    const current = (): boolean => mounted.current && owner.current === currentOwner && readRequest.current === request && useApp.getState().snapshot?.meta.root === root
+    setListState((previous) => previous?.root === root && previous.status === 'ready' ? previous : { root, status: 'loading' })
+    const failed = (message: string): string => {
+      setListState((previous) => previous?.root === root && previous.status === 'ready' ? previous : { root, status: 'error' })
+      return message
+    }
+    try {
+      const result = await api.todoList()
+      if (!current()) return null
+      if (!result.ok || !result.todos) return failed(result.error || '列表加载失败，请重试')
+      useApp.setState({ todos: result.todos })
+      setListState({ root, status: 'ready' })
+      return null
+    } catch (cause) { return current() ? failed(errorMessage(cause) ?? '列表加载失败，请重试') : null }
+  }, [])
+
+  useLayoutEffect(() => {
+    mounted.current = true
+    const off = useApp.subscribe((next, previous) => {
+      if (next.snapshot?.meta.root !== previous.snapshot?.meta.root) {
+        owner.current += 1
+        activation.current += 1
+        composing.current = false
+        clearFlash()
+        setError(null)
+      }
+    })
+    return () => { mounted.current = false; owner.current += 1; off() }
+  }, [clearFlash])
 
   useEffect(() => {
-    void loadTodos().catch((cause: unknown) => setError(errorMessage(cause) ?? '收件箱加载失败，请重试'))
-    textareaRef.current?.focus()
+    if (projectRoot && visible.current) textareaRef.current?.focus()
+    const currentActivation = activation.current
+    void refreshTodos().then((message) => {
+      if (message && mounted.current && visible.current && activation.current === currentActivation) setError(message)
+    })
+  }, [projectRoot, refreshTodos])
+
+  useEffect(() => {
+    const refresh = (): void => {
+      const currentActivation = activation.current
+      void refreshTodos().then((message) => {
+        if (message && mounted.current && visible.current && activation.current === currentActivation) setError(message)
+      })
+    }
+    const visibility = (): void => { if (document.visibilityState === 'hidden') hide() }
+    if (visible.current) textareaRef.current?.focus()
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') void api.closeQuickTodo()
+      if (e.key === 'Escape' && !composing.current && !e.isComposing && e.keyCode !== 229) {
+        e.preventDefault()
+        close()
+      }
     }
     window.addEventListener('keydown', onKey)
+    window.addEventListener('blur', hide)
+    document.addEventListener('visibilitychange', visibility)
     // 窗口常驻复用（隐藏而非销毁），每次热键呼出后把焦点放回编辑区
-    const offShown = api.onQuickTodoShown(() => { textareaRef.current?.focus(); void loadTodos().catch((cause: unknown) => setError(errorMessage(cause) ?? '收件箱加载失败，请重试')) })
+    const offShown = api.onQuickTodoShown(() => {
+      visible.current = true
+      activation.current += 1
+      clearFlash()
+      setError(null)
+      textareaRef.current?.focus()
+      refresh()
+    })
     const offSnapshot = api.onSnapshotUpdated((next) => useApp.getState().setSnapshot(next))
     return () => {
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('blur', hide)
+      document.removeEventListener('visibilitychange', visibility)
       offShown()
       offSnapshot()
       if (flashTimer.current) clearTimeout(flashTimer.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [clearFlash, close, hide, refreshTodos])
 
   const showToast = (msg: string): void => {
     setFlash(msg)
     if (flashTimer.current) clearTimeout(flashTimer.current)
-    flashTimer.current = setTimeout(() => setFlash(null), 1800)
+    flashTimer.current = setTimeout(() => { setFlash(null); flashTimer.current = null }, 2500)
   }
 
-  const updateText = (next: string): void => {
+  const updateText = (next: string, edited = true): void => {
+    if (edited) draftRevision.current += 1
     setText(next)
     writeFloatingPreference(DRAFT_KEY, next)
   }
@@ -97,49 +185,84 @@ export function QuickTodoView(): JSX.Element {
   const points = splitLines(text)
   const canSave = text.trim().length > 0 && !!snapshot && !busy
 
+  const saveContext = (): { owns: () => boolean; feedback: () => boolean; restoreFocus: () => void; revision: number } => {
+    const currentOwner = owner.current
+    const currentActivation = activation.current
+    const revision = draftRevision.current
+    const focusOwner = document.activeElement
+    const owns = (): boolean => mounted.current && owner.current === currentOwner && useApp.getState().snapshot?.meta.root === projectRoot
+    const active = (): boolean => owns() && visible.current && activation.current === currentActivation
+    return { owns, revision, feedback: () => active() && draftRevision.current === revision, restoreFocus: () => {
+      if (active() && (document.activeElement === focusOwner || document.activeElement === document.body)) textareaRef.current?.focus({ preventScroll: true })
+    } }
+  }
+
   const save = async (): Promise<void> => {
-    if (!canSave || saveLock.current) return
+    if (!canSave || saveLock.current || composing.current || useApp.getState().snapshot?.meta.root !== projectRoot) return
+    const context = saveContext()
     saveLock.current = true
     setBusy(true)
     setError(null)
+    clearFlash()
     try {
       const res = await api.todoSave({ title: deriveTitle(text), description: text.trim(), priority, source: 'manual' })
+      if (!context.owns()) return
       if (!res.ok) throw new Error(res.error || '保存失败，请重试')
-      updateText('')
-      showToast('已保存到收件箱')
-      await loadTodos()
-    } catch (cause) { setError(errorMessage(cause) ?? '保存失败，请重试') } finally { saveLock.current = false; setBusy(false) }
+      const feedback = context.feedback()
+      if (draftRevision.current === context.revision) updateText('', false)
+      if (feedback) showToast('已保存到收件箱')
+      const refreshError = await refreshTodos()
+      if (refreshError && context.feedback()) {
+        clearFlash()
+        setError('待办已保存，列表刷新失败；重新打开可重试刷新。')
+      }
+    } catch (cause) { if (context.feedback()) setError(errorMessage(cause) ?? '保存失败，请重试') }
+    finally { saveLock.current = false; if (mounted.current) setBusy(false); context.restoreFocus() }
   }
 
   const saveSplit = async (): Promise<void> => {
-    if (!canSave || points.length < 2 || saveLock.current) return
+    if (!canSave || points.length < 2 || saveLock.current || composing.current || useApp.getState().snapshot?.meta.root !== projectRoot) return
+    const context = saveContext()
     saveLock.current = true
     setBusy(true)
     setError(null)
+    clearFlash()
     let ok = 0
     const remaining: string[] = []
     try {
       for (const line of points) {
+        if (!context.owns()) return
         try {
           const res = await api.todoSave({ title: line.slice(0, 60), description: line, priority, source: 'manual' })
           if (res.ok) ok += 1
           else remaining.push(line)
         } catch { remaining.push(line) }
       }
+      if (!context.owns()) return
       // Failed lines remain editable so a partial save never discards the draft.
-      updateText(remaining.join('\n'))
-      if (ok) showToast(`已保存 ${ok} 条`)
-      if (remaining.length) setError(`${remaining.length} 条未保存，已保留在编辑区，请重试。`)
-      await loadTodos()
-    } catch (cause) { setError(errorMessage(cause) ?? '拆分保存失败，请重试') } finally { saveLock.current = false; setBusy(false) }
+      const feedback = context.feedback()
+      if (draftRevision.current === context.revision) updateText(remaining.join('\n'), false)
+      if (feedback && ok) showToast(`已保存 ${ok} 条`)
+      if (feedback && remaining.length) setError(`${remaining.length} 条未保存，已保留在编辑区，请重试。`)
+      const refreshError = await refreshTodos()
+      if (refreshError && context.feedback()) setError(`${ok} 条已保存，${remaining.length} 条未保存。列表刷新失败，重新打开可重试刷新。`)
+    } catch (cause) { if (context.feedback()) setError(errorMessage(cause) ?? '拆分保存失败，请重试') }
+    finally { saveLock.current = false; if (mounted.current) setBusy(false); context.restoreFocus() }
   }
 
   const remove = async (id: string): Promise<void> => {
+    if (deleteLocks.current.has(id)) return
+    const context = saveContext()
+    deleteLocks.current.add(id)
+    setDeleting([...deleteLocks.current])
     try {
       const result = await api.todoDelete(id)
+      if (!context.owns()) return
       if (!result.ok) throw new Error(result.error || '删除失败')
-      await loadTodos()
-    } catch (cause) { setError(errorMessage(cause) ?? '删除失败，请重试') }
+      const message = await refreshTodos()
+      if (message && context.feedback()) setError('待办已删除，列表刷新失败；重新打开可重试刷新。')
+    } catch (cause) { if (context.feedback()) setError(errorMessage(cause) ?? '删除失败，请重试') }
+    finally { deleteLocks.current.delete(id); if (mounted.current) setDeleting([...deleteLocks.current]) }
   }
 
   const toggleList = (): void => {
@@ -148,7 +271,9 @@ export function QuickTodoView(): JSX.Element {
     writeFloatingPreference(LIST_OPEN_KEY, String(next))
   }
 
-  const pending = todos.filter((t) => t.status === 'pending')
+  const listReady = listState?.status === 'ready' && listState.root === projectRoot
+  const listFailed = listState?.status === 'error' && listState.root === projectRoot
+  const pending = listReady ? todos.filter((t) => t.status === 'pending') : []
 
   return (
     <FloatingFrame>
@@ -161,7 +286,7 @@ export function QuickTodoView(): JSX.Element {
           {listOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </FloatingIconButton>
         <FloatingIconButton
-          onClick={() => void api.closeQuickTodo()}
+          onClick={close}
           label="隐藏速记待办 (Esc)"
         >
           <X size={12} />
@@ -172,12 +297,17 @@ export function QuickTodoView(): JSX.Element {
       <textarea
         ref={textareaRef}
         value={text}
-        disabled={!snapshot || busy}
+        disabled={!snapshot}
+        readOnly={busy}
         aria-label="待办内容"
-        onChange={(e) => updateText(e.target.value)}
+        aria-describedby="quick-todo-feedback"
+        onChange={(e) => { updateText(e.target.value); clearFlash(); setError(null) }}
+        onCompositionStart={() => { composing.current = true }}
+        onCompositionEnd={() => { composing.current = false }}
         onKeyDown={(e) => {
           if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault()
+            if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) return
             void save()
           }
         }}
@@ -193,10 +323,10 @@ export function QuickTodoView(): JSX.Element {
       {/* 最近待办列表（可折叠） */}
       {listOpen && (
         <div className="my-floating-recent my-scrollbar">
-          <div className="mb-1 flex justify-between px-2 text-my-xs text-my-secondary"><span>待处理</span><span className="tabular-nums">{pending.length}</span></div>
+          <div className="mb-1 flex justify-between px-2 text-my-xs text-my-secondary"><span>待处理</span><span className="tabular-nums">{listReady ? pending.length : '—'}</span></div>
           {pending.length === 0 ? (
             <div className="py-2 text-center text-my-xs text-my-tertiary">
-              {snapshot ? '暂无待处理待办' : '打开项目后即可随手速记'}
+              {!snapshot ? '打开项目后即可随手速记' : listReady ? '暂无待处理待办' : listFailed ? '待办列表读取失败' : '正在读取待办…'}
             </div>
           ) : (
             <div className="space-y-0.5">
@@ -220,6 +350,7 @@ export function QuickTodoView(): JSX.Element {
                   />
                   <span className="min-w-0 flex-1 truncate text-my-xs text-my-primary">{t.title}</span>
                   <FloatingIconButton
+                    disabled={deleting.includes(t.id)}
                     onClick={() => void remove(t.id)}
                     label={`删除待办：${t.title}`}
                   >
@@ -233,10 +364,10 @@ export function QuickTodoView(): JSX.Element {
       )}
 
       {/* 底栏：优先级 + 保存动作 */}
-      <div className="my-floating-feedback" role={error ? 'alert' : 'status'}>
+      <div id="quick-todo-feedback" className="my-floating-feedback" role={error ? 'alert' : 'status'} aria-atomic="true">
         {error ? <span className="text-my-danger-text">{error}</span> : flash ? <span className="flex items-center gap-1 text-my-success-text"><Check size={13} />{flash}</span> : 'Ctrl+Enter 保存 · Esc 隐藏 · 草稿自动保留'}
       </div>
-      <div className="my-floating-footer flex-wrap gap-y-2">
+      <div className="my-floating-footer flex-wrap gap-y-2" aria-busy={busy}>
         <div className="my-segmented" role="group" aria-label="待办优先级">
         {(
           [

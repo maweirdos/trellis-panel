@@ -17,9 +17,9 @@
   user-select: text;
 }
 .my-root ::selection { background: var(--my-selection-bg); color: var(--my-txt-primary); }
-.my-root :where(button, [role='button'], [role='dialog'], a, input, select, textarea, summary):focus-visible {
-  outline: var(--my-space-1) solid var(--my-focus-ring);
-  outline-offset: var(--my-space-0);
+.my-root :where(button, [role='button'], [role='dialog'], [tabindex], a, input, select, textarea, summary):focus-visible {
+  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-1);
 }
 /* Text fields use their single border; never stack an outer ring over it. */
 .my-root :where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']), textarea, select, [contenteditable='true']):focus-visible { outline: none; }
@@ -83,20 +83,20 @@
   white-space: nowrap;
   transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), transform var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-control:active:not(:disabled) { transform: scale(0.98); }
+.my-root .my-control:active:not(:disabled) { transform: scale(var(--my-control-press-scale)); }
 .my-root .my-control-sm { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); gap: var(--my-space-4); }
 .my-root .my-control-lg { height: var(--my-control-height-lg); }
 .my-root :where(.my-button-primary) { background: var(--my-bg-accent-primary); color: var(--my-txt-on-accent); }
-.my-root :where(.my-button-primary):hover { background: var(--my-bg-accent-primary-hover); }
-.my-root :where(.my-button-primary):active { background: var(--my-bg-accent-primary-active); }
+.my-root :where(.my-button-primary):hover:not(:disabled) { background: var(--my-bg-accent-primary-hover); }
+.my-root :where(.my-button-primary):active:not(:disabled) { background: var(--my-bg-accent-primary-active); }
 .my-root :where(.my-button-neutral) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
-.my-root :where(.my-button-neutral):hover { background: var(--my-bg-layer-transparent-active); }
+.my-root :where(.my-button-neutral):hover:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
 .my-root :where(.my-button-ghost) { color: var(--my-txt-secondary); }
-.my-root :where(.my-button-ghost):hover { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root :where(.my-button-ghost):hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
 .my-root :where(.my-button-outline) { border: 1px solid var(--my-border-strong); color: var(--my-txt-secondary); }
-.my-root :where(.my-button-outline):hover { background: var(--my-bg-layer-transparent-hover); }
+.my-root :where(.my-button-outline):hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); }
 .my-root :where(.my-button-danger) { background: var(--my-bg-danger-primary); color: var(--my-txt-on-color); }
-.my-root :where(.my-button-danger):hover { background: var(--my-bg-danger-primary-hover); }
+.my-root :where(.my-button-danger):hover:not(:disabled) { background: var(--my-bg-danger-primary-hover); }
 
 .my-root .my-icon-control {
   display: inline-flex; align-items: center; justify-content: center;
@@ -104,7 +104,9 @@
   border-radius: var(--my-control-radius); color: var(--my-txt-secondary);
   transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-icon-control:hover { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-icon-control:hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root :is(.my-icon-control, .my-select-trigger):active:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
+.my-root :is(.my-icon-control, .my-composer-control):disabled { color: var(--my-txt-disabled); }
 .my-root .my-composer-control {
   border-radius: var(--my-control-radius);
   background: var(--my-bg-layer-transparent);
@@ -137,11 +139,14 @@
 .my-root .my-scrollbar::-webkit-scrollbar-thumb:hover { background-color: var(--my-scrollbar-thumb-hover); }
 
 .my-root .my-menu {
+  display: flex; flex-direction: column;
+  scrollbar-gutter: auto;
   max-width: calc(100vw - var(--my-space-16));
   z-index: var(--my-z-menu); overflow: hidden; padding: var(--my-space-6);
   border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-menu);
   background: var(--my-bg-elevated); box-shadow: var(--my-shadow-overlay-200);
 }
+.my-root .my-menu > .my-scrollbar { min-height: 0; flex-shrink: 1; }
 .my-root .my-menu-item {
   display: flex; width: 100%; align-items: center; gap: var(--my-space-8);
   min-height: var(--my-control-height-sm); padding: var(--my-space-6) var(--my-space-10);
@@ -149,7 +154,8 @@
   font-size: var(--my-menu-option-size); color: var(--my-menu-option-color);
   transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-menu-item:hover, .my-root .my-menu-item[data-selected='true'], .my-root .my-menu-item[aria-pressed='true'] { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-menu-item:hover:not(:disabled), .my-root .my-menu-item[data-selected='true'], .my-root .my-menu-item[aria-pressed='true'] { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-menu-item:active:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
 .my-root .my-menu-item[data-danger='true'] { color: var(--my-txt-danger-primary); }
 .my-root .my-menu-item:disabled { color: var(--my-txt-disabled); background: transparent; }
 .my-root .my-menu-header { padding: var(--my-space-8) var(--my-space-10) var(--my-space-6); font-size: var(--my-menu-title-size); color: var(--my-menu-title-color); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); cursor: default; }
@@ -164,7 +170,7 @@
 }
 .my-root .my-select-trigger:hover:not(:disabled) { background: var(--my-bg-layer-1-hover); border-color: var(--my-border-strong); }
 .my-root .my-select-trigger[aria-expanded='true'] { border-color: var(--my-border-accent-subtle); background: var(--my-bg-layer-2); }
-.my-root .my-select-trigger:focus-visible { outline: none; border-color: var(--my-border-accent-subtle); box-shadow: none; }
+.my-root .my-select-trigger:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-1); border-color: var(--my-border-accent-subtle); box-shadow: none; }
 .my-root .my-select-trigger:disabled { color: var(--my-txt-disabled); cursor: default; opacity: .65; }
 .my-root :where(.my-select-trigger-sm) { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); font-size: var(--my-text-xs); }
 .my-root .my-select-value { display: flex; min-width: 0; align-items: center; gap: var(--my-space-6); }
@@ -177,7 +183,7 @@
   transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root .my-select-option:hover:not(:disabled),
-.my-root .my-select-option:focus-visible { outline: none; background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); box-shadow: inset 0 0 0 1px var(--my-border-accent-subtle); }
+.my-root .my-select-option:focus-visible { outline: none; background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); box-shadow: inset 0 0 0 var(--my-space-2) var(--my-focus-ring); }
 .my-root .my-select-option.is-selected { background: var(--my-bg-accent-subtle); color: var(--my-txt-accent-primary); }
 .my-root .my-select-option:disabled { color: var(--my-txt-disabled); cursor: default; }
 .my-root .my-command-backdrop { display: flex; justify-content: center; align-items: flex-start; padding: clamp(24px, 14vh, 112px) var(--my-space-16) var(--my-space-16); }
@@ -185,7 +191,7 @@
 .my-root .my-command-search { background: var(--my-bg-layer-1); transition: border-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out); }
 .my-root .my-command-search input:focus-visible { outline: none; }
 .my-root .my-command-results { flex: 1 1 auto; max-height: min(52vh, 520px); }
-.my-root .my-tooltip { z-index: var(--my-z-tooltip); border-radius: var(--my-radius-inset); background: var(--my-bg-layer-3); box-shadow: var(--my-shadow-raised-200); }
+.my-root .my-tooltip { z-index: var(--my-z-tooltip); max-width: calc(100vw - var(--my-space-16)); white-space: normal; overflow-wrap: anywhere; border-radius: var(--my-radius-inset); background: var(--my-bg-layer-3); box-shadow: var(--my-shadow-raised-200); }
 /* Disabled buttons swallow pointer events; pass them through so the tooltip anchor still sees hover/focus. */
 .my-root .my-tooltip-anchor > button:disabled { pointer-events: none; }
 .my-root .my-modal-backdrop { z-index: var(--my-z-modal); background: var(--my-bg-backdrop); padding-inline: var(--my-space-16); }
@@ -225,4 +231,5 @@
 .my-root .my-peek-in { animation: my-peek-in var(--my-motion-normal) var(--my-ease-out); }
 @media (prefers-reduced-motion: reduce) {
   .my-root *, .my-root *::before, .my-root *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+  .my-root .my-control:active:not(:disabled) { transform: none; }
 }

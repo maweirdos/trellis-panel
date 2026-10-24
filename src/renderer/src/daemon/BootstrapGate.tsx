@@ -296,9 +296,14 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
   const action = async (kind: 'retry' | 'exit' | 'minimize' | 'maximize'): Promise<void> => {
     if (!bridge) return
     try {
-      const result = await bridge[kind]()
-      if (!result.ok) setError({ message: result.error, code: result.code })
-      else if ('data' in result) setState(previous => !previous || result.data.revision >= previous.revision ? result.data : previous)
+      if (kind === 'retry') {
+        const result = await bridge.retry()
+        if (!result.ok) setError({ message: result.error, code: result.code })
+        else setState(previous => !previous || result.data.revision >= previous.revision ? result.data : previous)
+      } else {
+        const result = await bridge[kind]()
+        if (!result.ok) setError({ message: result.error, code: result.code })
+      }
     } catch (cause) { setError({ message: cause instanceof Error ? cause.stack || cause.message : String(cause) }) }
   }
 
