@@ -136,7 +136,7 @@ async function download(client: DaemonClient, workspace: WorkspaceGrant | undefi
   return JSON.parse(Buffer.concat(chunks, wire.blob.bytes).toString('utf8'))
 }
 /** Typed native capability only. Never exported through preload as generic RPC. */
-export async function runtimeCall<T, M extends RuntimeBodyMethod = RuntimeBodyMethod>(root: string, method: M, body: RuntimeBody<M>, commandId = randomUUID(), isCurrent?: () => boolean): Promise<T> {
+export async function runtimeCall<T, M extends RuntimeBodyMethod = RuntimeBodyMethod>(root: string, method: M, body: RuntimeBody<M>, commandId?: string, isCurrent?: () => boolean): Promise<T> {
   return nativeDomainCall<T>(root, method, body, commandId, isCurrent)
 }
 type TransientCall = { method: ProviderReadMethod; control: ProviderReadControl; signal: AbortSignal }
@@ -156,7 +156,10 @@ export function nativeProviderReadCall<T>(root: string, method: ProviderReadMeth
   return nativeDomainCall(root, method, { providerRead: control, input: body }, commandId, () => !signal.aborted && (!isCurrent || isCurrent()), { method, control, signal })
 }
 /** Native feature facades only; preload never exposes this transport function. */
-export async function nativeDomainCall<T>(root: string, method: DaemonMethod, body: unknown, commandId = randomUUID(), isCurrent?: () => boolean, transient?: TransientCall): Promise<T> {
+export async function nativeDomainCall<T>(root: string, method: DaemonMethod, body: unknown, commandId?: string, isCurrent?: () => boolean, transient?: TransientCall): Promise<T> {
+  // Read failures have no mutation receipt. Explicit caller IDs and every
+  // mutation retain their original UUID through admission, transport and errors.
+  commandId ??= MUTATING_DAEMON_METHODS.includes(method) ? randomUUID() : undefined
   const legacy = method === 'integration.execute' ? legacyIntegrationRequestSchema.safeParse(body) : null
   const legacyCleanup = legacy?.success && ['cancelRead', 'cancelAuthorization'].includes(legacy.data.operation)
   const cleanup = Boolean(legacyCleanup) || cleanupMethods.includes(method)
@@ -179,7 +182,7 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
       transient.signal.throwIfAborted()
       abort = () => {
         cancelPending ??= cancelProviderRead(epoch, workspace, transient).catch(() => {
-          process.emitWarning(`Transient provider cancellation was not confirmed; original command ${commandId}.`, { code: 'TRELLIS_PROVIDER_CANCEL' })
+          process.emitWarning(`Transient provider cancellation was not confirmed; ${commandId ? `original command ${commandId}` : `original read ${transient.control.requestId}`}.`, { code: 'TRELLIS_PROVIDER_CANCEL' })
         })
       }
       transient.signal.addEventListener('abort', abort, { once: true })
@@ -192,12 +195,12 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
     const retainsOutput = legacy?.success ? LEGACY_INTEGRATION_MUTATIONS.includes(legacy.data.operation) : MUTATING_DAEMON_METHODS.includes(method)
     if ('blob' in wire && !retainsOutput) outputBlob = wire.blob
     try { return await download(client, workspace, wire) as T }
-    catch (error) { throw Object.assign(error instanceof Error ? error : new Error(String(error)), { commandId, outcome: 'unknown' }) }
+    catch (error) { throw Object.assign(error instanceof Error ? error : new Error(String(error)), { ...(commandId ? { commandId } : {}), outcome: 'unknown' }) }
   } catch (error) {
-    const original = error instanceof DaemonError ? error : new DaemonError('E_UNKNOWN', '后台操作未确认，请按原命令读取回执核实结果。', 'unknown')
+    const original = error instanceof DaemonError ? error : new DaemonError('E_UNKNOWN', commandId ? '后台操作未确认，请按原命令读取回执核实结果。' : '后台读取失败，请重新加载。', 'unknown')
     if (client && ['E_DENIED', 'E_CONFLICT'].includes(original.code)) invalidateGrants(client)
-    const suffix = ` 原命令：${commandId}`
-    throw Object.assign(new DaemonError(original.code, original.message.slice(0, 400 - suffix.length) + suffix, original.outcome), { commandId })
+    const suffix = commandId ? ` 原命令：${commandId}` : ''
+    throw Object.assign(new DaemonError(original.code, original.message.slice(0, 400 - suffix.length) + suffix, original.outcome), commandId ? { commandId } : {})
   } finally {
     if (transient && abort) transient.signal.removeEventListener('abort', abort)
     if (cancelPending) await cancelPending

@@ -47,7 +47,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
   const [selectionKey, setSelectionKey] = useState('')
   const requestedSelectionKey = `${root}\0${activeId ?? ''}\0${selectionRevision}`
   const reloadSelected = useCallback((): void => setSelectionRevision((revision) => revision + 1), [])
-  const scope = useMemo(() => ({ root, live: true, listSerial: 0, selectionSerial: 0, managementRevision: 0, cursor: null as string | null, pages: new Map<string, AcpHistoryEventPage>(), managed: new Map<string, { revision: number; session: AcpHistorySummary }>(), mutations: new Set<string>(), listBusy: false, earlierBusy: false }), [root])
+  const scope = useMemo(() => ({ root, live: true, listSerial: 0, selectionSerial: 0, managementRevision: 0, cursor: null as string | null, pages: new Map<string, AcpHistoryEventPage>(), managed: new Map<string, { revision: number; session: AcpHistorySummary }>(), mutations: new Set<string>(), listBusy: false, earlierBusy: false, refreshing: null as Promise<void> | null, refreshAgain: false }), [root])
   const current = useRef(scope)
   current.current = scope
   const selection = useRef(activeId)
@@ -78,23 +78,45 @@ export function useConversationHistory(root: string, activeId: string | null) {
     pageQueue.current = request.then(() => {}, () => {})
     return request
   }, [])
+  const hydrateSession = useCallback((id: string, valid: () => boolean) => {
+    const request = pageQueue.current.then(() => valid() ? api.acpHistorySession(id) : null)
+    pageQueue.current = request.then(() => {}, () => {})
+    return request
+  }, [])
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!hasIpc || !api.acpHistoryList || !root || !isCurrent()) return
-    const serial = ++scope.listSerial
-    const requestedQuery = search.current
-    const requestedArchive = archiveRef.current
-    const requestedRevision = scope.managementRevision
+    // Invalidation is a latest-state read intent, not another concurrent RPC.
+    // Keep one in-flight list and one trailing refresh with the latest filters.
+    scope.listSerial++
+    scope.refreshAgain = true
+    if (scope.refreshing) return scope.refreshing
     setLoading(true)
-    try {
-      const result = await api.acpHistoryList({ query: requestedQuery, archive: requestedArchive })
-      if (!isCurrent() || serial !== scope.listSerial || requestedQuery !== search.current || requestedArchive !== archiveRef.current) return
-      if (!result.ok) { setError(result.error); return }
-      setSessions(remember(result.sessions, requestedRevision))
-      scope.cursor = result.nextCursor; setHasMore(result.hasMore)
-      setError(result.diagnostics.length ? result.diagnostics.map((item) => item.message).join('；') : '')
-    } catch (reason) { if (isCurrent() && serial === scope.listSerial) setError(String(reason)) }
-    finally { if (isCurrent() && serial === scope.listSerial) setLoading(false) }
+    const pending = Promise.resolve().then(async (): Promise<void> => {
+      try {
+        while (scope.refreshAgain && isCurrent()) {
+          scope.refreshAgain = false
+          const serial = scope.listSerial
+          const requestedQuery = search.current
+          const requestedArchive = archiveRef.current
+          const requestedRevision = scope.managementRevision
+          try {
+            const result = await api.acpHistoryList({ query: requestedQuery, archive: requestedArchive })
+            if (!isCurrent() || serial !== scope.listSerial || requestedQuery !== search.current || requestedArchive !== archiveRef.current) continue
+            if (!result.ok) { setError(result.error); continue }
+            setSessions(remember(result.sessions, requestedRevision))
+            scope.cursor = result.nextCursor; setHasMore(result.hasMore)
+            setError(result.diagnostics.length ? result.diagnostics.map((item) => item.message).join('；') : '')
+          } catch (reason) { if (isCurrent() && serial === scope.listSerial) setError(String(reason)) }
+        }
+      } finally {
+        // Release with the last drain: a later invalidation starts a new read.
+        scope.refreshing = null
+        if (isCurrent()) setLoading(false)
+      }
+    })
+    scope.refreshing = pending
+    return pending
   }, [root, scope, isCurrent, remember])
 
   const update = useCallback(async (id: string, patch: ConversationUpdate): Promise<AcpHistorySummary | null> => {
@@ -193,8 +215,9 @@ export function useConversationHistory(root: string, activeId: string | null) {
     void (async () => {
       // Serialize selection requests: never hydrate two large image pages concurrently.
       const summaryRevision = scope.managementRevision
-      const summary = await api.acpHistorySession(id)
+      const summary = await hydrateSession(id, () => isCurrent() && selection.current === id && serial === scope.selectionSerial)
       if (!isCurrent() || selection.current !== id || serial !== scope.selectionSerial) return
+      if (!summary) return
       if (summary.ok) setSelectedSession(remember([summary.session], summaryRevision)[0] ?? null)
       else { setError(summary.error); return }
       const pageRevision = scope.managementRevision
@@ -208,7 +231,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
       setEvents((currentEvents) => ({ ...currentEvents, [id]: merge(currentEvents[id] ?? [], result.events) }))
     })().catch((reason) => { if (isCurrent() && selection.current === id && serial === scope.selectionSerial) setError(String(reason)) })
       .finally(() => { if (isCurrent() && selection.current === id && serial === scope.selectionSerial) { setSelectionLoading(false); setSelectionResolved(true) } })
-  }, [root, activeId, scope, isCurrent, hydratePage, selectionRevision, remember])
+  }, [root, activeId, scope, isCurrent, hydratePage, hydrateSession, selectionRevision, remember])
   useEffect(() => {
     if (!hasIpc || !api.acpHistoryList || !root) return
     let pending: ReturnType<typeof setTimeout> | undefined

@@ -1,5 +1,6 @@
 /** GUI native facade. Existing DTOs survive; execution/admission is performed only by the daemon. */
 import type * as Local from '../acp'
+import { relative } from 'node:path'
 import type { AcpBindTaskInput, AcpConfigureInput, AcpMaterialChange, AcpPromptOptions, TimelineEventKind } from '../../../shared/types'
 import type { AcpRecoverModelInput } from '../../../shared/acp-recovery'
 import { ipcFail, IpcErrorCode } from '../../../shared/ipc-errors'
@@ -16,7 +17,9 @@ async function call<K extends keyof typeof Local, M extends RuntimeBodyMethod>(r
   catch (error) {
     const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
     const known = Object.values(IpcErrorCode).find(value => value === code) ?? IpcErrorCode.Unavailable
-    return ipcFail(known, error instanceof Error ? error.message : '后台 Runtime 不可用', error && typeof error === 'object' && 'commandId' in error ? { commandId: error.commandId, outcome: 'unknown' } : undefined) as Result<K>
+    const receipt = error && typeof error === 'object' && 'commandId' in error && typeof error.commandId === 'string'
+      ? { commandId: error.commandId, outcome: 'outcome' in error && error.outcome === 'not-admitted' ? 'not-admitted' : 'unknown' } : undefined
+    return ipcFail(known, error instanceof Error ? error.message : '后台 Runtime 不可用', receipt) as Result<K>
   }
 }
 export const listAcpAgents = (refresh = false) => call<'listAcpAgents', 'runtime.agents'>('', 'runtime.agents', { refresh })
@@ -44,7 +47,12 @@ export const respondAcpPermission = (root: string, requestId: string, optionId: 
 function publish(root: string, method: RuntimeBodyMethod, body: RuntimeBody<RuntimeBodyMethod>): void {
   void runtimeCall(root, method, body).catch(error => process.emitWarning(error instanceof Error ? error.message : 'Runtime notification was not delivered', { code: 'TRELLIS_RUNTIME_OBSERVER' }))
 }
-export const routeWatcherEvent = (root: string, path: string, event: 'add' | 'change' | 'unlink'): void => publish(root, 'runtime.watcher', { path, event })
+export function routeWatcherEvent(root: string, path: string, event: 'add' | 'change' | 'unlink'): void {
+  // Cheap source filter before the shared socket. The daemon still owns exact
+  // document authorization and which Trellis changes become timeline facts.
+  if (!root || !relative(root, path).replace(/\\/g, '/').startsWith('.trellis/')) return
+  publish(root, 'runtime.watcher', { path, event })
+}
 export const routeNotifyRail = (root: string, text: string): void => publish(root, 'runtime.notify', { text })
 export const emitAcpMaterialChange = (material: AcpMaterialChange): void => publish(material.projectRoot, 'runtime.materialChange', { material })
 export const emitTrellisTimeline = (root: string, kind: TimelineEventKind, text: string, payload?: Record<string, unknown>, taskDir?: string): void => publish(root, 'runtime.timeline', { input: { kind, text, payload, taskDir } })

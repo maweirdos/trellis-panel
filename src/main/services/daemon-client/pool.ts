@@ -10,7 +10,9 @@ type Subscription = {
   listeners: Set<(hint: DaemonNotification) => void>
   active: boolean
   syncing?: Promise<void>
+  retry?: ReturnType<typeof setTimeout>
 }
+function admissionBusy(error: unknown): boolean { return error instanceof DaemonError && error.code === 'E_BUSY' && error.outcome === 'not-admitted' }
 const pools = new Map<string, DaemonConnectionPool>()
 /** Low-rate replay also repairs a lost hint. Older hosts explicitly use bounded polling. */
 export const DAEMON_OBSERVATION = { hintMs: 25, healthMs: 15_000, fallbackMs: 1000, retryMs: 1000, pagesPerDrain: 4 } as const
@@ -56,6 +58,7 @@ export class DaemonConnectionPool {
         client.onDisconnect(() => {
           if (this.client !== client) return
           this.client = undefined
+          for (const subscription of this.subscriptions.values()) if (subscription.retry) clearTimeout(subscription.retry)
           this.subscriptions.clear()
           this.statuses.delete(client)
         })
@@ -110,13 +113,25 @@ export class DaemonConnectionPool {
     const release = (): void => {
       subscription.listeners.delete(subscriptionListener)
       if (this.subscriptions.get(workspace.workspaceId) !== subscription) return
-      void this.syncSubscription(subscription).catch(() => {
-        // Closing a GUI socket revokes subscription state, never backend work.
-        client.close()
+      void this.syncSubscription(subscription).catch(error => {
+        // A rejected unsubscribe changed no server state. Its bounded retry
+        // stays with this exact subscription, without dropping admitted work.
+        // Unknown acknowledgements still close the socket to revoke it.
+        if (!admissionBusy(error)) client.close()
       })
     }
     try { await this.syncSubscription(subscription); return release }
     catch (error) { release(); throw error }
+  }
+
+  private retrySubscription(entry: Subscription): void {
+    if (entry.retry || this.disposed || !entry.client.connected || this.subscriptions.get(entry.workspace.workspaceId) !== entry) return
+    entry.retry = setTimeout(() => {
+      entry.retry = undefined
+      void this.syncSubscription(entry).catch(error => {
+        if (!admissionBusy(error)) entry.client.close()
+      })
+    }, DAEMON_OBSERVATION.retryMs)
   }
 
   private async syncSubscription(entry: Subscription): Promise<void> {
@@ -129,6 +144,7 @@ export class DaemonConnectionPool {
           ? await entry.client.request('events.subscribe', {}, { workspace: entry.workspace })
           : await entry.client.request('events.unsubscribe', {}, { workspace: entry.workspace })
         if (!result.ok) {
+          if (result.code === 'E_BUSY' && result.outcome === 'not-admitted') this.retrySubscription(entry)
           if (result.outcome === 'unknown') entry.client.close()
           throw new DaemonError(result.code, result.error, result.outcome)
         }
@@ -139,7 +155,10 @@ export class DaemonConnectionPool {
     try { await pending }
     finally {
       entry.syncing = undefined
-      if (!entry.active && entry.listeners.size === 0 && this.subscriptions.get(entry.workspace.workspaceId) === entry) this.subscriptions.delete(entry.workspace.workspaceId)
+      if (!entry.active && entry.listeners.size === 0 && this.subscriptions.get(entry.workspace.workspaceId) === entry) {
+        if (entry.retry) clearTimeout(entry.retry)
+        this.subscriptions.delete(entry.workspace.workspaceId)
+      }
     }
   }
 
@@ -156,6 +175,7 @@ export class DaemonConnectionPool {
       catch { process.emitWarning('Native daemon observation disposal failed.', { code: 'TRELLIS_DAEMON_OBSERVER' }) }
     }
     this.disposeListeners.clear()
+    for (const subscription of this.subscriptions.values()) if (subscription.retry) clearTimeout(subscription.retry)
     this.subscriptions.clear()
     this.controlLane?.dispose(); this.controlLane = undefined
     this.client?.close(); this.client = undefined
@@ -184,13 +204,15 @@ export function observePooledWorkspace(
   drain: (client: DaemonClient, grant: WorkspaceGrant, current: () => boolean) => Promise<boolean>,
   unavailable: (error: unknown) => void
 ): () => void {
-  let stopped = false, running = false, dirty = false, failures = 0, push = false
+  let stopped = false, running = false, dirty = false, failures = 0, push = false, pressureReported = false
+  let retryAt = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   let timerAt = Infinity
   let attached: DaemonClient | undefined, grant: WorkspaceGrant | undefined
   let release: (() => void) | undefined, disconnect: (() => void) | undefined
   const schedule = (delay: number): void => {
     if (stopped) return
+    delay = Math.max(delay, retryAt - Date.now())
     const at = Date.now() + delay
     if (timer && timerAt <= at) return
     if (timer) clearTimeout(timer)
@@ -208,7 +230,7 @@ export function observePooledWorkspace(
       if (attached !== client) {
         release?.(); release = undefined; disconnect?.()
         attached = client; grant = undefined
-        disconnect = client.onDisconnect(() => wake(0))
+        disconnect = client.onDisconnect(() => { retryAt = 0; wake(0) })
         const status = await pool.status(client)
         if (stopped) return
         const captured = await workspace(client)
@@ -231,13 +253,27 @@ export function observePooledWorkspace(
         if (!dirty) break
       }
       failures = 0
+      retryAt = 0; pressureReported = false
     } catch (error) {
       if (stopped) return
       failed = true; failures = Math.min(failures + 1, 5)
-      release?.(); release = undefined; disconnect?.(); disconnect = undefined
-      attached = undefined; grant = undefined
-      try { unavailable(error) }
-      catch { process.emitWarning('Native daemon outage observer failed.', { code: 'TRELLIS_DAEMON_OBSERVER' }) }
+      retryAt = Date.now() + Math.min(DAEMON_OBSERVATION.healthMs, DAEMON_OBSERVATION.retryMs * 2 ** (failures - 1))
+      if (attached?.connected && admissionBusy(error)) {
+        // A known non-admission is read backpressure, not transport loss.
+        // Keep the original grant/cursor/subscription and one wake bit. Only
+        // read/subscription work is retried; commands never enter this scheduler.
+        dirty = true
+        if (!pressureReported) process.emitWarning('Native event replay deferred: ordinary daemon admission is busy.', { code: 'TRELLIS_DAEMON_REPLAY_BUSY' })
+        pressureReported = true
+        // An attachment rejected before its grant was installed must run that
+        // original attachment again, rather than treating it as ready.
+        if (!grant) { disconnect?.(); disconnect = undefined; attached = undefined }
+      } else {
+        release?.(); release = undefined; disconnect?.(); disconnect = undefined
+        attached = undefined; grant = undefined
+        try { unavailable(error) }
+        catch { process.emitWarning('Native daemon outage observer failed.', { code: 'TRELLIS_DAEMON_OBSERVER' }) }
+      }
     } finally {
       running = false
       schedule(failed ? Math.min(DAEMON_OBSERVATION.healthMs, DAEMON_OBSERVATION.retryMs * 2 ** (failures - 1)) : dirty ? 0 : push ? DAEMON_OBSERVATION.healthMs : DAEMON_OBSERVATION.fallbackMs)
