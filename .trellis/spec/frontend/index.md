@@ -20,6 +20,7 @@
 | [ipc-electron.md](./ipc-electron.md)                                           | IPC patterns, context isolation, title bar      | **Must Read** |
 | [daemon-bootstrap.md](./daemon-bootstrap.md)                                 | Restricted first-window shell, readiness, recovery, lazy App and authenticated attachment | Desktop startup / daemon changes |
 | [Integration contracts](../backend/integrations.md)                           | Shared directory, owner-scoped requests, redacted fields and explicit notification preview | Integration UI |
+| [Integration interactions](./integration-interactions.md) | Reference-backed overview, progressive forms/wizards, retained original submissions and scoped recovery | Integration UI / settings changes |
 | [Knowledge contracts](../backend/knowledge-access.md)                         | Project defaults, temporary scope, provenance, material CAS/handoff and explicit publication | Knowledge / Agent / intake UI |
 | [store-conventions.md](./store-conventions.md)                                 | Zustand store slicing rules (TPD-006)           | **Must Read** |
 | [electron-browser-api-restrictions.md](./electron-browser-api-restrictions.md) | Browser APIs that don't work in Electron        | **Must Read** |

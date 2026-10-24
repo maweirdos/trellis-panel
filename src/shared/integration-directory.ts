@@ -13,15 +13,15 @@ export interface IntegrationDirectoryEntry {
   deployment?: 'hosted' | 'self-managed'
 }
 export const INTEGRATION_DIRECTORY: readonly IntegrationDirectoryEntry[] = [
-  { id: 'jira', providerId: 'jira', category: 'tasks', kind: 'tasks', name: 'Jira', description: '绑定 Jira 实例，管理项目来源、同步与 Issue 导入。' },
-  { id: 'gitlab-issues-hosted', providerId: 'gitlab', category: 'tasks', kind: 'tasks', deployment: 'hosted', name: '极狐 GitLab.cn Issues', description: '将托管 GitLab 项目的 Issue 关联到当前项目。' },
-  { id: 'gitlab-issues-self-managed', providerId: 'gitlab', category: 'tasks', kind: 'tasks', deployment: 'self-managed', name: 'GitLab Issues（自部署版）', description: '连接自有 GitLab 实例，配置项目 Issue 来源。' },
-  { id: 'github', providerId: 'github', category: 'repositories', kind: 'repositories', name: 'GitHub', description: '浏览仓库与 Pull Request，关联本地工作项。' },
-  { id: 'gitlab-repositories', providerId: 'gitlab', category: 'repositories', kind: 'repositories', name: 'GitLab', description: '浏览项目与 Merge Request，复用已有 GitLab 连接。' },
-  { id: 'gitee', providerId: 'gitee', category: 'repositories', kind: 'repositories', name: 'Gitee', description: '浏览授权仓库与 Pull Request，保留研发来源。' },
-  { id: 'dingtalk', providerId: 'dingtalk', category: 'messaging', kind: 'messaging', name: '钉钉', description: '管理应用与个人身份，保留群机器人通知入口。' },
-  { id: 'feishu', providerId: 'feishu', category: 'messaging', kind: 'messaging', name: '飞书', description: '绑定群机器人，预览并手动发送工作项摘要。' },
-  { id: 'weknora', providerId: 'weknora', category: 'knowledge', kind: 'knowledge', name: 'WeKnora', description: '设置项目知识库，检索资料并人工确认发布成果。' }
+  { id: 'jira', providerId: 'jira', category: 'tasks', kind: 'tasks', name: 'Jira', description: '同步 Jira 项目与任务。' },
+  { id: 'gitlab-issues-hosted', providerId: 'gitlab', category: 'tasks', kind: 'tasks', deployment: 'hosted', name: '极狐 GitLab.cn Issues', description: '将 GitLab Issue 同步到项目。' },
+  { id: 'gitlab-issues-self-managed', providerId: 'gitlab', category: 'tasks', kind: 'tasks', deployment: 'self-managed', name: 'GitLab Issues（自部署版）', description: '连接自有 GitLab，同步 Issue。' },
+  { id: 'github', providerId: 'github', category: 'repositories', kind: 'repositories', name: 'GitHub', description: '关联仓库与 Pull Request。' },
+  { id: 'gitlab-repositories', providerId: 'gitlab', category: 'repositories', kind: 'repositories', name: 'GitLab', description: '关联项目与 Merge Request。' },
+  { id: 'gitee', providerId: 'gitee', category: 'repositories', kind: 'repositories', name: 'Gitee', description: '关联仓库与 Pull Request。' },
+  { id: 'dingtalk', providerId: 'dingtalk', category: 'messaging', kind: 'messaging', name: '钉钉', description: '连接钉钉应用、账号与任务助手。' },
+  { id: 'feishu', providerId: 'feishu', category: 'messaging', kind: 'messaging', name: '飞书', description: '通过群机器人发送工作项通知。' },
+  { id: 'weknora', providerId: 'weknora', category: 'knowledge', kind: 'knowledge', name: 'WeKnora', description: '检索项目知识，发布工作成果。' }
 ]
 export const INTEGRATION_DIRECTORY_GROUPS: ReadonlyArray<{ id: IntegrationCategory; name: string; description: string }> = [
   { id: 'tasks', name: '任务管理工具', description: '接入团队用于推进产品工作的任务与项目系统。' },

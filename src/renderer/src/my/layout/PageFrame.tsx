@@ -21,9 +21,11 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
   const tools = ['devtools', 'architecture', 'studio'].includes(page)
   const intake = page === 'inbox' || page === 'jira'
   const embeddedKnowledgeLayout = navigation.domain === 'knowledge'
+  const selfOwnedIntegrationHeader = page === 'integrations'
   const title = page === 'team' ? TEAM_TITLES[teamView] : tools ? '工具' : page === 'settings' ? settingsView === 'engines' ? '引擎' : '偏好' : navigation.title
   return <PageLayout variant={variant}>
-    {!embeddedKnowledgeLayout && <PageHeader>
+    {selfOwnedIntegrationHeader && <h1 className="sr-only">{title}</h1>}
+    {!embeddedKnowledgeLayout && !selfOwnedIntegrationHeader && <PageHeader>
       <h1 className="text-my-md font-semibold text-my-primary">{title}</h1>
       {navigation.scope !== 'project' && <span className="my-chip bg-my-layer-1 text-my-secondary">{navigationScopeLabel(navigation.scope)}</span>}
       {(tools || intake) && <nav aria-label={tools ? '工具类型' : '接入来源'} className="ml-auto flex flex-wrap items-center gap-1">
@@ -33,7 +35,7 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
         }) : (['inbox', 'jira'] as const).map((target) => <button key={target} type="button" aria-current={page === target ? 'page' : undefined} onClick={() => setPage(target)} className={`my-control my-control-sm ${page === target ? 'bg-my-layer-1-active text-my-primary' : 'text-my-tertiary hover:bg-my-layer-transparent-hover'}`}>{target === 'inbox' ? '待办' : 'Jira'}</button>)}
       </nav>}
     </PageHeader>}
-    {!embeddedKnowledgeLayout && navigation.scopeNote && <PageNotice>{navigation.scopeNote}</PageNotice>}
+    {!embeddedKnowledgeLayout && !selfOwnedIntegrationHeader && navigation.scopeNote && <PageNotice>{navigation.scopeNote}</PageNotice>}
     <PageBody className={LOCKED_PAGES.includes(page) ? 'my-locked-body' : undefined}>{variant === 'centered' ? <PageContent>{children}</PageContent> : children}</PageBody>
   </PageLayout>
 }

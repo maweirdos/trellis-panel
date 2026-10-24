@@ -1,0 +1,11 @@
+.my-modal-backdrop:has(> .my-modal-panel > .jira-plan-drawer) {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.my-modal-panel:has(> .jira-plan-drawer) {
+  height: 100%;
+  max-height: 100%;
+  border-radius: 0;
+}

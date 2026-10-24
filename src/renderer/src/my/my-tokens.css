@@ -124,6 +124,9 @@
   --my-composer-max-height: 220px;
   --my-page-inset: var(--my-space-24);
   --my-page-content-width: 1120px;
+  --my-integration-detail-width: 804px;
+  --my-integration-setup-width: 768px;
+  --my-integration-drawer-width: 800px;
   --my-page-block-inset: var(--my-space-24);
   --my-page-bottom-inset: var(--my-space-48);
   --my-inspector-width: 420px;

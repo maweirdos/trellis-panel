@@ -31,7 +31,9 @@ export function KnowledgeLegacyImport({ root, onSaved }: { root: string; onSaved
   const [bind, setBind] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  if (!state.context?.legacyImportAvailable) return null
+  if (state.error) return <div role="alert" className="space-y-3 text-my-sm"><p className="break-words text-my-danger-text">{state.error}</p><Button size="sm" disabled={busy || state.loading} onClick={() => { if (!busy && state.current()) void state.refresh() }}>{state.loading ? '读取中…' : '重试读取'}</Button></div>
+  if (!state.context) return <p role="status" className="text-my-sm text-my-tertiary">正在检查已有配置…</p>
+  if (!state.context.legacyImportAvailable) return <p role="status" className="text-my-sm text-my-tertiary">当前没有可导入的已有配置。</p>
   return <section className="space-y-3 rounded-my-lg border border-my-line-warning p-4 text-my-sm"><h4 className="font-medium">导入原有 WeKnora 配置</h4><p className="text-my-xs leading-relaxed text-my-tertiary">仅由主进程迁移凭证，不显示明文；不会导入自动上传开关，也不会绑定其他项目。原有规范同步保留独立配置。</p><label className="flex gap-2 text-my-xs"><input type="checkbox" checked={bind} disabled={busy} onChange={(event) => setBind(event.target.checked)} />同时绑定当前项目及原选中知识库</label><Button size="sm" disabled={busy} onClick={() => {
     const bridge = knowledgeBridge(['importLegacy'])
     if (!bridge || busy || !state.current()) return

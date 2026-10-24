@@ -38,7 +38,10 @@ Legacy Jira/GitLab entries read from their existing settings as a single compati
 
 Provider manifests declare `authentication` methods and method-specific fields;
 `connectionFields` is shared by form rendering and main validation. Missing
-`authMethod` retains pre-OAuth PAT semantics; new GitLab forms select OAuth explicitly.
+`authMethod` retains pre-OAuth PAT semantics. New GitLab forms default to PAT;
+OAuth is an explicit optional choice and requires the real native authorization
+capability plus the provider's registered client configuration. The renderer
+interaction contract is [integration-interactions.md](../frontend/integration-interactions.md).
 Registry entries declaring OAuth must supply an `AuthorizationPort`.
 Snapshots expose `authorizationProviders` from registered native ports. Both this
 native capability and the preload methods are required before saving OAuth config

@@ -14,11 +14,21 @@ export interface ProviderWorkspaceProps {
   authorizationAvailable: boolean
   refresh: () => Promise<void>
   navigate: (entry: IntegrationDirectoryId) => void
+  onConnect: () => void
+  onEditConnection: () => void
+  /** Selects an existing connection of this provider under the captured UI owner. */
+  onSelectConnection?: (id: string) => void
+  /** Opens an explicit editor for the captured selected connection; never retargets a binding. */
+  onBindProject: (binding?: IntegrationBinding) => void
+  /** Provider-owned setup replaces overview chrome without replacing its mounted workspace. */
+  onFlowChange?: (active: boolean) => void
 }
 export interface ProviderWorkspaceExtension {
+  /** Provider-owned organization/application setup may replace the shared instance card. */
+  connectionMode?: 'shared' | 'provider'
   /** Organization/application setup, when separate from compatibility credentials. */
   BeforeConnection?: ComponentType<ProviderWorkspaceProps>
-  /** Account, sync, import, assistant sections after the preserved connection panel. */
+  /** Account, sync, import and assistant sections, including honest unbound states. */
   Content: ComponentType<ProviderWorkspaceProps>
 }
 export type ProviderWorkspaceExtensions = Partial<Record<IntegrationDirectoryId, ProviderWorkspaceExtension>>

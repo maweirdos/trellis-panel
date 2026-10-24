@@ -71,6 +71,14 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   `PAGE_LAYOUTS satisfies Record<Page, PageLayoutVariant>` registry classifies
   every route, including new routes. `PageFrame` consumes that registry; pages
   with their own module header compose the same layout directly.
+- Integration details/setup have an approved semantic-column exception inside
+  the existing PageContent band: canonical `--my-integration-detail-width`
+  (804px), `--my-integration-setup-width` (768px) and
+  `--my-integration-drawer-width` (800px). `integration.css` and provider drawer
+  modifiers consume those roles; they do not add another PageBody/scroll owner,
+  change all centered pages or introduce private hardcoded maxima. The integration
+  route owns its visible back/product/setup headings, so PageFrame keeps only an
+  accessible route heading there. See [integration interactions](./integration-interactions.md).
 - `PageHeader`, `PageToolbar` and `PageNotice` provide fixed, aligned bands.
   `PageBody` fills the remaining height. A centered body owns one scrollbar;
   a full body delegates scrolling to its real workspace panes. Do not restore
