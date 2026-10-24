@@ -313,6 +313,14 @@ Completed duration belongs to the actual terminal event's position, ordinarily b
 
 Explicit model recovery presents exact saved candidates, with the saved/validation explanation available from an accessible info tooltip. The UI never parses an error's model list, guesses aliases, silently switches providers or offers a replacement conversation as if it were resume. A confirmed model and a successful connection are separate states. Process-stop/cleanup controls appear only from ephemeral backend ownership facts; an error status alone is insufficient.
 
+An actually owned disconnected connection still needs the explicit End action,
+including when `cleanupRequired` and `restorePending` are false. Keep the existing
+canonical cleanup callback and operation/root/interaction locks; do not launch
+automatic stop/retry or hide its failure. Unowned offline history has no process
+End action. Check this recovery route with `acp-resume-producer.mjs`, which also
+distinguishes one-shot source-owned resume, explicit retries and a genuine remount.
+Receipt density alone does not establish an automatic reconnect loop.
+
 Run `acp-ui.mjs`, `acp-settings-detour.mjs`, `navigation.mjs`, `render-contract.mjs`, `uiux-wiring.mjs`, `acp-progress.mjs`, and actual light/dark/narrow rendered captures. Report fixture/native/vendor/packaged gaps separately. Generic design-system focus failures must not be relabeled as ACP failures; ACP touched inputs require an explicit visible focus ring.
 
 ## Composer and result refinements (2026-10-20)

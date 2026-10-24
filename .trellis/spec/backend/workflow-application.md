@@ -118,6 +118,22 @@ synchronous `assertExecutionCurrent():void`. Desktop API is the typed
   End/cancel remain available to drain. Mark lifecycle admission settled before
   awaiting native connection completion while retaining occupancy, so quit can
   reach the native shutdown needed to finish that connection.
+- A handed-off ordinary token may authorize recovery of its exact retained native
+  session and connection generation. Derive that identity from the actual owned
+  inventory, never history's saved `connectionOwned` field. Synchronously replace
+  the old token without exposing an unowned interval. Permit this only for an
+  error/disconnected owner with no accepting/closing/lease/cleanup/background/
+  unfinished-tool/turn/settling/permission work and no other busy owner in that
+  physical workspace. Pending lifecycle work and managed, foreign or stale owners
+  remain fenced. Recheck durable managed ownership under the replacement token;
+  recovery still uses canonical original-connection cleanup and same-session load,
+  never prompt replay or an invented idle status. Retain a sole actual blocker
+  after a rejected lifecycle action so its own explicit recovery remains reachable.
+- A disconnected connection can still be owned even when `cleanupRequired` is
+  false. Keep an explicit End action for actual owned/cleanup-required connection
+  projections, alongside normal live/restore states. A failed resume does not
+  authorize automatic repeated loads; repeated receipt timestamps alone do not
+  establish a renderer retry loop.
 - Register bounded verified project-root discovery references before managed
   ownership. The index is not ownership: each referenced control store remains
   authority. Use the actual per-worktree Git directory, or the non-Git runtime

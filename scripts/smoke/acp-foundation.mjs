@@ -13,6 +13,10 @@ import { prepareAcpHistoryWorker } from './prepare-acp-history-worker.mjs'
 const temporary = mkdtempSync(join(tmpdir(), 'trellis-acp-review-'))
 await prepareAcpHistoryWorker(temporary)
 process.env.TPAP_SMOKE_DIR = temporary
+const previousJournal = process.env.TRELLIS_ACP_FIXTURE_JOURNAL
+const journalPath = join(temporary, 'wire.jsonl')
+process.env.TRELLIS_ACP_FIXTURE_JOURNAL = journalPath
+const wireCalls = method => existsSync(journalPath) ? readFileSync(journalPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(call => call.method === method) : []
 const root = join(temporary, 'fixture project')
 mkdirSync(root)
 const wait = async (predicate, label) => {
@@ -168,10 +172,18 @@ try {
   assert.equal((await acp.killAcpSession(root, id)).ok, true)
   assert.equal(current().status, 'closed')
   console.log('PASS failed cleanup keeps its live owner and an explicit second stop retries successfully')
-  const resumes = await Promise.all([acp.resumeAcpSession(root, id), acp.resumeAcpSession(root, id)])
-  assert.equal(resumes.filter(result => result.ok).length, 1)
-  assert.equal(resumes.find(result => !result.ok).code, 'E_CONFLICT')
-  assert.equal(current().restorePending, true)
+  const beforeResume = { creates: wireCalls('session/new').length, loads: wireCalls('session/load').length, prompts: wireCalls('session/prompt').length }
+  const firstResume = acp.resumeAcpSession(root, id)
+  const joinedResume = acp.resumeAcpSession(root, id)
+  assert.equal(firstResume, joinedResume, 'Same-root concurrent resumes must share one operation')
+  assert.equal((await acp.resumeAcpSession(root + '-foreign', id)).code, 'E_DENIED', 'A foreign root cannot join the pending owner')
+  const resumes = await Promise.all([firstResume, joinedResume])
+  assert.ok(resumes.every(result => result.ok && result.sessionId === id))
+  assert.equal(wireCalls('session/new').length, beforeResume.creates, 'Concurrent resume never creates a replacement native session')
+  assert.equal(wireCalls('session/load').length, beforeResume.loads + 1, 'One shared operation performs exactly one native load')
+  assert.equal(wireCalls('session/prompt').length, beforeResume.prompts, 'Eager restore never replays a prompt')
+  assert.equal(current().restorePending, false)
+  assert.equal(current().status, 'ready')
   assert.equal(current().backendSessionId, remote)
   assert.equal(current().capabilities.agentInfo.name, 'acp-mock')
   assert.deepEqual(current().modes.map(mode => mode.id), ['read', 'edit'])
@@ -191,7 +203,8 @@ try {
   assert.equal(current().restorePending, false)
   const oldGeneration = current().connectionGeneration
   assert.equal((await acp.resumeAcpSession(root, id)).ok, true)
-  assert.equal(current().restorePending, true)
+  assert.equal(current().restorePending, false)
+  assert.equal(current().status, 'ready')
   assert.notEqual(current().connectionGeneration, oldGeneration)
   assert.equal(current().backendSessionId, remote)
   console.log('PASS explicit recovery after idle crash replaces stale owner and enables native continuation')
@@ -226,5 +239,7 @@ try {
 } finally {
   if (acp) await acp.shutdownAcp()
   delete globalThis.__ACP_REVIEW_FAIL_CLEANUP__
+  if (previousJournal === undefined) delete process.env.TRELLIS_ACP_FIXTURE_JOURNAL
+  else process.env.TRELLIS_ACP_FIXTURE_JOURNAL = previousJournal
   rmSync(temporary, { recursive: true, force: true })
 }

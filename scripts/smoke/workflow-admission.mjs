@@ -17,9 +17,9 @@ const check = async (name, work) => { await work(); results.push({ name, status:
 const wait = async (test, label) => { const end = Date.now() + 6000; while (Date.now() < end) { if (test()) return; await new Promise((done) => setTimeout(done, 10)) } throw Error('Timeout: ' + label) }
 const git = (...args) => execFileSync('git', ['-c', 'init.templateDir=', '-c', `core.hooksPath=${join(temporary, 'empty-hooks')}`, ...args], { windowsHide: true, stdio: 'pipe' })
 const acp = `const r=globalThis.__ADMISSION_SMOKE__;
-export const listOwnedAcpSessionFacts=()=>r.sessions.filter(s=>s.connectionOwned!==false).map(s=>({projectRoot:s.projectRoot,cwd:s.cwd??null,sessionId:s.sessionId,connectionGeneration:s.connectionGeneration??null,status:s.status,accepting:false,closing:false,disconnected:false,leaseHeld:false,cleanupRequired:!!s.cleanupRequired,backgroundWork:false,unfinishedTools:false,turnActive:false,settling:false,pendingPermission:false,...s.ownedFacts,...(s.directoryLeaseReason?{leaseHeld:true}:{})}));
+export const listOwnedAcpSessionFacts=()=>{if(r.failInventory)throw Error('Owned inventory unavailable');return r.sessions.filter(s=>s.connectionOwned!==false).map(s=>({projectRoot:s.projectRoot,cwd:s.cwd??null,sessionId:s.sessionId,connectionGeneration:s.connectionGeneration??null,status:s.status,accepting:false,closing:false,disconnected:false,leaseHeld:false,cleanupRequired:!!s.cleanupRequired,backgroundWork:false,unfinishedTools:false,turnActive:false,settling:false,pendingPermission:false,...s.ownedFacts,...(s.directoryLeaseReason?{leaseHeld:true}:{})}))};
 export const listAcpSessions=root=>({ok:true,sessions:r.sessions.filter(s=>s.projectRoot===root)});
-export const getAcpHistorySession=async(root,id)=>{const session=r.sessions.find(s=>s.projectRoot===root&&s.sessionId===id);return session?{ok:true,session}:{ok:false}};
+export const getAcpHistorySession=async(root,id)=>{r.historyReads=(r.historyReads??0)+1;if(r.historyFailureAt===r.historyReads)throw Error('Owned history recheck unavailable');const session=r.sessions.find(s=>s.projectRoot===root&&s.sessionId===id);return session?{ok:true,session}:{ok:false}};
 export const promptAcpSession=async(root,id,text,options,isCurrent)=>{const session=r.sessions.find(s=>s.projectRoot===root&&s.sessionId===id);r.entered.push(id);if(r.preflight?.id===id)await r.preflight.promise;if(!isCurrent())return{ok:false,code:'E_CONFLICT',error:'pre-write admission revoked'};session.status='busy';r.writes.push(id);return{ok:true,turnId:'owned-turn-'+r.writes.length}};
 export const cancelAcpSession=async(root,id)=>{r.cancels.push(id);r.sessions.find(s=>s.projectRoot===root&&s.sessionId===id).status='ready';return{ok:true}};
 export const killAcpSession=async(root,id)=>{r.ends.push(id);r.sessions.find(s=>s.projectRoot===root&&s.sessionId===id).status='closed';return{ok:true}};
@@ -31,6 +31,19 @@ export const configureAcpSession=async(root,id)=>{r.lifecycle.push({kind:'config
 ${['respondAcpPermission','saveAcpProfile','deleteAcpProfile','setupAcpRuntime','pickAcpNode','bindAcpSessionTask','listAcpHistorySessions','getAcpHistoryEvents','updateAcpHistorySession','retryAcpHistorySession'].map((name) => `export const ${name}=async()=>({ok:true,events:[]});`).join('\n')}`
 const mocks = {
   './acp': acp, '../services/acp': acp,
+  // IPC is now daemon-only. This fixture supplies the daemon execution boundary
+  // with the real admission host; it never opens a production pipe or controller.
+  '../services/daemon-client/acp': `import * as local from './acp';
+    const r=globalThis.__ADMISSION_SMOKE__;
+    ${['listAcpAgents','listAcpSessions','listAcpProfiles','respondAcpPermission','saveAcpProfile','deleteAcpProfile','setupAcpRuntime','pickAcpNode','bindAcpSessionTask','listAcpHistorySessions','getAcpHistorySession','getAcpHistoryEvents','updateAcpHistorySession','retryAcpHistorySession','cancelAcpSession'].map(name => `export const ${name}=(...args)=>local.${name}(...args);`).join('\n')}
+    export const pickAcpRuntimePath=async()=>({ok:true});export const testAcpRuntimeConnection=async()=>({ok:true});
+    export const promptAcpSession=(root,id,text,options,current)=>r.actual.withOrdinaryWorkflowAdmission(root,id,options?.expectedConnectionGeneration,admitted=>local.promptAcpSession(root,id,text,options,()=>current()&&admitted()));
+    export const newAcpSession=(root,input)=>r.actual.withOrdinaryConnectionAdmission(root,{profileId:input.profileId},()=>local.newAcpSession(root,input));
+    export const resumeAcpSession=(root,id)=>r.actual.withOrdinaryConnectionAdmission(root,{sessionId:id},()=>local.resumeAcpSession(root,id));
+    export const configureAcpSession=(root,id,input)=>r.actual.withOrdinaryConnectionAdmission(root,{sessionId:id},()=>local.configureAcpSession(root,id,input));
+    export const recoverAcpSessionModel=(root,id,input,current)=>r.actual.withOrdinaryConnectionAdmission(root,{sessionId:id},()=>local.recoverAcpSessionModel(root,id,input,current));
+    export const killAcpSession=async(root,id)=>await r.actual.isManagedWorkflowOrigin(root,id,undefined,true)?{ok:false,code:'E_CONFLICT'}:local.killAcpSession(root,id);`,
+  '../services/daemon-client/workflow': 'export const isManagedWorkflowOrigin=(...args)=>globalThis.__ADMISSION_SMOKE__.actual.isManagedWorkflowOrigin(...args);',
   '../state': `export const getProjectRoot=()=>globalThis.__ADMISSION_SMOKE__.root;export const getProjectGeneration=()=>1;`,
   './acp/setup': 'export const runtimeDefinitions=()=>[];', './workflow-runtime': 'export const createFacadeWorkflowAcpPort=()=>({});',
   './workflow-application': `export class WorkflowApplicationError extends Error{constructor(code,message){super(message);this.code=code}};export const readLocalApplicationDefinition=()=>{};export const WorkflowApplicationService={create:async options=>{const app=globalThis.__ADMISSION_SMOKE__.apps.get(options.projectRoot);if(!app)throw Error('Unregistered owned application fixture');return app}};`,
@@ -85,7 +98,7 @@ try {
     builder.onLoad({ filter: /.*/, namespace: 'owned-admission' }, (args) => ({ contents: mocks[args.path], loader: 'js' }))
   } }] })
   await build({ entryPoints: ['src/main/services/workflow-admission.ts'], outfile: join(temporary, 'metadata.mjs'), bundle: true, platform: 'node', format: 'esm', logLevel: 'silent' })
-  actual = await import(pathToFileURL(join(temporary, 'admission.mjs')).href); actual.registerAcpIpc()
+  actual = await import(pathToFileURL(join(temporary, 'admission.mjs')).href); r.actual = actual; actual.registerAcpIpc()
   const root = join(temporary, 'worktree-a'); git('init', root); git('-C', root, '-c', 'user.name=Workflow Smoke', '-c', 'user.email=workflow-smoke@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'Owned admission fixture')
   const otherRoot = join(temporary, 'worktree-b'); git('-C', root, 'worktree', 'add', '--detach', otherRoot, 'HEAD')
   const h = await make(root), other = await make(otherRoot)
@@ -165,10 +178,10 @@ try {
     const sibling = await make(join(root, 'packages', 'nested-b'))
     await managed(nested)
     const fresh = await import(pathToFileURL(join(temporary, 'admission.mjs')).href + '?reopened=' + randomUUID())
-    r.handlers.clear(); fresh.registerAcpIpc(); r.root = sibling.root
+    r.handlers.clear(); r.actual = fresh; fresh.registerAcpIpc(); r.root = sibling.root
     assert.equal((await r.handlers.get(fresh.ipcInvoke.acp.sessionPrompt)({}, sibling.ordinary.sessionId, 'Owned restart request', { expectedConnectionGeneration: sibling.ordinary.connectionGeneration })).code, 'E_CONFLICT')
     assert.ok((await fresh.workspaceProjects(root)).includes(nested.root))
-    await release(nested); r.handlers.clear(); actual.registerAcpIpc()
+    await release(nested); r.handlers.clear(); r.actual = actual; actual.registerAcpIpc()
   })
   await check('another project in the same worktree cannot start a second managed owner', async () => {
     const nested = await make(join(root, 'packages', 'collision-project'))
@@ -246,6 +259,74 @@ try {
     assert.equal(r.lifecycle.length, count)
     r.root = other.root; assert.equal((await r.handlers.get(actual.ipcInvoke.acp.sessionNew)({}, { agentId: 'owned-fixture' })).ok, true)
     resume(); await pending
+  })
+  await check('retained ordinary token admits only exact settled disconnected recovery; all unfinished flags and unknown facts remain fenced', async () => {
+    assert.equal((await invoke(h)).ok, true)
+    h.ordinary.status = 'disconnected'
+    const generation = h.ordinary.connectionGeneration
+    const retry = () => actual.withOrdinaryConnectionAdmission(root, { sessionId: h.ordinary.sessionId }, async () => { throw Error('unsafe recovery action reached') })
+    for (const flag of ['accepting', 'closing', 'leaseHeld', 'cleanupRequired', 'backgroundWork', 'unfinishedTools', 'turnActive', 'settling', 'pendingPermission']) {
+      h.ordinary.ownedFacts = { [flag]: true }
+      await assert.rejects(retry(), error => error.code === 'E_CONFLICT')
+    }
+    h.ordinary.ownedFacts = {}
+    r.failInventory = true
+    await assert.rejects(retry(), /inventory unavailable/)
+    r.failInventory = false
+    h.ordinary.connectionGeneration = generation + '-replacement'
+    await assert.rejects(retry(), error => error.code === 'E_CONFLICT')
+    h.ordinary.connectionGeneration = generation
+    const count = r.writes.length
+    assert.equal((await invoke(h)).code, 'E_CONFLICT')
+    assert.equal(r.writes.length, count, 'No rejected prompt is submitted or replayed')
+    await assert.rejects(actual.withOrdinaryConnectionAdmission(root, {}, async () => { throw Error('new must stay fenced') }), error => error.code === 'E_CONFLICT')
+    await assert.rejects(actual.withOrdinaryConnectionAdmission(root, { sessionId: h.different.sessionId }, async () => { throw Error('foreign target must stay fenced') }), error => error.code === 'E_CONFLICT')
+    await assert.rejects(actual.withOrdinaryConnectionAdmission(other.root, { sessionId: h.ordinary.sessionId }, async () => { throw Error('foreign root must stay fenced') }), error => error.code === 'E_CONFLICT')
+    h.different.status = 'disconnected'
+    await assert.rejects(retry(), error => error.code === 'E_CONFLICT')
+    h.different.status = 'ready'
+    h.different.ownedFacts = { unfinishedTools: true }
+    await assert.rejects(retry(), error => error.code === 'E_CONFLICT')
+    h.different.ownedFacts = {}
+    r.historyReads = 0; r.historyFailureAt = 2
+    await assert.rejects(retry(), /Owned history recheck unavailable/)
+    r.historyFailureAt = undefined
+    assert.throws(() => actual.claimWorkspaceAdmission(root, 'managed'), error => error.code === 'E_CONFLICT', 'Failed recovery preflight retains the original occupancy fence')
+    const lease = await h.control.claimWorkspace(h.scope)
+    assert.notEqual(lease.status, 'owner-conflict')
+    await assert.rejects(retry(), error => error.code === 'E_CONFLICT')
+    await h.control.releaseWorkspace(h.scope, lease.lease.owner)
+    await actual.withOrdinaryConnectionAdmission(root, { sessionId: h.ordinary.sessionId }, async () => {
+      h.ordinary.status = 'ready'; return { ok: true }
+    })
+    assert.equal((await invoke(h)).ok, true)
+    h.ordinary.status = 'ready'
+  })
+  await check('failed connection retains the actual sole disconnected owner and allows its exact recovery after action settlement', async () => {
+    // Discard only this fixture's idle token, then model a pre-existing native exit.
+    const idle = actual.claimWorkspaceAdmission(root, 'ordinary'); idle.release()
+    h.ordinary.status = 'disconnected'
+    let unblock, entered = false
+    const gate = new Promise(done => { unblock = done })
+    const failure = actual.withOrdinaryConnectionAdmission(root, {}, async () => { entered = true; await gate; throw Error('Owned new rejected before any dispatch') })
+    await wait(() => entered, 'failed new action pending')
+    await assert.rejects(actual.withOrdinaryConnectionAdmission(root, { sessionId: h.ordinary.sessionId }, async () => { throw Error('pending action must stay fenced') }), error => error.code === 'E_CONFLICT')
+    unblock(); await assert.rejects(failure, /Owned new rejected/)
+    assert.throws(() => actual.claimWorkspaceAdmission(root, 'managed'), error => error.code === 'E_CONFLICT')
+    await actual.withOrdinaryConnectionAdmission(root, { sessionId: h.ordinary.sessionId }, async () => { h.ordinary.status = 'ready'; return { ok: true } })
+    const released = actual.claimWorkspaceAdmission(root, 'managed'); released.release()
+  })
+  await check('ordinary recovery token replacement is atomic; late old release cannot remove the new admission', async () => {
+    const previous = actual.claimWorkspaceAdmission(root, 'ordinary')
+    const owner = { sessionId: 'owned-token-identity', connectionGeneration: 'original-generation' }
+    previous.retainNative(() => true, candidate => candidate.sessionId === owner.sessionId && candidate.connectionGeneration === owner.connectionGeneration)
+    assert.throws(() => actual.claimWorkspaceAdmission(root, 'managed', owner), error => error.code === 'E_CONFLICT')
+    assert.throws(() => actual.claimWorkspaceAdmission(root, 'ordinary', { ...owner, connectionGeneration: 'stale' }), error => error.code === 'E_CONFLICT')
+    const next = actual.claimWorkspaceAdmission(root, 'ordinary', owner)
+    assert.equal(previous.isCurrent(), false); assert.equal(next.isCurrent(), true)
+    previous.release(); assert.equal(next.isCurrent(), true)
+    assert.throws(() => actual.claimWorkspaceAdmission(root, 'ordinary', owner), error => error.code === 'E_CONFLICT')
+    next.release()
   })
   await check('inflight ordinary lifecycle holds admission yet lets quit reach native shutdown; end/cancel stay available', async () => {
     let resume; r.lifecycleGate = new Promise((done) => { resume = done })

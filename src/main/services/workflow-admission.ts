@@ -53,7 +53,8 @@ export function executionWorkspaceRoot(projectRoot: string, cwd?: string): strin
   throw new WorkflowAdmissionError('无法在限界内核对执行工作区，请选择明确的项目或 worktree')
 }
 
-type Entry = { token: symbol; kind: 'ordinary' | 'managed'; settled: Promise<void>; settle: () => void; nativeBusy?: () => boolean }
+export type NativeAdmissionOwner = { sessionId: string; connectionGeneration: string }
+type Entry = { token: symbol; kind: 'ordinary' | 'managed'; settled: Promise<void>; settle: () => void; nativeBusy?: () => boolean; canRecover?: (owner: NativeAdmissionOwner) => boolean }
 const admissions = new Map<string, Entry>()
 function prune(key: string): void {
   const old = admissions.get(key)
@@ -64,13 +65,18 @@ export type WorkspaceAdmission = {
   isCurrent(): boolean
   release(): void
   /** After delivery, retain the admission until original native facts show idle/closed. */
-  retainNative(busy: () => boolean): void
+  retainNative(busy: () => boolean, canRecover?: (owner: NativeAdmissionOwner) => boolean): void
 }
-export function claimWorkspaceAdmission(root: string, kind: Entry['kind']): WorkspaceAdmission {
+export function claimWorkspaceAdmission(root: string, kind: Entry['kind'], recovery?: NativeAdmissionOwner): WorkspaceAdmission {
   const key = keyFor(root)
   prune(key)
-  if (admissions.has(key)) throw new WorkflowAdmissionError('此工作区已有原生指令或工作流正在接纳或执行，请等待结束或停止后重试')
-  if (admissions.size >= 128) throw new WorkflowAdmissionError('工作区接纳数量已达上限，请等待现有执行结束')
+  const previous = admissions.get(key)
+  let recovering = false
+  // Only an already handed-off ordinary owner can authorize its exact recovery.
+  // Replace the token synchronously; never expose a free workspace in between.
+  try { recovering = Boolean(previous?.kind === 'ordinary' && kind === 'ordinary' && recovery && previous.canRecover?.(recovery)) } catch { /* Unknown owner remains fenced. */ }
+  if (previous && !recovering) throw new WorkflowAdmissionError('此工作区已有原生指令或工作流正在接纳或执行，请等待结束或停止后重试')
+  if (!previous && admissions.size >= 128) throw new WorkflowAdmissionError('工作区接纳数量已达上限，请等待现有执行结束')
   let settle = (): void => {}
   const settled = new Promise<void>((done) => { settle = done })
   const entry: Entry = { token: Symbol(kind), kind, settled, settle }
@@ -78,7 +84,7 @@ export function claimWorkspaceAdmission(root: string, kind: Entry['kind']): Work
   return {
     isCurrent: () => admissions.get(key) === entry,
     release: () => { if (admissions.get(key) === entry) admissions.delete(key); entry.settle() },
-    retainNative: (busy) => { if (admissions.get(key) === entry) entry.nativeBusy = busy; entry.settle() }
+    retainNative: (busy, canRecover) => { if (admissions.get(key) === entry) { entry.nativeBusy = busy; entry.canRecover = canRecover }; entry.settle() }
   }
 }
 /** Call after the host closes admission, before enumerating controllers at quit. */

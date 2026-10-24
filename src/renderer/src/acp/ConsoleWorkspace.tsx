@@ -816,7 +816,7 @@ export function AcpConsolePage(): JSX.Element {
     setNewConversation(null); setReturnToPicker(resumePicker); setInspectedSessionId(null); setInspectedProfileId(selected.id); setEditor(selected); setInspectorTab('agent'); setInspectorOpen(true)
   }
   const isReadOnly = Boolean(activeSession && (activeSession.archivedAt || (!isLiveStatus(activeSession.status) && !activeSession.canResume && !activeSession.cleanupRequired)))
-  const canEndSession = view === 'conversation' && activeSession && (isLiveStatus(activeSession.status) || activeSession.restorePending)
+  const canEndSession = view === 'conversation' && activeSession && (isLiveStatus(activeSession.status) || activeSession.restorePending || activeSession.connectionOwned || activeSession.cleanupRequired)
   const visiblePermissions = Object.values(pendingPerm).filter((permission) => permission.sessionId === activeId && !items.some((item) => item.type === 'perm' && item.ev.payload?.requestId === permission.requestId))
   const openKnowledge = (): void => {
     if (!activeSession || !isCurrent() || !canInteract() || activeSelection.current.view !== 'conversation' || activeSelection.current.id !== activeSession.sessionId) return
