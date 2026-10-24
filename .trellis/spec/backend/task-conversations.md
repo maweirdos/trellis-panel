@@ -63,6 +63,12 @@ Every projected binding includes main-authoritative `currentTaskRef`: the stored
 
 ### Actual native destinations
 
+ZCode desktop metadata discovery resolves its effective v2 directory on every refresh: deliberate nativeRoots.zcode, ZCODE_DATA_BASE_DIR, validated ZCODE_HOME, bootstrap setting.json.dataBaseDir, then home. Reject malformed or unavailable configured sources without falling back to an old home tasks index. This resolution reads bounded bootstrap metadata, not provider credentials. Failures stay isolated to the ZCode source.
+
+The relocated desktop task index and the CLI session database are independent locations. A CLI-persisted record does not prove desktop indexing. Modern GLM desktop task_id can equal its CLI session ID after the desktop's own sessions-index ingestion; provider aliases and other task kinds may differ. Verify native rows/project/type rather than classifying identity by prefixes. Never manufacture a task row/snapshot to imply existing native history or bypass the desktop host's ownership.
+
+Installed 3.16.3 static evidence establishes only workspace/open path navigation externally. Appending taskId/sessionId is not an exact-session route; --surface desktop controls runtime presentation and --resume is CLI/TUI continuation. The internal shared-store sessions-index bridge is not a verified external register/focus API, and an existing publisher need not reload external DB additions on normal resubscription. Keep dispatch, indexing and visible native focus as distinct acceptance levels.
+
 Codex constructs only the documented technical-thread URI. A valid protocol route is preferred. On Windows, stale registration can fall back to a verified fixed Codex package through LauncherOptions.TargetApplicationPackageFamilyName. The package probe verifies identity, manifest protocol and signature. Positive/negative cache TTLs are 60s/10s with one in-flight probe; activation failure invalidates the cache. Fixed package family and strict UUID URI are checked again at dispatch. No registry repair is performed.
 
 Claude Code restores the existing native ID with `--resume` in the verified cwd through a hidden PowerShell helper that starts an interactive CLI. The UI must say terminal continuation; this is not verified focus of an existing VS Code tab. Quote/encode helper arguments and never run a renderer-supplied shell fragment.

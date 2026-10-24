@@ -30,6 +30,15 @@ ZCode permission rejection may arrive as `permission.resolved` with `decision: d
 
 CC Switch metadata is per app and process generation. Codex uses its referenced generated catalog, not an unrelated cache. Claude aliases stay intact. Per-app proxy/stack state may differ from old global switches. Unknown precedence/schema stays unknown; configured upstream is not proof of the answering upstream. Changes require honest freshness/reload status, not restarting shared daemons or silently changing effective selection.
 
+For the inspected ZCode desktop3.16.3/CLI artifact0.16.9, matching native session
+IDs and shared persistence do not establish cross-application write exclusion,
+live history synchronization or shared in-memory model context. Project-local
+admission cannot be represented as a native-side lock. The user elected to retain
+the original native installation and accept this limitation (2026-10-24); preserve
+that boundary rather than enabling a native compatibility patch or ownership hook
+from prior research. History import and canonical cleanup/recovery remain separate
+contracts. Revisit native modification scope only on a new user request.
+
 ## 4. Validation / Error Matrix
 
 | Condition | Required behavior |

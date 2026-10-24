@@ -5,16 +5,16 @@ import type { LaunchPorts, NativeReader, NativeReadResult, TaskConversationsOpti
 import { readCodex } from './codex'
 import { readClaude } from './claude'
 import { readZcode } from './zcode'
+import { resolveZcodeRoot } from './zcode-root'
 import { MAX_ITEMS } from './paths'
 import { applyCapability } from './launch'
 import { NativeHistoryScanner } from './history'
 
 export const SOURCES: TaskConversationSource[] = ['codex', 'claude-code', 'zcode']
 export function nativeReader(options: TaskConversationsOptions, launch: LaunchPorts): NativeReader {
-  const roots: Record<TaskConversationSource, string> = {
+  const roots = {
     codex: options.nativeRoots?.codex ?? process.env.CODEX_HOME ?? join(homedir(), '.codex'),
-    'claude-code': options.nativeRoots?.['claude-code'] ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'),
-    zcode: options.nativeRoots?.zcode ?? join(homedir(), '.zcode', 'v2')
+    'claude-code': options.nativeRoots?.['claude-code'] ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
   }
   const history = new NativeHistoryScanner()
   return async (root, requested = []): Promise<NativeReadResult> => {
@@ -22,7 +22,7 @@ export function nativeReader(options: TaskConversationsOptions, launch: LaunchPo
       const capability = await launch.capability(source)
       const histories: NativeHistoryFile[] = []
       const read = source === 'codex' ? { items: readCodex(roots[source], root, requested, histories), truncated: false }
-        : source === 'zcode' ? { items: readZcode(roots[source], root, requested, histories), truncated: false }
+        : source === 'zcode' ? { items: readZcode(resolveZcodeRoot(options.nativeRoots?.zcode), root, requested, histories), truncated: false }
           : readClaude(roots[source], root, requested, histories)
       return { source, items: read.items.map(item => applyCapability(item, capability)), truncated: read.truncated || read.items.length > MAX_ITEMS,
         histories,
