@@ -9,14 +9,15 @@ import { promisify } from 'node:util'
 import { build } from 'esbuild'
 import postcss from 'postcss'
 import tailwind from 'tailwindcss'
-import config from '../../tailwind.config.js'
+import config from '../tailwind.config.js'
 
 const read = file => readFileSync(file, 'utf8')
 const root = 'src/renderer/src/'
 const tokens = read(root + 'my/my-tokens.css')
 const sources = [...globSync(root + '**/*.{ts,tsx,css}')].map(read).join('\n') + read('tailwind.config.js')
+const allowedRoots = new Set([root + 'App.tsx', root + 'daemon/BootstrapGate.tsx'])
 for (const file of globSync(root + '**/*.tsx')) {
-  if (file.replace(/\\/g, '/') !== root + 'App.tsx') assert.doesNotMatch(read(file), /className=["'][^"']*\bmy-root\b/, `only App owns typography roots: ${file}`)
+  if (!allowedRoots.has(file.replace(/\\/g, '/'))) assert.doesNotMatch(read(file), /className=["'][^"']*\bmy-root\b/, `only App and BootstrapGate own typography roots: ${file}`)
 }
 assert.doesNotMatch(sources, /border-(?:left|inline-start)(?:-color)?\s*:[^;}]*--my-(?:txt|border|bg)-(?:danger|warning|success|info|blue)/, 'severity never uses a colored leading border')
 assert.doesNotMatch(sources, /--leaf-|(?:bg|text|border)-leaf\b|@fontsource-variable\/inter/)

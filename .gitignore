@@ -9,6 +9,8 @@ examples/demo-project
 /docs/todo
 /docs/proposals
 .tmp-*
+/tmp/
+/scripts/smoke/
 
 # Python hooks 缓存（.codex/.zcode hooks 首次运行产生）
 __pycache__/
