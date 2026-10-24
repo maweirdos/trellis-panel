@@ -982,3 +982,75 @@ Connected Jira/GitLab/DingTalk provider pages and typed native IPC to the indepe
 ### Next Steps
 
 - 保留 A7 未完成：修复并行 daemon/集成类型错误及实际打包程序 Windows 身份/目录保护启动失败后，再做完整 GUI 验收和提交分组审阅
+
+
+## Session 29: ZCode 原生历史目录与连接预检优化
+<!-- trellis-session: v=2 fp=4235c8680da35308 -->
+
+**Date**: 2026-10-23
+**Task**: ZCode 原生历史目录与连接预检优化
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+修复 ZCode 历史发现目录，选定 Runtime 预检实测 3.01s 降至 0.10s；实际面板会话通过原生冷索引，桌面 existing-only 项目运行时激活与精确 GUI 导航仍待验证。任务不归档，本轮未提交。
+
+### Main Changes
+
+- 历史来源每次刷新跟随 bootstrap/env 配置，拒绝旧 home 回退；已只读验证 42 条桌面记录
+- 连接仅验证选定引擎，保留 Node/SQLite、就绪、账户和会话恢复约束；更新受影响的 setup 测试替身
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 根目录 149 项、现有会话 128 项、历史 111 项、选择器/协议/模型兼容及相关 smoke 通过，build 通过；类型基线 Node39/renderer2，新增0
+- [OK] 两次无推理原生启动 5.23/4.63s，账户约0.4s；原生列表及v4快照确认实际071会话可见，探针进程已退出
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户随后确认原生会话出现，只读索引已核验实际071；精确外部定位仍无验证入口，不制造会话路由
+- 追加修复纯问候知识 JSON、历史读取放大及 E_BUSY 误断连；独立隔离复现87失败/一次不可用降至0失败，原始 mutation UUID、真实断连及容量约束保持；基线 Node37/Web2，新增0，见 native-prompt-queue-check.md
+- 原生窗口焦点返回延迟继续排查：用户确认面板操作后切回 ZCode 明显变慢；源码找到项目树/活动列表焦点刷新，未证明模型卡顿原因。两个实际会话的桌面恢复均无面板 scoped MCP override，账户同步路径为内存替换。已请求自然复现时点以对照现有日志；未重启应用/daemon、未改供应商设置，本轮未提交/归档
+
+
+## Session 30: ZCode 断线恢复与工作区占用修复
+<!-- trellis-session: v=2 fp=6324935b36841741 -->
+
+**Date**: 2026-10-24
+**Task**: ZCode 断线恢复与工作区占用修复
+**Branch**: `codex/trellis-team-refactor`
+
+### Summary
+
+用户确认现场恢复后可操作；修复同会话断线恢复被自身令牌阻止及断开连接 End 入口缺失，独立审查通过，未提交未归档。随后转入两端消息同步与跨应用占用边界调查。
+
+### Main Changes
+
+- 实际认证后台确认唯一断开连接，无待接纳操作或托管任务；通过标准结束和同 ID 恢复回到 ready，未重启应用、未重发消息
+- 工作区令牌只允许真实空闲的原会话/代次原子交接；保留竞争者、未完成工具、未知清理与托管所有权保护
+- 为实际 owned 的断开连接保留显式结束入口；未证明自动恢复循环，未改自动重试策略
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 独立审查：19 项准入、3 项实际本地 ACP 恢复、5 组受控界面、4 项兼容边界通过；3 个变更源码文件类型诊断0
+- [OK] 现场相同原生会话恢复成功，用户随后确认可以正常操作；新源码尚未重载进保留 daemon
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户于2026-10-24选择保持 ZCode 原生安装不变，接受跨端强制互斥限制；原生兼容原型/补丁路线不再推进，现有项目修复与消息保留
+- 跨端实时同步、自动交接和完整历史导入不声明已实现；保留其他验收事项及不归档状态，本轮未新增提交

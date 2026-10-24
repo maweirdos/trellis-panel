@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 28
-- **Last Active**: 2026-10-23
+- **Total Sessions**: 30
+- **Last Active**: 2026-10-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~984 | Active |
+| `journal-1.md` | ~1055 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 30 | 2026-10-24 | ZCode 断线恢复与工作区占用修复 | - | `codex/trellis-team-refactor` |
+| 29 | 2026-10-23 | ZCode 原生历史目录与连接预检优化 | - | `codex/trellis-team-refactor` |
 | 28 | 2026-10-23 | ZCode 权限终态与打包资源真实验收 | - | `codex/trellis-team-refactor` |
 | 27 | 2026-10-23 | HiFox integrations daemon composition and provider wiring | - | `codex/trellis-team-refactor` |
 | 26 | 2026-10-23 | ZCode runtime 当前配置源与真实会话接入 | - | `codex/trellis-team-refactor` |
