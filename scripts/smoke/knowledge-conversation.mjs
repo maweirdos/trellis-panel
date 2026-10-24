@@ -23,7 +23,18 @@ for (const path of [root, rootB]) {
 await prepareAcpHistoryWorker(directory)
 const hash = (text) => createHash('sha256').update(text).digest('hex')
 const fixture = { id: 'conversation-native-fixture', name: 'Controlled workflow peer', enabled: true, available: true, launchKind: 'custom', command: 'fixture', executable: process.execPath, args: [resolve('scripts/smoke/knowledge-conversation-peer.mjs')] }
-const setup = `export const listAcpAgents=async()=>({ok:true,agents:[${JSON.stringify(fixture)}]});export const launchArgv=async(config)=>[config.executable,...config.args];export const NATIVE_TOOLS_DIAGNOSTIC='Controlled native tools';export const setupAcpRuntime=async()=>({ok:false});export const pickAcpNode=async()=>({ok:false});`
+const setup = `
+  const fixtures=[${JSON.stringify(fixture)}];
+  export const runtimeDefinitions=()=>fixtures.map(({available,...config})=>config);
+  export const listAcpAgents=async()=>({ok:true,agents:fixtures});
+  export const launchArgv=async(config)=>[config.executable,...config.args];
+  export const resolveAcpRuntimeLaunch=async(id)=>{
+    const status=fixtures.find(config=>config.id===id);
+    if(!status?.enabled||!status.available)return {ok:false,code:'E_INVALID_ARG',error:'Fixture runtime unavailable'};
+    const {available,...config}=status;return {config,argv:await launchArgv(config)};
+  };
+  export const NATIVE_TOOLS_DIAGNOSTIC='Controlled native tools';
+  export const setupAcpRuntime=async()=>({ok:false});export const pickAcpNode=async()=>({ok:false});`
 const electronPath = join(directory, 'electron.mjs')
 writeFileSync(electronPath, `export * from ${JSON.stringify(pathToFileURL(resolve('scripts/smoke/mock-electron.mjs')).href)};
 export const net={fetch:(...args)=>globalThis.__CONVERSATION_FETCH__(...args)};
@@ -47,9 +58,9 @@ const clients = []
 let host
 let bridge
 try {
-  await build({ stdin: { resolveDir: process.cwd(), loader: 'ts', contents: `export * from './src/main/services/knowledge-access/service';export * from './src/main/services/knowledge-access/repository';export * from './src/main/services/integrations/service';export * from './src/main/services/acp';export * from './src/main/state';export {KnowledgeMcpBridge} from './src/main/services/knowledge-mcp/server';export {compileItems} from './src/renderer/src/acp/timeline';` },
+  await build({ stdin: { resolveDir: process.cwd(), loader: 'ts', contents: `export * from './src/main/services/knowledge-access/service';export * from './src/main/services/knowledge-access/repository';export * from './src/main/services/integrations/service';export * from './src/main/services/acp';export * from './src/main/state';export {installKnowledgeWorkspaceHost} from './src/main/services/knowledge-access/workspace-host';export {installIntegrationWorkspaceHost} from './src/main/services/integrations/workspace-host';export {KnowledgeMcpBridge} from './src/main/services/knowledge-mcp/server';export {compileItems} from './src/renderer/src/acp/timeline';` },
     bundle: true, format: 'esm', platform: 'node', outfile: join(directory, 'host.mjs'),
-    banner: { js: "import {createRequire as fixtureRequire} from 'node:module';const require=fixtureRequire(import.meta.url);" },
+    banner: { js: "import {createRequire as fixtureRequire} from 'node:module';import {fileURLToPath as fixtureFilePath} from 'node:url';import {dirname as fixtureDirname} from 'node:path';const require=fixtureRequire(import.meta.url);const __dirname=fixtureDirname(fixtureFilePath(import.meta.url));" },
     plugins: [{ name: 'isolated-conversation-fixtures', setup(builder) {
       builder.onResolve({ filter: /^electron$/ }, () => ({ path: electronPath }))
       builder.onResolve({ filter: /^\.\/acp\/setup$/ }, () => ({ path: 'setup', namespace: 'fixture' }))
@@ -57,6 +68,8 @@ try {
       builder.onResolve({ filter: /^file:/ }, (args) => ({ path: new URL(args.path).pathname.replace(/^\/([A-Za-z]:)/, '$1') }))
     } }] })
   host = await import(pathToFileURL(join(directory, 'host.mjs')).href)
+  host.installKnowledgeWorkspaceHost({ root: host.getProjectRoot, generation: host.getProjectGeneration, createTask: host.createTaskRecord })
+  host.installIntegrationWorkspaceHost({ root: host.getProjectRoot, snapshot: host.getSnapshot })
   assert.equal(host.openProjectAt(root).ok, true)
   let current = true
   let turn = 'direct-turn-a'

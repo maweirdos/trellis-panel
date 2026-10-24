@@ -162,7 +162,18 @@ try {
       builder.onResolve({ filter: /^\.\/acp\/setup$/ }, () => ({ path: 'setup', namespace: 'models' }))
       builder.onResolve({ filter: /^\.\/runtime-host$/ }, () => ({ path: 'host', namespace: 'models' }))
       builder.onResolve({ filter: /^\.\/daemon-client\/acp$/ }, () => ({ path: 'daemon', namespace: 'models' }))
-      builder.onLoad({ filter: /.*/, namespace: 'models' }, ({ path }) => ({ loader: 'js', contents: path === 'host' ? 'export const assertRuntimeExecutionHost=()=>{};' : path === 'daemon' ? 'export const emitTrellisTimeline=()=>{};' : `export const listAcpAgents=async()=>({ok:true,agents:${JSON.stringify(fixtureAgents)}}); export const launchArgv=async(config)=>[config.executable,...config.args]; export const NATIVE_TOOLS_DIAGNOSTIC='Owned model fixture'; export const setupAcpRuntime=()=>{}; export const pickAcpNode=()=>{}; export const pickAcpRuntimePath=()=>{};` }))
+      builder.onLoad({ filter: /.*/, namespace: 'models' }, ({ path }) => ({ loader: 'js', contents: path === 'host' ? 'export const assertRuntimeExecutionHost=()=>{};' : path === 'daemon' ? 'export const emitTrellisTimeline=()=>{};' : `
+        const fixtures=${JSON.stringify(fixtureAgents)};
+        export const runtimeDefinitions=()=>fixtures.map(({available,...config})=>config);
+        export const listAcpAgents=async()=>({ok:true,agents:fixtures});
+        export const launchArgv=async(config)=>[config.executable,...config.args];
+        export const resolveAcpRuntimeLaunch=async(id)=>{
+          const status=fixtures.find(config=>config.id===id);
+          if(!status?.enabled||!status.available)return {ok:false,code:'E_INVALID_ARG',error:'Fixture runtime unavailable'};
+          const {available,...config}=status;return {config,argv:await launchArgv(config)};
+        };
+        export const NATIVE_TOOLS_DIAGNOSTIC='Owned model fixture';
+        export const setupAcpRuntime=()=>{};export const pickAcpNode=()=>{};export const pickAcpRuntimePath=()=>{};` }))
       builder.onResolve({ filter: /^acpx\/runtime$/ }, () => ({ path: runtimeUrl, external: true }))
     } }] })
   acp = await import(pathToFileURL(join(temporary, 'facade.mjs')).href)

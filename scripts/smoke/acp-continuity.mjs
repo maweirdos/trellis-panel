@@ -29,7 +29,18 @@ const wait = async (predicate, label) => {
 }
 const fixture = { id: 'continuity-fixture', name: 'Fixture', command: 'owned local peer', enabled: true, available: true,
   launchKind: 'custom', executable: process.execPath, args: [resolve('scripts/smoke/acp-mock-agent.mjs'), '--serve', '--categorized-config'] }
-const setup = `export const listAcpAgents=async()=>({ok:true,agents:[${JSON.stringify(fixture)}]}); export const launchArgv=async(config)=>[config.executable,...config.args]; export const NATIVE_TOOLS_DIAGNOSTIC='Fixture native tools'; export const setupAcpRuntime=async()=>({ok:false}); export const pickAcpNode=async()=>({ok:false});`
+const setup = `
+  const fixtures=[${JSON.stringify(fixture)}];
+  export const runtimeDefinitions=()=>fixtures.map(({available,...config})=>config);
+  export const listAcpAgents=async()=>({ok:true,agents:fixtures});
+  export const launchArgv=async(config)=>[config.executable,...config.args];
+  export const resolveAcpRuntimeLaunch=async(id)=>{
+    const status=fixtures.find(config=>config.id===id);
+    if(!status?.enabled||!status.available)return {ok:false,code:'E_INVALID_ARG',error:'Fixture runtime unavailable'};
+    const {available,...config}=status;return {config,argv:await launchArgv(config)};
+  };
+  export const NATIVE_TOOLS_DIAGNOSTIC='Fixture native tools';
+  export const setupAcpRuntime=async()=>({ok:false});export const pickAcpNode=async()=>({ok:false});`
 let acp
 try {
   await build({ entryPoints: ['src/main/services/acp.ts'], bundle: true, format: 'esm', platform: 'node',

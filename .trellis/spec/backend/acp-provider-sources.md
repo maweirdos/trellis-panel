@@ -12,6 +12,8 @@ Read before changing runtime discovery, model selection, account bootstrap or ca
 
 ## 3. Contracts
 
+Session admission resolves only the requested Runtime from current definitions and launch checks. Full discovery, unrelated CLI version probes and npm latest-version requests belong to explicit catalog/settings refresh, not the critical path of new/resumed sessions. Preserve missing/disabled/custom-command validation, captured history launch snapshots, Node/SQLite requirements, actual native readiness, account entitlement and admission/cleanup fences. A faster launch is not permission to cache authorization or guess availability.
+
 Deduplicate exact advertised provider/model refs in their original order. Custom or colliding model labels must identify their provider; retain native human labels and use the exact selector only as a last tie-breaker. Display formatting must never alter wire selectors, add candidates or change the acknowledged current model.
 
 Native ZCode input IDs persist across adapter process restarts. Generate a fresh UUID for each admitted prompt; a process-local counter can collide after same-session load and cause the native server to suppress a new request as a duplicate. Reconnect tests must preserve the peer's input ledger across restarts.

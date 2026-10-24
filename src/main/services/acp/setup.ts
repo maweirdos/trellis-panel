@@ -264,6 +264,15 @@ export async function listAcpAgents(refresh = false): Promise<{ ok: true; agents
   return { ok: true, agents: await lastProbe }
 }
 
+/** Fresh selected-runtime admission. Full discovery/version queries belong to Settings,
+ * not session startup. Native readiness/authentication still belongs to acpx/the adapter. */
+export async function resolveAcpRuntimeLaunch(id: string): Promise<{ config: AcpAgentConfig; argv: string[] } | IpcFail> {
+  const config = runtimeDefinitions().find((item) => item.id === id)
+  if (!config?.enabled) return ipcFail(IpcErrorCode.InvalidArg, 'Runtime 未启用或不可用')
+  try { return { config, argv: await launchArgv(config) } }
+  catch (error) { return ipcFail(IpcErrorCode.InvalidArg, errorMessage(error)) }
+}
+
 export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
   if (config.launchKind === 'managed' && !isManaged(config)) throw new Error('历史 Runtime 固定版本不可用，请保留历史并显式创建新会话')
   if (isManaged(config)) {
@@ -296,6 +305,7 @@ export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
     if (!executable) throw new Error('指定可执行文件不存在，请刷新或修改 Runtime 配置')
     return [executable, ...(config.args ?? [])]
   }
+  if (!config.command.trim()) throw new Error('Runtime 启动命令为空，请修改 Runtime 配置')
   // Explicit legacy shell semantics preserve the complete original command.
   // Do not infer executable/argv boundaries by splitting user input.
   return process.platform === 'win32'

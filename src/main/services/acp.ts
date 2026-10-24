@@ -20,7 +20,7 @@ import { acpDataPath, canonicalDirectory, persistRecord, readProfiles, readRecor
 import { bindTaskSchema, configureSchema, errorMessage, idSchema, newSessionSchema, objectValue, profileSchema, promptOptionsSchema } from './acp/types'
 import { activeTaskExists, preparePromptMaterials, sourceBelongs } from './acp/materials'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
-import { launchArgv, listAcpAgents, NATIVE_TOOLS_DIAGNOSTIC } from './acp/setup'
+import { launchArgv, resolveAcpRuntimeLaunch, NATIVE_TOOLS_DIAGNOSTIC } from './acp/setup'
 import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, listAcpHistory, onHistoryPersistence, readAcpHistoryEvents, readAcpHistorySession, retryAcpHistory, stopAcpHistory } from './acp/history-service'
 import { acpHistoryUpdateInputSchema, type AcpHistoryEventPage, type AcpHistoryListResult, type AcpHistorySummary, type AcpHistoryUpdateResult } from '../../shared/acp-history'
 import { snapshotHistoryEvents, snapshotHistoryList, snapshotHistorySession } from './acp/history-fallback'
@@ -627,12 +627,12 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown): Promise<
     const profile = profileId ? readProfiles(projectRoot).find((item) => item.id === profileId) : undefined
     if (profileId && !profile) return ipcFail(IpcErrorCode.NotFound, 'Agent 配置不存在')
     const runtimeId = profile?.runtimeId ?? agentId
-    const config = (await listAcpAgents(true)).agents.find((item) => item.id === runtimeId)
-    if (!config?.enabled || !config.available) return ipcFail(IpcErrorCode.InvalidArg, config?.diagnostics?.join('；') ?? 'Runtime 未启用或不可用')
+    const launch = await resolveAcpRuntimeLaunch(runtimeId)
+    if ('ok' in launch) return launch
+    const { config, argv } = launch
     const cwd = profile?.cwd || projectRoot
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return ipcFail(IpcErrorCode.NotFound, '工作目录不可用')
     if (taskDir && !await activeTaskExists(projectRoot, taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '绑定任务不属于当前项目的活动任务目录或记录不可读')
-    const argv = await launchArgv(config)
     // Recheck the cap after asynchronous discovery; admission is otherwise atomic.
     if (sessions.size + resuming.size >= MAX_ACTIVE || shuttingDown) return ipcFail(IpcErrorCode.Conflict, 'ACP 连接数量已达上限')
     const meta: AcpSessionRecord = { schemaVersion: 2, sessionId: `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,

@@ -25,7 +25,18 @@ const wait = async (predicate, label) => {
 const fixture = { id: 'knowledge-native-fixture', name: 'Knowledge controlled peer', command: 'fixture', enabled: true, available: true,
   launchKind: 'custom', executable: process.execPath, args: [resolve('scripts/smoke/knowledge-mcp-peer.mjs')] }
 const fixtures = [fixture, ...['no-http', 'unknown'].map((mode) => ({ ...fixture, id: `knowledge-${mode}-fixture`, args: [...fixture.args, mode] }))]
-const setup = `export const listAcpAgents=async()=>({ok:true,agents:${JSON.stringify(fixtures)}}); export const launchArgv=async(config)=>[config.executable,...config.args]; export const NATIVE_TOOLS_DIAGNOSTIC='Fixture native tools'; export const setupAcpRuntime=async()=>({ok:false}); export const pickAcpNode=async()=>({ok:false});`
+const setup = `
+  const fixtures=${JSON.stringify(fixtures)};
+  export const runtimeDefinitions=()=>fixtures.map(({available,...config})=>config);
+  export const listAcpAgents=async()=>({ok:true,agents:fixtures});
+  export const launchArgv=async(config)=>[config.executable,...config.args];
+  export const resolveAcpRuntimeLaunch=async(id)=>{
+    const status=fixtures.find(config=>config.id===id);
+    if(!status?.enabled||!status.available)return {ok:false,code:'E_INVALID_ARG',error:'Fixture runtime unavailable'};
+    const {available,...config}=status;return {config,argv:await launchArgv(config)};
+  };
+  export const NATIVE_TOOLS_DIAGNOSTIC='Fixture native tools';
+  export const setupAcpRuntime=async()=>({ok:false});export const pickAcpNode=async()=>({ok:false});`
 const core = `export const knowledgeAccess = globalThis.__KNOWLEDGE_NATIVE_PORT__;`
 let acp
 let releaseSlow

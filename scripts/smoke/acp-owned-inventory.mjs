@@ -33,8 +33,8 @@ try {
     builder.onResolve({ filter: /.*/, namespace: 'inventory-setup' }, (args) => ({ path: args.path, namespace: 'file' }))
     builder.onLoad({ filter: /.*/, namespace: 'inventory-setup' }, () => ({ loader: 'js', contents: `
       export * from ${JSON.stringify(resolve('src/main/services/acp/setup.ts').replaceAll('\\', '/'))};
-      import{listAcpAgents as agents,launchArgv as launch}from ${JSON.stringify(resolve('src/main/services/acp/setup.ts').replaceAll('\\', '/'))};
-      export async function listAcpAgents(...args){const s=globalThis.__OWNED_INVENTORY__;s.discoveryEntered++;if(s.discoveryGate)await s.discoveryGate;return agents(...args)}
+      import{resolveAcpRuntimeLaunch as resolveLaunch,launchArgv as launch}from ${JSON.stringify(resolve('src/main/services/acp/setup.ts').replaceAll('\\', '/'))};
+      export async function resolveAcpRuntimeLaunch(...args){const s=globalThis.__OWNED_INVENTORY__;s.discoveryEntered++;if(s.discoveryGate)await s.discoveryGate;return resolveLaunch(...args)}
       export async function launchArgv(...args){const s=globalThis.__OWNED_INVENTORY__;s.launchEntered++;if(s.launchGate)await s.launchGate;return launch(...args)}
     ` }))
     builder.onResolve({ filter: /^acpx\/runtime$/ }, () => ({ path: 'runtime', namespace: 'inventory-runtime' }))
@@ -128,7 +128,11 @@ try {
       const pending = kind === 'new' ? fresh.newAcpSession(root, { agentId: 'mock' }) : fresh.resumeAcpSession(nested, second.sessionId)
       await wait(() => state[counter] > count, kind + ' discovery entered')
       assert.equal(fresh.listOwnedAcpSessionFacts().length, 0)
-      await fresh.shutdownAcp(); state[key] = null; release()
+      let drained = false
+      const shutdown = fresh.shutdownAcp().then(() => { drained = true })
+      await new Promise((done) => setTimeout(done, 20))
+      assert.equal(drained, false, 'Canonical shutdown must wait for the admitted discovery/launch operation')
+      state[key] = null; release(); await shutdown
       assert.equal((await pending).ok, false)
       assert.deepEqual(fresh.listOwnedAcpSessionFacts(), [])
       await fresh.stopAcpHistory()

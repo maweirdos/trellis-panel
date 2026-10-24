@@ -63,7 +63,18 @@ globalThis.__PREFLIGHT_PORT__ = {
   }
 }
 try {
-  const setup = `export const listAcpAgents=async()=>({ok:true,agents:${JSON.stringify(fixtures)}}); export const launchArgv=async(config)=>[config.executable,...config.args]; export const NATIVE_TOOLS_DIAGNOSTIC='Controlled native tools'; export const setupAcpRuntime=async()=>({ok:false}); export const pickAcpNode=async()=>({ok:false});`
+  const setup = `
+    const fixtures=${JSON.stringify(fixtures)};
+    export const runtimeDefinitions=()=>fixtures.map(({available,...config})=>config);
+    export const listAcpAgents=async()=>({ok:true,agents:fixtures});
+    export const launchArgv=async(config)=>[config.executable,...config.args];
+    export const resolveAcpRuntimeLaunch=async(id)=>{
+      const status=fixtures.find(config=>config.id===id);
+      if(!status?.enabled||!status.available)return {ok:false,code:'E_INVALID_ARG',error:'Fixture runtime unavailable'};
+      const {available,...config}=status;return {config,argv:await launchArgv(config)};
+    };
+    export const NATIVE_TOOLS_DIAGNOSTIC='Controlled native tools';
+    export const setupAcpRuntime=async()=>({ok:false});export const pickAcpNode=async()=>({ok:false});`
   const runtime = `export * from ${JSON.stringify(pathToFileURL(resolve('node_modules/acpx/dist/runtime.js')).href)}; import {createAcpRuntime as actual} from ${JSON.stringify(pathToFileURL(resolve('node_modules/acpx/dist/runtime.js')).href)}; export const createAcpRuntime=(options)=>{const runtime=actual(options);const start=runtime.startTurn.bind(runtime);runtime.startTurn=(input)=>{if(globalThis.__PREFLIGHT_WRITE_FAIL__) throw new Error('Controlled writer rejection before promptStarted'); return start(input)};return runtime}`
   await build({ entryPoints: { service: 'src/main/services/acp.ts', preflight: 'src/main/services/knowledge-mcp/preflight.ts', workflow: 'src/main/services/knowledge-access/conversation.ts', repository: 'src/main/services/knowledge-access/repository.ts' }, bundle: true, format: 'esm', platform: 'node',
     banner: { js: "import { createRequire as fixtureRequire } from 'node:module'; const require=fixtureRequire(import.meta.url);" }, alias: { electron: resolve('scripts/smoke/mock-electron.mjs') }, outdir: directory, outExtension: { '.js': '.mjs' },
