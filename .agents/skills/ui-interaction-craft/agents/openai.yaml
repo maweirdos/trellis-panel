@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI Interaction Craft"
+  short_description: "按平台精修桌面、网页、App 与小程序的交互、动效及反馈"
+  default_prompt: "使用 $ui-interaction-craft，按目标平台和现有设计系统优化交互、动效、加载与弹层，并验证适配。"
