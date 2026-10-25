@@ -1,8 +1,16 @@
 diff --git a/node_modules/acpx/dist/ipc-C96eDxkW.js b/node_modules/acpx/dist/ipc-C96eDxkW.js
-index a2f5ea8..567a64f 100644
+index a2f5ea8..2a2d825 100644
 --- a/node_modules/acpx/dist/ipc-C96eDxkW.js
 +++ b/node_modules/acpx/dist/ipc-C96eDxkW.js
-@@ -1323,6 +1323,8 @@ function serializeSessionRecordForDisk(record) {
+@@ -11,6 +11,7 @@ import { createHash, randomInt, randomUUID } from "node:crypto";
+ import { isHardlinkFallbackError } from "@openclaw/fs-safe/durability";
+ import { acquireFileLock } from "@openclaw/fs-safe/file-lock";
+ import net from "node:net";
++import { windowsProcessQuery as windowsProcessQueryHelper, windowsPowerShellPath, windowsPowerShellEnvironment } from "./windows-process-query.js";
+ import { resolveSecureTempRoot } from "@openclaw/fs-safe/secure-temp-root";
+ //#region src/errors.ts
+ var AcpxOperationalError = class extends Error {
+@@ -1323,6 +1324,8 @@ function serializeSessionRecordForDisk(record) {
  		last_agent_disconnect_reason: record.lastAgentDisconnectReason,
  		protocol_version: record.protocolVersion,
  		agent_capabilities: record.agentCapabilities,
@@ -11,7 +19,7 @@ index a2f5ea8..567a64f 100644
  		title: record.title,
  		messages: record.messages,
  		updated_at: record.updated_at,
-@@ -1676,6 +1678,8 @@ function parseAcpxState(raw) {
+@@ -1676,6 +1679,8 @@ function parseAcpxState(raw) {
  	if (record.session_origin === "new" || record.session_origin === "resume") state.session_origin = record.session_origin;
  	if (record.reset_on_next_ensure === true) state.reset_on_next_ensure = true;
  	assignStringState(state, "current_mode_id", record.current_mode_id);
@@ -20,7 +28,7 @@ index a2f5ea8..567a64f 100644
  	assignStringState(state, "desired_mode_id", record.desired_mode_id);
  	const desiredConfigOptions = parseStringMap(record.desired_config_options);
  	if (desiredConfigOptions) state.desired_config_options = desiredConfigOptions;
-@@ -1763,6 +1767,18 @@ function parseSessionRecordMetadata(record) {
+@@ -1763,6 +1768,18 @@ function parseSessionRecordMetadata(record) {
  		importedFrom
  	};
  }
@@ -39,7 +47,7 @@ index a2f5ea8..567a64f 100644
  function normalizeOptionalName(value) {
  	if (value == null) return;
  	if (typeof value !== "string") return null;
-@@ -1841,6 +1857,8 @@ function parseSessionRecord(raw) {
+@@ -1841,6 +1858,8 @@ function parseSessionRecord(raw) {
  		lastAgentDisconnectReason: optionals.lastAgentDisconnectReason,
  		protocolVersion: typeof record.protocol_version === "number" ? record.protocol_version : void 0,
  		agentCapabilities: asRecord$2(record.agent_capabilities),
@@ -48,6 +56,78 @@ index a2f5ea8..567a64f 100644
  		title: conversation.title,
  		messages: conversation.messages,
  		updated_at: conversation.updated_at,
+@@ -2471,11 +2490,6 @@ function readOwnTimeNamespace() {
+ function isPositivePid(pid) {
+ 	return Number.isSafeInteger(pid) && pid > 0;
+ }
+-function windowsPowerShellPath() {
+-	const systemRoot = process.env.SystemRoot;
+-	if (!systemRoot || !path.win32.isAbsolute(systemRoot)) throw new Error("Windows system directory is unavailable");
+-	return path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+-}
+ function windowsProcessQuery(pid) {
+ 	return [
+ 		"$ErrorActionPreference = 'Stop'",
+@@ -2514,18 +2528,29 @@ function processTableBirth(value) {
+ 	if (process.platform !== "win32") return posixBirth(value);
+ 	return isCanonicalBirth(value, "windows-creation") ? value : void 0;
+ }
+-async function readProcessTable(timeoutMs, pid, requiredPids = []) {
++async function readProcessTable(timeoutMs = PROCESS_HELPER_TIMEOUT_MS, pid, requiredPids = []) {
+ 	if (pid !== void 0 && (!Number.isSafeInteger(pid) || pid <= 0)) throw new Error("Process identity requires a positive PID");
+-	if (process.platform === "win32") return parseProcessTable(await runTimedExecFile(windowsPowerShellPath(), [
+-		"-NoLogo",
+-		"-NoProfile",
+-		"-NonInteractive",
+-		"-Command",
+-		windowsProcessQuery(pid)
+-	], {
+-		timeoutMs,
+-		windowsHide: true
+-	}));
++	if (process.platform === "win32") {
++		const deadline = performance.now() + timeoutMs;
++		if (windowsProcessQueryHelper.owners && !windowsProcessQueryHelper.disabled) try {
++			// Every request enumerates a full new table, including identity-only callers.
++			const table = parseProcessTable(await windowsProcessQueryHelper.query(deadline - performance.now()));
++			return pid === void 0 ? table : new Map([...table].filter(([key]) => key === pid));
++		} catch {}
++		const remaining = deadline - performance.now();
++		if (remaining <= 0) throw new Error("Windows process query deadline expired");
++		return parseProcessTable(await runTimedExecFile(windowsPowerShellPath(), [
++			"-NoLogo",
++			"-NoProfile",
++			"-NonInteractive",
++			"-Command",
++			windowsProcessQuery(pid)
++		], {
++			timeoutMs: remaining,
++			windowsHide: true,
++			env: windowsPowerShellEnvironment()
++		}));
++	}
+ 	if (process.platform === "linux") return await readLinuxProcessTable(timeoutMs, requiredPids, pid);
+ 	return parseProcessTable(await runTimedExecFile("ps", [
+ 		...pid === void 0 ? ["-e"] : ["-p", String(pid)],
+@@ -2849,8 +2874,10 @@ var ProcessDescendants = class {
+ 	onRootExit = () => {
+ 		this.groupExitedAt = process.platform === "linux" ? readLinuxExitClock() ?? null : Date.now();
+ 	};
++	releaseWindowsQuery;
+ 	constructor(child, options = {}) {
+ 		this.child = child;
++		if (process.platform === "win32") this.releaseWindowsQuery = windowsProcessQueryHelper.retain();
+ 		this.ownProcessGroup = process.platform !== "win32" && Boolean(options.ownProcessGroup);
+ 		this.captureGroupAfterExit = this.ownProcessGroup && isChildProcessRunning(child);
+ 		if (this.ownProcessGroup) child.once("exit", this.onRootExit);
+@@ -2969,6 +2996,7 @@ var ProcessDescendants = class {
+ 	}
+ 	retire() {
+ 		this.retired = true;
++		this.releaseWindowsQuery?.();
+ 		this.child.off("exit", this.onRootExit);
+ 		this.identities.clear();
+ 	}
 diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
 index 4eb7bc1..c48348c 100644
 --- a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
@@ -734,3 +814,206 @@ index 41c4e52..89a4737 100644
    title?: string | null;
    messages: SessionMessage[];
    updated_at: string;
+diff --git a/node_modules/acpx/dist/windows-process-query.js b/node_modules/acpx/dist/windows-process-query.js
+new file mode 100644
+index 0000000..e53ba53
+--- /dev/null
++++ b/node_modules/acpx/dist/windows-process-query.js
+@@ -0,0 +1,197 @@
++import { spawn } from "node:child_process";
++import path from "node:path";
++
++const MAX_BYTES = 33554432;
++const MAX_ROWS = 65536;
++const MAX_PENDING = 32;
++const MAX_LINE_BYTES = 160;
++// stdin accepts only decimal request IDs. No commands, filters or scripts cross it.
++const QUERY_SCRIPT = [
++	"$ErrorActionPreference = 'Stop'",
++	"$env:PSModulePath = $PSHOME + '\\Modules'",
++	"Import-Module ($PSHOME + '\\Modules\\CimCmdlets\\CimCmdlets.psd1') -ErrorAction Stop",
++	"[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
++	"while ($null -ne ($request = [Console]::ReadLine())) {",
++	"if ($request -notmatch '^[1-9][0-9]{0,15}$') { exit 2 }",
++	"try {",
++	"$body = [System.Text.StringBuilder]::new()",
++	"$count = 0",
++	"Get-CimInstance -ClassName Win32_Process -Property ProcessId,ParentProcessId,CreationDate | ForEach-Object {",
++	"if ($null -ne $_.CreationDate) {",
++	"$row = '{0} {1} 0 S {2}' -f $_.ProcessId,$_.ParentProcessId,$_.CreationDate.ToUniversalTime().ToString('o')",
++	"[void]$body.Append($row).Append([char]10)",
++	"$count++",
++	`if ($count -gt ${MAX_ROWS} -or $body.Length -gt ${MAX_BYTES}) { throw 'limit' }`,
++	"}",
++	"}",
++	"[Console]::WriteLine('BEGIN ' + $request)",
++	"[Console]::Write($body.ToString())",
++	"[Console]::WriteLine(('END {0} {1} {2}' -f $request,$count,$body.Length))",
++	"[Console]::Out.Flush()",
++	"} catch { [Console]::WriteLine('ERROR ' + $request); exit 1 }",
++	"}"
++].join("\n");
++
++export function windowsPowerShellPath() {
++	const systemRoot = process.env.SystemRoot;
++	if (!systemRoot || !path.win32.isAbsolute(systemRoot)) throw new Error("Windows system directory is unavailable");
++	return path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
++}
++
++export function windowsPowerShellEnvironment() {
++	const env = { ...process.env };
++	for (const key of Object.keys(env)) if (["psmodulepath", "psmoduleanalysiscachepath"].includes(key.toLowerCase())) delete env[key];
++	env.PSModulePath = path.win32.join(path.win32.dirname(windowsPowerShellPath()), "Modules");
++	// Windows PowerShell 5.1 can otherwise write a relative cache when Known Folders are absent.
++	env.PSModuleAnalysisCachePath = "NUL";
++	return env;
++}
++
++function queryError() {
++	// Do not attach child errors, stderr, process rows or launch arguments.
++	return new Error("Windows process query is unavailable or unverified");
++}
++
++/** One lazy helper per loaded ACP host, leased by live descendant trackers. */
++export class WindowsProcessQuery {
++	owners = 0;
++	disabled = false;
++	child;
++	nextId = 0;
++	active;
++	queue = [];
++	buffer = "";
++	onHostExit = () => this.close();
++	retain() {
++		if (this.owners++ === 0) this.disabled = false;
++		let released = false;
++		return () => {
++			if (released) return;
++			released = true;
++			if (--this.owners === 0) this.close();
++		};
++	}
++	query(timeoutMs) {
++		if (!this.owners || this.disabled || this.nextId >= Number.MAX_SAFE_INTEGER || this.queue.length + Number(Boolean(this.active)) >= MAX_PENDING || !Number.isFinite(timeoutMs) || timeoutMs <= 0) return Promise.reject(queryError());
++		return new Promise((resolve, reject) => {
++			const request = { id: String(++this.nextId), deadline: performance.now() + timeoutMs, resolve, reject, rows: [], bytes: 0, pids: new Set(), begun: false };
++			request.timer = setTimeout(() => {
++				if (this.active === request) this.fail();
++				else {
++					this.queue = this.queue.filter((entry) => entry !== request);
++					request.reject(queryError());
++				}
++			}, Math.ceil(timeoutMs));
++			this.queue.push(request);
++			this.pump();
++		});
++	}
++	start() {
++		const child = spawn(windowsPowerShellPath(), [
++			"-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
++			Buffer.from(QUERY_SCRIPT, "utf16le").toString("base64")
++		], { windowsHide: true, env: windowsPowerShellEnvironment(), stdio: ["pipe", "pipe", "ignore"] });
++		this.child = child;
++		process.once("exit", this.onHostExit);
++		child.once("error", () => { if (this.child === child) this.fail(); });
++		child.once("exit", () => { if (this.child === child) this.fail(); });
++		child.stdin.on("error", () => { if (this.child === child) this.fail(); });
++		child.stdout.on("error", () => { if (this.child === child) this.fail(); });
++		child.stdout.on("end", () => { if (this.child === child) this.fail(); });
++		child.stdout.on("data", (chunk) => { if (this.child === child) this.receive(chunk); });
++	}
++	pump() {
++		if (this.active || !this.queue.length) return;
++		const request = this.queue.shift();
++		if (performance.now() >= request.deadline) {
++			clearTimeout(request.timer);
++			request.reject(queryError());
++			this.pump();
++			return;
++		}
++		this.active = request;
++		try {
++			if (!this.child) this.start();
++			this.setReferenced(true);
++			this.child.stdin.write(request.id + "\n");
++		} catch { this.fail(); }
++	}
++	receive(chunk) {
++		// All protocol bytes are ASCII. Reject encoding noise and bound even a line without LF.
++		for (const byte of chunk) if (byte > 127) return this.fail();
++		this.buffer += chunk.toString("ascii");
++		if (this.buffer.length + (this.active?.bytes ?? 0) > MAX_BYTES + 256) return this.fail();
++		let end;
++		while ((end = this.buffer.indexOf("\n")) >= 0) {
++			const line = this.buffer.slice(0, end).replace(/\r$/, "");
++			this.buffer = this.buffer.slice(end + 1);
++			if (line.length > MAX_LINE_BYTES || !this.acceptLine(line)) return this.fail();
++		}
++		if (this.buffer.length > MAX_LINE_BYTES) return this.fail();
++		if (this.active?.completed) {
++			if (this.buffer.length) return this.fail();
++			const request = this.active;
++			this.active = void 0;
++			clearTimeout(request.timer);
++			this.setReferenced(false);
++			request.resolve(request.rows.join(""));
++		}
++		// Dispatch after the entire chunk, so unsolicited trailing frames cannot answer the next ID.
++		this.pump();
++	}
++	acceptLine(line) {
++		const request = this.active;
++		if (!request || request.completed || performance.now() >= request.deadline) return false;
++		if (!request.begun) {
++			if (line !== "BEGIN " + request.id) return false;
++			request.begun = true;
++			return true;
++		}
++		const end = /^END ([1-9]\d{0,15}) (0|[1-9]\d*) (0|[1-9]\d*)$/.exec(line);
++		if (end) {
++			if (end[1] !== request.id || Number(end[2]) !== request.rows.length || Number(end[3]) !== request.bytes) return false;
++			request.completed = true;
++			return true;
++		}
++		const row = /^(0|[1-9]\d*) (0|[1-9]\d*) 0 S (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z)$/.exec(line);
++		if (!row || !Number.isSafeInteger(Number(row[1])) || !Number.isSafeInteger(Number(row[2])) || !Number.isFinite(Date.parse(row[3])) || new Date(row[3]).toISOString().slice(0, 19) !== row[3].slice(0, 19) || request.pids.has(row[1])) return false;
++		request.pids.add(row[1]);
++		request.rows.push(line + "\n");
++		request.bytes += line.length + 1;
++		return request.rows.length <= MAX_ROWS && request.bytes <= MAX_BYTES;
++	}
++	setReferenced(referenced) {
++		const method = referenced ? "ref" : "unref";
++		this.child?.[method]();
++		this.child?.stdin?.[method]?.();
++		this.child?.stdout?.[method]?.();
++	}
++	fail() {
++		this.disabled = true;
++		this.close();
++	}
++	close() {
++		const child = this.child;
++		this.child = void 0;
++		process.off("exit", this.onHostExit);
++		for (const request of [this.active, ...this.queue]) if (request) {
++			clearTimeout(request.timer);
++			request.reject(queryError());
++		}
++		this.active = void 0;
++		this.queue = [];
++		this.buffer = "";
++		if (!child) return;
++		// This read-only helper has nothing to flush. Terminate its exact child handle now:
++		// an unreferenced timer cannot protect the interval between release and host exit.
++		try { child.stdin.end(); } catch {}
++		if (child.exitCode == null && child.signalCode == null) child.kill("SIGKILL");
++		child.stdin.destroy();
++		child.stdout.destroy();
++		child.unref();
++		child.stdin.unref?.();
++		child.stdout.unref?.();
++	}
++}
++
++export const windowsProcessQuery = new WindowsProcessQuery();

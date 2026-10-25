@@ -48,6 +48,43 @@ diff with `node node_modules/patch-package/index.js acpx`, update
 Behavioral checks: `node tests/agent-runtime/acpx-runtime.mjs` and
 `node tests/agent-runtime/acpx-preparation.mjs`.
 
+## Windows process inventory
+
+Live descendant trackers in one ACP host share one lazy, hidden PowerShell
+helper. Each request runs a new full `Win32_Process` CIM query at the existing
+awaited capture boundary. Completed tables are never cached. Birth/PID, root,
+unknown-identity and canonical cleanup rules remain in the original inventory
+consumer; identity-only requests filter the newly collected full table.
+
+The helper accepts decimal request IDs only and executes a fixed internal script.
+Responses require matching BEGIN/END IDs, exact row/ASCII-byte counts and valid
+creation identities. Limits are32 pending requests,65536 rows,32 MiB per table
+and160 bytes per protocol line. Requests serialize without sharing completed
+results; queue wait counts toward each caller's original deadline. Invalid,
+truncated, failed or timed-out queries disable the helper until every tracker in
+that shared scope retires. Remaining deadline permits one existing one-shot
+query; an exhausted deadline preserves the original failed/unknown observation.
+
+Both paths use absolute Windows PowerShell with `windowsHide:true`, no profile,
+and inherited environment with `PSModulePath` isolated to `$PSHOME/Modules`.
+The helper explicitly imports `$PSHOME/Modules/CimCmdlets/CimCmdlets.psd1`;
+fixed path concatenation avoids module discovery for `Join-Path` and CIM commands.
+`PSModuleAnalysisCachePath=NUL` disables module-cache writes, including relative
+cwd fallback when a test host has no Windows Known Folder for LocalAppData
+([Windows PowerShell5.1](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_5.1?view=powershell-5.1)).
+Helper stderr is discarded; errors contain no process rows or launch arguments.
+The last retired tracker closes stdin and synchronously terminates the exact
+helper child handle before releasing its pipes. The read-only helper has no
+business state to flush; shutdown cannot depend on a timer surviving host exit.
+Idle child and pipe handles are unreferenced; host exit also terminates the
+helper. EOF independently exits the script if the host is terminated.
+
+`dist/windows-process-query.js` is an internal patch artifact, covered by the
+same manifest hashes. Public ACP exports and compatibility revision3 are
+unchanged. Run `node tests/agent-runtime/windows-process-query.mjs` for fresh
+tables, identity/cleanup safety, framing bounds, concurrency, failures/deadlines,
+EOF and real Windows host/helper exit checks.
+
 ## Persistent connection (revision 2)
 
 `AcpxRuntime.connectSession({handle, assertActive?})` loads the existing persistent

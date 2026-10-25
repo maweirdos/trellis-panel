@@ -32,6 +32,9 @@ import { createConnectionTimings } from './connection-timings.mjs'
 
 const ADAPTER_VERSION = '0.1.0'
 const AGENT_INFO = { name: 'zcode-acp', version: ADAPTER_VERSION }
+const CONFIG_FIELDS = ['mode', 'model', 'thoughtLevel']
+const MAX_RESTORE_NOTICES = 256
+const MAX_RESTORE_NOTICE_BYTES = 1024 * 1024
 
 /** session/prompt 的应答由 turn 事件异步写回；handler 以此标记告知 dispatch 不立即回包。 */
 const ASYNC_REPLY = Symbol('async-reply')
@@ -129,6 +132,7 @@ async function serve(options) {
   let accountContext = undefined
   let accountStatus = undefined
   let session = undefined // { acpSessionId, modes, modelOption, modelDefaults, baseSeq }
+  let restoringState
   let pendingPrompt = undefined // { id, settled }
   let permissionSeq = 0
   let shuttingDown = false
@@ -158,6 +162,8 @@ async function serve(options) {
   const shutdown = (exitCode, reason, timingReason = 'request_failed') => {
     if (shuttingDown) return
     shuttingDown = true
+    if (restoringState) { restoringState.notices.length = 0; restoringState.bytes = 0 }
+    restoringState = undefined
     activeConnection?.finish(exitCode === 0 ? 'cancelled' : 'failed', exitCode === 0 ? 'cancelled' : timingReason)
     accountContext?.dispose()
     if (exitCode !== 0 && reason && !forensicsLogged) logForensics(reason)
@@ -219,16 +225,28 @@ async function serve(options) {
         onExit: (info) => handleBackendExit(info)
       })
       backend = created
-      backendStarting = created.waitReady().then(async () => {
+      // waitReady starts the owner synchronously and resolves its fixed sources.
+      // Only read-only account preparation may overlap actual storage startup.
+      const ready = created.waitReady()
+      let context
+      let preparationError
+      if (!options.isolatedDir && created.env?.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE) {
+        timings.start('account-sync')
+        try {
+          context = createAccountContext({ dataBaseDir: created.providerSource.dataBaseDir,
+            builtinPath: created.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE, env: created.env })
+          accountContext = context
+          void context.prepare()
+        } catch (error) { preparationError = error }
+      }
+      backendStarting = ready.then(async () => {
         if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
+        if (preparationError) throw preparationError
         // app-server is a desktop worker: its subscription models require the
         // current account host port, independently of its primary provider file.
         // Explicit isolation never consumes the real user's account material.
-        if (!options.isolatedDir && created.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE) {
-          timings.start('account-sync')
-          const context = createAccountContext({ dataBaseDir: created.providerSource.dataBaseDir,
-            builtinPath: created.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE, env: created.env })
-          accountContext = context
+        if (context) {
+          created.providerSource.assertCurrent()
           try {
             accountStatus = await context.sync(created)
             timings.end('account-sync', accountStatus.status === 'verified' ? 'completed' : 'failed', accountStatus.reason)
@@ -239,15 +257,16 @@ async function serve(options) {
             if (accountContext === context) accountContext = undefined
             accountStatus = { status: 'unavailable', reason: 'account_sync_failed' }
           }
+          created.providerSource.assertCurrent()
         } else timings.skip('account-sync', options.isolatedDir ? 'isolated' : 'no_builtin_config')
         if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
         return created
-      })
-      backendStarting.catch(async () => {
-        accountContext?.dispose()
-        accountContext = undefined
-        await created.killTree()
-        if (backend === created) { backend = undefined; backendStarting = undefined }
+      }).catch(async error => {
+        context?.dispose()
+        if (accountContext === context) accountContext = undefined
+        try { await created.killTree() }
+        finally { if (backend === created) { backend = undefined; backendStarting = undefined } }
+        throw error
       })
     }
     return backendStarting
@@ -403,6 +422,7 @@ async function serve(options) {
 
   const handleZcodeEvent = (event) => {
     if (!session || event.sessionId !== session.acpSessionId) return
+    if (event.deliveryKind !== undefined && event.deliveryKind !== 'desktop-continuous') return
     const seq = translate.numberField(translate.asRecord(event), 'seq')
     debug(`event ${event.type ?? '(missing)'} seq=${seq ?? '?'} cursor=${session.baseSeq}`)
     if (!Number.isSafeInteger(seq) || seq <= session.baseSeq) return
@@ -412,10 +432,10 @@ async function serve(options) {
     drainEvents()
     if (session.queuedEvents.size && !session.reconciling) {
       const owned = session
-      owned.reconciling = backend.request('session/events', { sessionId: owned.acpSessionId, afterSeq: owned.baseSeq }).then(result => {
+      owned.reconciling = backend.request('session/events', { sessionId: owned.acpSessionId, afterSeq: owned.baseSeq, limit: 2048 }).then(result => {
         if (session !== owned) return
         for (const replay of result.events ?? []) {
-          if (replay.sessionId === owned.acpSessionId && Number.isSafeInteger(replay.seq) && replay.seq > owned.baseSeq) owned.queuedEvents.set(replay.seq, replay)
+          if (replay.sessionId === owned.acpSessionId && (replay.deliveryKind === undefined || replay.deliveryKind === 'desktop-continuous') && Number.isSafeInteger(replay.seq) && replay.seq > owned.baseSeq) owned.queuedEvents.set(replay.seq, replay)
         }
         drainEvents()
         if (owned.queuedEvents.size) throw new Error(`ZCode event sequence gap after ${owned.baseSeq}`)
@@ -454,14 +474,24 @@ async function serve(options) {
       const nativeId = translate.stringField(translate.asRecord(record.session), 'sessionId')
       if (nativeId && nativeId !== session.acpSessionId) throw new AcpFault(-32000, 'ZCode snapshot changed native session identity')
       const revision = translate.numberField(translate.asRecord(record.runtime), 'stateRevision')
+      if ((fullCatalog || nativeId || 'stateRevision' in translate.asRecord(record.runtime)) && (!Number.isSafeInteger(revision) || revision < 0)) throw new AcpFault(-32000, 'ZCode snapshot has an invalid state revision', 'invalid_session')
       if (revision !== undefined && revision < (session.stateRevision ?? -1)) return
       if (revision !== undefined) session.stateRevision = revision
       const prior = session.snapshot ?? {}
-      const settings = translate.asRecord(record.settings)
+      const settings = { ...translate.asRecord(record.settings) }
+      const nativeSession = { ...translate.asRecord(record.session) }
+      // An equal-revision snapshot can supply legacy session metadata (such as
+      // planEnabled) that was absent from the preceding settings-only notice.
+      if (revision !== undefined && revision < (session.configRevisions.get('mode') ?? -1)) { delete nativeSession.mode; delete nativeSession.planEnabled }
+      if (revision !== undefined && revision <= (session.configRevisions.get('model') ?? -1)) delete nativeSession.model
+      for (const field of CONFIG_FIELDS) if (field in settings && revision !== undefined) {
+        if (revision <= (session.configRevisions.get(field) ?? -1)) delete settings[field]
+        else session.configRevisions.set(field, revision)
+      }
       const priorSettings = translate.asRecord(prior.settings)
       const model = translate.asRecord(settings.model)
       const priorModel = translate.asRecord(priorSettings.model)
-      session.snapshot = { ...prior, ...record, session: { ...translate.asRecord(prior.session), ...translate.asRecord(record.session) }, settings: {
+      session.snapshot = { ...prior, ...record, session: { ...translate.asRecord(prior.session), ...nativeSession }, settings: {
         ...priorSettings, ...settings, model: { ...priorModel, ...model,
           ...('model' in settings ? { current: model.current ?? translate.asRecord(record.session).model } : {}),
           available: fullCatalog ? model.available : priorModel.available ?? model.available }
@@ -481,11 +511,33 @@ async function serve(options) {
 
   const handleNotice = (method, params) => {
     debug(`notice ${method}`)
-    if (method !== 'state.updated' || !session || params.scope !== 'session' || params.sessionId !== session.acpSessionId) return
+    if (method !== 'state.updated' || params.scope !== 'session') return
+    if (params.revision !== undefined && (!Number.isSafeInteger(params.revision) || params.revision < 0)) return
     const patch = translate.asRecord(params.patch)
     // 0.16.9 configuration patches are settings, not an entire snapshot.
-    if (!patch.model && !patch.mode && !patch.thoughtLevel) return
-    applySnapshot({ settings: patch, runtime: { stateRevision: params.revision } }, { publish: true })
+    if (!CONFIG_FIELDS.some(field => field in patch)) return
+    if (restoringState?.sessionId === params.sessionId) {
+      if (restoringState.overflow) return
+      const notice = { scope: 'session', sessionId: params.sessionId, revision: params.revision,
+        patch: Object.fromEntries(CONFIG_FIELDS.filter(field => field in patch).map(field => [field, patch[field]])) }
+      const bytes = Buffer.byteLength(JSON.stringify(notice), 'utf8')
+      if (restoringState.notices.length >= MAX_RESTORE_NOTICES || restoringState.bytes + bytes > MAX_RESTORE_NOTICE_BYTES) {
+        restoringState.overflow = true
+        restoringState.notices.length = 0
+        restoringState.bytes = 0
+      } else { restoringState.notices.push(notice); restoringState.bytes += bytes }
+      return
+    }
+    if (!session || params.sessionId !== session.acpSessionId) return
+    const settings = {}
+    // Partial patches at different revisions may arrive out of order. A newer
+    // model patch must not consume an earlier, still-current mode patch.
+    for (const field of CONFIG_FIELDS) if (field in patch && (params.revision === undefined || params.revision > Math.max(session.configRevisions.get(field) ?? -1, session.stateRevision ?? -1))) {
+      settings[field] = patch[field]
+      // Preserve legacy unversioned notices without inventing a watermark.
+      if (params.revision !== undefined) session.configRevisions.set(field, params.revision)
+    }
+    if (Object.keys(settings).length) applySnapshot({ settings }, { publish: true })
   }
 
   const sessionResponse = () => ({
@@ -494,7 +546,7 @@ async function serve(options) {
       ...(accountStatus?.status === 'unavailable' ? { description: `BigModel 账户暂未就绪（${accountStatus.reason}）；模型清单以当前原生服务返回为准。` } : {}) }] : undefined
   })
 
-  const emitSubscribedEvents = (subscribed, { establishBaseline = false } = {}) => {
+  const emitSubscribedEvents = async (subscribed, { establishBaseline = false } = {}) => {
     if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
     if (!session || typeof subscribed !== 'object' || subscribed === null || Array.isArray(subscribed)) {
       throw new AcpFault(-32000, 'ZCode subscription returned an invalid acknowledgement', 'invalid_subscription')
@@ -512,11 +564,14 @@ async function serve(options) {
     session.subscribing = false
     drainEvents()
     if (session.queuedEvents.size) handleZcodeEvent([...session.queuedEvents.values()][0])
+    const owned = session
+    await owned.reconciling
+    if (shuttingDown || session !== owned) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
   }
 
-  const newSessionState = (sessionId, baseSeq) => ({ acpSessionId: sessionId, baseSeq, queuedEvents: new Map(), toolInputs: new Map(), subscribing: true })
+  const newSessionState = (sessionId, baseSeq) => ({ acpSessionId: sessionId, baseSeq, queuedEvents: new Map(), toolInputs: new Map(), configRevisions: new Map(), subscribing: true })
 
-  const subscribeSession = (sessionId, afterSeq, includeSnapshot = true) => {
+  const subscribeSession = (sessionId, afterSeq, includeSnapshot = false) => {
     if (!backend) throw new AcpFault(-32000, 'ZCode app-server 未运行')
     // create uses afterSeq=0 to close its event window; resume establishes the
     // desktop subscription's own watermark without replaying historical turns.
@@ -551,19 +606,35 @@ async function serve(options) {
 
   const resumeSession = async (sessionId, workspacePath, mcpServers, timings) => {
     if (pendingPrompt || session && session.acpSessionId !== sessionId) throw new AcpFault(-32010, 'Cannot replace an owned or active native session')
-    const active = await ensureBackend(workspacePath ?? process.cwd(), timings)
-    active.providerSource.assertCurrent()
-    const params = { sessionId, mcpServers }
-    if (workspacePath) params.workspace = { workspacePath, workspaceKey: translate.workspaceKeyFromPath(workspacePath) }
-    timings.start('session-create-or-resume')
-    const snapshot = await active.requestSlow('session/resume', params)
-    if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
-    if (snapshot?.session?.sessionId !== sessionId) throw new AcpFault(-32000, 'ZCode resume changed the native session identity', 'invalid_session')
-    const root = workspacePath ?? process.cwd()
-    accountContext?.bindSession(sessionId, { workspacePath: root, workspaceKey: translate.workspaceKeyFromPath(root) })
-    session = newSessionState(sessionId, 0)
-    applySnapshot(snapshot, { fullCatalog: true })
+    // Native pBn publishes state.updated independently of legacy subscriptions.
+    // Capture before resume: notifications can precede its response (even in the
+    // same stdout chunk), and must survive installing the returned snapshot.
+    const restoring = { sessionId, notices: [], bytes: 0, overflow: false }
+    restoringState = restoring
+    try {
+      const active = await ensureBackend(workspacePath ?? process.cwd(), timings)
+      active.providerSource.assertCurrent()
+      const params = { sessionId, mcpServers }
+      if (workspacePath) params.workspace = { workspacePath, workspaceKey: translate.workspaceKeyFromPath(workspacePath) }
+      timings.start('session-create-or-resume')
+      const snapshot = await active.requestSlow('session/resume', params)
+      if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
+      if (snapshot?.session?.sessionId !== sessionId) throw new AcpFault(-32000, 'ZCode resume changed the native session identity', 'invalid_session')
+      if (restoring.overflow) throw new AcpFault(-32000, 'ZCode resume configuration buffer overflow', 'invalid_session')
+      const root = workspacePath ?? process.cwd()
+      accountContext?.bindSession(sessionId, { workspacePath: root, workspaceKey: translate.workspaceKeyFromPath(root) })
+      session = newSessionState(sessionId, 0)
+      applySnapshot(snapshot, { fullCatalog: true })
+      restoringState = undefined
+      for (const notice of restoring.notices) handleNotice('state.updated', notice)
+    } finally {
+      restoring.notices.length = 0
+      restoring.bytes = 0
+      if (restoringState === restoring) restoringState = undefined
+    }
     timings.end('session-create-or-resume')
+    // Resume already supplied the full snapshot/catalog; retain the desktop
+    // subscription's real baseline without rebuilding or replaying old turns.
     await timings.measure('subscribe', async () => emitSubscribedEvents(await subscribeSession(sessionId), { establishBaseline: true }))
   }
 

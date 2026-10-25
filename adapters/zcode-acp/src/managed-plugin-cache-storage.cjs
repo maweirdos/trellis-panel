@@ -58,39 +58,72 @@ function snapshot(root, resources, limits) {
   return entries
 }
 
-function boundedRead(filename, maxBytes) {
+function guardedFile(filename, maxBytes, read, expected) {
   physical(filename)
   const before = metadata(filename)
+  const unchanged = current => current.every((value, index) => value === before[index])
+  if (expected && !unchanged(expected)) throw new Error('changed-read')
   const fd = fs.openSync(filename, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0))
   try {
     const stat = fs.fstatSync(fd, { bigint: true })
     if (!stat.isFile() || stat.size > BigInt(maxBytes)) throw new Error('read-limit')
-    const unchanged = current => current.every((value, index) => value === before[index])
     if (!unchanged(statMetadata(stat))) throw new Error('changed-read')
-    const bytes = Buffer.alloc(Number(stat.size))
-    let offset = 0
-    while (offset < bytes.length) {
-      const count = fs.readSync(fd, bytes, offset, bytes.length - offset, offset)
-      if (count === 0) throw new Error('truncated-read')
-      offset += count
-    }
+    const value = read(fd, Number(stat.size))
     if (!unchanged(statMetadata(fs.fstatSync(fd, { bigint: true })))) throw new Error('changed-read')
     physical(filename)
     if (!unchanged(metadata(filename))) throw new Error('changed-read')
-    return bytes
+    return { value, metadata: before }
   } finally {
     fs.closeSync(fd)
   }
 }
 
-function readEntry(directory, key, limits) {
+function readBytes(fd, start, size) {
+  const bytes = Buffer.alloc(size)
+  let offset = 0
+  while (offset < size) {
+    const count = fs.readSync(fd, bytes, offset, size - offset, start + offset)
+    if (count === 0) throw new Error('truncated-read')
+    offset += count
+  }
+  return bytes
+}
+
+function boundedRead(filename, maxBytes) {
+  return guardedFile(filename, maxBytes, (fd, size) => readBytes(fd, 0, size)).value
+}
+
+function checkPack(record) {
+  physical(path.dirname(record.packFile))
+  guardedFile(record.packFile, record.packSize, () => undefined, record.packMetadata)
+}
+
+function readSlice(record, offset, size, maxBytes) {
+  if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(size) || offset < 0 || size < 0 ||
+    size > maxBytes || offset > record.packSize || size > record.packSize - offset) throw new Error('slice-limit')
+  physical(path.dirname(record.packFile))
+  return guardedFile(record.packFile, record.packSize, (fd, total) => {
+    if (total !== record.packSize) throw new Error('changed-read')
+    return readBytes(fd, offset, size)
+  }, record.packMetadata).value
+}
+
+function readEntry(directory, key, limits, eager = false) {
+  if (limits.maxDiskEntries < 1) throw new Error('disk-entry-limit')
   physical(directory)
   const entry = path.join(directory, key)
   physical(entry)
-  const manifest = JSON.parse(boundedRead(path.join(entry, 'manifest.json'), limits.maxManifestBytes).toString('utf8'))
-  const pack = boundedRead(path.join(entry, 'assets.bin'), Math.min(limits.maxPackBytes, limits.maxMemoryBytes))
-  if (manifest.packHash !== sha256(pack)) throw new Error('pack-integrity')
-  return { manifest, pack }
+  const encoded = boundedRead(path.join(entry, 'manifest.json'), Math.min(limits.maxManifestBytes, limits.maxMemoryBytes))
+  const manifest = JSON.parse(encoded.toString('utf8'))
+  const packFile = path.join(entry, 'assets.bin')
+  const inspected = guardedFile(packFile, limits.maxPackBytes, (fd, size) => {
+    if (encoded.length + size > limits.maxDiskBytes ||
+      (eager && encoded.length + size > limits.maxMemoryBytes)) throw new Error('pack-limit')
+    return eager ? readBytes(fd, 0, size) : undefined
+  })
+  const pack = inspected.value
+  if (eager && manifest.packHash !== sha256(pack)) throw new Error('pack-integrity')
+  return { manifest, manifestBytes: encoded.length, pack, packFile, packSize: Number(inspected.metadata[3]), packMetadata: inspected.metadata }
 }
 
 function cacheDirectory(cacheDir, resources) {
@@ -178,4 +211,4 @@ function publish(directory, key, manifest, pack, limits) {
   }
 }
 
-module.exports = { inside, metadata, physical, snapshot, boundedRead, readEntry, cacheDirectory, publish, writeReadyMarker }
+module.exports = { inside, metadata, physical, snapshot, boundedRead, readEntry, readSlice, checkPack, cacheDirectory, publish, writeReadyMarker }

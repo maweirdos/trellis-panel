@@ -24,6 +24,15 @@ Freeze source identity for the owned process. `verify()` fences discovery/spawn 
 
 ZCode app-server is a worker: subscription models also need host `provider/updateAccountConfig` and `interaction/requestProviderRuntimeHeaders`. The builtin revision must match the backend-selected file. BigModel individual entitlement comes from the native read-only subscription API, not cached-key presence. Reuse only current identity-bound native material; OAuth is not a model key. Fence headers to the admitted session, workspace, provider and account scope. Missing/expired/switched/unsupported accounts remain unavailable. Never log credentials, headers, config bodies or raw callback replies.
 
+Connection-local read-only account preparation may overlap native storage startup.
+It must not update native account state or establish session readiness. After
+storage readiness, sync consumes a prepared candidate at most once, revalidates
+the current material and builtin identities, and preserves the native update
+acknowledgement. Drift, expiry or failed preparation uses fresh verification or
+fails explicitly. Dispose/backend failure aborts preparation and discards late
+results. No credential material leaves the context's private promise state;
+explicit isolation performs no real-account reads or network requests.
+
 Unique categorized `configOptions` govern model controls. Preserve exact selectors, provider namespace, case, punctuation and `ccs-`. An unlisted current ID stays unlisted; never substitute item one. Retain full ZCode catalogs across intentionally current-only read/config snapshots. Native failure/limit outcomes must not become successful end-turns.
 
 ZCode permission rejection may arrive as `permission.resolved` with `decision: deny`, rather than a separate `tool.updated` error. Resolve only the original open tool in the admitted turn/session to failed; an allow decision does not mean the tool completed. Ignore foreign, unmatched, duplicate or already-settled resolutions. Preserve sequence and turn gates. Verify live rejection independently of final assistant text: exact original decision, denied target absent and native rejection if inspected; a pending tool card is not a terminal denial projection.

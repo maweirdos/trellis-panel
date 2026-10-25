@@ -16,7 +16,7 @@ const DEFAULT_LIMITS = Object.freeze({
 function same(left, right) { return JSON.stringify(left) === JSON.stringify(right) }
 function fingerprint(definition) { return sha256(JSON.stringify(definition)) }
 
-function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requestedLimits = {}, trustedAssets }) {
+function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requestedLimits = {}, trustedAssets, eager = false }) {
   // Overrides may reduce resource usage, never raise hard bounds.
   const limits = Object.fromEntries(Object.entries(DEFAULT_LIMITS).map(([key, value]) => [key,
     Number.isSafeInteger(requestedLimits[key]) && requestedLimits[key] >= 0 ? Math.min(value, requestedLimits[key]) : value]))
@@ -48,42 +48,52 @@ function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requ
 
   function drop(key) {
     const previous = memory.get(key)
-    if (previous) stats.memoryBytes -= previous.pack.length + previous.manifestBytes
+    if (previous) stats.memoryBytes -= previous.memoryBytes
     memory.delete(key)
   }
 
   function remember(key, record) {
     drop(key)
-    const bytes = record.pack.length + record.manifestBytes
+    const bytes = (record.pack?.length ?? record.sliceBytes ?? 0) + record.manifestBytes
     if (bytes > limits.maxMemoryBytes || limits.maxMemoryEntries === 0) throw new Error('memory-limit')
     while (memory.size >= limits.maxMemoryEntries || stats.memoryBytes + bytes > limits.maxMemoryBytes) drop(memory.keys().next().value)
     memory.set(key, record)
+    record.memoryBytes = bytes
+    record.slices ??= new Map()
+    record.token ??= {}
     record.treeMap = new Map(record.manifest.tree.map(([relative, ...stat]) => [relative, stat]))
     stats.memoryBytes += bytes
   }
 
-  function reserve(bytes) {
+  function reserve(bytes, protectedKey) {
     if (bytes > limits.maxMemoryBytes) throw new Error('memory-limit')
-    while (stats.memoryBytes + bytes > limits.maxMemoryBytes) drop(memory.keys().next().value)
+    while (stats.memoryBytes + bytes > limits.maxMemoryBytes) {
+      const key = [...memory.keys()].find(candidate => candidate !== protectedKey)
+      if (key === undefined) throw new Error('memory-limit')
+      drop(key)
+    }
   }
 
   function validate(record, id, tree, inventory, expected) {
-    const { manifest, pack } = record
+    const { manifest, pack, packSize } = record
     if (!same(manifest.identity, id) || !same(manifest.tree, tree) || !Array.isArray(manifest.files) ||
-      manifest.files.length !== inventory.length || manifest.files.length > limits.maxFiles || pack.length > limits.maxPackBytes ||
-      manifest.packHash !== sha256(pack)) throw new Error('stale-manifest')
+      manifest.files.length !== inventory.length || manifest.files.length > limits.maxFiles || !Number.isSafeInteger(packSize) ||
+      packSize < 0 || packSize > limits.maxPackBytes || !/^[a-f0-9]{64}$/.test(manifest.packHash) ||
+      (pack && (pack.length !== packSize || manifest.packHash !== sha256(pack)))) throw new Error('stale-manifest')
+    if (record.packFile) storage.checkPack(record)
     let offset = 0
     for (let index = 0; index < inventory.length; index++) {
       const file = manifest.files[index]
       const item = inventory[index]
       const pinned = expected.get(item.path)
       if (file.path !== item.path || file.mode !== item.mode || file.offset !== offset || !Number.isSafeInteger(file.size) ||
-        file.size < 0 || file.size > limits.maxAssetBytes || file.size > pack.length - offset ||
+        file.size < 0 || file.size > limits.maxAssetBytes || file.size > packSize - offset ||
         !pinned || file.sha256 !== pinned.sha256 || file.size !== pinned.size || file.mode !== pinned.mode ||
-        file.sha256 !== sha256(pack.subarray(offset, offset + file.size))) throw new Error('asset-integrity')
+        (pack && pinned.sha256 !== sha256(pack.subarray(offset, offset + file.size)))) throw new Error('asset-integrity')
       offset += file.size
     }
-    if (offset !== pack.length) throw new Error('pack-size')
+    if (offset !== packSize) throw new Error('pack-size')
+    record.expected = expected
   }
 
   function validateInventory(root, tree, inventory, expected) {
@@ -109,8 +119,8 @@ function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requ
 
   function expose(key, record) {
     return record.manifest.files.map((file, index) => {
-      const result = { mode: file.mode, path: file.path, sha256: file.sha256, sourcePath: path.join(record.manifest.identity.root, ...file.path.split('/')) }
-      registrations.set(result, { key, index, revision: record.manifest.packHash })
+      const result = { mode: file.mode, path: file.path, sha256: record.expected.get(file.path).sha256, sourcePath: path.join(record.manifest.identity.root, ...file.path.split('/')) }
+      registrations.set(result, { key, index, token: record.token })
       return result
     })
   }
@@ -129,15 +139,14 @@ function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requ
       let record = memory.get(key)
       if (!record) {
         try {
-          reserve(total + limits.maxManifestBytes)
-          record = storage.readEntry(directory, key, { ...limits, maxPackBytes: total })
+          reserve((eager ? total : 0) + Math.min(limits.maxManifestBytes, limits.maxMemoryBytes))
+          record = storage.readEntry(directory, key, { ...limits, maxPackBytes: total }, eager)
         } catch { stats.failures++ }
       }
       if (record) {
         try {
           validate(record, id, tree, inventory, expected)
           if (!same(tree, storage.snapshot(root, resources, limits))) throw new Error('source-race')
-          record.manifestBytes = Buffer.byteLength(JSON.stringify(record.manifest))
           remember(key, record)
           stats.hits++
           return expose(key, record)
@@ -174,7 +183,7 @@ function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requ
       const manifestBytes = Buffer.byteLength(JSON.stringify(manifest))
       if (manifestBytes > limits.maxManifestBytes || manifestBytes + pack.length > limits.maxMemoryBytes) throw new Error('memory-limit')
       storage.publish(directory, key, manifest, pack, limits)
-      const record = { manifest, pack, manifestBytes }
+      const record = { manifest, pack, packSize: pack.length, manifestBytes, expected }
       remember(key, record)
       stats.prepared++
       return expose(key, record)
@@ -190,23 +199,42 @@ function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requ
     if (source?.kind !== 'filesystem' || !file || typeof file !== 'object') return undefined
     const registration = registrations.get(file)
     const record = registration && memory.get(registration.key)
-    if (!record || registration.revision !== record.manifest.packHash) return undefined
+    if (!record || registration.token !== record.token) return undefined
     try {
       const id = identity(plugin.rootPath, plugin.definition)
       if (!same(id, record.manifest.identity)) return undefined
       const packed = record.manifest.files[registration.index]
+      const pinned = record.expected.get(packed.path)
       const filename = path.join(id.root, ...packed.path.split('/'))
-      if (file.sourcePath !== filename || file.path !== packed.path || file.mode !== packed.mode || file.sha256 !== packed.sha256) return undefined
-      let relative = packed.path
-      while (true) {
-        const target = relative ? path.join(id.root, ...relative.split('/')) : id.root
-        storage.physical(target)
-        if (!same(storage.metadata(target), record.treeMap.get(relative))) throw new Error('stale-asset')
-        if (!relative) break
-        const slash = relative.lastIndexOf('/')
-        relative = slash < 0 ? '' : relative.slice(0, slash)
+      if (!pinned || file.sourcePath !== filename || file.path !== packed.path || file.mode !== pinned.mode || file.sha256 !== pinned.sha256) return undefined
+      function checkSource() {
+        let relative = packed.path
+        while (true) {
+          const target = relative ? path.join(id.root, ...relative.split('/')) : id.root
+          storage.physical(target)
+          if (!same(storage.metadata(target), record.treeMap.get(relative))) throw new Error('stale-asset')
+          if (!relative) break
+          const slash = relative.lastIndexOf('/')
+          relative = slash < 0 ? '' : relative.slice(0, slash)
+        }
       }
-      return Buffer.from(record.pack.subarray(packed.offset, packed.offset + packed.size))
+      checkSource()
+      let bytes = record.pack?.subarray(packed.offset, packed.offset + packed.size) ?? record.slices.get(registration.index)
+      reserve(packed.size * (bytes ? 1 : 2), registration.key)
+      if (!bytes) {
+        bytes = storage.readSlice(record, packed.offset, packed.size, limits.maxAssetBytes)
+        // Neither manifest.packHash nor its own file digests authorize bytes.
+        if (bytes.length !== pinned.size || sha256(bytes) !== pinned.sha256) throw new Error('asset-integrity')
+      }
+      if (record.packFile) storage.checkPack(record)
+      checkSource()
+      if (!record.pack && !record.slices.has(registration.index)) {
+        record.slices.set(registration.index, bytes)
+        record.sliceBytes = (record.sliceBytes ?? 0) + bytes.length
+        record.memoryBytes += bytes.length
+        stats.memoryBytes += bytes.length
+      }
+      return Buffer.from(bytes)
     } catch {
       drop(registration.key)
       stats.failures++
@@ -218,7 +246,7 @@ function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requ
     if (source?.kind !== 'filesystem' || !source.plugins?.length) return PREPARE_STATUS.degraded
     return source.plugins.every(plugin => {
       if (plugin.missingSeedPaths?.length) return false
-      try { return memory.has(sha256(JSON.stringify(identity(plugin.rootPath, plugin.definition)))) } catch { return false }
+      try { return !!memory.get(sha256(JSON.stringify(identity(plugin.rootPath, plugin.definition))))?.pack } catch { return false }
     }) ? PREPARE_STATUS.ready : PREPARE_STATUS.degraded
   }
 
@@ -227,7 +255,7 @@ function createManagedPluginCache({ originalCli, cliHash, cacheDir, limits: requ
     const records = [...memory.values()]
     const report = { version: 1, status, nativeSha256: cliHash, originalCli: original,
       counts: { roots: records.length, files: records.reduce((sum, record) => sum + record.manifest.files.length, 0),
-        bytes: records.reduce((sum, record) => sum + record.pack.length, 0) } }
+        bytes: records.reduce((sum, record) => sum + record.packSize, 0) } }
     if (status !== 'prepared') return { ...report, reason: trusted ? 'cache-unavailable' : 'trusted-assets-unavailable' }
     try {
       storage.writeReadyMarker(cacheDir, report)

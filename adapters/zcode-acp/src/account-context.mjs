@@ -183,6 +183,7 @@ async function verifySubscription(apiKey, env, signal) {
 }
 
 /**
+ * prepare() overlaps read-only validation with startup; it never admits a session.
  * sync() must run after native storage readiness and before session/create/load.
  * bindSession() admits the acknowledged native ID/workspace before a turn.
  * handleRequest() returns synchronously so the transport does not also reply.
@@ -199,10 +200,34 @@ export function createAccountContext({ dataBaseDir, builtinPath, builtinActivePa
   let state
   let disposed = false
   let syncing
+  let preparing
+  let prepared
+  let preparationStarted = false
   let epoch = 0
 
   const assertCurrent = version => { if (disposed || version !== epoch) throw failure('account_scope_changed') }
   const denied = () => ({ headersApplied: false, errorMessage: 'ZCode BigModel account is unavailable; refresh the current account explicitly.' })
+
+  function prepare() {
+    if (preparationStarted || disposed || syncing) return preparing ?? Promise.resolve()
+    preparationStarted = true
+    // Keep credentials in this owner, never in the public promise's result.
+    // Failed/changed startup material takes the ordinary fresh sync path.
+    preparing = (async () => {
+      try {
+        const config = await catalogue(builtinPath, builtinActivePath)
+        if (!config.supported || disposed) return
+        const current = await material(dataBaseDir, settingsPath, environment, Date.now())
+        if (disposed) return
+        const entitled = await verifySubscription(current.apiKey, environment, abort.signal)
+        const checkedAt = Date.now()
+        if (disposed) return
+        const latest = await material(dataBaseDir, settingsPath, environment, Date.now())
+        if (!disposed && latest.fingerprint === current.fingerprint) prepared = { config, current, entitled, checkedAt }
+      } catch { /* Optional preparation cannot replace fresh, acknowledged sync. */ }
+    })()
+    return preparing
+  }
 
   async function sync(backend) {
     if (disposed) throw failure('account_disposed')
@@ -210,14 +235,28 @@ export function createAccountContext({ dataBaseDir, builtinPath, builtinActivePa
     const version = ++epoch
     state = undefined
     syncing = (async () => {
+      await preparing
+      assertCurrent(version)
+      const candidate = prepared
+      prepared = undefined // One startup attempt, never a cross-sync authorization cache.
+      backend.providerSource?.assertCurrent()
       const config = await catalogue(builtinPath, builtinActivePath)
       let current
       let entitled = false
+      let checkedAt
       let reason = 'account_unsupported'
       if (config.supported) {
         try {
           current = await material(dataBaseDir, settingsPath, environment, Date.now())
-          entitled = await verifySubscription(current.apiKey, environment, abort.signal)
+          assertCurrent(version)
+          if (candidate && candidate.config.revision === config.revision && candidate.config.signature === config.signature &&
+            candidate.current.fingerprint === current.fingerprint && Date.now() - candidate.checkedAt < VALIDATION_TTL_MS) {
+            entitled = candidate.entitled
+            checkedAt = candidate.checkedAt
+          } else {
+            entitled = await verifySubscription(current.apiKey, environment, abort.signal)
+            checkedAt = Date.now()
+          }
           const latest = await material(dataBaseDir, settingsPath, environment, Date.now())
           if (latest.fingerprint !== current.fingerprint) throw failure('account_scope_changed')
           reason = entitled ? 'verified' : 'not_entitled'
@@ -227,6 +266,9 @@ export function createAccountContext({ dataBaseDir, builtinPath, builtinActivePa
       // Keep this fence after the final account read, including its failures.
       const latestConfig = await catalogue(builtinPath, builtinActivePath)
       if (latestConfig.revision !== config.revision || latestConfig.signature !== config.signature) throw failure('builtin_changed')
+      assertCurrent(version)
+      if (entitled && Date.now() - checkedAt >= VALIDATION_TTL_MS) throw failure('subscription_expired')
+      backend.providerSource?.assertCurrent()
       const providers = Object.fromEntries(config.accounts.map(rule => [rule.providerId,
         { access: { type: 'zhipu-account', entitled: entitled && rule.providerId === PROVIDER } }]))
       const states = Object.fromEntries(config.accounts.map(rule => [rule.providerId, {
@@ -243,7 +285,18 @@ export function createAccountContext({ dataBaseDir, builtinPath, builtinActivePa
       if (acknowledgement?.receivedRevision !== snapshot.revision || !['received', 'unchanged'].includes(acknowledgement?.status)) {
         throw failure('account_sync_unacknowledged')
       }
-      state = entitled && current ? { ...current, configSignature: config.signature, checkedAt: Date.now() } : undefined
+      // Native acknowledgement is another asynchronous boundary. It cannot turn
+      // a now-stale validation into a ready account or extend its lifetime.
+      if (entitled && current) {
+        const acknowledged = await material(dataBaseDir, settingsPath, environment, Date.now())
+        if (acknowledged.fingerprint !== current.fingerprint) throw failure('account_scope_changed')
+        const acknowledgedConfig = await catalogue(builtinPath, builtinActivePath)
+        if (acknowledgedConfig.revision !== config.revision || acknowledgedConfig.signature !== config.signature) throw failure('builtin_changed')
+        assertCurrent(version)
+        if (Date.now() - checkedAt >= VALIDATION_TTL_MS) throw failure('subscription_expired')
+      }
+      backend.providerSource?.assertCurrent()
+      state = entitled && current ? { ...current, configSignature: config.signature, checkedAt } : undefined
       return { status: state ? 'verified' : 'unavailable', reason }
     })()
     try { return await syncing } finally { syncing = undefined }
@@ -275,6 +328,7 @@ export function createAccountContext({ dataBaseDir, builtinPath, builtinActivePa
   }
 
   return {
+    prepare,
     sync,
     bindSession(sessionId, workspace) {
       if (disposed || !text(sessionId) || !isAbsolute(workspace?.workspacePath || '') || !text(workspace.workspaceKey)) throw failure('account_session_invalid')
@@ -287,6 +341,6 @@ export function createAccountContext({ dataBaseDir, builtinPath, builtinActivePa
       void Promise.resolve().then(() => runtimeAuth(params)).catch(() => denied()).then(reply).catch(() => {})
       return true
     },
-    dispose() { disposed = true; ++epoch; state = undefined; sessions.clear(); abort.abort() }
+    dispose() { disposed = true; ++epoch; prepared = undefined; state = undefined; sessions.clear(); abort.abort() }
   }
 }

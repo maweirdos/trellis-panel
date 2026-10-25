@@ -185,11 +185,38 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
   session/subscribe durations to its generation-owned diagnostics directory. Read
   only fresh bounded validated fields; a skipped stage has no invented duration.
   Per-stage failure does not independently override native overall readiness.
+  Independent account preparation and storage spans may overlap; their sum is
+  not the end-to-end connection duration.
   New ZCode sessions retain their complete creation snapshot and subscribe with
   includeSnapshot=false and afterSeq=0 to avoid repeating native snapshot work.
   Validate the actual subscription session ID/watermark and consume queued
-  changes before readiness. Restore still requires its own current snapshot;
-  native permission/configuration/model changes cannot be dropped for speed.
+  changes before readiness. Restores retain the complete resume snapshot and
+  also omit the duplicate subscription snapshot. Establish their baseline from
+  the acknowledged desktop-continuous namespace, without replaying old turns.
+  Buffer matching configuration notices from before the resume reply, bounded
+  to256 notices/1MiB; overflow fails the connection. Preserve newer fields
+  independently when partial patches arrive out of order. Clear pending notices
+  on failure/closure. Native permission/configuration/model changes cannot be
+  dropped for speed.
+- ZCode hook compatibility changes only the verified Windows `ebo` command
+  request with `n.shell===undefined` and either SessionStart sync/context or
+  UserPromptSubmit nudge, using the exact quoted Bash/HOME commands specified in
+  [Managed ZCode startup](./zcode-managed-startup.md#windows-codegraph-command-hooks).
+  Set only `command.shell` from the native `hoe` Git Bash provider; preserve
+  generic shell execution without `posix-bash` or shell-init snapshots. Missing,
+  non-Git, invalid or throwing resolution retains the original shell. Preserve
+  actual execution, permissions, resolved timeout, cancellation and cleanup.
+  PostToolUse sync,
+  UserPromptSubmit sync/context, PreToolUse/PermissionRequest gate/nudge and
+  project Python workflow hooks retain native behavior. This correction is independent
+  of the optional asset cache; preparation never executes hooks.
+- Windows process inventory may reuse a hidden query process, but every capture
+  must query a fresh process table at the existing lifecycle boundary. Preserve
+  PID/birth identity, root-exit and unknown-cleanup semantics. Bound framing,
+  requests, replies and deadlines; a timed-out or invalid query cannot establish
+  absence. Do not reuse completed tables by TTL or remove either startup capture.
+  Query-helper lifetime follows its host; pipe EOF and shutdown must leave no
+  helper process running and must not keep a closed host alive.
 - Reserve connection capacity and ownership before asynchronous resume work.
   Recheck after new-session discovery. Concurrent resumes cannot replace a map
   owner or exceed the cap of four native connections. History count is independent.
@@ -275,6 +302,9 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 | Invalid or ambiguous original option ID | `E_INVALID_ARG`; legitimate request stays pending |
 | Expired permission | `E_NOT_FOUND`; no resolver resurrection |
 | Native load fails / remote identity changes | Explicit failure; preserve history; no new session or replay |
+| Verified Windows SessionStart sync/context or UserPromptSubmit nudge without an explicit shell | Select only native `hoe` Git Bash shell; preserve generic execution, results, errors and cleanup |
+| Native hook shell resolver unavailable, invalid, non-Git or throws | Original shell; no environment or provider substitution |
+| Other hook event, command or shell; non-Windows or unsupported CLI | Original hook execution request and artifact behavior |
 | Unsupported profile schema | Preserve original bytes; refuse overwrite |
 | Runtime cleanup fails | Visible error; retain End/retry and process ownership |
 | Patch/SDK version or hash mismatch | Fail preparation/build; never report ready |
@@ -301,6 +331,12 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
   zero-dispatch, cancellation, next-turn reuse and same-session restore.
 - `tests/agent-runtime/acp-connection-timings.mjs`: bounded validated stage records,
   unknown-field removal, attempt freshness and root fences.
+- `adapters/zcode-acp/test/windows-hook-shell.mjs`, registered as
+  `zcode-windows-hook-shell`: native `ebo` request equivalence, exact SessionStart
+  sync/context and UserPromptSubmit nudge admission, all other pair exclusions,
+  error/cancel/cleanup preservation
+  and unsupported-artifact fallback. Production-source compilation follows
+  `zcode-managed-startup.md`; fixtures do not establish actual resume latency.
 - `acp-images.mjs`: isolated actual facade + public runtime + owned peer; verify MIME/signature/base64/duplicate/count/byte bounds, stale generation and unsupported capability with zero dispatch, image-only and mixed wire blocks, next-turn continuity, disk history and renderer timeline projection. This fixture does not establish real provider/model vision or native UI acceptance.
 
 - `acp-materials.mjs`: source/included digests, zero-dispatch drift, future-only binding, junction fences, material add/delete and delayed project/watcher generations.

@@ -50,20 +50,20 @@ function launch(argv = process.argv.slice(2)) {
       bytes = fs.readFileSync(filename)
       compatibility = inspectCompatibility(bytes)
       if (compatibility.supported) {
-        // Correctness does not depend on optional cache code, paths or assets.
-        if (!prepare) transformed = transformVerifiedSource(bytes.toString('utf8'), false, { cache: false })
         if (process.env.TRELLIS_ZCODE_STARTUP_CACHE_DIR) {
           try {
             const { createManagedPluginCache } = require('./managed-plugin-cache.cjs')
-            cache = createManagedPluginCache({ originalCli: filename, cliHash: compatibility.hash, cacheDir: process.env.TRELLIS_ZCODE_STARTUP_CACHE_DIR })
+            cache = createManagedPluginCache({ originalCli: filename, cliHash: compatibility.hash, cacheDir: process.env.TRELLIS_ZCODE_STARTUP_CACHE_DIR, eager: prepare })
             if (cache.trustedAssetsAvailable) {
-              transformed = transformVerifiedSource(bytes.toString('utf8'), prepare) ?? transformed
+              transformed = transformVerifiedSource(bytes.toString('utf8'), prepare)
             } else cacheReason = 'trusted-assets-unavailable'
           } catch {
             cache = undefined
             cacheReason = 'cache-unavailable'
           }
         }
+        // Correctness does not depend on optional cache code, paths or assets.
+        if (!prepare && !transformed) transformed = transformVerifiedSource(bytes.toString('utf8'), false, { cache: false })
       }
     }
   } catch {

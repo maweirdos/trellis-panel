@@ -9,6 +9,9 @@ const DFN = 'function dFn(e,t,n){if(e.kind==="filesystem"&&n.sourcePath)return(0
 const ENTRY = 'bQe();mSc();async function mSc'
 const CREATE = 'async function zhc(e,t,n,o){'
 const SNAPSHOT = 'i.importedHistory&&(await Uhc({context:e,record:h,sessionId:c,createParams:i}),await h.app.resume(),h.stateRevision++);let O=Date.now(),U=await o(h),j=U.value;'
+const HOOK_COMMAND = 'function ebo(e,t,n,o,i,a){switch(n.type){case"command":return async(c,u)=>{let f=await Oxn(c);try{let h=await e.executionPort.run({command:{mode:"shell",command:xbe(n.command,n.plugin,c,e.getWorkingDirectory()),shell:n.shell}'
+const HOOK_RESOLVER = 'function hoe(e){let t=Cks(e.override);return t||(e.platform==="win32"?Aks(e):Pks(e))}'
+const SHELL_STRING = 'function txs(e,t,n){return typeof e=="string"?e:n==="win32"?I4r(t,"ComSpec","win32")??"cmd.exe":!0}'
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
@@ -24,7 +27,7 @@ function hasUniqueAnchor(source, anchor) {
 function inspectCompatibility(bytes) {
   const hash = sha256(bytes)
   const source = bytes.toString('utf8')
-  return { hash, supported: hash === CLI_SHA256 && [CREATE, SNAPSHOT].every(anchor => hasUniqueAnchor(source, anchor)),
+  return { hash, supported: hash === CLI_SHA256 && [CREATE, SNAPSHOT, HOOK_COMMAND, HOOK_RESOLVER, SHELL_STRING].every(anchor => hasUniqueAnchor(source, anchor)),
     cacheSupported: hash === CLI_SHA256 && [MOC, DFN, ENTRY].every(anchor => hasUniqueAnchor(source, anchor)) }
 }
 
@@ -32,8 +35,17 @@ function transformVerifiedSource(source, prepare = false, { cache = true } = {})
   const compatibility = inspectCompatibility(Buffer.from(source))
   if (!compatibility.supported) return undefined
   if (prepare) return cache && compatibility.cacheSupported ? transformAnchoredSource(source, true) : undefined
-  const corrected = transformEmptyPersistenceSource(source)
+  const corrected = transformWindowsHookShellSource(transformEmptyPersistenceSource(source))
   return cache && compatibility.cacheSupported ? transformAnchoredSource(corrected) : corrected
+}
+
+// Keep native generic-shell execution: posix-bash would also enable costly shell
+// snapshots. Resolve only SessionStart sync/context and UserPromptSubmit nudge
+// without replacing their command, environment, port, or an explicit shell.
+function transformWindowsHookShellSource(source) {
+  if (!hasUniqueAnchor(source, HOOK_COMMAND)) return undefined
+  const resolver = String.raw`function __trellisWindowsHookShell(t,n){if(process.platform==="win32"&&n.shell===void 0&&(t===Tl.SessionStart&&/^bash\s+(["'])\$HOME\/\.zcode\/hooks\/codegraph-(sync|context)\.sh\1$(?![\s\S])/.test(n.command)||t===Tl.UserPromptSubmit&&/^bash\s+(["'])\$HOME\/\.zcode\/hooks\/codegraph-nudge\.sh\1$(?![\s\S])/.test(n.command)))try{let e=hoe({env:process.env,platform:process.platform}).provider;if(e?.dialect==="git-bash"&&typeof e.file==="string"&&e.file.length>0)return e.file}catch{}return n.shell}`
+  return source.replace(HOOK_COMMAND, resolver + HOOK_COMMAND.replace('shell:n.shell}', 'shell:__trellisWindowsHookShell(t,n)}'))
 }
 
 // Called only after the closed artifact check in production. Kept separate so
@@ -60,4 +72,4 @@ function transformAnchoredSource(source, prepare = false) {
   return transformed
 }
 
-module.exports = { CLI_SHA256, PREPARE_STATUS, inspectCompatibility, transformVerifiedSource, transformAnchoredSource, transformEmptyPersistenceSource, sha256 }
+module.exports = { CLI_SHA256, PREPARE_STATUS, inspectCompatibility, transformVerifiedSource, transformAnchoredSource, transformEmptyPersistenceSource, transformWindowsHookShellSource, sha256 }
