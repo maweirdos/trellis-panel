@@ -30,14 +30,29 @@ Installed dependencies and their original license files must remain available.
 See `.env.example`. The service reads environment variables supplied by the
 deployment process; it does not silently load or save a `.env` file.
 
-Required: `TEAM_PUBLIC_ORIGIN`, `TEAM_OIDC_ISSUER`, `TEAM_OIDC_CLIENT_ID` and
-`TEAM_BOOTSTRAP_SUBJECT`. Configure the issuer's exact redirect URI as
+Local accounts work without OIDC configuration. `TEAM_PUBLIC_ORIGIN` defaults to
+`http://127.0.0.1:5441`. `TEAM_DEPLOYMENT_MODE=local` enables self-registration by
+default only on a loopback origin. Each new account is ordinary and can create
+its own team as owner. Passwords require at least ten characters and use separate
+32-byte salts with scrypt N=32768, r=8, p=1 and a 64-byte derived key. Login routes
+limit attempts, require an Origin-bound CSRF challenge and return generic
+credential failures. Passwords are never included in identity replies or command
+receipts. Password recovery and mail delivery are not configured.
+
+For an intranet deployment, set `TEAM_DEPLOYMENT_MODE=intranet` and explicitly
+set `TEAM_ALLOW_SELF_REGISTRATION=1` or `0`. A non-loopback origin never opens
+registration by default. Existing registered accounts can still log in when
+registration is disabled. Protect the data directory and use HTTPS unless the
+exact private origin is deliberately allowlisted.
+
+Optional `TEAM_OIDC_ISSUER` and `TEAM_OIDC_CLIENT_ID` enable an additional identity
+provider login. Configure the issuer's exact redirect URI as
 `<TEAM_PUBLIC_ORIGIN>/auth/callback`, authorization code flow and PKCE S256.
 Confidential clients can supply `TEAM_OIDC_CLIENT_SECRET` using
 `client_secret_basic`; a client without a secret uses the public-client `none`
 authentication method. Request scopes are `openid profile`.
 
-The bootstrap subject is the issuer's stable **sub**, not email, display name,
+Optional `TEAM_BOOTSTRAP_SUBJECT` is the issuer's stable **sub**, not email, display name,
 first visitor or a browser-provided role. A signed-in person can create their own
 team; adding people/projects is an explicit current-role action. The platform
 administrator can disable an account with a revision check. That deletes its
@@ -48,22 +63,37 @@ gate, with the bounded local session lifetime documented below.
 
 `TEAM_HOST` defaults to `127.0.0.1`; `TEAM_PORT` defaults to `5441`. Deploy behind
 your configured HTTPS reverse proxy preserving the public Host header. The service
-does not trust arbitrary forwarded headers. Public origin and all issuer metadata/
-token endpoints require HTTPS. `TEAM_ALLOW_LOOPBACK_HTTP=1` permits **only** owned
-loopback HTTP testing, not an arbitrary intranet HTTP downgrade. Session lifetime
+does not trust arbitrary forwarded headers. Public origin and issuer endpoints
+require HTTPS by default. `TEAM_ALLOW_LOOPBACK_HTTP=1` permits only loopback tests.
+`TEAM_ALLOWED_INTRANET_HTTP_ORIGINS` optionally lists exact RFC1918 IPv4 HTTP
+origins, including their ports, for an explicitly configured internal deployment.
+It does not permit arbitrary hosts, neighboring ports, redirects or HTTP endpoints.
+Session lifetime
 defaults to eight hours and is bounded to at most 24 hours.
+
+For GitLab, set `TEAM_GITLAB_BASE_URL` to the exact issuer origin. Only this
+explicit configuration permits correcting discovery endpoints that advertise a
+different HTTP/HTTPS scheme on the same host and port. Authorization, token,
+userinfo and JWKS URLs are pinned to the configured origin; foreign authorities
+are rejected. Issuer, signature, PKCE, state and nonce validation remain required.
+`TEAM_GITLAB_NATIVE_CLIENT_ID` configures a separate public native OAuth app;
+`TEAM_GITLAB_INTEGRATION_BASE_URL` defaults to `TEAM_GITLAB_BASE_URL` and must match
+the issuer origin. Register its native loopback callback separately from the Web
+callback. `/api/identity` exposes this public ID and the verified subject without
+sharing server OAuth tokens. Keep confidential client secrets in deployment secrets.
 
 `TEAM_DATA_DIR` defaults to `./team-data`. Give this directory to one service
 instance and restrict OS access. A live owner lock prevents another writer. A dead
 process lock is retained as a stale evidence file before a new owner is admitted;
 an ambiguous/live lock is not stolen. Corrupt/future databases are preserved and
-rejected. Database schema3 preserves tested schema1/2 identities and publications.
+rejected. Database schema8 contains invitations, project workspaces,
+immutable-record guards and salted local password credentials through
+versioned migrations while preserving identities, publications and command receipts.
 
 Optional `TEAM_WEB_DIR` points to the Web owner's built bundle with `index.html`
 and `assets/`. The same origin serves public static assets and authenticated JSON
 APIs. API/auth paths never fall back to SPA HTML. Without a Web bundle, `/` returns
-an explicit `web:not-configured` status. This is not a claim the full Web task is
-complete.
+an explicit `web:not-configured` status.
 
 Start with `npm start`. `GET /health` checks this process; `GET /ready` checks
 the actual local storage worker. Neither claims company OIDC availability. Existing valid sessions and published reads do not need a live

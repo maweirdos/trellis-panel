@@ -1,11 +1,11 @@
 // 外壳共享基础件。所有页面从本文件取用，勿各自造轮子。
-import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
 import { Check, ChevronDown, Search } from 'lucide-react'
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
-import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
+import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 
 /* ---------------- Avatar ---------------- */
 
@@ -179,14 +179,42 @@ export function Dropdown({
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const entryRef = useRef<'last' | 'selected' | null>('selected')
   const lastMenuFocusRef = useRef<HTMLElement | null>(null)
+  const interactionSignal = useInteractionSignal()
+  const focusGeneration = useRef(0)
+  const focusFrame = useRef<number | null>(null)
+  const cancelFocusReturn = useCallback((): void => {
+    focusGeneration.current++
+    if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current)
+    focusFrame.current = null
+  }, [])
+  useLayoutEffect(() => cancelFocusReturn, [interactive, interactionSignal, cancelFocusReturn])
 
   const close = (restore = true): void => {
-    if (restore && canInteract() && ownsOverlay(menuRef.current, document.activeElement, escId)) {
-      returnFocusRef.current?.focus({ preventScroll: true })
-    }
+    cancelFocusReturn()
     setOpen(false)
+    const anchor = anchorRef.current
+    const menu = menuRef.current
+    const target = returnFocusRef.current
+    if (!restore || !canInteract() || !anchor || !menu || !target) return
+    const ticket = focusGeneration.current
+    // Let removal and any new modal autofocus commit before reclaiming abandoned focus.
+    queueMicrotask(() => {
+      if (ticket !== focusGeneration.current || interactionSignal?.aborted || !canInteract()) return
+      focusFrame.current = requestAnimationFrame(() => {
+        focusFrame.current = null
+        if (ticket !== focusGeneration.current || interactionSignal?.aborted || !canInteract() ||
+          anchorRef.current !== anchor || !anchor.isConnected || !target.isConnected || !anchor.contains(target) ||
+          target.matches(':disabled') || target.closest('[hidden], [inert], [aria-hidden="true"]') ||
+          !target.getClientRects().length || getComputedStyle(target).visibility !== 'visible') return
+        const active = document.activeElement
+        if (active && active !== document.body && active !== document.documentElement && !ownsOverlay(menu, active, escId)) return
+        const root = anchor.closest<HTMLElement>('.my-root')
+        const dialog = root ? topModal(root) : undefined
+        if (dialog && !ownsOverlay(dialog.panel, target, dialog.id)) return
+        target.focus({ preventScroll: true })
+      })
+    })
   }
-
   useEscLayer(open && interactive, {
     kind: 'modal',
     id: `dropdown-${escId}`,
@@ -275,7 +303,7 @@ export function Dropdown({
   const toggle = (): void => {
     if (!canInteract() || disabled) return
     if (open) close()
-    else { entryRef.current ??= 'selected'; lastMenuFocusRef.current = null; setOpen(true) }
+    else { cancelFocusReturn(); entryRef.current ??= 'selected'; lastMenuFocusRef.current = null; setOpen(true) }
   }
   useEffect(() => { if (!interactive) setOpen(false) }, [interactive])
 
@@ -283,10 +311,14 @@ export function Dropdown({
     if (!open || !interactive) return
     const onDown = (e: PointerEvent): void => {
       if (ownsOverlay(anchorRef.current, e.target, escId) || ownsOverlay(menuRef.current, e.target, escId)) return
+      cancelFocusReturn()
       setOpen(false)
     }
     const onFocus = (e: FocusEvent): void => {
-      if (!ownsOverlay(anchorRef.current, e.target, escId) && !ownsOverlay(menuRef.current, e.target, escId)) setOpen(false)
+      if (!ownsOverlay(anchorRef.current, e.target, escId) && !ownsOverlay(menuRef.current, e.target, escId)) {
+        cancelFocusReturn()
+        setOpen(false)
+      }
     }
     window.addEventListener('pointerdown', onDown, true)
     window.addEventListener('focusin', onFocus)
@@ -294,7 +326,7 @@ export function Dropdown({
       window.removeEventListener('pointerdown', onDown, true)
       window.removeEventListener('focusin', onFocus)
     }
-  }, [open, interactive])
+  }, [open, interactive, cancelFocusReturn])
 
   return (
     <div ref={anchorRef} className={clsx('relative', className)} onKeyDown={(event) => {

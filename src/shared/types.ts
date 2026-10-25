@@ -1207,6 +1207,10 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   bootstrap: import('./bootstrap').BootstrapApi
   gitWorkspace: import('./git-workspace').GitWorkspaceApi
   knowledgeAccess: import('./knowledge-access').KnowledgeApi
+  /** HiFox 协作域：空间/成员/任务/专项/迭代/视图/分拣台/自动化/收件箱/Agent/技能/小队 */
+  hifox: import('./hifox').HifoxApi
+  hifoxWork?: import('./hifox-work').HifoxWorkApi
+  creations?: import('./creation-api').CreationApi
   integrations: import('./integrations').IntegrationApi
   /** Feature guards still detect an older loaded preload independently. */
   jiraIntegration?: import('./jira-integration').JiraIntegrationApi

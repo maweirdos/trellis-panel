@@ -6,7 +6,7 @@ import { PAGE_LAYOUTS, PageBody, PageContent, PageHeader, PageLayout, PageNotice
 
 const TEAM_TITLES = { overview: '概况', members: '成员', activity: '动态', reports: '报告' }
 /** Framed pages that fill the window: fixed bands above one internal scroll owner. */
-const LOCKED_PAGES: readonly Page[] = ['team', 'analytics', 'devtools']
+const LOCKED_PAGES: readonly Page[] = ['team', 'analytics', 'devtools', 'hifox', 'creations']
 const TOOLS: ReadonlyArray<{ id: ToolView; label: string; page: Page }> = [
   { id: 'git', label: 'Git', page: 'devtools' }, { id: 'run', label: '运行', page: 'devtools' },
   { id: 'architecture', label: '架构', page: 'architecture' }, { id: 'studio', label: '定制', page: 'studio' }
@@ -20,7 +20,7 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
   const variant = PAGE_LAYOUTS[page]
   const tools = ['devtools', 'architecture', 'studio'].includes(page)
   const intake = page === 'inbox' || page === 'jira'
-  const embeddedKnowledgeLayout = navigation.domain === 'knowledge'
+  const embeddedKnowledgeLayout = navigation.domain === 'knowledge' || page === 'hifox' || page === 'creations'
   const selfOwnedIntegrationHeader = page === 'integrations'
   const title = page === 'team' ? TEAM_TITLES[teamView] : tools ? '工具' : page === 'settings' ? settingsView === 'engines' ? '引擎' : '偏好' : navigation.title
   return <PageLayout variant={variant}>

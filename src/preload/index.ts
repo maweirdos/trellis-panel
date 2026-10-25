@@ -33,6 +33,8 @@ import type { TaskConversationsApi } from '../shared/task-conversations'
 import type { ApplicationRuntimeApi, ApplicationRuntimeEvent } from '../shared/app-runtime'
 import type { GitHistoryRequest, GitCommitRequest, GitCommitDiffRequest } from '../shared/git-readonly'
 import type { GitWorkspaceApi } from '../shared/git-workspace'
+import type { HifoxApi } from '../shared/hifox'
+import type { HifoxWorkApi } from '../shared/hifox-work'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
@@ -94,6 +96,26 @@ const taskConversationsApi: TaskConversationsApi = {
   taskConversationsInspect: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.inspect, input)
 }
 
+let hifoxScopeKey = 'local'
+let hifoxScopeGeneration = 0
+function observeHifoxContext(context: unknown): void {
+  if (context && typeof context === 'object' && 'key' in context && typeof context.key === 'string' && context.key !== hifoxScopeKey) {
+    hifoxScopeKey = context.key
+    hifoxScopeGeneration++
+  }
+}
+subscribe(ipcEvent.hifoxWorkspaceChanged, observeHifoxContext)
+type HifoxInvokeMethod = Exclude<keyof HifoxApi, 'onWorkspaceChanged'>
+async function invokeHifox<K extends HifoxInvokeMethod>(method: K, input?: unknown): Promise<Awaited<ReturnType<HifoxApi[K]>>> {
+  const generation = method === 'selectWorkspace' ? ++hifoxScopeGeneration : hifoxScopeGeneration
+  const scopeKey = hifoxScopeKey
+  const response: unknown = await ipcRenderer.invoke(ipcInvoke.hifox[method], input, scopeKey)
+  if (generation === hifoxScopeGeneration && response && typeof response === 'object' && 'context' in response) {
+    observeHifoxContext(response.context)
+  }
+  return response as Awaited<ReturnType<HifoxApi[K]>>
+}
+
 const api = {
   bootstrap: {
     status: () => ipcRenderer.invoke(ipcInvoke.bootstrap.status),
@@ -113,6 +135,76 @@ const api = {
   jiraIntegration: createJiraWorkspaceBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   gitlabWorkspace: createGitlabWorkspaceBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   dingtalkWorkspace: createDingTalkBridge((channel, input) => ipcRenderer.invoke(channel, input)),
+  hifox: {
+    workspaceStatus: () => invokeHifox('workspaceStatus'),
+    workspacePending: () => invokeHifox('workspacePending'),
+    discardWorkspaceCommand: (input) => invokeHifox('discardWorkspaceCommand', input),
+    selectWorkspace: (input) => invokeHifox('selectWorkspace', input),
+    retryWorkspaceCommand: (input) => invokeHifox('retryWorkspaceCommand', input),
+    onWorkspaceChanged: (callback) => subscribe<import('../shared/hifox-remote').HifoxWorkspaceContext>(ipcEvent.hifoxWorkspaceChanged, callback),
+    snapshot: () => invokeHifox('snapshot'),
+    resetDemo: () => invokeHifox('resetDemo'),
+    triageQueue: (spaceId) => invokeHifox('triageQueue', spaceId),
+    createSpace: (input) => invokeHifox('createSpace', input),
+    updateSpace: (input) => invokeHifox('updateSpace', input),
+    joinSpace: (input) => invokeHifox('joinSpace', input),
+    inviteMember: (input) => invokeHifox('inviteMember', input),
+    updateMember: (input) => invokeHifox('updateMember', input),
+    removeMember: (input) => invokeHifox('removeMember', input),
+    setSpaceMembers: (input) => invokeHifox('setSpaceMembers', input),
+    createTaskType: (input) => invokeHifox('createTaskType', input),
+    updateTaskType: (input) => invokeHifox('updateTaskType', input),
+    removeTaskType: (input) => invokeHifox('removeTaskType', input),
+    createTaskStatus: (input) => invokeHifox('createTaskStatus', input),
+    removeTaskStatus: (input) => invokeHifox('removeTaskStatus', input),
+    createLabel: (input) => invokeHifox('createLabel', input),
+    archiveLabel: (input) => invokeHifox('archiveLabel', input),
+    createTask: (input) => invokeHifox('createTask', input),
+    transitionTask: (input) => invokeHifox('transitionTask', input),
+    recordVersionDelivery: (input) => invokeHifox('recordVersionDelivery', input),
+    updateTask: (input) => invokeHifox('updateTask', input),
+    removeTask: (input) => invokeHifox('removeTask', input),
+    addRelation: (input) => invokeHifox('addRelation', input),
+    removeRelation: (input) => invokeHifox('removeRelation', input),
+    addComment: (input) => invokeHifox('addComment', input),
+    resolveComment: (input) => invokeHifox('resolveComment', input),
+    createProject: (input) => invokeHifox('createProject', input),
+    updateProject: (input) => invokeHifox('updateProject', input),
+    createIteration: (input) => invokeHifox('createIteration', input),
+    updateIteration: (input) => invokeHifox('updateIteration', input),
+    completeIteration: (input) => invokeHifox('completeIteration', input),
+    saveView: (input) => invokeHifox('saveView', input),
+    removeView: (input) => invokeHifox('removeView', input),
+    triage: (input) => invokeHifox('triage', input),
+    saveAutomation: (input) => invokeHifox('saveAutomation', input),
+    toggleAutomation: (input) => invokeHifox('toggleAutomation', input),
+    removeAutomation: (input) => invokeHifox('removeAutomation', input),
+    runAutomation: (input) => invokeHifox('runAutomation', input),
+    markInboxRead: (input) => invokeHifox('markInboxRead', input),
+    snoozeInbox: (input) => invokeHifox('snoozeInbox', input),
+    clearInbox: (input) => invokeHifox('clearInbox', input),
+    restoreInbox: (input) => invokeHifox('restoreInbox', input),
+    saveAgent: (input) => invokeHifox('saveAgent', input),
+    removeAgent: (input) => invokeHifox('removeAgent', input),
+    saveSkill: (input) => invokeHifox('saveSkill', input),
+    removeSkill: (input) => invokeHifox('removeSkill', input),
+    saveCrew: (input) => invokeHifox('saveCrew', input),
+    removeCrew: (input) => invokeHifox('removeCrew', input)
+  } satisfies HifoxApi,
+  hifoxWork: {
+    status: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.status, input),
+    prepare: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.prepare, input)
+  } satisfies HifoxWorkApi,
+  creations: {
+    list: (input) => ipcRenderer.invoke(ipcInvoke.creations.list, input),
+    get: (input) => ipcRenderer.invoke(ipcInvoke.creations.get, input),
+    command: (input) => ipcRenderer.invoke(ipcInvoke.creations.command, input),
+    recover: (input) => ipcRenderer.invoke(ipcInvoke.creations.recover, input),
+    planCandidate: (input) => ipcRenderer.invoke(ipcInvoke.creations.planCandidate, input),
+    generateCandidate: (input) => ipcRenderer.invoke(ipcInvoke.creations.generateCandidate, input),
+    cancelCandidate: (input) => ipcRenderer.invoke(ipcInvoke.creations.cancelCandidate, input),
+    onChanged: (callback) => subscribe(ipcEvent.creationsChanged, callback)
+  } satisfies import('../shared/creation-api').CreationApi,
   gitWorkspace: {
     status: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.status, input),
     diff: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.diff, input),

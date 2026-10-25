@@ -22,8 +22,9 @@ interface PageNavigation {
 
 /** The existing route remains the fact; modules never create another project context. */
 export const PAGE_NAVIGATION = {
-  tasks: { title: '全部', domain: 'tasks', scope: 'project', icon: 'work-items', keywords: '任务 工作项 全部工作项' },
-  dashboard: { title: '首页', domain: 'home', scope: 'project', icon: 'your-work', keywords: '我的工作 概览 个人记录 收藏' },
+  tasks: { title: '任务', domain: 'tasks', scope: 'local', icon: 'work-items', keywords: '个人 团队任务 本地工作 工作项 全部工作项' },
+  dashboard: { title: '概览', domain: 'home', scope: 'project', icon: 'your-work', keywords: '首页 我的工作 个人记录 收藏' },
+  creations: { title: '创作', domain: 'home', scope: 'local', icon: 'pages', keywords: '个人 作品 原型 文档 图表 评审' },
   inbox: { title: '接入', domain: 'tasks', scope: 'project', icon: 'inbox', keywords: '需求接入 待办池 收件箱' },
   jira: {
     title: '接入', domain: 'tasks', scope: 'project', icon: 'work-items', keywords: 'Jira 来源 外部查询',
@@ -31,6 +32,10 @@ export const PAGE_NAVIGATION = {
     commandHint: '导入当前项目 · 外部查询'
   },
   team: { title: '概况', domain: 'team', scope: 'project', icon: 'views', keywords: '协作' },
+  hifox: {
+    title: '团队协作', domain: 'team', scope: 'local', icon: 'modules',
+    keywords: 'HiFox 团队协作 空间 同事 成员 任务 看板 专项 版本 迭代 分拣台 收件箱 自动化 Agent 技能 小队'
+  },
   analytics: { title: '统计', domain: 'team', scope: 'project', icon: 'analytics', keywords: '统计分析' },
   archive: { title: '归档', domain: 'tasks', scope: 'project', icon: 'intake' },
   acp: { title: '对话', domain: 'agents', scope: 'project', icon: 'inbox', keywords: 'Agent 对话 ACP' },
@@ -58,14 +63,13 @@ export const PAGE_NAVIGATION = {
 } satisfies Record<Page, PageNavigation>
 
 export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
-  home: '首页', agents: '对话', tasks: '任务', team: '团队', knowledge: '知识', settings: '设置'
+  home: '个人', agents: '对话', tasks: '任务', team: '团队', knowledge: '知识', settings: '设置'
 }
 
 export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string }> = [
-  { id: 'home', page: 'dashboard', label: '首页', shortLabel: '首页' },
+  { id: 'home', page: 'tasks', label: '个人', shortLabel: '个人' },
+  { id: 'team', page: 'hifox', label: '团队', shortLabel: '团队' },
   { id: 'agents', page: 'acp', label: '对话', shortLabel: '对话' },
-  { id: 'tasks', page: 'tasks', label: '任务', shortLabel: '任务' },
-  { id: 'team', page: 'team', label: '团队', shortLabel: '团队' },
   { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' }
 ]
 
@@ -74,12 +78,14 @@ export function getPageNavigation(page: Page): PageNavigation {
 }
 
 export function activeModule(page: Page): ModuleId {
-  return getPageNavigation(page).domain
+  // Keep the legacy tasks preference namespace while presenting one personal module.
+  const domain = getPageNavigation(page).domain
+  return domain === 'tasks' ? 'home' : domain
 }
 
 /** Knowledge and conversation pages already own their real source/session browsers. */
 export function hasShellContext(page: Page): boolean {
-  return !['home', 'knowledge', 'agents'].includes(getPageNavigation(page).domain)
+  return page !== 'hifox' && !['knowledge', 'agents'].includes(activeModule(page))
 }
 
 export function navigationScopeLabel(scope: NavigationScope): string {

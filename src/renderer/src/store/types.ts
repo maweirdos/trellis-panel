@@ -26,6 +26,8 @@ export type Page =
   | 'dashboard'
   | 'inbox'
   | 'tasks'
+  | 'creations'
+  | 'hifox'
   | 'knowledge'
   | 'spec'
   | 'archive'
@@ -91,7 +93,10 @@ export interface TaskExpandOrigin {
 }
 
 export interface UiSlice {
+  navigationRevision: number
   page: Page
+  personalTaskSource: 'team' | 'local'
+  setPersonalTaskSource: (source: 'team' | 'local') => void
   capsuleMode: boolean
   quickTodoMode: boolean
   sidebarCollapsed: boolean

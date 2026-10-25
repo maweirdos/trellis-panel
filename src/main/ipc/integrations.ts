@@ -34,7 +34,7 @@ export function registerIntegrationsIpc(): void {
     }
     void legacyIntegrationCall('', operation, { requestId }, ownerId).then(result => { if (!result.ok) unavailable() }, unavailable)
   }
-  function register<M extends LegacyIntegrationOperation>(operation: M): void {
+  function register<M extends Extract<LegacyIntegrationOperation, keyof typeof ipcInvoke.integration>>(operation: M): void {
     handle(ipcInvoke.integration[operation], async (event, raw: unknown) => {
       const trustedSender = (): boolean => !event.sender.isDestroyed()
         && getMainWindow()?.webContents.id === event.sender.id && event.senderFrame === event.sender.mainFrame

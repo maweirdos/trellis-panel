@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep, isAbsolute } from 'node:path'
@@ -24,11 +24,15 @@ export function restoreTeamBackup(source: string, destination: string): { destin
   copyFileSync(database, join(temporary, 'team.sqlite'))
   if (fileDigest(join(temporary, 'team.sqlite')) !== manifest.databaseDigest) throw new TeamServiceError('CORRUPT_BACKUP', 'Backup database changed during copy', 409)
   const check = new DatabaseSync(join(temporary, 'team.sqlite'), { readOnly: true })
+  let authorizationRevision = 0
   try {
     const version = check.prepare('PRAGMA user_version').get()?.user_version
     if (typeof version !== 'number' || version < 1 || version > TEAM_SCHEMA_VERSION || (manifest.databaseSchemaVersion !== undefined && version !== manifest.databaseSchemaVersion) || check.prepare('PRAGMA integrity_check').get()?.integrity_check !== 'ok') throw new TeamServiceError('CORRUPT_BACKUP', 'Backup database schema/integrity failed verification', 409)
     const meta = (key: string): unknown => check.prepare('SELECT value FROM team_meta WHERE key=?').get(key)?.value
     if (meta('instanceId') !== manifest.instanceId || meta('epoch') !== manifest.epoch) throw new TeamServiceError('CORRUPT_BACKUP', 'Backup cursor identity does not match its manifest', 409)
+    const revision = meta('authorizationRevision'), secret = meta('cursorSecret')
+    if (typeof revision !== 'string' || !/^[1-9][0-9]*$/.test(revision) || !Number.isSafeInteger(Number(revision)) || Number(revision) >= Number.MAX_SAFE_INTEGER || typeof secret !== 'string' || !/^[a-f0-9]{64}$/.test(secret)) throw new TeamServiceError('CORRUPT_BACKUP', 'Backup authorization identity failed verification or cannot advance safely', 409)
+    authorizationRevision = Number(revision)
     const referenced = check.prepare('SELECT bodyDigest,byteLength FROM blobs ORDER BY bodyDigest').all()
     if (referenced.length !== manifest.blobs.length || referenced.some((row) => !manifest.blobs.some((blob) => blob.digest === row.bodyDigest && blob.byteLength === row.byteLength))) throw new TeamServiceError('CORRUPT_BACKUP', 'Backup body references are incomplete', 409)
     for (const blob of manifest.blobs) {
@@ -39,7 +43,18 @@ export function restoreTeamBackup(source: string, destination: string): { destin
       writeFileSync(join(temporary, 'blobs', blob.digest), body, { mode: 0o600, flag: 'wx' })
     }
   } finally { check.close() }
+  // Rotate only the verified staged copy; the source backup retains its original identities and digest.
+  const epoch = randomUUID(), cursorSecret = randomBytes(32).toString('hex')
+  const restored = new DatabaseSync(join(temporary, 'team.sqlite'))
+  try {
+    restored.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; BEGIN IMMEDIATE;')
+    try {
+      const update = restored.prepare('UPDATE team_meta SET value=? WHERE key=?')
+      update.run(epoch, 'epoch'); update.run(cursorSecret, 'cursorSecret'); update.run(String(authorizationRevision + 1), 'authorizationRevision')
+      restored.exec('COMMIT')
+    } catch (error) { restored.exec('ROLLBACK'); throw error }
+  } finally { restored.close() }
   // Publish only a fully verified new directory; leave failed temporary data for inspection.
   renameSync(temporary, target)
-  return { destination: target, blobCount: manifest.blobs.length, instanceId: manifest.instanceId, epoch: manifest.epoch }
+  return { destination: target, blobCount: manifest.blobs.length, instanceId: manifest.instanceId, epoch }
 }

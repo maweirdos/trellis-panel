@@ -185,6 +185,11 @@
 
 :root.dark,
 [data-my-theme='dark'] {
+  --my-collab-blue: #9bb6db;
+  --my-collab-teal: #96c3bb;
+  --my-collab-ochre: #cdb283;
+  --my-collab-plum: #bda6ca;
+  --my-collab-rose: #d2a0a5;
   color-scheme: dark;
   --my-priority-urgent: #e7413c;
   --my-priority-high: #f97d2e;
@@ -453,6 +458,11 @@
 
 :root:not(.dark),
 [data-my-theme='light'] {
+  --my-collab-blue: #4d6c99;
+  --my-collab-teal: #477f79;
+  --my-collab-ochre: #92713f;
+  --my-collab-plum: #80658e;
+  --my-collab-rose: #a25f66;
   color-scheme: light;
   --my-priority-urgent: #c0221f;
   --my-priority-high: #c2410c;

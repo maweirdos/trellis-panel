@@ -1,0 +1,136 @@
+.team-shell {
+  display: flex;
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--my-bg-shell);
+}
+.team-module-rail {
+  display: flex;
+  flex: 0 0 var(--my-module-rail-width);
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  width: var(--my-module-rail-width);
+}
+.team-rail-brand {
+  display: grid;
+  flex: 0 0 var(--my-shell-chrome-size);
+  width: 100%;
+  place-items: center;
+  color: var(--my-txt-primary);
+}
+.team-brand-mark {
+  width: var(--my-space-22);
+  height: var(--my-space-22);
+  background: currentColor;
+  mask: url('../../../resources/brand/mark.svg') center / contain no-repeat;
+  -webkit-mask: url('../../../resources/brand/mark.svg') center / contain no-repeat;
+}
+.team-module-navigation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--my-module-gap);
+  min-height: 0;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--my-module-rail-padding);
+  scrollbar-width: none;
+}
+.team-module-navigation::-webkit-scrollbar { display: none; }
+.team-module-button {
+  width: var(--my-module-button-size);
+  height: var(--my-module-button-size);
+  min-height: var(--my-module-button-size);
+  padding: 0;
+  border-color: transparent;
+  border-radius: var(--my-control-radius);
+  background: transparent;
+  color: var(--my-txt-icon-secondary);
+}
+.team-module-button > svg {
+  width: var(--my-module-icon-size);
+  height: var(--my-module-icon-size);
+  stroke-width: var(--my-module-icon-stroke);
+}
+.team-module-button:hover:not(:disabled) {
+  background: var(--my-bg-navigation-hover);
+  color: var(--my-txt-primary);
+}
+.team-module-button[aria-current="page"] {
+  background: var(--my-bg-navigation-selected);
+  color: var(--my-txt-primary);
+}
+.team-module-button:focus-visible { outline-offset: var(--my-space-2); }
+.team-shell-center {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.team-topbar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--my-space-12);
+  min-height: var(--my-shell-chrome-size);
+  padding: var(--my-space-6) var(--my-space-12);
+}
+.team-project-control { flex: 0 1 var(--my-space-256); min-width: 0; }
+.team-project-control > label { display: block; margin: 0; }
+.team-project-control select {
+  min-height: var(--my-icon-control-size);
+  padding: var(--my-space-4) var(--my-space-8);
+  border-color: transparent;
+  background: transparent;
+  font-weight: var(--my-weight-semibold);
+  text-overflow: ellipsis;
+}
+.team-project-control select:hover { background: var(--my-bg-navigation-hover); }
+.team-project-control .pager { margin: var(--my-space-4) 0; }
+.team-project-control .pager button { min-height: var(--my-icon-control-size); font-size: var(--my-text-xs); }
+.team-section-name {
+  min-width: 0;
+  padding-left: var(--my-space-12);
+  border-left: 1px solid var(--my-border-subtle);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-sm);
+  white-space: nowrap;
+}
+.team-topbar .account { margin-left: auto; gap: var(--my-space-8); }
+.team-topbar .account .icon { width: var(--my-icon-control-size); height: var(--my-icon-control-size); min-height: var(--my-icon-control-size); }
+.team-shell-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  margin: 0 var(--my-shell-inset) var(--my-shell-inset) 0;
+  overflow: hidden;
+  border: 1px solid var(--my-border-shell);
+  border-radius: var(--my-shell-radius);
+  background: var(--my-bg-canvas);
+}
+.team-shell-layout > .workspace {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.team-shell-layout > .workspace:has(> .hifox-host) { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
+.team-shell-layout > .workspace:has(> .hifox-host) > :not(.hifox-host) { flex: none; }
+.team-shell-layout > .workspace > .hifox-host { flex: 1; height: auto; min-height: 0; }
+.team-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 760px) {
+  .team-topbar { gap: var(--my-space-8); padding-inline: var(--my-space-8); }
+  .team-section-name, .team-topbar .account > span { display: none; }
+  .team-project-control { flex: 1; }
+  .team-topbar .account { flex: none; gap: var(--my-space-4); }
+}

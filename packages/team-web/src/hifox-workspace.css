@@ -1,0 +1,6 @@
+@import '../../../src/renderer/src/my/my-components.css';
+@import '../../../src/renderer/src/my/my-feedback.css';
+@import '../../../src/renderer/src/my/my-shell.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

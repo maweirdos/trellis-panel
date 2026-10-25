@@ -142,8 +142,8 @@ export function DialogHost(): JSX.Element | null {
   return (
     // A successor needs its own Modal registration: Escape consumes the old layer.
     <Modal key={req.id} open onClose={cancel} width={420} ariaLabel={req.opts.title} placement="center">
-      <div className="max-h-[var(--my-modal-max-height)] overflow-y-auto p-5">
-        {req.kind === 'confirm' ? <ConfirmPanel req={req} onCancel={cancel} /> : <PromptPanel req={req} onCancel={cancel} />}
+      <div className="my-scrollbar max-h-[var(--my-modal-max-height)] overflow-y-auto p-5">
+        {req.kind === 'confirm' ? <ConfirmPanel key={req.id} req={req} onCancel={cancel} /> : <PromptPanel key={req.id} req={req} onCancel={cancel} />}
       </div>
     </Modal>
   )

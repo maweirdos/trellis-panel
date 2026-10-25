@@ -87,7 +87,7 @@ const PRIORITY_ICONS: Record<Priority, LucideIcon> = {
 }
 
 export function PriorityIcon({ priority, size = 14, className }: IconProps & { priority: Priority }): JSX.Element {
-  return <Lucide icon={PRIORITY_ICONS[priority] ?? Minus} size={size} className={className} />
+  return <Lucide icon={PRIORITY_ICONS[priority] ?? Minus} size={size} className={className} color={`var(--my-priority-${priority})`} />
 }
 
 /* ---------------- 布局切换图标 ---------------- */

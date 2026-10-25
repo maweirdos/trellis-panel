@@ -27,6 +27,7 @@ import { createDaemonTray } from './services/daemon-tray'
 import { DaemonError } from './daemon/errors'
 import { createGuiBootstrap, type GuiBootstrap } from './services/bootstrap'
 import { registerBootstrapIpc } from './ipc/bootstrap'
+import { closeCreationService } from './services/creations'
 import { ipcEvent } from '../shared/ipc-channels'
 import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
 import {
@@ -48,7 +49,10 @@ import { readerWindowBounds } from './services/document-window-placement'
 import { setWorkflowAdmissionClosed } from './services/workflow-desktop'
 import { stopWorkflowSubscriptions } from './ipc/workflow'
 import { closeTaskConversations } from './ipc/task-conversations'
-import { resumeDesktopTeamBackground, setDesktopTeamAdmissionClosed, closeDesktopTeamService } from './services/team-desktop'
+import { resumeDesktopTeamBackground, setDesktopTeamAdmissionClosed, closeDesktopTeamService, withDesktopTeamService } from './services/team-desktop'
+import { tickScheduledAutomations } from './services/hifox/planning'
+import { resumeHifoxWorkspace, closeHifoxWorkspace, configureHifoxConnectionService } from './services/hifox/connection-service'
+import { ensureTeamGitlabConnection } from './services/integrations/team-gitlab'
 
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
@@ -70,6 +74,7 @@ let desktopCompositionStarted = false
 let guiApplicationsStarted = false
 let guiClosing = false
 let requestBootstrapExit = (): void => { app.exit(0) }
+let collaborationTimer: ReturnType<typeof setInterval> | null = null
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { autoUpdater } = (() => {
@@ -543,6 +548,7 @@ if (!gotLock) {
         () => setWorkflowAdmissionClosed(true),
         () => setDesktopTeamAdmissionClosed(true),
         () => setRuntimeClientAdmissionClosed(true),
+        () => { if (collaborationTimer) { clearInterval(collaborationTimer); collaborationTimer = null } },
         stopTimers, stopInbox, abortAll, stopDiffWorker, stopWorkflowSubscriptions,
         closeTaskConversations, stopObservationWorker, detachRuntimeObservers,
         () => globalShortcut.unregisterAll(), () => accessServer.stop(),
@@ -550,6 +556,8 @@ if (!gotLock) {
       ]
       for (const close of closeSources) { try { close() } catch (error) { errors.push(error) } }
       const results = await Promise.allSettled([
+        closeCreationService(),
+        closeHifoxWorkspace(),
         closeDesktopTeamService(),
         ...(guiApplicationsStarted ? [appRuntime.shutdown()] : [])
       ])
@@ -629,6 +637,7 @@ if (!gotLock) {
       },
       create: createCapsule
     }
+    configureHifoxConnectionService({ withService: withDesktopTeamService, notify: (channel, payload) => broadcastToWindows(channel, payload), ensureGitlab: ensureTeamGitlabConnection })
     registerIpc({
       getMain: () => (win && !win.isDestroyed() ? win : null),
       getCapsule: () => (capsule && !capsule.isDestroyed() ? capsule : null),
@@ -679,6 +688,14 @@ if (!gotLock) {
     if (!desktopIngressStarted) {
       desktopIngressStarted = true
       resumeDesktopTeamBackground()
+      resumeHifoxWorkspace()
+      const tickCollaboration = (): void => {
+        try { tickScheduledAutomations() }
+        catch (error) { console.warn('协作定时规则检查失败', error) }
+      }
+      collaborationTimer = setInterval(tickCollaboration, 30_000)
+      collaborationTimer.unref()
+      tickCollaboration()
       const coldLink = parseDeepLink(process.argv)
       if (coldLink) handleDeepLink(coldLink, bridgeHandlers(), getSettings().bridgeToken)
       startInbox({
@@ -744,9 +761,10 @@ if (!gotLock) {
   const quitGate = createDaemonQuitGate({
     closeGuiAdmission: (closed) => { appRuntime.setAdmissionClosed(closed); setWorkflowAdmissionClosed(closed); setDesktopTeamAdmissionClosed(closed) },
     stopGuiWork: async () => { await appRuntime.shutdown(); await closeDesktopTeamService() },
-    detach: async () => { detachRuntimeObservers() },
+    detach: async () => { await closeCreationService(); detachRuntimeObservers(); await closeHifoxWorkspace() },
     finalize: () => {
       disposeDaemonTray()
+      if (collaborationTimer) { clearInterval(collaborationTimer); collaborationTimer = null }
       stopTimers()
       stopInbox()
       abortAll()
