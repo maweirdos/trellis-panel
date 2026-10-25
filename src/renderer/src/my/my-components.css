@@ -101,10 +101,11 @@
 .my-root .my-icon-control {
   display: inline-flex; align-items: center; justify-content: center;
   flex: 0 0 var(--my-icon-control-size); width: var(--my-icon-control-size); height: var(--my-icon-control-size);
-  border-radius: var(--my-control-radius); color: var(--my-txt-secondary);
+  border-radius: var(--my-control-radius);
   transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-icon-control:hover { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-danger)) { color: var(--my-txt-secondary); }
+.my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-danger)):hover { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
 .my-root .my-composer-control {
   border-radius: var(--my-control-radius);
   background: var(--my-bg-layer-transparent);

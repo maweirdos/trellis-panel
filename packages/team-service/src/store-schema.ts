@@ -1,5 +1,9 @@
 import { TEAM_COLLABORATION_SQL } from './collaboration-schema'
-export const TEAM_SCHEMA_VERSION = 4
+import { TEAM_INVITATIONS_SQL } from './invitations-schema'
+import { TEAM_HIFOX_WORKSPACE_SQL } from './hifox-workspace-schema'
+import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
+import { TEAM_CREATIONS_SQL } from './creations-schema'
+export const TEAM_SCHEMA_VERSION = 9
 export const TEAM_DEVICES_SQL = `CREATE TABLE devices(deviceId TEXT PRIMARY KEY,pairingId TEXT UNIQUE NOT NULL,credentialHash TEXT UNIQUE NOT NULL,projectId TEXT REFERENCES projects(projectId),ownerId TEXT REFERENCES people(userId),deviceName TEXT NOT NULL,capabilityClaimsJson TEXT NOT NULL,status TEXT NOT NULL,userCode TEXT NOT NULL,expiresAt INTEGER NOT NULL,lastSeenAt INTEGER,sequence INTEGER NOT NULL DEFAULT -1,createdAt INTEGER NOT NULL);`
 export const TEAM_SCHEMA_SQL = `
 CREATE TABLE team_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -20,4 +24,8 @@ CREATE TABLE commands(userId TEXT NOT NULL REFERENCES people(userId),commandId T
 CREATE TABLE events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,eventId TEXT UNIQUE NOT NULL,type TEXT NOT NULL,audienceKind TEXT NOT NULL,audienceId TEXT NOT NULL,projectId TEXT,occurredAt INTEGER NOT NULL,payloadJson TEXT NOT NULL);
 CREATE INDEX events_project ON events(projectId,sequence);
 ${TEAM_COLLABORATION_SQL}
+${TEAM_INVITATIONS_SQL}
+${TEAM_HIFOX_WORKSPACE_SQL}
+${TEAM_LOCAL_AUTH_SQL}
+${TEAM_CREATIONS_SQL}
 `

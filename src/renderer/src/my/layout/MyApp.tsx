@@ -3,10 +3,11 @@
 import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
 import { Keyboard, Loader2 } from 'lucide-react'
 import { useApp, type Page } from '../../store'
+import { useHifox } from '../../hifox/store'
 import { useMy } from '../store'
 import { rememberVisit } from '../personal-history'
 import { loadNavigationLocation, saveNavigationLocation } from '../navigation-preferences'
-import { getPageNavigation, projectRootKey } from '../navigation'
+import { activeModule, getPageNavigation, projectRootKey } from '../navigation'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { CommandPalette } from '../CommandPalette'
 import { IssuePeek } from '../pages/IssuePeek'
@@ -16,11 +17,13 @@ import { PageFrame } from './PageFrame'
 import { PAGE_LAYOUTS, PageLayout } from './PageLayout'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { useEscLayer } from '../../utils/use-esc-layer'
+import { escLayerCount } from '../../utils/esc-layer'
 import { InteractionScope, useInteractionActive } from '../../utils/interaction-scope'
 
 const YourWorkPage = lazy(() => import('../pages/YourWorkPage').then((m) => ({ default: m.YourWorkPage })))
 const AnalyticsPage = lazy(() => import('../pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })))
-const WorkItemsPage = lazy(() => import('../pages/WorkItemsPage').then((m) => ({ default: m.WorkItemsPage })))
+const PersonalTasksPage = lazy(() => import('../pages/PersonalTasksPage').then((m) => ({ default: m.PersonalTasksPage })))
+const CreationWorkspace = lazy(() => import('../../creations/CreationWorkspace').then((m) => ({ default: m.CreationWorkspace })))
 
 const KnowledgePage = lazy(() => import('../../pages/Knowledge').then((m) => ({ default: m.KnowledgePage })))
 const ArchivePage = lazy(() => import('../../pages/Archive').then((m) => ({ default: m.ArchivePage })))
@@ -40,6 +43,13 @@ const DevToolsPage = lazy(() => import('../pages/DevToolsPage').then((m) => ({ d
 const HiFoxApp = lazy(() => import('../../hifox/HiFoxApp').then((m) => ({ default: m.HiFoxApp })))
 const TaskDetail = lazy(() => import('../../pages/TaskDetail').then((m) => ({ default: m.TaskDetail })))
 
+function rememberModulePage(page: Page): void {
+  useMy.getState().rememberModulePage(page)
+  const module = activeModule(page)
+  const current = useMy.getState()
+  if (current.modulePages[module] !== page) useMy.setState({ modulePages: { ...current.modulePages, [module]: page } })
+}
+
 function PageLoading(): JSX.Element {
   return (
     <div className="flex h-full w-full items-center justify-center text-my-tertiary">
@@ -58,6 +68,7 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   acp: <AcpConsolePage />,
   team: <TeamPage />,
   hifox: <HiFoxApp />,
+  creations: <CreationWorkspace scope="personal" />,
   analytics: <AnalyticsPage />,
   jira: <JiraPage />,
   architecture: <ArchitecturePage />,
@@ -139,7 +150,7 @@ export function PageBody(): JSX.Element {
           项目页面同时按真实 root 重挂，清除旧项目页面状态和错误态 */}
       {!acpActive && <Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
         {page === 'dashboard' && <YourWorkPage />}
-        {page === 'tasks' && <WorkItemsPage />}
+        {page === 'tasks' && <PersonalTasksPage />}
         {framed && <PageFrame page={page}>{framed}</PageFrame>}
       </ErrorBoundary></Suspense>}
     </>
@@ -201,6 +212,29 @@ export function MyApp(): JSX.Element {
     return () => off()
   }, [syncFromSnapshot])
 
+  useEffect(() => useApp.subscribe((state, previous) => {
+    const team = useHifox.getState()
+    const origin = team.workReturn
+    if (!origin) return
+    if (team.workspaceContext.key !== origin.workspaceKey || team.workspaceContext.actorId !== origin.actorId || team.workspaceContext.epoch !== origin.epoch || projectRootKey(state.snapshot?.meta.root) !== projectRootKey(origin.projectRoot) || state.page !== 'hifox' || (state.openTaskDir && state.openTaskDir !== origin.taskDir)) {
+      useHifox.setState({ workReturn: null })
+      return
+    }
+    const closed = previous.openTaskDir === origin.taskDir && state.openTaskDir === null
+    const returned = previous.taskExpandOrigin?.taskDir === origin.taskDir && state.taskExpandOrigin === null
+    if (!closed && !returned) return
+    // returnFromWorkspace performs two store writes; restore after its complete intent.
+    queueMicrotask(() => {
+      const latest = useApp.getState()
+      const current = useHifox.getState()
+      if (current.workReturn !== origin || current.workspaceContext.key !== origin.workspaceKey || current.workspaceContext.actorId !== origin.actorId || current.workspaceContext.epoch !== origin.epoch || latest.page !== 'hifox' || projectRootKey(latest.snapshot?.meta.root) !== projectRootKey(origin.projectRoot)) return
+      if (latest.taskExpandOrigin || (latest.openTaskDir && latest.openTaskDir !== origin.taskDir)) return
+      useHifox.setState({ workReturn: null })
+      if (latest.openTaskDir) latest.showTask(null)
+      if (current.snapshot?.tasks.some((task) => task.id === origin.taskId && task.createdAt === origin.taskCreatedAt)) current.openTask(origin.taskId)
+    })
+  }), [])
+
   // Restore presentation once at startup; explicit task/document links win.
   // Opening a different project keeps the main store's existing reset behavior.
   const navigationRestored = useRef(false)
@@ -209,8 +243,9 @@ export function MyApp(): JSX.Element {
     const snapshot = app.snapshot
     if (navigationRestored.current || !snapshot) return
     navigationRestored.current = true
+    if (projectRootKey(useHifox.getState().localWorkOpening?.projectRoot) === projectRootKey(snapshot.meta.root)) return
     const saved = loadNavigationLocation(snapshot.meta.root, snapshot.meta.developer)
-    if (saved && app.page === 'dashboard' && !app.openTaskDir && !app.pendingFocusDir && !app.specDocumentTarget && !app.taskExpandOrigin) {
+    if (saved && (app.page === 'dashboard' || app.page === 'tasks' && app.navigationRevision === 0) && !app.openTaskDir && !app.pendingFocusDir && !app.specDocumentTarget && !app.taskExpandOrigin) {
       const { page: savedPage, ...views } = saved
       useMy.setState({ ...views, groupBy: views.workItemsView === 'iterations' ? 'cycle' : useMy.getState().itemsGroupBy })
       if (savedPage !== app.page) app.setPage(savedPage)
@@ -225,7 +260,7 @@ export function MyApp(): JSX.Element {
     }
     const offApp = useApp.subscribe((state, previous) => {
       if (state.page !== previous.page) {
-        useMy.getState().rememberModulePage(state.page)
+        rememberModulePage(state.page)
         if (state.page !== 'acp') {
           useMy.getState().requestAgentView(null)
           useMy.getState().setAgentSessionTarget(null)
@@ -236,7 +271,7 @@ export function MyApp(): JSX.Element {
     const offMy = useMy.subscribe((state, previous) => {
       if (state.modulePages !== previous.modulePages || state.workItemsView !== previous.workItemsView || state.workItemsTab !== previous.workItemsTab || state.teamView !== previous.teamView || state.toolView !== previous.toolView || state.knowledgeView !== previous.knowledgeView || state.settingsView !== previous.settingsView) persist()
     })
-    useMy.getState().rememberModulePage(useApp.getState().page)
+    rememberModulePage(useApp.getState().page)
     persist()
     return () => { offApp(); offMy() }
   }, [])
@@ -274,7 +309,13 @@ export function MyApp(): JSX.Element {
     const onKey = (e: KeyboardEvent): void => {
       if (e.isComposing || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'c' || e.key === 'C') {
-        setCreateIssueOpen(true)
+        if (escLayerCount() > 0) return
+        const app = useApp.getState()
+        if (app.page === 'hifox' || app.page === 'tasks' && app.personalTaskSource === 'team' && !app.openTaskDir) {
+          const team = useHifox.getState()
+          if (team.currentSpaceId) team.setCreateTaskOpen(true)
+          else { team.setModule('spaces'); if (app.page === 'tasks') app.setPage('hifox') }
+        } else if (app.page !== 'creations' && app.snapshot) setCreateIssueOpen(true)
       } else if (e.key === '/') {
         e.preventDefault()
         setPaletteOpen(true)

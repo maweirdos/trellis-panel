@@ -29,11 +29,14 @@ try {
     `export * from '${absolute('src/renderer/src/my/navigation.ts')}'`,
     `export * from '${absolute('src/renderer/src/my/project-preferences.ts')}'`,
     `export { useMy } from '${absolute('src/renderer/src/my/store.ts')}'`,
-    `export { useApp } from '${absolute('src/renderer/src/store/index.ts')}'`
+    `export { useApp } from '${absolute('src/renderer/src/store/index.ts')}'`,
+    `export { matchesPersonalTaskRelation } from '${absolute('src/renderer/src/hifox/TaskWorkspace.tsx')}'`,
+    `export { COLLABORATION_MODULES } from '${absolute('src/renderer/src/hifox/navigation.ts')}'`
   ].join('\n'))
   execFileSync(process.execPath, [
     join('node_modules', 'esbuild', 'bin', 'esbuild'), entry,
     '--bundle', '--platform=node', '--format=esm',
+    '--tsconfig=tsconfig.web.json',
     '--banner:js=import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
     `--outfile=${bundle}`
   ], { stdio: 'inherit' })
@@ -65,17 +68,41 @@ try {
   const pages = pageType.type.types.map((node) => node.literal.text).sort()
   assert.deepEqual(Object.keys(m.PAGE_NAVIGATION).sort(), pages)
   const owners = {
-    dashboard: 'home', acp: 'agents', channels: 'agents', chat: 'agents',
-    tasks: 'tasks', inbox: 'tasks', jira: 'tasks', archive: 'tasks', devtools: 'tasks', architecture: 'tasks', studio: 'tasks',
-    team: 'team', analytics: 'team', knowledge: 'knowledge', spec: 'knowledge',
+    dashboard: 'home', creations: 'home', acp: 'agents', channels: 'agents', chat: 'agents',
+    tasks: 'home', inbox: 'home', jira: 'home', archive: 'home', devtools: 'home', architecture: 'home', studio: 'home',
+    team: 'team', hifox: 'team', analytics: 'team', knowledge: 'knowledge', spec: 'knowledge',
     settings: 'settings', models: 'settings', integrations: 'settings', gateway: 'settings'
   }
   assert.deepEqual(Object.keys(owners).sort(), pages)
   for (const [page, owner] of Object.entries(owners)) assert.equal(m.activeModule(page), owner, `${page} belongs to one stable module`)
-  assert.deepEqual(m.PRIMARY_NAVIGATION.map((item) => item.label), ['首页', '智能体', '任务', '团队', '知识'])
-  assert.equal(new Set(m.PRIMARY_NAVIGATION.map((item) => item.id)).size, 5)
-  for (const page of ['tasks', 'jira', 'team', 'analytics', 'settings']) assert.equal(m.hasShellContext(page), true)
-  for (const page of ['dashboard', 'knowledge', 'spec', 'acp', 'channels', 'chat']) assert.equal(m.hasShellContext(page), false, `${page} has no duplicate context browser`)
+  assert.deepEqual(m.PRIMARY_NAVIGATION.map((item) => item.label), ['个人', '团队', '对话', '知识'])
+  assert.equal(m.PRIMARY_NAVIGATION.find((item) => item.id === 'home').page, 'tasks')
+  assert.equal(m.PRIMARY_NAVIGATION.find((item) => item.id === 'team').page, 'hifox', 'team opens the collaboration workspace')
+  assert.equal(m.PAGE_NAVIGATION.hifox.scope, 'local', 'local collaboration does not claim project binding or remote synchronization')
+  assert.equal(new Set(m.PRIMARY_NAVIGATION.map((item) => item.id)).size, 4)
+  for (const page of ['tasks', 'dashboard', 'creations', 'jira', 'team', 'analytics', 'settings']) assert.equal(m.hasShellContext(page), true)
+  for (const page of ['knowledge', 'spec', 'acp', 'channels', 'chat', 'hifox']) assert.equal(m.hasShellContext(page), false, `${page} has no duplicate context browser`)
+  assert.equal(m.PAGE_NAVIGATION.creations.scope, 'local', 'personal creations need no code snapshot')
+  assert.equal(m.PAGE_NAVIGATION.tasks.scope, 'local', 'personal team tasks need no code snapshot')
+  assert.equal(m.PAGE_NAVIGATION.tasks.domain, 'tasks', 'legacy navigation preferences retain their validated namespace')
+  const teamCreations = m.COLLABORATION_MODULES.find((item) => item.id === 'creations')
+  assert.equal(teamCreations.scope, 'space')
+  assert.equal(teamCreations.parent, undefined, 'creations are a same-space peer of tasks')
+
+  const relationSnapshot = { crews: [{ id: 'crew', spaceId: 'space', captain: { kind: 'member', id: 'captain' }, members: [{ kind: 'member', id: 'person' }, { kind: 'agent', id: 'agent' }] }], comments: [] }
+  const relationTask = { id: 'TASK-1', spaceId: 'space', creatorId: 'creator', assigneeIds: ['assignee'], followerIds: ['follower'], statusId: 'done', iterationIds: ['version'], executor: { kind: 'crew', id: 'crew' } }
+  const beforeRelation = structuredClone({ relationSnapshot, relationTask })
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, relationTask, 'assignee', 'assigned'), true, 'completed assignments remain discoverable')
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, { ...relationTask, workflow: { handlerId: 'handler', history: [] } }, 'handler', 'assigned'), true, 'assigned follows the current handler')
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, { ...relationTask, workflow: { handlerId: 'handler', history: [] } }, 'assignee', 'assigned'), false, 'historical assignment cannot replace a current handler')
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, relationTask, 'creator', 'created'), true)
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, relationTask, 'follower', 'followed'), true)
+  for (const person of ['person', 'captain']) assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, relationTask, person, 'involved'), true, 'squad people participate')
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, relationTask, 'agent', 'involved'), false, 'an Agent reference is not a person')
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, { ...relationTask, spaceId: 'foreign' }, 'person', 'involved'), false, 'squad participation cannot cross spaces')
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, { ...relationTask, workflow: { handlerId: 'handler', history: [{ actorId: 'past-person' }] } }, 'past-person', 'involved'), true, 'past workflow participants retain completed work')
+  assert.equal(m.matchesPersonalTaskRelation(relationSnapshot, relationTask, null, 'assigned'), false)
+  assert.deepEqual({ relationSnapshot, relationTask }, beforeRelation, 'relation projection is read-only')
   assert.equal(m.PAGE_NAVIGATION.chat.scope, 'local', 'moving API Q&A into agents does not change its cross-project history')
   assert.equal(m.PAGE_NAVIGATION.models.scope, 'application')
   assert.equal(m.PAGE_NAVIGATION.gateway.scope, 'mixed')
@@ -117,7 +144,7 @@ try {
   m.useMy.getState().setGroupBy('priority')
   m.useMy.getState().setWorkItemsView('iterations')
   assert.equal(m.useMy.getState().groupBy, 'cycle')
-  assert.equal(m.activeModule('tasks'), 'tasks', 'iteration is a task view, not another primary module')
+  assert.equal(m.activeModule('tasks'), 'home', 'local versions remain in the personal module')
   m.useMy.getState().setWorkItemsView('items')
   assert.equal(m.useMy.getState().groupBy, 'priority', 'leaving iterations restores ordinary work grouping')
   m.useMy.getState().setGroupBy('cycle')
@@ -227,7 +254,7 @@ try {
   historyReads.shift().resolve({ recentProjects: ['D:/FastCurrent'], theme: 'dark' })
   await flush()
   assert.deepEqual(m.useApp.getState().settings.recentProjects, ['D:/FastCurrent'])
-  console.log(`Navigation smoke passed: ${pages.length} routes, five primary modules, scope isolation, initial focus and project transitions.`)
+  console.log(`Navigation smoke passed: ${pages.length} routes, four primary modules, personal task relations, scope isolation, initial focus and project transitions.`)
 } finally {
   rmSync(temporary, { recursive: true, force: true })
 }

@@ -15,6 +15,10 @@
 
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
+  creations: {
+    list: 'creations:list', get: 'creations:get', command: 'creations:command', recover: 'creations:recover',
+    planCandidate: 'creations:planCandidate', generateCandidate: 'creations:generateCandidate', cancelCandidate: 'creations:cancelCandidate'
+  },
   taskConversations: {
     list: 'taskConversations:list',
     discover: 'taskConversations:discover',
@@ -63,6 +67,11 @@ export const ipcInvoke = {
     delete: 'todo:delete'
   },
   hifox: {
+    workspaceStatus: 'hifox:workspaceStatus',
+    workspacePending: 'hifox:workspacePending',
+    discardWorkspaceCommand: 'hifox:discardWorkspaceCommand',
+    selectWorkspace: 'hifox:selectWorkspace',
+    retryWorkspaceCommand: 'hifox:retryWorkspaceCommand',
     snapshot: 'hifox:snapshot',
     resetDemo: 'hifox:resetDemo',
     triageQueue: 'hifox:triageQueue',
@@ -72,6 +81,7 @@ export const ipcInvoke = {
     updateMember: 'hifox:updateMember',
     removeMember: 'hifox:removeMember',
     setSpaceMembers: 'hifox:setSpaceMembers',
+    joinSpace: 'hifox:joinSpace',
     createTaskType: 'hifox:createTaskType',
     updateTaskType: 'hifox:updateTaskType',
     removeTaskType: 'hifox:removeTaskType',
@@ -80,6 +90,8 @@ export const ipcInvoke = {
     createLabel: 'hifox:createLabel',
     archiveLabel: 'hifox:archiveLabel',
     createTask: 'hifox:createTask',
+    transitionTask: 'hifox:transitionTask',
+    recordVersionDelivery: 'hifox:recordVersionDelivery',
     updateTask: 'hifox:updateTask',
     removeTask: 'hifox:removeTask',
     addRelation: 'hifox:addRelation',
@@ -108,6 +120,10 @@ export const ipcInvoke = {
     removeSkill: 'hifox:removeSkill',
     saveCrew: 'hifox:saveCrew',
     removeCrew: 'hifox:removeCrew'
+  },
+  hifoxWork: {
+    status: 'hifox-work:status',
+    prepare: 'hifox-work:prepare'
   },
   fs: {
     readText: 'fs:readText',
@@ -439,6 +455,8 @@ export const ipcEvent = {
   flowDone: 'flow:done',
   workflowOutput: 'workflow:output',
   teamDesktopChanged: 'teamDesktop:changed',
+  hifoxWorkspaceChanged: 'hifox:workspaceChanged',
+  creationsChanged: 'creations:changed',
   workflowDone: 'workflow:done',
   /** 工具调用权限卡（请求决策）与 steer 注入 */
   chatPermission: 'chat:permission',

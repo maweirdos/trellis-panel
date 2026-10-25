@@ -258,7 +258,7 @@ releaseAcp();await wait(()=>document.querySelector('[data-acp-source-owner]')?.h
 run().catch(error=>{console.error(error.stack);window.__failed=String(error.stack);window.__done=true});`)
 
 try {
-  await build({entryPoints:[entry],outfile:join(directory,'renderer.js'),bundle:true,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env.NODE_ENV':'"development"'},nodePaths:[absolute('node_modules')],plugins:[{name:'isolated-host',setup(builder){
+  await build({entryPoints:[entry],outfile:join(directory,'renderer.js'),bundle:true,format:'iife',platform:'browser',jsx:'automatic',tsconfig:'tsconfig.web.json',loader:{'.svg':'dataurl','.png':'dataurl'},define:{'process.env.NODE_ENV':'"development"'},nodePaths:[absolute('node_modules')],plugins:[{name:'isolated-host',setup(builder){
     builder.onResolve({filter:/.*/},args=>{
       const path=absolute(resolve(dirname(args.importer||entry),args.path))
       if(path===absolute('src/renderer/src/api'))return{path:'fixture-api',namespace:'fixture'}

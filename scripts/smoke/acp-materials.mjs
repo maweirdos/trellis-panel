@@ -39,12 +39,76 @@ try {
   } }
   await build({ stdin: { contents: `export * from './src/main/services/acp';
     export {readDocument,computeRevision} from './src/main/services/documents/controller';
-    export {verifyMaterialChange,eventTaskMaterial} from './src/main/services/acp/materials';
+    export {verifyMaterialChange,eventTaskMaterial,preparePromptMaterials} from './src/main/services/acp/materials';
+    export {utf8ByteLength,clipUtf8} from './src/shared/material-budget';
     export {openProjectAt,closeProjectAt,routeMaterialNotice,getProjectGeneration} from './src/main/state';
     export {watchReaderDocument,onReaderDocumentChanged} from './src/main/services/documents/change-bridge';`, loader: 'ts', resolveDir: process.cwd() },
     bundle: true, format: 'esm', platform: 'node', banner: { js: "import {createRequire as smokeRequire} from 'node:module';import {dirname as smokeDirname} from 'node:path';import {fileURLToPath as smokeFilePath} from 'node:url';const require=smokeRequire(import.meta.url);const __dirname=smokeDirname(smokeFilePath(import.meta.url));" },
     alias: { electron: resolve('scripts/smoke/mock-electron.mjs') }, plugins: [watcherMock], outfile: join(temporary, 'materials.mjs') })
   service = await import(pathToFileURL(join(temporary, 'materials.mjs')).href)
+  const budgetRoot = join(temporary, 'budget project'), budgetPrefix = '.trellis/tasks/budget/'
+  const budgetFiles = new Map()
+  const putBudgetFile = (path, body) => { mkdirSync(join(budgetRoot, path, '..'), { recursive: true }); writeFileSync(join(budgetRoot, path), body); budgetFiles.set(path, Buffer.from(body)) }
+  const budgetReference = (path) => ({ projectRoot: budgetRoot, taskDir: 'budget', relativePath: path, displayedRevision: service.computeRevision(budgetFiles.get(path)), targetSessionId: 'budget' })
+  const enclosingLabel = readFileSync(resolve('src/main/services/acp.ts'), 'utf8').match(/\$\{instruction\}\\n\\n(\[[^\r\n]+?\])\$\{prepared\.text\}/)?.[1]
+  assert.ok(enclosingLabel, 'Check the actual facade framing as well as file headers/notices')
+  const framing = '\n\n' + enclosingLabel
+  const principalPaths = ['prd.md', 'design.md', 'implement.md'].map((name) => budgetPrefix + name)
+  putBudgetFile(principalPaths[0], 'PRD_BODY_MARKER' + '中'.repeat(20000))
+  putBudgetFile(principalPaths[1], '<html><img src="data:image/png;base64,IMAGE_BODY_MARKER">HTML_BODY_MARKER</html>')
+  putBudgetFile(principalPaths[2], '{"annotations":"JSON_BODY_MARKER","replay":"REPLAY_BODY_MARKER"}')
+  const index = await service.preparePromptMaterials(budgetRoot, 'budget', [])
+  assert.ok(Buffer.byteLength(framing + index.text) <= 8192)
+  assert.deepEqual(index.files, [])
+  for (const path of principalPaths) assert.ok(index.text.includes(`[Read on demand: ${path}]`))
+  for (const marker of ['PRD_BODY_MARKER', 'HTML_BODY_MARKER', 'IMAGE_BODY_MARKER', 'JSON_BODY_MARKER', 'REPLAY_BODY_MARKER']) assert.ok(!index.text.includes(marker))
+  const verifyBudgetSources = (prepared) => {
+    assert.ok(Buffer.byteLength(framing + prepared.text) <= 24576)
+    for (const source of prepared.sources) {
+      const bytes = budgetFiles.get(source.relativePath), original = bytes.toString('utf8').replace(/^\uFEFF/, '')
+      assert.equal(source.sourceRevision, service.computeRevision(bytes), 'Whole-file identity belongs to its exact path')
+      assert.equal(source.sourceBytes, bytes.length)
+      assert.deepEqual(source.extent, { start: 0, end: source.includedChars, unit: 'utf16-code-units' })
+      const prefix = original.slice(0, source.includedChars)
+      assert.equal(source.includedBytes, Buffer.byteLength(prefix))
+      assert.equal(source.includedRevision, source.included ? service.computeRevision(Buffer.from(prefix)) : null)
+      if (source.included) {
+        const header = `\n\n--- ${source.relativePath} ---\n`, offset = prepared.text.indexOf(header)
+        assert.ok(offset >= 0)
+        assert.equal(prepared.text.slice(offset + header.length, offset + header.length + source.includedChars), prefix, 'Rendered prefix cannot acquire another file provenance')
+        assert.ok(!/[\uD800-\uDBFF]$/.test(prefix))
+      } else assert.equal(source.includedChars, 0)
+      if (!source.included || source.truncated) assert.ok(prepared.text.includes(`[Read on demand: ${source.relativePath}]`) || prepared.text.includes(`[Truncated; read: ${source.relativePath}]`))
+    }
+    assert.deepEqual(prepared.files, prepared.sources.filter((source) => source.included).map((source) => source.relativePath))
+  }
+  verifyBudgetSources(index)
+  for (const body of ['\uFEFF' + 'ASCII'.repeat(20000), '材料'.repeat(20000), '🙂🦊'.repeat(20000)]) {
+    putBudgetFile(principalPaths[0], body)
+    const prepared = await service.preparePromptMaterials(budgetRoot, 'budget', [budgetReference(principalPaths[0]), budgetReference(principalPaths[0])])
+    verifyBudgetSources(prepared)
+    const implicit = principalPaths.slice(1).map((path) => `\n[Read on demand: ${path}]\n`).join('')
+    assert.ok(prepared.text.startsWith(implicit))
+    assert.ok(Buffer.byteLength(framing + prepared.text.slice(implicit.length)) <= 16384)
+    assert.equal(prepared.sources.filter((source) => source.relativePath === principalPaths[0]).length, 1)
+    assert.equal(prepared.sources.find((source) => source.relativePath === principalPaths[0]).truncated, true)
+    assert.equal(service.utf8ByteLength(body), Buffer.byteLength(body))
+    for (const limit of [0, 1, 2, 3, 4, 7, 8192]) {
+      const prefix = service.clipUtf8(body, limit)
+      assert.ok(body.startsWith(prefix)); assert.ok(Buffer.byteLength(prefix) <= limit); assert.ok(!/[\uD800-\uDBFF]$/.test(prefix))
+    }
+  }
+  const references = [...principalPaths, ...Array.from({ length: 5 }, (_, number) => `${budgetPrefix}source-${number}.md`)]
+  references.forEach((path, number) => putBudgetFile(path, `FILE_${number}\n` + '中🙂A'.repeat(20000)))
+  const packed = await service.preparePromptMaterials(budgetRoot, 'budget', references.map(budgetReference))
+  verifyBudgetSources(packed)
+  assert.ok(Buffer.byteLength(framing + packed.text) <= 16384)
+  assert.equal(packed.sources.length, 8); assert.ok(packed.sources.some((source) => source.status === 'omitted'))
+  const deep = Array.from({ length: 9 }, () => '中'.repeat(80)).join('/')
+  const longPaths = Array.from({ length: 8 }, (_, number) => `${budgetPrefix}${deep}/source-${number}.md`)
+  longPaths.forEach((path) => putBudgetFile(path, 'body'))
+  await assert.rejects(service.preparePromptMaterials(budgetRoot, 'budget', longPaths.map(budgetReference)), /路径提示超过输入预算/)
+  console.log('PASS implicit indexes, UTF-8 ASCII/CJK/emoji budgets, actual framing, source extents/digests and exact-path overflow')
   assert.equal(service.openProjectAt(root).ok, true)
   assert.equal(service.eventTaskMaterial(root, join(root, '.trellis', 'tasks', 'task-a', 'task.json')).taskDir, 'task-a')
   assert.equal(service.eventTaskMaterial(root, join(root, '.trellis', 'tasks', 'archive', '2026-10', 'task-a', 'prd.md')), null)

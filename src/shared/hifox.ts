@@ -1,11 +1,25 @@
+import type { HifoxWorkspaceContext } from './hifox-remote'
+import type { z } from 'zod'
+import type {
+  hifoxTaskWorkKindSchema, hifoxTaskStageSchema, hifoxTaskActionSchema,
+  hifoxTaskWorkflowArtifactSchema, hifoxTaskWorkflowEventSchema, hifoxTaskWorkflowSchema,
+  hifoxTransitionTaskInputSchema, hifoxVersionDeliverySchema, hifoxRecordVersionDeliveryInputSchema
+} from './hifox-schema'
+
+export type HifoxTaskWorkKind = z.infer<typeof hifoxTaskWorkKindSchema>
+export type HifoxTaskStage = z.infer<typeof hifoxTaskStageSchema>
+export type HifoxTaskAction = z.infer<typeof hifoxTaskActionSchema>
+export type HifoxTaskWorkflowArtifact = z.infer<typeof hifoxTaskWorkflowArtifactSchema>
+export type HifoxTaskWorkflowEvent = z.infer<typeof hifoxTaskWorkflowEventSchema>
+export type HifoxTaskWorkflow = z.infer<typeof hifoxTaskWorkflowSchema>
+export type HifoxTransitionTaskInput = z.infer<typeof hifoxTransitionTaskInputSchema>
+export type HifoxVersionDelivery = z.infer<typeof hifoxVersionDeliverySchema>
+export type HifoxRecordVersionDeliveryInput = z.infer<typeof hifoxRecordVersionDeliveryInputSchema>
+
 /**
- * HiFox 协作域共享类型 —— 主进程服务与渲染层的唯一契约。
- *
- * 对应需求文档：docs/prd-hifox/（第1~4、6章 + 第2章 Agent 配置层）。
- * 明确排除（Runtime 与集成进行中，另行接入）：
- *  - 第2章的电脑/Runtime 连接、Agent 实际执行、与 Agent 对话（执行依赖 Runtime）；
- *  - 第5章 导入与集成、第7章 CLI（Runtime/电脑连接工具）。
- * 任务指派给 Agent 后只推进到「排队中（等待 Runtime）」，执行边界由 runtime 模块接入后打通。
+ * 本机与共享协作域契约；桌面、浏览器和服务端复用同一套领域规则。
+ * 参考 docs/prd-hifox 的任务、空间与 Agent 配置约束。
+ * Agent 指派只记录排队或等待运行环境，不代表已启动实际执行。
  */
 
 /* ---------------- 基础 ---------------- */
@@ -16,7 +30,7 @@ export type HifoxRole = 'owner' | 'admin' | 'member'
 
 export type HifoxPriority = 'urgent' | 'high' | 'medium' | 'low' | 'none'
 
-/** 状态类别：与 PRD 3.2/4.4 的七类状态一一对应；Agent 仅在 todo 及之后的类别下执行 */
+/** 状态类别：与 PRD 3.2/4.4 的七类状态一一对应；Agent 仅在 todo / in_progress 等待 Runtime 执行 */
 export type HifoxStatusCategory =
   | 'backlog'
   | 'todo'
@@ -51,6 +65,10 @@ export interface HifoxSpace {
   /** 任务 ID 前缀，如 ENG */
   key: string
   description?: string
+  /** Missing visibility preserves existing organization-public spaces. */
+  visibility?: 'public' | 'private'
+  ownerId?: HifoxID
+  archived?: boolean
   /** 多人处理人开关（PRD 3.2：开启后一条任务可有多名人员处理人） */
   multiAssignee: boolean
   memberIds: HifoxID[]
@@ -126,6 +144,10 @@ export interface HifoxTask {
   relations: HifoxTaskRelation[]
   followerIds: HifoxID[]
   dispatch?: HifoxDispatchState
+  triagePending?: boolean
+  workKind?: HifoxTaskWorkKind
+  acceptanceCriteria?: string[]
+  workflow?: HifoxTaskWorkflow
   createdAt: string
   updatedAt: string
   completedAt?: string
@@ -173,10 +195,12 @@ export interface HifoxIteration {
   endDate: string
   status: 'pending' | 'active' | 'completed'
   taskIds: HifoxID[]
+  predecessorId?: HifoxID
 }
 
 export interface HifoxViewFilter {
   keyword?: string
+  statusIds?: HifoxID[]
   typeIds?: HifoxID[]
   labelIds?: HifoxID[]
   assigneeIds?: HifoxID[]
@@ -243,7 +267,9 @@ export interface HifoxAutomation {
   id: HifoxID
   spaceId: HifoxID
   name: string
+  creatorId?: HifoxID
   enabled: boolean
+  lastScheduledDate?: string
   trigger: HifoxAutomationTrigger
   target: HifoxAutomationTarget
   instruction?: string
@@ -273,8 +299,11 @@ export interface HifoxInboxItem {
   body?: string
   /** 同一任务的通知在 UI 上聚合为一行（任务级提醒） */
   taskId?: HifoxID
+  /** Space scope also applies to automation reminders without a task. */
+  spaceId?: HifoxID
   at: string
   read: boolean
+  recipientIds?: HifoxID[]
   /** 稍后处理：到时回对应分区；期间从活跃列表隐藏 */
   snoozedUntil?: string
   /** 已清理：可恢复，清理不删除任务/评论/活动 */
@@ -301,6 +330,9 @@ export interface HifoxAgent {
   runtimeKind: HifoxRuntimeKind
   workingDirectory: HifoxWorkingDirectoryMode
   enabled: boolean
+  archived?: boolean
+  /** 独占使用该 Agent 的小队；由小队成员配置维护 */
+  exclusiveCrewId?: HifoxID
   createdAt: string
 }
 
@@ -325,7 +357,11 @@ export interface HifoxCrew {
   spaceId: HifoxID
   name: string
   description?: string
-  captain: { kind: 'agent'; id: HifoxID; name: string }
+  instructions?: string
+  /** 本地名册中的负责人，不代表认证或权限授权 */
+  ownerId?: HifoxID
+  archived?: boolean
+  captain: HifoxCrewMemberRef
   members: HifoxCrewMemberRef[]
   createdAt: string
 }
@@ -343,6 +379,7 @@ export interface HifoxSnapshot {
   activities: HifoxActivity[]
   projects: HifoxProject[]
   iterations: HifoxIteration[]
+  versionDeliveries?: HifoxVersionDelivery[]
   views: HifoxView[]
   triageDecisions: HifoxTriageDecision[]
   automations: HifoxAutomation[]
@@ -354,6 +391,7 @@ export interface HifoxSnapshot {
 
 export interface HifoxTaskInput {
   spaceId: HifoxID
+  creatorId?: HifoxID
   title: string
   description?: string
   typeId?: HifoxID
@@ -365,9 +403,14 @@ export interface HifoxTaskInput {
   projectId?: HifoxID | null
   iterationIds?: HifoxID[]
   parentTaskId?: HifoxID | null
+  triagePending?: boolean
+  workKind?: HifoxTaskWorkKind
+  acceptanceCriteria?: string[]
 }
 
 export interface HifoxTaskPatchInput {
+  workKind?: HifoxTaskWorkKind
+  acceptanceCriteria?: string[]
   title?: string
   description?: string
   typeId?: HifoxID | null
@@ -379,6 +422,7 @@ export interface HifoxTaskPatchInput {
   projectId?: HifoxID | null
   iterationIds?: HifoxID[]
   followerToggle?: HifoxID
+  parentTaskId?: HifoxID | null
 }
 
 export interface HifoxAgentInput {
@@ -391,6 +435,21 @@ export interface HifoxAgentInput {
   runtimeKind?: HifoxRuntimeKind
   workingDirectory?: HifoxWorkingDirectoryMode
   enabled?: boolean
+  archived?: boolean
+}
+
+export interface HifoxCrewInput {
+  id?: HifoxID
+  spaceId: HifoxID
+  name: string
+  description?: string
+  instructions?: string
+  ownerId?: HifoxID | null
+  captainAgentId?: HifoxID
+  captainMemberId?: HifoxID
+  memberRefs: Array<{ kind: 'agent' | 'member'; id: HifoxID }>
+  exclusiveAgentIds?: HifoxID[]
+  archived?: boolean
 }
 
 export interface HifoxAutomationInput {
@@ -405,72 +464,87 @@ export interface HifoxAutomationInput {
 
 /* ---------------- 渲染层 API 契约（preload satisfies） ---------------- */
 
+export interface HifoxFailure { ok: false; error: string; context?: HifoxWorkspaceContext; code?: string; outcomeUnknown?: boolean; pending?: boolean }
+export interface HifoxPendingCommand { commandId: string; operation: string; state: string; outcomeUnknown: boolean; errorCode: string | null; createdAt: number }
+
 export interface HifoxApi {
-  snapshot: () => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  workspacePending: () => Promise<{ ok: true; data: HifoxPendingCommand[] } | HifoxFailure>
+  discardWorkspaceCommand: (input: { commandId: string }) => Promise<{ ok: true; context: HifoxWorkspaceContext } | HifoxFailure>
+  workspaceStatus: () => Promise<{ ok: true; context: HifoxWorkspaceContext } | HifoxFailure>
+  selectWorkspace: (input: { connectionId: string | null }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  retryWorkspaceCommand: (input: { commandId: string }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  onWorkspaceChanged: (callback: (context: HifoxWorkspaceContext) => void) => () => void
+
+  snapshot: () => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
   /** 分拣台待办队列（含优先级建议） */
-  triageQueue: (spaceId: HifoxID) => Promise<{ ok: true; data: Array<{ task: HifoxTask; suggested: 'urgent' | 'high' | 'medium' | 'low'; reason: string }> } | { ok: false; error: string }>
+  triageQueue: (spaceId: HifoxID) => Promise<{ ok: true; data: Array<{ task: HifoxTask; suggested: 'urgent' | 'high' | 'medium' | 'low'; reason: string }> } | HifoxFailure>
 
-  createSpace: (input: { name: string; key: string; description?: string }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  updateSpace: (input: { id: HifoxID; name?: string; description?: string; multiAssignee?: boolean }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  createSpace: (input: { name: string; key: string; description?: string; visibility?: 'public' | 'private' }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  updateSpace: (input: { id: HifoxID; name?: string; description?: string; multiAssignee?: boolean; visibility?: 'public' | 'private'; archived?: boolean }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  joinSpace: (input: { spaceId: HifoxID; memberId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  inviteMember: (input: { name: string; email?: string; title?: string; role?: HifoxRole; spaceId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  updateMember: (input: { id: HifoxID; name?: string; title?: string; role?: HifoxRole }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeMember: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  setSpaceMembers: (input: { spaceId: HifoxID; memberIds: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  inviteMember: (input: { name: string; email?: string; title?: string; role?: HifoxRole; spaceId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  updateMember: (input: { id: HifoxID; name?: string; email?: string; title?: string; role?: HifoxRole }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeMember: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  setSpaceMembers: (input: { spaceId: HifoxID; memberIds: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  createTaskType: (input: { spaceId: HifoxID; name: string; requiredHints?: string[]; statusIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  updateTaskType: (input: { id: HifoxID; name?: string; statusIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeTaskType: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  createTaskStatus: (input: { spaceId: HifoxID; name: string; category: HifoxStatusCategory }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeTaskStatus: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  createLabel: (input: { spaceId?: HifoxID; name: string; color?: string }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  archiveLabel: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  createTaskType: (input: { spaceId: HifoxID; name: string; requiredHints?: string[]; statusIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  updateTaskType: (input: { id: HifoxID; name?: string; statusIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeTaskType: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  createTaskStatus: (input: { spaceId: HifoxID; name: string; category: HifoxStatusCategory }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeTaskStatus: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  createLabel: (input: { spaceId?: HifoxID; name: string; color?: string }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  archiveLabel: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  createTask: (input: HifoxTaskInput) => Promise<{ ok: true; data: HifoxSnapshot; taskId: HifoxID } | { ok: false; error: string }>
-  updateTask: (input: { id: HifoxID; patch: HifoxTaskPatchInput }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeTask: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  addRelation: (input: { taskId: HifoxID; relation: HifoxTaskRelation }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeRelation: (input: { taskId: HifoxID; targetTaskId: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  createTask: (input: HifoxTaskInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext; taskId: HifoxID } | HifoxFailure>
+  updateTask: (input: { id: HifoxID; patch: HifoxTaskPatchInput }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  transitionTask: (input: HifoxTransitionTaskInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeTask: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  addRelation: (input: { taskId: HifoxID; relation: HifoxTaskRelation }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeRelation: (input: { taskId: HifoxID; targetTaskId: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  addComment: (input: { taskId: HifoxID; body: string; authorId: string }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  resolveComment: (input: { id: HifoxID; resolved: boolean }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  addComment: (input: { taskId: HifoxID; body: string; authorId: string; parentId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  resolveComment: (input: { id: HifoxID; resolved: boolean }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  createProject: (input: { spaceId: HifoxID; name: string; goal?: string; ownerIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  updateProject: (input: { id: HifoxID; name?: string; goal?: string; status?: HifoxProject['status'] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  createProject: (input: { spaceId: HifoxID; name: string; goal?: string; ownerIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  updateProject: (input: { id: HifoxID; name?: string; goal?: string; ownerIds?: HifoxID[]; status?: HifoxProject['status'] }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  createIteration: (input: { spaceId: HifoxID; name: string; goal?: string; startDate: string; endDate: string; taskIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  updateIteration: (input: { id: HifoxID; name?: string; goal?: string; status?: HifoxIteration['status']; taskIds?: HifoxID[] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  /** 结束迭代：未完成任务顺延（PRD 3.6） */
-  completeIteration: (input: { id: HifoxID; carryOver: 'backlog' | 'next' }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  createIteration: (input: { spaceId: HifoxID; name: string; goal?: string; startDate: string; endDate: string; taskIds?: HifoxID[]; predecessorId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  updateIteration: (input: { id: HifoxID; name?: string; goal?: string; startDate?: string; endDate?: string; status?: HifoxIteration['status']; taskIds?: HifoxID[]; predecessorId?: HifoxID | null }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  /** Reject unfinished scope; carryOver is accepted for old callers and never moves work. */
+  completeIteration: (input: { id: HifoxID; carryOver?: 'backlog' | 'next' }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  recordVersionDelivery: (input: HifoxRecordVersionDeliveryInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  saveView: (input: { spaceId: HifoxID; name: string; filter: HifoxViewFilter; groupBy: HifoxView['groupBy'] }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeView: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  saveView: (input: { id?: HifoxID; spaceId: HifoxID; name: string; filter: HifoxViewFilter; groupBy: HifoxView['groupBy'] }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeView: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  triage: (input: Omit<HifoxTriageDecision, 'at'> & { assigneeIds?: HifoxID[]; iterationId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  triage: (input: Omit<HifoxTriageDecision, 'at'> & { assigneeIds?: HifoxID[]; iterationId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  saveAutomation: (input: HifoxAutomationInput & { id?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  toggleAutomation: (input: { id: HifoxID; enabled: boolean }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeAutomation: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  saveAutomation: (input: HifoxAutomationInput & { id?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  toggleAutomation: (input: { id: HifoxID; enabled: boolean }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeAutomation: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   /** 手动触发一次（用于验证规则；Agent 目标只登记等待 Runtime） */
-  runAutomation: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  runAutomation: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  markInboxRead: (input: { ids?: HifoxID[]; all?: boolean; section?: HifoxInboxSection }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  markInboxRead: (input: { ids?: HifoxID[]; all?: boolean; section?: HifoxInboxSection }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   /** 稍后处理（REA 实测选项：20 分钟 / 2 小时 / 明天 / 下周） */
-  snoozeInbox: (input: { id: HifoxID; option: '20m' | '2h' | 'tomorrow' | 'nextweek' }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  snoozeInbox: (input: { id: HifoxID; option: '20m' | '2h' | 'tomorrow' | 'nextweek' }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   /** 清理通知：移入「已清理」，可恢复；不删除任务/评论/活动 */
-  clearInbox: (input: { ids?: HifoxID[]; all?: boolean; section?: HifoxInboxSection }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  restoreInbox: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  clearInbox: (input: { ids?: HifoxID[]; all?: boolean; section?: HifoxInboxSection }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  restoreInbox: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  saveAgent: (input: HifoxAgentInput & { id?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeAgent: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  saveAgent: (input: HifoxAgentInput & { id?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  /** 归档 Agent，保留历史引用；saveAgent({ archived:false, ... }) 恢复。 */
+  removeAgent: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  saveSkill: (input: { id?: HifoxID; name: string; description?: string; content: string; spaceId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeSkill: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  saveSkill: (input: { id?: HifoxID; name: string; description?: string; content: string; spaceId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeSkill: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
-  saveCrew: (input: { id?: HifoxID; spaceId: HifoxID; name: string; description?: string; captainAgentId: HifoxID; memberRefs: Array<{ kind: 'agent' | 'member'; id: HifoxID }> }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
-  removeCrew: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  saveCrew: (input: HifoxCrewInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  /** 归档小队，保留名册和历史引用；saveCrew({ archived:false, ... }) 恢复。 */
+  removeCrew: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
   /** 重置演示数据 */
-  resetDemo: () => Promise<{ ok: true; data: HifoxSnapshot } | { ok: false; error: string }>
+  resetDemo: () => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 }

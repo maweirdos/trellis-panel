@@ -5,7 +5,7 @@ import { GITLAB_OAUTH_REDIRECT_URI, GITLAB_OAUTH_SCOPES } from '../../../../shar
 import { protectSecret, revealSecret } from '../credentials'
 import { readIntegrationState, updateIntegrationState } from '../repository'
 import { integrationFetch, readRemoteJson, recordOf, textOf } from '../transport'
-import { IntegrationError, type AuthorizationPort, type ResolvedConnection } from '../types'
+import { IntegrationError, verifiedGitlabIdentitySchema, type VerifiedGitlabIdentity, type AuthorizationPort, type ResolvedConnection } from '../types'
 import type { AuthorizationServer, Client, TokenEndpointResponse } from 'oauth4webapi'
 
 const tokenSchema = z.object({
@@ -15,6 +15,45 @@ const tokenSchema = z.object({
 type Tokens = z.infer<typeof tokenSchema>
 const refreshes = new Map<string, Promise<string>>()
 let authorizing = false
+
+export class GitlabIdentityMismatchError extends IntegrationError {
+  constructor() { super('浏览器中的 GitLab 账号与团队登录账号不一致，请切换账号后重试', 'denied') }
+}
+
+export function normalizedGitlabIdentity(raw: VerifiedGitlabIdentity): VerifiedGitlabIdentity {
+  const parsed = verifiedGitlabIdentitySchema.safeParse(raw)
+  if (!parsed.success) throw new IntegrationError('团队 GitLab 登录身份无效', 'denied')
+  const normalize = (value: string): string => {
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new IntegrationError('团队 GitLab 身份来源无效', 'denied')
+    return url.href.replace(/\/+$/, '')
+  }
+  const identity = { ...parsed.data, issuer: normalize(parsed.data.issuer), baseUrl: normalize(parsed.data.baseUrl) }
+  // GitLab 11.1+ OIDC sub is the decimal user ID. Older opaque subjects fail closed.
+  if (identity.issuer !== identity.baseUrl || !/^[1-9]\d*$/.test(identity.subject)) throw new IntegrationError('无法将团队登录身份安全映射到此 GitLab 实例', 'denied')
+  return identity
+}
+
+function requireExpectedIdentity(c: ResolvedConnection, identity: VerifiedGitlabIdentity): void {
+  if (c.public.providerId !== 'gitlab' || c.public.legacy || c.public.config.authMethod !== 'oauth2' || c.public.config.baseUrl !== identity.baseUrl || c.public.config.clientId !== identity.clientId) throw new IntegrationError('GitLab 连接与已验证的团队身份不匹配', 'conflict')
+}
+
+function requireGitlabSubject(body: unknown, subject: string): void {
+  const user = z.object({ id: z.number().int().positive().safe() }).safeParse(body)
+  if (!user.success) throw new IntegrationError('GitLab 未返回有效的数字用户 ID', 'upstream')
+  if (String(user.data.id) !== subject) throw new GitlabIdentityMismatchError()
+}
+
+/** Uses only an already protected native grant; never copies team-server tokens. */
+export async function verifyGitlabConnectionIdentity(c: ResolvedConnection, raw: VerifiedGitlabIdentity, signal: AbortSignal, allowRefresh = false): Promise<void> {
+  const identity = normalizedGitlabIdentity(raw)
+  requireExpectedIdentity(c, identity)
+  // Probing an unrelated account must not rotate or replace its credentials.
+  const token = allowRefresh ? await gitlabOAuthAccessToken(c) : currentTokens(c).tokens.accessToken
+  if (signal.aborted) throw new IntegrationError('GitLab 身份核验已取消', 'denied')
+  const user = await readRemoteJson(`${identity.baseUrl}/api/v4/user`, { headers: { Authorization: `Bearer ${token}` }, signal })
+  requireGitlabSubject(user.body, identity.subject)
+}
 
 function metadata(c: ResolvedConnection): { server: AuthorizationServer; client: Client } {
   const base = c.public.config.baseUrl
@@ -83,31 +122,38 @@ function browserCallback(authorizationUrl: URL, expectedState: string, signal: A
   })
 }
 
-export const gitlabAuthorization: AuthorizationPort = {
-  async authorize(c, signal) {
-    if (authorizing) throw new IntegrationError('已有浏览器授权进行中，请先完成或取消该授权', 'conflict')
-    authorizing = true
-    try {
-      const oauth = await import('oauth4webapi')
-      const { server, client } = metadata(c)
-      const state = oauth.generateRandomState()
-      const verifier = oauth.generateRandomCodeVerifier()
-      const authorizationUrl = new URL(server.authorization_endpoint || '')
-      authorizationUrl.search = new URLSearchParams({ client_id: client.client_id, redirect_uri: GITLAB_OAUTH_REDIRECT_URI, response_type: 'code', scope: GITLAB_OAUTH_SCOPES.join(' '), state, code_challenge: await oauth.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256' }).toString()
-      const callback = await browserCallback(authorizationUrl, state, signal)
-      const params = oauth.validateAuthResponse(server, client, callback, state)
-      const options = { [oauth.customFetch]: integrationFetch, [oauth.allowInsecureRequests]: c.public.config.baseUrl.startsWith('http:'), signal }
-      const response = await oauth.authorizationCodeGrantRequest(server, client, oauth.None(), params, GITLAB_OAUTH_REDIRECT_URI, verifier, options)
-      const tokens = tokensFrom(c, await oauth.processAuthorizationCodeResponse(server, client, response))
-      const user = await readRemoteJson(`${c.public.config.baseUrl}/api/v4/user`, { headers: { Authorization: `Bearer ${tokens.accessToken}` }, signal })
-      const username = textOf(recordOf(user.body).username).slice(0, 100)
-      if (!username) throw new IntegrationError('授权后未取得 GitLab 用户身份', 'upstream')
-      return { secrets: { oauthTokens: JSON.stringify(tokens) }, detail: `浏览器授权成功 · ${username}` }
-    } catch (error) {
-      if (error instanceof IntegrationError) throw error
-      throw new IntegrationError(signal.aborted ? '授权已取消或超时' : 'GitLab 授权未完成，请检查 Application ID、回调地址、应用是否为非保密客户端及授权权限', 'upstream')
-    } finally { authorizing = false }
-  }
+async function authorizeGitlab(c: ResolvedConnection, signal: AbortSignal, identity?: VerifiedGitlabIdentity): ReturnType<AuthorizationPort['authorize']> {
+  if (identity) requireExpectedIdentity(c, identity)
+  if (authorizing) throw new IntegrationError('已有浏览器授权进行中，请先完成或取消该授权', 'conflict')
+  authorizing = true
+  try {
+    const oauth = await import('oauth4webapi')
+    const { server, client } = metadata(c)
+    const state = oauth.generateRandomState()
+    const verifier = oauth.generateRandomCodeVerifier()
+    const authorizationUrl = new URL(server.authorization_endpoint || '')
+    authorizationUrl.search = new URLSearchParams({ client_id: client.client_id, redirect_uri: GITLAB_OAUTH_REDIRECT_URI, response_type: 'code', scope: GITLAB_OAUTH_SCOPES.join(' '), state, code_challenge: await oauth.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256' }).toString()
+    const callback = await browserCallback(authorizationUrl, state, signal)
+    const params = oauth.validateAuthResponse(server, client, callback, state)
+    const options = { [oauth.customFetch]: integrationFetch, [oauth.allowInsecureRequests]: c.public.config.baseUrl.startsWith('http:'), signal }
+    const response = await oauth.authorizationCodeGrantRequest(server, client, oauth.None(), params, GITLAB_OAUTH_REDIRECT_URI, verifier, options)
+    const tokens = tokensFrom(c, await oauth.processAuthorizationCodeResponse(server, client, response))
+    const user = await readRemoteJson(`${c.public.config.baseUrl}/api/v4/user`, { headers: { Authorization: `Bearer ${tokens.accessToken}` }, signal })
+    if (identity) requireGitlabSubject(user.body, identity.subject)
+    const username = textOf(recordOf(user.body).username).slice(0, 100)
+    if (!username) throw new IntegrationError('授权后未取得 GitLab 用户身份', 'upstream')
+    return { secrets: { oauthTokens: JSON.stringify(tokens) }, detail: identity ? '团队 GitLab 账号身份已核验' : `浏览器授权成功 · ${username}` }
+  } catch (error) {
+    if (error instanceof IntegrationError) throw error
+    throw new IntegrationError(signal.aborted ? '授权已取消或超时' : 'GitLab 授权未完成，请检查 Application ID、回调地址、应用是否为非保密客户端及授权权限', 'upstream')
+  } finally { authorizing = false }
+}
+
+export const gitlabAuthorization: AuthorizationPort = { authorize: authorizeGitlab }
+
+/** Main-only constraint; expected identity is not part of renderer configuration. */
+export async function authorizeGitlabForIdentity(c: ResolvedConnection, signal: AbortSignal, raw: VerifiedGitlabIdentity): ReturnType<AuthorizationPort['authorize']> {
+  return authorizeGitlab(c, signal, normalizedGitlabIdentity(raw))
 }
 
 function currentTokens(c: ResolvedConnection): { tokens: Tokens; encrypted: string } {

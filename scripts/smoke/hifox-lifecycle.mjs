@@ -1,0 +1,501 @@
+/** Shared domain commands against a real temporary file store, with verified human actors. */
+import assert from 'node:assert/strict'
+import { mkdtempSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createRequire } from 'node:module'
+import { build } from 'esbuild'
+
+const root = mkdtempSync(join(tmpdir(), 'trellis-hifox-lifecycle-'))
+const file = join(root, 'store.json')
+const require = createRequire(import.meta.url)
+const results = []
+let api
+const owner = 'local-owner'
+const current = () => JSON.parse(readFileSync(file, 'utf8'))
+const task = (id) => current().tasks.find((item) => item.id === id)
+const iteration = (id) => current().iterations.find((item) => item.id === id)
+const commit = (snapshot) => {
+  api.hifoxSnapshotSchema.parse(snapshot)
+  writeFileSync(`${file}.tmp`, JSON.stringify(snapshot), 'utf8')
+  renameSync(`${file}.tmp`, file)
+}
+const command = (operation, input, actor = owner) => {
+  const result = api.executeHifoxDomain(current(), operation, input, actor)
+  commit(result.snapshot)
+  return result
+}
+const create = (spaceId, input = {}, actor = owner) => command('createTask', { spaceId, title: 'Lifecycle regression', triagePending: true, workKind: 'code', ...input }, actor).taskId
+const transition = (taskId, action, actor, fields = {}) => command('transitionTask', { taskId, action, expectedStage: task(taskId).workflow.stage, ...fields }, actor)
+const lastId = (collection) => current()[collection].at(-1).id
+const check = (name, run) => { run(); results.push(name); console.log(`PASS ${name}`) }
+const unchanged = (run, pattern) => {
+  const bytes = readFileSync(file, 'utf8')
+  const snapshot = current()
+  assert.throws(run, pattern)
+  assert.deepEqual(current(), snapshot, 'failed command changed snapshot')
+  assert.equal(readFileSync(file, 'utf8'), bytes, 'failed command changed persisted bytes')
+}
+const memberships = () => {
+  const snapshot = current()
+  for (const item of snapshot.tasks) for (const id of item.iterationIds) {
+    const version = snapshot.iterations.find((entry) => entry.id === id)
+    assert.equal(version?.spaceId, item.spaceId)
+    assert.ok(version.taskIds.includes(item.id))
+  }
+  for (const version of snapshot.iterations) for (const id of version.taskIds) {
+    const item = snapshot.tasks.find((entry) => entry.id === id)
+    assert.equal(item?.spaceId, version.spaceId)
+    assert.ok(item.iterationIds.includes(version.id))
+  }
+}
+
+try {
+  const bundle = join(root, 'domain.cjs')
+  await build({
+    stdin: { contents: `export * from './src/shared/hifox-domain/commands.ts'; export * from './src/shared/hifox-domain/workflow.ts'; export * from './src/shared/hifox-domain/seed.ts'; export * from './src/shared/hifox-schema.ts';`, resolveDir: process.cwd(), loader: 'ts' },
+    outfile: bundle, bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent'
+  })
+  api = require(bundle)
+  commit(api.buildInitialSnapshot())
+  command('createSpace', { name: 'Independent human space', key: 'HUM' })
+  const space = lastId('spaces')
+  const invite = (name, role = 'member', spaceId = space) => {
+    command('inviteMember', { name, role, spaceId })
+    return lastId('members')
+  }
+  const product = invite('Product colleague')
+  const designer = invite('Designer')
+  const developer = invite('Developer')
+  const tester = invite('Tester')
+  const manager = invite('Space manager', 'admin')
+  command('inviteMember', { name: 'Outside manager', role: 'admin' })
+  const outsider = lastId('members')
+  command('createSpace', { name: 'Other space', key: 'OTH' })
+  const otherSpace = lastId('spaces')
+  let humanCrew, mixedCrew, humanTask, codeTask, source, target
+
+  check('human captains, pure-human crews and captain selection validate without Runtime', () => {
+    command('saveCrew', { spaceId: space, name: 'Human crew', captainMemberId: designer, memberRefs: [{ kind: 'member', id: developer }] })
+    humanCrew = lastId('crews')
+    const crew = current().crews.find((item) => item.id === humanCrew)
+    assert.equal(crew.captain.kind, 'member')
+    assert.ok(crew.members.some((member) => member.id === designer && member.kind === 'member'))
+    assert.equal(current().agents.length, 0)
+    unchanged(() => command('saveCrew', { spaceId: space, name: 'No captain', memberRefs: [] }), /仅选择/)
+    unchanged(() => command('saveCrew', { spaceId: space, name: 'Two captains', captainMemberId: designer, captainAgentId: 'missing', memberRefs: [] }), /仅选择/)
+    unchanged(() => command('saveCrew', { spaceId: space, name: 'Foreign captain', captainMemberId: outsider, memberRefs: [] }), /本空间/)
+    unchanged(() => command('saveCrew', { spaceId: space, name: 'Foreign owner', captainMemberId: designer, ownerId: outsider, memberRefs: [] }), /本空间/)
+  })
+
+  check('ordinary creators can accept unversioned intake; unrelated members and outsiders cannot', () => {
+    humanTask = create(space, { workKind: 'code', acceptanceCriteria: ['Deliver a reviewed implementation'] }, product)
+    assert.equal(task(humanTask).triagePending, true)
+    unchanged(() => command('triage', { taskId: humanTask, disposition: 'park' }, product), /交接任务/)
+    unchanged(() => transition(humanTask, 'accept', developer, { assigneeId: designer }), /只有/)
+    unchanged(() => transition(humanTask, 'accept', outsider, { assigneeId: designer }), /空间内/)
+    unchanged(() => command('transitionTask', { taskId: humanTask, action: 'accept', actorId: product }, product), /Unrecognized/)
+    transition(humanTask, 'accept', product, { assigneeId: designer, executor: { kind: 'crew', id: humanCrew, name: 'spoofed' }, body: 'Accepted human work' })
+    assert.equal(task(humanTask).triagePending, undefined)
+    assert.equal(task(humanTask).workflow.handlerId, designer)
+    assert.deepEqual(task(humanTask).assigneeIds, [designer])
+    assert.deepEqual(task(humanTask).iterationIds, [])
+    assert.equal(task(humanTask).dispatch, undefined)
+    transition(humanTask, 'arrange', product, { body: 'Arrange design without a code directory' })
+    assert.equal(task(humanTask).workflow.stage, 'design_ready')
+    assert.equal(task(humanTask).workflow.handlerId, designer, 'human captain should be the fallback')
+    unchanged(() => transition(humanTask, 'start_design', manager), /只有/)
+    unchanged(() => transition(humanTask, 'start_design', product), /只有/)
+  })
+
+  check('design, information requests, returns and human delivery retain every handoff atomically', () => {
+    transition(humanTask, 'start_design', designer)
+    transition(humanTask, 'request_info', designer, { assigneeId: product, body: 'Please clarify the audience' })
+    assert.equal(task(humanTask).workflow.stage, 'needs_info')
+    assert.equal(task(humanTask).workflow.resumeStage, 'designing')
+    transition(humanTask, 'supplement', product, { body: 'Audience is the operations team' })
+    assert.equal(task(humanTask).workflow.stage, 'designing')
+    assert.equal(task(humanTask).workflow.handlerId, designer)
+    transition(humanTask, 'submit_design', designer, { assigneeId: product, body: 'First document outline' })
+    transition(humanTask, 'return_design', product, { assigneeId: designer, body: 'Add the escalation procedure' })
+    transition(humanTask, 'submit_design', designer, { assigneeId: product, body: 'Revised outline and escalation' })
+    transition(humanTask, 'approve_design', product, { assigneeId: developer, body: 'Outline approved for delivery' })
+    assert.deepEqual(task(humanTask).iterationIds, [], 'design must not require a version')
+    transition(humanTask, 'begin_development', developer, { assigneeId: developer })
+    transition(humanTask, 'approve_plan', developer, { assigneeId: developer, body: 'Human team plan and verification procedure' })
+    transition(humanTask, 'submit_test', developer, { assigneeId: tester, body: 'Human implementation handoff' })
+    transition(humanTask, 'pass_test', tester, { assigneeId: product, body: 'Manual verification completed', checkedCriteria: task(humanTask).acceptanceCriteria })
+    transition(humanTask, 'accept_delivery', product, { body: '  ' })
+    const general = create(space, { workKind: 'general', acceptanceCriteria: ['Deliver a reviewed document'] }, product)
+    transition(general, 'arrange', product, { assigneeId: developer, executor: { kind: 'crew', id: humanCrew, name: 'Human crew' } })
+    assert.equal(task(general).triagePending, undefined)
+    assert.equal(task(general).workflow.stage, 'developing')
+    assert.equal(api.getHifoxTaskStageMetadata(task(general).workflow.stage).label, '处理中')
+    transition(general, 'submit_delivery', developer, { assigneeId: product, body: 'artifact://operations-guide-v1' })
+    transition(general, 'return_delivery', product, { assigneeId: developer, body: 'Fix the contact list' })
+    transition(general, 'submit_delivery', developer, { assigneeId: product, body: 'artifact://operations-guide-v2' })
+    transition(general, 'accept_delivery', product, { body: 'Document reviewed and accepted' })
+    const item = task(humanTask)
+    assert.equal(item.workflow.stage, 'done')
+    assert.ok(item.completedAt)
+    assert.equal(item.dispatch, undefined)
+    assert.ok(!task(general).workflow.history.some((entry) => ['submit_test', 'pass_test'].includes(entry.action)), 'general work fabricated code tests')
+    for (const body of ['Please clarify the audience', 'Audience is the operations team', 'First document outline', 'Revised outline and escalation', 'Human implementation handoff', 'Manual verification completed']) {
+      assert.ok(item.workflow.artifacts.some((entry) => entry.body === body))
+      assert.ok(item.workflow.history.some((entry) => entry.body === body))
+    }
+    for (const body of ['artifact://operations-guide-v1', 'artifact://operations-guide-v2', 'Document reviewed and accepted']) assert.ok(task(general).workflow.artifacts.some((entry) => entry.body === body))
+    const handoff = current().inbox.find((entry) => entry.taskId === humanTask && entry.body === 'First document outline')
+    assert.deepEqual(handoff.recipientIds, [product])
+    assert.equal(item.id, humanTask)
+    unchanged(() => transition(humanTask, 'accept_delivery', item.workflow.handlerId, { body: 'Repeated' }), /当前阶段/)
+  })
+
+  check('pure-human automation only notifies people; mixed crews and legacy Agent captains stay honest', () => {
+    const humanRef = { kind: 'crew', id: humanCrew, name: 'Human crew' }
+    command('saveAutomation', { spaceId: space, name: 'Human reminder', trigger: { kind: 'task_created' }, target: humanRef })
+    const rule = lastId('automations')
+    command('runAutomation', { id: rule })
+    assert.equal(current().automations.find((entry) => entry.id === rule).runs[0].outcome, 'done')
+    assert.match(current().automations.find((entry) => entry.id === rule).runs[0].detail, /提醒/)
+    assert.deepEqual(new Set(current().inbox[0].recipientIds), new Set([designer, developer]))
+    command('saveAgent', { spaceId: space, name: 'Agent helper', instructions: 'Assist with the code review' })
+    const agent = lastId('agents')
+    command('saveCrew', { spaceId: space, name: 'Mixed crew', captainMemberId: developer, memberRefs: [{ kind: 'agent', id: agent }, { kind: 'member', id: tester }] })
+    mixedCrew = lastId('crews')
+    command('saveCrew', { spaceId: space, name: 'Legacy Agent captain', captainAgentId: agent, ownerId: product, memberRefs: [] })
+    const legacy = current().crews.at(-1)
+    assert.equal(legacy.captain.kind, 'agent')
+    assert.ok(api.hifoxSnapshotSchema.safeParse(current()).success)
+    codeTask = create(space, { workKind: 'code', acceptanceCriteria: ['Build succeeds', 'Regression passes'] }, product)
+    transition(codeTask, 'accept', manager, { executor: { kind: 'crew', id: mixedCrew, name: 'spoofed' } })
+    assert.equal(task(codeTask).workflow.handlerId, developer)
+    assert.equal(task(codeTask).dispatch.status, 'queued')
+    transition(codeTask, 'arrange', product, { assigneeId: designer })
+    assert.equal(task(codeTask).dispatch.status, 'waiting_runtime')
+    assert.match(task(codeTask).dispatch.note, /等待 Runtime/)
+    transition(codeTask, 'start_design', designer, { assigneeId: designer })
+    transition(codeTask, 'submit_design', designer, { assigneeId: product, body: 'Code design and interfaces' })
+    assert.equal(task(codeTask).dispatch, undefined)
+    transition(codeTask, 'approve_design', product, { assigneeId: developer, body: '' })
+  })
+
+  check('pending arrange accepts and schedules atomically, with deliberate design skip and no partial intake', () => {
+    command('createIteration', { spaceId: space, name: 'Atomic intake version', startDate: '2026-10-01', endDate: '2026-12-01' })
+    const version = lastId('iterations')
+    const id = create(space, { workKind: 'code', acceptanceCriteria: ['Small fix verified'] }, product)
+    unchanged(() => transition(id, 'arrange', product, { iterationId: version, assigneeId: outsider, nextStage: 'dev_ready' }), /本空间/)
+    assert.equal(task(id).triagePending, true)
+    assert.equal(task(id).workflow.history.length, 0)
+    assert.deepEqual(task(id).iterationIds, [])
+    assert.deepEqual(iteration(version).taskIds, [])
+    transition(id, 'arrange', product, { iterationId: version, assigneeId: developer, nextStage: 'dev_ready', body: 'Small defect needs no design document' })
+    assert.equal(task(id).triagePending, undefined)
+    assert.equal(task(id).workflow.stage, 'dev_ready')
+    assert.equal(task(id).workflow.history.length, 1)
+    assert.deepEqual(task(id).iterationIds, [version])
+    assert.deepEqual(iteration(version).taskIds, [id])
+    transition(id, 'begin_development', developer)
+    transition(id, 'approve_plan', developer, { body: 'Fix one branch and run the focused regression' })
+    assert.equal(task(id).workflow.stage, 'developing')
+    assert.ok(!task(id).workflow.artifacts.some((artifact) => artifact.kind === 'design'))
+    transition(id, 'request_info', developer, { assigneeId: product, body: 'Clarify the edge case' })
+    unchanged(() => transition(id, 'supplement', product, { body: 'Try to switch to general work', workKind: 'general' }), /工作类型/)
+    unchanged(() => transition(id, 'supplement', product, { body: 'Try to replace criteria', acceptanceCriteria: ['Unverified replacement'] }), /验收标准/)
+    transition(id, 'supplement', product, { assigneeId: developer, body: 'Preserve empty values' })
+    transition(id, 'submit_test', developer, { assigneeId: tester, body: 'Small fix implementation' })
+    transition(id, 'pass_test', tester, { assigneeId: product, body: 'Focused regression checked', checkedCriteria: ['Small fix verified'] })
+    assert.deepEqual(task(id).workflow.history.at(-1).checkedCriteria, ['Small fix verified'])
+    assert.deepEqual(task(id).workflow.artifacts.at(-1).checkedCriteria, ['Small fix verified'])
+    transition(id, 'accept_delivery', product)
+    assert.ok(task(id).workflow.artifacts.some((artifact) => artifact.kind === 'acceptance'))
+    memberships()
+  })
+
+  check('same-stage reassignment is owned, scoped and preserves artifacts, rules and version membership', () => {
+    command('createIteration', { spaceId: space, name: 'Reassignment version', startDate: '2026-10-01', endDate: '2026-12-01' })
+    const version = lastId('iterations')
+    const id = create(space, { workKind: 'code', acceptanceCriteria: ['Handoff verified'] }, product)
+    transition(id, 'arrange', product, { assigneeId: developer, nextStage: 'dev_ready', iterationId: version, body: 'Existing intake evidence' })
+    command('createTaskStatus', { spaceId: space, name: 'Ready alias', category: 'todo' })
+    const statusId = lastId('taskStatuses')
+    command('updateTask', { id, patch: { statusId } }, developer)
+    const before = task(id)
+    for (const stage of api.hifoxTaskStageSchema.options) assert.equal(api.getHifoxTaskStageMetadata(stage).actions.includes('reassign'), stage !== 'done')
+    assert.ok(api.getHifoxTaskActions(before).includes('reassign'))
+    unchanged(() => transition(id, 'reassign', product, { assigneeId: tester }), /只有/)
+    unchanged(() => transition(id, 'reassign', tester, { assigneeId: designer }), /只有/)
+    unchanged(() => transition(id, 'reassign', outsider, { assigneeId: tester }), /空间内/)
+    unchanged(() => transition(id, 'reassign', developer, { assigneeId: outsider }), /本空间/)
+    unchanged(() => transition(id, 'reassign', developer, { body: 'No recipient or configuration' }), /选择处理人/)
+    for (const forbidden of [{ workKind: 'code' }, { acceptanceCriteria: ['Handoff verified'] }, { iterationId: version }, { nextStage: 'dev_ready' }, { checkedCriteria: [] }]) {
+      unchanged(() => transition(id, 'reassign', developer, { assigneeId: tester, ...forbidden }), /转交不能/)
+    }
+    command('saveAgent', { spaceId: otherSpace, name: 'Foreign reassignment Agent', instructions: 'Configuration only' })
+    unchanged(() => transition(id, 'reassign', developer, { executor: { kind: 'agent', id: lastId('agents'), name: 'Foreign' } }), /空间内/)
+    command('saveCrew', { spaceId: otherSpace, name: 'Foreign reassignment crew', captainMemberId: owner, memberRefs: [] })
+    unchanged(() => transition(id, 'reassign', developer, { executor: { kind: 'crew', id: lastId('crews'), name: 'Foreign' } }), /空间内/)
+    transition(id, 'reassign', developer, { assigneeId: tester, executor: null, body: 'Please continue the same stage', expectedUpdatedAt: before.updatedAt })
+    const transferred = task(id)
+    for (const field of ['workKind', 'acceptanceCriteria', 'iterationIds', 'statusId']) assert.deepEqual(transferred[field], before[field])
+    assert.equal(transferred.workflow.stage, before.workflow.stage)
+    assert.deepEqual(transferred.workflow.artifacts, before.workflow.artifacts)
+    assert.equal(transferred.workflow.history.length, before.workflow.history.length + 1)
+    assert.equal(transferred.workflow.history.at(-1).action, 'reassign')
+    assert.equal(transferred.workflow.history.at(-1).actorId, developer)
+    assert.equal(transferred.workflow.history.at(-1).assigneeId, tester)
+    assert.equal(transferred.workflow.history.at(-1).fromStage, transferred.workflow.history.at(-1).toStage)
+    assert.notEqual(transferred.updatedAt, before.updatedAt)
+    unchanged(() => transition(id, 'reassign', manager, { assigneeId: developer, expectedUpdatedAt: before.updatedAt, expectedStage: before.workflow.stage }), /内容已更新/)
+    assert.deepEqual(current().inbox[0].recipientIds, [tester])
+    const activity = current().activities.find((entry) => entry.taskId === id && entry.kind === 'workflow')
+    assert.match(activity.text, /Developer.*转交任务.*Tester/)
+    assert.equal(activity.text.includes(developer), false)
+    assert.equal(activity.text.includes('reassign'), false)
+    transition(id, 'reassign', tester, { executor: { kind: 'crew', id: humanCrew, name: 'Untrusted name' } })
+    assert.equal(task(id).executor.name, current().crews.find((crew) => crew.id === humanCrew).name)
+    assert.equal(task(id).workflow.handlerId, designer, 'a human squad captain remains the fallback when no person is supplied')
+    assert.equal(task(id).dispatch, undefined)
+    transition(id, 'reassign', manager, { assigneeId: developer, executor: null })
+    assert.equal(task(id).workflow.handlerId, developer)
+    assert.equal(task(id).workflow.stage, 'dev_ready')
+    assert.deepEqual(task(id).workflow.artifacts, before.workflow.artifacts)
+    assert.deepEqual(iteration(version).taskIds, [id])
+    const legacy = command('createTask', { spaceId: space, title: 'Legacy reassignment', assigneeIds: [developer] }, product).taskId
+    unchanged(() => command('transitionTask', { taskId: legacy, action: 'reassign', assigneeId: tester }, developer), /旧任务/)
+    command('updateTask', { id: legacy, patch: { assigneeIds: [tester] } }, product)
+    assert.equal(task(legacy).workflow, undefined)
+    assert.deepEqual(task(legacy).assigneeIds, [tester])
+    unchanged(() => transition(humanTask, 'reassign', task(humanTask).workflow.handlerId, { assigneeId: developer }), /当前阶段/)
+    memberships()
+  })
+
+  check('managed tasks reject generic gate bypasses and foreign handoffs, retaining versionless planning', () => {
+    const preparedSource = task(codeTask)
+    const done = current().taskStatuses.find((entry) => entry.spaceId === space && entry.category === 'done').id
+    unchanged(() => command('updateTask', { id: codeTask, patch: { title: 'Must roll back', statusId: done } }, developer), /阶段操作/)
+    unchanged(() => command('updateTask', { id: codeTask, patch: { assigneeIds: [tester] } }, developer), /阶段操作/)
+    unchanged(() => command('updateTask', { id: codeTask, patch: { executor: null } }, developer), /阶段操作/)
+    unchanged(() => transition(codeTask, 'begin_development', developer, { assigneeId: outsider }), /本空间/)
+    unchanged(() => transition(codeTask, 'begin_development', product), /只有/)
+    unchanged(() => transition(codeTask, 'begin_development', developer, { expectedStage: 'designing' }), /已变化/)
+    command('updateTask', { id: codeTask, patch: { statusId: task(codeTask).statusId, title: 'Allowed metadata edit' } }, product)
+    assert.equal(task(codeTask).workflow.stage, preparedSource.workflow.stage)
+    assert.notEqual(task(codeTask).updatedAt, preparedSource.updatedAt)
+    unchanged(() => transition(codeTask, 'begin_development', developer, { expectedStage: preparedSource.workflow.stage, expectedUpdatedAt: preparedSource.updatedAt, assigneeId: developer }), /内容已更新/)
+    transition(codeTask, 'begin_development', developer, { assigneeId: developer, body: 'Technical investigation before version selection', expectedUpdatedAt: task(codeTask).updatedAt })
+    assert.equal(task(codeTask).workflow.stage, 'planning')
+    assert.deepEqual(task(codeTask).iterationIds, [])
+    assert.equal('localDirectory' in task(codeTask), false)
+    unchanged(() => transition(codeTask, 'submit_test', developer, { body: 'Skip plan' }), /当前阶段/)
+    unchanged(() => transition(codeTask, 'approve_plan', developer, { body: ' ', assigneeId: developer }), /交接内容/)
+    transition(codeTask, 'approve_plan', developer, { assigneeId: developer, body: 'Plan reviewed: update domain, add regression, verify' })
+    assert.equal(task(codeTask).workflow.stage, 'developing')
+    unchanged(() => transition(codeTask, 'submit_delivery', developer, { body: 'Skip tests' }), /当前阶段|必须/)
+    unchanged(() => transition(codeTask, 'accept_delivery', developer, { body: 'Skip acceptance' }), /当前阶段/)
+  })
+
+  check('development cannot enter planning without criteria; explicit supplementation unblocks it', () => {
+    const id = command('createTask', { spaceId: space, title: 'Legacy work without acceptance criteria', assigneeIds: [developer] }, product).taskId
+    command('transitionTask', { taskId: id, action: 'arrange', expectedStage: 'accepted', assigneeId: developer, nextStage: 'dev_ready', workKind: 'code' }, product)
+    const before = task(id)
+    unchanged(() => transition(id, 'begin_development', developer, { assigneeId: developer, executor: null, body: 'Must not save partial planning', expectedUpdatedAt: before.updatedAt }), /请先填写验收标准/)
+    unchanged(() => transition(id, 'begin_development', developer, { acceptanceCriteria: [], expectedUpdatedAt: before.updatedAt }), /请先填写验收标准/)
+    assert.equal(task(id).workflow.stage, 'dev_ready')
+    assert.deepEqual(task(id).workflow, before.workflow)
+    transition(id, 'request_info', developer, { assigneeId: product, body: 'Please define the acceptance checks' })
+    transition(id, 'supplement', product, { assigneeId: developer, body: 'Acceptance checks supplied', acceptanceCriteria: ['Focused regression confirms the expected behavior'] })
+    transition(id, 'begin_development', developer, { assigneeId: developer, expectedUpdatedAt: task(id).updatedAt })
+    assert.equal(task(id).workflow.stage, 'planning')
+    assert.deepEqual(task(id).acceptanceCriteria, ['Focused regression confirms the expected behavior'])
+  })
+
+  check('active versions require completed predecessors; parallel versions and explicit postponement remain valid', () => {
+    const createVersion = (name, predecessorId) => {
+      command('createIteration', { spaceId: space, name, startDate: '2026-10-01', endDate: '2026-12-01', ...(predecessorId ? { predecessorId } : {}) })
+      return lastId('iterations')
+    }
+    const predecessor = createVersion('Predecessor gate')
+    const successor = createVersion('Successor gate', predecessor)
+    const parallel = createVersion('Parallel gate')
+    unchanged(() => command('updateIteration', { id: successor, name: 'Must roll back', goal: 'Must roll back', status: 'active' }), /前置版本尚未完成/)
+    command('updateIteration', { id: parallel, status: 'active' })
+    unchanged(() => command('updateIteration', { id: parallel, predecessorId: predecessor, name: 'Must roll back' }), /前置版本尚未完成/)
+    unchanged(() => command('updateIteration', { id: parallel, predecessorId: predecessor, status: 'active' }), /前置版本尚未完成/)
+    assert.equal(iteration(parallel).predecessorId, undefined)
+    command('completeIteration', { id: predecessor })
+    command('updateIteration', { id: successor, status: 'active' })
+    assert.equal(iteration(successor).status, 'active')
+    command('updateIteration', { id: parallel, predecessorId: successor, status: 'pending' })
+    assert.equal(iteration(parallel).status, 'pending')
+    unchanged(() => command('updateIteration', { id: parallel, status: 'active' }), /前置版本尚未完成/)
+    command('completeIteration', { id: successor })
+    command('updateIteration', { id: parallel, status: 'active' })
+    assert.equal(iteration(parallel).status, 'active')
+  })
+
+  check('closed versions seal scope across task, version, creation and deletion paths without rewriting legacy arrays', () => {
+    const statusId = current().taskStatuses.find((status) => status.spaceId === space && status.category === 'done').id
+    const createFinished = (title) => command('createTask', { spaceId: space, title, statusId }, product).taskId
+    const first = createFinished('Sealed scope first task')
+    const second = createFinished('Sealed scope second task')
+    const extra = createFinished('Outside sealed scope')
+    command('createIteration', { spaceId: space, name: 'Sealed scope version', startDate: '2026-10-01', endDate: '2026-12-01', taskIds: [first, second] })
+    const sealed = lastId('iterations')
+    command('completeIteration', { id: sealed })
+    const scope = iteration(sealed).taskIds
+    unchanged(() => command('updateTask', { id: first, patch: { title: 'Must roll back', iterationIds: [] } }), /已关闭版本/)
+    unchanged(() => command('updateTask', { id: extra, patch: { iterationIds: [sealed] } }), /已关闭版本/)
+    unchanged(() => command('createTask', { spaceId: space, title: 'Must not allocate a task number', statusId, iterationIds: [sealed] }, product), /已关闭版本/)
+    for (const taskIds of [[first], [first, second, extra], [second, extra]]) unchanged(() => command('updateIteration', { id: sealed, name: 'Must roll back', goal: 'Must roll back', taskIds }), /已关闭版本/)
+    unchanged(() => command('removeTask', { id: first }), /已关闭版本/)
+    const before = current()
+    command('updateIteration', { id: sealed, taskIds: [second, first] })
+    assert.deepEqual(current(), before, 'equivalent scope rewrote sealed arrays or task metadata')
+    command('createIteration', { spaceId: space, name: 'Open scope beside history', startDate: '2026-10-01', endDate: '2026-12-01', taskIds: [first] })
+    const open = lastId('iterations')
+    assert.deepEqual(task(first).iterationIds, [sealed, open])
+    command('updateTask', { id: first, patch: { title: 'Allowed metadata', iterationIds: [sealed] } })
+    assert.deepEqual(iteration(sealed).taskIds, scope)
+    assert.deepEqual(iteration(open).taskIds, [])
+    const legacy = current()
+    legacy.iterations.find((item) => item.id === sealed).taskIds = [second, first, first]
+    const retained = api.executeHifoxDomain(legacy, 'updateTask', { id: first, patch: { title: 'Preserve retained history arrays', iterationIds: [sealed] } }, product).snapshot
+    assert.deepEqual(retained.iterations.find((item) => item.id === sealed).taskIds, [second, first, first])
+    memberships()
+  })
+
+  check('parallel versions, acyclic predecessors and incomplete incremental deliveries preserve exact scope', () => {
+    command('createIteration', { spaceId: space, name: 'Source', startDate: '2026-10-01', endDate: '2026-12-01', taskIds: [codeTask] })
+    source = lastId('iterations')
+    command('createIteration', { spaceId: space, name: 'Target', startDate: '2026-10-01', endDate: '2026-12-01' })
+    target = lastId('iterations')
+    assert.equal(iteration(source).predecessorId, undefined)
+    assert.equal(iteration(target).predecessorId, undefined)
+    command('updateIteration', { id: target, predecessorId: source })
+    unchanged(() => command('updateIteration', { id: source, predecessorId: target }), /循环/)
+    command('createIteration', { spaceId: otherSpace, name: 'Foreign', startDate: '2026-10-01', endDate: '2026-12-01' })
+    const foreign = lastId('iterations')
+    unchanged(() => command('updateIteration', { id: target, predecessorId: foreign }), /同一空间/)
+    const scope = JSON.stringify({ tasks: current().tasks, iterations: current().iterations })
+    const record = { sourceIterationId: source, targetIterationId: target, kind: 'code', reference: 'commit:abc123', name: 'First increment', revision: 'abc123' }
+    command('recordVersionDelivery', record, developer)
+    command('recordVersionDelivery', { ...record, kind: 'artifact', reference: 'artifact://test-report', name: 'Validation increment' }, tester)
+    assert.equal(current().versionDeliveries.length, 2)
+    assert.equal(new Set(current().versionDeliveries.map((entry) => entry.id)).size, 2)
+    assert.equal(current().versionDeliveries[0].actorId, developer)
+    assert.equal(JSON.stringify({ tasks: current().tasks, iterations: current().iterations }), scope, 'ledger changed tasks, scope or version completion')
+    assert.notEqual(iteration(source).status, 'completed')
+    unchanged(() => command('recordVersionDelivery', { ...record, targetIterationId: source }, developer), /必须不同/)
+    unchanged(() => command('recordVersionDelivery', { ...record, targetIterationId: foreign }, developer), /同一空间/)
+    unchanged(() => command('recordVersionDelivery', record, outsider), /空间内/)
+    unchanged(() => command('recordVersionDelivery', { ...record, actorId: owner }, developer), /Unrecognized/)
+    for (const carryOver of [undefined, 'next', 'backlog']) unchanged(() => command('completeIteration', { id: source, ...(carryOver ? { carryOver } : {}) }), /未完成/)
+    memberships()
+  })
+
+  check('code rework requires current tests and acceptance; version close preserves reciprocal multi-version history', () => {
+    transition(codeTask, 'submit_test', developer, { assigneeId: tester, body: 'Implementation revision abc123' })
+    transition(codeTask, 'return_development', tester, { assigneeId: developer, body: 'Regression fails on missing handler' })
+    transition(codeTask, 'submit_test', developer, { assigneeId: tester, body: 'Implementation revision def456' })
+    unchanged(() => transition(codeTask, 'pass_test', tester, { assigneeId: product, body: 'Missing confirmation' }), /逐项确认/)
+    unchanged(() => transition(codeTask, 'pass_test', tester, { assigneeId: product, body: 'Partial confirmation', checkedCriteria: ['Build succeeds'] }), /逐项确认/)
+    unchanged(() => transition(codeTask, 'pass_test', tester, { assigneeId: product, body: 'Unknown criterion', checkedCriteria: ['Build succeeds', 'Unrelated criterion'] }), /逐项确认/)
+    transition(codeTask, 'pass_test', tester, { assigneeId: product, body: 'Regression passed on def456', checkedCriteria: task(codeTask).acceptanceCriteria })
+    transition(codeTask, 'return_delivery', product, { assigneeId: developer, body: 'Acceptance uncovered missing error text' })
+    unchanged(() => transition(codeTask, 'accept_delivery', developer, { body: 'Use stale test' }), /当前阶段/)
+    transition(codeTask, 'submit_test', developer, { assigneeId: tester, body: 'Implementation revision ghi789' })
+    transition(codeTask, 'pass_test', tester, { assigneeId: product, body: 'Regression passed on ghi789', checkedCriteria: task(codeTask).acceptanceCriteria })
+    transition(codeTask, 'accept_delivery', product, { assigneeId: product, body: 'All criteria checked on ghi789' })
+    assert.equal(task(codeTask).workflow.stage, 'done')
+    assert.equal(task(codeTask).dispatch, undefined)
+    for (const kind of ['design', 'plan', 'implementation', 'test', 'acceptance']) assert.ok(task(codeTask).workflow.artifacts.some((entry) => entry.kind === kind))
+    command('updateIteration', { id: target, taskIds: [codeTask] })
+    const scope = task(codeTask).iterationIds
+    assert.deepEqual(new Set(scope), new Set([source, target]))
+    const tasksBefore = JSON.stringify(current().tasks)
+    command('completeIteration', { id: source, carryOver: 'next' })
+    assert.equal(iteration(source).status, 'completed')
+    assert.equal(JSON.stringify(current().tasks), tasksBefore)
+    assert.deepEqual(iteration(source).taskIds, [codeTask])
+    assert.deepEqual(task(codeTask).iterationIds, scope)
+    memberships()
+  })
+
+  check('captain and active handler removal is guarded; names and archived history stay compatible', () => {
+    command('updateMember', { id: designer, name: 'Designer renamed' })
+    assert.equal(current().crews.find((entry) => entry.id === humanCrew).captain.name, 'Designer renamed')
+    unchanged(() => command('removeMember', { id: designer }), /队长/)
+    unchanged(() => command('setSpaceMembers', { spaceId: space, memberIds: current().spaces.find((entry) => entry.id === space).memberIds.filter((id) => id !== designer) }), /队长/)
+    const pending = create(space, { assigneeIds: [tester] }, product)
+    unchanged(() => command('removeMember', { id: tester }), /交接/)
+    unchanged(() => command('setSpaceMembers', { spaceId: space, memberIds: current().spaces.find((entry) => entry.id === space).memberIds.filter((id) => id !== tester) }), /交接/)
+    transition(pending, 'request_info', manager, { assigneeId: product, body: 'What is the intended outcome?' })
+    assert.equal(task(pending).triagePending, true)
+    transition(pending, 'supplement', product, { body: 'Outcome clarified', assigneeId: tester })
+    transition(pending, 'decline', tester, { body: 'Duplicate of existing work' })
+    assert.equal(task(pending).workflow.stage, 'done')
+    assert.equal(current().taskStatuses.find((entry) => entry.id === task(pending).statusId).category, 'cancelled')
+  })
+
+  check('old records and additive fields load without reset or forced workflow conversion', () => {
+    const legacy = api.buildSeedSnapshot()
+    const before = structuredClone(legacy)
+    assert.equal(legacy.versionDeliveries, undefined)
+    assert.deepEqual(api.hifoxSnapshotSchema.parse(legacy).versionDeliveries, [])
+    legacy.customEnvelope = { retained: true }
+    const id = legacy.tasks[0].id
+    const result = api.executeHifoxDomain(legacy, 'updateTask', { id, patch: { title: 'Legacy ordinary edit' } }, legacy.tasks[0].creatorId)
+    assert.equal(result.snapshot.tasks.find((entry) => entry.id === id).workflow, undefined)
+    assert.deepEqual(result.snapshot.customEnvelope, { retained: true })
+    assert.deepEqual(result.snapshot.iterations, before.iterations)
+    assert.deepEqual(legacy.tasks, before.tasks, 'execution mutated original old records')
+    assert.ok(result.snapshot.crews.every((crew) => crew.captain.kind === 'agent'))
+    const pending = legacy.tasks.find((entry) => entry.triagePending)
+    if (pending) {
+      const spaceOwner = legacy.members.find((member) => member.role === 'owner' && legacy.spaces.find((entry) => entry.id === pending.spaceId)?.memberIds.includes(member.id))
+      const accepted = api.executeHifoxDomain(legacy, 'triage', { taskId: pending.id, disposition: 'park' }, spaceOwner.id)
+      assert.equal(accepted.snapshot.tasks.find((entry) => entry.id === pending.id).workflow, undefined)
+    }
+    const malformed = { ...legacy, tasks: [{ ...legacy.tasks[0], workflow: { stage: 'invented' } }] }
+    assert.equal(api.hifoxSnapshotSchema.safeParse(malformed).success, false)
+  })
+
+  check('explicit legacy adoption keeps task identity, comments, history and multiple version links', () => {
+    const versions = []
+    for (const name of ['Adoption A', 'Adoption B']) {
+      command('createIteration', { spaceId: space, name, startDate: '2026-10-01', endDate: '2026-12-01' })
+      versions.push(lastId('iterations'))
+    }
+    const progress = current().taskStatuses.find((status) => status.spaceId === space && status.category === 'in_progress').id
+    const legacy = command('createTask', { spaceId: space, title: 'Existing unfinished work', statusId: progress, assigneeIds: [developer], iterationIds: versions }, product).taskId
+    command('addComment', { taskId: legacy, body: 'Original retained discussion', authorId: product }, product)
+    const comments = current().comments.filter((comment) => comment.taskId === legacy)
+    const activities = current().activities.filter((activity) => activity.taskId === legacy)
+    assert.equal(task(legacy).workflow, undefined)
+    assert.deepEqual(api.getHifoxTaskActions(task(legacy)), ['arrange'])
+    unchanged(() => command('transitionTask', { taskId: legacy, action: 'arrange', nextStage: 'dev_ready' }, tester), /只有/)
+    command('transitionTask', { taskId: legacy, action: 'arrange', nextStage: 'dev_ready', assigneeId: developer, workKind: 'code', acceptanceCriteria: ['Legacy fix verified'], expectedStage: 'accepted' }, product)
+    assert.equal(task(legacy).workflow.stage, 'dev_ready')
+    assert.deepEqual(task(legacy).iterationIds, versions)
+    assert.deepEqual(current().comments.filter((comment) => comment.taskId === legacy), comments)
+    for (const activity of activities) assert.ok(current().activities.some((entry) => entry.id === activity.id))
+    transition(legacy, 'begin_development', developer)
+    transition(legacy, 'approve_plan', developer, { body: 'Adopt the existing implementation with focused verification' })
+    transition(legacy, 'submit_test', developer, { assigneeId: tester, body: 'Existing patch submitted for verification' })
+    transition(legacy, 'pass_test', tester, { assigneeId: product, body: 'Existing patch verified', checkedCriteria: ['Legacy fix verified'] })
+    transition(legacy, 'accept_delivery', product)
+    assert.deepEqual(task(legacy).iterationIds, versions)
+    for (const category of ['done', 'cancelled']) {
+      const statusId = current().taskStatuses.find((status) => status.spaceId === space && status.category === category).id
+      const finished = command('createTask', { spaceId: space, title: `Legacy ${category}`, statusId }, product).taskId
+      unchanged(() => command('transitionTask', { taskId: finished, action: 'arrange', assigneeId: developer }, product), /已完成或已取消/)
+      assert.equal(task(finished).workflow, undefined)
+    }
+    memberships()
+  })
+
+  console.log(`Validated ${results.length} lifecycle groups against isolated persisted shared-domain commands.`)
+} finally {
+  rmSync(root, { recursive: true, force: true })
+}

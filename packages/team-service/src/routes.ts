@@ -6,6 +6,7 @@ import { TeamServiceError } from './errors'
 import type { TeamStore } from './store-client'
 import type { StoreOperation } from './store-types'
 import { teamIdSchema } from '../../../src/shared/team-platform'
+import { registerHifoxWorkspaceRoutes } from './hifox-workspace-routes'
 
 const noBrowser = (request: FastifyRequest): void => { if (request.headers.origin !== undefined || request.cookies.tp_team_session) throw new TeamServiceError('FORBIDDEN', 'Device enrollment must be initiated by the local desktop client', 403) }
 export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore, auth: TeamAuthentication, config: TeamServiceConfig): Promise<void> {
@@ -21,7 +22,9 @@ export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore,
   })
   await app.register(async (api) => {
     api.addHook('preHandler', auth.require.bind(auth))
+    await registerHifoxWorkspaceRoutes(api, store, auth)
     api.get('/api/session', async (request) => ({ ok: true, value: auth.session(request) }))
+    api.get('/api/identity', async (request) => ({ ok: true, value: await auth.identity(request) }))
     const get = (path: string, operation: StoreOperation, fields: (request: FastifyRequest) => Record<string, unknown> = () => ({})): void => {
       api.get(path, async (request) => ({ ok: true, value: await store.call(operation, { actor: auth.principal(request).actor, ...fields(request) }) }))
     }
@@ -31,12 +34,21 @@ export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore,
     const parameter = (name: string) => (request: FastifyRequest): Record<string, unknown> => z.object({ [name]: teamIdSchema }).strict().parse(request.params)
     const query = (request: FastifyRequest): Record<string, unknown> => ({ query: request.query })
     const parameterQuery = (name: string) => (request: FastifyRequest): Record<string, unknown> => ({ ...parameter(name)(request), query: request.query })
+    post('/api/invitations', 'createInvitation')
+    get('/api/invitations', 'invitations', query)
+    post('/api/invitations/:invitationId/inspect', 'inspectInvitation', parameter('invitationId'))
+    post('/api/invitations/:invitationId/accept', 'acceptInvitation', parameter('invitationId'))
+    post('/api/invitations/:invitationId/revoke', 'revokeInvitation', parameter('invitationId'))
     get('/api/people', 'people', query)
     post('/api/people/:userId/status', 'setPersonActive', parameter('userId'))
     get('/api/teams', 'teams', query); post('/api/teams', 'createTeam')
     get('/api/teams/:teamId/members', 'teamMembers', parameterQuery('teamId')); post('/api/teams/:teamId/members', 'setTeamMember', parameter('teamId'))
     get('/api/projects', 'projects', query); post('/api/projects', 'createProject')
     get('/api/projects/:projectId/members', 'projectMembers', parameterQuery('projectId')); post('/api/projects/:projectId/members', 'setProjectMember', parameter('projectId'))
+    get('/api/projects/:projectId/creations', 'creationList', parameterQuery('projectId'))
+    get('/api/projects/:projectId/creations/head', 'creationHead', parameter('projectId'))
+    get('/api/projects/:projectId/creations/:creationId', 'creationView', (request) => ({ ...z.object({ projectId: teamIdSchema, creationId: teamIdSchema }).strict().parse(request.params), query: request.query }))
+    post('/api/projects/:projectId/creations/commands', 'creationCommand', parameter('projectId'))
     post('/api/materials', 'publish'); get('/api/materials', 'materials', (request) => ({ query: request.query }))
     get('/api/materials/:materialId/versions', 'versions', (request) => ({ ...parameter('materialId')(request), query: request.query }))
     get('/api/materials/:materialId/versions/:version', 'document', (request) => z.object({ materialId: teamIdSchema, version: z.coerce.number().int().positive() }).strict().parse(request.params))

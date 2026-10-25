@@ -29,21 +29,22 @@ async function make(name, cookies = []) {
   return window
 }
 async function selectProject(w, id) { await until(w, `document.querySelector('[aria-label="当前项目"] option[value="${id}"]')!==null`, 'project option'); await fill(w, '[aria-label="当前项目"]', id); await timeout(200) }
-async function selectDocument(w) { for (let i = 0; i < 4; i++) { if (await run(w, `document.body.textContent.includes('订单导出 · 需求说明')`)) break; await click(w, '加载更多') }; await click(w, '订单导出 · 需求说明'); await until(w, `document.querySelector('.document-heading h1')?.textContent==='订单导出 · 需求说明' && document.querySelector('.markdown')!==null`, 'selected exact material body') }
+async function selectDocument(w) { if (!await run(w, `document.querySelector('.document-workspace') !== null`)) await click(w, '项目资料'); for (let i = 0; i < 4; i++) { if (await run(w, `document.body.textContent.includes('订单导出 · 需求说明')`)) break; await click(w, '加载更多') }; await click(w, '订单导出 · 需求说明'); await until(w, `document.querySelector('.document-heading h1')?.textContent==='订单导出 · 需求说明' && document.querySelector('.markdown')!==null`, 'selected exact material body') }
 async function check(name, work) { await work(); results.push({ name, status: 'passed' }); console.log('PASS ' + name) }
 app.whenReady().then(async () => {
   try {
     const anon = await make('anon')
     await check('unsigned Web redirects through actual configured OIDC with preserved pairing return', async () => {
       await anon.loadURL(cfg.origin + '/?pairing=' + cfg.pairing.pairingId)
-      await until(anon, `document.body.textContent.includes('使用团队账号登录')`, 'login surface')
-      await click(anon, '使用团队账号登录')
+      await until(anon, `document.body.textContent.includes('使用身份提供方登录')`, 'login surface')
+      await click(anon, '使用身份提供方登录')
       const end = Date.now() + 8000; while (Date.now() < end && !anon.webContents.getURL().startsWith(cfg.issuer)) await timeout(50)
       assert.ok(anon.webContents.getURL().startsWith(cfg.issuer))
       anon.close()
     })
     const alice = await make('alice', cfg.alice.cookies), bob = await make('bob', cfg.bob.cookies)
     await selectProject(alice, cfg.projectId); await selectProject(bob, cfg.projectId)
+    await click(alice, '项目资料'); await click(bob, '项目资料')
     await check('two actual OIDC subjects browse scoped paged material lists; private bodies stay denied', async () => {
       await selectDocument(alice); await selectDocument(bob)
       assert.equal((await api('bob', `/api/materials/${cfg.privateId}/versions/1`)).status, 403)
@@ -187,7 +188,7 @@ app.whenReady().then(async () => {
       await click(alice, '确认保存分工'); await until(alice, `!document.querySelector('dialog') && document.querySelectorAll('.settings-section')[1].textContent.includes('开发 · 测试')`, 'combined actual project membership')
     })
     await check('empty filtered page with an actual server continuation is not presented as a complete empty inventory', async () => {
-      const page = await make('empty-filtered-page', cfg.bob.cookies); await selectProject(page, cfg.projectId)
+      const page = await make('empty-filtered-page', cfg.bob.cookies); await selectProject(page, cfg.projectId); await click(page, '项目资料')
       await run(page, `(()=>{const original=window.fetch.bind(window);let once=true;window.fetch=async(...args)=>{const response=await original(...args);if(once&&String(args[0]).startsWith('/api/materials?projectId=${cfg.projectId}')&&!String(args[0]).includes('&cursor=')){once=false;const raw=await response.json();if(!raw.value?.hasMore)throw Error('Owned test needs actual continuation');return new Response(JSON.stringify({...raw,value:{...raw.value,items:[]}}),{status:200,headers:{'Content-Type':'application/json'}})}return response}})()`)
       await click(page, '刷新资料列表'); await until(page, `document.querySelectorAll('.document-row').length===0&&[...document.querySelectorAll('.document-list button')].some(e=>e.textContent==='加载更多')`, 'valid empty page with more')
       assert.equal(await run(page, `document.querySelector('.document-list').textContent.includes('还没有发布资料')`), false)
@@ -205,7 +206,7 @@ app.whenReady().then(async () => {
     })
     await check('revoked current project loses protected body on next actual authorization check', async () => {
       const result = await api('alice', `/api/projects/${cfg.projectId}/members`, { commandId: randomUUID(), userId: cfg.bobUserId, roles: ['developer', 'tester'], active: false, expectedRevision: bobProjectRevision }); assert.equal(result.status, 200)
-      await run(bob, `document.dispatchEvent(new Event('visibilitychange'))`)
+      await click(bob, '刷新资料列表', true)
       await until(bob, `!document.querySelector('.markdown') && !document.querySelector('.source-reader')`, 'revoked body removed')
       assert.equal((await api('bob', `/api/materials/${cfg.materialId}/versions/1`)).status, 403)
     })
@@ -222,8 +223,8 @@ app.whenReady().then(async () => {
       await click(alice, '确认变更账号状态')
       await until(alice, `!document.querySelector('dialog')`, 'account disabled receipt')
       assert.equal((await api('bob', '/api/session')).status, 401)
-      await run(bob, `document.dispatchEvent(new Event('visibilitychange'));void 0`)
-      await until(bob, `document.body.textContent.includes('使用团队账号登录')`, 'revoked session clears Web')
+      await click(bob, '我的设备')
+      await until(bob, `document.querySelector('[aria-label="登录独立账号"]') !== null`, 'revoked session clears Web')
     })
     assert.deepEqual(errors, [])
     writeFileSync(join(cfg.evidence, 'report.json'), JSON.stringify({ status: 'passed', groups: results.length, results, electron: process.versions.electron, chrome: process.versions.chrome, rendererErrors: errors, limits: ['Owned real OIDC subjects/keys; no company SSO', 'Browser cookie partitions receive actual OIDC-issued cookies from the owned HTTP account helper', 'No desktop native execution/outbox or production deployment proof', 'Transport ACK loss and stale request guards have separate explicit client fixtures'] }, null, 2) + '\n')

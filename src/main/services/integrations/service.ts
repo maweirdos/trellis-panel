@@ -15,8 +15,9 @@ import { integrationRegistry } from './providers'
 import { protectSecret, revealSecret } from './credentials'
 import { jiraConfig, legacyConnections, resolveLegacy } from './legacy'
 import { readIntegrationState, updateIntegrationState, type StoredConnection } from './repository'
-import { IntegrationError, type ResolvedConnection } from './types'
+import { IntegrationError, teamGitlabBindingSchema, type TeamGitlabBinding, type AuthorizationPort, type ResolvedConnection } from './types'
 import { remoteUrl } from './transport'
+import { authorizeGitlabForIdentity } from './providers/gitlab-authorization'
 
 export function canonicalRoot(root: string): string { const normalized = resolve(root); return process.platform === 'win32' ? normalized.toLowerCase() : normalized }
 export function requireProject(expectedRoot: string): string {
@@ -66,6 +67,9 @@ function normalizedConfig(input: SaveConnectionInput, legacy: boolean): Record<s
   return config
 }
 export function saveConnection(input: SaveConnectionInput): IntegrationConnection {
+  return saveConnectionWithTeamBinding(input)
+}
+function saveConnectionWithTeamBinding(input: SaveConnectionInput, trustedBinding?: TeamGitlabBinding): IntegrationConnection {
   const legacy = legacyConnections().find((c) => c.id === input.id)
   if (input.id?.startsWith('legacy-') && !legacy) throw new IntegrationError('旧连接不存在，请刷新')
   if (legacy) {
@@ -104,7 +108,8 @@ export function saveConnection(input: SaveConnectionInput): IntegrationConnectio
       if (input.enabled && field.required && !secrets[field.key]) throw new IntegrationError(`请填写${field.label}`)
     }
     for (const field of fields.filter((f) => !f.secret && f.required)) if (input.enabled && !config[field.key]) throw new IntegrationError(`请填写${field.label}`)
-    const next: StoredConnection = { id: previous?.id ?? randomUUID(), providerId: input.providerId, name: input.name, enabled: input.enabled, revision: (previous?.revision ?? 0) + 1, config, secrets, check: 'unverified', checkedAt: null, detail: '', deleted: false }
+    const teamGitlab = trustedBinding ?? previous?.teamGitlab
+    const next: StoredConnection = { id: previous?.id ?? randomUUID(), providerId: input.providerId, name: input.name, enabled: input.enabled, revision: (previous?.revision ?? 0) + 1, config, secrets, check: 'unverified', checkedAt: null, detail: '', deleted: false, ...(teamGitlab ? { teamGitlab } : {}) }
     if (next.enabled) integrationRegistry.get(input.providerId).validate?.({ public: toPublic(next), secrets: Object.fromEntries(Object.entries(secrets).map(([key, value]) => [key, revealSecret(value)])), instanceId: next.id })
     if (previous) state.connections[state.connections.indexOf(previous)] = next
     else state.connections.push(next)
@@ -112,10 +117,30 @@ export function saveConnection(input: SaveConnectionInput): IntegrationConnectio
   })
 }
 export async function authorizeConnection(input: ConnectionRequest, signal: AbortSignal): Promise<IntegrationConnection> {
+  if (readIntegrationState().connections.some((c) => c.id === input.connectionId && c.teamGitlab)) throw new IntegrationError('此连接绑定团队登录身份，请从团队登录入口重试授权', 'denied')
+  return completeAuthorization(input, signal)
+}
+/** Only main can create the binding; ordinary config/secret patches cannot forge it. */
+export function saveTeamGitlabConnection(raw: TeamGitlabBinding): IntegrationConnection {
+  const binding = teamGitlabBindingSchema.parse(raw)
+  return saveConnectionWithTeamBinding({ providerId: 'gitlab', name: 'GitLab · 团队登录', enabled: true, config: { baseUrl: binding.baseUrl, clientId: binding.clientId, authMethod: 'oauth2' }, secrets: {} }, binding)
+}
+/** A separate native grant must match the protected team identity before persistence. */
+export async function authorizeTeamGitlabConnection(input: ConnectionRequest, binding: TeamGitlabBinding, signal: AbortSignal, assertCurrent: () => Promise<void>): Promise<IntegrationConnection> {
+  await assertCurrent()
+  updateIntegrationState((state) => {
+    const stored = state.connections.find((item) => item.id === input.connectionId && !item.deleted)
+    if (signal.aborted || !stored?.enabled || stored.revision !== input.connectionRevision || !stored.teamGitlab || stored.teamGitlab.ownerKey !== binding.ownerKey || stored.teamGitlab.subject !== binding.subject || stored.teamGitlab.issuer !== binding.issuer || stored.config.baseUrl !== binding.baseUrl || stored.config.clientId !== binding.clientId) throw new IntegrationError('团队或 GitLab 连接已变更，未发起授权', 'conflict')
+    stored.teamGitlab.authorizationAttempted = true
+  })
+  return completeAuthorization(input, signal, (connection, activeSignal) => authorizeGitlabForIdentity(connection, activeSignal, { ...binding, provider: 'gitlab' }), assertCurrent)
+}
+async function completeAuthorization(input: ConnectionRequest, signal: AbortSignal, authorize?: AuthorizationPort['authorize'], beforePersist?: () => Promise<void>): Promise<IntegrationConnection> {
   const connection = resolveConnection(input)
   const provider = integrationRegistry.get(connection.public.providerId)
   if (connection.public.legacy || !provider.authorization) throw new IntegrationError('此连接不支持浏览器授权，请新建支持 OAuth 的连接', 'denied')
-  const result = await provider.authorization.authorize(connection, signal)
+  const result = authorize ? await authorize(connection, signal) : await provider.authorization.authorize(connection, signal)
+  await beforePersist?.()
   if (signal.aborted) throw new IntegrationError('授权已取消或超时，未保存此次凭证', 'denied')
   const protectedSecrets = Object.fromEntries(Object.entries(result.secrets).map(([key, value]) => [key, protectSecret(value)]))
   return updateIntegrationState((state) => {

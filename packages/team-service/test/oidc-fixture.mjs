@@ -13,7 +13,7 @@ export async function freePort() {
   return address.port
 }
 
-export async function createOidcFixture(teamOrigin) {
+export async function createOidcFixture(teamOrigin, { advertisedEndpointProtocol, advertisedEndpointHost, advertisedIssuer } = {}) {
   const issuer = `http://127.0.0.1:${await freePort()}`
   const accounts = new Map([['alice', { password: 'alice-owned-fixture', name: 'Alice Product and PM' }], ['bob', { password: 'bob-owned-fixture', name: 'Bob Development and QA' }]])
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
@@ -31,6 +31,17 @@ export async function createOidcFixture(teamOrigin) {
   const server = createServer((request, response) => {
     void (async () => {
       const url = new URL(request.url ?? '/', issuer)
+      if (url.pathname === '/.well-known/openid-configuration' && (advertisedEndpointProtocol || advertisedEndpointHost || advertisedIssuer)) {
+        const end = response.end.bind(response)
+        response.end = (body, ...rest) => {
+          const metadata = JSON.parse(Buffer.from(body).toString('utf8'))
+          if (advertisedIssuer) metadata.issuer = advertisedIssuer
+          for (const key of ['authorization_endpoint', 'token_endpoint', 'userinfo_endpoint', 'jwks_uri']) if (metadata[key]) {
+            const endpoint = new URL(metadata[key]); if (advertisedEndpointProtocol) endpoint.protocol = advertisedEndpointProtocol; if (advertisedEndpointHost) endpoint.host = advertisedEndpointHost; metadata[key] = endpoint.href
+          }
+          const serialized = JSON.stringify(metadata); response.setHeader('Content-Length', Buffer.byteLength(serialized)); return end(serialized, ...rest)
+        }
+      }
       if (!url.pathname.startsWith('/interaction/')) { if (url.pathname === '/auth') observations.authorizationRequests.push({ challengeMethod: url.searchParams.get('code_challenge_method'), hasChallenge: !!url.searchParams.get('code_challenge'), hasState: !!url.searchParams.get('state'), hasNonce: !!url.searchParams.get('nonce') }); return callback(request, response) }
       const interaction = await provider.interactionDetails(request, response)
       if (request.method === 'GET') { response.setHeader('Content-Type', 'application/json'); return response.end(JSON.stringify({ uid: interaction.uid, prompt: interaction.prompt.name })) }
@@ -75,8 +86,8 @@ export class BrowserAccount {
     this.cookies.set(address.hostname, stored)
     return response
   }
-  async signIn() {
-    let url = new URL('/auth/login?returnTo=/', this.origin)
+  async signIn(returnTo = '/') {
+    let url = new URL('/auth/login?returnTo=' + encodeURIComponent(returnTo), this.origin)
     let response = await this.request(url)
     for (let count = 0; count < 20; count++) {
       const location = response.headers.get('location')
@@ -87,6 +98,7 @@ export class BrowserAccount {
         response = await this.request(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form) }); continue
       }
       if (url.origin === this.origin && response.status === 200) {
+        this.lastReturnTo = url.pathname + url.search + url.hash
         const session = await this.api('/api/session')
         if (session.status !== 200 || !session.body.ok) throw Error(`Fixture sign-in failed at session: ${JSON.stringify(session.body)}`)
         this.csrf = session.body.value.csrfToken

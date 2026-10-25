@@ -1,11 +1,11 @@
 // 外壳共享基础件。所有页面从本文件取用，勿各自造轮子。
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
 import { Check, ChevronDown, Search } from 'lucide-react'
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
-import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
+import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 
 /* ---------------- Avatar ---------------- */
 
@@ -139,11 +139,47 @@ export function Dropdown({
   const menuRef = useRef<HTMLDivElement | null>(null)
   const escId = useId()
   const returnFocusRef = useRef<HTMLElement | null>(null)
+  const interactionSignal = useInteractionSignal()
+  const focusGeneration = useRef(0)
+  const focusFrame = useRef<number | null>(null)
+  const cancelFocusReturn = useCallback((): void => {
+    focusGeneration.current++
+    if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current)
+    focusFrame.current = null
+  }, [])
+  useLayoutEffect(() => cancelFocusReturn, [interactive, interactionSignal, cancelFocusReturn])
+
+  const close = (): void => {
+    cancelFocusReturn()
+    setOpen(false)
+    const anchor = anchorRef.current
+    const menu = menuRef.current
+    const target = returnFocusRef.current
+    if (!canInteract() || !anchor || !menu || !target) return
+    const ticket = focusGeneration.current
+    // Let removal and any new modal autofocus commit before reclaiming abandoned focus.
+    queueMicrotask(() => {
+      if (ticket !== focusGeneration.current || interactionSignal?.aborted || !canInteract()) return
+      focusFrame.current = requestAnimationFrame(() => {
+        focusFrame.current = null
+        if (ticket !== focusGeneration.current || interactionSignal?.aborted || !canInteract() ||
+          anchorRef.current !== anchor || !anchor.isConnected || !target.isConnected || !anchor.contains(target) ||
+          target.matches(':disabled') || target.closest('[hidden], [inert], [aria-hidden="true"]') ||
+          !target.getClientRects().length || getComputedStyle(target).visibility !== 'visible') return
+        const active = document.activeElement
+        if (active && active !== document.body && active !== document.documentElement && !menu.contains(active)) return
+        const topDialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]')]
+          .filter((dialog) => dialog.getClientRects().length > 0 && !dialog.closest('[hidden], [inert], [aria-hidden="true"]')).at(-1)
+        if (topDialog && !topDialog.contains(target)) return
+        target.focus({ preventScroll: true })
+      })
+    })
+  }
 
   useEscLayer(open, {
     kind: 'modal',
     id: `dropdown-${escId}`,
-    onClose: () => setOpen(false),
+    onClose: () => { cancelFocusReturn(); setOpen(false) },
     returnFocusRef
   })
 
@@ -181,7 +217,7 @@ export function Dropdown({
     })
   }, [open, align, interactive, width, layoutKey, positionAnchorRef, placement, gap])
 
-  const toggle = (): void => { if (canInteract()) setOpen((v) => !v) }
+  const toggle = (): void => { if (canInteract()) { cancelFocusReturn(); setOpen((v) => !v) } }
   useEffect(() => { if (!interactive) setOpen(false) }, [interactive])
 
   useEffect(() => {
@@ -189,10 +225,12 @@ export function Dropdown({
     const onDown = (e: MouseEvent): void => {
       const t = e.target as Node
       if (anchorRef.current?.contains(t) || menuRef.current?.contains(t)) return
+      cancelFocusReturn()
       setOpen(false)
     }
     const onScroll = (event: Event): void => {
       if (event.target instanceof Node && menuRef.current?.contains(event.target)) return
+      cancelFocusReturn()
       setOpen(false)
     }
     window.addEventListener('mousedown', onDown)
@@ -203,7 +241,7 @@ export function Dropdown({
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onScroll)
     }
-  }, [open, interactive])
+  }, [open, interactive, cancelFocusReturn])
 
   return (
     <div ref={anchorRef} className={clsx('relative', className)}>
@@ -219,7 +257,7 @@ export function Dropdown({
           }}
           className="my-pop my-menu fixed"
         >
-          {children(() => setOpen(false))}
+          {children(close)}
         </div>
       )}
     </div>

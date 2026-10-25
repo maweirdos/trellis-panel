@@ -1,209 +1,114 @@
-/**
- * 空间与配置：空间列表/新建/多人处理人开关 + 任务类型/状态/标签管理（PRD 3.1/4.1/4.3/4.4）。
- */
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Archive, Globe, Lock, LogIn, Loader2, Pencil, Plus, RotateCcw, Users } from 'lucide-react'
+import type { HifoxRole, HifoxSnapshot, HifoxSpace } from '@shared/hifox'
 import { api } from '../../api'
-import { useHifox } from '../store'
-import { PageHeader, Field, inputClass, LabelChip } from '../ui'
-import { Button, Switch, EmptyState } from '../../my/ui'
-import type { HifoxStatusCategory } from '@shared/hifox'
+import { confirmDialog } from '../../components/Dialogs'
+import { Button, EmptyState, Modal, SearchInput, Switch, Tooltip } from '../../my/ui'
+import { useHifox, statusOf } from '../store'
+import { Field, inputClass, MemberChip, PageHeader, textareaClass } from '../ui'
 
-const CATEGORIES: Array<[HifoxStatusCategory, string]> = [
-  ['backlog', 'Backlog（收集规划）'], ['todo', 'Todo（可开始）'], ['in_progress', '处理中'],
-  ['in_review', '待评审'], ['done', '完成'], ['blocked', '受阻'], ['cancelled', '已取消']
-]
+const ROLE_LABEL: Record<HifoxRole, string> = { owner: 'Owner', admin: '管理员', member: '成员' }
 
-export function SpacesPage(): JSX.Element {
-  const snapshot = useHifox((s) => s.snapshot)!
-  const currentSpaceId = useHifox((s) => s.currentSpaceId)
-  const setCurrentSpace = useHifox((s) => s.setCurrentSpace)
-  const run = useHifox((s) => s.run)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [key, setKey] = useState('')
-  const [description, setDescription] = useState('')
-  const [typeName, setTypeName] = useState('')
-  const [statusName, setStatusName] = useState('')
-  const [statusCategory, setStatusCategory] = useState<HifoxStatusCategory>('todo')
-  const [labelName, setLabelName] = useState('')
-  const [labelAsOrg, setLabelAsOrg] = useState(false)
+export function SpacesPage(): JSX.Element | null {
+  const snapshot = useHifox((state) => state.snapshot)
+  const spaceId = useHifox((state) => state.currentSpaceId)
+  const setCurrentSpace = useHifox((state) => state.setCurrentSpace)
+  const workspace = useHifox((state) => state.workspaceContext)
+  const run = useHifox((state) => state.run)
+  const busy = useHifox((state) => state.busy)
+  const [keyword, setKeyword] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  const [editing, setEditing] = useState<HifoxSpace | 'new' | null>(null)
+  const [editingMembers, setEditingMembers] = useState<string | null>(null)
+  if (!snapshot) return null
 
-  const space = snapshot.spaces.find((s) => s.id === currentSpaceId)
-  const types = snapshot.taskTypes.filter((t) => t.spaceId === currentSpaceId)
-  const statuses = snapshot.taskStatuses.filter((s) => s.spaceId === currentSpaceId).sort((a, b) => a.order - b.order)
-  const labels = snapshot.taskLabels.filter((l) => !l.spaceId || l.spaceId === currentSpaceId)
-
-  const createSpace = async (): Promise<void> => {
-    const result = await run('创建空间', () => api.hifox.createSpace({ name: name.trim(), key: key.trim(), description: description.trim() || undefined }))
-    if (result?.ok && result.data) {
-      const created = result.data.spaces[result.data.spaces.length - 1]
-      if (created) setCurrentSpace(created.id)
-      setName(''); setKey(''); setDescription(''); setCreateOpen(false)
-    }
+  const space = snapshot.spaces.find((item) => item.id === spaceId)
+  const actorId = workspace.actorId ?? (workspace.state === 'local' ? snapshot.members.find((member) => member.role === 'owner')?.id : undefined)
+  const isMember = Boolean(actorId && space?.memberIds.includes(actorId))
+  const canRead = Boolean(space && (space.visibility !== 'private' || isMember))
+  const canConfigure = workspace.canManage && Boolean(space && !space.archived)
+  const spaces = snapshot.spaces.filter((item) => (showArchived || !item.archived || item.id === spaceId) && `${item.name} ${item.key}`.toLowerCase().includes(keyword.toLowerCase()))
+  const members = snapshot.members.filter((member) => space?.memberIds.includes(member.id))
+  const pendingCount = space ? snapshot.tasks.filter((task) => task.spaceId === space.id && !['done', 'cancelled'].includes(statusOf(snapshot, task.statusId)?.category ?? '')).length : 0
+  const archive = async (): Promise<void> => {
+    if (!space || busy || !workspace.canManage) return
+    const targetId = space.id
+    if (space.archived) { await run('恢复空间', () => api.hifox.updateSpace({ id: targetId, archived: false })); return }
+    if (canRead && pendingCount > 0) return
+    const origin = workspace.key
+    if (!await confirmDialog({ title: `归档「${space.name}」？`, message: '归档后空间只读，任务、成员与历史记录保留，可随时恢复。未完成任务必须先完成、取消或调整归属。', confirmText: '归档空间' })) return
+    if (useHifox.getState().workspaceContext.key !== origin) return
+    await run('归档空间', () => api.hifox.updateSpace({ id: targetId, archived: true }))
   }
 
-  if (!space) return <EmptyState title="还没有空间" description="创建一个空间开始协作" />
-
-  return (
-    <div className="my-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-      <PageHeader
-        title="空间与配置"
-        description="空间是团队与任务的边界；前缀决定任务编号，工作流配置按空间独立"
-        actions={<Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}><Plus size={14} />新建空间</Button>}
-      />
-
-      <section className="flex flex-col gap-2 rounded-my-md border border-my-line bg-my-layer/40 p-3">
-        <h2 className="text-my-sm font-medium text-my-primary">当前空间：{space.name}（{space.key}）</h2>
-        <p className="text-my-xs text-my-tertiary">{space.description ?? '暂无描述'}</p>
-        <div className="flex flex-wrap items-center gap-4">
-          <Switch
-            checked={space.multiAssignee}
-            onChange={(value) => void run('更新空间', () => api.hifox.updateSpace({ id: space.id, multiAssignee: value }))}
-            label="多人处理人（关闭后既有任务收敛为第一名处理人）"
-          />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {snapshot.spaces.map((s) => (
-            <button key={s.id} type="button" onClick={() => setCurrentSpace(s.id)}
-              className={`rounded-my-md border px-2.5 py-1.5 text-left text-my-xs transition-colors ${s.id === space.id ? 'border-indigo-400/60 bg-indigo-500/10 text-indigo-300' : 'border-my-line text-my-secondary hover:bg-my-layer'}`}>
-              <span className="block font-medium">{s.name}</span>
-              <span className="text-[10px] text-my-tertiary">{s.key} · {s.memberIds.length} 成员 · 任务 #{s.taskSeq}</span>
-            </button>
-          ))}
-        </div>
+  return <div className="my-fade flex min-h-0 flex-1 flex-col gap-3">
+    <PageHeader title="空间设置" actions={workspace.canManage && <Tooltip label="新建空间" side="bottom"><Button variant="primary" size="sm" className="my-icon-control" disabled={busy} aria-label="新建空间" onClick={() => setEditing('new')}><Plus size={16} /></Button></Tooltip>} />
+    <div className="flex flex-wrap items-center gap-3"><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索空间" /><label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />含已归档</label><span className="text-my-xs text-my-tertiary">{spaces.length} 个</span></div>
+    <div className="my-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
+      <section className="rounded-my-md border border-my-line" aria-label="可见空间">
+        {spaces.length === 0 ? <EmptyState title={keyword ? '没有匹配空间' : '暂无可见空间'} /> : <table className="w-full border-collapse text-left text-my-sm"><thead className="text-my-xs text-my-tertiary"><tr className="border-b border-my-line"><th className="px-3 py-2 font-medium">空间</th><th className="px-3 py-2 font-medium">访问权限</th><th className="px-3 py-2 font-medium">成员</th><th className="px-3 py-2 font-medium"><span className="sr-only">操作</span></th></tr></thead><tbody>{spaces.map((item) => {
+          const joined = Boolean(actorId && item.memberIds.includes(actorId))
+          const readable = item.visibility !== 'private' || joined
+          return <tr key={item.id} className={`border-b border-my-line ${item.id === spaceId ? 'bg-my-navigation-selected' : 'hover:bg-my-layer-1-hover'}`}><td className="px-3 py-2"><button type="button" aria-pressed={item.id === spaceId} onClick={() => setCurrentSpace(item.id)} className="my-row flex w-full min-w-0 items-center gap-2 rounded-my-md text-left text-my-primary hover:bg-my-layer-transparent-hover"><span className="min-w-0 truncate">{item.name}</span><span className="font-mono text-my-xs text-my-tertiary">{item.key}</span>{item.archived && <span className="text-my-xs text-my-tertiary">已归档</span>}</button></td><td className="px-3 py-2"><span className="flex items-center gap-1.5 text-my-xs text-my-secondary">{item.visibility === 'private' ? <Lock size={13} /> : <Globe size={13} />}{item.visibility === 'private' ? '私有' : '组织内公开'}</span></td><td className="px-3 py-2 text-my-secondary">{readable ? item.memberIds.length : '—'}</td><td className="px-3 py-2"><div className="flex justify-end">{joined ? <span className="text-my-xs text-my-tertiary">已加入</span> : !item.archived && item.visibility !== 'private' && <Tooltip label={`加入 ${item.name}`}><Button size="sm" variant="ghost" className="my-icon-control" disabled={busy || !actorId} aria-label={`加入 ${item.name}`} onClick={() => void run('加入空间', () => api.hifox.joinSpace({ spaceId: item.id }))}><LogIn size={15} /></Button></Tooltip>}</div></td></tr>
+        })}</tbody></table>}
       </section>
-
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <section className="flex flex-col gap-2 rounded-my-md border border-my-line p-3">
-          <h2 className="text-my-sm font-medium text-my-primary">任务类型（PRD 4.1 / 4.4 两层模型）</h2>
-          <ul className="space-y-1.5">
-            {types.map((type) => (
-              <li key={type.id} className="rounded-my-md bg-my-layer/60 p-2">
-                <div className="flex items-center gap-2 text-my-xs">
-                  <span className={`min-w-0 flex-1 truncate ${type.isDefault ? 'font-medium text-my-primary' : 'text-my-secondary'}`}>
-                    {type.name}{type.isDefault && '（默认）'}
-                    {type.requiredHints && <span className="ml-1 text-my-tertiary">需补：{type.requiredHints.join('、')}</span>}
-                  </span>
-                  {!type.isDefault && (
-                    <button type="button" aria-label={`删除类型 ${type.name}`} className="text-my-tertiary hover:text-red-400"
-                      onClick={() => void run('删除类型', () => api.hifox.removeTaskType({ id: type.id }))}>
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-                {/* PRD 4.4 规则1：每个类型可配置可用状态；点选保存 */}
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {statuses.map((status) => {
-                    const on = type.statusIds ? type.statusIds.includes(status.id) : true
-                    return (
-                      <button key={status.id} type="button"
-                        title={type.statusIds ? '配置该类型的可用状态' : '当前沿用空间全部状态，点选任一状态即开始自定义'}
-                        onClick={() => {
-                          const next = type.statusIds
-                            ? (type.statusIds.includes(status.id)
-                                ? type.statusIds.filter((x) => x !== status.id)
-                                : [...type.statusIds, status.id])
-                            : [status.id]
-                          void run('更新类型状态集', () => api.hifox.updateTaskType({ id: type.id, statusIds: next }))
-                        }}
-                        className={`rounded-my-sm px-1.5 py-0.5 text-[10px] transition-opacity ${on ? 'bg-indigo-500/20 text-indigo-300' : 'bg-my-layer text-my-tertiary opacity-50'}`}>
-                        {status.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-auto flex gap-1.5 pt-2">
-            <input className={inputClass} placeholder="新类型名称" value={typeName} onChange={(e) => setTypeName(e.target.value)} />
-            <Button size="sm" disabled={!typeName.trim()} onClick={() => {
-              void run('创建类型', () => api.hifox.createTaskType({ spaceId: space.id, name: typeName.trim() }))
-              setTypeName('')
-            }}><Plus size={13} /></Button>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-2 rounded-my-md border border-my-line p-3">
-          <h2 className="text-my-sm font-medium text-my-primary">任务状态（PRD 4.4）</h2>
-          <ul className="space-y-1">
-            {statuses.map((status) => (
-              <li key={status.id} className="flex items-center gap-2 text-my-xs">
-                <span className="min-w-0 flex-1 truncate text-my-secondary">{status.order}. {status.name}</span>
-                <span className="shrink-0 text-[10px] text-my-tertiary">{CATEGORIES.find(([c]) => c === status.category)?.[1].split('（')[0]}</span>
-                <button type="button" aria-label={`删除状态 ${status.name}`} className="text-my-tertiary hover:text-red-400"
-                  onClick={() => void run('删除状态', () => api.hifox.removeTaskStatus({ id: status.id }))}>
-                  <Trash2 size={12} />
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-auto flex gap-1.5 pt-2">
-            <input className={`${inputClass} flex-1`} placeholder="新状态名称" value={statusName} onChange={(e) => setStatusName(e.target.value)} />
-            <select className={`${inputClass} w-28`} value={statusCategory} onChange={(e) => setStatusCategory(e.target.value as HifoxStatusCategory)}>
-              {CATEGORIES.map(([c, label]) => <option key={c} value={c}>{label.split('（')[0]}</option>)}
-            </select>
-            <Button size="sm" disabled={!statusName.trim()} onClick={() => {
-              void run('创建状态', () => api.hifox.createTaskStatus({ spaceId: space.id, name: statusName.trim(), category: statusCategory }))
-              setStatusName('')
-            }}><Plus size={13} /></Button>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-2 rounded-my-md border border-my-line p-3">
-          <h2 className="text-my-sm font-medium text-my-primary">任务标签（PRD 4.3）</h2>
-          <ul className="space-y-1">
-            {labels.map((label) => (
-              <li key={label.id} className="flex items-center gap-2 text-my-xs">
-                <span className={`min-w-0 flex-1 ${label.archived ? 'opacity-40 line-through' : ''}`}>
-                  <LabelChip label={label} />{!label.spaceId && <span className="ml-1 text-[10px] text-my-tertiary">组织</span>}
-                </span>
-                {!label.archived && (
-                  <button type="button" aria-label={`归档标签 ${label.name}`} className="text-my-tertiary hover:text-amber-400"
-                    onClick={() => void run('归档标签', () => api.hifox.archiveLabel({ id: label.id }))}>
-                    归档
-                  </button>
-                )}
-              </li>
-            ))}
-            {labels.length === 0 && <li className="text-my-xs text-my-tertiary">暂无标签</li>}
-          </ul>
-          <div className="mt-auto flex flex-col gap-1.5 pt-2">
-            <div className="flex gap-1.5">
-              <input className={inputClass} placeholder="新标签名称" value={labelName} onChange={(e) => setLabelName(e.target.value)} />
-              <Button size="sm" disabled={!labelName.trim()} onClick={() => {
-                void run('创建标签', () => api.hifox.createLabel({ spaceId: labelAsOrg ? undefined : space.id, name: labelName.trim() }))
-                setLabelName('')
-            }}><Plus size={13} /></Button>
-            </div>
-            <label className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary" title="PRD 4.3 规则4：组织标签在所有空间可用">
-              <input type="checkbox" checked={labelAsOrg} onChange={(e) => setLabelAsOrg(e.target.checked)} />
-              创建为组织标签（所有空间可用）
-            </label>
-          </div>
-        </section>
-      </div>
-
-      {createOpen && (
-        <div className="fixed inset-0 z-30 grid place-items-center bg-black/40" role="dialog" aria-label="新建空间">
-          <div className="w-96 rounded-my-lg border border-my-line bg-my-canvas p-4">
-            <h2 className="mb-3 text-sm font-semibold text-my-primary">新建空间</h2>
-            <div className="flex flex-col gap-2.5">
-              <Field label="空间名称"><input className={inputClass} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="如：设计空间" /></Field>
-              <Field label="任务前缀" hint="2~6 个英文字母，作为任务编号前缀（如 ENG-111）">
-                <input className={inputClass} value={key} onChange={(e) => setKey(e.target.value.toUpperCase())} placeholder="如：DSG" />
-              </Field>
-              <Field label="描述（可选）"><input className={inputClass} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
-              <p className="text-my-xs text-my-tertiary">新空间自带默认任务类型与七类状态工作流。</p>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setCreateOpen(false)}>取消</Button>
-                <Button variant="primary" size="sm" disabled={!name.trim() || !/^[A-Z]{2,6}$/.test(key)} onClick={() => void createSpace()}>创建</Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {space && <section className="flex flex-col gap-4 rounded-my-md border border-my-line p-4" aria-label="当前空间设置">
+        <header className="flex flex-wrap items-center gap-2"><h2 className="min-w-0 flex-1 truncate text-my-md font-medium text-my-primary">{space.name}</h2><span className="font-mono text-my-xs text-my-tertiary">{space.key}</span>{workspace.canManage && <><Tooltip label="编辑空间"><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !canConfigure} aria-label="编辑空间" onClick={() => setEditing(space)}><Pencil size={14} /></Button></Tooltip><Tooltip label={space.archived ? '恢复空间' : canRead && pendingCount > 0 ? `还有 ${pendingCount} 条未完成任务` : '归档空间'}><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || (!space.archived && canRead && pendingCount > 0)} aria-label={space.archived ? '恢复空间' : '归档空间'} onClick={() => void archive()}>{space.archived ? <RotateCcw size={14} /> : <Archive size={14} />}</Button></Tooltip></>}</header>
+        {space.description && <p className="whitespace-pre-wrap text-my-sm text-my-secondary">{space.description}</p>}
+        <div className="flex flex-wrap items-center gap-4 text-my-xs text-my-secondary"><span>{space.visibility === 'private' ? '私有' : '组织内公开'}</span><span>{space.archived ? '已归档 · 只读' : isMember ? '已加入' : '未加入'}</span>{canRead && <span>{pendingCount} 条未完成任务</span>}</div>
+        {canRead && <div className="flex items-center justify-between gap-3 border-t border-my-line pt-3"><span className="text-my-sm text-my-secondary">允许多个处理人</span><Switch label="允许多个处理人" checked={space.multiAssignee} disabled={busy || !canConfigure} onChange={(multiAssignee) => void run('更新空间', () => api.hifox.updateSpace({ id: space.id, multiAssignee }))} /></div>}
+        {canRead ? <div className="border-t border-my-line pt-3"><div className="mb-2 flex items-center gap-2"><Users size={16} className="text-my-icon-secondary" /><h3 className="flex-1 text-my-sm font-medium text-my-primary">成员 <span className="text-my-xs font-normal text-my-tertiary">{members.length}</span></h3>{canConfigure && <Tooltip label="管理空间成员"><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy} aria-label="管理空间成员" onClick={() => setEditingMembers(space.id)}><Pencil size={14} /></Button></Tooltip>}</div><ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id} className="flex items-center gap-2 py-2"><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.title || ROLE_LABEL[member.role]}</span></li>)}</ul>{members.length === 0 && <p className="py-2 text-my-xs text-my-tertiary">暂无成员</p>}</div> : <p className="text-my-xs text-my-tertiary">私有空间的内容与成员仅对空间成员开放。</p>}
+      </section>}
     </div>
-  )
+    {editing && <SpaceEditor key={editing === 'new' ? 'new' : editing.id} space={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
+    {editingMembers && space?.id === editingMembers && canConfigure && <SpaceMembersEditor key={space.id} snapshot={snapshot} space={space} onClose={() => setEditingMembers(null)} />}
+  </div>
+}
+
+function SpaceEditor({ space, onClose }: { space?: HifoxSpace; onClose: () => void }): JSX.Element {
+  const run = useHifox((state) => state.run)
+  const busy = useHifox((state) => state.busy)
+  const setCurrentSpace = useHifox((state) => state.setCurrentSpace)
+  const [name, setName] = useState(space?.name ?? '')
+  const [key, setKey] = useState(space?.key ?? '')
+  const [description, setDescription] = useState(space?.description ?? '')
+  const [visibility, setVisibility] = useState<'public' | 'private'>(space?.visibility ?? 'public')
+  const [error, setError] = useState<string | null>(null)
+  const validKey = /^[A-Z0-9]{2,7}$/.test(key)
+  const save = async (): Promise<void> => {
+    if (busy || !name.trim() || (!space && !validKey)) return
+    setError(null)
+    const fields = { name: name.trim(), description: description.trim(), visibility }
+    const result = await run(space ? '编辑空间' : '创建空间', () => space ? api.hifox.updateSpace({ id: space.id, ...fields }) : api.hifox.createSpace({ key, ...fields }))
+    if (result?.ok) {
+      if (!space) { const created = result.data.spaces.find((item) => item.key === key); if (created) setCurrentSpace(created.id) }
+      onClose()
+    } else if (result && !result.ok) setError(result.error)
+    else setError('保存失败，请重试。')
+  }
+  return <Modal open onClose={() => { if (!busy) onClose() }} width={460} ariaLabel={space ? '编辑空间' : '新建空间'}><fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-4 p-4"><h2 className="text-my-md font-semibold text-my-primary">{space ? '编辑空间' : '新建空间'}</h2><div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><div className="flex flex-col gap-3">
+    <Field label="空间名称"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
+    {!space && <Field label="任务前缀" hint="2～7 个英文字母或数字"><input className={inputClass} maxLength={7} value={key} aria-invalid={key.length > 0 && !validKey} onChange={(event) => setKey(event.target.value.toUpperCase())} /></Field>}
+    <Field label="描述（选填）"><textarea className={textareaClass} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></Field>
+    <Field label="访问权限" hint={visibility === 'public' ? '组织成员可发现并自行加入。' : '仅空间成员可查看内容，由管理员添加成员。'}><select className={inputClass} value={visibility} onChange={(event) => setVisibility(event.target.value === 'private' ? 'private' : 'public')}><option value="public">组织内公开</option><option value="private">私有</option></select></Field>
+    {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
+  </div></div><div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy || !name.trim() || (!space && !validKey)} onClick={() => void save()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}{space ? '保存' : '创建'}</Button></div></fieldset></Modal>
+}
+
+function SpaceMembersEditor({ snapshot, space, onClose }: { snapshot: HifoxSnapshot; space: HifoxSpace; onClose: () => void }): JSX.Element {
+  const run = useHifox((state) => state.run)
+  const busy = useHifox((state) => state.busy)
+  const [memberIds, setMemberIds] = useState(space.memberIds)
+  const [keyword, setKeyword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const members = snapshot.members.filter((member) => `${member.name} ${member.email ?? ''}`.toLowerCase().includes(keyword.toLowerCase()))
+  const save = async (): Promise<void> => {
+    if (busy) return
+    setError(null)
+    const result = await run('更新空间成员', () => api.hifox.setSpaceMembers({ spaceId: space.id, memberIds }))
+    if (result?.ok) onClose()
+    else if (result && !result.ok) setError(result.error)
+    else setError('保存失败，请重试。')
+  }
+  return <Modal open onClose={() => { if (!busy) onClose() }} width={460} ariaLabel="管理空间成员"><fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-3 p-4"><h2 className="text-my-md font-semibold text-my-primary">管理空间成员</h2><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索组织成员" /><div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id}><label className="flex items-center gap-2 py-2 text-my-sm text-my-secondary"><input type="checkbox" checked={memberIds.includes(member.id)} onChange={(event) => setMemberIds((previous) => event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id))} /><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.title || ROLE_LABEL[member.role]}</span></label></li>)}</ul>{members.length === 0 && <EmptyState title="没有匹配成员" />}</div>{error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy} onClick={() => void save()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}保存</Button></div></fieldset></Modal>
 }

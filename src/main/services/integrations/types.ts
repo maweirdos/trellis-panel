@@ -1,6 +1,19 @@
 import type { IntegrationConnection, PageResult, RemoteRepository, ExternalObject, ProviderManifest, JiraSearchData } from '../../../shared/integrations'
 import type { JiraTransition } from '../../../shared/types'
 import type { KnowledgeCollection } from '../../../shared/knowledge-access'
+import { z } from 'zod'
+
+/** Supplied by the protected team /api/identity response, never renderer config. */
+export const verifiedGitlabIdentitySchema = z.object({
+  provider: z.literal('gitlab'), issuer: z.string().url().max(2048), subject: z.string().min(1).max(1024),
+  baseUrl: z.string().url().max(2048), clientId: z.string().trim().min(1).max(1024),
+  username: z.string().min(1).max(200).optional()
+})
+export type VerifiedGitlabIdentity = z.infer<typeof verifiedGitlabIdentitySchema>
+export const teamGitlabBindingSchema = verifiedGitlabIdentitySchema.omit({ username: true, provider: true }).extend({
+  ownerKey: z.string().regex(/^[a-f0-9]{64}$/), authorizationAttempted: z.boolean().default(false)
+})
+export type TeamGitlabBinding = z.infer<typeof teamGitlabBindingSchema>
 
 export interface KnowledgeRemoteHit { documentId: string; collectionId: string; title: string; text: string; truncated: boolean }
 export interface KnowledgePort {

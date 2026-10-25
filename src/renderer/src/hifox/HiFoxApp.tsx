@@ -1,18 +1,16 @@
-/**
- * HiFox 协作工作区外壳：模块导航 + 空间切换 + 页面路由。
- * 挂载点：MyApp FRAMED_PAGES（PageBody 内，属交互上下文）。
- */
-import { useEffect } from 'react'
-import { Boxes, Bot, ChevronsUpDown, Filter, Inbox, KanbanSquare, ListTodo, Sparkles, Users2, Users, Workflow, Layers, CalendarRange, Wrench } from 'lucide-react'
-import { useHifox, type HifoxModule } from './store'
-import { api } from '../api'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { inboxGroups, useHifox } from './store'
+import { WorkspaceNavigation } from './WorkspaceNavigation'
+import { COLLABORATION_MODULES } from './navigation'
+import { useApp } from '../store'
+import { useMy } from '../my/store'
 import { Button } from '../my/ui'
-import { PageHeader } from './ui'
+import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
+import { FlowIcon } from './icons'
 import { OverviewPage } from './pages/OverviewPage'
-import { TasksPage } from './pages/TasksPage'
-import { BoardPage } from './pages/BoardPage'
+import { TaskWorkspace } from './TaskWorkspace'
 import { InboxPage } from './pages/InboxPage'
-import { TriagePage } from './pages/TriagePage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { IterationsPage } from './pages/IterationsPage'
 import { MembersPage } from './pages/MembersPage'
@@ -21,118 +19,62 @@ import { AgentsPage } from './pages/AgentsPage'
 import { SkillsPage } from './pages/SkillsPage'
 import { CrewsPage } from './pages/CrewsPage'
 import { AutomationsPage } from './pages/AutomationsPage'
+import { AgentDirectoryPage } from './pages/AgentDirectoryPage'
+import { ViewsPage } from './pages/ViewsPage'
+import { ConfigurationPage } from './pages/ConfigurationPage'
+import { TaskDetailDrawer, NewTaskModal } from './pages/TaskDetailDrawer'
+import './collaboration.css'
+import { ConnectionPanel } from './ConnectionPanel'
+import { api } from '../api'
 
-const MODULES: Array<{ id: HifoxModule; label: string; icon: JSX.Element; group: string }> = [
-  { id: 'overview', label: '概况', icon: <Boxes size={15} />, group: '协作' },
-  { id: 'tasks', label: '任务', icon: <ListTodo size={15} />, group: '协作' },
-  { id: 'board', label: '看板', icon: <KanbanSquare size={15} />, group: '协作' },
-  { id: 'inbox', label: '收件箱', icon: <Inbox size={15} />, group: '协作' },
-  { id: 'triage', label: '分拣台', icon: <Filter size={15} />, group: '协作' },
-  { id: 'projects', label: '专项', icon: <Layers size={15} />, group: '计划' },
-  { id: 'iterations', label: '迭代', icon: <CalendarRange size={15} />, group: '计划' },
-  { id: 'members', label: '成员', icon: <Users size={15} />, group: '组织' },
-  { id: 'spaces', label: '空间与配置', icon: <Wrench size={15} />, group: '组织' },
-  { id: 'agents', label: 'Agent', icon: <Bot size={15} />, group: 'Agent' },
-  { id: 'skills', label: '技能', icon: <Sparkles size={15} />, group: 'Agent' },
-  { id: 'crews', label: '小队', icon: <Users2 size={15} />, group: 'Agent' },
-  { id: 'automations', label: '自动化', icon: <Workflow size={15} />, group: 'Agent' }
-]
+const CreationWorkspace = lazy(() => import('../creations/CreationWorkspace').then((module) => ({ default: module.CreationWorkspace })))
 
-const GROUPS = ['协作', '计划', '组织', 'Agent']
-
-export function HiFoxApp(): JSX.Element {
-  const bootstrap = useHifox((s) => s.bootstrap)
-  const snapshot = useHifox((s) => s.snapshot)
-  const loadError = useHifox((s) => s.loadError)
-  const module = useHifox((s) => s.module)
-  const setModule = useHifox((s) => s.setModule)
-  const currentSpaceId = useHifox((s) => s.currentSpaceId)
-  const setCurrentSpace = useHifox((s) => s.setCurrentSpace)
-
+/** Both personal and team task surfaces follow the same collaboration source. */
+export function useCollaborationWorkspace(): number {
+  const bootstrap = useHifox((state) => state.bootstrap)
+  const [now, setNow] = useState(Date.now)
   useEffect(() => { void bootstrap() }, [bootstrap])
-
-  if (loadError) {
-    return (
-      <div className="flex h-full items-center justify-center p-6">
-        <p className="max-w-md rounded-my-md border border-my-line bg-my-layer p-4 text-center text-my-sm text-my-secondary">{loadError}</p>
-      </div>
-    )
-  }
-  if (!snapshot) {
-    return <div className="grid h-full place-items-center text-my-xs text-my-tertiary">正在加载 HiFox 协作数据…</div>
-  }
-
-  const space = snapshot.spaces.find((s) => s.id === currentSpaceId) ?? snapshot.spaces[0]
-  const unread = snapshot.inbox.filter((i) => !i.read && !i.cleared).length
-
-  return (
-    <div className="flex h-full min-h-0">
-      <nav aria-label="HiFox 模块导航" className="flex w-44 shrink-0 flex-col border-r border-my-line">
-        <div className="border-b border-my-line p-2">
-          <label className="relative flex cursor-pointer items-center gap-2 rounded-my-md border border-my-line bg-my-layer px-2.5 py-2 text-my-sm text-my-primary hover:border-my-brand/50">
-            <ChevronsUpDown size={13} className="text-my-tertiary" />
-            <span className="min-w-0 flex-1 truncate">{space?.name ?? '选择空间'}</span>
-            <select
-              aria-label="切换空间"
-              className="absolute inset-0 cursor-pointer opacity-0"
-              value={space?.id ?? ''}
-              onChange={(e) => setCurrentSpace(e.target.value)}
-            >
-              {snapshot.spaces.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
-          {GROUPS.map((group) => (
-            <div key={group} className="mb-3">
-              <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-my-tertiary">{group}</p>
-              {MODULES.filter((m) => m.group === group).map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  aria-current={module === m.id ? 'page' : undefined}
-                  onClick={() => setModule(m.id)}
-                  className={`flex min-h-8 w-full items-center gap-2 rounded-my-md px-2.5 py-1.5 text-left text-my-sm transition-colors ${module === m.id ? 'bg-my-layer-active font-medium text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover'}`}
-                >
-                  {m.icon}
-                  <span className="flex-1">{m.label}</span>
-                  {m.id === 'inbox' && unread > 0 && <span className="rounded-full bg-red-500/20 px-1.5 text-[10px] font-medium text-red-400">{unread}</span>}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-        <p className="border-t border-my-line px-3 py-2 text-[10px] leading-relaxed text-my-tertiary">
-          Runtime 与集成模块由专门分支开发中；Agent 派发目前推进到「等待 Runtime」。
-        </p>
-      </nav>
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col p-4" data-hifox-module={module}>
-        {module === 'overview' && <OverviewPage />}
-        {module === 'tasks' && <TasksPage />}
-        {module === 'board' && <BoardPage />}
-        {module === 'inbox' && <InboxPage />}
-        {module === 'triage' && <TriagePage />}
-        {module === 'projects' && <ProjectsPage />}
-        {module === 'iterations' && <IterationsPage />}
-        {module === 'members' && <MembersPage />}
-        {module === 'spaces' && <SpacesPage />}
-        {module === 'agents' && <AgentsPage />}
-        {module === 'skills' && <SkillsPage />}
-        {module === 'crews' && <CrewsPage />}
-        {module === 'automations' && <AutomationsPage />}
-      </main>
-    </div>
-  )
+  useEffect(() => api.hifox?.onWorkspaceChanged?.((context) => {
+    const previous = useHifox.getState().workspaceContext
+    const changed = context.key !== previous.key || context.actorId !== previous.actorId || context.instanceId !== previous.instanceId || context.epoch !== previous.epoch
+    if (changed || context.state === 'access-revoked') useHifox.setState({ ...(context.state === 'access-revoked' ? { workspaceContext: context } : {}), snapshot: null,
+      loadError: context.state === 'access-revoked' ? '共享空间的访问权限已失效，请重新登录核对。' : null,
+      openTaskId: null, createTaskOpen: false, createTaskContext: null, taskFilter: {}, activeViewId: null })
+    void bootstrap()
+  }), [bootstrap])
+  useEffect(() => { const timer = window.setInterval(() => { setNow(Date.now()); void bootstrap() }, 30_000); return () => window.clearInterval(timer) }, [bootstrap])
+  return now
 }
 
-/** 各页面共用的重置演示数据入口 */
-export function ResetDemoButton(): JSX.Element {
-  const run = useHifox((s) => s.run)
-  return (
-    <Button variant="outline" size="sm" onClick={() => void run('重置演示数据', () => api.hifox.resetDemo())}>
-      重置演示数据
-    </Button>
-  )
+export function HiFoxApp({ host = 'desktop' }: { host?: 'desktop' | 'web' } = {}): JSX.Element {
+  const { bootstrap, snapshot, loadError, module, currentSpaceId, busy, createTaskOpen, createTaskContext, setCreateTaskOpen, workspaceContext } = useHifox()
+  const collapsed = useMy((s) => s.sidebarCollapsed)
+  const sidebarStyle = useSidebarWidthStyle()
+  const now = useCollaborationWorkspace()
+  if (loadError) return <div className="grid h-full place-items-center p-6"><div role="alert" className="flex max-w-md flex-col gap-3 text-my-sm text-my-secondary"><p>{loadError}</p><Button variant="outline" onClick={() => void bootstrap()}>重新加载</Button>{host === 'desktop' && <ConnectionPanel />}</div></div>
+  if (!snapshot) return <div role="status" className="grid h-full place-items-center text-my-xs text-my-tertiary">正在加载团队协作…</div>
+  const groups = inboxGroups(snapshot.inbox, now)
+  const unread = groups.unread.important + groups.unread.other
+  const route = COLLABORATION_MODULES.find((entry) => entry.id === module)
+  const space = snapshot.spaces.find((entry) => entry.id === currentSpaceId)
+  const actorId = workspaceContext.actorId ?? (workspaceContext.state === 'local' ? snapshot.members.find((member) => member.role === 'owner')?.id : undefined)
+  const spaceAccess = space?.visibility === 'private' ? space.memberIds.includes(actorId ?? '') ? 'member' : 'metadata' : 'public'
+  const taskWorkspace = ['tasks', 'board', 'my-tasks', 'triage', 'creations'].includes(module)
+  return <div className="collab-workspace" aria-label="团队协作工作区">
+    <aside aria-label="协作导航" style={sidebarStyle} className={`collab-sidebar ${collapsed ? 'is-collapsed' : ''}`}>
+      {!collapsed && <SidebarResizeHandle />}
+      <header><div className={`flex items-center gap-2 ${collapsed ? 'justify-center' : 'justify-between'}`}>
+        {!collapsed && <span className="text-my-sm font-semibold text-my-primary">团队协作</span>}
+        <Button variant="ghost" size="sm" aria-label={collapsed ? '展开协作导航' : '收起协作导航'} aria-expanded={!collapsed} onClick={() => useMy.getState().toggleSidebar()}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</Button>
+      </div></header>
+      <WorkspaceNavigation key={workspaceContext.key} collapsed={collapsed} unread={unread} />
+      {!collapsed && <footer className="flex flex-col gap-2 border-t border-my-line p-3 text-my-xs text-my-tertiary">{host === 'desktop' && <><button type="button" className="flex items-center gap-2 text-left hover:text-my-primary" onClick={() => useApp.getState().setPage('team')}><FlowIcon name="reports" size={16} />项目动态与报告</button><ConnectionPanel /></>}<span role="status">{busy ? '正在保存…' : workspaceContext.state === 'local' ? '本机协作数据' : workspaceContext.state === 'connected' ? `已同步 · 修订 ${workspaceContext.revision}` : workspaceContext.state === 'offline' ? '离线缓存 · 权限为上次核对' : '访问权限已失效'}</span></footer>}
+    </aside>
+    <fieldset className={`collab-main border-0 ${taskWorkspace ? 'is-task-workspace' : ''}`} data-hifox-module={module} key={`${workspaceContext.key}:${spaceAccess}:${currentSpaceId}:${module}`} disabled={workspaceContext.state !== 'local' && !workspaceContext.canManage && ['agents', 'crews', 'skills', 'automations'].includes(module)}>
+      {!taskWorkspace && route?.scope === 'space' && space && <div aria-label="当前空间" className="mb-3 flex min-w-0 shrink-0 items-center gap-2 text-my-xs text-my-tertiary"><FlowIcon name="projects" size={14} /><span className="truncate">{space.name}</span><span aria-hidden="true">/</span><span className="shrink-0">{route.label}</span>{space.archived && <span className="ml-auto">空间已停用 · 历史只读</span>}</div>}
+      {module === 'overview' && <OverviewPage />}{module === 'my-tasks' && <TaskWorkspace scope="mine" />}{module === 'all-agents' && <AgentDirectoryPage />}{module === 'views' && <ViewsPage />}{module === 'tasks' && <TaskWorkspace scope="space" />}{module === 'board' && <TaskWorkspace scope="space" layout="board" />}{module === 'inbox' && <InboxPage />}{module === 'triage' && <TaskWorkspace scope="triage" />}{module === 'projects' && <ProjectsPage />}{module === 'iterations' && <IterationsPage renderTasks={(tasks, iteration) => <TaskWorkspace scope="space" iterationId={iteration.id} taskIds={tasks.map((task) => task.id)} />} />}{module === 'members' && <MembersPage />}{module === 'spaces' && <SpacesPage />}{module === 'agents' && <AgentsPage />}{module === 'skills' && <SkillsPage />}{module === 'crews' && <CrewsPage />}{module === 'automations' && <AutomationsPage />}
+      {module === 'task-types' && <ConfigurationPage kind="types" />}{module === 'task-statuses' && <ConfigurationPage kind="statuses" />}{module === 'task-labels' && <ConfigurationPage kind="labels" />}
+      {module === 'creations' && <Suspense fallback={<div role="status" className="grid h-full place-items-center text-my-sm text-my-tertiary">正在加载创作…</div>}><CreationWorkspace scope="team" /></Suspense>}
+    </fieldset><TaskDetailDrawer /><NewTaskModal {...createTaskContext} open={createTaskOpen} onClose={() => setCreateTaskOpen(false)} />
+  </div>
 }
-
-export { PageHeader }

@@ -7,6 +7,10 @@ import { registerTasksIpc } from './tasks'
 import { registerTaskConversationsIpc } from './task-conversations'
 import { registerTodoIpc } from './todo'
 import { registerHifoxIpc } from './hifox'
+import { registerHifoxWorkIpc } from './hifox-work'
+import { registerCreationsIpc } from './creations'
+import { taskCreationReferences, taskCreationFiles } from '../services/creations'
+import { getProjectGeneration, getProjectRoot } from '../state'
 import { registerFilesIpc } from './files'
 import { registerDocumentsIpc } from './documents'
 import { registerObservationIpc } from './observability'
@@ -47,6 +51,8 @@ export function registerIpc(deps: WindowDeps): void {
   registerTaskConversationsIpc(deps)
   registerTodoIpc()
   registerHifoxIpc()
+  registerHifoxWorkIpc({ getProjectRoot, getProjectGeneration, creationReferences: taskCreationReferences, creationFiles: taskCreationFiles })
+  registerCreationsIpc()
   registerFilesIpc()
   registerDocumentsIpc()
   registerObservationIpc()

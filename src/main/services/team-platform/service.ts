@@ -1,6 +1,7 @@
 import { shell } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { hifoxRemoteCommandSchema, hifoxRemoteCommandReplySchema, hifoxRemoteSnapshotSchema, type HifoxRemoteCommand, type HifoxRemoteSnapshot } from '../../../shared/hifox-remote'
 import { desktopAuthoredPublicationSchema, desktopConnectionIdSchema, desktopDocumentInputSchema, desktopFeedbackInputSchema, desktopFeedbackListSchema, desktopListInputSchema, desktopPairingInputSchema, desktopPublicationBaseSchema, desktopVersionsInputSchema, type DesktopAuthoredPublicationInput, type DesktopFeedbackInput, type DesktopMaterialPublicationInput, type DesktopTeamApi, type DesktopTeamConnection, type DesktopTeamConnectionContext, type DesktopTeamDocument, type DesktopTeamEventSync, type DesktopTeamOutbox, type DesktopTeamOutboxPage, type DesktopTeamPairing, type DesktopTeamSnapshot } from '../../../shared/team-desktop'
 import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, deviceEnrollmentInputSchema, publicationInputSchema, teamCommandIdSchema, teamCommandReplySchema, teamDeviceEnrollmentSchema, teamDeviceSchema, teamEventPageSchema, teamFeedbackInputSchema, teamFeedbackSchema, teamIdSchema, teamMaterialVersionSchema, teamPageSchema, teamProjectSchema, teamPublishedDocumentSchema, teamSessionSchema, type TeamMaterialVersion, type TeamPage, type TeamFeedback, type TeamSession } from '../../../shared/team-platform'
 import { protectSecret, revealSecret } from '../integrations/credentials'
@@ -9,6 +10,7 @@ import { DesktopTeamStore } from './store-client'
 import { verifyTeamDocument } from './codec'
 import { canonicalTeamOrigin, TeamHttp, verificationUrl, type TeamFetch } from './http'
 import { DesktopTeamError, publicConnection, publicOutbox, type CachedDocument, type ConnectionRecord, type OutboxRecord, type TrustedTeamMaterial } from './types'
+import { creationListInputSchema, creationListSchema, creationViewInputSchema, creationViewSchema, creationHeadSchema, creationCommandSchema, creationCommandReplySchema, creationCommandResultSchema, type CreationCommand, type CreationView, type CreationCommandReply, type CreationHead } from '../../../shared/creations'
 
 const hash = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 const lockedCodes = new Set(['UNAUTHENTICATED', 'UNAUTHORIZED', 'FORBIDDEN', 'DEVICE_REVOKED', 'ACCOUNT_DISABLED', 'AUTHENTICATION_REQUIRED', 'CREDENTIAL_UNAVAILABLE', 'BINDING_CHANGED'])
@@ -90,6 +92,132 @@ export class DesktopTeamService implements DesktopTeamApi {
     return session
   }
   async connections(): Promise<DesktopTeamConnection[]> { return this.tracked(async () => (await this.store.call<ConnectionRecord[]>({ op: 'connections' })).map(publicConnection)) }
+  private async verifyHifoxSnapshot(c: ConnectionRecord, value: HifoxRemoteSnapshot, write = false, expectedInstanceId?: string): Promise<HifoxRemoteSnapshot> {
+    const member = value.snapshot.members.find((item) => item.id === c.ownerId)
+    if ((expectedInstanceId !== undefined && value.instanceId !== expectedInstanceId) || value.projectId !== c.projectId || value.actor.id !== c.ownerId || !member || member.role !== value.actor.role) {
+      const error = new DesktopTeamError('BINDING_CHANGED', '远程协作回执不属于原设备、账号或项目', write)
+      await this.noteError(c, error)
+      throw error
+    }
+    // A disconnect/revocation while HTTP was in flight must not expose a stale grant.
+    const current = await this.connection(c.connectionId, true)
+    if (current.origin !== c.origin || current.ownerId !== c.ownerId || current.deviceId !== c.deviceId || current.projectId !== c.projectId || current.pairingId !== c.pairingId) throw new DesktopTeamError('BINDING_CHANGED', '远程协作连接身份已改变', write)
+    return value
+  }
+  async hifoxSnapshot(connectionId: string, options: { afterRevision?: number; waitMs?: number; expectedInstanceId?: string } = {}): Promise<HifoxRemoteSnapshot> {
+    return this.tracked(async () => {
+      const input = z.object({ afterRevision: z.number().int().nonnegative().safe().optional(), waitMs: z.number().int().min(0).max(8000).optional(), expectedInstanceId: z.string().uuid().optional() }).strict().parse(options)
+      const c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const query = new URLSearchParams()
+      if (input.afterRevision !== undefined) query.set('afterRevision', String(input.afterRevision))
+      if (input.waitMs !== undefined) query.set('waitMs', String(input.waitMs))
+      const value = await this.request(c, `/api/projects/${c.projectId}/hifox/snapshot${query.size ? '?' + query : ''}`, hifoxRemoteSnapshotSchema)
+      // Revision ordering belongs to one instance/epoch. The coordinator owns
+      // that durable head and must observe restore replies, including lower revisions.
+      return this.verifyHifoxSnapshot(c, value, false, input.expectedInstanceId)
+    })
+  }
+  async hifoxCommand(connectionId: string, raw: HifoxRemoteCommand, expectedInstanceId?: string): Promise<z.infer<typeof hifoxRemoteCommandReplySchema>> {
+    return this.tracked(async () => {
+      const payload = hifoxRemoteCommandSchema.parse(raw), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const reply = await this.request(c, `/api/projects/${c.projectId}/hifox/commands`, hifoxRemoteCommandReplySchema, payload)
+      if (reply.commandId !== payload.commandId || reply.result.epoch !== payload.expectedEpoch || reply.result.revision !== payload.expectedRevision + 1) throw new DesktopTeamError('RECEIPT_MISMATCH', '远程协作回执与原命令或版本不一致', true)
+      await this.verifyHifoxSnapshot(c, reply.result, true, expectedInstanceId)
+      return reply
+    })
+  }
+  async hifoxReceipt(connectionId: string, commandId: string, expectedInstanceId?: string): Promise<HifoxRemoteSnapshot | null> {
+    return this.tracked(async () => {
+      const id = teamCommandIdSchema.parse(commandId), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const schema = z.object({ commandId: teamCommandIdSchema, kind: z.string().min(1).max(100), status: z.literal('committed'), recordedAt: z.number().int().nonnegative(), result: hifoxRemoteSnapshotSchema }).strict()
+      try {
+        const receipt = await this.request(c, `/api/commands/${id}`, schema)
+        if (receipt.commandId !== id || receipt.kind !== 'hifoxCommand') throw new DesktopTeamError('RECEIPT_MISMATCH', '核对回执不属于原协作操作', true)
+        return this.verifyHifoxSnapshot(c, receipt.result, true, expectedInstanceId)
+      } catch (error) { if (error instanceof DesktopTeamError && error.code === 'NOT_FOUND') return null; throw error }
+    })
+  }
+  private async creationOwner(c: ConnectionRecord): Promise<void> {
+    const current = await this.connection(c.connectionId, true)
+    if (current.origin !== c.origin || current.ownerId !== c.ownerId || current.deviceId !== c.deviceId || current.projectId !== c.projectId || current.pairingId !== c.pairingId) {
+      throw new DesktopTeamError('BINDING_CHANGED', '创作来源的账号或团队已变化，请回到原来源核对')
+    }
+  }
+  async creationHead(connectionId: string): Promise<CreationHead> {
+    return this.tracked(async () => {
+      const c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const head = await this.request(c, `/api/projects/${c.projectId}/creations/head`, creationHeadSchema)
+      if (head.projectId !== c.projectId) throw new DesktopTeamError('BINDING_CHANGED', '创作更新摘要不属于原团队')
+      await this.creationOwner(c)
+      return head
+    })
+  }
+  async creationsList(connectionId: string, raw: z.input<typeof creationListInputSchema>): Promise<z.output<typeof creationListSchema>> {
+    return this.tracked(async () => {
+      const input = creationListInputSchema.parse(raw), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const query = new URLSearchParams()
+      for (const [key, value] of Object.entries(input)) if (value !== undefined) query.set(key, String(value))
+      const result = await this.request(c, `/api/projects/${c.projectId}/creations?${query}`, creationListSchema)
+      if (result.items.some((item) => item.projectId !== c.projectId)) throw new DesktopTeamError('BINDING_CHANGED', '创作列表不属于原团队')
+      await this.creationOwner(c)
+      return result
+    })
+  }
+  async creationGet(connectionId: string, creationId: string, raw: z.input<typeof creationViewInputSchema> = {}): Promise<CreationView> {
+    return this.tracked(async () => {
+      const id = teamIdSchema.parse(creationId), input = creationViewInputSchema.parse(raw), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const query = new URLSearchParams()
+      for (const [key, value] of Object.entries(input)) if (value !== undefined) query.set(key, String(value))
+      const result = await this.request(c, `/api/projects/${c.projectId}/creations/${id}?${query}`, creationViewSchema)
+      if (result.summary.projectId !== c.projectId || result.summary.creationId !== id || hash(result.selected.body) !== result.selected.bodyDigest) throw new DesktopTeamError('BODY_MISMATCH', '原型内容或来源与固定修订不一致')
+      await this.creationOwner(c)
+      return result
+    })
+  }
+  async creationCommand(connectionId: string, raw: CreationCommand): Promise<CreationCommandReply> {
+    return this.tracked(async () => {
+      const input = creationCommandSchema.parse(raw), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const reply = await this.request(c, `/api/projects/${c.projectId}/creations/commands`, creationCommandReplySchema, input)
+      if (reply.commandId !== input.commandId || reply.result.projectId !== c.projectId || reply.result.creationId !== input.creationId || reply.result.action !== input.action) throw new DesktopTeamError('RECEIPT_MISMATCH', '创作保存回执不属于原操作', true)
+      await this.creationOwner(c)
+      return reply
+    })
+  }
+  async creationReceipt(connectionId: string, commandId: string): Promise<CreationCommandReply | null> {
+    return this.tracked(async () => {
+      const id = teamIdSchema.parse(commandId), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const schema = z.object({ commandId: teamCommandIdSchema, kind: z.literal('creationCommand'), status: z.literal('committed'), recordedAt: z.number().int().nonnegative(), result: creationCommandResultSchema }).strict()
+      try {
+        const receipt = await this.request(c, `/api/commands/${id}`, schema)
+        if (receipt.commandId !== id || receipt.result.projectId !== c.projectId) throw new DesktopTeamError('RECEIPT_MISMATCH', '创作保存回执来源不一致', true)
+        await this.creationOwner(c)
+        return { status: 'duplicate', commandId: id, result: receipt.result }
+      } catch (error) { if (error instanceof DesktopTeamError && error.code === 'NOT_FOUND') return null; throw error }
+    })
+  }
+  async gitlabIdentity(connectionId: string): Promise<{ provider: 'gitlab'; issuer: string; subject: string; baseUrl: string; clientId: string; username?: string }> {
+    return this.tracked(async () => {
+      const c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const schema = z.object({ provider: z.literal('gitlab'), issuer: z.string().url().max(2048), subject: z.string().min(1).max(1024), baseUrl: z.string().url().max(2048), clientId: z.string().min(1).max(1024), username: z.string().min(1).max(200).optional() }).strict()
+      const identity = await this.request(c, '/api/identity', schema)
+      for (const raw of [identity.issuer, identity.baseUrl]) {
+        const url = new URL(raw)
+        if (url.username || url.password || url.search || url.hash || (url.protocol !== 'https:' && !(this.options.allowLoopbackHttp && ['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname) && url.protocol === 'http:'))) throw new DesktopTeamError('INVALID_IDENTITY', 'GitLab 登录身份地址必须是明确的受保护来源')
+      }
+      const current = await this.connection(connectionId, true)
+      if (current.origin !== c.origin || current.ownerId !== c.ownerId || current.deviceId !== c.deviceId || current.projectId !== c.projectId) throw new DesktopTeamError('BINDING_CHANGED', '登录身份查询期间原设备连接已改变')
+      return identity
+    })
+  }
   async connectionContext(connectionId: string): Promise<DesktopTeamConnectionContext> {
     return this.tracked(async () => {
       const c = await this.connection(connectionId, true), session = await this.verifyActive(c)

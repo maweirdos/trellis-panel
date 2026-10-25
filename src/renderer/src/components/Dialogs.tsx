@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useEscLayer } from '../utils/use-esc-layer'
 import type { JSX } from 'react'
-import { Button } from '../my/ui'
+import { Button, Modal } from '../my/ui'
 
 /**
  * 命令式对话框（Promise API）。
@@ -134,39 +133,18 @@ export function DialogHost(): JSX.Element | null {
     }
   }, [])
 
-  // Esc 取消走全局 Esc 层（modal 最高优先级；焦点不在面板内也能生效）。
-  // 层协调器保证与查看器/预览等下层同按时只关最上层一层（design §6.3）。
-  useEscLayer(req !== null, {
-    kind: 'modal',
-    // Esc consumes its registration. A queued successor remains active=true,
-    // so its request identity must rearm a distinct layer after promotion.
-    id: `dialog-host-${req?.id ?? 'idle'}`,
-    onClose: () => {
-      if (req) cancelIfCurrent(req)
-    }
-  })
-
   if (!req) return null
 
   const cancel = (): void => {
     cancelIfCurrent(req)
   }
 
-  const closeOnBackdrop = (e: React.MouseEvent): void => {
-    if (e.target === e.currentTarget) cancel()
-  }
-
   return (
-    <div className="my-modal-backdrop absolute inset-0 grid my-fade place-items-center" onClick={closeOnBackdrop}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-        className="my-modal-panel w-[420px] max-w-[90%] p-5"
-      >
+    <Modal key={req.id} open onClose={cancel} width={420} ariaLabel={req.opts.title} placement="center">
+      <div className="my-scrollbar max-h-[var(--my-modal-max-height)] overflow-y-auto p-5">
         {req.kind === 'confirm' ? <ConfirmPanel key={req.id} req={req} onCancel={cancel} /> : <PromptPanel key={req.id} req={req} onCancel={cancel} />}
       </div>
-    </div>
+    </Modal>
   )
 }
 

@@ -1,14 +1,17 @@
 /**
- * HiFox 协作域持久化：userData 下的单一 JSON 快照存储。
- * 设计取舍：无数据库（PRD 逆向整理阶段同样不涉及表流转），原子写 + 全量快照，
- * 规模与面板演示场景匹配；后续可平移到 SQLite。
+ * HiFox 本地协作快照：写事务复制后原子替换 JSON 文件，读取不暴露缓存引用。
+ * 损坏文件报错保留；HIFOX_STORE_DIR 用于隔离服务回归的存储目录。
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
+import { hifoxSnapshotSchema as snapshotSchema } from '../../../shared/hifox-schema'
+import { configureHifoxDomainStore } from '../../../shared/hifox-domain/store'
 import type { HifoxSnapshot } from '../../../shared/hifox'
-import { buildSeedSnapshot } from './seed'
+import { buildInitialSnapshot, buildSeedSnapshot } from './seed'
 
 let cache: HifoxSnapshot | null = null
+let cacheFile: string | null = null
+let writing = false
 
 function storeDir(): string {
   const override = process.env.HIFOX_STORE_DIR
@@ -19,29 +22,39 @@ function storeDir(): string {
 }
 
 function storeFile(): string {
-  return join(storeDir(), 'store.json')
+  return resolve(storeDir(), 'store.json')
 }
 
 export function loadSnapshot(): HifoxSnapshot {
-  if (cache) return cache
   const file = storeFile()
-  try {
-    if (existsSync(file)) {
-      cache = JSON.parse(readFileSync(file, 'utf-8')) as HifoxSnapshot
-      return cache
+  if (cache && cacheFile === file) return structuredClone(cache)
+  let snapshot: HifoxSnapshot
+  if (existsSync(file)) {
+    try {
+      const raw: unknown = JSON.parse(readFileSync(file, 'utf-8'))
+      const parsed = snapshotSchema.safeParse(raw)
+      if (!parsed.success) throw new Error('快照结构不合法')
+      snapshot = raw as HifoxSnapshot
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '读取失败'
+      throw new Error(`HiFox 数据读取失败，原文件已保留：${detail}`)
     }
-  } catch {
-    // 损坏则回落到种子重建
+  } else {
+    snapshot = buildInitialSnapshot()
+    persist(snapshot)
   }
-  cache = buildSeedSnapshot()
-  persist(cache)
-  return cache
+  cache = snapshot
+  cacheFile = file
+  return structuredClone(snapshot)
 }
 
 export function resetDemoSnapshot(): HifoxSnapshot {
-  cache = buildSeedSnapshot()
-  persist(cache)
-  return cache
+  if (writing) throw new Error('HiFox 写事务中不能重置数据')
+  const snapshot = buildSeedSnapshot()
+  persist(snapshot)
+  cache = snapshot
+  cacheFile = storeFile()
+  return structuredClone(snapshot)
 }
 
 function persist(snapshot: HifoxSnapshot): void {
@@ -53,13 +66,28 @@ function persist(snapshot: HifoxSnapshot): void {
   renameSync(tmp, file)
 }
 
-/** 所有写操作走这里：改内存快照 → 落盘 → 返回新快照引用 */
+/** Copy on write: validation and disk failures cannot change the committed cache. */
 export function mutate<T>(fn: (draft: HifoxSnapshot) => T): { result: T; snapshot: HifoxSnapshot } {
+  if (writing) throw new Error('HiFox 不支持嵌套写事务')
   const draft = loadSnapshot()
-  const result = fn(draft)
-  persist(draft)
-  cache = draft
-  return { result, snapshot: draft }
+  writing = true
+  try {
+    const result = fn(draft)
+    if (result instanceof Promise) throw new Error('HiFox 写事务必须同步完成')
+    const validation = snapshotSchema.safeParse(draft)
+    if (!validation.success) {
+      const issue = validation.error.issues[0]
+      throw new Error(`HiFox 数据校验失败：${issue?.path.join('.') ?? 'snapshot'} ${issue?.message ?? ''}`)
+    }
+    // Cache owns a separate copy, including from references retained by fn.
+    const committed = structuredClone(draft)
+    persist(committed)
+    cache = committed
+    cacheFile = storeFile()
+    return { result, snapshot: draft }
+  } finally {
+    writing = false
+  }
 }
 
 export function nextId(prefix: string): string {
@@ -69,3 +97,5 @@ export function nextId(prefix: string): string {
 export function nowIso(): string {
   return new Date().toISOString()
 }
+
+configureHifoxDomainStore({ loadSnapshot, mutate })

@@ -38,14 +38,18 @@ GET /api/events
   SQLite with one owned worker and verified immutable blobs, not an assumed
   company database or distributed writer. Configure the actual public origin,
   issuer, client and exact bootstrap subject explicitly.
-- Browser identity comes from OIDC authorization code, PKCE, state, nonce and
-  validated issuer/signature. The first visitor is never implicitly an admin.
+- Browser identity comes from the service's salted-scrypt local account login or
+  optional OIDC authorization code, PKCE, state, nonce and validated issuer/signature.
+  Local registration creates an ordinary person. The first visitor is never an admin.
   Browser writes use the existing HttpOnly session, exact Origin and CSRF token.
   Device bearer identity cannot be mixed with browser cookies/Origin.
 - Server UUIDs identify people, projects, materials and devices. Local task,
   repository or workspace IDs are source metadata, never authorization. Preserve
   pinned local identities; map path-shaped native IDs to durable privacy-safe
   remote aliases rather than modifying the original run.
+- Shared task/space/Agent commands follow [the collaboration contract](../shared/hifox-collaboration.md).
+  Their server epoch/revision, current space ACL and per-person inbox projection
+  remain distinct from document publication versions and feedback records.
 - Pending enrollment may have no project. Save the returned candidate credential
   through the main protected credential store before opening the verification
   page. Pending credentials have no publication, project-read or heartbeat grant.

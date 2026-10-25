@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { atomicWriteText } from '../local-task/prd'
 import { providerIdSchema, integrationBindingSchema, deliveryReceiptSchema } from '../../../shared/integrations'
-import { IntegrationError } from './types'
+import { IntegrationError, teamGitlabBindingSchema } from './types'
 
-export const storedConnectionSchema = z.object({ id: z.string(), providerId: providerIdSchema, name: z.string(), enabled: z.boolean(), revision: z.number().int().positive(), config: z.record(z.string(), z.string()), secrets: z.record(z.string(), z.string()), checkedAt: z.number().nullable(), check: z.enum(['unverified', 'authenticated', 'configured', 'failed']), detail: z.string(), deleted: z.boolean().default(false) })
+export const storedConnectionSchema = z.object({ id: z.string(), providerId: providerIdSchema, name: z.string(), enabled: z.boolean(), revision: z.number().int().positive(), config: z.record(z.string(), z.string()), secrets: z.record(z.string(), z.string()), checkedAt: z.number().nullable(), check: z.enum(['unverified', 'authenticated', 'configured', 'failed']), detail: z.string(), deleted: z.boolean().default(false), teamGitlab: teamGitlabBindingSchema.optional() })
 export type StoredConnection = z.infer<typeof storedConnectionSchema>
 const records = { connections: z.array(storedConnectionSchema).max(100), bindings: z.array(integrationBindingSchema).max(500), receipts: z.array(deliveryReceiptSchema).max(100) }
 const stateV1Schema = z.object({ version: z.literal(1), ...records })

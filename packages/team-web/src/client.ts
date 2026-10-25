@@ -5,7 +5,7 @@ export class ApiError extends Error {
   constructor(readonly code: string, message: string, readonly status = 0, readonly uncertain = false) { super(message) }
 }
 export const authEvents = new EventTarget()
-type RequestOptions = { body?: unknown; signal?: AbortSignal; notifyDenied?: boolean; isCurrent?: () => boolean }
+type RequestOptions = { body?: unknown; signal?: AbortSignal; notifyDenied?: boolean; isCurrent?: () => boolean; csrfToken?: string }
 export async function request<T>(path: string, schema: z.ZodType<T>, options: RequestOptions = {}): Promise<T> {
   if (!/^\/(api|auth)\//.test(path) || path.includes('\\') || path.includes('#')) throw new ApiError('INVALID_PATH', '请求地址不属于团队接口')
   const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15_000)
@@ -18,7 +18,7 @@ export async function request<T>(path: string, schema: z.ZodType<T>, options: Re
   try {
     dispatched = true
     const response = await fetch(path, { method: encoded === undefined ? 'GET' : 'POST', credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal: controller.signal,
-      headers: encoded === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': currentSession?.csrfToken ?? '' }, body: encoded })
+      headers: encoded === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': options.csrfToken ?? currentSession?.csrfToken ?? '' }, body: encoded })
     if (options.isCurrent?.() === false) { await response.body?.cancel().catch(() => {}); throw new ApiError('OWNER_CHANGED', '来源已改变，原操作结果仍需由原账号核对', 0, encoded !== undefined) }
     const length = Number(response.headers.get('Content-Length'))
     if (Number.isFinite(length) && length > TEAM_MAX_RESPONSE_BYTES) { await response.body?.cancel().catch(() => {}); throw new ApiError('INVALID_RESPONSE', '团队响应超过读取限额', response.status, encoded !== undefined) }
@@ -46,13 +46,21 @@ export async function request<T>(path: string, schema: z.ZodType<T>, options: Re
 }
 let currentSession: TeamSession | null = null
 export function setClientSession(session: TeamSession | null): void { currentSession = session }
+/** Check the live transport owner without exposing its credentials. */
+export function isClientSession(session: TeamSession): boolean { return currentSession?.authentication === 'browser' && currentSession.person.userId === session.person.userId && currentSession.csrfToken === session.csrfToken }
+export function requireBrowserCrypto(): void {
+  if (typeof globalThis.crypto?.randomUUID !== 'function' || typeof globalThis.crypto?.subtle?.digest !== 'function') throw new ApiError('SECURE_CONTEXT_REQUIRED', '浏览器写入需要 HTTPS，或在服务电脑使用 localhost 地址；请调整团队服务入口。')
+}
 export async function digest(text: string): Promise<string> { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((byte) => byte.toString(16).padStart(2, '0')).join('') }
 export async function verifyDocument(text: string, expected: string, byteLength: number): Promise<void> {
   if (new TextEncoder().encode(text).byteLength !== byteLength || await digest(text) !== expected) throw new ApiError('BODY_MISMATCH', '固定版本的正文与摘要不一致，已停止展示')
 }
 
-const journalSchema = z.array(z.object({ commandId: teamIdSchema, accountId: teamIdSchema, projectId: teamIdSchema.nullable(), path: z.string().max(300), digest: z.string().regex(/^[0-9a-f]{64}$/), createdAt: z.number().int(), state: z.enum(['pending', 'unknown']) }).strict()).max(50)
+const workspaceReferenceSchema = z.object({ origin: z.url().max(2048), instanceId: teamIdSchema, epoch: teamIdSchema, operation: z.string().min(1).max(100), expectedRevision: z.number().int().nonnegative() }).strict()
+const journalEntrySchema = z.object({ commandId: teamIdSchema, accountId: teamIdSchema, projectId: teamIdSchema.nullable(), path: z.string().max(300), digest: z.string().regex(/^[0-9a-f]{64}$/), createdAt: z.number().int(), state: z.enum(['pending', 'unknown']), workspace: workspaceReferenceSchema.optional() }).strict()
+const journalSchema = z.array(journalEntrySchema).max(50)
 export type PendingCommand = z.infer<typeof journalSchema>[number]
+export type WorkspaceCommandReference = z.infer<typeof workspaceReferenceSchema>
 const STORAGE = 'trellis-team-command-refs-v1'
 export const commandEvents = new EventTarget()
 function readJournal(): PendingCommand[] {
@@ -69,35 +77,39 @@ const remembered = new Map<string, { path: string; body: Record<string, unknown>
 const active = new Set<string>()
 const uncertainCommands = new Set<string>()
 export type PreparedCommand<T> = { entry: PendingCommand; body: Record<string, unknown>; schema: z.ZodType<T> }
-export async function prepareCommand<T>(path: string, body: Record<string, unknown>, schema: z.ZodType<T>, projectId: string | null): Promise<PreparedCommand<T>> {
+export async function prepareCommand<T>(path: string, body: Record<string, unknown>, schema: z.ZodType<T>, projectId: string | null, workspace?: WorkspaceCommandReference): Promise<PreparedCommand<T>> {
+  requireBrowserCrypto()
   if (!currentSession || currentSession.authentication !== 'browser') throw new ApiError('UNAUTHENTICATED', '请先登录')
   const accountId = currentSession.person.userId
   // Only references/digests persist in browser session storage; never bodies or credentials.
   const commandId = crypto.randomUUID(), pinned = structuredClone({ ...body, commandId })
-  const entry: PendingCommand = { commandId, accountId, projectId, path, digest: await digest(JSON.stringify(pinned)), createdAt: Date.now(), state: 'pending' }
+  const entry: PendingCommand = { commandId, accountId, projectId, path, digest: await digest(JSON.stringify(pinned)), createdAt: Date.now(), state: 'pending', ...(workspace ? { workspace: workspaceReferenceSchema.parse(workspace) } : {}) }
   const entries = readJournal(); if (entries.length >= 50) throw new ApiError('CAPACITY_EXCEEDED', '待核对操作已达上限，请先核对保留的结果')
   writeJournal([...entries, entry]); remembered.set(commandId, { path, body: pinned, schema, accountId })
   return { entry, body: pinned, schema }
 }
-export async function sendCommand<T>(prepared: PreparedCommand<T>): Promise<TeamCommandReply<T>> {
+type CommandOptions = { notifyDenied?: boolean; signal?: AbortSignal; isCurrent?: () => boolean; retainRejected?: (error: ApiError) => boolean; validateResult?: (value: unknown) => void }
+export async function sendCommand<T>(prepared: PreparedCommand<T>, options: CommandOptions = {}): Promise<TeamCommandReply<T>> {
+  requireBrowserCrypto()
   const { entry, body, schema } = prepared
   if (active.has(entry.commandId)) throw new ApiError('IN_FLIGHT', '此操作正在核对')
-  if (currentSession?.person.userId !== entry.accountId || await digest(JSON.stringify(body)) !== entry.digest) throw new ApiError('OWNER_CHANGED', '操作的账号或内容已改变')
+  if (options.isCurrent?.() === false || currentSession?.person.userId !== entry.accountId || await digest(JSON.stringify(body)) !== entry.digest) throw new ApiError('OWNER_CHANGED', '操作的账号或内容已改变')
   // The digest awaited above; recheck the actual account immediately before fetch.
-  if (currentSession?.person.userId !== entry.accountId) throw new ApiError('OWNER_CHANGED', '操作账号在内容核对期间已改变，未发送')
+  if (options.isCurrent?.() === false || currentSession?.person.userId !== entry.accountId || options.signal?.aborted) throw new ApiError('OWNER_CHANGED', '操作账号或来源在内容核对期间已改变，未发送')
   if (active.has(entry.commandId)) throw new ApiError('IN_FLIGHT', '此操作正在核对')
   const previouslyUnknown = uncertainCommands.has(entry.commandId) || entry.state === 'unknown' || readJournal().some((item) => item.commandId === entry.commandId && item.state === 'unknown')
   active.add(entry.commandId)
   try {
-    const reply = await request(entry.path, teamCommandReplySchema(schema), { body, isCurrent: () => currentSession?.person.userId === entry.accountId })
+    const reply = await request(entry.path, teamCommandReplySchema(schema), { body, notifyDenied: options.notifyDenied, signal: options.signal, isCurrent: () => currentSession?.person.userId === entry.accountId && options.isCurrent?.() !== false })
     if (reply.commandId !== entry.commandId) throw new ApiError('INVALID_RESPONSE', '操作回执身份不匹配', 0, true)
+    options.validateResult?.(reply.result)
     try { writeJournal(readJournal().filter((item) => item.commandId !== entry.commandId)) }
     catch { throw new ApiError('LOCAL_RECEIPT_UNAVAILABLE', '服务端已有回执，但浏览器未能保存核对结果；请保留原操作并再次核对', 0, true) }
     remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId)
     return reply
   } catch (error) {
     if (error instanceof ApiError && !error.uncertain && !previouslyUnknown) {
-      try { writeJournal(readJournal().filter((item) => item.commandId !== entry.commandId)); remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId) }
+      try { if (!options.retainRejected?.(error)) { writeJournal(readJournal().filter((item) => item.commandId !== entry.commandId)); remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId) } }
       catch { throw new ApiError('LOCAL_RECEIPT_UNAVAILABLE', '浏览器未能保存操作核对结果；保留原标识，不创建重复操作', 0, true) }
     } else {
       // A rejected retry says nothing about the earlier unacknowledged write.
@@ -111,15 +123,28 @@ export async function sendCommand<T>(prepared: PreparedCommand<T>): Promise<Team
     throw error
   } finally { active.delete(entry.commandId) }
 }
-export async function reconcileCommand(entry: PendingCommand): Promise<'committed' | 'absent'> {
-  if (currentSession?.person.userId !== entry.accountId) throw new ApiError('OWNER_CHANGED', '请使用原操作账号核对')
+export async function reconcileCommand(entry: PendingCommand, options: Omit<CommandOptions, 'retainRejected'> & { validateResult?: (value: unknown) => void } = {}): Promise<'committed' | 'absent'> {
+  if (options.isCurrent?.() === false || currentSession?.person.userId !== entry.accountId) throw new ApiError('OWNER_CHANGED', '请使用原操作账号核对')
   const schema = z.object({ commandId: teamIdSchema, kind: z.string(), status: z.literal('committed'), recordedAt: z.number().int(), result: z.unknown() }).strict()
   try {
-    const reply = await request(`/api/commands/${entry.commandId}`, schema, { isCurrent: () => currentSession?.person.userId === entry.accountId })
+    const reply = await request(`/api/commands/${entry.commandId}`, schema, { notifyDenied: options.notifyDenied, signal: options.signal, isCurrent: () => currentSession?.person.userId === entry.accountId && options.isCurrent?.() !== false })
     if (reply.commandId !== entry.commandId) throw new ApiError('INVALID_RESPONSE', '核对回执身份不匹配')
+    options.validateResult?.(reply.result)
     writeJournal(readJournal().filter((item) => item.commandId !== entry.commandId)); remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId)
     return 'committed'
   } catch (error) { if (error instanceof ApiError && error.status === 404) return 'absent'; throw error }
+}
+/** Explicitly archive references, preserving uncertainty and a bounded metadata-only history. */
+export function archiveCommand(entry: PendingCommand, outcomeUnknown: boolean): void {
+  if (currentSession?.person.userId !== entry.accountId) throw new ApiError('OWNER_CHANGED', '请使用原操作账号归档引用')
+  const historyKey = 'trellis-team-command-history-v1'
+  const historySchema = z.array(journalEntrySchema.extend({ archivedAt: z.number().int(), outcomeUnknown: z.boolean() }).strict()).max(100)
+  try {
+    const raw = sessionStorage.getItem(historyKey), history = raw ? historySchema.parse(JSON.parse(raw)) : []
+    sessionStorage.setItem(historyKey, JSON.stringify([...history.filter((item) => item.commandId !== entry.commandId).slice(-99), { ...entry, archivedAt: Date.now(), outcomeUnknown }]))
+  } catch { throw new ApiError('JOURNAL_UNAVAILABLE', '浏览器无法保存原操作归档，原引用仍保留') }
+  writeJournal(readJournal().filter((item) => item.commandId !== entry.commandId))
+  remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId)
 }
 export async function retryCommand(entry: PendingCommand): Promise<void> {
   const saved = remembered.get(entry.commandId)

@@ -72,7 +72,7 @@ export function resolveEndpoint(baseUrl: string, format?: string): string {
 export async function aiChat(
   cfg: AiConfig,
   messages: ChatMessage[],
-  opts?: { temperature?: number; maxTokens?: number }
+  opts?: { temperature?: number; maxTokens?: number; signal?: AbortSignal }
 ): Promise<AiChatResult> {
   if (!cfg.enabled) return { ok: false, error: '应用内 AI 未启用（设置 → AI 模型）' }
   const activeProvider = cfg.providers?.find((p) => p.id === cfg.activeProviderId) || cfg.providers?.[0]
@@ -83,6 +83,9 @@ export async function aiChat(
 
   const key = decryptKey(cfg)
   const controller = new AbortController()
+  const abort = (): void => controller.abort()
+  opts?.signal?.addEventListener('abort', abort, { once: true })
+  if (opts?.signal?.aborted) controller.abort()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const headers: Record<string, string> = {
@@ -191,6 +194,7 @@ export async function aiChat(
     return { ok: false, error: err.name === 'AbortError' ? `请求超时（${TIMEOUT_MS / 1000}s）` : err.message }
   } finally {
     clearTimeout(timer)
+    opts?.signal?.removeEventListener('abort', abort)
   }
 }
 

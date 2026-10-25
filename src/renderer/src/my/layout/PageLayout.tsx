@@ -8,6 +8,7 @@ export type PageLayoutVariant = 'full' | 'centered'
 export const PAGE_LAYOUTS = {
   dashboard: 'full',
   tasks: 'full',
+  creations: 'full',
   inbox: 'full',
   jira: 'full',
   archive: 'centered',

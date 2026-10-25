@@ -21,6 +21,7 @@ import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTask
 import { APPLICATION_ICON } from './services/notifications'
 import { appRuntime } from './services/app-runtime'
 import { createQuitGate } from './services/quit-gate'
+import { closeCreationService } from './services/creations'
 import { ipcEvent } from '../shared/ipc-channels'
 import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
 import {
@@ -43,7 +44,10 @@ import { readerWindowBounds } from './services/document-window-placement'
 import { hasWorkflowApplications, setWorkflowAdmissionClosed, shutdownWorkflowApplications } from './services/workflow-desktop'
 import { stopWorkflowSubscriptions } from './ipc/workflow'
 import { closeTaskConversations } from './ipc/task-conversations'
-import { resumeDesktopTeamBackground, setDesktopTeamAdmissionClosed, closeDesktopTeamService } from './services/team-desktop'
+import { resumeDesktopTeamBackground, setDesktopTeamAdmissionClosed, closeDesktopTeamService, withDesktopTeamService } from './services/team-desktop'
+import { tickScheduledAutomations } from './services/hifox/planning'
+import { resumeHifoxWorkspace, closeHifoxWorkspace, configureHifoxConnectionService } from './services/hifox/connection-service'
+import { ensureTeamGitlabConnection } from './services/integrations/team-gitlab'
 
 let win: BrowserWindow | null = null
 let capsule: BrowserWindow | null = null
@@ -51,6 +55,7 @@ let capsuleOnTop = true
 let capsuleShape: 'pill' | 'card' = 'card'
 let quickTodo: BrowserWindow | null = null
 let tray: Tray | null = null
+let collaborationTimer: ReturnType<typeof setInterval> | null = null
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { autoUpdater } = (() => {
@@ -487,7 +492,16 @@ if (!gotLock) {
       },
       create: createCapsule
     }
+    configureHifoxConnectionService({ withService: withDesktopTeamService, notify: (channel, payload) => broadcastToWindows(channel, payload), ensureGitlab: ensureTeamGitlabConnection })
     resumeDesktopTeamBackground()
+    resumeHifoxWorkspace()
+    const tickCollaboration = (): void => {
+      try { tickScheduledAutomations() }
+      catch (error) { console.warn('协作定时规则检查失败', error) }
+    }
+    collaborationTimer = setInterval(tickCollaboration, 30_000)
+    collaborationTimer.unref()
+    tickCollaboration()
     registerIpc({
       getMain: () => (win && !win.isDestroyed() ? win : null),
       getCapsule: () => (capsule && !capsule.isDestroyed() ? capsule : null),
@@ -564,8 +578,9 @@ if (!gotLock) {
     },
     setAdmissionClosed: (closed) => { appRuntime.setAdmissionClosed(closed); setWorkflowAdmissionClosed(closed); setDesktopTeamAdmissionClosed(closed) },
     stopApplications: () => appRuntime.shutdown(),
-    stopSessions: async () => { await shutdownWorkflowApplications(); await shutdownAcp(); await closeDesktopTeamService() },
+    stopSessions: async () => { await shutdownWorkflowApplications(); await shutdownAcp(); await closeHifoxWorkspace(); await closeDesktopTeamService(); closeCreationService() },
     finalize: () => {
+      if (collaborationTimer) { clearInterval(collaborationTimer); collaborationTimer = null }
       stopTimers()
       stopInbox()
       abortAll()

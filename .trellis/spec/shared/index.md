@@ -13,6 +13,8 @@
 | [workflow-contracts.md](./workflow-contracts.md)   | Managed workflow identity, schemas, legacy adapters and plan/graph contracts | Workflow/runtime/team integration |
 | [git-conventions.md](./git-conventions.md)         | Git commit and branch conventions | Before committing      |
 | [timestamp.md](./timestamp.md)                     | Timestamp format specification    | Date/time handling     |
+| [hifox-collaboration.md](./hifox-collaboration.md) | Local/shared workspaces, accounts, space ACL, task/version invariants, scoped commands and business icons | Team collaboration |
+| [creations.md](./creations.md) | Fixed HTML revisions, webpage opinions, task adoption and bounded AI/native materials | Personal/team creation and handoff |
 | [pnpm-electron-setup.md](./pnpm-electron-setup.md) | pnpm + Electron project setup     | Project initialization |
 
 ---

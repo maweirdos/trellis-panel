@@ -18,7 +18,7 @@ import { dispatchEscKey } from './utils/esc-layer'
 import { MyApp } from './my/layout/MyApp'
 import { DocWindowApp } from './my/pages/DocWindow'
 import { Loader2 } from 'lucide-react'
-import { projectRootKey } from './my/navigation'
+import { getPageNavigation, projectRootKey } from './my/navigation'
 
 function PageLoading(): JSX.Element {
   return (
@@ -30,6 +30,7 @@ function PageLoading(): JSX.Element {
 
 function MainApp(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
+  const page = useApp((s) => s.page)
   const viewerTabs = useApp((s) => s.viewerTabs)
   const showTask = useApp((s) => s.showTask)
   const pushToast = useApp((s) => s.pushToast)
@@ -110,7 +111,8 @@ function MainApp(): JSX.Element {
     }
   }, [projectRoot])
 
-  if (!snapshot) {
+  const scope = getPageNavigation(page).scope
+  if (!snapshot && (scope === 'project' || scope === 'mixed')) {
     return <Onboarding />
   }
 
@@ -119,8 +121,8 @@ function MainApp(): JSX.Element {
       <Suspense fallback={<PageLoading />}>
         <MyApp />
       </Suspense>
-      {viewerTabs.length > 0 && <ArtifactViewer projectName={snapshot.meta.name} />}
-      <IntakeModal />
+      {snapshot && viewerTabs.length > 0 && <ArtifactViewer projectName={snapshot.meta.name} />}
+      {snapshot && <IntakeModal />}
     </div>
   )
 }

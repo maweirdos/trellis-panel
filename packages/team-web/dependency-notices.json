@@ -192,6 +192,18 @@
     ]
   },
   {
+    "name": "clsx",
+    "version": "2.1.1",
+    "license": "MIT",
+    "integrity": "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==",
+    "notices": [
+      {
+        "file": "licenses/clsx-2.1.1-license",
+        "digest": "9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97"
+      }
+    ]
+  },
+  {
     "name": "comma-separated-tokens",
     "version": "2.0.3",
     "license": "MIT",
@@ -1284,6 +1296,18 @@
     ]
   },
   {
+    "name": "use-sync-external-store",
+    "version": "1.7.0",
+    "license": "MIT",
+    "integrity": "sha512-6L+EeigHMQhdaIPNIFUKwfWJSwWFQ8gJbJ2DLOs5sDIegTwR9fRxvnM3uciHKjIZhFz+KAv2emhWMRvDmMcY8A==",
+    "notices": [
+      {
+        "file": "licenses/use-sync-external-store-1.7.0-LICENSE",
+        "digest": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+      }
+    ]
+  },
+  {
     "name": "vfile",
     "version": "6.0.3",
     "license": "MIT",
@@ -1316,6 +1340,18 @@
       {
         "file": "licenses/zod-4.6.5-LICENSE",
         "digest": "3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8"
+      }
+    ]
+  },
+  {
+    "name": "zustand",
+    "version": "4.5.7",
+    "license": "MIT",
+    "integrity": "sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw==",
+    "notices": [
+      {
+        "file": "licenses/zustand-4.5.7-LICENSE",
+        "digest": "c1e6e266563517467b1bf874817d23e426f3149252bd7d42758cd697514b8417"
       }
     ]
   },
