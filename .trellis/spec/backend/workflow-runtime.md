@@ -96,17 +96,11 @@ Bad: report emitted after taking a shortcut that omitted the packet, trim the
 admitted prompt, retry a failed store as another model turn, or return passed
 after acknowledging a stop during awaited file capture.
 
-## 6. Tests Required
+## 6. Validation
 
-`scripts/smoke/workflow-engine.mjs` exercises actual exported driver, material,
-context and file SQLite boundaries with explicit native-message fixtures.
-`workflow-engine-facade.mjs` uses actual facade/public acpx and an owned peer:
-ordinary approved, denied, advertised-command and whitespace prompt cases verify
-received bytes, permission mediation, output refs and committed history.
-`workflow-engine-real.mjs --run` is an explicitly separate actual vendor gate;
-do not repeat paid requests without a new change or unresolved concern.
-Run affected ACP material regressions, typecheck and build. Deterministic peers
-do not prove vendor readiness, native hooks, child agents or UI acceptance.
+Run `npm run typecheck`, `npm run build` and `npm run check:acpx`. OS TEMP validation should exercise exported driver/material/context boundaries and actual file SQLite. Through the real facade/public acpx boundary, verify exact received bytes, ordinary approval/denial, advertised commands, whitespace prompts, output references and committed history.
+
+Actual vendor execution is a separate gate; do not repeat paid requests without a new change or unresolved concern. Controlled peers do not prove vendor readiness, native hooks, child agents or UI acceptance.
 
 ## 7. Wrong vs Correct
 

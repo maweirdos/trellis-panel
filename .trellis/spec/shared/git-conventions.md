@@ -16,7 +16,7 @@ type(scope): description
 
 ### Language (mandatory)
 
-- Write commit descriptions and prose bodies in **Chinese**, including documentation, tests and tooling commits. Do not copy English descriptions from older history.
+- Write commit descriptions and prose bodies in **Chinese**, including documentation and tooling commits. Do not copy English descriptions from older history.
 - Retain Conventional Commit types and technical scope identifiers, for example `feat(acp): 接入图片输入与预览`.
 - Keep code identifiers, paths, product names, issue references and machine-readable trailers unchanged when needed. These do not replace the Chinese explanation.
 - Use the same Chinese-description rule for PR titles. State the concrete behavior or reason, rather than vague wording such as `更新代码`.
@@ -35,7 +35,6 @@ docs(git): 明确提交说明使用中文
 | `fix`      | Bug fix                                                 |
 | `docs`     | Documentation only                                      |
 | `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `test`     | Adding or updating tests                                |
 | `chore`    | Build process, dependencies, or tooling                 |
 | `style`    | Formatting, missing semicolons, etc.                    |
 | `perf`     | Performance improvement                                 |
@@ -108,7 +107,6 @@ Each commit should represent one logical change:
 # GOOD - Separate commits
 git commit -m "feat(project): 添加归档按钮"
 git commit -m "feat(project): 实现项目归档流程"
-git commit -m "test(project): 补充项目归档测试"
 
 # BAD - Mixed changes
 git commit -m "添加归档功能并修复一些问题"
@@ -142,8 +140,8 @@ Fixes #123"
 Before committing:
 
 - [ ] Code compiles (`npm run typecheck`)
-- [ ] Linting passes (`npm run lint`)
-- [ ] Tests pass (`npm test`)
+- [ ] Relevant build, ACP compatibility and UI checks pass
+- [ ] Follow the root [local-only validation rule](../../../AGENTS.md); no project-authored test code, fixtures or results are staged
 - [ ] Commit message follows format
 - [ ] Description and prose body are Chinese; technical identifiers may retain their original spelling
 - [ ] Changes are atomic
@@ -175,8 +173,8 @@ Brief description of changes.
 
 ## Testing
 
-- [ ] Unit tests added/updated
-- [ ] Manual testing done
+- [ ] Relevant type/build/compatibility/UI checks completed
+- [ ] Changed behavior and failure recovery verified locally; native/provider limits stated
 
 ## Screenshots
 

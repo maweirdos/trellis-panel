@@ -73,20 +73,11 @@ Base: an empty project offers add/import and a Git-unavailable explanation.
 Bad: closing output kills a service, switching drafts saves automatically, a
 branch change silently stashes files, or a stale diff renders under another root.
 
-## 6. Tests Required
+## 6. Validation
 
-- `run-workbench-ui.mjs`: all themes/font presets, desktop/narrow layout, tab
-  dismissal without stop, actual pointer and keyboard resize, independent drafts,
-  save vs run, secret patches, root races, source retention and focus/Escape.
-- `git-workspace-ui.mjs`: selection, stage/unstage/commit/create/switch/push,
-  cancellation/errors/uncertain outcomes, strict typed bridge, generations and
-  panel above a maximum-height dock in constrained windows.
-- `developer-tools-e2e.mjs`: real built renderer/preload/IPC plus temporary service
-  and repository/local bare remote. Assert exact committed path/ref, unchanged run
-  ID, alive-after-collapse, service-stop port release and source-node identity.
-- Capture actual current compositor after frames settle; a first offscreen paint
-  may still show the preceding theme/dropdown. Inspect images, not just DOM bounds.
-- Preserve application UI/E2E, dev-alias, navigation, IPC, typecheck/build/check:ui.
+Run `npm run typecheck`, `npm run build` and static `npm run check:ui`. Inspect themes/font presets, constrained dock geometry, pointer/keyboard resize, independent drafts, source retention and focus/Escape.
+
+Verify actual selected paths/refs after Git operations, unchanged run identity during unrelated edits, alive-after-collapse and service-stop port release using disposable OS TEMP repositories/services. Capture the current compositor after frames settle; DOM bounds or an offscreen first paint do not establish the visible result.
 
 ## 7. Wrong vs Correct
 

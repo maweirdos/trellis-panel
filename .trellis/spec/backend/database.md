@@ -33,11 +33,9 @@
 - Base：Python 写入失败（锁/满）→ 回执缺失记为缺证据，界面显示"未观察到"。
 - Bad（禁止）：为规避锁把 emitted 记录提前到 stdout 写之前；用 `journal_mode=WAL` "顺手调优"（S0 明确不做，须先过兼容矩阵）。
 
-### 6. Tests Required
+### 6. Validation
 
-- 跨进程探针（`.trellis/tasks/10-11-cockpit-s0-glass-box/research/spike/g1b-cross-process.mjs`）：崩溃无脏行/锁预算/幂等/seq 单调，12 项断言。
-- Hook 生产者冒烟（`scripts/smoke/hook-emitter.mjs`，G1-C）：stdout 与 git HEAD 逐字节一致（sha256）、assembled/emitted 配对、故障矩阵（binding 缺失/TRELLIS_RECEIPTS=off/库只读/库损坏/stdout 提前关闭/序列化注入/身份不符）。
-- 待补：打包 asar 内 worker 加载、Electron 主进程同进程并发、迁移/损坏矩阵（G3）。
+运行 `npm run typecheck` 和 `npm run build`。临时多进程验证脚本、数据库及结果放在 OS TEMP；核对崩溃回滚、锁预算、幂等写入和 seq 单调性。Hook 生产者须保留原始 stdout，正确配对 assembled/emitted，并在 binding 缺失、禁用、只读、损坏、stdout 关闭、序列化失败或身份不符时保持既有失败语义。打包验收须实际加载 asar 中的 worker，并验证主进程并发、迁移与损坏恢复。进程退出不构成断电持久性证明。
 
 ### 7. Wrong vs Correct
 
@@ -79,7 +77,7 @@ conn.execute(
 )
 conn.execute("COMMIT")
 # 任何失败：ROLLBACK → close → 退出（不重试）；payloadDigest = SHA-256(stableStringify(event))，
-# 与 TS 侧 stableStringify 跨语言一致（黄金夹具 scripts/fixtures/observability/python-produced-*.json）
+# 与 TS 侧 stableStringify 跨语言一致
 ```
 
 ---

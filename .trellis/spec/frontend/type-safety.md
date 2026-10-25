@@ -171,10 +171,10 @@ does not establish development-server resolution. Type-only imports disappear
 during transformation and can hide a missing runtime alias until a schema/value
 import is added. Keep main/preload shared imports relative.
 
-Run `node scripts/smoke/renderer-aliases.mjs` after changing aliases. It loads the
-actual Electron renderer config and checks development HTTP transforms of the
-application configuration dialog and shared runtime module. Typecheck or a
-production build alone does not cover this development import-analysis path.
+After changing aliases, verify development HTTP transforms of the application
+configuration dialog and shared runtime module using the actual Electron renderer
+config. Keep any temporary probes in OS TEMP. Typecheck or a production build
+alone does not cover this development import-analysis path.
 
 For Vite projects, also configure the alias in `vite.config.ts`:
 

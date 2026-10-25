@@ -97,7 +97,7 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 - Pin electron-builder26.0.11 for the supported Windows package. Version25.1.8
   can place shared transitive dependencies under an unrelated package, making
   the packaged daemon fail at startup. Verify actual packaged control/host
-  startup, build stamp and canonical exit with `daemon-packaged.mjs`; a successful
+  startup, build stamp and canonical exit in the actual packaged application; a successful
   archive layout check alone does not prove dependency resolution.
 - `electron.vite.config.ts` externalizes acpx and its subpaths. Bundling its ESM
   runtime into CommonJS destroys package-relative `import.meta.resolve` paths.
@@ -324,39 +324,15 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 - Bad: marking a found stored handle ready before its native load, removing a
   resolver before validating its ID, or allowing new work after failed cleanup.
 
-## 6. Tests Required
+## 6. Validation
 
-- `tests/agent-runtime/acp-agent-context.mjs`: actual facade/runtime separate resources,
-  source/schema/UTF-8/junction/revision bounds, frozen profiles, unsupported capability
-  zero-dispatch, cancellation, next-turn reuse and same-session restore.
-- `tests/agent-runtime/acp-connection-timings.mjs`: bounded validated stage records,
-  unknown-field removal, attempt freshness and root fences.
-- `adapters/zcode-acp/test/windows-hook-shell.mjs`, registered as
-  `zcode-windows-hook-shell`: native `ebo` request equivalence, exact SessionStart
-  sync/context and UserPromptSubmit nudge admission, all other pair exclusions,
-  error/cancel/cleanup preservation
-  and unsupported-artifact fallback. Production-source compilation follows
-  `zcode-managed-startup.md`; fixtures do not establish actual resume latency.
-- `acp-images.mjs`: isolated actual facade + public runtime + owned peer; verify MIME/signature/base64/duplicate/count/byte bounds, stale generation and unsupported capability with zero dispatch, image-only and mixed wire blocks, next-turn continuity, disk history and renderer timeline projection. This fixture does not establish real provider/model vision or native UI acceptance.
+Run `npm run check:acpx`, `npm run typecheck`, `npm run build` and `npm run check:ui` for affected layers. Keep temporary peers, scripts and evidence in OS TEMP.
 
-- `acp-materials.mjs`: source/included digests, zero-dispatch drift, future-only binding, junction fences, material add/delete and delayed project/watcher generations.
+Verify identity and generation fences through initialize/new/load, early updates, failed admissions, permissions and canonical cleanup. Restore must keep the same native session without prompt replay, retain the complete model catalog, reject notice overflow and consume queued desktop events before readiness. Independent configuration fields must survive equal and out-of-order revisions.
 
-- `acpx-runtime.mjs`: original strict failures, valid/foreign/early/replay identity,
-  bounded buffering, duplicate-kind exact IDs, invalid decisions, cancellation,
-  metadata/store/load and owned-process cleanup.
-- `acpx-preparation.mjs`: skipped scripts, idempotence, SDK/patch drift and clean
-  locked production install with automatic postinstall.
-- `acp.mjs`, `acp-project-scope.mjs`, `acp-foundation.mjs`: actual facade-owned
-  peer, all actions' scope checks, stale/timed-out permissions, profile versions,
-  frozen launch definitions, idle PID crash, concurrent restore/stop/capacity,
-  failed cleanup retry, rejected configs and honest callback capabilities.
-- `acp-ui.mjs`: root A→B→A, early replies, drafts/double-submit/IME, approvals,
-  lazy restore, activity grouping, meaningful tool titles, visible errors/End.
-- Typecheck/build, IPC/navigation/UIUX/render checks. Real vendor/native/packaged
-  rows remain separate from fixtures: test both required vendors with nonce file
-  reads, controlled writes, allow/deny, cancel/next turn, same remote restore,
-  themes/narrow/IME/scroll and packaged restricted-PATH launch. Keep failures and
-  external provider limitations explicit; a greeting is not coding acceptance.
+Verify resource/image byte bounds, source revisions, unsupported-capability zero-dispatch, cancelled turns and subsequent reuse. Rejected controls preserve effective values; stale root/selection replies cannot publish readiness or permissions. Connection timing spans must remain bounded, current-attempt facts.
+
+For UI changes, verify drafts, IME, focus, scroll, pending approval and explicit recovery across root changes and narrow/light/dark layouts. For native and packaged acceptance, exercise real file reads, controlled writes, allow/deny, cancel/next-turn, same-identity restore and restricted-PATH launch. Keep vendor, native and packaged results distinct from controlled validation; a greeting or compiled fixture is insufficient. Hook equivalence and artifact checks follow `zcode-managed-startup.md`.
 
 ## 7. Wrong vs Correct
 
@@ -411,9 +387,9 @@ Summaries carry `hasConversation`, derived from actual scoped message text, tool
 | Model acknowledged, second load fails | Preserve confirmed candidate metadata and report connection failure separately |
 | Stop/project change during recovery | Cancel/retain ownership; reject late result and do not revive stopped source |
 
-### Tests and wrong/correct pair
+### History and recovery acceptance
 
-Run `acp-history.mjs` for >800 exact events, >20 catalogue/search/direct-ID, cursor races, oversized images, migration/backup/damage, verified prefix recovery, worker/write failure and live permissions. Run `acp-recovery.mjs` for exact-ID same-session two-load, zero `session/new`/prompt dispatch, confirmed-but-connect-failed split, stale/root/generation/stop/lease/cap/cleanup cases. Native/vendor acceptance remains separate.
+Verify archives beyond the in-memory event cap and across multiple catalog pages, preserving exact event bytes and whole-turn boundaries. Exercise migration, damaged archives, prefix recovery, failed worker writes and expired historical permissions. Recovery must retain the exact native ID with no new session or replayed prompt, distinguish confirmed model selection from connection failure, and respect root/generation/stop/lease/capacity fences. Native/vendor acceptance remains separate.
 
 Wrong: use the 800-event `AcpSessionRecord.events` array as the full archive, slice an assistant reply at the 200th event, or make `pending:true` in a historical page clickable.
 

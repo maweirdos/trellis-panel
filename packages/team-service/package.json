@@ -8,8 +8,6 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "pretest": "npm run build",
-    "test": "node --test test/*.test.mjs",
     "start": "node dist/cli.mjs",
     "backup": "node dist/backup.mjs",
     "licenses": "node scripts/licenses.mjs"
@@ -24,9 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "24.13.6",
-    "@types/oidc-provider": "9.12.1",
     "esbuild": "0.25.12",
-    "oidc-provider": "9.12.2",
     "typescript": "5.9.3"
   }
 }

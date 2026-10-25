@@ -65,22 +65,11 @@ while a conversation remains mounted. Base: an empty project offers add/import.
 Bad: navigating away stops a service, a stale list overwrites a newer event, or a
 green running dot claims a service is healthy without a successful readiness check.
 
-## 6. Tests Required
+## 6. Validation
 
-Run `node scripts/smoke/app-runtime-ui.mjs` for actual mounted controls across
-light/dark, all font presets, 960px desktop and narrow modal stress. Cover save
-without execution, approvals, delete, output/follow/bounds, per-app failure/busy,
-missing IPC, root generations, dismissal/focus and subscriptions. Capture open
-popup/config/error/output states and inspect the images.
+Run `npm run check:ui`, `npm run typecheck` and `npm run build`. The UI check is static; inspect actual light/dark, all font presets, 960px desktop and narrow modal layouts separately.
 
-Also run `run-workbench-ui.mjs` for toolbar/dock, captured pointer/keyboard resize,
-draft switching and source retention, plus `developer-tools-e2e.mjs` for built
-UI/IPC with simultaneous real application and disposable Git operations.
-
-Run `node scripts/smoke/app-runtime-e2e.mjs` against a fresh production build for
-real renderer/preload/IPC/service behavior. UI fixtures with typed stub IPC prove
-rendering/interactions, not real process ownership or native human decisions.
-Run `npm run check:ui`, typecheck/build and affected navigation/interaction regressions.
+Verify save without execution, approvals, delete, output/follow/bounds, per-app failure/busy, missing IPC, root generations, dismissal/focus and subscriptions. Check toolbar/dock resizing, independent drafts and source retention while real application and disposable Git operations coexist. Actual process ownership and native human decisions require real renderer/preload/main/service evidence; keep any temporary scripts and data in OS TEMP.
 
 ## 7. Wrong vs Correct
 

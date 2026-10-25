@@ -82,18 +82,11 @@ legacy IssuePeek opening uses the same guarded fixed-source route.
 Bad: copy renderer old text into a new trusted snapshot, open the latest disk file
 for an old output link, or return successfully after its source was removed.
 
-## 6. Tests Required
+## 6. Validation
 
-Run reading-windows, reading-window-ipc, reading-window-hook and
-reading-window-renderer smokes plus affected modern reader/watch/knowledge/link
-regressions, typecheck/build and UI checks. Verify actual retained DOM/selection,
-latest guarded callbacks, independent leases and layered Escape behavior.
+Run `npm run typecheck`, `npm run build` and `npm run check:ui`. Verify retained DOM/selection, current guarded callbacks, independent watch leases, layered Escape and exact origin through actual reader/preload/main behavior.
 
-`reading-window-native-app.mjs` separately runs actual built main/preload/reader
-and real Electron windows in a checked temporary profile/project. It disables
-unrelated protocol/shortcut/login registration and verifies A/B, sender pin,
-minimize/maximize/restore, exact origin and close/reopen. This development
-instance is not installed-package, mixed-DPI or human OS-stacking acceptance.
+Native window acceptance uses an isolated temporary profile/project with unrelated login/protocol/shortcut registration disabled. Verify A/B retention, pinned sender, minimize/maximize/restore and close/reopen. Keep temporary validation scripts in OS TEMP; development-window results do not establish installed-package, mixed-DPI or human OS-stacking behavior.
 
 ## 7. Wrong vs Correct
 

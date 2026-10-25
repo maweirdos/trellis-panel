@@ -16,14 +16,13 @@ Node **24.12.0 or newer** is required. In this directory:
 npm ci
 npm run typecheck
 npm run build
-npm test
 npm run licenses
 ```
 
 Deploy `dist/`, `package.json`, `package-lock.json`, `THIRD-PARTY-LICENSES.txt` and
 `dependency-notices.json`, then install runtime dependencies with
-`npm ci --omit=dev --ignore-scripts`. The OIDC provider is a development test
-dependency only; this package does not operate an identity provider in production.
+`npm ci --omit=dev --ignore-scripts`. The service uses the configured OIDC provider; it does not operate an identity
+provider in production.
 Installed dependencies and their original license files must remain available.
 
 ## Explicit deployment configuration
@@ -149,16 +148,11 @@ instance/epoch before publishing a new directory. Existing stores/backups are
 never overwritten. Failed restore staging data is retained for inspection.
 Preserve the backup as private server data: it contains published/private records
 and session metadata. Command results, stable identities and cursor epochs survive
-restore. These tests do not establish hardware power-loss durability, installed
-server operations, company SSO or multi-instance database compatibility.
+restore. Hardware power-loss durability, installed server operations, company SSO
+and multi-instance database compatibility require separate deployment acceptance.
 
-## Verification limits
+## Local validation
 
-`npm test` runs real socket requests with two separately authenticated subjects
-from an isolated standards-based OIDC provider, actual worker-backed SQLite,
-replay/revocation, immutable versions, offline reads and backup/restore. The test
-provider uses owned ephemeral accounts/keys and a development in-memory adapter;
-it is not shipped as the production identity system. Separate worker tests cover
-schema1/2 migration, future/corrupt stores, actual junctions and resource bounds.
-Desktop protected pairing/outbox, the supplemental Web UI, company deployment,
-SSO lifecycle policy and end-user multi-device acceptance remain integration gates.
+Run `npm run typecheck` and `npm run build` in this package. Follow the root [local-only rule](../../AGENTS.md): temporary validation scripts, isolated OIDC accounts/keys, SQLite stores and results belong in OS TEMP and are not tracked or submitted.
+
+Verify actual HTTP authorization, immutable versions, command replay after lost ACK, revocation, migration and backup/restore through the storage worker. Desktop protected pairing/outbox, supplemental Web, company SSO policy and multi-device deployment need their own integration acceptance.

@@ -19,3 +19,10 @@ If you're using Codex or another agent-capable tool, additional project-scoped h
 Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
 
 <!-- TRELLIS:END -->
+
+# Local verification
+
+- Keep project-owned test code, fixtures, mocks, snapshots and validation reports local-only. Do not stage, commit or force-add these assets.
+- Put temporary validation scripts and artifacts in the operating system's TEMP directory outside the repository. Do not introduce tracked test runners, CI test jobs or test-only dependencies.
+- Preserve production checks and lifecycle guards: `check:acpx`, `check:ui`, `typecheck`, `build`, `postinstall`, and the existing dev/build/typecheck/packaging guards. Run applicable production checks and report their results.
+- Do not change global Git configuration or Git hooks to enforce these rules.

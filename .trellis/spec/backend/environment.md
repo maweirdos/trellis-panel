@@ -118,7 +118,7 @@ const getDbPath = () => {
 **约定**：
 1. `electron-builder.yml` 声明 `asarUnpack: ["out/main/*-worker.js"]`；
 2. 加载侧统一走 `src/main/services/worker-path.ts` 的 `neighborWorkerFile(file, envKey)`——把邻位路径中的 `app.asar` 段重写为 `app.asar.unpacked`（开发环境原样返回；env 覆盖优先）；
-3. 新增 worker 时：electron.vite.config 的 esbuild closeBundle 打包 + electron-builder asarUnpack + neighborWorkerFile 三处齐全，并用随包二进制（ELECTRON_RUN_AS_NODE）探针验证（范例：research/spike/g1b-packaged-probe.mjs）。
+3. 新增 worker 时：electron.vite.config 的 esbuild closeBundle 打包 + electron-builder asarUnpack + neighborWorkerFile 三处齐全，并用随包二进制（ELECTRON_RUN_AS_NODE）探针验证（临时探针脚本与输出放在 OS TEMP）。
 
 **Wrong**: `new Worker(join(__dirname, 'x-worker.js'))` 直接使用（asar 内路径）。
 **Correct**: `new Worker(neighborWorkerFile('x-worker.js', 'X_WORKER_FILE_ENV'))`。

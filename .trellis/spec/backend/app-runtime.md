@@ -112,30 +112,11 @@ rereads credentials, and the script owns compilation of changed source.
 Bad: a stale PID kills an unrelated process, a legacy npm path bypasses approval,
 or successful `spawn`/`taskkill` is presented as service-ready/fully-stopped evidence.
 
-## 6. Tests Required
+## 6. Validation
 
-- `app-runtime.mjs`: validation, persistence, env grammar/precedence/reload, exact
-  approval, secret-safe outputs and bounds; no unrelated project mutations.
-- `app-runtime-processes.mjs`: actual Windows foreground tree, external conflict,
-  descendant termination, timeout and stale-identity behavior.
-- `app-runtime-races.mjs`: remove/start/save registration races, stale observations,
-  persistence failure retry and identity-less crash records that cannot falsely stop.
-- `app-runtime-readiness.mjs`: absolute probe deadline under trickling HTTP headers
-  and a real listener closing while its foreground process remains alive.
-- `app-runtime-access.mjs`: real authenticated HTTP/CLI, packaged Electron runtime,
-  no-approval bypass, explicit project and concurrent mutation replay/conflict.
-- `app-runtime-ipc.mjs`: actual handlers, captured root, invalid inputs, main-only
-  confirmation, cancelled and A -> B -> A stale reviews, event routing.
-- `app-runtime-legacy.mjs`: real npm service, same common instance, approval,
-  cross-project list/stop isolation and verified cleanup.
-- `app-runtime-lifecycle.mjs`: real Electron quit event, cancellation, serialization,
-  cleanup failure/retry, session-drain ordering and reentrant settled quit.
-- `app-runtime-e2e.mjs`: built renderer/preload/actual handlers and real service;
-  UI lifecycle/readiness, env reload and port release. Native human choice is
-  simulated in this fixture and must be labelled as such.
-- Existing TPAP/IPC registry regressions, typecheck, build and `check:ui`.
+Run `npm run typecheck`, `npm run build`, `npm run check:acpx` and `npm run check:ui` as applicable. Use isolated OS TEMP repositories and services for scripted validation.
 
-Fixture evidence does not measure IDEA/JVM memory or certify private project builds.
+Verify save-versus-run approval, environment precedence/reload, readiness deadlines, stale PID/birth observations and foreground descendant cleanup through the actual UI/preload/main path. Exercise concurrent save/start/remove, root changes, cancellation, lost replies and persistence failures. Quit must drain sessions and services in order, retain retry after failed cleanup and release actual listening ports. Simulated native decisions do not establish human approval or private-project performance.
 
 ## 7. Wrong vs Correct
 

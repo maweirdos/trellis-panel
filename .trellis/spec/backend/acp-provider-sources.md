@@ -66,14 +66,13 @@ It does not add cross-application write exclusion or cache authorization.
 
 Good: bootstrap resolves the current primary registry, account synchronization enables its three GLM models, and configured custom providers remain distinct. Base: unavailable account with independent custom models still available. Bad: reporting stale home credentials' authentication failures as a failure of the user's current subscription.
 
-## 6. Tests Required
+## 6. Validation
 
-- `acp-zcode-provider-source.mjs`: relocated source versus stale legacy; override/isolation precedence; schema bounds; source drift; unrelated UI changes; no credential copy.
-- `acp-zcode-account.mjs`: fake encrypted store/owned local API; entitlement, acknowledgement, exact scope fences, expiry, malformed/oversized responses and redirects.
-- Translation/protocol fixtures: complete tool outputs, failure semantics, exact permission IDs/orderings, sequence/identity fences, partial catalogs and same-session load.
-- `acp-model-compat.mjs`: direct/routing/aggregate, exact IDs, duplicate names, unknown sources and generation fences.
-- `acp-zcode-runtime.mjs --live`: real facade/public acpx/installed ZCode, fresh unseen file nonce in completed native tool output AND assistant text, multiple turns, cancel/reuse, same native identity after restore and owned cleanup. Report live permission coverage separately; do not invent approval success.
-- Live acceptance requires the matching normal turn's terminal result to be completed, and the cancellation test's matching result to be cancelled. Ready state, a nonce emitted before cancellation, or a successfully sent cancel request do not establish those outcomes. Keep self-tests for both false-positive paths.
+Run `npm run check:acpx`, `npm run typecheck` and `npm run build`. Any account/protocol probes must use isolated data and OS TEMP scripts under the root local-only rule.
+
+Verify active-root precedence, source/schema drift, exact provider/model selectors, duplicate labels and current models absent from the catalog. Account admission must retain entitlement, ACK, expiry and session/workspace/account fences; cancellation and rejected permissions must not become successful turns.
+
+Native acceptance requires a fresh file nonce in both completed native tool output and assistant text, multiple turns, cancel/reuse, same native identity after restore and owned cleanup. Require the matching normal terminal result to be completed and the cancellation result to be cancelled. Verify live allow/deny independently; readiness or a sent cancel request alone is insufficient.
 
 ## 7. Wrong vs Correct
 

@@ -37,9 +37,9 @@ The optional second argument retains call compatibility, **not path-only authori
 
 Good: TaskDetail closes while ACP keeps its baseline/lease. Base: one host releases its token once. Bad: a late `unwatch(path)` from old A stops new A updates.
 
-## 6. Tests Required
+## 6. Validation
 
-`document-watch-ownership.mjs`: actual IPC root/generation/sender/duplicate/clear/destroy boundaries. `reader-wiring.mjs`: real bridge tokens/path-only no-op/filesystem changes. `acp-document-reader.mjs`: actual hook late acknowledgments, clear/new owner, duplicate cleanup and independent hosts. Keep native file/update evidence separate.
+Verify root/generation/sender ownership through real IPC, duplicate release, clear/destroy, late acknowledgements, independent hosts and actual filesystem changes. Path-only notifications must not create a new read or release another owner's watch. Run `npm run typecheck` and `npm run build`; keep any scripted boundary checks in OS TEMP and distinguish simulated notifications from native file/update evidence.
 
 ## 7. Wrong vs Correct
 

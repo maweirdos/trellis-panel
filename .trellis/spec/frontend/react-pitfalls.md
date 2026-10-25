@@ -18,11 +18,10 @@ modules; signature text alone is insufficient evidence. Preserve source maps and
 canonical Windows paths (including8.3 aliases). Do not instrument main/preload,
 dependencies or production output. Keep this plugin in the renderer plugin chain.
 
-Run `scripts/smoke/react-hook-refresh.mjs` after changes here: its unpatched
-baseline must reproduce the actual queue error, while the patched structural
-hook edit and a full reload retain the persisted draft. It also mounts the real
-ErrorBoundary: useful retry controls stay available, technical details default
-closed, and the UI does not guess a fixed preload cause.
+After changes, verify structural hook edits and full reloads retain the persisted
+draft in development. Check the actual ErrorBoundary: retry stays available,
+technical details default closed and no fixed preload cause is guessed. Keep
+any temporary reproduction scripts in OS TEMP; run typecheck/build separately.
 
 ---
 

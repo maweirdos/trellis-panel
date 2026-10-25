@@ -183,17 +183,11 @@ existing IPC convention and preserve useful validation detail.
   a canvas position as execution input, or display internal child activity
   without actual host evidence.
 
-## 6. Tests Required
+## 6. Validation
 
-`node scripts/smoke/workflow-contracts.mjs` must exercise actual exported
-validators/compiler/adapters, including scope collisions, multiple local tasks,
-custom-field preservation, malformed revisions/references, matching plan/graph
-identity, layout invariance, context/role/engine changes and explicit capability
-limits. The smoke uses a real SHA-256 adapter, not a constant digest fixture.
+Run `npm run typecheck` and `npm run build` after affected TypeScript changes. Temporary contract checks belong in OS TEMP under the root local-only rule.
 
-Run `npm run typecheck` and `npm run build` after affected TypeScript changes.
-There is currently no `npm run lint` script. Contract smoke/type/build results
-do not establish actual engine, persistent recovery, Jira, team or UI acceptance.
+Verify exported validators/compiler/adapters with real SHA-256 identities: scope collisions, multiple local tasks, custom fields, malformed revisions/references, matching plan/graph identity, layout invariance and context/role/engine changes. Type/build results do not establish engine execution, persistent recovery, Jira, team or UI acceptance.
 
 ## 7. Wrong vs Correct
 

@@ -129,7 +129,7 @@ export default defineConfig({
 
 ### Before Every Commit
 
-- [ ] `npm run lint` - 0 errors
+- [ ] Relevant `npm run build` and `npm run check:acpx` checks pass
 - [ ] `npm run typecheck` (or `tsc --noEmit`) - No type errors
 - [ ] Database schema changes have migrations
 
@@ -157,115 +157,16 @@ export default defineConfig({
 
 **Cause**: 模板字符串 `` `{"file":"${winPath}"}` `` 内插的 `C:\Users\...` 反斜杠未转义，`\U` 是非法 JSON 转义，`JSON.parse` 整行失败。注意：插值变量里的反斜杠**不会**被模板字面量的转义规则处理。
 
-**Fix / Prevention**: 需要把运行期路径写进 JSON 夹具时一律用 `JSON.stringify({ file: winPath, ... })` 构造该行，不要手拼 JSON 文本。实例：`scripts/smoke/task-reader.mjs`（cockpit-s0）。
+**Fix / Prevention**: 需要把运行期路径写进 JSON 夹具时一律用 `JSON.stringify({ file: winPath, ... })` 构造该行，不要手拼 JSON 文本。
 
 ---
 
-## Testing Guidelines
+## Behavior validation
 
-### Test Coverage Requirements
+Follow the root [local-only validation rule](../../../AGENTS.md). Temporary validation scripts, fixtures and output belong in OS TEMP and must not be tracked or submitted.
 
-| Layer        | Target Coverage | Description                    |
-| ------------ | --------------- | ------------------------------ |
-| Procedures   | > 80%           | CRUD operations                |
-| Lib/Helpers  | > 80%           | Pure utility functions         |
-| IPC Handlers | > 60%           | Thin wrappers (lower priority) |
-| Shared Types | N/A             | Type definitions only          |
+Run `npm run typecheck`, `npm run build` and `npm run check:acpx` for affected backend/runtime changes. Validate normal, boundary, rejection, concurrency, persistence and cleanup behavior through the changed entry points with isolated data. Verify actual persisted bytes, process identities and error results; simulated OS or provider responses do not establish native acceptance.
 
-### Test Structure
-
-```
-tests/
-├── setup/
-│   ├── global-setup.ts        # Test database initialization
-│   └── test-helpers.ts        # Test utilities
-├── factories/                 # Test data factories
-│   ├── index.ts               # Barrel export + resetAllCounters()
-│   └── project.factory.ts
-├── unit/                      # Mock-based unit tests
-│   └── services/{module}/
-│       ├── lib/*.test.ts
-│       └── procedures/*.test.ts
-└── integration/               # Real database tests
-    └── database/*.test.ts
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-npm test
-
-# Run specific test file
-npm test -- tests/unit/services/project/procedures/create.test.ts
-
-# Run with coverage
-npm run test:coverage
-
-# Watch mode
-npm test -- --watch
-```
-
-### Test File Template
-
-```typescript
-/**
- * [ProcedureName] Procedure Unit Tests
- */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// 1. Define mocks using vi.hoisted() (MUST be before vi.mock)
-const { mockGet, mockSelect } = vi.hoisted(() => {
-  const mockGet = vi.fn();
-  const mockSelect = vi.fn(() => ({
-    from: vi.fn(() => ({ where: vi.fn(() => ({ get: mockGet })) })),
-  }));
-  return { mockGet, mockSelect };
-});
-
-// 2. Set up module mocks
-vi.mock('@main/db/client', () => ({
-  db: { select: mockSelect },
-}));
-
-// 3. Import the module under test AFTER mocks
-import { getProject } from '@main/services/project/procedures/get';
-
-describe('getProject Procedure', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockGet.mockReturnValue({ id: '123', name: 'Test' });
-  });
-
-  describe('Input Validation', () => {
-    it('should reject missing id', () => {
-      const result = getProject({ id: '' });
-      expect(result.success).toBe(false);
-    });
-  });
-
-  describe('Normal Operations', () => {
-    it('should return project when found', () => {
-      const result = getProject({ id: '123' });
-      expect(result.success).toBe(true);
-      expect(result.project.name).toBe('Test');
-    });
-  });
-});
-```
-
-### Test Scenario Categories
-
-Each procedure test should cover:
-
-| Category            | What to Test            | Example                        |
-| ------------------- | ----------------------- | ------------------------------ |
-| Input Validation    | Required fields, format | Missing id, invalid status     |
-| Normal Operations   | Happy path              | Create with valid input        |
-| Error Handling      | Exceptions, not found   | Database error, entity missing |
-| Boundary Conditions | Edge cases              | Empty string, max length       |
-
----
 
 ## Summary
 
@@ -276,5 +177,3 @@ Each procedure test should cover:
 | Sync Vite + TypeScript paths | Both needed         |
 | No `!` assertions            | Type safety         |
 | Use structured logging       | Searchable logs     |
-| Test with mocks              | Fast, isolated      |
-| 80% coverage for procedures  | Quality assurance   |

@@ -556,5 +556,5 @@ action tickets and transient error/busy state, not the displayed source body.
 
 Verify the same heading DOM node, selected text and scroll across suspension;
 also change the source callback and verify a stable anchor uses the new guarded
-handler. See backend/workflow-reading.md and reading-window-renderer smoke.
+handler. See backend/workflow-reading.md and verify the actual reading-window renderer.
 

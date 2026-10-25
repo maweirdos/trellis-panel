@@ -43,10 +43,9 @@ scripts were skipped, explicitly run `npm run prepare:acpx` before building.
 Never edit `node_modules` as a deployment step, patch a different version, or
 remove a failing check. After an intentional compatibility update, regenerate the
 diff with `node node_modules/patch-package/index.js acpx`, update
-`acpx-compat.json` hashes and rerun both smoke suites.
-
-Behavioral checks: `node tests/agent-runtime/acpx-runtime.mjs` and
-`node tests/agent-runtime/acpx-preparation.mjs`.
+`acpx-compat.json` hashes and run `npm run check:acpx`, `npm run typecheck`
+and `npm run build`. Follow the root [local-only validation rule](../AGENTS.md):
+keep temporary protocol peers, scripts and evidence in OS TEMP, outside Git.
 
 ## Windows process inventory
 
@@ -81,9 +80,9 @@ helper. EOF independently exits the script if the host is terminated.
 
 `dist/windows-process-query.js` is an internal patch artifact, covered by the
 same manifest hashes. Public ACP exports and compatibility revision3 are
-unchanged. Run `node tests/agent-runtime/windows-process-query.mjs` for fresh
-tables, identity/cleanup safety, framing bounds, concurrency, failures/deadlines,
-EOF and real Windows host/helper exit checks.
+unchanged. Validate fresh tables, identity/cleanup safety, framing bounds,
+concurrency, failures/deadlines, EOF and actual Windows host/helper exit.
+Temporary validation code belongs in OS TEMP.
 
 ## Persistent connection (revision 2)
 
@@ -96,8 +95,8 @@ and later turns. The app calls this on explicit Send or retry, then publishes
 ready only after actual load and metadata refresh. History selection only reads
 saved state. Failed load preserves history and
 identity. Application prompt failures no longer end a healthy transport.
-Focused regressions: `node tests/agent-runtime/conversation-concurrency.mjs` and
-`node tests/agent-runtime/conversation-switching.mjs` (owned peers only).
+Verify concurrent conversation ownership and switching with owned isolated
+peers; closing one conversation must not stop another.
 
 Text checksums normalize CRLF and a single final newline, matching Git and
 patch-package's Windows text handling; all other bytes must match.
@@ -120,10 +119,9 @@ fails with `ACP_TURN_FAILED` before sending a request. Runtime validation does
 not read files or access the network; the host supplies resource text and
 negotiates the agent's `promptCapabilities.embeddedContext` capability.
 
-`node tests/agent-runtime/acpx-runtime.mjs --only=context` checks exact resource/text
-bytes, attachment order, empty context, byte/count/URI/MIME bounds with zero
-dispatch, cancellation, subsequent turns, eager resume and the shared runtime
-against an owned local peer.
+Verify exact resource/text bytes, attachment order, empty context and
+byte/count/URI/MIME rejection before dispatch. Cancellation, subsequent turns,
+eager resume and the shared runtime must preserve the same owned session.
 
 ## Bounded tool output deltas
 
@@ -164,8 +162,7 @@ Its text explicitly identifies SDK rejection and `payloadUnavailable:true`;
 the original rejected payload is omitted. There is no new observer API, private
 SDK import or acceptance of an unsupported tool/state update.
 
-`node scripts/smoke/acpx-runtime.mjs '--only=unknown' --assert-clean-stdio`
-exercises actual owned-peer notifications, foreign unknown updates, oversized
-metadata, early/native replay, credential sentinels and fake completed/error
-claims. Child-process stdio capture verifies that rejected credential fixtures
-do not reach SDK error logging; no global console interception is used.
+Verify owned versus foreign unknown updates, oversized metadata, early/native
+replay and false completion/error claims through isolated peers. Capture child
+stdio to ensure rejected credential sentinels do not reach SDK error logging;
+keep the temporary peer and captures in OS TEMP.

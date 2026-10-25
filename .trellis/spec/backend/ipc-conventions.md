@@ -105,14 +105,9 @@ Good: a task viewed in the floating window opens that exact task in main. Base:
 showing notes twice leaves them visible. Bad: focusing a same-named foreign task,
 switching projects implicitly, or inferring company acceptance from a local phase.
 
-### 6. Tests required
+### 6. Validation
 
-`node scripts/smoke/floating-window-native.mjs` bundles the real window handlers,
-registry and preload with isolated state/native boundaries. Assert exact ownership,
-structured rejections, generation changes, note show-vs-toggle and shared bounds.
-`scripts/smoke/floating-window.mjs` mounts the actual renderer for materials,
-subtasks, footer alignment and theme/font geometry. Run typecheck, build and the
-shared UI check. Mocked OS calls do not establish native focus or window stacking.
+Run `npm run typecheck`, `npm run build` and `npm run check:ui`. Verify exact window ownership, structured rejections, generation changes, note show-versus-toggle and shared bounds through real handlers, registry and preload. Inspect materials/subtasks, footer alignment and theme/font layouts in the actual renderer. Keep any scripted checks in OS TEMP; simulated OS calls do not establish native focus or stacking.
 
 ### 7. Wrong vs correct
 

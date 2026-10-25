@@ -90,7 +90,7 @@ timer into an online indicator, or label a submitted comment as implemented.
 Exercise actual React/shared Modal/InteractionScope/Chromium behavior with wrapped
 IPC fixtures for navigation/late replies/reload/retained versions/quotes/ACL loss,
 keyboard focus, light/dark, narrow and zoom layouts. Label these fixture boundaries.
-Use the separate actual production desktop/service/OIDC/Web connected harness for
+Use actual production desktop/service/OIDC/Web connections for
 cross-process offline/restart and real selected-native-source publication. Capture
 fully repainted frames; a hidden-window compositor blank is not a usable screenshot.
 Do not infer company, separate-machine, package or human acceptance from either.

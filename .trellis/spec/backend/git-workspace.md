@@ -87,21 +87,11 @@ Base: an unborn repository stages and unstages a file without changing its bytes
 Bad: reuse a stale branch label as authority, run `git add .` for a selection,
 include concurrently staged content or automatically remove an index lock.
 
-## 6. Tests Required
+## 6. Validation
 
-- `git-workspace.mjs`, `git-workspace-safety.mjs` and
-  `git-workspace-boundaries.mjs`: disposable normal/unborn/
-  linked worktree repos, rename/delete/space/Unicode, exact selected paths,
-  stale content/index/HEAD, hook races, queue guards, bounds/cleanup and ordinary
-  push/rejection to a local bare remote. Assert actual bytes, refs and index.
-- `git-workspace-ipc.mjs`: actual eight handlers, strict requests, current sender,
-  root A -> B -> A, queued guards, native cancellation and scoped/stale diff.
-- `git-workspace-ui.mjs`: typed mounted UI, failures/cancellation, stale replies,
-  both themes/fonts, short viewport and maximum dock geometry.
-- `developer-tools-e2e.mjs`: built UI/preload/actual IPC, selected stage/commit,
-  create/switch branch and local bare push while a real service stays alive.
-  Native human choices are simulated and must be labelled as such.
-- Preserve `git-readonly.mjs`, `git-algorithms.mjs`, IPC registry, typecheck/build.
+Run `npm run typecheck`, `npm run build` and `npm run check:ui`. Scripted Git validation must use disposable normal/unborn/linked-worktree repositories and a local bare remote in OS TEMP, never the development repository.
+
+Verify actual bytes, index and refs after selected-path operations, rename/delete/Unicode paths, stale content/index/HEAD, hook races, queued commands, cancellation and rejected push. Exercise current sender/root/generation fences through real IPC and visible error/retry states. The running application must survive panel collapse and unrelated Git operations; check both themes and constrained dock layouts.
 
 ## 7. Wrong vs Correct
 

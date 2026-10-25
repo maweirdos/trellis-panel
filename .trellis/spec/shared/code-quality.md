@@ -51,18 +51,20 @@ function parseJSON(input: string): unknown {
 
 ---
 
-## Lint and Type Check Before Commit
+## Validation before commit
 
-```bash
-# MUST pass before every commit
-npm run lint
+Follow the root [local-only validation rule](../../../AGENTS.md). Keep project-authored test scripts, fixtures and results in OS TEMP; do not add them to Git.
+
+Run the checks relevant to the changed layer:
+
+```sh
 npm run typecheck
-
-# Or combined
-npm run lint && npm run typecheck
+npm run build
+npm run check:acpx
+npm run check:ui
 ```
 
----
+The repository has no lint script. Type, build and UI checks do not prove native process behavior, permissions or external-provider acceptance.
 
 ## Naming Conventions
 
@@ -74,7 +76,6 @@ npm run lint && npm run typecheck
 | Hook            | camelCase with `use` prefix | `useProject.ts`             |
 | Utility         | kebab-case                  | `date-utils.ts`             |
 | Type file       | kebab-case or `types.ts`    | `types.ts`, `user-types.ts` |
-| Test file       | Same name + `.test`         | `date-utils.test.ts`        |
 | Directory       | kebab-case                  | `user-profile/`             |
 
 ### Variables and Functions
@@ -176,48 +177,9 @@ try {
 
 ---
 
-## Testing Guidelines
+## Local behavior validation
 
-### Test File Location
-
-```
-src/
-├── utils/
-│   ├── date-utils.ts
-│   └── date-utils.test.ts    # Co-located test
-└── __tests__/                 # Integration tests
-    └── api.test.ts
-```
-
-### Test Naming
-
-```typescript
-describe("DateUtils", () => {
-  describe("formatDate", () => {
-    it("should format date in ISO format", () => { ... });
-    it("should handle null input", () => { ... });
-    it("should throw on invalid date", () => { ... });
-  });
-});
-```
-
-### Test Structure (AAA Pattern)
-
-```typescript
-it('should create a project', async () => {
-  // Arrange
-  const input = { name: 'Test Project' };
-
-  // Act
-  const result = createProject(input);
-
-  // Assert
-  expect(result.success).toBe(true);
-  expect(result.project.name).toBe('Test Project');
-});
-```
-
----
+Use isolated temporary accounts, files and repositories for edge cases. Verify observable results, failure recovery and cleanup through the actual affected code path. Preserve the acceptance conditions in the owning spec; keep temporary validation code and evidence outside the repository under the root local-only rule.
 
 ## Summary
 
@@ -225,7 +187,6 @@ it('should create a project', async () => {
 | ----------------------- | ------------------- |
 | No `!` assertions       | Runtime errors      |
 | No `any` type           | Type safety         |
-| Lint before commit      | Consistent code     |
 | Typecheck before commit | Catch type errors   |
 | Semantic naming         | Readability         |
 | Structured errors       | Consistent handling |

@@ -123,9 +123,9 @@ becoming an application brand palette. `StateGroupIcon`, `PriorityIcon`,
 
 ## Quality gates
 
-Run `npm run check:ui` plus typecheck/build and the relevant navigation, ACP and
-reader smoke checks. The UI gate checks token closure/cycles, contrast, actual
-Chromium geometry/focus, six theme/font cases and same-source image assets.
+Run static `npm run check:ui` plus `npm run typecheck` and `npm run build`.
+Inspect actual navigation, ACP and reader interactions separately for contrast,
+geometry/focus, six theme/font cases and same-source image assets.
 Do not treat a synthetic/no-IPC preview as proof of vendor/native behavior.
 The old ink/mist/leaf and private pixel font/radius classes are forbidden.
 
@@ -272,25 +272,9 @@ and reports belong to team. Home has no context sidebar. The former task-parent 
 
 ### 6. Required checks
 
-- `node scripts/smoke/navigation.mjs`: all 17 routes, Windows/UNC/POSIX identity, distinct
-  roots with equal names, scoped persistence, legacy-key preservation, initial focus,
-  root transitions, and asynchronous recent-project refresh/failure/close behavior.
-- `node scripts/smoke/acp.mjs`: existing ACP service lifecycle and permission behavior.
-- `node scripts/smoke/acp-project-scope.mjs`: mixed active/history roots, filtering before
-  limit, trusted-root IPC injection, foreign action rejection, approval ownership and expiry.
-- `node scripts/smoke/acp-ui.mjs`: actual ACP handlers for early events, root A→B→A,
-  connection generations, live approval restoration, drafts, IME, follow-scroll projection,
-  lazy restore, collapsed activity and visible errors. This is not mounted/native E2E evidence.
-- `node scripts/smoke/task-presentation.mjs`: composed source/reader actions, target cleanup,
-  exact known manifests and raw fallback. `node scripts/smoke/uiux-wiring.mjs`: actual
-  component hook/event handlers for Escape priority, stale note replies, local-first results
-  and Spec display/target guards. These are not mounted/native E2E evidence.
-- Existing reading-session/task-reader/reader-wiring tests plus actual UI checks for file
-  changes, same reader during presentation changes, scroll/focus, light/dark and OS controls.
-  After development HMR, establish a fresh reader before judging live subscriptions; record
-  anomalies without inferring their cause from a passing pure-state test.
-- `npm run typecheck` and `npm run build`; browser walkthrough for navigation, Ctrl+K,
-  scope notes, and collapse. Browser demo data is not proof of real IPC or vendor CLI behavior.
+Run `npm run typecheck`, `npm run build` and static `npm run check:ui`. Verify route/root identity, scoped persistence, legacy keys, initial focus and asynchronous recent-project failure/close behavior. Check filtering before history limits, foreign-action rejection and exact permission ownership/expiry.
+
+Inspect actual early-event and generation handling, drafts/IME/follow-scroll, lazy restore, source/reader retention, Escape priority, stale replies and visible errors. Use real file changes and light/dark/focus/OS controls for native acceptance; temporary scripts and captures belong in OS TEMP.
 
 ### 7. Wrong vs correct
 
@@ -378,12 +362,7 @@ new runtime session, or inferring personal reads from task modification times.
 
 ### 6. Review / validation
 
-Keep `scripts/smoke/navigation.mjs` ownership assertions aligned with the five modules.
-When checks are authorized, cover malformed navigation storage, initial deep-link
-precedence, root/developer isolation, stored iteration grouping, one-shot ACP targets,
-and personal recent replay. For this delivery the user explicitly requested no tests,
-type-check, builds or app launches; only source review was performed. Runtime review
-remains pending and must not be represented as a passed quality gate.
+Verify ownership across the five modules, malformed navigation storage, initial deep-link precedence, root/developer isolation, stored iteration grouping, one-shot ACP targets and personal recent replay. Run `npm run typecheck`, `npm run build` and static `npm run check:ui`; keep any scripted validation in OS TEMP. Source review alone does not establish runtime acceptance.
 
 ### 7. Wrong vs correct
 

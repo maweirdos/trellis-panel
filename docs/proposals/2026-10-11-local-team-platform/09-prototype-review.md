@@ -53,7 +53,7 @@
 2026-10-11 已通过的检查：
 
 - `node --check prototype/app.js`：JavaScript 语法通过。
-- [产物检查脚本](checks/verify-artifacts.py)：检查章节本地链接、静态资源存在性、静态 HTML ID 重复、JavaScript 语法；[机器结果](checks/results.json)保存最近结果。
+- [产物检查记录](checks/results.json)：章节本地链接、静态资源存在性、静态 HTML ID 和 JavaScript 语法。
 - 在 Codex 浏览器走通：发布需求→开发领取→本机绑定→只读分析→发布业务反馈→产品确认范围并发 v2→开发采用 v2→工程规划→开发确认→本地实施示例→检查→共享预览→发布→验收。
 - 验收全部勾选前，“通过”不可用；验收通过但尚无合并确认时，Jira 仍显示等待条件。
 - 合并确认后模拟 Jira 失败，验收记录保留；重试后恢复已确认状态。

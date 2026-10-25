@@ -119,17 +119,15 @@ Base: no trustworthy project conversation exists, so the normal entry offers sel
 
 Bad: matching titles to infer a relationship, treating an ACP ID as a ZCode desktop ID, silently creating a replacement VS Code conversation, importing internal workers as original user sessions, or declaring an AI turn to be a completed task.
 
-## 6. Tests required
+## 6. Validation
 
-- scripts/smoke/task-conversations.mjs: actual temporary source formats, cwd fences/Windows namespace, user/worker/unknown roles, requested old child, title refresh, runtime validation, durable primary/unlink suppression, archive/copy identity, future/corrupt/locked stores and exact injected launch arguments.
-- scripts/smoke/task-conversations-history.mjs: successful Codex/Claude/ZCode task receipts and negative prose/read/error/dynamic-call cases; runtime deletion and overwritten history; identity/creation-time/archive/copy fences; persistence and manual overrides; old requested provider aliases; incremental limits, partial/oversized records, bounded keys and rewritten ZCode snapshots. No native client activation.
-- scripts/smoke/task-conversations-retained-receipts.mjs: existing receipt/binding/native formats, optional-source authority and failure isolation, no observation creation/enabling, old native IDs, stable archives, manual-primary/unlink persistence and receipt deletion. `--local` is read-only and uses in-memory persistence for real-source acceptance, not client activation.
-- --local / --cache-probe are explicit read-only local capability probes. No real client activation or prompt is performed.
-- scripts/smoke/task-conversations-ipc.mjs: real registry/handler/preload, strict payloads, sender/frame/root/generation fences, pending-launch cancellation, lazy creation, cleanup and all registered routes including continuation and repair.
-- scripts/smoke/task-conversations-ui.mjs: real production homepage/hook/modal in isolated Electron, equal geometry, global radii, sibling actions, title preview/focus/Escape, picker timestamps/duplicate titles, scope races, error/retry, refresh, reduced motion and cleanup.
-- Full typecheck, check:ui, ipc-registry and build. Native UI focus requires separate evidence; mocked ports and a read-only capability probe do not establish it.
-- scripts/smoke/task-conversations-continuation.mjs: selected-task packets for a shared parent, phase/history intent, safe binding language, task identity changes, material budgets, clipboard/dispatch partial outcomes, visible source previews and independent inspection.
-- scripts/smoke/task-conversations-preview-boundaries.mjs: unknown-role ordinary positive control, explicit native child roles, foreign replacement, in-place mutation between head/tail reads and atomic path replacement.
+Run `npm run typecheck`, `npm run build` and `npm run check:ui`. Use OS TEMP for temporary native-history formats, stores and scripted IPC/UI checks; read-only discovery must not activate a native client, create observations or send prompts.
+
+Verify task receipts across supported sources, exact identity/cwd/creation-time fences and explicit role exclusions. Prose, read failures, overwritten history and foreign replacements cannot create bindings. Preserve old requested aliases, incremental byte/key bounds, partial records, rewritten snapshots and optional-source failure isolation.
+
+Verify durable primary/unlink choices across archive/copy/reopen, strict sender/root/generation fences, stale launch cancellation and all continuation/repair routes. Two tasks sharing one native parent must still produce the exact selected-task packet, source preview and material budget. Copy-success/launch-failure remains a partial outcome.
+
+Inspect the production homepage/modal for equal entry geometry, sibling actions, title previews, focus/Escape, duplicate labels, stale selection, error/retry and reduced motion. A simulated port or read-only probe does not establish native UI focus.
 
 ## 7. Wrong vs correct
 

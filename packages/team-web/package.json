@@ -9,8 +9,6 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/client.test.mjs",
-    "test:browser": "node test/browser.mjs",
     "licenses": "node scripts/licenses.mjs"
   },
   "dependencies": {

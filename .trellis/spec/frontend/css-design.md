@@ -248,7 +248,7 @@ Example:
 Verify in light/dark and narrow/font-scaled Chromium: label alignment without a
 leading check gutter; exactly one trailing check; a subtle stable hover surface;
 accessible disabled/selected/focus states; result title/action readability; no
-colored left stripe. Run `check:ui`, actual consumer regressions, typecheck/build.
+colored left stripe. Run static `npm run check:ui`, typecheck/build and inspect affected consumers.
 
 ## 3. Theme and typography contracts
 
@@ -324,33 +324,11 @@ color unrelated to the global accent. Do not use `my.*` alpha suffixes such as
 
 ## 6. Required checks
 
-Run `npm run typecheck`, `npm run build` and `npm run check:ui`.
-`check:ui` detects missing/cyclic token dependencies, private palette literals in
-the affected shared/domain sheets, and legacy brand usage,
-verifies same-source SVG/PNG/ICO resources, then mounts real shared primitives
-in Chromium across six theme/font combinations. It tests contrast, geometry,
-focus, viewport-clamped menus, narrow dialogs and transparent utility roots.
-Hidden-window focus uses Chromium focus emulation rather than OS focus stealing.
+Run `npm run typecheck`, `npm run build` and `npm run check:ui`. The UI command performs static token, palette, brand and source-asset checks; it does not launch Electron or verify rendered geometry/focus.
 
-Run `node scripts/smoke/acp-composer-geometry.mjs` for popup/usage changes. It
-measures settings/model width, right-group alignment, 8px gap, short/scrolling
-list symmetry, 320/240px viewport clamping and unknown/zero/25%/75%/90%/100% usage across
-light/dark and three font presets. It also verifies mode localization and native
-change-group folding, per-file deduplication and expansion retention on append. Geometry snapshots disable the transient menu
-entry transform. Optional `TPANEL_COMPOSER_CAPTURE_DIR` saves actual renderer
-captures without opening a provider session.
+Inspect actual shared primitives across light/dark and three font presets for contrast, focus, viewport-clamped menus, narrow dialogs and transparent utility roots. For composer changes, check settings/model widths, right-group alignment, the 8px gap, short/scrolling lists, 320/240px viewport clamping and unknown/zero/25%/75%/90%/100% usage. Verify localized modes, change-group folding, per-file deduplication and expansion retention on append. Disable transient menu motion for geometry captures and verify animation separately.
 
-For module-rail geometry changes, inspect actual rendered icons, symmetric
-insets, header-brand alignment and short-window scroll/footer reachability in
-both themes; keep using the existing navigation and shared-UI checks.
-
-Run navigation, UIUX wiring, ACP and reader smoke checks for affected consumers.
-Keep native appearance mapping synchronized with the canvas token (see backend
-`window-appearance.md`). Browser captures do not establish Windows DWM/tray
-visual behavior. Verify the actual UI with screenshots, including open states.
-
-After changing Tailwind configuration, use a freshly loaded development process
-or the production CSS; an existing process may retain the old configuration.
+Exercise affected navigation, ACP and reader interactions. Keep native appearance mapping synchronized with `backend/window-appearance.md`. Browser captures do not establish Windows DWM/tray behavior; inspect actual screenshots including open states. Temporary scripts and captures belong in OS TEMP.
 
 ## 7. Wrong versus correct
 
@@ -420,11 +398,7 @@ and renderer notifications together.
 
 ### Required checks
 
-Run `scripts/smoke/notifications-native.mjs` (mocked OS boundary) and
-`scripts/smoke/notifications-ui.mjs` (mounted Chromium), plus `npm run check:ui`,
-typecheck/build and affected navigation checks. The UI smoke covers six theme/font
-combinations, clamping/expansion, viewport bounds, dismissal/pause/dedup and task
-actions. Synthetic native checks do not prove Windows notification-center visuals.
+Run static `npm run check:ui`, typecheck/build and inspect notification/navigation interactions. Verify six theme/font combinations, clamping/expansion, viewport bounds, dismissal/pause/deduplication and task actions. Use OS TEMP for any scripted OS-boundary checks; simulated notifications do not prove Windows notification-center visuals.
 
 ### Wrong versus correct
 

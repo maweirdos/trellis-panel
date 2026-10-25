@@ -7,24 +7,21 @@ does not connect to native ACP, run shell commands or mirror repositories.
 
 ## Develop and build
 
-Use Node24.12+ in the repository, with root development dependencies installed for
-the shared test tooling. From this package:
+Use Node24.12+ in the repository. From this package:
 
 ```sh
 npm ci --ignore-scripts
 npm run typecheck
 npm run build
 npm run licenses
-npm test
-npm run test:browser
 ```
 
 The source imports the repository's existing `src/shared/team-platform.ts` and
 `src/renderer/src/my/my-tokens.css`. There is no copied contract or second palette.
 Exact versions, integrity hashes and notices are retained by the package lock and
 license output. No dependency was added to the Electron/root package. Lint is not
-configured. The browser smoke additionally needs the built sibling team-service
-and its development-only OIDC test provider; it never uses a company account.
+configured. Validate connected behavior against the built sibling team-service
+using an explicitly configured isolated account.
 
 ## Serve in production
 
@@ -94,27 +91,10 @@ personal materials. Developer-offline published reading works through the live
 team service. Explicit authorization rejection clears protected browser content;
 network outages are labelled stale/unavailable.
 
-## Executed evidence and limits
+## Local validation and acceptance
 
-The meaningful client suite covers actual UTF8 integrity, transport bounds,
-command acknowledgement loss, exact retry, account/payload changes, missing
-receipts and journal failure. The actual Chromium smoke serves the built bundle
-through the real team service, worker SQLite, signed OIDC provider and two owned
-accounts. Browser cookie partitions receive their actual issued test cookies;
-UI login redirect is also exercised. It verifies fixed A after B, private access,
-quote feedback, real publication/CAS, project/member forms, device pairing/revoke,
-actual committed ACK-loss reconciliation, stale project responses, responsive
-widths/zoom and current authorization removal. The ACK-loss and response-delay
-faults are explicitly injected at the browser transport after actual HTTP results.
-Actual native Tab/Escape also checks dialog focus containment and return to its
-original still-connected trigger.
-Independent review additionally covers real account-cookie switch with a held
-committed reply and actual reload, reference-only recovery, streamed response
-ownership, empty filtered-page continuation, accessible dialog titles, remaining
-desktop pane height with notices and the server's current-admin self-disable
-constraint. Controlled empty-page/ACK/response-delay faults are explicitly labelled
-client transport cases, not claims that the service produced those faults itself.
+Run `npm run typecheck` and `npm run build` in this package. Follow the root [local-only rule](../../AGENTS.md); temporary scripts, browser profiles, accounts and captures belong in OS TEMP rather than Git.
 
-These checks do not establish company SSO, production deployment, installed
-desktop pairing/outbox, all cross-task A-scenarios or final team-platform acceptance.
-No model, Jira or company account action is performed by these tests.
+Verify exact UTF8/digest checks, response bounds and one command identity through ACK loss, retry, account/project changes and missing receipts. In the actual built Web/service flow, verify login, immutable selected versions, personal access, quote feedback, publication CAS, membership revisions and device pairing/revocation. Inspect responsive layouts, zoom, native Tab/Escape focus and current authorization removal.
+
+Fault injection must be labelled separately from service-produced behavior. Company SSO, production deployment, installed desktop pairing/outbox and separate-machine acceptance require their actual environments; controlled accounts do not establish those results.

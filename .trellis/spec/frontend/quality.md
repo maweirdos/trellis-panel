@@ -4,49 +4,17 @@
 
 ---
 
-## Package Manager
+## Package manager
 
-**Use pnpm** for monorepo projects:
+Use npm with the repository's package lock. Install dependencies with `npm ci --legacy-peer-deps`; the flag preserves the existing Vite/electron-vite peer contract.
 
-```bash
-# Good (from repo root)
-pnpm install
-pnpm lint
-pnpm typecheck
 
-# Also OK (with workspace filter)
-pnpm --filter @your-app/desktop lint
+## Validation before commit
 
-# Avoid mixing package managers
-npm install  # Don't
-yarn install # Don't
-```
+Follow the root [local-only validation rule](../../../AGENTS.md). Keep temporary scripts, UI captures and fixtures in OS TEMP rather than the repository.
 
----
+Run `npm run typecheck`, `npm run build` and `npm run check:ui` for affected frontend changes. Inspect the actual interaction in light/dark themes, constrained layouts, keyboard focus and error/retry states. Check DevTools for runtime errors. No lint command is configured.
 
-## Before Every Commit
-
-Run these checks before committing:
-
-```bash
-# 1. Type check
-pnpm typecheck  # or: pnpm exec tsc --noEmit
-
-# 2. Lint
-pnpm lint
-
-# 3. Manual testing
-# Test the feature you changed
-```
-
-**Checklist**:
-
-- [ ] `pnpm typecheck` - No type errors
-- [ ] `pnpm lint` - 0 errors, 0 warnings
-- [ ] Manual testing passes
-- [ ] No console errors in DevTools
-
----
 
 ## Forbidden Patterns
 
@@ -139,7 +107,7 @@ import { todoStateSchema, todoPrioritySchema } from '../shared/types/entity';
 import type { TodoState, TodoPriority } from '../shared/types/entity';
 ```
 
-**Tip**: Run `pnpm lint` before committing to catch unused imports.
+Check changed imports and variables directly; remove unused declarations.
 
 ---
 
@@ -295,7 +263,7 @@ try {
 | Use `_` prefix for intentionally unused | ESLint won't complain       |
 | Search before defining constants        | Avoid duplication           |
 | Max 300 lines per component             | Maintainability             |
-| Run lint + typecheck before commit      | Catch issues early          |
+| Run typecheck/build/UI checks           | Catch issues early          |
 
 ---
 

@@ -89,9 +89,9 @@ respect that reading position; they never opt back into following on their own.
 Tests must hold IPC/state/output separately to prove immediate
 submission, acknowledgement handoff, silent gaps, terminal-before-ready, failure,
 selection/generation/root drift and Settings suspension using actual components.
-`acp-ui.mjs` covers projection and real controller callback races;
-`acp-turn-status.mjs` mounts the actual Console in hidden Electron with independently
-delayed IPC, state and output, including silent gaps and reduced-motion behavior.
+Verify projection and real controller callback races in the actual Console with
+independently delayed IPC, state and output, including silent gaps and
+reduced-motion behavior. Temporary validation scripts belong in OS TEMP.
 
 ### Native knowledge calls and explicit new-conversation focus
 
@@ -214,9 +214,11 @@ Heading discovery must use the same CommonMark line-ending semantics as body ren
 
 Good: A displayed, B pending, font/expand changes retain A and draft. Base: unbound discovery requires explicit idle task association. Bad: a nested research PRD counts as principal review, or restore silently updates an old authorization reference.
 
-## 6. Tests Required
+## 6. Validation
 
-`acp-ui.mjs` covers real controller/IME/draft/follow/permission/root/restore, view migration, hover, principal review and explicit recovery/intents. `acp-document-reader.mjs` uses actual hooks/deferred IPC/reader slices for multiowner/race/path/provenance/release behavior. `acp-document-pane.mjs` exercises real pane outline/loading/navigation/focus/section-quote handlers with CRLF input; reading-session tests require line-ending parity in the shared parser. Retain reader-wiring/task-reader/task-presentation tests. `navigation.mjs` tests actual appearance persistence/legacy/storage/root boundaries. Run typecheck/build, generated class gate and actual light/dark/narrow/focus/IME; synthetic results do not close native/vendor gates.
+Run `npm run typecheck`, `npm run build` and static `npm run check:ui`. Keep temporary validation code, IPC peers and captures in OS TEMP.
+
+Verify actual controller/IME/draft/follow/permission/root/restore behavior and explicit recovery. Reader validation must cover multiple owners, deferred acknowledgements, provenance, release, CRLF parsing, outline/loading/navigation/focus and section quotes. Inspect appearance persistence and real light/dark/narrow/focus behavior; controlled results do not close native/vendor acceptance.
 
 ## 7. Wrong vs Correct
 
@@ -320,11 +322,11 @@ An actually owned disconnected connection still needs the explicit End action,
 including when `cleanupRequired` and `restorePending` are false. Keep the existing
 canonical cleanup callback and operation/root/interaction locks; do not launch
 automatic stop/retry or hide its failure. Unowned offline history has no process
-End action. Check this recovery route with `acp-resume-producer.mjs`, which also
-distinguishes one-shot source-owned resume, explicit retries and a genuine remount.
+End action. Verify that this recovery route distinguishes one-shot source-owned
+resume, explicit retries and a genuine remount.
 Receipt density alone does not establish an automatic reconnect loop.
 
-Run `acp-ui.mjs`, `acp-settings-detour.mjs`, `navigation.mjs`, `render-contract.mjs`, `uiux-wiring.mjs`, `acp-progress.mjs`, and actual light/dark/narrow rendered captures. Report fixture/native/vendor/packaged gaps separately. Generic design-system focus failures must not be relabeled as ACP failures; ACP touched inputs require an explicit visible focus ring.
+Inspect actual light/dark/narrow rendered captures, Settings detours, navigation, render identity, callback ownership and progress states. Report fixture/native/vendor/packaged gaps separately. Generic design-system focus failures must not be relabeled as ACP failures; ACP touched inputs require an explicit visible focus ring.
 
 ## Composer and result refinements (2026-10-20)
 
@@ -363,7 +365,7 @@ complete pale outline. Neither has an active arc or a center minus. Positive
 reported usage draws only its proportional arc, neutral below75%, amber at75%
 and red at90%; these thresholds affect presentation only. Keep exact current-
 generation reports and acknowledgement-backed model resets. Verify normal and
-threshold colors in both themes through `acp-composer-geometry.mjs`.
+threshold colors in both themes in the actual rendered composer.
 
 ### Mode labels and compact change records
 
@@ -387,9 +389,9 @@ The native `details.acp-change-group` is closed by default, with one neutral
 key on appends so updates preserve expansion. Prefer supplied relative display
 names while retaining exact path identities. Show only supported view/read
 actions; deleted/unreadable material has no fake read action. Warnings/errors
-remain outside the fold. `acp-ui.mjs` covers projection scopes, ordering, source
-retention and real callbacks; `acp-composer-geometry.mjs` mounts the group to check
-default folding, two rows for four updates, append retention and narrow layout.
+remain outside the fold. Verify projection scopes, ordering, source retention and
+real callbacks; inspect default folding, two rows for four updates, append
+retention and narrow layout in the actual mounted group.
 
 ### Theme-safe menu hierarchy and invitation text
 
@@ -473,7 +475,7 @@ cannot hold multi-character labels. Knowledge material body editors retain a
 readable multiline height despite shared field min-height specificity. Test
 actual computed geometry, default transcript/action count, exact operation/source
 provenance, plus/More, background-fact access and unchanged composer draft/focus
-with `acp-knowledge-convenience.mjs` and `knowledge-ui.mjs`.
+in the actual conversation and knowledge controls.
 
 ### Role context and connection diagnostics
 

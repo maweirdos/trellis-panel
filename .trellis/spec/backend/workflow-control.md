@@ -132,17 +132,11 @@ observations database or a second transcript archive.
 Bad: release the workspace after a writer crash, reset unknown outbox work to
 pending, or report history persistence from a received-but-uncommitted event.
 
-## 6. Tests Required
+## 6. Validation
 
-`node scripts/smoke/workflow-control.mjs` exercises real file SQLite, distinct
-processes, actual worker RPC, rollback/exit, command races, ownership/fencing,
-outcome uncertainty, legacy preservation/contention and bounded queue behavior.
-Its build-path check must actually load the emitted workflow worker and retain
-diff/observation/history worker outputs. Process exit is not power-loss proof.
+Run `npm run typecheck` and `npm run build`. Keep temporary multi-process scripts and databases in OS TEMP. Verify actual worker RPC, file SQLite rollback/exit, command races, ownership fencing, uncertain outcomes, legacy contention and bounded queue behavior. The emitted workflow worker must load alongside the diff/observation/history workers.
 
-Run typecheck/build and the affected legacy local-task/observation checks after
-changing shared control behavior. R1 control acceptance alone does not prove a
-native driver, live graph, team service or Jira action works.
+Exercise affected local-task and observation paths after shared control changes. Process exit is not power-loss proof; control acceptance alone does not establish native execution, live graphs, team service or Jira actions.
 
 ## 7. Wrong vs Correct
 

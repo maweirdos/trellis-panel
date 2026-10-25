@@ -135,28 +135,13 @@ Bad: automatically upload the latest working file after reconnect, treat a saved
 feedback comment as applied, reuse a queue under a different team, or mark an
 approved-but-unseen device online.
 
-## 6. Tests Required
+## 6. Validation
 
-The isolated service runs its own `npm run typecheck`, `npm run build` and
-`npm test`. Use actual HTTP/OIDC test-provider accounts, actual worker SQLite,
-restart/migration/revocation, backup/restore and production-only installation
-checks. Client work additionally exercises acknowledgement loss, restart,
-account/project switching, stale cursors and protected credential failures.
-Fixtures are labelled; company SSO and production deployment are not inferred.
-The service has no configured lint script.
-team-desktop-ipc exercises actual registry/preload plus strict source adaptation,
-generation changes before/after enqueue and structured unknown errors, with
-explicit domain fixtures. team-desktop-host exercises actual timers, queued-only
-dispatch, admission pause/cancel and drain/cleanup retry against explicit service
-fixtures. They do not replace the service's actual worker/HTTP/OS credential gates.
-`team-collaboration-connected.mjs --fixed-reader` exercises production Electron
-main/preload/renderer/native windows/default Windows protection, a signed owned
-OIDC provider, actual service worker/HTTP and supplemental Web in isolated browser
-partitions. Freeze each production build before starting; record its hashes and
-explicit OS/test boundaries. Native-only outage, process restart/original command
-IDs, retained A, current personal ACL and selected reader A publication while disk
-B is current are distinct assertions. These synthetic accounts/one physical host
-do not establish company SSO, separate-machine or installed-package acceptance.
+Run `npm run typecheck` and `npm run build` in each affected team package; run root `npm run check:acpx` and `npm run check:ui` for desktop changes. Temporary validation scripts, accounts and stores belong in OS TEMP under the root local-only rule.
+
+Use isolated HTTP/OIDC accounts and actual worker SQLite to verify scope, restart/migration/revocation, backup/restore and lost-ACK command identity. Exercise protected credential failures, current personal ACL, account/project changes, stale cursors, queued-only dispatch, admission pause/cancel and drain/cleanup retry through real registry/preload/host boundaries.
+
+Connected acceptance must verify retained reader A while disk B is current, explicit publication of the selected version, outage/restart and original command recovery. Freeze the production build used for native checks and record its identity. Synthetic accounts on one host do not establish company SSO, separate-machine or installed-package acceptance.
 
 ## 7. Wrong vs Correct
 

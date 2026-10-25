@@ -1,9 +1,8 @@
 /**
  * ZCode Protocol → ACP v1 纯函数翻译层。
  *
- * 方法名 / 事件名 / payload 形态以任务 `research/protocol-mapping.md`（Phase 0 实测定稿）为准，
- * 样例帧取自其 §4。本文件保持零导入、零进程副作用，便于表驱动单测
- * （scripts/smoke/acp-zcode-translate.mjs）。语法仅限可擦除 TS（无 enum/namespace），
+ * 方法名、事件名和 payload 形态遵循 ZCode 原生协议。
+ * 本文件保持零导入、零进程副作用。语法仅限可擦除 TS（无 enum/namespace），
  * 以便适配器由 Node 内置类型剥离直接加载（Node >= 22.18 默认开启）。
  *
  * 入站校验说明：为满足「适配器零 npm 运行时依赖」（随应用 resources 复制、无 node_modules），

@@ -139,28 +139,10 @@ unsupported artifacts retain native behavior.
 
 ## Verification
 
-Run managed Node, installation, startup glue, cache and cache-review groups.
-Run `node scripts/check-agent-runtime.mjs --only=zcode-windows-hook-shell` for
-the native `ebo` VM fixture: compare requests apart from the admitted shell,
-including both quotes, resolved timeouts, the exact event/command pair matrix,
-explicit shells, resolver failure/fallback, stdin/env/signal identity, rejection
-and cleanup. Reject unknown hashes and missing, duplicate or already-transformed
-anchors. Compile the actual
-verified production source independently with `cache:false` and `cache:true`
-using `vm.Script`, without running it; both must retain the hook and empty-session
-corrections, and only the latter may contain the asset-cache wrappers. Compile
-the prepare source separately and verify that it contains no hook correction.
-Controlled original-script checks place artifacts in owned TEMP and use
-event-specific JSON stdin with a verified cwd/project environment without
-`.codegraph`. For
-UserPromptSubmit, include a synthetic prompt and assert the original nudge's
-output semantics: without a project `.codegraph`, exit0 emits no context and
-does not reach its gate-state reset. Compare generic shell-string execution
-against login and nonlogin Git Bash, recording exit code,
-stdout/stderr, elapsed time and owned descendants. Hook completion alone does
-not establish old-session resume latency.
-Use the isolated startup matrix with `--managed --fs-probe` to compare native
-resource reads with cache-pack reads. Report preparation separately from connect
-time; a fresh process/profile does not establish a cold OS filesystem cache.
-Verify original artifact digests, native identities, actual terminal results,
-permissions and replay behavior after packaging and in the desktop.
+Run `npm run check:acpx`, `npm run typecheck` and `npm run build`. Keep validation scripts, native-script artifacts, isolated profiles and evidence in OS TEMP under the root local-only rule.
+
+For hook compatibility, compare the native `ebo` request apart from the admitted shell: both quotes, resolved timeouts, exact event/command pairs, explicit shells, resolver failure/fallback, stdin/env/signal identity, rejection and cleanup. Reject unknown hashes and missing, duplicate or already-transformed anchors. Compile verified production source with `cache:false` and `cache:true` using `vm.Script` without running it; both retain correctness corrections, and only the latter contains cache wrappers. Preparation source must not contain hook correction.
+
+Use event-specific JSON stdin and a verified temporary cwd/project without `.codegraph` when checking original scripts. UserPromptSubmit without `.codegraph` must exit0 with no context and without reaching gate-state reset. Compare generic shell-string execution with login/nonlogin Git Bash using actual exit code, output and owned descendants. Hook completion does not establish resume latency.
+
+Compare native resource reads with cache-pack reads in isolated startup runs. Verify lazy metadata-only hits, per-asset pinned SHA, descriptor/path races, strict resource quotas and eager preparation of the full pack. Report preparation and connection time separately; a fresh profile/process does not prove a cold filesystem cache. Packaged/native acceptance still requires original digests, same-session identity, actual terminal results, permissions, replay behavior and owned cleanup.

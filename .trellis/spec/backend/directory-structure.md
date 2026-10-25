@@ -78,38 +78,6 @@ src/shared/
 
 ---
 
-## Test Directory Structure
-
-```
-tests/
-├── setup/
-│   ├── global-setup.ts        # Test database initialization
-│   └── test-helpers.ts        # Test utilities
-├── factories/                 # Test data factories
-│   ├── index.ts               # Barrel export + resetAllCounters()
-│   ├── user.factory.ts
-│   └── project.factory.ts
-├── mocks/
-│   └── electron.ts            # Electron API mocks
-├── unit/                      # Mock-based unit tests
-│   └── services/{domain}/
-│       ├── lib/*.test.ts      # Utility function tests
-│       └── procedures/*.test.ts
-└── integration/               # Real database tests
-    └── database/*.test.ts
-```
-
----
-
-## Test File Naming Convention
-
-| Type             | Location                        | Naming                |
-| ---------------- | ------------------------------- | --------------------- |
-| Unit test        | `tests/unit/services/{domain}/` | `{file}.test.ts`      |
-| Integration test | `tests/integration/{category}/` | `{feature}.test.ts`   |
-| Factory          | `tests/factories/`              | `{entity}.factory.ts` |
-
----
 
 ## Key Principles
 

@@ -196,9 +196,7 @@
 ## TPD-017: 转录区渲染契约：Entry 引用复用
 
 - **决策**: `reuseEntries(prev, next)`——同位置 key/内容/思考流/兄弟三元组全等的条目复用
-  prev 对象引用；Chat 页经 `useChatEntries` 持有 prev 链。契约由
-  `scripts/smoke/render-contract.mjs` 断言（恒等输入恒等引用/流式增长仅尾条新引用/前缀保持/
-  连续恒等构建引用稳定）。
+  prev 对象引用；Chat 页经 `useChatEntries` 持有 prev 链。恒等输入和连续恒等构建须保持引用稳定；流式增长仅替换尾条，保留前缀引用。
 - **理由**: 流式每 delta 重建全条目会让 React.memo 全部失效、整列表重渲染；身份复用是
   零成本跳过重渲染的前提。
 - **替代案**: 上虚拟滚动库 —— 不解决对象身份问题，且引入布局约束，否决。

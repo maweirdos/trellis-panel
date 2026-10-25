@@ -26,8 +26,4 @@ Distribute the matching licenses, notices and provenance through `resources/lice
 
 ## Checks
 
-- `node scripts/smoke/tool-brands.mjs`: aliases, file identity/hash/provenance, SVG parsing/safety, offline asset decoding, 16/32 square slots, light/dark color preservation and packaged declarations.
-- `node scripts/smoke/task-conversations-ui.mjs`: production native-entry/candidate/runtime integration, neutral unknowns, source deduplication, no image gray filter, global radii and existing click/refresh ownership.
-- `npm run typecheck`, `npm run build`, `npm run check:ui`.
-
-Renderer tests must resolve the real static SVG/PNG files and component stylesheet; do not replace branded marks with placeholders in the test bundle.
+Run `npm run typecheck`, `npm run build` and static `npm run check:ui`. Verify aliases, source identity/hash/provenance, SVG safety, offline decoding and packaged asset declarations. Inspect actual 16/32 square slots, light/dark colors, neutral unknowns, source deduplication, global radii and click/refresh ownership using real SVG/PNG assets and component styles. Temporary validation scripts and captures belong in OS TEMP.

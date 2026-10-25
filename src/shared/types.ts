@@ -1742,7 +1742,7 @@ export interface GatewaySearchResult {
 export interface AcpAgentConfig {
   id: string
   name: string
-  /** 命令模板（整行交给 shell，如 `codex-acp` / `gemini --acp` / `node scripts/smoke/acp-mock-agent.mjs --serve`） */
+  /** 命令模板（整行交给 shell，如 `codex-acp` / `gemini --acp`） */
   command: string
   enabled: boolean
   /**

@@ -61,4 +61,4 @@ v0.4.1精确补丁仅修正停止确认与hold断连恢复；详见[修复记录
 
 ## v0.5新增文件与阅读顺序
 
-先读07定位与48条FR，再读15实测及覆盖边界、16页面/验收增补；09/11为模型及阶段门槛。15张图含12个Mermaid逻辑图和3张SVG线框（W01/W02/W07），均附SVG与PNG；只有截图文件才是Hifox实际网页证据。evidence/ui-evidence.json、ui-coverage.json/CSV、ux-findings.json和ux-acceptance.json可机读追溯。自校验运行checks/verify-artifacts.py，只检验文档与合同一致性。
+先读07定位与48条FR，再读15实测及覆盖边界、16页面/验收增补；09/11为模型及阶段门槛。15张图含12个Mermaid逻辑图和3张SVG线框（W01/W02/W07），均附SVG与PNG；只有截图文件才是Hifox实际网页证据。evidence/ui-evidence.json、ui-coverage.json/CSV、ux-findings.json和ux-acceptance.json可机读追溯。

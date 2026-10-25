@@ -68,16 +68,9 @@ App-window navigation guards independently continue to reject other local pages.
 - Bad: launch a shortcut/script, follow a junction to another root, or let a local
   href replace the app document. These must never dispatch or navigate.
 
-## 6. Tests Required
+## 6. Validation
 
-`scripts/smoke/local-document-links.mjs` mounts real Markdown with current
-preload/main IPC and actual owned temporary files, stubbing only OS handlers.
-Cover native/encoded paths, copyable hrefs, click/aux-click, fragments, relative
-root fences, unavailable/denied/missing files, Windows junctions, malformed and
-dangerous targets, old-preload errors and conversation/draft continuity.
-`external-links.mjs` must still pass dev/file navigation and popup boundaries.
-Desktop acceptance separately verifies the actual default document association;
-a stubbed OS handler cannot prove that a browser rendered the file.
+Run `npm run typecheck`, `npm run build` and `npm run check:ui`. Use owned temporary documents and OS TEMP scripts to verify real Markdown/preload/main IPC behavior: native and encoded paths, copyable hrefs, click/aux-click, fragments, root fences, missing/denied files, junctions, dangerous targets and old-preload errors. Preserve conversation/draft continuity and protected dev/file navigation. Verify the actual default document association separately; a simulated OS opener does not establish successful document rendering.
 
 ## 7. Wrong vs Correct
 

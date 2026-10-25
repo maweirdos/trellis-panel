@@ -12,6 +12,43 @@ examples/demo-project
 /tmp/
 /scripts/smoke/
 
+# Local verification code and artifacts
+test/
+tests/
+__tests__/
+fixture/
+fixtures/
+__fixtures__/
+mock/
+mocks/
+__mocks__/
+snapshot/
+snapshots/
+__snapshots__/
+*.test.[jt]s
+*.test.[jt]sx
+*.test.[cm][jt]s
+*.spec.[jt]s
+*.spec.[jt]sx
+*.spec.[cm][jt]s
+*-test.[jt]s
+*-test.[cm][jt]s
+*_test.py
+test_*.py
+*_test.go
+*.snap
+coverage/
+.nyc_output/
+.coverage
+coverage.xml
+lcov.info
+playwright-report/
+test-results/
+test-reports/
+test-report.*
+test-results.*
+junit*.xml
+
 # Python hooks 缓存（.codex/.zcode hooks 首次运行产生）
 __pycache__/
 

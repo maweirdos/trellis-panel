@@ -48,14 +48,9 @@ Good: a conversation source link opens in a normal browser while the conversatio
 and draft remain in the app. Base: an anchor scrolls within the document. Bad: a
 bare Markdown href replaces the frameless main window, leaving no close/back UI.
 
-## 6. Tests Required
+## 6. Validation
 
-`scripts/smoke/external-links.mjs` mounts real Markdown and uses the actual
-preload/IPC in hidden Electron windows. Cover HTTP dev and file-mode app documents,
-anchors, click/aux-click, target blank, plain-window navigation, redirects,
-malformed schemes, opener failure and cold reload. Stub the OS browser and use an
-owned local server; tests must not open external apps or require public websites.
-Also verify every window constructor calls the protected loader.
+Run `npm run typecheck`, `npm run build` and `npm run check:ui`. Verify dev HTTP and packaged file documents through real Markdown, preload and IPC: anchors, click/aux-click, target blank, plain-window navigation, redirects, malformed schemes, opener failure and cold reload. All window constructors must use the protected loader. Temporary local-server checks belong in OS TEMP and must stub external openers rather than launch unrelated apps or depend on public sites.
 
 ## 7. Wrong vs Correct
 

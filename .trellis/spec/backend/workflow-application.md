@@ -187,21 +187,21 @@ Bad: close a writer before its run releases the lease, treat terminal state as
 proof of stop, follow an edited Flow automatically or silently apply a chat's
 temporary model choice to a new stage session.
 
-## 6. Tests Required
+## 6. Validation
 
-workflow-application smoke uses actual worker SQLite/application/driver/material
-with explicit native fixture, including two-stage lineage, stale drafts, origin
+Verify actual worker SQLite/application/driver/material boundaries,
+including two-stage lineage, stale drafts, origin
 disconnect, permissions, stop races, corruption and unsupported-option rejection.
-workflow-desktop-host tests retained-head guards, marker-only reopen, immutable
-configuration versions and unknown quit outcomes. workflow-desktop-ipc tests
-actual registry/preload/sender/root/cursor/artifact boundaries. Run affected
-typecheck/build and preserve prior failed evidence plus final source hashes.
-These fixtures do not replace real native, graph UI, team or packaged acceptance.
-workflow-admission tests actual SQLite/worker/real linked Git boundaries, durable
-discovery and ordinary/managed lifecycle races. The owned ACP inventory regression
-uses the actual facade/public acpx with an explicit local stdio peer, preserving
-all other facade source; it is not a real vendor execution proof.
-workflow-revisions additionally covers frozen preview/configuration, actual
+Verify retained-head guards, marker-only reopen, immutable configuration versions,
+unknown quit outcomes and actual registry/preload/sender/root/cursor/artifact
+boundaries. Run affected typecheck/build; temporary scripts and evidence belong
+in OS TEMP. Controlled results do not replace real native, graph UI, team or
+packaged acceptance.
+Verify actual SQLite/worker/linked Git boundaries, durable discovery and
+ordinary/managed lifecycle races. Owned ACP inventory checks use the actual
+facade/public acpx with an isolated local peer, without replacing facade source;
+this does not prove vendor execution.
+Revision acceptance additionally covers frozen preview/configuration, actual
 artifact gates/retry counters, reservation/adoption crash checkpoints, late Stop,
 path-free reopened inspection, missing/ambiguous sources and foreign artifacts.
 

@@ -268,28 +268,13 @@ changes.
 - Good: a confirmed material is published after preview; an uncertain result is
   reopened for remote verification without posting again.
 
-## 6. Tests Required
+## 6. Validation
 
-- `knowledge-core.mjs`: migration/backup/protected import, project/scope/handles,
-  malformed/partial/denied/cancelled reads, immutable evidence, CAS and handoff,
-  exact preview/one POST/restart uncertainty, retention and junction fencing.
-- `knowledge-mcp.mjs`: official SDK framing/client cancellation, auth/Host/Origin,
-  tool schemas, request-ID isolation, revocation and no late supplied mark.
-- `knowledge-mcp-acp.mjs`: actual facade/public runtime with a controlled peer,
-  new/load native identity, HTTP=false/unknown, grants/history/permission redaction,
-  cancellation and next turn. Fixtures are not real vendor acceptance.
-- `knowledge-ui.mjs`: real controlled ReactDOM actions for scope/reset, source
-  modes, draft/CAS/material handoff, exact preview/duplicate/uncertainty, and
-  A -> B -> A stale rejection plus fresh action recovery.
-- `knowledge-conversation.mjs`: real service/files/task creator, SDK workflow
-  tools and controlled ACP peer; provenance, CAS, duplicate/restart/crash recovery,
-  target clarification, exact publication and uncertain/cancelled results.
-- `acp-knowledge-convenience.mjs`: actual owned operation projection, readable
-  links, native result deduplication and removal of the copy-answer primary path.
-- Typecheck/build and existing ACP/reader/navigation gates remain required. Real
-  engine synthesis, deployed WeKnora, proxy/CA and packaged distribution are
-  separate acceptance gates. Synthetic real Codex synthesis is evidence only
-  for the tested adapter/settings; never infer other vendors or real publication.
+Run `npm run typecheck`, `npm run build`, `npm run check:acpx` and `npm run check:ui` as applicable. Use OS TEMP for isolated scripts, accounts, stores and peers.
+
+Verify project/scope/handle authorization, immutable evidence, revision CAS and exact-preview publication through the real service and MCP SDK. Exercise denied/cancelled/partial reads, revocation, request-ID isolation, source-mode changes, stale root replies and late-result rejection. Unknown POST outcomes retain one operation identity across retry/restart; never infer publication from a lost ACK.
+
+Native conversation actions must retain source provenance, exact target clarification, permission redaction and one owned result projection. Validate actual UI draft/focus, readable links and recovery after failure. Engine synthesis, deployed WeKnora, proxy/CA and packaged operation require separate native acceptance; one adapter's controlled result does not establish another provider or real publication.
 
 ## 7. Wrong vs Correct
 

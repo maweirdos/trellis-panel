@@ -42,12 +42,12 @@
 
 ## Before Every Commit
 
-- [ ] `npm run lint` - 0 errors
+- [ ] Relevant `npm run build`, `npm run check:acpx` and `npm run check:ui` checks pass
 - [ ] `npm run typecheck` - 0 errors
 - [ ] No non-null assertions (`!`)
 - [ ] Commit message follows format
 - [ ] Commit description and prose body use Chinese
-- [ ] Tests pass (if applicable)
+- [ ] Behavior is verified locally under the root [local-only validation rule](../../../AGENTS.md)
 
 ---
 

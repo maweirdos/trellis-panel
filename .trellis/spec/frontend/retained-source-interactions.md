@@ -45,9 +45,9 @@ DialogHost's Escape registration belongs to the current request ID, not the perm
 
 Good: expanded A stays mounted while Settings receives B and changes font; return restores A plus its pending candidate and draft. Base: ordinary pages outside a scope remain active. Bad: storing Markdown snapshots in localStorage, remounting a second reader on return, or letting a hidden source close its document when Settings receives Escape.
 
-## 6. Tests Required
+## 6. Validation
 
-`scripts/smoke/acp-settings-detour.mjs` must mount actual PageBody/ACP/reader under real ReactDOM StrictMode in an isolated hidden Electron host with fixture IPC and no real providers. Assert the same DOM/key/read owner and exact watch counts; source A/base/pending-B/draft/ref/viewport; actual shared font/menu/modal controls; hidden aria/inert/portal/Escape/focus isolation; late scoped confirmation and unrelated request survival; other-route, actual same-root `openProjectPath` and batched-root cleanup. Retain existing ACP, reader, Escape/dialog, navigation and UIUX regressions. A connected native Settings/font/nonempty-draft/displayed-A/pending-update round trip is separate acceptance evidence.
+Run `npm run typecheck`, `npm run build` and static `npm run check:ui`. Verify the same DOM/read owner and watch counts across Settings detours, including displayed A, pending B, draft, viewport, fonts, menus and modals. Check hidden aria/inert/portal/focus isolation, late confirmations and cleanup after real route/root changes. Native connected round-trip acceptance is separate; temporary scripted checks belong in OS TEMP.
 
 ## 7. Wrong vs Correct
 

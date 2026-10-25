@@ -27,7 +27,6 @@
 - seq 进程内单调；epoch 启动即定；客户端 cursor 非法/跨 epoch/落后于丢弃区间
   → `reset:true`。判断逻辑集中在 `EventLog.since()`，调用方不得自判。
 
-## 回归
+## 验证
 
-任何改动后运行 `node scripts/smoke/tpap.mjs`（esbuild + electron mock，纯 node 可跑），
-断言覆盖：401 / 422 confirm / requestId 幂等重放 / 游标增量与 reset / token 轮换失效。
+运行 `npm run typecheck`、`npm run build` 和 `npm run check:acpx`。使用 OS TEMP 中的临时验证脚本与独立本地服务核对：401、422 confirm、requestId 幂等重放、游标增量与 reset、token 轮换失效。禁止把用户凭证写入脚本或日志。
