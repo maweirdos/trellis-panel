@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
-import { BookOpen, Users, Monitor, LogOut, Sun, Moon, GitBranch, RefreshCw, ShieldCheck } from 'lucide-react'
+import { BookOpen, Users, Monitor, LogOut, Sun, Moon, GitBranch, RefreshCw, LayoutDashboard } from 'lucide-react'
 import { teamSessionSchema, teamProjectSchema, teamIdSchema, teamEventPageSchema, type TeamSession } from './contracts'
 import { ApiError, authEvents, setClientSession, request, pendingCommands, commandEvents, reconcileCommand, retryCommand, canRetry, type PendingCommand } from './client'
 import { usePage, useQuery } from './hooks'
 import { Documents } from './Documents'
 import { Devices, Pairing, People } from './People'
-import { Empty, ErrorLine, Notice, Pager, roleName, time } from './ui'
+import { AcceptInvitation, invitationFromLocation } from './Invitations'
+import { SignIn } from './SignIn'
+import { HifoxWorkspace } from './HifoxWorkspace'
+import './shell.css'
+import { Empty, ErrorLine, Notice, Pager, time } from './ui'
 
 export function App() {
+  const [invitation, setInvitation] = useState(invitationFromLocation)
   const [session, setSession] = useState<TeamSession | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(''), [epoch, setEpoch] = useState(0), [theme, setTheme] = useState<'light' | 'dark'>(() => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
   const reload = useRef<() => Promise<void>>(async () => {})
   const identityEpoch = useRef(0)
@@ -29,13 +34,20 @@ export function App() {
     return () => { live = false; authEvents.removeEventListener('denied', denied); document.removeEventListener('visibilitychange', visibility); clearInterval(timer) }
   }, [])
   useEffect(() => { document.documentElement.dataset.myTheme = theme; document.documentElement.classList.toggle('dark', theme === 'dark') }, [theme])
-  const login = (): void => { const target = location.pathname + location.search; location.assign('/auth/login?returnTo=' + encodeURIComponent(target)) }
-  return <div className="my-root team-app" data-my-theme={theme}>
-    {loading ? <Empty title="正在核对登录状态…" /> : !session ? <main className="login"><div className="brand"><GitBranch size={22} /><strong>Trellis</strong><span>团队协作</span></div><div className="login-body"><span className="eyebrow">共同推进每一份需求</span><h1>资料有版本，<br />讨论有来处。</h1><p>在这里查阅已发布资料、反馈意见、管理分工。<br />本地开发工作继续留在桌面端。</p><button type="button" className="primary" onClick={login}><ShieldCheck size={17} />使用团队账号登录</button><ErrorLine>{error}</ErrorLine><small>通过此服务已配置的身份提供方登录</small></div><button type="button" className="theme-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}切换主题</button></main> : <SignedIn key={session.person.userId} session={session} epoch={epoch} refreshIdentity={() => { setEpoch((old) => old + 1); void reload.current() }} onLogout={() => { void request('/auth/logout', z.object({ loggedOut: z.literal(true) }).strict(), { body: {} }).then(() => { identityEpoch.current++; setClientSession(null); setSession(null); setEpoch((old) => old + 1) }).catch((reason) => setError(reason instanceof Error ? reason.message : '退出失败')) }} onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} error={error} />}
+  const login = (): void => { const target = location.pathname + location.search + location.hash; location.assign('/auth/login?returnTo=' + encodeURIComponent(target)) }
+  const closeInvitation = (): void => { setInvitation(null); const url = new URL(location.href); url.searchParams.delete('invitation'); const fragment = new URLSearchParams(url.hash.slice(1)); fragment.delete('token'); url.hash = fragment.toString(); history.replaceState(null, '', url.pathname + url.search + url.hash) }
+  return <div className="team-app" data-my-theme={theme}>
+    {loading ? <Empty title="正在核对登录状态…" /> : !session ? <main className="login"><div className="brand"><GitBranch size={22} /><strong>Trellis</strong><span>团队协作</span></div><div className="login-body"><span className="eyebrow">共同推进每一份需求</span><h1>一起规划项目，<br />协作推进任务。</h1><p>创建独立账号即可加入协作；也可使用服务已配置的 GitLab 登录。</p><SignIn onOidcLogin={login} onSignedIn={(next, returnTo) => { identityEpoch.current++; setClientSession(next); setSession(next); setError(''); setEpoch((old) => old + 1); history.replaceState(null, '', returnTo) }} /><ErrorLine>{error}</ErrorLine></div><button type="button" className="theme-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}切换主题</button></main> : <SignedIn key={session.person.userId} session={session} theme={theme} epoch={epoch} refreshIdentity={() => { setEpoch((old) => old + 1); void reload.current() }} onLogout={() => { void request('/auth/logout', z.object({ loggedOut: z.literal(true) }).strict(), { body: {} }).then(() => { identityEpoch.current++; setClientSession(null); setSession(null); setEpoch((old) => old + 1) }).catch((reason) => setError(reason instanceof Error ? reason.message : '退出失败')) }} onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} error={error} />}
+    {session && invitation && <AcceptInvitation key={`${session.person.userId}:${invitation.invitationId}`} {...invitation} session={session} onClose={closeInvitation} onAccepted={() => { setEpoch((old) => old + 1); void reload.current() }} />}
   </div>
 }
-function SignedIn({ session, epoch, refreshIdentity, onLogout, onTheme, error }: { session: TeamSession; epoch: number; refreshIdentity: () => void; onLogout: () => void; onTheme: () => void; error: string }) {
-  const [tab, setTab] = useState<'documents' | 'people' | 'devices'>('documents'), [projectId, setProject] = useState('')
+type WebTab = 'collaboration' | 'documents' | 'people' | 'devices'
+const WEB_MODULES = [{ id: 'collaboration', label: '团队', Icon: LayoutDashboard }, { id: 'documents', label: '项目资料', Icon: BookOpen }, { id: 'people', label: '团队与成员', Icon: Users }, { id: 'devices', label: '我的设备', Icon: Monitor }] as const
+const locationTab = (): WebTab => { const hash = location.hash.slice(1); return hash === 'people' || hash === 'documents' || hash === 'devices' ? hash : 'collaboration' }
+function SignedIn({ session, theme, epoch, refreshIdentity, onLogout, onTheme, error }: { session: TeamSession; theme: 'light' | 'dark'; epoch: number; refreshIdentity: () => void; onLogout: () => void; onTheme: () => void; error: string }) {
+  const [tab, setTab] = useState<WebTab>(locationTab), [projectId, setProject] = useState('')
+  useEffect(() => { const changed = (): void => setTab(locationTab()); addEventListener('hashchange', changed); return () => removeEventListener('hashchange', changed) }, [])
+  const navigate = (next: WebTab): void => { setTab(next); const url = new URL(location.href); if (!url.searchParams.has('invitation')) { url.hash = next === 'collaboration' ? '' : next; history.replaceState(null, '', url.pathname + url.search + url.hash) } }
   const projects = usePage(`${session.person.userId}:${epoch}`, '/api/projects', teamProjectSchema)
   const project = projects.items.find((item) => item.projectId === projectId) ?? (!projectId ? projects.items[0] ?? null : null)
   const [pairing, setPairing] = useState<string | null>(() => { const id = new URLSearchParams(location.search).get('pairing'); return teamIdSchema.safeParse(id).success ? id : null })
@@ -48,13 +60,27 @@ function SignedIn({ session, epoch, refreshIdentity, onLogout, onTheme, error }:
     if (cursor.current.key === eventKey && !signal.aborted) { cursor.current.value = page.cursor; if (page.resetRequired) { setGap(true); cursor.current.value = null } else if (previous && page.items.length) setChange(true) }
     return page
   }, Boolean(project), 12_000)
-  const closePairing = (): void => { setPairing(null); const url = new URL(location.href); url.searchParams.delete('pairing'); history.replaceState(null, '', url.pathname + url.search) }
-  return <><header className="topbar"><a href="/" className="brand"><GitBranch size={21} /><strong>Trellis</strong><span>团队协作</span></a><div className="account"><span>{session.person.displayName}</span><button className="icon" type="button" aria-label="切换主题" onClick={onTheme}><Sun size={17} /></button><button className="icon" type="button" aria-label="退出登录" onClick={onLogout}><LogOut size={17} /></button></div></header>
-    <div className="app-layout"><aside className="navigation"><label>项目<select aria-label="当前项目" value={project?.projectId ?? ''} onChange={(event) => { setProject(event.target.value); setGap(false); setChange(false) }}><option value="" disabled>选择项目</option>{projects.items.map((item) => <option value={item.projectId} key={item.projectId}>{item.name}</option>)}</select></label><Pager page={projects} /><nav aria-label="团队导航">{([{ id: 'documents', label: '项目资料', Icon: BookOpen }, { id: 'people', label: '团队与成员', Icon: Users }, { id: 'devices', label: '我的设备', Icon: Monitor }] as const).map(({ id, label, Icon }) => <button type="button" aria-current={tab === id ? 'page' : undefined} key={id} onClick={() => setTab(id)}><Icon size={18} />{label}</button>)}</nav><div className="navigation-bottom">{project && <p>{project.roles.map(roleName).join(' · ')}</p>}<p>本地开发与 Agent 执行<br />请使用桌面端</p></div></aside>
+  const closePairing = (): void => { setPairing(null); const url = new URL(location.href); url.searchParams.delete('pairing'); history.replaceState(null, '', url.pathname + url.search + url.hash) }
+  return <><div className="team-shell">
+    <aside className="team-module-rail" aria-label="模块栏">
+      <div className="team-rail-brand" role="img" aria-label="Trellis 团队协作"><span className="team-brand-mark" /></div>
+      <nav className="team-module-navigation" aria-label="团队导航">
+        {WEB_MODULES.map(({ id, label, Icon }) => <button type="button" className="team-module-button" aria-label={label} title={label} aria-current={tab === id ? 'page' : undefined} key={id} onClick={() => navigate(id)}><Icon aria-hidden="true" /></button>)}
+      </nav>
+    </aside>
+    <div className="team-shell-center">
+      <header className="topbar team-topbar">
+        <div className="team-project-control"><label><span className="team-sr-only">项目</span><select aria-label="当前项目" title={project?.name ?? '选择项目'} value={project?.projectId ?? ''} onChange={(event) => { setProject(event.target.value); setGap(false); setChange(false) }}><option value="" disabled>选择项目</option>{projects.items.map((item) => <option value={item.projectId} key={item.projectId}>{item.name}</option>)}</select></label><Pager page={projects} /></div>
+        <span className="team-section-name">{WEB_MODULES.find((item) => item.id === tab)?.label}</span>
+        <div className="account"><span title={session.person.displayName}>{session.person.displayName}</span><button className="icon" type="button" aria-label="切换主题" title={theme === 'light' ? '切换到深色主题' : '切换到浅色主题'} onClick={onTheme}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}</button><button className="icon" type="button" aria-label="退出登录" title="退出登录" onClick={onLogout}><LogOut size={17} /></button></div>
+      </header>
+    <div className="app-layout team-shell-layout">
       <main className="workspace"><Pending accountId={session.person.userId} refresh={refreshIdentity} /><ErrorLine>{error}</ErrorLine>{events.error && <Notice>同步暂不可用。{events.at ? `上次核对 ${time(events.at)}` : '尚未完成同步核对'}。<button type="button" onClick={events.refresh}>重试</button></Notice>}{events.value?.hasMore && <Notice>还有协作记录待同步。<button type="button" onClick={events.refresh}>继续同步</button></Notice>}{(gap || change) && <Notice>{gap ? '同步游标已变化，请重新载入授权资料。' : '团队资料有更新，当前阅读版本保持不变。'}<button type="button" onClick={() => { setGap(false); setChange(false); refreshIdentity() }}>重新核对资料列表</button></Notice>}
-        {tab === 'documents' ? project ? <Documents key={`${project.projectId}:${epoch}`} project={project} session={session} authEpoch={epoch} /> : <Empty title={projects.loading ? '正在读取项目…' : '还没有可用项目'}>{projectId ? '原项目当前不可用，请从左侧选择已授权项目。' : '在“团队与成员”中创建团队与项目，或请管理员分配项目权限。'}</Empty> : tab === 'people' ? <People key={epoch} session={session} project={project} epoch={epoch} onProjectsChanged={refreshIdentity} /> : <Devices key={epoch} accountId={session.person.userId} epoch={epoch} />}
+        {tab === 'collaboration' || tab === 'documents' ? project ? tab === 'collaboration' ? <HifoxWorkspace key={`${session.person.userId}:${project.projectId}`} project={project} session={session} theme={theme} authEpoch={epoch} /> : <Documents key={`${project.projectId}:${epoch}`} project={project} session={session} authEpoch={epoch} /> : <Empty title={projects.loading ? '正在读取项目…' : '还没有可用项目'}>{projectId ? '原项目当前不可用，请从顶部选择已授权项目。' : '在“团队与成员”中创建团队与项目，或接受管理员发给你的邀请链接。'}</Empty> : tab === 'people' ? <People key={epoch} session={session} project={project} epoch={epoch} onProjectsChanged={refreshIdentity} /> : <Devices key={epoch} accountId={session.person.userId} epoch={epoch} />}
       </main>
-    </div>{pairing && <Pairing key={`${pairing}:${epoch}`} id={pairing} projects={projects.items} onClose={closePairing} />}
+    </div>
+    </div>
+  </div>{pairing && <Pairing key={`${pairing}:${epoch}`} id={pairing} projects={projects.items} onClose={closePairing} />}
   </>
 }
 function Pending({ accountId, refresh }: { accountId: string; refresh: () => void }) {

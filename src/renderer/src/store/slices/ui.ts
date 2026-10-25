@@ -1,7 +1,10 @@
 import type { AppSlice, UiSlice } from '../types'
 
 export const uiSlice: AppSlice<UiSlice> = (set, get) => ({
-  page: 'dashboard',
+  navigationRevision: 0,
+  page: 'tasks',
+  personalTaskSource: 'team',
+  setPersonalTaskSource: (personalTaskSource) => set({ personalTaskSource }),
   capsuleMode: new URLSearchParams(window.location.search).get('mode') === 'capsule',
   quickTodoMode: new URLSearchParams(window.location.search).get('mode') === 'quicktodo',
   sidebarCollapsed: localStorage.getItem('tpanel.sidebarCollapsed') === 'true',
@@ -38,7 +41,7 @@ export const uiSlice: AppSlice<UiSlice> = (set, get) => ({
     set({ sidebarCollapsed: collapsed })
   },
 
-  setPage: (page) => set({ page, openTaskDir: null, openTaskArchived: false, taskExpandOrigin: null, taskMaterialTarget: null, specDocumentTarget: null }),
+  setPage: (page) => set((state) => ({ page, navigationRevision: state.navigationRevision + 1, openTaskDir: null, openTaskArchived: false, taskExpandOrigin: null, taskMaterialTarget: null, specDocumentTarget: null })),
 
   setIntakeOpen: (on) => set({ intakeOpen: on }),
 

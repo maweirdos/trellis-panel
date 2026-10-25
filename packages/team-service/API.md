@@ -21,13 +21,30 @@ mutation whose writer exits before acknowledgement returns
 Publication text and feedback body require well-formed Unicode; lone surrogates
 are invalid input rather than silently normalized into replacement characters.
 
-Browser login is GET `/auth/login?returnTo=/...`, followed by configured OIDC
+Optional external browser login is GET `/auth/login?returnTo=/...`, followed by configured OIDC
 code+PKCE, expected state/nonce, signed ID-token/issuer validation and GET
 `/auth/callback`. The opaque cookie `tp_team_session` is HttpOnly, SameSite=Lax
 and Secure on HTTPS. GET `/api/session` returns TeamSession with the browser
 CSRF token. Browser POSTs require exact `Origin` and `X-CSRF-Token`. POST
 `/auth/logout` deletes the current session. A new completed login rotates and
 invalidates the browser's previous local session. No demo-principal endpoint.
+
+Independent local login needs no OIDC configuration. GET `/api/auth/options`
+returns `{localLogin,selfRegistration,oidcLogin,oidcLabel,csrfToken}` and sets a
+short-lived HttpOnly login-CSRF cookie. POST `/auth/local/register` accepts
+`{username,password,displayName,returnTo?}`; POST `/auth/local/login` accepts
+`{username,password,returnTo?}`. Both require exact Origin and the challenge in
+`X-CSRF-Token`. Usernames are case-insensitive, 3–64 ASCII letters/digits/dots/
+underscores/hyphens; passwords are 10–256 characters at registration. Registration
+creates an ordinary person and session, never a platform administrator. Replies
+are `{session:TeamSession,returnTo}`; person.provider identifies local/oidc/gitlab.
+The existing session cookie, CSRF, account-disable and device ACL rules apply.
+Local credentials use salted scrypt; password or session data is not stored in
+browser command journals. Login failures for unknown, incorrect or disabled
+accounts use the same `INVALID_CREDENTIALS` response. Registration/login have
+separate IP rate limits, and password work has a bounded concurrency budget.
+The returned same-origin returnTo preserves an invitation fragment; joining still
+requires explicit authenticated acceptance after login or registration.
 
 Active native devices use `Authorization: Bearer <deviceToken>`, without Origin
 or a browser session cookie. Browser+bearer combinations are rejected. Devices
@@ -65,9 +82,60 @@ an excluded item. HTTP/RPC request envelope is2MiB; JSON reply bound is3MiB.
   active devices; later membership regrant does not revive old credentials.
 
 Membership writes return their target teamId/projectId with userId, roles, active
-and new revision. A person must have signed in at least once before assignment;
-use their own profile UUID for an explicit new-team invitation. Role sharing does
-not grant machine execution, credentials or private material access.
+and new revision. Direct membership assignment requires an existing person UUID.
+Role sharing does not grant machine execution, credentials or private material access.
+
+## Invitation links
+
+Validators are exported from `src/shared/team-invitations.ts`.
+
+- POST `/api/invitations`: browser team administrator only. Body:
+  `{commandId,teamId,projectId,teamRoles,projectRoles,recipient,token,expiresInMs}`.
+  The project must belong to the team. Recipient is either
+  `{kind:'person',userId}`, `{kind:'local',username}`, or
+  `{kind:'oidc-subject',subject}` under the configured issuer. A local username can
+  be invited before registration, and an OIDC subject before its first login.
+  Issuer namespaces remain separate even when the names match. `token` is `ti_` followed
+  by the base64url encoding of 32 cryptographically random bytes. The Web client
+  generates it once and pins it through command retry. Expiration defaults to
+  one day, bounded from one minute to seven days. Only its SHA-256 hash is stored
+  in invitations; receipts and event summaries contain no token. Response result
+  is TeamInvitation metadata. A repeated token under a new command is rejected.
+- GET `/api/invitations?teamId=&cursor=&limit=`: browser team administrator list,
+  including pending, accepted, expired and revoked records, without secrets.
+- POST `/api/invitations/:invitationId/inspect`: authenticated recipient only,
+  body `{token}`. Read-only inspection requires browser Origin/CSRF and does not
+  accept the invitation.
+- POST `/api/invitations/:invitationId/accept`: body
+  `{commandId,token,expectedUserId,expectedTeamId,expectedProjectId}`. The browser
+  explicitly confirms its current identity and fixed destination. One transaction
+  consumes the invitation, grants team/project roles and records the command.
+  Existing roles are preserved. Current creator authority, recipient issuer,
+  membership revisions, expiration and revocation are checked before admission.
+  Retry uses the original command; another command cannot consume the link again.
+- POST `/api/invitations/:invitationId/revoke`: body `{commandId}`; browser team
+  administrator only. Accepted grants must instead be removed in member management.
+
+Web links use `/?invitation=<uuid>#token=<secret>`. Login returnTo preserves the
+fragment. The browser sends the invitation token in inspection/acceptance request
+bodies; invitation navigation alone grants no membership. Disabling a recipient
+or creator and changing relevant memberships permanently revoke pending invites.
+Restoring membership does not restore those old links. Native devices cannot
+create, list, inspect, accept or revoke invitations. No email or message is sent.
+
+## Verified identity metadata
+
+GET `/api/identity` returns the current authenticated person's verified issuer
+and subject. `src/shared/team-identity.ts` exports its validators. A configured
+GitLab native integration returns
+`{provider:'gitlab',issuer,subject,baseUrl,clientId,scopes}`. `clientId` is the
+separate public native OAuth application's identifier. A public OIDC client can
+be reused when it has no secret; a confidential OIDC client is never advertised
+as a native public client. Without that configuration, the reply is
+`{provider:'oidc',issuer,subject,scopes}`. Local accounts return
+`{provider:'local',issuer,subject,username,scopes:[]}`. No access token, refresh token, session
+credential or client secret is returned. The native client obtains its own PKCE
+grant and verifies the provider account against this subject.
 
 ## Material versions and recorded feedback
 
@@ -140,6 +208,40 @@ unavailable pairing is not a grant or a cue to retarget an old queued operation.
 There is no arbitrary shell/model/execute/repository upload endpoint. This is a
 platform enrollment flow, not a claim of implementing OAuth Device Authorization.
 
+## Shared task workspaces
+
+`GET /api/projects/:projectId/hifox/snapshot` returns
+`{projectId,instanceId,epoch,authorizationRevision,revision,actor,canManage,snapshot,serverTime}`.
+The project and device are reauthorized on each read. `afterRevision` and bounded
+`waitMs` support long polling. The snapshot includes only currently readable space
+content; a private-space metadata grant does not grant its bodies or member list.
+
+`POST /api/projects/:projectId/hifox/commands` accepts
+`{commandId,expectedEpoch,expectedRevision,operation,input}`. Supported operation
+and input validators are `shared/hifox-domain/commands.ts`; replies use
+`hifoxRemoteCommandReplySchema`. Epoch/revision conflicts return409 without applying
+the draft. Actor fields come from authenticated identity, never submitted names.
+
+Local roster invitation/profile operations cannot change server identities.
+Use the authenticated account/invitation/membership APIs. People may join public
+spaces; private membership and archived-space mutations follow the space access
+rules. Role and space action denials use `OPERATION_FORBIDDEN` or
+`SPACE_ACCESS_DENIED` with403, while project/device access loss retains the
+authorization error contract. Clients preserve an authorized reader after a
+business action denial and retain its unsaved input.
+
+Task, comment, version, Agent, squad and automation mutations share one serialized
+workspace revision. Inbox recipients are explicit; read/snooze/clear preferences
+are account-specific. The service runs due scheduled rules independently of open
+desktop clients and persists their date deduplication in the owned transaction.
+Runtime-bound configuration never becomes a claim of actual Agent execution.
+
+Historical `hifoxCommand` receipts retain original instance/epoch/revision/time,
+but their body and actor projection use current access. They prove the old
+command, not the current workspace. Clients fetch a separate current snapshot;
+they do not fill visible caches from historical receipts. Backup restore rotates
+epoch and cursor secrets, preserving the original immutable backup and instance.
+
 ## Receipts and event catch-up
 
 GET `/api/commands/:commandId` reads the caller's current-authorized committed
@@ -156,6 +258,32 @@ A cursor contains store instance/epoch and actor/scope identity; reset requires 
 fresh authorized snapshot/catch-up, not concatenation with another source. Event
 sequence is the service log position, not a cross-system causal clock. Local
 outbound queues and desktop recovery are integrated by the desktop owner.
+
+## Creations and webpage review
+
+The validated contract is `src/shared/creations.ts`. These routes use the existing
+browser session/CSRF or approved desktop device identity and current project and
+space authorization. They do not require a local code repository.
+
+- `GET /api/projects/:projectId/creations?scope=personal|team&spaceId=&taskId=&cursor=&limit=` returns authorized metadata only. Ordinary lists omit confirmed-rule text; `taskId` selects frozen task references.
+- `GET /api/projects/:projectId/creations/head` returns `{projectId,epoch,fingerprint}` from authorized identity/revision metadata. Poll this for changes; do not repeatedly download HTML.
+- `GET /api/projects/:projectId/creations/:creationId?revisionId=&commentOffset=&commentLimit=` returns one selected body, revision metadata and a bounded comment page. Only authorized draft editors can select a draft or candidate. Private notes stay owner-only.
+- `POST /api/projects/:projectId/creations/commands` accepts `CreationCommand`: original command UUID, creation UUID, expected revision, optional expected server epoch and one validated action. Responses contain body-free receipts. Reconciliation uses the original `/api/commands/:commandId` identity and rechecks access.
+
+Actions create/edit drafts, publish fixed revisions, annotate/reply/confirm,
+save/adopt/discard candidates and adopt a publication for an existing same-space
+task. Publication and adoption do not change a task's business version, assignee
+or lifecycle. A later publication cannot replace an adopted revision. Confirmation
+records the displayed revision; unresolved required opinions survive later
+publication. Adopted rule targets and interaction scenarios remain fixed.
+
+Bodies are at most 256 KiB UTF-8. Lists, selected responses, histories and stored
+records have separate bounds in the shared validators. HTML stays outside the
+ordinary collaboration snapshot. Clients must host it only in the restricted
+preview sandbox; never inject it into a privileged document.
+
+Candidate generation uses the desktop's configured model and bounded exact source
+replacements. The standalone browser does not claim to provide a model service.
 
 ## Runtime validators
 

@@ -141,7 +141,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
           const root = request.workspace?.root ?? '@profile'
           const body = legacyIntegrationRequestSchema.parse(runtime.unpack(root, runtimeWireSchema.parse(request.payload)))
           const owner = legacy, nativeRuntime = runtime
-          const action = async () => nativeRuntime.pack(root, legacyIntegrationResultSchema.parse(await scope?.run(request.workspace ?? null, () => owner.dispatch(body, AbortSignal.timeout(5 * 60_000)))))
+          const action = async () => nativeRuntime.pack(root, legacyIntegrationResultSchema.parse(await scope?.run(request.workspace ?? null, () => owner.dispatch(body, AbortSignal.timeout(5 * 60_000), actor))))
           if (LEGACY_INTEGRATION_MUTATIONS.includes(body.operation)) {
             if (!request.commandId) throw new DaemonError('E_INVALID_ARG', 'Integration mutations require the original command ID.')
             return providerCommands.run(root, request.commandId, request.method, body, action)

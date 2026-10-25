@@ -17,6 +17,14 @@ import { TEAM_SCHEMA_VERSION, TEAM_SCHEMA_SQL, TEAM_DEVICES_SQL } from './store-
 import type { StoreActor, StoreOptions, StorePrincipal, StoreOperation } from './store-types'
 import { TEAM_COLLABORATION_SQL } from './collaboration-schema'
 import { TeamCollaboration } from './collaboration'
+import { TEAM_INVITATIONS_SQL } from './invitations-schema'
+import { TeamInvitations } from './invitations'
+import { TeamHifoxWorkspace } from './hifox-workspace'
+import { TEAM_HIFOX_WORKSPACE_SQL, TEAM_HIFOX_WORKSPACE_TRIGGERS_SQL } from './hifox-workspace-schema'
+import { TeamCreations } from './creations'
+import { TEAM_CREATIONS_SQL } from './creations-schema'
+import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
+import { TEAM_LOCAL_ISSUER, teamLocalUsernameSchema } from '../../../src/shared/team-auth'
 
 type Row = Record<string, SQLOutputValue>
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
@@ -47,6 +55,26 @@ export class TeamStoreCore {
   private readonly lockId = randomUUID()
   private readonly lockPath: string
   private isClosed = false
+  private readonly creations = new TeamCreations({
+    identity: () => ({ epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    mutation: (...args) => this.mutation(...args), after: (...args) => this.listAfter(...args), page: (...args) => this.page(...args)
+  })
+  private readonly hifox = new TeamHifoxWorkspace({
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    mutation: (...args) => this.mutation(...args), transaction: (fn) => this.transaction(fn)
+  })
+  private readonly invitations = new TeamInvitations({
+    issuer: () => this.options.issuer,
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    admin: (...args) => this.teamAdmin(...args), project: (p, projectId) => { this.project(p, projectId) },
+    principalFor: (userId) => ({ person: this.person(requireValue(this.get('SELECT * FROM people WHERE userId=? AND active=1', userId), 'FORBIDDEN', 'Invitation creator is unavailable', 403)), actor: { kind: 'session', credentialHash: '' }, deviceId: null, projectId: null, csrfToken: null }),
+    mutation: (...args) => this.mutation(...args), event: (...args) => this.event(...args),
+    bumpAuthorization: () => this.bumpAuthorization(), after: (...args) => this.listAfter(...args), page: (...args) => this.page(...args)
+  })
   private readonly collaboration = new TeamCollaboration({
     get: (sql, ...params) => this.get(sql, ...params), all: (sql, ...params) => this.all(sql, ...params), run: (sql, ...params) => this.run(sql, ...params),
     version: (p, materialId, version) => {
@@ -67,8 +95,10 @@ export class TeamStoreCore {
     this.directory = realpathSync(resolve(options.dataDir))
     this.lockPath = join(this.directory, 'service.lock')
     this.acquireLock()
+    let database: DatabaseSync | undefined
     try {
-      this.db = new DatabaseSync(join(this.directory, 'team.sqlite'))
+      database = new DatabaseSync(join(this.directory, 'team.sqlite'))
+      this.db = database
       this.db.exec('PRAGMA busy_timeout=1000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;')
       const version = this.get('PRAGMA user_version')
       const current = version ? integer(version, 'user_version') : 0
@@ -93,11 +123,17 @@ export class TeamStoreCore {
         this.db.exec('PRAGMA user_version=3')
       })
       if (current >= 1 && current <= 3) this.transaction(() => { this.db.exec(TEAM_COLLABORATION_SQL); this.db.exec('PRAGMA user_version=4') })
+      if (current >= 1 && current <= 4) this.transaction(() => { this.db.exec(TEAM_INVITATIONS_SQL); this.db.exec('PRAGMA user_version=5') })
+      if (current >= 1 && current <= 5) this.transaction(() => { this.db.exec(TEAM_HIFOX_WORKSPACE_SQL); this.db.exec('PRAGMA user_version=6') })
+      if (current >= 1 && current <= 6) this.transaction(() => { this.db.exec(TEAM_LOCAL_AUTH_SQL); this.db.exec('PRAGMA user_version=7') })
+      if (current >= 1 && current <= 7) this.transaction(() => { this.db.exec(TEAM_HIFOX_WORKSPACE_TRIGGERS_SQL); this.db.exec('PRAGMA user_version=8') })
+      if (current >= 1 && current <= 8) this.transaction(() => { this.db.exec(TEAM_CREATIONS_SQL); this.db.exec('PRAGMA user_version=9') })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
       if (realpathSync(blobPath) !== blobPath) throw new TeamServiceError('STORE_UNAVAILABLE', 'Blob directory cannot be a redirected filesystem path', 503)
     } catch (error) {
+      database?.close()
       this.releaseLock()
       throw error
     }
@@ -130,8 +166,17 @@ export class TeamStoreCore {
   private meta(key: string): string { return text(requireValue(this.get('SELECT value FROM team_meta WHERE key=?', key), 'CORRUPT_STORE', 'Required team database identity is missing', 503), 'value') }
   private setMeta(key: string, value: string): void { this.run('INSERT INTO team_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, value) }
   private bumpAuthorization(): void { this.setMeta('authorizationRevision', String(Number(this.meta('authorizationRevision')) + 1)) }
+  private revokePersonInvitations(userId: string, teamId?: string, projectId?: string): void {
+    const person = requireValue(this.get('SELECT issuer,subject FROM people WHERE userId=?', userId), 'NOT_FOUND', 'Account unavailable')
+    this.run("UPDATE invitations SET status='revoked' WHERE status='pending' AND (createdBy=? OR (recipientIssuer=? AND ((json_extract(recipientJson,'$.kind')='person' AND json_extract(recipientJson,'$.userId')=?) OR (json_extract(recipientJson,'$.kind')='oidc-subject' AND json_extract(recipientJson,'$.subject')=?) OR (json_extract(recipientJson,'$.kind')='local' AND json_extract(recipientJson,'$.username')=?))))" + (teamId ? ' AND teamId=?' : '') + (projectId ? ' AND projectId=?' : ''), userId, text(person, 'issuer'), userId, text(person, 'subject'), text(person, 'subject'), ...(teamId ? [teamId] : []), ...(projectId ? [projectId] : []))
+  }
   private person(row: Row): TeamPerson {
-    return { userId: text(row, 'userId'), displayName: text(row, 'displayName'), active: integer(row, 'active') === 1, isPlatformAdmin: text(row, 'issuer') === this.options.issuer && text(row, 'subject') === this.options.bootstrapSubject, revision: integer(row, 'revision') }
+    return { userId: text(row, 'userId'), displayName: text(row, 'displayName'), active: integer(row, 'active') === 1, isPlatformAdmin: text(row, 'issuer') !== TEAM_LOCAL_ISSUER && text(row, 'issuer') === this.options.issuer && text(row, 'subject') === this.options.bootstrapSubject, revision: integer(row, 'revision'), provider: text(row, 'issuer') === TEAM_LOCAL_ISSUER ? 'local' : this.options.identityProvider ?? 'oidc' }
+  }
+  private addSession(userId: string, input: { sessionHash: string; csrfToken: string; previousSessionHash?: string }): void {
+    this.run('DELETE FROM sessions WHERE expiresAt<?', now())
+    if (input.previousSessionHash) this.run('DELETE FROM sessions WHERE sessionHash=?', input.previousSessionHash)
+    this.run('INSERT INTO sessions(sessionHash,userId,csrfToken,expiresAt,createdAt) VALUES(?,?,?,?,?)', input.sessionHash, userId, input.csrfToken, now() + this.options.sessionTtlMs, now())
   }
   private teamMembership(userId: string, teamId: string): Row | undefined { return this.get('SELECT * FROM team_members WHERE userId=? AND teamId=? AND active=1', userId, teamId) }
   private projectMembership(userId: string, projectId: string): Row | undefined {
@@ -315,6 +360,33 @@ export class TeamStoreCore {
   async dispatch(operation: StoreOperation, raw: unknown): Promise<unknown> {
     if (this.isClosed) throw new TeamServiceError('STORE_UNAVAILABLE', 'Team store is closed', 503)
     if (operation === 'health') return { schemaVersion: TEAM_SCHEMA_VERSION, instanceId: this.meta('instanceId'), epoch: this.meta('epoch') }
+    if (operation === 'hifoxTick') return this.hifox.tick()
+    if (operation === 'localCredential') {
+      const input = z.object({ username: teamLocalUsernameSchema }).strict().parse(raw)
+      const credential = this.get('SELECT userId,salt,passwordHash,algorithm FROM local_credentials WHERE username=?', input.username)
+      return credential ?? null
+    }
+    if (operation === 'registerLocal' || operation === 'completeLocalLogin') {
+      const sessionFields = { sessionHash: z.string().regex(/^[a-f0-9]{64}$/), csrfToken: z.string().min(20).max(200), previousSessionHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }
+      if (operation === 'registerLocal') {
+        const input = z.object({ ...sessionFields, username: teamLocalUsernameSchema, displayName: z.string().trim().min(1).max(200), salt: z.string().regex(/^[a-f0-9]{64}$/), passwordHash: z.string().regex(/^[a-f0-9]{128}$/) }).strict().parse(raw)
+        return this.transaction(() => {
+          if (this.get('SELECT userId FROM local_credentials WHERE username=?', input.username)) throw new TeamServiceError('REGISTRATION_UNAVAILABLE', 'Unable to register this account; choose another username or contact your administrator', 409)
+          const userId = randomUUID()
+          this.run('INSERT INTO people(userId,issuer,subject,displayName,active,isPlatformAdmin,createdAt) VALUES(?,?,?,?,1,0,?)', userId, TEAM_LOCAL_ISSUER, input.username, input.displayName, now())
+          this.run("INSERT INTO local_credentials(userId,username,salt,passwordHash,algorithm,createdAt) VALUES(?,?,?,?,'scrypt-N32768-r8-p1',?)", userId, input.username, input.salt, input.passwordHash, now())
+          this.addSession(userId, input)
+          return { userId }
+        })
+      }
+      const input = z.object({ ...sessionFields, userId: teamIdSchema, passwordHash: z.string().regex(/^[a-f0-9]{128}$/) }).strict().parse(raw)
+      return this.transaction(() => {
+        const person = this.get('SELECT p.userId,p.active,c.passwordHash FROM people p JOIN local_credentials c ON c.userId=p.userId WHERE p.userId=?', input.userId)
+        if (!person || person.active !== 1 || !safeEqual(text(person, 'passwordHash'), input.passwordHash)) throw new TeamServiceError('INVALID_CREDENTIALS', 'Username or password is incorrect', 401)
+        this.addSession(input.userId, input)
+        return { userId: input.userId }
+      })
+    }
     if (operation === 'createLogin') {
       const input = z.object({ attemptHash: z.string().length(64), state: z.string().min(20), nonce: z.string().min(20), verifier: z.string().min(20), returnTo: z.string().max(2048) }).strict().parse(raw)
       this.run('DELETE FROM login_attempts WHERE expiresAt<?', now())
@@ -342,9 +414,7 @@ export class TeamStoreCore {
           this.run('INSERT INTO people(userId,issuer,subject,displayName,active,isPlatformAdmin,createdAt) VALUES(?,?,?,?,1,?,?)', randomUUID(), input.issuer, input.subject, input.displayName, input.subject === this.options.bootstrapSubject ? 1 : 0, now())
           person = requireValue(this.get('SELECT * FROM people WHERE issuer=? AND subject=?', input.issuer, input.subject), 'STORE_UNAVAILABLE', 'Identity was not persisted', 503)
         } else this.run('UPDATE people SET displayName=? WHERE userId=?', input.displayName, text(person, 'userId'))
-        this.run('DELETE FROM sessions WHERE expiresAt<?', now())
-        if (input.previousSessionHash) this.run('DELETE FROM sessions WHERE sessionHash=?', input.previousSessionHash)
-        this.run('INSERT INTO sessions(sessionHash,userId,csrfToken,expiresAt,createdAt) VALUES(?,?,?,?,?)', input.sessionHash, text(person, 'userId'), input.csrfToken, now() + this.options.sessionTtlMs, now())
+        this.addSession(text(person, 'userId'), input)
         return { userId: text(person, 'userId') }
       })
     }
@@ -381,6 +451,18 @@ export class TeamStoreCore {
 
   private domain(operation: StoreOperation, actor: StoreActor, raw: Record<string, unknown>): unknown {
     const principal = this.authenticate(actor)
+    if (operation === 'hifoxSnapshot') return this.hifox.read(principal, raw)
+    if (operation === 'hifoxCommand') return this.hifox.command(actor, raw)
+    if (operation === 'creationList') return this.creations.list(principal, raw)
+    if (operation === 'creationHead') return this.creations.head(principal, raw)
+    if (operation === 'creationView') return this.creations.get(principal, raw)
+    if (operation === 'creationCommand') return this.creations.command(actor, raw)
+    if (operation === 'identity') {
+      const person = requireValue(this.get('SELECT issuer,subject FROM people WHERE userId=? AND active=1', principal.person.userId), 'UNAUTHORIZED', 'Authentication is required', 401)
+      if (text(person, 'issuer') !== TEAM_LOCAL_ISSUER && text(person, 'issuer') !== this.options.issuer) forbidden()
+      return { issuer: text(person, 'issuer'), subject: text(person, 'subject') }
+    }
+    if (['createInvitation', 'invitations', 'inspectInvitation', 'acceptInvitation', 'revokeInvitation'].includes(operation)) return this.invitations.dispatch(operation, actor, principal, raw)
     if (operation === 'collaborationCommand') return this.collaboration.command(actor, raw.body)
     if (operation.startsWith('collaboration')) return this.collaboration.read(operation, principal, raw)
     if (operation === 'command') {
@@ -388,7 +470,14 @@ export class TeamStoreCore {
       const command = requireValue(this.get('SELECT * FROM commands WHERE userId=? AND commandId=?', principal.person.userId, commandId), 'NOT_FOUND', 'Command has no committed record')
       const kind = text(command, 'kind'); const result = z.record(z.string(), z.unknown()).parse(json(command, 'resultJson'))
       const resultId = (key: string): string => { const parsed = teamIdSchema.safeParse(result[key]); if (!parsed.success) throw new TeamServiceError('LEGACY_COMMAND_SCOPE_UNKNOWN', 'Stored receipt lacks scope metadata; reconcile using the original request', 409); return parsed.data }
-      if (kind === 'collaborationCommand') this.collaboration.authorize(principal, resultId('entityId'))
+      if (['createInvitation', 'acceptInvitation', 'revokeInvitation'].includes(kind)) this.invitations.authorizeReceipt(principal, kind, resultId('invitationId'))
+      else if (kind === 'hifoxCommand') {
+        this.hifox.authorize(principal, resultId('projectId'))
+        const scoped = this.hifox.projectReceipt(principal, result)
+        return { commandId, kind, status: 'committed', recordedAt: integer(command, 'createdAt'), result: scoped }
+      }
+      else if (kind === 'creationCommand') this.creations.authorizeReceipt(principal, result)
+      else if (kind === 'collaborationCommand') this.collaboration.authorize(principal, resultId('entityId'))
       else if (kind === 'publish') this.project(principal, id(result.projectId))
       else if (kind === 'recordFeedback') { if (!this.canRead(principal, this.versionRow(id(result.materialId), z.number().int().positive().parse(result.version)))) forbidden() }
       else if (kind === 'setProjectMember') this.project(principal, resultId('projectId'), true)
@@ -419,6 +508,7 @@ export class TeamStoreCore {
         if (userId === p.person.userId && !input.active) throw new TeamServiceError('BOOTSTRAP_ACCOUNT_REQUIRED', 'Configure and sign in as a replacement bootstrap administrator before disabling this account', 409)
         this.run('UPDATE people SET active=?,revision=revision+1 WHERE userId=?', input.active ? 1 : 0, userId)
         if (!input.active) { this.run('DELETE FROM sessions WHERE userId=?', userId); this.run("UPDATE devices SET status='revoked' WHERE ownerId=? AND status='active'", userId) }
+        if (!input.active) this.revokePersonInvitations(userId)
         this.bumpAuthorization(); this.event('account.status-changed', 'personal', p.person.userId, null, { userId, active: input.active, revision: input.expectedRevision + 1 })
         return this.person(requireValue(this.get('SELECT * FROM people WHERE userId=?', userId), 'STORE_UNAVAILABLE', 'Account status was not persisted', 503))
       })
@@ -455,6 +545,7 @@ export class TeamStoreCore {
         const revision = (previous ? integer(previous, 'revision') : 0) + 1
         this.run('INSERT INTO team_members(teamId,userId,rolesJson,active,revision) VALUES(?,?,?,?,?) ON CONFLICT(teamId,userId) DO UPDATE SET rolesJson=excluded.rolesJson,active=excluded.active,revision=excluded.revision', teamId, input.userId, JSON.stringify(input.roles), input.active ? 1 : 0, revision)
         if (!input.active) this.run("UPDATE devices SET status='revoked' WHERE ownerId=? AND projectId IN(SELECT projectId FROM projects WHERE teamId=?) AND status='active'", input.userId, teamId)
+        this.revokePersonInvitations(input.userId, teamId)
         this.bumpAuthorization(); this.event('team.membership-changed', 'team', teamId, null, { teamId, userId: input.userId, active: input.active, revision })
         return { teamId, userId: input.userId, roles: input.roles, active: input.active, revision }
       })
@@ -489,6 +580,7 @@ export class TeamStoreCore {
         const revision = (previous ? integer(previous, 'revision') : 0) + 1
         this.run('INSERT INTO project_members(projectId,userId,rolesJson,active,revision) VALUES(?,?,?,?,?) ON CONFLICT(projectId,userId) DO UPDATE SET rolesJson=excluded.rolesJson,active=excluded.active,revision=excluded.revision', projectId, input.userId, JSON.stringify(input.roles), input.active ? 1 : 0, revision)
         if (!input.active) this.run("UPDATE devices SET status='revoked' WHERE ownerId=? AND projectId=? AND status='active'", input.userId, projectId)
+        this.revokePersonInvitations(input.userId, undefined, projectId)
         this.bumpAuthorization(); this.event('project.membership-changed', 'project', projectId, projectId, { projectId, userId: input.userId, active: input.active, revision })
         return { projectId, userId: input.userId, roles: input.roles, active: input.active, revision }
       })

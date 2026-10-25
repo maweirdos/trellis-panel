@@ -3,6 +3,7 @@ import { useEffect, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { Calendar, Check, ChevronDown, Copy, Plus, Star, X, FileText, Maximize2, ExternalLink } from 'lucide-react'
 import { useMy } from '../store'
+import { IssueDetailLayout } from './work-items/IssueDetailLayout'
 import { useApp } from '../../store'
 import { api } from '../../api'
 import { useEscLayer } from '../../utils/use-esc-layer'
@@ -228,8 +229,8 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
       className="my-peek-in flex max-h-[84vh] w-[880px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]"
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {/* 头部 */}
-      <div className="flex h-my-header shrink-0 items-center gap-2 border-b border-my-line px-4">
+      <IssueDetailLayout
+        header={<>
         <WorkspaceMark color={peekProject?.color ?? 'var(--my-avatar-bg)'} letter={peekProject?.icon ?? 'P'} size={16} />
         <span className="shrink-0 text-my-sm text-my-tertiary">
           {ident}-{issue.sequenceId}
@@ -280,136 +281,8 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
             <X size={15} />
           </button>
         </div>
-      </div>
-
-      {/* 主体：左内容 + 右属性栏 */}
-      <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="shrink-0 px-4 pb-2 pt-3">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={commitName}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur()
-              }}
-              className="w-full bg-transparent text-my-lg font-semibold text-my-primary outline-none placeholder:text-my-placeholder"
-              placeholder="工作项标题"
-            />
-            <textarea
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              onBlur={commitDesc}
-              placeholder="添加描述…"
-              className="mt-2 min-h-[140px] w-full resize-none bg-transparent text-my-md leading-5 text-my-secondary outline-none placeholder:text-my-placeholder"
-            />
-          </div>
-          <div className="shrink-0 border-b border-my-line px-4 pb-1">
-            <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id)} />
-          </div>
-          <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            {tab === 'sub' && (
-              <div>
-                {subIssues.map((sub) => {
-                  const subState = stateOf(sub.stateId)
-                  return (
-                    <button
-                      key={sub.id}
-                      type="button"
-                      onClick={() => openIssue(sub.id)}
-                      className="flex h-9 w-full items-center gap-2 rounded-my-md px-2 text-left hover:bg-my-layer-1"
-                    >
-                      {subState && <StateGroupIcon stateGroup={subState.group} color={subState.color} size={12} />}
-                      <span className="w-16 shrink-0 text-my-xs text-my-tertiary">
-                        {ident}-{sub.sequenceId}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{sub.name}</span>
-                      <PriorityIcon priority={sub.priority} size={12} />
-                    </button>
-                  )
-                })}
-                <div className="mt-1 flex items-center gap-2 rounded-my-md px-2 py-1 hover:bg-my-layer-1">
-                  <Plus size={13} className="shrink-0 text-my-icon-tertiary" />
-                  <input
-                    value={subName}
-                    onChange={(e) => setSubName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') addSubIssue()
-                    }}
-                    placeholder="添加子工作项"
-                    className="h-7 min-w-0 flex-1 bg-transparent text-my-sm text-my-primary outline-none placeholder:text-my-placeholder"
-                  />
-                </div>
-                <p className="mt-1 px-2 text-my-xs leading-4 text-my-tertiary">
-                  回车创建真实子任务；父子关联经 task.py add-subtask 写入 task.json，失败时会明确提示。
-                </p>
-              </div>
-            )}
-            {tab === 'comments' && (
-              <div>
-                <p className="mb-3 text-my-xs leading-5 text-my-secondary">仅保留在当前界面内存中，刷新项目后会清除；不会发送给其他成员。</p>
-                {issue.comments.map((c) => {
-                  const actor = memberOf(c.actorId)
-                  return (
-                    <div key={c.id} className="flex items-start gap-2 py-2">
-                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={20} /> : <Avatar name="？" color="var(--my-avatar-bg)" size={20} />}
-                      <div className="min-w-0">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-my-sm font-medium text-my-primary">{actor?.name ?? '未知成员'}</span>
-                          <span className="text-my-xs text-my-tertiary">{c.at}</span>
-                        </div>
-                        <div className="whitespace-pre-wrap text-my-sm leading-5 text-my-secondary">{c.body}</div>
-                      </div>
-                    </div>
-                  )
-                })}
-                <div className="mt-1 flex items-center gap-2 rounded-my-md px-2 py-1 hover:bg-my-layer-1">
-                  <Avatar
-                    name={memberOf(data.workspace.memberId)?.name ?? '我'}
-                    color={memberOf(data.workspace.memberId)?.avatarColor ?? 'var(--my-avatar-bg)'}
-                    size={20}
-                  />
-                  <input
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') addComment()
-                    }}
-                    placeholder="添加临时备注，回车追加"
-                    className="h-7 min-w-0 flex-1 bg-transparent text-my-sm text-my-primary outline-none placeholder:text-my-placeholder"
-                  />
-                </div>
-              </div>
-            )}
-            {tab === 'activity' && (
-              <div>
-                {issue.activity.map((a) => {
-                  const actor = memberOf(a.actorId)
-                  const detailState = a.detail ? stateOf(a.detail) : undefined
-                  return (
-                    <div key={a.id} className="flex items-start gap-2 py-1.5">
-                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={16} /> : <Avatar name="？" color="var(--my-avatar-bg)" size={16} />}
-                      <div className="min-w-0 text-my-sm leading-5 text-my-secondary">
-                        <span className="font-medium text-my-primary">{actor?.name ?? '未知成员'}</span> {a.verb}
-                        {detailState && (
-                          <span className="ml-1 inline-flex items-center gap-1">
-                            <StateGroupIcon stateGroup={detailState.group} color={detailState.color} size={11} />
-                            {detailState.name}
-                          </span>
-                        )}
-                        {!detailState && a.detail && <span className="ml-1">{a.detail}</span>}
-                        <span className="ml-1.5 text-my-xs text-my-tertiary">{a.at}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 右侧属性栏 */}
-        <aside className="my-scrollbar w-[260px] shrink-0 overflow-y-auto border-l border-my-line p-3">
+        </>}
+        properties={<>
           <PropRow label="文档">
             {docs.length === 0 ? (
               <span className="text-my-xs text-my-tertiary">任务目录下暂无 .md 文档</span>
@@ -734,8 +607,130 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
           <PropRow label="截止日期">
             <DateField value={issue.dueDate} onChange={(v) => updateIssue(issue.id, { dueDate: v })} />
           </PropRow>
-        </aside>
-      </div>
+        </>}
+      >
+          <div className="shrink-0 px-4 pb-2 pt-3">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
+              className="w-full bg-transparent text-my-lg font-semibold text-my-primary outline-none placeholder:text-my-placeholder"
+              placeholder="工作项标题"
+            />
+            <textarea
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              onBlur={commitDesc}
+              placeholder="添加描述…"
+              className="mt-2 min-h-[140px] w-full resize-none bg-transparent text-my-md leading-5 text-my-secondary outline-none placeholder:text-my-placeholder"
+            />
+          </div>
+          <div className="shrink-0 border-b border-my-line px-4 pb-1">
+            <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id)} />
+          </div>
+          <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            {tab === 'sub' && (
+              <div>
+                {subIssues.map((sub) => {
+                  const subState = stateOf(sub.stateId)
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => openIssue(sub.id)}
+                      className="flex h-9 w-full items-center gap-2 rounded-my-md px-2 text-left hover:bg-my-layer-1"
+                    >
+                      {subState && <StateGroupIcon stateGroup={subState.group} color={subState.color} size={12} />}
+                      <span className="w-16 shrink-0 text-my-xs text-my-tertiary">
+                        {ident}-{sub.sequenceId}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{sub.name}</span>
+                      <PriorityIcon priority={sub.priority} size={12} />
+                    </button>
+                  )
+                })}
+                <div className="mt-1 flex items-center gap-2 rounded-my-md px-2 py-1 hover:bg-my-layer-1">
+                  <Plus size={13} className="shrink-0 text-my-icon-tertiary" />
+                  <input
+                    value={subName}
+                    onChange={(e) => setSubName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addSubIssue()
+                    }}
+                    placeholder="添加子工作项"
+                    className="h-7 min-w-0 flex-1 bg-transparent text-my-sm text-my-primary outline-none placeholder:text-my-placeholder"
+                  />
+                </div>
+                <p className="mt-1 px-2 text-my-xs leading-4 text-my-tertiary">
+                  回车创建真实子任务；父子关联经 task.py add-subtask 写入 task.json，失败时会明确提示。
+                </p>
+              </div>
+            )}
+            {tab === 'comments' && (
+              <div>
+                <p className="mb-3 text-my-xs leading-5 text-my-secondary">仅保留在当前界面内存中，刷新项目后会清除；不会发送给其他成员。</p>
+                {issue.comments.map((c) => {
+                  const actor = memberOf(c.actorId)
+                  return (
+                    <div key={c.id} className="flex items-start gap-2 py-2">
+                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={20} /> : <Avatar name="？" color="var(--my-avatar-bg)" size={20} />}
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-my-sm font-medium text-my-primary">{actor?.name ?? '未知成员'}</span>
+                          <span className="text-my-xs text-my-tertiary">{c.at}</span>
+                        </div>
+                        <div className="whitespace-pre-wrap text-my-sm leading-5 text-my-secondary">{c.body}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+                <div className="mt-1 flex items-center gap-2 rounded-my-md px-2 py-1 hover:bg-my-layer-1">
+                  <Avatar
+                    name={memberOf(data.workspace.memberId)?.name ?? '我'}
+                    color={memberOf(data.workspace.memberId)?.avatarColor ?? 'var(--my-avatar-bg)'}
+                    size={20}
+                  />
+                  <input
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addComment()
+                    }}
+                    placeholder="添加临时备注，回车追加"
+                    className="h-7 min-w-0 flex-1 bg-transparent text-my-sm text-my-primary outline-none placeholder:text-my-placeholder"
+                  />
+                </div>
+              </div>
+            )}
+            {tab === 'activity' && (
+              <div>
+                {issue.activity.map((a) => {
+                  const actor = memberOf(a.actorId)
+                  const detailState = a.detail ? stateOf(a.detail) : undefined
+                  return (
+                    <div key={a.id} className="flex items-start gap-2 py-1.5">
+                      {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={16} /> : <Avatar name="？" color="var(--my-avatar-bg)" size={16} />}
+                      <div className="min-w-0 text-my-sm leading-5 text-my-secondary">
+                        <span className="font-medium text-my-primary">{actor?.name ?? '未知成员'}</span> {a.verb}
+                        {detailState && (
+                          <span className="ml-1 inline-flex items-center gap-1">
+                            <StateGroupIcon stateGroup={detailState.group} color={detailState.color} size={11} />
+                            {detailState.name}
+                          </span>
+                        )}
+                        {!detailState && a.detail && <span className="ml-1">{a.detail}</span>}
+                        <span className="ml-1.5 text-my-xs text-my-tertiary">{a.at}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+      </IssueDetailLayout>
     </div>
   )
 }

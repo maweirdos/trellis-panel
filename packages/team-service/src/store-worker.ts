@@ -10,7 +10,7 @@ const port = parentPort
 const failure = (error: unknown): TeamServiceError => error instanceof TeamServiceError ? error : error instanceof z.ZodError ? new TeamServiceError('INVALID_INPUT', error.issues[0]?.message ?? 'Invalid team request') : new TeamServiceError('STORE_UNAVAILABLE', 'Team storage failed; retain original command identity for inspection', 503)
 const core = (() => {
   try {
-    const options = z.object({ dataDir: z.string(), issuer: z.string(), bootstrapSubject: z.string(), sessionTtlMs: z.number().positive(), pairingTtlMs: z.number().positive(), onlineTtlMs: z.number().positive() }).strict().parse(workerData) satisfies StoreOptions
+    const options = z.object({ dataDir: z.string(), issuer: z.string(), bootstrapSubject: z.string(), identityProvider: z.enum(['oidc', 'gitlab']).optional(), sessionTtlMs: z.number().positive(), pairingTtlMs: z.number().positive(), onlineTtlMs: z.number().positive() }).strict().parse(workerData) satisfies StoreOptions
     return new TeamStoreCore(options)
   } catch (error) {
     const value = failure(error)

@@ -14,8 +14,12 @@ import {
   Settings2,
   SlidersHorizontal
 } from 'lucide-react'
-import { PRIORITY_ORDER, filterIssues, useMy } from '../store'
+import { PRIORITY_ORDER, useMy } from '../store'
 import { useApp } from '../../store'
+import {
+  WorkItemsProvider, canEditWorkItem, issueAssigneeIds, issueCycleIds, issueIdentifier,
+  useWorkItems, useWorkItemsSource, type WorkItemsSource
+} from './work-items/work-items-context'
 import {
   Avatar,
   Button,
@@ -165,7 +169,8 @@ function buildGroups(
   orderBy: OrderBy,
   states: WorkItemState[],
   members: Member[],
-  labels: Label[]
+  labels: Label[],
+  source: WorkItemsSource
 ): IssueGroup[] {
   const sorted = sortIssues(issues, orderBy)
   if (groupBy === 'none') {
@@ -193,31 +198,32 @@ function buildGroups(
       key: `assignee:${m.id}`,
       title: m.name,
       meta: { kind: 'assignee', member: m },
-      issues: sorted.filter((i) => i.assigneeId === m.id)
+      issues: sorted.filter((i) => issueAssigneeIds(source, i).includes(m.id))
     }))
     byMember.push({
       key: 'assignee:none',
       title: '未分配',
       meta: { kind: 'assignee', member: null },
-      issues: sorted.filter((i) => i.assigneeId === null)
+      issues: sorted.filter((i) => issueAssigneeIds(source, i).length === 0)
     })
     return byMember
   }
   if (groupBy === 'cycle') {
-    const weeks = Array.from(new Set(sorted.map((i) => i.cycle ?? null)))
+    const versions = source.presentation?.cycleMode === 'version'
+    const weeks = Array.from(new Set(sorted.flatMap((i) => issueCycleIds(source, i))))
       .filter((w): w is string => Boolean(w))
       .sort((a, b) => a.localeCompare(b))
     const cols: IssueGroup[] = weeks.map((w) => ({
       key: `cycle:${w}`,
-      title: `第 ${w.split('-W')[1]} 周（${isoWeekRangeTitle(w)}）`,
+      title: versions ? source.store.data.cycles.find((cycle) => cycle.id === w)?.name ?? w : `第 ${w.split('-W')[1]} 周（${isoWeekRangeTitle(w)}）`,
       meta: { kind: 'cycle', cycle: w },
-      issues: sorted.filter((i) => i.cycle === w)
+      issues: sorted.filter((i) => issueCycleIds(source, i).includes(w))
     }))
     cols.push({
       key: 'cycle:none',
-      title: '无周期',
+      title: versions ? '未排版本' : '无周期',
       meta: { kind: 'cycle', cycle: '' },
-      issues: sorted.filter((i) => !i.cycle)
+      issues: sorted.filter((i) => issueCycleIds(source, i).length === 0)
     })
     return cols
   }
@@ -253,12 +259,25 @@ function buildGroups(
 
 /** 标签色点（下拉/分组头用） */
 function LabelDot({ label }: { label: Label }): JSX.Element {
+  const source = useWorkItemsSource()
   return (
     <span
       className="h-2 w-2 shrink-0 rounded-my-sm"
-      style={{ background: `var(--my-label-${label.color}-icon)` }}
+      style={{ background: source.presentation?.labelColor?.(label) ?? `var(--my-label-${label.color}-icon)` }}
     />
   )
+}
+
+function WorkItemLabel({ label }: { label: Label }): JSX.Element {
+  const source = useWorkItemsSource()
+  return <>{source.presentation?.renderLabel?.(label) ?? <LabelPill label={label} />}</>
+}
+
+function IssueVersions({ issue }: { issue: Issue }): JSX.Element | null {
+  const source = useWorkItemsSource()
+  if (source.presentation?.cycleMode !== 'version') return null
+  const names = issueCycleIds(source, issue).map((id) => source.store.data.cycles.find((cycle) => cycle.id === id)?.name ?? id)
+  return <span className="max-w-28 shrink-0 truncate text-my-xs text-my-tertiary" title={names.join('、') || '未排版本'}>{names.join('、') || '未排版本'}</span>
 }
 
 /** 分组徽标：按组别渲染状态/优先级/负责人/标签图标 */
@@ -303,10 +322,12 @@ function GroupBadge({ meta, size = 12 }: { meta: GroupMeta; size?: number }): JS
 
 /** 截止日期 chip：逾期标红 */
 function DueChip({ due, stateGroup, done }: { due: string; stateGroup: StateGroup; done?: boolean }): JSX.Element {
+  const source = useWorkItemsSource()
   const today = toIso(new Date())
   const overdue = !done && stateGroup !== 'completed' && stateGroup !== 'cancelled' && due < today
   return (
     <span
+      title={source.presentation?.dueDateLabel}
       className={clsx(
         'inline-flex h-[20px] shrink-0 items-center gap-1 rounded-my-sm px-1.5 text-my-xs',
         overdue ? 'bg-my-danger-subtle text-my-danger-text' : 'text-my-tertiary'
@@ -365,6 +386,19 @@ function EmptyAvatar({ size = 20 }: { size?: number }): JSX.Element {
   return <span className="inline-block shrink-0 rounded-full border border-dashed border-my-line-strong" style={{ width: size, height: size }} title="未分配" />
 }
 
+function IssueAssignees({ issue, size = 20 }: { issue: Issue; size?: number }): JSX.Element {
+  const source = useWorkItemsSource()
+  const members = issueAssigneeIds(source, issue).map((id) => source.store.data.members.find((member) => member.id === id) ??
+    (source.kind === 'collaboration' ? { id, name: id, avatarColor: 'var(--my-avatar-bg)', role: 'Member' as const } : undefined))
+    .filter((member): member is Member => Boolean(member))
+  return members.length ? (
+    <span className="flex items-center gap-1" title={members.map((member) => member.name).join('、')}>
+      {members.slice(0, 2).map((member) => <Avatar key={member.id} name={member.name} color={member.avatarColor} size={size} />)}
+      {members.length > 2 && <span className="text-my-xs text-my-tertiary">+{members.length - 2}</span>}
+    </span>
+  ) : <EmptyAvatar size={size} />
+}
+
 interface SelectStyle {
   trigger: string
 }
@@ -408,9 +442,21 @@ function StateSelect({
   variant?: 'bare' | 'box'
   showChevron?: boolean
 }): JSX.Element {
-  const { data } = useMy()
+  const source = useWorkItemsSource()
+  const { data, openIssue } = source.store
   const current = data.states.find((s) => s.id === value)
-  const states = [...data.states].sort((a, b) => a.sequence - b.sequence)
+  const allowed = source.presentation?.stateIds?.(dirName)
+  const states = data.states.filter((state) => !allowed || allowed.includes(state.id)).sort((a, b) => a.sequence - b.sequence)
+  const native = source.kind === 'native'
+  if (!native) {
+    return (
+      <button type="button" title="打开任务流程" onClick={(event) => { event.stopPropagation(); openIssue(dirName) }}
+        className={clsx((variant === 'box' ? BOX_TRIGGER : BARE_TRIGGER).trigger, 'max-w-[150px]')}>
+        <StateGroupIcon stateGroup={current?.group ?? 'backlog'} color={current?.color} size={variant === 'box' ? 14 : 12} />
+        <span className="min-w-0 flex-1 truncate text-left">{current?.name ?? '无状态'}</span>
+      </button>
+    )
+  }
   const copyCommand = (command: string): void => {
     void navigator.clipboard
       .writeText(command)
@@ -447,7 +493,7 @@ function StateSelect({
               <DropdownItem
                 key={st.id}
                 selected={isCurrent}
-                disabled={!flow.command || isCurrent}
+                disabled={isCurrent || !flow.command}
                 icon={<StateGroupIcon stateGroup={st.group} color={st.color} size={13} />}
                 onClick={() => {
                   if (flow.command) copyCommand(flow.command)
@@ -474,12 +520,14 @@ function PrioritySelect({
   onChange: (p: Priority) => void
   variant?: 'bare' | 'box'
 }): JSX.Element {
+  const source = useWorkItemsSource()
   return (
     <Dropdown
       width={180}
       trigger={({ toggle }) => (
         <button
           type="button"
+          disabled={!canEditWorkItem(source, 'priority')}
           onClick={(e) => {
             e.stopPropagation()
             toggle()
@@ -518,28 +566,36 @@ function AssigneeSelect({
   value,
   members,
   onChange,
+  issueId,
   variant = 'bare'
 }: {
   value: string | null
   members: Member[]
   onChange: (id: string | null) => void
+  issueId?: string
   variant?: 'bare' | 'box'
 }): JSX.Element {
-  const current = members.find((m) => m.id === value)
+  const source = useWorkItemsSource()
+  const issue = source.store.data.issues.find((item) => item.id === issueId)
+  const options = issueId ? source.presentation?.assigneeOptions?.(issueId) ?? members : members
+  const ids = issue ? issueAssigneeIds(source, issue) : value ? [value] : []
+  const current = members.find((m) => m.id === ids[0])
+  const multiple = Boolean(issueId && source.presentation?.multiAssignee?.(issueId))
   return (
     <Dropdown
       width={200}
       trigger={({ toggle }) => (
         <button
           type="button"
-          title={current?.name ?? '未分配'}
+          title={ids.map((id) => members.find((member) => member.id === id)?.name ?? id).join('、') || '未分配'}
+          disabled={!canEditWorkItem(source, 'assigneeId', issueId)}
           onClick={(e) => {
             e.stopPropagation()
             toggle()
           }}
           className={clsx((variant === 'box' ? BOX_TRIGGER : BARE_TRIGGER).trigger, variant === 'bare' && 'h-6')}
         >
-          {current ? (
+          {issue ? <IssueAssignees issue={issue} size={variant === 'box' ? 18 : 20} /> : current ? (
             <Avatar name={current.name} color={current.avatarColor} size={variant === 'box' ? 18 : 20} />
           ) : (
             <EmptyAvatar size={variant === 'box' ? 18 : 20} />
@@ -556,22 +612,27 @@ function AssigneeSelect({
       {(close) => (
         <>
           <DropdownItem
-            selected={value === null}
+            disabled={!canEditWorkItem(source, 'assigneeId', issueId)}
+            selected={ids.length === 0}
             onClick={() => {
-              onChange(null)
+              if (issueId && source.setAssignees) void source.setAssignees(issueId, [])
+              else onChange(null)
               close()
             }}
           >
             未分配
           </DropdownItem>
-          {members.map((m) => (
+          {options.map((m) => (
             <DropdownItem
               key={m.id}
-              selected={m.id === value}
+              disabled={!canEditWorkItem(source, 'assigneeId', issueId)}
+              selected={ids.includes(m.id)}
               icon={<Avatar name={m.name} color={m.avatarColor} size={16} />}
               onClick={() => {
-                onChange(m.id)
-                close()
+                if (issueId && source.setAssignees) {
+                  void source.setAssignees(issueId, multiple ? ids.includes(m.id) ? ids.filter((id) => id !== m.id) : [...ids, m.id] : [m.id])
+                } else onChange(m.id)
+                if (!multiple) close()
               }}
             >
               {m.name}
@@ -586,7 +647,8 @@ function AssigneeSelect({
 /* ---------------- List 布局 ---------------- */
 
 function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: string; focused?: boolean; rowIdx?: number }): JSX.Element {
-  const { data, openIssue, updateIssue, favorites, toggleFavorite } = useMy()
+  const source = useWorkItemsSource()
+  const { data, openIssue, updateIssue, favorites, toggleFavorite } = useWorkItems()
   const isFav = favorites.includes(issue.id)
   const state = data.states.find((s) => s.id === issue.stateId)
   const assignee = data.members.find((m) => m.id === issue.assigneeId)
@@ -616,18 +678,19 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
     >
       <span className="my-row-handle select-none text-my-xs leading-none text-my-icon-tertiary">⠿</span>
       <span className="w-16 shrink-0 text-my-sm text-my-tertiary">
-        {ident}-{issue.sequenceId}
+        {issueIdentifier(source, issue, ident)}
       </span>
       <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
         <PriorityIcon priority={issue.priority} size={12} />
       </span>
       <span className="flex w-[110px] shrink-0 items-center gap-1 overflow-hidden">
         {(labels.length > 0 ? labels : [pkgLabel(issue.pkg)].filter((l): l is Label => Boolean(l))).slice(0, 2).map((lb) => (
-          <LabelPill key={lb.id} label={lb} />
+          <WorkItemLabel key={lb.id} label={lb} />
         ))}
       </span>
       <span className={clsx('min-w-0 flex-1 truncate text-my-md text-my-secondary', done && 'opacity-60')}>{issue.name}</span>
       <SubProgressBadge done={sub.done} total={sub.total} />
+      <IssueVersions issue={issue} />
       {issue.dueDate && state && <DueChip due={issue.dueDate} stateGroup={state.group} done={done} />}
       {/* 拦截键盘冒泡，避免下拉内按键触发行点击 */}
       <span onKeyDown={(e) => e.stopPropagation()} className="flex shrink-0 items-center">
@@ -635,6 +698,7 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
       </span>
       <button
         type="button"
+        disabled={!source.capabilities.favorites}
         title={isFav ? '取消收藏' : '收藏'}
         onClick={(e) => {
           e.stopPropagation()
@@ -648,7 +712,7 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
         <Star size={12} className={isFav ? 'fill-current' : ''} />
       </button>
       <span className="ml-1 flex shrink-0 items-center">
-        {assignee ? <Avatar name={assignee.name} color={assignee.avatarColor} size={20} /> : <EmptyAvatar />}
+        <IssueAssignees issue={issue} />
       </span>
     </div>
   )
@@ -669,7 +733,8 @@ function ListLayout({
   showEmpty: boolean
   ident: string
 }): JSX.Element {
-  const { openIssue } = useMy()
+  const source = useWorkItemsSource()
+  const { openIssue } = useWorkItems()
   const [focusIdx, setFocusIdx] = useState(-1)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0)
@@ -736,6 +801,7 @@ function ListLayout({
                 <Tooltip label="新建任务">
                   <button
                     type="button"
+                    disabled={!source.capabilities.create}
                     onClick={onCreate}
                     className="flex h-6 w-6 items-center justify-center rounded text-my-icon-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary"
                   >
@@ -768,7 +834,8 @@ function ListLayout({
 /* ---------------- Board 布局 ---------------- */
 
 function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Element {
-  const { data, openIssue } = useMy()
+  const source = useWorkItemsSource()
+  const { data, openIssue } = useWorkItems()
   const state = data.states.find((s) => s.id === issue.stateId)
   const assignee = data.members.find((m) => m.id === issue.assigneeId)
   const sub = subProgress(issue, data.issues, data.states)
@@ -779,7 +846,7 @@ function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Eleme
     <div
       role="button"
       tabIndex={0}
-      draggable
+      draggable={source.kind === 'native'}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/my-issue-id', issue.id)
         e.dataTransfer.effectAllowed = 'move'
@@ -802,14 +869,15 @@ function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Eleme
         <span className="line-clamp-2 text-my-md leading-5 text-my-secondary">{issue.name}</span>
       </div>
       <div className="mt-2 flex min-h-[18px] items-center gap-1.5">
-        <span className="shrink-0 text-my-2xs text-my-disabled">{ident}-{issue.sequenceId}</span>
+        <span className="shrink-0 text-my-2xs text-my-disabled">{issueIdentifier(source, issue, ident)}</span>
         {(labels.length > 0 ? labels : [pkgLabel(issue.pkg)].filter((l): l is Label => Boolean(l))).slice(0, 2).map((lb) => (
-          <LabelPill key={lb.id} label={lb} />
+          <WorkItemLabel key={lb.id} label={lb} />
         ))}
         <SubProgressBadge done={sub.done} total={sub.total} />
+        <IssueVersions issue={issue} />
         {issue.dueDate && state && <DueChip due={issue.dueDate} stateGroup={state.group} />}
         <span className="ml-auto flex shrink-0 items-center">
-          {assignee ? <Avatar name={assignee.name} color={assignee.avatarColor} size={18} /> : <EmptyAvatar size={18} />}
+          <IssueAssignees issue={issue} size={18} />
         </span>
       </div>
     </div>
@@ -835,6 +903,7 @@ function BoardLayout({
   onMoveToCycle: (cycle: string, issueId: string) => void
   ident: string
 }): JSX.Element {
+  const source = useWorkItemsSource()
   const [dragOver, setDragOver] = useState<string | null>(null)
   const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0)
   if (shown.every((g) => g.issues.length === 0)) {
@@ -849,7 +918,8 @@ function BoardLayout({
             key={g.key}
             onDragOver={(e) => {
               const droppable =
-                (groupBy === 'state' && g.meta.kind === 'state') || (groupBy === 'cycle' && g.meta.kind === 'cycle')
+                source.kind === 'native' && ((groupBy === 'state' && g.meta.kind === 'state') ||
+                (groupBy === 'cycle' && g.meta.kind === 'cycle' && canEditWorkItem(source, 'cycle')))
               if (!droppable) return
               e.preventDefault()
               e.dataTransfer.dropEffect = 'move'
@@ -862,7 +932,8 @@ function BoardLayout({
               e.preventDefault()
               setDragOver(null)
               const issueId = e.dataTransfer.getData('text/my-issue-id')
-              if (!issueId) return
+              if (!issueId || !source.store.data.issues.some((issue) => issue.id === issueId)) return
+              if (source.kind !== 'native') return
               if (groupBy === 'state' && g.meta.kind === 'state') onMoveToState(g.meta.state.id, issueId)
               else if (groupBy === 'cycle' && g.meta.kind === 'cycle') onMoveToCycle(g.meta.cycle || '', issueId)
             }}
@@ -920,7 +991,8 @@ function SpreadsheetRow({
   checked: boolean
   onCheck: (id: string, v: boolean) => void
 }): JSX.Element {
-  const { data, openIssue, updateIssue } = useMy()
+  const source = useWorkItemsSource()
+  const { data, openIssue, updateIssue } = useWorkItems()
   const state = data.states.find((s) => s.id === issue.stateId)
   const assignee = data.members.find((m) => m.id === issue.assigneeId)
   const subCount = issue.subIssueIds.length
@@ -944,10 +1016,11 @@ function SpreadsheetRow({
         <Checkbox checked={checked} onChange={(v) => onCheck(issue.id, v)} />
       </span>
       <span className="w-16 shrink-0 text-my-sm text-my-tertiary">
-        {ident}-{issue.sequenceId}
+        {issueIdentifier(source, issue, ident)}
       </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate text-my-md text-my-secondary">{issue.name}</span>
+        <IssueVersions issue={issue} />
         {subCount > 0 && (
           <span className="flex shrink-0 items-center gap-0.5 text-my-xs text-my-tertiary">
             <ListTree size={11} className="text-my-icon-tertiary" />
@@ -959,7 +1032,7 @@ function SpreadsheetRow({
         <Dropdown
           width={170}
           trigger={({ toggle }) => (
-            <button type="button" onClick={toggle} className={CELL_BARE}>
+            <button type="button" onClick={toggle} disabled={!canEditWorkItem(source, 'priority', issue.id)} className={CELL_BARE}>
               <PriorityIcon priority={issue.priority} size={12} />
               <span className="min-w-0 flex-1 truncate text-left">{PRIORITY_LABELS[issue.priority]}</span>
               <ChevronDown size={11} className="shrink-0 text-my-icon-tertiary" />
@@ -971,6 +1044,7 @@ function SpreadsheetRow({
               {PRIORITIES.map((pr) => (
                 <DropdownItem
                   key={pr}
+                  disabled={!canEditWorkItem(source, 'priority', issue.id)}
                   selected={pr === issue.priority}
                   icon={<PriorityIcon priority={pr} size={13} />}
                   onClick={() => {
@@ -990,6 +1064,7 @@ function SpreadsheetRow({
       </span>
       <span className="w-28 shrink-0" onClick={(e) => e.stopPropagation()}>
         <AssigneeSelect
+          issueId={issue.id}
           value={issue.assigneeId}
           members={data.members}
           onChange={(mid) => updateIssue(issue.id, { assigneeId: mid })}
@@ -1008,10 +1083,15 @@ function SpreadsheetRow({
 }
 
 function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }): JSX.Element {
-  const { data, updateIssue } = useMy()
+  const source = useWorkItemsSource()
+  const { data, updateIssue } = useWorkItems()
   const [checked, setChecked] = useState<Set<string>>(() => new Set<string>())
+  const selected = [...checked].filter((id) => issues.some((issue) => issue.id === id))
   const applyBatch = async (patch: Partial<Issue>): Promise<void> => {
-    for (const id of checked) await updateIssue(id, patch)
+    for (const id of selected) {
+      if (!Object.keys(patch).every((field) => canEditWorkItem(source, field as keyof Issue, id))) continue
+      await updateIssue(id, patch)
+    }
     setChecked(new Set())
   }
   const allChecked = issues.length > 0 && issues.every((i) => checked.has(i.id))
@@ -1046,22 +1126,22 @@ function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }
           <span className="w-24 shrink-0">优先级</span>
           <span className="w-32 shrink-0">状态</span>
           <span className="w-28 shrink-0">负责人</span>
-          <span className="w-24 shrink-0">开始</span>
-          <span className="w-24 shrink-0">截止</span>
+          <span className="w-24 shrink-0">{source.presentation?.startDateLabel ?? '开始'}</span>
+          <span className="w-24 shrink-0">{source.presentation?.dueDateLabel ?? '截止'}</span>
         </div>
         {issues.map((i) => (
           <SpreadsheetRow key={i.id} issue={i} ident={ident} checked={checked.has(i.id)} onCheck={onCheck} />
         ))}
       </div>
-      {checked.size > 0 && (
+      {selected.length > 0 && (
         <div className="fixed bottom-8 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-2 px-3 py-2 shadow-[var(--my-shadow-overlay-200)]">
-          <span className="text-my-sm text-my-secondary">已选 {checked.size} 项</span>
+          <span className="text-my-sm text-my-secondary">已选 {selected.length} 项</span>
           {/* 批量状态不提供：生命周期状态由 Trellis 工作流逐任务管理（F01 同源），批量写入本就是缓议的受控命令 */}
           <Dropdown
             width={170}
             align="right"
             trigger={({ toggle }) => (
-              <Button variant="neutral" size="sm" onClick={toggle}>
+              <Button variant="neutral" size="sm" onClick={toggle} disabled={!canEditWorkItem(source, 'priority') || selected.some((id) => !canEditWorkItem(source, 'priority', id))}>
                 设为优先级
               </Button>
             )}
@@ -1071,6 +1151,7 @@ function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }
                 {PRIORITIES.map((pr) => (
                   <DropdownItem
                     key={pr}
+                    disabled={selected.some((id) => !canEditWorkItem(source, 'priority', id))}
                     icon={<PriorityIcon priority={pr} size={13} />}
                     onClick={() => {
                       void applyBatch({ priority: pr })
@@ -1101,7 +1182,8 @@ const GANTT_DAYS = GANTT_WEEKS * 7
 const GANTT_WIDTH = GANTT_DAYS * GANTT_COL
 
 function GanttLayout({ issues }: { issues: Issue[] }): JSX.Element {
-  const { data } = useMy()
+  const source = useWorkItemsSource()
+  const { data, openIssue } = useWorkItems()
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const monday = startMonday(today)
@@ -1119,7 +1201,7 @@ function GanttLayout({ issues }: { issues: Issue[] }): JSX.Element {
             className="sticky left-0 z-10 flex w-[300px] shrink-0 items-center border-r border-my-line px-3 text-my-xs font-medium text-my-tertiary"
             style={{ width: GANTT_LEFT }}
           >
-            工作项
+            工作项{source.presentation?.cycleMode === 'version' ? ' · 版本排期' : ''}
           </div>
           {days.map((d, i) => {
             const isToday = i === todayIdx
@@ -1176,7 +1258,7 @@ function GanttLayout({ issues }: { issues: Issue[] }): JSX.Element {
                   style={{ width: GANTT_LEFT }}
                 >
                   {st && <StateGroupIcon stateGroup={st.group} color={st.color} size={12} />}
-                  <span className="min-w-0 truncate text-my-sm text-my-secondary">{issue.name}</span>
+                  <button type="button" onClick={() => openIssue(issue.id)} className="min-w-0 truncate text-left text-my-sm text-my-secondary">{issue.name}</button>
                 </div>
                 <div className="relative flex shrink-0" style={{ width: GANTT_WIDTH }}>
                   {days.map((d, i) => (
@@ -1203,7 +1285,8 @@ function GanttLayout({ issues }: { issues: Issue[] }): JSX.Element {
 /* ---------------- Calendar 布局 ---------------- */
 
 function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
-  const { openIssue, data } = useMy()
+  const source = useWorkItemsSource()
+  const { openIssue, data } = useWorkItems()
   const [cursor, setCursor] = useState<{ y: number; m: number }>(() => {
     const n = new Date()
     return { y: n.getFullYear(), m: n.getMonth() }
@@ -1254,6 +1337,7 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
         <Button size="sm" variant="ghost" className="ml-1" onClick={goToday}>
           回到今天
         </Button>
+        {source.presentation?.cycleMode === 'version' && <span className="ml-auto text-my-xs text-my-tertiary">版本截止</span>}
       </div>
       <div className="grid shrink-0 grid-cols-7 border-l border-t border-my-line">
         {WEEKDAYS.map((w) => (
@@ -1372,7 +1456,8 @@ function SaveViewBody({ onSave }: { onSave: (name: string) => void }): JSX.Eleme
 /* ---------------- 页面 ---------------- */
 
 function WorkItemsPageInner(): JSX.Element {
-  const store = useMy()
+  const source = useWorkItemsSource()
+  const store = useWorkItems()
   const { data, layout, groupBy, orderBy, filters, display, workItemsView, workItemsTab: tab, setWorkItemsTab: setTab } = store
   const project = data.projects[0]
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set<string>())
@@ -1389,10 +1474,21 @@ function WorkItemsPageInner(): JSX.Element {
   const stateOf = (stateId: string): WorkItemState | undefined => data.states.find((s) => s.id === stateId)
 
   // 数据管线：项目 → store 筛选 → 子工作项显示开关 → 页签
-  const projectIssues = data.issues.filter((i) => i.projectId === project.id)
-  const filtered = filterIssues(projectIssues, filters)
+  const projectId = source.projectId === undefined ? project?.id : source.projectId
+  const projectIssues = projectId === null ? data.issues : data.issues.filter((i) => i.projectId === projectId)
+  const filtered = projectIssues.filter((issue) => {
+    if (filters.priority.length && !filters.priority.includes(issue.priority)) return false
+    const state = stateOf(issue.stateId)
+    if (filters.stateGroup.length && state && !filters.stateGroup.includes(state.group)) return false
+    if (filters.assigneeIds.length && !issueAssigneeIds(source, issue).some((id) => filters.assigneeIds.includes(id))) return false
+    if (filters.labelIds.length && (source.kind === 'native'
+      ? !issue.labelIds.some((id) => filters.labelIds.includes(id))
+      : !filters.labelIds.every((id) => issue.labelIds.includes(id)))) return false
+    return true
+  })
   const visible = display.showSubIssues ? filtered : filtered.filter((i) => i.parentId === null)
   const tabbed = visible.filter((i) => {
+    if (source.presentation?.matchesTab) return source.presentation.matchesTab(i, tab)
     if (tab === 'all') return true
     const g = stateOf(i.stateId)?.group
     if (tab === 'active') return g === 'unstarted' || g === 'started'
@@ -1400,7 +1496,10 @@ function WorkItemsPageInner(): JSX.Element {
   })
   const countIn = (predicate: (g: StateGroup | undefined) => boolean): number =>
     visible.filter((i) => predicate(stateOf(i.stateId)?.group)).length
-  const tabs: Array<{ id: IssueTab; label: string; count?: number }> = [
+  const tabs: Array<{ id: IssueTab; label: string; count?: number }> = source.presentation?.tabs?.map((item) => ({
+    ...item,
+    count: visible.filter((issue) => source.presentation?.matchesTab?.(issue, item.id) ?? true).length
+  })) ?? [
     { id: 'all', label: '不限', count: visible.length },
     { id: 'active', label: '待推进', count: countIn((g) => g === 'unstarted' || g === 'started') },
     { id: 'backlog', label: '未规划', count: countIn((g) => g === 'backlog') }
@@ -1417,13 +1516,13 @@ function WorkItemsPageInner(): JSX.Element {
     for (const i of open) void store.updateIssue(i.id, { cycle: nextWeekKey() })
   }
 
-  const groups = buildGroups(tabbed, groupBy, orderBy, data.states, data.members, data.labels)
-  const filterCount = filters.priority.length + filters.stateGroup.length + filters.assigneeIds.length + filters.labelIds.length
-  const ident = project.id.replace(/^p-/, '').slice(0, 3).toUpperCase()
+  const groups = buildGroups(tabbed, groupBy, orderBy, data.states, data.members, data.labels, source)
+  const filterCount = filters.priority.length + filters.stateGroup.length + filters.assigneeIds.length + filters.labelIds.length + (source.presentation?.additionalFilterCount ?? 0)
+  const ident = (project?.id ?? '').replace(/^p-/, '').slice(0, 3).toUpperCase()
 
   // 周期概览条：本周有任务显示进度与完成分布；空周给出「一键排入本周」引导
   let cycleOverview: JSX.Element | null = null
-  if (groupBy === 'cycle') {
+  if (groupBy === 'cycle' && source.kind === 'native') {
     const weekIssues = tabbed.filter((i) => i.cycle === thisWeek)
     const unplanned = tabbed.filter((i) => {
       if (i.cycle) return false
@@ -1513,6 +1612,9 @@ function WorkItemsPageInner(): JSX.Element {
         groupBy={groupBy}
         ident={ident}
         onMoveToState={(stateId, issueId) => {
+          if (source.kind !== 'native') {
+            return
+          }
           // 拖到目标状态列 = 提供该状态的工作流入口（复制受控命令）；
           // 不再伪装本地改状态——落盘白名单会静默回退（F01）。
           const flow = stateWorkflow(issueId, stateId)
@@ -1539,7 +1641,7 @@ function WorkItemsPageInner(): JSX.Element {
   return (
     <PageLayout variant={PAGE_LAYOUTS.tasks}>
       <PageHeader className="my-work-items-header">
-        <h1 className="shrink-0 text-my-md font-semibold text-my-primary">{workItemsView === 'iterations' ? '迭代' : '全部'}</h1>
+        <h1 className="shrink-0 text-my-md font-semibold text-my-primary">{source.presentation?.title ?? (workItemsView === 'iterations' ? '迭代' : '全部')}</h1>
         <Tabs tabs={tabs} active={tab} onChange={setTab} />
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
           {/* 布局切换器 */}
@@ -1627,6 +1729,7 @@ function WorkItemsPageInner(): JSX.Element {
                     ))}
                   </>
                 )}
+                {source.presentation?.filterContent}
                 {filterCount > 0 && (
                   <div className="mt-1 border-t border-my-line pt-1">
                     <DropdownItem onClick={() => store.clearFilters()}>清除筛选</DropdownItem>
@@ -1635,7 +1738,7 @@ function WorkItemsPageInner(): JSX.Element {
               </>
             )}
           </Dropdown>
-          {groupBy === 'cycle' && (
+          {groupBy === 'cycle' && source.kind === 'native' && (
             <Tooltip label="当前周未完结项移入下一周">
               <Button variant="neutral" onClick={carryOver}>
                 结转未完成
@@ -1647,7 +1750,7 @@ function WorkItemsPageInner(): JSX.Element {
             width={230}
             align="right"
             trigger={({ toggle }) => (
-              <Button variant="neutral" onClick={toggle}>
+              <Button variant="neutral" onClick={toggle} disabled={!source.capabilities.saveView} title={!source.capabilities.saveView ? '当前范围或分组不支持保存视图' : undefined}>
                 <Bookmark size={13} className="text-my-icon-secondary" />
                 存为视图
               </Button>
@@ -1693,7 +1796,7 @@ function WorkItemsPageInner(): JSX.Element {
                     selected={groupBy === o.id}
                     onClick={() => store.setGroupBy(o.id)}
                   >
-                    {o.label}
+                    {o.id === 'cycle' && source.presentation?.cycleMode === 'version' ? '版本' : o.id === 'package' && source.kind === 'collaboration' ? '专项' : o.label}
                   </DropdownItem>
                 ))}
                 <DropdownHeader>排序</DropdownHeader>
@@ -1722,7 +1825,7 @@ function WorkItemsPageInner(): JSX.Element {
             )}
           </Dropdown>
           {/* 主按钮 */}
-          <Button variant="primary" onClick={() => store.setCreateIssueOpen(true)}>
+          <Button variant="primary" disabled={!source.capabilities.create} onClick={() => store.setCreateIssueOpen(true)}>
             <Plus size={13} />
             新建任务
           </Button>
@@ -1735,8 +1838,21 @@ function WorkItemsPageInner(): JSX.Element {
   )
 }
 
-export function WorkItemsPage(): JSX.Element {
-  return <WorkItemsPageInner />
+function NativeWorkItemsPage(): JSX.Element {
+  const store = useMy()
+  const source: WorkItemsSource = {
+    key: store.projectRoot ?? 'native-preview',
+    kind: 'native',
+    store,
+    capabilities: { editableFields: ['priority', 'assigneeId', 'cycle'], create: true, favorites: true, saveView: true }
+  }
+  return <WorkItemsProvider value={source}><WorkItemsPageInner /></WorkItemsProvider>
+}
+
+export function WorkItemsPage({ source }: { source?: WorkItemsSource } = {}): JSX.Element {
+  return source
+    ? <WorkItemsProvider key={source.key} value={source}><WorkItemsPageInner /></WorkItemsProvider>
+    : <NativeWorkItemsPage />
 }
 
 export default WorkItemsPage

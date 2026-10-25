@@ -203,7 +203,7 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
       }
       transient.signal.addEventListener('abort', abort, { once: true })
     }
-    const authorization = method === 'gitlab.workspace.authorizeWrites' || method === 'dingtalk.workspace.authorizeAccount' || legacy?.success && legacy.data.operation === 'authorize'
+    const authorization = method === 'gitlab.workspace.authorizeWrites' || method === 'dingtalk.workspace.authorizeAccount' || legacy?.success && (legacy.data.operation === 'authorize' || legacy.data.operation === 'teamGitlabConnect')
     const timeoutMs = transient ? providerReadTimeout(transient.method) : authorization ? PROVIDER_READ_LIMITS.authorizationMs : method === 'runtime.setup' ? 650_000 : method === 'runtime.probe' ? 30_000 : method === 'runtime.new' || method === 'runtime.resume' || method === 'runtime.recover' ? 50_000 : 60_000
     // Scope/authorization and bulk upload can yield while a rebuild publishes.
     // Revalidate immediately before the actual feature request, without replay.

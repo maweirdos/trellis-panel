@@ -3,7 +3,7 @@ import { TeamServiceError } from './errors'
 import type { StoreOperation, StoreOptions, StoreRequest, StoreResponse } from './store-types'
 
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; bytes: number; timer: ReturnType<typeof setTimeout>; expired: boolean; operation: StoreOperation }
-const readOnlyOperations = new Set<StoreOperation>(['health', 'authenticate', 'people', 'teams', 'teamMembers', 'projects', 'projectMembers', 'materials', 'versions', 'document', 'feedback', 'events', 'command', 'pairing', 'pairingStatus', 'devices', 'collaborationList', 'collaborationGet', 'collaborationHistory', 'collaborationReplies', 'collaborationReports', 'collaborationReanchor'])
+const readOnlyOperations = new Set<StoreOperation>(['health', 'authenticate', 'people', 'teams', 'teamMembers', 'projects', 'projectMembers', 'materials', 'versions', 'document', 'feedback', 'events', 'command', 'pairing', 'pairingStatus', 'devices', 'collaborationList', 'collaborationGet', 'collaborationHistory', 'collaborationReplies', 'collaborationReports', 'collaborationReanchor', 'invitations', 'inspectInvitation', 'identity', 'hifoxSnapshot', 'localCredential'])
 export class TeamStore {
   private readonly worker: Worker
   private readonly pending = new Map<number, Pending>()
@@ -11,6 +11,7 @@ export class TeamStore {
   private pendingBytes = 0
   private failed = false
   private readonly exited: Promise<void>
+  private closing = false
   private closePromise: Promise<void> | null = null
   private constructor(options: StoreOptions) {
     this.worker = new Worker(new URL('./store-worker.mjs', import.meta.url), { workerData: options })
@@ -46,7 +47,7 @@ export class TeamStore {
     this.pending.clear(); this.pendingBytes = 0
   }
   async call<T = unknown>(operation: StoreOperation, input: unknown): Promise<T> {
-    if (this.failed || (this.closePromise && operation !== 'close')) throw new TeamServiceError('STORE_UNAVAILABLE', 'Team writer is unavailable', 503)
+    if (this.failed || (this.closing && operation !== 'close')) throw new TeamServiceError('STORE_UNAVAILABLE', 'Team writer is unavailable', 503)
     const bytes = Buffer.byteLength(JSON.stringify({ operation, input }))
     if (bytes > 2 * 1024 * 1024 || this.pending.size >= 64 || this.pendingBytes + bytes > 8 * 1024 * 1024) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Team writer queue is full; retain the same command identity', 503)
     const id = ++this.nextId
@@ -65,8 +66,12 @@ export class TeamStore {
   }
   async close(): Promise<void> {
     if (this.closePromise) return this.closePromise
-    this.closePromise = (async () => { await this.call('close', {}); await this.exited })()
-    return this.closePromise
+    this.closing = true
+    const attempt = (async () => { if (!this.failed) await this.call('close', {}); await this.exited })()
+    this.closePromise = attempt
+    // A rejected admission must not reopen the store or permanently poison cleanup retries.
+    void attempt.catch(() => { if (this.closePromise === attempt) this.closePromise = null })
+    return attempt
   }
   async backup(destination: string): Promise<{ destination: string; blobCount: number; instanceId: string; epoch: string }> { return this.call('backup', { destination }) }
 }

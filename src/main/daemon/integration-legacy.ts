@@ -8,6 +8,8 @@ import { integrationRegistry } from '../services/integrations/providers'
 import * as service from '../services/integrations/service'
 import { IntegrationError } from '../services/integrations/types'
 import type { DaemonWorkspaceScope } from './workspace-scope'
+import type { ProcessOwner } from '../../shared/daemon'
+import { createTeamGitlabAuthorizations } from './team-gitlab'
 
 type Result = z.infer<typeof legacyIntegrationResultSchema>
 
@@ -15,11 +17,12 @@ type Result = z.infer<typeof legacyIntegrationResultSchema>
  * Main composition must invoke dispatch inside its authenticated scope.run(...).
  * This adapter cannot grant a workspace or install another persistence owner. */
 export function createLegacyIntegrationActions(scope: DaemonWorkspaceScope): {
-  dispatch(raw: unknown, signal?: AbortSignal): Promise<Result>
+  dispatch(raw: unknown, signal?: AbortSignal, actor?: ProcessOwner): Promise<Result>
   shutdown(): void
 } {
   const reads = new Map<string, AbortController>()
   const authorizations = new Map<string, AbortController>()
+  const teamGitlab = createTeamGitlabAuthorizations()
   // Cancellation can arrive on a separate pipe while the original bulk upload
   // is still pending. Retain that fact so late admission cannot revive it.
   const cancelled = new Map<string, number>()
@@ -51,7 +54,13 @@ export function createLegacyIntegrationActions(scope: DaemonWorkspaceScope): {
       return await action(current)
     } finally { if (active.get(key) === controller) active.delete(key) }
   }
-  async function execute(request: LegacyIntegrationRequest, signal?: AbortSignal): Promise<unknown> {
+  async function execute(request: LegacyIntegrationRequest, signal?: AbortSignal, actor?: ProcessOwner): Promise<unknown> {
+    if (request.operation === 'teamGitlabConnect' || request.operation === 'teamGitlabCheck' || request.operation === 'teamGitlabConfirm') {
+      if (!actor) throw new IntegrationError('团队 GitLab 授权缺少已认证的原生进程', 'denied')
+      if (request.operation === 'teamGitlabConnect') return cancellable(request, 'auth', request.input.requestId, signal, current => teamGitlab.connect(actor, request.ownerId, request.input, current))
+      if (request.operation === 'teamGitlabCheck') return teamGitlab.check(actor, request.ownerId, request.input.requestId)
+      return teamGitlab.confirm(actor, request.ownerId, request.input.requestId, request.input.challengeId)
+    }
     switch (request.operation) {
       case 'cancelAuthorization': return cancel(keyFor(request.ownerId, 'auth', request.input.requestId), authorizations)
       case 'cancelRead': return cancel(keyFor(request.ownerId, 'read', request.input.requestId), reads)
@@ -98,7 +107,7 @@ export function createLegacyIntegrationActions(scope: DaemonWorkspaceScope): {
     }
   }
   return {
-    async dispatch(raw, signal) {
+    async dispatch(raw, signal, actor) {
       const parsed = legacyIntegrationRequestSchema.safeParse(raw)
       if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '集成参数无效')
       const request = parsed.data
@@ -111,7 +120,7 @@ export function createLegacyIntegrationActions(scope: DaemonWorkspaceScope): {
       if (grant && 'expectedRoot' in request.input) request.input.expectedRoot = grant.root
       if (signal?.aborted) return ipcFail(IpcErrorCode.Denied, '请求已取消或超时')
       try {
-        const result = await execute(request, signal)
+        const result = await execute(request, signal, actor)
         if (grant) scope.assert(grant)
         const data = legacyIntegrationResults[request.operation].safeParse(result)
         if (!data.success) return ipcFail(IpcErrorCode.Upstream, '集成返回数据无效，请检查原操作结果后重试')

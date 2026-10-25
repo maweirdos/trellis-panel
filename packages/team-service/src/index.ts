@@ -15,7 +15,7 @@ import { TEAM_MAX_RESPONSE_BYTES } from '../../../src/shared/team-platform'
 export type TeamService = { app: FastifyInstance; config: TeamServiceConfig; store: TeamStore; close(): Promise<void> }
 export async function createTeamService(input: TeamServiceConfigInput): Promise<TeamService> {
   const config = parseTeamConfig(input)
-  const store = await TeamStore.open({ dataDir: config.dataDir, issuer: config.oidc.issuer, bootstrapSubject: config.bootstrapSubject, sessionTtlMs: config.sessionTtlMs, pairingTtlMs: config.pairingTtlMs, onlineTtlMs: config.onlineTtlMs })
+  const store = await TeamStore.open({ dataDir: config.dataDir, issuer: config.oidc?.issuer ?? '', bootstrapSubject: config.bootstrapSubject, identityProvider: config.gitlabBaseUrl || config.gitlabIntegration ? 'gitlab' : 'oidc', sessionTtlMs: config.sessionTtlMs, pairingTtlMs: config.pairingTtlMs, onlineTtlMs: config.onlineTtlMs })
   const app = Fastify({ bodyLimit: 2 * 1024 * 1024, requestTimeout: 15_000, connectionTimeout: 10_000, keepAliveTimeout: 5000, logController: new LogController({ disableRequestLogging: true }), logger: config.logger ? { redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers.set-cookie'], level: 'info' } : false })
   app.decorateRequest('teamPrincipal', null)
   app.setErrorHandler((error, _request, reply) => {
@@ -51,6 +51,14 @@ export async function createTeamService(input: TeamServiceConfigInput): Promise<
     app.get('/health', async () => ({ ok: true, value: { service: 'trellis-team', contractVersion: 1 } }))
     app.get('/ready', async () => { await store.call('health', {}); return { ok: true, value: { service: 'trellis-team', storage: 'ready', contractVersion: 1 } } })
     await registerTeamRoutes(app, store, auth, config)
+    let ticking = false
+    const tickTimer = setInterval(() => {
+      if (ticking) return
+      ticking = true
+      void store.call('hifoxTick', {}).catch(() => { if (config.logger) app.log.warn('Scheduled workspace rules could not complete; the next tick will recheck authority') }).finally(() => { ticking = false })
+    }, 30_000)
+    tickTimer.unref()
+    app.addHook('preClose', async () => { clearInterval(tickTimer) })
     if (config.webDir) {
       if (!existsSync(join(config.webDir, 'index.html'))) throw new TeamServiceError('INVALID_CONFIG', 'TEAM_WEB_DIR must contain a built index.html')
       await app.register(serveStatic, { root: join(config.webDir, 'assets'), prefix: '/assets/', wildcard: true, decorateReply: true, dotfiles: 'deny', index: false })
@@ -66,3 +74,8 @@ export { parseTeamConfig, teamConfigFromEnvironment } from './config'
 export { restoreTeamBackup } from './restore'
 export * from '../../../src/shared/team-platform'
 export * from '../../../src/shared/team-collaboration'
+export * from '../../../src/shared/team-invitations'
+export * from '../../../src/shared/team-identity'
+export * from '../../../src/shared/team-auth'
+export * from '../../../src/shared/hifox-remote'
+export * from '../../../src/shared/creations'

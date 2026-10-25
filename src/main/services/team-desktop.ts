@@ -28,7 +28,7 @@ function schedule(): void {
 async function instance(): Promise<DesktopTeamService> {
   if (closed || admissionClosed) throw Object.assign(new Error('团队同步正在退出，原操作已保留'), { code: 'SERVICE_CLOSED' })
   if (!service) {
-    const created = DesktopTeamService.open({ dataDir: dataDirectory(), ...(!app.isPackaged && process.env.TRELLIS_TEAM_ALLOW_LOOPBACK_HTTP === '1' ? { allowLoopbackHttp: true } : {}) })
+    const created = DesktopTeamService.open({ dataDir: dataDirectory(), allowLoopbackHttp: true })
     service = created
     void created.then(schedule).catch(() => { if (service === created) service = null })
   }
