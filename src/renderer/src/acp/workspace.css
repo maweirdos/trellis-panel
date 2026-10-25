@@ -394,3 +394,9 @@
 .acp-runtime-more-toggle:hover { background: var(--my-bg-layer-transparent-hover); }
 .acp-runtime-manage { padding: var(--my-space-10) var(--my-space-6) var(--my-space-6); }
 .acp-detail-row-stack { flex-direction: column; align-items: stretch; gap: var(--my-space-8); }
+
+.acp-handoff-dialog { display: flex; flex-direction: column; max-height: var(--my-modal-max-height); min-height: 0; color: var(--my-txt-primary); }
+.acp-handoff-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.acp-handoff-context.my-input { display: block; width: 100%; min-height: calc(var(--my-space-40) * 4); max-height: 40vh; resize: vertical; line-height: var(--my-line-document); }
+.acp-handoff-context.my-input:focus { border-color: var(--my-border-accent-strong); }
+.acp-handoff-lineage { margin-bottom: var(--my-space-20); overflow-wrap: anywhere; }

@@ -23,7 +23,7 @@ import { DINGTALK_DAEMON } from '../../../shared/dingtalk-integration'
  * methods, not feature operations that can bypass GUI admission closure. Literal
  * provider names come from their schema-paired native contracts. */
 const cleanupMethods: readonly DaemonMethod[] = [
-  'runtime.cancel', 'runtime.end', 'runtime.permission', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision',
+  'runtime.cancel', 'runtime.end', 'runtime.handoffCancel', 'runtime.permission', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision',
   JIRA_DAEMON.cancelRead, JIRA_DAEMON.cancel, GITLAB_DAEMON.cancelJob, DINGTALK_DAEMON.cancelExecution
 ]
 

@@ -1456,6 +1456,10 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   acpHistoryEvents: (sessionId: string, input?: { before?: string; after?: string; limit?: number }) => Promise<import('./acp-history').AcpHistoryEventPage | IpcFail>
   acpHistoryRetry: (sessionId: string) => Promise<{ ok: true; historyPersistence: import('./acp-history').AcpHistoryPersistence } | IpcFail>
   acpSessionNew: (input: { agentId: string; profileId?: string; taskDir?: string }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
+  acpSessionHandoffPreview: (sessionId: string, input: import('./acp-handoff').AcpHandoffPreviewInput) => Promise<import('./acp-handoff').AcpHandoffPreviewResult | IpcFail>
+  acpSessionHandoffCreate: (sessionId: string, input: import('./acp-handoff').AcpHandoffCreateInput) => Promise<import('./acp-handoff').AcpHandoffOperationResult | IpcFail>
+  acpSessionHandoffStatus: (sessionId: string, operationId: string) => Promise<import('./acp-handoff').AcpHandoffOperationResult | IpcFail>
+  acpSessionHandoffCancel: (sessionId: string, input: import('./acp-handoff').AcpHandoffCancelInput) => Promise<import('./acp-handoff').AcpHandoffOperationResult | IpcFail>
   acpSessionPrompt: (sessionId: string, text: string, options?: AcpPromptOptions) => Promise<AcpPromptResult>
   acpSessionBindTask: (sessionId: string, input: AcpBindTaskInput) => Promise<{ ok: boolean; error?: string; code?: string; session?: AcpSessionRecord }>
   acpSessionCancel: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
@@ -1955,6 +1959,8 @@ export interface AcpSessionMeta {
   turnId?: string
   cwd?: string
   profileSnapshot?: AcpAgentProfile
+  handoff?: import('./acp-handoff').AcpHandoffOrigin
+  handoffTargets?: import('./acp-handoff').AcpHandoffTargetLink[]
   runtimeSnapshot?: AcpAgentConfig
   startup?: AcpStartupObservation[]
   historyKind?: 'live' | 'resumable' | 'transcript' | 'legacy'

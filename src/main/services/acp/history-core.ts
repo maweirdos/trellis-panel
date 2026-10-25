@@ -7,6 +7,7 @@ import type { AcpHistoryCoverage, AcpHistoryDiagnostic, AcpHistoryEventPage, Acp
 import type { AcpConversationPreview } from '../../../shared/acp-conversation-preview'
 import { historicalEvent, HistoryTurnBoundaryError, selectHistoryTurns, type HistoryEventMetadata } from './history-turns'
 import { applySessionPreferences, compareHistorySummaries, matchesHistorySummary, readSessionPreferences, type SessionPreferences } from './session-preferences'
+import { HandoffHistoryError, readHandoffArchive, type HandoffArchive } from './handoff-history'
 
 const DB_VERSION = 1
 const SNAPSHOT_TTL = 5 * 60_000
@@ -247,6 +248,12 @@ export class AcpHistoryCore {
   session(root: string, sessionId: string): AcpHistorySummary | null {
     const row = this.db.prepare('SELECT * FROM sessions WHERE root=? AND sessionId=?').get(root, sessionId) as SessionRow | undefined
     return row ? this.summary(row) : null
+  }
+  handoff(root: string, sessionId: string, byteLimit: number): HandoffArchive | null {
+    const session = this.session(root, sessionId)
+    if (!session) return null
+    try { return readHandoffArchive(this.db, root, session, byteLimit) }
+    catch (error) { if (error instanceof HandoffHistoryError) throw new HistoryCursorError(error.message); throw error }
   }
   private encode(value: Record<string, unknown>): string { return Buffer.from(JSON.stringify({ epoch: this.epoch, ...value })).toString('base64url') }
   private decode(cursor: string): Record<string, unknown> {

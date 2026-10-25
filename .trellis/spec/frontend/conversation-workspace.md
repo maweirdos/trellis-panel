@@ -490,3 +490,27 @@ receipt. Label prepared, sent and not_sent as transport facts, never loaded,
 applied or compliant. Connection timings are a separate collapsed disclosure;
 require the current generation and show only measured duration/status fields.
 Do not add artificial stage progress or treat a skipped stage as zero-time work.
+
+### Cross-Runtime continuation
+
+Conversation More exposes `用另一个 Runtime 接续` through the shared Modal and
+Runtime controls. Apply [the handoff contract](../backend/runtime-handoff.md).
+Require an idle, saved source and show an actionable reason when unavailable.
+Preview source/checkpoint, target, cwd, editable context and actual omissions.
+If `latestTurnIncluded=false`, keep a visible warning and require an edited
+current-state summary. State that attachments and tool bodies remain in the
+source; users can supply key results and re-add needed images.
+
+Keep the pending operation and context scoped to root/source. Timeouts and
+navigation do not mean cancellation: retain the exact operation ID for status
+checks/retry. Root, selection, interaction and connection changes fence late
+responses. Acknowledged target readiness must remain navigable when the source
+is subsequently archived. Prepared and sent are distinct visible states.
+
+Show bidirectional source/target navigation, including archived or unloaded
+sources through direct lookup. Opening a source preserves its original history;
+another Runtime continuation creates a new branch. Block failed, cancelled or
+uncertain targets from silently resuming normal execution; expose status and
+owned cancellation/recovery. Keep each conversation's text/image draft on
+failed admission, cancellation, A/B switching and background activity. Verify
+settled Modal contrast, keyboard focus/Escape and narrow/light/dark layouts.

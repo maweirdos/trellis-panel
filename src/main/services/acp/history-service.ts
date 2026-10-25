@@ -7,6 +7,7 @@ import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import { acpHistoryEventsInputSchema, acpHistoryListInputSchema, type AcpHistoryEventPage, type AcpHistoryListResult, type AcpHistoryPersistence, type AcpHistorySummary } from '../../../shared/acp-history'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import type { HistoryBatchItem } from './history-core'
+import type { HandoffArchive } from './handoff-history'
 import type { HistoryOperation, HistoryWorkerRequest, HistoryWorkerResponse } from './history-worker'
 
 interface PendingRequest { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
@@ -193,6 +194,16 @@ export async function readAcpHistoryEvents(root: string, sessionId: string, inpu
     await ensureAcpHistory(); await flushAcpHistory().catch(() => {})
     const page = await request<AcpHistoryEventPage | null>({ op: 'events', root: canonicalDirectory(root), sessionId, input: parsed.data ?? {} })
     return page ?? ipcFail(IpcErrorCode.NotFound, '当前项目没有此会话')
+  } catch (error) { return fail(error) }
+}
+/** Handoffs require acknowledged SQLite history; snapshot fallback is insufficient. */
+export async function readAcpHandoffArchive(root: string, sessionId: string, byteLimit: number): Promise<HandoffArchive | IpcFail> {
+  if (!Number.isSafeInteger(byteLimit) || byteLimit < 512 || byteLimit > 32 * 1024) return ipcFail(IpcErrorCode.InvalidArg, '交接上下文限额无效')
+  try {
+    await ensureAcpHistory(); await flushAcpHistory()
+    if (historyPersistence(sessionId).state !== 'saved') return ipcFail(IpcErrorCode.Conflict, '源会话历史尚未确认保存')
+    return await request<HandoffArchive | null>({ op: 'handoff', root: canonicalDirectory(root), sessionId, byteLimit })
+      ?? ipcFail(IpcErrorCode.NotFound, '当前项目没有此源会话历史')
   } catch (error) { return fail(error) }
 }
 export async function retryAcpHistory(): Promise<void> { await flushAcpHistory() }

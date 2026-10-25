@@ -83,7 +83,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       scope = new DaemonWorkspaceScope(repository, assertOwner)
       legacy = createLegacyIntegrationActions(scope)
       // Authority becomes available only after all adapters are installed below.
-      runtime = createDaemonRuntime({ epoch: repository.epoch, directory: context.directory, assertOwner, assertAuthority: assertReady, assertAdmission, assertWorkspaceAdmission(root, method) { assertAdmission(); const grant = scope?.current(); if (grant) scope?.assert(grant); if ((rollbackRoots.size || changingRoots.size) && !['runtime.cancel', 'runtime.end', 'runtime.workflow.stop'].includes(method)) throw new DaemonError('E_BUSY', 'Native workspace ownership change has closed execution admission.') } })
+      runtime = createDaemonRuntime({ epoch: repository.epoch, directory: context.directory, assertOwner, assertAuthority: assertReady, assertAdmission, assertWorkspaceAdmission(root, method) { assertAdmission(); const grant = scope?.current(); if (grant) scope?.assert(grant); if ((rollbackRoots.size || changingRoots.size) && !['runtime.cancel', 'runtime.end', 'runtime.handoffCancel', 'runtime.workflow.stop'].includes(method)) throw new DaemonError('E_BUSY', 'Native workspace ownership change has closed execution admission.') } })
       disposeRuntimeObserver = runtime.observe(event => { for (const observer of runtimeObservers) { try { observer({ root: event.root }) } catch { /* An observer never owns execution. */ } } })
       providerCommands = new RuntimeCommands(join(context.directory, 'provider-commands'), repository.epoch, assertOwner)
       providers = new ProviderDomain(runtime, providerCommands, cancellation)

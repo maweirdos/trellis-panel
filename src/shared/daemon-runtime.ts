@@ -5,6 +5,7 @@ import { workflowPreviewInputSchema, workflowStartInputSchema, workflowSnapshotI
 import { workflowRevisionPreviewInputSchema, workflowRevisionAcceptInputSchema, workflowRevisionStatusInputSchema } from './workflow-revisions'
 import { workflowWorkspaceRecoveryInputSchema, workflowRecoveryArtifactInputSchema } from './workflow-recovery'
 import { knowledgeRuntimeBody } from './daemon-runtime-knowledge'
+import { acpHandoffPreviewInputSchema, acpHandoffCreateInputSchema, acpHandoffCancelInputSchema } from './acp-handoff'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
@@ -34,6 +35,10 @@ export const runtimeBodies = {
   'runtime.historyUpdate': session.extend({ input: acpHistoryUpdateInputSchema }).strict(),
   'runtime.historyRetry': session,
   'runtime.new': z.object({ input: z.unknown() }).strict(),
+  'runtime.handoffPreview': session.extend({ input: acpHandoffPreviewInputSchema }).strict(),
+  'runtime.handoffCreate': session.extend({ input: acpHandoffCreateInputSchema }).strict(),
+  'runtime.handoffStatus': session.extend({ operationId: z.string().uuid() }).strict(),
+  'runtime.handoffCancel': session.extend({ input: acpHandoffCancelInputSchema }).strict(),
   'runtime.prompt': session.extend({ text: z.string().max(2 * 1024 * 1024), options: z.unknown().optional() }).strict(),
   'runtime.cancel': session, 'runtime.end': session, 'runtime.resume': session,
   'runtime.configure': session.extend({ input: z.unknown() }).strict(),
@@ -90,7 +95,7 @@ export type RuntimeRequest<M extends RuntimeMethod> = z.input<(typeof runtimeReq
 export type RuntimeResult<M extends RuntimeMethod> = z.infer<(typeof runtimeResults)[M]>
 export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
   'runtime.knowledge',
-  'runtime.new', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
+  'runtime.new', 'runtime.handoffCreate', 'runtime.handoffCancel', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
   'runtime.profileSave', 'runtime.profileDelete', 'runtime.historyUpdate', 'runtime.historyRetry', 'runtime.setup', 'runtime.probe',
   'runtime.workflow.preview', 'runtime.workflow.start', 'runtime.workflow.stop', 'runtime.workflow.previewRevision', 'runtime.workflow.acceptRevision', 'runtime.workflow.cancelRevision'
 ]

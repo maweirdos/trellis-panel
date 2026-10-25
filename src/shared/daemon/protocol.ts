@@ -80,7 +80,7 @@ export type DaemonMethod = keyof typeof daemonPayloads
  * grant, command-ID and payload checks. They do not bypass authorization. */
 export const DAEMON_CONTROL_METHODS: readonly DaemonMethod[] = [
   'daemon.status', 'daemon.stop', 'workspace.get', 'provider.read.cancel', 'jobs.cancel',
-  'runtime.cancel', 'runtime.end', 'runtime.permission',
+  'runtime.cancel', 'runtime.end', 'runtime.handoffCancel', 'runtime.permission',
   'runtime.workflow.stop', 'runtime.workflow.cancelRevision',
   'jira.workspace.cancelRead', 'jira.workspace.cancel',
   'gitlab.workspace.cancelJob', 'dingtalk.workspace.cancelExecution'

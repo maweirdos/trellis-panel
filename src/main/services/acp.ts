@@ -16,12 +16,13 @@ import type { WorkflowPreparedPrompt } from './workflow-runtime/types'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
 import type { AcpAgentConfig, AcpAgentProfile, AcpBindTaskInput, AcpConfigureInput, AcpMaterialChange, AcpPermissionPayload, AcpPromptOptions, AcpSessionRecord, AcpSessionStatus, TimelineEvent, TimelineEventKind } from '../../shared/types'
 import type { AcpRecoverModelInput, AcpRecoverModelResult } from '../../shared/acp-recovery'
+import type { AcpHandoffOrigin, AcpHandoffOperationResult, AcpHandoffPreviewResult } from '../../shared/acp-handoff'
 import { acpDataPath, canonicalDirectory, persistRecord, readProfiles, readRecords, saveProfiles } from './acp/metadata'
 import { bindTaskSchema, configureSchema, errorMessage, idSchema, newSessionSchema, objectValue, profileSchema, promptOptionsSchema } from './acp/types'
 import { activeTaskExists, preparePromptMaterials, sourceBelongs } from './acp/materials'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { launchArgv, resolveAcpRuntimeLaunch, NATIVE_TOOLS_DIAGNOSTIC } from './acp/setup'
-import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, listAcpHistory, onHistoryPersistence, readAcpHistoryEvents, readAcpHistorySession, retryAcpHistory, stopAcpHistory } from './acp/history-service'
+import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, listAcpHistory, onHistoryPersistence, readAcpHandoffArchive, readAcpHistoryEvents, readAcpHistorySession, retryAcpHistory, stopAcpHistory } from './acp/history-service'
 import { acpHistoryUpdateInputSchema, type AcpHistoryEventPage, type AcpHistoryListResult, type AcpHistorySummary, type AcpHistoryUpdateResult } from '../../shared/acp-history'
 import { snapshotHistoryEvents, snapshotHistoryList, snapshotHistorySession } from './acp/history-fallback'
 import { applySessionPreferences, readSessionPreferences, updateSessionPreferences } from './acp/session-preferences'
@@ -31,6 +32,8 @@ import { readConnectionTimings } from './acp/connection-timings'
 import { zcodeStartupCacheDirectory } from './acp/zcode-startup'
 import { upgradeLegacyKnowledgePolicy } from './acp/legacy-knowledge-policy'
 import { knowledgeMcpBridge, type KnowledgeMcpConnection } from './knowledge-mcp'
+import { AcpHandoffs, portableSourceReferences, type HandoffSource, type HandoffTargetPlan, type PreparedHandoff } from './acp/handoff'
+import { handoffDigest } from './acp/handoff-store'
 export { listAcpAgents, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath } from './acp/setup'
 export { testAcpRuntimeConnection } from './acp/connection-probe'
 export { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, retryAcpHistory, stopAcpHistory } from './acp/history-service'
@@ -51,10 +54,141 @@ type ResumeResult = { ok: true; sessionId: string } | IpcFail
 const resumeRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
 const recoveryRequests = new Map<string, { root: string; operation: ModelRecoveryOperation; promise: Promise<AcpRecoverModelResult> }>()
 const creatingRequests = new Set<Promise<{ ok: true; sessionId: string } | IpcFail>>()
+const handoffRequests = new Set<Promise<AcpHandoffOperationResult | IpcFail>>()
 const leases = new Map<string, Set<ActiveSession>>()
 let shuttingDown = false
 let eventSeq = 0
 let lastWorkflowObserverWarningAt = 0
+
+function directoryIdentity(root: string): string {
+  const canonical = canonicalDirectory(root)
+  const stat = statSync(canonical)
+  if (!stat.isDirectory()) throw new Error('项目或工作目录不可用')
+  return JSON.stringify([canonical, stat.dev, stat.ino])
+}
+function handoffMetadata(root: string, id: string): AcpSessionRecord | undefined {
+  const meta = sessions.get(id)?.meta ?? readRecords().find(record => record.sessionId === id)
+  return meta && belongs(root, meta) ? meta : undefined
+}
+function assertHandoffSourceIdle(root: string, id: string, allowArchived: boolean): AcpSessionRecord {
+  const meta = handoffMetadata(root, id)
+  if (!meta || meta.schemaVersion !== 2) throw new Error('当前项目没有可接续的现代源会话')
+  const live = sessions.get(id)
+  if (resuming.has(id) || resumeRequests.has(id) || recoveryRequests.has(id) || live && (live.accepting || live.turn || live.closing || live.settling
+    || live.pendingPermissions.size || live.backgroundWork || live.uncertainWork || live.cleanupRequired || live.leaseHeld
+    || !['ready', 'disconnected', 'closed'].includes(live.meta.status))) throw new Error('源会话仍有回合、连接、权限、后台工具或清理操作，请先完成后再接续')
+  const presentation = applySessionPreferences(meta, readSessionPreferences(acpDataPath(), root))
+  if (!allowArchived && presentation.archivedAt !== undefined) throw new Error('源会话已归档，请先恢复或取消原接续')
+  return presentation
+}
+async function captureHandoffSource(root: string, id: string, allowArchived: boolean): Promise<HandoffSource> {
+  const initial = assertHandoffSourceIdle(root, id, allowArchived)
+  const workflow = await import('./workflow-desktop')
+  if (await workflow.isManagedWorkflowOrigin(root, id, undefined, true)) throw new Error('托管工作流会话不能通过普通 Runtime 接续迁移')
+  const headerBytes = Buffer.byteLength([initial.projectRoot, initial.cwd ?? initial.projectRoot, initial.title ?? initial.agentName,
+    initial.taskDir ?? '', ...portableSourceReferences(initial)].join('\n')) + 4096
+  const archive = await readAcpHandoffArchive(root, id, Math.min(22 * 1024, 32 * 1024 - headerBytes))
+  if ('ok' in archive) throw new Error(archive.error)
+  const meta = assertHandoffSourceIdle(root, id, allowArchived)
+  const context = prepareAgentContext(root, 'handoff-source', meta.profileSnapshot)
+  const { events: _cache, ...metadata } = meta
+  return { meta: { ...metadata, events: [] }, archive,
+    fence: handoffDigest({ root: directoryIdentity(root), cwd: directoryIdentity(meta.cwd ?? meta.projectRoot),
+      sessionId: id, backendSessionId: meta.backendSessionId, agentSessionId: meta.agentSessionId,
+      connectionGeneration: meta.connectionGeneration, turnId: meta.turnId, runtime: meta.runtimeSnapshot,
+      taskDir: meta.taskDir, title: meta.title, profileId: meta.profileSnapshot?.id,
+      contextRevision: context?.revision, materialSnapshot: meta.materialSnapshot, checkpointSeq: archive.checkpointSeq,
+      checkpointEventId: archive.checkpointEventId, archiveContext: handoffDigest(archive.context),
+      includedMessages: archive.includedMessages, latestTurnIncluded: archive.latestTurnIncluded, omittedMessages: archive.omittedMessages,
+      attachments: archive.attachments, toolCalls: archive.toolCalls, coverage: archive.coverage }) }
+}
+function updateHandoffMetadata(root: string, id: string, update: (meta: AcpSessionRecord) => AcpSessionRecord): void {
+  const old = handoffMetadata(root, id)
+  if (!old) throw new Error('交接关联会话不可用，原历史已保留')
+  const next = update(old)
+  persistRecord(next)
+  const live = sessions.get(id)
+  if (live) { live.meta = next; setStatus(live, next.status, next.error) }
+  else archiveAcpEvent(next)
+}
+const acpHandoffs = new AcpHandoffs({
+  directory: () => acpDataPath(), canonical: canonicalDirectory, rootIdentity: directoryIdentity,
+  source: captureHandoffSource, metadata: handoffMetadata, updateMetadata: updateHandoffMetadata,
+  target: async runtimeId => {
+    const launch = await resolveAcpRuntimeLaunch(runtimeId)
+    if ('ok' in launch) throw new Error(launch.error)
+    return { ...launch, fingerprint: handoffDigest({ config: launch.config, argv: launch.argv,
+      files: launch.argv.map(path => { try { const stat = statSync(path); return stat.isFile() ? [canonicalDirectory(path), stat.dev, stat.ino, stat.size, stat.mtimeMs] : null } catch { return null } }) }) }
+  },
+  createTarget: async (root, id, source, plan, origin, assertCurrent, beforeNativeCreate) => {
+    const old = source.profileSnapshot
+    const profile: AcpAgentProfile | undefined = old ? { id: old.id, name: old.name, description: old.description,
+      instructions: old.instructions, skillPaths: old.skillPaths ? [...old.skillPaths] : undefined,
+      runtimeId: plan.config.id, maxTurnMinutes: 30, cwd: source.cwd ?? root } : undefined
+    prepareAgentContext(root, id, profile)?.assertCurrent()
+    const created = await newOwnedAcpSession(root, { agentId: plan.config.id, taskDir: source.taskDir },
+      { sessionId: id, profile, cwd: source.cwd ?? root, plan, origin, assertCurrent, beforeNativeCreate })
+    if (!created.ok) throw new Error(created.error)
+    const target = sessions.get(id)
+    if (!target) throw new Error('目标 Runtime 连接未创建')
+    await target.preparing
+    assertCurrent()
+    if (sessions.get(id) !== target || target.meta.status !== 'ready' || target.closing || target.disconnected || !target.handle
+      || target.handle.backendSessionId !== target.meta.backendSessionId) throw new Error(target.meta.error ?? '目标 Runtime 未确认就绪')
+    persistRecord(target.meta)
+    await flushAcpHistory()
+    return target.meta
+  },
+  verifyTarget: async (root, id, identity) => {
+    const meta = handoffMetadata(root, id)
+    if (!meta || meta.backendSessionId !== identity.backendSessionId || identity.agentSessionId && meta.agentSessionId !== identity.agentSessionId) return false
+    const live = sessions.get(id)
+    if (live && !live.closing && !live.disconnected && live.handle?.backendSessionId === identity.backendSessionId
+      && (live.meta.status === 'ready' || live.accepting || live.turn)) return true
+    if (!meta.canResume) return false
+    const record = await createFileSessionStore({ stateDir: acpDataPath('runtime-store') }).load(meta.acpxRecordId ?? id)
+    return record?.acpSessionId === identity.backendSessionId && (!identity.agentSessionId || record.agentSessionId === identity.agentSessionId)
+  },
+  stopTarget: async (root, id, operationId) => {
+    // Cleanup never starts/resumes a workspace or acquires a new native owner.
+    const target = sessions.get(id)
+    if (!target) return
+    if (!belongs(root, target.meta) || target.meta.handoff?.operationId !== operationId) throw new Error('目标连接不属于此交接操作，未执行停止')
+    const turn = target.turn
+    const stopped = await killOwned(target, 'Runtime 接续已取消，保留目标历史')
+    if (!stopped.ok) throw new Error(stopped.error)
+    if (turn) await turn.promptStarted.catch(() => {})
+  },
+  warning: (root, id, message) => { const live = sessions.get(id); if (live && belongs(root, live.meta)) emit(live, 'diagnostic', message); else process.emitWarning(message, { code: 'TRELLIS_ACP_HANDOFF' }) },
+  closing: () => shuttingDown
+})
+function handoffMutationConflict(root: string, id: string): IpcFail | undefined {
+  try {
+    const message = acpHandoffs.sourceConflict(root, id)
+    if (message) return ipcFail(IpcErrorCode.Conflict, message)
+    if (readSessionPreferences(acpDataPath(), root).sessions[id]?.archivedAt !== undefined) return ipcFail(IpcErrorCode.Conflict, '此会话已归档，内容尚未发送；请先恢复会话')
+  } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
+  return undefined
+}
+export function previewAcpSessionHandoff(root: string, id: string, input: unknown, isCurrent?: () => boolean): Promise<AcpHandoffPreviewResult | IpcFail> {
+  assertRuntimeExecutionHost()
+  return acpHandoffs.preview(root, id, input, isCurrent)
+}
+export function createAcpSessionHandoff(root: string, id: string, input: unknown, isCurrent?: () => boolean): Promise<AcpHandoffOperationResult | IpcFail> {
+  assertRuntimeExecutionHost()
+  const pending = acpHandoffs.create(root, id, input, isCurrent)
+  handoffRequests.add(pending)
+  void pending.finally(() => handoffRequests.delete(pending)).catch(() => {})
+  return pending
+}
+export function getAcpSessionHandoff(root: string, id: string, operationId: string): Promise<AcpHandoffOperationResult | IpcFail> {
+  assertRuntimeExecutionHost()
+  return acpHandoffs.status(root, id, operationId)
+}
+export function cancelAcpSessionHandoff(root: string, id: string, input: unknown): Promise<AcpHandoffOperationResult | IpcFail> {
+  assertRuntimeExecutionHost()
+  return acpHandoffs.cancel(root, id, input)
+}
 
 /** Optional managed observers cannot break native ACP/history or recursively emit. */
 function publishWorkflowObservation(publish: () => WorkflowObserverFailure[]): void {
@@ -398,6 +532,7 @@ export async function updateAcpHistorySession(root: string, id: string, input: u
   if (existing.session.sessionId !== id || !belongs(root, existing.session)) return ipcFail(IpcErrorCode.NotFound, '当前项目没有此会话')
   try {
     // Synchronous read/merge/atomic rename: another main-process edit cannot interleave.
+    if (parsed.data.archived !== undefined) acpHandoffs.noteHumanArchiveChange(root, id)
     const preferences = updateSessionPreferences(acpDataPath(), root, id, parsed.data)
     if (!isCurrent()) return ipcFail(IpcErrorCode.NoProject, '项目已切换')
     return { ok: true, version: 1, session: applySessionPreferences(existing.session, preferences) }
@@ -690,31 +825,42 @@ export function newAcpSession(projectRoot: string, input: unknown): Promise<{ ok
   void pending.finally(() => creatingRequests.delete(pending)).catch(() => {})
   return pending
 }
-async function newOwnedAcpSession(projectRoot: string, input: unknown): Promise<{ ok: true; sessionId: string } | IpcFail> {
+interface HandoffNewSession {
+  sessionId: string; profile?: AcpAgentProfile; cwd: string; plan: HandoffTargetPlan; origin: AcpHandoffOrigin
+  assertCurrent(): void; beforeNativeCreate(): void
+}
+async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession): Promise<{ ok: true; sessionId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const parsed = newSessionSchema.safeParse(input)
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, parsed.error.issues[0]?.message ?? '启动参数无效')
   if (shuttingDown) return ipcFail(IpcErrorCode.Conflict, '后台正在停止，未创建新会话')
   let reservation: symbol | undefined
+  let preparingTarget: ActiveSession | undefined
   try {
+    handoff?.assertCurrent()
     const { agentId, profileId, taskDir } = parsed.data
-    const profile = profileId ? readProfiles(projectRoot).find((item) => item.id === profileId) : undefined
+    const profile = handoff ? handoff.profile : profileId ? readProfiles(projectRoot).find((item) => item.id === profileId) : undefined
     if (profileId && !profile) return ipcFail(IpcErrorCode.NotFound, 'Agent 配置不存在')
-    const runtimeId = profile?.runtimeId ?? agentId
-    const launch = await resolveAcpRuntimeLaunch(runtimeId)
+    const runtimeId = handoff?.plan.config.id ?? profile?.runtimeId ?? agentId
+    const launch = handoff?.plan ?? await resolveAcpRuntimeLaunch(runtimeId)
     if ('ok' in launch) return launch
     const { config, argv } = launch
-    const cwd = profile?.cwd || projectRoot
+    const cwd = handoff?.cwd ?? (profile?.cwd || projectRoot)
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return ipcFail(IpcErrorCode.NotFound, '工作目录不可用')
     if (taskDir && !await activeTaskExists(projectRoot, taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '绑定任务不属于当前项目的活动任务目录或记录不可读')
     const slot = await reserveConnectionSlot()
     if (typeof slot !== 'symbol') return slot
     reservation = slot
-    const meta: AcpSessionRecord = { schemaVersion: 2, sessionId: `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,
+    handoff?.assertCurrent()
+    if (handoff && sessions.has(handoff.sessionId)) throw new Error('交接目标已拥有连接，未重复创建')
+    const meta: AcpSessionRecord = { schemaVersion: 2, sessionId: handoff?.sessionId ?? `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,
       projectRoot, cwd, taskDir, status: 'starting', startedAt: Date.now(), events: [], startup: [], connectionGeneration: randomUUID(),
-      profileSnapshot: profile, runtimeSnapshot: { id: config.id, name: config.name, command: config.command, enabled: config.enabled, launchKind: config.launchKind, executable: config.executable, args: config.args }, historyKind: 'live', canResume: false }
+      profileSnapshot: profile, handoff: handoff?.origin,
+      runtimeSnapshot: { id: config.id, name: config.name, command: config.command, enabled: config.enabled, launchKind: config.launchKind, executable: config.executable, args: config.args }, historyKind: 'live', canResume: false }
     const session = await createSessionRuntime(meta, config, argv)
+    preparingTarget = handoff ? session : undefined
+    handoff?.assertCurrent()
     if (shuttingDown) { session.knowledge?.revoke(); await session.runtime.shutdown(); return ipcFail(IpcErrorCode.Conflict, '后台正在停止，未创建新连接') }
     const conflict = acquire(session)
     if (conflict) { session.knowledge?.revoke(); await session.runtime.shutdown(); return conflict }
@@ -726,7 +872,9 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown): Promise<
     setStatus(session, 'starting')
     session.preparing = (async () => {
       try {
+        handoff?.beforeNativeCreate()
         session.handle = await session.runtime.ensureSession({ sessionKey: meta.sessionId, agent: runtimeId, cwd, mode: 'persistent' })
+        handoff?.assertCurrent()
         if (session.closing) { await session.runtime.shutdown(); return }
         await refreshSessionMetadata(session)
         captureConnectionTimings(session)
@@ -740,7 +888,14 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown): Promise<
       }
     })()
     return { ok: true, sessionId: meta.sessionId }
-  } catch (error) { return failure(error) }
+  } catch (error) {
+    if (preparingTarget) {
+      preparingTarget.knowledge?.revoke()
+      try { await preparingTarget.runtime.shutdown() }
+      catch (cleanup) { return failure(new Error(`${errorMessage(error)}；目标清理尚未确认：${errorMessage(cleanup)}`)) }
+    }
+    return failure(error)
+  }
   finally { if (reservation) connectionReservations.delete(reservation) }
 }
 
@@ -769,6 +924,8 @@ export async function bindAcpSessionTask(projectRoot: string, sessionId: string,
   assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
+  const handoffConflict = handoffMutationConflict(projectRoot, sessionId)
+  if (handoffConflict) return handoffConflict
   const parsed = bindTaskSchema.safeParse(input)
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '任务绑定参数无效')
   if (parsed.data.expectedConnectionGeneration !== session.meta.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '会话连接已改变，请重新选择')
@@ -790,8 +947,21 @@ export async function bindAcpSessionTask(projectRoot: string, sessionId: string,
 
 export async function promptAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt): Promise<{ ok: true; turnId: string } | IpcFail> {
   assertRuntimeExecutionHost()
+  const live = sessions.get(sessionId)
+  const mayRejectPrepared = live && belongs(projectRoot, live.meta) && !live.accepting && !live.turn && !live.closing
+  const result = await promptOwnedAcpSession(projectRoot, sessionId, text, options, isCurrent, projectGeneration, workflow)
+  if (!result.ok && mayRejectPrepared) {
+    try { acpHandoffs.admissionFailed(projectRoot, sessionId, result.error) }
+    catch (error) { return failure(new Error(`${result.error}；交接恢复失败：${errorMessage(error)}`)) }
+  }
+  return result
+}
+async function promptOwnedAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt): Promise<{ ok: true; turnId: string } | IpcFail> {
+  assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
+  const handoffConflict = handoffMutationConflict(projectRoot, sessionId)
+  if (handoffConflict) return handoffConflict
   if (session.accepting || session.turn || session.closing || (session.meta.status !== 'ready' && !(session.meta.status === 'disconnected' && session.meta.restorePending))) return ipcFail(IpcErrorCode.Conflict, `当前不能发送：${session.meta.status}`)
   if (typeof text !== 'string' || text.length > 200000) return ipcFail(IpcErrorCode.InvalidArg, '发送内容无效或过长')
   if (!session.handle) return ipcFail(IpcErrorCode.Conflict, '会话尚未准备好')
@@ -819,12 +989,14 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
   const nativeCommand = !workflow && images.length === 0 && sourceReferences.length === 0 && trimmed.startsWith('/') && session.nativeCommands.has(trimmed.slice(1).split(/\s/, 1)[0])
   let promptWritten = false
   let agentContext: PreparedAgentContext | undefined
+  let handoffContext: PreparedHandoff | undefined
   const ownerCurrent = (): boolean => isCurrent?.() !== false && sessions.get(sessionId) === session && session.meta.connectionGeneration === generation && session.meta.turnId === turnId && session.accepting && !session.closing && !shuttingDown && (!session.disconnected || session.meta.restorePending === true) && (session.meta.status === 'busy' || session.meta.status === 'awaiting_permission')
   const active = (): boolean => !abort.signal.aborted && ownerCurrent()
   const assertActive = (): void => {
     if (!active()) throw new Error('发送前项目或会话已改变；内容尚未发送')
     workflow?.assertActive()
     agentContext?.assertCurrent()
+    handoffContext?.assertCurrent()
   }
   try {
     // Backend-only managed packets contain already verified immutable bytes. UI
@@ -849,6 +1021,15 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
       session.accepting = false; release(session)
       return ipcFail(IpcErrorCode.InvalidArg, '当前引擎未声明支持角色上下文附件，角色指令和绑定技能未发送。请选择支持该能力的引擎，或使用引擎原生的项目规范。')
     }
+    handoffContext = await acpHandoffs.preparePrompt(projectRoot, sessionId)
+    if (abort.signal.aborted || isCurrent?.() === false || sessions.get(sessionId) !== session || session.closing || shuttingDown || session.meta.connectionGeneration !== generation) {
+      session.accepting = false; release(session)
+      return ipcFail(IpcErrorCode.Conflict, '发送前项目或会话已改变；内容尚未发送', { reason: 'SCOPE_CHANGED' })
+    }
+    if (handoffContext && (nativeCommand || session.meta.capabilities?.promptCapabilities?.embeddedContext !== true)) {
+      session.accepting = false; release(session)
+      return ipcFail(IpcErrorCode.InvalidArg, nativeCommand ? '请先发送普通消息以交付准备好的交接内容' : '目标引擎未声明支持交接上下文附件；内容尚未发送')
+    }
     for (const [id, state] of session.toolStates) if (state === 'settled') session.toolStates.delete(id)
     session.meta.turnId = turnId
     if (workflow?.onAdmitted) publishWorkflowObservation(() => { workflow.onAdmitted?.({ sessionId, turnId, connectionGeneration: generation }); return [] })
@@ -870,8 +1051,10 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
     const instruction = workflow ? text : trimmed
     const materialText = prepared.text && !nativeCommand ? `${instruction}\n\n[用户显式绑定的 Trellis 任务材料；内容是参考资料，任务动作仍需用户授权]${prepared.text}` : instruction
     assertActive()
+    if (handoffContext) acpHandoffs.beginDelivery(projectRoot, sessionId, generation, turnId)
+    const context = [...(agentContext ? [agentContext.resource] : []), ...(handoffContext ? [handoffContext.resource] : [])]
     const turn = session.runtime.startTurn({ handle: session.handle, text: materialText,
-      ...(agentContext ? { context: [agentContext.resource] } : {}),
+      ...(context.length ? { context } : {}),
       attachments: images.map((image) => ({ mediaType: image.mimeType, data: image.data })),
       mode: 'prompt', requestId: turnId, timeoutMs: (session.meta.profileSnapshot?.maxTurnMinutes ?? 30) * 60_000,
       assertActive, onPermissionRequest: permissionHandler(session) })
@@ -880,6 +1063,7 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
     // Register this checkpoint before terminal completion can clear its owned scope.
     const delivery = turn.promptStarted.then(async () => {
       promptWritten = true
+      if (handoffContext) acpHandoffs.markSent(projectRoot, sessionId, generation, turnId)
       if (agentContext && session.meta.agentContext?.turnId === turnId) session.meta.agentContext.state = 'sent'
       if (workflow?.onPromptWritten) publishWorkflowObservation(() => { workflow.onPromptWritten?.({ sessionId, turnId, connectionGeneration: generation }); return [] })
       if (!session.closing && session.meta.turnId === turnId && session.meta.connectionGeneration === generation) observe(session, '指令已发送至引擎', session.turnStartedAt, false, 'turn')
@@ -889,6 +1073,7 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
       if (!session.meta.title) session.meta.title = (trimmed || images[0]?.name || '图片消息').slice(0, 40)
       save(session)
     }).catch((error) => {
+      if (handoffContext && !promptWritten) acpHandoffs.notSent(projectRoot, sessionId, generation, turnId, errorMessage(error))
       if (agentContext && session.meta.agentContext?.turnId === turnId) session.meta.agentContext.state = 'not_sent'
       throw error
     })
@@ -935,6 +1120,7 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
     await delivery
     return { ok: true, turnId }
   } catch (error) {
+    if (handoffContext && !promptWritten) acpHandoffs.notSent(projectRoot, sessionId, generation, turnId, errorMessage(error))
     if (!promptWritten && agentContext && session.meta.agentContext?.turnId === turnId) session.meta.agentContext.state = 'not_sent'
     session.knowledge?.endTurn()
     session.accepting = false
@@ -1037,13 +1223,18 @@ export function resumeAcpSession(projectRoot: string, sessionId: string): Promis
   assertRuntimeExecutionHost()
   if (!projectRoot) return Promise.resolve(ipcFail(IpcErrorCode.NoProject, '未打开项目'))
   if (!idSchema.safeParse(sessionId).success) return Promise.resolve(ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效'))
+  const handoffConflict = handoffMutationConflict(projectRoot, sessionId)
+  if (handoffConflict) return Promise.resolve(handoffConflict)
   const root = canonicalDirectory(projectRoot)
   if (recoveryRequests.has(sessionId)) return Promise.resolve(ipcFail(IpcErrorCode.Conflict, '此会话正在验证模型，请等待当前请求完成'))
   const pending = resumeRequests.get(sessionId)
   if (pending) return pending.root !== root ? Promise.resolve(ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目'))
     : cancelledResumes.has(sessionId) ? Promise.resolve(ipcFail(IpcErrorCode.Conflict, '原连接正在停止，请等待完成后再发送')) : pending.promise
   cancelledResumes.delete(sessionId)
-  const promise: Promise<ResumeResult> = resumeOwnedSession(projectRoot, sessionId).finally(() => {
+  const promise: Promise<ResumeResult> = resumeOwnedSession(projectRoot, sessionId).then(result => {
+    if (!result.ok) acpHandoffs.admissionFailed(projectRoot, sessionId, result.error)
+    return result
+  }).finally(() => {
     if (resumeRequests.get(sessionId)?.promise === promise) { resumeRequests.delete(sessionId); cancelledResumes.delete(sessionId) }
   })
   resumeRequests.set(sessionId, { root, promise })
@@ -1219,6 +1410,8 @@ export async function configureAcpSession(projectRoot: string, sessionId: string
   assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
+  const handoffConflict = handoffMutationConflict(projectRoot, sessionId)
+  if (handoffConflict) return handoffConflict
   const parsed = configureSchema.safeParse(input)
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '配置参数无效')
   if (session.turn || session.accepting || session.closing || session.meta.status !== 'ready' || !session.handle) return ipcFail(IpcErrorCode.Conflict, '请在空闲且就绪的会话修改配置')
@@ -1254,7 +1447,7 @@ export async function shutdownAcp(): Promise<void> {
   const failed = results.find((result) => result.ok === false)
   await knowledgeMcpBridge.close()
   if (failed?.ok === false) throw new Error(failed.error)
-  await Promise.allSettled([...creatingRequests, ...[...resumeRequests.values()].map(request => request.promise), ...[...recoveryRequests.values()].map(request => request.promise)])
+  await Promise.allSettled([...creatingRequests, ...handoffRequests, ...[...resumeRequests.values()].map(request => request.promise), ...[...recoveryRequests.values()].map(request => request.promise)])
   if (sessions.size || resuming.size || connectionReservations.size) throw new Error('ACP 原有连接或启动操作尚未确认释放')
   await stopAcpHistory()
 }

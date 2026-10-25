@@ -124,6 +124,18 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       case 'runtime.historyEvents': { const p = runtimeBodies[method].parse(raw); return acp.getAcpHistoryEvents(root, p.sessionId, p.input) }
       case 'runtime.historyUpdate': { const p = runtimeBodies[method].parse(raw); return acp.updateAcpHistorySession(root, p.sessionId, p.input, valid) }
       case 'runtime.historyRetry': return acp.retryAcpHistorySession(root, runtimeBodies[method].parse(raw).sessionId)
+      case 'runtime.handoffPreview': {
+        const p = runtimeBodies[method].parse(raw)
+        if (await isManagedWorkflowOrigin(root, p.sessionId, undefined, true)) return ipcFail(IpcErrorCode.Conflict, '请先停止托管工作流，再接续此会话')
+        return acp.previewAcpSessionHandoff(root, p.sessionId, p.input, valid)
+      }
+      case 'runtime.handoffCreate': {
+        const p = runtimeBodies[method].parse(raw)
+        if (await isManagedWorkflowOrigin(root, p.sessionId, undefined, true)) return ipcFail(IpcErrorCode.Conflict, '请先停止托管工作流，再接续此会话')
+        return connection({ sessionId: p.sessionId }, () => acp.createAcpSessionHandoff(root, p.sessionId, p.input, valid))
+      }
+      case 'runtime.handoffStatus': { const p = runtimeBodies[method].parse(raw); return acp.getAcpSessionHandoff(root, p.sessionId, p.operationId) }
+      case 'runtime.handoffCancel': { const p = runtimeBodies[method].parse(raw); return acp.cancelAcpSessionHandoff(root, p.sessionId, p.input) }
       case 'runtime.new': {
         const p = runtimeBodies[method].parse(raw), input = z.object({ profileId: z.string().optional() }).passthrough().parse(p.input)
         return connection({ profileId: input.profileId }, () => acp.newAcpSession(root, p.input))
@@ -240,7 +252,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             if (!validation.success) throw new DaemonError('E_INVALID_ARG', 'Runtime method input is invalid; no operation was admitted.')
             const input = validation.data
             const mutation = method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
-            if (closed && mutation && !['runtime.cancel', 'runtime.end', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
+            if (closed && mutation && !['runtime.cancel', 'runtime.end', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
             const action = async () => {
               try { return blobs.pack(root, await execute(bodyMethod, input, root)) }
               catch (error) {

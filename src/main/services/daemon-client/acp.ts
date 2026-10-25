@@ -3,6 +3,7 @@ import type * as Local from '../acp'
 import { relative } from 'node:path'
 import type { AcpBindTaskInput, AcpConfigureInput, AcpMaterialChange, AcpPromptOptions, TimelineEventKind } from '../../../shared/types'
 import type { AcpRecoverModelInput } from '../../../shared/acp-recovery'
+import type { AcpHandoffPreviewInput, AcpHandoffCreateInput, AcpHandoffCancelInput } from '../../../shared/acp-handoff'
 import { ipcFail, IpcErrorCode } from '../../../shared/ipc-errors'
 import { runtimeCall } from './runtime'
 import type { RuntimeBody, RuntimeBodyMethod } from '../../../shared/daemon-runtime'
@@ -35,6 +36,10 @@ export const getAcpHistoryEvents = (root: string, sessionId: string, input?: unk
 export const updateAcpHistorySession = (root: string, sessionId: string, input: unknown, isCurrent?: () => boolean) => call<'updateAcpHistorySession', 'runtime.historyUpdate'>(root, 'runtime.historyUpdate', { sessionId, input: input as RuntimeBody<'runtime.historyUpdate'>['input'] }, isCurrent)
 export const retryAcpHistorySession = (root: string, sessionId: string) => call<'retryAcpHistorySession', 'runtime.historyRetry'>(root, 'runtime.historyRetry', { sessionId })
 export const newAcpSession = (root: string, input: unknown) => call<'newAcpSession', 'runtime.new'>(root, 'runtime.new', { input })
+export const previewAcpSessionHandoff = (root: string, sessionId: string, input: AcpHandoffPreviewInput, isCurrent?: () => boolean) => call<'previewAcpSessionHandoff', 'runtime.handoffPreview'>(root, 'runtime.handoffPreview', { sessionId, input }, isCurrent)
+export const createAcpSessionHandoff = (root: string, sessionId: string, input: AcpHandoffCreateInput, isCurrent?: () => boolean) => call<'createAcpSessionHandoff', 'runtime.handoffCreate'>(root, 'runtime.handoffCreate', { sessionId, input }, isCurrent)
+export const getAcpSessionHandoff = (root: string, sessionId: string, operationId: string, isCurrent?: () => boolean) => call<'getAcpSessionHandoff', 'runtime.handoffStatus'>(root, 'runtime.handoffStatus', { sessionId, operationId }, isCurrent)
+export const cancelAcpSessionHandoff = (root: string, sessionId: string, input: AcpHandoffCancelInput) => call<'cancelAcpSessionHandoff', 'runtime.handoffCancel'>(root, 'runtime.handoffCancel', { sessionId, input })
 export const promptAcpSession = (root: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, _generation?: number) => call<'promptAcpSession', 'runtime.prompt'>(root, 'runtime.prompt', { sessionId, text, options }, isCurrent)
 export const bindAcpSessionTask = (root: string, sessionId: string, input: AcpBindTaskInput, isCurrent?: () => boolean) => call<'bindAcpSessionTask', 'runtime.bind'>(root, 'runtime.bind', { sessionId, input }, isCurrent)
 export const cancelAcpSession = (root: string, sessionId: string) => call<'cancelAcpSession', 'runtime.cancel'>(root, 'runtime.cancel', { sessionId })

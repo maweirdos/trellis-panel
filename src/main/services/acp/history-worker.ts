@@ -10,6 +10,7 @@ export type HistoryOperation =
   | { op: 'list'; root: string; input: { limit?: number; cursor?: string; query?: string; filter?: string; archive?: string } }
   | { op: 'session'; root: string; sessionId: string }
   | { op: 'events'; root: string; sessionId: string; input: { limit?: number; before?: string; after?: string } }
+  | { op: 'handoff'; root: string; sessionId: string; byteLimit: number }
   | { op: 'recovery'; root: string; record: AcpSessionRecord; input: { sourcePath: string; sourceDigest: string; events: TimelineEvent[] } }
   | { op: 'close' }
 export type HistoryWorkerRequest = HistoryOperation & { requestId: number }
@@ -34,6 +35,7 @@ export function handleHistoryMessage(message: HistoryOperation): unknown {
     case 'list': return core.list(message.root, message.input)
     case 'session': return core.session(message.root, message.sessionId)
     case 'events': return core.events(message.root, message.sessionId, message.input)
+    case 'handoff': return core.handoff(message.root, message.sessionId, message.byteLimit)
     case 'recovery': return core.importRecovery(message.root, message.record, message.input)
     case 'close': core.close(); core = undefined; return { closed: true }
   }

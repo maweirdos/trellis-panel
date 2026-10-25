@@ -42,6 +42,7 @@ ZCode setup and startup changes also follow [Managed ZCode startup](./zcode-mana
 | [integrations.md](./integrations.md) | Provider ports, protected connections, project bindings, source identity, SDK transport and manual notifications (TPD-025) | External app integration changes |
 | [knowledge-access.md](./knowledge-access.md) | Project knowledge scope, evidence, native conversational document/publication/handoff actions, CAS and receipts | Knowledge / Agent / WeKnora changes |
 | [acp-runtime.md](./acp-runtime.md)                 | Pinned runtime, exact approvals, full history archive/paging, explicit model recovery, cleanup and acceptance | ACP Agent, history, dependency or packaging changes |
+| [runtime-handoff.md](./runtime-handoff.md) | Linked cross-Runtime continuation, checkpoint/context fences, delivery receipts and cancellation | Ordinary conversation Runtime continuation |
 | [workflow-control.md](./workflow-control.md) | Durable commands, leases, outbox, process recovery and committed event cursors | Workflow control/admission/reconciliation |
 | [workflow-runtime.md](./workflow-runtime.md) | Immutable input/output versions, native adapter, exact prompt receipts and stop finalization | Managed stages and ACP material composition |
 | [workflow-reading.md](./workflow-reading.md) | Fixed source/version registry, independent native views, exact origin and comparison | Workflow output/native document reading |

@@ -88,6 +88,17 @@ export function useConversationHistory(root: string, activeId: string | null) {
   const hydrateSession = useCallback((id: string, valid: () => boolean) => {
     return valid() ? api.acpHistorySession(id) : Promise.resolve(null)
   }, [])
+  const refreshSession = useCallback(async (id: string): Promise<AcpHistorySummary | null> => {
+    if (!hasIpc || !isCurrent()) return null
+    const revision = scope.managementRevision
+    const result = await hydrateSession(id, isCurrent)
+    if (!result || !isCurrent()) return null
+    if (!result.ok) { setSelectionErrors((errors) => ({ ...errors, [id]: result.error })); throw Error(result.error) }
+    if (result.session.sessionId !== id || !sameRoot(root, result.session.projectRoot)) throw Error('历史会话不匹配，请重试。')
+    const [record] = remember([result.session], revision)
+    setSelectionErrors((errors) => ({ ...errors, [id]: '' }))
+    return record
+  }, [scope, root, isCurrent, hydrateSession, remember])
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!hasIpc || !api.acpHistoryList || !root || !isCurrent()) return
@@ -276,7 +287,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
   return { sessions, knownSessions, selectedSession, events, query, setQuery, archive, setArchive, update, mutationBusy, mutationErrors,
     canManage: hasIpc && typeof api.acpHistoryUpdate === 'function', loading, loadingMore, loadingEarlier, error, hasMore,
     selectionError: activeId ? selectionErrors[activeId] ?? '' : '',
-    hasEarlier: selectedPage?.hasEarlier ?? false, coverage, startsMidTurn: selectedPage?.startsMidTurn ?? false, refresh, loadMore, loadEarlier,
+    hasEarlier: selectedPage?.hasEarlier ?? false, coverage, startsMidTurn: selectedPage?.startsMidTurn ?? false, refresh, refreshSession, loadMore, loadEarlier,
     selectionLoading: !!activeId && (selectionKey !== requestedSelectionKey || selectionLoading),
     selectionResolved: selectionKey === requestedSelectionKey && selectionResolved, reloadSelected }
 }

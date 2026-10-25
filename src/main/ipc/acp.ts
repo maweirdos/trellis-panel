@@ -6,6 +6,7 @@ import { ipcInvoke } from '../../shared/ipc-channels'
 import { noProject, ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
 import { getProjectRoot, getProjectGeneration } from '../state'
 import type { AcpBindTaskInput, AcpPromptOptions } from '../../shared/types'
+import { acpHandoffPreviewInputSchema, acpHandoffCreateInputSchema, acpHandoffCancelInputSchema, acpHandoffSessionIdSchema, acpHandoffOperationIdSchema } from '../../shared/acp-handoff'
 import {
   cancelAcpSession,
   killAcpSession,
@@ -15,7 +16,8 @@ import {
   promptAcpSession,
   respondAcpPermission,
   listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath, resumeAcpSession, configureAcpSession, bindAcpSessionTask,
-  listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel
+  listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel,
+  previewAcpSessionHandoff, createAcpSessionHandoff, getAcpSessionHandoff, cancelAcpSessionHandoff
 } from '../services/daemon-client/acp'
 import { testAcpRuntimeConnection } from '../services/daemon-client/acp'
 import { handle } from './registry'
@@ -64,6 +66,28 @@ export function registerAcpIpc(): void {
     const root = getProjectRoot()
     if (!root) return noProject()
     return connection(root, { profileId: typeof input?.profileId === 'string' ? input.profileId : undefined }, () => newAcpSession(root, input))
+  })
+
+  handle(ipcInvoke.acp.sessionHandoffPreview, (_e, id: string, input: unknown) => {
+    const parsed = acpHandoffPreviewInputSchema.safeParse(input)
+    if (!parsed.success || !acpHandoffSessionIdSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '请选择有效的来源会话与目标 Runtime')
+    return scopedHistory((root) => previewAcpSessionHandoff(root, id, parsed.data))
+  })
+  handle(ipcInvoke.acp.sessionHandoffCreate, (_e, id: string, input: unknown) => {
+    const parsed = acpHandoffCreateInputSchema.safeParse(input)
+    if (!parsed.success || !acpHandoffSessionIdSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '接续请求无效，请重新预览交接内容')
+    const root = getProjectRoot() ?? ''
+    const generation = getProjectGeneration()
+    return createAcpSessionHandoff(root, id, parsed.data, () => getProjectRoot() === root && getProjectGeneration() === generation)
+  })
+  handle(ipcInvoke.acp.sessionHandoffStatus, (_e, id: string, operationId: string) => {
+    if (!acpHandoffSessionIdSchema.safeParse(id).success || !acpHandoffOperationIdSchema.safeParse(operationId).success) return ipcFail(IpcErrorCode.InvalidArg, '接续操作标识无效')
+    return scopedHistory((root) => getAcpSessionHandoff(root, id, operationId))
+  })
+  handle(ipcInvoke.acp.sessionHandoffCancel, (_e, id: string, input: unknown) => {
+    const parsed = acpHandoffCancelInputSchema.safeParse(input)
+    return parsed.success && acpHandoffSessionIdSchema.safeParse(id).success ? cancelAcpSessionHandoff(getProjectRoot() ?? '', id, parsed.data)
+      : ipcFail(IpcErrorCode.InvalidArg, '接续操作标识无效')
   })
 
   handle(ipcInvoke.acp.sessionPrompt, async (_e, sessionId: string, text: string, options?: AcpPromptOptions) => {

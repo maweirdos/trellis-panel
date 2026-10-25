@@ -1,7 +1,7 @@
 import { rememberVisit } from '../my/personal-history'
 /** Page-owned ACP profiles and explicitly started project conversations. */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { Activity, ArrowDown, ArrowUp, Bot, ChevronRight, CircleStop, Ellipsis, FileText, Folder, GitBranch, ImagePlus, Info, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
+import { Activity, ArrowDown, ArrowRightLeft, ArrowUp, Bot, ChevronRight, CircleStop, Ellipsis, FileText, Folder, GitBranch, ImagePlus, Info, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
@@ -43,9 +43,14 @@ import { JiraPickerModal } from './JiraPicker'
 import { compileItems, isLiveStatus, mergeEvents, SESSION_LABEL } from './timeline'
 import { requirementsDraftText, useKnowledgeRequest } from '../knowledge/request-intake'
 import { ConversationKnowledgePanel } from './ConversationKnowledgePanel'
+import { RuntimeHandoffDialog } from './RuntimeHandoffDialog'
+import { ConversationHandoff } from './ConversationHandoff'
+import { handoffRequest, runtimeHandoffUnavailableReason } from './runtime-handoff-state'
+import { useRuntimeHandoffStatus } from './use-runtime-handoff-status'
 import { partitionConversationEvents } from './conversation-convenience'
 import { readActiveSession, readSessionView, readWorkspaceView, writeWorkspaceView, writeActiveSession, writeSessionView, type WorkspaceView, type DraftIntent } from './view-state'
 import type { AcpAgentProfile, AcpAgentStatus, AcpMaterialChange, AcpPermissionPayload, AcpSessionRecord, AcpSourceReference, AcpStartupObservation, AcpStateEvent, TimelineEvent } from '../../../shared/types'
+import type { AcpHandoffOperation } from '../../../shared/acp-handoff'
 import './workspace.css'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -142,6 +147,7 @@ export function AcpConsolePage(): JSX.Element {
   const [jiraOpen, setJiraOpen] = useState(false)
   const [knowledgePanel, setKnowledgePanel] = useState<{ root: string; sessionId: string } | null>(null)
   const [projectActivityOwner, setProjectActivityOwner] = useState<{ root: string; sessionId: string } | null>(null)
+  const [handoffOwner, setHandoffOwner] = useState<{ root: string; sessionId: string } | null>(null)
   const [taskDir, setTaskDir] = useState('')
   const [atBottom, setAtBottom] = useState(true)
   const streamRef = useRef<HTMLDivElement>(null)
@@ -179,6 +185,9 @@ export function AcpConsolePage(): JSX.Element {
   const sessionsRef = useRef(projectSessions)
   sessionsRef.current = projectSessions
   const activeSession = projectSessions.find((session) => session.sessionId === activeId) ?? null
+  const handoffStatus = useRuntimeHandoffStatus(root, activeSession, interactive && view === 'conversation', isCurrent)
+  const handoffComposerBlocked = handoffStatus.blocked
+  const handoffEnded = Boolean(activeSession?.handoff && handoffStatus.operation && ['failed', 'cancelled'].includes(handoffStatus.operation.state))
   const workflow = useManagedWorkflow({ root, taskDir: activeSession?.taskDir, sessionId: activeSession?.sessionId, generation: activeSession?.connectionGeneration, enabled: view === 'conversation' && Boolean(root && activeSession?.taskDir) })
   const managedComposerBlocked = Boolean(workflow.available && activeSession?.taskDir && (workflow.loading || workflow.snapshot?.composer.target === 'managed' || workflow.snapshot?.recoveryRequired))
   const selectedArchiveKnown = !supportsPagedHistory() || !!history.knownSessions[activeId ?? ''] || scope.states.has(activeId ?? '')
@@ -257,7 +266,7 @@ export function AcpConsolePage(): JSX.Element {
       return request.turnId === fact.turnId ? request : { ...request, turnId: fact.turnId }
     })
   }, [changeTurnRequest])
-  useEffect(() => { setKnowledgePanel(null); setProjectActivityOwner(null) }, [root, activeId, view, interactive])
+  useEffect(() => { setKnowledgePanel(null); setProjectActivityOwner(null); setHandoffOwner(null) }, [root, activeId, view, interactive])
   const pendingPerm = useMemo(() => {
     const pending: Record<string, AcpPermissionPayload> = {}
     for (const session of projectSessions) {
@@ -556,7 +565,7 @@ export function AcpConsolePage(): JSX.Element {
   }, [root, scope, isCurrent, canInteract, interactionSignal, pushToast, reloadSessions])
 
   const send = useCallback(async (): Promise<void> => {
-    if (!isCurrent() || !canInteract() || managedComposerBlocked || !activeSession || !activeId || !selectedArchiveKnown || !canSubmitConversation(activeSession) || scope.actions.has(activeId) || scope.sends.has(activeId) || ownsCurrentTurnRequest(turnRequestsRef.current[activeId], activeSession, root) || composerImages.pending || (!input.trim() && !composerImages.images.length)) return
+    if (!isCurrent() || !canInteract() || managedComposerBlocked || handoffComposerBlocked || !activeSession || !activeId || !selectedArchiveKnown || !canSubmitConversation(activeSession) || scope.actions.has(activeId) || scope.sends.has(activeId) || ownsCurrentTurnRequest(turnRequestsRef.current[activeId], activeSession, root) || composerImages.pending || (!input.trim() && !composerImages.images.length)) return
     const id = activeId, text = input.trim(), submittedDraft = input
     const submittedReferences = references
     const submittedImages = composerImages.images
@@ -653,11 +662,11 @@ export function AcpConsolePage(): JSX.Element {
       scope.sends.delete(id)
       if (isCurrent()) { setSending((previous) => ({ ...previous, [id]: false })); setOperations((previous) => previous[id] === 'resume' ? { ...previous, [id]: '' } : previous) }
     }
-  }, [input, activeId, activeSession, selectedArchiveKnown, references, root, scope, isCurrent, canInteract, composerImages, changeTurnRequest, managedComposerBlocked, updateSession])
+  }, [input, activeId, activeSession, selectedArchiveKnown, references, root, scope, isCurrent, canInteract, composerImages, changeTurnRequest, managedComposerBlocked, handoffComposerBlocked, updateSession])
 
   const sessionAction = async (action: 'cancel' | 'kill' | 'resume'): Promise<void> => {
     if (!activeSession || !isCurrent() || !canInteract() || (scope.actions.has(activeSession.sessionId) && (action !== 'kill' || scope.actionTokens.get(activeSession.sessionId)?.description === 'kill'))) return
-    if (action === 'resume' && (activeSession.archivedAt || !selectedArchiveKnown)) return
+    if (action === 'resume' && (handoffComposerBlocked || activeSession.archivedAt || !selectedArchiveKnown)) return
     const id = activeSession.sessionId
     const operationToken = Symbol(action)
     scope.actionTokens.set(id, operationToken)
@@ -852,6 +861,29 @@ export function AcpConsolePage(): JSX.Element {
   const isReadOnly = Boolean(activeSession && (activeSession.archivedAt || (!isLiveStatus(activeSession.status) && !activeSession.canResume && !activeSession.cleanupRequired)))
   const canEndSession = view === 'conversation' && activeSession && (sending[activeSession.sessionId] || isLiveStatus(activeSession.status) || activeSession.restorePending || activeSession.connectionOwned || activeSession.cleanupRequired)
   const visiblePermissions = Object.values(pendingPerm).filter((permission) => permission.sessionId === activeId && !items.some((item) => item.type === 'perm' && item.ev.payload?.requestId === permission.requestId))
+  const handoffAvailable = typeof api?.acpSessionHandoffPreview === 'function' && typeof api?.acpSessionHandoffCreate === 'function' && typeof api?.acpSessionHandoffStatus === 'function' && typeof api?.acpSessionHandoffCancel === 'function'
+  const handoffSourceIssue = !handoffAvailable ? '接续功能需要更新桌面连接，请完整重启应用。' : activeSession ? runtimeHandoffUnavailableReason({ ...activeSession, events: activeEvents }, !selectedArchiveKnown || Boolean(sending[activeSession.sessionId] || operations[activeSession.sessionId] || currentTurnRequest || managedComposerBlocked || Object.values(pendingPerm).some((permission) => permission.sessionId === activeSession.sessionId))) : undefined
+  const ownsHandoffSource = (): boolean => isCurrent() && canInteract() && !interactionSignal?.aborted && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession?.sessionId
+  const openRuntimeHandoff = (): void => {
+    if (!activeSession || !ownsHandoffSource()) return
+    newComposerFocus.current = null
+    setHandoffOwner({ root, sessionId: activeSession.sessionId })
+  }
+  const openHandoffTarget = async (operation: AcpHandoffOperation): Promise<void> => {
+    if (!activeSession || !ownsHandoffSource() || operation.sourceSessionId !== activeSession.sessionId || !operation.targetSessionId || !['ready', 'sent'].includes(operation.state)) return
+    const [targetResult, sourceResult] = await Promise.allSettled([handoffRequest(history.refreshSession(operation.targetSessionId)), handoffRequest(history.refreshSession(operation.sourceSessionId))])
+    if (!ownsHandoffSource()) return
+    if (sourceResult.status === 'fulfilled' && sourceResult.value) updateSession({ ...sourceResult.value, events: [] })
+    else if (sourceResult.status === 'rejected') pushToast({ kind: 'warn', title: '来源对话状态暂未刷新', body: failureText(sourceResult.reason) })
+    if (targetResult.status === 'rejected') throw targetResult.reason
+    const target = targetResult.value
+    if (!target || target.sessionId !== operation.targetSessionId || projectRootKey(target.projectRoot) !== projectRootKey(root)) throw Error('接续对话暂不可读取，请检查状态后重试。')
+    if ((target.runtimeSnapshot?.id ?? target.agentId) !== operation.targetRuntimeId || target.handoff?.operationId !== operation.id || target.handoff.sourceSessionId !== operation.sourceSessionId) throw Error('接续对话的来源或 Runtime 不一致，请检查状态。')
+    updateSession({ ...target, events: [] })
+    history.setArchive('active')
+    selectSession(operation.targetSessionId)
+    setHandoffOwner(null)
+  }
   const openKnowledge = (): void => {
     if (!activeSession || !isCurrent() || !canInteract() || activeSelection.current.view !== 'conversation' || activeSelection.current.id !== activeSession.sessionId) return
     setKnowledgePanel({ root, sessionId: activeSession.sessionId })
@@ -891,7 +923,7 @@ export function AcpConsolePage(): JSX.Element {
           </>}
           {view === 'conversation' && activeSession && <><button type="button" className="acp-header-task my-icon-control" title={boundTask?.record?.title ?? activeSession.taskDir ?? '查看任务与材料'} aria-label="查看任务与材料" onClick={() => openTask()}><Folder size={16} /></button><button type="button" className="my-icon-control" title="会话配置与材料" aria-label="会话配置与材料" onClick={() => openAgent()}><Settings2 size={16} /></button></>}
           {view !== 'conversation' && <Button size="sm" variant="ghost" title="执行引擎与本机环境" onClick={() => { showView('agents'); setEngineSetupOpen((current) => !current) }}><Settings2 size={15} /></Button>}
-          {!canEndSession && !(view === 'conversation' && activeSession) ? <Button size="sm" variant="ghost" className="acp-refresh-control" aria-label="刷新会话" title="刷新会话" onClick={() => { void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}><RefreshCw size={14} className={loading || history.loading ? 'animate-spin' : ''} />刷新</Button> : activeSession && <Dropdown align="right" trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="更多会话操作" aria-expanded={open} onClick={toggle}><Ellipsis size={17} /></button>}>{(close) => <><DropdownItem icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />} onClick={() => { close(); void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}>刷新</DropdownItem><DropdownItem icon={<FileText size={14} />} onClick={() => { close(); openKnowledge() }}>项目知识与来源</DropdownItem><DropdownItem icon={<Activity size={14} />} onClick={() => { close(); openProjectActivity() }}>项目活动</DropdownItem>{canEndSession && <DropdownItem danger icon={<X size={14} />} disabled={managedComposerBlocked || operations[activeSession.sessionId] === 'kill' || operations[activeSession.sessionId] === 'cancel'} onClick={() => { close(); void sessionAction('kill') }}>结束当前会话</DropdownItem>}</>}</Dropdown>}
+          {!canEndSession && !(view === 'conversation' && activeSession) ? <Button size="sm" variant="ghost" className="acp-refresh-control" aria-label="刷新会话" title="刷新会话" onClick={() => { void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}><RefreshCw size={14} className={loading || history.loading ? 'animate-spin' : ''} />刷新</Button> : activeSession && <Dropdown align="right" width={256} trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="更多会话操作" aria-expanded={open} onClick={toggle}><Ellipsis size={17} /></button>}>{(close) => <><DropdownItem icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />} onClick={() => { close(); void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}>刷新</DropdownItem><DropdownItem icon={<ArrowRightLeft size={14} />} onClick={() => { close(); openRuntimeHandoff() }}>用另一个 Runtime 接续</DropdownItem><DropdownItem icon={<FileText size={14} />} onClick={() => { close(); openKnowledge() }}>项目知识与来源</DropdownItem><DropdownItem icon={<Activity size={14} />} onClick={() => { close(); openProjectActivity() }}>项目活动</DropdownItem>{canEndSession && <DropdownItem danger icon={<X size={14} />} disabled={managedComposerBlocked || operations[activeSession.sessionId] === 'kill' || operations[activeSession.sessionId] === 'cancel'} onClick={() => { close(); void sessionAction('kill') }}>结束当前会话</DropdownItem>}</>}</Dropdown>}
         </div>
       </header>
       {(loadError || history.error) && <div role="alert" className="acp-notice">{loadError || history.error}<button className="ml-3 underline" onClick={() => { void reloadCatalogue(); void reloadSessions(); void history.refresh(); history.reloadSelected() }}>重试加载</button></div>}
@@ -916,6 +948,7 @@ export function AcpConsolePage(): JSX.Element {
           if (history.loadingEarlier && earlierAnchor.current?.sessionId === activeSession.sessionId) earlierAnchor.current.snapshot = captureTranscriptAnchor(element)
           followRef.current = follow; setAtBottom(follow); writeSessionView(root, activeSession.sessionId, { scrollTop: element.scrollTop, follow })
         }}><div className="acp-transcript-content my-conversation-column acp-chat-copy">
+          <ConversationHandoff key={`handoff:${root}:${activeSession.sessionId}`} root={root} session={activeSession} agents={agents} operation={handoffStatus.operation} checking={handoffStatus.loading} statusError={handoffStatus.error} isCurrent={ownsHandoffSource} onSelect={(id) => useMy.getState().setAgentSessionTarget(id)} onCheck={() => void handoffStatus.refresh()} onOperation={handoffStatus.accept} onChanged={() => void reloadSessions()} onCancelled={(id) => useMy.getState().setAgentSessionTarget(id)} />
           {history.selectionError && <div role="alert" className="acp-history-note"><p>历史消息暂时无法加载，已加载内容仍保留。</p><details><summary>错误详情</summary><pre>{history.selectionError}</pre></details><Button size="sm" variant="ghost" disabled={history.selectionLoading} onClick={history.reloadSelected}>重试加载历史</Button></div>}
           {(history.hasEarlier || history.startsMidTurn || history.coverage?.state === 'partial' || history.coverage?.state === 'unknown') && <HistoryBoundary key={`history:${root}:${activeSession.sessionId}`} hasEarlier={history.hasEarlier} startsMidTurn={history.startsMidTurn} coverage={history.coverage?.state} loading={history.loadingEarlier} onLoadEarlier={loadEarlier} />}
           {activeSession.directoryLeaseReason && <p className="rounded-my-md bg-my-warning-subtle px-3 py-2 text-my-sm text-my-warning-text">目录占用：{activeSession.directoryLeaseReason}</p>}
@@ -923,13 +956,13 @@ export function AcpConsolePage(): JSX.Element {
           {items.map((item) => <EventRow key={item.key} item={item.type === 'activity' ? { ...item, active: false } : item} suppressWorkingIndicator={Boolean(currentTurnActivity)} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={(directory) => openTask(directory)} onOpenArtifact={openRecordedArtifact} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />)}
           {visiblePermissions.map((permission) => <EventRow key={`current-permission:${permission.requestId}`} item={{ type: 'perm', key: `current-permission:${permission.requestId}`, ev: { id: `current-permission:${permission.requestId}`, ts: 0, source: 'acp', kind: 'permission', sessionId: activeSession.sessionId, projectRoot: root, text: permission.toolCall?.title ?? '等待你的授权', payload: { requestId: permission.requestId } } }} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={openTask} onOpenArtifact={() => {}} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />)}
           {conversationArtifacts.length > 0 && <section className="acp-material-shelf" aria-label="当前任务材料"><p className="mb-3 text-my-sm text-my-tertiary">任务材料 · 当前文件，文件变化不代表任务已验收</p><div className="space-y-2">{conversationArtifacts.slice(0, 6).map((artifact) => <ConversationArtifactCard key={artifact.relativePath} artifact={artifact} onOpen={openDocument} selected={documentTarget?.artifact.relativePath === artifact.relativePath && inspectorTab === 'document' && inspectorOpen} />)}</div><div className="mt-4 flex flex-wrap items-center gap-3 text-my-sm text-my-tertiary"><button onClick={preparePlanning}>继续完善方案<ChevronRight size={12} className="ml-1 inline" /></button><button onClick={() => openTask()}>复核规划材料<ChevronRight size={12} className="ml-1 inline" /></button></div></section>}
-          {items.length === 0 && !isReadOnly && !currentTurnActivity && !history.selectionError && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{history.selectionLoading ? '正在加载历史消息…' : activeSession.status === 'starting' ? '正在准备会话…' : sending[activeSession.sessionId] ? '正在连接原会话…' : '从一条清晰的指令开始。'}</p></div>}
+          {items.length === 0 && !activeSession.handoff && !isReadOnly && !currentTurnActivity && !history.selectionError && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{history.selectionLoading ? '正在加载历史消息…' : activeSession.status === 'starting' ? '正在准备会话…' : sending[activeSession.sessionId] ? '正在连接原会话…' : '从一条清晰的指令开始。'}</p></div>}
           <CurrentTurnStatus activity={currentTurnActivity} />
         </div></div>
         {!atBottom && <div className="acp-scroll-to-bottom-container"><Button size="sm" variant="outline" className="acp-scroll-to-bottom-btn" onClick={(event) => { const element = streamRef.current; earlierAnchor.current = null; followRef.current = true; if (element) { if (document.activeElement === event.currentTarget) element.focus({ preventScroll: true }); element.scrollTop = element.scrollHeight }; setAtBottom(true); writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} aria-hidden="true" />回到最新</Button></div>}
         {(!isReadOnly || activeSession.historyPersistence?.state === 'degraded' || (workflow.available && activeSession.taskDir)) && <footer className="acp-composer-region my-conversation-column">
           <WorkflowPanel root={root} taskDir={activeSession.taskDir ?? ''} session={activeSession} controller={workflow} onOpenHistory={openWorkflowHistory} />
-          <ConnectionRecovery session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} pending={operations[activeSession.sessionId]} onRetry={() => void sessionAction('resume')} onCleanup={() => void sessionAction('kill')} onRetryHistory={() => void retryHistory()} onNew={() => openNewConversation()} onEnvironment={() => { showView('agents'); setEngineSetupOpen(true) }} />
+          {(!handoffEnded || activeSession.cleanupRequired || activeSession.historyPersistence?.state === 'degraded') && <ConnectionRecovery session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} pending={operations[activeSession.sessionId]} onRetry={() => void sessionAction('resume')} onCleanup={() => void sessionAction('kill')} onRetryHistory={() => void retryHistory()} onNew={() => openNewConversation()} onEnvironment={() => { showView('agents'); setEngineSetupOpen(true) }} />}
           {!isReadOnly && <div className={clsx('acp-composer', composerImages.dragging && 'acp-composer-dragging')} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>
             {composerImages.fileInput}
             {composerImages.dragging && <div className="acp-image-drop-hint" aria-hidden="true"><ImagePlus size={22} /><span>松开以添加图片</span></div>}
@@ -945,7 +978,7 @@ export function AcpConsolePage(): JSX.Element {
             }}>恢复原稿</button></p>}
             {references.length > 0 && <div className="acp-source-references">{references.map((source) => <div className="acp-source-chip" key={`${source.relativePath}:${source.displayedRevision}`}><FileText size={12} /><span title={`${source.relativePath} · ${source.displayedRevision}`}>{source.relativePath.split('/').at(-1)} · {source.displayedRevision.slice(0, 8)}</span><button aria-label={`移除引用 ${source.relativePath}`} onClick={() => { const next = references.filter((item) => item !== source); setReferences(next); draftReferencesRef.current[activeSession.sessionId] = next; writeSessionView(root, activeSession.sessionId, { sourceReferences: next }) }}><X size={11} /></button></div>)}</div>}
             <textarea ref={composerRef} aria-label="Agent 指令" title={managedComposerBlocked ? '受管任务执行期间保留草稿；请等待或停止任务后再发送普通指令' : 'Enter 发送 · Shift Enter 换行'} readOnly={managedComposerBlocked} rows={2} value={input} placeholder="说说你的想法…" onChange={(event) => changeDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send() } }} />
-            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || managedComposerBlocked} onRecoverModel={recoverModel} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title="停止受管任务" disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} /><span className="acp-stop-label">{workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止任务' : '核对任务状态'}</span></Button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={!selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
+            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || managedComposerBlocked || handoffComposerBlocked} onRecoverModel={recoverModel} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title="停止受管任务" disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} /><span className="acp-stop-label">{workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止任务' : '核对任务状态'}</span></Button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={handoffComposerBlocked || !selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
           </div>}
         </footer>}
       </section>}
@@ -983,6 +1016,7 @@ export function AcpConsolePage(): JSX.Element {
       void newSession(engine.id, selectedTask, selected.id, selectModel)
     }} />}
     {jiraOpen && <JiraPickerModal isCurrent={isCurrent} onClose={() => setJiraOpen(false)} onSelected={() => { if (isCurrent()) setJiraOpen(false) }} />}
+    {interactive && view === 'conversation' && activeSession && handoffOwner?.root === root && handoffOwner.sessionId === activeSession.sessionId && <RuntimeHandoffDialog key={`handoff-dialog:${root}:${activeSession.sessionId}`} root={root} source={activeSession} agents={agents} sourceIssue={handoffSourceIssue} isCurrent={ownsHandoffSource} onRefreshAgents={() => void reloadCatalogue()} onChanged={() => void reloadSessions()} onReady={openHandoffTarget} onClose={() => setHandoffOwner(null)} />}
     {interactive && view === 'conversation' && activeSession && knowledgePanel?.root === root && knowledgePanel.sessionId === activeSession.sessionId && <ConversationKnowledgePanel key={`${root}:${activeSession.sessionId}`} root={root} session={activeSession} events={activeEvents} onClose={() => setKnowledgePanel(null)} />}
     {interactive && view === 'conversation' && activeSession && projectActivityOwner?.root === root && projectActivityOwner.sessionId === activeSession.sessionId && <Modal open ariaLabel="项目活动" width={760} onClose={() => setProjectActivityOwner(null)}>
       <header className="flex items-center gap-3 border-b border-my-line px-4 py-3"><h2 className="min-w-0 flex-1 text-my-md font-semibold">项目活动</h2><Button size="sm" variant="ghost" aria-label="关闭项目活动" onClick={() => setProjectActivityOwner(null)}><X size={16} /></Button></header>
