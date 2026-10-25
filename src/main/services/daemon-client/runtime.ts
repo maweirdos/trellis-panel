@@ -2,9 +2,11 @@ import { createHash, randomUUID } from 'node:crypto'
 import { realpathSync } from 'node:fs'
 import { z } from 'zod'
 import { RUNTIME_BULK, runtimeWireSchema, type RuntimeBody, type RuntimeBodyMethod, type RuntimeBlob, type RuntimeWire, runtimeCursorSchema, type RuntimeCursor } from '../../../shared/daemon-runtime'
-import type { WorkspaceGrant } from '../../../shared/daemon'
+import type { DaemonStatus, WorkspaceGrant } from '../../../shared/daemon'
 import { daemonClientContext } from './manager'
 import { DaemonError } from '../../daemon/errors'
+import { requireCurrentDaemonBuild } from '../../daemon/build-identity'
+import { readLease } from '../../daemon/lease'
 import { DaemonClient } from './client'
 import { DAEMON_OBSERVATION, daemonConnectionPool, disposeDaemonPools, observePooledWorkspace } from './pool'
 import { broadcastToWindows } from '../bridge'
@@ -90,7 +92,21 @@ async function connect(dedicated = false): Promise<DaemonClient> {
   const context = await daemonClientContext(), pool = daemonConnectionPool(context)
   const client = dedicated ? await DaemonClient.connect(context) : await pool.get()
   try {
-    const status = await pool.status(client)
+    // Only the private, literal cleanup allowlist selects a dedicated lane.
+    // Its original owner/grant controls must work even when build proof is old
+    // or missing. It neither grants a new workspace nor negotiates new work.
+    let status: DaemonStatus
+    if (dedicated) {
+      const result = await client.request('daemon.status', {})
+      if (!result.ok) throw new DaemonError(result.code, result.error, result.outcome)
+      status = result.data
+      if (status.epoch !== client.epoch || JSON.stringify(status.owner) !== JSON.stringify(client.lease.owner) || JSON.stringify(status.identity) !== JSON.stringify(context.identity)
+        || JSON.stringify(readLease(context)) !== JSON.stringify(client.lease)) throw new DaemonError('E_CONFLICT', 'Cleanup attachment no longer matches its original authenticated daemon owner.')
+    } else {
+      requireCurrentDaemonBuild(context, client.lease)
+      status = await pool.status(client)
+      requireCurrentDaemonBuild(context, client.lease)
+    }
     if (status.runtimeAuthority !== 'daemon') throw new DaemonError('E_UNAVAILABLE', '后台 Runtime 尚未完成原有执行器和设置迁移，请在设置中完成迁移后重试。')
     return client
   } catch (error) { if (dedicated) client.close(); throw error }
@@ -189,6 +205,11 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
     }
     const authorization = method === 'gitlab.workspace.authorizeWrites' || method === 'dingtalk.workspace.authorizeAccount' || legacy?.success && legacy.data.operation === 'authorize'
     const timeoutMs = transient ? providerReadTimeout(transient.method) : authorization ? PROVIDER_READ_LIMITS.authorizationMs : method === 'runtime.setup' ? 650_000 : method === 'runtime.probe' ? 30_000 : method === 'runtime.new' || method === 'runtime.resume' || method === 'runtime.recover' ? 50_000 : 60_000
+    // Scope/authorization and bulk upload can yield while a rebuild publishes.
+    // Revalidate immediately before the actual feature request, without replay.
+    const context = await daemonClientContext()
+    if (!cleanup) requireCurrentDaemonBuild(context, client.lease)
+    else if (JSON.stringify(readLease(context)) !== JSON.stringify(client.lease)) throw new DaemonError('E_CONFLICT', 'The original cleanup owner changed before submission; no control was sent.')
     const result = await client.request(method, input as DaemonPayload<typeof method>, { workspace, commandId, timeoutMs })
     if (!result.ok) throw Object.assign(new DaemonError(result.code, result.error, result.outcome), { commandId: result.commandId ?? commandId })
     const wire = runtimeWireSchema.parse(result.data)

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { protectedStorage as safeStorage } from '../../daemon/protected-storage'
 import { z } from 'zod'
-import type { KnowledgeArtifact, KnowledgeCollection, KnowledgeContext, KnowledgeDocument, KnowledgePublication, KnowledgeReadResult, KnowledgeScope, KnowledgeSearchResult, KnowledgeSource } from '../../../shared/knowledge-access'
+import type { KnowledgeArtifact, KnowledgeCollection, KnowledgeContext, KnowledgeDocument, KnowledgePublication, KnowledgeReadResult, KnowledgeScope, KnowledgeSearchResult, KnowledgeSource, KnowledgeSourceRange } from '../../../shared/knowledge-access'
+import { KNOWLEDGE_READ_PAGE_LIMIT } from '../../../shared/knowledge-access'
 import { IpcErrorCode, ipcFail, type IpcFail } from '../../../shared/ipc-errors'
 import { IntegrationError, type KnowledgePort, type ResolvedConnection } from '../integrations/types'
 import { readIntegrationState } from '../integrations/repository'
@@ -11,7 +12,7 @@ import { relative } from 'node:path'
 import { materialPath } from './materials'
 import { readKnowledgeState, updateKnowledgeState, knowledgeHash } from './repository'
 import { artifactRead, assertArtifactCurrent, handoffKnowledgeArtifact, readTaskPrd, saveKnowledgeArtifact } from './materials'
-import type { KnowledgeOwner } from './types'
+import { KnowledgeReadVersionError, type KnowledgeOwner, type KnowledgeReadInput } from './types'
 import { knowledgeWorkspaceRoot, knowledgeWorkspaceGeneration } from './workspace-host'
 import * as integrations from '../integrations/service'
 import * as providers from '../integrations/providers'
@@ -20,6 +21,8 @@ import { KnowledgeConversationWorkflow } from './conversation'
 import type { KnowledgeConversationInput, KnowledgeConversationResult } from '../../../shared/knowledge-conversation'
 
 const uuidSchema = z.string().uuid()
+const readWindowSchema = z.object({ offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), limit: z.number().int().min(1).max(KNOWLEDGE_READ_PAGE_LIMIT) })
+const MAX_READ_PAGE_JSON_BYTES = 10_000
 function integrationApi(): typeof integrations { return integrations }
 function registryApi(): typeof providers { return providers }
 function rootOf(): string | null { return knowledgeWorkspaceRoot() }
@@ -119,16 +122,20 @@ export class KnowledgeAccessService {
     try { updateKnowledgeState(owner.root, (state) => { state.sources.unshift(...sources.map((source) => ({ source, scope }))) }) } catch { persistence = 'degraded'; detail += '；证据未能持久化，重新打开后可能不可用' }
     return { operationId: input.requestId, status, detail, scope, sources, elapsedMs: Date.now() - started, persistence }
   }
-  async read(owner: KnowledgeOwner, scope: KnowledgeScope, input: { requestId: string; sourceHandle: string }, signal?: AbortSignal): Promise<KnowledgeReadResult> {
+  async read(owner: KnowledgeOwner, scope: KnowledgeScope, input: KnowledgeReadInput, signal?: AbortSignal): Promise<KnowledgeReadResult> {
     uuidSchema.parse(input.requestId); ensureScope(owner, scope); const state = readKnowledgeState(owner.root); const stored = state.sources.find((item) => item.source.sourceHandle === input.sourceHandle && item.source.sessionId === owner.sessionId)
     if (!stored || stored.scope.revision !== scope.revision || stored.scope.connectionId !== scope.connectionId || stored.scope.projectGeneration !== scope.projectGeneration) throw new IntegrationError('来源句柄无效、已过期或不属于当前知识范围', 'denied')
+    const ranged = input.offset !== undefined || input.limit !== undefined
+    const window = ranged ? readWindowSchema.safeParse({ offset: input.offset === undefined ? 0 : input.offset, limit: input.limit === undefined ? KNOWLEDGE_READ_PAGE_LIMIT : input.limit }) : undefined
+    if (window && !window.success) throw new IntegrationError('读取分页参数无效：offset 必须是非负整数，limit 必须是 1..6000 的整数', 'invalid')
+    if (signal?.aborted) return { operationId: input.requestId, status: 'cancelled', detail: '读取已取消，未取得新正文', source: null, persistence: 'durable' }
     try {
       let value: { title: string; text: string; mode: 'full' | 'unsupported'; truncated: boolean }
       if (stored.source.kind === 'local') {
         if (!stored.source.relativePath) throw new IntegrationError('本地来源身份不完整', 'denied')
         const path = materialPath(owner.root, stored.source.relativePath)
         if (statSync(path).size > 512 * 1024) throw new IntegrationError('本地来源超过读取限额', 'io')
-        const body = readFileSync(path, 'utf8'); value = { title: stored.source.title, text: body.slice(0, 100_000), mode: 'full', truncated: body.length > 100_000 }
+        const body = readFileSync(path, 'utf8'); value = { title: stored.source.title, text: ranged ? body : body.slice(0, 100_000), mode: 'full', truncated: !ranged && body.length > 100_000 }
       } else {
         if (!stored.source.collectionId || !scope.collectionIds.includes(stored.source.collectionId)) throw new IntegrationError('来源不在当前知识范围', 'denied')
         const resolved = resolveScope(owner, scope.overridden ? scope.collectionIds : undefined)
@@ -137,13 +144,65 @@ export class KnowledgeAccessService {
       }
       ensureScope(owner, scope)
       if (signal?.aborted) return { operationId: input.requestId, status: 'cancelled', detail: '读取已取消，未交付迟到结果', source: null, persistence: 'durable' }
-      const source: KnowledgeSource = { ...stored.source, id: randomUUID(), sourceHandle: randomUUID(), scopeRevision: scope.revision, sessionId: owner.sessionId, turnId: owner.turnId, title: value.title, text: value.text, contentHash: knowledgeHash(value.text), mode: value.mode, truncated: value.truncated, fetchedAt: Date.now(), suppliedToAgent: false, historical: false }
-      let persistence: 'durable' | 'degraded' = 'durable'; try { storeSource(owner.root, scope, source) } catch { persistence = 'degraded' }
-      return { operationId: input.requestId, status: value.mode === 'unsupported' ? 'unavailable' : 'ok', detail: value.mode === 'unsupported' ? '此文档格式不支持正文读取；不代表已读全文' : value.truncated ? '正文超出限额，返回标记过的截断文本' : '已读取支持格式的正文', source, persistence }
+      let range: KnowledgeSourceRange | undefined
+      let nextOffset: number | null | undefined
+      let text = value.text
+      let mode: KnowledgeSource['mode'] = value.mode
+      let truncated = value.truncated
+      if (window?.success && value.mode !== 'unsupported') {
+        const { offset, limit } = window.data
+        // An upstream size cap may already have cut a pair; expose only its valid prefix.
+        if (value.truncated && /[\uD800-\uDBFF]$/u.test(value.text)) value.text = value.text.slice(0, -1)
+        const splitsPair = (position: number): boolean => position > 0 && position < value.text.length && /[\uD800-\uDBFF]/u.test(value.text[position - 1]) && /[\uDC00-\uDFFF]/u.test(value.text[position])
+        if (offset > value.text.length || splitsPair(offset)) throw new IntegrationError('读取 offset 超出可读正文范围或落在 UTF-16 代理对中间', 'invalid')
+        let end = Math.min(offset + limit, value.text.length)
+        // Leave room for labels/handles in the bounded MCP result, including JSON-escaped controls.
+        if (Buffer.byteLength(JSON.stringify(value.text.slice(offset, end)), 'utf8') > MAX_READ_PAGE_JSON_BYTES) {
+          let left = offset
+          let right = end
+          while (left < right) {
+            const middle = Math.ceil((left + right) / 2)
+            if (Buffer.byteLength(JSON.stringify(value.text.slice(offset, middle)), 'utf8') <= MAX_READ_PAGE_JSON_BYTES) left = middle
+            else right = middle - 1
+          }
+          end = left
+        }
+        if (splitsPair(end)) end -= 1
+        if (end === offset && offset < value.text.length) throw new IntegrationError('读取 limit 不足以容纳当前位置的 UTF-16 代理对，请至少使用 2', 'invalid')
+        text = value.text.slice(offset, end)
+        mode = 'excerpt'
+        truncated = value.truncated || offset > 0 || end < value.text.length
+        range = { offset, length: text.length, total: value.text.length, unit: 'utf16-code-units', totalIsComplete: !value.truncated }
+        nextOffset = end < value.text.length ? end : null
+      }
+      const source: KnowledgeSource = { ...stored.source, id: randomUUID(), sourceHandle: randomUUID(), scopeRevision: scope.revision, sessionId: owner.sessionId, turnId: owner.turnId, title: value.title, text, contentHash: knowledgeHash(text), mode, truncated, fetchedAt: Date.now(), suppliedToAgent: false, historical: false }
+      // A page handle retains document identity; a later full UI read has no inherited range.
+      delete source.range
+      if (range) source.range = range
+      let persistence: 'durable' | 'degraded' = 'durable'
+      if (window?.success && value.mode !== 'unsupported') {
+        const readRevision = knowledgeHash(value.text)
+        try {
+          updateKnowledgeState(owner.root, (state) => {
+            const original = state.sources.find((item) => item.source.sourceHandle === input.sourceHandle
+              && item.source.sessionId === owner.sessionId && item.scope.revision === scope.revision)
+            if (!original) throw new IntegrationError('分页来源已失效，请重新检索文档', 'conflict')
+            if (original.readRevision !== undefined && original.readRevision !== readRevision) throw new KnowledgeReadVersionError()
+            original.readRevision = readRevision
+            state.sources.unshift({ source, scope, readRevision })
+          })
+        } catch (error) {
+          if (error instanceof IntegrationError && error.kind === 'conflict') throw error
+          throw new IntegrationError('无法持久保存文档分页版本，未返回未固定版本的正文页', 'io')
+        }
+      } else {
+        try { storeSource(owner.root, scope, source) } catch { persistence = 'degraded' }
+      }
+      return { operationId: input.requestId, status: value.mode === 'unsupported' ? 'unavailable' : 'ok', detail: value.mode === 'unsupported' ? '此文档格式不支持正文读取；不代表已读全文' : range ? `已读取正文分页；${nextOffset === null ? range.totalIsComplete ? '已到正文末尾' : '已到可读内容末尾，上游正文仍有截断' : '尚有后续内容，请使用 nextOffset 继续读取'}` : value.truncated ? '正文超出限额，返回标记过的截断文本' : '已读取支持格式的正文', source, persistence, ...(range ? { range, nextOffset } : {}) }
     } catch (error) {
       ensureOwner(owner)
-      if (error instanceof IntegrationError && (error.kind === 'conflict' || error.kind === 'denied')) throw error
-      return { operationId: input.requestId, status: signal?.aborted ? 'cancelled' : 'unavailable', detail: error instanceof IntegrationError ? error.message : '文档读取失败，未返回伪造正文', source: null, persistence: 'durable' }
+      if (error instanceof IntegrationError && ['conflict', 'denied', 'invalid'].includes(error.kind)) throw error
+      return { operationId: input.requestId, status: signal?.aborted ? 'cancelled' : 'unavailable', detail: error instanceof IntegrationError ? error.message : '文档读取失败，未返回伪造正文', source: null, persistence: error instanceof IntegrationError && error.kind === 'io' ? 'degraded' : 'durable' }
     }
   }
   async markSupplied(owner: KnowledgeOwner, sourceIds: string[]): Promise<void> { ensureOwner(owner); const ids = new Set(sourceIds); updateKnowledgeState(owner.root, (state) => { for (const item of state.sources) if (ids.has(item.source.id) && item.source.sessionId === owner.sessionId && item.source.turnId === owner.turnId) item.source.suppliedToAgent = true }) }

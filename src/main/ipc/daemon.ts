@@ -1,4 +1,4 @@
-import { daemonPayloads, daemonPreferencesSchema, type DaemonResult } from '../../shared/daemon'
+import { daemonPayloads, daemonPreferencesSchema, type DaemonFailure, type DaemonResult } from '../../shared/daemon'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 import { daemonManager } from '../services/daemon-client/manager'
@@ -6,8 +6,9 @@ import type { WindowDeps } from './deps'
 import { handle } from './registry'
 
 export function registerDaemonIpc(deps: WindowDeps): void {
+  const fail = (code: DaemonFailure['code'], error: string): DaemonFailure => ({ ...ipcFail(code, error), code, outcome: 'not-admitted' })
   const invoke = async <T>(event: Electron.IpcMainInvokeEvent, action: () => Promise<DaemonResult<T>>): Promise<DaemonResult<T>> => {
-    if (deps.getMain()?.webContents.id !== event.sender.id || event.senderFrame !== event.sender.mainFrame) return { ...ipcFail(IpcErrorCode.Denied, 'Daemon management is available only in the native main window.'), outcome: 'not-admitted' }
+    if (deps.getMain()?.webContents.id !== event.sender.id || event.senderFrame !== event.sender.mainFrame) return fail(IpcErrorCode.Denied, 'Daemon management is available only in the native main window.')
     const result = await action()
     return result.ok ? result : { ...ipcFail(result.code, result.error), ...result }
   }
@@ -18,15 +19,15 @@ export function registerDaemonIpc(deps: WindowDeps): void {
   handle(ipcInvoke.daemon.preferences, (event) => invoke(event, () => daemonManager.preferences()))
   handle(ipcInvoke.daemon.setPreferences, (event, raw: unknown) => invoke(event, async () => {
     const input = daemonPreferencesSchema.safeParse(raw)
-    return input.success ? daemonManager.setPreferences(input.data) : { ...ipcFail(IpcErrorCode.InvalidArg, 'Daemon preferences are invalid. Reload their current revision.'), outcome: 'not-admitted' as const }
+    return input.success ? daemonManager.setPreferences(input.data) : fail(IpcErrorCode.InvalidArg, 'Daemon preferences are invalid. Reload their current revision.')
   }))
   handle(ipcInvoke.daemon.logs, (event, raw: unknown) => invoke(event, async () => {
     const input = daemonPayloads['daemon.logs'].safeParse(raw)
-    return input.success ? daemonManager.logs(input.data) : { ...ipcFail(IpcErrorCode.InvalidArg, 'Daemon log cursor/limit is invalid.'), outcome: 'not-admitted' as const }
+    return input.success ? daemonManager.logs(input.data) : fail(IpcErrorCode.InvalidArg, 'Daemon log cursor/limit is invalid.')
   }))
   handle(ipcInvoke.daemon.reconcileStartup, (event, raw: unknown) => invoke(event, async () => {
     const input = daemonPayloads['daemon.startup.reconcile'].safeParse(raw)
-    if (!input.success) return { ...ipcFail(IpcErrorCode.InvalidArg, '原启动注册命令标识无效，请刷新后台状态。'), outcome: 'not-admitted' as const }
-    return daemonManager.reconcileStartup ? daemonManager.reconcileStartup(input.data.originalCommandId) : { ...ipcFail(IpcErrorCode.Unavailable, '当前原生版本未提供启动注册对账，请完整重启应用。'), outcome: 'not-admitted' as const }
+    if (!input.success) return fail(IpcErrorCode.InvalidArg, '原启动注册命令标识无效，请刷新后台状态。')
+    return daemonManager.reconcileStartup ? daemonManager.reconcileStartup(input.data.originalCommandId) : fail(IpcErrorCode.Unavailable, '当前原生版本未提供启动注册对账，请完整重启应用。')
   }))
 }

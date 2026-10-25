@@ -1,4 +1,4 @@
-import type { z } from 'zod'
+import type { ProviderSchemaParsers } from '../../shared/daemon-domains'
 import { randomUUID } from 'node:crypto'
 import { GITLAB_IPC, gitlabRequests, gitlabResults, type GitlabInput, type GitlabMethod, type GitlabOutput } from '../../shared/gitlab-integration'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
@@ -10,11 +10,12 @@ import { handle } from './registry'
 /** The action facade must forward to the authenticated daemon owner. Central main
  * declares GITLAB_IPC constants first; this module never bypasses the registry. */
 export function registerGitlabIntegrationIpc(actions: GitlabWorkspaceActions, isAllowed: (event: Electron.IpcMainInvokeEvent) => boolean): void {
+  const requests: ProviderSchemaParsers<typeof gitlabRequests> = gitlabRequests
   const active = new Map<string, AbortController>()
   function register<M extends Exclude<GitlabMethod, 'cancelAuthorization' | 'cancelRead'>>(method: M, action: (input: GitlabInput<M>, signal?: AbortSignal) => Promise<GitlabOutput<M>>) {
     handle(GITLAB_IPC[method], async (event, raw: unknown) => {
       if (!isAllowed(event)) return ipcFail(IpcErrorCode.Denied, 'GitLab 工作区仅允许原生主窗口访问。')
-      const parsed = (gitlabRequests[method] as z.ZodType<GitlabInput<M>>).safeParse(raw)
+      const parsed = requests[method].safeParse(raw)
       if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, parsed.error.issues[0]?.message ?? 'GitLab 参数无效')
       const authorization = method === 'authorizeWrites', requestId = authorization ? (parsed.data as GitlabInput<'authorizeWrites'>).requestId : undefined
       const groupId = (parsed.data as GitlabInput<'snapshot'>).requestId

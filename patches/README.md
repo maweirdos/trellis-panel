@@ -5,7 +5,7 @@ published npm package `acpx@0.19.5`, MIT, copyright retained in the installed
 `acpx/LICENSE`. The checked-in diff is our locally authored compatibility patch,
 not a vendored source tree. `acpx/runtime` remains the public application boundary.
 
-Compatibility revision **2** retains these three protocol boundary areas:
+Compatibility revision **3** retains these protocol boundary areas:
 
 - Validate ACP v1 initialize metadata and nonempty new-session identity before readiness.
   Retain only public agent identity, authentication-method display fields and
@@ -19,7 +19,7 @@ Compatibility revision **2** retains these three protocol boundary areas:
 - Add `{outcome:'selected', optionId:string}` to `AcpPermissionDecision`, preserving
   kind/cancel decisions. Unknown or duplicate IDs cancel without mode fallback.
 
-The patch also exports `TRELLIS_ACPX_COMPAT_VERSION = 2` and its public declaration
+The patch also exports `TRELLIS_ACPX_COMPAT_VERSION = 3` and its public declaration
 as an explicit integration guard. SDK1.8.0 is scoped via an acpx override to keep
 the protocol dependency aligned with the original isolated validation. Preparation
 checks both the requested override and the actual SDK resolved from acpx's public
@@ -45,29 +45,62 @@ remove a failing check. After an intentional compatibility update, regenerate th
 diff with `node node_modules/patch-package/index.js acpx`, update
 `acpx-compat.json` hashes and rerun both smoke suites.
 
-Behavioral checks: `node scripts/smoke/acpx-runtime.mjs` and
-`node scripts/smoke/acpx-preparation.mjs`. Historical stock failure evidence under
-the task's `research/validation/` is immutable and remains distinct from these
-patched regressions.
+Behavioral checks: `node tests/agent-runtime/acpx-runtime.mjs` and
+`node tests/agent-runtime/acpx-preparation.mjs`.
 
-## Eager persistent connection (revision 2)
+## Persistent connection (revision 2)
 
 `AcpxRuntime.connectSession({handle, assertActive?})` loads the existing persistent
 remote session without recording/submitting a prompt or choosing a new session.
 It reuses the manager's operation lock, `connectAndLoadSession` same-session-only
 policy, preference replay, owner projection/checkpoint and canonical cleanup.
 A live retained owner is reused; a newly loaded owner is retained for controls
-and later turns. The app calls this when opening history, then publishes ready
-only after actual load and metadata refresh. Failed load preserves history and
+and later turns. The app calls this on explicit Send or retry, then publishes
+ready only after actual load and metadata refresh. History selection only reads
+saved state. Failed load preserves history and
 identity. Application prompt failures no longer end a healthy transport.
-Focused regression: `node scripts/smoke/acp-continuity.mjs` (local fixture only).
+Focused regressions: `node tests/agent-runtime/conversation-concurrency.mjs` and
+`node tests/agent-runtime/conversation-switching.mjs` (owned peers only).
 
 Text checksums normalize CRLF and a single final newline, matching Git and
 patch-package's Windows text handling; all other bytes must match.
 
+## Inline text resources (revision 3)
+
+`AcpRuntimeTurnInput.context?: Array<{uri:string; mimeType?:string; text:string}>`
+adds standard ACP `{type:'resource',resource:{uri,mimeType?,text}}` blocks after
+the original text and before image/audio attachments. Supplied text and URI
+strings are preserved exactly. An absent or empty context keeps the previous
+wire behavior, including image-only turns. The manager, public wrapper,
+`runTurn` and shared runtime use the same conversion and validation.
+
+Before dispatch, context must contain at most 16 resources, each at most
+128 KiB of UTF-8 text and at most 256 KiB combined. URIs must be absolute `file:`
+or `trellis:` URIs, at most 2048 characters, without credentials, ASCII whitespace or
+literal/percent-encoded control characters. File URIs require an absolute path.
+MIME may be omitted or exactly `text/plain` or `text/markdown`. Invalid input
+fails with `ACP_TURN_FAILED` before sending a request. Runtime validation does
+not read files or access the network; the host supplies resource text and
+negotiates the agent's `promptCapabilities.embeddedContext` capability.
+
+`node tests/agent-runtime/acpx-runtime.mjs --only=context` checks exact resource/text
+bytes, attachment order, empty context, byte/count/URI/MIME bounds with zero
+dispatch, cancellation, subsequent turns, eager resume and the shared runtime
+against an owned local peer.
+
+## Bounded tool output deltas
+
+Owned tool updates preserve text from the recognized `terminal_output_delta`,
+`terminal_output` and `mcp_output_delta` metadata channels as `outputDelta`.
+Other metadata is excluded. Each delta retains at most16384 UTF-16 units without
+splitting a surrogate pair; `outputDeltaTruncated` discloses an omitted suffix.
+Delta content never establishes tool completion or grants permission. The host
+keeps the original scoped tool ID and native completed/failed acknowledgement.
+Renderer replay appends deltas in event order with a separate display cap.
+
 ## Passive unknown-update diagnostics
 
-The approved R3 projection completes the existing inbound-ownership boundary.
+Unknown-update projection completes the existing inbound-ownership boundary.
 For an owned update delivered by SDK1.8 but unrecognized by acpx, the public
 `AcpRuntimeEvent` remains `type:'status'` and carries its tag, readable text and
 optional `rawUpdate`. This diagnostic never acknowledges a feature or changes

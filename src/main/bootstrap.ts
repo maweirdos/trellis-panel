@@ -1,9 +1,9 @@
 import { app } from 'electron'
 import { mkdirSync } from 'node:fs'
-import { join, isAbsolute } from 'node:path'
+import { dirname, join, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { daemonStartupFailure } from './daemon/startup-failure'
+import { daemonStartupFailure, recordDaemonStartupFailure } from './daemon/startup-failure'
 
 // Role artifacts are generated beside the emitted CommonJS bootstrap. Keep
 // loading native and branch-local so bundlers cannot eagerly import GUI code.
@@ -39,13 +39,17 @@ if (roles.length > 1 || !['gui', 'daemon', 'control'].includes(role)) {
     }
     if (!locked) app.exit(0)
     else {
+      const fail = (error: unknown, stage: 'load' | 'run'): void => {
+        const diagnostic = role === 'daemon' ? recordDaemonStartupFailure(dirname(roleDirectory), error, stage) : daemonStartupFailure(error, stage)
+        process.stderr.write(diagnostic); app.exit(1)
+      }
       try {
         const entry: { runDaemonHost?: () => Promise<void>; runDaemonControl?: () => Promise<void> } = role === 'daemon' ? loadRole('./daemon-host.js') : loadRole('./daemon-control.js')
         const run = role === 'daemon' ? entry.runDaemonHost : entry.runDaemonControl
         if (!run) throw new Error('Missing daemon entrypoint')
-        void run().catch((error: unknown) => { process.stderr.write(daemonStartupFailure(error, 'run')); app.exit(1) })
+        void run().catch((error: unknown) => { fail(error, 'run') })
       } catch (error) {
-        process.stderr.write(daemonStartupFailure(error, 'load')); app.exit(1)
+        fail(error, 'load')
       }
     }
   }

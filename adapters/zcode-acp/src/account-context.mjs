@@ -23,16 +23,18 @@ async function readJson(path, optional = false) {
   let file
   try {
     file = await open(path, 'r')
-    if (!(await file.stat()).isFile()) throw failure('account_file_invalid')
-    // Bound the read itself, including a file which grows after stat().
-    const bytes = Buffer.alloc(MAX_FILE_BYTES + 1)
+    const stat = await file.stat()
+    if (!stat.isFile() || stat.size > MAX_FILE_BYTES) throw failure('account_file_invalid')
+    // Read one sentinel byte beyond stat: small account files need small buffers,
+    // while a file growing during the read still fails closed.
+    const bytes = Buffer.alloc(Math.min(MAX_FILE_BYTES + 1, stat.size + 1))
     let length = 0
     while (length < bytes.length) {
       const { bytesRead } = await file.read(bytes, length, bytes.length - length, null)
       if (!bytesRead) break
       length += bytesRead
     }
-    if (length > MAX_FILE_BYTES) throw failure('account_file_oversized')
+    if (length > stat.size || length > MAX_FILE_BYTES) throw failure('account_file_oversized')
     const result = JSON.parse(bytes.subarray(0, length).toString('utf8').replace(/^\uFEFF/, ''))
     if (!record(result)) throw failure('account_file_invalid')
     return result
@@ -87,9 +89,15 @@ function settingsScope(settings) {
 }
 
 async function material(dataBaseDir, settingsPath, env, now) {
-  const settings = await readJson(settingsPath, true)
-  const scope = settingsScope(settings)
-  const credentials = await readJson(join(dataBaseDir, '.zcode', 'v2', 'credentials.json'), true)
+  // Fixed files in the admitted native root can be read together. Check settings
+  // first, preserving failure precedence and never using a foreign account key.
+  const [settings, credentialFile] = await Promise.allSettled([
+    readJson(settingsPath, true), readJson(join(dataBaseDir, '.zcode', 'v2', 'credentials.json'), true)
+  ])
+  if (settings.status === 'rejected') throw settings.reason
+  const scope = settingsScope(settings.value)
+  if (credentialFile.status === 'rejected') throw credentialFile.reason
+  const credentials = credentialFile.value
   const key = cipherKey(env)
   const load = name => text(decrypt(credentials[name], key))
   if (load('oauth:active_provider') !== 'bigmodel') throw failure('account_not_current')
@@ -216,6 +224,7 @@ export function createAccountContext({ dataBaseDir, builtinPath, builtinActivePa
         } catch (error) { current = undefined; entitled = false; reason = error?.code || 'account_unavailable' }
       }
       assertCurrent(version)
+      // Keep this fence after the final account read, including its failures.
       const latestConfig = await catalogue(builtinPath, builtinActivePath)
       if (latestConfig.revision !== config.revision || latestConfig.signature !== config.signature) throw failure('builtin_changed')
       const providers = Object.fromEntries(config.accounts.map(rule => [rule.providerId,

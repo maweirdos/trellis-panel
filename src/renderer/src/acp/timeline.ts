@@ -131,6 +131,14 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
       const previous = toolIndex.get(identity)
       const prior = previous?.type === 'tool' ? previous.tool : undefined
       const payload = { ...prior?.payload, ...ev.payload }
+      if (typeof ev.payload?.outputDelta === 'string') {
+        const previousOutput = typeof prior?.payload.outputText === 'string' ? prior.payload.outputText : ''
+        const combined = previousOutput + ev.payload.outputDelta
+        let displayed = combined.slice(0, 256 * 1024)
+        if (/[\uD800-\uDBFF]$/u.test(displayed)) displayed = displayed.slice(0, -1)
+        payload.outputText = displayed
+        payload.outputDeltaTruncated = prior?.payload.outputDeltaTruncated === true || ev.payload.outputDeltaTruncated === true || combined.length > displayed.length
+      }
       // acpx normalizes an omitted patch title to this placeholder. Keep the known
       // label while still applying real title changes, status, output and null fields.
       const isDefaultPatchTitle = ev.payload?.tag === 'tool_call_update' && ev.payload?.title === 'tool call'

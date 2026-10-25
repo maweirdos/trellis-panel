@@ -6,6 +6,7 @@ import { Button } from '../my/ui'
 import { RuntimePanel } from './RuntimePanel'
 import { RuntimePicker } from './RuntimePicker'
 import { SessionDetails } from './SessionDetails'
+import { ProfileSkills } from './ProfileSkills'
 import type { AcpAgentProfile, AcpAgentStatus, AcpSessionRecord } from '../../../shared/types'
 
 export type RoleDetailsSection = 'overview' | 'instructions' | 'im' | 'tools' | 'workspace' | 'runtime' | 'git' | 'skills' | 'archive'
@@ -27,17 +28,17 @@ export function AgentRoleDetails({ profile, currentProfile, session, recentSessi
   const cwdName = cwd ? cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd : ''
 
   const cards: Array<{ key: DetailKey; icon: typeof FileText; title: string; desc: string; value: string; soon?: boolean }> = [
-    { key: 'instructions', icon: FileText, title: '角色指令', desc: '定义这个角色的身份和工作方式，会注入到每个任务的 Agent 上下文中。', value: profile?.instructions.trim() ? '已配置' : '无' },
+    { key: 'instructions', icon: FileText, title: '角色指令', desc: '定义角色身份与工作方式，随每轮请求提供给执行引擎。', value: profile?.instructions.trim() ? '已配置' : '无' },
     { key: 'im', icon: Share2, title: '触发 & IM 集成', desc: '集成飞书、企业微信、钉钉、微信等 IM 工具。', value: '即将支持', soon: true },
     { key: 'tools', icon: Plug, title: '工具 & 知识库', desc: '设置 Agent 可以使用的项目知识、来源与规范。', value: '沿用项目配置' },
     { key: 'workspace', icon: SlidersHorizontal, title: '运行设置', desc: '设置工作目录、单轮最长运行时长。', value: `${cwdName || '跟随当前项目'} · ${session?.profileSnapshot?.maxTurnMinutes ?? profile?.maxTurnMinutes ?? 30} 分钟` },
     { key: 'runtime', icon: Monitor, title: '电脑 & Runtime', desc: '设置电脑、Runtime，注入环境变量、自定义参数等。', value: engine?.name ?? profile?.runtimeId ?? '未配置' },
     { key: 'git', icon: FolderGit2, title: 'Git 仓库 & 设置', desc: 'Agent 在工作目录内读写代码与文档。', value: cwd ? '指定目录' : '当前项目' },
-    { key: 'skills', icon: Puzzle, title: '技能', desc: '设置 Agent 可以使用的技能。', value: '沿用执行引擎' },
+    { key: 'skills', icon: Puzzle, title: '技能', desc: '为角色额外选择当前项目技能。', value: profile?.skillPaths?.length ? `已选 ${profile.skillPaths.length} 个` : '沿用执行引擎' },
     { key: 'archive', icon: Archive, title: '归档', desc: '归档后 Agent 无法被指派或提及，历史会保留。', value: '即将支持', soon: true }
   ]
 
-  if (section !== 'overview') return <DetailView key={section} section={section} profile={profile} session={session} agents={agents} root={root} engine={engine} connected={connected}
+  if (section !== 'overview') return <DetailView key={section} section={section} profile={session ? currentProfile : profile} session={session} agents={agents} root={root} engine={engine} connected={connected}
     isCurrent={isCurrent} onAgentsChange={onAgentsChange} onUpdated={onUpdated} onProfileChange={onProfileChange} onSection={onSection} onKnowledge={onKnowledge} onSpec={onSpec} />
 
   return <>
@@ -93,13 +94,13 @@ function DetailView({ section, profile, session, agents, root, engine, connected
     finally { lock.current = false; if (isCurrent()) setPending(false) }
   }
   const headers: Record<DetailKey, { title: string; desc: string }> = {
-    instructions: { title: '角色指令', desc: '身份、工作方式与输出要求。这些指令会注入到每个新会话的 Agent 上下文中。' },
+    instructions: { title: '角色指令', desc: '身份、工作方式与输出要求，随会话的每轮请求提供给执行引擎。' },
     im: { title: '触发 & IM 集成', desc: '集成飞书、企业微信、钉钉、微信等 IM 工具。' },
     tools: { title: '工具 & 知识库', desc: '设置 Agent 可以使用的项目知识、来源与规范。' },
     workspace: { title: '运行设置', desc: '设置工作目录、单轮最长运行时长。' },
     runtime: { title: '电脑 & Runtime', desc: '设置电脑、Runtime，注入环境变量、自定义参数等。' },
     git: { title: 'Git 仓库 & 设置', desc: 'Agent 在工作目录内读写代码与文档。' },
-    skills: { title: '技能', desc: '设置 Agent 可以使用的技能。' },
+    skills: { title: '技能', desc: '为角色额外选择当前项目技能。' },
     archive: { title: '归档', desc: '归档后 Agent 无法被指派或提及，历史会保留。' }
   }
   const header = headers[section]
@@ -152,7 +153,7 @@ function DetailView({ section, profile, session, agents, root, engine, connected
 
       <section className="acp-detail-section">
         <h3>环境变量</h3>
-        <p className="text-my-sm text-my-tertiary">在 Agent 进程启动时注入（例如 ANTHROPIC_BASE_URL）。以明文保存在本机角色配置，不会进入历史记录。</p>
+        <p className="text-my-sm text-my-tertiary">在 Agent 进程启动时注入（例如 ANTHROPIC_BASE_URL）。以明文保存在本机角色配置和会话配置快照中。</p>
         <KVEditor
           rows={draft?.env ?? []}
           keyPlaceholder="变量名" valuePlaceholder="值"
@@ -195,8 +196,12 @@ function DetailView({ section, profile, session, agents, root, engine, connected
     </>}
 
     {section === 'skills' && <>
-      <p className="text-my-sm leading-relaxed text-my-secondary">本页暂不提供每个角色独立的技能安装。技能由执行引擎与当前项目配置提供，会话中的实际使用以引擎报告为准。</p>
-      <div className="mt-3"><Button size="sm" variant="outline" onClick={onSpec}>查看项目规范</Button></div>
+      {session && <div className="mb-4 text-my-sm text-my-secondary"><h3 className="font-medium text-my-primary">本会话技能快照 · {session.profileSnapshot?.skillPaths?.length ?? 0} 个</h3>{session.profileSnapshot?.skillPaths?.length ? <ul className="mt-2 space-y-1 break-all font-mono">{session.profileSnapshot.skillPaths.map((path) => <li key={path}>{path}</li>)}</ul> : <p className="mt-1 text-my-tertiary">未额外选择项目技能，沿用执行引擎。</p>}</div>}
+      {profile && draft ? <>
+        {session && <p className="mb-3 text-my-sm text-my-tertiary">下面修改角色默认配置，仅影响之后的新会话。</p>}
+        <ProfileSkills root={root} value={draft.skillPaths ?? []} disabled={pending} isCurrent={isCurrent} onChange={(skillPaths) => update({ skillPaths })} />
+        <SaveBar pending={pending} error={error} notice={notice} dirty={JSON.stringify(draft.skillPaths ?? []) !== JSON.stringify(profile.skillPaths ?? [])} onSave={save} />
+      </> : <p className="text-my-sm text-my-tertiary">当前没有可编辑的角色默认配置。</p>}
     </>}
 
     {section === 'im' && <p className="text-my-sm leading-relaxed text-my-tertiary">本机版本尚未提供 IM 触发与集成。当前可以通过面板手动指派任务；团队触发通道会在后续版本提供。</p>}

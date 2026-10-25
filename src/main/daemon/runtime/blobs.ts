@@ -52,7 +52,8 @@ export class RuntimeBlobs {
     const entry = this.entry(root, id)
     this.assertFile(entry)
     if (entry.offset !== entry.bytes || createHash('sha256').update(readFileSync(this.path(id))).digest('hex') !== entry.sha256) throw new DaemonError('E_INVALID_ARG', 'Runtime transfer byte count or digest does not match.')
-    const descriptor = openSync(this.path(id), 'r'); try { fsyncSync(descriptor) } finally { closeSync(descriptor) }
+    // FlushFileBuffers on Windows requires a writable handle for the owned spool file.
+    const descriptor = openSync(this.path(id), 'r+'); try { fsyncSync(descriptor) } finally { closeSync(descriptor) }
     entry.sealed = true
     return { id, bytes: entry.bytes, sha256: entry.sha256 }
   }

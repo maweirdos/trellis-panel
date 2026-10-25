@@ -31,6 +31,8 @@ export function nativeKnowledgeOperationId(payload: Record<string, unknown>): st
     const marker = object(result.knowledgeOperation)
     const id = marker?.operationId ?? result.operationId
     if (typeof id === 'string' && id.trim() && (marker || ['ok', 'empty', 'partial', 'not_configured', 'denied', 'unavailable', 'completed', 'failed', 'needs_clarification', 'uncertain', 'cancelled'].includes(String(result.status)))) ids.add(id)
+    const metadata = object(object(result._meta)?.trellisKnowledge)
+    if (typeof metadata?.operationId === 'string' && metadata.operationId.trim() && metadata.operationId.length <= 256) ids.add(metadata.operationId)
   }
   const inspectContent = (value: unknown): void => {
     if (!Array.isArray(value)) return

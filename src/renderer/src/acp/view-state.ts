@@ -50,7 +50,6 @@ function projectView(root: string): ProjectView {
 
 function persist(root: string, view: ProjectView): void {
   const entries = Object.entries(view.sessions).sort((a, b) => b[1].updatedAt - a[1].updatedAt).slice(0, 30)
-  view.sessions = Object.fromEntries(entries)
   try { localStorage.setItem(storageKey(root), JSON.stringify({ activeId: view.activeId, view: view.view, sessions: entries.map(([id, state]) => ({ id, ...state })) })) }
   catch { /* Storage quota/private mode: keep this session's UI state in memory. */ }
 }

@@ -4,7 +4,7 @@ import { daemonPayloads, DAEMON_LIMITS, MUTATING_DAEMON_METHODS, type DaemonRequ
 import type { DaemonContext } from './context'
 import type { DaemonLease } from './lease'
 import { assertLease } from './lease'
-import { sameOwner } from './native'
+import { processIdentity, sameOwner } from './native'
 import { DaemonError } from './errors'
 import { DaemonRepository, activeJob } from './repository'
 import type { ProtectedSettingsOwner } from './settings-owner'
@@ -17,7 +17,16 @@ import { canonicalDirectory } from '../services/acp/metadata'
 
 export class DaemonDispatcher {
   private stopping = false
+  private checkingIdle = false
+  private operations = 0
+  private stopAttempt?: { commandId: string; intent: string; result: Promise<unknown> }
   constructor(private readonly context: DaemonContext, private readonly lease: DaemonLease, private readonly repository: DaemonRepository, private readonly settings: ProtectedSettingsOwner, private readonly scheduler: IntegrationScheduler, private readonly log: DaemonLog, private readonly requestStop: () => void, private readonly domains?: DaemonDomainPort) {}
+  /** Include timer-driven admission in the same server-side idle fence as RPC. */
+  async backgroundPoll(action: () => Promise<void>): Promise<void> {
+    if (this.stopping || this.checkingIdle) return
+    this.operations++
+    try { await action() } finally { this.operations-- }
+  }
   observeInvalidations(listener: (event: { source: 'runtime' | 'integration'; root?: string; workspaceId?: string | null }) => void): () => void {
     const jobs = this.repository.observe(event => listener({ source: 'integration', workspaceId: event.workspaceId }))
     const runtime = this.domains?.observeRuntime(event => listener({ source: 'runtime', root: canonicalDirectory(event.root) }))
@@ -49,6 +58,71 @@ export class DaemonDispatcher {
     return actual
   }
   async dispatch(request: DaemonRequest, actor: ProcessOwner): Promise<unknown> {
+    const management = ['daemon.status', 'daemon.stop', 'daemon.logs', 'commands.get'].includes(request.method)
+    if ((this.checkingIdle || this.stopping) && !management) throw new DaemonError(this.stopping ? 'E_UNAVAILABLE' : 'E_BUSY', 'Native admission is closed while the original daemon owner is checking shutdown.')
+    if (!management) this.operations++
+    try { return await this.dispatchRequest(request, actor) }
+    finally { if (!management) this.operations-- }
+  }
+  private async stop(request: DaemonRequest): Promise<unknown> {
+    const input = daemonPayloads['daemon.stop'].parse(request.payload)
+    if (!sameOwner(input.expectedOwner, this.context.owner)) throw new DaemonError('E_CONFLICT', 'The daemon owner changed before stop.')
+    const committed = this.repository.committedResult(request)
+    if (committed.found) return committed.data
+    const intent = JSON.stringify(input)
+    if (this.stopAttempt) {
+      if (this.stopAttempt.commandId === request.commandId) {
+        if (this.stopAttempt.intent !== intent) throw new DaemonError('E_CONFLICT', 'The original stop command has a different payload.')
+        return this.stopAttempt.result
+      }
+      throw new DaemonError('E_BUSY', 'The original daemon stop command is still retained. Inspect it before another stop.')
+    }
+    if (!request.commandId) throw new DaemonError('E_INVALID_ARG', 'Stop requires its original command ID.')
+    const perform = async (): Promise<unknown> => {
+      if (input.idleOnly) {
+        // Close all dispatcher/poll admission BEFORE any await or idle check.
+        // The native domain must also atomically fence its independent owners.
+        this.checkingIdle = true
+        const assertIdle = (): void => {
+          assertLease(this.context, this.lease)
+          if (this.operations || this.scheduler.hasRunning() || this.repository.allJobs().some(job => activeJob(job) || job.state === 'unknown')) throw new DaemonError('E_BUSY', 'The original daemon owns active or uncertain background work; idle-only stop was refused.')
+        }
+        assertIdle()
+        const actual = await processIdentity(this.lease.owner.pid)
+        if (!actual || !sameOwner(actual, this.lease.owner)) throw new DaemonError('E_CONFLICT', 'The original native daemon process changed during idle-only stop.')
+        assertIdle()
+        if (this.domains) {
+          if (!this.domains.shutdownIfIdle) throw new DaemonError('E_BUSY', 'The native domain cannot prove an idle shutdown. Preserve background work and use explicit native recovery after inspecting its owner.')
+          await this.domains.shutdownIfIdle()
+        }
+        assertLease(this.context, this.lease)
+      } else {
+        this.stopping = true
+        this.scheduler.closeAdmission()
+        await this.domains?.shutdown()
+      }
+      this.stopping = true
+      this.scheduler.closeAdmission()
+      await this.scheduler.shutdown()
+      const result = this.repository.stopping(request)
+      try { this.log.append('DAEMON_STOPPING') }
+      catch { process.emitWarning('Daemon stop was accepted, but its diagnostic log could not be saved.', { code: 'TRELLIS_DAEMON_LOG_UNAVAILABLE' }) }
+      this.requestStop()
+      return result
+    }
+    // Defer execution until the shared promise is installed so synchronous
+    // rejections and duplicate frames retain the same exact stop identity.
+    const result = Promise.resolve().then(perform).catch((error: unknown) => {
+      if (!this.stopping && error instanceof DaemonError && error.outcome === 'not-admitted') {
+        this.checkingIdle = false
+        this.stopAttempt = undefined
+      }
+      throw error
+    })
+    this.stopAttempt = { commandId: request.commandId, intent, result }
+    return result
+  }
+  private async dispatchRequest(request: DaemonRequest, actor: ProcessOwner): Promise<unknown> {
     assertLease(this.context, this.lease)
     if (request.expectedEpoch !== this.lease.epoch) throw new DaemonError('E_CONFLICT', 'Daemon epoch changed. Reconnect and inspect the original command receipt.')
     const mutating = MUTATING_DAEMON_METHODS.includes(request.method)
@@ -82,20 +156,7 @@ export class DaemonDispatcher {
         startup.assertAvailable()
         return this.repository.reconcileStartup(input.originalCommandId, (preferences, registration) => startup.verifyOriginal(registration, preferences.startup === 'login'))
       }
-      case 'daemon.stop': {
-        const input = daemonPayloads[request.method].parse(request.payload)
-        if (!sameOwner(input.expectedOwner, this.context.owner)) throw new DaemonError('E_CONFLICT', 'The daemon owner changed before stop.')
-        this.stopping = true
-        this.scheduler.closeAdmission()
-        await this.domains?.shutdown()
-        await this.scheduler.shutdown()
-        const result = this.repository.stopping(request)
-        this.stopping = true; this.scheduler.closeAdmission()
-        try { this.log.append('DAEMON_STOPPING') }
-        catch { process.emitWarning('Daemon stop was accepted, but its diagnostic log could not be saved.', { code: 'TRELLIS_DAEMON_LOG_UNAVAILABLE' }) }
-        this.requestStop()
-        return result
-      }
+      case 'daemon.stop': return this.stop(request)
       case 'workspace.grant': {
         const input = daemonPayloads[request.method].parse(request.payload)
         if (!isAbsolute(input.root) || !statSync(input.root).isDirectory()) throw new DaemonError('E_INVALID_ARG', 'Authorize an existing absolute workspace directory from native code.')

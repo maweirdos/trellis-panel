@@ -108,10 +108,11 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
       }
     }
     if (!plan) { const skipped = this.intent(context, identity, 'local-update', issue, local); this.settle(skipped.receipt.id, 'skipped', 'Preexisting local task preserved; one-time import does not overwrite prior work.'); return }
-    const base = this.repository.read().baselines.find((entry) => entry.planId === plan.plan.id && entry.instanceId === issue.instanceId && entry.issueId === issue.issueId && entry.taskRef === local.taskRef)
+    const taskRef = local.taskRef
+    const base = this.repository.read().baselines.find((entry) => entry.planId === plan.plan.id && entry.instanceId === issue.instanceId && entry.issueId === issue.issueId && entry.taskRef === taskRef)
     const inbound: Partial<JiraFields> = {}; const outbound: Partial<JiraFields> = {}; const adopted: Array<keyof JiraFields> = []; let hasConflict = false
     for (const field of mapping.fields) {
-      const choice = this.repository.read().conflicts.find((entry) => entry.value.resolved && !entry.value.applied && entry.value.planId === plan.plan.id && entry.value.issueId === issue.issueId && entry.value.taskRef === local.taskRef && entry.value.field === field)?.value
+      const choice = this.repository.read().conflicts.find((entry) => entry.value.resolved && !entry.value.applied && entry.value.planId === plan.plan.id && entry.value.issueId === issue.issueId && entry.value.taskRef === taskRef && entry.value.field === field)?.value
       const chosen = choice && equal(choice.local, local.fields[field]) && equal(choice.remote, issue.fields[field]) ? choice.resolution === 'local' ? 'outbound' : 'inbound' : null
       const decision = chosen ?? (equal(local.fields[field], mapped[field]) ? 'unchanged' : !base ? 'conflict' : fieldDecision(field, local.fields, issue.fields, base))
       if (decision === 'conflict') { this.conflict(context, plan, local, issue, field, base ? { local: base.local[field], remote: base.remote[field] } : null); hasConflict = true; continue }

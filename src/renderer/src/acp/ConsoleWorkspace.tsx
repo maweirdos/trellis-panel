@@ -17,6 +17,7 @@ import { useInteractionActive, useInteractionGuard, useInteractionSignal } from 
 import { ConversationNavigation } from './ConversationNavigation'
 import { WorkspaceInspector, type InspectorTab } from './WorkspaceInspector'
 import { isDiagnosticConversation, resolveWorkspaceEntry } from './conversation-selection'
+import { canSubmitConversation, connectConversationForSend, rebindSubmittedReferences, type ConversationReferenceOwner } from './conversation-switching'
 import { ConversationArtifactCard } from './ConversationArtifactCard'
 import { ConversationDocumentPane } from './ConversationDocumentPane'
 import { WorkflowPanel } from './workflow/WorkflowPanel'
@@ -53,7 +54,6 @@ const STATUS_COLOR: Record<string, string> = {
   error: 'text-my-danger-text', closed: 'text-my-tertiary', disconnected: 'text-my-tertiary', legacy: 'text-my-tertiary'
 }
 const failureText = (error: unknown): string => error instanceof Error ? error.message : '请求失败，请重试'
-const canSend = (session: AcpSessionRecord): boolean => session.status === 'ready' && !session.archivedAt
 const supportsPagedHistory = (): boolean => typeof api?.acpHistoryList === 'function' && typeof api?.acpHistorySession === 'function' && typeof api?.acpHistoryEvents === 'function'
 
 function HistoryBoundary({ hasEarlier, startsMidTurn, coverage, loading, onLoadEarlier }: {
@@ -158,13 +158,13 @@ export function AcpConsolePage(): JSX.Element {
   const draftsRef = useRef<Record<string, string>>({})
   const scope = useMemo(() => ({
     root, live: true, sessionIds: new Set<string>(), states: new Map<string, AcpStateEvent>(),
-    reloadSerial: 0, createPending: false, entryResolved: false, sends: new Set<string>(), permissions: new Set<string>(), actions: new Set<string>(), actionTokens: new Map<string, symbol>(), autoResumes: new Set<string>()
+    reloadSerial: 0, createPending: false, entryResolved: false, sends: new Set<string>(), sendControllers: new Map<string, AbortController>(), referenceOwners: new Map<string, ConversationReferenceOwner>(), permissions: new Set<string>(), actions: new Set<string>(), actionTokens: new Map<string, symbol>()
   }), [root])
   const scopeRef = useRef(scope)
   scopeRef.current = scope
   const isCurrent = useCallback((): boolean => scope.live && scopeRef.current === scope && (useApp.getState().snapshot?.meta.root ?? '') === root, [root, scope])
   const projectSessions = useMemo(() => {
-    const records = new Map<string, AcpSessionRecord>(history.sessions.map((session) => [session.sessionId, { ...session, events: [] }]))
+    const records = new Map<string, AcpSessionRecord>(Object.values(history.knownSessions).map((session) => [session.sessionId, { ...session, events: [] }]))
     if (history.selectedSession) records.set(history.selectedSession.sessionId, { ...history.selectedSession, events: [] })
     for (const session of sessions) {
       const archived = records.get(session.sessionId)
@@ -181,7 +181,7 @@ export function AcpConsolePage(): JSX.Element {
   const activeSession = projectSessions.find((session) => session.sessionId === activeId) ?? null
   const workflow = useManagedWorkflow({ root, taskDir: activeSession?.taskDir, sessionId: activeSession?.sessionId, generation: activeSession?.connectionGeneration, enabled: view === 'conversation' && Boolean(root && activeSession?.taskDir) })
   const managedComposerBlocked = Boolean(workflow.available && activeSession?.taskDir && (workflow.loading || workflow.snapshot?.composer.target === 'managed' || workflow.snapshot?.recoveryRequired))
-  const selectedArchiveKnown = !supportsPagedHistory() || !!history.knownSessions[activeId ?? '']
+  const selectedArchiveKnown = !supportsPagedHistory() || !!history.knownSessions[activeId ?? ''] || scope.states.has(activeId ?? '')
   useLayoutEffect(() => {
     const field = composerRef.current
     if (!interactive || view !== 'conversation' || !field) return
@@ -418,7 +418,7 @@ export function AcpConsolePage(): JSX.Element {
       setSessions((previous) => previous.map((session) => session.sessionId === event.sessionId ? { ...session, status: event.status, error: event.error } : session))
     })
     void reloadCatalogue(); void reloadSessions()
-    return () => { scope.live = false; offOut(); offState(); offDone(); offMaterials() }
+    return () => { scope.live = false; for (const controller of scope.sendControllers.values()) controller.abort(); offOut(); offState(); offDone(); offMaterials() }
   }, [root, scope, isCurrent, reloadCatalogue, reloadSessions, updateSession, recordTurnFact])
 
   useLayoutEffect(() => {
@@ -464,9 +464,6 @@ export function AcpConsolePage(): JSX.Element {
   }
   const openWorkflowHistory = (id: string): void => {
     if (!isCurrent() || !canInteract()) return
-    // A retained workflow reference opens history, not a replacement native
-    // connection. Ordinary sidebar selection retains its existing behavior.
-    scope.autoResumes.add(id)
     selectSession(id)
   }
   const updateConversation = async (id: string, patch: ConversationUpdate) => {
@@ -499,9 +496,6 @@ export function AcpConsolePage(): JSX.Element {
       if (!current()) return
       if (record.sessionId !== target || projectRootKey(record.projectRoot) !== projectRootKey(root)) throw Error('来源对话不属于当前项目，未切换到其他会话。')
       updateSession(record)
-      // Returning to a fixed source is a history selection, not authority to
-      // restore an old native connection and replace its recorded generation.
-      scope.autoResumes.add(target)
       selectSession(target)
       useMy.getState().setAgentSessionTarget(null)
     }
@@ -562,26 +556,74 @@ export function AcpConsolePage(): JSX.Element {
   }, [root, scope, isCurrent, canInteract, interactionSignal, pushToast, reloadSessions])
 
   const send = useCallback(async (): Promise<void> => {
-    if (!isCurrent() || !canInteract() || managedComposerBlocked || !activeSession || !activeId || !selectedArchiveKnown || !canSend(activeSession) || scope.sends.has(activeId) || ownsCurrentTurnRequest(turnRequestsRef.current[activeId], activeSession, root) || composerImages.pending || (!input.trim() && !composerImages.images.length)) return
+    if (!isCurrent() || !canInteract() || managedComposerBlocked || !activeSession || !activeId || !selectedArchiveKnown || !canSubmitConversation(activeSession) || scope.actions.has(activeId) || scope.sends.has(activeId) || ownsCurrentTurnRequest(turnRequestsRef.current[activeId], activeSession, root) || composerImages.pending || (!input.trim() && !composerImages.images.length)) return
     const id = activeId, text = input.trim(), submittedDraft = input
     const submittedReferences = references
     const submittedImages = composerImages.images
-    if (submittedImages.length && activeSession.capabilities?.promptCapabilities?.image !== true) {
-      setFeedback((previous) => ({ ...previous, [id]: { error: true, text: '当前执行引擎未声明支持图片输入。草稿已保留，请切换支持图片的会话。' } })); return
+    const referenceOwner = (source: AcpSourceReference): ConversationReferenceOwner => {
+      if (source.targetConnectionGeneration === activeSession.connectionGeneration) return activeSession
+      const known = scope.referenceOwners.get(`${id}\0${source.targetConnectionGeneration ?? ''}`)
+      if (!known) throw Error('引用的会话连接已变化，无法核对原身份。草稿与原版本引用已保留。')
+      return known
     }
-    if (submittedReferences.some((source) => projectRootKey(source.projectRoot) !== projectRootKey(root) || source.targetSessionId !== id || source.taskDir !== activeSession.taskDir || source.targetConnectionGeneration !== activeSession.connectionGeneration)) {
-      setFeedback((previous) => ({ ...previous, [id]: { error: true, text: '引用的项目、任务或会话已变化。草稿已保留，请重新阅读并引用来源。' } })); return
-    }
+    try {
+      for (const source of submittedReferences) {
+        const owner = referenceOwner(source)
+        rebindSubmittedReferences(owner, activeSession, [source])
+        // A failed write keeps the original draft generation. Remember only
+        // identities actually captured by Send so a later explicit retry can
+        // prove the same native target without rewriting that saved draft.
+        scope.referenceOwners.set(`${id}\0${owner.connectionGeneration ?? ''}`, { sessionId: owner.sessionId, projectRoot: owner.projectRoot, taskDir: owner.taskDir, backendSessionId: owner.backendSessionId, agentSessionId: owner.agentSessionId, connectionGeneration: owner.connectionGeneration })
+      }
+    } catch (error) { setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })); return }
     const request: CurrentTurnRequest = { requestId: crypto.randomUUID(), projectRoot: root, sessionId: id, connectionGeneration: activeSession.connectionGeneration, previousTurnId: activeSession.turnId, phase: 'submitting' }
+    const controller = new AbortController()
+    scope.sendControllers.set(id, controller)
+    const valid = (): boolean => isCurrent() && !controller.signal.aborted && scope.sendControllers.get(id) === controller
     const clearRequest = (): void => changeTurnRequest(id, (current) => current?.requestId === request.requestId ? undefined : current)
     // Explicit submission returns to the current turn. Later passive updates
     // still obey onScroll if the reader chooses to leave the bottom again.
     earlierAnchor.current = null; followRef.current = true; setAtBottom(true)
     writeSessionView(root, id, { follow: true })
-    changeTurnRequest(id, () => request)
+    if (activeSession.status === 'ready') changeTurnRequest(id, () => request)
     scope.sends.add(id); setSending((previous) => ({ ...previous, [id]: true })); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '请求确认中，草稿暂时保留。' } }))
     try {
-      const response = await api.acpSessionPrompt(id, text, { expectedConnectionGeneration: activeSession.connectionGeneration, sourceReferences: submittedReferences, images: submittedImages })
+      if (activeSession.status !== 'ready') setOperations((previous) => ({ ...previous, [id]: 'resume' }))
+      // Even apparent ready can be awaiting idle eviction. Resume reuses a
+      // ready owner or awaits the same identity's reconnect without spawning
+      // from selection; only its acknowledged live generation can dispatch.
+      let target = await connectConversationForSend(activeSession, controller.signal, () => {
+        const record = sessionsRef.current.find((session) => session.sessionId === id)
+        const state = scope.states.get(id)
+        return record && state ? { ...record, ...state.session, status: state.status, error: state.error, connectionGeneration: state.connectionGeneration ?? record.connectionGeneration, turnId: state.turnId ?? record.turnId, stateRevision: state.stateRevision ?? record.stateRevision } : record
+      })
+      if (!valid()) return
+      if (submittedReferences.some((source) => source.targetConnectionGeneration !== target.connectionGeneration)) {
+        // Rebinding requires fresh native identity, not inherited fields from a
+        // partial status event or an old cached ready record.
+        if (typeof api.acpHistorySession !== 'function') throw Error('无法核对原会话身份。草稿与原版本引用已保留。')
+        const fresh = await api.acpHistorySession(id)
+        if (!valid()) return
+        if (!fresh.ok) throw Error(fresh.error)
+        if (fresh.session.connectionGeneration !== target.connectionGeneration || fresh.session.status !== 'ready' || fresh.session.cleanupRequired || fresh.session.archivedAt) throw Error('会话连接或状态已变化。草稿与原版本引用已保留。')
+        target = { ...fresh.session, events: [] }
+      }
+      const deliveryReferences = submittedReferences.flatMap((source) => rebindSubmittedReferences(referenceOwner(source), target, [source]))
+      const observed = scope.states.get(id)
+      const observedIsLatest = observed && (observed.stateRevision === undefined || target.stateRevision === undefined || observed.stateRevision >= target.stateRevision)
+      if (observedIsLatest && (observed.connectionGeneration !== target.connectionGeneration || observed.status !== 'ready')) throw Error('会话连接或状态已变化，草稿已保留。')
+      updateSession(target)
+      request.connectionGeneration = target.connectionGeneration
+      request.previousTurnId = target.turnId
+      changeTurnRequest(id, () => request)
+      setOperations((previous) => previous[id] === 'resume' ? { ...previous, [id]: '' } : previous)
+      // View/Settings changes do not revoke an explicit Send. Root, connection,
+      // End and Cancel still fence the actual dispatch; main checks admission.
+      if (!valid()) return
+      const latest = scope.states.get(id)
+      if (latest && (latest.connectionGeneration !== request.connectionGeneration || latest.status !== 'ready')) throw Error('会话状态已变化，尚未发送。草稿已保留。')
+      if (submittedImages.length && target.capabilities?.promptCapabilities?.image !== true) throw Error('当前执行引擎未声明支持图片输入。草稿与图片已保留。')
+      const response = await api.acpSessionPrompt(id, text, { expectedConnectionGeneration: target.connectionGeneration, sourceReferences: deliveryReferences, images: submittedImages })
       if (!isCurrent()) return
       const generation = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
       if (generation !== request.connectionGeneration) { clearRequest(); return }
@@ -596,19 +638,22 @@ export function AcpConsolePage(): JSX.Element {
         const latestReferences = draftReferencesRef.current[id] ?? readSessionView(root, id).sourceReferences ?? []
         if (latestDraft === submittedDraft && JSON.stringify(latestReferences) === JSON.stringify(submittedReferences)) {
           draftsRef.current[id] = ''; draftReferencesRef.current[id] = []; writeSessionView(root, id, { draft: '', sourceReferences: [], intent: 'plain' })
-          if (readActiveSession(root) === id) { setInput(''); setReferences([]); setDraftIntent('plain') }
+          if (activeSelection.current.id === id) { setInput(''); setReferences([]); setDraftIntent('plain') }
         }
         setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } }))
       } else { clearRequest(); setFeedback((previous) => ({ ...previous, [id]: { error: true, text: response.reason === 'SOURCE_CHANGED' ? `引用文件已变化，尚未发送。草稿与原版本引用已保留，请查看变化后重新引用。${response.sources?.map((source) => ` ${source.relativePath}`).join('') ?? ''}` : response.error ?? '发送被拒绝，草稿已保留。' } })) }
     } catch (error) {
       if (isCurrent()) {
         clearRequest()
-        const generation = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
-        if (generation === request.connectionGeneration) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } }))
+        if (!controller.signal.aborted) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } }))
       }
     }
-    finally { scope.sends.delete(id); if (isCurrent()) setSending((previous) => ({ ...previous, [id]: false })) }
-  }, [input, activeId, activeSession, selectedArchiveKnown, references, root, scope, isCurrent, canInteract, composerImages, changeTurnRequest, managedComposerBlocked])
+    finally {
+      if (scope.sendControllers.get(id) === controller) scope.sendControllers.delete(id)
+      scope.sends.delete(id)
+      if (isCurrent()) { setSending((previous) => ({ ...previous, [id]: false })); setOperations((previous) => previous[id] === 'resume' ? { ...previous, [id]: '' } : previous) }
+    }
+  }, [input, activeId, activeSession, selectedArchiveKnown, references, root, scope, isCurrent, canInteract, composerImages, changeTurnRequest, managedComposerBlocked, updateSession])
 
   const sessionAction = async (action: 'cancel' | 'kill' | 'resume'): Promise<void> => {
     if (!activeSession || !isCurrent() || !canInteract() || (scope.actions.has(activeSession.sessionId) && (action !== 'kill' || scope.actionTokens.get(activeSession.sessionId)?.description === 'kill'))) return
@@ -616,7 +661,7 @@ export function AcpConsolePage(): JSX.Element {
     const id = activeSession.sessionId
     const operationToken = Symbol(action)
     scope.actionTokens.set(id, operationToken)
-    if (action === 'resume') scope.autoResumes.add(id)
+    if (action !== 'resume') { scope.sendControllers.get(id)?.abort(); changeTurnRequest(id, () => undefined) }
     scope.actions.add(id); setOperations((previous) => ({ ...previous, [id]: action }))
     setFeedback((previous) => ({ ...previous, [id]: { error: false, text: action === 'resume' ? '正在连接原会话…' : '正在请求停止…' } }))
     try {
@@ -631,7 +676,7 @@ export function AcpConsolePage(): JSX.Element {
   const recoverModel = async (modelId: string): Promise<void> => {
     if (!activeSession?.connectionGeneration || !selectedArchiveKnown || activeSession.archivedAt || !isCurrent() || !canInteract() || scope.actions.has(activeSession.sessionId)) return
     const id = activeSession.sessionId, operationToken = Symbol('recover-model')
-    scope.actions.add(id); scope.actionTokens.set(id, operationToken); scope.autoResumes.add(id)
+    scope.actions.add(id); scope.actionTokens.set(id, operationToken)
     setOperations((previous) => ({ ...previous, [id]: 'recover-model' })); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } }))
     try {
       const response = await api.acpSessionRecoverModel(id, { modelId, expectedConnectionGeneration: activeSession.connectionGeneration })
@@ -653,17 +698,6 @@ export function AcpConsolePage(): JSX.Element {
       else setFeedback((previous) => ({ ...previous, [id]: { error: true, text: result.error } }))
     } catch (error) { if (isCurrent()) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })) }
   }
-
-  useEffect(() => {
-    if (view !== 'conversation') return
-    if (!interactive || !canInteract() || !isCurrent() || !activeSession || activeSession.archivedAt) return
-    if (supportsPagedHistory() && history.selectedSession?.sessionId !== activeSession.sessionId) return
-    if (scope.autoResumes.has(activeSession.sessionId)) return
-    // A view switch is not retry authority. Failed loads need the visible
-    // retry action; a ready owner and an explicit Stop are never restarted.
-    scope.autoResumes.add(activeSession.sessionId)
-    if (activeSession.canResume && !isLiveStatus(activeSession.status) && activeSession.status !== 'error') void sessionAction('resume')
-  }, [interactive, view, activeSession?.sessionId, activeSession?.status, activeSession?.canResume, activeSession?.archivedAt, history.selectedSession?.sessionId, isCurrent, canInteract])
 
   const respondPerm = useCallback(async (requestId: string, optionId: string): Promise<void> => {
     const permission = pendingPerm[requestId]
@@ -816,7 +850,7 @@ export function AcpConsolePage(): JSX.Element {
     setNewConversation(null); setReturnToPicker(resumePicker); setInspectedSessionId(null); setInspectedProfileId(selected.id); setEditor(selected); setInspectorTab('agent'); setInspectorOpen(true)
   }
   const isReadOnly = Boolean(activeSession && (activeSession.archivedAt || (!isLiveStatus(activeSession.status) && !activeSession.canResume && !activeSession.cleanupRequired)))
-  const canEndSession = view === 'conversation' && activeSession && (isLiveStatus(activeSession.status) || activeSession.restorePending || activeSession.connectionOwned || activeSession.cleanupRequired)
+  const canEndSession = view === 'conversation' && activeSession && (sending[activeSession.sessionId] || isLiveStatus(activeSession.status) || activeSession.restorePending || activeSession.connectionOwned || activeSession.cleanupRequired)
   const visiblePermissions = Object.values(pendingPerm).filter((permission) => permission.sessionId === activeId && !items.some((item) => item.type === 'perm' && item.ev.payload?.requestId === permission.requestId))
   const openKnowledge = (): void => {
     if (!activeSession || !isCurrent() || !canInteract() || activeSelection.current.view !== 'conversation' || activeSelection.current.id !== activeSession.sessionId) return
@@ -882,13 +916,14 @@ export function AcpConsolePage(): JSX.Element {
           if (history.loadingEarlier && earlierAnchor.current?.sessionId === activeSession.sessionId) earlierAnchor.current.snapshot = captureTranscriptAnchor(element)
           followRef.current = follow; setAtBottom(follow); writeSessionView(root, activeSession.sessionId, { scrollTop: element.scrollTop, follow })
         }}><div className="acp-transcript-content my-conversation-column acp-chat-copy">
+          {history.selectionError && <div role="alert" className="acp-history-note"><p>历史消息暂时无法加载，已加载内容仍保留。</p><details><summary>错误详情</summary><pre>{history.selectionError}</pre></details><Button size="sm" variant="ghost" disabled={history.selectionLoading} onClick={history.reloadSelected}>重试加载历史</Button></div>}
           {(history.hasEarlier || history.startsMidTurn || history.coverage?.state === 'partial' || history.coverage?.state === 'unknown') && <HistoryBoundary key={`history:${root}:${activeSession.sessionId}`} hasEarlier={history.hasEarlier} startsMidTurn={history.startsMidTurn} coverage={history.coverage?.state} loading={history.loadingEarlier} onLoadEarlier={loadEarlier} />}
           {activeSession.directoryLeaseReason && <p className="rounded-my-md bg-my-warning-subtle px-3 py-2 text-my-sm text-my-warning-text">目录占用：{activeSession.directoryLeaseReason}</p>}
           {isReadOnly && <div className="acp-history-note"><p>{activeSession.archivedAt ? '此会话已归档，取消归档后可继续。' : '此记录没有可恢复的远端会话，仅供阅读。'}</p><Button size="sm" variant="ghost" onClick={() => openNewConversation()}>新建会话</Button>{activeSession.error && <ConnectionNotice message={activeSession.error} />}</div>}
           {items.map((item) => <EventRow key={item.key} item={item.type === 'activity' ? { ...item, active: false } : item} suppressWorkingIndicator={Boolean(currentTurnActivity)} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={(directory) => openTask(directory)} onOpenArtifact={openRecordedArtifact} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />)}
           {visiblePermissions.map((permission) => <EventRow key={`current-permission:${permission.requestId}`} item={{ type: 'perm', key: `current-permission:${permission.requestId}`, ev: { id: `current-permission:${permission.requestId}`, ts: 0, source: 'acp', kind: 'permission', sessionId: activeSession.sessionId, projectRoot: root, text: permission.toolCall?.title ?? '等待你的授权', payload: { requestId: permission.requestId } } }} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={openTask} onOpenArtifact={() => {}} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />)}
           {conversationArtifacts.length > 0 && <section className="acp-material-shelf" aria-label="当前任务材料"><p className="mb-3 text-my-sm text-my-tertiary">任务材料 · 当前文件，文件变化不代表任务已验收</p><div className="space-y-2">{conversationArtifacts.slice(0, 6).map((artifact) => <ConversationArtifactCard key={artifact.relativePath} artifact={artifact} onOpen={openDocument} selected={documentTarget?.artifact.relativePath === artifact.relativePath && inspectorTab === 'document' && inspectorOpen} />)}</div><div className="mt-4 flex flex-wrap items-center gap-3 text-my-sm text-my-tertiary"><button onClick={preparePlanning}>继续完善方案<ChevronRight size={12} className="ml-1 inline" /></button><button onClick={() => openTask()}>复核规划材料<ChevronRight size={12} className="ml-1 inline" /></button></div></section>}
-          {items.length === 0 && !isReadOnly && !currentTurnActivity && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{activeSession.status === 'starting' ? '正在准备环境，就绪后可以下达指令。' : '从一条清晰的指令开始。'}</p></div>}
+          {items.length === 0 && !isReadOnly && !currentTurnActivity && !history.selectionError && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{history.selectionLoading ? '正在加载历史消息…' : activeSession.status === 'starting' ? '正在准备会话…' : sending[activeSession.sessionId] ? '正在连接原会话…' : '从一条清晰的指令开始。'}</p></div>}
           <CurrentTurnStatus activity={currentTurnActivity} />
         </div></div>
         {!atBottom && <div className="acp-scroll-to-bottom-container"><Button size="sm" variant="outline" className="acp-scroll-to-bottom-btn" onClick={(event) => { const element = streamRef.current; earlierAnchor.current = null; followRef.current = true; if (element) { if (document.activeElement === event.currentTarget) element.focus({ preventScroll: true }); element.scrollTop = element.scrollHeight }; setAtBottom(true); writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} aria-hidden="true" />回到最新</Button></div>}
@@ -910,7 +945,7 @@ export function AcpConsolePage(): JSX.Element {
             }}>恢复原稿</button></p>}
             {references.length > 0 && <div className="acp-source-references">{references.map((source) => <div className="acp-source-chip" key={`${source.relativePath}:${source.displayedRevision}`}><FileText size={12} /><span title={`${source.relativePath} · ${source.displayedRevision}`}>{source.relativePath.split('/').at(-1)} · {source.displayedRevision.slice(0, 8)}</span><button aria-label={`移除引用 ${source.relativePath}`} onClick={() => { const next = references.filter((item) => item !== source); setReferences(next); draftReferencesRef.current[activeSession.sessionId] = next; writeSessionView(root, activeSession.sessionId, { sourceReferences: next }) }}><X size={11} /></button></div>)}</div>}
             <textarea ref={composerRef} aria-label="Agent 指令" title={managedComposerBlocked ? '受管任务执行期间保留草稿；请等待或停止任务后再发送普通指令' : 'Enter 发送 · Shift Enter 换行'} readOnly={managedComposerBlocked} rows={2} value={input} placeholder="说说你的想法…" onChange={(event) => changeDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send() } }} />
-            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || managedComposerBlocked} onRecoverModel={recoverModel} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title="停止受管任务" disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} /><span className="acp-stop-label">{workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止任务' : '核对任务状态'}</span></Button> : ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={Boolean(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={!selectedArchiveKnown || !canSend(activeSession) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
+            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || managedComposerBlocked} onRecoverModel={recoverModel} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title="停止受管任务" disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} /><span className="acp-stop-label">{workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止任务' : '核对任务状态'}</span></Button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={!selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
           </div>}
         </footer>}
       </section>}

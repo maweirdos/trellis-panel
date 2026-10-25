@@ -2,7 +2,7 @@
  * ZCode app-server 客户端（协议事实以 research/protocol-mapping.md 为准）：
  * - NDJSON 帧、无 `jsonrpc` 字段（带该键会被服务端 -32600 拒绝）
  * - 请求/响应（30s 超时）、通知、服务端→客户端双向请求（必须应答，否则服务端 15s -32022）
- * - 启动收集 `startup/storageState` 直至 phase=ready（10s 超时带诊断继续）
+ * - 启动收集 `startup/storageState` 直至 phase=ready（10s 超时拒绝连接）
  * - 环境默认真实用户态（模型/登录可见，复用本机 ~/.zcode）：仅剔除 ZCODE_BASE_URL、注入 ZCODE_BIN；
  *   显式传入隔离目录时才注入 ZCODE_DATA_BASE_DIR 并重定向 HOME/USERPROFILE/APPDATA/LOCALAPPDATA/TEMP
  * - 显式指定 ZCODE_BUILTIN_PROVIDER_CONFIG_FILE（存在时），消除 app-server 内置 provider
@@ -17,6 +17,7 @@ import { createInterface } from 'node:readline'
 import { mkdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 import { resolveProviderEnvironment } from './provider-config.mjs'
+import { managedZcodeLaunch } from './managed-startup.mjs'
 
 const READY_TIMEOUT_MS = 10_000
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
@@ -109,6 +110,7 @@ export function appServerEnv(zcodeBin, isolatedDir) {
   // 仅 ZCODE_DATA_BASE_DIR 不足以隔离 CLI 状态（~/.zcode/cli 走 HOME 系变量）：
   // 隔离模式下重定向四项系统路径，保证该模式下不写用户 ~/.zcode（protocol-mapping.md §8 实测）。
   if (isolatedDir) {
+    delete env.TRELLIS_ZCODE_STARTUP_CACHE_DIR
     // HOME 重定向目标必须真实存在，否则 app-server 启动即失败。
     mkdirSync(isolatedDir, { recursive: true })
     const home = isolatedDir.replace(/[\\/]+$/, '')
@@ -144,36 +146,52 @@ export class ZcodeBackend {
     this.ready = undefined
   }
 
-  /** 启动进程并等待 storageState ready（超时带诊断继续）；失败抛带 stderr 尾部的可读错误。 */
+  /** 启动进程并等待真实 storageState ready；超时拒绝连接。 */
   start() {
     if (this.ready) return this.ready
-    const args = appServerArgs(this.options.workspacePath, this.options.enableAutomationTools === true)
-    const launch = zcodeLaunch(this.options.nodePath, this.options.zcodeBin, args)
-    const env = appServerEnv(this.options.zcodeBin, this.options.isolatedDir)
-    const providerSource = resolveProviderEnvironment(env, { isolatedDir: this.options.isolatedDir })
-    this.env = env
-    this.providerSource = providerSource
-    this.options.onNotice?.('adapter/providerConfig', { source: providerSource.source })
-    providerSource.verify()
-    const child = spawn(launch.command, launch.args, {
-      cwd: this.options.workspacePath,
-      env,
-      windowsHide: true,
-      windowsVerbatimArguments: launch.windowsVerbatimArguments,
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
-    this.child = child
+    const timings = this.options.connectionTimings
+    timings?.start('backend-process')
+    let child
+    try {
+      const args = appServerArgs(this.options.workspacePath, this.options.enableAutomationTools === true)
+      const env = appServerEnv(this.options.zcodeBin, this.options.isolatedDir)
+        if (this.options.startupCacheDir) env.TRELLIS_ZCODE_STARTUP_CACHE_DIR = this.options.startupCacheDir
+        const launch = managedZcodeLaunch(this.options.nodePath, this.options.zcodeBin, args, env.TRELLIS_ZCODE_STARTUP_CACHE_DIR)
+          ?? zcodeLaunch(this.options.nodePath, this.options.zcodeBin, args)
+      const providerSource = resolveProviderEnvironment(env, { isolatedDir: this.options.isolatedDir })
+      this.env = env
+      this.providerSource = providerSource
+      this.options.onNotice?.('adapter/providerConfig', { source: providerSource.source })
+      providerSource.verify()
+      child = spawn(launch.command, launch.args, {
+        cwd: this.options.workspacePath,
+        env,
+        windowsHide: true,
+        windowsVerbatimArguments: launch.windowsVerbatimArguments,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+      this.child = child
+    } catch (error) {
+      timings?.end('backend-process', 'failed', 'preparation_failed')
+      throw error
+    }
     this.ready = new Promise((resolve, reject) => {
       let settled = false
+      child.once('spawn', () => {
+        timings?.end('backend-process')
+        timings?.start('storage-ready')
+      })
       this.readyResolve = () => {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        timings?.end('storage-ready')
         resolve(this.startupState)
       }
       const timer = setTimeout(() => {
         if (settled) return
         settled = true
+        timings?.end('storage-ready', 'failed', 'storage_timeout')
         this.startupState.diagnostic = `等待 startup/storageState ready 超时（${READY_TIMEOUT_MS / 1000}s）`
         this.options.onForensics?.(this.startupState.diagnostic)
         reject(new Error(this.startupState.diagnostic))
@@ -183,6 +201,8 @@ export class ZcodeBackend {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        timings?.end('backend-process', 'failed', 'spawn_failed')
+        timings?.end('storage-ready', 'failed', 'backend_exited')
         // spawn 失败（如 node/CLI 路径不可执行）不伴随 exit 事件，须单独落盘现场。
         this.options.onForensics?.(`ZCode app-server 启动失败（spawn）：${error.message}`)
         reject(new Error(`ZCode app-server 启动失败：${error.message}`))
@@ -191,6 +211,7 @@ export class ZcodeBackend {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        timings?.end('storage-ready', 'failed', 'backend_exited')
         reject(new Error(`ZCode app-server 在就绪前退出（code=${code ?? 'unknown'}）：${this.stderrTail()}`))
       })
       child.stdout?.setEncoding('utf8')
@@ -275,7 +296,7 @@ export class ZcodeBackend {
     }
   }
 
-  /** 等待启动就绪（或超时继续）；供 ensureBackend 在 create 前调用。 */
+  /** 等待启动就绪；供 ensureBackend 在 create 前调用。 */
   async waitReady() {
     await this.start()
     return this.startupState

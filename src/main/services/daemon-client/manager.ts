@@ -1,9 +1,11 @@
 import { app } from 'electron'
-import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createDaemonContext, type DaemonContext } from '../../daemon/context'
 import { processIdentity, sameOwner } from '../../daemon/native'
-import { readLease, verifiedLease } from '../../daemon/lease'
+import { readLease, verifiedLease, type DaemonLease } from '../../daemon/lease'
+import { daemonBuildFreshness, requireCurrentDaemonBuild } from '../../daemon/build-identity'
+import { readDaemonStartupFailure } from '../../daemon/startup-failure'
+import { launchDaemonProcess } from '../../daemon/launch'
 import { DaemonError, daemonFailure } from '../../daemon/errors'
 import { DaemonClient } from './client'
 import { daemonConnectionPool } from './pool'
@@ -13,12 +15,17 @@ let contextPromise: Promise<DaemonContext> | undefined
 const context = (): Promise<DaemonContext> => contextPromise ??= createDaemonContext().catch((error: unknown) => { contextPromise = undefined; throw error })
 export const daemonClientContext = context
 /** Native ordinary RPC callers share this lane. Do not close the returned client. */
-export async function pooledDaemonClient(): Promise<DaemonClient> { return daemonConnectionPool(await context()).get() }
+export async function pooledDaemonClient(): Promise<DaemonClient> {
+  const native = await context(), client = await daemonConnectionPool(native).get()
+  requireCurrentDaemonBuild(native, client.lease)
+  return client
+}
 export async function daemonIsAbsent(): Promise<boolean> { return !await verifiedLease(await context()) }
 async function call<M extends DaemonMethod>(method: M, payload: DaemonPayload<M>): Promise<DaemonResult<DaemonData<M>>> {
   try {
     const pool = daemonConnectionPool(await context())
-    const client = method === 'daemon.status' ? await pool.getControl() : await pool.get()
+    // Management remains available to inspect/recover an outdated native owner.
+    const client = await pool.getControl()
     return await client.request(method, payload)
   }
   catch (error) { return daemonFailure(error) }
@@ -32,77 +39,172 @@ function status(): Promise<DaemonResult<DaemonStatus>> {
   return pending
 }
 const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 200))
-let startPromise: Promise<DaemonResult<DaemonStatus>> | undefined
-async function start(): Promise<DaemonResult<DaemonStatus>> {
-  if (startPromise) return startPromise
-  startPromise = (async () => {
+type BuildStop = { lease: DaemonLease; commandId: string }
+let buildStop: BuildStop | undefined
+let explicitStop: { lease: DaemonLease; commandId: string; acknowledged: boolean } | undefined
+type LifecycleResults = { start: DaemonResult<DaemonStatus>; stop: DaemonResult<null>; restart: DaemonResult<DaemonStatus> }
+let lifecycleTail: Promise<void> = Promise.resolve()
+let lastLifecycle: { kind: keyof LifecycleResults; promise: Promise<unknown> } | undefined
+/** Linearize tray, Settings, startup and quit. Coalesce only adjacent requests:
+ * Start after a queued Stop must not join an earlier in-flight Start. */
+function lifecycle<K extends keyof LifecycleResults>(kind: K, run: () => Promise<LifecycleResults[K]>): Promise<LifecycleResults[K]> {
+  if (lastLifecycle?.kind === kind) return lastLifecycle.promise as Promise<LifecycleResults[K]>
+  const work = lifecycleTail.then(run)
+  lifecycleTail = work.then(() => {}, () => {})
+  const entry = { kind, promise: work }
+  lastLifecycle = entry
+  const clear = (): void => { if (lastLifecycle === entry) lastLifecycle = undefined }
+  void work.then(clear, clear)
+  return work
+}
+async function waitForRelease(native: DaemonContext, lease: DaemonLease): Promise<void> {
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    const actual = await processIdentity(lease.owner.pid)
+    const current = readLease(native)
+    if (current && JSON.stringify(current) !== JSON.stringify(lease)) throw new DaemonError('E_CONFLICT', 'A different daemon owner appeared during stop. No replacement was started.')
+    if (!actual || !sameOwner(actual, lease.owner)) {
+      if (!current) return
+      throw new DaemonError('E_UNKNOWN', 'The original daemon exited without releasing its lease. Inspect the original stop command before restarting.', 'unknown')
+    }
+    await pause()
+  }
+  throw new DaemonError('E_UNKNOWN', 'The original daemon has not confirmed exit. Restart is blocked; inspect its original stop command.', 'unknown')
+}
+async function replaceOutdated(native: DaemonContext, lease: DaemonLease): Promise<void> {
+  if (buildStop) throw new DaemonError('E_UNKNOWN', `Build replacement still retains stop command ${buildStop.commandId}. Inspect its original owner and receipt before restarting.`, 'unknown')
+  const client = await DaemonClient.connect(native)
+  try {
+    if (JSON.stringify(client.lease) !== JSON.stringify(lease)) throw new DaemonError('E_CONFLICT', 'The daemon owner changed before idle-only stop. No stop command was submitted.')
+    const fresh = daemonBuildFreshness(native, lease)
+    if (fresh.state !== 'changed' || !fresh.idleStop) throw new DaemonError('E_CONFLICT', 'Daemon build evidence changed before idle-only stop. Retry attachment; no stop command was submitted.')
+    const attempt: BuildStop = { lease, commandId: randomUUID() }
+    buildStop = attempt
+    const stopped = await client.request('daemon.stop', { expectedOwner: lease.owner, idleOnly: true }, { commandId: attempt.commandId })
+    if (!stopped.ok) {
+      if (stopped.outcome === 'not-admitted') buildStop = undefined
+      throw Object.assign(new DaemonError(stopped.code, stopped.code === 'E_BUSY' ? 'A daemon update is needed, but the original owner still has background work. Wait for it to finish, then retry startup; active work was preserved.' : stopped.error, stopped.outcome), { commandId: attempt.commandId })
+    }
+    client.close()
+    await waitForRelease(native, lease)
+    buildStop = undefined
+  } finally { client.close() }
+}
+async function attachOrReplace(native: DaemonContext): Promise<DaemonResult<DaemonStatus> | undefined> {
+  const lease = await verifiedLease(native)
+  if (!lease) return undefined
+  const attached = await status()
+  if (!attached.ok) return attached
+  if (attached.data.epoch !== lease.epoch || !sameOwner(attached.data.owner, lease.owner) || JSON.stringify(attached.data.identity) !== JSON.stringify(native.identity)) throw new DaemonError('E_CONFLICT', 'Daemon status changed owner while checking its build.')
+  const freshness = daemonBuildFreshness(native, lease)
+  if (freshness.state === 'current') {
+    if (attached.data.state !== 'running') throw new DaemonError('E_UNAVAILABLE', 'The original daemon is stopping. Wait for its confirmed exit before startup.')
+    return attached
+  }
+  if (!freshness.idleStop) requireCurrentDaemonBuild(native, lease)
+  await replaceOutdated(native, lease)
+  return undefined
+}
+async function startOwned(): Promise<DaemonResult<DaemonStatus>> {
+  return (async () => {
     try {
       const native = await context()
-      if (readLease(native)) {
-        const attached = await status()
-        if (attached.ok || await verifiedLease(native)) return attached
+      if (explicitStop) {
+        await waitForRelease(native, explicitStop.lease)
+        explicitStop = undefined
       }
+      // An uncertain automatic stop is never replayed under a fresh command ID.
+      if (buildStop) {
+        await waitForRelease(native, buildStop.lease)
+        buildStop = undefined
+      }
+      if (readLease(native)) {
+        const attached = await attachOrReplace(native)
+        if (attached) return attached
+      }
+      if (await verifiedLease(native)) throw new DaemonError('E_CONFLICT', 'A daemon owner appeared before launch. Retry attachment; no replacement was started.')
       const args = [...(app.isPackaged ? [] : [app.getAppPath()]), '--trellis-role=daemon', `--trellis-user-data-base64=${Buffer.from(native.userData).toString('base64')}`]
       const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL; delete env.TPANEL_DEBUG_PORT
-      // Inherit stderr without a parent-owned pipe: early loader failures remain
-      // visible, and a retained daemon does not keep the GUI alive through stdio.
-      const child = spawn(process.execPath, args, { detached: true, windowsHide: true, stdio: ['ignore', 'ignore', 'inherit'], env })
-      let launchFailed = false, exited = false, exitCode: number | null = null
-      child.once('error', () => { launchFailed = true })
-      child.once('exit', code => { exited = true; exitCode = code })
-      child.unref()
+      // Inherited stderr can itself be a control caller's pipe and prevent its
+      // close event indefinitely. The bootstrap persists bounded failure facts.
+      const launchedAt = Date.now()
+      const child = await launchDaemonProcess(args, env)
       const deadline = Date.now() + 12_000
       let lastFailure: import('../../../shared/daemon').DaemonFailure | undefined
-      while (Date.now() < deadline && !launchFailed) {
+      while (Date.now() < deadline) {
         await pause()
         const lease = readLease(native)
         if (lease) {
           const result = await status()
-          if (result.ok) return result
+          if (result.ok) {
+            requireCurrentDaemonBuild(native, lease)
+            if (result.data.epoch !== lease.epoch || !sameOwner(result.data.owner, lease.owner) || result.data.state !== 'running') throw new DaemonError('E_CONFLICT', 'Daemon readiness belongs to a different or stopping owner.')
+            return result
+          }
           lastFailure = result
           // Retrying cannot repair identity, version or protected-key failures.
           if (['E_DENIED', 'E_VERSION', 'E_CONFLICT'].includes(result.code)) return result
         }
-        if (exited || launchFailed) break
+        const diagnostic = readDaemonStartupFailure(native.directory, child.pid, launchedAt)
+        if (diagnostic) throw new DaemonError('E_UNAVAILABLE', diagnostic.slice(0, 400))
       }
-      if (launchFailed) throw new DaemonError('E_UNAVAILABLE', 'The native daemon process could not be launched. Its original ownership state was preserved.')
-      if (exited) throw new DaemonError('E_UNAVAILABLE', `The daemon process exited before authenticated readiness (exit ${exitCode ?? 'unknown'}). Inspect its startup diagnostic in stderr and existing owner/state before another start.`)
+      const actual = await processIdentity(child.pid)
+      if (!actual) throw new DaemonError('E_UNAVAILABLE', 'The original daemon exited before authenticated readiness. Preserve its startup diagnostic and owner/state.')
       if (lastFailure) return lastFailure
       throw new DaemonError('E_UNKNOWN', 'Daemon startup was not confirmed. Check status before another start; do not delete or steal its lease.', 'unknown')
-    } catch (error) { return daemonFailure(error) }
+    } catch (error) { return daemonFailure(error, explicitStop?.commandId ?? buildStop?.commandId ?? (error instanceof Error && 'commandId' in error && typeof error.commandId === 'string' ? error.commandId : undefined)) }
   })()
-  try { return await startPromise } finally { startPromise = undefined }
 }
-async function stop(): Promise<DaemonResult<null>> {
+async function stopOwned(): Promise<DaemonResult<null>> {
   let client: DaemonClient | undefined
   let commandId: string | undefined
   let acknowledged = false
   try {
     const native = await context()
+    if (!explicitStop && buildStop) {
+      commandId = buildStop.commandId
+      await waitForRelease(native, buildStop.lease)
+      buildStop = undefined
+      return { ok: true, data: null }
+    }
+    if (explicitStop) {
+      commandId = explicitStop.commandId
+      acknowledged = explicitStop.acknowledged
+      // Other entrypoints only observe the original attempt. Neither a late
+      // reply nor a repeated click authorizes a new stop UUID or replacement.
+      await waitForRelease(native, explicitStop.lease)
+      explicitStop = undefined
+      return { ok: true, data: null }
+    }
     const lease = await verifiedLease(native)
     if (!lease) return { ok: true, data: null }
     client = await DaemonClient.connect(native)
-    if (client.epoch !== lease.epoch || !sameOwner(client.lease.owner, lease.owner)) throw new DaemonError('E_CONFLICT', 'The original daemon owner changed before stop; no stop command was submitted.')
+    if (JSON.stringify(client.lease) !== JSON.stringify(lease)) throw new DaemonError('E_CONFLICT', 'The original daemon owner changed before stop; no stop command was submitted.')
     commandId = randomUUID()
+    explicitStop = { lease, commandId, acknowledged: false }
     const result = await client.request('daemon.stop', { expectedOwner: lease.owner }, { commandId })
-    if (!result.ok) return result
-    acknowledged = true
-    client.close(); client = undefined
-    const deadline = Date.now() + 15_000
-    while (Date.now() < deadline) {
-      const actual = await processIdentity(lease.owner.pid)
-      if (!actual || !sameOwner(actual, lease.owner)) return { ok: true, data: null }
-      await pause()
+    if (!result.ok) {
+      if (result.outcome === 'not-admitted') explicitStop = undefined
+      return result
     }
-    throw new DaemonError('E_UNKNOWN', 'The original daemon has not confirmed exit. Restart is blocked; inspect its original owner.', 'unknown')
+    acknowledged = true
+    explicitStop.acknowledged = true
+    client.close(); client = undefined
+    await waitForRelease(native, lease)
+    explicitStop = undefined
+    return { ok: true, data: null }
   } catch (error) {
     return daemonFailure(acknowledged ? new DaemonError('E_UNKNOWN', 'The original stop command was acknowledged, but its owner exit could not be verified. Inspect that command before restarting.', 'unknown') : error, commandId)
   }
   finally { client?.close() }
 }
+function stop(): Promise<DaemonResult<null>> {
+  return lifecycle('stop', stopOwned)
+}
+function start(): Promise<DaemonResult<DaemonStatus>> { return lifecycle('start', startOwned) }
 export const daemonManager: DaemonApi = {
   protocolVersion: 1, status, start, stop,
-  async restart() { const result = await stop(); return result.ok ? start() : result },
+  restart: () => lifecycle('restart', async () => { const result = await stopOwned(); return result.ok ? startOwned() : result }),
   preferences: () => call('daemon.preferences.get', {}),
   setPreferences: (input: DaemonPreferences) => call('daemon.preferences.set', input),
   reconcileStartup: (originalCommandId) => call('daemon.startup.reconcile', { originalCommandId }),

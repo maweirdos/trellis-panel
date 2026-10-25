@@ -23,6 +23,7 @@ import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTask
 import { APPLICATION_ICON } from './services/notifications'
 import { appRuntime } from './services/app-runtime'
 import { createDaemonQuitGate } from './services/daemon-quit-gate'
+import { createDaemonTray } from './services/daemon-tray'
 import { DaemonError } from './daemon/errors'
 import { createGuiBootstrap, type GuiBootstrap } from './services/bootstrap'
 import { registerBootstrapIpc } from './ipc/bootstrap'
@@ -55,6 +56,10 @@ let capsuleOnTop = true
 let capsuleShape: 'pill' | 'card' = 'card'
 let quickTodo: BrowserWindow | null = null
 let tray: Tray | null = null
+let daemonTray: ReturnType<typeof createDaemonTray> | undefined
+let daemonTrayTimer: ReturnType<typeof setInterval> | undefined
+let daemonTrayExitPending = false
+let pendingDaemonSettings = false
 let guiNativeStateReady = false
 let bootstrap: GuiBootstrap | undefined
 const pendingSecondInstances: string[][] = []
@@ -318,7 +323,36 @@ function createTray(): void {
   const icon = nativeImage.createFromPath(join(BRAND_RESOURCES, 'icon-32.png'))
   tray = new Tray(icon)
   tray.setToolTip('Trellis Panel')
+  daemonTray = createDaemonTray({
+    getMain: () => win && !win.isDestroyed() ? win : null,
+    changed: rebuildTrayMenu,
+    isClosing: () => guiClosing || daemonTrayExitPending,
+    openSettings: () => {
+      pendingDaemonSettings = true
+      showMain()
+      flushDaemonSettings()
+    }
+  })
+  // Register once per tray, never once per project/menu refresh.
+  tray.on('double-click', () => showMain())
+  tray.on('right-click', () => { void daemonTray?.refresh() })
+  daemonTrayTimer = setInterval(() => { void daemonTray?.refresh() }, 15_000)
+  daemonTrayTimer.unref()
   rebuildTrayMenu()
+  void daemonTray.refresh()
+}
+
+function flushDaemonSettings(): void {
+  if (!pendingDaemonSettings || !fullRendererAttached || !win || win.isDestroyed()) return
+  pendingDaemonSettings = false
+  win.webContents.send(ipcEvent.daemonOpenSettings)
+}
+
+function disposeDaemonTray(): void {
+  if (daemonTrayTimer) clearInterval(daemonTrayTimer)
+  daemonTrayTimer = undefined
+  daemonTray?.dispose()
+  daemonTray = undefined
 }
 
 function rebuildTrayMenu(): void {
@@ -360,10 +394,11 @@ function rebuildTrayMenu(): void {
       }
     },
     { type: 'separator' },
+    ...(daemonTray?.menu() ?? []),
+    { type: 'separator' },
     { label: '退出', click: () => app.quit() }
   ])
   tray.setContextMenu(menu)
-  tray.on('double-click', () => showMain())
 }
 
 function showMain(): void {
@@ -511,7 +546,7 @@ if (!gotLock) {
         stopTimers, stopInbox, abortAll, stopDiffWorker, stopWorkflowSubscriptions,
         closeTaskConversations, stopObservationWorker, detachRuntimeObservers,
         () => globalShortcut.unregisterAll(), () => accessServer.stop(),
-        () => { tray?.destroy(); tray = null }
+        () => { disposeDaemonTray(); tray?.destroy(); tray = null }
       ]
       for (const close of closeSources) { try { close() } catch (error) { errors.push(error) } }
       const results = await Promise.allSettled([
@@ -601,6 +636,7 @@ if (!gotLock) {
       showQuickTodo,
       showMain,
       createMain: createWindow,
+      quitApp: () => app.quit(),
       captureMain: async () => {
         const target = win && !win.isDestroyed() ? win : null
         if (!target) return null
@@ -655,6 +691,7 @@ if (!gotLock) {
     }
     for (const argv of pendingSecondInstances.splice(0)) dispatchSecondInstance(argv)
     for (const taskDir of pendingTaskFocus.splice(0)) focusMainAndOpenTask(taskDir)
+    flushDaemonSettings()
   }
 
   void app.whenReady().then(() => {
@@ -709,6 +746,7 @@ if (!gotLock) {
     stopGuiWork: async () => { await appRuntime.shutdown(); await closeDesktopTeamService() },
     detach: async () => { detachRuntimeObservers() },
     finalize: () => {
+      disposeDaemonTray()
       stopTimers()
       stopInbox()
       abortAll()
@@ -728,6 +766,9 @@ if (!gotLock) {
     // A bootstrap exit never queries/stops a retained daemon, changes its
     // preference, or enters the full GUI's cleanup/dialog path.
     if (!guiNativeStateReady || !fullRendererEverAttached) { event.preventDefault(); requestBootstrapExit(); return }
+    daemonTrayExitPending = true
+    rebuildTrayMenu()
     quitGate.beforeQuit(event)
+    void quitGate.whenIdle().finally(() => { daemonTrayExitPending = false; rebuildTrayMenu() })
   })
 }

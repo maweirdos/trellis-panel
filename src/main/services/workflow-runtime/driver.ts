@@ -167,7 +167,7 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
       await this.report(stage, 'workflow.driver-dispatching', { executorBindingId: request.executorBindingId, inputFingerprint: request.manifest.inputFingerprint, nativeChildren: 'unobserved' })
       await this.receipts(stage, plan.context, 'prepared')
       await this.receipts(stage, plan.context, 'assembled')
-      await this.report(stage, 'workflow.additional-inputs', { state: plan.context.additionalInputs, knowledge: 'facade-owned-preflight', nativeInstructions: 'engine-owned', automaticResultReuse: false })
+      await this.report(stage, 'workflow.additional-inputs', { state: plan.context.additionalInputs, knowledge: 'native-scoped-tools', nativeInstructions: 'engine-owned', automaticResultReuse: false })
       if (stage.stopRequested) throw new WorkflowRuntimeError('OUTCOME_UNKNOWN', 'Stage stop was requested before native session preparation')
       const key = canonicalWorkflowJson({ scope: request.manifest.scope, executor: request.node.executor })
       const reuse = this.sessions.get(key)

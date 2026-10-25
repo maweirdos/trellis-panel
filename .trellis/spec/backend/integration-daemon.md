@@ -2,11 +2,47 @@
 
 ## Scope / Trigger
 
-Applies to `src/main/daemon`, native daemon clients, integration workspaces and quit behavior. These contracts describe the current source implementation. The user approved a bounded 2026-10-23 exception for temporary compilation, blank-profile independent host/client and restricted bootstrap UI diagnosis. It does not authorize full test/typecheck/lint/build/packaging, real desktop/daemon restart, existing-profile migration, live provider operations or commits. Full native/provider/visual acceptance remains open.
+Applies to src/main/daemon, native daemon clients, integration workspaces and
+quit behavior. The daemon owns native execution, provider credentials and shared
+workspace state. The GUI observes the owner and requests scoped operations.
 
-The user subsequently explicitly approved the real idle historical-owner cutover and desktop recovery. That narrower real incident was executed successfully: original40848 authenticated as idle/legacy and stopped canonically, normal new owner migrated retained configuration, and actual GUI33368 opened the original56-task/34-archive workspace against native-ready daemon43100. See lifecycle `research/legacy-owner-real-recovery-result.md`. This approval/result does not generalize to active-work/cross-install upgrades, provider business writes, full stress/packaging or commits.
+Legacy-owner cutover requires actual owner identity and an idle canonical drain.
+Preserve active jobs, directory leases and epoch/grant fences; a missing observer
+or stale saved status is not evidence that work stopped. GUI cleanup and native
+owner shutdown remain separate operations.
 
-Development handoff: an ordinary GUI retained after recovery still owns the same GUI single-instance lock used by `npm run dev`. Losing that lock must print a fixed explanation and keep the existing exit behavior; do not remove the lock or stop the independent daemon to make development launch work. Ready second-instance requests use `showMain()` to restore/show/focus the existing main panel. The installed electron-vite lifecycle ends its command when its spawned Electron child closes; an exit0 duplicate launch is not a compiler crash. To switch an already-running ordinary GUI to dev, finish GUI-owned cleanup while retaining the daemon, then launch dev. When verifying for a user who will run their own terminal, release the verification GUI/server/port instead of leaving another conflicting instance. Actual canonical startup/duplicate/retained-daemon evidence: lifecycle `research/dev-start-verification.md`.
+Bind the daemon output bundle SHA-256 to its exact protected lease/process in a
+separate build stamp. Native runtime attachment requires the current build;
+management status and explicit recovery remain available for old owners. A
+missing stamp cannot prove freshness or safe automatic replacement.
+Keep the fixed daemon-host output unpacked and hash its physical file under
+`resources/app.asar.unpacked/out/main/`; ASAR virtual metadata cannot establish
+the same inode as an extracted file descriptor. Reuse a hash only while the
+actual file's identity and nanosecond metadata remain unchanged.
+
+For verified outdated owners supporting guarded stop, fence all intake before
+checking native turns, pending admissions, workflows, provider commands, polling
+and initialization. Healthy idle connections may close canonically. Busy or
+unknown work rejects replacement without cancelling it and releases only the
+temporary probe fences. Confirm original process exit and lease release before
+starting a successor. Retain the original command UUID after an uncertain stop.
+Build mismatch still permits exact cleanup controls for already admitted owners
+through the authenticated control lane and retained workspace grant. It never
+authorizes new workspace grants or ordinary execution against an old build.
+
+Detached Windows daemons use the fixed native launcher with CreateProcessW
+inheritHandles=false, a new process group and hidden startup. Pass exact encoded
+argument boundaries without a command shell. Ordinary stdio redirection alone
+does not prove that all inherited control handles are gone. Bootstrap failures
+publish one bounded diagnostic without arbitrary exception text, bound to the
+launched PID and time. Startup errors may read only that matching record; it
+never establishes readiness or releases ownership. Packaged checks must require
+control output pipes to close promptly after actual control-process exit.
+
+The GUI single-instance lock also applies to development launch. A duplicate
+launch exits with its fixed explanation and focuses the existing ready panel;
+it must not remove the lock or terminate the independent daemon. Release a
+verification GUI/server/port when handing control to a user's development terminal.
 
 The bootstrap loads `./gui.js`, `./daemon-host.js` and `./daemon-control.js` as sibling **output** bundles emitted by `bundleMainRole` in `closeBundle`. Use `createRequire(__filename)` and invoke its native loader only inside the selected role branch; this avoids relying on a bundler's lowering of direct conditional `require` calls. Keep these exact IDs external in the bootstrap main build. Direct source resolution would otherwise fail with `UNRESOLVED_IMPORT` before the role-output hooks run. Preserve relative CJS runtime paths and separate role bundles; do not add placeholder files under `src/main`, accept arbitrary loader paths from argv, or externalize all relative source imports.
 
@@ -14,7 +50,28 @@ Windows native helpers run the fixed Windows PowerShell executable and reset the
 
 Startup must observe child `error` and `exit`, retain sanitized stderr, and distinguish early exit from a still-unconfirmed live owner. Bootstrap handles both role-module load exceptions and async entry failure. The GUI readiness chain has a terminal catch. If the restricted shell exists, retain it with a sanitized error; otherwise report the window-creation failure. Native preparation errors never stop a retained daemon or restore legacy writers.
 
-On 2026-10-23 the user separately authorized isolated blank-profile startup diagnostics. Existing output-module loading passed; the failing startup captured a native `secure-directory` command-resolution error. With process-local module-path isolation, blank-profile host startup and **same-process** status succeeded. A subsequent separate-process client failed to decrypt the native credential: Electron's role-specific Local State keys are different. That failure invalidates a cross-process success claim. Shared protection and the later startup optimizations are source changes awaiting separately authorized compilation/native acceptance; existing output bundles do not validate them.
+## Manual lifecycle controls
+
+Tray and settings expose actual background status, start, stop and restart.
+Read-only refresh must never start the daemon. Confirm that stopping or restarting
+ends all work owned by the captured daemon, including ordinary ACP turns; an
+integration-only active-job count cannot establish that Agent work is idle.
+Revalidate the captured owner before submitting a confirmed tray action.
+
+Serialize lifecycle actions across every entry point. Coalesce only adjacent
+actions of the same kind; Start, Stop, Start must retain their order. Restart
+stops the original owner, verifies process exit and lease release, then starts
+one successor. Retain an uncertain stop's original owner, command UUID and receipt;
+later controls observe that operation rather than submitting another stop.
+
+Settings and tray offer an explicit application exit. Route it through the same
+quit gate, with a keep-background checkbox and clear stop/retain button labels.
+Accept the renderer quit IPC only from the trusted main window's main frame.
+Closing a window to the tray does not count as application exit.
+
+New installations default to client-triggered startup and no retention after
+application exit. Existing saved preferences remain unchanged. Login startup
+and manual-only startup remain explicit user choices.
 
 ## Signatures
 
@@ -39,7 +96,9 @@ On 2026-10-23 the user separately authorized isolated blank-profile startup diag
 
 ## Request / Response / Storage Contracts
 
-The control frame is capped at 256 KiB. Runtime and provider bodies share the same owner-scoped `RuntimeBlobs` transport, including existing ACP image payloads. Validate the business schema after unpacking and before packing results. Never increase the frame cap to accommodate images or truncate history silently.
+The control frame is capped at 256 KiB. Runtime and provider bodies share the same owner-scoped `RuntimeBlobs` transport, including existing ACP image payloads. Validate the business schema after unpacking and before packing results. Seal
+owned bulk files through a writable descriptor before acknowledging durability;
+Windows cannot flush a read-only file handle. Never increase the frame cap to accommodate images or truncate history silently.
 
 Server ordinary admission is 16 calls/1 MiB; reserved allowlisted controls use 4 calls/256 KiB and authentication has its own 16-connection/128 KiB budget. Workspace lookup and native status belong to the bounded control prerequisites; arbitrary provider work cannot claim this lane. Legacy integration cancellation is admitted only after parsing an inline `cancelRead|cancelAuthorization` body, with all normal actor/grant checks retained. No lane retries commands. Windows helper outgoing queues are ordered per peer, capped at 32 frames/1 MiB each and 4 MiB in aggregate; one peer's five-second write timeout must not block other peers.
 
@@ -91,7 +150,7 @@ The scheduler persists admission and dispatch before provider effects. Provider 
 
 Good: GUI exits with retention selected while the authenticated daemon continues the original sessions. Reopening observes original session/command identities.
 
-Base: a new installation defaults to client-triggered daemon startup and retention. Login startup is separate and explicit; persisted manual startup is respected.
+Base: a new installation defaults to client-triggered daemon startup without retention after application exit. Login startup is separate and explicit; persisted manual startup is respected.
 
 Bad: adopting a running GUI's settings based only on its PID, starting a second ACP controller in the renderer host, or interpreting a catalog capability as verified provider permission.
 
@@ -100,8 +159,6 @@ Bad: adopting a running GUI's settings based only on its PID, starting a second 
 When separately authorized: verify Windows pipe ACL/authentication and epoch replacement; crash each migration publication boundary; reconnect across GUI exit without duplicate sessions; retain 20 MiB ACP image inputs through bulk frames; preserve permission deadlines; stop exact original owners before acknowledging exit; exercise settings CAS and lost replies; import 1,733+ Jira records beyond preview sampling; verify Stream dedup-before-ACK and no duplicate execution; visually inspect focus, dialogs, narrow layout and light/dark UI.
 
 Startup acceptance additionally requires independent GUI/daemon/control processes with separate role sessionData, shared-key unwrap and legacy-key recovery, ordinary saturation plus cancellation, slow-reader isolation, same-epoch/changed-epoch replay, and actual process exit after inherited pipe-handle transfer. Record main monotonic first-visible/authenticated/native-ready/full-desktop-ready separately from renderer-navigation first-paint and its receipt time. Compare cold and already-running daemon cases; an earlier shell alone does not prove full-ready speed.
-
-The bounded current-source compilation succeeded for the five main roles, preload and actual renderer. A blank-profile independent daemon/client confirmed shared-key authentication and six warm same-connection status calls (about 1.4–2.2 ms in that fixture) with unchanged native-helper launch counts; readonly management calls and wrong-owner stop rejection also passed. Restricted UI diagnosis confirmed show/paint before delayed preparation, error/retry/exit and before-ready attachment denial with full desktop composition count zero. These observations are **not** full desktop latency, existing-profile migration, provider, saturation/slow-reader, legacy recovery or complete native acceptance. Exact logs, source hashes and original-owner exit results belong to lifecycle `research/startup-executable-verification.md` and `startup-ui-executable.md`.
 
 Protected Jira rollback must close workspace admission before checking runtime ownership. It rejects active sessions/workflows/provider commands and active or unknown jobs, then uses exact-job local provenance, unchanged artifact fingerprints and a mandatory native guard. Quarantine retains source/control evidence; remote issues are never deleted by this local rollback.
 
@@ -118,3 +175,7 @@ Correct: keep its intent/command ID unknown, query original evidence and expose 
 Wrong: treat a same-process decrypt/status exercise as proof that independent Electron roles share safeStorage keys, or remove native readiness while leaving the full renderer/IPC active.
 
 Correct: use profile-scoped OS-wrapped protection across roles, validate with independent processes when authorized, and expose only the restricted bootstrap shell until protected authority is ready.
+
+HTTP application-runtime errors preserve their original code/outcome. Busy and
+reset-required map to409, unavailable to503 and incompatible protocol version to426.
+These responses do not authorize automatically replaying a mutation.

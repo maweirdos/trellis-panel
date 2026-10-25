@@ -2,7 +2,7 @@
 
 ## Named roles and execution engines
 
-Profiles are named local project-scoped assistant roles; Codex/Claude Code are execution engines beneath them. New Conversation must open a role chooser and start only after an explicit action. Install in the relevant panel, refresh from actual returned runtime state, and distinguish installed-awaiting-connection from missing installation. Model controls consume actual connected-session capabilities and acknowledged configuration; the current profile DTO has no persisted default model. Do not simulate team sharing or per-role tool/knowledge/skill binding. Keep current session snapshots separate from edits to defaults for future sessions. Consume the application sidebar width/resize component, including collapsed/mobile reopen behavior.
+Profiles are named local project-scoped assistant roles; Codex/Claude Code are execution engines beneath them. New Conversation must open a role chooser and start only after an explicit action. Install in the relevant panel, refresh from actual returned runtime state, and distinguish installed-awaiting-connection from missing installation. Model controls consume actual connected-session capabilities and acknowledged configuration; the current profile DTO has no persisted default model. Do not simulate team sharing or per-role tool/knowledge isolation. Additional project skills can be selected per role through skillPaths; retain native inherited skills, missing selections and failed-save drafts. Use real Studio metadata and reject stale/hidden/root-changed scan results. Session snapshots remain separate from future role defaults. Keep current session snapshots separate from edits to defaults for future sessions. Consume the application sidebar width/resize component, including collapsed/mobile reopen behavior.
 
 ### Conversation continuity and compact controls
 
@@ -21,7 +21,12 @@ Disconnect its width observer while the retained source is inactive. Ordinary
 Trellis events use the neutral `my-activity-note`; errors and pending permission
 choices retain their distinct semantic presentation.
 
-Opening a selected resumable history connects it once, with history/drafts visible while connecting. No manual restore landing page, prompt replay, replacement conversation, automatic retry loop or hidden Settings-source reconnect. Explicit Stop must not immediately reconnect from a status update. Legacy transcript-only records remain clearly read-only. Failed native load offers an inline retry and preserves raw details; external locks/provider restrictions are not bypassed.
+Selecting history reads its transcript without connecting or stopping an engine. Keep per-session drafts, images and references across selection and Settings detours. A continues in the background while B can submit independently. Explicit Send reuses a healthy owner, joins a new session's pending start, or restores the same native identity before exactly one prompt. Do not replay prompts, replace conversations or reconnect from status updates. Failed load/capacity admission preserves input and offers an explicit retry. Legacy transcript-only records remain read-only; external locks/provider restrictions remain authoritative.
+
+After Send-time resume, rebind submitted references to the new generation only
+when fresh project/task and backend/native session identity prove continuity.
+Backend source revision checks remain mandatory. Missing or changed identity
+preserves the original references and rejects sending.
 
 The composer hosts native mode, collaboration, model, reasoning and remaining advertised configuration through anchored shared Dropdowns. Prefer a unique advertised category=model/mode config option when session/set_config_option is supported; fall back to legacy controls only when advertised. Use one local configuration lock and apply choices only after acknowledgement. A reasoning track contains exactly the engine's returned options, never invented strengths, permission presets or default reset. Remove duplicate current-session forms/select autofocus from the inspector; retain environment context and a return-to-composer action. Internal menu scrolling must not dismiss the shared Dropdown. Do not restore below-composer task/keyboard hint rows; retain actual task entry and IME-safe submission.
 
@@ -88,16 +93,14 @@ selection/generation/root drift and Settings suspension using actual components.
 `acp-turn-status.mjs` mounts the actual Console in hidden Electron with independently
 delayed IPC, state and output, including silent gaps and reduced-motion behavior.
 
-### Knowledge-first turn and explicit new-conversation focus
+### Native knowledge calls and explicit new-conversation focus
 
-`projectCurrentTurnActivity` selects actual current `knowledgeOperation` facts
-before generic waiting. A preparing question and a completed lookup do not prove
-native delivery: remain in preparation until the exact turn's `promptDelivery`
-receipt has `state: 'sent'` (or its actual legacy transport observation). Then
-show waiting/generation as reported. One ephemeral current status owns working
-animation; corresponding knowledge/activity/tool rows stay readable but do not
-animate a second overall indicator. Incomplete historical tools are static and
-labelled unfinished, even when no completion patch exists.
+`projectCurrentTurnActivity` selects actual current knowledgeOperation facts
+before generic waiting. Ordinary sends have no host retrieval preparation phase.
+Native search/read events appear only when a tool actually runs. Historical
+preparing questions and promptDelivery receipts retain their original projection;
+a completed historical lookup alone does not establish native delivery. Keep one
+current-turn working indicator; historical tools remain static and readable.
 
 Successful turn-scoped `开始处理`, `指令已发送至引擎` and `收到首次模型响应`
 observations remain stored but appear only in the terminal processing disclosure,
@@ -251,7 +254,7 @@ error contract in [saved knowledge reading](../backend/knowledge-document-readin
 
 ## 8. History-first reading and recovery presentation
 
-The conversation surface reads compact `AcpHistorySummary` records and loads transcript pages independently from native connection state. A selected history record stays readable while an eager one-shot resume is attempted; a failed attempt requires explicit retry and never sends a draft. Older pages are prepended with anchor/scroll compensation; live appends follow only when the reader was already at the bottom.
+The conversation surface reads compact `AcpHistorySummary` records and loads transcript pages independently from native connection state. History loading failures retain the selected transcript cache and provide a history retry; engine readiness does not imply history loaded successfully. Native resume begins only on explicit Send or retry. Older pages are prepended with anchor/scroll compensation; live appends follow only when the reader was already at the bottom.
 
 Partial loading means fewer complete turns, never the middle of a saved reply.
 `acpHistoryEvents` aligns both page edges to turn boundaries; its count/byte targets
@@ -471,3 +474,17 @@ readable multiline height despite shared field min-height specificity. Test
 actual computed geometry, default transcript/action count, exact operation/source
 provenance, plus/More, background-fact access and unchanged composer draft/focus
 with `acp-knowledge-convenience.mjs` and `knowledge-ui.mjs`.
+
+### Role context and connection diagnostics
+
+Role skill pickers select existing project SKILL.md files and persist normalized
+relative paths through the profile API. Loading, failed scans, retry and selected
+missing files remain usable without clearing the draft. A -> B -> A and suspended
+source responses cannot update the active picker. Native skills are inherited;
+this selection does not install, disable or isolate the engine's own skills.
+
+The inspector shows only an exact current-generation/current-turn agentContext
+receipt. Label prepared, sent and not_sent as transport facts, never loaded,
+applied or compliant. Connection timings are a separate collapsed disclosure;
+require the current generation and show only measured duration/status fields.
+Do not add artificial stage progress or treat a skipped stage as zero-time work.

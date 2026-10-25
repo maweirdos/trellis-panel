@@ -6,7 +6,7 @@ import './quit.css'
 export function DaemonQuitDialog(): JSX.Element {
   const bridge = (api as typeof api & { daemonQuit?: DaemonQuitApi })?.daemonQuit
   const [state, setState] = useState<DaemonQuitState | null>(null)
-  const [keepRunning, setKeepRunning] = useState(true)
+  const [keepRunning, setKeepRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
@@ -35,13 +35,13 @@ export function DaemonQuitDialog(): JSX.Element {
     <h1 id="quit-title">确定退出 Trellis Panel？</h1>
     <label className="daemon-quit-option">
       <input type="checkbox" checked={keepRunning} disabled={!state || busy} onChange={event => setKeepRunning(event.target.checked)} />
-      <span>保持 Trellis CLI 守护进程在后台运行（保持电脑在线，Agent 可以继续接收和运行任务）</span>
+      <span>退出桌面后保留后台服务，Agent 与集成任务继续运行</span>
     </label>
-    <p className="daemon-quit-warning">注意：取消选中后，守护进程也会被终止，该电脑上的 Agent 会全部离线，正在运行中的 Agent 任务也会被终止</p>
+    <p className="daemon-quit-warning">不勾选时，将停止后台服务及其拥有的所有 Agent 与集成任务。</p>
     {error && <p className="daemon-quit-error" role="alert">{error}</p>}
     <div className="daemon-quit-actions">
       <button autoFocus disabled={!state || busy} onClick={() => void decide('cancel')}>取消</button>
-      <button className="daemon-quit-exit" disabled={!state || busy} onClick={() => void decide('exit')}>{busy ? '正在确认…' : '退出'}</button>
+      <button className="daemon-quit-exit" disabled={!state || busy} onClick={() => void decide('exit')}>{busy ? '正在确认…' : keepRunning ? '退出并保留后台' : '停止后台并退出'}</button>
     </div>
   </main>
 }

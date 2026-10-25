@@ -1637,6 +1637,8 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   windowMinimize: () => void
   windowMaximize: () => void
   windowClose: () => void
+  /** Requests normal GUI exit and its daemon-retention choice; success is not an exit receipt. */
+  appQuit?: () => Promise<{ ok: true } | IpcFail>
   onWindowMaximized: (cb: (maximized: boolean) => void) => () => void
 }
 
@@ -1796,6 +1798,8 @@ export interface AcpAgentProfile {
   name: string
   description: string
   instructions: string
+  /** Additional project skills; native engine-discovered skills remain engine-owned. */
+  skillPaths?: string[]
   runtimeId: string
   cwd?: string
   maxTurnMinutes: number
@@ -1956,7 +1960,9 @@ export interface AcpSessionMeta {
   historyKind?: 'live' | 'resumable' | 'transcript' | 'legacy'
   canResume?: boolean
   restorePending?: boolean
-  capabilities?: { controls: string[]; loadSession?: boolean; promptCapabilities?: { image?: boolean }; protocolVersion?: number; agentInfo?: Record<string, unknown>; authMethods?: unknown[] }
+  capabilities?: { controls: string[]; loadSession?: boolean; promptCapabilities?: { image?: boolean; embeddedContext?: boolean }; protocolVersion?: number; agentInfo?: Record<string, unknown>; authMethods?: unknown[] }
+  agentContext?: import('./acp-context').AcpAgentContextDelivery
+  connectionTimings?: import('./acp-connection').AcpConnectionTimings & { connectionGeneration: string }
   models?: Array<{ modelId: string; name: string }>
   modes?: Array<{ id: string; name: string }>
   currentModelId?: string

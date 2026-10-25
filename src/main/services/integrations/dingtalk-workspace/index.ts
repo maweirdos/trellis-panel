@@ -19,6 +19,7 @@ export function createDingTalkWorkspace(ports: DingTalkPorts) {
   const inbox = createDingTalkInbox(ports, remote)
   const streams = new Map<string, { key: string; close(): Promise<void> }>()
   let closed = false, started = false, recovered = false, timer: ReturnType<typeof setInterval> | undefined, synchronizing: Promise<void> | undefined
+  const idleProbes = new Set<symbol>()
   const notify = (): void => ports.changed?.()
   function appBy(state: DingState, id: string, revision?: number) {
     const app = state.apps.find(item => item.id === id)
@@ -55,6 +56,7 @@ export function createDingTalkWorkspace(ports: DingTalkPorts) {
     return item
   }
   async function syncStreams(): Promise<void> {
+    if (idleProbes.size) return
     if (synchronizing) return synchronizing
     synchronizing = (async () => {
       const state = repository.read()
@@ -76,7 +78,7 @@ export function createDingTalkWorkspace(ports: DingTalkPorts) {
           repository.change(next => { for (const assistant of next.assistants) if (entry.assistants.some(original => original.id === assistant.id && original.revision === assistant.revision)) { assistant.state = state; assistant.detail = detail; if (state === 'registered') assistant.lastConnectedAt = Date.now() } }); notify()
         }
         try {
-          const stream = await ports.stream.create({ app: entry.app, onMessage: frame => streams.get(id)?.key === entry.key && !closed && inbox.receive(id, entry.app.revision, frame), health })
+          const stream = await ports.stream.create({ app: entry.app, onMessage: frame => streams.get(id)?.key === entry.key && !closed && !idleProbes.size && inbox.receive(id, entry.app.revision, frame), health })
           if (closed || streams.get(id) !== sentinel) await stream.close()
           else streams.set(id, { key: entry.key, close: stream.close })
         } catch { streams.delete(id); repository.change(next => { for (const assistant of next.assistants) if (assistant.appId === id && assistant.appRevision === entry.app.revision) { assistant.state = 'blocked'; assistant.detail = 'Stream SDK 或代理适配不可用，请检查依赖与网络设置' } }); notify() }
@@ -253,14 +255,18 @@ export function createDingTalkWorkspace(ports: DingTalkPorts) {
     async queryExecution(input) { return inbox.observeExecution(ownedReceipt(input).id, false) },
     async cancelExecution(input) { return inbox.observeExecution(ownedReceipt(input).id, true) }
   }
-  return { actions, work: inbox.work, remote, hasActiveWork: inbox.hasActiveWork,
+  return { actions, work: inbox.work, remote, hasActiveWork: () => inbox.hasActiveWork() || Boolean(synchronizing),
+    probeIdle() {
+      const probe = Symbol('idle-shutdown'); idleProbes.add(probe)
+      return { busy: () => !idleProbes.has(probe) || inbox.hasActiveWork() || Boolean(synchronizing), release: () => { idleProbes.delete(probe) } }
+    },
     /** This worker belongs to the daemon, never to page subscriptions. */
     async start() {
       if (started || closed) return
       // Failed recovery cannot mark an idle worker as started forever.
       recoverOriginal(); started = true
       try { await syncStreams() } catch (error) { started = false; throw error }
-      if (!closed) timer = setInterval(() => { try { inbox.tick(); void syncStreams().catch(() => {}) } catch { /* State corruption/owner loss closes admission on the next explicit operation. */ } }, 1500)
+      if (!closed) timer = setInterval(() => { if (idleProbes.size) return; try { inbox.tick(); void syncStreams().catch(() => {}) } catch { /* State corruption/owner loss closes admission on the next explicit operation. */ } }, 1500)
     },
     async closeAdmission() { closed = true; inbox.closeAdmission(); if (timer) clearInterval(timer); await synchronizing; for (const stream of streams.values()) await stream.close(); streams.clear() },
     async shutdown() { closed = true; if (timer) clearInterval(timer); await synchronizing; for (const stream of streams.values()) await stream.close(); streams.clear(); await inbox.close() },

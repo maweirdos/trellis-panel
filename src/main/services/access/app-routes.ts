@@ -25,7 +25,9 @@ function runtimeReply(result: RuntimeReply, replay = false): AccessReply {
     const { ok: _ok, ...data } = result
     return { status: 200, payload: { ok: true, data, ...(replay ? { idempotentReplay: true } : {}) } }
   }
-  const status = { E_INVALID_ARG: 422, E_NO_PROJECT: 404, E_NOT_FOUND: 404, E_UNAUTHORIZED: 401, E_DENIED: 403, E_CONFLICT: 409, E_TIMEOUT: 504, E_IO: 500, E_UPSTREAM: 502, E_UNKNOWN: 500 }[result.code]
+  const status = { E_INVALID_ARG: 422, E_NO_PROJECT: 404, E_NOT_FOUND: 404, E_UNAUTHORIZED: 401, E_DENIED: 403, E_CONFLICT: 409,
+    E_BUSY: 409, E_RESET_REQUIRED: 409, E_UNAVAILABLE: 503, E_VERSION: 426,
+    E_TIMEOUT: 504, E_IO: 500, E_UPSTREAM: 502, E_UNKNOWN: 500 }[result.code]
   return errorReply(result.code, result.error, status, {
     ...(result.reason ? { reason: result.reason } : {}),
     ...(result.root ? { root: result.root } : {}),

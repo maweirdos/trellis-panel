@@ -28,6 +28,7 @@ import { delimiter, isAbsolute, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ZcodeBackend, clearLastErrorLog, writeLastErrorLog } from './zcode-backend.mjs'
 import { createAccountContext } from './account-context.mjs'
+import { createConnectionTimings } from './connection-timings.mjs'
 
 const ADAPTER_VERSION = '0.1.0'
 const AGENT_INFO = { name: 'zcode-acp', version: ADAPTER_VERSION }
@@ -36,9 +37,10 @@ const AGENT_INFO = { name: 'zcode-acp', version: ADAPTER_VERSION }
 const ASYNC_REPLY = Symbol('async-reply')
 
 class AcpFault extends Error {
-  constructor(code, message) {
+  constructor(code, message, connectionTimingReason) {
     super(message)
     this.code = code
+    this.connectionTimingReason = connectionTimingReason
   }
 }
 
@@ -130,6 +132,7 @@ async function serve(options) {
   let pendingPrompt = undefined // { id, settled }
   let permissionSeq = 0
   let shuttingDown = false
+  let activeConnection
   /** ZCode requestId → { acpId?, rpcReply?, settled }；permission.requested 事件与
    *  interaction/requestPermission 双向请求按 requestId 去重合并（deny 默认）。 */
   const pendingPermissions = new Map()
@@ -141,6 +144,7 @@ async function serve(options) {
   // 同一事故只写一次：崩溃现场先落盘后，shutdown 不再覆盖，避免丢帧信息。
   let forensicsLogged = false
   const forensicsDir = options.isolatedDir ?? (isAbsolute(process.env.TRELLIS_ZCODE_DIAGNOSTICS_DIR ?? '') ? process.env.TRELLIS_ZCODE_DIAGNOSTICS_DIR : tmpdir())
+  const timingsDir = options.isolatedDir ?? (isAbsolute(process.env.TRELLIS_ZCODE_DIAGNOSTICS_DIR ?? '') ? process.env.TRELLIS_ZCODE_DIAGNOSTICS_DIR : undefined)
   const lastErrorPathHint = () => join(forensicsDir, 'zcode-adapter-last-error.log')
   const logForensics = (reason, extraLines = []) => {
     forensicsLogged = true
@@ -151,9 +155,10 @@ async function serve(options) {
     ])) console.error(`[zcode-acp] 取证日志写入失败：${lastErrorPathHint()}`)
   }
 
-  const shutdown = (exitCode, reason) => {
+  const shutdown = (exitCode, reason, timingReason = 'request_failed') => {
     if (shuttingDown) return
     shuttingDown = true
+    activeConnection?.finish(exitCode === 0 ? 'cancelled' : 'failed', exitCode === 0 ? 'cancelled' : timingReason)
     accountContext?.dispose()
     if (exitCode !== 0 && reason && !forensicsLogged) logForensics(reason)
     const kill = backend ? backend.killTree() : Promise.resolve()
@@ -185,11 +190,14 @@ async function serve(options) {
     if (info.unexpected) {
       // 崩溃现场已由 onForensics 落盘；向上抛可读错误，不静默重试（design R5）。
       settlePrompt({ error: true, code: -32000, message: 'ZCode app-server 意外退出，请重建会话' })
-      shutdown(1)
+      shutdown(1, undefined, 'backend_exited')
     }
   }
 
-  const ensureBackend = (workspacePath) => {
+  const ensureBackend = (workspacePath, timings) => {
+    if (backend?.child && backend.startupState.ready) {
+      for (const stage of ['backend-process', 'storage-ready', 'account-sync']) timings.skip(stage, 'backend_reused')
+    }
     if (backendStarting) return backendStarting
     if (backend && backend.child) return Promise.resolve(backend)
     if (backend && !backend.child) {
@@ -203,6 +211,7 @@ async function serve(options) {
         workspacePath,
         isolatedDir: options.isolatedDir,
         enableAutomationTools: options.enableAutomationTools,
+        connectionTimings: timings,
         onEvent: (event) => handleZcodeEvent(event),
         onNotice: (method, params) => handleNotice(method, params),
         onServerRequest: (method, params, reply, replyError) => handleServerRequest(method, params, reply, replyError),
@@ -211,20 +220,27 @@ async function serve(options) {
       })
       backend = created
       backendStarting = created.waitReady().then(async () => {
+        if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
         // app-server is a desktop worker: its subscription models require the
         // current account host port, independently of its primary provider file.
         // Explicit isolation never consumes the real user's account material.
         if (!options.isolatedDir && created.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE) {
+          timings.start('account-sync')
           const context = createAccountContext({ dataBaseDir: created.providerSource.dataBaseDir,
             builtinPath: created.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE, env: created.env })
           accountContext = context
-          try { accountStatus = await context.sync(created) }
-          catch {
+          try {
+            accountStatus = await context.sync(created)
+            timings.end('account-sync', accountStatus.status === 'verified' ? 'completed' : 'failed', accountStatus.reason)
+          }
+          catch (error) {
+            timings.end('account-sync', 'failed', error?.code ?? 'account_sync_failed')
             context.dispose()
             if (accountContext === context) accountContext = undefined
             accountStatus = { status: 'unavailable', reason: 'account_sync_failed' }
           }
-        }
+        } else timings.skip('account-sync', options.isolatedDir ? 'isolated' : 'no_builtin_config')
+        if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
         return created
       })
       backendStarting.catch(async () => {
@@ -479,12 +495,15 @@ async function serve(options) {
   })
 
   const emitSubscribedEvents = (subscribed, { establishBaseline = false } = {}) => {
-    if (!session || typeof subscribed !== 'object' || subscribed === null) return
+    if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
+    if (!session || typeof subscribed !== 'object' || subscribed === null || Array.isArray(subscribed)) {
+      throw new AcpFault(-32000, 'ZCode subscription returned an invalid acknowledgement', 'invalid_subscription')
+    }
     // Native sequence namespaces depend on deliveryKind. Resume must obtain its
     // watermark from this subscription, not a snapshot in the default namespace.
-    if (subscribed.sessionId !== session.acpSessionId) throw new AcpFault(-32000, 'ZCode subscription changed native session identity')
+    if (subscribed.sessionId !== session.acpSessionId) throw new AcpFault(-32000, 'ZCode subscription changed native session identity', 'invalid_subscription')
+    if (!Number.isSafeInteger(subscribed.eventSeq) || subscribed.eventSeq < 0) throw new AcpFault(-32000, 'ZCode subscription lacks a valid event watermark', 'invalid_subscription')
     if (establishBaseline) {
-      if (!Number.isSafeInteger(subscribed.eventSeq) || subscribed.eventSeq < 0) throw new AcpFault(-32000, 'ZCode subscription lacks a valid event watermark')
       session.baseSeq = subscribed.eventSeq
       for (const seq of session.queuedEvents.keys()) if (seq <= session.baseSeq) session.queuedEvents.delete(seq)
     }
@@ -497,45 +516,55 @@ async function serve(options) {
 
   const newSessionState = (sessionId, baseSeq) => ({ acpSessionId: sessionId, baseSeq, queuedEvents: new Map(), toolInputs: new Map(), subscribing: true })
 
-  const subscribeSession = (sessionId, afterSeq) => {
+  const subscribeSession = (sessionId, afterSeq, includeSnapshot = true) => {
     if (!backend) throw new AcpFault(-32000, 'ZCode app-server 未运行')
-    // afterSeq 始终显式携带（create 用 0）：补齐 create→subscribe 窗口内已产生的事件。
-    return backend.request('session/subscribe', { sessionId, deliveryKind: 'desktop-continuous', includeSnapshot: true,
+    // create uses afterSeq=0 to close its event window; resume establishes the
+    // desktop subscription's own watermark without replaying historical turns.
+    return backend.request('session/subscribe', { sessionId, deliveryKind: 'desktop-continuous', includeSnapshot,
       ...(afterSeq === undefined ? {} : { afterSeq }) })
   }
 
-  const createSession = async (workspacePath, mcpServers) => {
+  const createSession = async (workspacePath, mcpServers, timings) => {
     if (session) throw new AcpFault(-32010, 'This adapter already owns a native session')
-    const active = await ensureBackend(workspacePath)
+    const active = await ensureBackend(workspacePath, timings)
     active.providerSource.assertCurrent()
+    timings.start('session-create-or-resume')
     const snapshot = await active.requestSlow('session/create', {
       workspace: { workspacePath, workspaceKey: translate.workspaceKeyFromPath(workspacePath) },
       persistence: 'immediate', mcpServers
     })
+    if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
     const sessionId = translate.stringField(translate.asRecord(translate.asRecord(snapshot).session), 'sessionId')
-    if (!sessionId) throw new AcpFault(-32000, 'ZCode session/create 未返回 sessionId')
+    if (!sessionId) throw new AcpFault(-32000, 'ZCode session/create 未返回 sessionId', 'invalid_session')
     accountContext?.bindSession(sessionId, { workspacePath, workspaceKey: translate.workspaceKeyFromPath(workspacePath) })
     session = newSessionState(sessionId, 0)
     applySnapshot(snapshot, { fullCatalog: true })
-    emitSubscribedEvents(await subscribeSession(sessionId, 0))
+    timings.end('session-create-or-resume')
+    // create already supplied the full catalog/snapshot. A second native
+    // snapshot repeats plugin/command discovery; retain the actual subscription
+    // acknowledgement and replay window, including changes queued meanwhile.
+    await timings.measure('subscribe', async () => emitSubscribedEvents(await subscribeSession(sessionId, 0, false)))
     forensicsLogged = false
     clearLastErrorLog(forensicsDir)
     return sessionId
   }
 
-  const resumeSession = async (sessionId, workspacePath, mcpServers) => {
+  const resumeSession = async (sessionId, workspacePath, mcpServers, timings) => {
     if (pendingPrompt || session && session.acpSessionId !== sessionId) throw new AcpFault(-32010, 'Cannot replace an owned or active native session')
-    const active = await ensureBackend(workspacePath ?? process.cwd())
+    const active = await ensureBackend(workspacePath ?? process.cwd(), timings)
     active.providerSource.assertCurrent()
     const params = { sessionId, mcpServers }
     if (workspacePath) params.workspace = { workspacePath, workspaceKey: translate.workspaceKeyFromPath(workspacePath) }
+    timings.start('session-create-or-resume')
     const snapshot = await active.requestSlow('session/resume', params)
-    if (snapshot?.session?.sessionId !== sessionId) throw new AcpFault(-32000, 'ZCode resume changed the native session identity')
+    if (shuttingDown) throw new AcpFault(-32000, 'ZCode connection cancelled', 'cancelled')
+    if (snapshot?.session?.sessionId !== sessionId) throw new AcpFault(-32000, 'ZCode resume changed the native session identity', 'invalid_session')
     const root = workspacePath ?? process.cwd()
     accountContext?.bindSession(sessionId, { workspacePath: root, workspaceKey: translate.workspaceKeyFromPath(root) })
     session = newSessionState(sessionId, 0)
     applySnapshot(snapshot, { fullCatalog: true })
-    emitSubscribedEvents(await subscribeSession(sessionId), { establishBaseline: true })
+    timings.end('session-create-or-resume')
+    await timings.measure('subscribe', async () => emitSubscribedEvents(await subscribeSession(sessionId), { establishBaseline: true }))
   }
 
   const requireSession = (rawSessionId) => {
@@ -543,6 +572,7 @@ async function serve(options) {
       throw new AcpFault(-32602, `未知会话：${typeof rawSessionId === 'string' ? rawSessionId : '(缺失)'}`)
     }
     if (!backend || !backend.child) throw new AcpFault(-32000, 'ZCode app-server 未运行')
+    if (shuttingDown || activeConnection || session.subscribing) throw new AcpFault(-32000, 'ZCode session subscription is not ready')
   }
 
   const setZcodeModel = async (encodedModelId) => {
@@ -564,22 +594,24 @@ async function serve(options) {
   const handlers = {
     initialize: () => ({
       protocolVersion: 1,
-      agentCapabilities: { loadSession: true, promptCapabilities: { image: false }, mcpCapabilities: { http: true, sse: true } },
+      agentCapabilities: { loadSession: true, promptCapabilities: { image: false, embeddedContext: true }, mcpCapabilities: { http: true, sse: true } },
       agentInfo: AGENT_INFO,
       authMethods: []
     }),
-    session_new: async (params) => {
+    session_new: async (params, _requestId, timings) => {
       const workspacePath = translate.stringField(translate.asRecord(params), 'cwd')
       if (!workspacePath) throw new AcpFault(-32602, 'session/new 缺少 cwd')
       if (!isAbsolute(workspacePath)) throw new AcpFault(-32602, `cwd 必须为绝对路径：${workspacePath}`)
-      const sessionId = await createSession(workspacePath, nativeMcpServers(translate.asRecord(params).mcpServers))
+      const sessionId = await createSession(workspacePath, nativeMcpServers(translate.asRecord(params).mcpServers), timings)
       return { sessionId, ...sessionResponse() }
     },
-    session_load: async (params) => {
+    session_load: async (params, _requestId, timings) => {
       const record = translate.asRecord(params)
       const sessionId = translate.stringField(record, 'sessionId')
       if (!sessionId) throw new AcpFault(-32602, 'session/load 缺少 sessionId')
-      await resumeSession(sessionId, translate.stringField(record, 'cwd'), nativeMcpServers(record.mcpServers))
+      const workspacePath = translate.stringField(record, 'cwd')
+      if (workspacePath && !isAbsolute(workspacePath)) throw new AcpFault(-32602, 'session/load cwd must be absolute')
+      await resumeSession(sessionId, workspacePath, nativeMcpServers(record.mcpServers), timings)
       return sessionResponse()
     },
     session_prompt: async (params, acpRequestId) => {
@@ -587,7 +619,9 @@ async function serve(options) {
       requireSession(translate.stringField(record, 'sessionId'))
       backend.providerSource.assertCurrent()
       if (pendingPrompt) throw new AcpFault(-32010, '已有 prompt 运行中，请先取消')
-      const content = translate.promptToZcodeContent(record.prompt)
+      let content
+      try { content = translate.promptToZcodeContent(record.prompt) }
+      catch (error) { throw new AcpFault(-32602, error instanceof Error ? error.message : 'Invalid ACP prompt content') }
       if (!content) throw new AcpFault(-32602, '仅支持文本输入（image=false）')
       // Native input IDs survive adapter restarts. A process-local counter would
       // collide with an earlier turn after loading the same native session.
@@ -646,20 +680,31 @@ async function serve(options) {
       return
     }
     let result
+    let timings
     try {
-      result = await handler(message.params ?? {}, message.id)
+      if (method === 'session/new' || method === 'session/load') {
+        if (activeConnection) throw new AcpFault(-32010, 'ZCode connection is already in progress')
+        timings = createConnectionTimings(method === 'session/new' ? 'new' : 'load', !!(backend?.child && backend.startupState.ready), timingsDir)
+        activeConnection = timings
+      }
+      result = await handler(message.params ?? {}, message.id, timings)
+      if (timings) result = { ...result, _meta: { trellisZcode: { connectionTimings: timings.finish('completed') } } }
       if (method === 'initialize') initialized = true
     } catch (error) {
+      const connectionTimings = timings?.finish('failed', error?.connectionTimingReason ?? 'request_failed')
       if (message.id === undefined || message.id === null) {
         console.error(`[zcode-acp] ${method} 处理失败：${error instanceof Error ? error.message : String(error)}`)
         return
       }
-      if (error instanceof AcpFault) acpError(message.id, error.code, error.message)
+      const data = connectionTimings ? { ...translate.asRecord(error?.data), _meta: { trellisZcode: { connectionTimings } } } : error?.data
+      if (error instanceof AcpFault) acpError(message.id, error.code, error.message, data)
       else {
         const code = typeof (error ?? {}).code === 'number' ? error.code : -32000
-        acpError(message.id, code, error instanceof Error ? error.message : String(error), error?.data)
+        acpError(message.id, code, error instanceof Error ? error.message : String(error), data)
       }
       return
+    } finally {
+      if (timings && activeConnection === timings) activeConnection = undefined
     }
     if (result === ASYNC_REPLY || message.id === undefined || message.id === null) return
     acpResult(message.id, result)

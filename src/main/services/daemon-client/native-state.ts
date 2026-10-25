@@ -15,6 +15,7 @@ import { daemonClientContext, daemonManager, daemonIsAbsent, pooledDaemonClient 
 import { installGuiNativeState, prepareGuiNativeProjection } from '../../daemon/native-state'
 import { publishNativeRelease, readNativeRelease } from '../../daemon/cutover'
 import { DaemonError } from '../../daemon/errors'
+import { requireCurrentDaemonBuild } from '../../daemon/build-identity'
 
 let preparation: Promise<void> | undefined
 let installed = false
@@ -102,6 +103,7 @@ async function prepare(onPreparing?: () => void, onAuthenticated?: () => void): 
   const ready = await client.request('native.ready', {}, { timeoutMs: 60_000 })
   if (!ready.ok) throw new DaemonError(ready.code, ready.error, ready.outcome)
   if (!ready.data.ready) throw new DaemonError('E_UNAVAILABLE', 'The native application has not confirmed protected domain readiness.')
+  requireCurrentDaemonBuild(context, client.lease)
   await install(context)
 }
 let frozenPorts: (() => void) | undefined

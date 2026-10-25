@@ -146,6 +146,8 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
         <p className="break-words font-mono text-my-sm text-my-secondary">{title}</p>
         {typeof payload.preview === 'string' && <p className="whitespace-pre-wrap break-words text-my-secondary">{payload.preview}</p>}
         <ToolContent value={payload.content} />
+        {typeof payload.outputText === 'string' && payload.outputText && <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-my-sm">{payload.outputText}</pre>}
+        {payload.outputDeltaTruncated === true && <p className="text-my-sm text-my-tertiary">工具输出超出显示限额，当前仅显示部分内容。</p>}
         {Array.isArray(payload.locations) && payload.locations.length > 0 && <div className="text-my-sm text-my-secondary">{payload.locations.map((location, index) => {
           const loc = asObject(location)
           return <div key={index} className="break-all font-mono">{String(loc?.path ?? '')}{typeof loc?.line === 'number' ? `:${loc.line}` : ''}</div>

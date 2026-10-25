@@ -11,6 +11,10 @@ import { startDaemonServer } from './server'
 import type { NativeServer } from './transport'
 import type { IntegrationAdmissionPort } from '../services/integrations/work-ports'
 import { createDaemonApplication } from './application'
+import { captureDaemonBuild, publishDaemonBuild } from './build-identity'
+
+// Capture before the first readiness/native await, never when a GUI attaches.
+const loadedBuild = captureDaemonBuild()
 
 export interface DaemonHostPorts {
   /** Trusted composition only; provider children reuse the existing registry and protected owner. */
@@ -22,6 +26,7 @@ export async function runDaemonHost(ports: DaemonHostPorts = {}): Promise<void> 
   await app.whenReady()
   const context = await createDaemonContext()
   const lease = await acquireLease(context)
+  publishDaemonBuild(context, lease, loadedBuild)
   const assertOwner = (): void => assertLease(context, lease)
   await ensureDaemonCredential(context, assertOwner)
   const repository = new DaemonRepository(context.directory, lease.epoch, assertOwner, context.owner)
@@ -45,8 +50,10 @@ export async function runDaemonHost(ports: DaemonHostPorts = {}): Promise<void> 
   const dispatcher = new DaemonDispatcher(context, lease, repository, settings, scheduler, log, () => { setTimeout(() => { void stop() }, 100) }, application.domains)
   const tick = setInterval(() => {
     // A damaged optional provider ledger must not starve unrelated queued jobs.
-    void application.domains.poll().catch(() => { log.append('PROVIDER_POLL_FAILED') })
-      .then(() => scheduler.tick()).catch(() => { log.append('SCHEDULER_FAILED') })
+    void dispatcher.backgroundPoll(async () => {
+      await application.domains.poll().catch(() => { log.append('PROVIDER_POLL_FAILED') })
+      await scheduler.tick().catch(() => { log.append('SCHEDULER_FAILED') })
+    }).catch(() => { log.append('SCHEDULER_FAILED') })
   }, 1000)
   server = await startDaemonServer(context, lease, dispatcher, () => {
     log.append('TRANSPORT_FAILED'); scheduler.closeAdmission(); clearInterval(tick)

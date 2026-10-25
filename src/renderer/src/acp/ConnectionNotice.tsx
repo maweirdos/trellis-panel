@@ -5,6 +5,9 @@ import type { AcpSessionRecord } from '../../../shared/types'
 import { getModelRecovery } from './model-recovery'
 
 export function describeConnectionError(message: string): { title: string; hint: string } {
+  if (/当前\s*\d+\s*个运行连接正忙|运行连接已达\s*\d+\s*个|连接数量已达上限/.test(message)) return {
+    title: '运行连接暂时已满', hint: '请等待现有回合结束，或结束不再使用的会话后重试。草稿已保留。'
+  }
   if (/session is in use by another|already in use|session.*locked/i.test(message)) return {
     title: '原会话正被其他客户端占用', hint: '请在占用它的窗口、终端或 IDE 中关闭该会话，再重试连接。你可以继续阅读和编辑草稿。'
   }
@@ -48,7 +51,8 @@ export function ConnectionRecovery({ session, message, pending, onRetry, onClean
   const description = confirmed ? { title: '模型已确认，连接仍失败', hint: `执行引擎已确认 ${session.recovery?.confirmedModelId ?? session.currentModelId ?? '所选模型'}。请排查连接后重试，草稿不会自动发送。` }
     : cleanup ? { title: '会话尚未完全结束', hint: '执行引擎的资源仍由此会话持有。请重试结束，完成后再连接。' }
     : modelFailure ? { title: '当前模型不可用', hint: '请在输入框右下角选择可用模型并重新连接。已有消息和草稿会保留，重连后需手动发送。' }
-    : message ? describeConnectionError(message) : { title: '当前未连接', hint: '连接原会话后可继续对话。重连不会自动发送草稿。' }
+    : message ? describeConnectionError(message) : { title: '当前未连接', hint: '发送时将连接原会话。' }
+  if (offline && session.canResume && !message && !degraded && !cleanup && !pending) return null
   if (!offline && !message && !degraded && !cleanup && !['resume', 'recover-model', 'kill'].includes(pending ?? '')) return null
   if (reading && !degraded && !cleanup && !pending) return null
   return <section className="acp-recovery" aria-label="当前连接与保存状态">
@@ -56,7 +60,7 @@ export function ConnectionRecovery({ session, message, pending, onRetry, onClean
       <div className="acp-recovery-line" role="status">
         <button type="button" className="acp-recovery-status-trigger" aria-expanded={detailsOpen} aria-controls={detailsId} title={detailsOpen ? '收起错误详情' : '展开错误详情'} onClick={() => setDetailsOpen((value) => !value)}>
           {pending ? <Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" /> : <CircleAlert size={14} aria-hidden="true" />}
-          <strong>{pending === 'recover-model' ? '正在验证模型并连接…' : pending === 'resume' ? '正在连接原会话…' : pending === 'kill' ? '正在结束会话…' : description.title}</strong>
+          <strong>{pending === 'recover-model' ? '正在验证模型并连接…' : pending === 'resume' ? session.canResume ? '正在连接原会话…' : '正在准备会话…' : pending === 'kill' ? '正在结束会话…' : description.title}</strong>
           <ChevronRight size={11} className={detailsOpen ? 'is-open' : ''} aria-hidden="true" />
         </button>
         {cleanup ? <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onCleanup}>重试结束会话</Button> : environmentPrimary ? <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onEnvironment}>检查执行引擎</Button> : offline && session.canResume && !modelFailure && <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onRetry}>重试连接</Button>}

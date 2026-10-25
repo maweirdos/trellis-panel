@@ -67,14 +67,14 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
         return
       }
       if (res.ok && (action === 'setup' || action === 'path')) {
-        const refreshed = await api.acpRuntimeRefresh()
+        const refreshed = res.agents ? res : await api.acpRuntimeRefresh()
         if (!isCurrent()) return
         if (refreshed.agents) onChange(refreshed.agents)
         const after = refreshed.agents?.find((item) => (item.runtimeId ?? item.id) === targetId)
         const beforeVersion = beforeAgent?.adapterVersion
         const afterVersion = after?.adapterVersion
         setFeedback({ error: !refreshed.ok, text: refreshed.ok
-          ? action === 'path' ? 'CLI 路径已保存并重新检测。'
+          ? action === 'path' ? targetId === 'zcode' ? 'ZCode 安装目录已配置。' : 'CLI 路径已保存。'
             : beforeVersion && afterVersion && beforeVersion === afterVersion ? `${after?.name ?? '执行引擎'} 已是最新版本 v${afterVersion}（重新安装完成，无需升级）。`
             : beforeVersion && afterVersion ? `${after?.name ?? '执行引擎'} 已升级：v${beforeVersion} → v${afterVersion}。连接会话后再确认登录与模型。`
             : `${after?.name ?? '执行引擎'} 安装完成${afterVersion ? `：v${afterVersion}` : ''}。连接会话后再确认登录与模型；现在不会自动开始对话。`
@@ -96,9 +96,9 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
         <Button size="sm" variant="outline" disabled={pending !== null || !hasIpc} onClick={() => void run('refresh')}>
           {pending === 'refresh' ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} 重新探测
         </Button>
-        <Button size="sm" variant="outline" disabled={pending !== null || !hasIpc} onClick={() => void run('node')}>
-          <FolderOpen size={12} /> 选择 Node
-        </Button>
+        {runtimeId !== 'zcode' && <Button size="sm" variant="outline" disabled={pending !== null || !hasIpc} onClick={() => void run('node')}>
+          <FolderOpen size={12} /> 自定义 Node
+        </Button>}
       </div>
       <p className="text-my-sm leading-relaxed text-my-tertiary">Codex、Claude Code 与原生直连 CLI（OpenCode、DeepSeek DSH）是执行引擎。角色名称和工作指令单独配置；安装引擎不会创建或启动会话。</p>
       {feedback && <p role={feedback.error ? 'alert' : 'status'} className={feedback.error ? 'text-my-sm text-my-danger-text' : 'text-my-sm text-my-success-text'}>{feedback.text}</p>}
@@ -106,8 +106,8 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
       {agents.filter((agent) => !runtimeId || (agent.runtimeId ?? agent.id) === runtimeId).map((agent) => {
         const id = agent.runtimeId ?? agent.id
         const native = agent.launchKind === 'native'
-        // bundled（内置桥接）也需要「配置路径」：内部 CLI 未检测到时用户可手动指定 zcode 可执行文件。
         const bundled = agent.launchKind === 'bundled'
+        const zcode = bundled && id === 'zcode'
         const busySetup = pending === `setup:${id}`
         const updatePending = native && agent.available && agent.latestVersion !== undefined && agent.adapterVersion !== undefined && agent.latestVersion !== agent.adapterVersion
         const upToDate = native && agent.available && agent.latestVersion !== undefined && agent.latestVersion === agent.adapterVersion
@@ -120,6 +120,9 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
             {agent.adapterVersion && <span className="text-my-sm text-my-tertiary">v{agent.adapterVersion}</span>}
             {updatePending && <span className="text-my-sm text-my-warning-text">有新版本 v{agent.latestVersion}</span>}
             <div className="flex-1" />
+            {zcode && <Button size="sm" variant={agent.available ? 'outline' : 'primary'} disabled={pending !== null || !hasIpc} onClick={() => void run('path', id)}>
+              {pending === `path:${id}` ? <Loader2 size={12} className="animate-spin" /> : <FolderOpen size={12} />} 选择 ZCode 安装目录
+            </Button>}
             {agent.setupRequired && <Button size="sm" variant="primary" disabled={pending !== null || !hasIpc} onClick={() => void run('setup', id)}>
               {busySetup ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} 安装执行引擎
             </Button>}
@@ -131,11 +134,11 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
             </Button>}
             {agent.available && !agent.setupRequired && (!native || upToDate) && <CheckCircle2 size={13} className="text-my-success-text" />}
           </div>
-          <details className="mt-3 text-my-sm text-my-tertiary"><summary className="cursor-pointer">本机环境与连接诊断</summary><p className="mt-2">本机环境需要 Node ≥22.13。已有账号登录、工具和项目配置沿用引擎本身的设置。</p><dl className="mt-2 space-y-1 break-all text-my-sm text-my-tertiary">
+          <details className="mt-3 text-my-sm text-my-tertiary"><summary className="cursor-pointer">本机环境与连接诊断</summary><p className="mt-2">{zcode ? '运行环境随应用提供；账号登录、工具和项目配置沿用 ZCode。' : '本机环境需要 Node ≥22.13。已有账号登录、工具和项目配置沿用引擎本身的设置。'}</p><dl className="mt-2 space-y-1 break-all text-my-sm text-my-tertiary">
             <div><dt className="inline text-my-secondary">Node：</dt><dd className="inline">{agent.nodePath ?? '未确认（原生直连与自定义命令自行管理）'}</dd></div>
             <div><dt className="inline text-my-secondary">启动：</dt><dd className="inline font-mono">{agent.executable ? [agent.executable, ...(agent.args ?? [])].join(' ') : agent.command || '待配置'}</dd></div>
           </dl>
-          {(native || bundled) && <div className="mt-2 flex flex-wrap items-center gap-2">
+          {(native || bundled && !zcode) && <div className="mt-2 flex flex-wrap items-center gap-2">
             {native && agent.available && <Button size="sm" variant="outline" disabled={pending !== null || !hasIpc} onClick={() => void run('test', id)}>
               {pending === `test:${id}` ? <Loader2 size={12} className="animate-spin" /> : <PlugZap size={12} />} 测试连接
             </Button>}

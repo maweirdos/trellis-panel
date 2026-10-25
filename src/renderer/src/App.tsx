@@ -20,6 +20,7 @@ import { DocWindowApp } from './my/pages/DocWindow'
 import { Loader2 } from 'lucide-react'
 import { projectRootKey } from './my/navigation'
 import { StartupContext, StartupContentCommit } from './daemon/StartupContext'
+import { DaemonSettingsDialog } from './daemon/DaemonSettingsDialog'
 
 function PageLoading(): JSX.Element {
   return (
@@ -251,6 +252,7 @@ export default function App(): JSX.Element {
         <ApplicationDock />
         <Toasts />
         <DialogHost />
+        <DaemonSettingsDialog />
       </div>
     </ErrorBoundary>
   )

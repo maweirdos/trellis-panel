@@ -6,6 +6,7 @@ Read before changing `services/acp.ts`, `services/acp/`, ACP IPC/preload/types,
 the Agent workspace, dependency preparation, or Electron packaging. The supported
 pair is Codex adapter 2.2.2 and Claude adapter 0.91.0. Generic custom commands are
 retained without claiming the same compatibility evidence.
+ZCode installation and native startup also follow `zcode-managed-startup.md`.
 
 Use the public `acpx/runtime` and `acpx/agent-registry` exports. acpx owns framing,
 processes, native sessions, turns and canonical shutdown. Trellis owns current-root
@@ -39,17 +40,36 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
 `acpRuntimeSetup(runtimeId)` and `acpRuntimeNodePick` manage local setup separately.
 `api.acpSessions()` currently exposes the service's default history limit.
 
-For a host-first project knowledge turn, the user row records a validated
-host-received question before lookup with `payload.delivery='preparing'`, not an
-already-written native prompt. Emit it once. A later owned diagnostic carries
-`activityScope='turn'` and `promptDelivery.state='sent'|'not_sent'` from actual
-submission facts. The renderer may project its label, never mutate/reorder the
-archived question or replay it as an automatic prompt. Preserve drafts/attachments
-on failed or cancelled admission. The existing post-write image-only/unbound
-contracts remain unchanged. `turn.promptStarted` is the public transport-write
-receipt; wait for its evidence checkpoint before ending the owned knowledge turn
-even when a native result completes immediately. See `knowledge-access.md` for
-bounded host-first retrieval and native configuration/Skills boundaries.
+Ordinary messages do not run a host knowledge search before dispatch. Keep the
+admitted project/turn scope available for actual native MCP calls. User messages
+are emitted once after public turn.promptStarted acknowledges the transport write.
+Failed admission retains the original draft and attachments; it does not fabricate
+a sent question, tool call or knowledge result.
+
+User-selected role instructions and additional project skill manifests use a
+separate standard ACP embedded resource. Require negotiated embeddedContext=true
+before dispatching configured context; unsupported engines reject before writing
+or consuming a turn. Do not impersonate vendor-specific system-prompt metadata.
+AcpAgentProfile.skillPaths contains at most32 unique normalized project-relative
+SKILL.md entries. Each file must be bounded valid UTF-8 within the physical project
+root with valid name/description frontmatter. The manifest provides descriptions
+and file URIs; full skill bodies remain on-demand native reads. Existing native
+skill discovery/enablement remains engine-owned.
+
+Capture the profile snapshot for the session; later default edits affect new
+sessions. Re-read/verify selected skill revisions before writing each ordinary
+turn. Role instructions plus catalog must fit one128 KiB resource. agentContext
+records prepared/sent/not_sent with exact generation, turn and content revision.
+Only promptStarted establishes sent. Clear that claim on a new connection;
+compaction/actual model reading or compliance cannot be inferred from delivery.
+Native slash commands do not acquire host context attachments.
+
+On private runtime-record load, replace only the recognized legacy host-first
+knowledge-policy append after its exact frozen role prefix. Preserve other
+session options, user-owned prompts, native identity and transcript bytes.
+This compatibility update uses the supported append route already present in
+the historical record; it is not portable proof of new role delivery. Current
+roles continue to use the negotiated embedded resource and actual write receipt.
 
 ## 3. Contracts
 
@@ -69,11 +89,16 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 
 - Pin `acpx=0.19.5`, SDK 1.8.0 scoped through the acpx override, and
   `patch-package=8.0.1`. The installed license remains intact. Check
-  `patches/acpx-compat.json` and the public `TRELLIS_ACPX_COMPAT_VERSION` marker.
+  `patches/acpx-compat.json` and the public `TRELLIS_ACPX_COMPAT_VERSION=3` marker.
 - `postinstall` runs `scripts/prepare-acpx.mjs`. Standard dev/build/typecheck/dist
   run the guard. `npm ci --legacy-peer-deps` is required by the repository's
   existing Vite 8 / electron-vite 5 peer mismatch; do not change the build stack
   silently. An install with scripts skipped must be explicitly prepared.
+- Pin electron-builder26.0.11 for the supported Windows package. Version25.1.8
+  can place shared transitive dependencies under an unrelated package, making
+  the packaged daemon fail at startup. Verify actual packaged control/host
+  startup, build stamp and canonical exit with `daemon-packaged.mjs`; a successful
+  archive layout check alone does not prove dependency resolution.
 - `electron.vite.config.ts` externalizes acpx and its subpaths. Bundling its ESM
   runtime into CommonJS destroys package-relative `import.meta.resolve` paths.
   The published export is ESM; the supported Node/Electron version loads it from
@@ -135,7 +160,9 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
   records remain new transcript/error records. Restart normalizes stale active
   state and clears historical pending approvals.
 - `resume` locates the same remote identity without prompt replay or replacement.
-  Opening a selected resumable conversation requests native load immediately.
+  Selecting history only reads its saved transcript and metadata. Explicit Send
+  reuses the current connection, joins an in-flight start, or loads the same
+  native identity before dispatch. Selection never starts or stops a process.
   The pinned revision2 `connectSession` reuses acpx's owner/lock/checkpoint and
   same-session-only load without a prompt. Publish ready only after load and
   metadata refresh. Do not manufacture readiness from a stored handle.
@@ -153,15 +180,34 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 - First model response timing requires meaningful text/thought, tool or plan;
   status/configuration/usage metadata cannot establish it. Observe turn admission
   and actual prompt-written acknowledgement independently. Process launch timing
-  uses onBeforeSpawn/onSpawned; protocol initialization and session readiness are
-  combined unless the public runtime supplies independently observed milestones.
+  uses onBeforeSpawn/onSpawned; protocol initialization and session readiness are combined unless independently
+  observed. The bundled ZCode adapter writes measured process/storage/account/
+  session/subscribe durations to its generation-owned diagnostics directory. Read
+  only fresh bounded validated fields; a skipped stage has no invented duration.
+  Per-stage failure does not independently override native overall readiness.
+  New ZCode sessions retain their complete creation snapshot and subscribe with
+  includeSnapshot=false and afterSeq=0 to avoid repeating native snapshot work.
+  Validate the actual subscription session ID/watermark and consume queued
+  changes before readiness. Restore still requires its own current snapshot;
+  native permission/configuration/model changes cannot be dropped for speed.
 - Reserve connection capacity and ownership before asynchronous resume work.
   Recheck after new-session discovery. Concurrent resumes cannot replace a map
-  owner or exceed the cap of four. Idle crash recovery canonically stops the old
+  owner or exceed the cap of four native connections. History count is independent.
+  At capacity, canonically disconnect the least recently used verified idle owner
+  only when its capability, native identity and launch snapshot support restore;
+  retain its native identity for Send-time restore. Never evict active turns,
+  approvals, background work, held leases or uncertain cleanup. If all are busy,
+  reject admission and preserve the draft. Explicit Stop fences pending restore.
+  Stock ZCode can advertise load for an empty session that exists only in RAM;
+  conservatively retain a newly created owner until a normal completed turn or
+  successful same-identity native load establishes its private persistence fact.
+  Idle crash recovery canonically stops the old
   owner before restoring the stored identity. A late result cannot revive a
   stopped generation.
-- Canonical directory leases allow multiple idle conversations, but serialize
-  starts/restores/mutable turns. Retain ownership during approvals, cancellation,
+- Canonical directory leases admit independent ordinary conversations concurrently
+  within the same canonical project. Managed workflow turns remain exclusive;
+  another project's alias cannot share the directory. Retain each exact owner
+  during approvals, cancellation,
   and known background work; uncertain background work requires ending the owned
   process. Failed cleanup keeps ownership and remains explicitly retryable.
 - A model turn ending is not a tool-exit observation. Track reported tool IDs:
@@ -240,8 +286,9 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 
 - Image input: good is image-only content arriving on the ACP wire and in saved user-message history; base is an unsupported engine rejecting before publication; bad is dropping the image or replacing it with a local path/text assertion.
 
-- Good: two idle profiles share a directory; one turn acquires its lease, displays
-  the adapter's exact approval choices and releases only after canonical result.
+- Good: ordinary A and B run concurrently; switching views leaves A running.
+  Each turn retains its exact approval choices and releases only its own lease
+  after canonical result. A managed workflow waits for exclusive ownership.
 - Base: a transcript-only historical attempt remains readable and offers explicit
   New Session, without a misleading Restore button.
 - Bad: marking a found stored handle ready before its native load, removing a
@@ -249,6 +296,11 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 
 ## 6. Tests Required
 
+- `tests/agent-runtime/acp-agent-context.mjs`: actual facade/runtime separate resources,
+  source/schema/UTF-8/junction/revision bounds, frozen profiles, unsupported capability
+  zero-dispatch, cancellation, next-turn reuse and same-session restore.
+- `tests/agent-runtime/acp-connection-timings.mjs`: bounded validated stage records,
+  unknown-field removal, attempt freshness and root fences.
 - `acp-images.mjs`: isolated actual facade + public runtime + owned peer; verify MIME/signature/base64/duplicate/count/byte bounds, stale generation and unsupported capability with zero dispatch, image-only and mixed wire blocks, next-turn continuity, disk history and renderer timeline projection. This fixture does not establish real provider/model vision or native UI acceptance.
 
 - `acp-materials.mjs`: source/included digests, zero-dispatch drift, future-only binding, junction fences, material add/delete and delayed project/watcher generations.

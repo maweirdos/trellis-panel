@@ -169,13 +169,37 @@ export function reasoningDefaultsFromSnapshot(snapshot: unknown): Record<string,
 
 /* ---------- ACP 输入 → ZCode session/send ---------- */
 
-/** 仅支持文本（promptCapabilities.image=false 如实声明）；非文本块忽略，全非文本返回空串由适配器拒绝。 */
+/** Translate text and bounded embedded context; never silently discard unsupported input. */
 export function promptToZcodeContent(prompt: unknown): string {
   if (!Array.isArray(prompt)) return ''
   const texts: string[] = []
+  let resourceCount = 0
+  let resourceBytes = 0
   for (const block of prompt) {
     const record = asRecord(block)
-    if (record.type === 'text' && typeof record.text === 'string' && record.text.length > 0) texts.push(record.text)
+    if (record.type === 'text' && typeof record.text === 'string') {
+      if (record.text.length > 0) texts.push(record.text)
+      continue
+    }
+    if (record.type !== 'resource') throw new Error('Unsupported prompt content; ZCode accepts text and text context resources only')
+    const resource = asRecord(record.resource)
+    if (typeof resource.text !== 'string' || typeof resource.uri !== 'string' || !resource.uri || resource.uri.length > 2048
+      || /[\u0000-\u0020\u007f-\u009f]/u.test(resource.uri)) throw new Error('Invalid text context resource')
+    let uri: URL
+    try {
+      uri = new URL(resource.uri)
+      if (/[\u0000-\u001f\u007f-\u009f]/u.test(decodeURI(resource.uri))) throw new Error('Control character in text context URI')
+    } catch { throw new Error('Invalid text context resource URI') }
+    if (!['file:', 'trellis:'].includes(uri.protocol) || uri.username || uri.password
+      || /^[a-z][a-z\d+.-]*:\/\/[^/?#]*@/i.test(resource.uri)
+      || (uri.protocol === 'file:' && (!/^file:\//i.test(resource.uri) || !uri.pathname.startsWith('/')))
+      || (uri.protocol === 'trellis:' && resource.uri.slice(resource.uri.indexOf(':') + 1).length === 0)
+      || (resource.mimeType !== undefined && resource.mimeType !== 'text/plain' && resource.mimeType !== 'text/markdown')) throw new Error('Unsupported text context resource')
+    const bytes = Buffer.byteLength(resource.text, 'utf8')
+    resourceCount += 1
+    resourceBytes += bytes
+    if (resourceCount > 16 || bytes > 128 * 1024 || resourceBytes > 256 * 1024) throw new Error('Text context resource exceeds its limit')
+    texts.push(`[Attached context: ${JSON.stringify(resource.uri)}]\n${resource.text}\n[End attached context]`)
   }
   return texts.join('\n')
 }

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from 'nod
 import { join, relative, resolve, sep } from 'node:path'
 import { z } from 'zod'
 import type { KnowledgeArtifact, KnowledgePublication, KnowledgeScope, KnowledgeSource } from '../../../shared/knowledge-access'
+import { KNOWLEDGE_READ_PAGE_LIMIT } from '../../../shared/knowledge-access'
 import { atomicWriteText } from '../local-task/prd'
 import { IntegrationError } from '../integrations/types'
 
@@ -11,10 +12,13 @@ export function knowledgeHash(value: string): string { return createHash('sha256
 const identifier = z.string().min(1).max(256)
 const nullable = identifier.nullable()
 const scopeSchema = z.object({ id: identifier, revision: identifier, root: z.string().max(4096), projectGeneration: z.number().int(), sessionId: identifier, collectionIds: z.array(identifier).max(20), overridden: z.boolean(), bindingId: nullable, bindingRevision: z.number().nullable(), connectionId: nullable, connectionRevision: z.number().nullable(), connectionName: z.string().max(100).nullable(), instanceId: z.string().max(5000).nullable(), status: z.enum(['ok', 'empty', 'partial', 'not_configured', 'denied', 'unavailable', 'cancelled']), detail: z.string().max(1000) })
-const sourceSchema: z.ZodType<KnowledgeSource> = z.object({ id: identifier, sourceHandle: identifier, title: z.string().max(2000), text: z.string().max(100_000), contentHash: identifier, kind: z.enum(['local', 'weknora']), documentId: z.string().max(4096), collectionId: nullable, relativePath: z.string().max(4096).nullable(), instanceId: z.string().max(5000).nullable(), fetchedAt: z.number(), mode: z.enum(['excerpt', 'full', 'unsupported']), truncated: z.boolean(), sessionId: identifier, turnId: z.string().max(256), scopeRevision: identifier, suppliedToAgent: z.boolean(), historical: z.boolean() })
+const rangeSchema = z.object({ offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), length: z.number().int().nonnegative().max(KNOWLEDGE_READ_PAGE_LIMIT), total: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), unit: z.literal('utf16-code-units'), totalIsComplete: z.boolean() })
+const sourceSchema: z.ZodType<KnowledgeSource> = z.object({ id: identifier, sourceHandle: identifier, title: z.string().max(2000), text: z.string().max(100_000), contentHash: identifier, kind: z.enum(['local', 'weknora']), documentId: z.string().max(4096), collectionId: nullable, relativePath: z.string().max(4096).nullable(), instanceId: z.string().max(5000).nullable(), fetchedAt: z.number(), mode: z.enum(['excerpt', 'full', 'unsupported']), truncated: z.boolean(), sessionId: identifier, turnId: z.string().max(256), scopeRevision: identifier, suppliedToAgent: z.boolean(), historical: z.boolean(), range: rangeSchema.optional() }).superRefine((source, context) => {
+  if (source.range && (source.mode !== 'excerpt' || source.range.length !== source.text.length || source.range.offset + source.range.length > source.range.total)) context.addIssue({ code: 'custom', message: 'Source page does not match its exact saved range' })
+})
 const artifactSchema: z.ZodType<KnowledgeArtifact> = z.object({ id: identifier, revision: identifier, title: z.string().min(1).max(200), kind: z.enum(['product-requirements', 'confirmed-note']), relativePath: z.string().max(4096), body: z.string().max(200_000), sourceIds: z.array(identifier).max(100), sessionId: identifier, turnId: z.string().max(256), createdAt: z.number(), confirmed: z.boolean(), origin: z.object({ kind: z.literal('agent-conversation'), connectionGeneration: identifier, userRequestHash: identifier, review: z.literal('not_asserted') }).optional() })
 const publicationSchema: z.ZodType<KnowledgePublication> = z.object({ requestId: z.string().uuid(), state: z.enum(['previewed', 'pending', 'published', 'failed', 'uncertain']), artifactId: identifier, artifactRevision: identifier, title: z.string().max(200), body: z.string().max(200_000), payloadHash: identifier, scope: scopeSchema, collectionId: identifier, collectionName: z.string().max(1000), createdAt: z.number(), updatedAt: z.number(), remoteDocumentId: nullable, detail: z.string().max(1000), indexing: z.literal('unknown') })
-export interface StoredKnowledgeSource { source: KnowledgeSource; scope: KnowledgeScope }
+export interface StoredKnowledgeSource { source: KnowledgeSource; scope: KnowledgeScope; readRevision?: string }
 const conversationActionSchema = z.object({
   operationId: z.string().uuid(), payloadHash: identifier, sessionId: identifier, turnId: identifier,
   userRequestHash: identifier, connectionGeneration: identifier, kind: z.enum(['save_document', 'publish_document', 'handoff']),
@@ -25,7 +29,7 @@ const conversationActionSchema = z.object({
 })
 const conversationActionsSchema = z.object({ version: z.literal(1), actions: z.array(conversationActionSchema).max(500) })
 export type ConversationAction = z.infer<typeof conversationActionSchema>
-const stateSchema = z.object({ version: z.literal(1), sources: z.array(z.object({ source: sourceSchema, scope: scopeSchema })).max(1500), artifacts: z.array(artifactSchema).max(500), publications: z.array(publicationSchema).max(500), handoffs: z.array(z.object({ artifactId: identifier, artifactRevision: identifier, taskDir: z.string().max(4096), prdRevision: identifier, createdAt: z.number() })).max(500) })
+const stateSchema = z.object({ version: z.literal(1), sources: z.array(z.object({ source: sourceSchema, scope: scopeSchema, readRevision: z.string().regex(/^[a-f0-9]{64}$/).optional() })).max(1500), artifacts: z.array(artifactSchema).max(500), publications: z.array(publicationSchema).max(500), handoffs: z.array(z.object({ artifactId: identifier, artifactRevision: identifier, taskDir: z.string().max(4096), prdRevision: identifier, createdAt: z.number() })).max(500) })
 export type KnowledgeState = z.infer<typeof stateSchema>
 const MAX_STATE = 20 * 1024 * 1024
 

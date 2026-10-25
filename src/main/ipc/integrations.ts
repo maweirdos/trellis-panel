@@ -45,7 +45,7 @@ export function registerIntegrationsIpc(): void {
       const sourceRoot = getProjectRoot(), generation = getProjectGeneration()
       const projectAction = 'expectedRoot' in parsed.data
       const projectSensitive = projectAction || operation === 'list'
-      if (projectAction && (!sourceRoot || canonical(parsed.data.expectedRoot) !== canonical(sourceRoot))) return ipcFail(IpcErrorCode.Conflict, '项目已切换，请在当前项目重新操作')
+      if ('expectedRoot' in parsed.data && (!sourceRoot || canonical(parsed.data.expectedRoot) !== canonical(sourceRoot))) return ipcFail(IpcErrorCode.Conflict, '项目已切换，请在当前项目重新操作')
       // Connection configuration and cancellation are profile operations. Listing
       // additionally uses the actual current project to preserve binding visibility.
       const root = projectSensitive ? sourceRoot ?? '' : ''

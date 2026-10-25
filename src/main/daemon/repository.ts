@@ -65,7 +65,7 @@ export class DaemonRepository {
     if (existsSync(this.file)) {
       try { this.state = stateSchema.parse(JSON.parse(readBounded(this.file, DAEMON_LIMITS.storeBytes))) }
       catch { throw new DaemonError('E_IO', 'Integration ledger is corrupt, oversized or from a future version. The original file is preserved.') }
-    } else this.state = { version: 1, epoch, sequence: 0, preferences: { revision: 1, keepRunning: true, startup: 'client' }, startupIntent: null, grants: [], jobs: [], admissions: [], commands: [], events: [] }
+    } else this.state = { version: 1, epoch, sequence: 0, preferences: { revision: 1, keepRunning: false, startup: 'client' }, startupIntent: null, grants: [], jobs: [], admissions: [], commands: [], events: [] }
     this.transact(({ state, emit }) => {
       state.epoch = epoch; state.sequence = 0; state.events = []
       // A lost process/adapter acknowledgement is not permission to repeat external work.

@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import type { ProviderSchemaParsers } from '../../shared/daemon-domains'
 import { DINGTALK_IPC, dingtalkRequests, dingtalkResults, type DingInput, type DingMethod, type DingOutput } from '../../shared/dingtalk-integration'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 import { IntegrationError } from '../services/integrations/types'
@@ -9,13 +9,14 @@ import { handle } from './registry'
 /** Central main must declare DINGTALK_IPC in the common channel registry first.
  * Pass an authenticated daemon forwarding facade, never a second GUI writer. */
 export function registerDingTalkIntegrationIpc(actions: DingTalkActions, isAllowed: (event: Electron.IpcMainInvokeEvent) => boolean): void {
+  const requests: ProviderSchemaParsers<typeof dingtalkRequests> = dingtalkRequests
   const reads = new Map<string, AbortController>()
   const counts = new Map<number, number>()
   const transient = new Set<DingMethod>(['snapshot', 'inbox', 'deliveries', 'authorizeAccount'])
   function register<M extends Exclude<DingMethod, 'cancelRead'>>(method: M, action: (input: DingInput<M>, signal?: AbortSignal) => Promise<DingOutput<M>>): void {
     handle(DINGTALK_IPC[method], async (event, raw: unknown) => {
       if (!isAllowed(event)) return ipcFail(IpcErrorCode.Denied, '钉钉工作区仅允许原生主窗口访问。')
-      const input = (dingtalkRequests[method] as z.ZodType<DingInput<M>>).safeParse(raw)
+      const input = requests[method].safeParse(raw)
       if (!input.success) return ipcFail(IpcErrorCode.InvalidArg, '钉钉请求参数无效')
       if ((counts.get(event.sender.id) ?? 0) >= 4) return ipcFail(IpcErrorCode.Busy, '钉钉请求过多，请等待当前请求完成')
       const controller = new AbortController(), senderId = event.sender.id

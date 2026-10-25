@@ -27,7 +27,7 @@ function readerFor(event: Electron.IpcMainInvokeEvent): string {
   return id
 }
 const processReader = randomUUID()
-async function nativeKnowledge(operation: KnowledgeRuntimeOperation, input: { expectedRoot: string }, readerId = processReader, signal?: AbortSignal): Promise<unknown> {
+async function nativeKnowledge(operation: KnowledgeRuntimeOperation, input: { expectedRoot: string }, readerId: string = processReader, signal?: AbortSignal): Promise<unknown> {
   const root = getProjectRoot(), generation = getProjectGeneration()
   if (!root || canonicalDirectory(root) !== canonicalDirectory(input.expectedRoot)) throw new IntegrationError('项目已切换，请回到来源项目重试', 'conflict')
   const cancel = (): void => {

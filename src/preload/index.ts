@@ -162,6 +162,7 @@ const api = {
     start: () => ipcRenderer.invoke(ipcInvoke.daemon.start),
     stop: () => ipcRenderer.invoke(ipcInvoke.daemon.stop),
     restart: () => ipcRenderer.invoke(ipcInvoke.daemon.restart),
+    onOpenSettings: (listener) => subscribe(ipcEvent.daemonOpenSettings, listener),
     preferences: () => ipcRenderer.invoke(ipcInvoke.daemon.preferences),
     setPreferences: (input) => ipcRenderer.invoke(ipcInvoke.daemon.setPreferences, input),
     reconcileStartup: (originalCommandId) => ipcRenderer.invoke(ipcInvoke.daemon.reconcileStartup, { originalCommandId }),
@@ -585,6 +586,7 @@ const api = {
   windowMinimize: () => ipcRenderer.send(ipcInvoke.win.minimize),
   windowMaximize: () => ipcRenderer.send(ipcInvoke.win.maximize),
   windowClose: () => ipcRenderer.send(ipcInvoke.win.close),
+  appQuit: () => ipcRenderer.invoke(ipcInvoke.win.quit),
   onWindowMaximized: (cb: (maximized: boolean) => void) => subscribe(ipcEvent.windowMaximized, cb),
 
   docOpen: (opts: { key: string; title: string; file: string; theme: string }) =>

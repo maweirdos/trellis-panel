@@ -8,6 +8,9 @@ import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { getSettings, setSettings } from '../store'
 import { acpDataPath, writeJson } from './metadata'
 import { errorMessage, objectValue } from './types'
+import { resolveNodeRuntime, validateNodeExecutable, type NodeRuntime } from './managed-node'
+import { resolveZcodeInstallation, resolveZcodeOverride } from './zcode-installation'
+import { prepareBundledZcodeStartup } from './zcode-startup'
 
 export const NATIVE_TOOLS_DIAGNOSTIC = '工具由适配器原生能力提供；ACP 客户端文件和终端回调未启用，实际工具以该适配器报告和运行结果为准。'
 
@@ -71,21 +74,14 @@ export function findExecutable(command: string): string | undefined {
   return undefined
 }
 
-async function externalNode(): Promise<{ path: string; version: string }> {
-  const explicit = getSettings().acp?.nodePath
-  const path = explicit || findExecutable(process.platform === 'win32' ? 'node.exe' : 'node')
-  if (!path || !isAbsolute(path) || !regularFile(path)) throw new Error('未找到外部 Node.js，请选择 Node >=22.13 的可执行文件')
-  if (path.toLowerCase() === process.execPath.toLowerCase() && process.versions.electron && !process.env.ELECTRON_RUN_AS_NODE) throw new Error('请选择独立 Node.js，不能使用 Electron 可执行文件')
-  const version = await run(path, ['--version'])
-  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(version)
-  if (!match || Number(match[1]) < 22 || Number(match[1]) === 22 && Number(match[2]) < 13) throw new Error(`Node ${version} 不兼容，需要 >=22.13`)
-  return { path, version }
-}
-
-async function assertZcodeNode(nodePath: string): Promise<void> {
-  try {
-    await run(nodePath, ['--input-type=module', '-e', 'import { DatabaseSync } from "node:sqlite"; const db = new DatabaseSync(":memory:"); db.close()'])
-  } catch { throw new Error('ZCode 需要支持 node:sqlite 的外部 Node.js；请选择包含 SQLite 的 Node >=22.13') }
+async function externalNode({ sqlite = false, npm = false }: { sqlite?: boolean; npm?: boolean } = {}): Promise<NodeRuntime> {
+  return resolveNodeRuntime({
+    explicitPath: getSettings().acp?.nodePath,
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+    pathNode: findExecutable(process.platform === 'win32' ? 'node.exe' : 'node'),
+    sqlite,
+    accepts: npm ? path => !!npmCliFor(path) : undefined
+  })
 }
 
 /** 选定 Node 旁的 npm-cli.js：Windows 布局与 POSIX 全局布局两种（managed 安装与 native 一键安装共用）。 */
@@ -172,12 +168,14 @@ export function resolveAdapterEntry(): string | undefined {
 }
 
 /** bundled 条目的内部 CLI 检测：nativePaths 手动指定 > 环境变量 ZCODE_BIN > PATH > 标准安装位置表（复刻 HiFox 发现顺序）。 */
-function zcodeExecutable(): { path: string; manual: boolean } | undefined {
+export function resolveZcodeExecutable(): { path: string; manual: boolean } | undefined {
   const manual = getSettings().acp?.nativePaths?.zcode
-  if (manual && isAbsolute(manual) && regularFile(manual)) return { path: manual, manual: true }
+  const manualPath = manual ? resolveZcodeOverride(manual) : undefined
+  if (manualPath) return { path: manualPath, manual: true }
   // 环境变量与适配器同款语义（TRELLIS_ZCODE_BIN / ZCODE_BIN）：值指向 zcode.cjs/js 或可执行文件。
   const envBin = process.env.TRELLIS_ZCODE_BIN ?? process.env.ZCODE_BIN
-  if (envBin && regularFile(envBin)) return { path: envBin, manual: true }
+  const envPath = envBin ? resolveZcodeOverride(envBin) : undefined
+  if (envPath) return { path: envPath, manual: true }
   const onPath = findExecutable(BUNDLED.zcode.commandName)
   if (onPath) return { path: onPath, manual: false }
   const standardPaths = process.platform === 'win32' && process.env.LOCALAPPDATA
@@ -192,7 +190,7 @@ function bundledAutomationAllowed(): boolean {
 }
 
 async function probe(): Promise<AcpAgentStatus[]> {
-  let node: { path: string; version: string } | undefined
+  let node: NodeRuntime | undefined
   let nodeError = ''
   try { node = await externalNode() } catch (error) { nodeError = errorMessage(error) }
   return Promise.all(runtimeDefinitions().map(async (config): Promise<AcpAgentStatus> => {
@@ -226,15 +224,16 @@ async function probe(): Promise<AcpAgentStatus[]> {
     if (isBundled(config)) {
       const entry = resolveAdapterEntry()
       const manual = getSettings().acp?.nativePaths?.zcode
-      const detected = zcodeExecutable()
-      let sqliteError = ''
-      if (node) try { await assertZcodeNode(node.path) } catch (error) { sqliteError = errorMessage(error) }
+      const detected = resolveZcodeExecutable()
+      let zcodeNode: NodeRuntime | undefined
+      let zcodeNodeError = ''
+      try { zcodeNode = await externalNode({ sqlite: true }) } catch (error) { zcodeNodeError = errorMessage(error) }
       let version: string | undefined
-      if (detected && node) {
+      if (detected && zcodeNode) {
         // zcode.cjs 需要 node 加载；PATH 命中的 shim 走既有批处理包装。版本失败不改变可用性。
         try {
           const cjs = /\.(?:cjs|mjs|js)$/i.test(detected.path)
-          version = versionToken(await run(cjs ? node.path : detected.path, cjs ? [detected.path, '--version'] : ['--version']))
+          version = versionToken(await run(cjs ? zcodeNode.path : detected.path, cjs ? [detected.path, '--version'] : ['--version']))
         } catch { /* 版本留空即"未知" */ }
       }
       const entryLine = entry ? `内置适配器就绪：${entry}` : '内置适配器文件缺失，请重新安装应用'
@@ -242,14 +241,14 @@ async function probe(): Promise<AcpAgentStatus[]> {
         ? `${detected.manual ? '手动指定' : '自动检测'}：ZCode CLI：${detected.path}${version ? `（v${version}）` : ''}；协议与登录状态将在连接时验证`
         : manual
           ? `手动指定的 zcode 路径不可用（${manual}），且环境变量、PATH 与标准安装位置均未检测到 ZCode CLI`
-          : '未检测到 ZCode CLI；请安装 ZCode（zcode 命令或标准安装位置），设置环境变量 ZCODE_BIN，或通过「配置路径」手动指定'
+          : '未检测到 ZCode，请选择官方 ZCode 的安装目录'
       const safeLine = bundledAutomationAllowed()
         ? '自动化计划工具（Cron*）已按设置放行'
         : '安全默认：自动化计划工具（Cron*）已禁用'
-      return { ...base, available: !!entry && !!detected && !!node && !sqliteError,
-        health: !entry ? 'adapter_missing' : !node || !detected || sqliteError ? 'executable_missing' : 'not_checked',
+      return { ...base, nodePath: zcodeNode?.path, available: !!entry && !!detected && !!zcodeNode,
+        health: !entry ? 'adapter_missing' : !zcodeNode || !detected ? 'executable_missing' : 'not_checked',
         setupRequired: false, adapterVersion: version,
-        diagnostics: [entryLine, cliLine, sqliteError, entry && detected && !node ? `未找到可用的外部 Node.js：${nodeError}` : '', safeLine,
+        diagnostics: [entryLine, cliLine, zcodeNode ? `Node ${zcodeNode.version}（${zcodeNode.source === 'managed' ? '随应用提供' : zcodeNode.source === 'explicit' ? '自定义路径' : 'PATH 自动检测'}）` : zcodeNodeError, safeLine,
           ...(manual && detected && !detected.manual ? ['手动指定路径无效，已回退自动检测'] : []), NATIVE_TOOLS_DIAGNOSTIC].filter((line) => line.length > 0) }
     }
     const executable = config.executable ? findExecutable(config.executable) : undefined
@@ -288,12 +287,11 @@ export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
     return [detected.path, ...spec.launchArgs]
   }
   if (isBundled(config)) {
-    const node = await externalNode()
-    await assertZcodeNode(node.path)
+    const node = await externalNode({ sqlite: true })
     const entry = resolveAdapterEntry()
     if (!entry) throw new Error('内置适配器文件缺失，请重新安装应用')
-    const zcode = zcodeExecutable()
-    if (!zcode) throw new Error('未检测到 ZCode CLI，请安装 ZCode 后重新探测，或在设置中手动指定路径')
+    const zcode = resolveZcodeExecutable()
+    if (!zcode) throw new Error('未检测到 ZCode，请在设置中选择官方 ZCode 的安装目录')
     // 显式传参免 PATH 依赖。默认真实用户态（不传 --isolated）：模型目录与登录态复用本机
     // ~/.zcode（2026-10-22 用户决策）；隔离是适配器 --isolated 显式可选项，测试/诊断用。
     // translate.ts 依赖 Node 类型剥离：22.13–22.17 需显式旗标，22.18+ 冗余无害。
@@ -328,7 +326,7 @@ export async function setupAcpRuntime(id: string): Promise<{ ok: true; agents: A
   if (pending) return pending
   const task = (async (): Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail> => {
     try {
-      const node = await externalNode()
+      const node = await externalNode({ npm: true })
       const npmCli = npmCliFor(node.path)
       if (!npmCli) return ipcFail(IpcErrorCode.NotFound, '选定 Node 旁未找到 npm-cli.js，请选择包含 npm 的 Node 安装')
       if (native) {
@@ -357,9 +355,13 @@ export async function pickAcpNode(write: AcpSettingsWriter = localSettingsWriter
   const nodePath = selection.filePaths[0]
   if (selection.canceled || !nodePath) return { ok: true, cancelled: true }
   const previous = getSettings().acp
+  try {
+    await validateNodeExecutable(nodePath)
+  } catch (error) {
+    return ipcFail(IpcErrorCode.InvalidArg, errorMessage(error))
+  }
   await write({ acp: { ...previous, nodePath } })
   try {
-    await externalNode()
     return { ...await listAcpAgents(true), nodePath }
   } catch (error) {
     await write({ acp: previous })
@@ -367,17 +369,36 @@ export async function pickAcpNode(write: AcpSettingsWriter = localSettingsWriter
   }
 }
 
-/** 为原生直连与内置（bundled）Runtime 手动指定 CLI 可执行路径；校验通过才保存，保存后立即重新探测。 */
+/** ZCode selects its installation directory; other native CLIs retain file selection. */
 export async function pickAcpRuntimePath(id: string, write: AcpSettingsWriter = localSettingsWriter): Promise<{ ok: true; cancelled?: boolean; agents?: AcpAgentStatus[] } | IpcFail> {
   const native = Object.hasOwn(NATIVES, id)
   const spec = native ? NATIVES[id as NativeId] : Object.hasOwn(BUNDLED, id) ? BUNDLED[id as BundledId] : undefined
   if (!spec) return ipcFail(IpcErrorCode.InvalidArg, '仅原生直连与内置 Runtime 支持配置 CLI 路径')
-  const selection = await dialog.showOpenDialog({ title: native ? `选择 ${spec.name} 可执行文件` : `选择 ${spec.name} CLI 可执行文件`, properties: ['openFile'] })
+  const selection = await dialog.showOpenDialog({ title: native ? `选择 ${spec.name} 可执行文件` : `选择 ${spec.name} 安装目录`, properties: native ? ['openFile'] : ['openDirectory'] })
   const selected = selection.filePaths[0]
   if (selection.canceled || !selected) return { ok: true, cancelled: true }
-  if (!isAbsolute(selected) || !regularFile(selected)) return ipcFail(IpcErrorCode.InvalidArg, '所选路径不是可执行文件，未保存')
+  let selectedPath = selected
+  let cliToPrepare: string | undefined
+  if (native) {
+    if (!isAbsolute(selected) || !regularFile(selected)) return ipcFail(IpcErrorCode.InvalidArg, '所选路径不是可执行文件，未保存')
+  } else {
+    try {
+      const installation = resolveZcodeInstallation(selected)
+      selectedPath = installation.installationRoot
+      cliToPrepare = installation.cliPath
+    }
+    catch (error) { return ipcFail(IpcErrorCode.InvalidArg, errorMessage(error)) }
+  }
   const previous = getSettings().acp
-  await write({ acp: { ...previous, nativePaths: { ...previous?.nativePaths, [id]: selected } } })
+  await write({ acp: { ...previous, nativePaths: { ...previous?.nativePaths, [id]: selectedPath } } })
+  if (cliToPrepare) {
+    // A preparation failure never invalidates an otherwise valid installation.
+    // The startup service owns bounded diagnostics and the official-entry fallback.
+    try {
+      const node = await externalNode({ sqlite: true })
+      await prepareBundledZcodeStartup(node.path, cliToPrepare)
+    } catch { /* Missing runtime/preparation failures remain visible in discovery. */ }
+  }
   try {
     return await listAcpAgents(true)
   } catch (error) {

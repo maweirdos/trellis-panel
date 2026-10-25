@@ -32,7 +32,7 @@ export function createDingTalkExecution(runtime: DaemonRuntime, assertGrant: (gr
   async function body<M extends RuntimeBodyMethod>(method: M, input: unknown, workspace: WorkspaceGrant, commandId?: string): Promise<unknown> {
     assertGrant(workspace)
     const request = runtime.pack(workspace.root, input)
-    const wire = await runtime.dispatch(method, request, { workspace, ...(commandId ? { commandId } : {}) })
+    const wire = await runtime.dispatch<RuntimeBodyMethod>(method, request, { workspace, ...(commandId ? { commandId } : {}) })
     try { return runtime.unpack(workspace.root, wire) }
     finally { if (!commandId && 'blob' in wire) await runtime.dispatch('runtime.blob.release', { id: wire.blob.id }, { workspace }) }
   }

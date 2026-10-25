@@ -153,12 +153,12 @@ function ownedNativeBusy(session: OwnedAcpSessionFacts): boolean {
     || session.disconnected || session.leaseHeld || session.cleanupRequired || session.backgroundWork
     || session.unfinishedTools || session.turnActive || session.settling || session.pendingPermission
 }
-function nativeBusy(sessionId: string): boolean {
+function nativeBusy(sessionId: string, generation?: string): boolean {
   try {
     const session = listOwnedAcpSessionFacts().find((entry) => entry.sessionId === sessionId)
     // Absence from the actual owned map confirms this facade released ownership;
     // historical rows cannot recreate a blocker or claim a still-live row idle.
-    return session ? ownedNativeBusy(session) : false
+    return session ? (!generation || !session.connectionGeneration || session.connectionGeneration === generation) && ownedNativeBusy(session) : false
   } catch { return true }
 }
 /** A disconnected presentation is still fenced, but must not fence its own
@@ -173,9 +173,10 @@ function canRecoverNative(root: string, workspace: string, owner: NativeAdmissio
     || !['error', 'disconnected'].includes(session.status)
     || session.accepting || session.closing || session.leaseHeld || session.cleanupRequired
     || session.backgroundWork || session.unfinishedTools || session.turnActive || session.settling || session.pendingPermission) return false
-  // A lifecycle token may have retained another native owner's uncertainty.
-  // Recovering one session cannot bypass that different physical-workspace owner.
+  // Other conversations in the same project own independent admissions. A
+  // foreign project sharing the physical workspace still fences recovery.
   return !facts.some((entry) => entry.sessionId !== owner.sessionId && ownedNativeBusy(entry)
+    && !samePhysicalWorkspace(canonicalWorkspaceRoot(entry.projectRoot), canonicalWorkspaceRoot(root))
     && samePhysicalWorkspace(executionWorkspaceRoot(entry.projectRoot, entry.cwd ?? undefined), workspace))
 }
 async function assertNoManagedOwner(sourceRoot: string, workspace: string, duplicate?: WorkflowStartInput): Promise<void> {
@@ -236,8 +237,9 @@ export async function withOrdinaryWorkflowAdmission<T extends { ok: boolean }>(r
   const workspace = executionWorkspaceRoot(root, session.cwd)
   await assertNoManagedOwner(root, workspace)
   if (admissionClosed) throw new WorkflowAdmissionError('应用正在退出，原生指令尚未接纳')
-  const admission = claimWorkspaceAdmission(workspace, 'ordinary')
   const owner = session.connectionGeneration ? { sessionId, connectionGeneration: session.connectionGeneration } : undefined
+  const admission = claimWorkspaceAdmission(workspace, 'ordinary', undefined, { projectRoot: root, owner })
+  const occupied = (): boolean => nativeBusy(sessionId, owner?.connectionGeneration)
   const recover = (requested: NativeAdmissionOwner): boolean => canRecoverNative(root, workspace, owner, requested)
   let retained = false
   try {
@@ -245,11 +247,11 @@ export async function withOrdinaryWorkflowAdmission<T extends { ok: boolean }>(r
     // under the synchronous admission token before entering any native preflight.
     await assertNoManagedOwner(root, workspace)
     const value = await action(() => !admissionClosed && admission.isCurrent())
-    if (value.ok || nativeBusy(sessionId)) { admission.retainNative(() => nativeBusy(sessionId), recover); retained = true }
+    if (value.ok || occupied()) { admission.retainNative(occupied, recover); retained = true }
     return value
   } finally {
     if (!retained) {
-      if (nativeBusy(sessionId)) admission.retainNative(() => nativeBusy(sessionId), recover)
+      if (occupied()) admission.retainNative(occupied, recover)
       else admission.release()
     }
   }
@@ -275,18 +277,34 @@ export async function withOrdinaryConnectionAdmission<T extends { ok: boolean }>
   await assertNoManagedOwner(root, workspace)
   if (admissionClosed) throw new WorkflowAdmissionError('应用正在退出，原生连接尚未接纳')
   let owner: NativeAdmissionOwner | undefined
+  let recovery: NativeAdmissionOwner | undefined
   if (target.sessionId) {
     const session = listOwnedAcpSessionFacts().find((entry) => entry.sessionId === target.sessionId)
-    if (session?.connectionGeneration) owner = { sessionId: session.sessionId, connectionGeneration: session.connectionGeneration }
+    if (session?.connectionGeneration) {
+      owner = { sessionId: session.sessionId, connectionGeneration: session.connectionGeneration }
+      if (['error', 'disconnected'].includes(session.status)) recovery = owner
+    }
   }
-  const admission = claimWorkspaceAdmission(workspace, 'ordinary', owner)
-  let pending = true, handedOff = false
+  const admission = claimWorkspaceAdmission(workspace, 'ordinary', recovery, { projectRoot: root, owner })
+  let pending = true
   let recoveryOwner: { root: string; identity: NativeAdmissionOwner } | undefined
+  let occupiedSessionId = target.sessionId
+  // A rejected targetless operation can retain a pre-existing sole blocker.
+  // Snapshot it before action; a concurrently created conversation is not ours.
+  let priorBlocker: OwnedAcpSessionFacts | undefined
+  if (!target.sessionId) {
+    try {
+      const blockers = listOwnedAcpSessionFacts().filter((session) => ownedNativeBusy(session)
+        && samePhysicalWorkspace(executionWorkspaceRoot(session.projectRoot, session.cwd ?? undefined), workspace))
+      if (blockers.length === 1) priorBlocker = blockers[0]
+    } catch { /* Unknown inventory remains fenced by occupied(). */ }
+  }
+  let inventoryUnknown = false
   const occupied = (): boolean => {
     if (pending) return true
+    if (inventoryUnknown) return true
     try {
-      return listOwnedAcpSessionFacts().some((session) => ownedNativeBusy(session)
-        && samePhysicalWorkspace(executionWorkspaceRoot(session.projectRoot, session.cwd ?? undefined), workspace))
+      return occupiedSessionId ? nativeBusy(occupiedSessionId, recoveryOwner?.identity.connectionGeneration) : false
     } catch { return true }
   }
   const recover = (requested: NativeAdmissionOwner): boolean => !pending && !!recoveryOwner && canRecoverNative(recoveryOwner.root, workspace, recoveryOwner.identity, requested)
@@ -310,21 +328,22 @@ export async function withOrdinaryConnectionAdmission<T extends { ok: boolean }>
     // instead of waiting for a connection that only shutdown can settle. The
     // token remains fenced while pending; facade shuttingDown checks prevent
     // late asynchronous creation/load from resurrecting an owned connection.
-    admission.retainNative(occupied, recover); handedOff = true
-    return await action()
+    admission.retainNative(occupied, recover)
+    const result = await action()
+    if ('sessionId' in result && typeof result.sessionId === 'string') occupiedSessionId = result.sessionId
+    if (!result.ok && !occupiedSessionId) occupiedSessionId = priorBlocker?.sessionId
+    return result
   } finally {
-    pending = false
-    // This token retains workspace-wide facts, including a prior disconnected
-    // owner after a rejected new/load. Capture the sole actual blocker rather
-    // than the action's requested target or a persisted connectionOwned value.
+    // Bind the exact operation's native generation, never another conversation
+    // merely because it is currently busy in this workspace.
     try {
-      const blockers = listOwnedAcpSessionFacts().filter((session) => ownedNativeBusy(session)
-        && samePhysicalWorkspace(executionWorkspaceRoot(session.projectRoot, session.cwd ?? undefined), workspace))
-      const blocker = blockers.length === 1 ? blockers[0] : undefined
+      occupiedSessionId ??= priorBlocker?.sessionId
+      const blocker = listOwnedAcpSessionFacts().find((session) => session.sessionId === occupiedSessionId)
       if (blocker?.connectionGeneration) recoveryOwner = { root: blocker.projectRoot, identity: { sessionId: blocker.sessionId, connectionGeneration: blocker.connectionGeneration } }
-    } catch { /* Unverifiable occupancy has no recovery grant. */ }
+    } catch { inventoryUnknown = true }
+    pending = false
     if (!occupied()) admission.release()
-    else if (!handedOff) admission.retainNative(occupied, recover)
+    else admission.retainNative(occupied, recover, recoveryOwner?.identity)
   }
 }
 export async function withManagedWorkflowAdmission<T>(root: string, action: () => Promise<T>, duplicate?: WorkflowStartInput): Promise<T> {
@@ -333,7 +352,7 @@ export async function withManagedWorkflowAdmission<T>(root: string, action: () =
   // Reading a committed receipt cannot dispatch again and need not drain a turn.
   if (duplicate && await committedStart(root, duplicate)) return action()
   const workspace = executionWorkspaceRoot(root)
-  const admission = claimWorkspaceAdmission(workspace, 'managed')
+  const admission = claimWorkspaceAdmission(workspace, 'managed', undefined, { projectRoot: root })
   try {
     // Bind the verified project identity before publishing a discovery ref.
     // A later missing marker is therefore uncertainty, never proof of no owner.

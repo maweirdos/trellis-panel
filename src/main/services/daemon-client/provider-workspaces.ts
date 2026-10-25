@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import type { z } from 'zod'
 import { JIRA_DAEMON, jiraRequests, jiraResults, type JiraIntegrationApi, type JiraMethod, type JiraRequest, type JiraData, type JiraResult } from '../../../shared/jira-integration'
 import { GITLAB_DAEMON, gitlabRequests, gitlabResults, type GitlabInput, type GitlabOutput } from '../../../shared/gitlab-integration'
 import { DINGTALK_DAEMON, dingtalkRequests, dingtalkResults, type DingInput, type DingOutput } from '../../../shared/dingtalk-integration'
-import type { ProviderDaemonMethod } from '../../../shared/daemon-domains'
+import type { ProviderDaemonMethod, ProviderSchemaParser, ProviderSchemaParsers } from '../../../shared/daemon-domains'
 import { ipcFail, IpcErrorCode } from '../../../shared/ipc-errors'
 import type { GitlabWorkspaceActions } from '../integrations/gitlab-workspace'
 import type { DingTalkActions } from '../integrations/dingtalk-workspace'
@@ -53,7 +52,7 @@ function capture(selection: ProviderWorkspaceSelection, expectedRoot: string | n
  * cancellation always uses its explicit feature method. */
 function workspaceForwarder(selection: ProviderWorkspaceSelection) {
   const namespaceId = randomUUID()
-  return async <I extends { expectedRoot: string | null }, O>(method: ProviderDaemonMethod, request: z.ZodType<I>, response: z.ZodType<O>, raw: I, signal?: AbortSignal): Promise<O> => {
+  return async <I extends { expectedRoot: string | null }, O>(method: ProviderDaemonMethod, request: ProviderSchemaParser<I>, response: ProviderSchemaParser<O>, raw: I, signal?: AbortSignal): Promise<O> => {
     const parsed = request.safeParse(raw)
     if (!parsed.success) throw new DaemonError('E_INVALID_ARG', '集成请求参数无效。')
     const scope = capture(selection, parsed.data.expectedRoot)
@@ -74,13 +73,15 @@ function workspaceForwarder(selection: ProviderWorkspaceSelection) {
  * cancel the daemon's shared Jira reader by guessing/reusing a renderer UUID. */
 export function createJiraWorkspaceClient(selection: ProviderWorkspaceSelection, clientSignal: AbortSignal): JiraIntegrationApi {
   const forward = workspaceForwarder(selection)
+  const requests: ProviderSchemaParsers<typeof jiraRequests> = jiraRequests
+  const responses: ProviderSchemaParsers<typeof jiraResults> = jiraResults
   const reads = new Map<string, { expectedRoot: string; workspaceId?: string; root: string; nativeId: string; abort: AbortController }>()
   async function call<M extends JiraMethod>(method: M, raw: JiraRequest<M>): Promise<JiraResult<JiraData<M>>> {
-    const parsed = jiraRequests[method].safeParse(raw)
+    const parsed = requests[method].safeParse(raw)
     if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, 'Jira 工作区请求参数无效。')
-    const input = parsed.data as JiraRequest<M>
+    const input = parsed.data
     try {
-      const data = await forward(JIRA_DAEMON[method], jiraRequests[method] as z.ZodType<JiraRequest<M>>, jiraResults[method] as z.ZodType<JiraData<M>>, input, clientSignal)
+      const data = await forward<JiraRequest<M>, JiraData<M>>(JIRA_DAEMON[method], requests[method], responses[method], input, clientSignal)
       return { ok: true, data }
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? Object.values(IpcErrorCode).find(value => value === error.code) : undefined
@@ -88,9 +89,9 @@ export function createJiraWorkspaceClient(selection: ProviderWorkspaceSelection,
     }
   }
   async function read<M extends 'projects' | 'discover' | 'previewApi' | 'previewCsv'>(method: M, raw: JiraRequest<M>): Promise<JiraResult<JiraData<M>>> {
-    const parsed = jiraRequests[method].safeParse(raw)
+    const parsed = requests[method].safeParse(raw)
     if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, 'Jira 读取参数无效。')
-    const input = parsed.data as JiraRequest<M>
+    const input = parsed.data
     if (reads.has(input.requestId)) return ipcFail(IpcErrorCode.Conflict, '此 Jira 读取标识仍在使用中。')
     if (reads.size >= 4) return ipcFail(IpcErrorCode.Busy, '最多同时读取四个 Jira 请求。')
     let root: string
@@ -107,7 +108,7 @@ export function createJiraWorkspaceClient(selection: ProviderWorkspaceSelection,
     }
     clientSignal.addEventListener('abort', cancel, { once: true })
     try {
-      const data = await forward(JIRA_DAEMON[method], jiraRequests[method] as z.ZodType<JiraRequest<M>>, jiraResults[method] as z.ZodType<JiraData<M>>, { ...input, requestId: retained.nativeId }, AbortSignal.any([clientSignal, retained.abort.signal]))
+      const data = await forward<JiraRequest<M>, JiraData<M>>(JIRA_DAEMON[method], requests[method], responses[method], { ...input, requestId: retained.nativeId }, AbortSignal.any([clientSignal, retained.abort.signal]))
       return { ok: true, data }
     } catch (error) {
       return ipcFail(error instanceof DaemonError ? error.code : IpcErrorCode.Unavailable, error instanceof DaemonError ? error.message : 'Jira 读取未完成，请重新读取。')
@@ -138,8 +139,10 @@ export function createJiraWorkspaceClient(selection: ProviderWorkspaceSelection,
 
 export function createGitlabWorkspaceClient(selection: ProviderWorkspaceSelection): GitlabWorkspaceActions {
   const forward = workspaceForwarder(selection)
+  const requests: ProviderSchemaParsers<typeof gitlabRequests> = gitlabRequests
+  const responses: ProviderSchemaParsers<typeof gitlabResults> = gitlabResults
   const call = <M extends keyof typeof GITLAB_DAEMON>(method: M, input: GitlabInput<M>, signal?: AbortSignal): Promise<GitlabOutput<M>> =>
-    forward(GITLAB_DAEMON[method], gitlabRequests[method] as z.ZodType<GitlabInput<M>>, gitlabResults[method] as z.ZodType<GitlabOutput<M>>, input, signal)
+    forward<GitlabInput<M>, GitlabOutput<M>>(GITLAB_DAEMON[method], requests[method], responses[method], input, signal)
   return {
     snapshot: (i, s) => call('snapshot', i, s), projects: (i, s) => call('projects', i, s), members: (i, s) => call('members', i, s), inspect: (i, s) => call('inspect', i, s),
     linkAccount: (i, s) => call('linkAccount', i, s), unlinkAccount: (i, s) => call('unlinkAccount', i, s), savePlan: (i, s) => call('savePlan', i, s), setPlanState: (i, s) => call('setPlanState', i, s),
@@ -151,8 +154,10 @@ export function createGitlabWorkspaceClient(selection: ProviderWorkspaceSelectio
 
 export function createDingTalkWorkspaceClient(selection: ProviderWorkspaceSelection): DingTalkActions {
   const forward = workspaceForwarder(selection)
+  const requests: ProviderSchemaParsers<typeof dingtalkRequests> = dingtalkRequests
+  const responses: ProviderSchemaParsers<typeof dingtalkResults> = dingtalkResults
   const call = <M extends keyof typeof DINGTALK_DAEMON>(method: M, input: DingInput<M>, signal?: AbortSignal): Promise<DingOutput<M>> =>
-    forward(DINGTALK_DAEMON[method], dingtalkRequests[method] as z.ZodType<DingInput<M>>, dingtalkResults[method] as z.ZodType<DingOutput<M>>, input, signal)
+    forward<DingInput<M>, DingOutput<M>>(DINGTALK_DAEMON[method], requests[method], responses[method], input, signal)
   return {
     snapshot: (i, s) => call('snapshot', i, s), saveApp: (i, s) => call('saveApp', i, s), verifyApp: (i, s) => call('verifyApp', i, s), revokeApp: (i, s) => call('revokeApp', i, s),
     authorizeAccount: (i, s) => call('authorizeAccount', i, s), claimAccount: (i, s) => call('claimAccount', i, s), unlinkAccount: (i, s) => call('unlinkAccount', i, s),

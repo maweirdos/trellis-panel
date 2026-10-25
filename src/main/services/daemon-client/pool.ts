@@ -3,6 +3,7 @@ import type { DaemonContext } from '../../daemon/context'
 import { DaemonError } from '../../daemon/errors'
 import { readLease } from '../../daemon/lease'
 import { DaemonClient } from './client'
+import { requireCurrentDaemonBuild } from '../../daemon/build-identity'
 
 type Subscription = {
   client: DaemonClient
@@ -27,14 +28,14 @@ export class DaemonConnectionPool {
   private readonly statuses = new WeakMap<DaemonClient, Promise<DaemonStatus>>()
   private readonly subscriptions = new Map<string, Subscription>()
   private readonly disposeListeners = new Set<() => void>()
-  constructor(readonly context: DaemonContext) {}
+  constructor(readonly context: DaemonContext, private readonly management = false) {}
 
   /** One additional, lazily authenticated management lane. Status traffic never
    * competes with the ordinary socket's local 16-call / 1 MiB admission budget.
    * The manager coalesces fresh status reads; this lane never retries a command. */
   getControl(): Promise<DaemonClient> {
     if (this.disposed) return Promise.reject(new DaemonError('E_UNAVAILABLE', 'The desktop daemon connection has been detached.'))
-    this.controlLane ??= new DaemonConnectionPool(this.context)
+    this.controlLane ??= new DaemonConnectionPool(this.context, true)
     return this.controlLane.get()
   }
 
@@ -46,7 +47,12 @@ export class DaemonConnectionPool {
         // transport lifetime tracking closes the authenticated peer on actual exit.
         if (JSON.stringify(readLease(this.context)) !== JSON.stringify(this.client.lease)) this.client.close()
       } catch (error) { this.client?.close(); throw error }
-      if (this.client?.connected) return this.client
+      if (this.client?.connected) {
+        // Do not tear down an already-shared socket on a build mismatch: its
+        // admitted commands retain their original results and background work.
+        if (!this.management) requireCurrentDaemonBuild(this.context, this.client.lease)
+        return this.client
+      }
     }
     if (this.connecting) return this.connecting
     const generation = this.generation
@@ -54,6 +60,7 @@ export class DaemonConnectionPool {
       try {
         if (this.disposed || generation !== this.generation) throw new DaemonError('E_UNAVAILABLE', 'The original desktop connection attempt was detached.')
         if (!client.connected || JSON.stringify(readLease(this.context)) !== JSON.stringify(client.lease)) throw new DaemonError('E_CONFLICT', 'Daemon ownership changed while attaching.')
+        if (!this.management) requireCurrentDaemonBuild(this.context, client.lease)
         this.client = client
         client.onDisconnect(() => {
           if (this.client !== client) return
@@ -81,10 +88,12 @@ export class DaemonConnectionPool {
   /** Connection capabilities/one-way authority cutover only. Management status
    * uses a fresh RPC so mutable counts/preferences are never served from here. */
   status(client: DaemonClient): Promise<DaemonStatus> {
+    if (!this.management) requireCurrentDaemonBuild(this.context, client.lease)
     const existing = this.statuses.get(client)
     if (existing) return existing
     const pending = client.request('daemon.status', {}).then(result => {
       if (!result.ok) throw new DaemonError(result.code, result.error, result.outcome)
+      if (!this.management) requireCurrentDaemonBuild(this.context, client.lease)
       if (result.data.epoch !== client.epoch || JSON.stringify(result.data.owner) !== JSON.stringify(client.lease.owner) || JSON.stringify(result.data.identity) !== JSON.stringify(this.context.identity)) {
         client.close()
         throw new DaemonError('E_CONFLICT', 'Daemon status does not match its authenticated owner.')

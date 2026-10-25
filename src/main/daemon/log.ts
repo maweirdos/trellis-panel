@@ -14,7 +14,7 @@ export class DaemonLog {
       this.sequence = this.entries.at(-1)?.sequence ?? 0
     }
   }
-  append(code: 'DAEMON_STARTED' | 'DAEMON_STOPPING' | 'TRANSPORT_FAILED' | 'REQUEST_REJECTED' | 'SCHEDULER_FAILED'): void {
+  append(code: 'DAEMON_STARTED' | 'DAEMON_STOPPING' | 'TRANSPORT_FAILED' | 'REQUEST_REJECTED' | 'SCHEDULER_FAILED' | 'PROVIDER_POLL_FAILED'): void {
     this.entries.push({ sequence: ++this.sequence, at: Date.now(), code })
     this.entries = this.entries.slice(-500)
     const file = join(this.directory, 'daemon.log.json')
@@ -22,7 +22,7 @@ export class DaemonLog {
     if (existsSync(file) && Buffer.byteLength(readBounded(file, 128 * 1024)) + Buffer.byteLength(text) > 128 * 1024) renameSync(file, join(this.directory, 'daemon.log.previous.json'))
     writeAtomic(file, text)
   }
-  page(after: number, limit: number): { entries: typeof this.entries; next: number; resetRequired: boolean } {
+  page(after: number, limit: number): { entries: DaemonLog['entries']; next: number; resetRequired: boolean } {
     const oldest = this.entries[0]?.sequence ?? 1
     const resetRequired = after > this.sequence || after < oldest - 1
     const entries = this.entries.filter((entry) => entry.sequence > (resetRequired ? 0 : after)).slice(0, limit)

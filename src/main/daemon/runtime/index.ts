@@ -24,11 +24,14 @@ export interface DaemonRuntimePorts {
   assertOwner(): void
   /** Main asserts its real completed settings/runtime cutover, not a synthetic drain. */
   assertAuthority(): void
+  /** Temporary application admission; independent from permanent authority. */
+  assertAdmission?(): void
   assertWorkspaceAdmission?(root: string, method: RuntimeBodyMethod): void
 }
 export interface DaemonRuntime {
   dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>>
   status(): Promise<{ authority: 'legacy' | 'daemon'; admission: 'open' | 'closed'; sessions: number; workflows: number; operations: number; released: boolean; reason?: string }>
+  assertIdle(): Promise<void>
   pack(root: string, value: unknown): RuntimeWire
   unpack(root: string, wire: RuntimeWire): unknown
   closeAdmission(): void
@@ -46,6 +49,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   const events = new RuntimeEvents(ports.epoch)
   const disposeEvents = installHostEventSink((channel, value) => events.publish(channel, value))
   let closed = false, released = false, stopping: Promise<void> | undefined
+  let operations = 0
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
   const watchers = new Map<string, FSWatcher>()
   const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -98,6 +102,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     return stopping
   }
   async function execute(method: RuntimeBodyMethod, raw: unknown, root: string): Promise<unknown> {
+    ports.assertAdmission?.()
     ports.assertWorkspaceAdmission?.(root, method)
     const valid = (): boolean => { ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceAdmission?.(root, method); return !closed }
     const connection = <T extends { ok: boolean }>(target: { sessionId?: string; profileId?: string }, action: () => Promise<T>) => withOrdinaryConnectionAdmission(root, target, action)
@@ -186,6 +191,16 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   }
   return {
     status, closeAdmission, shutdown,
+    async assertIdle() {
+      ports.assertOwner(); ports.assertAuthority()
+      if (closed || released || stopping) throw new DaemonError('E_BUSY', 'Native runtime admission is already closed or release remains in progress.')
+      const workflows = await countOwnedWorkflowApplications()
+      ports.assertOwner(); ports.assertAuthority()
+      const sessions = acp.listOwnedAcpSessionFacts()
+      if (closed || released || stopping || operations || commands.count() || workflows || sessions.some(session => !session.sessionId || !session.connectionGeneration || session.status !== 'ready'
+        || session.accepting || session.closing || session.disconnected || session.leaseHeld || session.cleanupRequired || session.backgroundWork
+        || session.unfinishedTools || session.turnActive || session.settling || session.pendingPermission)) throw new DaemonError('E_BUSY', 'Original native sessions, preparation, workflow or unfinished operations still own background work.')
+    },
     pack(root, value) { ports.assertOwner(); ports.assertAuthority(); return blobs.pack(root, value) },
     unpack(root, wire) { ports.assertOwner(); ports.assertAuthority(); return blobs.unpack(root, wire) },
     // A pending cross-project session may select this physical cwd after awaits.
@@ -199,47 +214,51 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     observe: listener => events.observe(listener), catchUp: (root, cursor, limit) => events.catchUp(root, cursor, limit),
     async dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>> {
       ports.assertOwner()
-      const parsed = runtimeRequests[method].parse(payload)
-      if (method === 'runtime.status') return await status() as RuntimeResult<M>
-      if (released) throw new DaemonError('E_UNAVAILABLE', 'Runtime authority was released.')
-      ports.assertAuthority()
-      const global = ['runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
-      const root = context.workspace?.root ?? (global ? '@profile' : '')
-      if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')
-      if (context.workspace) observeWorkspace(root, context.workspace.revision)
-      let value: unknown
-      switch (method) {
-        case 'runtime.command': value = commands.inspect(root, runtimeRequests[method].parse(parsed).commandId); break
-        case 'runtime.blob.open': value = blobs.open(root, runtimeRequests[method].parse(parsed)); break
-        case 'runtime.blob.append': { const p = runtimeRequests[method].parse(parsed); value = blobs.append(root, p.id, p.offset, p.data); break }
-        case 'runtime.blob.seal': value = blobs.seal(root, runtimeRequests[method].parse(parsed).id); break
-        case 'runtime.blob.read': { const p = runtimeRequests[method].parse(parsed); value = blobs.read(root, p.blob, p.offset); break }
-        case 'runtime.blob.release': value = blobs.release(root, runtimeRequests[method].parse(parsed).id); break
-        default: {
-          const bodyMethod = method as RuntimeBodyMethod
-          const raw = blobs.unpack(root, runtimeRequests[bodyMethod].parse(parsed))
-          const validation = runtimeBodies[bodyMethod].safeParse(raw)
-          if (!validation.success) throw new DaemonError('E_INVALID_ARG', 'Runtime method input is invalid; no operation was admitted.')
-          const input = validation.data
-          const mutation = method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
-          if (closed && mutation && !['runtime.cancel', 'runtime.end', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
-          const action = async () => {
-            try { return blobs.pack(root, await execute(bodyMethod, input, root)) }
-            catch (error) {
-              if (error instanceof DaemonError) throw error
-              if (error instanceof z.ZodError) throw new DaemonError('E_INVALID_ARG', 'Runtime input violates the original facade contract.')
-              const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
-              const conflict = ['E_CONFLICT', 'SCOPE_CHANGED', 'STALE_PREVIEW', 'REVISION_CONFLICT', 'COMMAND_PAYLOAD_CONFLICT', 'MATERIAL_CHANGED'].includes(code)
-              throw new DaemonError(conflict ? 'E_CONFLICT' : code === 'INVALID_INPUT' ? 'E_INVALID_ARG' : code === 'CAPABILITY_UNAVAILABLE' ? 'E_UNAVAILABLE' : 'E_UNKNOWN', error instanceof Error ? error.message.slice(0, 400) : 'Runtime outcome requires inspection.', conflict || ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'].includes(code) ? 'not-admitted' : 'unknown')
+      ports.assertAdmission?.()
+      operations++
+      try {
+        const parsed = runtimeRequests[method].parse(payload)
+        if (method === 'runtime.status') return await status() as RuntimeResult<M>
+        if (released) throw new DaemonError('E_UNAVAILABLE', 'Runtime authority was released.')
+        ports.assertAuthority()
+        const global = ['runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
+        const root = context.workspace?.root ?? (global ? '@profile' : '')
+        if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')
+        if (context.workspace) observeWorkspace(root, context.workspace.revision)
+        let value: unknown
+        switch (method) {
+          case 'runtime.command': value = commands.inspect(root, runtimeRequests['runtime.command'].parse(parsed).commandId); break
+          case 'runtime.blob.open': value = blobs.open(root, runtimeRequests['runtime.blob.open'].parse(parsed)); break
+          case 'runtime.blob.append': { const p = runtimeRequests['runtime.blob.append'].parse(parsed); value = blobs.append(root, p.id, p.offset, p.data); break }
+          case 'runtime.blob.seal': value = blobs.seal(root, runtimeRequests['runtime.blob.seal'].parse(parsed).id); break
+          case 'runtime.blob.read': { const p = runtimeRequests['runtime.blob.read'].parse(parsed); value = blobs.read(root, p.blob, p.offset); break }
+          case 'runtime.blob.release': value = blobs.release(root, runtimeRequests['runtime.blob.release'].parse(parsed).id); break
+          default: {
+            const bodyMethod = method as RuntimeBodyMethod
+            const raw = blobs.unpack(root, runtimeRequests[bodyMethod].parse(parsed))
+            const validation = runtimeBodies[bodyMethod].safeParse(raw)
+            if (!validation.success) throw new DaemonError('E_INVALID_ARG', 'Runtime method input is invalid; no operation was admitted.')
+            const input = validation.data
+            const mutation = method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
+            if (closed && mutation && !['runtime.cancel', 'runtime.end', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
+            const action = async () => {
+              try { return blobs.pack(root, await execute(bodyMethod, input, root)) }
+              catch (error) {
+                if (error instanceof DaemonError) throw error
+                if (error instanceof z.ZodError) throw new DaemonError('E_INVALID_ARG', 'Runtime input violates the original facade contract.')
+                const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+                const conflict = ['E_CONFLICT', 'SCOPE_CHANGED', 'STALE_PREVIEW', 'REVISION_CONFLICT', 'COMMAND_PAYLOAD_CONFLICT', 'MATERIAL_CHANGED'].includes(code)
+                throw new DaemonError(conflict ? 'E_CONFLICT' : code === 'INVALID_INPUT' ? 'E_INVALID_ARG' : code === 'CAPABILITY_UNAVAILABLE' ? 'E_UNAVAILABLE' : 'E_UNKNOWN', error instanceof Error ? error.message.slice(0, 400) : 'Runtime outcome requires inspection.', conflict || ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'].includes(code) ? 'not-admitted' : 'unknown')
+              }
             }
+            if (mutation) {
+              if (!context.commandId) throw new DaemonError('E_INVALID_ARG', 'Runtime mutations require a stable command ID.')
+              value = await commands.run(root, context.commandId, method, input, action)
+            } else value = await action()
           }
-          if (mutation) {
-            if (!context.commandId) throw new DaemonError('E_INVALID_ARG', 'Runtime mutations require a stable command ID.')
-            value = await commands.run(root, context.commandId, method, input, action)
-          } else value = await action()
         }
-      }
-      return value as RuntimeResult<M>
+        return value as RuntimeResult<M>
+      } finally { operations-- }
     }
   }
 }

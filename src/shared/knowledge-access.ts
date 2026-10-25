@@ -1,6 +1,8 @@
 import type { IpcFail } from './ipc-errors'
 import type { KnowledgeArtifactImage, KnowledgeArtifactImageInput, KnowledgeArtifactOpenLocalInput, KnowledgeArtifactOpenLocalResult } from './knowledge-document-assets'
 
+export const KNOWLEDGE_READ_PAGE_LIMIT = 6000
+
 export type KnowledgeResult<T> = { ok: true; data: T } | IpcFail
 export type KnowledgeStatus = 'ok' | 'empty' | 'partial' | 'not_configured' | 'denied' | 'unavailable' | 'cancelled'
 export interface KnowledgeCollection { id: string; name: string; knowledgeCount: number }
@@ -19,6 +21,11 @@ export interface KnowledgeSource {
   mode: 'excerpt' | 'full' | 'unsupported'; truncated: boolean
   sessionId: string; turnId: string; scopeRevision: string
   suppliedToAgent: boolean; historical: boolean
+  range?: KnowledgeSourceRange
+}
+export interface KnowledgeSourceRange {
+  offset: number; length: number; total: number; unit: 'utf16-code-units'
+  totalIsComplete: boolean
 }
 export interface KnowledgeSearchResult {
   operationId: string; status: KnowledgeStatus; detail: string; scope: KnowledgeScope
@@ -27,6 +34,7 @@ export interface KnowledgeSearchResult {
 export interface KnowledgeReadResult {
   operationId: string; status: KnowledgeStatus; detail: string
   source: KnowledgeSource | null; persistence: 'durable' | 'degraded'
+  range?: KnowledgeSourceRange; nextOffset?: number | null
 }
 export interface KnowledgeDocument { sourceHandle: string; id: string; title: string; fileType: string; parseStatus: string; collectionId: string }
 export interface KnowledgeArtifact {

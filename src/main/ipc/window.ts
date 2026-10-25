@@ -9,6 +9,17 @@ import type { WindowDeps } from './deps'
 import { FLOATING_TASK_WINDOWS } from '../../shared/floating-window'
 
 export function registerWindowIpc(deps: WindowDeps): void {
+  handle(ipcInvoke.win.quit, event => {
+    const main = deps.getMain()
+    if (!main || main.isDestroyed() || main.webContents.isDestroyed() || event.sender !== main.webContents ||
+      !event.senderFrame || event.senderFrame !== main.webContents.mainFrame) {
+      return ipcFail(IpcErrorCode.Denied, '退出应用仅可由主窗口请求')
+    }
+    // Normal app.quit enters DaemonQuitGate. No bootstrap exit or daemon control.
+    deps.quitApp()
+    return { ok: true }
+  })
+
   handle(ipcInvoke.win.openTask, (_e, expectedRoot: unknown, taskDir: unknown) => {
     const root = getProjectRoot()
     if (!root) return noProject()

@@ -1,7 +1,58 @@
+diff --git a/node_modules/acpx/dist/ipc-C96eDxkW.js b/node_modules/acpx/dist/ipc-C96eDxkW.js
+index a2f5ea8..567a64f 100644
+--- a/node_modules/acpx/dist/ipc-C96eDxkW.js
++++ b/node_modules/acpx/dist/ipc-C96eDxkW.js
+@@ -1323,6 +1323,8 @@ function serializeSessionRecordForDisk(record) {
+ 		last_agent_disconnect_reason: record.lastAgentDisconnectReason,
+ 		protocol_version: record.protocolVersion,
+ 		agent_capabilities: record.agentCapabilities,
++		agent_info: trellisParseDisplayAgentInfo(record.agentInfo),
++		auth_methods: trellisParseDisplayList(record.authMethods),
+ 		title: record.title,
+ 		messages: record.messages,
+ 		updated_at: record.updated_at,
+@@ -1676,6 +1678,8 @@ function parseAcpxState(raw) {
+ 	if (record.session_origin === "new" || record.session_origin === "resume") state.session_origin = record.session_origin;
+ 	if (record.reset_on_next_ensure === true) state.reset_on_next_ensure = true;
+ 	assignStringState(state, "current_mode_id", record.current_mode_id);
++	const availableModes = trellisParseDisplayList(record.available_modes);
++	if (availableModes) state.available_modes = availableModes;
+ 	assignStringState(state, "desired_mode_id", record.desired_mode_id);
+ 	const desiredConfigOptions = parseStringMap(record.desired_config_options);
+ 	if (desiredConfigOptions) state.desired_config_options = desiredConfigOptions;
+@@ -1763,6 +1767,18 @@ function parseSessionRecordMetadata(record) {
+ 		importedFrom
+ 	};
+ }
++function trellisParseDisplayAgentInfo(raw) {
++	const info = asRecord$2(raw);
++	if (!info || typeof info.name !== "string" || typeof info.version !== "string") return;
++	return { name: info.name, version: info.version, ...typeof info.title === "string" ? { title: info.title } : {} };
++}
++function trellisParseDisplayList(raw) {
++	if (!Array.isArray(raw)) return;
++	return raw.flatMap((value) => {
++		const entry = asRecord$2(value);
++		return entry && typeof entry.id === "string" && typeof entry.name === "string" ? [{ id: entry.id, name: entry.name, ...typeof entry.description === "string" ? { description: entry.description } : {} }] : [];
++	});
++}
+ function normalizeOptionalName(value) {
+ 	if (value == null) return;
+ 	if (typeof value !== "string") return null;
+@@ -1841,6 +1857,8 @@ function parseSessionRecord(raw) {
+ 		lastAgentDisconnectReason: optionals.lastAgentDisconnectReason,
+ 		protocolVersion: typeof record.protocol_version === "number" ? record.protocol_version : void 0,
+ 		agentCapabilities: asRecord$2(record.agent_capabilities),
++		agentInfo: trellisParseDisplayAgentInfo(record.agent_info),
++		authMethods: trellisParseDisplayList(record.auth_methods),
+ 		title: conversation.title,
+ 		messages: conversation.messages,
+ 		updated_at: conversation.updated_at,
 diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
+index 4eb7bc1..c48348c 100644
 --- a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
 +++ b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
-@@ -16,6 +16,24 @@
+@@ -16,6 +16,24 @@ import { FsSafeError } from "@openclaw/fs-safe/errors";
  import { isPathInside } from "@openclaw/fs-safe/path";
  import { root } from "@openclaw/fs-safe/root";
  import readline from "node:readline/promises";
@@ -26,7 +77,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  //#region src/async-control.ts
  var TimeoutError = class extends Error {
  	constructor(timeoutMs) {
-@@ -1103,6 +1121,11 @@
+@@ -1103,6 +1121,11 @@ const DECISION_FALLBACK_ORDER = {
  };
  function decisionToResponse(params, decision) {
  	if (decision.outcome === "cancel") return cancelled();
@@ -38,7 +89,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  	const matched = pickOption(params.options ?? [], DECISION_FALLBACK_ORDER[decision.outcome]);
  	return matched ? selected(matched.optionId) : cancelled();
  }
-@@ -1802,7 +1825,7 @@
+@@ -1802,7 +1825,7 @@ function observeAcpStream(base, options) {
  			elicitationRequestIds.add(requestId);
  			return;
  		}
@@ -47,7 +98,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  	};
  	return {
  		readable: new ReadableStream({ async start(controller) {
-@@ -1812,7 +1835,7 @@
+@@ -1812,7 +1835,7 @@ function observeAcpStream(base, options) {
  					const { value, done } = await reader.read();
  					if (done) break;
  					if (!value) continue;
@@ -56,7 +107,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  					if (isExtensionNotification(value)) continue;
  					controller.enqueue(value);
  				}
-@@ -2466,6 +2489,7 @@
+@@ -2466,6 +2489,7 @@ function toReconnectedSessionResult(response) {
  	const configOptions = normalizeResponseConfigOptions(response);
  	return {
  		agentSessionId: extractAgentSessionId(response?._meta),
@@ -64,7 +115,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		configOptions,
  		models: modelStateFromSessionResponse({
  			configOptions,
-@@ -2511,6 +2535,8 @@
+@@ -2511,6 +2535,8 @@ var AcpClient = class {
  	commandProbes = /* @__PURE__ */ new Set();
  	initResult;
  	loadedSessionId;
@@ -73,7 +124,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  	eventHandlers;
  	permissionStats = {
  		requested: 0,
-@@ -2929,12 +2955,16 @@
+@@ -2929,12 +2955,16 @@ var AcpClient = class {
  		if (capabilities.terminal) app.onRequest(methods.client.terminal.create, async ({ params, signal }) => {
  			return await this.handleCreateTerminal(params, signal);
  		}).onRequest(methods.client.terminal.output, async ({ params }) => {
@@ -90,7 +141,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  			return await this.terminalManager.releaseTerminal(params);
  		});
  		if (launch.devinAcp) app.onRequest("_cognition.ai/request_diagnostics", (params) => {
-@@ -2962,6 +2992,8 @@
+@@ -2962,6 +2992,8 @@ var AcpClient = class {
  			clientInfo: resolveClientInfo(launch.devinAcp)
  		});
  		const initialized = launch.geminiAcp ? await withTimeout(initializePromise, resolveGeminiAcpStartupTimeoutMs()) : await initializePromise;
@@ -99,7 +150,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		await this.authenticateIfRequired(connection, initialized.authMethods ?? []);
  		return initialized;
  	}
-@@ -2978,7 +3010,18 @@
+@@ -2978,7 +3010,18 @@ var AcpClient = class {
  	}
  	createTappedStream(base) {
  		return observeAcpStream(base, {
@@ -119,7 +170,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  				this.eventHandlers.onAcpOutputMessage?.(direction, message);
  				this.eventHandlers.onAcpMessage?.(direction, message);
  			},
-@@ -2998,6 +3041,7 @@
+@@ -2998,6 +3041,7 @@ var AcpClient = class {
  		const { command, args } = resolveAgentCommandParts(this.options.agentCommand, this.options.agentArgv);
  		const claudeAcp = isClaudeAcpCommand(command, args);
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
@@ -127,7 +178,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		let result;
  		try {
  			const createPromise = this.runConnectionRequest(() => connection.agent.request(methods.agent.session.new, {
-@@ -3007,13 +3051,18 @@
+@@ -3007,13 +3051,18 @@ var AcpClient = class {
  			}), authority);
  			result = claudeAcp ? await withTimeout(createPromise, resolveClaudeAcpSessionCreateTimeoutMs()) : await createPromise;
  		} catch (error) {
@@ -147,7 +198,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		const configOptions = normalizeResponseConfigOptions(result);
  		const models = modelStateFromSessionResponse({
  			configOptions,
-@@ -3023,6 +3072,7 @@
+@@ -3023,6 +3072,7 @@ var AcpClient = class {
  		return {
  			sessionId: result.sessionId,
  			agentSessionId: extractAgentSessionId(result._meta),
@@ -155,7 +206,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  			configOptions,
  			models,
  			configOptionsPresent: configOptions !== void 0,
-@@ -3037,6 +3087,7 @@
+@@ -3037,6 +3087,7 @@ var AcpClient = class {
  		const connection = this.getConnection();
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
  		assertControlAuthority(options.authority);
@@ -163,7 +214,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		const previousSuppression = this.applySessionUpdateSuppression(Boolean(options.suppressReplayUpdates));
  		let response;
  		try {
-@@ -3046,11 +3097,12 @@
+@@ -3046,11 +3097,12 @@ var AcpClient = class {
  				mcpServers: this.options.mcpServers ?? [],
  				_meta: this.sessionMeta()
  			}), options.authority);
@@ -177,7 +228,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		const result = toReconnectedSessionResult(response);
  		await this.captureAgentDescendants(this.agent);
  		return result;
-@@ -3059,13 +3111,19 @@
+@@ -3059,13 +3111,19 @@ var AcpClient = class {
  		assertControlAuthority(authority);
  		const connection = this.getConnection();
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
@@ -199,7 +250,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		const result = toReconnectedSessionResult(response);
  		await this.captureAgentDescendants(this.agent);
  		return result;
-@@ -3290,6 +3348,7 @@
+@@ -3290,6 +3348,7 @@ var AcpClient = class {
  	close() {
  		this.closing = true;
  		this.closeEpoch += 1;
@@ -207,7 +258,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		if (this.closeTask) return this.closeTask;
  		this.closeTask = Promise.resolve().then(() => this.finishClose()).finally(() => {
  			this.closeTask = void 0;
-@@ -3554,6 +3613,7 @@
+@@ -3554,6 +3613,7 @@ var AcpClient = class {
  		this.log(`authenticated with method ${selected.methodId} (${selected.source})`);
  	}
  	async handlePermissionRequest(params, requestSignal) {
@@ -215,7 +266,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		const owner = this.captureDelegatedRequestOwner(params.sessionId, requestSignal);
  		if (!this.isDelegatedRequestActive(owner)) return cancelledPermissionResponse();
  		if (!this.hasPermissionOwner(params.sessionId)) return this.finishPermissionRequest(params, owner, cancelledPermissionResponse());
-@@ -3634,7 +3694,7 @@
+@@ -3634,7 +3694,7 @@ var AcpClient = class {
  			signal,
  			permissionHandler: active?.permissionHandler ?? this.options.onPermissionRequest,
  			assertActive: () => {
@@ -224,7 +275,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  			}
  		};
  	}
-@@ -3900,11 +3960,59 @@
+@@ -3900,11 +3960,59 @@ var AcpClient = class {
  		}
  		if (error instanceof PermissionDeniedError) this.recordPermissionDecision("denied");
  	}
@@ -286,7 +337,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  			} catch (error) {
  				const message = error instanceof Error ? error.message : String(error);
  				this.log(`session update handler failed: ${message}`);
-@@ -4315,6 +4423,7 @@
+@@ -4315,6 +4423,7 @@ function cloneSessionAcpxState(state) {
  	return {
  		...state.session_origin ? { session_origin: state.session_origin } : {},
  		current_mode_id: state.current_mode_id,
@@ -294,7 +345,7 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  		desired_mode_id: state.desired_mode_id,
  		desired_config_options: state.desired_config_options ? { ...state.desired_config_options } : void 0,
  		current_model_id: state.current_model_id,
-@@ -4766,6 +4875,16 @@
+@@ -4766,6 +4875,16 @@ function applyConfigOptionsToState(state, configOptions) {
  	return acpxState;
  }
  function applyConfigOptionsToRecord(record, result) {
@@ -311,15 +362,81 @@ diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modul
  	const configOptions = result?.configOptions;
  	if (!Array.isArray(configOptions)) return;
  	record.acpx = applyConfigOptionsToState(record.acpx, configOptions);
+diff --git a/node_modules/acpx/dist/runtime.d.ts b/node_modules/acpx/dist/runtime.d.ts
+index d98dcfe..8ac6658 100644
+--- a/node_modules/acpx/dist/runtime.d.ts
++++ b/node_modules/acpx/dist/runtime.d.ts
+@@ -98,6 +98,14 @@ type AcpRuntimeTurnInput = AcpControlAuthority & {
+   handle: AcpRuntimeHandle;
+   text: string;
+   attachments?: AcpRuntimeTurnAttachment[];
++  /**
++   * Inline ACP text resources after the original text and before binary attachments.
++   * At most 16 resources, 128 KiB UTF-8 text each and 256 KiB combined.
++   * URI: absolute file: or trellis:, at most 2048 characters, no credentials or
++   * control characters. MIME, when supplied: text/plain or text/markdown.
++   * The runtime never reads the URI; hosts own embeddedContext negotiation.
++   */
++  context?: Array<{ uri: string; mimeType?: string; text: string }>;
+   mode: AcpRuntimePromptMode;
+   requestId: string;
+   timeoutMs?: number;
+@@ -242,6 +250,11 @@ type AcpRuntimeEvent = {
+   type: "status";
+   text: string;
+   tag?: AcpSessionUpdateTag;
++  /** Passive, owned-session unknown-update diagnostic; bounded and secret-key redacted. */
++  rawUpdate?: Record<string, unknown>;
++  /** True when only the rejected tag is available; original SDK-rejected payload is omitted. */
++  payloadUnavailable?: boolean;
++  rawUpdateTruncated?: boolean;
+   used?: number;
+   size?: number;
+   /** Populated on `usage_update` events when the agent reported a cost. */
+@@ -276,6 +289,9 @@ type AcpRuntimeEvent = {
+   rawInput?: unknown;
+   rawOutput?: unknown;
+   content?: ToolCallContent[];
++  /** Owned tool-output delta, at most 16384 UTF-16 units; never a terminal/status acknowledgement. */
++  outputDelta?: string;
++  outputDeltaTruncated?: boolean;
+ } |
+ /**
+  * Compatibility terminal event emitted by runTurn(...). startTurn(...).events
+@@ -581,6 +597,7 @@ declare class AcpRuntimeManager {
+   private refreshOwnedRecordLifecycle;
+   ensureSession(input: RuntimeEnsureInput): Promise<SessionRecord>;
+   private withEnsureSessionLock;
++  connectSession(handle: AcpRuntimeHandle, authority?: AcpControlAuthority): Promise<void>;
+   private withManagerLock;
+   private serializeManagerOperation;
+   private ensureSessionWithOwnership;
+@@ -796,6 +813,8 @@ export declare class AcpxRuntime implements AcpxRuntimeLike {
+   }): Promise<AcpRuntimeHandle | undefined>;
+   ensureSession(input: AcpRuntimeEnsureInput): Promise<AcpRuntimeHandle>;
+   private createSessionHandle;
++  /** Eagerly load the same persistent remote session, retaining its transport without a prompt. */
++  connectSession(input: AcpControlAuthority & { handle: AcpRuntimeHandle }): Promise<void>;
+   startTurn(input: AcpRuntimeTurnInput): {
+     requestId: string;
+     readonly promptStarted: Promise<void>;
+@@ -855,4 +874,6 @@ export declare function createRuntimeStore(options: {
+ }): AcpSessionStore;
+ //#endregion
+ export { type AcpAgentInspection, type AcpAgentInspectionOptions, type AcpAgentRegistry, type AcpElicitationContext, type AcpElicitationHandler, type AcpElicitationMode, type AcpElicitationRequest, type AcpElicitationResponse, type AcpFileSessionStoreOptions, type AcpInspectableAgentRegistry, type AcpPermissionDecision, type AcpPermissionHandler, type AcpPermissionRequest, type AcpProcessExit, type AcpProcessLaunch, type AcpProcessLaunchScope, type AcpProcessLifecycle, type AcpProcessSpawnFailure, type AcpProcessStarted, type AcpRuntime, type AcpRuntimeAvailableCommand, type AcpRuntimeCapabilities, type AcpRuntimeDoctorReport, type AcpRuntimeEnsureInput, type AcpRuntimeErrorCode, type AcpRuntimeEvent, type AcpRuntimeHandle, type AcpRuntimeOptions, type AcpRuntimePlanEntry, type AcpRuntimePromptMode, type AcpRuntimeSessionContext, type AcpRuntimeSessionMode, type AcpRuntimeSessionModels, type AcpRuntimeSessionPermissions, type AcpRuntimeSessionUsage, type AcpRuntimeStatus, type AcpRuntimeTurn, type AcpRuntimeTurnAttachment, type AcpRuntimeTurnInput, type AcpRuntimeTurnResult, type AcpRuntimeTurnResultError, type AcpRuntimeUsageBreakdown, type AcpRuntimeUsageCost, type AcpSessionRecord, type AcpSessionStore, type AcpSessionUpdateTag, type AcpTextDeltaOriginMeta, DEFAULT_AGENT_NAME, type InspectAgentModelsOptions, type PermissionPolicy, type RequestedModelUnsupportedErrorCode, type RequestedModelUnsupportedReason, type SessionAgentOptions, type SessionWatchEvent, type SessionWatchResult, type SharedAcpRuntimeOptions, type SystemPromptOption, createAgentRegistry };
++/** Trellis-maintained compatibility contract for exact acpx@0.19.5. */
++export declare const TRELLIS_ACPX_COMPAT_VERSION: 3;
+ //# sourceMappingURL=runtime.d.ts.map
 diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.js
+index 5787968..298fd19 100644
 --- a/node_modules/acpx/dist/runtime.js
 +++ b/node_modules/acpx/dist/runtime.js
-@@ -7,6 +7,22 @@
+@@ -7,6 +7,22 @@ import path from "node:path";
  import fs from "node:fs/promises";
  import { randomUUID } from "node:crypto";
  import { isDeepStrictEqual } from "node:util";
 +// Trellis-maintained acpx@0.19.5 compatibility patch; see patches/README.md.
-+export const TRELLIS_ACPX_COMPAT_VERSION = 2;
++export const TRELLIS_ACPX_COMPAT_VERSION = 3;
 +// Keep only non-secret protocol display fields in the public record/store.
 +function trellisRetainHandshakeDisplay(record, initialized) {
 +	const info = initialized?.agentInfo;
@@ -337,7 +454,24 @@ diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.
  //#region src/runtime/public/errors.ts
  var AcpRuntimeError = class extends Error {
  	code;
-@@ -413,7 +429,72 @@
+@@ -399,6 +415,16 @@ function assignForwardedToolPayload(event, payload) {
+ 	if (Object.prototype.hasOwnProperty.call(payload, "rawInput")) event.rawInput = payload.rawInput;
+ 	if (Object.prototype.hasOwnProperty.call(payload, "rawOutput")) event.rawOutput = payload.rawOutput;
+ 	if (shouldForwardArray(payload.content)) event.content = payload.content;
++	const meta = isRecord(payload._meta) ? payload._meta : void 0;
++	for (const key of ["terminal_output_delta", "terminal_output", "mcp_output_delta"]) {
++		const delta = meta && isRecord(meta[key]) ? meta[key] : void 0;
++		if (!delta || typeof delta.data !== "string") continue;
++		let text = delta.data.slice(0, 16384);
++		if (/[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1);
++		event.outputDelta = text;
++		if (text.length !== delta.data.length) event.outputDeltaTruncated = true;
++		break;
++	}
+ }
+ function parsePromptEventLine(line) {
+ 	const trimmed = line.trim();
+@@ -413,7 +439,72 @@ function parsePromptEventLine(line) {
  	const payload = structured.payload;
  	const tag = structured.tag;
  	const parser = promptEventParser(type);
@@ -411,7 +545,58 @@ diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.
  }
  const PROMPT_EVENT_PARSERS = {
  	text: (payload, tag) => createTextDeltaEvent({
-@@ -1378,10 +1459,41 @@
+@@ -877,14 +968,47 @@ var AsyncEventQueue = class {
+ 		}
+ 	}
+ };
+-function toPromptInput(text, attachments) {
+-	if (!attachments || attachments.length === 0) return text;
++const TRELLIS_CONTEXT_LIMITS = { count: 16, resourceBytes: 128 * 1024, totalBytes: 256 * 1024, uriLength: 2048 };
++function trellisContextBlocks(context) {
++	if (context === void 0) return [];
++	const invalid = () => {
++		throw new AcpRuntimeError("ACP_TURN_FAILED", "Invalid ACP runtime context resource; review its shape, URI, MIME type and byte limits.");
++	};
++	if (!Array.isArray(context) || context.length > TRELLIS_CONTEXT_LIMITS.count) invalid();
++	const blocks = [];
++	let totalBytes = 0;
++	for (const resource of context) {
++		if (!resource || typeof resource !== "object" || typeof resource.uri !== "string" || typeof resource.text !== "string") invalid();
++		const { uri, mimeType, text } = resource;
++		if (mimeType !== void 0 && mimeType !== "text/plain" && mimeType !== "text/markdown") invalid();
++		if (!uri || uri.length > TRELLIS_CONTEXT_LIMITS.uriLength || /[\u0000-\u0020\u007f-\u009f]/u.test(uri)) invalid();
++		let parsed;
++		try {
++			parsed = new URL(uri);
++			if (/[\u0000-\u001f\u007f-\u009f]/u.test(decodeURI(uri))) invalid();
++		} catch {
++			invalid();
++		}
++		if (parsed.protocol !== "file:" && parsed.protocol !== "trellis:" || parsed.username || parsed.password || /^[a-z][a-z\d+.-]*:\/\/[^/?#]*@/i.test(uri)) invalid();
++		if (parsed.protocol === "file:" && (!/^file:\//i.test(uri) || !parsed.pathname.startsWith("/"))) invalid();
++		if (parsed.protocol === "trellis:" && uri.slice(uri.indexOf(":") + 1).length === 0) invalid();
++		const bytes = Buffer.byteLength(text, "utf8");
++		totalBytes += bytes;
++		if (bytes > TRELLIS_CONTEXT_LIMITS.resourceBytes || totalBytes > TRELLIS_CONTEXT_LIMITS.totalBytes) invalid();
++		blocks.push({ type: "resource", resource: { uri, ...mimeType === void 0 ? {} : { mimeType }, text } });
++	}
++	return blocks;
++}
++function toPromptInput(text, attachments, context) {
++	const resources = trellisContextBlocks(context);
++	if (resources.length === 0 && (!attachments || attachments.length === 0)) return text;
+ 	const blocks = [];
+ 	if (text) blocks.push({
+ 		type: "text",
+ 		text
+ 	});
+-	for (const attachment of attachments) {
++	blocks.push(...resources);
++	for (const attachment of attachments ?? []) {
+ 		if (attachment.mediaType.startsWith("image/")) {
+ 			blocks.push({
+ 				type: "image",
+@@ -1378,11 +1502,42 @@ var AcpRuntimeManager = class {
  		record.closedAt = void 0;
  		record.protocolVersion = owner.client.initializeResult?.protocolVersion;
  		record.agentCapabilities = owner.client.initializeResult?.agentCapabilities;
@@ -420,7 +605,7 @@ diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.
  	}
  	async ensureSession(input) {
  		return await this.withEnsureSessionLock(input, async () => this.ensureSessionWithOwnership(input));
-+	}
+ 	}
 +	// Explicit eager native load, without recording/submitting a prompt. Keep
 +	// the existing persistent owner for configuration and subsequent turns.
 +	async connectSession(handle, authority) {
@@ -450,10 +635,11 @@ diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.
 +				}
 +			}
 +		}, authority));
- 	}
++	}
  	async withEnsureSessionLock(input, run) {
  		const key = `${input.mode}\0${input.sessionKey}`;
-@@ -1560,6 +1672,7 @@
+ 		return await this.withManagerLock(this.ensureSessionLocks, key, run);
+@@ -1560,6 +1715,7 @@ var AcpRuntimeManager = class {
  		this.closingActiveRecords.delete(record.acpxRecordId);
  		record.protocolVersion = client.initializeResult?.protocolVersion;
  		record.agentCapabilities = client.initializeResult?.agentCapabilities;
@@ -461,7 +647,16 @@ diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.
  		this.attachIdleProjection(owner, record);
  		applyConfigOptionsToRecord(record, session.sessionResult);
  		const modelApplication = await applyRequestedModelIfAdvertised({
-@@ -1966,6 +2079,7 @@
+@@ -1591,7 +1747,7 @@ var AcpRuntimeManager = class {
+ 		this.assertOpen();
+ 		let promptInput;
+ 		try {
+-			promptInput = toPromptInput(input.text, input.attachments);
++			promptInput = toPromptInput(input.text, input.attachments, input.context);
+ 		} catch (error) {
+ 			this.trackTask(this.closeRetainedOneShotHandle(input.handle).catch(() => {}));
+ 			throw error;
+@@ -1966,6 +2122,7 @@ var AcpRuntimeManager = class {
  		reconcileAgentSessionId(turn.record, turn.record.agentSessionId);
  		turn.record.protocolVersion = turn.client.initializeResult?.protocolVersion;
  		turn.record.agentCapabilities = turn.client.initializeResult?.agentCapabilities;
@@ -469,7 +664,32 @@ diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.
  	}
  	handleRuntimeTurnFailure(task, error) {
  		if (!task.input.signal?.aborted || error !== task.input.signal.reason) return this.failRuntimeTurn(task, error);
-@@ -2780,6 +2894,11 @@
+@@ -2438,7 +2595,7 @@ var SharedAcpRuntime = class {
+ 		if (input.mode !== "prompt" || input.assertActive || input.onPermissionRequest || input.onElicitation) invalidOption("Shared turns support prompt mode and the client's static permission policy; in-process callbacks and steering are unsupported.");
+ 		if (!input.requestId.trim()) invalidOption("A shared turn requires a requestId.");
+ 		const sessionId = sharedRecordId(input.handle);
+-		const prompt = toPromptInput(input.text, input.attachments);
++		const prompt = toPromptInput(input.text, input.attachments, input.context);
+ 		const events = new AsyncEventQueue();
+ 		const promptStarted = createDeferred();
+ 		promptStarted.promise.catch(() => {});
+@@ -2722,6 +2879,7 @@ var AcpxRuntime = class {
+ 			handle,
+ 			text: input.text,
+ 			attachments: input.attachments,
++			context: input.context,
+ 			mode: input.mode,
+ 			sessionMode: state.mode,
+ 			requestId: input.requestId,
+@@ -2757,6 +2915,7 @@ var AcpxRuntime = class {
+ 			handle,
+ 			text: input.text,
+ 			attachments: input.attachments,
++			context: input.context,
+ 			mode: input.mode,
+ 			sessionMode: state.mode,
+ 			requestId: input.requestId,
+@@ -2780,6 +2939,11 @@ var AcpxRuntime = class {
  		const { handle, state } = this.resolveManagerHandle(input.handle);
  		await (await this.getManager()).setMode(handle, input.mode, state.mode, input);
  	}
@@ -481,58 +701,11 @@ diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.
  	async setModel(input) {
  		const { handle, state } = this.resolveManagerHandle(input.handle);
  		await (await this.getManager()).setModel(handle, input.model, state.mode, input);
-@@ -2871,4 +2990,4 @@
- //#endregion
- export { ACPX_BACKEND_ID, AcpRuntimeError, AcpxRuntime, DEFAULT_AGENT_NAME, REQUESTED_MODEL_UNSUPPORTED_ERROR_CODE, REQUESTED_MODEL_UNSUPPORTED_REASONS, RequestedModelUnsupportedError, SharedAcpRuntime, createAcpRuntime, createAgentRegistry, createFileSessionStore, createRuntimeStore, createSharedAcpRuntime, decodeAcpxRuntimeHandleState, encodeAcpxRuntimeHandleState, inspectAgentModels, isAcpRuntimeError, isRequestedModelUnsupportedError };
- 
--//# sourceMappingURL=runtime.js.map
-\ No newline at end of file
-+//# sourceMappingURL=runtime.js.map
-diff --git a/node_modules/acpx/dist/runtime.d.ts b/node_modules/acpx/dist/runtime.d.ts
---- a/node_modules/acpx/dist/runtime.d.ts
-+++ b/node_modules/acpx/dist/runtime.d.ts
-@@ -242,6 +242,11 @@
-   type: "status";
-   text: string;
-   tag?: AcpSessionUpdateTag;
-+  /** Passive, owned-session unknown-update diagnostic; bounded and secret-key redacted. */
-+  rawUpdate?: Record<string, unknown>;
-+  /** True when only the rejected tag is available; original SDK-rejected payload is omitted. */
-+  payloadUnavailable?: boolean;
-+  rawUpdateTruncated?: boolean;
-   used?: number;
-   size?: number;
-   /** Populated on `usage_update` events when the agent reported a cost. */
-@@ -581,6 +586,7 @@
-   private refreshOwnedRecordLifecycle;
-   ensureSession(input: RuntimeEnsureInput): Promise<SessionRecord>;
-   private withEnsureSessionLock;
-+  connectSession(handle: AcpRuntimeHandle, authority?: AcpControlAuthority): Promise<void>;
-   private withManagerLock;
-   private serializeManagerOperation;
-   private ensureSessionWithOwnership;
-@@ -796,6 +802,8 @@
-   }): Promise<AcpRuntimeHandle | undefined>;
-   ensureSession(input: AcpRuntimeEnsureInput): Promise<AcpRuntimeHandle>;
-   private createSessionHandle;
-+  /** Eagerly load the same persistent remote session, retaining its transport without a prompt. */
-+  connectSession(input: AcpControlAuthority & { handle: AcpRuntimeHandle }): Promise<void>;
-   startTurn(input: AcpRuntimeTurnInput): {
-     requestId: string;
-     readonly promptStarted: Promise<void>;
-@@ -855,4 +863,6 @@
- }): AcpSessionStore;
- //#endregion
- export { type AcpAgentInspection, type AcpAgentInspectionOptions, type AcpAgentRegistry, type AcpElicitationContext, type AcpElicitationHandler, type AcpElicitationMode, type AcpElicitationRequest, type AcpElicitationResponse, type AcpFileSessionStoreOptions, type AcpInspectableAgentRegistry, type AcpPermissionDecision, type AcpPermissionHandler, type AcpPermissionRequest, type AcpProcessExit, type AcpProcessLaunch, type AcpProcessLaunchScope, type AcpProcessLifecycle, type AcpProcessSpawnFailure, type AcpProcessStarted, type AcpRuntime, type AcpRuntimeAvailableCommand, type AcpRuntimeCapabilities, type AcpRuntimeDoctorReport, type AcpRuntimeEnsureInput, type AcpRuntimeErrorCode, type AcpRuntimeEvent, type AcpRuntimeHandle, type AcpRuntimeOptions, type AcpRuntimePlanEntry, type AcpRuntimePromptMode, type AcpRuntimeSessionContext, type AcpRuntimeSessionMode, type AcpRuntimeSessionModels, type AcpRuntimeSessionPermissions, type AcpRuntimeSessionUsage, type AcpRuntimeStatus, type AcpRuntimeTurn, type AcpRuntimeTurnAttachment, type AcpRuntimeTurnInput, type AcpRuntimeTurnResult, type AcpRuntimeTurnResultError, type AcpRuntimeUsageBreakdown, type AcpRuntimeUsageCost, type AcpSessionRecord, type AcpSessionStore, type AcpSessionUpdateTag, type AcpTextDeltaOriginMeta, DEFAULT_AGENT_NAME, type InspectAgentModelsOptions, type PermissionPolicy, type RequestedModelUnsupportedErrorCode, type RequestedModelUnsupportedReason, type SessionAgentOptions, type SessionWatchEvent, type SessionWatchResult, type SharedAcpRuntimeOptions, type SystemPromptOption, createAgentRegistry };
--//# sourceMappingURL=runtime.d.ts.map
-\ No newline at end of file
-+/** Trellis-maintained compatibility contract for exact acpx@0.19.5. */
-+export declare const TRELLIS_ACPX_COMPAT_VERSION: 2;
-+//# sourceMappingURL=runtime.d.ts.map
 diff --git a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts b/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
+index 41c4e52..89a4737 100644
 --- a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
 +++ b/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
-@@ -9,6 +9,10 @@
+@@ -9,6 +9,10 @@ type AcpPermissionRequest = {
    inferredKind: ToolKind | undefined;
  };
  type AcpPermissionDecision = {
@@ -543,7 +716,7 @@ diff --git a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts b/node_modules
    outcome: "allow_once";
  } | {
    outcome: "allow_always";
-@@ -264,6 +268,7 @@
+@@ -264,6 +268,7 @@ type SessionAcpxState = {
    session_origin?: "new" | "resume";
    reset_on_next_ensure?: boolean;
    current_mode_id?: string;
@@ -551,7 +724,7 @@ diff --git a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts b/node_modules
    desired_mode_id?: string;
    desired_config_options?: Record<string, string>;
    current_model_id?: string;
-@@ -313,6 +318,9 @@
+@@ -313,6 +318,9 @@ type SessionRecord = {
    lastAgentDisconnectReason?: string;
    protocolVersion?: number;
    agentCapabilities?: AgentCapabilities;
@@ -561,52 +734,3 @@ diff --git a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts b/node_modules
    title?: string | null;
    messages: SessionMessage[];
    updated_at: string;
-diff --git a/node_modules/acpx/dist/ipc-C96eDxkW.js b/node_modules/acpx/dist/ipc-C96eDxkW.js
---- a/node_modules/acpx/dist/ipc-C96eDxkW.js
-+++ b/node_modules/acpx/dist/ipc-C96eDxkW.js
-@@ -1323,6 +1323,8 @@
- 		last_agent_disconnect_reason: record.lastAgentDisconnectReason,
- 		protocol_version: record.protocolVersion,
- 		agent_capabilities: record.agentCapabilities,
-+		agent_info: trellisParseDisplayAgentInfo(record.agentInfo),
-+		auth_methods: trellisParseDisplayList(record.authMethods),
- 		title: record.title,
- 		messages: record.messages,
- 		updated_at: record.updated_at,
-@@ -1676,6 +1678,8 @@
- 	if (record.session_origin === "new" || record.session_origin === "resume") state.session_origin = record.session_origin;
- 	if (record.reset_on_next_ensure === true) state.reset_on_next_ensure = true;
- 	assignStringState(state, "current_mode_id", record.current_mode_id);
-+	const availableModes = trellisParseDisplayList(record.available_modes);
-+	if (availableModes) state.available_modes = availableModes;
- 	assignStringState(state, "desired_mode_id", record.desired_mode_id);
- 	const desiredConfigOptions = parseStringMap(record.desired_config_options);
- 	if (desiredConfigOptions) state.desired_config_options = desiredConfigOptions;
-@@ -1762,6 +1766,18 @@
- 		lastRequestId,
- 		importedFrom
- 	};
-+}
-+function trellisParseDisplayAgentInfo(raw) {
-+	const info = asRecord$2(raw);
-+	if (!info || typeof info.name !== "string" || typeof info.version !== "string") return;
-+	return { name: info.name, version: info.version, ...typeof info.title === "string" ? { title: info.title } : {} };
-+}
-+function trellisParseDisplayList(raw) {
-+	if (!Array.isArray(raw)) return;
-+	return raw.flatMap((value) => {
-+		const entry = asRecord$2(value);
-+		return entry && typeof entry.id === "string" && typeof entry.name === "string" ? [{ id: entry.id, name: entry.name, ...typeof entry.description === "string" ? { description: entry.description } : {} }] : [];
-+	});
- }
- function normalizeOptionalName(value) {
- 	if (value == null) return;
-@@ -1841,6 +1857,8 @@
- 		lastAgentDisconnectReason: optionals.lastAgentDisconnectReason,
- 		protocolVersion: typeof record.protocol_version === "number" ? record.protocol_version : void 0,
- 		agentCapabilities: asRecord$2(record.agent_capabilities),
-+		agentInfo: trellisParseDisplayAgentInfo(record.agent_info),
-+		authMethods: trellisParseDisplayList(record.auth_methods),
- 		title: conversation.title,
- 		messages: conversation.messages,
- 		updated_at: conversation.updated_at,

@@ -1,13 +1,13 @@
 {
   "version": "0.19.5",
   "sdkVersion": "1.8.0",
-  "compatVersion": 2,
+  "compatVersion": 3,
   "patch": "acpx+0.19.5.patch",
-  "patchSha256": "5dc6f49b85834944ea366d80e0e7eb2a9be3b8ec053695f8793e5cf4b3375581",
+  "patchSha256": "2e62442d955e95af743d45744fb16b81db073b66a7c02e79725a80e299c86baa",
   "files": {
     "dist/queue-owner-runtime-DoijBCvt.js": "87882086e88d9de09e9b955cf4e2197402630954b59080e366a40a47a046ff2d",
-    "dist/runtime.js": "941792c3a5a16adda4248c774dc5296c9fb3e4ebaec5a22cbb79f4c60d3b4481",
-    "dist/runtime.d.ts": "4bf6565126991594ec105fa2ac77fa396ef5c7a29f90e0edf63074535e0ce254",
+    "dist/runtime.js": "a5ededb6bf254901c7e121382c19501ede29f62b23cb113531a1cf9c892ebf9b",
+    "dist/runtime.d.ts": "4732fa211a4ff4c3566bb0c3e516ebba21d82a502c10620cc9102503dd866be6",
     "dist/session-options-CkcvthCv.d.ts": "2be250fffe0fe4555b9c219006acf3edfedd611ec7a476813c7c53e8165b95aa",
     "dist/ipc-C96eDxkW.js": "dfcea7783b4c42784662add519e5390add1ff42bff9c3721a2605c5981746129"
   }

@@ -54,41 +54,96 @@ export function executionWorkspaceRoot(projectRoot: string, cwd?: string): strin
 }
 
 export type NativeAdmissionOwner = { sessionId: string; connectionGeneration: string }
-type Entry = { token: symbol; kind: 'ordinary' | 'managed'; settled: Promise<void>; settle: () => void; nativeBusy?: () => boolean; canRecover?: (owner: NativeAdmissionOwner) => boolean }
-const admissions = new Map<string, Entry>()
+type Entry = { owner?: NativeAdmissionOwner; settled: Promise<void>; settle: () => void; nativeBusy?: () => boolean; canRecover?: (owner: NativeAdmissionOwner) => boolean }
+type AdmissionGroup = { kind: 'ordinary'; projectKey: string; entries: Set<Entry> } | { kind: 'managed'; entry: Entry }
+const admissions = new Map<string, AdmissionGroup>()
+const idleProbes = new Set<symbol>()
+const entriesFor = (group: AdmissionGroup): Entry[] => group.kind === 'ordinary' ? [...group.entries] : [group.entry]
+/** A temporary, independently owned fence; never releases an execution token or
+ * reopens the host's permanent shutdown admission. Unknown ownership is busy. */
+export function probeWorkspaceAdmissions(): { busy(): boolean; release(): void } {
+  const probe = Symbol('idle-shutdown')
+  idleProbes.add(probe)
+  return {
+    busy() {
+      if (!idleProbes.has(probe)) return true
+      try { return [...admissions.values()].some(group => entriesFor(group).some(entry => !entry.nativeBusy || entry.nativeBusy())) }
+      catch { return true }
+    },
+    release() { idleProbes.delete(probe) }
+  }
+}
+function removeEntry(key: string, group: AdmissionGroup, entry: Entry): void {
+  if (admissions.get(key) !== group) return
+  if (group.kind === 'ordinary') {
+    group.entries.delete(entry)
+    if (!group.entries.size) admissions.delete(key)
+  } else if (group.entry === entry) admissions.delete(key)
+}
 function prune(key: string): void {
-  const old = admissions.get(key)
-  if (!old?.nativeBusy) return
-  try { if (!old.nativeBusy()) admissions.delete(key) } catch { /* Unknown native ownership remains fenced. */ }
+  const group = admissions.get(key)
+  if (!group) return
+  for (const entry of entriesFor(group)) {
+    if (!entry.nativeBusy) continue
+    try { if (!entry.nativeBusy()) removeEntry(key, group, entry) } catch { /* Unknown native ownership remains fenced. */ }
+  }
 }
 export type WorkspaceAdmission = {
   isCurrent(): boolean
   release(): void
   /** After delivery, retain the admission until original native facts show idle/closed. */
-  retainNative(busy: () => boolean, canRecover?: (owner: NativeAdmissionOwner) => boolean): void
+  retainNative(busy: () => boolean, canRecover?: (owner: NativeAdmissionOwner) => boolean, owner?: NativeAdmissionOwner): void
 }
-export function claimWorkspaceAdmission(root: string, kind: Entry['kind'], recovery?: NativeAdmissionOwner): WorkspaceAdmission {
+export function claimWorkspaceAdmission(root: string, kind: AdmissionGroup['kind'], recovery?: NativeAdmissionOwner, scope: { projectRoot?: string; owner?: NativeAdmissionOwner } = {}): WorkspaceAdmission {
+  if (idleProbes.size) throw new WorkflowAdmissionError('后台正在核对空闲停止，暂不接纳新的原生操作')
   const key = keyFor(root)
+  const projectKey = keyFor(scope.projectRoot ?? root)
   prune(key)
   const previous = admissions.get(key)
-  let recovering = false
+  if (previous && (previous.kind !== 'ordinary' || kind !== 'ordinary' || previous.projectKey !== projectKey)) throw new WorkflowAdmissionError('此工作区已有其他项目的原生指令或托管工作流正在接纳或执行')
+  let recovering: Entry | undefined
   // Only an already handed-off ordinary owner can authorize its exact recovery.
   // Replace the token synchronously; never expose a free workspace in between.
-  try { recovering = Boolean(previous?.kind === 'ordinary' && kind === 'ordinary' && recovery && previous.canRecover?.(recovery)) } catch { /* Unknown owner remains fenced. */ }
-  if (previous && !recovering) throw new WorkflowAdmissionError('此工作区已有原生指令或工作流正在接纳或执行，请等待结束或停止后重试')
-  if (!previous && admissions.size >= 128) throw new WorkflowAdmissionError('工作区接纳数量已达上限，请等待现有执行结束')
+  if (previous?.kind === 'ordinary' && recovery) {
+    for (const entry of previous.entries) {
+      if (entry.owner && (entry.owner.sessionId !== recovery.sessionId || entry.owner.connectionGeneration !== recovery.connectionGeneration)) continue
+      try { if (entry.canRecover?.(recovery)) { recovering = entry; break } } catch { /* Unknown owner remains fenced. */ }
+    }
+    if (!recovering && [...previous.entries].some((entry) => !entry.owner || entry.owner.sessionId === recovery.sessionId)) throw new WorkflowAdmissionError('原生会话的接纳仍在执行或恢复身份已改变，请等待结束后重新核对')
+  }
+  const owner = scope.owner ?? recovery
+  if (previous?.kind === 'ordinary' && [...previous.entries].some((entry) => entry !== recovering && owner && entry.owner?.sessionId === owner.sessionId)) throw new WorkflowAdmissionError('此原生会话已有指令正在接纳或执行，请等待结束后重试')
+  const count = [...admissions.values()].reduce((total, group) => total + entriesFor(group).length, 0)
+  if (!recovering && count >= 128) throw new WorkflowAdmissionError('工作区接纳数量已达上限，请等待现有执行结束')
   let settle = (): void => {}
   const settled = new Promise<void>((done) => { settle = done })
-  const entry: Entry = { token: Symbol(kind), kind, settled, settle }
-  admissions.set(key, entry)
+  const entry: Entry = { owner, settled, settle }
+  const group: AdmissionGroup = previous ?? (kind === 'ordinary' ? { kind, projectKey, entries: new Set() } : { kind, entry })
+  if (group.kind === 'ordinary') {
+    if (recovering) { group.entries.delete(recovering); recovering.settle() }
+    group.entries.add(entry)
+  }
+  admissions.set(key, group)
+  const isCurrent = (): boolean => admissions.get(key) === group && (group.kind === 'ordinary' ? group.entries.has(entry) : group.entry === entry)
   return {
-    isCurrent: () => admissions.get(key) === entry,
-    release: () => { if (admissions.get(key) === entry) admissions.delete(key); entry.settle() },
-    retainNative: (busy, canRecover) => { if (admissions.get(key) === entry) { entry.nativeBusy = busy; entry.canRecover = canRecover }; entry.settle() }
+    isCurrent,
+    release: () => { removeEntry(key, group, entry); entry.settle() },
+    retainNative: (busy, canRecover, nativeOwner) => {
+      if (isCurrent()) {
+        // A rejected targetless lifecycle can observe a pre-existing blocker.
+        // Its actual token already protects that owner; do not create a second
+        // recovery grant for the same session/generation.
+        const duplicate = group.kind === 'ordinary' && nativeOwner && [...group.entries].some((other) => other !== entry
+          && other.owner?.sessionId === nativeOwner.sessionId && other.owner.connectionGeneration === nativeOwner.connectionGeneration)
+        if (duplicate) removeEntry(key, group, entry)
+        else { entry.nativeBusy = busy; entry.canRecover = canRecover; if (nativeOwner) entry.owner = nativeOwner }
+      }
+      entry.settle()
+    }
   }
 }
 /** Call after the host closes admission, before enumerating controllers at quit. */
-export async function waitForWorkspaceAdmissions(): Promise<void> { await Promise.all([...admissions.values()].map((entry) => entry.settled)) }
+export async function waitForWorkspaceAdmissions(): Promise<void> { await Promise.all([...admissions.values()].flatMap((group) => entriesFor(group).map((entry) => entry.settled))) }
 
 function discoveryDirectory(workspace: string): string {
   const root = canonicalWorkspaceRoot(workspace)

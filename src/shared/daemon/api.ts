@@ -7,6 +7,8 @@ export interface DaemonApi {
   start(): Promise<DaemonResult<DaemonStatus>>
   stop(): Promise<DaemonResult<null>>
   restart(): Promise<DaemonResult<DaemonStatus>>
+  /** Desktop tray entry; optional on older preload versions. */
+  onOpenSettings?(listener: () => void): () => void
   preferences(): Promise<DaemonResult<DaemonPreferences>>
   setPreferences(input: DaemonPreferences): Promise<DaemonResult<DaemonPreferences>>
   /** Feature-scoped addition: absent on older preload, without disabling existing management. */

@@ -6,6 +6,7 @@ import { RunActivity } from './RunActivity'
 import { asObject, isConnectionTimelineEvent } from './timeline'
 import { projectRootKey } from '../my/navigation'
 import type { AcpConfigureInput, AcpSessionRecord } from '../../../shared/types'
+import { ACP_CONNECTION_STAGE_LABELS } from '@shared/acp-connection'
 
 export function StartupGroup({ session }: { session: AcpSessionRecord }): JSX.Element {
   const events = session.events.filter((event) => event.source === 'acp' && event.sessionId === session.sessionId && projectRootKey(event.projectRoot) === projectRootKey(session.projectRoot) && event.connectionGeneration === session.connectionGeneration && isConnectionTimelineEvent(event))
@@ -78,7 +79,7 @@ export function SessionDetails({ session, isCurrent, onUpdated, controlsOnly = f
     {session.configOptions?.filter((option) => !dedicatedIds.has(option.id)).map((option) => <label key={option.id} className="block">{option.name}<Select ariaLabel={option.name} className="mt-1 w-full" disabled={disabled || !controls.includes('session/set_config_option')} value={option.currentValue} onChange={(value) => void configure({ kind: 'config', id: option.id, value })} options={option.options.map((value) => ({ value: value.value, label: value.name }))} /></label>)}
     {pending && <p role="status" className="flex items-center gap-1 text-my-sm"><Loader2 size={12} className="animate-spin" />等待执行引擎确认…</p>}
     {error && <p role="alert" className="text-my-sm text-my-danger-text">{error}</p>}{notice && <p role="status" className="text-my-sm text-my-success-text">{notice}</p>}</>}
-    {!controlsOnly && <><details className="border-t border-my-line pt-3"><summary className="cursor-pointer">发送材料与指令快照</summary><div className="mt-2 space-y-2 text-my-sm">
+    {!controlsOnly && <><ConnectionTimingDetails session={session} /><AgentContextDetails session={session} /><details className="border-t border-my-line pt-3"><summary className="cursor-pointer">发送材料与指令快照</summary><div className="mt-2 space-y-2 text-my-sm">
       {session.materialSnapshot ? <><p>捕获于 {new Date(session.materialSnapshot.capturedAt).toLocaleString()}</p><pre className="whitespace-pre-wrap break-words">{session.materialSnapshot.instructions || '未配置附加指令'}</pre><ul className="break-all">{session.materialSnapshot.files.map((file) => <li key={file}>{file}</li>)}</ul>{session.materialSnapshot.sources?.map((source) => <details className="border-t border-my-line pt-2" key={source.relativePath}><summary className="cursor-pointer break-all">{source.relativePath} · {source.included ? `已包含 ${source.includedBytes} 字节` : source.status === 'missing' ? '文件缺失' : source.status === 'unreadable' ? '无法读取' : '未纳入'}{source.truncated ? ' · 已截断' : ''}</summary><dl className="mt-2 space-y-1 break-all"><div><dt>来源版本</dt><dd>{source.sourceRevision ?? '未知'} · {source.sourceBytes ?? '未知'} 字节</dd></div><div><dt>实际包含版本</dt><dd>{source.includedRevision ?? '未包含'} · {source.includedChars} 字符</dd></div><div><dt>包含范围</dt><dd>{source.extent.start}–{source.extent.end}（{source.extent.unit}）</dd></div></dl>{source.diagnostics?.map((notice) => <p key={notice}>{notice}</p>)}</details>)}<p className="text-my-tertiary">材料快照表示已组装的输入；不代表模型已遵循或任务已验收。</p></> : <p>{session.schemaVersion === 2 ? '尚未发送材料；发送后显示本轮快照。' : '旧会话未记录材料快照。'}</p>}
     </div></details>
     <details className="border-t border-my-line pt-3"><summary className="cursor-pointer">连接与协议诊断</summary><dl className="mt-2 space-y-2 break-all font-mono text-my-sm">
@@ -88,4 +89,35 @@ export function SessionDetails({ session, isCurrent, onUpdated, controlsOnly = f
       {modelCatalog?.mappings?.filter(({ modelId }) => modelId === session.currentModelId).map((mapping) => <div key={mapping.modelId}><dt>配置的目标模型（非实际应答证明）</dt><dd>{mapping.providerKey ? `${mapping.providerKey} · ` : ''}{mapping.configuredModel}</dd></div>)}
     </dl>{connectionEvents.length > 0 && <details className="mt-3"><summary className="cursor-pointer">连接记录 · {connectionEvents.length}</summary><ol className="mt-2 space-y-1">{connectionEvents.map((event) => <li key={event.id} className="flex items-start gap-2 text-my-sm"><time className="shrink-0 text-my-tertiary">{new Date(event.ts).toLocaleTimeString()}</time><span className="min-w-0 break-words">{event.text ?? '连接状态更新'}</span></li>)}</ol></details>}</details></>}
   </div>
+}
+
+function ConnectionTimingDetails({ session }: { session: AcpSessionRecord }): JSX.Element {
+  const timing = session.connectionTimings
+  if (!timing || timing.connectionGeneration !== session.connectionGeneration) return <></>
+  return <details className="border-t border-my-line pt-3">
+    <summary className="cursor-pointer">连接耗时 · {(timing.totalDurationMs / 1000).toFixed(2)} 秒</summary>
+    <dl className="mt-2 space-y-2 text-my-sm">{timing.stages.map((stage) => <div key={stage.stage} className="flex items-center justify-between gap-3">
+      <dt className="text-my-secondary">{ACP_CONNECTION_STAGE_LABELS[stage.stage]}</dt>
+      <dd className={stage.status === 'failed' ? 'text-my-danger-text' : 'text-my-tertiary'}>{stage.status === 'skipped' ? '未执行' : `${stage.status === 'failed' ? '失败 · ' : ''}${((stage.durationMs ?? 0) / 1000).toFixed(2)} 秒`}</dd>
+    </div>)}</dl>
+  </details>
+}
+
+function AgentContextDetails({ session }: { session: AcpSessionRecord }): JSX.Element {
+  const receipt = session.agentContext
+  const current = receipt && session.connectionGeneration && session.turnId
+    && receipt.connectionGeneration === session.connectionGeneration && receipt.turnId === session.turnId ? receipt : undefined
+  const state = current?.state === 'sent' ? '已发送' : current?.state === 'not_sent' ? '未发送' : current?.state === 'prepared' ? '已准备' : '未记录本轮回执'
+  return <details className="border-t border-my-line pt-3">
+    <summary className="cursor-pointer">角色与技能交付 · {state}</summary>
+    <div className="mt-2 space-y-2 text-my-sm">
+      {current ? <>
+        <p>角色指令：{current.instructionsProvided ? '已包含' : '未包含'} · 项目技能：{current.skills.length} 个</p>
+        {current.skills.length > 0 && <ul className="space-y-2">{current.skills.map((skill) => <li key={skill.relativePath}><strong className="font-medium text-my-primary">{skill.name}</strong><p className="break-words text-my-tertiary">{skill.description}</p><p className="break-all font-mono">{skill.relativePath}</p><p className="break-all font-mono text-my-xs text-my-tertiary">版本 {skill.revision}</p></li>)}</ul>}
+        <dl className="space-y-1 break-all text-my-tertiary"><div><dt>连接代次 / 轮次</dt><dd className="font-mono">{current.connectionGeneration} / {current.turnId}</dd></div><div><dt>交付方式</dt><dd>{current.method}</dd></div><div><dt>上下文版本</dt><dd className="font-mono">{current.revision}</dd></div><div><dt>资源</dt><dd className="font-mono">{current.uri}</dd></div></dl>
+        <p className="text-my-tertiary">交付回执仅记录发送状态，无法确认模型已读取或遵循。</p>
+      </> : <p className="text-my-tertiary">当前连接与轮次没有可核对的角色与技能交付回执。</p>}
+      {session.capabilities?.promptCapabilities?.embeddedContext !== true && <p className="text-my-tertiary">当前连接未声明支持角色与技能附件。</p>}
+    </div>
+  </details>
 }

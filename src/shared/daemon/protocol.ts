@@ -59,7 +59,7 @@ export const daemonPayloads = {
   'daemon.preferences.get': empty,
   'daemon.preferences.set': z.object({ revision: z.number().int().positive().safe(), keepRunning: z.boolean(), startup: z.enum(['client', 'login', 'manual']) }).strict(),
   'daemon.startup.reconcile': z.object({ originalCommandId: z.string().uuid() }).strict(),
-  'daemon.stop': z.object({ expectedOwner: processOwnerSchema }).strict(),
+  'daemon.stop': z.object({ expectedOwner: processOwnerSchema, idleOnly: z.literal(true).optional() }).strict(),
   'daemon.logs': z.object({ after: z.number().int().nonnegative().safe().default(0), limit: z.number().int().min(1).max(100).default(50) }).strict(),
   'workspace.grant': z.object({ workspaceId: z.string().min(1).max(128), root: z.string().min(1).max(4096), expectedRevision: z.number().int().nonnegative().safe() }).strict(),
   'workspace.revoke': z.object({}).strict(),

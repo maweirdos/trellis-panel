@@ -2,6 +2,15 @@ import { runtimeWireSchema } from './daemon-runtime'
 import { GITLAB_DAEMON } from './gitlab-integration'
 import { JIRA_DAEMON, JIRA_MUTATING_METHODS } from './jira-integration'
 import { DINGTALK_DAEMON } from './dingtalk-integration'
+import type { z } from 'zod'
+
+/** Project parser signatures per key so generic routing keeps the schema output
+ * correlation without the full Zod schema's polymorphic `this` surface. */
+export type ProviderSchemaParser<T> = {
+  parse(value: unknown): T
+  safeParse(value: unknown): z.ZodSafeParseResult<T>
+}
+export type ProviderSchemaParsers<S> = { readonly [M in keyof S]: ProviderSchemaParser<z.output<S[M]>> }
 
 /** A static allowlist projected onto the bounded native bulk envelope. Business
  * requests/results are validated inside the leased owner after unpacking. */

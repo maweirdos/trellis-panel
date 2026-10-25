@@ -62,9 +62,7 @@ Source handles are opaque and owner/scope-bound. Snapshot exact supplied bytes,
 their SHA-256, source identity, timestamp, mode/truncation and original turn.
 Retrieved is not supplied; supplied is not proof the model relied on the text.
 For native tool reads, mark supplied only after the actual MCP response has been
-written and its owner has not been cancelled. For host-prefetched references,
-use the real native prompt-write boundary described below. Neither proves model
-reliance. Do not correlate ACP toolCallId with MCP request IDs.
+written and its owner has not been cancelled. This does not prove model reliance. Do not correlate ACP toolCallId with MCP request IDs.
 
 Host `source`/`sources` calls with a `sessionId` enforce that session. Calls that
 intentionally omit it are project-wide historical browsing and must be labeled as
@@ -99,79 +97,56 @@ Connection generation is separately checked through the trusted owner and kept
 in the receipt. Activity rendering additionally includes generation in its
 identity. Receipts record provenance, not independent semantic proof of consent.
 
-### Host-First Project Evidence
+### On-Demand Project Evidence
 
-For evidence questions with selected project libraries, the host retrieves before
-native prompt dispatch. Reuse the same admitted owner, frozen scope, knowledge
-service and native session. No second chatbot, mandatory role or four-level
-retrieval orchestrator. Native
-spec/business, code, history and Skills remain native follow-up capabilities.
-Image-only input and unbound projects retain their existing contracts.
-`skipConversationActionLookup(text)` is a narrow anchored action guard, not a
-semantic classifier: clear consolidation/rewrite of preceding discussion does
-not search those command words or append a reference packet. A no-search guard
-accepts only a standalone prohibition or a fully recognized transformation tail,
-not arbitrary comma suffixes, quoted examples or inquiries. Keep knowledge-turn
-admission/action tools even when preflight is skipped. Mixed/actual evidence
-questions are not skipped by document/action noun matching; unmatched requests
-retain the existing policy, not a claim of complete intent understanding.
-Pure anchored greetings/acknowledgements that ask for no project facts also skip
-preflight. Mixed requests such as a greeting followed by a business inquiry must
-still retrieve normally; do not use message length or broad intent guessing.
-An API-assisted semantic router is proposed separately and must not be silently
-enabled from global AI settings or advertised as delivered by these exclusions.
-An actual Agent-advertised slash command is not an ordinary question: preserve
-its native command path without automatic knowledge/task-material text. Unknown
-slash names are not invented commands. Capture failure must explicitly report
-that no project lookup or evidence delivery occurred; it is not an empty result.
+Ordinary messages dispatch without a host knowledge query or a retrieval packet.
+The native Agent chooses knowledge_search/read when project evidence is needed.
+Greetings, identity questions and general knowledge do not require lookup. Keep
+turn admission and the frozen project scope available even when no tool is called;
+there is no regex classifier or second semantic-routing model on the send path.
+Actual native slash commands retain their original command input.
 
-`KnowledgeMcpConnection.preflight(text,signal)` prepares bounded reference content
-and returns `text`, `assertActive`, `delivered` and `notSent` checkpoints. The query
-uses at most2000 characters and discloses a prefix cut without splitting a
-surrogate pair. Initial limit3 applies to each existing provider, not a fictitious
-global ranking. Select at most4 whole original excerpts under a32 KiB UTF-8
-rendered reference budget, including labels and fences. Report omissions and
-source truncation distinctly. Never clip text while claiming the larger saved
-snapshot was supplied. This is not a token count or complete-document guarantee.
-Within this preflight budget, selected-project WeKnora excerpts get priority
-over local supplemental hits, preserving order within each kind. Otherwise local
-matches could exhaust the budget and hide the very bound library requested by
-the user. Keep the search service's other callers/order unchanged; include total
-and per-kind omission counts. Retrieval order is still not business authority.
+knowledge_search defaults to3 results per provider. Identical query, effective
+limit and frozen scope reuse a bounded same-turn result, including failures.
+Refined queries or different limits can search again. Local and project remote
+sources share the scoped service; inherited native/global MCP tools remain outside
+this host's ACL and must not be represented as project-isolated.
 
-Native clients may persist the complete ACP text turn. Use readable, explicitly
-untrusted reference sections with original excerpts and usable source IDs/handles;
-keep operation IDs, duplicate queries and hashes in host evidence rather than
-dumping a transport/debug JSON object into the native user message. Choose fences
-longer than any excerpt fence and keep excerpt bytes unchanged. The current public
-turn API still sends business references as text: formatting is not a hidden
-context channel. Existing native history is not silently rewritten. Delivery and
-not-sent checkpoints retain their original prompt-written meaning.
+Model-facing search/read output is bounded to32 KiB including text and structured
+metadata. Supply at most4 whole saved excerpts, prioritizing the selected project
+libraries before local supplements. Preserve exact excerpt bytes and fences;
+never clip/redact a source and mark its larger saved snapshot supplied. Sources
+that cannot fit or cross a redaction boundary remain omitted/unsupplied with an
+explicit omission count. Keep operation IDs, hashes, scope snapshots and audit records host-side. Both
+content text and structuredContent must contain the exact complete selected
+excerpt; clients may prefer either representation. Include at most8 metadata-only
+handles for omitted excerpts so an oversized search hit can be read in pages.
+Count both representations against the combined32 KiB result budget.
 
-The host lookup has a10-second wait bound and links to current-turn cancellation.
-Late, revoked or changed-scope results cannot enter the prompt. Empty, partial,
-unavailable and degraded persistence remain distinct; an unavailable result is
-not a successful empty search. Same-turn exact query/scope/effective-limit reuse
-is bounded to admitted-turn memory. Keep source IDs/hashes and do not duplicate
-upstream searches or snapshots for that same cached request. Refined queries and
-different coverage may search again. Do not claim semantic deduplication of
-independently configured global/native MCP servers.
+Native knowledge_read accepts offset>=0 and limit1..6000, defaulting to0/6000 in
+UTF-16 units. Persist each exact page as its own source snapshot. Return range,
+nextOffset and totalIsComplete; do not split surrogate pairs. A page handle retains
+its original document identity. Upstream capped text has totalIsComplete=false;
+its available tail is not full-document coverage. Pin the full readable-body digest
+privately on the originating and descendant source records before returning the
+first page. Changed continuations conflict before returning or saving a page,
+including same-length changes, concurrent requests and reader restart. Pin write
+failure returns no page. The native conflict instructs discarding prior pages,
+refining the query and restarting. UI reads without a window retain the existing
+bounded full-read behavior and create a fresh latest-body source handle. Empty, partial, unavailable, cancelled
+and degraded-persistence outcomes remain distinct.
 
-Append an explicitly untrusted host-reference envelope separately from original
-user text and task references. Original user/action provenance stays intact.
-Mark only actually included durable source IDs supplied after public
-`turn.promptStarted` resolves (the real transport writer accepted the prompt),
-with owner/scope still current. Register that checkpoint before terminal cleanup
-can invalidate an instant response. Search completion or merely calling
-`startTurn` is not delivery. Write rejection/cancellation before that checkpoint
-must retain unsupplied state and a truthful not-sent outcome.
+Single-library upstream queries retain provenance when the server omits per-hit
+library IDs. Interleave native per-library ranks before applying the combined
+limit, omit blank/duplicate excerpts and preserve Unicode boundaries. Do not
+compare uncalibrated per-library scores or invent a relevance probability/threshold.
+An upstream result is evidence to evaluate, not proof of business authority.
 
-Host lookup events are host operation facts, not fabricated native tool calls or
-proof that a native MCP client discovered/called a tool. Preserve those separate
-discovery/transport facts. Native HTTP support does not decide whether a host can
-deliver plain-text reference content through an otherwise supported ACP prompt.
-Never change user native configuration, grant native approvals or install Skills
-as a side effect of preparing project evidence.
+Host operation events originate only from actual tool calls. Descriptor attachment
+and tools/list do not establish retrieval. Source delivery is acknowledged only
+after the real MCP response write while its admitted owner remains current.
+Cancellation, revocation and scope changes reject late data and supplied marks.
+Native user messages and existing history are never rewritten to hide old packets.
 
 ### Native Tool Transport
 
@@ -195,14 +170,12 @@ revocation and late results cannot mark evidence supplied.
 
 Descriptor attachment is not discovery. Observe actual tools/list/calls. Explicit
 negotiated HTTP=false makes this HTTP bridge unavailable; absent capability is
-unknown. Preserve user text/image-only wire contracts. Shared workflow semantics
-belong in MCP server instructions and the public new-session system-prompt append,
-not an alteration of submitted user text. Do not assume every adapter honors
-that metadata; verify actual model behavior separately. In the inspected pinned
-Codex ACP2.2.2 path, generic `_meta.systemPrompt` is not consumed; accepting the
-public session option is not proof that the model received those instructions.
-Do not impersonate a vendor-specific namespace or replace native base instructions
-to conceal that gap. Keep original native
+unknown. Preserve user text/image-only wire contracts. Shared workflow semantics belong in MCP server instructions and tool descriptions.
+User-selected role instructions and skill catalogs use a separate standard ACP
+embedded resource only after embeddedContext=true is negotiated. A generic
+_meta.systemPrompt option is not a portable delivery guarantee. Do not impersonate
+a vendor namespace, replace native base instructions or rewrite user messages.
+Transport delivery does not establish model compliance. Keep original native
 permission IDs/kinds. Redact
 display labels; fail closed instead of remapping machine IDs containing grants.
 Active grants remain redacted even when bounded retired-grant history rotates.
@@ -225,8 +198,8 @@ Search/read operations optionally carry actual `status: KnowledgeStatus` and
 `persistence: 'durable'|'degraded'`. Preserve the actual query on terminal facts.
 Partial, empty, denied, unavailable and degraded outcomes must stay readable;
 older events lacking these fields keep their existing fallback presentation.
-Host preflight and native-call activity may share source rendering, never their
-proof of native discovery or invocation.
+Historical host lookup records may retain their original source rendering; they
+do not prove native discovery or invocation.
 
 ### Explicit Publication
 

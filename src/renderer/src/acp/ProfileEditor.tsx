@@ -6,6 +6,7 @@ import { confirmDialog } from '../components/Dialogs'
 import { Select } from '../components/Select'
 import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { RuntimePanel, runtimeHealthLabel } from './RuntimePanel'
+import { ProfileSkills } from './ProfileSkills'
 import type { AcpAgentProfile, AcpAgentStatus } from '../../../shared/types'
 
 export function ProfileEditor({ initial, agents, root, isNew = false, inline = false, isCurrent, onAgentsChange, onSaved, onDeleted, onClose }: {
@@ -71,6 +72,7 @@ export function ProfileEditor({ initial, agents, root, isNew = false, inline = f
         {onAgentsChange && <details className="acp-setting" open={!agents.find((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId)?.available}><summary><span><strong>引擎安装与本机环境</strong><small>{runtimeHealthLabel(agents.find((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId))}</small></span></summary><div className="acp-setting-content"><RuntimePanel agents={agents} onChange={onAgentsChange} isCurrent={isCurrent} runtimeId={draft.runtimeId} heading={false} /></div></details>}
         <p className="text-my-sm text-my-tertiary">模型与运行模式由引擎在连接后提供。保存角色不会连接，也不会预选虚构的模型。</p>
         <label className="block text-my-sm text-my-secondary">角色指令<textarea rows={5} className="my-input mt-1 !h-auto w-full resize-y py-2" value={draft.instructions} disabled={pending} placeholder="写明工作边界、处理步骤和输出要求。例如：先澄清需求，完成 PRD 后等待我确认。" onChange={(event) => setDraft({ ...draft, instructions: event.target.value })} /></label>
+        <ProfileSkills root={root} value={draft.skillPaths ?? []} disabled={pending} isCurrent={isCurrent} onChange={(skillPaths) => setDraft({ ...draft, skillPaths })} />
         <label className="block text-my-sm text-my-secondary">默认工作目录<input className="my-input mt-1 w-full font-mono text-my-sm" value={draft.cwd ?? ''} disabled={pending} placeholder={`跟随当前项目：${root}`} onChange={(event) => setDraft({ ...draft, cwd: event.target.value })} /></label>
         <p className="text-my-sm text-my-tertiary">默认使用当前项目，也可显式指定其他工作目录。保存配置不会启动 Agent；已开始的会话继续使用其配置快照。</p>
         <label className="block text-my-sm text-my-secondary">单轮最长运行（分钟）<input type="number" min={1} max={120} required className="my-input ml-2 w-20" value={draft.maxTurnMinutes} disabled={pending} onChange={(event) => setDraft({ ...draft, maxTurnMinutes: Number(event.target.value) })} /></label>

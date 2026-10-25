@@ -6,7 +6,7 @@ const MAX_RESPONSE = 2 * 1024 * 1024
 const id = z.string().min(1).max(256)
 const collection = z.object({ id, name: z.string().max(1000), knowledge_count: z.number().nonnegative().optional() })
 const document = z.object({ id, title: z.string().max(2000).optional(), file_name: z.string().max(2000).optional(), file_type: z.string().max(100).optional(), parse_status: z.string().max(100).optional(), knowledge_base_id: id.optional() })
-const hit = z.object({ knowledge_id: id, knowledge_title: z.string().max(2000).optional(), title: z.string().max(2000).optional(), filename: z.string().max(2000).optional(), content: z.string().max(MAX_RESPONSE), knowledge_base_id: id.optional() })
+const hit = z.object({ knowledge_id: id, knowledge_title: z.string().max(2000).optional(), title: z.string().max(2000).optional(), filename: z.string().max(2000).optional(), knowledge_filename: z.string().max(2000).optional(), content: z.string().max(MAX_RESPONSE), knowledge_base_id: id.optional() })
 const textTypes = new Set(['md', 'markdown', 'txt', 'json', 'yaml', 'yml', 'csv', 'log'])
 
 function base(connection: ResolvedConnection): string {
@@ -70,23 +70,47 @@ export const weknoraKnowledgePort: KnowledgePort = {
     return { items: rows.slice(0, 30).map((row) => ({ id: row.id, title: row.title || row.file_name || row.id, fileType: row.file_type || '', parseStatus: row.parse_status || '' })), page, hasMore: rows.length >= 30 }
   },
   async search(connection, collectionIds, query, limit, signal) {
-    const items: Awaited<ReturnType<KnowledgePort['search']>>['items'] = []
+    const collections: Awaited<ReturnType<KnowledgePort['search']>>['items'][] = []
     let failures = 0
     let denied = 0
     // Single-collection requests give provenance even when upstream omits per-hit collection IDs.
     for (let offset = 0; offset < collectionIds.length; offset += 2) {
+      if (signal?.aborted) throw new IntegrationError('知识操作已取消', 'upstream')
       const page = await Promise.allSettled(collectionIds.slice(offset, offset + 2).map(async (collectionId) => {
         const rows = parse(z.array(hit).max(200), await request(connection, '/knowledge-search', signal, { query, knowledge_base_ids: [collectionId] }))
-        return rows.slice(0, limit).map((row) => {
+        const unique = new Set<string>()
+        return rows.filter((row) => row.content.trim()).map((row) => {
           if (row.knowledge_base_id && row.knowledge_base_id !== collectionId) throw new IntegrationError('WeKnora 返回了范围外的知识来源', 'upstream')
-          return { documentId: row.knowledge_id, collectionId, title: row.knowledge_title || row.title || row.filename || row.knowledge_id, text: row.content.slice(0, 6000), truncated: row.content.length > 6000 }
-        })
+          let text = row.content.slice(0, 6000)
+          if (/[\uD800-\uDBFF]$/u.test(text)) text = text.slice(0, -1)
+          return { documentId: row.knowledge_id, collectionId, title: row.knowledge_title || row.title || row.knowledge_filename || row.filename || row.knowledge_id, text, truncated: row.content.length > text.length }
+        }).filter((row) => {
+          const key = JSON.stringify([row.documentId, row.text])
+          if (unique.has(key)) return false
+          unique.add(key)
+          return true
+        }).slice(0, limit)
       }))
-      for (const result of page) { if (result.status === 'fulfilled') items.push(...result.value); else { failures++; if (result.reason instanceof IntegrationError && result.reason.kind === 'denied') denied++ } }
+      for (const result of page) { if (result.status === 'fulfilled') collections.push(result.value); else { failures++; if (result.reason instanceof IntegrationError && result.reason.kind === 'denied') denied++ } }
       if (signal?.aborted) throw new IntegrationError('知识操作已取消', 'upstream')
     }
     if (failures === collectionIds.length) throw new IntegrationError(denied === failures ? 'WeKnora 拒绝项目范围的读取，请检查凭证和权限' : '项目范围内的 WeKnora 检索全部失败', denied === failures ? 'denied' : 'upstream')
-    return { items: items.slice(0, limit), partial: failures > 0 }
+    // Per-library scores/ranks are not a calibrated cross-library ranking. Interleave
+    // native ranks so the first library cannot consume the complete result budget.
+    const items: Awaited<ReturnType<KnowledgePort['search']>>['items'] = []
+    const seen = new Set<string>()
+    for (let rank = 0; items.length < limit && collections.some((rows) => rank < rows.length); rank += 1) {
+      for (const rows of collections) {
+        const row = rows[rank]
+        if (!row) continue
+        const key = JSON.stringify([row.collectionId, row.documentId, row.text])
+        if (seen.has(key)) continue
+        seen.add(key)
+        items.push(row)
+        if (items.length >= limit) break
+      }
+    }
+    return { items, partial: failures > 0 }
   },
   async read(connection, documentId, collectionId, signal) {
     const path = `/knowledge/${encodeURIComponent(documentId)}`
