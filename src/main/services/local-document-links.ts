@@ -27,7 +27,7 @@ async function hasRedirectedDescendant(target: string, trustedRoots: string[]): 
 /** Explicit clicks only. Generated documents open outside the privileged app. */
 export async function openLocalDocumentLink(value: unknown, projectRoot: string | null, stillCurrent: () => boolean = () => true): Promise<LocalDocumentOpenResult> {
   const link = localDocumentLink(value)
-  if (!link) return ipcFail(IpcErrorCode.InvalidArg, '该链接不是支持的本地文档。支持 HTML、PDF、Markdown 和文本文件。')
+  if (!link) return ipcFail(IpcErrorCode.InvalidArg, '该链接不是支持的本地文档。支持 HTML、SVG、PDF、Markdown 和文本文件。')
   if (!link.absolute && !projectRoot) return ipcFail(IpcErrorCode.NoProject, '相对文档链接需要先打开所属项目。')
   const target = resolve(projectRoot ?? '', link.path)
   // A Windows drive path must not be reinterpreted as relative on another OS.

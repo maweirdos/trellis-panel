@@ -444,6 +444,8 @@
   --my-bg-navigation-hover: color-mix(in oklab, #ffffff 5%, transparent);
   --my-bg-navigation-selected: color-mix(in oklab, #ffffff 8%, transparent);
   --my-bg-composer: #212121;
+  --my-bg-user-message: #303030;
+  --my-border-user-message: var(--my-border-subtle);
   --my-bg-elevated: #282828;
   --my-txt-on-accent: #181818;
   --my-focus-ring: color-mix(in oklab, #ffffff 55%, transparent);
@@ -717,6 +719,8 @@
   --my-bg-navigation-hover: color-mix(in oklab, #1a1c1f 3%, transparent);
   --my-bg-navigation-selected: color-mix(in oklab, #1a1c1f 5%, transparent);
   --my-bg-composer: #ffffff;
+  --my-bg-user-message: #ededed;
+  --my-border-user-message: var(--my-border-subtle);
   --my-bg-elevated: #ffffff;
   --my-txt-on-accent: #ffffff;
   --my-focus-ring: color-mix(in oklab, #1a1c1f 55%, transparent);

@@ -1,7 +1,7 @@
 import { ipcEvent } from '../../../shared/ipc-channels'
 import type { RuntimeCursor } from '../../../shared/daemon-runtime'
 import { canonicalDirectory } from '../../services/acp/metadata'
-const allowed = new Set<string>([ipcEvent.acpOutput, ipcEvent.acpState, ipcEvent.acpDone, ipcEvent.acpPermission])
+const allowed = new Set<string>([ipcEvent.acpOutput, ipcEvent.acpState, ipcEvent.acpDone, ipcEvent.acpPermission, ipcEvent.acpHistoryChanged])
 export type RuntimeObservation = { sequence: number; root: string; channel: string; payload: unknown; reset: boolean }
 /** Replay is a bounded delivery cache; ACP archive/native permission maps remain authoritative. */
 export class RuntimeEvents {

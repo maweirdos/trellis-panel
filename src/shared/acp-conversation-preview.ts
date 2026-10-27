@@ -1,4 +1,5 @@
 import type { TimelineEvent } from './types'
+import { replayConversationTextEvents } from './acp-text-blocks'
 
 export interface AcpConversationPreview {
   text: string
@@ -7,7 +8,7 @@ export interface AcpConversationPreview {
 
 /** True only for real user-visible conversation content, excluding diagnostics/metadata. */
 export function hasAcpConversationContent(events: TimelineEvent[], sessionId?: string, projectRoot?: string): boolean {
-  return events.some((event) => sameScope(event, sessionId, projectRoot) &&
+  return replayConversationTextEvents(events).some((event) => sameScope(event, sessionId, projectRoot) &&
     ((event.kind === 'message' && typeof event.text === 'string' && Boolean(event.text.trim())) || event.kind === 'tool-call' || event.kind === 'permission'))
 }
 
@@ -34,6 +35,7 @@ function role(event: TimelineEvent): 'user' | 'assistant' | null {
 
 /** Build a bounded coherent latest-message preview without retaining transcript bodies. */
 export function acpConversationPreview(events: TimelineEvent[], sessionId?: string, projectRoot?: string): AcpConversationPreview | undefined {
+  events = replayConversationTextEvents(events)
   let index = events.length - 1
   for (; index >= 0; index -= 1) {
     const event = events[index]

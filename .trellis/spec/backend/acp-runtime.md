@@ -538,4 +538,120 @@ acknowledgement/failure, selected title updates and retrieval of archived rows.
 
 Wrong: changing the title only in component state or interpreting archive as
 remote conversation deletion. Correct: persist scoped organization metadata,
-project it consistently on reads, and expose only the supported reversible actions.
+project it consistently on reads, and keep archive separate from confirmed permanent deletion.
+
+## Permanent local deletion and semantic titles
+
+### 1. Scope / Trigger
+
+Read before changing session deletion, automatic titles, history text extraction,
+management IPC or the conversation menu. These actions operate on the exact
+project/session identity; selection and catalogue loading never request a model
+or delete a session.
+
+### 2. Signatures
+
+```ts
+acpHistoryDelete(sessionId, { expectedRoot, expectedConnectionGeneration? })
+// -> { ok: true, sessionId, deleted: true }
+//  | { ok: true, sessionId, cancelled: true } | IpcFail
+acpHistoryRegenerateTitle(sessionId)
+// -> { ok: true, version: 1, session: AcpHistorySummary } | IpcFail
+onAcpHistoryChanged(({ projectRoot, sessionId, deleted? }) => void)
+```
+
+The daemon routes are `runtime.historyDeletePreview`, `runtime.historyDelete`
+with `{sessionId,input:{token}}`, and `runtime.historyRegenerateTitle`. A preview
+token is insufficient authorization: deletion must consume the single-use,
+two-minute app-private receipt issued by native GUI code after confirmation.
+Renderer DTOs contain neither a confirmation boolean nor deletion paths.
+
+### 3. Contracts
+
+- Deletion IPC requires the live originating main frame, its original URL,
+  process/routing identity, current root and project generation. Main-frame
+  navigation, including same-URL reload, invalidates the request. The native
+  warning lists deletion/preservation scope and defaults to Cancel. Cancellation
+  creates no confirmation receipt or tombstone.
+- Block connected owners, active/admitting turns, permission waits, unfinished
+  tools, background work, restore/recovery, cleanup uncertainty and managed
+  workflow associations. Provide the applicable Stop/End/retry-cleanup or
+  workflow action; deletion never implicitly stops an engine. Pending or
+  uncertain Runtime continuation must finish or be cancelled first.
+- After confirmation, recheck source/connection/root/file fingerprints, drain
+  acknowledged history writes, then persist `acp/history-deletions` intent before
+  erasing anything. Archive append/import/recovery, compatibility persistence and
+  title CAS honor that identity. Incomplete cleanup remains `deletionState=pending`
+  with explicit retry; success requires every selected cleanup to complete.
+- Delete this session's SQLite rows/import markers, compatible snapshot and its
+  abandoned writes, matching original backups and preferences, source handoff
+  previews and failed/cancelled `delivery=not_sent` operation contexts. Preserve
+  delivered successor context/receipts. Delete the app-owned ACP runtime record
+  and matching `runtime-store/sessions/acpx-write*/record.json` abandoned copies
+  only after verifying schema, native record ID, cwd, backend ID, app-session
+  name and any recorded vendor identity; a live recorded PID blocks deletion.
+- Pi deletion derives only `userData/pi/sessions/sha256(originalProjectRoot)/sessionId`:
+  its native JSONL, images and attachments belong to that app conversation.
+  Never follow `pi.sessionFile`, cwd, document links or artifact paths as deletion
+  authority. Preserve project source/generated files, user exports and external
+  CLI global sessions/logs.
+- All targets must be absolute descendants of the physical app-data directory.
+  Reject links/junctions and nonregular descendants. Hash files in bounded chunks
+  and verify descriptor/named inode, size and mtime before/after reading. Compare
+  the confirmed fingerprint again after asynchronous archive cleanup. Complete
+  tombstones retain only suppression identity, without titles or role metadata.
+  This is application-level removal, not forensic secure erasure.
+- Automatic titles run in the background after an actual completed ordinary
+  reply. Summarize the actual first question and delivered content into a short
+  semantic phrase, using an enabled configured model, no tools, 160 output tokens
+  and a 20-second request timeout. Prefer available `final_answer` text. Missing
+  configuration/provider/save failure preserves an honest fallback and cannot
+  reject an admitted prompt. Existing conversations require explicit regeneration;
+  list/search/page reads never incur title requests.
+- Preferences persist `automaticTitle`, `customTitle` and `titleProvenance`
+  (`source=manual|generated|fallback`, revision, pending/ready/failed state,
+  source digest, optional model/time/error). Per-session CAS, exact connection,
+  root identity and material digest prevent stale writes; manual titles always
+  win. All history/live/fallback summaries project the same effective title.
+- Title, preview and handoff text hydration uses text-only rows with block
+  metadata and `replayConversationTextEvents` before extraction. Authoritative
+  replacement never appends its discarded prefix. Original archive events remain
+  immutable; conservative handoff byte overestimates do not permit duplicate text.
+
+### 4. Validation / Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Child/destroyed/replaced/navigated frame, foreign root or stale generation | Reject without issuing approval or deleting |
+| Preview token without native receipt | `E_DENIED`; no tombstone or erasure |
+| Source/file change during confirmation or awaited cleanup | Reject or retain pending cleanup; require new confirmation |
+| Partial erase, worker failure or unsafe path | `IpcFail`; never `deleted:true`; retry remains discoverable |
+| Manual title or late root/connection/material/CAS result | Preserve the current title |
+| Old preload lacks either management API | Visible instruction to fully restart the application |
+
+### 5. Good / Base / Bad Cases
+
+Good: end a conversation, confirm the listed local scope, erase its attachments,
+and keep project files. Base: cancel without writing deletion state. Bad: turn a
+preview token into deletion approval, retain unsent handoff copies, or overwrite
+a manual title with a delayed generated result.
+
+### 6. Tests Required
+
+Use OS TEMP exclusively. Verify native cancellation/default choice, main-frame
+and same-URL navigation fences, approval consumption, cross-root isolation,
+source replacement during archive awaits, partial failure/retry, process restart
+and stale-source reimport, abandoned ACP copies, unsent handoff contexts,
+delivered/foreign-record preservation, Pi attachments and junction refusal.
+Catalogue cursors advance by scanned positions when tombstones filter a page.
+Exercise model failure and title races against manual edits, deletion, new
+connection/root/material, with persisted provenance and consistent history views.
+The history hook exposes current-root `ReadonlySet<string>` deleted IDs;
+`remove(id)` can return true only for `deleted:true`, never cancellation.
+
+### 7. Wrong vs Correct
+
+Wrong: recursively delete a renderer-supplied path, append replacement text,
+claim success after one failed cleanup, or generate titles while listing history.
+Correct: confirm an exact native-owned scope, fence/drain/tombstone it, verify
+every removal, and apply separately requested background summaries through CAS.

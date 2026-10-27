@@ -4,9 +4,15 @@ import type { AcpSessionMeta, AcpSessionRecord, AcpSourceReference, AcpStateEven
 
 export type ConversationReferenceOwner = Pick<AcpSessionMeta, 'sessionId' | 'projectRoot' | 'taskDir' | 'backendSessionId' | 'agentSessionId' | 'connectionGeneration'>
 
+/** An archived startup snapshot is not evidence of a running connection. */
+export function conversationConnectionStatus(session: AcpSessionMeta): AcpSessionMeta['status'] {
+  return session.connectionOwned === false && ['starting', 'ready', 'busy', 'awaiting_permission', 'cancelling'].includes(session.status) ? 'disconnected' : session.status
+}
+
 export function canSubmitConversation(session: AcpSessionRecord): boolean {
-  return !session.archivedAt && !session.cleanupRequired && (['ready', 'starting'].includes(session.status) ||
-    (session.canResume === true && ['closed', 'disconnected', 'error'].includes(session.status)))
+  const status = conversationConnectionStatus(session)
+  return !session.archivedAt && !session.cleanupRequired && (['ready', 'starting'].includes(status) ||
+    (session.canResume === true && ['closed', 'disconnected', 'error'].includes(status)))
 }
 
 /** Rebind the submitted copy only; file bytes/revision remain main's authority. */
@@ -29,9 +35,10 @@ export async function connectConversationForSend(session: AcpSessionRecord, sign
   let candidate: AcpSessionRecord | undefined
   let connectingGeneration: string | undefined
   let connectionError = ''
+  let rejected: Error | undefined
   let resolveReady: (session: AcpSessionRecord) => void = () => {}
   let rejectReady: (error: Error) => void = () => {}
-  const ready = new Promise<AcpSessionRecord>((resolve, reject) => { resolveReady = resolve; rejectReady = reject })
+  const ready = new Promise<AcpSessionRecord>((resolve, reject) => { resolveReady = resolve; rejectReady = (error) => { rejected = error; reject(error) } })
   // Attach a rejection handler before awaiting the independent resume RPC.
   void ready.catch(() => {})
   const accept = (record: AcpSessionRecord): void => {
@@ -48,7 +55,8 @@ export async function connectConversationForSend(session: AcpSessionRecord, sign
     }
     candidate = record
     if (!acknowledged) return
-    if (record.status === 'ready' && record.connectionGeneration && !record.cleanupRequired && !record.archivedAt) resolveReady(record)
+    if (record.cleanupRequired || record.archivedAt || record.connectionOwned === false) rejectReady(new Error(record.error || '原会话连接尚未确认，草稿已保留。'))
+    else if (record.status === 'ready' && record.connectionGeneration && !record.restorePending) resolveReady(record)
     else if (['error', 'closed', 'disconnected', 'busy', 'awaiting_permission', 'cancelling'].includes(record.status)) rejectReady(new Error(record.error || '原会话当前不能发送，草稿已保留。'))
   }
   const abort = (): void => rejectReady(new Error('发送已停止，草稿已保留。'))
@@ -69,13 +77,35 @@ export async function connectConversationForSend(session: AcpSessionRecord, sign
   const timeout = setTimeout(() => rejectReady(new Error(connectionError || '原会话连接尚未确认，请重试发送。草稿已保留。')), 60000)
   try {
     if (signal.aborted) throw new Error('发送已停止，草稿已保留。')
+    // A current metadata read can prove a reusable live owner. A cached ready
+    // record alone cannot: it may be awaiting idle eviction in main.
+    if (session.status === 'ready' && typeof api.acpHistorySession === 'function') {
+      const current = await Promise.race([api.acpHistorySession(session.sessionId).catch((error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : '无法核对连接状态' })), ready])
+      if (signal.aborted) throw new Error('发送已停止，草稿已保留。')
+      if (!('ok' in current)) throw new Error('原会话连接尚未确认，草稿已保留。')
+      if (!current.ok) connectionError = current.error
+      else {
+        const fresh = { ...current.session, events: [] }
+        if (fresh.sessionId !== session.sessionId || projectRootKey(fresh.projectRoot) !== projectRootKey(session.projectRoot)) throw new Error('项目或会话已变化，草稿已保留。')
+        accept(fresh)
+        if (rejected) throw rejected
+        // Reconcile any state that overtook this read, including eviction/End.
+        const latest = candidate ?? fresh
+        if (fresh.connectionOwned === true && latest.status === 'ready' && latest.connectionOwned === true && latest.connectionGeneration === fresh.connectionGeneration && latest.connectionGeneration && !latest.restorePending && !latest.cleanupRequired && !latest.archivedAt) return latest
+        if (latest.cleanupRequired || latest.archivedAt) throw new Error(latest.error || '原会话当前不能发送，草稿已保留。')
+      }
+    }
+    if (signal.aborted) throw new Error('发送已停止，草稿已保留。')
+    // Only this explicit send may restore; the main process joins an existing
+    // preparation and reuses the same native identity. Never replay a prompt.
+    candidate = undefined; connectingGeneration = undefined
     const response = await Promise.race([api.acpSessionResume(session.sessionId), ready])
     if (!('ok' in response)) throw new Error('原会话连接尚未确认，草稿已保留。')
     if (!response.ok) throw new Error(response.error || '连接失败，草稿已保留。')
     if (response.sessionId && response.sessionId !== session.sessionId) throw new Error('原会话身份不匹配，草稿已保留。')
+    if (signal.aborted) throw new Error('发送已停止，草稿已保留。')
     acknowledged = true
-    if (candidate?.status === 'ready') accept(candidate)
-    else if (typeof api.acpHistorySession === 'function') {
+    if (typeof api.acpHistorySession === 'function') {
       // A ready owner may be evicted without the selected view catching up.
       // Resume awaits that eviction/reconnect; read its current generation,
       // never treat the pre-Send ready snapshot or ok alone as readiness.

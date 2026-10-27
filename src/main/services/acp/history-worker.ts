@@ -9,6 +9,8 @@ export type HistoryOperation =
   | { op: 'append'; items: HistoryBatchItem[] }
   | { op: 'list'; root: string; input: { limit?: number; cursor?: string; query?: string; filter?: string; archive?: string } }
   | { op: 'session'; root: string; sessionId: string }
+  | { op: 'delete'; root: string; sessionId: string }
+  | { op: 'title-material'; root: string; sessionId: string }
   | { op: 'events'; root: string; sessionId: string; input: { limit?: number; before?: string; after?: string } }
   | { op: 'handoff'; root: string; sessionId: string; byteLimit: number }
   | { op: 'recovery'; root: string; record: AcpSessionRecord; input: { sourcePath: string; sourceDigest: string; events: TimelineEvent[] } }
@@ -34,6 +36,8 @@ export function handleHistoryMessage(message: HistoryOperation): unknown {
     case 'append': return core.append(message.items)
     case 'list': return core.list(message.root, message.input)
     case 'session': return core.session(message.root, message.sessionId)
+    case 'delete': core.deleteSession(message.root, message.sessionId); return { deleted: true }
+    case 'title-material': return core.titleMaterial(message.root, message.sessionId)
     case 'events': return core.events(message.root, message.sessionId, message.input)
     case 'handoff': return core.handoff(message.root, message.sessionId, message.byteLimit)
     case 'recovery': return core.importRecovery(message.root, message.record, message.input)

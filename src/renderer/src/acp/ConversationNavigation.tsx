@@ -1,7 +1,7 @@
 import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { useEffect, useId, useMemo, useRef, useState, type JSX } from 'react'
 import { createPortal } from 'react-dom'
-import { Archive, ArchiveRestore, ChevronDown, Ellipsis, Loader2, Pencil, Pin, PinOff, Plus, Search, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ChevronDown, Ellipsis, Loader2, Pencil, Pin, PinOff, Plus, Search, Sparkles, Trash2, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Button, Dropdown, DropdownItem, Modal } from '../my/ui'
 import { api, hasIpc } from '../api'
@@ -95,7 +95,7 @@ function ConversationSearch({ sessions, archive, onSelect, onClose }: { sessions
   </section>
 }
 
-export function ConversationNavigation({ sessions, activeId, view, onView, onSelect, onNew, open, onClose, collapsed = false, query = '', onQuery, hasMore = false, loadingMore = false, onLoadMore, archive = 'active', onArchive, canManage = false, mutationBusy = {}, mutationErrors = {}, onUpdate }: {
+export function ConversationNavigation({ sessions, activeId, view, onView, onSelect, onNew, open, onClose, collapsed = false, query = '', onQuery, hasMore = false, loadingMore = false, onLoadMore, archive = 'active', onArchive, canManage = false, mutationBusy = {}, mutationErrors = {}, onUpdate, onDelete, onRegenerateTitle }: {
   sessions: AcpSessionRecord[]; activeId: string | null; view: WorkspaceView
   onView: (view: WorkspaceView) => void; onSelect: (sessionId: string) => void; onNew: () => void
   open: boolean; onClose: () => void
@@ -105,6 +105,8 @@ export function ConversationNavigation({ sessions, activeId, view, onView, onSel
   archive?: ConversationArchive; onArchive?: (archive: ConversationArchive) => void
   canManage?: boolean; mutationBusy?: Record<string, boolean>; mutationErrors?: Record<string, string>
   onUpdate?: (id: string, patch: ConversationUpdate) => Promise<AcpHistorySummary | null>
+  onDelete?: (id: string) => Promise<boolean>
+  onRegenerateTitle?: (id: string) => Promise<AcpHistorySummary | null>
 }): JSX.Element {
   const root = useApp((state) => state.snapshot?.meta.root ?? '')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -172,9 +174,11 @@ export function ConversationNavigation({ sessions, activeId, view, onView, onSel
     {session.pinnedAt && <Pin size={12} className="acp-recent-pin" aria-label="已置顶" />}
     </button>
     {canManage && onUpdate && <Dropdown align="right" width={192} className="acp-recent-menu" trigger={({ open: expanded, toggle }) => <button type="button" data-session-id={session.sessionId} className="acp-recent-menu-trigger my-icon-control" aria-label={`会话操作：${session.title ?? session.profileSnapshot?.name ?? `${session.agentName} 会话`}`} aria-expanded={expanded} aria-haspopup="menu" aria-busy={mutationBusy[session.sessionId] || undefined} disabled={mutationBusy[session.sessionId]} onFocus={dismiss} onMouseEnter={dismiss} onClick={() => { dismiss(); toggle() }}>{mutationBusy[session.sessionId] ? <Loader2 size={15} className="animate-spin" /> : <Ellipsis size={15} />}</button>}>{(close) => <>
-      <DropdownItem icon={<Pencil size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); openRename(session) }}>重命名</DropdownItem>
+      <DropdownItem icon={<Pencil size={14} />} disabled={mutationBusy[session.sessionId] || !!session.deletionState} onClick={() => { close(); openRename(session) }}>重命名</DropdownItem>
+      {onRegenerateTitle && <DropdownItem icon={<Sparkles size={14} />} disabled={mutationBusy[session.sessionId] || !!session.customTitle || !!session.deletionState} onClick={() => { close(); if (canInteract()) void onRegenerateTitle(session.sessionId) }}>{session.customTitle ? '手动标题' : '重新生成标题'}</DropdownItem>}
       <DropdownItem icon={session.pinnedAt ? <PinOff size={14} /> : <Pin size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void onUpdate(session.sessionId, { pinned: !session.pinnedAt }) }}>{session.pinnedAt ? '取消置顶' : '置顶'}</DropdownItem>
       <DropdownItem icon={session.archivedAt ? <ArchiveRestore size={14} /> : <Archive size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void onUpdate(session.sessionId, { archived: !session.archivedAt }) }}>{session.archivedAt ? '取消归档' : '归档'}</DropdownItem>
+      {onDelete && <DropdownItem danger icon={<Trash2 size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); dismiss(); if (canInteract()) void onDelete(session.sessionId) }}>{session.deletionState ? '重试永久删除' : '永久删除…'}</DropdownItem>}
     </>}</Dropdown>}
     {mutationErrors[session.sessionId] && rename?.sessionId !== session.sessionId && <p role="alert" className="acp-session-menu-error">{mutationErrors[session.sessionId]}</p>}
   </div>

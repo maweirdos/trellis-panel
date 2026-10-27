@@ -20,7 +20,7 @@ export function projectRunProgress(item: Activity, events: TimelineEvent[], runn
     const observation = event.payload?.observation
     if (!observation || typeof observation !== 'object' || !('label' in observation) || typeof observation.label !== 'string' || !observation.label.trim()) return []
     const failed = 'status' in observation && observation.status === 'failed'
-    const reached = ['指令已发送至引擎', '收到首次模型响应', 'ACP 会话已就绪', '原会话已连接，可以继续对话'].includes(observation.label)
+    const reached = ['指令已发送至引擎', '供应商响应已建立', '收到首个可展示内容', '收到首次模型响应', 'ACP 会话已就绪', '原会话已连接，可以继续对话'].includes(observation.label)
     const current = running && index === scoped.length - 1 && !failed
     // A duration is a recorded latency, never a guessed interval between updates.
     const duration = 'durationMs' in observation && typeof observation.durationMs === 'number' && Number.isFinite(observation.durationMs) && observation.durationMs >= 0 ? observation.durationMs : undefined

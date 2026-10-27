@@ -45,7 +45,7 @@ export function projectCurrentTurnActivity({ root, session, events, request, ret
   terminalTurns?: readonly CurrentTurnIdentity[]
   interactive?: boolean
 }): CurrentTurnActivity | null {
-  if (!interactive || !session || !root || projectRootKey(session.projectRoot) !== projectRootKey(root) || session.historyKind === 'legacy' || session.historyKind === 'transcript') return null
+  if (!interactive || !session || session.connectionOwned === false || !root || projectRootKey(session.projectRoot) !== projectRootKey(root) || session.historyKind === 'legacy' || session.historyKind === 'transcript') return null
   const local = ownsCurrentTurnRequest(request, session, root) ? request : undefined
   if (['error', 'closed', 'disconnected', 'legacy'].includes(session.status)) return null
   const owned = (fact: { projectRoot: string; sessionId?: string; connectionGeneration?: string }): boolean => projectRootKey(fact.projectRoot) === projectRootKey(root) && fact.sessionId === session.sessionId && fact.connectionGeneration === session.connectionGeneration
@@ -70,8 +70,14 @@ export function projectCurrentTurnActivity({ root, session, events, request, ret
   if (local?.phase === 'submitting' && !local.turnId && !currentState) return { phase: 'submitting', label: '正在发送…', spinning: true }
   const latest = [...facts].reverse().find((event) =>
     (event.kind === 'message' && event.payload?.role !== 'user' && Boolean(event.text?.trim())) ||
-    (event.kind === 'thought' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'plan' || event.payload?.tag === 'pi_compaction' || readKnowledgeOperation(event))
+    (event.kind === 'thought' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'plan' || ['pi_compaction', 'pi_thinking', 'pi_thinking_empty', 'pi_image_generation'].includes(String(event.payload?.tag)) || readKnowledgeOperation(event))
   if (latest?.payload?.tag === 'pi_compaction') return { phase: 'processing', label: runtimeActivityLabel(latest), spinning: true }
+  if (latest?.payload?.tag === 'pi_image_generation') return latest.payload.phase === 'running'
+    ? { phase: 'processing', label: '正在生成图片', spinning: true }
+    : { phase: 'processing', label: '处理中', spinning: true }
+  if (latest?.payload?.tag === 'pi_thinking' || latest?.payload?.tag === 'pi_thinking_empty') return latest.payload.phase === 'running'
+    ? { phase: 'thinking', label: '正在思考', spinning: true }
+    : { phase: 'processing', label: '处理中', spinning: true }
   const knowledge = latest && readKnowledgeOperation(latest)
   if (knowledge?.phase === 'running') return { phase: 'knowledge', label: knowledgeOperationLabel(knowledge, true), detail: knowledge.query, spinning: true }
   if (latest?.kind === 'message') return { phase: 'replying', label: '正在生成回复', spinning: true }

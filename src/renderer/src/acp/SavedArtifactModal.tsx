@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX 
 import { ChevronRight, ExternalLink, FileText, X } from 'lucide-react'
 import { Button, Modal } from '../my/ui'
 import { MarkdownView } from '../components/MarkdownView'
+import { ArtifactCopyButton } from '../components/ArtifactCopyButton'
 import { computeHeadingAnchors } from '../reader/heading-anchors'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import { knowledgeBridge, knowledgeError, knowledgeUnavailableFor } from '../knowledge/bridge'
@@ -75,6 +76,7 @@ export function SavedArtifactModal({ root, sessionId, artifact, isCurrent, onClo
         {headings.length > 1 && <Button size="sm" variant="ghost" aria-expanded={outline} aria-controls={outlineId} onClick={() => { if (current()) setOutline(!outline) }}>章节<ChevronRight size={12} className={outline ? 'is-open' : ''} aria-hidden="true" /></Button>}
         <Button size="sm" variant="ghost" aria-expanded={info} aria-controls={infoId} onClick={() => { if (current()) setInfo(!info) }}>文档信息</Button>
         <Button size="sm" variant="ghost" aria-pressed={raw} onClick={changeView}>{raw ? '阅读正文' : 'Markdown 原文'}</Button>
+        <ArtifactCopyButton text={artifact.body} ownerKey={JSON.stringify([root, sessionId, artifact.id, artifact.revision])} label="复制文档" isCurrent={current} />
         <Button size="sm" variant="ghost" disabled={localOpen.phase === 'opening'} onClick={() => void openLocal()}><ExternalLink size={13} aria-hidden="true" />在本地打开</Button>
       </div>
       {localOpen.phase !== 'idle' && localOpen.phase !== 'opening' && <div className="acp-saved-document-open-notice" role={localOpen.phase === 'opened' ? 'status' : 'alert'}><p>{localOpen.detail}</p>{localOpen.phase === 'conflict' && <><p>弹窗保留已保存版本。是否仍要打开当前项目文件？</p><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void openLocal(true)}>仍打开当前文件</Button><Button size="sm" variant="ghost" onClick={() => setLocalOpen({ phase: 'idle', detail: '' })}>取消</Button></div></>}</div>}

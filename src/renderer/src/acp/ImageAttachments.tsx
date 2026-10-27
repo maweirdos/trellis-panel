@@ -4,8 +4,10 @@ import { Modal } from '../my/ui'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import type { AcpImageAttachment } from '../../../shared/acp-images'
 
-export function ImageAttachments({ images, onRemove }: { images: AcpImageAttachment[]; onRemove?: (id: string) => void }): JSX.Element | null {
+export function ImageAttachments({ images, onRemove, onSave }: { images: AcpImageAttachment[]; onRemove?: (id: string) => void; onSave?: (id: string) => Promise<void> }): JSX.Element | null {
   const [selected, setSelected] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const returnFocus = useRef<HTMLButtonElement | null>(null)
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
@@ -24,7 +26,8 @@ export function ImageAttachments({ images, onRemove }: { images: AcpImageAttachm
     </div>
     <Modal open={Boolean(image)} onClose={close} width={840}>
       {image && <section className="acp-image-preview" role="dialog" aria-modal="true" aria-label={`预览图片 ${image.name}`}>
-        <header><span title={image.name}>{image.name}</span><button type="button" autoFocus aria-label="关闭图片预览" onClick={close}><X size={18} /></button></header>
+        <header><span title={image.name}>{image.name}</span>{onSave && <button type="button" disabled={saving} onClick={() => { setSaveError(''); setSaving(true); void onSave(image.id).catch(() => setSaveError('保存图片失败')).finally(() => setSaving(false)) }}>{saving ? '保存中…' : '保存图片'}</button>}<button type="button" autoFocus aria-label="关闭图片预览" onClick={close}><X size={18} /></button></header>
+        {saveError && <p role="alert">{saveError}</p>}
         <img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} />
       </section>}
     </Modal>

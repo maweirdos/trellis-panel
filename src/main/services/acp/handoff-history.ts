@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { AcpHistorySummary } from '../../../shared/acp-history'
+import { readHistoryText } from './history-text'
 
 export interface HandoffArchive {
   checkpointEventId: string
@@ -102,19 +103,16 @@ export function readHandoffArchive(db: DatabaseSync, root: string, session: AcpH
   const chunks: string[] = []
   let includedMessages = 0
   let latestTurnIncluded = false
-  const textRows = db.prepare(`SELECT json_extract(payload,'$.text') text,
-    COALESCE(json_extract(payload,'$.payload.role'),'assistant') role,json_extract(payload,'$.payload.messageId') messageId,
-    COALESCE(json_array_length(payload,'$.payload.images'),0) images
-    FROM events WHERE root=? AND sessionId=? AND seq>=? AND seq<=? AND kind='message'
-    AND json_extract(payload,'$.source') IN ('acp','pi') AND json_extract(payload,'$.sessionId')=? ORDER BY seq`)
   for (const turn of selected) {
     const messages: Array<{ key: string; role: string; text: string }> = []
-    for (const row of textRows.iterate(root, id, turn.first, turn.last, id)) {
-      const role = row.role === 'user' ? 'User' : 'Assistant'
-      if (row.role !== 'user' && row.role !== 'assistant') continue
-      const content = (typeof row.text === 'string' ? row.text : '') + (Number(row.images) ? `\n[${Number(row.images)} image attachment(s) omitted]` : '')
+    for (const row of readHistoryText(db, root, id, turn.first, turn.last)) {
+      const originalRole = row.payload?.role ?? 'assistant'
+      const role = originalRole === 'user' ? 'User' : 'Assistant'
+      if (originalRole !== 'user' && originalRole !== 'assistant') continue
+      const images = Number(row.payload?.historyImageCount ?? 0)
+      const content = (typeof row.text === 'string' ? row.text : '') + (images ? `\n[${images} image attachment(s) omitted]` : '')
       if (!content) continue
-      const key = `${role}\0${String(row.messageId ?? '')}`
+      const key = `${role}\0${String(row.payload?.messageId ?? '')}`
       const previous = messages.at(-1)
       if (previous?.key === key && role !== 'User') previous.text += content
       else messages.push({ key, role, text: content })

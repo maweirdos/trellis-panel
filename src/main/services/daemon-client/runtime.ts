@@ -249,7 +249,7 @@ const resetSessionSchema = z.object({
   events: z.array(z.unknown()).max(0)
 }).passthrough()
 const resetSnapshotSchema = z.object({ ok: z.literal(true), sessions: z.array(resetSessionSchema).max(104) }).passthrough() // Four live owners plus 100 history records.
-const eventChannels = new Set<string>([ipcEvent.acpOutput, ipcEvent.acpState, ipcEvent.acpDone, ipcEvent.acpPermission])
+const eventChannels = new Set<string>([ipcEvent.acpOutput, ipcEvent.acpState, ipcEvent.acpDone, ipcEvent.acpPermission, ipcEvent.acpHistoryChanged])
 export function observeRuntime(root: string): () => void {
   const old = observers.get(root)
   if (old) return old

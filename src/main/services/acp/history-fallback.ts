@@ -6,6 +6,7 @@ import { acpConversationPreview, hasAcpConversationContent } from '../../../shar
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { historicalEvent, historyEventMetadata, HistoryTurnBoundaryError, selectHistoryTurns } from './history-turns'
 import { applySessionPreferences, compareHistorySummaries, matchesHistorySummary, readSessionPreferences } from './session-preferences'
+import { readHistoryDeletion } from './history-deletion'
 
 const snapshots = new Map<string, { root: string; query: string; filter: string; archive: string; preferencesRevision: string; expires: number; sessions: AcpHistorySummary[] }>()
 function encode(value: unknown): string { return Buffer.from(JSON.stringify(value)).toString('base64url') }
@@ -55,10 +56,11 @@ export function snapshotHistoryList(root: string, input: unknown, error: string)
     if (snapshots.size >= 16) snapshots.delete(snapshots.keys().next().value ?? '')
     snapshots.set(id, { root: rootKey, query, filter, archive, preferencesRevision: preferences.revision, expires: now + 300_000, sessions })
   }
-  const page = sessions.slice(index, index + (options.limit ?? 30))
-  const hasMore = index + page.length < sessions.length
+  const scanned = sessions.slice(index, index + (options.limit ?? 30))
+  const page = scanned.filter(session => !readHistoryDeletion(acpDataPath(), root, session.sessionId))
+  const hasMore = index + scanned.length < sessions.length
   return { ok: true, version: 1, sessions: page, snapshotId: id, searchScope: 'metadata', hasMore,
-    nextCursor: hasMore ? encode({ kind: 'snapshot-list', snapshot: id, index: index + page.length }) : null,
+    nextCursor: hasMore ? encode({ kind: 'snapshot-list', snapshot: id, index: index + scanned.length }) : null,
     diagnostics: [{ code: 'archive_unavailable', message: '完整历史暂不可读，当前展示原有快照；更早的内容可能不在快照内。' }] }
 }
 export function snapshotHistoryEvents(root: string, id: string, input: unknown, error: string): AcpHistoryEventPage | IpcFail {

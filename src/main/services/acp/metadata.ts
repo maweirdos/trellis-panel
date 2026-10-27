@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFi
 import { dirname, join, resolve } from 'path'
 import type { AcpAgentProfile, AcpSessionRecord } from '../../../shared/types'
 import { idSchema, objectValue, profileSchema } from './types'
+import { readHistoryDeletion } from './history-deletion'
 
 export function canonicalDirectory(directory: string): string {
   let value: string
@@ -44,6 +45,7 @@ export function saveProfiles(root: string, profiles: AcpAgentProfile[]): void {
 
 export function persistRecord(record: AcpSessionRecord): void {
   idSchema.parse(record.sessionId)
+  if (readHistoryDeletion(acpDataPath(), record.projectRoot, record.sessionId)) throw new Error('此会话已永久删除或正在清理，不能重新写入')
   const path = join(app.getPath('userData'), 'acp-sessions', `${record.sessionId}.json`)
   if (!backedUp.has(path) && existsSync(path)) {
     const bytes = readFileSync(path)
@@ -70,6 +72,7 @@ export function readRecords(): AcpSessionRecord[] {
       if (!idSchema.safeParse(raw.sessionId).success || typeof raw.projectRoot !== 'string' || !Array.isArray(raw.events)) continue
       // Unknown/newer records are never overwritten by this reader.
       const record = raw as unknown as AcpSessionRecord
+      if (readHistoryDeletion(acpDataPath(), record.projectRoot, record.sessionId)) continue
       const legacy = record.schemaVersion !== 2
       const canResume = !legacy && typeof record.backendSessionId === 'string' && record.backendSessionId.trim().length > 0 && record.canResume === true
       records.push({ ...record, status: legacy ? 'legacy' : record.status === 'closed' || record.status === 'error' ? record.status : 'disconnected',

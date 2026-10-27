@@ -1,6 +1,7 @@
 /** ESM-only, LF JSONL child entry. The host owns admission, leases and presentation. */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { format } from 'node:util'
+import { homedir } from 'node:os'
 import {
   createAgentSession, createMcpExtension, SettingsManager,
   type AgentSession, type AgentSessionEvent, type ExtensionFactory, type ModelRuntime
@@ -9,7 +10,13 @@ import { z } from 'zod'
 import { PI_FRAME_BYTES, piInitializeSchema, piStateSchema, type PiActivity, type PiChildMessage, type PiInitialize, type PiPermission, type PiState } from './protocol'
 import { createModels, disposeModels, initialModelSelection, selectedModel } from './engine/models'
 import { createResources, mcpLogPath, mcpRegistration } from './engine/resources'
+import { webPreviewExtension } from './engine/web-preview'
 import { openSession, prepareDirectories } from './engine/storage'
+import { AssistantTextStream } from './engine/assistant-text'
+import { configurePiFindRuntime } from './engine/find-runtime'
+import { savePiImage } from './images'
+import { ACP_IMAGE_MAX_COUNT, ACP_IMAGES_MAX_BYTES, acpImageBytes } from '../../../shared/acp-images'
+import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
 
 const commandSchema = z.object({ id: z.string().min(1), method: z.string().min(1), params: z.unknown().optional() }).strict()
 const permissionResponseSchema = z.object({ type: z.literal('permission_response'), id: z.string().min(1), allow: z.boolean(), reason: z.string().optional() }).strict()
@@ -23,7 +30,7 @@ const emptySchema = z.object({}).strict()
 
 type Command = z.infer<typeof commandSchema>
 type Prompt = z.infer<typeof promptSchema>
-type Turn = { cancelled: boolean; started: boolean; failure?: string; aborted: boolean }
+type Turn = { cancelled: boolean; started: boolean; failure?: string; imageFailure?: string; aborted: boolean; imageCount: number; imageBytes: number; responseNumber: number; imageKeys: Set<string>; imageProgress: Set<string>; completedImages: Set<string> }
 type PermissionDecision = { allow: boolean; reason?: string }
 
 let configuration: PiInitialize | undefined
@@ -41,8 +48,8 @@ const permissions = new Map<string, (decision: PermissionDecision) => void>()
 const inFlightCommands = new Set<string>()
 const secrets = new Set<string>()
 const toolOutput = new Map<string, string>()
-type AssistantStream = { id: string; blocks: Map<number, { stream: 'output' | 'thought'; text: string }> }
-let assistantStream: AssistantStream | undefined
+let assistantStream: AssistantTextStream | undefined
+const completedAssistantMessages = new WeakSet<object>()
 
 function redact(text: string): string {
   let safe = text
@@ -84,8 +91,18 @@ function errorText(error: unknown): string {
 function send(message: PiChildMessage): void {
   // Permission arguments and machine identities are exact. Redacting them would approve different
   // arguments from the ones the SDK executes, or corrupt tags when a short key matches a tag.
-  const machineFields = new Set(['type', 'id', 'toolCallId', 'name', 'status', 'tag', 'phase', 'stream', 'messageId'])
-  const replacer = (key: string, value: unknown) => message.type === 'event' && typeof value === 'string' && !machineFields.has(key) ? redact(value) : value
+  const machineFields = new Set(['type', 'id', 'toolCallId', 'name', 'status', 'tag', 'phase', 'stream', 'messageId', 'operationId', 'blockType', 'operation', 'providerMessageId', 'authority'])
+  const imageRefs = new WeakSet<object>()
+  if (message.type === 'event' && message.event.type === 'text_delta' && Array.isArray(message.event.meta?.piImages)) {
+    for (const image of message.event.meta.piImages) if (image && typeof image === 'object') imageRefs.add(image)
+  }
+  const preview = message.type === 'event' && message.event.type === 'text_delta' && readPiWebPreviewArtifact(message.event.meta?.piWebPreview)
+    ? message.event.meta?.piWebPreview : undefined
+  const replacer = function (this: object, key: string, value: unknown): unknown {
+    if (this === preview && key === 'title' && typeof value === 'string') return redact(value).slice(0, 160)
+    return message.type === 'event' && typeof value === 'string' && !machineFields.has(key) && !imageRefs.has(this) &&
+      !(this === preview && (key === 'path' || key === 'revision')) ? redact(value) : value
+  }
   const line = JSON.stringify(message, replacer)
   if (Buffer.byteLength(line) > PI_FRAME_BYTES) {
     // Preserve the actual lifecycle/identity even when an SDK result includes large images.
@@ -156,7 +173,7 @@ function requestPermission(request: PiPermission, signal?: AbortSignal): Promise
 
 const permissionExtension: ExtensionFactory = pi => {
   pi.on('tool_call', async (event, ctx) => {
-    const decision = await requestPermission({ toolCallId: event.toolCallId, name: event.toolName, args: event.input }, ctx.signal)
+    const decision = await requestPermission({ toolCallId: event.toolCallId, name: event.toolName, args: event.input, cwd: ctx.cwd, homeDir: homedir() }, ctx.signal)
     return decision.allow ? undefined : { block: true, reason: decision.reason || 'Permission denied by host', terminate: Boolean(turn?.cancelled || closing) }
   })
   // No user-shell path is allowed outside the named, permission-gated SDK tool pipeline.
@@ -187,44 +204,101 @@ function resultText(value: unknown): string {
     && 'text' in item && typeof item.text === 'string' ? [item.text] : []).join('\n')
 }
 
+function captureImage(key: string, data: unknown, mimeType?: unknown): void {
+  const owner = turn
+  if (!owner || owner.cancelled || !configuration || owner.imageKeys.has(key)) return
+  try {
+    if (typeof data !== 'string') throw new Error('Pi 图片内容缺失')
+    const bytes = acpImageBytes(data)
+    if (owner.imageCount >= ACP_IMAGE_MAX_COUNT || owner.imageBytes + bytes > ACP_IMAGES_MAX_BYTES) throw new Error('Pi 图片超出本轮数量或总大小限制')
+    const image = savePiImage(configuration.sessionDir, data, typeof mimeType === 'string' ? mimeType : undefined)
+    owner.imageCount++; owner.imageBytes += bytes; owner.imageKeys.add(key)
+    activity({ type: 'text_delta', text: '', stream: 'output', messageId: assistantStream?.id ?? `pi-image-${key}`, meta: { piImages: [image] } })
+  } catch (error) {
+    owner.imageKeys.add(key)
+    owner.imageFailure = errorText(error)
+    activity({ type: 'error', message: `图片保存失败：${owner.imageFailure}` })
+  }
+}
+
+function providerEvent(value: unknown): void {
+  if (!turn || !value || typeof value !== 'object') return
+  const event = value as Record<string, unknown>
+  const item = event.item && typeof event.item === 'object' ? event.item as Record<string, unknown> : undefined
+  const operationId = typeof event.item_id === 'string' ? event.item_id : typeof item?.id === 'string' ? item.id : typeof event.output_index === 'number' ? `output-${event.output_index}` : undefined
+  const kind = typeof event.type === 'string' ? event.type : ''
+  if (kind === 'response.created') { turn.responseNumber++; activity({ type: 'status', text: '供应商已建立响应', tag: 'pi_provider_response' }) }
+  if ((item?.type === 'image_generation_call' && kind === 'response.output_item.added') || kind === 'response.image_generation_call.in_progress') {
+    const key = `${turn.responseNumber}:${operationId ?? 'unknown'}:running`
+    if (!turn.imageProgress.has(key)) { turn.imageProgress.add(key); activity({ type: 'status', text: '正在生成图片', tag: 'pi_image_generation', phase: 'running', operationId }) }
+  }
+  if (kind === 'response.image_generation_call.completed' || (item?.type === 'image_generation_call' && kind === 'response.output_item.done')) {
+    const key = `${turn.responseNumber}:${operationId ?? 'unknown'}:completed`
+    turn.completedImages.add(`response:${turn.responseNumber}:${operationId ?? 'unknown'}`)
+    if (!turn.imageProgress.has(key)) { turn.imageProgress.add(key); activity({ type: 'status', text: '图片生成完成', tag: 'pi_image_generation', phase: 'completed', operationId }) }
+  }
+  if (kind === 'response.output_item.done' && item?.type === 'image_generation_call' && item.result !== undefined) captureImage(`response:${turn.responseNumber}:${operationId ?? 'unknown'}`, item.result)
+  if (kind === 'response.completed' && event.response && typeof event.response === 'object') {
+    const output = (event.response as Record<string, unknown>).output
+    if (Array.isArray(output)) output.forEach((entry, index) => {
+      if (entry && typeof entry === 'object' && entry.type === 'image_generation_call') {
+        const key = `response:${turn?.responseNumber}:${typeof entry.id === 'string' ? entry.id : `output-${index}`}`
+        turn?.completedImages.add(key)
+        if (entry.result !== undefined) captureImage(key, entry.result)
+      }
+    })
+  }
+}
+
+function safeToolOutput(value: unknown, toolCallId: string, capture: boolean): unknown {
+  if (!value || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(item => safeToolOutput(item, toolCallId, capture))
+  const object = value as Record<string, unknown>
+  if (object.type === 'image' && typeof object.data === 'string') {
+    // The hash identifies repeated partial/final copies within one tool call.
+    const key = `tool:${toolCallId}:${createHash('sha256').update(object.data).digest('hex')}`
+    if (capture) captureImage(key, object.data, object.mimeType)
+    return { type: 'image', omitted: true }
+  }
+  return Object.fromEntries(Object.entries(object).map(([key, item]) => [key, safeToolOutput(item, toolCallId, capture)]))
+}
+
 function promptStarted(): void {
   if (!turn || turn.started) return
   turn.started = true
   status('Pi prompt started', 'pi_prompt_started')
 }
 
-function assistantDelta(index: number, stream: 'output' | 'thought', text: string): void {
-  const message = assistantStream
-  if (!message || !text) return
-  const block = message.blocks.get(index)
-  message.blocks.set(index, { stream, text: (block?.text ?? '') + text })
-  activity({ type: 'text_delta', text, stream, messageId: message.id })
-}
-
 function onEvent(event: AgentSessionEvent): void {
   switch (event.type) {
     case 'message_start':
       if (event.message.role === 'user') promptStarted()
-      if (event.message.role === 'assistant') assistantStream = { id: randomUUID(), blocks: new Map() }
+      if (event.message.role === 'assistant') assistantStream = new AssistantTextStream(activity)
       break
     case 'message_update': {
       const update = event.assistantMessageEvent
+      if (update.type === 'text_end' || update.type === 'thinking_end') {
+        assistantStream?.reconcile(update.contentIndex, update.type === 'text_end' ? 'text' : 'thinking', update.content,
+          update.partial.content[update.contentIndex], 'block_end')
+      }
+      if (update.type === 'thinking_start' || update.type === 'thinking_end') {
+        const stream = assistantStream
+        if (update.type === 'thinking_start') stream?.thinkingStarted.add(update.contentIndex)
+        const empty = update.type === 'thinking_end' && stream?.thinkingStarted.has(update.contentIndex) && !stream.textAt(update.contentIndex).trim() && !update.content.trim()
+        activity({ type: 'status', text: empty ? '模型未提供可展示的思考内容' : update.type === 'thinking_start' ? '正在思考' : '思考结束', tag: empty ? 'pi_thinking_empty' : 'pi_thinking', phase: update.type === 'thinking_start' ? 'running' : 'completed', messageId: stream?.id, operationId: String(update.contentIndex) })
+      }
       if (update.type === 'text_delta' || update.type === 'thinking_delta') {
-        assistantDelta(update.contentIndex, update.type === 'thinking_delta' ? 'thought' : 'output', update.delta)
+        assistantStream?.append(update.contentIndex, update.type === 'thinking_delta' ? 'thinking' : 'text', update.delta, update.partial.content[update.contentIndex])
       }
       break
     }
     case 'message_end':
       if (event.message.role === 'assistant') {
-        // Some providers deliver an authoritative final block without its last delta (or with no deltas).
-        // Reconcile per content index so thinking blocks and separate tool rounds keep their identities.
-        for (const [index, block] of event.message.content.entries()) {
-          if (block.type !== 'text' && block.type !== 'thinking') continue
-          const finalText = block.type === 'text' ? block.text : block.thinking
-          const streamed = assistantStream?.blocks.get(index)?.text ?? ''
-          if (finalText.startsWith(streamed)) assistantDelta(index, block.type === 'text' ? 'output' : 'thought', finalText.slice(streamed.length))
-          else activity({ type: 'error', message: 'Pi final assistant content differs from its streamed prefix' })
-        }
+        if (completedAssistantMessages.has(event.message)) break
+        // Keep final-only responses independent even if the SDK omitted message_start.
+        const stream = assistantStream ?? new AssistantTextStream(activity)
+        stream.finish(event.message.content)
+        completedAssistantMessages.add(event.message)
         assistantStream = undefined
         if (turn) {
           turn.failure = event.message.stopReason === 'error' ? errorText(event.message.errorMessage || 'Pi provider failed') : undefined
@@ -244,14 +318,21 @@ function onEvent(event: AgentSessionEvent): void {
       const previous = toolOutput.get(event.toolCallId) ?? ''
       toolOutput.set(event.toolCallId, text)
       activity({ type: 'tool_call', text: text.slice(0, 64 * 1024) || event.toolName, toolCallId: event.toolCallId, title: event.toolName,
-        status: 'running', tag: 'pi_tool_update', rawOutput: event.partialResult, outputDelta: text.startsWith(previous) ? text.slice(previous.length) : undefined })
+        status: 'running', tag: 'pi_tool_update', rawOutput: safeToolOutput(event.partialResult, event.toolCallId, false), outputDelta: text.startsWith(previous) ? text.slice(previous.length) : undefined })
       break
     }
-    case 'tool_execution_end':
+    case 'tool_execution_end': {
       toolOutput.delete(event.toolCallId)
       activity({ type: 'tool_call', text: resultText(event.result).slice(0, 64 * 1024) || event.toolName, toolCallId: event.toolCallId,
-        title: event.toolName, status: event.isError ? 'failed' : 'completed', tag: 'pi_tool_end', rawOutput: event.result })
+        title: event.toolName, status: event.isError ? 'failed' : 'completed', tag: 'pi_tool_end', rawOutput: safeToolOutput(event.result, event.toolCallId, false) })
+      if (!event.isError) safeToolOutput(event.result, event.toolCallId, true)
+      if (!event.isError && event.toolName === 'preview_web') {
+        const result = event.result as { details?: { piWebPreview?: unknown } }
+        const preview = readPiWebPreviewArtifact(result.details?.piWebPreview)
+        if (preview) activity({ type: 'text_delta', text: '', stream: 'output', messageId: `pi-web-preview-${event.toolCallId}`, meta: { piWebPreview: preview } })
+      }
       break
+    }
     case 'compaction_start':
       status(`Pi compaction (${event.reason})`, 'pi_compaction', 'running')
       if (closing || turn?.cancelled) session?.abortCompaction()
@@ -282,12 +363,13 @@ async function initialize(value: unknown): Promise<void> {
   // Native MCP/tool utility defaults must also remain inside the supplied private agent directory.
   process.env.PI_CODING_AGENT_DIR = input.agentDir
   process.env.PI_OFFLINE = '1'
+  configurePiFindRuntime(import.meta.url)
   configuration = input
   settings = SettingsManager.inMemory({ packages: [], extensions: [], skills: [], prompts: [], themes: [], cacheWarming: 'off' }, { projectTrusted: false })
   const registration = mcpRegistration(input)
   const runtime = await createModels(input)
   models = runtime
-  const loader = createResources(input, settings, [permissionExtension, registration, createMcpExtension({
+  const loader = createResources(input, settings, [permissionExtension, webPreviewExtension(input.root), registration, createMcpExtension({
     loadConfig: () => ({ servers: [], autoEnableCodemode: false, errors: [] }), logPath: mcpLogPath,
     openUrl: () => { throw new Error('MCP sign-in must be configured by the host') },
     updateConfig: () => { throw new Error('MCP configuration is owned by the host') }
@@ -302,7 +384,7 @@ async function initialize(value: unknown): Promise<void> {
     settingsManager: settings, resourceLoader: loader, sessionManager,
     // An explicit allowlist retains direct MCP tools; noTools:'all' would suppress them too.
     noTools: 'builtin', tools: ['read', 'write', 'edit', 'grep', 'find', 'ls', process.platform === 'win32' ? 'powershell' : 'bash',
-      'mcp__*', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'], excludeTools: ['codemode', 'tool_search'] })
+      'preview_web', 'mcp__*', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'], excludeTools: ['codemode', 'tool_search'] })
   session = created.session
   session.subscribe(onEvent)
   await session.bindExtensions({ mode: 'json', onError: event => {
@@ -311,6 +393,11 @@ async function initialize(value: unknown): Promise<void> {
     activity({ type: 'error', message })
   }, abortHandler: () => { void abort().catch(error => activity({ type: 'error', message: errorText(error) })) },
   shutdownHandler: () => { void shutdown().then(() => exitAfterFlush(0)).catch(fatal) } })
+  const originalProviderStreamEvent = session.agent.onProviderStreamEvent
+  session.agent.onProviderStreamEvent = async (event, model) => {
+    await originalProviderStreamEvent?.(event, model)
+    providerEvent(event)
+  }
 }
 
 async function abort(): Promise<void> {
@@ -335,7 +422,7 @@ function nativeCompact(text: string): string | undefined {
 }
 
 function beginTurn(current: AgentSession, prompt: Prompt | { instructions?: string }): void {
-  const owner: Turn = { cancelled: false, started: false, aborted: false }
+  const owner: Turn = { cancelled: false, started: false, aborted: false, imageCount: 0, imageBytes: 0, responseNumber: 0, imageKeys: new Set(), imageProgress: new Set(), completedImages: new Set() }
   turn = owner
   running = Promise.resolve().then(async () => {
     if (owner.cancelled || closing) return
@@ -357,13 +444,17 @@ function beginTurn(current: AgentSession, prompt: Prompt | { instructions?: stri
     }
   }).catch(error => { owner.failure = errorText(error) }).finally(() => {
     cancelPermissions()
+    if (!owner.cancelled && !owner.aborted && !owner.imageFailure && [...owner.completedImages].some(key => !owner.imageKeys.has(key))) {
+      owner.imageFailure = '供应商报告图片生成完成，但未返回图片内容'
+      activity({ type: 'error', message: owner.imageFailure })
+    }
     if (owner.failure && !owner.cancelled && !owner.aborted) activity({ type: 'error', message: owner.failure })
-    const phase = owner.cancelled || owner.aborted ? 'cancelled' : owner.failure ? 'failed' : 'completed'
+    const phase = owner.cancelled || owner.aborted ? 'cancelled' : owner.failure || owner.imageFailure ? 'failed' : 'completed'
     toolOutput.clear()
     assistantStream = undefined
     turn = undefined
     running = undefined
-    status(phase === 'failed' && owner.failure ? owner.failure : `Pi ${phase}`, 'pi_settled', phase)
+    status(phase === 'failed' ? owner.failure || owner.imageFailure || 'Pi failed' : `Pi ${phase}`, 'pi_settled', phase)
   })
 }
 

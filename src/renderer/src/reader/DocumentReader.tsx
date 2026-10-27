@@ -10,6 +10,7 @@ import type { DocumentReaderController } from './use-document-reader'
 import type { ReaderOrigin } from '../../../shared/document-windows'
 import { FixedDocumentActions } from './FixedDocumentActions'
 import { computeHeadingAnchors } from './heading-anchors'
+import { ArtifactCopyButton } from '../components/ArtifactCopyButton'
 
 /**
  * DocumentReader（S0 G2 第三片，design §6.1）：三入口共享的文档阅读容器——
@@ -113,6 +114,7 @@ export function DocumentReaderSurface({
         extra={
           <>
           {showOutline && <button type="button" className="my-chip text-my-secondary hover:text-my-primary" disabled={headings.length === 0} onClick={() => setOutlineOpen((value) => !value)}>目录</button>}
+          {!reader.loading && reader.diff === null && reader.displayedText !== null && <ArtifactCopyButton text={reader.displayedText} ownerKey={JSON.stringify([reader.key, reader.doc?.source.canonicalPath, displayedRevision])} label="复制文档" />}
           <FixedDocumentActions version={reader.doc?.fixedVersion} unavailable={reader.doc?.fixedVersionError} origin={origin} />
           {headerExtra}
           {onExpand !== undefined ? (

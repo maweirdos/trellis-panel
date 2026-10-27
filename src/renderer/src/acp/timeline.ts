@@ -1,9 +1,11 @@
 import { isConversationRuntimeEvent } from './runtime-events'
 import type { AcpSessionStatus, TimelineEvent } from '../../../shared/types'
-import { readAcpImages, type AcpImageAttachment } from '../../../shared/acp-images'
+import { readAcpImages, readAcpStoredImages, type AcpImageAttachment, type AcpStoredImage } from '../../../shared/acp-images'
+import { readPiWebPreviewArtifact, type PiWebPreviewArtifact } from '../../../shared/pi-web-preview'
 import { relativePathUnderRoot, sameRelativeDocumentPath } from '../reader/reader-paths'
 import { knowledgeOperationIdentity, nativeKnowledgeOperationId, readKnowledgeOperation, type ConversationKnowledgeOperation } from './knowledge-operations'
 import { orderTimelineEvents } from './event-order'
+import { readConversationTextBlock, replayConversationTextEvents } from '@shared/acp-text-blocks'
 
 export interface ToolItemState {
   toolCallId: string
@@ -18,7 +20,7 @@ export interface FileChangeItem {
 }
 
 export type RenderItem =
-  | { type: 'user' | 'agent' | 'thought'; key: string; text: string; startsAnswer?: boolean; images?: AcpImageAttachment[]; delivery?: 'preparing' | 'sent' | 'not_sent' }
+  | { type: 'user' | 'agent' | 'thought'; key: string; text: string; providerPhase?: 'commentary' | 'final_answer'; startsAnswer?: boolean; images?: AcpImageAttachment[]; storedImages?: AcpStoredImage[]; webPreview?: PiWebPreviewArtifact; webPreviewEventId?: string; delivery?: 'preparing' | 'sent' | 'not_sent' }
   | { type: 'tool'; key: string; tool: ToolItemState }
   | { type: 'knowledge-operation'; key: string; ev: TimelineEvent; operation: ConversationKnowledgeOperation }
   | { type: 'change-group'; key: string; events: TimelineEvent[]; files: FileChangeItem[] }
@@ -28,6 +30,7 @@ export type RenderItem =
 
 /** Projection only: protocol ownership and partial-update validation live in the runtime. */
 export function compileItems(events: TimelineEvent[]): RenderItem[] {
+  events = replayConversationTextEvents(events)
   // Connection history stays available to diagnostics; it is not a user turn.
   // This also isolates old restores that accidentally reused the last turnId.
   const transcriptEvents = events.filter((event) => !isConnectionTimelineEvent(event))
@@ -36,6 +39,7 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
   const toolIndex = new Map<string, Extract<RenderItem, { type: 'tool' }>>()
   const knowledgeIndex = new Map<string, Extract<RenderItem, { type: 'knowledge-operation' }>>()
   const preparingQuestions = new Map<string, Extract<RenderItem, { type: 'user' | 'agent' | 'thought' }>>()
+  const piBlockKeys = new Set<string>()
   const identityOf = (event: TimelineEvent): string => JSON.stringify([event.source, knowledgeOperationIdentity(event, '')])
   const turnStarts = new Map<string, number>()
   const transportObservations = new Map<string, TimelineEvent[]>()
@@ -120,12 +124,28 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
     }
     if (ev.kind === 'message' || ev.kind === 'thought') {
       const type = ev.kind === 'thought' ? 'thought' : ev.payload?.role === 'user' ? 'user' : 'agent'
+      const meta = asObject(ev.payload?.meta)
+      if (ev.source === 'pi' && meta?.piText !== undefined) {
+        const block = readConversationTextBlock(ev)
+        // Structured updates never fall back to appending onto a nearby message.
+        if (!block || type === 'user') continue
+        const phase = meta.phase === 'commentary' || meta.phase === 'final_answer' ? meta.phase : undefined
+        const item: Extract<RenderItem, { type: 'user' | 'agent' | 'thought' }> = { type, key, text: ev.text ?? '', ...(phase ? { providerPhase: phase } : {}) }
+        piBlockKeys.add(key); items.push(item)
+        continue
+      }
       const last = items[items.length - 1]
       const previousSource = last && sourceEvents.get(last.key)
-      const sameMessage = previousSource && identityOf(previousSource) === identityOf(ev) && previousSource.payload?.messageId === ev.payload?.messageId
-      if (type !== 'user' && last?.type === type && sameMessage) last.text += ev.text ?? ''
+      const sameMessage = previousSource && !piBlockKeys.has(last.key) && identityOf(previousSource) === identityOf(ev) && previousSource.payload?.messageId === ev.payload?.messageId
+      const storedImages = type === 'agent' ? readAcpStoredImages(asObject(ev.payload?.meta)?.piImages) : []
+      const webPreview = type === 'agent' && ev.source === 'pi' ? readPiWebPreviewArtifact(asObject(ev.payload?.meta)?.piWebPreview) : null
+      if (type !== 'user' && last?.type === type && sameMessage) {
+        last.text += ev.text ?? ''
+        if (storedImages.length) last.storedImages = [...(last.storedImages ?? []), ...storedImages]
+        if (webPreview) { last.webPreview = webPreview; last.webPreviewEventId = ev.id }
+      }
       else {
-        const item: Extract<RenderItem, { type: 'user' | 'agent' | 'thought' }> = { type, key, text: ev.text ?? '', ...(type === 'user' ? { images: readAcpImages(ev.payload?.images) } : {}) }
+        const item: Extract<RenderItem, { type: 'user' | 'agent' | 'thought' }> = { type, key, text: ev.text ?? '', ...(type === 'user' ? { images: readAcpImages(ev.payload?.images) } : {}), ...(storedImages.length ? { storedImages } : {}), ...(webPreview ? { webPreview, webPreviewEventId: ev.id } : {}) }
         if (type === 'user' && isConversationRuntimeEvent(ev) && hasPromptOwner(ev) && ev.payload?.delivery === 'preparing') {
           item.delivery = 'preparing'
           preparingQuestions.set(identityOf(ev), item)
@@ -178,8 +198,19 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
   // Tool patches mutate only their original scoped row. No turn-wide collection
   // or terminal relocation: each visible segment keeps its first event anchor.
   const answers = new Set<string>()
+  const emptyThoughtNotices = new Set<string>()
+  const visibleThoughtTurns = new Set(items.filter(item => item.type === 'thought' && item.text.trim()).flatMap(item => {
+    const source = sourceEvents.get(item.key)
+    return source ? [identityOf(source)] : []
+  }))
   const projected = items.filter((item) => {
     const source = sourceEvents.get(item.key)
+    if (piBlockKeys.has(item.key) && (item.type === 'agent' || item.type === 'thought') && !item.text && !item.storedImages?.length && !item.webPreview) return false
+    if (item.type === 'detail' && item.ev.payload?.tag === 'pi_thinking_empty' && item.ev.turnId && item.ev.connectionGeneration) {
+      const identity = identityOf(item.ev)
+      if (visibleThoughtTurns.has(identity) || emptyThoughtNotices.has(identity)) return false
+      emptyThoughtNotices.add(identity)
+    }
     if (source && item.type === 'tool') {
       const operationId = nativeKnowledgeOperationId(item.tool.payload)
       if (operationId && knowledgeIndex.has(knowledgeOperationIdentity(source, operationId))) return false
@@ -196,7 +227,7 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
 
 /** Successful transport milestones are detail-only, not steps competing with the answer. */
 function isTurnTransportObservation(event: TimelineEvent): boolean {
-  return isConversationRuntimeEvent(event) && event.kind === 'session-status' && Boolean(event.turnId) && ['开始处理', '指令已发送至引擎', '收到首次模型响应'].includes(String(asObject(event.payload?.observation)?.label))
+  return isConversationRuntimeEvent(event) && event.kind === 'session-status' && Boolean(event.turnId) && ['开始处理', '指令已发送至引擎', '供应商响应已建立', '收到首个可展示内容', '收到首次模型响应'].includes(String(asObject(event.payload?.observation)?.label))
 }
 
 function hasPromptOwner(event: TimelineEvent): boolean {
@@ -242,11 +273,14 @@ export function isConnectionTimelineEvent(event: TimelineEvent): boolean {
 }
 
 /** Keep explicit errors and unknown diagnostics visible; collapse routine runtime metadata only. */
-function isRoutineRuntimeEvent(event: TimelineEvent): boolean {
+export function isRoutineRuntimeEvent(event: TimelineEvent): boolean {
   const payload = event.payload
-  if (payload?.tag === 'pi_compaction') return false
   const isProblemLevel = (value: unknown): boolean => value === 'error' || value === 'warning' || value === 'warn'
-  if (isProblemLevel(payload?.type) || payload?.error || payload?.code !== undefined || payload?.status === 'failed' || asObject(payload?.observation)?.status === 'failed' || isProblemLevel(payload?.status) || isProblemLevel(payload?.severity) || isProblemLevel(payload?.level)) return false
+  if (isProblemLevel(payload?.type) || payload?.error || payload?.success === false || payload?.ok === false || payload?.code !== undefined || payload?.status === 'failed' || asObject(payload?.result)?.status === 'failed' || asObject(payload?.observation)?.status === 'failed' || isProblemLevel(payload?.status) || isProblemLevel(payload?.severity) || isProblemLevel(payload?.level)) return false
+  if (payload?.tag === 'pi_thinking' || payload?.tag === 'pi_provider_response') return true
+  if (payload?.tag === 'pi_compaction') return false
+  // Image progress uses the current-turn status; preserve failures and unknown phases.
+  if (payload?.tag === 'pi_image_generation') return payload.phase === 'running' || payload.phase === 'completed'
   if (event.kind === 'config') return true
   if (event.kind === 'diagnostic') return isNativeToolsInformation(event) || event.text === 'Runtime 更新'
   if (event.kind !== 'session-status') return false

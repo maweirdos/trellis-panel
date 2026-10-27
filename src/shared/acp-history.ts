@@ -17,6 +17,20 @@ export const acpHistoryUpdateInputSchema = z.object({
   'At least one conversation preference is required')
 export type AcpHistoryUpdateInput = z.infer<typeof acpHistoryUpdateInputSchema>
 export type AcpHistoryUpdateResult = { ok: true; version: 1; session: AcpHistorySummary }
+export const acpHistoryDeleteInputSchema = z.object({ token: z.string().uuid() }).strict()
+export const acpHistoryDeleteRequestSchema = z.object({ expectedRoot: z.string().min(1).max(8192), expectedConnectionGeneration: z.string().min(1).max(200).optional() }).strict()
+export type AcpHistoryDeleteRequest = z.infer<typeof acpHistoryDeleteRequestSchema>
+export type AcpHistoryDeletePreview = { ok: true; sessionId: string; title: string; token: string; scope: string[]; excluded: string[] }
+export type AcpHistoryDeleteResult = { ok: true; sessionId: string; deleted: true } | { ok: true; sessionId: string; cancelled: true }
+export interface AcpTitleProvenance {
+  source: 'manual' | 'generated' | 'fallback'
+  revision: string
+  state: 'pending' | 'ready' | 'failed'
+  sourceDigest?: string
+  model?: string
+  generatedAt?: number
+  error?: string
+}
 export const acpHistoryEventsInputSchema = z.object({
   before: z.string().max(4096).optional(),
   after: z.string().max(4096).optional(),

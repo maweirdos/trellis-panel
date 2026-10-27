@@ -20,7 +20,7 @@ export function RunActivity({ item, session }: { item: ActivityItem; session: Ac
   const running = Boolean(item.active && !item.outcome && (connection ? currentOwner && session.status === 'starting' : currentTurn && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status)))
   const waitingPermission = running && session.status === 'awaiting_permission'
   const latestLabel = String(asObject(item.events.at(-1)?.payload?.observation)?.label ?? '处理记录')
-  const activeLabel = connection ? '正在连接执行引擎' : waitingPermission ? '等待你的授权' : session.status === 'cancelling' ? '正在中止本次处理' : latestLabel === '开始处理' ? '正在发送指令' : latestLabel === '指令已发送至引擎' ? '等待模型回复' : latestLabel === '收到首次模型响应' ? '正在生成回复' : latestLabel
+  const activeLabel = connection ? '正在连接执行引擎' : waitingPermission ? '等待你的授权' : session.status === 'cancelling' ? '正在中止本次处理' : latestLabel === '开始处理' ? '正在发送指令' : ['指令已发送至引擎', '供应商响应已建立'].includes(latestLabel) ? '等待模型回复' : ['收到首次模型响应', '收到首个可展示内容'].includes(latestLabel) ? '正在生成回复' : latestLabel
   const progress = useMemo(() => projectRunProgress(item, item.events, running, activeLabel), [item, running, activeLabel])
   const failed = item.outcome === 'failed'
   const label = running ? activeLabel : failed ? connection ? '连接未完成' : '本次处理未完成' : item.outcome === 'cancelled' ? '已中止' : item.outcome === 'completed' ? connection ? '连接已就绪' : '回复已完成' : latestLabel

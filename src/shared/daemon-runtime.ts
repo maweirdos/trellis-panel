@@ -1,6 +1,6 @@
 /** Native allowlist. Workspace authority comes from the authenticated host, never these bodies. */
 import { z } from 'zod'
-import { acpHistoryListInputSchema, acpHistoryEventsInputSchema, acpHistoryUpdateInputSchema } from './acp-history'
+import { acpHistoryListInputSchema, acpHistoryEventsInputSchema, acpHistoryUpdateInputSchema, acpHistoryDeleteInputSchema } from './acp-history'
 import { workflowPreviewInputSchema, workflowStartInputSchema, workflowSnapshotInputSchema, workflowEventsInputSchema, workflowStopInputSchema, workflowArtifactInputSchema } from './workflow-application'
 import { workflowRevisionPreviewInputSchema, workflowRevisionAcceptInputSchema, workflowRevisionStatusInputSchema } from './workflow-revisions'
 import { workflowWorkspaceRecoveryInputSchema, workflowRecoveryArtifactInputSchema } from './workflow-recovery'
@@ -32,7 +32,11 @@ export const runtimeBodies = {
   'runtime.historyList': z.object({ input: acpHistoryListInputSchema }).strict(),
   'runtime.historySession': session,
   'runtime.historyEvents': session.extend({ input: acpHistoryEventsInputSchema }).strict(),
+  'runtime.piImage': session.extend({ imageId: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   'runtime.historyUpdate': session.extend({ input: acpHistoryUpdateInputSchema }).strict(),
+  'runtime.historyDeletePreview': session,
+  'runtime.historyDelete': session.extend({ input: acpHistoryDeleteInputSchema }).strict(),
+  'runtime.historyRegenerateTitle': session,
   'runtime.historyRetry': session,
   'runtime.new': z.object({ input: z.unknown() }).strict(),
   'runtime.handoffPreview': session.extend({ input: acpHandoffPreviewInputSchema }).strict(),
@@ -96,6 +100,6 @@ export type RuntimeResult<M extends RuntimeMethod> = z.infer<(typeof runtimeResu
 export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
   'runtime.knowledge',
   'runtime.new', 'runtime.handoffCreate', 'runtime.handoffCancel', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
-  'runtime.profileSave', 'runtime.profileDelete', 'runtime.historyUpdate', 'runtime.historyRetry', 'runtime.setup', 'runtime.probe',
+  'runtime.profileSave', 'runtime.profileDelete', 'runtime.historyUpdate', 'runtime.historyRetry', 'runtime.historyDelete', 'runtime.historyRegenerateTitle', 'runtime.setup', 'runtime.probe',
   'runtime.workflow.preview', 'runtime.workflow.start', 'runtime.workflow.stop', 'runtime.workflow.previewRevision', 'runtime.workflow.acceptRevision', 'runtime.workflow.cancelRevision'
 ]

@@ -5,11 +5,14 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:pa
 import { StringDecoder } from 'node:string_decoder'
 import type { AcpRuntimeEvent, AcpRuntimeHandle, AcpRuntimeTurn, AcpRuntimeTurnInput, AcpRuntimeTurnResult, AcpPermissionDecision } from 'acpx/runtime'
 import type { AcpSessionRecord } from '../../../shared/types'
-import { resolveAuthorizedDocumentPath } from '../documents/paths'
+import { assertPiToolPath } from './tool-paths'
 import { piConfiguredModels, piProjectMcp } from './models'
-import { PI_FRAME_BYTES, PI_VERSION, piInitializeSchema, piPermissionSchema, piStateSchema, type PiActivity, type PiState } from './protocol'
+import { PI_FRAME_BYTES, PI_VERSION, piInitializeSchema, piPermissionSchema, piStateSchema, piTextMetaSchema, type PiActivity, type PiState } from './protocol'
 import type { ConversationRuntime } from './runtime-port'
 import { acpProcessEnv, acpSpawnEnv, sessionAcpLaunchOptions } from '../../../shared/acp-launch-options'
+import { readAcpStoredImages } from '../../../shared/acp-images'
+import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
+import { inspectPiWebPreviewEntry } from './engine/web-preview-entry'
 
 interface PiRuntimeOptions {
   meta: AcpSessionRecord
@@ -54,6 +57,8 @@ export class PiConversationRuntime implements ConversationRuntime {
   private readonly configured = piConfiguredModels()
   private readonly projectMcp
   private readonly secrets: string[]
+  private pathRoot?: string
+  private pathCwd?: string
   constructor(private options: PiRuntimeOptions) {
     const launch = sessionAcpLaunchOptions(options.meta, process.platform)
     if (launch.args?.length) throw new Error('Pi SDK 不支持额外启动参数；请清除执行引擎或 Agent 的参数后重试')
@@ -123,7 +128,21 @@ export class PiConversationRuntime implements ConversationRuntime {
       const id = message.id
       void this.permission(message.request).then(allow => this.write({ type: 'permission_response', id, allow }), error => this.write({ type: 'permission_response', id, allow: false, reason: this.error(error).message })).catch(() => {})
     } else if (message.type === 'event' && message.event && typeof message.event === 'object') {
-      const event = JSON.parse(this.safe(JSON.stringify(message.event))) as PiActivity
+      const original = message.event as PiActivity
+      if (original.type === 'text_delta' && original.meta?.piText !== undefined) {
+        const block = piTextMetaSchema.parse(original.meta.piText)
+        if (typeof original.text !== 'string' || block.messageId !== original.messageId || (block.blockType === 'thinking' ? 'thought' : 'output') !== original.stream ||
+          block.operation === 'replace' && !block.authority) throw new Error('Pi text block identity is invalid')
+        if (original.meta.phase !== undefined && original.meta.phase !== 'commentary' && original.meta.phase !== 'final_answer') throw new Error('Pi text phase is invalid')
+      }
+      const images = original.type === 'text_delta' ? readAcpStoredImages(original.meta?.piImages) : []
+      const preview = original.type === 'text_delta' ? readPiWebPreviewArtifact(original.meta?.piWebPreview) : null
+      const machineFields = new Set(['type', 'id', 'toolCallId', 'name', 'status', 'tag', 'phase', 'stream', 'messageId', 'operationId', 'blockType', 'operation', 'providerMessageId', 'authority'])
+      const event = JSON.parse(JSON.stringify(original, (key, item: unknown) => typeof item === 'string' && !machineFields.has(key) ? this.safe(item) : item)) as PiActivity
+      if (event.type === 'text_delta' && images.length) event.meta = { ...event.meta, piImages: images }
+      if (event.type === 'text_delta' && preview) event.meta = { ...event.meta, piWebPreview: {
+        ...preview, title: preview.title.split('[redacted]').map(part => this.safe(part)).join('[redacted]').slice(0, 160)
+      } }
       const run = this.running
       if (!run) return
       if (event.type === 'status' && event.tag === 'pi_prompt_started') {
@@ -167,6 +186,11 @@ export class PiConversationRuntime implements ConversationRuntime {
     if (requestedModelId && !this.configured.models.some(model => model.selectionId === requestedModelId)) throw Object.assign(new Error('保存的 Pi 模型已不可用；请从原会话的已保存候选中显式选择模型后恢复'), { code: 'PI_MODEL_UNAVAILABLE' })
     const [node, entry] = this.options.argv
     if (!node || !entry || !isAbsolute(node) || !isAbsolute(entry)) throw new Error('Pi 需要绝对 Node 和引擎入口路径')
+    const pathRoot = realpathSync(this.options.meta.projectRoot)
+    const pathCwd = realpathSync(this.options.meta.cwd ?? this.options.meta.projectRoot)
+    const cwdRelative = relative(pathRoot, pathCwd)
+    if (cwdRelative === '..' || cwdRelative.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(cwdRelative)) throw new Error('Pi 工作目录超出当前项目的物理目录')
+    this.pathRoot = pathRoot; this.pathCwd = pathCwd
     this.options.onBeforeSpawn()
     let env: NodeJS.ProcessEnv = {}
     for (const key of ['PATH', 'Path', 'SystemRoot', 'COMSPEC', 'USERPROFILE', 'HOME', 'TEMP', 'TMP', 'LOCALAPPDATA', 'APPDATA', 'PATHEXT', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR']) if (process.env[key]) env[key] = process.env[key]
@@ -180,7 +204,7 @@ export class PiConversationRuntime implements ConversationRuntime {
     const command = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : node
     const args = process.platform === 'win32' ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', launcher ?? '',
       '-ExecutableBase64', Buffer.from(node).toString('base64'), '-EntryBase64', Buffer.from(entry).toString('base64')] : [entry]
-    const child = spawn(command, args, { cwd: this.options.meta.cwd ?? this.options.meta.projectRoot, env, windowsHide: true,
+    const child = spawn(command, args, { cwd: pathCwd, env, windowsHide: true,
       detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] })
     this.child = child
     const streamError = (error: Error): void => {
@@ -221,7 +245,7 @@ export class PiConversationRuntime implements ConversationRuntime {
       const local = relative(sessionDir, resolve(sessionFile))
       if (!local || local.startsWith('..') || isAbsolute(local) || !existsSync(sessionFile)) throw new Error('原 Pi 会话文件缺失或超出所属目录，历史已保留')
     }
-    const initialized = await this.call('initialize', piInitializeSchema.parse({ root: meta.projectRoot, cwd: meta.cwd ?? meta.projectRoot,
+    const initialized = await this.call('initialize', piInitializeSchema.parse({ root: pathRoot, cwd: pathCwd,
       sessionDir, sessionFile, agentDir: join(this.options.dataDirectory, 'pi', 'agent'), models: this.configured.models,
       proxy: this.configured.proxy,
       modelId, recoveryModelId: restoring ? this.options.initialModelId : undefined, thinkingLevel: meta.configOptions?.find(option => option.id === 'thinking')?.currentValue ?? 'off',
@@ -317,15 +341,21 @@ export class PiConversationRuntime implements ConversationRuntime {
     const request = piPermissionSchema.parse(value), run = this.running
     if (!run || run.abort.signal.aborted || this.closing) return false
     run.input.assertActive?.()
-    const read = ['read', 'grep', 'find', 'ls', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(request.name)
+    const read = ['preview_web', 'read', 'grep', 'find', 'ls', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(request.name)
       || ['knowledge_search', 'knowledge_read', 'knowledge_context', 'knowledge_document_read', 'knowledge_task_read'].some(name => request.name === `mcp__trellis_knowledge__${name}`)
-    const assertPath = (): void => { if (['read', 'write', 'edit', 'grep', 'find', 'ls'].includes(request.name)) {
-      const path = typeof request.args.path === 'string' ? request.args.path : '.'
-      const resolved = resolve(this.options.meta.cwd ?? this.options.meta.projectRoot, path)
-      const allowed = resolveAuthorizedDocumentPath(this.options.meta.projectRoot, resolved)
-      if (!allowed.ok) throw new Error('工具路径超出当前项目的物理目录')
-    } }
-    assertPath()
+    const pathTool = ['preview_web', 'read', 'write', 'edit', 'grep', 'find', 'ls'].includes(request.name)
+    const assertPath = (): string[] => {
+      if (!pathTool) return []
+      const root = this.pathRoot, cwd = this.pathCwd
+      if (!root || !cwd || !isAbsolute(request.homeDir) || relative(cwd, request.cwd) !== '' ||
+        relative(root, realpathSync(this.options.meta.projectRoot)) !== '' || relative(cwd, realpathSync(this.options.meta.cwd ?? this.options.meta.projectRoot)) !== '') throw new Error('Pi 工作目录或项目归属已改变')
+      const raw = request.args.path
+      if (typeof raw !== 'string' && !(raw === undefined && ['grep', 'find', 'ls'].includes(request.name))) throw new Error('工具路径无效')
+      if (request.name === 'preview_web') return [inspectPiWebPreviewEntry(root, raw as string).file]
+      const path = ['grep', 'find', 'ls'].includes(request.name) && !raw ? '.' : raw as string
+      return assertPiToolPath(root, cwd, request.homeDir, request.name, path)
+    }
+    const initialPaths = assertPath()
     if (this.mode === 'read-only' && !read) return false
     if (read || this.mode === 'full-access') return true
     const handler = run.input.onPermissionRequest
@@ -336,7 +366,8 @@ export class PiConversationRuntime implements ConversationRuntime {
       raw: { sessionId: this.state?.sessionId ?? this.options.meta.sessionId, toolCall: { toolCallId: request.toolCallId, title: `${request.name} · ${rawInput}`, kind, rawInput: request.args },
         options: [{ optionId: 'allow-once', kind: 'allow_once', name: '允许本次' }, { optionId: 'deny', kind: 'reject_once', name: '拒绝' }] } }, { signal: run.abort.signal })
     run.input.assertActive?.()
-    assertPath()
+    const finalPaths = assertPath()
+    if (initialPaths.length !== finalPaths.length || initialPaths.some((path, index) => relative(path, finalPaths[index] ?? '') !== '')) throw new Error('工具路径在授权期间发生变化')
     return !run.abort.signal.aborted && (decision?.outcome === 'allow_once' || decision?.outcome === 'selected' && decision.optionId === 'allow-once')
   }
   shutdown(): Promise<void> {

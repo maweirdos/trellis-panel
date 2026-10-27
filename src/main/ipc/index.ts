@@ -41,6 +41,7 @@ import { registerFlowIpc } from './flow'
 import { registerWorkflowIpc } from './workflow'
 import { registerTeamDesktopIpc } from './team-desktop'
 import { registerAcpIpc } from './acp'
+import { registerPiWebPreviewIpc } from './pi-web-preview'
 import { registerWindowIpc } from './window'
 import { registerDocsIpc } from './docs'
 import { registerKnowledgeAccessIpc } from './knowledge-access'
@@ -87,4 +88,5 @@ export function registerIpc(deps: WindowDeps): void {
   registerWorkflowIpc()
   registerTeamDesktopIpc()
   registerAcpIpc()
+  registerPiWebPreviewIpc()
 }

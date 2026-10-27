@@ -9,6 +9,11 @@ import { ConnectionNotice } from './ConnectionNotice'
 import { RunActivity } from './RunActivity'
 import { ThoughtActivity } from './ThoughtActivity'
 import { ImageAttachments } from './ImageAttachments'
+import { StoredImageAttachments } from './StoredImageAttachments'
+import { PiWebPreviewCard } from './PiWebPreviewShelf'
+import type { PiWebPreviewArtifact } from '../../../shared/pi-web-preview'
+import { PiGeneratedDocument } from './PiGeneratedDocument'
+import { piGeneratedDocument } from './pi-generated-document'
 import { knowledgeObservation, knowledgeObservationLabel } from './conversation-convenience'
 import { KnowledgeOperationRow } from './KnowledgeOperationRow'
 import { SavedArtifactMessage } from './SavedArtifactMessage'
@@ -16,12 +21,14 @@ import { projectRootKey } from '../my/navigation'
 import type { AcpPermissionPayload, AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import { useMemo, type JSX } from 'react'
 import { useCopyFeedback } from '../utils/use-copy-feedback'
+import { isCompletedHistoricalTextMismatch, type MessagePresentation } from './conversation-transcript'
+import './conversation-transcript.css'
 
 function CopyMessageButton({ text, ownerKey }: { text: string; ownerKey: string }): JSX.Element {
   const owner = useMemo(() => ({ ownerKey, text }), [ownerKey, text])
   const { status, copy } = useCopyFeedback(owner)
   const label = status === 'copying' ? '正在复制' : status === 'copied' ? '已复制' : status === 'error' ? '重试复制' : '复制内容'
-  return <div className="acp-message-actions">
+  return <div className="acp-message-actions" data-copy-status={status}>
     <button type="button" className="acp-message-copy-btn" aria-label={label} aria-disabled={status === 'copying'} title={label} onClick={() => void copy(text)}>
       {status === 'copied' ? <Check size={12} aria-hidden="true" /> : status === 'error' ? <TriangleAlert size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
     </button>
@@ -54,11 +61,13 @@ function ToolContent({ value }: { value: unknown }): JSX.Element | null {
   })}</div>
 }
 
-export function EventRow({ item, session, events, pendingPerm, permissionPending, permissionErrors, onRespond, onOpenTask, onOpenArtifact, onOpenSpec, onOpenJira, suppressWorkingIndicator = false }: {
+export interface EventRowProps {
   item: RenderItem
   session?: AcpSessionRecord
   events?: TimelineEvent[]
   suppressWorkingIndicator?: boolean
+  messagePresentation?: MessagePresentation
+  compact?: boolean
   pendingPerm: Record<string, AcpPermissionPayload>
   permissionPending: Record<string, boolean>
   permissionErrors: Record<string, string>
@@ -67,27 +76,38 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   onOpenArtifact: (file: { name: string; path: string; kind: 'file'; size: number; mtime: number; ext: string }) => void
   onOpenSpec: () => void
   onOpenJira: () => void
-}): JSX.Element {
+  onOpenWebPreview?: (artifact: PiWebPreviewArtifact, eventId: string) => void
+}
+
+export function EventRow({ item, session, events, pendingPerm, permissionPending, permissionErrors, onRespond, onOpenTask, onOpenArtifact, onOpenSpec, onOpenJira, onOpenWebPreview, suppressWorkingIndicator = false, messagePresentation = 'process', compact = false }: EventRowProps): JSX.Element {
   if (item.type === 'user') {
     const origin = events?.find((event) => event.id === item.key)
     const preparing = Boolean(origin && session && isConversationRuntimeEvent(origin) && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status))
     return <div data-acp-item={item.key} className="acp-turn-start flex justify-end"><div className="acp-user-message max-w-[88%]">
       {item.images && <ImageAttachments images={item.images} />}
-      {item.text && <div className="acp-chat-copy whitespace-pre-wrap break-words rounded-my-lg bg-my-layer-1 px-4 py-3 text-my-primary">{item.text}</div>}
+      {item.text && <div className="acp-user-bubble acp-chat-copy whitespace-pre-wrap break-words">{item.text}</div>}
+      {item.text && <CopyMessageButton text={item.text} ownerKey={JSON.stringify([session?.projectRoot, session?.sessionId, session?.connectionGeneration, item.key])} />}
       {item.delivery && item.delivery !== 'sent' && !(item.delivery === 'preparing' && preparing && suppressWorkingIndicator) && <span className={clsx('acp-prompt-delivery', item.delivery === 'not_sent' && 'is-not-sent')} title={item.delivery === 'preparing' ? preparing ? '正在准备项目知识参考，尚未发送给模型。' : '仅找到准备记录，尚未确认是否实际发送给模型。' : undefined}>{item.delivery === 'preparing' ? preparing ? '准备中…' : '发送状态未确认' : '未发送给模型'}</span>}
     </div></div>
   }
-  if (item.type === 'agent') return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-answer acp-chat-copy min-w-0 break-words text-my-primary', item.startsAnswer && 'acp-answer-start')}><SavedArtifactMessage text={item.text} messageId={item.key} events={events ?? []} session={session} /><CopyMessageButton text={item.text} ownerKey={JSON.stringify([session?.projectRoot, session?.sessionId, session?.connectionGeneration, item.key])} /></div>
+  if (item.type === 'agent') {
+    return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-chat-copy min-w-0 break-words', messagePresentation === 'final' ? 'acp-answer text-my-primary' : 'acp-process-message', item.startsAnswer && messagePresentation === 'final' && 'acp-answer-start')}>
+      {item.text && <SavedArtifactMessage text={item.text} messageId={item.key} events={events ?? []} session={session} />}
+      {session && item.storedImages?.length ? <StoredImageAttachments key={`${session.projectRoot}:${session.sessionId}:${item.key}`} images={item.storedImages} sessionId={session.sessionId} /> : null}
+      {session && item.webPreview && item.webPreviewEventId && <PiWebPreviewCard artifact={item.webPreview} eventId={item.webPreviewEventId} onOpenWebPreview={onOpenWebPreview} />}
+    </div>
+  }
   if (item.type === 'knowledge-operation') return <KnowledgeOperationRow item={item} session={session} onOpenTask={onOpenTask} suppressWorkingIndicator={suppressWorkingIndicator} />
   if (item.type === 'thought') {
+    if (compact) return <div data-acp-item={item.key} className="acp-process-thought break-words"><MarkdownView content={item.text} /></div>
     const originIndex = events?.findIndex((event) => event.id === item.key) ?? -1
     const origin = originIndex >= 0 ? events?.[originIndex] : undefined
     const segmentEnded = origin && events?.slice(originIndex + 1).some((event) =>
       event.source === origin.source && projectRootKey(event.projectRoot) === projectRootKey(origin.projectRoot) && event.sessionId === origin.sessionId && event.turnId === origin.turnId && event.connectionGeneration === origin.connectionGeneration && (
         (event.kind === 'message' && Boolean(event.text?.trim())) ||
-        event.kind === 'tool-call' || event.kind === 'plan' || event.kind === 'turn-done'
+        event.kind === 'tool-call' || event.kind === 'plan' || event.kind === 'turn-done' || (event.payload?.tag === 'pi_thinking' && event.payload.phase === 'completed')
       ))
-    return <div data-acp-item={item.key}><ThoughtActivity text={item.text} streaming={Boolean(origin && isConversationRuntimeEvent(origin) && session?.status === 'busy' && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && !segmentEnded)} /></div>
+    return <div data-acp-item={item.key}><ThoughtActivity text={item.text} streaming={Boolean(!suppressWorkingIndicator && origin && isConversationRuntimeEvent(origin) && session?.status === 'busy' && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && !segmentEnded)} /></div>
   }
   if (item.type === 'activity') return session ? <RunActivity item={item} session={session} /> : <details data-acp-item={item.key} className="acp-activity-row"><summary><Workflow size={14} /><span>处理记录</span><ChevronRight size={13} className="acp-disclosure-arrow" /></summary><div className="acp-activity-body">{item.events.map((event) => <p key={event.id}>{String(asObject(event.payload?.observation)?.label ?? event.text ?? runtimeActivityLabel(event))}</p>)}</div></details>
   if (item.type === 'change-group') return <details data-acp-item={item.key} className="acp-result-disclosure acp-change-group">
@@ -125,11 +145,12 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
     const Icon = kind === 'execute' ? Terminal : kind === 'edit' ? Pencil : kind === 'search' ? Search : FileText
     const pending = !['completed', 'failed', 'cancelled'].includes(status)
     const origin = events?.find((event) => event.id === item.key)
+    const generatedDocument = piGeneratedDocument(events ?? [], origin, session)
     const sameTurn = (event: TimelineEvent): boolean => Boolean(origin && event.source === origin.source && event.sessionId === origin.sessionId && projectRootKey(event.projectRoot) === projectRootKey(origin.projectRoot) && event.turnId === origin.turnId && event.connectionGeneration === origin.connectionGeneration)
     const running = Boolean(pending && origin?.turnId && origin.connectionGeneration && session && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status) && !events?.some((event) => event.kind === 'turn-done' && sameTurn(event)))
     const unfinished = pending && !running
     const label = kind === 'execute' ? running ? '正在运行命令' : unfinished ? '命令执行未完成' : '运行了命令' : kind === 'read' ? `${running ? '正在读取文件' : unfinished ? '文件读取未完成' : '读取了文件'}${fileName ? ` ${fileName}` : ''}` : kind === 'search' ? running ? '正在搜索项目' : unfinished ? '项目搜索未完成' : '搜索了项目' : title
-    const editing = kind === 'edit'
+    const editing = kind === 'edit' && !compact
     return <details data-acp-item={item.key} className={clsx(editing ? 'acp-result-disclosure' : 'acp-activity-row', status === 'failed' && 'is-failed')}>
       <summary title={title}>
         {editing ? <ActivityResult
@@ -140,10 +161,11 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
           action={<span className="acp-result-view">{diff ? '查看变更' : '查看记录'}<ChevronRight size={13} className="acp-disclosure-arrow" /></span>}
         /> : <>
           {running && !suppressWorkingIndicator ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <Icon size={14} />}
-          <span className="truncate">{label}{status === 'failed' ? ' · 失败' : status === 'cancelled' ? ' · 已取消' : ''}</span><ChevronRight size={13} className="acp-disclosure-arrow" />
+          <span className="truncate">{label}{generatedDocument ? ` · ${generatedDocument}` : ''}{status === 'failed' ? ' · 失败' : status === 'cancelled' ? ' · 已取消' : ''}</span><ChevronRight size={13} className="acp-disclosure-arrow" />
         </>}
       </summary>
       <div className={clsx(editing ? 'acp-result-body' : 'acp-activity-body', 'space-y-2')}>
+        {generatedDocument && session && <PiGeneratedDocument key={JSON.stringify([session.projectRoot, session.sessionId, session.connectionGeneration, item.key, generatedDocument])} path={generatedDocument} session={session} />}
         <p className="break-words font-mono text-my-sm text-my-secondary">{title}</p>
         {typeof payload.preview === 'string' && <p className="whitespace-pre-wrap break-words text-my-secondary">{payload.preview}</p>}
         <ToolContent value={payload.content} />
@@ -171,6 +193,11 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   }
   if (item.type === 'turn') return /^(回合已结束|本轮结束|回合已取消)$/.test(item.text) ? <></> : <ConnectionNotice message={item.text} />
   if (item.type === 'detail') {
+    if (isCompletedHistoricalTextMismatch(item.ev, events ?? [])) return <details data-acp-item={item.key} className="acp-activity-row">
+      <summary><FileText size={14} aria-hidden="true" /><span>历史文本差异记录</span><ChevronRight size={12} className="acp-disclosure-arrow" /></summary>
+      <pre className="acp-activity-body whitespace-pre-wrap break-words">{[...new Set([item.ev.text, String(item.ev.payload?.message)].filter(Boolean))].join('\n')}</pre>
+    </details>
+    if (item.ev.payload?.tag === 'pi_thinking_empty') return <div data-acp-item={item.key} className="my-activity-note" role="status"><Sparkles size={14} aria-hidden="true" /><span>模型未提供可展示的思考内容</span></div>
     if (item.ev.payload?.tag === 'pi_compaction') {
       const state = item.ev.payload.status ?? item.ev.payload.phase
       const failed = state === 'failed' || state === 'error' || Boolean(item.ev.payload.error)

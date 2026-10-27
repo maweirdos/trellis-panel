@@ -3,6 +3,7 @@ import { CircleAlert, ChevronRight, Loader2, X } from 'lucide-react'
 import { Button } from '../my/ui'
 import type { AcpSessionRecord } from '../../../shared/types'
 import { getModelRecovery } from './model-recovery'
+import { conversationConnectionStatus } from './conversation-switching'
 
 export function describeConnectionError(message: string): { title: string; hint: string } {
   if (/当前\s*\d+\s*个运行连接正忙|运行连接已达\s*\d+\s*个|连接数量已达上限/.test(message)) return {
@@ -38,8 +39,10 @@ export function ConnectionRecovery({ session, message, pending, onRetry, onClean
 }): JSX.Element | null {
   const [reading, setReading] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [preparationExpired, setPreparationExpired] = useState(false)
   const detailsId = useId()
-  const offline = !['ready', 'busy', 'awaiting_permission', 'cancelling', 'starting'].includes(session.status)
+  const status = conversationConnectionStatus(session)
+  const offline = !['ready', 'busy', 'awaiting_permission', 'cancelling', 'starting'].includes(status)
   const storage = session.historyPersistence
   const degraded = storage?.state === 'degraded'
   const canRetryStorage = storage && (!storage.unarchivedCount || storage.pendingCount > storage.unarchivedCount)
@@ -47,23 +50,34 @@ export function ConnectionRecovery({ session, message, pending, onRetry, onClean
   const { modelFailure, models, environmentRequired } = getModelRecovery(session, message)
   const confirmed = session.recovery?.modelConfirmed === true
   const environmentPrimary = environmentRequired || (modelFailure && models.length === 0)
+  const uncertain = status === 'starting' && (session.connectionOwned !== true || preparationExpired)
+  const preparing = !cleanup && !uncertain && (['prepare-send', 'resume', 'recover-model'].includes(pending ?? '') || (!message && status === 'starting'))
+  useEffect(() => {
+    setPreparationExpired(false)
+    if (status !== 'starting' || session.connectionOwned !== true) return
+    const timer = setTimeout(() => setPreparationExpired(true), 60000)
+    return () => clearTimeout(timer)
+  }, [session.sessionId, session.connectionGeneration, session.connectionOwned, status])
   useEffect(() => { setReading(false); setDetailsOpen(false) }, [session.sessionId, session.connectionGeneration, message, degraded, cleanup, pending])
   const description = confirmed ? { title: '模型已确认，连接仍失败', hint: `执行引擎已确认 ${session.recovery?.confirmedModelId ?? session.currentModelId ?? '所选模型'}。请排查连接后重试，草稿不会自动发送。` }
     : cleanup ? { title: '会话尚未完全结束', hint: '执行引擎的资源仍由此会话持有。请重试结束，完成后再连接。' }
+    : uncertain && !message ? { title: '会话准备尚未确认', hint: '已有消息与草稿仍可使用。可重新核对连接，或结束尚未完成的准备后重试。' }
     : modelFailure ? { title: '当前模型不可用', hint: '请在输入框右下角选择可用模型并重新连接。已有消息和草稿会保留，重连后需手动发送。' }
     : message ? describeConnectionError(message) : { title: '当前未连接', hint: '发送时将连接原会话。' }
   if (offline && session.canResume && !message && !degraded && !cleanup && !pending) return null
-  if (!offline && !message && !degraded && !cleanup && !['resume', 'recover-model', 'kill'].includes(pending ?? '')) return null
-  if (reading && !degraded && !cleanup && !pending) return null
-  return <section className="acp-recovery" aria-label="当前连接与保存状态">
-    {(offline || message || cleanup || pending) && <>
+  if (!offline && !message && !degraded && !cleanup && !preparing && !uncertain && pending !== 'kill') return null
+  if (reading && !degraded && !cleanup && !pending && !uncertain) return null
+  return <>
+    {preparing && <div className="acp-connection-progress" role="status" aria-label="会话准备状态" aria-live="polite"><Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" /><span>{pending === 'prepare-send' ? '正在准备回复…' : pending === 'recover-model' ? '正在验证模型…' : '会话准备中…'}</span></div>}
+    {(!preparing || degraded) && <section className="acp-recovery" aria-label="当前连接与保存状态">
+    {!preparing && (offline || message || cleanup || pending || uncertain) && <>
       <div className="acp-recovery-line" role="status">
         <button type="button" className="acp-recovery-status-trigger" aria-expanded={detailsOpen} aria-controls={detailsId} title={detailsOpen ? '收起错误详情' : '展开错误详情'} onClick={() => setDetailsOpen((value) => !value)}>
-          {pending ? <Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" /> : <CircleAlert size={14} aria-hidden="true" />}
-          <strong>{pending === 'recover-model' ? '正在验证模型并连接…' : pending === 'resume' ? session.canResume ? '正在连接原会话…' : '正在准备会话…' : pending === 'kill' ? '正在结束会话…' : description.title}</strong>
+          {pending && !uncertain ? <Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" /> : <CircleAlert size={14} aria-hidden="true" />}
+          <strong>{pending === 'kill' ? '正在结束会话…' : description.title}</strong>
           <ChevronRight size={11} className={detailsOpen ? 'is-open' : ''} aria-hidden="true" />
         </button>
-        {cleanup ? <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onCleanup}>重试结束会话</Button> : environmentPrimary ? <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onEnvironment}>检查执行引擎</Button> : offline && session.canResume && !modelFailure && <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onRetry}>重试连接</Button>}
+        {cleanup || (uncertain && session.connectionOwned === true) ? <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={pending === 'kill'} onClick={onCleanup}>{cleanup ? '重试结束会话' : '结束会话准备'}</Button> : environmentPrimary ? <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onEnvironment}>检查执行引擎</Button> : (offline || uncertain) && session.canResume && !modelFailure && <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onRetry}>重试连接</Button>}
         {!degraded && !cleanup && !pending && <button type="button" className="acp-recovery-dismiss my-icon-control" aria-label="收起连接提示" title="稍后处理" onClick={() => setReading(true)}><X size={13} /></button>}
       </div>
       <div id={detailsId} hidden={!detailsOpen} className="acp-recovery-details my-scrollbar" role="region" aria-label="连接错误详情">
@@ -74,5 +88,6 @@ export function ConnectionRecovery({ session, message, pending, onRetry, onClean
       </div>
     </>}
     {degraded && <div className="acp-storage-notice" role="alert"><div className="acp-recovery-line"><CircleAlert size={14} aria-hidden="true" /><strong>{storage.unarchivedCount ? `${storage.unarchivedCount} 条事件未确认保存，历史可能不完整` : `部分内容尚未保存${storage.pendingCount ? ` · ${storage.pendingCount} 条事件待写入` : ''}`}</strong>{canRetryStorage && <Button size="sm" variant="outline" className="acp-recovery-primary" disabled={Boolean(pending)} onClick={onRetryHistory}>重试保存</Button>}</div><details><summary>保存详情</summary><p>{storage.unarchivedCount ? '部分事件未能进入保存队列，重试不能补回；可核对保留的原始快照。' : '请先重试保存，再关闭应用。'}</p>{storage.error && <pre>{storage.error}</pre>}</details></div>}
-  </section>
+  </section>}
+  </>
 }

@@ -7,6 +7,11 @@ import type { PiInitialize } from '../protocol'
 import { isWithin } from './storage'
 
 const literalValue = z.string().refine(value => !value.startsWith('!'), 'MCP command-valued credentials are disabled')
+const interactiveDeliveryInstructions = `Follow the user's requested deliverable, interaction, and behavior requirements. Choose the implementation from the whole request and conversation, without requiring special keywords or a rewritten prompt.
+When the user requests interactive content, implement the requested behavior in runnable HTML and JavaScript. Dragging, zooming, rotation, animation, clicking, and interactive 3D scenes must work as requested; a static image or screenshot cannot replace these behaviors. Images may be used as assets within the working implementation.
+For an in-app web preview, create an independent static HTML entry. Keep every CSS, JavaScript, image, font, model, and other resource inside the entry's directory (or its subdirectories) and reference them with relative URLs. Use local dependencies and bundle them when needed, including 3D libraries; the embedded preview cannot connect to external networks, CDNs, remote imports, APIs, or development servers.
+Use the normal permission-gated write/edit and shell tools to create files, install local dependencies, or bundle. After saving the actual HTML entry, call preview_web with its project-relative path and a short title. preview_web only reads the saved entry and prepares its preview; it grants no write or command permission.
+Describe completion and validation truthfully. Writing code, bundling assets, inspecting source, or preparing a preview does not establish successful browser rendering or working interactions. Claim browser or interaction verification only after actually exercising the page with a browser tool, and state which behavior was checked. If browser verification was unavailable or not performed, say so.`
 const mcpSchema = z.object({
   type: z.enum(['stdio', 'http', 'streamable-http']).optional(), command: z.string().min(1).regex(/^[^\r\n]+$/).optional(),
   args: z.array(z.string()).max(64).optional(), cwd: z.string().optional(),
@@ -84,7 +89,7 @@ export function createResources(input: PiInitialize, settingsManager: SettingsMa
     extensionFactories: factories, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
     // Empty sources prevent even reading arbitrary SYSTEM.md/APPEND_SYSTEM.md files.
     systemPrompt: '', appendSystemPrompt: [], systemPromptOverride: () => undefined,
-    appendSystemPromptOverride: () => input.instructions ? [input.instructions] : [],
+    appendSystemPromptOverride: () => [interactiveDeliveryInstructions, `Project root for preview_web paths: ${input.root}`, ...(input.instructions ? [input.instructions] : [])],
     skillsOverride: () => skills, agentsFilesOverride: () => ({ agentsFiles }),
     promptsOverride: () => ({ prompts: [], diagnostics: [] }), themesOverride: () => ({ themes: [], diagnostics: [] })
   })

@@ -1456,8 +1456,19 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>
   acpHistoryList: (input?: { limit?: number; cursor?: string; query?: string; filter?: 'all' | 'resumable' | 'transcript'; archive?: 'active' | 'archived' | 'all' }) => Promise<import('./acp-history').AcpHistoryListResult | IpcFail>
   acpHistoryUpdate: (sessionId: string, input: import('./acp-history').AcpHistoryUpdateInput) => Promise<import('./acp-history').AcpHistoryUpdateResult | IpcFail>
+  acpHistoryDelete: (sessionId: string, input: import('./acp-history').AcpHistoryDeleteRequest) => Promise<import('./acp-history').AcpHistoryDeleteResult | IpcFail>
+  acpHistoryRegenerateTitle: (sessionId: string) => Promise<import('./acp-history').AcpHistoryUpdateResult | IpcFail>
+  onAcpHistoryChanged: (callback: (event: { projectRoot: string; sessionId: string; deleted?: boolean }) => void) => () => void
   acpHistorySession: (sessionId: string) => Promise<{ ok: true; version: 1; session: import('./acp-history').AcpHistorySummary } | IpcFail>
   acpHistoryEvents: (sessionId: string, input?: { before?: string; after?: string; limit?: number }) => Promise<import('./acp-history').AcpHistoryEventPage | IpcFail>
+  acpPiImage: (sessionId: string, imageId: string) => Promise<{ ok: true; image: { mimeType: import('./acp-images').AcpImageMimeType; data: string } } | IpcFail>
+  acpPiImageSave: (sessionId: string, imageId: string) => Promise<{ ok: true; cancelled: boolean } | IpcFail>
+  acpPiDocumentOpen: (input: import('./pi-document').PiDocumentOpenInput) => Promise<import('./local-document-link').LocalDocumentOpenResult>
+  acpPiDocumentCancel: (operationId: string) => void
+  acpPiWebPreviewOpen: (input: import('./pi-web-preview').PiWebPreviewOpenInput) => Promise<import('./pi-web-preview').PiWebPreviewOpenResult>
+  acpPiWebPreviewStatus: (id: string) => Promise<import('./pi-web-preview').PiWebPreviewStatusResult>
+  acpPiWebPreviewClose: (id: string) => Promise<{ ok: true } | IpcFail>
+  acpPiWebPreviewOpenExternal: (id: string) => Promise<{ ok: true } | IpcFail>
   acpHistoryRetry: (sessionId: string) => Promise<{ ok: true; historyPersistence: import('./acp-history').AcpHistoryPersistence } | IpcFail>
   acpSessionNew: (input: { agentId: string; profileId?: string; taskDir?: string }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
   acpSessionHandoffPreview: (sessionId: string, input: import('./acp-handoff').AcpHandoffPreviewInput) => Promise<import('./acp-handoff').AcpHandoffPreviewResult | IpcFail>
@@ -1996,6 +2007,8 @@ export interface AcpSessionMeta {
   /** Effective title; a human customTitle takes precedence over the automatic title. */
   title?: string
   customTitle?: string
+  titleProvenance?: import('./acp-history').AcpTitleProvenance
+  deletionState?: 'pending'
   pinnedAt?: number
   archivedAt?: number
   /** Bounded coherent latest-message text for catalogue rows/tooltips. */

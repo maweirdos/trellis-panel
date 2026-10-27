@@ -122,7 +122,11 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       case 'runtime.historyList': return acp.listAcpHistorySessions(root, runtimeBodies[method].parse(raw).input)
       case 'runtime.historySession': return acp.getAcpHistorySession(root, runtimeBodies[method].parse(raw).sessionId)
       case 'runtime.historyEvents': { const p = runtimeBodies[method].parse(raw); return acp.getAcpHistoryEvents(root, p.sessionId, p.input) }
+      case 'runtime.piImage': { const p = runtimeBodies[method].parse(raw); return acp.getAcpPiImage(root, p.sessionId, p.imageId) }
       case 'runtime.historyUpdate': { const p = runtimeBodies[method].parse(raw); return acp.updateAcpHistorySession(root, p.sessionId, p.input, valid) }
+      case 'runtime.historyDeletePreview': return acp.previewAcpHistoryDeletion(root, runtimeBodies[method].parse(raw).sessionId, valid)
+      case 'runtime.historyDelete': { const p = runtimeBodies[method].parse(raw); return acp.deleteAcpHistorySession(root, p.sessionId, p.input.token, valid) }
+      case 'runtime.historyRegenerateTitle': return acp.regenerateAcpHistoryTitle(root, runtimeBodies[method].parse(raw).sessionId, valid)
       case 'runtime.historyRetry': return acp.retryAcpHistorySession(root, runtimeBodies[method].parse(raw).sessionId)
       case 'runtime.handoffPreview': {
         const p = runtimeBodies[method].parse(raw)

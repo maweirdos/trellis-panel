@@ -2,6 +2,7 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { preparePiTools } from './prepare-pi-tools.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const modules = join(root, 'node_modules')
@@ -46,6 +47,7 @@ function copyPackage(name, from, optional = false) {
 copyPackage('@earendil-works/pi-coding-agent', root)
 copyPackage('zod', root)
 copyPackage('undici', root)
+await preparePiTools({ root })
 // Shared host dependencies stay in ASAR. Pi-only packages ship once in the external SDK closure.
 const hostVisited = new Set(), hostNames = new Set()
 function collectHost(name, from, optional = false) {

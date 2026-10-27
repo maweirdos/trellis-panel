@@ -23,6 +23,17 @@ choices retain their distinct semantic presentation.
 
 Selecting history reads its transcript without connecting or stopping an engine. Keep per-session drafts, images and references across selection and Settings detours. A continues in the background while B can submit independently. Explicit Send reuses a healthy owner, joins a new session's pending start, or restores the same native identity before exactly one prompt. Do not replay prompts, replace conversations or reconnect from status updates. Failed load/capacity admission preserves input and offers an explicit retry. Legacy transcript-only records remain read-only; external locks/provider restrictions remain authoritative.
 
+Normal connection preparation is an internal lifecycle, with one neutral,
+compact feedback location. Keep loaded history and the editable draft visible;
+do not repeat a connection/reconnection banner in both the header and composer.
+Sending uses the continuous preparation/reply state rather than alarming
+`正在连接原会话` wording. Only failed, timed-out, uncertain or cleanup-required
+preparation exposes the existing actionable recovery details. A historic active
+status with `connectionOwned=false` does not prove a running process and must not
+create an endless spinner or block a resumable conversation. A current metadata
+read can prove a reusable healthy connection before invoking resume; metadata
+read failure alone cannot invalidate the main process's acknowledged live owner.
+
 After Send-time resume, rebind submitted references to the new generation only
 when fresh project/task and backend/native session identity prove continuity.
 Backend source revision checks remain mandatory. Missing or changed identity
@@ -30,9 +41,59 @@ preserves the original references and rejects sending.
 
 The composer hosts native mode, collaboration, model, reasoning and remaining advertised configuration through anchored shared Dropdowns. Prefer a unique advertised category=model/mode config option when session/set_config_option is supported; fall back to legacy controls only when advertised. Use one local configuration lock and apply choices only after acknowledgement. A reasoning track contains exactly the engine's returned options, never invented strengths, permission presets or default reset. Remove duplicate current-session forms/select autofocus from the inspector; retain environment context and a return-to-composer action. Internal menu scrolling must not dismiss the shared Dropdown. Do not restore below-composer task/keyboard hint rows; retain actual task entry and IME-safe submission.
 
-Tools/thoughts/startup/activity use compact icon+label+one chevron rows with details behind explicit expansion. Do not insert successful turn-end separators or giant bordered activity boxes. Request failure details remain accessible. A completed response does not remove the input or disable a live connection.
+Real tools and nonempty thoughts use compact icon/label records with details
+behind explicit expansion. Successful startup/transport milestones, usage and
+empty-thinking diagnostics remain recorded for inspection and never appear as
+a process checklist. A completed response preserves the input and live connection.
 
-Process records follow chronological transcript order. A preceding assistant message stays above a subsequent search/read/tool/thought, followed by the next assistant message. Group only contiguous observations in the same source/session/connection/turn; never collect an entire turn's tools and thoughts into its first status row. Tool patches update their original scoped row without moving intervening messages or another tool. Keep message bytes intact and stable first-event keys across live appends and archive replay. A terminal event may append its own duration disclosure at its recorded position; it never relocates earlier records below the final answer.
+`ConversationTranscript` groups the compiled rows by exact root, runtime source,
+session, connection generation and turn. During execution, keep commentary in
+chronological order and collect only adjacent real tool/thought/knowledge work
+into compact, initially collapsed segments. A later commentary closes the
+preceding segment into a static summary; the active segment uses actual current
+state. Expanding a live thought segment shows its text directly, without a
+second nested thought disclosure. Bound expanded
+detail height and retain keyboard/wheel access. Show `已处理 <elapsed>` only
+for a real recorded start and the exact current live owner, with no repeated
+screen-reader announcement on each clock tick. Missing terminal history cannot
+establish a running turn.
+
+After that exact turn receives its terminal event, collapse the process into
+one `用时 <duration>` disclosure. A duration requires both a recorded start and
+end; partial history uses `处理过程`. Keep the existing duration formatting.
+Its expanded content is a flat chronological sequence of narration and process
+leaves; do not render live segment wrappers or a second completion summary there.
+User messages, final answers, completed
+delivery cards and pending permission choices remain outside. A successful turn
+does not acquire a red error icon or issue count from individual failed tools;
+their actual failures remain readable inside the process. A failed terminal
+retains explicit failure presentation and detail; cancellation remains distinct.
+
+`readableTranscriptEntries(entries, events)` selects human-readable process
+records from compiled items without rewriting saved events. Activity aggregates
+can contain earlier transport observations at turn completion: extract genuine
+problem events as scoped leaves and omit the aggregate presentation. Exclude
+successful terminal rows, routine observations and `pi_thinking_empty` notices.
+Use structured event facts rather than filtering arbitrary assistant/tool text.
+
+`TranscriptProcessLeaf` owns record content only. The turn owns completion and
+timing; a live segment owns its disclosure/activity. Process rendering must not
+delegate activity/thought records to legacy `RunActivity`/`ThoughtActivity`
+widgets. Tools, permissions, knowledge actions and deliverable readers retain
+their actual callbacks and source ownership. Only a real matching active leaf
+can take over the host's current-turn feedback; transport or empty groups cannot.
+
+Tool patches retain their original scoped row and first-event anchor. Replay
+authoritative Pi text updates before compilation through
+`replayConversationTextEvents`; the saved event log remains unchanged. Use the
+provider's `commentary`/`final_answer` phase when available. For unphased history,
+only the last uninterrupted assistant message at a recorded terminal is an
+answer. Do not classify prose by its wording. User messages have a hover/focus
+copy action and a theme-owned `--my-bg-user-message` surface. Ordinary assistant
+messages, including final summaries, have no whole-message copy button. Copy
+belongs to an explicit document/reader or code block and copies that displayed
+artifact. Rendering prose through MarkdownView does not make it a document;
+headings, lists or code fences cannot establish document identity.
 
 Use the same `event-order.ts` reconciliation in live and paged-history merging.
 Saved sequence is canonical, while overlap IDs anchor already delivered unsaved
@@ -44,7 +105,20 @@ message (especially a code fence); actual new tool/thought/status rows remain
 visible boundaries. Test partial sequence upgrades and full replay, not just
 entirely sequenced or entirely live arrays.
 
-RunActivity is secondary to the answer: use the shared small font/tertiary label color (default12px versus answer14px), 14px icons in16px slots, 12px chevrons, consistent stroke and24px rows. An earlier observation segment becomes static after later content arrives; only an actual active tail segment can show a current-action spinner/timer. Explicit expansion stays local to that segment. Tools, thoughts, errors and actionable permissions retain their own chronological rows and remain accessible. Hide routine synchronization chatter from the default transcript while preserving its saved events. Never fabricate a completed step or start/duration for an uncorrelated partial prefix; no arrow on an empty disclosure.
+Process records are secondary to the answer: use the shared small font/tertiary
+label color (default12px versus answer14px),14px icons in16px slots,12px chevrons
+and24px rows. Keep explicit expansion local and preserve source keys. Never
+fabricate a completed step or start/duration for a partial prefix, or an arrow
+for an empty disclosure. A successful turn has exactly one completion/time entry.
+
+Acceptance must replay actual saved event shapes through compile, projection
+and mounted transcript, including terminal aggregates containing start/sent/
+first-provider/first-visible observations, with and without thought text. Check
+running, expanded running, terminal collapse and expanded terminal against the
+reference layout in both themes. Assert no legacy activity/checklist DOM, no
+empty-thinking placeholder, one completion entry, flat terminal process and
+accessible tool/thought/error/permission details. Simplified text/tool fixtures
+alone cannot establish this visual contract.
 
 The same compact leading-icon geometry applies to top-level knowledge results,
 file reads, commands (including failures), thoughts and the current-turn status:
@@ -177,6 +251,58 @@ Recent rows are single-line titles (standard32px, from the global row metric). A
 The hint summarizes the coherent latest message/response, not the last streamed token event. Assemble only compatible role/turn/session/connection chunks, exclude thought/tool/diagnostic text and older turns, then normalize whitespace and apply the display bound. Verify with actual fragmented streaming records; a single static message test cannot catch a one-word summary.
 
 A diagnostic event is not automatically an error. The structured adapter-native capability fact (`toolExecution='adapter-native'`, client filesystem/terminal callbacks both false) is neutral, collapsed runtime detail with original text/raw payload inspectable. Explicit warning/error/auth codes and failed tools take precedence and remain visible. Do not hide unknown diagnostics or use a text-only match to suppress a failure.
+
+### Conversation web previews
+
+Only validated `piWebPreview` metadata on an actual Pi assistant message in the
+selected root/session establishes a web preview. Transcript rows show a compact
+artifact card with an `onOpenWebPreview(artifact, eventId)` action; they do not
+own an iframe or server lease.
+
+HTML/SVG code blocks retain their source and compact preview action.
+`CodePreviewProvider` supplies a source-scoped
+`openCodePreview(source, language)` action to the conversation's Markdown
+descendants. Route snippets to the same right pane using `PrototypePreview`
+for HTML and a static image for SVG; never write a file or acquire a file lease.
+Without a host, use an inline preview. Store only source data in per-session
+memory; keep callbacks in the mounted Context and reject inactive/stale owners.
+
+`usePiWebPreviewShelf` owns tabs, selection, collapse and expansion per
+root/session. File tabs deduplicate by path; code tabs by language and source.
+Keep at most four file leases and eight total tabs; reaching the limit preserves
+existing tabs and shows a close-tab action requirement. New preview events select
+their tab while visible; a collapsed pane stays collapsed. Closing the last tab
+or collapsing suppresses reopening from the same event, including history refresh.
+Returning to an open session restores its selection.
+Opening Inspector closes the preview, and opening a preview closes Inspector;
+preserve existing task/document state and the conversation draft.
+
+`ConversationPreviewLayout` keeps conversation and preview in a desktop split,
+including narrow windows. Expansion changes pane width; it never opens a Modal,
+scrim or overlay, traps focus or makes the conversation inert. Keep the left
+conversation mounted and the iframe filling the right pane below its controls.
+Use `usePointerResize` for pointer capture and interrupted-drag restoration.
+The labelled separator supports arrows, Shift for larger steps, Home/End and
+double-click reset; constrain width to keep both panes reachable.
+
+`ConversationPreviewTabs` remains mounted when collapsed. Hidden panels are inert
+and retain their iframe and lease; switching tabs or changing width must not
+reset page state. A compact edge action reopens the pane. Support ArrowLeft,
+ArrowRight, Home, End and Delete in the tab strip and restore focus when closing.
+`PreviewToolbar` centers a read-only, selectable source/actual lease address.
+`acpPiWebPreviewOpenExternal(leaseId)` opens only the main-derived owned URL in
+the system browser. Code snippets are unsaved and have no external-open action.
+
+`PiWebPreview` acquires a lease through `acpPiWebPreviewOpen` for each file tab and
+current root/session/connection. Release that exact lease on tab close, owner
+replacement, scope suspension or unmount, including a late open response.
+Reject stale callbacks and invalid non-loopback preview addresses. Poll
+`acpPiWebPreviewStatus` without overlapping requests; remount the iframe only
+when its actual revision changes or reload is requested. Hidden tabs collect
+revisions and apply them when activated. Show actionable errors and retain reload
+and close controls. Verify live-to-terminal folding, replay, copy targets,
+light/dark contrast, tab/iframe continuity, collapse/reopen, actual source updates
+and foreign/stale owner rejection using mounted components and isolated files.
 
 ### Sources and workflow
 

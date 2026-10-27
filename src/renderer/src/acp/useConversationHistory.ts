@@ -14,8 +14,8 @@ export function compareConversationSessions(left: AcpSessionMeta & { lastActivit
 }
 function sameRoot(left: string, right: string): boolean { return projectRootKey(left) === projectRootKey(right) }
 /** Runtime state never owns these independently persisted management fields. */
-export function conversationManagement(session: AcpSessionMeta): Pick<AcpSessionMeta, 'title' | 'customTitle' | 'pinnedAt' | 'archivedAt'> {
-  return { title: session.title, customTitle: session.customTitle, pinnedAt: session.pinnedAt, archivedAt: session.archivedAt }
+export function conversationManagement(session: AcpSessionMeta): Pick<AcpSessionMeta, 'title' | 'customTitle' | 'titleProvenance' | 'deletionState' | 'pinnedAt' | 'archivedAt'> {
+  return { title: session.title, customTitle: session.customTitle, titleProvenance: session.titleProvenance, deletionState: session.deletionState, pinnedAt: session.pinnedAt, archivedAt: session.archivedAt }
 }
 function merge(previous: TimelineEvent[], incoming: TimelineEvent[], prepend = false): TimelineEvent[] {
   const byId = new Map(previous.map((event) => [event.id, event]))
@@ -30,6 +30,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
   const [sessions, setSessions] = useState<AcpHistorySummary[]>([])
   const [knownSessions, setKnownSessions] = useState<Record<string, AcpHistorySummary>>({})
   const [events, setEvents] = useState<Record<string, TimelineEvent[]>>({})
+  const [, setDeletedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [query, setQuery] = useState('')
   const [archive, setArchive] = useState<ConversationArchive>('active')
   const [mutationBusy, setMutationBusy] = useState<Record<string, boolean>>({})
@@ -47,7 +48,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
   const [selectionKey, setSelectionKey] = useState('')
   const requestedSelectionKey = `${root}\0${activeId ?? ''}\0${selectionRevision}`
   const reloadSelected = useCallback((): void => setSelectionRevision((revision) => revision + 1), [])
-  const scope = useMemo(() => ({ root, live: true, listSerial: 0, selectionSerial: 0, reads: new Map<string, number>(), managementRevision: 0, cursor: null as string | null, pages: new Map<string, AcpHistoryEventPage>(), managed: new Map<string, { revision: number; session: AcpHistorySummary }>(), mutations: new Set<string>(), listBusy: false, earlierBusy: false, refreshing: null as Promise<void> | null, refreshAgain: false }), [root])
+  const scope = useMemo(() => ({ root, live: true, listSerial: 0, selectionSerial: 0, reads: new Map<string, number>(), deleted: new Set<string>(), managementRevision: 0, cursor: null as string | null, pages: new Map<string, AcpHistoryEventPage>(), managed: new Map<string, { revision: number; session: AcpHistorySummary }>(), mutations: new Set<string>(), listBusy: false, earlierBusy: false, refreshing: null as Promise<void> | null, refreshAgain: false }), [root])
   const current = useRef(scope)
   current.current = scope
   const selection = useRef(activeId)
@@ -60,8 +61,18 @@ export function useConversationHistory(root: string, activeId: string | null) {
   const ownerRef = useRef(owner)
   ownerRef.current = owner
   const isCurrent = useCallback(() => current.current === scope && scope.live && sameRoot(useApp.getState().snapshot?.meta.root ?? '', root), [scope, root])
+  const forget = useCallback((id: string): void => {
+    if (!isCurrent()) return
+    scope.deleted = new Set([...scope.deleted, id]); scope.pages.delete(id); scope.managed.delete(id)
+    scope.reads.set(id, (scope.reads.get(id) ?? 0) + 1)
+    setDeletedIds(new Set(scope.deleted))
+    setSessions(previous => previous.filter(session => session.sessionId !== id))
+    setKnownSessions(previous => { const next = { ...previous }; delete next[id]; return next })
+    setEvents(previous => { const next = { ...previous }; delete next[id]; return next })
+    if (selection.current === id) { scope.selectionSerial++; setPage(null); setSelectionLoading(false); setSelectionResolved(true) }
+  }, [scope, isCurrent])
   const remember = useCallback((incoming: AcpHistorySummary[], requestedRevision: number): AcpHistorySummary[] => {
-    const records = incoming.filter((session) => sameRoot(root, session.projectRoot)).map((session) => {
+    const records = incoming.filter((session) => sameRoot(root, session.projectRoot) && !scope.deleted.has(session.sessionId)).map((session) => {
       const managed = scope.managed.get(session.sessionId)
       if (managed && managed.revision > requestedRevision) return { ...session, ...conversationManagement(managed.session) }
       // Reads issued after an acknowledgement are authoritative, including a
@@ -135,7 +146,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
     return pending
   }, [root, scope, isCurrent, remember])
 
-  const update = useCallback(async (id: string, patch: ConversationUpdate): Promise<AcpHistorySummary | null> => {
+  const mutateSummary = useCallback(async (id: string, request: () => ReturnType<typeof api.acpHistoryUpdate>): Promise<AcpHistorySummary | null> => {
     if (!hasIpc || typeof api.acpHistoryUpdate !== 'function' || !isCurrent() || !canInteract() || scope.mutations.has(id)) return null
     const requestedOwner = ownerRef.current
     const valid = (): boolean => isCurrent() && canInteract() && !requestedOwner.interactionSignal?.aborted && ownerRef.current === requestedOwner
@@ -143,7 +154,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
     setMutationBusy((previous) => ({ ...previous, [id]: true }))
     setMutationErrors((previous) => ({ ...previous, [id]: '' }))
     try {
-      const result = await api.acpHistoryUpdate(id, patch)
+      const result = await request()
       if (!valid()) {
         // Reject the old interaction's result. A fresh root-owned read can
         // reconcile persisted changes without reopening a dialog or navigating.
@@ -167,6 +178,35 @@ export function useConversationHistory(root: string, activeId: string | null) {
       if (isCurrent()) setMutationBusy((previous) => ({ ...previous, [id]: false }))
     }
   }, [root, scope, isCurrent, canInteract, remember, refresh, reloadSelected])
+  const update = useCallback((id: string, patch: ConversationUpdate) => mutateSummary(id, () => api.acpHistoryUpdate(id, patch)), [mutateSummary])
+  const regenerateTitle = useCallback((id: string): Promise<AcpHistorySummary | null> => {
+    if (typeof api.acpHistoryRegenerateTitle !== 'function') {
+      if (isCurrent()) setMutationErrors(previous => ({ ...previous, [id]: '标题功能尚未载入，请完整重启应用后重试。' }))
+      return Promise.resolve(null)
+    }
+    return mutateSummary(id, () => api.acpHistoryRegenerateTitle(id))
+  }, [mutateSummary, isCurrent])
+  const remove = useCallback(async (id: string): Promise<boolean> => {
+    if (!isCurrent() || !canInteract() || scope.mutations.has(id)) return false
+    if (!hasIpc || typeof api.acpHistoryDelete !== 'function') {
+      setMutationErrors(previous => ({ ...previous, [id]: '永久删除功能尚未载入，请完整重启应用后重试。' }))
+      return false
+    }
+    const requestedOwner = ownerRef.current
+    const valid = (): boolean => isCurrent() && canInteract() && !requestedOwner.interactionSignal?.aborted && ownerRef.current === requestedOwner
+    scope.mutations.add(id); setMutationBusy(previous => ({ ...previous, [id]: true })); setMutationErrors(previous => ({ ...previous, [id]: '' }))
+    try {
+      const source = await api.acpHistorySession(id)
+      if (!valid()) return false
+      if (!source.ok) { setMutationErrors(previous => ({ ...previous, [id]: source.error })); return false }
+      if (source.session.sessionId !== id || !sameRoot(root, source.session.projectRoot)) return false
+      const result = await api.acpHistoryDelete(id, { expectedRoot: root, expectedConnectionGeneration: source.session.connectionGeneration })
+      if (result.ok && 'deleted' in result) { if (isCurrent()) { forget(id); void refresh() }; return valid() }
+      if (!result.ok && isCurrent()) { setMutationErrors(previous => ({ ...previous, [id]: result.error })); void refresh(); reloadSelected() }
+      return false
+    } catch (reason) { if (valid()) setMutationErrors(previous => ({ ...previous, [id]: reason instanceof Error ? reason.message : '删除失败，请刷新后重试' })); return false }
+    finally { scope.mutations.delete(id); if (isCurrent()) setMutationBusy(previous => ({ ...previous, [id]: false })) }
+  }, [root, scope, isCurrent, canInteract, forget, refresh, reloadSelected])
 
   const loadMore = useCallback(async (): Promise<void> => {
     if (!hasIpc || !api.acpHistoryList || !scope.cursor || scope.listBusy || !isCurrent()) return
@@ -212,7 +252,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
 
   useEffect(() => {
     scope.live = true
-    setSessions([]); setKnownSessions({}); setEvents({}); setPage(null); setError(''); setSelectionErrors({}); setHasMore(false)
+    setSessions([]); setKnownSessions({}); setEvents({}); setDeletedIds(new Set()); setPage(null); setError(''); setSelectionErrors({}); setHasMore(false)
     setMutationBusy({}); setMutationErrors({}); setArchive('active')
     setLoadingMore(false); setLoadingEarlier(false)
     return () => { scope.live = false }
@@ -226,13 +266,13 @@ export function useConversationHistory(root: string, activeId: string | null) {
     setPage(id ? scope.pages.get(id) ?? null : null)
     setSelectionResolved(false)
     setSelectionLoading(!!id)
-    if (!id || !hasIpc || !api.acpHistorySession || !isCurrent()) { setSelectionLoading(false); setSelectionResolved(true); return }
+    if (!id || scope.deleted.has(id) || !hasIpc || !api.acpHistorySession || !isCurrent()) { setSelectionLoading(false); setSelectionResolved(true); return }
     // Reads belong to the conversation, not the selected view. Different IDs
     // hydrate independently; a later read of the same ID supersedes an old one.
     const read = (scope.reads.get(id) ?? 0) + 1
     scope.reads.set(id, read)
     setSelectionErrors((errors) => ({ ...errors, [id]: '' }))
-    const valid = (): boolean => isCurrent() && scope.reads.get(id) === read
+    const valid = (): boolean => isCurrent() && !scope.deleted.has(id) && scope.reads.get(id) === read
     const revision = scope.managementRevision
     const failed = (reason: string): void => { if (valid()) setSelectionErrors((errors) => ({ ...errors, [id]: reason })) }
     void Promise.allSettled([
@@ -265,7 +305,7 @@ export function useConversationHistory(root: string, activeId: string | null) {
     const statuses = new Map<string, string>()
     const schedule = (): void => { if (pending) clearTimeout(pending); pending = setTimeout(() => { pending = undefined; void refresh() }, 200) }
     const offState = api.onAcpState((state) => {
-      if (!isCurrent() || !sameRoot(root, state.projectRoot)) return
+      if (!isCurrent() || scope.deleted.has(state.sessionId) || !sameRoot(root, state.projectRoot)) return
       if (statuses.get(state.sessionId) !== state.status) { statuses.set(state.sessionId, state.status); schedule() }
       setKnownSessions((previous) => {
         const saved = previous[state.sessionId]
@@ -277,14 +317,19 @@ export function useConversationHistory(root: string, activeId: string | null) {
       })
     })
     const offDone = api.onAcpDone((state) => { if (isCurrent() && (!state.projectRoot || sameRoot(root, state.projectRoot))) schedule() })
+    const offHistory = api.onAcpHistoryChanged?.(event => {
+      if (!isCurrent() || !sameRoot(root, event.projectRoot)) return
+      if (event.deleted) forget(event.sessionId)
+      schedule()
+    })
     const bridge = api as typeof api & { onDaemonRuntimeReset?: (callback: (event: { projectRoot: string }) => void) => () => void }
     const offReset = bridge.onDaemonRuntimeReset?.(event => { if (isCurrent() && sameRoot(root, event.projectRoot)) { schedule(); reloadSelected() } })
-    return () => { offState(); offDone(); offReset?.(); if (pending) clearTimeout(pending) }
-  }, [root, scope, isCurrent, refresh, reloadSelected])
+    return () => { offState(); offDone(); offHistory?.(); offReset?.(); if (pending) clearTimeout(pending) }
+  }, [root, scope, isCurrent, refresh, reloadSelected, forget])
   const selectedSession = activeId ? knownSessions[activeId] ?? null : null
   const selectedPage = activeId ? scope.pages.get(activeId) ?? (page?.session.sessionId === activeId ? page : null) : null
   const coverage: AcpHistoryCoverage | null = selectedPage?.coverage ?? selectedSession?.historyCoverage ?? null
-  return { sessions, knownSessions, selectedSession, events, query, setQuery, archive, setArchive, update, mutationBusy, mutationErrors,
+  return { sessions, knownSessions, selectedSession, events, deletedIds: scope.deleted as ReadonlySet<string>, query, setQuery, archive, setArchive, update, remove, regenerateTitle, mutationBusy, mutationErrors,
     canManage: hasIpc && typeof api.acpHistoryUpdate === 'function', loading, loadingMore, loadingEarlier, error, hasMore,
     selectionError: activeId ? selectionErrors[activeId] ?? '' : '',
     hasEarlier: selectedPage?.hasEarlier ?? false, coverage, startsMidTurn: selectedPage?.startsMidTurn ?? false, refresh, refreshSession, loadMore, loadEarlier,

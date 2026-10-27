@@ -7,7 +7,7 @@ export interface LocalDocumentLink {
   fragment: string
 }
 
-export const LOCAL_DOCUMENT_EXTENSIONS = ['.html', '.htm', '.pdf', '.md', '.txt'] as const
+export const LOCAL_DOCUMENT_EXTENSIONS = ['.html', '.htm', '.svg', '.pdf', '.md', '.txt'] as const
 export function supportedLocalDocumentPath(path: string): boolean {
   return LOCAL_DOCUMENT_EXTENSIONS.some(extension => path.toLowerCase().endsWith(extension))
 }

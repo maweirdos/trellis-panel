@@ -4,6 +4,8 @@ import remarkGfm from 'remark-gfm'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import { MermaidBlock } from './MermaidBlock'
 import { AsciiDiagramBlock } from './AsciiDiagramBlock'
+import { GeneratedCodePreview } from './GeneratedCodePreview'
+import { ArtifactCopyButton } from './ArtifactCopyButton'
 import { api, hasIpc } from '../api'
 import { externalHttpUrl } from '../../../shared/external-url'
 import { localDocumentHref, localDocumentLink } from '../../../shared/local-document-link'
@@ -135,13 +137,17 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
         const className = codeProps?.className
 
         if (className?.includes('language-mermaid')) {
-          return <MermaidBlock chart={text} />
+          return <div><div className="flex justify-end"><ArtifactCopyButton text={text} ownerKey={text} label="复制图表源码" /></div><MermaidBlock chart={text} /></div>
+        }
+        if (/\blanguage-(?:html|svg)\b/i.test(className ?? '')) {
+          return <GeneratedCodePreview source={text} language={/\blanguage-svg\b/i.test(className ?? '') ? 'svg' : 'html'} />
         }
         if (!className && looksLikeAsciiDiagram(text)) {
           return <AsciiDiagramBlock chart={text} />
         }
       }
-      return <pre {...props}>{children}</pre>
+      const source = child ? String((child.props as { children?: React.ReactNode }).children ?? '') : undefined
+      return <div>{source !== undefined && <div className="flex justify-end"><ArtifactCopyButton text={source} ownerKey={source} label="复制代码" /></div>}<pre {...props}>{children}</pre></div>
     },
     table({ children, ...props }) {
       return (

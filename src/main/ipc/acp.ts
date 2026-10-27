@@ -3,6 +3,9 @@
  * projectRoot 统一取自 state（本层允许 import state；acp 服务保持无环叶子）。
  */
 import { ipcInvoke } from '../../shared/ipc-channels'
+import { app, BrowserWindow, dialog } from 'electron'
+import { writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { noProject, ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
 import { getProjectRoot, getProjectGeneration } from '../state'
 import type { AcpBindTaskInput, AcpPromptOptions } from '../../shared/types'
@@ -16,14 +19,64 @@ import {
   promptAcpSession,
   respondAcpPermission,
   listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath, resumeAcpSession, configureAcpSession, bindAcpSessionTask,
-  listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel,
-  previewAcpSessionHandoff, createAcpSessionHandoff, getAcpSessionHandoff, cancelAcpSessionHandoff
+  listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, getAcpPiImage, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel,
+  previewAcpSessionHandoff, createAcpSessionHandoff, getAcpSessionHandoff, cancelAcpSessionHandoff,
+  previewAcpHistoryDeletion, deleteAcpHistorySession, regenerateAcpHistoryTitle
 } from '../services/daemon-client/acp'
 import { testAcpRuntimeConnection } from '../services/daemon-client/acp'
-import { handle } from './registry'
+import { handle, on } from './registry'
 import { isManagedWorkflowOrigin } from '../services/daemon-client/workflow'
+import { piDocumentOpenInputSchema } from '../../shared/pi-document'
+import { acpHistoryDeleteRequestSchema } from '../../shared/acp-history'
+import { approveNativeHistoryDeletion, discardNativeHistoryDeletion } from '../services/acp/history-deletion'
+import { piDocumentHref } from '../services/pi/document-path'
+import { openLocalDocumentLink } from '../services/local-document-links'
 
 export function registerAcpIpc(): void {
+  const documentOperations = new Map<string, { cancelled: boolean }>()
+  on(ipcInvoke.acp.piDocumentCancel, (event, id: unknown) => {
+    if (typeof id !== 'string') return
+    const operation = documentOperations.get(`${event.sender.id}:${id}`)
+    if (operation) operation.cancelled = true
+  })
+  handle(ipcInvoke.acp.piDocumentOpen, async (event, input: unknown) => {
+    const parsed = piDocumentOpenInputSchema.safeParse(input)
+    if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '文档打开请求无效。')
+    const request = parsed.data
+    const root = getProjectRoot()
+    const generation = getProjectGeneration()
+    if (!root) return noProject()
+    const samePath = (a: string, b: string): boolean => process.platform === 'win32' ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b)
+    if (!samePath(root, request.expectedRoot)) return ipcFail(IpcErrorCode.Conflict, '项目已切换，请重新选择文件。')
+    const key = `${event.sender.id}:${request.operationId}`
+    if (documentOperations.has(key)) return ipcFail(IpcErrorCode.Conflict, '此打开请求正在处理。')
+    const operation = { cancelled: false }
+    documentOperations.set(key, operation)
+    const current = (): boolean => !operation.cancelled && !event.sender.isDestroyed() && getProjectGeneration() === generation && getProjectRoot() === root
+    const readOwner = async () => {
+      const inventory = await listAcpSessions(root, 100)
+      if (!inventory.ok) return inventory
+      const session = inventory.sessions.find(item => item.sessionId === request.sessionId)
+      return session ? { ok: true as const, session } : getAcpHistorySession(root, request.sessionId)
+    }
+    try {
+      const first = await readOwner()
+      if (!current()) return ipcFail(IpcErrorCode.Conflict, '项目或会话已切换，未打开文件。')
+      if (!first.ok) return first
+      const session = first.session
+      if (session.engine !== 'pi' || session.sessionId !== request.sessionId || !samePath(session.projectRoot, root) || session.connectionGeneration !== request.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '项目或会话连接已变化，请重新选择文件。')
+      const cwd = session.cwd ?? session.projectRoot
+      const href = piDocumentHref(request.path, cwd, root)
+      if (!href) return ipcFail(IpcErrorCode.InvalidArg, '文件路径无效或不在当前项目中。')
+      const latest = await readOwner()
+      if (!current() || !latest.ok || latest.session.engine !== 'pi' || latest.session.sessionId !== request.sessionId ||
+        !samePath(latest.session.projectRoot, root) || latest.session.connectionGeneration !== request.connectionGeneration ||
+        !samePath(latest.session.cwd ?? latest.session.projectRoot, cwd)) return ipcFail(IpcErrorCode.Conflict, '项目或会话已变化，未打开文件。')
+      return await openLocalDocumentLink(href, root, current)
+    } catch {
+      return ipcFail(IpcErrorCode.Io, '无法核对会话或打开本地文档，请重试。')
+    } finally { documentOperations.delete(key) }
+  })
   handle(ipcInvoke.acp.agents, () => listAcpAgents())
 
   handle(ipcInvoke.acp.sessions, (_e, limit?: number) => {
@@ -46,7 +99,69 @@ export function registerAcpIpc(): void {
     const generation = getProjectGeneration()
     return updateAcpHistorySession(root, id, input, () => getProjectRoot() === root && getProjectGeneration() === generation)
   })
+  const deletions = new Set<string>()
+  handle(ipcInvoke.acp.historyDelete, async (event, id: unknown, input: unknown) => {
+    const parsed = acpHistoryDeleteRequestSchema.safeParse(input)
+    if (!parsed.success || typeof id !== 'string' || !/^[\w.-]{1,200}$/.test(id) || id === '.' || id === '..') return ipcFail(IpcErrorCode.InvalidArg, '删除请求无效')
+    const sender = event.sender, frame = event.senderFrame
+    if (sender.isDestroyed() || !frame || frame.isDestroyed() || frame.parent || frame !== sender.mainFrame) return ipcFail(IpcErrorCode.Denied, '请从应用主页面确认永久删除')
+    const originalUrl = frame.url, originalProcess = frame.processId, originalRouting = frame.routingId
+    const root = getProjectRoot(), generation = getProjectGeneration()
+    if (!root) return noProject()
+    const pathKey = (path: string): string => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path)
+    if (pathKey(root) !== pathKey(parsed.data.expectedRoot)) return ipcFail(IpcErrorCode.Conflict, '项目已变化，请重新选择会话')
+    let navigated = false
+    const onNavigation = (_event: Electron.Event, _url: string, _inPlace: boolean, isMainFrame: boolean): void => { if (isMainFrame) navigated = true }
+    const current = (): boolean => !navigated && !sender.isDestroyed() && !frame.isDestroyed() && event.senderFrame === frame && sender.mainFrame === frame
+      && frame.url === originalUrl && frame.processId === originalProcess && frame.routingId === originalRouting
+      && getProjectRoot() === root && getProjectGeneration() === generation
+    const key = `${event.sender.id}:${id}`
+    if (deletions.has(key)) return ipcFail(IpcErrorCode.Conflict, '此删除请求正在处理')
+    deletions.add(key)
+    sender.on('did-start-navigation', onNavigation)
+    try {
+      const existing = await getAcpHistorySession(root, id)
+      if (!current()) return ipcFail(IpcErrorCode.Conflict, '项目已变化，未删除会话')
+      if (!existing.ok) return existing
+      if (existing.session.connectionGeneration !== parsed.data.expectedConnectionGeneration) return ipcFail(IpcErrorCode.Conflict, '会话连接已变化，请刷新后重试')
+      const preview = await previewAcpHistoryDeletion(root, id, current)
+      if (!preview.ok) return preview
+      if (!current()) return ipcFail(IpcErrorCode.Conflict, '项目已变化，未删除会话')
+      const parent = BrowserWindow.fromWebContents(event.sender)
+      const options: Electron.MessageBoxOptions = { type: 'warning', title: '永久删除本地会话', message: `永久删除“${preview.title}”？`,
+        detail: `将删除：\n${preview.scope.map(value => `• ${value}`).join('\n')}\n\n保留：\n${preview.excluded.map(value => `• ${value}`).join('\n')}\n\n此操作无法撤销。`,
+        buttons: ['取消', '永久删除本地会话及附件'], defaultId: 0, cancelId: 0, noLink: true }
+      const choice = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
+      if (choice.response !== 1) return { ok: true, sessionId: id, cancelled: true }
+      if (!current()) return ipcFail(IpcErrorCode.Conflict, '项目已变化，未删除会话')
+      approveNativeHistoryDeletion(app.getPath('userData'), root, id, preview.token)
+      try { return await deleteAcpHistorySession(root, id, preview.token, current) }
+      finally { discardNativeHistoryDeletion(app.getPath('userData'), preview.token) }
+    } catch (error) { return ipcFail(IpcErrorCode.Io, error instanceof Error ? error.message : '永久删除未确认，请刷新后重试') }
+    finally { sender.removeListener('did-start-navigation', onNavigation); deletions.delete(key) }
+  })
+  handle(ipcInvoke.acp.historyRegenerateTitle, (_event, id: string) => {
+    const root = getProjectRoot() ?? '', generation = getProjectGeneration()
+    return regenerateAcpHistoryTitle(root, id, () => getProjectRoot() === root && getProjectGeneration() === generation)
+  })
   handle(ipcInvoke.acp.historyEvents, (_e, id, input) => scopedHistory((root) => getAcpHistoryEvents(root, id, input)))
+  handle(ipcInvoke.acp.piImage, (_e, id, imageId) => scopedHistory((root) => getAcpPiImage(root, id, imageId)))
+  handle(ipcInvoke.acp.piImageSave, async (event, id: string, imageId: string) => {
+    const root = getProjectRoot()
+    const generation = getProjectGeneration()
+    if (!root) return noProject()
+    const image = await getAcpPiImage(root, id, imageId)
+    if (!image.ok) return image
+    if (getProjectRoot() !== root || getProjectGeneration() !== generation) return noProject()
+    const extension = image.image.mimeType === 'image/jpeg' ? 'jpg' : image.image.mimeType.slice(6)
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = { title: '保存图片', defaultPath: `图片.${extension}`, filters: [{ name: '图片', extensions: [extension] }] }
+    const choice = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+    if (choice.canceled || !choice.filePath) return { ok: true, cancelled: true }
+    if (getProjectRoot() !== root || getProjectGeneration() !== generation) return noProject()
+    try { await writeFile(choice.filePath, Buffer.from(image.image.data, 'base64')); return { ok: true, cancelled: false } }
+    catch { return ipcFail(IpcErrorCode.Io, '保存图片失败') }
+  })
   handle(ipcInvoke.acp.historyRetry, (_e, id) => scopedHistory((root) => retryAcpHistorySession(root, id)))
   const connection = async <T extends { ok: boolean }>(root: string, _target: { sessionId?: string; profileId?: string }, action: () => Promise<T>): Promise<T | IpcFail> => {
     if (!root) return noProject()

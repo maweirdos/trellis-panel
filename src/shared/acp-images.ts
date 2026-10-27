@@ -14,6 +14,14 @@ export interface AcpImageAttachment {
   data: string
 }
 
+export interface AcpStoredImage { id: string; name: string; mimeType: AcpImageMimeType }
+export function readAcpStoredImages(value: unknown): AcpStoredImage[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, ACP_IMAGE_MAX_COUNT).filter((image): image is AcpStoredImage =>
+    typeof image === 'object' && image !== null && typeof image.id === 'string' && /^[a-f0-9]{64}$/.test(image.id) &&
+    typeof image.name === 'string' && image.name.length > 0 && image.name.length <= 255 && ACP_IMAGE_MIME_TYPES.includes(image.mimeType))
+}
+
 export function acpImageBytes(data: string): number {
   return data.length / 4 * 3 - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0)
 }

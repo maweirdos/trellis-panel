@@ -9,6 +9,7 @@ import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import type { HistoryBatchItem } from './history-core'
 import type { HandoffArchive } from './handoff-history'
 import type { HistoryOperation, HistoryWorkerRequest, HistoryWorkerResponse } from './history-worker'
+import { readHistoryDeletion } from './history-deletion'
 
 interface PendingRequest { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
 interface BufferedSession { record: AcpSessionRecord; events: TimelineEvent[]; dirty: boolean; pendingBytes: number }
@@ -89,6 +90,7 @@ export function ensureAcpHistory(): Promise<void> {
 /** Called at admission, before the bounded compatibility cache is trimmed. */
 export function archiveAcpEvent(record: AcpSessionRecord, event?: TimelineEvent): void {
   const id = record.sessionId
+  if (readHistoryDeletion(join(app.getPath('userData'), 'acp'), record.projectRoot, id)) return
   let item = buffered.get(id)
   if (!item) { item = { record, events: [], dirty: true, pendingBytes: 0 }; buffered.set(id, item) }
   item.record = record; item.dirty = true
@@ -207,6 +209,19 @@ export async function readAcpHandoffArchive(root: string, sessionId: string, byt
   } catch (error) { return fail(error) }
 }
 export async function retryAcpHistory(): Promise<void> { await flushAcpHistory() }
+export async function drainAcpHistory(): Promise<void> {
+  // A flush can join an existing writer; drain again to include writes queued at its completion.
+  do { await flushAcpHistory() } while (writing || [...buffered.values()].some(item => item.dirty || item.events.length))
+}
+export async function deleteAcpHistoryArchive(root: string, sessionId: string): Promise<void> {
+  await ensureAcpHistory()
+  await request({ op: 'delete', root: canonicalDirectory(root), sessionId })
+  health.delete(sessionId); overflowed.delete(sessionId); writeBlocked.delete(sessionId)
+}
+export async function readAcpTitleMaterial(root: string, sessionId: string): Promise<{ question: string; delivery: string; digest: string } | null> {
+  await ensureAcpHistory(); await drainAcpHistory()
+  return request({ op: 'title-material', root: canonicalDirectory(root), sessionId })
+}
 export async function stopAcpHistory(): Promise<void> {
   await flushAcpHistory()
   if (!worker) return

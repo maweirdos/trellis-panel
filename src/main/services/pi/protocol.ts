@@ -26,13 +26,21 @@ export const piStateSchema = z.object({
   sessionVersion: z.literal(3), thinkingLevel: z.string(), contextWindow: z.number(), tools: z.array(z.string())
 }).strict()
 export type PiState = z.infer<typeof piStateSchema>
-export const piPermissionSchema = z.object({ toolCallId: z.string().min(1), name: z.string().min(1), args: z.record(z.string(), z.unknown()) }).strict()
+export const piPermissionSchema = z.object({ toolCallId: z.string().min(1), name: z.string().min(1), args: z.record(z.string(), z.unknown()), cwd: z.string().min(1), homeDir: z.string().min(1) }).strict()
 export type PiPermission = z.infer<typeof piPermissionSchema>
+/** A replace carries the complete block in text, including an empty string to clear it. */
+export const piTextMetaSchema = z.object({
+  version: z.literal(1), messageId: z.string().min(1), blockIndex: z.number().int().nonnegative(),
+  blockType: z.enum(['text', 'thinking']), operation: z.enum(['append', 'replace']),
+  providerMessageId: z.string().min(1).optional(), authority: z.enum(['block_end', 'message_end']).optional()
+}).strict()
+export type PiTextMeta = z.infer<typeof piTextMetaSchema>
+export type PiTextPhase = 'commentary' | 'final_answer'
 /** Normalized message activity, independent of Pi's event union and ACP wire frames. */
 export type PiActivity =
-  | { type: 'text_delta'; text: string; stream?: 'output' | 'thought'; messageId?: string }
+  | { type: 'text_delta'; text: string; stream?: 'output' | 'thought'; messageId?: string; meta?: Record<string, unknown> }
   | { type: 'tool_call'; text: string; toolCallId: string; title?: string; status: string; tag?: string; rawInput?: unknown; rawOutput?: unknown; outputDelta?: string }
-  | { type: 'status'; text: string; tag?: string; used?: number; size?: number; phase?: string }
+  | { type: 'status'; text: string; tag?: string; used?: number; size?: number; phase?: string; operationId?: string; messageId?: string }
   | { type: 'error'; message: string }
 export type PiChildMessage =
   | { type: 'response'; id: string; ok: boolean; result?: unknown; error?: string }

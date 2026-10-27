@@ -4,10 +4,12 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { basename, join } from 'node:path'
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import type { AcpHistoryCoverage, AcpHistoryDiagnostic, AcpHistoryEventPage, AcpHistoryListResult, AcpHistoryPersistence, AcpHistorySummary } from '../../../shared/acp-history'
-import type { AcpConversationPreview } from '../../../shared/acp-conversation-preview'
+import { acpConversationPreview, type AcpConversationPreview } from '../../../shared/acp-conversation-preview'
 import { historicalEvent, HistoryTurnBoundaryError, selectHistoryTurns, type HistoryEventMetadata } from './history-turns'
 import { applySessionPreferences, compareHistorySummaries, matchesHistorySummary, readSessionPreferences, type SessionPreferences } from './session-preferences'
 import { HandoffHistoryError, readHandoffArchive, type HandoffArchive } from './handoff-history'
+import { readHistoryDeletion } from './history-deletion'
+import { readHistoryText } from './history-text'
 
 const DB_VERSION = 1
 const SNAPSHOT_TTL = 5 * 60_000
@@ -80,10 +82,35 @@ export class AcpHistoryCore {
       const epoch = this.db.prepare("SELECT value FROM archive_meta WHERE key='epoch'").get() as { value: string } | undefined
       if (!epoch?.value) throw new Error('Conversation archive identity missing; original database retained')
       this.epoch = epoch.value
-      this.db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA busy_timeout=2000;')
+      this.db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA busy_timeout=2000; PRAGMA secure_delete=ON;')
     } catch (error) { this.db.close(); throw error }
   }
   close(): void { this.db.close() }
+  deleteSession(root: string, sessionId: string): void {
+    if (!readHistoryDeletion(this.directory, root, sessionId)) throw new Error('永久删除缺少已确认的持久记录')
+    this.transaction(() => {
+      this.db.prepare('DELETE FROM events WHERE root=? AND sessionId=?').run(root, sessionId)
+      this.db.prepare('DELETE FROM imports WHERE root=? AND sessionId=?').run(root, sessionId)
+      this.db.prepare('DELETE FROM sessions WHERE root=? AND sessionId=?').run(root, sessionId)
+    })
+    this.snapshots.clear()
+  }
+  titleMaterial(root: string, sessionId: string): { question: string; delivery: string; digest: string } | null {
+    if (!this.session(root, sessionId)) return null
+    const first = this.db.prepare(`SELECT seq,json_extract(payload,'$.text') text FROM events WHERE root=? AND sessionId=? AND kind='message'
+      AND json_extract(payload,'$.source') IN ('acp','pi') AND json_extract(payload,'$.payload.role')='user' AND ${MESSAGE_TEXT}<>'' ORDER BY seq LIMIT 1`).get(root, sessionId) as { seq: number; text: string } | undefined
+    if (!first) return null
+    const latest = this.db.prepare(`SELECT seq,turnId,json_extract(payload,'$.connectionGeneration') generation FROM events WHERE root=? AND sessionId=? AND kind='message'
+      AND json_extract(payload,'$.source') IN ('acp','pi') AND COALESCE(json_extract(payload,'$.payload.role'),'assistant')='assistant' ORDER BY seq DESC LIMIT 1`).get(root, sessionId) as { seq: number; turnId: string | null; generation: string | null } | undefined
+    if (!latest || latest.seq <= first.seq) return null
+    const beginning = this.db.prepare(`SELECT MIN(seq) seq FROM events WHERE root=? AND sessionId=? AND turnId IS ?
+      AND json_extract(payload,'$.connectionGeneration') IS ? AND seq>? AND seq<=?`).get(root, sessionId, latest.turnId, latest.generation, first.seq, latest.seq) as { seq: number }
+    const messages = readHistoryText(this.db, root, sessionId, beginning.seq, latest.seq).filter(event => event.payload?.role !== 'user')
+    const final = messages.filter(event => event.payload?.meta && (event.payload.meta as { phase?: unknown }).phase === 'final_answer')
+    const delivery = (final.length ? final : messages).map(event => event.text ?? '').join('\n').slice(-10_000)
+    const question = first.text.slice(0, 4000)
+    return { question, delivery, digest: digest(stable([first.seq, latest.seq, latest.turnId, latest.generation, question, delivery])) }
+  }
   private transaction<T>(fn: () => T): T {
     this.db.exec('BEGIN IMMEDIATE')
     try { const result = fn(); this.db.exec('COMMIT'); return result }
@@ -98,7 +125,7 @@ export class AcpHistoryCore {
       WHERE root=? AND sessionId=? AND kind='message' AND json_extract(payload,'$.source') IN ('acp','pi')
       AND (json_extract(payload,'$.sessionId') IS NULL OR json_extract(payload,'$.sessionId')=?)
       AND COALESCE(json_extract(payload,'$.payload.role'),'assistant') IN ('user','assistant')
-      AND json_type(payload,'$.text')='text' AND ${MESSAGE_TEXT}<>''
+      AND json_type(payload,'$.text')='text'
       ORDER BY seq DESC LIMIT 1`).get(root, sessionId, sessionId) as {
         seq: number; ts: number; text: string; role: string; generation: string | null; turnId: string | null; messageId: string | null
       } | undefined
@@ -110,17 +137,7 @@ export class AcpHistoryCore {
         OR json_extract(payload,'$.connectionGeneration') IS NOT ?
         OR json_extract(payload,'$.turnId') IS NOT ? OR json_extract(payload,'$.payload.messageId') IS NOT ?)))
       ORDER BY seq DESC LIMIT 1`).get(root, sessionId, latest.seq, latest.generation, latest.turnId, latest.messageId) as { seq: number } | undefined
-    const rows = this.db.prepare(`SELECT json_extract(payload,'$.text') text FROM events
-      WHERE root=? AND sessionId=? AND seq>? AND seq<=? AND kind='message'
-      AND json_extract(payload,'$.source') IN ('acp','pi') AND json_type(payload,'$.text')='text'
-      AND (json_extract(payload,'$.sessionId') IS NULL OR json_extract(payload,'$.sessionId')=?)
-      ORDER BY seq`).iterate(root, sessionId, boundary?.seq ?? 0, latest.seq, sessionId)
-    let text = ''
-    for (const row of rows) {
-      text = (text + String(row.text)).replace(/\s+/g, ' ').trimStart()
-      if (text.length >= 180) break
-    }
-    return { text: text.trim().slice(0, 180), at: latest.ts }
+    return acpConversationPreview(readHistoryText(this.db, root, sessionId, (boundary?.seq ?? 0) + 1, latest.seq), sessionId)
   }
   private saveMetadata(item: HistoryBatchItem): void {
     const { events: _events, pendingPermissions: _permissions, historyPersistence: _persistence, ...metadata } = item.record
@@ -130,7 +147,7 @@ export class AcpHistoryCore {
     const coverage = JSON.stringify(item.coverage?.unarchivedCount ? item.coverage : oldCoverage?.unarchivedCount ? oldCoverage
       : item.coverage?.state === 'partial' ? item.coverage : oldCoverage ?? item.coverage ?? { state: 'complete', capturedFrom: metadata.startedAt })
     const preview = this.conversationPreview(item.root, metadata.sessionId)
-    if (preview) { metadata.conversationPreview = preview.text; metadata.conversationPreviewAt = preview.at }
+    metadata.conversationPreview = preview?.text; metadata.conversationPreviewAt = preview?.at
     const search = [metadata.title, metadata.agentName, metadata.agentId, metadata.taskDir, metadata.profileSnapshot?.name].filter(Boolean).join(' ').toLocaleLowerCase()
     this.db.prepare(`INSERT INTO sessions VALUES(?,?,?,?,?,?) ON CONFLICT(root,sessionId) DO UPDATE SET metadata=excluded.metadata,lastActivityAt=excluded.lastActivityAt,search=excluded.search,coverage=excluded.coverage`)
       .run(item.root, metadata.sessionId, JSON.stringify(metadata), lastActivityAt, search, coverage)
@@ -151,6 +168,7 @@ export class AcpHistoryCore {
   }
   append(items: HistoryBatchItem[]): Array<{ sessionId: string; seq: number | null; eventId: string | null }> {
     return this.transaction(() => items.map((item) => {
+      if (readHistoryDeletion(this.directory, item.root, item.record.sessionId)) return { sessionId: item.record.sessionId, seq: null, eventId: null }
       let marker: { seq: number; eventId: string } | undefined
       for (const event of item.events) marker = this.insert(item.root, item.record.sessionId, event)
       this.saveMetadata(item)
@@ -167,10 +185,11 @@ export class AcpHistoryCore {
       try {
         const bytes = readFileSync(source)
         const sourceDigest = digest(bytes)
-        this.backup(bytes, sourceDigest)
         const raw = JSON.parse(bytes.toString('utf8')) as AcpSessionRecord
         if (typeof raw.projectRoot !== 'string' || typeof raw.sessionId !== 'string' || !Array.isArray(raw.events)) throw new Error('Invalid legacy conversation record')
         root = canonicalize(raw.projectRoot)
+        if (readHistoryDeletion(this.directory, root, raw.sessionId)) continue
+        this.backup(bytes, sourceDigest)
         if (raw.schemaVersion !== undefined && raw.schemaVersion !== 1 && raw.schemaVersion !== 2) throw new Error('Unsupported conversation record version; source preserved')
         if (this.db.prepare('SELECT 1 FROM imports WHERE source=? AND digest=?').get(source, sourceDigest)) continue
         // A newer compatibility snapshot is a cache, never a transcript replacement.
@@ -213,6 +232,7 @@ export class AcpHistoryCore {
   }
   /** Explicit verified prefix import is only possible before any cursors for that session exist. */
   importRecovery(root: string, record: AcpSessionRecord, input: { sourcePath: string; sourceDigest: string; events: TimelineEvent[] }): void {
+    if (readHistoryDeletion(this.directory, root, record.sessionId)) throw new Error('此会话已进入永久删除')
     const bytes = readFileSync(input.sourcePath)
     if (digest(bytes) !== input.sourceDigest) throw new Error('Recovery source changed')
     this.backup(bytes, input.sourceDigest)
@@ -239,13 +259,14 @@ export class AcpHistoryCore {
       ...(coverage.unarchivedCount ? { error: coverage.reason, unarchivedCount: coverage.unarchivedCount } : {}) }
     const legacy = meta.schemaVersion !== 2
     const canResume = !legacy && meta.canResume === true && typeof meta.backendSessionId === 'string' && !!meta.backendSessionId.trim()
-    const preview = meta.conversationPreview === undefined ? this.conversationPreview(row.root, row.sessionId) : undefined
+    const preview = this.conversationPreview(row.root, row.sessionId)
     return { ...applySessionPreferences(meta, preferences), ...(preview ? { conversationPreview: preview.text, conversationPreviewAt: preview.at } : {}), status: legacy ? 'legacy' : ['closed', 'error'].includes(meta.status) ? meta.status : 'disconnected',
       canResume, historyKind: legacy ? 'legacy' : canResume ? 'resumable' : 'transcript', restorePending: false, connectionOwned: false, cleanupRequired: false,
       eventCount: aggregate.count, hasConversation: aggregate.hasConversation === 1, lastActivityAt: row.lastActivityAt, historyCoverage: coverage,
       historyPersistence, pendingPermissions: [], stateRevision: 0 }
   }
   session(root: string, sessionId: string): AcpHistorySummary | null {
+    if (readHistoryDeletion(this.directory, root, sessionId)) return null
     const row = this.db.prepare('SELECT * FROM sessions WHERE root=? AND sessionId=?').get(root, sessionId) as SessionRow | undefined
     return row ? this.summary(row) : null
   }
@@ -284,12 +305,13 @@ export class AcpHistoryCore {
       const rows = this.db.prepare('SELECT * FROM sessions WHERE root=?').all(root) as unknown as SessionRow[]
       snapshotId = randomUUID()
       snapshot = { root, query, filter, archive, preferencesRevision: preferences.revision, expires: now + SNAPSHOT_TTL,
-        sessions: rows.map((row) => this.summary(row, preferences)).filter((item) => matchesHistorySummary(item, query, filter, archive)).sort(compareHistorySummaries) }
+        sessions: rows.filter(row => !readHistoryDeletion(this.directory, root, row.sessionId)).map((row) => this.summary(row, preferences)).filter((item) => matchesHistorySummary(item, query, filter, archive)).sort(compareHistorySummaries) }
       if (this.snapshots.size >= 16) this.snapshots.delete(this.snapshots.keys().next().value ?? '')
       this.snapshots.set(snapshotId, snapshot)
     }
-    const sessions = snapshot.sessions.slice(position, position + (input.limit ?? 30))
-    const next = position + sessions.length
+    const scanned = snapshot.sessions.slice(position, position + (input.limit ?? 30))
+    const sessions = scanned.filter(item => !readHistoryDeletion(this.directory, root, item.sessionId))
+    const next = position + scanned.length
     const hasMore = next < snapshot.sessions.length
     return { ok: true, version: 1, sessions, hasMore, nextCursor: hasMore ? this.encode({ kind: 'list', root, snapshot: snapshotId, position: next }) : null,
       snapshotId, searchScope: 'metadata', diagnostics: this.diagnostics.filter((item) => !item.root || item.root === root).map(({ root: _root, ...item }) => item) }
