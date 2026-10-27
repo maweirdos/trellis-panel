@@ -1,7 +1,7 @@
 /* Desktop utilities share the same colors, type and controls as the workspace. */
 .my-root .my-floating-window {
   width: 100%; height: 100%; padding: var(--my-floating-gutter);
-  color: var(--my-txt-primary); font-size: var(--my-text-ui); user-select: none;
+  color: var(--my-txt-primary); font-size: var(--my-text-ui); user-select: text;
 }
 .my-root .my-floating-surface {
   display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; overflow: hidden;

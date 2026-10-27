@@ -1,4 +1,5 @@
-import { Check, ChevronRight, Copy, FileText, GitBranch, Loader2, Pencil, Search, ShieldQuestion, Sparkles, Terminal, TriangleAlert, Workflow } from 'lucide-react'
+import { isConversationRuntimeEvent } from './runtime-events'
+import { Check, ChevronRight, Copy, FileText, GitBranch, Loader2, Minimize2, Pencil, Search, ShieldQuestion, Sparkles, Terminal, TriangleAlert, Workflow } from 'lucide-react'
 import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
 import { Button } from '../my/ui'
@@ -69,7 +70,7 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
 }): JSX.Element {
   if (item.type === 'user') {
     const origin = events?.find((event) => event.id === item.key)
-    const preparing = Boolean(origin && session && origin.source === 'acp' && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status))
+    const preparing = Boolean(origin && session && isConversationRuntimeEvent(origin) && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status))
     return <div data-acp-item={item.key} className="acp-turn-start flex justify-end"><div className="acp-user-message max-w-[88%]">
       {item.images && <ImageAttachments images={item.images} />}
       {item.text && <div className="acp-chat-copy whitespace-pre-wrap break-words rounded-my-lg bg-my-layer-1 px-4 py-3 text-my-primary">{item.text}</div>}
@@ -86,7 +87,7 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
         (event.kind === 'message' && Boolean(event.text?.trim())) ||
         event.kind === 'tool-call' || event.kind === 'plan' || event.kind === 'turn-done'
       ))
-    return <div data-acp-item={item.key}><ThoughtActivity text={item.text} streaming={Boolean(origin?.source === 'acp' && session?.status === 'busy' && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && !segmentEnded)} /></div>
+    return <div data-acp-item={item.key}><ThoughtActivity text={item.text} streaming={Boolean(origin && isConversationRuntimeEvent(origin) && session?.status === 'busy' && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && !segmentEnded)} /></div>
   }
   if (item.type === 'activity') return session ? <RunActivity item={item} session={session} /> : <details data-acp-item={item.key} className="acp-activity-row"><summary><Workflow size={14} /><span>处理记录</span><ChevronRight size={13} className="acp-disclosure-arrow" /></summary><div className="acp-activity-body">{item.events.map((event) => <p key={event.id}>{String(asObject(event.payload?.observation)?.label ?? event.text ?? runtimeActivityLabel(event))}</p>)}</div></details>
   if (item.type === 'change-group') return <details data-acp-item={item.key} className="acp-result-disclosure acp-change-group">
@@ -170,6 +171,11 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   }
   if (item.type === 'turn') return /^(回合已结束|本轮结束|回合已取消)$/.test(item.text) ? <></> : <ConnectionNotice message={item.text} />
   if (item.type === 'detail') {
+    if (item.ev.payload?.tag === 'pi_compaction') {
+      const state = item.ev.payload.status ?? item.ev.payload.phase
+      const failed = state === 'failed' || state === 'error' || Boolean(item.ev.payload.error)
+      return <div data-acp-item={item.key}>{failed ? <ConnectionNotice message={runtimeActivityLabel(item.ev)} /> : <div className="my-activity-note" role="status" title={item.ev.text}><Minimize2 size={14} aria-hidden="true" /><span>{runtimeActivityLabel(item.ev)}</span></div>}</div>
+    }
     const knowledge = knowledgeObservation(item.ev)
     if (knowledge) return <details className="rounded-my-md border border-my-line px-3 py-2 text-my-xs text-my-secondary"><summary className="cursor-pointer">{knowledgeObservationLabel(knowledge)}</summary><p className="mt-2 whitespace-pre-wrap break-words text-my-tertiary">{knowledge.detail || item.ev.text}</p><RawData value={item.ev.payload} /></details>
     if (item.ev.kind === 'diagnostic' || item.ev.payload?.type === 'error' || item.ev.payload?.error || item.ev.payload?.status === 'failed' || item.ev.payload?.status === 'error' || asObject(item.ev.payload?.observation)?.status === 'failed') return <ConnectionNotice message={item.ev.text || String(asObject(item.ev.payload?.observation)?.label ?? '执行引擎返回错误')} />

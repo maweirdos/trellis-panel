@@ -1,0 +1,93 @@
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { devNull } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
+import { DefaultResourceLoader, loadSkills, type ExtensionFactory, type McpServerConfig, type SettingsManager } from '@earendil-works/pi-coding-agent'
+import { z } from 'zod'
+import type { PiInitialize } from '../protocol'
+import { isWithin } from './storage'
+
+const literalValue = z.string().refine(value => !value.startsWith('!'), 'MCP command-valued credentials are disabled')
+const mcpSchema = z.object({
+  type: z.enum(['stdio', 'http', 'streamable-http']).optional(), command: z.string().min(1).regex(/^[^\r\n]+$/).optional(),
+  args: z.array(z.string()).max(64).optional(), cwd: z.string().optional(),
+  env: z.record(z.string(), literalValue).optional(), url: z.string().url().optional(),
+  headers: z.record(z.string(), literalValue).optional(), timeout: z.number().positive().optional(),
+  enabled: z.boolean().optional(), description: z.string().optional(), exposure: z.literal('direct').optional()
+}).strict().refine(value => Boolean(value.command) !== Boolean(value.url), 'MCP requires exactly one command or URL')
+
+export function mcpRegistration(input: PiInitialize): ExtensionFactory {
+  const names = new Set<string>()
+  const servers = input.mcpServers.map(server => {
+    const name = server.name.replaceAll('-', '_')
+    if (names.has(name)) throw new Error('Duplicate MCP namespace')
+    names.add(name)
+    const config = mcpSchema.parse(server.config)
+    if (config.enabled === false) throw new Error('Selected MCP server is disabled')
+    let native: McpServerConfig
+    if (config.url) {
+      if (config.type === 'stdio' || config.command) throw new Error('Invalid MCP HTTP transport')
+      native = { type: 'http', url: config.url, headers: config.headers, description: config.description, timeout: config.timeout, exposure: 'direct' }
+    } else {
+      if (!config.command || (config.type !== undefined && config.type !== 'stdio')) throw new Error('Invalid MCP stdio transport')
+      native = { type: 'stdio', command: config.command, args: config.args, cwd: config.cwd, env: config.env,
+        description: config.description, timeout: config.timeout, exposure: 'direct' }
+    }
+    return { name: server.name, config: native }
+  })
+  return pi => {
+    for (const server of servers) pi.registerMcpServer(server.name, server.config)
+  }
+}
+
+function readProjectFile(root: string, file: string, maxBytes: number): { path: string; content: string } {
+  const canonical = realpathSync(file)
+  const info = statSync(canonical)
+  if (!isWithin(root, canonical) || !info.isFile() || info.size > maxBytes) {
+    throw new Error('Pi project instruction/skill file is outside the project or exceeds its size limit')
+  }
+  return { path: canonical, content: new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(canonical)).replace(/^\uFEFF/, '') }
+}
+
+function projectContext(input: PiInitialize): Array<{ path: string; content: string }> {
+  const files: Array<{ path: string; content: string }> = []
+  let dir = input.cwd
+  let totalBytes = 0
+  for (;;) {
+    for (const name of ['AGENTS.override.md', 'AGENTS.md', 'AGENTS.MD', 'CLAUDE.md', 'CLAUDE.MD']) {
+      const file = join(dir, name)
+      if (!existsSync(file)) continue
+      const loaded = readProjectFile(input.root, file, 128 * 1024)
+      totalBytes += Buffer.byteLength(loaded.content)
+      if (totalBytes > 1024 * 1024) throw new Error('Pi project context exceeds 1 MiB')
+      files.unshift(loaded)
+      break
+    }
+    if (dir === input.root) break
+    dir = dirname(dir)
+  }
+  return files
+}
+
+export function createResources(input: PiInitialize, settingsManager: SettingsManager, factories: ExtensionFactory[]): DefaultResourceLoader {
+  const selected = input.skillPaths.map(path => {
+    const file = resolve(input.root, path)
+    if (!isWithin(input.root, file) || basename(file) !== 'SKILL.md') throw new Error('Selected skills must be project SKILL.md files')
+    return readProjectFile(input.root, file, 128 * 1024).path
+  })
+  if (new Set(selected).size !== selected.length) throw new Error('Duplicate selected skill path')
+  const skills = loadSkills({ cwd: input.cwd, agentDir: input.agentDir, skillPaths: selected, includeDefaults: false })
+  if (skills.diagnostics.length || skills.skills.length !== selected.length) throw new Error('Invalid selected Pi skill manifest')
+  const agentsFiles = projectContext(input)
+  return new DefaultResourceLoader({
+    cwd: input.cwd, agentDir: input.agentDir, settingsManager,
+    noExtensions: true, disabledBuiltinExtensions: ['mcp', 'codemode', 'tool-search'],
+    extensionFactories: factories, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+    // Empty sources prevent even reading arbitrary SYSTEM.md/APPEND_SYSTEM.md files.
+    systemPrompt: '', appendSystemPrompt: [], systemPromptOverride: () => undefined,
+    appendSystemPromptOverride: () => input.instructions ? [input.instructions] : [],
+    skillsOverride: () => skills, agentsFilesOverride: () => ({ agentsFiles }),
+    promptsOverride: () => ({ prompts: [], diagnostics: [] }), themesOverride: () => ({ themes: [], diagnostics: [] })
+  })
+}
+
+export const mcpLogPath = devNull

@@ -41,8 +41,8 @@ function* turns(rows: Iterable<HistoryEventMetadata>, root: string, sessionId: s
     const scope = JSON.stringify([rootKey(row.projectRoot ?? root), row.sessionId ?? sessionId])
     const identity = JSON.stringify([scope,
       row.connectionGeneration, connection ? 'connection' : 'turn', connection ? null : row.turnId || null])
-    const user = !connection && row.source === 'acp' && row.kind === 'message' && row.role === 'user'
-    const conversation = !connection && row.source === 'acp' && ['message', 'thought', 'tool-call', 'permission', 'plan', 'turn-done'].includes(row.kind)
+    const user = !connection && (row.source === 'acp' || row.source === 'pi') && row.kind === 'message' && row.role === 'user'
+    const conversation = !connection && (row.source === 'acp' || row.source === 'pi') && ['message', 'thought', 'tool-call', 'permission', 'plan', 'turn-done'].includes(row.kind)
     // Explicit preparation/engine output may precede promptStarted's user message.
     // Legacy records have no such correlation: a user message starts a new turn.
     // Uncorrelated rail/connection observations within a turn are transparent.
@@ -59,7 +59,7 @@ function* turns(rows: Iterable<HistoryEventMetadata>, root: string, sessionId: s
     current.bytes += row.bytes
     current.hasUser ||= user
     current.hasConversation ||= conversation
-    if (!connection && row.source === 'acp' && row.kind === 'turn-done') {
+    if (!connection && (row.source === 'acp' || row.source === 'pi') && row.kind === 'turn-done') {
       yield current
       current = undefined
     }

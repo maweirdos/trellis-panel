@@ -1,6 +1,8 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import { useMemo, type JSX } from 'react'
 import { Tooltip } from '../my/ui'
 import { asObject } from './timeline'
+import { projectRootKey } from '../my/navigation'
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 
 /** Reported context occupancy, never a guessed model window or summed deltas. */
@@ -10,7 +12,7 @@ export function ComposerUsageIndicator({ session, events }: { session: AcpSessio
     let used: number | undefined, size: number | undefined
     let breakdown: Record<string, unknown> | undefined
     for (const event of events) {
-      if (event.source !== 'acp' || event.connectionGeneration !== session.connectionGeneration) continue
+      if (!isConversationRuntimeEvent(event) || event.sessionId !== session.sessionId || projectRootKey(event.projectRoot) !== projectRootKey(session.projectRoot) || event.connectionGeneration !== session.connectionGeneration) continue
       const payload = event.payload
       const input = asObject(payload?.input)
       if (event.kind === 'config' && (input?.kind === 'model' || (input?.kind === 'config' && typeof input.id === 'string' && modelConfigIds.has(input.id)))) {
@@ -22,7 +24,7 @@ export function ComposerUsageIndicator({ session, events }: { session: AcpSessio
       if (asObject(payload.breakdown)) breakdown = asObject(payload.breakdown)
     }
     return { used, size, breakdown }
-  }, [events, session.connectionGeneration, session.configOptions])
+  }, [events, session.sessionId, session.projectRoot, session.connectionGeneration, session.configOptions])
   const known = usage.used !== undefined && usage.size !== undefined
   const fraction = known ? (usage.used ?? 0) / (usage.size ?? 1) : undefined
   const percent = fraction === undefined ? undefined : Math.round(fraction * 1000) / 10

@@ -6,6 +6,19 @@
 
 ---
 
+## Text selection and copy
+
+Page and dialog text is selectable by default, including errors, labels, code,
+Markdown table headers and floating-window content. Do not apply user-select:none
+to body, application roots or modal containers. Keep exclusions local to actual
+drag handles, decorative icons and line-number gutters.
+
+Use `CopyableError({message, summary?})` for upstream failures: a short summary,
+selectable bounded raw detail and an explicit copy action. Copy success follows
+clipboard completion; retain status/code/body for diagnosis after native redaction of authentication material. Shared
+window setup exposes native Copy/Select All and editable-field actions using
+Electron's actual edit flags.
+
 ## Shared choices and recorded results
 
 Follow [CSS/design contracts](./css-design.md#selection-hover-and-result-presentation)

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { WorkspaceGrant } from '../../shared/daemon'
 import type { RuntimeBodyMethod } from '../../shared/daemon-runtime'
 import { dingExecutionSchema, type DingExecution } from '../../shared/dingtalk-integration'
+import { readAcpHostPolicyOutcome } from '../../shared/acp-host-policy'
 import type { DingTalkExecutionPort } from '../services/integrations/dingtalk-workspace/ports'
 import { IntegrationError } from '../services/integrations/types'
 import { canonicalDirectory } from '../services/acp/metadata'
@@ -17,7 +18,7 @@ export function dingTalkRuntimeCommand(commandId: string, stage: 'new' | 'prompt
   const hex = bytes.toString('hex')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
-const sessionSchema = z.object({ sessionId: z.string(), projectRoot: z.string(), agentId: z.string(), taskDir: z.string().optional(), status: z.string(), connectionGeneration: z.string().optional(), turnId: z.string().optional(), connectionOwned: z.boolean().optional(), profileSnapshot: z.object({ id: z.string(), runtimeId: z.string(), maxTurnMinutes: z.number() }).passthrough().optional(), pendingPermissions: z.array(z.unknown()).optional() }).passthrough()
+const sessionSchema = z.object({ sessionId: z.string(), projectRoot: z.string(), agentId: z.string(), taskDir: z.string().optional(), status: z.string(), connectionGeneration: z.string().optional(), turnId: z.string().optional(), backendSessionId: z.string().optional(), connectionOwned: z.boolean().optional(), profileSnapshot: z.object({ id: z.string(), runtimeId: z.string(), maxTurnMinutes: z.number() }).passthrough().optional(), pendingPermissions: z.array(z.unknown()).optional() }).passthrough()
 type Evidence = { commandId: string; workspace: WorkspaceGrant; sessionId?: string | null; turnId?: string | null; connectionGeneration?: string | null; deadline?: number }
 const failure = z.object({ ok: z.literal(false), code: z.string().optional() }).passthrough()
 
@@ -82,7 +83,25 @@ export function createDingTalkExecution(runtime: DaemonRuntime, assertGrant: (gr
     const settled = archive.success ? archive.data.events.find(event => event.sessionId === nativeSessionId && event.turnId === nativeTurnId && event.connectionGeneration === generation && event.kind === 'turn-done') : undefined
     if (settled) {
       const native = z.object({ status: z.enum(['completed', 'cancelled', 'failed']) }).passthrough().safeParse(settled.payload?.result)
-      if (native.success) { const timer = deadlines.get(input.commandId); if (timer) clearTimeout(timer); deadlines.delete(input.commandId); return result(evidence, native.data.status, native.data.status === 'completed' ? '原生轮次已结束；任务业务验收仍独立' : native.data.status === 'cancelled' ? '原生轮次已确认取消' : '原生轮次已失败') }
+      if (native.success) {
+        const timer = deadlines.get(input.commandId)
+        if (timer) clearTimeout(timer)
+        deadlines.delete(input.commandId)
+        if (native.data.status === 'failed') return result(evidence, 'failed', '原生轮次已失败')
+        const policy = readAcpHostPolicyOutcome(settled.payload?.hostPolicyOutcome, {
+          turnId: nativeTurnId, connectionGeneration: generation,
+          backendSessionId: current.connectionGeneration === generation ? current.backendSessionId : undefined
+        })
+        if (policy) return result(evidence, 'cancelled', policy.nativeCancellationAcknowledged && native.data.status === 'cancelled'
+          ? '应用已停止等待；原生轮次已确认取消'
+          : '应用已停止等待；未收到原生取消确认')
+        // A later generation cannot verify the original backend. An unverified
+        // or malformed stop receipt must not turn its raw result into success.
+        if (settled.payload?.hostPolicyOutcome !== undefined && native.data.status === 'completed') {
+          return result(evidence, 'unknown', '应用停止等待回执未通过原执行身份核对；请查看原执行历史')
+        }
+        return result(evidence, native.data.status, native.data.status === 'completed' ? '原生轮次已结束；任务业务验收仍独立' : '原生轮次已确认取消')
+      }
     }
     if (current.connectionGeneration !== generation || current.turnId !== nativeTurnId) return result(evidence, 'unknown', '会话连接或轮次已变更，原执行结果需要查看历史；不会操作后续轮次')
     if (!sent.success && !input.turnId) return result(evidence, 'unknown', '原指令提交结果未确认')

@@ -21,7 +21,7 @@ interface Row {
 }
 interface SavedTurn {
   first: number; last: number; generation: string; turnId: string
-  bytes: number; messages: number; user: boolean; previousMessage?: string
+  bytes: number; messages: number; user: boolean; previousMessage?: string; hostStopped?: boolean
 }
 export class HandoffHistoryError extends Error {}
 const MAX_CONTEXT_TURNS = 64
@@ -39,11 +39,21 @@ export function readHandoffArchive(db: DatabaseSync, root: string, session: AcpH
     json_extract(payload,'$.payload.role') role,json_extract(payload,'$.payload.messageId') messageId,
     CASE WHEN kind='message' THEN length(CAST(COALESCE(json_extract(payload,'$.text'),'') AS BLOB)) ELSE 0 END textBytes,
     CASE WHEN kind='message' THEN COALESCE(json_array_length(payload,'$.payload.images'),0) ELSE 0 END images,
-    json_extract(payload,'$.payload.result.status') status,
+    CASE WHEN json_extract(payload,'$.payload.hostPolicyOutcome.authority')='host-policy'
+      AND json_extract(payload,'$.payload.hostPolicyOutcome.status')='cancelled'
+      AND json_extract(payload,'$.payload.hostPolicyOutcome.cause')='retry-beyond-turn-budget'
+      AND json_extract(payload,'$.payload.hostPolicyOutcome.turnId')=json_extract(payload,'$.turnId')
+      AND json_extract(payload,'$.payload.hostPolicyOutcome.connectionGeneration')=json_extract(payload,'$.connectionGeneration')
+      THEN 'cancelled' ELSE json_extract(payload,'$.payload.result.status') END status,
     COALESCE(json_extract(payload,'$.payload.result.stopReason'),json_extract(payload,'$.payload.stopReason')) stopReason
-    FROM events WHERE root=? AND sessionId=? AND json_extract(payload,'$.source')='acp'
+    FROM events WHERE root=? AND sessionId=? AND json_extract(payload,'$.source') IN ('acp','pi')
     AND json_extract(payload,'$.sessionId')=? AND COALESCE(json_extract(payload,'$.payload.activityScope'),'turn')<>'connection'
-    AND kind IN ('message','thought','tool-call','permission','plan','turn-done') ORDER BY seq`).iterate(root, id, id) as unknown as Iterable<Row>
+    AND (kind IN ('message','thought','tool-call','permission','plan','turn-done')
+      OR (kind='diagnostic' AND json_extract(payload,'$.payload.cancellationCause')='retry-beyond-turn-budget'
+        AND json_extract(payload,'$.payload.nativeRetry.reason')='free_tier_limit'
+        AND json_extract(payload,'$.payload.nativeRetry.turnId')=json_extract(payload,'$.turnId')
+        AND json_extract(payload,'$.payload.nativeRetry.connectionGeneration')=json_extract(payload,'$.connectionGeneration')))
+    ORDER BY seq`).iterate(root, id, id) as unknown as Iterable<Row>
   const selected: SavedTurn[] = []
   let current: SavedTurn | undefined
   let last: Row | undefined
@@ -58,6 +68,7 @@ export function readHandoffArchive(db: DatabaseSync, root: string, session: AcpH
       current = { first: row.seq, last: row.seq, generation: row.generation, turnId: row.turnId, bytes: 160, messages: 0, user: false }
     }
     current.last = row.seq
+    if (row.kind === 'diagnostic') current.hostStopped = true
     const message = row.kind === 'message' && (row.role === 'user' || row.role === 'assistant' || row.role === null) && (row.textBytes > 0 || row.images > 0)
     if (message) {
       const role = row.role ?? 'assistant'
@@ -73,7 +84,7 @@ export function readHandoffArchive(db: DatabaseSync, root: string, session: AcpH
       attachments += row.images
     }
     if (row.kind !== 'turn-done') continue
-    if (current.user && row.status === 'completed' && row.stopReason === 'end_turn') {
+    if (current.user && !current.hostStopped && row.status === 'completed' && row.stopReason === 'end_turn') {
       checkpoint = row
       if (current.bytes <= byteLimit) {
         selected.push(current); selectedBytes += current.bytes
@@ -95,7 +106,7 @@ export function readHandoffArchive(db: DatabaseSync, root: string, session: AcpH
     COALESCE(json_extract(payload,'$.payload.role'),'assistant') role,json_extract(payload,'$.payload.messageId') messageId,
     COALESCE(json_array_length(payload,'$.payload.images'),0) images
     FROM events WHERE root=? AND sessionId=? AND seq>=? AND seq<=? AND kind='message'
-    AND json_extract(payload,'$.source')='acp' AND json_extract(payload,'$.sessionId')=? ORDER BY seq`)
+    AND json_extract(payload,'$.source') IN ('acp','pi') AND json_extract(payload,'$.sessionId')=? ORDER BY seq`)
   for (const turn of selected) {
     const messages: Array<{ key: string; role: string; text: string }> = []
     for (const row of textRows.iterate(root, id, turn.first, turn.last, id)) {
@@ -116,7 +127,7 @@ export function readHandoffArchive(db: DatabaseSync, root: string, session: AcpH
   }
   const tools = db.prepare(`SELECT COUNT(DISTINCT COALESCE(json_extract(payload,'$.connectionGeneration'),'') || char(0) ||
     COALESCE(turnId,'') || char(0) || COALESCE(json_extract(payload,'$.payload.toolCallId'),eventId)) count
-    FROM events WHERE root=? AND sessionId=? AND seq<=? AND kind='tool-call' AND json_extract(payload,'$.source')='acp'
+    FROM events WHERE root=? AND sessionId=? AND seq<=? AND kind='tool-call' AND json_extract(payload,'$.source') IN ('acp','pi')
     AND json_extract(payload,'$.sessionId')=?`).get(root, id, checkpoint.seq, id) as { count: number }
   return { checkpointEventId: checkpoint.eventId, checkpointSeq: checkpoint.seq, tailSeq: tail.seq,
     context: chunks.join('\n\n'), includedMessages, latestTurnIncluded, omittedMessages: Math.max(0, totalMessages - includedMessages),

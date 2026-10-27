@@ -811,7 +811,7 @@ export interface Settings {
    * （优先于 PATH 自动检测，zcode bundled 条目同样读取 nativePaths.zcode）。
    * zcode.enableAutomationTools：放行 ZCode 自动化计划工具（Cron*）；缺省禁用（安全默认）。
    */
-  acp?: { agents?: AcpAgentConfig[]; nodePath?: string; nativePaths?: Record<string, string>; zcode?: { enableAutomationTools?: boolean } }
+  acp?: { agents?: AcpAgentConfig[]; runtimeDefaults?: Record<string, AcpRuntimeDefaults>; nodePath?: string; nativePaths?: Record<string, string>; zcode?: { enableAutomationTools?: boolean } }
 }
 
 /* ---------- Studio（定制中心：workflow / 命令 / 子代理 / 技能 / 钩子 / 配置 / 平台） ---------- */
@@ -1475,8 +1475,8 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   acpRuntimeRefresh: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpRuntimeSetup: (runtimeId: string) => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpRuntimeNodePick: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; nodePath?: string; agents?: AcpAgentStatus[] }>
-  /** 测试连接：initialize-only 握手探测，零会话副作用；probe.ok 表示握手是否成功 */
-  acpRuntimeTestConnection: (runtimeId: string) => Promise<{ ok: boolean; error?: string; probe?: AcpConnectionProbeResult }>
+  /** ACP initialize-only 握手探测并返回当前引擎状态；SDK 仅验证启动条件，不创建会话、不认证、不 prompt。 */
+  acpRuntimeTestConnection: (runtimeId: string) => Promise<{ ok: boolean; error?: string; probe?: AcpConnectionProbeResult; agents?: AcpAgentStatus[] }>
   /** 配置原生直连 Runtime 的 CLI 路径；取消返回 cancelled，路径无效返回失败且不保存 */
   acpRuntimePathPick: (runtimeId: string) => Promise<{ ok: boolean; error?: string; cancelled?: boolean; agents?: AcpAgentStatus[] }>
   acpSessionResume: (sessionId: string) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
@@ -1757,7 +1757,7 @@ export interface AcpAgentConfig {
    * Frozen launch provenance; Settings overrides are always user-managed.
    * 'bundled'：随应用 resources 打包的桥接适配器（如 ZCode），entry 由 setup.ts 收敛解析。
    */
-  launchKind?: 'managed' | 'custom' | 'native' | 'bundled'
+  launchKind?: 'managed' | 'custom' | 'native' | 'bundled' | 'sdk'
   executable?: string
   args?: string[]
 }
@@ -1769,8 +1769,14 @@ export interface AcpAgentStatus extends AcpAgentConfig {
   health?: AcpRuntimeHealth
   diagnostics?: string[]
   adapterVersion?: string
-  /** 原生直连条目：npm 注册表 latest 版本；查询失败留空即"未知"，UI 不据此提示升级。 */
+  /** 原生直连条目：当前发布通道的注册表版本；失败或主版本不匹配时留空。 */
   latestVersion?: string
+  releaseChannel?: 'v1' | 'v2'
+  updateStatus?: 'unknown' | 'current' | 'available' | 'ahead'
+  /** 阻止 npm 全局安装覆盖未知版本或另一来源的程序。 */
+  setupBlockedReason?: string
+  /** 独立于当前通道的维护更新；只提供官方迁移指南。 */
+  availableMigration?: { version: string; guideUrl: string }
   nodePath?: string
   setupRequired?: boolean
   checkedAt?: number
@@ -1789,7 +1795,7 @@ export interface AcpConnectionProbeResult {
   error?: string
 }
 
-/** 注入 Runtime 子进程的环境变量；仅保存在本机角色配置，不进入历史记录。 */
+/** 注入 Runtime 子进程的环境变量；随本机会话启动快照保留。 */
 export interface AcpProfileEnvVar {
   key: string
   value: string
@@ -1801,6 +1807,12 @@ export interface AcpProfileArg {
   value: string
 }
 
+export interface AcpRuntimeDefaults {
+  modelId?: string
+  env?: AcpProfileEnvVar[]
+  args?: AcpProfileArg[]
+}
+
 export interface AcpAgentProfile {
   id: string
   name: string
@@ -1808,7 +1820,11 @@ export interface AcpAgentProfile {
   instructions: string
   /** Additional project skills; native engine-discovered skills remain engine-owned. */
   skillPaths?: string[]
+  /** Explicit names from this project's .pi/mcp.json; the native knowledge bridge is separate. */
+  mcpServerNames?: string[]
   runtimeId: string
+  /** Undefined inherits the Runtime default; null requests engine automatic selection. Profile-save accepts '' to clear an existing selection over JSON. */
+  modelId?: string | null
   cwd?: string
   maxTurnMinutes: number
   env?: AcpProfileEnvVar[]
@@ -1898,6 +1914,30 @@ export interface AcpMaterialChange {
 }
 export type AcpSessionStatus = 'starting' | 'ready' | 'busy' | 'awaiting_permission' | 'cancelling' | 'disconnected' | 'legacy' | 'error' | 'closed'
 
+/** Ephemeral evidence from the owned native OpenCode process; never a terminal result. */
+export interface AcpRuntimeRetry {
+  turnId: string
+  connectionGeneration: string
+  attempt: number
+  nextAt: number
+  message: string
+  reason?: string
+  provider?: string
+}
+
+/** Application policy stopped waiting; result remains the unchanged native terminal result. */
+export interface AcpHostPolicyOutcome {
+  authority: 'host-policy'
+  status: 'cancelled'
+  cause: 'retry-beyond-turn-budget'
+  turnId: string
+  connectionGeneration: string
+  backendSessionId: string
+  requestedAt: number
+  message: string
+  nativeCancellationAcknowledged: boolean
+}
+
 export interface AcpStateEvent {
   sessionId: string
   projectRoot: string
@@ -1909,6 +1949,8 @@ export interface AcpStateEvent {
   pendingPermissions?: AcpPermissionPayload[]
   stateRevision?: number
   historyPersistence?: import('./acp-history').AcpHistoryPersistence
+  runtimeRetry?: AcpRuntimeRetry
+  hostPolicyOutcome?: AcpHostPolicyOutcome
 }
 
 /** Legacy terminal records may lack scope; new service emissions include it. */
@@ -1921,6 +1963,7 @@ export interface AcpDoneEvent {
   turnId?: string
   session?: AcpSessionRecord
   result?: unknown
+  hostPolicyOutcome?: AcpHostPolicyOutcome
 }
 
 /** Optional read-only metadata; native IDs and acknowledgements remain the selection authority. */
@@ -1937,6 +1980,9 @@ export interface AcpModelCatalogMetadata {
 }
 
 export interface AcpSessionMeta {
+  /** Application execution identity; legacy absent values denote ACP. */
+  engine?: 'acp' | 'pi'
+  pi?: { sessionFile: string; version: '1.4.0'; sessionVersion: 3 }
   sessionId: string
   agentId: string
   agentName: string
@@ -1963,6 +2009,8 @@ export interface AcpSessionMeta {
   turnId?: string
   cwd?: string
   profileSnapshot?: AcpAgentProfile
+  /** Effective options frozen at creation; absent on historical sessions. */
+  launchOptionsSnapshot?: AcpRuntimeDefaults
   handoff?: import('./acp-handoff').AcpHandoffOrigin
   handoffTargets?: import('./acp-handoff').AcpHandoffTargetLink[]
   runtimeSnapshot?: AcpAgentConfig
@@ -2038,7 +2086,7 @@ export type TimelineEventKind =
 export interface TimelineEvent {
   id: string
   ts: number
-  source: 'acp' | 'trellis'
+  source: 'acp' | 'pi' | 'trellis'
   sessionId?: string
   projectRoot: string
   taskDir?: string

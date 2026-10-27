@@ -1,3 +1,4 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import type { AcpSessionRecord } from '../../../shared/types'
 import { acpConversationPreview } from '../../../shared/acp-conversation-preview'
 import type { WorkspaceView } from './view-state'
@@ -8,7 +9,7 @@ export function isDiagnosticConversation(session: AcpSessionRecord): boolean {
 
 export function isMeaningfulConversation(session: AcpSessionRecord): boolean {
   return !isDiagnosticConversation(session) && (('hasConversation' in session && session.hasConversation === true) || session.events.some((event) =>
-    event.source === 'acp' && ((event.kind === 'message' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'permission'))
+    isConversationRuntimeEvent(event) && ((event.kind === 'message' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'permission'))
   )
 }
 

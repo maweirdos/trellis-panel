@@ -22,7 +22,7 @@ export const PAGE_LAYOUTS = {
   chat: 'full',
   architecture: 'full',
   studio: 'full',
-  models: 'full',
+  models: 'centered',
   settings: 'centered',
   integrations: 'centered',
   gateway: 'centered',

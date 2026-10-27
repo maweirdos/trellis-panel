@@ -11,6 +11,7 @@ examples/demo-project
 .tmp-*
 /tmp/
 /scripts/smoke/
+/.omo/
 
 # Local verification code and artifacts
 test/

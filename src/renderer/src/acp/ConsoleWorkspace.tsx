@@ -1,3 +1,4 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import { rememberVisit } from '../my/personal-history'
 /** Page-owned ACP profiles and explicitly started project conversations. */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
@@ -240,7 +241,8 @@ export function AcpConsolePage(): JSX.Element {
   const projectedEvents = useMemo(() => activeSession ? partitionConversationEvents(activeEvents, activeSession) : { transcript: [], background: [] }, [activeEvents, activeSession])
   const items = useMemo(() => compileItems(projectedEvents.transcript), [projectedEvents.transcript])
   const currentTurnRequest = ownsCurrentTurnRequest(turnRequests[activeId ?? ''], activeSession, root) ? turnRequests[activeId ?? ''] : undefined
-  const currentTurnActivity = useMemo(() => projectCurrentTurnActivity({ root, session: activeSession, events: activeEvents, request: currentTurnRequest, terminalTurns, interactive: interactive && view === 'conversation' }), [root, activeSession, activeEvents, currentTurnRequest, terminalTurns, interactive, view])
+  const currentRuntimeRetry = activeSession ? scope.states.get(activeSession.sessionId)?.runtimeRetry : undefined
+  const currentTurnActivity = useMemo(() => projectCurrentTurnActivity({ root, session: activeSession, events: activeEvents, request: currentTurnRequest, retry: currentRuntimeRetry, terminalTurns, interactive: interactive && view === 'conversation' }), [root, activeSession, activeEvents, currentTurnRequest, currentRuntimeRetry, terminalTurns, interactive, view])
   useLayoutEffect(() => {
     for (const [id, request] of Object.entries(turnRequestsRef.current)) {
       const owner = sessionsRef.current.find((session) => session.sessionId === id) ?? null
@@ -379,7 +381,7 @@ export function AcpConsolePage(): JSX.Element {
       const id = event.sessionId
       const knownGeneration = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
       if (knownGeneration && event.connectionGeneration && knownGeneration !== event.connectionGeneration) return
-      if (event.source === 'acp') recordTurnFact({ ...event, sessionId: id }, event.kind === 'turn-done')
+      if (isConversationRuntimeEvent(event)) recordTurnFact({ ...event, sessionId: id }, event.kind === 'turn-done')
       scope.sessionIds.add(id)
       setEvents((previous) => ({ ...previous, [id]: mergeEvents(previous[id] ?? [], [event]) }))
       const observation = event.payload?.observation as AcpStartupObservation | undefined
@@ -494,10 +496,11 @@ export function AcpConsolePage(): JSX.Element {
     if (patch.archived === false) history.setArchive('active')
     return result
   }
+  const agentTarget = useMy((state) => state.agentTarget)
   const agentSessionTarget = useMy((state) => state.agentSessionTarget)
   const legacyTargetCatalogue = typeof api?.acpHistorySession === 'function' ? null : projectSessions
   useEffect(() => {
-    if (!hasIpc || !agentSessionTarget || !interactive || !isCurrent() || (typeof api.acpHistorySession !== 'function' && !scope.entryResolved)) return
+    if (!hasIpc || !agentSessionTarget || agentTarget === 'roles' || !interactive || !isCurrent() || (typeof api.acpHistorySession !== 'function' && !scope.entryResolved)) return
     let live = true
     const target = agentSessionTarget
     const current = (): boolean => live && isCurrent() && canInteract() && !interactionSignal?.aborted && useMy.getState().agentSessionTarget === target
@@ -530,7 +533,7 @@ export function AcpConsolePage(): JSX.Element {
     return () => { live = false }
     // A one-shot exact target; only metadata/history reads, never native startup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentSessionTarget, legacyTargetCatalogue, interactive, scope, interactionSignal])
+  }, [agentTarget, agentSessionTarget, legacyTargetCatalogue, interactive, scope, interactionSignal])
   const changeDraft = (text: string): void => {
     setInput(text)
     if (!activeId) return
@@ -682,6 +685,22 @@ export function AcpConsolePage(): JSX.Element {
     finally { if (scope.actionTokens.get(id) === operationToken) { scope.actionTokens.delete(id); scope.actions.delete(id); if (isCurrent()) setOperations((previous) => ({ ...previous, [id]: '' })) } }
   }
 
+  const acquireConfiguration = (): (() => void) | undefined => {
+    if (!hasIpc || !activeSession || !selectedArchiveKnown || !isCurrent() || !canInteract() || managedComposerBlocked || handoffComposerBlocked) return undefined
+    const id = activeSession.sessionId
+    const state = scope.states.get(id)
+    const owner = state?.session ?? sessionsRef.current.find((session) => session.sessionId === id)
+    if (!owner || (state?.status ?? owner.status) !== 'ready' || !owner.connectionGeneration || (state?.connectionGeneration ?? owner.connectionGeneration) !== activeSession.connectionGeneration || owner.restorePending || owner.archivedAt || owner.cleanupRequired || scope.actions.has(id) || scope.sends.has(id) || ownsCurrentTurnRequest(turnRequestsRef.current[id], owner, root)) return undefined
+    const token = Symbol('configure')
+    scope.actions.add(id); scope.actionTokens.set(id, token)
+    setOperations((previous) => ({ ...previous, [id]: 'configure' }))
+    return () => {
+      if (scope.actionTokens.get(id) !== token) return
+      scope.actions.delete(id); scope.actionTokens.delete(id)
+      if (isCurrent()) setOperations((previous) => ({ ...previous, [id]: '' }))
+    }
+  }
+
   const recoverModel = async (modelId: string): Promise<void> => {
     if (!activeSession?.connectionGeneration || !selectedArchiveKnown || activeSession.archivedAt || !isCurrent() || !canInteract() || scope.actions.has(activeSession.sessionId)) return
     const id = activeSession.sessionId, operationToken = Symbol('recover-model')
@@ -726,14 +745,16 @@ export function AcpConsolePage(): JSX.Element {
     scope.entryResolved = true; setView(next); writeWorkspaceView(root, next); setSidebarOpen(false)
     if (next !== 'conversation') setInspectorOpen(false)
   }
-  const agentTarget = useMy((state) => state.agentTarget)
   useEffect(() => {
-    if (!agentTarget || !canInteract() || (hasIpc && !scope.entryResolved)) return
+    if (!agentTarget || !interactive || !isCurrent() || !canInteract()) return
     const next = agentTarget === 'roles' ? 'agents' : 'conversation'
+    // Explicit navigation wins both delayed entry restoration and an older
+    // exact-session request retained behind Settings.
+    if (agentTarget === 'roles') useMy.getState().setAgentSessionTarget(null)
     scope.entryResolved = true
     setView(next); writeWorkspaceView(root, next); setSidebarOpen(false); setInspectorOpen(false)
     useMy.getState().requestAgentView(null)
-  }, [agentTarget, root, scope, canInteract, sessions])
+  }, [agentTarget, interactive, root, scope, isCurrent, canInteract])
   const returnInspectorFocus = (): void => { requestAnimationFrame(() => { if (!canInteract()) return; const target = inspectorReturnFocus.current; if (target?.isConnected && target.getClientRects().length > 0) target.focus(); else composerRef.current?.focus() }) }
   const closeInspector = (): void => { setInspectorOpen(false); setDocumentTarget(null); setDocumentExpanded(false); returnInspectorFocus() }
   const closeDocument = (): void => {
@@ -978,7 +999,7 @@ export function AcpConsolePage(): JSX.Element {
             }}>恢复原稿</button></p>}
             {references.length > 0 && <div className="acp-source-references">{references.map((source) => <div className="acp-source-chip" key={`${source.relativePath}:${source.displayedRevision}`}><FileText size={12} /><span title={`${source.relativePath} · ${source.displayedRevision}`}>{source.relativePath.split('/').at(-1)} · {source.displayedRevision.slice(0, 8)}</span><button aria-label={`移除引用 ${source.relativePath}`} onClick={() => { const next = references.filter((item) => item !== source); setReferences(next); draftReferencesRef.current[activeSession.sessionId] = next; writeSessionView(root, activeSession.sessionId, { sourceReferences: next }) }}><X size={11} /></button></div>)}</div>}
             <textarea ref={composerRef} aria-label="Agent 指令" title={managedComposerBlocked ? '受管任务执行期间保留草稿；请等待或停止任务后再发送普通指令' : 'Enter 发送 · Shift Enter 换行'} readOnly={managedComposerBlocked} rows={2} value={input} placeholder="说说你的想法…" onChange={(event) => changeDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send() } }} />
-            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || managedComposerBlocked || handoffComposerBlocked} onRecoverModel={recoverModel} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title="停止受管任务" disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} /><span className="acp-stop-label">{workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止任务' : '核对任务状态'}</span></Button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={handoffComposerBlocked || !selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
+            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || Boolean(sending[activeSession.sessionId]) || !selectedArchiveKnown || managedComposerBlocked || handoffComposerBlocked} onRecoverModel={recoverModel} acquireConfiguration={acquireConfiguration} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title="停止受管任务" disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} /><span className="acp-stop-label">{workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止任务' : '核对任务状态'}</span></Button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={handoffComposerBlocked || !selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
           </div>}
         </footer>}
       </section>}

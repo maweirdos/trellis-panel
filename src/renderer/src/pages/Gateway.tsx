@@ -1,23 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  Database,
-  Cloud,
-  CheckCircle2,
-  AlertCircle,
   AlertTriangle,
   RefreshCw,
   Terminal,
   Activity,
-  Layers,
   Copy,
   Check,
-  PlusCircle,
   Loader2,
   X,
   ShieldCheck,
-  Play,
-  Code,
-  FileCode
+  Play
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
@@ -25,7 +17,8 @@ import { clsx } from 'clsx'
 import { Button, Checkbox, Modal } from '../my/ui'
 import { relTime } from '../utils/format'
 import { errorMessage } from '../../../shared/errors'
-import { useProjectKnowledge } from '../knowledge/bridge'
+import { knowledgeStatusLabel, useProjectKnowledge } from '../knowledge/bridge'
+import { PreferenceRow, PreferenceSection } from './settings/PreferenceSection'
 import { useCopyFeedback } from '../utils/use-copy-feedback'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import type {
@@ -263,7 +256,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
   const actionsAvailable = !!gatewayStatus && !statusError
   const canTestUpstream = !!root && actionsAvailable && !testingUpstreamId && typeof api?.gatewayTestProvider === 'function'
 
-  const upstreams = gatewayStatus?.upstreams || []
+  const upstreams = gatewayStatus?.upstreams.filter((upstream) => upstream.id !== 'custom') || []
   const tools = gatewayStatus?.tools || []
   const filteredTools = tools.filter((t) => {
     if (categoryFilter === 'all') return true
@@ -275,411 +268,168 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
   const recentLogs = gatewayStatus?.recentLogs || []
 
   return (
-    <div className="min-w-0">
-      <div className="space-y-6">
-        {/* 状态徽标与操作栏 */}
-        <div className="flex flex-col gap-3 border-b border-my-line pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <span className={clsx('my-chip', gatewayStatus?.running && !statusError && !loadingStatus ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-layer-3 text-my-tertiary')}>
-              {loadingStatus ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
-              {!hasIpc ? '桌面功能不可用' : statusError ? '状态待确认' : loadingStatus ? '正在读取状态' : gatewayStatus ? `${gatewayStatus.running ? '运行中' : '已停止'} · ${gatewayStatus.transport}` : '状态未知'}
-            </span>
-            {hasIpc && !root && <span className="my-chip bg-my-layer-3 text-my-tertiary">未打开项目</span>}
-            {gatewayStatus && <span className="my-chip bg-my-accent-subtle text-my-accent-text">
-              {tools.length} 个聚合工具
-            </span>}
-          </div>
+    <div className="preferences-page min-w-0">
+      <PreferenceSection id="gateway-connection" title="连接">
+        <PreferenceRow label="网关状态" hint={gatewayStatus ? gatewayStatus.transport : undefined}>
+          <span role="status" className={clsx('my-chip', gatewayStatus?.running && !statusError && !loadingStatus ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-layer-3 text-my-tertiary')}>
+            {loadingStatus ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
+            {!hasIpc ? '桌面功能不可用' : statusError ? '状态待确认' : loadingStatus ? '正在读取状态' : gatewayStatus ? gatewayStatus.running ? '运行中' : '已停止' : '状态未知'}
+          </span>
+          {hasIpc && !root && <span className="my-chip bg-my-layer-3 text-my-tertiary">未打开项目</span>}
+          <Button variant="outline" size="sm" onClick={loadStatus} disabled={!canReadStatus || loadingStatus}>
+            <RefreshCw size={12} className={clsx(loadingStatus && 'animate-spin')} />
+            刷新
+          </Button>
+        </PreferenceRow>
+        <PreferenceRow label="安全策略" hint={gatewayStatus ? <span className={gatewayStatus.security.sqlReadOnly ? undefined : 'text-my-warning-text'}>{gatewayStatus.security.sqlReadOnly ? 'SQL 只读' : 'SQL 写操作拦截已关闭'} · {gatewayStatus.security.timeoutMs}ms 超时 · 响应上限 {gatewayStatus.security.maxResponseChars} 字符</span> : '状态未知'}>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setShowSecurityModal(true)}
+            disabled={!actionsAvailable || savingSecurity && !showSecurityModal || installingMcp || typeof api?.gatewayUpdateSecurity !== 'function'}
+          >
+            <ShieldCheck size={13} />
+            配置
+          </Button>
+        </PreferenceRow>
+        <PreferenceRow label="AI 编辑器">
+          <Button variant="outline" size="sm" onClick={handleOpenMountModal} disabled={!root || !actionsAvailable || installingMcp || typeof api?.kbMcpInstall !== 'function'}>
+            {installingMcp ? <Loader2 size={12} className="animate-spin" /> : <Terminal size={12} />}
+            {installingMcp ? '正在生成配置' : '接入 AI 编辑器'}
+          </Button>
+        </PreferenceRow>
+      </PreferenceSection>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowSecurityModal(true)}
-              disabled={!actionsAvailable || savingSecurity && !showSecurityModal || installingMcp || typeof api?.gatewayUpdateSecurity !== 'function'}
-              title="配置安全防护与熔断参数"
-            >
-              <ShieldCheck size={13} className="text-my-success-text" />
-              <span>安全策略</span>
-            </Button>
-            <Button variant="outline" onClick={loadStatus} disabled={!canReadStatus || loadingStatus} title="刷新网关状态">
-              <RefreshCw size={12} className={clsx(loadingStatus && 'animate-spin')} />
-              <span>刷新</span>
-            </Button>
-            <Button variant="primary" onClick={handleOpenMountModal} disabled={!root || !actionsAvailable || installingMcp || typeof api?.kbMcpInstall !== 'function'}>
-              {installingMcp ? <Loader2 size={12} className="animate-spin" /> : <Terminal size={12} />}
-              <span>{installingMcp ? '正在生成配置' : '接入 AI 编辑器'}</span>
-            </Button>
+      {statusError && (
+        <div role="alert" className="flex items-start gap-3 rounded-my-lg border border-my-line p-3 text-my-xs">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-my-danger-text" />
+          <div className="min-w-0 flex-1">
+            <div className="text-my-primary">{gatewayStatus ? '刷新失败，保留上次网关记录' : '无法读取网关状态'}</div>
+            <details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">错误详情</summary><p className="mt-1 whitespace-pre-wrap break-words">{statusError}</p></details>
           </div>
+          <Button variant="outline" size="sm" onClick={loadStatus} disabled={loadingStatus}>{loadingStatus ? '读取中' : '重试'}</Button>
         </div>
-
-        {statusError && (
-          <div role="alert" className="flex items-start gap-3 rounded-my-lg border border-my-line p-3 text-my-xs">
-            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-my-danger-text" />
-            <div className="min-w-0 flex-1">
-              <div className="text-my-primary">{gatewayStatus ? '刷新失败，保留上次网关记录' : '无法读取网关状态'}</div>
-              <details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">错误详情</summary><p className="mt-1 whitespace-pre-wrap break-words">{statusError}</p></details>
-            </div>
-            <Button variant="outline" size="sm" onClick={loadStatus} disabled={loadingStatus}>{loadingStatus ? '读取中' : '重试'}</Button>
+      )}
+      {actionError && (
+        <div role="alert" className="flex items-start gap-3 rounded-my-lg border border-my-line p-3 text-my-xs">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-my-danger-text" />
+          <div className="min-w-0 flex-1">
+            <div className="text-my-primary">{actionError.kind === 'mount' ? '接入配置生成失败' : '上游连通性测试失败'}</div>
+            <details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">错误详情</summary><p className="mt-1 whitespace-pre-wrap break-words">{actionError.detail}</p></details>
           </div>
-        )}
-        {actionError && (
-          <div role="alert" className="flex items-start gap-3 rounded-my-lg border border-my-line p-3 text-my-xs">
-            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-my-danger-text" />
-            <div className="min-w-0 flex-1">
-              <div className="text-my-primary">{actionError.kind === 'mount' ? '接入配置生成失败' : '上游连通性测试失败'}</div>
-              <details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">错误详情</summary><p className="mt-1 whitespace-pre-wrap break-words">{actionError.detail}</p></details>
-            </div>
-            <Button variant="outline" size="sm" disabled={!actionsAvailable || installingMcp || !!testingUpstreamId} onClick={() => actionError.kind === 'mount' ? void handleOpenMountModal() : actionError.upstreamId && void handleTestUpstream(actionError.upstreamId)}>重试</Button>
-          </div>
-        )}
-        {!gatewayStatus && !statusError && (
-          <div role="status" className="flex items-center gap-3 rounded-my-lg border border-my-line p-4 text-my-sm text-my-tertiary">
-            {loadingStatus ? <Loader2 size={18} className="shrink-0 animate-spin" /> : <Terminal size={18} className="shrink-0" />}
-            <span>{!hasIpc ? '网关需在桌面应用中使用' : !canReadStatus ? '请重启桌面应用以加载网关' : loadingStatus ? '正在读取网关状态…' : '尚未读取网关状态'}</span>
-          </div>
-        )}
-        {gatewayStatus && <>
-        {/* 1. 上游服务治理 (Upstream Services) */}
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-my-xs font-semibold uppercase tracking-wider text-my-tertiary">
-              <Layers className="h-4 w-4" />
-              <span>上游服务治理 (Upstream Services)</span>
-            </h2>
-            <span className="text-my-xs text-my-tertiary">
-              共接入 {upstreams.filter((u) => u.status === 'connected').length} / {upstreams.length} 个上游服务
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {/* 1. 本地知识库（四库） */}
-            <div className="flex flex-col justify-between rounded-my-lg border border-my-line bg-my-layer-2 p-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Database className="h-4 w-4 text-my-info-text" />
-                    <h3 className="text-my-xs font-semibold text-my-primary">本地知识库</h3>
-                  </div>
-                  {upstreams.find((u) => u.id === 'local-kb')?.status === 'connected' ? (
-                    <span className="my-chip bg-my-success-subtle text-my-success-text">
-                      <CheckCircle2 className="h-3 w-3" />
-                      已连接
-                    </span>
-                  ) : (
-                    <span className="my-chip bg-my-layer-3 text-my-tertiary">
-                      <AlertCircle className="h-3 w-3" />
-                      {root ? '未连接' : '未打开项目'}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
-                  需求库 / 规范库 / Wiki 库 / 归档库的毫秒级全文检索，供对话与 AI 规划查证项目事实。
-                </p>
-                <div className="mt-3 space-y-1 font-mono text-my-xs text-my-tertiary">
-                  <div className="truncate">端点: {snapshot?.meta?.root ? `${snapshot.meta.root}/.trellis` : '—'}</div>
-                  <div className={root ? 'text-my-success-text' : 'text-my-tertiary'}>{root ? '进程内倒排索引 · 离线可用' : '打开项目后使用本地知识库'}</div>
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between border-t border-my-line pt-3">
-                <button
-                  onClick={() => handleTestUpstream('local-kb')}
-                  disabled={!canTestUpstream || !upstreams.find((u) => u.id === 'local-kb')?.enabled}
-                  className="my-control my-control-sm text-my-info-text hover:text-[var(--my-txt-info-secondary)] disabled:opacity-40"
-                >
-                  {testingUpstreamId === 'local-kb' ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Activity size={12} />
-                  )}
-                  <span>连通性探测</span>
-                </button>
-                <span className="text-my-xs text-my-tertiary">{tools.filter((t) => t.upstreamId === 'local-kb').length} 个工具</span>
-              </div>
-            </div>
-
-            {/* 2. WeKnora 企业知识库 MCP */}
-            <div className="flex flex-col justify-between rounded-my-lg border border-my-line bg-my-layer-2 p-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Cloud className="h-4 w-4 text-my-info-text" />
-                    <h3 className="text-my-xs font-semibold text-my-primary">WeKnora 知识库</h3>
-                  </div>
-                  {knowledge.context?.scope.status === 'ok' ? (
-                    <span className="my-chip bg-my-success-subtle text-my-success-text">
-                      <CheckCircle2 className="h-3 w-3" />
-                      项目已绑定（未证明工具可用）
-                    </span>
-                  ) : (
-                    <span className="my-chip bg-my-layer-3 text-my-tertiary">
-                      <AlertCircle className="h-3 w-3" />
-                      项目知识不可用
-                    </span>
-                  )}
-                </div>
-                <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
-                  企业级 RAG 知识平台，提供业务规则文档、技术架构标准与跨团队规范向量检索。
-                </p>
-                <div className="mt-3 space-y-1 font-mono text-my-xs text-my-tertiary">
-                  <div className="truncate">连接: {knowledge.context?.scope.connectionName || '未绑定'}</div>
-                  <div>项目范围: {knowledge.context?.scope.collectionIds.length || 0} 个知识库</div>
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between border-t border-my-line pt-3">
-                <button
-                  onClick={() => handleTestUpstream('weknora')}
-                  disabled={!canTestUpstream || knowledge.context?.scope.status !== 'ok'}
-                  className="my-control my-control-sm text-my-info-text hover:text-[var(--my-txt-info-secondary)] disabled:opacity-40"
-                >
-                  {testingUpstreamId === 'weknora' ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Activity size={12} />
-                  )}
-                  <span>连通性探测</span>
-                </button>
-                <button
-                  onClick={() => setPage('integrations')}
-                  className="text-my-xs text-my-tertiary hover:text-my-primary"
-                >
-                  配置 →
-                </button>
-              </div>
-            </div>
-
-            {/* 3. Trellis 项目内核 MCP */}
-            <div className="flex flex-col justify-between rounded-my-lg border border-my-line bg-my-layer-2 p-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileCode className="h-4 w-4 text-my-success-text" />
-                    <h3 className="text-my-xs font-semibold text-my-primary">Trellis 项目内核</h3>
-                  </div>
-                  <span className={clsx('my-chip', upstreams.find((u) => u.id === 'trellis')?.status === 'connected' ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-layer-3 text-my-tertiary')}>
-                    {upstreams.find((u) => u.id === 'trellis')?.status === 'connected' ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-                    {upstreams.find((u) => u.id === 'trellis')?.status === 'connected' ? '已挂载' : root ? '未挂载' : '未打开项目'}
-                  </span>
-                </div>
-                <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
-                  动态注入本地规范文档（.trellis/spec/）与当前活跃任务的 PRD / 设计上下文。
-                </p>
-                <div className="mt-3 space-y-1 font-mono text-my-xs text-my-tertiary">
-                  <div className="truncate">规范: {snapshot?.spec?.length || 0} 份文档</div>
-                  <div>活跃任务: {snapshot?.tasks?.length || 0} 个</div>
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between border-t border-my-line pt-3">
-                <button
-                  onClick={() => handleTestUpstream('trellis')}
-                  disabled={!canTestUpstream || !upstreams.find((u) => u.id === 'trellis')?.enabled}
-                  className="my-control my-control-sm text-my-success-text hover:text-[var(--my-txt-success-secondary)] disabled:opacity-40"
-                >
-                  <Activity size={12} />
-                  <span>状态探测</span>
-                </button>
-                <span className="text-my-xs text-my-tertiary">{tools.filter((t) => t.upstreamId === 'trellis').length} 个工具</span>
-              </div>
-            </div>
-
-            {/* 4. 自定义 MCP 扩展 */}
-            <div className="flex flex-col justify-between rounded-my-lg border border-dashed border-my-line bg-my-layer-1 p-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <PlusCircle className="h-4 w-4 text-my-label-purple-icon" />
-                    <h3 className="text-my-xs font-semibold text-my-primary">自定义扩展槽位</h3>
-                  </div>
-                  <span className="my-chip bg-my-label-purple text-my-label-purple-text">
-                    可插拔
-                  </span>
-                </div>
-                <p className="mt-2 text-my-xs leading-relaxed text-my-tertiary">
-                  通过 stdio 或 SSE 聚合第三方 MCP 命令行服务（例如 git-mcp, jira-mcp）。
-                </p>
-              </div>
-              <div className="mt-4 border-t border-my-line pt-3 text-my-xs text-my-tertiary">
-                待挂载第三方服务
-              </div>
-            </div>
-          </div>
+          <Button variant="outline" size="sm" disabled={!actionsAvailable || installingMcp || !!testingUpstreamId} onClick={() => actionError.kind === 'mount' ? void handleOpenMountModal() : actionError.upstreamId && void handleTestUpstream(actionError.upstreamId)}>重试</Button>
         </div>
-
-        {/* 2. 聚合工具注册表与在线调试器 (Tool Catalog & Debugger) */}
-        <div className="rounded-my-lg border border-my-line bg-my-layer-2 p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-my-line pb-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <Code className="h-4 w-4 text-my-accent-text" />
-                <h2 className="text-my-xs font-semibold text-my-primary">聚合工具目录 (Tool Catalog)</h2>
-                <span className="my-chip border border-my-line bg-my-canvas font-mono text-my-tertiary">
-                  {filteredTools.length} 个工具
-                </span>
-              </div>
-              <p className="mt-0.5 text-my-xs text-my-tertiary">
-                网关统一暴露给 AI 编辑器的标准工具。点击工具右侧的“在线调试”可直接在面板输入参数实测执行。
-              </p>
-            </div>
-
-            {/* 分类过滤器 */}
-            <div className="flex items-center rounded-my-md bg-my-canvas p-0.5 border border-my-line text-my-xs">
-              <button
-                onClick={() => setCategoryFilter('all')}
-                className={clsx(
-                  'rounded-my-sm px-2.5 py-1 transition-colors',
-                  categoryFilter === 'all' ? 'bg-my-layer-1-active font-medium text-my-primary' : 'text-my-tertiary hover:text-my-primary'
-                )}
-              >
-                全部 ({tools.length})
-              </button>
-              <button
-                onClick={() => setCategoryFilter('knowledge')}
-                className={clsx(
-                  'rounded-my-sm px-2.5 py-1 transition-colors',
-                  categoryFilter === 'knowledge' ? 'bg-my-layer-1-active font-medium text-my-primary' : 'text-my-tertiary hover:text-my-primary'
-                )}
-              >
-                知识库 ({tools.filter((t) => t.upstreamId === 'local-kb' || t.upstreamId === 'weknora').length})
-              </button>
-              <button
-                onClick={() => setCategoryFilter('project')}
-                className={clsx(
-                  'rounded-my-sm px-2.5 py-1 transition-colors',
-                  categoryFilter === 'project' ? 'bg-my-layer-1-active font-medium text-my-primary' : 'text-my-tertiary hover:text-my-primary'
-                )}
-              >
-                项目内核 ({tools.filter((t) => t.upstreamId === 'trellis').length})
-              </button>
-            </div>
-          </div>
-
-          {/* 工具列表 */}
-          <div className="mt-4 divide-y divide-my-line">
-            {filteredTools.length === 0 && <div className="py-4 text-my-xs text-my-tertiary">当前分类没有工具</div>}
-            {filteredTools.map((tool) => (
-              <div
-                key={tool.name}
-                className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between first:pt-0 last:pb-0"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-my-xs font-semibold text-my-accent-text">
-                      {tool.name}
-                    </span>
-                    <span className="my-chip border border-my-line bg-my-canvas font-mono uppercase text-my-tertiary">
-                      {tool.upstreamId}
-                    </span>
-                    {tool.securityRule && (
-                      <span className="my-chip bg-my-warning-subtle text-my-warning-text">
-                        {tool.securityRule}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-my-xs text-my-tertiary leading-relaxed">{tool.description}</p>
-                  <div className="flex items-center gap-2 font-mono text-my-xs text-my-tertiary">
-                    <span>参数:</span>
-                    {Object.keys(tool.parameters).length === 0 ? (
-                      <span>无参</span>
-                    ) : (
-                      Object.entries(tool.parameters).map(([pName, pMeta]) => (
-                        <span key={pName} className="rounded-my-sm border border-my-line bg-my-canvas px-1 text-my-secondary">
-                          {pName}: {pMeta.type}
-                          {pMeta.required && <span className="text-my-danger-text">*</span>}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 sm:self-center">
-                  <button
-                    onClick={() => handleOpenDebugger(tool)}
-                    disabled={!root || !actionsAvailable || !gatewayStatus.running || typeof api?.gatewayTestTool !== 'function'}
-                    className="my-control border border-my-line bg-my-canvas text-my-secondary hover:border-my-line-accent-subtle hover:text-my-accent-text"
-                  >
-                    <Play size={11} className="text-my-accent-text" />
-                    <span>{root ? '在线调试' : '打开项目后调试'}</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+      )}
+      {!gatewayStatus && !statusError && (
+        <div role="status" className="flex items-center gap-3 rounded-my-lg border border-my-line p-4 text-my-sm text-my-tertiary">
+          {loadingStatus ? <Loader2 size={18} className="shrink-0 animate-spin" /> : <Terminal size={18} className="shrink-0" />}
+          <span>{!hasIpc ? '网关需在桌面应用中使用' : !canReadStatus ? '请重启桌面应用以加载网关' : loadingStatus ? '正在读取网关状态…' : '尚未读取网关状态'}</span>
         </div>
-
-        {/* 3. 实时调用审计流水 (Invocation & Traffic Audit) */}
-        <div className="rounded-my-lg border border-my-line bg-my-layer-2 p-5">
-          <div className="flex items-center justify-between border-b border-my-line pb-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-my-accent-text" />
-              <h2 className="text-my-xs font-semibold text-my-primary">实时调用审计流水 (Invocation Audit)</h2>
-              <span className="my-chip border border-my-line bg-my-canvas font-mono text-my-tertiary">
-                累计 {gatewayStatus?.totalQueries || 0} 次调用
-              </span>
-            </div>
-            <Button variant="ghost" size="sm" onClick={loadStatus} disabled={!canReadStatus || loadingStatus} title="刷新流水" aria-label="刷新流水">
-              <RefreshCw size={12} className={clsx(loadingStatus && 'animate-spin')} />
-            </Button>
-          </div>
-
-          <div className="mt-3 divide-y divide-my-line">
-            {recentLogs.length === 0 ? (
-              <div className="py-8 text-center text-my-xs text-my-tertiary">
-                暂无调用记录。当 AI 编辑器调用网关工具或通过上方“在线调试”发起测试时，此处将实时展示调用入参、耗时与安全防护状态。
-              </div>
-            ) : (
-              recentLogs.map((log) => (
-                <div key={log.id} className="py-3 text-my-xs first:pt-1 last:pb-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={clsx(
-                          'my-chip font-mono',
-                          log.status === 'success' && 'bg-my-success-subtle text-my-success-text',
-                          log.status === 'blocked' && 'bg-my-danger-subtle text-my-danger-text',
-                          log.status === 'error' && 'bg-my-warning-subtle text-my-warning-text'
-                        )}
-                      >
-                        {log.status === 'success' ? '200 OK' : log.status === 'blocked' ? '403 BLOCKED' : '500 ERROR'}
-                      </span>
-                      <span className="font-mono font-semibold text-my-primary">
-                        {log.toolName || log.query || 'mcp_call'}
-                      </span>
-                      <span className="text-my-xs text-my-tertiary font-mono">[{log.upstreamId || 'gateway'}]</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-my-xs text-my-success-text">
-                        {log.elapsedMs}ms
-                      </span>
-                      <span className="text-my-xs text-my-tertiary">{relTime(log.timestamp)}</span>
-                    </div>
-                  </div>
-
-                  {/* 详细入参与拦截/响应预览 */}
-                  <div className="mt-1.5 space-y-1 text-my-xs">
-                    {log.input && Object.keys(log.input).length > 0 && (
-                      <div className="font-mono text-my-tertiary">
-                        入参: <code className="text-my-secondary">{JSON.stringify(log.input)}</code>
-                      </div>
-                    )}
-                    {log.error && (
-                      <div className="text-my-danger-text font-mono">
-                        {log.error}
-                      </div>
-                    )}
-                    {log.responsePreview && (
-                      <div className="text-my-tertiary font-mono truncate max-w-4xl">
-                        响应: {log.responsePreview}
-                      </div>
-                    )}
-                  </div>
+      )}
+      {gatewayStatus && <>
+        <PreferenceSection id="gateway-upstreams" title="上游服务" action={<span className="text-my-xs text-my-tertiary">{upstreams.filter((upstream) => upstream.status === 'connected').length} / {upstreams.length} 已连接</span>}>
+          {[
+            { id: 'local-kb', label: '本地知识库', hint: root ? `${root}/.trellis` : '未打开项目' },
+            { id: 'weknora', label: 'WeKnora 知识库', hint: knowledge.context ? `${knowledge.context.scope.connectionName || '未绑定'} · ${knowledge.context.scope.collectionIds.length} 个知识库` : knowledge.loading ? '正在读取项目绑定' : knowledge.error ? '项目绑定读取失败' : root ? '绑定状态未知' : '未打开项目' },
+            { id: 'trellis', label: 'Trellis 项目', hint: `${snapshot?.spec?.length || 0} 份规范 · ${snapshot?.tasks?.length || 0} 个活跃任务` }
+          ].map((service) => {
+            const upstream = upstreams.find((item) => item.id === service.id)
+            const connected = upstream?.status === 'connected'
+            const status = !root ? '未打开项目' : !upstream ? '状态未知' : upstream.status === 'connected' ? '已连接' : upstream.status === 'disabled' ? '已禁用' : upstream.status === 'error' ? '连接异常' : '未连接'
+            return <PreferenceRow key={service.id} label={service.label} hint={service.hint} detail={(upstream?.endpoint || upstream?.error || upstream?.lastChecked || service.id === 'weknora') && <details className="text-my-xs text-my-tertiary">
+                <summary className="cursor-pointer" aria-label={`${service.label}的连接详情`}>连接详情</summary>
+                <div className="mt-2 space-y-1 break-words">
+                  {upstream?.endpoint && <p className="font-mono break-all">{upstream.endpoint}</p>}
+                  {upstream?.lastChecked && <p>状态更新时间：{relTime(upstream.lastChecked)}</p>}
+                  {upstream?.error && <p className="text-my-danger-text whitespace-pre-wrap">{upstream.error}</p>}
+                  {service.id === 'weknora' && <>
+                    <p>{knowledge.loading ? '正在读取项目绑定' : knowledge.error ? '项目绑定读取失败' : knowledge.context?.scope.status === 'ok' ? '项目已绑定（未证明工具可用）' : knowledge.context ? knowledgeStatusLabel[knowledge.context.scope.status] : '项目绑定状态未知'}</p>
+                    {knowledge.error && <p className="text-my-danger-text whitespace-pre-wrap">{knowledge.error}</p>}
+                    <Button variant="outline" size="sm" onClick={() => void knowledge.refresh()} disabled={!root || knowledge.loading}>重新读取绑定</Button>
+                  </>}
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-        </>}
-      </div>
+              </details>}>
+              <span className={clsx('my-chip', connected && root ? 'bg-my-success-subtle text-my-success-text' : upstream?.status === 'error' ? 'bg-my-warning-subtle text-my-warning-text' : 'bg-my-layer-3 text-my-tertiary')}>{status}</span>
+              <span className="text-my-xs text-my-tertiary">{tools.filter((tool) => tool.upstreamId === service.id).length} 个工具</span>
+              <Button
+                variant="outline" size="sm"
+                onClick={() => handleTestUpstream(service.id)}
+                disabled={!canTestUpstream || (service.id === 'weknora' ? knowledge.context?.scope.status !== 'ok' : !upstream?.enabled)}
+              >
+                {testingUpstreamId === service.id ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
+                {testingUpstreamId === service.id ? '探测中' : '探测'}
+              </Button>
+              {service.id === 'weknora' && <Button variant="ghost" size="sm" onClick={() => setPage('integrations')}>配置</Button>}
+
+            </PreferenceRow>
+          })}
+        </PreferenceSection>
+
+        <PreferenceSection id="gateway-tools" title="工具" action={<span className="text-my-xs text-my-tertiary">{filteredTools.length} 个工具</span>}>
+          <PreferenceRow label="分类">
+            <div className="my-segmented preference-choices" role="group" aria-label="工具分类">
+              {([
+                ['all', `全部 (${tools.length})`],
+                ['knowledge', `知识库 (${tools.filter((tool) => tool.upstreamId === 'local-kb' || tool.upstreamId === 'weknora').length})`],
+                ['project', `项目 (${tools.filter((tool) => tool.upstreamId === 'trellis').length})`]
+              ] as const).map(([category, label]) => <button key={category} type="button" aria-pressed={categoryFilter === category} onClick={() => setCategoryFilter(category)} className="my-segment">{label}</button>)}
+            </div>
+          </PreferenceRow>
+          {filteredTools.length === 0 && <div className="py-4 text-my-sm text-my-tertiary">当前分类没有工具</div>}
+          {filteredTools.map((tool) => <div key={tool.name} className="preference-row">
+            <div className="preference-row-label space-y-2">
+              <details className="text-my-xs font-normal text-my-secondary">
+                <summary className="cursor-pointer break-all font-mono text-my-sm text-my-primary">{tool.name}</summary>
+                <div className="mt-3 space-y-3">
+                  <p className="leading-relaxed">{tool.description}</p>
+                  {Object.keys(tool.parameters).length === 0 ? <p className="text-my-tertiary">无参数</p> : <dl className="space-y-2">
+                    {Object.entries(tool.parameters).map(([name, parameter]) => <div key={name}>
+                      <dt className="break-all font-mono">{name}: {parameter.type}{parameter.required && <span className="ml-1 text-my-danger-text">必填</span>}</dt>
+                      <dd className="mt-1 text-my-tertiary">{parameter.description}</dd>
+                      {parameter.default !== undefined && <dd className="mt-1 break-all font-mono text-my-tertiary">默认值：{JSON.stringify(parameter.default)}</dd>}
+                    </div>)}
+                  </dl>}
+                </div>
+              </details>
+              <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary">
+                <span>{tool.upstreamId}</span>
+                {tool.securityRule && <span className="text-my-warning-text">{tool.securityRule}</span>}
+              </div>
+            </div>
+            <div className="preference-row-control">
+              <Button variant="outline" size="sm" onClick={() => handleOpenDebugger(tool)} disabled={!root || !actionsAvailable || !gatewayStatus.running || typeof api?.gatewayTestTool !== 'function'}>
+                <Play size={12} />
+                {root ? '在线调试' : '打开项目后调试'}
+              </Button>
+            </div>
+          </div>)}
+        </PreferenceSection>
+
+        <PreferenceSection id="gateway-audit" title="调用记录" action={<div className="flex items-center gap-2">
+          <span className="text-my-xs text-my-tertiary">累计 {gatewayStatus.totalQueries} 次调用</span>
+          <Button variant="ghost" size="sm" onClick={loadStatus} disabled={!canReadStatus || loadingStatus} aria-label="刷新调用记录"><RefreshCw size={12} className={clsx(loadingStatus && 'animate-spin')} /></Button>
+        </div>}>
+          {recentLogs.length === 0 ? <p className="py-4 text-my-sm text-my-tertiary">暂无调用记录</p> : <div className="divide-y divide-my-line">
+            {recentLogs.map((log) => <div key={log.id} className="py-4 text-my-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className={clsx('my-chip', log.status === 'success' && 'bg-my-success-subtle text-my-success-text', log.status === 'blocked' && 'bg-my-danger-subtle text-my-danger-text', log.status === 'error' && 'bg-my-warning-subtle text-my-warning-text')}>{log.status === 'success' ? '成功' : log.status === 'blocked' ? '已拦截' : '失败'}</span>
+                  <span className="break-all font-mono text-my-primary">{log.toolName || log.query || 'mcp_call'}</span>
+                </div>
+                <div className="flex items-center gap-2 text-my-tertiary"><span className="font-mono">{log.elapsedMs}ms</span><span>{relTime(log.timestamp)}</span></div>
+              </div>
+              {log.error && <p className="mt-2 break-words text-my-danger-text">{log.error}</p>}
+              <details className="mt-2 text-my-tertiary">
+                <summary className="cursor-pointer">调用详情</summary>
+                <div className="mt-2 space-y-2">
+                  <p>上游：{log.upstreamId || 'gateway'}</p>
+                  {log.input && Object.keys(log.input).length > 0 && <pre className="whitespace-pre-wrap break-all font-mono">入参：{JSON.stringify(log.input, null, 2)}</pre>}
+                  {log.responsePreview && <pre className="whitespace-pre-wrap break-all font-mono">响应：{log.responsePreview}</pre>}
+                </div>
+              </details>
+            </div>)}
+          </div>}
+        </PreferenceSection>
+      </>}
 
       {/* 模态框 1: 在线调试器 (Tool Debugger Drawer/Modal) */}
       {selectedTool && (
@@ -699,10 +449,11 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
 
             <div className="my-scrollbar min-h-0 overflow-y-auto p-5 space-y-4" style={{ scrollbarGutter: 'stable' }}>
               <p className="text-my-xs text-my-secondary leading-relaxed">{selectedTool.description}</p>
+              {selectedTool.securityRule && <p className="text-my-xs text-my-warning-text">{selectedTool.securityRule}</p>}
 
               {/* 参数输入 */}
               <div className="space-y-3">
-                <h4 className="text-my-xs font-semibold text-my-primary">调用入参 (Parameters)</h4>
+                <h4 className="text-my-xs font-semibold text-my-primary">调用参数</h4>
                 {Object.keys(selectedTool.parameters).length === 0 ? (
                   <div className="rounded-my-lg border border-my-line bg-my-canvas p-3 text-my-xs text-my-tertiary">
                     该工具为无参工具，直接点击下方“执行调用”即可。
@@ -802,7 +553,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
               </Button>
               <Button variant="primary" onClick={handleExecuteTool} disabled={executingTool || !actionsAvailable}>
                 {executingTool ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-                <span>{executingTool ? '正在执行' : executionError || testResult && !testResult.ok ? '重试调用' : '执行调用 (Run)'}</span>
+                <span>{executingTool ? '正在执行' : executionError || testResult && !testResult.ok ? '重试调用' : '执行调用'}</span>
               </Button>
             </div>
           </div>
@@ -827,7 +578,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
               {securityError && <div role="alert" className="rounded-my-lg border border-my-line p-3 text-my-danger-text">{securityError}</div>}
               <div className="flex items-center justify-between rounded-my-lg border border-my-line bg-my-canvas p-3">
                 <div>
-                  <div className="font-semibold text-my-primary">SQL 只读安全拦截 (Strict Read-Only)</div>
+                  <div className="font-semibold text-my-primary">SQL 只读安全拦截</div>
                   <p className="mt-0.5 text-my-tertiary">强制阻断 DROP / DELETE / UPDATE / ALTER 等写操作</p>
                 </div>
                 <fieldset disabled={savingSecurity} className="border-0 p-0">
@@ -884,7 +635,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-my-line px-5 py-3">
               <div className="flex items-center gap-2">
                 <Terminal size={16} className="text-my-accent-text" />
-                <h3 className="text-my-sm font-semibold text-my-primary">接入 AI 编程编辑器 (MCP Client Config)</h3>
+                <h3 className="text-my-sm font-semibold text-my-primary">接入 AI 编程编辑器</h3>
               </div>
               <Button variant="ghost" size="sm" className="my-icon-control shrink-0" aria-label="关闭接入配置" onClick={() => setShowMountModal(false)}>
                 <X size={14} />

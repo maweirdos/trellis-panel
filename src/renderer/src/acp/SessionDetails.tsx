@@ -1,3 +1,4 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import { useRef, useState, type JSX } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api } from '../api'
@@ -9,7 +10,7 @@ import type { AcpConfigureInput, AcpSessionRecord } from '../../../shared/types'
 import { ACP_CONNECTION_STAGE_LABELS } from '@shared/acp-connection'
 
 export function StartupGroup({ session }: { session: AcpSessionRecord }): JSX.Element {
-  const events = session.events.filter((event) => event.source === 'acp' && event.sessionId === session.sessionId && projectRootKey(event.projectRoot) === projectRootKey(session.projectRoot) && event.connectionGeneration === session.connectionGeneration && isConnectionTimelineEvent(event))
+  const events = session.events.filter((event) => isConversationRuntimeEvent(event) && event.sessionId === session.sessionId && projectRootKey(event.projectRoot) === projectRootKey(session.projectRoot) && event.connectionGeneration === session.connectionGeneration && isConnectionTimelineEvent(event))
   if (!events.length) return <></>
   const label = (event: typeof events[number]): unknown => asObject(event.payload?.observation)?.label
   const start = events.find((event) => ['开始准备会话', '开始恢复原会话'].includes(String(label(event))))
@@ -83,7 +84,8 @@ export function SessionDetails({ session, isCurrent, onUpdated, controlsOnly = f
       {session.materialSnapshot ? <><p>捕获于 {new Date(session.materialSnapshot.capturedAt).toLocaleString()}</p><pre className="whitespace-pre-wrap break-words">{session.materialSnapshot.instructions || '未配置附加指令'}</pre><ul className="break-all">{session.materialSnapshot.files.map((file) => <li key={file}>{file}</li>)}</ul>{session.materialSnapshot.sources?.map((source) => <details className="border-t border-my-line pt-2" key={source.relativePath}><summary className="cursor-pointer break-all">{source.relativePath} · {source.included ? `已包含 ${source.includedBytes} 字节` : source.status === 'missing' ? '文件缺失' : source.status === 'unreadable' ? '无法读取' : '未纳入'}{source.truncated ? ' · 已截断' : ''}</summary><dl className="mt-2 space-y-1 break-all"><div><dt>来源版本</dt><dd>{source.sourceRevision ?? '未知'} · {source.sourceBytes ?? '未知'} 字节</dd></div><div><dt>实际包含版本</dt><dd>{source.includedRevision ?? '未包含'} · {source.includedChars} 字符</dd></div><div><dt>包含范围</dt><dd>{source.extent.start}–{source.extent.end}（{source.extent.unit}）</dd></div></dl>{source.diagnostics?.map((notice) => <p key={notice}>{notice}</p>)}</details>)}<p className="text-my-tertiary">材料快照表示已组装的输入；不代表模型已遵循或任务已验收。</p></> : <p>{session.schemaVersion === 2 ? '尚未发送材料；发送后显示本轮快照。' : '旧会话未记录材料快照。'}</p>}
     </div></details>
     <details className="border-t border-my-line pt-3"><summary className="cursor-pointer">连接与协议诊断</summary><dl className="mt-2 space-y-2 break-all font-mono text-my-sm">
-      <div><dt>面板会话</dt><dd>{session.sessionId}</dd></div><div><dt>远端 ACP 会话</dt><dd>{session.backendSessionId ?? '未记录'}</dd></div><div><dt>原生 Agent 会话</dt><dd>{session.agentSessionId ?? '未报告'}</dd></div><div><dt>连接代次</dt><dd>{session.connectionGeneration ?? '未记录'}</dd></div><div><dt>ACP 版本</dt><dd>{session.capabilities?.protocolVersion ?? '未知'}</dd></div>
+      <div><dt>面板会话</dt><dd>{session.sessionId}</dd></div><div><dt>引擎会话</dt><dd>{session.backendSessionId ?? '未记录'}</dd></div><div><dt>原生 Agent 会话</dt><dd>{session.agentSessionId ?? '未报告'}</dd></div><div><dt>连接代次</dt><dd>{session.connectionGeneration ?? '未记录'}</dd></div><div><dt>{session.engine === 'pi' ? 'Pi SDK 版本' : 'ACP 版本'}</dt><dd>{session.engine === 'pi' ? session.pi?.version ?? '未知' : session.capabilities?.protocolVersion ?? '未知'}</dd></div>
+      {session.engine === 'pi' && session.pi && <div><dt>Pi 会话文件</dt><dd>{session.pi.sessionFile}</dd></div>}
       <div><dt>Agent 信息与认证方式</dt><dd><pre className="whitespace-pre-wrap break-all">{JSON.stringify({ agentInfo: session.capabilities?.agentInfo, authMethods: session.capabilities?.authMethods }, null, 2)}</pre></dd></div>
       {modelCatalog?.provenance && <div><dt>CC Switch 配置来源</dt><dd>{modelCatalog.provenance.app} · {modelCatalog.provenance.transportMode} · {modelCatalog.provenance.attached ? '已附加' : '未附加'} · 聚合{modelCatalog.provenance.aggregateEnabled ? '已配置' : '未配置'}</dd></div>}
       {modelCatalog?.mappings?.filter(({ modelId }) => modelId === session.currentModelId).map((mapping) => <div key={mapping.modelId}><dt>配置的目标模型（非实际应答证明）</dt><dd>{mapping.providerKey ? `${mapping.providerKey} · ` : ''}{mapping.configuredModel}</dd></div>)}

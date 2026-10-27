@@ -1,3 +1,4 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import type { TimelineEvent } from '../../../shared/types'
 import { projectRootKey } from '../my/navigation'
 import type { KnowledgeOperation } from '../../../shared/knowledge-conversation'
@@ -8,7 +9,7 @@ const object = (value: unknown): Record<string, unknown> | undefined => value !=
 
 /** Only server-issued operation facts establish a result; model prose is never parsed. */
 export function readKnowledgeOperation(event: TimelineEvent): ConversationKnowledgeOperation | undefined {
-  if (event.source !== 'acp' || event.kind !== 'diagnostic' || !event.projectRoot || !event.sessionId || !event.turnId || !event.connectionGeneration || event.payload?.activityScope !== 'turn') return undefined
+  if (!isConversationRuntimeEvent(event) || event.kind !== 'diagnostic' || !event.projectRoot || !event.sessionId || !event.turnId || !event.connectionGeneration || event.payload?.activityScope !== 'turn') return undefined
   const value = object(event.payload.knowledgeOperation)
   if (!value || typeof value.operationId !== 'string' || !value.operationId.trim() || typeof value.kind !== 'string' || !['context', 'search', 'read', 'save_document', 'publish_document', 'handoff'].includes(value.kind) || typeof value.phase !== 'string' || !['running', 'completed', 'failed', 'needs_clarification', 'uncertain', 'cancelled'].includes(value.phase) || typeof value.detail !== 'string') return undefined
   if (['query', 'artifactId', 'artifactRevision', 'relativePath', 'publicationId', 'taskDir', 'detail', 'code'].some((key) => value[key] !== undefined && typeof value[key] !== 'string')) return undefined

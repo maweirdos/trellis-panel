@@ -51,6 +51,7 @@ import brand45 from '../assets/tool-brands/pi.svg'
 import brand46 from '../assets/tool-brands/factory-droid.svg'
 import brand47 from '../assets/tool-brands/augment.png'
 import brand48 from '../assets/tool-brands/iflow.png'
+import brand49 from '../assets/tool-brands/deepseek.svg'
 
 const TOOL_BRAND_ASSETS: Record<ToolBrandId, string> = {
   'codex': brand0,
@@ -102,6 +103,7 @@ const TOOL_BRAND_ASSETS: Record<ToolBrandId, string> = {
   'factory-droid': brand46,
   'augment': brand47,
   'iflow': brand48,
+  'deepseek-dsh': brand49,
 }
 
 export interface ToolBrandIconProps {

@@ -12,6 +12,17 @@ Read before changing runtime discovery, model selection, account bootstrap or ca
 
 ## 3. Contracts
 
+API credentials keep their `apiKey` and `apiKeyEncrypted` values together.
+Settings projection values remain opaque to the renderer. Model discovery,
+model tests and ordinary AI requests resolve credentials through the installed
+native protection authority before constructing authentication headers. Reuse
+`decryptKeyOf`; do not read a saved provider's key directly into Authorization
+or x-api-key. Unavailable or invalid protection fails before any network request;
+never send ciphertext or downgrade a failed encrypted key to an unauthenticated
+request. Do not log credentials, encrypted envelopes or authentication headers.
+Chat turns must terminate their admitted run on credential failure; workflow
+admission returns a structured failure before creating a run.
+
 Session admission resolves only the requested Runtime from current definitions and launch checks. Full discovery, unrelated CLI version probes and npm latest-version requests belong to explicit catalog/settings refresh, not the critical path of new/resumed sessions. Preserve missing/disabled/custom-command validation, captured history launch snapshots, Node/SQLite requirements, actual native readiness, account entitlement and admission/cleanup fences. A faster launch is not permission to cache authorization or guess availability.
 
 Deduplicate exact advertised provider/model refs in their original order. Custom or colliding model labels must identify their provider; retain native human labels and use the exact selector only as a last tie-breaker. Display formatting must never alter wire selectors, add candidates or change the acknowledged current model.
@@ -50,6 +61,21 @@ The managed startup integration applies only verified artifact/asset handling
 and its documented compatibility contracts; see `zcode-managed-startup.md`.
 It does not add cross-application write exclusion or cache authorization.
 
+OpenCode has separate release families: `opencode-ai` publishes V1 maintenance
+updates; `@opencode/cli` publishes V2. Choose the normal update package from the
+actual selected executable's major version, compare semantic versions, and expose
+cross-family migration separately. Unknown versions or registry failures cannot
+establish that the executable is current. Recheck the selected executable after
+installation; updating a different global PATH entry proves no update to a manual
+override. Discovery never migrates an installation or native data automatically.
+
+OpenCode Console authentication remains native-owned. A V1 free-model catalog
+entry does not establish current access, and `FreeUsageLimitError` alone does not
+prove that an account consumed its allowance. Preserve native authentication,
+eligibility and retry evidence separately. Console login requires the supported
+native `/connect` or `auth login` flow and a subsequent connection refresh;
+installation discovery does not start that flow.
+
 ## 4. Validation / Error Matrix
 
 | Condition | Required behavior |
@@ -57,6 +83,7 @@ It does not add cross-application write exclusion or cache authorization.
 | Relocated active root plus old home MiMo config | Only active native models; no stale credential import |
 | Invalid/relative/missing configured root or unsupported schema | Explicit failure; no legacy fallback |
 | Root/catalog changes after connection | Reject later mutation with reconnect guidance; allow stop |
+| Encrypted saved API key / unavailable protection | Decrypt in main before discovery/tests/requests; failed decryption sends no request and preserves saved data |
 | Wrong/expired account, foreign session/workspace/provider | No authentication material; unavailable/deny |
 | Removed or incompatible aggregate ID | Explicit recovery; no prefix stripping or similar-name substitution |
 | Current model absent from candidates | Preserve actual ID/unknown state, never candidate one |

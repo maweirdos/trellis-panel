@@ -14,6 +14,6 @@ export function DaemonSettingsDialog(): JSX.Element {
       <h1 className="text-my-sm font-semibold">后台设置</h1>
       <Button onClick={() => setOpen(false)}>关闭</Button>
     </div>
-    {open && <InteractionScope active><DaemonSettings /></InteractionScope>}
+    {open && <InteractionScope active><div className="daemon-settings-dialog"><DaemonSettings /></div></InteractionScope>}
   </Modal>
 }

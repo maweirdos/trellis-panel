@@ -236,11 +236,18 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
         if (stage.reportError) throw stage.reportError
         const terminal = this.terminalEvent(stage)
         const result = terminal?.payload?.result
-        const status = result && typeof result === 'object' && 'status' in result ? String(result.status) : 'unknown'
+        const nativeStatus = result && typeof result === 'object' && 'status' in result ? String(result.status) : 'unknown'
+        const policy = terminal?.payload?.hostPolicyOutcome
+        const hostStopped = policy && typeof policy === 'object' && 'authority' in policy && policy.authority === 'host-policy'
+          && 'status' in policy && policy.status === 'cancelled' && 'cause' in policy && policy.cause === 'retry-beyond-turn-budget'
+          && 'turnId' in policy && policy.turnId === stage.turnId && 'connectionGeneration' in policy && policy.connectionGeneration === stage.generation
+        const status = hostStopped && nativeStatus !== 'failed' ? 'cancelled' : nativeStatus
         if (status !== 'completed') {
           if (status === 'cancelled') {
             const state = await this.settledSession(stage, plan)
-            if (!state.directoryLeaseReason && !state.cleanupRequired) return await this.finish(stage, 'cancelled', 'Native cancellation settled; partial file changes may remain')
+            if (!state.directoryLeaseReason && !state.cleanupRequired) return await this.finish(stage, 'cancelled', hostStopped
+              ? `Host policy stopped waiting; native result remains ${nativeStatus}; partial file changes may remain`
+              : 'Native cancellation settled; partial file changes may remain')
           }
           return await this.finish(stage, 'outcome-unknown', `Native turn result: ${status}; existing side effects must be inspected`)
         }

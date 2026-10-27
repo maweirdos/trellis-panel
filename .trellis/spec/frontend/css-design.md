@@ -71,14 +71,36 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   `PAGE_LAYOUTS satisfies Record<Page, PageLayoutVariant>` registry classifies
   every route, including new routes. `PageFrame` consumes that registry; pages
   with their own module header compose the same layout directly.
-- Integration details/setup have an approved semantic-column exception inside
-  the existing PageContent band: canonical `--my-integration-detail-width`
-  (804px), `--my-integration-setup-width` (768px) and
-  `--my-integration-drawer-width` (800px). `integration.css` and provider drawer
-  modifiers consume those roles; they do not add another PageBody/scroll owner,
-  change all centered pages or introduce private hardcoded maxima. The integration
-  route owns its visible back/product/setup headings, so PageFrame keeps only an
-  accessible route heading there. See [integration interactions](./integration-interactions.md).
+- The five Settings destinations (preferences, models, engines, integrations and
+  MCP) share `PageFrame`'s `.my-settings-layout`: a centered column using
+  `--my-settings-content-width` (880px), one PageBody scrollbar and a large title
+  inside PageContent. Do not add a leaf page sidebar, independent scroll region,
+  second visible page title or scope badge. Provider/setup dialogs retain their
+  existing semantic width constraints inside this column.
+- `PreferenceSection` and `PreferenceRow` in `pages/settings/` own Settings groups:
+  a section heading above a rounded neutral bordered panel, divided rows with
+  primary labels on the left and controls on the right. Fields use
+  `--my-settings-field-width` (360px); narrow containers wrap fields while keeping
+  simple toggles beside their labels. Use explicit input labels, named actions,
+  actual state and existing focus/feedback primitives.
+- Provider and engine overviews use compact identity rows with icons, truthful
+  state and trailing actions. Open editing explicitly; provider draft changes
+  require Save/Cancel rather than mutating credentials while typing. Shared
+  Settings geometry does not require a persistent form for every object.
+- `PreferenceRow.detail` spans the whole row below identity and actions. Put
+  connection details there, never inside the trailing control column. Keep raw
+  diagnostics available on demand; remove redundant explanatory prose.
+- Engine Settings refreshes local installation inventory automatically while
+  visible. Keep protocol testing and registry version checks manual. Normal
+  refresh/test/install completion belongs in compact status/icons and accessible
+  announcements, without permanent success paragraphs. Preserve actionable errors
+  and actual diagnostics; parameter/environment configuration links to Agent roles.
+- Model credentials belong to Models; knowledge connections and retained legacy
+  synchronization controls belong to the WeKnora integration; MCP installation
+  belongs to MCP. Keep active compatibility controls reachable in the owning
+  destination instead of duplicating their editors in Preferences. Engine
+  command/hooks configuration is a default-closed advanced group. About names
+  this application, its package version, repository and license.
 - `PageHeader`, `PageToolbar` and `PageNotice` provide fixed, aligned bands.
   `PageBody` fills the remaining height. A centered body owns one scrollbar;
   a full body delegates scrolling to its real workspace panes. Do not restore

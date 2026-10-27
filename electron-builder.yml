@@ -6,12 +6,22 @@ directories:
 files:
   - out/**
   - "!out/worker-only/**"
+  - "!out/pi-engine/**"
   - package.json
   - resources/brand/**
   - resources/licenses/**
 # ZCode ACP 桥接适配器（launchKind 'bundled'）：整目录复制进 resources/adapters，
 # 运行侧由 services/acp/setup.ts resolveAdapterEntry() 从 process.resourcesPath 解析。
 extraResources:
+  - from: out/pi-engine
+    to: pi-engine
+    filter:
+      - engine.mjs
+      - sdk-manifest.json
+  - from: out/pi-engine/node_modules
+    to: pi-engine/node_modules
+    filter:
+      - "**/*"
   - from: node_modules/.cache/trellis-node/dist/node-v24.12.0-win-x64
     to: node-runtime/win-x64
     filter:

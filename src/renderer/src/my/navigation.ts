@@ -9,6 +9,7 @@ export type ToolView = 'git' | 'run' | 'architecture' | 'studio'
 export type AgentView = 'conversation' | 'roles'
 export type KnowledgeView = 'materials' | 'company'
 export type SettingsView = 'preferences' | 'engines'
+export const SETTINGS_VIEW_TITLES: Record<SettingsView, string> = { preferences: '偏好设置', engines: 'Agent 执行引擎' }
 
 interface PageNavigation {
   title: string
@@ -52,10 +53,10 @@ export const PAGE_NAVIGATION = {
   spec: { title: '规范', domain: 'knowledge', scope: 'project', icon: 'views', keywords: '规范文档 日志' },
   architecture: { title: '架构', domain: 'tasks', scope: 'project', icon: 'views' },
   studio: { title: '定制', domain: 'tasks', scope: 'project', icon: 'modules' },
-  models: { title: '模型', domain: 'settings', scope: 'application', icon: 'cycles' },
-  settings: { title: '偏好', domain: 'settings', scope: 'application', icon: 'work-items', scopeNote: '个人偏好和连接配置在本机保存；项目绑定按设置项注明的目标生效。' },
-  integrations: { title: '集成', domain: 'settings', scope: 'mixed', icon: 'modules', keywords: 'Jira GitHub GitLab Issues Gitee 钉钉 飞书 WeKnora 连接 账号 同步 导入 仓库 通知' },
-  gateway: { title: 'MCP', domain: 'settings', scope: 'mixed', icon: 'analytics', keywords: '应用 项目' },
+  models: { title: 'AI 模型与供应商', domain: 'settings', scope: 'application', icon: 'models' },
+  settings: { title: '偏好设置', domain: 'settings', scope: 'application', icon: 'work-items' },
+  integrations: { title: '外部应用集成', domain: 'settings', scope: 'mixed', icon: 'modules', keywords: 'Jira GitHub GitLab Issues Gitee 钉钉 飞书 WeKnora 连接 账号 同步 导入 仓库 通知' },
+  gateway: { title: 'MCP 工具服务', domain: 'settings', scope: 'mixed', icon: 'mcp', keywords: '应用 项目' },
   devtools: {
     title: '工具', domain: 'tasks', scope: 'project', icon: 'views', keywords: 'Git 只读 应用 运行 日志 脚本 启动 端口',
     scopeNote: '当前项目的 Git 与本地应用。'

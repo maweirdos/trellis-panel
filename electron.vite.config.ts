@@ -55,10 +55,19 @@ function bundleMainRole(entry: string, filename: string): Plugin {
   }
 }
 
+function bundlePiEngine(): Plugin {
+  return { name: 'bundle-pi-sdk-engine', apply: 'build', async closeBundle() {
+    await esbuild.build({ entryPoints: [resolve(__dirname, 'src/main/services/pi/engine.ts')],
+      outfile: resolve(__dirname, 'out/pi-engine/engine.mjs'), bundle: true, packages: 'external',
+      platform: 'node', format: 'esm', target: 'node24', logLevel: 'warning' })
+  } }
+}
+
 export default defineConfig({
   main: {
     plugins: [
       externalizeDepsPlugin(),
+      bundlePiEngine(),
       bundleMainRole('src/main/index.ts', 'gui.js'),
       bundleMainRole('src/main/daemon/host.ts', 'daemon-host.js'),
       bundleMainRole('src/main/daemon/control.ts', 'daemon-control.js'),

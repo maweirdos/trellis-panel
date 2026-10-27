@@ -1,6 +1,8 @@
-import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
+import { isConversationRuntimeEvent } from './runtime-events'
+import type { AcpRuntimeRetry, AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import { projectRootKey } from '../my/navigation'
 import { knowledgeOperationLabel, readKnowledgeOperation } from './knowledge-operations'
+import { runtimeActivityLabel } from './timeline'
 
 export interface CurrentTurnIdentity {
   projectRoot: string
@@ -21,7 +23,7 @@ export interface CurrentTurnRequest {
 }
 
 export interface CurrentTurnActivity {
-  phase: 'submitting' | 'knowledge' | 'waiting' | 'thinking' | 'tool' | 'replying' | 'processing' | 'permission' | 'cancelling'
+  phase: 'submitting' | 'knowledge' | 'waiting' | 'retrying' | 'thinking' | 'tool' | 'replying' | 'processing' | 'permission' | 'cancelling'
   label: string
   detail?: string
   spinning: boolean
@@ -34,11 +36,12 @@ export function ownsCurrentTurnRequest(request: CurrentTurnRequest | undefined, 
 const runningStatus = (status: string): boolean => ['busy', 'awaiting_permission', 'cancelling'].includes(status)
 
 /** Only exact current facts select a label. Gaps keep the real turn visible. */
-export function projectCurrentTurnActivity({ root, session, events, request, terminalTurns = [], interactive = true }: {
+export function projectCurrentTurnActivity({ root, session, events, request, retry, terminalTurns = [], interactive = true }: {
   root: string
   session: AcpSessionRecord | null
   events: readonly TimelineEvent[]
   request?: CurrentTurnRequest
+  retry?: AcpRuntimeRetry
   terminalTurns?: readonly CurrentTurnIdentity[]
   interactive?: boolean
 }): CurrentTurnActivity | null {
@@ -46,7 +49,7 @@ export function projectCurrentTurnActivity({ root, session, events, request, ter
   const local = ownsCurrentTurnRequest(request, session, root) ? request : undefined
   if (['error', 'closed', 'disconnected', 'legacy'].includes(session.status)) return null
   const owned = (fact: { projectRoot: string; sessionId?: string; connectionGeneration?: string }): boolean => projectRootKey(fact.projectRoot) === projectRootKey(root) && fact.sessionId === session.sessionId && fact.connectionGeneration === session.connectionGeneration
-  const currentEvents = events.filter((event) => event.source === 'acp' && owned(event) && event.payload?.activityScope !== 'connection')
+  const currentEvents = events.filter((event) => isConversationRuntimeEvent(event) && owned(event) && event.payload?.activityScope !== 'connection')
   // Metadata can still describe the preceding completed turn during admission.
   // An observed/acknowledged new ID is the bridge until that metadata catches up.
   const observedTurn = local && runningStatus(session.status) && session.turnId !== local.previousTurnId ? session.turnId : undefined
@@ -60,10 +63,15 @@ export function projectCurrentTurnActivity({ root, session, events, request, ter
   if (!local && !currentState) return null
   if (currentState && session.status === 'awaiting_permission') return { phase: 'permission', label: '等待你的授权', spinning: false }
   if (currentState && session.status === 'cancelling') return { phase: 'cancelling', label: '正在停止…', spinning: true }
+  if (currentState && retry && retry.turnId === turnId && retry.connectionGeneration === session.connectionGeneration) return {
+    phase: 'retrying', label: retry.reason === 'free_tier_limit' ? '免费请求受限，等待重试' : '引擎正在等待重试',
+    detail: `第 ${retry.attempt} 次 · ${new Date(retry.nextAt).toLocaleString()} · ${retry.message}`, spinning: false
+  }
   if (local?.phase === 'submitting' && !local.turnId && !currentState) return { phase: 'submitting', label: '正在发送…', spinning: true }
   const latest = [...facts].reverse().find((event) =>
     (event.kind === 'message' && event.payload?.role !== 'user' && Boolean(event.text?.trim())) ||
-    (event.kind === 'thought' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'plan' || readKnowledgeOperation(event))
+    (event.kind === 'thought' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'plan' || event.payload?.tag === 'pi_compaction' || readKnowledgeOperation(event))
+  if (latest?.payload?.tag === 'pi_compaction') return { phase: 'processing', label: runtimeActivityLabel(latest), spinning: true }
   const knowledge = latest && readKnowledgeOperation(latest)
   if (knowledge?.phase === 'running') return { phase: 'knowledge', label: knowledgeOperationLabel(knowledge, true), detail: knowledge.query, spinning: true }
   if (latest?.kind === 'message') return { phase: 'replying', label: '正在生成回复', spinning: true }

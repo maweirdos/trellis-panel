@@ -1,3 +1,4 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import { localDocumentLink } from '../../../shared/local-document-link'
 import { sameRelativeDocumentPath } from '../reader/reader-paths'
@@ -14,7 +15,7 @@ export function savedArtifactForMessage(href: string, messageId: string, events:
   if (!link.absolute && (!link.path.includes('/') || link.path.split('/').some(part => !part || part === '.' || part === '..'))) return null
   const position = events.findIndex(event => event.id === messageId)
   const message = events[position]
-  if (!message || message.source !== 'acp' || message.kind !== 'message' || message.payload?.role === 'user' || !message.turnId || !message.connectionGeneration || message.sessionId !== session.sessionId || projectRootKey(message.projectRoot) !== projectRootKey(session.projectRoot)) return null
+  if (!message || !isConversationRuntimeEvent(message) || message.kind !== 'message' || message.payload?.role === 'user' || !message.turnId || !message.connectionGeneration || message.sessionId !== session.sessionId || projectRootKey(message.projectRoot) !== projectRootKey(session.projectRoot)) return null
   const matches = new Map<string, SavedArtifactLink>()
   for (const event of events.slice(0, position)) {
     if (event.sessionId !== message.sessionId || event.turnId !== message.turnId || event.connectionGeneration !== message.connectionGeneration || projectRootKey(event.projectRoot) !== projectRootKey(message.projectRoot)) continue

@@ -1,3 +1,4 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import type { TimelineEvent } from '../../../shared/types'
 import type { RenderItem } from './timeline'
 import { projectRootKey } from '../my/navigation'
@@ -14,7 +15,7 @@ export interface RunProgressStep {
 /** Project recorded observations in this segment only. Later output is not a step here. */
 export function projectRunProgress(item: Activity, events: TimelineEvent[], running: boolean, activeLabel: string): RunProgressStep[] {
   const segmentIds = new Set(item.events.map((event) => event.id))
-  const scoped = events.filter((event) => segmentIds.has(event.id) && event.source === 'acp' && event.sessionId === item.sessionId && projectRootKey(event.projectRoot) === projectRootKey(item.projectRoot) && (item.scope === 'connection' || event.turnId === item.turnId) && event.connectionGeneration === item.connectionGeneration && (item.scope === 'connection' || event.payload?.activityScope !== 'connection'))
+  const scoped = events.filter((event) => segmentIds.has(event.id) && isConversationRuntimeEvent(event) && event.sessionId === item.sessionId && projectRootKey(event.projectRoot) === projectRootKey(item.projectRoot) && (item.scope === 'connection' || event.turnId === item.turnId) && event.connectionGeneration === item.connectionGeneration && (item.scope === 'connection' || event.payload?.activityScope !== 'connection'))
   return scoped.flatMap((event, index): RunProgressStep[] => {
     const observation = event.payload?.observation
     if (!observation || typeof observation !== 'object' || !('label' in observation) || typeof observation.label !== 'string' || !observation.label.trim()) return []

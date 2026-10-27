@@ -8,6 +8,8 @@
   -webkit-font-smoothing: antialiased;
   caret-color: var(--my-txt-primary);
   accent-color: var(--my-bg-accent-primary);
+  -webkit-user-select: text;
+  user-select: text;
 }
 .my-root .my-brand-mark { display: inline-block; flex-shrink: 0; background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; -webkit-mask-size: contain; }
 .my-root :where(button, input, select, textarea) { font-family: inherit; }

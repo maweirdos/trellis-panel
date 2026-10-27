@@ -19,7 +19,7 @@ export type AcpSkillContext = z.infer<typeof acpSkillContextSchema>
 
 export const acpAgentContextDeliverySchema = z.object({
   state: z.enum(['prepared', 'sent', 'not_sent']),
-  method: z.literal('embedded-resource'),
+  method: z.enum(['embedded-resource', 'sdk-context']),
   revision: z.string().regex(/^[a-f0-9]{64}$/),
   uri: z.string().max(2048),
   instructionsProvided: z.boolean(),

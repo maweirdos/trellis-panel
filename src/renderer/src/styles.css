@@ -16,7 +16,7 @@ html.is-capsule #root {
 }
 
 body {
-  @apply font-sans antialiased select-none;
+  @apply font-sans antialiased select-text;
   background: var(--my-bg-canvas);
   color: var(--my-txt-primary);
   font-size: var(--my-text-ui);
@@ -198,7 +198,7 @@ select {
   font-weight: var(--my-weight-semibold);
   letter-spacing: var(--my-tracking-normal);
   color: var(--my-txt-primary);
-  user-select: none;
+  user-select: text;
   word-break: keep-all;
 }
 .md th:last-child {

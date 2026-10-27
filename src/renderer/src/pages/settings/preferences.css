@@ -1,0 +1,35 @@
+.my-root .my-settings-layout { --my-page-max-width: calc(var(--my-settings-content-width) + var(--my-page-inset) * 2); }
+.my-root .my-settings-layout .my-page-content { padding-top: var(--my-space-48); }
+.my-root .settings-page-heading { margin-bottom: var(--my-space-40); }
+.my-root .settings-page-heading h1 { font-size: var(--my-text-display); line-height: var(--my-line-heading); font-weight: var(--my-weight-semibold); color: var(--my-txt-primary); }
+.my-root .preferences-page { display: flex; flex-direction: column; gap: var(--my-space-32); container-type: inline-size; }
+.my-root .preference-section { min-width: 0; scroll-margin-block: var(--my-space-24); }
+.my-root .preference-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-12); margin-bottom: var(--my-space-12); }
+.my-root .preference-section-heading h2 { font-size: var(--my-text-md); font-weight: var(--my-weight-semibold); color: var(--my-txt-primary); }
+.my-root .preference-section-body { min-width: 0; padding-inline: var(--my-space-20); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-xl); }
+.my-root .preference-row { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-24); padding-block: var(--my-space-16); min-width: 0; }
+.my-root .preference-row + .preference-row { border-top: 1px solid var(--my-border-subtle); }
+.my-root .preference-row-label { flex: 1; min-width: 0; font-size: var(--my-text-md); font-weight: var(--my-weight-medium); color: var(--my-txt-primary); overflow-wrap: anywhere; }
+.my-root .preference-row-label > p { font-weight: var(--my-weight-normal); }
+.my-root .preference-row-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--my-space-8); width: min(50%, var(--my-settings-field-width)); min-width: 0; font-size: var(--my-text-sm); }
+.my-root .preference-row-control > .my-input { flex: 1; min-width: 0; }
+.my-root .preference-row-control > label { display: inline-flex; align-items: center; gap: var(--my-space-8); }
+.my-root .preference-row:has(> .preference-row-detail) { flex-wrap: wrap; row-gap: var(--my-space-8); }
+.my-root .preference-row-detail { flex-basis: 100%; min-width: 0; font-size: var(--my-text-sm); color: var(--my-txt-secondary); }
+.my-root .preference-row-detail summary { width: fit-content; cursor: pointer; }
+.my-root .preference-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--my-space-8); padding-block: var(--my-space-16); border-top: 1px solid var(--my-border-subtle); }
+.my-root .preference-choices { display: inline-flex; flex-wrap: wrap; gap: var(--my-space-4); }
+.my-root .preference-choices .my-segment { width: auto; min-width: var(--my-space-64); padding-inline: var(--my-space-12); gap: var(--my-space-4); font-size: var(--my-text-sm); }
+.my-root .preference-disclosure { padding-block: var(--my-space-16); }
+.my-root .preference-disclosure > summary { cursor: pointer; color: var(--my-txt-secondary); font-size: var(--my-text-sm); width: fit-content; }
+.my-root .preference-disclosure > summary:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-4); border-radius: var(--my-radius-sm); }
+.my-root .preference-disclosure[open] > summary { margin-bottom: var(--my-space-12); }
+.my-root .daemon-settings-dialog { padding: var(--my-space-20); container-type: inline-size; }
+@container (max-width: 600px) {
+  .my-root .preference-row { flex-wrap: wrap; gap: var(--my-space-12); }
+  .my-root .preference-row-label { flex-basis: 100%; }
+  .my-root .preference-row-control { width: 100%; }
+  .my-root .preference-row:has(> .preference-row-control > :is(.my-switch, input[type='checkbox']):only-child) { flex-wrap: nowrap; }
+  .my-root .preference-row:has(> .preference-row-control > :is(.my-switch, input[type='checkbox']):only-child) > .preference-row-label { flex-basis: auto; }
+  .my-root .preference-row:has(> .preference-row-control > :is(.my-switch, input[type='checkbox']):only-child) > .preference-row-control { width: auto; }
+}

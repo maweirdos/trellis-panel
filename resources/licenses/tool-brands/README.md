@@ -24,7 +24,7 @@ The source catalog README follows unchanged.
 
 # Offline tool brand assets
 
-This catalog contains **49** editor/coding-agent product identities, not every
+This catalog contains **50** editor/coding-agent product identities, not every
 product in the market. It is presentation metadata: adding an icon does not add
 native metadata indexing, ACP support or conversation navigation.
 
@@ -47,7 +47,7 @@ Claude Code, Gemini CLI, Kimi Code and Qwen Code here. They do not identify the
 vendors' general chat/model products. `copilot` maps to GitHub Copilot, and Devin
 and Windsurf remain distinct. Arbitrary names are not matched by substring.
 
-Dsh, Snow, Reasonix, OhMyPi (`omp`) and Grok currently lack a verified coding
+Snow, Reasonix, OhMyPi (`omp`) and Grok currently lack a verified coding
 product mark in this bounded collection and use the neutral unknown fallback.
 `panel`, custom engines and unbound entries are also neutral. Inflection Pi,
 Microsoft Copilot, Z.ai and generic OpenAI/Claude marks are not substitutions.
@@ -103,6 +103,7 @@ Microsoft Copilot, Z.ai and generic OpenAI/Claude marks are not substitutions.
 | Factory Droid | `factory-droid.svg` | image | https://factory.com/icon.svg @ `2026-10-22` | LicenseRef-Upstream-Trademark |
 | Augment | `augment.png` | image | https://docs.augmentcode.com/mintlify-assets/_mintlify/favicons/augment-mtje7p526w/MMO3uIP-KlW_55xJ/_generated/favicon/android-chrome-192x192.png @ `2026-10-22` | LicenseRef-Upstream-Trademark |
 | iFlow CLI | `iflow.png` | image | https://cli.iflow.cn/img/favicon.ico @ `2026-10-22` | LicenseRef-Upstream-Trademark |
+| DeepSeek DSH | `deepseek.svg` | image | https://github.com/deepseek-ai/deepseek-harness @ `22ddee3792402c3e70ec5f86a63c3e3e895a2f60` | MIT; brand guidelines in `NOTICE.deepseek-harness.md` |
 
 ## Product identity evidence
 
@@ -116,3 +117,8 @@ Microsoft Copilot, Z.ai and generic OpenAI/Claude marks are not substitutions.
   general `pi.svg` is not used as a substitute.
 - Factory Droid and Augment: official documentation favicon/logo declarations.
 - iFlow CLI: official CLI page favicon declaration, original PNG response bytes.
+- DeepSeek DSH: the official Harness documentation declares `website/public/favicon.svg`
+  in `website/.vitepress/config.ts`. The blue whale is preserved unchanged;
+  `dsh`, `deepseek` and `deepseek-harness` explicitly identify this runtime.
+  `LICENSE.deepseek-harness.txt` and `NOTICE.deepseek-harness.md` preserve the
+  repository's MIT license and brand guidelines; trademarks remain with DeepSeek.

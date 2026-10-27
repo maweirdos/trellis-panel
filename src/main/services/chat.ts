@@ -21,6 +21,7 @@ import {
 } from './chat-store'
 import { ipcEvent } from '../../shared/ipc-channels'
 import type { ChatImage, ChatMessage, ChatSendResult, ModelProvider } from '../../shared/types'
+import { ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
 
 /**
  * 对话运行时（TPD-016 树语义）：每会话串行（一忙不二跑），忙碌发送进 FIFO 队列、轮末自动续发；
@@ -83,6 +84,14 @@ function targetOf(provider: ModelProvider, modelId: string, thinkingLevel?: Thin
     temperature: 0.4,
     thinkingLevel
   }
+}
+
+function credentialFailure(providerId?: string): IpcFail | undefined {
+  const provider = resolveProvider(providerId)
+  if (!provider) return ipcFail(IpcErrorCode.Unavailable, '未配置模型供应商（设置 → AI 模型）')
+  try { decryptKeyOf(provider.apiKey, provider.apiKeyEncrypted) }
+  catch (error) { return ipcFail(IpcErrorCode.Unavailable, error instanceof Error ? error.message : '无法读取模型凭据') }
+  return undefined
 }
 
 class ChatService {
@@ -188,17 +197,19 @@ class ChatService {
 
     const imgs = this.parseImages(input.images)
     if (imgs.error) return { ok: false, error: imgs.error, runId: null, queued: false }
+    const providerId = input.providerId === undefined ? session.providerId ?? undefined : input.providerId || undefined
+    const credentials = credentialFailure(providerId)
+    if (credentials) return { ...credentials, runId: null, queued: false }
 
     // 绑定更新：发送时可携带 provider/model/thinking/taskDir（composer 切换即持久化到会话）
-    if (input.providerId || input.modelId || input.thinkingLevel || input.agent !== undefined || input.taskDir !== undefined) {
-      updateBinding(app, input.sessionId, {
-        providerId: input.providerId,
-        modelId: input.modelId,
-        thinkingLevel: input.thinkingLevel,
-        agent: input.agent,
-        taskDir: input.taskDir
-      })
+    const binding = {
+      ...(input.providerId === undefined ? {} : { providerId: input.providerId }),
+      ...(input.modelId === undefined ? {} : { modelId: input.modelId }),
+      ...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
+      ...(input.agent === undefined ? {} : { agent: input.agent }),
+      ...(input.taskDir === undefined ? {} : { taskDir: input.taskDir })
     }
+    if (Object.keys(binding).length) updateBinding(app, input.sessionId, binding)
 
     const runId = newRunId()
     const busy = this.active.has(input.sessionId)
@@ -245,6 +256,8 @@ class ChatService {
     if (!node || node.role !== 'user') return { ok: false, error: '只能编辑用户消息', runId: null, queued: false }
     const content = String(newContent ?? '').trim()
     if (!content) return { ok: false, error: '消息不能为空', runId: null, queued: false }
+    const credentials = credentialFailure(session.providerId ?? undefined)
+    if (credentials) return { ...credentials, runId: null, queued: false }
     const sibling = addChildNode(app, sessionId, node.parent, { role: 'user', content })
     const runId = newRunId()
     void this.startTurn(runId, sessionId, {
@@ -274,6 +287,8 @@ class ChatService {
     if (this.active.has(sessionId)) return { ok: false, error: '当前有轮次运行中', runId: null, queued: false }
     const leaf = session.activeLeaf ? session.nodes[session.activeLeaf] : undefined
     if (!leaf || leaf.role !== 'assistant') return { ok: false, error: '没有可重新生成的回答', runId: null, queued: false }
+    const credentials = credentialFailure(session.providerId ?? undefined)
+    if (credentials) return { ...credentials, runId: null, queued: false }
     const runId = newRunId()
     void this.startTurn(runId, sessionId, {
       historyEndLeafId: leaf.parent ?? '',
@@ -456,6 +471,12 @@ class ChatService {
       this.finish(runId, sessionId, { kind: 'error', error: '当前供应商未选择模型' })
       return
     }
+    let target: StreamTarget
+    try { target = targetOf(provider, modelId, opts.thinkingLevel ?? session.thinkingLevel ?? 'off') }
+    catch (error) {
+      this.finish(runId, sessionId, { kind: 'error', error: error instanceof Error ? error.message : '无法读取模型凭据' })
+      return
+    }
 
     // 系统提示词：面板助手人设 + 项目实时上下文（R1：对话「通」的前提）
     const systemPrompt = buildSystemPrompt(app, sessionId)
@@ -469,7 +490,7 @@ class ChatService {
     const agentMode = !!opts.agent && provider.apiFormat === 'openai'
     if (agentMode) {
       const agentResult = await this.runAgentLoop(runId, sessionId, {
-        target: targetOf(provider, modelId, opts.thinkingLevel ?? session.thinkingLevel ?? 'off'),
+        target,
         history: historyWithSystem,
         controller,
         allowedTools: session.allowedTools ?? [],
@@ -491,7 +512,7 @@ class ChatService {
 
     // 增量只走事件不落盘；assistant 节点在完成时一次性落库
     const result = await aiChatStream(
-      targetOf(provider, modelId, opts.thinkingLevel ?? session.thinkingLevel ?? 'off'),
+      target,
       [...historyWithSystem, ...takeSteers()],
       {
         signal: controller.signal,

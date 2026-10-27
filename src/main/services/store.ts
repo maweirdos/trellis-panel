@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { randomBytes } from 'crypto'
 import { WEKNORA_DEFAULTS } from '../../shared/types'
-import type { Settings } from '../../shared/types'
+import type { AcpRuntimeDefaults, Settings } from '../../shared/types'
 import { atomicWriteText } from './local-task/prd'
 import { assertLegacySettingsWriter } from '../daemon/settings-owner'
 import { settingsPersistence } from './store-port'
@@ -98,6 +98,15 @@ export function setSettings(patch: Partial<Settings>, strict = false): Settings 
   return next
 }
 
+function patchRuntimeDefaults(current: Record<string, AcpRuntimeDefaults> | undefined, patch: Record<string, AcpRuntimeDefaults>): Record<string, AcpRuntimeDefaults> {
+  const next = { ...current }
+  for (const [id, value] of Object.entries(patch)) {
+    if (Object.keys(value).length === 0) delete next[id]
+    else next[id] = value
+  }
+  return next
+}
+
 /** Preserve existing extension keys while sharing native default/patch interpretation. */
 export function mergeSettings(cur: Settings, patch: Partial<Settings>): Settings {
   return {
@@ -111,7 +120,12 @@ export function mergeSettings(cur: Settings, patch: Partial<Settings>): Settings
     access: patch.access ? { ...cur.access, ...patch.access } : cur.access,
     proxy: patch.proxy ? { ...cur.proxy, ...patch.proxy } : cur.proxy,
     desktop: patch.desktop ? { ...cur.desktop, ...patch.desktop } : cur.desktop,
-    dispatch: patch.dispatch ? { ...cur.dispatch, ...patch.dispatch } : cur.dispatch
+    dispatch: patch.dispatch ? { ...cur.dispatch, ...patch.dispatch } : cur.dispatch,
+    acp: patch.acp ? {
+      ...cur.acp,
+      ...patch.acp,
+      ...(patch.acp.runtimeDefaults ? { runtimeDefaults: patchRuntimeDefaults(cur.acp?.runtimeDefaults, patch.acp.runtimeDefaults) } : {})
+    } : cur.acp
   }
 }
 export function defaultSettings(): Settings { return structuredClone(DEFAULTS) }

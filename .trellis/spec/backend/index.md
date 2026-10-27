@@ -1,6 +1,7 @@
 # Backend Development Guidelines Index
 
 Runtime provider/model changes must also follow [Provider source fidelity](./acp-provider-sources.md).
+Native Pi SDK changes also follow [Native Pi execution](./pi-runtime.md).
 ZCode setup and startup changes also follow [Managed ZCode startup](./zcode-managed-startup.md).
 
 > **Tech Stack**: Electron Main Process + Drizzle ORM + SQLite (better-sqlite3)

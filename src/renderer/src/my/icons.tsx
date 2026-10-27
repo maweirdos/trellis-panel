@@ -19,7 +19,9 @@ import {
   List,
   ListTodo,
   Minus,
+  PlugZap,
   RotateCw,
+  Server,
   SignalHigh,
   SignalLow,
   SignalMedium,
@@ -113,6 +115,8 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   'work-items': ListTodo,
   cycles: RotateCw,
   modules: Box,
+  models: Server,
+  mcp: PlugZap,
   views: Eye,
   pages: FileText,
   intake: CircleAlert

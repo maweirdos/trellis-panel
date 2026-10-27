@@ -1,3 +1,4 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import type { AcpSessionStatus, TimelineEvent } from '../../../shared/types'
 import { readAcpImages, type AcpImageAttachment } from '../../../shared/acp-images'
 import { relativePathUnderRoot, sameRelativeDocumentPath } from '../reader/reader-paths'
@@ -38,10 +39,11 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
   const identityOf = (event: TimelineEvent): string => JSON.stringify([event.source, knowledgeOperationIdentity(event, '')])
   const turnStarts = new Map<string, number>()
   const transportObservations = new Map<string, TimelineEvent[]>()
+  const policyStops = new Map<string, string>()
   // Only an actual user/start boundary establishes elapsed time. A paged suffix
   // must not acquire a fabricated start from its first loaded token.
   for (const event of transcriptEvents) {
-    if (event.source !== 'acp') continue
+    if (!isConversationRuntimeEvent(event)) continue
     const identity = identityOf(event)
     const startsTurn = event.kind === 'message' && event.payload?.role === 'user' || asObject(event.payload?.observation)?.label === '开始处理'
     if (event.turnId && startsTurn && !turnStarts.has(identity)) turnStarts.set(identity, event.ts)
@@ -53,6 +55,12 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
   // Inspect the original order: even a hidden connection/status fact ends a run.
   for (const ev of events) {
     const key = ev.id
+    const retry = asObject(ev.payload?.nativeRetry)
+    if (ev.source === 'acp' && ev.kind === 'diagnostic' && ev.turnId && ev.connectionGeneration
+      && ev.payload?.cancellationCause === 'retry-beyond-turn-budget' && retry?.reason === 'free_tier_limit'
+      && retry.turnId === ev.turnId && retry.connectionGeneration === ev.connectionGeneration) {
+      policyStops.set(identityOf(ev), ev.text ?? '原生重试超出本轮时限')
+    }
     const delivery = readPromptDelivery(ev)
     if (delivery) {
       const question = preparingQuestions.get(identityOf(ev))
@@ -118,7 +126,7 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
       if (type !== 'user' && last?.type === type && sameMessage) last.text += ev.text ?? ''
       else {
         const item: Extract<RenderItem, { type: 'user' | 'agent' | 'thought' }> = { type, key, text: ev.text ?? '', ...(type === 'user' ? { images: readAcpImages(ev.payload?.images) } : {}) }
-        if (type === 'user' && ev.source === 'acp' && hasPromptOwner(ev) && ev.payload?.delivery === 'preparing') {
+        if (type === 'user' && isConversationRuntimeEvent(ev) && hasPromptOwner(ev) && ev.payload?.delivery === 'preparing') {
           item.delivery = 'preparing'
           preparingQuestions.set(identityOf(ev), item)
         }
@@ -157,9 +165,13 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
     } else if (ev.kind === 'permission') items.push({ type: 'perm', key, ev })
     else if (ev.kind === 'turn-done') {
       const result = asObject(ev.payload?.result)
-      const outcome = result?.status === 'failed' ? 'failed' : result?.status === 'cancelled' || ev.text === '回合已取消' ? 'cancelled' : result?.status === 'completed' || ev.text === '回合已结束' ? 'completed' : undefined
-      if (ev.source === 'acp' && ev.turnId) items.push({ type: 'activity', key: `activity:${key}`, events: [...(transportObservations.get(identityOf(ev)) ?? []), ev], turnId: ev.turnId, connectionGeneration: ev.connectionGeneration, sessionId: ev.sessionId, projectRoot: ev.projectRoot, startedAt: turnStarts.get(identityOf(ev)), endedAt: ev.ts, outcome })
-      items.push({ type: 'turn', key, text: ev.text ?? '本轮结束' })
+      const policy = asObject(ev.payload?.hostPolicyOutcome)
+      const policyReason = ev.turnId && ev.connectionGeneration && policy?.authority === 'host-policy' && policy.status === 'cancelled' && policy.cause === 'retry-beyond-turn-budget'
+        && policy.turnId === ev.turnId && policy.connectionGeneration === ev.connectionGeneration && typeof policy.message === 'string'
+        ? policy.message || '原生重试超出本轮时限' : policyStops.get(identityOf(ev))
+      const outcome = result?.status === 'failed' ? 'failed' : policyReason || result?.status === 'cancelled' || ev.text === '回合已取消' ? 'cancelled' : result?.status === 'completed' || ev.text === '回合已结束' ? 'completed' : undefined
+      if (isConversationRuntimeEvent(ev) && ev.turnId) items.push({ type: 'activity', key: `activity:${key}`, events: [...(transportObservations.get(identityOf(ev)) ?? []), ev], turnId: ev.turnId, connectionGeneration: ev.connectionGeneration, sessionId: ev.sessionId, projectRoot: ev.projectRoot, startedAt: turnStarts.get(identityOf(ev)), endedAt: ev.ts, outcome })
+      items.push({ type: 'turn', key, text: policyReason && result?.status === 'completed' ? `已停止等待：${policyReason}` : ev.text ?? '本轮结束' })
     }
     else items.push({ type: 'detail', key, ev })
   }
@@ -184,7 +196,7 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
 
 /** Successful transport milestones are detail-only, not steps competing with the answer. */
 function isTurnTransportObservation(event: TimelineEvent): boolean {
-  return event.source === 'acp' && event.kind === 'session-status' && Boolean(event.turnId) && ['开始处理', '指令已发送至引擎', '收到首次模型响应'].includes(String(asObject(event.payload?.observation)?.label))
+  return isConversationRuntimeEvent(event) && event.kind === 'session-status' && Boolean(event.turnId) && ['开始处理', '指令已发送至引擎', '收到首次模型响应'].includes(String(asObject(event.payload?.observation)?.label))
 }
 
 function hasPromptOwner(event: TimelineEvent): boolean {
@@ -193,7 +205,7 @@ function hasPromptOwner(event: TimelineEvent): boolean {
 
 /** Delivery acknowledgement can update only a host-admitted question in its exact turn. */
 function readPromptDelivery(event: TimelineEvent): 'sent' | 'not_sent' | undefined {
-  if (event.source !== 'acp' || event.kind !== 'diagnostic' || event.payload?.activityScope !== 'turn' || !hasPromptOwner(event)) return undefined
+  if (!isConversationRuntimeEvent(event) || event.kind !== 'diagnostic' || event.payload?.activityScope !== 'turn' || !hasPromptOwner(event)) return undefined
   const state = asObject(event.payload.promptDelivery)?.state
   return state === 'sent' || state === 'not_sent' ? state : undefined
 }
@@ -218,7 +230,8 @@ export function readFileChange(event: TimelineEvent): { path: string; scope: str
 
 /** Known connection facts only: retain unrecognized/error content for inspection. */
 export function isConnectionTimelineEvent(event: TimelineEvent): boolean {
-  if (event.source !== 'acp') return false
+  if (!isConversationRuntimeEvent(event)) return false
+  if (event.payload?.tag === 'pi_compaction') return false
   if (event.payload?.activityScope === 'connection') return true
   if (event.payload?.activityScope === 'turn') return false
   if (isNativeToolsInformation(event)) return true
@@ -231,6 +244,7 @@ export function isConnectionTimelineEvent(event: TimelineEvent): boolean {
 /** Keep explicit errors and unknown diagnostics visible; collapse routine runtime metadata only. */
 function isRoutineRuntimeEvent(event: TimelineEvent): boolean {
   const payload = event.payload
+  if (payload?.tag === 'pi_compaction') return false
   const isProblemLevel = (value: unknown): boolean => value === 'error' || value === 'warning' || value === 'warn'
   if (isProblemLevel(payload?.type) || payload?.error || payload?.code !== undefined || payload?.status === 'failed' || asObject(payload?.observation)?.status === 'failed' || isProblemLevel(payload?.status) || isProblemLevel(payload?.severity) || isProblemLevel(payload?.level)) return false
   if (event.kind === 'config') return true
@@ -258,6 +272,10 @@ function isNativeToolsInformation(event: TimelineEvent): boolean {
 export function runtimeActivityLabel(event: TimelineEvent): string {
   if (isNativeToolsInformation(event)) return '工具能力说明（适配器原生工具）'
   switch (event.payload?.tag) {
+    case 'pi_compaction': {
+      const state = event.payload.status ?? event.payload.phase
+      return state === 'failed' || state === 'error' ? event.text || '上下文压缩失败' : state === 'completed' ? '上下文已压缩' : state === 'cancelled' ? '上下文压缩已取消' : state === 'running' ? '正在压缩上下文' : event.text || '压缩上下文'
+    }
     case 'usage_update': return '用量更新（Runtime 报告）'
     case 'available_commands_update': return '可用命令更新'
     case 'config_option_update': return '配置更新'

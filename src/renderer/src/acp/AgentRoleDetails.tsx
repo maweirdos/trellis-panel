@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { Archive, ArrowLeft, Bot, ChevronRight, FileText, FolderGit2, Monitor, Plug, Plus, Settings2, Share2, SlidersHorizontal, Puzzle, X } from 'lucide-react'
+import { Archive, ArrowLeft, Bot, ChevronRight, FileText, FolderGit2, Monitor, Plug, Plus, Settings2, Share2, SlidersHorizontal, Puzzle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { api, hasIpc } from '../api'
 import { Button } from '../my/ui'
@@ -7,6 +7,9 @@ import { RuntimePanel } from './RuntimePanel'
 import { RuntimePicker } from './RuntimePicker'
 import { SessionDetails } from './SessionDetails'
 import { ProfileSkills } from './ProfileSkills'
+import { ProfileMcpServers } from './ProfileMcpServers'
+import { RuntimeConfigFields } from './RuntimeConfigFields'
+import { cleanRuntimeConfig, runtimeConfigError } from './runtime-config'
 import type { AcpAgentProfile, AcpAgentStatus, AcpSessionRecord } from '../../../shared/types'
 
 export type RoleDetailsSection = 'overview' | 'instructions' | 'im' | 'tools' | 'workspace' | 'runtime' | 'git' | 'skills' | 'archive'
@@ -69,6 +72,9 @@ function DetailView({ section, profile, session, agents, root, engine, connected
   onSection: (section: RoleDetailsSection) => void; onKnowledge: () => void; onSpec: () => void
 }): JSX.Element {
   const [draft, setDraft] = useState<AcpAgentProfile | undefined>(profile)
+  const selectedEngine = draft ? agents.find(agent => (agent.runtimeId ?? agent.id) === draft.runtimeId) : engine
+  const launchKind = selectedEngine?.launchKind
+  const sdk = launchKind === 'sdk'
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -77,14 +83,14 @@ function DetailView({ section, profile, session, agents, root, engine, connected
   const update = (patch: Partial<AcpAgentProfile>): void => { if (draft) setDraft({ ...draft, ...patch }) }
   const save = async (): Promise<void> => {
     if (!draft || lock.current || !hasIpc || !isCurrent()) return
+    const invalid = runtimeConfigError(draft, launchKind)
+    if (invalid) { setError(invalid); return }
     lock.current = true
     setPending(true); setError(''); setNotice('')
     try {
       const cleaned: AcpAgentProfile = {
-        ...draft, name: draft.name.trim(),
-        cwd: draft.cwd?.trim() || undefined,
-        env: draft.env?.filter((item) => item.key.trim()),
-        args: draft.args?.filter((item) => item.name.trim())
+        ...draft, ...cleanRuntimeConfig(draft, { role: true, launchKind }), name: draft.name.trim(),
+        cwd: draft.cwd?.trim() || undefined
       }
       const res = await api.acpProfileSave(cleaned)
       if (!isCurrent()) return
@@ -104,7 +110,7 @@ function DetailView({ section, profile, session, agents, root, engine, connected
     archive: { title: '归档', desc: '归档后 Agent 无法被指派或提及，历史会保留。' }
   }
   const header = headers[section]
-  const authLabel = !engine ? '未配置引擎' : engine.health === 'auth_required' ? '需要登录' : engine.available ? '沿用本机登录' : '引擎未就绪'
+  const authLabel = !selectedEngine ? '未配置引擎' : sdk ? '使用 AI 供应商凭据' : selectedEngine.health === 'auth_required' ? '需要登录' : selectedEngine.available ? '沿用本机登录' : '引擎未就绪'
   const modelLabel = session?.currentModelId ?? '连接后选择'
   return <>
     <button type="button" className="acp-detail-back" onClick={() => onSection('overview')}><ArrowLeft size={14} />返回</button>
@@ -142,42 +148,21 @@ function DetailView({ section, profile, session, agents, root, engine, connected
         <span className="acp-detail-row-label">Runtime</span>
         <RuntimePicker agents={agents} value={draft?.runtimeId} triggerSize="row" onSelect={(runtimeId) => update({ runtimeId })} onAgentsChange={onAgentsChange} isCurrent={isCurrent} />
       </div>
-      <div className="acp-detail-row">
-        <span className="acp-detail-row-label">默认模型<small>由执行引擎在连接后提供</small></span>
+      {session && <div className="acp-detail-row">
+        <span className="acp-detail-row-label">当前会话模型</span>
         <span className="acp-detail-row-value">{connected && session?.currentModelId ? modelLabel : '连接后选择'}</span>
-      </div>
+      </div>}
       <div className="acp-detail-row">
-        <span className="acp-detail-row-label">默认授权<small>登录与授权沿用引擎本机配置</small></span>
+        <span className="acp-detail-row-label">默认授权<small>{sdk ? '模型与凭据使用设置中的 AI 供应商' : '登录与授权沿用引擎本机配置'}</small></span>
         <span className="acp-detail-row-value">{authLabel}</span>
       </div>
 
-      <section className="acp-detail-section">
-        <h3>环境变量</h3>
-        <p className="text-my-sm text-my-tertiary">在 Agent 进程启动时注入（例如 ANTHROPIC_BASE_URL）。以明文保存在本机角色配置和会话配置快照中。</p>
-        <KVEditor
-          rows={draft?.env ?? []}
-          keyPlaceholder="变量名" valuePlaceholder="值"
-          disabled={pending}
-          onChange={(rows) => update({ env: rows })}
-          keyLabel="变量名" valueLabel="值"
-        />
-      </section>
+      {draft && <section className="acp-detail-section"><RuntimeConfigFields role value={draft} runtimeId={draft.runtimeId} launchKind={launchKind} disabled={pending} onChange={update} /></section>}
 
-      <section className="acp-detail-section">
-        <h3>自定义参数</h3>
-        <p className="text-my-sm text-my-tertiary">每行一个参数及其值，保存后追加到 Runtime 启动命令。错误的参数可能导致启动失败。</p>
-        <KVEditor
-          rows={(draft?.args ?? []).map(({ name, value }) => ({ key: name, value }))}
-          keyPlaceholder="参数（如 --flag）" valuePlaceholder="值（可留空）"
-          disabled={pending}
-          onChange={(rows) => update({ args: rows.map(({ key, value }) => ({ name: key, value })) })}
-          keyLabel="参数名" valueLabel="值"
-        />
-      </section>
-
+      {draft && sdk && <section className="acp-detail-section"><ProfileMcpServers key={`${profile.id}:${JSON.stringify(profile.mcpServerNames ?? [])}`} value={draft.mcpServerNames ?? []} disabled={pending} onChange={(mcpServerNames) => update({ mcpServerNames })} /></section>}
       <SaveBar pending={pending} error={error} notice={notice} dirty={isProfileDirty(draft, profile)} onSave={save} />
 
-      <details className="mt-4 border-t border-my-line pt-3" open={!engine?.available}>
+      <details className="mt-4 border-t border-my-line pt-3" open={!selectedEngine?.available}>
         <summary className="cursor-pointer text-my-sm text-my-secondary">本机环境与引擎安装</summary>
         <div className="mt-3"><RuntimePanel agents={agents} runtimeId={draft?.runtimeId ?? profile.runtimeId} onChange={onAgentsChange} isCurrent={isCurrent} heading={false} /></div>
       </details>
@@ -211,8 +196,9 @@ function DetailView({ section, profile, session, agents, root, engine, connected
 
 function isProfileDirty(draft: AcpAgentProfile | undefined, profile: AcpAgentProfile): boolean {
   if (!draft) return false
-  return draft.runtimeId !== profile.runtimeId || draft.cwd !== profile.cwd || draft.maxTurnMinutes !== profile.maxTurnMinutes
+  return draft.runtimeId !== profile.runtimeId || draft.modelId !== profile.modelId || draft.cwd !== profile.cwd || draft.maxTurnMinutes !== profile.maxTurnMinutes
     || JSON.stringify(draft.env ?? []) !== JSON.stringify(profile.env ?? []) || JSON.stringify(draft.args ?? []) !== JSON.stringify(profile.args ?? [])
+    || JSON.stringify(draft.mcpServerNames ?? []) !== JSON.stringify(profile.mcpServerNames ?? [])
 }
 
 function SaveBar({ pending, error, notice, dirty, onSave }: { pending: boolean; error: string; notice: string; dirty: boolean; onSave: () => void }): JSX.Element {
@@ -220,23 +206,5 @@ function SaveBar({ pending, error, notice, dirty, onSave }: { pending: boolean; 
     <Button size="sm" variant="primary" disabled={pending || !dirty || !hasIpc} onClick={onSave}>{pending ? '保存中…' : '保存修改'}</Button>
     {error && <p role="alert" className="mt-2 text-my-sm text-my-danger-text">{error}</p>}
     {!error && notice && <p role="status" className="mt-2 text-my-sm text-my-success-text">{notice}</p>}
-  </div>
-}
-
-/** 环境变量 / 自定义参数共用的键值行编辑器。 */
-function KVEditor({ rows, onChange, disabled, keyPlaceholder, valuePlaceholder, keyLabel, valueLabel }: {
-  rows: Array<{ key: string; value: string }>
-  onChange: (rows: Array<{ key: string; value: string }>) => void
-  disabled: boolean; keyPlaceholder: string; valuePlaceholder: string; keyLabel: string; valueLabel: string
-}): JSX.Element {
-  return <div className="mt-2">
-    {rows.map((row, index) => <div key={index} className="acp-kv-row">
-      <input aria-label={`${keyLabel} ${index + 1}`} className="my-input min-w-0" value={row.key} disabled={disabled} placeholder={keyPlaceholder}
-        onChange={(event) => onChange(rows.map((item, at) => at === index ? { ...item, key: event.target.value } : item))} />
-      <input aria-label={`${valueLabel} ${index + 1}`} className="my-input min-w-0" value={row.value} disabled={disabled} placeholder={valuePlaceholder}
-        onChange={(event) => onChange(rows.map((item, at) => at === index ? { ...item, value: event.target.value } : item))} />
-      <button type="button" className="acp-kv-remove" aria-label={`移除 ${row.key || keyLabel}`} disabled={disabled} onClick={() => onChange(rows.filter((_, at) => at !== index))}><X size={13} /></button>
-    </div>)}
-    <Button size="sm" variant="outline" disabled={disabled || rows.length >= 50} onClick={() => onChange([...rows, { key: '', value: '' }])}><Plus size={13} />添加</Button>
   </div>
 }

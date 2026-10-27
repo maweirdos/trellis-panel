@@ -15,9 +15,9 @@ export function SectionAction({ action }: { action: IntegrationSectionAction }):
 }
 export function IntegrationSection({ title, description, action, children }: { title: string; description?: string; action?: IntegrationSectionAction; children?: ReactNode }): JSX.Element {
   const id = useId()
-  return <section aria-labelledby={id} className="integration-section rounded-my-lg border border-my-line bg-my-surface-1">
-    <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"><div className="min-w-0 flex-1"><h3 id={id} className="text-my-sm font-medium">{title}</h3>{description && <p className="mt-1 text-my-sm text-my-tertiary">{description}</p>}</div>{action && <SectionAction action={action} />}</div>
-    {children && <div className="space-y-3 px-5 pb-4">{children}</div>}
+  return <section aria-labelledby={id} className="preference-section integration-section">
+    <header className="preference-section-heading"><div className="min-w-0 flex-1"><h2 id={id}>{title}</h2>{description && <p className="mt-1 text-my-sm text-my-tertiary">{description}</p>}</div>{action && <SectionAction action={action} />}</header>
+    {children && <div className="preference-section-body"><div className="space-y-3 py-4">{children}</div></div>}
   </section>
 }
 export function IntegrationResourceState({ resource }: { resource: Exclude<IntegrationResource<unknown>, { state: 'ready' }> }): JSX.Element {

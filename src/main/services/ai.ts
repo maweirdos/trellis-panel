@@ -1,6 +1,7 @@
 import { protectedStorage as safeStorage } from '../daemon/protected-storage'
 import type { AiApiFormat, AiChatResult, AiConfig, ChatImage, ChatMessage, ModelFetchResult, ModelItem, ThinkingLevel } from '../../shared/types'
 import { errorMessage, isAbortError } from '../../shared/errors'
+import { ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
 import { proxiedFetch } from './proxy'
 
 /**
@@ -9,6 +10,62 @@ import { proxiedFetch } from './proxy'
  */
 
 const TIMEOUT_MS = 120_000
+const KEY_DECRYPT_ERROR = '无法解密已保存的 API 密钥，请重新启动应用后重试或重新保存密钥。'
+const MODEL_ERROR_BODY_BYTES = 16 * 1024
+
+function redactAiError(message: string, secrets: readonly string[]): string {
+  let safe = message
+  for (const secret of new Set(secrets.filter(Boolean))) {
+    safe = safe.split(secret).join('[redacted]')
+    const escaped = JSON.stringify(secret).slice(1, -1)
+    if (escaped !== secret) safe = safe.split(escaped).join('[redacted]')
+  }
+  return safe
+    .replace(/(["'](?:authorization|proxy-authorization|x-api-key|api[-_]?key)["']\s*:\s*)(["'])(?:\\.|(?!\2)[\s\S])*?(?:\2|$)/gi, (_match, prefix: string, quote: string) => `${prefix}${quote}[redacted]${quote}`)
+    .replace(/(\b(?:authorization|proxy-authorization|x-api-key|api[-_]?key)[ \t]*[:=][ \t]*)(["'])(?:\\.|(?!\2)[\s\S])*?(?:\2|$)/gi, (_match, prefix: string, quote: string) => `${prefix}${quote}[redacted]${quote}`)
+    .replace(/(\b(?:authorization|proxy-authorization|x-api-key|api[-_]?key)[ \t]*[:=][ \t]*)(?:Bearer[ \t]+)?(?:\[redacted\]|[^\s,"';}\]]+)/gi, '$1[redacted]')
+    .replace(/(^|\n)([ \t]*(?:authorization|proxy-authorization|x-api-key|api[-_]?key)[ \t]*[:=][ \t]*)[^\r\n]*/gi, '$1$2[redacted]')
+    .replace(/\bBearer[ \t]+(?:\[redacted\]|[^\s"',;}\]]+)/gi, 'Bearer [redacted]')
+}
+
+function redactTruncatedCredentialTail(body: string, secrets: readonly string[]): string {
+  let end = body.length
+  for (const secret of secrets.filter(Boolean)) {
+    for (const value of new Set([secret, JSON.stringify(secret).slice(1, -1)])) {
+      for (let length = Math.min(value.length - 1, body.length); length > 0; length--) {
+        if (body.endsWith(value.slice(0, length))) { end = Math.min(end, body.length - length); break }
+      }
+    }
+  }
+  return end < body.length ? `${body.slice(0, end)}[redacted]` : body
+}
+
+async function modelUpstreamError(response: Response, secrets: readonly string[]): Promise<string> {
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let body = ''
+  let bytes = 0
+  let truncated = false
+  let interrupted = false
+  try {
+    while (reader) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const remaining = MODEL_ERROR_BODY_BYTES - bytes
+      body += decoder.decode(value.subarray(0, remaining), { stream: true })
+      bytes += Math.min(value.byteLength, remaining)
+      if (value.byteLength > remaining) {
+        truncated = true
+        void reader.cancel().catch(() => undefined)
+        break
+      }
+    }
+  } catch { interrupted = true } finally { reader?.releaseLock() }
+  body += decoder.decode()
+  if (truncated || interrupted) body = redactTruncatedCredentialTail(body, secrets)
+  const status = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`
+  return [redactAiError(status, secrets), redactAiError(body, secrets), truncated ? '[响应正文超过 16 KiB，已截断]' : '', interrupted ? '[响应正文读取中断]' : ''].filter(Boolean).join('\n')
+}
 
 /** 保守收窄：仅当值为普通对象时返回 Record 视图，其余返回 null */
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -33,18 +90,9 @@ export function protectAiKey(plain: string): { apiKey: string; apiKeyEncrypted: 
   return { apiKey: plain, apiKeyEncrypted: false }
 }
 
-function decryptKey(cfg: AiConfig): string {
-  if (!cfg.apiKey) return ''
-  if (cfg.apiKeyEncrypted) {
-    try {
-      if (safeStorage.isEncryptionAvailable()) {
-        return safeStorage.decryptString(Buffer.from(cfg.apiKey, 'base64'))
-      }
-    } catch {
-      return ''
-    }
-  }
-  return cfg.apiKey
+function requestKey(cfg: { apiKey?: string; apiKeyEncrypted?: boolean }): { ok: true; key: string } | IpcFail {
+  try { return { ok: true, key: decryptKeyOf(cfg.apiKey ?? '', cfg.apiKeyEncrypted).trim() } }
+  catch { return ipcFail(IpcErrorCode.Unavailable, KEY_DECRYPT_ERROR) }
 }
 
 export function resolveEndpoint(baseUrl: string, format?: string): string {
@@ -81,7 +129,9 @@ export async function aiChat(
   if (!endpoint || !/^https?:\/\//i.test(endpoint)) return { ok: false, error: 'baseUrl 无效' }
   if (!cfg.model) return { ok: false, error: '未配置模型名' }
 
-  const key = decryptKey(cfg)
+  const resolvedKey = requestKey(cfg)
+  if (!resolvedKey.ok) return resolvedKey
+  const key = resolvedKey.key
   const controller = new AbortController()
   const abort = (): void => controller.abort()
   opts?.signal?.addEventListener('abort', abort, { once: true })
@@ -140,13 +190,12 @@ export async function aiChat(
       body: JSON.stringify(body)
     })
     if (!res.ok) {
-      const text = (await res.text().catch(() => '')).slice(0, 400)
-      return { ok: false, error: `HTTP ${res.status} ${text || res.statusText}`.trim() }
+      return { ok: false, error: await modelUpstreamError(res, [key, cfg.apiKey]) }
     }
     const data: unknown = await res.json()
     const dataObj = asRecord(data)
     const apiErrorMsg = asRecord(dataObj?.error)?.message
-    if (typeof apiErrorMsg === 'string' && apiErrorMsg) return { ok: false, error: apiErrorMsg }
+    if (typeof apiErrorMsg === 'string' && apiErrorMsg) return { ok: false, error: redactAiError(apiErrorMsg, [key, cfg.apiKey]) }
 
     let content: string | undefined
     if (format === 'response') {
@@ -191,7 +240,7 @@ export async function aiChat(
     return { ok: true, content, model: typeof modelField === 'string' ? modelField : cfg.model }
   } catch (e) {
     const err = e as Error
-    return { ok: false, error: err.name === 'AbortError' ? `请求超时（${TIMEOUT_MS / 1000}s）` : err.message }
+    return { ok: false, error: err.name === 'AbortError' ? `请求超时（${TIMEOUT_MS / 1000}s）` : redactAiError(err.message, [key, cfg.apiKey]) }
   } finally {
     clearTimeout(timer)
     opts?.signal?.removeEventListener('abort', abort)
@@ -268,6 +317,7 @@ export function inferModelMetadata(id: string): { contextWindow?: string; tags: 
 export async function fetchModelsFromProvider(cfg: {
   baseUrl: string
   apiKey?: string
+  apiKeyEncrypted?: boolean
   apiFormat: string
 }): Promise<ModelFetchResult> {
   let u = cfg.baseUrl.trim().replace(/\s+/g, '')
@@ -275,7 +325,9 @@ export async function fetchModelsFromProvider(cfg: {
   if (!/^https?:\/\//i.test(u)) u = `http://${u}`
   u = u.replace(/\/+$/, '')
 
-  const key = cfg.apiKey?.trim() || ''
+  const resolvedKey = requestKey(cfg)
+  if (!resolvedKey.ok) return resolvedKey
+  const key = resolvedKey.key
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 15_000)
 
@@ -315,8 +367,7 @@ export async function fetchModelsFromProvider(cfg: {
     })
 
     if (!res.ok) {
-      const text = (await res.text().catch(() => '')).slice(0, 300)
-      return { ok: false, error: `HTTP ${res.status} ${text || res.statusText}`.trim() }
+      return { ok: false, error: await modelUpstreamError(res, [key, cfg.apiKey ?? '']) }
     }
 
     const data: unknown = await res.json()
@@ -350,7 +401,7 @@ export async function fetchModelsFromProvider(cfg: {
 
     return { ok: true, models }
   } catch (e) {
-    return { ok: false, error: isAbortError(e) ? '获取模型超时 (15s)' : errorMessage(e) || '网络请求失败' }
+    return { ok: false, error: isAbortError(e) ? '获取模型超时 (15s)' : redactAiError(errorMessage(e) || '网络请求失败', [key, cfg.apiKey ?? '']) }
   } finally {
     clearTimeout(timer)
   }
@@ -360,6 +411,7 @@ export async function testSingleModel(
   provider: {
     baseUrl: string
     apiKey?: string
+    apiKeyEncrypted?: boolean
     apiFormat: string
     model?: string
   },
@@ -373,7 +425,9 @@ export async function testSingleModel(
   if (!/^https?:\/\//i.test(u)) u = `http://${u}`
   u = u.replace(/\/+$/, '')
 
-  const key = provider.apiKey?.trim() || ''
+  const resolvedKey = requestKey(provider)
+  if (!resolvedKey.ok) return resolvedKey
+  const key = resolvedKey.key
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 20_000)
 
@@ -445,8 +499,7 @@ export async function testSingleModel(
     const latencyMs = Date.now() - start
 
     if (!res.ok) {
-      const text = (await res.text().catch(() => '')).slice(0, 300)
-      return { ok: false, error: `HTTP ${res.status} ${text || res.statusText}`.trim(), latencyMs }
+      return { ok: false, error: await modelUpstreamError(res, [key, provider.apiKey ?? '']), latencyMs }
     }
 
     return { ok: true, latencyMs, model: targetModel, message: `连接正常 (${latencyMs}ms)` }
@@ -454,7 +507,7 @@ export async function testSingleModel(
     const latencyMs = Date.now() - start
     return {
       ok: false,
-      error: isAbortError(e) ? '连接超时 (20s)' : errorMessage(e) || '连接失败',
+      error: isAbortError(e) ? '连接超时 (20s)' : redactAiError(errorMessage(e) || '连接失败', [key, provider.apiKey ?? '']),
       latencyMs
     }
   } finally {
@@ -556,16 +609,14 @@ export interface StreamResult {
 
 export function decryptKeyOf(apiKey: string, encrypted?: boolean): string {
   if (!apiKey) return ''
-  if (encrypted) {
-    try {
-      if (safeStorage.isEncryptionAvailable()) {
-        return safeStorage.decryptString(Buffer.from(apiKey, 'base64'))
-      }
-    } catch {
-      return ''
-    }
-  }
-  return apiKey
+  if (!encrypted) return apiKey
+  const ciphertext = Buffer.from(apiKey, 'base64')
+  try {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Protection unavailable')
+    return safeStorage.decryptString(ciphertext)
+  } catch {
+    throw new Error(KEY_DECRYPT_ERROR)
+  } finally { ciphertext.fill(0) }
 }
 
 /** 解析 dataURL 为 {mediaType, base64}；非 dataURL 返回 null */
@@ -766,8 +817,7 @@ export async function aiChatStream(
       body: JSON.stringify(body)
     })
     if (!res.ok) {
-      const text = (await res.text().catch(() => '')).slice(0, 400)
-      return { ok: false, error: `HTTP ${res.status} ${text || res.statusText}`.trim() }
+      return { ok: false, error: await modelUpstreamError(res, [key]) }
     }
 
     let reasoning = ''
@@ -844,7 +894,7 @@ export async function aiChatStream(
     if (isAbortError(e)) {
       return { ok: false, aborted: cb.signal?.aborted ?? false, error: `请求超时（${TIMEOUT_MS / 1000}s）` }
     }
-    return { ok: false, error: errorMessage(e) || '流式请求失败' }
+    return { ok: false, error: redactAiError(errorMessage(e) || '流式请求失败', [key]) }
   } finally {
     clearTimeout(timer)
     cb.signal?.removeEventListener('abort', onAbort)

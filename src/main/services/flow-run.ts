@@ -8,6 +8,7 @@ import { GatewayManager } from './gateway/manager'
 import { getProjectRoot, getSnapshot } from '../state'
 import { noteUpsert } from './knowledge'
 import { ipcEvent } from '../../shared/ipc-channels'
+import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 import type {
   AgentStep,
   FlowDef,
@@ -185,7 +186,9 @@ let runningRecord: FlowRunRecord | null = null
 export function startFlowRun(def: FlowDef, inputValues: Record<string, string>): { ok: boolean; runId?: string; error?: string } {
   const root = getProjectRoot()
   if (!root) return { ok: false, error: '未打开项目' }
-  const target = resolveTarget()
+  let target: StreamTarget | null
+  try { target = resolveTarget() }
+  catch (error) { return ipcFail(IpcErrorCode.Unavailable, error instanceof Error ? error.message : '无法读取模型凭据') }
   if (!target) return { ok: false, error: '未配置模型供应商（设置 → AI 模型）' }
   if (activeRuns.size >= 3) return { ok: false, error: '同时最多运行 3 个工作流，请等待或中止现有运行' }
 

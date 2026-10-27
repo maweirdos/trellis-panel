@@ -1,31 +1,32 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   RotateCw,
   Plus,
-  Box,
-  Boxes,
-  Sparkles,
-  Zap,
+  ChevronDown,
   Check,
+  Zap,
   CheckCircle2,
   XCircle,
   Trash2,
   Pencil,
-  Eye,
-  EyeOff,
+  Power,
+  SlidersHorizontal,
   MoreHorizontal,
   Loader2,
-  Bot,
+  Server,
   X
 } from 'lucide-react'
 import { useApp } from '../store'
-import { Select } from '../components/Select'
 import { api } from '../api'
 import { Button, Dropdown, DropdownItem, Modal, Switch } from '../my/ui'
-import type { ModelItem, ModelProvider, AiApiFormat } from '../../../shared/types'
+import type { ModelItem, ModelProvider, AiApiFormat, AiConfig } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors'
-import { clsx } from 'clsx'
-import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
+import { CopyableError } from '../components/CopyableError'
+import { PreferenceRow, PreferenceSection } from './settings/PreferenceSection'
+import { ModelItemEditor, ModelProviderEditor, ProviderIdentity } from './settings/ModelEditors'
+import type { ModelSecretAction } from './settings/ModelEditors'
+import { modelErrorSummary } from './settings/model-errors'
+import './settings/models.css'
 
 export interface ProviderTemplate {
   id: string
@@ -83,7 +84,6 @@ function getProviderStatus(p: ModelProvider, isTesting: boolean) {
   if (!p.enabled) {
     return {
       dotClass: 'bg-my-layer-3',
-      badgeClass: 'border-my-line bg-my-layer-1 text-my-tertiary',
       label: '已停用',
       tooltip: '该供应商已停用'
     }
@@ -91,38 +91,33 @@ function getProviderStatus(p: ModelProvider, isTesting: boolean) {
   if (isTesting) {
     return {
       dotClass: 'bg-my-info animate-pulse',
-      badgeClass: 'border-my-line-info bg-my-info-subtle text-my-info-text',
       label: '测试中…',
       tooltip: '正在测试接口连通性…'
     }
   }
-  if (!p.apiKey?.trim() && p.apiFormat !== 'ollama') {
+  if (!p.apiKey?.trim() && !p.apiKeyEncrypted && p.apiFormat !== 'ollama' && p.status !== 'connected' && p.status !== 'error') {
     return {
       dotClass: 'border border-my-line-strong bg-transparent',
-      badgeClass: 'border-my-line bg-my-layer-1 text-my-tertiary',
-      label: '未配置 Key',
-      tooltip: '尚未填写 API Key'
+      label: '未配置密钥',
+      tooltip: '尚未填写 API 密钥'
     }
   }
   if (p.status === 'connected') {
     return {
       dotClass: 'bg-my-success',
-      badgeClass: 'border-my-line-success bg-my-success-subtle text-my-success-text',
-      label: p.latencyMs ? `已连通 ${p.latencyMs}ms` : '已连通',
-      tooltip: `连通正常${p.latencyMs ? `，耗时 ${p.latencyMs}ms` : ''}`
+      label: p.latencyMs ? `目录可用 ${p.latencyMs}ms` : '目录可用',
+      tooltip: `模型目录接口可用${p.latencyMs ? `，耗时 ${p.latencyMs}ms` : ''}；模型推理需单独测试`
     }
   }
   if (p.status === 'error') {
     return {
       dotClass: 'bg-my-danger',
-      badgeClass: 'border-my-line-danger bg-my-danger-subtle text-my-danger-text',
       label: '连接异常',
-      tooltip: '无法连接到供应商服务器，请检查 Base URL 与 API Key'
+      tooltip: '无法连接到供应商服务器，请检查接口地址与密钥'
     }
   }
   return {
     dotClass: 'bg-my-warning',
-    badgeClass: 'border-my-line-warning bg-my-warning-subtle text-my-warning-text',
     label: '待测试',
     tooltip: '配置尚未进行连通性测试'
   }
@@ -141,952 +136,423 @@ export const DEFAULT_INITIAL_PROVIDER: ModelProvider = {
 }
 
 function reconcileProviders(saved: ModelProvider[]): ModelProvider[] {
-  // 移除历史测试计划
-  const clean = saved.filter((p) => p.id !== 'zhipu-plan' && p.name !== 'Start Plan')
+  return saved.map((provider) => ({
+    ...provider,
+    group: provider.group || (OFFICIAL_TEMPLATES.some((template) => template.id === provider.id) ? '官方供应商' : '自定义供应商'),
+    status: provider.status || 'untested',
+    models: provider.models ?? []
+  }))
+}
 
-  // 保留真正配置了 API Key，或者已有拉取模型的供应商
-  const configured = clean.filter((p) => {
-    const hasKey = Boolean(p.apiKey?.trim())
-    const hasModels = Boolean(p.models && p.models.length > 0)
-    return hasKey || hasModels
-  })
+function legacyProviderDraft(ai: AiConfig | undefined): ModelProvider | null {
+  if (!ai || ai.providers?.length) return null
+  const customEndpoint = ai.baseUrl.trim() && ai.baseUrl.trim() !== 'http://localhost:11434/v1'
+  if (!(customEndpoint || ai.enabled || ai.model.trim() || ai.apiKey.trim() || ai.apiKeyEncrypted)) return null
+  return {
+    // Preserve Pi's existing fallback identity and the exact stored secret envelope.
+    id: ai.activeProviderId || 'default',
+    name: '现有配置',
+    group: '自定义供应商',
+    enabled: ai.enabled,
+    baseUrl: ai.baseUrl,
+    apiFormat: ai.apiFormat ?? 'openai',
+    apiKey: ai.apiKey,
+    apiKeyEncrypted: ai.apiKeyEncrypted,
+    models: ai.model.trim() ? [{ id: ai.model, name: ai.model, enabled: true }] : [],
+    status: 'untested'
+  }
+}
 
-  // 如果没有任何配置过的供应商，只给一个默认项（DeepSeek），不展示全部
-  const effective = configured.length > 0 ? configured : [DEFAULT_INITIAL_PROVIDER]
 
-  return effective.map((p) => {
-    const tpl = OFFICIAL_TEMPLATES.find((t) => t.id === p.id)
-    return {
-      ...p,
-      group: p.group || (tpl ? '官方供应商' : '自定义供应商'),
-      status: p.status || 'untested',
-      models:
-        p.models?.filter(
-          (m) =>
-            !['glm-4-flash', 'glm-4-plus', 'k3', 'moonshot-v1-128k', 'deepseek-chat', 'deepseek-reasoner', 'gpt-4o', 'gpt-4o-mini', 'glm-4-air'].includes(m.id) ||
-            m.lastTestedAt
-        ) ?? []
-    }
-  })
+function readProviders(ai: AiConfig | undefined): ModelProvider[] {
+  if (ai?.providers?.length) return reconcileProviders(ai.providers)
+  const legacy = legacyProviderDraft(ai)
+  if (legacy) return [legacy]
+  return ai?.providers ? [] : [DEFAULT_INITIAL_PROVIDER]
+}
+
+// Used only in memory to retain request ownership; never rendered or logged.
+function connectionSource(provider: ModelProvider): string {
+  return JSON.stringify([provider.id, provider.baseUrl, provider.apiFormat, provider.apiKey, Boolean(provider.apiKeyEncrypted)])
+}
+
+type ProviderSource = { id: string; source: string; generation: number }
+type TestResult = { ok: boolean; latencyMs?: number; error?: string }
+type ModelInstance = { generation: number; present: boolean; testKeys: Set<string> }
+
+function endpointLabel(value: string): string {
+  if (!value.trim()) return '未配置接口地址'
+  try {
+    const url = new URL(/^https?:\/\//i.test(value) ? value : `http://${value}`)
+    return `${url.host}${url.pathname === '/' ? '' : url.pathname}`
+  } catch { return '自定义接口地址' }
 }
 
 export function ModelsPage(): JSX.Element {
-  const sidebarStyle = useSidebarWidthStyle()
-  const settings = useApp((s) => s.settings)
-  const saveSettings = useApp((s) => s.saveSettings)
-  const pushToast = useApp((s) => s.pushToast)
+  const settings = useApp((state) => state.settings)
+  const saveSettings = useApp((state) => state.saveSettings)
+  const pushToast = useApp((state) => state.pushToast)
+  const providers = useMemo(() => readProviders(settings?.ai), [settings?.ai])
+  const activeProviderId = settings?.ai?.activeProviderId || (settings?.ai?.providers?.find((provider) => provider.enabled)?.id ?? legacyProviderDraft(settings?.ai)?.id ?? '')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [providerEditor, setProviderEditor] = useState<{ provider: ModelProvider; source: ProviderSource | null } | null>(null)
+  const [modelEditor, setModelEditor] = useState<{ provider: ModelProvider; source: ProviderSource; model: ModelItem; isNew: boolean } | null>(null)
+  const [pendingWrites, setPendingWrites] = useState(0)
+  const [providerRequests, setProviderRequests] = useState<Record<string, 'test' | 'fetch'>>({})
+  const [modelRequests, setModelRequests] = useState<Record<string, boolean>>({})
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
+  const [providerResults, setProviderResults] = useState<Record<string, TestResult>>({})
+  const [providerErrors, setProviderErrors] = useState<Record<string, string>>({})
+  const [temperature, setTemperature] = useState(settings?.ai?.temperature ?? 0.3)
+  const [savingTemperature, setSavingTemperature] = useState(false)
+  const writeQueue = useRef<Promise<unknown>>(Promise.resolve())
+  const mounted = useRef(true)
+  const sources = useRef(new Map<string, { source: string; generation: number }>())
+  const modelInstances = useRef(new Map<string, ModelInstance>())
+  const requests = useRef(new Set<string>())
+  const saving = pendingWrites > 0
 
-  // Initialize providers from settings: 未添加模型时默认给一个初始项（DeepSeek）
-  const [providers, setProviders] = useState<ModelProvider[]>(() => {
-    if (settings?.ai?.providers && settings.ai.providers.length > 0) {
-      return reconcileProviders(settings.ai.providers)
-    }
-    return [DEFAULT_INITIAL_PROVIDER]
-  })
-
-  const [selectedProviderId, setSelectedProviderId] = useState<string>(() => {
-    const active = settings?.ai?.activeProviderId
-    if (active && providers.some((p) => p.id === active)) {
-      return active
-    }
-    return providers[0]?.id || 'deepseek'
-  })
-
-  // 当供应商列表变动时，确保选中的 ID 有效
   useEffect(() => {
-    if (providers.length > 0 && !providers.some((p) => p.id === selectedProviderId)) {
-      setSelectedProviderId(providers[0].id)
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
+  useEffect(() => { setTemperature(settings?.ai?.temperature ?? 0.3) }, [settings?.ai?.temperature])
+
+  const latestProviders = (): ModelProvider[] => readProviders(useApp.getState().settings?.ai)
+  const modelInstanceKey = (providerId: string, modelId: string): string => JSON.stringify([providerId, modelId])
+  const getModelInstance = (providerId: string, modelId: string): ModelInstance => {
+    const key = modelInstanceKey(providerId, modelId)
+    let instance = modelInstances.current.get(key)
+    if (!instance) {
+      instance = { generation: 0, present: true, testKeys: new Set() }
+      modelInstances.current.set(key, instance)
     }
-  }, [providers, selectedProviderId])
-
-  const [showKey, setShowKey] = useState(false)
-  const [fetchingModels, setFetchingModels] = useState(false)
-  const [testingProviderId, setTestingProviderId] = useState<string | null>(null)
-  const [testingModelId, setTestingModelId] = useState<string | null>(null)
-  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; latencyMs?: number; error?: string }>>({})
-  const [editingModel, setEditingModel] = useState<ModelItem | null>(null)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [showAddProviderModal, setShowAddProviderModal] = useState(false)
-  const [newModelForm, setNewModelForm] = useState({ id: '', name: '', contextWindow: '128k', tags: '代码' })
-
-  // Currently selected provider
-  const currentProvider = useMemo(() => {
-    return providers.find((p) => p.id === selectedProviderId) || providers[0]
-  }, [providers, selectedProviderId])
-
-  // Sync to store when providers change
-  const persistProviders = async (nextProviders: ModelProvider[], nextActiveId?: string): Promise<void> => {
-    setProviders(nextProviders)
-    const activeId = nextActiveId ?? selectedProviderId
-    const activeP = nextProviders.find((p) => p.id === activeId)
-    const activeModel = activeP?.models.find((m) => m.enabled)?.id || activeP?.models[0]?.id || ''
-
-    await saveSettings({
-      ai: {
-        enabled: activeP?.enabled ?? settings?.ai?.enabled ?? true,
-        baseUrl: activeP?.baseUrl || settings?.ai?.baseUrl || '',
-        apiKey: activeP?.apiKey ?? settings?.ai?.apiKey ?? '',
-        apiKeyEncrypted: activeP?.apiKeyEncrypted ?? settings?.ai?.apiKeyEncrypted,
-        model: activeModel || settings?.ai?.model || '',
-        temperature: settings?.ai?.temperature ?? 0.7,
-        activeProviderId: activeId,
-        apiFormat: activeP?.apiFormat ?? settings?.ai?.apiFormat ?? 'openai',
-        providers: nextProviders
+    return instance
+  }
+  const invalidateModelInstance = (instance: ModelInstance): void => {
+    instance.generation += 1
+    const keys = [...instance.testKeys]
+    instance.testKeys.clear()
+    for (const key of keys) requests.current.delete(key)
+    if (!keys.length || !mounted.current) return
+    setModelRequests((current) => { const next = { ...current }; for (const key of keys) delete next[key]; return next })
+    setTestResults((current) => { const next = { ...current }; for (const key of keys) delete next[key]; return next })
+  }
+  const observeModelInstances = (current: ModelProvider[]): void => {
+    const present = new Set<string>()
+    for (const provider of current) {
+      for (const model of provider.models) {
+        present.add(modelInstanceKey(provider.id, model.id))
+        getModelInstance(provider.id, model.id).present = true
       }
+    }
+    for (const [key, instance] of modelInstances.current) {
+      if (instance.present && !present.has(key)) {
+        instance.present = false
+        invalidateModelInstance(instance)
+      }
+    }
+  }
+  // Observe every committed inventory, even removal/re-addition batched into one render.
+  useEffect(() => {
+    observeModelInstances(latestProviders())
+    return useApp.subscribe((state, previous) => {
+      if (state.settings?.ai !== previous.settings?.ai) observeModelInstances(readProviders(state.settings?.ai))
     })
+  }, [])
+  const captureSource = (provider: ModelProvider): ProviderSource => {
+    const source = connectionSource(provider)
+    const previous = sources.current.get(provider.id)
+    const generation = previous ? previous.generation + (previous.source === source ? 0 : 1) : 0
+    sources.current.set(provider.id, { source, generation })
+    return { id: provider.id, source, generation }
   }
-
-  // Update current provider attributes
-  const updateCurrentProvider = (patch: Partial<ModelProvider>): void => {
-    if (!currentProvider) return
-    const isConnParamChanged = 'baseUrl' in patch || 'apiKey' in patch || 'apiFormat' in patch
-    const statusPatch = isConnParamChanged ? { status: 'untested' as const, latencyMs: undefined } : {}
-    const next = providers.map((p) => (p.id === currentProvider.id ? { ...p, ...patch, ...statusPatch } : p))
-    void persistProviders(next)
-  }
-
-  // Auto fetch models from provider
-  const handleFetchModels = async (): Promise<void> => {
-    if (!currentProvider) return
-    if (!currentProvider.baseUrl) {
-      pushToast({ kind: 'warn', title: '无法获取模型', body: '请先填写 Base URL' })
-      return
-    }
-
-    setFetchingModels(true)
-    const start = performance.now()
-    try {
-      const res = await api.aiFetchModels(currentProvider)
-      const latency = Math.round(performance.now() - start)
-      if (res.ok && res.models && res.models.length > 0) {
-        const fetched = res.models
-        // Merge with existing models without losing user custom enabled states
-        const existingMap = new Map(currentProvider.models.map((m) => [m.id, m]))
-        const mergedModels: ModelItem[] = fetched.map((m) => {
-          const existing = existingMap.get(m.id)
-          return {
-            ...m,
-            enabled: existing ? existing.enabled : true
-          }
-        })
-
-        const next = providers.map((p) =>
-          p.id === currentProvider.id
-            ? {
-                ...p,
-                models: mergedModels,
-                status: 'connected' as const,
-                latencyMs: latency,
-                lastTestedAt: new Date().toISOString()
-              }
-            : p
-        )
-        void persistProviders(next)
-        pushToast({
-          kind: 'info',
-          title: '拉取模型成功',
-          body: `已成功获取 ${fetched.length} 个模型并推断参数`
-        })
-      } else {
-        const next = providers.map((p) =>
-          p.id === currentProvider.id
-            ? { ...p, status: 'error' as const, lastTestedAt: new Date().toISOString() }
-            : p
-        )
-        void persistProviders(next)
-        pushToast({
-          kind: 'error',
-          title: '拉取模型失败',
-          body: res.error || '未获取到模型列表，请确认 Base URL 与 API Key 是否有效'
-        })
+  // Observe committed changes, including a switch away and back to identical credentials.
+  const sourceRevision = providers.map((provider) => connectionSource(provider)).join('\n')
+  useEffect(() => {
+    for (const provider of providers) captureSource(provider)
+    for (const [id, value] of sources.current) {
+      if (!providers.some((provider) => provider.id === id) && value.source) {
+        sources.current.set(id, { source: '', generation: value.generation + 1 })
       }
-    } catch (err) {
-      const next = providers.map((p) =>
-        p.id === currentProvider.id
-          ? { ...p, status: 'error' as const, lastTestedAt: new Date().toISOString() }
-          : p
-      )
-      void persistProviders(next)
-      pushToast({
-        kind: 'error',
-        title: '拉取模型异常',
-        body: errorMessage(err) || String(err)
+    }
+  }, [sourceRevision])
+
+  const ownsSource = (owner: ProviderSource): boolean => {
+    if (!mounted.current) return false
+    const provider = latestProviders().find((item) => item.id === owner.id)
+    if (!provider) return false
+    const current = captureSource(provider)
+    return current.generation === owner.generation
+  }
+  const modelResultKey = (owner: ProviderSource, modelId: string): string => JSON.stringify(['model', owner.id, owner.generation, modelId, getModelInstance(owner.id, modelId).generation])
+  const providerResultKey = (owner: ProviderSource): string => JSON.stringify(['provider', owner.id, owner.generation])
+
+  // Serialize functional updates against the latest encrypted settings returned by IPC.
+  // Failed writes leave the saved overview and all open drafts intact.
+  const write = (operation: () => Promise<void>): Promise<void> => {
+    setPendingWrites((value) => value + 1)
+    const job = writeQueue.current.then(operation)
+    writeQueue.current = job.catch(() => undefined)
+    return job.finally(() => { if (mounted.current) setPendingWrites((value) => value - 1) })
+  }
+  const persistProviders = (mutate: (current: ModelProvider[]) => ModelProvider[] | null, nextActiveId?: string): Promise<void> => write(async () => {
+    const ai = useApp.getState().settings?.ai
+    if (!ai) throw new Error('设置尚未加载，请稍后重试')
+    const next = mutate(readProviders(ai))
+    if (!next) return
+    const previousSources = new Map(sources.current)
+    const retainedId = nextActiveId ?? ai.activeProviderId ?? legacyProviderDraft(ai)?.id ?? ''
+    const active = next.find((provider) => provider.id === retainedId) || next.find((provider) => provider.enabled) || next[0]
+    const activeModel = active?.models.find((model) => model.id === ai.model && model.enabled)?.id || active?.models.find((model) => model.enabled)?.id || active?.models[0]?.id || ''
+    await saveSettings({ ai: {
+      ...ai, enabled: active?.enabled ?? false, baseUrl: active?.baseUrl ?? '',
+      apiKey: active?.apiKey ?? '', apiKeyEncrypted: active?.apiKeyEncrypted ?? false,
+      model: activeModel, activeProviderId: active?.id ?? '',
+      apiFormat: active?.apiFormat ?? ai.apiFormat ?? 'openai', providers: next
+    } })
+    for (const provider of latestProviders()) {
+      const submitted = next.find((item) => item.id === provider.id)
+      const previous = previousSources.get(provider.id)
+      // IPC may encrypt an unchanged plaintext key on its first write. This is
+      // the same connection, so retain request/draft ownership and test feedback.
+      if (submitted && previous?.source === connectionSource(submitted) &&
+        !submitted.apiKeyEncrypted && provider.apiKeyEncrypted &&
+        submitted.baseUrl === provider.baseUrl && submitted.apiFormat === provider.apiFormat) {
+        sources.current.set(provider.id, { source: connectionSource(provider), generation: previous.generation })
+      } else captureSource(provider)
+    }
+  })
+  const reportFailure = (title: string, err: unknown): void => pushToast({ kind: 'error', title, body: errorMessage(err) })
+  const runAction = (action: Promise<void>, title = '保存失败'): void => { void action.catch((err) => reportFailure(title, err)) }
+  const patchProvider = (id: string, patch: Partial<ModelProvider>): Promise<void> => persistProviders((current) => {
+    if (!current.some((provider) => provider.id === id)) throw new Error('该供应商已不存在')
+    return current.map((provider) => provider.id === id ? { ...provider, ...patch } : provider)
+  })
+  const patchModels = (owner: ProviderSource, mutate: (models: ModelItem[]) => ModelItem[]): Promise<void> => persistProviders((current) => {
+    if (!ownsSource(owner)) throw new Error('供应商连接配置已更改，请重新打开模型操作')
+    return current.map((provider) => provider.id === owner.id ? { ...provider, models: mutate(provider.models) } : provider)
+  })
+  const handleDeleteModel = (owner: ProviderSource, modelId: string): Promise<void> => {
+    if (!ownsSource(owner)) return Promise.reject(new Error('供应商连接配置已更改，请重新打开模型操作'))
+    // Retire the current test immediately; a failed delete still cannot revive its result.
+    invalidateModelInstance(getModelInstance(owner.id, modelId))
+    return patchModels(owner, (models) => models.filter((model) => model.id !== modelId))
+  }
+
+  const handleSaveProvider = async (draft: ModelProvider, secretAction: ModelSecretAction): Promise<void> => {
+    const editor = providerEditor
+    if (!editor) return
+    await persistProviders((current) => {
+      if (!editor.source) {
+        if (current.some((provider) => provider.id === draft.id)) throw new Error('供应商已存在，请重新添加')
+        return [...current, draft]
+      }
+      if (!ownsSource(editor.source)) throw new Error('供应商连接配置已更改，请重新打开配置窗口')
+      return current.map((provider) => {
+        if (provider.id !== draft.id) return provider
+        const candidate = { ...provider, name: draft.name, baseUrl: draft.baseUrl, apiFormat: draft.apiFormat, enabled: draft.enabled,
+          ...(secretAction === 'keep' ? {} : { apiKey: draft.apiKey, apiKeyEncrypted: draft.apiKeyEncrypted }) }
+        const changed = connectionSource(provider) !== connectionSource(candidate)
+        return { ...candidate,
+          ...(changed ? { status: 'untested' as const, latencyMs: undefined, lastTestedAt: undefined } : {}) }
       })
-    } finally {
-      setFetchingModels(false)
-    }
+    })
+    pushToast({ kind: 'info', title: editor.source ? '已保存供应商' : '已添加供应商', body: draft.name })
   }
 
-  // Test single model connection & latency
-  const handleTestModel = async (modelId: string): Promise<void> => {
-    if (!currentProvider) return
-    setTestingModelId(modelId)
-    try {
-      const res = await api.aiTestModel(currentProvider, modelId)
-      setTestResults((prev) => ({
-        ...prev,
-        [modelId]: { ok: res.ok, latencyMs: res.latencyMs, error: res.error }
-      }))
-      if (res.ok) {
-        const next = providers.map((p) =>
-          p.id === currentProvider.id
-            ? {
-                ...p,
-                status: 'connected' as const,
-                latencyMs: res.latencyMs,
-                lastTestedAt: new Date().toISOString()
-              }
-            : p
-        )
-        void persistProviders(next)
-        pushToast({
-          kind: 'info',
-          title: `模型 ${modelId} 连通正常`,
-          body: `响应耗时: ${res.latencyMs}ms`
-        })
-      } else {
-        pushToast({
-          kind: 'error',
-          title: `模型 ${modelId} 连接失败`,
-          body: res.error || '无法与模型服务器建立连接'
-        })
-      }
-    } catch (err) {
-      setTestResults((prev) => ({
-        ...prev,
-        [modelId]: { ok: false, error: errorMessage(err) || String(err) }
-      }))
-    } finally {
-      setTestingModelId(null)
+  const handleSelectTemplate = (template: ProviderTemplate | 'custom'): void => {
+    const custom = template === 'custom'
+    const id = custom ? 'custom' : template.id
+    const exists = providers.some((provider) => provider.id === id)
+    const newProvider: ModelProvider = {
+      id: custom || exists ? `${id}-${crypto.randomUUID()}` : id,
+      name: custom ? `自定义供应商 ${providers.length + 1}` : exists ? `${template.name} (${providers.filter((provider) => provider.id.startsWith(id)).length + 1})` : template.name,
+      group: custom ? '自定义供应商' : template.group,
+      baseUrl: custom ? '' : template.baseUrl,
+      apiFormat: custom ? 'openai' : template.apiFormat,
+      apiKey: '', enabled: true, models: [], status: 'untested'
     }
+    setShowTemplates(false)
+    setProviderEditor({ provider: newProvider, source: null })
   }
 
-  // Provider-level test connection
-  const handleTestProvider = async (providerToTest: ModelProvider): Promise<void> => {
-    if (!providerToTest.baseUrl) {
-      pushToast({ kind: 'warn', title: '无法测试', body: '请先填写 Base URL' })
-      return
-    }
-    setTestingProviderId(providerToTest.id)
+  const handleDeleteProvider = async (provider: ModelProvider): Promise<void> => {
+    await persistProviders((current) => current.filter((item) => item.id !== provider.id))
+    if (expandedId === provider.id) setExpandedId(null)
+    pushToast({ kind: 'info', title: '已删除供应商', body: provider.name })
+  }
+
+  const handleProviderRequest = async (provider: ModelProvider, mode: 'fetch' | 'test'): Promise<void> => {
+    const owner = captureSource(provider)
+    const key = providerResultKey(owner)
+    if (!provider.baseUrl.trim() || requests.current.has(key)) return
+    requests.current.add(key)
+    setProviderRequests((current) => ({ ...current, [key]: mode }))
+    setProviderErrors((current) => { const next = { ...current }; delete next[key]; return next })
     const start = performance.now()
+    let connected = false
     try {
-      const activeModel = providerToTest.models.find((m) => m.enabled) || providerToTest.models[0]
-      if (activeModel) {
-        const res = await api.aiTestModel(providerToTest, activeModel.id)
-        const latency = res.latencyMs ?? Math.round(performance.now() - start)
-        if (res.ok) {
-          const next = providers.map((p) =>
-            p.id === providerToTest.id
-              ? { ...p, status: 'connected' as const, latencyMs: latency, lastTestedAt: new Date().toISOString() }
-              : p
-          )
-          void persistProviders(next)
-          pushToast({
-            kind: 'info',
-            title: `${providerToTest.name} 连接成功`,
-            body: `模型 ${activeModel.name} 响应耗时: ${latency}ms`
+      const result = await api.aiFetchModels(provider)
+      if (!ownsSource(owner)) return
+      const latencyMs = Math.round(performance.now() - start)
+      if (!result.ok) throw new Error(result.error || '接口未响应或凭证无效')
+      connected = true
+      setProviderResults((current) => ({ ...current, [key]: { ok: true, latencyMs } }))
+      const fetched = result.models
+      if (mode === 'fetch') {
+        await persistProviders((current) => {
+          if (!ownsSource(owner)) return null
+          return current.map((item) => {
+            if (item.id !== provider.id) return item
+            const existing = new Map(item.models.map((entry) => [entry.id, entry]))
+            const merged = fetched ? [
+              ...fetched.map((entry) => ({ ...entry, ...existing.get(entry.id) })),
+              ...item.models.filter((entry) => !fetched.some((remote) => remote.id === entry.id))
+            ] : item.models
+            return { ...item, status: 'connected', latencyMs, lastTestedAt: new Date().toISOString(), models: merged }
           })
-        } else {
-          const next = providers.map((p) =>
-            p.id === providerToTest.id
-              ? { ...p, status: 'error' as const, lastTestedAt: new Date().toISOString() }
-              : p
-          )
-          void persistProviders(next)
-          pushToast({
-            kind: 'error',
-            title: `${providerToTest.name} 连接失败`,
-            body: res.error || '无法与模型服务器建立连接'
-          })
-        }
-      } else {
-        const res = await api.aiFetchModels(providerToTest)
-        const latency = Math.round(performance.now() - start)
-        if (res.ok) {
-          const fetchedModels = res.models || []
-          const next = providers.map((p) =>
-            p.id === providerToTest.id
-              ? {
-                  ...p,
-                  status: 'connected' as const,
-                  latencyMs: latency,
-                  lastTestedAt: new Date().toISOString(),
-                  models: p.models.length === 0 ? fetchedModels : p.models
-                }
-              : p
-          )
-          void persistProviders(next)
-          pushToast({
-            kind: 'info',
-            title: `${providerToTest.name} 连接成功`,
-            body: `接口连通正常 (耗时: ${latency}ms)${fetchedModels.length > 0 && providerToTest.models.length === 0 ? `，已自动同步 ${fetchedModels.length} 个模型` : ''}`
-          })
-        } else {
-          const next = providers.map((p) =>
-            p.id === providerToTest.id
-              ? { ...p, status: 'error' as const, lastTestedAt: new Date().toISOString() }
-              : p
-          )
-          void persistProviders(next)
-          pushToast({
-            kind: 'error',
-            title: `${providerToTest.name} 连接失败`,
-            body: res.error || '接口未响应或凭证无效'
-          })
-        }
+        })
       }
+      if (ownsSource(owner)) pushToast({ kind: 'info', title: mode === 'fetch' ? `已获取 ${fetched?.length ?? 0} 个模型` : `${provider.name} 模型目录可用` })
     } catch (err) {
-      const next = providers.map((p) =>
-        p.id === providerToTest.id
-          ? { ...p, status: 'error' as const, lastTestedAt: new Date().toISOString() }
-          : p
-      )
-      void persistProviders(next)
-      pushToast({
-        kind: 'error',
-        title: '测试连接异常',
-        body: errorMessage(err) || String(err)
-      })
+      if (!ownsSource(owner)) return
+      if (connected) { reportFailure('连接结果保存失败', err); return }
+      const message = errorMessage(err) || '无法连接，请重试'
+      setProviderErrors((current) => ({ ...current, [key]: message }))
+      setProviderResults((current) => ({ ...current, [key]: { ok: false, error: message } }))
+      if (ownsSource(owner)) pushToast({ kind: 'error', title: mode === 'fetch' ? '获取模型失败' : `${provider.name} 连接失败`, body: modelErrorSummary(message, '模型目录连接失败') })
     } finally {
-      setTestingProviderId(null)
+      requests.current.delete(key)
+      if (mounted.current) setProviderRequests((current) => { const next = { ...current }; delete next[key]; return next })
     }
   }
 
-  // Select template to add provider
-  const handleSelectTemplate = (tpl: ProviderTemplate | 'custom'): void => {
-    let newProvider: ModelProvider
-    if (tpl === 'custom') {
-      const newId = `custom-${Date.now().toString(36)}`
-      newProvider = {
-        id: newId,
-        name: `自定义供应商 ${providers.length + 1}`,
-        group: '自定义供应商',
-        baseUrl: '',
-        apiFormat: 'openai',
-        apiKey: '',
-        enabled: true,
-        models: [],
-        status: 'untested'
+  const handleTestModel = async (provider: ModelProvider, model: ModelItem): Promise<void> => {
+    const owner = captureSource(provider)
+    observeModelInstances(latestProviders())
+    const instance = getModelInstance(provider.id, model.id)
+    const generation = instance.generation
+    const ownsModel = (): boolean => ownsSource(owner) && instance.present && instance.generation === generation
+    if (!ownsModel()) return
+    const key = modelResultKey(owner, model.id)
+    if (requests.current.has(key)) return
+    requests.current.add(key)
+    instance.testKeys.add(key)
+    setModelRequests((current) => ({ ...current, [key]: true }))
+    setTestResults((current) => { const next = { ...current }; delete next[key]; return next })
+    try {
+      const result = await api.aiTestModel(provider, model.id)
+      if (!ownsModel()) return
+      setTestResults((current) => ({ ...current, [key]: result }))
+      if (!result.ok) pushToast({ kind: 'error', title: `模型 ${model.name || model.id} 测试失败`, body: modelErrorSummary(result.error || '') })
+    } catch (err) {
+      if (ownsModel()) {
+        setTestResults((current) => ({ ...current, [key]: { ok: false, error: errorMessage(err) || '模型测试失败，请重试' } }))
       }
-    } else {
-      const exists = providers.some((p) => p.id === tpl.id)
-      const newId = exists ? `${tpl.id}-${Date.now().toString(36)}` : tpl.id
-      newProvider = {
-        id: newId,
-        name: exists ? `${tpl.name} (${providers.filter((p) => p.id.startsWith(tpl.id)).length + 1})` : tpl.name,
-        group: tpl.group,
-        baseUrl: tpl.baseUrl,
-        apiFormat: tpl.apiFormat,
-        apiKey: '',
-        enabled: true,
-        models: [],
-        status: 'untested'
-      }
-    }
-    const next = [...providers, newProvider]
-    setSelectedProviderId(newProvider.id)
-    void persistProviders(next, newProvider.id)
-    setShowAddProviderModal(false)
-    pushToast({ kind: 'info', title: '已添加供应商', body: newProvider.name })
-  }
-
-  // Delete current provider
-  const handleDeleteCurrentProvider = (): void => {
-    const next = providers.filter((p) => p.id !== currentProvider?.id)
-    const nextActive = next[0]?.id || ''
-    setSelectedProviderId(nextActive)
-    void persistProviders(next, nextActive)
-    if (currentProvider) {
-      pushToast({ kind: 'info', title: '已删除供应商', body: currentProvider.name })
+    } finally {
+      requests.current.delete(key)
+      if (mounted.current) setModelRequests((current) => { const next = { ...current }; delete next[key]; return next })
     }
   }
 
-  // Add custom model manually
-  const handleAddCustomModel = (): void => {
-    if (!newModelForm.id.trim()) return
-    const tagsArray = newModelForm.tags
-      .split(/[,，\s]+/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-    const newModel: ModelItem = {
-      id: newModelForm.id.trim(),
-      name: newModelForm.name.trim() || newModelForm.id.trim(),
-      contextWindow: newModelForm.contextWindow.trim() || '128k',
-      tags: tagsArray.length > 0 ? tagsArray : ['代码'],
-      enabled: true
-    }
-    const nextModels = [...(currentProvider.models || []), newModel]
-    updateCurrentProvider({ models: nextModels })
-    setShowAddModal(false)
-    setNewModelForm({ id: '', name: '', contextWindow: '128k', tags: '代码' })
+  const handleSaveTemperature = async (): Promise<void> => {
+    if (savingTemperature || !Number.isFinite(temperature) || temperature < 0 || temperature > 1) return
+    setSavingTemperature(true)
+    try {
+      await write(async () => {
+        const ai = useApp.getState().settings?.ai
+        if (!ai) throw new Error('设置尚未加载')
+        await saveSettings({ ai: { ...ai, temperature } })
+      })
+      pushToast({ kind: 'info', title: '已保存生成参数' })
+    } catch (err) { reportFailure('生成参数保存失败', err) } finally { setSavingTemperature(false) }
   }
 
-  // Save edited model
-  const handleSaveEditedModel = (): void => {
-    if (!editingModel) return
-    const nextModels = currentProvider.models.map((m) => (m.id === editingModel.id ? editingModel : m))
-    updateCurrentProvider({ models: nextModels })
-    setEditingModel(null)
-  }
+  const openModelEditor = (provider: ModelProvider, model?: ModelItem): void => setModelEditor({
+    provider, source: captureSource(provider), isNew: !model,
+    model: model ? { ...model } : { id: '', name: '', contextWindow: '128k', tags: ['代码'], enabled: true }
+  })
 
-  // Group providers by group name
-  const groupedProviders = useMemo(() => {
-    const groups: Record<string, ModelProvider[]> = {}
-    for (const p of providers) {
-      const g = p.group || '自定义供应商'
-      if (!groups[g]) groups[g] = []
-      groups[g].push(p)
-    }
-    const ordered: Record<string, ModelProvider[]> = {}
-    if (groups['官方供应商']) ordered['官方供应商'] = groups['官方供应商']
-    for (const [k, v] of Object.entries(groups)) {
-      if (k !== '官方供应商') ordered[k] = v
-    }
-    return ordered
-  }, [providers])
-
-  return (
-    <div className="my-page-workspace-padding flex h-full min-h-0 min-w-0 flex-col">
-      {/* 顶部操作栏 */}
-      <div className="mb-4 flex items-center justify-end gap-2">
-        <Button variant="neutral" onClick={() => void persistProviders(providers)} title="刷新与重新同步">
-          <RotateCw size={15} />
-        </Button>
-        <Button variant="primary" onClick={() => setShowAddProviderModal(true)}>
-          <Plus size={14} />
-          添加供应商
-        </Button>
-      </div>
-
-      {/* 主双栏容器 */}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-my-lg border border-my-line bg-my-layer-2">
-        {/* 左栏：供应商分组列表 */}
-        <div style={sidebarStyle} className="my-context-sidebar relative flex shrink-0 flex-col border-r border-my-line p-3">
-          <div className="my-scrollbar flex-1 space-y-4 overflow-y-auto pr-1">
-            {providers.length > 0 ? (
-              Object.entries(groupedProviders).map(([groupName, groupItems]) => (
-                <div key={groupName}>
-                  <div className="px-2 pb-1.5 text-my-xs font-medium tracking-wide text-my-tertiary">{groupName}</div>
-                  <div className="space-y-1">
-                    {groupItems.map((p) => {
-                      const isSelected = p.id === currentProvider?.id
-                      const statusInfo = getProviderStatus(p, testingProviderId === p.id)
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => {
-                            setSelectedProviderId(p.id)
-                            void persistProviders(providers, p.id)
-                          }}
-                          className={clsx(
-                            'group flex w-full items-center justify-between rounded-my-lg border px-3 py-2 text-left text-my-xs transition-colors',
-                            isSelected
-                              ? 'border-my-line-accent-subtle bg-my-accent-subtle font-semibold text-my-accent-text'
-                              : 'border-transparent text-my-secondary hover:bg-my-layer-1 hover:text-my-primary'
-                          )}
-                        >
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            {p.group === '官方供应商' ? (
-                              p.id === 'zhipu' || p.name.includes('BigModel') || p.name.includes('智谱') ? (
-                                <Sparkles size={15} className="shrink-0 text-my-info-text" />
-                              ) : p.id === 'deepseek' || p.name.includes('DeepSeek') ? (
-                                <Bot size={15} className="shrink-0 text-my-info-text" />
-                              ) : p.id === 'kimi' || p.name.includes('Kimi') ? (
-                                <Sparkles size={15} className="shrink-0 text-my-success-text" />
-                              ) : p.id === 'openai' || p.name.includes('OpenAI') ? (
-                                <Bot size={15} className="shrink-0 text-my-accent-text" />
-                              ) : (
-                                <Box size={15} className="shrink-0 text-my-tertiary" />
-                              )
-                            ) : (
-                              <Box size={15} className="shrink-0 text-my-tertiary group-hover:text-my-secondary" />
-                            )}
-                            <span className="truncate">{p.name}</span>
-                          </div>
-                          <span
-                            title={statusInfo.tooltip}
-                            className={clsx('h-2 w-2 shrink-0 rounded-full transition-all', statusInfo.dotClass)}
-                          />
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center rounded-my-lg border border-dashed border-my-line p-4 text-center">
-                <Boxes size={24} className="mb-2 text-my-tertiary opacity-60" />
-                <span className="text-my-xs font-medium text-my-secondary">已接入列表暂空</span>
-                <span className="mt-1 text-my-xs leading-relaxed text-my-tertiary">
-                  请点击右上角「添加供应商」
-                </span>
-              </div>
-            )}
+  return <div className="preferences-page models-page">
+    <PreferenceSection id="models-providers" title="供应商" action={<div className="flex items-center gap-2">
+      <Button variant="ghost" disabled={saving || !settings} onClick={() => runAction(persistProviders((current) => current), '同步配置失败')} aria-label="同步配置" title="同步配置"><RotateCw size={15} className={saving ? 'animate-spin' : ''} /></Button>
+      <Button variant="primary" disabled={saving || !settings} onClick={() => setShowTemplates(true)}><Plus size={14} />添加供应商</Button>
+    </div>}>
+      {legacyProviderDraft(settings?.ai) && <div className="model-legacy-row"><span className="text-my-sm text-my-secondary">现有配置</span><Button variant="neutral" disabled={saving} onClick={() => runAction(persistProviders((current) => current).then(() => { pushToast({ kind: 'info', title: '已导入现有配置' }) }), '导入失败')}>导入供应商</Button></div>}
+      {!settings ? <div className="flex items-center gap-2 py-6 text-my-sm text-my-tertiary" role="status"><Loader2 size={16} className="animate-spin" />正在加载供应商…</div> : !providers.length ? <div className="model-provider-empty"><Server size={24} className="text-my-tertiary" /><p className="text-my-sm text-my-secondary">暂无供应商</p><Button variant="neutral" onClick={() => setShowTemplates(true)}><Plus size={14} />添加供应商</Button></div> : providers.map((provider) => {
+        const expanded = expandedId === provider.id
+        const active = activeProviderId === provider.id
+        const source = captureSource(provider)
+        const providerKey = providerResultKey(source)
+        const request = providerRequests[providerKey]
+        const providerResult = providerResults[providerKey]
+        const status = getProviderStatus(providerResult ? { ...provider, status: providerResult.ok ? 'connected' : 'error', latencyMs: providerResult.latencyMs } : provider, request === 'test')
+        return <div className="model-provider-group" key={provider.id}>
+          <div className="model-provider-row" data-active={active || undefined}>
+            <button type="button" className="model-provider-summary" onClick={() => setExpandedId(expanded ? null : provider.id)} aria-expanded={expanded} aria-controls={`provider-models-${provider.id}`} aria-label={`${expanded ? '收起' : '展开'} ${provider.name} 的模型`}>
+              <ProviderIdentity name={provider.name} local={provider.apiFormat === 'ollama'} />
+              <span className="model-provider-copy"><span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium text-my-primary">{provider.name || '未命名供应商'}</span>{active && <span className="model-active-badge"><Check size={11} />当前</span>}</span><span className="model-provider-endpoint" title={endpointLabel(provider.baseUrl)}>{endpointLabel(provider.baseUrl)}</span></span>
+            </button>
+            <span className="model-provider-status" role="status" title={status.tooltip}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dotClass}`} aria-hidden="true" />{request === 'fetch' ? '获取中…' : status.label}</span>
+            <div className="model-provider-actions">
+              {!active && <Button variant="neutral" size="sm" aria-label={`使用供应商 ${provider.name}`} disabled={saving || !provider.enabled || !provider.baseUrl.trim()} onClick={() => runAction(persistProviders((current) => current, provider.id))}>使用</Button>}
+              <Button variant="ghost" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'test')} aria-label={`测试供应商 ${provider.name}`} title={provider.status === 'error' ? '重试连接' : '测试连接'}>{request === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}</Button>
+              <Button variant="ghost" size="sm" disabled={saving} onClick={() => setProviderEditor({ provider: { ...provider }, source: captureSource(provider) })} aria-label={`编辑供应商 ${provider.name}`} title="编辑供应商"><Pencil size={14} /></Button>
+              <Dropdown align="right" width={160} trigger={({ toggle }) => <Button variant="ghost" size="sm" onClick={toggle} disabled={saving} aria-label={`${provider.name} 更多操作`} title="更多操作"><MoreHorizontal size={16} /></Button>}>
+                {(close) => <>
+                  <DropdownItem selected={active} disabled={active || !provider.enabled || !provider.baseUrl.trim()} icon={<Check size={14} />} onClick={() => { close(); runAction(persistProviders((current) => current, provider.id)) }}>设为当前</DropdownItem>
+                  <DropdownItem icon={<Power size={14} />} onClick={() => { close(); runAction(patchProvider(provider.id, { enabled: !provider.enabled })) }}>{provider.enabled ? '停用供应商' : '启用供应商'}</DropdownItem>
+                  <DropdownItem icon={<Trash2 size={14} />} danger onClick={() => { close(); runAction(handleDeleteProvider(provider), '删除失败') }}>删除供应商</DropdownItem>
+                </>}
+              </Dropdown>
+              <Button variant="ghost" size="sm" onClick={() => setExpandedId(expanded ? null : provider.id)} aria-label={`${expanded ? '收起' : '展开'} ${provider.name} 模型列表`} aria-expanded={expanded} aria-controls={`provider-models-${provider.id}`} title={`${provider.models.length} 个模型`}><span className="text-my-xs tabular-nums">{provider.models.length}</span><ChevronDown size={13} className={expanded ? 'rotate-180' : ''} /></Button>
+            </div>
           </div>
-          <SidebarResizeHandle label="调整供应商列表宽度" />
+          {providerErrors[providerKey] && <div className="model-provider-error"><CopyableError message={providerErrors[providerKey]} summary={modelErrorSummary(providerErrors[providerKey], '模型目录连接失败')} /><Button variant="ghost" size="sm" disabled={Boolean(request) || saving} onClick={() => void handleProviderRequest(provider, 'test')}>重试</Button></div>}
+          {expanded && <div className="model-provider-models" id={`provider-models-${provider.id}`}>
+            <div className="model-list-toolbar"><span className="text-my-sm font-medium text-my-secondary">模型 <span className="ml-1 text-my-tertiary">{provider.models.filter((model) => model.enabled).length} / {provider.models.length} 已启用</span></span><div className="flex flex-wrap items-center gap-1"><Button variant="ghost" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'fetch')}>{request === 'fetch' ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}{request === 'fetch' ? '获取中…' : '获取模型'}</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider)}><Plus size={13} />添加模型</Button></div></div>
+            {provider.models.length ? provider.models.map((model) => {
+              const key = modelResultKey(source, model.id)
+              const result = testResults[key]
+              const testing = modelRequests[key]
+              return <div key={key} className="model-item-row">
+                <span className="model-item-icon" aria-hidden="true"><Server size={15} /></span>
+                <div className="model-item-copy"><span className="block truncate text-my-sm font-medium text-my-primary">{model.name || model.id}</span><span className="block truncate text-my-xs text-my-tertiary" title={[model.id, model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' · ')}>{[model.name !== model.id ? model.id : '', model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' · ') || model.id}</span></div>
+                {result && <span className={`model-test-result ${result.ok ? 'text-my-success-text' : 'text-my-danger-text'}`} role="status" title={result.error ? modelErrorSummary(result.error) : '模型推理请求成功'}>{result.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}{result.ok ? result.latencyMs === undefined ? '推理成功' : `推理成功 ${result.latencyMs}ms` : '失败'}</span>}
+                <div className="model-item-actions"><Button variant="ghost" size="sm" disabled={saving || testing || !provider.baseUrl.trim()} onClick={() => void handleTestModel(provider, model)} aria-label={`测试模型 ${model.name || model.id}`} title="测试模型推理（将调用 API）">{testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider, model)} aria-label={`编辑模型 ${model.name || model.id}`} title="编辑模型"><Pencil size={14} /></Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => runAction(handleDeleteModel(source, model.id), '删除模型失败')} aria-label={`删除模型 ${model.name || model.id}`} title="删除模型"><Trash2 size={14} /></Button><Switch checked={model.enabled} disabled={saving} onChange={(enabled) => runAction(patchModels(source, (models) => models.map((item) => item.id === model.id ? { ...item, enabled } : item)))} label={`启用模型 ${model.name || model.id}`} /></div>
+                {result?.ok === false && result.error && <div className="model-test-error"><CopyableError message={result.error} summary={modelErrorSummary(result.error)} /></div>}
+              </div>
+            }) : <div className="model-list-empty"><Server size={20} className="text-my-tertiary" /><span>暂无模型</span><Button variant="neutral" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'fetch')}>获取模型</Button></div>}
+          </div>}
         </div>
+      })}
+    </PreferenceSection>
 
-        {/* 右栏：供应商配置详情与模型列表 */}
-        {currentProvider ? (
-          <div className="my-scrollbar my-pane-content flex min-w-0 flex-1 flex-col overflow-y-auto">
-            {/* 供应商头部 */}
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-my-line pb-5">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <Box size={22} className="text-my-secondary" />
-                <input
-                  type="text"
-                  value={currentProvider.name}
-                  onChange={(e) => updateCurrentProvider({ name: e.target.value })}
-                  aria-label="供应商名称"
-                  className="min-w-0 flex-1 rounded-my-sm px-1 bg-transparent text-my-xl font-semibold text-my-primary outline-none focus:shadow-[var(--my-focus-shadow)]"
-                />
-                {(() => {
-                  const statusInfo = getProviderStatus(currentProvider, testingProviderId === currentProvider.id)
-                  return (
-                    <span
-                      className={clsx(
-                        'rounded-full border px-2 py-0.5 text-my-2xs font-medium tracking-wide transition-colors',
-                        statusInfo.badgeClass
-                      )}
-                      title={statusInfo.tooltip}
-                    >
-                      {statusInfo.label}
-                    </span>
-                  )
-                })()}
-              </div>
-              <div className="relative flex items-center gap-3">
-                {/* 测试连接按钮 */}
-                <Button
-                  variant="neutral"
-                  onClick={() => void handleTestProvider(currentProvider)}
-                  disabled={testingProviderId === currentProvider.id || !currentProvider.baseUrl}
-                  title="真实测试供应商连通性与测速"
-                >
-                  {testingProviderId === currentProvider.id ? (
-                    <Loader2 size={13} className="animate-spin text-my-info-text" />
-                  ) : (
-                    <Zap size={13} className="text-my-warning-text" />
-                  )}
-                  <span>{testingProviderId === currentProvider.id ? '测试中…' : '测试连接'}</span>
-                </Button>
+    <details className="model-advanced"><summary><SlidersHorizontal size={15} /><span>高级参数</span><ChevronDown size={14} /></summary><PreferenceRow label="温度" htmlFor="models-temperature"><input id="models-temperature" type="range" min={0} max={1} step={0.1} value={temperature} onChange={(event) => setTemperature(Number(event.target.value))} disabled={savingTemperature || !settings} className="min-w-0 flex-1" /><output htmlFor="models-temperature" className="text-my-sm text-my-secondary">{temperature}</output></PreferenceRow><div className="flex justify-end pb-4"><Button variant="neutral" disabled={saving || savingTemperature || !settings || temperature === (settings.ai.temperature ?? 0.3)} onClick={() => void handleSaveTemperature()}>{savingTemperature && <Loader2 size={13} className="animate-spin" />}{savingTemperature ? '保存中…' : '保存参数'}</Button></div></details>
 
-                {/* 供应商总开关 */}
-                <Switch checked={currentProvider.enabled} onChange={(enabled) => updateCurrentProvider({ enabled })} label={`启用供应商 ${currentProvider.name}`} />
-
-                {/* 更多菜单 */}
-                <Dropdown
-                  align="right"
-                  width={144}
-                  trigger={({ toggle }) => (
-                    <button
-                      type="button"
-                      onClick={toggle}
-                      className="flex h-8 w-8 items-center justify-center rounded-my-lg text-my-tertiary hover:bg-my-layer-1 hover:text-my-primary"
-                    >
-                      <MoreHorizontal size={17} />
-                    </button>
-                  )}
-                >
-                  {(close) => (
-                    <DropdownItem
-                      danger
-                      icon={<Trash2 size={13} />}
-                      onClick={() => {
-                        close()
-                        handleDeleteCurrentProvider()
-                      }}
-                    >
-                      删除供应商
-                    </DropdownItem>
-                  )}
-                </Dropdown>
-              </div>
-            </div>
-
-            {/* 配置表单 */}
-            <div className="space-y-5">
-              {/* Base URL */}
-              <div>
-                <label className="mb-1.5 block text-my-xs font-medium text-my-tertiary">Base URL</label>
-                <input
-                  type="text"
-                  value={currentProvider.baseUrl}
-                  onChange={(e) => updateCurrentProvider({ baseUrl: e.target.value })}
-                  placeholder="https://api.openai.com/v1"
-                  className="my-input"
-                />
-              </div>
-
-              {/* API 格式 */}
-              <div>
-                <label className="mb-1.5 block text-my-xs font-medium text-my-tertiary">API 格式</label>
-                <Select
-                  ariaLabel="API 格式"
-                  value={currentProvider.apiFormat}
-                  onChange={(apiFormat) => updateCurrentProvider({ apiFormat: apiFormat as AiApiFormat })}
-                  className="w-full"
-                  options={[
-                    { value: 'openai', label: 'OpenAI Compatible (/v1/chat/completions)' },
-                    { value: 'response', label: 'OpenAI Response (/v1/responses)' },
-                    { value: 'anthropic', label: 'Anthropic Messages (/v1/messages)' },
-                    { value: 'ollama', label: 'Ollama (/api/tags)' }
-                  ]}
-                />
-              </div>
-
-              {/* API Key */}
-              <div>
-                <div className="mb-1.5 flex items-center justify-between text-my-xs">
-                  <label className="font-medium text-my-tertiary">
-                    API Key
-                    {currentProvider.apiKeyEncrypted && (
-                      <span className="ml-2 text-my-2xs text-my-success-text font-normal">（已加密保存）</span>
-                    )}
-                  </label>
-                </div>
-                <div className="relative">
-                  <input
-                    type={showKey ? 'text' : 'password'}
-                    value={currentProvider.apiKey}
-                    onChange={(e) => updateCurrentProvider({ apiKey: e.target.value, apiKeyEncrypted: false })}
-                    placeholder="输入 API Key"
-                    className="h-9 w-full rounded-my-md border border-my-line bg-my-layer-2 px-3 pr-10 text-my-md text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey(!showKey)}
-                    className="absolute right-3 top-2.5 text-my-tertiary hover:text-my-secondary"
-                  >
-                    {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* 模型列表区域 */}
-              <div className="pt-3">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-my-xs font-semibold tracking-wide text-my-secondary">模型列表</span>
-                  <div className="flex items-center gap-2">
-                    {/* 自动拉取模型按钮 (用户核心要求) */}
-                    <Button
-                      variant="neutral"
-                      onClick={() => void handleFetchModels()}
-                      disabled={fetchingModels || !currentProvider.baseUrl}
-                    >
-                      {fetchingModels ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}
-                      {fetchingModels ? '拉取中…' : '自动获取模型'}
-                    </Button>
-                    <Button variant="neutral" onClick={() => setShowAddModal(true)}>
-                      <Plus size={13} />
-                      添加模型
-                    </Button>
-                  </div>
-                </div>
-
-                {/* 模型卡片列表 */}
-                <div className="space-y-2">
-                  {currentProvider.models && currentProvider.models.length > 0 ? (
-                    currentProvider.models.map((m) => {
-                      const testRes = testResults[m.id]
-                      const isTesting = testingModelId === m.id
-
-                      return (
-                        <div
-                          key={m.id}
-                          className="flex items-center justify-between rounded-my-lg border border-my-line bg-my-canvas px-4 py-3 transition-colors hover:border-my-line-strong"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-my-xs font-semibold text-my-primary">{m.name}</span>
-                            {m.contextWindow && (
-                              <span className="my-chip bg-my-layer-3 text-my-tertiary">
-                                {m.contextWindow}
-                              </span>
-                            )}
-                            {m.tags &&
-                              m.tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="my-chip bg-my-layer-3 text-my-tertiary"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                          </div>
-
-                          <div className="flex items-center gap-3">
-                            {/* 连通测试结果显示 */}
-                            {testRes && (
-                              <div className="flex items-center gap-1 text-my-xs">
-                                {testRes.ok ? (
-                                  <span className="flex items-center gap-1 text-my-success-text">
-                                    <CheckCircle2 size={12} />
-                                    {testRes.latencyMs}ms
-                                  </span>
-                                ) : (
-                                  <span
-                                    className="flex items-center gap-1 text-my-danger-text"
-                                    title={testRes.error}
-                                  >
-                                    <XCircle size={12} />
-                                    失败
-                                  </span>
-                                )}
-                              </div>
-                            )}
-
-                            {/* 测试连接按钮 */}
-                            <button
-                              onClick={() => void handleTestModel(m.id)}
-                              disabled={isTesting || !currentProvider.baseUrl}
-                              className="text-my-tertiary transition-colors hover:text-my-secondary disabled:opacity-40"
-                              title="测试模型连通性与测速"
-                            >
-                              {isTesting ? <Loader2 size={14} className="animate-spin text-my-accent-text" /> : <Zap size={14} />}
-                            </button>
-
-                            {/* 编辑按钮 */}
-                            <button
-                              onClick={() => setEditingModel(m)}
-                              className="text-my-tertiary transition-colors hover:text-my-secondary"
-                              title="编辑模型"
-                            >
-                              <Pencil size={14} />
-                            </button>
-
-                            {/* 删除按钮 */}
-                            <button
-                              onClick={() => {
-                                const next = currentProvider.models.filter((item) => item.id !== m.id)
-                                updateCurrentProvider({ models: next })
-                              }}
-                              className="text-my-tertiary transition-colors hover:text-my-danger-text"
-                              title="删除模型"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-
-                            {/* 启用/禁用 Toggle */}
-                            <Switch checked={m.enabled} label={`启用模型 ${m.name || m.id}`} onChange={(enabled) => {
-                                  const next = currentProvider.models.map((item) =>
-                                    item.id === m.id ? { ...item, enabled } : item
-                                  )
-                                  updateCurrentProvider({ models: next })
-                                }} />
-                          </div>
-                        </div>
-                      )
-                    })
-                  ) : (
-                    <div className="flex flex-col items-center justify-center rounded-my-lg border border-dashed border-my-line py-10 px-4 text-center">
-                      <p className="text-my-xs font-medium text-my-tertiary">当前供应商暂无模型</p>
-                      <p className="mt-2 text-my-xs leading-normal text-my-placeholder">点击上方「自动获取模型」从接口拉取，或「添加模型」手动创建</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-center p-8">
-            <Bot size={40} className="text-my-tertiary mb-3 stroke-[1.5]" />
-            <p className="text-my-sm font-medium text-my-secondary">未选择模型供应商</p>
-            <p className="mt-1 text-my-xs text-my-tertiary">
-              请从左侧列表选择供应商，或点击右上角「添加供应商」
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 选择添加供应商模板模态框 */}
-      <Modal open={showAddProviderModal} onClose={() => setShowAddProviderModal(false)}>
-          <div className="my-modal-content">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-my-xl font-semibold text-my-primary">选择供应商模板</h3>
-                <p className="mt-0.5 text-my-xs text-my-tertiary">选择官方预设模板快速接入，或创建空白自定义供应商</p>
-              </div>
-              <button
-                onClick={() => setShowAddProviderModal(false)}
-                className="rounded-my-lg p-1 text-my-tertiary hover:bg-my-layer-1 hover:text-my-primary"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {OFFICIAL_TEMPLATES.map((tpl) => (
-                <button
-                  key={tpl.id}
-                  onClick={() => handleSelectTemplate(tpl)}
-                  className="flex flex-col items-start rounded-my-lg border border-my-line bg-my-canvas p-3.5 text-left transition-all hover:border-my-line-strong hover:bg-my-layer-1"
-                >
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {tpl.id === 'zhipu' ? (
-                        <Sparkles size={16} className="text-my-info-text" />
-                      ) : tpl.id === 'deepseek' ? (
-                        <Bot size={16} className="text-my-info-text" />
-                      ) : tpl.id === 'kimi' ? (
-                        <Sparkles size={16} className="text-my-success-text" />
-                      ) : tpl.id === 'openai' ? (
-                        <Bot size={16} className="text-my-accent-text" />
-                      ) : (
-                        <Box size={16} className="text-my-tertiary" />
-                      )}
-                      <span className="text-my-xs font-semibold text-my-primary">{tpl.name}</span>
-                    </div>
-                    <span className="my-chip bg-my-layer-3 text-my-tertiary">官方</span>
-                  </div>
-                  <p className="mt-1.5 line-clamp-2 text-my-xs text-my-tertiary leading-snug">{tpl.description}</p>
-                  <div className="mt-2.5 truncate text-my-2xs text-my-placeholder font-mono">{tpl.baseUrl}</div>
-                </button>
-              ))}
-
-              {/* 自定义供应商卡片 */}
-              <button
-                onClick={() => handleSelectTemplate('custom')}
-                className="flex flex-col items-start rounded-my-lg border border-dashed border-my-line bg-my-canvas p-3.5 text-left transition-all hover:border-my-line-strong hover:bg-my-layer-1"
-              >
-                <div className="flex w-full items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Plus size={16} className="text-my-secondary" />
-                    <span className="text-my-xs font-semibold text-my-primary">自定义供应商</span>
-                  </div>
-                  <span className="my-chip bg-my-layer-3 text-my-tertiary">自定义</span>
-                </div>
-                <p className="mt-1.5 text-my-xs text-my-tertiary leading-snug">
-                  接入任意 OpenAI / Anthropic 兼容的自建或第三方模型中转服务
-                </p>
-                <div className="mt-2.5 text-my-2xs text-my-placeholder font-mono">自定义 Base URL & Key</div>
-              </button>
-            </div>
-
-            <div className="mt-5 flex justify-end">
-              <Button variant="ghost" onClick={() => setShowAddProviderModal(false)}>
-                取消
-              </Button>
-            </div>
-          </div>
-      </Modal>
-
-      {/* 手动添加模型模态框 */}
-      <Modal open={showAddModal} onClose={() => setShowAddModal(false)}>
-          <div className="my-modal-content">
-            <h3 className="mb-4 text-my-sm font-semibold text-my-primary">添加模型</h3>
-            <div className="space-y-3 text-my-xs">
-              <div>
-                <label className="mb-1 block text-my-tertiary">模型 ID (如 gpt-4o, claude-3-7-sonnet)</label>
-                <input
-                  type="text"
-                  value={newModelForm.id}
-                  onChange={(e) => setNewModelForm({ ...newModelForm, id: e.target.value })}
-                  placeholder="模型标识符"
-                  className="my-input"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-my-tertiary">显示名称</label>
-                <input
-                  type="text"
-                  value={newModelForm.name}
-                  onChange={(e) => setNewModelForm({ ...newModelForm, name: e.target.value })}
-                  placeholder="留空则与 ID 相同"
-                  className="my-input"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-my-tertiary">上下文窗口 (如 1M, 128k)</label>
-                <input
-                  type="text"
-                  value={newModelForm.contextWindow}
-                  onChange={(e) => setNewModelForm({ ...newModelForm, contextWindow: e.target.value })}
-                  className="my-input"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-my-tertiary">标签 (逗号分隔，如 视觉, 代码, 推理)</label>
-                <input
-                  type="text"
-                  value={newModelForm.tags}
-                  onChange={(e) => setNewModelForm({ ...newModelForm, tags: e.target.value })}
-                  className="my-input"
-                />
-              </div>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowAddModal(false)}>
-                取消
-              </Button>
-              <Button variant="primary" onClick={handleAddCustomModel} disabled={!newModelForm.id.trim()}>
-                确定
-              </Button>
-            </div>
-          </div>
-      </Modal>
-
-      {/* 编辑模型模态框 */}
-      {editingModel && (
-        <Modal open={Boolean(editingModel)} onClose={() => setEditingModel(null)}>
-          <div className="my-modal-content">
-            <h3 className="mb-4 text-my-sm font-semibold text-my-primary">编辑模型</h3>
-            <div className="space-y-3 text-my-xs">
-              <div>
-                <label className="mb-1 block text-my-tertiary">模型 ID</label>
-                <input
-                  type="text"
-                  disabled
-                  value={editingModel.id}
-                  className="my-input opacity-70"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-my-tertiary">显示名称</label>
-                <input
-                  type="text"
-                  value={editingModel.name}
-                  onChange={(e) => setEditingModel({ ...editingModel, name: e.target.value })}
-                  className="my-input"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-my-tertiary">上下文窗口 (如 1M, 128k)</label>
-                <input
-                  type="text"
-                  value={editingModel.contextWindow || ''}
-                  onChange={(e) => setEditingModel({ ...editingModel, contextWindow: e.target.value })}
-                  className="my-input"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-my-tertiary">标签 (逗号分隔)</label>
-                <input
-                  type="text"
-                  value={editingModel.tags?.join(', ') || ''}
-                  onChange={(e) =>
-                    setEditingModel({
-                      ...editingModel,
-                      tags: e.target.value
-                        .split(/[,，\s]+/)
-                        .map((t) => t.trim())
-                        .filter(Boolean)
-                    })
-                  }
-                  className="my-input"
-                />
-              </div>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setEditingModel(null)}>
-                取消
-              </Button>
-              <Button variant="primary" onClick={handleSaveEditedModel}>
-                保存
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  )
+    <Modal open={showTemplates} onClose={() => setShowTemplates(false)} ariaLabel="选择供应商">
+      <div className="my-modal-content"><div className="mb-4 flex items-center justify-between"><h2 className="text-my-lg font-semibold text-my-primary">添加供应商</h2><Button variant="ghost" onClick={() => setShowTemplates(false)} aria-label="关闭供应商模板"><X size={17} /></Button></div><div className="model-template-list">{OFFICIAL_TEMPLATES.map((template) => <button type="button" className="model-template-row" key={template.id} onClick={() => handleSelectTemplate(template)}><ProviderIdentity name={template.name} local={template.apiFormat === 'ollama'} /><span className="min-w-0 flex-1"><span className="block text-my-sm font-medium text-my-primary">{template.name}</span><span className="block truncate text-my-xs text-my-tertiary">{endpointLabel(template.baseUrl)}</span></span><Plus size={15} className="text-my-tertiary" /></button>)}<button type="button" className="model-template-row" onClick={() => handleSelectTemplate('custom')}><ProviderIdentity name="+" /><span className="flex-1 text-left text-my-sm font-medium text-my-primary">自定义供应商</span><Plus size={15} className="text-my-tertiary" /></button></div><div className="mt-4 flex justify-end"><Button variant="ghost" onClick={() => setShowTemplates(false)}>取消</Button></div></div>
+    </Modal>
+    {providerEditor && <ModelProviderEditor key={providerEditor.provider.id} provider={providerEditor.provider} isNew={!providerEditor.source} onClose={() => setProviderEditor(null)} onSave={handleSaveProvider} onTest={async (draft) => {
+      const editor = providerEditor
+      const ownsEditor = (): boolean => editor.source ? ownsSource(editor.source) : mounted.current && !latestProviders().some((item) => item.id === draft.id)
+      if (!ownsEditor()) throw new Error('供应商连接配置已更改，请重新打开配置窗口')
+      const startedAt = performance.now()
+      const result = await api.aiFetchModels(draft)
+      if (!ownsEditor()) throw new Error('供应商连接配置已更改，请重新打开配置窗口')
+      return { ok: result.ok, error: result.error, latencyMs: Math.round(performance.now() - startedAt) }
+    }} />}
+    {modelEditor && <ModelItemEditor key={JSON.stringify([modelEditor.provider.id, modelEditor.model.id, modelEditor.isNew])} providerName={modelEditor.provider.name} model={modelEditor.model} isNew={modelEditor.isNew} onClose={() => setModelEditor(null)} onSave={async (model) => {
+      await patchModels(modelEditor.source, (models) => {
+        if (modelEditor.isNew) {
+          if (models.some((item) => item.id === model.id)) throw new Error('该模型 ID 已存在')
+          return [...models, model]
+        }
+        if (!models.some((item) => item.id === model.id)) throw new Error('该模型已被删除，请重新添加')
+        return models.map((item) => item.id === model.id ? { ...item, name: model.name, contextWindow: model.contextWindow, tags: model.tags } : item)
+      })
+    }} />}
+  </div>
 }

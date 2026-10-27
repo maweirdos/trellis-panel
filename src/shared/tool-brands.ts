@@ -58,6 +58,7 @@ export const TOOL_BRANDS = [
   { id: 'factory-droid', label: 'Factory Droid', aliases: ['factory', 'droid'], assetKey: 'factory-droid.svg', mode: 'image' },
   { id: 'augment', label: 'Augment', aliases: ['augment-code', 'augmentcode', 'auggie'], assetKey: 'augment.png', mode: 'image' },
   { id: 'iflow', label: 'iFlow CLI', aliases: ['iflow-cli', 'i-flow'], assetKey: 'iflow.png', mode: 'image' },
+  { id: 'deepseek-dsh', label: 'DeepSeek DSH', aliases: ['dsh', 'deepseek', 'deepseek-harness'], assetKey: 'deepseek.svg', mode: 'image' },
 ] as const satisfies readonly ToolBrandDefinition[]
 
 export type ToolBrandId = typeof TOOL_BRANDS[number]['id']

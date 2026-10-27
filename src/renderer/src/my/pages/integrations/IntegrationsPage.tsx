@@ -16,6 +16,8 @@ import type { ProviderWorkspaceExtensions, ProviderWorkspaceProps } from './prov
 import { integrationBridgeMessage, integrationBridgeState } from './bridge'
 import { useIntegrationOwner, useIntegrationSnapshot } from './hooks'
 import './integration.css'
+import { PreferenceSection } from '../../../pages/settings/PreferenceSection'
+import { LegacyKnowledgeSettings } from './LegacyKnowledgeSettings'
 
 type IntegrationDialog = { owner: string } & ({ kind: 'connect' | 'edit' } | { kind: 'binding'; binding?: IntegrationBinding })
 
@@ -103,19 +105,19 @@ export function IntegrationsPage({ extensions = PROVIDER_WORKSPACE_EXTENSIONS }:
         {BeforeConnection && !flowActive && <BeforeConnection {...context} />}
         {sharedConnection && !flowActive && <ConnectionPanel provider={context.provider} connection={connection} root={root} bindings={data?.bindings ?? []} connections={connections} loaded={Boolean(data)} nativeAvailable={nativeAvailable} authorizationAvailable={authorizationAvailable} workspaceEnabled={!Content} onSaved={refresh} onConnect={context.onConnect} onEditConnection={context.onEditConnection} onBindProject={context.onBindProject} onSelectConnection={context.onSelectConnection} />}
         {Content && <Content {...context} />}
+        {context.entry.providerId === 'weknora' && !flowActive && <LegacyKnowledgeSettings />}
         {sharedConnection && !flowActive && context.entry.providerId === 'gitlab' && <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={() => navigate(context.entry.kind === 'tasks' ? 'gitlab-repositories' : 'gitlab-issues-self-managed')}>{context.entry.kind === 'tasks' ? '仓库与 Merge Request' : 'GitLab Issues'}<ChevronRight size={13} /></Button></div>}
         {sharedConnection && !flowActive && context.entry.kind === 'messaging' && connection && <IntegrationSection title="发送记录">{receipts.length === 0 ? <p className="text-my-sm text-my-tertiary">暂无发送记录</p> : receipts.slice(0, 10).map((receipt) => <div key={receipt.requestId} className="integration-list-row"><div className="min-w-0 flex-1"><p className="break-words text-my-sm">{receipt.destination}</p><p className="mt-1 text-my-xs text-my-tertiary">{new Date(receipt.createdAt).toLocaleString()}</p>{receipt.detail && <details className="mt-2 text-my-xs text-my-secondary"><summary>结果详情</summary><p className="mt-2 break-words">{receipt.detail}</p></details>}</div><span className={`text-my-xs ${receipt.state === 'uncertain' ? 'text-my-warning-text' : 'text-my-secondary'}`}>{({ pending: '等待确认', delivered: '已送达', failed: '发送失败', uncertain: '结果待核实' })[receipt.state]}</span></div>)}</IntegrationSection>}
         {currentDialog && currentDialog.kind !== 'binding' && <ConnectionEditor key={`${owner}:${currentDialog.kind}`} provider={context.provider} connection={currentDialog.kind === 'edit' ? connection : undefined} authorizationAvailable={authorizationAvailable} onClose={() => setDialog(null)} onSaved={refresh} />}
         {currentDialog?.kind === 'binding' && root && connection && <BindingEditor key={`${owner}:${currentDialog.binding?.id ?? 'new'}:${currentDialog.binding?.revision ?? 0}`} root={root} connection={connection} provider={context.provider} binding={currentDialog.binding} onClose={() => setDialog(null)} onSaved={refresh} />}
       </InteractionScope>
-    </IntegrationProviderFrame> : <div ref={directory} className="space-y-8" data-integration-directory>
-      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-my-xl font-semibold">外部应用集成</h2><Button size="sm" variant="ghost" disabled={bridge !== 'ready' || loading} onClick={() => void refresh()}><RefreshCw size={13} />刷新</Button></div>
-      {INTEGRATION_DIRECTORY_GROUPS.map((group) => <section key={group.id} aria-labelledby={`integration-group-${group.id}`} className="space-y-3"><h3 id={`integration-group-${group.id}`} className="text-my-sm font-medium">{group.name}</h3><div className="integration-directory-grid">
+    </IntegrationProviderFrame> : <div ref={directory} className="preferences-page" data-integration-directory>
+      {INTEGRATION_DIRECTORY_GROUPS.map((group, index) => <PreferenceSection key={group.id} id={`integration-group-${group.id}`} title={group.name} action={index === 0 ? <Button size="sm" variant="ghost" aria-label="刷新集成" disabled={bridge !== 'ready' || loading} onClick={() => void refresh()}><RefreshCw size={13} />刷新</Button> : undefined}><div className="integration-directory-grid">
         {INTEGRATION_DIRECTORY.filter((item) => item.category === group.id).map((item) => {
           const count = data?.connections.filter((saved) => saved.providerId === item.providerId).length
-          return <button key={item.id} type="button" data-integration-entry={item.id} onClick={() => navigate(item.id)} className="integration-directory-item"><IntegrationProductIcon provider={item.providerId} /><div className="min-w-0 flex-1"><p className="font-medium">{item.name}</p><p className="mt-1 text-my-sm text-my-tertiary">{item.description}</p>{count !== undefined && count > 0 && <p className="mt-2 text-my-xs text-my-secondary">{count} 个连接</p>}</div><ChevronRight size={15} className="shrink-0 text-my-icon-tertiary" /></button>
+          return <button key={item.id} type="button" data-integration-entry={item.id} onClick={() => navigate(item.id)} className="integration-directory-item"><IntegrationProductIcon provider={item.providerId} /><div className="min-w-0 flex-1"><p className="font-medium">{item.name}</p><p className="mt-1 text-my-sm text-my-tertiary">{item.description}</p></div>{count !== undefined && count > 0 && <span className="shrink-0 text-my-xs text-my-tertiary">{count} 个连接</span>}<ChevronRight size={15} className="shrink-0 text-my-icon-tertiary" /></button>
         })}
-      </div></section>)}
+      </div></PreferenceSection>)}
     </div>}
     {error && bridge === 'ready' && !mainOutdated && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-my-lg border border-my-line p-4 text-my-sm"><span className="text-my-danger-text">{error}</span><Button size="sm" disabled={loading} onClick={() => void refresh()}>重试读取</Button></div>}
   </div>

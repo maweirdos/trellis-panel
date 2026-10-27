@@ -7,7 +7,7 @@ import { Avatar, Dropdown, DropdownItem } from '../ui'
 import { NavIcon } from '../icons'
 import { SidebarResizeHandle, useSidebarWidthStyle } from './SidebarResizeHandle'
 import { contextButtonClass } from './ModuleLinks'
-import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, PRIMARY_NAVIGATION, type ModuleId, type TeamView } from '../navigation'
+import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, PRIMARY_NAVIGATION, SETTINGS_VIEW_TITLES, type ModuleId, type TeamView } from '../navigation'
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
   home: <CircleUser className="my-module-icon" aria-hidden="true" />,
@@ -107,9 +107,9 @@ function ContextSidebar(): JSX.Element {
         <p className="px-3 pt-4 text-my-xs leading-relaxed text-my-tertiary">当前项目的成员责任、协作记录与交付情况。</p>
       </>}
       {domain === 'settings' && <>
-        {row('preferences', '偏好', page === 'settings' && settingsView === 'preferences', <Settings2 size={16} />, () => { setSettingsView('preferences'); setPage('settings') })}
+        {row('preferences', SETTINGS_VIEW_TITLES.preferences, page === 'settings' && settingsView === 'preferences', <Settings2 size={16} />, () => { setSettingsView('preferences'); setPage('settings') })}
         {route('models')}
-        {row('engines', '引擎', page === 'settings' && settingsView === 'engines', <Bot size={16} />, () => { setSettingsView('engines'); setPage('settings') })}
+        {row('engines', SETTINGS_VIEW_TITLES.engines, page === 'settings' && settingsView === 'engines', <Bot size={16} />, () => { setSettingsView('engines'); setPage('settings') })}
         {route('integrations')}
         {route('gateway')}
       </>}

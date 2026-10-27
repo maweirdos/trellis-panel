@@ -29,12 +29,13 @@ All routes choose `full` or `centered` in `layout/PageLayout.tsx`'s exhaustive
 layout registry owns only geometry. `PageFrame` and pages with custom module
 headers use the same `PageLayout`/`PageHeader`/`PageBody`/`PageContent` components.
 
-- Centered: analytics, team, archive, Settings, integrations, gateway and
-  local developer tools. Shared content width is1120px plus24px horizontal gutters
-  (16px at960px). The body scrolls while frame headers and scope notes stay fixed.
-- Full: personal home, work items/iterations, intake, Jira, knowledge, spec, ACP, channels, API chat,
-  architecture, Studio and models. Workspaces fill the available width/height;
-  their actual tables, boards, source browsers and editors retain scroll ownership.
+- Settings destinations (preferences, models, engines, integrations and MCP) share
+  an 880px column, an in-content page title and a single PageBody scrollbar.
+  `PreferenceSection`/`PreferenceRow` own their common group and control geometry.
+- Other centered routes use the shared 1120px content width plus 24px gutters
+  (16px at 960px); their frame headers and scope notes remain fixed.
+- Full workspaces fill the available width/height; their actual tables, boards,
+  source browsers and editors retain scroll ownership.
 - Personal home uses the full width with global PageContent gutters, a shared
   12-column grid (task list 9, recent/todo sidebar 3), compact four-column metrics,
   and one explicit `PageBody.my-home-body` vertical scroll owner. Narrow windows

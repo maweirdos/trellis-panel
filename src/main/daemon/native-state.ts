@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import type { Settings } from '../../shared/types'
 import { canonicalWorkflowJson } from '../../shared/workflow'
+import { acpRuntimeDefaultsMapSchema } from '../../shared/acp-launch-options'
 import { defaultSettings, mergeSettings } from '../services/store'
 import { installSettingsPersistence } from '../services/store-port'
 import { installIntegrationStatePort } from '../services/integrations/state-port'
@@ -50,7 +51,8 @@ const explicitSettingsShape = z.object({
     }).passthrough()).max(1000).optional()
   }).passthrough().optional(),
   acp: z.object({
-    agents: z.array(z.object({ id: z.string().min(1).max(200), name: z.string().max(300), command: z.string().max(8192), enabled: z.boolean(), launchKind: z.enum(['managed', 'custom', 'native', 'bundled']).optional(), executable: z.string().max(4096).optional(), args: z.array(z.string().max(8192)).max(100).optional() }).passthrough()).max(100).optional(),
+    runtimeDefaults: acpRuntimeDefaultsMapSchema.optional(),
+    agents: z.array(z.object({ id: z.string().min(1).max(200), name: z.string().max(300), command: z.string().max(8192), enabled: z.boolean(), launchKind: z.enum(['managed', 'custom', 'native', 'bundled', 'sdk']).optional(), executable: z.string().max(4096).optional(), args: z.array(z.string().max(8192)).max(100).optional() }).passthrough()).max(100).optional(),
     nodePath: z.string().max(4096).optional(), nativePaths: z.record(z.string(), z.string().max(4096)).optional(),
     zcode: z.object({ enableAutomationTools: z.boolean().optional() }).passthrough().optional()
   }).passthrough().optional()
@@ -79,7 +81,9 @@ function normalizedSettings(raw: Record<string, unknown> | null): Settings {
   }
   // Migration preserves unknown legacy extension keys; individual native adapters
   // still validate their own fields before using them for business operations.
-  return mergeSettings(defaultSettings(), (raw ?? {}) as Partial<Settings>)
+  const settings = mergeSettings(defaultSettings(), (raw ?? {}) as Partial<Settings>)
+  if (settings.acp?.runtimeDefaults !== undefined) settings.acp = { ...settings.acp, runtimeDefaults: acpRuntimeDefaultsMapSchema.parse(settings.acp.runtimeDefaults) }
+  return settings
 }
 /** Authenticate existing secret fields and normalize only historical ciphertext.
  * Preparation must load needed legacy keys before these synchronous calls. */
@@ -204,7 +208,7 @@ export class DaemonNativeState {
     this.assertPrepared()
     const current = this.owner.read()
     normalizedSettings({ ...current.snapshot.settings, ...patch })
-    const next = sealSettings(mergeSettings(mergeUi(this.context, normalizedSettings(current.snapshot.settings)), patch))
+    const next = sealSettings(normalizedSettings({ ...mergeSettings(mergeUi(this.context, normalizedSettings(current.snapshot.settings)), patch) }))
     this.owner.update(current.revision, (snapshot) => { snapshot.settings = { ...next } })
     return this.readSettings()
   }
@@ -212,7 +216,7 @@ export class DaemonNativeState {
     this.assertPrepared()
     return this.owner.command(expectedRevision, commandId, digest, (snapshot) => {
       normalizedSettings({ ...snapshot.settings, ...patch })
-      snapshot.settings = { ...sealSettings(mergeSettings(mergeUi(this.context, normalizedSettings(snapshot.settings)), patch)) }
+      snapshot.settings = { ...sealSettings(normalizedSettings({ ...mergeSettings(mergeUi(this.context, normalizedSettings(snapshot.settings)), patch) })) }
     })
   }
   update<T>(change: (state: IntegrationState) => T): T {

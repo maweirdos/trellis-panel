@@ -4,6 +4,9 @@ import { randomUUID } from 'node:crypto'
 import { DaemonError } from './errors'
 
 export function readBounded(file: string, limit: number): string {
+  return readBoundedBytes(file, limit).toString('utf8')
+}
+export function readBoundedBytes(file: string, limit: number): Buffer {
   const entry = lstatSync(file)
   if (!entry.isFile() || entry.isSymbolicLink()) throw new DaemonError('E_DENIED', 'Daemon state must be a regular file without redirection.')
   const fd = openSync(file, 'r')
@@ -19,7 +22,7 @@ export function readBounded(file: string, limit: number): string {
       length += count
     }
     if (length > limit) throw new DaemonError('E_IO', 'Daemon state changed beyond its size limit.')
-    return bytes.subarray(0, length).toString('utf8')
+    return bytes.subarray(0, length)
   } finally { closeSync(fd) }
 }
 export function writeExclusive(file: string, text: string): void {

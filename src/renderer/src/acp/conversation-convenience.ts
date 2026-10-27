@@ -1,3 +1,4 @@
+import { isConversationRuntimeEvent } from './runtime-events'
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import { projectRootKey } from '../my/navigation'
 import { asObject, readFileChange } from './timeline'
@@ -7,7 +8,7 @@ const turnKey = (event: Pick<TimelineEvent, 'sessionId' | 'connectionGeneration'
 /** Project watcher facts have no implied relationship to the selected reply. */
 export function partitionConversationEvents(events: TimelineEvent[], session: AcpSessionRecord): { transcript: TimelineEvent[]; background: TimelineEvent[] } {
   const transcript: TimelineEvent[] = [], background: TimelineEvent[] = []
-  const turns = new Set(events.filter((event) => event.source === 'acp' && projectRootKey(event.projectRoot) === projectRootKey(session.projectRoot) && event.sessionId === session.sessionId && event.turnId && event.connectionGeneration).map(turnKey))
+  const turns = new Set(events.filter((event) => isConversationRuntimeEvent(event) && projectRootKey(event.projectRoot) === projectRootKey(session.projectRoot) && event.sessionId === session.sessionId && event.turnId && event.connectionGeneration).map(turnKey))
   if (session.turnId && session.connectionGeneration) turns.add(turnKey(session))
   for (const event of events) {
     if (!readFileChange(event) || projectRootKey(event.projectRoot) !== projectRootKey(session.projectRoot)) { transcript.push(event); continue }
@@ -31,7 +32,7 @@ export interface KnowledgeBridgeObservation {
 
 export function knowledgeObservation(event: TimelineEvent): KnowledgeBridgeObservation | undefined {
   const observation = asObject(event.payload?.knowledgeBridge)
-  if (event.source !== 'acp' || event.kind !== 'diagnostic' || !observation) return undefined
+  if (!isConversationRuntimeEvent(event) || event.kind !== 'diagnostic' || !observation) return undefined
   const state = observation.state
   if (state !== 'attached' && state !== 'discovered' && state !== 'active' && state !== 'unavailable' && state !== 'revoked') return undefined
   if (['detail', 'status', 'persistence', 'operationId'].some((key) => observation[key] !== undefined && typeof observation[key] !== 'string')) return undefined

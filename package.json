@@ -15,8 +15,8 @@
     "check:ui": "node scripts/check-design-system.mjs",
     "generate:brand": "node scripts/generate-brand-assets.mjs",
     "generate:collaboration": "node scripts/generate-collaboration-icons.mjs",
-    "dist:dir": "electron-vite build && electron-builder --dir",
-    "dist": "electron-vite build && electron-builder --win",
+    "dist:dir": "electron-vite build && node scripts/prepare-pi-runtime.mjs && node scripts/package-desktop.mjs --dir",
+    "dist": "electron-vite build && node scripts/prepare-pi-runtime.mjs && node scripts/package-desktop.mjs",
     "postinstall": "node scripts/prepare-acpx.mjs",
     "check:acpx": "node scripts/check-acpx-compat.mjs",
     "predev": "npm run check:acpx",
@@ -68,7 +68,8 @@
     "remark-gfm": "^4.0.0",
     "undici": "^8.11.0",
     "zod": "^4.6.5",
-    "zustand": "^4.5.5"
+    "zustand": "^4.5.5",
+    "@earendil-works/pi-coding-agent": "1.4.0"
   },
   "overrides": {
     "acpx": {

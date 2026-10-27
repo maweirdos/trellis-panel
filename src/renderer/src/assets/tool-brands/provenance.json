@@ -884,10 +884,31 @@
       "note": "Official iFlow CLI favicon endpoint serves original PNG bytes, preserved unchanged with a PNG extension.",
       "sha256": "990d1032ea7e66f8550581e4bb0980a90dcaf996a1de75d4272ab14220412f36",
       "bytes": 2288
+    },
+    {
+      "id": "deepseek-dsh",
+      "label": "DeepSeek DSH",
+      "aliases": [
+        "dsh",
+        "deepseek",
+        "deepseek-harness"
+      ],
+      "assetKey": "deepseek.svg",
+      "mode": "image",
+      "repository": "https://github.com/deepseek-ai/deepseek-harness",
+      "commit": "22ddee3792402c3e70ec5f86a63c3e3e895a2f60",
+      "sourcePath": "website/public/favicon.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/website/public/favicon.svg",
+      "license": "MIT",
+      "licenseFile": "LICENSE.deepseek-harness.txt",
+      "noticeFile": "NOTICE.deepseek-harness.md",
+      "retrievedAt": "2026-10-27",
+      "note": "Official DeepSeek Harness documentation favicon declared by website/.vitepress/config.ts. Original blue whale artwork copied unchanged. The repository MIT license and brand guidelines are preserved; DeepSeek trademarks remain with their owner.",
+      "sha256": "035b68e57ac4490f6880e25f4e7f534d7b50b249308ccea77af34cc5d9e840c3",
+      "bytes": 3546
     }
   ],
   "unverified": [
-    "dsh",
     "snow",
     "reasonix",
     "omp",
@@ -948,6 +969,18 @@
       "sourceUrl": "https://raw.githubusercontent.com/moonshotai/kimi-cli/9ab1286b8fe4e6bcd116949a27ce5e0ac3389c82/NOTICE",
       "license": "Apache-2.0",
       "sha256": "6bdd9ca6fd120dcd6ba5e16bf2bacc01f42781fd2d9754ec934c5db05fcdc395"
+    },
+    {
+      "file": "LICENSE.deepseek-harness.txt",
+      "sourceUrl": "https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/LICENSE",
+      "license": "MIT",
+      "sha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+    },
+    {
+      "file": "NOTICE.deepseek-harness.md",
+      "sourceUrl": "https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/BRAND_GUIDELINES.md",
+      "license": "Upstream brand usage guidelines; trademark rights retained",
+      "sha256": "0f3e1150bfa3d4887c50ff8dc9a01895184e7a80336546617b07f7d86a542f40"
     }
   ]
 }

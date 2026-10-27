@@ -95,7 +95,7 @@ export class AcpHistoryCore {
       COALESCE(json_extract(payload,'$.payload.role'),'assistant') role,
       json_extract(payload,'$.connectionGeneration') generation,json_extract(payload,'$.turnId') turnId,
       json_extract(payload,'$.payload.messageId') messageId FROM events
-      WHERE root=? AND sessionId=? AND kind='message' AND json_extract(payload,'$.source')='acp'
+      WHERE root=? AND sessionId=? AND kind='message' AND json_extract(payload,'$.source') IN ('acp','pi')
       AND (json_extract(payload,'$.sessionId') IS NULL OR json_extract(payload,'$.sessionId')=?)
       AND COALESCE(json_extract(payload,'$.payload.role'),'assistant') IN ('user','assistant')
       AND json_type(payload,'$.text')='text' AND ${MESSAGE_TEXT}<>''
@@ -105,14 +105,14 @@ export class AcpHistoryCore {
     if (!latest) return undefined
     if (latest.role === 'user') return { text: latest.text.replace(/\s+/g, ' ').trim().slice(0, 180), at: latest.ts }
     const boundary = this.db.prepare(`SELECT seq FROM events WHERE root=? AND sessionId=? AND seq<?
-      AND json_extract(payload,'$.source')='acp' AND (kind='turn-done' OR (kind='message' AND (
+      AND json_extract(payload,'$.source') IN ('acp','pi') AND (kind='turn-done' OR (kind='message' AND (
         COALESCE(json_extract(payload,'$.payload.role'),'assistant')<>'assistant'
         OR json_extract(payload,'$.connectionGeneration') IS NOT ?
         OR json_extract(payload,'$.turnId') IS NOT ? OR json_extract(payload,'$.payload.messageId') IS NOT ?)))
       ORDER BY seq DESC LIMIT 1`).get(root, sessionId, latest.seq, latest.generation, latest.turnId, latest.messageId) as { seq: number } | undefined
     const rows = this.db.prepare(`SELECT json_extract(payload,'$.text') text FROM events
       WHERE root=? AND sessionId=? AND seq>? AND seq<=? AND kind='message'
-      AND json_extract(payload,'$.source')='acp' AND json_type(payload,'$.text')='text'
+      AND json_extract(payload,'$.source') IN ('acp','pi') AND json_type(payload,'$.text')='text'
       AND (json_extract(payload,'$.sessionId') IS NULL OR json_extract(payload,'$.sessionId')=?)
       ORDER BY seq`).iterate(root, sessionId, boundary?.seq ?? 0, latest.seq, sessionId)
     let text = ''
@@ -229,7 +229,7 @@ export class AcpHistoryCore {
   private summary(row: SessionRow, preferences = readSessionPreferences(this.directory, row.root)): AcpHistorySummary {
     const meta = JSON.parse(row.metadata) as AcpSessionRecord
     const aggregate = this.db.prepare(`SELECT COUNT(*) count,MAX(seq) seq,
-      EXISTS(SELECT 1 FROM events WHERE root=? AND sessionId=? AND json_extract(payload,'$.source')='acp'
+      EXISTS(SELECT 1 FROM events WHERE root=? AND sessionId=? AND json_extract(payload,'$.source') IN ('acp','pi')
         AND (json_extract(payload,'$.sessionId') IS NULL OR json_extract(payload,'$.sessionId')=?)
         AND ((kind='message' AND json_type(payload,'$.text')='text' AND ${MESSAGE_TEXT}<>'') OR kind IN ('tool-call','permission'))) hasConversation
       FROM events WHERE root=? AND sessionId=?`).get(row.root, row.sessionId, row.sessionId, row.root, row.sessionId) as { count: number; seq: number | null; hasConversation: number }

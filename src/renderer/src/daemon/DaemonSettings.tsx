@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { api } from '../api'
 import { hasDaemonApi, type DaemonApi, type DaemonPreferences, type DaemonStatus } from '../../../shared/daemon'
 import { confirmDialog } from '../components/Dialogs'
 import { useInteractionSignal } from '../utils/interaction-scope'
+import { Button, Switch } from '../my/ui'
+import { PreferenceRow, PreferenceSection } from '../pages/settings/PreferenceSection'
 
 export function DaemonSettings(): JSX.Element {
+  const instanceId = useId()
+  const sectionId = `daemon-settings-${instanceId}`
+  const startupId = `${sectionId}-startup`
   const candidate = (api as typeof api & { daemon?: DaemonApi })?.daemon
   const bridge = hasDaemonApi(candidate) ? candidate : null
   const [status, setStatus] = useState<DaemonStatus | null>(null)
@@ -61,33 +66,48 @@ export function DaemonSettings(): JSX.Element {
     } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause)) }
     finally { actionPending.current = false; if (mounted.current) setBusy(false) }
   }
-  return <section className="rounded-my-lg border border-my-line bg-my-layer-2 px-5 py-4" aria-labelledby="daemon-settings-title">
-    <h2 id="daemon-settings-title" className="mb-1 text-my-xs font-semibold text-my-secondary">后台守护进程</h2>
-    <p className="mb-3 text-my-xs leading-5 text-my-tertiary">Agent 与集成任务由独立后台服务执行。退出时可选择保留；重新打开会连接原有会话。</p>
-    {!bridge ? <p className="text-my-xs text-my-tertiary">当前桌面版本未提供后台管理接口。</p> : <>
-      <p className="mb-3 text-my-xs text-my-secondary">{status ? `${status.state === 'running' ? '运行中' : '正在停止'} · ${status.runtimeAuthority === 'daemon' ? '后台拥有 Runtime' : 'Runtime 尚未迁移'} · ${status.activeJobs} 个活动任务 · ${status.unknownJobs} 个结果待核对` : confirmedStopped ? '后台已停止' : '后台状态未确认'}</p>
-      {draft && <div className="space-y-3 text-my-xs text-my-secondary">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={draft.keepRunning} disabled={busy} onChange={event => setDraft({ ...draft, keepRunning: event.target.checked })} />退出时默认保持后台运行</label>
-        <label className="flex items-center gap-3">启动方式<select className="my-input" value={draft.startup} disabled={busy} onChange={event => setDraft({ ...draft, startup: event.target.value as DaemonPreferences['startup'] })}>
-          <option value="client">打开桌面时启动</option><option value="login">登录系统时启动</option><option value="manual">仅手动启动</option>
-        </select></label>
-        <p className="text-my-tertiary">系统启动注册：{status?.startupRegistration === 'confirmed' ? '已核实' : status?.startupRegistration === 'unknown' ? '结果待核对' : '不可用'}。手动启动服务后仍可保留到桌面退出。</p>
-        {status?.startupRegistration === 'unknown' && status.startupCommandId && <div className="space-y-2">
-          <p className="break-all text-my-tertiary">原启动注册命令：{status.startupCommandId}</p>
-          {typeof bridge.reconcileStartup === 'function'
-            ? <button className="my-btn" disabled={busy} onClick={() => void action('reconcile')}>核对原启动注册</button>
-            : <p className="text-my-tertiary">当前桌面未加载启动注册对账接口，请完整重启应用。</p>}
-        </div>}
-      </div>}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {([['start', '启动'], ['stop', '停止'], ['restart', '重启'], ['save', '保存设置'], ['logs', '查看日志']] as const).map(([kind, label]) => <button key={kind} className="my-btn" disabled={busy || (kind === 'save' && !draft) || (['stop', 'restart', 'logs'].includes(kind) && !status)} onClick={() => void action(kind)}>{label}</button>)}
-        <button className="my-btn" disabled={busy} onClick={() => void refresh().catch(cause => setError(String(cause)))}>刷新状态</button>
-      </div>
-      {!!logs.length && <ol className="mt-3 max-h-44 overflow-auto rounded border border-my-line p-3 font-mono text-my-xs text-my-tertiary">{logs.map((entry, index) => <li key={`${entry.at}:${index}`}>{new Date(entry.at).toLocaleTimeString()} {entry.code}</li>)}</ol>}
+  return <PreferenceSection id={sectionId} title="后台运行">
+    {!bridge ? <p className="py-3 text-my-sm text-my-tertiary">当前桌面版本未提供后台管理接口。</p> : <>
+      <PreferenceRow label="后台服务">
+        <span role="status" className="text-my-secondary">{status ? status.state === 'running' ? '运行中' : '正在停止' : confirmedStopped ? '已停止' : '状态未确认'}</span>
+        <Button size="sm" variant="outline" disabled={busy || !!status} aria-label="启动后台服务" onClick={() => void action('start')}>启动</Button>
+        <Button size="sm" variant="ghost" disabled={busy || !status} aria-label="停止后台服务" onClick={() => void action('stop')}>停止</Button>
+        <Button size="sm" variant="ghost" disabled={busy || !status} aria-label="重启后台服务" onClick={() => void action('restart')}>重启</Button>
+        <Button size="sm" variant="ghost" disabled={busy} aria-label="刷新后台状态" onClick={() => void refresh().catch(cause => setError(String(cause)))}>刷新</Button>
+      </PreferenceRow>
+      {status && <PreferenceRow label="后台任务">
+        <span className="text-my-secondary">{status.activeJobs} 个运行中</span>
+        {status.unknownJobs > 0 && <span className="text-my-warning-text">{status.unknownJobs} 个结果待核对</span>}
+        {status.runtimeAuthority !== 'daemon' && <span className="text-my-warning-text">Runtime 尚未迁移</span>}
+      </PreferenceRow>}
+      {draft && <>
+        <PreferenceRow label="退出后继续运行">
+          <Switch label="退出后继续运行" checked={draft.keepRunning} disabled={busy} onChange={keepRunning => setDraft({ ...draft, keepRunning })} />
+        </PreferenceRow>
+        <PreferenceRow label="启动方式" htmlFor={startupId}>
+          <select id={startupId} className="my-input" value={draft.startup} disabled={busy} onChange={event => setDraft({ ...draft, startup: event.target.value as DaemonPreferences['startup'] })}>
+            <option value="client">打开桌面时启动</option><option value="login">登录系统时启动</option><option value="manual">仅手动启动</option>
+          </select>
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => void action('save')}>{busy ? '处理中…' : '保存后台设置'}</Button>
+        </PreferenceRow>
+        {(draft.startup === 'login' || status?.startupRegistration === 'unknown') && <PreferenceRow label="系统启动注册">
+          <span className={status?.startupRegistration === 'unknown' ? 'text-my-warning-text' : 'text-my-secondary'}>{status?.startupRegistration === 'confirmed' ? '已核实' : status?.startupRegistration === 'unknown' ? '结果待核对' : '不可用'}</span>
+          {status?.startupRegistration === 'unknown' && status.startupCommandId && <>
+            {typeof bridge.reconcileStartup === 'function'
+              ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void action('reconcile')}>核对原启动注册</Button>
+              : <span className="text-my-xs text-my-tertiary">请完整重启应用以加载核对接口。</span>}
+            <details className="w-full text-my-xs text-my-tertiary"><summary className="cursor-pointer">原命令</summary><p className="mt-2 break-all">{status.startupCommandId}</p></details>
+          </>}
+        </PreferenceRow>}
+      </>}
+      <PreferenceRow label="运行日志">
+        <Button size="sm" variant="outline" disabled={busy || !status} onClick={() => void action('logs')}>查看日志</Button>
+      </PreferenceRow>
+      {!!logs.length && <ol aria-label="后台运行日志" className="my-scrollbar max-h-44 overflow-auto rounded-my-md border border-my-line p-3 font-mono text-my-xs text-my-tertiary">{logs.map((entry, index) => <li key={`${entry.at}:${index}`}>{new Date(entry.at).toLocaleTimeString()} {entry.code}</li>)}</ol>}
     </>}
-    {error && <p className="mt-3 text-my-xs text-red-500" role="alert">{error}</p>}
-    <div className="mt-4 flex justify-end">
-      <button className="my-btn" disabled={busy || typeof api?.appQuit !== 'function'} onClick={() => void action('quit')}>退出应用</button>
-    </div>
-  </section>
+    {error && <p className="py-3 text-my-sm text-my-danger-text" role="alert">{error}</p>}
+    <PreferenceRow label="应用">
+      <Button size="sm" variant="ghost" disabled={busy || typeof api?.appQuit !== 'function'} onClick={() => void action('quit')}>退出应用</Button>
+    </PreferenceRow>
+  </PreferenceSection>
 }

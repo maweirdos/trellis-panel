@@ -1,0 +1,48 @@
+.my-root .models-page .preference-section-body { padding-inline: 0; overflow: hidden; }
+.my-root .model-provider-group + .model-provider-group { border-top: 1px solid var(--my-border-subtle); }
+.my-root .model-provider-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-12); padding: var(--my-space-16) var(--my-space-20); }
+.my-root .model-provider-summary { display: flex; align-items: center; flex: 1; gap: var(--my-space-12); min-width: 0; text-align: left; border-radius: var(--my-radius-md); }
+.my-root .model-provider-identity { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: var(--my-space-40); height: var(--my-space-40); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); color: var(--my-txt-secondary); font-size: var(--my-text-lg); font-weight: var(--my-weight-semibold); }
+.my-root .model-provider-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: var(--my-space-4); font-size: var(--my-text-sm); }
+.my-root .model-provider-endpoint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--my-text-xs); color: var(--my-txt-tertiary); }
+.my-root .model-active-badge { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--my-space-2); padding: var(--my-space-2) var(--my-space-4); border-radius: var(--my-radius-sm); background: var(--my-bg-layer-2); color: var(--my-txt-secondary); font-size: var(--my-text-2xs); font-weight: var(--my-weight-medium); }
+.my-root .model-provider-status { display: inline-flex; align-items: center; flex-shrink: 0; gap: var(--my-space-4); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
+.my-root .model-provider-actions, .my-root .model-item-actions { display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-2); }
+.my-root .model-provider-row[data-active] .model-provider-identity { border-color: var(--my-border-strong); color: var(--my-txt-primary); }
+.my-root .model-provider-summary:hover .model-provider-copy > span:first-child { text-decoration: underline; text-underline-offset: var(--my-space-4); }
+.my-root .model-provider-models { padding: var(--my-space-4) var(--my-space-20) var(--my-space-12); background: var(--my-bg-layer-1); border-top: 1px solid var(--my-border-subtle); }
+.my-root .model-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-8); padding-block: var(--my-space-8); }
+.my-root .model-item-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-8); padding-block: var(--my-space-12); }
+.my-root .model-item-row + .model-item-row { border-top: 1px solid var(--my-border-subtle); }
+.my-root .model-item-icon { display: inline-flex; align-items: center; justify-content: center; width: var(--my-space-32); height: var(--my-space-32); flex-shrink: 0; color: var(--my-txt-tertiary); }
+.my-root .model-item-copy { min-width: 0; flex: 1; }
+.my-root .model-test-result { display: inline-flex; align-items: center; gap: var(--my-space-4); font-size: var(--my-text-xs); }
+.my-root .model-test-error { flex-basis: 100%; margin-left: var(--my-space-40); color: var(--my-txt-danger-primary); font-size: var(--my-text-xs); overflow-wrap: anywhere; }
+.my-root .model-list-empty, .my-root .model-provider-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--my-space-12); padding-block: var(--my-space-32); color: var(--my-txt-tertiary); font-size: var(--my-text-sm); }
+.my-root .model-provider-empty { flex-direction: column; }
+.my-root .model-provider-error { display: flex; align-items: flex-start; gap: var(--my-space-8); padding: 0 var(--my-space-20) var(--my-space-12); color: var(--my-txt-danger-primary); font-size: var(--my-text-xs); }
+.my-root .model-provider-error > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.my-root .model-legacy-row { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-12); padding: var(--my-space-12) var(--my-space-20); border-bottom: 1px solid var(--my-border-subtle); }
+.my-root .model-advanced { color: var(--my-txt-secondary); }
+.my-root .model-advanced > summary { display: flex; align-items: center; gap: var(--my-space-8); width: fit-content; cursor: pointer; list-style: none; font-size: var(--my-text-sm); border-radius: var(--my-radius-sm); }
+.my-root .model-advanced > summary::-webkit-details-marker { display: none; }
+.my-root .model-advanced[open] > summary > svg:last-child { transform: rotate(180deg); }
+.my-root .model-advanced .preference-row { margin-top: var(--my-space-12); border-top: 1px solid var(--my-border-subtle); }
+.my-root .model-config-editor label, .my-root .model-field-label { display: block; margin-bottom: var(--my-space-4); color: var(--my-txt-secondary); font-size: var(--my-text-sm); }
+.my-root .model-config-editor .mb-0 { margin-bottom: 0; }
+.my-root .model-template-list { overflow: hidden; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); }
+.my-root .model-template-row { display: flex; align-items: center; gap: var(--my-space-12); width: 100%; min-width: 0; padding: var(--my-space-12); text-align: left; }
+.my-root .model-template-row + .model-template-row { border-top: 1px solid var(--my-border-subtle); }
+.my-root .model-template-row:hover { background: var(--my-bg-layer-1); }
+@container (max-width: 680px) {
+  .my-root .model-provider-summary { flex-basis: calc(100% - var(--my-space-64)); }
+  .my-root .model-provider-status { margin-left: auto; }
+  .my-root .model-provider-actions { width: 100%; justify-content: flex-end; }
+}
+@container (max-width: 420px) {
+  .my-root .model-provider-row { padding-inline: var(--my-space-12); }
+  .my-root .model-provider-status { width: 100%; margin-left: var(--my-space-48); }
+  .my-root .model-provider-actions { justify-content: flex-start; padding-left: var(--my-space-48); flex-wrap: wrap; }
+  .my-root .model-provider-models { padding-inline: var(--my-space-12); }
+  .my-root .model-item-actions { width: 100%; justify-content: flex-end; }
+}

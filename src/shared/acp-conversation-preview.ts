@@ -12,7 +12,7 @@ export function hasAcpConversationContent(events: TimelineEvent[], sessionId?: s
 }
 
 function sameScope(event: TimelineEvent, sessionId?: string, projectRoot?: string): boolean {
-  if (event.source !== 'acp') return false
+  if (event.source !== 'acp' && event.source !== 'pi') return false
   if (sessionId && event.sessionId && event.sessionId !== sessionId) return false
   if (projectRoot && event.projectRoot) {
     if (typeof event.projectRoot !== 'string') return false

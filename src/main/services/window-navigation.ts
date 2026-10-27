@@ -1,4 +1,4 @@
-import { shell, type BrowserWindow } from 'electron'
+import { Menu, shell, type BrowserWindow, type MenuItemConstructorOptions } from 'electron'
 import { externalHttpUrl } from '../../shared/external-url'
 
 /** Keep the existing Promise<void> IPC contract, including when the OS opener fails. */
@@ -14,6 +14,20 @@ export async function openExternalHttpUrl(value: unknown): Promise<void> {
 
 /** Install before loading: only this exact app document (plus fragments) is trusted. */
 export function installWindowNavigation(window: BrowserWindow, appDocumentUrl: string): void {
+  window.webContents.on('context-menu', (_event, params) => {
+    if (window.isDestroyed() || !params.isEditable && !params.selectionText) return
+    const items: MenuItemConstructorOptions[] = []
+    if (params.isEditable) items.push(
+      { role: 'undo', label: '撤销', enabled: params.editFlags.canUndo },
+      { role: 'redo', label: '重做', enabled: params.editFlags.canRedo },
+      { type: 'separator' },
+      { role: 'cut', label: '剪切', enabled: params.editFlags.canCut }
+    )
+    items.push({ role: 'copy', label: '复制', enabled: params.editFlags.canCopy })
+    if (params.isEditable) items.push({ role: 'paste', label: '粘贴', enabled: params.editFlags.canPaste })
+    items.push({ type: 'separator' }, { role: 'selectAll', label: '全选' })
+    Menu.buildFromTemplate(items).popup({ window })
+  })
   const documentKey = (value: string): string => {
     const url = new URL(value)
     url.hash = ''

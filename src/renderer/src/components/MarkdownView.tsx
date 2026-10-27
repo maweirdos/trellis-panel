@@ -162,7 +162,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
     th({ children, ...props }) {
       return (
         <th
-          className="border-r border-my-line last:border-r-0 px-4 py-2.5 text-left font-semibold tracking-wide text-my-primary select-none break-keep"
+          className="border-r border-my-line last:border-r-0 px-4 py-2.5 text-left font-semibold tracking-wide text-my-primary break-keep"
           {...props}
         >
           {children}

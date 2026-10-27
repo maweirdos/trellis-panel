@@ -3,12 +3,12 @@
   "sdkVersion": "1.8.0",
   "compatVersion": 3,
   "patch": "acpx+0.19.5.patch",
-  "patchSha256": "ed9821e9e06b86aa7abddd2ea2c230c3e247278050908b3364f5a25c4fe799ab",
+  "patchSha256": "e1b778ee742df6b3ebc213d262edabbb25254e62884c414fd154cea9e80b4926",
   "files": {
-    "dist/queue-owner-runtime-DoijBCvt.js": "87882086e88d9de09e9b955cf4e2197402630954b59080e366a40a47a046ff2d",
+    "dist/queue-owner-runtime-DoijBCvt.js": "4df633abc34e38eb0b9bb064eb9fd7debe844f466dfb5be4677bc7a711353569",
     "dist/runtime.js": "a5ededb6bf254901c7e121382c19501ede29f62b23cb113531a1cf9c892ebf9b",
     "dist/runtime.d.ts": "4732fa211a4ff4c3566bb0c3e516ebba21d82a502c10620cc9102503dd866be6",
-    "dist/session-options-CkcvthCv.d.ts": "2be250fffe0fe4555b9c219006acf3edfedd611ec7a476813c7c53e8165b95aa",
+    "dist/session-options-CkcvthCv.d.ts": "53504931a660e23fa16d1c77e3cade8b5a02c6e9799ee75b4684d6f28f851484",
     "dist/ipc-C96eDxkW.js": "20d919475122bc40a00add3862ef0d55ababfa341e7b1acf8ee260fe6c055996",
     "dist/windows-process-query.js": "9b14684ef92bfdb462401211f8dfb7a1ebbe26d9ea2fc8d03fc5b3fea3263713"
   }
