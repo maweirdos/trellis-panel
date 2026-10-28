@@ -1223,6 +1223,7 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   /** HiFox 协作域：空间/成员/任务/专项/迭代/视图/分拣台/自动化/收件箱/Agent/技能/小队 */
   hifox: import('./hifox').HifoxApi
   hifoxWork?: import('./hifox-work').HifoxWorkApi
+  hifoxProgress?: import('./hifox-task-progress').HifoxProgressApi
   creations?: import('./creation-api').CreationApi
   integrations: import('./integrations').IntegrationApi
   /** Feature guards still detect an older loaded preload independently. */
@@ -2055,6 +2056,9 @@ export interface AcpSessionMeta {
   restorePending?: boolean
   capabilities?: { controls: string[]; loadSession?: boolean; promptCapabilities?: { image?: boolean; embeddedContext?: boolean }; protocolVersion?: number; agentInfo?: Record<string, unknown>; authMethods?: unknown[] }
   agentContext?: import('./acp-context').AcpAgentContextDelivery
+  /** Exact bounded instructions provided by the host; no claim of model compliance. */
+  agentRulesManifest?: import('./agent-rules').AgentRulesManifest
+  taskProgress?: { taskId: string; spaceId: string; inputVersion: string }
   connectionTimings?: import('./acp-connection').AcpConnectionTimings & { connectionGeneration: string }
   models?: Array<{ modelId: string; name: string }>
   modes?: Array<{ id: string; name: string }>

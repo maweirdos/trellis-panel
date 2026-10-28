@@ -13,6 +13,17 @@ files:
 # ZCode ACP 桥接适配器（launchKind 'bundled'）：整目录复制进 resources/adapters，
 # 运行侧由 services/acp/setup.ts resolveAdapterEntry() 从 process.resourcesPath 解析。
 extraResources:
+  - from: out/team-trellis
+    to: team-trellis
+    filter:
+      - manifest.json
+      - installer.mjs
+      - scripts/task.py
+      - scripts/common/io.py
+      - scripts/common/task_store.py
+      - scripts/common/task_utils.py
+      - scripts/common/task_authority.py
+      - scripts/hooks/linear_sync.py
   - from: out/pi-engine
     to: pi-engine
     filter:

@@ -11,6 +11,7 @@ import { materialRead, materialWrite } from '../knowledge-access/materials'
 import { resolveAuthorizedDocumentPath } from '../documents/paths'
 import { IntegrationError } from '../integrations/types'
 import { runTaskCreateCli } from '../local-task/cli-runner'
+import { assertTeamTrellisCapabilities, TeamTrellisCapabilitiesError } from '../local-task/team-capabilities'
 import { sha256Hex, todayPrefix } from '../local-task/operations'
 import { hifoxWorkspaceSnapshot, hifoxWorkspaceStatus } from './connection-service'
 import { HifoxWorkError, readHifoxWorkSource, type HifoxWorkSource, type HifoxWorkSourceDependencies } from './task-workspace-source'
@@ -78,6 +79,15 @@ export class HifoxTaskWorkspaceService {
     return current
   }
 
+  private async teamAdapter(root: string, source: HifoxWorkSource): Promise<void> {
+    if (source.workspaceKey === 'local') return
+    try { await assertTeamTrellisCapabilities(root) }
+    catch (error) {
+      if (error instanceof TeamTrellisCapabilitiesError) throw new HifoxWorkError('project_invalid', error.message, IpcErrorCode.InvalidArg)
+      throw new HifoxWorkError('project_invalid', '工程的 Trellis 团队适配能力尚未确认；未准备或打开本机团队任务。', IpcErrorCode.InvalidArg)
+    }
+  }
+
   async status(raw: unknown): Promise<HifoxWorkResult> {
     try {
       const input = hifoxWorkQuerySchema.parse(raw)
@@ -85,6 +95,8 @@ export class HifoxTaskWorkspaceService {
       const stored = this.bindings.read(source)
       if (!stored) return { ok: true, ...input, prepared: false, local: null }
       validateHifoxProject(stored.value.projectRoot, true)
+      await this.teamAdapter(stored.value.projectRoot, source)
+      await this.source(input, source)
       const disk = reconcileHifoxWork(stored.value)
       if (!disk) {
         if (['dispatching', 'uncertain'].includes(stored.value.stage)) return failure('outcome_unknown', '原创建命令尚未核实，请保留绑定；重试将先核对原目录。')
@@ -163,6 +175,9 @@ export class HifoxTaskWorkspaceService {
       if (concurrent) this.expectedRoot(selected.root, concurrent.value.projectRoot)
     }
     const record = stored.value
+    // Probe before any creation, authority adoption or reference-file write.
+    await this.teamAdapter(record.projectRoot, source)
+    source = await this.source(input, source)
     let disk = reconcileHifoxWork(record)
     if (record.sourceRevision !== source.revision || (disk && disk.sourceRevision !== source.revision)) return failure('source_changed', '业务任务的需求材料已变化，请审阅已有本机 PRD；原文不会被覆盖。', IpcErrorCode.Conflict, disk?.local)
     if (record.stage === 'ready' && disk) return this.ready(source, record, disk, false)
@@ -235,6 +250,20 @@ export class HifoxTaskWorkspaceService {
     const actual = materialRead(record.projectRoot, `${disk.local.relativeDir}/prd.md`)
     if (actual.revision === null || record.generatedPrdRevision === null) return failure('prd_conflict', '已准备的 PRD 已删除或缺少保存回执，请先核对；不会自动重建。', IpcErrorCode.Conflict, disk.local)
     const prdModified = actual.revision !== record.generatedPrdRevision
+    if (source.workspaceKey !== 'local') {
+      // The existing prepare/open entry must not leave a second local task authority.
+      const path = `${disk.local.relativeDir}/task.json`
+      const original = materialRead(record.projectRoot, path)
+      const task = z.object({ id: z.string(), meta: z.record(z.string(), z.unknown()) }).passthrough().parse(JSON.parse(original.body))
+      if (task.id !== record.localTaskId || hifoxWorkMeta(record).some(([key, value]) => key !== 'panel_task_authority' && task.meta[key] !== value)) {
+        throw new HifoxWorkError('task_conflict', '原本机任务来源已变化，未启用团队状态权威。')
+      }
+      if (task.meta.panel_task_authority !== undefined && task.meta.panel_task_authority !== 'team') throw new HifoxWorkError('task_conflict', '原任务已声明其它状态权威，不能自动替换。')
+      if (task.meta.panel_task_authority !== 'team') {
+        task.meta = { ...task.meta, panel_task_authority: 'team' }
+        materialWrite(record.projectRoot, path, JSON.stringify(task, null, 2) + '\n', original.revision)
+      }
+    }
     return {
       ok: true, workspaceKey: source.workspaceKey, taskId: source.taskId, prepared: true, local: disk.local,
       created, reused: !created, sourceRevision: source.revision, preparedRevision: record.sourceRevision,

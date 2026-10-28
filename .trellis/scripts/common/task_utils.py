@@ -20,9 +20,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .paths import get_repo_root, get_tasks_dir
+from .io import read_json_checked
+from .task_authority import is_team_managed, refuse_team_archive
 
 if TYPE_CHECKING:
     import subprocess
+
+TEAM_NORMAL_LOCAL_HOOKS_VERSION = 1
+TEAM_REJECT_LOCAL_ARCHIVE_VERSION = 1
 
 
 # =============================================================================
@@ -126,6 +131,13 @@ def archive_task_dir(task_dir_abs: Path, repo_root: Path | None = None) -> Path 
     """
     if not task_dir_abs.is_dir():
         print(f"Error: task directory not found: {task_dir_abs}", file=sys.stderr)
+        return None
+
+    data, reason = read_json_checked(task_dir_abs / "task.json")
+    if data is None:
+        print(f"Error: cannot verify task authority ({reason}); task remains at {task_dir_abs}.", file=sys.stderr)
+        return None
+    if refuse_team_archive(data):
         return None
 
     dest = archive_destination_for(task_dir_abs)
@@ -407,11 +419,24 @@ def run_task_hooks(event: str, task_json_path: Path, repo_root: Path) -> None:
     from .config import get_hooks
     from .log import Colors, colored
 
+    task, _ = read_json_checked(task_json_path)
     commands = get_hooks(event, repo_root)
     if not commands:
         return
 
-    env = {**os.environ, "TASK_JSON_PATH": str(task_json_path)}
+    meta = task.get("meta") if task is not None else None
+    meta = meta if isinstance(meta, dict) else {}
+    managed = task is not None and is_team_managed(task)
+    env = {
+        **os.environ,
+        "TASK_JSON_PATH": str(task_json_path),
+        "TRELLIS_TASK_AUTHORITY": "team" if managed else "local",
+        "TRELLIS_TASK_ID": str(task.get("id", "")) if task is not None else "",
+        "TRELLIS_TEAM_WORKSPACE_KEY": str(meta.get("panel_hifox_workspace_key", "")) if managed else "",
+        "TRELLIS_TEAM_SPACE_ID": str(meta.get("panel_hifox_space_id", "")) if managed else "",
+        "TRELLIS_TEAM_TASK_ID": str(meta.get("panel_hifox_task_id", "")) if managed else "",
+        "TRELLIS_TEAM_OWNER_IDENTITY": str(meta.get("panel_hifox_identity", "")) if managed else "",
+    }
 
     # POSIX only: a fresh session puts the shell and every descendant in one
     # process group, which is what makes the timeout kill the whole tree.

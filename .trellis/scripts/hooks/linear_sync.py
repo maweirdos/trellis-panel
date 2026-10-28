@@ -35,6 +35,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from common.io import write_json
+from common.task_authority import is_team_managed
+
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 # Trellis priority → Linear priority (1=Urgent, 2=High, 3=Medium, 4=Low)
@@ -82,9 +86,9 @@ def _read_task() -> tuple[dict, str]:
 
 
 def _write_task(data: dict, path: str) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    if not write_json(Path(path), data):
+        print("Could not save Linear metadata; original task state was preserved.", file=sys.stderr)
+        sys.exit(1)
 
 
 def _linearis(*args: str) -> dict | None:
@@ -163,13 +167,19 @@ def cmd_start() -> None:
     issue = _get_linear_issue(task)
     if not issue:
         return
-    _linearis("issues", "update", issue, "-s", STATUS_IN_PROGRESS)
-    print(f"Updated {issue} -> {STATUS_IN_PROGRESS}")
+    if is_team_managed(task):
+        print("Team authority: skipped legacy Linear status change; document sync remains enabled.")
+    else:
+        _linearis("issues", "update", issue, "-s", STATUS_IN_PROGRESS)
+        print(f"Updated {issue} -> {STATUS_IN_PROGRESS}")
     cmd_sync()
 
 
 def cmd_archive() -> None:
     task, _ = _read_task()
+    if is_team_managed(task):
+        print("Team authority: skipped legacy Linear completion update.")
+        return
     issue = _get_linear_issue(task)
     if not issue:
         return

@@ -10,6 +10,9 @@ import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { clsx } from 'clsx'
 import { getPageNavigation } from '../my/navigation'
 import { TeamContextSwitcher } from '../hifox/TeamContextSwitcher'
+import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
+import { useHifox } from '../hifox/store'
+import { ConnectionPanel } from '../hifox/ConnectionPanel'
 
 function WinButton({ onClick, children, label, danger }: {
   onClick: () => void; children: ReactNode; label: string; danger?: boolean
@@ -29,6 +32,8 @@ export function TitleBar(): JSX.Element {
   const page = useApp((s) => s.page)
   const openTaskDir = useApp((s) => s.openTaskDir)
   const teamContext = page === 'hifox' && !openTaskDir
+  const development = useMy((s) => s.shellView === 'development')
+  const localCollaboration = useHifox((s) => s.workspaceContext.state === 'local')
   const scope = getPageNavigation(page).scope
   const openError = useApp((s) => s.openError)
   const collapsed = useMy((s) => s.sidebarCollapsed)
@@ -42,9 +47,11 @@ export function TitleBar(): JSX.Element {
         <BrandMark size={22} className="text-my-primary" />
         <span className="sr-only">Trellis Panel</span>
       </div>
-      {teamContext ? <TeamContextSwitcher /> : <><ProjectSwitcher /><GitBranchControl /></>}
-      {!teamContext && openError && <span role="status" title={openError} className="ml-2 shrink-0 text-my-xs text-my-danger-text">项目打开失败</span>}
-      {!snapshot && !teamContext && <span className="ml-2 shrink-0 text-my-xs text-my-tertiary">{hasIpc ? '本机项目未选择' : '演示预览'}</span>}
+      <ShellViewSwitcher />
+      {teamContext && <TeamContextSwitcher />}
+      {!development && localCollaboration && hasIpc && <div className="no-drag mx-2 shrink-0"><ConnectionPanel trigger="connect" /></div>}
+      {development ? <div className="no-drag my-shell-project-controls flex min-w-0 items-center gap-1"><span className="ml-2 shrink-0 text-my-xs text-my-tertiary">工程</span><ProjectSwitcher /><GitBranchControl /></div> : !teamContext && <span className="my-shell-scope ml-3 min-w-0 truncate text-my-sm text-my-secondary" title={snapshot?.meta.root}>{(scope === 'project' || scope === 'mixed') && snapshot ? snapshot.meta.name : getPageNavigation(page).title}</span>}
+      {development && openError && <span role="status" title={openError} className="ml-2 shrink-0 text-my-xs text-my-danger-text">工程打开失败</span>}
       <div className="no-drag ml-1 flex shrink-0 items-center">
         <button type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
           title="收起 / 展开上下文栏 (Ctrl+B)" onClick={toggleSidebar}
@@ -57,7 +64,7 @@ export function TitleBar(): JSX.Element {
         aria-label="搜索或输入命令 (Ctrl+K)">
         <Search size={16} strokeWidth={1.8} className="shrink-0" /><span className="truncate text-left text-my-md">搜索或输入命令</span><kbd className="ml-2 whitespace-nowrap font-sans text-my-xs text-my-tertiary">Ctrl K</kbd>
       </button>
-      {!teamContext && <ApplicationPanel />}
+      {development && <ApplicationPanel />}
       {hasIpc && <div className="no-drag flex h-full items-stretch">
             {snapshot && <WinButton label="打开任务悬浮窗" onClick={() => api.setCapsuleMode(true)}><PictureInPicture2 size={14} /></WinButton>}
         <WinButton label="最小化窗口" onClick={() => api.windowMinimize()}><Minus size={14} /></WinButton>

@@ -18,6 +18,7 @@ export const piInitializeSchema = z.object({
   proxy: z.object({ url: z.string().url() }).strict().optional(),
   thinkingLevel: z.enum(['off', 'low', 'medium', 'high']).default('off'),
   skillPaths: z.array(z.string()).max(32), instructions: z.string().max(128 * 1024),
+  taskProgress: z.boolean().default(false),
   mcpServers: z.array(piMcpSchema).max(64)
 }).strict().refine(value => value.sessionFile ? value.modelId === undefined : value.modelId !== undefined && value.recoveryModelId === undefined, 'Pi model defaults apply only to a new session')
 export type PiInitialize = z.infer<typeof piInitializeSchema>
@@ -46,5 +47,6 @@ export type PiChildMessage =
   | { type: 'response'; id: string; ok: boolean; result?: unknown; error?: string }
   | { type: 'event'; event: PiActivity }
   | { type: 'permission'; id: string; request: PiPermission }
+  | { type: 'task_progress'; id: string; summary: unknown }
 // Eight public image attachments can total 20 MiB before base64 and context framing.
 export const PI_FRAME_BYTES = 40 * 1024 * 1024

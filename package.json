@@ -20,7 +20,7 @@
     "postinstall": "node scripts/prepare-acpx.mjs && node scripts/prepare-pi-tools.mjs",
     "check:acpx": "node scripts/check-acpx-compat.mjs",
     "predev": "npm run check:acpx && node scripts/prepare-pi-tools.mjs",
-    "prebuild": "npm run check:acpx && node scripts/prepare-pi-tools.mjs",
+    "prebuild": "npm run check:acpx && node scripts/prepare-pi-tools.mjs && node scripts/prepare-team-trellis.mjs",
     "predist:dir": "npm run check:acpx && node scripts/prepare-node-runtime.mjs",
     "predist": "npm run check:acpx && node scripts/prepare-node-runtime.mjs",
     "prepare:acpx": "node scripts/prepare-acpx.mjs",

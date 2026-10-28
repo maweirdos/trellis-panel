@@ -138,6 +138,12 @@ export const ipcInvoke = {
     status: 'hifox-work:status',
     prepare: 'hifox-work:prepare'
   },
+  hifoxProgress: {
+    status: 'hifox-progress:status', start: 'hifox-progress:start', report: 'hifox-progress:report',
+    retry: 'hifox-progress:retry', detach: 'hifox-progress:detach', conversation: 'hifox-progress:conversation',
+    events: 'hifox-progress:events', send: 'hifox-progress:send', respond: 'hifox-progress:respond',
+    cancel: 'hifox-progress:cancel', resume: 'hifox-progress:resume'
+  },
   fs: {
     readText: 'fs:readText',
     writeSpec: 'fs:writeSpec'

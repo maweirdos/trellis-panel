@@ -12,12 +12,14 @@ import { authenticationProof, equalProof, serverProof } from './auth'
 import { DaemonError, daemonFailure } from './errors'
 import { listenNativePipe, type NativeServer } from './transport'
 import type { DaemonDispatcher } from './dispatcher'
+import { authenticateNativeGuiGrant, releaseNativeGuiGrant, type NativeGuiAuthority } from './native-gui-grant'
 
 export async function startDaemonServer(context: DaemonContext, lease: DaemonLease, dispatcher: DaemonDispatcher, fatal: () => void): Promise<NativeServer> {
   const admission = { ordinary: { calls: 0, bytes: 0 }, control: { calls: 0, bytes: 0 }, authentication: { calls: 0, bytes: 0 } }
   return listenNativePipe(context.pipeName, (peer) => {
     const challenge = { type: 'challenge' as const, version: 1 as const, epoch: lease.epoch, nonce: randomBytes(32).toString('hex'), identity: context.identity, owner: context.owner }
     let client: ProcessOwner | null = null
+    let nativeGui: NativeGuiAuthority | undefined
     let closed = false
     let authenticating = false
     const subscriptions = new Map<string, WorkspaceGrant>()
@@ -25,7 +27,7 @@ export async function startDaemonServer(context: DaemonContext, lease: DaemonLea
     const hints = new Map<string, { workspaceId: string; source: DaemonNotification['source'] }>()
     let hintTimer: ReturnType<typeof setTimeout> | undefined
     let disposeObservation = (): void => {}
-    const cleanup = (): void => { clearTimeout(timer); if (hintTimer) clearTimeout(hintTimer); hints.clear(); subscriptions.clear(); controlOutputs.clear(); disposeObservation() }
+    const cleanup = (): void => { clearTimeout(timer); if (hintTimer) clearTimeout(hintTimer); hints.clear(); subscriptions.clear(); controlOutputs.clear(); releaseNativeGuiGrant(nativeGui); nativeGui = undefined; disposeObservation() }
     const close = (): void => { if (closed) return; closed = true; cleanup(); try { peer.close() } catch { /* The transport failure callback retains ownership. */ } }
     const timer = setTimeout(close, DAEMON_LIMITS.handshakeMs)
     peer.onClose = () => { if (!closed) { closed = true; cleanup() } }
@@ -88,6 +90,7 @@ export async function startDaemonServer(context: DaemonContext, lease: DaemonLea
         if (auth.client.pid !== peer.clientPid || JSON.stringify(auth.identity) !== JSON.stringify(context.identity) || auth.client.userId !== context.identity.userId || !sameOwner(peer.owner, auth.client)) throw new DaemonError('E_DENIED', 'Native daemon identity does not match the kernel-bound pipe client.')
         if (!equalProof(auth.proof, authenticationProof(context.credential(), challenge, auth.client))) throw new DaemonError('E_DENIED', 'Native daemon authentication failed.')
         assertLease(context, lease)
+        if (auth.nativeGuiProof) nativeGui = authenticateNativeGuiGrant(context, lease.epoch, challenge, peer.owner, auth.nativeGuiProof)
         client = auth.client; clearTimeout(timer)
         peer.send({ type: 'authenticated', epoch: lease.epoch, proof: serverProof(context.credential(), auth.proof) })
       }
@@ -101,7 +104,7 @@ export async function startDaemonServer(context: DaemonContext, lease: DaemonLea
           // checks it before forwarding frames, and closes on that process exit.
           if (!peer.isAlive() || !sameOwner(peer.owner, client)) throw new DaemonError('E_DENIED', 'The original authenticated process lifetime ended.')
           if (!daemonPayloads[request.method].safeParse(request.payload).success) throw new DaemonError('E_INVALID_ARG', 'The method payload violates its bounded contract.')
-          const data = await dispatcher.dispatch(request, client)
+          const data = await dispatcher.dispatch(request, client, nativeGui)
           const parsed = daemonResults[request.method].safeParse(data)
           if (!parsed.success) throw new DaemonError('E_UNKNOWN', 'The daemon operation returned an invalid acknowledgement. Inspect its original retained command.', 'unknown')
           // A large control acknowledgement may use the existing bulk wire.

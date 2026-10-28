@@ -49,6 +49,7 @@ ZCode setup and startup changes also follow [Managed ZCode startup](./zcode-mana
 | [workflow-reading.md](./workflow-reading.md) | Fixed source/version registry, independent native views, exact origin and comparison | Workflow output/native document reading |
 | [workflow-application.md](./workflow-application.md) | Main-owned admission, source/execution fences, native session lineage and retained recovery protection | Workflow application/desktop API and quit |
 | [team-platform.md](./team-platform.md) | Separate team authority, explicit publication, protected device pairing, scoped cursors and offline command reconciliation | Team service, supplemental Web and desktop synchronization |
+| [team-task-execution.md](./team-task-execution.md) | Central task authority, fixed local execution bindings, bounded progress, Trellis projections and versioned rule context | Team task progress and native execution |
 | [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |
 
 ---

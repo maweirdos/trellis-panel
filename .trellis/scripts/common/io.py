@@ -11,7 +11,13 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import sys
 from pathlib import Path
+from typing import Callable
+
+from .task_authority import preserves_team_authority
+
+TEAM_SERVICE_OWNED_STATE_VERSION = 1
 
 
 JSON_READ_MISSING = "missing"
@@ -114,10 +120,26 @@ def write_json(path: Path, data: dict) -> bool:
 
     Returns True on success, False on error.
     """
-    return write_text_atomic(path, json.dumps(data, indent=2, ensure_ascii=False))
+    def authority_current() -> bool:
+        previous, _ = read_json_checked(path)
+        if previous is not None and not preserves_team_authority(previous, data):
+            print("Error: team task status, completion and binding metadata are service-owned; local write refused. Re-read the current task before retrying.", file=sys.stderr)
+            return False
+        return True
+
+    return write_text_atomic(
+        path,
+        json.dumps(data, indent=2, ensure_ascii=False),
+        before_replace=authority_current if path.name == "task.json" else None,
+    )
 
 
-def write_text_atomic(path: Path, text: str) -> bool:
+def write_text_atomic(
+    path: Path,
+    text: str,
+    *,
+    before_replace: Callable[[], bool] | None = None,
+) -> bool:
     """Write text to a file atomically (temp in same dir, then replace).
 
     The same never-truncate-in-place guarantee as :func:`write_json`, for the
@@ -143,6 +165,9 @@ def write_text_atomic(path: Path, text: str) -> bool:
             raise
         with f:
             f.write(text)
+        if before_replace is not None and not before_replace():
+            os.unlink(tmp)
+            return False
         os.replace(tmp, path)
         return True
     except OSError:

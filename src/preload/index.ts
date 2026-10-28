@@ -195,6 +195,19 @@ const api = {
     status: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.status, input),
     prepare: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.prepare, input)
   } satisfies HifoxWorkApi,
+  hifoxProgress: {
+    status: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.status, input),
+    start: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.start, input),
+    report: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.report, input),
+    retry: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.retry, input),
+    detach: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.detach, input),
+    conversation: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.conversation, input),
+    events: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.events, input),
+    send: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.send, input),
+    respond: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.respond, input),
+    cancel: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.cancel, input),
+    resume: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.resume, input)
+  } satisfies import('../shared/hifox-task-progress').HifoxProgressApi,
   creations: {
     list: (input) => ipcRenderer.invoke(ipcInvoke.creations.list, input),
     get: (input) => ipcRenderer.invoke(ipcInvoke.creations.get, input),

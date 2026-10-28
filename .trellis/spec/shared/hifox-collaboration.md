@@ -7,8 +7,10 @@ Apply this contract to `shared/hifox*`, `shared/hifox-domain/`,
 the team service/Web adapters. Local workspaces use a private JSON store; shared
 workspaces use the authenticated team's service and SQLite writer. Switching
 sources never uploads local records or reassigns an admitted command. Team
-document publication remains a separate service. Agent execution stops at a
-recorded Runtime wait.
+document publication remains a separate service. An automation's recorded Runtime
+wait is distinct from an explicitly started, identity-bound native execution.
+Task execution and progress follow
+[Team task execution](../backend/team-task-execution.md).
 
 Reference behavior: [tasks](https://help.hifox.com/docs/space/tasks),
 [squads](https://help.hifox.com/docs/agent-and-computer/crews),

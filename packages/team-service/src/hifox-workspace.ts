@@ -19,6 +19,7 @@ type Workspace = { revision: number; snapshot: HifoxSnapshot }
 export interface HifoxWorkspaceHost {
   identity(): { instanceId: string; epoch: string; authorizationRevision: number }
   transaction<T>(action: () => T): T
+  invalidateProgress(projectId: string, before: HifoxSnapshot, after: HifoxSnapshot): void
   get(sql: string, ...params: SQLInputValue[]): Row | undefined
   all(sql: string, ...params: SQLInputValue[]): Row[]
   run(sql: string, ...params: SQLInputValue[]): unknown
@@ -77,6 +78,7 @@ export class TeamHifoxWorkspace {
         if (JSON.stringify(ticked) === before) return
         if (Buffer.byteLength(JSON.stringify(ticked)) > MAX_SNAPSHOT_BYTES - 4096) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Scheduled workspace update exceeds its response bound', 413)
         if (workspace.revision >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace revision bound exceeded', 503)
+        this.host.invalidateProgress(projectId, workspace.snapshot, ticked)
         this.host.run('UPDATE hifox_workspaces SET revision=?,snapshotJson=?,updatedAt=? WHERE projectId=?', workspace.revision + 1, JSON.stringify(ticked), Date.now(), projectId)
         updated++
       })
@@ -224,6 +226,15 @@ export class TeamHifoxWorkspace {
     return this.view(principal, projectId, this.load(projectId))
   }
 
+  /** Authorization is checked on every wait tick; no snapshot parse, clone or roster projection. */
+  head(actor: StoreActor, raw: Record<string, unknown>): { instanceId: string; epoch: string; authorizationRevision: number; revision: number } {
+    const projectId = teamIdSchema.parse(raw.projectId)
+    const principal = this.host.authenticate(actor)
+    this.host.project(principal, projectId)
+    const row = this.host.get('SELECT revision FROM hifox_workspaces WHERE projectId=?', projectId)
+    return { ...this.host.identity(), revision: row ? integer(row, 'revision') : 0 }
+  }
+
   command(actor: StoreActor, raw: Record<string, unknown>): TeamCommandReply<HifoxRemoteSnapshot> {
     const projectId = teamIdSchema.parse(raw.projectId)
     const input = hifoxRemoteCommandSchema.parse(raw.body)
@@ -254,7 +265,10 @@ export class TeamHifoxWorkspace {
           for (const item of executed.snapshot.inbox) {
             this.host.run('INSERT INTO hifox_inbox_preferences(projectId,userId,inboxId,read,cleared,snoozedUntil) VALUES(?,?,?,?,?,?) ON CONFLICT(projectId,userId,inboxId) DO UPDATE SET read=excluded.read,cleared=excluded.cleared,snoozedUntil=excluded.snoozedUntil', projectId, principal.person.userId, item.id, item.read ? 1 : 0, item.cleared ? 1 : 0, item.snoozedUntil ?? null)
           }
-        } else workspace.snapshot = executed.snapshot
+        } else {
+          this.host.invalidateProgress(projectId, workspace.snapshot, executed.snapshot)
+          workspace.snapshot = executed.snapshot
+        }
         workspace.revision++
         const result = this.view(principal, projectId, workspace, executed.taskId)
         this.host.run('INSERT INTO hifox_workspaces(projectId,revision,snapshotJson,updatedAt) VALUES(?,?,?,?) ON CONFLICT(projectId) DO UPDATE SET revision=excluded.revision,snapshotJson=excluded.snapshotJson,updatedAt=excluded.updatedAt', projectId, workspace.revision, JSON.stringify(workspace.snapshot), Date.now())

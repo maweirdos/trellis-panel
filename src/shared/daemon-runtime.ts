@@ -6,6 +6,7 @@ import { workflowRevisionPreviewInputSchema, workflowRevisionAcceptInputSchema, 
 import { workflowWorkspaceRecoveryInputSchema, workflowRecoveryArtifactInputSchema } from './workflow-recovery'
 import { knowledgeRuntimeBody } from './daemon-runtime-knowledge'
 import { acpHandoffPreviewInputSchema, acpHandoffCreateInputSchema, acpHandoffCancelInputSchema } from './acp-handoff'
+import { taskProgressNativeSchema } from './hifox-task-progress-native'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
@@ -21,6 +22,7 @@ export type RuntimeCursor = z.infer<typeof runtimeCursorSchema>
 const session = z.object({ sessionId: id }).strict()
 /** Payloads are parsed after bounded wire/blob resolution, immediately before invoking the real facade. */
 export const runtimeBodies = {
+  'runtime.hifoxProgress': taskProgressNativeSchema,
   'runtime.knowledge': knowledgeRuntimeBody,
   'runtime.sessions': z.object({ limit: z.number().int().min(1).max(200).optional() }).strict(),
   'runtime.agents': z.object({ refresh: z.boolean().optional() }).strict(),

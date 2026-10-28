@@ -62,6 +62,7 @@ import { readActiveSession, readSessionView, readWorkspaceView, writeWorkspaceVi
 import type { AcpAgentProfile, AcpAgentStatus, AcpMaterialChange, AcpPermissionPayload, AcpSessionRecord, AcpSourceReference, AcpStartupObservation, AcpStateEvent, TimelineEvent } from '../../../shared/types'
 import type { AcpHandoffOperation } from '../../../shared/acp-handoff'
 import './workspace.css'
+import { TaskConversationWorkspace } from '../hifox/TaskConversationWorkspace'
 
 const STATUS_COLOR: Record<string, string> = {
   starting: 'text-my-tertiary', ready: 'text-my-tertiary', busy: 'text-my-info-text',
@@ -90,7 +91,12 @@ function HistoryBoundary({ hasEarlier, startsMidTurn, coverage, loading, onLoadE
   </div>
 }
 
-export function AcpConsolePage({ compact = false }: { compact?: boolean } = {}): JSX.Element {
+export function AcpConsolePage(props: { compact?: boolean } = {}): JSX.Element {
+  const target = useMy((state) => state.taskConversationTarget)
+  return target ? <TaskConversationWorkspace key={`${target.sourceKey}:${target.taskId}:${target.session.sessionId}`} target={target} /> : <ProjectConsoleWorkspace {...props} />
+}
+
+function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}): JSX.Element {
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
   const interactionSignal = useInteractionSignal()

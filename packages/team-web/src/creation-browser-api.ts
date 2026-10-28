@@ -50,8 +50,8 @@ export class BrowserCreationApi implements CreationApi {
     const context = this.options.context(), signature = this.signature(context)
     const current = (): boolean => this.live && this.options.isCurrent() && isClientSession(this.options.session)
       && this.signature(this.options.context()) === signature && this.options.context().state !== 'access-revoked'
-    if (!current() || context.key !== workspaceKey || context.projectId !== this.options.projectId || context.actorId !== this.options.session.person.userId) throw new ApiError('OWNER_CHANGED', '创作工作区的账号、项目或来源已改变')
-    if (!context.epoch || !context.instanceId) throw new ApiError('WORKSPACE_UNAVAILABLE', '请先连接当前项目工作区')
+    if (!current() || context.key !== workspaceKey || context.projectId !== this.options.projectId || context.actorId !== this.options.session.person.userId) throw new ApiError('OWNER_CHANGED', '创作工作区的账号、工作区或来源已改变')
+    if (!context.epoch || !context.instanceId) throw new ApiError('WORKSPACE_UNAVAILABLE', '请先连接当前工作区工作区')
     return { context: { ...context, epoch: context.epoch, instanceId: context.instanceId }, current }
   }
   private assertCurrent(owner: Owner): void { if (!owner.current()) throw new ApiError('OWNER_CHANGED', '创作来源已改变，未采用旧来源的结果') }
@@ -70,7 +70,7 @@ export class BrowserCreationApi implements CreationApi {
     const search = new URLSearchParams()
     for (const [key, value] of Object.entries(query)) if (value !== undefined) search.set(key, String(value))
     const value = await request(this.path() + `?${search}`, creationListSchema, { signal: this.lifetime.signal, notifyDenied: false, isCurrent: owner.current })
-    if (value.items.some((item) => item.projectId !== this.options.projectId || query.scope === 'personal' && (item.ownerId !== this.options.session.person.userId || item.home !== 'personal'))) throw new ApiError('INVALID_RESPONSE', '创作列表的项目或个人范围不匹配')
+    if (value.items.some((item) => item.projectId !== this.options.projectId || query.scope === 'personal' && (item.ownerId !== this.options.session.person.userId || item.home !== 'personal'))) throw new ApiError('INVALID_RESPONSE', '创作列表的工作区或个人范围不匹配')
     return value
   }
 
@@ -89,7 +89,7 @@ export class BrowserCreationApi implements CreationApi {
       const { workspaceKey, creationId, ...query } = creationClientGetSchema.parse(input), owner = this.owner(workspaceKey)
       const search = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
       const value = await request(this.path(`/${encodeURIComponent(creationId)}`) + `?${search}`, creationViewSchema, { signal: this.lifetime.signal, notifyDenied: false, isCurrent: owner.current })
-      if (value.summary.projectId !== this.options.projectId || value.summary.creationId !== creationId || query.revisionId && value.selected.revisionId !== query.revisionId) throw new ApiError('INVALID_RESPONSE', '创作正文的项目或版本身份不匹配')
+      if (value.summary.projectId !== this.options.projectId || value.summary.creationId !== creationId || query.revisionId && value.selected.revisionId !== query.revisionId) throw new ApiError('INVALID_RESPONSE', '创作正文的工作区或版本身份不匹配')
       await verifyDocument(value.selected.body, value.selected.bodyDigest, new TextEncoder().encode(value.selected.body).byteLength)
       await this.scopedHead(owner, this.lifetime.signal)
       this.assertCurrent(owner)
@@ -107,7 +107,7 @@ export class BrowserCreationApi implements CreationApi {
     if (!parsed.success || !scope) throw new ApiError('INVALID_RESPONSE', '创作回执结构或原来源引用不完整', 0, true)
     const value = parsed.data
     if (value.projectId !== this.options.projectId || scope.operation !== `creation:${value.creationId}:${value.action}` || value.epoch !== scope.epoch
-      || value.revision !== scope.expectedRevision + 1 || scope.epoch !== owner.context.epoch || scope.instanceId !== owner.context.instanceId) throw new ApiError('INVALID_RESPONSE', '创作回执的项目、原操作、来源代次或修订不匹配', 0, true)
+      || value.revision !== scope.expectedRevision + 1 || scope.epoch !== owner.context.epoch || scope.instanceId !== owner.context.instanceId) throw new ApiError('INVALID_RESPONSE', '创作回执的工作区、原操作、来源代次或修订不匹配', 0, true)
     return value
   }
   private validateEntry(entry: PendingCommand, owner: Owner): void {
@@ -232,7 +232,7 @@ export class BrowserCreationApi implements CreationApi {
     this.assertCurrent(owner)
     const value = await request(this.path('/head'), creationHeadSchema, { signal, notifyDenied: false, isCurrent: owner.current })
     this.assertCurrent(owner)
-    if (value.projectId !== this.options.projectId || value.epoch !== owner.context.epoch) throw new ApiError('EPOCH_CONFLICT', '创作元数据不属于当前项目或来源代次', 409)
+    if (value.projectId !== this.options.projectId || value.epoch !== owner.context.epoch) throw new ApiError('EPOCH_CONFLICT', '创作元数据不属于当前工作区或来源代次', 409)
     return value
   }
   private async readHead(owner: Owner, signal: AbortSignal): Promise<void> {

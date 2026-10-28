@@ -12,6 +12,7 @@ import type { NativeServer } from './transport'
 import type { IntegrationAdmissionPort } from '../services/integrations/work-ports'
 import { createDaemonApplication } from './application'
 import { captureDaemonBuild, publishDaemonBuild } from './build-identity'
+import { ensureNativeGuiGrant } from './native-gui-grant'
 
 // Capture before the first readiness/native await, never when a GUI attaches.
 const loadedBuild = captureDaemonBuild()
@@ -29,6 +30,7 @@ export async function runDaemonHost(ports: DaemonHostPorts = {}): Promise<void> 
   publishDaemonBuild(context, lease, loadedBuild)
   const assertOwner = (): void => assertLease(context, lease)
   await ensureDaemonCredential(context, assertOwner)
+  await ensureNativeGuiGrant(context, lease, assertOwner)
   const repository = new DaemonRepository(context.directory, lease.epoch, assertOwner, context.owner)
   const settings = new ProtectedSettingsOwner(context, assertOwner)
   const application = createDaemonApplication({ context, repository, settings, assertOwner })

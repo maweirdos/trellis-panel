@@ -3,7 +3,7 @@ import { TeamServiceError } from './errors'
 import type { StoreOperation, StoreOptions, StoreRequest, StoreResponse } from './store-types'
 
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; bytes: number; timer: ReturnType<typeof setTimeout>; expired: boolean; operation: StoreOperation }
-const readOnlyOperations = new Set<StoreOperation>(['health', 'authenticate', 'people', 'teams', 'teamMembers', 'projects', 'projectMembers', 'materials', 'versions', 'document', 'feedback', 'events', 'command', 'pairing', 'pairingStatus', 'devices', 'collaborationList', 'collaborationGet', 'collaborationHistory', 'collaborationReplies', 'collaborationReports', 'collaborationReanchor', 'invitations', 'inspectInvitation', 'identity', 'hifoxSnapshot', 'localCredential'])
+const readOnlyOperations = new Set<StoreOperation>(['health', 'authenticate', 'people', 'teams', 'teamMembers', 'projects', 'projectMembers', 'materials', 'versions', 'document', 'feedback', 'events', 'command', 'pairing', 'pairingStatus', 'devices', 'collaborationList', 'collaborationGet', 'collaborationHistory', 'collaborationReplies', 'collaborationReports', 'collaborationReanchor', 'invitations', 'inspectInvitation', 'identity', 'hifoxSnapshot', 'hifoxHead', 'taskProgressRead', 'taskProgressReceipt', 'localCredential'])
 export class TeamStore {
   private readonly worker: Worker
   private readonly pending = new Map<number, Pending>()

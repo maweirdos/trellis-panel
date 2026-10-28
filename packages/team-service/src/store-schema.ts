@@ -3,7 +3,8 @@ import { TEAM_INVITATIONS_SQL } from './invitations-schema'
 import { TEAM_HIFOX_WORKSPACE_SQL } from './hifox-workspace-schema'
 import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
 import { TEAM_CREATIONS_SQL } from './creations-schema'
-export const TEAM_SCHEMA_VERSION = 9
+import { TEAM_TASK_PROGRESS_SQL } from './task-progress-schema'
+export const TEAM_SCHEMA_VERSION = 11
 export const TEAM_DEVICES_SQL = `CREATE TABLE devices(deviceId TEXT PRIMARY KEY,pairingId TEXT UNIQUE NOT NULL,credentialHash TEXT UNIQUE NOT NULL,projectId TEXT REFERENCES projects(projectId),ownerId TEXT REFERENCES people(userId),deviceName TEXT NOT NULL,capabilityClaimsJson TEXT NOT NULL,status TEXT NOT NULL,userCode TEXT NOT NULL,expiresAt INTEGER NOT NULL,lastSeenAt INTEGER,sequence INTEGER NOT NULL DEFAULT -1,createdAt INTEGER NOT NULL);`
 export const TEAM_SCHEMA_SQL = `
 CREATE TABLE team_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -28,4 +29,5 @@ ${TEAM_INVITATIONS_SQL}
 ${TEAM_HIFOX_WORKSPACE_SQL}
 ${TEAM_LOCAL_AUTH_SQL}
 ${TEAM_CREATIONS_SQL}
+${TEAM_TASK_PROGRESS_SQL}
 `

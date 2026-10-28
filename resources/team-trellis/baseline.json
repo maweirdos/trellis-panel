@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "adapterVersion": 1,
+  "normalization": "utf8-crlf-to-lf",
+  "baselineCommit": "dbb7bf125e56e5aaeb4dc029a2eeebe1f17bcd47",
+  "files": [
+    {
+      "path": "task.py",
+      "compatibleSha256": [
+        "7c2aa32f74fd645ed29b6c53d197fb512ba9f2e219f73c85ff6c368498d447f9"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "common/io.py",
+      "compatibleSha256": [
+        "041f5f05d6af020a910995d027bcaa14cded1e465957e29aed0e457ca19da837"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "common/task_store.py",
+      "compatibleSha256": [
+        "ef33b6326afb146543538420d1e7b714becc7a21f6e74e562c19618c7eda4230"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "common/task_utils.py",
+      "compatibleSha256": [
+        "35f544317a95e98d05fe089794071482175739e8c1f3b3b0228dae48602ffe90"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "common/task_authority.py",
+      "compatibleSha256": [],
+      "allowMissing": true
+    },
+    {
+      "path": "hooks/linear_sync.py",
+      "compatibleSha256": [
+        "cfc270b7ff775caa5b2434823c45414a3b37f9ba2aa1e293a26daef9fd2e577a"
+      ],
+      "allowMissing": false
+    }
+  ],
+  "dependencies": [
+    {
+      "path": "common/__init__.py",
+      "compatibleSha256": [
+        "f258cd873681dc5a4d71db0dd71d10fd78656de55bec96418d6702503c16e87d"
+      ]
+    },
+    {
+      "path": "common/active_task.py",
+      "compatibleSha256": [
+        "63d5bc308ac4939fde8923775ced2a76125a4dbbd868b23b6c2857bfbace3bbf"
+      ]
+    },
+    {
+      "path": "common/config.py",
+      "compatibleSha256": [
+        "9a042d6f0e25a33a567510760e87c1e389af14a41faf1daeb1190a00f3df7f5e"
+      ]
+    },
+    {
+      "path": "common/git.py",
+      "compatibleSha256": [
+        "5605b71662e524b47632030d9db9245121a5cba85b5521eeb524ed464d840ff5"
+      ]
+    },
+    {
+      "path": "common/log.py",
+      "compatibleSha256": [
+        "471df6895cfac80f995edebbf9974f6b7440634b7a688f28b8331c868bc0f3cf"
+      ]
+    },
+    {
+      "path": "common/paths.py",
+      "compatibleSha256": [
+        "d8586d4d3f9bb2dd46b7f11b0f038b5340d283f41b6fa2c76bb8235c13bbb0b7"
+      ]
+    },
+    {
+      "path": "common/safe_commit.py",
+      "compatibleSha256": [
+        "262ad740552279fe6ec6a2a9865b2965ce2448577cf973a4d702dfe2f5f91f04"
+      ]
+    },
+    {
+      "path": "common/task_context.py",
+      "compatibleSha256": [
+        "9a2c9f81a2c57b0bb6bb15065a44970a33a18f55411a32dc6a7634b83ad46e56"
+      ]
+    },
+    {
+      "path": "common/tasks.py",
+      "compatibleSha256": [
+        "87aca6b73ec4524450cfff8e2ae561b1f2e53bd62a185f036a7a2d484d90c8a2"
+      ]
+    },
+    {
+      "path": "common/trellis_config.py",
+      "compatibleSha256": [
+        "f1fc705ec463b0b9c163672dc9e50f10d29da967775a1900429205f7c4fcb51c"
+      ]
+    },
+    {
+      "path": "common/types.py",
+      "compatibleSha256": [
+        "9962081cc2608fb9d1deb32c6880e336f62cdca6b338e7ae813304701e155ee9"
+      ]
+    }
+  ]
+}

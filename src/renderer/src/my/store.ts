@@ -9,12 +9,14 @@ import { getPageNavigation, projectRootKey, type WorkItemsView, type TeamView, t
 import { loadProjectPreferences, saveProjectPreferences, type SavedView } from './project-preferences'
 import { normalizeSidebarWidth, normalizeUiFontSize, UI_PREFERENCES_KEY, type UiFontSize } from './appearance'
 import type { GroupBy, Issue, IssueFilters, OrderBy, Priority, ThemeMode, WorkItemLayout } from './types'
+import type { TaskConversationTarget } from '../hifox/task-conversation'
 
 export type { SavedView } from './project-preferences'
 
 const STORAGE_KEY = UI_PREFERENCES_KEY
 
 interface PersistedPrefs {
+  shellView: 'collaboration' | 'development'
   fontSize: UiFontSize
   layout: WorkItemLayout
   groupBy: GroupBy
@@ -34,7 +36,7 @@ function loadPrefs(): Partial<PersistedPrefs> {
   }
 }
 
-function savePrefs(prefs: PersistedPrefs): void {
+function savePrefs(prefs: Partial<PersistedPrefs>): void {
   try {
     // Retain legacy embedded fields without assigning them to any project.
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadPrefs(), ...prefs }))
@@ -48,6 +50,10 @@ const initialProjectRoot = projectRootKey(useApp.getState().snapshot?.meta.root)
 const projectPrefs = loadProjectPreferences(initialProjectRoot)
 
 export interface MyStore {
+  taskConversationTarget: TaskConversationTarget | null
+  setTaskConversationTarget: (target: TaskConversationTarget | null) => void
+  shellView: PersistedPrefs['shellView']
+  setShellView: (view: PersistedPrefs['shellView']) => void
   /** 视图模型镜像；快照更新时 syncFromSnapshot() 重建 */
   data: ReturnType<typeof deriveDataset>
   /** Normalized real snapshot root; null is an unbound browser preview. */
@@ -126,6 +132,13 @@ function currentDataset(): ReturnType<typeof deriveDataset> {
 }
 
 export const useMy = create<MyStore>()((set, get) => ({
+  taskConversationTarget: null,
+  setTaskConversationTarget: (taskConversationTarget) => set({ taskConversationTarget }),
+  shellView: prefs.shellView === 'development' ? 'development' : 'collaboration',
+  setShellView: (shellView) => {
+    set({ shellView })
+    savePrefs({ shellView })
+  },
   data: currentDataset(),
   projectRoot: initialProjectRoot,
   canOpenLocalProject: Boolean(api),
@@ -144,6 +157,7 @@ export const useMy = create<MyStore>()((set, get) => ({
         teamView: 'overview' as const,
         toolView: 'git' as const,
         agentSessionTarget: null,
+        taskConversationTarget: null,
         agentTarget: null,
         knowledgeView: 'materials' as const,
         settingsView: 'preferences' as const,
@@ -181,7 +195,7 @@ export const useMy = create<MyStore>()((set, get) => ({
   },
   syncFontSizeFromStorage: () => {
     const stored = loadPrefs()
-    set({ fontSize: normalizeUiFontSize(stored.fontSize), sidebarWidth: normalizeSidebarWidth(stored.sidebarWidth), sidebarCollapsed: stored.sidebarCollapsed === true })
+    set({ fontSize: normalizeUiFontSize(stored.fontSize), sidebarWidth: normalizeSidebarWidth(stored.sidebarWidth), sidebarCollapsed: stored.sidebarCollapsed === true, shellView: stored.shellView === 'development' ? 'development' : 'collaboration' })
   },
 
   layout: prefs.layout ?? 'list',

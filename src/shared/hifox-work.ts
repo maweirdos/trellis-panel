@@ -1,5 +1,15 @@
 import { z } from 'zod'
 import type { IpcFail } from './ipc-errors'
+import { hifoxTaskWorkKindSchema, hifoxTaskWorkflowArtifactSchema } from './hifox-schema'
+import { creationMaterialReferenceSchema } from './creation-materials'
+
+const sourceArtifact = hifoxTaskWorkflowArtifactSchema.pick({ id: true, kind: true, body: true, actorId: true, at: true }).extend({ kind: z.enum(['requirements', 'design', 'acceptance']) }).strict()
+export const hifoxWorkMaterialSchema = z.object({
+  title: z.string().min(1).max(500), description: z.string().default(''), workKind: hifoxTaskWorkKindSchema.default('code'),
+  acceptanceCriteria: z.array(z.string()).default([]), artifacts: z.array(sourceArtifact).default([]),
+  creationReferences: z.array(creationMaterialReferenceSchema).max(20).optional()
+}).strict()
+export type HifoxWorkMaterial = z.infer<typeof hifoxWorkMaterialSchema>
 
 const id = z.string().min(1).max(256)
 export const hifoxWorkQuerySchema = z.object({ workspaceKey: id, taskId: id }).strict()

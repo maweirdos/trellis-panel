@@ -6,7 +6,7 @@ import { handle } from './registry'
 export type HifoxWorkIpcDependencies = Pick<HifoxTaskWorkspaceDependencies, 'getProjectRoot' | 'getProjectGeneration' | 'creationReferences' | 'creationFiles'>
 
 /** Register only in the native host. Supplemental browser hosting has no local-work bridge. */
-export function registerHifoxWorkIpc(deps: HifoxWorkIpcDependencies): void {
+export function registerHifoxWorkIpc(deps: HifoxWorkIpcDependencies): HifoxTaskWorkspaceService {
   const service = new HifoxTaskWorkspaceService({
     ...deps, dataDir: app.getPath('userData'),
     chooseProjectRoot: async () => {
@@ -16,4 +16,5 @@ export function registerHifoxWorkIpc(deps: HifoxWorkIpcDependencies): void {
   })
   handle(ipcInvoke.hifoxWork.status, (_event, input: unknown) => service.status(input))
   handle(ipcInvoke.hifoxWork.prepare, (_event, input: unknown) => service.prepare(input))
+  return service
 }

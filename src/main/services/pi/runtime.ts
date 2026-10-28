@@ -13,6 +13,9 @@ import { acpProcessEnv, acpSpawnEnv, sessionAcpLaunchOptions } from '../../../sh
 import { readAcpStoredImages } from '../../../shared/acp-images'
 import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
 import { inspectPiWebPreviewEntry } from './engine/web-preview-entry'
+import { prepareAgentRules, assertAgentRulesCurrent } from '../agent-rules'
+import { taskRule } from '../hifox/task-progress-context'
+import { reportTaskProgress } from '../hifox/task-progress-events'
 
 interface PiRuntimeOptions {
   meta: AcpSessionRecord
@@ -124,6 +127,13 @@ export class PiConversationRuntime implements ConversationRuntime {
       clearTimeout(pending.timer); this.pending.delete(message.id)
       if (message.ok === true) pending.accept(message.result)
       else pending.reject(this.error(typeof message.error === 'string' ? message.error : 'Pi 请求失败'))
+    } else if (message.type === 'task_progress' && typeof message.id === 'string') {
+      const id = message.id
+      const owner = this.running
+      const valid = Boolean(owner && !owner.abort.signal.aborted && !this.closing && this.options.meta.taskProgress)
+      const summary: unknown = JSON.parse(JSON.stringify(message.summary, (_key, item: unknown) => typeof item === 'string' ? this.safe(item) : item))
+      const report = valid ? reportTaskProgress(this.options.meta, summary) : Promise.reject(new Error('The original task turn is no longer active'))
+      void report.then(() => this.write({ type: 'task_progress_response', id, ok: true }), () => this.write({ type: 'task_progress_response', id, ok: false })).catch(() => {})
     } else if (message.type === 'permission' && typeof message.id === 'string') {
       const id = message.id
       void this.permission(message.request).then(allow => this.write({ type: 'permission_response', id, allow }), error => this.write({ type: 'permission_response', id, allow: false, reason: this.error(error).message })).catch(() => {})
@@ -245,11 +255,16 @@ export class PiConversationRuntime implements ConversationRuntime {
       const local = relative(sessionDir, resolve(sessionFile))
       if (!local || local.startsWith('..') || isAbsolute(local) || !existsSync(sessionFile)) throw new Error('原 Pi 会话文件缺失或超出所属目录，历史已保留')
     }
+    if (meta.agentRulesManifest) await assertAgentRulesCurrent(meta.projectRoot, meta.agentRulesManifest)
+    const rules = await prepareAgentRules({ projectRoot: meta.projectRoot, taskDir: meta.taskDir, additionalRules: meta.taskProgress ? [taskRule(meta.taskProgress)] : undefined })
+    if (meta.agentRulesManifest && rules.manifest.digest !== meta.agentRulesManifest.digest) throw new Error('项目规范版本已变化，请显式采用后重新连接')
+    meta.agentRulesManifest = rules.manifest
     const initialized = await this.call('initialize', piInitializeSchema.parse({ root: pathRoot, cwd: pathCwd,
       sessionDir, sessionFile, agentDir: join(this.options.dataDirectory, 'pi', 'agent'), models: this.configured.models,
       proxy: this.configured.proxy,
       modelId, recoveryModelId: restoring ? this.options.initialModelId : undefined, thinkingLevel: meta.configOptions?.find(option => option.id === 'thinking')?.currentValue ?? 'off',
-      skillPaths: meta.profileSnapshot?.skillPaths?.map(path => join(meta.projectRoot, path)) ?? [], instructions: meta.profileSnapshot?.instructions ?? '',
+      skillPaths: meta.profileSnapshot?.skillPaths?.map(path => join(meta.projectRoot, path)) ?? [], instructions: [meta.profileSnapshot?.instructions ?? '', rules.instructions].filter(Boolean).join('\n\n'),
+      taskProgress: Boolean(meta.taskProgress),
       mcpServers: [...this.options.mcpServers(), ...this.projectMcp.servers] }), 60_000)
     this.state = piStateSchema.parse(initialized)
     if (meta.backendSessionId && this.state.sessionId !== meta.backendSessionId) throw new Error('原 Pi 会话身份不匹配')
@@ -341,7 +356,7 @@ export class PiConversationRuntime implements ConversationRuntime {
     const request = piPermissionSchema.parse(value), run = this.running
     if (!run || run.abort.signal.aborted || this.closing) return false
     run.input.assertActive?.()
-    const read = ['preview_web', 'read', 'grep', 'find', 'ls', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(request.name)
+    const read = (request.name === 'report_progress' && Boolean(this.options.meta.taskProgress)) || ['preview_web', 'read', 'grep', 'find', 'ls', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(request.name)
       || ['knowledge_search', 'knowledge_read', 'knowledge_context', 'knowledge_document_read', 'knowledge_task_read'].some(name => request.name === `mcp__trellis_knowledge__${name}`)
     const pathTool = ['preview_web', 'read', 'write', 'edit', 'grep', 'find', 'ls'].includes(request.name)
     const assertPath = (): string[] => {

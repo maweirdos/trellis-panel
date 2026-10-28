@@ -40,6 +40,12 @@ export type DesktopAuthoredPublicationInput = z.infer<typeof desktopAuthoredPubl
 export type DesktopMaterialPublicationInput = z.infer<typeof desktopPublicationBaseSchema>
 export type DesktopFeedbackInput = z.infer<typeof desktopFeedbackInputSchema>
 export type DesktopPairingInput = z.infer<typeof desktopPairingInputSchema>
+/** Native service transport only. Do not project these identity-bearing methods into preload. */
+export interface DesktopTeamProgressTransport {
+  hifoxTaskProgress(connectionId: string, taskId: string, expectedInstanceId?: string): Promise<import('./team-task-progress').TeamTaskProgressDto>
+  hifoxTaskProgressCommand(connectionId: string, taskId: string, command: import('./team-task-progress').TeamTaskProgressCommand, expectedInstanceId: string): Promise<import('./team-task-progress').TeamTaskProgressCommandReply>
+  hifoxTaskProgressReceipt(connectionId: string, taskId: string, commandId: string): Promise<import('./team-task-progress').TeamTaskProgressReceipt | null>
+}
 export interface DesktopTeamApi {
   connections(): Promise<DesktopTeamConnection[]>
   connectionContext(connectionId: string): Promise<DesktopTeamConnectionContext>

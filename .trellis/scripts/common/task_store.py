@@ -44,6 +44,7 @@ from .git import (
 )
 from .io import describe_json_read_failure, read_json_checked, write_json
 from .log import Colors, colored
+from .task_authority import is_team_managed, is_reserved_task_meta, refuse_team_archive
 from .paths import (
     DEVELOPER_HINT,
     DIR_ARCHIVE,
@@ -73,6 +74,9 @@ from .task_utils import (
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+TEAM_PROTECTED_METADATA_VERSION = 1
+TEAM_REJECT_LOCAL_ARCHIVE_VERSION = 1
 
 # Characters stripped before deciding whether a title / description is empty.
 # This is deliberately the *union* of Python's str.strip() default set and
@@ -483,6 +487,14 @@ def cmd_create(args: argparse.Namespace) -> int:
                 "Use a different --slug, or pass --force to overwrite its task.json.",
                 file=sys.stderr,
             )
+            return 1
+        existing, existing_reason = read_json_checked(task_json_path)
+        if existing is None:
+            _report_read_failure(task_json_path, existing_reason)
+            print("Cannot verify task authority; --force did not overwrite the task.", file=sys.stderr)
+            return 1
+        if is_team_managed(existing):
+            print("Error: --force cannot overwrite a team-managed task; open the original task in Team > Tasks (团队任务页).", file=sys.stderr)
             return 1
         print(
             colored(
@@ -1313,6 +1325,9 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
     dir_name = task_dir.name
     task_json_path = task_dir / FILE_TASK_JSON
+    if not task_json_path.is_file():
+        print("Error: task.json is missing; cannot verify task authority. Nothing was archived.", file=sys.stderr)
+        return 1
 
     # Update status before archiving
     today = datetime.now().strftime("%Y-%m-%d")
@@ -1322,18 +1337,12 @@ def cmd_archive(args: argparse.Namespace) -> int:
     if task_json_path.is_file():
         data, read_reason = read_json_checked(task_json_path)
         if data is None:
-            # Archiving is still the right outcome for a task whose task.json
-            # is broken — but say so, or the missing "completed" status looks
-            # like the archive silently did half its job.
-            problem, _ = describe_json_read_failure(task_json_path, read_reason)
-            print(
-                colored(
-                    f"Warning: {problem}; archiving without updating status/children.",
-                    Colors.YELLOW,
-                ),
-                file=sys.stderr,
-            )
+            _report_read_failure(task_json_path, read_reason)
+            print("Cannot verify task authority; no status, links or session pointers were changed.", file=sys.stderr)
+            return 1
         else:
+            if refuse_team_archive(data):
+                return 1
             # Before any mutation: branch metadata is unrecoverable once the
             # task leaves the active tree. Stale branches only warn.
             if not _validate_branch_metadata(
@@ -1920,6 +1929,16 @@ def cmd_set_meta(args: argparse.Namespace) -> int:
     meta = data.get("meta")
     if not isinstance(meta, dict):
         meta = {}
+    if is_reserved_task_meta(key):
+        # Legacy preparation initializes provenance one key at a time. Preserve
+        # that path until team adoption, without permitting identity replacement.
+        locked = is_team_managed(data) or key == "panel_task_authority" or key.startswith("panel_team_")
+        if locked or (key in meta and meta[key] != value):
+            print(colored(f"Error: metadata key '{key}' is reserved; set-meta cannot replace task authority or original binding identity.", Colors.RED), file=sys.stderr)
+            return 1
+        if key in meta:
+            print(colored(f"✓ Meta unchanged: {key}", Colors.GREEN))
+            return 0
     meta[key] = value
     data["meta"] = meta
     if not write_json(task_json, data):

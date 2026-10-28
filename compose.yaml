@@ -1,0 +1,49 @@
+name: trellis-team
+
+services:
+  team:
+    image: ${TEAM_IMAGE:-trellis-team:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${TEAM_NODE_IMAGE:-node:24-bookworm-slim}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      TEAM_HOST: 0.0.0.0
+      TEAM_PORT: "5441"
+      TEAM_DATA_DIR: /var/lib/trellis-team/${TEAM_DATA_SUBDIR:-data}
+      TEAM_WEB_DIR: /app/web
+      TEAM_PUBLIC_ORIGIN: ${TEAM_PUBLIC_ORIGIN:-http://127.0.0.1:5441}
+      TEAM_DEPLOYMENT_MODE: ${TEAM_DEPLOYMENT_MODE:-local}
+      TEAM_ALLOW_SELF_REGISTRATION: ${TEAM_ALLOW_SELF_REGISTRATION:?Set TEAM_ALLOW_SELF_REGISTRATION to 0 or 1}
+      TEAM_ALLOWED_INTRANET_HTTP_ORIGINS: ${TEAM_ALLOWED_INTRANET_HTTP_ORIGINS:-}
+      TEAM_OIDC_ISSUER: ${TEAM_OIDC_ISSUER:-}
+      TEAM_OIDC_CLIENT_ID: ${TEAM_OIDC_CLIENT_ID:-}
+      TEAM_OIDC_CLIENT_SECRET: ${TEAM_OIDC_CLIENT_SECRET:-}
+      TEAM_BOOTSTRAP_SUBJECT: ${TEAM_BOOTSTRAP_SUBJECT:-}
+      TEAM_GITLAB_BASE_URL: ${TEAM_GITLAB_BASE_URL:-}
+      TEAM_GITLAB_NATIVE_CLIENT_ID: ${TEAM_GITLAB_NATIVE_CLIENT_ID:-}
+      TEAM_GITLAB_INTEGRATION_BASE_URL: ${TEAM_GITLAB_INTEGRATION_BASE_URL:-}
+    ports:
+      - "${TEAM_PUBLISH_HOST:-127.0.0.1}:${TEAM_PUBLISH_PORT:-5441}:5441"
+    volumes:
+      - team-data:/var/lib/trellis-team
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  team-data:
+    name: ${TEAM_VOLUME_NAME:-trellis-team-data}

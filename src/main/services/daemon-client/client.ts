@@ -1,12 +1,13 @@
 import { createConnection, type Socket } from 'node:net'
 import { randomUUID } from 'node:crypto'
-import { authenticatedSchema, challengeSchema, daemonNotificationSchema, daemonResponseSchema, daemonResults, DAEMON_LIMITS, MUTATING_DAEMON_METHODS, type DaemonData, type DaemonMethod, type DaemonNotification, type DaemonPayload, type DaemonResult, type WorkspaceGrant } from '../../../shared/daemon'
+import { authenticatedSchema, challengeSchema, daemonNotificationSchema, daemonResponseSchema, daemonResults, DAEMON_LIMITS, MUTATING_DAEMON_METHODS, type DaemonData, type DaemonMethod, type DaemonNotification, type DaemonPayload, type DaemonResult, type WorkspaceGrant, type ProcessOwner } from '../../../shared/daemon'
 import type { DaemonContext } from '../../daemon/context'
 import { readLease, verifiedLease, type DaemonLease } from '../../daemon/lease'
 import { sameOwner } from '../../daemon/native'
 import { authenticationProof, equalProof, serverProof } from '../../daemon/auth'
 import { FrameDecoder, encodeFrame } from '../../daemon/framing'
 import { DaemonError, daemonFailure } from '../../daemon/errors'
+import { loadNativeGuiGrant } from '../../daemon/native-gui-grant'
 
 export interface DaemonRequestOptions { workspace?: WorkspaceGrant; commandId?: string; timeoutMs?: number }
 type Pending = { method: DaemonMethod; bytes: number; commandId?: string; timer: ReturnType<typeof setTimeout>; complete: (value: DaemonResult<unknown>) => void }
@@ -35,7 +36,13 @@ export class DaemonClient {
     try { listener() }
     catch { process.emitWarning('Native daemon observer failed.', { code: 'TRELLIS_DAEMON_OBSERVER' }) }
   }
-  static async connect(context: DaemonContext): Promise<DaemonClient> {
+  static connect(context: DaemonContext): Promise<DaemonClient> { return this.connectWithAuthority(context) }
+  /** Fixed native GUI composition only; the read-only loader refuses ordinary Node/CLI callers. */
+  static async connectNativeGui(context: DaemonContext): Promise<DaemonClient> {
+    await context.protection.refresh()
+    return this.connectWithAuthority(context, await loadNativeGuiGrant(context))
+  }
+  private static async connectWithAuthority(context: DaemonContext, nativeGui?: (challenge: unknown, client: ProcessOwner) => string): Promise<DaemonClient> {
     const lease = await verifiedLease(context)
     if (!lease) throw new DaemonError('E_UNAVAILABLE', 'No verified daemon is running for this user/profile. Start it explicitly.')
     await context.protection.refresh()
@@ -56,7 +63,7 @@ export class DaemonClient {
               const challenge = challengeSchema.parse(raw)
               if (challenge.epoch !== lease.epoch || !sameOwner(challenge.owner, lease.owner) || JSON.stringify(challenge.identity) !== JSON.stringify(context.identity)) throw new DaemonError('E_CONFLICT', 'Daemon identity or epoch changed during authentication.')
               proof = authenticationProof(secret, challenge, context.owner)
-              socket.write(encodeFrame({ type: 'authenticate', identity: context.identity, client: context.owner, proof }))
+              socket.write(encodeFrame({ type: 'authenticate', identity: context.identity, client: context.owner, proof, ...(nativeGui ? { nativeGuiProof: nativeGui(challenge, context.owner) } : {}) }))
             } else {
               const auth = authenticatedSchema.parse(raw)
               if (auth.epoch !== lease.epoch || !equalProof(auth.proof, serverProof(secret, proof))) throw new DaemonError('E_DENIED', 'The daemon could not prove its native profile credential.')

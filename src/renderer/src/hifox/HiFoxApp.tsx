@@ -34,7 +34,7 @@ export function useCollaborationWorkspace(): number {
   const bootstrap = useHifox((state) => state.bootstrap)
   const [now, setNow] = useState(Date.now)
   useEffect(() => { void bootstrap() }, [bootstrap])
-  useEffect(() => api.hifox?.onWorkspaceChanged?.((context) => {
+  useEffect(() => api?.hifox?.onWorkspaceChanged?.((context) => {
     const previous = useHifox.getState().workspaceContext
     const changed = context.key !== previous.key || context.actorId !== previous.actorId || context.instanceId !== previous.instanceId || context.epoch !== previous.epoch
     if (changed || context.state === 'access-revoked') useHifox.setState({ ...(context.state === 'access-revoked' ? { workspaceContext: context } : {}), snapshot: null,

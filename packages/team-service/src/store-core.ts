@@ -25,6 +25,8 @@ import { TeamCreations } from './creations'
 import { TEAM_CREATIONS_SQL } from './creations-schema'
 import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
 import { TEAM_LOCAL_ISSUER, teamLocalUsernameSchema } from '../../../src/shared/team-auth'
+import { TeamTaskProgress } from './task-progress'
+import { TEAM_TASK_PROGRESS_SQL, TEAM_TASK_PROGRESS_IDENTITIES_SQL } from './task-progress-schema'
 
 type Row = Record<string, SQLOutputValue>
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
@@ -55,6 +57,12 @@ export class TeamStoreCore {
   private readonly lockId = randomUUID()
   private readonly lockPath: string
   private isClosed = false
+  private readonly taskProgress = new TeamTaskProgress({
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    transaction: (fn) => this.transaction(fn)
+  })
   private readonly creations = new TeamCreations({
     identity: () => ({ epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
@@ -65,7 +73,8 @@ export class TeamStoreCore {
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
-    mutation: (...args) => this.mutation(...args), transaction: (fn) => this.transaction(fn)
+    mutation: (...args) => this.mutation(...args), transaction: (fn) => this.transaction(fn),
+    invalidateProgress: (...args) => this.taskProgress.reconcileWorkspace(...args)
   })
   private readonly invitations = new TeamInvitations({
     issuer: () => this.options.issuer,
@@ -128,6 +137,12 @@ export class TeamStoreCore {
       if (current >= 1 && current <= 6) this.transaction(() => { this.db.exec(TEAM_LOCAL_AUTH_SQL); this.db.exec('PRAGMA user_version=7') })
       if (current >= 1 && current <= 7) this.transaction(() => { this.db.exec(TEAM_HIFOX_WORKSPACE_TRIGGERS_SQL); this.db.exec('PRAGMA user_version=8') })
       if (current >= 1 && current <= 8) this.transaction(() => { this.db.exec(TEAM_CREATIONS_SQL); this.db.exec('PRAGMA user_version=9') })
+      if (current >= 1 && current <= 9) this.transaction(() => { this.db.exec(TEAM_TASK_PROGRESS_SQL); this.db.exec('PRAGMA user_version=10') })
+      if (current >= 1 && current <= 10) this.transaction(() => {
+        this.db.exec(TEAM_TASK_PROGRESS_IDENTITIES_SQL)
+        this.db.exec('INSERT OR IGNORE INTO hifox_task_progress_commands(projectId,taskId,commandId,userId,ownerKey,requestHash) SELECT projectId,taskId,commandId,userId,ownerKey,requestHash FROM hifox_task_progress_receipts')
+        this.db.exec('PRAGMA user_version=11')
+      })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
@@ -452,7 +467,11 @@ export class TeamStoreCore {
   private domain(operation: StoreOperation, actor: StoreActor, raw: Record<string, unknown>): unknown {
     const principal = this.authenticate(actor)
     if (operation === 'hifoxSnapshot') return this.hifox.read(principal, raw)
+    if (operation === 'hifoxHead') return this.hifox.head(actor, raw)
     if (operation === 'hifoxCommand') return this.hifox.command(actor, raw)
+    if (operation === 'taskProgressRead') return this.taskProgress.read(actor, raw)
+    if (operation === 'taskProgressCommand') return this.taskProgress.command(actor, raw)
+    if (operation === 'taskProgressReceipt') return this.taskProgress.receipt(actor, raw)
     if (operation === 'creationList') return this.creations.list(principal, raw)
     if (operation === 'creationHead') return this.creations.head(principal, raw)
     if (operation === 'creationView') return this.creations.get(principal, raw)

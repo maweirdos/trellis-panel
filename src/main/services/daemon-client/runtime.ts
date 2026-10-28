@@ -8,7 +8,7 @@ import { DaemonError } from '../../daemon/errors'
 import { requireCurrentDaemonBuild } from '../../daemon/build-identity'
 import { readLease } from '../../daemon/lease'
 import { DaemonClient } from './client'
-import { DAEMON_OBSERVATION, daemonConnectionPool, disposeDaemonPools, observePooledWorkspace } from './pool'
+import { DAEMON_OBSERVATION, daemonConnectionPool, nativeGuiDaemonConnectionPool, disposeDaemonPools, observePooledWorkspace } from './pool'
 import { broadcastToWindows } from '../bridge'
 import { ipcEvent } from '../../../shared/ipc-channels'
 import { canonicalDirectory } from '../acp/metadata'
@@ -88,8 +88,8 @@ async function scope(client: DaemonClient, root: string, isCurrent?: () => boole
     return grant
   } finally { if (cache.granting.get(pendingKey) === pending) cache.granting.delete(pendingKey) }
 }
-async function connect(dedicated = false): Promise<DaemonClient> {
-  const context = await daemonClientContext(), pool = daemonConnectionPool(context)
+async function connect(dedicated = false, nativeGui = false): Promise<DaemonClient> {
+  const context = await daemonClientContext(), pool = nativeGui ? nativeGuiDaemonConnectionPool(context) : daemonConnectionPool(context)
   const client = dedicated ? await DaemonClient.connect(context) : await pool.get()
   try {
     // Only the private, literal cleanup allowlist selects a dedicated lane.
@@ -186,7 +186,7 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
   let abort: (() => void) | undefined
   try {
     if (admissionClosed && !cleanup) throw new DaemonError('E_UNAVAILABLE', '桌面正在退出，尚未接纳新操作。')
-    client = await connect(dedicated)
+    client = await connect(dedicated, method === 'runtime.hifoxProgress')
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未授权后台工作区。')
     workspace = await scope(client, root, isCurrent, !dedicated)
     const input = await upload(client, workspace, body, dedicated)

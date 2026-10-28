@@ -53,7 +53,7 @@ export interface TaskDraft extends DraftScope {
 
 /** Bounded volatile drafts: never serialized, and never revived under another authority. */
 export function useTaskDraft(snapshot: HifoxSnapshot, context: HifoxWorkspaceContext, scope: {
-  kind: 'create' | 'details' | 'workflow'
+  kind: 'create' | 'details' | 'workflow' | 'progress' | 'conversation'
   spaceId: string
   task?: Pick<HifoxTask, 'id' | 'createdAt'>
   creationContext?: readonly unknown[]

@@ -82,6 +82,8 @@
   min-height: var(--my-shell-chrome-size);
   padding: var(--my-space-6) var(--my-space-12);
 }
+.team-topbar > .team-view-control { flex: none; height: auto; background: transparent; }
+.team-development-notice { flex: none; padding: var(--my-space-8) var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
 .team-project-control { flex: 0 1 var(--my-space-256); min-width: 0; }
 .team-project-control > label { display: block; margin: 0; }
 .team-project-control select {

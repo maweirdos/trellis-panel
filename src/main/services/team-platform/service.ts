@@ -11,6 +11,9 @@ import { verifyTeamDocument } from './codec'
 import { canonicalTeamOrigin, TeamHttp, verificationUrl, type TeamFetch } from './http'
 import { DesktopTeamError, publicConnection, publicOutbox, type CachedDocument, type ConnectionRecord, type OutboxRecord, type TrustedTeamMaterial } from './types'
 import { creationListInputSchema, creationListSchema, creationViewInputSchema, creationViewSchema, creationHeadSchema, creationCommandSchema, creationCommandReplySchema, creationCommandResultSchema, type CreationCommand, type CreationView, type CreationCommandReply, type CreationHead } from '../../../shared/creations'
+import { teamTaskProgressResourceIdSchema, teamTaskProgressCommandSchema, teamTaskProgressCommandReplySchema, teamTaskProgressDtoSchema, teamTaskProgressReceiptSchema, type TeamTaskProgressCommand, type TeamTaskProgressDto, type TeamTaskProgressCommandReply, type TeamTaskProgressReceipt } from '../../../shared/team-task-progress'
+import { writeTaskProgressCredential, NativeTaskProgressSender } from '../hifox/task-progress-sender'
+import type { TaskProgressPin } from '../../../shared/hifox-task-progress-native'
 
 const hash = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 const lockedCodes = new Set(['UNAUTHENTICATED', 'UNAUTHORIZED', 'FORBIDDEN', 'DEVICE_REVOKED', 'ACCOUNT_DISABLED', 'AUTHENTICATION_REQUIRED', 'CREDENTIAL_UNAVAILABLE', 'BINDING_CHANGED'])
@@ -22,6 +25,16 @@ export type DesktopTeamOptions = {
   openExternal?: (url: string) => Promise<void>; fetch?: TeamFetch
 }
 export class DesktopTeamService implements DesktopTeamApi {
+  /** Native daemon factory, no SQLite acquisition and no renderer access. */
+  static taskProgressSender(dataDir: string, pin: TaskProgressPin): NativeTaskProgressSender { return new NativeTaskProgressSender(dataDir, pin) }
+  async authorizeTaskProgress(connectionId: string): Promise<void> {
+    return this.tracked(async () => {
+      const c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      await this.creationOwner(c)
+      writeTaskProgressCredential(this.options.dataDir, c, this.token(c), this.protection, this.reveal)
+    })
+  }
   private readonly http: TeamHttp
   private readonly protection: (value: string) => string
   private readonly reveal: (value: string) => string
@@ -139,6 +152,40 @@ export class DesktopTeamService implements DesktopTeamApi {
         return this.verifyHifoxSnapshot(c, receipt.result, true, expectedInstanceId)
       } catch (error) { if (error instanceof DesktopTeamError && error.code === 'NOT_FOUND') return null; throw error }
     })
+  }
+  /** Protected native transport. Credentials and HTTP destinations never cross preload. */
+  async hifoxTaskProgress(connectionId: string, taskId: string, expectedInstanceId?: string): Promise<TeamTaskProgressDto> {
+    return this.tracked(async () => {
+      const id = teamTaskProgressResourceIdSchema.parse(taskId), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const value = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(id)}/progress`, teamTaskProgressDtoSchema)
+      await this.verifyTaskProgress(c, id, value, false, expectedInstanceId)
+      return value
+    })
+  }
+  async hifoxTaskProgressCommand(connectionId: string, taskId: string, raw: TeamTaskProgressCommand, expectedInstanceId: string): Promise<TeamTaskProgressCommandReply> {
+    return this.tracked(async () => {
+      const id = teamTaskProgressResourceIdSchema.parse(taskId), command = teamTaskProgressCommandSchema.parse(raw), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const reply = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(id)}/progress/commands`, teamTaskProgressCommandReplySchema, command)
+      if (reply.commandId !== command.commandId || reply.result.epoch !== command.expectedEpoch) throw new DesktopTeamError('RECEIPT_MISMATCH', '进度回执与原命令或服务世代不一致', true)
+      await this.verifyTaskProgress(c, id, reply.result, true, expectedInstanceId)
+      return reply
+    })
+  }
+  async hifoxTaskProgressReceipt(connectionId: string, taskId: string, commandId: string): Promise<TeamTaskProgressReceipt | null> {
+    return this.tracked(async () => {
+      const id = teamTaskProgressResourceIdSchema.parse(taskId), command = teamCommandIdSchema.parse(commandId), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const reply = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(id)}/progress/commands/${command}`, teamTaskProgressReceiptSchema.nullable())
+      await this.creationOwner(c)
+      if (reply && reply.commandId !== command) throw new DesktopTeamError('RECEIPT_MISMATCH', '进度回执不属于原命令', true)
+      return reply
+    })
+  }
+  private async verifyTaskProgress(c: ConnectionRecord, taskId: string, value: TeamTaskProgressDto, write: boolean, expectedInstanceId?: string): Promise<void> {
+    if (value.projectId !== c.projectId || value.taskId !== taskId || expectedInstanceId !== undefined && value.instanceId !== expectedInstanceId) throw new DesktopTeamError('BINDING_CHANGED', '任务进度不属于原服务、项目或任务', write)
+    await this.creationOwner(c)
   }
   private async creationOwner(c: ConnectionRecord): Promise<void> {
     const current = await this.connection(c.connectionId, true)
@@ -272,7 +319,8 @@ export class DesktopTeamService implements DesktopTeamApi {
   }
   async disconnect(connectionId: string): Promise<DesktopTeamConnection> {
     return this.tracked(async () => {
-    await this.connection(connectionId)
+    const c = await this.connection(connectionId)
+    writeTaskProgressCredential(this.options.dataDir, c, null, this.protection)
     return publicConnection(await this.store.call({ op: 'update-connection', input: { connectionId, disconnect: true, errorCode: 'LOCAL_DISCONNECTED' } }))
     })
   }

@@ -41,8 +41,8 @@ export function HifoxWorkspace({ project, session, theme, authEpoch = 0 }: Hifox
     }
   }, [project.projectId, session.person.userId, session.csrfToken, authEpoch])
   const current = lease && lease.epoch === authEpoch && lease.session.person.userId === session.person.userId && lease.session.csrfToken === session.csrfToken && lease.workspace.context().projectId === project.projectId && isClientSession(session)
-  return <section className="my-root hifox-host" data-my-theme={theme} data-my-font-size={fontSize} aria-label="项目协作">
-    {current ? <><WorkspaceCommands workspace={lease.workspace} /><div className="hifox-host-body"><HiFoxApp host="web" /></div><DialogHost /><Toasts /></> : <p role="status">正在连接项目协作…</p>}
+  return <section className="my-root hifox-host" data-my-theme={theme} data-my-font-size={fontSize} aria-label="工作区协作">
+    {current ? <><WorkspaceCommands workspace={lease.workspace} /><div className="hifox-host-body"><HiFoxApp host="web" /></div><DialogHost /><Toasts /></> : <p role="status">正在连接工作区协作…</p>}
   </section>
 }
 

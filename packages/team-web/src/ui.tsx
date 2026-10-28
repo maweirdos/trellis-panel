@@ -19,5 +19,5 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 export function Pager({ page }: { page: { loading: boolean; more: boolean; error: string; next: () => void; refresh: () => void } }) { return <div className="pager"><ErrorLine>{page.error}</ErrorLine>{page.more && <button type="button" disabled={page.loading} onClick={page.next}>{page.loading ? '读取中…' : '加载更多'}</button>}{page.error && <button type="button" disabled={page.loading} onClick={page.refresh}><RefreshCw size={14} />重新载入</button>}</div> }
 export const roleName = (role: string): string => ({ product: '产品', pm: '项目经理', developer: '开发', tester: '测试', admin: '管理员', owner: '所有者', member: '成员' })[role] ?? role
 export const kindName = (kind: string): string => ({ 'product-requirement': '产品需求', 'trellis-prd': '开发 PRD', design: '设计', spec: '规范', code: '代码', feedback: '反馈', other: '其他' })[kind] ?? kind
-export const visibilityName = (visibility: string): string => ({ personal: '仅自己', project: '项目成员', team: '团队成员' })[visibility] ?? visibility
+export const visibilityName = (visibility: string): string => ({ personal: '仅自己', project: '工作区成员', team: '团队成员' })[visibility] ?? visibility
 export const time = (value: number | null): string => value === null ? '尚无记录' : new Date(value).toLocaleString('zh-CN', { hour12: false })

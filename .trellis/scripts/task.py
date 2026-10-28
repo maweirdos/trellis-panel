@@ -10,6 +10,7 @@ Usage:
     python task.py list-context <dir>          # List jsonl entries
     python task.py start <dir>                 # Set active task, record current branch
     python task.py current [--source] [--json] # Show active task
+    python task.py team-capabilities --json    # Inspect installed team adapter without task changes
     python task.py finish                      # Clear active task
     python task.py set-branch <dir> <branch>   # Set git branch
     python task.py set-base-branch <dir> <branch>  # Set PR target branch
@@ -30,6 +31,10 @@ import json
 import sys
 from pathlib import Path
 
+if len(sys.argv) > 1 and sys.argv[1] == "team-capabilities":
+    sys.dont_write_bytecode = True
+
+from common import io as task_io, task_store, task_utils
 from common.log import Colors, colored
 from common.paths import (
     DEVELOPER_HINT,
@@ -55,6 +60,7 @@ from common.io import (
 )
 from common.task_utils import resolve_task_dir, run_task_hooks
 from common.tasks import iter_active_tasks, children_progress
+from common.task_authority import TEAM_ADAPTER_VERSION, is_team_managed
 
 # Import command handlers from split modules (also re-exports for plan.py compatibility)
 from common.task_store import (
@@ -85,10 +91,11 @@ def _record_start_state(
     repo_root: Path,
     label: str = "",
 ) -> None:
-    """Move a freshly started task to in_progress and record its branch.
+    """Record a start; only locally owned tasks advance to in_progress.
 
-    Both updates share one read/write: the status flip from planning, and the
-    checked-out branch when `branch` is still empty. Recording at start is what
+    Both updates share one read/write: the local status flip from planning, and
+    the checked-out branch. Team tasks always record the actual branch; local
+    tasks only fill an empty branch. Recording at start is what
     keeps `branch` trustworthy at archive time — a task whose branch is only
     ever set by hand tends to reach archive with `branch: null`.
 
@@ -109,21 +116,27 @@ def _record_start_state(
 
     applied: list[str] = []
 
-    if data.get("status") == "planning":
+    managed = is_team_managed(data)
+    if managed:
+        print(colored("ℹ Team authority: local start only selects this task and records the branch; use the team task page for stage changes.", Colors.BLUE))
+    elif data.get("status") == "planning":
         data["status"] = "in_progress"
         applied.append(f"✓ Status: planning → in_progress{label}")
 
-    # Only fill an empty field: an explicit `set-branch` must survive a later
-    # `start` (re-starting a task after a checkout is a normal thing to do).
+    # Preserve explicit local branches; a team start records the actual checkout.
     base_branch_conflict: str | None = None
-    if not data.get("branch"):
+    if managed or not data.get("branch"):
         branch = current_branch_name(repo_root)
         if branch:
-            data["branch"] = branch
-            applied.append(f"✓ Branch recorded: {branch}{label}")
-            if branch == data.get("base_branch"):
+            if data.get("branch") != branch:
+                data["branch"] = branch
+                applied.append(f"✓ Branch recorded: {branch}{label}")
+            if not managed and branch == data.get("base_branch"):
                 base_branch_conflict = branch
         else:
+            if managed and data.get("branch") is not None:
+                data["branch"] = None
+                applied.append(f"✓ Branch cleared: no checked-out branch{label}")
             print(
                 colored(
                     "Note: no checked-out branch (detached HEAD, or not a git "
@@ -140,7 +153,7 @@ def _record_start_state(
         print(
             colored(
                 f"Warning: Failed to write {task_json_path}; "
-                "status and branch are unchanged.",
+                "start updates were not saved; re-read the current task.json.",
                 Colors.YELLOW,
             ),
             file=sys.stderr,
@@ -248,7 +261,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             Colors.YELLOW,
         ))
 
-        # Still flip task.json status: planning → in_progress so downstream phases proceed.
+        # Record local start state; team authority keeps the service-owned status.
         if task_json_path.is_file():
             _record_start_state(task_json_path, repo_root, " (degraded)")
             run_task_hooks("after_start", task_json_path, repo_root)
@@ -536,6 +549,7 @@ Usage:
   python task.py list-context <dir>                 List jsonl entries
   python task.py start <dir>                        Set active task; records the checked-out branch when unset
   python task.py current [--source]                 Show active task
+  python task.py team-capabilities --json           Read installed team adapter support; no task changes
   python task.py finish                             Clear active task
   python task.py set-branch <dir> <branch>          Set git branch
   python task.py set-base-branch <dir> <branch>     Set PR target branch
@@ -595,6 +609,22 @@ Examples:
 # Main Entry
 # =============================================================================
 
+def cmd_team_capabilities(args: argparse.Namespace) -> int:
+    """Describe installed adapter support without reading or changing tasks."""
+    capabilities = {
+        "adapterVersion": TEAM_ADAPTER_VERSION,
+        "serviceOwnedState": getattr(task_io, "TEAM_SERVICE_OWNED_STATE_VERSION", 0) == 1,
+        "normalLocalHooks": getattr(task_utils, "TEAM_NORMAL_LOCAL_HOOKS_VERSION", 0) == 1,
+        "protectedMetadata": getattr(task_store, "TEAM_PROTECTED_METADATA_VERSION", 0) == 1,
+        "rejectLocalArchive": (
+            getattr(task_store, "TEAM_REJECT_LOCAL_ARCHIVE_VERSION", 0) == 1
+            and getattr(task_utils, "TEAM_REJECT_LOCAL_ARCHIVE_VERSION", 0) == 1
+        ),
+        "readOnlyProbe": True,
+    }
+    print(json.dumps(capabilities, indent=None if args.json else 2))
+    return 0
+
 def main() -> int:
     """CLI entry point."""
     # Deprecation guard: `init-context` was removed in v0.5.0-beta.12.
@@ -632,6 +662,9 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
+
+    p_capabilities = subparsers.add_parser("team-capabilities", help="Read installed team adapter capabilities")
+    p_capabilities.add_argument("--json", action="store_true", help="Output machine-readable JSON without task side effects")
 
     # create
     p_create = subparsers.add_parser("create", help="Create new task")
@@ -771,6 +804,7 @@ def main() -> int:
         return 1
 
     commands = {
+        "team-capabilities": cmd_team_capabilities,
         "create": cmd_create,
         "add-context": cmd_add_context,
         "validate": cmd_validate,

@@ -7,6 +7,8 @@ import type { TeamProject, TeamSession } from './contracts'
 import { ApiError, archiveCommand, authEvents, canRetry, isClientSession, pendingCommands, prepareCommand, reconcileCommand, request, sendCommand, type PendingCommand, type PreparedCommand } from './client'
 import { BrowserCreationApi } from './creation-browser-api'
 import type { CreationApi } from '../../../src/shared/creation-api'
+import { BrowserTaskProgress } from './task-progress-browser-api'
+import type { HifoxProgressApi } from '../../../src/shared/hifox-task-progress'
 
 type SnapshotReply = { ok: true; data: HifoxSnapshot; context: HifoxWorkspaceContext; taskId?: string }
 type Pending = { entry: PendingCommand; prepared?: PreparedCommand<HifoxRemoteSnapshot>; command?: HifoxRemoteCommand; instanceId: string | null; createdAt: number; outcomeUnknown: boolean; errorCode: string | null }
@@ -39,6 +41,7 @@ export class BrowserHifoxWorkspace {
   readonly key: string
   readonly hifox: HifoxApi
   readonly creations: BrowserCreationApi
+  readonly progress: BrowserTaskProgress
 
   constructor(private readonly options: BrowserWorkspaceOptions) {
     this.key = JSON.stringify([options.origin ?? location.origin, options.session.person.userId, options.project.projectId])
@@ -60,7 +63,7 @@ export class BrowserHifoxWorkspace {
         this.pending = null; retained.delete(this.key); this.syncReferences(); this.publish()
         return { ok: true, context: this.context() }
       },
-      selectWorkspace: async () => this.failure(new ApiError('UNSUPPORTED_WEB_ACTION', '请使用网页版左侧项目选择器切换工作区')),
+      selectWorkspace: async () => this.failure(new ApiError('UNSUPPORTED_WEB_ACTION', '请使用网页版左侧工作区选择器切换工作区')),
       retryWorkspaceCommand: async ({ commandId }) => {
         this.syncReferences(commandId)
         if (this.journalError) return this.failure(this.journalError)
@@ -105,6 +108,7 @@ export class BrowserHifoxWorkspace {
       resetDemo: async () => this.failure(new ApiError('UNSUPPORTED_WEB_ACTION', '共享工作区不支持重置为本机演示数据'))
     }
     this.creations = new BrowserCreationApi({ projectId: options.project.projectId, session: options.session, context: () => this.context(), isCurrent: this.current, subscribe: (callback) => this.hifox.onWorkspaceChanged(callback) })
+    this.progress = new BrowserTaskProgress({ projectId: options.project.projectId, session: options.session, context: () => this.context(), isCurrent: this.current })
     authEvents.addEventListener('denied', this.denied)
   }
 
@@ -116,7 +120,7 @@ export class BrowserHifoxWorkspace {
   private current = (): boolean => this.owns() && !this.locked
   private canInspect(): boolean { return this.owns() && (!this.locked || this.instanceChanged) }
   isCurrent(): boolean { return this.current() }
-  private denied = (): void => { if (this.live) this.revoke('此工作区的访问权限已失效，请重新核对登录与项目权限') }
+  private denied = (): void => { if (this.live) this.revoke('此工作区的访问权限已失效，请重新核对登录与工作区权限') }
   private publish(): void {
     const context = this.context(), signature = JSON.stringify([context, this.sending, this.pending?.errorCode, this.pending?.outcomeUnknown])
     if (signature === this.lastPublished) return
@@ -128,6 +132,7 @@ export class BrowserHifoxWorkspace {
     this.snapshotValue = null; this.pending = null; this.referenceCount = 0; retained.delete(this.key); this.lifetime.abort(); this.publish()
   }
   dispose(): void {
+    this.progress.dispose()
     this.creations.dispose()
     this.live = false; this.lifetime.abort(); authEvents.removeEventListener('denied', this.denied)
     if (this.pending && isClientSession(this.options.session) && (!this.locked || this.instanceChanged)) {
@@ -167,10 +172,10 @@ export class BrowserHifoxWorkspace {
     const parsed = hifoxRemoteSnapshotSchema.safeParse(raw), scope = pending.entry.workspace
     if (!parsed.success) throw new ApiError('INVALID_RESPONSE', '无法核对原操作回执', 0, true)
     const value = parsed.data
-    if (value.projectId !== this.options.project.projectId || value.actor.id !== this.options.session.person.userId || pending.instanceId && value.instanceId !== pending.instanceId || scope && (value.epoch !== scope.epoch || value.revision !== scope.expectedRevision + 1)) throw new ApiError('INVALID_RESPONSE', '原操作回执的账号、项目、实例、代次或修订不匹配', 0, true)
+    if (value.projectId !== this.options.project.projectId || value.actor.id !== this.options.session.person.userId || pending.instanceId && value.instanceId !== pending.instanceId || scope && (value.epoch !== scope.epoch || value.revision !== scope.expectedRevision + 1)) throw new ApiError('INVALID_RESPONSE', '原操作回执的账号、工作区、实例、代次或修订不匹配', 0, true)
     return value
   }
-  private rosterUnsupported(): HifoxFailure { return this.failure(new ApiError('UNSUPPORTED_WEB_ACTION', '请在“团队与成员”中管理真实账号、邀请和项目授权')) }
+  private rosterUnsupported(): HifoxFailure { return this.failure(new ApiError('UNSUPPORTED_WEB_ACTION', '请在“团队与成员”中管理真实账号、邀请和工作区授权')) }
   private failure(error: unknown, scopeRead = false): HifoxFailure {
     const apiError = error instanceof ApiError ? error : new ApiError('WORKSPACE_ERROR', error instanceof Error ? error.message : '工作区操作失败')
     const businessDenied = ['OPERATION_FORBIDDEN', 'SPACE_ACCESS_DENIED', 'MANAGEMENT_REQUIRED'].includes(apiError.code)
@@ -184,7 +189,7 @@ export class BrowserHifoxWorkspace {
   }
   private accept(value: HifoxRemoteSnapshot, generation: number): SnapshotReply {
     if (!this.current()) throw new ApiError('OWNER_CHANGED', '工作区的登录身份已改变')
-    if (value.projectId !== this.options.project.projectId || value.actor.id !== this.options.session.person.userId) throw new ApiError('INVALID_RESPONSE', '工作区回执的项目或账号不匹配', 0, true)
+    if (value.projectId !== this.options.project.projectId || value.actor.id !== this.options.session.person.userId) throw new ApiError('INVALID_RESPONSE', '工作区回执的工作区或账号不匹配', 0, true)
     if (this.instanceId && this.instanceId !== value.instanceId) {
       this.instanceChanged = true; this.locked = true; this.state = 'access-revoked'; this.snapshotValue = null
       this.lastError = '团队服务实例已改变，原工作区已锁定；原操作只能明确归档，不能迁移重放'
@@ -323,7 +328,11 @@ function unsupportedNative(path: string): unknown {
 }
 // TrellisApi is the shared renderer's type boundary. Support HiFox, creations and the trusted
 // team-management route; every desktop action rejects explicitly.
-export const api = new Proxy({ hifox, creations, openExternal: async (url: string): Promise<void> => {
+const hifoxProgress = new Proxy({} as HifoxProgressApi, { get: (_target, property) => (...args: unknown[]) => {
+  const method = active && Reflect.get(active.progress.api, property)
+  return typeof method === 'function' ? Reflect.apply(method, active?.progress.api, args) : Promise.resolve({ ok: false, code: 'E_UNAVAILABLE', error: '浏览器工作区不支持此进度操作。' })
+} })
+export const api = new Proxy({ hifox, creations, hifoxProgress, openExternal: async (url: string): Promise<void> => {
   const target = new URL(url, location.origin)
   if (target.origin !== location.origin || target.pathname !== '/' || target.search || target.hash !== '#people') throw new ApiError('UNSUPPORTED_WEB_ACTION', '网页版仅支持前往当前服务的团队与邀请页面')
   location.hash = '#people'

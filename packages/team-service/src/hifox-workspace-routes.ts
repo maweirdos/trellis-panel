@@ -28,11 +28,16 @@ export async function registerHifoxWorkspaceRoutes(api: FastifyInstance, store: 
     const signal = AbortSignal.any([stopping.signal, disconnected.signal])
     reply.header('Cache-Control', 'no-store')
     try {
+      let authorizationRevision: number | undefined
       while (true) {
         if (signal.aborted) throw new TeamServiceError('REQUEST_CANCELLED', 'Workspace subscription closed', 503)
-        // Authentication, project membership and device binding are rechecked by every writer read.
-        const value = hifoxRemoteSnapshotSchema.parse(await store.call('hifoxSnapshot', { actor, projectId }))
-        if (query.afterRevision === undefined || value.revision !== query.afterRevision || performance.now() >= deadline) return { ok: true, value }
+        // Every lightweight writer read rechecks account, team/project and device authority.
+        // Build the authorized projection only when the wait completes or its authority changes.
+        const head = await store.call<{ revision: number; authorizationRevision: number }>('hifoxHead', { actor, projectId })
+        if (query.afterRevision === undefined || head.revision !== query.afterRevision || (authorizationRevision !== undefined && head.authorizationRevision !== authorizationRevision) || performance.now() >= deadline) {
+          return { ok: true, value: hifoxRemoteSnapshotSchema.parse(await store.call('hifoxSnapshot', { actor, projectId })) }
+        }
+        authorizationRevision = head.authorizationRevision
         try { await delay(Math.min(RECHECK_INTERVAL_MS, Math.max(1, deadline - performance.now())), undefined, { signal }) }
         catch (error) { if (!signal.aborted) throw error }
       }

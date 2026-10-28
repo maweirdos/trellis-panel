@@ -16,11 +16,13 @@ import { verifyMaterialChange } from '../../services/acp/materials'
 import { canonicalDirectory } from '../../services/acp/metadata'
 import { createRuntimeKnowledge } from './knowledge'
 import { KNOWLEDGE_MUTATIONS, knowledgeRuntimeBody } from '../../../shared/daemon-runtime-knowledge'
+import { HifoxTaskProgressRuntime } from '../../services/hifox/task-progress-runtime'
 
 export interface RuntimeDispatchContext { workspace?: WorkspaceGrant; commandId?: string }
 export interface DaemonRuntimePorts {
   epoch: string
   directory: string
+  userData?: string
   assertOwner(): void
   /** Main asserts its real completed settings/runtime cutover, not a synthetic drain. */
   assertAuthority(): void
@@ -51,6 +53,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   let closed = false, released = false, stopping: Promise<void> | undefined
   let operations = 0
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
+  const taskProgress = new HifoxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
   const watchers = new Map<string, FSWatcher>()
   const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
   function observeWorkspace(root: string, generation: number): void {
@@ -93,6 +96,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       await Promise.allSettled(acp.listOwnedAcpSessionFacts().filter(session => session.turnActive || session.accepting || session.pendingPermission)
         .map(session => acp.cancelAcpSession(session.projectRoot, session.sessionId)))
       await acp.shutdownAcp()
+      await taskProgress.close()
       await commands.drain()
       for (const timer of materialTimers.values()) clearTimeout(timer)
       materialTimers.clear()
@@ -107,6 +111,11 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     const valid = (): boolean => { ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceAdmission?.(root, method); return !closed }
     const connection = <T extends { ok: boolean }>(target: { sessionId?: string; profileId?: string }, action: () => Promise<T>) => withOrdinaryConnectionAdmission(root, target, action)
     switch (method) {
+      case 'runtime.hifoxProgress': {
+        const input = runtimeBodies[method].parse(raw)
+        if (closed && !['catalog', 'read', 'conversation', 'events', 'cancel', 'official'].includes(input.operation)) throw new DaemonError('E_UNAVAILABLE', 'Task execution admission is closed.')
+        return taskProgress.execute(input)
+      }
       case 'runtime.knowledge': return knowledge.execute(root, 0, raw)
       case 'runtime.sessions': {
         const result = acp.listAcpSessions(root, runtimeBodies[method].parse(raw).limit)
@@ -213,7 +222,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const workflows = await countOwnedWorkflowApplications()
       ports.assertOwner(); ports.assertAuthority()
       const sessions = acp.listOwnedAcpSessionFacts()
-      if (closed || released || stopping || operations || commands.count() || workflows || sessions.some(session => !session.sessionId || !session.connectionGeneration || session.status !== 'ready'
+      if (closed || released || stopping || operations || commands.count() || workflows || taskProgress.busy() || sessions.some(session => !session.sessionId || !session.connectionGeneration || session.status !== 'ready'
         || session.accepting || session.closing || session.disconnected || session.leaseHeld || session.cleanupRequired || session.backgroundWork
         || session.unfinishedTools || session.turnActive || session.settling || session.pendingPermission)) throw new DaemonError('E_BUSY', 'Original native sessions, preparation, workflow or unfinished operations still own background work.')
     },
@@ -237,7 +246,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         if (method === 'runtime.status') return await status() as RuntimeResult<M>
         if (released) throw new DaemonError('E_UNAVAILABLE', 'Runtime authority was released.')
         ports.assertAuthority()
-        const global = ['runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
+        const global = ['runtime.hifoxProgress', 'runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
         const root = context.workspace?.root ?? (global ? '@profile' : '')
         if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')
         if (context.workspace) observeWorkspace(root, context.workspace.revision)

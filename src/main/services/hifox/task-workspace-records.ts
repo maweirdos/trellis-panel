@@ -26,6 +26,7 @@ export const hifoxWorkRecordSchema = z.object({
 }).strict()
 export type HifoxWorkRecord = z.infer<typeof hifoxWorkRecordSchema>
 export type StoredHifoxWorkRecord = { value: HifoxWorkRecord; revision: string | null }
+type HifoxWorkOwner = Pick<HifoxWorkSource, 'workspaceKey' | 'spaceId' | 'taskId' | 'identity'>
 export const nativeRootKey = (root: string): string => process.platform === 'win32' ? root.toLowerCase() : root
 export const bindingKey = (scope: { workspaceKey: string; spaceId: string; taskId: string }): string => sha256Hex(JSON.stringify([scope.workspaceKey, scope.spaceId, scope.taskId]))
 
@@ -33,7 +34,7 @@ export const bindingKey = (scope: { workspaceKey: string; spaceId: string; taskI
 export class HifoxWorkBindings {
   constructor(private readonly dataDir: string) {}
   file(scope: { workspaceKey: string; spaceId: string; taskId: string }): string { return `hifox-work/bindings/${bindingKey(scope)}.json` }
-  read(source: HifoxWorkSource): StoredHifoxWorkRecord | null {
+  read(source: HifoxWorkOwner): StoredHifoxWorkRecord | null {
     try {
       const found = materialRead(this.dataDir, this.file(source))
       if (found.revision === null) return null
@@ -57,7 +58,7 @@ export class HifoxWorkBindings {
     }
   }
 }
-export function commandId(source: HifoxWorkSource, root: string): string {
+export function commandId(source: HifoxWorkOwner, root: string): string {
   return operationIdFor({ workspaceId: `hifox:${sha256Hex(nativeRootKey(root))}`, instanceId: source.identity, issueIdentifier: JSON.stringify([source.workspaceKey, source.spaceId, source.taskId]), ordinal: 1 })
 }
 export function freshHifoxWorkRecord(source: HifoxWorkSource, projectRoot: string): StoredHifoxWorkRecord {
@@ -87,11 +88,13 @@ export function validateHifoxProject(input: string, pinned = false): string {
 }
 
 export function hifoxWorkMeta(record: HifoxWorkRecord): Array<[string, string]> {
-  return [
+  const metadata: Array<[string, string]> = [
     ['panel_operation_id', record.commandId], ['panel_hifox_workspace_key', record.workspaceKey],
     ['panel_hifox_space_id', record.spaceId], ['panel_hifox_task_id', record.sourceTaskId],
     ['panel_hifox_identity', record.ownerIdentity], ['panel_hifox_source_revision', record.sourceRevision]
   ]
+  if (record.workspaceKey !== 'local') metadata.push(['panel_task_authority', 'team'])
+  return metadata
 }
 const taskSchema = z.object({ id, status: z.string(), meta: z.record(z.string(), z.unknown()) }).passthrough()
 export type HifoxWorkDiskTask = { local: HifoxWorkLocal; sourceRevision: string }

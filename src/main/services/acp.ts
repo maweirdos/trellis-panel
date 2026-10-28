@@ -51,6 +51,10 @@ import { nativeResource } from '../daemon/native'
 import { acpExtraArgv, acpProcessEnv, acpSpawnEnv, resolveAcpLaunchOptions, sessionAcpLaunchOptions } from '../../shared/acp-launch-options'
 import { getSettings } from './store'
 import { isOpenCodeV1, OpenCodeStatus } from './acp/opencode-status'
+import { prepareAgentRules, assertAgentRulesCurrent } from './agent-rules'
+import { observeTaskProgressState } from './hifox/task-progress-events'
+import { taskRule } from './hifox/task-progress-context'
+import type { HifoxProgressSession } from '../../shared/hifox-task-progress'
 export { listAcpAgents, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath } from './acp/setup'
 export { testAcpRuntimeConnection } from './acp/connection-probe'
 export { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, retryAcpHistory, stopAcpHistory } from './acp/history-service'
@@ -70,7 +74,7 @@ const cancelledResumes = new Set<string>()
 type ResumeResult = { ok: true; sessionId: string } | IpcFail
 const resumeRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
 const recoveryRequests = new Map<string, { root: string; operation: ModelRecoveryOperation; promise: Promise<AcpRecoverModelResult> }>()
-const creatingRequests = new Set<Promise<{ ok: true; sessionId: string } | IpcFail>>()
+const creatingRequests = new Set<Promise<unknown>>()
 const handoffRequests = new Set<Promise<AcpHandoffOperationResult | IpcFail>>()
 const leases = new Map<string, Set<ActiveSession>>()
 let shuttingDown = false
@@ -452,6 +456,7 @@ function emit(session: ActiveSession, kind: TimelineEventKind, text?: string, pa
 function setStatus(session: ActiveSession, status: AcpSessionStatus, error?: string, terminal = false): void {
   error = error === undefined ? undefined : knowledgeMcpBridge.redactText(error)
   session.meta.status = status
+  observeTaskProgressState(session.meta, status)
   session.meta.error = error
   if (terminal) session.meta.endedAt = Date.now()
   projectConnectionOwnership(session)
@@ -945,11 +950,35 @@ export function newAcpSession(projectRoot: string, input: unknown): Promise<{ ok
   void pending.finally(() => creatingRequests.delete(pending)).catch(() => {})
   return pending
 }
+/** Main/daemon-only task launch: fixed cwd and preallocated identity, never a renderer override. */
+export function newTaskAcpSession(root: string, input: { agentId: string; taskDir?: string }, sessionId: string, engine: 'pi' | 'acp', task?: AcpSessionRecord['taskProgress']): Promise<{ ok: true; session: HifoxProgressSession } | IpcFail> {
+  assertRuntimeExecutionHost()
+  const pending = newOwnedTaskAcpSession(root, input, sessionId, engine, task)
+  creatingRequests.add(pending)
+  void pending.finally(() => creatingRequests.delete(pending)).catch(() => {})
+  return pending
+}
+async function newOwnedTaskAcpSession(root: string, input: { agentId: string; taskDir?: string }, sessionId: string, engine: 'pi' | 'acp', task?: AcpSessionRecord['taskProgress']): Promise<{ ok: true; session: HifoxProgressSession } | IpcFail> {
+  assertRuntimeExecutionHost()
+  if (sessions.has(sessionId) || readRecords().some(record => record.sessionId === sessionId)) return ipcFail(IpcErrorCode.Conflict, '原任务会话身份已存在，不能重复创建或复用最近聊天')
+  const launch = await resolveAcpRuntimeLaunch(input.agentId)
+  if ('ok' in launch) return launch
+  if ((launch.config.launchKind === 'sdk' ? 'pi' : 'acp') !== engine) return ipcFail(IpcErrorCode.InvalidArg, '所选执行引擎与实际 Runtime 不一致')
+  const result = await newOwnedAcpSession(root, input, undefined, { sessionId, task })
+  if (!result.ok) return result
+  const owner = sessions.get(result.sessionId)
+  if (!owner) return ipcFail(IpcErrorCode.Conflict, '原任务会话未建立')
+  await owner.preparing
+  if (owner.meta.status !== 'ready' || owner.disconnected || owner.closing || !owner.meta.connectionGeneration || !owner.meta.backendSessionId) return ipcFail(IpcErrorCode.Unavailable, '原任务 Runtime 未确认就绪；绑定已保留')
+  if (owner.meta.engine !== engine) { await killOwned(owner, '任务 Runtime 配置已变化'); return ipcFail(IpcErrorCode.Conflict, '任务 Runtime 配置在启动期间已变化，未发送任务') }
+  return { ok: true, session: { sessionId: owner.meta.sessionId, backendSessionId: owner.meta.backendSessionId, connectionGeneration: owner.meta.connectionGeneration,
+    projectRoot: owner.meta.projectRoot, cwd: owner.meta.cwd ?? root, taskDir: owner.meta.taskDir ?? null, engine } }
+}
 interface HandoffNewSession {
   sessionId: string; profile?: AcpAgentProfile; cwd: string; plan: HandoffTargetPlan; origin: AcpHandoffOrigin
   assertCurrent(): void; beforeNativeCreate(): void
 }
-async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession): Promise<{ ok: true; sessionId: string } | IpcFail> {
+async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession, taskOwner?: { sessionId: string; task?: AcpSessionRecord['taskProgress'] }): Promise<{ ok: true; sessionId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const parsed = newSessionSchema.safeParse(input)
@@ -967,7 +996,7 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
     const launch = handoff?.plan ?? await resolveAcpRuntimeLaunch(runtimeId)
     if ('ok' in launch) return launch
     const { config, argv } = launch
-    const cwd = handoff?.cwd ?? (profile?.cwd || projectRoot)
+    const cwd = handoff?.cwd ?? (taskOwner || taskDir ? projectRoot : profile?.cwd || projectRoot)
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return ipcFail(IpcErrorCode.NotFound, '工作目录不可用')
     if (taskDir && !await activeTaskExists(projectRoot, taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '绑定任务不属于当前项目的活动任务目录或记录不可读')
     const slot = await reserveConnectionSlot()
@@ -975,8 +1004,10 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
     reservation = slot
     handoff?.assertCurrent()
     if (handoff && sessions.has(handoff.sessionId)) throw new Error('交接目标已拥有连接，未重复创建')
-    const meta: AcpSessionRecord = { engine: config.launchKind === 'sdk' ? 'pi' : 'acp', schemaVersion: 2, sessionId: handoff?.sessionId ?? `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,
+    const rules = await prepareAgentRules({ projectRoot, taskDir, additionalRules: taskOwner?.task ? [taskRule(taskOwner.task)] : undefined })
+    const meta: AcpSessionRecord = { engine: config.launchKind === 'sdk' ? 'pi' : 'acp', schemaVersion: 2, sessionId: taskOwner?.sessionId ?? handoff?.sessionId ?? `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,
       projectRoot, cwd, taskDir, status: 'starting', startedAt: Date.now(), events: [], startup: [], connectionGeneration: randomUUID(),
+      agentRulesManifest: rules.manifest, taskProgress: taskOwner?.task,
       profileSnapshot: profile ? structuredClone(profile) : undefined, launchOptionsSnapshot, handoff: handoff?.origin,
       runtimeSnapshot: { id: config.id, name: config.name, command: config.command, enabled: config.enabled, launchKind: config.launchKind, executable: config.executable, args: config.args }, historyKind: 'live', canResume: false }
     const session = await createSessionRuntime(meta, config, argv)
@@ -1149,7 +1180,14 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
       return ipcFail(IpcErrorCode.Conflict, '引用文档已改变或不可读，请查看最新版本后再发送', { reason: 'SOURCE_CHANGED', sources: prepared.changed })
     }
     try {
-      if (!nativeCommand) agentContext = prepareAgentContext(projectRoot, sessionId, session.meta.profileSnapshot)
+      if (!nativeCommand) {
+        if (session.meta.agentRulesManifest) await assertAgentRulesCurrent(projectRoot, session.meta.agentRulesManifest)
+        const rules = await prepareAgentRules({ projectRoot, taskDir: session.meta.taskDir, additionalRules: session.meta.taskProgress ? [taskRule(session.meta.taskProgress)] : undefined })
+        if (session.meta.agentRulesManifest && rules.manifest.digest !== session.meta.agentRulesManifest.digest) throw new Error('项目规范或任务输入版本已变化，请显式建立新会话采用后再发送')
+        session.meta.agentRulesManifest = rules.manifest
+        const profile = session.meta.profileSnapshot
+        agentContext = prepareAgentContext(projectRoot, sessionId, { ...profile, instructions: [profile?.instructions ?? '', rules.instructions].filter(Boolean).join('\n\n') } as AcpAgentProfile)
+      }
     } catch (error) {
       session.accepting = false; release(session)
       return ipcFail(IpcErrorCode.InvalidArg, errorMessage(error))
@@ -1286,6 +1324,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
           // A failed model/provider request does not end the persistent ACP
           // connection. Keep configuration and the next explicit turn usable.
           setStatus(session, session.disconnected ? 'disconnected' : 'ready', result.status === 'failed' ? errorMessage(result.error.message) : nativeCancelReason)
+          observeTaskProgressState(session.meta, session.meta.status, nativeCancelReason ? 'cancelled' : result.status)
           if (!workflow && result.status === 'completed' && result.stopReason === 'end_turn' && !nativeCancelReason) void regenerateAcpHistoryTitle(projectRoot, sessionId, () => !shuttingDown, false).catch(() => {})
           broadcastToWindows(ipcEvent.acpDone, { sessionId, projectRoot, turnId, connectionGeneration: session.meta.connectionGeneration,
             status: session.meta.status, error: session.meta.error, result: knowledgeMcpBridge.redact(result), hostPolicyOutcome })

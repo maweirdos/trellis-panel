@@ -15,6 +15,7 @@ type Subscription = {
 }
 function admissionBusy(error: unknown): boolean { return error instanceof DaemonError && error.code === 'E_BUSY' && error.outcome === 'not-admitted' }
 const pools = new Map<string, DaemonConnectionPool>()
+const nativeGuiPools = new Map<string, DaemonConnectionPool>()
 /** Low-rate replay also repairs a lost hint. Older hosts explicitly use bounded polling. */
 export const DAEMON_OBSERVATION = { hintMs: 25, healthMs: 15_000, fallbackMs: 1000, retryMs: 1000, pagesPerDrain: 4 } as const
 
@@ -28,7 +29,7 @@ export class DaemonConnectionPool {
   private readonly statuses = new WeakMap<DaemonClient, Promise<DaemonStatus>>()
   private readonly subscriptions = new Map<string, Subscription>()
   private readonly disposeListeners = new Set<() => void>()
-  constructor(readonly context: DaemonContext, private readonly management = false) {}
+  constructor(readonly context: DaemonContext, private readonly management = false, private readonly nativeGui = false) {}
 
   /** One additional, lazily authenticated management lane. Status traffic never
    * competes with the ordinary socket's local 16-call / 1 MiB admission budget.
@@ -56,7 +57,7 @@ export class DaemonConnectionPool {
     }
     if (this.connecting) return this.connecting
     const generation = this.generation
-    const pending = DaemonClient.connect(this.context).then(client => {
+    const pending = (this.nativeGui ? DaemonClient.connectNativeGui(this.context) : DaemonClient.connect(this.context)).then(client => {
       try {
         if (this.disposed || generation !== this.generation) throw new DaemonError('E_UNAVAILABLE', 'The original desktop connection attempt was detached.')
         if (!client.connected || JSON.stringify(readLease(this.context)) !== JSON.stringify(client.lease)) throw new DaemonError('E_CONFLICT', 'Daemon ownership changed while attaching.')
@@ -189,6 +190,7 @@ export class DaemonConnectionPool {
     this.controlLane?.dispose(); this.controlLane = undefined
     this.client?.close(); this.client = undefined
     if (pools.get(this.context.identity.profileId) === this) pools.delete(this.context.identity.profileId)
+    if (nativeGuiPools.get(this.context.identity.profileId) === this) nativeGuiPools.delete(this.context.identity.profileId)
   }
 }
 
@@ -202,7 +204,18 @@ export function daemonConnectionPool(context: DaemonContext): DaemonConnectionPo
   pools.set(context.identity.profileId, pool)
   return pool
 }
-export function disposeDaemonPools(): void { for (const pool of [...pools.values()]) pool.dispose() }
+/** Separate authority lane: ordinary profile/read/CLI clients never acquire this proof. */
+export function nativeGuiDaemonConnectionPool(context: DaemonContext): DaemonConnectionPool {
+  const existing = nativeGuiPools.get(context.identity.profileId)
+  if (existing) {
+    if (JSON.stringify(existing.context.identity) !== JSON.stringify(context.identity)) throw new DaemonError('E_CONFLICT', 'A different installation owns the native GUI profile connection.')
+    return existing
+  }
+  const pool = new DaemonConnectionPool(context, false, true)
+  nativeGuiPools.set(context.identity.profileId, pool)
+  return pool
+}
+export function disposeDaemonPools(): void { for (const pool of [...pools.values(), ...nativeGuiPools.values()]) pool.dispose() }
 
 /** Shared replay scheduler: one in-flight drain, one coalesced wake bit and one
  * timer. Reconnect only restores reads/subscriptions; drain owns cursor semantics. */

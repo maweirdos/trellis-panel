@@ -15,11 +15,11 @@ export function ProjectSwitcher(): JSX.Element {
   const pickAndOpen = useApp((s) => s.pickAndOpen)
   const canOpen = useMy((s) => s.canOpenLocalProject)
   const root = snapshot?.meta.root ?? null
-  const name = snapshot?.meta.name || (root ? projectNameFromPath(root) : '未打开项目')
+  const name = snapshot?.meta.name || (root ? projectNameFromPath(root) : '选择本机工程')
   const choices = projectChoices(root, recent)
   return (
     <Dropdown width={340} className="no-drag min-w-0" trigger={({ open, toggle }) => (
-      <button type="button" aria-label={`选择项目，当前${name}`} aria-expanded={open} onClick={toggle}
+      <button type="button" aria-label={`选择本机工程，当前${name}`} aria-expanded={open} onClick={toggle}
         title={root ?? '未绑定本地项目'}
         className="my-project-switcher flex h-my-control min-w-0 items-center gap-2 rounded-my-md px-2.5 text-my-md text-my-primary transition-colors hover:bg-my-layer-transparent-hover">
         <span className="my-project-switcher-name max-w-[260px] truncate font-medium">{name}</span>
@@ -28,7 +28,7 @@ export function ProjectSwitcher(): JSX.Element {
     )}>
       {(close) => (
         <div>
-          <DropdownHeader>最近打开的本地项目</DropdownHeader>
+          <DropdownHeader>最近打开的本机工程</DropdownHeader>
           <div className="my-scrollbar max-h-[40vh] px-1">
             {choices.length === 0 && <p className="px-3 py-3 text-my-sm text-my-tertiary">尚无项目记录</p>}
             {choices.map((path) => (
@@ -49,7 +49,7 @@ export function ProjectSwitcher(): JSX.Element {
           <div className="px-1">
             <button type="button" disabled={!canOpen} onClick={() => { void pickAndOpen(); close() }}
               className="flex min-h-9 w-full items-center gap-3 rounded-my-md px-2.5 py-2 text-left text-my-md text-my-secondary hover:bg-my-layer-1-hover disabled:cursor-not-allowed disabled:opacity-50">
-              <FolderOpen size={17} strokeWidth={1.7} />打开本地项目…
+              <FolderOpen size={17} strokeWidth={1.7} />打开本机工程…
             </button>
           </div>
           {!canOpen && <p className="px-3 pb-2 text-my-xs text-my-tertiary">浏览器预览不读取本机目录，请在桌面应用中打开项目。</p>}

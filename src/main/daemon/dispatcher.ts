@@ -14,6 +14,7 @@ import { WindowsDaemonStartup } from './startup'
 import type { DaemonDomainPort } from './domain-port'
 import type { ProcessOwner } from '../../shared/daemon'
 import { canonicalDirectory } from '../services/acp/metadata'
+import { assertNativeGuiGrant, type NativeGuiAuthority } from './native-gui-grant'
 
 export class DaemonDispatcher {
   private stopping = false
@@ -57,11 +58,12 @@ export class DaemonDispatcher {
     if (realpathSync(actual.root) !== actual.root) throw new DaemonError('E_CONFLICT', 'The authorized workspace root was redirected. Reauthorize its original identity.')
     return actual
   }
-  async dispatch(request: DaemonRequest, actor: ProcessOwner): Promise<unknown> {
+  async dispatch(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown> {
+    if (request.method === 'runtime.hifoxProgress') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
     const management = ['daemon.status', 'daemon.stop', 'daemon.logs', 'commands.get'].includes(request.method)
     if ((this.checkingIdle || this.stopping) && !management) throw new DaemonError(this.stopping ? 'E_UNAVAILABLE' : 'E_BUSY', 'Native admission is closed while the original daemon owner is checking shutdown.')
     if (!management) this.operations++
-    try { return await this.dispatchRequest(request, actor) }
+    try { return await this.dispatchRequest(request, actor, nativeGui) }
     finally { if (!management) this.operations-- }
   }
   private async stop(request: DaemonRequest): Promise<unknown> {
@@ -122,14 +124,14 @@ export class DaemonDispatcher {
     this.stopAttempt = { commandId: request.commandId, intent, result }
     return result
   }
-  private async dispatchRequest(request: DaemonRequest, actor: ProcessOwner): Promise<unknown> {
+  private async dispatchRequest(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown> {
     assertLease(this.context, this.lease)
     if (request.expectedEpoch !== this.lease.epoch) throw new DaemonError('E_CONFLICT', 'Daemon epoch changed. Reconnect and inspect the original command receipt.')
     const mutating = MUTATING_DAEMON_METHODS.includes(request.method)
     if (mutating && !request.commandId) throw new DaemonError('E_INVALID_ARG', 'Mutations require a stable commandId.')
     if (this.stopping && mutating && request.method !== 'daemon.stop') throw new DaemonError('E_UNAVAILABLE', 'Daemon is stopping. Inspect the retained command receipt.')
     if (request.workspace) this.workspace(request)
-    if (this.domains?.handles(request.method)) return this.domains.dispatch(request, actor)
+    if (this.domains?.handles(request.method)) return this.domains.dispatch(request, actor, nativeGui)
     if (mutating && request.method !== 'daemon.stop') {
       const committed = this.repository.committedResult(request)
       if (committed.found) return committed.data

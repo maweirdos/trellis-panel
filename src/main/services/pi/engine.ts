@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { format } from 'node:util'
 import { homedir } from 'node:os'
 import {
-  createAgentSession, createMcpExtension, SettingsManager,
+  createAgentSession, createMcpExtension, SettingsManager, defineTool,
   type AgentSession, type AgentSessionEvent, type ExtensionFactory, type ModelRuntime
 } from '@earendil-works/pi-coding-agent'
 import { z } from 'zod'
@@ -17,6 +17,8 @@ import { configurePiFindRuntime } from './engine/find-runtime'
 import { savePiImage } from './images'
 import { ACP_IMAGE_MAX_COUNT, ACP_IMAGES_MAX_BYTES, acpImageBytes } from '../../../shared/acp-images'
 import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
+import { Type } from '@earendil-works/pi-ai'
+import { taskProgressSummarySchema } from '../../../shared/hifox-task-progress-native'
 
 const commandSchema = z.object({ id: z.string().min(1), method: z.string().min(1), params: z.unknown().optional() }).strict()
 const permissionResponseSchema = z.object({ type: z.literal('permission_response'), id: z.string().min(1), allow: z.boolean(), reason: z.string().optional() }).strict()
@@ -45,6 +47,7 @@ let shutdownPromise: Promise<void> | undefined
 let turn: Turn | undefined
 let running: Promise<void> | undefined
 const permissions = new Map<string, (decision: PermissionDecision) => void>()
+const progressReports = new Map<string, (ok: boolean) => void>()
 const inFlightCommands = new Set<string>()
 const secrets = new Set<string>()
 const toolOutput = new Map<string, string>()
@@ -150,6 +153,39 @@ function state(): PiState {
 
 function cancelPermissions(): void {
   for (const resolve of [...permissions.values()]) resolve({ allow: false, reason: 'Pi operation cancelled' })
+  for (const finish of [...progressReports.values()]) finish(false)
+}
+
+const taskProgressExtension: ExtensionFactory = pi => {
+  pi.registerTool(defineTool({
+    name: 'report_progress', label: 'Report task progress',
+    description: 'Durably queue a short activity/step/blocker for the one original team task bound to this session. No taskId, paths, tool logs, tokens or credentials. Queued is not server acknowledgement. Turn completion means idle, never business completion.',
+    parameters: Type.Object({
+      activity: Type.Union(['running', 'waiting_confirmation', 'paused', 'interrupted', 'idle'].map(value => Type.Literal(value))),
+      step: Type.Union([Type.String({ minLength: 1, maxLength: 500 }), Type.Null()]),
+      blocker: Type.Union([Type.String({ minLength: 1, maxLength: 500 }), Type.Null()])
+    }, { additionalProperties: false }),
+    async execute(_id, params, signal) {
+      const owner = turn
+      if (!configuration?.taskProgress || !owner || owner.cancelled || closing) throw new Error('The original task reporting handle is unavailable')
+      signal?.throwIfAborted()
+      const summary = taskProgressSummarySchema.parse(params)
+      await new Promise<void>((resolve, reject) => {
+        const id = randomUUID()
+        const onAbort = () => finish(false)
+        const timer = setTimeout(() => finish(false), 30_000)
+        const finish = (ok: boolean) => {
+          clearTimeout(timer); progressReports.delete(id); signal?.removeEventListener('abort', onAbort)
+          if (ok && turn === owner && !owner.cancelled && !closing && !signal?.aborted) resolve()
+          else reject(new Error('Task progress persistence was not confirmed'))
+        }
+        progressReports.set(id, finish)
+        signal?.addEventListener('abort', onAbort, { once: true })
+        try { send({ type: 'task_progress', id, summary }) } catch { finish(false) }
+      })
+      return { content: [{ type: 'text', text: 'Progress durably queued for the original task. Server acknowledgement is pending.' }], details: { queued: true, acknowledged: false } }
+    }
+  }))
 }
 
 function requestPermission(request: PiPermission, signal?: AbortSignal): Promise<PermissionDecision> {
@@ -369,7 +405,7 @@ async function initialize(value: unknown): Promise<void> {
   const registration = mcpRegistration(input)
   const runtime = await createModels(input)
   models = runtime
-  const loader = createResources(input, settings, [permissionExtension, webPreviewExtension(input.root), registration, createMcpExtension({
+  const loader = createResources(input, settings, [permissionExtension, webPreviewExtension(input.root), ...(input.taskProgress ? [taskProgressExtension] : []), registration, createMcpExtension({
     loadConfig: () => ({ servers: [], autoEnableCodemode: false, errors: [] }), logPath: mcpLogPath,
     openUrl: () => { throw new Error('MCP sign-in must be configured by the host') },
     updateConfig: () => { throw new Error('MCP configuration is owned by the host') }
@@ -384,7 +420,7 @@ async function initialize(value: unknown): Promise<void> {
     settingsManager: settings, resourceLoader: loader, sessionManager,
     // An explicit allowlist retains direct MCP tools; noTools:'all' would suppress them too.
     noTools: 'builtin', tools: ['read', 'write', 'edit', 'grep', 'find', 'ls', process.platform === 'win32' ? 'powershell' : 'bash',
-      'preview_web', 'mcp__*', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'], excludeTools: ['codemode', 'tool_search'] })
+      'preview_web', ...(input.taskProgress ? ['report_progress'] : []), 'mcp__*', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'], excludeTools: ['codemode', 'tool_search'] })
   session = created.session
   session.subscribe(onEvent)
   await session.bindExtensions({ mode: 'json', onError: event => {
@@ -557,6 +593,12 @@ function frame(bytes: Buffer): void {
     const parsed = permissionResponseSchema.safeParse(input)
     if (!parsed.success) { fatal(new Error('Invalid permission response')); return }
     permissions.get(parsed.data.id)?.({ allow: parsed.data.allow, reason: parsed.data.reason })
+    return
+  }
+  if (input && typeof input === 'object' && 'type' in input && input.type === 'task_progress_response') {
+    const parsed = z.object({ type: z.literal('task_progress_response'), id: z.string(), ok: z.boolean() }).strict().safeParse(input)
+    if (!parsed.success) { fatal(new Error('Invalid task progress response')); return }
+    progressReports.get(parsed.data.id)?.(parsed.data.ok)
     return
   }
   const parsed = commandSchema.safeParse(input)

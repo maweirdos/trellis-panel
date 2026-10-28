@@ -1,5 +1,9 @@
 # Local team collaboration
 
+For a shared server use [Docker deployment](team-deployment.md).
+Task authority, execution bindings and progress follow
+[Team tasks and local execution](team-task-execution.md).
+
 ## Start the service
 
 Use Node.js 24.12.0 or newer with npm. From the repository root:
@@ -40,22 +44,22 @@ dots, underscores or hyphens and are case insensitive. Passwords require at leas
 10 characters. Each registered account is ordinary; registration does not grant
 platform administration. No accounts or passwords are seeded by the launcher.
 
-In **团队与成员**, create a team, then a project in that team. The creator owns
-the team. Choose **邀请加入团队和项目**, select the project and roles, and enter the
+In **团队与成员**, create a team, then a shared workspace in that team. The creator owns
+the team. Choose **邀请加入团队和工作区**, select the workspace and roles, and enter the
 recipient's independent username. Give the generated invitation link to that
 person. The recipient registers or logs in with the named account, checks the
-team and project, and explicitly chooses **确认以当前账号加入**. Opening a link or
-logging in alone does not grant project access.
+team and workspace, and explicitly chooses **确认以当前账号加入**. Opening a link or
+logging in alone does not grant workspace access.
 
-Select the authorized project, then **项目协作**, to share tasks, comments,
+Select the authorized workspace, then its collaboration module, to share tasks, comments,
 versions, Agent configurations and squads. Assignment to an Agent or squad
 records configuration and dispatch intent; actual execution requires a Runtime.
 
 In the desktop **团队** module, open **选择本机或共享协作空间**. Enter
 `http://127.0.0.1:5441` under **团队服务地址** and choose **连接并在浏览器登录**.
-In the browser, sign in, select the authorized project, check the desktop name
+In the browser, sign in, select the authorized workspace, check the desktop name
 and pairing code, and approve the connection. Return to the desktop, refresh
-the connection state if needed, and choose **进入共享空间**.
+the connection state if needed, and choose **进入团队工作区**.
 Existing local workspace data is independent and is not automatically uploaded.
 After restoring a backup, commands from the old service epoch retain their
 original identity and cannot be replayed into the restored workspace. The

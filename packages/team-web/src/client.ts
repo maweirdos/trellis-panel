@@ -152,3 +152,12 @@ export async function retryCommand(entry: PendingCommand): Promise<void> {
   await sendCommand({ entry, body: saved.body, schema: saved.schema })
 }
 export function canRetry(entry: PendingCommand): boolean { return remembered.get(entry.commandId)?.accountId === currentSession?.person.userId }
+
+/** Used only after a domain-specific, identity-checked receipt has been read. */
+export function settleCommandReference(entry: PendingCommand): void {
+  if (currentSession?.person.userId !== entry.accountId) throw new ApiError('OWNER_CHANGED', '请使用原操作账号核对')
+  const records = readJournal()
+  if (records.some((item) => item.commandId === entry.commandId && item.digest !== entry.digest)) throw new ApiError('COMMAND_CONFLICT', '原操作摘要不匹配')
+  writeJournal(records.filter((item) => item.commandId !== entry.commandId))
+  remembered.delete(entry.commandId); uncertainCommands.delete(entry.commandId)
+}

@@ -16,6 +16,7 @@ import { TaskLinks } from './task-detail/TaskLinks'
 import { TaskProperties } from './task-detail/TaskProperties'
 import { canReadTaskSpace, taskActorId, taskSourceKey, useTaskMutation, useTaskSource, useTaskSurfaceGeneration } from './task-detail/use-task-source'
 import { useTaskDraft, useTaskDraftField } from './task-detail/task-drafts'
+import { TaskProgressPanel } from './task-detail/TaskProgressPanel'
 
 export function TaskDetailDrawer(): JSX.Element | null {
   const snapshot = useHifox((state) => state.snapshot)
@@ -110,6 +111,7 @@ function TaskDetails({ snapshot, task }: { snapshot: HifoxSnapshot; task: HifoxT
           <section hidden={tab !== 'details'} aria-label="任务详情">
             <InteractionScope active={tab === 'details'}><div className="flex min-w-0 flex-col gap-5">
               <InteractionScope active={!space.archived}><fieldset disabled={Boolean(space.archived) || !hasIpc} className="min-w-0 border-0 p-0"><TaskWorkflow snapshot={snapshot} task={task} /></fieldset></InteractionScope>
+              {tab === 'details' && <TaskProgressPanel snapshot={snapshot} task={task} />}
               <TaskCreationReferences taskId={task.id} spaceId={space.id} />
               <section>
                 {editingTitle ? <div className="flex flex-col gap-2"><Field label="标题"><input ref={titleInput} autoFocus className={inputClass} disabled={disabled} value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void saveTitle() } }} /></Field>{titleChanged && <div role="alert" className="collab-inline-error"><span>当前标题：{task.title}</span><Button size="sm" disabled={disabled} onClick={() => setBaseTitle(task.title)}>已核对，保留草稿</Button></div>}<div className="flex justify-end gap-2"><Button size="sm" variant="ghost" disabled={disabled} onClick={() => draft.acknowledge(TITLE_DRAFT_FIELDS)()}>取消</Button><Button size="sm" variant="primary" disabled={disabled || titleChanged || !title.trim()} onClick={() => void saveTitle()}>保存标题</Button></div></div> : <div className="flex items-start gap-2"><h2 className="min-w-0 flex-1 whitespace-pre-wrap break-words text-my-title font-semibold text-my-primary">{task.title}</h2><Tooltip label="编辑标题"><Button size="sm" variant="ghost" disabled={disabled} aria-label="编辑标题" onClick={() => { setTitle(task.title); setBaseTitle(task.title); setEditingTitle(true) }}><Pencil size={14} /></Button></Tooltip></div>}

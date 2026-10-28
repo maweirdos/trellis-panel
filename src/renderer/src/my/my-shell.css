@@ -72,6 +72,12 @@
 }
 
 .my-root .my-window-header { height: var(--my-workspace-header-height); border-bottom-color: transparent; }
+.my-root .my-shell-view-switcher .my-control[aria-pressed='true'] { background: var(--my-bg-navigation-selected); color: var(--my-txt-primary); }
+@media (max-width: 1100px) {
+  .my-root .my-shell-view-switcher svg { display: none; }
+  .my-root .my-shell-project-controls .my-project-switcher-name { max-width: var(--my-space-128); }
+  .my-root .my-window-search > span, .my-root .my-window-search > kbd { display: none; }
+}
 .my-root .my-page-header { min-height: var(--my-workspace-header-height); }
 .my-root .my-context-button { font-size: var(--my-text-sm); line-height: var(--my-line-ui); }
 .my-root .my-sidebar-heading { font-size: var(--my-text-sm); }

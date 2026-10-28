@@ -242,6 +242,88 @@ command, not the current workspace. Clients fetch a separate current snapshot;
 they do not fill visible caches from historical receipts. Backup restore rotates
 epoch and cursor secrets, preserving the original immutable backup and instance.
 
+## Current task progress
+
+Validators and inferred types are exported from `shared/team-task-progress.ts`
+and the service entry point: `teamTaskProgressStateSchema`, `SourceSchema`,
+`BindingSchema`, `RecordSchema`, `DtoSchema`, `CommandSchema`, `CommandReplySchema`
+and `ReceiptSchema` share the `teamTaskProgress` prefix. Resource IDs use
+`teamTaskProgressResourceIdSchema`; project/person/device IDs remain UUIDs.
+
+- GET `/api/projects/:projectId/hifox/tasks/:taskId/progress` returns
+  `{instanceId,epoch,authorizationRevision,projectId,taskId,spaceId,generation,binding,progress,serverTime}`.
+- POST the same path followed by `/commands` returns
+  `{status:committed|duplicate,commandId,result:TeamTaskProgressDto}`.
+- GET the same path followed by `/commands/:commandId` returns a compact
+  `TeamTaskProgressReceipt` or `null`, restricted to the original reporting actor.
+
+Commands are strict objects:
+
+```json
+{"commandId":"UUID","expectedEpoch":"UUID","kind":"bind","expectedGeneration":0,"expectedBindingId":null,"source":{"kind":"web"}}
+{"commandId":"UUID","expectedEpoch":"UUID","kind":"report","bindingId":"UUID","seq":1,"state":"running","step":"Implementing the selected change","blockingReason":null}
+{"commandId":"UUID","expectedEpoch":"UUID","kind":"release","bindingId":"UUID","seq":2}
+```
+
+`bind` requires the observed generation and binding ID, including null for an
+unbound task. Successful binding issues a new UUID and increments generation.
+Replacing an existing binding requires an explicit takeover with both current
+CAS values; clients must not silently refresh CAS and retry a takeover.
+`binding` is null or `{bindingId,generation,reporterId,deviceId,source}`.
+Device bindings use `{kind:desktop,sessionId,engine,directoryName}`; browser
+bindings use `{kind:web}`. Session IDs are opaque platform aliases, engines are
+short names, and directoryName is one safe display component. Absolute local
+paths, credentials, engine transcripts, tools and token logs are not fields.
+
+`progress` is null or `{seq,state,step,blockingReason,updatedAt}`. A new binding
+starts idle at seq 0. States are `running`, `waiting_confirmation`, `paused`,
+`interrupted`, and `idle`. Report/release sequences must strictly increase within
+the original binding and authenticated session/device. Reports replace the whole
+current record: required nullable step/blockingReason fields clear previous
+values; summaries are single lines of at most 500 characters. Timestamps are
+server receipt times, not device liveness or evidence that an Agent is running.
+Release clears binding and progress and increments generation.
+
+Each request rechecks account, team, project, device, current space visibility,
+open task and active handler membership. Only the current handler may write;
+archived spaces reject writes. Workflow tasks use workflow.handlerId; legacy
+tasks require exactly one assignee. Handler, business stage, executor or workflow
+handoff changes invalidate binding and clear progress atomically with the
+business command. Removal also deletes the progress row, receipts and command identities. Task
+closure makes reads and writes unavailable. Progress commands and heartbeat
+receipt never advance workspace revision or create notifications. Formal stage
+transitions continue through `transitionTask`.
+
+`TASK_PROGRESS_UNAVAILABLE` (404) covers missing tasks and inaccessible spaces;
+`TASK_PROGRESS_INACTIVE` (409) covers closed/triage tasks or invalid handlers.
+`TASK_PROGRESS_FORBIDDEN` (403) covers writer/source/receipt ownership denials.
+`TASK_PROGRESS_BINDING_CONFLICT`, `TASK_PROGRESS_SEQUENCE_CONFLICT`,
+`COMMAND_CONFLICT` and `WORKSPACE_EPOCH_CHANGED` return409. Account/project/device
+authorization errors retain their existing codes.
+
+Keep the same command ID, actor, epoch, scope and body after unknown outcomes.
+Command identities retain only UUID, request hash, one-way owner key and
+task/project/account IDs as immutable, fixed-size idempotency metadata. They
+remain until the task is removed; they contain no request body, progress text,
+tool/token logs or transcripts. Metadata row count grows with accepted commands.
+Complete receipts retain command kind, binding ID, generation, seq and commit
+time, with only the latest 32 kept per task. Receipt eviction never deletes the
+command identity. Reusing an accepted UUID with a changed payload conflicts,
+even after its receipt has been evicted. The identical original request returns
+duplicate with the currently authorized DTO and never reapplies old state or
+recreates an evicted receipt. This DTO may have a newer binding or no binding.
+Check an available original receipt before associating a returned binding with
+an unknown bind; a missing receipt does not prove non-execution or authorize a
+new binding. Generation/binding CAS and sequence high water marks also fence
+new commands. The v11 migration preserves identities from all retained v10
+receipts; identities already deleted by v10 cannot be reconstructed.
+Restored epochs clear effective bindings and progress, reject old-epoch commands
+and receipts, and require a fresh explicit binding.
+
+Workspace long polls check an authenticated authorization/revision head on each
+150 ms tick and construct the full scoped snapshot only when returning. Account,
+device and project revocations remain visible while the request is waiting.
+
 ## Receipts and event catch-up
 
 GET `/api/commands/:commandId` reads the caller's current-authorized committed

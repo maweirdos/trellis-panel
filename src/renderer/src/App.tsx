@@ -39,6 +39,7 @@ function MainApp(): JSX.Element {
   const inboxAdd = useApp((s) => s.inboxAdd)
   const projectRoot = snapshot?.meta.root
   const bootstrapped = useApp((s) => s.bootstrapped)
+  const taskConversation = useMy((s) => s.taskConversationTarget)
   useEffect(() => {
     const bridge = api as typeof api & { onDaemonRuntimeUnavailable?: (callback: (event: { projectRoot: string; error: string }) => void) => () => void }
     return bridge.onDaemonRuntimeUnavailable?.(event => {
@@ -134,7 +135,7 @@ function MainApp(): JSX.Element {
   if (hasIpc && !bootstrapped) return <PageLoading />
 
   const scope = getPageNavigation(page).scope
-  if (!snapshot && (scope === 'project' || scope === 'mixed')) {
+  if (!snapshot && (scope === 'project' || scope === 'mixed') && !(page === 'acp' && taskConversation)) {
     return <><Onboarding /><StartupContentCommit /></>
   }
 
@@ -156,6 +157,7 @@ export default function App(): JSX.Element {
   const quickTodoMode = useApp((s) => s.quickTodoMode)
   const theme = useMy((s) => s.theme)
   const fontSize = useMy((s) => s.fontSize)
+  const development = useMy((s) => s.shellView === 'development')
   const startup = useContext(StartupContext)
   const [bootstrapFailure, setBootstrapFailure] = useState<{ error: unknown } | null>(null)
   const docMode = new URLSearchParams(window.location.search).get('mode') === 'doc'
@@ -241,7 +243,7 @@ export default function App(): JSX.Element {
         <Suspense fallback={null}>
           <MyApp />
         </Suspense>
-        <ApplicationDock />
+        {development && <ApplicationDock />}
       </div>
     )
   }
@@ -251,7 +253,7 @@ export default function App(): JSX.Element {
       <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <MainApp />
-        <ApplicationDock />
+        {development && <ApplicationDock />}
         <Toasts />
         <DialogHost />
         <DaemonSettingsDialog />
