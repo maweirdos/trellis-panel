@@ -1077,6 +1077,16 @@ export interface KbDoc {
   synthetic?: boolean
 }
 
+export interface KbBrowseInput {
+  expectedRoot: string; sessionId?: string; library?: KbLibrary | 'all'; page?: number; pageSize?: number
+  folderPath?: string; folderRecursive?: boolean; forceRefresh?: boolean
+}
+export interface KbBrowseSuccess {
+  ok: true; docs: KbDoc[]; page: number; pageSize: number; totalDocs: number
+  hasMore: boolean; folders: string[]; snapshotAt: number; complete: boolean
+  truncationReason?: 'entry_limit' | 'document_limit' | 'byte_limit' | 'unreadable'
+}
+
 export interface KbHit {
   doc: KbDoc
   score: number
@@ -1084,6 +1094,7 @@ export interface KbHit {
   snippet: string
 }
 
+export interface KbSearchScope { expectedRoot: string; folderPath: string; folderRecursive?: boolean }
 export interface KbSearchResult {
   ok: boolean
   error?: string
@@ -1091,6 +1102,8 @@ export interface KbSearchResult {
   docs: KbDoc[]
   totalDocs: number
   elapsedMs: number
+  code?: IpcFail['code']
+  scopeApplied?: true; complete?: boolean; truncationReason?: KbBrowseSuccess['truncationReason']; hasMore?: boolean
 }
 
 /* ---------- Docs (全文检索 .trellis 文档) ---------- */
@@ -1476,6 +1489,7 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   acpSessionHandoffStatus: (sessionId: string, operationId: string) => Promise<import('./acp-handoff').AcpHandoffOperationResult | IpcFail>
   acpSessionHandoffCancel: (sessionId: string, input: import('./acp-handoff').AcpHandoffCancelInput) => Promise<import('./acp-handoff').AcpHandoffOperationResult | IpcFail>
   acpSessionPrompt: (sessionId: string, text: string, options?: AcpPromptOptions) => Promise<AcpPromptResult>
+  acpKnowledgeReferenceCapability: () => Promise<{ supported: boolean }>
   acpSessionBindTask: (sessionId: string, input: AcpBindTaskInput) => Promise<{ ok: boolean; error?: string; code?: string; session?: AcpSessionRecord }>
   acpSessionCancel: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
   acpSessionKill: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
@@ -1537,7 +1551,8 @@ export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, Ta
   studioDeleteFile: (absPath: string) => Promise<{ ok: boolean; error?: string }>
 
   /* --- Knowledge 知识库 --- */
-  kbSearch: (library: KbLibrary | 'all', query: string) => Promise<KbSearchResult>
+  kbSearch: (library: KbLibrary | 'all', query: string, scope?: KbSearchScope) => Promise<KbSearchResult>
+  kbBrowse: (input: KbBrowseInput) => Promise<KbBrowseSuccess | IpcFail>
   kbSaveNote: (fileName: string, content: string) => Promise<{ ok: boolean; error?: string; path?: string }>
   kbDeleteNote: (fileName: string) => Promise<{ ok: boolean; error?: string }>
   kbQaHistory: () => Promise<{ ok: boolean; entries?: KbQaEntry[] }>
@@ -1873,9 +1888,16 @@ export interface AcpSourceReference {
 
 export interface AcpPromptOptions {
   expectedConnectionGeneration?: string
+  expectedProjectGeneration?: number
+  expectedKnowledgeScopeToken?: string
+  knowledgeReferences?: AcpKnowledgeReference[]
   sourceReferences?: AcpSourceReference[]
   images?: import('./acp-images').AcpImageAttachment[]
 }
+
+export type AcpKnowledgeReference =
+  | { kind: 'source'; sourceId: string; contentHash: string }
+  | { kind: 'project'; relativePath: string; displayedRevision: string }
 
 export interface AcpSourceChange {
   relativePath: string
@@ -2040,7 +2062,7 @@ export interface AcpSessionMeta {
   modelCatalog?: AcpModelCatalogMetadata
   currentModeId?: string
   configOptions?: AcpConfigOption[]
-  materialSnapshot?: { taskDir?: string; profileId?: string; instructions: string; files: string[]; capturedAt: number; sources?: AcpMaterialSource[]; sourceReferences?: AcpSourceReference[] }
+  materialSnapshot?: { taskDir?: string; profileId?: string; instructions: string; files: string[]; capturedAt: number; sources?: AcpMaterialSource[]; sourceReferences?: AcpSourceReference[]; knowledgeReferences?: AcpKnowledgeReference[]; knowledgeSourceIds?: string[] }
   directoryLeaseReason?: string
   pendingPermissions?: AcpPermissionPayload[]
   stateRevision?: number

@@ -14,6 +14,7 @@ import { IntegrationError } from '../services/integrations/types'
 import { broadcastToWindows } from '../services/bridge'
 import { KnowledgeDocumentError, openKnowledgeArtifactLocal, readKnowledgeArtifactImage } from '../services/knowledge-access/document-assets'
 import { KNOWLEDGE_DOCUMENT_IMAGE_MAX_CONCURRENT } from '../../shared/knowledge-document-assets'
+import { knowledgeReferenceDeliveryAvailable } from '../services/acp/knowledge-reference-admission'
 
 const project = z.object({ expectedRoot: z.string().min(1).max(4096), sessionId: z.string().min(1).max(256).optional() })
 const request = project.extend({ requestId: z.string().uuid() })
@@ -46,6 +47,7 @@ const remoteKnowledge = {
   collections: (input: { expectedRoot: string }) => nativeKnowledge('collections', input),
   updateScope: (input: { expectedRoot: string }) => nativeKnowledge('updateScope', input),
   documents: (input: { expectedRoot: string }) => nativeKnowledge('documents', input),
+  folders: (input: { expectedRoot: string }) => nativeKnowledge('folders', input),
   source: (input: { expectedRoot: string }) => nativeKnowledge('source', input),
   sources: (input: { expectedRoot: string }) => nativeKnowledge('sources', input),
   importLegacy: (input: { expectedRoot: string }) => nativeKnowledge('importLegacy', input),
@@ -65,6 +67,15 @@ const documentContext = project.extend({ sessionId: z.string().min(1).max(256), 
 export function registerKnowledgeAccessIpc(): void {
   installKnowledgeWorkspaceHost({ root: getProjectRoot, generation: getProjectGeneration, createTask: createTaskRecord })
   const c = ipcInvoke.knowledgeAccess
+  handle(c.referenceCapability, async () => {
+    if (!knowledgeReferenceDeliveryAvailable) return { supported: false }
+    const root = getProjectRoot()
+    if (!root) return { supported: false }
+    try {
+      const result = await nativeKnowledge('context', { expectedRoot: root }) as { selectionToken?: unknown }
+      return { supported: typeof result.selectionToken === 'string' && /^[a-f0-9]{64}$/.test(result.selectionToken) }
+    } catch { return { supported: false } }
+  })
   const imageReads = new Map<number, number>()
   const withDocument = <T>(run: () => Promise<T>): Promise<unknown> => Promise.resolve().then(run).then(data => ({ ok: true as const, data })).catch(error => error instanceof KnowledgeDocumentError ? ipcFail(error.code, error.message) : error instanceof z.ZodError ? ipcFail(IpcErrorCode.InvalidArg, '文档操作参数无效') : knowledgeFailure(error))
   handle(c.artifactImage, (event, raw) => withDocument(async () => {
@@ -85,14 +96,25 @@ export function registerKnowledgeAccessIpc(): void {
     try { return await action(controller.signal) }
     finally { reads.delete(key); if (!event.sender.isDestroyed()) event.sender.removeListener('destroyed', destroyed) }
   }
-  handle(c.context, (_e, raw) => wrap(() => remoteKnowledge.context(project.parse(raw))))
+  handle(c.context, (_e, raw) => wrap(async () => {
+    const generation = getProjectGeneration()
+    const result = await remoteKnowledge.context(project.parse(raw)) as { scope: { projectGeneration: number } }
+    if (generation !== getProjectGeneration()) throw new IntegrationError('项目已切换，请重新选择知识引用', 'conflict')
+    return { ...result, scope: { ...result.scope, projectGeneration: generation } }
+  }))
+  handle(c.rebindSource, (event, raw) => wrap(() => {
+    const input = project.extend({ sessionId: z.string().min(1).max(200), sourceId: z.string().uuid(), contentHash: z.string().regex(/^[a-f0-9]{64}$/), expectedConnectionGeneration: z.string().min(1).max(200), expectedProjectGeneration: z.number().int().nonnegative() }).strict().parse(raw)
+    if (input.expectedProjectGeneration !== getProjectGeneration()) throw new IntegrationError('项目已切换，请重新选择', 'conflict')
+    return nativeKnowledge('rebindSource', input, readerFor(event))
+  }))
   handle(c.collections, (_e, raw) => wrap(() => remoteKnowledge.collections(project.extend({ connectionId: z.string().max(256).optional(), connectionRevision: z.number().int().positive().optional() }).parse(raw))))
   handle(c.updateScope, (_e, raw) => wrap(() => remoteKnowledge.updateScope(withScope.parse(raw))))
   handle(c.search, (event, raw) => wrap(() => {
     const input = withQuery.parse(raw)
     return readOperation(event, input, signal => nativeKnowledge('search', input, readerFor(event), signal))
   }))
-  handle(c.documents, (_e, raw) => wrap(() => remoteKnowledge.documents(project.extend({ collectionId: z.string().min(1).max(256), page: z.number().int().min(1).max(200).optional() }).parse(raw))))
+  handle(c.documents, (_e, raw) => wrap(() => remoteKnowledge.documents(project.extend({ collectionId: z.string().min(1).max(256), page: z.number().int().min(1).max(1000000).optional(), folderPath: z.string().max(4096).optional() }).parse(raw))))
+  handle(c.folders, (_e, raw) => wrap(() => remoteKnowledge.folders(project.extend({ collectionId: z.string().min(1).max(256) }).parse(raw))))
   handle(c.read, (event, raw) => wrap(() => {
     const input = request.extend({ sourceHandle: z.string().min(1).max(512) }).parse(raw)
     return readOperation(event, input, signal => nativeKnowledge('read', input, readerFor(event), signal))

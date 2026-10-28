@@ -21,6 +21,7 @@ export interface KnowledgeSource {
   mode: 'excerpt' | 'full' | 'unsupported'; truncated: boolean
   sessionId: string; turnId: string; scopeRevision: string
   suppliedToAgent: boolean; historical: boolean
+  parentSourceId?: string; documentRevision?: string
   range?: KnowledgeSourceRange
 }
 export interface KnowledgeSourceRange {
@@ -36,34 +37,41 @@ export interface KnowledgeReadResult {
   source: KnowledgeSource | null; persistence: 'durable' | 'degraded'
   range?: KnowledgeSourceRange; nextOffset?: number | null
 }
-export interface KnowledgeDocument { sourceHandle: string; id: string; title: string; fileType: string; parseStatus: string; collectionId: string }
+export interface KnowledgeDocument { sourceHandle: string; id: string; title: string; fileType: string; parseStatus: string; collectionId: string; folderPath?: string | null }
+export interface KnowledgeFolder { path: string; name: string; documentCount: number; totalCount: number; children: KnowledgeFolder[] }
+export interface KnowledgeFolderTree { folders: KnowledgeFolder[]; rootDocumentCount?: number; totalDocumentCount?: number }
+export interface KnowledgeDocumentPage { items: KnowledgeDocument[]; page: number; hasMore: boolean; total?: number }
 export interface KnowledgeArtifact {
   id: string; revision: string; title: string; kind: 'product-requirements' | 'confirmed-note'
   relativePath: string; body: string; sourceIds: string[]; sessionId: string; turnId: string
   createdAt: number; confirmed: boolean
   origin?: { kind: 'agent-conversation'; connectionGeneration: string; userRequestHash: string; review: 'not_asserted' }
 }
+export interface KnowledgePublicationPayload { title: string; content: string; status: 'publish'; channel: 'trellis-panel' }
 export interface KnowledgePublication {
   requestId: string; state: 'previewed' | 'pending' | 'published' | 'failed' | 'uncertain'
   artifactId: string; artifactRevision: string; title: string; body: string; payloadHash: string
+  requestPayload?: { version: 1; body: KnowledgePublicationPayload }
   scope: KnowledgeScope; collectionId: string; collectionName: string
   createdAt: number; updatedAt: number; remoteDocumentId: string | null
   detail: string; indexing: 'unknown'
 }
-export interface KnowledgeContext { scope: KnowledgeScope; legacyImportAvailable: boolean }
+export interface KnowledgeContext { scope: KnowledgeScope; legacyImportAvailable: boolean; selectionToken?: string }
 export interface KnowledgeProjectInput { expectedRoot: string; sessionId?: string }
 export interface KnowledgeArtifactSaveInput extends KnowledgeProjectInput {
   id?: string; expectedRevision?: string | null; title: string; body: string
   kind: KnowledgeArtifact['kind']; sourceIds?: string[]; turnId?: string
 }
 export interface KnowledgeApi {
+  rebindSource(input: KnowledgeProjectInput & { sessionId: string; sourceId: string; contentHash: string; expectedConnectionGeneration: string; expectedProjectGeneration: number }): Promise<KnowledgeResult<{ source: KnowledgeSource; selectionToken: string }>>
   artifactImage(input: KnowledgeArtifactImageInput): Promise<KnowledgeResult<KnowledgeArtifactImage>>
   artifactOpenLocal(input: KnowledgeArtifactOpenLocalInput): Promise<KnowledgeResult<KnowledgeArtifactOpenLocalResult>>
   context(input: KnowledgeProjectInput): Promise<KnowledgeResult<KnowledgeContext>>
   collections(input: KnowledgeProjectInput & { connectionId?: string; connectionRevision?: number }): Promise<KnowledgeResult<{ items: KnowledgeCollection[]; hasMore: boolean }>>
   updateScope(input: KnowledgeProjectInput & { collectionIds: string[] | null }): Promise<KnowledgeResult<KnowledgeScope>>
   search(input: KnowledgeProjectInput & { requestId: string; query: string; limit?: number }): Promise<KnowledgeResult<KnowledgeSearchResult>>
-  documents(input: KnowledgeProjectInput & { collectionId: string; page?: number }): Promise<KnowledgeResult<{ items: KnowledgeDocument[]; page: number; hasMore: boolean }>>
+  documents(input: KnowledgeProjectInput & { collectionId: string; page?: number; folderPath?: string }): Promise<KnowledgeResult<KnowledgeDocumentPage>>
+  folders(input: KnowledgeProjectInput & { collectionId: string }): Promise<KnowledgeResult<KnowledgeFolderTree>>
   read(input: KnowledgeProjectInput & { requestId: string; sourceHandle: string }): Promise<KnowledgeResult<KnowledgeReadResult>>
   source(input: KnowledgeProjectInput & { sourceId: string }): Promise<KnowledgeResult<KnowledgeSource>>
   sources(input: KnowledgeProjectInput): Promise<KnowledgeResult<KnowledgeSource[]>>

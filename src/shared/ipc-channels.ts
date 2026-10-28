@@ -238,6 +238,7 @@ export const ipcInvoke = {
   },
   kb: {
     search: 'kb:search',
+    browse: 'kb:browse',
     saveNote: 'kb:saveNote',
     deleteNote: 'kb:deleteNote',
     qaHistory: 'kb:qaHistory',
@@ -283,9 +284,11 @@ export const ipcInvoke = {
     testMcp: 'weknora:testMcp'
   },
   knowledgeAccess: {
+    referenceCapability: 'knowledge-access:reference-capability',
+    rebindSource: 'knowledge-access:rebind-source',
     artifactImage: 'knowledge-access:artifact-image', artifactOpenLocal: 'knowledge-access:artifact-open-local',
     context: 'knowledge-access:context', collections: 'knowledge-access:collections', updateScope: 'knowledge-access:update-scope',
-    search: 'knowledge-access:search', documents: 'knowledge-access:documents', read: 'knowledge-access:read', source: 'knowledge-access:source', sources: 'knowledge-access:sources', cancel: 'knowledge-access:cancel', importLegacy: 'knowledge-access:import-legacy',
+    search: 'knowledge-access:search', documents: 'knowledge-access:documents', folders: 'knowledge-access:folders', read: 'knowledge-access:read', source: 'knowledge-access:source', sources: 'knowledge-access:sources', cancel: 'knowledge-access:cancel', importLegacy: 'knowledge-access:import-legacy',
     saveArtifact: 'knowledge-access:save-artifact', artifacts: 'knowledge-access:artifacts', artifact: 'knowledge-access:artifact', taskPrd: 'knowledge-access:task-prd', handoff: 'knowledge-access:handoff', previewPublication: 'knowledge-access:preview-publication', confirmPublication: 'knowledge-access:confirm-publication', publications: 'knowledge-access:publications', publicationPage: 'knowledge-access:publication-page', resolvePublication: 'knowledge-access:resolve-publication', clearHistory: 'knowledge-access:clear-history'
   },
   gateway: {

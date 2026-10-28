@@ -1,7 +1,7 @@
 // 项目工作区：固定模块栏 + 按需上下文 + 稳定的来源页与任务阅读面。
 // 路由唯一事实是主 store 的 useApp.page，IPC 事件联动不受换壳影响。
 import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
-import { Keyboard, Loader2, X } from 'lucide-react'
+import { ArrowUpRight, Keyboard, Loader2, X } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useHifox } from '../../hifox/store'
 import { useMy } from '../store'
@@ -20,6 +20,8 @@ import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { escLayerCount } from '../../utils/esc-layer'
 import { InteractionScope, useInteractionActive } from '../../utils/interaction-scope'
 import { StartupContentCommit, StartupContentRegion } from '../../daemon/StartupContext'
+import { useKnowledgeDiscussion } from '../../knowledge/discussion-panel'
+import './knowledge-discussion.css'
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || Boolean(target.closest('input, textarea, select, [role="textbox"], .monaco-editor, .cm-editor')))
@@ -94,18 +96,24 @@ export function PageBody(): JSX.Element {
   const contentKey = scope === 'project' || scope === 'mixed' ? `${page}:${root ?? 'preview'}` : page
   const framed = FRAMED_PAGES[page]
   const [rootGeneration, setRootGeneration] = useState(0)
+  const discussion = useKnowledgeDiscussion((state) => state.open && state.root === root)
   const sequence = useRef(0)
   const [acpSource, setAcpSource] = useState<{ root: string | null; generation: number; owner: number } | null>(() => page === 'acp' ? { root, generation: rootGeneration, owner: ++sequence.current } : null)
   const sourceRef = useRef<HTMLDivElement | null>(null)
   const sourceFocus = useRef<HTMLElement | null>(null)
   const sourceScroll = useRef<Array<{ element: HTMLElement; top: number; left: number }>>([])
+  const knowledgeContent = useRef<HTMLDivElement | null>(null)
+  const discussionOpener = useRef<HTMLElement | null>(null)
+  const discussionOpenerIdentity = useRef<{ kind: 'label' | 'text'; value: string } | null>(null)
+  const returnDiscussionFocus = useRef(false)
   const wasDetour = useRef(false)
   // Finite prop-derived state: React retries this component before committing a replacement owner.
   const sameOwner = acpSource?.root === root && acpSource.generation === rootGeneration
-  if (acpSource && (!sameOwner || (page !== 'acp' && page !== 'settings'))) setAcpSource(null)
-  else if (page === 'acp' && !acpSource) setAcpSource({ root, generation: rootGeneration, owner: ++sequence.current })
-  const acpActive = page === 'acp'
-  const retained = acpSource !== null && sameOwner && (acpActive || page === 'settings')
+  if (acpSource && (!sameOwner || !['acp', 'settings', 'knowledge'].includes(page))) setAcpSource(null)
+  else if ((page === 'acp' || page === 'knowledge' && discussion) && !acpSource) setAcpSource({ root, generation: rootGeneration, owner: ++sequence.current })
+  const panelActive = page === 'knowledge' && discussion
+  const acpActive = page === 'acp' || panelActive
+  const retained = acpSource !== null && sameOwner && ['acp', 'settings', 'knowledge'].includes(page)
 
   useLayoutEffect(() => {
     const rememberFocus = (event: FocusEvent): void => {
@@ -118,8 +126,9 @@ export function PageBody(): JSX.Element {
       if (!sameRoot) {
         setRootGeneration((generation) => generation + 1)
         setAcpSource(null)
-        sourceFocus.current = null; sourceScroll.current = []
-      } else if (previous.page === 'acp' && state.page === 'settings') {
+        useKnowledgeDiscussion.getState().reset()
+        sourceFocus.current = null; sourceScroll.current = []; discussionOpener.current = null; discussionOpenerIdentity.current = null; returnDiscussionFocus.current = false
+      } else if ((previous.page === 'acp' || previous.page === 'knowledge' && useKnowledgeDiscussion.getState().open) && (state.page === 'settings' || previous.page === 'acp' && state.page === 'knowledge' && !useKnowledgeDiscussion.getState().open)) {
         const source = sourceRef.current
         if (!source) return
         sourceScroll.current = [source, ...source.querySelectorAll<HTMLElement>('.my-scrollbar,[data-page-scroll],.acp-document__body,textarea')]
@@ -127,41 +136,68 @@ export function PageBody(): JSX.Element {
         // A native sidebar opener receives focus before its click changes the route.
         // Retain the last source focus rather than replacing it with that outside target.
         if (document.activeElement instanceof HTMLElement && source.contains(document.activeElement)) sourceFocus.current = document.activeElement
-      } else if (state.page !== 'acp' && state.page !== 'settings') {
+      } else if (!['acp', 'settings', 'knowledge'].includes(state.page)) {
         setAcpSource(null)
-        sourceFocus.current = null; sourceScroll.current = []
+        useKnowledgeDiscussion.getState().reset()
+        sourceFocus.current = null; sourceScroll.current = []; discussionOpener.current = null; discussionOpenerIdentity.current = null; returnDiscussionFocus.current = false
       }
     })
-    return () => { off(); document.removeEventListener('focusin', rememberFocus) }
+    const offDiscussion = useKnowledgeDiscussion.subscribe((state, previous) => {
+      if (state.open && !previous.open && useApp.getState().page === 'knowledge') {
+        const focused = document.activeElement
+        discussionOpener.current = focused instanceof HTMLElement && knowledgeContent.current?.contains(focused) ? focused : null
+        const button = discussionOpener.current?.closest('button')
+        const label = button?.getAttribute('aria-label')?.trim()
+        const text = button?.textContent?.trim()
+        discussionOpenerIdentity.current = label ? { kind: 'label', value: label } : text ? { kind: 'text', value: text } : null
+      }
+      if (!state.open && previous.open && useApp.getState().page === 'knowledge') {
+        const source = sourceRef.current
+        if (source) {
+          returnDiscussionFocus.current = source.contains(document.activeElement)
+          sourceScroll.current = [source, ...source.querySelectorAll<HTMLElement>('.my-scrollbar,[data-page-scroll],.acp-document__body,textarea')]
+            .map((element) => ({ element, top: element.scrollTop, left: element.scrollLeft }))
+        }
+      }
+    })
+    return () => { offDiscussion(); off(); document.removeEventListener('focusin', rememberFocus) }
   }, [])
   useLayoutEffect(() => {
     if (sourceRef.current) sourceRef.current.inert = !acpActive || !outerInteractive
     if (outerInteractive && acpActive && wasDetour.current) {
       for (const saved of sourceScroll.current) if (saved.element.isConnected) { saved.element.scrollTop = saved.top; saved.element.scrollLeft = saved.left }
-      if (sourceFocus.current?.isConnected) sourceFocus.current.focus({ preventScroll: true })
+      if (page === 'acp' && sourceFocus.current?.isConnected) sourceFocus.current.focus({ preventScroll: true })
+    }
+    if (outerInteractive && page === 'knowledge' && !discussion && returnDiscussionFocus.current) {
+      const identity = discussionOpenerIdentity.current
+      const matches = identity && knowledgeContent.current ? Array.from(knowledgeContent.current.querySelectorAll('button')).filter((button) => !button.disabled && button.checkVisibility() && (identity.kind === 'label' ? button.getAttribute('aria-label')?.trim() : button.textContent?.trim()) === identity.value) : []
+      const opener = discussionOpener.current?.isConnected && knowledgeContent.current?.contains(discussionOpener.current) ? discussionOpener.current : knowledgeContent.current?.querySelector<HTMLElement>('[data-knowledge-discussion-trigger]') ?? (matches.length === 1 ? matches[0] : null)
+      if (opener?.isConnected && opener.checkVisibility() && !opener.closest('[inert]') && !(opener instanceof HTMLButtonElement && opener.disabled)) opener.focus({ preventScroll: true })
+      returnDiscussionFocus.current = false
     }
     wasDetour.current = retained && !acpActive
-  }, [acpActive, outerInteractive, retained, acpSource?.owner])
+  }, [acpActive, outerInteractive, retained, acpSource?.owner, page, discussion])
   return (
-    <>
+    <div className="knowledge-discussion-container"><div className="knowledge-discussion-layout">
       <StartupContentRegion identity={`acp:${root}:${acpSource?.owner ?? 'empty'}`} active={outerInteractive && acpActive}>
       <Suspense fallback={acpActive && outerInteractive ? <PageLoading /> : null}>
       <InteractionScope key={acpSource?.owner ?? 'empty'} active={acpActive}>
-        {retained && <div ref={(element) => { sourceRef.current = element; if (element) element.inert = !acpActive || !outerInteractive }} data-acp-source-owner={acpSource.owner} hidden={!acpActive} aria-hidden={!acpActive || undefined} className="h-full min-h-0 min-w-0">
-          <ErrorBoundary key={`acp:${acpSource.root ?? 'preview'}:${acpSource.owner}`}><PageLayout variant={PAGE_LAYOUTS.acp}><AcpConsolePage /><StartupContentCommit active={acpActive} /></PageLayout></ErrorBoundary>
+        {retained && <div ref={(element) => { sourceRef.current = element; if (element) element.inert = !acpActive || !outerInteractive }} data-acp-source-owner={acpSource.owner} data-panel={panelActive} hidden={!acpActive} aria-hidden={!acpActive || undefined} className="knowledge-discussion-source">
+          {panelActive && <header className="knowledge-discussion-header"><strong>知识讨论</strong><Button size="sm" variant="ghost" title="在对话中打开" aria-label="在对话中打开" onClick={() => useApp.getState().setPage('acp')}><ArrowUpRight size={15} /></Button><Button size="sm" variant="ghost" aria-label="收起知识讨论" onClick={() => useKnowledgeDiscussion.getState().hide()}><X size={15} /></Button></header>}
+          <ErrorBoundary key={`acp:${acpSource.root ?? 'preview'}:${acpSource.owner}`}><PageLayout variant={PAGE_LAYOUTS.acp}><AcpConsolePage compact={panelActive} /><StartupContentCommit active={acpActive} /></PageLayout></ErrorBoundary>
         </div>}
       </InteractionScope>
       </Suspense>
       </StartupContentRegion>
       {/* 页面级兜底：单页崩溃只换掉内容区（错误卡片可重试），外壳与侧栏存活；
           项目页面同时按真实 root 重挂，清除旧项目页面状态和错误态 */}
-      {!acpActive && <StartupContentRegion identity={contentKey} active={outerInteractive}><Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
+      {page !== 'acp' && <div ref={knowledgeContent} className="knowledge-discussion-content"><StartupContentRegion identity={contentKey} active={outerInteractive}><Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
         {page === 'dashboard' && <YourWorkPage />}
         {page === 'tasks' && <PersonalTasksPage />}
         {framed && <PageFrame page={page}>{framed}</PageFrame>}
         <StartupContentCommit />
-      </ErrorBoundary></Suspense></StartupContentRegion>}
-    </>
+      </ErrorBoundary></Suspense></StartupContentRegion></div>}
+    </div></div>
   )
 }
 

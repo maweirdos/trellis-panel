@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync, mkdirSync } from 'fs'
-import { join, basename, extname, relative, sep, resolve } from 'path'
-import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult } from '../../shared/types'
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync, mkdirSync, realpathSync, opendirSync, openSync, readSync, closeSync } from 'fs'
+import { join, basename, extname, relative, sep, resolve, dirname, isAbsolute } from 'path'
+import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult, KbBrowseInput, KbBrowseSuccess, KbSearchScope } from '../../shared/types'
 
 /**
  * 知识库（五库合一）：
@@ -17,6 +17,9 @@ import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult } from '../../s
 
 const MAX_FILE_BYTES = 512 * 1024
 const MAX_DOCS = 4000
+const MAX_BROWSE_ENTRIES = 4000
+const MAX_BROWSE_DOCS = 1000
+const MAX_BROWSE_BYTES = 16 * 1024 * 1024
 const TEXT_EXTS = new Set(['.md', '.markdown', '.txt'])
 
 interface IndexedDoc {
@@ -66,41 +69,93 @@ export function tokenizeQuery(query: string): string[] {
 
 /* ---------------- 语料发现 ---------------- */
 
-function isDir(p: string): boolean {
+type BrowseLimitReason = 'entry_limit' | 'document_limit' | 'byte_limit' | 'unreadable'
+interface BrowseBudget { entries: number; reads: number; bytes: number; reason?: BrowseLimitReason; folderPath?: string; folderRecursive?: boolean }
+function directoryNames(dir: string, budget?: BrowseBudget): string[] {
+  if (!budget) return readdirSync(dir)
+  const names: string[] = []
+  const handle = opendirSync(dir)
   try {
-    return statSync(p).isDirectory()
+    for (;;) {
+      const entry = handle.readSync()
+      if (!entry) break
+      if (budget.entries >= MAX_BROWSE_ENTRIES) { budget.reason ??= 'entry_limit'; break }
+      budget.entries++
+      names.push(entry.name)
+    }
+  } finally { handle.closeSync() }
+  return names
+}
+
+function insideProject(root: string, path: string): boolean {
+  try {
+    const rel = relative(root, realpathSync(path))
+    return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))
+  } catch { return false }
+}
+
+function isDir(p: string, fencedRoot?: string): boolean {
+  try {
+    return (!fencedRoot || insideProject(fencedRoot, p)) && statSync(p).isDirectory()
   } catch {
     return false
   }
 }
 
-function readText(p: string, maxBytes = MAX_FILE_BYTES): string | null {
+function readText(p: string, maxBytes = MAX_FILE_BYTES, fencedRoot?: string, budget?: BrowseBudget): string | null {
   try {
+    if (fencedRoot && budget?.folderPath !== undefined) {
+      const dir = relative(fencedRoot, dirname(p)).split(sep).join('/')
+      if (dir !== budget.folderPath && !(budget.folderRecursive && (budget.folderPath === '' || dir.startsWith(`${budget.folderPath}/`)))) return null
+    }
+    if (fencedRoot && !insideProject(fencedRoot, p)) return null
     const st = statSync(p)
-    if (st.size > maxBytes) return null
-    let c = readFileSync(p, 'utf-8')
+    if (st.size > maxBytes) { if (budget) budget.reason ??= 'unreadable'; return null }
+    if (budget) {
+      if (budget.reads >= MAX_BROWSE_DOCS) { budget.reason ??= 'document_limit'; return null }
+      if (budget.bytes + st.size > MAX_BROWSE_BYTES) { budget.reason ??= 'byte_limit'; return null }
+      budget.reads++; budget.bytes += st.size
+    }
+    let c: string
+    if (budget) {
+      // The file can grow after stat; never let one read exceed the reserved budget.
+      const fd = openSync(p, 'r')
+      try {
+        const bytes = Buffer.allocUnsafe(st.size + 1)
+        let used = 0
+        while (used < bytes.length) {
+          const count = readSync(fd, bytes, used, bytes.length - used, null)
+          if (!count) break
+          used += count
+        }
+        if (used > st.size) { budget.reason ??= 'unreadable'; return null }
+        c = bytes.toString('utf8', 0, used)
+      } finally { closeSync(fd) }
+    } else c = readFileSync(p, 'utf-8')
     if (c.charCodeAt(0) === 0xfeff) c = c.slice(1)
     return c
   } catch {
+    if (budget && existsSync(p) && (!fencedRoot || insideProject(fencedRoot, p))) budget.reason ??= 'unreadable'
     return null
   }
 }
 
-function walkFiles(dir: string, maxDepth: number, skip: Set<string>, acc: string[], depth = 0): void {
-  if (depth > maxDepth || acc.length > MAX_DOCS) return
+function walkFiles(dir: string, maxDepth: number, skip: Set<string>, acc: string[], depth = 0, fencedRoot?: string, budget?: BrowseBudget): void {
+  if (depth > maxDepth || (!fencedRoot && acc.length > MAX_DOCS) || (fencedRoot && !insideProject(fencedRoot, dir))) return
   let names: string[] = []
   try {
-    names = readdirSync(dir)
+    names = directoryNames(dir, budget)
   } catch {
+    if (budget) budget.reason ??= 'unreadable'
     return
   }
   for (const name of names.sort()) {
     if (name.startsWith('.')) continue
     const p = join(dir, name)
-    if (isDir(p)) {
+    if (isDir(p, fencedRoot)) {
       if (skip.has(name)) continue
-      walkFiles(p, maxDepth, skip, acc, depth + 1)
-    } else if (TEXT_EXTS.has(extname(name).toLowerCase())) {
+      walkFiles(p, maxDepth, skip, acc, depth + 1, fencedRoot, budget)
+    } else if (TEXT_EXTS.has(extname(name).toLowerCase()) && (!fencedRoot || insideProject(fencedRoot, p))) {
       acc.push(p)
     }
   }
@@ -114,11 +169,11 @@ interface RawDoc {
   synthetic?: boolean
 }
 
-function collectSpec(root: string, out: RawDoc[]): void {
+function collectSpec(root: string, out: RawDoc[], fencedRoot?: string, budget?: BrowseBudget): void {
   const files: string[] = []
-  walkFiles(join(root, '.trellis', 'spec'), 6, new Set(), files)
+  walkFiles(join(root, '.trellis', 'spec'), 6, new Set(), files, 0, fencedRoot, budget)
   for (const p of files) {
-    const text = readText(p)
+    const text = readText(p, MAX_FILE_BYTES, fencedRoot, budget)
     if (text === null) continue
     const rel = relative(join(root, '.trellis', 'spec'), p).split(sep).join('/')
     out.push({
@@ -130,8 +185,8 @@ function collectSpec(root: string, out: RawDoc[]): void {
   }
 }
 
-function taskJsonDigest(dir: string): { title: string; body: string } | null {
-  const raw = readText(join(dir, 'task.json'), 256 * 1024)
+function taskJsonDigest(dir: string, fencedRoot?: string, budget?: BrowseBudget): { title: string; body: string } | null {
+  const raw = readText(join(dir, 'task.json'), 256 * 1024, fencedRoot, budget)
   if (!raw) return null
   try {
     const o = JSON.parse(raw)
@@ -146,27 +201,28 @@ function taskJsonDigest(dir: string): { title: string; body: string } | null {
 
 const REQUIREMENT_FILES = ['prd.md', 'PRD.md', 'requirement.md', 'requirements.md', 'design.md', 'README.md']
 
-function collectRequirements(root: string, out: RawDoc[]): void {
+function collectRequirements(root: string, out: RawDoc[], fencedRoot?: string, budget?: BrowseBudget): void {
   const tasksRoot = join(root, '.trellis', 'tasks')
-  if (!isDir(tasksRoot)) return
+  if (!isDir(tasksRoot, fencedRoot)) return
   let names: string[] = []
   try {
-    names = readdirSync(tasksRoot)
+    names = directoryNames(tasksRoot, budget)
   } catch {
+    if (budget) budget.reason ??= 'unreadable'
     return
   }
   for (const name of names.sort()) {
     const dir = join(tasksRoot, name)
-    if (!isDir(dir) || name.startsWith('.') || name === 'archive') continue
+    if (!isDir(dir, fencedRoot) || name.startsWith('.') || name === 'archive') continue
     for (const f of REQUIREMENT_FILES) {
       const p = join(dir, f)
       if (!existsSync(p)) continue
-      const text = readText(p)
+      const text = readText(p, MAX_FILE_BYTES, fencedRoot, budget)
       if (text === null) continue
       out.push({ path: p, title: firstHeading(text) ?? `${name}/${f}`, group: name, text })
       break // 每个任务只取首选需求文档
     }
-    const digest = taskJsonDigest(dir)
+    const digest = taskJsonDigest(dir, fencedRoot, budget)
     if (digest && digest.body.trim()) {
       out.push({
         path: join(dir, 'task.json'),
@@ -179,18 +235,19 @@ function collectRequirements(root: string, out: RawDoc[]): void {
   }
 }
 
-function collectArchive(root: string, out: RawDoc[]): void {
+function collectArchive(root: string, out: RawDoc[], fencedRoot?: string, budget?: BrowseBudget): void {
   const roots = [join(root, '.trellis', 'archive'), join(root, '.trellis', 'tasks', 'archive')]
   const seenDirs = new Set<string>()
   for (const archiveRoot of roots) {
-    if (!isDir(archiveRoot)) continue
+    if (!isDir(archiveRoot, fencedRoot)) continue
     const stack: Array<{ dir: string; depth: number }> = [{ dir: archiveRoot, depth: 0 }]
     while (stack.length > 0) {
       const { dir, depth } = stack.pop()!
       let names: string[] = []
       try {
-        names = readdirSync(dir)
+        names = directoryNames(dir, budget)
       } catch {
+        if (budget) budget.reason ??= 'unreadable'
         continue
       }
       if (names.includes('task.json') && !seenDirs.has(dir)) {
@@ -199,12 +256,12 @@ function collectArchive(root: string, out: RawDoc[]): void {
         for (const f of REQUIREMENT_FILES) {
           const p = join(dir, f)
           if (!existsSync(p)) continue
-          const text = readText(p)
+          const text = readText(p, MAX_FILE_BYTES, fencedRoot, budget)
           if (text === null) continue
           out.push({ path: p, title: firstHeading(text) ?? `${name}/${f}`, group: name, text })
           break
         }
-        const digest = taskJsonDigest(dir)
+        const digest = taskJsonDigest(dir, fencedRoot, budget)
         if (digest && digest.body.trim()) {
           out.push({
             path: join(dir, 'task.json'),
@@ -220,7 +277,7 @@ function collectArchive(root: string, out: RawDoc[]): void {
       for (const name of names.sort()) {
         if (name.startsWith('.')) continue
         const child = join(dir, name)
-        if (isDir(child)) stack.push({ dir: child, depth: depth + 1 })
+        if (isDir(child, fencedRoot)) stack.push({ dir: child, depth: depth + 1 })
       }
     }
   }
@@ -229,19 +286,19 @@ function collectArchive(root: string, out: RawDoc[]): void {
 const WIKI_SKIP = new Set(['node_modules', '.git', 'out', 'dist', 'release', 'coverage', 'build', '.next', 'target', 'vendor'])
 const WIKI_ROOT_FILES = ['README.md', 'readme.md', 'AGENTS.md', 'CLAUDE.md', 'ARCHITECTURE.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'DESIGN.md']
 
-function collectWiki(root: string, out: RawDoc[]): void {
+function collectWiki(root: string, out: RawDoc[], fencedRoot?: string, budget?: BrowseBudget): void {
   for (const f of WIKI_ROOT_FILES) {
     const p = join(root, f)
     if (!existsSync(p)) continue
-    const text = readText(p)
+    const text = readText(p, MAX_FILE_BYTES, fencedRoot, budget)
     if (text === null) continue
     out.push({ path: p, title: firstHeading(text) ?? f, group: '(仓库根)', text })
   }
   for (const sub of ['docs', 'doc', 'wiki', 'docs-cn', 'documentation']) {
     const files: string[] = []
-    walkFiles(join(root, sub), 5, WIKI_SKIP, files)
+    walkFiles(join(root, sub), 5, WIKI_SKIP, files, 0, fencedRoot, budget)
     for (const p of files) {
-      const text = readText(p)
+      const text = readText(p, MAX_FILE_BYTES, fencedRoot, budget)
       if (text === null) continue
       const rel = relative(join(root, sub), p).split(sep).join('/')
       out.push({
@@ -255,12 +312,12 @@ function collectWiki(root: string, out: RawDoc[]): void {
 }
 
 /** 我的笔记（.trellis/notes/*.md，面板可读写） */
-function collectNotes(root: string, out: RawDoc[]): void {
+function collectNotes(root: string, out: RawDoc[], fencedRoot?: string, budget?: BrowseBudget): void {
   const notesRoot = join(root, '.trellis', 'notes')
   const files: string[] = []
-  walkFiles(notesRoot, 3, new Set(), files)
+  walkFiles(notesRoot, 3, new Set(), files, 0, fencedRoot, budget)
   for (const p of files) {
-    const text = readText(p)
+    const text = readText(p, MAX_FILE_BYTES, fencedRoot, budget)
     if (text === null) continue
     const rel = relative(notesRoot, p).split(sep).join('/')
     out.push({
@@ -351,30 +408,31 @@ function indexDoc(raw: RawDoc, library: KbLibrary): IndexedDoc | null {
   return { doc, tokens, text: raw.text.length > 20_000 ? raw.text.slice(0, 20_000) : raw.text }
 }
 
-function collectLibrary(root: string, library: KbLibrary): RawDoc[] {
+function collectLibrary(root: string, library: KbLibrary, fencedRoot?: string, budget?: BrowseBudget): RawDoc[] {
   const out: RawDoc[] = []
-  if (library === 'spec') collectSpec(root, out)
-  else if (library === 'requirements') collectRequirements(root, out)
-  else if (library === 'wiki') collectWiki(root, out)
-  else if (library === 'archive') collectArchive(root, out)
-  else if (library === 'notes') collectNotes(root, out)
+  if (library === 'spec') collectSpec(root, out, fencedRoot, budget)
+  else if (library === 'requirements') collectRequirements(root, out, fencedRoot, budget)
+  else if (library === 'wiki') collectWiki(root, out, fencedRoot, budget)
+  else if (library === 'archive') collectArchive(root, out, fencedRoot, budget)
+  else if (library === 'notes') collectNotes(root, out, fencedRoot, budget)
   return out
 }
 
-function getIndexed(root: string, library: KbLibrary): IndexedDoc[] {
-  const raws = collectLibrary(root, library)
+function getIndexed(root: string, library: KbLibrary, fencedRoot?: string, budget?: BrowseBudget): IndexedDoc[] {
+  const raws = collectLibrary(root, library, fencedRoot, budget)
   const result: IndexedDoc[] = []
   const fresh = new Set<string>()
   for (const raw of raws) {
     let st
     try {
+      if (fencedRoot && !insideProject(fencedRoot, raw.path)) continue
       st = statSync(raw.path)
     } catch {
       continue
     }
     fresh.add(raw.path)
     const cached = cache.get(raw.path)
-    if (cached && cached.mtime === st.mtimeMs && cached.size === st.size) {
+    if (cached && cached.mtime === st.mtimeMs && cached.size === st.size && (!fencedRoot || !cached.indexed || cached.indexed.doc.library === library)) {
       if (cached.indexed) result.push(cached.indexed)
       continue
     }
@@ -449,9 +507,12 @@ function snippet(text: string, terms: string[]): string {
 export function kbSearch(
   root: string,
   library: KbLibrary | 'all',
-  query: string
+  query: string,
+  scope?: KbSearchScope
 ): KbSearchResult {
   const t0 = Date.now()
+  const fencedRoot = scope ? realpathSync(resolve(root)) : undefined
+  const budget: BrowseBudget | undefined = scope ? { entries: 0, reads: 0, bytes: 0, folderPath: scope.folderPath, folderRecursive: scope.folderRecursive } : undefined
   const libs: KbLibrary[] = library === 'all' ? ['requirements', 'spec', 'wiki', 'archive', 'notes'] : [library]
   const q = query.trim().toLowerCase()
   const { latin, runs } = parseQuery(query)
@@ -462,7 +523,14 @@ export function kbSearch(
   let total = 0
 
   for (const lib of libs) {
-    const indexed = getIndexed(root, lib)
+    const candidates = scope && fencedRoot ? collectLibrary(fencedRoot, lib, fencedRoot, budget)
+      .filter((raw) => insideProject(fencedRoot, raw.path)).map((raw) => indexDoc(raw, lib)).filter((item): item is IndexedDoc => item !== null)
+      : getIndexed(root, lib)
+    const indexed = candidates.filter((item) => {
+      if (!scope || !fencedRoot) return true
+      const dir = relative(fencedRoot, dirname(item.doc.path)).split(sep).join('/')
+      return dir === scope.folderPath || (scope.folderRecursive === true && (scope.folderPath === '' || dir.startsWith(`${scope.folderPath}/`)))
+    })
     total += indexed.length
     if (!q) {
       docs.push(...indexed.map((d) => d.doc))
@@ -540,10 +608,45 @@ export function kbSearch(
 
   if (q) {
     hits.sort((a, b) => b.score - a.score || b.doc.mtime - a.doc.mtime)
-    return { ok: true, hits: hits.slice(0, 80), docs: [], totalDocs: total, elapsedMs: Date.now() - t0 }
+    return { ok: true, hits: hits.slice(0, 80), docs: [], totalDocs: total, elapsedMs: Date.now() - t0, ...(scope && budget ? { scopeApplied: true as const, complete: !budget.reason, hasMore: hits.length > 80, ...(budget.reason ? { truncationReason: budget.reason } : {}) } : {}) }
   }
   docs.sort((a, b) => b.mtime - a.mtime)
   return { ok: true, hits: [], docs: docs.slice(0, 300), totalDocs: total, elapsedMs: Date.now() - t0 }
+}
+
+export interface KbBrowseIndex { root: string; library: KbLibrary | 'all'; docs: KbDoc[]; folders: string[]; snapshotAt: number; complete: boolean; truncationReason?: BrowseLimitReason }
+export function kbBrowseIndex(root: string, library: KbLibrary | 'all'): KbBrowseIndex {
+  const fencedRoot = realpathSync(resolve(root))
+  const libs: KbLibrary[] = library === 'all' ? ['requirements', 'spec', 'wiki', 'archive', 'notes'] : [library]
+  const budget: BrowseBudget = { entries: 0, reads: 0, bytes: 0 }
+  const seen = new Set<string>(), docs: KbDoc[] = [], folders = new Set<string>()
+  for (const lib of libs) {
+    for (const raw of collectLibrary(fencedRoot, lib, fencedRoot, budget)) {
+      try {
+        const real = realpathSync(raw.path)
+        if (!insideProject(fencedRoot, raw.path)) continue
+        const key = `${lib}:${process.platform === 'win32' ? real.toLowerCase() : real}`
+        if (seen.has(key)) continue
+        const st = statSync(raw.path)
+        seen.add(key)
+        docs.push({ id: `${lib}:${raw.path}`, library: lib, path: raw.path, name: basename(raw.path), group: raw.group, title: raw.title || basename(raw.path), size: st.size, mtime: st.mtimeMs, synthetic: raw.synthetic })
+        const parts = relative(fencedRoot, dirname(raw.path)).split(sep).filter(Boolean)
+        for (let i = 1; i <= parts.length; i++) folders.add(parts.slice(0, i).join('/'))
+      } catch { budget.reason ??= 'unreadable' }
+    }
+  }
+  docs.sort((a, b) => b.mtime - a.mtime || a.path.localeCompare(b.path) || a.library.localeCompare(b.library))
+  return { root: fencedRoot, library, docs, folders: [...folders].sort((a, b) => a.localeCompare(b)), snapshotAt: Date.now(), complete: !budget.reason, ...(budget.reason ? { truncationReason: budget.reason } : {}) }
+}
+export function kbBrowse(root: string, input: KbBrowseInput, index = kbBrowseIndex(root, input.library ?? 'all')): KbBrowseSuccess {
+  const selected = input.folderPath
+  const matching = selected === undefined ? index.docs : index.docs.filter((doc) => {
+    const dir = relative(index.root, dirname(doc.path)).split(sep).join('/')
+    return dir === selected || (input.folderRecursive === true && (selected === '' || dir.startsWith(`${selected}/`)))
+  })
+  const page = input.page ?? 1, pageSize = input.pageSize ?? 30
+  const offset = (page - 1) * pageSize
+  return { ok: true, docs: matching.slice(offset, offset + pageSize), page, pageSize, totalDocs: matching.length, hasMore: offset + pageSize < matching.length, folders: index.folders, snapshotAt: index.snapshotAt, complete: index.complete, ...(index.truncationReason ? { truncationReason: index.truncationReason } : {}) }
 }
 
 export function kbDocById(root: string, id: string): KbDoc | null {

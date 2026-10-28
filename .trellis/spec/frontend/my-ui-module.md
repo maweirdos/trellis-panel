@@ -196,6 +196,12 @@ and reports belong to team. Home has no context sidebar. The former task-parent 
   Project notes have no private ACL; remote previews do not claim local revisions. Spec
   displays loaded search/log content independently of editable tree selection. Cross-page
   targets must match root and reject parent traversal before any read.
+- Knowledge browsing uses a collapsible directory tree and a paged document list. Local
+  pages use the bounded `kbBrowse` snapshot; remote pages use the selected library and
+  upstream directory/page. Keep partial coverage, old-service fallback and failed or
+  pending searches distinct from empty results. Changing the project, scope, search or
+  folder invalidates incompatible results; retained note drafts must not be silently lost.
+  The directory toggle remains available at the tree boundary when folded.
 - Reject stale note read/edit/save responses after selection changes. Failed note reads do
   not create blank replacement drafts. Existing kbSaveNote lacks expected-mtime support;
   do not imply it has Spec's external conflict protection.

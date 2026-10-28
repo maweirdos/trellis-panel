@@ -4,6 +4,7 @@ import { withKnowledgeOwner } from '../../services/knowledge-access/workspace-ho
 import { canonicalDirectory } from '../../services/acp/metadata'
 import { DaemonError } from '../errors'
 import type { KnowledgeOwner } from '../../services/knowledge-access/types'
+import { listOwnedAcpSessionFacts } from '../../services/acp'
 
 /** GUI and MCP share the same knowledge service, scopes and publication in-flight authority. */
 export function createRuntimeKnowledge(current: () => boolean): { execute(root: string, generation: number, raw: unknown): Promise<unknown>; stopReads(): void } {
@@ -19,6 +20,12 @@ export function createRuntimeKnowledge(current: () => boolean): { execute(root: 
       return withKnowledgeOwner(owner, async () => {
         // The explicit adapter list is the complete capability; there is no object reflection.
         switch (body.operation) {
+          case 'rebindSource': {
+            const p = knowledgeRuntimeInputs.rebindSource.parse(input)
+            const target = listOwnedAcpSessionFacts().find(item => item.sessionId === p.sessionId && canonicalDirectory(item.projectRoot) === canonicalDirectory(root))
+            if (!target || target.connectionGeneration !== p.expectedConnectionGeneration || target.closing || target.disconnected || target.status !== 'ready' || target.accepting || target.turnActive) throw new DaemonError('E_CONFLICT', '目标会话已改变或未就绪，请重新选择')
+            return knowledgeAccess.rebindSource(owner, p.sourceId, p.contentHash)
+          }
           case 'search': case 'read': {
             const request = body.operation === 'search' ? knowledgeRuntimeInputs.search.parse(input) : knowledgeRuntimeInputs.read.parse(input)
             const key = `${root}:${body.readerId}:${request.requestId}`
@@ -35,6 +42,7 @@ export function createRuntimeKnowledge(current: () => boolean): { execute(root: 
           case 'collections': return knowledgeAccess.collections(knowledgeRuntimeInputs.collections.parse(input))
           case 'updateScope': return knowledgeAccess.updateScope(knowledgeRuntimeInputs.updateScope.parse(input))
           case 'documents': return knowledgeAccess.documents(knowledgeRuntimeInputs.documents.parse(input))
+          case 'folders': return knowledgeAccess.folders(knowledgeRuntimeInputs.folders.parse(input))
           case 'source': return knowledgeAccess.source(knowledgeRuntimeInputs.source.parse(input))
           case 'sources': return knowledgeAccess.sources(knowledgeRuntimeInputs.sources.parse(input))
           case 'importLegacy': return knowledgeAccess.importLegacy(knowledgeRuntimeInputs.importLegacy.parse(input))

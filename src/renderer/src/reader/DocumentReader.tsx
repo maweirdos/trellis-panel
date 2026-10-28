@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { CircleAlert, Maximize2, RefreshCw } from 'lucide-react'
 import { useApp } from '../store'
@@ -11,6 +11,8 @@ import type { ReaderOrigin } from '../../../shared/document-windows'
 import { FixedDocumentActions } from './FixedDocumentActions'
 import { computeHeadingAnchors } from './heading-anchors'
 import { ArtifactCopyButton } from '../components/ArtifactCopyButton'
+import { projectRootKey } from '../my/navigation'
+import { relativePathUnderRoot } from './reader-paths'
 
 /**
  * DocumentReader（S0 G2 第三片，design §6.1）：三入口共享的文档阅读容器——
@@ -37,6 +39,8 @@ export interface DocumentReaderProps {
   headerExtra?: ReactNode
   origin?: ReaderOrigin
   showOutline?: boolean
+  /** Actual displayed saved bytes; null whenever that version cannot be selected. */
+  onDisplayedRevision?: (value: { relativePath: string; displayedRevision: string } | null) => void
 }
 
 export function DocumentReader({
@@ -47,17 +51,19 @@ export function DocumentReader({
   onExpand,
   expandLabel = '展开为完整工作区',
   headerExtra,
-  origin
+  origin,
+  onDisplayedRevision
 }: DocumentReaderProps): JSX.Element {
-  const reader = useDocumentReader({ workspaceId, taskRef, relativePath })
-  return <DocumentReaderSurface reader={reader} relativePath={relativePath} variant={variant} onExpand={onExpand} expandLabel={expandLabel} headerExtra={headerExtra} origin={origin} />
+  const reader = useDocumentReader({ workspaceId, taskRef, relativePath, projectRoot: onDisplayedRevision ? workspaceId : undefined })
+  return <DocumentReaderSurface reader={reader} relativePath={relativePath} variant={variant} onExpand={onExpand} expandLabel={expandLabel} headerExtra={headerExtra} origin={origin} onDisplayedRevision={onDisplayedRevision} projectRoot={workspaceId} />
 }
 
 /** The same renderer/chrome with a host-owned controller; no second load/version engine. */
 export function DocumentReaderSurface({
-  reader, relativePath, variant = 'full', onExpand, expandLabel = '展开为完整工作区', headerExtra, origin, showOutline = true
-}: Pick<DocumentReaderProps, 'relativePath' | 'variant' | 'onExpand' | 'expandLabel' | 'headerExtra' | 'origin' | 'showOutline'> & {
+  reader, relativePath, variant = 'full', onExpand, expandLabel = '展开为完整工作区', headerExtra, origin, showOutline = true, onDisplayedRevision, projectRoot
+}: Pick<DocumentReaderProps, 'relativePath' | 'variant' | 'onExpand' | 'expandLabel' | 'headerExtra' | 'origin' | 'showOutline' | 'onDisplayedRevision'> & {
   reader: DocumentReaderController
+  projectRoot?: string
 }): JSX.Element {
   const [widthPref, setWidthPref] = useState(() => useApp.getState().readerWidthPref)
   const [outlineOpen, setOutlineOpen] = useState(false)
@@ -70,6 +76,15 @@ export function DocumentReaderSurface({
   const displayedRevision = session?.displayed?.revision ?? reader.doc?.revision ?? null
   const baseRevision = session?.base?.revision ?? null
   const latestRevision = session?.latest?.revision ?? null
+  const callback = useRef(onDisplayedRevision)
+  callback.current = onDisplayedRevision
+  const currentRoot = useApp((state) => state.snapshot?.meta.root ?? '')
+  const displayed = session?.displayed
+  const eligible = Boolean(projectRoot && projectRootKey(currentRoot) === projectRootKey(projectRoot) && relativePath && reader.doc && relativePathUnderRoot(projectRoot, reader.doc.source.canonicalPath) !== null && reader.doc.source.relativePath === relativePath.replace(/\\/g, '/') && displayed && reader.doc.revision === displayed.revision && reader.doc.rawText === displayed.text && /^[a-f0-9]{16}$/.test(displayed.revision) && !reader.loading && !reader.pendingUpdate && !reader.diff && !reader.requestError && !reader.unreadableNotice)
+  useLayoutEffect(() => {
+    callback.current?.(eligible && relativePath && displayed ? { relativePath, displayedRevision: displayed.revision } : null)
+  }, [eligible, relativePath, displayed?.revision, projectRoot])
+  useLayoutEffect(() => () => callback.current?.(null), [])
 
   const onReadNew = async (trigger: HTMLButtonElement | null): Promise<void> => {
     if (trigger !== null) diffTriggerRef.current = trigger

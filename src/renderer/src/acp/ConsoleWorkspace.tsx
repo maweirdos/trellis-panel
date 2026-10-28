@@ -50,6 +50,9 @@ import { JiraPickerModal } from './JiraPicker'
 import { compileItems, isLiveStatus, mergeEvents, SESSION_LABEL } from './timeline'
 import { requirementsDraftText, useKnowledgeRequest } from '../knowledge/request-intake'
 import { ConversationKnowledgePanel } from './ConversationKnowledgePanel'
+import { KnowledgeReferencePicker } from './KnowledgeReferencePicker'
+import { knowledgeBridge, knowledgeError, requireKnowledge } from '../knowledge/bridge'
+import { forgetKnowledgeReferences, knowledgeDraftReference, readKnowledgeReferences, useKnowledgeReferenceHandoff, writeKnowledgeReferences, type KnowledgeDraftReference } from './knowledge-reference-handoff'
 import { RuntimeHandoffDialog } from './RuntimeHandoffDialog'
 import { ConversationHandoff } from './ConversationHandoff'
 import { handoffRequest, runtimeHandoffUnavailableReason } from './runtime-handoff-state'
@@ -87,7 +90,7 @@ function HistoryBoundary({ hasEarlier, startsMidTurn, coverage, loading, onLoadE
   </div>
 }
 
-export function AcpConsolePage(): JSX.Element {
+export function AcpConsolePage({ compact = false }: { compact?: boolean } = {}): JSX.Element {
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
   const interactionSignal = useInteractionSignal()
@@ -100,6 +103,7 @@ export function AcpConsolePage(): JSX.Element {
   const showTask = useApp((state) => state.showTask)
   const root = snapshot?.meta.root ?? ''
   const incomingRequest = useKnowledgeRequest((state) => state.draft)
+  const incomingKnowledge = useKnowledgeReferenceHandoff((state) => state.pending)
   const [agents, setAgents] = useState<AcpAgentStatus[]>([])
   const [profiles, setProfiles] = useState<AcpAgentProfile[]>([])
   const [sessions, setSessions] = useState<AcpSessionRecord[]>([])
@@ -144,6 +148,8 @@ export function AcpConsolePage(): JSX.Element {
   const [inspectedTaskDir, setInspectedTaskDir] = useState<string | null>(null)
   const [libraryQuery, setLibraryQuery] = useState('')
   const [references, setReferences] = useState<AcpSourceReference[]>([])
+  const [knowledgeReferences, setKnowledgeReferences] = useState<KnowledgeDraftReference[]>([])
+  const [knowledgeReferenceErrors, setKnowledgeReferenceErrors] = useState<Record<string, string>>({})
   const [draftIntent, setDraftIntent] = useState<DraftIntent>('plain')
   const [draftBackup, setDraftBackup] = useState('')
   const [binding, setBinding] = useState(false)
@@ -154,6 +160,9 @@ export function AcpConsolePage(): JSX.Element {
   const [lightweightPlan, setLightweightPlan] = useState(false)
   const [jiraOpen, setJiraOpen] = useState(false)
   const [knowledgePanel, setKnowledgePanel] = useState<{ root: string; sessionId: string } | null>(null)
+  const [knowledgePicker, setKnowledgePicker] = useState<{ root: string; sessionId: string; generation: string | undefined } | null>(null)
+  const knowledgePickerRef = useRef(knowledgePicker)
+  knowledgePickerRef.current = knowledgePicker
   const [projectActivityOwner, setProjectActivityOwner] = useState<{ root: string; sessionId: string } | null>(null)
   const [handoffOwner, setHandoffOwner] = useState<{ root: string; sessionId: string } | null>(null)
   const [taskDir, setTaskDir] = useState('')
@@ -202,6 +211,7 @@ export function AcpConsolePage(): JSX.Element {
     for (const id of removed) {
       scope.deletedUi.add(id); scope.sessionIds.delete(id); scope.states.delete(id)
       delete draftsRef.current[id]; delete draftReferencesRef.current[id]
+      forgetKnowledgeReferences(root, id)
       forgetSessionView(root, id)
     }
     if (removed.length) {
@@ -211,7 +221,7 @@ export function AcpConsolePage(): JSX.Element {
     if (!activeId || !history.deletedIds.has(activeId)) return
     const next = projectSessions.find(session => !session.archivedAt && !isDiagnosticConversation(session))
     earlierAnchor.current = null
-    setInput(''); setReferences([]); setDraftIntent('plain'); setDraftBackup('')
+    setInput(''); setReferences([]); setKnowledgeReferences([]); setDraftIntent('plain'); setDraftBackup('')
     setDocumentTarget(null); setDocumentExpanded(false); setReadableReferences({})
     setKnowledgePanel(null); setProjectActivityOwner(null); setHandoffOwner(null)
     setInspectorVisible(false); setEditor(null); setSidebarOpen(false)
@@ -336,6 +346,7 @@ export function AcpConsolePage(): JSX.Element {
     })
   }, [changeTurnRequest])
   useEffect(() => { setKnowledgePanel(null); setProjectActivityOwner(null); setHandoffOwner(null) }, [root, activeId, view, interactive])
+  useEffect(() => { setKnowledgePicker(null) }, [root, activeId, activeSession?.connectionGeneration, view, interactive])
   const pendingPerm = useMemo(() => {
     const pending: Record<string, AcpPermissionPayload> = {}
     for (const session of projectSessions) {
@@ -429,7 +440,7 @@ export function AcpConsolePage(): JSX.Element {
     setCreating(false); setSending({}); setOperations({}); setFeedback({}); setPermissionPending({}); setPermissionErrors({}); setLoadError('')
     turnRequestsRef.current = {}; setTurnRequests({}); setTerminalTurns([]); setActiveTranscriptSegment(null)
     setJiraOpen(false); setEditor(null); setEngineSetupOpen(false); setNewConversation(null); setNewConversationError(''); setReturnToPicker(false); setInspectedSessionId(null); setRoleSection('overview'); setInspectorOpen(false); setSidebarOpen(false); setTaskDir('')
-    setView('agents'); setReferences([]); setDraftIntent('plain'); setDraftBackup(''); setInspectedProfileId(null); setInspectedTaskDir(null)
+    setView('agents'); setReferences([]); setKnowledgeReferences([]); setDraftIntent('plain'); setDraftBackup(''); setInspectedProfileId(null); setInspectedTaskDir(null)
     setMaterialChanges([]); setDocumentTarget(null); setDocumentExpanded(false); setReadableReferences({}); setLightweightPlan(false)
     draftsRef.current = {}; draftReferencesRef.current = {}; composing.current = false; newComposerFocus.current = null
     if (!hasIpc || !root) return () => { scope.live = false }
@@ -505,6 +516,7 @@ export function AcpConsolePage(): JSX.Element {
     const saved = readSessionView(root, activeId)
     setInput(draftsRef.current[activeId] ?? saved.draft)
     setReferences(draftReferencesRef.current[activeId] ?? saved.sourceReferences ?? [])
+    setKnowledgeReferences(readKnowledgeReferences(root, activeId))
     setDraftIntent(saved.intent ?? 'plain'); setDraftBackup(saved.draftBackup ?? '')
     followRef.current = saved.follow; setAtBottom(saved.follow)
     const element = streamRef.current
@@ -639,6 +651,7 @@ export function AcpConsolePage(): JSX.Element {
     if (!isCurrent() || !canInteract() || managedComposerBlocked || handoffComposerBlocked || !activeSession || !activeId || !selectedArchiveKnown || !canSubmitConversation(activeSession) || scope.actions.has(activeId) || scope.sends.has(activeId) || ownsCurrentTurnRequest(turnRequestsRef.current[activeId], activeSession, root) || composerImages.pending || (!input.trim() && !composerImages.images.length)) return
     const id = activeId, text = input.trim(), submittedDraft = input
     const submittedReferences = references
+    const submittedKnowledge = readKnowledgeReferences(root, id)
     const submittedImages = composerImages.images
     const referenceOwner = (source: AcpSourceReference): ConversationReferenceOwner => {
       if (source.targetConnectionGeneration === activeSession.connectionGeneration) return activeSession
@@ -701,7 +714,17 @@ export function AcpConsolePage(): JSX.Element {
       const latest = scope.states.get(id)
       if (latest && (latest.connectionGeneration !== request.connectionGeneration || latest.status !== 'ready')) throw Error('会话状态已变化，尚未发送。草稿已保留。')
       if (submittedImages.length && target.capabilities?.promptCapabilities?.image !== true) throw Error('当前执行引擎未声明支持图片输入。草稿与图片已保留。')
-      const response = await api.acpSessionPrompt(id, text, { expectedConnectionGeneration: target.connectionGeneration, sourceReferences: deliveryReferences, images: submittedImages })
+      let knowledgeOptions: Pick<import('../../../shared/types').AcpPromptOptions, 'knowledgeReferences' | 'expectedProjectGeneration' | 'expectedKnowledgeScopeToken'> = {}
+      if (submittedKnowledge.length) {
+        const capability = (api as typeof api & { acpKnowledgeReferenceCapability?: () => Promise<{ supported: boolean }> }).acpKnowledgeReferenceCapability
+        if (typeof capability !== 'function' || !(await capability()).supported) throw Error('知识引用发送能力尚未加载，请完整退出并重新打开应用。草稿和引用已保留。')
+        if (!valid()) return
+        const selectionToken = submittedKnowledge[0].selectionToken, projectGeneration = submittedKnowledge[0].projectGeneration
+        if (!selectionToken || projectGeneration === undefined || submittedKnowledge.some((item) => item.selectionToken !== selectionToken || item.projectGeneration !== projectGeneration || item.targetSessionId !== id || item.connectionGeneration !== target.connectionGeneration || (item.kind !== 'project' && item.sessionId !== id))) throw Error('知识范围或会话连接已变化，请重新选择来源。草稿已保留。')
+        knowledgeOptions = { expectedProjectGeneration: projectGeneration, expectedKnowledgeScopeToken: selectionToken, knowledgeReferences: submittedKnowledge.map((item) => item.kind === 'project' ? { kind: 'project', relativePath: item.relativePath, displayedRevision: item.displayedRevision } : { kind: 'source', sourceId: item.id, contentHash: item.contentHash }) }
+      }
+      if (!valid()) return
+      const response = await api.acpSessionPrompt(id, text, { expectedConnectionGeneration: target.connectionGeneration, sourceReferences: deliveryReferences, images: submittedImages, ...knowledgeOptions })
       if (!isCurrent()) return
       const generation = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
       if (generation !== request.connectionGeneration) { clearRequest(); return }
@@ -714,9 +737,11 @@ export function AcpConsolePage(): JSX.Element {
         composerImages.consume(id, submittedImages)
         const latestDraft = draftsRef.current[id] ?? readSessionView(root, id).draft
         const latestReferences = draftReferencesRef.current[id] ?? readSessionView(root, id).sourceReferences ?? []
-        if (latestDraft === submittedDraft && JSON.stringify(latestReferences) === JSON.stringify(submittedReferences)) {
+        const latestKnowledge = readKnowledgeReferences(root, id)
+        if (latestDraft === submittedDraft && JSON.stringify(latestReferences) === JSON.stringify(submittedReferences) && JSON.stringify(latestKnowledge) === JSON.stringify(submittedKnowledge)) {
           draftsRef.current[id] = ''; draftReferencesRef.current[id] = []; writeSessionView(root, id, { draft: '', sourceReferences: [], intent: 'plain' })
-          if (activeSelection.current.id === id) { setInput(''); setReferences([]); setDraftIntent('plain') }
+          writeKnowledgeReferences(root, id, [])
+          if (activeSelection.current.id === id) { setInput(''); setReferences([]); setKnowledgeReferences([]); setDraftIntent('plain') }
         }
         setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } }))
       } else { clearRequest(); setFeedback((previous) => ({ ...previous, [id]: { error: true, text: response.reason === 'SOURCE_CHANGED' ? `引用文件已变化，尚未发送。草稿与原版本引用已保留，请查看变化后重新引用。${response.sources?.map((source) => ` ${source.relativePath}`).join('') ?? ''}` : response.error ?? '发送被拒绝，草稿已保留。' } })) }
@@ -731,7 +756,7 @@ export function AcpConsolePage(): JSX.Element {
       scope.sends.delete(id)
       if (isCurrent()) { setSending((previous) => ({ ...previous, [id]: false })); setOperations((previous) => previous[id] === 'prepare-send' ? { ...previous, [id]: '' } : previous) }
     }
-  }, [input, activeId, activeSession, selectedArchiveKnown, references, root, scope, isCurrent, canInteract, composerImages, changeTurnRequest, managedComposerBlocked, handoffComposerBlocked, updateSession])
+  }, [input, activeId, activeSession, selectedArchiveKnown, references, knowledgeReferences, root, scope, isCurrent, canInteract, composerImages, changeTurnRequest, managedComposerBlocked, handoffComposerBlocked, updateSession])
 
   const sessionAction = async (action: 'cancel' | 'kill' | 'resume'): Promise<void> => {
     if (!activeSession || !isCurrent() || !canInteract() || (scope.actions.has(activeSession.sessionId) && (action !== 'kill' || scope.actionTokens.get(activeSession.sessionId)?.description === 'kill'))) return
@@ -884,6 +909,50 @@ export function AcpConsolePage(): JSX.Element {
     if (mustReplace) setDraftBackup(previous)
     focusComposer()
   }
+  const addKnowledgeReference = async (reference: KnowledgeDraftReference, shouldCommit: () => boolean = () => true, stagedScope?: { selectionToken: string; projectGeneration: number }): Promise<boolean> => {
+    if (!activeSession || !isCurrent() || !canInteract() || activeSelection.current.id !== activeSession.sessionId) return false
+    const sessionId = activeSession.sessionId, generation = activeSession.connectionGeneration
+    if (!generation) { setKnowledgeReferenceErrors((old) => ({ ...old, [sessionId]: '请先连接当前会话，再加入知识来源。' })); return false }
+    const previous = readKnowledgeReferences(root, activeSession.sessionId)
+    if (previous.length >= 4 && !previous.some((item) => item.id === reference.id)) {
+      setKnowledgeReferenceErrors((old) => ({ ...old, [activeSession.sessionId]: '知识引用最多保留 4 项，请先移除不需要的来源。' }))
+      return false
+    }
+    const bridge = knowledgeBridge(['context'])
+    if (!bridge) { setKnowledgeReferenceErrors((old) => ({ ...old, [sessionId]: '知识引用校验服务未加载，请完整退出并重新打开应用。' })); return false }
+    try {
+      if (stagedScope) {
+        const stagedContext = requireKnowledge(await bridge.context({ expectedRoot: root }))
+        if (!isCurrent() || !canInteract() || !shouldCommit() || activeSelection.current.id !== sessionId || activeSelection.current.generation !== generation) return false
+        if (stagedContext.selectionToken !== stagedScope.selectionToken || stagedContext.scope.projectGeneration !== stagedScope.projectGeneration) throw Error('知识页的选择范围已变化，请重新选择来源。')
+      }
+      const context = requireKnowledge(await bridge.context({ expectedRoot: root, sessionId }))
+      if (!isCurrent() || !canInteract() || !shouldCommit() || activeSelection.current.id !== sessionId || activeSelection.current.generation !== generation) return false
+      if (!context.selectionToken || context.scope.sessionId !== sessionId) throw Error('知识范围已变化，请重新检索并选择来源。')
+      let selected = reference
+      if (reference.kind !== 'project' && reference.sessionId !== sessionId) {
+        const rebind = knowledgeBridge(['rebindSource'])
+        if (!rebind || !generation) throw Error('知识来源交接服务未加载或会话尚未连接，请重试。')
+        const rebound = requireKnowledge(await rebind.rebindSource({ expectedRoot: root, sessionId, sourceId: reference.id, contentHash: reference.contentHash, expectedConnectionGeneration: generation, expectedProjectGeneration: context.scope.projectGeneration }))
+        if (!isCurrent() || !canInteract() || !shouldCommit() || activeSelection.current.id !== sessionId || activeSelection.current.generation !== generation) return false
+        if (rebound.selectionToken !== context.selectionToken || rebound.source.sessionId !== sessionId || rebound.source.contentHash !== reference.contentHash) throw Error('知识来源或会话范围已变化，请重新选择。')
+        selected = knowledgeDraftReference(rebound.source)
+      }
+      if (selected.kind !== 'project' && context.scope.revision !== selected.scopeRevision) throw Error('知识范围已变化，请重新检索并选择来源。')
+      if (stagedScope) {
+        const currentStaged = requireKnowledge(await bridge.context({ expectedRoot: root }))
+        if (!isCurrent() || !canInteract() || !shouldCommit() || activeSelection.current.id !== sessionId || activeSelection.current.generation !== generation) return false
+        if (currentStaged.selectionToken !== stagedScope.selectionToken || currentStaged.scope.projectGeneration !== stagedScope.projectGeneration) throw Error('知识页的选择范围已变化，请重新选择来源。')
+      }
+      const current = readKnowledgeReferences(root, sessionId)
+      if (current.some((item) => item.selectionToken !== context.selectionToken || item.projectGeneration !== context.scope.projectGeneration || item.targetSessionId !== sessionId || item.connectionGeneration !== generation)) throw Error('已有知识引用的范围或会话连接已变化，请移除后重新选择。')
+      if (current.length >= 4 && !current.some((item) => item.id === selected.id)) throw Error('知识引用最多保留 4 项，请先移除不需要的来源。')
+      const next = [...current.filter((item) => item.id !== selected.id), { ...selected, selectionToken: context.selectionToken, projectGeneration: context.scope.projectGeneration, targetSessionId: sessionId, connectionGeneration: generation }]
+      writeKnowledgeReferences(root, sessionId, next); setKnowledgeReferences(next)
+      setKnowledgeReferenceErrors((old) => ({ ...old, [sessionId]: '' }))
+      return true
+    } catch (error) { if (isCurrent()) setKnowledgeReferenceErrors((old) => ({ ...old, [sessionId]: knowledgeError(error, '知识引用校验') })); return false }
+  }
   const quoteDocument = (reference: AcpSourceReference): void => {
     if (!activeSession || !isCurrent() || reference.targetSessionId !== activeSession.sessionId || projectRootKey(reference.projectRoot) !== projectRootKey(root) || reference.targetConnectionGeneration !== activeSession.connectionGeneration || reference.taskDir !== activeSession.taskDir) {
       const sameSession = activeSession && reference.targetSessionId === activeSession.sessionId && projectRootKey(reference.projectRoot) === projectRootKey(root)
@@ -975,6 +1044,10 @@ export function AcpConsolePage(): JSX.Element {
     if (!activeSession || !isCurrent() || !canInteract() || activeSelection.current.view !== 'conversation' || activeSelection.current.id !== activeSession.sessionId) return
     setKnowledgePanel({ root, sessionId: activeSession.sessionId })
   }
+  const openKnowledgePicker = (): void => {
+    if (!activeSession || !isCurrent() || !canInteract() || activeSelection.current.view !== 'conversation' || activeSelection.current.id !== activeSession.sessionId) return
+    setKnowledgePicker({ root, sessionId: activeSession.sessionId, generation: activeSession.connectionGeneration })
+  }
   const openProjectActivity = (): void => {
     if (!activeSession || !isCurrent() || !canInteract() || activeSelection.current.view !== 'conversation' || activeSelection.current.id !== activeSession.sessionId) return
     setProjectActivityOwner({ root, sessionId: activeSession.sessionId })
@@ -1003,7 +1076,7 @@ export function AcpConsolePage(): JSX.Element {
     <CodePreviewProvider openCodePreview={openCodePreview}>
     <main ref={mainRef} className="acp-main my-conversation-frame">
       <header className="acp-workspace-header">
-        <Button size="sm" variant="ghost" className={clsx('acp-mobile-only acp-sidebar-toggle', sidebarCollapsed && 'is-visible')} title="展开会话侧栏" onClick={() => { if (window.innerWidth > 900) useMy.getState().toggleSidebar(); else setSidebarOpen(true) }}><Menu size={16} /></Button>
+        <Button size="sm" variant="ghost" className={clsx('acp-mobile-only acp-sidebar-toggle', sidebarCollapsed && 'is-visible')} title="展开会话侧栏" onClick={() => { if (!compact && window.innerWidth > 900) useMy.getState().toggleSidebar(); else setSidebarOpen(true) }}><Menu size={16} /></Button>
         <div className="acp-header-identity">{view === 'conversation' && activeSession ? <><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" aria-hidden="true" /><strong>{activeSession.title ?? activeSession.profileSnapshot?.name ?? activeSession.agentName}</strong></> : <strong>{view === 'agents' ? '角色' : '对话'}</strong>}</div>
         <div className="acp-header-actions">
           {!(view === 'conversation' && activeSession) && <WorkflowRecovery root={root} run={null} originKey={JSON.stringify([projectRootKey(root), 'project-recovery'])} onOpenHistory={openWorkflowHistory} />}
@@ -1020,6 +1093,7 @@ export function AcpConsolePage(): JSX.Element {
         const draft = [input, requirementsDraftText(request)].filter((part) => part.trim()).join('\n\n')
         void installDraft(draft, references, request.intent === 'discussion' ? 'plain' : 'planning').then(() => { if (isCurrent() && draftsRef.current[id] === draft) useKnowledgeRequest.getState().clear(request.id) })
       }}>追加到当前会话草稿</Button>}<Button size="sm" variant="ghost" onClick={() => useKnowledgeRequest.getState().clear(incomingRequest.id)}>取消本次入口</Button></div></section>}
+      {incomingKnowledge && projectRootKey(incomingKnowledge.root) === projectRootKey(root) && (view !== 'conversation' || !activeSession || isReadOnly) && <section aria-label="待加入的知识来源" className="shrink-0 space-y-2 border-b border-my-line bg-my-layer-1 px-4 py-3"><p className="text-my-sm font-medium">待加入：{incomingKnowledge.source.title}</p><p className="text-my-xs text-my-secondary">选择可继续的对话或新建会话，再明确加入草稿。</p><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => openNewConversation()}>新建会话</Button><Button size="sm" variant="ghost" onClick={() => useKnowledgeReferenceHandoff.getState().clear(incomingKnowledge.id)}>取消待加入</Button></div></section>}
       {view === 'agents' ? <section className="acp-catalogue my-scrollbar"><PageContent variant="centered">
         <div className="acp-catalogue-heading"><div><h1>角色</h1><p className="mt-1 text-my-sm text-my-secondary">定义产品助手、研发助手等工作角色，再选择 Codex 或 Claude Code 为它执行。</p></div><Button size="sm" variant="outline" onClick={() => openNewConversation()}><MessageSquare size={14} />新建会话</Button><Button size="sm" variant="primary" disabled={!hasIpc} onClick={() => createProfile()}><Plus size={14} />创建角色</Button></div>
         <ol className="acp-onboarding" aria-label="开始使用 Agent"><li><button onClick={() => setEngineSetupOpen(true)}><span>1</span><strong>配置执行引擎</strong><small>安装、登录与本机环境</small></button></li><li><button onClick={() => createProfile()}><span>2</span><strong>创建工作角色</strong><small>名称、职责与工作指令</small></button></li><li><button onClick={() => openNewConversation()}><span>3</span><strong>选择角色开始会话</strong><small>明确连接后再选择模型</small></button></li></ol>
@@ -1064,8 +1138,11 @@ export function AcpConsolePage(): JSX.Element {
               writeSessionView(root, activeSession.sessionId, { draft: draftBackup, sourceReferences: restoredReferences, intent: saved.backupIntent ?? 'plain', draftBackup: '', backupReferences: [] })
             }}>恢复原稿</button></p>}
             {references.length > 0 && <div className="acp-source-references">{references.map((source) => <div className="acp-source-chip" key={`${source.relativePath}:${source.displayedRevision}`}><FileText size={12} /><span title={`${source.relativePath} · ${source.displayedRevision}`}>{source.relativePath.split('/').at(-1)} · {source.displayedRevision.slice(0, 8)}</span><button aria-label={`移除引用 ${source.relativePath}`} onClick={() => { const next = references.filter((item) => item !== source); setReferences(next); draftReferencesRef.current[activeSession.sessionId] = next; writeSessionView(root, activeSession.sessionId, { sourceReferences: next }) }}><X size={11} /></button></div>)}</div>}
+            {incomingKnowledge && projectRootKey(incomingKnowledge.root) === projectRootKey(root) && <div className="px-3 pt-2 text-my-xs text-my-secondary" role="status">待加入：{incomingKnowledge.source.title} <button className="ml-2 underline" onClick={() => { void addKnowledgeReference(incomingKnowledge.source, () => useKnowledgeReferenceHandoff.getState().pending?.id === incomingKnowledge.id, incomingKnowledge).then((added) => { if (added) useKnowledgeReferenceHandoff.getState().clear(incomingKnowledge.id) }) }}>加入当前草稿</button><button className="ml-2 underline" onClick={() => useKnowledgeReferenceHandoff.getState().clear(incomingKnowledge.id)}>取消</button></div>}
+            {knowledgeReferenceErrors[activeSession.sessionId] && <p role="alert" className="px-3 pt-2 text-my-xs text-my-warning-text">{knowledgeReferenceErrors[activeSession.sessionId]}</p>}
+            {knowledgeReferences.length > 0 && <div className="acp-source-references">{knowledgeReferences.map((source) => <div className="acp-source-chip" key={source.id}><FileText size={12} /><span title={source.kind === 'project' ? `${source.relativePath} · ${source.displayedRevision}` : `${source.kind === 'local' ? source.relativePath : `${source.instanceId ?? ''} · ${source.collectionId ?? ''} · ${source.documentId}`} · ${source.contentHash} · ${new Date(source.fetchedAt).toLocaleString()}`}>{source.title} · {source.kind === 'project' ? `文件 · ${source.displayedRevision.slice(0, 8)}` : `${source.mode === 'full' ? '正文' : '摘录'}${source.truncated ? ' · 已截断' : ''} · ${source.contentHash.slice(0, 8)}`}</span><button aria-label={`移除知识引用 ${source.title}`} onClick={() => { const next = readKnowledgeReferences(root, activeSession.sessionId).filter((item) => item.id !== source.id); writeKnowledgeReferences(root, activeSession.sessionId, next); setKnowledgeReferences(next) }}><X size={11} /></button></div>)}</div>}
             <textarea ref={composerRef} aria-label="Agent 指令" title={managedComposerBlocked ? '受管任务执行期间保留草稿；请等待或停止任务后再发送普通指令' : 'Enter 发送 · Shift Enter 换行'} readOnly={managedComposerBlocked} rows={2} value={input} placeholder="说说你的想法…" onChange={(event) => changeDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send() } }} />
-            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || Boolean(sending[activeSession.sessionId]) || !selectedArchiveKnown || managedComposerBlocked || handoffComposerBlocked} onRecoverModel={recoverModel} acquireConfiguration={acquireConfiguration} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title="停止受管任务" disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} /><span className="acp-stop-label">{workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止任务' : '核对任务状态'}</span></Button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={handoffComposerBlocked || !selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
+            <div className="acp-composer-toolbar"><ComposerModelPicker key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || Boolean(sending[activeSession.sessionId]) || !selectedArchiveKnown || managedComposerBlocked || handoffComposerBlocked} onRecoverModel={recoverModel} acquireConfiguration={acquireConfiguration} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledgePicker() }}><Search size={14} /><span>查找项目知识</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title="停止受管任务" disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} /><span className="acp-stop-label">{workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止任务' : '核对任务状态'}</span></Button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <Button variant="outline" size="sm" title="停止当前回合" disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} /><span className="acp-stop-label">{activeSession.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={handoffComposerBlocked || !selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
           </div>}
         </footer>}
       </section>}
@@ -1106,6 +1183,7 @@ export function AcpConsolePage(): JSX.Element {
     }} />}
     {jiraOpen && <JiraPickerModal isCurrent={isCurrent} onClose={() => setJiraOpen(false)} onSelected={() => { if (isCurrent()) setJiraOpen(false) }} />}
     {interactive && view === 'conversation' && activeSession && handoffOwner?.root === root && handoffOwner.sessionId === activeSession.sessionId && <RuntimeHandoffDialog key={`handoff-dialog:${root}:${activeSession.sessionId}`} root={root} source={activeSession} agents={agents} sourceIssue={handoffSourceIssue} isCurrent={ownsHandoffSource} onRefreshAgents={() => void reloadCatalogue()} onChanged={() => void reloadSessions()} onReady={openHandoffTarget} onClose={() => setHandoffOwner(null)} />}
+    {interactive && view === 'conversation' && activeSession && knowledgePicker?.root === root && knowledgePicker.sessionId === activeSession.sessionId && knowledgePicker.generation === activeSession.connectionGeneration && <KnowledgeReferencePicker key={`${root}:${activeSession.sessionId}:${activeSession.connectionGeneration}`} root={root} sessionId={activeSession.sessionId} isCurrent={() => isCurrent() && activeSelection.current.view === 'conversation' && activeSelection.current.id === knowledgePicker.sessionId && activeSelection.current.generation === knowledgePicker.generation} onClose={() => { knowledgePickerRef.current = null; setKnowledgePicker(null) }} onSelect={(source) => source.sessionId === activeSession.sessionId ? addKnowledgeReference(knowledgeDraftReference(source), () => knowledgePickerRef.current === knowledgePicker) : Promise.resolve(false)} />}
     {interactive && view === 'conversation' && activeSession && knowledgePanel?.root === root && knowledgePanel.sessionId === activeSession.sessionId && <ConversationKnowledgePanel key={`${root}:${activeSession.sessionId}`} root={root} session={activeSession} events={activeEvents} onClose={() => setKnowledgePanel(null)} />}
     {interactive && view === 'conversation' && activeSession && projectActivityOwner?.root === root && projectActivityOwner.sessionId === activeSession.sessionId && <Modal open ariaLabel="项目活动" width={760} onClose={() => setProjectActivityOwner(null)}>
       <header className="flex items-center gap-3 border-b border-my-line px-4 py-3"><h2 className="min-w-0 flex-1 text-my-md font-semibold">项目活动</h2><Button size="sm" variant="ghost" aria-label="关闭项目活动" onClick={() => setProjectActivityOwner(null)}><X size={16} /></Button></header>

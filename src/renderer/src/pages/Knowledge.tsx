@@ -1,9 +1,8 @@
 import { rememberVisit } from '../my/personal-history'
 import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { PageContent, PageSection } from '../my/layout/PageLayout'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  Library,
   FileText,
   BookOpenText,
   Archive,
@@ -15,14 +14,12 @@ import {
   Send,
   X,
   Cloud,
-  ChevronDown,
   StickyNote,
-  Plus,
   Save,
   Trash2,
   History,
-  PanelLeftClose,
-  PanelLeftOpen
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
@@ -30,17 +27,22 @@ import { clsx } from 'clsx'
 import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
 import { DocumentReader } from '../reader/DocumentReader'
+import { confirmDialog } from '../components/Dialogs'
+import { projectRootKey } from '../my/navigation'
 import { relativePathUnderRoot } from '../reader/reader-paths'
-import { Button, Modal, SearchInput } from '../my/ui'
+import { stageKnowledgeReferenceHandoff } from '../acp/knowledge-reference-handoff'
+import { Button, Dropdown, DropdownItem, Modal, SearchInput } from '../my/ui'
 import { useMy } from '../my/store'
 import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { ProductMaterialActions } from '../knowledge/ProductMaterialActions'
-import { useKnowledgeRequest } from '../knowledge/request-intake'
+import { useKnowledgeDiscussion } from '../knowledge/discussion-panel'
 import { KnowledgeScopeControl } from '../knowledge/KnowledgeScopeControl'
 import { KnowledgeSourceView } from '../knowledge/KnowledgeSourceView'
+import { KnowledgeBrowser } from '../knowledge/KnowledgeBrowser'
+import '../knowledge/KnowledgeBrowser.css'
 import { knowledgeBridge, knowledgeError, knowledgeStatusLabel, requireKnowledge, useProjectKnowledge } from '../knowledge/bridge'
-import type { KnowledgeDocument, KnowledgeSource } from '../../../shared/knowledge-access'
-import type { KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult } from '../../../shared/types'
+import type { KnowledgeCollection, KnowledgeDocument, KnowledgeFolderTree, KnowledgeSource } from '../../../shared/knowledge-access'
+import type { KbBrowseSuccess, KbDoc, KbHit, KbLibrary, KbQaEntry, KbSearchResult } from '../../../shared/types'
 import type { JSX } from 'react'
 
 type LibFilter = KbLibrary | 'all' | 'company'
@@ -61,6 +63,19 @@ interface RemoteDoc {
 
 /** zustand 选择器兜底用的稳定空数组（每次返回新 [] 会触发 getSnapshot 重渲染问题） */
 const NO_KB_IDS: string[] = []
+type NoteDraft = { name: string; content: string; isNew: boolean }
+// Keep unsaved editor contents in memory, keyed by project, across navigation/unmounts.
+const noteDrafts = new Map<string, NoteDraft>()
+
+function localCoverageMessage(result: KbBrowseSuccess): string | null {
+  if (result.complete === true) return null
+  if (result.complete !== false) return '本地索引覆盖范围未知，请更新桌面应用。'
+  const reasons: Record<NonNullable<KbBrowseSuccess['truncationReason']>, string> = {
+    entry_limit: '扫描条目达到上限', document_limit: '文档数量达到上限',
+    byte_limit: '读取量达到上限', unreadable: '部分目录或文件不可读'
+  }
+  return `本地索引未覆盖全部资料：${result.truncationReason ? reasons[result.truncationReason] : '原因未知'}`
+}
 
 const LIB_META: Record<KbLibrary, { label: string; icon: JSX.Element; desc: string }> = {
   requirements: { label: '需求', icon: <ScrollText size={14} />, desc: '活动任务 PRD 与 task.json 提炼的需求文档' },
@@ -70,9 +85,6 @@ const LIB_META: Record<KbLibrary, { label: string; icon: JSX.Element; desc: stri
   archive: { label: '归档', icon: <Archive size={14} />, desc: '已归档任务的沉淀经验' }
 }
 
-/** 侧栏资料分组的展示顺序；spec 走独立规范页，知识库（company）在知识库视图独占侧栏 */
-const GROUPS: KbLibrary[] = ['requirements', 'notes', 'wiki', 'archive']
-
 const LIB_CHIP: Record<KbLibrary, string> = {
   requirements: 'bg-my-label-yellow text-my-label-yellow-text',
   spec: 'bg-my-label-emerald text-my-label-emerald-text',
@@ -81,26 +93,8 @@ const LIB_CHIP: Record<KbLibrary, string> = {
   archive: 'bg-my-label-purple text-my-label-purple-text'
 }
 
-function highlight(text: string): JSX.Element {
-  const parts = text.split(/[\u0000\u0001]/)
-  // 奇数下标是命中片段
-  return (
-    <>
-      {parts.map((p, i) =>
-        i % 2 === 1 ? (
-          <mark key={i} className="rounded-my-sm bg-my-accent-subtle px-0.5 text-my-accent-text">{p}</mark>
-        ) : (
-          <span key={i}>{p}</span>
-        )
-      )}
-    </>
-  )
-}
-
 export function KnowledgePage(): JSX.Element {
   const sidebarStyle = useSidebarWidthStyle()
-  const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
-  const toggleSidebar = useMy((state) => state.toggleSidebar)
   const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
   const viewerTabs = useApp((s) => s.viewerTabs)
@@ -114,9 +108,9 @@ export function KnowledgePage(): JSX.Element {
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [result, setResult] = useState<KbSearchResult | null>(null)
+  const [localResultOwner, setLocalResultOwner] = useState<{ query: string; folder: string; page: number; current: () => boolean } | null>(null)
   const [loading, setLoading] = useState(false)
-  /** 侧栏资料分组的折叠状态（检索态忽略折叠，始终展示命中分组） */
-  const [collapsedLibs, setCollapsedLibs] = useState<string[]>([])
+  const [localError, setLocalError] = useState<string | null>(null)
   const [scopeOpen, setScopeOpen] = useState(false)
   const [active, setActive] = useState<KbDoc | null>(null)
   const [docContent, setDocContent] = useState<string | null>(null)
@@ -125,17 +119,45 @@ export function KnowledgePage(): JSX.Element {
   const docSeq = useRef(0)
   const pageRef = useRef<HTMLDivElement | null>(null)
   const readerRef = useRef<HTMLDivElement | null>(null)
-  const browserVisible = !sidebarCollapsed
 
   /* 公司库（WeKnora）——独立状态与序号，异步追加，绝不阻塞本地检索 */
   const knowledge = useProjectKnowledge(snapshot?.meta.root ?? '')
+  const [readerOwner, setReaderOwner] = useState<{ root: string | null; view: typeof knowledgeView; current: () => boolean } | null>(null)
+  const readerCurrent = readerOwner?.root === projectRootKey(snapshot?.meta.root) && readerOwner?.view === knowledgeView && readerOwner?.current === knowledge.current && knowledge.current()
   const weknoraEnabled = Boolean(knowledge.context?.scope.connectionId)
   const weknoraKbIds = knowledge.context?.scope.collectionIds ?? NO_KB_IDS
   const [companyHits, setCompanyHits] = useState<KnowledgeSource[]>([])
   const [companyDocs, setCompanyDocs] = useState<CompanyDoc[]>([])
   const [companyLoading, setCompanyLoading] = useState(false)
   const [companyError, setCompanyError] = useState<string | null>(null)
-  const [companyMs, setCompanyMs] = useState(0)
+  const [companyPage, setCompanyPage] = useState(1)
+  const [companyHasMore, setCompanyHasMore] = useState(false)
+  const [companySearchOwner, setCompanySearchOwner] = useState<{ query: string; scopeRevision: string | undefined; current: () => boolean } | null>(null)
+  const [companyReadOwner, setCompanyReadOwner] = useState<{ query: string; scopeRevision: string | undefined; current: () => boolean } | null>(null)
+  const [companyPageOwner, setCompanyPageOwner] = useState<{ collectionId: string; folder: string | null; page: number; scopeRevision: string | undefined; current: () => boolean } | null>(null)
+  const [collectionId, setCollectionId] = useState('')
+  const [remoteFolder, setRemoteFolder] = useState<string | null>(null)
+  const [remoteTree, setRemoteTree] = useState<KnowledgeFolderTree | null>(null)
+  const [remoteTreeError, setRemoteTreeError] = useState<string | null>(null)
+  const [treeRefresh, setTreeRefresh] = useState(0)
+  const [collections, setCollections] = useState<KnowledgeCollection[]>([])
+  const [browseDocs, setBrowseDocs] = useState<KbDoc[]>([])
+  const [localFolders, setLocalFolders] = useState<string[]>([])
+  const [localBrowseMode, setLocalBrowseMode] = useState<'checking' | 'available' | 'legacy'>('checking')
+  const [localFolder, setLocalFolder] = useState('')
+  const [localPage, setLocalPage] = useState(1)
+  const [localHasMore, setLocalHasMore] = useState(false)
+  const localSnapshot = useRef<{ folder: string; current: () => boolean; snapshotAt: number } | null>(null)
+  const [localSnapshotNotice, setLocalSnapshotNotice] = useState<{ folder: string; current: () => boolean; message: string } | null>(null)
+  const [localCoverage, setLocalCoverage] = useState<string | null>(null)
+  const [localRefresh, setLocalRefresh] = useState(0)
+  const [localRefreshing, setLocalRefreshing] = useState(false)
+  const refreshSeq = useRef(0)
+  const [treeVisible, setTreeVisible] = useState(true)
+  const [discussionTreeVisible, setDiscussionTreeVisible] = useState(false)
+  const discussionOpen = useKnowledgeDiscussion((state) => state.open && state.root === projectRootKey(snapshot?.meta.root))
+  useLayoutEffect(() => { setDiscussionTreeVisible(false) }, [discussionOpen])
+  const directoryVisible = discussionOpen ? discussionTreeVisible : treeVisible
   const companySeq = useRef(0)
   const [remoteDoc, setRemoteDoc] = useState<RemoteDoc | null>(null)
 
@@ -150,16 +172,27 @@ export function KnowledgePage(): JSX.Element {
   const [showHistory, setShowHistory] = useState(false)
   const [showLegacyQa, setShowLegacyQa] = useState(false)
   const [showMaterials, setShowMaterials] = useState(false)
+  const [referenceVersion, setReferenceVersion] = useState<{ root: string; path: string; revision: string } | null>(null)
 
   /* Project notes are repository files, not private personal storage. */
-  const [noteDraft, setNoteDraft] = useState<{ name: string; content: string; isNew: boolean } | null>(null)
+  const noteOwner = projectRootKey(snapshot?.meta.root) ?? ''
+  const [noteState, setNoteState] = useState<{ owner: string; draft: NoteDraft } | null>(() => {
+    const draft = noteDrafts.get(noteOwner)
+    return draft ? { owner: noteOwner, draft } : null
+  })
+  const noteDraft = noteState?.owner === noteOwner ? noteState.draft : null
+  const [noteVisible, setNoteVisible] = useState(Boolean(noteDraft))
+  const updateNoteDraft = (draft: NoteDraft | null): void => {
+    if (!noteOwner) return
+    if (draft) noteDrafts.set(noteOwner, draft)
+    else noteDrafts.delete(noteOwner)
+    setNoteState(draft ? { owner: noteOwner, draft } : null)
+  }
   const [noteSaving, setNoteSaving] = useState(false)
   useEffect(() => { setShowMaterials(false); setShowLegacyQa(false); setAiAnswer(null); setAiSources([]); setAiRemoteSources([]); setAiBusy(false) }, [knowledge.current])
   const discussWithAgent = (): void => {
     const root = snapshot?.meta.root
-    if (!root || !knowledge.current()) return
-    const topic = query.trim() || remoteDoc?.title || active?.title || ''
-    useKnowledgeRequest.getState().stage({ root, title: topic || '结合项目知识讨论', description: topic ? `请围绕「${topic}」展开讨论，按需查找相关资料并说明实际来源。` : '请结合项目知识，帮我梳理问题、查找历史方案或核对业务规则。', intent: 'discussion', source: { kind: 'manual' } })
+    if (root && knowledge.current()) useKnowledgeDiscussion.getState().show(root)
   }
 
   useEffect(() => () => {
@@ -173,12 +206,15 @@ export function KnowledgePage(): JSX.Element {
     return () => clearTimeout(t)
   }, [query])
 
+  useEffect(() => { setLocalPage(1); setLocalSnapshotNotice(null) }, [debounced])
+
   /** 公司库检索/浏览：本地结果先上屏，这里异步补充（失败只记错误不打扰本地） */
   const runCompanySearch = useCallback(
     async (mode: 'search' | 'browse') => {
       const seq = ++companySeq.current
       if (!weknoraEnabled) {
         setCompanyHits([])
+        setCompanyReadOwner(null)
         setCompanyDocs([])
         setCompanyError(null)
         setCompanyLoading(false)
@@ -186,6 +222,8 @@ export function KnowledgePage(): JSX.Element {
       }
       setCompanyLoading(true)
       setCompanyError(null)
+      if (mode === 'browse') { setCompanyDocs([]); setCompanyHasMore(false); setCompanyPageOwner(null) }
+      else { setCompanyHits([]); setCompanySearchOwner(null); setCompanyReadOwner({ query: debounced, scopeRevision: knowledge.context?.scope.revision, current: knowledge.current }) }
       try {
         if (mode === 'search') {
           const bridge = knowledgeBridge(['search'])
@@ -193,23 +231,17 @@ export function KnowledgePage(): JSX.Element {
           const res = requireKnowledge(await bridge.search({ ...knowledge.input, requestId: crypto.randomUUID(), query: debounced, limit: 10 }))
           if (seq !== companySeq.current || !knowledge.current()) return
           setCompanyHits(res.sources.filter((source) => source.kind === 'weknora'))
-          setCompanyMs(res.elapsedMs)
+          setCompanySearchOwner({ query: debounced, scopeRevision: knowledge.context?.scope.revision, current: knowledge.current })
           setCompanyError(res.status === 'ok' || res.status === 'empty' ? (res.persistence === 'degraded' ? '证据保存降级，不保证重开可读' : null) : `${knowledgeStatusLabel[res.status]}：${res.detail}`)
         } else {
-          const docs: CompanyDoc[] = []
-          const warnings: string[] = []
-          const t0 = Date.now()
+          if (!collectionId) { setCompanyDocs([]); setCompanyHasMore(false); return }
           const bridge = knowledgeBridge(['documents'])
           if (!bridge) throw new Error('项目知识服务未加载；不会回退到全局连接')
-          for (const collectionId of weknoraKbIds) {
-            const res = await bridge.documents({ ...knowledge.input, collectionId, page: 1 })
-            if (seq !== companySeq.current || !knowledge.current()) return
-            if (res.ok) { docs.push(...res.data.items.map((doc) => ({ ...doc, kbName: collectionId }))); if (res.data.hasMore) warnings.push(`${collectionId} 仅显示第一页，请检索定位更多文档`) }
-            else warnings.push(res.error)
-          }
-          setCompanyDocs(docs)
-          setCompanyMs(Date.now() - t0)
-          setCompanyError(warnings.join('；') || null)
+          const res = requireKnowledge(await bridge.documents({ ...knowledge.input, collectionId, page: companyPage, ...(remoteFolder !== null ? { folderPath: remoteFolder } : {}) }))
+          if (seq !== companySeq.current || !knowledge.current()) return
+          setCompanyDocs(res.items.map((doc) => ({ ...doc, kbName: collectionId })))
+          setCompanyHasMore(res.hasMore)
+          setCompanyPageOwner({ collectionId, folder: remoteFolder, page: companyPage, scopeRevision: knowledge.context?.scope.revision, current: knowledge.current })
         }
       } catch (error) {
         if (seq === companySeq.current) setCompanyError(error instanceof Error ? error.message : '知识库读取失败')
@@ -217,32 +249,86 @@ export function KnowledgePage(): JSX.Element {
         if (seq === companySeq.current) setCompanyLoading(false)
       }
     },
-    [debounced, weknoraEnabled, weknoraKbIds, knowledge.input, knowledge.current]
+    [debounced, weknoraEnabled, collectionId, companyPage, remoteFolder, knowledge.input, knowledge.current, knowledge.context?.scope.revision]
   )
 
-  const runSearch = useCallback(async () => {
+  const runSearch = useCallback(async (forceRefresh = false) => {
     const seq = ++searchSeq.current
-    if (!hasIpc) return
+    if (!hasIpc || !snapshot?.meta.root) return
     if (scope === 'company') {
       setLoading(false)
       setResult(null)
-      setActive(null)
       void runCompanySearch(debounced ? 'search' : 'browse')
       return
     }
+    if (typeof api?.kbSearch !== 'function') return
+    const refreshToken = forceRefresh ? ++refreshSeq.current : null
+    let refreshCompleted = false
+    if (forceRefresh) setLocalRefreshing(true)
     setLoading(true)
+    setResult(null)
+    setLocalError(null)
     try {
-      const res = await api.kbSearch('all', debounced)
-      if (seq !== searchSeq.current) return
-      if (res.ok) setResult(res)
-      else pushToast({ kind: 'error', title: '检索失败', body: res.error })
+      if (forceRefresh && debounced && localBrowseMode !== 'legacy' && typeof api.kbBrowse === 'function') {
+        try {
+          const refreshed = await api.kbBrowse({ expectedRoot: snapshot.meta.root, page: 1, pageSize: 30, forceRefresh: true })
+          if (refreshed.ok && knowledge.current()) refreshCompleted = true
+          if (seq !== searchSeq.current || !knowledge.current()) return
+          if (!refreshed.ok) throw new Error(refreshed.code === 'E_INVALID_ARG' ? '当前桌面服务不支持强制刷新，请完整退出并重新打开应用。' : refreshed.error)
+          setLocalFolders(refreshed.folders); setLocalCoverage(localCoverageMessage(refreshed))
+        } catch (error) {
+          if (!(error instanceof Error) || !/No handler registered|not a function/i.test(error.message)) throw error
+          setLocalBrowseMode('legacy')
+        }
+      }
+      if (!debounced && localBrowseMode !== 'legacy' && typeof api.kbBrowse === 'function') {
+        try {
+          const res = await api.kbBrowse({ expectedRoot: snapshot.meta.root, page: localPage, pageSize: 30, ...(forceRefresh ? { forceRefresh: true } : {}), ...(localFolder ? { folderPath: localFolder, folderRecursive: true } : {}) })
+          if (forceRefresh && res.ok && knowledge.current()) refreshCompleted = true
+          if (seq !== searchSeq.current || !knowledge.current()) return
+          if (!res.ok) throw new Error(forceRefresh && res.code === 'E_INVALID_ARG' ? '当前桌面服务不支持强制刷新，请完整退出并重新打开应用。' : res.error)
+          if (res.page !== localPage) throw new Error('本地服务返回的页码不匹配，请刷新重试')
+          const previous = localSnapshot.current
+          const timestampValid = typeof res.snapshotAt === 'number' && Number.isFinite(res.snapshotAt)
+          const sameOwner = previous?.current === knowledge.current && previous.folder === localFolder
+          if (localPage > 1 && (!sameOwner || !timestampValid || previous?.snapshotAt !== res.snapshotAt)) {
+            setLocalSnapshotNotice({ folder: localFolder, current: knowledge.current, message: !sameOwner || !timestampValid ? '无法验证分页快照，已返回第一页。' : '资料已更新，已返回第一页。' })
+            setLocalHasMore(false); setLocalPage(1)
+            return
+          }
+          localSnapshot.current = timestampValid ? { folder: localFolder, current: knowledge.current, snapshotAt: res.snapshotAt } : null
+          setLocalBrowseMode('available'); setLocalFolders(res.folders); setLocalHasMore(res.hasMore)
+          setLocalCoverage(localCoverageMessage(res))
+          setResult({ ok: true, docs: res.docs, hits: [], totalDocs: res.totalDocs, elapsedMs: 0 }); setLocalResultOwner({ query: debounced, folder: localFolder, page: localPage, current: knowledge.current })
+        } catch (error) {
+          if (seq !== searchSeq.current || !knowledge.current()) return
+          if (!(error instanceof Error) || !/No handler registered|not a function/i.test(error.message)) throw error
+          setLocalBrowseMode('legacy')
+          const res = await api.kbSearch('all', '')
+          if (forceRefresh && res.ok && knowledge.current()) refreshCompleted = true
+          if (seq !== searchSeq.current || !knowledge.current()) return
+          if (res.ok) { setResult(res); setLocalResultOwner({ query: debounced, folder: localFolder, page: localPage, current: knowledge.current }); setBrowseDocs(res.docs) } else { setLocalError(res.error ?? '本地检索失败'); return }
+        }
+      } else {
+        if (!debounced && typeof api.kbBrowse !== 'function') setLocalBrowseMode('legacy')
+        const res = await api.kbSearch('all', debounced, debounced && localFolder ? { expectedRoot: snapshot.meta.root, folderPath: localFolder, folderRecursive: true } : undefined)
+        if (forceRefresh && (localBrowseMode === 'legacy' || typeof api.kbBrowse !== 'function') && res.ok && knowledge.current()) refreshCompleted = true
+        if (seq !== searchSeq.current || !knowledge.current()) return
+        if (res.ok) { setResult(res); setLocalResultOwner({ query: debounced, folder: localFolder, page: localPage, current: knowledge.current }); if (!debounced) setBrowseDocs(res.docs) }
+        else { setLocalError(res.error ?? '本地检索失败'); return }
+      }
     } catch (error) {
-      if (seq !== searchSeq.current) return
-      pushToast({ kind: 'error', title: '本地检索失败', body: error instanceof Error ? error.message : '读取失败' })
+      if (seq !== searchSeq.current || !knowledge.current()) return
+      setLocalError(error instanceof Error ? error.message : '本地检索失败')
+      return
     } finally {
       if (seq === searchSeq.current) setLoading(false)
+      if (refreshToken !== null && refreshToken === refreshSeq.current) {
+        if (refreshCompleted && knowledge.current()) setLocalRefresh((value) => value + 1)
+        setLocalRefreshing(false)
+      }
     }
-    if (seq !== searchSeq.current) return
+    if (seq !== searchSeq.current || !knowledge.current() || forceRefresh) return
     // 联邦检索：检索态下公司库命中异步追加
     if (debounced) void runCompanySearch('search')
     else {
@@ -252,19 +338,96 @@ export function KnowledgePage(): JSX.Element {
       setCompanyLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, debounced, runCompanySearch])
+  }, [scope, debounced, runCompanySearch, snapshot?.meta.root, localBrowseMode, localFolder, localPage, localRefresh])
+
+  useEffect(() => {
+    searchSeq.current += 1; companySeq.current += 1; docSeq.current += 1
+    setActive(null); setRemoteDoc(null); setResult(null); setLocalResultOwner(null); setBrowseDocs([]); setLocalFolders([]); setLocalBrowseMode('checking'); setLocalFolder(''); setLocalPage(1); setLocalHasMore(false); setLocalCoverage(null); localSnapshot.current = null; setLocalSnapshotNotice(null); refreshSeq.current += 1; setLocalRefreshing(false)
+    const owner = projectRootKey(snapshot?.meta.root) ?? ''
+    const draft = noteDrafts.get(owner)
+    setNoteState(draft ? { owner, draft } : null); setNoteVisible(Boolean(draft))
+    setCompanyDocs([]); setCompanyPageOwner(null); setCompanyHits([]); setCompanySearchOwner(null); setCompanyReadOwner(null); setCollections([]); setCollectionId(''); setCompanyPage(1); setRemoteFolder(null); setRemoteTree(null); setRemoteTreeError(null)
+  }, [snapshot?.meta.root])
 
   useEffect(() => {
     if (!hasIpc) return
     void runSearch()
     // 切库时关闭远程阅读器
-    setRemoteDoc(null)
   }, [runSearch, snapshot?.meta.root])
 
+  useEffect(() => {
+    if (!hasIpc || typeof api?.kbSearch !== 'function' || scope === 'company' || !snapshot?.meta.root || !query.trim()) return
+    let live = true
+    if (localBrowseMode !== 'legacy' && typeof api.kbBrowse === 'function') {
+      void api.kbBrowse({ expectedRoot: snapshot.meta.root, page: 1, pageSize: 30 }).then((res) => {
+        if (!live || !knowledge.current()) return
+        if (res.ok) { setLocalBrowseMode('available'); setLocalFolders(res.folders); setLocalCoverage(localCoverageMessage(res)) }
+        else setLocalError(res.error)
+      }).catch((error: unknown) => {
+        if (!live || !knowledge.current()) return
+        if (error instanceof Error && /No handler registered|not a function/i.test(error.message)) setLocalBrowseMode('legacy')
+        else setLocalError(error instanceof Error ? error.message : '本地目录读取失败')
+      })
+    } else {
+      void api.kbSearch('all', '').then((res) => {
+        if (live && knowledge.current() && res.ok) setBrowseDocs(res.docs)
+      }).catch(() => { /* Search has its own visible error state. */ })
+    }
+    return () => { live = false }
+  }, [snapshot?.meta.root, scope, Boolean(query.trim()), knowledge.current, localBrowseMode, localRefresh])
+
+  useEffect(() => {
+    const ids = knowledge.context?.scope.collectionIds ?? NO_KB_IDS
+    setCollectionId((old) => ids.includes(old) ? old : ids[0] ?? '')
+    setCompanyPage(1)
+    if (!knowledge.context?.scope.connectionId || !ids.length) { setCollections([]); return }
+    let live = true
+    const bridge = knowledgeBridge(['collections'])
+    if (!bridge) { setCollections(ids.map((id) => ({ id, name: id, knowledgeCount: 0 }))); return }
+    void bridge.collections(knowledge.input).then((res) => {
+      if (!live || !knowledge.current()) return
+      const items = res.ok ? res.data.items : []
+      setCollections(ids.map((id) => items.find((item) => item.id === id) ?? { id, name: id, knowledgeCount: 0 }))
+    }).catch(() => { if (live && knowledge.current()) setCollections(ids.map((id) => ({ id, name: id, knowledgeCount: 0 })) ) })
+    return () => { live = false }
+  }, [knowledge.context, knowledge.input, knowledge.current])
+
+  useEffect(() => {
+    let live = true
+    setRemoteFolder(null); setRemoteTree(null); setRemoteTreeError(null); setCompanyPage(1)
+    if (!collectionId || !weknoraEnabled) return () => { live = false }
+    const bridge = knowledgeBridge(['folders'])
+    if (!bridge) {
+      setRemoteTreeError('当前桌面服务不支持远端目录；可继续浏览知识库分页。请完整退出并重新打开应用。')
+      return () => { live = false }
+    }
+    void bridge.folders({ ...knowledge.input, collectionId }).then((result) => {
+      if (!live || !knowledge.current()) return
+      if (result.ok) setRemoteTree(result.data)
+      else setRemoteTreeError(`远端目录不可用：${result.error}；可继续浏览知识库分页。`)
+    }).catch((error: unknown) => {
+      if (live && knowledge.current()) setRemoteTreeError(`远端目录不可用：${knowledgeError(error)}；可继续浏览知识库分页。`)
+    })
+    return () => { live = false }
+  }, [collectionId, weknoraEnabled, knowledge.input, knowledge.current, knowledge.context?.scope.revision, treeRefresh])
+
+  useEffect(() => {
+    docSeq.current += 1
+    setRemoteDoc(null)
+  }, [knowledge.context?.scope.revision])
+
+  useEffect(() => { docSeq.current += 1; setActive(null); setRemoteDoc(null) }, [knowledgeView])
+
+  const browseLocalDirectory = useCallback(async (folderPath: string, page: number): Promise<KbBrowseSuccess> => {
+    if (!hasIpc || !knowledge.input.expectedRoot || typeof api?.kbBrowse !== 'function' || !knowledge.current()) throw new Error('本地目录服务不可用')
+    const res = await api.kbBrowse({ ...knowledge.input, folderPath, page, pageSize: 20 })
+    if (!knowledge.current()) throw new Error('项目已切换')
+    if (!res.ok) throw new Error(res.error)
+    return res
+  }, [knowledge.input, knowledge.current])
+
   const focusReader = (): void => {
-    // Preserve the browser/results state while giving narrow windows a full-width reader.
     if ((pageRef.current?.clientWidth ?? 0) < 1000) {
-      if (!useMy.getState().sidebarCollapsed) useMy.getState().toggleSidebar()
       requestAnimationFrame(() => readerRef.current?.focus({ preventScroll: true }))
     }
   }
@@ -273,7 +436,8 @@ export function KnowledgePage(): JSX.Element {
     if (!doc.synthetic && relativePathUnderRoot(snapshot?.meta.root ?? '', doc.path) !== null) rememberVisit({ kind: 'document', target: doc.path, title: doc.title })
     const seq = ++docSeq.current
     setRemoteDoc(null)
-    setNoteDraft(null)
+    setNoteVisible(false)
+    setReaderOwner({ root: projectRootKey(snapshot?.meta.root), view: knowledgeView, current: knowledge.current })
     setActive(doc)
     focusReader()
     setDocContent(null)
@@ -282,20 +446,21 @@ export function KnowledgePage(): JSX.Element {
     if (doc.synthetic || relativePathUnderRoot(snapshot?.meta.root ?? '', doc.path) !== null) return
     try {
       const res = await api.readTextFile(doc.path)
-      if (seq !== docSeq.current) return
+      if (seq !== docSeq.current || !knowledge.current()) return
       if (res.ok && res.content !== undefined) setDocContent(res.content)
       else setDocError(res.error ?? '读取失败')
     } catch (error) {
-      if (seq === docSeq.current) setDocError(error instanceof Error ? error.message : '读取失败')
+      if (seq === docSeq.current && knowledge.current()) setDocError(error instanceof Error ? error.message : '读取失败')
     }
-  }, [snapshot?.meta.root])
+  }, [snapshot?.meta.root, knowledge.current, knowledgeView])
 
   /** 打开公司库（WeKnora）文档：拉取 preview 正文 */
   const openRemoteDoc = useCallback(async (hit: { knowledgeId: string; title: string }): Promise<void> => {
     const seq = ++docSeq.current
     setActive(null)
-    setNoteDraft(null)
+    setNoteVisible(false)
     focusReader()
+    setReaderOwner({ root: projectRootKey(knowledge.input.expectedRoot), view: knowledgeView, current: knowledge.current })
     setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: true })
     try {
       const bridge = knowledgeBridge(['read'])
@@ -307,7 +472,7 @@ export function KnowledgePage(): JSX.Element {
     } catch (error) {
       if (seq === docSeq.current && knowledge.current()) setRemoteDoc({ knowledgeId: hit.knowledgeId, title: hit.title, fileName: '', content: null, loading: false, error: error instanceof Error ? error.message : '知识库文档读取失败' })
     }
-  }, [knowledge.input, knowledge.current])
+  }, [knowledge.input, knowledge.current, knowledgeView])
 
   /* AI 问答（本地 + 公司库上下文） */
   const aiAsk = async (): Promise<void> => {
@@ -377,30 +542,51 @@ export function KnowledgePage(): JSX.Element {
 
   /* Project-note editing uses the existing repository note service. */
   const startNewNote = (): void => {
+    if (!snapshot?.meta.root || !hasIpc || typeof api?.kbSearch !== 'function' || typeof api?.kbSaveNote !== 'function' || !result?.ok || !localResultOwner || localResultOwner.current !== knowledge.current || localResultOwner.query !== query.trim() || localResultOwner.folder !== localFolder || localResultOwner.page !== localPage || localError || !knowledge.current()) return
     docSeq.current += 1
     setActive(null)
     setRemoteDoc(null)
-    setNoteDraft({ name: '', content: '# 新笔记\n\n', isNew: true })
+    if (!noteDraft) updateNoteDraft({ name: '', content: '# 新笔记\n\n', isNew: true })
+    setNoteVisible(true)
     focusReader()
   }
 
   const startEditNote = (doc: KbDoc): void => {
     if (doc.synthetic) return
+    if (noteDraft) { setNoteVisible(true); pushToast({ kind: 'info', title: '已有未保存的笔记', body: '请先保存或放弃当前草稿' }); return }
     const seq = ++docSeq.current
     void api.readTextFile(doc.path).then((r) => {
-      if (seq !== docSeq.current) return
+      if (seq !== docSeq.current || !knowledge.current()) return
       if (!r.ok || r.content === undefined) {
         pushToast({ kind: 'error', title: '无法编辑笔记', body: r.error ?? '读取失败' })
         return
       }
-      setNoteDraft({ name: doc.name, content: r.content, isNew: false })
+      updateNoteDraft({ name: doc.name, content: r.content, isNew: false }); setNoteVisible(true)
     }).catch((error: unknown) => {
-      if (seq === docSeq.current) pushToast({ kind: 'error', title: '无法编辑笔记', body: error instanceof Error ? error.message : '读取失败' })
+      if (seq === docSeq.current && knowledge.current()) pushToast({ kind: 'error', title: '无法编辑笔记', body: error instanceof Error ? error.message : '读取失败' })
     })
   }
 
+  const refreshDetachedNoteChange = async (): Promise<void> => {
+    const root = snapshot?.meta.root
+    if (!root || !knowledge.current()) return
+    if (typeof api?.kbBrowse !== 'function') return // Legacy browsing performs a fresh search when revisited.
+    const token = ++refreshSeq.current
+    setLocalRefreshing(true)
+    try {
+      const refreshed = await api.kbBrowse({ expectedRoot: root, page: 1, pageSize: 30, forceRefresh: true })
+      if (!knowledge.current() || token !== refreshSeq.current) return
+      if (!refreshed.ok) throw new Error(refreshed.code === 'E_INVALID_ARG' ? '当前桌面服务不支持强制刷新，请完整退出并重新打开应用。' : refreshed.error)
+      setLocalFolders(refreshed.folders); setLocalCoverage(localCoverageMessage(refreshed)); setLocalRefresh((value) => value + 1)
+    } catch (error) {
+      if (knowledge.current() && token === refreshSeq.current) pushToast({ kind: 'error', title: '笔记已更新，目录刷新失败', body: error instanceof Error ? error.message : '请重新打开桌面应用' })
+    } finally {
+      if (token === refreshSeq.current) setLocalRefreshing(false)
+    }
+  }
+
   const saveNote = async (): Promise<void> => {
-    if (!noteDraft || noteSaving) return
+    if (!noteDraft || noteSaving || !snapshot?.meta.root || !hasIpc || typeof api?.kbSaveNote !== 'function' || !knowledge.current()) return
     const name = noteDraft.name.trim()
     if (!name) {
       pushToast({ kind: 'error', title: '请填写笔记名' })
@@ -410,27 +596,40 @@ export function KnowledgePage(): JSX.Element {
     setNoteSaving(true)
     try {
       const res = await api.kbSaveNote(name, noteDraft.content)
-      if (seq !== docSeq.current) return
+      if (!knowledge.current()) return
+      if (seq !== docSeq.current) { if (res.ok) void refreshDetachedNoteChange(); return }
       if (res.ok) {
         pushToast({ kind: 'success', title: '笔记已保存', body: '已写入 .trellis/notes/，检索立即可用' })
-        setNoteDraft(null)
-        void runSearch()
+        updateNoteDraft(null); setNoteVisible(false)
+        void runSearch(true)
       } else {
         pushToast({ kind: 'error', title: '保存失败', body: res.error })
       }
+    } catch (error) {
+      if (seq === docSeq.current && knowledge.current()) pushToast({ kind: 'error', title: '保存失败', body: error instanceof Error ? error.message : '写入失败' })
     } finally {
       setNoteSaving(false)
     }
   }
 
+  const discardNote = async (): Promise<void> => {
+    const draft = noteDraft
+    const owner = noteOwner
+    if (!draft || noteSaving) return
+    const confirmed = await confirmDialog({ title: '放弃笔记草稿？', message: '尚未保存的修改将被丢弃。', confirmText: '放弃草稿' })
+    if (!confirmed || projectRootKey(useApp.getState().snapshot?.meta.root) !== owner || noteDrafts.get(owner) !== draft) return
+    updateNoteDraft(null); setNoteVisible(false)
+  }
+
   const deleteNote = async (doc: KbDoc): Promise<void> => {
     const seq = docSeq.current
     const res = await api.kbDeleteNote(doc.name)
-    if (seq !== docSeq.current) return
+    if (!knowledge.current()) return
+    if (seq !== docSeq.current) { if (res.ok) void refreshDetachedNoteChange(); return }
     if (res.ok) {
       pushToast({ kind: 'success', title: '笔记已删除' })
       setActive(null)
-      void runSearch()
+      void runSearch(true)
     } else {
       pushToast({ kind: 'error', title: '删除失败', body: res.error })
     }
@@ -443,46 +642,24 @@ export function KnowledgePage(): JSX.Element {
     })
   }, [])
 
-  const totalDocs = result?.totalDocs ?? 0
+  const companyOwnerMatches = (owner: typeof companySearchOwner): boolean => Boolean(
+    owner && owner.query === query.trim() && owner.current === knowledge.current && knowledge.current() && owner.scopeRevision === knowledge.context?.scope.revision
+  )
+  const currentCompanySearch = companyOwnerMatches(companySearchOwner)
+  const currentCompanyRead = companyOwnerMatches(companyReadOwner)
+  const currentCompanyHits = currentCompanySearch ? companyHits : []
+  const currentCompanyError = currentCompanyRead ? companyError : null
+  const currentScope = knowledge.context?.scope
+  const scopeFailure = currentScope && ['denied', 'unavailable', 'partial', 'cancelled'].includes(currentScope.status)
+    ? `${knowledgeStatusLabel[currentScope.status]}${currentScope.detail ? `：${currentScope.detail}` : ''}` : null
+  const remoteSearchPending = Boolean(query.trim() && hasIpc && snapshot?.meta.root && !knowledge.error && !scopeFailure &&
+    ((!knowledge.context) || (weknoraEnabled && (!currentCompanyRead || companyLoading))))
+  const localResultCurrent = Boolean(result && localResultOwner && localResultOwner.current === knowledge.current && knowledge.current() && localResultOwner.query === query.trim() && localResultOwner.folder === localFolder && localResultOwner.page === localPage)
   const isSearch = debounced.length > 0
   const list: Array<{ doc: KbDoc; hit?: KbHit }> = useMemo(() => {
     if (!result) return []
-    if (isSearch) return result.hits.map((h) => ({ doc: h.doc, hit: h }))
-    return result.docs.map((d) => ({ doc: d }))
+    return isSearch ? result.hits.map((hit) => ({ doc: hit.doc, hit })) : result.docs.map((doc) => ({ doc }))
   }, [result, isSearch])
-
-  /** 公司库条目：company tab 直接作为主体列表；all 检索态作为追加区域 */
-  const companyList: Array<{ key: string; title: string; sub: string; tag?: string; snippet?: string; score?: number; knowledgeId: string }> = useMemo(() => {
-    if (scope === 'company') {
-      if (isSearch) {
-        return companyHits.map((h, i) => ({
-          key: `${h.id}-${i}`,
-          title: h.title,
-          sub: `${h.collectionId || '库未知'} · ${h.mode}${h.truncated ? ' · 已截断' : ''}`,
-          snippet: h.text,
-          knowledgeId: h.sourceHandle
-        }))
-      }
-      return companyDocs.map((d, i) => ({
-        key: `${d.id}-${i}`,
-        title: d.title,
-        sub: `${d.kbName} · ${d.fileType}${d.parseStatus && d.parseStatus !== 'completed' ? ` · ${d.parseStatus}` : ''}`,
-        tag: d.fileType,
-        knowledgeId: d.sourceHandle
-      }))
-    }
-    if (isSearch) {
-      return companyHits.map((h, i) => ({
-        key: `${h.id}-${i}`,
-        title: h.title,
-        sub: `${h.collectionId || '库未知'} · ${h.mode}${h.truncated ? ' · 已截断' : ''}`,
-        snippet: h.text,
-        score: undefined,
-        knowledgeId: h.sourceHandle
-      }))
-    }
-    return []
-  }, [scope, isSearch, companyHits, companyDocs])
 
   const LIB_ICON: Record<KbLibrary, JSX.Element> = {
     notes: <StickyNote size={12} />,
@@ -493,32 +670,19 @@ export function KnowledgePage(): JSX.Element {
   }
 
   const relativePath = active && !active.synthetic ? relativePathUnderRoot(snapshot?.meta.root ?? '', active.path) : null
-  /** 浏览态按库分组（组内按修改时间倒序），供侧栏分组树与主区"最近更新"使用 */
-  const groups: Array<{ lib: KbLibrary; docs: KbDoc[] }> = useMemo(() => {
-    const byLib = new Map<KbLibrary, KbDoc[]>()
-    for (const doc of isSearch ? [] : result?.docs ?? []) {
-      const bucket = byLib.get(doc.library) ?? []
-      bucket.push(doc)
-      byLib.set(doc.library, bucket)
+  const displayedRevision = readerCurrent && active && snapshot && referenceVersion?.root === snapshot.meta.root && referenceVersion.path === active.path ? referenceVersion.revision : undefined
+  const stageReference = (source: KnowledgeSource | { title: string; relativePath: string; displayedRevision: string }): void => {
+    const root = snapshot?.meta.root
+    if (!root || !readerCurrent) return
+    const context = knowledge.context
+    if (!context?.selectionToken || projectRootKey(context.scope.root) !== projectRootKey(root) || !knowledge.current()) {
+      pushToast({ kind: 'warn', title: '无法加入知识引用', body: '项目知识范围尚未就绪，请刷新后重试。' }); return
     }
-    return GROUPS.map((lib) => ({ lib, docs: (byLib.get(lib) ?? []).sort((a, b) => b.mtime - a.mtime) }))
-  }, [result, isSearch])
-  /** 检索命中按库分组归类，保持分组树结构 */
-  const hitGroups: Array<{ lib: KbLibrary; hits: Array<{ doc: KbDoc; hit?: KbHit }> }> = useMemo(
-    () => GROUPS.map((lib) => ({ lib, hits: list.filter((row) => row.doc.library === lib) })),
-    [list]
-  )
-  const recentDocs: KbDoc[] = useMemo(
-    () => [...(result?.docs ?? [])].sort((a, b) => b.mtime - a.mtime).slice(0, 5),
-    [result]
-  )
-  const listTitle = scope === 'company'
-    ? `知识库 · ${companyList.length} ${isSearch ? '条命中' : '篇文档'}${companyMs ? ` · ${companyMs}ms` : ''}`
-    : isSearch
-      ? `命中 ${list.length} 条 · ${result?.elapsedMs ?? 0}ms`
-      : `${result?.totalDocs ?? 0} 篇文档${result?.elapsedMs ? ` · ${result.elapsedMs}ms` : ''}`
-  const toggleCollapsed = (lib: KbLibrary): void =>
-    setCollapsedLibs((ids) => (ids.includes(lib) ? ids.filter((id) => id !== lib) : [...ids, lib]))
+    const owner = { root, selectionToken: context.selectionToken, projectGeneration: context.scope.projectGeneration }
+    const staged = 'sourceHandle' in source ? stageKnowledgeReferenceHandoff({ ...owner, source }) : stageKnowledgeReferenceHandoff({ ...owner, document: source })
+    if (!staged) { pushToast({ kind: 'warn', title: '无法加入知识引用', body: '请先处理当前待加入的资料，或重新打开文档。' }); return }
+    useKnowledgeDiscussion.getState().show(root)
+  }
   const scopeInfo = knowledge.context?.scope
   const scopeSummary = knowledge.error
     ? knowledge.error
@@ -527,225 +691,18 @@ export function KnowledgePage(): JSX.Element {
       : scopeInfo.status === 'not_configured'
         ? '未配置检索范围'
         : `${knowledgeStatusLabel[scopeInfo.status]} · ${scopeInfo.collectionIds.length} 个库`
-  useEffect(() => {
-    setScopeOpen(Boolean(knowledge.error || knowledge.context?.scope.status === 'not_configured'))
-  }, [knowledge.error, knowledge.context])
+  useEffect(() => { setScopeOpen(false) }, [snapshot?.meta.root])
 
   return (
     <div ref={pageRef} className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
       {/* 左列：知识导航、来源与检索 */}
-      <div id="knowledge-browser" style={sidebarStyle} className={clsx('my-context-sidebar shrink-0 flex-col border-r border-my-line', browserVisible ? 'flex' : 'hidden')}>
+      <div id="knowledge-browser" style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
         <SidebarResizeHandle />
         <header className="flex h-my-header shrink-0 items-center px-4">
           <h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">知识</h1>
         </header>
         <ModuleLinks domain="knowledge" />
-        {scope !== 'company' && (
-          <p className="shrink-0 px-4 pb-2 pt-2 text-my-xs leading-relaxed text-my-tertiary">资料来自当前项目目录；远端检索使用项目绑定的知识库。</p>
-        )}
-        <div className="shrink-0 px-3 pb-2 pt-1">
-          <div className="relative">
-            <SearchInput value={query} onChange={setQuery} placeholder={scope === 'company' ? '搜索知识库…' : '搜索资料…'} />
-            {loading && (
-              <Loader2 size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-my-tertiary" />
-            )}
-          </div>
-        </div>
-        {snapshot && (
-          <div className="shrink-0 px-3 pb-2">
-            <button
-              type="button"
-              onClick={() => setScopeOpen((open) => !open)}
-              aria-expanded={scopeOpen}
-              className={clsx(
-                'flex w-full items-center gap-2 rounded-my-md border px-2.5 py-1.5 text-left text-my-xs transition-colors',
-                scopeOpen ? 'border-my-line bg-my-layer-1' : 'border-transparent hover:bg-my-layer-transparent-hover'
-              )}
-            >
-              <Cloud size={13} className="shrink-0 text-my-icon-tertiary" />
-              <span className="min-w-0 truncate font-medium text-my-primary">{scopeInfo?.connectionName ?? '项目知识'}</span>
-              <span className={clsx('min-w-0 flex-1 truncate', knowledge.error ? 'text-my-warning-text' : 'text-my-tertiary')}>{scopeSummary}</span>
-              <ChevronDown size={12} className={clsx('shrink-0 text-my-icon-tertiary transition-transform', !scopeOpen && '-rotate-90')} />
-            </button>
-            <div className={clsx('pt-2', !scopeOpen && 'hidden')}>
-              <KnowledgeScopeControl root={snapshot.meta.root} />
-            </div>
-          </div>
-        )}
 
-        {/* 分组头：资料范围与统计，右侧挂重建检索 */}
-        <div className="flex shrink-0 items-center gap-1.5 px-4 pb-1.5 text-my-xs text-my-tertiary">
-          <span className="min-w-0 truncate">{listTitle}</span>
-          <Button variant="ghost" size="sm" className="ml-auto shrink-0 px-1.5" onClick={() => void runSearch()} disabled={!hasIpc} title="重建检索">
-            <RefreshCw size={11} />
-          </Button>
-        </div>
-
-        <div className="my-scrollbar min-h-0 flex-1 px-2 pb-2">
-          {scope !== 'company' && (isSearch ? (
-            <>
-              {hitGroups.filter((g) => g.hits.length > 0).map((g) => (
-                <div key={g.lib} className="mb-1">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-my-xs text-my-tertiary">
-                    <ChevronDown size={12} className="shrink-0" />
-                    <span className="min-w-0 truncate font-medium">{LIB_META[g.lib].label}</span>
-                    <span className="shrink-0 tabular-nums">{g.hits.length}</span>
-                  </div>
-                  {g.hits.map(({ doc, hit }) => (
-                    <button
-                      key={doc.id}
-                      type="button"
-                      onClick={() => void openDoc(doc)}
-                      aria-pressed={active?.id === doc.id}
-                      title={doc.title}
-                      className={clsx(
-                        'flex w-full flex-col rounded-my-md px-2.5 py-1.5 text-left transition-colors',
-                        active?.id === doc.id ? 'bg-my-accent-subtle' : 'hover:bg-my-layer-transparent-hover'
-                      )}
-                    >
-                      <span className="flex w-full items-center gap-2">
-                        <span className="shrink-0 text-my-icon-tertiary">{LIB_ICON[doc.library]}</span>
-                        <span className={clsx('min-w-0 flex-1 truncate text-my-sm', active?.id === doc.id ? 'font-medium text-my-primary' : 'text-my-secondary')}>{doc.title}</span>
-                        {hit && <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{hit.score.toFixed(1)}</span>}
-                      </span>
-                      {hit && <span className="mt-0.5 line-clamp-2 pl-5 text-my-xs leading-4 text-my-tertiary">{highlight(hit.snippet)}</span>}
-                    </button>
-                  ))}
-                </div>
-              ))}
-              {list.length === 0 && !loading && !companyLoading && (
-                <div className="grid place-items-center gap-1.5 px-4 py-12 text-center text-my-xs text-my-tertiary">
-                  <Library size={18} className="text-my-icon-tertiary" />
-                  没有匹配的资料，试试更短的关键词
-                </div>
-              )}
-            </>
-          ) : (
-            groups.map((g) => {
-              const collapsed = collapsedLibs.includes(g.lib)
-              return (
-                <div key={g.lib} className="mb-0.5">
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={!collapsed}
-                    title={LIB_META[g.lib].desc}
-                    onClick={() => toggleCollapsed(g.lib)}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return
-                      event.preventDefault()
-                      toggleCollapsed(g.lib)
-                    }}
-                    className="group flex w-full cursor-pointer select-none items-center gap-1.5 rounded-my-md px-2.5 py-1.5 text-my-xs text-my-tertiary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-secondary"
-                  >
-                    <ChevronDown size={12} className={clsx('shrink-0 transition-transform', collapsed && '-rotate-90')} />
-                    <span className="min-w-0 truncate font-medium">{LIB_META[g.lib].label}</span>
-                    <span className="shrink-0 tabular-nums">{g.docs.length}</span>
-                    {g.lib === 'notes' && (
-                      <button
-                        type="button"
-                        onClick={(event) => { event.stopPropagation(); startNewNote() }}
-                        disabled={!hasIpc || !snapshot}
-                        title="新建项目笔记（写入 .trellis/notes/）"
-                        aria-label="新建笔记"
-                        className="ml-auto grid h-5 w-5 shrink-0 place-items-center rounded-my-sm text-my-icon-tertiary opacity-0 transition-opacity hover:bg-my-layer-2 hover:text-my-primary focus:opacity-100 group-hover:opacity-100"
-                      >
-                        <Plus size={12} />
-                      </button>
-                    )}
-                  </div>
-                  {!collapsed && (
-                    g.docs.length > 0 ? g.docs.map((doc) => (
-                      <button
-                        key={doc.id}
-                        type="button"
-                        onClick={() => void openDoc(doc)}
-                        aria-pressed={active?.id === doc.id}
-                        title={doc.title}
-                        className={clsx(
-                          'flex w-full flex-col rounded-my-md px-2.5 py-1.5 text-left transition-colors',
-                          active?.id === doc.id ? 'bg-my-accent-subtle' : 'hover:bg-my-layer-transparent-hover'
-                        )}
-                      >
-                        <span className="flex w-full items-center gap-2">
-                          <span className="shrink-0 text-my-icon-tertiary">{LIB_ICON[doc.library]}</span>
-                          <span className={clsx('min-w-0 flex-1 truncate text-my-sm', active?.id === doc.id ? 'font-medium text-my-primary' : 'text-my-secondary')}>{doc.title}</span>
-                          <span className="shrink-0 text-my-2xs text-my-tertiary">{relTime(doc.mtime)}</span>
-                        </span>
-                        <span className="mt-0.5 truncate pl-5 text-my-2xs text-my-tertiary" title={`${doc.group}/${doc.name}`}>{doc.group}/{doc.name}</span>
-                      </button>
-                    )) : (
-                      <p className="px-2.5 py-1 text-my-2xs text-my-tertiary">暂无文档</p>
-                    )
-                  )}
-                </div>
-              )
-            })
-          ))}
-
-          {/* 公司库（WeKnora）区块：company 视图为主体；资料检索态作为追加段 */}
-          {(scope === 'company' || isSearch) && (
-            <>
-              {scope !== 'company' && companyList.length > 0 && (
-                <div className="mb-1 mt-2 flex items-center gap-2 px-1.5">
-                  <span className="text-my-2xs font-medium text-my-tertiary">知识库（WeKnora）</span>
-                  <span className="h-px flex-1 bg-my-line" />
-                </div>
-              )}
-              {companyList.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => void openRemoteDoc({ knowledgeId: c.knowledgeId, title: c.title })}
-                  aria-pressed={remoteDoc?.knowledgeId === c.knowledgeId}
-                  title={c.sub}
-                  className={clsx(
-                    'flex w-full flex-col rounded-my-md px-2.5 py-1.5 text-left transition-colors',
-                    remoteDoc?.knowledgeId === c.knowledgeId ? 'bg-my-accent-subtle' : 'hover:bg-my-layer-transparent-hover'
-                  )}
-                >
-                  <span className="flex w-full items-center gap-2">
-                    {scope === 'company' && <span className="shrink-0 text-my-icon-tertiary"><Cloud size={12} /></span>}
-                    {scope !== 'company' && (
-                      <span className="my-chip shrink-0 bg-my-accent-subtle text-my-2xs text-my-accent-text">
-                        <Cloud size={12} /> 知识库
-                      </span>
-                    )}
-                    <span className={clsx('min-w-0 flex-1 truncate text-my-sm', remoteDoc?.knowledgeId === c.knowledgeId ? 'font-medium text-my-primary' : 'text-my-secondary')}>{c.title}</span>
-                    {c.tag && <span className="shrink-0 font-mono text-my-2xs uppercase text-my-tertiary">{c.tag}</span>}
-                  </span>
-                  {c.snippet && <span className="mt-0.5 line-clamp-2 pl-5 text-my-xs leading-4 text-my-tertiary">{c.snippet.replace(/\s+/g, ' ').slice(0, 200)}</span>}
-                </button>
-              ))}
-              {companyLoading && (
-                <div className="flex items-center gap-2 px-2 py-3 text-my-xs text-my-tertiary">
-                  <Loader2 size={12} className="animate-spin" /> 正在检索知识库（WeKnora）…
-                </div>
-              )}
-              {companyError && (
-                <div className="mx-1 mb-1.5 rounded-my-lg border border-my-line-warning bg-my-warning-subtle px-2.5 py-2 text-my-xs leading-4 text-my-warning-text">
-                  知识库不可用：{companyError}
-                  {scope !== 'company' && '（本地结果不受影响）'}
-                </div>
-              )}
-              {scope === 'company' && !weknoraEnabled && (
-                <div className="grid place-items-center gap-2 py-10 text-center text-my-xs text-my-tertiary">
-                  <Cloud size={20} className="text-my-icon-tertiary" />
-                  未绑定可用的项目知识库
-                  <Button variant="outline" size="sm" onClick={() => setPage('integrations')}>
-                    到集成接入并绑定项目
-                  </Button>
-                </div>
-              )}
-              {scope === 'company' && weknoraEnabled && !companyLoading && companyList.length === 0 && (
-                <div className="grid place-items-center gap-1.5 px-4 py-12 text-center text-my-xs text-my-tertiary">
-                  <Cloud size={18} className="text-my-icon-tertiary" />
-                  {isSearch ? '知识库中没有匹配的内容' : '绑定范围内暂无文档'}
-                </div>
-              )}
-            </>
-          )}
-        </div>
       </div>
 
       {/* 右列：当前知识视图与阅读器 */}
@@ -753,16 +710,35 @@ export function KnowledgePage(): JSX.Element {
         <div className="my-page-toolbar-row flex-wrap">
           <h1 className="text-my-md font-semibold text-my-primary">{knowledgeView === 'company' ? '知识库' : '资料'}</h1>
           <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-            <Button size="sm" variant="ghost" disabled={!snapshot?.meta.root} onClick={() => setShowMaterials(true)}><FileText size={13} />需求材料</Button>
-            <Button size="sm" variant="outline" disabled={!snapshot?.meta.root} onClick={discussWithAgent}><Sparkles size={13} />在 Agent 中讨论</Button>
-            {aiEnabled && <Button size="sm" variant="ghost" aria-expanded={showLegacyQa} onClick={() => setShowLegacyQa((value) => !value)}>旧版问答</Button>}
+            <Button size="sm" variant="ghost" disabled={!snapshot?.meta.root} onClick={() => setScopeOpen(true)} title={`${scopeInfo?.connectionName ?? '项目知识'} · ${scopeSummary}`}><Cloud size={13} />知识范围</Button>
+            <Button size="sm" variant="ghost" onClick={() => void runSearch(true)} disabled={!hasIpc || !snapshot?.meta.root || (scope !== 'company' && typeof api?.kbSearch !== 'function') || localRefreshing || loading || companyLoading} title="刷新当前视图"><RefreshCw size={13} />刷新</Button>
+            <Button data-knowledge-discussion-trigger="" size="sm" variant="outline" disabled={!snapshot?.meta.root} onClick={discussWithAgent}><Sparkles size={13} />在 Agent 中讨论</Button>
+            {scope !== 'company' && noteDraft && !noteVisible && <Button size="sm" variant="ghost" onClick={() => { docSeq.current += 1; setActive(null); setRemoteDoc(null); setNoteVisible(true) }}>恢复未保存笔记</Button>}
+            <Dropdown align="right" width={180} trigger={({ open, toggle }) => <Button size="sm" variant="ghost" aria-label="更多知识操作" aria-expanded={open} onClick={toggle}>更多</Button>}>
+              {(close) => <><DropdownItem disabled={!snapshot?.meta.root} onClick={() => { close(); setShowMaterials(true) }}>需求材料</DropdownItem><DropdownItem onClick={() => { close(); setShowLegacyQa((value) => !value) }}>{showLegacyQa ? '关闭旧版问答' : '旧版问答与历史'}</DropdownItem></>}
+            </Dropdown>
           </div>
-          <button type="button" onClick={toggleSidebar} aria-expanded={browserVisible} aria-controls="knowledge-browser" aria-label={browserVisible ? '收起来源与检索' : '展开来源与检索'} title={browserVisible ? '收起来源与检索' : '展开来源与检索'} className="my-icon-control">
-            {browserVisible ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
-          </button>
         </div>
+        <div className="relative flex min-h-0 min-w-0 flex-1">
+          <KnowledgeBrowser root={snapshot?.meta.root ?? ''} remote={scope === 'company'} query={query} onQuery={setQuery}
+            serviceAvailable={hasIpc && (scope === 'company' ? Boolean(knowledgeBridge(['context'])) : typeof api?.kbSearch === 'function')}
+            noteAvailable={Boolean(snapshot?.meta.root && hasIpc && typeof api?.kbSearch === 'function' && typeof api?.kbSaveNote === 'function' && result?.ok && localResultCurrent && !localError && knowledge.current())}
+            resultsReady={scope === 'company' ? currentCompanySearch : localResultCurrent}
+            remoteScopePending={!knowledge.context && !knowledge.error}
+
+            browseDocs={browseDocs} localRows={list} localTotal={result?.totalDocs ?? 0}
+            localSnapshotNotice={!query.trim() && localSnapshotNotice?.folder === localFolder && localSnapshotNotice.current === knowledge.current && knowledge.current() ? localSnapshotNotice.message : null} localSearchScoped={Boolean(localResultCurrent && result?.scopeApplied)} localSearchIncomplete={Boolean(localResultCurrent && result?.scopeApplied && result.complete !== true)} localSearchHasMore={Boolean(localResultCurrent && result?.scopeApplied && result.hasMore)} localCoverage={localCoverage} localFolders={localFolders} localPaged={localBrowseMode === 'available'} localLegacy={localBrowseMode === 'legacy'} localPage={localPage} localHasMore={localHasMore} localRefresh={localRefresh} localRefreshing={localRefreshing}
+            onLocalFolder={(path) => { if (path !== localFolder) { setLocalSnapshotNotice(null); setLocalFolder(path); setLocalPage(1) } }} onLocalPage={setLocalPage} browseLocalDirectory={browseLocalDirectory}
+            collections={collections} collectionId={collectionId} onCollection={(id) => { setRemoteFolder(null); setCollectionId(id); setCompanyPage(1) }}
+            remoteTree={remoteTree} remoteTreeError={remoteTreeError} onRetryTree={() => setTreeRefresh((value) => value + 1)} remoteFolder={remoteFolder} onRemoteFolder={(path) => { setRemoteFolder(path); setCompanyPage(1) }}
+            remoteDocs={companyDocs} remotePageReady={Boolean(companyPageOwner && companyPageOwner.collectionId === collectionId && companyPageOwner.folder === remoteFolder && companyPageOwner.page === companyPage && companyPageOwner.current === knowledge.current && knowledge.current() && companyPageOwner.scopeRevision === knowledge.context?.scope.revision && !debounced && !query.trim())} remoteHits={currentCompanyHits} remotePage={companyPage} remoteHasMore={companyHasMore}
+            onRemotePage={setCompanyPage} onIntegrations={() => setPage('integrations')} remoteEnabled={weknoraEnabled} loading={scope === 'company' ? companyLoading : loading} error={scope === 'company' ? ((query.trim() ? currentCompanyError : companyError) || knowledge.error || scopeFailure || null) : localError} remoteSearchError={scope !== 'company' && query.trim() ? (knowledge.error || scopeFailure || currentCompanyError || null) : null} remoteSearchPending={scope !== 'company' && remoteSearchPending}
+            onOpenLocal={(doc) => void openDoc(doc)} onOpenRemote={(handle, title) => void openRemoteDoc({ knowledgeId: handle, title })}
+            onBrowse={() => { docSeq.current += 1; setActive(null); setRemoteDoc(null); setNoteVisible(false) }} onNewNote={startNewNote}
+            selectedLocal={readerCurrent ? active?.id : undefined} selectedRemote={readerCurrent ? remoteDoc?.knowledgeId : undefined} treeVisible={directoryVisible} treeOverlay={discussionOpen}
+            showList={!(scope !== 'company' && noteDraft && noteVisible) && !(readerCurrent && (remoteDoc || active)) && !showLegacyQa}>
         <div ref={readerRef} tabIndex={-1} aria-label="知识阅读区" className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1 outline-none">
-        {noteDraft ? (
+        {scope !== 'company' && noteDraft && noteVisible ? (
           <>
             <div className="my-page-toolbar-row">
               <span className="my-chip bg-my-label-emerald text-my-label-emerald-text">
@@ -770,7 +746,7 @@ export function KnowledgePage(): JSX.Element {
               </span>
               <input
                 value={noteDraft.name}
-                onChange={(e) => setNoteDraft({ ...noteDraft, name: e.target.value })}
+                onChange={(e) => updateNoteDraft({ ...noteDraft, name: e.target.value })}
                 placeholder="笔记名（支持中英文/数字/空格）"
                 className="min-w-0 max-w-[260px] flex-1 rounded-my-md border border-my-line bg-my-layer-2 px-2 py-1 font-mono text-my-xs text-my-primary outline-none focus:border-my-line-accent"
                 disabled={!noteDraft.isNew}
@@ -779,7 +755,8 @@ export function KnowledgePage(): JSX.Element {
                 <Button variant="primary" size="sm" onClick={() => void saveNote()} disabled={noteSaving}>
                   {noteSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} 保存
                 </Button>
-                <Button variant="ghost" size="sm" className="px-1.5" onClick={() => { docSeq.current += 1; setNoteDraft(null) }} title="取消">
+                <Button variant="ghost" size="sm" disabled={noteSaving} onClick={() => void discardNote()}>放弃草稿</Button>
+                <Button variant="ghost" size="sm" disabled={noteSaving} className="px-1.5" onClick={() => { docSeq.current += 1; setNoteVisible(false) }} title="关闭编辑器，保留草稿" aria-label="关闭编辑器，保留草稿">
                   <X size={13} />
                 </Button>
               </div>
@@ -787,14 +764,14 @@ export function KnowledgePage(): JSX.Element {
             <div className="my-page-workspace-padding min-h-0 flex-1">
               <textarea
                 value={noteDraft.content}
-                onChange={(e) => setNoteDraft({ ...noteDraft, content: e.target.value })}
+                onChange={(e) => updateNoteDraft({ ...noteDraft, content: e.target.value })}
                 spellCheck={false}
                 className="h-full w-full resize-none rounded-my-lg border border-my-line bg-my-surface-1 p-4 font-mono text-my-sm leading-6 text-my-primary outline-none focus:border-my-line-accent"
                 placeholder="# 标题&#10;&#10;用 Markdown 记录知识，保存后立即进入五库检索与 AI 问答…"
               />
             </div>
           </>
-        ) : remoteDoc ? (
+        ) : readerCurrent && remoteDoc ? (
           <>
             <div className="my-page-toolbar-row">
               <span className="my-chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
@@ -802,14 +779,14 @@ export function KnowledgePage(): JSX.Element {
               </span>
               <span className="min-w-0 truncate text-my-xs font-semibold text-my-primary">{remoteDoc.title}</span>
               <div className="ml-auto flex items-center gap-1.5">
-                <Button variant="ghost" size="sm" className="px-1.5" onClick={() => setRemoteDoc(null)} title="关闭">
+                <Button variant="ghost" size="sm" className="px-1.5" onClick={() => { docSeq.current += 1; setRemoteDoc(null) }} title="关闭">
                   <X size={13} />
                 </Button>
               </div>
             </div>
             <div className="my-scrollbar min-h-0 flex-1">
               <PageContent variant="centered">
-                {remoteDoc.snapshot && snapshot && <KnowledgeSourceView key={remoteDoc.snapshot.id} root={snapshot.meta.root} initial={remoteDoc.snapshot} />}
+                {remoteDoc.snapshot && snapshot && <KnowledgeSourceView key={remoteDoc.snapshot.id} root={snapshot.meta.root} initial={remoteDoc.snapshot} onUseSource={stageReference} />}
                 {remoteDoc.fileName && <div className="mb-3 truncate font-mono text-my-xs text-my-tertiary">{remoteDoc.fileName}</div>}
                 {remoteDoc.loading && (
                   <div className="flex items-center gap-2 py-8 text-my-xs text-my-tertiary">
@@ -829,7 +806,7 @@ export function KnowledgePage(): JSX.Element {
               </PageContent>
             </div>
           </>
-        ) : active ? (
+        ) : readerCurrent && active ? (
           <>
             <div className="my-page-toolbar-row">
               <span className={clsx('my-chip', LIB_CHIP[active.library])}>
@@ -838,6 +815,7 @@ export function KnowledgePage(): JSX.Element {
               <span className="min-w-0 truncate text-my-xs font-semibold text-my-primary">{active.title}</span>
               <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{fmtBytes(active.size)} · {relTime(active.mtime)}</span>
               <div className="ml-auto flex items-center gap-1.5">
+                {relativePath !== null && <Button variant="ghost" size="sm" disabled={!displayedRevision} onClick={() => { if (displayedRevision) stageReference({ title: active.title, relativePath, displayedRevision }) }}>引用到 Agent</Button>}
                 {!active.synthetic && active.library === 'spec' && (
                   <Button variant="ghost" size="sm" onClick={() => openSpecDocument(active.path)}>去规范页编辑</Button>
                 )}
@@ -883,7 +861,11 @@ export function KnowledgePage(): JSX.Element {
                   </div>
                 )}
                 {!active.synthetic && relativePath !== null && snapshot && (
-                  <DocumentReader key={`${snapshot.meta.root}:${active.path}`} workspaceId={snapshot.meta.root} relativePath={relativePath} />
+                  <DocumentReader key={`${snapshot.meta.root}:${active.path}`} workspaceId={snapshot.meta.root} relativePath={relativePath} onDisplayedRevision={(value) => {
+                    const root = snapshot.meta.root
+                    const path = active.path
+                    setReferenceVersion((current) => value && value.relativePath === relativePath ? { root, path, revision: value.displayedRevision } : current?.root === root && current.path === path ? null : current)
+                  }} />
                 )}
                 {relativePath === null && docContent !== null && (active.path.endsWith('.md') || active.path.endsWith('.markdown') ? (
                   <MarkdownView content={docContent} />
@@ -893,48 +875,10 @@ export function KnowledgePage(): JSX.Element {
               </PageContent>
             </div>
           </>
-        ) : (
-          <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
-            <div className="mx-auto flex min-h-full w-full max-w-[620px] flex-col justify-center">
-              <section className="grid place-content-center gap-2 py-8 text-center" aria-label="知识阅读提示">
-                <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-my-lg bg-my-layer-2 text-my-icon-tertiary">
-                  <Library size={22} />
-                </div>
-                <h2 className="text-my-md font-medium text-my-primary">选择资料阅读</h2>
-                <p className="text-my-sm text-my-tertiary">{snapshot?.meta.root ? '从左侧查找资料，或带着问题到 Agent 中持续讨论。' : '打开一个 Trellis 项目后，可使用项目知识。'}</p>
-                {snapshot?.meta.root && (
-                  <div className="mt-2 flex flex-wrap justify-center gap-2">
-                    <Button size="sm" onClick={() => { if (sidebarCollapsed) toggleSidebar(); pageRef.current?.querySelector<HTMLInputElement>('input[placeholder^="搜索"]')?.focus() }}>查找资料</Button>
-                    <Button size="sm" variant="primary" onClick={discussWithAgent}>在 Agent 中讨论</Button>
-                  </div>
-                )}
-              </section>
-              {snapshot?.meta.root && recentDocs.length > 0 && (
-                <section aria-label="最近更新" className="mt-2">
-                  <h3 className="mb-1.5 px-1 text-my-xs font-medium text-my-tertiary">最近更新</h3>
-                  <div className="overflow-hidden rounded-my-lg border border-my-line">
-                    {recentDocs.map((doc) => (
-                      <button
-                        key={doc.id}
-                        type="button"
-                        onClick={() => void openDoc(doc)}
-                        className="flex w-full items-center gap-2.5 border-b border-my-line px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-my-layer-1"
-                      >
-                        <span className="shrink-0 text-my-icon-tertiary">{LIB_ICON[doc.library]}</span>
-                        <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{doc.title}</span>
-                        <span className={clsx('my-chip shrink-0 text-my-2xs', LIB_CHIP[doc.library])}>{LIB_META[doc.library].label}</span>
-                        <span className="shrink-0 text-my-2xs text-my-tertiary">{relTime(doc.mtime)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </div>
-          </div>
-        )}
+        ) : null}
 
         {/* AI 问答条 */}
-        {aiEnabled && showLegacyQa && (
+        {showLegacyQa && (
           <div className="shrink-0 border-t border-my-line bg-my-layer-1 py-2.5">
             <p className="px-4 pb-2 text-my-2xs text-my-tertiary">兼容：一次性知识问答（独立模型，不是可恢复的 Agent 对话）；需要持续追问请前往 Agent。</p>
             {qaHistory.length > 0 && (
@@ -954,7 +898,14 @@ export function KnowledgePage(): JSX.Element {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        void api.kbQaClear().then(() => setQaHistory([]))
+                        void (async () => {
+                          if (!await confirmDialog({ title: '清空问答历史？', message: '本机跨项目的旧版问答历史将被删除。', confirmText: '清空历史' })) return
+                          try {
+                            const result = await api.kbQaClear()
+                            if (result.ok) setQaHistory([])
+                            else pushToast({ kind: 'error', title: '清空历史失败', body: '请重试' })
+                          } catch (error) { pushToast({ kind: 'error', title: '清空历史失败', body: error instanceof Error ? error.message : '请重试' }) }
+                        })()
                       }}
                       className="ml-2 text-my-placeholder hover:text-my-danger-text"
                       title="清空问答历史"
@@ -1018,24 +969,32 @@ export function KnowledgePage(): JSX.Element {
             <PageSection variant="centered" className="flex items-center gap-2">
               <Sparkles size={13} className="shrink-0 text-my-icon-accent" />
               <input
+                disabled={!aiEnabled}
                 value={aiQuestion}
                 onChange={(e) => setAiQuestion(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void aiAsk()
                 }}
-                placeholder={scope === 'company' ? '向知识库提问…' : '向资料库提问…'}
+                placeholder={!aiEnabled ? '启用 AI 后可继续提问，历史仍可查看' : scope === 'company' ? '向知识库提问…' : '向资料库提问…'}
                 className="my-input flex-1"
               />
-              <Button variant="primary" onClick={() => void aiAsk()} disabled={aiBusy || !aiQuestion.trim()}>
+              <Button variant="primary" onClick={() => void aiAsk()} disabled={!aiEnabled || aiBusy || !aiQuestion.trim()}>
                 {aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} 提问
               </Button>
             </PageSection>
           </div>
         )}
         </div>
+          </KnowledgeBrowser>
+          <button type="button" onClick={() => discussionOpen ? setDiscussionTreeVisible((value) => !value) : setTreeVisible((value) => !value)} aria-expanded={directoryVisible} aria-controls="knowledge-directory" aria-label={directoryVisible ? '收起文件目录' : '展开文件目录'} title={directoryVisible ? '收起文件目录' : discussionOpen ? '展开文件目录（覆盖阅读区）' : '展开文件目录'} className="knowledge-browser-toggle my-icon-control border border-my-line bg-my-surface-1" data-tree-open={directoryVisible} data-tree-overlay={discussionOpen}>{directoryVisible ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}</button>
+        </div>
       </div>
       {/* 打开的产物查看器标签保留在最上层（外部组件渲染） */}
       {viewerTabs.length > 0 && null}
+      <Modal open={scopeOpen && Boolean(snapshot?.meta.root)} onClose={() => setScopeOpen(false)} width={560} ariaLabel="项目知识范围">
+        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-semibold">项目知识范围</h2><Button size="sm" variant="ghost" onClick={() => setScopeOpen(false)} aria-label="关闭知识范围"><X size={15} /></Button></div>
+        <div className="my-scrollbar max-h-[65vh] overflow-y-auto p-5">{snapshot?.meta.root && <KnowledgeScopeControl key={snapshot.meta.root} root={snapshot.meta.root} />}</div>
+      </Modal>
       <Modal open={showMaterials && Boolean(snapshot?.meta.root)} onClose={() => setShowMaterials(false)} width={760} ariaLabel="项目需求材料">
         <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-semibold">需求材料</h2><Button size="sm" variant="ghost" onClick={() => setShowMaterials(false)} aria-label="关闭需求材料"><X size={15} /></Button></div>
         <div className="my-scrollbar max-h-[65vh] overflow-y-auto p-5">{snapshot?.meta.root && <ProductMaterialActions key={snapshot.meta.root} root={snapshot.meta.root} sources={[]} />}</div>

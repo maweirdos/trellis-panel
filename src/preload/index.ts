@@ -217,7 +217,9 @@ const api = {
   } satisfies GitWorkspaceApi,
   ...applicationApi,
   ...taskConversationsApi,
+  acpKnowledgeReferenceCapability: () => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.referenceCapability),
   knowledgeAccess: {
+    rebindSource: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.rebindSource, input),
     artifactImage: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.artifactImage, input),
     artifactOpenLocal: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.artifactOpenLocal, input),
     context: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.context, input),
@@ -225,6 +227,7 @@ const api = {
     updateScope: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.updateScope, input),
     search: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.search, input),
     documents: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.documents, input),
+    folders: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.folders, input),
     read: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.read, input),
     source: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.source, input),
     sources: (input) => ipcRenderer.invoke(ipcInvoke.knowledgeAccess.sources, input),
@@ -433,7 +436,8 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.studio.createExtension, kind, platform, name),
   studioDeleteFile: (absPath: string) => ipcRenderer.invoke(ipcInvoke.studio.delete, absPath),
 
-  kbSearch: (library: KbLibrary | 'all', query: string) => ipcRenderer.invoke(ipcInvoke.kb.search, library, query),
+  kbSearch: (library: KbLibrary | 'all', query: string, scope?: import('../shared/types').KbSearchScope) => ipcRenderer.invoke(ipcInvoke.kb.search, library, query, scope),
+  kbBrowse: (input: import('../shared/types').KbBrowseInput) => ipcRenderer.invoke(ipcInvoke.kb.browse, input),
   kbSaveNote: (fileName: string, content: string) => ipcRenderer.invoke(ipcInvoke.kb.saveNote, fileName, content),
   kbDeleteNote: (fileName: string) => ipcRenderer.invoke(ipcInvoke.kb.deleteNote, fileName),
   kbQaHistory: () => ipcRenderer.invoke(ipcInvoke.kb.qaHistory),

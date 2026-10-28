@@ -72,6 +72,7 @@ export default defineConfig({
       bundleMainRole('src/main/daemon/host.ts', 'daemon-host.js'),
       bundleMainRole('src/main/daemon/control.ts', 'daemon-control.js'),
       bundleMainRole('src/main/daemon/cli.ts', 'daemon-cli.js'),
+      bundleMainWorker('bundle-knowledge-browse-worker', 'src/main/services/knowledge-browse-worker.ts', 'knowledge-browse-worker.js'),
       bundleMainWorker('bundle-diff-worker', 'src/main/services/documents/diff-worker.ts', 'diff-worker.js'),
       bundleMainWorker('bundle-observation-worker', 'src/main/services/observability/observation-worker.ts', 'observation-worker.js'),
       bundleMainWorker('bundle-history-worker', 'src/main/services/acp/history-worker.ts', 'history-worker.js'),

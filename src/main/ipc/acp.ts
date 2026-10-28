@@ -209,6 +209,7 @@ export function registerAcpIpc(): void {
     const root = getProjectRoot() ?? ''
     const generation = getProjectGeneration()
     if (!root) return noProject()
+    if (options?.knowledgeReferences?.length && (options.expectedProjectGeneration !== generation || !options.expectedConnectionGeneration)) return ipcFail(IpcErrorCode.Conflict, '项目或会话已改变，请重新选择知识引用；内容尚未发送', { reason: 'SCOPE_CHANGED' })
     try {
       return await promptAcpSession(root, sessionId, text, options, () => getProjectRoot() === root && getProjectGeneration() === generation, generation)
     } catch (error) {

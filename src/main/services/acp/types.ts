@@ -13,7 +13,11 @@ export const sourceReferenceSchema = z.object({
   displayedRevision: z.string().regex(/^[a-f0-9]{16}$/), targetSessionId: idSchema,
   targetConnectionGeneration: z.string().min(1).max(200).optional(), sectionAnchor: z.string().max(500).optional(), quote: z.string().max(8000).optional()
 })
-export const promptOptionsSchema = z.object({ expectedConnectionGeneration: z.string().min(1).max(200).optional(), sourceReferences: z.array(sourceReferenceSchema).max(8).optional(), images: promptImagesSchema.optional() })
+const knowledgeReferenceSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('source'), sourceId: z.string().uuid(), contentHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  z.object({ kind: z.literal('project'), relativePath: z.string().min(1).max(4096), displayedRevision: z.string().regex(/^[a-f0-9]{16}$/) }).strict()
+])
+export const promptOptionsSchema = z.object({ expectedConnectionGeneration: z.string().min(1).max(200).optional(), expectedProjectGeneration: z.number().int().nonnegative().optional(), expectedKnowledgeScopeToken: z.string().regex(/^[a-f0-9]{64}$/).optional(), knowledgeReferences: z.array(knowledgeReferenceSchema).max(4).optional(), sourceReferences: z.array(sourceReferenceSchema).max(8).optional(), images: promptImagesSchema.optional() })
 export const profileSchema = z.object({
   id: idSchema, name: z.string().trim().min(1).max(100), description: z.string().max(2000),
   instructions: z.string().max(32000), runtimeId: idSchema,

@@ -17,6 +17,7 @@ import { piGeneratedDocument } from './pi-generated-document'
 import { knowledgeObservation, knowledgeObservationLabel } from './conversation-convenience'
 import { KnowledgeOperationRow } from './KnowledgeOperationRow'
 import { SavedArtifactMessage } from './SavedArtifactMessage'
+import { SaveKnowledgeAnswerAction } from './SaveKnowledgeAnswerModal'
 import { projectRootKey } from '../my/navigation'
 import type { AcpPermissionPayload, AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 import { useMemo, type JSX } from 'react'
@@ -91,10 +92,14 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
     </div></div>
   }
   if (item.type === 'agent') {
+    const origin = events?.find((event) => event.id === item.key)
+    const completed = origin && events?.some((event) => event.kind === 'turn-done' && event.source === origin.source && event.sessionId === origin.sessionId && projectRootKey(event.projectRoot) === projectRootKey(origin.projectRoot) && event.connectionGeneration === origin.connectionGeneration && event.turnId === origin.turnId && (asObject(event.payload?.result)?.status === 'completed' || (!asObject(event.payload?.result)?.status && event.text === '回合已结束')))
+    const canSaveAnswer = Boolean(messagePresentation === 'final' && item.text.trim() && origin && isConversationRuntimeEvent(origin) && projectRootKey(origin.projectRoot) && origin.sessionId && origin.turnId && origin.connectionGeneration && session && origin.source === (session.engine ?? 'acp') && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.connectionGeneration === session.connectionGeneration && completed)
     return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-chat-copy min-w-0 break-words', messagePresentation === 'final' ? 'acp-answer text-my-primary' : 'acp-process-message', item.startsAnswer && messagePresentation === 'final' && 'acp-answer-start')}>
       {item.text && <SavedArtifactMessage text={item.text} messageId={item.key} events={events ?? []} session={session} />}
       {session && item.storedImages?.length ? <StoredImageAttachments key={`${session.projectRoot}:${session.sessionId}:${item.key}`} images={item.storedImages} sessionId={session.sessionId} /> : null}
       {session && item.webPreview && item.webPreviewEventId && <PiWebPreviewCard artifact={item.webPreview} eventId={item.webPreviewEventId} onOpenWebPreview={onOpenWebPreview} />}
+      {canSaveAnswer && origin?.sessionId && origin.turnId && origin.connectionGeneration && <SaveKnowledgeAnswerAction key={JSON.stringify([origin.projectRoot, origin.sessionId, origin.connectionGeneration, origin.turnId, item.key, item.text])} root={origin.projectRoot} sessionId={origin.sessionId} connectionGeneration={origin.connectionGeneration} turnId={origin.turnId} messageId={item.key} body={item.text} />}
     </div>
   }
   if (item.type === 'knowledge-operation') return <KnowledgeOperationRow item={item} session={session} onOpenTask={onOpenTask} suppressWorkingIndicator={suppressWorkingIndicator} />

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { protectedStorage as safeStorage } from '../../daemon/protected-storage'
 import { z } from 'zod'
-import type { KnowledgeArtifact, KnowledgeCollection, KnowledgeContext, KnowledgeDocument, KnowledgePublication, KnowledgeReadResult, KnowledgeScope, KnowledgeSearchResult, KnowledgeSource, KnowledgeSourceRange } from '../../../shared/knowledge-access'
+import type { KnowledgeArtifact, KnowledgeCollection, KnowledgeContext, KnowledgeDocument, KnowledgeFolderTree, KnowledgePublication, KnowledgeReadResult, KnowledgeScope, KnowledgeSearchResult, KnowledgeSource, KnowledgeSourceRange } from '../../../shared/knowledge-access'
 import { KNOWLEDGE_READ_PAGE_LIMIT } from '../../../shared/knowledge-access'
 import { IpcErrorCode, ipcFail, type IpcFail } from '../../../shared/ipc-errors'
 import { IntegrationError, type KnowledgePort, type ResolvedConnection } from '../integrations/types'
@@ -10,7 +10,7 @@ import { kbSearch } from '../knowledge'
 import { readFileSync, statSync } from 'node:fs'
 import { relative } from 'node:path'
 import { materialPath } from './materials'
-import { readKnowledgeState, updateKnowledgeState, knowledgeHash } from './repository'
+import { readKnowledgeState, updateKnowledgeState, knowledgeHash, type StoredKnowledgeSource } from './repository'
 import { artifactRead, assertArtifactCurrent, handoffKnowledgeArtifact, readTaskPrd, saveKnowledgeArtifact } from './materials'
 import { KnowledgeReadVersionError, type KnowledgeOwner, type KnowledgeReadInput } from './types'
 import { knowledgeWorkspaceRoot, knowledgeWorkspaceGeneration } from './workspace-host'
@@ -23,6 +23,7 @@ import type { KnowledgeConversationInput, KnowledgeConversationResult } from '..
 const uuidSchema = z.string().uuid()
 const readWindowSchema = z.object({ offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), limit: z.number().int().min(1).max(KNOWLEDGE_READ_PAGE_LIMIT) })
 const MAX_READ_PAGE_JSON_BYTES = 10_000
+const MAX_BROWSE_HANDLES = 1000
 function integrationApi(): typeof integrations { return integrations }
 function registryApi(): typeof providers { return providers }
 function rootOf(): string | null { return knowledgeWorkspaceRoot() }
@@ -68,9 +69,83 @@ function ownerFor(input: { expectedRoot: string; sessionId?: string }): Knowledg
 function legacyAvailable(): boolean { try { const { weknora } = getSettings(); return !!weknora.apiKey && !!weknora.baseUrl } catch { return false } }
 
 export class KnowledgeAccessService {
+  private readonly selectionSalt = randomUUID()
+  private readonly selectionEpochs = new Map<string, number>()
+  private readonly selectableSources = new Map<string, { key: string; epoch: number }>()
+  private advanceSelectionEpoch(key: string): void {
+    if (!this.selectionEpochs.has(key) && this.selectionEpochs.size >= 500) throw new IntegrationError('临时知识范围数量已达上限，请重启应用清理', 'io')
+    this.selectionEpochs.set(key, (this.selectionEpochs.get(key) ?? 0) + 1)
+  }
+  selectionToken(owner: KnowledgeOwner): string {
+    const scope = this.capture(owner), key = this.overrideKey(owner)
+    return knowledgeHash(JSON.stringify([this.selectionSalt, key, scope.revision, this.selectionEpochs.get(key) ?? 0]))
+  }
+  private rememberSelectable(owner: KnowledgeOwner, sources: KnowledgeSource[], epoch: number): void {
+    const key = this.overrideKey(owner)
+    if ((this.selectionEpochs.get(key) ?? 0) !== epoch) throw new IntegrationError('项目知识范围已变化，请重新读取', 'conflict')
+    for (const source of sources) {
+      this.selectableSources.set(source.id, { key, epoch })
+      while (this.selectableSources.size > 1500) this.selectableSources.delete(this.selectableSources.keys().next().value!)
+    }
+  }
+  selectedSources(owner: KnowledgeOwner, references: Array<{ sourceId: string; contentHash: string }>): KnowledgeSource[] {
+    const scope = this.capture(owner), key = this.overrideKey(owner), epoch = this.selectionEpochs.get(key) ?? 0
+    const state = readKnowledgeState(owner.root)
+    return references.map(reference => {
+      const issued = this.selectableSources.get(reference.sourceId)
+      const item = state.sources.find(entry => entry.source.id === reference.sourceId)
+      if (!issued || issued.key !== key || issued.epoch !== epoch || !item || item.source.sessionId !== owner.sessionId || item.scope.id !== scope.id || item.scope.revision !== scope.revision || item.scope.projectGeneration !== scope.projectGeneration || item.source.contentHash !== reference.contentHash || knowledgeHash(item.source.text) !== reference.contentHash || item.source.mode === 'unsupported' || !item.source.text || item.source.kind === 'weknora' && (!item.source.collectionId || !scope.collectionIds.includes(item.source.collectionId))) throw new IntegrationError('知识来源已失效、范围或正文已改变，请重新读取并选择', 'conflict')
+      return item.source
+    })
+  }
+  recordSelectedDelivery(owner: KnowledgeOwner, references: Array<{ sourceId: string; contentHash: string }>, local: Array<{ relativePath: string; revision: string; text: string }>): string[] {
+    const scope = this.capture(owner)
+    const originals = this.selectedSources(owner, references)
+    const sources: KnowledgeSource[] = originals.map(source => ({ ...source, id: randomUUID(), sourceHandle: randomUUID(), parentSourceId: source.id, sessionId: owner.sessionId, turnId: owner.turnId, scopeRevision: scope.revision, suppliedToAgent: true, historical: false }))
+    for (const document of local) sources.push({ id: randomUUID(), sourceHandle: randomUUID(), title: document.relativePath.split('/').pop() || document.relativePath, text: document.text, contentHash: knowledgeHash(document.text), kind: 'local', documentId: document.relativePath, collectionId: null, relativePath: document.relativePath, instanceId: null, fetchedAt: Date.now(), mode: 'full', truncated: false, sessionId: owner.sessionId, turnId: owner.turnId, scopeRevision: scope.revision, suppliedToAgent: true, historical: false, documentRevision: document.revision })
+    updateKnowledgeState(owner.root, state => { state.sources.unshift(...sources.map(source => ({ source, scope }))) })
+    return sources.map(source => source.id)
+  }
+  rebindSource(owner: KnowledgeOwner, sourceId: string, contentHash: string): { source: KnowledgeSource; selectionToken: string } {
+    const uiOwner: KnowledgeOwner = { ...owner, sessionId: 'ui' }
+    const original = this.selectedSources(uiOwner, [{ sourceId, contentHash }])[0]
+    const sourceScope = this.capture(uiOwner), targetScope = this.capture(owner)
+    if (sourceScope.revision !== targetScope.revision || sourceScope.bindingId !== targetScope.bindingId || sourceScope.connectionId !== targetScope.connectionId || sourceScope.instanceId !== targetScope.instanceId || JSON.stringify(sourceScope.collectionIds) !== JSON.stringify(targetScope.collectionIds)) throw new IntegrationError('来源与目标会话的知识范围不同，请在目标会话重新读取', 'conflict')
+    const source: KnowledgeSource = { ...original, id: randomUUID(), sourceHandle: randomUUID(), parentSourceId: original.id, sessionId: owner.sessionId, turnId: `ui-rebind-${randomUUID()}`, scopeRevision: targetScope.revision, suppliedToAgent: false, historical: false }
+    updateKnowledgeState(owner.root, state => { state.sources.unshift({ source, scope: targetScope }) })
+    this.rememberSelectable(owner, [source], this.selectionEpochs.get(this.overrideKey(owner)) ?? 0)
+    return { source, selectionToken: this.selectionToken(owner) }
+  }
   private readonly conversationWorkflow = new KnowledgeConversationWorkflow(this, ensureOwner, ensureScope)
   conversation(owner: KnowledgeOwner, scope: KnowledgeScope, input: KnowledgeConversationInput, signal?: AbortSignal): Promise<KnowledgeConversationResult> {
     return this.conversationWorkflow.run(owner, scope, input, signal)
+  }
+  private readonly browseHandles = new Map<string, StoredKnowledgeSource>()
+  private readonly browseIdentities = new Map<string, string>()
+  private browseIdentity(scope: KnowledgeScope, documentId: string, collectionId: string): string {
+    return JSON.stringify([canonicalRoot(scope.root), scope.id, scope.sessionId, scope.revision, scope.projectGeneration, scope.connectionId, scope.instanceId, collectionId, documentId])
+  }
+  private rememberBrowseSource(scope: KnowledgeScope, item: { id: string; title: string }, collectionId: string, turnId: string): KnowledgeSource {
+    const key = this.browseIdentity(scope, item.id, collectionId)
+    const previousHandle = this.browseIdentities.get(key)
+    const previous = previousHandle ? this.browseHandles.get(previousHandle) : undefined
+    if (previous && previous.source.title === item.title) {
+      this.browseHandles.delete(previous.source.sourceHandle)
+      this.browseHandles.set(previous.source.sourceHandle, previous)
+      return previous.source
+    }
+    const source = snapshot(scope, { documentId: item.id, collectionId, title: item.title, text: '', truncated: false }, turnId)
+    this.browseHandles.set(source.sourceHandle, { source, scope })
+    this.browseIdentities.set(key, source.sourceHandle)
+    while (this.browseHandles.size > MAX_BROWSE_HANDLES) {
+      const oldest = this.browseHandles.entries().next().value
+      if (!oldest) break
+      const [handle, entry] = oldest
+      this.browseHandles.delete(handle)
+      const identity = this.browseIdentity(entry.scope, entry.source.documentId, entry.source.collectionId ?? '')
+      if (this.browseIdentities.get(identity) === handle) this.browseIdentities.delete(identity)
+    }
+    return source
   }
   private readonly overrides = new Map<string, ScopeOverride>()
   private readonly publicationsInFlight = new Map<string, Promise<KnowledgePublication>>()
@@ -84,6 +159,7 @@ export class KnowledgeAccessService {
     return base.scope
   }
   async search(owner: KnowledgeOwner, scope: KnowledgeScope, input: { requestId: string; query: string; limit?: number }, signal?: AbortSignal): Promise<KnowledgeSearchResult> {
+    const selectionEpoch = this.selectionEpochs.get(this.overrideKey(owner)) ?? 0
     uuidSchema.parse(input.requestId); ensureScope(owner, scope)
     if (!input.query.trim()) return { operationId: input.requestId, status: 'empty', detail: '请输入检索内容', scope, sources: [], elapsedMs: 0, persistence: 'durable' }
     if (input.query.length > 2000) throw new IntegrationError('检索内容超过 2000 字符')
@@ -119,12 +195,14 @@ export class KnowledgeAccessService {
     ensureScope(owner, scope)
     if (signal?.aborted) return { operationId: input.requestId, status: 'cancelled', detail: '知识检索已取消', scope, sources: [], elapsedMs: Date.now() - started, persistence: 'durable' }
     let persistence: 'durable' | 'degraded' = 'durable'
-    try { updateKnowledgeState(owner.root, (state) => { state.sources.unshift(...sources.map((source) => ({ source, scope }))) }) } catch { persistence = 'degraded'; detail += '；证据未能持久化，重新打开后可能不可用' }
+    if ((this.selectionEpochs.get(this.overrideKey(owner)) ?? 0) !== selectionEpoch) throw new IntegrationError('项目知识范围已变化，请重新检索', 'conflict')
+    try { updateKnowledgeState(owner.root, (state) => { state.sources.unshift(...sources.map((source) => ({ source, scope }))) }); this.rememberSelectable(owner, sources, selectionEpoch) } catch { persistence = 'degraded'; detail += '；证据未能持久化，重新打开后可能不可用' }
     return { operationId: input.requestId, status, detail, scope, sources, elapsedMs: Date.now() - started, persistence }
   }
   async read(owner: KnowledgeOwner, scope: KnowledgeScope, input: KnowledgeReadInput, signal?: AbortSignal): Promise<KnowledgeReadResult> {
-    uuidSchema.parse(input.requestId); ensureScope(owner, scope); const state = readKnowledgeState(owner.root); const stored = state.sources.find((item) => item.source.sourceHandle === input.sourceHandle && item.source.sessionId === owner.sessionId)
-    if (!stored || stored.scope.revision !== scope.revision || stored.scope.connectionId !== scope.connectionId || stored.scope.projectGeneration !== scope.projectGeneration) throw new IntegrationError('来源句柄无效、已过期或不属于当前知识范围', 'denied')
+    const selectionEpoch = this.selectionEpochs.get(this.overrideKey(owner)) ?? 0
+    uuidSchema.parse(input.requestId); ensureScope(owner, scope); const state = readKnowledgeState(owner.root); const stored = state.sources.find((item) => item.source.sourceHandle === input.sourceHandle && item.source.sessionId === owner.sessionId) ?? this.browseHandles.get(input.sourceHandle)
+    if (!stored || stored.source.sessionId !== owner.sessionId || canonicalRoot(stored.scope.root) !== canonicalRoot(owner.root) || stored.scope.id !== scope.id || stored.scope.revision !== scope.revision || stored.scope.connectionId !== scope.connectionId || stored.scope.projectGeneration !== scope.projectGeneration) throw new IntegrationError('来源句柄无效、已过期或不属于当前知识范围', 'denied')
     const ranged = input.offset !== undefined || input.limit !== undefined
     const window = ranged ? readWindowSchema.safeParse({ offset: input.offset === undefined ? 0 : input.offset, limit: input.limit === undefined ? KNOWLEDGE_READ_PAGE_LIMIT : input.limit }) : undefined
     if (window && !window.success) throw new IntegrationError('读取分页参数无效：offset 必须是非负整数，limit 必须是 1..6000 的整数', 'invalid')
@@ -143,6 +221,7 @@ export class KnowledgeAccessService {
         value = await knowledgePort(resolved.connection).read(resolved.connection, stored.source.documentId, stored.source.collectionId, signal)
       }
       ensureScope(owner, scope)
+      if ((this.selectionEpochs.get(this.overrideKey(owner)) ?? 0) !== selectionEpoch) throw new IntegrationError('项目知识范围已变化，请重新读取', 'conflict')
       if (signal?.aborted) return { operationId: input.requestId, status: 'cancelled', detail: '读取已取消，未交付迟到结果', source: null, persistence: 'durable' }
       let range: KnowledgeSourceRange | undefined
       let nextOffset: number | null | undefined
@@ -184,13 +263,22 @@ export class KnowledgeAccessService {
         const readRevision = knowledgeHash(value.text)
         try {
           updateKnowledgeState(owner.root, (state) => {
-            const original = state.sources.find((item) => item.source.sourceHandle === input.sourceHandle
+            let original = state.sources.find((item) => item.source.sourceHandle === input.sourceHandle
               && item.source.sessionId === owner.sessionId && item.scope.revision === scope.revision)
+            if (!original && this.browseHandles.get(input.sourceHandle) === stored) {
+              original = { source: stored.source, scope: stored.scope }
+              state.sources.unshift(original)
+            }
             if (!original) throw new IntegrationError('分页来源已失效，请重新检索文档', 'conflict')
             if (original.readRevision !== undefined && original.readRevision !== readRevision) throw new KnowledgeReadVersionError()
             original.readRevision = readRevision
             state.sources.unshift({ source, scope, readRevision })
           })
+          if (this.browseHandles.get(input.sourceHandle) === stored) {
+            this.browseHandles.delete(input.sourceHandle)
+            const key = this.browseIdentity(stored.scope, stored.source.documentId, stored.source.collectionId ?? '')
+            if (this.browseIdentities.get(key) === input.sourceHandle) this.browseIdentities.delete(key)
+          }
         } catch (error) {
           if (error instanceof IntegrationError && error.kind === 'conflict') throw error
           throw new IntegrationError('无法持久保存文档分页版本，未返回未固定版本的正文页', 'io')
@@ -198,6 +286,7 @@ export class KnowledgeAccessService {
       } else {
         try { storeSource(owner.root, scope, source) } catch { persistence = 'degraded' }
       }
+      if (persistence === 'durable') this.rememberSelectable(owner, [source], selectionEpoch)
       return { operationId: input.requestId, status: value.mode === 'unsupported' ? 'unavailable' : 'ok', detail: value.mode === 'unsupported' ? '此文档格式不支持正文读取；不代表已读全文' : range ? `已读取正文分页；${nextOffset === null ? range.totalIsComplete ? '已到正文末尾' : '已到可读内容末尾，上游正文仍有截断' : '尚有后续内容，请使用 nextOffset 继续读取'}` : value.truncated ? '正文超出限额，返回标记过的截断文本' : '已读取支持格式的正文', source, persistence, ...(range ? { range, nextOffset } : {}) }
     } catch (error) {
       ensureOwner(owner)
@@ -206,7 +295,7 @@ export class KnowledgeAccessService {
     }
   }
   async markSupplied(owner: KnowledgeOwner, sourceIds: string[]): Promise<void> { ensureOwner(owner); const ids = new Set(sourceIds); updateKnowledgeState(owner.root, (state) => { for (const item of state.sources) if (ids.has(item.source.id) && item.source.sessionId === owner.sessionId && item.source.turnId === owner.turnId) item.source.suppliedToAgent = true }) }
-  async context(input: { expectedRoot: string; sessionId?: string }): Promise<KnowledgeContext> { const owner = ownerFor(input); return { scope: this.capture(owner), legacyImportAvailable: legacyAvailable() } }
+  async context(input: { expectedRoot: string; sessionId?: string }): Promise<KnowledgeContext> { const owner = ownerFor(input); return { scope: this.capture(owner), selectionToken: this.selectionToken(owner), legacyImportAvailable: legacyAvailable() } }
   async collections(input: { expectedRoot: string; sessionId?: string; connectionId?: string; connectionRevision?: number }): Promise<{ items: KnowledgeCollection[]; hasMore: boolean }> {
     const owner = ownerFor(input); const stored = readIntegrationState()
     const resolved = resolveScope(owner)
@@ -219,23 +308,40 @@ export class KnowledgeAccessService {
   }
   async updateScope(input: { expectedRoot: string; sessionId?: string; collectionIds: string[] | null }): Promise<KnowledgeScope> {
     const owner = ownerFor(input); const base = resolveScope(owner); const key = this.overrideKey(owner)
-    if (input.collectionIds === null) { this.overrides.delete(key); return base.scope }
+    if (input.collectionIds === null) { this.advanceSelectionEpoch(key); this.overrides.delete(key); return base.scope }
     if (!base.connection) throw new IntegrationError('当前项目尚未绑定 WeKnora 连接', 'denied')
     const collections = await knowledgePort(base.connection).collections(base.connection)
     ensureScope(owner, base.scope)
     if (input.collectionIds.some((id) => !collections.items.some((collection) => collection.id === id))) throw new IntegrationError('临时范围包含不可访问或尚未列出的知识库', 'denied')
     if (this.overrides.size >= 500 && !this.overrides.has(key)) throw new IntegrationError('临时知识范围数量已达上限，请重启应用清理', 'io')
+    this.advanceSelectionEpoch(key)
     this.overrides.set(key, { baseRevision: base.scope.revision, collectionIds: [...input.collectionIds] })
     return this.capture(owner)
   }
-  async documents(input: { expectedRoot: string; sessionId?: string; collectionId: string; page?: number }): Promise<{ items: KnowledgeDocument[]; page: number; hasMore: boolean }> {
+  async documents(input: { expectedRoot: string; sessionId?: string; collectionId: string; page?: number; folderPath?: string }): Promise<{ items: KnowledgeDocument[]; page: number; hasMore: boolean; total?: number }> {
     const owner = ownerFor(input); const scope = this.capture(owner); const resolved = resolveScope(owner, scope.overridden ? scope.collectionIds : undefined)
     if (!resolved.connection || !scope.collectionIds.includes(input.collectionId)) throw new IntegrationError('知识库不在项目范围内', 'denied')
-    const result = await knowledgePort(resolved.connection).documents(resolved.connection, input.collectionId, input.page ?? 1)
+    const port = knowledgePort(resolved.connection)
+    // A legacy server may ignore folder_path. Require its directory endpoint before
+    // accepting even an empty filtered page, and check every returned row in the port.
+    if (input.folderPath !== undefined) {
+      await port.folders(resolved.connection, input.collectionId)
+      ensureScope(owner, scope)
+      if (this.capture(owner).revision !== scope.revision) throw new IntegrationError('项目知识范围已变化，请重新发起操作', 'conflict')
+    }
+    const result = await port.documents(resolved.connection, input.collectionId, input.page ?? 1, undefined, input.folderPath)
     ensureScope(owner, scope)
-    const records = result.items.map((item) => snapshot(scope, { documentId: item.id, collectionId: input.collectionId, title: item.title, text: '', truncated: false }, owner.turnId))
-    updateKnowledgeState(owner.root, (state) => { state.sources.unshift(...records.map((source) => ({ source, scope }))) })
+    if (this.capture(owner).revision !== scope.revision) throw new IntegrationError('项目知识范围已变化，请重新发起操作', 'conflict')
+    const records = result.items.map((item) => this.rememberBrowseSource(scope, item, input.collectionId, owner.turnId))
     return { ...result, items: result.items.map((item, index) => ({ ...item, sourceHandle: records[index].sourceHandle, collectionId: input.collectionId })) }
+  }
+  async folders(input: { expectedRoot: string; sessionId?: string; collectionId: string }): Promise<KnowledgeFolderTree> {
+    const owner = ownerFor(input); const scope = this.capture(owner); const resolved = resolveScope(owner, scope.overridden ? scope.collectionIds : undefined)
+    if (!resolved.connection || !scope.collectionIds.includes(input.collectionId)) throw new IntegrationError('知识库不在项目范围内', 'denied')
+    const result = await knowledgePort(resolved.connection).folders(resolved.connection, input.collectionId)
+    ensureScope(owner, scope)
+    if (this.capture(owner).revision !== scope.revision) throw new IntegrationError('项目知识范围已变化，请重新发起操作', 'conflict')
+    return result
   }
   async source(input: { expectedRoot: string; sessionId?: string; sourceId: string }): Promise<KnowledgeSource> { const owner = ownerFor(input); const state = readKnowledgeState(owner.root); const source = state.sources.find((item) => item.source.id === input.sourceId && (!input.sessionId || item.source.sessionId === owner.sessionId)); if (!source) throw new IntegrationError('来源不存在或不属于所选会话', 'invalid'); return { ...source.source, historical: true } }
   async sources(input: { expectedRoot: string; sessionId?: string }): Promise<KnowledgeSource[]> { const owner = ownerFor(input); let bytes = 0; return readKnowledgeState(owner.root).sources.filter((item) => !input.sessionId || item.source.sessionId === input.sessionId).slice(0, 50).flatMap((item) => { bytes += Buffer.byteLength(item.source.text); return bytes > 500_000 ? [] : [{ ...item.source, historical: true }] }) }
@@ -283,7 +389,8 @@ export class KnowledgeAccessService {
     const collection = collections.items.find((item) => item.id === input.collectionId)
     if (!collection) throw new IntegrationError('目标知识库不存在或不可访问', 'denied')
     const now = Date.now()
-    const publication: KnowledgePublication = { requestId: input.requestId, state: 'previewed', artifactId: artifact.id, artifactRevision: artifact.revision, title: artifact.title, body: artifact.body, payloadHash: knowledgeHash(JSON.stringify({ title: artifact.title, content: artifact.body, status: 'published', channel: 'trellis-panel' })), scope: resolved.scope, collectionId: collection.id, collectionName: collection.name, createdAt: now, updatedAt: now, remoteDocumentId: null, detail: '精确预览：正文不加内容；远端字段 status=published、channel=trellis-panel。读取目标成功不证明写入权限；确认后才尝试创建。', indexing: 'unknown' }
+    const requestPayload: NonNullable<KnowledgePublication['requestPayload']> = { version: 1, body: { title: artifact.title, content: artifact.body, status: 'publish', channel: 'trellis-panel' } }
+    const publication: KnowledgePublication = { requestId: input.requestId, state: 'previewed', artifactId: artifact.id, artifactRevision: artifact.revision, title: artifact.title, body: artifact.body, requestPayload, payloadHash: knowledgeHash(JSON.stringify(requestPayload)), scope: resolved.scope, collectionId: collection.id, collectionName: collection.name, createdAt: now, updatedAt: now, remoteDocumentId: null, detail: '精确预览：正文不加内容；远端字段 status=publish、channel=trellis-panel。读取目标成功不证明写入权限；确认后才尝试创建。', indexing: 'unknown' }
     return updateKnowledgeState(owner.root, (state) => {
       const old = state.publications.find((item) => item.requestId === publication.requestId)
       if (old) {
@@ -316,15 +423,16 @@ export class KnowledgeAccessService {
       }
       return previous
     }
+    if (!previous.requestPayload) throw new IntegrationError('旧版发布预览使用不同的远端请求，请使用新请求标识重新预览', 'conflict')
     const artifact = artifactRead(owner.root, previous.artifactId, previous.artifactRevision); assertArtifactCurrent(owner.root, artifact)
     const scope = this.capture(owner); const resolved = resolveScope(owner, scope.overridden ? scope.collectionIds : undefined)
     if (!resolved.connection || resolved.scope.revision !== previous.scope.revision || resolved.scope.connectionId !== previous.scope.connectionId || resolved.scope.projectGeneration !== previous.scope.projectGeneration) throw new IntegrationError('连接或项目范围已变化，请重新预览', 'conflict')
-    if (previous.payloadHash !== knowledgeHash(JSON.stringify({ title: artifact.title, content: artifact.body, status: 'published', channel: 'trellis-panel' }))) throw new IntegrationError('确认材料与发布预览不一致', 'conflict')
+    if (previous.requestPayload.body.title !== artifact.title || previous.requestPayload.body.content !== artifact.body || previous.payloadHash !== knowledgeHash(JSON.stringify(previous.requestPayload))) throw new IntegrationError('确认材料与发布预览不一致', 'conflict')
     updateKnowledgeState(owner.root, (state) => { const item = state.publications.find((p) => p.requestId === requestId); if (!item || item.state !== 'previewed') throw new IntegrationError('发布请求已被处理', 'conflict'); item.state = 'pending'; item.updatedAt = Date.now(); item.detail = '已持久化待发送记录；本请求不会自动重试' })
     let outcome: KnowledgePublication
     try {
       ensureScope(owner, resolved.scope)
-      const response = await knowledgePort(resolved.connection).publish(resolved.connection, previous.collectionId, { title: previous.title, content: previous.body })
+      const response = await knowledgePort(resolved.connection).publish(resolved.connection, previous.collectionId, previous.requestPayload.body)
       outcome = { ...previous, state: 'published', remoteDocumentId: response.documentId, updatedAt: Date.now(), detail: 'WeKnora 已返回文档 ID；解析、索引和可搜索状态尚未验证' }
     } catch (error) {
       const explicitRejection = error instanceof IntegrationError && ['invalid', 'denied'].includes(error.kind)

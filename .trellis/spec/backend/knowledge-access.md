@@ -29,6 +29,14 @@ nor opening establishes publication/review/write authorization.
   `sources`, `importLegacy`, `saveArtifact`, `artifacts`, `artifact`, `taskPrd`,
   `handoff`, `previewPublication`, `confirmPublication`, `publications`,
   `publicationPage`, `resolvePublication`, `clearHistory`.
+- Local browsing: `api.kbBrowse({expectedRoot, library?, page?, pageSize?,
+  folderPath?, folderRecursive?, forceRefresh?})` returns the requested page,
+  folder paths, `snapshotAt`, `complete` and an optional truncation reason.
+- Remote browsing: `knowledgeAccess.documents({expectedRoot, sessionId?,
+  collectionId, page?, folderPath?})` returns one upstream page;
+  `knowledgeAccess.folders({expectedRoot, sessionId?, collectionId})` returns
+  upstream folder metadata. Omitted folder means all folders; an empty string
+  means the root folder.
 - Native: `knowledgeMcpBridge.connect(identity,observe)`, connection `servers`,
   `admit`, `endTurn`, `disconnect`, `revoke`; the public acpx `mcpServers` resolver
   supplies descriptors on connection creation/load/resume.
@@ -57,6 +65,20 @@ temporary in-memory conversation scope, reset on app restart. They are not an
 upstream ACL. Local knowledge can work while remote knowledge is unconfigured.
 
 ### Evidence and Materials
+
+Local browsing uses a bounded worker snapshot; keep scans off the main thread.
+The snapshot reports incomplete coverage when its entry, document or byte
+budget is reached, or an eligible file cannot be read. Its folder paths and
+counts then describe only the scanned portion. Manual refresh invalidates the
+snapshot; page and folder changes reuse it until expiry. Scoped search filters
+the requested directory before its result limit and reports coverage separately.
+
+Remote browsing validates returned collection and folder identities. A server
+without the folder endpoint cannot establish an empty filtered result; report
+the failure and keep unfiltered library browsing available. List handles are
+bounded in-memory, scoped to root, session, generation, connection and scope;
+they are not durable evidence and may expire after eviction or restart. A read
+creates a separate snapshot under the existing evidence rules.
 
 Source handles are opaque and owner/scope-bound. Snapshot exact supplied bytes,
 their SHA-256, source identity, timestamp, mode/truncation and original turn.
@@ -202,6 +224,14 @@ Historical host lookup records may retain their original source rendering; they
 do not prove native discovery or invocation.
 
 ### Explicit Publication
+
+New manual WeKnora publication requests use `status: 'publish'` and persist the
+versioned exact request payload in the preview receipt. The checksum covers that
+payload; confirmation sends the same payload. Legacy receipts without a stored
+payload retain their original checksum rule. A legacy preview cannot be sent as
+a new payload under its existing request ID; create a new preview instead.
+Pending, uncertain and completed legacy receipts retain their identities and
+recovery behavior. A returned document ID does not establish indexing completion.
 
 Preview exact title/body, artifact revision, effective per-use scope, session and
 selected target. Persist the pending UUID/payload before one POST; changes to the
