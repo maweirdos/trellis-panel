@@ -1,15 +1,43 @@
 {
   "version": "0.19.5",
   "sdkVersion": "1.8.0",
-  "compatVersion": 3,
+  "compatVersion": 4,
   "patch": "acpx+0.19.5.patch",
-  "patchSha256": "e1b778ee742df6b3ebc213d262edabbb25254e62884c414fd154cea9e80b4926",
+  "patchSha256": "646bc68d6a696a6cdd73545c443f6245efd4180e4d39885e18aafaeee6dc673b",
   "files": {
-    "dist/queue-owner-runtime-DoijBCvt.js": "4df633abc34e38eb0b9bb064eb9fd7debe844f466dfb5be4677bc7a711353569",
-    "dist/runtime.js": "a5ededb6bf254901c7e121382c19501ede29f62b23cb113531a1cf9c892ebf9b",
-    "dist/runtime.d.ts": "4732fa211a4ff4c3566bb0c3e516ebba21d82a502c10620cc9102503dd866be6",
-    "dist/session-options-CkcvthCv.d.ts": "53504931a660e23fa16d1c77e3cade8b5a02c6e9799ee75b4684d6f28f851484",
+    "dist/queue-owner-runtime-DoijBCvt.js": "a54c08000458c66d3c1b6c6cb5242c4fa4fa805b2cdfdfca4ce24282bc0f357b",
+    "dist/runtime.js": "87fb1e73bb54f9c7e84d6886bbe7243d0f074cd36e8c6e7bc6b652c3425ea66e",
+    "dist/runtime.d.ts": "1c293fb645a336b1e5df38cb0d7fe2e6ba786f8d08eb244e08b9729c50019e6b",
+    "dist/session-options-CkcvthCv.d.ts": "10279644640002a005b3dbe16425edd3cff390fe616049efa2de35014913bdd2",
     "dist/ipc-C96eDxkW.js": "20d919475122bc40a00add3862ef0d55ababfa341e7b1acf8ee260fe6c055996",
     "dist/windows-process-query.js": "9b14684ef92bfdb462401211f8dfb7a1ebbe26d9ea2fc8d03fc5b3fea3263713"
+  },
+  "pristineFiles": {
+    "dist/queue-owner-runtime-DoijBCvt.js": "e3ce22884e88522cb5ab8b22343d0a1b80a4796026c7b13420310e944151ba82",
+    "dist/runtime.js": "cd81a07a5433852cd21da52639216cc0d048642977ffc1d6ad4c1fad88c63c47",
+    "dist/runtime.d.ts": "550bca1b6f22c5dd66c0211ccff23c554e0e91313cc4ae49782dd09fa83e9cad",
+    "dist/session-options-CkcvthCv.d.ts": "3288a5d17af6252d0c2776f0b5ddc948446843f38ec40966db33cdad33531b4b",
+    "dist/ipc-C96eDxkW.js": "ae98e0edcfe2f8dc934a934ee1f182dfdbd95db99f8327622bb60153c177fefa",
+    "dist/windows-process-query.js": null
+  },
+  "upgradeFrom": {
+    "compatVersion": 3,
+    "patch": "acpx-upgrades/0.19.5-v3.diff",
+    "patchSha256": "e1b778ee742df6b3ebc213d262edabbb25254e62884c414fd154cea9e80b4926",
+    "files": {
+      "dist/queue-owner-runtime-DoijBCvt.js": "4df633abc34e38eb0b9bb064eb9fd7debe844f466dfb5be4677bc7a711353569",
+      "dist/runtime.js": "a5ededb6bf254901c7e121382c19501ede29f62b23cb113531a1cf9c892ebf9b",
+      "dist/runtime.d.ts": "4732fa211a4ff4c3566bb0c3e516ebba21d82a502c10620cc9102503dd866be6",
+      "dist/session-options-CkcvthCv.d.ts": "53504931a660e23fa16d1c77e3cade8b5a02c6e9799ee75b4684d6f28f851484",
+      "dist/ipc-C96eDxkW.js": "20d919475122bc40a00add3862ef0d55ababfa341e7b1acf8ee260fe6c055996",
+      "dist/windows-process-query.js": "9b14684ef92bfdb462401211f8dfb7a1ebbe26d9ea2fc8d03fc5b3fea3263713"
+    }
+  },
+  "processContract": {
+    "version": 1,
+    "nativeSpawn": true,
+    "verifiedCleanup": true,
+    "launchPurpose": true,
+    "callbacksInProcess": true
   }
 }

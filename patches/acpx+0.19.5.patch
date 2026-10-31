@@ -129,7 +129,7 @@ index da98ebf..2a2d825 100644
  		this.identities.clear();
  	}
 diff --git a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
-index 4eb7bc1..bbbb962 100644
+index 4eb7bc1..089ea83 100644
 --- a/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
 +++ b/node_modules/acpx/dist/queue-owner-runtime-DoijBCvt.js
 @@ -16,6 +16,24 @@ import { FsSafeError } from "@openclaw/fs-safe/errors";
@@ -195,7 +195,12 @@ index 4eb7bc1..bbbb962 100644
  		configOptions,
  		models: modelStateFromSessionResponse({
  			configOptions,
-@@ -2511,6 +2535,8 @@ var AcpClient = class {
+@@ -2507,10 +2531,13 @@ var AcpClient = class {
+ 	connection;
+ 	agent;
+ 	agentDescendants = /* @__PURE__ */ new WeakMap();
++	trellisLaunches = /* @__PURE__ */ new WeakMap();
+ 	agentCleanups = /* @__PURE__ */ new WeakMap();
  	commandProbes = /* @__PURE__ */ new Set();
  	initResult;
  	loadedSessionId;
@@ -204,9 +209,30 @@ index 4eb7bc1..bbbb962 100644
  	eventHandlers;
  	permissionStats = {
  		requested: 0,
-@@ -2798,14 +2824,25 @@ var AcpClient = class {
+@@ -2777,11 +2804,12 @@ var AcpClient = class {
+ 			this.log(`resolved system Claude Code executable: ${claudeExe}`);
+ 		}
+ 	}
+-	prepareProcessLaunch(command, args, options) {
++	prepareProcessLaunch(command, args, options, purpose = "agent") {
+ 		const resolved = buildAgentSpawnCommand(command, args, process.platform, options.env, options.cwd);
+ 		return {
+ 			launch: Object.freeze({
+ 				launchId: randomUUID(),
++				purpose,
+ 				scope: snapshotProcessLaunchScope(this.options.processLaunchScope),
+ 				command: resolved.command,
+ 				args: Object.freeze([...resolved.args]),
+@@ -2797,15 +2825,32 @@ var AcpClient = class {
+ 			startedAt: isoNow$2()
  		});
  	}
++	spawnProcess(launch, options) {
++		if (this.options.processLifecycle?.spawn && this.options.terminal !== false) throw new Error("Native owned spawn requires host terminal callbacks disabled");
++		const child = this.options.processLifecycle?.spawn ? this.options.processLifecycle.spawn(launch, { ...options, env: { ...options.env }, stdio: [...options.stdio] }) : spawn(launch.command, [...launch.args], options);
++		this.trellisLaunches.set(child, launch);
++		return child;
++	}
  	async spawnAgentProcess(plan, authority) {
 -		const prepared = this.prepareProcessLaunch(plan.spawnCommand, plan.args, plan.spawnOptions);
 +		let prepared = this.prepareProcessLaunch(plan.spawnCommand, plan.args, plan.spawnOptions);
@@ -226,13 +252,32 @@ index 4eb7bc1..bbbb962 100644
  		assertControlAuthority(authority);
  		let spawnedChild;
  		try {
- 			spawnedChild = spawn(launch.command, [...launch.args], {
+-			spawnedChild = spawn(launch.command, [...launch.args], {
 -				...plan.spawnOptions,
++			spawnedChild = this.spawnProcess(launch, {
 +				...spawnOptions,
  				windowsVerbatimArguments: prepared.windowsVerbatimArguments
  			});
  			await waitForSpawn(spawnedChild);
-@@ -2929,12 +2966,16 @@ var AcpClient = class {
+@@ -2833,7 +2878,7 @@ var AcpClient = class {
+ 		if (this.closeEpoch !== epoch) throw new Error("ACP client was closed while the agent was starting");
+ 	}
+ 	async readAgentCommandOutput(command, args, timeoutMs, options, epoch, authority) {
+-		const prepared = this.prepareProcessLaunch(command, args, options);
++		const prepared = this.prepareProcessLaunch(command, args, options, "command-probe");
+ 		const { launch } = prepared;
+ 		await admitCommandProbe(async () => {
+ 			this.assertCommandProbeActive(epoch, authority);
+@@ -2846,7 +2891,7 @@ var AcpClient = class {
+ 		}
+ 		let child;
+ 		try {
+-			child = spawn(launch.command, [...launch.args], {
++			child = this.spawnProcess(launch, {
+ 				cwd: options.cwd,
+ 				env: options.env,
+ 				stdio: [
+@@ -2929,12 +2974,16 @@ var AcpClient = class {
  		if (capabilities.terminal) app.onRequest(methods.client.terminal.create, async ({ params, signal }) => {
  			return await this.handleCreateTerminal(params, signal);
  		}).onRequest(methods.client.terminal.output, async ({ params }) => {
@@ -249,7 +294,7 @@ index 4eb7bc1..bbbb962 100644
  			return await this.terminalManager.releaseTerminal(params);
  		});
  		if (launch.devinAcp) app.onRequest("_cognition.ai/request_diagnostics", (params) => {
-@@ -2962,6 +3003,8 @@ var AcpClient = class {
+@@ -2962,6 +3011,8 @@ var AcpClient = class {
  			clientInfo: resolveClientInfo(launch.devinAcp)
  		});
  		const initialized = launch.geminiAcp ? await withTimeout(initializePromise, resolveGeminiAcpStartupTimeoutMs()) : await initializePromise;
@@ -258,7 +303,7 @@ index 4eb7bc1..bbbb962 100644
  		await this.authenticateIfRequired(connection, initialized.authMethods ?? []);
  		return initialized;
  	}
-@@ -2978,7 +3021,18 @@ var AcpClient = class {
+@@ -2978,7 +3029,18 @@ var AcpClient = class {
  	}
  	createTappedStream(base) {
  		return observeAcpStream(base, {
@@ -278,7 +323,7 @@ index 4eb7bc1..bbbb962 100644
  				this.eventHandlers.onAcpOutputMessage?.(direction, message);
  				this.eventHandlers.onAcpMessage?.(direction, message);
  			},
-@@ -2998,6 +3052,7 @@ var AcpClient = class {
+@@ -2998,6 +3060,7 @@ var AcpClient = class {
  		const { command, args } = resolveAgentCommandParts(this.options.agentCommand, this.options.agentArgv);
  		const claudeAcp = isClaudeAcpCommand(command, args);
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
@@ -286,7 +331,7 @@ index 4eb7bc1..bbbb962 100644
  		let result;
  		try {
  			const createPromise = this.runConnectionRequest(() => connection.agent.request(methods.agent.session.new, {
-@@ -3007,13 +3062,18 @@ var AcpClient = class {
+@@ -3007,13 +3070,18 @@ var AcpClient = class {
  			}), authority);
  			result = claudeAcp ? await withTimeout(createPromise, resolveClaudeAcpSessionCreateTimeoutMs()) : await createPromise;
  		} catch (error) {
@@ -306,7 +351,7 @@ index 4eb7bc1..bbbb962 100644
  		const configOptions = normalizeResponseConfigOptions(result);
  		const models = modelStateFromSessionResponse({
  			configOptions,
-@@ -3023,6 +3083,7 @@ var AcpClient = class {
+@@ -3023,6 +3091,7 @@ var AcpClient = class {
  		return {
  			sessionId: result.sessionId,
  			agentSessionId: extractAgentSessionId(result._meta),
@@ -314,7 +359,7 @@ index 4eb7bc1..bbbb962 100644
  			configOptions,
  			models,
  			configOptionsPresent: configOptions !== void 0,
-@@ -3037,6 +3098,7 @@ var AcpClient = class {
+@@ -3037,6 +3106,7 @@ var AcpClient = class {
  		const connection = this.getConnection();
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
  		assertControlAuthority(options.authority);
@@ -322,7 +367,7 @@ index 4eb7bc1..bbbb962 100644
  		const previousSuppression = this.applySessionUpdateSuppression(Boolean(options.suppressReplayUpdates));
  		let response;
  		try {
-@@ -3046,11 +3108,12 @@ var AcpClient = class {
+@@ -3046,11 +3116,12 @@ var AcpClient = class {
  				mcpServers: this.options.mcpServers ?? [],
  				_meta: this.sessionMeta()
  			}), options.authority);
@@ -336,7 +381,7 @@ index 4eb7bc1..bbbb962 100644
  		const result = toReconnectedSessionResult(response);
  		await this.captureAgentDescendants(this.agent);
  		return result;
-@@ -3059,13 +3122,19 @@ var AcpClient = class {
+@@ -3059,13 +3130,19 @@ var AcpClient = class {
  		assertControlAuthority(authority);
  		const connection = this.getConnection();
  		const sessionCwd = await resolveAgentSessionCwd(cwd, this.options.agentCommand);
@@ -358,7 +403,7 @@ index 4eb7bc1..bbbb962 100644
  		const result = toReconnectedSessionResult(response);
  		await this.captureAgentDescendants(this.agent);
  		return result;
-@@ -3290,6 +3359,7 @@ var AcpClient = class {
+@@ -3290,6 +3367,7 @@ var AcpClient = class {
  	close() {
  		this.closing = true;
  		this.closeEpoch += 1;
@@ -366,7 +411,31 @@ index 4eb7bc1..bbbb962 100644
  		if (this.closeTask) return this.closeTask;
  		this.closeTask = Promise.resolve().then(() => this.finishClose()).finally(() => {
  			this.closeTask = void 0;
-@@ -3554,6 +3624,7 @@ var AcpClient = class {
+@@ -3362,13 +3440,22 @@ var AcpClient = class {
+ 		}
+ 		let cleanup = this.agentCleanups.get(child);
+ 		if (!cleanup) {
+-			cleanup = Promise.resolve().then(() => this.cleanupAgentProcess(child));
++			cleanup = Promise.resolve().then(() => this.cleanupAgentProcess(child)).catch(error => { this.agentCleanups.delete(child); throw error; });
+ 			this.agentCleanups.set(child, cleanup);
+ 		}
+ 		return cleanup;
+ 	}
+ 	async cleanupAgentProcess(child) {
+ 		const descendants = this.agentDescendants.get(child);
++		if (this.options.processLifecycle?.cleanup) {
++			const launch = this.trellisLaunches.get(child);
++			if (!launch || !child.pid) throw new Error("Original native spawn ownership is unavailable");
++			this.endAgentStdin(child);
++			await this.options.processLifecycle.cleanup(this.startedProcess(launch, child.pid));
++			descendants?.retire();
++			this.detachAgentHandles(child, false);
++			return;
++		}
+ 		const deadline = performance.now() + AGENT_CLEANUP_BUDGET_MS;
+ 		const stdinCloseGraceMs = resolveAgentCloseAfterStdinEndMs(this.options.agentCommand);
+ 		try {
+@@ -3554,6 +3641,7 @@ var AcpClient = class {
  		this.log(`authenticated with method ${selected.methodId} (${selected.source})`);
  	}
  	async handlePermissionRequest(params, requestSignal) {
@@ -374,7 +443,7 @@ index 4eb7bc1..bbbb962 100644
  		const owner = this.captureDelegatedRequestOwner(params.sessionId, requestSignal);
  		if (!this.isDelegatedRequestActive(owner)) return cancelledPermissionResponse();
  		if (!this.hasPermissionOwner(params.sessionId)) return this.finishPermissionRequest(params, owner, cancelledPermissionResponse());
-@@ -3634,7 +3705,7 @@ var AcpClient = class {
+@@ -3634,7 +3722,7 @@ var AcpClient = class {
  			signal,
  			permissionHandler: active?.permissionHandler ?? this.options.onPermissionRequest,
  			assertActive: () => {
@@ -383,7 +452,7 @@ index 4eb7bc1..bbbb962 100644
  			}
  		};
  	}
-@@ -3900,11 +3971,59 @@ var AcpClient = class {
+@@ -3900,11 +3988,59 @@ var AcpClient = class {
  		}
  		if (error instanceof PermissionDeniedError) this.recordPermissionDecision("denied");
  	}
@@ -445,7 +514,7 @@ index 4eb7bc1..bbbb962 100644
  			} catch (error) {
  				const message = error instanceof Error ? error.message : String(error);
  				this.log(`session update handler failed: ${message}`);
-@@ -4315,6 +4434,7 @@ function cloneSessionAcpxState(state) {
+@@ -4315,6 +4451,7 @@ function cloneSessionAcpxState(state) {
  	return {
  		...state.session_origin ? { session_origin: state.session_origin } : {},
  		current_mode_id: state.current_mode_id,
@@ -453,7 +522,7 @@ index 4eb7bc1..bbbb962 100644
  		desired_mode_id: state.desired_mode_id,
  		desired_config_options: state.desired_config_options ? { ...state.desired_config_options } : void 0,
  		current_model_id: state.current_model_id,
-@@ -4766,6 +4886,16 @@ function applyConfigOptionsToState(state, configOptions) {
+@@ -4766,6 +4903,16 @@ function applyConfigOptionsToState(state, configOptions) {
  	return acpxState;
  }
  function applyConfigOptionsToRecord(record, result) {
@@ -471,7 +540,7 @@ index 4eb7bc1..bbbb962 100644
  	if (!Array.isArray(configOptions)) return;
  	record.acpx = applyConfigOptionsToState(record.acpx, configOptions);
 diff --git a/node_modules/acpx/dist/runtime.d.ts b/node_modules/acpx/dist/runtime.d.ts
-index 000b1aa..8ac6658 100644
+index 000b1aa..038d594 100644
 --- a/node_modules/acpx/dist/runtime.d.ts
 +++ b/node_modules/acpx/dist/runtime.d.ts
 @@ -98,6 +98,14 @@ type AcpRuntimeTurnInput = AcpControlAuthority & {
@@ -528,23 +597,25 @@ index 000b1aa..8ac6658 100644
    startTurn(input: AcpRuntimeTurnInput): {
      requestId: string;
      readonly promptStarted: Promise<void>;
-@@ -855,4 +874,6 @@ export declare function createRuntimeStore(options: {
+@@ -855,4 +874,7 @@ export declare function createRuntimeStore(options: {
  }): AcpSessionStore;
  //#endregion
  export { type AcpAgentInspection, type AcpAgentInspectionOptions, type AcpAgentRegistry, type AcpElicitationContext, type AcpElicitationHandler, type AcpElicitationMode, type AcpElicitationRequest, type AcpElicitationResponse, type AcpFileSessionStoreOptions, type AcpInspectableAgentRegistry, type AcpPermissionDecision, type AcpPermissionHandler, type AcpPermissionRequest, type AcpProcessExit, type AcpProcessLaunch, type AcpProcessLaunchScope, type AcpProcessLifecycle, type AcpProcessSpawnFailure, type AcpProcessStarted, type AcpRuntime, type AcpRuntimeAvailableCommand, type AcpRuntimeCapabilities, type AcpRuntimeDoctorReport, type AcpRuntimeEnsureInput, type AcpRuntimeErrorCode, type AcpRuntimeEvent, type AcpRuntimeHandle, type AcpRuntimeOptions, type AcpRuntimePlanEntry, type AcpRuntimePromptMode, type AcpRuntimeSessionContext, type AcpRuntimeSessionMode, type AcpRuntimeSessionModels, type AcpRuntimeSessionPermissions, type AcpRuntimeSessionUsage, type AcpRuntimeStatus, type AcpRuntimeTurn, type AcpRuntimeTurnAttachment, type AcpRuntimeTurnInput, type AcpRuntimeTurnResult, type AcpRuntimeTurnResultError, type AcpRuntimeUsageBreakdown, type AcpRuntimeUsageCost, type AcpSessionRecord, type AcpSessionStore, type AcpSessionUpdateTag, type AcpTextDeltaOriginMeta, DEFAULT_AGENT_NAME, type InspectAgentModelsOptions, type PermissionPolicy, type RequestedModelUnsupportedErrorCode, type RequestedModelUnsupportedReason, type SessionAgentOptions, type SessionWatchEvent, type SessionWatchResult, type SharedAcpRuntimeOptions, type SystemPromptOption, createAgentRegistry };
 +/** Trellis-maintained compatibility contract for exact acpx@0.19.5. */
-+export declare const TRELLIS_ACPX_COMPAT_VERSION: 3;
++export declare const TRELLIS_ACPX_COMPAT_VERSION: 4;
++export declare const TRELLIS_ACPX_PROCESS_CONTRACT: Readonly<{ version: 1; nativeSpawn: true; verifiedCleanup: true; launchPurpose: true; callbacksInProcess: true }>;
  //# sourceMappingURL=runtime.d.ts.map
 diff --git a/node_modules/acpx/dist/runtime.js b/node_modules/acpx/dist/runtime.js
-index ee6df34..298fd19 100644
+index ee6df34..d2c585a 100644
 --- a/node_modules/acpx/dist/runtime.js
 +++ b/node_modules/acpx/dist/runtime.js
-@@ -7,6 +7,22 @@ import path from "node:path";
+@@ -7,6 +7,23 @@ import path from "node:path";
  import fs from "node:fs/promises";
  import { randomUUID } from "node:crypto";
  import { isDeepStrictEqual } from "node:util";
 +// Trellis-maintained acpx@0.19.5 compatibility patch; see patches/README.md.
-+export const TRELLIS_ACPX_COMPAT_VERSION = 3;
++export const TRELLIS_ACPX_COMPAT_VERSION = 4;
++export const TRELLIS_ACPX_PROCESS_CONTRACT = Object.freeze({ version: 1, nativeSpawn: true, verifiedCleanup: true, launchPurpose: true, callbacksInProcess: true });
 +// Keep only non-secret protocol display fields in the public record/store.
 +function trellisRetainHandshakeDisplay(record, initialized) {
 +	const info = initialized?.agentInfo;
@@ -562,7 +633,7 @@ index ee6df34..298fd19 100644
  //#region src/runtime/public/errors.ts
  var AcpRuntimeError = class extends Error {
  	code;
-@@ -399,6 +415,16 @@ function assignForwardedToolPayload(event, payload) {
+@@ -399,6 +416,16 @@ function assignForwardedToolPayload(event, payload) {
  	if (Object.prototype.hasOwnProperty.call(payload, "rawInput")) event.rawInput = payload.rawInput;
  	if (Object.prototype.hasOwnProperty.call(payload, "rawOutput")) event.rawOutput = payload.rawOutput;
  	if (shouldForwardArray(payload.content)) event.content = payload.content;
@@ -579,7 +650,7 @@ index ee6df34..298fd19 100644
  }
  function parsePromptEventLine(line) {
  	const trimmed = line.trim();
-@@ -413,7 +439,72 @@ function parsePromptEventLine(line) {
+@@ -413,7 +440,72 @@ function parsePromptEventLine(line) {
  	const payload = structured.payload;
  	const tag = structured.tag;
  	const parser = promptEventParser(type);
@@ -653,7 +724,7 @@ index ee6df34..298fd19 100644
  }
  const PROMPT_EVENT_PARSERS = {
  	text: (payload, tag) => createTextDeltaEvent({
-@@ -877,14 +968,47 @@ var AsyncEventQueue = class {
+@@ -877,14 +969,47 @@ var AsyncEventQueue = class {
  		}
  	}
  };
@@ -704,10 +775,23 @@ index ee6df34..298fd19 100644
  		if (attachment.mediaType.startsWith("image/")) {
  			blocks.push({
  				type: "image",
-@@ -1378,11 +1502,42 @@ var AcpRuntimeManager = class {
+@@ -1045,7 +1170,7 @@ var AcpRuntimeManager = class {
+ 	shutdown() {
+ 		if (!this.shutdownTask) {
+ 			this.shuttingDown = true;
+-			this.shutdownTask = this.shutdownOwnedClients();
++			this.shutdownTask = this.shutdownOwnedClients().catch(error => { this.shutdownTask = void 0; throw error; });
+ 		}
+ 		return this.shutdownTask;
+ 	}
+@@ -1376,13 +1501,44 @@ var AcpRuntimeManager = class {
+ 		record.lastUsedAt = isoNow();
+ 		record.closed = false;
  		record.closedAt = void 0;
- 		record.protocolVersion = owner.client.initializeResult?.protocolVersion;
- 		record.agentCapabilities = owner.client.initializeResult?.agentCapabilities;
+-		record.protocolVersion = owner.client.initializeResult?.protocolVersion;
+-		record.agentCapabilities = owner.client.initializeResult?.agentCapabilities;
++		record.protocolVersion = owner.client.initializeResult?.protocolVersion ?? record.protocolVersion;
++		record.agentCapabilities = owner.client.initializeResult?.agentCapabilities ?? record.agentCapabilities;
 +		trellisRetainHandshakeDisplay(record, owner.client.initializeResult);
  		applyLifecycleSnapshotToRecord(record, owner.client.getAgentLifecycleSnapshot());
  	}
@@ -747,7 +831,7 @@ index ee6df34..298fd19 100644
  	async withEnsureSessionLock(input, run) {
  		const key = `${input.mode}\0${input.sessionKey}`;
  		return await this.withManagerLock(this.ensureSessionLocks, key, run);
-@@ -1560,6 +1715,7 @@ var AcpRuntimeManager = class {
+@@ -1560,6 +1716,7 @@ var AcpRuntimeManager = class {
  		this.closingActiveRecords.delete(record.acpxRecordId);
  		record.protocolVersion = client.initializeResult?.protocolVersion;
  		record.agentCapabilities = client.initializeResult?.agentCapabilities;
@@ -755,7 +839,7 @@ index ee6df34..298fd19 100644
  		this.attachIdleProjection(owner, record);
  		applyConfigOptionsToRecord(record, session.sessionResult);
  		const modelApplication = await applyRequestedModelIfAdvertised({
-@@ -1591,7 +1747,7 @@ var AcpRuntimeManager = class {
+@@ -1591,7 +1748,7 @@ var AcpRuntimeManager = class {
  		this.assertOpen();
  		let promptInput;
  		try {
@@ -764,7 +848,7 @@ index ee6df34..298fd19 100644
  		} catch (error) {
  			this.trackTask(this.closeRetainedOneShotHandle(input.handle).catch(() => {}));
  			throw error;
-@@ -1966,6 +2122,7 @@ var AcpRuntimeManager = class {
+@@ -1966,6 +2123,7 @@ var AcpRuntimeManager = class {
  		reconcileAgentSessionId(turn.record, turn.record.agentSessionId);
  		turn.record.protocolVersion = turn.client.initializeResult?.protocolVersion;
  		turn.record.agentCapabilities = turn.client.initializeResult?.agentCapabilities;
@@ -772,7 +856,7 @@ index ee6df34..298fd19 100644
  	}
  	handleRuntimeTurnFailure(task, error) {
  		if (!task.input.signal?.aborted || error !== task.input.signal.reason) return this.failRuntimeTurn(task, error);
-@@ -2438,7 +2595,7 @@ var SharedAcpRuntime = class {
+@@ -2438,7 +2596,7 @@ var SharedAcpRuntime = class {
  		if (input.mode !== "prompt" || input.assertActive || input.onPermissionRequest || input.onElicitation) invalidOption("Shared turns support prompt mode and the client's static permission policy; in-process callbacks and steering are unsupported.");
  		if (!input.requestId.trim()) invalidOption("A shared turn requires a requestId.");
  		const sessionId = sharedRecordId(input.handle);
@@ -781,7 +865,15 @@ index ee6df34..298fd19 100644
  		const events = new AsyncEventQueue();
  		const promptStarted = createDeferred();
  		promptStarted.promise.catch(() => {});
-@@ -2722,6 +2879,7 @@ var AcpxRuntime = class {
+@@ -2629,6 +2787,7 @@ function createSharedAcpRuntime(options) {
+ //#region src/runtime.ts
+ const ACPX_BACKEND_ID = "acpx";
+ var AcpxRuntime = class {
++	stopping = false;
+ 	options;
+ 	testOptions;
+ 	healthy = false;
+@@ -2722,6 +2881,7 @@ var AcpxRuntime = class {
  			handle,
  			text: input.text,
  			attachments: input.attachments,
@@ -789,7 +881,7 @@ index ee6df34..298fd19 100644
  			mode: input.mode,
  			sessionMode: state.mode,
  			requestId: input.requestId,
-@@ -2757,6 +2915,7 @@ var AcpxRuntime = class {
+@@ -2757,6 +2917,7 @@ var AcpxRuntime = class {
  			handle,
  			text: input.text,
  			attachments: input.attachments,
@@ -797,7 +889,7 @@ index ee6df34..298fd19 100644
  			mode: input.mode,
  			sessionMode: state.mode,
  			requestId: input.requestId,
-@@ -2780,6 +2939,11 @@ var AcpxRuntime = class {
+@@ -2780,6 +2941,11 @@ var AcpxRuntime = class {
  		const { handle, state } = this.resolveManagerHandle(input.handle);
  		await (await this.getManager()).setMode(handle, input.mode, state.mode, input);
  	}
@@ -809,8 +901,36 @@ index ee6df34..298fd19 100644
  	async setModel(input) {
  		const { handle, state } = this.resolveManagerHandle(input.handle);
  		await (await this.getManager()).setModel(handle, input.model, state.mode, input);
+@@ -2803,15 +2969,16 @@ var AcpxRuntime = class {
+ 	shutdown() {
+ 		if (!this.shutdownTask) {
+ 			this.healthy = false;
++			this.stopping = true;
+ 			const managerShutdown = this.managerPromise?.then((manager) => manager.shutdown());
+ 			this.shutdownTask = Promise.allSettled([managerShutdown, ...this.probeTasks]).then(([manager]) => {
+ 				if (manager.status === "rejected") throw manager.reason;
+-			});
++			}).catch(error => { this.shutdownTask = void 0; throw error; });
+ 		}
+ 		return this.shutdownTask;
+ 	}
+ 	async getManager() {
+-		if (this.shutdownTask) throw new AcpRuntimeError("ACP_BACKEND_UNAVAILABLE", "ACP runtime is shut down.");
++		if (this.stopping) throw new AcpRuntimeError("ACP_BACKEND_UNAVAILABLE", "ACP runtime is shut down.");
+ 		if (this.manager) return this.manager;
+ 		if (!this.managerPromise) this.managerPromise = Promise.resolve(this.testOptions?.managerFactory?.(this.options) ?? new AcpRuntimeManager(this.options)).then((manager) => {
+ 			this.manager = manager;
+@@ -2820,7 +2987,7 @@ var AcpxRuntime = class {
+ 		return await this.managerPromise;
+ 	}
+ 	async runProbe() {
+-		if (this.shutdownTask) throw new AcpRuntimeError("ACP_BACKEND_UNAVAILABLE", "ACP runtime is shut down.");
++		if (this.stopping) throw new AcpRuntimeError("ACP_BACKEND_UNAVAILABLE", "ACP runtime is shut down.");
+ 		const probe = this.testOptions?.probeRunner?.(this.options) ?? this.getManager().then((manager) => manager.probe());
+ 		this.probeTasks.add(probe);
+ 		try {
 diff --git a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts b/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
-index 41c4e52..9d47439 100644
+index 41c4e52..aba145b 100644
 --- a/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
 +++ b/node_modules/acpx/dist/session-options-CkcvthCv.d.ts
 @@ -9,6 +9,10 @@ type AcpPermissionRequest = {
@@ -824,16 +944,28 @@ index 41c4e52..9d47439 100644
    outcome: "allow_once";
  } | {
    outcome: "allow_always";
-@@ -132,6 +136,8 @@ type AcpProcessExit = AcpProcessStarted & Readonly<{
+@@ -106,6 +110,7 @@ type AcpProcessLaunchScope = Readonly<{
+ }>;
+ type AcpProcessLaunch = Readonly<{
+   launchId: string;
++  purpose: "agent" | "command-probe";
+   scope: AcpProcessLaunchScope;
+   command: string;
+   args: readonly string[];
+@@ -132,6 +137,12 @@ type AcpProcessExit = AcpProcessStarted & Readonly<{
   * best-effort observations and cannot replace the launch or exit outcome.
   */
  type AcpProcessLifecycle = {
++  /** Native synchronous spawn seam; original resolved argv/env/stdio stay in process. */
++  spawn?: (launch: AcpProcessLaunch, options: import("node:child_process").SpawnOptions) => import("node:child_process").ChildProcess;
++  /** Must resolve only after the exact original native process job is verified empty. */
++  cleanup?: (process: AcpProcessStarted) => Promise<void>;
 +  /** Trusted per-spawn overlay; never written to native session records. */
 +  prepareSpawn?: (launch: AcpProcessLaunch) => Promise<{ appendArgs?: readonly string[]; env?: Record<string, string> }> | { appendArgs?: readonly string[]; env?: Record<string, string> };
    onBeforeSpawn?: (launch: AcpProcessLaunch) => Promise<void> | void;
    onSpawned?: (process: AcpProcessStarted) => Promise<void> | void;
    onSpawnFailed?: (failure: AcpProcessSpawnFailure) => Promise<void> | void;
-@@ -264,6 +270,7 @@ type SessionAcpxState = {
+@@ -264,6 +275,7 @@ type SessionAcpxState = {
    session_origin?: "new" | "resume";
    reset_on_next_ensure?: boolean;
    current_mode_id?: string;
@@ -841,7 +973,7 @@ index 41c4e52..9d47439 100644
    desired_mode_id?: string;
    desired_config_options?: Record<string, string>;
    current_model_id?: string;
-@@ -313,6 +320,9 @@ type SessionRecord = {
+@@ -313,6 +325,9 @@ type SessionRecord = {
    lastAgentDisconnectReason?: string;
    protocolVersion?: number;
    agentCapabilities?: AgentCapabilities;
@@ -851,7 +983,7 @@ index 41c4e52..9d47439 100644
    title?: string | null;
    messages: SessionMessage[];
    updated_at: string;
-@@ -345,4 +355,4 @@ type SessionAgentOptions = {
+@@ -345,4 +360,4 @@ type SessionAgentOptions = {
  };
  //#endregion
  export { PermissionPolicy as C, PromptInput as E, PermissionMode as S, SessionRecord as T, AcpProcessSpawnFailure as _, AcpElicitationHandler as a, McpServer$1 as b, AcpElicitationResponse as c, AcpPermissionHandler as d, AcpPermissionRequest as f, AcpProcessLifecycle as g, AcpProcessLaunchScope as h, AcpElicitationContext as i, AcpJsonRpcMessage as l, AcpProcessLaunch as m, SystemPromptOption as n, AcpElicitationMode as o, AcpProcessExit as p, AcpClientOptions as r, AcpElicitationRequest as s, SessionAgentOptions as t, AcpPermissionDecision as u, AcpProcessStarted as v, PermissionStats as w, NonInteractivePermissionPolicy as x, AuthPolicy as y };

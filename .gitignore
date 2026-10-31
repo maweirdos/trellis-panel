@@ -66,3 +66,6 @@ __pycache__/
 
 # HiFox 调研资料（外部产品逆向 PRD，本机参考用）
 /prd-hifox/
+
+# Local Lithe IDE configuration and generated run metadata
+/.lithe/
