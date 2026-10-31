@@ -7,12 +7,28 @@ current execution summaries. Desktop clients execute Pi/ACP sessions against
 their own working directories. A service workspace is an authorization scope;
 it is not a local repository. Spaces organize collaboration inside that scope.
 
-An engineering directory is an optional execution resource. For
-`honsky-governance`, select the whole base containing the frontend and backend.
-One business task can change both packages. General research or product tasks do
+An engineering directory is an optional execution resource. Select the whole
+base containing the packages needed by the task. One business task can change
+both frontend and backend packages. General research or product tasks do
 not require opening either code package or a Git repository.
 
 Deploy and pair clients using [Docker team service](team-deployment.md).
+
+| Object | Responsibility and relation |
+| --- | --- |
+| Team service project | Account, device and shared-data authorization scope |
+| Team space | Members, rules, templates, tasks and planning inside that scope |
+| Team task | Formal stage, handler, approved inputs and delivery; independent of a local directory |
+| Code resource | Team-approved repository identity selected by a code task |
+| Local working copy | Physical directory checked against that resource; another copy can serve a parallel task |
+| Development attempt | Original task creation identity, device/account, copy, branch and frozen input version |
+| Launch configuration | Commands and environment for a particular engineering directory |
+| Running instance | Actual directory, configuration snapshot, environment check and process ownership fixed at start |
+
+Selecting a space does not select a repository. Selecting a repository does not
+rebind a task. Saving a launch configuration does not change an existing
+instance. A task may reference an explicitly reused instance without owning its
+process; releasing that reference does not stop it.
 
 ## Views
 
@@ -68,9 +84,9 @@ Run these commands from the platform source checkout. The engineering root below
 is an example; use the actual whole-base directory:
 
 ```powershell
-node scripts/install-team-trellis.mjs --root 'D:/work/honsky-governance'
-node scripts/install-team-trellis.mjs --root 'D:/work/honsky-governance' --apply
-python -B 'D:/work/honsky-governance/.trellis/scripts/task.py' team-capabilities --json
+node scripts/install-team-trellis.mjs --root 'D:/work/trellis-panel'
+node scripts/install-team-trellis.mjs --root 'D:/work/trellis-panel' --apply
+python -B 'D:/work/trellis-panel/.trellis/scripts/task.py' team-capabilities --json
 ```
 
 The first command is a dry run. Stop concurrent Trellis CLI commands before
@@ -85,8 +101,8 @@ the files changed by that operation.
 The installation result contains a backup ID. Preview and apply rollback with:
 
 ```powershell
-node scripts/install-team-trellis.mjs --root 'D:/work/honsky-governance' --rollback '<backup-id>'
-node scripts/install-team-trellis.mjs --root 'D:/work/honsky-governance' --rollback '<backup-id>' --apply
+node scripts/install-team-trellis.mjs --root 'D:/work/trellis-panel' --rollback '<backup-id>'
+node scripts/install-team-trellis.mjs --root 'D:/work/trellis-panel' --rollback '<backup-id>' --apply
 ```
 
 An installed desktop includes the same hashed payload and standalone installer
@@ -119,6 +135,27 @@ when a GUI attachment closes. Stopping that runtime service also stops local
 execution and sending. Reopening the GUI reconciles the original pending
 commands rather than replaying the task's first prompt.
 
+A known terminal command result keeps its original body/identity without being
+shown as an unknown request still awaiting transmission. Uncertain outcomes keep
+their uncertainty. Explicitly replacing a stopped primary preserves its pending
+records in the old attempt, checks the current server binding and still requires
+original process cleanup or an independently proven copy. This is a new primary,
+not a replay or retargeting of an old command.
+
+A startup interrupted before the GUI receives its result remains a creation
+recovery, not a failed task or permission to create another conversation. Retry
+checks the original native alias and persisted creation intent. A confirmed
+original conversation can be rebound using the original reporting command;
+sent or uncertain first prompts are not sent again. An unknown original process
+keeps its workcopy exclusion. A replacement on another copy requires explicit
+selection and proof that its physical directory is independent.
+
+Older executions without a complete native process witness remain unknown on
+their original copy. Process absence or deleting a local record cannot clear
+that exclusion. Use the original controller to confirm cleanup, explicitly
+select an independent copy, or reconcile after a verified full Windows restart.
+Original history and files remain available.
+
 ## Rules and versions
 
 Ordinary and task-bound native sessions receive selected project rule context.
@@ -128,5 +165,64 @@ Unprovided sections must be read before changing the affected area. A changed
 pinned rule requires explicit adoption through a fresh session context.
 
 The manifest documents the actual supplied range; it does not prove model
-compliance. This does not automatically migrate all repository specs into a cloud
-rule editor or synchronize arbitrary working-tree files between colleagues.
+compliance. Team rules/templates can be edited, reviewed and published in
+**空间设置**. Task **固定输入** selects exact approved documents and published
+rule/template versions. A newer draft/publication leaves that selection intact.
+Explicit adoption creates a new input bundle; the native development panel then
+compares it with the current attempt before preparing a successor. Local code
+and arbitrary repository files are not automatically shared.
+
+## Bind and continue development
+
+Select the code task's permitted resource, then an existing local copy. The
+native review shows the actual repository, directory, branch and working
+changes. The currently viewed engineering directory is only a candidate.
+Cancelling creates no local task. Preparation creates materials; Agent execution
+and application startup remain explicit actions.
+
+Continue the original development context to retain its task and fixed input.
+Changing copy or adopting new input creates another attempt while preserving
+the old directory and edits. A task already in development can be bound on a
+receiving member's device without resetting its formal team phase.
+
+Browsing another engineering directory is independent viewing, not a conversation
+or process migration. Return to the task context before task-scoped Git/launch
+operations. Returning to collaboration restores the original task/list context
+and leaves local applications running.
+
+Reconcile unknown preparation results using the original command. Missing or
+replaced directories, changed branches and adopted input changes require review.
+Finished tasks retain their history; further development needs an explicit team
+handoff. Inspect or safely stop old instances from the global local-run center.
+Saving a configuration affects a later start, while an existing instance keeps
+its original snapshot. Task launch/reuse requires a native environment check.
+Local service addresses do not establish a shared test environment or acceptance.
+
+The expanded task service panel refreshes its full plan once per minute and on
+explicit refresh. Local process/readiness events update runtime facts without
+granting task execution or changing an existing environment check. Hidden or
+collapsed panels do not poll full task plans. Every actual action still checks
+the original task, current permission, input and local environment.
+
+## Return local outputs to the team
+
+Open **开发环境、任务服务与产物** in the original development context. Select a
+supported task output, its destination team draft and approvers, preview its full
+content, then confirm in the native dialog. Only that registered file is managed;
+arbitrary source files and frozen references are not shared.
+
+Stable saves update the original team draft using its confirmed revision. A
+concurrent team edit retains a conflict candidate and pauses that file. Compare
+the actual local and team content before explicitly resuming. An uncertain
+request retains its original command and body for reconciliation; a later save
+cannot replace it. Stopping synchronization does not delete either copy.
+
+The generated `prd.md` preparation index is not a complete requirement document
+and cannot be uploaded unchanged. An edited PRD is a working draft and requires
+comparison with the original team PRD or full frozen input before registration.
+Approval, input adoption and formal handoff remain separate team actions.
+
+Native output versions record their reporting device, original attempt and input
+digest. This is device-reported provenance, not server proof of filesystem
+contents or model compliance. A newer adopted input is shown as a difference;
+it does not silently retarget an already registered output.

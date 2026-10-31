@@ -43,6 +43,11 @@ GET /api/events
   Local registration creates an ordinary person. The first visitor is never an admin.
   Browser writes use the existing HttpOnly session, exact Origin and CSRF token.
   Device bearer identity cannot be mixed with browser cookies/Origin.
+- Browser requests with `X-Trellis-Session-Proof` must match the authenticated
+  session's CSRF value before the handler runs. Only a matched request receives
+  `X-Trellis-Session-Verified: 1`. Web scoped requests require that response and
+  fence late replies by their original session. Older clients may omit the proof;
+  deploy the matching service before the new Web client. Do not log the proof.
 - Server UUIDs identify people, projects, materials and devices. Local task,
   repository or workspace IDs are source metadata, never authorization. Preserve
   pinned local identities; map path-shaped native IDs to durable privacy-safe
