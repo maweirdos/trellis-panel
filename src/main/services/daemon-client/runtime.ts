@@ -18,6 +18,7 @@ import { PROVIDER_READ_LIMITS, providerReadControlSchema, providerReadTimeout, t
 import { JIRA_DAEMON } from '../../../shared/jira-integration'
 import { GITLAB_DAEMON } from '../../../shared/gitlab-integration'
 import { DINGTALK_DAEMON } from '../../../shared/dingtalk-integration'
+import { isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
 
 /** Cleanup actions only. Status/workspace lookup are reserved server preflight
  * methods, not feature operations that can bypass GUI admission closure. Literal
@@ -55,7 +56,8 @@ async function resolveScope(client: DaemonClient, root: string, isCurrent?: () =
   const retained = await client.request('workspace.get', { workspaceId })
   if (!retained.ok) throw new DaemonError(retained.code, retained.error, retained.outcome)
   if (retained.data) {
-    if (retained.data.root !== canonical) throw new DaemonError('E_CONFLICT', 'Retained workspace identity points to a different physical root.')
+    const physicalKey = (path: string): string => { const value = realpathSync.native(path); return process.platform === 'win32' ? value.toLowerCase() : value }
+    if (physicalKey(retained.data.root) !== physicalKey(canonical)) throw new DaemonError('E_CONFLICT', 'Retained workspace identity points to a different physical root.')
     if (!client.connected) throw new DaemonError('E_UNAVAILABLE', 'The workspace connection was lost.')
     cache.grants.set(key, retained.data); return retained.data
   }
@@ -90,7 +92,7 @@ async function scope(client: DaemonClient, root: string, isCurrent?: () => boole
 }
 async function connect(dedicated = false, nativeGui = false): Promise<DaemonClient> {
   const context = await daemonClientContext(), pool = nativeGui ? nativeGuiDaemonConnectionPool(context) : daemonConnectionPool(context)
-  const client = dedicated ? await DaemonClient.connect(context) : await pool.get()
+  const client = dedicated ? await (nativeGui ? DaemonClient.connectNativeGui(context) : DaemonClient.connect(context)) : await pool.get()
   try {
     // Only the private, literal cleanup allowlist selects a dedicated lane.
     // Its original owner/grant controls must work even when build proof is old
@@ -107,7 +109,7 @@ async function connect(dedicated = false, nativeGui = false): Promise<DaemonClie
       status = await pool.status(client)
       requireCurrentDaemonBuild(context, client.lease)
     }
-    if (status.runtimeAuthority !== 'daemon') throw new DaemonError('E_UNAVAILABLE', '后台 Runtime 尚未完成原有执行器和设置迁移，请在设置中完成迁移后重试。')
+    if (status.runtimeAuthority !== 'daemon' && !(dedicated && nativeGui && status.settingsAuthority === 'daemon')) throw new DaemonError('E_UNAVAILABLE', '后台 Runtime 尚未完成原有执行器和设置迁移，请在设置中完成迁移后重试。')
     return client
   } catch (error) { if (dedicated) client.close(); throw error }
 }
@@ -178,7 +180,8 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
   commandId ??= MUTATING_DAEMON_METHODS.includes(method) ? randomUUID() : undefined
   const legacy = method === 'integration.execute' ? legacyIntegrationRequestSchema.safeParse(body) : null
   const legacyCleanup = legacy?.success && ['cancelRead', 'cancelAuthorization'].includes(legacy.data.operation)
-  const cleanup = Boolean(legacyCleanup) || cleanupMethods.includes(method)
+  const workcopyCleanup = isBoundedWorkcopyCleanup(method, { inline: body })
+  const cleanup = Boolean(legacyCleanup) || workcopyCleanup || cleanupMethods.includes(method)
   const dedicated = cleanup
   let client: DaemonClient | undefined
   let workspace: WorkspaceGrant | undefined, inputBlob: RuntimeBlob | undefined, outputBlob: RuntimeBlob | undefined
@@ -186,9 +189,9 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
   let abort: (() => void) | undefined
   try {
     if (admissionClosed && !cleanup) throw new DaemonError('E_UNAVAILABLE', '桌面正在退出，尚未接纳新操作。')
-    client = await connect(dedicated, method === 'runtime.hifoxProgress')
+    client = await connect(dedicated, method === 'runtime.hifoxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未授权后台工作区。')
-    workspace = await scope(client, root, isCurrent, !dedicated)
+    workspace = workcopyCleanup ? undefined : await scope(client, root, isCurrent, !dedicated)
     const input = await upload(client, workspace, body, dedicated)
     if ('blob' in input) inputBlob = input.blob
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未提交后台执行。')

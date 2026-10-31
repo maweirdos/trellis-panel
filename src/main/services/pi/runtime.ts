@@ -1,4 +1,4 @@
-import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, execFile, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID, createHash } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -16,12 +16,14 @@ import { inspectPiWebPreviewEntry } from './engine/web-preview-entry'
 import { prepareAgentRules, assertAgentRulesCurrent } from '../agent-rules'
 import { taskRule } from '../hifox/task-progress-context'
 import { reportTaskProgress } from '../hifox/task-progress-events'
+import type { AcpJobOwner } from '../workcopy-use/acp-jobs'
 
 interface PiRuntimeOptions {
   meta: AcpSessionRecord
   argv: string[]
   dataDirectory: string
   windowsJobLauncher?: string
+  nativeJobs?: AcpJobOwner
   initialModelId?: string
   mcpServers(): Array<{ name: string; config: Record<string, unknown> }>
   onState(state: PiState, mode: string): void
@@ -31,6 +33,7 @@ interface PiRuntimeOptions {
   onCleanupFailure?(message: string): void
 }
 type Pending = { accept(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }
+const pipedProcess = (child: ChildProcess): child is ChildProcessWithoutNullStreams => Boolean(child.stdin && child.stdout && child.stderr)
 class ActivityQueue implements AsyncIterable<AcpRuntimeEvent> {
   private values: AcpRuntimeEvent[] = []
   private wake?: () => void
@@ -210,12 +213,15 @@ export class PiConversationRuntime implements ConversationRuntime {
     delete env.Path
     env.PATH = [inheritedPath, dirname(node)].filter(Boolean).join(delimiter)
     const launcher = this.options.windowsJobLauncher
-    if (process.platform === 'win32' && (!launcher || !isAbsolute(launcher) || !existsSync(launcher))) throw new Error('Pi Windows 进程容器入口缺失，请重新安装应用')
-    const command = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : node
-    const args = process.platform === 'win32' ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', launcher ?? '',
+    const legacyWindows = process.platform === 'win32' && !this.options.nativeJobs
+    if (legacyWindows && (!launcher || !isAbsolute(launcher) || !existsSync(launcher))) throw new Error('Pi Windows 进程容器入口缺失，请重新安装应用')
+    const command = legacyWindows ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : node
+    const args = legacyWindows ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', launcher ?? '',
       '-ExecutableBase64', Buffer.from(node).toString('base64'), '-EntryBase64', Buffer.from(entry).toString('base64')] : [entry]
-    const child = spawn(command, args, { cwd: pathCwd, env, windowsHide: true,
-      detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] })
+    const nativeLaunch = { launchId: randomUUID(), purpose: 'agent' as const, scope: { kind: 'runtime-session' as const, sessionKey: this.options.meta.sessionId }, command, args, cwd: pathCwd }
+    const child = this.options.nativeJobs ? this.options.nativeJobs.spawn(nativeLaunch, { cwd: pathCwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+      : spawn(command, args, { cwd: pathCwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] })
+    if (!pipedProcess(child)) throw new Error('Pi 原生进程缺少受管 stdio')
     this.child = child
     const streamError = (error: Error): void => {
       if (this.closing) return
@@ -241,11 +247,15 @@ export class PiConversationRuntime implements ConversationRuntime {
     child.stderr.on('data', (chunk: Buffer) => { stderr = this.safe((stderr + chunk.toString('utf8')).slice(-3000)) })
     child.once('error', error => { this.failed(this.error(error)); this.options.onExit() })
     child.once('exit', code => {
-      if (code === 70 && process.platform === 'win32') this.options.onCleanupFailure?.('Pi Windows 进程容器清理未确认')
+      if (code === 70 && legacyWindows) this.options.onCleanupFailure?.('Pi Windows 进程容器清理未确认')
       this.failed(new Error(this.closing ? 'Pi 执行进程已关闭' : `Pi 执行进程意外退出${stderr ? `：${stderr}` : ''}`))
       this.options.onExit()
     })
-    child.once('spawn', () => this.options.onSpawned())
+    if (this.options.nativeJobs) {
+      if (!child.pid) throw new Error('Pi 原生进程启动失败')
+      await this.options.nativeJobs.spawned({ ...nativeLaunch, pid: child.pid, startedAt: new Date().toISOString() })
+      this.options.onSpawned()
+    } else child.once('spawn', () => this.options.onSpawned())
     const meta = this.options.meta
     const requestedSessionDir = join(this.options.dataDirectory, 'pi', 'sessions', createHash('sha256').update(meta.projectRoot).digest('hex'), meta.sessionId)
     mkdirSync(requestedSessionDir, { recursive: true })
@@ -256,7 +266,7 @@ export class PiConversationRuntime implements ConversationRuntime {
       if (!local || local.startsWith('..') || isAbsolute(local) || !existsSync(sessionFile)) throw new Error('原 Pi 会话文件缺失或超出所属目录，历史已保留')
     }
     if (meta.agentRulesManifest) await assertAgentRulesCurrent(meta.projectRoot, meta.agentRulesManifest)
-    const rules = await prepareAgentRules({ projectRoot: meta.projectRoot, taskDir: meta.taskDir, additionalRules: meta.taskProgress ? [taskRule(meta.taskProgress)] : undefined })
+    const rules = await prepareAgentRules({ projectRoot: meta.projectRoot, taskDir: meta.taskDir, teamTask: meta.taskProgress, additionalRules: meta.taskProgress ? [taskRule(meta.taskProgress)] : undefined })
     if (meta.agentRulesManifest && rules.manifest.digest !== meta.agentRulesManifest.digest) throw new Error('项目规范版本已变化，请显式采用后重新连接')
     meta.agentRulesManifest = rules.manifest
     const initialized = await this.call('initialize', piInitializeSchema.parse({ root: pathRoot, cwd: pathCwd,
@@ -390,6 +400,12 @@ export class PiConversationRuntime implements ConversationRuntime {
       this.closing = true; this.running?.abort.abort()
       const child = this.child
       if (!child) return
+      if (this.options.nativeJobs) {
+        try { if (child.exitCode === null && child.signalCode === null) await this.call('shutdown', {}, 1500) } catch { /* The original Job remains authoritative. */ }
+        await this.options.nativeJobs.cleanupAll()
+        this.failed(new Error('Pi 会话已停止'))
+        return
+      }
       if (child.exitCode === 70 && process.platform === 'win32') throw new Error('Pi Windows 进程容器清理未确认，请重试结束会话')
       if (child.exitCode !== null || child.signalCode !== null) return
       const exited = new Promise<void>(accept => child.once('exit', () => accept()))

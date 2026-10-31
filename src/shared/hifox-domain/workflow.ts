@@ -6,6 +6,8 @@ import { hifoxTransitionTaskInputSchema } from '../hifox-schema'
 import { HifoxError, validateExecutor } from './core'
 import { evaluateAutomationsForStatus, refreshTaskDispatch, setTaskIterations, taskStatusForCategory } from './planning'
 import { mutate, nextId, nowIso } from './store'
+import type { TaskDeliveryDependencies } from '../task-delivery'
+import { applyTaskDeliveryTransition } from './task-delivery'
 export { HifoxError } from './core'
 
 export interface HifoxTaskStageMetadata {
@@ -38,11 +40,14 @@ export function getHifoxTaskActions(task: Pick<HifoxTask, 'workflow' | 'triagePe
   if (task.workflow?.stage === 'done') return []
   if (!task.workflow) return task.triagePending ? ['accept', 'arrange', 'request_info', 'decline'] : ['arrange']
   if (task.triagePending) return task.workflow.stage === 'needs_info' ? ['supplement', 'decline', 'reassign'] : ['accept', 'arrange', 'request_info', 'decline', 'reassign']
-  return getHifoxTaskStageMetadata(task.workflow.stage).actions.filter((action) => {
+  const actions = getHifoxTaskStageMetadata(task.workflow.stage).actions.filter((action) => {
     if (action === 'submit_delivery') return task.workKind === 'general'
     if (action === 'submit_test' || action === 'begin_development') return task.workKind !== 'general'
     return true
   })
+  if (task.workflow.stage === 'developing' && task.workKind !== 'general' && task.workflow.deliveryState && task.workflow.deliveryState.approvedBaselineId !== task.workflow.deliveryState.currentBaselineId) actions.unshift('approve_plan')
+  if (task.workflow.stage === 'acceptance' && task.workKind !== 'general' && task.workflow.deliveryState?.currentDeliveryId && !task.workflow.deliveryState.passedTestRunId) actions.unshift('pass_test')
+  return actions
 }
 
 export function isHifoxTriageManager(snapshot: HifoxSnapshot, spaceId: string, actorId: string): boolean {
@@ -75,7 +80,7 @@ const actionTitles: Record<HifoxTaskAction, string> = {
 }
 
 /** Actor is supplied by the owned execution boundary, never by an IPC/HTTP payload. */
-export function transitionTask(raw: HifoxTransitionTaskInput, actorId: string): HifoxSnapshot {
+export function transitionTask(raw: HifoxTransitionTaskInput, actorId: string, deliveryDependencies?: TaskDeliveryDependencies): HifoxSnapshot {
   const input = hifoxTransitionTaskInputSchema.parse(raw)
   return mutate((draft) => {
     const fail = (message: string): never => { throw new HifoxError(message) }
@@ -95,9 +100,11 @@ export function transitionTask(raw: HifoxTransitionTaskInput, actorId: string): 
     const workStage = fromStage === 'needs_info' ? workflow.resumeStage ?? 'accepted' : fromStage
     if (input.expectedStage !== undefined && input.expectedStage !== fromStage) fail('任务阶段已变化，请刷新后重试')
     const currentHandler = workflow.handlerId ?? task.assigneeIds[0]
+    const deliveryRoles = workflow.deliveryState?.roles
+    const designatedReviewer = deliveryRoles && (input.action === 'pass_test' || input.action === 'return_development' ? actorId === deliveryRoles.testOwnerId : input.action === 'accept_delivery' || input.action === 'return_delivery' ? actorId === (task.workKind === 'general' ? deliveryRoles.acceptanceOwnerId : deliveryRoles.testOwnerId) : false)
     const managesIntake = input.action !== 'reassign' && (task.triagePending || (fromStage === 'accepted' && input.action === 'arrange')) && (task.creatorId === actorId || isHifoxTriageManager(draft, space.id, actorId))
     const managesReassignment = input.action === 'reassign' && isHifoxTriageManager(draft, space.id, actorId)
-    if (currentHandler !== actorId && !managesIntake && !managesReassignment) fail(input.action === 'reassign' ? '只有当前处理人或本空间管理员可以转交任务' : '只有当前处理人、本人需求的分拣人或本空间管理员可以交接任务')
+    if (currentHandler !== actorId && !managesIntake && !managesReassignment && !designatedReviewer) fail(input.action === 'reassign' ? '只有当前处理人或本空间管理员可以转交任务' : '只有当前处理人、指定验收人、本人需求的分拣人或本空间管理员可以交接任务')
     if (!getHifoxTaskActions({ ...task, workflow }).includes(input.action)) fail('当前阶段不允许此操作')
     if (bodyRequired.has(input.action) && !input.body) fail('请填写本次交接内容或处理依据')
     if (input.workKind !== undefined && input.workKind !== task.workKind && !['accepted', 'design_ready', 'designing', 'design_review', 'dev_ready'].includes(workStage)) fail('进入实施规划后不能更改工作类型')
@@ -116,6 +123,7 @@ export function transitionTask(raw: HifoxTransitionTaskInput, actorId: string): 
     const crew = task.executor?.kind === 'crew' ? draft.crews.find((item) => item.id === task.executor?.id && !item.archived && item.spaceId === space.id) : undefined
     const leader = crew?.captain.kind === 'member' ? crew.captain.id : crew?.ownerId
     let handlerId = input.assigneeId ?? leader ?? currentHandler ?? actorId
+    if (deliveryRoles && ['submit_test', 'pass_test', 'accept_delivery', 'submit_delivery'].includes(input.action)) handlerId = input.assigneeId ?? (workKind === 'general' ? deliveryRoles.acceptanceOwnerId : deliveryRoles.testOwnerId) ?? handlerId
     let toStage = input.action === 'reassign' ? fromStage : input.action === 'supplement' ? workflow.resumeStage ?? 'accepted' : targets[input.action] ?? fail('未知交接操作')
     if (input.action === 'arrange') toStage = workKind === 'general' ? 'developing' : input.nextStage ?? 'design_ready'
     if (input.action === 'request_info') {
@@ -131,19 +139,22 @@ export function transitionTask(raw: HifoxTransitionTaskInput, actorId: string): 
     }
     const recipient = draft.members.find((member) => member.id === handlerId) ?? fail('交接处理人必须是本空间成员')
     if (!space.memberIds.includes(handlerId)) fail('交接处理人必须是本空间成员')
-    if (input.action === 'submit_test' && !workflow.history.some((event) => event.action === 'approve_plan')) fail('技术计划批准后才能提交代码测试')
-    if (input.action === 'pass_test') {
+    const structuredDelivery = Boolean(workflow.deliveryState || input.adoptDeliveryProtocol)
+    const at = structuredDelivery ? new Date(Math.max(Date.now(), Date.parse(task.updatedAt) + 1)).toISOString() : nowIso()
+    task.workflow = workflow
+    const deliveryLinks = applyTaskDeliveryTransition(draft, task, input, actorId, handlerId, at, deliveryDependencies)
+    if (!structuredDelivery && input.action === 'submit_test' && !workflow.history.some((event) => event.action === 'approve_plan')) fail('技术计划批准后才能提交代码测试')
+    if (!structuredDelivery && input.action === 'pass_test') {
       const expected = new Set(task.acceptanceCriteria ?? [])
       const checked = new Set(input.checkedCriteria ?? [])
       if (!expected.size || checked.size !== expected.size || [...expected].some((criterion) => !checked.has(criterion)) || input.checkedCriteria?.length !== checked.size) fail('测试通过必须逐项确认全部验收标准，不能缺项或加入其他条目')
     }
-    if (input.action === 'accept_delivery' && workKind === 'code') {
+    if (!structuredDelivery && input.action === 'accept_delivery' && workKind === 'code') {
       const lastPass = workflow.history.map((event) => event.action).lastIndexOf('pass_test')
       const lastReturn = Math.max(workflow.history.map((event) => event.action).lastIndexOf('return_delivery'), workflow.history.map((event) => event.action).lastIndexOf('return_development'))
       if (lastPass < 0 || lastPass <= lastReturn) fail('代码任务必须通过当前轮次测试后才能完成')
     }
     if (['begin_development', 'approve_plan', 'submit_delivery', 'accept_delivery'].includes(input.action) && !(input.acceptanceCriteria ?? task.acceptanceCriteria)?.length) fail('请先填写验收标准')
-    const at = nowIso()
     const category = input.action === 'decline' ? 'cancelled' : getHifoxTaskStageMetadata(toStage).category
     const statusId = input.action === 'reassign' ? task.statusId : taskStatusForCategory(draft, task, category)
     if (input.action === 'accept' || input.action === 'arrange' || input.action === 'decline') task.triagePending = undefined
@@ -154,9 +165,9 @@ export function transitionTask(raw: HifoxTransitionTaskInput, actorId: string): 
     const artifactBody = input.body || (input.action === 'accept_delivery' ? '确认验收交付' : undefined)
     if (artifactBody) {
       const kind = artifactKinds[input.action]
-      if (kind) workflow.artifacts.push({ id: nextId('wa'), kind, body: artifactBody, actorId, at, ...(input.checkedCriteria ? { checkedCriteria: [...input.checkedCriteria] } : {}) })
+      if (kind) workflow.artifacts.push({ id: nextId('wa'), kind, body: artifactBody, actorId, at, ...(input.checkedCriteria ? { checkedCriteria: [...input.checkedCriteria] } : {}), ...(deliveryLinks ? { deliveryLinks } : {}) })
     }
-    workflow.history.push({ id: nextId('wh'), action: input.action, fromStage, toStage, actorId, assigneeId: handlerId, body: input.body, at, ...(input.checkedCriteria ? { checkedCriteria: [...input.checkedCriteria] } : {}) })
+    workflow.history.push({ id: nextId('wh'), action: input.action, fromStage, toStage, actorId, assigneeId: handlerId, body: input.body, at, ...(input.checkedCriteria ? { checkedCriteria: [...input.checkedCriteria] } : {}), ...(deliveryLinks ? { deliveryLinks } : {}) })
     workflow.stage = toStage
     workflow.handlerId = handlerId
     task.workflow = workflow

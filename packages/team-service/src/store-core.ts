@@ -13,7 +13,7 @@ import {
 } from '../../../src/shared/team-platform'
 import { TeamServiceError, requireValue } from './errors'
 import { fileDigest } from './files'
-import { TEAM_SCHEMA_VERSION, TEAM_SCHEMA_SQL, TEAM_DEVICES_SQL } from './store-schema'
+import { TEAM_SCHEMA_VERSION, TEAM_SCHEMA_SQL, TEAM_DEVICES_SQL, TEAM_INVITATION_SPACES_SQL, TEAM_INVITATION_SPACE_IDENTITY_SQL } from './store-schema'
 import type { StoreActor, StoreOptions, StorePrincipal, StoreOperation } from './store-types'
 import { TEAM_COLLABORATION_SQL } from './collaboration-schema'
 import { TeamCollaboration } from './collaboration'
@@ -27,6 +27,17 @@ import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
 import { TEAM_LOCAL_ISSUER, teamLocalUsernameSchema } from '../../../src/shared/team-auth'
 import { TeamTaskProgress } from './task-progress'
 import { TEAM_TASK_PROGRESS_SQL, TEAM_TASK_PROGRESS_IDENTITIES_SQL } from './task-progress-schema'
+import { TeamCodeResources } from './code-resources'
+import { TEAM_CODE_RESOURCES_SQL } from './code-resources-schema'
+import { TeamTaskMaterials, type TaskMaterialsHost } from './task-materials'
+import { TEAM_TASK_MATERIALS_SQL } from './task-materials-schema'
+import { TeamContent } from './content'
+import { TEAM_CONTENT_SQL } from './content-schema'
+import { TeamGovernance, type GovernanceHost } from './governance'
+import { TeamTaskInputs } from './task-inputs'
+import { TEAM_GOVERNANCE_SQL } from './governance-schema'
+import { teamTaskDevelopmentContextSchema, type TeamTaskDevelopmentContext } from '../../../src/shared/team-task-development'
+import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-progress'
 
 type Row = Record<string, SQLOutputValue>
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
@@ -52,11 +63,67 @@ const MAX_BLOB_BYTES = 1024 * 1024 * 1024
 const MAX_DIRECTORY_ENTRIES = 20_000
 
 export class TeamStoreCore {
+  private readonly validateTaskOutputOrigin: TaskMaterialsHost['validateOriginBundle'] = (principal, scope, inputBundle) => {
+    const bundle = this.taskInputs.revision(principal, { projectId: scope.projectId, taskId: scope.taskId, revision: inputBundle.revision,
+      query: { spaceId: scope.spaceId, taskCreatedAt: scope.taskCreatedAt } })
+    if (bundle.projectId !== scope.projectId || bundle.taskId !== scope.taskId || bundle.spaceId !== scope.spaceId || bundle.taskCreatedAt !== scope.taskCreatedAt
+      || bundle.bundleId !== inputBundle.bundleId || bundle.revision !== inputBundle.revision || bundle.digest !== inputBundle.digest) {
+      throw new TeamServiceError('TASK_MATERIAL_ORIGIN_CONFLICT', 'Native output origin does not match the original task input bundle', 409)
+    }
+  }
+  private readonly governanceHost: GovernanceHost = {
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    authenticate: actor => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    mutation: (...args) => this.mutation(...args), after: (...args) => this.listAfter(...args), page: (...args) => this.page(...args),
+    material: (principal, materialId, version) => { const row = this.versionRow(materialId, version); if (!this.canRead(principal, row)) forbidden(); return this.material(row) },
+    body: bodyDigest => this.blob(bodyDigest), persistBody: (bytes, bodyDigest) => this.persistBlob(bytes, bodyDigest),
+    validateOriginBundle: this.validateTaskOutputOrigin
+  }
+  private readonly governance = new TeamGovernance(this.governanceHost)
+  private readonly taskInputs = new TeamTaskInputs(this.governanceHost, this.governance)
   private readonly db: DatabaseSync
   private readonly directory: string
   private readonly lockId = randomUUID()
   private readonly lockPath: string
   private isClosed = false
+  private readonly content = new TeamContent({
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch') }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    transaction: (fn) => this.transaction(fn), authenticate: (actor) => this.authenticate(actor),
+    project: (p, projectId) => { this.project(p, projectId) }, teamAdmin: (p, teamId) => this.teamAdmin(p, teamId),
+    rules: (p, { projectId, taskId, spaceId, taskCreatedAt }) => this.taskInputs.contentRules(p, { projectId, taskId, query: { spaceId, taskCreatedAt } }),
+    rule: (p, { projectId, taskId, spaceId, taskCreatedAt }, packageId, versionId) => this.taskInputs.readContentRule(p, { projectId, taskId, query: { spaceId, taskCreatedAt }, packageId, versionId }),
+    material: (p, projectId, documentId, version) => {
+      this.project(p, projectId)
+      const row = this.versionRow(documentId, version)
+      if (text(row, 'projectId') !== projectId || text(row, 'visibility') === 'personal' || !this.canRead(p, row)) forbidden()
+      const material = this.material(row)
+      const body = this.blob(material.bodyDigest), content = body.toString('utf8')
+      if (body.length !== material.byteLength || !Buffer.from(content, 'utf8').equals(body)) throw new TeamServiceError('CORRUPT_STORE', 'Content material bytes are not valid original UTF-8 text', 503)
+      return { documentId, version, title: material.title, bodyDigest: material.bodyDigest, text: content }
+    }
+  })
+  private readonly taskMaterials = new TeamTaskMaterials({
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    mutation: (...args) => this.mutation(...args), after: (...args) => this.listAfter(...args), page: (...args) => this.page(...args),
+    material: (principal, materialId, version) => {
+      const row = this.versionRow(materialId, version)
+      if (!this.canRead(principal, row)) forbidden()
+      return this.material(row)
+    },
+    body: (bodyDigest) => this.blob(bodyDigest), persistBody: (bytes, bodyDigest) => this.persistBlob(bytes, bodyDigest),
+    validateOriginBundle: this.validateTaskOutputOrigin,
+    workspaceChanged: (projectId) => this.hifox.materialsChanged(projectId)
+  })
+  private readonly codeResources = new TeamCodeResources({
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    mutation: (...args) => this.mutation(...args), after: (...args) => this.listAfter(...args), page: (...args) => this.page(...args)
+  })
   private readonly taskProgress = new TeamTaskProgress({
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
@@ -74,10 +141,12 @@ export class TeamStoreCore {
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
     mutation: (...args) => this.mutation(...args), transaction: (fn) => this.transaction(fn),
-    invalidateProgress: (...args) => this.taskProgress.reconcileWorkspace(...args)
+    invalidateProgress: (...args) => this.taskProgress.reconcileWorkspace(...args),
+    validateTaskTransitionInputs: (...args) => this.taskInputs.validateTaskTransitionInputs(...args)
   })
   private readonly invitations = new TeamInvitations({
     issuer: () => this.options.issuer,
+    epoch: () => this.meta('epoch'),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     admin: (...args) => this.teamAdmin(...args), project: (p, projectId) => { this.project(p, projectId) },
     principalFor: (userId) => ({ person: this.person(requireValue(this.get('SELECT * FROM people WHERE userId=? AND active=1', userId), 'FORBIDDEN', 'Invitation creator is unavailable', 403)), actor: { kind: 'session', credentialHash: '' }, deviceId: null, projectId: null, csrfToken: null }),
@@ -143,6 +212,12 @@ export class TeamStoreCore {
         this.db.exec('INSERT OR IGNORE INTO hifox_task_progress_commands(projectId,taskId,commandId,userId,ownerKey,requestHash) SELECT projectId,taskId,commandId,userId,ownerKey,requestHash FROM hifox_task_progress_receipts')
         this.db.exec('PRAGMA user_version=11')
       })
+      if (current >= 1 && current <= 11) this.transaction(() => { this.db.exec(TEAM_CODE_RESOURCES_SQL); this.db.exec('PRAGMA user_version=12') })
+      if (current >= 1 && current <= 12) this.transaction(() => { this.db.exec(TEAM_TASK_MATERIALS_SQL); this.db.exec('PRAGMA user_version=13') })
+      if (current >= 1 && current <= 13) this.transaction(() => { this.db.exec(TEAM_CONTENT_SQL); this.db.exec('PRAGMA user_version=14') })
+      if (current >= 1 && current <= 14) this.transaction(() => { this.db.exec(TEAM_GOVERNANCE_SQL); this.db.exec('PRAGMA user_version=15') })
+      if (current >= 1 && current <= 15) this.transaction(() => { this.db.exec(TEAM_INVITATION_SPACES_SQL); this.db.exec('PRAGMA user_version=16') })
+      if (current >= 1 && current <= 16) this.transaction(() => { this.db.exec(TEAM_INVITATION_SPACE_IDENTITY_SQL); this.db.exec('PRAGMA user_version=17') })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
@@ -230,6 +305,7 @@ export class TeamStoreCore {
     const requestHash = digest(canonical({ kind, input }))
     return this.transaction(() => {
       const principal = this.authenticate(actor); authorize(principal)
+      if (this.get('SELECT commandId FROM team_content_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a content operation', 409)
       const previous = this.get('SELECT kind,requestHash,resultJson FROM commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)
       if (previous) {
         if (text(previous, 'kind') !== kind || text(previous, 'requestHash') !== requestHash) throw new TeamServiceError('COMMAND_CONFLICT', 'Command identity already describes a different request', 409)
@@ -376,6 +452,9 @@ export class TeamStoreCore {
     if (this.isClosed) throw new TeamServiceError('STORE_UNAVAILABLE', 'Team store is closed', 503)
     if (operation === 'health') return { schemaVersion: TEAM_SCHEMA_VERSION, instanceId: this.meta('instanceId'), epoch: this.meta('epoch') }
     if (operation === 'hifoxTick') return this.hifox.tick()
+    if (operation === 'contentRecover') { this.content.recover(z.object({ restart: z.boolean() }).strict().parse(raw).restart); return null }
+    if (operation === 'contentStart') return this.content.start(raw)
+    if (operation === 'contentSettle') { this.content.settle(raw); return null }
     if (operation === 'localCredential') {
       const input = z.object({ username: teamLocalUsernameSchema }).strict().parse(raw)
       const credential = this.get('SELECT userId,salt,passwordHash,algorithm FROM local_credentials WHERE username=?', input.username)
@@ -464,14 +543,62 @@ export class TeamStoreCore {
     return this.domain(operation, actor, input)
   }
 
+  private taskDevelopmentContext(principal: StorePrincipal, raw: Record<string, unknown>): TeamTaskDevelopmentContext {
+    const { projectId, taskId } = z.object({ actor: actorSchema, projectId: teamIdSchema, taskId: teamTaskProgressResourceIdSchema,
+      query: z.object({}).strict().optional() }).strict().parse(raw)
+    // The owned worker serializes this synchronous read with all mutations; no getter yields.
+    const snapshot = this.hifox.read(principal, { projectId })
+    const task = snapshot.snapshot.tasks.find(item => item.id === taskId)
+    const space = task && snapshot.snapshot.spaces.find(item => item.id === task.spaceId)
+    if (!task || !space) throw new TeamServiceError('TASK_DEVELOPMENT_UNAVAILABLE', 'Original task is unavailable', 404)
+    if (!space.memberIds.includes(principal.person.userId) || (task.workflow?.handlerId ?? task.assigneeIds[0]) !== principal.person.userId) {
+      throw new TeamServiceError('TASK_DEVELOPMENT_FORBIDDEN', 'Development context requires the current task handler and space member', 403)
+    }
+    const inputs = this.taskInputs.read(principal, { projectId, taskId, query: { spaceId: task.spaceId, taskCreatedAt: task.createdAt } })
+    const codeResource = this.codeResources.readTask(principal, { projectId, taskId })
+    const creations = this.creations.list(principal, { projectId, query: { scope: 'team', spaceId: task.spaceId, taskId, limit: 20 } })
+    return teamTaskDevelopmentContextSchema.parse({ version: 1, snapshot, inputs, codeResource, creations })
+  }
+
   private domain(operation: StoreOperation, actor: StoreActor, raw: Record<string, unknown>): unknown {
     const principal = this.authenticate(actor)
+    if (operation === 'taskDevelopmentContext') return this.taskDevelopmentContext(principal, raw)
+    if (operation === 'contentConfigRead') return this.content.configRead(principal, raw)
+    if (operation === 'contentConfigure') return this.content.configure(actor, raw)
+    if (operation === 'contentCapabilities') return this.content.readiness(principal, raw)
+    if (operation === 'contentPrepare') return this.content.prepare(actor, raw)
+    if (operation === 'contentProbe') return this.content.prepare(actor, raw, true)
+    if (operation === 'contentJob') return this.content.read(principal, raw)
+    if (operation === 'contentReceipt') return this.content.read(principal, raw, true)
+    if (operation === 'contentCancel') return this.content.cancel(actor, raw)
+    if (operation === 'contentBudget') return this.content.budget(principal, raw)
+    if (operation === 'contentAccounting') return this.content.accounting(principal, raw)
+    if (operation === 'contentReconcile') return this.content.reconcile(actor, raw)
     if (operation === 'hifoxSnapshot') return this.hifox.read(principal, raw)
     if (operation === 'hifoxHead') return this.hifox.head(actor, raw)
     if (operation === 'hifoxCommand') return this.hifox.command(actor, raw)
     if (operation === 'taskProgressRead') return this.taskProgress.read(actor, raw)
     if (operation === 'taskProgressCommand') return this.taskProgress.command(actor, raw)
     if (operation === 'taskProgressReceipt') return this.taskProgress.receipt(actor, raw)
+    if (operation === 'taskMaterialList') return this.taskMaterials.list(principal, raw)
+    if (operation === 'taskMaterialRead') return this.taskMaterials.read(principal, raw)
+    if (operation === 'taskMaterialVersions') return this.taskMaterials.versions(principal, raw)
+    if (operation === 'taskMaterialSubmissions') return this.taskMaterials.submissions(principal, raw)
+    if (operation === 'taskMaterialCommand') return this.taskMaterials.command(actor, raw)
+    if (operation === 'taskMaterialReceipt') return this.taskMaterials.receipt(principal, raw)
+    if (operation === 'governanceList') return this.governance.list(principal, raw)
+    if (operation === 'governanceRead') return this.governance.read(principal, raw)
+    if (operation === 'governanceCommand') return this.governance.command(actor, raw)
+    if (operation === 'governanceReceipt') return this.governance.receipt(principal, raw)
+    if (operation === 'taskInputRead') return this.taskInputs.read(principal, raw)
+    if (operation === 'taskInputCandidates') return this.taskInputs.candidates(principal, raw)
+    if (operation === 'taskInputRevision') return this.taskInputs.revision(principal, raw)
+    if (operation === 'taskInputReadDocument') return this.taskInputs.readDocument(principal, raw)
+    if (operation === 'taskInputCommand') return this.taskInputs.command(actor, raw)
+    if (operation === 'taskInputReceipt') return this.taskInputs.receipt(principal, raw)
+    if (operation === 'codeResourceList') return this.codeResources.list(principal, raw)
+    if (operation === 'codeResourceCommand') return this.codeResources.command(actor, raw)
+    if (operation === 'taskCodeResourceRead') return this.codeResources.readTask(principal, raw)
     if (operation === 'creationList') return this.creations.list(principal, raw)
     if (operation === 'creationHead') return this.creations.head(principal, raw)
     if (operation === 'creationView') return this.creations.get(principal, raw)
@@ -496,6 +623,10 @@ export class TeamStoreCore {
         return { commandId, kind, status: 'committed', recordedAt: integer(command, 'createdAt'), result: scoped }
       }
       else if (kind === 'creationCommand') this.creations.authorizeReceipt(principal, result)
+      else if (kind === 'codeResourceCommand') this.codeResources.authorizeReceipt(principal, result)
+      else if (kind === 'taskMaterialCommand') this.taskMaterials.authorizeReceipt(principal, result)
+      else if (kind === 'governanceCommand') this.governance.authorizeReceipt(principal, result)
+      else if (kind === 'taskInputCommand') this.taskInputs.authorizeReceipt(principal, result)
       else if (kind === 'collaborationCommand') this.collaboration.authorize(principal, resultId('entityId'))
       else if (kind === 'publish') this.project(principal, id(result.projectId))
       else if (kind === 'recordFeedback') { if (!this.canRead(principal, this.versionRow(id(result.materialId), z.number().int().positive().parse(result.version)))) forbidden() }

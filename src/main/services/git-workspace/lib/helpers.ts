@@ -11,6 +11,11 @@ export interface IndexTransaction { directory: string; indexFile: string; close(
 export function guard(options: GitWorkspaceOperationOptions): void {
   if (options.guard?.() === false || options.stillCurrent?.() === false) throw new GitWorkspaceError(IpcErrorCode.Conflict, '项目已切换，旧操作未执行，请在当前项目重试')
 }
+export async function guardContext(options: GitWorkspaceOperationOptions): Promise<void> {
+  guard(options)
+  await options.validateContext?.()
+  guard(options)
+}
 export function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input)
   if (!result.success) throw new GitWorkspaceError(IpcErrorCode.InvalidArg, 'Git 参数无效，请检查选择、名称、说明与确认状态')

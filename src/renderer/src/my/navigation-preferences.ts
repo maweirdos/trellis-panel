@@ -1,5 +1,5 @@
 import type { AppState, Page } from '../store'
-import { getPageNavigation, PAGE_NAVIGATION, projectRootKey, type NavigationDomain } from './navigation'
+import { getPageNavigation, PAGE_NAVIGATION, projectRootKey, SETTINGS_VIEWS, type NavigationDomain } from './navigation'
 import type { MyStore } from './store'
 
 type ViewState = Pick<MyStore, 'workItemsView' | 'workItemsTab' | 'teamView' | 'toolView' | 'knowledgeView' | 'settingsView'>
@@ -12,7 +12,7 @@ export function loadNavigationLocation(root: string, developer?: string | null):
     const raw: unknown = JSON.parse(localStorage.getItem(keyFor(root, developer)) || 'null')
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
     const value = raw as Record<string, unknown>
-    if (!isPage(value.page) || !isOneOf(value.workItemsView, ['items', 'iterations'] as const) || !isOneOf(value.workItemsTab, ['all', 'active', 'backlog'] as const) || !isOneOf(value.teamView, ['overview', 'members', 'activity', 'reports'] as const) || !isOneOf(value.toolView, ['git', 'run', 'architecture', 'studio'] as const) || !isOneOf(value.knowledgeView, ['materials', 'company'] as const) || !isOneOf(value.settingsView, ['preferences', 'engines'] as const)) return null
+    if (!isPage(value.page) || !isOneOf(value.workItemsView, ['items', 'iterations'] as const) || !isOneOf(value.workItemsTab, ['all', 'active', 'backlog'] as const) || !isOneOf(value.teamView, ['overview', 'members', 'activity', 'reports'] as const) || !isOneOf(value.toolView, ['git', 'run', 'architecture', 'studio'] as const) || !isOneOf(value.knowledgeView, ['materials', 'company'] as const) || !isOneOf(value.settingsView, SETTINGS_VIEWS)) return null
     const personalTaskSource = isOneOf(value.personalTaskSource, ['team', 'local'] as const)
       ? value.personalTaskSource
       : value.workItemsView === 'iterations' ? 'local' : 'team'

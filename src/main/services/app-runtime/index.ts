@@ -1,3 +1,5 @@
 export { appRuntime } from './procedures'
 export { ApplicationRuntime } from './lib/controller'
-export type { AppOperationOptions } from './types'
+export { createTaskApplicationService } from './task-services'
+export type { ApplicationTaskContextResolver, ResolvedApplicationTaskContext, TaskApplicationService } from './task-services'
+export type { AppOperationOptions, AppInstanceRestartOptions } from './types'

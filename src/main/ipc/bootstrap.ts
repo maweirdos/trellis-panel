@@ -4,6 +4,7 @@ import type { DaemonFailure, DaemonResult } from '../../shared/daemon'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 import type { GuiBootstrap } from '../services/bootstrap'
+import type { createOnboarding } from '../onboarding'
 import { DaemonError, daemonFailure } from '../daemon/errors'
 import { handle } from './registry'
 
@@ -12,6 +13,7 @@ import { handle } from './registry'
 export function registerBootstrapIpc(deps: {
   getMain(): BrowserWindow | null
   bootstrap: GuiBootstrap
+  onboarding: ReturnType<typeof createOnboarding>
   legacyInspect(): Promise<DaemonResult<LegacyDaemonInspection>>
   legacyStop(input: LegacyDaemonStopInput): Promise<DaemonResult<{ stopped: true }>>
   legacyReconcile(input: LegacyDaemonStopInput): Promise<DaemonResult<{ stopped: true }>>
@@ -38,6 +40,13 @@ export function registerBootstrapIpc(deps: {
       window.webContents === event.sender && event.senderFrame === window.webContents.mainFrame ? window : null
   }
   const denied = () => ipcFail(IpcErrorCode.Denied, '启动操作仅供主窗口使用')
+  handle(ipcInvoke.onboarding.status, event => guard(event) ? { ok: true, data: deps.onboarding.status() } : denied())
+  handle(ipcInvoke.onboarding.complete, (event, outcome: unknown) => {
+    if (!guard(event)) return denied()
+    if (outcome !== 'completed' && outcome !== 'skipped') return ipcFail(IpcErrorCode.InvalidArg, '引导完成状态无效')
+    try { return { ok: true, data: deps.onboarding.complete(outcome) } }
+    catch { return ipcFail(IpcErrorCode.Io, '无法保存引导状态，请检查本地数据目录后重试。') }
+  })
   handle(ipcInvoke.bootstrap.status, event => guard(event) ? { ok: true, data: deps.bootstrap.state() } : denied())
   handle(ipcInvoke.bootstrap.retry, event => {
     if (!guard(event)) return denied()

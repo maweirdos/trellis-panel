@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, RefreshCw, Square, Terminal, X } from 'lucide-r
 import { hasIpc } from '../api'
 import { Tooltip } from '../my/ui'
 import { ApplicationOutput, ProcessStatus, ReadinessStatus } from './ApplicationList'
+import { ApplicationRunFacts } from './ApplicationRunFacts'
 import { applicationsGeneration, closeApplicationOutput, runApplication, selectApplication, setApplicationDockHeight, showApplicationOutput, useApplications } from './useApplications'
 import { usePointerResize } from '../utils/use-pointer-resize'
 
@@ -17,7 +18,10 @@ export function ApplicationDock(): JSX.Element | null {
   const maxProbe = useRef<HTMLSpanElement>(null)
   const defaultProbe = useRef<HTMLSpanElement>(null)
   const tabs = state.dockTabs.map((id) => state.apps.find((app) => app.definition.id === id)).filter((app) => app !== undefined)
-  const active = tabs.find((app) => app.definition.id === state.selectedId) ?? tabs[0]
+  const latest = tabs.find((app) => app.definition.id === state.selectedId) ?? tabs[0]
+  const capturedRun = latest ? state.dockRuns[latest.definition.id] ?? null : null
+  const sameRun = latest?.run?.id === capturedRun?.id
+  const active = latest ? { ...latest, run: capturedRun, canStop: sameRun && latest.canStop, canRestart: sameRun && latest.canRestart } : undefined
   const selected = state.apps.find((app) => app.definition.id === state.selectedId) ?? state.apps[0]
   const visible = hasIpc && Boolean(state.root) && state.apps.length > 0
 
@@ -119,8 +123,9 @@ export function ApplicationDock(): JSX.Element | null {
       </div>}
     </header>
     {expanded && active && <div id={panelId} role="tabpanel" aria-label={`${active.definition.name} 运行输出`} className="my-run-dock-content">
-      <div className="my-run-dock-status"><ProcessStatus app={active} /><ReadinessStatus readiness={active.readiness} />{active.approval === 'pending' && <span role="status" className="text-my-warning-text">等待你确认启动配置</span>}{state.busy[active.definition.id] && <span role="status">{state.busy[active.definition.id]}</span>}{active.run?.exitCode !== null && active.run?.exitCode !== undefined && <span>退出码 {active.run.exitCode}</span>}</div>
+      <div className="my-run-dock-status">{sameRun ? <><ProcessStatus app={active} /><ReadinessStatus readiness={active.readiness} /></> : <span>原实例输出 · 当前实例已变化</span>}{active.approval === 'pending' && <span role="status" className="text-my-warning-text">等待你确认启动配置</span>}{state.busy[active.definition.id] && <span role="status">{state.busy[active.definition.id]}</span>}{active.run?.exitCode !== null && active.run?.exitCode !== undefined && <span>退出码 {active.run.exitCode}</span>}</div>
       {(state.errors[active.definition.id] || active.lastError) && <p role="alert" className="my-application-message text-my-danger-text">{state.errors[active.definition.id] || active.lastError}</p>}
+      {active.run && <div className="px-3"><ApplicationRunFacts run={active.run} configChanged={active.configChanged} serviceUses={active.serviceUses} environmentCheck={active.environmentCheck} runEnvironmentCheck={active.runEnvironmentCheck} /></div>}
       <ApplicationOutput key={`${state.generation}:${active.definition.id}:${active.run?.id ?? 'unstarted'}`} app={active} root={state.root} generation={state.generation} docked />
     </div>}
     {!expanded && <span className="sr-only">输出窗口已折叠，应用继续运行</span>}

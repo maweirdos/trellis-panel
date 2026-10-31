@@ -10,6 +10,8 @@ import { EngineToolSettings } from './settings/EngineToolSettings'
 import { DaemonSettings } from '../daemon/DaemonSettings'
 import { AppearancePreferences } from '../my/AppearancePreferences'
 import { PreferenceRow, PreferenceSection } from './settings/PreferenceSection'
+import { StorageSettings } from './settings/StorageSettings'
+import type { SettingsView } from '../my/navigation'
 import type { JSX } from 'react'
 import type { AcpAgentConfig, AcpAgentStatus, McpInfo, Settings } from '../../../shared/types'
 import { version as appVersion, license as appLicense } from '../../../../package.json'
@@ -18,19 +20,20 @@ export function SettingsPage(): JSX.Element {
   const settingsView = useMy((state) => state.settingsView)
   const settings = useApp((s) => s.settings)
   if (settingsView === 'engines') return <AcpAgentsSection />
+  if (settingsView === 'storage') return <StorageSettings />
   // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态而非在渲染期解引用崩溃（真机 bootstrap 后恒非空）
   if (!settings) return (
     <div className="preferences-page">
-      <PreferenceSection id="preferences-preview-appearance" title="外观">
+      {settingsView === 'appearance' && <PreferenceSection id="preferences-preview-appearance" title="外观">
         <AppearancePreferences />
-      </PreferenceSection>
+      </PreferenceSection>}
       <EmptyState title="设置未加载" description="连接桌面应用后可查看其余设置。" />
     </div>
   )
-  return <SettingsPageBody settings={settings} />
+  return <SettingsPageBody settings={settings} view={settingsView} />
 }
 
-function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
+function SettingsPageBody({ settings, view }: { settings: Settings; view: SettingsView }): JSX.Element {
   const saveSettings = useApp((s) => s.saveSettings)
   const pushToast = useApp((s) => s.pushToast)
 
@@ -60,19 +63,22 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
   } | null>(null)
 
   useEffect(() => {
-    if (!hasIpc) return
-    void api.getMcpInfo().then(setMcpInfo).catch((error: unknown) => pushToast({ kind: 'error', title: 'Web 服务状态读取失败', body: String(error) }))
-  }, [settings.httpApi.enabled])
+    if (!hasIpc || view !== 'network') return
+    let current = true
+    void api.getMcpInfo().then((info) => { if (current) setMcpInfo(info) }).catch((error: unknown) => { if (current) pushToast({ kind: 'error', title: 'Web 服务状态读取失败', body: String(error) }) })
+    return () => { current = false }
+  }, [settings.httpApi.enabled, view, pushToast])
 
   const refreshAccess = (): void => {
     void api.accessStatus().then(setAccessInfo).catch((error: unknown) => pushToast({ kind: 'error', title: 'TPAP 状态读取失败', body: String(error) }))
   }
 
   useEffect(() => {
-    if (!hasIpc) return
-    refreshAccess()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.access?.enabled, settings.access?.port])
+    if (!hasIpc || view !== 'network') return
+    let current = true
+    void api.accessStatus().then((info) => { if (current) setAccessInfo(info) }).catch((error: unknown) => { if (current) pushToast({ kind: 'error', title: 'TPAP 状态读取失败', body: String(error) }) })
+    return () => { current = false }
+  }, [settings.access?.enabled, settings.access?.port, view, pushToast])
 
   const copySnip = async (text: string, title: string): Promise<void> => {
     await api.copyToClipboard(text)
@@ -102,8 +108,8 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
 
   return (
     <div className="preferences-page my-fade">
-      <PreferenceSection id="preferences-appearance" title="外观">
-        <PreferenceRow label="主题">
+      {view === 'appearance' && <PreferenceSection id="preferences-appearance" title="外观">
+        <PreferenceRow label="主题" hint="选择应用的深色或浅色外观。">
           <div className="my-segmented preference-choices" role="group" aria-label="主题">
             {([
               ['dark', '深色', <Moon size={14} key="dark" />],
@@ -117,14 +123,17 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
           </div>
         </PreferenceRow>
         <AppearancePreferences />
-      </PreferenceSection>
+      </PreferenceSection>}
 
-      <PreferenceSection id="preferences-desktop" title="桌面">
-        <PreferenceRow label="开机自动启动">
+      {view === 'preferences' && <PreferenceSection id="preferences-desktop" title="桌面">
+        <PreferenceRow label="首次设置" hint="重新查看模型、Agent 和团队使用引导。">
+          <Button variant="outline" onClick={() => window.dispatchEvent(new Event('trellis-open-onboarding'))}>打开引导</Button>
+        </PreferenceRow>
+        <PreferenceRow label="开机自动启动" hint="登录系统后自动打开应用。">
           <Switch label="开机自动启动" checked={settings.desktop.autoStart} disabled={pending['desktop-autostart']}
             onChange={(autoStart) => void perform('desktop-autostart', () => saveSettings({ desktop: { ...settings.desktop, autoStart } }))} />
         </PreferenceRow>
-        <PreferenceRow label="自动检查更新">
+        <PreferenceRow label="自动检查更新" hint="发现新版本时提醒。">
           <Switch label="自动检查更新" checked={settings.desktop.autoUpdate} disabled={pending['desktop-updates']}
             onChange={(autoUpdate) => void perform('desktop-updates', () => saveSettings({ desktop: { ...settings.desktop, autoUpdate } }))} />
         </PreferenceRow>
@@ -146,11 +155,11 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
             onBlur={() => void perform('desktop-quick-shortcut', () => saveSettings({ desktop: { ...settings.desktop, quickTodoShortcut: quickShortcut.trim() || 'Alt+N' } }))}
             className="my-input font-mono" placeholder="Alt+N" />
         </PreferenceRow>
-      </PreferenceSection>
+      </PreferenceSection>}
 
-      <DaemonSettings />
+      {view === 'daemon' && <DaemonSettings />}
 
-      <PreferenceSection id="preferences-services" title="本地服务">
+      {view === 'network' && <PreferenceSection id="preferences-services" title="本地服务">
         <PreferenceRow label="Web 看板">
           <span role="status" className="text-my-secondary">{mcpInfo ? mcpInfo.running ? `运行中 · 端口 ${mcpInfo.port}` : '已停止' : '状态未确认'}</span>
           <Button size="sm" variant="outline" disabled={pending.web} aria-label={mcpInfo?.running ? '停止 Web 看板服务' : '启动 Web 看板服务'}
@@ -198,9 +207,9 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
               onClick={() => void perform('access-token', rotateAccess)}>{pending['access-token'] ? '重置中…' : '重置'}</Button>
           </PreferenceRow>
         </>}
-      </PreferenceSection>
+      </PreferenceSection>}
 
-      <PreferenceSection id="preferences-network" title="网络代理">
+      {view === 'network' && <PreferenceSection id="preferences-network" title="网络代理">
         <PreferenceRow label="出网代理" hint="用于应用内 AI 与 WeKnora 请求。">
           <Switch label="启用出网代理" checked={settings.proxy?.enabled ?? false} disabled={pending.proxy}
             onChange={(enabled) => void perform('proxy', () => saveSettings({ proxy: { enabled, url: settings.proxy?.url ?? '' } }))} />
@@ -209,23 +218,23 @@ function SettingsPageBody({ settings }: { settings: Settings }): JSX.Element {
           <input id="preferences-proxy-url" value={settings.proxy?.url ?? ''} className="my-input font-mono" placeholder="http://127.0.0.1:7890"
             onChange={(event) => void saveSettings({ proxy: { enabled: settings.proxy?.enabled ?? false, url: event.target.value } }).catch((error: unknown) => pushToast({ kind: 'error', title: '代理地址保存失败', body: String(error) }))} />
         </PreferenceRow>
-      </PreferenceSection>
+      </PreferenceSection>}
 
-      <PreferenceSection id="preferences-recents" title="最近项目">
+      {view === 'preferences' && <PreferenceSection id="preferences-recents" title="最近项目">
         {settings.recentProjects.length === 0 && <p className="py-3 text-my-sm text-my-tertiary">暂无记录</p>}
         {settings.recentProjects.map((path) => <div key={path} className="flex min-w-0 items-center gap-3 border-b border-my-line py-3">
           <span title={path} className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-secondary">{path}</span>
           <Button size="sm" variant="ghost" aria-label={`移除最近项目 ${path}`} disabled={pending['recent-projects']}
             onClick={() => void perform('recent-projects', () => saveSettings({ recentProjects: settings.recentProjects.filter((item) => item !== path) }))}><X size={14} /></Button>
         </div>)}
-      </PreferenceSection>
+      </PreferenceSection>}
 
-      <PreferenceSection id="preferences-about" title="关于">
+      {view === 'about' && <PreferenceSection id="preferences-about" title="关于">
         <PreferenceRow label="Trellis Panel"><span className="text-my-secondary">v{appVersion}</span></PreferenceRow>
         <PreferenceRow label="项目仓库"><Button size="sm" variant="ghost" onClick={() => void api.openExternal('https://github.com/maweirdos/trellis-panel')}>maweirdos/trellis-panel ↗</Button></PreferenceRow>
         <PreferenceRow label="问题反馈"><Button size="sm" variant="ghost" onClick={() => void api.openExternal('https://github.com/maweirdos/trellis-panel/issues')}>GitHub Issues ↗</Button></PreferenceRow>
         <PreferenceRow label="开源许可"><span className="text-my-secondary">{appLicense}</span></PreferenceRow>
-      </PreferenceSection>
+      </PreferenceSection>}
     </div>
   )
 }

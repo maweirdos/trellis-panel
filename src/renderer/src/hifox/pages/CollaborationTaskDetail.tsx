@@ -3,7 +3,7 @@ import { Maximize2, Minimize2, MoreHorizontal, Pencil, Star, Trash2, X } from 'l
 import type { HifoxSnapshot, HifoxTask } from '@shared/hifox'
 import { api, hasIpc } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
-import { IssueDetailLayout } from '../../my/pages/work-items/IssueDetailLayout'
+import { PageContent, PageLayout } from '../../my/layout/PageLayout'
 import { Button, Dropdown, DropdownItem, Modal, Tabs, Tooltip } from '../../my/ui'
 import { InteractionScope } from '../../utils/interaction-scope'
 import { statusOf, useHifox } from '../store'
@@ -17,6 +17,8 @@ import { TaskProperties } from './task-detail/TaskProperties'
 import { canReadTaskSpace, taskActorId, taskSourceKey, useTaskMutation, useTaskSource, useTaskSurfaceGeneration } from './task-detail/use-task-source'
 import { useTaskDraft, useTaskDraftField } from './task-detail/task-drafts'
 import { TaskProgressPanel } from './task-detail/TaskProgressPanel'
+import { TaskCodeResources } from '../code-resources/TaskCodeResources'
+import { TaskInputPanel } from '../governance/TaskInputPanel'
 
 export function TaskDetailDrawer(): JSX.Element | null {
   const snapshot = useHifox((state) => state.snapshot)
@@ -41,6 +43,8 @@ function TaskDetails({ snapshot, task }: { snapshot: HifoxSnapshot; task: HifoxT
   const { mutate, error, pending } = useTaskMutation(source)
   const [expanded, setExpanded] = useState(false)
   const [tab, setTab] = useState<DetailTab>('details')
+  const [resourceRefresh, setResourceRefresh] = useState(0)
+  const [materialRefresh, setMaterialRefresh] = useState(0)
   const draft = useTaskDraft(snapshot, context, { kind: 'details', spaceId: task.spaceId, task })
   const [title, setTitle] = useTaskDraftField(draft, 'title', task.title)
   const [baseTitle, setBaseTitle] = useTaskDraftField(draft, 'baseTitle', task.title)
@@ -51,11 +55,21 @@ function TaskDetails({ snapshot, task }: { snapshot: HifoxSnapshot; task: HifoxT
   const [subtaskOpen, setSubtaskOpen] = useState(false)
   const titleInput = useRef<HTMLInputElement>(null)
   const descriptionInput = useRef<HTMLTextAreaElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const propertiesRef = useRef<HTMLElement>(null)
+  const inputsRef = useRef<HTMLDivElement>(null)
   const space = snapshot.spaces.find((candidate) => candidate.id === task.spaceId)
   if (!source.available || !space) return null
   const identity = taskActorId(snapshot, context)
   const actorId = identity && space.memberIds.includes(identity) ? identity : undefined
   const disabled = busy || pending || !hasIpc || Boolean(space.archived)
+  const governanceApi = api && Object.hasOwn(api, 'hifoxGovernance') ? api.hifoxGovernance : undefined
+  const materialsApi = api && Object.hasOwn(api, 'hifoxMaterials') ? api.hifoxMaterials : undefined
+  const sharedInputs = governanceApi && context.state !== 'local' && canReadTaskSpace(snapshot, context, space.id)
+  // The mounted source lease is checked by callbacks, after the initial render.
+  const canAdoptInputs = !disabled && context.state === 'connected' && source.available && Boolean(actorId &&
+    (context.canManage || space.ownerId === actorId || task.creatorId === actorId || (task.workflow ? task.workflow.handlerId === actorId : task.assigneeIds.includes(actorId))))
   const titleChanged = editingTitle && task.title !== baseTitle
   const descriptionChanged = editingDescription && (task.description ?? '') !== baseDescription
   const following = Boolean(actorId && task.followerIds.includes(actorId))
@@ -90,9 +104,10 @@ function TaskDetails({ snapshot, task }: { snapshot: HifoxSnapshot; task: HifoxT
     const confirmed = await confirmDialog({ title: `删除任务「${task.title}」？`, message: '任务及其评论会被删除，已有子任务将保留。', confirmText: '删除任务', danger: true }, source.signal)
     if (confirmed && source.canWrite(ticket)) await mutate('删除任务', () => api.hifox.removeTask({ id: task.id }))
   }
-  return <Modal open onClose={close} width={expanded ? '100%' : 880} ariaLabel={`${task.id} · ${task.title}`}>
+  return <Modal open onClose={close} width={expanded ? '100%' : 1120} ariaLabel={`${task.id} · ${task.title}`}>
     <div className="collab-task-detail flex min-h-0 flex-col bg-my-canvas" data-expanded={expanded || undefined} style={{ height: 'var(--my-modal-max-height)' }}>
-      <IssueDetailLayout header={<>
+      <PageLayout variant="full" className="collab-task-detail-layout" style={{ height: 'auto', background: 'inherit' }}>
+        <header className="collab-task-detail-header flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-4">
         <span className="min-w-0 truncate text-my-xs text-my-tertiary">{space.name}</span><span className="shrink-0 text-my-sm text-my-secondary">{task.id}</span>
         <StatusBadge status={statusOf(snapshot, task.statusId)} /><PriorityBadge priority={task.priority} />
         <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -103,14 +118,18 @@ function TaskDetails({ snapshot, task }: { snapshot: HifoxSnapshot; task: HifoxT
           </Dropdown>
           <Tooltip label="关闭详情"><Button size="sm" variant="ghost" aria-label="关闭详情" onClick={close}><X size={16} /></Button></Tooltip>
         </div>
-      </>} properties={<TaskProperties snapshot={snapshot} task={task} disabled={disabled} actorId={actorId} source={source} mutate={mutate} />}>
+        </header>
+        <PageContent variant="full" className="collab-task-detail-frame" style={{ padding: 0 }}>
+          <div ref={bodyRef} className="collab-task-detail-body my-scrollbar">
+          <div className="collab-task-detail-content">
         {space.archived && <p role="status" className="border-b border-my-line px-4 py-2 text-my-xs text-my-tertiary">空间已停用 · 只读</p>}
         {error && <p role="alert" className="collab-inline-error mx-4 mt-3">{error}</p>}
-        <div className="shrink-0 border-b border-my-line px-4 py-2" aria-label="任务内容"><Tabs<DetailTab> tabs={[{ id: 'details', label: '详情' }, { id: 'discussion', label: '讨论', count: comments.length }, { id: 'activity', label: '动态', count: activities.length }]} active={tab} onChange={setTab} /></div>
-        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
+        <div ref={contentRef} tabIndex={-1} className="collab-task-detail-tabs flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-my-line px-4 py-2" aria-label="任务内容"><Tabs<DetailTab> tabs={[{ id: 'details', label: '工作区' }, { id: 'discussion', label: '讨论', count: comments.length }, { id: 'activity', label: '动态', count: activities.length }]} active={tab} onChange={setTab} /><Button size="sm" variant="ghost" onClick={() => { propertiesRef.current?.focus({ preventScroll: true }); propertiesRef.current?.scrollIntoView({ block: 'start' }) }}>属性</Button></div>
+        <div className="collab-task-detail-scroll my-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
           <section hidden={tab !== 'details'} aria-label="任务详情">
             <InteractionScope active={tab === 'details'}><div className="flex min-w-0 flex-col gap-5">
-              <InteractionScope active={!space.archived}><fieldset disabled={Boolean(space.archived) || !hasIpc} className="min-w-0 border-0 p-0"><TaskWorkflow snapshot={snapshot} task={task} /></fieldset></InteractionScope>
+              <TaskWorkflow snapshot={snapshot} task={task} resourceRefresh={resourceRefresh} onMaterialCommitted={() => { if (source.owns()) { setMaterialRefresh((value) => value + 1); setResourceRefresh((value) => value + 1) } }} onOpenInputs={sharedInputs ? () => { if (source.owns()) { inputsRef.current?.focus({ preventScroll: true }); inputsRef.current?.scrollIntoView({ block: 'start' }) } } : undefined} />
+              <TaskCodeResources task={task} onSelected={() => setResourceRefresh((value) => value + 1)} />
               {tab === 'details' && <TaskProgressPanel snapshot={snapshot} task={task} />}
               <TaskCreationReferences taskId={task.id} spaceId={space.id} />
               <section>
@@ -120,6 +139,7 @@ function TaskDetails({ snapshot, task }: { snapshot: HifoxSnapshot; task: HifoxT
                 <div className="mb-2 flex items-center justify-between gap-2"><h3 className="text-my-sm font-medium text-my-primary">描述</h3>{!editingDescription && <Tooltip label="编辑描述"><Button size="sm" variant="ghost" disabled={disabled} aria-label="编辑描述" onClick={() => { setDescription(task.description ?? ''); setBaseDescription(task.description ?? ''); setEditingDescription(true) }}><Pencil size={14} /></Button></Tooltip>}</div>
                 {editingDescription ? <div className="flex flex-col gap-2"><textarea ref={descriptionInput} autoFocus aria-label="任务描述" disabled={disabled} className={textareaClass} rows={6} value={description} onChange={(event) => setDescription(event.target.value)} />{descriptionChanged && <div role="alert" className="collab-inline-error"><details className="w-full"><summary>描述已更新，查看当前内容</summary><p className="whitespace-pre-wrap break-words">{task.description || '暂无描述'}</p></details><Button size="sm" disabled={disabled} onClick={() => setBaseDescription(task.description ?? '')}>已核对，保留草稿</Button></div>}<div className="flex justify-end gap-2"><Button size="sm" variant="ghost" disabled={disabled} onClick={() => draft.acknowledge(DESCRIPTION_DRAFT_FIELDS)()}>取消</Button><Button size="sm" variant="primary" disabled={disabled || descriptionChanged} onClick={() => void saveDescription()}>保存描述</Button></div></div> : <p className={`whitespace-pre-wrap break-words text-my-sm leading-relaxed ${task.description ? 'text-my-secondary' : 'text-my-tertiary'}`}>{task.description || '暂无描述'}</p>}
               </section>
+              {sharedInputs && <div ref={inputsRef} tabIndex={-1}><TaskInputPanel key={`${taskSourceKey(snapshot, context)}:${space.id}:${task.id}:${task.createdAt}`} api={governanceApi} workspaceKey={context.key} spaceId={space.id} taskId={task.id} taskCreatedAt={task.createdAt} actorId={actorId} materialsApi={materialsApi} refreshRevision={materialRefresh} workspaceRevision={context.revision} canAdopt={canAdoptInputs} onAdopted={() => { if (source.owns()) setResourceRefresh((value) => value + 1) }} /></div>}
               {Boolean(task.acceptanceCriteria?.length) && <section><h3 className="mb-2 text-my-sm font-medium text-my-primary">验收标准</h3><ol className="list-decimal space-y-2 pl-5 text-my-sm text-my-secondary">{task.acceptanceCriteria?.map((criterion, index) => <li key={index} className="whitespace-pre-wrap break-words">{criterion}</li>)}</ol></section>}
               <div className="border-t border-my-line pt-4"><TaskLinks snapshot={snapshot} task={task} disabled={disabled} source={source} mutate={mutate} onNewSubtask={() => setSubtaskOpen(true)} /></div>
               <p className="text-my-xs text-my-tertiary">创建于 {formatCollaborationTime(task.createdAt)} · 更新于 {formatCollaborationTime(task.updatedAt)}</p>
@@ -128,7 +148,14 @@ function TaskDetails({ snapshot, task }: { snapshot: HifoxSnapshot; task: HifoxT
           <section hidden={tab !== 'discussion'} aria-label="讨论"><InteractionScope active={tab === 'discussion'}><TaskDiscussion snapshot={snapshot} task={task} actorId={actorId} disabled={disabled} mutate={mutate} /></InteractionScope></section>
           <section hidden={tab !== 'activity'} aria-label="动态"><ol className="space-y-4">{activities.map((activity) => <li key={activity.id} className="flex flex-col gap-1 text-my-sm"><span className="whitespace-pre-wrap break-words text-my-secondary">{activity.text}</span><time dateTime={activity.at} className="text-my-xs text-my-tertiary">{formatCollaborationTime(activity.at)}</time></li>)}</ol>{!activities.length && <p className="text-my-sm text-my-tertiary">暂无动态</p>}</section>
         </div>
-      </IssueDetailLayout>
+          </div>
+          <aside ref={propertiesRef} tabIndex={-1} className="collab-task-detail-properties my-scrollbar" aria-label="任务属性区域">
+            <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-my-xs font-medium text-my-tertiary">任务属性</h3><Button size="sm" variant="ghost" onClick={() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; contentRef.current?.focus({ preventScroll: true }) }}>返回内容</Button></div>
+            <TaskProperties snapshot={snapshot} task={task} disabled={disabled} actorId={actorId} source={source} mutate={mutate} />
+          </aside>
+          </div>
+        </PageContent>
+      </PageLayout>
       <NewTaskModal open={subtaskOpen} onClose={() => setSubtaskOpen(false)} spaceId={task.spaceId} parentTaskId={task.id} projectId={task.projectId} iterationId={task.iterationIds[0]} />
     </div>
   </Modal>

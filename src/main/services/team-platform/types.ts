@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { desktopOutboxStateSchema, type DesktopTeamConnection, type DesktopTeamOutbox } from '../../../shared/team-desktop'
+import { desktopTeamAccountIdSchema, desktopTeamAccountSchema, desktopTeamCreateInvitationSchema, type DesktopTeamAccount } from '../../../shared/team-desktop-account'
+import { teamInvitationSchema, teamInvitationTokenSchema } from '../../../shared/team-invitations'
 import { teamDeviceSchema, teamFeedbackInputSchema, publicationInputSchema, type TeamFeedback, type TeamMaterialVersion, type TeamPublishedDocument } from '../../../shared/team-platform'
 
 export class DesktopTeamError extends Error {
@@ -10,8 +12,44 @@ export const MAX_PENDING_BYTES = 24 * 1024 * 1024
 export const MAX_PENDING_COUNT = 64
 export const MAX_OUTBOX_BYTES = 128 * 1024 * 1024
 export const MAX_CACHE_BYTES = 64 * 1024 * 1024
+export const accountSessionEnvelopeSchema = z.object({
+  version: z.literal(1),
+  accountId: desktopTeamAccountIdSchema,
+  origin: z.string().url().max(2048),
+  userId: z.string().uuid(),
+  cookie: z.string().regex(/^tp_team_session=ts_[A-Za-z0-9_-]{43}$/),
+  csrfToken: z.string().min(20).max(200)
+}).strict()
+export const accountRecordSchema = desktopTeamAccountSchema.extend({
+  encryptedSession: z.string().min(1).max(32768).nullable()
+}).strict().superRefine((value, context) => {
+  if (value.state === 'active' && value.encryptedSession === null) context.addIssue({ code: 'custom', message: 'Active account needs its protected session' })
+  if (value.state === 'signed-out' && value.encryptedSession !== null) context.addIssue({ code: 'custom', message: 'Signed-out account cannot retain a session' })
+})
+export type AccountSessionEnvelope = z.infer<typeof accountSessionEnvelopeSchema>
+export type AccountRecord = z.infer<typeof accountRecordSchema>
+export const invitationIntentEnvelopeSchema = z.object({
+  version: z.literal(1),
+  commandId: z.string().uuid(),
+  accountId: desktopTeamAccountIdSchema,
+  origin: z.string().url().max(2048),
+  input: desktopTeamCreateInvitationSchema,
+  token: teamInvitationTokenSchema
+}).strict()
+export const invitationIntentRecordSchema = z.object({
+  commandId: z.string().uuid(),
+  accountId: desktopTeamAccountIdSchema,
+  origin: z.string().url().max(2048),
+  payloadDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  encryptedIntent: z.string().min(1).max(65536),
+  createdAt: z.number().int().nonnegative().safe(),
+  updatedAt: z.number().int().nonnegative().safe(),
+  receipt: teamInvitationSchema.nullable()
+}).strict()
+export type InvitationIntentEnvelope = z.infer<typeof invitationIntentEnvelopeSchema>
+export type InvitationIntentRecord = z.infer<typeof invitationIntentRecordSchema>
 export const connectionRecordSchema = z.object({
-  connectionId: z.string().uuid(), origin: z.string().url().max(2048), pairingId: z.string().uuid(), deviceId: z.string().uuid(), deviceName: z.string().min(1).max(150),
+  connectionId: z.string().uuid(), accountId: desktopTeamAccountIdSchema.nullable().default(null), approvalCommandId: z.string().uuid().nullable().default(null), origin: z.string().url().max(2048), pairingId: z.string().uuid(), deviceId: z.string().uuid(), deviceName: z.string().min(1).max(150),
   state: z.enum(['pending', 'active', 'revoked', 'expired', 'disconnected']), projectId: z.string().uuid().nullable(), ownerId: z.string().uuid().nullable(),
   userCode: z.string().regex(/^[A-Z2-9]{10}$/), verificationUri: z.string().url().max(4096), expiresAt: z.number().int().nonnegative().safe(), pollAfterMs: z.number().int().min(1).max(300000), nextPollAt: z.number().int().nonnegative().safe(),
   encryptedToken: z.string().min(1).max(32768), capabilityClaims: z.array(z.string().max(200)).max(50), sequence: z.number().int().min(-1).safe(),
@@ -33,8 +71,12 @@ export type TrustedTeamMaterial = {
 }
 export type CachedDocument = { document: TeamPublishedDocument; fetchedAt: number }
 export function publicConnection(value: ConnectionRecord): DesktopTeamConnection {
-  const { encryptedToken: _token, sequence: _sequence, capabilityClaims: _claims, ...safe } = value
+  const { encryptedToken: _token, sequence: _sequence, capabilityClaims: _claims, approvalCommandId: _approvalCommandId, ...safe } = value
   return { ...safe, userCode: value.state === 'pending' ? value.userCode : null, verificationUri: value.state === 'pending' ? value.verificationUri : null }
+}
+export function publicAccount(value: AccountRecord): DesktopTeamAccount {
+  const { encryptedSession: _encryptedSession, ...safe } = value
+  return safe
 }
 export function publicOutbox(value: OutboxRecord): DesktopTeamOutbox { const { binding: _binding, payload: _payload, ...safe } = value; return safe }
 export type QueueReceipt = TeamMaterialVersion | TeamFeedback

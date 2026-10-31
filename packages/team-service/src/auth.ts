@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import type { TeamSession } from '../../../src/shared/team-platform'
 import { teamIdentitySchema, type TeamIdentity } from '../../../src/shared/team-identity'
-import { TEAM_LOCAL_ISSUER, teamLocalLoginSchema, teamLocalRegisterSchema } from '../../../src/shared/team-auth'
+import { TEAM_LOCAL_ISSUER, TEAM_AUTH_OPTIONS_CAPABILITY_HEADER, TEAM_AUTH_OPTIONS_INITIAL_TASK_TYPES, teamLocalLoginSchema, teamLocalRegisterSchema } from '../../../src/shared/team-auth'
 import type { TeamServiceConfig } from './config'
 import { TeamServiceError } from './errors'
 import type { TeamStore } from './store-client'
@@ -103,10 +103,10 @@ export class TeamAuthentication {
     return path
   }
   registerRoutes(app: FastifyInstance): void {
-    app.get('/api/auth/options', async (_request, reply) => {
+    app.get('/api/auth/options', async (request, reply) => {
       const csrfToken = randomBytes(32).toString('base64url')
       reply.setCookie(AUTH_COOKIE, csrfToken, { ...this.cookieOptions(), sameSite: 'strict', maxAge: 600 })
-      return { ok: true, value: { localLogin: true, selfRegistration: Boolean(this.config.allowSelfRegistration), oidcLogin: Boolean(this.config.oidc), oidcLabel: this.config.gitlabBaseUrl || this.config.gitlabIntegration ? '使用 GitLab 登录' : '使用身份提供方登录', csrfToken } }
+      return { ok: true, value: { localLogin: true, selfRegistration: Boolean(this.config.allowSelfRegistration), oidcLogin: Boolean(this.config.oidc), oidcLabel: this.config.gitlabBaseUrl || this.config.gitlabIntegration ? '使用 GitLab 登录' : '使用身份提供方登录', csrfToken, ...(request.headers[TEAM_AUTH_OPTIONS_CAPABILITY_HEADER] === TEAM_AUTH_OPTIONS_INITIAL_TASK_TYPES ? { supportsInitialTaskTypes: true } : {}) } }
     })
     for (const operation of ['login', 'register'] as const) app.post(`/auth/local/${operation}`, { config: { rateLimit: { max: operation === 'login' ? 20 : 10, timeWindow: '1 minute' } } }, async (request, reply) => {
       this.loginOrigin(request)
@@ -173,7 +173,7 @@ export class TeamAuthentication {
       return { ok: true, value: { loggedOut: true } }
     })
   }
-  async require(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
+  async require(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const cookie = request.cookies[TEAM_SESSION_COOKIE]; const header = request.headers.authorization
     if (cookie && header) throw new TeamServiceError('UNAUTHORIZED', 'Use one authentication credential', 401)
     let actor: StoreActor
@@ -188,6 +188,14 @@ export class TeamAuthentication {
     if (actor.kind === 'session') {
       const origin = request.headers.origin
       if (origin !== undefined && origin !== this.config.publicOrigin.origin) throw new TeamServiceError('FORBIDDEN', 'Request origin does not match the team application', 403)
+      // New Web clients pin each request to their original browser session.
+      // Older clients remain compatible, while a changed shared cookie cannot
+      // silently return another account's data to a still-open tab.
+      const expectedSession = request.headers['x-trellis-session-proof']
+      if (expectedSession !== undefined) {
+        if (typeof expectedSession !== 'string' || !principal.csrfToken || !equal(expectedSession, principal.csrfToken)) throw new TeamServiceError('SESSION_CHANGED', 'The browser account changed; reload the original identity', 409)
+        reply.header('X-Trellis-Session-Verified', '1')
+      }
       if (!['GET', 'HEAD'].includes(request.method)) {
         const supplied = request.headers['x-csrf-token']
         if (origin !== this.config.publicOrigin.origin || typeof supplied !== 'string' || !principal.csrfToken || !equal(supplied, principal.csrfToken)) throw new TeamServiceError('CSRF_REJECTED', 'Refresh the signed-in page before sending this action', 403)

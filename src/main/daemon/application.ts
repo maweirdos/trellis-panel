@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertNativeGuiGrant } from './native-gui-grant'
+import { isBoundedWorkcopyCleanup } from '../../shared/workcopy-use'
 import { runtimeRequests, type RuntimeMethod } from '../../shared/daemon-runtime'
 import { nativeStateRequests } from '../../shared/native-state'
 import { providerWireContracts } from '../../shared/daemon-domains'
@@ -117,7 +118,13 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
     ready: () => initialized && !closed,
     handles: method => method in nativeStateRequests || method in runtimeRequests || method in providerWireContracts || method === 'integration.execute' || method === 'provider.read.cancel',
     async dispatch(request, actor, nativeGui) {
-      if (request.method === 'runtime.hifoxProgress') assertNativeGuiGrant(context, repository.epoch, actor, nativeGui)
+      if (request.method === 'runtime.hifoxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(context, repository.epoch, actor, nativeGui)
+      if (runtime && scope && isBoundedWorkcopyCleanup(request.method, request.payload)) {
+        assertOwner()
+        if (!request.commandId) throw new DaemonError('E_DENIED', '原工作副本清理需要原命令。')
+        const owner = runtime
+        return owner.releaseWorkcopy('', runtimeWireSchema.parse(request.payload), request.commandId)
+      }
       assertAdmission()
       operations++
       try { return await (async () => {

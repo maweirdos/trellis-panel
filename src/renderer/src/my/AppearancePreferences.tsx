@@ -8,7 +8,8 @@ export function AppearancePreferences(): JSX.Element {
   const fontSize = useMy((state) => state.fontSize)
   const setFontSize = useMy((state) => state.setFontSize)
   return (
-    <PreferenceRow label="界面字号">
+    <>
+    <PreferenceRow label="界面字号" hint="调整应用界面的文字大小。">
       <div className="my-segmented preference-choices" role="group" aria-label="界面字号">
         {UI_FONT_SIZE_OPTIONS.map((option) => (
           <button key={option.value} type="button" className="my-segment"
@@ -19,5 +20,9 @@ export function AppearancePreferences(): JSX.Element {
         ))}
       </div>
     </PreferenceRow>
+    <PreferenceRow label="界面字体" hint="中文使用思源黑体，英文与数字使用 Inter。">
+      <span className="text-my-sm text-my-secondary">思源黑体 · Inter</span>
+    </PreferenceRow>
+    </>
   )
 }

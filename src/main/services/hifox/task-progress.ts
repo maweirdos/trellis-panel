@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { z } from 'zod'
 import { hifoxProgressQuerySchema, hifoxProgressReportSchema, hifoxProgressStartSchema, hifoxProgressSendSchema, hifoxProgressRespondSchema, hifoxProgressEventsSchema, type HifoxProgressQuery, type HifoxProgressResult, type HifoxProgressValue, type HifoxProgressApi } from '../../../shared/hifox-task-progress'
 import { taskProgressPinSchema, type TaskProgressNativeInput, type TaskProgressPin } from '../../../shared/hifox-task-progress-native'
@@ -9,21 +10,56 @@ import { clipUtf8 } from '../../../shared/material-budget'
 import { withDesktopTeamService } from '../team-desktop'
 import { DesktopTeamError } from '../team-platform'
 import { runtimeCall } from '../daemon-client/runtime'
-import { hifoxWorkspaceSnapshot, hifoxWorkspaceStatus } from './connection-service'
+import { hifoxWorkspaceGeneration, hifoxWorkspaceSnapshot, hifoxWorkspaceStatus } from './connection-service'
 import type { TaskProgressNativeView } from './task-progress-runtime'
 import { readHifoxWorkSource, type HifoxWorkWorkspaceView } from './task-workspace-source'
+import type { HifoxWorkResourceBinding, HifoxDevelopmentContext } from '../../../shared/hifox-work'
 import type { HifoxTaskWorkspaceService } from './task-workspace'
 
 export const taskProgressNativeCall = <T>(input: TaskProgressNativeInput): Promise<T> => runtimeCall<T, 'runtime.hifoxProgress'>('', 'runtime.hifoxProgress', input)
 const codeOf = (error: unknown): string => error && typeof error === 'object' && 'code' in error ? String(error.code) : 'STORE_UNAVAILABLE'
 const transient = (error: unknown): boolean => ['NETWORK_UNAVAILABLE', 'ACKNOWLEDGEMENT_UNKNOWN', 'E_UNAVAILABLE', 'E_TIMEOUT'].includes(codeOf(error))
-const uncertain = (error: unknown): boolean => Boolean(error && typeof error === 'object' && 'outcomeUnknown' in error && error.outcomeUnknown)
+const uncertain = (error: unknown): boolean => Boolean(error && typeof error === 'object' && (
+  'outcomeUnknown' in error && error.outcomeUnknown || 'outcome' in error && error.outcome === 'unknown' || codeOf(error) === 'E_UNKNOWN'
+))
 const pinned = (c: DesktopTeamConnection, pin: TaskProgressPin): boolean => c.connectionId === pin.connectionId && c.origin === pin.origin && c.pairingId === pin.pairingId && c.ownerId === pin.ownerId && c.deviceId === pin.deviceId && c.projectId === pin.projectId && c.state === 'active' && !c.accessLocked
 
 /** GUI admission facade. Independent daemon owns queue, sessions and fixed-purpose protected HTTP sender. */
 export class HifoxTaskProgressService {
   private readonly serial = new Map<string, Promise<unknown>>()
+  private readonly admissions = new AsyncLocalStorage<{ generation: number; admitted: boolean }>()
   constructor(private readonly workspace: HifoxTaskWorkspaceService) {}
+  private assertSelection(): void {
+    const admission = this.admissions.getStore()
+    if (admission && admission.generation !== hifoxWorkspaceGeneration()) throw new DesktopTeamError('BINDING_CHANGED', '原任务来源已切换，请回原任务核对结果；返回原空间不会恢复旧操作权', admission.admitted)
+  }
+  private async nativeCall<T>(input: TaskProgressNativeInput): Promise<T> {
+    this.assertSelection()
+    const admission = this.admissions.getStore()
+    if (admission && !['catalog', 'read', 'conversation', 'events', 'official'].includes(input.operation)) admission.admitted = true
+    const result = await taskProgressNativeCall<T>(input)
+    this.assertSelection()
+    return result
+  }
+  /** Main-only enrollment capture; the pin never enters a renderer reply. */
+  async captureOriginalPin(raw: unknown): Promise<{ pin: TaskProgressPin; assertCurrent(): Promise<void> }> {
+    const query = hifoxProgressQuerySchema.parse(raw), generation = hifoxWorkspaceGeneration()
+    const { pin } = await this.capture(query), context = await this.current(query)
+    const fingerprint = (value: HifoxWorkspaceContext): string => JSON.stringify([value.key, value.connectionId, value.origin, value.actorId, value.projectId, value.instanceId, value.epoch, value.authorizationRevision, value.state])
+    const original = fingerprint(context)
+    const assertCurrent = async (): Promise<void> => {
+      if (generation !== hifoxWorkspaceGeneration()) throw new DesktopTeamError('BINDING_CHANGED', '原任务来源已切换，请重新核对产物操作')
+      const current = await this.current(query)
+      if (current.state !== 'connected' || fingerprint(current) !== original) throw new DesktopTeamError('BINDING_CHANGED', '原任务的人员、授权或服务世代已变化')
+      await this.connection(pin)
+      const after = await this.current(query)
+      if (generation !== hifoxWorkspaceGeneration() || fingerprint(after) !== original) throw new DesktopTeamError('BINDING_CHANGED', '原任务的账号、设备或授权世代已变化')
+    }
+    await assertCurrent()
+    await withDesktopTeamService(service => service.authorizeTaskProgress(pin.connectionId))
+    await assertCurrent()
+    return { pin, assertCurrent }
+  }
   private async locked<T>(query: HifoxProgressQuery, action: () => Promise<T>): Promise<T> {
     const key = JSON.stringify([query.workspaceKey, query.taskId]), before = this.serial.get(key) ?? Promise.resolve()
     const work = before.catch(() => {}).then(action)
@@ -31,7 +67,9 @@ export class HifoxTaskProgressService {
     try { return await work } finally { if (this.serial.get(key) === work) this.serial.delete(key) }
   }
   private async current(query: HifoxProgressQuery): Promise<HifoxWorkspaceContext> {
+    this.assertSelection()
     const context = await hifoxWorkspaceStatus()
+    this.assertSelection()
     if (context.key !== query.workspaceKey || !context.connectionId || !context.actorId || !context.projectId || !context.epoch || !context.instanceId) throw new DesktopTeamError('BINDING_CHANGED', '请在原团队登录与任务空间核对进度')
     if (context.state === 'access-revoked') throw new DesktopTeamError('ACCESS_LOCKED', '原协作权限已失效，旧报告已停止')
     return context
@@ -67,18 +105,21 @@ export class HifoxTaskProgressService {
       epoch: remote.epoch, instanceId: remote.instanceId, authorizationRevision: remote.authorizationRevision } }
   }
   private async flush(query: HifoxProgressQuery): Promise<void> {
-    const row = await taskProgressNativeCall<TaskProgressNativeView>({ operation: 'sync', query })
+    const row = await this.nativeCall<TaskProgressNativeView>({ operation: 'sync', query })
     if (row.value.local?.state === 'stopped') throw new DesktopTeamError(row.value.local.errorCode ?? 'TASK_PROGRESS_BINDING_CONFLICT', '原任务上报已停止，请核对中心状态；冲突命令不会补发')
   }
   private async result(query: HifoxProgressQuery, freshness: HifoxProgressValue['freshness']): Promise<HifoxProgressResult> {
-    const row = await taskProgressNativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
+    const row = await this.nativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
     await this.current(query)
     if (!row) return { ok: true, value: { ...query, server: null, local: null, freshness } }
     return { ok: true, value: { ...row.value, freshness: row.value.local?.pendingCount ? 'pending' : freshness } }
   }
   private async guarded(raw: unknown, action: (query: HifoxProgressQuery) => Promise<HifoxProgressResult>): Promise<HifoxProgressResult> {
+    return this.admissions.run({ generation: hifoxWorkspaceGeneration(), admitted: false }, () => this.guardedCurrent(raw, action))
+  }
+  private async guardedCurrent(raw: unknown, action: (query: HifoxProgressQuery) => Promise<HifoxProgressResult>): Promise<HifoxProgressResult> {
     let query: HifoxProgressQuery | undefined
-    try { query = hifoxProgressQuerySchema.parse(raw); await this.current(query); return await this.locked(query, () => action(query as HifoxProgressQuery)) }
+    try { query = hifoxProgressQuerySchema.parse(raw); await this.current(query); const owned = query; return await this.locked(owned, () => action(owned)) }
     catch (error) {
       const network = transient(error), code = codeOf(error)
       let value: HifoxProgressValue | undefined
@@ -89,14 +130,14 @@ export class HifoxTaskProgressService {
   }
   status(raw: unknown): Promise<HifoxProgressResult> {
     return this.guarded(raw, async query => {
-      let row = await taskProgressNativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
+      let row = await this.nativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
       const scope = row ?? await this.capture(query)
       const pin = scope.pin
       const context = await this.current(query)
       if (context.connectionId !== pin.connectionId || context.epoch !== pin.epoch || context.actorId !== pin.ownerId) throw new DesktopTeamError('BINDING_CHANGED', '原绑定与当前登录身份不一致')
       await this.connection(pin)
       const server = await withDesktopTeamService(service => service.hifoxTaskProgress(pin.connectionId, pin.taskId, pin.instanceId))
-      if (row) { await taskProgressNativeCall({ operation: 'observe', query, server }); row = await taskProgressNativeCall({ operation: 'read', query }) }
+      if (row) { await this.nativeCall({ operation: 'observe', query, server }); row = await this.nativeCall({ operation: 'read', query }) }
       await this.current(query)
       return { ok: true, value: row ? { ...row.value, server, freshness: 'remote' } : { ...query, server, local: null, freshness: 'remote' } }
     })
@@ -108,20 +149,26 @@ export class HifoxTaskProgressService {
     return this.guarded(query, async () => {
       const { pin, view } = await this.capture(query)
       const source = await readHifoxWorkSource({ workspaceStatus: async () => view.context, workspaceSnapshot: async () => view }, query)
-      const existing = await taskProgressNativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
+      const existing = await this.nativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
       if (existing && existing.value.local?.state !== 'detached' && !takeover) {
         if (JSON.stringify(existing.pin) !== JSON.stringify(pin)) throw new DesktopTeamError('BINDING_CHANGED', '原任务执行属于另一身份或世代')
-        await this.flush(query); await taskProgressNativeCall({ operation: 'run', query })
+        await this.flush(query); await this.nativeCall({ operation: 'run', query })
         return this.result(query, 'remote')
       }
       let root = app.getPath('userData'), taskDir: string | undefined, inputVersion = source.revision
+      let resourceBinding: HifoxWorkResourceBinding | undefined
+      let development: HifoxDevelopmentContext | undefined
       if (source.material.workKind === 'code') {
         const task = view.snapshot.tasks.find(item => item.id === pin.taskId)
         if (task?.workflow && !['planning', 'developing'].includes(task.workflow.stage)) throw new DesktopTeamError('TASK_PROGRESS_FORBIDDEN', '请先通过团队任务的开发与方案流程进入可执行阶段')
-        const work = await this.workspace.prepare(query)
+        const work = await this.workspace.status(query)
         if (!work.ok) return work
         if (!work.prepared || !work.local || work.reviewRequired) return ipcFail(IpcErrorCode.Conflict, '代码任务尚未确认本机材料，请先核对准备结果')
         root = work.local.projectRoot; taskDir = work.local.taskDir; inputVersion = work.preparedRevision
+        resourceBinding = work.local.resourceBinding
+        development = work.local.development
+        if (!resourceBinding) throw new DesktopTeamError('TASK_RESOURCE_REVIEW_REQUIRED', '请重新核对团队任务的代码资源与本机副本后启动')
+        if (!development) throw new DesktopTeamError('TASK_WORKCOPY_CHANGED', '本机开发上下文尚未固定，请重新核对后启动')
       }
       const server = await withDesktopTeamService(service => service.hifoxTaskProgress(pin.connectionId, pin.taskId, pin.instanceId))
       if (takeover && (server.generation !== takeover.expectedGeneration || (server.binding?.bindingId ?? null) !== takeover.expectedBindingId)) throw new DesktopTeamError('TASK_PROGRESS_BINDING_CONFLICT', '接管确认期间上报绑定已变化，请重新核对')
@@ -132,10 +179,10 @@ export class HifoxTaskProgressService {
           : 'Read task-input.json in this app-managed working directory before working. It contains the complete frozen requirements, acceptance criteria and artifacts. This prompt is an index, not the full input. The working directory is not an OS sandbox.',
         'Report short steps/blockers with report_progress when available. Task business transitions require the team service actions; do not complete the business task from a turn result.'
       ].join('\n\n')
-      await taskProgressNativeCall({ operation: 'prepare', pin, server, takeover: Boolean(takeover), plan: { root, taskDir, inputVersion, sourceVersion: source.revision,
-        material: source.material.workKind !== 'code' ? source.material : undefined, prompt, managedDirectory: source.material.workKind !== 'code', engine, agentId } })
+      await this.nativeCall({ operation: 'prepare', pin, server, takeover: Boolean(takeover), plan: { root, taskDir, inputVersion, sourceVersion: source.revision,
+        material: source.material.workKind !== 'code' ? source.material : undefined, prompt, managedDirectory: source.material.workKind !== 'code', engine, agentId, resourceBinding, development } })
       await this.flush(query)
-      await taskProgressNativeCall({ operation: 'run', query })
+      await this.nativeCall({ operation: 'run', query })
       return this.result(query, 'remote')
     })
   }
@@ -144,60 +191,68 @@ export class HifoxTaskProgressService {
     if (!parsed.success) return Promise.resolve(ipcFail(IpcErrorCode.InvalidArg, '只允许单行步骤、阻塞与运行状态'))
     const { activity, step, blocker, takeover, ...query } = parsed.data
     return this.guarded(query, async () => {
-      const old = await taskProgressNativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
+      const old = await this.nativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
       if (!old || old.value.local?.state === 'detached' || takeover) {
         const { pin } = await this.capture(query)
         if (pin.handlerId !== pin.ownerId) throw new DesktopTeamError('TASK_PROGRESS_FORBIDDEN', '只有当前任务处理人可以上报进度')
         const server = await withDesktopTeamService(service => service.hifoxTaskProgress(pin.connectionId, pin.taskId, pin.instanceId))
         if (takeover && (server.generation !== takeover.expectedGeneration || (server.binding?.bindingId ?? null) !== takeover.expectedBindingId)) throw new DesktopTeamError('TASK_PROGRESS_BINDING_CONFLICT', '接管确认期间上报绑定已变化，请重新核对')
         await withDesktopTeamService(service => service.authorizeTaskProgress(pin.connectionId))
-        await taskProgressNativeCall({ operation: 'prepare', pin, server, plan: null, takeover: Boolean(takeover) })
+        await this.nativeCall({ operation: 'prepare', pin, server, plan: null, takeover: Boolean(takeover) })
         await this.flush(query)
       }
-      await taskProgressNativeCall({ operation: 'report', query, summary: { activity, step, blocker } })
+      await this.nativeCall({ operation: 'report', query, summary: { activity, step, blocker } })
       await this.flush(query)
       return this.result(query, 'remote')
     })
   }
   retry(raw: unknown): Promise<HifoxProgressResult> {
     return this.guarded(raw, async query => {
-      const owned = await taskProgressNativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
+      const owned = await this.nativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
       if (!owned) return ipcFail(IpcErrorCode.NotFound, '没有待核对的原进度命令')
       const context = await this.current(query)
       if (context.connectionId !== owned.pin.connectionId || context.epoch !== owned.pin.epoch || context.actorId !== owned.pin.ownerId) throw new DesktopTeamError('BINDING_CHANGED', '原进度身份不能由当前来源接管')
-      await this.connection(owned.pin); await this.flush(query)
-      const latest = await taskProgressNativeCall<TaskProgressNativeView>({ operation: 'read', query })
-      if (latest.value.local?.dispatch === 'not_sent' && latest.value.local.state === 'active') await taskProgressNativeCall({ operation: 'run', query })
+      await this.connection(owned.pin)
+      if (owned.value.local?.state === 'preparing') {
+        const reconciled = await this.nativeCall<TaskProgressNativeView>({ operation: 'sync', query })
+        if (reconciled.value.local?.state === 'stopped') return this.result(query, 'remote')
+      }
+      await this.flush(query)
+      const latest = await this.nativeCall<TaskProgressNativeView>({ operation: 'read', query })
+      if (latest.value.local?.dispatch === 'not_sent' && latest.value.local.state === 'active') await this.nativeCall({ operation: 'run', query })
       return this.result(query, 'remote')
     })
   }
   detach(raw: unknown): Promise<HifoxProgressResult> {
     return this.guarded(raw, async query => {
-      await taskProgressNativeCall({ operation: 'detach', query })
+      await this.nativeCall({ operation: 'detach', query })
       await this.flush(query)
       return this.result(query, 'remote')
     })
   }
-  private async conversationAction(raw: unknown, operation: 'conversation' | 'events' | 'send' | 'respond' | 'cancel' | 'resume'): Promise<unknown> {
+  private conversationAction(raw: unknown, operation: 'conversation' | 'events' | 'send' | 'respond' | 'cancel' | 'resume'): Promise<unknown> {
+    return this.admissions.run({ generation: hifoxWorkspaceGeneration(), admitted: false }, () => this.conversationOwned(raw, operation))
+  }
+  private async conversationOwned(raw: unknown, operation: 'conversation' | 'events' | 'send' | 'respond' | 'cancel' | 'resume'): Promise<unknown> {
     try {
       const schema = operation === 'send' ? hifoxProgressSendSchema : operation === 'respond' ? hifoxProgressRespondSchema : operation === 'events' ? hifoxProgressEventsSchema : hifoxProgressQuerySchema
       const input = schema.parse(raw), query = { workspaceKey: input.workspaceKey, taskId: input.taskId }
       const context = await this.current(query)
-      const owned = await taskProgressNativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
+      const owned = await this.nativeCall<TaskProgressNativeView | null>({ operation: 'read', query })
       if (!owned?.value.local?.session || context.actorId !== owned.pin.ownerId || context.connectionId !== owned.pin.connectionId || context.epoch !== owned.pin.epoch) return ipcFail(IpcErrorCode.Denied, '原任务会话不属于当前身份或服务世代')
       await this.connection(owned.pin)
       if (['send', 'respond', 'resume'].includes(operation)) {
         const server = await withDesktopTeamService(service => service.hifoxTaskProgress(owned.pin.connectionId, owned.pin.taskId, owned.pin.instanceId))
-        await taskProgressNativeCall({ operation: 'observe', query, server })
+        await this.nativeCall({ operation: 'observe', query, server })
         await this.remoteView(owned.pin)
       }
       switch (operation) {
-        case 'send': return taskProgressNativeCall({ operation, input: hifoxProgressSendSchema.parse(input) })
-        case 'respond': return taskProgressNativeCall({ operation, input: hifoxProgressRespondSchema.parse(input) })
-        case 'events': return taskProgressNativeCall({ operation, input: hifoxProgressEventsSchema.parse(input) })
-        default: return taskProgressNativeCall({ operation, query })
+        case 'send': return this.nativeCall({ operation, input: hifoxProgressSendSchema.parse(input) })
+        case 'respond': return this.nativeCall({ operation, input: hifoxProgressRespondSchema.parse(input) })
+        case 'events': return this.nativeCall({ operation, input: hifoxProgressEventsSchema.parse(input) })
+        default: return this.nativeCall({ operation, query })
       }
-    } catch (error) { return ipcFail(error instanceof z.ZodError ? IpcErrorCode.InvalidArg : IpcErrorCode.Conflict, error instanceof DesktopTeamError ? error.message : '原任务会话操作未确认，请核对原绑定') }
+    } catch (error) { return ipcFail(error instanceof z.ZodError ? IpcErrorCode.InvalidArg : IpcErrorCode.Conflict, error instanceof DesktopTeamError ? error.message : '原任务会话操作未确认，请核对原绑定', { outcomeUnknown: uncertain(error) }) }
   }
   conversation: NonNullable<HifoxProgressApi['conversation']> = input => this.conversationAction(input, 'conversation') as ReturnType<NonNullable<HifoxProgressApi['conversation']>>
   events: NonNullable<HifoxProgressApi['events']> = input => this.conversationAction(input, 'events') as ReturnType<NonNullable<HifoxProgressApi['events']>>

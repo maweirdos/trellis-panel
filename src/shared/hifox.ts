@@ -1,11 +1,15 @@
 import type { HifoxWorkspaceContext } from './hifox-remote'
+import type { TeamRole } from './team-platform'
 import type { z } from 'zod'
+import type { RecordTaskDeliveryInput } from './task-delivery'
 import type {
   hifoxTaskWorkKindSchema, hifoxTaskStageSchema, hifoxTaskActionSchema,
   hifoxTaskWorkflowArtifactSchema, hifoxTaskWorkflowEventSchema, hifoxTaskWorkflowSchema,
-  hifoxTransitionTaskInputSchema, hifoxVersionDeliverySchema, hifoxRecordVersionDeliveryInputSchema
+  hifoxTransitionTaskInputSchema, hifoxVersionDeliverySchema, hifoxRecordVersionDeliveryInputSchema,
+  hifoxMilestoneSchema, hifoxSaveMilestoneInputSchema, hifoxMilestoneCommandInputSchema, hifoxInitialTaskTypeSchema
 } from './hifox-schema'
 
+export type HifoxInitialTaskType = z.infer<typeof hifoxInitialTaskTypeSchema>
 export type HifoxTaskWorkKind = z.infer<typeof hifoxTaskWorkKindSchema>
 export type HifoxTaskStage = z.infer<typeof hifoxTaskStageSchema>
 export type HifoxTaskAction = z.infer<typeof hifoxTaskActionSchema>
@@ -15,6 +19,14 @@ export type HifoxTaskWorkflow = z.infer<typeof hifoxTaskWorkflowSchema>
 export type HifoxTransitionTaskInput = z.infer<typeof hifoxTransitionTaskInputSchema>
 export type HifoxVersionDelivery = z.infer<typeof hifoxVersionDeliverySchema>
 export type HifoxRecordVersionDeliveryInput = z.infer<typeof hifoxRecordVersionDeliveryInputSchema>
+export type HifoxMilestone = z.infer<typeof hifoxMilestoneSchema>
+export type HifoxSaveMilestoneInput = z.infer<typeof hifoxSaveMilestoneInputSchema>
+export type HifoxMilestoneCommandInput = z.infer<typeof hifoxMilestoneCommandInputSchema>
+export type {
+  AdoptTaskDeliveryProtocol, RequirementBaseline, RequirementBaselineInput, TaskDelivery, TaskDeliveryInput,
+  TaskDeliveryState, TaskDeliveryRoles, TaskTestRun, TaskTestRunInput, TaskMaterialReference,
+  TaskDeliveryEventLinks, TaskDeliveryDependencies, RecordTaskDeliveryInput
+} from './task-delivery'
 
 /**
  * 本机与共享协作域契约；桌面、浏览器和服务端复用同一套领域规则。
@@ -83,6 +95,8 @@ export interface HifoxMember {
   email?: string
   title?: string
   role: HifoxRole
+  /** Authenticated project responsibilities, projected by the team service. */
+  projectRoles?: TeamRole[]
   avatarHue: number
   joinedAt: string
 }
@@ -380,6 +394,7 @@ export interface HifoxSnapshot {
   projects: HifoxProject[]
   iterations: HifoxIteration[]
   versionDeliveries?: HifoxVersionDelivery[]
+  milestones?: HifoxMilestone[]
   views: HifoxView[]
   triageDecisions: HifoxTriageDecision[]
   automations: HifoxAutomation[]
@@ -480,7 +495,7 @@ export interface HifoxApi {
   /** 分拣台待办队列（含优先级建议） */
   triageQueue: (spaceId: HifoxID) => Promise<{ ok: true; data: Array<{ task: HifoxTask; suggested: 'urgent' | 'high' | 'medium' | 'low'; reason: string }> } | HifoxFailure>
 
-  createSpace: (input: { name: string; key: string; description?: string; visibility?: 'public' | 'private' }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  createSpace: (input: { name: string; key: string; description?: string; visibility?: 'public' | 'private'; initialTaskTypes?: HifoxInitialTaskType[] }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   updateSpace: (input: { id: HifoxID; name?: string; description?: string; multiAssignee?: boolean; visibility?: 'public' | 'private'; archived?: boolean }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   joinSpace: (input: { spaceId: HifoxID; memberId?: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
@@ -500,6 +515,7 @@ export interface HifoxApi {
   createTask: (input: HifoxTaskInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext; taskId: HifoxID } | HifoxFailure>
   updateTask: (input: { id: HifoxID; patch: HifoxTaskPatchInput }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   transitionTask: (input: HifoxTransitionTaskInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  recordTaskDelivery: (input: RecordTaskDeliveryInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   removeTask: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   addRelation: (input: { taskId: HifoxID; relation: HifoxTaskRelation }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   removeRelation: (input: { taskId: HifoxID; targetTaskId: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
@@ -515,6 +531,9 @@ export interface HifoxApi {
   /** Reject unfinished scope; carryOver is accepted for old callers and never moves work. */
   completeIteration: (input: { id: HifoxID; carryOver?: 'backlog' | 'next' }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   recordVersionDelivery: (input: HifoxRecordVersionDeliveryInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  saveMilestone: (input: HifoxSaveMilestoneInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  completeMilestone: (input: HifoxMilestoneCommandInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
+  removeMilestone: (input: HifoxMilestoneCommandInput) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
 
   saveView: (input: { id?: HifoxID; spaceId: HifoxID; name: string; filter: HifoxViewFilter; groupBy: HifoxView['groupBy'] }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>
   removeView: (input: { id: HifoxID }) => Promise<{ ok: true; data: HifoxSnapshot; context?: HifoxWorkspaceContext } | HifoxFailure>

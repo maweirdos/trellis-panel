@@ -10,6 +10,9 @@ import { Field, inputClass, textareaClass } from '../ui'
 import { TaskAllocationPicker, type TaskAllocation } from './task-detail/TaskAllocationPicker'
 import { canReadTaskSpace, taskActorId, taskSourceKey, useTaskMutation, useTaskSource, useTaskSurfaceGeneration } from './task-detail/use-task-source'
 import { useTaskDraft, useTaskDraftField } from './task-detail/task-drafts'
+import { RequirementIntake } from '../intake/RequirementIntake'
+import { discussionInput } from '../intake/requirements'
+import type { IntakeFile } from '../intake/use-requirement-intake'
 
 export interface NewTaskModalProps {
   open: boolean
@@ -53,6 +56,9 @@ function TaskCreateForm({ snapshot, spaceId, onClose, parentTaskId: initialParen
   const [projectId, setProjectId] = useTaskDraftField(draft, 'projectId', initialProject ?? '')
   const [iterationId, setIterationId] = useTaskDraftField(draft, 'iterationId', explicitTriage === true ? '' : initialIteration ?? '')
   const [parentTaskId, setParentTaskId] = useTaskDraftField(draft, 'parentTaskId', initialParent ?? '')
+  const [creationMode, setCreationMode] = useTaskDraftField<'ai' | 'manual'>(draft, 'creationMode', !initialParent && context.state !== 'local' ? 'ai' : 'manual')
+  const [intakeOriginal] = useTaskDraftField(draft, 'intakeOriginal', '')
+  const [intakeFiles] = useTaskDraftField<IntakeFile[]>(draft, 'intakeFiles', [])
   const space = snapshot.spaces.find((candidate) => candidate.id === spaceId)
   if (!space || !source.available) return null
   const actorId = taskActorId(snapshot, context)
@@ -77,9 +83,15 @@ function TaskCreateForm({ snapshot, spaceId, onClose, parentTaskId: initialParen
     const result = await mutate('新建任务', async () => { const result = await api.hifox.createTask(input); if (result.ok) acknowledge(); return result })
     if (result) { onClose(); useHifox.getState().openTask(result.taskId) }
   }
+  if (creationMode === 'ai' && actorId) return <RequirementIntake snapshot={snapshot} spaceId={spaceId} actorId={actorId} draft={draft} onClose={close} onManual={() => {
+    if (!source.canWrite()) return
+    if (!title.trim() && intakeOriginal.trim()) setTitle(intakeOriginal.trim().split('\n')[0].slice(0, 160))
+    if (!description.trim() && (intakeOriginal.trim() || intakeFiles.length)) setDescription(discussionInput(intakeOriginal, intakeFiles, '', ''))
+    setCreationMode('manual')
+  }} />
   return <Modal open onClose={close} ariaLabel={heading}>
     <div className="flex max-h-[var(--my-modal-max-height)] flex-col bg-my-canvas">
-      <header className="flex h-my-header shrink-0 items-center gap-2 border-b border-my-line px-4"><h2 className="min-w-0 flex-1 truncate text-my-md font-semibold text-my-primary">{heading}</h2><span className="text-my-xs text-my-tertiary">{space.key}</span><Tooltip label="关闭新建任务"><Button size="sm" variant="ghost" aria-label="关闭新建任务" onClick={close}><X size={16} /></Button></Tooltip></header>
+      <header className="flex h-my-header shrink-0 items-center gap-2 border-b border-my-line px-4"><h2 className="min-w-0 flex-1 truncate text-my-md font-semibold text-my-primary">{heading}</h2>{!initialParent && context.state !== 'local' && <Button size="sm" variant="ghost" onClick={() => setCreationMode('ai')}>从诉求和资料整理</Button>}<span className="text-my-xs text-my-tertiary">{space.key}</span><Tooltip label="关闭新建任务"><Button size="sm" variant="ghost" aria-label="关闭新建任务" onClick={close}><X size={16} /></Button></Tooltip></header>
       <div className="my-scrollbar min-h-0 overflow-y-auto p-4">
         {space.archived && <p role="alert" className="mb-3 text-my-sm text-my-secondary">空间已停用，恢复后才能创建任务。</p>}
         {!canAct && <p role="alert" className="mb-3 text-my-sm text-my-secondary">当前身份不是该空间成员，无法创建任务。</p>}

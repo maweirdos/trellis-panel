@@ -1,7 +1,7 @@
 import { gitWorkspaceCreateBranchSchema, type GitWorkspaceMutationResult } from '../../../../shared/git-workspace'
 import { IpcErrorCode } from '../../../../shared/ipc-errors'
 import { GitWorkspaceError, workspaceFailure, type GitWorkspaceOperationOptions, type GitWorkspaceProcedureContext } from '../types'
-import { parse, checkScope, guard, validBranch, assertSwitchable } from '../lib/helpers'
+import { parse, checkScope, guardContext, validBranch, assertSwitchable } from '../lib/helpers'
 import { runGit } from '../lib/git'
 import { repositoryState } from '../lib/state'
 
@@ -17,13 +17,14 @@ export async function createBranch(context: GitWorkspaceProcedureContext, root: 
       if (request.switchAfter) assertSwitchable(state)
       if (request.switchAfter && !state.snapshot.clean) throw new GitWorkspaceError(IpcErrorCode.Conflict, '请先提交或处理工作区更改，再创建并切换分支')
       await context.checked(selectedRoot, request.revision, options)
-      guard(options)
+      await guardContext(options)
       await runGit(state.snapshot.repoRoot, ['branch', '--', request.name, state.snapshot.head])
       if (request.switchAfter) {
         try {
-          guard(options)
+          await guardContext(options)
           const current = await repositoryState(selectedRoot)
           if (!current.snapshot.clean || current.snapshot.head !== state.snapshot.head || current.headRef !== state.headRef) throw new GitWorkspaceError(IpcErrorCode.Conflict, '工作区已变化')
+          await guardContext(options)
           await runGit(state.snapshot.repoRoot, ['switch', '--no-guess', '--', request.name], { config: ['submodule.recurse=false'] })
         }
         catch (error) { throw new GitWorkspaceError(IpcErrorCode.Conflict, '分支已创建，但切换未确认完成，请刷新后核验', { ...(error instanceof GitWorkspaceError ? error.extra : {}), mutationCompleted: true }) }

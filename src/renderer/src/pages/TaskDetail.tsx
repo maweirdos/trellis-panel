@@ -44,6 +44,7 @@ import { useEscLayer } from '../utils/use-esc-layer'
 import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
 import type { FileEntry, GitLabTaskStatus, TaskGitInfo, TaskInfo, TaskPatch } from '../../../shared/types'
+import { developmentPanelPosition, saveDevelopmentPanelPosition } from '../hifox/development/context'
 
 const FIELD_LABEL: Record<string, string> = {
   title: '标题',
@@ -403,11 +404,11 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
   const workspace = presentation === 'workspace'
 
   /** 当前选中视图：null = 自动（首选文档），'info' = 详情字段，其余 = 产物文件路径 */
-  const [sel, setSel] = useState<string | null>(null)
-  const [materialGroup, setMaterialGroup] = useState<TaskMaterialGroup>('all')
-  const [contextOpen, setContextOpen] = useState(false)
-  const [pending, setPending] = useState<TaskPatch>({})
-  const [showDiff, setShowDiff] = useState(false)
+  const [sel, setSel] = useState<string | null>(() => developmentPanelPosition(snapshot?.meta.root, openTaskDir)?.selection ?? null)
+  const [materialGroup, setMaterialGroup] = useState<TaskMaterialGroup>(() => developmentPanelPosition(snapshot?.meta.root, openTaskDir)?.materialGroup ?? 'all')
+  const [contextOpen, setContextOpen] = useState(() => developmentPanelPosition(snapshot?.meta.root, openTaskDir)?.contextOpen ?? false)
+  const [pending, setPending] = useState<TaskPatch>(() => developmentPanelPosition(snapshot?.meta.root, openTaskDir)?.pending ?? {})
+  const [showDiff, setShowDiff] = useState(() => developmentPanelPosition(snapshot?.meta.root, openTaskDir)?.showDiff ?? false)
   const [git, setGit] = useState<TaskGitInfo | null>(null)
   const [gitLoading, setGitLoading] = useState(false)
   const [newBranch, setNewBranch] = useState('')
@@ -481,16 +482,20 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
   }
 
   useEffect(() => {
-    setSel(null)
-    setMaterialGroup('all')
-    setContextOpen(false)
-    setPending({})
-    setShowDiff(false)
+    const saved = developmentPanelPosition(snapshot?.meta.root, openTaskDir)
+    setSel(saved?.selection ?? null)
+    setMaterialGroup(saved?.materialGroup ?? 'all')
+    setContextOpen(saved?.contextOpen ?? false)
+    setPending(saved?.pending ?? {})
+    setShowDiff(saved?.showDiff ?? false)
     setGit(null)
     setShowAllCommits(false)
-    setOpenedMtime(task?.taskJsonMtime)
+    setOpenedMtime(saved?.openedMtime ?? task?.taskJsonMtime)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTaskDir, archived])
+  useEffect(() => {
+    saveDevelopmentPanelPosition(snapshot?.meta.root, openTaskDir, { selection: sel, materialGroup, contextOpen, pending, showDiff, openedMtime })
+  }, [sel, materialGroup, contextOpen, pending, showDiff, openedMtime, snapshot?.meta.root, openTaskDir])
 
   // load git info when drawer opens or a rescan lands (30s-cached in main)
   const scannedAt = useApp((s) => s.snapshot?.scannedAt)
@@ -689,6 +694,8 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                 key={d.path}
                 type="button"
                 aria-pressed={on}
+                data-development-material={d.path}
+                aria-current={on ? 'page' : undefined}
                 onClick={() => setSel(d.path)}
                 title={d.name}
                 className={clsx(

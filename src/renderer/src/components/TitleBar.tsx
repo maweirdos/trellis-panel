@@ -6,6 +6,7 @@ import { useMy } from '../my/store'
 import { ProjectSwitcher } from '../my/layout/ProjectSwitcher'
 import { BrandMark } from '../my/BrandMark'
 import { ApplicationPanel } from '../applications/ApplicationPanel'
+import { ApplicationRunCenter } from '../applications/ApplicationRunCenter'
 import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { clsx } from 'clsx'
 import { getPageNavigation } from '../my/navigation'
@@ -13,6 +14,7 @@ import { TeamContextSwitcher } from '../hifox/TeamContextSwitcher'
 import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
 import { useHifox } from '../hifox/store'
 import { ConnectionPanel } from '../hifox/ConnectionPanel'
+import { DevelopmentScopeTag } from '../hifox/development/DevelopmentContextBar'
 
 function WinButton({ onClick, children, label, danger }: {
   onClick: () => void; children: ReactNode; label: string; danger?: boolean
@@ -49,8 +51,8 @@ export function TitleBar(): JSX.Element {
       </div>
       <ShellViewSwitcher />
       {teamContext && <TeamContextSwitcher />}
-      {!development && localCollaboration && hasIpc && <div className="no-drag mx-2 shrink-0"><ConnectionPanel trigger="connect" /></div>}
-      {development ? <div className="no-drag my-shell-project-controls flex min-w-0 items-center gap-1"><span className="ml-2 shrink-0 text-my-xs text-my-tertiary">工程</span><ProjectSwitcher /><GitBranchControl /></div> : !teamContext && <span className="my-shell-scope ml-3 min-w-0 truncate text-my-sm text-my-secondary" title={snapshot?.meta.root}>{(scope === 'project' || scope === 'mixed') && snapshot ? snapshot.meta.name : getPageNavigation(page).title}</span>}
+      {!development && hasIpc && <div className="no-drag mx-2 shrink-0"><ConnectionPanel trigger="connect" hideTrigger={!localCollaboration} /></div>}
+      {development ? <div className="no-drag my-shell-project-controls flex min-w-0 items-center gap-1"><span className="ml-2 shrink-0 text-my-xs text-my-tertiary">工程</span><ProjectSwitcher /><DevelopmentScopeTag /><GitBranchControl /></div> : !teamContext && <span className="my-shell-scope ml-3 min-w-0 truncate text-my-sm text-my-secondary" title={snapshot?.meta.root}>{(scope === 'project' || scope === 'mixed') && snapshot ? snapshot.meta.name : getPageNavigation(page).title}</span>}
       {development && openError && <span role="status" title={openError} className="ml-2 shrink-0 text-my-xs text-my-danger-text">工程打开失败</span>}
       <div className="no-drag ml-1 flex shrink-0 items-center">
         <button type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
@@ -65,6 +67,7 @@ export function TitleBar(): JSX.Element {
         <Search size={16} strokeWidth={1.8} className="shrink-0" /><span className="truncate text-left text-my-md">搜索或输入命令</span><kbd className="ml-2 whitespace-nowrap font-sans text-my-xs text-my-tertiary">Ctrl K</kbd>
       </button>
       {development && <ApplicationPanel />}
+      <ApplicationRunCenter />
       {hasIpc && <div className="no-drag flex h-full items-stretch">
             {snapshot && <WinButton label="打开任务悬浮窗" onClick={() => api.setCapsuleMode(true)}><PictureInPicture2 size={14} /></WinButton>}
         <WinButton label="最小化窗口" onClick={() => api.windowMinimize()}><Minus size={14} /></WinButton>

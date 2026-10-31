@@ -9,11 +9,20 @@ import { teamTaskProgressCommandSchema, teamTaskProgressDtoSchema, type TeamTask
 import { readBounded, writeAtomic } from '../../daemon/files'
 import { installTaskProgressEvents } from './task-progress-events'
 import type { AcpSessionRecord, AcpSessionStatus } from '../../../shared/types'
-import { HifoxWorkBindings } from './task-workspace-records'
+import { HifoxWorkBindings, reconcileHifoxWork } from './task-workspace-records'
 import { projectTeamTaskToLocal } from './team-task-projection'
 import type { NativeTaskProgressSender } from './task-progress-sender'
 import { DesktopTeamError } from '../team-platform/types'
 import { readHifoxWorkSource, type HifoxWorkWorkspaceView } from './task-workspace-source'
+import { hifoxWorkProjectIdentity, inspectHifoxWorkExecutionProject } from './work-project'
+import { materialRead } from '../knowledge-access/materials'
+import { legacyTaskDevelopmentKey, taskDevelopmentKey } from './task-development-identity'
+import { installTaskInputRulesAuthority, type TaskInputRulesInput, type TaskInputRulesAuthority } from './task-input-rules'
+import type { HifoxWorkSource } from './task-workspace-source'
+import { TaskOutputCoordinator } from './task-outputs'
+import { DaemonError } from '../../daemon/errors'
+import { resolveWorkcopy, workcopyUseDirectory } from '../workcopy-use'
+import { readTaskSessionIntent } from '../workcopy-use/task-session-intent'
 
 const rowSchema = z.object({
   pin: taskProgressPinSchema, plan: taskProgressPlanSchema.nullable(),
@@ -22,7 +31,8 @@ const rowSchema = z.object({
   server: teamTaskProgressDtoSchema, bindingId: z.string().uuid().nullable(), bindingGeneration: z.number().int().nonnegative().safe().nullable().default(null), seq: z.number().int().nonnegative().safe(),
   dispatch: z.enum(['not_sent', 'dispatching', 'sent', 'unknown']), errorCode: z.string().nullable(),
   projectionActive: z.boolean().default(false),
-  queue: z.array(z.object({ command: teamTaskProgressCommandSchema, state: z.enum(['queued', 'dispatching', 'unknown']), attempts: z.number().int().nonnegative() }).strict()).max(4)
+  creationBinding: z.object({ commandId: z.string().uuid(), generation: z.number().int().nonnegative().safe(), bindingId: z.string().uuid().nullable() }).strict().optional(),
+  queue: z.array(z.object({ command: teamTaskProgressCommandSchema, state: z.enum(['queued', 'dispatching', 'unknown', 'settled']), attempts: z.number().int().nonnegative() }).strict()).max(4)
 }).strict()
 const storeSchema = z.object({ version: z.literal(1), rows: z.array(rowSchema).max(128) }).strict()
 type Row = z.infer<typeof rowSchema>
@@ -38,6 +48,8 @@ export class HifoxTaskProgressRuntime {
   private rows: Row[]
   private readonly file: string
   private readonly dispose: () => void
+  private readonly disposeRules: () => void
+  private readonly outputs: TaskOutputCoordinator
   private readonly work = new Map<string, Promise<unknown>>()
   private timer?: ReturnType<typeof setTimeout>
   private closed = false
@@ -45,9 +57,11 @@ export class HifoxTaskProgressRuntime {
   private offset = 0
   private failures = 0
   constructor(private readonly dataDir: string, private readonly userData: string = dataDir, private readonly assertOwner: () => void = () => {}, private readonly assertSending: () => void = assertOwner) {
+    this.outputs = new TaskOutputCoordinator({ directory: dataDir, userData, sender: pin => this.sender(pin), assertOwner })
     this.file = join(dataDir, 'hifox-progress', 'state.json')
     this.rows = existsSync(this.file) ? storeSchema.parse(JSON.parse(readBounded(this.file, MAX_STORE_BYTES))).rows : []
     for (const row of this.rows) {
+      if (row.state === 'preparing') row.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED'
       for (const item of row.queue) if (item.state === 'dispatching') item.state = 'unknown'
       if (row.dispatch === 'dispatching') row.dispatch = 'unknown'
     }
@@ -58,6 +72,25 @@ export class HifoxTaskProgressRuntime {
         if (!row || row.state !== 'active') throw new Error('The original task reporting handle is no longer active')
         this.report(row.pin, taskProgressSummarySchema.parse(summary))
         return { queued: true, acknowledged: false }
+      },
+      assertCurrent: async owner => {
+        this.assertSending()
+        if (this.closed) throw new Error('原任务执行所有者已关闭，不能发送命令')
+        const row = this.owned(owner)
+        if (!row || row.state !== 'active' || !row.bindingId || row.server.binding?.bindingId !== row.bindingId) throw new Error('原任务执行身份不可用，不能发送命令')
+        if (row.plan?.development && owner.taskProgress?.workcopyTaskKey !== this.taskKey(row)) throw new Error('旧任务会话缺少当前服务世代的工作副本身份，请保留原会话并建立新会话')
+        const original = JSON.stringify([row.pin, row.plan, row.nativeAlias, row.session, row.bindingId])
+        const sender = await this.sender(row.pin)
+        await this.inputCurrent(row, sender)
+        const server = await sender.status()
+        if (server.binding?.bindingId !== row.bindingId || server.binding.reporterId !== row.pin.ownerId || server.binding.deviceId !== row.pin.deviceId) throw new Error('原任务权限或执行绑定已变化，不能发送命令')
+        const assertCurrent = (): void => {
+          this.assertSending()
+          const current = this.owned(owner)
+          if (this.closed || !current || current.state !== 'active' || current.server.binding?.bindingId !== row.bindingId || JSON.stringify([current.pin, current.plan, current.nativeAlias, current.session, current.bindingId]) !== original) throw new Error('原任务权限或执行绑定已变化，不能发送命令')
+        }
+        assertCurrent()
+        return assertCurrent
       },
       context: owner => {
         const row = this.owned(owner)
@@ -70,9 +103,10 @@ export class HifoxTaskProgressRuntime {
         ].join('\n') }
       }
     })
-    if (this.rows.some(row => row.projectionActive || ['binding', 'active', 'releasing'].includes(row.state))) this.schedule()
+    this.disposeRules = installTaskInputRulesAuthority(input => this.captureTaskRules(input))
+    if (this.rows.some(row => row.projectionActive || ['binding', 'active', 'releasing'].includes(row.state)) || this.outputs.hasWork()) this.schedule()
   }
-  async close(): Promise<void> { this.closed = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; await Promise.allSettled([...this.work.values()]); this.dispose() }
+  async close(): Promise<void> { this.closed = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; await Promise.allSettled([...this.work.values()]); await this.outputs.close(); this.disposeRules(); this.dispose() }
   busy(): boolean { return this.pumping || this.work.size > 0 }
   private schedule(): void {
     if (this.closed || this.timer) return
@@ -87,11 +121,41 @@ export class HifoxTaskProgressRuntime {
     const { DesktopTeamService } = await import('../team-platform/service')
     return DesktopTeamService.taskProgressSender(join(this.userData, 'team-platform'), pin)
   }
+  private async pinnedSource(row: Row, sender: NativeTaskProgressSender, expected?: HifoxWorkSource): Promise<HifoxWorkSource> {
+    const remote = await sender.snapshot()
+    const view: HifoxWorkWorkspaceView = { snapshot: remote.snapshot, context: { key: row.pin.workspaceKey, connectionId: row.pin.connectionId,
+      origin: row.pin.origin, actorId: row.pin.ownerId, projectId: row.pin.projectId, instanceId: remote.instanceId, epoch: remote.epoch,
+      authorizationRevision: remote.authorizationRevision, revision: remote.revision, state: 'connected', projectName: null, canManage: remote.canManage, pendingCount: 0 } }
+    return readHifoxWorkSource({ workspaceSnapshot: async () => view, workspaceStatus: async () => view.context }, { workspaceKey: row.pin.workspaceKey, taskId: row.pin.taskId }, expected)
+  }
+  private async captureTaskRules(input: TaskInputRulesInput): Promise<TaskInputRulesAuthority> {
+    this.assertSending()
+    if (this.closed) throw new Error('原任务执行所有者已关闭')
+    const candidates = this.rows.filter(row => row.plan && !row.plan.managedDirectory && row.pin.taskId === input.teamTask.taskId && row.pin.spaceId === input.teamTask.spaceId
+      && row.plan.inputVersion === input.teamTask.inputVersion && row.plan.taskDir === input.taskDir && rootKey(row.plan.root) === rootKey(input.projectRoot)
+      && ['preparing', 'binding', 'active'].includes(row.state))
+    if (candidates.length !== 1) throw new Error('原任务规则缺少唯一的有效本机执行绑定')
+    const row = candidates[0], development = row.plan?.development
+    if (!development || input.teamTask.workcopyTaskKey !== this.taskKey(row)) throw new Error('原任务规则没有可信的工作副本任务身份')
+    const signature = (value: Row): string => JSON.stringify([value.pin, value.plan, value.nativeAlias, value.session?.sessionId ?? null])
+    const original = signature(row), sender = await this.sender(row.pin)
+    await this.inputCurrent(row, sender)
+    const source = await this.pinnedSource(row, sender)
+    if (source.closed || row.plan && !row.plan.managedDirectory && !source.canCreate) throw new DesktopTeamError('TASK_PROGRESS_FORBIDDEN', '原任务已结束或已交接到不可执行阶段，未继续原会话的新写入')
+    return { dataDir: this.userData, source, assertCurrent: async () => {
+      this.assertSending()
+      const current = [...this.rows].reverse().find(value => value.pin.workspaceKey === row.pin.workspaceKey && value.pin.taskId === row.pin.taskId)
+      if (this.closed || !current || signature(current) !== original || !['preparing', 'binding', 'active'].includes(current.state)) throw new Error('读取规则期间原执行尝试或所有者已变化')
+      await this.inputCurrent(current, sender)
+      await this.pinnedSource(current, sender, source)
+    } }
+  }
   private async background(): Promise<void> {
     if (this.closed || this.pumping) return
     this.assertSending()
     this.pumping = true
     try {
+      if (this.outputs.hasWork()) await this.outputs.pump()
       const rows = this.rows.filter(row => row.projectionActive || ['binding', 'active', 'releasing'].includes(row.state))
       const picked = Array.from({ length: Math.min(2, rows.length) }, (_, index) => rows[(this.offset + index) % rows.length])
       this.offset = rows.length ? (this.offset + picked.length) % rows.length : 0
@@ -104,7 +168,7 @@ export class HifoxTaskProgressRuntime {
     if (enable && (row.state !== 'active' || row.server.binding?.bindingId !== row.bindingId)) throw new Error('Only a server-confirmed original binding can enable team authority')
     const remote = await sender.snapshot()
     const identity = createHash('sha256').update(JSON.stringify([row.pin.workspaceKey, row.pin.connectionId, row.pin.projectId, row.pin.ownerId, row.pin.origin, row.pin.instanceId])).digest('hex')
-    const record = new HifoxWorkBindings(this.userData).read({ workspaceKey: row.pin.workspaceKey, spaceId: row.pin.spaceId, taskId: row.pin.taskId, identity })
+    const record = new HifoxWorkBindings(this.userData).read({ workspaceKey: row.pin.workspaceKey, spaceId: row.pin.spaceId, taskId: row.pin.taskId, identity, taskCreatedAt: row.plan.development?.taskCreatedAt })
     if (!record || record.value.projectRoot !== row.plan.root || record.value.sourceRevision !== row.plan.inputVersion) throw new Error('Original task material or physical project binding changed')
     const view = { snapshot: remote.snapshot, context: { key: row.pin.workspaceKey, connectionId: row.pin.connectionId, projectId: row.pin.projectId,
       actorId: row.pin.ownerId, origin: row.pin.origin, instanceId: row.pin.instanceId, epoch: row.pin.epoch,
@@ -118,21 +182,104 @@ export class HifoxTaskProgressRuntime {
   private async inputCurrent(row: Row, sender: NativeTaskProgressSender): Promise<void> {
     if (!row.plan) return
     if (row.plan.managedDirectory && readBounded(join(row.plan.root, 'task-input.json'), 270 * 1024) !== JSON.stringify({ inputVersion: row.plan.inputVersion, material: row.plan.material })) throw new DesktopTeamError('TASK_INPUT_CHANGED', '本机冻结任务材料已改变，请核对原版本后建立新会话')
-    const remote = await sender.snapshot()
-    const view: HifoxWorkWorkspaceView = { snapshot: remote.snapshot, context: { key: row.pin.workspaceKey, connectionId: row.pin.connectionId,
-      origin: row.pin.origin, actorId: row.pin.ownerId, projectId: row.pin.projectId, instanceId: remote.instanceId, epoch: remote.epoch,
-      authorizationRevision: remote.authorizationRevision, revision: remote.revision, state: 'connected', projectName: null, canManage: remote.canManage, pendingCount: 0 } }
     const query = { workspaceKey: row.pin.workspaceKey, taskId: row.pin.taskId }
-    const source = await readHifoxWorkSource({ workspaceSnapshot: async () => view, workspaceStatus: async () => view.context }, query)
+    const source = await this.pinnedSource(row, sender)
+    if (source.closed || !row.plan.managedDirectory && !source.canCreate) throw new DesktopTeamError('TASK_PROGRESS_FORBIDDEN', '原任务已结束或已交接到不可执行阶段，未继续原会话的新写入')
     if (source.revision !== row.plan.sourceVersion) throw new DesktopTeamError('TASK_INPUT_CHANGED', '中心需求、验收或设计材料已变化，请审阅后显式重新绑定新会话；旧输入版本已保留')
+    if (!row.plan.managedDirectory) {
+      const binding = row.plan.resourceBinding
+      if (!binding) throw new DesktopTeamError('TASK_RESOURCE_REVIEW_REQUIRED', '原会话尚未固定代码资源与工作副本，请核对后显式建立新的执行绑定；原历史已保留')
+      const resource = await sender.codeResource()
+      const sourceDigest = createHash('sha256').update(JSON.stringify(resource.resource?.source ?? null)).digest('hex')
+      if (resource.availability !== 'available' || resource.resource?.resourceId !== binding.resourceId || resource.selection?.revision !== binding.selectionRevision
+        || resource.taskCreatedAt !== binding.taskCreatedAt || source.taskCreatedAt !== binding.taskCreatedAt || sourceDigest !== binding.sourceDigest) {
+        throw new DesktopTeamError('TASK_RESOURCE_CHANGED', '原任务代码资源已变化或停用，不能沿用旧会话继续写入；请核对原开发尝试')
+      }
+      if (hifoxWorkProjectIdentity(row.plan.root) !== binding.projectIdentity) throw new DesktopTeamError('TASK_WORKCOPY_CHANGED', '原工作副本目录身份已变化，不能以同名目录恢复执行')
+      const identity = createHash('sha256').update(JSON.stringify([row.pin.workspaceKey, row.pin.connectionId, row.pin.projectId, row.pin.ownerId, row.pin.origin, row.pin.instanceId])).digest('hex')
+      const record = new HifoxWorkBindings(this.userData).read({ workspaceKey: row.pin.workspaceKey, spaceId: row.pin.spaceId, taskId: row.pin.taskId, identity, taskCreatedAt: binding.taskCreatedAt })
+      if (!record || record.value.projectIdentity !== binding.projectIdentity || rootKey(record.value.projectRoot) !== rootKey(row.plan.root)
+        || record.value.codeResource?.resourceId !== binding.resourceId || record.value.codeResource.selectionRevision !== binding.selectionRevision || record.value.codeResource.sourceDigest !== binding.sourceDigest) {
+        throw new DesktopTeamError('TASK_WORKCOPY_CHANGED', '原任务的本机绑定已变化，请重新核对；不会跟随当前工程')
+      }
+      const context = row.plan.development
+      if (!context || record.value.commandId !== context.contextId || (record.value.generation ?? 1) !== context.generation || record.value.sourceRevision !== row.plan.inputVersion || record.value.taskCreatedAt !== context.taskCreatedAt) throw new DesktopTeamError('TASK_WORKCOPY_CHANGED', '原开发尝试已被取代或输入已变化，请建立明确的新执行绑定')
+      const inputs = await sender.inputs(context.taskCreatedAt)
+      if (inputs.admission.status !== 'ready' || (inputs.current?.digest ?? null) !== (record.value.material.governance?.digest ?? null)) throw new DesktopTeamError('TASK_INPUT_CHANGED', '团队已采用输入或批准状态发生变化，请比较后建立新的开发尝试；旧输入保留')
+      const preview = await inspectHifoxWorkExecutionProject(row.plan.root, resource.resource ?? undefined)
+      const baseline = record.value.git
+      if (baseline === undefined || !preview.resourceMatched || baseline && (!preview.git || preview.git.repoRoot !== baseline.repoRoot || preview.git.branch !== baseline.branch || preview.git.detached !== baseline.detached || baseline.detached && preview.git.head !== baseline.head)) throw new DesktopTeamError('TASK_WORKCOPY_CHANGED', '原工作副本的分支或仓库已变化，未沿用旧会话继续写入')
+      const disk = reconcileHifoxWork(record.value)
+      if (!disk || disk.local.taskDir !== row.plan.taskDir || disk.sourceRevision !== row.plan.inputVersion) throw new DesktopTeamError('TASK_INPUT_CHANGED', '原任务目录或固定输入无法核对')
+      for (const file of record.value.referenceFiles ?? []) {
+        if (materialRead(row.plan.root, `${disk.local.relativeDir}/${file.relativePath}`).revision !== file.bodyDigest) throw new DesktopTeamError('TASK_INPUT_CHANGED', '已采用的固定输入文件被修改，请核对原材料')
+      }
+    }
   }
   private async stopOld(row: Row): Promise<void> {
     if (!row.session) return
     const acp = await import('../acp')
     await acp.cancelAcpSession(row.session.projectRoot, row.session.sessionId).catch(() => {})
   }
+  private taskKey(row: Row): string {
+    const development = row.plan?.development
+    if (!development) throw new Error('原任务缺少开发尝试身份')
+    return taskDevelopmentKey({ workspaceKey: row.pin.workspaceKey, actorId: row.pin.ownerId, spaceId: row.pin.spaceId, taskId: row.pin.taskId,
+      taskCreatedAt: development.taskCreatedAt, instanceId: row.pin.instanceId, epoch: row.pin.epoch })
+  }
+  private sessionExpected(row: Row): Parameters<typeof import('../acp').reserveTaskSession>[2] {
+    if (!row.plan) throw new Error('Manual reporting has no native session intent')
+    const plan = row.plan
+    return { engine: plan.engine, taskDir: plan.taskDir, task: { taskId: row.pin.taskId, spaceId: row.pin.spaceId, inputVersion: plan.inputVersion,
+      ...(plan.development ? { workcopyTaskKey: this.taskKey(row) } : {}) } }
+  }
+  private recoveryExpected(row: Row): Parameters<typeof import('../acp').reserveTaskSession>[2] {
+    if (!row.plan) throw new Error('原任务没有本机会话')
+    const intent = readTaskSessionIntent(workcopyUseDirectory(), row.plan.root, row.nativeAlias)
+    if (!intent) throw new DaemonError('E_UNKNOWN', '原任务创建意图缺失，无法判定旧工作副本身份；请核对原会话清理。', 'unknown')
+    const current = this.sessionExpected(row)
+    const legacy = row.plan.development ? { ...current, task: { ...current.task, workcopyTaskKey: legacyTaskDevelopmentKey({ workspaceKey: row.pin.workspaceKey, actorId: row.pin.ownerId,
+      spaceId: row.pin.spaceId, taskId: row.pin.taskId, taskCreatedAt: row.plan.development.taskCreatedAt }) } } : current
+    if (JSON.stringify(intent.expected) !== JSON.stringify(current) && JSON.stringify(intent.expected) !== JSON.stringify(legacy)) throw new DaemonError('E_UNKNOWN', '原创建意图与任务身份不一致，未接管原会话。', 'unknown')
+    return intent.expected
+  }
+  private async reconcileCreation(row: Row, sender: NativeTaskProgressSender): Promise<Row> {
+    if (row.plan) {
+      const original = this.recoveryExpected(row)
+      if (original.task?.workcopyTaskKey !== this.sessionExpected(row).task?.workcopyTaskKey) throw new DaemonError('E_UNKNOWN', '旧任务会话仅可核对或清理，请建立新会话继续开发。', 'unknown')
+      const acp = await import('../acp')
+      const proof = await acp.reconcileTaskSession(row.plan.root, row.nativeAlias, original)
+      if (proof.status === 'unknown') {
+        this.edit(row.pin, current => { current.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED' })
+        throw new DaemonError('E_UNKNOWN', proof.reason, 'unknown')
+      }
+      if (proof.status === 'settled') {
+        this.edit(row.pin, current => { current.state = 'stopped'; current.projectionActive = false; current.errorCode = proof.outcome === 'not-created' ? 'NATIVE_CREATION_NOT_ADMITTED' : 'NATIVE_CREATION_CLEANED';
+          if (current.dispatch !== 'sent' && proof.dispatch !== 'not-sent') current.dispatch = proof.dispatch === 'sent' ? 'sent' : 'unknown' })
+        return this.require(row.pin)
+      }
+      this.edit(row.pin, current => { current.session = proof.session; if (current.dispatch !== 'sent' && proof.dispatch !== 'not-sent') current.dispatch = proof.dispatch === 'sent' ? 'sent' : 'unknown' })
+      row = this.require(row.pin)
+      await this.inputCurrent(row, sender)
+    }
+    const server = await sender.status(), expected = row.creationBinding ?? { commandId: randomUUID(), generation: 0, bindingId: null }
+    if (server.generation !== expected.generation || (server.binding?.bindingId ?? null) !== expected.bindingId) {
+      this.edit(row.pin, current => { current.server = server; current.state = 'stopped'; current.errorCode = 'TASK_PROGRESS_BINDING_CONFLICT'; current.projectionActive = false })
+      return this.require(row.pin)
+    }
+    this.edit(row.pin, current => {
+      current.server = server; current.creationBinding = expected; current.errorCode = null; current.state = 'binding'
+      current.queue.push({ command: { commandId: expected.commandId, expectedEpoch: current.pin.epoch, kind: 'bind', expectedGeneration: expected.generation, expectedBindingId: expected.bindingId,
+        source: { kind: 'desktop', sessionId: current.nativeAlias, engine: current.plan?.engine ?? 'manual', directoryName: current.plan ? basename(current.plan.root).slice(0, 100) || 'Task' : 'Manual progress' } }, state: 'queued', attempts: 0 })
+    })
+    return this.require(row.pin)
+  }
   private async sync(query: HifoxProgressQuery): Promise<TaskProgressNativeView> {
     let row = this.require(query)
+    if (row.state === 'preparing') {
+      row = await this.reconcileCreation(row, await this.sender(row.pin))
+      if (row.state === 'stopped') return this.view(row)
+    }
     if (!row.projectionActive && !['binding', 'active', 'releasing'].includes(row.state)) return this.view(row)
     const sender = await this.sender(row.pin)
     let commandId: string | undefined
@@ -183,7 +330,9 @@ export class HifoxTaskProgressRuntime {
   }
   private value(row: Row, freshness: HifoxProgressValue['freshness'] = 'pending'): HifoxProgressValue {
     return { workspaceKey: row.pin.workspaceKey, taskId: row.pin.taskId, server: structuredClone(row.server), freshness,
-      local: { state: row.state, pendingCount: row.queue.length, outcomeUnknown: row.dispatch === 'unknown' || row.queue.some(item => item.state !== 'queued'),
+      local: { state: row.state, pendingCount: row.queue.filter(item => item.state !== 'settled').length, outcomeUnknown: row.state === 'preparing' || row.dispatch === 'unknown' || row.queue.some(item => item.state === 'dispatching' || item.state === 'unknown'),
+        ...(row.plan && (row.state === 'preparing' || !row.session) ? { creationSessionId: row.nativeAlias, creationRecoveryRequired: row.state === 'preparing' || row.dispatch === 'unknown' } : {}),
+        ...(row.plan ? { workcopyRoot: row.plan.root } : {}),
         ownsBinding: row.state === 'active' && row.bindingId !== null && row.server.binding?.bindingId === row.bindingId
           && row.server.binding.generation === row.bindingGeneration && row.server.binding.reporterId === row.pin.ownerId && row.server.binding.deviceId === row.pin.deviceId,
         errorCode: row.errorCode, session: structuredClone(row.session), inputVersion: row.plan?.inputVersion ?? row.pin.epoch,
@@ -237,6 +386,11 @@ export class HifoxTaskProgressRuntime {
   }
   private async executeOwned(input: TaskProgressNativeInput): Promise<unknown> {
     if (this.closed && !['catalog', 'read', 'conversation', 'events', 'cancel', 'official'].includes(input.operation)) throw new Error('Task execution admission is closed')
+    if (input.operation.startsWith('outputs.')) {
+      const result = await this.outputs.execute(input)
+      if (this.outputs.hasWork()) this.schedule()
+      return result
+    }
     if (input.operation === 'catalog') return this.rows.filter(row => ['binding', 'active', 'releasing'].includes(row.state)).map(row => this.view(row))
     if (input.operation === 'read') { const row = this.find(input.query); return row ? this.view(row) : null }
     if (input.operation === 'prepare') return this.prepare(input)
@@ -283,6 +437,7 @@ export class HifoxTaskProgressRuntime {
           if (input.commandId && item?.command.commandId !== input.commandId) throw new Error('Progress failure belongs to another command')
           current.errorCode = input.code
           if (item && input.uncertain) item.state = 'unknown'
+          else if (item && input.terminal && input.commandId) item.state = 'settled'
           if (input.terminal) current.state = 'stopped'
         })
         break
@@ -347,7 +502,10 @@ export class HifoxTaskProgressRuntime {
       return acp.promptAcpSession(owner.projectRoot, owner.sessionId, input.input.text, { expectedConnectionGeneration: owner.connectionGeneration }, () => this.require(query).state === 'active')
     }
     if (input.operation === 'respond') {
-      if (input.input.expectedConnectionGeneration !== owner.connectionGeneration || !current.session.pendingPermissions?.some(item => item.requestId === input.input.requestId && item.connectionGeneration === owner.connectionGeneration)) throw new Error('The task permission request is no longer current')
+      const request = current.session.pendingPermissions?.find(item => item.requestId === input.input.requestId && item.connectionGeneration === owner.connectionGeneration)
+      const option = request?.options.find(item => item.optionId === input.input.optionId)
+      if (input.input.expectedConnectionGeneration !== owner.connectionGeneration || !request || !option) throw new Error('The task permission request is no longer current')
+      if (option.kind === 'allow_once' || option.kind === 'allow_always') await this.inputCurrent(row, await this.sender(row.pin))
       return acp.respondAcpPermission(owner.projectRoot, input.input.requestId, input.input.optionId)
     }
     throw new Error('Unsupported task conversation action')
@@ -358,6 +516,25 @@ export class HifoxTaskProgressRuntime {
     if (old) {
       if (JSON.stringify(old.pin) !== JSON.stringify(input.pin)) throw new Error('Original progress identity cannot be retargeted')
       if (old.state !== 'detached' && !input.takeover) return this.view(old)
+      const nativeOwner = old.plan ? old : input.plan ? [...this.rows].reverse().find(row => key(row.pin) === key(input.pin) && row.plan) : undefined
+      if (nativeOwner?.plan) {
+        const acp = await import('../acp'), proof = await acp.reconcileTaskSession(nativeOwner.plan.root, nativeOwner.nativeAlias, this.recoveryExpected(nativeOwner))
+        let sameCopy = true
+        if (input.plan) {
+          try { const previous = resolveWorkcopy(nativeOwner.plan.root), next = resolveWorkcopy(input.plan.root); sameCopy = previous.id === next.id || previous.physicalId === next.physicalId } catch { /* Without physical proof, the original copy remains protected. */ }
+        }
+        if (proof.status === 'unknown' && input.plan && sameCopy) {
+          this.edit(old.pin, current => { if (nativeOwner === old) current.state = 'preparing'; current.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED' })
+          throw new DaemonError('E_UNKNOWN', `${proof.reason} 原副本尚不能启动替代会话；请先核对原创建，或明确选择可证明独立的副本。`, 'unknown')
+        }
+        if (proof.status === 'present' && proof.connection === 'live') {
+          const stopped = await acp.killAcpSession(proof.session.projectRoot, proof.session.sessionId)
+          if (!stopped.ok && input.plan && sameCopy) {
+            this.edit(old.pin, current => { if (nativeOwner === old) current.state = 'preparing'; current.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED' })
+            throw new DaemonError('E_UNKNOWN', stopped.error, 'unknown')
+          }
+        }
+      }
     }
     if (input.server.binding && !input.takeover) throw new Error('This task already has a progress reporter; explicitly confirm takeover first')
     if (input.server.instanceId !== input.pin.instanceId || input.server.epoch !== input.pin.epoch || input.server.taskId !== input.pin.taskId
@@ -374,7 +551,13 @@ export class HifoxTaskProgressRuntime {
       writeAtomic(join(plan.root, 'task-input.json'), JSON.stringify({ inputVersion: plan.inputVersion, material: plan.material }))
     } else if (plan) plan = { ...plan, root: realpathSync.native(plan.root) }
     const created: Row = { pin: input.pin, plan, session: null, nativeAlias, state: 'preparing', server: input.server, bindingId: null, bindingGeneration: null,
-      seq: 0, dispatch: 'not_sent', errorCode: null, queue: [], projectionActive: Boolean(plan?.taskDir) }
+      seq: 0, dispatch: 'not_sent', errorCode: null, queue: [], projectionActive: Boolean(plan?.taskDir),
+      creationBinding: { commandId: randomUUID(), generation: input.server.generation, bindingId: input.server.binding?.bindingId ?? null } }
+    if (plan) {
+      await this.inputCurrent(created, await this.sender(input.pin))
+      const acp = await import('../acp')
+      await acp.reserveTaskSession(plan.root, nativeAlias, this.sessionExpected(created))
+    }
     this.commit(rows => {
       if (old) { const previous = [...rows].reverse().find(row => key(row.pin) === key(input.pin)); if (previous) { previous.state = 'stopped'; previous.errorCode = 'EXPLICIT_TAKEOVER'; previous.projectionActive = false } }
       rows.push(created)
@@ -387,13 +570,20 @@ export class HifoxTaskProgressRuntime {
     if (plan) {
       const acp = await import('../acp')
       const session = await acp.newTaskAcpSession(plan.root, { agentId: plan.agentId ?? (plan.engine === 'pi' ? 'pi' : 'codex'), taskDir: plan.taskDir }, nativeAlias, plan.engine,
-        { taskId: input.pin.taskId, spaceId: input.pin.spaceId, inputVersion: plan.inputVersion })
-      if (!session.ok) { this.edit(input.pin, row => { row.state = 'stopped'; row.errorCode = session.code }); throw new Error(session.error) }
+        this.sessionExpected(created).task)
+      if (!session.ok) {
+        const proof = await acp.reconcileTaskSession(plan.root, nativeAlias, this.sessionExpected(created))
+        this.edit(input.pin, row => { row.state = proof.status === 'settled' ? 'stopped' : 'preparing'; row.errorCode = proof.status === 'settled' ? session.code : 'NATIVE_CREATION_RECOVERY_REQUIRED';
+          if (proof.status === 'present') row.session = proof.session
+          if (proof.dispatch !== 'not-sent') row.dispatch = proof.dispatch === 'sent' ? 'sent' : 'unknown' })
+        const knownUnsent = proof.status === 'settled' && proof.dispatch === 'not-sent'
+        throw new DaemonError(knownUnsent ? 'E_CONFLICT' : 'E_UNKNOWN', proof.status === 'unknown' ? proof.reason : session.error, knownUnsent ? 'not-admitted' : 'unknown')
+      }
       this.edit(input.pin, row => { row.session = session.session })
     }
     this.edit(input.pin, row => {
       const source = { kind: 'desktop' as const, sessionId: nativeAlias, engine: plan?.engine ?? 'manual', directoryName: plan ? basename(plan.root).slice(0, 100) || 'Task' : 'Manual progress' }
-      row.queue.push({ command: { commandId: randomUUID(), expectedEpoch: row.pin.epoch, kind: 'bind', expectedGeneration: row.server.generation, expectedBindingId: row.server.binding?.bindingId ?? null, source }, state: 'queued', attempts: 0 })
+      row.queue.push({ command: { commandId: row.creationBinding?.commandId ?? randomUUID(), expectedEpoch: row.pin.epoch, kind: 'bind', expectedGeneration: row.creationBinding?.generation ?? row.server.generation, expectedBindingId: row.creationBinding ? row.creationBinding.bindingId : row.server.binding?.bindingId ?? null, source }, state: 'queued', attempts: 0 })
       row.state = 'binding'
     })
     this.schedule()

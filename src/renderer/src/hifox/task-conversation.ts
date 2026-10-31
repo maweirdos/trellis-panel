@@ -4,6 +4,8 @@ import { useApp, type Page } from '../store'
 import { useMy } from '../my/store'
 import { useHifox, type HifoxModule } from './store'
 import { canReadTaskSpace, taskSourceKey } from './pages/task-detail/use-task-source'
+import { captureWorkPage, restoreWorkPage } from './local-work'
+import type { WorkPageSnapshot } from './development/types'
 
 export interface TaskConversationTarget {
   workspaceKey: string
@@ -16,6 +18,7 @@ export interface TaskConversationTarget {
   fromPage: Page
   session: HifoxProgressSession
   readOnly: boolean
+  pageSnapshot: WorkPageSnapshot
 }
 
 export function ownsTaskConversation(target: TaskConversationTarget): boolean {
@@ -31,7 +34,7 @@ export async function openTaskConversation(workspaceKey: string, task: HifoxTask
   if (!state.snapshot || state.openTaskId !== task.id) throw Error('任务来源已改变，请重新打开。')
   const target: TaskConversationTarget = { workspaceKey, taskId: task.id, taskCreatedAt: task.createdAt,
     spaceId: task.spaceId, sourceKey: taskSourceKey(state.snapshot, state.workspaceContext), module: state.module,
-    selectedSpaceId: state.currentSpaceId, fromPage: useApp.getState().page, session, readOnly }
+    selectedSpaceId: state.currentSpaceId, fromPage: useApp.getState().page, session, readOnly, pageSnapshot: captureWorkPage() }
   if (!ownsTaskConversation(target)) throw Error('原任务或空间当前不可用。')
   useMy.getState().setTaskConversationTarget(target)
   useMy.getState().requestAgentView(null)
@@ -41,8 +44,7 @@ export async function openTaskConversation(workspaceKey: string, task: HifoxTask
 export function returnToConversationTask(target: TaskConversationTarget): void {
   if (useMy.getState().taskConversationTarget !== target || !ownsTaskConversation(target)) return
   useMy.getState().setTaskConversationTarget(null)
-  useApp.getState().setPage(target.fromPage)
-  useHifox.setState({ module: target.module, currentSpaceId: target.selectedSpaceId, openTaskId: target.taskId })
+  restoreWorkPage(target.pageSnapshot, target.taskId)
 }
 
 // A source change invalidates even a batched A → B → A; no target grants authority.

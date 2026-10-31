@@ -7,6 +7,7 @@ import { workflowWorkspaceRecoveryInputSchema, workflowRecoveryArtifactInputSche
 import { knowledgeRuntimeBody } from './daemon-runtime-knowledge'
 import { acpHandoffPreviewInputSchema, acpHandoffCreateInputSchema, acpHandoffCancelInputSchema } from './acp-handoff'
 import { taskProgressNativeSchema } from './hifox-task-progress-native'
+import { workcopyUseRequestSchema, workcopyCleanupRequestSchema } from './workcopy-use'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
@@ -22,6 +23,8 @@ export type RuntimeCursor = z.infer<typeof runtimeCursorSchema>
 const session = z.object({ sessionId: id }).strict()
 /** Payloads are parsed after bounded wire/blob resolution, immediately before invoking the real facade. */
 export const runtimeBodies = {
+  'runtime.workcopyUse': workcopyUseRequestSchema,
+  'runtime.workcopyCleanup': workcopyCleanupRequestSchema,
   'runtime.hifoxProgress': taskProgressNativeSchema,
   'runtime.knowledge': knowledgeRuntimeBody,
   'runtime.sessions': z.object({ limit: z.number().int().min(1).max(200).optional() }).strict(),
@@ -100,6 +103,8 @@ export type RuntimeBody<M extends RuntimeBodyMethod> = z.input<(typeof runtimeBo
 export type RuntimeRequest<M extends RuntimeMethod> = z.input<(typeof runtimeRequests)[M]>
 export type RuntimeResult<M extends RuntimeMethod> = z.infer<(typeof runtimeResults)[M]>
 export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
+  'runtime.workcopyUse',
+  'runtime.workcopyCleanup',
   'runtime.knowledge',
   'runtime.new', 'runtime.handoffCreate', 'runtime.handoffCancel', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
   'runtime.profileSave', 'runtime.profileDelete', 'runtime.historyUpdate', 'runtime.historyRetry', 'runtime.historyDelete', 'runtime.historyRegenerateTitle', 'runtime.setup', 'runtime.probe',

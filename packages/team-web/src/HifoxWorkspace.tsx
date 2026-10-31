@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type JSX } from 'react'
+import { useEffect, useLayoutEffect, useState, type JSX } from 'react'
 import { HiFoxApp } from '../../../src/renderer/src/hifox/HiFoxApp'
 import { useHifox } from '../../../src/renderer/src/hifox/store'
 import { DialogHost } from '../../../src/renderer/src/components/Dialogs'
@@ -10,12 +10,13 @@ import type { HifoxWorkspaceContext } from '../../../src/shared/hifox-remote'
 import type { TeamProject, TeamSession } from './contracts'
 import { isClientSession } from './client'
 import { bindBrowserHifox, BrowserHifoxWorkspace } from './hifox-browser-api'
+import { WorkspaceTaskLocation } from './WorkspaceTaskLocation'
 import './hifox-workspace.css'
 
-export type HifoxWorkspaceProps = { project: TeamProject; session: TeamSession; theme: 'light' | 'dark'; authEpoch?: number }
+export type HifoxWorkspaceProps = { project: TeamProject; session: TeamSession; theme: 'light' | 'dark'; authEpoch?: number; invitedSpaceId?: string; onInvitedSpaceOpened?: () => void }
 const runSharedCommand = useHifox.getState().run
 
-export function HifoxWorkspace({ project, session, theme, authEpoch = 0 }: HifoxWorkspaceProps): JSX.Element {
+export function HifoxWorkspace({ project, session, theme, authEpoch = 0, invitedSpaceId, onInvitedSpaceOpened }: HifoxWorkspaceProps): JSX.Element {
   const fontSize = useMy((state) => state.fontSize)
   const [lease, setLease] = useState<{ workspace: BrowserHifoxWorkspace; epoch: number; session: TeamSession } | null>(null)
   useLayoutEffect(() => {
@@ -42,8 +43,22 @@ export function HifoxWorkspace({ project, session, theme, authEpoch = 0 }: Hifox
   }, [project.projectId, session.person.userId, session.csrfToken, authEpoch])
   const current = lease && lease.epoch === authEpoch && lease.session.person.userId === session.person.userId && lease.session.csrfToken === session.csrfToken && lease.workspace.context().projectId === project.projectId && isClientSession(session)
   return <section className="my-root hifox-host" data-my-theme={theme} data-my-font-size={fontSize} aria-label="工作区协作">
-    {current ? <><WorkspaceCommands workspace={lease.workspace} /><div className="hifox-host-body"><HiFoxApp host="web" /></div><DialogHost /><Toasts /></> : <p role="status">正在连接工作区协作…</p>}
+    {current ? <><WorkspaceTaskLocation workspace={lease.workspace} accountId={session.person.userId} />{invitedSpaceId && <InvitationSpaceLocation projectId={project.projectId} accountId={session.person.userId} spaceId={invitedSpaceId} onOpened={onInvitedSpaceOpened} />}<WorkspaceCommands workspace={lease.workspace} /><div className="hifox-host-body"><HiFoxApp host="web" /></div><DialogHost /><Toasts /></> : <p role="status">正在连接工作区协作…</p>}
   </section>
+}
+
+function InvitationSpaceLocation({ projectId, accountId, spaceId, onOpened }: { projectId: string; accountId: string; spaceId: string; onOpened?: () => void }): JSX.Element | null {
+  const snapshot = useHifox((state) => state.snapshot)
+  const context = useHifox((state) => state.workspaceContext)
+  const validScope = context.state === 'connected' && context.projectId === projectId && context.actorId === accountId
+  const joined = Boolean(validScope && snapshot?.spaces.some((space) => space.id === spaceId && !space.archived && space.memberIds.includes(accountId)))
+  useEffect(() => {
+    if (!joined) return
+    const state = useHifox.getState()
+    if (state.workspaceContext.state !== 'connected' || state.workspaceContext.projectId !== projectId || state.workspaceContext.actorId !== accountId || !state.snapshot?.spaces.some((space) => space.id === spaceId && !space.archived && space.memberIds.includes(accountId))) return
+    state.setCurrentSpace(spaceId); state.setModule('overview'); onOpened?.()
+  }, [joined, projectId, accountId, spaceId, onOpened])
+  return validScope && snapshot && !joined ? <p role="status" className="hifox-host-status">已接受邀请，暂时无法核实目标空间权限，请刷新或联系组织管理员。</p> : null
 }
 
 function WorkspaceCommands({ workspace }: { workspace: BrowserHifoxWorkspace }): JSX.Element | null {

@@ -5,6 +5,10 @@ export type GitWorkspaceOperationOptions = {
   review?: (preview: GitWorkspaceReview) => Promise<boolean>
   guard?: () => boolean
   stillCurrent?: () => boolean
+  /** Revalidate the captured native binding after queue/review awaits. */
+  validateContext?: () => Promise<void>
+  /** Native resolver output only; renderer task IDs cannot establish this. */
+  taskKey?: string
 }
 export interface RepositoryState {
   snapshot: GitWorkspaceSnapshot

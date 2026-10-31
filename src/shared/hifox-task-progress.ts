@@ -24,6 +24,8 @@ export const hifoxProgressLocalSchema = z.object({
   pendingCount: z.number().int().nonnegative(), outcomeUnknown: z.boolean(), errorCode: z.string().nullable(),
   ownsBinding: z.boolean(),
   session: hifoxProgressSessionSchema.nullable(), inputVersion: z.string(),
+  creationSessionId: z.string().max(256).optional(), creationRecoveryRequired: z.boolean().optional(),
+  workcopyRoot: z.string().max(8192).optional(),
   dispatch: z.enum(['not_sent', 'dispatching', 'sent', 'unknown']),
   /** An app-managed working directory is an application permission scope, not an OS sandbox. */
   managedDirectory: z.boolean()

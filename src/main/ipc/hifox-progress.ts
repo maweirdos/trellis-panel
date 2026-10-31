@@ -3,13 +3,15 @@ import { IpcErrorCode, ipcFail } from '../../shared/ipc-errors'
 import { HifoxTaskProgressService } from '../services/hifox/task-progress'
 import type { HifoxTaskWorkspaceService } from '../services/hifox/task-workspace'
 import { handle } from './registry'
+import type { BrowserWindow } from 'electron'
 
 /** Only the native application's top-level document gets the task-bound capability. */
-export function registerHifoxProgressIpc(workspace: HifoxTaskWorkspaceService): void {
+export function registerHifoxProgressIpc(workspace: HifoxTaskWorkspaceService, getMain: () => BrowserWindow | null): HifoxTaskProgressService {
   const service = new HifoxTaskProgressService(workspace)
   const register = (channel: string, action: (input: unknown) => Promise<unknown>): void => {
     handle(channel, (event, input: unknown) => {
-      if (event.sender.isDestroyed() || !event.senderFrame || event.senderFrame !== event.sender.mainFrame) return ipcFail(IpcErrorCode.Denied, '任务执行只允许从原生主窗口操作')
+      const window = getMain()
+      if (!window || window.isDestroyed() || event.sender.isDestroyed() || window.webContents !== event.sender || !event.senderFrame || event.senderFrame !== event.sender.mainFrame) return ipcFail(IpcErrorCode.Denied, '任务执行只允许从原生主窗口操作')
       return action(input)
     })
   }
@@ -24,4 +26,5 @@ export function registerHifoxProgressIpc(workspace: HifoxTaskWorkspaceService): 
   register(ipcInvoke.hifoxProgress.respond, input => service.respond(input as Parameters<typeof service.respond>[0]))
   register(ipcInvoke.hifoxProgress.cancel, input => service.cancel(input as Parameters<typeof service.cancel>[0]))
   register(ipcInvoke.hifoxProgress.resume, input => service.resumeSession(input as Parameters<typeof service.resumeSession>[0]))
+  return service
 }

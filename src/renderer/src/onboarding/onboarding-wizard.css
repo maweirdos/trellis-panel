@@ -1,0 +1,35 @@
+.onboarding-actions { display: flex; min-width: 0; align-items: center; gap: var(--my-space-8); }
+.onboarding-actions__spacer { flex: 1; }
+.onboarding-error { margin-bottom: var(--my-space-16); color: var(--my-txt-danger-primary); font-size: var(--my-text-sm); }
+.onboarding-welcome { display: grid; gap: var(--my-space-12); }
+.onboarding-section-label { font-weight: var(--my-weight-semibold); font-size: var(--my-text-sm); }
+.onboarding-welcome > p { margin: 0 0 var(--my-space-16); color: var(--my-txt-secondary); }
+.onboarding-theme-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--my-space-12); }
+.onboarding-theme-choice { display: grid; gap: var(--my-space-12); padding: var(--my-space-12); text-align: left; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); }
+.onboarding-theme-choice[aria-pressed='true'] { border-color: var(--my-border-strong); box-shadow: 0 0 0 1px var(--my-border-strong); }
+.onboarding-theme-choice > span:last-child { display: flex; align-items: center; gap: var(--my-space-8); }
+.onboarding-theme-choice > span:last-child > svg:last-child { margin-left: auto; }
+.onboarding-theme-preview { display: grid; grid-template-columns: 30% 1fr; gap: var(--my-space-8); height: 96px; padding: var(--my-space-12); border-radius: var(--my-radius-md); background: var(--my-bg-shell); }
+.onboarding-theme-preview.is-light { background: var(--my-neutral-white); }
+.onboarding-theme-preview.is-dark { background: var(--my-neutral-black); }
+.onboarding-theme-preview span { border-radius: var(--my-radius-sm); background: color-mix(in oklab, var(--my-neutral-white) 14%, var(--my-neutral-black)); }
+.onboarding-theme-preview.is-light span { background: color-mix(in oklab, var(--my-neutral-black) 12%, var(--my-neutral-white)); }
+.onboarding-theme-preview span:first-child { grid-row: span 2; }
+.onboarding-permissions, .onboarding-account, .onboarding-summary { display: grid; gap: var(--my-space-10); }
+.onboarding-permissions > div, .onboarding-account > div { display: flex; align-items: center; gap: var(--my-space-16); padding: var(--my-space-16); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); }
+.onboarding-permissions > div > span, .onboarding-account > div > span { display: grid; flex: 1; gap: var(--my-space-4); }
+.onboarding-permissions small, .onboarding-account small { color: var(--my-txt-secondary); line-height: var(--my-line-document); }
+.onboarding-summary { gap: 0; overflow: hidden; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); }
+.onboarding-summary > div { display: grid; grid-template-columns: minmax(100px, 30%) 1fr; gap: var(--my-space-16); padding: var(--my-space-16); border-top: 1px solid var(--my-border-subtle); }
+.onboarding-summary > div:first-child { border-top: 0; }
+.onboarding-summary span { color: var(--my-txt-secondary); }
+.onboarding-summary strong { overflow-wrap: anywhere; font-weight: var(--my-weight-medium); }
+.onboarding-model-templates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--my-space-10); }
+.onboarding-model-template { display: flex; align-items: center; min-width: 0; gap: var(--my-space-10); min-height: var(--my-space-64); padding: var(--my-space-12); text-align: left; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-1); }
+.onboarding-model-template:hover:not(:disabled) { border-color: var(--my-border-info-strong); background: var(--my-bg-layer-1-hover); }
+.onboarding-model-template:disabled { opacity: .5; }
+.onboarding-model-template > span:nth-child(2) { display: grid; min-width: 0; flex: 1; gap: var(--my-space-4); }
+.onboarding-model-template strong { overflow: hidden; font-size: var(--my-text-sm); text-overflow: ellipsis; white-space: nowrap; }
+.onboarding-model-template small { color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
+@media (max-width: 850px) { .onboarding-model-templates { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 540px) { .onboarding-model-templates { grid-template-columns: 1fr; } }

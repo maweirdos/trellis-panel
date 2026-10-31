@@ -4,6 +4,7 @@ import { dirname, join, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { daemonStartupFailure, recordDaemonStartupFailure } from './daemon/startup-failure'
+import { captureOnboarding } from './onboarding'
 
 // Role artifacts are generated beside the emitted CommonJS bootstrap. Keep
 // loading native and branch-local so bundlers cannot eagerly import GUI code.
@@ -24,6 +25,7 @@ if (roles.length > 1 || !['gui', 'daemon', 'control'].includes(role)) {
   }
   // Preserve the existing canonical userData, name and dev/prod behavior. Role paths are additive.
   const userData = app.getPath('userData')
+  if (role === 'gui') captureOnboarding(userData)
   const roleDirectory = join(userData, 'daemon-v1', app.isPackaged ? 'production' : 'development', role === 'control' ? `control-${randomUUID()}` : role)
   mkdirSync(roleDirectory, { recursive: true })
   app.setPath('sessionData', roleDirectory)

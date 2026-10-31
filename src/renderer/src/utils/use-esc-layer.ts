@@ -20,12 +20,13 @@ export interface UseEscLayerInput {
   returnFocusRef?: RefObject<HTMLElement | null>
   /** 焦点在输入控件内时 Esc 交给字段自身，不消费不注销层（见 esc-layer.ts）。 */
   deferWhenInputFocused?: boolean
+  retainUntilInactive?: boolean
 }
 
 export function useEscLayer(active: boolean, input: UseEscLayerInput): void {
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
-  const { kind, id, onClose, returnFocusRef, deferWhenInputFocused } = input
+  const { kind, id, onClose, returnFocusRef, deferWhenInputFocused, retainUntilInactive } = input
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   // 稳定代理：登记的层始终读 holderRef；派发时刻从调用方 ref 中转最新目标
@@ -45,11 +46,12 @@ export function useEscLayer(active: boolean, input: UseEscLayerInput): void {
       id,
       kind,
       deferWhenInputFocused,
+      retainUntilInactive,
       onClose: () => {
         sync()
         if (canInteract()) onCloseRef.current()
       },
       returnFocusRef: holderRef
     })
-  }, [active, interactive, id, kind, canInteract])
+  }, [active, interactive, id, kind, canInteract, retainUntilInactive])
 }

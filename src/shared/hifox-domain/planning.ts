@@ -10,6 +10,9 @@ import type {
   HifoxAutomationRun,
   HifoxID,
   HifoxIteration,
+  HifoxMilestone,
+  HifoxMilestoneCommandInput,
+  HifoxSaveMilestoneInput,
   HifoxProject,
   HifoxRecordVersionDeliveryInput,
   HifoxSnapshot,
@@ -19,7 +22,7 @@ import type {
   HifoxViewFilter
 } from '../hifox'
 import { loadSnapshot, mutate, nextId, nowIso } from './store'
-import { hifoxRecordVersionDeliveryInputSchema } from '../hifox-schema'
+import { hifoxRecordVersionDeliveryInputSchema, hifoxSaveMilestoneInputSchema, hifoxMilestoneCommandInputSchema } from '../hifox-schema'
 
 export class HifoxError extends Error {}
 
@@ -285,6 +288,151 @@ export function recordVersionDelivery(raw: HifoxRecordVersionDeliveryInput, acto
     if (!space.memberIds.includes(actorId) || !draft.members.some((member) => member.id === actorId)) fail('记录交付的成员不在该空间内')
     draft.versionDeliveries ??= []
     draft.versionDeliveries.push({ ...input, id: nextId('vd'), spaceId: space.id, actorId, at: nowIso() })
+  }).snapshot
+}
+
+/* ---------------- 里程碑 ---------------- */
+
+export interface HifoxMilestoneIssue {
+  kind: 'task' | 'iteration' | 'evidence' | 'predecessor' | 'owner' | 'criteria'
+  id: string
+  label: string
+  taskId?: string
+}
+
+export function canManageMilestone(snapshot: HifoxSnapshot, spaceId: string, actorId: string | undefined, milestone?: HifoxMilestone): boolean {
+  const space = snapshot.spaces.find((item) => item.id === spaceId)
+  const actor = snapshot.members.find((item) => item.id === actorId)
+  return Boolean(space && !space.archived && actor && space.memberIds.includes(actor.id) &&
+    (actor.role === 'owner' || actor.role === 'admin' || space.ownerId === actor.id || milestone?.ownerId === actor.id))
+}
+
+/** Evaluate exit facts without changing any task, version or evidence. Cancelled work never counts as done. */
+export function getMilestoneIssues(snapshot: HifoxSnapshot, milestone: HifoxMilestone): HifoxMilestoneIssue[] {
+  const issues: HifoxMilestoneIssue[] = []
+  const space = snapshot.spaces.find((item) => item.id === milestone.spaceId)
+  if (!space?.memberIds.includes(milestone.ownerId) || !snapshot.members.some((item) => item.id === milestone.ownerId)) {
+    issues.push({ kind: 'owner', id: milestone.ownerId, label: '负责人已不在空间' })
+  }
+  if (!milestone.requiredTaskIds.length && !milestone.requiredIterationIds.length && !milestone.requiredEvidence.length) {
+    issues.push({ kind: 'criteria', id: milestone.id, label: '尚未配置任务、版本或成果证据准出条件' })
+  }
+  const tasks = new Map(snapshot.tasks.filter((item) => item.spaceId === milestone.spaceId).map((item) => [item.id, item]))
+  const done = (task: HifoxTask): boolean => !task.triagePending &&
+    snapshot.taskStatuses.some((status) => status.id === task.statusId && status.spaceId === milestone.spaceId && status.category === 'done') &&
+    (!task.workflow || task.workflow.stage === 'done')
+  for (const id of milestone.requiredTaskIds) {
+    const task = tasks.get(id)
+    if (!task || !done(task)) issues.push({ kind: 'task', id, taskId: task?.id, label: task ? `${id} 尚未完成` : '必需任务不可用' })
+  }
+  for (const id of milestone.requiredIterationIds) {
+    const version = snapshot.iterations.find((item) => item.id === id && item.spaceId === milestone.spaceId)
+    if (!version) { issues.push({ kind: 'iteration', id, label: '必需版本不可用' }); continue }
+    if (version.status !== 'completed') issues.push({ kind: 'iteration', id, label: `${version.name} 尚未关闭` })
+    const ids = new Set([...version.taskIds, ...[...tasks.values()].filter((task) => task.iterationIds.includes(id)).map((task) => task.id)])
+    for (const taskId of ids) {
+      const task = tasks.get(taskId)
+      if (!task || !done(task)) issues.push({ kind: 'task', id: taskId, taskId: task?.id, label: task ? `${version.name} · ${taskId} 未完成（取消不算完成）` : `${version.name} 的任务不可用` })
+    }
+  }
+  for (const reference of milestone.requiredEvidence) {
+    const task = tasks.get(reference.taskId)
+    if (!task?.workflow?.artifacts.some((artifact) => artifact.id === reference.artifactId && artifact.body.trim())) {
+      issues.push({ kind: 'evidence', id: reference.artifactId, taskId: task?.id, label: '必需成果证据不可用' })
+    }
+  }
+  for (const id of milestone.predecessorIds) {
+    const predecessor = snapshot.milestones?.find((item) => item.id === id && item.spaceId === milestone.spaceId)
+    if (!predecessor || predecessor.status !== 'completed') issues.push({ kind: 'predecessor', id, label: predecessor ? `前置里程碑「${predecessor.name}」尚未达成` : '前置里程碑不可用' })
+  }
+  return issues
+}
+
+function milestoneAuthority(draft: HifoxSnapshot, spaceId: string, actorId: string, milestone?: HifoxMilestone): void {
+  if (!canManageMilestone(draft, spaceId, actorId, milestone)) fail('只有本空间管理员或里程碑负责人可以执行此操作')
+}
+
+function milestoneCas(milestone: HifoxMilestone, expectedUpdatedAt?: string): void {
+  if (!expectedUpdatedAt || expectedUpdatedAt !== milestone.updatedAt) fail('里程碑已更新，请重新打开后操作')
+}
+
+function validateMilestonePredecessors(draft: HifoxSnapshot, milestone: HifoxMilestone): void {
+  const visiting = new Set<string>([milestone.id])
+  const visited = new Set<string>()
+  const visit = (id: string): void => {
+    if (visiting.has(id)) fail('里程碑依赖不能形成循环')
+    if (visited.has(id)) return
+    const predecessor = draft.milestones?.find((item) => item.id === id && item.spaceId === milestone.spaceId) ?? fail('前置里程碑必须属于同一空间')
+    visiting.add(id)
+    for (const dependency of predecessor.predecessorIds) visit(dependency)
+    visiting.delete(id)
+    visited.add(id)
+  }
+  for (const id of milestone.predecessorIds) visit(id)
+}
+
+export function saveMilestone(raw: HifoxSaveMilestoneInput, actorId: string): HifoxSnapshot {
+  const input = hifoxSaveMilestoneInputSchema.parse(raw)
+  return mutate((draft) => {
+    const previous = input.id ? draft.milestones?.find((item) => item.id === input.id) ?? fail('里程碑不存在') : undefined
+    if (previous && previous.spaceId !== input.spaceId) fail('里程碑不能跨空间移动')
+    milestoneAuthority(draft, input.spaceId, actorId, previous)
+    if (previous) {
+      milestoneCas(previous, input.expectedUpdatedAt)
+      if (previous.status === 'completed') fail('已达成里程碑保留准出记录，不能修改')
+      if (input.ownerId !== previous.ownerId && !canManageMilestone(draft, input.spaceId, actorId)) fail('变更里程碑负责人需要本空间管理员')
+    } else if (input.expectedUpdatedAt !== undefined) fail('新里程碑不能带入旧修订')
+    validateDate(input.targetDate)
+    const space = draft.spaces.find((item) => item.id === input.spaceId) ?? fail('空间不存在')
+    if (!space.memberIds.includes(input.ownerId) || !draft.members.some((item) => item.id === input.ownerId)) fail('里程碑负责人必须属于同一空间')
+    for (const id of input.requiredTaskIds) if (taskOf(draft, id).spaceId !== space.id) fail('里程碑任务必须属于同一空间')
+    for (const id of input.requiredIterationIds) if (!draft.iterations.some((item) => item.id === id && item.spaceId === space.id)) fail('里程碑版本必须属于同一空间')
+    for (const reference of input.requiredEvidence) {
+      const task = taskOf(draft, reference.taskId)
+      if (task.spaceId !== space.id || !task.workflow?.artifacts.some((artifact) => artifact.id === reference.artifactId && artifact.body.trim())) fail('里程碑证据必须是同一空间任务的实际成果')
+    }
+    const at = new Date(Math.max(Date.now(), previous ? Date.parse(previous.updatedAt) + 1 : 0)).toISOString()
+    const milestone: HifoxMilestone = {
+      id: previous?.id ?? nextId('ms'), spaceId: space.id, name: input.name, goal: input.goal,
+      targetDate: input.targetDate, ownerId: input.ownerId, status: input.status ?? previous?.status ?? 'planned',
+      requiredTaskIds: [...new Set(input.requiredTaskIds)], requiredIterationIds: [...new Set(input.requiredIterationIds)],
+      requiredEvidence: input.requiredEvidence.filter((ref, index, refs) => refs.findIndex((other) => other.taskId === ref.taskId && other.artifactId === ref.artifactId) === index),
+      predecessorIds: [...new Set(input.predecessorIds)], createdAt: previous?.createdAt ?? at, updatedAt: at
+    }
+    validateMilestonePredecessors(draft, milestone)
+    draft.milestones ??= []
+    if (previous) Object.assign(previous, milestone)
+    else draft.milestones.push(milestone)
+  }).snapshot
+}
+
+export function completeMilestone(raw: HifoxMilestoneCommandInput, actorId: string): HifoxSnapshot {
+  const input = hifoxMilestoneCommandInputSchema.parse(raw)
+  return mutate((draft) => {
+    const milestone = draft.milestones?.find((item) => item.id === input.id) ?? fail('里程碑不存在')
+    milestoneAuthority(draft, milestone.spaceId, actorId, milestone)
+    milestoneCas(milestone, input.expectedUpdatedAt)
+    if (milestone.status !== 'planned') fail('只能确认计划中的里程碑')
+    validateDate(milestone.targetDate)
+    validateMilestonePredecessors(draft, milestone)
+    const issues = getMilestoneIssues(draft, milestone)
+    if (issues.length) fail(`里程碑准出条件未满足：${issues.slice(0, 5).map((issue) => issue.label).join('；')}`)
+    milestone.status = 'completed'
+    milestone.completedAt = new Date(Math.max(Date.now(), Date.parse(milestone.updatedAt) + 1)).toISOString()
+    milestone.completedBy = actorId
+    milestone.updatedAt = milestone.completedAt
+  }).snapshot
+}
+
+export function removeMilestone(raw: HifoxMilestoneCommandInput, actorId: string): HifoxSnapshot {
+  const input = hifoxMilestoneCommandInputSchema.parse(raw)
+  return mutate((draft) => {
+    const milestone = draft.milestones?.find((item) => item.id === input.id) ?? fail('里程碑不存在')
+    milestoneAuthority(draft, milestone.spaceId, actorId, milestone)
+    milestoneCas(milestone, input.expectedUpdatedAt)
+    if (milestone.status === 'completed') fail('已达成里程碑保留准出记录，不能删除')
+    if (draft.milestones?.some((item) => item.predecessorIds.includes(milestone.id))) fail('请先解除其他里程碑的前置依赖')
+    draft.milestones = draft.milestones?.filter((item) => item.id !== milestone.id)
   }).snapshot
 }
 

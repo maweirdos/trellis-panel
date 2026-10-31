@@ -25,6 +25,7 @@ export function applicationConfirmation(scope: ConfirmationScope): (preview: App
       detail: [
         `目录：${preview.cwd}`,
         `命令：${preview.command}`,
+        `副本使用：${preview.workcopyAccess === 'consumer' ? '只读取源码的服务' : '可能写入源码或配置，将独占写入'}`,
         preview.envFiles.length ? `环境文件：${preview.envFiles.join('、')}` : '',
         preview.overrideKeys.length ? `环境覆盖：${preview.overrideKeys.join('、')}` : '',
         preview.ports.length ? `端口：${preview.ports.map((port) => `${port.host}:${port.port}`).join('、')}` : ''

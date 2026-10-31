@@ -8,7 +8,7 @@ import { compactInputClass, PageHeader } from '../ui'
 type DirectoryTab = 'all' | 'agent' | 'crew'
 
 export function AgentDirectoryPage(): JSX.Element | null {
-  const { snapshot, setCurrentSpace, setModule } = useHifox()
+  const { snapshot, currentSpaceId, setCurrentSpace, setModule } = useHifox()
   const [tab, setTab] = useState<DirectoryTab>('all')
   const [keyword, setKeyword] = useState('')
   const [spaceFilter, setSpaceFilter] = useState('')
@@ -35,8 +35,9 @@ export function AgentDirectoryPage(): JSX.Element | null {
     { id: 'agent', label: 'Agent', count: agents.length },
     { id: 'crew', label: '小队', count: crews.length }
   ]
+  const configurationSpace = snapshot.spaces.find((space) => space.id === (spaceFilter || currentSpaceId) && !space.archived)
   return <div className="flex min-h-0 flex-1 flex-col gap-3">
-    <PageHeader title="全部 Agent" description="按所属空间查找 Agent 与小队，在对应空间管理配置。" />
+    <PageHeader title="Agent 目录" description="按所属空间查找 Agent 与小队。" actions={configurationSpace && <Button size="sm" variant="primary" onClick={() => openSpace(configurationSpace.id, 'agent')}>管理 {configurationSpace.name} 的 Agent<ArrowUpRight size={13} /></Button>} />
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="my-segmented" role="group" aria-label="目录类型">{tabs.map((entry) => <button type="button" key={entry.id} aria-pressed={entry.id === tab} className={`my-control my-control-sm rounded-my-md ${entry.id === tab ? 'bg-my-layer-2 text-my-primary' : 'text-my-tertiary'}`} onClick={() => setTab(entry.id)}>{entry.label}<span className="ml-1 text-my-2xs text-my-tertiary collab-stat">{entry.count}</span></button>)}</div>
       <div className="flex flex-wrap items-center gap-2"><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索 Agent、小队或空间" />

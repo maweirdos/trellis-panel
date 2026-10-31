@@ -1,5 +1,5 @@
 import { isConversationRuntimeEvent } from './runtime-events'
-import { useRef, useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api } from '../api'
 import { Select } from '../components/Select'
@@ -8,6 +8,8 @@ import { asObject, isConnectionTimelineEvent } from './timeline'
 import { projectRootKey } from '../my/navigation'
 import type { AcpConfigureInput, AcpSessionRecord } from '../../../shared/types'
 import { ACP_CONNECTION_STAGE_LABELS } from '@shared/acp-connection'
+import type { AgentRuleEntry, TeamTaskRulesManifest } from '@shared/agent-rules'
+import { relativePathUnderRoot, sameRelativeDocumentPath } from '../reader/reader-paths'
 
 export function StartupGroup({ session }: { session: AcpSessionRecord }): JSX.Element {
   const events = session.events.filter((event) => isConversationRuntimeEvent(event) && event.sessionId === session.sessionId && projectRootKey(event.projectRoot) === projectRootKey(session.projectRoot) && event.connectionGeneration === session.connectionGeneration && isConnectionTimelineEvent(event))
@@ -80,7 +82,7 @@ export function SessionDetails({ session, isCurrent, onUpdated, controlsOnly = f
     {session.configOptions?.filter((option) => !dedicatedIds.has(option.id)).map((option) => <label key={option.id} className="block">{option.name}<Select ariaLabel={option.name} className="mt-1 w-full" disabled={disabled || !controls.includes('session/set_config_option')} value={option.currentValue} onChange={(value) => void configure({ kind: 'config', id: option.id, value })} options={option.options.map((value) => ({ value: value.value, label: value.name }))} /></label>)}
     {pending && <p role="status" className="flex items-center gap-1 text-my-sm"><Loader2 size={12} className="animate-spin" />等待执行引擎确认…</p>}
     {error && <p role="alert" className="text-my-sm text-my-danger-text">{error}</p>}{notice && <p role="status" className="text-my-sm text-my-success-text">{notice}</p>}</>}
-    {!controlsOnly && <><ConnectionTimingDetails session={session} /><AgentContextDetails session={session} /><details className="border-t border-my-line pt-3"><summary className="cursor-pointer">发送材料与指令快照</summary><div className="mt-2 space-y-2 text-my-sm">
+    {!controlsOnly && <><ConnectionTimingDetails session={session} /><AgentContextDetails session={session} /><AgentRulesDetails session={session} /><details className="border-t border-my-line pt-3"><summary className="cursor-pointer">发送材料与指令快照</summary><div className="mt-2 space-y-2 text-my-sm">
       {session.materialSnapshot ? <><p>捕获于 {new Date(session.materialSnapshot.capturedAt).toLocaleString()}</p><pre className="whitespace-pre-wrap break-words">{session.materialSnapshot.instructions || '未配置附加指令'}</pre><ul className="break-all">{session.materialSnapshot.files.map((file) => <li key={file}>{file}</li>)}</ul>{session.materialSnapshot.sources?.map((source) => <details className="border-t border-my-line pt-2" key={source.relativePath}><summary className="cursor-pointer break-all">{source.relativePath} · {source.included ? `已包含 ${source.includedBytes} 字节` : source.status === 'missing' ? '文件缺失' : source.status === 'unreadable' ? '无法读取' : '未纳入'}{source.truncated ? ' · 已截断' : ''}</summary><dl className="mt-2 space-y-1 break-all"><div><dt>来源版本</dt><dd>{source.sourceRevision ?? '未知'} · {source.sourceBytes ?? '未知'} 字节</dd></div><div><dt>实际包含版本</dt><dd>{source.includedRevision ?? '未包含'} · {source.includedChars} 字符</dd></div><div><dt>包含范围</dt><dd>{source.extent.start}–{source.extent.end}（{source.extent.unit}）</dd></div></dl>{source.diagnostics?.map((notice) => <p key={notice}>{notice}</p>)}</details>)}<p className="text-my-tertiary">材料快照表示已组装的输入；不代表模型已遵循或任务已验收。</p></> : <p>{session.schemaVersion === 2 ? '尚未发送材料；发送后显示本轮快照。' : '旧会话未记录材料快照。'}</p>}
     </div></details>
     <details className="border-t border-my-line pt-3"><summary className="cursor-pointer">连接与协议诊断</summary><dl className="mt-2 space-y-2 break-all font-mono text-my-sm">
@@ -121,5 +123,89 @@ function AgentContextDetails({ session }: { session: AcpSessionRecord }): JSX.El
       </> : <p className="text-my-tertiary">当前连接与轮次没有可核对的角色与技能交付回执。</p>}
       {session.capabilities?.promptCapabilities?.embeddedContext !== true && <p className="text-my-tertiary">当前连接未声明支持角色与技能附件。</p>}
     </div>
+  </details>
+}
+
+function AgentRulesDetails({ session }: { session: AcpSessionRecord }): JSX.Element {
+  const manifest = session.agentRulesManifest
+  const [expanded, setExpanded] = useState(false)
+  const reads = useRuleReadObservations(session, expanded)
+  if (!manifest) return <></>
+  const team = manifest.teamTask, omitted = team?.selected.filter(rule => rule.status === 'omitted') ?? []
+  return <details className="border-t border-my-line pt-3" onToggle={event => setExpanded(event.currentTarget.open)}>
+    <summary className="cursor-pointer">规范依据 · {manifest.entries.length + omitted.length} 项</summary>
+    <div className="mt-2 space-y-2 text-my-sm">
+      {team && <dl className="space-y-1 break-all"><div><dt>原任务 / 空间</dt><dd>{team.taskId} / {team.spaceId}</dd></div><div><dt>固定输入版本</dt><dd className="font-mono">{team.inputVersion}</dd></div>{team.bundle && <div><dt>已采用规则包</dt><dd>R{team.bundle.revision} · {team.bundle.id}</dd></div>}</dl>}
+      <p className="text-my-tertiary">以下记录已组装的正文与索引范围；本轮发送状态见交付回执。{reads.length ? 'Pi 工具返回的固定正文已单列观测；不代表模型已遵守。' : '读取与遵守尚无关联证据。'}</p>
+      {manifest.entries.map(entry => <RuleSourceDetails key={entry.path} entry={entry} selected={team?.selected.find(rule => rule.path === entry.path)} read={reads.find(read => read.path === entry.path)} />)}
+      {omitted.map(selected => <RuleSourceDetails key={selected.path} selected={selected} read={reads.find(read => read.path === selected.path)} />)}
+    </div>
+  </details>
+}
+
+type RuleReadObservation = { path: string; at: number; eventId: string; toolCallId: string; turnId: string }
+
+/** Derive evidence from existing Pi events; only an exact returned body establishes a version. */
+function useRuleReadObservations(session: AcpSessionRecord, enabled: boolean): RuleReadObservation[] {
+  const manifest = session.agentRulesManifest
+  const owner = JSON.stringify([session.sessionId, session.projectRoot, session.connectionGeneration, session.turnId, manifest?.digest])
+  const [state, setState] = useState<{ owner: string; reads: RuleReadObservation[] }>({ owner: '', reads: [] })
+  useEffect(() => {
+    let current = true
+    const collect = async (): Promise<RuleReadObservation[]> => {
+      if (!enabled || session.engine !== 'pi' || !manifest || !session.turnId || !session.connectionGeneration || !globalThis.crypto?.subtle) return []
+      const expected = [...manifest.entries.filter(entry => entry.version).map(entry => ({ path: entry.path, digest: entry.version, bytes: entry.totalBytes })),
+        ...(manifest.teamTask?.selected ?? []).map(rule => ({ path: rule.path, digest: rule.version.bodyDigest, bytes: rule.version.byteLength }))]
+      const starts = new Map<string, string>(), candidates = new Map<string, { event: typeof session.events[number]; body: string; digest: string }>()
+      for (const event of session.events) {
+        if (!Number.isFinite(event.ts) || event.source !== 'pi' || event.kind !== 'tool-call' || event.sessionId !== session.sessionId || event.connectionGeneration !== session.connectionGeneration
+          || event.turnId !== session.turnId || projectRootKey(event.projectRoot) !== projectRootKey(session.projectRoot) || event.payload?.title !== 'read' || typeof event.payload.toolCallId !== 'string') continue
+        const toolCallId = event.payload.toolCallId
+        if (event.payload.tag === 'pi_tool_start') {
+          starts.delete(toolCallId)
+          const raw = asObject(event.payload.rawInput)?.path
+          if (typeof raw !== 'string') continue
+          const absolute = /^(?:[a-z]:[/\\]|[/\\])/i.test(raw) ? raw : `${session.cwd ?? session.projectRoot}/${raw}`
+          const path = relativePathUnderRoot(session.projectRoot, absolute)
+          if (path && path.split('/').every(part => part && part !== '.' && part !== '..')) starts.set(toolCallId, path)
+        } else if (event.payload.tag === 'pi_tool_end') {
+          const path = starts.get(toolCallId), output = asObject(event.payload.rawOutput), content = output?.content
+          starts.delete(toolCallId)
+          if (event.payload.status !== 'completed' || !path || output?.isError === true || !Array.isArray(content) || content.length !== 1) continue
+          const block = asObject(content[0])
+          if (block?.type !== 'text' || typeof block.text !== 'string') continue
+          const selected = expected.find(ref => sameRelativeDocumentPath(session.projectRoot, ref.path, path))
+          if (!selected?.digest || selected.bytes > 1024 * 1024 || block.text.length > selected.bytes || new TextEncoder().encode(block.text).byteLength !== selected.bytes) continue
+          candidates.set(selected.path, { event, body: block.text, digest: selected.digest })
+        }
+      }
+      const reads: RuleReadObservation[] = []
+      for (const [path, candidate] of [...candidates].slice(0, 65)) {
+        const checksum = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(candidate.body))
+        const digest = [...new Uint8Array(checksum)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+        if (digest === candidate.digest) reads.push({ path, at: candidate.event.ts, eventId: candidate.event.id,
+          toolCallId: String(candidate.event.payload?.toolCallId), turnId: session.turnId })
+      }
+      return reads
+    }
+    void collect().then(reads => { if (current) setState({ owner, reads }) }, () => { if (current) setState({ owner, reads: [] }) })
+    return () => { current = false }
+  }, [enabled, owner, manifest, session.engine, session.events, session.cwd, session.projectRoot, session.sessionId, session.connectionGeneration, session.turnId])
+  return state.owner === owner ? state.reads : []
+}
+
+function RuleSourceDetails({ entry, selected, read }: { entry?: AgentRuleEntry; selected?: TeamTaskRulesManifest['selected'][number]; read?: RuleReadObservation }): JSX.Element {
+  const path = entry?.path ?? selected?.path ?? '', version = selected?.version, settings = version?.settings
+  const scope = settings?.kind === 'rule' ? [
+    settings.applicability.modules.length ? `模块：${settings.applicability.modules.join('、')}` : '',
+    settings.applicability.paths.length ? `路径：${settings.applicability.paths.join('、')}` : '',
+    settings.applicability.stages.length ? `阶段：${settings.applicability.stages.join('、')}` : '',
+    settings.applicability.taskTypeIds.length ? `任务类型：${settings.applicability.taskTypeIds.join('、')}` : ''
+  ].filter(Boolean).join('；') || '采用范围内通用' : '已采用流程模板'
+  const extent = !entry ? '未纳入' : entry.includedBytes ? entry.truncated ? '正文片段' : '正文完整' : '仅索引'
+  return <details className="border-t border-my-line pt-2">
+    <summary className="cursor-pointer break-words">{version?.title ?? path} · {extent}{settings ? settings.kind === 'rule' ? ` · ${settings.obligation === 'required' ? '必需' : '建议'}` : ' · 必需模板' : ''}</summary>
+    {read && <dl className="mt-2 space-y-1 break-all"><div><dt>读取观测</dt><dd>Pi 原生 read · {new Date(read.at).toLocaleTimeString()} · 已返回固定版本全文</dd></div><div><dt>原工具事件 / 轮次</dt><dd className="font-mono">{read.eventId} / {read.toolCallId} / {read.turnId}</dd></div></dl>}
+    <dl className="mt-2 space-y-1 break-all text-my-tertiary"><div><dt>固定来源</dt><dd className="font-mono">{path}</dd></div><div><dt>版本</dt><dd>{version ? `R${version.number} · ${version.versionId}` : entry?.declaredVersion ?? entry?.version ?? '未取得完整摘要'}</dd></div><div><dt>组装范围</dt><dd>正文前 {entry?.includedBytes ?? 0} / {entry?.totalBytes ?? version?.byteLength ?? 0} 字节{entry?.truncated ? ' · 未完整纳入' : ''}</dd></div>{version && <><div><dt>适用范围</dt><dd>{scope}</dd></div><div><dt>正文摘要</dt><dd className="font-mono">{version.bodyDigest}</dd></div>{settings?.kind === 'rule' && <div><dt>优先级</dt><dd>{settings.priority}</dd></div>}</>}{selected?.reason && <div><dt>未完整纳入原因</dt><dd>{selected.reason === 'source-limit' ? '来源数量上限' : selected.reason === 'byte-limit' ? '单份正文大小上限' : '上下文预算上限'}</dd></div>}</dl>
   </details>
 }

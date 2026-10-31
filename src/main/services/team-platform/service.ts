@@ -1,22 +1,47 @@
 import { shell } from 'electron'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { hifoxRemoteCommandSchema, hifoxRemoteCommandReplySchema, hifoxRemoteSnapshotSchema, type HifoxRemoteCommand, type HifoxRemoteSnapshot } from '../../../shared/hifox-remote'
 import { desktopAuthoredPublicationSchema, desktopConnectionIdSchema, desktopDocumentInputSchema, desktopFeedbackInputSchema, desktopFeedbackListSchema, desktopListInputSchema, desktopPairingInputSchema, desktopPublicationBaseSchema, desktopVersionsInputSchema, type DesktopAuthoredPublicationInput, type DesktopFeedbackInput, type DesktopMaterialPublicationInput, type DesktopTeamApi, type DesktopTeamConnection, type DesktopTeamConnectionContext, type DesktopTeamDocument, type DesktopTeamEventSync, type DesktopTeamOutbox, type DesktopTeamOutboxPage, type DesktopTeamPairing, type DesktopTeamSnapshot } from '../../../shared/team-desktop'
-import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, deviceEnrollmentInputSchema, publicationInputSchema, teamCommandIdSchema, teamCommandReplySchema, teamDeviceEnrollmentSchema, teamDeviceSchema, teamEventPageSchema, teamFeedbackInputSchema, teamFeedbackSchema, teamIdSchema, teamMaterialVersionSchema, teamPageSchema, teamProjectSchema, teamPublishedDocumentSchema, teamSessionSchema, type TeamMaterialVersion, type TeamPage, type TeamFeedback, type TeamSession } from '../../../shared/team-platform'
+import { desktopTeamAccountIdSchema, desktopTeamAuthOptionsSchema, desktopTeamConnectWorkspaceSchema, desktopTeamCreateInvitationSchema, desktopTeamCreatedInvitationSchema, desktopTeamCreatedOrganizationSchema, desktopTeamCreatedWorkspaceSchema, desktopTeamCreateOrganizationSchema, desktopTeamCreateWorkspaceSchema, desktopTeamInvitationAcceptSchema, desktopTeamInvitationSchema, desktopTeamLoginSchema, desktopTeamPageOptionsSchema, desktopTeamRegisterSchema, type DesktopTeamAccount, type DesktopTeamAuthOptions, type DesktopTeamConnectWorkspaceInput, type DesktopTeamCreateInvitationInput, type DesktopTeamCreatedInvitation, type DesktopTeamCreatedOrganization, type DesktopTeamCreatedWorkspace, type DesktopTeamCreateOrganizationInput, type DesktopTeamCreateWorkspaceInput, type DesktopTeamInvitationAcceptInput, type DesktopTeamInvitationInput, type DesktopTeamLoginInput, type DesktopTeamPageOptions, type DesktopTeamRegisterInput } from '../../../shared/team-desktop-account'
+import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, createTeamProjectSchema, createTeamSchema, deviceApproveInputSchema, deviceEnrollmentInputSchema, publicationInputSchema, teamCommandIdSchema, teamCommandReplySchema, teamDeviceApprovalSchema, teamDeviceEnrollmentSchema, teamDeviceSchema, teamEventPageSchema, teamFeedbackInputSchema, teamFeedbackSchema, teamIdSchema, teamMaterialVersionSchema, teamPageSchema, teamProjectSchema, teamPublishedDocumentSchema, teamSessionSchema, teamTeamSchema, type TeamCommandReply, type TeamMaterialVersion, type TeamPage, type TeamFeedback, type TeamProject, type TeamSession, type TeamTeam } from '../../../shared/team-platform'
+import { teamAuthOptionsSchema, teamLocalAuthReplySchema, teamLocalLoginSchema, teamLocalRegisterSchema } from '../../../shared/team-auth'
+import { teamInvitationAcceptSchema, teamInvitationCreateSchema, teamInvitationInspectSchema, teamInvitationSchema, teamInvitationTokenSchema, type TeamInvitation } from '../../../shared/team-invitations'
 import { protectSecret, revealSecret } from '../integrations/credentials'
 import { proxiedFetch } from '../proxy'
 import { DesktopTeamStore } from './store-client'
-import { verifyTeamDocument } from './codec'
-import { canonicalTeamOrigin, TeamHttp, verificationUrl, type TeamFetch } from './http'
-import { DesktopTeamError, publicConnection, publicOutbox, type CachedDocument, type ConnectionRecord, type OutboxRecord, type TrustedTeamMaterial } from './types'
+import { canonicalTeamJson, verifyTeamDocument } from './codec'
+import { canonicalTeamOrigin, TeamHttp, verificationUrl, type TeamBrowserCredentials, type TeamFetch } from './http'
+import { DesktopTeamError, accountRecordSchema, accountSessionEnvelopeSchema, invitationIntentEnvelopeSchema, invitationIntentRecordSchema, publicAccount, publicConnection, publicOutbox, type AccountRecord, type AccountSessionEnvelope, type CachedDocument, type ConnectionRecord, type InvitationIntentEnvelope, type InvitationIntentRecord, type OutboxRecord, type TrustedTeamMaterial } from './types'
 import { creationListInputSchema, creationListSchema, creationViewInputSchema, creationViewSchema, creationHeadSchema, creationCommandSchema, creationCommandReplySchema, creationCommandResultSchema, type CreationCommand, type CreationView, type CreationCommandReply, type CreationHead } from '../../../shared/creations'
+import { teamCodeResourceListInputSchema, teamCodeResourceListSchema, teamTaskCodeResourceDtoSchema, teamCodeResourceCommandSchema, teamCodeResourceCommandReplySchema, teamCodeResourceReceiptSchema, teamCodeResourceScopeIdSchema, type TeamCodeResourceList, type TeamTaskCodeResourceDto, type TeamCodeResourceCommand, type TeamCodeResourceCommandReply } from '../../../shared/team-code-resources'
 import { teamTaskProgressResourceIdSchema, teamTaskProgressCommandSchema, teamTaskProgressCommandReplySchema, teamTaskProgressDtoSchema, teamTaskProgressReceiptSchema, type TeamTaskProgressCommand, type TeamTaskProgressDto, type TeamTaskProgressCommandReply, type TeamTaskProgressReceipt } from '../../../shared/team-task-progress'
 import { writeTaskProgressCredential, NativeTaskProgressSender } from '../hifox/task-progress-sender'
 import type { TaskProgressPin } from '../../../shared/hifox-task-progress-native'
+import { TaskMaterialsTransport, taskMaterialTransportPinSchema, type TaskMaterialTransportPin } from './task-materials-transport'
+import { GovernanceTransport, governanceTransportPinSchema, type GovernanceTransportPin } from './governance-transport'
+import { nativeContentPinSchema, type NativeContentPin } from './content-transport'
+import type { TeamContentRequest } from '../../../shared/team-content-transport'
+import { teamTaskDevelopmentContextSchema, type TeamTaskDevelopmentContext } from '../../../shared/team-task-development'
 
 const hash = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 const lockedCodes = new Set(['UNAUTHENTICATED', 'UNAUTHORIZED', 'FORBIDDEN', 'DEVICE_REVOKED', 'ACCOUNT_DISABLED', 'AUTHENTICATION_REQUIRED', 'CREDENTIAL_UNAVAILABLE', 'BINDING_CHANGED'])
+const TEAM_AUTH_COOKIE = 'tp_team_auth'
+const TEAM_SESSION_COOKIE = 'tp_team_session'
+const CONNECT_WAIT_MS = 30_000
+const logoutReplySchema = z.object({ loggedOut: z.literal(true) }).strict()
+const wait = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds))
+function responseCookie(setCookies: string[], name: string, valueSchema: z.ZodType<string>): string {
+  const prefix = `${name}=`, matches: string[] = []
+  for (const header of setCookies) {
+    const pair = header.split(';', 1)[0]?.trim()
+    if (pair?.startsWith(prefix)) matches.push(pair)
+  }
+  const pair = matches.length === 1 ? matches[0] : undefined
+  if (!pair) throw new DesktopTeamError('INVALID_RESPONSE', '团队认证响应没有唯一的受保护会话 cookie')
+  valueSchema.parse(pair.slice(prefix.length))
+  return pair
+}
 type SyncRecord = { cursor: string | null; resetRequired: boolean; resetCursor: string | null; hasMore: boolean; snapshot: { items: TeamMaterialVersion[]; fetchedAt: number } | null }
 export type DesktopTeamOptions = {
   dataDir: string; workerFile?: string; requestTimeoutMs?: number; httpTimeoutMs?: number; allowLoopbackHttp?: boolean;
@@ -25,6 +50,48 @@ export type DesktopTeamOptions = {
   openExternal?: (url: string) => Promise<void>; fetch?: TeamFetch
 }
 export class DesktopTeamService implements DesktopTeamApi {
+  /** Main-only content transport; the original device and selection are checked around every request. */
+  async withContentTransport<T>(raw: NativeContentPin, assertCurrent: () => Promise<void>, action: (request: TeamContentRequest) => Promise<T>): Promise<T> {
+    return this.tracked(async () => {
+      const pin = nativeContentPinSchema.parse(raw)
+      const connection = async (): Promise<ConnectionRecord> => {
+        const c = await this.connection(pin.connectionId, true)
+        if (c.origin !== pin.origin || c.ownerId !== pin.actorId || c.projectId !== pin.projectId || c.deviceId !== pin.deviceId || c.pairingId !== pin.pairingId) throw new DesktopTeamError('BINDING_CHANGED', '原内容操作的账号、设备或项目已变化。')
+        return c
+      }
+      await assertCurrent()
+      const c = await connection()
+      await this.verifyActive(c)
+      return action(async (path, schema, body, validate) => {
+        await connection(); await assertCurrent()
+        const value = await this.request(c, path, schema, body)
+        try { await connection(); await assertCurrent(); validate?.(value) }
+        catch (error) { throw new DesktopTeamError(error instanceof DesktopTeamError ? error.code : 'CONTENT_RESPONSE_MISMATCH', '原内容身份或回复在请求期间变化，请核对原操作。', body !== undefined) }
+        return value
+      })
+    })
+  }
+  /** Main-owned governance routes keep the admitted original device and selection fence. */
+  async withGovernanceTransport<T>(raw: GovernanceTransportPin, assertCurrent: () => Promise<void>, action: (transport: GovernanceTransport) => Promise<T>): Promise<T> {
+    return this.tracked(async () => {
+      const pin = governanceTransportPinSchema.parse(raw)
+      const connection = async (): Promise<ConnectionRecord> => {
+        const c = await this.connection(pin.connectionId, true)
+        if (c.origin !== pin.origin || c.ownerId !== pin.actorId || c.projectId !== pin.projectId || c.deviceId !== pin.deviceId || c.pairingId !== pin.pairingId) throw new DesktopTeamError('BINDING_CHANGED', '规则与任务输入的原账号或设备已变化。')
+        return c
+      }
+      await assertCurrent()
+      const c = await connection()
+      await this.verifyActive(c)
+      return action(new GovernanceTransport(pin, async (path, schema, body) => {
+        await connection(); await assertCurrent()
+        const value = await this.request(c, path, schema, body)
+        try { await connection(); await assertCurrent() }
+        catch { throw new DesktopTeamError('BINDING_CHANGED', '原身份在请求期间变化，请回原来源核对命令。', body !== undefined) }
+        return value
+      }))
+    })
+  }
   /** Native daemon factory, no SQLite acquisition and no renderer access. */
   static taskProgressSender(dataDir: string, pin: TaskProgressPin): NativeTaskProgressSender { return new NativeTaskProgressSender(dataDir, pin) }
   async authorizeTaskProgress(connectionId: string): Promise<void> {
@@ -82,9 +149,241 @@ export class DesktopTeamService implements DesktopTeamApi {
       return saved.token
     } catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '原设备凭据无法解密或不属于原服务绑定，请保留队列；旧操作不会改用新凭据') }
   }
-  private async noteError(c: ConnectionRecord, error: unknown): Promise<void> {
+  private async account(accountId: string, active = false): Promise<AccountRecord> {
+    const record = accountRecordSchema.parse(await this.store.call({ op: 'account', input: desktopTeamAccountIdSchema.parse(accountId) }))
+    if (active && record.state !== 'active') throw new DesktopTeamError('ACCOUNT_SESSION_UNAVAILABLE', '原桌面账号需要重新登录')
+    if (active) this.accountSession(record)
+    return record
+  }
+  private accountSession(account: AccountRecord): AccountSessionEnvelope {
+    if (account.state !== 'active' || account.encryptedSession === null) throw new DesktopTeamError('ACCOUNT_SESSION_UNAVAILABLE', '原桌面账号需要重新登录')
+    try {
+      const value = accountSessionEnvelopeSchema.parse(JSON.parse(this.reveal(account.encryptedSession)))
+      if (value.accountId !== account.accountId || value.origin !== account.origin || value.userId !== account.person.userId) throw new Error('Account session tuple changed')
+      return value
+    } catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '原桌面账号会话无法由系统凭据库解密，请重新登录') }
+  }
+  private async accountRequest<T extends z.ZodType>(account: AccountRecord, path: string, schema: T, body?: unknown, outcomeUnknown = body !== undefined): Promise<z.output<T>> {
+    const secret = this.accountSession(account), credentials: TeamBrowserCredentials = { cookie: secret.cookie, csrfToken: secret.csrfToken }
+    const value = await this.http.browserRequest(account.origin, path, schema, credentials, body, outcomeUnknown)
+    let current: AccountRecord
+    try { current = await this.account(account.accountId) }
+    catch (error) {
+      if (!outcomeUnknown) throw error
+      throw new DesktopTeamError(error instanceof DesktopTeamError ? error.code : 'STORE_UNAVAILABLE', '团队写入已返回，但原桌面账号会话无法完成本地复核；请按原命令核对', true)
+    }
+    if (current.revision !== account.revision || current.encryptedSession !== account.encryptedSession || current.origin !== account.origin || current.person.userId !== account.person.userId) throw new DesktopTeamError('ACCOUNT_CHANGED', '桌面账号会话在请求期间变化，请核对原操作', outcomeUnknown)
+    return value
+  }
+  private async authChallenge(origin: string): Promise<{ options: z.infer<typeof teamAuthOptionsSchema>; credentials: TeamBrowserCredentials }> {
+    const reply = await this.http.authOptions(origin, teamAuthOptionsSchema)
+    const cookie = responseCookie(reply.setCookies, TEAM_AUTH_COOKIE, z.string().regex(/^[A-Za-z0-9_-]{43}$/))
+    if (cookie !== `${TEAM_AUTH_COOKIE}=${reply.value.csrfToken}`) throw new DesktopTeamError('INVALID_RESPONSE', '团队登录挑战 cookie 与 CSRF 回执不一致')
+    return { options: reply.value, credentials: { cookie, csrfToken: reply.value.csrfToken } }
+  }
+  async authOptions(rawOrigin: string): Promise<DesktopTeamAuthOptions> {
+    return this.tracked(async () => {
+      const origin = canonicalTeamOrigin(z.string().min(1).max(2048).parse(rawOrigin), this.options.allowLoopbackHttp)
+      const { options } = await this.authChallenge(origin)
+      return desktopTeamAuthOptionsSchema.parse({
+        origin,
+        localLogin: options.localLogin,
+        selfRegistration: options.selfRegistration,
+        supportsInitialTaskTypes: options.supportsInitialTaskTypes,
+        externalLogin: options.oidcLogin ? { browserRequired: true, label: options.oidcLabel, url: new URL('/auth/login', origin).href } : null
+      })
+    })
+  }
+  async accounts(): Promise<DesktopTeamAccount[]> {
+    return this.tracked(async () => {
+      const records = z.array(accountRecordSchema).max(50).parse(await this.store.call({ op: 'accounts' }))
+      return records.map((record) => {
+        if (record.state !== 'active') return publicAccount(record)
+        try { this.accountSession(record); return publicAccount(record) }
+        catch (error) {
+          return { ...publicAccount(record), state: 'reauthentication-required', lastErrorCode: error instanceof DesktopTeamError ? error.code : 'CREDENTIAL_UNAVAILABLE' }
+        }
+      })
+    })
+  }
+  private async completeLocalAuth(operation: 'login' | 'register', origin: string, body: z.infer<typeof teamLocalLoginSchema> | z.infer<typeof teamLocalRegisterSchema>): Promise<DesktopTeamAccount> {
+    const challenge = await this.authChallenge(origin)
+    if (operation === 'register' && !challenge.options.selfRegistration) throw new DesktopTeamError('REGISTRATION_DISABLED', '此团队服务未开放自主注册')
+    const reply = await this.http.localAuth(origin, operation, teamLocalAuthReplySchema, challenge.credentials, body)
+    if (reply.value.session.authentication !== 'browser' || reply.value.session.csrfToken === null || !reply.value.session.person.active) throw new DesktopTeamError('INVALID_RESPONSE', '本地登录没有返回可用的浏览器账号会话', true)
+    const cookie = responseCookie(reply.setCookies, TEAM_SESSION_COOKIE, z.string().regex(/^ts_[A-Za-z0-9_-]{43}$/))
+    const records = z.array(accountRecordSchema).max(50).parse(await this.store.call({ op: 'accounts' }))
+    const existing = records.find((item) => item.origin === origin && item.person.userId === reply.value.session.person.userId)
+    const accountId = existing?.accountId ?? randomUUID(), now = Date.now(), revision = existing ? existing.revision + 1 : 1
+    if (!Number.isSafeInteger(revision)) throw new DesktopTeamError('CAPACITY_EXCEEDED', '桌面账号版本已达限界')
+    let encryptedSession: string
+    try {
+      encryptedSession = this.protection(JSON.stringify(accountSessionEnvelopeSchema.parse({ version: 1, accountId, origin, userId: reply.value.session.person.userId, cookie, csrfToken: reply.value.session.csrfToken })))
+    } catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '系统凭据加密不可用，账号会话未保存；请恢复系统加密后重试') }
+    const record = accountRecordSchema.parse({
+      accountId,
+      origin,
+      person: reply.value.session.person,
+      state: 'active',
+      revision,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      lastVerifiedAt: now,
+      lastErrorCode: null,
+      encryptedSession
+    })
+    return publicAccount(accountRecordSchema.parse(await this.store.call({ op: 'save-account', input: { record, expectedRevision: existing?.revision ?? null } })))
+  }
+  async login(raw: DesktopTeamLoginInput): Promise<DesktopTeamAccount> {
+    return this.tracked(async () => {
+      const input = desktopTeamLoginSchema.parse(raw), origin = canonicalTeamOrigin(input.origin, this.options.allowLoopbackHttp)
+      const body = teamLocalLoginSchema.parse({ username: input.username, password: input.password })
+      return this.serial(`account-auth:${origin}`, () => this.completeLocalAuth('login', origin, body))
+    })
+  }
+  async register(raw: DesktopTeamRegisterInput): Promise<DesktopTeamAccount> {
+    return this.tracked(async () => {
+      const input = desktopTeamRegisterSchema.parse(raw), origin = canonicalTeamOrigin(input.origin, this.options.allowLoopbackHttp)
+      const body = teamLocalRegisterSchema.parse({ username: input.username, password: input.password, displayName: input.displayName })
+      return this.serial(`account-auth:${origin}`, () => this.completeLocalAuth('register', origin, body))
+    })
+  }
+  async logout(accountId: string): Promise<DesktopTeamAccount> {
+    return this.serial(`account:${desktopTeamAccountIdSchema.parse(accountId)}`, async () => {
+      const account = await this.account(accountId, true)
+      await this.accountRequest(account, '/auth/logout', logoutReplySchema, {}, true)
+      const now = Date.now(), record = accountRecordSchema.parse({ ...account, state: 'signed-out', encryptedSession: null, revision: account.revision + 1, updatedAt: now, lastVerifiedAt: now, lastErrorCode: null })
+      return publicAccount(accountRecordSchema.parse(await this.store.call({ op: 'save-account', input: { record, expectedRevision: account.revision } })))
+    })
+  }
+  private pagePath(path: string, raw: DesktopTeamPageOptions | undefined): string {
+    const options = desktopTeamPageOptionsSchema.parse(raw ?? {}), query = new URLSearchParams({ limit: String(options.limit) })
+    if (options.cursor) query.set('cursor', options.cursor)
+    return `${path}?${query}`
+  }
+  async organizations(accountId: string, options?: DesktopTeamPageOptions): Promise<TeamPage<TeamTeam>> {
+    return this.tracked(async () => {
+      const account = await this.account(accountId, true)
+      return this.accountRequest(account, this.pagePath('/api/teams', options), teamPageSchema(teamTeamSchema), undefined, false)
+    })
+  }
+  async createOrganization(raw: DesktopTeamCreateOrganizationInput): Promise<TeamCommandReply<DesktopTeamCreatedOrganization>> {
+    return this.tracked(async () => {
+      const input = desktopTeamCreateOrganizationSchema.parse(raw), account = await this.account(input.accountId, true)
+      const body = createTeamSchema.parse({ commandId: input.commandId, name: input.name })
+      const result = await this.accountRequest(account, '/api/teams', teamCommandReplySchema(desktopTeamCreatedOrganizationSchema), body, true)
+      if (result.commandId !== input.commandId) throw new DesktopTeamError('RECEIPT_MISMATCH', '组织创建回执不属于原命令', true)
+      return result
+    })
+  }
+  async workspaces(accountId: string, options?: DesktopTeamPageOptions): Promise<TeamPage<TeamProject>> {
+    return this.tracked(async () => {
+      const account = await this.account(accountId, true)
+      return this.accountRequest(account, this.pagePath('/api/projects', options), teamPageSchema(teamProjectSchema), undefined, false)
+    })
+  }
+  async createWorkspace(raw: DesktopTeamCreateWorkspaceInput): Promise<TeamCommandReply<DesktopTeamCreatedWorkspace>> {
+    return this.tracked(async () => {
+      const input = desktopTeamCreateWorkspaceSchema.parse(raw), account = await this.account(input.accountId, true)
+      const body = createTeamProjectSchema.parse({ commandId: input.commandId, teamId: input.organizationId, name: input.name })
+      const result = await this.accountRequest(account, '/api/projects', teamCommandReplySchema(desktopTeamCreatedWorkspaceSchema), body, true)
+      if (result.commandId !== input.commandId || result.result.teamId !== input.organizationId) throw new DesktopTeamError('RECEIPT_MISMATCH', '工作区创建回执不属于原组织或命令', true)
+      return result
+    })
+  }
+  async createInvitation(raw: DesktopTeamCreateInvitationInput): Promise<DesktopTeamCreatedInvitation> {
+    return this.tracked(async () => {
+      const input = desktopTeamCreateInvitationSchema.parse(raw), account = await this.account(input.accountId, true)
+      const payloadDigest = hash(canonicalTeamJson(input))
+      let intent = await this.store.call<InvitationIntentRecord | null>({ op: 'invitation-intent', input: input.commandId })
+      let workspace: TeamProject | null = null
+      if (intent === null) {
+        workspace = await this.workspaceForAccount(account, input.workspaceId)
+        const envelope = invitationIntentEnvelopeSchema.parse({ version: 1, commandId: input.commandId, accountId: account.accountId, origin: account.origin, input, token: `ti_${randomBytes(32).toString('base64url')}` })
+        let encryptedIntent: string
+        try { encryptedIntent = this.protection(JSON.stringify(envelope)) }
+        catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '系统凭据加密不可用，邀请密钥未保存且邀请未发送') }
+        const now = Date.now()
+        intent = invitationIntentRecordSchema.parse({ commandId: input.commandId, accountId: account.accountId, origin: account.origin, payloadDigest, encryptedIntent, createdAt: now, updatedAt: now, receipt: null })
+        intent = invitationIntentRecordSchema.parse(await this.store.call({ op: 'save-invitation-intent', input: intent }))
+      }
+      if (intent.accountId !== account.accountId || intent.origin !== account.origin || intent.payloadDigest !== payloadDigest) throw new DesktopTeamError('COMMAND_CONFLICT', '同一邀请命令不能更换账号或语义载荷')
+      let envelope: InvitationIntentEnvelope
+      try {
+        envelope = invitationIntentEnvelopeSchema.parse(JSON.parse(this.reveal(intent.encryptedIntent)))
+        if (envelope.commandId !== input.commandId || envelope.accountId !== account.accountId || envelope.origin !== account.origin || canonicalTeamJson(envelope.input) !== canonicalTeamJson(input)) throw new Error('Invitation intent tuple changed')
+      } catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '原邀请密钥无法由系统凭据库解密；不会生成第二条邀请') }
+      workspace = workspace ?? await this.workspaceForAccount(account, input.workspaceId)
+      const body = teamInvitationCreateSchema.parse({
+        commandId: input.commandId,
+        teamId: workspace.teamId,
+        projectId: workspace.projectId,
+        ...(input.spaceId ? { spaceId: input.spaceId } : {}),
+        teamRoles: input.organizationRoles,
+        projectRoles: input.projectRoles,
+        recipient: { kind: 'local', username: input.recipientUsername },
+        token: envelope.token,
+        expiresInMs: input.expiresInMs
+      })
+      const result = await this.accountRequest(account, '/api/invitations', teamCommandReplySchema(teamInvitationSchema), body, true)
+      const invitation = result.result
+      const sameSpace = invitation.space?.id === (input.spaceId ?? undefined)
+      const sameOrganizationRoles = canonicalTeamJson(invitation.teamRoles) === canonicalTeamJson(input.organizationRoles)
+      const sameProjectRoles = canonicalTeamJson(invitation.projectRoles) === canonicalTeamJson(input.projectRoles)
+      if (result.commandId !== input.commandId || invitation.teamId !== workspace.teamId || invitation.projectId !== workspace.projectId || invitation.status !== 'pending' || invitation.recipient.kind !== 'local' || invitation.recipient.username !== input.recipientUsername || !sameSpace || !sameOrganizationRoles || !sameProjectRoles) throw new DesktopTeamError('RECEIPT_MISMATCH', '邀请创建回执不属于原账号、角色、工作区或接收方', true)
+      try { intent = invitationIntentRecordSchema.parse(await this.store.call({ op: 'complete-invitation-intent', input: { commandId: input.commandId, receipt: invitation } })) }
+      catch { throw new DesktopTeamError('ACKNOWLEDGEMENT_UNKNOWN', '邀请已由服务端提交，但本地加密意图确认丢失；请使用同一命令重试核对', true) }
+      if (!intent.receipt || intent.receipt.invitationId !== invitation.invitationId) throw new DesktopTeamError('RECEIPT_MISMATCH', '本地邀请意图没有保存原提交回执', true)
+      const url = new URL('/', account.origin)
+      url.searchParams.set('invitation', invitation.invitationId)
+      url.hash = new URLSearchParams({ token: envelope.token }).toString()
+      return desktopTeamCreatedInvitationSchema.parse({ invitation, url: url.href })
+    })
+  }
+  private invitationLink(account: AccountRecord, raw: string): { invitationId: string; token: string } {
+    let url: URL
+    try { url = new URL(raw) } catch { throw new DesktopTeamError('INVALID_INVITATION_LINK', '邀请链接格式无效') }
+    const fragment = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : '')
+    if (url.origin !== account.origin || url.username || url.password || url.pathname !== '/' || url.searchParams.size !== 1 || fragment.size !== 1) throw new DesktopTeamError('INVALID_INVITATION_LINK', '邀请链接必须属于原账号服务且不含额外参数')
+    const invitationId = teamIdSchema.safeParse(url.searchParams.get('invitation')), token = teamInvitationTokenSchema.safeParse(fragment.get('token'))
+    if (!invitationId.success || !token.success) throw new DesktopTeamError('INVALID_INVITATION_LINK', '邀请链接缺少有效的邀请身份或密钥')
+    return { invitationId: invitationId.data, token: token.data }
+  }
+  async inspectInvitation(raw: DesktopTeamInvitationInput): Promise<TeamInvitation> {
+    return this.tracked(async () => {
+      const input = desktopTeamInvitationSchema.parse(raw), account = await this.account(input.accountId, true), link = this.invitationLink(account, input.url)
+      const invitation = await this.accountRequest(account, `/api/invitations/${encodeURIComponent(link.invitationId)}/inspect`, teamInvitationSchema, teamInvitationInspectSchema.parse({ token: link.token }), false)
+      if (invitation.invitationId !== link.invitationId) throw new DesktopTeamError('RECEIPT_MISMATCH', '邀请检查回执不属于原链接')
+      return invitation
+    })
+  }
+  async acceptInvitation(raw: DesktopTeamInvitationAcceptInput): Promise<TeamCommandReply<TeamInvitation>> {
+    return this.tracked(async () => {
+      const input = desktopTeamInvitationAcceptSchema.parse(raw), account = await this.account(input.accountId, true), link = this.invitationLink(account, input.url)
+      const inspected = await this.accountRequest(account, `/api/invitations/${encodeURIComponent(link.invitationId)}/inspect`, teamInvitationSchema, teamInvitationInspectSchema.parse({ token: link.token }), false)
+      if (inspected.invitationId !== link.invitationId) throw new DesktopTeamError('RECEIPT_MISMATCH', '邀请检查回执不属于原链接')
+      const body = teamInvitationAcceptSchema.parse({ commandId: input.commandId, token: link.token, expectedUserId: account.person.userId, expectedTeamId: inspected.teamId, expectedProjectId: inspected.projectId, ...(inspected.space ? { expectedSpaceId: inspected.space.id } : {}) })
+      const result = await this.accountRequest(account, `/api/invitations/${encodeURIComponent(link.invitationId)}/accept`, teamCommandReplySchema(teamInvitationSchema), body, true)
+      if (result.commandId !== input.commandId || result.result.invitationId !== link.invitationId || result.result.status !== 'accepted' || result.result.acceptedBy !== account.person.userId) throw new DesktopTeamError('RECEIPT_MISMATCH', '邀请接受回执不属于原账号或命令', true)
+      return result
+    })
+  }
+  private async noteError(c: ConnectionRecord, error: unknown, path?: string): Promise<void> {
     if (!(error instanceof DesktopTeamError)) return
-    await this.store.call({ op: 'update-connection', input: { connectionId: c.connectionId, ...(lockedCodes.has(error.code) ? { lock: true, ...(error.code === 'CREDENTIAL_UNAVAILABLE' ? { revokeOutbox: false } : {}) } : {}), ...(error.code === 'NETWORK_UNAVAILABLE' || error.code === 'ACKNOWLEDGEMENT_UNKNOWN' ? { network: 'offline' } : {}), errorCode: error.code } })
+    let lock = lockedCodes.has(error.code)
+    // These domains keep no generic published-document body cache. A denied
+    // private draft/space operation must not revoke an otherwise active device.
+    const contentScoped = path !== undefined && (/^\/api\/teams\/[^/]+\/content(?:[/?]|$)/.test(path) || /^\/api\/projects\/[^/]+\/(?:content(?:[/?]|$)|hifox\/tasks\/[^/]+\/content(?:[/?]|$))/.test(path))
+    const scoped = contentScoped || path !== undefined && /^\/api\/projects\/[^/]+\/hifox\/(?:tasks\/[^/]+\/(?:materials|inputs|code-resource|development-context)|spaces\/[^/]+\/governance|code-resources)(?:[/?]|$)/.test(path)
+    if (error.code === 'FORBIDDEN' && scoped) {
+      try {
+        const session = await this.http.request(c.origin, '/api/session', teamSessionSchema, this.token(c))
+        lock = session.authentication !== 'device' || session.deviceId !== c.deviceId || session.person.userId !== c.ownerId || !session.person.active
+      } catch (probe) {
+        lock = probe instanceof DesktopTeamError && ['UNAUTHORIZED', 'FORBIDDEN', 'CREDENTIAL_UNAVAILABLE'].includes(probe.code)
+      }
+    }
+    await this.store.call({ op: 'update-connection', input: { connectionId: c.connectionId, ...(lock ? { lock: true, ...(error.code === 'CREDENTIAL_UNAVAILABLE' ? { revokeOutbox: false } : {}) } : {}), ...(error.code === 'NETWORK_UNAVAILABLE' || error.code === 'ACKNOWLEDGEMENT_UNKNOWN' ? { network: 'offline' } : {}), errorCode: error.code } })
   }
   private async request<T extends z.ZodType>(c: ConnectionRecord, path: string, schema: T, body?: unknown): Promise<z.output<T>> {
     try {
@@ -94,7 +393,7 @@ export class DesktopTeamService implements DesktopTeamApi {
       if (body === undefined) await this.store.call({ op: 'update-connection', input: { connectionId: c.connectionId, network: 'reachable', errorCode: null } })
       return value
     }
-    catch (error) { await this.noteError(c, error); throw error }
+    catch (error) { await this.noteError(c, error, path); throw error }
   }
   private async verifyActive(c: ConnectionRecord): Promise<TeamSession> {
     const session = await this.request(c, '/api/session', teamSessionSchema)
@@ -105,6 +404,31 @@ export class DesktopTeamService implements DesktopTeamApi {
     return session
   }
   async connections(): Promise<DesktopTeamConnection[]> { return this.tracked(async () => (await this.store.call<ConnectionRecord[]>({ op: 'connections' })).map(publicConnection)) }
+  /** Main-only fixed material routes, retaining the captured device and native selection fence. */
+  async withTaskMaterialsTransport<T>(raw: TaskMaterialTransportPin, assertCurrent: () => Promise<void>, action: (transport: TaskMaterialsTransport) => Promise<T>): Promise<T> {
+    return this.tracked(async () => {
+      const pin = taskMaterialTransportPinSchema.parse(raw)
+      const connection = async (): Promise<ConnectionRecord> => {
+        const c = await this.connection(pin.connectionId, true)
+        if (c.origin !== pin.origin || c.ownerId !== pin.actorId || c.projectId !== pin.projectId || c.deviceId !== pin.deviceId || c.pairingId !== pin.pairingId) {
+          throw new DesktopTeamError('BINDING_CHANGED', '原任务材料的账号、设备或项目已变化。')
+        }
+        return c
+      }
+      await assertCurrent()
+      const c = await connection()
+      await this.verifyActive(c)
+      return action(new TaskMaterialsTransport(pin, async (path, schema, body) => {
+        await connection()
+        await assertCurrent()
+        const value = await this.request(c, path, schema, body)
+        // A POST may already be committed when selection or device ownership changes.
+        try { await connection(); await assertCurrent() }
+        catch (error) { throw new DesktopTeamError(error instanceof DesktopTeamError ? error.code : 'BINDING_CHANGED', '原材料身份在请求期间变化，请回原身份核对命令。', body !== undefined) }
+        return value
+      }))
+    })
+  }
   private async verifyHifoxSnapshot(c: ConnectionRecord, value: HifoxRemoteSnapshot, write = false, expectedInstanceId?: string): Promise<HifoxRemoteSnapshot> {
     const member = value.snapshot.members.find((item) => item.id === c.ownerId)
     if ((expectedInstanceId !== undefined && value.instanceId !== expectedInstanceId) || value.projectId !== c.projectId || value.actor.id !== c.ownerId || !member || member.role !== value.actor.role) {
@@ -129,6 +453,18 @@ export class DesktopTeamService implements DesktopTeamApi {
       // Revision ordering belongs to one instance/epoch. The coordinator owns
       // that durable head and must observe restore replies, including lower revisions.
       return this.verifyHifoxSnapshot(c, value, false, input.expectedInstanceId)
+    })
+  }
+  /** Main-only fresh development facts; each source read obtains a new server response. */
+  async taskDevelopmentContext(connectionId: string, taskId: string, expectedInstanceId: string): Promise<TeamTaskDevelopmentContext> {
+    return this.tracked(async () => {
+      const task = teamTaskProgressResourceIdSchema.parse(taskId), instance = z.string().uuid().parse(expectedInstanceId)
+      const c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const value = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(task)}/development-context`, teamTaskDevelopmentContextSchema)
+      await this.verifyHifoxSnapshot(c, value.snapshot, false, instance)
+      if (value.inputs.taskId !== task) throw new DesktopTeamError('BINDING_CHANGED', '开发上下文不属于原任务')
+      return value
     })
   }
   async hifoxCommand(connectionId: string, raw: HifoxRemoteCommand, expectedInstanceId?: string): Promise<z.infer<typeof hifoxRemoteCommandReplySchema>> {
@@ -186,6 +522,61 @@ export class DesktopTeamService implements DesktopTeamApi {
   private async verifyTaskProgress(c: ConnectionRecord, taskId: string, value: TeamTaskProgressDto, write: boolean, expectedInstanceId?: string): Promise<void> {
     if (value.projectId !== c.projectId || value.taskId !== taskId || expectedInstanceId !== undefined && value.instanceId !== expectedInstanceId) throw new DesktopTeamError('BINDING_CHANGED', '任务进度不属于原服务、项目或任务', write)
     await this.creationOwner(c)
+  }
+  async codeResources(connectionId: string, raw: z.input<typeof teamCodeResourceListInputSchema>, expected: { instanceId: string; epoch: string }): Promise<TeamCodeResourceList> {
+    return this.tracked(async () => {
+      const input = teamCodeResourceListInputSchema.parse(raw), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const query = new URLSearchParams()
+      for (const [key, value] of Object.entries(input)) if (value !== undefined) query.set(key, String(value))
+      const result = await this.request(c, `/api/projects/${c.projectId}/code-resources?${query}`, teamCodeResourceListSchema)
+      if (result.projectId !== c.projectId || result.instanceId !== expected.instanceId || result.epoch !== expected.epoch
+        || result.items.some((item) => item.projectId !== c.projectId)
+        || input.spaceId !== undefined && result.spaceResources?.spaceId !== input.spaceId) {
+        throw new DesktopTeamError('BINDING_CHANGED', '代码资源列表不属于原服务或空间')
+      }
+      await this.creationOwner(c)
+      return result
+    })
+  }
+  async taskCodeResource(connectionId: string, taskId: string, expected: { instanceId: string; epoch: string }): Promise<TeamTaskCodeResourceDto> {
+    return this.tracked(async () => {
+      const id = teamCodeResourceScopeIdSchema.parse(taskId), c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const result = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(id)}/code-resource`, teamTaskCodeResourceDtoSchema)
+      if (result.projectId !== c.projectId || result.instanceId !== expected.instanceId || result.epoch !== expected.epoch || result.taskId !== id) {
+        throw new DesktopTeamError('BINDING_CHANGED', '任务代码资源不属于原服务或任务')
+      }
+      await this.creationOwner(c)
+      return result
+    })
+  }
+  async codeResourceCommand(connectionId: string, raw: TeamCodeResourceCommand, expectedInstanceId: string): Promise<TeamCodeResourceCommandReply> {
+    return this.tracked(async () => {
+      const input = teamCodeResourceCommandSchema.parse(raw), c = await this.connection(connectionId, true)
+      await this.codeResources(connectionId, { limit: 1 }, { instanceId: expectedInstanceId, epoch: input.expectedEpoch })
+      const result = await this.request(c, `/api/projects/${c.projectId}/code-resources/commands`, teamCodeResourceCommandReplySchema, input)
+      const targetId = 'resourceId' in input && (input.kind === 'create' || input.kind === 'update') ? input.resourceId : input.kind === 'setSpaceResources' ? input.spaceId : input.kind === 'selectTaskResource' ? input.taskId : null
+      if (result.commandId !== input.commandId || result.result.projectId !== c.projectId || result.result.epoch !== input.expectedEpoch
+        || result.result.kind !== input.kind || result.result.targetId !== targetId || result.result.deviceId !== c.deviceId) {
+        throw new DesktopTeamError('RECEIPT_MISMATCH', '代码资源保存回执不属于原操作', true)
+      }
+      await this.creationOwner(c)
+      return result
+    })
+  }
+  async codeResourceReceipt(connectionId: string, commandId: string, expected: { instanceId: string; epoch: string }): Promise<TeamCodeResourceCommandReply | null> {
+    return this.tracked(async () => {
+      const id = teamCommandIdSchema.parse(commandId), c = await this.connection(connectionId, true)
+      await this.codeResources(connectionId, { limit: 1 }, expected)
+      const receiptSchema = z.object({ commandId: teamCommandIdSchema, kind: z.literal('codeResourceCommand'), status: z.literal('committed'), recordedAt: z.number().int().nonnegative(), result: teamCodeResourceReceiptSchema }).strict()
+      try {
+        const receipt = await this.request(c, `/api/commands/${id}`, receiptSchema)
+        if (receipt.commandId !== id || receipt.result.projectId !== c.projectId || receipt.result.epoch !== expected.epoch || receipt.result.deviceId !== c.deviceId) throw new DesktopTeamError('RECEIPT_MISMATCH', '代码资源回执不属于原设备或命令', true)
+        await this.creationOwner(c)
+        return { status: 'duplicate', commandId: id, result: receipt.result }
+      } catch (error) { if (error instanceof DesktopTeamError && error.code === 'NOT_FOUND') return null; throw error }
+    })
   }
   private async creationOwner(c: ConnectionRecord): Promise<void> {
     const current = await this.connection(c.connectionId, true)
@@ -280,22 +671,88 @@ export class DesktopTeamService implements DesktopTeamApi {
       throw new DesktopTeamError('CAPACITY_EXCEEDED', '项目身份列表超过核对限界，不能猜测项目名称或权限')
     })
   }
-  async beginPairing(raw: z.input<typeof desktopPairingInputSchema>): Promise<DesktopTeamPairing> {
-    return this.serial('pairing-create', async () => {
-      const input = desktopPairingInputSchema.parse(raw), origin = canonicalTeamOrigin(input.origin, this.options.allowLoopbackHttp)
-      const { origin: _origin, ...enrollmentInput } = input
-      const enrolled = await this.http.request(origin, '/api/device-pairings', teamDeviceEnrollmentSchema, undefined, deviceEnrollmentInputSchema.parse(enrollmentInput))
-      const url = verificationUrl(origin, enrolled.verificationUri, enrolled.pairingId)
-      if (enrolled.expiresAt <= Date.now() || enrolled.pollAfterMs > 300000) throw new DesktopTeamError('INVALID_RESPONSE', '配对已到期或轮询间隔无效')
-      const connectionId = randomUUID()
-      let encrypted: string
-      try { encrypted = this.protection(JSON.stringify({ version: 1, connectionId, origin, pairingId: enrolled.pairingId, deviceId: enrolled.deviceId, token: enrolled.deviceToken })) } catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '系统加密不可用，未打开浏览器；配对凭据未保存') }
-      const c: ConnectionRecord = { connectionId, origin, pairingId: enrolled.pairingId, deviceId: enrolled.deviceId, deviceName: input.deviceName, state: 'pending', projectId: input.projectId ?? null, ownerId: null, userCode: enrolled.userCode, verificationUri: url, expiresAt: enrolled.expiresAt, pollAfterMs: enrolled.pollAfterMs, nextPollAt: Date.now() + enrolled.pollAfterMs, encryptedToken: encrypted, capabilityClaims: input.capabilityClaims, sequence: -1, accessLocked: false, network: 'reachable', lastCheckedAt: Date.now(), lastErrorCode: null, remoteDevice: null }
-      await this.store.call({ op: 'add-connection', input: c })
-      let opened: DesktopTeamPairing['browser'] = 'opened'
-      try { await this.browser(url) } catch { opened = 'unavailable' }
-      return { connection: publicConnection(c), browser: opened }
+  private async workspaceForAccount(account: AccountRecord, workspaceId: string): Promise<TeamProject> {
+    let cursor: string | undefined
+    for (let pageIndex = 0; pageIndex < 50; pageIndex++) {
+      const page = await this.accountRequest(account, this.pagePath('/api/projects', { cursor, limit: 100 }), teamPageSchema(teamProjectSchema), undefined, false)
+      const workspace = page.items.find((item) => item.projectId === workspaceId)
+      if (workspace) return workspace
+      if (!page.hasMore) throw new DesktopTeamError('NOT_FOUND', '选定工作区不属于原桌面账号')
+      if (!page.nextCursor || page.nextCursor === cursor) throw new DesktopTeamError('CURSOR_CONFLICT', '工作区列表游标没有前进，请重新加载')
+      cursor = page.nextCursor
+    }
+    throw new DesktopTeamError('CAPACITY_EXCEEDED', '工作区列表超过核对限界，不能猜测授权范围')
+  }
+  private async createPairing(raw: z.input<typeof desktopPairingInputSchema>, accountId: string | null, approvalCommandId: string | null, openBrowser: boolean): Promise<DesktopTeamPairing> {
+    const input = desktopPairingInputSchema.parse(raw), origin = canonicalTeamOrigin(input.origin, this.options.allowLoopbackHttp)
+    const { origin: _origin, ...enrollmentInput } = input
+    const enrolled = await this.http.request(origin, '/api/device-pairings', teamDeviceEnrollmentSchema, undefined, deviceEnrollmentInputSchema.parse(enrollmentInput))
+    const url = verificationUrl(origin, enrolled.verificationUri, enrolled.pairingId)
+    if (enrolled.expiresAt <= Date.now() || enrolled.pollAfterMs > 300000) throw new DesktopTeamError('INVALID_RESPONSE', '配对已到期或轮询间隔无效')
+    const connectionId = randomUUID()
+    let encrypted: string
+    try { encrypted = this.protection(JSON.stringify({ version: 1, connectionId, origin, pairingId: enrolled.pairingId, deviceId: enrolled.deviceId, token: enrolled.deviceToken })) } catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '系统加密不可用，配对凭据未保存') }
+    const c: ConnectionRecord = { connectionId, accountId, approvalCommandId, origin, pairingId: enrolled.pairingId, deviceId: enrolled.deviceId, deviceName: input.deviceName, state: 'pending', projectId: input.projectId ?? null, ownerId: null, userCode: enrolled.userCode, verificationUri: url, expiresAt: enrolled.expiresAt, pollAfterMs: enrolled.pollAfterMs, nextPollAt: Date.now() + enrolled.pollAfterMs, encryptedToken: encrypted, capabilityClaims: input.capabilityClaims, sequence: -1, accessLocked: false, network: 'reachable', lastCheckedAt: Date.now(), lastErrorCode: null, remoteDevice: null }
+    await this.store.call({ op: 'add-connection', input: c })
+    let opened: DesktopTeamPairing['browser'] = openBrowser ? 'opened' : 'unavailable'
+    if (openBrowser) try { await this.browser(url) } catch { opened = 'unavailable' }
+    return { connection: publicConnection(c), browser: opened }
+  }
+  async connectWorkspace(raw: DesktopTeamConnectWorkspaceInput): Promise<DesktopTeamConnection> {
+    const input = desktopTeamConnectWorkspaceSchema.parse(raw)
+    return this.serial(`workspace-connect:${input.commandId}`, async () => {
+      const account = await this.account(input.accountId, true)
+      let connection = await this.store.call<ConnectionRecord | null>({ op: 'connection-by-approval-command', input: input.commandId })
+      if (connection) {
+        if (connection.accountId !== account.accountId || connection.origin !== account.origin || connection.projectId !== input.workspaceId || connection.deviceName !== input.deviceName || JSON.stringify(connection.capabilityClaims) !== JSON.stringify(input.capabilityClaims)) throw new DesktopTeamError('COMMAND_CONFLICT', '同一设备批准命令不能更换账号、工作区或设备声明')
+      } else {
+        await this.workspaceForAccount(account, input.workspaceId)
+        const pairing = await this.createPairing({ origin: account.origin, deviceName: input.deviceName, projectId: input.workspaceId, capabilityClaims: input.capabilityClaims }, account.accountId, input.commandId, false)
+        connection = await this.connection(pairing.connection.connectionId)
+      }
+      if (connection === null) throw new DesktopTeamError('STORE_UNAVAILABLE', '候选设备记录未能从本地存储读取')
+      let currentConnection: ConnectionRecord = connection
+      if (currentConnection.state === 'active') {
+        if (currentConnection.ownerId !== account.person.userId) throw new DesktopTeamError('BINDING_CHANGED', '已批准设备不属于原桌面账号')
+        await this.verifyActive(currentConnection)
+        return publicConnection(currentConnection)
+      }
+      if (currentConnection.state !== 'pending' || currentConnection.expiresAt <= Date.now()) throw new DesktopTeamError('PAIRING_UNAVAILABLE', '原候选设备已不处于可批准状态')
+      let approvalError: unknown = null
+      try {
+        const body = deviceApproveInputSchema.parse({ commandId: input.commandId, userCode: currentConnection.userCode, expectedProjectId: input.workspaceId })
+        const approval = await this.accountRequest(account, `/api/device-pairings/${encodeURIComponent(currentConnection.pairingId)}/approve`, teamCommandReplySchema(teamDeviceApprovalSchema), body, true)
+        if (approval.commandId !== input.commandId || approval.result.deviceId !== currentConnection.deviceId || approval.result.projectId !== input.workspaceId || approval.result.ownerId !== account.person.userId) throw new DesktopTeamError('RECEIPT_MISMATCH', '设备批准回执不属于原账号、工作区或候选设备', true)
+      } catch (error) {
+        if (!(error instanceof DesktopTeamError) || !error.outcomeUnknown) throw error
+        approvalError = error
+      }
+      const deadline = Date.now() + CONNECT_WAIT_MS
+      for (;;) {
+        try {
+          const current = await this.connection(currentConnection.connectionId)
+          const device = await this.request(current, `/api/device-pairings/${encodeURIComponent(current.pairingId)}/status`, teamDeviceSchema)
+          currentConnection = await this.store.call({ op: 'update-connection', input: { connectionId: current.connectionId, device, nextPollAt: Date.now() + current.pollAfterMs } })
+          if (currentConnection.state === 'active') {
+            if (currentConnection.ownerId !== account.person.userId || currentConnection.projectId !== input.workspaceId) throw new DesktopTeamError('BINDING_CHANGED', '设备状态不属于原账号或工作区')
+            await this.verifyActive(currentConnection)
+            return publicConnection(currentConnection)
+          }
+          if (currentConnection.state !== 'pending') throw new DesktopTeamError('PAIRING_UNAVAILABLE', '候选设备未获批准且已离开待处理状态')
+        } catch (error) {
+          if (approvalError) throw approvalError
+          throw error
+        }
+        const remaining = deadline - Date.now()
+        if (remaining <= 0) break
+        await wait(Math.min(currentConnection.pollAfterMs, remaining))
+      }
+      if (approvalError) throw approvalError
+      throw new DesktopTeamError('PAIRING_PENDING', '设备批准已确认，但 active 状态尚未在限定时间内可见；原连接已保留')
     })
+  }
+  async beginPairing(raw: z.input<typeof desktopPairingInputSchema>): Promise<DesktopTeamPairing> {
+    return this.serial('pairing-create', () => this.createPairing(raw, null, null, true))
   }
   async openPairing(connectionId: string): Promise<void> {
     return this.tracked(async () => {

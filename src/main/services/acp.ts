@@ -52,9 +52,18 @@ import { acpExtraArgv, acpProcessEnv, acpSpawnEnv, resolveAcpLaunchOptions, sess
 import { getSettings } from './store'
 import { isOpenCodeV1, OpenCodeStatus } from './acp/opencode-status'
 import { prepareAgentRules, assertAgentRulesCurrent } from './agent-rules'
-import { observeTaskProgressState } from './hifox/task-progress-events'
+import { assertTaskProgressCurrent, observeTaskProgressState } from './hifox/task-progress-events'
 import { taskRule } from './hifox/task-progress-context'
 import type { HifoxProgressSession } from '../../shared/hifox-task-progress'
+import { agentRulesManifestSchema } from '../../shared/agent-rules'
+import type { WorkcopyLease, WorkcopyOwner, WorkcopyObservation } from '../../shared/workcopy-use'
+import { workcopyUseRegistry, workcopyUseDirectory, resolveWorkcopy, assertWorkcopyObservation, WorkcopyUseConflict } from './workcopy-use'
+import { createAcpJobOwner, shutdownAcpJobs, type AcpJobOwner } from './workcopy-use/acp-jobs'
+import { hasLegacyAcpCleanupReceipt, recoverInactiveAcpUses } from './workcopy-use/acp-recovery'
+import { runOwnedProbe } from './workcopy-use/owned-probe'
+import { hasAcpJobOwner, recoverAcpJobOwner } from './workcopy-use/acp-jobs'
+import { reserveTaskSessionIntent, claimTaskSessionIntent, completeTaskSessionIntent, enterTaskSessionNativeBoundary, readTaskSessionIntent, saveTaskSessionIntent, markTaskSessionPrompt, taskSessionExpectedSchema, type TaskSessionExpected } from './workcopy-use/task-session-intent'
+export type { TaskSessionExpected } from './workcopy-use/task-session-intent'
 export { listAcpAgents, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath } from './acp/setup'
 export { testAcpRuntimeConnection } from './acp/connection-probe'
 export { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, retryAcpHistory, stopAcpHistory } from './acp/history-service'
@@ -75,8 +84,8 @@ type ResumeResult = { ok: true; sessionId: string } | IpcFail
 const resumeRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
 const recoveryRequests = new Map<string, { root: string; operation: ModelRecoveryOperation; promise: Promise<AcpRecoverModelResult> }>()
 const creatingRequests = new Set<Promise<unknown>>()
+const taskCreationRequests = new Map<string, { signature: string; promise: Promise<{ ok: true; session: HifoxProgressSession } | IpcFail> }>()
 const handoffRequests = new Set<Promise<AcpHandoffOperationResult | IpcFail>>()
-const leases = new Map<string, Set<ActiveSession>>()
 let shuttingDown = false
 let eventSeq = 0
 let lastWorkflowObserverWarningAt = 0
@@ -307,6 +316,11 @@ interface ActiveSession {
   leaseHeld: boolean
   leaseMode: 'shared' | 'exclusive'
   leaseKey?: string
+  workcopyLease?: WorkcopyLease
+  workcopyBaseline?: WorkcopyObservation
+  nativeJobs?: AcpJobOwner
+  processCleanupConfirmed?: boolean
+  agentLaunchId?: string
   uncertainWork: boolean
   disconnectOnClose?: boolean
   lastUsedAt: number
@@ -314,6 +328,8 @@ interface ActiveSession {
   settling: boolean
   promptAbort?: AbortController
   cleanupRequired?: boolean
+  canonicalCleanup?: boolean
+  unverifiedProcessExit?: boolean
   snapshotDirty: number
   snapshotTimer?: NodeJS.Timeout
   knowledge?: KnowledgeMcpConnection
@@ -336,51 +352,80 @@ function owned(root: string, sessionId: string): ActiveSession | IpcFail {
   if (!belongs(root, session.meta)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
   return session
 }
-function acquire(session: ActiveSession, mode: ActiveSession['leaseMode'] = session.leaseHeld ? session.leaseMode : 'shared'): IpcFail | undefined {
-  const key = keyFor(session)
-  if (session.leaseHeld && session.leaseKey !== key) return ipcFail(IpcErrorCode.Conflict, '会话工作目录已改变，请重新连接后重试')
-  if (session.cleanupRequired || session.uncertainWork) return ipcFail(IpcErrorCode.Conflict, '此会话的工具或清理尚未确认结束，请先完成原会话清理')
-  const owners = leases.get(key) ?? new Set<ActiveSession>()
-  for (const owner of owners) {
-    if (owner === session) continue
-    const sameProject = belongs(session.meta.projectRoot, owner.meta)
-    if (!sameProject || mode === 'exclusive' || owner.leaseMode === 'exclusive' || owner.cleanupRequired || owner.uncertainWork || owner.closing) {
-      return ipcFail(IpcErrorCode.Conflict, sameProject ? '此目录有独占执行或尚未确认结束的清理，请等待完成后重试' : '此工作目录正由另一项目使用，请等待原执行结束',
-        sameProject ? { ownerSessionId: owner.meta.sessionId } : undefined)
-    }
-  }
-  owners.add(session)
-  leases.set(key, owners)
-  session.leaseHeld = true
-  session.leaseMode = mode
-  session.leaseKey = key
+function teamCodeRulesFailure(meta: AcpSessionRecord): IpcFail | undefined {
+  if (!meta.taskProgress || !meta.taskDir) return undefined
+  const parsed = agentRulesManifestSchema.safeParse(meta.agentRulesManifest)
+  const fixed = parsed.success ? parsed.data.teamTask : undefined
+  if (!fixed || fixed.taskDir !== meta.taskDir || fixed.taskId !== meta.taskProgress.taskId || fixed.spaceId !== meta.taskProgress.spaceId
+    || fixed.inputVersion !== meta.taskProgress.inputVersion || fixed.workcopyTaskKey !== meta.taskProgress.workcopyTaskKey) return ipcFail(IpcErrorCode.Conflict,
+      '此团队代码会话缺少与原任务一致的固定规则清单，不能继续执行；请从原任务显式新建主要会话。原历史仍可阅读。')
   return undefined
+}
+function acquire(session: ActiveSession, mode: ActiveSession['leaseMode'] = session.leaseHeld ? session.leaseMode : 'shared'): IpcFail | undefined {
+  const rulesFailure = teamCodeRulesFailure(session.meta)
+  if (rulesFailure) return rulesFailure
+  if (session.cleanupRequired || session.uncertainWork) return ipcFail(IpcErrorCode.Conflict, '此会话的工具或清理尚未确认结束，请先完成原会话清理')
+  try {
+    const identity = resolveWorkcopy(keyFor(session))
+    if (session.leaseHeld && session.leaseKey !== identity.id) return ipcFail(IpcErrorCode.Conflict, '会话工作副本身份已改变，请重新核对后连接')
+    assertWorkcopyObservation(identity, session.workcopyBaseline)
+    const lease = workcopyUseRegistry().acquire(keyFor(session), { kind: 'writer', owner: workcopyOwner(session), token: session.workcopyLease?.token, expected: { id: identity.id, revision: identity.revision } })
+    session.workcopyLease = lease
+    session.workcopyBaseline = identity
+    session.leaseHeld = true
+    session.leaseMode = mode
+    session.leaseKey = identity.id
+    return undefined
+  } catch (error) {
+    return ipcFail(IpcErrorCode.Conflict, error instanceof Error ? error.message : '工作副本准入未确认',
+      error instanceof WorkcopyUseConflict ? { workcopyUses: error.blockers } : undefined)
+  }
+}
+function workcopyOwner(session: ActiveSession): WorkcopyOwner {
+  if (session.workcopyLease) return session.workcopyLease.owner
+  return workcopyOwnerForMeta(session.meta)
+}
+function workcopyOwnerForMeta(meta: AcpSessionRecord): WorkcopyOwner {
+  const taskKey = meta.taskProgress?.workcopyTaskKey
+  const label = (meta.taskProgress ? `${meta.taskProgress.taskId} · ${meta.agentName}` : meta.agentName).slice(0, 200)
+  return { kind: 'agent', id: meta.sessionId, generation: meta.connectionGeneration ?? meta.sessionId,
+    label, taskKey: typeof taskKey === 'string' && /^[a-f0-9]{64}$/.test(taskKey) ? taskKey : `session:${meta.sessionId}` }
+}
+async function recoverOriginalAcpUses(root: string, sessionId?: string): Promise<number> {
+  return recoverInactiveAcpUses(workcopyUseDirectory(), workcopyUseRegistry(), root, owner => sessions.get(owner.id)?.meta.connectionGeneration === owner.generation, sessionId)
 }
 /** Cleanup uncertainty blocks new admission without cancelling already admitted peers. */
 function holdCleanupBarrier(session: ActiveSession): void {
-  const key = session.leaseKey ?? keyFor(session)
-  const owners = leases.get(key) ?? new Set<ActiveSession>()
-  owners.add(session); leases.set(key, owners)
-  session.leaseHeld = true; session.leaseMode = 'exclusive'; session.leaseKey = key
+  const lease = workcopyUseRegistry().retainUnknown(keyFor(session), workcopyOwner(session), session.workcopyLease)
+  session.workcopyLease = lease
+  session.leaseHeld = true; session.leaseMode = 'exclusive'; session.leaseKey = lease.identity.id
 }
-function release(session: ActiveSession): void {
+function release(session: ActiveSession, cleanupConfirmed = false): void {
+  cleanupConfirmed ||= session.processCleanupConfirmed === true && !session.hasProcess
+  if (session.unverifiedProcessExit) { session.cleanupRequired = true; holdCleanupBarrier(session); return }
   if (session.cleanupRequired) { holdCleanupBarrier(session); return }
   const unfinished = [...session.toolStates.values()].some((state) => state === 'unfinished')
-  if (session.hasProcess && (session.backgroundWork || unfinished)) {
+  if (!cleanupConfirmed && (session.backgroundWork || unfinished || session.uncertainWork)) {
     // A model turn ending does not prove an unfinished native tool has stopped.
     // Once that uncertainty crosses a turn boundary, keep ownership until stop.
     session.backgroundWork = true
-    session.uncertainWork = unfinished
-    if (unfinished) holdCleanupBarrier(session)
-    session.meta.directoryLeaseReason = unfinished
+    session.uncertainWork ||= unfinished || !session.hasProcess
+    if (session.uncertainWork) holdCleanupBarrier(session)
+    session.meta.directoryLeaseReason = session.uncertainWork
       ? 'Runtime 仍有未报告完成的工具；回合结束不能证明工具已停止，请结束会话以释放目录'
-      : '此会话仍有后台工具，其他普通对话可继续使用'
+      : '此会话仍有后台工具，主要写入登记保留；请结束原会话以核验清理'
     return
   }
-  const key = session.leaseKey ?? keyFor(session)
-  const owners = leases.get(key)
-  owners?.delete(session)
-  if (owners?.size === 0) leases.delete(key)
+  const lease = session.workcopyLease
+  if (lease) {
+    const result = workcopyUseRegistry().release({ token: lease.token, owner: lease.owner, outcome: cleanupConfirmed ? 'cleanup-confirmed' : 'settled' })
+    if (!result.released) { session.uncertainWork = true; session.meta.directoryLeaseReason = '原后台清理尚未确认，工作副本登记已保留'; return }
+    try {
+      const current = resolveWorkcopy(keyFor(session))
+      if (current.id === lease.identity.id) session.workcopyBaseline = current
+    } catch { /* Preserve the original baseline when an external tool removes/redirects the directory. */ }
+  }
+  session.workcopyLease = undefined
   session.leaseHeld = false
   session.leaseMode = 'shared'
   session.leaseKey = undefined
@@ -751,24 +796,41 @@ async function closeAfterFailure(session: ActiveSession, error: unknown, remove:
   if (forensics) message += forensics
   session.meta.recovery = { ...session.meta.recovery, kind: modelUnavailable(error) ? 'model-unavailable' : 'connection-failed' }
   try {
-    await session.runtime.shutdown()
+    session.canonicalCleanup = true
+    await drainSessionRuntime(session)
+    if (session.unverifiedProcessExit) throw new Error('原 Runtime 根进程已异常退出；当前执行器未提供完整子进程清理证明，工作副本登记保留')
     session.hasProcess = false
     session.backgroundWork = false
     session.toolStates.clear()
     session.cleanupRequired = false
-    release(session)
+    release(session, true)
     if (remove && sessions.get(session.meta.sessionId) === session) sessions.delete(session.meta.sessionId)
   } catch (cleanupError) {
     message += `；Runtime 清理尚未完成：${knowledgeMcpBridge.redactText(errorMessage(cleanupError))}`
-    session.cleanupRequired = true
-    holdCleanupBarrier(session)
-    session.meta.directoryLeaseReason = '清理未确认，目录占用保留；请显式停止 Runtime 后重试'
-  }
+    if (session.processCleanupConfirmed) { session.cleanupRequired = false; session.backgroundWork = false; session.toolStates.clear(); release(session, true) }
+    else { session.cleanupRequired = true; holdCleanupBarrier(session) }
+    session.meta.directoryLeaseReason = session.processCleanupConfirmed ? undefined : session.unverifiedProcessExit
+      ? '原执行器异常退出，完整子进程清理无法核实；占用已保留，可选择另一工作副本'
+      : '清理未确认，目录占用保留；请显式停止 Runtime 后重试'
+  } finally { session.canonicalCleanup = false }
   captureConnectionTimings(session)
   setStatus(session, 'error', message, true)
 }
+/** SDK state/IO failure cannot substitute for, or invalidate, an actual owned-job proof. */
+async function drainSessionRuntime(session: ActiveSession): Promise<void> {
+  let failure: unknown
+  try { await session.runtime.shutdown() } catch (error) { failure = error }
+  if (session.nativeJobs) {
+    await session.nativeJobs.cleanupAll()
+    session.hasProcess = false; session.disconnected = true
+    session.unverifiedProcessExit = false; session.processCleanupConfirmed = true
+  }
+  if (failure !== undefined) throw failure
+}
 function permissionHandler(session: ActiveSession): AcpPermissionHandler {
   return async (request, context) => {
+    const rulesFailure = teamCodeRulesFailure(session.meta)
+    if (rulesFailure) { emit(session, 'diagnostic', rulesFailure.error, { activityScope: 'turn' }); return { outcome: 'cancel' } }
     if (session.closing || !session.turn || session.meta.status === 'cancelling' || !session.leaseHeld || context.signal.aborted) return { outcome: 'cancel' }
     // Native identities cannot be redacted/remapped without changing the exact
     // permission decision. Reject descriptor-bearing IDs before publishing them.
@@ -820,6 +882,11 @@ export function respondAcpPermission(projectRoot: string, requestId: string, opt
     if (session.closing || pending.payload.connectionGeneration !== session.meta.connectionGeneration || pending.payload.turnId !== session.meta.turnId) return ipcFail(IpcErrorCode.Conflict, '权限请求已失效')
     const choices = pending.payload.options.filter((option) => option.optionId === optionId)
     if (choices.length !== 1) return ipcFail(IpcErrorCode.InvalidArg, '权限选项无效或不唯一，请选择此请求提供的唯一选项')
+    const rulesFailure = teamCodeRulesFailure(session.meta)
+    if (rulesFailure && (choices[0].kind === 'allow_once' || choices[0].kind === 'allow_always')) {
+      pending.finish({ outcome: 'cancel' }, 'cancelled')
+      return rulesFailure
+    }
     pending.finish({ outcome: 'selected', optionId }, 'selected')
     return { ok: true }
   }
@@ -827,18 +894,28 @@ export function respondAcpPermission(projectRoot: string, requestId: string, opt
 }
 
 async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConfig, argv: string[], recoveryModelId?: string): Promise<ActiveSession> {
+  const rulesFailure = teamCodeRulesFailure(meta)
+  if (rulesFailure) throw new Error(rulesFailure.error)
   // Import original snapshots before a resumed compatibility snapshot replaces them.
   await ensureAcpHistory().catch(() => {})
-  if (!('TRELLIS_ACPX_COMPAT_VERSION' in AcpxRuntime) || AcpxRuntime.TRELLIS_ACPX_COMPAT_VERSION !== 3) throw new Error('acpx 兼容补丁未准备好；请重新安装应用依赖')
+  if (AcpxRuntime.TRELLIS_ACPX_COMPAT_VERSION !== 4 || AcpxRuntime.TRELLIS_ACPX_PROCESS_CONTRACT?.version !== 1) throw new Error('acpx 受控进程兼容补丁未准备好；请重新安装应用依赖')
   const launchOptions = sessionAcpLaunchOptions(meta, process.platform)
   const nativeStatus = config.id === 'opencode' && config.launchKind === 'native'
     ? new OpenCodeStatus(meta.sessionId, !acpExtraArgv(launchOptions).some(arg => /^(?:--(?:port|hostname)(?:=|$)|-p(?:=|$)|--$)/i.test(arg))
       && !Object.keys(acpSpawnEnv(process.env, acpProcessEnv(launchOptions, process.platform), process.platform))
         .some(key => /^OPENCODE_SERVER_(?:USERNAME|PASSWORD)$/i.test(key)),
-    () => isOpenCodeV1(argv[0], acpProcessEnv(launchOptions, process.platform))) : undefined
+    () => isOpenCodeV1(argv[0], acpProcessEnv(launchOptions, process.platform), nativeJobs ? { scopeKey: `${meta.sessionId}:${meta.connectionGeneration}`,
+      run: (target, args, env, verbatim) => {
+        if (shuttingDown || session.closing) throw new Error('原会话已停止，未启动版本探测')
+        const conflict = acquire(session); if (conflict) throw new Error(conflict.error)
+        return runOwnedProbe(nativeJobs, { launchId: randomUUID(), purpose: 'command-probe', scope: { kind: 'runtime-session', sessionKey: meta.sessionId }, command: target, args, cwd: meta.cwd ?? meta.projectRoot },
+          { cwd: meta.cwd ?? meta.projectRoot, env, stdio: ['ignore', 'pipe', 'pipe'], windowsVerbatimArguments: verbatim, windowsHide: true })
+      } } : undefined)) : undefined
   if (config.launchKind === 'sdk' && launchOptions.args?.length) throw new Error('Pi SDK 不支持额外启动参数；请清除执行引擎或 Agent 的参数后重试')
   const store = createFileSessionStore({ stateDir: acpDataPath('runtime-store') })
   const modelMetadata = new ModelMetadataContext({ agentId: config.id, launchKind: config.launchKind, cwd: meta.cwd ?? meta.projectRoot, env: launchOptions.env, args: launchOptions.args })
+  const nativeJobs = process.platform === 'win32'
+    ? await createAcpJobOwner(workcopyUseDirectory(), meta.cwd ?? meta.projectRoot, workcopyOwnerForMeta(meta)) : undefined
   let session: ActiveSession
   let knowledge: KnowledgeMcpConnection | undefined
   try {
@@ -851,14 +928,23 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
     })
   } catch { /* Ordinary native dialogue remains usable with an explicit unavailable diagnostic. */ }
   const runtime: ConversationRuntime = config.id === 'pi' && config.launchKind === 'sdk' ? new PiConversationRuntime({ meta, argv,
-    dataDirectory: app.getPath('userData'), initialModelId: recoveryModelId, windowsJobLauncher: process.platform === 'win32' ? nativeResource('windows-pi-engine.ps1') : undefined,
+    dataDirectory: app.getPath('userData'), initialModelId: recoveryModelId, windowsJobLauncher: !nativeJobs && process.platform === 'win32' ? nativeResource('windows-pi-engine.ps1') : undefined,
+    nativeJobs,
     mcpServers: () => knowledge?.servers().map(server => ({ name: 'trellis_knowledge', config: { type: 'http', url: server.url, headers: Object.fromEntries(server.headers.map(header => [header.name, header.value])), exposure: 'direct' } })) ?? [],
     onState: (state, mode) => { session.meta.currentModeId = mode; projectPiState(session.meta, state) },
     onBeforeSpawn: () => { if (shuttingDown || session.closing) throw new Error('会话已停止'); const conflict = acquire(session); if (conflict) throw new Error(conflict.error); session.lastStatusAt.set('process-start', Date.now()); observe(session, '启动 Pi 原生引擎') },
     onSpawned: () => { session.hasProcess = true; session.disconnected = false; observe(session, 'Pi 执行进程已启动', session.lastStatusAt.get('process-start')) },
     onCleanupFailure: message => { session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = message },
-    onExit: () => { session.knowledge?.disconnect(); session.hasProcess = false; session.disconnected = true; session.backgroundWork = false; session.toolStates.clear(); settlePermissions(session, 'disconnected');
-      if (!session.turn && !session.closing && !session.settling && session.meta.status !== 'starting') { release(session); setStatus(session, 'disconnected', 'Pi 执行进程已退出', true) } }
+    onExit: async () => { session.knowledge?.disconnect(); session.hasProcess = false; session.disconnected = true; settlePermissions(session, 'disconnected');
+      if (session.leaseHeld) { session.cleanupRequired = true; holdCleanupBarrier(session) }
+      if (nativeJobs) {
+        try {
+          await nativeJobs.cleanupAll(); session.processCleanupConfirmed = true; session.cleanupRequired = false; session.uncertainWork = false
+          session.backgroundWork = false; session.toolStates.clear()
+          if (!session.turn && !session.accepting && !session.closing && !session.settling) release(session, true)
+        } catch (error) { session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = errorMessage(error) }
+      }
+      if (!session.turn && !session.closing && !session.settling && session.meta.status !== 'starting') setStatus(session, 'disconnected', 'Pi 进程已退出；请结束原会话核验子进程清理', true) }
   }) : createAcpRuntime({ cwd: meta.cwd ?? meta.projectRoot,
     agentProcessEnv: { ...acpProcessEnv(launchOptions, process.platform),
       ...(zcodeDiagnosticDirectory(meta) ? { TRELLIS_ZCODE_DIAGNOSTICS_DIR: zcodeDiagnosticDirectory(meta),
@@ -882,31 +968,46 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
     // Current profiles use adapter-native tools, mediated by the callback below.
     fs: false, terminal: false,
     processLifecycle: {
+      spawn: nativeJobs ? (launch, options) => nativeJobs.spawn(launch, options) : undefined,
+      cleanup: nativeJobs ? started => nativeJobs.cleanup(started) : undefined,
       prepareSpawn: nativeStatus ? launch => nativeStatus.prepareSpawn(launch) : undefined,
-      onBeforeSpawn: () => {
+      onBeforeSpawn: launch => {
         if (shuttingDown || session.closing) throw new Error('会话已停止')
         const conflict = acquire(session)
         if (conflict) throw new Error(conflict.error)
+        if (launch.purpose === 'agent') session.agentLaunchId = launch.launchId
         modelMetadata.capture(session.meta.connectionGeneration)
         session.lastStatusAt.set('process-start', Date.now())
         observe(session, '启动 Runtime')
       },
-      onSpawned: started => { if (nativeStatus && !nativeStatus.spawned(started)) return; session.hasProcess = true; session.disconnected = false; observe(session, 'Runtime 进程已启动', session.lastStatusAt.get('process-start')) },
+      onSpawned: async started => { await nativeJobs?.spawned(started); if (started.purpose === 'command-probe') return; if (session.agentLaunchId !== started.launchId) throw new Error('原生启动已被新的 launch 代次取代'); if (nativeStatus && !nativeStatus.spawned(started)) return; session.processCleanupConfirmed = false; session.hasProcess = true; session.disconnected = false; observe(session, 'Runtime 进程已启动', session.lastStatusAt.get('process-start')) },
       onSpawnFailed: (error) => observe(session, `Runtime 启动失败：${errorMessage(error.error)}`, undefined, true),
-      onExit: exited => {
+      onExit: async exited => {
+        if (exited.purpose === 'command-probe') { await nativeJobs?.cleanup(exited); return }
+        if (session.agentLaunchId !== exited.launchId) { await nativeJobs?.cleanup(exited); return }
         if (nativeStatus && !nativeStatus.exited(exited.launchId)) return
         session.runtimeRetry = undefined
         session.knowledge?.disconnect()
         session.hasProcess = false
         session.disconnected = true
-        session.backgroundWork = false
-        session.toolStates.clear()
+        if (process.platform === 'win32' && session.leaseHeld && !session.canonicalCleanup) session.unverifiedProcessExit = true
         settlePermissions(session, 'disconnected')
-        if (!session.turn && !session.closing && !session.settling && session.meta.status !== 'starting') { release(session); setStatus(session, 'disconnected', 'Runtime 进程已退出', true) }
+        // Root exit is only an observation. Canonical runtime.shutdown() must
+        // verify its retained descendants before this lease may be released.
+        if (session.leaseHeld) { session.cleanupRequired = true; holdCleanupBarrier(session) }
+        if (nativeJobs) {
+          try {
+            await nativeJobs.cleanup(exited)
+            session.unverifiedProcessExit = false; session.processCleanupConfirmed = true; session.cleanupRequired = false
+            session.backgroundWork = false; session.toolStates.clear(); session.uncertainWork = false
+            if (!session.turn && !session.accepting && !session.closing && !session.settling && session.meta.status !== 'starting') release(session, true)
+          } catch (error) { session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = errorMessage(error) }
+        }
+        if (!session.turn && !session.closing && !session.settling && session.meta.status !== 'starting') setStatus(session, 'disconnected', 'Runtime 进程已退出；请结束原会话核验子进程清理', true)
       }
     }
   })
-  session = { meta, runtime, nativeStatus, modelMetadata, knowledge, nativePersistenceConfirmed: false, knowledgeSupport: 'unknown', nativeCommands: new Set(), accepting: false, closing: false, disconnected: false, pendingPermissions: new Map(), lastStatusAt: new Map(), hasProcess: false, backgroundWork: false, toolStates: new Map(), leaseHeld: false, leaseMode: 'shared', uncertainWork: false, lastUsedAt: Date.now(), settling: false, snapshotDirty: 0 }
+  session = { meta, runtime, nativeJobs, nativeStatus, modelMetadata, knowledge, nativePersistenceConfirmed: false, knowledgeSupport: 'unknown', nativeCommands: new Set(), accepting: false, closing: false, disconnected: false, pendingPermissions: new Map(), lastStatusAt: new Map(), hasProcess: false, backgroundWork: false, toolStates: new Map(), leaseHeld: false, leaseMode: 'shared', uncertainWork: false, lastUsedAt: Date.now(), settling: false, snapshotDirty: 0 }
   return session
 }
 
@@ -953,32 +1054,108 @@ export function newAcpSession(projectRoot: string, input: unknown): Promise<{ ok
 /** Main/daemon-only task launch: fixed cwd and preallocated identity, never a renderer override. */
 export function newTaskAcpSession(root: string, input: { agentId: string; taskDir?: string }, sessionId: string, engine: 'pi' | 'acp', task?: AcpSessionRecord['taskProgress']): Promise<{ ok: true; session: HifoxProgressSession } | IpcFail> {
   assertRuntimeExecutionHost()
-  const pending = newOwnedTaskAcpSession(root, input, sessionId, engine, task)
+  const key = `${canonicalDirectory(root)}:${sessionId}`, signature = JSON.stringify({ input, engine, task })
+  const existing = taskCreationRequests.get(key)
+  if (existing) return existing.signature === signature ? existing.promise : Promise.resolve(ipcFail(IpcErrorCode.Conflict, '原 alias 正在创建不同的固定任务会话。'))
+  const pending = newOwnedTaskAcpSession(root, input, sessionId, engine, task).catch(error => failure(error))
+  taskCreationRequests.set(key, { signature, promise: pending })
   creatingRequests.add(pending)
-  void pending.finally(() => creatingRequests.delete(pending)).catch(() => {})
+  void pending.finally(() => { creatingRequests.delete(pending); if (taskCreationRequests.get(key)?.promise === pending) taskCreationRequests.delete(key) }).catch(() => {})
   return pending
 }
 async function newOwnedTaskAcpSession(root: string, input: { agentId: string; taskDir?: string }, sessionId: string, engine: 'pi' | 'acp', task?: AcpSessionRecord['taskProgress']): Promise<{ ok: true; session: HifoxProgressSession } | IpcFail> {
   assertRuntimeExecutionHost()
   if (sessions.has(sessionId) || readRecords().some(record => record.sessionId === sessionId)) return ipcFail(IpcErrorCode.Conflict, '原任务会话身份已存在，不能重复创建或复用最近聊天')
+  const expected = taskSessionExpectedSchema.parse({ engine, taskDir: input.taskDir, task })
+  await reserveTaskSessionIntent(workcopyUseDirectory(), root, sessionId, expected)
+  const intent = claimTaskSessionIntent(workcopyUseDirectory(), root, sessionId, expected)
   const launch = await resolveAcpRuntimeLaunch(input.agentId)
   if ('ok' in launch) return launch
   if ((launch.config.launchKind === 'sdk' ? 'pi' : 'acp') !== engine) return ipcFail(IpcErrorCode.InvalidArg, '所选执行引擎与实际 Runtime 不一致')
-  const result = await newOwnedAcpSession(root, input, undefined, { sessionId, task })
+  const result = await newOwnedAcpSession(root, input, undefined, { sessionId, task, connectionGeneration: intent.generation })
   if (!result.ok) return result
   const owner = sessions.get(result.sessionId)
   if (!owner) return ipcFail(IpcErrorCode.Conflict, '原任务会话未建立')
   await owner.preparing
   if (owner.meta.status !== 'ready' || owner.disconnected || owner.closing || !owner.meta.connectionGeneration || !owner.meta.backendSessionId) return ipcFail(IpcErrorCode.Unavailable, '原任务 Runtime 未确认就绪；绑定已保留')
   if (owner.meta.engine !== engine) { await killOwned(owner, '任务 Runtime 配置已变化'); return ipcFail(IpcErrorCode.Conflict, '任务 Runtime 配置在启动期间已变化，未发送任务') }
-  return { ok: true, session: { sessionId: owner.meta.sessionId, backendSessionId: owner.meta.backendSessionId, connectionGeneration: owner.meta.connectionGeneration,
-    projectRoot: owner.meta.projectRoot, cwd: owner.meta.cwd ?? root, taskDir: owner.meta.taskDir ?? null, engine } }
+  const session = { sessionId: owner.meta.sessionId, backendSessionId: owner.meta.backendSessionId, connectionGeneration: owner.meta.connectionGeneration,
+    projectRoot: owner.meta.projectRoot, cwd: owner.meta.cwd ?? root, taskDir: owner.meta.taskDir ?? null, engine }
+  completeTaskSessionIntent(workcopyUseDirectory(), root, sessionId, session)
+  return { ok: true, session }
+}
+export type TaskSessionReconcile =
+  | { status: 'present'; connection: 'live' | 'resumable'; session: HifoxProgressSession; dispatch: 'not-sent' | 'sent' | 'unknown' }
+  | { status: 'settled'; outcome: 'not-created' | 'cleaned'; dispatch: 'not-sent' | 'sent' | 'unknown' }
+  | { status: 'unknown'; reason: string; dispatch: 'unknown' }
+/** Reserve only a newly generated native alias, before publishing its preparing row. */
+export async function reserveTaskSession(root: string, nativeAlias: string, expected: TaskSessionExpected): Promise<void> {
+  assertRuntimeExecutionHost()
+  if (sessions.has(nativeAlias) || readRecords().some(record => record.sessionId === nativeAlias)) throw new Error('原 alias 已有会话记录，请核对原会话而非重新预留')
+  await reserveTaskSessionIntent(workcopyUseDirectory(), root, nativeAlias, taskSessionExpectedSchema.parse(expected))
+}
+/** Original-alias reconciliation: never creates/resends a native session/prompt. */
+export async function reconcileTaskSession(root: string, nativeAlias: string, rawExpected: TaskSessionExpected): Promise<TaskSessionReconcile> {
+  assertRuntimeExecutionHost()
+  const unknown = (reason: string): TaskSessionReconcile => ({ status: 'unknown', reason, dispatch: 'unknown' })
+  try {
+    const expected = taskSessionExpectedSchema.parse(rawExpected), directory = workcopyUseDirectory()
+    const intent = readTaskSessionIntent(directory, root, nativeAlias, expected)
+    const active = sessions.get(nativeAlias), meta = active?.meta ?? readRecords().find(record => record.sessionId === nativeAlias)
+    if (meta && (!belongs(root, meta) || JSON.stringify(taskSessionExpectedSchema.parse({ engine: meta.engine, taskDir: meta.taskDir, task: meta.taskProgress })) !== JSON.stringify(expected))) return unknown('原 alias 与固定任务元数据不一致，未重挂或停止其他会话。')
+    const dispatch = intent?.prompt === 'sent' ? 'sent' as const : intent?.prompt === 'not-sent' ? 'not-sent' as const : 'unknown' as const
+    const summary = (value: AcpSessionRecord): HifoxProgressSession => ({ sessionId: value.sessionId, backendSessionId: value.backendSessionId ?? null,
+      connectionGeneration: value.connectionGeneration ?? '', projectRoot: value.projectRoot, cwd: value.cwd ?? root, taskDir: value.taskDir ?? null, engine: expected.engine })
+    if (active?.handle && !active.closing && !active.disconnected && active.meta.backendSessionId) {
+      if (process.platform === 'win32' && !active.nativeJobs) return unknown('原会话没有受控 Job 证明，不能作为新保护运行重挂。')
+      const invalidRules = teamCodeRulesFailure(active.meta)
+      if (invalidRules) return unknown(invalidRules.error)
+      return { status: 'present', connection: 'live', session: summary(active.meta), dispatch }
+    }
+    if (taskCreationRequests.has(`${canonicalDirectory(root)}:${nativeAlias}`)) return unknown('原创建仍在执行；请等待原操作或显式停止原 alias。')
+    if (intent?.phase === 'cleaned') return { status: 'settled', outcome: intent.settledOutcome ?? 'cleaned', dispatch }
+    if (intent?.nativeBoundary === 'not-entered') {
+      saveTaskSessionIntent(directory, { ...intent, phase: 'cleaned', settledOutcome: 'not-created' })
+      if (active) { const stopped = await killOwned(active, '原创建未进入外部执行，已收束原 alias'); if (!stopped.ok) return unknown(stopped.error) }
+      return { status: 'settled', outcome: 'not-created', dispatch: 'not-sent' }
+    }
+    if (active) {
+      const stopped = await killOwned(active, '核对原任务创建的受控进程')
+      if (!stopped.ok) return unknown(stopped.error)
+    }
+    const owner = meta ? workcopyOwnerForMeta(meta) : intent ? { kind: 'agent' as const, id: nativeAlias, generation: intent.generation,
+      taskKey: expected.task?.workcopyTaskKey ?? `session:${nativeAlias}`, label: '原任务创建' } : undefined
+    if (owner && hasAcpJobOwner(directory, owner)) {
+      await recoverAcpJobOwner(directory, owner, true)
+      await recoverOriginalAcpUses(meta?.cwd ?? root, nativeAlias)
+      if (meta?.canResume && meta.connectionGeneration && meta.backendSessionId && !teamCodeRulesFailure(meta)) {
+        const record = meta.engine === 'pi' ? undefined : await createFileSessionStore({ stateDir: acpDataPath('runtime-store') }).load(meta.acpxRecordId ?? nativeAlias)
+        const checkpoint = meta.engine === 'pi' ? Boolean(meta.pi?.sessionFile && existsSync(meta.pi.sessionFile))
+          : record?.name === nativeAlias && record.acpSessionId === meta.backendSessionId && canonicalDirectory(record.cwd) === canonicalDirectory(meta.cwd ?? root)
+        if (checkpoint) return { status: 'present', connection: 'resumable', session: summary(meta), dispatch }
+      }
+      if (intent) saveTaskSessionIntent(directory, { ...intent, phase: 'cleaned', settledOutcome: 'cleaned' })
+      return { status: 'settled', outcome: 'cleaned', dispatch }
+    }
+    // No intent/Job witness is not proof of no side effects. Preserve an old-owner barrier.
+    const legacy = owner ?? { kind: 'agent' as const, id: nativeAlias, generation: `legacy-${createHash('sha256').update(nativeAlias).digest('hex')}`,
+      taskKey: expected.task?.workcopyTaskKey ?? `session:${nativeAlias}`, label: `${expected.task?.taskId ?? nativeAlias} · 原创建待核对`.slice(0, 200) }
+    await recoverOriginalAcpUses(root, nativeAlias)
+    if (await hasLegacyAcpCleanupReceipt(directory, root, legacy)) {
+      if (sessions.has(nativeAlias) || taskCreationRequests.has(`${canonicalDirectory(root)}:${nativeAlias}`)
+        || workcopyUseRegistry().agentLeases(root, nativeAlias).length) return unknown('原 alias 已有其他原生代次，旧清理证明不能收束新运行。')
+      return { status: 'settled', outcome: 'cleaned', dispatch: 'unknown' }
+    }
+    workcopyUseRegistry().retainUnknown(root, legacy)
+    await recoverOriginalAcpUses(root, nativeAlias)
+    return { status: 'settled', outcome: 'cleaned', dispatch: 'unknown' }
+  } catch (error) { return unknown(errorMessage(error)) }
 }
 interface HandoffNewSession {
   sessionId: string; profile?: AcpAgentProfile; cwd: string; plan: HandoffTargetPlan; origin: AcpHandoffOrigin
   assertCurrent(): void; beforeNativeCreate(): void
 }
-async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession, taskOwner?: { sessionId: string; task?: AcpSessionRecord['taskProgress'] }): Promise<{ ok: true; sessionId: string } | IpcFail> {
+async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession, taskOwner?: { sessionId: string; task?: AcpSessionRecord['taskProgress']; connectionGeneration?: string }): Promise<{ ok: true; sessionId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const parsed = newSessionSchema.safeParse(input)
@@ -998,19 +1175,22 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
     const { config, argv } = launch
     const cwd = handoff?.cwd ?? (taskOwner || taskDir ? projectRoot : profile?.cwd || projectRoot)
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return ipcFail(IpcErrorCode.NotFound, '工作目录不可用')
+    await recoverOriginalAcpUses(cwd)
     if (taskDir && !await activeTaskExists(projectRoot, taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '绑定任务不属于当前项目的活动任务目录或记录不可读')
     const slot = await reserveConnectionSlot()
     if (typeof slot !== 'symbol') return slot
     reservation = slot
     handoff?.assertCurrent()
     if (handoff && sessions.has(handoff.sessionId)) throw new Error('交接目标已拥有连接，未重复创建')
-    const rules = await prepareAgentRules({ projectRoot, taskDir, additionalRules: taskOwner?.task ? [taskRule(taskOwner.task)] : undefined })
+    const rules = await prepareAgentRules({ projectRoot, taskDir, teamTask: taskOwner?.task, additionalRules: taskOwner?.task ? [taskRule(taskOwner.task)] : undefined })
+    if (taskOwner && readTaskSessionIntent(workcopyUseDirectory(), projectRoot, taskOwner.sessionId)?.phase !== 'creating') return ipcFail(IpcErrorCode.Conflict, '原任务创建已被收束，未启动执行')
     const meta: AcpSessionRecord = { engine: config.launchKind === 'sdk' ? 'pi' : 'acp', schemaVersion: 2, sessionId: taskOwner?.sessionId ?? handoff?.sessionId ?? `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,
-      projectRoot, cwd, taskDir, status: 'starting', startedAt: Date.now(), events: [], startup: [], connectionGeneration: randomUUID(),
+      projectRoot, cwd, taskDir, status: 'starting', startedAt: Date.now(), events: [], startup: [], connectionGeneration: taskOwner?.connectionGeneration ?? randomUUID(),
       agentRulesManifest: rules.manifest, taskProgress: taskOwner?.task,
       profileSnapshot: profile ? structuredClone(profile) : undefined, launchOptionsSnapshot, handoff: handoff?.origin,
       runtimeSnapshot: { id: config.id, name: config.name, command: config.command, enabled: config.enabled, launchKind: config.launchKind, executable: config.executable, args: config.args }, historyKind: 'live', canResume: false }
     const session = await createSessionRuntime(meta, config, argv)
+    if (taskOwner && readTaskSessionIntent(workcopyUseDirectory(), projectRoot, taskOwner.sessionId)?.phase !== 'creating') { session.knowledge?.revoke(); await drainSessionRuntime(session); return ipcFail(IpcErrorCode.Conflict, '原任务创建已被收束，未启动执行') }
     preparingTarget = handoff ? session : undefined
     handoff?.assertCurrent()
     if (shuttingDown) { session.knowledge?.revoke(); await session.runtime.shutdown(); return ipcFail(IpcErrorCode.Conflict, '后台正在停止，未创建新连接') }
@@ -1026,6 +1206,7 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
       try {
         handoff?.beforeNativeCreate()
         const model = meta.launchOptionsSnapshot?.modelId
+        if (taskOwner) enterTaskSessionNativeBoundary(workcopyUseDirectory(), projectRoot, meta.sessionId)
         session.handle = await session.runtime.ensureSession({ sessionKey: meta.sessionId, agent: runtimeId, cwd, mode: 'persistent',
           ...(model === undefined ? {} : { sessionOptions: { model } }) })
         handoff?.assertCurrent()
@@ -1088,12 +1269,15 @@ export async function bindAcpSessionTask(projectRoot: string, sessionId: string,
   assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
+  const rulesFailure = teamCodeRulesFailure(session.meta)
+  if (rulesFailure) return rulesFailure
   const handoffConflict = handoffMutationConflict(projectRoot, sessionId)
   if (handoffConflict) return handoffConflict
   const parsed = bindTaskSchema.safeParse(input)
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '任务绑定参数无效')
   if (parsed.data.expectedConnectionGeneration !== session.meta.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '会话连接已改变，请重新选择')
   if (session.meta.status !== 'ready' || session.accepting || session.turn || session.closing || session.pendingPermissions.size > 0) return ipcFail(IpcErrorCode.Conflict, '请在空闲且就绪的会话绑定任务')
+  if (session.leaseHeld || session.backgroundWork || session.cleanupRequired || session.uncertainWork) return ipcFail(IpcErrorCode.Conflict, '原会话仍有工作副本使用或待核对清理，请先完成原运行，不能更换任务身份')
   session.accepting = true
   try {
     if (parsed.data.taskDir !== null && !await activeTaskExists(projectRoot, parsed.data.taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '当前项目没有此活动任务或任务记录不可读')
@@ -1154,6 +1338,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
   const trimmed = text.trim()
   const nativeCommand = !workflow && images.length === 0 && sourceReferences.length === 0 && knowledgeReferences.length === 0 && trimmed.startsWith('/') && session.nativeCommands.has(trimmed.slice(1).split(/\s/, 1)[0])
   let promptWritten = false
+  let assertTaskBeforeSend: (() => void) | undefined
   let agentContext: PreparedAgentContext | undefined
   let handoffContext: PreparedHandoff | undefined
   let knowledgeReferencesPrepared: ReturnType<typeof prepareKnowledgeReferences> | undefined
@@ -1161,6 +1346,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
   const active = (): boolean => !abort.signal.aborted && ownerCurrent()
   const assertActive = (): void => {
     if (!active()) throw new Error('发送前项目或会话已改变；内容尚未发送')
+    if (!promptWritten) assertTaskBeforeSend?.()
     workflow?.assertActive()
     agentContext?.assertCurrent()
     handoffContext?.assertCurrent()
@@ -1180,9 +1366,13 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
       return ipcFail(IpcErrorCode.Conflict, '引用文档已改变或不可读，请查看最新版本后再发送', { reason: 'SOURCE_CHANGED', sources: prepared.changed })
     }
     try {
+      if (nativeCommand && session.meta.taskProgress) {
+        await assertTaskProgressCurrent(session.meta)
+        if (session.meta.taskDir && session.meta.agentRulesManifest) await assertAgentRulesCurrent(projectRoot, session.meta.agentRulesManifest)
+      }
       if (!nativeCommand) {
         if (session.meta.agentRulesManifest) await assertAgentRulesCurrent(projectRoot, session.meta.agentRulesManifest)
-        const rules = await prepareAgentRules({ projectRoot, taskDir: session.meta.taskDir, additionalRules: session.meta.taskProgress ? [taskRule(session.meta.taskProgress)] : undefined })
+        const rules = await prepareAgentRules({ projectRoot, taskDir: session.meta.taskDir, teamTask: session.meta.taskProgress, additionalRules: session.meta.taskProgress ? [taskRule(session.meta.taskProgress)] : undefined })
         if (session.meta.agentRulesManifest && rules.manifest.digest !== session.meta.agentRulesManifest.digest) throw new Error('项目规范或任务输入版本已变化，请显式建立新会话采用后再发送')
         session.meta.agentRulesManifest = rules.manifest
         const profile = session.meta.profileSnapshot
@@ -1204,6 +1394,16 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
     if (handoffContext && (nativeCommand || session.meta.capabilities?.promptCapabilities?.embeddedContext !== true)) {
       session.accepting = false; release(session)
       return ipcFail(IpcErrorCode.InvalidArg, nativeCommand ? '请先发送普通消息以交付准备好的交接内容' : '目标引擎未声明支持交接上下文附件；内容尚未发送')
+    }
+    if (nativeCommand && session.meta.taskProgress) {
+      try {
+        assertTaskBeforeSend = await assertTaskProgressCurrent(session.meta)
+        if (abort.signal.aborted || isCurrent?.() === false || sessions.get(sessionId) !== session || session.closing || shuttingDown || session.meta.connectionGeneration !== generation) throw new Error('发送前项目或会话已改变；内容尚未发送')
+        assertTaskBeforeSend()
+      } catch (error) {
+        session.accepting = false; release(session)
+        return ipcFail(IpcErrorCode.Conflict, errorMessage(error))
+      }
     }
     for (const [id, state] of session.toolStates) if (state === 'settled') session.toolStates.delete(id)
     session.meta.turnId = turnId
@@ -1236,6 +1436,8 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
     assertActive()
     if (handoffContext) acpHandoffs.beginDelivery(projectRoot, sessionId, generation, turnId)
     const context = [...(agentContext ? [agentContext.resource] : []), ...(handoffContext ? [handoffContext.resource] : [])]
+    assertWorkcopyObservation(resolveWorkcopy(keyFor(session)), session.workcopyLease?.identity)
+    if (session.meta.taskProgress) markTaskSessionPrompt(workcopyUseDirectory(), projectRoot, sessionId, false)
     const turn = session.runtime.startTurn({ handle: session.handle, text: materialText,
       ...(context.length ? { context } : {}),
       attachments: images.map((image) => ({ mediaType: image.mimeType, data: image.data })),
@@ -1246,6 +1448,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
     // Register this checkpoint before terminal completion can clear its owned scope.
     const delivery = turn.promptStarted.then(async () => {
       promptWritten = true
+      if (session.meta.taskProgress) markTaskSessionPrompt(workcopyUseDirectory(), projectRoot, sessionId, true)
       if (backendSessionId && generation) session.nativeStatus?.watchTurn({ turnId, generation, backendSessionId,
         deadlineAt: (session.turnStartedAt ?? Date.now()) + (session.meta.profileSnapshot?.maxTurnMinutes ?? 30) * 60_000,
         current: () => sessions.get(sessionId) === session && session.turn === turn && session.meta.turnId === turnId
@@ -1360,6 +1563,7 @@ async function cancelOwned(session: ActiveSession, reason: string): Promise<{ ok
   const turn = session.turn
   if (!turn && session.promptAbort) { session.promptAbort.abort(); return { ok: true } }
   if (!turn) return ipcFail(IpcErrorCode.Conflict, '当前没有运行中的回合')
+  if (session.nativeJobs) { session.cleanupRequired = true; holdCleanupBarrier(session) }
   session.nativeStatus?.stopTurn()
   session.runtimeRetry = undefined
   session.knowledge?.endTurn()
@@ -1369,6 +1573,7 @@ async function cancelOwned(session: ActiveSession, reason: string): Promise<{ ok
   let timer: NodeJS.Timeout | undefined
   try {
     await Promise.race([turn.cancel({ reason }).then(() => turn.result), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('取消超过 10 秒，正在停止 Runtime')), CANCEL_TIMEOUT_MS) })])
+    if (session.nativeJobs) return killOwned(session, '回合已取消，原生 Job 与子进程已核对清理', 'disconnected')
     return { ok: true }
   } catch (error) {
     emit(session, 'diagnostic', errorMessage(error))
@@ -1405,13 +1610,15 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
   setStatus(session, 'cancelling')
   settlePermissions(session, 'stopped')
   try {
-    await session.runtime.shutdown()
+    session.canonicalCleanup = true
+    await drainSessionRuntime(session)
     await session.preparing
+    if (session.unverifiedProcessExit) throw new Error('原 Runtime 根进程已异常退出；当前执行器未提供完整子进程清理证明，工作副本登记保留')
     session.hasProcess = false
     session.cleanupRequired = false
     session.backgroundWork = false
     session.toolStates.clear()
-    release(session)
+    release(session, true)
     sessions.delete(session.meta.sessionId)
     session.meta.historyKind = session.meta.canResume ? 'resumable' : 'transcript'
     const disconnected = session.disconnectOnClose === true
@@ -1423,12 +1630,14 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
     await flushAcpHistory().catch(() => {})
     return { ok: true }
   } catch (error) {
-    session.cleanupRequired = true
-    holdCleanupBarrier(session)
-    session.meta.directoryLeaseReason = '停止清理尚未确认，目录占用保留；请重试结束会话'
+    if (session.processCleanupConfirmed) { session.cleanupRequired = false; session.backgroundWork = false; session.toolStates.clear(); release(session, true) }
+    else { session.cleanupRequired = true; holdCleanupBarrier(session) }
+    session.meta.directoryLeaseReason = session.processCleanupConfirmed ? undefined : session.unverifiedProcessExit
+      ? '原执行器异常退出，完整子进程清理无法核实；占用已保留，可选择另一工作副本'
+      : '停止清理尚未确认，目录占用保留；请重试结束会话'
     setStatus(session, 'error', `停止失败：${errorMessage(error)}`)
     return failure(error)
-  }
+  } finally { session.canonicalCleanup = false }
 }
 export async function killAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true } | IpcFail> {
   assertRuntimeExecutionHost()
@@ -1444,6 +1653,14 @@ export async function killAcpSession(projectRoot: string, sessionId: string): Pr
     if (recovery.root !== canonicalDirectory(projectRoot)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
     recovery.operation.cancelled = true
     if (!sessions.has(sessionId)) { await recovery.promise; return { ok: true } }
+  }
+  if (!sessions.has(sessionId)) {
+    try {
+      const intent = readTaskSessionIntent(workcopyUseDirectory(), projectRoot, sessionId)
+      if (intent?.nativeBoundary === 'not-entered') { saveTaskSessionIntent(workcopyUseDirectory(), { ...intent, phase: 'cleaned', settledOutcome: 'not-created' }); return { ok: true } }
+      const meta = readRecords().find(record => record.sessionId === sessionId && belongs(projectRoot, record))
+      if (await recoverOriginalAcpUses(meta?.cwd ?? projectRoot, sessionId)) return { ok: true }
+    } catch (error) { return failure(error) }
   }
   const session = owned(projectRoot, sessionId)
   return 'ok' in session ? session : killOwned(session, '会话已停止')
@@ -1496,6 +1713,8 @@ export function recoverAcpSessionModel(projectRoot: string, sessionId: string, i
   if (resumeRequests.has(sessionId) || resuming.has(sessionId)) return reject(IpcErrorCode.Conflict, '此会话正在连接，请等待当前请求完成')
   const meta = sessions.get(sessionId)?.meta ?? readRecords().find((record) => record.sessionId === sessionId)
   if (!meta || !belongs(projectRoot, meta)) return reject(IpcErrorCode.NotFound, '当前项目没有此会话')
+  const rulesFailure = teamCodeRulesFailure(meta)
+  if (rulesFailure) return reject(IpcErrorCode.Conflict, rulesFailure.error)
   if (meta.connectionGeneration !== input.expectedConnectionGeneration || isCurrent?.() === false) return reject(IpcErrorCode.Conflict, '项目或会话连接已改变，请重新选择')
   if (!['error', 'disconnected', 'closed'].includes(meta.status) || !meta.canResume) return reject(IpcErrorCode.Conflict, '请在已断开的原会话中恢复模型')
   const categorized = meta.configOptions?.filter((option) => option.category === 'model') ?? []
@@ -1520,6 +1739,8 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string, recove
   const existing = sessions.get(sessionId)
   if (existing) {
     if (!belongs(projectRoot, existing.meta)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
+    const rulesFailure = teamCodeRulesFailure(existing.meta)
+    if (rulesFailure) return rulesFailure
     if (existing.disconnectOnClose && existing.closingTask) {
       const released = await existing.closingTask
       if (!released.ok) return released
@@ -1547,12 +1768,15 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string, recove
   if (resuming.has(sessionId)) return ipcFail(IpcErrorCode.Conflict, '此会话正在恢复，请等待当前请求完成')
   const meta = readRecords().find((record) => record.sessionId === sessionId)
   if (!meta || !belongs(projectRoot, meta)) return ipcFail(IpcErrorCode.NotFound, '当前项目没有此会话')
+  const rulesFailure = teamCodeRulesFailure(meta)
+  if (rulesFailure) return rulesFailure
   if (!meta.canResume || !meta.backendSessionId || !meta.runtimeSnapshot) return ipcFail(IpcErrorCode.InvalidArg, '此记录仅供查看，不支持原会话恢复')
   if (recovery && (recovery.cancelled || meta.connectionGeneration !== recovery.input.expectedConnectionGeneration || recovery.isCurrent?.() === false)) return ipcFail(IpcErrorCode.Conflict, '项目或会话连接已改变，请重新选择')
   resuming.add(sessionId)
   let session: ActiveSession | undefined
   let reservation: symbol | undefined
   try {
+    await recoverOriginalAcpUses(meta.cwd ?? meta.projectRoot, sessionId)
     const argv = await launchArgv(meta.runtimeSnapshot)
     if (shuttingDown || cancelledResumes.has(sessionId) || recovery?.cancelled || recovery?.isCurrent?.() === false) return ipcFail(IpcErrorCode.Conflict, '项目已改变或会话连接已停止')
     const slot = await reserveConnectionSlot(sessionId)
@@ -1682,6 +1906,7 @@ export async function shutdownAcp(): Promise<void> {
   const results = await Promise.all([...sessions.values()].map((session) => killOwned(session, '应用退出')))
   const failed = results.find((result) => result.ok === false)
   await knowledgeMcpBridge.close()
+  await shutdownAcpJobs()
   if (failed?.ok === false) throw new Error(failed.error)
   await Promise.allSettled([...creatingRequests, ...handoffRequests, ...[...resumeRequests.values()].map(request => request.promise), ...[...recoveryRequests.values()].map(request => request.promise)])
   if (sessions.size || resuming.size || connectionReservations.size) throw new Error('ACP 原有连接或启动操作尚未确认释放')

@@ -9,7 +9,15 @@ import { registerTasksIpc } from './tasks'
 import { registerTaskConversationsIpc } from './task-conversations'
 import { registerTodoIpc } from './todo'
 import { registerHifoxIpc } from './hifox'
+import { registerTeamContentIpc } from './team-content'
 import { registerHifoxWorkIpc } from './hifox-work'
+import { registerHifoxGovernanceIpc } from './hifox-governance'
+import { registerHifoxTaskOutputsIpc } from './hifox-task-outputs'
+import { taskProgressNativeCall } from '../services/hifox/task-progress'
+import type { TaskOutputReply, TaskOutputNativeInput } from '../../shared/hifox-task-outputs'
+import { ipcInvoke } from '../../shared/ipc-channels'
+import { registerHifoxCodeResourcesIpc } from './hifox-code-resources'
+import { registerHifoxTaskMaterialsIpc } from './hifox-task-materials'
 import { registerHifoxProgressIpc } from './hifox-progress'
 import { registerCreationsIpc } from './creations'
 import { taskCreationReferences, taskCreationFiles } from '../services/creations'
@@ -20,6 +28,7 @@ import { registerObservationIpc } from './observability'
 import { registerGitIpc } from './git'
 import { registerDevtoolsIpc } from './devtools'
 import { registerAppRuntimeIpc } from './app-runtime'
+import { appRuntime, createTaskApplicationService } from '../services/app-runtime'
 import { registerGitWorkspaceIpc } from './git-workspace'
 import { registerReportIpc } from './report'
 import { registerChannelsIpc } from './channels'
@@ -58,16 +67,27 @@ export function registerIpc(deps: WindowDeps): void {
   registerTaskConversationsIpc(deps)
   registerTodoIpc()
   registerHifoxIpc()
-  const taskWorkspace = registerHifoxWorkIpc({ getProjectRoot, getProjectGeneration, creationReferences: taskCreationReferences, creationFiles: taskCreationFiles })
-  registerHifoxProgressIpc(taskWorkspace)
+  registerTeamContentIpc()
+  const codeResources = registerHifoxCodeResourcesIpc()
+  registerHifoxTaskMaterialsIpc()
+  registerHifoxGovernanceIpc(ipcInvoke.hifoxGovernance)
+  const taskWorkspace = registerHifoxWorkIpc({ getProjectRoot, getProjectGeneration, getMain: deps.getMain, creationReferences: taskCreationReferences, creationFiles: taskCreationFiles,
+    taskCodeResource: (query) => codeResources.taskForPreparation(query.workspaceKey, query.taskId) })
+  const taskProgress = registerHifoxProgressIpc(taskWorkspace, deps.getMain)
+  registerHifoxTaskOutputsIpc({
+    getMain: deps.getMain, channels: ipcInvoke.taskOutputs,
+    resolveContext: (query, expected) => taskWorkspace.resolveOutputContext(query, expected),
+    captureOriginalPin: query => taskProgress.captureOriginalPin(query),
+    call: <T>(input: TaskOutputNativeInput) => taskProgressNativeCall<TaskOutputReply<T>>(input)
+  })
   registerCreationsIpc()
   registerFilesIpc()
   registerDocumentsIpc()
   registerObservationIpc()
   registerGitIpc()
   registerDevtoolsIpc(deps)
-  registerAppRuntimeIpc(deps)
-  registerGitWorkspaceIpc(deps)
+  registerAppRuntimeIpc(deps, createTaskApplicationService({ runtime: appRuntime, resolveTaskContext: (query, expected) => taskWorkspace.resolveContext(query, expected) }))
+  registerGitWorkspaceIpc({ ...deps, resolveTaskContext: (query, expected) => taskWorkspace.resolveContext(query, expected) })
   registerReportIpc()
   registerChannelsIpc()
   registerStudioIpc()

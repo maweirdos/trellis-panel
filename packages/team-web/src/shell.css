@@ -7,11 +7,11 @@
 }
 .team-module-rail {
   display: flex;
-  flex: 0 0 var(--my-module-rail-width);
+  flex: 0 0 var(--my-space-80);
   flex-direction: column;
   align-items: center;
   min-height: 0;
-  width: var(--my-module-rail-width);
+  width: var(--my-space-80);
 }
 .team-rail-brand {
   display: grid;
@@ -43,15 +43,17 @@
 }
 .team-module-navigation::-webkit-scrollbar { display: none; }
 .team-module-button {
-  width: var(--my-module-button-size);
-  height: var(--my-module-button-size);
-  min-height: var(--my-module-button-size);
-  padding: 0;
+  flex-direction: column;
+  gap: var(--my-space-4);
+  width: 100%;
+  min-height: var(--my-space-56);
+  padding: var(--my-space-8) var(--my-space-2);
   border-color: transparent;
   border-radius: var(--my-control-radius);
   background: transparent;
   color: var(--my-txt-icon-secondary);
 }
+.team-module-button > span { font-size: var(--my-text-2xs); line-height: var(--my-line-ui); white-space: nowrap; }
 .team-module-button > svg {
   width: var(--my-module-icon-size);
   height: var(--my-module-icon-size);
@@ -130,9 +132,43 @@
 .team-shell-layout > .workspace:has(> .hifox-host) > :not(.hifox-host) { flex: none; }
 .team-shell-layout > .workspace > .hifox-host { flex: 1; height: auto; min-height: 0; }
 .team-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.team-workspace-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--my-space-8); }
+.team-topbar .team-workspace-actions > button { min-height: var(--my-icon-control-size); padding: var(--my-space-4) var(--my-space-8); font-size: var(--my-text-xs); }
+.team-onboarding { width: 100%; max-width: calc(var(--my-settings-content-width) + var(--my-space-48)); margin-inline: auto; padding: var(--my-space-64) var(--my-space-24); }
+.team-onboarding > header { display: grid; gap: var(--my-space-12); margin-bottom: var(--my-space-32); }
+.team-onboarding > header h1 { font-size: var(--my-text-display); }
+.team-onboarding > header p, .team-onboarding-option > p, .team-workspace-state > p { color: var(--my-txt-secondary); }
+.team-onboarding-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--my-space-24); }
+.team-onboarding-option { display: flex; flex-direction: column; align-items: flex-start; gap: var(--my-space-16); min-width: 0; padding: var(--my-space-24); border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-lg); }
+.team-onboarding-option > svg { color: var(--my-txt-secondary); }
+.team-onboarding-option > h2 { font-size: var(--my-text-title); }
+.team-onboarding-option > p { font-size: var(--my-text-sm); }
+.team-onboarding-option > button { margin-top: auto; }
+.team-invitation-form { width: 100%; gap: var(--my-space-12); }
+.team-invitation-form > button { align-self: flex-start; }
+.team-workspace-state { display: grid; justify-items: center; gap: var(--my-space-16); padding: var(--my-space-64) var(--my-space-24); text-align: center; }
+.team-workspace-state > .team-workspace-actions { justify-content: center; }
+.team-workspace-setup { display: grid; gap: var(--my-space-20); }
+.team-workspace-setup > .pager { margin: 0; }
+.team-workspace-setup > button { justify-self: start; }
+.team-next-step { display: grid; justify-items: start; gap: var(--my-space-12); margin-top: var(--my-space-20); }
+.team-next-step > p { color: var(--my-txt-secondary); font-size: var(--my-text-sm); }
+.team-content-settings { height: auto; margin-block: var(--my-space-24); container-type: inline-size; }
+.team-space-onboarding { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-16); margin: var(--my-space-12) var(--my-space-16); padding: var(--my-space-16) var(--my-space-20); border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-lg); }
+.team-space-onboarding > div:first-child { flex: 1; min-width: var(--my-space-192); }
+.team-space-onboarding h2 { font-size: var(--my-text-sm); }
+.team-space-onboarding p { margin-top: var(--my-space-6); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
+.team-space-onboarding button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.team-login-invitation { margin-block: var(--my-space-20); }
+.team-login-invitation > form { margin-top: var(--my-space-16); }
+.login-body > .notice { margin-inline: 0; }
 @media (max-width: 760px) {
   .team-topbar { gap: var(--my-space-8); padding-inline: var(--my-space-8); }
   .team-section-name, .team-topbar .account > span { display: none; }
   .team-project-control { flex: 1; }
   .team-topbar .account { flex: none; gap: var(--my-space-4); }
+  .team-onboarding { padding: var(--my-space-32) var(--my-space-16); }
+  .team-onboarding-options { grid-template-columns: minmax(0, 1fr); gap: var(--my-space-16); }
+  .team-onboarding-option { padding: var(--my-space-20); }
+  .team-workspace-state { padding: var(--my-space-32) var(--my-space-16); }
 }

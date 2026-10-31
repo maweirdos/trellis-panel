@@ -1,7 +1,7 @@
 import { gitWorkspacePushSchema, type GitWorkspaceMutationResult } from '../../../../shared/git-workspace'
 import { IpcErrorCode } from '../../../../shared/ipc-errors'
 import { GitWorkspaceError, workspaceFailure, type GitWorkspaceOperationOptions, type GitWorkspaceProcedureContext } from '../types'
-import { parse, checkScope, guard, validBranch } from '../lib/helpers'
+import { parse, checkScope, guardContext, validBranch } from '../lib/helpers'
 import { runGit, redactGitText } from '../lib/git'
 
 export async function push(context: GitWorkspaceProcedureContext, root: string, input: unknown, options: GitWorkspaceOperationOptions): Promise<GitWorkspaceMutationResult> {
@@ -19,14 +19,15 @@ export async function push(context: GitWorkspaceProcedureContext, root: string, 
       if (urls.length !== 1 || /^ext::/i.test(urls[0])) throw new GitWorkspaceError(IpcErrorCode.Denied, '不通过面板推送到多个地址或可执行传输，请使用独立 Git 工具核验')
       if (!options.review || !await options.review({ kind: 'push', root: selectedRoot, revision: request.revision, branch: request.branch, paths: [], remote: request.remote, remoteBranch: request.remoteBranch, remoteUrl: redactGitText(urls[0]) })) throw new GitWorkspaceError(IpcErrorCode.Denied, '已取消推送')
       state = await context.checked(selectedRoot, request.revision, options)
-      guard(options)
+      await guardContext(options)
       const result = await runGit(state.snapshot.repoRoot, ['push', '--porcelain', '--', request.remote, `${state.snapshot.head}:refs/heads/${request.remoteBranch}`], { network: true, allowFailure: true, config: ['push.followTags=false', 'push.recurseSubmodules=no', `remote.${request.remote}.mirror=false`] })
       if (/\[(?:rejected|remote rejected)\]/.test(result.stdout)) throw new GitWorkspaceError(IpcErrorCode.Conflict, '远端拒绝推送，请核对远端分支；不会自动强推')
       if (result.code !== 0) throw new GitWorkspaceError(IpcErrorCode.Io, result.stderr.trim() || '推送失败，请核验远端后重试', { uncertain: true })
       if (request.setUpstream) {
         try {
-          guard(options)
+          await guardContext(options)
           await runGit(state.snapshot.repoRoot, ['config', '--local', `branch.${request.branch}.remote`, request.remote])
+          await guardContext(options)
           await runGit(state.snapshot.repoRoot, ['config', '--local', `branch.${request.branch}.merge`, `refs/heads/${request.remoteBranch}`])
         } catch { throw new GitWorkspaceError(IpcErrorCode.Io, '推送已完成，但上游设置未完成，请核验后重试设置', { mutationCompleted: true }) }
       }

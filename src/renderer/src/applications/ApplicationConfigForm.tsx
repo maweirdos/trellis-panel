@@ -12,6 +12,8 @@ export type ApplicationDraft = {
   executable: string; args: string; command: string; script: string; envFiles: string; ports: string
   readiness: 'none' | 'tcp' | 'http'; host: '127.0.0.1' | '::1' | 'localhost'; port: string; url: string
   timeout: string; stopTimeout: string; overrides: OverrideDraft[]
+  environmentSelection: ApplicationConfig['environment']['selection']; dependencyMode: ApplicationConfig['environment']['dependencies']; targetKeys: string
+  workcopyAccess: ApplicationConfig['workcopyAccess']
 }
 
 export function initialApplicationDraft(definition?: ApplicationDefinition, npm = false): ApplicationDraft {
@@ -22,6 +24,8 @@ export function initialApplicationDraft(definition?: ApplicationDefinition, npm 
     executable: launch?.kind === 'argv' ? launch.executable : '', args: launch?.kind === 'argv' ? launch.args.join('\n') : '',
     command: launch?.kind === 'script' ? launch.command : '', script: launch?.kind === 'npm-script' ? launch.script : '',
     envFiles: definition?.envFiles.join('\n') ?? '', ports: definition?.ports.map(({ host, port }) => `${host.includes(':') ? `[${host}]` : host}:${port}`).join('\n') ?? '',
+    environmentSelection: definition?.environment.selection ?? 'unknown', dependencyMode: definition?.environment.dependencies ?? 'unknown', targetKeys: definition?.environment.targetKeys.join('\n') ?? '',
+    workcopyAccess: definition?.workcopyAccess ?? 'writer',
     readiness: readiness?.kind ?? 'none', host: readiness?.kind === 'tcp' ? readiness.host : '127.0.0.1',
     port: readiness?.kind === 'tcp' ? String(readiness.port) : '', url: readiness?.kind === 'http' ? readiness.url : '',
     timeout: readiness && readiness.kind !== 'none' ? String(readiness.timeoutMs / 1000) : '30', stopTimeout: String((definition?.stopTimeoutMs ?? 10000) / 1000),
@@ -48,8 +52,8 @@ function directoryPath(root: string, cwd: string): string {
   return /^(?:[a-z]:[\\/]|[\\/])/i.test(cwd) ? cwd : `${root.replace(/[\\/]+$/, '')}/${cwd || '.'}`
 }
 
-export function ApplicationConfigForm({ root, definition, npm, initialDraft, saveDisabled = false, onDraftChange, onSavingChange, onSaved, onCancel }: {
-  root: string; definition?: ApplicationDefinition; npm?: boolean; initialDraft?: ApplicationDraft; saveDisabled?: boolean; onDraftChange?: (draft: ApplicationDraft) => void; onSavingChange?: (saving: boolean) => void; onSaved: (id: string, run: boolean) => void; onCancel: () => void
+export function ApplicationConfigForm({ root, definition, npm, initialDraft, saveDisabled = false, runDisabled = false, onDraftChange, onSavingChange, onSaved, onCancel }: {
+  root: string; definition?: ApplicationDefinition; npm?: boolean; initialDraft?: ApplicationDraft; saveDisabled?: boolean; runDisabled?: boolean; onDraftChange?: (draft: ApplicationDraft) => void; onSavingChange?: (saving: boolean) => void; onSaved: (id: string, run: boolean) => void; onCancel: () => void
 }): JSX.Element {
   const id = useId()
   const [draft, setDraft] = useState(() => initialDraft ?? initialApplicationDraft(definition, npm))
@@ -91,7 +95,7 @@ export function ApplicationConfigForm({ root, definition, npm, initialDraft, sav
   }
 
   const save = async (run = false): Promise<void> => {
-    if (saving || saveDisabled) return
+    if (saving || saveDisabled || run && runDisabled) return
     let input: ApplicationSaveInput
     try {
       const candidate = {
@@ -101,6 +105,8 @@ export function ApplicationConfigForm({ root, definition, npm, initialDraft, sav
             : draft.kind === 'script' ? { kind: 'script' as const, command: draft.command.trim() }
               : { kind: 'npm-script' as const, script: draft.script },
           envFiles: draft.envFiles.split(/\r?\n/).map((line) => line.trim()).filter(Boolean), ports: parsePorts(draft.ports),
+          environment: { selection: draft.environmentSelection, dependencies: draft.dependencyMode, targetKeys: draft.dependencyMode === 'env-targets' ? draft.targetKeys.split(/[\s,]+/).filter(Boolean) : [] },
+          workcopyAccess: draft.workcopyAccess,
           readiness: draft.readiness === 'none' ? { kind: 'none' as const }
             : draft.readiness === 'tcp' ? { kind: 'tcp' as const, host: draft.host, port: Number(draft.port), timeoutMs: Number(draft.timeout) * 1000 }
               : { kind: 'http' as const, url: draft.url.trim(), timeoutMs: Number(draft.timeout) * 1000 },
@@ -140,6 +146,7 @@ export function ApplicationConfigForm({ root, definition, npm, initialDraft, sav
         <Field label="工作目录">
           <span className="flex min-w-0 gap-2"><input aria-label="工作目录" className="my-input min-w-0 flex-1 font-mono" value={draft.cwd} onChange={(event) => set('cwd', event.target.value)} autoComplete="off" /><Button variant="outline" onClick={() => void chooseDirectory()} disabled={picking} aria-label="选择工作目录">{picking ? <Loader2 size={15} className="animate-spin" /> : <FolderOpen size={15} />}</Button></span>
         </Field>
+        <Field label="副本使用方式" hint="会修改源码或配置的构建、脚本选择写入；明确只读取源码的服务可选择只读消费。"><Select ariaLabel="副本使用方式" value={draft.workcopyAccess} onChange={value => set('workcopyAccess', value)} className="w-full" options={[{ value: 'writer', label: '可能写入源码或配置' }, { value: 'consumer', label: '只读消费源码' }]} /></Field>
         <Field label="启动方式"><Select ariaLabel="启动方式" value={draft.kind} onChange={(value) => set('kind', value)} className="w-full" options={[{ value: 'argv', label: '程序与参数' }, { value: 'script', label: 'Shell 命令' }, { value: 'npm-script', label: 'npm 脚本' }]} /></Field>
         {draft.kind === 'argv' && <>
           <Field label="可执行程序"><input aria-label="可执行程序" className="my-input w-full font-mono" value={draft.executable} placeholder="java、python 或程序路径" onChange={(event) => set('executable', event.target.value)} autoComplete="off" /></Field>
@@ -151,6 +158,11 @@ export function ApplicationConfigForm({ root, definition, npm, initialDraft, sav
           {scriptError && <span role="status" className="text-my-xs text-my-danger-text">{scriptError}</span>}
         </Field>}
         <Field label="环境文件" hint="相对工作目录，每行一个；每次启动重新读取。"><textarea aria-label="环境文件" className="my-input w-full font-mono" rows={2} value={draft.envFiles} placeholder={'.env\n.env.local'} onChange={(event) => set('envFiles', event.target.value)} spellCheck={false} /></Field>
+        <div className="my-application-form-grid">
+          <Field label="环境"><Select ariaLabel="应用环境" value={draft.environmentSelection} onChange={value => set('environmentSelection', value)} className="w-full" options={[{ value: 'unknown', label: '待核实' }, { value: 'local', label: '本地' }, { value: 'test', label: '测试' }, { value: 'other', label: '其他' }]} /></Field>
+          <Field label="依赖环境"><Select ariaLabel="依赖环境" value={draft.dependencyMode} onChange={value => set('dependencyMode', value)} className="w-full" options={[{ value: 'unknown', label: '待核实' }, { value: 'none', label: '无外部依赖' }, { value: 'env-targets', label: '环境变量中的目标 URL' }]} /></Field>
+        </div>
+        {draft.dependencyMode === 'env-targets' && <Field label="目标变量名称" hint="只填写变量名，例如 DATABASE_URL、API_URL；核对时仅显示协议、主机与端口。"><textarea aria-label="环境目标变量名称" className="my-input w-full font-mono" rows={2} value={draft.targetKeys} onChange={event => set('targetKeys', event.target.value)} spellCheck={false} /></Field>}
         <Field label="预期端口" hint="每行一个，例如 8080 或 0.0.0.0:8080。"><textarea aria-label="预期端口" className="my-input w-full font-mono" rows={2} value={draft.ports} placeholder="8080" onChange={(event) => set('ports', event.target.value)} spellCheck={false} /></Field>
         <button type="button" className="my-control my-button-ghost justify-start" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}>{advanced ? '收起高级配置' : '高级配置'}</button>
         {advanced && <div className="space-y-4">
@@ -176,7 +188,7 @@ export function ApplicationConfigForm({ root, definition, npm, initialDraft, sav
       <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-my-line px-5 py-3">
         <span className="mr-auto text-my-xs text-my-tertiary">保存后手动启动</span>
         <Button variant="ghost" onClick={onCancel}>取消</Button>
-        <Button variant="outline" disabled={saveDisabled || saving || picking} onClick={() => void save(true)}>保存并运行</Button>
+        <Button variant="outline" disabled={saveDisabled || runDisabled || saving || picking} onClick={() => void save(true)}>保存并运行</Button>
         <Button variant="primary" disabled={saveDisabled || saving || picking} onClick={() => void save()}>{saving && <Loader2 size={14} className="animate-spin" />}保存</Button>
       </footer>
     </div>

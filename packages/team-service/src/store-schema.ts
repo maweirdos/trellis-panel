@@ -4,7 +4,61 @@ import { TEAM_HIFOX_WORKSPACE_SQL } from './hifox-workspace-schema'
 import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
 import { TEAM_CREATIONS_SQL } from './creations-schema'
 import { TEAM_TASK_PROGRESS_SQL } from './task-progress-schema'
-export const TEAM_SCHEMA_VERSION = 11
+import { TEAM_CODE_RESOURCES_SQL } from './code-resources-schema'
+import { TEAM_TASK_MATERIALS_SQL } from './task-materials-schema'
+import { TEAM_CONTENT_SQL } from './content-schema'
+import { TEAM_GOVERNANCE_SQL } from './governance-schema'
+export const TEAM_SCHEMA_VERSION = 17
+export const TEAM_INVITATION_SPACES_SQL = `CREATE TABLE IF NOT EXISTS invitation_spaces(invitationId TEXT PRIMARY KEY REFERENCES invitations(invitationId),spaceId TEXT NOT NULL,spaceName TEXT NOT NULL,workspaceRevision INTEGER NOT NULL,workspaceEpoch TEXT NOT NULL);`
+export const TEAM_INVITATION_SPACE_IDENTITY_SQL = `
+ALTER TABLE invitation_spaces ADD COLUMN spaceCreatedAt TEXT;
+ALTER TABLE invitation_spaces ADD COLUMN accessRevoked INTEGER NOT NULL DEFAULT 0 CHECK(accessRevoked IN (0,1));
+UPDATE invitation_spaces SET spaceCreatedAt = (
+ SELECT json_extract(s.value,'$.createdAt') FROM invitations i JOIN hifox_workspaces w ON w.projectId=i.projectId, json_each(CASE WHEN json_valid(w.snapshotJson) THEN w.snapshotJson ELSE '{}' END,'$.spaces') s
+ WHERE i.invitationId=invitation_spaces.invitationId AND w.revision=invitation_spaces.workspaceRevision
+ AND invitation_spaces.workspaceEpoch=(SELECT value FROM team_meta WHERE key='epoch')
+ AND json_valid(w.snapshotJson) AND json_extract(s.value,'$.id')=invitation_spaces.spaceId
+ GROUP BY i.invitationId HAVING COUNT(*)=1 AND typeof(json_extract(s.value,'$.createdAt'))='text'
+);
+CREATE INDEX IF NOT EXISTS invitations_project_pending ON invitations(projectId,status,invitationId);
+CREATE TRIGGER IF NOT EXISTS invitation_space_access_revoked AFTER UPDATE OF snapshotJson ON hifox_workspaces
+WHEN json_valid(OLD.snapshotJson) AND json_valid(NEW.snapshotJson)
+BEGIN
+ UPDATE invitation_spaces SET accessRevoked=1 WHERE accessRevoked=0 AND spaceCreatedAt IS NOT NULL
+ AND invitationId IN (SELECT invitationId FROM invitations WHERE projectId=NEW.projectId AND status='pending')
+ AND (EXISTS (
+   SELECT 1 FROM invitations i, json_each(OLD.snapshotJson,'$.spaces') oldSpace, json_each(oldSpace.value,'$.memberIds') oldMember
+   WHERE i.invitationId=invitation_spaces.invitationId AND json_extract(oldSpace.value,'$.id')=invitation_spaces.spaceId
+   AND json_extract(oldSpace.value,'$.createdAt')=invitation_spaces.spaceCreatedAt
+   AND (oldMember.value=i.createdBy OR EXISTS (
+     SELECT 1 FROM people p WHERE p.userId=oldMember.value AND p.issuer=i.recipientIssuer AND
+       ((json_extract(i.recipientJson,'$.kind')='person' AND p.userId=json_extract(i.recipientJson,'$.userId')) OR
+        (json_extract(i.recipientJson,'$.kind')='local' AND p.subject=json_extract(i.recipientJson,'$.username')) OR
+        (json_extract(i.recipientJson,'$.kind')='oidc-subject' AND p.subject=json_extract(i.recipientJson,'$.subject')))
+   ))
+   AND NOT EXISTS (SELECT 1 FROM json_each(NEW.snapshotJson,'$.spaces') newSpace, json_each(newSpace.value,'$.memberIds') newMember
+     WHERE json_extract(newSpace.value,'$.id')=invitation_spaces.spaceId AND json_extract(newSpace.value,'$.createdAt')=invitation_spaces.spaceCreatedAt AND newMember.value=oldMember.value)
+ ) OR EXISTS (
+   SELECT 1 FROM json_each(OLD.snapshotJson,'$.spaces') oldSpace
+   WHERE json_extract(oldSpace.value,'$.id')=invitation_spaces.spaceId AND json_extract(oldSpace.value,'$.createdAt')=invitation_spaces.spaceCreatedAt
+   AND NOT EXISTS (SELECT 1 FROM json_each(NEW.snapshotJson,'$.spaces') newSpace WHERE json_extract(newSpace.value,'$.id')=invitation_spaces.spaceId
+     AND json_extract(newSpace.value,'$.createdAt')=invitation_spaces.spaceCreatedAt)
+ ) OR EXISTS (
+   SELECT 1 FROM invitations i, json_each(OLD.snapshotJson,'$.spaces') oldSpace
+   WHERE i.invitationId=invitation_spaces.invitationId AND json_extract(oldSpace.value,'$.id')=invitation_spaces.spaceId
+   AND json_extract(oldSpace.value,'$.createdAt')=invitation_spaces.spaceCreatedAt AND json_extract(oldSpace.value,'$.ownerId')=i.createdBy
+   AND NOT EXISTS (SELECT 1 FROM json_each(NEW.snapshotJson,'$.spaces') newSpace WHERE json_extract(newSpace.value,'$.id')=invitation_spaces.spaceId
+     AND json_extract(newSpace.value,'$.createdAt')=invitation_spaces.spaceCreatedAt AND json_extract(newSpace.value,'$.ownerId')=i.createdBy)
+ ) OR EXISTS (
+   SELECT 1 FROM invitations i, json_each(OLD.snapshotJson,'$.spaces') oldSpace, json_each(NEW.snapshotJson,'$.spaces') newSpace
+   WHERE i.invitationId=invitation_spaces.invitationId AND json_extract(oldSpace.value,'$.id')=invitation_spaces.spaceId
+   AND json_extract(oldSpace.value,'$.createdAt')=invitation_spaces.spaceCreatedAt AND COALESCE(json_extract(oldSpace.value,'$.visibility'),'public')<>'private'
+   AND json_extract(newSpace.value,'$.id')=invitation_spaces.spaceId AND json_extract(newSpace.value,'$.createdAt')=invitation_spaces.spaceCreatedAt
+   AND json_extract(newSpace.value,'$.visibility')='private'
+   AND NOT EXISTS (SELECT 1 FROM json_each(newSpace.value,'$.memberIds') member WHERE member.value=i.createdBy)
+ ));
+END;
+`
 export const TEAM_DEVICES_SQL = `CREATE TABLE devices(deviceId TEXT PRIMARY KEY,pairingId TEXT UNIQUE NOT NULL,credentialHash TEXT UNIQUE NOT NULL,projectId TEXT REFERENCES projects(projectId),ownerId TEXT REFERENCES people(userId),deviceName TEXT NOT NULL,capabilityClaimsJson TEXT NOT NULL,status TEXT NOT NULL,userCode TEXT NOT NULL,expiresAt INTEGER NOT NULL,lastSeenAt INTEGER,sequence INTEGER NOT NULL DEFAULT -1,createdAt INTEGER NOT NULL);`
 export const TEAM_SCHEMA_SQL = `
 CREATE TABLE team_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -26,8 +80,14 @@ CREATE TABLE events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,eventId TEXT UNIQ
 CREATE INDEX events_project ON events(projectId,sequence);
 ${TEAM_COLLABORATION_SQL}
 ${TEAM_INVITATIONS_SQL}
+${TEAM_INVITATION_SPACES_SQL}
 ${TEAM_HIFOX_WORKSPACE_SQL}
+${TEAM_INVITATION_SPACE_IDENTITY_SQL}
 ${TEAM_LOCAL_AUTH_SQL}
 ${TEAM_CREATIONS_SQL}
 ${TEAM_TASK_PROGRESS_SQL}
+${TEAM_CODE_RESOURCES_SQL}
+${TEAM_TASK_MATERIALS_SQL}
+${TEAM_CONTENT_SQL}
+${TEAM_GOVERNANCE_SQL}
 `

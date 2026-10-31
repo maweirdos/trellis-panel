@@ -1,20 +1,68 @@
-import { app, dialog } from 'electron'
+import { app, dialog, type BrowserWindow } from 'electron'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { ipcInvoke } from '../../shared/ipc-channels'
+import { IpcErrorCode, ipcFail } from '../../shared/ipc-errors'
 import { HifoxTaskWorkspaceService, type HifoxTaskWorkspaceDependencies } from '../services/hifox/task-workspace'
 import { handle } from './registry'
+import { createTaskMaterialInputs } from '../services/hifox/task-material-inputs'
+import { readTaskExecutionSource } from '../services/hifox/task-execution-source'
 
-export type HifoxWorkIpcDependencies = Pick<HifoxTaskWorkspaceDependencies, 'getProjectRoot' | 'getProjectGeneration' | 'creationReferences' | 'creationFiles'>
+export type HifoxWorkIpcDependencies = Pick<HifoxTaskWorkspaceDependencies, 'getProjectRoot' | 'getProjectGeneration' | 'creationReferences' | 'creationFiles' | 'taskCodeResource'> & { getMain(): BrowserWindow | null }
 
 /** Register only in the native host. Supplemental browser hosting has no local-work bridge. */
 export function registerHifoxWorkIpc(deps: HifoxWorkIpcDependencies): HifoxTaskWorkspaceService {
+  const teamInputs = createTaskMaterialInputs(app.getPath('userData'))
+  const invocations = new AsyncLocalStorage<{ current(): boolean }>()
   const service = new HifoxTaskWorkspaceService({
     ...deps, dataDir: app.getPath('userData'),
-    chooseProjectRoot: async () => {
-      const result = await dialog.showOpenDialog({ title: '选择本机 Trellis 项目', properties: ['openDirectory'] })
-      return result.canceled ? null : result.filePaths[0] ?? null
+    readExecutionSource: readTaskExecutionSource,
+    teamInputs: (query) => teamInputs.inputs(query),
+    teamMaterialFiles: (query, references) => teamInputs.files(query, references),
+    governanceFiles: (query, input) => teamInputs.governanceFiles(query, input),
+    chooseProjectRoot: async ({ taskId }) => {
+      const window = deps.getMain()
+      if (!window || window.isDestroyed() || !invocations.getStore()?.current()) return null
+      const result = await dialog.showOpenDialog(window, { title: `为 ${taskId} 选择本机开发工程`, properties: ['openDirectory'] })
+      return result.canceled || !invocations.getStore()?.current() ? null : result.filePaths[0] ?? null
+    },
+    confirmProjectRoot: async (preview) => {
+      const window = deps.getMain()
+      if (!window || window.isDestroyed() || !invocations.getStore()?.current()) return false
+      const response = await dialog.showMessageBox(window, {
+        type: 'question', title: '确认任务的本机开发环境',
+        message: `${preview.taskId} · ${preview.taskTitle}`,
+        detail: [
+          ...(preview.resource ? [`代码资源：${preview.resource.name}`, `仓库来源：${preview.resource.repositoryUrl}`] : []),
+          `工程目录：${preview.root}`,
+          ...(preview.git ? [
+            `Git 仓库：${preview.git.repoRoot}`,
+            `分支：${preview.git.branch ?? (preview.git.detached ? '分离 HEAD' : '尚无分支提交')}`,
+            `代码状态：${preview.git.clean ? '无未提交更改' : '有未提交更改，将保留现有文件'}`
+          ] : [`Git 状态未能核对：${preview.gitError ?? '不可用'}`]),
+          '确认后仅准备本任务的开发材料，不启动 Agent、应用或切换分支。'
+        ].join('\n'),
+        buttons: ['取消', '确认绑定并准备'], defaultId: 0, cancelId: 0, noLink: true
+      })
+      return response.response === 1 && !window.isDestroyed() && Boolean(invocations.getStore()?.current())
     }
   })
-  handle(ipcInvoke.hifoxWork.status, (_event, input: unknown) => service.status(input))
-  handle(ipcInvoke.hifoxWork.prepare, (_event, input: unknown) => service.prepare(input))
+  const register = (channel: string, mutation: boolean, operation: (input: unknown) => Promise<unknown>): void => {
+    handle(channel, async (event, input: unknown) => {
+      const window = deps.getMain(), frame = event.senderFrame
+      if (!window || window.isDestroyed() || window.webContents !== event.sender || frame !== event.sender.mainFrame) return ipcFail(IpcErrorCode.Denied, '本机开发环境仅允许主窗口访问', { reason: 'access_locked' })
+      let navigated = false
+      const onNavigate = (_event: Electron.Event, _url: string, _inPlace: boolean, mainFrame: boolean): void => { if (mainFrame) navigated = true }
+      const current = (): boolean => !navigated && !window.isDestroyed() && !event.sender.isDestroyed() && deps.getMain() === window && event.sender.mainFrame === frame
+      event.sender.on('did-start-navigation', onNavigate)
+      try {
+        const result = await invocations.run({ current }, () => operation(input))
+        return current() ? result : ipcFail(IpcErrorCode.Conflict, '原窗口已变化，请返回原任务核对操作结果', { reason: mutation ? 'outcome_unknown' : 'scope_changed', ...(mutation ? { outcomeUnknown: true } : {}) })
+      } finally { if (!event.sender.isDestroyed()) event.sender.removeListener('did-start-navigation', onNavigate) }
+    })
+  }
+  register(ipcInvoke.hifoxWork.status, false, input => service.status(input))
+  register(ipcInvoke.hifoxWork.prepare, true, input => service.prepare(input))
+  register(ipcInvoke.hifoxWork.development, false, input => service.development(input))
+  register(ipcInvoke.hifoxWork.change, true, input => service.change(input))
   return service
 }

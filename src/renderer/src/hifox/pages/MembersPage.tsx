@@ -1,4 +1,4 @@
-/** 本地人员名册及空间成员关系；不发送外部邀请。 */
+/** 本地名册与团队成员入口；团队邀请必须使用服务端真实回执。 */
 import { useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import type { HifoxMember, HifoxRole } from '@shared/hifox'
@@ -6,6 +6,7 @@ import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { Button, EmptyState, Modal } from '../../my/ui'
 import { FlowIcon } from '../icons'
+import { MemberInvitationDialog } from '../account/MemberInvitationDialog'
 import { useHifox } from '../store'
 import { PageHeader, Field, inputClass, MemberChip } from '../ui'
 
@@ -19,6 +20,7 @@ export function MembersPage(): JSX.Element | null {
   const workspace = useHifox((state) => state.workspaceContext)
   const shared = workspace.state !== 'local'
   const [editing, setEditing] = useState<HifoxMember | 'new' | null>(null)
+  const [inviting, setInviting] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [onlySpace, setOnlySpace] = useState(false)
   if (!snapshot) return null
@@ -41,7 +43,7 @@ export function MembersPage(): JSX.Element | null {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader title="同事" description={shared ? `已登录的团队成员 · ${snapshot.members.length} 人，当前空间 ${spaceMemberIds.size} 人` : `本机同事名册 · ${snapshot.members.length} 人，当前空间 ${spaceMemberIds.size} 人 · 添加不会发送邀请`}
-        actions={shared ? <Button variant="outline" size="sm" disabled={!workspace.origin} onClick={() => { if (workspace.origin) void api.openExternal(`${workspace.origin}/#people`) }}>管理团队与邀请</Button> : <Button variant="primary" size="sm" disabled={busy} onClick={() => setEditing('new')}><Plus size={14} />添加同事</Button>} />
+        actions={shared ? <Button variant="primary" size="sm" disabled={busy || !workspace.connectionId || !workspace.canManage} onClick={() => setInviting(true)}><Plus size={14} />邀请成员</Button> : <Button variant="primary" size="sm" disabled={busy} onClick={() => setEditing('new')}><Plus size={14} />添加同事</Button>} />
       <div className="flex flex-wrap items-center gap-3">
         <input className={`${inputClass} max-w-xs`} aria-label="搜索同事" placeholder="搜索姓名、邮箱或职位" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
         <label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={onlySpace} onChange={(event) => setOnlySpace(event.target.checked)} />仅当前空间</label>
@@ -73,6 +75,7 @@ export function MembersPage(): JSX.Element | null {
         </div>
       )}
       {editing && <MemberEditor key={`${currentSpaceId}:${editing === 'new' ? 'new' : editing.id}`} member={editing === 'new' ? null : editing} spaceId={space?.id} spaceName={space?.name} onClose={() => setEditing(null)} />}
+      <MemberInvitationDialog open={inviting} currentConnectionId={workspace.connectionId} currentSpace={space ? { id: space.id, name: space.name } : undefined} onClose={() => setInviting(false)} />
     </div>
   )
 }

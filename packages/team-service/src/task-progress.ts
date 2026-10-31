@@ -4,6 +4,7 @@ import type { HifoxSnapshot, HifoxTask } from '../../../src/shared/hifox'
 import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
 import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
 import { teamCommandIdSchema, teamIdSchema } from '../../../src/shared/team-platform'
+import { teamCodeResourceSchema, teamTaskResourceSelectionSchema } from '../../../src/shared/team-code-resources'
 import {
   teamTaskProgressBindingSchema, teamTaskProgressCommandSchema, teamTaskProgressDtoSchema,
   teamTaskProgressReceiptSchema, teamTaskProgressRecordSchema, teamTaskProgressResourceIdSchema,
@@ -17,7 +18,8 @@ import { TeamServiceError } from './errors'
 const RECEIPTS_PER_TASK = 32
 type Host = Pick<HifoxWorkspaceHost, 'identity' | 'transaction' | 'get' | 'all' | 'run' | 'authenticate' | 'project'>
 type Current = { generation: number; binding: TeamTaskProgressBinding | null; progress: TeamTaskProgressRecord | null; ownerKey: string | null }
-type Authority = { principal: StorePrincipal; projectId: string; taskId: string; spaceId: string; fence: string }
+type ResourceFence = { fence: string; resourceAvailable: boolean }
+type Authority = ResourceFence & { principal: StorePrincipal; projectId: string; taskId: string; spaceId: string }
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex')
 // A one-way actor fence, never a stored bearer token, browser cookie or native path.
 const ownerKey = (actor: StoreActor): string => hash(`task-progress:${actor.kind}:${actor.credentialHash}`)
@@ -36,8 +38,35 @@ const taskFence = (task: HifoxTask): string => hash(JSON.stringify([
   task.workflow?.history.at(-1)?.id, task.assigneeIds
 ]))
 const nextGeneration = (generation: number): number => {
+  if (!Number.isSafeInteger(generation) || generation < 0) throw new TeamServiceError('CORRUPT_STORE', 'Task progress generation is invalid', 503)
   if (generation >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Task progress generation exhausted', 503)
   return generation + 1
+}
+
+/** Defaults and resource descriptions are not part of an admitted execution's identity. */
+export function taskProgressFence(host: Pick<Host, 'get'>, projectId: string, task: HifoxTask): ResourceFence {
+  const fence = taskFence(task)
+  const row = host.get('SELECT recordJson FROM team_task_code_resources WHERE projectId=? AND taskId=? AND spaceId=? AND taskCreatedAt=?', projectId, task.id, task.spaceId, task.createdAt)
+  const selection = row ? stored(teamTaskResourceSelectionSchema, String(row.recordJson)) : null
+  // Preserve the pre-resource fence for existing non-code tasks.
+  if (!selection?.resourceId) return { fence, resourceAvailable: true }
+  const resourceRow = host.get('SELECT recordJson FROM team_code_resources WHERE projectId=? AND resourceId=?', projectId, selection.resourceId)
+  const resource = resourceRow ? stored(teamCodeResourceSchema, String(resourceRow.recordJson)) : null
+  const linked = Boolean(host.get('SELECT resourceId FROM team_space_resource_links WHERE projectId=? AND spaceId=? AND resourceId=?', projectId, task.spaceId, selection.resourceId))
+  return {
+    fence: hash(JSON.stringify([fence, task.createdAt, selection.revision, selection.resourceId, resource?.createdAt, resource?.source, resource?.disabled, linked])),
+    resourceAvailable: Boolean(resource && !resource.disabled && linked)
+  }
+}
+
+/** Call in the resource mutation transaction; retain command identities and historical receipts. */
+export function invalidateTaskResourceProgress(host: Pick<Host, 'get' | 'run'>, projectId: string, taskId: string): void {
+  const row = host.get('SELECT generation FROM hifox_task_progress WHERE projectId=? AND taskId=?', projectId, taskId)
+  if (!row) return
+  if (typeof row.generation !== 'number') throw new TeamServiceError('CORRUPT_STORE', 'Task progress generation is invalid', 503)
+  // This tombstone cannot match any hashed fence after disable/unlink is reversed.
+  // Revoking reporting authority does not confirm that a native process stopped.
+  host.run("UPDATE hifox_task_progress SET generation=?,fence='',bindingJson=NULL,progressJson=NULL,ownerKey=NULL WHERE projectId=? AND taskId=?", nextGeneration(row.generation), projectId, taskId)
 }
 
 export class TeamTaskProgress {
@@ -63,7 +92,7 @@ export class TeamTaskProgress {
     const handler = this.host.get('SELECT p.userId FROM people p JOIN project_members pm ON pm.userId=p.userId JOIN projects pr ON pr.projectId=pm.projectId JOIN team_members tm ON tm.teamId=pr.teamId AND tm.userId=p.userId WHERE p.userId=? AND pm.projectId=? AND p.active=1 AND pm.active=1 AND tm.active=1', handlerId, projectId)
     if (!handler || !space.memberIds.includes(handlerId)) conflict('TASK_PROGRESS_INACTIVE', 'Task handler is no longer an active space member')
     if (writing && (space.archived || handlerId !== principal.person.userId)) throw new TeamServiceError('TASK_PROGRESS_FORBIDDEN', 'Only the current handler can report progress in an active space', 403)
-    return { principal, projectId, taskId, spaceId: task.spaceId, fence: taskFence(task) }
+    return { principal, projectId, taskId, spaceId: task.spaceId, ...taskProgressFence(this.host, projectId, task) }
   }
 
   private current(authority: Authority): Current {
@@ -122,6 +151,7 @@ export class TeamTaskProgress {
         return { status: 'duplicate', commandId: input.commandId, result: this.view(authority, current) }
       }
       if (input.kind === 'bind') {
+        if (!authority.resourceAvailable) conflict('TASK_PROGRESS_INACTIVE', 'Selected code resource must be enabled and linked to the current space')
         if (input.expectedGeneration !== current.generation || input.expectedBindingId !== (current.binding?.bindingId ?? null)) conflict('TASK_PROGRESS_BINDING_CONFLICT', 'Reporting binding changed; reload before an explicit takeover')
         if ((input.source.kind === 'desktop') !== (actor.kind === 'device')) throw new TeamServiceError('TASK_PROGRESS_FORBIDDEN', 'Reporting source does not match the authenticated transport', 403)
         const generation = nextGeneration(current.generation)
@@ -155,8 +185,9 @@ export class TeamTaskProgress {
       if (typeof row.taskId !== 'string' || typeof row.generation !== 'number') throw new TeamServiceError('CORRUPT_STORE', 'Task progress identity is invalid', 503)
       const previous = oldTasks.get(row.taskId), next = newTasks.get(row.taskId)
       if (!next) { this.host.run('DELETE FROM hifox_task_progress WHERE projectId=? AND taskId=?', projectId, row.taskId); continue }
-      if (!previous || taskFence(previous) !== taskFence(next)) {
-        this.host.run('UPDATE hifox_task_progress SET generation=?,fence=?,spaceId=?,bindingJson=NULL,progressJson=NULL,ownerKey=NULL WHERE projectId=? AND taskId=?', nextGeneration(row.generation), taskFence(next), next.spaceId, projectId, row.taskId)
+      const nextFence = taskProgressFence(this.host, projectId, next).fence
+      if (!previous || taskProgressFence(this.host, projectId, previous).fence !== nextFence) {
+        this.host.run('UPDATE hifox_task_progress SET generation=?,fence=?,spaceId=?,bindingJson=NULL,progressJson=NULL,ownerKey=NULL WHERE projectId=? AND taskId=?', nextGeneration(row.generation), nextFence, next.spaceId, projectId, row.taskId)
       }
     }
   }

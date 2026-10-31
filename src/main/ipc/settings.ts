@@ -14,8 +14,12 @@ import { applyChromiumProxy } from '../services/proxy'
 import { explorerMenuSupported, setExplorerMenu } from '../services/explorer-menu'
 import { applyMainWindowAppearance } from '../services/window-appearance'
 import { handle } from './registry'
+import { scanStorage, cleanStorage, openDataDirectory } from '../services/storage'
 
 export function registerSettingsIpc(): void {
+  handle(ipcInvoke.storage.scan, () => scanStorage())
+  handle(ipcInvoke.storage.clean, (_e, input: unknown) => cleanStorage(input))
+  handle(ipcInvoke.storage.openDataDirectory, () => openDataDirectory())
   handle(ipcInvoke.settings.get, () => getSettings())
 
   handle(ipcInvoke.settings.set, async (_e, patch: Partial<Settings>) => {

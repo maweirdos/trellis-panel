@@ -6,6 +6,7 @@ import { create } from 'zustand'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import type { HifoxWorkspaceContext } from '@shared/hifox-remote'
+import type { TaskListLocation, WorkReturnContext } from './development/types'
 import type {
   HifoxID,
   HifoxInboxItem,
@@ -19,7 +20,7 @@ import type {
 } from '@shared/hifox'
 
 export type HifoxModule =
-  | 'overview' | 'tasks' | 'board' | 'inbox' | 'triage' | 'creations'
+  | 'overview' | 'tasks' | 'board' | 'inbox' | 'triage' | 'creations' | 'cockpit'
   | 'projects' | 'iterations' | 'members' | 'spaces'
   | 'agents' | 'skills' | 'crews' | 'automations' | 'views' | 'all-agents' | 'my-tasks'
   | 'task-types' | 'task-statuses' | 'task-labels'
@@ -29,7 +30,10 @@ export interface HifoxTaskFilterState extends HifoxViewFilter {
 }
 
 interface HifoxState {
-  workReturn: { workspaceKey: string; actorId: string | null; epoch?: string; taskId: string; taskCreatedAt: string; projectRoot: string; taskDir: string } | null
+  workReturn: WorkReturnContext | null
+  developmentMode: 'task' | 'independent' | null
+  developmentRevision: number
+  taskWorkspaceLocations: Record<string, TaskListLocation>
   localWorkOpening: { projectRoot: string; taskId: string } | null
   createTaskContext: { spaceId?: string; iterationId?: string; triagePending?: boolean } | null
   snapshot: HifoxSnapshot | null
@@ -38,6 +42,8 @@ interface HifoxState {
   workspaceContext: HifoxWorkspaceContext
   module: HifoxModule
   currentSpaceId: HifoxID | null
+  cockpitScope: { iterationId?: string; projectId?: string }
+  openCockpit: (spaceId: string, scope?: { iterationId?: string; projectId?: string }) => void
   openTaskId: HifoxID | null
   createTaskOpen: boolean
   taskFilter: HifoxTaskFilterState
@@ -61,6 +67,7 @@ interface HifoxState {
 let snapshotTicket = 0
 let workspaceTicket = 0
 let pendingWrites = 0
+let switchingWorkspace = false
 let writeQueue: Promise<unknown> = Promise.resolve()
 
 function acceptSnapshot(snapshot: HifoxSnapshot, currentSpaceId: string | null): { snapshot: HifoxSnapshot; currentSpaceId: string | null } {
@@ -69,6 +76,9 @@ function acceptSnapshot(snapshot: HifoxSnapshot, currentSpaceId: string | null):
 
 export const useHifox = create<HifoxState>()((set, get) => ({
   workReturn: null,
+  developmentMode: null,
+  developmentRevision: 0,
+  taskWorkspaceLocations: {},
   localWorkOpening: null,
   createTaskContext: null,
   snapshot: null,
@@ -77,6 +87,12 @@ export const useHifox = create<HifoxState>()((set, get) => ({
   workspaceContext: { key: 'local', connectionId: null, projectId: null, projectName: null, actorId: null, canManage: true, revision: 0, state: 'local', pendingCount: 0 },
   module: 'overview',
   currentSpaceId: null,
+  cockpitScope: {},
+  openCockpit: (spaceId, scope = {}) => {
+    const state = get()
+    if (!state.snapshot?.spaces.some((space) => space.id === spaceId)) return
+    set({ currentSpaceId: spaceId, cockpitScope: scope, module: 'cockpit', openTaskId: null, createTaskOpen: false })
+  },
   openTaskId: null,
   createTaskOpen: false,
   taskFilter: {},
@@ -87,7 +103,7 @@ export const useHifox = create<HifoxState>()((set, get) => ({
       set({ loadError: 'HiFox 协作模块需要在应用内运行（当前为浏览器预览环境）' })
       return
     }
-    if (pendingWrites) return
+    if (pendingWrites || switchingWorkspace) return
     const ticket = ++snapshotTicket
     try {
       const result = await api.hifox.snapshot()
@@ -97,7 +113,7 @@ export const useHifox = create<HifoxState>()((set, get) => ({
         const changed = context.key !== get().workspaceContext.key
         if (changed) workspaceTicket++
         set({ ...acceptSnapshot(result.data, changed ? null : get().currentSpaceId), workspaceContext: context, loadError: null,
-          ...(changed ? { openTaskId: null, createTaskOpen: false, taskFilter: {}, activeViewId: null } : {}) })
+          ...(changed ? { openTaskId: null, createTaskOpen: false, taskFilter: {}, activeViewId: null, cockpitScope: {} } : {}) })
       }
       else set({ loadError: result.error, ...(result.context ? { workspaceContext: result.context, ...(result.context.state === 'access-revoked' ? { snapshot: null, openTaskId: null, createTaskOpen: false } : {}) } : {}) })
     } catch (error) {
@@ -109,22 +125,23 @@ export const useHifox = create<HifoxState>()((set, get) => ({
     if (get().busy || pendingWrites) return false
     const ticket = ++snapshotTicket
     workspaceTicket++
+    switchingWorkspace = true
     set({ busy: true })
     try {
       const result = await api.hifox.selectWorkspace({ connectionId })
       if (ticket !== snapshotTicket) return false
       if (!result.ok) { useApp.getState().pushToast({ kind: 'error', title: '切换协作空间', body: result.error }); return false }
       set({ ...acceptSnapshot(result.data, null), workspaceContext: result.context ?? get().workspaceContext, loadError: null,
-        openTaskId: null, createTaskOpen: false, taskFilter: {}, activeViewId: null })
+        openTaskId: null, createTaskOpen: false, taskFilter: {}, activeViewId: null, cockpitScope: {} })
       return true
     } catch (error) {
       useApp.getState().pushToast({ kind: 'error', title: '切换协作空间', body: error instanceof Error ? error.message : String(error) })
       return false
-    } finally { set({ busy: false }) }
+    } finally { switchingWorkspace = false; set({ busy: false }) }
   },
 
   setModule: (module) => set({ module, openTaskId: null, createTaskOpen: false }),
-  setCurrentSpace: (id) => set({ currentSpaceId: id, activeViewId: null, taskFilter: {}, openTaskId: null, createTaskOpen: false }),
+  setCurrentSpace: (id) => set({ currentSpaceId: id, activeViewId: null, taskFilter: {}, cockpitScope: {}, openTaskId: null, createTaskOpen: false }),
   setCreateTaskOpen: (createTaskOpen) => set({ createTaskOpen, createTaskContext: null }),
   beginCreateTask: (context) => set({ createTaskOpen: true, createTaskContext: context ?? null }),
   openTask: (id) => {

@@ -1,14 +1,18 @@
-import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import type { WorkcopyLease } from '../../../shared/workcopy-use'
+import { runNativeWorkcopyCommand, recoverNativeWorkcopyCommand } from '../workcopy-use/native-command'
+import { resolveWorkcopy, assertWorkcopyObservation } from '../workcopy-use/identity'
+import { DaemonError } from '../../daemon/errors'
 
 /**
  * task.py CLI 执行器（design §7.2）：
  * - 参数数组执行（不经 shell 拼接）、固定 cwd=项目根、检查退出码；
  * - 禁止 --force；create 一律 --no-start（不改会话当前任务指针、不置 in_progress）；
- * - 输出有界收集；超时强杀（Windows 杀进程树）；
+ * - 输出有界收集；Windows Job Object 隔离并核验所有子进程清理；
  * - 超时≠成功：code=null + aborted=true，由上层按失败处理。
  *
- * 本模块不 import electron（冒烟直驱）。
+ * 原生命令回执与工作副本准入共用已有 daemon。
  */
 
 export interface TaskCliSpawnOptions {
@@ -18,6 +22,10 @@ export interface TaskCliSpawnOptions {
   /** task.py 路径（默认 <root>/.trellis/scripts/task.py）。 */
   taskPyPath?: string
   timeoutMs?: number
+  /** Durable native command ID; retry reconciles this operation without re-executing. */
+  operationId?: string
+  /** Existing preparation writer/tree-change lease; never use a renderer token. */
+  workcopyLease?: WorkcopyLease
 }
 
 export interface TaskCliRunResult {
@@ -31,9 +39,10 @@ export interface TaskCliRunResult {
   failedToStart: boolean
   /** 从输出解析到的 "Created task: <dir>"（仅 create；仍需上层 fs 核实）。 */
   createdDirName: string | null
+  cleanupConfirmed: boolean
+  operationId: string
 }
 
-const OUTPUT_CAP_BYTES = 64 * 1024
 const ANSI_RE = // eslint-disable-next-line no-control-regex
   /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g
 
@@ -41,54 +50,17 @@ function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, '')
 }
 
-function runTaskPy(options: TaskCliSpawnOptions, args: string[]): Promise<Omit<TaskCliRunResult, 'createdDirName'>> {
+async function runTaskPy(options: TaskCliSpawnOptions, args: string[]): Promise<Omit<TaskCliRunResult, 'createdDirName'>> {
+  if (options.workcopyLease) {
+    if (!['writer', 'tree-change'].includes(options.workcopyLease.kind)) throw new DaemonError('E_DENIED', '任务材料命令需要 writer 或 tree-change 登记。')
+    assertWorkcopyObservation(resolveWorkcopy(options.root), options.workcopyLease.identity)
+  }
   const python = options.pythonCommand ?? 'python'
   const taskPy = options.taskPyPath ?? join(options.root, '.trellis', 'scripts', 'task.py')
   const timeoutMs = options.timeoutMs ?? 30_000
-  return new Promise((resolve) => {
-    let proc
-    try {
-      proc = spawn(python, [taskPy, ...args], {
-        cwd: options.root,
-        windowsHide: true,
-        env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
-      })
-    } catch (e) {
-      resolve({ code: null, stdout: '', stderr: `启动 task.py 失败: ${e instanceof Error ? e.message : String(e)}`, aborted: false, failedToStart: true })
-      return
-    }
-    let stdout = ''
-    let stderr = ''
-    let aborted = false
-    const capPush = (current: string, chunk: Buffer): string => {
-      if (current.length >= OUTPUT_CAP_BYTES) return current
-      return (current + chunk.toString('utf-8')).slice(0, OUTPUT_CAP_BYTES)
-    }
-    proc.stdout?.on('data', (d: Buffer) => {
-      stdout = capPush(stdout, d)
-    })
-    proc.stderr?.on('data', (d: Buffer) => {
-      stderr = capPush(stderr, d)
-    })
-    proc.on('error', (e) => {
-      resolve({ code: null, stdout, stderr: `${stderr}\n启动 task.py 失败: ${e.message}`.trim(), aborted, failedToStart: true })
-    })
-    const timer = setTimeout(() => {
-      aborted = true
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true })
-      } else {
-        try {
-          proc.kill('SIGKILL')
-        } catch {
-          /* already gone */
-        }
-      }
-    }, timeoutMs)
-    proc.on('close', (code) => {
-      clearTimeout(timer)
-      resolve({ code: code === null ? null : Number(code), stdout, stderr, aborted, failedToStart: false })
-    })
+  return runNativeWorkcopyCommand(options.root, {
+    operationId: options.operationId ?? randomUUID(), executable: python, args: [taskPy, ...args], timeoutMs,
+    env: { FORCE_COLOR: '0', NO_COLOR: '1', PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }, lease: options.workcopyLease
   })
 }
 
@@ -118,10 +90,18 @@ export async function runTaskCreateCli(options: TaskCliSpawnOptions, input: Task
     '--no-start'
   ]
   for (const [k, v] of input.meta) args.push('--meta', `${k}=${v}`)
-  const res = await runTaskPy(options, args)
+  const operationId = options.operationId ?? input.meta.find(([key]) => key === 'panel_operation_id')?.[1] ?? randomUUID()
+  const res = await runTaskPy({ ...options, operationId }, args)
   // "Created task: <dir>" 走 stderr（common/task_store.cmd_create）；仅作定位线索，仍需 fs 核实
   const m = stripAnsi(res.stderr + '\n' + res.stdout).match(/Created task:\s*([^\s\r\n"']+)/)
   return { ...res, createdDirName: m !== null ? m[1] : null }
+}
+
+/** Reconcile/clean the exact original container. Never rerun task.py or infer from root exit. */
+export async function recoverTaskCliOperation(root: string, operationId: string): Promise<TaskCliRunResult> {
+  const res = await recoverNativeWorkcopyCommand(root, operationId)
+  const match = stripAnsi(res.stderr + '\n' + res.stdout).match(/Created task:\s*([^\s\r\n"']+)/)
+  return { ...res, createdDirName: match?.[1] ?? null }
 }
 
 /** task.py archive（本地归档走既有语义；G3 别名更新由服务层负责）。 */

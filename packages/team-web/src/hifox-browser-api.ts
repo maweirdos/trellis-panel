@@ -9,6 +9,14 @@ import { BrowserCreationApi } from './creation-browser-api'
 import type { CreationApi } from '../../../src/shared/creation-api'
 import { BrowserTaskProgress } from './task-progress-browser-api'
 import type { HifoxProgressApi } from '../../../src/shared/hifox-task-progress'
+import { BrowserCodeResources } from './code-resource-browser-api'
+import type { HifoxCodeResourceApi } from '../../../src/shared/hifox-code-resources'
+import { BrowserTaskMaterials } from './task-materials-browser-api'
+import type { HifoxTaskMaterialsApi } from '../../../src/shared/hifox-task-materials'
+import { BrowserGovernance } from './governance-browser-api'
+import { BrowserTeamContent } from './content-browser-api'
+import type { TeamContentApi } from '../../../src/shared/team-content-api'
+import type { TeamGovernanceApi } from '../../../src/shared/team-governance'
 
 type SnapshotReply = { ok: true; data: HifoxSnapshot; context: HifoxWorkspaceContext; taskId?: string }
 type Pending = { entry: PendingCommand; prepared?: PreparedCommand<HifoxRemoteSnapshot>; command?: HifoxRemoteCommand; instanceId: string | null; createdAt: number; outcomeUnknown: boolean; errorCode: string | null }
@@ -42,9 +50,14 @@ export class BrowserHifoxWorkspace {
   readonly hifox: HifoxApi
   readonly creations: BrowserCreationApi
   readonly progress: BrowserTaskProgress
+  readonly resources: BrowserCodeResources
+  readonly materials: BrowserTaskMaterials
+  readonly governance: BrowserGovernance
+  readonly teamContent: BrowserTeamContent
 
   constructor(private readonly options: BrowserWorkspaceOptions) {
     this.key = JSON.stringify([options.origin ?? location.origin, options.session.person.userId, options.project.projectId])
+    this.teamContent = new BrowserTeamContent({ session: options.session, projectId: options.project.projectId, teamId: options.project.teamId, context: () => this.context(), isCurrent: () => this.current() })
     for (const key of retained.keys()) { const [origin, userId] = JSON.parse(key) as string[]; if (origin !== location.origin || userId !== options.session.person.userId) retained.delete(key) }
     for (const key of pinnedInstances.keys()) { const [origin, userId] = JSON.parse(key) as string[]; if (origin !== location.origin || userId !== options.session.person.userId) pinnedInstances.delete(key) }
     this.syncReferences()
@@ -90,7 +103,8 @@ export class BrowserHifoxWorkspace {
       },
       createSpace: (input) => this.mutate('createSpace', input), updateSpace: (input) => this.mutate('updateSpace', input),
       joinSpace: (input) => this.mutate('joinSpace', input),
-      inviteMember: async () => this.rosterUnsupported(), updateMember: async () => this.rosterUnsupported(), removeMember: async () => this.rosterUnsupported(), setSpaceMembers: async () => this.rosterUnsupported(),
+      inviteMember: async () => this.rosterUnsupported(), updateMember: async () => this.rosterUnsupported(), removeMember: async () => this.rosterUnsupported(),
+      setSpaceMembers: (input) => this.mutate('setSpaceMembers', input),
       createTaskType: (input) => this.mutate('createTaskType', input), updateTaskType: (input) => this.mutate('updateTaskType', input), removeTaskType: (input) => this.mutate('removeTaskType', input),
       createTaskStatus: (input) => this.mutate('createTaskStatus', input), removeTaskStatus: (input) => this.mutate('removeTaskStatus', input), createLabel: (input) => this.mutate('createLabel', input), archiveLabel: (input) => this.mutate('archiveLabel', input),
       createTask: async (input) => {
@@ -98,6 +112,10 @@ export class BrowserHifoxWorkspace {
         return reply.ok && reply.taskId ? { ...reply, taskId: reply.taskId } : reply.ok ? this.failure(new ApiError('COMMITTED_NOT_VISIBLE', '原操作已提交；新任务目前不在授权可见范围，请先核对结果再创建新操作')) : reply
       },
       updateTask: (input) => this.mutate('updateTask', input), transitionTask: (input) => this.mutate('transitionTask', input), recordVersionDelivery: (input) => this.mutate('recordVersionDelivery', input), removeTask: (input) => this.mutate('removeTask', input), addRelation: (input) => this.mutate('addRelation', input), removeRelation: (input) => this.mutate('removeRelation', input),
+      recordTaskDelivery: (input) => this.mutate('recordTaskDelivery', input),
+      saveMilestone: (input) => this.mutate('saveMilestone', input),
+      completeMilestone: (input) => this.mutate('completeMilestone', input),
+      removeMilestone: (input) => this.mutate('removeMilestone', input),
       addComment: (input) => this.mutate('addComment', input), resolveComment: (input) => this.mutate('resolveComment', input),
       createProject: (input) => this.mutate('createProject', input), updateProject: (input) => this.mutate('updateProject', input),
       createIteration: (input) => this.mutate('createIteration', input), updateIteration: (input) => this.mutate('updateIteration', input), completeIteration: (input) => this.mutate('completeIteration', input),
@@ -109,6 +127,9 @@ export class BrowserHifoxWorkspace {
     }
     this.creations = new BrowserCreationApi({ projectId: options.project.projectId, session: options.session, context: () => this.context(), isCurrent: this.current, subscribe: (callback) => this.hifox.onWorkspaceChanged(callback) })
     this.progress = new BrowserTaskProgress({ projectId: options.project.projectId, session: options.session, context: () => this.context(), isCurrent: this.current })
+    this.resources = new BrowserCodeResources({ projectId: options.project.projectId, session: options.session, context: () => this.context(), isCurrent: this.current })
+    this.materials = new BrowserTaskMaterials({ projectId: options.project.projectId, session: options.session, context: () => this.context(), isCurrent: this.current, subscribe: callback => this.hifox.onWorkspaceChanged(callback) })
+    this.governance = new BrowserGovernance({ projectId: options.project.projectId, session: options.session, context: () => this.context(), isCurrent: this.current, subscribe: callback => this.hifox.onWorkspaceChanged(callback) })
     authEvents.addEventListener('denied', this.denied)
   }
 
@@ -132,6 +153,10 @@ export class BrowserHifoxWorkspace {
     this.snapshotValue = null; this.pending = null; this.referenceCount = 0; retained.delete(this.key); this.lifetime.abort(); this.publish()
   }
   dispose(): void {
+    this.teamContent.dispose()
+    this.governance.dispose()
+    this.materials.dispose()
+    this.resources.dispose()
     this.progress.dispose()
     this.creations.dispose()
     this.live = false; this.lifetime.abort(); authEvents.removeEventListener('denied', this.denied)
@@ -332,7 +357,23 @@ const hifoxProgress = new Proxy({} as HifoxProgressApi, { get: (_target, propert
   const method = active && Reflect.get(active.progress.api, property)
   return typeof method === 'function' ? Reflect.apply(method, active?.progress.api, args) : Promise.resolve({ ok: false, code: 'E_UNAVAILABLE', error: '浏览器工作区不支持此进度操作。' })
 } })
-export const api = new Proxy({ hifox, creations, hifoxProgress, openExternal: async (url: string): Promise<void> => {
+const hifoxResources = new Proxy({} as HifoxCodeResourceApi, { get: (_target, property) => (...args: unknown[]) => {
+  const method = active && Reflect.get(active.resources.api, property)
+  return typeof method === 'function' ? Reflect.apply(method, active?.resources.api, args) : Promise.resolve({ ok: false, code: 'WORKSPACE_UNAVAILABLE', error: '浏览器工作区尚未连接' })
+} })
+const hifoxMaterials = new Proxy({} as HifoxTaskMaterialsApi, { get: (_target, property) => (...args: unknown[]) => {
+  const method = active && Reflect.get(active.materials.api, property)
+  return typeof method === 'function' ? Reflect.apply(method, active?.materials.api, args) : Promise.resolve({ ok: false, code: 'WORKSPACE_UNAVAILABLE', error: '浏览器材料工作区尚未连接' })
+} })
+const hifoxGovernance = new Proxy({} as TeamGovernanceApi, { get: (_target, property) => (...args: unknown[]) => {
+  const method = active && Reflect.get(active.governance.api, property)
+  return typeof method === 'function' ? Reflect.apply(method, active?.governance.api, args) : Promise.resolve({ ok: false, code: 'WORKSPACE_UNAVAILABLE', error: '团队规则与输入尚未连接' })
+} })
+const teamContent = new Proxy({} as TeamContentApi, { get: (_target, property) => (...args: unknown[]) => {
+  const method = active && Reflect.get(active.teamContent.api, property)
+  return typeof method === 'function' ? Reflect.apply(method, active?.teamContent.api, args) : Promise.resolve({ ok: false, code: 'WORKSPACE_UNAVAILABLE', error: '团队内容工作区尚未连接' })
+} })
+export const api = new Proxy({ hifox, creations, hifoxProgress, hifoxResources, hifoxMaterials, hifoxGovernance, teamContent, openExternal: async (url: string): Promise<void> => {
   const target = new URL(url, location.origin)
   if (target.origin !== location.origin || target.pathname !== '/' || target.search || target.hash !== '#people') throw new ApiError('UNSUPPORTED_WEB_ACTION', '网页版仅支持前往当前服务的团队与邀请页面')
   location.hash = '#people'

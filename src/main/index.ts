@@ -27,6 +27,7 @@ import { createDaemonTray } from './services/daemon-tray'
 import { DaemonError } from './daemon/errors'
 import { createGuiBootstrap, type GuiBootstrap } from './services/bootstrap'
 import { registerBootstrapIpc } from './ipc/bootstrap'
+import { createOnboarding } from './onboarding'
 import { closeCreationService } from './services/creations'
 import { ipcEvent } from '../shared/ipc-channels'
 import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
@@ -531,6 +532,7 @@ if (!gotLock) {
   }
   app.quit()
 } else {
+  const onboarding = createOnboarding(app.getPath('userData'))
   // 调试端口（CDP 截图/自动化验收用）：TPANEL_DEBUG_PORT=9333 npm run dev
   if (process.env.TPANEL_DEBUG_PORT) {
     app.commandLine.appendSwitch('remote-debugging-port', process.env.TPANEL_DEBUG_PORT)
@@ -730,6 +732,7 @@ if (!gotLock) {
     registerBootstrapIpc({
       getMain: () => win && !win.isDestroyed() ? win : null,
       bootstrap,
+      onboarding,
       exit: exitBootstrapGui,
       attached: attachFullRenderer,
       detached: () => { fullRendererAttached = false },

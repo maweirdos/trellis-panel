@@ -1,12 +1,14 @@
-import { type JSX, type ReactNode } from 'react'
+import { useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, Bot, CircleUser, FolderInput, House, ListTodo, MessageCircle, Moon, PanelsTopLeft, RotateCw, Settings2, Star, Sun, Users, X, Wrench, Activity, FileText } from 'lucide-react'
+import { BookOpen, Bot, CircleUser, Database, FolderInput, Globe, House, Info, ListTodo, MessageCircle, Moon, Palette, PanelsTopLeft, RotateCw, Server, Settings2, Star, Sun, Users, X, Wrench, Activity, FileText } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { Avatar, Dropdown, DropdownItem } from '../ui'
 import { NavIcon } from '../icons'
 import { SidebarResizeHandle, useSidebarWidthStyle } from './SidebarResizeHandle'
 import { contextButtonClass } from './ModuleLinks'
+import { ConnectionPanel } from '../../hifox/ConnectionPanel'
+import { useHifox } from '../../hifox/store'
 import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, PRIMARY_NAVIGATION, SETTINGS_VIEW_TITLES, type ModuleId, type TeamView } from '../navigation'
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
@@ -25,6 +27,11 @@ export function WorkspaceSidebar(): JSX.Element {
   const collapsed = useMy((state) => state.sidebarCollapsed)
   const theme = useMy((state) => state.theme)
   const toggleTheme = useMy((state) => state.toggleTheme)
+  const [connectionsOpen, setConnectionsOpen] = useState(false)
+  const accountContext = useHifox((state) => state.workspaceContext)
+  const accountName = useHifox((state) => state.snapshot?.members.find((member) => member.id === state.workspaceContext.actorId)?.name)
+  const inLocalMode = accountContext.state === 'local'
+  const visibleAccount = inLocalMode ? snapshot?.meta.developer ?? '本机用户' : accountName ?? '团队账号待核对'
   const current = activeModule(page)
   const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center transition-colors hover:text-my-primary', selected ? 'is-selected text-my-primary' : 'text-my-icon-secondary')
   return <>
@@ -34,15 +41,17 @@ export function WorkspaceSidebar(): JSX.Element {
       </nav>
       <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">
         <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => setPage(useMy.getState().modulePages.settings ?? 'settings')} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>
-        <Dropdown width={210} trigger={({ open, toggle }) => <button type="button" aria-label="用户与主题" title="用户与主题" aria-expanded={open} onClick={toggle} className="my-module-button my-nav-item grid place-items-center"><Avatar name={snapshot?.meta.developer ?? '本机用户'} color="var(--my-bg-accent-primary)" tone="accent" size={28} /></button>}>
+        <Dropdown width={210} trigger={({ open, toggle }) => <button type="button" aria-label="账号与主题" title="账号与主题" aria-expanded={open} onClick={toggle} className="my-module-button my-nav-item grid place-items-center"><Avatar name={visibleAccount} color="var(--my-bg-accent-primary)" tone="accent" size={28} /></button>}>
           {(close) => <>
-            <div className="px-3 py-2 text-my-sm font-medium text-my-primary">{snapshot?.meta.developer ?? '本机用户'}</div>
-            <DropdownItem icon={<CircleUser size={14} />} onClick={() => { useMy.getState().setSettingsView('preferences'); setPage('settings'); close() }}>偏好</DropdownItem>
+            <div className="px-3 py-2 text-my-sm font-medium text-my-primary">{visibleAccount}<span className="mt-1 block text-my-xs font-normal text-my-tertiary">{inLocalMode ? '本机使用 · 无需登录' : accountContext.state === 'connected' ? '团队账号' : accountContext.state === 'offline' ? '团队账号 · 离线缓存' : '团队账号 · 权限失效'}</span></div>
+            <DropdownItem icon={<Users size={14} />} onClick={() => { close(); setConnectionsOpen(true) }}>账号、组织与工作区</DropdownItem>
+            <DropdownItem icon={<CircleUser size={14} />} onClick={() => { useMy.getState().setSettingsView('preferences'); setPage('settings'); close() }}>通用设置</DropdownItem>
             <DropdownItem icon={theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />} onClick={() => { toggleTheme(); close() }}>切换{theme === 'dark' ? '亮色' : '深色'}主题</DropdownItem>
           </>}
         </Dropdown>
       </div>
     </aside>
+    <ConnectionPanel hideTrigger open={connectionsOpen} onOpenChange={setConnectionsOpen} />
     {!collapsed && hasShellContext(page) && <ContextSidebar />}
   </>
 }
@@ -62,6 +71,10 @@ function ContextSidebar(): JSX.Element {
   const buttonClass = contextButtonClass
   const row = (key: string, label: string, selected: boolean, icon: ReactNode, action: () => void): JSX.Element => <button key={key} type="button" aria-current={selected ? 'page' : undefined} onClick={action} className={buttonClass(selected)}>{icon}{label}</button>
   const route = (target: Page): JSX.Element => row(target, getPageNavigation(target).title, page === target, <NavIcon name={getPageNavigation(target).icon} size={16} />, () => { if (useApp.getState().page !== target) setPage(target) })
+  const settingsRow = (view: typeof settingsView, icon: ReactNode): JSX.Element => row(view, SETTINGS_VIEW_TITLES[view], page === 'settings' && settingsView === view, icon, () => {
+    setSettingsView(view)
+    if (useApp.getState().page !== 'settings') setPage('settings')
+  })
   return <aside aria-label={`${DOMAIN_LABELS[domain]}导航`} style={sidebarStyle} className="my-context-sidebar flex h-full shrink-0 flex-col border-r border-my-line">
     <SidebarResizeHandle />
     <header className="flex h-my-header shrink-0 items-center gap-2 px-4">
@@ -107,11 +120,16 @@ function ContextSidebar(): JSX.Element {
         <p className="px-3 pt-4 text-my-xs leading-relaxed text-my-tertiary">当前项目的成员责任、协作记录与交付情况。</p>
       </>}
       {domain === 'settings' && <>
-        {row('preferences', SETTINGS_VIEW_TITLES.preferences, page === 'settings' && settingsView === 'preferences', <Settings2 size={16} />, () => { setSettingsView('preferences'); setPage('settings') })}
+        {settingsRow('preferences', <Settings2 size={16} />)}
+        {settingsRow('appearance', <Palette size={16} />)}
         {route('models')}
-        {row('engines', SETTINGS_VIEW_TITLES.engines, page === 'settings' && settingsView === 'engines', <Bot size={16} />, () => { setSettingsView('engines'); setPage('settings') })}
+        {settingsRow('engines', <Bot size={16} />)}
         {route('integrations')}
         {route('gateway')}
+        {settingsRow('daemon', <Server size={16} />)}
+        {settingsRow('network', <Globe size={16} />)}
+        {settingsRow('storage', <Database size={16} />)}
+        {settingsRow('about', <Info size={16} />)}
       </>}
     </div>
   </aside>

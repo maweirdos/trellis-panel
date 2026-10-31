@@ -4,6 +4,8 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { teamIdSchema } from '../../../src/shared/team-platform'
 import { hifoxRemoteSnapshotSchema } from '../../../src/shared/hifox-remote'
+import { teamTaskDevelopmentContextSchema } from '../../../src/shared/team-task-development'
+import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-progress'
 import type { TeamAuthentication } from './auth'
 import type { TeamStore } from './store-client'
 import { TeamServiceError } from './errors'
@@ -16,6 +18,12 @@ const querySchema = z.object({ afterRevision: z.coerce.number().int().min(-1).ma
 export async function registerHifoxWorkspaceRoutes(api: FastifyInstance, store: TeamStore, auth: TeamAuthentication): Promise<void> {
   const stopping = new AbortController()
   api.addHook('preClose', async () => { stopping.abort() })
+  api.get('/api/projects/:projectId/hifox/tasks/:taskId/development-context', async (request, reply) => {
+    const params = z.object({ projectId: teamIdSchema, taskId: teamTaskProgressResourceIdSchema }).strict().parse(request.params)
+    z.object({}).strict().parse(request.query ?? {})
+    reply.header('Cache-Control', 'no-store')
+    return { ok: true, value: teamTaskDevelopmentContextSchema.parse(await store.call('taskDevelopmentContext', { actor: auth.principal(request).actor, ...params })) }
+  })
   api.get('/api/projects/:projectId/hifox/snapshot', async (request, reply) => {
     const { projectId } = z.object({ projectId: teamIdSchema }).strict().parse(request.params)
     const query = querySchema.parse(request.query)

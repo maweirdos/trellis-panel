@@ -17,6 +17,9 @@ import { canonicalDirectory } from '../../services/acp/metadata'
 import { createRuntimeKnowledge } from './knowledge'
 import { KNOWLEDGE_MUTATIONS, knowledgeRuntimeBody } from '../../../shared/daemon-runtime-knowledge'
 import { HifoxTaskProgressRuntime } from '../../services/hifox/task-progress-runtime'
+import { installWorkcopyUse, resolveWorkcopy } from '../../services/workcopy-use'
+import { workcopyUseResultSchema, isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
+import { prepareAcpRecovery } from '../../services/workcopy-use/acp-recovery'
 
 export interface RuntimeDispatchContext { workspace?: WorkspaceGrant; commandId?: string }
 export interface DaemonRuntimePorts {
@@ -31,6 +34,7 @@ export interface DaemonRuntimePorts {
   assertWorkspaceAdmission?(root: string, method: RuntimeBodyMethod): void
 }
 export interface DaemonRuntime {
+  releaseWorkcopy(root: string, payload: RuntimeWire, commandId: string): Promise<RuntimeWire>
   dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>>
   status(): Promise<{ authority: 'legacy' | 'daemon'; admission: 'open' | 'closed'; sessions: number; workflows: number; operations: number; released: boolean; reason?: string }>
   assertIdle(): Promise<void>
@@ -46,6 +50,10 @@ export interface DaemonRuntime {
 
 /** Reuses the actual ACP and workflow controllers. No GUI state or second native transport. */
 export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
+  const workcopies = installWorkcopyUse(ports.directory, ports.assertOwner)
+  const processRecoveryReady = prepareAcpRecovery(ports.directory, workcopies).catch(() => {
+    process.emitWarning('旧执行的 kernel 隔离见证暂不可用；原占用保留，未追认清理。', { code: 'TRELLIS_ACP_LEGACY_QUARANTINE' })
+  })
   const blobs = new RuntimeBlobs(join(ports.directory, 'runtime-blobs'))
   const commands = new RuntimeCommands(join(ports.directory, 'runtime-commands'), ports.epoch, ports.assertOwner)
   const events = new RuntimeEvents(ports.epoch)
@@ -78,6 +86,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     watchers.set(root, watcher)
   }
   const status: DaemonRuntime['status'] = async () => {
+    await processRecoveryReady
     ports.assertOwner()
     let authority: 'legacy' | 'daemon' = 'daemon', reason: string | undefined
     try { ports.assertAuthority() } catch { authority = 'legacy'; reason = 'Runtime/settings authority preparation has not completed.' }
@@ -101,7 +110,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       for (const timer of materialTimers.values()) clearTimeout(timer)
       materialTimers.clear()
       await Promise.all([...watchers.values()].map(watcher => watcher.close())); watchers.clear()
-      if (acp.listOwnedAcpSessionFacts().length || await hasWorkflowApplications()) throw new DaemonError('E_UNKNOWN', 'The original runtime still owns native work; release is refused.', 'unknown')
+      if (acp.listOwnedAcpSessionFacts().length || await hasWorkflowApplications() || workcopies.facts().length) throw new DaemonError('E_UNKNOWN', '原 Runtime 或本机应用仍有工作副本登记；实际清理未确认，后台所有权已保留。', 'unknown')
     })().catch(error => { stopping = undefined; throw error })
     return stopping
   }
@@ -111,6 +120,24 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     const valid = (): boolean => { ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceAdmission?.(root, method); return !closed }
     const connection = <T extends { ok: boolean }>(target: { sessionId?: string; profileId?: string }, action: () => Promise<T>) => withOrdinaryConnectionAdmission(root, target, action)
     switch (method) {
+      case 'runtime.workcopyUse': {
+        if (root === '@profile') throw new DaemonError('E_DENIED', '工作副本登记需要原生工作区范围。')
+        const input = runtimeBodies[method].parse(raw)
+        if (input.operation === 'inspect') {
+          const identity = resolveWorkcopy(root)
+          return workcopyUseResultSchema.parse({ operation: 'inspect', identity, uses: workcopies.facts(identity) })
+        }
+        if (input.operation === 'assert') return workcopyUseResultSchema.parse({ operation: 'assert', identity: workcopies.assertHeld(root, input.token, input.owner) })
+        if (input.operation === 'consumer-tasks') return workcopyUseResultSchema.parse({ operation: 'consumer-tasks', lease: workcopies.updateConsumerTasks(root, input.token, input.owner, input.expectedRevision, input.taskKeys) })
+        if (input.owner.kind !== 'application' && input.owner.kind !== 'git') throw new DaemonError('E_DENIED', 'Agent 登记只能由原执行器生命周期持有。')
+        if (input.operation === 'release') {
+          const { operation: _operation, ...release } = input
+          return workcopyUseResultSchema.parse({ operation: 'release', ...workcopies.release(release) })
+        }
+        if (!input.token) throw new DaemonError('E_DENIED', '准入需要原生所有者预先保留的私有登记凭据。')
+        if (input.owner.kind === 'application' ? !['consumer', 'writer'].includes(input.kind) : !['tree-change', 'git-mutation', 'writer'].includes(input.kind)) throw new DaemonError('E_DENIED', '工作副本使用类别与原生调用者不一致。')
+        return workcopyUseResultSchema.parse({ operation: 'acquire', lease: workcopies.acquire(root, { kind: input.kind, owner: input.owner, expected: input.expected, token: input.token }) })
+      }
       case 'runtime.hifoxProgress': {
         const input = runtimeBodies[method].parse(raw)
         if (closed && !['catalog', 'read', 'conversation', 'events', 'cancel', 'official'].includes(input.operation)) throw new DaemonError('E_UNAVAILABLE', 'Task execution admission is closed.')
@@ -216,13 +243,25 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   }
   return {
     status, closeAdmission, shutdown,
+    async releaseWorkcopy(_root, payload, commandId) {
+      ports.assertOwner()
+      z.string().uuid().parse(commandId)
+      if (!isBoundedWorkcopyCleanup('runtime.workcopyCleanup', payload) || !('inline' in payload)) throw new DaemonError('E_DENIED', '清理通道只接受有界原登记清理。')
+      const input = runtimeBodies['runtime.workcopyCleanup'].parse(payload.inline)
+      if (input.operation === 'consumer-read') return { inline: workcopyUseResultSchema.parse({ operation: 'consumer-read', lease: workcopies.readConsumerLease(input.root, input.token, input.owner, input.identityId) }) }
+      if (input.operation === 'consumer-restrict') return { inline: workcopyUseResultSchema.parse({ operation: 'consumer-restrict', lease: workcopies.restrictConsumerTasks(input.root, input.token, input.owner, input.identityId, input.expectedRevision, input.taskKeys) }) }
+      // The registry already publishes a synchronous durable transaction.
+      // Cached command results must never resurrect a released/unknown lease.
+      const { operation: _operation, ...release } = input
+      return { inline: workcopyUseResultSchema.parse({ operation: 'release', ...workcopies.release(release) }) }
+    },
     async assertIdle() {
       ports.assertOwner(); ports.assertAuthority()
       if (closed || released || stopping) throw new DaemonError('E_BUSY', 'Native runtime admission is already closed or release remains in progress.')
       const workflows = await countOwnedWorkflowApplications()
       ports.assertOwner(); ports.assertAuthority()
       const sessions = acp.listOwnedAcpSessionFacts()
-      if (closed || released || stopping || operations || commands.count() || workflows || taskProgress.busy() || sessions.some(session => !session.sessionId || !session.connectionGeneration || session.status !== 'ready'
+      if (closed || released || stopping || operations || commands.count() || workflows || taskProgress.busy() || workcopies.facts().length || sessions.some(session => !session.sessionId || !session.connectionGeneration || session.status !== 'ready'
         || session.accepting || session.closing || session.disconnected || session.leaseHeld || session.cleanupRequired || session.backgroundWork
         || session.unfinishedTools || session.turnActive || session.settling || session.pendingPermission)) throw new DaemonError('E_BUSY', 'Original native sessions, preparation, workflow or unfinished operations still own background work.')
     },
@@ -233,12 +272,13 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     async ownsWorkspace(root) {
       const target = canonicalDirectory(root)
       const within = (path: string): boolean => { const delta = relative(target, canonicalDirectory(path)); return delta === '' || !isAbsolute(delta) && delta !== '..' && !delta.startsWith('../') && !delta.startsWith('..\\') }
-      return commands.count() > 0 || acp.listOwnedAcpSessionFacts().some(session => within(session.projectRoot) || session.cwd !== null && within(session.cwd)) || await countOwnedWorkflowApplications() > 0
+      return commands.count() > 0 || workcopies.facts(resolveWorkcopy(root)).length > 0 || acp.listOwnedAcpSessionFacts().some(session => within(session.projectRoot) || session.cwd !== null && within(session.cwd)) || await countOwnedWorkflowApplications() > 0
     },
     async release() { await shutdown(); ports.assertOwner(); if ((await status()).sessions || (await status()).workflows) throw new DaemonError('E_UNKNOWN', 'Runtime release has not been verified.', 'unknown'); released = true; disposeEvents() },
     observe: listener => events.observe(listener), catchUp: (root, cursor, limit) => events.catchUp(root, cursor, limit),
     async dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>> {
       ports.assertOwner()
+      await processRecoveryReady
       ports.assertAdmission?.()
       operations++
       try {
@@ -278,7 +318,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             }
             if (mutation) {
               if (!context.commandId) throw new DaemonError('E_INVALID_ARG', 'Runtime mutations require a stable command ID.')
-              value = await commands.run(root, context.commandId, method, input, action)
+              value = method === 'runtime.workcopyUse' ? await action() : await commands.run(root, context.commandId, method, input, action)
             } else value = await action()
           }
         }

@@ -9,26 +9,31 @@ function runFile(file: string, args: string[], timeout = SYSTEM_QUERY_TIMEOUT): 
   return new Promise((accept, reject) => execFile(file, args, { windowsHide: true, timeout, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' }, (error, stdout) => error ? reject(error) : accept(stdout)))
 }
 export function sameProcess(a: ProcessIdentity, b: ProcessIdentity): boolean { return a.pid === b.pid && a.createdAt === b.createdAt && a.commandHash === b.commandHash }
+/** Birth identity and executable are non-secret; command lines are never retained. */
+export function processIdentitySignature(identity: Pick<ProcessIdentity, 'pid' | 'createdAt' | 'executable'>): string { return createHash('sha256').update(JSON.stringify([identity.pid, identity.createdAt, identity.executable])).digest('hex') }
 
 export async function processSnapshot(timeoutMs = SYSTEM_QUERY_TIMEOUT): Promise<ProcessIdentity[]> {
   if (process.platform === 'win32') {
-    const script = "$ErrorActionPreference='Stop';[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;@(Get-CimInstance Win32_Process | ForEach-Object { [PSCustomObject]@{pid=[int]$_.ProcessId;parentPid=[int]$_.ParentProcessId;createdAt=([string]$_.CreationDate.ToUniversalTime().Ticks);executable=$_.ExecutablePath;command=$_.CommandLine} }) | ConvertTo-Json -Compress"
+    const script = "$ErrorActionPreference='Stop';[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;@(Get-CimInstance Win32_Process | ForEach-Object { [PSCustomObject]@{pid=[int]$_.ProcessId;parentPid=[int]$_.ParentProcessId;createdAt=([string]$_.CreationDate.ToUniversalTime().Ticks);executable=$_.ExecutablePath} }) | ConvertTo-Json -Compress"
     const raw: unknown = JSON.parse((await runFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], timeoutMs)).replace(/^\uFEFF/, ''))
     if (!Array.isArray(raw)) throw new AppRuntimeError('无法核验进程身份', IpcErrorCode.Io)
     return raw.flatMap((item: unknown) => {
       if (typeof item !== 'object' || item === null) return []
       const row = item as Record<string, unknown>
       if (typeof row.pid !== 'number' || row.pid < 1 || typeof row.parentPid !== 'number' || typeof row.createdAt !== 'string') return []
-      return [{ pid: row.pid, parentPid: row.parentPid, createdAt: row.createdAt, executable: typeof row.executable === 'string' ? row.executable : null, commandHash: createHash('sha256').update(typeof row.command === 'string' ? row.command : '').digest('hex') }]
+      const identity = { pid: row.pid, parentPid: row.parentPid, createdAt: row.createdAt, executable: typeof row.executable === 'string' ? row.executable : null }
+      return [{ ...identity, commandHash: processIdentitySignature(identity) }]
     })
   }
   if (process.platform === 'linux') {
+    const bootId = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()
     return readdirSync('/proc').flatMap((name) => {
       if (!/^\d+$/.test(name)) return []
       try {
         const stat = readFileSync(`/proc/${name}/stat`, 'utf8')
         const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
-        return [{ pid: Number(name), parentPid: Number(fields[1]), createdAt: fields[19], executable: null, commandHash: createHash('sha256').update(readFileSync(`/proc/${name}/cmdline`)).digest('hex') }]
+        const identity = { pid: Number(name), parentPid: Number(fields[1]), createdAt: `${bootId}:${fields[19]}`, executable: null }
+        return [{ ...identity, commandHash: processIdentitySignature(identity) }]
       } catch { return [] }
     })
   }

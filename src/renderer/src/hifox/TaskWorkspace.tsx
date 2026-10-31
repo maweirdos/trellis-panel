@@ -12,6 +12,10 @@ import { useInteractionGuard } from '../utils/interaction-scope'
 import { applyTaskFilter, useHifox, type HifoxTaskFilterState } from './store'
 import { LabelChip } from './ui'
 import { deriveTaskWorkspaceDataset, HIFOX_STATE_GROUPS } from './task-workspace-adapter'
+import { MyNextSteps } from './cockpit/MyNextSteps'
+import { taskSourceKey } from './pages/task-detail/use-task-source'
+import { captureScrollPositions, restoreScrollPositions } from './development/context'
+import type { TaskListLocation } from './development/types'
 
 export interface TaskWorkspaceProps {
   scope: 'space' | 'mine' | 'triage'
@@ -81,26 +85,46 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
   const state = useHifox()
   const { snapshot, workspaceContext, currentSpaceId, busy, activeViewId } = state
   const usesGlobalFilter = scope === 'space' && !iterationId
-  const [layout, setLayout] = useState<WorkItemLayout>(initialLayout)
-  const [groupBy, setGroupBy] = useState<GroupBy>('state')
-  const [orderBy, setOrderBy] = useState<OrderBy>('priority')
-  const [display, setDisplay] = useState({ showEmptyGroups: false, showSubIssues: true })
-  const [tab, setTab] = useState<WorkItemsStore['workItemsTab']>('all')
-  const [stateGroups, setStateGroups] = useState<StateGroup[]>(() => scope === 'mine' ? ['backlog', 'unstarted', 'started'] : [])
-  const [sourceFilter, setSourceFilter] = useState<HifoxTaskFilterState>({})
-  const [favorites, setFavorites] = useState<string[]>([])
-  const [relation, setRelation] = useState<PersonalTaskRelation>('assigned')
-  const [personalSpaceId, setPersonalSpaceId] = useState<string | null>(null)
+  const sourceIdentity = snapshot ? taskSourceKey(snapshot, workspaceContext) : ''
+  const locationKey = JSON.stringify([sourceIdentity, state.module, scope, scope === 'mine' ? null : currentSpaceId, iterationId, taskIds])
+  const [savedLocation] = useState(() => state.taskWorkspaceLocations[locationKey])
+  const locationRoot = useRef<HTMLDivElement>(null)
+  const [layout, setLayout] = useState<WorkItemLayout>(savedLocation?.layout ?? initialLayout)
+  const [groupBy, setGroupBy] = useState<GroupBy>(savedLocation?.groupBy ?? 'state')
+  const [orderBy, setOrderBy] = useState<OrderBy>(savedLocation?.orderBy ?? 'priority')
+  const [display, setDisplay] = useState(savedLocation?.display ?? { showEmptyGroups: false, showSubIssues: true })
+  const [tab, setTab] = useState<WorkItemsStore['workItemsTab']>(savedLocation?.tab ?? 'all')
+  const [stateGroups, setStateGroups] = useState<StateGroup[]>(() => savedLocation?.stateGroups ?? (scope === 'mine' ? ['backlog', 'unstarted', 'started'] : []))
+  const [sourceFilter, setSourceFilter] = useState<HifoxTaskFilterState>(savedLocation?.sourceFilter ?? {})
+  const [favorites, setFavorites] = useState<string[]>(savedLocation?.favorites ?? [])
+  const [relation, setRelation] = useState<PersonalTaskRelation>(savedLocation?.relation ?? 'assigned')
+  const [personalSpaceId, setPersonalSpaceId] = useState<string | null>(savedLocation?.personalSpaceId ?? null)
   const mounted = useRef(true)
   const canInteract = useInteractionGuard()
   useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  useEffect(() => { setLayout(initialLayout) }, [initialLayout])
+  useEffect(() => { if (!savedLocation) setLayout(initialLayout) }, [initialLayout])
+  const restoredView = useRef(Boolean(savedLocation))
   useEffect(() => {
+    if (restoredView.current) { restoredView.current = false; return }
     if (!usesGlobalFilter || !activeViewId) return
     const view = useHifox.getState().snapshot?.views.find((item) => item.id === activeViewId)
     if (view) setGroupBy(view.groupBy === 'status' ? 'state' : view.groupBy === 'type' ? 'state' : view.groupBy)
     setStateGroups([])
   }, [activeViewId, usesGlobalFilter])
+
+  const location: TaskListLocation = { layout, groupBy, orderBy, display, tab, stateGroups, sourceFilter, favorites, relation, personalSpaceId, scrollPositions: [] }
+  const latestLocation = useRef(location); latestLocation.current = location
+  const persistLocation = (): void => {
+    const current = useHifox.getState()
+    if (!current.snapshot || taskSourceKey(current.snapshot, current.workspaceContext) !== sourceIdentity || !locationRoot.current) return
+    const entry = { ...latestLocation.current, scrollPositions: captureScrollPositions(locationRoot.current) }
+    useHifox.setState({ taskWorkspaceLocations: Object.fromEntries(Object.entries({ ...current.taskWorkspaceLocations, [locationKey]: entry }).slice(-24)) })
+  }
+  useLayoutEffect(() => {
+    restoreScrollPositions(locationRoot.current, savedLocation?.scrollPositions ?? [])
+    return () => { persistLocation() }
+  }, [locationKey])
+  useLayoutEffect(() => { persistLocation() }, [layout, groupBy, orderBy, display, tab, stateGroups, sourceFilter, favorites, relation, personalSpaceId])
 
   if (!snapshot) return <EmptyState title={state.loadError ?? '正在加载任务…'} />
   const actorId = workspaceContext.actorId ?? (workspaceContext.state === 'local' ? snapshot.members.find((member) => member.role === 'owner')?.id ?? null : null)
@@ -265,7 +289,8 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
       favorites, toggleFavorite: (id) => setFavorites((previous) => toggleValue(previous, id).slice(-50)), saveView
     }
   }
-  return <div className="flex h-full min-h-0 min-w-0 flex-col">
+  return <div ref={locationRoot} onScrollCapture={persistLocation} className="flex h-full min-h-0 min-w-0 flex-col">
+    {scope === 'mine' && <MyNextSteps />}
     {scope === 'mine' && <PageToolbar>
       <Dropdown trigger={({ open, toggle }) => <Button size="sm" variant="outline" aria-label="任务关系" aria-expanded={open} onClick={toggle}>{PERSONAL_RELATIONS.find((item) => item.id === relation)?.label}<ChevronDown size={13} /></Button>}>
         {(close) => PERSONAL_RELATIONS.map((item) => <DropdownItem key={item.id} selected={relation === item.id} onClick={() => { if (ownsSource()) setRelation(item.id); close() }}>{item.label}</DropdownItem>)}

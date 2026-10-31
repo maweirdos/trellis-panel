@@ -199,6 +199,8 @@
 .my-root .my-tooltip-anchor > button:disabled { pointer-events: none; }
 .my-root .my-modal-backdrop { z-index: var(--my-z-modal); background: var(--my-bg-backdrop); padding-inline: var(--my-space-16); }
 .my-root .my-modal-panel { max-width: 100%; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-4xl); background: var(--my-bg-layer-2); box-shadow: var(--my-shadow-overlay-200); }
+.my-root .my-modal-fullscreen-backdrop { padding: 0; }
+.my-root .my-modal-fullscreen-panel { max-height: none; border: 0; border-radius: 0; box-shadow: none; }
 .my-root .my-checkbox { width: var(--my-checkbox-size); height: var(--my-checkbox-size); border-radius: var(--my-radius-sm); }
 .my-root .my-kbd {
   display: inline-flex; align-items: center; height: var(--my-kbd-height); padding: 0 var(--my-space-5);

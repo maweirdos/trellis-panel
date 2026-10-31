@@ -15,10 +15,16 @@ import { gitWorkspace } from '../services/git-workspace'
 import { gitReadonlyFileDiff } from '../services/devtools-git'
 import type { WindowDeps } from './deps'
 import { handle } from './registry'
+import type { HifoxDevelopmentTarget } from '../../shared/hifox-work'
+import type { HifoxTaskWorkspaceService } from '../services/hifox/task-workspace'
+import { hifoxWorkspaceGeneration } from '../services/hifox/connection-service'
+import { codeRepositoryIdentity } from '../../shared/code-repository-identity'
 
 interface MutationContext {
   guard(): boolean
   review(input: GitWorkspaceReview): Promise<boolean>
+  validateContext?(): Promise<void>
+  taskKey?: string
 }
 
 function capturedRoot(expectedRoot: string): { root: string; generation: number } | IpcFail {
@@ -28,7 +34,7 @@ function capturedRoot(expectedRoot: string): { root: string; generation: number 
   return { root, generation: getProjectGeneration() }
 }
 
-export function registerGitWorkspaceIpc(deps: WindowDeps): void {
+export function registerGitWorkspaceIpc(deps: WindowDeps & { resolveTaskContext?: HifoxTaskWorkspaceService['resolveContext'] }): void {
   handle(ipcInvoke.gitWorkspace.status, async (_event, input: unknown) => {
     const parsed = gitWorkspaceStatusSchema.safeParse(input)
     if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '需要有效的项目范围')
@@ -53,7 +59,7 @@ export function registerGitWorkspaceIpc(deps: WindowDeps): void {
     } catch { return ipcFail(IpcErrorCode.Io, '无法读取文件差异，请刷新后重试') }
   })
 
-  function mutation<T extends { expectedRoot: string }>(
+  function mutation<T extends { expectedRoot: string; taskContext?: HifoxDevelopmentTarget }>(
     operation: Exclude<keyof typeof ipcInvoke.gitWorkspace, 'status' | 'diff'>,
     schema: z.ZodType<T>,
     execute: (root: string, input: T, context: MutationContext) => Promise<GitWorkspaceMutationResult>
@@ -63,17 +69,33 @@ export function registerGitWorkspaceIpc(deps: WindowDeps): void {
       if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, 'Git 操作参数无效，请检查选择和确认状态')
       const scope = capturedRoot(parsed.data.expectedRoot)
       if ('ok' in scope) return scope
+      const target = parsed.data.taskContext
+      let authorization: Awaited<ReturnType<HifoxTaskWorkspaceService['resolveContext']>> | undefined
+      const validateContext = async (): Promise<void> => {
+        if (!target) return
+        if (!deps.resolveTaskContext) throw new Error('当前宿主不支持固定任务开发上下文')
+        const current = await deps.resolveTaskContext({ workspaceKey: target.workspaceKey, taskId: target.taskId }, target.expected)
+        if (canonicalDirectory(current.local.projectRoot) !== canonicalDirectory(scope.root) || authorization && (current.authority !== authorization.authority || current.selectionGeneration !== authorization.selectionGeneration)) throw new Error('原任务开发目标或授权代次已变化')
+        authorization = current
+      }
+      try { await validateContext() }
+      catch (error) { return ipcFail(IpcErrorCode.Conflict, error instanceof Error ? error.message : '原任务开发环境尚未核实，请返回任务核对') }
       const guard = (): boolean => {
         const root = getProjectRoot()
-        return deps.getMain()?.webContents.id === event.sender.id && root !== null &&
-          getProjectGeneration() === scope.generation && canonicalDirectory(root) === canonicalDirectory(scope.root)
+        return deps.getMain()?.webContents.id === event.sender.id && event.senderFrame === event.sender.mainFrame && root !== null &&
+          getProjectGeneration() === scope.generation && canonicalDirectory(root) === canonicalDirectory(scope.root) &&
+          (!authorization || authorization.selectionGeneration === undefined || authorization.selectionGeneration === hifoxWorkspaceGeneration())
       }
       if (!guard()) return ipcFail(IpcErrorCode.Denied, '请在当前项目的主窗口手动执行 Git 操作')
       const review = async (request: GitWorkspaceReview): Promise<boolean> => {
         const window = deps.getMain()
         if (!window || !guard() || canonicalDirectory(request.root) !== canonicalDirectory(scope.root)) return false
         const committing = request.kind === 'commit'
+        const differentRepository = !committing && authorization?.repositoryUrl && codeRepositoryIdentity(request.remoteUrl ?? '') !== codeRepositoryIdentity(authorization.repositoryUrl)
         const details = [
+          target ? `任务：${target.taskId}` : '来源：独立工程操作',
+          authorization?.repositoryUrl ? `任务代码资源：${authorization.repositoryUrl}` : '',
+          differentRepository ? '本次推送目标与任务代码资源不同或无法核对；请确认 fork/远端用途。此操作不会更改任务的资源绑定。' : '',
           `项目：${scope.root}`,
           `分支：${request.branch ?? '分离 HEAD'}`,
           committing ? `暂存文件：${request.paths.length} 个` : `远端：${request.remote ?? ''}`,
@@ -83,14 +105,16 @@ export function registerGitWorkspaceIpc(deps: WindowDeps): void {
           request.remoteUrl ? `地址：${request.remoteUrl}` : ''
         ].filter(Boolean).join('\n')
         const result = await dialog.showMessageBox(window, {
-          type: 'question', title: committing ? '确认提交' : '确认推送',
-          message: committing ? '提交已检查的暂存区更改？' : '推送到此远端分支？', detail: details,
-          buttons: ['取消', committing ? '提交暂存更改' : '推送'], defaultId: 0, cancelId: 0, noLink: true
+          type: differentRepository ? 'warning' : 'question', title: committing ? '确认提交' : differentRepository ? '核对不同仓库的推送目标' : '确认推送',
+          message: committing ? '提交已检查的暂存区更改？' : differentRepository ? '确认向任务基座之外的目标推送？' : '推送到此远端分支？', detail: details,
+          buttons: ['取消', committing ? '提交暂存更改' : differentRepository ? '核对目标并推送' : '推送'], defaultId: 0, cancelId: 0, noLink: true
         })
-        return result.response === 1 && guard()
+        if (result.response !== 1 || !guard()) return false
+        try { await validateContext(); return guard() } catch { return false }
       }
       try {
-        const result = await execute(scope.root, parsed.data, { guard, review })
+        const taskKey = target && authorization ? authorization.taskKey : undefined
+        const result = await execute(scope.root, parsed.data, { guard, review, ...(target ? { validateContext, taskKey } : {}) })
         if (result.ok === true) clearGitCache()
         accessEventLog.append('git.workspaceMutation', { root: scope.root, operation, ok: result.ok })
         return result

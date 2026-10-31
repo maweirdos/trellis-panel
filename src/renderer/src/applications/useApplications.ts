@@ -1,8 +1,9 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { ApplicationDefinition, ApplicationFailure, ApplicationResult, ApplicationRuntimeEvent, ApplicationSaveInput, ApplicationSummary } from '@shared/app-runtime'
+import type { ApplicationDefinition, ApplicationFailure, ApplicationResult, ApplicationRun, ApplicationRuntimeEvent, ApplicationSaveInput, ApplicationSummary } from '@shared/app-runtime'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { projectRootKey } from '../my/navigation'
+import { beginRunReceipt, finishRunReceipt } from './useApplicationInstances'
 
 export type ApplicationEditor = { kind: 'new'; npm?: boolean } | { kind: 'edit' | 'remove'; definition: ApplicationDefinition }
 
@@ -20,6 +21,7 @@ type ApplicationProjection = {
   selectedId: string | null
   dockOpen: boolean
   dockTabs: string[]
+  dockRuns: Record<string, ApplicationRun | null>
   dockHeight: number | null
 }
 
@@ -27,7 +29,7 @@ const listeners = new Set<() => void>()
 let state: ApplicationProjection = {
   root: null, rootKey: null, generation: 0, apps: [], loading: false,
   error: null, busy: {}, errors: {}, editor: null, editorFocus: null,
-  selectedId: null, dockOpen: false, dockTabs: [], dockHeight: null
+  selectedId: null, dockOpen: false, dockTabs: [], dockRuns: {}, dockHeight: null
 }
 let canonicalKey: string | null = null
 let request = 0
@@ -68,7 +70,7 @@ function setRoot(root: string | null): void {
   canonicalKey = null
   appVersions.clear()
   request += 1
-  publish({ root, rootKey, generation: state.generation + 1, apps: [], loading: false, error: null, busy: {}, errors: {}, editor: null, editorFocus: null, ...readPreferences(rootKey), dockOpen: false, dockTabs: [] })
+  publish({ root, rootKey, generation: state.generation + 1, apps: [], loading: false, error: null, busy: {}, errors: {}, editor: null, editorFocus: null, ...readPreferences(rootKey), dockOpen: false, dockTabs: [], dockRuns: {} })
   if (hasIpc && root) void refreshApplications()
 }
 
@@ -109,7 +111,7 @@ function attach(): () => void {
       detachRoot = undefined
       detachEvents = undefined
       // A later same-root mount is a new projection owner, not an old action's recipient.
-      publish({ generation: state.generation + 1, loading: false, busy: {}, editor: null, editorFocus: null, dockOpen: false, dockTabs: [] })
+      publish({ generation: state.generation + 1, loading: false, busy: {}, editor: null, editorFocus: null, dockOpen: false, dockTabs: [], dockRuns: {} })
     }
   }
 }
@@ -168,11 +170,19 @@ async function operate(id: string, label: string, action: (root: string) => Prom
 export async function runApplication(app: ApplicationSummary, action: 'start' | 'stop' | 'restart', generation: number): Promise<void> {
   if (generation !== state.generation) return
   const { id, revision } = app.definition
+  if (!state.root || state.busy[id] || (action !== 'start' && !app.run)) return
+  const receipt = beginRunReceipt({ root: state.root, appId: id, runId: app.run?.id ?? null, name: app.run?.snapshot.status === 'known' ? app.run.snapshot.name : app.definition.name, action })
   if (action !== 'stop') showApplicationOutput(id, generation)
   const labels = { start: '正在启动', stop: '正在停止', restart: '正在重启' }
-  await operate(id, labels[action], (root) => action === 'stop'
-    ? api.appRuntimeStop(root, id)
-    : action === 'restart' ? api.appRuntimeRestart(root, id, revision) : api.appRuntimeStart(root, id, revision))
+  await operate(id, labels[action], async (root) => {
+    try {
+      const result = action === 'stop' ? await api.appRuntimeStop(root, id, app.run?.id)
+        : action === 'restart' ? await api.appRuntimeRestart(root, id, revision, app.run?.id) : await api.appRuntimeStart(root, id, revision)
+      finishRunReceipt(receipt, result)
+      if (result.ok && action !== 'stop' && current(generation)) showApplicationOutput(id, generation, result.app.run)
+      return result
+    } catch (error) { finishRunReceipt(receipt); throw error }
+  })
 }
 
 export async function saveApplication(input: ApplicationSaveInput, generation: number): Promise<ApplicationFailure | null> {
@@ -233,15 +243,18 @@ export function selectApplication(id: string, generation: number): void {
   publish({ selectedId: id })
   writePreferences()
 }
-export function showApplicationOutput(id: string, generation: number): void {
+export function showApplicationOutput(id: string, generation: number, run?: ApplicationRun | null): void {
   if (generation !== state.generation || !state.apps.some((app) => app.definition.id === id)) return
-  publish({ selectedId: id, dockOpen: true, dockTabs: state.dockTabs.includes(id) ? state.dockTabs : [...state.dockTabs, id] })
+  const captured = run === undefined ? state.apps.find((app) => app.definition.id === id)?.run ?? null : run
+  publish({ selectedId: id, dockOpen: true, dockTabs: state.dockTabs.includes(id) ? state.dockTabs : [...state.dockTabs, id], dockRuns: { ...state.dockRuns, [id]: captured } })
   writePreferences()
 }
 export function closeApplicationOutput(id?: string): void {
   if (!id) { publish({ dockOpen: false }); return }
   const dockTabs = state.dockTabs.filter((tab) => tab !== id)
-  publish({ dockTabs, dockOpen: dockTabs.length > 0 })
+  const dockRuns = { ...state.dockRuns }
+  delete dockRuns[id]
+  publish({ dockTabs, dockRuns, dockOpen: dockTabs.length > 0 })
 }
 export function setApplicationDockHeight(height: number): void {
   if (!Number.isFinite(height) || height <= 0) return

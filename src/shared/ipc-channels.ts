@@ -19,6 +19,7 @@ import { DINGTALK_IPC } from './dingtalk-integration'
 
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
+  onboarding: { status: 'onboarding:status', complete: 'onboarding:complete' },
   bootstrap: { status: 'bootstrap:status', retry: 'bootstrap:retry', legacyInspect: 'bootstrap:legacyInspect', legacyStop: 'bootstrap:legacyStop', legacyReconcile: 'bootstrap:legacyReconcile', exit: 'bootstrap:exit', minimize: 'bootstrap:minimize', maximize: 'bootstrap:maximize', rendered: 'bootstrap:rendered', attached: 'bootstrap:attached', detached: 'bootstrap:detached', paint: 'bootstrap:paint' },
   jiraIntegration: JIRA_IPC,
   gitlabWorkspace: GITLAB_IPC,
@@ -105,6 +106,9 @@ export const ipcInvoke = {
     createTask: 'hifox:createTask',
     transitionTask: 'hifox:transitionTask',
     recordVersionDelivery: 'hifox:recordVersionDelivery',
+    saveMilestone: 'hifox:saveMilestone',
+    completeMilestone: 'hifox:completeMilestone',
+    removeMilestone: 'hifox:removeMilestone',
     updateTask: 'hifox:updateTask',
     removeTask: 'hifox:removeTask',
     addRelation: 'hifox:addRelation',
@@ -119,6 +123,7 @@ export const ipcInvoke = {
     saveView: 'hifox:saveView',
     removeView: 'hifox:removeView',
     triage: 'hifox:triage',
+    recordTaskDelivery: 'hifox:recordTaskDelivery',
     saveAutomation: 'hifox:saveAutomation',
     toggleAutomation: 'hifox:toggleAutomation',
     removeAutomation: 'hifox:removeAutomation',
@@ -136,8 +141,16 @@ export const ipcInvoke = {
   },
   hifoxWork: {
     status: 'hifox-work:status',
-    prepare: 'hifox-work:prepare'
+    prepare: 'hifox-work:prepare', development: 'hifox-work:development', change: 'hifox-work:change'
   },
+  hifoxGovernance: {
+    readDocument: 'hifox-governance:readDocument',
+    list: 'hifox-governance:list', read: 'hifox-governance:read', command: 'hifox-governance:command',
+    inputs: 'hifox-governance:inputs', candidates: 'hifox-governance:candidates', adopt: 'hifox-governance:adopt',
+    inputRevision: 'hifox-governance:inputRevision', pending: 'hifox-governance:pending',
+    reconcile: 'hifox-governance:reconcile', retry: 'hifox-governance:retry'
+  },
+  taskOutputs: { read: 'task-outputs:read', preview: 'task-outputs:preview', confirm: 'task-outputs:confirm', compare: 'task-outputs:compare', recover: 'task-outputs:recover' },
   hifoxProgress: {
     status: 'hifox-progress:status', start: 'hifox-progress:start', report: 'hifox-progress:report',
     retry: 'hifox-progress:retry', detach: 'hifox-progress:detach', conversation: 'hifox-progress:conversation',
@@ -208,6 +221,9 @@ export const ipcInvoke = {
     push: 'gitWorkspace:push'
   },
   appRuntime: {
+    taskPlan: 'appRuntime:taskPlan', taskVerify: 'appRuntime:taskVerify', taskStart: 'appRuntime:taskStart',
+    taskReuse: 'appRuntime:taskReuse', taskDetach: 'appRuntime:taskDetach',
+    detachInstanceReference: 'appRuntime:detachInstanceReference',
     list: 'appRuntime:list',
     save: 'appRuntime:save',
     remove: 'appRuntime:remove',
@@ -215,7 +231,35 @@ export const ipcInvoke = {
     start: 'appRuntime:start',
     stop: 'appRuntime:stop',
     restart: 'appRuntime:restart',
-    logs: 'appRuntime:logs'
+    logs: 'appRuntime:logs',
+    inventory: 'appRuntime:inventory',
+    stopInstance: 'appRuntime:stopInstance',
+    restartInstance: 'appRuntime:restartInstance',
+    logsInstance: 'appRuntime:logsInstance'
+  },
+  teamContent: {
+    readiness: 'teamContent:readiness', generate: 'teamContent:generate',
+    job: 'teamContent:job', receipt: 'teamContent:receipt', cancel: 'teamContent:cancel',
+    listReferences: 'teamContent:listReferences', config: 'teamContent:config',
+    configure: 'teamContent:configure', probe: 'teamContent:probe'
+  },
+  hifoxResources: {
+    list: 'hifoxResources:list',
+    task: 'hifoxResources:task',
+    command: 'hifoxResources:command',
+    pending: 'hifoxResources:pending',
+    reconcile: 'hifoxResources:reconcile',
+    retry: 'hifoxResources:retry'
+  },
+  hifoxMaterials: {
+    list: 'hifoxMaterials:list',
+    read: 'hifoxMaterials:read',
+    versions: 'hifoxMaterials:versions',
+    submissions: 'hifoxMaterials:submissions',
+    command: 'hifoxMaterials:command',
+    pending: 'hifoxMaterials:pending',
+    reconcile: 'hifoxMaterials:reconcile',
+    retry: 'hifoxMaterials:retry'
   },
   analytics: {
     get: 'analytics:get'
@@ -252,6 +296,9 @@ export const ipcInvoke = {
     qaClear: 'kb:qaClear'
   },
   teamDesktop: {
+    authOptions: 'teamDesktop:authOptions', accounts: 'teamDesktop:accounts', login: 'teamDesktop:login', register: 'teamDesktop:register', logout: 'teamDesktop:logout',
+    organizations: 'teamDesktop:organizations', createOrganization: 'teamDesktop:createOrganization', workspaces: 'teamDesktop:workspaces', createWorkspace: 'teamDesktop:createWorkspace',
+    createInvitation: 'teamDesktop:createInvitation', inspectInvitation: 'teamDesktop:inspectInvitation', acceptInvitation: 'teamDesktop:acceptInvitation', connectWorkspace: 'teamDesktop:connectWorkspace',
     connections: 'teamDesktop:connections', connectionContext: 'teamDesktop:connectionContext', beginPairing: 'teamDesktop:beginPairing', openPairing: 'teamDesktop:openPairing', pollPairing: 'teamDesktop:pollPairing',
     disconnect: 'teamDesktop:disconnect', heartbeat: 'teamDesktop:heartbeat', queueAuthoredPublication: 'teamDesktop:queueAuthoredPublication', queueFeedback: 'teamDesktop:queueFeedback',
     outbox: 'teamDesktop:outbox', cancelQueued: 'teamDesktop:cancelQueued', dispatch: 'teamDesktop:dispatch', reconcile: 'teamDesktop:reconcile',
@@ -342,6 +389,7 @@ export const ipcInvoke = {
     get: 'settings:get',
     set: 'settings:set'
   },
+  storage: { scan: 'storage:scan', clean: 'storage:clean', openDataDirectory: 'storage:openDataDirectory' },
   desktop: {
     setExplorerMenu: 'desktop:setExplorerMenu'
   },

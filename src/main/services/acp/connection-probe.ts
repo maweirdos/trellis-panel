@@ -1,12 +1,15 @@
 /**
  * 测试连接：以 Runtime 的真实 launch argv 拉起 ACP server，发送一次 NDJSON
  * `initialize`（protocolVersion 1），在超时内收集 agentInfo/协议版本/能力/登录方式后
- * 立即树终止进程。**只发 initialize，绝不发 session/new / prompt**——本模块对用户
- * 数据零副作用（契约：Start 和检测永不安装，探测不建会话）。
+ * 确认原进程容器完整清理后返回。只发 initialize，不发 session/new / prompt；
+ * 探测不安装引擎，程序启动本身仍可能产生副作用。
  */
 import { spawn, type ChildProcess } from 'child_process'
 import { createInterface } from 'readline'
 import { tmpdir } from 'os'
+import { randomUUID } from 'node:crypto'
+import { realpathSync } from 'node:fs'
+import type { AcpProcessLaunch } from 'acpx/runtime'
 import type { AcpAgentConfig, AcpAgentStatus, AcpConnectionProbeResult } from '../../../shared/types'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { batchShell, listAcpAgents, runtimeDefinitions, runtimeLaunchSnapshot } from './setup'
@@ -14,6 +17,9 @@ import { errorMessage, objectValue } from './types'
 import { rememberRuntimeVerification, type RuntimeConnectionProbeResult } from './runtime-verification'
 import { PI_VERSION } from '../pi/protocol'
 import { acpSpawnEnv } from '../../../shared/acp-launch-options'
+import { createAcpJobOwner } from '../workcopy-use/acp-jobs'
+import { workcopyUseDirectory } from '../workcopy-use'
+import { assertRuntimeExecutionHost } from '../runtime-host'
 
 const HANDSHAKE_TIMEOUT_MS = 10_000
 /** 树终止后的兜底等待；taskkill /T 失败时保证探测调用仍然返回。 */
@@ -97,6 +103,7 @@ export async function testAcpRuntimeConnection(id: string): Promise<ConnectionTe
 }
 
 export async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: string[], resolvedEnv?: Record<string, string>): Promise<RuntimeConnectionProbeResult> {
+  assertRuntimeExecutionHost()
   let argv: string[]
   let env = resolvedEnv
   try {
@@ -108,23 +115,32 @@ export async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: 
   const head = argv[0]
   if (!head) return { ok: false, error: '启动命令为空，请先完成检测或配置 CLI 路径' }
   const { target, argv: spawnArgv, batch } = batchShell(head, argv.slice(1))
+  const cwd = realpathSync.native(tmpdir()), id = `probe-${randomUUID()}`
+  const nativeJobs = process.platform === 'win32' ? await createAcpJobOwner(workcopyUseDirectory(), cwd,
+    { kind: 'agent', id, generation: randomUUID(), label: `${config.name} · 连接核对`.slice(0, 200) }, true) : undefined
+  const launch: AcpProcessLaunch = { launchId: randomUUID(), purpose: 'agent', scope: { kind: 'runtime-probe', agent: config.id }, command: target, args: spawnArgv, cwd }
   try { return await new Promise<RuntimeConnectionProbeResult>((resolve) => {
     let settled = false
     let stderrTail = ''
     let timer: NodeJS.Timeout | undefined
     let reader: ReturnType<typeof createInterface> | undefined
-    const child = spawn(target, spawnArgv, {
-      cwd: tmpdir(),
+    const options = {
+      cwd,
       env: acpSpawnEnv(process.env, env ?? {}, process.platform),
       windowsHide: true,
       windowsVerbatimArguments: batch,
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
+      stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe']
+    }
+    const child = nativeJobs ? nativeJobs.spawn(launch, options) : spawn(target, spawnArgv, options)
     const settle = (result: RuntimeConnectionProbeResult): void => {
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
       reader?.close()
+      if (nativeJobs) {
+        void nativeJobs.cleanupAll().then(() => resolve(result), () => resolve({ ok: false, error: '原连接探测的完整 Job 清理尚未确认；原 Job 见证已保留，请重试原清理。' }))
+        return
+      }
       terminate(child)
       // 等待进程真正退出再返回；宽限期满仍未退出则升级 SIGKILL 兜底（杀不死 cmd 包裹层时至少不留活进程）。
       void waitForExit(child, EXIT_GRACE_MS).finally(() => {
@@ -141,7 +157,13 @@ export async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: 
     child.stdin?.on('error', () => { /* 写入失败由 exit/error 分支如实报告 */ })
     const stdout = child.stdout
     if (!stdout) { fail('无法读取 ACP server 输出流'); return }
-    try { child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, clientCapabilities: {} } })}\n`) } catch { /* 由 exit/error 分支报告 */ }
+    const initialize = (): void => { if (settled) return; try { child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, clientCapabilities: {} } })}\n`) } catch { /* The owner observes write/exit failure. */ } }
+    if (nativeJobs) {
+      child.once('spawn', () => {
+        if (!child.pid) { fail('原连接探测未能启动'); return }
+        void nativeJobs.spawned({ ...launch, pid: child.pid, startedAt: new Date().toISOString() }).then(initialize, error => fail(errorMessage(error)))
+      })
+    } else initialize()
     reader = createInterface({ input: stdout })
     reader.on('line', (line) => {
       const trimmed = line.trim()
@@ -172,5 +194,9 @@ export async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: 
         capabilitiesSummary: capabilityLabels(result.agentCapabilities)
       })
     })
-  }) } catch (error) { return { ok: false, error: `启动失败：${errorMessage(error)}` } }
+  }) } catch (error) {
+    try { await nativeJobs?.cleanupAll() }
+    catch { return { ok: false, error: '原连接探测的完整 Job 清理尚未确认；原 Job 见证已保留，请重试原清理。' } }
+    return { ok: false, error: `启动失败：${errorMessage(error)}` }
+  }
 }

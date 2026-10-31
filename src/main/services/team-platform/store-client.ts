@@ -7,7 +7,7 @@ import { neighborWorkerFile } from '../worker-path'
 import { DesktopTeamError, MAX_PENDING_BYTES, MAX_PENDING_COUNT, MAX_RPC_BYTES, type WorkerOperation, type WorkerResponse } from './types'
 
 type Pending = { resolve(value: unknown): void; reject(error: Error): void; bytes: number; timer: NodeJS.Timeout; write: boolean }
-const reads = new Set(['health', 'connections', 'connection', 'command', 'outbox', 'cached-document', 'sync-read', 'snapshot-read'])
+const reads = new Set(['health', 'accounts', 'account', 'invitation-intent', 'connections', 'connection', 'connection-by-approval-command', 'command', 'outbox', 'cached-document', 'sync-read', 'snapshot-read'])
 export class DesktopTeamStore {
   private worker: Worker | null = null
   private readonly pending = new Map<number, Pending>()

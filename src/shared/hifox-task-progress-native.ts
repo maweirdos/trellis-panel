@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { hifoxProgressQuerySchema, hifoxProgressStartSchema, hifoxProgressSendSchema, hifoxProgressRespondSchema, hifoxProgressEventsSchema } from './hifox-task-progress'
 import { teamTaskProgressCommandReplySchema, teamTaskProgressDtoSchema, teamTaskProgressStateSchema } from './team-task-progress'
-import { hifoxWorkMaterialSchema } from './hifox-work'
+import { hifoxWorkMaterialSchema, hifoxWorkResourceBindingSchema, hifoxDevelopmentContextSchema } from './hifox-work'
+import { createTaskOutputNativeSchema } from './hifox-task-outputs'
 
 export const taskProgressPinSchema = z.object({
   workspaceKey: z.string().min(1).max(256), taskId: z.string().min(1).max(200), spaceId: z.string().min(1).max(200),
@@ -19,9 +20,11 @@ export const taskProgressPlanSchema = z.object({
   root: z.string().min(1).max(8192), taskDir: z.string().min(1).max(200).optional(),
   inputVersion: z.string().regex(/^[a-f0-9]{64}$/), prompt: z.string().min(1).max(32000),
   sourceVersion: z.string().regex(/^[a-f0-9]{64}$/), material: hifoxWorkMaterialSchema.optional(),
-  managedDirectory: z.boolean(), engine: hifoxProgressStartSchema.shape.engine, agentId: z.string().max(200).optional()
+  managedDirectory: z.boolean(), engine: hifoxProgressStartSchema.shape.engine, agentId: z.string().max(200).optional(),
+  resourceBinding: hifoxWorkResourceBindingSchema.optional(), development: hifoxDevelopmentContextSchema.optional()
 }).strict()
 export const taskProgressNativeSchema = z.discriminatedUnion('operation', [
+  ...createTaskOutputNativeSchema(taskProgressPinSchema).options,
   z.object({ operation: z.literal('catalog') }).strict(),
   z.object({ operation: z.literal('read'), query: hifoxProgressQuerySchema }).strict(),
   z.object({ operation: z.literal('prepare'), pin: taskProgressPinSchema, server: teamTaskProgressDtoSchema, plan: taskProgressPlanSchema.nullable(), takeover: z.boolean().optional() }).strict(),

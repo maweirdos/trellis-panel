@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
 import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync, readlinkSync, realpathSync, type Stats } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import type { GitWorkspaceBranch, GitWorkspaceChange, GitWorkspaceRemote } from '../../../../shared/git-workspace'
+import type { GitWorkspaceBranch, GitWorkspaceChange, GitWorkspaceRemote, GitWorkspaceSnapshot } from '../../../../shared/git-workspace'
 import { GIT_WORKSPACE_LIMITS } from '../../../../shared/git-workspace'
 import { IpcErrorCode } from '../../../../shared/ipc-errors'
 import { canonicalDirectory } from '../../acp/metadata'
 import { GitWorkspaceError, type RepositoryState } from '../types'
 import { redactGitText, runGit } from './git'
+import { resolveWorkcopy, assertWorkcopyObservation } from '../../workcopy-use'
 
 export { canonicalDirectory }
 export const digest = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex')
@@ -91,6 +92,22 @@ async function rejectActiveFilters(repoRoot: string): Promise<void> {
   const attributes = (await runGit(repoRoot, ['check-attr', '-z', '--stdin', 'filter'], { input: paths })).stdout.split('\0')
   for (let i = 0; i + 2 < attributes.length; i += 3) if (drivers.has(attributes[i + 2])) throw new GitWorkspaceError(IpcErrorCode.Denied, '当前改动使用外部内容过滤器，请通过独立 Git 工具核验；面板不会在读取状态时执行过滤器')
 }
+/** Execution identity omits changed-file content snapshots; filter safety checks remain. */
+export async function repositoryExecutionIdentity(root: string): Promise<(Pick<GitWorkspaceSnapshot, 'repoRoot' | 'branch' | 'head' | 'detached'> & { fetchUrls: string[] }) | null> {
+  const original = resolveWorkcopy(root), repoRoot = original.repoRoot
+  if (!repoRoot) return null
+  await rejectActiveFilters(repoRoot)
+  const [names] = await Promise.all([
+    runGit(repoRoot, ['remote']),
+    runGit(repoRoot, ['ls-files', '--stage', '-z'])
+  ])
+  const fetchUrls = await Promise.all(names.stdout.trim().split(/\r?\n/).filter(Boolean).map(async name =>
+    (await runGit(repoRoot, ['remote', 'get-url', '--all', name])).stdout.trim().split(/\r?\n/)[0]))
+  assertWorkcopyObservation(resolveWorkcopy(root), original)
+  const branch = original.branch?.startsWith('refs/heads/') ? original.branch.slice(11) : null
+  return { repoRoot, branch, head: original.head, detached: original.head !== null && branch === null, fetchUrls }
+}
+
 export async function repositoryState(inputRoot: string): Promise<RepositoryState> {
   const root = canonicalDirectory(inputRoot)
   const top = await runGit(root, ['rev-parse', '--show-toplevel'], { allowFailure: true })

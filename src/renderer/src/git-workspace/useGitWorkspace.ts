@@ -3,6 +3,9 @@ import type { GitWorkspaceApi, GitWorkspaceMutationResult, GitWorkspaceSnapshot 
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { projectRootKey } from '../my/navigation'
+import type { HifoxDevelopmentTarget } from '@shared/hifox-work'
+import { useHifox } from '../hifox/store'
+import { getTaskDevelopmentTarget } from '../hifox/development/context'
 
 export interface GitWorkspaceState {
   root: string | null
@@ -16,8 +19,8 @@ export interface GitWorkspaceState {
   panelOpen: boolean
 }
 
-export interface GitActionScope { root: string; generation: number; revision: string }
-type MutationScope = { expectedRoot: string; revision: string; confirm: true }
+export interface GitActionScope { root: string; generation: number; revision: string; developmentRevision: number; taskContext?: HifoxDevelopmentTarget }
+type MutationScope = { expectedRoot: string; revision: string; confirm: true; taskContext?: HifoxDevelopmentTarget }
 
 let state: GitWorkspaceState = { root: null, generation: 0, snapshot: null, loading: false, busy: null, error: null, errorCode: null, notice: null, panelOpen: false }
 const listeners = new Set<() => void>()
@@ -25,6 +28,7 @@ let consumers = 0
 let sequence = 0
 let applied = 0
 let releaseRoot: (() => void) | undefined
+let releaseTask: (() => void) | undefined
 
 function publish(patch: Partial<GitWorkspaceState>): void {
   state = { ...state, ...patch }
@@ -48,7 +52,8 @@ function setRoot(root: string | null): void {
 export function gitWorkspaceGeneration(): number { return state.generation }
 
 export function gitActionScope(): GitActionScope | null {
-  return state.root && state.snapshot ? { root: state.root, revision: state.snapshot.revision, generation: state.generation } : null
+  return state.root && state.snapshot ? { root: state.root, revision: state.snapshot.revision, generation: state.generation,
+    developmentRevision: useHifox.getState().developmentRevision, taskContext: getTaskDevelopmentTarget() } : null
 }
 
 export function openGitWorkspace(): void { publish({ panelOpen: true }) }
@@ -83,6 +88,7 @@ export async function runGitMutation(
   operation: (bridge: GitWorkspaceApi, input: MutationScope) => Promise<GitWorkspaceMutationResult>
 ): Promise<boolean> {
   if (!sameOwner(scope.generation) || projectRootKey(scope.root) !== projectRootKey(state.root) || !hasGitWorkspace() || state.busy) return false
+  if (scope.developmentRevision !== useHifox.getState().developmentRevision || JSON.stringify(scope.taskContext) !== JSON.stringify(getTaskDevelopmentTarget())) return false
   if (state.snapshot?.revision !== scope.revision) {
     publish({ error: 'Git 状态已变化，请重新查看后操作。', errorCode: 'E_CONFLICT' })
     return false
@@ -91,7 +97,7 @@ export async function runGitMutation(
   applied += 1
   publish({ busy: label, loading: false, error: null, errorCode: null, notice: null })
   try {
-    const result = await operation(api.gitWorkspace, { expectedRoot: scope.root, revision: scope.revision, confirm: true })
+    const result = await operation(api.gitWorkspace, { expectedRoot: scope.root, revision: scope.revision, confirm: true, ...(scope.taskContext ? { taskContext: scope.taskContext } : {}) })
     if (!sameOwner(scope.generation)) return false
     if (result.ok === true) {
       if (projectRootKey(result.root) !== projectRootKey(scope.root) || projectRootKey(result.snapshot.root) !== projectRootKey(scope.root)) {
@@ -120,6 +126,12 @@ function attach(): () => void {
   consumers += 1
   if (consumers === 1) {
     releaseRoot = useApp.subscribe((next) => setRoot(next.snapshot?.meta.root ?? null))
+    releaseTask = useHifox.subscribe((next, previous) => {
+      if (next.developmentRevision === previous.developmentRevision) return
+      sequence += 1; applied += 1
+      publish({ generation: state.generation + 1, busy: null, loading: false, panelOpen: false, error: null, errorCode: null, notice: null })
+      if (state.root) void refreshGitWorkspace()
+    })
     const previousGeneration = state.generation
     setRoot(useApp.getState().snapshot?.meta.root ?? null)
     if (!hasGitWorkspace()) publish({ snapshot: null, loading: false, error: null, errorCode: null, notice: null })
@@ -132,6 +144,8 @@ function attach(): () => void {
       sequence += 1
       releaseRoot?.()
       releaseRoot = undefined
+      releaseTask?.()
+      releaseTask = undefined
       window.removeEventListener('focus', refreshOnFocus)
       publish({ generation: state.generation + 1, busy: null, loading: false, panelOpen: false })
     }

@@ -6,10 +6,15 @@ import { protectSecret, revealSecret } from '../integrations/credentials'
 import { TeamHttp, type TeamFetch } from '../team-platform/http'
 import { DesktopTeamError, type ConnectionRecord } from '../team-platform/types'
 import { teamSessionSchema } from '../../../shared/team-platform'
+import { taskInputReadSchema, taskInputBundleDigestText } from '../../../shared/team-task-inputs'
+import { createHash } from 'node:crypto'
 import { hifoxRemoteSnapshotSchema } from '../../../shared/hifox-remote'
 import { taskProgressPinSchema, type TaskProgressPin } from '../../../shared/hifox-task-progress-native'
 import { teamTaskProgressDtoSchema, teamTaskProgressCommandSchema, teamTaskProgressCommandReplySchema, type TeamTaskProgressCommand } from '../../../shared/team-task-progress'
 import { proxiedFetch } from '../proxy'
+import { teamTaskCodeResourceDtoSchema } from '../../../shared/team-code-resources'
+import { TaskMaterialsTransport, taskMaterialTransportPinSchema } from '../team-platform/task-materials-transport'
+import type { TeamTaskMaterialCommand } from '../../../shared/team-task-materials'
 
 const credentialSchema = taskProgressPinSchema.pick({ connectionId: true, origin: true, pairingId: true, ownerId: true, deviceId: true, projectId: true }).extend({ version: z.literal(1), purpose: z.literal('task-progress'), token: z.string().min(1).max(16384) }).strict()
 const fileSchema = z.object({ version: z.literal(1), connectionId: z.string().uuid(), protected: z.string().min(1).max(64 * 1024).nullable() }).strict()
@@ -89,6 +94,41 @@ export class NativeTaskProgressSender {
     this.current(c.fingerprint)
     if (result.instanceId !== this.pin.instanceId || result.epoch !== this.pin.epoch || result.projectId !== this.pin.projectId || result.actor.id !== this.pin.ownerId) throw new DesktopTeamError('WORKSPACE_EPOCH_CHANGED', '原任务正式状态的中心身份已改变')
     return result
+  }
+  async codeResource(): Promise<z.infer<typeof teamTaskCodeResourceDtoSchema>> {
+    const c = await this.authorized()
+    const result = await this.http.request(this.pin.origin, `/api/projects/${this.pin.projectId}/hifox/tasks/${encodeURIComponent(this.pin.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema, c.value.token)
+    this.current(c.fingerprint)
+    if (result.instanceId !== this.pin.instanceId || result.epoch !== this.pin.epoch || result.projectId !== this.pin.projectId || result.taskId !== this.pin.taskId || result.spaceId !== this.pin.spaceId) {
+      throw new DesktopTeamError('BINDING_CHANGED', '代码资源不属于原任务的服务与空间')
+    }
+    return result
+  }
+  async inputs(taskCreatedAt: string): Promise<z.infer<typeof taskInputReadSchema>> {
+    const c = await this.authorized()
+    const query = new URLSearchParams({ spaceId: this.pin.spaceId, taskCreatedAt })
+    const result = await this.http.request(this.pin.origin, `/api/projects/${this.pin.projectId}/hifox/tasks/${encodeURIComponent(this.pin.taskId)}/inputs?${query}`, taskInputReadSchema, c.value.token)
+    this.current(c.fingerprint)
+    if (result.instanceId !== this.pin.instanceId || result.epoch !== this.pin.epoch || result.projectId !== this.pin.projectId || result.taskId !== this.pin.taskId || result.spaceId !== this.pin.spaceId || result.taskCreatedAt !== taskCreatedAt) throw new DesktopTeamError('BINDING_CHANGED', '任务输入不属于原服务、任务或创建身份')
+    if (result.current && createHash('sha256').update(taskInputBundleDigestText(result.current), 'utf8').digest('hex') !== result.current.digest) throw new DesktopTeamError('TASK_INPUT_CHANGED', '当前采用输入的固定摘要无法核对')
+    return result
+  }
+  /** Output synchronization retains the original native device, task and credential fingerprint. */
+  async outputMaterials(taskCreatedAt: string): Promise<Pick<TaskMaterialsTransport, 'list' | 'read' | 'command' | 'receipt'>> {
+    const c = await this.authorized()
+    const { ownerId, handlerId: _handler, ...original } = this.pin
+    const pin = taskMaterialTransportPinSchema.parse({ ...original, actorId: ownerId, taskCreatedAt })
+    const transport = new TaskMaterialsTransport(pin, async (path, schema, body) => {
+      this.current(c.fingerprint)
+      const value = await this.http.request(this.pin.origin, path, schema, c.value.token, body)
+      this.current(c.fingerprint, body !== undefined)
+      return value
+    })
+    const allowed = (command: TeamTaskMaterialCommand): void => {
+      if (command.action !== 'create' && command.action !== 'saveDraft') throw new DesktopTeamError('OUTPUT_ACTION_DENIED', '本机产物只能回传共享草稿，不能批准、采纳或推进任务')
+    }
+    return { list: input => transport.list(input), read: (id, input) => transport.read(id, input),
+      command: command => { allowed(command); return transport.command(command) }, receipt: command => { allowed(command); return transport.receipt(command) } }
   }
   private check(result: z.infer<typeof teamTaskProgressDtoSchema>): void {
     if (result.instanceId !== this.pin.instanceId || result.epoch !== this.pin.epoch || result.projectId !== this.pin.projectId || result.taskId !== this.pin.taskId || result.spaceId !== this.pin.spaceId) throw new DesktopTeamError('BINDING_CHANGED', '任务进度返回了不同的原服务或任务身份')

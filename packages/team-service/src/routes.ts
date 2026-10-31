@@ -8,6 +8,10 @@ import type { StoreOperation } from './store-types'
 import { teamIdSchema } from '../../../src/shared/team-platform'
 import { registerHifoxWorkspaceRoutes } from './hifox-workspace-routes'
 import { registerTaskProgressRoutes } from './task-progress-routes'
+import { registerCodeResourceRoutes } from './code-resources-routes'
+import { registerTaskMaterialRoutes } from './task-materials-routes'
+import { registerContentRoutes } from './content-routes'
+import { registerGovernanceRoutes } from './governance-routes'
 
 const noBrowser = (request: FastifyRequest): void => { if (request.headers.origin !== undefined || request.cookies.tp_team_session) throw new TeamServiceError('FORBIDDEN', 'Device enrollment must be initiated by the local desktop client', 403) }
 export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore, auth: TeamAuthentication, config: TeamServiceConfig): Promise<void> {
@@ -25,6 +29,10 @@ export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore,
     api.addHook('preHandler', auth.require.bind(auth))
     await registerHifoxWorkspaceRoutes(api, store, auth)
     await registerTaskProgressRoutes(api, store, auth)
+    await registerCodeResourceRoutes(api, store, auth)
+    await registerTaskMaterialRoutes(api, store, auth)
+    await registerContentRoutes(api, store, auth)
+    await registerGovernanceRoutes(api, store, auth)
     api.get('/api/session', async (request) => ({ ok: true, value: auth.session(request) }))
     api.get('/api/identity', async (request) => ({ ok: true, value: await auth.identity(request) }))
     const get = (path: string, operation: StoreOperation, fields: (request: FastifyRequest) => Record<string, unknown> = () => ({})): void => {

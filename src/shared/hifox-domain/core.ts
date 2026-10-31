@@ -8,6 +8,7 @@ import type {
   HifoxID,
   HifoxInboxItem,
   HifoxInboxSection,
+  HifoxInitialTaskType,
   HifoxMember,
   HifoxRole,
   HifoxSnapshot,
@@ -18,6 +19,7 @@ import type {
   HifoxTaskPatchInput,
   HifoxTaskRelation
 } from '../hifox'
+import { hifoxInitialTaskTypesSchema } from '../hifox-schema'
 import { mutate, nextId, nowIso } from './store'
 import { evaluateAutomationsForComment, evaluateAutomationsForStatus, evaluateAutomationsForTaskCreated, refreshTaskDispatch as refreshDispatch, setTaskIterations } from './planning'
 
@@ -56,7 +58,8 @@ function memberName(draft: HifoxSnapshot, id: HifoxID): string {
 
 /* ---------------- 空间 ---------------- */
 
-export function createSpace(input: { name: string; key: string; description?: string; visibility?: HifoxSpace['visibility']; actorId?: HifoxID }): HifoxSnapshot {
+export function createSpace(input: { name: string; key: string; description?: string; visibility?: HifoxSpace['visibility']; initialTaskTypes?: HifoxInitialTaskType[]; actorId?: HifoxID }): HifoxSnapshot {
+  const selectedTypes = hifoxInitialTaskTypesSchema.parse(input.initialTaskTypes === undefined ? ['需求', 'Bug', '任务', '内容'] : input.initialTaskTypes)
   return mutate((draft) => {
     const key = input.key.trim().toUpperCase()
     if (!input.name.trim()) fail('空间名称不能为空')
@@ -81,14 +84,10 @@ export function createSpace(input: { name: string; key: string; description?: st
     }
     draft.spaces.push(space)
     // 每个新空间自带默认类型与七类状态（PRD 3.2 / 4.4）
-    const types: Array<[string, string[] | undefined, boolean?]> = [
-      ['需求', ['背景与目标', '验收标准'], true],
-      ['Bug', ['复现步骤', '影响范围']],
-      ['任务', undefined],
-      ['内容', undefined]
-    ]
-    for (const [name, hints, isDefault] of types) {
-      draft.taskTypes.push({ id: nextId('tt'), spaceId: space.id, name, requiredHints: hints, isDefault })
+    const defaultType = selectedTypes.includes('需求') ? '需求' : selectedTypes[0]
+    for (const name of selectedTypes) {
+      const requiredHints = name === '需求' ? ['背景与目标', '验收标准'] : name === 'Bug' ? ['复现步骤', '影响范围'] : undefined
+      draft.taskTypes.push({ id: nextId('tt'), spaceId: space.id, name, requiredHints, isDefault: name === defaultType ? true : undefined })
     }
     const statuses: Array<[string, HifoxStatusCategory]> = [
       ['Backlog', 'backlog'], ['Todo', 'todo'], ['In Progress', 'in_progress'],
@@ -504,7 +503,11 @@ export function updateTask(input: { id: HifoxID; patch: HifoxTaskPatchInput }): 
     const changes: string[] = []
     const originalStatusId = task.statusId
 
-    if (task.workflow && ['assigneeIds', 'executor', 'workKind', 'acceptanceCriteria'].some((key) => key in patch)) fail('交接任务请通过阶段操作修改处理人、执行配置和验收标准')
+    const initialTriage = task.triagePending === true && task.workflow?.stage === 'accepted' &&
+      task.workflow.history.length === 0 && task.workflow.artifacts.length === 0 && !task.workflow.deliveryState &&
+      !task.workflow.resumeStage && !task.workflow.resumeAssigneeId && task.iterationIds.length === 0 && !task.completedAt &&
+      statusCategoryOf(draft, task.statusId) === 'backlog' && !draft.triageDecisions.some((decision) => decision.taskId === task.id)
+    if (task.workflow && (['assigneeIds', 'executor', 'workKind'].some((key) => key in patch) || 'acceptanceCriteria' in patch && !initialTriage)) fail('交接任务请通过阶段操作修改处理人、执行配置和验收标准')
     if (task.workflow && patch.statusId !== undefined && statusCategoryOf(draft, patch.statusId) !== statusCategoryOf(draft, task.statusId)) fail('交接任务请通过阶段操作修改状态类别')
     if (!task.workflow && (patch.workKind !== undefined || patch.acceptanceCriteria !== undefined)) fail('旧任务保留原有流程，不能通过字段编辑启用交接流程')
 
@@ -516,6 +519,10 @@ export function updateTask(input: { id: HifoxID; patch: HifoxTaskPatchInput }): 
     if (patch.description !== undefined) {
       task.description = patch.description.trim() || undefined
       changes.push('描述')
+    }
+    if (patch.acceptanceCriteria !== undefined && JSON.stringify(patch.acceptanceCriteria) !== JSON.stringify(task.acceptanceCriteria)) {
+      task.acceptanceCriteria = [...patch.acceptanceCriteria]
+      changes.push('验收标准')
     }
     if (patch.typeId !== undefined) {
       if (patch.typeId === null) task.typeId = undefined

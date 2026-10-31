@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX,
 import { ArrowUpRight, Keyboard, Loader2, X } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useHifox } from '../../hifox/store'
+import { observeDevelopmentNavigation } from '../../hifox/local-work'
+import { DevelopmentContextBar } from '../../hifox/development/DevelopmentContextBar'
 import { useMy } from '../store'
 import { rememberVisit } from '../personal-history'
 import { loadNavigationLocation, saveNavigationLocation } from '../navigation-preferences'
@@ -256,28 +258,7 @@ export function MyApp(): JSX.Element {
     return () => off()
   }, [syncFromSnapshot])
 
-  useEffect(() => useApp.subscribe((state, previous) => {
-    const team = useHifox.getState()
-    const origin = team.workReturn
-    if (!origin) return
-    if (team.workspaceContext.key !== origin.workspaceKey || team.workspaceContext.actorId !== origin.actorId || team.workspaceContext.epoch !== origin.epoch || projectRootKey(state.snapshot?.meta.root) !== projectRootKey(origin.projectRoot) || state.page !== 'hifox' || (state.openTaskDir && state.openTaskDir !== origin.taskDir)) {
-      useHifox.setState({ workReturn: null })
-      return
-    }
-    const closed = previous.openTaskDir === origin.taskDir && state.openTaskDir === null
-    const returned = previous.taskExpandOrigin?.taskDir === origin.taskDir && state.taskExpandOrigin === null
-    if (!closed && !returned) return
-    // returnFromWorkspace performs two store writes; restore after its complete intent.
-    queueMicrotask(() => {
-      const latest = useApp.getState()
-      const current = useHifox.getState()
-      if (current.workReturn !== origin || current.workspaceContext.key !== origin.workspaceKey || current.workspaceContext.actorId !== origin.actorId || current.workspaceContext.epoch !== origin.epoch || latest.page !== 'hifox' || projectRootKey(latest.snapshot?.meta.root) !== projectRootKey(origin.projectRoot)) return
-      if (latest.taskExpandOrigin || (latest.openTaskDir && latest.openTaskDir !== origin.taskDir)) return
-      useHifox.setState({ workReturn: null })
-      if (latest.openTaskDir) latest.showTask(null)
-      if (current.snapshot?.tasks.some((task) => task.id === origin.taskId && task.createdAt === origin.taskCreatedAt)) current.openTask(origin.taskId)
-    })
-  }), [])
+  useEffect(observeDevelopmentNavigation, [])
 
   // Restore presentation once at startup; explicit task/document links win.
   // Opening a different project keeps the main store's existing reset behavior.
@@ -386,6 +367,8 @@ export function MyApp(): JSX.Element {
     <div className="my-shell-layout flex h-full min-h-0 min-w-0 flex-1">
       <WorkspaceSidebar />
       <main className="my-workspace-center relative flex min-w-0 flex-1 flex-col overflow-hidden bg-my-surface-1">
+        <DevelopmentContextBar />
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Keep the source instance mounted, with its local tabs/filter/scroll intact. */}
         <div ref={sourceRef} data-page-scroll tabIndex={-1} aria-label="来源工作视图" aria-hidden={workspace || undefined}
           className={`min-h-0 min-w-0 flex-1 overflow-hidden ${workspace ? 'invisible pointer-events-none absolute inset-0' : ''}`}>
@@ -404,6 +387,7 @@ export function MyApp(): JSX.Element {
             </StartupContentRegion>
           </div>
         )}
+        </div>
       </main>
       <IssuePeek key={`peek:${root}`} />
       <CreateIssueModal key={`create:${root}`} />

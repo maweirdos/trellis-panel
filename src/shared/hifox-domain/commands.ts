@@ -5,7 +5,9 @@ import * as core from './core'
 import * as planning from './planning'
 import * as agents from './agents'
 import * as workflow from './workflow'
-import { hifoxCrewInputSchema, hifoxTaskWorkKindSchema, hifoxTransitionTaskInputSchema, hifoxRecordVersionDeliveryInputSchema } from '../hifox-schema'
+import { recordTaskDelivery } from './task-delivery'
+import { recordTaskDeliveryInputSchema, type TaskDeliveryDependencies } from '../task-delivery'
+import { hifoxCrewInputSchema, hifoxTaskWorkKindSchema, hifoxTransitionTaskInputSchema, hifoxRecordVersionDeliveryInputSchema, hifoxSaveMilestoneInputSchema, hifoxMilestoneCommandInputSchema, hifoxInitialTaskTypesSchema } from '../hifox-schema'
 
 const id = z.string().min(1).max(256)
 const ids = z.array(id).max(2000)
@@ -22,7 +24,7 @@ const agentFields = { spaceId: id, name, description: text.optional(), instructi
 const inboxSelection = { ids: ids.optional(), all: z.boolean().optional(), section: z.enum(['important', 'other']).optional() }
 
 export const hifoxMutationInputSchemas = {
-  createSpace: z.object({ name, key: name, description: text.optional(), visibility: z.enum(['public', 'private']).optional() }).strict(),
+  createSpace: z.object({ name, key: name, description: text.optional(), visibility: z.enum(['public', 'private']).optional(), initialTaskTypes: hifoxInitialTaskTypesSchema.optional() }).strict(),
   updateSpace: z.object({ id, name: name.optional(), description: text.optional(), multiAssignee: z.boolean().optional(), visibility: z.enum(['public', 'private']).optional(), archived: z.boolean().optional() }).strict(),
   joinSpace: z.object({ spaceId: id, memberId: id.optional() }).strict(),
   inviteMember: z.object({ name, email: z.string().max(320).optional(), title: text.optional(), role: role.optional(), spaceId: id.optional() }).strict(),
@@ -39,6 +41,7 @@ export const hifoxMutationInputSchemas = {
   createTask: z.object({ ...taskFields, spaceId: id, title: name, creatorId: id.optional(), typeId: id.optional(), triagePending: z.boolean().optional() }).strict(),
   updateTask: z.object({ id, patch: taskPatch }).strict(),
   transitionTask: hifoxTransitionTaskInputSchema,
+  recordTaskDelivery: recordTaskDeliveryInputSchema,
   removeTask: z.object({ id }).strict(),
   addRelation: z.object({ taskId: id, relation: z.object({ kind: z.enum(['blocks', 'related', 'duplicate']), taskId: id }).strict() }).strict(),
   removeRelation: z.object({ taskId: id, targetTaskId: id }).strict(),
@@ -50,6 +53,9 @@ export const hifoxMutationInputSchemas = {
   updateIteration: z.object({ id, name: name.optional(), goal: text.optional(), startDate: z.string().max(10).optional(), endDate: z.string().max(10).optional(), taskIds: ids.optional(), status: z.enum(['pending', 'active', 'completed']).optional(), predecessorId: id.nullable().optional() }).strict(),
   completeIteration: z.object({ id, carryOver: z.enum(['backlog', 'next']).optional() }).strict(),
   recordVersionDelivery: hifoxRecordVersionDeliveryInputSchema,
+  saveMilestone: hifoxSaveMilestoneInputSchema,
+  completeMilestone: hifoxMilestoneCommandInputSchema,
+  removeMilestone: hifoxMilestoneCommandInputSchema,
   saveView: z.object({ id: id.optional(), spaceId: id, name, filter, groupBy: z.enum(['status', 'assignee', 'type', 'priority']) }).strict(),
   removeView: z.object({ id }).strict(),
   triage: z.object({ taskId: id, disposition: z.enum(['assign', 'iterate', 'park', 'close']), assigneeIds: ids.optional(), iterationId: id.optional(), actorId: id.optional(), note: text.optional() }).strict(),
@@ -78,10 +84,11 @@ const mutations = {
   inviteMember: core.inviteMember, updateMember: core.updateMember, removeMember: core.removeMember, setSpaceMembers: core.setSpaceMembers,
   createTaskType: core.createTaskType, updateTaskType: core.updateTaskType, removeTaskType: core.removeTaskType,
   createTaskStatus: core.createTaskStatus, removeTaskStatus: core.removeTaskStatus, createLabel: core.createLabel, archiveLabel: core.archiveLabel,
-  createTask: core.createTask, updateTask: core.updateTask, transitionTask: workflow.transitionTask, removeTask: core.removeTask, addRelation: core.addRelation, removeRelation: core.removeRelation,
+  createTask: core.createTask, updateTask: core.updateTask, transitionTask: workflow.transitionTask, recordTaskDelivery, removeTask: core.removeTask, addRelation: core.addRelation, removeRelation: core.removeRelation,
   addComment: core.addComment, resolveComment: core.resolveComment,
   createProject: planning.createProject, updateProject: planning.updateProject,
   createIteration: planning.createIteration, updateIteration: planning.updateIteration, completeIteration: planning.completeIteration, recordVersionDelivery: planning.recordVersionDelivery,
+  saveMilestone: planning.saveMilestone, completeMilestone: planning.completeMilestone, removeMilestone: planning.removeMilestone,
   saveView: planning.saveView, removeView: planning.removeView, triage: planning.triage,
   saveAutomation: planning.saveAutomation, toggleAutomation: planning.toggleAutomation, removeAutomation: planning.removeAutomation, runAutomation: planning.runAutomation,
   markInboxRead: core.markInboxRead, snoozeInbox: core.snoozeInbox, clearInbox: core.clearInbox, restoreInbox: core.restoreInbox,
@@ -94,11 +101,12 @@ export function canReadHifoxSpace(space: HifoxSpace, actorId: string): boolean {
   return space.visibility !== 'private' || space.memberIds.includes(actorId)
 }
 
-const scopedCollections = ['taskTypes', 'taskStatuses', 'taskLabels', 'tasks', 'projects', 'iterations', 'versionDeliveries', 'views', 'automations', 'agents', 'skills', 'crews'] as const
+const scopedCollections = ['taskTypes', 'taskStatuses', 'taskLabels', 'tasks', 'projects', 'iterations', 'versionDeliveries', 'milestones', 'views', 'automations', 'agents', 'skills', 'crews'] as const
 type ScopedCollection = typeof scopedCollections[number]
 const targetCollections: Partial<Record<HifoxMutationName, ScopedCollection | 'spaces' | 'comments'>> = {
   updateSpace: 'spaces', updateTaskType: 'taskTypes', removeTaskType: 'taskTypes', removeTaskStatus: 'taskStatuses', archiveLabel: 'taskLabels',
   updateTask: 'tasks', removeTask: 'tasks', resolveComment: 'comments', updateProject: 'projects', updateIteration: 'iterations', completeIteration: 'iterations', removeView: 'views',
+  saveMilestone: 'milestones', completeMilestone: 'milestones', removeMilestone: 'milestones',
   saveAutomation: 'automations', toggleAutomation: 'automations', removeAutomation: 'automations', runAutomation: 'automations',
   saveAgent: 'agents', removeAgent: 'agents', saveSkill: 'skills', removeSkill: 'skills', saveCrew: 'crews', removeCrew: 'crews'
 }
@@ -106,6 +114,7 @@ const referenceCollections: Record<string, ScopedCollection | 'comments'> = {
   taskId: 'tasks', taskIds: 'tasks', targetTaskId: 'tasks', parentTaskId: 'tasks', parentId: 'comments',
   typeId: 'taskTypes', typeIds: 'taskTypes', statusId: 'taskStatuses', statusIds: 'taskStatuses', labelIds: 'taskLabels',
   projectId: 'projects', iterationId: 'iterations', iterationIds: 'iterations', predecessorId: 'iterations', sourceIterationId: 'iterations', targetIterationId: 'iterations', skillIds: 'skills', captainAgentId: 'agents', exclusiveAgentIds: 'agents'
+  , requiredTaskIds: 'tasks', requiredIterationIds: 'iterations', predecessorIds: 'milestones'
 }
 
 function spaceGate(snapshot: HifoxSnapshot, actorId?: string): (spaceId: string, metadata?: boolean, restoring?: boolean) => void {
@@ -151,6 +160,21 @@ export function assertHifoxSpaceMutation(snapshot: HifoxSnapshot, operation: Hif
     }
   }
   visit(input)
+  if (operation === 'addRelation') {
+    const relation = hifoxMutationInputSchemas.addRelation.parse(raw)
+    if (relation.relation.kind === 'blocks') {
+      const pending = [relation.relation.taskId]
+      const seen = new Set<string>()
+      while (pending.length) {
+        const id = pending.pop()
+        if (!id) continue
+        if (id === relation.taskId) throw new core.HifoxError('任务阻塞依赖不能形成循环')
+        if (seen.has(id)) continue
+        seen.add(id)
+        for (const target of snapshot.tasks.find((task) => task.id === id)?.relations ?? []) if (target.kind === 'blocks') pending.push(target.taskId)
+      }
+    }
+  }
 }
 
 /** Catch reciprocal links and global-object cleanup that would write a second inaccessible or archived space. */
@@ -178,13 +202,21 @@ function assertChangedSpaces(before: HifoxSnapshot, after: HifoxSnapshot, operat
   })
 }
 
-export function executeHifoxDomain(snapshot: HifoxSnapshot, operation: HifoxMutationName, raw: unknown, actorId?: string): { snapshot: HifoxSnapshot; taskId?: string } {
+export function executeHifoxDomain(snapshot: HifoxSnapshot, operation: HifoxMutationName, raw: unknown, actorId?: string, deliveryDependencies?: TaskDeliveryDependencies): { snapshot: HifoxSnapshot; taskId?: string } {
   let input: unknown = hifoxMutationInputSchemas[operation].parse(raw)
-  if (operation === 'transitionTask' || operation === 'recordVersionDelivery') {
+  if (operation === 'transitionTask' || operation === 'recordVersionDelivery' || operation === 'recordTaskDelivery' || operation === 'saveMilestone' || operation === 'completeMilestone' || operation === 'removeMilestone') {
     actorId ??= snapshot.members.find((member) => member.id === 'local-owner' && member.role === 'owner')?.id
     if (!actorId) throw new HifoxSpaceAccessError('交接与交付记录需要已验证的当前成员身份')
   }
   assertHifoxSpaceMutation(snapshot, operation, input, actorId)
+  if (operation === 'updateTask') {
+    const parsed = hifoxMutationInputSchemas.updateTask.parse(input)
+    if (parsed.patch.acceptanceCriteria !== undefined) {
+      if (!actorId) throw new HifoxSpaceAccessError('编辑分拣验收标准需要已验证的当前成员身份')
+      const task = snapshot.tasks.find((entry) => entry.id === parsed.id)
+      if (task && task.creatorId !== actorId && !workflow.isHifoxTriageManager(snapshot, task.spaceId, actorId)) throw new HifoxSpaceAccessError('只有创建人或本空间分拣管理员可以编辑分拣验收标准')
+    }
+  }
   if (operation === 'triage' && actorId) {
     const parsed = hifoxMutationInputSchemas.triage.parse(input)
     const task = snapshot.tasks.find((entry) => entry.id === parsed.taskId)
@@ -202,8 +234,8 @@ export function executeHifoxDomain(snapshot: HifoxSnapshot, operation: HifoxMuta
       input = parsed
     }
   }
-  const execute = mutations[operation] as (input: never, actorId?: string) => unknown
-  const result = withHifoxDomainSnapshot(snapshot, () => execute(input as never, actorId))
+  const execute = mutations[operation] as (input: never, actorId?: string, dependencies?: TaskDeliveryDependencies) => unknown
+  const result = withHifoxDomainSnapshot(snapshot, () => execute(input as never, actorId, deliveryDependencies))
   assertChangedSpaces(snapshot, result.snapshot, operation, raw, actorId)
   if (actorId && operation === 'saveAutomation') {
     const input = hifoxMutationInputSchemas.saveAutomation.parse(raw)

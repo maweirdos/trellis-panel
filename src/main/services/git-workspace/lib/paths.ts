@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { gitWorkspacePathsSchema, type GitWorkspaceMutationResult } from '../../../../shared/git-workspace'
 import { IpcErrorCode } from '../../../../shared/ipc-errors'
 import { GitWorkspaceError, workspaceFailure, type GitWorkspaceOperationOptions, type GitWorkspaceProcedureContext } from '../types'
-import { parse, checkScope, guard, indexTransaction } from './helpers'
+import { parse, checkScope, guardContext, indexTransaction } from './helpers'
 import { validatePath } from './state'
 import { runGit } from './git'
 
@@ -22,7 +22,7 @@ export async function mutatePaths(context: GitWorkspaceProcedureContext, root: s
         paths.add(path)
         for (const item of changed) if ((item.path === path || item.origPath === path) && item.origPath && /R/.test(item.x + item.y)) { paths.add(item.path); paths.add(item.origPath) }
       }
-      guard(options)
+      await guardContext(options)
       const transaction = indexTransaction(state)
       let preserve = false
       try {
@@ -45,7 +45,7 @@ export async function mutatePaths(context: GitWorkspaceProcedureContext, root: s
           if (ordinary.length) await runGit(state.snapshot.repoRoot, ['add', '--', ...ordinary], { indexFile: transaction.indexFile })
         }
         await context.checked(selectedRoot, request.revision, options)
-        guard(options)
+        await guardContext(options)
         transaction.publish()
       } catch (error) {
         preserve = error instanceof GitWorkspaceError && error.retainIndexLock

@@ -32,6 +32,8 @@ let client: Promise<HifoxRemoteClient> | null = null
 let stopped = false
 let selectionError: HifoxRemoteClientError | null = null
 let workspaceGeneration = 0
+/** Monotonic native selection fence, including a completed A → B → A round trip. */
+export function hifoxWorkspaceGeneration(): number { return workspaceGeneration }
 let workspaceSelection: number | null = null
 let lastContext = ''
 let gitlabGeneration = 0

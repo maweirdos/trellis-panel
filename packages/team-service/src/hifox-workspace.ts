@@ -1,6 +1,6 @@
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { z } from 'zod'
-import type { HifoxMember, HifoxSnapshot } from '../../../src/shared/hifox'
+import type { HifoxInboxItem, HifoxMember, HifoxSnapshot, HifoxTask, HifoxTransitionTaskInput } from '../../../src/shared/hifox'
 import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
 import { executeHifoxDomain, canReadHifoxSpace, HifoxSpaceAccessError, hifoxMutationNames, hifoxMutationInputSchemas, type HifoxMutationName } from '../../../src/shared/hifox-domain/commands'
 import { buildInitialSnapshot } from '../../../src/shared/hifox-domain/seed'
@@ -9,7 +9,8 @@ import { HifoxError as PlanningError, tickScheduledAutomations } from '../../../
 import { withHifoxDomainSnapshot } from '../../../src/shared/hifox-domain/store'
 import { HifoxError as AgentError } from '../../../src/shared/hifox-domain/agents'
 import { hifoxRemoteCommandSchema, hifoxRemoteSnapshotSchema, type HifoxRemoteSnapshot } from '../../../src/shared/hifox-remote'
-import { teamIdSchema, TEAM_MAX_RESPONSE_BYTES, type TeamCommandReply } from '../../../src/shared/team-platform'
+import { teamIdSchema, teamRoleSchema, TEAM_MAX_RESPONSE_BYTES, type TeamCommandReply } from '../../../src/shared/team-platform'
+import { teamTaskMaterialMetadataSchema, teamTaskMaterialSubmissionSchema, teamTaskMaterialVersionSchema, type TeamTaskMaterialKind } from '../../../src/shared/team-task-materials'
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError, requireValue } from './errors'
 
@@ -20,6 +21,7 @@ export interface HifoxWorkspaceHost {
   identity(): { instanceId: string; epoch: string; authorizationRevision: number }
   transaction<T>(action: () => T): T
   invalidateProgress(projectId: string, before: HifoxSnapshot, after: HifoxSnapshot): void
+  validateTaskTransitionInputs(principal: StorePrincipal, projectId: string, beforeTask: HifoxTask, afterTask: HifoxTask, transition: HifoxTransitionTaskInput): void
   get(sql: string, ...params: SQLInputValue[]): Row | undefined
   all(sql: string, ...params: SQLInputValue[]): Row[]
   run(sql: string, ...params: SQLInputValue[]): unknown
@@ -36,6 +38,10 @@ const ordinaryMutations = new Set<HifoxMutationName>([
 ])
 const membershipMutations = new Set<HifoxMutationName>(['inviteMember', 'removeMember', 'updateMember'])
 const MAX_MEMBERS = 500
+const MAX_MATERIAL_DECISION_REMINDERS = 200
+const MATERIAL_REVIEW_PREFIX = 'task-material-review:'
+const MATERIAL_KIND_LABELS: Record<TeamTaskMaterialKind, string> = { prd: '需求说明', design: '设计说明', implement: '实施计划', 'delivery-note': '交付说明' }
+const spaceMembersInputSchema = hifoxMutationInputSchemas.setSpaceMembers.extend({ memberIds: hifoxMutationInputSchemas.setSpaceMembers.shape.memberIds.max(MAX_MEMBERS) })
 // Leave room for the HTTP/command-reply envelope around the snapshot.
 const MAX_SNAPSHOT_BYTES = TEAM_MAX_RESPONSE_BYTES - 16 * 1024
 const string = (row: Row, key: string): string => {
@@ -60,6 +66,14 @@ const repositoryReference = (value: string): void => {
 
 export class TeamHifoxWorkspace {
   constructor(private readonly host: HifoxWorkspaceHost) {}
+
+  /** Called only by the owned material writer inside its existing transaction. */
+  materialsChanged(projectId: string): void {
+    const row = requireValue(this.host.get('SELECT revision FROM hifox_workspaces WHERE projectId=?', projectId), 'CORRUPT_STORE', 'Material workspace is unavailable', 503)
+    const revision = integer(row, 'revision')
+    if (revision >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace revision bound exceeded', 503)
+    this.host.run('UPDATE hifox_workspaces SET revision=?,updatedAt=? WHERE projectId=?', revision + 1, Date.now(), projectId)
+  }
 
   /** The service's owned timer runs persisted rules, independent of connected desktops. */
   tick(): number {
@@ -90,9 +104,9 @@ export class TeamHifoxWorkspace {
     const rows = this.host.all('SELECT p.userId,p.displayName,p.createdAt,pm.rolesJson FROM project_members pm JOIN people p ON p.userId=pm.userId JOIN projects pr ON pr.projectId=pm.projectId JOIN team_members tm ON tm.teamId=pr.teamId AND tm.userId=pm.userId WHERE pm.projectId=? AND pm.active=1 AND tm.active=1 AND p.active=1 ORDER BY p.createdAt,p.userId LIMIT ?', projectId, MAX_MEMBERS + 1)
     if (rows.length > MAX_MEMBERS) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Project workspace member bound exceeded', 413)
     return rows.map((row) => {
-      const roles = z.array(z.string()).parse(JSON.parse(string(row, 'rolesJson')))
+      const roles = z.array(teamRoleSchema).min(1).max(5).parse(JSON.parse(string(row, 'rolesJson')))
       const userId = string(row, 'userId')
-      return { id: userId, name: string(row, 'displayName'), role: roles.includes('admin') ? 'owner' : roles.includes('pm') ? 'admin' : 'member', avatarHue: [...userId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360, joinedAt: new Date(integer(row, 'createdAt')).toISOString() }
+      return { id: userId, name: string(row, 'displayName'), role: roles.includes('admin') ? 'owner' : roles.includes('pm') ? 'admin' : 'member', projectRoles: roles, avatarHue: [...userId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360, joinedAt: new Date(integer(row, 'createdAt')).toISOString() }
     })
   }
 
@@ -103,6 +117,21 @@ export class TeamHifoxWorkspace {
     const member = requireValue(this.members(projectId).find((entry) => entry.id === current.person.userId), 'FORBIDDEN', 'Current project membership is unavailable', 403)
     if (operation && membershipMutations.has(operation)) throw new TeamServiceError('MANAGEMENT_REQUIRED', 'Manage authenticated invitations, account profiles and project roles through the team membership API', 403)
     if (operation && !ordinaryMutations.has(operation) && member.role === 'member') deny()
+  }
+
+  private authorizeSpaceMembers(snapshot: HifoxSnapshot, actorId: string, spaceId: string): void {
+    const actor = snapshot.members.find((member) => member.id === actorId)
+    const space = snapshot.spaces.find((entry) => entry.id === spaceId)
+    if (!actor || !space || !canReadHifoxSpace(space, actorId) || (actor.role === 'member' && space.ownerId !== actorId)) deny()
+  }
+
+  private spaceMembersInput(snapshot: HifoxSnapshot, raw: unknown): z.infer<typeof spaceMembersInputSchema> {
+    const input = spaceMembersInputSchema.parse(raw)
+    const active = new Set(snapshot.members.map((member) => member.id))
+    if (input.memberIds.some((id) => !active.has(id))) throw new TeamServiceError('INVALID_INPUT', '只能添加当前工作区已授权的有效账号；请先在团队与成员中核对工作区授权')
+    const ownerId = snapshot.spaces.find((space) => space.id === input.spaceId)?.ownerId
+    // Retain the active owner without restoring a revoked account's space grant.
+    return { ...input, memberIds: [...new Set([...input.memberIds, ...(ownerId && active.has(ownerId) ? [ownerId] : [])])] }
   }
 
   private load(projectId: string): Workspace {
@@ -117,9 +146,45 @@ export class TeamHifoxWorkspace {
     return { revision: row ? integer(row, 'revision') : 0, snapshot }
   }
 
-  private personal(projectId: string, userId: string, snapshot: HifoxSnapshot): HifoxSnapshot {
-    snapshot = this.scoped(snapshot, userId)
-    const visible = snapshot.inbox.filter((item) => item.recipientIds?.includes(userId))
+  private materialInbox(projectId: string, userId: string, snapshot: HifoxSnapshot, authority: HifoxSnapshot): HifoxInboxItem[] {
+    const taskIds = JSON.stringify(snapshot.tasks.map((task) => task.id))
+    const fields = 'SELECT d.recordJson,s.metadataJson,v.metadataJson AS versionJson FROM task_material_documents d JOIN task_material_submissions s ON s.documentId=d.documentId JOIN task_material_versions v ON v.documentId=d.documentId AND v.versionId=s.versionId WHERE d.projectId=? AND d.taskId IN (SELECT value FROM json_each(?))'
+    const pending = this.host.all(`${fields} AND json_extract(s.metadataJson,'$.status')='pending' AND json_extract(d.recordJson,'$.latestSubmission.submissionId')=s.submissionId AND EXISTS(SELECT 1 FROM json_each(d.recordJson,'$.approverIds') a WHERE a.value=?) ORDER BY json_extract(s.metadataJson,'$.submittedAt') DESC`, projectId, taskIds, userId)
+    // Settled reminders are a recent inbox view; complete decisions remain in submission history.
+    const settled = this.host.all(`${fields} AND json_extract(s.metadataJson,'$.status') IN ('approved','rejected') AND (json_extract(s.metadataJson,'$.submittedBy')=? OR json_extract(d.recordJson,'$.ownerId')=?) ORDER BY json_extract(s.metadataJson,'$.decidedAt') DESC LIMIT ?`, projectId, taskIds, userId, userId, MAX_MATERIAL_DECISION_REMINDERS)
+    const tasks = new Map(snapshot.tasks.map((task) => [task.id, task]))
+    const currentTasks = new Map(authority.tasks.map((task) => [task.id, task]))
+    const spaces = new Map(authority.spaces.map((space) => [space.id, space]))
+    const items: HifoxInboxItem[] = []
+    for (const row of [...pending, ...settled]) {
+      const doc = teamTaskMaterialMetadataSchema.parse(JSON.parse(string(row, 'recordJson')))
+      const submission = teamTaskMaterialSubmissionSchema.parse(JSON.parse(string(row, 'metadataJson')))
+      const version = teamTaskMaterialVersionSchema.parse(JSON.parse(string(row, 'versionJson')))
+      const task = tasks.get(doc.taskId), current = currentTasks.get(doc.taskId), space = spaces.get(doc.spaceId)
+      if (!task || !current || !space || task.createdAt !== doc.taskCreatedAt || current.createdAt !== doc.taskCreatedAt || task.spaceId !== doc.spaceId || current.spaceId !== doc.spaceId || !canReadHifoxSpace(space, userId)) continue
+      if (doc.projectId !== projectId || submission.documentId !== doc.documentId || version.documentId !== doc.documentId || version.versionId !== submission.versionId || version.bodyDigest !== submission.bodyDigest) throw new TeamServiceError('CORRUPT_STORE', 'Review inbox fixed version is inconsistent', 503)
+      const label = MATERIAL_KIND_LABELS[doc.kind]
+      if (submission.status === 'pending') {
+        // A project role or public-space read grant never makes someone an approver.
+        if (space.archived || !space.memberIds.includes(userId) || !doc.approverIds.includes(userId) || doc.latestSubmission?.submissionId !== submission.submissionId || doc.latestSubmission.status !== 'pending') continue
+        items.push({ id: `${MATERIAL_REVIEW_PREFIX}${submission.submissionId}`, section: 'important', kind: 'status', taskId: task.id, spaceId: space.id,
+          title: `${task.id} · 请评审${label} v${version.number}`, body: `请在任务工作区阅读本次固定${label}并批准或退回；后续草稿不会替换此评审版本。`, at: new Date(submission.submittedAt).toISOString(), read: false, recipientIds: [userId] })
+      } else {
+        if (submission.submittedBy !== userId && doc.ownerId !== userId) continue
+        const reviewer = authority.members.find((member) => member.id === submission.decidedBy)?.name ?? '原评审人'
+        items.push({ id: `${MATERIAL_REVIEW_PREFIX}${submission.submissionId}:decision`, section: 'important', kind: 'status', taskId: task.id, spaceId: space.id,
+          title: `${task.id} · ${label} v${version.number}${submission.status === 'approved' ? ' 已批准' : ' 已退回'}`, body: `${reviewer}${submission.status === 'approved' ? ' 已批准本次固定版本。' : ` 退回了本次固定版本：${submission.reason ?? ''}`}`,
+          at: new Date(submission.decidedAt ?? submission.submittedAt).toISOString(), read: false, recipientIds: [userId] })
+      }
+    }
+    return items
+  }
+
+  private personal(projectId: string, userId: string, snapshot: HifoxSnapshot, authority: HifoxSnapshot = snapshot): HifoxSnapshot {
+    snapshot = this.scoped(snapshot, userId, authority)
+    // Old receipts cannot revive a resolved/revoked review or supply its recipients.
+    const visible = [...snapshot.inbox.filter((item) => !item.id.startsWith(MATERIAL_REVIEW_PREFIX) && item.recipientIds?.includes(userId)), ...this.materialInbox(projectId, userId, snapshot, authority)]
+      .sort((left, right) => Date.parse(right.at) - Date.parse(left.at) || left.id.localeCompare(right.id))
     const preferences = this.host.all('SELECT inboxId,read,cleared,snoozedUntil FROM hifox_inbox_preferences WHERE projectId=? AND userId=? AND inboxId IN (SELECT value FROM json_each(?))', projectId, userId, JSON.stringify(visible.map((item) => item.id)))
     const byId = new Map(preferences.map((row) => [string(row, 'inboxId'), row]))
     return { ...snapshot, inbox: visible.map((item) => {
@@ -205,7 +270,7 @@ export class TeamHifoxWorkspace {
     this.authorize(principal, result.projectId)
     const current = this.load(result.projectId)
     const actor = requireValue(current.snapshot.members.find((member) => member.id === principal.person.userId), 'FORBIDDEN', 'Current project membership is unavailable', 403)
-    result.snapshot = this.scoped(result.snapshot, actor.id, current.snapshot)
+    result.snapshot = this.personal(result.projectId, actor.id, result.snapshot, current.snapshot)
     result.actor = actor
     result.canManage = actor.role !== 'member'
     result.authorizationRevision = this.host.identity().authorizationRevision
@@ -243,6 +308,7 @@ export class TeamHifoxWorkspace {
       (principal) => {
         this.authorize(principal, projectId, input.operation)
         if (input.expectedEpoch !== this.host.identity().epoch) throw new TeamServiceError('WORKSPACE_EPOCH_CHANGED', 'Workspace generation changed; reload the authorized snapshot and reconcile the original command before creating a new intent', 409)
+        if (input.operation === 'setSpaceMembers') this.authorizeSpaceMembers(this.load(projectId).snapshot, principal.person.userId, spaceMembersInputSchema.parse(input.input).spaceId)
       },
       (principal) => {
         const workspace = this.load(projectId)
@@ -254,12 +320,18 @@ export class TeamHifoxWorkspace {
           for (const repository of agent.repositories ?? []) if (repository.url) repositoryReference(repository.url)
         }
         let executed: ReturnType<typeof executeHifoxDomain>
-        try { executed = executeHifoxDomain(source, input.operation, input.input, principal.person.userId) }
+        try { executed = executeHifoxDomain(source, input.operation, input.operation === 'setSpaceMembers' ? this.spaceMembersInput(source, input.input) : input.input, principal.person.userId) }
         catch (error) {
           if (error instanceof z.ZodError || error instanceof TeamServiceError) throw error
           if (error instanceof HifoxSpaceAccessError) throw new TeamServiceError('SPACE_ACCESS_DENIED', error.message, 403)
           if (error instanceof CoreError || error instanceof PlanningError || error instanceof AgentError) throw new TeamServiceError('INVALID_INPUT', error.message)
           throw error
+        }
+        if (input.operation === 'transitionTask') {
+          const transition = hifoxMutationInputSchemas.transitionTask.parse(input.input)
+          const beforeTask = source.tasks.find(task => task.id === transition.taskId), afterTask = executed.snapshot.tasks.find(task => task.id === transition.taskId)
+          if (!beforeTask || !afterTask) throw new TeamServiceError('TASK_INPUT_SCOPE_CONFLICT', 'Original transition task is unavailable', 409)
+          this.host.validateTaskTransitionInputs(principal, projectId, beforeTask, afterTask, transition)
         }
         if (privateInbox.has(input.operation)) {
           for (const item of executed.snapshot.inbox) {

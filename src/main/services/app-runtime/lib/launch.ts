@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHmac, randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import type { ApplicationConfig } from '../../../../shared/app-runtime'
@@ -6,9 +6,25 @@ import { AppRuntimeError, type StoredApplication } from '../types'
 import { IpcErrorCode } from '../../../../shared/ipc-errors'
 import { loadEnvironment } from './env'
 import { canonicalDirectory, reveal } from './persistence'
+import { resolveWorkcopy } from '../../workcopy-use'
 
-export interface LaunchPlan { executable: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; secrets: string[]; fingerprint: string; command: string; envFiles: string[] }
-function hash(value: string): string { return createHash('sha256').update(value).digest('hex') }
+export interface LaunchPlan { executable: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; secrets: string[]; fingerprint: string; inputFingerprint: string; command: string; envFiles: string[] }
+// Approval comparisons are private to this native session. Persisted outputs are
+// unusable for guessing command arguments, script contents or environment values.
+const approvalKey = randomBytes(32)
+function hash(value: string): string { return createHmac('sha256', approvalKey).update(value).digest('hex') }
+function urlCredentials(value: string): string[] {
+  try {
+    const url = new URL(value)
+    const secrets: string[] = []
+    if (url.password) { secrets.push(url.password); try { secrets.push(decodeURIComponent(url.password)) } catch { /* Keep the original encoded credential. */ } }
+    for (const [key, secret] of url.searchParams) {
+      if (secret && /(?:token|secret|password|credential|api[_-]?key|private[_-]?key|signature|^sig$|^key$)/i.test(key)) secrets.push(secret)
+      if (secrets.length >= 18) break
+    }
+    return secrets
+  } catch { return [] }
+}
 function fileIdentity(file: string): string {
   try {
     const stat = statSync(file)
@@ -38,6 +54,8 @@ export function planLaunch(root: string, stored: StoredApplication): LaunchPlan 
   const config: ApplicationConfig = stored.config
   const cwd = canonicalDirectory(resolve(root, config.cwd))
   try { if (!statSync(cwd).isDirectory()) throw new Error('directory') } catch { throw new AppRuntimeError('工作目录不存在或无法访问', IpcErrorCode.NotFound) }
+  const directory = statSync(cwd, { bigint: true })
+  const workcopy = resolveWorkcopy(cwd)
   const overrides = Object.fromEntries(Object.entries(stored.protectedOverrides).map(([key, value]) => [key, reveal(value)]))
   const environment = loadEnvironment(cwd, config.envFiles, overrides)
   let executable: string
@@ -89,7 +107,11 @@ export function planLaunch(root: string, stored: StoredApplication): LaunchPlan 
     }
     command = [basename(resolved), ...config.launch.args.map((arg) => JSON.stringify(arg))].join(' ')
   }
-  const fingerprint = hash(JSON.stringify({ cwd, executable: fileIdentity(executable), args, files, envFiles: environment.files, overrides: stored.overrideRevision, ports: config.ports, readiness: config.readiness, stopTimeoutMs: config.stopTimeoutMs }))
-  for (const secret of environment.secrets.sort((a, b) => b.length - a.length)) if (secret) command = command.split(secret).join('[REDACTED]')
-  return { executable, args, cwd, env: environment.env, secrets: environment.secrets, fingerprint, command, envFiles: environment.files }
+  const fingerprint = hash(JSON.stringify({ cwd, physicalCwd: [String(directory.dev), String(directory.ino), String(directory.birthtimeNs)], workcopy: [workcopy.id, workcopy.revision], executable: fileIdentity(executable), args, files, envFiles: environment.files, overrides: stored.overrideRevision, environment: config.environment, workcopyAccess: config.workcopyAccess, ports: config.ports, readiness: config.readiness, stopTimeoutMs: config.stopTimeoutMs }))
+  const supplied = [...environment.secrets, ...Object.entries(environment.env).flatMap(([key, value]) => /(?:secret|token|password|passwd|credential|api[_-]?key|private[_-]?key)/i.test(key) && value ? [value] : [])]
+  const secrets = [...new Set(supplied.flatMap(value => [value, ...urlCredentials(value)]))]
+  for (const secret of secrets.sort((a, b) => b.length - a.length)) if (secret) command = command.split(secret).join('[REDACTED]')
+  // Private, short-lived comparison only: never persist or expose hashes of env values.
+  const inputFingerprint = hash(JSON.stringify([fingerprint, environment.env]))
+  return { executable, args, cwd, env: environment.env, secrets, fingerprint, inputFingerprint, command, envFiles: environment.files }
 }

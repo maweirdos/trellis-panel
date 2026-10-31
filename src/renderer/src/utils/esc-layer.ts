@@ -35,6 +35,8 @@ export interface EscLayer {
    * 未声明该标志的层（Dialogs/CommandPalette 等）不受输入焦点影响。
    */
   deferWhenInputFocused?: boolean
+  /** 由组件的存续状态负责注销，关闭请求被拒绝时仍保持最上层。 */
+  retainUntilInactive?: boolean
 }
 
 interface RegisteredLayer extends EscLayer {
@@ -83,7 +85,7 @@ export function dispatchEscKey(): boolean {
     const tag = (document.activeElement?.tagName ?? '').toLowerCase()
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return false
   }
-  layers.delete(top.id)
+  if (!top.retainUntilInactive) layers.delete(top.id)
   top.onClose()
   const focusTarget = top.returnFocusRef?.current
   if (focusTarget !== undefined && focusTarget !== null && focusTarget.isConnected) {

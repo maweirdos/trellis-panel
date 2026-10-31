@@ -1,62 +1,114 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { z } from 'zod'
-import { BookOpen, Users, Monitor, LogOut, Sun, Moon, GitBranch, RefreshCw, LayoutDashboard } from 'lucide-react'
+import { BookOpen, Users, Monitor, LogOut, Sun, Moon, GitBranch, RefreshCw, LayoutDashboard, Plus, Link as LinkIcon } from 'lucide-react'
 import { teamSessionSchema, teamProjectSchema, teamIdSchema, teamEventPageSchema, type TeamSession } from './contracts'
-import { ApiError, authEvents, setClientSession, request, pendingCommands, commandEvents, reconcileCommand, retryCommand, canRetry, type PendingCommand } from './client'
+import { ApiError, authEvents, setClientSession, publishSessionChange, listenForSessionChanges, request, pendingCommands, commandEvents, reconcileCommand, retryCommand, canRetry, type PendingCommand } from './client'
 import { usePage, useQuery } from './hooks'
 import { Documents } from './Documents'
 import { Devices, Pairing, People } from './People'
-import { AcceptInvitation, invitationFromLocation } from './Invitations'
+import { AcceptInvitation, InvitationLinkForm, invitationFromLocation, invitationReturnTo, rememberInvitation, type InvitationIntent } from './Invitations'
+import { WorkspaceOnboarding, WorkspaceSetup } from './WorkspaceSetup'
+import { SpaceOnboarding } from './SpaceOnboarding'
 import { SignIn } from './SignIn'
 import { HifoxWorkspace } from './HifoxWorkspace'
+import { workspaceProjectFromLocation } from './WorkspaceTaskLocation'
 import './shell.css'
-import { Empty, ErrorLine, Notice, Pager, time } from './ui'
+import { Empty, ErrorLine, Modal, Notice, Pager, time } from './ui'
 import { ShellViewSwitcher } from '../../../src/renderer/src/my/layout/ShellViewSwitcher'
 import { useMy } from '../../../src/renderer/src/my/store'
+import { dispatchEscKey } from '../../../src/renderer/src/utils/esc-layer'
 
 export function App() {
+  useEffect(() => {
+    const onEsc = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat) return
+      if (event.key === 'Escape' && dispatchEscKey()) event.preventDefault()
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [])
   const [invitation, setInvitation] = useState(invitationFromLocation)
+  useEffect(() => {
+    rememberInvitation(invitation)
+    // Strip the fragment before either login flow constructs its return URL.
+    history.replaceState(null, '', invitationReturnTo())
+  }, [invitation])
   const [session, setSession] = useState<TeamSession | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(''), [epoch, setEpoch] = useState(0), [theme, setTheme] = useState<'light' | 'dark'>(() => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  const [loggingOut, setLoggingOut] = useState(false)
+  const logoutLock = useRef(false)
   const reload = useRef<() => Promise<void>>(async () => {})
   const identityEpoch = useRef(0)
+  const hadSession = useRef(false)
   useEffect(() => {
     let live = true, active = false, again = false
     const load = async (): Promise<void> => {
       if (active) { again = true; return }; active = true
       const ticket = identityEpoch.current
-      try { const next = await request('/api/session', teamSessionSchema, { notifyDenied: false }); if (next.authentication !== 'browser') throw Error('网页版需要浏览器登录'); if (live && ticket === identityEpoch.current) { setClientSession(next); setSession((old) => old?.person.userId === next.person.userId && old.person.revision === next.person.revision && old.csrfToken === next.csrfToken ? old : next); setError('') } }
-      catch (reason) { if (live && ticket === identityEpoch.current) { if (reason instanceof ApiError && [401, 403].includes(reason.status)) { setClientSession(null); setSession(null) }; setError(reason instanceof Error ? reason.message : '登录状态读取失败') } }
-      finally { active = false; if (live) { setLoading(false); if (again) { again = false; void load() } } }
+      try { const next = await request('/api/session', teamSessionSchema, { notifyDenied: false }); if (next.authentication !== 'browser') throw Error('网页版需要浏览器登录'); if (live && ticket === identityEpoch.current) { hadSession.current = true; setClientSession(next); setSession((old) => old?.person.userId === next.person.userId && old.person.revision === next.person.revision && old.csrfToken === next.csrfToken ? old : next); setError(''); try { const key = 'trellis-team-last-account-v1'; if (sessionStorage.getItem(key) !== next.person.userId) { sessionStorage.setItem(key, next.person.userId); publishSessionChange() } } catch { /* Session proof still guards each scoped request. */ } } }
+      catch (reason) {
+        if (live && ticket === identityEpoch.current) {
+          const unauthenticated = reason instanceof ApiError && reason.status === 401
+          if (reason instanceof ApiError && [401, 403].includes(reason.status)) { setClientSession(null); setSession(null) }
+          setError(unauthenticated ? hadSession.current ? '登录已过期或失效，请重新登录。' : '' : reason instanceof Error ? reason.message : '登录状态读取失败')
+        }
+      }
+      finally { active = false; if (live) { if (again) { again = false; void load() } else setLoading(false) } }
     }
     reload.current = load; void load()
     const denied = (event: Event): void => { identityEpoch.current++; if ((event as CustomEvent<number>).detail === 401) { setClientSession(null); setSession(null) }; setEpoch((old) => old + 1); void load() }
+    const changed = (): void => { identityEpoch.current++; setClientSession(null); setSession(null); setLoading(true); setEpoch((old) => old + 1); void load() }
     const visibility = (): void => { if (document.visibilityState === 'visible') void load() }
-    authEvents.addEventListener('denied', denied); document.addEventListener('visibilitychange', visibility)
+    authEvents.addEventListener('denied', denied); authEvents.addEventListener('external-session-changed', changed); document.addEventListener('visibilitychange', visibility)
+    const stopSessionChanges = listenForSessionChanges(changed)
     const timer = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 30_000)
-    return () => { live = false; authEvents.removeEventListener('denied', denied); document.removeEventListener('visibilitychange', visibility); clearInterval(timer) }
+    return () => { live = false; stopSessionChanges(); authEvents.removeEventListener('denied', denied); authEvents.removeEventListener('external-session-changed', changed); document.removeEventListener('visibilitychange', visibility); clearInterval(timer) }
   }, [])
   useEffect(() => { document.documentElement.dataset.myTheme = theme; document.documentElement.classList.toggle('dark', theme === 'dark') }, [theme])
-  const login = (): void => { const target = location.pathname + location.search + location.hash; location.assign('/auth/login?returnTo=' + encodeURIComponent(target)) }
-  const closeInvitation = (): void => { setInvitation(null); const url = new URL(location.href); url.searchParams.delete('invitation'); const fragment = new URLSearchParams(url.hash.slice(1)); fragment.delete('token'); url.hash = fragment.toString(); history.replaceState(null, '', url.pathname + url.search + url.hash) }
+  const login = (): void => {
+    if (invitation && !rememberInvitation(invitation)) { setError('浏览器无法保留邀请。请允许标签页存储后重试，或取消此邀请、登录后重新粘贴链接。'); return }
+    location.assign('/auth/login?returnTo=' + encodeURIComponent(invitationReturnTo()))
+  }
+  const openInvitation = (next: InvitationIntent): void => { rememberInvitation(next); setInvitation(next); setError('') }
+  const closeInvitation = (): void => { rememberInvitation(null); setInvitation(null); history.replaceState(null, '', invitationReturnTo()) }
+  const logout = async (): Promise<void> => {
+    if (logoutLock.current) throw new Error('正在退出，请稍候')
+    logoutLock.current = true; setLoggingOut(true)
+    try {
+      await request('/auth/logout', z.object({ loggedOut: z.literal(true) }).strict(), { body: {} })
+      identityEpoch.current++; hadSession.current = false; setClientSession(null); setSession(null); setError(''); setEpoch((old) => old + 1)
+      try { sessionStorage.removeItem('trellis-team-last-account-v1') } catch { /* No credential is stored here. */ }
+      publishSessionChange()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '退出失败'); throw reason }
+    finally { logoutLock.current = false; setLoggingOut(false) }
+  }
   return <div className="team-app" data-my-theme={theme}>
-    {loading ? <Empty title="正在核对登录状态…" /> : !session ? <main className="login"><div className="brand"><GitBranch size={22} /><strong>Trellis</strong><span>团队协作</span></div><div className="login-body"><span className="eyebrow">共同推进每一份需求</span><h1>一起规划工作区，<br />协作推进任务。</h1><p>创建独立账号即可加入协作；也可使用服务已配置的 GitLab 登录。</p><SignIn onOidcLogin={login} onSignedIn={(next, returnTo) => { identityEpoch.current++; setClientSession(next); setSession(next); setError(''); setEpoch((old) => old + 1); history.replaceState(null, '', returnTo) }} /><ErrorLine>{error}</ErrorLine></div><button type="button" className="theme-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}切换主题</button></main> : <SignedIn key={session.person.userId} session={session} theme={theme} epoch={epoch} refreshIdentity={() => { setEpoch((old) => old + 1); void reload.current() }} onLogout={() => { void request('/auth/logout', z.object({ loggedOut: z.literal(true) }).strict(), { body: {} }).then(() => { identityEpoch.current++; setClientSession(null); setSession(null); setEpoch((old) => old + 1) }).catch((reason) => setError(reason instanceof Error ? reason.message : '退出失败')) }} onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} error={error} />}
-    {session && invitation && <AcceptInvitation key={`${session.person.userId}:${invitation.invitationId}`} {...invitation} session={session} onClose={closeInvitation} onAccepted={() => { setEpoch((old) => old + 1); void reload.current() }} />}
+    {loading ? <Empty title="正在核对登录状态…" /> : !session ? <main className="login"><div className="brand"><GitBranch size={22} /><strong>Trellis</strong><span>团队协作</span></div><div className="login-body"><span className="eyebrow">共同推进每一份需求</span><h1>一起规划工作区，<br />协作推进任务。</h1><p>使用个人账号加入组织；也可使用服务已配置的 GitLab 登录。</p>{teamIdSchema.safeParse(new URLSearchParams(location.search).get('pairing')).success && <Notice>已保留电脑连接请求。请登录要授权这台电脑的个人账号。</Notice>}{invitation ? <Notice>已保留团队邀请，登录或注册后即可核对并加入。<button type="button" onClick={closeInvitation}>取消邀请</button></Notice> : <details className="team-login-invitation"><summary>已有邀请链接</summary><InvitationLinkForm onOpen={openInvitation} /></details>}<SignIn onOidcLogin={login} onSignedIn={(next, returnTo) => { identityEpoch.current++; hadSession.current = true; setClientSession(next); setSession(next); setError(''); setEpoch((old) => old + 1); history.replaceState(null, '', returnTo); try { sessionStorage.setItem('trellis-team-last-account-v1', next.person.userId) } catch { /* Session proof remains authoritative. */ }; publishSessionChange() }} /><ErrorLine>{error}</ErrorLine></div><button type="button" className="theme-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}切换主题</button></main> : <SignedIn key={session.person.userId} session={session} theme={theme} epoch={epoch} invitation={invitation} onInvitation={openInvitation} onCloseInvitation={closeInvitation} refreshIdentity={() => { setEpoch((old) => old + 1); void reload.current() }} onLogout={() => { void logout().catch(() => {}) }} onSwitchAccount={logout} loggingOut={loggingOut} onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} error={error} />}
   </div>
 }
 type WebTab = 'collaboration' | 'documents' | 'people' | 'devices'
-const WEB_MODULES = [{ id: 'collaboration', label: '团队', Icon: LayoutDashboard }, { id: 'documents', label: '工作区资料', Icon: BookOpen }, { id: 'people', label: '团队与成员', Icon: Users }, { id: 'devices', label: '我的设备', Icon: Monitor }] as const
+const WEB_MODULES = [{ id: 'collaboration', label: '工作台', Icon: LayoutDashboard }, { id: 'documents', label: '资料', Icon: BookOpen }, { id: 'people', label: '成员与设置', Icon: Users }, { id: 'devices', label: '设备', Icon: Monitor }] as const
 const locationTab = (): WebTab => { const hash = location.hash.slice(1); return hash === 'people' || hash === 'documents' || hash === 'devices' ? hash : 'collaboration' }
-function SignedIn({ session, theme, epoch, refreshIdentity, onLogout, onTheme, error }: { session: TeamSession; theme: 'light' | 'dark'; epoch: number; refreshIdentity: () => void; onLogout: () => void; onTheme: () => void; error: string }) {
+function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvitation, refreshIdentity, onLogout, onSwitchAccount, loggingOut, onTheme, error }: { session: TeamSession; theme: 'light' | 'dark'; epoch: number; invitation: InvitationIntent | null; onInvitation: (invitation: InvitationIntent) => void; onCloseInvitation: () => void; refreshIdentity: () => void; onLogout: () => void; onSwitchAccount: () => Promise<void>; loggingOut: boolean; onTheme: () => void; error: string }) {
   const shellView = useMy((state) => state.shellView)
   const fontSize = useMy((state) => state.fontSize)
-  const [tab, setTab] = useState<WebTab>(locationTab), [projectId, setProject] = useState('')
+  const [tab, setTab] = useState<WebTab>(locationTab), [projectId, setProject] = useState(workspaceProjectFromLocation)
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false), [joiningWorkspace, setJoiningWorkspace] = useState(false)
+  const [invitedSpace, setInvitedSpace] = useState<{ projectId: string; accountId: string; spaceId: string } | null>(null)
+  const invitationOwner = useRef({ invitation, revision: 0 })
+  if (invitationOwner.current.invitation !== invitation) invitationOwner.current = { invitation, revision: invitationOwner.current.revision + 1 }
   useEffect(() => { const changed = (): void => setTab(locationTab()); addEventListener('hashchange', changed); return () => removeEventListener('hashchange', changed) }, [])
-  const navigate = (next: WebTab): void => { setTab(next); const url = new URL(location.href); if (!url.searchParams.has('invitation')) { url.hash = next === 'collaboration' ? '' : next; history.replaceState(null, '', url.pathname + url.search + url.hash) } }
+  const navigate = (next: WebTab): void => { setTab(next); const url = new URL(location.href); url.hash = next === 'collaboration' ? '' : next; history.replaceState(null, '', url.pathname + url.search + url.hash) }
   const projects = usePage(`${session.person.userId}:${epoch}`, '/api/projects', teamProjectSchema)
   const project = projects.items.find((item) => item.projectId === projectId) ?? (!projectId ? projects.items[0] ?? null : null)
+  useEffect(() => {
+    if (project && !projectId) setProject(project.projectId)
+    // A newly joined/created project may be beyond the first authorized page.
+    if (projectId && !project && !projects.loading && !projects.error && projects.more) projects.next()
+  }, [projectId, project, projects.loading, projects.error, projects.more, projects.next])
   const [pairing, setPairing] = useState<string | null>(() => { const id = new URLSearchParams(location.search).get('pairing'); return teamIdSchema.safeParse(id).success ? id : null })
   const eventKey = `${session.person.userId}:${project?.projectId}:${epoch}`, cursor = useRef<{ key: string; value: string | null }>({ key: '', value: null })
   const [gap, setGap] = useState(false), [change, setChange] = useState(false)
+  const projectsChanged = (selectedProjectId?: string): void => { if (selectedProjectId) { setProject(selectedProjectId); navigate('collaboration'); setGap(false); setChange(false) }; refreshIdentity() }
   const events = useQuery(eventKey, async (signal) => {
     if (cursor.current.key !== eventKey) cursor.current = { key: eventKey, value: null }
     const previous = cursor.current.value
@@ -65,27 +117,39 @@ function SignedIn({ session, theme, epoch, refreshIdentity, onLogout, onTheme, e
     return page
   }, Boolean(project), 12_000)
   const closePairing = (): void => { setPairing(null); const url = new URL(location.href); url.searchParams.delete('pairing'); history.replaceState(null, '', url.pathname + url.search + url.hash) }
+  let content: ReactNode
+  if (tab === 'people') content = <People key={epoch} session={session} project={project} epoch={epoch} onProjectsChanged={projectsChanged} />
+  else if (tab === 'devices') content = <Devices key={epoch} accountId={session.person.userId} epoch={epoch} />
+  else if (project) content = tab === 'collaboration' ? <><SpaceOnboarding projectId={project.projectId} accountId={session.person.userId} /><HifoxWorkspace key={`${session.person.userId}:${project.projectId}`} project={project} session={session} theme={theme} authEpoch={epoch} invitedSpaceId={invitedSpace?.projectId === project.projectId && invitedSpace.accountId === session.person.userId ? invitedSpace.spaceId : undefined} onInvitedSpaceOpened={() => setInvitedSpace(null)} /></> : <Documents key={`${project.projectId}:${epoch}`} project={project} session={session} authEpoch={epoch} />
+  else if (projects.loading || projectId && projects.more && !projects.error) content = <section className="team-workspace-state" role="status"><RefreshCw size={22} aria-hidden="true" /><h2>正在读取工作区…</h2></section>
+  else if (projects.error) content = <section className="team-workspace-state"><h2>暂时无法读取工作区</h2><ErrorLine>{projects.error}</ErrorLine><button type="button" onClick={projects.refresh}>重新读取工作区</button></section>
+  else if (projectId || projects.items.length) content = <section className="team-workspace-state"><h2>原工作区当前不可用</h2><p>请选择其他已授权工作区，或重新核对权限。</p><div className="team-workspace-actions">{projects.items[0] && <button type="button" className="primary" onClick={() => setProject(projects.items[0].projectId)}>进入 {projects.items[0].name}</button>}<button type="button" onClick={projects.refresh}>重新核对</button>{!projects.items.length && <button type="button" onClick={() => setProject('')}>创建或加入工作区</button>}</div></section>
+  else content = <WorkspaceOnboarding onCreate={() => setCreatingWorkspace(true)} onInvitation={onInvitation} />
   return <><div className="team-shell">
     <aside className="team-module-rail" aria-label="模块栏">
       <div className="team-rail-brand" role="img" aria-label="Trellis 团队协作"><span className="team-brand-mark" /></div>
       <nav className="team-module-navigation" aria-label="团队导航">
-        {WEB_MODULES.map(({ id, label, Icon }) => <button type="button" className="team-module-button" aria-label={label} title={label} aria-current={tab === id ? 'page' : undefined} key={id} onClick={() => navigate(id)}><Icon aria-hidden="true" /></button>)}
+        {WEB_MODULES.map(({ id, label, Icon }) => <button type="button" className="team-module-button" aria-label={label} title={label} aria-current={tab === id ? 'page' : undefined} key={id} onClick={() => navigate(id)}><Icon aria-hidden="true" /><span>{label}</span></button>)}
       </nav>
     </aside>
     <div className="team-shell-center">
       <header className="topbar team-topbar">
         <div className="my-root hifox-host team-view-control" data-my-theme={theme} data-my-font-size={fontSize}><ShellViewSwitcher host="web" /></div>
-        <div className="team-project-control"><label><span className="team-sr-only">工作区</span><select aria-label="当前工作区" title={project?.name ?? '选择工作区'} value={project?.projectId ?? ''} onChange={(event) => { setProject(event.target.value); setGap(false); setChange(false) }}><option value="" disabled>选择工作区</option>{projects.items.map((item) => <option value={item.projectId} key={item.projectId}>{item.name}</option>)}</select></label><Pager page={projects} /></div>
+        <div className="team-project-control"><label><span className="team-sr-only">工作区</span><select aria-label="当前工作区" title={project?.name ?? '选择工作区'} disabled={!projects.items.length} value={project?.projectId ?? ''} onChange={(event) => { setProject(event.target.value); setGap(false); setChange(false) }}><option value="" disabled>{projects.loading ? '正在读取工作区…' : projects.error ? '工作区读取失败' : projects.items.length ? '选择工作区' : '尚未加入工作区'}</option>{projects.items.map((item) => <option value={item.projectId} key={item.projectId}>{item.name}</option>)}</select></label><Pager page={projects} /></div>
         <span className="team-section-name">{WEB_MODULES.find((item) => item.id === tab)?.label}</span>
-        <div className="account"><span title={session.person.displayName}>{session.person.displayName}</span><button className="icon" type="button" aria-label="切换主题" title={theme === 'light' ? '切换到深色主题' : '切换到浅色主题'} onClick={onTheme}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}</button><button className="icon" type="button" aria-label="退出登录" title="退出登录" onClick={onLogout}><LogOut size={17} /></button></div>
+        <div className="team-workspace-actions"><button type="button" onClick={() => setCreatingWorkspace(true)}><Plus size={15} />创建工作区</button><button type="button" onClick={() => setJoiningWorkspace(true)}><LinkIcon size={15} />接受邀请</button></div>
+        <div className="account"><span title={session.person.displayName}>{session.person.displayName}</span><button type="button" disabled={loggingOut} onClick={onLogout}>切换账号</button><button className="icon" type="button" aria-label="切换主题" title={theme === 'light' ? '切换到深色主题' : '切换到浅色主题'} onClick={onTheme}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}</button><button className="icon" type="button" disabled={loggingOut} aria-label="退出登录" title="退出登录" onClick={onLogout}><LogOut size={17} /></button></div>
       </header>
     <div className="app-layout team-shell-layout">
       <main className="workspace">{shellView === 'development' && <p role="status" className="team-development-notice">网页版可查看协作进度；本机工程、Git 与 Agent 执行请使用桌面端。</p>}<Pending accountId={session.person.userId} refresh={refreshIdentity} /><ErrorLine>{error}</ErrorLine>{events.error && <Notice>同步暂不可用。{events.at ? `上次核对 ${time(events.at)}` : '尚未完成同步核对'}。<button type="button" onClick={events.refresh}>重试</button></Notice>}{events.value?.hasMore && <Notice>还有协作记录待同步。<button type="button" onClick={events.refresh}>继续同步</button></Notice>}{(gap || change) && <Notice>{gap ? '同步游标已变化，请重新载入授权资料。' : '团队资料有更新，当前阅读版本保持不变。'}<button type="button" onClick={() => { setGap(false); setChange(false); refreshIdentity() }}>重新核对资料列表</button></Notice>}
-        {tab === 'collaboration' || tab === 'documents' ? project ? tab === 'collaboration' ? <HifoxWorkspace key={`${session.person.userId}:${project.projectId}`} project={project} session={session} theme={theme} authEpoch={epoch} /> : <Documents key={`${project.projectId}:${epoch}`} project={project} session={session} authEpoch={epoch} /> : <Empty title={projects.loading ? '正在读取工作区…' : '还没有可用工作区'}>{projectId ? '原工作区当前不可用，请从顶部选择已授权工作区。' : '在“团队与成员”中创建团队与工作区，或接受管理员发给你的邀请链接。'}</Empty> : tab === 'people' ? <People key={epoch} session={session} project={project} epoch={epoch} onProjectsChanged={refreshIdentity} /> : <Devices key={epoch} accountId={session.person.userId} epoch={epoch} />}
+        {content}
       </main>
     </div>
     </div>
-  </div>{pairing && <Pairing key={`${pairing}:${epoch}`} id={pairing} projects={projects.items} onClose={closePairing} />}
+  </div>{pairing && <Pairing key={`${pairing}:${epoch}`} id={pairing} projects={projects.items} session={session} onSwitchAccount={onSwitchAccount} onClose={closePairing} />}
+    {creatingWorkspace && <WorkspaceSetup session={session} epoch={epoch} initialTeamId={project?.teamId} onClose={() => { setCreatingWorkspace(false); refreshIdentity() }} onCreated={(created) => { setCreatingWorkspace(false); projectsChanged(created.projectId) }} />}
+    {joiningWorkspace && <Modal title="接受工作区邀请" onClose={() => setJoiningWorkspace(false)}><InvitationLinkForm onOpen={(next) => { setJoiningWorkspace(false); onInvitation(next) }} /></Modal>}
+    {invitation && <AcceptInvitation key={`${session.person.userId}:${invitation.invitationId}:${invitationOwner.current.revision}`} {...invitation} session={session} onSwitchAccount={onSwitchAccount} onClose={onCloseInvitation} onAccepted={(accepted) => { if (accepted.space) setInvitedSpace({ projectId: accepted.projectId, accountId: session.person.userId, spaceId: accepted.space.id }); onCloseInvitation(); projectsChanged(accepted.projectId) }} />}
   </>
 }
 function Pending({ accountId, refresh }: { accountId: string; refresh: () => void }) {

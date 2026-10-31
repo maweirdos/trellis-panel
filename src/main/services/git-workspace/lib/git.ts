@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { GIT_WORKSPACE_LIMITS } from '../../../../shared/git-workspace'
 import { IpcErrorCode } from '../../../../shared/ipc-errors'
 import { GitWorkspaceError } from '../types'
+import { nextWorkcopyCommand } from '../../workcopy-use/command-scope'
+import { runNativeWorkcopyCommand } from '../../workcopy-use/native-command'
 
 export interface GitCommandOptions {
   input?: string | Buffer
@@ -28,6 +30,28 @@ export function runGit(root: string, args: string[], options: GitCommandOptions 
   Object.assign(env, { GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', GIT_NO_REPLACE_OBJECTS: '1' })
   if (options.indexFile) env.GIT_INDEX_FILE = options.indexFile
   const configs = ['core.fsmonitor=false', 'core.untrackedCache=false', 'color.ui=false', 'diff.external=', 'diff.suppressBlankEmpty=false', 'log.showSignature=false', 'protocol.ext.allow=never', ...(options.network ? [] : ['protocol.allow=never']), ...(options.config ?? [])]
+  const mutating = ['add', 'restore', 'update-index', 'read-tree', 'write-tree', 'commit-tree', 'update-ref', 'hook', 'branch', 'switch', 'push'].includes(args[0])
+    || args[0] === 'config' && !args.some(arg => ['--get', '--get-regexp', '--get-all', '--list'].includes(arg))
+  if (mutating) {
+    const owner = nextWorkcopyCommand()
+    if (!owner) return Promise.reject(new GitWorkspaceError(IpcErrorCode.Denied, 'Git 写命令需要原生工作副本登记。'))
+    if (options.input !== undefined) return Promise.reject(new GitWorkspaceError(IpcErrorCode.Denied, '此 Git 写命令尚无有界原生输入契约，未执行。'))
+    return runNativeWorkcopyCommand(root, {
+      operationId: owner.operationId, executable: 'git', args: ['--no-optional-locks', '--literal-pathspecs', ...configs.flatMap(item => ['-c', item]), ...args],
+      env, lease: owner.lease, redactOutput: redactGitText, maxOutputBytes: options.maxBytes ?? GIT_WORKSPACE_LIMITS.outputBytes, maxErrorBytes: 32768,
+      timeoutMs: options.timeoutMs ?? (options.network ? GIT_WORKSPACE_LIMITS.pushTimeoutMs : GIT_WORKSPACE_LIMITS.localTimeoutMs)
+    }).then(result => {
+      if (!result.cleanupConfirmed || result.aborted) {
+        const error = new GitWorkspaceError(result.aborted ? IpcErrorCode.Timeout : IpcErrorCode.Io, '原 Git 命令或子进程尚未确认完成，请核对原操作回执', { uncertain: true })
+        error.retainIndexLock = !result.cleanupConfirmed
+        throw error
+      }
+      if (result.failedToStart || result.code === null) throw new GitWorkspaceError(IpcErrorCode.NotFound, 'Git 原生命令未能启动')
+      const value = { stdout: result.stdout, stderr: redactGitText(result.stderr), code: result.code }
+      if (value.code !== 0 && !options.allowFailure) throw new GitWorkspaceError(IpcErrorCode.Io, value.stderr.trim() || 'Git 操作失败')
+      return value
+    })
+  }
   return new Promise((accept, reject) => {
     const child = spawn('git', ['--no-optional-locks', '--literal-pathspecs', ...configs.flatMap((item) => ['-c', item]), ...args], { cwd: root, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] })
     const out: Buffer[] = [], err: Buffer[] = []

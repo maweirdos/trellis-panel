@@ -7,6 +7,7 @@ export interface TaskProgressEvents {
   state(owner: Owner, status: AcpSessionStatus, outcome?: 'completed' | 'cancelled' | 'failed'): void
   report(owner: Owner, summary: unknown): Promise<{ queued: true; acknowledged: false }>
   context(owner: Owner): { id: string; version: string; title: string; body: string } | undefined
+  assertCurrent(owner: AcpSessionRecord): Promise<() => void>
 }
 let sink: TaskProgressEvents | undefined
 export function installTaskProgressEvents(value: TaskProgressEvents): () => void {
@@ -24,3 +25,13 @@ export function reportTaskProgress(owner: Owner, summary: Summary | unknown): Pr
   return sink.report(owner, summary)
 }
 export function taskProgressContext(owner: Owner) { return sink?.context(owner) }
+export async function assertTaskProgressCurrent(owner: AcpSessionRecord): Promise<() => void> {
+  const original = sink
+  if (!original) throw new Error('原任务执行所有者不可用，不能发送原生任务命令')
+  const assertCurrent = await original.assertCurrent(owner)
+  if (sink !== original) throw new Error('原任务执行所有者已变化，不能发送原生任务命令')
+  return () => {
+    if (sink !== original) throw new Error('原任务执行所有者已变化，不能发送原生任务命令')
+    assertCurrent()
+  }
+}

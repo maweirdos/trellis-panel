@@ -29,6 +29,13 @@ CSRF token. Browser POSTs require exact `Origin` and `X-CSRF-Token`. POST
 `/auth/logout` deletes the current session. A new completed login rotates and
 invalidates the browser's previous local session. No demo-principal endpoint.
 
+Browser clients may send `X-Trellis-Session-Proof` with the current session's
+CSRF value on authenticated requests. The service compares it to the authenticated
+browser session and returns `X-Trellis-Session-Verified: 1` only on a match; a
+mismatch returns `SESSION_CHANGED` (409) before the handler. Older clients may
+omit the header. The current Web client requires the verification header for
+scoped requests, so deploy the matching service before updating the Web client.
+
 Independent local login needs no OIDC configuration. GET `/api/auth/options`
 returns `{localLogin,selfRegistration,oidcLogin,oidcLabel,csrfToken}` and sets a
 short-lived HttpOnly login-CSRF cookie. POST `/auth/local/register` accepts
@@ -38,6 +45,10 @@ short-lived HttpOnly login-CSRF cookie. POST `/auth/local/register` accepts
 underscores/hyphens; passwords are 10–256 characters at registration. Registration
 creates an ordinary person and session, never a platform administrator. Replies
 are `{session:TeamSession,returnTo}`; person.provider identifies local/oidc/gitlab.
+Clients that send `X-Trellis-Auth-Options-Capability: initial-task-types` receive
+`supportsInitialTaskTypes: true` when the service supports atomic `createSpace`
+initial task type selection. An absent flag means unsupported. Requests without
+the header retain the legacy response shape for strict older clients.
 The existing session cookie, CSRF, account-disable and device ACL rules apply.
 Local credentials use salted scrypt; password or session data is not stored in
 browser command journals. Login failures for unknown, incorrect or disabled
@@ -90,7 +101,7 @@ Role sharing does not grant machine execution, credentials or private material a
 Validators are exported from `src/shared/team-invitations.ts`.
 
 - POST `/api/invitations`: browser team administrator only. Body:
-  `{commandId,teamId,projectId,teamRoles,projectRoles,recipient,token,expiresInMs}`.
+  `{commandId,teamId,projectId,teamRoles,projectRoles,recipient,token,expiresInMs,spaceId?}`.
   The project must belong to the team. Recipient is either
   `{kind:'person',userId}`, `{kind:'local',username}`, or
   `{kind:'oidc-subject',subject}` under the configured issuer. A local username can
@@ -100,19 +111,25 @@ Validators are exported from `src/shared/team-invitations.ts`.
   generates it once and pins it through command retry. Expiration defaults to
   one day, bounded from one minute to seven days. Only its SHA-256 hash is stored
   in invitations; receipts and event summaries contain no token. Response result
-  is TeamInvitation metadata. A repeated token under a new command is rejected.
+  is TeamInvitation metadata. If `spaceId` is supplied, the creator must also be
+  authorized to manage that exact space. A repeated token under a new command is rejected.
 - GET `/api/invitations?teamId=&cursor=&limit=`: browser team administrator list,
   including pending, accepted, expired and revoked records, without secrets.
 - POST `/api/invitations/:invitationId/inspect`: authenticated recipient only,
   body `{token}`. Read-only inspection requires browser Origin/CSRF and does not
   accept the invitation.
 - POST `/api/invitations/:invitationId/accept`: body
-  `{commandId,token,expectedUserId,expectedTeamId,expectedProjectId}`. The browser
+  `{commandId,token,expectedUserId,expectedTeamId,expectedProjectId,expectedSpaceId?}`. The browser
   explicitly confirms its current identity and fixed destination. One transaction
   consumes the invitation, grants team/project roles and records the command.
-  Existing roles are preserved. Current creator authority, recipient issuer,
+  If the invitation specifies a space, `expectedSpaceId` must match and the same
+  transaction adds the recipient to that space. Existing roles are preserved.
+  Current creator authority, recipient issuer,
   membership revisions, expiration and revocation are checked before admission.
   Retry uses the original command; another command cannot consume the link again.
+  Workspace task or comment changes do not invalidate a space invitation. Space
+  replacement, relevant access removal or an epoch change invalidate it. Old
+  invitations without a space continue to grant only team/project membership.
 - POST `/api/invitations/:invitationId/revoke`: body `{commandId}`; browser team
   administrator only. Accepted grants must instead be removed in member management.
 
@@ -215,6 +232,23 @@ platform enrollment flow, not a claim of implementing OAuth Device Authorization
 The project and device are reauthorized on each read. `afterRevision` and bounded
 `waitMs` support long polling. The snapshot includes only currently readable space
 content; a private-space metadata grant does not grant its bodies or member list.
+
+`GET /api/projects/:projectId/hifox/tasks/:taskId/development-context` accepts no
+query fields and returns `{version:1,snapshot,inputs,codeResource,creations}` under
+the normal `{ok:true,value}` envelope, with `Cache-Control: no-store`.
+`shared/team-task-development.ts` exports `teamTaskDevelopmentContextSchema` and
+its inferred `TeamTaskDevelopmentContext` type. The four fields reuse
+`HifoxRemoteSnapshot`, `TaskInputRead`, `TeamTaskCodeResourceDto` and `CreationList`.
+One synchronous operation in the existing owned SQLite worker calls the original
+getters with the same authenticated principal. Project, service instance/epoch,
+authorization revision, task, space and task creation identity must agree. The
+actor must be the current handler and a space member; unavailable tasks return
+404 and other handlers return403. Each original getter retains its current ACL.
+Creations are limited to the task's original space and task, with `scope:'team'`
+and `limit:20`; `hasMore` is preserved and clients must reject incomplete input.
+Closed tasks and input admission blockers remain facts for the client to assess.
+This read does not execute, publish, approve, adopt or write a binding. It provides
+no grant for a later action; each later read or write must reauthorize.
 
 `POST /api/projects/:projectId/hifox/commands` accepts
 `{commandId,expectedEpoch,expectedRevision,operation,input}`. Supported operation
@@ -324,6 +358,187 @@ Workspace long polls check an authenticated authorization/revision head on each
 150 ms tick and construct the full scoped snapshot only when returning. Account,
 device and project revocations remain visible while the request is waiting.
 
+## Shared task document drafts and fixed approvals
+
+`src/shared/team-task-materials.ts` defines the executable contract and is exported
+by the service package. Browser calls use the existing session, exact Origin and
+CSRF token; paired devices use their project-bound bearer identity. Every request
+rechecks account, team/project membership, task incarnation and current space ACL.
+
+The base path is `/api/projects/:projectId/hifox/tasks/:taskId/materials`.
+Every GET requires `spaceId` and `taskCreatedAt` query parameters from the selected
+task snapshot. Every command carries those fields in its body. A changed space or
+creation timestamp causes `TASK_MATERIAL_SCOPE_CONFLICT`; an old document cannot
+be retargeted to another task with the same title or reused task ID.
+
+| Method and suffix | Result inside `{ok:true,value}` |
+| --- | --- |
+| GET base | `TeamTaskMaterialList`: identity, task scope and a metadata-only `page` |
+| GET `/:documentId` | `TeamTaskMaterialView`: document metadata, selected version and one exact `text`; optional `versionId` selects a fixed version |
+| GET `/:documentId/versions` | Service identity and a page of immutable version metadata |
+| GET `/:documentId/submissions` | Service identity and a page of fixed submission/decision metadata |
+| GET `/commands/:commandId` | The caller's currently authorized `TeamTaskMaterialReceipt`, or `null` if no matching committed command exists |
+| POST `/commands` | `TeamTaskMaterialCommandReply`: `{status:'committed'|'duplicate',commandId,result}` |
+
+Lists and both histories accept `limit` (1–100, default 50) and `cursor`. Continue
+until `hasMore` is false, including after an empty filtered page. Cursors bind the
+service epoch, caller/device, authorization and workspace revisions; document
+lists also bind the material collection revisions, and histories bind their
+document revision. `CURSOR_CONFLICT` requires reloading the first page. Ordering is
+by opaque ID, not creation time; version `number` records its creation sequence
+and can contain gaps after non-content commands. Lists never include bodies.
+
+Every command requires an original UUID `commandId`, `expectedEpoch`, `spaceId`
+and `taskCreatedAt`. Existing-document commands additionally require `documentId`.
+Keep the same UUID and semantic payload after an uncertain acknowledgement.
+
+| Action | Additional fields and effect |
+| --- | --- |
+| `create` | `kind`, `editorIds`, `approverIds`, `title`, `text`, `expectedDigest`, `references`; creates one server-generated document per kind and task incarnation |
+| `saveDraft` | `expectedDraftRevision`, `title`, `text`, `expectedDigest`, `references`; advances the shared draft on CAS match, otherwise retains the candidate as an immutable conflict version |
+| `setAccess` | `expectedRevision`, `editorIds`, `approverIds`; changes explicit editing and decision grants |
+| `submit` | `expectedRevision`, `expectedDraftRevision`, `versionId`, `bodyDigest`; fixes the current draft for review |
+| `approve` | `expectedRevision`, `submissionId`, `bodyDigest`; approves the pending fixed submission |
+| `reject` | The same review fields plus a nonblank `reason`; records rejection without removing an earlier approval |
+
+Kinds are `prd`, `design`, `implement` and `delivery-note`. Their built-in version-1
+templates describe content sections; they are not configurable published workflow
+templates or task transition gates. Task-space members can read documents subject
+to all referenced source ACLs. Writes require current membership in an unarchived
+space. Creation requires the space owner, task creator or current task handler
+(assignee for tasks without a workflow). Those managers and the document owner can
+change access. Editors and approvers must be explicitly selected active team and
+project members in the task space. Project roles alone grant neither editing nor
+approval. Each grant list contains 1–32 distinct people.
+
+A stale draft CAS returns **committed**, with `result.outcome:'conflict-preserved'`
+and `result.versionId` identifying the retained proposal. It does not replace the
+current draft or change `draftRevision`. Read that version and the current draft,
+compare them, then submit an explicit merge with a fresh UUID and current draft
+revision. Retrying the original command returns its original receipt. A draft
+revision ahead of the server is rejected. Document revision CAS failures return
+`TASK_MATERIAL_REVISION_CONFLICT` without applying the command.
+
+Only one submission can be pending. A version can be submitted once; after
+rejection, save a revised draft before resubmitting. Approval always targets the
+submitted version/digest, including when a newer draft exists. Later drafts never
+replace `approved.versionId`. Fetch that exact version to read approved bytes.
+Saving, submitting, approving and rejecting documents do not change the task's
+business stage, execution progress or workspace revision.
+
+Bodies are nonblank, well-formed Unicode, limited to one MiB of UTF-8. The server
+verifies `expectedDigest` against the exact bytes, including BOM and line endings.
+Stored blobs are verified again when read. Each document retains at most 1000
+versions including conflicts; immutable blobs share the service's one-GiB quota.
+The existing SQLite writer atomically commits metadata and command receipts;
+schema v13 adds the document, version and submission tables to existing stores.
+
+`references` contains at most 16 fixed references: `{kind:'material',materialId,
+version,bodyDigest}` or `{kind:'creation',creationId,revisionId,bodyDigest}`. Sources
+must belong to the same project; creations must identify a published revision.
+Source content is not copied. Personal material ownership and creation-space ACLs
+are checked on each access; a client `verified` assertion is not accepted.
+Inaccessible documents/versions are filtered from lists. Document views and
+histories require access to the references exposed by current document metadata
+(draft, latest submission and approval), plus the selected historical version.
+Thus an inaccessible current reference can make that whole document unavailable;
+other readable documents remain independently listable.
+
+`GET /api/commands/:commandId` also supports these receipts. Receipt reads check
+the original actor/device and current task/source permissions. A receipt is a
+historical acknowledgement, not permission to read content or advance a task.
+An epoch change rejects the old POST, while an authorized receipt query can still
+recover its historical result. Missing receipts do not prove cancellation.
+
+Clients can use the existing Web `request()` transport with
+`teamTaskMaterialListSchema`, `teamTaskMaterialViewSchema`,
+`teamTaskMaterialHistorySchema`, `teamTaskMaterialSubmissionsSchema`,
+`teamTaskMaterialReceiptSchema.nullable()` and
+`teamTaskMaterialCommandReplySchema`. Native callers use the same authenticated
+HTTP routes and validators. Material changes do not emit task progress or change
+the workspace head; clients must explicitly refresh these material endpoints.
+
+## Code resources and explicit task selection
+
+`shared/team-code-resources.ts` exports `teamCodeResourceSchema`,
+`teamCodeResourceCommandSchema`, `teamCodeResourceListSchema`,
+`teamTaskCodeResourceDtoSchema`, `teamCodeResourceReceiptSchema` and
+`teamCodeResourceCommandReplySchema`, with corresponding inferred types.
+
+- GET `/api/projects/:projectId/code-resources?spaceId=&cursor=&limit=` returns
+  `{instanceId,epoch,authorizationRevision,projectId,serverTime,canManage,items,nextCursor,hasMore,spaceResources}`.
+  With `spaceId`, items are only that readable space's linked resources and
+  `spaceResources` is `{spaceId,revision,resourceIds,defaultResourceId}`. Without
+  it, administrators see the project catalog; other members see only resources
+  linked to currently readable spaces. No response enumerates another space's links.
+- POST `/api/projects/:projectId/code-resources/commands` accepts the strict
+  commands below. It returns `{status:committed|duplicate,commandId,result}`;
+  result is a compact historical receipt with project, epoch, kind, target ID,
+  task creation identity when applicable, original `spaceId` (null for catalog
+  commands), device ID, committed revision and time.
+  Reconcile through GET `/api/commands/:commandId`, then reload current data.
+- GET `/api/projects/:projectId/hifox/tasks/:taskId/code-resource` returns the
+  current task creation/update identities, `revision`, `canSelect`, `spaceRevision`,
+  `selection`, `resource`, `defaultResource` and `availability`. Availability is
+  `unconfigured`, `available`, `disabled` or `unlinked`. Existing tasks start with
+  null selection/revision 0, even when their space has a default. The default is
+  a candidate only; selection never follows a name or overwrites an existing choice.
+
+All commands contain `commandId`, `expectedEpoch` and `expectedRevision`:
+
+| kind | Additional fields | CAS target |
+| --- | --- | --- |
+| `create` | `resourceId`, `name`, `purpose`, `moduleDescription`, `source` | 0; caller supplies stable UUID |
+| `update` | `resourceId`, `name`, `purpose`, `moduleDescription`, `disabled` | resource revision |
+| `setSpaceResources` | `spaceId`, `resourceIds`, `defaultResourceId` (nullable) | space resource revision; full replacement |
+| `selectTaskResource` | `taskId`, `resourceId` (nullable), `expectedTaskCreatedAt`, `expectedSpaceId`, `expectedTaskUpdatedAt`, `expectedSpaceRevision`, `expectedResourceRevision` (nullable only when clearing) | selection revision plus current task identity, space and resource fences |
+
+`source` is `{provider,repositoryId,repositoryUrl}`. Provider is `git`, `github`,
+`gitlab`, `azure-devops` or `other`; repositoryId is a provider identifier/path,
+not a display-name match. URLs must use HTTP(S) or SSH without password, query,
+fragment or credential username (`git` is allowed for SSH). Local/UNC/file paths
+and unknown fields are rejected. Repository source is immutable; a different
+repository requires a new resource ID and explicit relinking/selection. Metadata
+records an administrator-approved source; actual repository credentials and remote
+access are independently checked by the local development adapter.
+
+An active project administrator, team owner/administrator with project membership,
+or platform administrator with project membership configures resources. PM roles
+alone cannot configure the catalog. Each private space still requires current
+membership, including for administrators. Current handler, project PM/admin or
+space owner may select a resource only while a current member of that active
+space and the task is open and outside triage. Legacy tasks use their sole assignee;
+workflow tasks use workflow.handlerId. Every request and receipt rechecks account,
+device, team, project and current space/task authorization. Browser writes retain
+Origin/CSRF checks; approved devices remain pinned to their project.
+
+Resources can be linked independently to multiple spaces in one project. New links,
+defaults and selections reject disabled resources. Existing selections retain their
+identity when disabled/unlinked; unlinked selections return no resource metadata.
+Changing defaults never changes task selections. Task deletion/movement or identity
+replacement removes its selection atomically with the workspace write. Selection
+requires the exact creation identity and space returned by the task-resource DTO;
+replaying or reading a receipt also requires the task to retain its original space
+and creation identity. Selecting or clearing a resource never changes task stage,
+starts execution or clones code.
+No machine path, secret or runtime transcript is stored.
+
+Conflicts use `CODE_RESOURCE_REVISION_CONFLICT`, `CODE_RESOURCE_TASK_CONFLICT`,
+`COMMAND_CONFLICT` or `WORKSPACE_EPOCH_CHANGED` (409). Inactive targets use
+`CODE_RESOURCE_INACTIVE` (409); denied actions use `CODE_RESOURCE_FORBIDDEN` (403).
+Missing/inaccessible references share `CODE_RESOURCE_UNAVAILABLE` (404).
+Account/project/device failures retain existing authorization codes. Original
+command IDs and identical bodies must survive unknown outcomes; duplicate receipts
+never reapply changes, and a changed body conflicts. Browser/device identity cannot
+be switched during retry. Old-epoch commands/receipts are rejected after restore.
+
+The owned SQLite writer commits resource state and the existing command ledger in
+one transaction. Schema v12 adds independent resource/link/selection tables without
+rewriting old tasks. Project resources are limited to 1000, authorization spaces to
+500, links per space to 64, and list pages to 100. Cursor scope includes workspace,
+resource, link and authorization revisions; changes require a fresh first page.
+Compact command receipts remain in the existing durable command ledger.
+
 ## Receipts and event catch-up
 
 GET `/api/commands/:commandId` reads the caller's current-authorized committed
@@ -366,6 +581,195 @@ preview sandbox; never inject it into a privileged document.
 
 Candidate generation uses the desktop's configured model and bounded exact source
 replacements. The standalone browser does not claim to provide a model service.
+
+## Team content service
+
+The executable contract is `src/shared/team-content.ts`. Schema v14 adds
+`team_content_configs`, `team_content_jobs` and `team_content_commands` through
+the existing owned writer. The service process makes one bounded HTTP request;
+the SQLite worker only prepares, reserves, records dispatch and settles.
+
+| Route | Authority and result |
+| --- | --- |
+| `GET /api/projects/:projectId/content/capabilities` | Current project member; model, enabled purposes, readiness, administrator responsibility and manual-work availability |
+| `GET /api/teams/:teamId/content/config` | Current browser team owner/admin or platform admin; public configuration or null |
+| `POST /api/teams/:teamId/content/config` | Same administrator; `TeamContentConfigure`, including UUID, epoch and expected configuration revision |
+| `POST /api/teams/:teamId/content/probe` | Same administrator; UUID, epoch and expected configuration revision; creates a real budgeted text probe job |
+| `GET /api/teams/:teamId/content/budget?userId=` | Same administrator; team and selected member UTC daily counts, measured token dimensions, unresolved reservations and unknown costs |
+| `GET /api/teams/:teamId/content/jobs/:jobId/accounting` | Same administrator; job accounting metadata without member inputs, candidate or source references |
+| `POST /api/teams/:teamId/content/jobs/:jobId/reconcile` | Same administrator; original UUID, epoch, expected job revision, external evidence, and measured usage or confirmed `not-started` |
+| `POST /api/projects/:projectId/hifox/tasks/:taskId/content/jobs` | Current project and actual space member; returns `{status:accepted|duplicate,job}` |
+| `GET /api/projects/:projectId/hifox/tasks/:taskId/content/jobs/:jobId` | Original person/device and current project/space/task authority; persisted job and candidate |
+| `GET /api/projects/:projectId/hifox/tasks/:taskId/content/commands/:commandId` | Same authority; recover the original job after acknowledgement loss |
+| `POST /api/projects/:projectId/hifox/tasks/:taskId/content/jobs/:jobId/cancel` | Same authority; UUID and epoch; cancellation does not establish absence of upstream consumption |
+
+These routes use the existing authentication, exact browser Origin and CSRF
+checks. A job pins service instance/epoch, person/device, project, space and task
+creation identity. Reads, replays and dispatch recheck current authority; job
+positions and role preferences never grant space membership. Removing access or
+recreating/moving a task prevents reads/replays under its old identity. Restoring
+access never retargets a job to another person, device or service epoch.
+Administrators may reconcile frozen accounting from an earlier epoch under
+current management authority; the original job epoch stays unchanged and cannot
+be used for generation or candidate reads in the new epoch.
+
+Administrators configure one `openai-compatible` text model per team, including
+an exact HTTPS endpoint ending in `/chat/completions`, model, enabled purposes and
+required limits. This slice supports non-streaming Chat Completions only. It
+does not claim Anthropic, Responses, Ollama-native, tools, multimodal or arbitrary
+provider support. Endpoints cannot contain URL credentials, query or fragment.
+HTTP requires the exact origin in `TEAM_CONTENT_ALLOWED_HTTP_ORIGINS`. Requests
+reject redirects, never retry, carry `max_tokens`, have a configured 100–60000 ms
+timeout, and bound upstream JSON to 256 KiB and candidate UTF-8 text to 128 KiB.
+Upstream error bodies, headers and credentials are never public diagnostics or
+logs. Successful text is also scrubbed for a verbatim configured credential echo.
+
+Before saving credentials, supply exactly one of
+`TEAM_CONTENT_ENCRYPTION_KEY` (canonical base64 for 32 random bytes) or
+`TEAM_CONTENT_ENCRYPTION_KEY_FILE` (absolute path to that base64 text). Provision
+this key externally and retain it separately from database backups. The file
+must be a regular protected file, at most 1024 bytes; POSIX permissions must deny
+group/other access. On Windows the deployment operator must restrict its ACL to
+the service account. Mount secret files read-only using a deployment Compose
+override. No image key, automatic generated key or plaintext fallback exists.
+Missing/wrong keys reject credential writes and dispatch, while readiness reports
+the administrator action. Database credentials use AES-256-GCM with team-bound
+authenticated context. Public DTOs contain only `hasCredential` and protection
+availability, never ciphertext or keys. Omitting `apiKey` on a configuration
+update preserves the existing encrypted credential and still checks protection.
+
+Generation accepts `{commandId,expectedEpoch,expectedSpaceId,
+expectedTaskCreatedAt,expectedTaskUpdatedAt,kind,text}`. `kind` is `requirements`,
+`summary` or `test-package`; explicit text is at most 32 KiB UTF-8. The server
+captures current task title/description and supplied text, keeping exact prompt
+inputs privately and source IDs/digests/timestamps on the job. Template version
+`team-content-v1` asks for facts, assumptions, acceptance and open questions, or
+test steps/environment/data gaps. `evidenceCoverage` is
+`task-and-explicit-text-only`; repository, deployed-capability and published-material
+evidence are explicitly missing. No repository, private chat, material connector
+or local execution is implicit. A model response is an unapproved candidate;
+generation never publishes, adopts a material or changes task stage. A test-package
+candidate does not execute tests or prepare data. Existing creation/prototype
+generation remains a separate capability.
+
+One UUID and identical normalized input recover one durable job. Changing its
+payload or person/device/epoch conflicts. `pending` reserves capacity before
+dispatch; `running` is committed before provider I/O. A completed candidate is
+`succeeded`. HTTP errors, timeout, abort, malformed/oversize responses or lost
+dispatch acknowledgements become `unknown` when consumption cannot be proven.
+Pre-dispatch failures/cancellation release capacity. Running cancellation marks
+uncertainty and aborts the actual in-process call. A provider result arriving
+before reconciliation can still settle actual usage. A restart cancels pending
+rows and marks running rows unknown; it never repeats a paid call. Expired
+pending/running dispatches are reconciled every five seconds. A missing receipt
+does not prove a concurrent prepare cannot commit.
+
+Admission atomically checks per-team/per-member concurrent slots, UTC daily
+request counts and declared input/output token reservations, plus a 32-slot
+process bound. Team history is bounded to 20000 jobs. The per-job input allowance
+uses a conservative UTF-8-byte-plus-framing estimate; it is not a measured vendor
+tokenizer or an absolute upstream limit. Output uses the declared `max_tokens`.
+Provider `prompt_tokens`, `completion_tokens` and optional cached-input tokens
+are separate actual dimensions; cache is part of input and is not added twice.
+Invalid/missing usage stays null. Missing price means `cost:null,costStatus:unknown`;
+tokens are never treated as currency. A reported limit overrun remains visible.
+
+Completed calls lacking usage retain token reservations, releasing only their
+concurrency slot. Unknown in-flight calls retain both until an administrator
+records an external accounting decision. Unresolved earlier-day reservations
+also count against new daily admission. Request counts include admitted jobs and
+are never silently reset by cancellation. Reconciliation records its actor,
+evidence and time; supplied usage has source `administrator-reconciliation`,
+distinct from provider measurement. It never calls the provider and fences late
+settlement callbacks. These limits control new requests through this gateway;
+they do not promise an absolute billing cap or govern external/private ACP use.
+
+Readiness reports unconfigured, disabled, protection-unavailable, unverified,
+ready or degraded, with bounded last probe/generation health and consecutive
+failures. This is a backend readiness surface; a full alert claim/resolve workflow,
+provider billing lookup, protected-file key rotation, UI onboarding and fixed
+material/code evidence connectors remain outside this slice.
+
+## Space governance and fixed task inputs
+
+`GET /api/projects/:projectId/hifox/spaces/:spaceId/governance` lists bounded,
+body-free rule/workflow metadata. Cursor scope includes the space workspace and
+catalog revisions. `GET .../governance/:packageId?versionId=...` reads exact
+version bytes after current project/space authorization, including older and
+withdrawn versions. Publication or a cached receipt never grants body access.
+
+`POST .../governance/commands` accepts `create`, `saveDraft`, `setAccess`,
+`submit`, `publish`, `disable` and `withdrawVersion`. Commands pin UUID,
+`expectedEpoch`, `spaceId` and existing-package `expectedRevision`. The server
+hashes full UTF-8 bodies; no renderer digest or approval flag is authoritative.
+Create/access grants name active space people. An explicit package approver
+publishes the exact submitted draft. Draft saves preserve the previous active
+publication. Disabling prevents new adoption; saving another draft does not
+reactivate it. Withdrawal requires a reason and invalidates adopted references
+without rewriting their historical bundle. All versions and original command
+identities remain retained. `GET .../governance/commands/:commandId` reconciles
+only the original account/device under current space access.
+
+Rules include modules, paths, formal stages, task types, required/recommended
+obligation, numeric priority and optional `conflictKey`. Unknown future code
+paths do not exclude a required rule. Workflow nodes use the existing formal
+stages in their existing order, with configured material inputs, outputs and
+approval roles; there is no separate workflow scheduler.
+
+`GET /api/projects/:projectId/hifox/tasks/:taskId/inputs` requires query
+`spaceId` and `taskCreatedAt`. It returns the CAS head `revision`, immutable
+`current` bundle or null, `admission` and optional formal `legacySummary`.
+`admission.status` is `ready`, `requires-adoption`, `blocked` or
+`review-required`. An existing PRD without approval blocks an empty baseline.
+An approved required PRD/rule without explicit task adoption requires adoption.
+Tasks with no mandatory shared input may use the current formal task summary.
+Draft saves and new publications do not change existing task inputs.
+
+`GET .../inputs/candidates` returns approved document references and published
+rule/template candidates without bodies. Document references retain
+`documentId/versionId/kind/spaceId/taskCreatedAt/title/bodyDigest/byteLength`.
+`GET .../inputs/documents/:documentId/versions/:versionId` reads one exact
+approved document with only that version's current upstream ACL and original
+task scope. It returns the fixed reference and text, omitting mutable draft
+metadata. An unrelated newer private draft cannot hide the adopted authorized
+version. Native projection uses `HifoxGovernanceService.readDocument` or
+`GovernanceTransport.readDocument`; neither adds a renderer channel.
+`POST .../inputs/commands` accepts `adopt` with document/rule/template version
+IDs, the original UUID/epoch/task identity and `expectedRevision`. It resolves
+actual approvals, exact bodies and ACL inside the SQLite transaction. All
+applicable required rule packages and the required PRD must be selected;
+same-priority required rules sharing a conflict key with different bodies block
+adoption. Empty selection, missing body or invalid digest cannot pass. The
+server stores a new immutable bundle with bundle ID, revision, SHA-256 digest,
+fixed references and original actor/device receipt.
+
+`withdrawDocument` is an explicit approver command against a fixed approved
+document, with the input CAS head and a reason. It preserves the bundle and
+requires review. `GET .../inputs/revisions/:revision` reads an earlier bundle
+with fresh body/reference ACL checks. `GET .../inputs/commands/:commandId`
+reconciles the original account/device. Receipt reads do not grant execution.
+These commands do not advance the business workspace revision.
+
+The server-only `TeamTaskInputs.validateTaskTransitionInputs(principal,
+projectId,beforeTask,afterTask,transition)` hook runs inside the existing
+workspace transaction after native domain validation and before persistence.
+Forward transitions require a ready current baseline. Configured target inputs
+and source outputs must be approved fixed documents explicitly adopted into the
+bundle. Source output approvals must come from the configured active role;
+explicit approval actions also require the actor's role. Product, developer and
+tester grants come from current project membership or existing designated
+delivery owners. Design authority uses explicit approvers of the adopted design
+document because the current project role catalog has no separate designer
+role. Space-owner gates require the actual current space owner. Recovery,
+return, cancellation and reassignment actions retain their native domain rules.
+The hook reads the immutable bundle and creates no second task state machine.
+
+Desktop journals retain complete original commands before HTTP admission;
+unknown writes reconcile/retry that exact command after restart. Browser session
+storage retains references and hashes only; after reload a missing full payload
+permits receipt reconciliation and prevents reconstruction from live editor
+text. Account, project, device, service epoch and workspace changes cannot
+retarget a retained operation.
 
 ## Runtime validators
 

@@ -6,6 +6,8 @@ import { confirmDialog } from '../../components/Dialogs'
 import { Button, EmptyState, Modal, SearchInput, Switch, Tooltip } from '../../my/ui'
 import { useHifox, statusOf } from '../store'
 import { Field, inputClass, MemberChip, PageHeader, textareaClass } from '../ui'
+import { SpaceCodeResources } from '../code-resources/SpaceCodeResources'
+import { SpaceGovernancePanel } from '../governance/SpaceGovernancePanel'
 
 const ROLE_LABEL: Record<HifoxRole, string> = { owner: 'Owner', admin: '管理员', member: '成员' }
 
@@ -59,13 +61,15 @@ export function SpacesPage(): JSX.Element | null {
         {canRead && <div className="flex items-center justify-between gap-3 border-t border-my-line pt-3"><span className="text-my-sm text-my-secondary">允许多个处理人</span><Switch label="允许多个处理人" checked={space.multiAssignee} disabled={busy || !canConfigure} onChange={(multiAssignee) => void run('更新空间', () => api.hifox.updateSpace({ id: space.id, multiAssignee }))} /></div>}
         {canRead ? <div className="border-t border-my-line pt-3"><div className="mb-2 flex items-center gap-2"><Users size={16} className="text-my-icon-secondary" /><h3 className="flex-1 text-my-sm font-medium text-my-primary">成员 <span className="text-my-xs font-normal text-my-tertiary">{members.length}</span></h3>{canConfigure && <Tooltip label="管理空间成员"><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy} aria-label="管理空间成员" onClick={() => setEditingMembers(space.id)}><Pencil size={14} /></Button></Tooltip>}</div><ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id} className="flex items-center gap-2 py-2"><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.title || ROLE_LABEL[member.role]}</span></li>)}</ul>{members.length === 0 && <p className="py-2 text-my-xs text-my-tertiary">暂无成员</p>}</div> : <p className="text-my-xs text-my-tertiary">私有空间的内容与成员仅对空间成员开放。</p>}
       </section>}
+      {space && (canRead || canConfigure) && <SpaceCodeResources spaceId={space.id} />}
+      {space && isMember && actorId && workspace.state !== 'local' && Object.hasOwn(api, 'hifoxGovernance') && api.hifoxGovernance && <SpaceGovernancePanel key={`${workspace.key}:${actorId}:${space.id}`} api={api.hifoxGovernance} workspaceKey={workspace.key} spaceId={space.id} actorId={actorId} people={members.map(member => ({ id: member.id, name: member.name }))} canManage={!space.archived && (workspace.canManage || space.ownerId === actorId)} />}
     </div>
     {editing && <SpaceEditor key={editing === 'new' ? 'new' : editing.id} space={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
     {editingMembers && space?.id === editingMembers && canConfigure && <SpaceMembersEditor key={space.id} snapshot={snapshot} space={space} onClose={() => setEditingMembers(null)} />}
   </div>
 }
 
-function SpaceEditor({ space, onClose }: { space?: HifoxSpace; onClose: () => void }): JSX.Element {
+export function SpaceEditor({ space, onClose }: { space?: HifoxSpace; onClose: () => void }): JSX.Element {
   const run = useHifox((state) => state.run)
   const busy = useHifox((state) => state.busy)
   const setCurrentSpace = useHifox((state) => state.setCurrentSpace)
@@ -110,5 +114,5 @@ function SpaceMembersEditor({ snapshot, space, onClose }: { snapshot: HifoxSnaps
     else if (result && !result.ok) setError(result.error)
     else setError('保存失败，请重试。')
   }
-  return <Modal open onClose={() => { if (!busy) onClose() }} width={460} ariaLabel="管理空间成员"><fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-3 p-4"><h2 className="text-my-md font-semibold text-my-primary">管理空间成员</h2><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索组织成员" /><div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id}><label className="flex items-center gap-2 py-2 text-my-sm text-my-secondary"><input type="checkbox" checked={memberIds.includes(member.id)} onChange={(event) => setMemberIds((previous) => event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id))} /><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.title || ROLE_LABEL[member.role]}</span></label></li>)}</ul>{members.length === 0 && <EmptyState title="没有匹配成员" />}</div>{error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy} onClick={() => void save()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}保存</Button></div></fieldset></Modal>
+  return <Modal open onClose={() => { if (!busy) onClose() }} width={460} ariaLabel="管理空间成员"><fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-3 p-4"><h2 className="text-my-md font-semibold text-my-primary">管理空间成员</h2><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索工作区成员" /><div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id}><label className="flex items-center gap-2 py-2 text-my-sm text-my-secondary"><input type="checkbox" checked={member.id === space.ownerId || memberIds.includes(member.id)} disabled={member.id === space.ownerId} onChange={(event) => setMemberIds((previous) => event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id))} /><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.id === space.ownerId ? '空间负责人' : member.title || ROLE_LABEL[member.role]}</span></label></li>)}</ul>{members.length === 0 && <EmptyState title="没有匹配成员" />}</div>{error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy} onClick={() => void save()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}保存</Button></div></fieldset></Modal>
 }

@@ -16,7 +16,7 @@ export type TeamService = { app: FastifyInstance; config: TeamServiceConfig; sto
 export async function createTeamService(input: TeamServiceConfigInput): Promise<TeamService> {
   const config = parseTeamConfig(input)
   const store = await TeamStore.open({ dataDir: config.dataDir, issuer: config.oidc?.issuer ?? '', bootstrapSubject: config.bootstrapSubject, identityProvider: config.gitlabBaseUrl || config.gitlabIntegration ? 'gitlab' : 'oidc', sessionTtlMs: config.sessionTtlMs, pairingTtlMs: config.pairingTtlMs, onlineTtlMs: config.onlineTtlMs })
-  const app = Fastify({ bodyLimit: 2 * 1024 * 1024, requestTimeout: 15_000, connectionTimeout: 10_000, keepAliveTimeout: 5000, logController: new LogController({ disableRequestLogging: true }), logger: config.logger ? { redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers.set-cookie'], level: 'info' } : false })
+  const app = Fastify({ bodyLimit: 2 * 1024 * 1024, requestTimeout: 15_000, connectionTimeout: 10_000, keepAliveTimeout: 5000, logController: new LogController({ disableRequestLogging: true }), logger: config.logger ? { redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-csrf-token"]', 'req.headers["x-trellis-session-proof"]', 'res.headers["set-cookie"]'], level: 'info' } : false })
   app.decorateRequest('teamPrincipal', null)
   app.setErrorHandler((error, _request, reply) => {
     const http = error instanceof Error ? error as Error & { statusCode?: number; code?: string } : null
@@ -80,3 +80,8 @@ export * from '../../../src/shared/team-auth'
 export * from '../../../src/shared/hifox-remote'
 export * from '../../../src/shared/creations'
 export * from '../../../src/shared/team-task-progress'
+export * from '../../../src/shared/team-code-resources'
+export * from '../../../src/shared/team-task-materials'
+export * from '../../../src/shared/team-content'
+export * from '../../../src/shared/team-governance'
+export * from '../../../src/shared/team-task-inputs'

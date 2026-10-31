@@ -1,7 +1,7 @@
 import { gitWorkspaceSwitchBranchSchema, type GitWorkspaceMutationResult } from '../../../../shared/git-workspace'
 import { IpcErrorCode } from '../../../../shared/ipc-errors'
 import { GitWorkspaceError, workspaceFailure, type GitWorkspaceOperationOptions, type GitWorkspaceProcedureContext } from '../types'
-import { parse, checkScope, guard, validBranch, assertSwitchable } from '../lib/helpers'
+import { parse, checkScope, guardContext, validBranch, assertSwitchable } from '../lib/helpers'
 import { runGit } from '../lib/git'
 import { repositoryState } from '../lib/state'
 
@@ -15,7 +15,7 @@ export async function switchBranch(context: GitWorkspaceProcedureContext, root: 
       if (!state.snapshot.branches.some((branch) => branch.name === request.name)) throw new GitWorkspaceError(IpcErrorCode.NotFound, '目标本地分支不存在，请刷新分支列表')
       assertSwitchable(state)
       if (!state.snapshot.clean) throw new GitWorkspaceError(IpcErrorCode.Conflict, '工作区存在更改，未切换分支；请先提交或处理这些更改')
-      guard(options)
+      await guardContext(options)
       try {
         await runGit(state.snapshot.repoRoot, ['switch', '--no-guess', '--', request.name], { config: ['submodule.recurse=false'] })
       } catch (error) {

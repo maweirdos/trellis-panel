@@ -131,8 +131,8 @@ export function ApplicationConfigurationManager({ root, definition, npm, onClose
           </div>
         </aside>
         <div className="my-run-config-detail">
-          {active && <p role="status" className="my-run-config-running text-my-xs text-my-secondary">请先停止并核验应用退出，再保存配置修改。</p>}
-          <ApplicationConfigForm key={`${selected}:${entry.version}`} root={root} definition={entry.definition} npm={entry.npm} initialDraft={entry.draft} saveDisabled={active} onDraftChange={rememberDraft} onSavingChange={setSaving} onSaved={onSaved} onCancel={() => requestClose()} />
+          {active && <p role="status" className="my-run-config-running text-my-xs text-my-secondary">保存后，原实例仍使用启动时配置；重启时应用修改。</p>}
+          <ApplicationConfigForm key={`${selected}:${entry.version}`} root={root} definition={entry.definition} npm={entry.npm} initialDraft={entry.draft} runDisabled={active} onDraftChange={rememberDraft} onSavingChange={setSaving} onSaved={onSaved} onCancel={() => requestClose()} />
         </div>
       </div>
       {notice && <section className="my-run-config-notice" role="alertdialog" aria-label={notice.kind === 'discard' ? '未保存的运行配置' : '删除应用配置'}>

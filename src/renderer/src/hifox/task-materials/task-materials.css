@@ -1,0 +1,6 @@
+.task-materials .my-switch {
+  min-height: var(--my-switch-height);
+  justify-content: flex-start;
+  gap: 0;
+  border: 0;
+}

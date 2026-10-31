@@ -14,7 +14,7 @@ async function reply<T>(work: () => Promise<T>): Promise<TeamDesktopReply<T>> {
   catch (error) {
     const known = error && typeof error === 'object' ? error as { code?: unknown; outcomeUnknown?: unknown; message?: unknown } : {}
     return { ok: false, code: error instanceof z.ZodError ? 'INVALID_INPUT' : typeof known.code === 'string' ? known.code.slice(0, 200) : 'SERVICE_UNAVAILABLE',
-      error: (error instanceof z.ZodError ? '团队操作参数无效' : typeof known.message === 'string' ? known.message : '团队服务暂不可用，原操作身份已保留').replace(/td_[A-Za-z0-9_-]{43}/g, '[credential]').slice(0, 2000), outcomeUnknown: known.outcomeUnknown === true }
+      error: (error instanceof z.ZodError ? '团队操作参数无效' : typeof known.message === 'string' ? known.message : '团队服务暂不可用，原操作身份已保留').replace(/(?:td_|ts_|ti_)[A-Za-z0-9_-]{43}/g, '[credential]').slice(0, 2000), outcomeUnknown: known.outcomeUnknown === true }
   }
 }
 export function registerTeamDesktopIpc(): void {
@@ -22,6 +22,19 @@ export function registerTeamDesktopIpc(): void {
     try { return await withDesktopTeamService(action) }
     finally { if (mutation) notifyDesktopTeamChanged() }
   })
+  handle(ipcInvoke.teamDesktop.authOptions, (_event, origin) => call((service) => service.authOptions(origin)))
+  handle(ipcInvoke.teamDesktop.accounts, () => call((service) => service.accounts()))
+  handle(ipcInvoke.teamDesktop.login, (_event, input) => call((service) => service.login(input), true))
+  handle(ipcInvoke.teamDesktop.register, (_event, input) => call((service) => service.register(input), true))
+  handle(ipcInvoke.teamDesktop.logout, (_event, id) => call((service) => service.logout(id), true))
+  handle(ipcInvoke.teamDesktop.organizations, (_event, id, options) => call((service) => service.organizations(id, options)))
+  handle(ipcInvoke.teamDesktop.createOrganization, (_event, input) => call((service) => service.createOrganization(input), true))
+  handle(ipcInvoke.teamDesktop.workspaces, (_event, id, options) => call((service) => service.workspaces(id, options)))
+  handle(ipcInvoke.teamDesktop.createWorkspace, (_event, input) => call((service) => service.createWorkspace(input), true))
+  handle(ipcInvoke.teamDesktop.createInvitation, (_event, input) => call((service) => service.createInvitation(input), true))
+  handle(ipcInvoke.teamDesktop.inspectInvitation, (_event, input) => call((service) => service.inspectInvitation(input)))
+  handle(ipcInvoke.teamDesktop.acceptInvitation, (_event, input) => call((service) => service.acceptInvitation(input), true))
+  handle(ipcInvoke.teamDesktop.connectWorkspace, (_event, input) => call((service) => service.connectWorkspace(input), true))
   handle(ipcInvoke.teamDesktop.connections, () => call((service) => service.connections()))
   handle(ipcInvoke.teamDesktop.connectionContext, (_event, id) => call((service) => service.connectionContext(id)))
   handle(ipcInvoke.teamDesktop.beginPairing, (_event, input) => call((service) => service.beginPairing(input), true))

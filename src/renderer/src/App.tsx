@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useState, lazy, Suspense } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useApp } from './store'
 import { api, hasIpc } from './api'
 import { useMy } from './my/store'
@@ -21,6 +21,8 @@ import { Loader2 } from 'lucide-react'
 import { getPageNavigation, projectRootKey } from './my/navigation'
 import { StartupContext, StartupContentCommit } from './daemon/StartupContext'
 import { DaemonSettingsDialog } from './daemon/DaemonSettingsDialog'
+import { Modal } from './my/ui'
+const OnboardingWizard = lazy(() => import('./onboarding/OnboardingWizard').then((module) => ({ default: module.OnboardingWizard })))
 
 function PageLoading(): JSX.Element {
   return (
@@ -159,11 +161,49 @@ export default function App(): JSX.Element {
   const fontSize = useMy((s) => s.fontSize)
   const development = useMy((s) => s.shellView === 'development')
   const startup = useContext(StartupContext)
+  const bootstrapped = useApp((s) => s.bootstrapped)
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
+  const [onboardingNeedsCompletion, setOnboardingNeedsCompletion] = useState(false)
+  const [onboardingStorageUnavailable, setOnboardingStorageUnavailable] = useState(false)
+  const onboardingFinishLock = useRef(false)
   const [bootstrapFailure, setBootstrapFailure] = useState<{ error: unknown } | null>(null)
   const docMode = new URLSearchParams(window.location.search).get('mode') === 'doc'
   const [windowTheme, setWindowTheme] = useState<'light' | 'dark'>(() => new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark')
   const hasWindowTheme = new URLSearchParams(window.location.search).has('theme')
   const effectiveTheme = settings?.theme ?? startup?.initialTheme ?? (hasWindowTheme || docMode || capsuleMode || quickTodoMode ? windowTheme : theme)
+
+  useEffect(() => {
+    if (!hasIpc || !bootstrapped || docMode || capsuleMode || quickTodoMode || !api.onboarding) return
+    let current = true
+    void api.onboarding.status().then((result) => {
+      if (!current || !result.ok) return
+      const unavailable = result.data.profile === 'new' && result.data.state === 'unavailable'
+      if (result.data.shouldShow || unavailable) { setOnboardingStorageUnavailable(unavailable); setOnboardingNeedsCompletion(true); setOnboardingOpen(true) }
+    }).catch(() => undefined)
+    return () => { current = false }
+  }, [bootstrapped, docMode, capsuleMode, quickTodoMode])
+
+  useEffect(() => {
+    const open = (): void => setOnboardingOpen(true)
+    window.addEventListener('trellis-open-onboarding', open)
+    return () => window.removeEventListener('trellis-open-onboarding', open)
+  }, [])
+
+  const finishOnboarding = async (outcome: 'completed' | 'skipped'): Promise<void> => {
+    if (onboardingFinishLock.current) return
+    onboardingFinishLock.current = true
+    try {
+      if (onboardingNeedsCompletion) {
+        const result = await api.onboarding.complete(outcome)
+        if (!result.ok) throw new Error(result.error)
+        setOnboardingNeedsCompletion(false)
+        setOnboardingStorageUnavailable(false)
+      }
+      setOnboardingOpen(false)
+    } finally {
+      onboardingFinishLock.current = false
+    }
+  }
 
   useEffect(() => {
     const onStorage = (event: StorageEvent): void => {
@@ -257,6 +297,9 @@ export default function App(): JSX.Element {
         <Toasts />
         <DialogHost />
         <DaemonSettingsDialog />
+        <Modal open={onboardingOpen} fullScreen ariaLabel="首次设置" onClose={() => undefined}>
+          <Suspense fallback={<PageLoading />}><OnboardingWizard storageUnavailable={onboardingStorageUnavailable} onDefer={() => setOnboardingOpen(false)} onFinish={finishOnboarding} /></Suspense>
+        </Modal>
       </div>
     </ErrorBoundary>
   )

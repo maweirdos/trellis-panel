@@ -24,7 +24,8 @@ import type {
   ObservationSubscriptionEvent
 } from './observability/store'
 import type { IpcFail } from './ipc-errors'
-import type { ApplicationRuntimeApi } from './app-runtime'
+import type { ApplicationRuntimeApi, ApplicationInstanceApi } from './app-runtime'
+import type { ApplicationTaskRuntimeApi } from './app-task-runtime'
 import type { TaskConversationsApi } from './task-conversations'
 import type { GitHistoryRequest, GitHistoryResult, GitCommitRequest, GitCommitResult, GitCommitDiffRequest, GitCommitDiffResult } from './git-readonly'
 
@@ -1216,8 +1217,15 @@ export interface SyncExtensionResult {
 }
 
 /** APIs exposed to the renderer via contextBridge. */
-export interface TrellisApi extends ApplicationRuntimeApi, DocumentWindowApi, TaskConversationsApi {
+export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceApi, ApplicationTaskRuntimeApi, DocumentWindowApi, TaskConversationsApi {
+  teamContent: import('./team-content-api').TeamContentApi
+  hifoxResources?: import('./hifox-code-resources').HifoxCodeResourceApi
+  hifoxMaterials?: import('./hifox-task-materials').HifoxTaskMaterialsApi
+  hifoxGovernance?: import('./team-governance').TeamGovernanceApi
+  taskOutputs?: import('./hifox-task-outputs').TaskOutputsApi
+  storage: import('./storage').StorageApi
   bootstrap: import('./bootstrap').BootstrapApi
+  onboarding: import('./onboarding').OnboardingApi
   gitWorkspace: import('./git-workspace').GitWorkspaceApi
   knowledgeAccess: import('./knowledge-access').KnowledgeApi
   /** HiFox 协作域：空间/成员/任务/专项/迭代/视图/分拣台/自动化/收件箱/Agent/技能/小队 */
@@ -2058,7 +2066,7 @@ export interface AcpSessionMeta {
   agentContext?: import('./acp-context').AcpAgentContextDelivery
   /** Exact bounded instructions provided by the host; no claim of model compliance. */
   agentRulesManifest?: import('./agent-rules').AgentRulesManifest
-  taskProgress?: { taskId: string; spaceId: string; inputVersion: string }
+  taskProgress?: { taskId: string; spaceId: string; inputVersion: string; workcopyTaskKey?: string }
   connectionTimings?: import('./acp-connection').AcpConnectionTimings & { connectionGeneration: string }
   models?: Array<{ modelId: string; name: string }>
   modes?: Array<{ id: string; name: string }>

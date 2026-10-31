@@ -68,8 +68,9 @@ export function Button({
   disabled,
   title,
   autoFocus,
+  type = 'button',
   ...buttonProps
-}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'onClick'> & {
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> & {
   children: ReactNode
   variant?: ButtonVariant
   size?: 'sm' | 'md' | 'lg'
@@ -89,7 +90,7 @@ export function Button({
   return (
     <button
       {...buttonProps}
-      type="button"
+      type={type}
       title={title}
       disabled={disabled}
       autoFocus={autoFocus}
@@ -599,7 +600,8 @@ export function Modal({
   children,
   width,
   ariaLabel,
-  placement = 'top'
+  placement = 'top',
+  fullScreen = false
 }: {
   open: boolean
   onClose: () => void
@@ -607,6 +609,7 @@ export function Modal({
   width?: number | string
   ariaLabel?: string
   placement?: 'top' | 'center'
+  fullScreen?: boolean
 }): JSX.Element | null {
   const escId = useId()
   const parentScope = useContext(OverlayScope)
@@ -616,7 +619,7 @@ export function Modal({
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const canInteract = useInteractionGuard()
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
-  useEscLayer(open, { kind: 'modal', id: `modal-${escId}`, onClose })
+  useEscLayer(open, { kind: 'modal', id: `modal-${escId}`, onClose, retainUntilInactive: true })
 
   useLayoutEffect(() => {
     // Stay inside the owning theme root, but outside page animations, clipping
@@ -657,7 +660,7 @@ export function Modal({
         <OverlayScope.Provider value={{ ids: [...parentScope.ids, escId], modal: panelRef }}>
         <div
           data-my-layer={[...parentScope.ids, escId].join(' ')}
-          className={clsx('my-fade my-modal-backdrop no-drag fixed inset-0 flex justify-center px-[var(--my-page-inset)]', placement === 'center' ? 'items-center' : 'items-start pt-[var(--my-modal-top-inset)]')}
+          className={clsx('my-fade my-modal-backdrop no-drag fixed inset-0 flex justify-center', fullScreen ? 'my-modal-fullscreen-backdrop items-stretch' : clsx('px-[var(--my-page-inset)]', placement === 'center' ? 'items-center' : 'items-start pt-[var(--my-modal-top-inset)]'))}
           onKeyDown={guardComposingEscape}
           onMouseDown={(e) => { e.stopPropagation(); if (e.button === 0 && e.target === e.currentTarget) onClose() }}
           onClick={(e) => e.stopPropagation()}
@@ -668,8 +671,8 @@ export function Modal({
             aria-modal="true"
             aria-label={ariaLabel}
             tabIndex={-1}
-            style={{ width: width ?? 'var(--my-modal-width)' }}
-            className="my-peek-in my-modal-panel max-h-[var(--my-modal-max-height)] overflow-hidden"
+            style={{ width: fullScreen ? '100%' : width ?? 'var(--my-modal-width)' }}
+            className={clsx('my-modal-panel overflow-hidden', fullScreen ? 'my-modal-fullscreen-panel h-full max-h-none' : 'my-peek-in max-h-[var(--my-modal-max-height)]')}
             onKeyDown={(e) => {
               if (e.key !== 'Tab' || e.defaultPrevented) return
               if (topModal(portalRoot)?.panel !== panelRef.current) return

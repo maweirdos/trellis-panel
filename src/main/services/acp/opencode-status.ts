@@ -10,27 +10,30 @@ import type { AcpRuntimeRetry } from '../../../shared/types'
 import { acpSpawnEnv } from '../../../shared/acp-launch-options'
 import { batchShell } from './setup'
 import { parseReleaseVersion } from './native-releases'
+import { OwnedProbeCleanupError } from '../workcopy-use/owned-probe'
 
 const versionReads = new Map<string, Promise<boolean>>()
 
 /** Selected CLI only, with the same child environment. Unknown versions disable v1-only flags. */
-export async function isOpenCodeV1(executable: string | undefined, overlay: Record<string, string>): Promise<boolean> {
+export interface OpenCodeVersionProbe { scopeKey: string; run(target: string, args: string[], env: NodeJS.ProcessEnv, verbatim: boolean): Promise<{ code: number; stdout: string }> }
+export async function isOpenCodeV1(executable: string | undefined, overlay: Record<string, string>, ownedProbe?: OpenCodeVersionProbe): Promise<boolean> {
   if (!executable) return false
   const env = acpSpawnEnv(process.env, overlay, process.platform)
   let key: string
   try {
     const stat = statSync(executable, { bigint: true })
     key = createHash('sha256').update(JSON.stringify([realpathSync.native(executable), String(stat.dev), String(stat.ino),
-      String(stat.size), String(stat.mtimeNs), String(stat.ctimeNs), Object.entries(env).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)])).digest('hex')
+      String(stat.size), String(stat.mtimeNs), String(stat.ctimeNs), ownedProbe?.scopeKey ?? '', Object.entries(env).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)])).digest('hex')
   } catch { return false }
   const pending = versionReads.get(key)
   if (pending) return pending
   const { target, argv, batch } = batchShell(executable, ['--version'])
-  const reading = new Promise<boolean>(resolve => execFile(target, argv,
+  if (process.platform === 'win32' && !ownedProbe) throw new OwnedProbeCleanupError()
+  const reading = ownedProbe ? ownedProbe.run(target, argv, env, batch).then(result => result.code === 0 && parseReleaseVersion(result.stdout.trim().match(/^(?:opencode\s+)?v?(.+)$/i)?.[1])?.major === 1) : new Promise<boolean>(resolve => execFile(target, argv,
     { env, windowsHide: true, windowsVerbatimArguments: batch, timeout: 5000, maxBuffer: 4096, encoding: 'utf8' },
     (error, stdout) => resolve(!error && parseReleaseVersion(stdout.trim().match(/^(?:opencode\s+)?v?(.+)$/i)?.[1])?.major === 1)))
   versionReads.set(key, reading)
-  try { return await reading } catch { return false } finally { if (versionReads.get(key) === reading) versionReads.delete(key) }
+  try { return await reading } catch (error) { if (ownedProbe) throw error; return false } finally { if (versionReads.get(key) === reading) versionReads.delete(key) }
 }
 
 const retrySchema = z.object({
@@ -117,7 +120,7 @@ export class OpenCodeStatus {
       const password = randomBytes(32).toString('hex')
       this.endpoint = { launchId: launch.launchId, port, password }
       return { appendArgs: ['--hostname', '127.0.0.1', '--port', String(port)], env: { OPENCODE_SERVER_USERNAME: 'opencode', OPENCODE_SERVER_PASSWORD: password } }
-    } catch { return {} }
+    } catch (error) { if (error instanceof OwnedProbeCleanupError) throw error; return {} }
   }
   spawned(started: AcpProcessStarted): boolean {
     if (started.launchId !== this.launchId) return false

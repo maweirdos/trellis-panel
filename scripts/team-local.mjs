@@ -4,6 +4,7 @@ import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { provisionLocalContentKey } from './team-local-content-key.mjs'
 
 export const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageDirectories = ['team-service', 'team-web'].map((name) => join(repositoryRoot, 'packages', name))
@@ -122,7 +123,7 @@ async function main() {
   parseTeamConfig(teamConfigFromEnvironment(env))
   if (!existsSync(join(env.TEAM_WEB_DIR, 'index.html'))) throw Error('TEAM_WEB_DIR must contain the compiled Web index.html.')
   await assertAvailablePort(env.TEAM_HOST, Number(env.TEAM_PORT))
-  Object.assign(process.env, env)
+  Object.assign(process.env, await provisionLocalContentKey(env, externalDataDirectory))
   console.log(`[team] Starting ${env.TEAM_PUBLIC_ORIGIN}\n[team] Data: ${env.TEAM_DATA_DIR}\n[team] Web: ${env.TEAM_WEB_DIR}\n[team] Press Ctrl+C to stop. Register your own account in the Web sign-in page.`)
   // The actual Node CLI owns its SQLite lock and SIGINT/SIGTERM shutdown in this process.
   // Importing avoids an orphaned child service when a Windows terminal is interrupted.

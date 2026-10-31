@@ -7,8 +7,9 @@ import { getSettings } from '../store'
 import { aiChat } from '../ai'
 import { broadcastToWindows } from '../bridge'
 import { ipcEvent } from '../../../shared/ipc-channels'
-import { creationMaterialReferenceSchema, creationReferencePath, type CreationMaterialReference, type CreationMaterialFile } from '../../../shared/creation-materials'
+import { creationReferencePath, type CreationMaterialReference, type CreationMaterialFile } from '../../../shared/creation-materials'
 import type { HifoxWorkQuery } from '../../../shared/hifox-work'
+import { selectTaskCreationReferences } from './task-references'
 
 let service: CreationMainService | null = null
 let closed = false
@@ -23,11 +24,7 @@ export function closeCreationService(): Promise<void> { closed = true; return se
 
 export async function taskCreationReferences(query: HifoxWorkQuery): Promise<CreationMaterialReference[]> {
   const result = await creationService().list({ workspaceKey: query.workspaceKey, scope: 'team', taskId: query.taskId, limit: 20 })
-  if (result.hasMore) throw new Error('任务关联创作超过 20 份，请按工作范围拆分任务后准备材料')
-  return result.items.flatMap((item) => {
-    const adopted = item.adoptions.filter((reference) => reference.taskId === query.taskId).at(-1)
-    return adopted ? [creationMaterialReferenceSchema.parse({ ...adopted, creationId: item.creationId, kind: item.kind })] : []
-  })
+  return selectTaskCreationReferences(query, result)
 }
 export async function taskCreationFiles(query: HifoxWorkQuery, references: CreationMaterialReference[]): Promise<CreationMaterialFile[]> {
   const files: CreationMaterialFile[] = []

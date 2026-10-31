@@ -1,6 +1,8 @@
 /** Desktop transport DTOs contain no protected credential or local source grant. */
 import { z } from 'zod'
-import { deviceEnrollmentInputSchema, teamCommandIdSchema, teamFeedbackInputSchema, teamIdSchema, teamMaterialKindSchema, teamVisibilitySchema, type TeamDevice, type TeamEventPage, type TeamFeedback, type TeamMaterialVersion, type TeamPage, type TeamPerson, type TeamProject, type TeamPublishedDocument } from './team-platform'
+import { deviceEnrollmentInputSchema, teamCommandIdSchema, teamFeedbackInputSchema, teamIdSchema, teamMaterialKindSchema, teamVisibilitySchema, type TeamCommandReply, type TeamDevice, type TeamEventPage, type TeamFeedback, type TeamMaterialVersion, type TeamPage, type TeamPerson, type TeamProject, type TeamPublishedDocument, type TeamTeam } from './team-platform'
+import type { TeamInvitation } from './team-invitations'
+import type { DesktopTeamAccount, DesktopTeamAuthOptions, DesktopTeamConnectWorkspaceInput, DesktopTeamCreateInvitationInput, DesktopTeamCreatedInvitation, DesktopTeamCreatedOrganization, DesktopTeamCreatedWorkspace, DesktopTeamCreateOrganizationInput, DesktopTeamCreateWorkspaceInput, DesktopTeamInvitationAcceptInput, DesktopTeamInvitationInput, DesktopTeamLoginInput, DesktopTeamPageOptions, DesktopTeamRegisterInput } from './team-desktop-account'
 
 export const desktopConnectionIdSchema = z.string().uuid()
 export const desktopPairingInputSchema = deviceEnrollmentInputSchema.extend({ origin: z.string().min(1).max(2048) }).strict()
@@ -13,7 +15,7 @@ export const desktopVersionsInputSchema = desktopListInputSchema.extend({ materi
 export const desktopFeedbackListSchema = desktopVersionsInputSchema.extend({ version: z.number().int().positive() }).strict()
 export const desktopOutboxStateSchema = z.enum(['queued', 'dispatching', 'acknowledgement-unknown', 'committed', 'conflict', 'access-revoked', 'cancelled-before-dispatch'])
 export type DesktopTeamConnection = {
-  connectionId: string; origin: string; pairingId: string; deviceId: string; deviceName: string;
+  connectionId: string; accountId: string | null; origin: string; pairingId: string; deviceId: string; deviceName: string;
   state: 'pending' | 'active' | 'revoked' | 'expired' | 'disconnected'; projectId: string | null; ownerId: string | null;
   userCode: string | null; verificationUri: string | null; expiresAt: number; pollAfterMs: number; nextPollAt: number;
   accessLocked: boolean; network: 'unknown' | 'reachable' | 'offline'; lastCheckedAt: number | null; lastErrorCode: string | null;
@@ -47,6 +49,19 @@ export interface DesktopTeamProgressTransport {
   hifoxTaskProgressReceipt(connectionId: string, taskId: string, commandId: string): Promise<import('./team-task-progress').TeamTaskProgressReceipt | null>
 }
 export interface DesktopTeamApi {
+  authOptions(origin: string): Promise<DesktopTeamAuthOptions>
+  accounts(): Promise<DesktopTeamAccount[]>
+  login(input: DesktopTeamLoginInput): Promise<DesktopTeamAccount>
+  register(input: DesktopTeamRegisterInput): Promise<DesktopTeamAccount>
+  logout(accountId: string): Promise<DesktopTeamAccount>
+  organizations(accountId: string, options?: DesktopTeamPageOptions): Promise<TeamPage<TeamTeam>>
+  createOrganization(input: DesktopTeamCreateOrganizationInput): Promise<TeamCommandReply<DesktopTeamCreatedOrganization>>
+  workspaces(accountId: string, options?: DesktopTeamPageOptions): Promise<TeamPage<TeamProject>>
+  createWorkspace(input: DesktopTeamCreateWorkspaceInput): Promise<TeamCommandReply<DesktopTeamCreatedWorkspace>>
+  createInvitation(input: DesktopTeamCreateInvitationInput): Promise<DesktopTeamCreatedInvitation>
+  inspectInvitation(input: DesktopTeamInvitationInput): Promise<TeamInvitation>
+  acceptInvitation(input: DesktopTeamInvitationAcceptInput): Promise<TeamCommandReply<TeamInvitation>>
+  connectWorkspace(input: DesktopTeamConnectWorkspaceInput): Promise<DesktopTeamConnection>
   connections(): Promise<DesktopTeamConnection[]>
   connectionContext(connectionId: string): Promise<DesktopTeamConnectionContext>
   beginPairing(input: DesktopPairingInput): Promise<DesktopTeamPairing>

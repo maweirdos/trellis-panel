@@ -1,21 +1,30 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { ArrowRight, ArrowUpRight, Check, CheckCheck, CircleCheck, CircleX, ClipboardCheck, Code2, FileQuestion, FileText, GitBranch, Loader2, MoreHorizontal, Palette, Pencil, Play, RotateCcw, Send, ShieldCheck, Users, X, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Check, CheckCheck, CircleCheck, CircleX, ClipboardCheck, Code2, FileQuestion, FileText, Loader2, MoreHorizontal, Palette, Pencil, Play, RotateCcw, Send, ShieldCheck, Users, X, type LucideIcon } from 'lucide-react'
 import type { HifoxExecutorRef, HifoxSnapshot, HifoxTask, HifoxTaskAction, HifoxTaskStage, HifoxTaskWorkKind, HifoxTransitionTaskInput } from '@shared/hifox'
-import type { HifoxWorkLocal, HifoxWorkResult } from '@shared/hifox-work'
+import type { HifoxWorkLocal } from '@shared/hifox-work'
 import { getHifoxTaskActions, getHifoxTaskStageMetadata, isHifoxTriageManager } from '@shared/hifox-domain/workflow'
-import { api } from '../api'
-import { confirmDialog } from '../components/Dialogs'
+import { api, hasIpc } from '../api'
 import { Button, Dropdown, DropdownItem, Modal, Tooltip } from '../my/ui'
 import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
-import { availableExecutionTargets, memberOf, useHifox } from './store'
-import { Field, inputClass, MemberChip, textareaClass } from './ui'
-import { hasLocalWorkBridge, openLocalWork } from './local-work'
-import { canReadTaskSpace, taskSourceKey } from './pages/task-detail/use-task-source'
+import { availableExecutionTargets, useHifox } from './store'
+import { Field, inputClass, textareaClass } from './ui'
+import { openLocalWork } from './local-work'
+import { nativeDevelopmentApi } from './development/bridge'
+import { TaskDevelopmentCard } from './development/TaskDevelopmentCard'
+import { canReadTaskSpace, taskSourceKey, useTaskSource } from './pages/task-detail/use-task-source'
 import { useTaskDraft, useTaskDraftField } from './pages/task-detail/task-drafts'
+import { TaskMaterials, type TaskMaterialEntryRequest, type TaskMaterialReviewState } from './task-materials/TaskMaterials'
+import { ManualDesignDraft, WorkflowWorkbench } from './workflow-stage/WorkflowWorkbench'
+import { WorkflowAgentSetup } from './workflow-stage/WorkflowAgentSetup'
+import { WorkflowSpaceMembers } from './workflow-stage/WorkflowSpaceMembers'
+import { recipientRole, workflowRecipients } from './workflow-stage/recipients'
+import { DesignRevisionPicker } from './workflow-stage/DesignRevisionPicker'
+import { designReferenceBody, matchesDesignReference, taskDesignReference, type DesignReference } from './workflow-stage/design-reference'
+import './workflow-stage/workflow-stage.css'
 
 export const WORKFLOW_ACTION_LABELS: Record<HifoxTaskAction, string> = {
   accept: '先接纳', arrange: '安排处理', request_info: '请补充', supplement: '补充信息', decline: '不采纳',
-  start_design: '开始设计', submit_design: '提交设计评审', approve_design: '确认设计并交给开发', return_design: '退回设计',
+  start_design: '开始人工设计', submit_design: '提交设计评审', approve_design: '确认设计并交给开发', return_design: '退回设计',
   begin_development: '开始处理', approve_plan: '确认技术方案', submit_test: '交给测试', return_development: '退回开发',
   pass_test: '测试通过', accept_delivery: '验收通过', return_delivery: '未满足需求', submit_delivery: '提交交付成果', reassign: '转交'
 }
@@ -26,60 +35,48 @@ const ACTION_ICONS: Record<HifoxTaskAction, LucideIcon> = {
   pass_test: ShieldCheck, accept_delivery: CheckCheck, return_delivery: RotateCcw, submit_delivery: Send, reassign: Users
 }
 const BODY_LABELS: Partial<Record<HifoxTaskAction, string>> = {
-  request_info: '需要补充的内容', supplement: '补充说明', decline: '不采纳原因', submit_design: '设计稿链接或交付说明',
+  request_info: '需要补充的内容', supplement: '补充说明', decline: '不采纳原因', submit_design: '设计内容与评审重点',
   approve_design: '交接说明（选填）', return_design: '调整意见', approve_plan: '实现方案与检查范围',
   submit_test: '改动说明与检查结果', return_development: '复现步骤、实际结果与预期', pass_test: '测试记录（选填）',
   accept_delivery: '验收说明（选填）', return_delivery: '未满足的验收点', submit_delivery: '产出链接或交付说明', reassign: '交接说明（选填）'
 }
 const BODY_REQUIRED = new Set<HifoxTaskAction>(['request_info', 'supplement', 'decline', 'submit_design', 'return_design', 'approve_plan', 'submit_test', 'return_development', 'return_delivery', 'submit_delivery'])
-const HANDED = new Set<HifoxTaskAction>(['arrange', 'reassign', 'submit_design', 'approve_design', 'return_design', 'submit_test', 'return_development', 'pass_test', 'return_delivery', 'submit_delivery'])
+const HANDED = new Set<HifoxTaskAction>(['arrange', 'reassign', 'request_info', 'supplement', 'submit_design', 'approve_design', 'return_design', 'submit_test', 'return_development', 'pass_test', 'return_delivery', 'submit_delivery'])
 
 function actorId(snapshot: HifoxSnapshot): string | null {
   const context = useHifox.getState().workspaceContext
   return context.actorId ?? (context.state === 'local' ? snapshot.members.find((member) => member.role === 'owner')?.id ?? null : null)
 }
 
-/** Job titles only suggest an editable recipient; authorization always uses real membership. */
-function suggestedHandler(snapshot: HifoxSnapshot, task: HifoxTask, action: HifoxTaskAction, actor: string): string {
-  const people = snapshot.members.filter((person) => snapshot.spaces.find((space) => space.id === task.spaceId)?.memberIds.includes(person.id))
-  const history = task.workflow?.history ?? []
-  const priorAction: Partial<Record<HifoxTaskAction, HifoxTaskAction>> = { return_design: 'start_design', return_development: 'begin_development', return_delivery: 'begin_development', submit_design: 'accept', pass_test: 'accept', submit_delivery: 'accept' }
-  const previous = history.slice().reverse().find((event) => event.action === priorAction[action])?.actorId
-  if (previous && people.some((person) => person.id === previous)) return previous
-  if (['submit_design', 'pass_test', 'submit_delivery'].includes(action) && people.some((person) => person.id === task.creatorId)) return task.creatorId
-  const pattern = action === 'submit_test' ? /测试|\bqa\b|test/i : ['approve_design', 'return_development', 'return_delivery'].includes(action) ? /开发|研发|工程|前端|后端|developer|engineer/i : null
-  const crew = task.executor?.kind === 'crew' ? snapshot.crews.find((item) => item.id === task.executor?.id) : undefined
-  const withinCrew = crew ? people.filter((person) => crew.members.some((member) => member.kind === 'member' && member.id === person.id)) : people
-  const suggested = pattern ? withinCrew.find((person) => pattern.test(person.title ?? '')) : undefined
-  return suggested?.id ?? (crew?.captain.kind === 'member' ? crew.captain.id : crew?.ownerId) ?? task.workflow?.handlerId ?? task.assigneeIds[0] ?? actor
-}
-
 function WorkflowRail({ task, cancelled }: { task: HifoxTask; cancelled: boolean }): JSX.Element {
   const stage = task.workflow?.stage
-  const current = task.triagePending ? 0 : !stage || ['accepted', 'needs_info'].includes(stage) ? 0 : ['design_ready', 'designing', 'design_review'].includes(stage) ? 1 : ['dev_ready', 'planning', 'developing'].includes(stage) ? 2 : stage === 'testing' ? 3 : 4
+  const stageIndex = (value: HifoxTaskStage | undefined): number => !value || ['accepted', 'needs_info'].includes(value) ? 0 : ['design_ready', 'designing', 'design_review'].includes(value) ? 1 : ['dev_ready', 'planning', 'developing'].includes(value) ? 2 : value === 'testing' ? 3 : 4
+  const current = task.triagePending ? 0 : stageIndex(stage === 'needs_info' ? task.workflow?.resumeStage : stage)
+  const visited = new Set((task.workflow?.history ?? []).flatMap((event) => [stageIndex(event.fromStage), stageIndex(event.toStage)]))
   const steps = (task.workKind === 'general'
     ? [{ label: '接纳', icon: FileText, index: 0 }, { label: '处理', icon: Pencil, index: 2 }, { label: '验收', icon: ShieldCheck, index: 4 }]
     : [{ label: '接纳', icon: FileText, index: 0 }, { label: '设计', icon: Palette, index: 1 }, { label: '开发', icon: Code2, index: 2 }, { label: '测试', icon: ClipboardCheck, index: 3 }, { label: '验收', icon: ShieldCheck, index: 4 }]).filter((step) => step.index !== 1 || !task.workflow?.history.some((event) => event.action === 'arrange' && event.toStage === 'dev_ready'))
-  return <ol className="collab-stage-rail" aria-label="任务交接阶段">{steps.map(({ label, icon: Icon, index }, i) => <li key={label} data-state={cancelled ? 'cancelled' : index < current || stage === 'done' ? 'complete' : index === current ? 'current' : 'upcoming'} aria-current={!cancelled && index === current ? 'step' : undefined}><span className="collab-stage-icon">{cancelled ? <X size={14} /> : index < current || stage === 'done' ? <Check size={14} /> : <Icon size={14} />}</span><span>{label}</span>{i < steps.length - 1 && <ArrowRight size={12} className="collab-stage-arrow" aria-hidden="true" />}</li>)}</ol>
+  return <ol className="collab-stage-rail" aria-label="任务交接阶段">{steps.map(({ label, icon: Icon, index }, i) => {
+    const complete = visited.has(index) && (index < current || stage === 'done')
+    const skipped = index < current && !visited.has(index)
+    return <li key={label} data-state={cancelled ? 'cancelled' : complete ? 'complete' : skipped ? 'skipped' : index === current ? 'current' : 'upcoming'} aria-current={!cancelled && stage !== 'done' && index === current ? 'step' : undefined}><span className="collab-stage-icon">{cancelled ? <X size={14} /> : complete ? <Check size={14} /> : <Icon size={14} />}</span><span>{label}{skipped ? '（未经过）' : ''}</span>{i < steps.length - 1 && <ArrowRight size={12} className="collab-stage-arrow" aria-hidden="true" />}</li>
+  })}</ol>
 }
 
-interface LocalTaskBinding {
-  updatedAt: string
-  local: HifoxWorkLocal | null
-  feedback?: { kind: 'review' | 'error'; message: string; review?: HifoxWorkLocal }
-}
-
-export function TaskWorkflow({ snapshot, task }: { snapshot: HifoxSnapshot; task: HifoxTask }): JSX.Element {
-  const { workspaceContext, busy, run } = useHifox()
+export function TaskWorkflow({ snapshot, task, resourceRefresh = 0, onOpenInputs, onMaterialCommitted }: { snapshot: HifoxSnapshot; task: HifoxTask; resourceRefresh?: number; onOpenInputs?(): void; onMaterialCommitted?(): void }): JSX.Element {
+  const { workspaceContext, busy, run, developmentRevision } = useHifox()
   const actor = actorId(snapshot)
-  const [dialog, setDialog] = useState<{ action: HifoxTaskAction; stage: HifoxTaskStage | undefined } | null>(null)
+  const source = useTaskSource({ spaceId: task.spaceId, taskId: task.id })
+  const [dialog, setDialog] = useState<{ action: HifoxTaskAction; stage: HifoxTaskStage | undefined; body?: string } | null>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
-  const [binding, setBinding] = useState<LocalTaskBinding | null>(null)
-  const [bindingRefresh, setBindingRefresh] = useState(0)
-  const knownBinding = useRef(false)
-  const [review, setReview] = useState<HifoxWorkLocal | null>(null)
-  const generation = useRef(0)
+  const [openDevelopment, setOpenDevelopment] = useState(0)
+  const [materialEntry, setMaterialEntry] = useState<TaskMaterialEntryRequest>()
+  const [reviewState, setReviewState] = useState<TaskMaterialReviewState>({ state: 'loading', document: null, refreshing: true, incomplete: false })
+  const [success, setSuccess] = useState<{ updatedAt: string; message: string } | null>(null)
+  const workbench = useRef<HTMLDivElement>(null)
+  const materials = useRef<HTMLDivElement>(null)
+  const development = useRef<HTMLDivElement>(null)
   const mounted = useRef(true)
   const inFlight = useRef(false)
   const canInteract = useInteractionGuard()
@@ -87,85 +84,61 @@ export function TaskWorkflow({ snapshot, task }: { snapshot: HifoxSnapshot; task
   const scopeKey = workspaceContext.key
   const sourceKey = taskSourceKey(snapshot, workspaceContext)
   const handler = task.workflow?.handlerId ?? task.assigneeIds[0]
+  const writable = hasIpc && !snapshot.spaces.find((space) => space.id === task.spaceId)?.archived
   const owns = (): boolean => {
     const current = useHifox.getState()
-    return mounted.current && canInteract() && !interactionSignal?.aborted && Boolean(current.snapshot &&
+    return mounted.current && canInteract() && !interactionSignal?.aborted && current.developmentRevision === developmentRevision && Boolean(current.snapshot &&
       taskSourceKey(current.snapshot, current.workspaceContext) === sourceKey && current.openTaskId === task.id &&
       canReadTaskSpace(current.snapshot, current.workspaceContext, task.spaceId) &&
       !current.snapshot.spaces.find((space) => space.id === task.spaceId)?.archived &&
       current.snapshot.tasks.some((item) => item.id === task.id && item.createdAt === task.createdAt && item.spaceId === task.spaceId &&
         item.workKind === task.workKind && (item.workflow?.handlerId ?? item.assigneeIds[0]) === handler))
   }
-  const canHandle = Boolean(actor && (handler === actor || ((task.triagePending || !task.workflow || task.workflow.stage === 'accepted') && (task.creatorId === actor || isHifoxTriageManager(snapshot, task.spaceId, actor)))))
-  const canTransfer = Boolean(actor && isHifoxTriageManager(snapshot, task.spaceId, actor))
-  const canInspectBinding = Boolean(canHandle && handler === actor && task.workKind === 'code' && hasLocalWorkBridge())
+  const canHandle = Boolean(writable && actor && (handler === actor || ((task.triagePending || !task.workflow || task.workflow.stage === 'accepted') && (task.creatorId === actor || isHifoxTriageManager(snapshot, task.spaceId, actor)))))
+  const canTransfer = Boolean(writable && actor && isHifoxTriageManager(snapshot, task.spaceId, actor))
+  const roles = task.workflow?.deliveryState?.roles
+  const canAct = (action: HifoxTaskAction): boolean => canHandle || Boolean(writable && actor && roles &&
+    (['pass_test', 'return_development'].includes(action) ? roles.testOwnerId === actor : ['accept_delivery', 'return_delivery'].includes(action) && (task.workKind === 'general' ? roles.acceptanceOwnerId : roles.testOwnerId) === actor))
+  const canInspectBinding = Boolean(canHandle && handler === actor && task.workKind === 'code')
   const hasBegunDevelopment = Boolean(task.workflow && (['planning', 'developing', 'testing', 'acceptance', 'done'].includes(task.workflow.stage) || task.workflow.history.some((event) => event.action === 'begin_development')))
-  const shouldReadBinding = canInspectBinding && !task.triagePending && (task.workflow?.stage === 'dev_ready' || hasBegunDevelopment)
-  const currentBinding = canInspectBinding && binding?.updatedAt === task.updatedAt ? binding : null
-  const local = currentBinding?.local
+  const showDevelopment = canInspectBinding && !task.triagePending && (task.workflow?.stage === 'dev_ready' || hasBegunDevelopment)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  useEffect(() => {
-    let active = true
-    const ticket = ++generation.current
-    const live = (): boolean => {
-      const current = useHifox.getState().snapshot?.tasks.find((item) => item.id === task.id)
-      return active && ticket === generation.current && owns() && current?.updatedAt === task.updatedAt &&
-        current.workKind === 'code' && (current.workflow?.handlerId ?? current.assigneeIds[0]) === actor
-    }
-    if (!shouldReadBinding) {
-      knownBinding.current = false
-      setBinding(null)
-      setReview(null)
-    } else if (canInteract() && api.hifoxWork) {
-      const expected = hasBegunDevelopment || knownBinding.current
-      void api.hifoxWork.status({ workspaceKey: scopeKey, taskId: task.id }).then((reply) => {
-        if (!live()) return
-        if (!reply.ok) {
-          setBinding({ updatedAt: task.updatedAt, local: null, ...(reply.reason === 'cancelled' ? {} : {
-            feedback: reply.local && reply.reviewRequired
-              ? { kind: 'review' as const, message: reply.error, review: reply.local }
-              : { kind: 'error' as const, message: reply.error }
-          }) })
-        } else if (reply.prepared) {
-          knownBinding.current = true
-          setBinding({ updatedAt: task.updatedAt, local: reply.local, ...(reply.reviewRequired ? {
-            feedback: { kind: 'review' as const, message: '任务材料已更新，请审阅本机材料。', review: reply.local }
-          } : {}) })
-        } else setBinding({ updatedAt: task.updatedAt, local: null, ...(expected ? {
-          feedback: { kind: 'error' as const, message: '未找到原本机任务绑定，请核对后重试。' }
-        } : {}) })
-      }).catch((cause: unknown) => {
-        if (live()) setBinding({ updatedAt: task.updatedAt, local: null, feedback: { kind: 'error', message: cause instanceof Error ? cause.message : '本机任务绑定暂时无法核对，请重试。' } })
-      })
-    }
-    return () => { active = false; generation.current++ }
-  }, [sourceKey, task.id, task.updatedAt, shouldReadBinding, hasBegunDevelopment, actor, bindingRefresh, interactionSignal])
+  function completed(action: HifoxTaskAction, updated: HifoxSnapshot): void {
+    if (!source.owns()) return
+    const next = updated.tasks.find((item) => item.id === task.id && item.createdAt === task.createdAt && item.spaceId === task.spaceId)
+    if (!next?.workflow) return
+    const nextHandler = updated.members.find((item) => item.id === next.workflow?.handlerId)?.name ?? '待核对处理人'
+    const ended = next.workflow.stage === 'done'
+    const cancelled = updated.taskStatuses.find((item) => item.id === next.statusId)?.category === 'cancelled'
+    setError('')
+    setSuccess({ updatedAt: next.updatedAt, message: `${WORKFLOW_ACTION_LABELS[action]}已确认 · ${cancelled ? '任务已取消' : `当前${getHifoxTaskStageMetadata(next.workflow.stage).label}`} · ${ended ? `最后处理同事：${nextHandler}` : `由 ${nextHandler} 接续处理`}` })
+    setDialog(null)
+    requestAnimationFrame(() => { if (source.owns()) { workbench.current?.focus({ preventScroll: true }); workbench.current?.scrollIntoView({ block: 'nearest' }) } })
+  }
+  function openMaterial(kind: TaskMaterialEntryRequest['kind'], mode: 'work' | 'review' = 'work'): void {
+    if (!source.owns()) return
+    setMaterialEntry((current) => ({ kind, mode, requestId: (current?.requestId ?? 0) + 1 }))
+    requestAnimationFrame(() => { if (source.owns()) materials.current?.scrollIntoView({ block: 'nearest' }) })
+  }
+  const openDesign = (): void => openMaterial('design')
   async function enterPlanning(prepared: HifoxWorkLocal): Promise<void> {
     if (!owns()) return
-    const result = await run('开始处理', async () => owns()
-      ? api.hifox.transitionTask({ taskId: task.id, action: 'begin_development', expectedStage: task.workflow?.stage, expectedUpdatedAt: task.updatedAt })
-      : { ok: false as const, error: '原任务来源已不可操作，请重新打开。' })
-    if (!owns()) return
-    if (!result?.ok) { setError(result && !result.ok ? result.error : '操作尚未完成，请核对任务后重试'); return }
-    knownBinding.current = true
-    setBinding({ updatedAt: useHifox.getState().snapshot?.tasks.find((item) => item.id === task.id)?.updatedAt ?? task.updatedAt, local: prepared })
-    setError(''); setReview(null)
+    if (task.workflow?.stage === 'dev_ready') {
+      if (!task.acceptanceCriteria?.length) throw Error('请先补充验收标准')
+      const result = await run('开始处理', async () => owns()
+        ? api.hifox.transitionTask({ taskId: task.id, action: 'begin_development', expectedStage: task.workflow?.stage, expectedUpdatedAt: task.updatedAt })
+        : { ok: false as const, error: '原任务来源已不可操作，请重新打开。' })
+      if (!owns()) return
+      if (!result?.ok) throw Error(result && !result.ok ? result.error : '操作尚未完成，请核对任务后重试')
+    }
+    setError('')
     await openLocalWork(scopeKey, task.id, prepared)
   }
   async function begin(): Promise<void> {
-    if (!owns() || inFlight.current || useHifox.getState().busy || !api.hifoxWork || !hasLocalWorkBridge()) return
+    if (!owns() || inFlight.current || useHifox.getState().busy) return
+    if (!nativeDevelopmentApi()) { development.current?.focus({ preventScroll: true }); development.current?.scrollIntoView({ block: 'nearest' }); return }
     if (!task.acceptanceCriteria?.length) { setError('请先补充验收标准'); return }
-    inFlight.current = true
-    setPending(true); setError(''); setReview(null); setBinding(null)
-    try {
-      const reply: HifoxWorkResult = await api.hifoxWork.prepare({ workspaceKey: scopeKey, taskId: task.id })
-      if (!owns()) return
-      if (!reply.ok) { if (reply.reason === 'cancelled') return; setError(reply.error); if (reply.local && ['source_changed', 'prd_conflict'].includes(reply.reason)) setReview(reply.local); return }
-      if (reply.prepared && reply.reviewRequired) { setError('任务材料已更新，请先核对已有开发计划'); setReview(reply.local); return }
-      if (reply.prepared) await enterPlanning(reply.local)
-      else setError('开发上下文尚未准备完成')
-    } catch (cause) { if (owns()) setError(cause instanceof Error ? cause.message : '开发上下文准备失败') }
-    finally { inFlight.current = false; if (mounted.current) setPending(false) }
+    setError(''); setOpenDevelopment((value) => value + 1)
   }
   async function invoke(action: HifoxTaskAction): Promise<void> {
     if (!owns() || inFlight.current || useHifox.getState().busy) return
@@ -177,7 +150,9 @@ export function TaskWorkflow({ snapshot, task }: { snapshot: HifoxSnapshot; task
         const result = await run(WORKFLOW_ACTION_LABELS[action], async () => owns()
           ? api.hifox.transitionTask({ taskId: task.id, action, expectedStage: task.workflow?.stage, expectedUpdatedAt: task.updatedAt })
           : { ok: false as const, error: '原任务来源已不可操作，请重新打开。' })
-        if (owns() && !result?.ok) setError(result && !result.ok ? result.error : '操作未完成')
+        if (!source.owns()) return
+        if (result?.ok) { completed(action, result.data); if (action === 'start_design') openDesign() }
+        else setError(result && !result.ok ? result.error : '操作未完成')
       } finally { inFlight.current = false; if (mounted.current) setPending(false) }
       return
     }
@@ -186,29 +161,35 @@ export function TaskWorkflow({ snapshot, task }: { snapshot: HifoxSnapshot; task
   const cancelled = snapshot.taskStatuses.find((status) => status.id === task.statusId)?.category === 'cancelled'
   const closed = cancelled || snapshot.taskStatuses.find((status) => status.id === task.statusId)?.category === 'done'
   const actions = !closed ? getHifoxTaskActions(task) : []
-  const primary = task.triagePending && actions.includes('arrange') ? 'arrange' : actions.find((action) => !['request_info', 'decline', 'return_design', 'return_development', 'return_delivery', 'reassign'].includes(action))
-  const secondary = actions.filter((action) => action !== primary && !['request_info', 'decline', 'reassign'].includes(action))
+  const reviewingPrd = reviewState.state === 'ready' && reviewState.document?.latestSubmission?.status === 'pending'
+  const primary = task.triagePending && actions.includes('arrange') && canHandle ? 'arrange' : actions.find((action) => canAct(action) && !['request_info', 'decline', 'return_design', 'return_development', 'return_delivery', 'reassign'].includes(action))
+  const secondary = actions.filter((action) => canAct(action) && action !== primary && !['request_info', 'decline', 'reassign'].includes(action))
   const more = actions.filter((action) => ['request_info', 'decline', 'reassign'].includes(action) && (canHandle || canTransfer && action === 'reassign'))
   function actionButton(action: HifoxTaskAction, primaryAction = false): JSX.Element {
     const Icon = ACTION_ICONS[action]
-    const unavailable = action === 'begin_development' && !hasLocalWorkBridge()
+    const unavailable = action === 'begin_development' && !nativeDevelopmentApi()
     const label = action === 'arrange' && task.triagePending ? '接纳并安排' : WORKFLOW_ACTION_LABELS[action]
-    return <Tooltip key={action} label={unavailable ? '代码工作需要桌面端的本机项目' : label} side="bottom"><Button variant={primaryAction ? 'primary' : 'outline'} size="sm" disabled={pending || busy || unavailable} onClick={() => void invoke(action)}>{pending && primaryAction ? <Loader2 size={14} className="animate-spin" /> : <Icon size={14} />}{unavailable ? '桌面端处理' : label}</Button></Tooltip>
+    return <Tooltip key={action} label={unavailable ? '查看原团队、空间与任务的桌面定位信息' : label} side="bottom"><Button variant={primaryAction ? 'primary' : 'outline'} size="sm" disabled={pending || busy} onClick={() => void invoke(action)}>{pending && primaryAction ? <Loader2 size={14} className="animate-spin" /> : <Icon size={14} />}{unavailable ? '在桌面继续开发' : label}</Button></Tooltip>
   }
   return <section className="collab-task-workflow" aria-label="任务流程"><WorkflowRail task={task} cancelled={cancelled} />
-    <div className="collab-task-actionbar"><span className="my-chip text-my-secondary">{cancelled ? '已取消' : task.triagePending ? '待分拣' : task.workflow ? getHifoxTaskStageMetadata(task.workflow.stage).label : '原有工作流'}</span>{handler && <MemberChip member={memberOf(snapshot, handler)} />}<span className="flex-1" />
-      {canHandle && primary && actionButton(primary, true)}{canHandle && secondary.map((action) => actionButton(action))}
+    {success?.updatedAt === task.updatedAt && <p role="status" className="workflow-transition-result"><CircleCheck size={17} /><span>{success.message}</span></p>}
+    <div ref={workbench} tabIndex={-1}><WorkflowWorkbench snapshot={snapshot} task={task} cancelled={cancelled} canHandle={canHandle || actions.some(canAct)} onMaterialWork={openMaterial} onOpenInputs={onOpenInputs} shared={workspaceContext.state !== 'local'} reviewState={reviewState} actorId={actor} writable={Boolean(writable && workspaceContext.state === 'connected')} actions={<>
+      <span className="my-chip text-my-secondary">{cancelled ? '已取消' : task.triagePending ? '待分拣' : task.workflow ? getHifoxTaskStageMetadata(task.workflow.stage).label : '原有工作流'}</span>
+      {primary && actionButton(primary, !reviewingPrd)}{secondary.map((action) => actionButton(action))}
       {more.length > 0 && <Dropdown align="right" width={170} trigger={({ toggle }) => <Button size="sm" variant="ghost" onClick={toggle} aria-label="更多流程操作"><MoreHorizontal size={16} /></Button>}>{close => more.map((action) => <DropdownItem key={action} disabled={busy || pending} onClick={() => { close(); void invoke(action) }} icon={<span>{action === 'decline' ? <X size={14} /> : action === 'reassign' ? <Users size={14} /> : <FileQuestion size={14} />}</span>}>{WORKFLOW_ACTION_LABELS[action]}</DropdownItem>)}</Dropdown>}
       {closed && (cancelled ? <CircleX size={18} className="text-my-tertiary" aria-label="任务已取消" /> : <CircleCheck size={18} className="text-my-success-text" aria-label="流程已结束" />)}
+    </>} /></div>
+    {showDevelopment && <div ref={development} tabIndex={-1}><TaskDevelopmentCard snapshot={snapshot} task={task} resourceRefresh={resourceRefresh} openRequest={openDevelopment} onEnter={enterPlanning} /></div>}
+    <div ref={materials} className="workflow-stage-materials">
+      {workspaceContext.state === 'local' && task.workflow?.stage === 'designing' && <ManualDesignDraft snapshot={snapshot} task={task} openRequest={materialEntry?.requestId ?? 0} disabled={!canHandle || busy || pending} onSubmit={(body) => { if (owns()) setDialog({ action: 'submit_design', stage: task.workflow?.stage, body }) }} />}
+      <TaskMaterials snapshot={snapshot} task={task} entryRequest={materialEntry} onReviewState={setReviewState} onCommitted={() => { if (source.owns()) onMaterialCommitted?.() }} />
     </div>
-    {local && !currentBinding?.feedback && <button type="button" className="collab-local-task" onClick={() => { if (owns() && canInspectBinding) void openLocalWork(scopeKey, task.id, local).catch((cause: unknown) => { if (owns()) setError(cause instanceof Error ? cause.message : '打开开发任务失败') }) }}><GitBranch size={14} /><span>{local.taskId}</span><span className="text-my-tertiary">Trellis</span><ArrowUpRight size={13} /></button>}
-    {currentBinding?.feedback && <div role={currentBinding.feedback.kind === 'review' ? 'status' : 'alert'} className={currentBinding.feedback.kind === 'review' ? 'mt-3 flex flex-wrap items-center gap-2 rounded-my-md bg-my-warning-subtle p-2 text-my-xs text-my-warning-text' : 'collab-inline-error'} aria-label="本机任务绑定"><span className="min-w-0 flex-1">{currentBinding.feedback.message}</span>{currentBinding.feedback.review && <Button size="sm" variant="outline" onClick={() => { const target = currentBinding.feedback?.review; if (target && owns() && canInspectBinding) void openLocalWork(scopeKey, task.id, target).catch((cause: unknown) => { if (owns()) setError(cause instanceof Error ? cause.message : '打开材料失败') }) }}>审阅材料</Button>}<Button size="sm" variant="ghost" onClick={() => { if (owns()) setBindingRefresh((value) => value + 1) }}>重新核对</Button></div>}
-    {error && <div className="collab-inline-error" role="alert"><span className="min-w-0 flex-1">{error}</span>{review && canInspectBinding && <><Button size="sm" onClick={() => { if (owns()) void openLocalWork(scopeKey, task.id, review).catch((cause: unknown) => { if (owns()) setError(cause instanceof Error ? cause.message : '打开失败') }) }}>审阅材料</Button>{task.workflow?.stage === 'dev_ready' && <Button size="sm" disabled={pending || busy} onClick={() => void confirmDialog({ title: '沿用本机材料继续？', message: '已有修改会保留，请在开发计划中核对当前需求。', confirmText: '继续规划' }, interactionSignal).then(async (confirmed) => { if (confirmed && owns() && !inFlight.current && !useHifox.getState().busy) { inFlight.current = true; setPending(true); try { await enterPlanning(review) } catch (cause) { if (owns()) setError(cause instanceof Error ? cause.message : '进入规划失败') } finally { inFlight.current = false; if (mounted.current) setPending(false) } } })}>沿用并继续</Button>}</>}</div>}
-    {dialog && <WorkflowActionDialog key={`${scopeKey}:${actor}:${task.id}:${dialog.action}`} snapshot={snapshot} task={task} action={dialog.action} expectedStage={dialog.stage} onClose={() => setDialog(null)} />}
+    {error && <div className="collab-inline-error" role="alert">{error}</div>}
+    {dialog && <WorkflowActionDialog key={`${scopeKey}:${actor}:${task.id}:${dialog.action}`} snapshot={snapshot} task={task} action={dialog.action} expectedStage={dialog.stage} initialBody={dialog.body} onClose={() => setDialog(null)} onCompleted={(updated) => completed(dialog.action, updated)} />}
   </section>
 }
 
-function WorkflowActionDialog({ snapshot, task, action, expectedStage, onClose }: { snapshot: HifoxSnapshot; task: HifoxTask; action: HifoxTaskAction; expectedStage: HifoxTaskStage | undefined; onClose: () => void }): JSX.Element {
+function WorkflowActionDialog({ snapshot, task, action, expectedStage, initialBody, onClose, onCompleted }: { snapshot: HifoxSnapshot; task: HifoxTask; action: HifoxTaskAction; expectedStage: HifoxTaskStage | undefined; initialBody?: string; onClose: () => void; onCompleted: (snapshot: HifoxSnapshot) => void }): JSX.Element {
   const { workspaceContext, busy, run } = useHifox()
   const canInteract = useInteractionGuard()
   const interactionSignal = useInteractionSignal()
@@ -216,14 +197,14 @@ function WorkflowActionDialog({ snapshot, task, action, expectedStage, onClose }
   const mounted = useRef(false)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const [identity] = useState(() => ({ sourceKey: taskSourceKey(snapshot, workspaceContext), actor: actorId(snapshot) }))
-  const members = snapshot.members.filter((person) => snapshot.spaces.find((space) => space.id === task.spaceId)?.memberIds.includes(person.id))
   const { agents, crews } = availableExecutionTargets(snapshot, task.spaceId)
   const draft = useTaskDraft(snapshot, workspaceContext, { kind: 'workflow', spaceId: task.spaceId, task,
     creationContext: [action, expectedStage, task.workflow?.history.at(-1)?.id],
     base: JSON.stringify([task.title, task.description, task.acceptanceCriteria, task.workKind, task.iterationIds, task.assigneeIds, task.executor]) })
-  const [body, setBody] = useTaskDraftField(draft, 'body', '')
-  const [recipient, setRecipient] = useTaskDraftField(draft, 'recipient', () => suggestedHandler(snapshot, task, action, identity.actor ?? ''))
-  const [target, setTarget] = useTaskDraftField(draft, 'target', task.executor ? `${task.executor.kind}:${task.executor.id}` : `member:${task.assigneeIds[0] ?? identity.actor ?? ''}`)
+  const [body, setBody] = useTaskDraftField(draft, 'body', initialBody ?? '')
+  const [recipient, setRecipient] = useTaskDraftField(draft, 'recipient', '')
+  const [target, setTarget] = useTaskDraftField(draft, 'target', task.executor ? `${task.executor.kind}:${task.executor.id}` : 'manual')
+  const [design, setDesign] = useTaskDraftField<DesignReference | null>(draft, 'design', () => action === 'approve_design' ? taskDesignReference(task) : null)
   const [version, setVersion] = useTaskDraftField(draft, 'version', task.iterationIds[0] ?? '')
   const [nextStage, setNextStage] = useTaskDraftField<'design_ready' | 'dev_ready'>(draft, 'nextStage', 'design_ready')
   const [workKind, setWorkKind] = useTaskDraftField<HifoxTaskWorkKind>(draft, 'workKind', task.workKind ?? 'code')
@@ -231,6 +212,15 @@ function WorkflowActionDialog({ snapshot, task, action, expectedStage, onClose }
   const [checked, setChecked] = useTaskDraftField<string[]>(draft, 'checked', [])
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [creatingAgent, setCreatingAgent] = useState(false)
+  const [configuringMembers, setConfiguringMembers] = useState(false)
+  const [agentNotice, setAgentNotice] = useState('')
+  const responsibility = action === 'arrange' && workKind !== 'general' ? nextStage === 'design_ready' ? 'design' : 'development' : undefined
+  const recipients = workflowRecipients(snapshot, task, action, responsibility, workspaceContext.state === 'local')
+  const requiredRole = task.workflow?.deliveryState ? ['submit_test', 'pass_test'].includes(action) && task.workKind !== 'general' ? 'testOwnerId' : action === 'submit_delivery' ? 'acceptanceOwnerId' : undefined : undefined
+  const needsRoleMatch = ['approve_design', 'submit_test', 'return_development'].includes(action) || action === 'return_delivery' && task.workKind !== 'general' || Boolean(responsibility)
+  const missingRole = needsRoleMatch && !recipients.some((candidate) => candidate.suggested)
+  const recipientLabel = action === 'return_delivery' && task.workKind === 'general' ? '负责同事' : recipientRole(action)
   const stageChanged = task.workflow?.stage !== expectedStage
   const assigning = action === 'arrange' || action === 'reassign'
   const owns = (): boolean => {
@@ -243,14 +233,19 @@ function WorkflowActionDialog({ snapshot, task, action, expectedStage, onClose }
   }
   function selectTarget(value: string): void {
     setTarget(value)
-    const [kind, id] = value.split(':')
-    if (kind === 'member') setRecipient(id)
-    if (kind === 'crew') { const crew = crews.find((item) => item.id === id); const leader = crew?.captain.kind === 'member' ? crew.captain.id : crew?.ownerId; if (leader) setRecipient(leader) }
+  }
+  function suggestArrangementRecipient(stage: 'design_ready' | 'dev_ready', kind: HifoxTaskWorkKind): void {
+    if (recipient || action !== 'arrange' || kind === 'general') return
+    const candidates = workflowRecipients(snapshot, task, action, stage === 'dev_ready' ? 'development' : 'design', workspaceContext.state === 'local')
+    const suggestion = candidates.find((candidate) => candidate.suggested)
+    if (suggestion) setRecipient(suggestion.member.id)
   }
   async function save(): Promise<void> {
-    if (!owns() || useHifox.getState().busy || inFlight.current || stageChanged || draft.stale) return
+    if (!owns() || useHifox.getState().busy || inFlight.current || creatingAgent || configuringMembers || stageChanged || draft.stale) return
     setError('')
-    if (BODY_REQUIRED.has(action) && !body.trim()) { setError('请填写本次交接内容'); return }
+    const handoffBody = [body.trim(), design && ['submit_design', 'approve_design'].includes(action) ? designReferenceBody(design) : ''].filter(Boolean).join('\n\n')
+    if (BODY_REQUIRED.has(action) && !handoffBody) { setError('请填写本次交接内容，或选择共享设计固定版本'); return }
+    if (HANDED.has(action) && !recipients.some((candidate) => candidate.member.id === recipient)) { setError(`请明确选择本空间的${recipientLabel}；原处理人不会自动代收。`); return }
     const acceptance = criteria.split('\n').map((item) => item.trim()).filter(Boolean)
     if (action === 'arrange' && !acceptance.length) { setError('请补充至少一项验收标准'); return }
     if (action === 'pass_test' && (!(task.acceptanceCriteria?.length) || task.acceptanceCriteria.some((criterion) => !checked.includes(criterion)))) { setError('请逐项确认验收标准'); return }
@@ -258,12 +253,13 @@ function WorkflowActionDialog({ snapshot, task, action, expectedStage, onClose }
     if (assigning) {
       const [kind, id] = target.split(':')
       const entry = kind === 'agent' ? agents.find((item) => item.id === id) : kind === 'crew' ? crews.find((item) => item.id === id) : undefined
-      if (kind === 'member' ? !members.some((member) => member.id === id) : !entry) { setError('原分工已不可用，请重新选择。'); return }
+      if (target !== 'manual' && !entry) { setError('原执行配置已不可用，请重新选择。'); return }
       executor = entry && (kind === 'agent' || kind === 'crew') ? { kind, id: entry.id, name: entry.name } : null
     }
     const input: HifoxTransitionTaskInput = { taskId: task.id, action, expectedStage, expectedUpdatedAt: task.updatedAt,
-      ...(body.trim() ? { body: body.trim() } : action === 'pass_test' ? { body: checked.map((criterion) => `✓ ${criterion}`).join('\n') } : {}),
+      ...(handoffBody ? { body: handoffBody } : action === 'pass_test' ? { body: checked.map((criterion) => `✓ ${criterion}`).join('\n') } : {}),
       ...(HANDED.has(action) && recipient ? { assigneeId: recipient } : {}),
+      ...(task.workflow?.deliveryState ? { expectedDeliveryRevision: task.workflow.deliveryState.revision } : {}),
       ...(action === 'arrange' ? { executor, workKind, acceptanceCriteria: acceptance, ...(workKind === 'code' ? { nextStage } : {}), ...(!task.iterationIds.length && version ? { iterationId: version } : {}) } : {}),
       ...(action === 'reassign' ? { executor } : {}),
       ...(action === 'supplement' && !task.acceptanceCriteria?.length && acceptance.length ? { acceptanceCriteria: acceptance } : {}),
@@ -271,22 +267,48 @@ function WorkflowActionDialog({ snapshot, task, action, expectedStage, onClose }
     inFlight.current = true
     setSubmitting(true)
     const acknowledge = draft.acknowledge()
-    try { const result = await run(WORKFLOW_ACTION_LABELS[action], async () => { if (!owns()) return { ok: false as const, error: '原任务来源已不可操作，请重新打开。' }; const result = await api.hifox.transitionTask(input); if (result.ok) acknowledge(); return result }); if (!owns()) return; if (result?.ok) onClose(); else setError(result && !result.ok ? result.error : '操作尚未完成，请核对结果后重试') }
+    try {
+      const result = await run(WORKFLOW_ACTION_LABELS[action], async () => {
+        if (!owns()) return { ok: false as const, error: '原任务来源已不可操作，请重新打开。' }
+        if (design && ['submit_design', 'approve_design'].includes(action)) {
+          const bridge = api && Object.hasOwn(api, 'hifoxMaterials') ? api.hifoxMaterials : undefined
+          if (!bridge) return { ok: false as const, error: '当前客户端无法核对设计材料，草稿已保留。' }
+          const result = await bridge.read({ workspaceKey: workspaceContext.key, taskId: task.id, taskCreatedAt: task.createdAt, spaceId: task.spaceId, documentId: design.documentId, versionId: design.versionId })
+          if (!owns()) return { ok: false as const, error: '原任务来源已不可操作，请重新打开。' }
+          if (!result.ok) return { ok: false as const, error: result.error }
+          if (!matchesDesignReference(result.value, task, design) || result.value.epoch !== workspaceContext.epoch) return { ok: false as const, error: '原设计版本无法核对，请重新选择。' }
+          if (action === 'approve_design' && (result.value.document.approved?.versionId !== design.versionId || result.value.document.approved.bodyDigest !== design.bodyDigest)) return { ok: false as const, error: '请先在共享材料中批准此固定设计版本，再确认开发交接。' }
+          input.body = [body.trim(), `共享设计：${result.value.selected.title} · v${result.value.selected.number}`, designReferenceBody(design)].filter(Boolean).join('\n\n')
+        }
+        const result = await api.hifox.transitionTask(input)
+        if (result.ok) acknowledge()
+        return result
+      })
+      if (!owns()) return
+      if (result?.ok) onCompleted(result.data)
+      else setError(result && !result.ok ? result.error : '操作尚未完成，请核对结果后重试')
+    }
     catch (cause) { if (owns()) setError(cause instanceof Error ? cause.message : '交接失败') }
     finally { inFlight.current = false; if (mounted.current) setSubmitting(false) }
   }
   return <Modal open onClose={onClose} width={560} ariaLabel={WORKFLOW_ACTION_LABELS[action]} placement="center"><div className="collab-flow-dialog-header"><h2>{action === 'arrange' && task.triagePending ? '接纳并安排' : WORKFLOW_ACTION_LABELS[action]}</h2><Button variant="ghost" size="sm" onClick={onClose} aria-label="关闭交接"><X size={16} /></Button></div>
     <div className="collab-flow-dialog-body my-scrollbar"><fieldset disabled={busy || submitting || stageChanged} className="flex min-w-0 flex-col gap-4">
-      {assigning && <Field label="分配给"><select className={inputClass} value={target} onChange={(event) => selectTarget(event.target.value)}><optgroup label="同事">{members.map((person) => <option key={person.id} value={`member:${person.id}`}>{person.name}{person.title ? ` · ${person.title}` : ''}</option>)}</optgroup><optgroup label="小队">{crews.map((crew) => <option key={crew.id} value={`crew:${crew.id}`}>{crew.name}</option>)}</optgroup><optgroup label="Agent">{agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}</optgroup></select></Field>}
+      {assigning && <div className="space-y-3"><Field label="执行配置"><select className={inputClass} value={target} onChange={(event) => selectTarget(event.target.value)}><option value="manual">人工处理</option>{target !== 'manual' && ![...agents.map((item) => `agent:${item.id}`), ...crews.map((item) => `crew:${item.id}`)].includes(target) && <option value={target} disabled>原执行配置已不可用，请重新选择</option>}<optgroup label="空间小队">{crews.map((crew) => <option key={crew.id} value={`crew:${crew.id}`}>{crew.name}</option>)}</optgroup><optgroup label="空间 Agent">{agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}</optgroup></select></Field>
+        <div className="flex flex-wrap items-center gap-2"><p className="min-w-0 flex-1 text-my-xs text-my-tertiary">{agents.length ? '此处保存执行配置；实际启动需在工作区确认。' : '本空间暂无可独立指派的 Agent，可先创建。'}</p><Button size="sm" variant="outline" disabled={busy || submitting} onClick={() => setCreatingAgent((value) => !value)}>新建空间 Agent</Button></div>
+        {agentNotice && <p role="status" className="text-my-xs text-my-secondary">{agentNotice}</p>}
+        {creatingAgent && <WorkflowAgentSetup snapshot={snapshot} task={task} onClose={() => setCreatingAgent(false)} onCreated={(id) => { if (owns()) { setTarget(`agent:${id}`); setCreatingAgent(false); setAgentNotice('空间 Agent 已创建并选用；交接草稿已保留。') } }} />}
+      </div>}
       {action === 'arrange' && <>
-        <div className="grid grid-cols-2 gap-3"><Field label="工作内容"><select className={inputClass} value={workKind} onChange={(event) => setWorkKind(event.target.value === 'general' ? 'general' : 'code')}><option value="code">研发工作</option><option value="general">日常工作</option></select></Field>{workKind === 'code' && <Field label="下一步"><select className={inputClass} value={nextStage} onChange={(event) => setNextStage(event.target.value === 'dev_ready' ? 'dev_ready' : 'design_ready')}><option value="design_ready">先做设计</option><option value="dev_ready">直接开发</option></select></Field>}</div>
+        <div className="grid grid-cols-2 gap-3"><Field label="工作内容"><select className={inputClass} value={workKind} onChange={(event) => { const kind = event.target.value === 'general' ? 'general' : 'code'; setWorkKind(kind); suggestArrangementRecipient(nextStage, kind) }}><option value="code">研发工作</option><option value="general">日常工作</option></select></Field>{workKind === 'code' && <Field label="下一步"><select className={inputClass} value={nextStage} onChange={(event) => { const stage = event.target.value === 'dev_ready' ? 'dev_ready' : 'design_ready'; setNextStage(stage); suggestArrangementRecipient(stage, workKind) }}><option value="design_ready">先做设计</option><option value="dev_ready">直接开发</option></select></Field>}</div>
         {!task.iterationIds.length && <Field label="版本（选填）"><select className={inputClass} value={version} onChange={(event) => setVersion(event.target.value)}><option value="">未排期</option>{snapshot.iterations.filter((item) => item.spaceId === task.spaceId && item.status !== 'completed').map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field>}
         <Field label="验收标准"><textarea className={textareaClass} value={criteria} onChange={(event) => setCriteria(event.target.value)} placeholder="每行一项" /></Field></>}
       {action === 'pass_test' && <div className="flex flex-col gap-3">{(task.acceptanceCriteria ?? []).map((criterion) => <label key={criterion} className="flex items-start gap-2 text-my-sm"><input type="checkbox" className="mt-0.5" checked={checked.includes(criterion)} onChange={(event) => setChecked((previous) => event.target.checked ? [...previous, criterion] : previous.filter((item) => item !== criterion))} /><span>{criterion}</span></label>)}</div>}
-      {BODY_LABELS[action] && <Field label={BODY_LABELS[action] ?? '交接说明'}><textarea autoFocus className={textareaClass} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void save() } }} /></Field>}
+      {['submit_design', 'approve_design'].includes(action) && <DesignRevisionPicker task={task} purpose={action === 'approve_design' ? 'approve' : 'submit'} value={design} onChange={setDesign} disabled={submitting || busy} />}
+      {BODY_LABELS[action] && <Field label={BODY_LABELS[action] ?? '交接说明'}><textarea autoFocus className={textareaClass} rows={action === 'submit_design' ? 8 : 4} placeholder={action === 'submit_design' ? '可直接编写设计方案、关键交互与评审重点，或关联上方共享设计版本。' : undefined} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void save() } }} /></Field>}
       {action === 'supplement' && !task.acceptanceCriteria?.length && <Field label="验收标准"><textarea className={textareaClass} value={criteria} onChange={(event) => setCriteria(event.target.value)} placeholder="每行一项" /></Field>}
-      {HANDED.has(action) && (!assigning || !target.startsWith('member:')) && <Field label="下一位处理人"><select className={inputClass} value={recipient} onChange={(event) => setRecipient(event.target.value)}>{members.map((person) => <option key={person.id} value={person.id}>{person.name}{person.title ? ` · ${person.title}` : ''}</option>)}</select></Field>}
+      {HANDED.has(action) && <Field label={action === 'arrange' ? workKind === 'general' ? '负责同事' : nextStage === 'design_ready' ? '设计负责人' : '开发负责人' : recipientLabel}><select className={inputClass} value={recipient} onChange={(event) => setRecipient(event.target.value)}><option value="">请选择空间成员</option>{recipient && !recipients.some((candidate) => candidate.member.id === recipient) && <option value={recipient} disabled>原处理人已不可选，请重新选择</option>}{recipients.map(({ member, reason }) => <option key={member.id} value={member.id}>{member.name}{member.id === identity.actor ? '（自己）' : ''} · {reason}</option>)}</select><p className="mt-1 text-my-xs text-my-tertiary">{!recipients.length ? '暂无符合条件的空间成员，请由空间管理员补充成员或指定负责人。' : recipient ? recipients.find((candidate) => candidate.member.id === recipient)?.reason ?? '请重新核对接收人。' : '负责同事接收任务并确认交接；Agent 只作为执行配置。'}</p></Field>}
+      {HANDED.has(action) && <div className="space-y-3">{requiredRole && !recipients.length ? <p role="status" className="text-my-xs text-my-warning-text">此任务尚无可接收交付的指定{requiredRole === 'testOwnerId' ? '测试' : '验收'}负责人，请先核对空间成员与任务职责。</p> : missingRole && <p role="status" className="text-my-xs text-my-warning-text">未找到{responsibility === 'design' ? '设计' : action === 'submit_test' ? '测试' : '开发'}职责匹配的空间成员。可添加同事，或明确指定本空间成员负责本次工作。</p>}<Button size="sm" variant="outline" onClick={() => setConfiguringMembers((value) => !value)}>{requiredRole ? '配置任务交付负责人' : workspaceContext.canManage ? '添加空间成员' : '查看空间成员'}</Button>{configuringMembers && <WorkflowSpaceMembers snapshot={snapshot} task={task} requiredRole={requiredRole} onClose={() => setConfiguringMembers(false)} />}</div>}
     </fieldset>{draft.stale && <div role="alert" className="collab-inline-error"><span>任务内容已更新，草稿已保留。</span><details className="w-full"><summary>查看当前任务</summary><p className="whitespace-pre-wrap break-words">{task.title}{task.description ? `\n${task.description}` : ''}</p><ul className="list-disc pl-4">{task.acceptanceCriteria?.map((criterion, index) => <li key={index}>{criterion}</li>)}</ul></details><Button size="sm" disabled={busy || submitting || stageChanged} onClick={() => { if (owns()) draft.review() }}>已核对，继续编辑</Button></div>}{stageChanged && <div role="alert" className="collab-inline-error">任务阶段已更新，请关闭后核对当前进度。</div>}{error && <div role="alert" className="collab-inline-error">{error}</div>}</div>
-    <footer className="collab-flow-dialog-footer">{draft.hasDraft && <Button variant="ghost" className="mr-auto" disabled={busy || submitting} onClick={() => { if (owns()) { draft.discard(); onClose() } }}>放弃草稿</Button>}<Button variant="outline" onClick={onClose}>取消</Button><Button variant="primary" disabled={busy || submitting || stageChanged || draft.stale} onClick={() => void save()}>{submitting && <Loader2 size={14} className="animate-spin" />}{action === 'arrange' ? '确认安排' : action === 'reassign' ? '确认转交' : WORKFLOW_ACTION_LABELS[action]}</Button></footer>
+    <footer className="collab-flow-dialog-footer">{draft.hasDraft && <Button variant="ghost" className="mr-auto" disabled={busy || submitting} onClick={() => { if (owns()) { draft.discard(); onClose() } }}>放弃草稿</Button>}<Button variant="outline" onClick={onClose}>取消</Button><Button variant="primary" disabled={busy || submitting || creatingAgent || configuringMembers || stageChanged || draft.stale} onClick={() => void save()}>{submitting && <Loader2 size={14} className="animate-spin" />}{action === 'arrange' ? '确认安排' : action === 'reassign' ? '确认转交' : WORKFLOW_ACTION_LABELS[action]}</Button></footer>
   </Modal>
 }

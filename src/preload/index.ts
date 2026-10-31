@@ -30,7 +30,8 @@ import type { BootstrapApi } from '../shared/bootstrap'
 import type { KnowledgeApi } from '../shared/knowledge-access'
 import type { TrellisApi } from '../shared/types'
 import type { TaskConversationsApi } from '../shared/task-conversations'
-import type { ApplicationRuntimeApi, ApplicationRuntimeEvent } from '../shared/app-runtime'
+import type { ApplicationRuntimeApi, ApplicationInstanceApi, ApplicationRuntimeEvent } from '../shared/app-runtime'
+import type { ApplicationTaskRuntimeApi } from '../shared/app-task-runtime'
 import type { GitHistoryRequest, GitCommitRequest, GitCommitDiffRequest } from '../shared/git-readonly'
 import type { GitWorkspaceApi } from '../shared/git-workspace'
 import type { HifoxApi } from '../shared/hifox'
@@ -67,15 +68,25 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
-const applicationApi: ApplicationRuntimeApi = {
+const applicationApi: ApplicationRuntimeApi & ApplicationInstanceApi & ApplicationTaskRuntimeApi = {
+  appRuntimeTaskPlan: input => ipcRenderer.invoke(ipcInvoke.appRuntime.taskPlan, input),
+  appRuntimeTaskVerify: input => ipcRenderer.invoke(ipcInvoke.appRuntime.taskVerify, input),
+  appRuntimeTaskStart: input => ipcRenderer.invoke(ipcInvoke.appRuntime.taskStart, input),
+  appRuntimeTaskReuse: input => ipcRenderer.invoke(ipcInvoke.appRuntime.taskReuse, input),
+  appRuntimeTaskDetach: input => ipcRenderer.invoke(ipcInvoke.appRuntime.taskDetach, input),
   appRuntimeList: (root) => ipcRenderer.invoke(ipcInvoke.appRuntime.list, root),
   appRuntimeSave: (root, input) => ipcRenderer.invoke(ipcInvoke.appRuntime.save, root, input),
   appRuntimeRemove: (root, id, revision) => ipcRenderer.invoke(ipcInvoke.appRuntime.remove, root, id, revision),
   appRuntimeImportNpm: (root, dir, script, name) => ipcRenderer.invoke(ipcInvoke.appRuntime.importNpm, root, dir, script, name),
   appRuntimeStart: (root, id, revision) => ipcRenderer.invoke(ipcInvoke.appRuntime.start, root, id, revision),
-  appRuntimeStop: (root, id) => ipcRenderer.invoke(ipcInvoke.appRuntime.stop, root, id),
-  appRuntimeRestart: (root, id, revision) => ipcRenderer.invoke(ipcInvoke.appRuntime.restart, root, id, revision),
-  appRuntimeLogs: (root, id, after) => ipcRenderer.invoke(ipcInvoke.appRuntime.logs, root, id, after),
+  appRuntimeStop: (root, id, expectedRunId) => ipcRenderer.invoke(ipcInvoke.appRuntime.stop, root, id, expectedRunId),
+  appRuntimeRestart: (root, id, revision, expectedRunId) => ipcRenderer.invoke(ipcInvoke.appRuntime.restart, root, id, revision, expectedRunId),
+  appRuntimeLogs: (root, id, after, expectedRunId) => ipcRenderer.invoke(ipcInvoke.appRuntime.logs, root, id, after, expectedRunId),
+  appRuntimeInventory: (input) => ipcRenderer.invoke(ipcInvoke.appRuntime.inventory, input),
+  appRuntimeStopInstance: (target) => ipcRenderer.invoke(ipcInvoke.appRuntime.stopInstance, target),
+  appRuntimeRestartInstance: (target, expectedRevision) => ipcRenderer.invoke(ipcInvoke.appRuntime.restartInstance, target, expectedRevision),
+  appRuntimeLogsInstance: (target, after) => ipcRenderer.invoke(ipcInvoke.appRuntime.logsInstance, target, after),
+  appRuntimeDetachInstanceReference: (target, referenceId) => ipcRenderer.invoke(ipcInvoke.appRuntime.detachInstanceReference, target, referenceId),
   onAppRuntimeEvent: (listener) => {
     const release = [ipcEvent.appRuntimeChanged, ipcEvent.appRuntimeOutput, ipcEvent.appRuntimeDone]
       .map((channel) => subscribe<ApplicationRuntimeEvent>(channel, listener))
@@ -117,6 +128,33 @@ async function invokeHifox<K extends HifoxInvokeMethod>(method: K, input?: unkno
 }
 
 const api = {
+  hifoxMaterials: {
+    list: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.list, input),
+    read: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.read, input),
+    versions: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.versions, input),
+    submissions: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.submissions, input),
+    command: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.command, input),
+    pending: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.pending, input),
+    reconcile: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.reconcile, input),
+    retry: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.retry, input)
+  } satisfies import('../shared/hifox-task-materials').HifoxTaskMaterialsApi,
+  hifoxResources: {
+    list: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.list, input),
+    task: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.task, input),
+    command: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.command, input),
+    pending: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.pending, input),
+    reconcile: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.reconcile, input),
+    retry: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.retry, input)
+  } satisfies import('../shared/hifox-code-resources').HifoxCodeResourceApi,
+  storage: {
+    scan: () => ipcRenderer.invoke(ipcInvoke.storage.scan),
+    clean: (input: import('../shared/storage').StorageCleanInput) => ipcRenderer.invoke(ipcInvoke.storage.clean, input),
+    openDataDirectory: () => ipcRenderer.invoke(ipcInvoke.storage.openDataDirectory)
+  },
+  onboarding: {
+    status: () => ipcRenderer.invoke(ipcInvoke.onboarding.status),
+    complete: (outcome: import('../shared/onboarding').OnboardingOutcome) => ipcRenderer.invoke(ipcInvoke.onboarding.complete, outcome)
+  },
   bootstrap: {
     status: () => ipcRenderer.invoke(ipcInvoke.bootstrap.status),
     retry: () => ipcRenderer.invoke(ipcInvoke.bootstrap.retry),
@@ -162,6 +200,9 @@ const api = {
     createTask: (input) => invokeHifox('createTask', input),
     transitionTask: (input) => invokeHifox('transitionTask', input),
     recordVersionDelivery: (input) => invokeHifox('recordVersionDelivery', input),
+    saveMilestone: (input) => invokeHifox('saveMilestone', input),
+    completeMilestone: (input) => invokeHifox('completeMilestone', input),
+    removeMilestone: (input) => invokeHifox('removeMilestone', input),
     updateTask: (input) => invokeHifox('updateTask', input),
     removeTask: (input) => invokeHifox('removeTask', input),
     addRelation: (input) => invokeHifox('addRelation', input),
@@ -176,6 +217,7 @@ const api = {
     saveView: (input) => invokeHifox('saveView', input),
     removeView: (input) => invokeHifox('removeView', input),
     triage: (input) => invokeHifox('triage', input),
+    recordTaskDelivery: (input) => invokeHifox('recordTaskDelivery', input),
     saveAutomation: (input) => invokeHifox('saveAutomation', input),
     toggleAutomation: (input) => invokeHifox('toggleAutomation', input),
     removeAutomation: (input) => invokeHifox('removeAutomation', input),
@@ -193,8 +235,41 @@ const api = {
   } satisfies HifoxApi,
   hifoxWork: {
     status: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.status, input),
-    prepare: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.prepare, input)
+    prepare: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.prepare, input),
+    development: input => ipcRenderer.invoke(ipcInvoke.hifoxWork.development, input),
+    change: input => ipcRenderer.invoke(ipcInvoke.hifoxWork.change, input)
   } satisfies HifoxWorkApi,
+  teamContent: {
+    readiness: input => ipcRenderer.invoke(ipcInvoke.teamContent.readiness, input),
+    generate: input => ipcRenderer.invoke(ipcInvoke.teamContent.generate, input),
+    job: input => ipcRenderer.invoke(ipcInvoke.teamContent.job, input),
+    receipt: input => ipcRenderer.invoke(ipcInvoke.teamContent.receipt, input),
+    cancel: input => ipcRenderer.invoke(ipcInvoke.teamContent.cancel, input),
+    listReferences: input => ipcRenderer.invoke(ipcInvoke.teamContent.listReferences, input),
+    config: input => ipcRenderer.invoke(ipcInvoke.teamContent.config, input),
+    configure: input => ipcRenderer.invoke(ipcInvoke.teamContent.configure, input),
+    probe: input => ipcRenderer.invoke(ipcInvoke.teamContent.probe, input)
+  } satisfies import('../shared/team-content-api').TeamContentApi,
+  hifoxGovernance: {
+    readDocument: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.readDocument, input),
+    list: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.list, input),
+    read: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.read, input),
+    command: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.command, input),
+    inputs: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.inputs, input),
+    candidates: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.candidates, input),
+    adopt: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.adopt, input),
+    inputRevision: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.inputRevision, input),
+    pending: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.pending, input),
+    reconcile: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.reconcile, input),
+    retry: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.retry, input)
+  } satisfies import('../shared/team-governance').TeamGovernanceApi,
+  taskOutputs: {
+    read: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.read, input),
+    preview: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.preview, input),
+    confirm: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.confirm, input),
+    compare: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.compare, input),
+    recover: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.recover, input)
+  } satisfies import('../shared/hifox-task-outputs').TaskOutputsApi,
   hifoxProgress: {
     status: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.status, input),
     start: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.start, input),
@@ -459,6 +534,19 @@ const api = {
   kbQaClear: () => ipcRenderer.invoke(ipcInvoke.kb.qaClear),
 
   teamDesktop: {
+    authOptions: (origin) => ipcRenderer.invoke(ipcInvoke.teamDesktop.authOptions, origin),
+    accounts: () => ipcRenderer.invoke(ipcInvoke.teamDesktop.accounts),
+    login: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.login, input),
+    register: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.register, input),
+    logout: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.logout, id),
+    organizations: (id, options) => ipcRenderer.invoke(ipcInvoke.teamDesktop.organizations, id, options),
+    createOrganization: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.createOrganization, input),
+    workspaces: (id, options) => ipcRenderer.invoke(ipcInvoke.teamDesktop.workspaces, id, options),
+    createWorkspace: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.createWorkspace, input),
+    createInvitation: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.createInvitation, input),
+    inspectInvitation: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.inspectInvitation, input),
+    acceptInvitation: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.acceptInvitation, input),
+    connectWorkspace: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.connectWorkspace, input),
     connections: () => ipcRenderer.invoke(ipcInvoke.teamDesktop.connections),
     connectionContext: (id) => ipcRenderer.invoke(ipcInvoke.teamDesktop.connectionContext, id),
     beginPairing: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.beginPairing, input),
