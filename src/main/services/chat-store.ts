@@ -1,288 +1,175 @@
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
-import { join } from 'path'
-import type { ChatMessage, ChatSessionMeta, ThinkingLevel } from '../../shared/types'
+import { lstatSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { z } from 'zod'
+import { readBounded } from '../daemon/files'
+import type { ChatSessionMeta, ChatSessionView } from '../../shared/types'
 
-/**
- * 会话存储 v2（TPD-016）：树结构。
- *   nodes: { id → { id, role, content, reasoning?, parent } }，activeLeaf 指向当前叶；
- *   活跃对话 = activeLeaf 向上回溯到根的路径。
- * 分支：同 parent 的兄弟节点即备选回答/编辑重发分支；旧分支永不丢弃，可随时切回。
- * v1（线性 messages 数组）打开时自动迁移为链。写入走 tmp+rename 原子替换。
- */
+/** Read historical files in full or fail; never truncate or rewrite an archive. */
+const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+const MAX_ARCHIVE_NODES = 50_000
+const sessionIdSchema = z.string().min(1).max(128).regex(/^[a-z0-9-]+$/i)
+const nodeIdSchema = z.string().min(1).max(256)
+export const archiveQuerySchema = z.object({ id: sessionIdSchema, branchId: nodeIdSchema.optional() })
+const messageSchema = z.object({
+  role: z.enum(['system', 'user', 'assistant']),
+  content: z.string(),
+  reasoning: z.string().optional(),
+  images: z.array(z.object({ mediaType: z.string(), dataBase64: z.string() }).passthrough()).optional(),
+  toolOps: z.array(z.object({
+    toolName: z.string(), argsSummary: z.string(), status: z.enum(['success', 'error', 'denied']), elapsedMs: z.number().finite(),
+    sources: z.array(z.object({ title: z.string(), path: z.string(), library: z.string().optional() }).passthrough()).optional()
+  }).passthrough()).optional()
+}).passthrough()
+const nodeSchema = messageSchema.extend({ id: nodeIdSchema, parent: nodeIdSchema.nullable() })
+const metadataSchema = z.object({
+  id: sessionIdSchema, title: z.string(), createdAt: z.number().finite(), updatedAt: z.number().finite(),
+  providerId: z.string().nullable().default(null), modelId: z.string().nullable().default(null),
+  thinkingLevel: z.enum(['off', 'low', 'medium', 'high']).default('off'),
+  agent: z.boolean().optional(), taskDir: z.string().nullable().optional()
+}).passthrough()
+const treeSchema = metadataSchema.extend({
+  version: z.literal(2), nodes: z.record(nodeIdSchema, nodeSchema).refine((nodes) => Object.keys(nodes).length <= MAX_ARCHIVE_NODES),
+  activeLeaf: nodeIdSchema.nullable()
+})
+const linearSchema = metadataSchema.extend({ version: z.literal(1).optional(), messages: z.array(messageSchema).max(MAX_ARCHIVE_NODES) })
 
-/** 仅依赖 getPath 的应用注入面（Electron App 与冒烟桩均可满足） */
 export interface AppPathProvider {
   getPath: (name: 'userData' | 'home' | 'appData' | 'temp') => string
 }
-
-export interface ChatNode extends ChatMessage {
-  id: string
-  parent: string | null
-}
-
-export interface ChatSessionTree {
-  version: 2
-  id: string
-  title: string
-  createdAt: number
-  updatedAt: number
-  providerId: string | null
-  modelId: string | null
-  thinkingLevel: ThinkingLevel
-  /** agent 工具循环开关（TPD-020） */
-  agent?: boolean
-  /** 会话聚焦的任务目录（对话上下文绑定到该任务） */
-  taskDir?: string | null
-  /** allow-session 的工具白名单（随会话持久化） */
-  allowedTools?: string[]
-  /** 有成功执行证据的工具（roadmap #6：每轮只恢复激活工具的 schema） */
-  activeTools?: string[]
-  nodes: Record<string, ChatNode>
-  activeLeaf: string | null
-}
-
-let dir: string | null = null
+export type ChatNode = z.infer<typeof nodeSchema>
+export type ChatSessionTree = z.infer<typeof treeSchema>
 
 function sessionsDir(app: AppPathProvider): string {
-  if (!dir) {
-    dir = join(app.getPath('userData'), 'chat-sessions')
-    mkdirSync(dir, { recursive: true })
+  return join(app.getPath('userData'), 'chat-sessions')
+}
+
+function parseSession(text: string, expectedId: string): ChatSessionTree {
+  const raw: unknown = JSON.parse(text)
+  let session: ChatSessionTree
+  if (raw && typeof raw === 'object' && 'messages' in raw && (!('version' in raw) || raw.version === 1)) {
+    const linear = linearSchema.safeParse(raw)
+    if (!linear.success) throw new Error('历史会话格式损坏')
+    const { messages, ...metadata } = linear.data
+    const nodes: Record<string, ChatNode> = {}
+    let activeLeaf: string | null = null
+    for (const [index, message] of messages.entries()) {
+      const id = 'legacy-' + index
+      nodes[id] = { ...message, id, parent: activeLeaf }
+      activeLeaf = id
+    }
+    // Stable, read-only projection of original linear records; no disk migration.
+    session = { ...metadata, version: 2, nodes, activeLeaf }
+  } else {
+    const tree = treeSchema.safeParse(raw)
+    if (!tree.success) throw new Error('历史会话格式损坏')
+    session = tree.data
   }
-  return dir
-}
-
-function filePath(app: AppPathProvider, id: string): string {
-  if (!/^[a-z0-9-]+$/i.test(id)) throw new Error('非法会话 ID')
-  return join(sessionsDir(app), `${id}.json`)
-}
-
-function persist(app: AppPathProvider, session: ChatSessionTree): void {
-  const p = filePath(app, session.id)
-  const tmp = `${p}.tmp`
-  writeFileSync(tmp, JSON.stringify(session, null, 2), 'utf-8')
-  renameSync(tmp, p)
-}
-
-export function newSessionId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-export function newNodeId(): string {
-  return `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-}
-
-export function createSession(
-  app: AppPathProvider,
-  binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel }
-): ChatSessionTree {
-  const now = Date.now()
-  const session: ChatSessionTree = {
-    version: 2,
-    id: newSessionId(),
-    title: '新对话',
-    createdAt: now,
-    updatedAt: now,
-    providerId: binding?.providerId ?? null,
-    modelId: binding?.modelId ?? null,
-    thinkingLevel: binding?.thinkingLevel ?? 'off',
-    // 新会话默认开启 agent 工具循环（面向普通用户的核心能力；非 openai 格式自动回退纯对话）
-    agent: true,
-    nodes: {},
-    activeLeaf: null
+  if (session.id !== expectedId) throw new Error('历史会话 ID 与文件不匹配')
+  const checked = new Set<string>()
+  for (const [id, node] of Object.entries(session.nodes)) {
+    if (node.id !== id) throw new Error('历史消息 ID 与节点不匹配')
+    const path = new Set<string>()
+    let cursor: string | null = id
+    while (cursor !== null && !checked.has(cursor)) {
+      if (path.has(cursor)) throw new Error('历史会话存在循环分支')
+      if (!Object.hasOwn(session.nodes, cursor)) throw new Error('历史会话存在缺失的父节点')
+      path.add(cursor)
+      cursor = session.nodes[cursor].parent
+    }
+    for (const visited of path) checked.add(visited)
   }
-  persist(app, session)
+  if (session.activeLeaf !== null && !Object.hasOwn(session.nodes, session.activeLeaf)) throw new Error('历史会话的当前分支不存在')
   return session
 }
 
-/** v1（线性 messages）→ v2 树迁移 */
-function migrateV1(raw: Record<string, unknown>): ChatSessionTree {
-  const messages = Array.isArray(raw.messages) ? (raw.messages as ChatMessage[]) : []
-  const nodes: Record<string, ChatNode> = {}
-  let parent: string | null = null
-  let leaf: string | null = null
-  for (const m of messages) {
-    const id = newNodeId()
-    nodes[id] = { id, parent, role: m.role, content: m.content, ...(m.reasoning ? { reasoning: m.reasoning } : {}) }
-    parent = id
-    leaf = id
+export function openSession(app: AppPathProvider, id: string): ChatSessionTree | null {
+  if (!sessionIdSchema.safeParse(id).success) throw new Error('非法会话 ID')
+  const file = join(sessionsDir(app), id + '.json')
+  try {
+    const stat = lstatSync(file)
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('历史会话必须是普通文件')
+    if (stat.size > MAX_ARCHIVE_BYTES) throw new Error('历史会话超过 64 MiB 读取上限，原文件保持不变')
+    return parseSession(readBounded(file, Math.min(stat.size + 1, MAX_ARCHIVE_BYTES)), id)
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return null
+    throw error
   }
+}
+
+/** The saved current branch is the default; a selected archive branch stays local to the read. */
+export function activePath(session: ChatSessionTree, leafId: string | null = session.activeLeaf): ChatNode[] {
+  const path: ChatNode[] = [], seen = new Set<string>()
+  let cursor = leafId
+  while (cursor !== null) {
+    if (seen.has(cursor)) throw new Error('历史会话存在循环分支')
+    if (!Object.hasOwn(session.nodes, cursor)) throw new Error('历史分支节点不存在')
+    seen.add(cursor)
+    const node = session.nodes[cursor]
+    path.push(node)
+    cursor = node.parent
+  }
+  return path.reverse()
+}
+
+/** Follow the last stored child, without changing activeLeaf or timestamps. */
+export function deepestLeaf(session: ChatSessionTree, nodeId: string): string {
+  if (!Object.hasOwn(session.nodes, nodeId)) throw new Error('历史分支节点不存在')
+  const lastChild = new Map<string, string>()
+  for (const node of Object.values(session.nodes)) if (node.parent !== null) lastChild.set(node.parent, node.id)
+  const seen = new Set<string>()
+  let cursor = nodeId
+  for (;;) {
+    if (seen.has(cursor)) throw new Error('历史会话存在循环分支')
+    if (!Object.hasOwn(session.nodes, cursor)) throw new Error('历史分支节点不存在')
+    seen.add(cursor)
+    const child = lastChild.get(cursor)
+    if (!child) return cursor
+    cursor = child
+  }
+}
+
+function sessionMeta(session: ChatSessionTree, messageCount: number): ChatSessionMeta {
   return {
-    version: 2,
-    id: String(raw.id ?? newSessionId()),
-    title: String(raw.title ?? '新对话'),
-    createdAt: Number(raw.createdAt ?? Date.now()),
-    updatedAt: Number(raw.updatedAt ?? Date.now()),
-    providerId: (raw.providerId as string | null) ?? null,
-    modelId: (raw.modelId as string | null) ?? null,
-    thinkingLevel: (raw.thinkingLevel as ThinkingLevel) ?? 'off',
-    nodes,
-    activeLeaf: leaf
+    id: session.id, title: session.title, createdAt: session.createdAt, updatedAt: session.updatedAt, messageCount,
+    providerId: session.providerId, modelId: session.modelId, thinkingLevel: session.thinkingLevel,
+    agent: session.agent ?? false, taskDir: session.taskDir ?? null
   }
 }
 
-function parseSession(rawText: string): ChatSessionTree {
-  const raw = JSON.parse(rawText) as Record<string, unknown>
-  if (Array.isArray(raw.messages)) return migrateV1(raw)
-  return raw as unknown as ChatSessionTree
-}
-
-/** 活跃路径：activeLeaf 回溯到根后正序 */
-export function activePath(session: ChatSessionTree): ChatNode[] {
-  const path: ChatNode[] = []
-  let cur = session.activeLeaf ? session.nodes[session.activeLeaf] : undefined
-  while (cur) {
-    path.unshift(cur)
-    cur = cur.parent ? session.nodes[cur.parent] : undefined
+export function sessionView(session: ChatSessionTree, branchId?: string): ChatSessionView {
+  const leaf = branchId === undefined ? session.activeLeaf : deepestLeaf(session, branchId)
+  const siblings = new Map<string | null, string[]>()
+  for (const node of Object.values(session.nodes)) {
+    const group = siblings.get(node.parent) ?? []
+    group.push(node.id)
+    siblings.set(node.parent, group)
   }
-  return path
+  const messages = activePath(session, leaf).map((node) => {
+    const ids = siblings.get(node.parent) ?? [node.id]
+    return {
+      id: node.id, role: node.role, content: node.content,
+      ...(node.reasoning !== undefined ? { reasoning: node.reasoning } : {}),
+      ...(node.images ? { images: node.images } : {}), ...(node.toolOps ? { toolOps: node.toolOps } : {}),
+      siblingCount: ids.length, siblingIndex: ids.indexOf(node.id), siblingIds: ids
+    }
+  })
+  return { ...sessionMeta(session, messages.length), messages }
 }
 
 export function listSessions(app: AppPathProvider): ChatSessionMeta[] {
-  const d = sessionsDir(app)
-  const out: ChatSessionMeta[] = []
-  try {
-    for (const f of readdirSync(d)) {
-      if (!f.endsWith('.json') || f.endsWith('.tmp.json')) continue
-      try {
-        const s = parseSession(readFileSync(join(d, f), 'utf-8'))
-        if (!s?.id) continue
-        out.push({
-          id: s.id,
-          title: s.title,
-          createdAt: s.createdAt,
-          updatedAt: s.updatedAt,
-          messageCount: activePath(s).length,
-          providerId: s.providerId,
-          modelId: s.modelId,
-          thinkingLevel: s.thinkingLevel ?? 'off',
-          agent: s.agent ?? false,
-          taskDir: s.taskDir ?? null
-        })
-      } catch {
-        // 单个损坏文件不影响列表
-      }
-    }
-  } catch {
-    // 目录不存在 → 空列表
+  let entries: string[]
+  try { entries = readdirSync(sessionsDir(app)) }
+  catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return []
+    throw error
   }
-  return out.sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-export function openSession(app: AppPathProvider, id: string): ChatSessionTree | null {
-  const p = filePath(app, id)
-  if (!existsSync(p)) return null
-  return parseSession(readFileSync(p, 'utf-8'))
-}
-
-export function deleteSession(app: AppPathProvider, id: string): void {
-  const p = filePath(app, id)
-  if (existsSync(p)) rmSync(p)
-}
-
-export function renameSession(app: AppPathProvider, id: string, title: string): void {
-  const s = openSession(app, id)
-  if (!s) throw new Error('会话不存在')
-  s.title = String(title ?? '').slice(0, 80) || s.title
-  persist(app, s)
-}
-
-export function updateBinding(
-  app: AppPathProvider,
-  id: string,
-  binding: {
-    providerId?: string | null
-    modelId?: string | null
-    thinkingLevel?: ThinkingLevel
-    agent?: boolean
-    taskDir?: string | null
+  const sessions: ChatSessionMeta[] = []
+  for (const file of entries) {
+    if (!file.endsWith('.json')) continue
+    try {
+      const session = openSession(app, file.slice(0, -5))
+      if (session) sessions.push(sessionMeta(session, activePath(session).length))
+    } catch { /* One unreadable archive does not hide intact records. */ }
   }
-): void {
-  const s = openSession(app, id)
-  if (!s) throw new Error('会话不存在')
-  if ('providerId' in binding) s.providerId = binding.providerId ?? null
-  if ('modelId' in binding) s.modelId = binding.modelId ?? null
-  if ('thinkingLevel' in binding && binding.thinkingLevel) s.thinkingLevel = binding.thinkingLevel
-  if (binding.agent !== undefined) s.agent = binding.agent
-  if (binding.taskDir !== undefined) s.taskDir = binding.taskDir
-  persist(app, s)
-}
-
-/** 激活工具恢复：记录成功执行过的工具（roadmap #6） */
-export function addActiveTool(app: AppPathProvider, id: string, toolName: string): void {
-  const s = openSession(app, id)
-  if (!s) throw new Error('会话不存在')
-  s.activeTools = s.activeTools ?? []
-  if (!s.activeTools.includes(toolName)) s.activeTools.push(toolName)
-  persist(app, s)
-}
-
-/** allow-session：加入会话工具白名单 */
-export function addAllowedTool(app: AppPathProvider, id: string, toolName: string): void {
-  const s = openSession(app, id)
-  if (!s) throw new Error('会话不存在')
-  s.allowedTools = s.allowedTools ?? []
-  if (!s.allowedTools.includes(toolName)) s.allowedTools.push(toolName)
-  persist(app, s)
-}
-
-/** 活跃叶追加消息节点并置为 activeLeaf */
-export function appendNode(app: AppPathProvider, id: string, message: ChatMessage): ChatNode {
-  const s = openSession(app, id)
-  if (!s) throw new Error('会话不存在')
-  return addChildNode(app, id, s.activeLeaf, message)
-}
-
-/** 在指定父节点下创建兄弟节点（编辑重发/分支/regenerate 用） */
-export function addChildNode(
-  app: AppPathProvider,
-  id: string,
-  parentId: string | null,
-  message: ChatMessage
-): ChatNode {
-  const s = openSession(app, id)
-  if (!s) throw new Error('会话不存在')
-  const node: ChatNode = {
-    id: newNodeId(),
-    parent: parentId,
-    role: message.role,
-    content: message.content,
-    ...(message.reasoning ? { reasoning: message.reasoning } : {}),
-    ...(message.images?.length ? { images: message.images } : {}),
-    ...(message.toolOps?.length ? { toolOps: message.toolOps } : {})
-  }
-  s.nodes[node.id] = node
-  s.activeLeaf = node.id
-  s.updatedAt = Date.now()
-  persist(app, s)
-  return node
-}
-
-/** 分支下潜：从指定节点沿"最后子节点"链下潜到最深后代叶（局部视图语义，TPD-023） */
-export function deepestLeaf(session: ChatSessionTree, nodeId: string): string {
-  let cur = nodeId
-  for (;;) {
-    let lastChild: ChatNode | null = null
-    for (const n of Object.values(session.nodes)) {
-      if (n.parent === cur) lastChild = n // Object.values 按插入序 → 最后一个即最新子节点
-    }
-    if (!lastChild) return cur
-    cur = lastChild.id
-  }
-}
-
-/** 分支切换：activeLeaf 置为指定节点 */
-export function setLeaf(app: AppPathProvider, id: string, leafId: string): void {
-  const s = openSession(app, id)
-  if (!s) throw new Error('会话不存在')
-  if (!s.nodes[leafId]) throw new Error('分支节点不存在')
-  s.activeLeaf = leafId
-  s.updatedAt = Date.now()
-  persist(app, s)
-}
-
-/** 同 parent 兄弟节点（含自身），按 nodes 插入顺序 */
-export function siblingsOf(session: ChatSessionTree, nodeId: string): ChatNode[] {
-  const node = session.nodes[nodeId]
-  if (!node) return []
-  return Object.values(session.nodes).filter((n) => n.parent === node.parent)
+  return sessions.sort((a, b) => b.updatedAt - a.updatedAt)
 }

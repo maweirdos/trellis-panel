@@ -6,7 +6,6 @@ import { toastSlice } from './slices/toast'
 import { viewerSlice } from './slices/viewer'
 import { todosSlice } from './slices/todos'
 import { inboxSlice } from './slices/inbox'
-import { chatSlice } from './slices/chat'
 import { readerSlice } from './slices/reader'
 import { observationSlice } from './slices/observation'
 
@@ -21,7 +20,6 @@ export const useApp = create<AppState>()((set, get, store) => ({
   ...viewerSlice(set, get, store),
   ...todosSlice(set, get, store),
   ...inboxSlice(set, get, store),
-  ...chatSlice(set, get, store),
   ...readerSlice(set, get, store),
   ...observationSlice(set, get, store)
 }))

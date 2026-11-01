@@ -29,7 +29,7 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
     if (!frame) throw new ConversationError('原页面不可用', IpcErrorCode.Denied)
     if (!watched.has(sender)) {
       watched.add(sender)
-      sender.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => { if (isMainFrame) releaseDocument(sender) })
+      sender.on('did-start-navigation', (_event, _url, inPlace, isMainFrame) => { if (isMainFrame && !inPlace) releaseDocument(sender) })
       sender.on('render-process-gone', () => releaseDocument(sender))
       sender.once('destroyed', () => releaseDocument(sender))
     }
@@ -43,8 +43,10 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
   function capture(event: IpcMainInvokeEvent): () => void {
     const frame = event.senderFrame, main = deps.getMain()
     if (!main || main.isDestroyed() || main.webContents !== event.sender || !frame || frame !== event.sender.mainFrame || frame.parent) throw new ConversationError('请从应用主页面操作私有会话', IpcErrorCode.Denied)
-    const processId = frame.processId, routingId = frame.routingId, url = frame.url, owner = documentOwner(event)
-    return () => { if (event.sender.isDestroyed() || frame.isDestroyed() || event.sender.mainFrame !== frame || frame.processId !== processId || frame.routingId !== routingId || frame.url !== url || documents.get(event.sender)?.owner !== owner) throw new ConversationError('原页面已变化，请重新操作') }
+    // Reading a Markdown anchor keeps the same document and its admitted work.
+    const documentUrl = (value: string): string => { const url = new URL(value); url.hash = ''; return url.href }
+    const processId = frame.processId, routingId = frame.routingId, url = documentUrl(frame.url), owner = documentOwner(event)
+    return () => { if (event.sender.isDestroyed() || frame.isDestroyed() || event.sender.mainFrame !== frame || frame.processId !== processId || frame.routingId !== routingId || documentUrl(frame.url) !== url || documents.get(event.sender)?.owner !== owner) throw new ConversationError('原页面已变化，请重新操作') }
   }
   const fail = (error: unknown) => ipcFail(error instanceof ConversationError ? error.code : error instanceof z.ZodError ? IpcErrorCode.InvalidArg : IpcErrorCode.Io,
     error instanceof Error ? error.message : '私有会话操作未完成')

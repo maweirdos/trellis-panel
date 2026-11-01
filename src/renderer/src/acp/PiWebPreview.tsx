@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api } from '../api'
 import { Button } from '../my/ui'
 import { useApp } from '../store'
 import { projectRootKey } from '../my/navigation'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
+import { useDocumentSource } from '../reader/document-source'
 import type { AcpSessionRecord } from '../../../shared/types'
 import type { PiWebPreviewArtifact, PiWebPreviewLease } from '../../../shared/pi-web-preview'
 import { PreviewToolbar } from './PreviewToolbar'
@@ -15,6 +16,7 @@ export function PiWebPreview({ artifact, session, expanded, onToggleExpanded, on
   onToggleExpanded: () => void; onClose?: () => void; active?: boolean
 }): JSX.Element {
   const root = useApp(state => state.snapshot?.meta.root ?? '')
+  const source = useDocumentSource()
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
   const signal = useInteractionSignal()
@@ -33,19 +35,20 @@ export function PiWebPreview({ artifact, session, expanded, onToggleExpanded, on
   const [externalError, setExternalError] = useState('')
   const [openingExternal, setOpeningExternal] = useState(false)
   const externalRequest = useRef(0)
-  const enabled = interactive && !signal?.aborted && projectRootKey(root) === projectRootKey(session.projectRoot)
+  const isCurrentSource = useCallback((): boolean => source ? source.isCurrent() : projectRootKey(useApp.getState().snapshot?.meta.root ?? '') === projectRootKey(session.projectRoot), [source, session.projectRoot])
+  const enabled = interactive && !signal?.aborted && (source ? source.isCurrent() : projectRootKey(root) === projectRootKey(session.projectRoot))
   useEffect(() => {
     let current = true, owned: PiWebPreviewLease | null = null, polling = false
     let timer: ReturnType<typeof setTimeout> | undefined
-    const ownsSource = (): boolean => current && ownerRef.current === ownerKey && !signal?.aborted && projectRootKey(useApp.getState().snapshot?.meta.root ?? '') === projectRootKey(session.projectRoot)
+    const ownsSource = (): boolean => current && ownerRef.current === ownerKey && !signal?.aborted && isCurrentSource()
     setOpened(null); setError(''); setFileRevision(''); setRenderedRevision(''); setExternalError(''); setOpeningExternal(false)
     externalRequest.current += 1
     if (!enabled) return
     const release = (): void => { if (owned) { const id = owned.id; owned = null; void api.acpPiWebPreviewClose(id).catch(() => undefined) } }
     const stop = (): void => { current = false; if (timer) clearTimeout(timer); release() }
     signal?.addEventListener('abort', stop, { once: true })
-    // Fence synchronous root transitions, including a batched A -> B -> A.
-    const unsubscribe = useApp.subscribe(state => {
+    // Ordinary project sources follow shell transitions; private sources own their own fence.
+    const unsubscribe = source ? () => undefined : useApp.subscribe(state => {
       if (projectRootKey(state.snapshot?.meta.root ?? '') !== projectRootKey(session.projectRoot)) { stop(); setOpened(null); setError('项目已切换，请重新打开预览。') }
     })
     const poll = (): void => {
@@ -77,7 +80,7 @@ export function PiWebPreview({ artifact, session, expanded, onToggleExpanded, on
       } catch (failure) { release(); if (ownsSource()) setError(failure instanceof Error ? failure.message : '无法打开预览') }
     })()
     return () => { unsubscribe(); signal?.removeEventListener('abort', stop); stop(); refreshStatus.current = () => undefined; externalRequest.current += 1 }
-  }, [enabled, session.projectRoot, session.sessionId, session.connectionGeneration, artifact.path, ownerKey, attempt, signal])
+  }, [enabled, session.projectRoot, session.sessionId, session.connectionGeneration, artifact.path, ownerKey, attempt, signal, source, isCurrentSource])
   // Hidden tabs collect revisions without disturbing their frame. Activation only
   // reloads when actual file bytes changed, never because visibility changed.
   useLayoutEffect(() => {
@@ -85,10 +88,10 @@ export function PiWebPreview({ artifact, session, expanded, onToggleExpanded, on
   }, [active, lease?.id, fileRevision])
   useEffect(() => { if (active) refreshStatus.current() }, [active])
   const openExternal = async (): Promise<void> => {
-    if (!lease || error || openingExternal || !activeRef.current || !canInteract() || !enabled) return
+    if (!lease || error || openingExternal || !activeRef.current || !canInteract() || !enabled || !isCurrentSource()) return
     const request = ++externalRequest.current
     const owner = ownerKey
-    const ownsRequest = (): boolean => request === externalRequest.current && ownerRef.current === owner && activeRef.current && canInteract() && projectRootKey(useApp.getState().snapshot?.meta.root ?? '') === projectRootKey(session.projectRoot)
+    const ownsRequest = (): boolean => request === externalRequest.current && ownerRef.current === owner && activeRef.current && canInteract() && !signal?.aborted && isCurrentSource()
     setOpeningExternal(true); setExternalError('')
     try {
       const result = await api.acpPiWebPreviewOpenExternal(lease.id)

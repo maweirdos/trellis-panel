@@ -1,0 +1,27 @@
+.private-project-form { display: grid; gap: var(--my-space-8); padding: var(--my-space-8); }
+.private-project-form .my-input { width: 100%; }
+.private-project-group>summary,.private-archive-group>summary { cursor: pointer; list-style: none; }
+.private-project-group>summary::-webkit-details-marker,.private-archive-group>summary::-webkit-details-marker { display: none; }
+.private-project-group[open]>summary .private-project-chevron { transform: rotate(90deg); }
+.private-project-conversations { padding-left: var(--my-space-12); }
+.private-archive-group { margin-top: var(--my-space-20); padding-top: var(--my-space-12); border-top: 1px solid var(--my-border-subtle); }
+.private-archive-group[open]>summary>svg:last-child { transform: rotate(90deg); }
+.private-archive-notice { display: flex; align-items: center; gap: var(--my-space-6); padding-bottom: var(--my-space-20); }
+.private-archive-answer { margin-block: var(--my-space-20) var(--my-space-28); }
+.private-archive-process { margin-block: var(--my-space-8); }
+.private-archive-process>summary { cursor: pointer; }
+.private-archive-process>div,.private-archive-process>pre { max-height: var(--my-composer-max-height); overflow: auto; padding: var(--my-space-12); }
+.private-archive-image { max-height: var(--my-composer-max-height); max-width: 100%; border-radius: var(--my-radius-base); margin-bottom: var(--my-space-8); }
+.private-files-heading { display: flex; align-items: center; gap: var(--my-space-8); padding: var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); }
+.private-files-heading>div { flex: 1; min-width: 0; }
+.private-files-heading p { margin-top: var(--my-space-4); }
+.private-files-body { max-height: 65vh; overflow-y: auto; padding: var(--my-space-16); scrollbar-gutter: stable; }
+.private-file-group+.private-file-group { margin-top: var(--my-space-24); }
+.private-file-group>h3 { margin-bottom: var(--my-space-8); }
+.private-file-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--my-space-10); padding-block: var(--my-space-10); border-bottom: 1px solid var(--my-border-subtle); }
+.private-file-icon { color: var(--my-txt-tertiary); }
+.private-file-identity { flex: 1; min-width: 0; }
+.private-file-identity>span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.private-file-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--my-space-4); }
+.private-files-empty { padding-block: var(--my-space-8); }
+@media (max-width: 600px) { .private-file-actions { width: 100%; justify-content: flex-end; } }

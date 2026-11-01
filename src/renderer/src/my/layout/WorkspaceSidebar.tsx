@@ -7,7 +7,7 @@ import { NavIcon } from '../icons'
 import { SidebarResizeHandle, useSidebarWidthStyle } from './SidebarResizeHandle'
 import { contextButtonClass } from './ModuleLinks'
 import { SettingsNavigation } from './SettingsNavigation'
-import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, PRIMARY_NAVIGATION, type ModuleId, type TeamView } from '../navigation'
+import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, pageRequiresProject, PRIMARY_NAVIGATION, type ModuleId, type TeamView } from '../navigation'
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
   home: <CircleUser className="my-module-icon" aria-hidden="true" />,
@@ -22,12 +22,18 @@ export function WorkspaceSidebar(): JSX.Element {
   const page = useApp((state) => state.page)
   const setPage = useApp((state) => state.setPage)
   const collapsed = useMy((state) => state.sidebarCollapsed)
+  const hasProject = useApp((state) => Boolean(state.snapshot?.meta.root))
   const current = activeModule(page)
   const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center transition-colors hover:text-my-primary', selected ? 'is-selected text-my-primary' : 'text-my-icon-secondary')
   return <>
     <aside aria-label="模块栏" className="my-module-rail flex h-full shrink-0 flex-col items-center">
-      <nav aria-label="项目模块" className="my-scrollbar flex min-h-0 w-full flex-1 flex-col items-center">
-        {PRIMARY_NAVIGATION.map((item) => <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={current === item.id ? 'page' : undefined} onClick={() => { const remembered = useMy.getState().modulePages; const target = remembered[item.id] ?? (item.id === 'home' ? remembered.tasks : undefined) ?? item.page; if (current !== item.id && useApp.getState().page !== target) setPage(target) }} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
+      <nav aria-label="应用模块" className="my-scrollbar flex min-h-0 w-full flex-1 flex-col items-center">
+        {PRIMARY_NAVIGATION.map((item) => <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={current === item.id ? 'page' : undefined} onClick={() => {
+          const remembered = useMy.getState().modulePages
+          const saved = remembered[item.id] ?? (item.id === 'home' ? remembered.tasks : undefined)
+          const target = item.id === 'agents' || !saved || pageRequiresProject(saved) && !hasProject ? item.page : saved
+          if ((current !== item.id || item.id === 'agents') && useApp.getState().page !== target) setPage(target)
+        }} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
       </nav>
       <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">
         <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => setPage(useMy.getState().modulePages.settings ?? 'settings')} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>

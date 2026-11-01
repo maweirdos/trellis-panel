@@ -27,16 +27,18 @@ function PeoplePicker({ label, people, value, onChange, disabled }: {
   </fieldset>
 }
 
-export function CreateCreationDialog({ scope, spaceId, onClose, onCreated }: {
-  scope: 'personal' | 'team'; spaceId?: string; onClose: () => void; onCreated: (creationId: string) => void
+export function CreateCreationDialog({ scope, spaceId, initialDraft, onClose, onCreated }: {
+  scope: 'personal' | 'team'; spaceId?: string
+  initialDraft?: { title: string; kind: 'prototype' | 'document'; body: string }
+  onClose: () => void; onCreated: (creationId: string) => void
 }): JSX.Element {
   const [creationId] = useState(() => crypto.randomUUID())
   const { actorId, capture } = useCreationOwner(`new:${creationId}`)
   const snapshot = useHifox((state) => state.snapshot)
   const commands = useCreationCommands(creationId, null, 'create')
-  const [title, setTitle] = useState('')
-  const [kind, setKind] = useState<'prototype' | 'document'>('prototype')
-  const [body, setBody] = useState('')
+  const [title, setTitle] = useState(initialDraft?.title ?? '')
+  const [kind, setKind] = useState<'prototype' | 'document'>(initialDraft?.kind ?? 'prototype')
+  const [body, setBody] = useState(initialDraft?.body ?? '')
   const [editors, setEditors] = useState<string[]>([])
   const [error, setError] = useState('')
   const [importing, setImporting] = useState(false)

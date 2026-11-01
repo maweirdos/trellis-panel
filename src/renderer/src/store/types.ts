@@ -3,12 +3,7 @@ import type {
   ProjectSnapshot,
   Settings,
   ToastEvent,
-  TodoItem,
-  ChatImage,
-  ChatMessageView,
-  ChatSessionMeta,
-  ChatToolOp,
-  ThinkingLevel
+  TodoItem
 } from '../../../shared/types'
 import type {
   ObservationCursor,
@@ -178,63 +173,6 @@ export interface ReaderSlice {
   setReaderWidthPref: (pref: ReaderWidthPref) => void
 }
 
-/** 流式中的消息：runId 关联，增量由 chat:output 事件累积 */
-export interface ChatStreamState {
-  runId: string
-  content: string
-  /** 思考流增量单独累积（TPD-014） */
-  reasoning: string
-  /** agent 工具行（TPD-020） */
-  toolOps: ChatToolOp[]
-}
-
-export interface PendingPermission {
-  permId: string
-  toolName: string
-  argsSummary: string
-  timeoutSec: number
-}
-
-/** 本地已排队、尚未开跑的消息（runId 由主进程预分配） */
-export interface ChatQueuedItem {
-  runId: string
-  content: string
-}
-
-export interface ChatSlice {
-  chatSessions: ChatSessionMeta[]
-  chatActiveId: string | null
-  chatMessages: ChatMessageView[]
-  chatStreaming: ChatStreamState | null
-  chatPending: ChatQueuedItem[]
-  /** 待决策工具权限卡（TPD-020） */
-  chatPendingPermission: PendingPermission | null
-  /** 初始化事件订阅（App 挂载时调用一次，返回反注册函数） */
-  chatAttachEvents: () => () => void
-  chatLoadSessions: () => Promise<void>
-  chatOpenSession: (id: string) => Promise<void>
-  chatNewSession: (binding?: { providerId?: string; modelId?: string }) => Promise<ChatSessionMeta | null>
-  chatDeleteSession: (id: string) => Promise<void>
-  chatRenameSession: (id: string, title: string) => Promise<void>
-  chatSend: (
-    content: string,
-    binding?: {
-      providerId?: string
-      modelId?: string
-      thinkingLevel?: ThinkingLevel
-      images?: string[]
-      agent?: boolean
-      taskDir?: string | null
-    }
-  ) => Promise<void>
-  chatAbort: () => Promise<void>
-  chatResolvePermission: (permId: string, decision: 'allow-once' | 'allow-session' | 'deny') => Promise<void>
-  chatSteer: (content: string) => Promise<void>
-  chatRegenerate: () => Promise<void>
-  chatEditResend: (messageId: string, content: string) => Promise<void>
-  chatBranch: (messageId: string) => Promise<void>
-}
-
 /** 观测 scope 缓冲键（workspaceId::taskRef；见 slices/observation.ts）。 */
 export type ObservationScopeKey = string
 
@@ -278,7 +216,6 @@ export type AppState = SessionSlice &
   ViewerSlice &
   TodosSlice &
   InboxSlice &
-  ChatSlice &
   ReaderSlice &
   ObservationSlice
 

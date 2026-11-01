@@ -12,6 +12,7 @@ import { localDocumentHref, localDocumentLink } from '../../../shared/local-docu
 import type { KnowledgeDocumentContext } from '../../../shared/knowledge-document-assets'
 import { DocumentAssetScope, DocumentAssetImage } from '../knowledge/DocumentAssetImage'
 import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
+import { useDocumentSource } from '../reader/document-source'
 
 const markdownUrlTransform: typeof defaultUrlTransform = (url) => localDocumentHref(url) ?? defaultUrlTransform(url)
 
@@ -68,6 +69,7 @@ export interface MarkdownViewProps {
 }
 
 export const MarkdownView = React.memo(function MarkdownView({ content, headingAnchorsByLine, documentAssetContext, onOpenDocumentLink }: MarkdownViewProps): JSX.Element {
+  const source = useDocumentSource()
   const canInteract = useInteractionGuard()
   const interactionSignal = useInteractionSignal()
   const [linkError, setLinkError] = useState<string | null>(null)
@@ -76,7 +78,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
     owner.current++
     setLinkError(null)
     return () => { owner.current++ }
-  }, [content, onOpenDocumentLink, documentAssetContext?.expectedRoot, documentAssetContext?.sessionId, documentAssetContext?.artifactId, documentAssetContext?.revision, interactionSignal])
+  }, [content, onOpenDocumentLink, source, documentAssetContext?.expectedRoot, documentAssetContext?.sessionId, documentAssetContext?.artifactId, documentAssetContext?.revision, interactionSignal])
   const openMarkdownLink = (event: React.MouseEvent<HTMLAnchorElement>): void => {
     if (event.type === 'auxclick' && event.button !== 1) return
     if (!canInteract()) { event.preventDefault(); return }
@@ -97,6 +99,13 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
           catch (error) { fail(error instanceof Error ? error.message : '无法打开已保存的文档，请重新核对文档记录。'); return }
         }
         if (owner.current !== generation || !canInteract()) return
+        if (source) {
+          const link = localDocumentLink(href)
+          if (!link) { fail('此文档链接无法识别，请从会话文件中打开。'); return }
+          try { await source.openDocument(link.path) }
+          catch (error) { fail(error instanceof Error ? error.message : '无法打开此会话的文档，请重新核对文件。') }
+          return
+        }
         if (typeof api.openLocalDocument !== 'function') { fail('本地文档打开功能尚未加载，请完整退出并重启应用后重试。'); return }
         try { const result = await api.openLocalDocument(href ?? ''); if (!result.ok) fail(result.error) }
         catch { fail('无法打开本地文档。请完整退出并重启应用后重试；若仍失败，请让 AI 重新生成。') }

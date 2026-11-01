@@ -1,4 +1,3 @@
-import type { ChatDoneEvent, ChatOutputEvent } from '../shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
 import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
 import type { DocumentWindowApi, DocumentOriginReturn } from '../shared/document-windows'
@@ -729,36 +728,7 @@ const api = {
   accessRotateToken: () => ipcRenderer.invoke(ipcInvoke.access.rotateToken),
 
   chatList: () => ipcRenderer.invoke(ipcInvoke.chat.list),
-  chatOpen: (id: string) => ipcRenderer.invoke(ipcInvoke.chat.open, id),
-  chatNew: (binding?: { providerId?: string; modelId?: string }) => ipcRenderer.invoke(ipcInvoke.chat.new, binding),
-  chatDelete: (id: string) => ipcRenderer.invoke(ipcInvoke.chat.delete, id),
-  chatRename: (id: string, title: string) => ipcRenderer.invoke(ipcInvoke.chat.rename, id, title),
-  chatSend: (input: {
-    sessionId: string
-    content: string
-    providerId?: string
-    modelId?: string
-    thinkingLevel?: import('../shared/types').ThinkingLevel
-    images?: string[]
-    agent?: boolean
-    taskDir?: string | null
-  }) => ipcRenderer.invoke(ipcInvoke.chat.send, input),
-  chatRegenerate: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.regenerate, sessionId),
-  chatEditResend: (sessionId: string, messageId: string, content: string) =>
-    ipcRenderer.invoke(ipcInvoke.chat.edit, sessionId, messageId, content),
-  chatBranch: (sessionId: string, messageId: string) =>
-    ipcRenderer.invoke(ipcInvoke.chat.branch, sessionId, messageId),
-  chatSteer: (sessionId: string, content: string) => ipcRenderer.invoke(ipcInvoke.chat.steer, sessionId, content),
-  chatScreenshot: () => ipcRenderer.invoke(ipcInvoke.chat.screenshot),
-  chatResolvePermission: (permId: string, decision: 'allow-once' | 'allow-session' | 'deny') =>
-    ipcRenderer.invoke(ipcInvoke.chat.permissionResolve, permId, decision),
-  onChatPermission: (cb: (e: import('../shared/types').ChatPermissionEvent) => void) => subscribe(ipcEvent.chatPermission, cb),
-  onChatSteer: (cb: (e: import('../shared/types').ChatSteerEvent) => void) => subscribe(ipcEvent.chatSteer, cb),
-  chatAbort: (sessionId: string) => ipcRenderer.invoke(ipcInvoke.chat.abort, sessionId),
-  chatDistill: (sessionId: string, messageId: string) => ipcRenderer.invoke(ipcInvoke.chat.distill, sessionId, messageId),
-  onChatOutput: (cb: (e: ChatOutputEvent) => void) => subscribe(ipcEvent.chatOutput, cb),
-  onChatDone: (cb: (e: ChatDoneEvent) => void) => subscribe(ipcEvent.chatDone, cb),
-
+  chatOpen: (id: string, branchId?: string) => ipcRenderer.invoke(ipcInvoke.chat.open, id, branchId),
   studioSyncExtension: (sourcePath: string, targets: string[]) =>
     ipcRenderer.invoke(ipcInvoke.studio.syncExtension, sourcePath, targets),
 

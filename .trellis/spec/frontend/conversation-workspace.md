@@ -2,7 +2,40 @@
 
 ## Named roles and execution engines
 
-Profiles are named local project-scoped assistant roles; Codex/Claude Code are execution engines beneath them. New Conversation must open a role chooser and start only after an explicit action. Install in the relevant panel, refresh from actual returned runtime state, and distinguish installed-awaiting-connection from missing installation. Model controls consume actual connected-session capabilities and acknowledged configuration; the current profile DTO has no persisted default model. Do not simulate team sharing or per-role tool/knowledge isolation. Additional project skills can be selected per role through skillPaths; retain native inherited skills, missing selections and failed-save drafts. Use real Studio metadata and reject stale/hidden/root-changed scan results. Session snapshots remain separate from future role defaults. Keep current session snapshots separate from edits to defaults for future sessions. Consume the application sidebar width/resize component, including collapsed/mobile reopen behavior.
+Personal conversations use the `chat` route and a real configured assistant by default. The editable draft requires no team membership, logical project, profile chooser, Git repository or Trellis initialization. Native execution starts only on Send. Missing configuration preserves the draft and offers the actual model/runtime settings.
+
+Profiles remain named local project-scoped assistant roles in the engineering console. Its role-library action opens the existing chooser; Codex/Claude Code and Pi are execution engines beneath roles. Install in the relevant panel, refresh from actual returned runtime state, and distinguish installed-awaiting-connection from missing installation. Model controls consume actual connected-session capabilities and acknowledged configuration; the current profile DTO has no persisted default model. Do not simulate team sharing or per-role tool/knowledge isolation. Additional project skills can be selected per role through skillPaths; retain native inherited skills, missing selections and failed-save drafts. Use real Studio metadata and reject stale/hidden/root-changed scan results. Keep current session snapshots separate from edits to defaults for future sessions. Consume the application sidebar width/resize component, including collapsed/mobile reopen behavior.
+
+### Private conversation ownership
+
+The private catalog identifies conversations independently of the shell's selected engineering project. Renderer operations carry a conversation ID; native code resolves its fixed workspace, creator and optional authorized business context. Work uses a managed durable directory. Code uses a native directory grant. Neither a sidebar selection nor Work/Code presentation changes an executing conversation's directory, native identity or permission principal.
+
+Team space and existing team project references provide authorized business context, not readers of the transcript. Do not add conversation sharing, member invites or raw-chat publication. Formal task records, versioned materials and execution facts retain their existing authority. A selected file can become a private creation draft; publishing a fixed creation revision and adopting it into a task use the existing explicit commands.
+
+Keep draft and selection slots separate for each mode, context and logical project. Switching those selectors restores the destination slot without moving earlier conversations. Empty drafts do not fill the history list. History selection reads metadata and paged events without starting an engine. Send, cancellation and permission responses resolve the exact native session and generation; hidden or stale replies cannot overwrite the visible draft. The connection limit and cleanup guards remain authoritative.
+
+Private transcripts reuse the native timeline and process projection through a conversation-owned source client. Images and generated-document actions resolve through that client. Project knowledge saving, current-global-root file openers and implicit `.trellis/notes` writes do not belong to this surface. Show only actual selected files and bounded native file results; file presence or assistant prose alone cannot prove a completed task or submitted output.
+
+Both controllers share `ConversationSidebar`, `ConversationWorkspaceHeader`,
+`HistoryBoundary`, the composer size hook, `ComposerModelPicker`,
+`ComposerUsageIndicator`, `useComposerImages` and the existing preview layout,
+tabs and readers. Keep their established ACP DOM classes and global tokens.
+Private workspace CSS carries logical grouping, file delivery and archive
+structure only; it does not redefine headers, navigation rows, composer depth,
+focus, model menus, permission cards or generic spacing.
+
+The model picker receives its actual configure transport. Private operations
+carry a conversation ID and expected native generation; model recovery may
+replace the generation only through its own acknowledged recovery request.
+Image drafts use the original bounded image reader and source-owned memory,
+including before the first native session; image bytes never enter text-draft
+preferences. Preview resolution follows the actual session's source through
+the native catalog, not the engineering project selected in the shell.
+
+Keep private history rendering bounded with explicit load-more controls. Closed
+groups do not need every child mounted. Knowledge actions identify any existing
+engineering source explicitly; a personal conversation without an engineering
+project can select files and manage connections without entering Trellis setup.
 
 ### Conversation continuity and compact controls
 

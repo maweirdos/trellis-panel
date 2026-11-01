@@ -364,22 +364,7 @@ export const ipcInvoke = {
     status: 'access:status',
     rotateToken: 'access:rotateToken'
   },
-  chat: {
-    list: 'chat:list',
-    open: 'chat:open',
-    new: 'chat:new',
-    delete: 'chat:delete',
-    rename: 'chat:rename',
-    send: 'chat:send',
-    abort: 'chat:abort',
-    regenerate: 'chat:regenerate',
-    edit: 'chat:edit',
-    branch: 'chat:branch',
-    steer: 'chat:steer',
-    permissionResolve: 'chat:permission-resolve',
-    screenshot: 'chat:screenshot',
-    distill: 'chat:distill'
-  },
+  chat: { list: 'chat:list', open: 'chat:open' },
   ai: {
     chat: 'ai:chat',
     test: 'ai:test',
@@ -541,9 +526,6 @@ export const ipcEvent = {
   /** cli 长任务事件流（runId 关联，成对出现） */
   cliOutput: 'cli:output',
   cliDone: 'cli:done',
-  /** chat 流式对话事件流（runId 关联，成对出现；增量/完成） */
-  chatOutput: 'chat:output',
-  chatDone: 'chat:done',
   /** 工作流运行事件流（runId 关联，成对出现） */
   flowOutput: 'flow:output',
   flowDone: 'flow:done',
@@ -552,9 +534,6 @@ export const ipcEvent = {
   hifoxWorkspaceChanged: 'hifox:workspaceChanged',
   creationsChanged: 'creations:changed',
   workflowDone: 'workflow:done',
-  /** 工具调用权限卡（请求决策）与 steer 注入 */
-  chatPermission: 'chat:permission',
-  chatSteer: 'chat:steer',
   /** ACP 会话事件流（runId 关联，成对出现；TimelineEvent 双轨混排 + 权限请求） */
   acpOutput: 'acp:output',
   acpPermission: 'acp:permission',

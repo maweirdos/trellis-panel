@@ -23,6 +23,7 @@ import type { AcpPermissionPayload, AcpSessionRecord, TimelineEvent } from '../.
 import { useMemo, type JSX } from 'react'
 import { useCopyFeedback } from '../utils/use-copy-feedback'
 import { isCompletedHistoricalTextMismatch, type MessagePresentation } from './conversation-transcript'
+import { useDocumentSource } from '../reader/document-source'
 import './conversation-transcript.css'
 
 function CopyMessageButton({ text, ownerKey }: { text: string; ownerKey: string }): JSX.Element {
@@ -69,6 +70,7 @@ export interface EventRowProps {
   suppressWorkingIndicator?: boolean
   messagePresentation?: MessagePresentation
   compact?: boolean
+  privateConversation?: boolean
   pendingPerm: Record<string, AcpPermissionPayload>
   permissionPending: Record<string, boolean>
   permissionErrors: Record<string, string>
@@ -80,7 +82,8 @@ export interface EventRowProps {
   onOpenWebPreview?: (artifact: PiWebPreviewArtifact, eventId: string) => void
 }
 
-export function EventRow({ item, session, events, pendingPerm, permissionPending, permissionErrors, onRespond, onOpenTask, onOpenArtifact, onOpenSpec, onOpenJira, onOpenWebPreview, suppressWorkingIndicator = false, messagePresentation = 'process', compact = false }: EventRowProps): JSX.Element {
+export function EventRow({ item, session, events, pendingPerm, permissionPending, permissionErrors, onRespond, onOpenTask, onOpenArtifact, onOpenSpec, onOpenJira, onOpenWebPreview, suppressWorkingIndicator = false, messagePresentation = 'process', compact = false, privateConversation = false }: EventRowProps): JSX.Element {
+  const source = useDocumentSource()
   if (item.type === 'user') {
     const origin = events?.find((event) => event.id === item.key)
     const preparing = Boolean(origin && session && isConversationRuntimeEvent(origin) && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status))
@@ -94,9 +97,9 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   if (item.type === 'agent') {
     const origin = events?.find((event) => event.id === item.key)
     const completed = origin && events?.some((event) => event.kind === 'turn-done' && event.source === origin.source && event.sessionId === origin.sessionId && projectRootKey(event.projectRoot) === projectRootKey(origin.projectRoot) && event.connectionGeneration === origin.connectionGeneration && event.turnId === origin.turnId && (asObject(event.payload?.result)?.status === 'completed' || (!asObject(event.payload?.result)?.status && event.text === '回合已结束')))
-    const canSaveAnswer = Boolean(messagePresentation === 'final' && item.text.trim() && origin && isConversationRuntimeEvent(origin) && projectRootKey(origin.projectRoot) && origin.sessionId && origin.turnId && origin.connectionGeneration && session && origin.source === (session.engine ?? 'acp') && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.connectionGeneration === session.connectionGeneration && completed)
+    const canSaveAnswer = Boolean(!privateConversation && !source && messagePresentation === 'final' && item.text.trim() && origin && isConversationRuntimeEvent(origin) && projectRootKey(origin.projectRoot) && origin.sessionId && origin.turnId && origin.connectionGeneration && session && origin.source === (session.engine ?? 'acp') && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.connectionGeneration === session.connectionGeneration && completed)
     return <div data-acp-item={item.key} className={clsx('my-chat-prose acp-chat-copy min-w-0 break-words', messagePresentation === 'final' ? 'acp-answer text-my-primary' : 'acp-process-message', item.startsAnswer && messagePresentation === 'final' && 'acp-answer-start')}>
-      {item.text && <SavedArtifactMessage text={item.text} messageId={item.key} events={events ?? []} session={session} />}
+      {item.text && (privateConversation || source ? <MarkdownView content={item.text} /> : <SavedArtifactMessage text={item.text} messageId={item.key} events={events ?? []} session={session} />)}
       {session && item.storedImages?.length ? <StoredImageAttachments key={`${session.projectRoot}:${session.sessionId}:${item.key}`} images={item.storedImages} sessionId={session.sessionId} /> : null}
       {session && item.webPreview && item.webPreviewEventId && <PiWebPreviewCard artifact={item.webPreview} eventId={item.webPreviewEventId} onOpenWebPreview={onOpenWebPreview} />}
       {canSaveAnswer && origin?.sessionId && origin.turnId && origin.connectionGeneration && <SaveKnowledgeAnswerAction key={JSON.stringify([origin.projectRoot, origin.sessionId, origin.connectionGeneration, origin.turnId, item.key, item.text])} root={origin.projectRoot} sessionId={origin.sessionId} connectionGeneration={origin.connectionGeneration} turnId={origin.turnId} messageId={item.key} body={item.text} />}

@@ -2,7 +2,7 @@ import type { AppSlice, UiSlice } from '../types'
 
 export const uiSlice: AppSlice<UiSlice> = (set, get) => ({
   navigationRevision: 0,
-  page: 'tasks',
+  page: 'chat',
   personalTaskSource: 'team',
   setPersonalTaskSource: (personalTaskSource) => set({ personalTaskSource }),
   capsuleMode: new URLSearchParams(window.location.search).get('mode') === 'capsule',

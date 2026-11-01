@@ -16,6 +16,21 @@ Cancel, End and permission responses resolve the original session. A permission 
 
 Private file/image operations use their conversation-owned client. Do not attach the selected shell project, expose its knowledge tools implicitly, or write personal outputs through `.trellis/notes`. A raw transcript is never a team publication. Existing formal task progress continues to carry bounded lifecycle facts; task transitions and accepted material revisions retain their separate authority.
 
+Ordinary ACP inventories, history, images, direct operations and event replay
+exclude private aliases. The native private dispatch lane installs the exact
+alias/creator/root proof through `withPrivateAcpOwner`; ordinary callers cannot
+provide it. Keep the original cancellation fence through transport upload and
+final dispatch. Cleanup checks the retained native owner even if its directory
+was removed or replaced; new work and permission responses retain physical
+directory checks. Directory grants share one bounded, expiring, document-owned
+lifecycle and are removed on consumption or document release.
+
+Configure and model recovery reuse the existing native controls with an exact
+generation. Pi preview uses the existing bounded service with a session-aware
+source resolver; it verifies the private creator before opening any file.
+Preview roots are not supplied as authority by the renderer. Preserve the
+native window/source checks, lease limits, revisions and sandbox policy.
+
 ## File delivery
 
 Import only explicitly selected regular files, with native size/count limits. Resolve paths physically, reject escaping paths and links, and recheck identity while reading. Lists and file reads are bounded. An unstable, missing or inaccessible file cannot become an advertised delivery.

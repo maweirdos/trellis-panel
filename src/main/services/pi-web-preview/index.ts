@@ -153,6 +153,7 @@ export class PiWebPreviewService {
     try {
       await this.assertSession(found)
       await readPreviewFile(found.root, found.directory, found.entry)
+      await this.assertSession(found)
       if (!this.current(found)) return ipcFail(IpcErrorCode.Conflict, '项目或预览已变化，请重新打开。')
       return { ok: true, url: `http://${found.host}/${found.capability}/${encodeURIComponent(basename(found.entry))}` }
     } catch (error) { return failure(error) }

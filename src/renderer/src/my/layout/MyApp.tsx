@@ -8,7 +8,7 @@ import { observeDevelopmentNavigation } from '../../hifox/local-work'
 import { DevelopmentContextBar } from '../../hifox/development/DevelopmentContextBar'
 import { useMy } from '../store'
 import { rememberVisit } from '../personal-history'
-import { loadNavigationLocation, saveNavigationLocation } from '../navigation-preferences'
+import { loadStartupNavigationLocation, saveNavigationLocation } from '../navigation-preferences'
 import { activeModule, getPageNavigation, projectRootKey } from '../navigation'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { CommandPalette } from '../CommandPalette'
@@ -84,7 +84,6 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   studio: <StudioPage />,
   models: <ModelsPage />,
   gateway: <GatewayPage />,
-  chat: <ChatPage />,
   devtools: <DevToolsPage />,
   settings: <SettingsPage />,
   integrations: <IntegrationsPage />
@@ -101,6 +100,11 @@ export function PageBody(): JSX.Element {
   const discussion = useKnowledgeDiscussion((state) => state.open && state.root === root)
   const sequence = useRef(0)
   const [acpSource, setAcpSource] = useState<{ root: string | null; generation: number; owner: number } | null>(() => page === 'acp' ? { root, generation: rootGeneration, owner: ++sequence.current } : null)
+  const [chatOwner, setChatOwner] = useState<number | null>(() => page === 'chat' ? ++sequence.current : null)
+  const chatRef = useRef<HTMLDivElement | null>(null)
+  const chatFocus = useRef<HTMLElement | null>(null)
+  const chatScroll = useRef<Array<{ element: HTMLElement; top: number; left: number }>>([])
+  const wasChatDetour = useRef(false)
   const sourceRef = useRef<HTMLDivElement | null>(null)
   const sourceFocus = useRef<HTMLElement | null>(null)
   const sourceScroll = useRef<Array<{ element: HTMLElement; top: number; left: number }>>([])
@@ -109,6 +113,10 @@ export function PageBody(): JSX.Element {
   const discussionOpenerIdentity = useRef<{ kind: 'label' | 'text'; value: string } | null>(null)
   const returnDiscussionFocus = useRef(false)
   const wasDetour = useRef(false)
+  const chatActive = page === 'chat'
+  const keepsChat = chatActive || getPageNavigation(page).domain === 'settings'
+  if (chatOwner !== null && !keepsChat) setChatOwner(null)
+  else if (chatActive && chatOwner === null) setChatOwner(++sequence.current)
   // Finite prop-derived state: React retries this component before committing a replacement owner.
   const sameOwner = acpSource?.root === root && acpSource.generation === rootGeneration
   if (acpSource && (!sameOwner || !['acp', 'settings', 'knowledge'].includes(page))) setAcpSource(null)
@@ -119,11 +127,21 @@ export function PageBody(): JSX.Element {
 
   useLayoutEffect(() => {
     const rememberFocus = (event: FocusEvent): void => {
+      const chat = chatRef.current
+      if (chat && !chat.hidden && !chat.inert && event.target instanceof HTMLElement && chat.contains(event.target)) chatFocus.current = event.target
       const source = sourceRef.current
       if (source && !source.hidden && !source.inert && event.target instanceof HTMLElement && source.contains(event.target)) sourceFocus.current = event.target
     }
     document.addEventListener('focusin', rememberFocus)
     const off = useApp.subscribe((state, previous) => {
+      if (state.page !== 'chat' && getPageNavigation(state.page).domain !== 'settings') {
+        setChatOwner(null)
+        chatFocus.current = null; chatScroll.current = []
+      } else if (previous.page === 'chat' && state.page !== 'chat') {
+        const chat = chatRef.current
+        if (chat) chatScroll.current = [chat, ...chat.querySelectorAll<HTMLElement>('.my-scrollbar,[data-page-scroll],.acp-transcript,textarea')]
+          .map((element) => ({ element, top: element.scrollTop, left: element.scrollLeft }))
+      }
       const sameRoot = projectRootKey(state.snapshot?.meta.root) === projectRootKey(previous.snapshot?.meta.root)
       if (!sameRoot) {
         setRootGeneration((generation) => generation + 1)
@@ -165,6 +183,14 @@ export function PageBody(): JSX.Element {
     return () => { offDiscussion(); off(); document.removeEventListener('focusin', rememberFocus) }
   }, [])
   useLayoutEffect(() => {
+    if (chatRef.current) chatRef.current.inert = !chatActive || !outerInteractive
+    if (outerInteractive && chatActive && wasChatDetour.current) {
+      for (const saved of chatScroll.current) if (saved.element.isConnected) { saved.element.scrollTop = saved.top; saved.element.scrollLeft = saved.left }
+      if (chatFocus.current?.isConnected) chatFocus.current.focus({ preventScroll: true })
+    }
+    wasChatDetour.current = chatOwner !== null && !chatActive
+  }, [chatActive, chatOwner, outerInteractive])
+  useLayoutEffect(() => {
     if (sourceRef.current) sourceRef.current.inert = !acpActive || !outerInteractive
     if (outerInteractive && acpActive && wasDetour.current) {
       for (const saved of sourceScroll.current) if (saved.element.isConnected) { saved.element.scrollTop = saved.top; saved.element.scrollLeft = saved.left }
@@ -181,6 +207,15 @@ export function PageBody(): JSX.Element {
   }, [acpActive, outerInteractive, retained, acpSource?.owner, page, discussion])
   return (
     <div className="knowledge-discussion-container"><div className="knowledge-discussion-layout">
+      <StartupContentRegion identity={`chat:${chatOwner ?? 'empty'}`} active={outerInteractive && chatActive}>
+        <Suspense fallback={chatActive && outerInteractive ? <PageLoading /> : null}>
+          <InteractionScope key={chatOwner ?? 'empty'} active={chatActive}>
+            {chatOwner !== null && <div ref={(element) => { chatRef.current = element; if (element) element.inert = !chatActive || !outerInteractive }} data-chat-source-owner={chatOwner} hidden={!chatActive} aria-hidden={!chatActive || undefined} className="knowledge-discussion-content">
+              <ErrorBoundary key={`chat:${chatOwner}`}><PageLayout variant={PAGE_LAYOUTS.chat}><ChatPage /><StartupContentCommit active={chatActive} /></PageLayout></ErrorBoundary>
+            </div>}
+          </InteractionScope>
+        </Suspense>
+      </StartupContentRegion>
       <StartupContentRegion identity={`acp:${root}:${acpSource?.owner ?? 'empty'}`} active={outerInteractive && acpActive}>
       <Suspense fallback={acpActive && outerInteractive ? <PageLoading /> : null}>
       <InteractionScope key={acpSource?.owner ?? 'empty'} active={acpActive}>
@@ -193,7 +228,7 @@ export function PageBody(): JSX.Element {
       </StartupContentRegion>
       {/* 页面级兜底：单页崩溃只换掉内容区（错误卡片可重试），外壳与侧栏存活；
           项目页面同时按真实 root 重挂，清除旧项目页面状态和错误态 */}
-      {page !== 'acp' && <div ref={knowledgeContent} className="knowledge-discussion-content"><StartupContentRegion identity={contentKey} active={outerInteractive}><Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
+      {page !== 'acp' && page !== 'chat' && <div ref={knowledgeContent} className="knowledge-discussion-content"><StartupContentRegion identity={contentKey} active={outerInteractive}><Suspense fallback={<PageLoading />}><ErrorBoundary key={contentKey}>
         {page === 'dashboard' && <YourWorkPage />}
         {page === 'tasks' && <PersonalTasksPage />}
         {framed && <PageFrame page={page}>{framed}</PageFrame>}
@@ -260,29 +295,28 @@ export function MyApp(): JSX.Element {
 
   useEffect(observeDevelopmentNavigation, [])
 
-  // Restore presentation once at startup; explicit task/document links win.
-  // Opening a different project keeps the main store's existing reset behavior.
+  // Bootstrap owns routing after pending task focus. This shell restores only presentation.
   const navigationRestored = useRef(false)
   useLayoutEffect(() => {
     const app = useApp.getState()
     const snapshot = app.snapshot
-    if (navigationRestored.current || !snapshot) return
+    if (navigationRestored.current) return
     navigationRestored.current = true
-    if (projectRootKey(useHifox.getState().localWorkOpening?.projectRoot) === projectRootKey(snapshot.meta.root)) return
-    const saved = loadNavigationLocation(snapshot.meta.root, snapshot.meta.developer)
-    if (saved && (app.page === 'dashboard' || app.page === 'tasks' && app.navigationRevision === 0) && !app.openTaskDir && !app.pendingFocusDir && !app.specDocumentTarget && !app.taskExpandOrigin) {
-      const { page: savedPage, personalTaskSource, ...views } = saved
+    const opening = useHifox.getState().localWorkOpening
+    if (opening && projectRootKey(opening.projectRoot) === root) return
+    const saved = loadStartupNavigationLocation(snapshot?.meta.root ?? null, snapshot?.meta.developer)
+    if (saved && saved.page === app.page && app.navigationRevision === 0 && !app.openTaskDir && !app.pendingFocusDir && !app.specDocumentTarget && !app.taskExpandOrigin) {
+      const { page: _savedPage, personalTaskSource, ...views } = saved
       useMy.setState({ ...views, groupBy: views.workItemsView === 'iterations' ? 'cycle' : useMy.getState().itemsGroupBy })
       app.setPersonalTaskSource(personalTaskSource)
-      if (savedPage !== app.page) app.setPage(savedPage)
     }
   }, [root])
   useEffect(() => {
     const persist = (): void => {
       const app = useApp.getState()
       const snapshot = app.snapshot
-      if (!snapshot || !navigationRestored.current || useMy.getState().projectRoot !== projectRootKey(snapshot.meta.root)) return
-      saveNavigationLocation(snapshot.meta.root, snapshot.meta.developer, app.page, useMy.getState(), app.personalTaskSource)
+      if (!navigationRestored.current || useMy.getState().projectRoot !== projectRootKey(snapshot?.meta.root)) return
+      saveNavigationLocation(snapshot?.meta.root ?? null, snapshot?.meta.developer, app.page, useMy.getState(), app.personalTaskSource)
     }
     const offApp = useApp.subscribe((state, previous) => {
       if (state.page !== previous.page) {

@@ -730,52 +730,6 @@ export interface ChatSessionView extends ChatSessionMeta {
   messages: ChatMessageView[]
 }
 
-/** chat:send 结果：直接开跑或进入会话队列 */
-export interface ChatSendResult {
-  ok: boolean
-  error?: string
-  runId: string | null
-  queued: boolean
-  queueLen?: number
-}
-
-/** chat:output 事件负载（runId 关联的流式增量） */
-export interface ChatOutputEvent {
-  runId: string
-  sessionId: string
-  /** 正文增量 */
-  delta: string
-  /** 思考流增量（与 delta 互斥出现） */
-  reasoning?: string
-  /** 工具行事件（与 delta 互斥出现，TPD-020） */
-  toolOp?: ChatToolOp
-}
-
-/** chat:done 事件负载（runId 生命周期终结；title 为异步总结结果） */
-export interface ChatPermissionEvent {
-  runId: string
-  sessionId: string
-  permId: string
-  toolName: string
-  argsSummary: string
-  timeoutSec: number
-}
-
-export interface ChatSteerEvent {
-  runId: string
-  sessionId: string
-  content: string
-}
-
-export interface ChatDoneEvent {
-  runId: string
-  sessionId: string
-  kind: 'done' | 'error' | 'aborted'
-  error?: string
-  title?: string
-  message?: ChatMessage
-}
-
 export interface AiChatResult {
   ok: boolean
   content?: string
@@ -1409,40 +1363,9 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   getMcpInfo: () => Promise<McpInfo>
   toggleHttpApi: (on: boolean) => Promise<{ ok: boolean; error?: string }>
 
-  /* --- 对话（Chat 页） --- */
+  /* --- 旧 API 问答只读归档 --- */
   chatList: () => Promise<{ ok: boolean; error?: string; sessions?: ChatSessionMeta[] }>
-  chatOpen: (id: string) => Promise<{ ok: boolean; error?: string; session?: ChatSessionView }>
-  chatNew: (binding?: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel }) => Promise<{ ok: boolean; error?: string; session?: ChatSessionView }>
-  chatDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
-  chatRename: (id: string, title: string) => Promise<{ ok: boolean; error?: string }>
-  chatSend: (input: {
-    sessionId: string
-    content: string
-    providerId?: string
-    modelId?: string
-    thinkingLevel?: ThinkingLevel
-    /** dataURL 形式的图片附件（TPD-019） */
-    images?: string[]
-    /** agent 模式：启用工具调用循环（TPD-020） */
-    agent?: boolean
-    /** 会话聚焦的任务目录（系统提示词注入任务上下文） */
-    taskDir?: string | null
-  }) => Promise<ChatSendResult>
-  chatRegenerate: (sessionId: string) => Promise<ChatSendResult>
-  chatSteer: (sessionId: string, content: string) => Promise<{ ok: boolean; error?: string }>
-  chatScreenshot: () => Promise<{ ok: boolean; error?: string; dataUrl?: string }>
-  chatResolvePermission: (permId: string, decision: 'allow-once' | 'allow-session' | 'deny') => Promise<{ ok: boolean; error?: string }>
-  chatEditResend: (sessionId: string, messageId: string, content: string) => Promise<ChatSendResult>
-  chatBranch: (sessionId: string, messageId: string) => Promise<{ ok: boolean; error?: string }>
-  chatAbort: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
-  /** 对话沉淀：一条 AI 回答 → AI 加工（拟题/打标/整理）→ 存入我的笔记库 */
-  chatDistill: (sessionId: string, messageId: string) => Promise<{ ok: boolean; error?: string; fileName?: string; path?: string }>
-  onChatPermission: (
-    cb: (e: { runId: string; sessionId: string; permId: string; toolName: string; argsSummary: string; timeoutSec: number }) => void
-  ) => () => void
-  onChatSteer: (cb: (e: { runId: string; sessionId: string; content: string }) => void) => () => void
-  onChatOutput: (cb: (e: ChatOutputEvent) => void) => () => void
-  onChatDone: (cb: (e: ChatDoneEvent) => void) => () => void
+  chatOpen: (id: string, branchId?: string) => Promise<{ ok: boolean; error?: string; session?: ChatSessionView }>
 
   /* --- TPAP 本地接入协议 --- */
   accessStatus: () => Promise<{

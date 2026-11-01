@@ -7,7 +7,7 @@ import { Button, Dropdown, DropdownItem, Modal } from '../my/ui'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { projectRootKey } from '../my/navigation'
-import { SidebarResizeHandle } from '../my/layout/SidebarResizeHandle'
+import { ConversationSidebar } from './ConversationSidebar'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { conversationSummary, isDiagnosticConversation } from './conversation-selection'
@@ -183,16 +183,15 @@ export function ConversationNavigation({ sessions, activeId, view, onView, onSel
     {mutationErrors[session.sessionId] && rename?.sessionId !== session.sessionId && <p role="alert" className="acp-session-menu-error">{mutationErrors[session.sessionId]}</p>}
   </div>
   return <>
-    {open && <button className="acp-sidebar-scrim" aria-label="关闭会话导航" onClick={onClose} />}
-    <aside className={clsx('my-context-sidebar acp-navigation', open && 'is-open')} aria-label="角色与会话导航">
-      <div className="acp-navigation-title"><Dropdown trigger={({ open: expanded, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={expanded} onClick={toggle}><strong>{view === 'agents' ? '角色' : '对话'}</strong><ChevronDown size={13} /></button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={view === 'agents' ? 'roles' : 'conversation'} onAgentView={(next) => { dismiss(); onView(next === 'roles' ? 'agents' : 'conversation') }} /></div>}</Dropdown><div className="flex-1" /><button ref={searchTriggerRef} type="button" className="my-icon-control" aria-label="搜索全部会话" title="搜索会话标题、角色与任务" aria-expanded={searchOpen} onClick={() => setSearchOpen(true)}><Search size={15} /></button><Button size="sm" variant="ghost" className="acp-mobile-only" title="关闭会话导航" onClick={onClose}><X size={14} /></Button></div>
-      <div className="acp-navigation-primary"><button className="my-nav-item" onClick={onNew}><Plus size={15} />新建对话</button></div>
-      <div className="acp-navigation-label"><span>{diagnostics ? '诊断记录' : archive === 'archived' ? '已归档会话' : '会话'}</span><Dropdown align="right" trigger={({ open: expanded, toggle }) => <button type="button" className="acp-list-filter" aria-label="会话列表筛选" aria-expanded={expanded} onClick={toggle}>{diagnostics ? '诊断' : archive === 'archived' ? '已归档' : '全部'}<ChevronDown size={11} /></button>}>{(close) => <div className="acp-list-filter-options"><DropdownItem selected={!diagnostics && archive === 'active'} onClick={() => { dismiss(); setDiagnostics(false); onArchive?.('active'); close() }}>全部对话</DropdownItem>{onArchive && <DropdownItem selected={!diagnostics && archive === 'archived'} icon={<Archive size={14} />} onClick={() => { dismiss(); setDiagnostics(false); onArchive('archived'); close() }}>已归档</DropdownItem>}<DropdownItem selected={diagnostics} onClick={() => { dismiss(); setDiagnostics(true); onArchive?.('active'); close() }}>诊断记录</DropdownItem></div>}</Dropdown></div>
-      <div className="acp-navigation-scroll my-scrollbar" onScroll={dismiss}>{recent.map(row)}{recent.length === 0 && <p className="px-3 py-3 text-my-sm text-my-tertiary">暂无匹配的会话</p>}
-        {hasMore && <Button size="sm" variant="ghost" className="acp-load-more" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? '正在加载…' : '加载更早的会话'}</Button>}
-      </div>
-      <SidebarResizeHandle label="调整会话侧栏宽度" />
-    </aside>
+    <ConversationSidebar open={open} onClose={onClose} onScroll={dismiss}
+      title={<Dropdown trigger={({ open: expanded, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={expanded} onClick={toggle}><strong>{view === 'agents' ? '角色' : '对话'}</strong><ChevronDown size={13} /></button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={view === 'agents' ? 'roles' : 'conversation'} onAgentView={(next) => { dismiss(); onView(next === 'roles' ? 'agents' : 'conversation') }} /></div>}</Dropdown>}
+      actions={<button ref={searchTriggerRef} type="button" className="my-icon-control" aria-label="搜索全部会话" title="搜索会话标题、角色与任务" aria-expanded={searchOpen} onClick={() => setSearchOpen(true)}><Search size={15} /></button>}
+      primaryAction={<button className="my-nav-item" onClick={onNew}><Plus size={15} />新建对话</button>}
+      label={<><span>{diagnostics ? '诊断记录' : archive === 'archived' ? '已归档会话' : '会话'}</span><Dropdown align="right" trigger={({ open: expanded, toggle }) => <button type="button" className="acp-list-filter" aria-label="会话列表筛选" aria-expanded={expanded} onClick={toggle}>{diagnostics ? '诊断' : archive === 'archived' ? '已归档' : '全部'}<ChevronDown size={11} /></button>}>{(close) => <div className="acp-list-filter-options"><DropdownItem selected={!diagnostics && archive === 'active'} onClick={() => { dismiss(); setDiagnostics(false); onArchive?.('active'); close() }}>全部对话</DropdownItem>{onArchive && <DropdownItem selected={!diagnostics && archive === 'archived'} icon={<Archive size={14} />} onClick={() => { dismiss(); setDiagnostics(false); onArchive('archived'); close() }}>已归档</DropdownItem>}<DropdownItem selected={diagnostics} onClick={() => { dismiss(); setDiagnostics(true); onArchive?.('active'); close() }}>诊断记录</DropdownItem></div>}</Dropdown></>}
+    >
+      {recent.map(row)}{recent.length === 0 && <p className="px-3 py-3 text-my-sm text-my-tertiary">暂无匹配的会话</p>}
+      {hasMore && <Button size="sm" variant="ghost" className="acp-load-more" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? '正在加载…' : '加载更早的会话'}</Button>}
+    </ConversationSidebar>
     <Modal open={searchOpen} onClose={closeSearch} width={620} ariaLabel="搜索会话" placement="center"><ConversationSearch sessions={sessions.filter((session) => archive === 'archived' ? !!session.archivedAt : !session.archivedAt)} archive={archive} onSelect={onSelect} onClose={closeSearch} /></Modal>
     <Modal open={!!rename && rename.owner === owner && interactive} onClose={() => setRename(null)} width={440} ariaLabel="重命名会话" placement="center">
       <form className="p-5" onSubmit={(event) => { event.preventDefault(); if (!renameComposing.current) void saveRename() }}>

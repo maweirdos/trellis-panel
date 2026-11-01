@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
-import { Minus, Square, X, Copy, PictureInPicture2, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
+import { Minus, Square, X, Copy, PictureInPicture2, PanelLeftClose, PanelLeftOpen, Search, FolderOpen } from 'lucide-react'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
@@ -10,13 +10,14 @@ import { ApplicationRunCenter } from '../applications/ApplicationRunCenter'
 import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { closeGitWorkspace } from '../git-workspace/useGitWorkspace'
 import { clsx } from 'clsx'
-import { getPageNavigation, pageRequiresProject } from '../my/navigation'
+import { getPageNavigation, pageRequiresProject, projectRootKey, projectNameFromPath } from '../my/navigation'
 import { TeamContextSwitcher } from '../hifox/TeamContextSwitcher'
 import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
 import { AccountMenu } from '../my/layout/AccountMenu'
 import { DevelopmentScopeTag } from '../hifox/development/DevelopmentContextBar'
 import { Tooltip } from '../my/ui'
 import { InteractionScope } from '../utils/interaction-scope'
+import { baseScopeKey, scopeKey, useConversations } from '../conversations/workspace'
 
 function WinButton({ onClick, children, label, danger }: {
   onClick: () => void; children: ReactNode; label: string; danger?: boolean
@@ -39,7 +40,14 @@ export function TitleBar(): JSX.Element {
   const development = useMy((s) => s.shellView === 'development')
   const personalTaskSource = useApp((s) => s.personalTaskSource)
   const domain = getPageNavigation(page).domain
-  const codeTools = development && (Boolean(openTaskDir) || (
+  const privateCodeRoot = useConversations(state => {
+    if (page !== 'chat' || !development) return null
+    const projectId = state.projectScopes[baseScopeKey(state.context, 'code')] ?? undefined
+    const current = state.entries[state.selected[scopeKey(state.context, 'code', projectId)]]
+    return current && !current.locked && current.kind === 'code' ? current.conversation?.workspace.root ?? current.directory?.path ?? null : null
+  })
+  const privateProjectTools = Boolean(privateCodeRoot && projectRootKey(privateCodeRoot) === projectRootKey(snapshot?.meta.root))
+  const codeTools = development && (privateProjectTools || Boolean(openTaskDir) || (
     domain !== 'team' && domain !== 'settings' && page !== 'chat' && page !== 'creations' &&
     (page !== 'tasks' || personalTaskSource !== 'team')
   ))
@@ -58,7 +66,7 @@ export function TitleBar(): JSX.Element {
           <span className="sr-only">Trellis Panel</span>
         </div>
         <ShellViewSwitcher />
-        <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('hifox')} />
+        {page !== 'chat' && <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('hifox')} />}
         <div className="no-drag my-header-collapse flex shrink-0 items-center">
           <Tooltip side="bottom" label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}>
             <button type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
@@ -84,8 +92,9 @@ export function TitleBar(): JSX.Element {
       </div>
       {development && <InteractionScope active={codeTools}><div className="my-shell-code-tools no-drag" hidden={!codeTools} aria-hidden={!codeTools || undefined} ref={(element) => { element?.toggleAttribute('inert', !codeTools) }} role="toolbar" aria-label="Code 工程工具">
         <div className="my-shell-project-controls">
-          <ProjectSwitcher />
-          <div className="my-shell-development-scope"><DevelopmentScopeTag /></div>
+          {page === 'chat' && privateCodeRoot ? <div className="relative my-shell-project-identity min-w-0">
+            <Tooltip side="bottom" label={privateCodeRoot} wrap><span tabIndex={0} className="inline-flex min-w-0 max-w-full items-center gap-2 px-2 text-my-sm text-my-secondary" aria-label={`当前会话工程：${projectNameFromPath(privateCodeRoot)}`}><FolderOpen size={14} className="shrink-0" /><span className="my-project-switcher-name min-w-0 truncate">{projectNameFromPath(privateCodeRoot)}</span></span></Tooltip>
+          </div> : <><ProjectSwitcher /><div className="my-shell-development-scope"><DevelopmentScopeTag /></div></>}
           <GitBranchControl />
           {openError && <Tooltip side="bottom" label={openError} wrap><span role="status" tabIndex={0} className="my-header-project-error text-my-xs text-my-danger-text">工程打开失败</span></Tooltip>}
         </div>

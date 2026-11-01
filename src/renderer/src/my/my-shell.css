@@ -110,6 +110,7 @@
 .my-root .my-shell-code-tools[hidden] { display: none; }
 .my-root .my-shell-project-controls { display: flex; flex: 1 1 auto; align-items: center; gap: var(--my-space-6); min-width: 0; }
 .my-root .my-shell-project-controls > .relative { flex: 0 1 auto; min-width: 0; max-width: var(--my-space-256); }
+.my-root .my-shell-project-identity > .my-tooltip-anchor { display: flex; min-width: 0; max-width: 100%; }
 .my-root .my-shell-project-controls .my-project-switcher {
   max-width: 100%; height: var(--my-header-control-height); font-size: var(--my-text-item-title);
 }

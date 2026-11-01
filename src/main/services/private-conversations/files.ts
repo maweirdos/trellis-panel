@@ -89,7 +89,9 @@ export function readRegular(root: string, file: string, limit = FILE_LIMIT): { b
 }
 export function fileMetadata(root: string, file: string, kind: 'input' | 'output'): ConversationFile {
   const actual = readRegular(root, file)
-  return { id: hash(file.replaceAll('\\', '/')), name: basename(file), relativePath: file.replaceAll('\\', '/'), kind, bytes: actual.bytes.length, revision: hash(actual.bytes), modifiedAt: actual.modifiedAt }
+  const storedName = basename(file)
+  const name = kind === 'input' ? storedName.replace(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}-/i, '') : storedName
+  return { id: hash(file.replaceAll('\\', '/')), name, relativePath: file.replaceAll('\\', '/'), kind, bytes: actual.bytes.length, revision: hash(actual.bytes), modifiedAt: actual.modifiedAt }
 }
 export function importSelectedFiles(root: string, directory: string, selected: string[]): ConversationFile[] {
   if (selected.length > 16) throw new Error('每次最多选择 16 个文件')

@@ -4,8 +4,45 @@ import { useKnowledgeOwner } from '../knowledge/bridge'
 import { Button } from '../my/ui'
 import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import type { AcpSessionRecord } from '../../../shared/types'
+import { useDocumentSource, type DocumentSourceClient } from '../reader/document-source'
 
 export function PiGeneratedDocument({ path, session }: { path: string; session: AcpSessionRecord }): JSX.Element {
+  const source = useDocumentSource()
+  return source ? <SourceGeneratedDocument key={JSON.stringify([session.sessionId, path])} path={path} source={source} /> : <ProjectGeneratedDocument path={path} session={session} />
+}
+
+function SourceGeneratedDocument({ path, source }: { path: string; source: DocumentSourceClient }): JSX.Element {
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+  const operation = useRef(0)
+  const busy = useRef(false)
+  const canInteract = useInteractionGuard()
+  const signal = useInteractionSignal()
+  useLayoutEffect(() => {
+    operation.current++
+    busy.current = false
+    setPending(false)
+    setError('')
+    return () => { operation.current++; busy.current = false }
+  }, [source, path, signal])
+  const open = async (): Promise<void> => {
+    if (busy.current || !canInteract() || signal?.aborted) return
+    const ticket = ++operation.current
+    const current = (): boolean => operation.current === ticket && canInteract() && !signal?.aborted
+    busy.current = true
+    setPending(true)
+    setError('')
+    try { await source.openDocument(path) }
+    catch (failure) { if (current()) setError(failure instanceof Error ? failure.message : '无法打开此会话的文件') }
+    finally { if (current()) { busy.current = false; setPending(false) } }
+  }
+  return <div className="space-y-1 text-my-sm"><div className="flex min-w-0 flex-wrap items-center gap-2">
+    <span className="min-w-0 break-all font-mono text-my-secondary">{path}</span>
+    <Button size="sm" variant="outline" disabled={pending} onClick={() => void open()}>{pending ? '正在打开…' : '打开文件'}</Button>
+  </div>{error && <p role="alert" className="text-my-danger-text">{error}</p>}</div>
+}
+
+function ProjectGeneratedDocument({ path, session }: { path: string; session: AcpSessionRecord }): JSX.Element {
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
   const operation = useRef<string | null>(null)

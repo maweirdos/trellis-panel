@@ -26,9 +26,19 @@ IDEA is an interaction reference, not a private theme or IDE implementation.
   Preserve `no-drag` interactions. Keep the existing personal/team page components
   and their routing, filters, forms and task workflows.
 - Show the tools row only in Code engineering contexts or an open task surface;
-  team/settings pages, API chat, creations and personal team-task lists do not gain
-  engineering controls merely because Code is selected. Mode changes remain a
+  team/settings pages, creations and personal team-task lists do not gain
+  engineering controls merely because Code is selected. Private Code conversations
+  show the existing Git/run controls only when their fixed directory matches the
+  actual loaded engineering source. The fixed directory caption shrinks through
+  its tooltip wrapper and truncates without overlapping the adjacent branch.
+  Mode changes remain a
   presentation preference and never prepare/rebind a task or start/stop a run.
+- Private conversations select their own personal/team business context within
+  the conversation workspace. Hide the ordinary global team-space switch on this
+  route; its existing behavior remains on personal and team business pages.
+  Private Code directory controls use that conversation's native grant rather
+  than the shell's selected project. Do not show another project's Git/run state
+  beside a private conversation.
 - `ApplicationRunCenter` can expose a compact `activity` trigger in the global
   row. Its count and unavailable/partial/uncertain states come from the existing
   instance store; this does not claim to aggregate Agent or background job activity.

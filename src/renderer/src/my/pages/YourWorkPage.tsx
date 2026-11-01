@@ -19,6 +19,7 @@ import { TaskConversationAssociationModal } from '../components/TaskConversation
 import { TaskContinuationModal } from '../components/TaskContinuationModal'
 import { TASK_CONVERSATION_SOURCE_LABELS, taskConversationDirectory, useTaskConversations, type TaskConversationController } from '../use-task-conversations'
 import { useInteractionActive, useInteractionGuard } from '../../utils/interaction-scope'
+import { changeContext, newDraft, PERSONAL, readArchive, selectArchive, useConversations } from '../../conversations/workspace'
 
 type HomeView = 'assigned' | 'created' | 'favorites' | 'completed'
 type StatusFilter = 'open' | 'all' | 'ready' | 'active' | 'review' | 'completed'
@@ -371,8 +372,10 @@ export function YourWorkPage(): JSX.Element {
     rememberVisit({ kind: 'task', target: task.id, title: task.title, archived: task.archived })
   }
   const startAgentConversation = (): void => {
-    useMy.getState().requestAgentView('conversation')
-    useApp.getState().setPage('acp')
+    useMy.getState().setShellView('collaboration')
+    changeContext(PERSONAL)
+    newDraft(PERSONAL, 'work')
+    useApp.getState().setPage('chat')
   }
   const openVisit = (entry: PersonalVisit): void => {
     const app = useApp.getState()
@@ -388,10 +391,14 @@ export function YourWorkPage(): JSX.Element {
       useMy.getState().setAgentSessionTarget(entry.target)
       app.setPage('acp')
     } else if (hasIpc) {
-      void app.chatOpenSession(entry.target).then(() => {
+      const navigation = app.navigationRevision
+      void readArchive(entry.target).then(() => {
         const current = useApp.getState()
-        if (current.snapshot?.meta.root !== projectRoot || current.page !== 'dashboard' || current.openTaskDir) return
-        if (current.chatActiveId !== entry.target) { current.pushToast({ kind: 'error', title: '该问答已不可用' }); return }
+        if (current.navigationRevision !== navigation || current.snapshot?.meta.root !== projectRoot || current.page !== 'dashboard' || current.openTaskDir || !canInteract()) return
+        if (!useConversations.getState().archiveReads[entry.target]?.value) { current.pushToast({ kind: 'error', title: '该问答已不可用' }); return }
+        useMy.getState().setShellView('collaboration')
+        changeContext(PERSONAL)
+        selectArchive(entry.target, PERSONAL, 'work')
         current.setPage('chat')
         rememberVisit(entry)
       }).catch(() => {

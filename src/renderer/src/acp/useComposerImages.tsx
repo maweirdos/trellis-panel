@@ -22,12 +22,15 @@ function readImage(file: File): Promise<AcpImageAttachment> {
 }
 
 /** Bytes are source-owned memory, never localStorage preferences or another session's draft. */
-export function useComposerImages({ root, sessionId, generation, isCurrent }: {
+export function useComposerImages({ root, sessionId, generation, isCurrent, draftSource }: {
   root: string; sessionId?: string; generation?: string; isCurrent: () => boolean
+  /** Optional controlled memory owned by a private draft, including before a native session exists. */
+  draftSource?: { identity: string; read: (id: string) => AcpImageAttachment[]; write: (id: string, images: AcpImageAttachment[]) => void }
 }) {
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
-  const source = useMemo(() => ({ drafts: new Map<string, AcpImageAttachment[]>(), errors: new Map<string, string>(), pending: new Map<string, number>() }), [root])
+  const sourceIdentity = draftSource?.identity ?? root
+  const source = useMemo(() => ({ drafts: new Map<string, AcpImageAttachment[]>(), errors: new Map<string, string>(), pending: new Map<string, number>() }), [sourceIdentity])
   const sourceRef = useRef(source)
   sourceRef.current = source
   const owner = useMemo(() => ({ source, sessionId, generation, live: true }), [source, sessionId, generation, interactive])
@@ -40,6 +43,11 @@ export function useComposerImages({ root, sessionId, generation, isCurrent }: {
   const picker = useRef<HTMLInputElement>(null)
   const pickerOwner = useRef(owner)
   const validOwner = (candidate: typeof owner): boolean => candidate.live && ownerRef.current === candidate && canInteract() && isCurrent()
+  const imagesFor = (id: string): AcpImageAttachment[] => draftSource ? draftSource.read(id) : source.drafts.get(id) ?? []
+  const writeImages = (id: string, images: AcpImageAttachment[]): void => {
+    if (draftSource) draftSource.write(id, images)
+    else source.drafts.set(id, images)
+  }
   const notify = (): void => { if (sourceRef.current === source && ownerRef.current.live) refresh((version) => version + 1) }
   useLayoutEffect(() => { depth.current = 0; setDragging(false) }, [owner])
 
@@ -47,7 +55,7 @@ export function useComposerImages({ root, sessionId, generation, isCurrent }: {
     const id = candidate.sessionId
     if (!id || !files.length || !validOwner(candidate)) return
     const checkBounds = (count: number, bytes: number): void => {
-      const current = source.drafts.get(id) ?? []
+      const current = imagesFor(id)
       if (current.length + count > ACP_IMAGE_MAX_COUNT) throw new Error('一条消息最多添加 8 张图片')
       if (current.reduce((total, image) => total + acpImageBytes(image.data), 0) + bytes > ACP_IMAGES_MAX_BYTES) throw new Error('一条消息的图片总大小最多 20 MB')
     }
@@ -59,7 +67,7 @@ export function useComposerImages({ root, sessionId, generation, isCurrent }: {
       const loaded = await Promise.all(files.map(readImage))
       if (!validOwner(candidate)) return
       checkBounds(loaded.length, loaded.reduce((total, image) => total + acpImageBytes(image.data), 0))
-      source.drafts.set(id, [...(source.drafts.get(id) ?? []), ...loaded])
+      writeImages(id, [...imagesFor(id), ...loaded])
     } catch (error) {
       if (validOwner(candidate)) source.errors.set(id, error instanceof Error ? error.message : '添加图片失败')
     } finally {
@@ -91,20 +99,20 @@ export function useComposerImages({ root, sessionId, generation, isCurrent }: {
     void addFiles(files, pickerOwner.current)
   }} />
   return {
-    images: sessionId ? source.drafts.get(sessionId) ?? [] : [],
+    images: sessionId ? imagesFor(sessionId) : [],
     error: sessionId ? source.errors.get(sessionId) ?? '' : '',
     pending: sessionId ? (source.pending.get(sessionId) ?? 0) > 0 : false,
     dragging, dragHandlers, onPaste, fileInput,
     choose: (): void => { if (validOwner(owner)) { pickerOwner.current = owner; picker.current?.click() } },
     remove: (imageId: string): void => {
       if (!sessionId || !validOwner(owner)) return
-      source.drafts.set(sessionId, (source.drafts.get(sessionId) ?? []).filter((image) => image.id !== imageId))
+      writeImages(sessionId, imagesFor(sessionId).filter((image) => image.id !== imageId))
       source.errors.delete(sessionId); notify()
     },
     consume: (id: string, submitted: AcpImageAttachment[]): void => {
       if (sourceRef.current !== source) return
       const sent = new Set(submitted.map((image) => image.id))
-      source.drafts.set(id, (source.drafts.get(id) ?? []).filter((image) => !sent.has(image.id))); notify()
+      writeImages(id, imagesFor(id).filter((image) => !sent.has(image.id))); notify()
     }
   }
 }

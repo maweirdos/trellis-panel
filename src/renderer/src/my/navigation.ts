@@ -43,15 +43,14 @@ export const PAGE_NAVIGATION = {
   },
   analytics: { title: '统计', domain: 'team', scope: 'project', icon: 'analytics', keywords: '统计分析' },
   archive: { title: '归档', domain: 'tasks', scope: 'project', icon: 'intake' },
-  acp: { title: '对话', domain: 'agents', scope: 'project', icon: 'inbox', keywords: 'Agent 对话 ACP' },
+  acp: { title: '工程对话', domain: 'agents', scope: 'project', icon: 'inbox', keywords: 'Agent 对话 ACP 项目 角色 正式任务' },
   channels: { title: '频道', domain: 'agents', scope: 'project', icon: 'inbox', keywords: 'AI 协作频道' },
   chat: {
-    title: '问答', domain: 'agents', scope: 'local', icon: 'inbox', keywords: '通用 API 问答 本机 跨项目 会话',
-    scopeNote: '本机通用 API 问答 · 会话历史跨项目共享'
+    title: '对话', domain: 'agents', scope: 'local', icon: 'inbox', keywords: '个人 助手 私人 本机 跨项目 会话'
   },
   knowledge: {
     title: '资料', domain: 'knowledge', scope: 'project', icon: 'pages', keywords: '文档 知识库',
-    scopeNote: '项目资料来自当前目录；知识库与个人问答历史可跨项目访问。',
+    scopeNote: '项目资料来自当前目录；知识库与个人对话历史可跨项目访问。',
     commandHint: '当前项目 · 知识库与个人资料'
   },
   spec: { title: '规范', domain: 'knowledge', scope: 'project', icon: 'views', keywords: '规范文档 日志' },
@@ -72,9 +71,9 @@ export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
 }
 
 export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string }> = [
+  { id: 'agents', page: 'chat', label: '对话', shortLabel: '对话' },
   { id: 'home', page: 'tasks', label: '个人', shortLabel: '个人' },
   { id: 'team', page: 'hifox', label: '团队', shortLabel: '团队' },
-  { id: 'agents', page: 'acp', label: '对话', shortLabel: '对话' },
   { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' }
 ]
 

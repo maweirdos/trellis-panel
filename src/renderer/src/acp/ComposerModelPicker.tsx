@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { Check, ChevronDown, Loader2, ShieldCheck, SlidersHorizontal, Plus, Lightbulb, ChevronRight, ArrowLeft, Info, Minimize2 } from 'lucide-react'
-import { api } from '../api'
 import { Dropdown, DropdownHeader, DropdownItem, Tooltip } from '../my/ui'
 import { Select } from '../components/Select'
 import { ConnectionNotice } from './ConnectionNotice'
@@ -15,12 +14,13 @@ function choiceLabel(name: string): string {
 }
 
 /** All advertised current-session controls live inside the composer. */
-export function ComposerModelPicker({ session, message, operationPending = false, isCurrent, acquireConfiguration, onUpdated, onRecoverModel, contextActions, usage, sendAction }: {
+export function ComposerModelPicker({ session, message, operationPending = false, isCurrent, acquireConfiguration, configureSession, onUpdated, onRecoverModel, contextActions, usage, sendAction }: {
   session: AcpSessionRecord
   message?: string
   operationPending?: boolean
   isCurrent: () => boolean
   acquireConfiguration: () => (() => void) | undefined
+  configureSession: (input: AcpConfigureInput) => Promise<{ ok: boolean; error?: string; session?: AcpSessionRecord }>
   onUpdated: (session: AcpSessionRecord) => void
   onRecoverModel: (modelId: string) => Promise<void>
   contextActions?: (close: () => void) => ReactNode
@@ -65,7 +65,7 @@ export function ComposerModelPicker({ session, message, operationPending = false
     if (!release) return
     lock.current = true; setPending(true); setError('')
     try {
-      const response = await api.acpSessionConfigure(session.sessionId, input)
+      const response = await configureSession(input)
       if (!isCurrent()) return
       if (response.ok && response.session && response.session.sessionId === session.sessionId && projectRootKey(response.session.projectRoot) === projectRootKey(session.projectRoot) && response.session.connectionGeneration === session.connectionGeneration) {
         if ((response.session.stateRevision ?? 0) >= (latestSession.current.stateRevision ?? 0)) onUpdated(response.session)

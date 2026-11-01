@@ -55,14 +55,14 @@ export function PiWebPreviewCard({ artifact, eventId, onOpenWebPreview }: {
 }
 
 /** Remember selection and dismissal per source; paging old events cannot reopen it. */
-export function usePiWebPreviewShelf({ root, session, events, enabled, onAutoOpen }: {
-  root: string; session: AcpSessionRecord | null; events: TimelineEvent[]; enabled: boolean; onAutoOpen: () => void
+export function usePiWebPreviewShelf({ root, session, events, enabled, onAutoOpen, isCurrent }: {
+  root: string; session: AcpSessionRecord | null; events: TimelineEvent[]; enabled: boolean; onAutoOpen: () => void; isCurrent?: () => boolean
 }): PiWebPreviewShelf {
   const canInteract = useInteractionGuard()
   const signal = useInteractionSignal()
   const ownerKey = JSON.stringify([projectRootKey(root), session?.sessionId])
   const active = enabled && Boolean(root && session && projectRootKey(session.projectRoot) === projectRootKey(root))
-  const source = useMemo(() => ({ ownerKey, enabled: active, signal, generation: session?.connectionGeneration }), [ownerKey, active, signal, session?.connectionGeneration])
+  const source = useMemo(() => ({ ownerKey, enabled: active, signal, generation: session?.connectionGeneration, isCurrent }), [ownerKey, active, signal, session?.connectionGeneration, isCurrent])
   const sourceRef = useRef(source)
   sourceRef.current = source
   const [states, setStates] = useState<Record<string, PreviewState>>({})
@@ -76,7 +76,7 @@ export function usePiWebPreviewShelf({ root, session, events, enabled, onAutoOpe
     return artifact ? [{ artifact, eventId: event.id, key: JSON.stringify([event.id, artifact.path, artifact.revision]) }] : []
   }), [events, root, session?.sessionId, session?.projectRoot])
   const latest = previews.at(-1)
-  const ownsSource = (): boolean => active && sourceRef.current === source && !signal?.aborted && canInteract() && projectRootKey(useApp.getState().snapshot?.meta.root ?? '') === projectRootKey(root)
+  const ownsSource = (): boolean => active && sourceRef.current === source && !signal?.aborted && canInteract() && (isCurrent ? isCurrent() : projectRootKey(useApp.getState().snapshot?.meta.root ?? '') === projectRootKey(root))
   useLayoutEffect(() => {
     if (!ownsSource() || !latest || statesRef.current[ownerKey]?.latestKey === latest.key) return
     const previous = statesRef.current[ownerKey]

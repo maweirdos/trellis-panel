@@ -46,7 +46,7 @@ import { registerGitlabIpc } from './gitlab'
 import { registerIntegrationsIpc } from './integrations'
 import { registerProviderWorkspacesIpc } from './provider-workspaces'
 import { registerHttpApiIpc } from './httpapi'
-import { registerChatIpc } from './chat'
+import { registerChatArchiveIpc } from './chat'
 import { registerFlowIpc } from './flow'
 import { registerWorkflowIpc } from './workflow'
 import { registerTeamDesktopIpc } from './team-desktop'
@@ -109,7 +109,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerIntegrationsIpc()
   registerProviderWorkspacesIpc(deps)
   registerHttpApiIpc()
-  registerChatIpc(deps)
+  registerChatArchiveIpc()
   registerFlowIpc()
   registerWorkflowIpc()
   registerTeamDesktopIpc()

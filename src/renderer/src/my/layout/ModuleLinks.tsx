@@ -14,6 +14,7 @@ export function ModuleLinks({ domain, agentView, onAgentView }: {
 }): JSX.Element {
   const page = useApp((state) => state.page)
   const setPage = useApp((state) => state.setPage)
+  const hasProject = useApp((state) => Boolean(state.snapshot?.meta.root))
   const knowledgeView = useMy((state) => state.knowledgeView)
   const setKnowledgeView = useMy((state) => state.setKnowledgeView)
   const requestAgentView = useMy((state) => state.requestAgentView)
@@ -31,10 +32,12 @@ export function ModuleLinks({ domain, agentView, onAgentView }: {
   const route = (target: Page, label: string, icon: JSX.Element): JSX.Element => row(target, label, page === target, icon, () => { if (useApp.getState().page !== target) setPage(target) })
   return <nav aria-label={domain === 'agents' ? '对话导航' : '知识导航'} className="shrink-0 space-y-0.5 border-b border-my-line px-2 py-2">
     {domain === 'agents' ? <>
-      {row('conversation', '对话', page === 'acp' && agentView !== 'roles', <MessageSquare size={16} />, () => agent('conversation'))}
+      {route('chat', '对话', <MessagesSquare size={16} />)}
+      {hasProject && <>
+      {row('conversation', '工程对话', page === 'acp' && agentView !== 'roles', <MessageSquare size={16} />, () => agent('conversation'))}
       {row('roles', '角色', page === 'acp' && agentView === 'roles', <Bot size={16} />, () => agent('roles'))}
       {route('channels', '频道', <Hash size={16} />)}
-      {route('chat', '问答', <MessagesSquare size={16} />)}
+      </>}
     </> : <>
       {row('materials', '资料', page === 'knowledge' && knowledgeView === 'materials', <FileText size={16} />, () => knowledge('materials'))}
       {route('spec', '规范', <BookOpen size={16} />)}
