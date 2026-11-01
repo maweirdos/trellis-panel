@@ -32,6 +32,46 @@ for (const [theme, values] of Object.entries(themes)) {
   }
   for (const name of Object.keys(values)) visit(name)
 }
+
+const radiusNames = new Set(Object.keys(base).filter(name => /^--my-.*radius(?:-|$)/.test(name)))
+const functionalRadii = new Set(['--my-radius-none', '--my-radius-full', '--my-radius-round'])
+const resolveRadius = (name, values, trail = []) => {
+  assert.ok(!trail.includes(name), `circular radius ${[...trail, name].join(' -> ')}`)
+  const value = values[name]?.trim()
+  const alias = value?.match(/^var\((--my-[\w-]+)\)$/)
+  return alias ? resolveRadius(alias[1], values, [...trail, name]) : value
+}
+const densityRules = tokenTree.nodes.filter(node => node.type === 'rule' && node.selector.includes('data-my-font-size'))
+for (const [theme, values] of Object.entries(themes)) {
+  for (const preset of [null, ...densityRules]) {
+    const context = { ...values, ...Object.fromEntries((preset?.nodes ?? []).filter(node => node.type === 'decl').map(node => [node.prop, node.value])) }
+    const scope = `${theme} ${preset?.selector ?? 'standard'}`
+    assert.equal(context['--my-radius-base'], '10px', `single radius source: ${scope}`)
+    for (const name of radiusNames) {
+      if (!functionalRadii.has(name)) assert.equal(resolveRadius(name, context), '10px', `ordinary radius ${name}: ${scope}`)
+    }
+    assert.match(resolveRadius('--my-radius-none', context), /^0(?:px)?$/)
+    assert.equal(resolveRadius('--my-radius-full', context), '9999px')
+    assert.equal(resolveRadius('--my-radius-round', context), '50%')
+  }
+}
+const canonicalRadius = value => /^0(?:px|rem|em|%)?$/.test(value) || value === 'inherit' || radiusNames.has(value.match(/^var\((--my-[\w-]+)\)$/)?.[1])
+for (const file of globSync(root + '**/*.css')) {
+  postcss.parse(read(file)).walkDecls(declaration => {
+    if (/^--my-.*radius(?:-|$)/.test(declaration.prop)) {
+      assert.equal(file.replace(/\\/g, '/'), root + 'my/my-tokens.css', `radius tokens belong only in my-tokens.css: ${file}:${declaration.source.start.line} ${declaration.prop}`)
+    }
+    if (!/^border(?:-[a-z]+)*-radius$/.test(declaration.prop)) return
+    assert.ok(postcss.list.space(declaration.value).every(canonicalRadius), `radius must use a canonical token, zero or inherit: ${file}:${declaration.source.start.line} ${declaration.value}`)
+  })
+}
+for (const file of globSync(root + '**/*.{ts,tsx}')) {
+  assert.doesNotMatch(read(file), /(?:["'`]--my-[\w-]*radius[\w-]*["'`]\s*:|\.setProperty\(\s*["'`]--my-[\w-]*radius[\w-]*["'`])/, `do not override radius tokens in renderer code: ${file}`)
+}
+assert.doesNotMatch(sources, /\brounded(?:-[a-z]+)?-\[[^\]]+\]/, 'use shared rounded utilities rather than arbitrary radius classes')
+for (const match of sources.matchAll(/\bborderRadius\s*:\s*(?:(-?\d+(?:\.\d+)?)|(["'`])([^"'`]*)\2)/g)) {
+  assert.ok(match[1] !== undefined ? Number(match[1]) === 0 : canonicalRadius(match[3]), `inline radius must use a canonical token or zero: ${match[0]}`)
+}
 const markPath = read('resources/brand/mark.svg').match(/<path[^>]+d="([^"]+)"/)[1]
 assert.ok(read('src/renderer/public/favicon.svg').includes(markPath), 'favicon derives from the canonical mark')
 assert.ok(read('src/renderer/src/my/BrandMark.tsx').includes('resources/brand/mark.svg?url'))
@@ -45,4 +85,4 @@ for (const size of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
   assert.equal(png.readUInt32BE(16), size)
   assert.equal(png.readUInt32BE(20), size)
 }
-console.log('PASS canonical tokens, dependency graph, no legacy brand, same-source brand assets')
+console.log('PASS canonical tokens, dependency graph, no legacy brand, same-source brand assets, unified 10px radius')

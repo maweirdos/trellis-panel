@@ -431,7 +431,7 @@ function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: Pr
           <span className={clsx('my-chip shrink-0 border', STATUS_PILL[issue.statusCategory] ?? 'border-my-line text-my-secondary')}>
             {issue.status}
           </span>
-          <span className="min-w-0 flex-1 truncate text-my-xs font-medium text-my-primary" title={issue.summary}>
+          <span className="my-item-title min-w-0 flex-1 truncate" title={issue.summary}>
             {issue.summary}
           </span>
           <span className="shrink-0 text-my-xs text-my-tertiary">{issue.assignee}</span>
@@ -544,8 +544,8 @@ function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: Pr
       <div className="grid h-full place-items-center p-6">
         <div className="max-w-sm text-center">
           <Link2 size={28} className="mx-auto mb-3 text-my-tertiary" />
-          <div className="mb-1.5 text-my-sm font-medium text-my-primary">尚未启用 Jira 连接</div>
-          <p className="mb-4 text-my-xs leading-5 text-my-tertiary">
+          <div className="my-item-title mb-1.5">尚未启用 Jira 连接</div>
+          <p className="my-item-description mb-4">
             在外部应用集成中添加 Jira 连接，并为当前项目选择来源。查询、导入、评论和状态流转均由明确操作触发。
           </p>
           <Button variant="primary" onClick={() => useApp.getState().setPage('integrations')}>

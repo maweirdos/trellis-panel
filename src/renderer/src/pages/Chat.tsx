@@ -427,7 +427,7 @@ export function ChatPage(): JSX.Element {
               )}
               onClick={() => { rememberVisit({ kind: 'chat', target: s.id, title: s.title || '问答' }); void chatOpenSession(s.id) }}
             >
-              <span className="min-w-0 flex-1 truncate" title={s.title}>
+              <span className={clsx('my-item-title min-w-0 flex-1 truncate', s.id === activeId && 'text-my-primary')} title={s.title}>
                 {s.title}
               </span>
               <span className="shrink-0 font-mono text-my-2xs text-my-placeholder">{s.messageCount}</span>
@@ -449,7 +449,7 @@ export function ChatPage(): JSX.Element {
       {/* 转录 + Composer */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="my-page-toolbar-row">
-          <span className="min-w-0 max-w-[240px] flex-1 truncate text-my-xs font-semibold text-my-secondary">{activeSession?.title ?? '新对话'}</span>
+          <span className="my-item-title min-w-0 max-w-[240px] flex-1 truncate">{activeSession?.title ?? '新对话'}</span>
           <Select
             value={taskDir}
             onChange={setTaskDir}
@@ -644,7 +644,7 @@ export function ChatPage(): JSX.Element {
           {!atBottom && (
             <button
               onClick={() => scrollToBottom('smooth')}
-              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-my-line bg-my-layer-2 px-3 py-1 text-my-xs text-my-secondary shadow-lg hover:border-my-line-accent-subtle"
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-my-md border border-my-line bg-my-layer-2 px-3 py-1 text-my-xs text-my-secondary shadow-lg hover:border-my-line-accent-subtle"
             >
               <ChevronDown size={11} /> 回到底部
             </button>
@@ -664,7 +664,7 @@ export function ChatPage(): JSX.Element {
                   <img src={a.dataUrl} alt={a.name} className="h-14 w-14 rounded-my-lg border border-my-line object-cover" />
                   <button
                     onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
-                    className="absolute -right-1.5 -top-1.5 rounded-full bg-my-layer-3 p-0.5 text-my-tertiary shadow hover:text-my-danger-text"
+                    className="absolute -right-1.5 -top-1.5 rounded-my-md bg-my-layer-3 p-0.5 text-my-tertiary shadow hover:text-my-danger-text"
                     title="移除"
                   >
                     <X size={10} />

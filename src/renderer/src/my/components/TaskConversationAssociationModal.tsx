@@ -147,7 +147,7 @@ export function TaskConversationAssociationModal({ taskDir, taskTitle, controlle
                 {' · '}{updated ? <time dateTime={updated.toISOString()} title={`最后更新：${updated.toLocaleString('zh-CN')}`}>{updatedLabel}</time> : <span>{updatedLabel}</span>}
                 {duplicateTitle && <> · <span title={item.sessionId}>ID {shortId}</span></>}
               </span>
-              {item.unavailableReason && <span className="my-task-conversation-candidate__meta">{item.unavailableReason}</span>}
+              {item.unavailableReason && <span className="my-task-conversation-candidate__meta my-task-conversation-candidate__reason">{item.unavailableReason}</span>}
             </span>
             {linked ? <span className="my-task-conversation-candidate__linked">已关联</span> : selected === item.id ? <Check size={14} aria-hidden="true" /> : null}
           </button></li>

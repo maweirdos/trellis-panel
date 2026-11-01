@@ -147,7 +147,7 @@ function FileEditor({
     <div className="absolute inset-0 z-30 flex flex-col bg-my-canvas">
       <div className="my-page-toolbar-row">
         <FileCode2 size={14} className="text-my-accent-text" />
-        <span className="text-my-xs font-semibold text-my-primary">{title}</span>
+        <span className="my-item-title">{title}</span>
         <span className="truncate font-mono text-my-xs text-my-tertiary">{path}</span>
         <div className="ml-auto flex items-center gap-2">
           {renderable && (
@@ -220,7 +220,7 @@ function WorkflowEditor({ wf, onClose, onSaved }: { wf: WorkflowInfo; onClose: (
       <div className="my-scrollbar flex w-64 shrink-0 flex-col overflow-y-auto border-r border-my-line p-4">
         <div className="mb-3 flex items-center gap-2">
           <Layers size={14} className="text-my-accent-text" />
-          <span className="text-my-xs font-semibold text-my-primary">结构大纲</span>
+          <span className="my-item-title">结构大纲</span>
         </div>
         <div className="mb-3 flex flex-wrap gap-1">
           {wf.structure.states.map((s) => (
@@ -242,7 +242,7 @@ function WorkflowEditor({ wf, onClose, onSaved }: { wf: WorkflowInfo; onClose: (
         {wf.structure.phases.length === 0 && <div className="text-my-xs text-my-tertiary">未解析到 Phase</div>}
         {wf.structure.phases.map((p) => (
           <div key={p.title} className="mb-2.5">
-            <div className="text-my-sm font-medium text-my-secondary">{p.title}</div>
+            <div className="my-item-title">{p.title}</div>
             <div className="ml-2 mt-0.5 space-y-0.5 border-l border-my-line pl-2">
               {p.steps.length === 0 && <div className="text-my-xs text-my-placeholder">（无 #### X.Y 步骤）</div>}
               {p.steps.map((s) => (
@@ -353,7 +353,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
     <div className="absolute inset-0 z-30 flex flex-col bg-my-canvas">
       <div className="my-page-toolbar-row">
         <span className="my-chip bg-my-accent-subtle text-my-xs text-my-accent-text">{ext.platformName}</span>
-        <span className="text-my-xs font-semibold text-my-primary">{ext.name}</span>
+        <span className="my-item-title">{ext.name}</span>
         {ext.invocation && <span className="font-mono text-my-xs text-my-tertiary">{ext.invocation}</span>}
         <div className="ml-auto flex items-center gap-2">
           {ext.format === 'md' && (
@@ -391,7 +391,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
           <PageContent variant="centered" className="flex flex-col gap-4">
             {fmKeys.map((k) => (
               <label key={k} className="block">
-                <span className="mb-1 block font-mono text-my-xs text-my-tertiary">{k}</span>
+                <span className="my-item-title mb-1 block font-mono">{k}</span>
                 {k === 'description' ? (
                   <textarea
                     value={fields[k] ?? ''}
@@ -412,7 +412,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
             ))}
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="mb-1 flex items-center gap-2">
-                <span className="font-mono text-my-xs text-my-tertiary">正文</span>
+                <span className="my-item-title font-mono">正文</span>
                 <div className="ml-auto flex overflow-hidden rounded-my-md border border-my-line">
                   {(
                     [
@@ -707,17 +707,17 @@ function WorkflowSection({
       <div className="my-card p-4">
         <div className="mb-1 flex items-center gap-2">
           <Workflow size={14} className="text-my-accent-text" />
-          <span className="text-my-xs font-semibold text-my-primary">Workflow 解析优先级</span>
+          <span className="my-item-title">Workflow 解析优先级</span>
           <span className="text-my-xs text-my-tertiary">自上而下回退</span>
         </div>
         <div className="mt-3 grid gap-2 md:grid-cols-4">
           <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
-            <div className="text-my-xs font-semibold uppercase tracking-wide text-my-accent-text">1 · 任务 Pin</div>
+            <div className="my-item-title">1 · 任务 Pin</div>
             <div className="mt-1 text-my-lg font-bold text-my-primary">{totalPins}</div>
             <div className="text-my-xs leading-4 text-my-tertiary">task.json 的 workflow 字段（随仓库提交）</div>
           </div>
           <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
-            <div className="text-my-xs font-semibold uppercase tracking-wide text-my-accent-text">2 · 个人默认</div>
+            <div className="my-item-title">2 · 个人默认</div>
             <div className="mt-1 flex items-center gap-2">
               <span className="font-mono text-my-sm text-my-primary">{chain.developerWorkflow ?? '—'}</span>
               <Select
@@ -736,7 +736,7 @@ function WorkflowSection({
             <div className="mt-1 text-my-xs leading-4 text-my-tertiary">.trellis/.developer（gitignored）</div>
           </div>
           <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
-            <div className="text-my-xs font-semibold uppercase tracking-wide text-my-accent-text">3 · 团队默认</div>
+            <div className="my-item-title">3 · 团队默认</div>
             <div className="mt-1 flex items-center gap-2">
               <span className="font-mono text-my-sm text-my-primary">{chain.configDefault ?? '—'}</span>
               <Select
@@ -755,7 +755,7 @@ function WorkflowSection({
             <div className="mt-1 text-my-xs leading-4 text-my-tertiary">config.yaml 的 default_workflow</div>
           </div>
           <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
-            <div className="text-my-xs font-semibold uppercase tracking-wide text-my-accent-text">4 · 全局回退</div>
+            <div className="my-item-title">4 · 全局回退</div>
             <div className="mt-1 flex items-center gap-2">
               <span className={clsx('text-my-sm', chain.globalExists ? 'text-my-success-text' : 'text-my-danger-text')}>
                 {chain.globalExists ? 'workflow.md ✓' : '缺失'}
@@ -791,7 +791,7 @@ function WorkflowSection({
               <span className={clsx('my-chip text-my-2xs', wf.scope === 'global' ? 'bg-my-accent-subtle text-my-accent-text' : 'bg-my-layer-2 text-my-secondary')}>
                 {wf.scope === 'global' ? '全局回退' : '变体'}
               </span>
-              <span className="font-mono text-my-xs font-semibold text-my-primary">{wf.name}</span>
+              <span className="my-item-title font-mono">{wf.name}</span>
               {wf.pinnedTasks.length > 0 && (
                 <span className="my-chip bg-my-label-indigo text-my-2xs text-my-label-indigo-text" title={wf.pinnedTasks.map((t) => t.title).join('\n')}>
                   {wf.pinnedTasks.length} 个任务 pin
@@ -938,7 +938,7 @@ function ExtSection({
           {groups.map((g) => (
             <div key={g.name} className="my-card p-3">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-my-xs font-medium text-my-primary">{g.name}</span>
+                <span className="my-item-title">{g.name}</span>
                 {g.present.map((p) => (
                   <span key={p} className="my-chip bg-my-accent-subtle text-my-2xs text-my-accent-text" title={p}>
                     ✓ {p}
@@ -974,19 +974,19 @@ function ExtSection({
         byPlatform.map(([platform, list]) => (
           <div key={platform}>
             <div className="mb-2 flex items-center gap-2">
-              <span className="text-my-sm font-semibold text-my-secondary">{platform}</span>
+              <span className="my-item-title">{platform}</span>
               <span className="my-chip bg-my-layer-2 text-my-2xs text-my-tertiary">{list.length}</span>
             </div>
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {list.map((e) => (
                 <button key={e.path} onClick={() => onEdit(e)} className="my-card p-3 text-left">
                   <div className="flex items-center gap-1.5">
-                    <span className="min-w-0 truncate text-my-xs font-medium text-my-primary">{e.name}</span>
+                    <span className="my-item-title min-w-0 truncate">{e.name}</span>
                     {e.frontmatter.model && <span className="my-chip bg-my-label-purple text-my-2xs text-my-label-purple-text">{e.frontmatter.model}</span>}
                     <span className="ml-auto shrink-0 text-my-2xs text-my-placeholder">{relTime(e.mtime)}</span>
                   </div>
                   {e.frontmatter.description && (
-                    <div className="mt-1 line-clamp-2 text-my-xs leading-4 text-my-tertiary">{e.frontmatter.description}</div>
+                    <div className="my-item-description mt-1 line-clamp-2">{e.frontmatter.description}</div>
                   )}
                   <div className="mt-2 flex items-center gap-1.5">
                     {e.invocation && <span className="my-chip bg-my-accent-subtle font-mono text-my-2xs text-my-accent-text">{e.invocation}</span>}
@@ -1051,7 +1051,7 @@ function HooksSection({
       <div className="my-card p-4">
         <div className="mb-1 flex items-center gap-2">
           <Webhook size={14} className="text-my-accent-text" />
-          <span className="text-my-xs font-semibold text-my-primary">任务生命周期钩子</span>
+          <span className="my-item-title">任务生命周期钩子</span>
           <span className="text-my-xs text-my-tertiary">config.yaml hooks.* · 注入 TASK_JSON_PATH</span>
         </div>
         <div className="mt-3 space-y-2">
@@ -1084,7 +1084,7 @@ function HooksSection({
       <div className="my-card p-4">
         <div className="mb-3 flex items-center gap-2">
           <Webhook size={14} className="text-my-accent-text" />
-          <span className="text-my-xs font-semibold text-my-primary">平台 Hook 注册</span>
+          <span className="my-item-title">平台 Hook 注册</span>
           <span className="text-my-xs text-my-tertiary">settings.json / hooks.json 中的事件注册</span>
         </div>
         {scan.hookRegistrations.length === 0 ? (
@@ -1129,7 +1129,7 @@ function HooksSection({
       <div className="my-card p-4">
         <div className="mb-3 flex items-center gap-2">
           <FileCode2 size={14} className="text-my-accent-text" />
-          <span className="text-my-xs font-semibold text-my-primary">钩子脚本</span>
+          <span className="my-item-title">钩子脚本</span>
           <span className="text-my-xs text-my-tertiary">各平台 hooks / plugins / extensions 目录</span>
         </div>
         {scan.hookScripts.length === 0 ? (
@@ -1212,15 +1212,15 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
       <div className="my-card space-y-3 p-4">
         <div className="flex items-center gap-2">
           <Settings2 size={14} className="text-my-accent-text" />
-          <span className="text-my-xs font-semibold text-my-primary">会话与任务</span>
+          <span className="my-item-title">会话与任务</span>
         </div>
         <label className="block">
-          <span className="mb-1 block text-my-xs text-my-tertiary">session_commit_message — journal 自动提交信息</span>
+          <span className="my-item-title mb-1 block">session_commit_message — journal 自动提交信息</span>
           <input value={form.session_commit_message} onChange={(e) => setForm((f) => ({ ...f, session_commit_message: e.target.value }))} className="my-input" />
         </label>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
-            <span className="mb-1 block text-my-xs text-my-tertiary">session_auto_commit</span>
+            <span className="my-item-title mb-1 block">session_auto_commit</span>
             <Select
               ariaLabel="session_auto_commit"
               value={form.session_auto_commit === null ? 'default' : form.session_auto_commit ? 'true' : 'false'}
@@ -1234,7 +1234,7 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-my-xs text-my-tertiary">max_journal_lines — journal 轮转行数</span>
+            <span className="my-item-title mb-1 block">max_journal_lines — journal 轮转行数</span>
             <input
               type="number"
               value={form.max_journal_lines ?? ''}
@@ -1249,18 +1249,18 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
       <div className="my-card space-y-3 p-4">
         <div className="flex items-center gap-2">
           <Workflow size={14} className="text-my-accent-text" />
-          <span className="text-my-xs font-semibold text-my-primary">Workflow 与包结构</span>
+          <span className="my-item-title">Workflow 与包结构</span>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
-            <span className="mb-1 block text-my-xs text-my-tertiary">default_workflow — 团队默认 workflow</span>
+            <span className="my-item-title mb-1 block">default_workflow — 团队默认 workflow</span>
             <Select ariaLabel="default_workflow" value={form.default_workflow} onChange={(value) => setForm((f) => ({ ...f, default_workflow: value }))} className="w-full" options={[
               { value: '', label: '（未设置）' },
               ...scan.workflows.filter((workflow) => workflow.scope === 'saved').map((workflow) => ({ value: workflow.id, label: workflow.id }))
             ]} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-my-xs text-my-tertiary">default_package</span>
+            <span className="my-item-title mb-1 block">default_package</span>
             <Select ariaLabel="default_package" value={form.default_package} onChange={(value) => setForm((f) => ({ ...f, default_package: value }))} className="w-full" options={[
               { value: '', label: '（未设置）' },
               ...packages.filter((item) => item.name.trim()).map((item) => ({ value: item.name, label: item.name }))
@@ -1269,7 +1269,7 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
         </div>
         <div>
           <div className="mb-1.5 flex items-center gap-2">
-            <span className="text-my-xs text-my-tertiary">packages — monorepo / submodule / polyrepo 声明</span>
+            <span className="my-item-title">packages — monorepo / submodule / polyrepo 声明</span>
             <Button variant="ghost" size="sm" onClick={() => setPackages((p) => [...p, { name: '', path: '', type: '', git: false }])}>
               <Plus size={11} /> 添加
             </Button>
@@ -1292,7 +1292,7 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
           </div>
         </div>
         <label className="block">
-          <span className="mb-1 block text-my-xs text-my-tertiary">codex.dispatch_mode — Codex 调度方式</span>
+          <span className="my-item-title mb-1 block">codex.dispatch_mode — Codex 调度方式</span>
           <Select ariaLabel="codex.dispatch_mode" value={form.codex_dispatch_mode} onChange={(value) => setForm((f) => ({ ...f, codex_dispatch_mode: value }))} className="w-full md:w-64" options={[
             { value: '', label: '默认（inline）' },
             { value: 'inline', label: 'inline — 主 agent 实现' },
@@ -1322,7 +1322,7 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
       <div className="my-card p-4">
         <div className="mb-2 flex items-center gap-2">
           <MonitorSmartphone size={14} className="text-my-accent-text" />
-          <span className="text-my-xs font-semibold text-my-primary">平台检测</span>
+          <span className="my-item-title">平台检测</span>
           <span className="my-chip bg-my-accent-subtle text-my-xs text-my-accent-text">{detected.length} / {scan.platforms.length}</span>
           <span className="ml-auto text-my-xs text-my-tertiary">trellis init --&lt;platform&gt;</span>
         </div>
@@ -1354,10 +1354,10 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
       </div>
 
       <div className="my-card p-4">
-        <div className="mb-2 text-my-xs font-semibold text-my-primary">团队与个人配置</div>
+        <div className="my-item-title mb-2">团队与个人配置</div>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
-            <div className="mb-1.5 text-my-sm font-medium text-my-secondary">团队共享（PR 评审协作）</div>
+            <div className="my-item-title mb-1.5">团队共享（PR 评审协作）</div>
             <ul className="space-y-1 text-my-xs leading-4 text-my-tertiary">
               <li>· <code>.trellis/spec/</code> —— 规范知识库，像代码一样经 PR 评审</li>
               <li>· <code>.trellis/tasks/</code> —— 任务 JSON，用 --assignee 避免冲突</li>
@@ -1366,7 +1366,7 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
             </ul>
           </div>
           <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
-            <div className="mb-1.5 text-my-sm font-medium text-my-secondary">个人隔离（gitignored）</div>
+            <div className="my-item-title mb-1.5">个人隔离（gitignored）</div>
             <ul className="space-y-1 text-my-xs leading-4 text-my-tertiary">
               <li>· <code>.trellis/.developer</code> —— 本机身份与个人 workflow 偏好{name_ext(scan)}</li>
               <li>· <code>.trellis/workspace/&lt;name&gt;/</code> —— 个人日志与索引</li>

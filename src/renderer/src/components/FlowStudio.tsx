@@ -335,7 +335,7 @@ export function FlowStudio(): JSX.Element {
                 <h2 className="flex items-center gap-2 text-my-sm font-semibold text-my-primary">
                   <Wand2 size={15} className="text-my-accent-text" /> 用一句话让 AI 设计工作流
                 </h2>
-                <p className="mt-1 text-my-xs leading-5 text-my-secondary">
+                <p className="my-item-description mt-1 leading-5">
                   描述你想自动完成的事，AI 会设计一个多步骤流程：安排不同的「AI 伙伴」分工（调研、写报告、检查质量），
                   自动调用项目知识库与任务数据，关键产出带质量门禁。保存后可反复运行。
                 </p>
@@ -358,7 +358,7 @@ export function FlowStudio(): JSX.Element {
                     {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                     {generating ? 'AI 设计中…' : '生成工作流'}
                   </Button>
-                  <span className="text-my-2xs text-my-tertiary">生成约需 10~30 秒，取决于模型速度</span>
+                  <span className="my-item-description">生成约需 10~30 秒，取决于模型速度</span>
                 </div>
               </div>
 
@@ -366,7 +366,7 @@ export function FlowStudio(): JSX.Element {
                 <div className="rounded-my-xl border border-my-line-accent-subtle bg-my-layer-2">
                   <div className="flex items-center gap-2 border-b border-my-line px-4 py-2.5">
                     <span className="text-my-xs font-semibold text-my-primary">{draft.name}</span>
-                    <span className="flex-1 truncate text-my-2xs text-my-secondary">{draft.description}</span>
+                    <span className="my-item-description flex-1 truncate">{draft.description}</span>
                     <Button variant="ghost" size="sm" className="px-1.5 text-my-2xs" onClick={() => setShowJson((v) => !v)} title="查看/编辑 DSL JSON">
                       <FileJson size={11} /> {showJson ? '可视化' : 'JSON'}
                     </Button>
@@ -404,16 +404,16 @@ export function FlowStudio(): JSX.Element {
                   <Play size={12} /> 运行
                 </Button>
               </div>
-              <p className="text-my-xs text-my-secondary">{selected.description}</p>
+              <p className="my-item-description">{selected.description}</p>
 
               {(selected.inputs?.length ?? 0) > 0 && (
                 <div className="rounded-my-xl border border-my-line bg-my-layer-2 p-4 space-y-3">
                   <div className="text-my-xs font-semibold text-my-primary">运行前需要你提供：</div>
                   {selected.inputs.map((i) => (
                     <div key={i.name}>
-                      <label className="mb-1 block text-my-xs text-my-secondary">
+                      <label className="my-item-title mb-1 block">
                         {i.label} {i.required && <span className="text-my-danger-text">*</span>}
-                        {i.description && <span className="ml-1 text-my-tertiary">—— {i.description}</span>}
+                        {i.description && <span className="my-item-description ml-1">—— {i.description}</span>}
                       </label>
                       <input
                         value={runInputs[i.name] ?? ''}
@@ -527,7 +527,7 @@ function FlowVisual({ def }: { def: FlowDef }): JSX.Element {
       {def.phases.map((p, pi) => (
         <div key={p.id} className="rounded-my-xl border border-my-line bg-my-layer-2">
           <div className="flex items-center gap-2 border-b border-my-line px-3.5 py-2">
-            <span className="grid h-5 w-5 place-items-center rounded-full bg-my-accent-subtle text-my-2xs font-semibold text-my-accent-text">{pi + 1}</span>
+            <span className="grid h-5 w-5 place-items-center rounded-my-md bg-my-accent-subtle text-my-2xs font-semibold text-my-accent-text">{pi + 1}</span>
             <span className="text-my-xs font-semibold text-my-primary">{p.name}</span>
           </div>
           <div className="space-y-1.5 p-3">

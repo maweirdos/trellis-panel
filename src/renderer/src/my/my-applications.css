@@ -11,6 +11,18 @@
   -webkit-app-region: no-drag;
 }
 .my-root .my-application-popup-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.my-root .my-applications-popup > header > div > h2 {
+  color: var(--my-txt-item-title);
+  font-size: var(--my-text-item-title);
+  font-weight: var(--my-weight-medium);
+  line-height: var(--my-line-ui);
+}
+.my-root .my-applications-popup > header > div > p {
+  color: var(--my-txt-item-description);
+  font-size: var(--my-text-item-description);
+  font-weight: var(--my-weight-normal);
+  line-height: var(--my-line-ui);
+}
 .my-root .my-application-trigger { display: inline-flex; }
 .my-root .my-application-list { display: grid; min-width: 0; gap: var(--my-space-12); }
 .my-root .my-application-popup-body > .my-application-list { gap: var(--my-space-8); padding: var(--my-space-4) var(--my-space-6) var(--my-space-12); }
@@ -22,6 +34,18 @@
   background: var(--my-bg-layer-1);
 }
 .my-root .my-application-card > * { min-width: 0; }
+.my-root .my-application-card > div:first-child > div:first-child > h3 {
+  color: var(--my-txt-item-title);
+  font-size: var(--my-text-item-title);
+  font-weight: var(--my-weight-medium);
+  line-height: var(--my-line-ui);
+}
+.my-root .my-application-card > div:first-child > div:first-child > p {
+  color: var(--my-txt-item-description);
+  font-size: var(--my-text-item-description);
+  font-weight: var(--my-weight-normal);
+  line-height: var(--my-line-ui);
+}
 .my-root .my-application-empty { display: flex; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: var(--my-space-8); padding: var(--my-space-32) var(--my-space-16); color: var(--my-txt-secondary); font-size: var(--my-text-sm); text-align: center; }
 .my-root .my-application-message { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: var(--my-space-8); padding: var(--my-space-8); border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-md); font-size: var(--my-text-xs); line-height: var(--my-line-ui); overflow-wrap: anywhere; }
 .my-root .my-application-output { min-width: 0; margin-top: var(--my-space-12); overflow: hidden; border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-md); background: var(--my-bg-canvas); }
@@ -31,6 +55,12 @@
 .my-root .my-application-form { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: var(--my-space-16); padding: var(--my-space-20); overflow-y: auto; overscroll-behavior: contain; }
 .my-root .my-application-form-grid { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--my-space-12); }
 .my-root .my-application-field { display: flex; min-width: 0; flex-direction: column; gap: var(--my-space-6); overflow-wrap: anywhere; }
+.my-root .my-application-field > span:first-child {
+  color: var(--my-txt-item-title);
+  font-size: var(--my-text-item-title);
+  font-weight: var(--my-weight-medium);
+  line-height: var(--my-line-ui);
+}
 .my-root .my-application-field .my-input { min-width: 0; }
 .my-root .my-application-field textarea { resize: vertical; }
 .my-root .my-application-override { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; gap: var(--my-space-8); align-items: center; }
@@ -54,7 +84,7 @@
 .my-root .my-run-config-sidebar { display: flex; min-height: 0; min-width: 0; flex-direction: column; border-right: var(--my-space-1) solid var(--my-border-subtle); background: var(--my-bg-layer-1); }
 .my-root .my-run-config-tools { display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-4); padding: var(--my-space-8); border-bottom: var(--my-space-1) solid var(--my-border-subtle); }
 .my-root .my-run-config-entries { min-height: 0; flex: 1; overflow: auto; padding: var(--my-space-4); }
-.my-root .my-run-config-entry { display: flex; width: 100%; min-width: 0; align-items: center; gap: var(--my-space-8); padding: var(--my-space-8); border-radius: var(--my-control-radius); color: var(--my-txt-secondary); text-align: left; font-size: var(--my-text-sm); }
+.my-root .my-run-config-entry { display: flex; width: 100%; min-width: 0; align-items: center; gap: var(--my-space-8); padding: var(--my-space-8); border-radius: var(--my-control-radius); color: var(--my-txt-item-title); text-align: left; font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); }
 .my-root .my-run-config-entry:hover:not(:disabled) { background: var(--my-bg-navigation-hover); }
 .my-root .my-run-config-entry.is-selected { background: var(--my-bg-navigation-selected); color: var(--my-txt-primary); }
 .my-root .my-run-config-entry:disabled { cursor: wait; }

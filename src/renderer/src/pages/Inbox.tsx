@@ -90,8 +90,8 @@ export function InboxPage(): JSX.Element {
         {todos.length === 0 && (
           <div className="grid place-items-center gap-3 py-24 text-my-tertiary">
             <InboxIcon size={36} strokeWidth={1.2} />
-            <div className="text-my-sm text-my-secondary">待办池为空</div>
-            <div className="max-w-md text-center text-my-sm leading-5">
+            <div className="my-item-title">待办池为空</div>
+            <div className="my-item-description max-w-md text-center">
               这里是上游需求（Jira 待办或本地草稿）的收集与预处理池。
               待办保存在本地 Markdown 文件（<code className="text-my-accent-text">.trellis/todos/*.md</code>）中，
               Codex / ZCode / Claude Code 可以直接读取以启动正式任务规划与实施。
@@ -175,13 +175,13 @@ function TodoCard({
 
       <div
         onClick={() => onViewDoc(todo)}
-        className="cursor-pointer font-medium leading-5 text-my-primary transition-colors hover:text-my-accent-text"
+        className="my-item-title cursor-pointer transition-colors hover:text-my-accent-text"
       >
-        <div className="line-clamp-2 text-my-xs">{todo.title}</div>
+        <div className="line-clamp-2">{todo.title}</div>
       </div>
 
       {todo.description && (
-        <div className="mt-1 line-clamp-2 text-my-xs leading-4 text-my-tertiary">
+        <div className="my-item-description mt-1 line-clamp-2">
           {todo.description.replace(/^#+ .*/g, '').trim()}
         </div>
       )}

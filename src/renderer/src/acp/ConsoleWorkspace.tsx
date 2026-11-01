@@ -1071,7 +1071,7 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
     return <button key={item.id} className={clsx('acp-agent-card', inspectorOpen && inspectedProfileId === item.id && !inspectedSessionId && 'is-selected')} onClick={() => openAgent(item.id)}><span className="acp-avatar"><Bot size={20} /></span><div><strong>{item.name}</strong><p>{item.description || (isStarterRole(item) ? '预置起点，可补充你的角色职责与指令' : '自定义工作角色')}</p><small>执行引擎：{engine?.name ?? item.runtimeId} · {runtimeHealthLabel(engine)}</small><small className="mt-1 block">本机私有 · 当前项目</small></div></button>
   }
 
-  if (!root) return <div className="acp-empty text-my-sm">请先打开项目，再查看该项目的 Agent 会话。</div>
+  if (!root) return <div className="acp-empty">请先打开项目，再查看该项目的 Agent 会话。</div>
   if (!hasIpc) return <div className="acp-workspace" style={sidebarWidthStyle}><main className="acp-main my-conversation-frame">
     <header className="acp-workspace-header"><strong>Agent 会话</strong><Button size="sm" variant="ghost" disabled aria-label="刷新会话"><RefreshCw size={14} aria-hidden="true" />刷新</Button></header>
     <section className="acp-empty" aria-label="会话连接不可用"><Bot size={25} className="mx-auto" aria-hidden="true" /><p role="status">会话功能需要桌面连接，当前无法读取角色与历史会话。</p><Button variant="outline" disabled>新建会话</Button></section>

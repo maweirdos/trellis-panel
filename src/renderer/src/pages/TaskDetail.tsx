@@ -60,7 +60,7 @@ const FIELD_LABEL: Record<string, string> = {
 function Row({ label, modified, children }: { label: string; modified?: boolean; children: React.ReactNode }): JSX.Element {
   return (
     <div className="flex items-start gap-3 py-1.5">
-      <span className="w-16 shrink-0 pt-0.5 text-my-xs text-my-tertiary">
+      <span className="my-item-title w-16 shrink-0 pt-0.5">
         {label}
         {modified && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-my-warning align-middle" title="待保存修改" />}
       </span>
@@ -328,7 +328,7 @@ function HandoffSection({ dirName, status }: { dirName: string; status: string |
       <div className="mb-1.5 flex items-center gap-1.5 text-my-xs text-my-tertiary">
         <ArrowUpRight size={12} /> 接续与交接
       </div>
-      <p className="mb-2 px-1 text-my-xs leading-5 text-my-secondary">{statusHint}</p>
+      <p className="my-item-description mb-2 px-1">{statusHint}</p>
       <div className="flex flex-wrap items-center gap-2 px-1">
         <Select
           value={intent}
@@ -659,10 +659,10 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
               {archived ? ' · 已归档' : ''}
             </span>
           </div>
-          <h2 className="line-clamp-2 text-my-md font-semibold leading-5 text-my-primary">
+          <h2 className="my-item-title line-clamp-2">
             {pending.title ?? r?.title ?? task.dirName}
           </h2>
-          <div className="mt-0.5 font-mono text-my-xs text-my-tertiary">{task.dirName}</div>
+          <div className="my-item-description mt-0.5 font-mono">{task.dirName}</div>
         </div>
         {!workspace && (
           <Button variant="ghost" size="sm" onClick={expandToWorkspace} title="展开为中央任务工作区">
@@ -1051,7 +1051,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                         )}
                       >
                         <FileText size={13} className={clsx('shrink-0', /\.md$/i.test(f.name) ? 'text-my-icon-accent' : 'text-my-icon-tertiary')} />
-                        <span className="min-w-0 flex-1 truncate font-mono text-my-sm text-my-primary">{f.name}</span>
+                        <span className="my-item-title min-w-0 flex-1 truncate font-mono">{f.name}</span>
                         <span className="shrink-0 text-my-xs text-my-tertiary">{f.kind === 'file' ? fmtBytes(f.size) : '目录'}</span>
                       </button>
                     )
@@ -1070,14 +1070,14 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
       {contextOpen && (
         <aside id="task-context-panel" aria-label="任务上下文" className="my-scrollbar absolute inset-y-0 right-0 z-30 w-[min(340px,100%)] overflow-y-auto border-l border-my-line-strong bg-my-layer-1 p-4 shadow-[var(--my-shadow-overlay-200)]">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-my-md font-semibold text-my-primary">任务上下文</h3>
+            <h3 className="my-item-title">任务上下文</h3>
             <Button variant="ghost" size="sm" onClick={() => setContextOpen(false)} title="收起上下文"><X size={14} /></Button>
           </div>
           <dl className="mb-4 space-y-3 text-my-sm">
-            <div><dt className="text-my-secondary">负责人</dt><dd className="mt-0.5 break-words text-my-primary">{r?.assignee || '未分配'}</dd></div>
-            <div><dt className="text-my-secondary">创建者</dt><dd className="mt-0.5 text-my-primary">{r?.creator || '未知'}</dd></div>
-            <div><dt className="text-my-secondary">任务目录</dt><dd className="mt-0.5 break-all font-mono text-my-xs text-my-primary">{task.path}</dd></div>
-            {r?.branch && <div><dt className="text-my-secondary">关联分支</dt><dd className="mt-0.5 break-all font-mono text-my-xs text-my-primary">{r.branch}</dd></div>}
+            <div><dt className="my-item-title">负责人</dt><dd className="mt-0.5 break-words text-my-primary">{r?.assignee || '未分配'}</dd></div>
+            <div><dt className="my-item-title">创建者</dt><dd className="mt-0.5 text-my-primary">{r?.creator || '未知'}</dd></div>
+            <div><dt className="my-item-title">任务目录</dt><dd className="mt-0.5 break-all font-mono text-my-xs text-my-primary">{task.path}</dd></div>
+            {r?.branch && <div><dt className="my-item-title">关联分支</dt><dd className="mt-0.5 break-all font-mono text-my-xs text-my-primary">{r.branch}</dd></div>}
           </dl>
           <div className="mb-4 flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => { setSel('info'); setContextOpen(false) }}><Settings2 size={12} /> 详细属性</Button>
@@ -1086,7 +1086,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
           </div>
           {hasIpc && snapshot ? (
             <ObservationPanel workspaceId={snapshot.meta.root} taskRef={r?.id ? `task:${r.id}` : `dir:${relativePathUnderRoot(snapshot.meta.root, task.path) ?? `.trellis/tasks/${task.dirName}`}`} variant="compact" />
-          ) : <p className="text-my-xs leading-5 text-my-secondary">当前没有本机项目连接，无法读取真实上下文回执。</p>}
+          ) : <p className="my-item-description">当前没有本机项目连接，无法读取真实上下文回执。</p>}
         </aside>
       )}
 

@@ -63,20 +63,20 @@ export function ProfileSkills({ root, value, onChange, disabled = false, isCurre
   }
   return <section aria-label="项目技能" className="space-y-2 text-my-sm text-my-secondary">
     <div className="flex items-center justify-between gap-2"><h3 className="font-medium text-my-primary">项目技能</h3><span className="text-my-tertiary">已选 {value.length} / 32</span></div>
-    <p className="text-my-tertiary">额外选择当前项目技能；执行引擎原有的技能仍会继承。</p>
+    <p className="my-item-description">额外选择当前项目技能；执行引擎原有的技能仍会继承。</p>
     {visible.loading && <p role="status" className="flex items-center gap-1 text-my-tertiary"><Loader2 size={12} className="animate-spin" />正在读取项目技能…</p>}
     {visible.error && <div><p role="alert" className="text-my-danger-text">{visible.error}</p><Button size="sm" variant="outline" disabled={disabled || !active || !hasIpc || !root} onClick={() => { if (canInteract() && isCurrent()) setAttempt((previous) => previous + 1) }}>重试读取技能</Button></div>}
     <div className="space-y-2">
       {visible.skills.map((skill) => <label key={skill.relativePath} className="flex items-start gap-2">
         <input type="checkbox" className="my-checkbox mt-1 shrink-0" checked={selected(skill.relativePath)} disabled={disabled || !active || (!selected(skill.relativePath) && value.length >= 32)} onChange={() => toggle(skill.relativePath)} />
-        <span className="min-w-0"><strong className="font-medium text-my-primary">{skill.name}</strong>{skill.description && <span className="block break-words text-my-tertiary">{skill.description}</span>}<span className="block break-all font-mono text-my-xs text-my-tertiary">{skill.relativePath}</span></span>
+        <span className="min-w-0"><strong className="my-item-title">{skill.name}</strong>{skill.description && <span className="my-item-description block break-words">{skill.description}</span>}<span className="block break-all font-mono text-my-xs text-my-tertiary">{skill.relativePath}</span></span>
       </label>)}
       {missing.map((path) => <label key={path} className="flex items-start gap-2">
         <input type="checkbox" className="my-checkbox mt-1 shrink-0" checked disabled={disabled || !active} onChange={() => toggle(path)} />
         <span className="min-w-0"><span className="block break-all font-mono">{path}</span><span className="text-my-tertiary">{visible.complete ? '未在本次扫描中找到，已保留选择' : '已保留选择，尚未核对文件'}</span></span>
       </label>)}
     </div>
-    {visible.complete && !visible.skills.length && <p className="text-my-tertiary">当前项目未发现可选技能。</p>}
+    {visible.complete && !visible.skills.length && <p className="my-item-description">当前项目未发现可选技能。</p>}
     {value.length >= 32 && <p role="status" className="text-my-tertiary">最多选择 32 个技能；取消一项后可继续选择。</p>}
   </section>
 }

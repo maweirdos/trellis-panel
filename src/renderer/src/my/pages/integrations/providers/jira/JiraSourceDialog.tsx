@@ -27,9 +27,9 @@ export function JiraSourceDialog({ api, scope, connection, bindings, initial, ti
   const [bindingId, setBindingId] = useState(initial?.bindingId ?? enabled[0]?.id ?? '')
   const binding = enabled.find((item) => item.id === bindingId) ?? enabled[0]
   const content = <>
-    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">{title}</h2><p className="mt-1 text-my-sm text-my-tertiary">{connection.name} · 选择 Jira 项目</p></div>
+    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">{title}</h2><p className="my-item-description mt-1">{connection.name} · 选择 Jira 项目</p></div>
     {!binding ? <div className="space-y-4 p-5"><p className="text-my-sm text-my-secondary">先关联当前项目，再选择可访问的 Jira 项目。</p><Button variant="primary" onClick={() => onAssociate(bindings.find((item) => !item.enabled))}>关联当前项目</Button><Button variant="ghost" onClick={onClose}>取消</Button></div> : <>
-      {enabled.length > 1 && <div className="px-5 pt-4"><label className="block space-y-2 text-my-sm"><span>项目关联</span><Select ariaLabel="项目关联" value={binding.id} options={enabled.map((item) => ({ value: item.id, label: item.label }))} onChange={setBindingId} /></label></div>}
+      {enabled.length > 1 && <div className="px-5 pt-4"><label className="block space-y-2"><span className="my-item-title">项目关联</span><Select ariaLabel="项目关联" value={binding.id} options={enabled.map((item) => ({ value: item.id, label: item.label }))} onChange={setBindingId} /></label></div>}
       <JiraProjectSelection key={`${binding.id}:${binding.revision}`} api={api} scope={scope} connection={connection} binding={binding} initial={initial?.bindingId === binding.id ? initial : undefined} onClose={onClose} onPrepared={onPrepared} />
     </>}
   </>
@@ -69,7 +69,7 @@ function JiraProjectSelection({ api, scope, connection, binding, initial, onClos
   }
   return <>
     <div className="space-y-4 p-5" aria-busy={action.busy}>
-      {projects === null && !error ? <p role="status" className="text-my-sm text-my-secondary">正在读取可访问的项目…</p> : projects && projects.length > 0 ? <label className="block space-y-2 text-my-sm"><span>Jira 项目</span><Select ariaLabel="Jira 项目" value={projectId} disabled={action.busy} options={[{ value: '', label: '请选择项目' }, ...projects.map((project) => ({ value: project.id, label: `${project.key} · ${project.name}` }))]} onChange={(id) => { setProjectId(id); setRebindAccepted(false) }} /></label> : projects && <p className="text-my-sm text-my-secondary">此账号没有可访问的 Jira 项目，请检查账号的项目权限。</p>}
+      {projects === null && !error ? <p role="status" className="text-my-sm text-my-secondary">正在读取可访问的项目…</p> : projects && projects.length > 0 ? <label className="block space-y-2"><span className="my-item-title">Jira 项目</span><Select ariaLabel="Jira 项目" value={projectId} disabled={action.busy} options={[{ value: '', label: '请选择项目' }, ...projects.map((project) => ({ value: project.id, label: `${project.key} · ${project.name}` }))]} onChange={(id) => { setProjectId(id); setRebindAccepted(false) }} /></label> : projects && <p className="text-my-sm text-my-secondary">此账号没有可访问的 Jira 项目，请检查账号的项目权限。</p>}
       {changingProject && projectId && <label className="flex items-start gap-2 text-my-sm text-my-warning-text"><Checkbox checked={rebindAccepted} onChange={setRebindAccepted} />确认更换此关联的 Jira 项目；已有同步将被阻止，需重新核对映射后启用。</label>}
       {(error || action.error) && <p role="alert" className="break-words text-my-sm text-my-danger-text">{error || action.error}</p>}
       {(error || projects?.length === 0) && <Button size="sm" disabled={action.busy} onClick={() => setAttempt((value) => value + 1)}>重新读取项目</Button>}

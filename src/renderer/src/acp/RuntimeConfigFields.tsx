@@ -29,7 +29,7 @@ export function RuntimeConfigFields({ value, runtimeId, launchKind, onChange, di
   const visible = (key: RuntimeConfigSection): boolean => !section || section === key
   return <div className="runtime-config-fields">
     {visible('model') && <section className="runtime-config-field" aria-labelledby={`${id}-model`}>
-      <label id={`${id}-model`} className="text-my-sm text-my-secondary">{role ? '角色模型' : '默认模型'}</label>
+      <label id={`${id}-model`} className="my-item-title">{role ? '角色模型' : '默认模型'}</label>
       <Select className="mt-1 w-full" ariaLabel={role ? '角色模型策略' : '引擎默认模型策略'} disabled={disabled} value={mode}
         options={[...(role ? [{ value: 'inherit', label: `继承引擎默认 · ${inheritedModel}` }] : []), { value: 'automatic', label: '引擎自动' }, { value: 'custom', label: '指定模型' }]}
         onChange={next => onChange({ modelId: next === 'inherit' ? undefined : next === 'automatic' ? role ? null : undefined : '' })} />
@@ -43,13 +43,13 @@ export function RuntimeConfigFields({ value, runtimeId, launchKind, onChange, di
       </div>}
     </section>}
     {visible('env') && <section className="runtime-config-field" aria-labelledby={`${id}-env`}>
-      <h3 id={`${id}-env`} className="text-my-sm text-my-secondary">环境变量{role && <span className="runtime-config-inherited">继承 {defaults?.env?.length ?? 0} 项 · 同名覆盖</span>}</h3>
+      <h3 id={`${id}-env`} className="my-item-title">环境变量{role && <span className="runtime-config-inherited">继承 {defaults?.env?.length ?? 0} 项 · 同名覆盖</span>}</h3>
       <p className="mt-1 text-my-xs text-my-tertiary">明文保存在本机；新会话生效。</p>
       <RuntimeKeyValues rows={value.env ?? []} disabled={disabled} kind="env" onChange={env => onChange({ env })} />
     </section>}
     {visible('args') && <section className="runtime-config-field" aria-labelledby={`${id}-args`}>
-      <h3 id={`${id}-args`} className="text-my-sm text-my-secondary">启动参数{role && !sdk && <span className="runtime-config-inherited">继承 {defaults?.args?.length ?? 0} 项 · 同名覆盖</span>}</h3>
-      {sdk ? <p className="mt-1 text-my-xs text-my-tertiary">内置 SDK 不支持启动参数。</p> : <RuntimeKeyValues rows={(value.args ?? []).map(({ name, value: text }) => ({ key: name, value: text }))} disabled={disabled} kind="args"
+      <h3 id={`${id}-args`} className="my-item-title">启动参数{role && !sdk && <span className="runtime-config-inherited">继承 {defaults?.args?.length ?? 0} 项 · 同名覆盖</span>}</h3>
+      {sdk ? <p className="my-item-description mt-1">内置 SDK 不支持启动参数。</p> : <RuntimeKeyValues rows={(value.args ?? []).map(({ name, value: text }) => ({ key: name, value: text }))} disabled={disabled} kind="args"
         onChange={rows => onChange({ args: rows.map(({ key, value: text }) => ({ name: key, value: text })) })} />}
     </section>}
   </div>

@@ -20,7 +20,7 @@
 }
 .creation-grow { flex: 1; min-width: 0; }
 .creation-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.creation-meta { color: var(--my-txt-tertiary); font-size: var(--my-text-xs); line-height: var(--my-line-ui); }
+.creation-meta { color: var(--my-txt-item-description); font-size: var(--my-text-item-description); line-height: var(--my-line-ui); font-weight: var(--my-weight-normal); }
 .creation-section-heading { justify-content: space-between; flex-wrap: wrap; }
 .creation-section-heading h2, .creation-section-heading h3 { display: flex; align-items: center; gap: var(--my-space-8); font-size: var(--my-text-sm); }
 .creation-title { min-width: 0; display: grid; gap: var(--my-space-4); }
@@ -50,7 +50,9 @@
   outline-offset: var(--my-space-2);
 }
 .creation-list-title { display: grid; gap: var(--my-space-4); min-width: 0; }
-.creation-list-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--my-txt-primary); font-weight: var(--my-weight-medium); }
+.creation-list-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--my-txt-item-title); font-weight: var(--my-weight-medium); font-size: var(--my-text-item-title); }
+.creation-list-row:hover .creation-list-title strong { color: var(--my-txt-primary); }
+.creation-list-row:hover .creation-meta { color: var(--my-txt-secondary); }
 .creation-list-more { display: flex; justify-content: center; padding-top: var(--my-space-24); }
 .creation-loading, .creation-empty-inline { display: flex; align-items: center; justify-content: center; gap: var(--my-space-8); color: var(--my-txt-tertiary); padding: var(--my-space-32); }
 .creation-empty-inline { flex-direction: column; min-height: var(--my-space-160); }

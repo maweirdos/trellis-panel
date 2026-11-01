@@ -45,7 +45,7 @@ export function AutomationsPage(): JSX.Element {
             {automations.map((automation) => (
               <section key={automation.id} className={`flex flex-wrap items-center gap-3 rounded-my-md border p-3 ${automation.enabled ? 'border-my-line bg-my-layer-1' : 'border-my-line opacity-70'}`}>
                 <div className="min-w-0 flex-1">
-                  <h2 className="flex items-center gap-2 truncate text-sm font-medium text-my-primary">
+                  <h2 className="my-item-title flex items-center gap-2 truncate">
                     <FlowIcon name="automations" size={18} />{automation.name}
                     <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-2xs font-normal text-my-tertiary">
                       {TRIGGER_LABEL[automation.trigger.kind]}

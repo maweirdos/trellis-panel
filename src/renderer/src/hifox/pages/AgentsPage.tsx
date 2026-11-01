@@ -52,7 +52,7 @@ export function AgentsPage(): JSX.Element | null {
           return <section key={agent.id} className="flex flex-col gap-3 rounded-my-md border border-my-line bg-my-layer-1 p-3">
             <header className="flex items-start gap-2">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-my-md bg-my-layer-2 text-my-secondary"><FlowIcon name="agents" size={20} /></span>
-              <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-medium text-my-primary">{agent.name}</h2><p className="text-my-xs text-my-tertiary">{agent.description || '暂无职责描述'}</p></div>
+              <div className="min-w-0 flex-1"><h2 className="my-item-title truncate">{agent.name}</h2><p className="my-item-description">{agent.description || '暂无职责描述'}</p></div>
               {!agent.archived && <Switch checked={agent.enabled} disabled={busy || Boolean(captainOf)} label={captainOf ? `请先更换「${captainOf.name}」的队长` : `启用 ${agent.name}`} onChange={(enabled) => void run('更新 Agent 状态', () => api.hifox.saveAgent({ ...agentInput(agent), enabled }))} />}
             </header>
             <div className="flex flex-wrap gap-2 text-my-2xs text-my-tertiary">

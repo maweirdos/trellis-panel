@@ -18,7 +18,7 @@ import { dispatchEscKey } from './utils/esc-layer'
 import { MyApp } from './my/layout/MyApp'
 import { DocWindowApp } from './my/pages/DocWindow'
 import { Loader2 } from 'lucide-react'
-import { getPageNavigation, projectRootKey } from './my/navigation'
+import { pageRequiresProject, projectRootKey } from './my/navigation'
 import { StartupContext, StartupContentCommit } from './daemon/StartupContext'
 import { DaemonSettingsDialog } from './daemon/DaemonSettingsDialog'
 import { Modal } from './my/ui'
@@ -136,8 +136,7 @@ function MainApp(): JSX.Element {
 
   if (hasIpc && !bootstrapped) return <PageLoading />
 
-  const scope = getPageNavigation(page).scope
-  if (!snapshot && (scope === 'project' || scope === 'mixed') && !(page === 'acp' && taskConversation)) {
+  if (!snapshot && pageRequiresProject(page) && !(page === 'acp' && taskConversation)) {
     return <><Onboarding /><StartupContentCommit /></>
   }
 

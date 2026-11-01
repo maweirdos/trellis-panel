@@ -2,6 +2,8 @@ import type { JSX, ReactNode } from 'react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { getPageNavigation, navigationScopeLabel, SETTINGS_VIEW_TITLES, type ToolView } from '../navigation'
+import { getSettingsDestination } from '../settings-catalog'
+import { Button } from '../ui'
 import { PAGE_LAYOUTS, PageBody, PageContent, PageHeader, PageLayout, PageNotice } from './PageLayout'
 import '../../pages/settings/preferences.css'
 
@@ -23,12 +25,21 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
   const intake = page === 'inbox' || page === 'jira'
   const embeddedKnowledgeLayout = navigation.domain === 'knowledge' || page === 'hifox' || page === 'creations'
   const title = page === 'team' ? TEAM_TITLES[teamView] : tools ? '工具' : page === 'settings' ? SETTINGS_VIEW_TITLES[settingsView] : navigation.title
-  if (navigation.domain === 'settings') return <PageLayout variant="centered" className="my-settings-layout">
+  if (navigation.domain === 'settings') {
+    const destination = getSettingsDestination(page, settingsView)
+    const Icon = destination.icon
+    return <PageLayout variant="centered" className="my-settings-layout">
     <PageBody key={`${page}:${page === 'settings' ? settingsView : ''}`}><PageContent>
-      <header className="settings-page-heading"><h1>{title}</h1></header>
+      <header className="settings-page-heading">
+        <span className="settings-page-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.7} /></span>
+        <div className="settings-page-copy"><h1>{destination.title}</h1><p>{destination.description}</p></div>
+        {page === 'settings' && settingsView === 'preferences' && <Button className="settings-page-action" variant="outline"
+          onClick={() => window.dispatchEvent(new Event('trellis-open-onboarding'))}>打开引导</Button>}
+      </header>
       {children}
     </PageContent></PageBody>
   </PageLayout>
+  }
   return <PageLayout variant={variant}>
     {!embeddedKnowledgeLayout && <PageHeader>
       <h1 className="text-my-md font-semibold text-my-primary">{title}</h1>

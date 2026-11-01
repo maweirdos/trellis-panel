@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Moon, Sun, X } from 'lucide-react'
+import { FolderOpen, Moon, Sun, X } from 'lucide-react'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { api, hasIpc } from '../api'
@@ -24,7 +24,7 @@ export function SettingsPage(): JSX.Element {
   // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态而非在渲染期解引用崩溃（真机 bootstrap 后恒非空）
   if (!settings) return (
     <div className="preferences-page">
-      {settingsView === 'appearance' && <PreferenceSection id="preferences-preview-appearance" title="外观">
+      {settingsView === 'appearance' && <PreferenceSection id="preferences-preview-appearance" title="界面显示">
         <AppearancePreferences />
       </PreferenceSection>}
       <EmptyState title="设置未加载" description="连接桌面应用后可查看其余设置。" />
@@ -107,13 +107,13 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
   }
 
   return (
-    <div className="preferences-page my-fade">
-      {view === 'appearance' && <PreferenceSection id="preferences-appearance" title="外观">
+    <div className="preferences-page">
+      {view === 'appearance' && <PreferenceSection id="preferences-appearance" title="界面显示">
         <PreferenceRow label="主题" hint="选择应用的深色或浅色外观。">
-          <div className="my-segmented preference-choices" role="group" aria-label="主题">
+          <div className="my-segmented preference-choices preference-theme-choices" role="group" aria-label="主题">
             {([
-              ['dark', '深色', <Moon size={14} key="dark" />],
-              ['light', '浅色', <Sun size={14} key="light" />]
+              ['dark', '深色', <Moon size={16} key="dark" aria-hidden="true" />],
+              ['light', '浅色', <Sun size={16} key="light" aria-hidden="true" />]
             ] as const).map(([value, label, icon]) => (
               <button key={value} type="button" className="my-segment" aria-pressed={settings.theme === value}
                 disabled={pending.theme} onClick={() => void perform('theme', () => saveSettings({ theme: value }))}>
@@ -125,10 +125,7 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
         <AppearancePreferences />
       </PreferenceSection>}
 
-      {view === 'preferences' && <PreferenceSection id="preferences-desktop" title="桌面">
-        <PreferenceRow label="首次设置" hint="重新查看模型、Agent 和团队使用引导。">
-          <Button variant="outline" onClick={() => window.dispatchEvent(new Event('trellis-open-onboarding'))}>打开引导</Button>
-        </PreferenceRow>
+      {view === 'preferences' && <PreferenceSection id="preferences-desktop" title="启动与窗口">
         <PreferenceRow label="开机自动启动" hint="登录系统后自动打开应用。">
           <Switch label="开机自动启动" checked={settings.desktop.autoStart} disabled={pending['desktop-autostart']}
             onChange={(autoStart) => void perform('desktop-autostart', () => saveSettings({ desktop: { ...settings.desktop, autoStart } }))} />
@@ -145,6 +142,9 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
               else pushToast({ kind: 'warn', title: '右键集成未启用', body: result.reason ?? '不支持当前环境' })
             })} />
         </PreferenceRow>
+      </PreferenceSection>}
+
+      {view === 'preferences' && <PreferenceSection id="preferences-shortcuts" title="键盘快捷键">
         <PreferenceRow label="面板快捷键" htmlFor="preferences-global-shortcut" hint="重启后生效。">
           <input id="preferences-global-shortcut" value={shortcut} disabled={pending['desktop-shortcut']} aria-busy={pending['desktop-shortcut']} onChange={(event) => setShortcut(event.target.value)}
             onBlur={() => void perform('desktop-shortcut', () => saveSettings({ desktop: { ...settings.desktop, globalShortcut: shortcut.trim() || 'Alt+Shift+T' } }))}
@@ -220,14 +220,18 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
         </PreferenceRow>
       </PreferenceSection>}
 
-      {view === 'preferences' && <PreferenceSection id="preferences-recents" title="最近项目">
-        {settings.recentProjects.length === 0 && <p className="py-3 text-my-sm text-my-tertiary">暂无记录</p>}
-        {settings.recentProjects.map((path) => <div key={path} className="flex min-w-0 items-center gap-3 border-b border-my-line py-3">
-          <span title={path} className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-secondary">{path}</span>
-          <Button size="sm" variant="ghost" aria-label={`移除最近项目 ${path}`} disabled={pending['recent-projects']}
-            onClick={() => void perform('recent-projects', () => saveSettings({ recentProjects: settings.recentProjects.filter((item) => item !== path) }))}><X size={14} /></Button>
-        </div>)}
-      </PreferenceSection>}
+      {view === 'preferences' && (settings.recentProjects.length === 0 ? <p className="preference-empty">暂无最近项目</p>
+        : <PreferenceSection id="preferences-recents" title="最近项目">
+          <ul className="preference-recent-projects">{settings.recentProjects.map((path) => <li key={path} className="preference-recent-project">
+            <FolderOpen size={18} aria-hidden="true" />
+            <div className="preference-recent-project-copy">
+              <span className="preference-recent-project-name">{path.split(/[\\/]/).filter(Boolean).pop() || path}</span>
+              <span title={path} className="preference-recent-project-path font-mono">{path}</span>
+            </div>
+            <Button size="sm" variant="ghost" aria-label={`移除最近项目 ${path}`} disabled={pending['recent-projects']}
+              onClick={() => void perform('recent-projects', () => saveSettings({ recentProjects: settings.recentProjects.filter((item) => item !== path) }))}><X size={14} aria-hidden="true" /></Button>
+          </li>)}</ul>
+        </PreferenceSection>)}
 
       {view === 'about' && <PreferenceSection id="preferences-about" title="关于">
         <PreferenceRow label="Trellis Panel"><span className="text-my-secondary">v{appVersion}</span></PreferenceRow>
@@ -286,7 +290,7 @@ function AcpAgentsSection(): JSX.Element {
       <div className="space-y-3">{rows.map((row, index) => <div key={row.id} className="space-y-3 border-t border-my-line py-4 first:border-t-0">
         <div className="flex flex-wrap items-center gap-2"><Switch label={`启用自定义引擎 ${index + 1}`} disabled={controlsDisabled} checked={row.enabled} onChange={(enabled) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, enabled } : item))} /><input aria-label={`引擎名称 ${index + 1}`} className="my-input min-w-0 flex-1" value={row.name} disabled={controlsDisabled} onChange={(event) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, name: event.target.value } : item))} /><Button size="sm" variant="ghost" disabled={controlsDisabled} className="text-my-danger-text" onClick={() => setRows((previous) => previous.filter((item) => item.id !== row.id))}>移除</Button></div>
         <input aria-label={`引擎启动命令 ${index + 1}`} className="my-input w-full font-mono text-my-xs" value={row.executable ? [row.executable, ...(row.args ?? [])].join(' ') : row.command} disabled={controlsDisabled || Boolean(row.executable)} placeholder='如 "C:\Tools\my-agent.cmd" --acp' onChange={(event) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, command: event.target.value } : item))} />
-        {row.executable && <p className="text-my-2xs text-my-tertiary">此项使用结构化 executable / args 配置，保留原始参数边界。</p>}
+        {row.executable && <p className="my-item-description">此项使用结构化 executable / args 配置，保留原始参数边界。</p>}
       </div>)}</div>
       <div className="mt-3 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={controlsDisabled} onClick={() => setRows((previous) => [...previous, { id: `custom-${Date.now()}`, name: '', command: '', enabled: true }])}>添加自定义引擎</Button><Button size="sm" variant="primary" disabled={controlsDisabled || !hasIpc} onClick={() => void persist()}>{pending ? '保存并检测中…' : '保存命令配置'}</Button></div>
     </details>

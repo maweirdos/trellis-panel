@@ -6,8 +6,8 @@ import type { ResourceCommands } from './resource-state'
 
 export function ResourceSummary({ resource }: { resource: TeamCodeResource }): JSX.Element {
   return <div className="min-w-0 space-y-1">
-    <div className="flex flex-wrap items-center gap-2"><Code2 size={15} className="shrink-0 text-my-icon-secondary" /><span className="min-w-0 break-words text-my-sm font-medium text-my-primary">{resource.name}</span>{resource.disabled && <span className="my-chip text-my-warning-text">已停用</span>}</div>
-    <p className="break-words text-my-xs text-my-secondary">{resource.purpose}</p>
+    <div className="flex flex-wrap items-center gap-2"><Code2 size={15} className="shrink-0 text-my-icon-secondary" /><span className="my-item-title min-w-0 break-words">{resource.name}</span>{resource.disabled && <span className="my-chip text-my-warning-text">已停用</span>}</div>
+    <p className="my-item-description break-words">{resource.purpose}</p>
     <details className="text-my-xs text-my-tertiary"><summary className="cursor-pointer">仓库来源与模块</summary><dl className="mt-2 space-y-2"><div><dt>仓库</dt><dd className="break-all text-my-secondary">{resource.source.provider} · {resource.source.repositoryId}<br />{resource.source.repositoryUrl}</dd></div><div><dt>完整基座 / 模块</dt><dd className="break-words text-my-secondary">{resource.moduleDescription}</dd></div></dl></details>
   </div>
 }

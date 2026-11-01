@@ -82,6 +82,11 @@ export function getPageNavigation(page: Page): PageNavigation {
   return PAGE_NAVIGATION[page]
 }
 
+export function pageRequiresProject(page: Page): boolean {
+  const navigation = getPageNavigation(page)
+  return navigation.domain !== 'settings' && (navigation.scope === 'project' || navigation.scope === 'mixed')
+}
+
 export function activeModule(page: Page): ModuleId {
   // Keep the legacy tasks preference namespace while presenting one personal module.
   const domain = getPageNavigation(page).domain

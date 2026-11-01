@@ -8,7 +8,7 @@
   border: 1px solid var(--my-border-strong); border-radius: var(--my-radius-xl);
   background: var(--my-bg-elevated); box-shadow: var(--my-shadow-raised-200);
 }
-.my-root .my-floating-surface--strip { border-radius: var(--my-radius-full); }
+.my-root .my-floating-surface--strip { border-radius: var(--my-radius-base); }
 .my-root .my-floating-header {
   display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-8);
   min-height: var(--my-floating-header-height); padding: var(--my-space-6) var(--my-space-12);
@@ -42,7 +42,7 @@
 .my-root .my-floating-editor { min-height: var(--my-floating-editor-min-height); padding: var(--my-space-16); }
 .my-root .my-floating-editor:focus-visible { outline: none; }
 .my-root .my-floating-recent { flex-shrink: 0; max-height: var(--my-floating-recent-max-height); overflow-y: auto; border-top: 1px solid var(--my-border-subtle); padding: var(--my-space-8); }
-.my-root .my-floating-feedback { flex-shrink: 0; padding: var(--my-space-6) var(--my-space-16); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
+.my-root .my-floating-feedback { flex-shrink: 0; padding: var(--my-space-6) var(--my-space-16); color: var(--my-txt-item-description); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); }
 
 /* Task utilities keep one reading surface; chrome and work actions stay anchored. */
 .my-root .my-capsule-header {
@@ -89,7 +89,7 @@
   line-height: var(--my-line-tight);
   overflow-wrap: anywhere;
 }
-.my-root .my-capsule-metadata { display: flex; align-items: center; gap: var(--my-space-6); min-width: 0; min-height: var(--my-space-18); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
+.my-root .my-capsule-metadata { display: flex; align-items: center; gap: var(--my-space-6); min-width: 0; min-height: var(--my-space-18); color: var(--my-txt-item-description); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); }
 .my-root .my-capsule-meta-line { min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .my-root .my-capsule-meta-line:only-child { max-width: 100%; }
 .my-root .my-capsule-meta-separator { flex-shrink: 0; color: var(--my-txt-tertiary); }
@@ -105,14 +105,16 @@
 .my-root .my-capsule-document:hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); }
 .my-root .my-capsule-document:disabled { color: var(--my-txt-secondary); }
 .my-root .my-capsule-document-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: var(--my-space-26); height: var(--my-space-26); border-radius: var(--my-radius-inset); background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-icon-secondary); }
-.my-root .my-capsule-document-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--my-text-sm); }
-.my-root .my-capsule-document-kind { flex-shrink: 0; width: var(--my-space-28); color: var(--my-txt-secondary); font-size: var(--my-text-xs); text-align: right; }
-.my-root .my-capsule-document-time { flex-shrink: 0; width: var(--my-space-36); color: var(--my-txt-secondary); font-size: var(--my-text-xs); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.my-root .my-capsule-materials-empty { padding: var(--my-space-6) 0; color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
+.my-root .my-capsule-document-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--my-txt-item-title); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); }
+.my-root .my-capsule-document:disabled .my-capsule-document-name { color: inherit; }
+.my-root .my-capsule-document-kind { flex-shrink: 0; width: var(--my-space-28); color: var(--my-txt-item-description); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); text-align: right; }
+.my-root .my-capsule-document-time { flex-shrink: 0; width: var(--my-space-36); color: var(--my-txt-item-description); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.my-root .my-capsule-document:hover:not(:disabled) :is(.my-capsule-document-kind, .my-capsule-document-time) { color: var(--my-txt-secondary); }
+.my-root .my-capsule-materials-empty { padding: var(--my-space-6) 0; color: var(--my-txt-item-description); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); }
 .my-root .my-capsule-workflow { padding: var(--my-space-4) var(--my-space-8); border-radius: var(--my-radius-md); background: var(--my-bg-layer-transparent-hover); }
 .my-root .my-capsule-workflow .my-capsule-section-header { min-height: var(--my-space-18); }
 .my-root .my-capsule-workflow .my-capsule-section-header > h2 { color: var(--my-txt-primary); }
-.my-root .my-capsule-workflow-source { font-size: var(--my-text-2xs); }
+.my-root .my-capsule-workflow-source { color: var(--my-txt-secondary); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); }
 .my-root .my-capsule-stages { display: flex; align-items: center; min-height: var(--my-space-22); list-style: none; margin: 0; padding: 0; }
 .my-root .my-capsule-stage { display: flex; flex: 1; align-items: center; gap: var(--my-space-4); min-width: 0; color: var(--my-txt-secondary); font-size: var(--my-text-xs); white-space: nowrap; }
 .my-root .my-capsule-stage > svg { flex-shrink: 0; }

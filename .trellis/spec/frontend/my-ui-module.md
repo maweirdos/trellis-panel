@@ -6,9 +6,10 @@ style ownership and executable checks live in [css-design.md](./css-design.md).
 ## Shared sidebar geometry
 
 Context owners consume `useSidebarWidthStyle` and `SidebarResizeHandle`.
-`tpanel.my.ui` stores a default275px width, clamped to220–400px, alongside existing
-font/collapse preferences. Never replace an already stored width when the default
-changes. Shell context and Knowledge/Spec/Channels/Chat/ACP-owned browsers must not
+`tpanel.my.ui` stores the sidebar width alongside font/collapse preferences,
+clamped to220–400px. The Standard default is240px; switching density selects
+224/240/256px for Compact/Standard/Comfortable. Existing stored widths remain
+valid, and users can still resize manually. Shell context and Knowledge/Spec/Channels/Chat/ACP-owned browsers must not
 render duplicate sidebars or invent a separate width. Preserve drag, keyboard,
 double-click reset and globally reachable expand/collapse behavior.
 
@@ -29,9 +30,10 @@ All routes choose `full` or `centered` in `layout/PageLayout.tsx`'s exhaustive
 layout registry owns only geometry. `PageFrame` and pages with custom module
 headers use the same `PageLayout`/`PageHeader`/`PageBody`/`PageContent` components.
 
-- Settings destinations (preferences, models, engines, integrations and MCP) share
-  an 880px column, an in-content page title and a single PageBody scrollbar.
-  `PreferenceSection`/`PreferenceRow` own their common group and control geometry.
+- Settings destinations use a density-specific 760/800/820px column, an icon/title/description page
+  heading and a single PageBody scrollbar. `settings-catalog.ts` supplies both
+  headings and the searchable grouped navigation. `PreferenceSection` panels
+  include the group heading and divided rows; `PreferenceRow` owns control geometry.
 - Other centered routes use the shared 1120px content width plus 24px gutters
   (16px at 960px); their frame headers and scope notes remain fixed.
 - Full workspaces fill the available width/height; their actual tables, boards,
@@ -71,18 +73,20 @@ for component signatures, spacing and scroll alignment.
   fill with white ink. Use `text-my-on-accent` on accent fills, and
   `text-my-on-color` on semantic colored fills. No leaf palette/brand override.
   Green remains success/completion or user-label data only.
-- Standard UI/document type is14px; small/large are13/15px. Chat uses13/14/15px
+- Compact/Standard/Comfortable density uses13/14/15px UI/document/chat text
   with1.75 line height and the shared16px paragraph gap. Metadata, body, chat, document and
-  activity consume global semantic roles. Default font is the platform sans stack
-  (Segoe UI and CJK fallbacks on Windows); code and diagrams use their global mono
-  roles. No bundled Inter or network font service.
-- Type/radius classes are `text-my-*` and `rounded-my-*`. Buttons/rows use10px,
-  panels12/16px, menus18px, composer20px and dialogs24px. Small badges keep4/6px.
+  activity consume global semantic roles. The current `--my-font-sans` stack uses
+  locally bundled Inter for Latin/numerals and Source Han Sans SC for Chinese,
+  followed by platform fallbacks; code and diagrams use their global mono roles.
+- Type/radius classes are `text-my-*` and `rounded-my-*`. All ordinary rectangular
+  controls and surfaces use `--my-radius-base` at10px, including cards, menus,
+  composer containers, dialogs and badges. Density does not override this value;
+  functional circles/tracks and zero-radius joins retain their geometry.
 - Existing Tailwind spacing steps consume global `--my-space-*`. Headers use the
-  shared48px chrome metric; icon controls28px. Fields derive from type and padding. Add
+  shared density metrics; icon controls use26/28/30px. Add
   semantic metrics before introducing private geometry in a new component.
 - Ordinary title bar and icon rail share `--my-bg-shell`; context navigation uses
-  `--my-bg-sidebar`, and main content uses canvas. The shell owns a6px inset and16px
+  `--my-bg-sidebar`, and main content uses canvas. The shell owns a6px inset and10px
   radius through global tokens. Context/main panels join without double rounded
   corners. Navigation selection uses its dedicated subtle role. Transparent
   document/capsule/quick-todo roots do not inherit the ordinary shell frame.
@@ -210,12 +214,12 @@ and reports belong to team. Home has no context sidebar. The former task-parent 
   component Escape listeners with global task dismissal.
 - Retain the shared design language and canonical tokens. Use canvas for periphery, layers for
   context and surface-1 for the central task workspace. The desktop rail uses global
-  geometry tokens: 56px module rail, 40px targets, 20px icons with 1.7 stroke,
-  and 8px gaps/insets (48px vertical center pitch). The 48px header chrome keeps
+  geometry tokens: 48/52/54px module rail, 32/34/36px targets, 18/20/21px icons
+  with1.7 stroke. The 44/48/50px header chrome keeps
   `--my-shell-chrome-size`; rail width uses its own `--my-module-rail-width` so a
   spacing adjustment does not increase every page header.
   The header brand slot shares the rail width. All module buttons inherit the shared
-  `--my-control-radius`. Keep these geometry metrics fixed across font presets;
+  `--my-control-radius`. Geometry follows the selected density preset;
   on short windows let primary navigation scroll while footer actions stay reachable. Keep full accessible names and hover labels rather than permanent
   10px captions; selected backgrounds/icons are restrained and neutral. Use neutral inversion for
   product emphasis; green remains a semantic success/completion or label color. The project name is a borderless title at rest, not a select/input;

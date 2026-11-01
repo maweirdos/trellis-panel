@@ -24,11 +24,11 @@ export function ArchivePage(): JSX.Element {
                 className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-my-layer-1"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-my-sm font-medium text-my-primary">
+                  <div className="my-item-title truncate">
                     {t.record?.title ?? t.dirName}
                     {t.parseError && <span className="ml-1.5 text-my-2xs text-my-danger-text">(解析失败)</span>}
                   </div>
-                  <div className="truncate font-mono text-my-xs text-my-tertiary">
+                  <div className="my-item-description truncate font-mono">
                     {t.dirName} · {t.record?.assignee || t.record?.creator || '—'}
                     {t.record?.completedAt ? ` · 完成于 ${t.record.completedAt}` : ''}
                   </div>

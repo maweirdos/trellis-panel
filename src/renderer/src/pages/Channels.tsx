@@ -238,10 +238,10 @@ export function ChannelsPage(): JSX.Element {
                 <span className={clsx('my-chip', c.scope === 'project' ? 'bg-my-accent-subtle text-my-accent-text' : 'bg-my-label-purple text-my-label-purple-text')}>
                   {c.scope === 'project' ? '本项目' : '全局'}
                 </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-my-xs font-medium text-my-primary">{c.name}</span>
+                <span className={clsx('my-item-title min-w-0 flex-1 truncate font-mono', active?.name === c.name && active?.bucket === c.bucket && 'text-my-primary')}>{c.name}</span>
                 <span className="my-chip shrink-0 bg-my-layer-2 text-my-tertiary">{c.type}</span>
               </div>
-              <div className="mt-1 flex items-center gap-1.5 text-my-2xs text-my-tertiary">
+              <div className={clsx('my-item-description mt-1 flex items-center gap-1.5', active?.name === c.name && active?.bucket === c.bucket && 'text-my-secondary')}>
                 <Users size={10} /> {c.participants.slice(0, 3).join(', ')}
                 {c.participants.length > 3 && ` +${c.participants.length - 3}`}
                 <span className="ml-auto shrink-0">{c.eventCount} 事件 · {c.lastEventAt ? fmtIso(c.lastEventAt).slice(5) : ''}</span>
@@ -264,7 +264,7 @@ export function ChannelsPage(): JSX.Element {
       {active ? (
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="my-page-toolbar-row">
-            <span className="font-mono text-my-xs font-semibold text-my-primary">{active.name}</span>
+            <span className="my-item-title font-mono">{active.name}</span>
             <span className="my-chip bg-my-layer-2 text-my-tertiary">{active.bucket}</span>
             <div className="ml-auto flex items-center gap-1.5">
               <Button variant="ghost" size="sm" onClick={spawnWorker} disabled={busy} title="channel spawn">
@@ -499,7 +499,7 @@ export function ChannelsPage(): JSX.Element {
           <div onClick={(e) => e.stopPropagation()} className="w-[520px] overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]">
             <div className="flex items-center gap-2 border-b border-my-line px-5 py-3.5">
               <RadioTower size={15} className="text-my-accent-text" />
-              <span className="text-my-sm font-semibold text-my-primary">派活给 AI</span>
+              <span className="my-item-title">派活给 AI</span>
               <span className="my-chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text">自动建频道 · 结构化指令 · 事件实时回流</span>
               <Button variant="ghost" className="ml-auto" title="关闭" onClick={() => setDispatchOpen(false)}>
                 <X size={15} />
@@ -507,7 +507,7 @@ export function ChannelsPage(): JSX.Element {
             </div>
             <div className="space-y-3.5 p-5">
               <div>
-                <label className="mb-1.5 block text-my-xs text-my-tertiary">派发一个看板任务（可选）</label>
+                <label className="my-item-title mb-1.5 block">派发一个看板任务（可选）</label>
                 <Select ariaLabel="派发一个看板任务" value={dispatchTask} onChange={setDispatchTask} className="h-9 w-full" options={[
                   { value: '', label: '— 不派任务，派一句话需求 —' },
                   ...(snapshot?.tasks ?? []).map((task) => ({ value: task.dirName, label: `${task.record?.title ?? task.dirName}（${task.record?.status ?? ''}）` }))
@@ -517,7 +517,7 @@ export function ChannelsPage(): JSX.Element {
                 </p>
               </div>
               <div>
-                <label className="mb-1.5 block text-my-xs text-my-tertiary">{dispatchTask ? '派发人补充说明（可选）' : '一句话需求 *'}</label>
+                <label className="my-item-title mb-1.5 block">{dispatchTask ? '派发人补充说明（可选）' : '一句话需求 *'}</label>
                 <textarea
                   value={dispatchText}
                   onChange={(e) => setDispatchText(e.target.value)}

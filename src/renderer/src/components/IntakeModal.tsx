@@ -142,7 +142,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
 
         <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto p-5">
           <div>
-            <label htmlFor={`${fieldId}-title`} className="mb-1.5 block text-my-xs text-my-secondary">需求标题 *</label>
+            <label htmlFor={`${fieldId}-title`} className="my-item-title mb-1.5 block">需求标题 *</label>
             <input
               autoFocus
               id={`${fieldId}-title`}
@@ -160,7 +160,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
             />
           </div>
           <div>
-            <label htmlFor={`${fieldId}-description`} className="mb-1.5 block text-my-xs text-my-secondary">需求描述</label>
+            <label htmlFor={`${fieldId}-description`} className="my-item-title mb-1.5 block">需求描述</label>
             <textarea
               value={desc}
               id={`${fieldId}-description`}
@@ -171,7 +171,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-my-xs text-my-secondary">优先级</label>
+            <label className="my-item-title mb-1.5 block">优先级</label>
             <div className="flex flex-wrap gap-1.5">
               {(
                 [
@@ -198,7 +198,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
             </div>
           </div>
 
-          <div className="rounded-my-md border border-my-line bg-my-layer-1 px-3.5 py-2.5 text-my-xs leading-5 text-my-tertiary">
+          <div className="my-item-description rounded-my-md border border-my-line bg-my-layer-1 px-3.5 py-2.5 leading-5">
             创建后待办将保存为本地文档（.trellis/todos/*.md）。Codex / ZCode / Claude Code 可以直接读取该文件进行需求规划并转换为正式任务。
           </div>
           {busy && <div role="status" className="text-my-xs text-my-secondary">
@@ -229,7 +229,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
             </Button>
           </div>
           <div className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-my-2xs text-my-tertiary" title={snapshot?.meta.name}>{snapshot?.meta.name}</span>
+            <span className="my-item-description min-w-0 flex-1 truncate" title={snapshot?.meta.name}>{snapshot?.meta.name}</span>
             <Button variant="outline" className="shrink-0" onClick={close}>{busy ? '关闭' : '取消'}</Button>
             <Button variant="primary" className="shrink-0" onClick={() => void createTodo()} disabled={!title.trim() || busy || !snapshot}>
               <Save size={12} /> {busy ? '创建中…' : '仅保存待办'}

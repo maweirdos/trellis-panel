@@ -57,7 +57,7 @@ function CreateIssueForm(): JSX.Element {
         {/* 表单 */}
         <div className="flex flex-col gap-3 px-4 py-4">
           <div>
-            <div className="mb-1 text-my-xs font-medium text-my-tertiary">项目</div>
+            <div className="my-item-title mb-1">项目</div>
             <Dropdown
               width={280}
               trigger={({ toggle }) => (
@@ -76,7 +76,7 @@ function CreateIssueForm(): JSX.Element {
             </Dropdown>
           </div>
           <div>
-            <div className="mb-1 text-my-xs font-medium text-my-tertiary">名称</div>
+            <div className="my-item-title mb-1">名称</div>
             <input
               autoFocus
               value={name}
@@ -89,7 +89,7 @@ function CreateIssueForm(): JSX.Element {
             />
           </div>
           <div>
-            <div className="mb-1 text-my-xs font-medium text-my-tertiary">优先级</div>
+            <div className="my-item-title mb-1">优先级</div>
             <Dropdown
               width={180}
               trigger={({ toggle }) => (
@@ -118,10 +118,10 @@ function CreateIssueForm(): JSX.Element {
                 </>
               )}
             </Dropdown>
-            <div className="mt-1 text-my-xs text-my-tertiary">新任务固定为「规划中」，进入开发请用 task.py start。</div>
+            <div className="my-item-description mt-1">新任务固定为「规划中」，进入开发请用 task.py start。</div>
           </div>
           <div>
-            <div className="mb-1 text-my-xs font-medium text-my-tertiary">描述</div>
+            <div className="my-item-title mb-1">描述</div>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}

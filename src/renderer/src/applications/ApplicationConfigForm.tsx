@@ -34,7 +34,7 @@ export function initialApplicationDraft(definition?: ApplicationDefinition, npm 
 }
 
 function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }): JSX.Element {
-  return <label className="my-application-field"><span className="text-my-sm font-medium text-my-primary">{label}</span>{children}{hint && <span className="text-my-xs text-my-tertiary">{hint}</span>}</label>
+  return <label className="my-application-field"><span className="my-item-title">{label}</span>{children}{hint && <span className="my-item-description">{hint}</span>}</label>
 }
 
 function parsePorts(value: string): ApplicationPort[] {

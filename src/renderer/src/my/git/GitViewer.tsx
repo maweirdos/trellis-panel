@@ -16,9 +16,9 @@ function GitViewerSession({ root }: { root: string | null }): JSX.Element {
       <Button size="sm" variant={view === 'workspace' ? 'neutral' : 'ghost'} aria-pressed={view === 'workspace'} onClick={() => setView('workspace')}>工作区</Button>
       <Button size="sm" variant={view === 'history' ? 'neutral' : 'ghost'} aria-pressed={view === 'history'} onClick={() => setView('history')}>历史</Button>
     </div>
-    {!canRead ? <p className="my-git-notice text-my-secondary">{!hasIpc ? '当前为浏览器预览，未连接本机 Git 桥接。' : '请先打开项目，再查看 Git 记录。'}</p>
+    {!canRead ? <p className="my-git-notice my-item-description">{!hasIpc ? '当前为浏览器预览，未连接本机 Git 桥接。' : '请先打开项目，再查看 Git 记录。'}</p>
       : view === 'workspace' ? <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto"><WorkspaceView /></div>
-        : !hasHistoryApi ? <p className="my-git-notice text-my-secondary">当前桥接不支持历史读取，请重新启动应用。</p>
+        : !hasHistoryApi ? <p className="my-git-notice my-item-description">当前桥接不支持历史读取，请重新启动应用。</p>
           : <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto"><HistoryView root={root} /></div>}
   </section>
 }

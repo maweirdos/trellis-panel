@@ -9,7 +9,7 @@ export function DingTalkDialog({ title, subtitle, open = true, busy = false, onC
     <div className="flex max-h-[var(--my-modal-max-height)] flex-col">
       <header className="flex shrink-0 items-center gap-3 border-b border-my-line px-5 py-4">
         <IntegrationProductIcon provider="dingtalk" />
-        <div className="min-w-0 flex-1"><h2 className="text-my-lg font-semibold">{title}</h2>{subtitle && <p className="mt-1 text-my-xs text-my-tertiary">{subtitle}</p>}</div>
+        <div className="min-w-0 flex-1"><h2 className="text-my-lg font-semibold">{title}</h2>{subtitle && <p className="my-item-description mt-1">{subtitle}</p>}</div>
         <Button variant="ghost" size="sm" disabled={busy} aria-label={`关闭${title}`} onClick={onClose}><X size={16} /></Button>
       </header>
       <div className="my-scrollbar min-h-0 space-y-4 overflow-y-auto px-5 py-4">{children}</div>
@@ -21,7 +21,7 @@ export function DingTalkDialog({ title, subtitle, open = true, busy = false, onC
 
 export function DingTalkRow({ title, detail, children }: { title: string; detail: string; children: ReactNode }): JSX.Element {
   return <div className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-    <div className="min-w-0 flex-1"><h4 className="text-my-sm font-medium">{title}</h4><p className="mt-1 break-words text-my-xs text-my-tertiary">{detail}</p></div>
+    <div className="min-w-0 flex-1"><h4 className="my-item-title">{title}</h4><p className="my-item-description mt-1 break-words">{detail}</p></div>
     <div className="flex flex-wrap items-center gap-2">{children}</div>
   </div>
 }

@@ -25,9 +25,10 @@
 .my-root .my-git-workspace-commit { display: flex; flex-shrink: 0; flex-direction: column; gap: var(--my-space-8); padding: var(--my-space-12); border-top: var(--my-space-1) solid var(--my-border-subtle); }
 .my-root .my-git-workspace-commit textarea { min-height: var(--my-space-80); max-height: var(--my-space-160); resize: vertical; }
 .my-root .my-git-workspace-panel-footer { flex-shrink: 0; padding: var(--my-space-6) var(--my-space-10); border-top: var(--my-space-1) solid var(--my-border-subtle); }
-.my-root .my-git-workspace-empty { padding: var(--my-space-20) var(--my-space-12); font-size: var(--my-text-sm); color: var(--my-txt-secondary); }
+.my-root .my-git-workspace-empty { padding: var(--my-space-20) var(--my-space-12); font-size: var(--my-text-item-description); color: var(--my-txt-item-description); font-weight: var(--my-weight-normal); }
 .my-root .my-git-workspace-form { display: flex; max-height: var(--my-modal-max-height); flex-direction: column; gap: var(--my-space-16); padding: var(--my-space-20); overflow-y: auto; scrollbar-gutter: stable; }
 .my-root .my-git-workspace-field { display: flex; min-width: 0; flex-direction: column; gap: var(--my-space-6); font-size: var(--my-text-sm); color: var(--my-txt-secondary); }
+.my-root .my-git-workspace-field > span { color: var(--my-txt-item-title); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); }
 .my-root .my-git-workspace-field .my-input { min-width: 0; }
 @media (max-width: 1100px) {
   .my-root .my-git-branch-control { max-width: var(--my-space-160); }

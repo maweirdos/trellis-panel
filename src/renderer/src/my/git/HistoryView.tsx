@@ -38,7 +38,7 @@ function CommitFileDiff({ root, hash, path }: { root: string; hash: string; path
   }, [root, hash, path])
   return <div className="min-w-0" aria-label={`提交文件差异 ${path}`}>
     <h4 className="mb-2 break-all font-mono text-my-xs text-my-secondary">{path}</h4>
-    {!diff && !error && <p className="text-my-sm text-my-tertiary" role="status">差异生成中…</p>}
+    {!diff && !error && <p className="my-item-description" role="status">差异生成中…</p>}
     {error && <p className="my-git-notice text-my-warning-text" role="alert">{error}</p>}
     {diff && <UnifiedDiff value={diff} />}
   </div>
@@ -67,7 +67,7 @@ function CommitDetails({ root, hash }: { root: string; hash: string }): JSX.Elem
     return () => { isCurrent = false }
   }, [root, hash])
   return <div className="my-git-details" aria-label="提交详情">
-    {!detail && !error && <p className="text-my-sm text-my-tertiary" role="status">读取提交文件…</p>}
+    {!detail && !error && <p className="my-item-description" role="status">读取提交文件…</p>}
     {error && <p className="my-git-notice text-my-warning-text" role="alert">{error}</p>}
     {detail && <>
       <h3 className="break-words text-my-sm font-medium text-my-primary">{detail.commit.subject || '（无提交说明）'}</h3>
@@ -77,7 +77,7 @@ function CommitDetails({ root, hash }: { root: string; hash: string }): JSX.Elem
         {detail.parent === null ? '根提交 · 与空树比较' : detail.commit.parents.length > 1 ? `合并提交 · 仅与第一父提交 ${detail.parent.slice(0, 8)} 比较` : `与父提交 ${detail.parent.slice(0, 8)} 比较`}
       </p>
       {detail.filesTruncated && <p className="my-git-notice text-my-warning-text" role="status">文件列表达到读取上限，仅显示部分改动文件。</p>}
-      {detail.files.length === 0 ? <p className="text-my-sm text-my-tertiary">此比较下无文件改动。</p> : <div className="my-git-detail-panes">
+      {detail.files.length === 0 ? <p className="my-item-description">此比较下无文件改动。</p> : <div className="my-git-detail-panes">
         <div className="min-w-0">
           <h4 className="mb-1 text-my-xs text-my-tertiary">改动文件（{detail.files.length}{detail.filesTruncated ? '+' : ''}）</h4>
           <ul className="my-git-commit-files my-scrollbar">
@@ -158,8 +158,8 @@ export function HistoryView({ root }: { root: string }): JSX.Element {
       </Button>
     </div>
     {error && <p className="my-git-notice text-my-warning-text" role="alert">{error}</p>}
-    {!history && isLoading && <p className="text-my-sm text-my-tertiary" role="status">读取提交历史…</p>}
-    {history && history.commits.length === 0 && <p className="my-git-notice text-my-secondary">当前仓库尚无提交。</p>}
+    {!history && isLoading && <p className="my-item-description" role="status">读取提交历史…</p>}
+    {history && history.commits.length === 0 && <p className="my-git-notice my-item-description">当前仓库尚无提交。</p>}
     {history && history.commits.length > 0 && <>
       <HistoryGraph key={refreshGeneration} commits={history.commits} refs={history.refs} head={history.head} selected={selected} onSelect={setSelected} />
       <div className="my-2 flex flex-wrap items-center gap-2">

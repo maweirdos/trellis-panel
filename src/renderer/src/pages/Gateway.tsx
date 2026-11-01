@@ -378,13 +378,13 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
           {filteredTools.map((tool) => <div key={tool.name} className="preference-row">
             <div className="preference-row-label space-y-2">
               <details className="text-my-xs font-normal text-my-secondary">
-                <summary className="cursor-pointer break-all font-mono text-my-sm text-my-primary">{tool.name}</summary>
+                <summary className="my-item-title cursor-pointer break-all font-mono">{tool.name}</summary>
                 <div className="mt-3 space-y-3">
-                  <p className="leading-relaxed">{tool.description}</p>
+                  <p className="my-item-description">{tool.description}</p>
                   {Object.keys(tool.parameters).length === 0 ? <p className="text-my-tertiary">无参数</p> : <dl className="space-y-2">
                     {Object.entries(tool.parameters).map(([name, parameter]) => <div key={name}>
                       <dt className="break-all font-mono">{name}: {parameter.type}{parameter.required && <span className="ml-1 text-my-danger-text">必填</span>}</dt>
-                      <dd className="mt-1 text-my-tertiary">{parameter.description}</dd>
+                      <dd className="my-item-description mt-1">{parameter.description}</dd>
                       {parameter.default !== undefined && <dd className="mt-1 break-all font-mono text-my-tertiary">默认值：{JSON.stringify(parameter.default)}</dd>}
                     </div>)}
                   </dl>}
@@ -448,7 +448,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
             </div>
 
             <div className="my-scrollbar min-h-0 overflow-y-auto p-5 space-y-4" style={{ scrollbarGutter: 'stable' }}>
-              <p className="text-my-xs text-my-secondary leading-relaxed">{selectedTool.description}</p>
+              <p className="my-item-description">{selectedTool.description}</p>
               {selectedTool.securityRule && <p className="text-my-xs text-my-warning-text">{selectedTool.securityRule}</p>}
 
               {/* 参数输入 */}
@@ -461,12 +461,12 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                 ) : (
                   Object.entries(selectedTool.parameters).map(([pName, pMeta]) => (
                     <div key={pName} className="space-y-1">
-                      <label htmlFor={`gateway-tool-${pName}`} className="flex items-center justify-between text-my-xs font-medium text-my-secondary">
-                        <span>
+                      <label htmlFor={`gateway-tool-${pName}`} className="flex items-center justify-between">
+                        <span className="my-item-title">
                           {pName} ({pMeta.type})
                           {pMeta.required && <span className="text-my-danger-text ml-1">*</span>}
                         </span>
-                        <span className="text-my-xs text-my-tertiary">{pMeta.description}</span>
+                        <span className="my-item-description">{pMeta.description}</span>
                       </label>
                       {pName === 'sql' ? (
                         <textarea
@@ -578,8 +578,8 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
               {securityError && <div role="alert" className="rounded-my-lg border border-my-line p-3 text-my-danger-text">{securityError}</div>}
               <div className="flex items-center justify-between rounded-my-lg border border-my-line bg-my-canvas p-3">
                 <div>
-                  <div className="font-semibold text-my-primary">SQL 只读安全拦截</div>
-                  <p className="mt-0.5 text-my-tertiary">强制阻断 DROP / DELETE / UPDATE / ALTER 等写操作</p>
+                  <div className="my-item-title">SQL 只读安全拦截</div>
+                  <p className="my-item-description mt-0.5">强制阻断 DROP / DELETE / UPDATE / ALTER 等写操作</p>
                 </div>
                 <fieldset disabled={savingSecurity} className="border-0 p-0">
                   <label><span className="sr-only">SQL 只读安全拦截</span><Checkbox
@@ -590,7 +590,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
               </div>
 
               <div className="space-y-1">
-                <label htmlFor="gateway-timeout" className="font-semibold text-my-primary">上游调用硬超时熔断 (毫秒)</label>
+                <label htmlFor="gateway-timeout" className="my-item-title">上游调用硬超时熔断 (毫秒)</label>
                 <input
                   id="gateway-timeout"
                   type="number"
@@ -599,11 +599,11 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                   onChange={(e) => setSecurityForm({ ...securityForm, timeoutMs: Number(e.target.value) || 2000 })}
                   className="my-input"
                 />
-                <p className="text-my-xs text-my-tertiary">超过设定时间立即熔断返回，防止外部服务慢拖垮 AI 编辑器</p>
+                <p className="my-item-description">超过设定时间立即熔断返回，防止外部服务慢拖垮 AI 编辑器</p>
               </div>
 
               <div className="space-y-1">
-                <label htmlFor="gateway-response-limit" className="font-semibold text-my-primary">最大响应字符截断限制</label>
+                <label htmlFor="gateway-response-limit" className="my-item-title">最大响应字符截断限制</label>
                 <input
                   id="gateway-response-limit"
                   type="number"
@@ -612,7 +612,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                   onChange={(e) => setSecurityForm({ ...securityForm, maxResponseChars: Number(e.target.value) || 12000 })}
                   className="my-input"
                 />
-                <p className="text-my-xs text-my-tertiary">限制单次工具返回的最大字符数，防止超大表查询撑爆模型上下文</p>
+                <p className="my-item-description">限制单次工具返回的最大字符数，防止超大表查询撑爆模型上下文</p>
               </div>
             </div>
 
@@ -651,7 +651,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
               {/* Claude Code */}
               <div className="rounded-my-lg border border-my-line bg-my-canvas p-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-my-primary">Claude Code (.mcp.json)</span>
+                  <span className="my-item-title">Claude Code (.mcp.json)</span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -693,7 +693,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
               {/* Codex */}
               <div className="rounded-my-lg border border-my-line bg-my-canvas p-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-my-primary">Codex (~/.codex/config.toml)</span>
+                  <span className="my-item-title">Codex (~/.codex/config.toml)</span>
                   <Button
                     variant="ghost"
                     size="sm"

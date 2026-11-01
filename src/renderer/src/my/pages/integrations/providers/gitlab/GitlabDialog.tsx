@@ -18,7 +18,7 @@ export function GitlabDialog({ title, subtitle, busy, error, close, children, dr
     <div className={drawer ? 'gitlab-detail-drawer flex h-full min-h-0 flex-col' : undefined}>
     <div className="flex items-center gap-3 border-b border-my-line p-5">
       <IntegrationProductIcon provider="gitlab" />
-      <div className="min-w-0 flex-1"><h3 className="font-medium">{title}</h3>{subtitle && <p className="mt-1 break-words text-my-xs text-my-tertiary">{subtitle}</p>}</div>
+      <div className="min-w-0 flex-1"><h3 className="font-medium">{title}</h3>{subtitle && <p className="my-item-description mt-1 break-words">{subtitle}</p>}</div>
       <Button size="sm" variant="ghost" aria-label="关闭弹窗" onClick={close}><X size={16} /></Button>
     </div>
     <div className={`${drawer ? 'min-h-0 flex-1' : 'max-h-[65vh]'} space-y-5 overflow-y-auto p-5 my-scrollbar`} style={{ scrollbarGutter: 'stable' }}>

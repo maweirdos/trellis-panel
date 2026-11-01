@@ -154,8 +154,8 @@ export function AgentDiscoveryStep({ onInventory, onBusyChange }: AgentDiscovery
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-my-md bg-my-layer-3"><ToolBrandIcon brand={agent.id} size={22} /></span>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="break-words text-my-sm font-semibold text-my-primary">{agent.name}</span><span className={`text-my-xs ${rowFeedback?.error ? 'text-my-danger-text' : state.tone}`}>{rowPending ? '处理中' : rowFeedback?.error ? '操作失败' : state.label}</span></div>
-              <p className="mt-1 break-words text-my-xs text-my-secondary">{rowPending ? rowPending === 'setup' ? '正在安装，请等待结果…' : rowPending === 'path' ? '等待选择路径…' : '正在检查连接…' : state.detail}</p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="my-item-title break-words">{agent.name}</span><span className={`text-my-xs ${rowFeedback?.error ? 'text-my-danger-text' : state.tone}`}>{rowPending ? '处理中' : rowFeedback?.error ? '操作失败' : state.label}</span></div>
+              <p className={`my-item-description mt-1 break-words${state.tone === 'text-my-warning-text' || state.tone === 'text-my-danger-text' ? ' text-my-secondary' : ''}`}>{rowPending ? rowPending === 'setup' ? '正在安装，请等待结果…' : rowPending === 'path' ? '等待选择路径…' : '正在检查连接…' : state.detail}</p>
             </div>
             <div className="flex flex-wrap gap-2" role="group" aria-label={`${agent.name}操作`}>
               {canInstall && <Button variant="outline" size="sm" disabled={pending !== null || !hasIpc || typeof api.acpRuntimeSetup !== 'function'} onClick={() => void run('setup', agent)} aria-label={`安装 ${agent.name}`}>{rowPending === 'setup' ? <Loader2 size={14} className="motion-safe:animate-spin" /> : <Download size={14} />}安装</Button>}

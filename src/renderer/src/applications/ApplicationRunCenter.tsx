@@ -119,7 +119,7 @@ export function ApplicationRunCenter(): JSX.Element {
                 {[...groups].map(([root, instances]) => <section key={root} aria-label={`工作副本 ${root}`}>
                   <h3 className="text-my-sm font-semibold text-my-primary">{copyName(root)}</h3><p className="mb-2 break-all text-my-xs text-my-tertiary">{root}</p>
                   <div className="space-y-2">{instances.map((item) => <article key={instanceKey(item.target)} className="rounded-my-lg border border-my-line p-3" data-run-id={item.run.id}>
-                    <button type="button" className="my-control my-button-ghost w-full justify-start text-left" aria-pressed={selectedKey === instanceKey(item.target)} onClick={() => setSelected(item)}><Terminal size={14} className="shrink-0" /><span className="min-w-0 break-words text-my-sm font-semibold">{nameOf(item)}</span></button>
+                    <button type="button" className="my-control my-button-ghost w-full justify-start text-left" aria-pressed={selectedKey === instanceKey(item.target)} onClick={() => setSelected(item)}><Terminal size={14} className="shrink-0" /><span className="my-item-title min-w-0 break-words text-inherit">{nameOf(item)}</span></button>
                     <div className="mt-2 flex flex-wrap gap-2 text-my-xs"><ProcessStatus app={item} /><ReadinessStatus readiness={item.readiness} /></div>
                     <p className="mt-2 text-my-xs text-my-secondary">{item.runEnvironmentCheck?.status === 'verified' ? '环境已人工核对' : item.environmentCheck?.status === 'changed' ? '环境已变化' : '环境待核实'}{item.configChanged === true ? ' · 有配置变更' : item.configChanged === null ? ' · 启动快照未知' : ''}</p>
                     <p className="mt-1 break-words text-my-xs text-my-tertiary">{item.serviceUses?.length ? `任务引用 ${item.serviceUses.length} 项 · ${item.serviceUses.map(use => use.taskLabel).join('、')}` : '独立运行 · 未登记任务引用'}</p>
@@ -129,7 +129,7 @@ export function ApplicationRunCenter(): JSX.Element {
                 </section>)}
               </div>
               {detail && <section className="min-w-0 rounded-my-lg border border-my-line p-3" aria-label="原实例详情">
-                <div className="flex items-center gap-2"><h3 className="min-w-0 flex-1 break-words text-my-sm font-semibold text-my-primary">{nameOf(detail)}</h3><button type="button" className="my-icon-control" aria-label="收起实例详情" onClick={() => setSelected(null)}><ArrowLeft size={14} /></button></div>
+                <div className="flex items-center gap-2"><h3 className="my-item-title min-w-0 flex-1 break-words">{nameOf(detail)}</h3><button type="button" className="my-icon-control" aria-label="收起实例详情" onClick={() => setSelected(null)}><ArrowLeft size={14} /></button></div>
                 {!current && <p role="status" className="mt-2 text-my-xs text-my-tertiary">原实例已不在当前运行清单</p>}
                 <ApplicationRunFacts run={detail.run} configChanged={detail.configChanged} serviceUses={detail.serviceUses} environmentCheck={detail.environmentCheck} runEnvironmentCheck={detail.runEnvironmentCheck} />
                 {detail.serviceUses && detail.serviceUses.length > 0 && <section aria-label="原实例任务引用" className="mt-3 space-y-2">

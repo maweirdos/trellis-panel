@@ -92,7 +92,7 @@ export function StorageSettings(): JSX.Element {
     finally { pending.current = false; if (mounted.current) setBusy(null) }
   }
 
-  if (!bridge) return <div className="preferences-page"><PreferenceSection id="storage-unavailable" title="存储空间"><p className="py-4 text-my-sm text-my-tertiary">连接桌面应用后可查看本机存储。</p></PreferenceSection></div>
+  if (!bridge) return <div className="preferences-page"><PreferenceSection id="storage-unavailable" title="存储空间"><p className="my-item-description py-4">连接桌面应用后可查看本机存储。</p></PreferenceSection></div>
 
   return <div className="preferences-page">
     <PreferenceSection id="storage-usage" title="本机存储">
@@ -115,7 +115,7 @@ export function StorageSettings(): JSX.Element {
           <label className="text-my-sm text-my-secondary"><input type="checkbox" aria-label={`选择${content.label}`} checked={checked} disabled={Boolean(busy) || item.status !== 'available' || item.bytes === 0} onChange={event => { const enabled = event.target.checked; setSelected(previous => enabled ? [...previous, item.id] : previous.filter(id => id !== item.id)) }} />选择</label>
         </PreferenceRow>
       })}
-      {scan && <div className="preference-actions"><span className="mr-auto text-my-xs text-my-tertiary">扫描不会删除文件。</span><Button size="sm" variant="outline" disabled={Boolean(busy) || selected.length === 0} onClick={() => void clean()}>{busy === 'clean' ? '处理中…' : '清理所选'}</Button></div>}
+      {scan && <div className="preference-actions"><span className="my-item-description mr-auto">扫描不会删除文件。</span><Button size="sm" variant="outline" disabled={Boolean(busy) || selected.length === 0} onClick={() => void clean()}>{busy === 'clean' ? '处理中…' : '清理所选'}</Button></div>}
     </PreferenceSection>
     {error && <p role="alert" className="text-my-sm text-my-danger-text">{error}</p>}
     {results.length > 0 && <PreferenceSection id="storage-result" title="清理结果"><ul className="space-y-2 py-4 text-my-sm text-my-secondary" aria-live="polite">{results.map(item => <li key={item.id}>{resultLabel(item)}</li>)}</ul></PreferenceSection>}

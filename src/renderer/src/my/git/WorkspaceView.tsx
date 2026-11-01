@@ -80,14 +80,14 @@ export function WorkspaceView(): JSX.Element {
           {isLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}刷新
         </Button>
       </div>
-      <p className="mb-3 text-my-xs leading-5 text-my-tertiary">基线为当前 HEAD；已有脏改动可能包含此前未关联的工作，归属以 Git 为准。</p>
-      {isLoading && !status && <p className="text-my-sm text-my-tertiary" role="status">读取工作区…</p>}
+      <p className="my-item-description mb-3 leading-5">基线为当前 HEAD；已有脏改动可能包含此前未关联的工作，归属以 Git 为准。</p>
+      {isLoading && !status && <p className="my-item-description" role="status">读取工作区…</p>}
       {error && <p className="my-git-notice text-my-warning-text" role="alert">{error}</p>}
       {status && (!status.isRepo || !status.ok) && <p className="my-git-notice text-my-secondary" role="status">{status.error ?? (status.isRepo ? 'Git 读取失败' : '当前项目目录不是 Git 仓库')}</p>}
       {status?.ok && status.isRepo && <div className="grid min-w-0 gap-3 lg:grid-cols-2">
         {groups.map((group) => <div key={group.key} className="min-w-0">
           <h3 className="mb-1 text-my-xs font-medium text-my-tertiary">{group.title}</h3>
-          {group.entries.length === 0 && <p className="px-1 text-my-sm text-my-tertiary">无</p>}
+          {group.entries.length === 0 && <p className="my-item-description px-1">无</p>}
           <ul className="my-scrollbar max-h-48 overflow-y-auto">
             {group.entries.map((entry) => <li key={entry.path}>
               <button type="button" disabled={isLoading} onClick={() => void openDiff(entry.path, group.staged)}
@@ -102,7 +102,7 @@ export function WorkspaceView(): JSX.Element {
         </div>)}
         <div className="min-w-0 lg:col-span-2">
           <h3 className="mb-1 text-my-xs font-medium text-my-tertiary">未跟踪（{status.untracked.length}）</h3>
-          {status.untracked.length === 0 && <p className="px-1 text-my-sm text-my-tertiary">无</p>}
+          {status.untracked.length === 0 && <p className="my-item-description px-1">无</p>}
           <ul className="my-scrollbar max-h-32 overflow-y-auto">
             {status.untracked.map((path) => <li key={path} className="flex items-baseline gap-2 px-2 py-1">
               <span className="my-chip shrink-0 text-my-tertiary">未跟踪</span>
@@ -118,7 +118,7 @@ export function WorkspaceView(): JSX.Element {
             </h3>
             <Button variant="ghost" size="sm" className="px-2" onClick={() => { ++diffRequest.current; setSelected(null); setDiff(null); setIsDiffLoading(false) }} aria-label="关闭差异"><X size={12} /></Button>
           </div>
-          {isDiffLoading && <p className="text-my-sm text-my-tertiary" role="status">差异生成中…</p>}
+          {isDiffLoading && <p className="my-item-description" role="status">差异生成中…</p>}
           {(diffError || (diff && !diff.ok)) && <p className="my-git-notice text-my-warning-text" role="alert">{diffError ?? diff?.error ?? '差异读取失败'}</p>}
           {diff?.ok && !isDiffLoading && <UnifiedDiff value={diff} />}
         </div>}

@@ -30,8 +30,27 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   `bg-my-sidebar`, `bg-my-navigation-hover/selected`, and `border-my-shell-line`.
 - Type: `text-my-2xs/xs/sm/md/lg/title/xl/display`; body roles are
   `--my-text-ui/chat/document/activity`, with matching line-height variables.
-- Radii: `rounded-my-xs/sm/inset/md/lg/xl/menu/3xl/4xl` map to
-  2/4/6/10/12/16/18/20/24px. Round avatars and progress rings are geometric exceptions.
+- Interface names and supporting descriptions share `my-item-title` and
+  `my-item-description`. The standard preset uses 13px/500 for names and
+  12px/400 for descriptions; both follow the existing density step. Their size
+  tokens are `--my-text-item-title/description`, and their colors are
+  `--my-txt-item-title/description`. Names use the equal Oklab mix of primary
+  and secondary text; descriptions use tertiary text. Domain selectors consume
+  these same tokens when geometry already lives in a domain stylesheet.
+  Remove conflicting local typography when adopting a role. Do not blanket-style
+  `p`, `label` or heading elements, or rely on a class that a stronger local rule
+  overrides. Preserve page/section headings, numbers, document/chat/code reading
+  roles and status colors. Selected, hovered and filled surfaces must retain
+  readable descriptions; use the contextual secondary/on-color role where needed.
+  When a label wraps an editor or selector, put the title role on a text span;
+  applying it to the wrapper leaks its weight into editable content and values.
+- Radii: `--my-radius-base` is the single 10px source for ordinary rectangular
+  components. Existing `rounded-my-*` and control/panel/shell aliases all resolve
+  to it, independent of density. Functional circles/tracks use `full` or `round`;
+  joined edges and fullscreen surfaces may use zero. New pages use the current
+  Settings interface and `DESIGN.md` as their visual baseline.
+  Declare radius tokens only in `my-tokens.css`; page styles and inline code must
+  not redefine them. `check:ui` enforces the source, aliases and consumer values.
 - Spacing: ordinary Tailwind 0.5 through 16 steps consume `--my-space-*`.
   Use `px-my-page`, `h-my-header`, `h-my-icon`, `h-my-control`, `h-my-field`
   for semantic layout metrics. Do not introduce unrelated local pixel scales.
@@ -40,8 +59,9 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   `my-chip`, `my-kbd`, `my-scrollbar`, `my-nav-item`, `my-activity-note`, `my-chat-prose`.
 - Ordinary window surfaces: `--my-bg-shell` belongs to the title bar and module
   rail; `--my-bg-sidebar` belongs to contextual navigation; canvas belongs to the
-  content. Light roles are #f6f6f6 / #fcfcfc / #ffffff; dark roles are #101010 /
-  #141414 / #181818. `my-app-window` and `my-shell-layout` paint the shell with
+  content. `--my-bg-panel`, `--my-bg-panel-header` and `--my-bg-input` separate
+  grouped settings, section headings and fields. Theme values live only in
+  `my-tokens.css`. `my-app-window` and `my-shell-layout` paint the shell with
   shared inset/radius/border tokens. Utility-window roots do not acquire that frame.
 - Conversation geometry: place `my-conversation-column` inside
   `my-conversation-frame`. Transcript and composer use the same 760px maximum and
@@ -71,18 +91,49 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   `PAGE_LAYOUTS satisfies Record<Page, PageLayoutVariant>` registry classifies
   every route, including new routes. `PageFrame` consumes that registry; pages
   with their own module header compose the same layout directly.
-- The five Settings destinations (preferences, models, engines, integrations and
-  MCP) share `PageFrame`'s `.my-settings-layout`: a centered column using
-  `--my-settings-content-width` (880px), one PageBody scrollbar and a large title
-  inside PageContent. Do not add a leaf page sidebar, independent scroll region,
-  second visible page title or scope badge. Provider/setup dialogs retain their
-  existing semantic width constraints inside this column.
+- Settings destinations share `PageFrame`'s `.my-settings-layout`: a centered
+  column using `--my-settings-content-width`, one PageBody scrollbar, and an icon,
+  title and purpose description inside PageContent. `settings-catalog.ts` owns
+  category names, descriptions, icons, keywords and routes for both the page
+  heading and grouped Settings navigation. Do not add a competing leaf sidebar,
+  independent page scroll region, duplicate title or scope badge.
+  Keep `margin-inline: auto` and symmetric scrollbar gutters so the title and
+  content column share the remaining main region's center. Settings canvas uses
+  `--my-bg-sidebar`; `PreferenceSection` and its heading use `--my-bg-surface-1`
+  and `--my-bg-surface-2` for a restrained surface contrast in both themes.
+- `SettingsNavigation` filters category names and keywords without silently
+  changing the active page. Clearing returns focus to search. Arrow/Home/End
+  navigation moves button focus; Enter/Space activates the focused destination.
+  Text input, IME and modified shortcuts retain their native behavior.
+- Application Settings, including integration and MCP overviews, remain reachable
+  without an open project. `pageRequiresProject` controls both the main fallback
+  and title-bar search availability; project-specific actions keep their own guards.
 - `PreferenceSection` and `PreferenceRow` in `pages/settings/` own Settings groups:
-  a section heading above a rounded neutral bordered panel, divided rows with
-  primary labels on the left and controls on the right. Fields use
-  `--my-settings-field-width` (360px); narrow containers wrap fields while keeping
-  simple toggles beside their labels. Use explicit input labels, named actions,
-  actual state and existing focus/feedback primitives.
+  one neutral panel contains its heading, trailing group action and divided rows.
+  Primary labels and descriptions align on the left and controls on the right.
+  Fields use `--my-settings-field-width`; narrow containers wrap fields while
+  keeping simple toggles beside their labels. Use explicit input labels, named
+  actions, actual state and existing focus/feedback primitives. Page switching
+  must not hide usable settings behind an entrance animation.
+  Row labels and hints consume the shared item title/description roles.
+  `--my-settings-label-color` remains an alias of `--my-txt-item-title`.
+  Preserve both weight and tone differences
+  between names and descriptions rather than relying on a 1px size gap alone.
+  Section headings use `--my-text-sm`, medium weight and primary text.
+- Settings density is configurable. Compact uses a 20px page title, 12px primary
+  labels, 11px descriptions, 32px navigation rows and 16px panel padding.
+  Standard raises dimensions modestly; Comfortable is one small step above it. All roles
+  come from the three token presets rather than browser zoom or CSS scaling.
+  Single actions belong beside page or group identity instead of in standalone
+  full-height panels. Empty recent-project data is one secondary line. At the
+  user's 1360×862 CSS-pixel viewport, all three General switches and both shortcut
+  fields must be visible without scrolling in all three presets. Verify at the
+  actual device scale.
+- Shared icon hover uses the independent CSS `scale` property and
+  `--my-icon-hover-scale`, preserving icon rotation and loading animation.
+  A specialized icon tile owns its own scale; do not also scale its inner SVG.
+  Selected, disabled, expanded and busy controls remain stable. Reduced-motion
+  mode removes nonessential spatial movement.
 - Provider and engine overviews use compact identity rows with icons, truthful
   state and trailing actions. Open editing explicitly; provider draft changes
   require Save/Cancel rather than mutating credentials while typing. Shared
@@ -183,12 +234,12 @@ Example:
   Renderer checks composite alpha against the real surface: menu title/option
   text must reach4.5:1, options must have stronger contrast, and placeholder
   contrast stays between2.2:1 and4.5:1 (separate from actual text).
-- Compact controls share `--my-control-radius` (an alias of `--my-radius-md`,
-  currently 10px). Button, icon button, menu option, Select and composer actions
+- Ordinary controls share `--my-control-radius`, resolving to `--my-radius-base`
+  at 10px. Button, icon button, menu option, Select and composer actions
   consume this semantic token. Hover, active, expanded and selected states keep
   the same base radius; do not introduce a page-specific 4px/6px hover corner or
-  change geometry on hover. Cards, menu containers and genuinely circular widgets
-  retain their own surface/shape roles.
+  change geometry on hover. Cards and menu containers use the same 10px value;
+  functional circular widgets retain their geometric shape.
 - Enabled composer actions use the shared neutral hover surface and rounded hit
   area, including plus, session mode/permission, model, popup back and caption
   controls. Hover must not move adjacent controls; open/pressed and keyboard-focus
@@ -289,8 +340,9 @@ The default font is the platform system stack, including Segoe UI and Chinese
 fallbacks on Windows. Code uses the global mono stack; box-drawing content uses
 `--my-font-diagram` for its CJK character-width requirements. There is no font CDN.
 
-Unspecified/invalid font preference means standard (14px UI/document/chat).
-Explicit small/large remain 13/15px. Keep stored values, unrelated settings and
+The persisted `small/standard/large` appearance values select Compact/Standard/
+Comfortable density with 13/14/15px UI/document/chat text. Missing or invalid values
+select Standard. Keep stored values, unrelated settings and
 cross-window storage synchronization. Font controls remain in Settings only.
 Metadata and activity use a smaller global text role. Heading line-height is1.2.
 Changing type never changes reader/session identity. Chat uses the UI font-size
@@ -300,15 +352,14 @@ fade the entire Markdown container. Titles and strong emphasis retain their
 primary text role. Chat lists use compact2px item gaps and4px inner-paragraph gaps,
 with deliberate nested-list spacing; do not stack full prose paragraph margins
 inside every list item. Document readers retain their own typography contract.
-The 48px toolbar uses `--my-shell-chrome-size`. The module rail is independent:
-`--my-module-rail-width` is56px, `--my-module-button-size` is40px and
-`--my-module-icon-size` is20px, with1.7 icon stroke and8px gaps/insets. The resulting
-48px center pitch leaves breathing room around the icon. The header brand slot
+The toolbar uses `--my-shell-chrome-size` (44/48/50px by density). The module rail
+is independent: width48/52/54px, target32/34/36px and glyph18/20/21px, with1.7
+icon stroke. The header brand slot
 shares rail width, not rail height; changing the rail must not raise the toolbar.
-Rail geometry stays fixed across font presets. Its buttons inherit the shared
+Rail geometry follows the selected density preset. Its buttons inherit the shared
 control radius and existing neutral hover/selection colors. Short windows retain
 an independently scrollable primary nav and reachable footer controls. Fields
-and ordinary buttons retain their existing type/padding-derived heights.
+and ordinary buttons use density-specific compact, regular and field height roles.
 
 ## 4. Interaction and validation matrix
 
@@ -318,7 +369,7 @@ and ordinary buttons retain their existing type/padding-derived heights.
 | Danger control | On-color text stays readable in every theme |
 | Input/select | Same single-line height; textarea may grow |
 | Keyboard focus | Neutral visible outline or token focus shadow |
-| Text-field focus | One subtle border, without an extra outline/shadow; preserve faint keyboard focus on buttons and non-text controls |
+| Text-field focus | One visible inset contour covering the existing border; error color survives hover and focus. Buttons and other controls retain visible keyboard outlines |
 | Menu near viewport edge | Actual measured menu remains inside the viewport |
 | Narrow dialog | Panel fits the viewport without a document horizontal scrollbar |
 | Centered route | Header, scope note and body share1120px content width and the same gutter; body alone scrolls |

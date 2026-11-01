@@ -325,7 +325,7 @@ export function QuickTodoView(): JSX.Element {
         <div className="my-floating-recent my-scrollbar">
           <div className="mb-1 flex justify-between px-2 text-my-xs text-my-secondary"><span>待处理</span><span className="tabular-nums">{listReady ? pending.length : '—'}</span></div>
           {pending.length === 0 ? (
-            <div className="py-2 text-center text-my-xs text-my-tertiary">
+            <div className="my-item-description py-2 text-center">
               {!snapshot ? '打开项目后即可随手速记' : listReady ? '暂无待处理待办' : listFailed ? '待办列表读取失败' : '正在读取待办…'}
             </div>
           ) : (
@@ -348,7 +348,7 @@ export function QuickTodoView(): JSX.Element {
                             : 'bg-my-medium'
                     )}
                   />
-                  <span className="min-w-0 flex-1 truncate text-my-xs text-my-primary">{t.title}</span>
+                  <span className="my-item-title min-w-0 flex-1 truncate">{t.title}</span>
                   <FloatingIconButton
                     disabled={deleting.includes(t.id)}
                     onClick={() => void remove(t.id)}

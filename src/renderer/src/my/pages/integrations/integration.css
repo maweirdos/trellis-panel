@@ -24,6 +24,7 @@
 }
 .my-root .integration-product-tile > :is(img, span) { width: var(--my-space-36); height: var(--my-space-36); }
 .my-root .integration-provider-sections { display: flex; flex-direction: column; gap: var(--my-space-24); }
+.my-root .integration-section .preference-section-heading p { font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); line-height: var(--my-line-ui); color: var(--my-txt-item-description); }
 .my-root .integration-account-row {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-16);
   padding: var(--my-space-16) var(--my-space-20);
@@ -35,7 +36,7 @@
 }
 .my-root .integration-list-row + .integration-list-row, .my-root .integration-history-row + .integration-history-row { border-top: 1px solid var(--my-border-subtle); }
 .my-root .integration-history-row { align-items: flex-start; }
-.my-root .integration-disclosure > summary { width: fit-content; cursor: pointer; color: var(--my-txt-secondary); font-size: var(--my-text-sm); }
+.my-root .integration-disclosure > summary { width: fit-content; cursor: pointer; color: var(--my-txt-item-title); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); }
 .my-root .integration-disclosure > summary:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); border-radius: var(--my-control-radius); }
 .my-root .integration-auth-methods { display: flex; width: 100%; }
 .my-root .integration-auth-methods > .my-segment { width: auto; min-width: 0; flex: 1; padding-inline: var(--my-space-12); font-size: var(--my-text-sm); }

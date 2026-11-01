@@ -49,9 +49,9 @@ export function AgentDirectoryPage(): JSX.Element | null {
         <header className="flex min-w-0 items-center gap-2"><FlowIcon name="projects" size={16} /><h2 className="truncate text-my-sm font-medium text-my-primary">{space.name}</h2><span className="text-my-2xs text-my-tertiary">{space.key} · {entries.length}</span></header>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">{entries.map((entry) => <article key={`${entry.kind}:${entry.id}`} data-directory-kind={entry.kind} className="flex min-w-0 flex-col gap-3 rounded-my-md border border-my-line p-3">
           <div className="flex items-start gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-my-md bg-my-layer-1 text-my-secondary"><FlowIcon name={entry.kind === 'agent' ? 'agents' : 'crews'} size={19} /></span>
-            <div className="min-w-0 flex-1"><h3 className="truncate text-my-sm font-medium text-my-primary">{entry.name}</h3><p className="mt-0.5 text-my-2xs text-my-tertiary">{entry.kind === 'agent' ? 'Agent' : '小队'}{!entry.enabled && ' · 已停用'}</p></div>
+            <div className="min-w-0 flex-1"><h3 className="my-item-title truncate">{entry.name}</h3><p className="mt-0.5 text-my-2xs text-my-tertiary">{entry.kind === 'agent' ? 'Agent' : '小队'}{!entry.enabled && ' · 已停用'}</p></div>
           </div>
-          <p className="line-clamp-2 text-my-xs leading-relaxed text-my-secondary">{entry.description || '暂无职责描述'}</p>
+          <p className="my-item-description line-clamp-2 leading-relaxed">{entry.description || '暂无职责描述'}</p>
           <footer className="mt-auto flex flex-wrap items-center justify-between gap-2"><span className="text-my-2xs text-my-tertiary">{entry.detail}</span><Button size="sm" variant="ghost" aria-label={`打开 ${space.name} 的${entry.kind === 'agent' ? ' Agent' : '小队'} ${entry.name}`} onClick={() => openSpace(space.id, entry.kind)}>进入空间<ArrowUpRight size={13} /></Button></footer>
         </article>)}</div>
       </section>)}

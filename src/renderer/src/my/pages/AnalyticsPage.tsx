@@ -111,7 +111,7 @@ function MetricCard({ label, value }: { label: string; value: number }): JSX.Ele
   return (
     <div className="my-card p-3">
       <div className="text-my-display font-semibold text-my-primary">{value}</div>
-      <div className="mt-0.5 text-my-sm text-my-tertiary">{label}</div>
+      <div className="my-item-description mt-0.5">{label}</div>
     </div>
   )
 }
@@ -198,8 +198,8 @@ export function AnalyticsPage(): JSX.Element {
       <div className="shrink-0"><Tabs tabs={[{ id: 'snapshot', label: '概览' }, { id: 'flow', label: '流转' }, { id: 'workflow', label: '流程' }]} active={section} onChange={setSection} /></div>
       <div className="my-locked-scroll my-scrollbar">
       <div className="space-y-5">
-      {section === 'flow' ? <><p className="text-my-xs text-my-secondary">流转数来自项目历史日志，日趋势为近 14 天；周期按当前未归档的已完成任务计算，停滞包含规划中、进行中与评审中任务。</p><TeamEfficiency /></> : section === 'workflow' ? <><p className="text-my-xs text-my-secondary">当前项目任务的流程配置与停滞情况。</p><TeamWorkflow /></> : <>
-        <p className="text-my-xs text-my-secondary">当前未归档任务的快照；关闭数仅计已完成，近 8 周按创建和完成日期汇总。</p>
+      {section === 'flow' ? <><p className="my-item-description">流转数来自项目历史日志，日趋势为近 14 天；周期按当前未归档的已完成任务计算，停滞包含规划中、进行中与评审中任务。</p><TeamEfficiency /></> : section === 'workflow' ? <><p className="my-item-description">当前项目任务的流程配置与停滞情况。</p><TeamWorkflow /></> : <>
+        <p className="my-item-description">当前未归档任务的快照；关闭数仅计已完成，近 8 周按创建和完成日期汇总。</p>
 
       <div className="space-y-3">
         {/* 指标卡 */}
@@ -214,7 +214,7 @@ export function AnalyticsPage(): JSX.Element {
         <div className="grid grid-cols-4 gap-3">
           <div className="my-card col-span-2 p-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-my-md font-medium text-my-secondary">创建 vs 关闭（近 8 周）</h2>
+              <h2 className="my-item-title">创建 vs 关闭（近 8 周）</h2>
               <div className="flex items-center gap-3 text-my-xs text-my-tertiary">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-my-xs bg-my-accent" />
@@ -234,7 +234,7 @@ export function AnalyticsPage(): JSX.Element {
           <div className="col-span-2 flex flex-col gap-3">
             {/* 状态分布 */}
             <div className="my-card p-4">
-              <h2 className="text-my-md font-medium text-my-secondary">状态分布</h2>
+              <h2 className="my-item-title">状态分布</h2>
               <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-my-layer-3">
                 {stateCounts.map(
                   (r) =>
@@ -259,7 +259,7 @@ export function AnalyticsPage(): JSX.Element {
 
             {/* 优先级分布 */}
             <div className="my-card flex-1 p-4">
-              <h2 className="text-my-md font-medium text-my-secondary">优先级分布</h2>
+              <h2 className="my-item-title">优先级分布</h2>
               <div className="mt-3 space-y-2">
                 {priorityCounts.map((r) => (
                   <div key={r.priority} className="flex items-center gap-2.5">
@@ -286,7 +286,7 @@ export function AnalyticsPage(): JSX.Element {
         {/* 模块维度 + 周环比 */}
         <div className="grid grid-cols-2 gap-3">
           <div className="my-card p-4">
-            <h2 className="text-my-md font-medium text-my-secondary">模块分布（未完结 / 已完成）</h2>
+            <h2 className="my-item-title">模块分布（未完结 / 已完成）</h2>
             <div className="mt-3 space-y-2.5">
               {pkgRows.map((r) => (
                 <div key={r.name} className="flex items-center gap-3">
@@ -309,7 +309,7 @@ export function AnalyticsPage(): JSX.Element {
             </div>
           </div>
           <div className="my-card p-4">
-            <h2 className="text-my-md font-medium text-my-secondary">周环比</h2>
+            <h2 className="my-item-title">周环比</h2>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-my-md border border-my-line p-3">
                 <div className="text-my-xs text-my-tertiary">本周新增</div>
@@ -327,7 +327,7 @@ export function AnalyticsPage(): JSX.Element {
 
         {/* 成员排行 */}
         <div className="my-card p-4">
-          <h2 className="text-my-md font-medium text-my-secondary">成员排行（未关闭工作项）</h2>
+          <h2 className="my-item-title">成员排行（未关闭工作项）</h2>
           <div className="mt-3 space-y-2.5">
             {memberRows.map((r) => (
               <div key={r.member.id} className="flex items-center gap-3">

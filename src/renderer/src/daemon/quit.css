@@ -1,12 +1,12 @@
 html:has(.daemon-quit), body:has(.daemon-quit), #root:has(.daemon-quit) { margin: 0; width: 100%; height: 100%; background: #fbfbfc; color: #101114; }
-.daemon-quit { box-sizing: border-box; padding: 28px 29px 30px; height: 100%; border: 1px solid #202124; border-radius: 12px; font: 19px/1.55 "Microsoft YaHei", "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+.daemon-quit { box-sizing: border-box; padding: 28px 29px 30px; height: 100%; border: 1px solid #202124; border-radius: var(--my-radius-base); font: 19px/1.55 "Microsoft YaHei", "Segoe UI", sans-serif; display: flex; flex-direction: column; }
 .daemon-quit h1 { margin: 0 0 24px; font-size: 23px; line-height: 1.5; font-weight: 500; -webkit-app-region: drag; }
-.daemon-quit-option { display: flex; align-items: flex-start; gap: 17px; padding: 17px 18px; border-radius: 20px; background: #f0f0f2; font-size: 19px; line-height: 1.5; cursor: pointer; }
+.daemon-quit-option { display: flex; align-items: flex-start; gap: 17px; padding: 17px 18px; border-radius: var(--my-radius-base); background: #f0f0f2; font-size: 19px; line-height: 1.5; cursor: pointer; }
 .daemon-quit-option input { flex: 0 0 auto; width: 23px; height: 23px; margin-top: 4px; accent-color: #171719; }
 .daemon-quit-warning { margin: 12px 18px 22px; color: #ff343e; font-size: 16px; line-height: 1.8; }
 .daemon-quit-error { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #b1242c; overflow-wrap: anywhere; overflow: auto; max-height: 85px; }
 .daemon-quit-actions { margin-top: auto; display: flex; gap: 12px; }
-.daemon-quit-actions button { border: 1px solid #dedee1; border-radius: 16px; flex: 1; height: 49px; font: inherit; background: #fbfbfc; color: #111; box-shadow: 0 1px 3px #0000000c; cursor: pointer; }
+.daemon-quit-actions button { border: 1px solid #dedee1; border-radius: var(--my-radius-base); flex: 1; height: 49px; font: inherit; background: #fbfbfc; color: #111; box-shadow: 0 1px 3px #0000000c; cursor: pointer; }
 .daemon-quit-actions button:focus-visible { outline: 2px solid #496cca; outline-offset: 2px; }
 .daemon-quit-actions .daemon-quit-exit { color: #fff; background: #171719; border-color: #171719; }
 .daemon-quit-actions button:disabled { opacity: .5; cursor: default; }

@@ -43,7 +43,7 @@ export function CrewsPage(): JSX.Element | null {
           const tasks = snapshot.tasks.filter((task) => task.executor?.kind === 'crew' && task.executor.id === crew.id)
           return <section key={crew.id} className="flex flex-col gap-3 rounded-my-md border border-my-line p-3">
             <header className="flex items-start gap-2"><Users size={18} className="mt-0.5 shrink-0 text-my-icon-secondary" />
-              <div className="min-w-0 flex-1"><h2 className="truncate text-my-sm font-medium text-my-primary">{crew.name}</h2>{crew.description && <p className="mt-0.5 text-my-xs text-my-tertiary">{crew.description}</p>}</div>
+              <div className="min-w-0 flex-1"><h2 className="my-item-title truncate">{crew.name}</h2>{crew.description && <p className="my-item-description mt-0.5">{crew.description}</p>}</div>
               {crew.archived && <span className="text-my-2xs text-my-tertiary">已归档</span>}
             </header>
             {!captainReady && <p role="status" className="text-my-xs text-my-danger-text">队长不可用，请编辑小队更换队长。</p>}

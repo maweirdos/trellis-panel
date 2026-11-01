@@ -840,8 +840,8 @@ export function EmptyState({ title, description }: { title: string; description?
           <path d="M2.5 6h11M6 6v7.5" stroke="currentColor" strokeWidth="1.2" />
         </svg>
       </div>
-      <div className="text-my-md font-medium text-[var(--my-txt-primary)]">{title}</div>
-      {description && <div className="max-w-[320px] text-my-sm text-[var(--my-txt-tertiary)]">{description}</div>}
+      <div className="my-item-title">{title}</div>
+      {description && <div className="my-item-description max-w-[320px]">{description}</div>}
     </div>
   )
 }

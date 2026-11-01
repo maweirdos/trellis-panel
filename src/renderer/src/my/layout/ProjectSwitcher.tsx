@@ -30,7 +30,7 @@ export function ProjectSwitcher(): JSX.Element {
         <div>
           <DropdownHeader>最近打开的本机工程</DropdownHeader>
           <div className="my-scrollbar max-h-[40vh] px-1">
-            {choices.length === 0 && <p className="px-3 py-3 text-my-sm text-my-tertiary">尚无项目记录</p>}
+            {choices.length === 0 && <p className="my-item-description px-3 py-3">尚无项目记录</p>}
             {choices.map((path) => (
               <button key={projectRootKey(path)} type="button" disabled={!canOpen}
                 className={clsx('flex w-full items-center gap-3 rounded-my-md px-2.5 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50',
@@ -38,8 +38,8 @@ export function ProjectSwitcher(): JSX.Element {
                 onClick={() => { if (projectRootKey(path) !== projectRootKey(root)) void openProjectPath(path); close() }}>
                 <FolderOpen size={17} strokeWidth={1.7} className="shrink-0 text-my-icon-secondary" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-my-lg font-medium" title={path}>{projectRootKey(path) === projectRootKey(root) ? name : projectNameFromPath(path)}</span>
-                  <span className="mt-0.5 block truncate text-my-xs text-my-tertiary" title={path}>{path}</span>
+                  <span className={clsx('my-item-title block truncate', projectRootKey(path) === projectRootKey(root) && 'text-my-primary')} title={path}>{projectRootKey(path) === projectRootKey(root) ? name : projectNameFromPath(path)}</span>
+                  <span className={clsx('my-item-description mt-0.5 block truncate', projectRootKey(path) === projectRootKey(root) && 'text-my-secondary')} title={path}>{path}</span>
                 </span>
                 {projectRootKey(path) === projectRootKey(root) && <Check size={15} className="shrink-0 text-my-icon-accent" />}
               </button>
@@ -52,7 +52,7 @@ export function ProjectSwitcher(): JSX.Element {
               <FolderOpen size={17} strokeWidth={1.7} />打开本机工程…
             </button>
           </div>
-          {!canOpen && <p className="px-3 pb-2 text-my-xs text-my-tertiary">浏览器预览不读取本机目录，请在桌面应用中打开项目。</p>}
+          {!canOpen && <p className="my-item-description px-3 pb-2">浏览器预览不读取本机目录，请在桌面应用中打开项目。</p>}
           {openError && <p role="status" className="px-3 pb-2 text-my-xs text-my-danger-text">{openError}</p>}
         </div>
       )}

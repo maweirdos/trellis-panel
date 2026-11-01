@@ -20,7 +20,8 @@
 .wf-stage[data-state="running"], .wf-stage[data-state="dispatched"] { border-color: var(--my-border-accent-subtle); background: var(--my-bg-accent-subtle); }
 .wf-stage[data-state="failed"], .wf-stage[data-state="outcome-unknown"] { border-color: var(--my-border-danger-subtle); }
 .wf-stage-kicker { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-8); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
-.wf-stage strong { display: block; margin-top: var(--my-space-6); font-size: var(--my-text-ui); font-weight: var(--my-weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-stage strong { display: block; margin-top: var(--my-space-6); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--my-txt-item-title); }
+.wf-stage[data-selected="true"] strong { color: var(--my-txt-primary); }
 .wf-stage-status { display: flex; justify-content: space-between; gap: var(--my-space-8); margin-top: var(--my-space-4); color: var(--my-txt-secondary); font-size: var(--my-text-xs); white-space: nowrap; }
 .wf-stage .react-flow__handle { width: var(--my-space-5); height: var(--my-space-5); background: var(--my-txt-tertiary); border: 1px solid var(--my-bg-surface-1); }
 .wf-edge-feedback path, .wf-edge-retry path { stroke-dasharray: 5 4; }
@@ -54,7 +55,7 @@
 .wf-notice[role="alert"] { color: var(--my-txt-danger-primary); }
 .wf-composer-target { border-top: 1px solid var(--my-border-subtle); padding: var(--my-space-8) var(--my-space-14); color: var(--my-txt-secondary); font-size: var(--my-text-xs); line-height: var(--my-line-ui); }
 .wf-empty { padding: var(--my-space-20); display: grid; justify-items: center; gap: var(--my-space-6); color: var(--my-txt-tertiary); text-align: center; }
-.wf-empty p { color: var(--my-txt-secondary); }.wf-empty small { font-size: var(--my-text-xs); }
+.wf-empty p { color: var(--my-txt-item-title); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); }.wf-empty small { font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); color: var(--my-txt-item-description); }
 .wf-permissions { max-height: 22vh; overflow: auto; padding: 0 var(--my-space-12) var(--my-space-8); }
 .wf-permission { border: 1px solid var(--my-border-warning-subtle); border-radius: var(--my-radius-md); padding: var(--my-space-10); background: var(--my-bg-warning-subtle); margin-top: var(--my-space-6); }
 .wf-permission>div:first-child { display: flex; gap: var(--my-space-6); align-items: center; }.wf-permission strong { font-weight: var(--my-weight-medium); }
@@ -106,7 +107,7 @@
 .wf-impact-canvas .react-flow { --xy-background-pattern-color-props: var(--my-border-subtle); --xy-edge-stroke-default: var(--my-txt-tertiary); --xy-edge-label-color-default: var(--my-txt-secondary); --xy-edge-label-background-color-default: var(--my-bg-surface-1); }
 .wf-impact-canvas .react-flow__node { font-family: inherit; background: none; border: 0; }
 .wf-impact-stage { width: var(--my-space-192); min-height: calc(var(--my-space-48) * 2); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-md); padding: var(--my-space-10) var(--my-space-12); background: var(--my-bg-surface-1); }
-.wf-impact-stage>span { display: flex; align-items: center; gap: var(--my-space-4); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }.wf-impact-stage strong { display: block; margin-block: var(--my-space-6); font-size: var(--my-text-ui); font-weight: var(--my-weight-medium); overflow-wrap: anywhere; }.wf-impact-stage small { font-size: var(--my-text-xs); color: var(--my-txt-tertiary); }
+.wf-impact-stage>span { display: flex; align-items: center; gap: var(--my-space-4); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }.wf-impact-stage strong { display: block; margin-block: var(--my-space-6); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); overflow-wrap: anywhere; color: var(--my-txt-item-title); }.wf-impact-stage small { font-size: var(--my-text-xs); color: var(--my-txt-tertiary); }
 .wf-impact-stage[data-change="added"] { border-color: var(--my-border-success-subtle); }.wf-impact-stage[data-change="removed"] { border-color: var(--my-border-danger-subtle); }.wf-impact-stage[data-change="changed"] { border-color: var(--my-border-accent-subtle); }
 .wf-impact-stage .react-flow__handle { background: var(--my-txt-tertiary); border-color: var(--my-bg-surface-1); }
 .wf-impact-edge-added path { stroke: var(--my-txt-success-primary); }.wf-impact-edge-removed path { stroke: var(--my-txt-danger-primary); stroke-dasharray: 5 4; }.wf-impact-edge-changed path { stroke: var(--my-txt-accent-primary); }

@@ -239,8 +239,8 @@ export function ArchitecturePage(): JSX.Element {
         <div className="my-scrollbar w-72 shrink-0 overflow-y-auto border-l border-my-line p-4">
           {selected ? (
             <div className="space-y-3">
-              <div className="text-my-xs font-semibold text-my-primary">{selected.title}</div>
-              {selected.sub && <div className="font-mono text-my-xs text-my-tertiary">{selected.sub}</div>}
+              <div className="my-item-title">{selected.title}</div>
+              {selected.sub && <div className="my-item-description font-mono">{selected.sub}</div>}
               <div>
                 <div className="text-my-2xs uppercase tracking-wider text-my-tertiary">触发时机</div>
                 <div className="mt-1 text-my-sm leading-5 text-my-secondary">{selected.detail.trigger}</div>
@@ -259,7 +259,7 @@ export function ArchitecturePage(): JSX.Element {
             </div>
           ) : (
             <div className="space-y-3 text-my-xs leading-5 text-my-tertiary">
-              <div className="text-my-xs font-semibold text-my-secondary">图例</div>
+              <div className="my-item-title">图例</div>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-my-info" /> hooks（自动触发）</div>
                 <div className="flex items-center gap-2"><span className="arch-dot inline-block h-2 w-2 rounded-full bg-my-success" /> 任务状态机</div>

@@ -40,7 +40,7 @@ export function ViewsPage(): JSX.Element | null {
         const count = applyTaskFilter(tasks, snapshot, view.filter).length
         const criteria = Object.values(view.filter).filter((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)).length
         return <article key={view.id} data-saved-view={view.id} className="flex min-w-0 flex-col gap-3 rounded-my-md border border-my-line p-3">
-          <button type="button" className="flex min-w-0 items-center gap-2 text-left" onClick={() => open(view)}><FlowIcon name="board" size={18} /><h2 className="min-w-0 flex-1 truncate text-my-sm font-medium text-my-primary">{view.name}</h2><ArrowUpRight size={14} className="shrink-0 text-my-tertiary" /></button>
+          <button type="button" className="flex min-w-0 items-center gap-2 text-left" onClick={() => open(view)}><FlowIcon name="board" size={18} /><h2 className="my-item-title min-w-0 flex-1 truncate">{view.name}</h2><ArrowUpRight size={14} className="shrink-0 text-my-tertiary" /></button>
           <p className="text-my-xs text-my-secondary">{GROUP_LABEL[view.groupBy]} · {criteria > 0 ? `${criteria} 项筛选` : '全部任务'} · {count} 条任务</p>
           <footer className="flex flex-wrap items-center gap-2"><Button size="sm" variant="ghost" onClick={() => open(view)}>打开视图</Button><Button size="sm" variant="ghost" disabled={busy || readOnly} onClick={() => { setEditingId(view.id); setName(view.name); setGroupBy(view.groupBy); setFilter({ ...view.filter }); setCreating(true) }}>编辑视图</Button><Button size="sm" variant="ghost" className="ml-auto" disabled={busy || readOnly} aria-label={`删除视图 ${view.name}`} onClick={() => void remove(view)}><Trash2 size={13} />删除</Button></footer>
         </article>

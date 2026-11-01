@@ -1,35 +1,220 @@
-.my-root .my-settings-layout { --my-page-max-width: calc(var(--my-settings-content-width) + var(--my-page-inset) * 2); }
-.my-root .my-settings-layout .my-page-content { padding-top: var(--my-space-40); }
-.my-root .settings-page-heading { margin-bottom: var(--my-space-32); }
-.my-root .settings-page-heading h1 { font-size: var(--my-text-xl); line-height: var(--my-line-heading); font-weight: var(--my-weight-semibold); color: var(--my-txt-primary); }
-.my-root .preferences-page { display: flex; flex-direction: column; gap: var(--my-space-32); container-type: inline-size; }
-.my-root .preference-section { min-width: 0; scroll-margin-block: var(--my-space-24); }
-.my-root .preference-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--my-space-12); margin-bottom: var(--my-space-12); }
-.my-root .preference-section-heading h2 { font-size: var(--my-text-md); font-weight: var(--my-weight-semibold); color: var(--my-txt-primary); }
-.my-root .preference-section-body { min-width: 0; padding-inline: var(--my-space-20); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-xl); }
-.my-root .preference-row { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-24); padding-block: var(--my-space-16); min-width: 0; }
+.my-root .my-settings-layout {
+  --my-page-max-width: calc(var(--my-settings-content-width) + var(--my-page-inset) * 2);
+  background: var(--my-bg-sidebar);
+}
+
+.my-root .my-settings-layout .my-page-container { margin-inline: auto; }
+.my-root .my-settings-layout .my-page-content { padding-top: var(--my-settings-page-top); }
+
+.my-root .settings-page-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--my-settings-identity-gap);
+  min-width: 0;
+  margin-bottom: var(--my-settings-heading-gap);
+}
+
+.my-root .settings-page-icon {
+  display: inline-flex;
+  flex: 0 0 var(--my-settings-heading-icon-size);
+  align-items: center;
+  justify-content: center;
+  width: var(--my-settings-heading-icon-size);
+  height: var(--my-settings-heading-icon-size);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-control);
+  background: var(--my-bg-panel);
+  color: var(--my-txt-primary);
+}
+
+.my-root .settings-page-copy { flex: 1; min-width: 0; }
+.my-root .settings-page-icon > svg { width: var(--my-settings-heading-glyph-size); height: var(--my-settings-heading-glyph-size); }
+.my-root .settings-page-action { flex-shrink: 0; margin-left: auto; }
+.my-root .settings-page-heading h1 {
+  font-size: var(--my-settings-title-size);
+  line-height: var(--my-line-heading);
+  font-weight: var(--my-weight-semibold);
+  letter-spacing: var(--my-tracking-tight);
+  color: var(--my-txt-primary);
+  overflow-wrap: anywhere;
+}
+.my-root .settings-page-copy > p {
+  margin-top: var(--my-space-4);
+  font-size: var(--my-text-sm);
+  line-height: var(--my-line-ui);
+  color: var(--my-txt-secondary);
+  overflow-wrap: anywhere;
+}
+
+.my-root .preferences-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-settings-section-gap);
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.my-root .preference-section {
+  min-width: 0;
+  scroll-margin-block: var(--my-space-24);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-settings-panel-radius);
+  background: var(--my-bg-surface-1);
+}
+
+.my-root .preference-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-space-12);
+  min-width: 0;
+  padding: var(--my-settings-section-heading-padding) var(--my-settings-panel-padding);
+  border-bottom: 1px solid var(--my-border-subtle);
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+  background: var(--my-bg-surface-2);
+}
+.my-root .preference-section-heading:last-child { border-bottom: 0; border-radius: inherit; }
+.my-root .preference-section-heading h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--my-text-sm);
+  line-height: var(--my-line-ui);
+  font-weight: var(--my-weight-medium);
+  color: var(--my-txt-primary);
+  overflow-wrap: anywhere;
+}
+.my-root .preference-section-heading p { color: var(--my-txt-secondary); font-size: var(--my-text-sm); line-height: var(--my-line-ui); }
+.my-root .preference-section-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--my-space-8);
+  min-width: 0;
+  margin-left: auto;
+}
+.my-root .preference-section-body {
+  min-width: 0;
+  padding-inline: var(--my-settings-panel-padding);
+}
+
+.my-root .preference-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-space-16);
+  min-width: 0;
+  padding-block: var(--my-settings-row-padding);
+}
 .my-root .preference-row + .preference-row { border-top: 1px solid var(--my-border-subtle); }
-.my-root .preference-row-label { flex: 1; min-width: 0; font-size: var(--my-text-md); font-weight: var(--my-weight-medium); color: var(--my-txt-primary); overflow-wrap: anywhere; }
-.my-root .preference-row-label > p { font-weight: var(--my-weight-normal); }
-.my-root .preference-row-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--my-space-8); width: min(50%, var(--my-settings-field-width)); min-width: 0; font-size: var(--my-text-sm); }
+.my-root .preference-row-label {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--my-text-item-title);
+  line-height: var(--my-line-ui);
+  font-weight: var(--my-weight-medium);
+  color: var(--my-txt-item-title);
+  overflow-wrap: anywhere;
+}
+.my-root .preference-row-hint {
+  margin-top: var(--my-settings-hint-gap);
+  font-size: var(--my-text-item-description);
+  line-height: var(--my-line-ui);
+  font-weight: var(--my-weight-normal);
+  color: var(--my-txt-item-description);
+}
+.my-root .preference-row-control {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--my-space-8);
+  width: min(50%, var(--my-settings-field-width));
+  min-width: 0;
+  font-size: var(--my-text-md);
+  line-height: var(--my-line-ui);
+}
 .my-root .preference-row-control > .my-input { flex: 1; min-width: 0; }
 .my-root .preference-row-control > label { display: inline-flex; align-items: center; gap: var(--my-space-8); }
-.my-root .preference-row:has(> .preference-row-detail) { flex-wrap: wrap; row-gap: var(--my-space-8); }
-.my-root .preference-row-detail { flex-basis: 100%; min-width: 0; font-size: var(--my-text-sm); color: var(--my-txt-secondary); }
+.my-root .preference-row:has(> .preference-row-detail) { flex-wrap: wrap; row-gap: var(--my-space-12); }
+.my-root .preference-row-detail {
+  flex-basis: 100%;
+  min-width: 0;
+  font-size: var(--my-text-sm);
+  line-height: var(--my-line-document);
+  color: var(--my-txt-secondary);
+  overflow-wrap: anywhere;
+}
 .my-root .preference-row-detail summary { width: fit-content; cursor: pointer; }
-.my-root .preference-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--my-space-8); padding-block: var(--my-space-16); border-top: 1px solid var(--my-border-subtle); }
-.my-root .preference-choices { display: inline-flex; flex-wrap: wrap; gap: var(--my-space-4); }
-.my-root .preference-choices .my-segment { width: auto; min-width: var(--my-space-64); padding-inline: var(--my-space-12); gap: var(--my-space-4); font-size: var(--my-text-sm); }
+.my-root .preference-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--my-space-8);
+  padding-block: var(--my-space-12);
+  border-top: 1px solid var(--my-border-subtle);
+}
+
+.my-root .preference-choices { display: inline-flex; flex-wrap: wrap; gap: var(--my-space-4); max-width: 100%; border-radius: var(--my-radius-base); color: var(--my-txt-secondary); }
+.my-root .preference-choices .my-segment {
+  width: auto;
+  min-width: var(--my-space-48);
+  height: calc(var(--my-control-height-sm) - var(--my-space-2));
+  padding-inline: var(--my-space-8);
+  gap: var(--my-space-4);
+  font-size: var(--my-text-sm);
+  font-weight: var(--my-weight-medium);
+}
+.my-root .preference-choices .my-segment > svg { width: 1em; height: 1em; flex-shrink: 0; }
+.my-root :is(.preference-theme-choices, .preference-size-choices) { width: max-content; flex: 0 1 auto; flex-wrap: nowrap; }
+.my-root :is(.preference-theme-choices, .preference-size-choices) .my-segment { flex: 0 0 auto; }
+
+.my-root .preference-recent-projects { margin: 0; padding: 0; list-style: none; }
+.my-root .preference-recent-project {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-12);
+  min-width: 0;
+  padding-block: var(--my-space-10);
+}
+.my-root .preference-recent-project + .preference-recent-project { border-top: 1px solid var(--my-border-subtle); }
+.my-root .preference-recent-project > svg { flex-shrink: 0; color: var(--my-txt-secondary); }
+.my-root .preference-recent-project-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: var(--my-space-4); }
+.my-root .preference-recent-project-name { font-size: var(--my-text-md); font-weight: var(--my-weight-medium); color: var(--my-txt-primary); overflow-wrap: anywhere; }
+.my-root .preference-recent-project-path { font-size: var(--my-text-sm); line-height: var(--my-line-document); color: var(--my-txt-secondary); overflow-wrap: anywhere; }
+.my-root .preference-recent-project > button { flex-shrink: 0; }
+.my-root .preference-empty {
+  margin: 0;
+  font-size: var(--my-text-sm);
+  line-height: var(--my-line-ui);
+  color: var(--my-txt-secondary);
+}
+
 .my-root .preference-disclosure { padding-block: var(--my-space-16); }
 .my-root .preference-disclosure > summary { cursor: pointer; color: var(--my-txt-secondary); font-size: var(--my-text-sm); width: fit-content; }
-.my-root .preference-disclosure > summary:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-4); border-radius: var(--my-radius-sm); }
+.my-root :is(.preference-disclosure > summary, .preference-row-detail summary):focus-visible {
+  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-4);
+  border-radius: var(--my-radius-sm);
+}
 .my-root .preference-disclosure[open] > summary { margin-bottom: var(--my-space-12); }
 .my-root .daemon-settings-dialog { padding: var(--my-space-20); container-type: inline-size; }
+
 @container (max-width: 600px) {
-  .my-root .preference-row { flex-wrap: wrap; gap: var(--my-space-12); }
+  .my-root .preference-row { flex-wrap: wrap; gap: var(--my-space-8); }
   .my-root .preference-row-label { flex-basis: 100%; }
-  .my-root .preference-row-control { width: 100%; }
-  .my-root .preference-row:has(> .preference-row-control > :is(.my-switch, input[type='checkbox']):only-child) { flex-wrap: nowrap; }
+  .my-root .preference-row-control { width: 100%; justify-content: flex-start; }
+  .my-root .preference-row:has(> .preference-row-control > :is(.my-switch, input[type='checkbox']):only-child) { flex-wrap: nowrap; gap: var(--my-space-16); }
   .my-root .preference-row:has(> .preference-row-control > :is(.my-switch, input[type='checkbox']):only-child) > .preference-row-label { flex-basis: auto; }
-  .my-root .preference-row:has(> .preference-row-control > :is(.my-switch, input[type='checkbox']):only-child) > .preference-row-control { width: auto; }
+  .my-root .preference-row:has(> .preference-row-control > :is(.my-switch, input[type='checkbox']):only-child) > .preference-row-control { flex-shrink: 0; width: auto; }
+}
+
+@container (max-width: 420px) {
+  .my-root .preference-section-heading, .my-root .preference-section-body { padding-inline: var(--my-space-16); }
+  .my-root .preference-section-heading { align-items: flex-start; }
+  .my-root .preference-section-action { max-width: 100%; }
 }

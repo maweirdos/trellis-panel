@@ -39,7 +39,7 @@ export function MemberChip({ member, size = 'md' }: { member?: HifoxMember; size
       >
         {member.name.slice(0, 1)}
       </span>
-      {size === 'md' && <span className="truncate text-my-sm text-my-secondary">{member.name}</span>}
+      {size === 'md' && <span className="my-item-title truncate">{member.name}</span>}
     </span>
   )
 }
@@ -116,9 +116,9 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   const hintId = `${generatedId}-hint`
   return (
     <div className="flex min-w-0 flex-col gap-1.5 text-my-sm text-my-secondary" role={direct ? undefined : 'group'} aria-labelledby={direct ? undefined : labelId}>
-      <label id={labelId} htmlFor={controlId}>{label}</label>
+      <label id={labelId} htmlFor={controlId} className="my-item-title">{label}</label>
       {direct ? cloneElement(children, { id: controlId, 'aria-describedby': hint ? [children.props['aria-describedby'], hintId].filter(Boolean).join(' ') : children.props['aria-describedby'] }) : children}
-      {hint && <span id={hintId} className="text-my-xs text-my-tertiary">{hint}</span>}
+      {hint && <span id={hintId} className="my-item-description">{hint}</span>}
     </div>
   )
 }

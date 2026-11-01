@@ -9,7 +9,7 @@ import { ApplicationPanel } from '../applications/ApplicationPanel'
 import { ApplicationRunCenter } from '../applications/ApplicationRunCenter'
 import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { clsx } from 'clsx'
-import { getPageNavigation } from '../my/navigation'
+import { getPageNavigation, pageRequiresProject } from '../my/navigation'
 import { TeamContextSwitcher } from '../hifox/TeamContextSwitcher'
 import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
 import { useHifox } from '../hifox/store'
@@ -61,10 +61,10 @@ export function TitleBar(): JSX.Element {
           {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.7} /> : <PanelLeftClose size={18} strokeWidth={1.7} />}
         </button>
       </div>
-      <button type="button" disabled={hasIpc && !snapshot && (scope === 'project' || scope === 'mixed')} onClick={() => setPaletteOpen(true)}
-        className="my-window-search no-drag ml-auto mr-3 flex h-my-icon min-w-0 items-center gap-2.5 rounded-my-md px-2.5 text-my-secondary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary disabled:cursor-not-allowed disabled:opacity-50"
+      <button type="button" disabled={hasIpc && !snapshot && pageRequiresProject(page)} onClick={() => setPaletteOpen(true)}
+        className="my-window-search no-drag"
         aria-label="搜索或输入命令 (Ctrl+K)">
-        <Search size={16} strokeWidth={1.8} className="shrink-0" /><span className="truncate text-left text-my-md">搜索或输入命令</span><kbd className="ml-2 whitespace-nowrap font-sans text-my-xs text-my-tertiary">Ctrl K</kbd>
+        <Search size={15} strokeWidth={1.8} className="shrink-0" /><span className="truncate">搜索或输入命令</span><kbd>Ctrl K</kbd>
       </button>
       {development && <ApplicationPanel />}
       <ApplicationRunCenter />

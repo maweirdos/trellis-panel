@@ -104,7 +104,7 @@ export function InboxPage(): JSX.Element {
                       <span className="rounded-my-sm bg-my-layer-1 px-1 py-0.5 text-my-2xs">{KIND_LABEL[first.kind]}</span>
                       {first.taskId && <span className="font-mono text-my-2xs">{first.taskId}</span>}
                       {first.body && <span className="min-w-0 flex-1 truncate">{first.body}</span>}
-                      {count > 1 && <span className="shrink-0 rounded-full bg-my-layer-1-active px-1.5 text-my-2xs">+{count - 1}</span>}
+                      {count > 1 && <span className="shrink-0 rounded-my-md bg-my-layer-1-active px-1.5 text-my-2xs">+{count - 1}</span>}
                       <span className="shrink-0">{formatCollaborationTime(first.at)}</span>
                       {first.snoozedUntil && !first.cleared && Date.parse(first.snoozedUntil) > now && (
                         <span className="shrink-0 text-amber-500">稍后至 {new Date(first.snoozedUntil).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>

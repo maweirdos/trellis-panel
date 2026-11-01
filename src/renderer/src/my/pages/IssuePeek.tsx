@@ -34,7 +34,7 @@ interface PropRowProps {
 function PropRow({ label, children }: PropRowProps): JSX.Element {
   return (
     <div className="mb-3">
-      <div className="mb-1 text-my-xs font-medium text-my-tertiary">{label}</div>
+      <div className="my-item-title mb-1">{label}</div>
       {children}
     </div>
   )
@@ -647,7 +647,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                       <span className="w-16 shrink-0 text-my-xs text-my-tertiary">
                         {ident}-{sub.sequenceId}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{sub.name}</span>
+                      <span className="my-item-title min-w-0 flex-1 truncate">{sub.name}</span>
                       <PriorityIcon priority={sub.priority} size={12} />
                     </button>
                   )
@@ -671,7 +671,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
             )}
             {tab === 'comments' && (
               <div>
-                <p className="mb-3 text-my-xs leading-5 text-my-secondary">仅保留在当前界面内存中，刷新项目后会清除；不会发送给其他成员。</p>
+                <p className="my-item-description mb-3">仅保留在当前界面内存中，刷新项目后会清除；不会发送给其他成员。</p>
                 {issue.comments.map((c) => {
                   const actor = memberOf(c.actorId)
                   return (
@@ -679,7 +679,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                       {actor ? <Avatar name={actor.name} color={actor.avatarColor} size={20} /> : <Avatar name="？" color="var(--my-avatar-bg)" size={20} />}
                       <div className="min-w-0">
                         <div className="flex items-baseline gap-1.5">
-                          <span className="text-my-sm font-medium text-my-primary">{actor?.name ?? '未知成员'}</span>
+                          <span className="my-item-title">{actor?.name ?? '未知成员'}</span>
                           <span className="text-my-xs text-my-tertiary">{c.at}</span>
                         </div>
                         <div className="whitespace-pre-wrap text-my-sm leading-5 text-my-secondary">{c.body}</div>

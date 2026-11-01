@@ -777,7 +777,7 @@ export function KnowledgePage(): JSX.Element {
               <span className="my-chip bg-my-accent-subtle text-my-2xs text-my-accent-text">
                 <Cloud size={12} /> 知识库
               </span>
-              <span className="min-w-0 truncate text-my-xs font-semibold text-my-primary">{remoteDoc.title}</span>
+              <span className="my-item-title min-w-0 truncate">{remoteDoc.title}</span>
               <div className="ml-auto flex items-center gap-1.5">
                 <Button variant="ghost" size="sm" className="px-1.5" onClick={() => { docSeq.current += 1; setRemoteDoc(null) }} title="关闭">
                   <X size={13} />
@@ -812,7 +812,7 @@ export function KnowledgePage(): JSX.Element {
               <span className={clsx('my-chip', LIB_CHIP[active.library])}>
                 {LIB_ICON[active.library]} {LIB_META[active.library].label}
               </span>
-              <span className="min-w-0 truncate text-my-xs font-semibold text-my-primary">{active.title}</span>
+              <span className="my-item-title min-w-0 truncate">{active.title}</span>
               <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{fmtBytes(active.size)} · {relTime(active.mtime)}</span>
               <div className="ml-auto flex items-center gap-1.5">
                 {relativePath !== null && <Button variant="ghost" size="sm" disabled={!displayedRevision} onClick={() => { if (displayedRevision) stageReference({ title: active.title, relativePath, displayedRevision }) }}>引用到 Agent</Button>}

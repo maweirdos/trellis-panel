@@ -157,7 +157,7 @@ function ActivityColumns({ columns, compact }: { columns: ActivityColumnView[]; 
             {column.label}
           </div>
           {column.entries.length === 0 ? (
-            <div className="text-my-2xs text-my-tertiary">暂无记录</div>
+            <div className="my-item-description">暂无记录</div>
           ) : (
             <ul className="space-y-0.5">
               {column.entries.map((entry) => (
@@ -178,7 +178,7 @@ function ActivityColumns({ columns, compact }: { columns: ActivityColumnView[]; 
             </ul>
           )}
           {column.note !== null && (
-            <div className="mt-0.5 text-my-2xs leading-relaxed text-my-tertiary">{column.note}</div>
+            <div className="my-item-description mt-0.5 leading-relaxed">{column.note}</div>
           )}
         </div>
       ))}
@@ -257,7 +257,7 @@ function HealthGovernance(): JSX.Element {
   }
 
   if (status === null) {
-    return <div className="text-my-2xs text-my-tertiary">正在读取观测健康状态…</div>
+    return <div className="my-item-description">正在读取观测健康状态…</div>
   }
 
   return (
@@ -388,7 +388,7 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
 
       {/* 状态行（未知/未绑定/连接中都是中性，不标失败） */}
       {scope.status === 'connecting' && (
-        <div className="mt-1.5 flex items-center gap-1.5 text-my-2xs text-my-tertiary">
+        <div className="my-item-description mt-1.5 flex items-center gap-1.5">
           <Loader2 size={11} className="animate-spin" /> 正在连接观测存储…
         </div>
       )}
@@ -418,7 +418,7 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
         </div>
       )}
       {scope.lastResetAtMs !== null && scope.status === 'live' && (
-        <div className="mt-1.5 text-my-2xs text-my-tertiary" title={new Date(scope.lastResetAtMs).toLocaleString()}>
+        <div className="my-item-description mt-1.5" title={new Date(scope.lastResetAtMs).toLocaleString()}>
           观测记录已重置（清理/重建），已按最新纪元重新拉取。
         </div>
       )}

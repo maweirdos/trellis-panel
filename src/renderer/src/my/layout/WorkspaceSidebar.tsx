@@ -1,15 +1,16 @@
 import { useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, Bot, CircleUser, Database, FolderInput, Globe, House, Info, ListTodo, MessageCircle, Moon, Palette, PanelsTopLeft, RotateCw, Server, Settings2, Star, Sun, Users, X, Wrench, Activity, FileText } from 'lucide-react'
+import { BookOpen, CircleUser, FolderInput, House, ListTodo, MessageCircle, Moon, PanelsTopLeft, RotateCw, Settings2, Star, Sun, Users, X, Wrench, Activity, FileText } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { Avatar, Dropdown, DropdownItem } from '../ui'
 import { NavIcon } from '../icons'
 import { SidebarResizeHandle, useSidebarWidthStyle } from './SidebarResizeHandle'
 import { contextButtonClass } from './ModuleLinks'
+import { SettingsNavigation } from './SettingsNavigation'
 import { ConnectionPanel } from '../../hifox/ConnectionPanel'
 import { useHifox } from '../../hifox/store'
-import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, PRIMARY_NAVIGATION, SETTINGS_VIEW_TITLES, type ModuleId, type TeamView } from '../navigation'
+import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, PRIMARY_NAVIGATION, type ModuleId, type TeamView } from '../navigation'
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
   home: <CircleUser className="my-module-icon" aria-hidden="true" />,
@@ -43,7 +44,7 @@ export function WorkspaceSidebar(): JSX.Element {
         <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => setPage(useMy.getState().modulePages.settings ?? 'settings')} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>
         <Dropdown width={210} trigger={({ open, toggle }) => <button type="button" aria-label="账号与主题" title="账号与主题" aria-expanded={open} onClick={toggle} className="my-module-button my-nav-item grid place-items-center"><Avatar name={visibleAccount} color="var(--my-bg-accent-primary)" tone="accent" size={28} /></button>}>
           {(close) => <>
-            <div className="px-3 py-2 text-my-sm font-medium text-my-primary">{visibleAccount}<span className="mt-1 block text-my-xs font-normal text-my-tertiary">{inLocalMode ? '本机使用 · 无需登录' : accountContext.state === 'connected' ? '团队账号' : accountContext.state === 'offline' ? '团队账号 · 离线缓存' : '团队账号 · 权限失效'}</span></div>
+            <div className="my-item-title px-3 py-2">{visibleAccount}<span className="my-item-description mt-1 block">{inLocalMode ? '本机使用 · 无需登录' : accountContext.state === 'connected' ? '团队账号' : accountContext.state === 'offline' ? '团队账号 · 离线缓存' : '团队账号 · 权限失效'}</span></div>
             <DropdownItem icon={<Users size={14} />} onClick={() => { close(); setConnectionsOpen(true) }}>账号、组织与工作区</DropdownItem>
             <DropdownItem icon={<CircleUser size={14} />} onClick={() => { useMy.getState().setSettingsView('preferences'); setPage('settings'); close() }}>通用设置</DropdownItem>
             <DropdownItem icon={theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />} onClick={() => { toggleTheme(); close() }}>切换{theme === 'dark' ? '亮色' : '深色'}主题</DropdownItem>
@@ -61,7 +62,7 @@ function ContextSidebar(): JSX.Element {
   const page = useApp((state) => state.page)
   const setPage = useApp((state) => state.setPage)
   const personalTaskSource = useApp((state) => state.personalTaskSource)
-  const { data, workItemsView: view, setWorkItemsView: setView, setWorkItemsTab: setTab, favorites, toggleFavorite, openIssue, savedViews, applyView, removeView, teamView, setTeamView, settingsView, setSettingsView } = useMy()
+  const { data, workItemsView: view, setWorkItemsView: setView, setWorkItemsTab: setTab, favorites, toggleFavorite, openIssue, savedViews, applyView, removeView, teamView, setTeamView } = useMy()
   const domain = activeModule(page)
   const localTasks = (iterations = false): void => {
     useApp.getState().setPersonalTaskSource('local')
@@ -71,16 +72,12 @@ function ContextSidebar(): JSX.Element {
   const buttonClass = contextButtonClass
   const row = (key: string, label: string, selected: boolean, icon: ReactNode, action: () => void): JSX.Element => <button key={key} type="button" aria-current={selected ? 'page' : undefined} onClick={action} className={buttonClass(selected)}>{icon}{label}</button>
   const route = (target: Page): JSX.Element => row(target, getPageNavigation(target).title, page === target, <NavIcon name={getPageNavigation(target).icon} size={16} />, () => { if (useApp.getState().page !== target) setPage(target) })
-  const settingsRow = (view: typeof settingsView, icon: ReactNode): JSX.Element => row(view, SETTINGS_VIEW_TITLES[view], page === 'settings' && settingsView === view, icon, () => {
-    setSettingsView(view)
-    if (useApp.getState().page !== 'settings') setPage('settings')
-  })
   return <aside aria-label={`${DOMAIN_LABELS[domain]}导航`} style={sidebarStyle} className="my-context-sidebar flex h-full shrink-0 flex-col border-r border-my-line">
     <SidebarResizeHandle />
     <header className="flex h-my-header shrink-0 items-center gap-2 px-4">
       <h2 className="my-sidebar-heading flex-1 font-medium text-my-primary">{DOMAIN_LABELS[domain]}</h2>
     </header>
-    <div className="my-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
+    {domain === 'settings' ? <SettingsNavigation /> : <div className="my-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
       {domain === 'home' && <>
         {row('all', '任务', page === 'tasks' && (personalTaskSource === 'team' || view === 'items'), <ListTodo size={16} />, () => { setView('items'); setPage('tasks') })}
         {row('creations', '创作', page === 'creations', <PanelsTopLeft size={16} />, () => setPage('creations'))}
@@ -117,20 +114,8 @@ function ContextSidebar(): JSX.Element {
         {route('analytics')}
         {row('reports', '报告', page === 'team' && teamView === 'reports', <FileText size={16} />, () => { setTeamView('reports'); setPage('team') })}
         {route('hifox')}
-        <p className="px-3 pt-4 text-my-xs leading-relaxed text-my-tertiary">当前项目的成员责任、协作记录与交付情况。</p>
+        <p className="my-item-description px-3 pt-4 leading-relaxed">当前项目的成员责任、协作记录与交付情况。</p>
       </>}
-      {domain === 'settings' && <>
-        {settingsRow('preferences', <Settings2 size={16} />)}
-        {settingsRow('appearance', <Palette size={16} />)}
-        {route('models')}
-        {settingsRow('engines', <Bot size={16} />)}
-        {route('integrations')}
-        {route('gateway')}
-        {settingsRow('daemon', <Server size={16} />)}
-        {settingsRow('network', <Globe size={16} />)}
-        {settingsRow('storage', <Database size={16} />)}
-        {settingsRow('about', <Info size={16} />)}
-      </>}
-    </div>
+    </div>}
   </aside>
 }

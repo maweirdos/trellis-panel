@@ -1,4 +1,4 @@
-/* Project workspace hierarchy: semantic surfaces, with no new palette. */
+/* Desktop chrome, workspace geometry and shared page layout. */
 .my-root.my-app-window,
 .my-root .my-shell-layout,
 .my-root .my-window-header { background: var(--my-bg-shell); }
@@ -24,7 +24,10 @@
   height: var(--my-module-button-size);
   border-radius: var(--my-control-radius);
   line-height: 1;
+  border: 1px solid transparent;
 }
+.my-root .my-module-button[aria-current='page'] { border-color: var(--my-border-strong); }
+.my-root .my-module-button[aria-expanded='true'] { background: var(--my-bg-navigation-selected); }
 .my-root .my-module-icon {
   width: var(--my-module-icon-size);
   height: var(--my-module-icon-size);
@@ -71,12 +74,27 @@
   .my-root .my-window-search { margin-right: 8px; gap: 8px; }
 }
 
-.my-root .my-window-header { height: var(--my-workspace-header-height); border-bottom-color: transparent; }
-.my-root .my-shell-view-switcher .my-control[aria-pressed='true'] { background: var(--my-bg-navigation-selected); color: var(--my-txt-primary); }
+.my-root .my-window-header { height: var(--my-workspace-header-height); border-bottom-color: transparent; gap: var(--my-space-4); }
+.my-root .my-shell-view-switcher { padding: var(--my-space-3); gap: var(--my-space-2); border: 1px solid var(--my-border-subtle); background: var(--my-bg-layer-transparent); border-radius: var(--my-radius-lg); }
+.my-root .my-shell-view-switcher .my-control { height: var(--my-header-segment-height); padding-inline: var(--my-space-8); border-radius: var(--my-radius-inset); }
+.my-root .my-shell-view-switcher .my-control[aria-pressed='true'] { background: var(--my-bg-panel); box-shadow: var(--my-shadow-raised-100); color: var(--my-txt-primary); }
+.my-root .my-window-search {
+  display: flex; align-items: center; gap: var(--my-space-8);
+  height: var(--my-header-control-height); min-width: 0; width: var(--my-header-search-width);
+  margin-left: auto; margin-right: var(--my-space-12); padding-inline: var(--my-space-10);
+  border: 1px solid var(--my-border-subtle); border-radius: var(--my-control-radius);
+  background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-secondary); font-size: var(--my-text-sm);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-window-search:hover:not(:disabled) { background: var(--my-bg-layer-transparent-active); border-color: var(--my-border-strong); color: var(--my-txt-primary); }
+.my-root .my-window-search > span { min-width: 0; flex: 1; text-align: left; }
+.my-root .my-window-search > kbd { flex-shrink: 0; padding: var(--my-space-1) var(--my-space-4); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-sm); font-family: inherit; font-size: var(--my-text-2xs); color: var(--my-txt-tertiary); }
+.my-root .my-window-search:disabled { opacity: .5; cursor: default; }
 @media (max-width: 1100px) {
   .my-root .my-shell-view-switcher svg { display: none; }
   .my-root .my-shell-project-controls .my-project-switcher-name { max-width: var(--my-space-128); }
   .my-root .my-window-search > span, .my-root .my-window-search > kbd { display: none; }
+  .my-root .my-window-search { width: var(--my-space-32); padding-inline: var(--my-space-8); flex-shrink: 0; }
 }
 .my-root .my-page-header { min-height: var(--my-workspace-header-height); }
 .my-root .my-context-button { font-size: var(--my-text-sm); line-height: var(--my-line-ui); }

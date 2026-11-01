@@ -98,14 +98,14 @@ export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTest }
           { value: 'ollama', label: 'Ollama' }
         ]} /></div>
         <div>
-          <div className="mb-1 flex items-center justify-between gap-2"><label htmlFor="models-api-key" className="mb-0">API 密钥</label>{provider.apiKeyEncrypted && !secret && !clearSecret && <span className="text-my-xs text-my-tertiary">已加密保存 · 留空保留</span>}</div>
+          <div className="mb-1 flex items-center justify-between gap-2"><label htmlFor="models-api-key" className="mb-0">API 密钥</label>{provider.apiKeyEncrypted && !secret && !clearSecret && <span className="my-item-description">已加密保存 · 留空保留</span>}</div>
           <div className="relative"><input id="models-api-key" type={showKey ? 'text' : 'password'} className="my-input pr-10" value={secret} onChange={(event) => { invalidateTest(); setSecret(event.target.value); if (event.target.value) setClearSecret(false) }} placeholder={provider.apiKeyEncrypted ? '输入新密钥以替换' : draft.apiFormat === 'ollama' ? '可选' : '输入 API 密钥'} autoComplete="new-password" spellCheck={false} /><button type="button" onClick={() => setShowKey((value) => !value)} aria-label={showKey ? '隐藏 API 密钥' : '显示 API 密钥'} aria-pressed={showKey} className="absolute inset-y-0 right-0 flex items-center rounded-my-md px-3 text-my-tertiary hover:text-my-primary">{showKey ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
           {provider.apiKeyEncrypted && <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             {clearSecret && <span role="status" className="text-my-xs text-my-danger-text">保存后将清除已保存密钥</span>}
             <Button variant="ghost" size="sm" disabled={saving} onClick={() => { invalidateTest(); setClearSecret((value) => !value); setSecret('') }}>{clearSecret ? '保留已保存密钥' : '清除已保存密钥'}</Button>
           </div>}
         </div>
-        <div className="flex items-center justify-between gap-3 pt-1"><span className="text-my-sm text-my-primary">启用供应商</span><Switch checked={draft.enabled} onChange={(enabled) => patch({ enabled })} label={`启用供应商 ${draft.name}`} disabled={saving} /></div>
+        <div className="flex items-center justify-between gap-3 pt-1"><span className="my-item-title">启用供应商</span><Switch checked={draft.enabled} onChange={(enabled) => patch({ enabled })} label={`启用供应商 ${draft.name}`} disabled={saving} /></div>
       </fieldset>
       {testResult?.ok && <p role="status" className="mt-4 flex items-center gap-2 text-my-sm text-my-success-text"><CheckCircle2 size={14} />模型目录可用{testResult.latencyMs === undefined ? '' : ` · ${testResult.latencyMs}ms`}</p>}
       {testResult?.ok === false && testResult.error && <div className="mt-4"><CopyableError message={testResult.error} summary={modelErrorSummary(testResult.error, '模型目录连接失败')} /></div>}
@@ -138,7 +138,7 @@ export function ModelItemEditor({ model, isNew, providerName, onClose, onSave }:
   }
   return <Modal open onClose={close} ariaLabel={isNew ? '添加模型' : `编辑模型 ${model.name || model.id}`}>
     <form className="my-modal-content model-config-editor" onSubmit={(event) => { event.preventDefault(); void save() }}>
-      <div className="mb-5 flex items-start justify-between gap-3"><div><h2 className="text-my-lg font-semibold text-my-primary">{isNew ? '添加模型' : '编辑模型'}</h2><p className="mt-1 text-my-xs text-my-tertiary">{providerName}</p></div><Button variant="ghost" disabled={saving} onClick={close} aria-label="关闭模型配置"><X size={17} /></Button></div>
+      <div className="mb-5 flex items-start justify-between gap-3"><div><h2 className="text-my-lg font-semibold text-my-primary">{isNew ? '添加模型' : '编辑模型'}</h2><p className="my-item-description mt-1">{providerName}</p></div><Button variant="ghost" disabled={saving} onClick={close} aria-label="关闭模型配置"><X size={17} /></Button></div>
       <fieldset disabled={saving} className="space-y-4">
         <div><label htmlFor="model-item-id">模型 ID</label><input id="model-item-id" className="my-input" value={draft.id} disabled={!isNew} autoFocus={isNew} onChange={(event) => setDraft({ ...draft, id: event.target.value })} placeholder="如 gpt-4o" required /></div>
         <div><label htmlFor="model-item-name">显示名称</label><input id="model-item-name" className="my-input" value={draft.name} autoFocus={!isNew} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="留空则与 ID 相同" /></div>

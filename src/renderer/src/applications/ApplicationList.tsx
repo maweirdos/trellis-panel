@@ -77,7 +77,7 @@ export function ApplicationList({ compact = false, onOpenEditor }: { compact?: b
       const error = state.errors[definition.id] || app.lastError
       return <article key={definition.id} className="my-application-card" data-app-id={definition.id}>
         <div className="flex min-w-0 items-start gap-2">
-          <div className="min-w-0 flex-1"><h3 className="break-words text-my-sm font-semibold text-my-primary">{definition.name}</h3><p title={definition.cwd} className="mt-0.5 truncate text-my-xs text-my-tertiary">{definition.cwd === '.' ? '项目目录' : definition.cwd}</p></div>
+          <div className="min-w-0 flex-1"><h3 className="my-item-title break-words">{definition.name}</h3><p title={definition.cwd} className="my-item-description mt-0.5 truncate">{definition.cwd === '.' ? '项目目录' : definition.cwd}</p></div>
           <Tooltip label={`编辑 ${definition.name}`}><button type="button" className="my-icon-control" disabled={Boolean(busy)} aria-label={`编辑 ${definition.name}`} onClick={(event) => { onOpenEditor?.(); openApplicationEditor({ kind: 'edit', definition }, state.generation, event.currentTarget) }}><Settings2 size={14} /></button></Tooltip>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-my-xs"><ProcessStatus app={app} /><ReadinessStatus readiness={app.readiness} /></div>

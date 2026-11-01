@@ -111,14 +111,18 @@
 }
 
 .onboarding-shell__step-label {
-  font-size: var(--my-text-sm);
+  color: var(--my-txt-item-title);
+  font-size: var(--my-text-item-title);
   font-weight: var(--my-weight-medium);
   line-height: var(--my-line-ui);
 }
 
+.onboarding-shell__step.is-current .onboarding-shell__step-label { color: var(--my-txt-primary); }
+
 .onboarding-shell__step-description {
-  color: var(--my-txt-tertiary);
-  font-size: var(--my-text-xs);
+  color: var(--my-txt-item-description);
+  font-size: var(--my-text-item-description);
+  font-weight: var(--my-weight-normal);
   line-height: var(--my-line-ui);
 }
 
@@ -126,8 +130,9 @@
   flex: none;
   margin-top: auto;
   padding: var(--my-space-24) var(--my-space-10) 0;
-  color: var(--my-txt-tertiary);
-  font-size: var(--my-text-xs);
+  color: var(--my-txt-item-description);
+  font-size: var(--my-text-item-description);
+  font-weight: var(--my-weight-normal);
 }
 
 .onboarding-shell__main {
@@ -163,8 +168,9 @@
 
 .onboarding-shell__description {
   margin-top: var(--my-space-12);
-  color: var(--my-txt-secondary);
-  font-size: var(--my-text-md);
+  color: var(--my-txt-item-description);
+  font-size: var(--my-text-item-description);
+  font-weight: var(--my-weight-normal);
   line-height: var(--my-line-document);
 }
 

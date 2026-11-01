@@ -688,7 +688,7 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
           <WorkItemLabel key={lb.id} label={lb} />
         ))}
       </span>
-      <span className={clsx('min-w-0 flex-1 truncate text-my-md text-my-secondary', done && 'opacity-60')}>{issue.name}</span>
+      <span className={clsx('my-item-title min-w-0 flex-1 truncate', done && 'opacity-60')}>{issue.name}</span>
       <SubProgressBadge done={sub.done} total={sub.total} />
       <IssueVersions issue={issue} />
       {issue.dueDate && state && <DueChip due={issue.dueDate} stateGroup={state.group} done={done} />}
@@ -794,7 +794,7 @@ function ListLayout({
                   className={clsx('shrink-0 text-my-icon-tertiary transition-transform', !isCollapsed && 'rotate-90')}
                 />
                 <GroupBadge meta={g.meta} />
-                <span className="truncate text-my-md font-medium text-my-secondary">{g.title}</span>
+                <span className="my-item-title truncate">{g.title}</span>
                 <span className="shrink-0 text-my-xs text-my-tertiary">{g.issues.length}</span>
               </button>
               <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -866,7 +866,7 @@ function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Eleme
         <span className="mt-[2px] flex h-3.5 w-3.5 shrink-0 items-center justify-center">
           <PriorityIcon priority={issue.priority} size={12} />
         </span>
-        <span className="line-clamp-2 text-my-md leading-5 text-my-secondary">{issue.name}</span>
+        <span className="my-item-title line-clamp-2">{issue.name}</span>
       </div>
       <div className="mt-2 flex min-h-[18px] items-center gap-1.5">
         <span className="shrink-0 text-my-2xs text-my-disabled">{issueIdentifier(source, issue, ident)}</span>
@@ -953,7 +953,7 @@ function BoardLayout({
                   className={clsx('shrink-0 text-my-icon-tertiary transition-transform', !isCollapsed && 'rotate-90')}
                 />
                 <GroupBadge meta={g.meta} />
-                <span className="truncate text-my-md font-medium text-my-secondary">{g.title}</span>
+                <span className="my-item-title truncate">{g.title}</span>
                 <span className="shrink-0 text-my-xs text-my-tertiary">{g.issues.length}</span>
               </button>
             </div>
@@ -1366,7 +1366,7 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
             >
               <span
                 className={clsx(
-                  'inline-flex h-5 min-w-5 items-center justify-end self-end rounded-full px-1 text-my-xs',
+                  'inline-flex h-5 min-w-5 items-center justify-end self-end rounded-my-md px-1 text-my-xs',
                   isToday
                     ? 'bg-my-accent font-medium text-my-on-accent'
                     : inMonth
@@ -1675,7 +1675,7 @@ function WorkItemsPageInner(): JSX.Element {
                 <SlidersHorizontal size={13} className="text-my-icon-secondary" />
                 筛选
                 {filterCount > 0 && (
-                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-my-accent px-1 text-my-2xs font-medium text-my-on-accent">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-my-md bg-my-accent px-1 text-my-2xs font-medium text-my-on-accent">
                     {filterCount}
                   </span>
                 )}

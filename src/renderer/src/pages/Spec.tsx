@@ -361,7 +361,7 @@ export function SpecPage(): JSX.Element {
               ) : (
                 <FileText size={13} className="text-my-icon-accent" />
               )}
-              <span className="min-w-0 flex-1 truncate font-mono text-my-sm text-my-secondary">
+              <span className="my-item-title min-w-0 flex-1 truncate font-mono">
                 {docSelected ? docSelected.name : relPath}
               </span>
               {docSelected && <span className="my-chip bg-my-layer-3 text-my-2xs text-my-tertiary">{GROUP_META[docSelected.group].label}</span>}

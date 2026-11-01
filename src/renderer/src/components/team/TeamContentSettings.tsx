@@ -172,7 +172,7 @@ function SettingsForm({ workspaceKey, teamId, contentApi, onChanged }: TeamConte
       <input ref={keyInput} id={`${id}-key`} type="password" className="my-input" autoComplete="new-password" maxLength={4096} spellCheck={false} disabled={Boolean(busy) || !loaded || !canManage || pending?.kind === 'probe'} />
     </PreferenceRow>
     <PreferenceRow label="内容能力">
-      <div className="flex flex-wrap gap-3">{(Object.keys(capabilityNames) as TeamContentKind[]).map(kind => <label key={kind} className="flex items-center gap-2 text-my-sm">
+      <div className="flex flex-wrap gap-3">{(Object.keys(capabilityNames) as TeamContentKind[]).map(kind => <label key={kind} className="my-item-title flex items-center gap-2">
         <input type="checkbox" className="my-control" checked={draft.capabilities.includes(kind)} disabled={disabled} onChange={event => edit({ capabilities: event.target.checked ? [...draft.capabilities, kind] : draft.capabilities.filter(value => value !== kind) })} />{capabilityNames[kind]}
       </label>)}</div>
     </PreferenceRow>
@@ -185,7 +185,7 @@ function SettingsForm({ workspaceKey, teamId, contentApi, onChanged }: TeamConte
     <div className="preference-actions flex flex-wrap items-center gap-2">
       <Button size="sm" variant="primary" disabled={Boolean(busy) || !loaded || !canManage || pending?.kind === 'probe'} onClick={() => void save()}>{busy === 'configure' ? '保存中…' : pending?.kind === 'configure' ? '重试原保存' : '保存配置'}</Button>
       <Button size="sm" variant="outline" disabled={Boolean(busy) || !config?.enabled || !config.hasCredential || !config.credentialProtectionAvailable || dirty.current || pending?.kind === 'configure' || probeSince !== null} onClick={() => void probe()}>{busy === 'probe' ? '提交检测…' : pending?.kind === 'probe' ? '核对原检测' : '检测模型'}</Button>
-      <span className="text-my-xs text-my-tertiary">检测会发送一次模型请求。</span>
+      <span className="my-item-description">检测会发送一次模型请求。</span>
     </div>
     {message && <div className="px-4 pb-4">
       <p role={message.error ? 'alert' : 'status'} className={`text-my-sm break-words ${message.error ? 'text-my-danger-text' : 'text-my-secondary'}`}>{message.text}</p>

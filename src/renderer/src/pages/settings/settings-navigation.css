@@ -1,0 +1,171 @@
+.my-root .my-settings-navigation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.my-root .my-settings-navigation-search {
+  position: relative;
+  flex-shrink: 0;
+  margin: var(--my-space-2) var(--my-space-10) var(--my-space-10);
+}
+
+.my-root .my-settings-navigation-search-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--my-space-10);
+  width: var(--my-space-14);
+  height: var(--my-space-14);
+  transform: translateY(-50%);
+  color: var(--my-txt-icon-tertiary);
+  pointer-events: none;
+}
+
+.my-root .my-settings-navigation-search-input {
+  height: var(--my-settings-search-height);
+  padding-block: 0;
+  padding-inline: var(--my-space-32) var(--my-space-36);
+  border-color: var(--my-border-input);
+  background: var(--my-bg-input);
+  font-size: var(--my-text-sm);
+}
+
+.my-root .my-settings-navigation-search-input:focus {
+  border-color: var(--my-focus-ring);
+  background: var(--my-bg-input);
+}
+.my-root .my-settings-navigation-search-input::placeholder { color: var(--my-txt-secondary); }
+
+.my-root .my-settings-navigation-clear {
+  position: absolute;
+  top: 50%;
+  right: var(--my-space-4);
+  transform: translateY(-50%);
+}
+
+.my-root .my-settings-navigation-clear > svg {
+  width: var(--my-space-14);
+  height: var(--my-space-14);
+}
+
+.my-root .my-settings-navigation-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  padding: var(--my-space-2) var(--my-space-2) var(--my-space-16);
+}
+
+.my-root .my-settings-navigation-group + .my-settings-navigation-group {
+  margin-top: var(--my-settings-nav-group-gap);
+}
+
+.my-root .my-settings-navigation-heading {
+  margin: 0 0 var(--my-space-4);
+  padding-inline: var(--my-space-10);
+  color: var(--my-txt-tertiary);
+  font-size: var(--my-text-xs);
+  font-weight: var(--my-weight-medium);
+  line-height: var(--my-line-ui);
+}
+
+.my-root .my-settings-navigation-list {
+  display: grid;
+  gap: var(--my-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-root .my-settings-navigation-item {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-8);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--my-settings-nav-row-height);
+  padding: var(--my-space-4) var(--my-space-8);
+  border: 0;
+  border-radius: var(--my-control-radius);
+  color: var(--my-txt-secondary);
+  text-align: left;
+  font-size: var(--my-text-sm);
+  font-weight: var(--my-weight-normal);
+  line-height: var(--my-line-ui);
+}
+
+.my-root .my-settings-navigation-item[aria-current='page'] {
+  font-weight: var(--my-weight-medium);
+}
+
+.my-root .my-settings-navigation-item:active {
+  background: var(--my-bg-navigation-selected);
+}
+
+.my-root .my-settings-navigation-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: var(--my-settings-nav-icon-size);
+  height: var(--my-settings-nav-icon-size);
+  border-radius: var(--my-radius-inset);
+  background: var(--my-bg-panel);
+  color: var(--my-txt-icon-secondary);
+}
+
+.my-root .my-settings-navigation-icon > svg {
+  width: var(--my-settings-nav-glyph-size);
+  height: var(--my-settings-nav-glyph-size);
+  stroke-width: var(--my-module-icon-stroke);
+}
+
+.my-root .my-settings-navigation-item[aria-current='page'] .my-settings-navigation-icon {
+  background: var(--my-bg-panel-header);
+  color: var(--my-txt-icon-primary);
+}
+
+.my-root .my-settings-navigation-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.my-root .my-settings-navigation-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--my-space-8);
+  padding: var(--my-space-16) var(--my-space-10);
+  color: var(--my-txt-tertiary);
+  font-size: var(--my-text-xs);
+  line-height: var(--my-line-ui);
+}
+
+.my-root .my-settings-navigation-empty p {
+  margin: 0;
+}
+
+.my-root .my-settings-navigation-empty-title {
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-sm);
+  font-weight: var(--my-weight-medium);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .my-root .my-settings-navigation-icon {
+    transition: scale var(--my-motion-fast) var(--my-ease-out);
+  }
+
+  .my-root .my-settings-navigation-item:hover:not([aria-current='page']) .my-settings-navigation-icon {
+    scale: var(--my-icon-hover-scale);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-root .my-settings-navigation-icon {
+    scale: none;
+    transition: none;
+  }
+}

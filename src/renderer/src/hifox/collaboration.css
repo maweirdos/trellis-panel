@@ -84,10 +84,12 @@
 .account-entry-choice[aria-current='true'] { background: var(--my-bg-layer-2); }
 .account-entry-choice > span:nth-child(2) { min-width: 0; }
 .account-entry-choice strong, .account-entry-choice small { display: block; }
-.account-entry-choice strong { color: var(--my-txt-primary); font-size: var(--my-text-sm); font-weight: var(--my-weight-semibold); }
-.account-entry-choice small { margin-top: var(--my-space-3); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); font-weight: var(--my-weight-normal); }
+.account-entry-choice strong { color: var(--my-txt-item-title); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); }
+.account-entry-choice small { margin-top: var(--my-space-3); color: var(--my-txt-item-description); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); }
+.account-entry-choice:not(:disabled):hover small, .account-entry-choice[aria-current='true'] small { color: var(--my-txt-secondary); }
+.account-entry-choice[aria-current='true'] strong { color: var(--my-txt-primary); }
 .account-entry-icon { display: grid; width: var(--my-space-40); height: var(--my-space-40); place-items: center; border-radius: var(--my-radius-lg); background: var(--my-bg-layer-3); color: var(--my-txt-secondary); }
-.account-current-chip, .account-entry-count, .account-retained-count { display: inline-flex; align-items: center; gap: var(--my-space-4); border-radius: var(--my-radius-full); padding: var(--my-space-3) var(--my-space-8); background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-secondary); font-size: var(--my-text-2xs); font-style: normal; white-space: nowrap; }
+.account-current-chip, .account-entry-count, .account-retained-count { display: inline-flex; align-items: center; gap: var(--my-space-4); border-radius: var(--my-radius-base); padding: var(--my-space-3) var(--my-space-8); background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-secondary); font-size: var(--my-text-2xs); font-style: normal; white-space: nowrap; }
 .account-service-settings { margin-top: var(--my-space-4); border-top: 1px solid var(--my-border-subtle); }
 .account-service-settings summary { display: grid; min-height: var(--my-space-40); grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: var(--my-space-6); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); cursor: pointer; }
 .account-service-settings summary code { overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
@@ -118,16 +120,18 @@
 .account-workspace-row > button:first-child:disabled { color: var(--my-txt-disabled); }
 .account-workspace-row > button:first-child > span { min-width: 0; flex: 1; }
 .account-workspace-row strong, .account-workspace-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.account-workspace-row strong { color: var(--my-txt-primary); font-size: var(--my-text-sm); font-weight: var(--my-weight-medium); }
-.account-workspace-row small { margin-top: var(--my-space-2); color: var(--my-txt-tertiary); font-size: var(--my-text-2xs); }
+.account-workspace-row strong { color: var(--my-txt-item-title); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); }
+.account-workspace-row small { margin-top: var(--my-space-2); color: var(--my-txt-item-description); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); }
+.account-workspace-row[data-current='true'] strong { color: var(--my-txt-primary); }
+.account-workspace-row[data-current='true'] :is(small,em), .account-workspace-row > button:first-child:hover:not(:disabled) small { color: var(--my-txt-secondary); }
 .account-workspace-row em { color: var(--my-txt-tertiary); font-size: var(--my-text-2xs); font-style: normal; white-space: nowrap; }
 .account-pairing-code { margin: 0; padding: 0 var(--my-space-12) var(--my-space-8) var(--my-space-40); color: var(--my-txt-tertiary); font-size: var(--my-text-2xs); }
 .account-confirm-inline { margin: 0 var(--my-space-8) var(--my-space-8); border-radius: var(--my-radius-md); padding: var(--my-space-10); background: var(--my-bg-layer-2); }
 .account-confirm-inline p { margin: 0; color: var(--my-txt-secondary); font-size: var(--my-text-xs); line-height: var(--my-line-document); }
 .account-confirm-inline > div { display: flex; justify-content: flex-end; gap: var(--my-space-6); margin-top: var(--my-space-8); }
 .account-empty { display: flex; min-height: calc(var(--my-space-64) + var(--my-space-24)); flex-direction: column; align-items: center; justify-content: center; gap: var(--my-space-4); border: 1px dashed var(--my-border-subtle); border-radius: var(--my-radius-lg); color: var(--my-txt-tertiary); text-align: center; }
-.account-empty strong { color: var(--my-txt-secondary); font-size: var(--my-text-sm); font-weight: var(--my-weight-medium); }
-.account-empty span { font-size: var(--my-text-xs); }
+.account-empty strong { color: var(--my-txt-item-title); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); }
+.account-empty span { font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); color: var(--my-txt-item-description); }
 .account-retained-operations { border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); padding: var(--my-space-4) var(--my-space-10); }
 .account-retained-operations summary { min-height: var(--my-space-36); padding: var(--my-space-8) 0; color: var(--my-txt-secondary); font-size: var(--my-text-xs); cursor: pointer; }
 .account-retained-operations > p { margin: 0 0 var(--my-space-8); color: var(--my-txt-tertiary); font-size: var(--my-text-2xs); }

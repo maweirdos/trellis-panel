@@ -7,7 +7,7 @@ import { api as desktopApi } from '../../../../../api'
 import { DingTalkDetails, DingTalkDialog } from './presentation'
 
 function Field({ label, value, onChange, secret = false, required = true, maxLength = 256 }: { label: string; value: string; onChange(value: string): void; secret?: boolean; required?: boolean; maxLength?: number }): JSX.Element {
-  return <label className="block space-y-1.5 text-my-sm"><span>{label}</span><input className="my-input w-full" type={secret ? 'password' : 'text'} value={value} maxLength={maxLength} autoComplete={secret ? 'new-password' : 'off'} onInvalid={event => event.currentTarget.closest('details')?.setAttribute('open', '')} onChange={event => onChange(event.target.value)} required={required} /></label>
+  return <label className="block space-y-1.5"><span className="my-item-title">{label}</span><input className="my-input w-full" type={secret ? 'password' : 'text'} value={value} maxLength={maxLength} autoComplete={secret ? 'new-password' : 'off'} onInvalid={event => event.currentTarget.closest('details')?.setAttribute('open', '')} onChange={event => onChange(event.target.value)} required={required} /></label>
 }
 
 export function DingTalkAppForm({ api, root, initial, onClose, onSaved }: { api: DingTalkApi; root: string | null; initial: DingApp | null; onClose(): void; onSaved(): void }): JSX.Element {
@@ -25,7 +25,7 @@ export function DingTalkAppForm({ api, root, initial, onClose, onSaved }: { api:
     }}>
       <fieldset disabled={action.busy} className="space-y-4">
         <Field label="AppKey / Client ID" value={key} onChange={setKey} />
-        {initial?.hasSecret && <div className="space-y-1.5"><p className="text-my-sm">AppSecret</p><Select ariaLabel="AppSecret 操作" value={secretMode} options={[{ value: 'keep', label: '保留已保存的密钥' }, { value: 'replace', label: '替换密钥' }, { value: 'clear', label: '清除密钥' }]} onChange={value => { setSecretMode(value as typeof secretMode); setSecret('') }} /></div>}
+        {initial?.hasSecret && <div className="space-y-1.5"><p className="my-item-title">AppSecret</p><Select ariaLabel="AppSecret 操作" value={secretMode} options={[{ value: 'keep', label: '保留已保存的密钥' }, { value: 'replace', label: '替换密钥' }, { value: 'clear', label: '清除密钥' }]} onChange={value => { setSecretMode(value as typeof secretMode); setSecret('') }} /></div>}
         {secretMode === 'replace' && <Field label={initial?.hasSecret ? '新 AppSecret' : 'AppSecret'} value={secret} onChange={setSecret} secret maxLength={4096} />}
         {secretMode === 'clear' && <p className="text-my-sm text-my-warning-text">清除后需要重新填写并验证凭据，助手接入也需重新启用。</p>}
         <div className="grid gap-4 sm:grid-cols-2"><Field label="企业 CorpId" value={corp} onChange={setCorp} /><Field label="机器人 RobotCode" value={robot} onChange={setRobot} /></div>
@@ -51,7 +51,7 @@ export function DingTalkAssistantForm({ api, root, apps, initial, executionAvail
   const [policy, setPolicy] = useState<DingPolicy>(initial?.policy ?? { allowedSenders: [], allowedGroups: [], allowDirect: false, execution: 'tasks-only', runtimeId: 'none', profileId: 'none', maxTurnMinutes: 30, allowTaskUpdates: false, replyEnabled: false })
   const app = apps.find(item => item.id === appId)
   const close = (): void => { if (!action.busy) onClose() }
-  const check = (label: string, field: 'allowDirect' | 'allowTaskUpdates' | 'replyEnabled'): JSX.Element => <label className="flex items-start gap-2 text-my-sm"><Checkbox checked={policy[field]} onChange={value => setPolicy({ ...policy, [field]: value })} /><span>{label}</span></label>
+  const check = (label: string, field: 'allowDirect' | 'allowTaskUpdates' | 'replyEnabled'): JSX.Element => <label className="flex items-start gap-2"><Checkbox checked={policy[field]} onChange={value => setPolicy({ ...policy, [field]: value })} /><span className="my-item-title">{label}</span></label>
   return <DingTalkDialog busy={action.busy} title={initial ? '编辑任务助手' : '新建任务助手'} subtitle="绑定当前项目" onClose={close} footer={<><Button disabled={action.busy} onClick={close}>取消</Button><Button variant="primary" disabled={action.busy || !app || !senders.trim() || (!executionAvailable && policy.execution !== 'tasks-only')} onClick={() => form.current?.requestSubmit()}>{action.busy ? '保存中…' : '保存助手'}</Button></>}>
     <form ref={form} onSubmit={event => {
       event.preventDefault()
@@ -60,12 +60,12 @@ export function DingTalkAssistantForm({ api, root, apps, initial, executionAvail
     }}>
       <fieldset disabled={action.busy} className="space-y-4">
         <Field label="助手名称" value={name} onChange={setName} maxLength={120} />
-        <div className="space-y-1.5"><p className="text-my-sm">组织应用</p><Select ariaLabel="助手应用" value={appId} options={apps.map(item => ({ value: item.id, label: item.name }))} onChange={setAppId} /></div>
+        <div className="space-y-1.5"><p className="my-item-title">组织应用</p><Select ariaLabel="助手应用" value={appId} options={apps.map(item => ({ value: item.id, label: item.name }))} onChange={setAppId} /></div>
         {!app && <p role="status" className="text-my-sm text-my-secondary">先验证此助手的组织应用，再保存配置。</p>}
-        <label className="block space-y-1.5 text-my-sm"><span>允许的成员 StaffId · 每行一个</span><textarea className="my-input min-h-20 w-full" required rows={3} value={senders} onChange={event => setSenders(event.target.value)} /></label>
-        <label className="block space-y-1.5 text-my-sm"><span>允许的群 ConversationId · 每行一个</span><textarea className="my-input w-full" rows={2} value={groups} onChange={event => setGroups(event.target.value)} /></label>
+        <label className="block space-y-1.5"><span className="my-item-title">允许的成员 StaffId · 每行一个</span><textarea className="my-input min-h-20 w-full" required rows={3} value={senders} onChange={event => setSenders(event.target.value)} /></label>
+        <label className="block space-y-1.5"><span className="my-item-title">允许的群 ConversationId · 每行一个</span><textarea className="my-input w-full" rows={2} value={groups} onChange={event => setGroups(event.target.value)} /></label>
         {check('允许名单内成员通过单聊使用', 'allowDirect')}
-        <div className="space-y-2"><p className="text-my-sm font-medium">执行方式</p><Select ariaLabel="Agent 执行策略" value={policy.execution} options={[{ value: 'tasks-only', label: '仅创建任务' }, { value: 'manual', label: '本机确认后执行', disabled: !executionAvailable }, { value: 'native-approvals', label: '接入 Agent，保留原生审批', disabled: !executionAvailable }]} onChange={execution => setPolicy({ ...policy, execution: execution as DingPolicy['execution'] })} /></div>
+        <div className="space-y-2"><p className="my-item-title">执行方式</p><Select ariaLabel="Agent 执行策略" value={policy.execution} options={[{ value: 'tasks-only', label: '仅创建任务' }, { value: 'manual', label: '本机确认后执行', disabled: !executionAvailable }, { value: 'native-approvals', label: '接入 Agent，保留原生审批', disabled: !executionAvailable }]} onChange={execution => setPolicy({ ...policy, execution: execution as DingPolicy['execution'] })} /></div>
         {policy.execution !== 'tasks-only' && <div className="space-y-3 rounded-my-md bg-my-layer-2 p-3">
           <Field label="已配置的 Runtime ID" value={policy.runtimeId} onChange={runtimeId => setPolicy({ ...policy, runtimeId })} />
           <Field label="已配置的 Profile ID" value={policy.profileId} onChange={profileId => setPolicy({ ...policy, profileId })} />
@@ -74,10 +74,10 @@ export function DingTalkAssistantForm({ api, root, apps, initial, executionAvail
         </div>}
         <div className="space-y-3 border-t border-my-line pt-4">{check('允许修改已关联任务的标题与优先级', 'allowTaskUpdates')}{check('处理后回复原钉钉会话（会实际发送消息）', 'replyEnabled')}</div>
         <DingTalkDetails label="处理期限与项目详情">
-          <label className="block space-y-1.5 text-my-sm"><span>处理期限 · 分钟</span><input className="my-input w-full" type="number" required min={1} max={120} value={policy.maxTurnMinutes} onInvalid={event => event.currentTarget.closest('details')?.setAttribute('open', '')} onChange={event => setPolicy({ ...policy, maxTurnMinutes: Number(event.target.value) })} /></label>
+          <label className="block space-y-1.5"><span className="my-item-title">处理期限 · 分钟</span><input className="my-input w-full" type="number" required min={1} max={120} value={policy.maxTurnMinutes} onInvalid={event => event.currentTarget.closest('details')?.setAttribute('open', '')} onChange={event => setPolicy({ ...policy, maxTurnMinutes: Number(event.target.value) })} /></label>
           <p>当前项目：{root}</p>
         </DingTalkDetails>
-        <p className="text-my-xs text-my-secondary">保存助手后，在列表中启用接收。</p>
+        <p className="my-item-description">保存助手后，在列表中启用接收。</p>
         {action.error && <p role="alert" className="text-my-sm text-my-danger-text">{action.error}</p>}
       </fieldset>
       <button type="submit" hidden disabled={action.busy} />

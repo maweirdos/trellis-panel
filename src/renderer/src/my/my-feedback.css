@@ -3,11 +3,13 @@
 .my-root .my-result-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 var(--my-space-36); width: var(--my-space-36); height: var(--my-space-36); border-radius: var(--my-radius-md); background: var(--my-bg-layer-1); color: var(--my-txt-secondary); }
 .my-root .my-result-icon>svg { width: var(--my-space-18); height: var(--my-space-18); }
 .my-root .my-result-content { flex: 1; min-width: 0; }
-.my-root .my-result-title { font-size: var(--my-text-sm); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); overflow-wrap: anywhere; }
-.my-root .my-result-description { margin-top: var(--my-space-3); font-size: var(--my-text-activity); line-height: var(--my-line-document); color: var(--my-txt-tertiary); overflow-wrap: anywhere; }
+.my-root .my-result-title { overflow-wrap: anywhere; }
+.my-root .my-result-description { margin-top: var(--my-space-3); overflow-wrap: anywhere; }
 .my-root .my-result-action { flex: 0 0 auto; margin-left: auto; }
 .my-root .my-result-card.is-danger .my-result-icon { color: var(--my-txt-danger-primary); }
 .my-root .my-result-card.is-warning .my-result-icon { color: var(--my-txt-warning-primary); }
+.my-root .my-result-card:is(.is-danger, .is-warning) .my-result-title { color: var(--my-txt-primary); }
+.my-root .my-result-card:is(.is-danger, .is-warning) .my-result-description { line-height: var(--my-line-document); color: var(--my-txt-secondary); }
 @media (max-width: 480px) { .my-root .my-result-card { flex-wrap: wrap; gap: var(--my-space-8); }.my-root .my-result-content { flex-basis: calc(100% - var(--my-space-44)); } }
 
 /* Foreground notifications inherit the same palette, typography and controls in every window. */
@@ -20,8 +22,9 @@
 .my-root .my-notification[data-kind='warn'] .my-notification-icon { color: var(--my-txt-warning-primary); }
 .my-root .my-notification[data-kind='error'] .my-notification-icon { color: var(--my-txt-danger-primary); }
 .my-root .my-notification-content { flex: 1; min-width: 0; }
-.my-root .my-notification-title { font-size: var(--my-text-sm); font-weight: var(--my-weight-semibold); line-height: var(--my-line-ui); }
-.my-root .my-notification-body { margin-top: var(--my-space-4); color: var(--my-txt-secondary); font-size: var(--my-text-xs); line-height: var(--my-line-document); white-space: pre-wrap; }
+.my-root .my-notification-body { margin-top: var(--my-space-4); white-space: pre-wrap; }
+.my-root .my-notification:is([data-kind='warn'], [data-kind='error']) .my-notification-title { font-weight: var(--my-weight-semibold); color: var(--my-txt-primary); }
+.my-root .my-notification:is([data-kind='warn'], [data-kind='error']) .my-notification-body { line-height: var(--my-line-document); color: var(--my-txt-secondary); }
 .my-root .my-notification-title, .my-root .my-notification-body { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .my-root .my-notification[data-expanded='true'] .my-notification-message { max-height: var(--my-notification-detail-height); overflow-y: auto; overscroll-behavior: contain; }
 .my-root .my-notification[data-expanded='true'] .my-notification-title, .my-root .my-notification[data-expanded='true'] .my-notification-body { display: block; -webkit-line-clamp: unset; }

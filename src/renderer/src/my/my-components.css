@@ -19,18 +19,33 @@
   user-select: text;
 }
 .my-root ::selection { background: var(--my-selection-bg); color: var(--my-txt-primary); }
-.my-root :where(button, [role='button'], [role='dialog'], [tabindex], a, input, select, textarea, summary):focus-visible {
+.my-root :where(button, [role='button'], [role='dialog'], [tabindex], a, input, select, textarea, [contenteditable='true'], summary):focus-visible {
   outline: var(--my-space-2) solid var(--my-focus-ring);
   outline-offset: var(--my-space-1);
 }
-/* Text fields use their single border; never stack an outer ring over it. */
-.my-root :where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']), textarea, select, [contenteditable='true']):focus-visible { outline: none; }
-.my-root button:not(:disabled), .my-root [role='button']:not([aria-disabled='true']) { cursor: pointer; }
+.my-root :where(button, [role='button']):not(:disabled):not([aria-disabled='true']) { cursor: pointer; }
+.my-root :where(button, [role='button']):is(:disabled, [aria-disabled='true']) { cursor: default; }
+
+.my-root :where(.my-item-title) {
+  font-size: var(--my-text-item-title);
+  line-height: var(--my-line-ui);
+  font-weight: var(--my-weight-medium);
+  color: var(--my-txt-item-title);
+}
+.my-root :where(.my-item-description) {
+  font-size: var(--my-text-item-description);
+  line-height: var(--my-line-ui);
+  font-weight: var(--my-weight-normal);
+  color: var(--my-txt-item-description);
+}
 
 /* Shared navigation states and conversation geometry, independent of page owners. */
-.my-root .my-nav-item:hover { background: var(--my-bg-navigation-hover); }
+.my-root .my-nav-item { transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-nav-item:hover:not(:disabled):not([aria-disabled='true']):not(.is-selected):not([aria-current='page']) { background: var(--my-bg-navigation-hover); color: var(--my-txt-primary); }
 .my-root .my-nav-item.is-selected,
 .my-root .my-nav-item[aria-current='page'] { background: var(--my-bg-navigation-selected); color: var(--my-txt-primary); }
+.my-root .my-nav-item:active:not(:disabled):not([aria-disabled='true']):not(.is-selected):not([aria-current='page']) { background: var(--my-bg-navigation-selected); }
+.my-root .my-nav-item:is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled); }
 .my-root .my-conversation-frame { container-type: inline-size; }
 .my-root .my-conversation-column {
   width: min(var(--my-conversation-width), calc(100cqw - var(--my-conversation-gutter) * 2));
@@ -83,33 +98,37 @@
   font-size: var(--my-text-sm);
   font-weight: var(--my-weight-medium);
   white-space: nowrap;
-  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), transform var(--my-motion-fast) var(--my-ease-out);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-control:active:not(:disabled) { transform: scale(var(--my-control-press-scale)); }
 .my-root .my-control-sm { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); gap: var(--my-space-4); }
 .my-root .my-control-lg { height: var(--my-control-height-lg); }
 .my-root :where(.my-button-primary) { background: var(--my-bg-accent-primary); color: var(--my-txt-on-accent); }
-.my-root :where(.my-button-primary):hover:not(:disabled) { background: var(--my-bg-accent-primary-hover); }
-.my-root :where(.my-button-primary):active:not(:disabled) { background: var(--my-bg-accent-primary-active); }
-.my-root :where(.my-button-neutral) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
-.my-root :where(.my-button-neutral):hover:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
-.my-root :where(.my-button-ghost) { color: var(--my-txt-secondary); }
-.my-root :where(.my-button-ghost):hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
-.my-root :where(.my-button-outline) { border: 1px solid var(--my-border-strong); color: var(--my-txt-secondary); }
-.my-root :where(.my-button-outline):hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); }
+.my-root :where(.my-button-primary):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-hover); }
+.my-root :where(.my-button-primary):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-active); }
+.my-root :where(.my-button-neutral) { background: var(--my-bg-panel-header); color: var(--my-txt-primary); box-shadow: inset 0 0 0 1px var(--my-border-input); }
+.my-root :where(.my-button-neutral):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-3-hover); }
+.my-root :where(.my-button-ghost) { background: var(--my-bg-layer-transparent); color: var(--my-txt-secondary); }
+.my-root :where(.my-button-ghost):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root :where(.my-button-outline) { border: 1px solid var(--my-border-input); background: var(--my-bg-layer-transparent); color: var(--my-txt-primary); }
+.my-root :where(.my-button-outline):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover); border-color: var(--my-border-strong-1); }
+.my-root :where(.my-button-neutral):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-3-active); }
+.my-root :where(.my-button-ghost, .my-button-outline):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active); color: var(--my-txt-primary); }
 .my-root :where(.my-button-danger) { background: var(--my-bg-danger-primary); color: var(--my-txt-on-color); }
-.my-root :where(.my-button-danger):hover:not(:disabled) { background: var(--my-bg-danger-primary-hover); }
+.my-root :where(.my-button-danger):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-primary-hover); }
+.my-root :where(.my-button-danger):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-primary-active); }
+.my-root :where(.my-button-primary, .my-button-neutral, .my-button-danger):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); color: var(--my-txt-disabled); box-shadow: none; opacity: 1; }
+.my-root :where(.my-button-outline, .my-button-ghost):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-transparent); border-color: var(--my-border-disabled); color: var(--my-txt-disabled); box-shadow: none; opacity: 1; }
 
 .my-root .my-icon-control {
   display: inline-flex; align-items: center; justify-content: center;
   flex: 0 0 var(--my-icon-control-size); width: var(--my-icon-control-size); height: var(--my-icon-control-size);
   border-radius: var(--my-control-radius);
-  transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-danger)) { color: var(--my-txt-secondary); }
-.my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-danger)):hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
-.my-root :is(.my-icon-control:not(.my-button-primary):not(.my-button-danger), .my-select-trigger):active:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
-.my-root :is(.my-icon-control, .my-composer-control):disabled { color: var(--my-txt-disabled); }
+.my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-neutral, .my-button-outline, .my-button-ghost, .my-button-danger)) { color: var(--my-txt-secondary); }
+.my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-neutral, .my-button-outline, .my-button-ghost, .my-button-danger)):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-neutral, .my-button-outline, .my-button-ghost, .my-button-danger)):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active); }
+.my-root :is(.my-control, .my-icon-control, .my-composer-control):is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled); }
 .my-root .my-composer-control {
   border-radius: var(--my-control-radius);
   background: var(--my-bg-layer-transparent);
@@ -120,18 +139,26 @@
   padding: var(--my-space-4) var(--my-space-6);
   margin: calc(var(--my-space-4) * -1) calc(var(--my-space-6) * -1);
 }
-.my-root .my-composer-control:hover:not(:disabled),
-.my-root .my-composer-control[aria-expanded='true']:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
-.my-root .my-composer-control:active:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
+.my-root .my-composer-control:hover:not(:disabled):not([aria-disabled='true']),
+.my-root .my-composer-control[aria-expanded='true']:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-composer-control:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active); }
 .my-root .my-composer-control:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
 .my-root .my-segmented { display: inline-flex; align-items: center; gap: var(--my-space-2); padding: var(--my-space-2); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-transparent-hover); }
-.my-root .my-segment { display: inline-flex; align-items: center; justify-content: center; width: var(--my-icon-control-size); height: var(--my-icon-control-size); border-radius: var(--my-control-radius); }
-.my-root .my-segment[aria-pressed='true'] { background: var(--my-bg-layer-2); box-shadow: var(--my-shadow-raised-100); color: var(--my-txt-primary); }
-.my-root .my-switch { display: inline-flex; flex-shrink: 0; align-items: center; width: var(--my-switch-width); height: var(--my-switch-height); padding: var(--my-switch-inset); border-radius: var(--my-radius-full); background: var(--my-bg-layer-3); box-shadow: inset 0 0 0 1px var(--my-border-strong); transition: background var(--my-motion-fast); }
-.my-root .my-switch > span { width: var(--my-switch-thumb-size); height: var(--my-switch-thumb-size); border-radius: var(--my-radius-full); background: var(--my-txt-secondary); transition: transform var(--my-motion-fast), background var(--my-motion-fast); }
+.my-root .my-segment { display: inline-flex; align-items: center; justify-content: center; width: var(--my-icon-control-size); height: var(--my-icon-control-size); border-radius: var(--my-control-radius); transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-segment:hover:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']) { background: var(--my-bg-layer-transparent-active); color: var(--my-txt-primary); }
+.my-root .my-segment:active:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']) { background: var(--my-bg-layer-2-active); }
+.my-root .my-segment:is([aria-pressed='true'], [aria-selected='true']) { background: var(--my-bg-panel); box-shadow: var(--my-shadow-raised-100); color: var(--my-txt-primary); }
+.my-root .my-segment:is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled); box-shadow: none; }
+.my-root .my-switch { display: inline-flex; flex-shrink: 0; align-items: center; width: var(--my-switch-width); height: var(--my-switch-height); padding: var(--my-switch-inset); border-radius: var(--my-radius-full); background: var(--my-bg-input); box-shadow: inset 0 0 0 1px var(--my-border-input); transition: background-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-switch > span { width: var(--my-switch-thumb-size); height: var(--my-switch-thumb-size); border-radius: var(--my-radius-full); background: var(--my-txt-secondary); transition: transform var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-switch:hover:not(:disabled):not([aria-disabled='true']):not([aria-checked='true']) { background: var(--my-bg-layer-3-hover); box-shadow: inset 0 0 0 1px var(--my-border-strong-1); }
+.my-root .my-switch:active:not(:disabled):not([aria-disabled='true']):not([aria-checked='true']) { background: var(--my-bg-layer-3-active); }
 .my-root .my-switch[aria-checked='true'] { background: var(--my-bg-accent-primary); box-shadow: none; }
+.my-root .my-switch[aria-checked='true']:hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-hover); }
+.my-root .my-switch[aria-checked='true']:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-active); }
 .my-root .my-switch[aria-checked='true'] > span { background: var(--my-txt-on-accent); transform: translateX(calc(var(--my-switch-width) - var(--my-switch-inset) * 2 - var(--my-switch-thumb-size))); }
-.my-root .my-switch:disabled { opacity: .5; }
+.my-root .my-switch:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); box-shadow: inset 0 0 0 1px var(--my-border-disabled); }
+.my-root .my-switch:is(:disabled, [aria-disabled='true']) > span { background: var(--my-txt-disabled); }
 .my-root .my-modal-content { max-height: inherit; overflow-y: auto; padding: var(--my-space-24); }
 .my-root .my-scrollbar { overflow-y: auto; scrollbar-gutter: stable; }
 .my-root .my-scrollbar::-webkit-scrollbar { width: var(--my-space-10); height: var(--my-space-10); display: block; }
@@ -146,7 +173,7 @@
   scrollbar-gutter: auto;
   max-width: calc(100vw - var(--my-space-16));
   z-index: var(--my-z-menu); overflow: hidden; padding: var(--my-space-6);
-  border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-menu);
+  border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-menu);
   background: var(--my-bg-elevated); box-shadow: var(--my-shadow-overlay-200);
 }
 .my-root .my-menu > .my-scrollbar { min-height: 0; flex-shrink: 1; }
@@ -155,50 +182,58 @@
   min-height: var(--my-control-height-sm); padding: var(--my-space-6) var(--my-space-10);
   border-radius: var(--my-control-radius); text-align: left;
   font-size: var(--my-menu-option-size); color: var(--my-menu-option-color);
-  transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-menu-item:hover:not(:disabled), .my-root .my-menu-item[data-selected='true'], .my-root .my-menu-item[aria-pressed='true'] { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
-.my-root .my-menu-item:active:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
+.my-root .my-menu-item:hover:not(:disabled):not([aria-disabled='true']):not(:where([data-selected='true'], [aria-pressed='true'], [aria-selected='true'])) { background: var(--my-bg-layer-transparent-hover); }
+.my-root .my-menu-item:hover:not(:disabled):not([aria-disabled='true']):not([data-danger='true']) { color: var(--my-txt-primary); }
+.my-root .my-menu-item:is([data-selected='true'], [aria-pressed='true'], [aria-selected='true']) { background: var(--my-bg-layer-transparent-selected); color: var(--my-txt-primary); }
+.my-root .my-menu-item:active:not(:disabled):not([aria-disabled='true']):not(:where([data-selected='true'], [aria-pressed='true'], [aria-selected='true'])) { background: var(--my-bg-layer-transparent-active); }
+.my-root :is(.my-menu-item, .my-select-option):focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
 .my-root .my-menu-item[data-danger='true'] { color: var(--my-txt-danger-primary); }
-.my-root .my-menu-item:disabled { color: var(--my-txt-disabled); background: transparent; }
+.my-root .my-menu-item[data-danger='true']:hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-subtle-hover); }
+.my-root .my-menu-item[data-danger='true']:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-subtle-active); }
+.my-root .my-menu-item:is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled); background: var(--my-bg-layer-transparent); }
 .my-root .my-menu-header { padding: var(--my-space-8) var(--my-space-10) var(--my-space-6); font-size: var(--my-menu-title-size); color: var(--my-menu-title-color); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); cursor: default; }
 .my-root .my-menu-header:not(:first-child) { margin-top: var(--my-space-6); }
 .my-root :where(.my-select-host) { display: inline-flex; min-width: 0; max-width: 100%; vertical-align: middle; }
 .my-root :where(.my-select-trigger) {
   display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: var(--my-space-8);
   height: var(--my-field-height); padding: 0 var(--my-space-10);
-  border: 1px solid var(--my-border-subtle); border-radius: var(--my-control-radius);
-  background: var(--my-bg-layer-1); color: var(--my-txt-primary); text-align: left; font-size: var(--my-text-sm);
-  transition: background var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out);
+  border: 1px solid var(--my-border-input); border-radius: var(--my-control-radius);
+  background: var(--my-bg-input); color: var(--my-txt-primary); text-align: left; font-size: var(--my-text-sm);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-select-trigger:hover:not(:disabled) { background: var(--my-bg-layer-1-hover); border-color: var(--my-border-strong); }
-.my-root .my-select-trigger[aria-expanded='true'] { border-color: var(--my-border-accent-subtle); background: var(--my-bg-layer-2); }
-.my-root .my-select-trigger:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-1); border-color: var(--my-border-accent-subtle); box-shadow: none; }
-.my-root .my-select-trigger:disabled { color: var(--my-txt-disabled); cursor: default; opacity: .65; }
+.my-root .my-select-trigger:hover:not(:disabled):not([aria-disabled='true']):not([aria-expanded='true']):not(:focus-visible) { border-color: var(--my-border-strong-1); }
+.my-root .my-select-trigger:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-3-active); }
+.my-root .my-select-trigger[aria-expanded='true']:not(:disabled):not([aria-disabled='true']) { border-color: var(--my-focus-ring); }
+.my-root .my-select-trigger:focus-visible { border-color: var(--my-focus-ring); outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
+.my-root .my-select-trigger:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); border-color: var(--my-border-disabled); color: var(--my-txt-disabled); cursor: default; }
 .my-root :where(.my-select-trigger-sm) { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); font-size: var(--my-text-xs); }
 .my-root .my-select-value { display: flex; min-width: 0; align-items: center; gap: var(--my-space-6); }
 .my-root .my-select-chevron { color: var(--my-txt-tertiary); }
+.my-root .my-select-trigger:is(:disabled, [aria-disabled='true']) .my-select-chevron { color: var(--my-txt-disabled); }
 .my-root .my-select-menu { width: max-content; min-width: 100%; max-width: min(420px, calc(100vw - var(--my-space-24))); }
 .my-root .my-select-option {
   display: flex; width: 100%; min-height: var(--my-control-height-sm); align-items: center; gap: var(--my-space-8);
   padding: var(--my-space-6) var(--my-space-10); border-radius: var(--my-control-radius);
   color: var(--my-menu-option-color); text-align: left; font-size: var(--my-menu-option-size);
-  transition: background var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-select-option:hover:not(:disabled),
-.my-root .my-select-option:focus-visible { outline: none; background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); box-shadow: inset 0 0 0 var(--my-space-2) var(--my-focus-ring); }
-.my-root .my-select-option.is-selected { background: var(--my-bg-accent-subtle); color: var(--my-txt-accent-primary); }
-.my-root .my-select-option:disabled { color: var(--my-txt-disabled); cursor: default; }
+.my-root .my-select-option:hover:not(:disabled):not([aria-disabled='true']):not(:where(.is-selected, [aria-selected='true'])) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
+.my-root .my-select-option:active:not(:disabled):not([aria-disabled='true']):not(:where(.is-selected, [aria-selected='true'])) { background: var(--my-bg-layer-transparent-active); }
+.my-root .my-select-option:is(.is-selected, [aria-selected='true']) { background: var(--my-bg-accent-subtle); color: var(--my-txt-accent-primary); }
+.my-root .my-select-option:is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled); cursor: default; }
 .my-root .my-command-backdrop { display: flex; justify-content: center; align-items: flex-start; padding: clamp(24px, 14vh, 112px) var(--my-space-16) var(--my-space-16); }
 .my-root .my-command-panel { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100dvh - var(--my-space-32)); margin: 0; }
-.my-root .my-command-search { background: var(--my-bg-layer-1); transition: border-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-command-search { background: var(--my-bg-input); transition: border-color var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-command-search:focus-within { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
 .my-root .my-command-search input:focus-visible { outline: none; }
 .my-root .my-command-results { flex: 1 1 auto; max-height: min(52vh, 520px); }
 .my-root .my-tooltip { z-index: var(--my-z-tooltip); max-width: calc(100vw - var(--my-space-16)); white-space: normal; overflow-wrap: anywhere; border-radius: var(--my-radius-inset); background: var(--my-bg-layer-3); box-shadow: var(--my-shadow-raised-200); }
 /* Disabled buttons swallow pointer events; pass them through so the tooltip anchor still sees hover/focus. */
 .my-root .my-tooltip-anchor > button:disabled { pointer-events: none; }
 .my-root .my-modal-backdrop { z-index: var(--my-z-modal); background: var(--my-bg-backdrop); padding-inline: var(--my-space-16); }
-.my-root .my-modal-panel { max-width: 100%; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-4xl); background: var(--my-bg-layer-2); box-shadow: var(--my-shadow-overlay-200); }
+.my-root .my-modal-panel { max-width: 100%; border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-4xl); background: var(--my-bg-panel); box-shadow: var(--my-shadow-overlay-200); }
 .my-root .my-modal-fullscreen-backdrop { padding: 0; }
 .my-root .my-modal-fullscreen-panel { max-height: none; border: 0; border-radius: 0; box-shadow: none; }
 .my-root .my-checkbox { width: var(--my-checkbox-size); height: var(--my-checkbox-size); border-radius: var(--my-radius-sm); }
@@ -212,21 +247,38 @@
 .my-root .my-row-handle { opacity: 0; transition: opacity var(--my-motion-fast) var(--my-ease-out); }
 .my-root .my-input {
   width: 100%; height: var(--my-field-height); padding: var(--my-space-9) var(--my-space-11);
-  border: 1px solid transparent; border-radius: var(--my-control-radius);
-  background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); font-size: var(--my-text-ui);
-  outline: none; transition: background var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out);
+  border: 1px solid var(--my-border-input); border-radius: var(--my-control-radius);
+  background: var(--my-bg-input); color: var(--my-txt-primary); font-size: var(--my-text-ui);
+  outline: none; transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root textarea.my-input { height: auto; min-height: var(--my-field-height); line-height: var(--my-line-document); }
 .my-root .my-input::placeholder { color: var(--my-txt-placeholder); opacity: 1; }
-.my-root .my-input:focus { border-color: var(--my-border-accent-subtle); background: var(--my-bg-layer-3); box-shadow: none; }
-.my-root .my-input:disabled { color: var(--my-txt-disabled); cursor: default; }
+.my-root .my-input:hover:not(:disabled):not([aria-disabled='true']):not([aria-invalid='true']):not([readonly]):not(:focus) { border-color: var(--my-border-strong-1); }
+/* The inset outline covers the existing border, keeping one focus contour. */
+.my-root .my-input:focus { border-color: var(--my-focus-ring); outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
+.my-root :is(.my-input, .my-select-trigger)[aria-invalid='true'] { border-color: var(--my-border-danger-strong); }
+.my-root :is(.my-input, .my-select-trigger)[aria-invalid='true']:is(:focus, :focus-visible) { border-color: var(--my-border-danger-strong); outline-color: var(--my-border-danger-strong); }
+.my-root .my-input:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); border-color: var(--my-border-disabled); color: var(--my-txt-disabled); cursor: default; }
 .my-root .my-search-input { height: var(--my-control-height); padding-block: 0; padding-left: var(--my-space-28); font-size: var(--my-text-sm); }
 .my-root .my-search-input-sm { height: var(--my-control-height-sm); }
-.my-root .my-card { border: 1px solid transparent; border-radius: var(--my-radius-lg); background: var(--my-bg-layer-2); transition: background var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out); }
-.my-root .my-card:hover { background: var(--my-bg-layer-2-hover); box-shadow: var(--my-shadow-raised-100); }
+.my-root .my-card { border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-panel); }
+.my-root :is(button.my-card, a.my-card[href], .my-card[role='button']) { transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out); }
+.my-root :is(button.my-card, a.my-card[href], .my-card[role='button']):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-panel-header); border-color: var(--my-border-strong); }
+.my-root :is(button.my-card, a.my-card[href], .my-card[role='button']):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-2-active); }
 .my-root .my-editor:empty::before { content: attr(data-placeholder); color: var(--my-txt-placeholder); }
 .my-root .my-gridline-r { border-right: 1px solid var(--my-border-subtle); }
 .my-root .my-gridline-b { border-bottom: 1px solid var(--my-border-subtle); }
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item) > svg:first-child:not(.animate-spin),
+  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item) > span:first-child > svg:only-child:not(.animate-spin) {
+    transition: scale var(--my-motion-fast) var(--my-ease-out), transform var(--my-motion-fast) var(--my-ease-out);
+  }
+  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.animate-spin),
+  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.animate-spin) {
+    scale: var(--my-icon-hover-scale);
+  }
+}
 
 @keyframes my-pop-in { from { opacity: 0; transform: scale(.98) translateY(var(--my-space-2)); } to { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes my-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -236,5 +288,4 @@
 .my-root .my-peek-in { animation: my-peek-in var(--my-motion-normal) var(--my-ease-out); }
 @media (prefers-reduced-motion: reduce) {
   .my-root *, .my-root *::before, .my-root *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
-  .my-root .my-control:active:not(:disabled) { transform: none; }
 }

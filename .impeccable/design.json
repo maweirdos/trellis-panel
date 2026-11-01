@@ -1,0 +1,2779 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-01T02:22:03.691Z",
+  "title": "Design System: Trellis Panel",
+  "extensions": {
+    "colorMeta": {
+      "light-bg-accent-primary": {
+        "role": "primary",
+        "displayName": "浅色主操作",
+        "tonalRamp": [
+          "#181818",
+          "#303030",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#ffffff"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-1200",
+            "--my-neutral-900",
+            "--my-neutral-800",
+            "--my-neutral-600",
+            "--my-neutral-500",
+            "--my-neutral-400",
+            "--my-neutral-300",
+            "--my-neutral-100"
+          ]
+        }
+      },
+      "light-bg-shell": {
+        "role": "neutral",
+        "displayName": "浅色外壳",
+        "tonalRamp": [
+          "#181818",
+          "#303030",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#ffffff"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-1200",
+            "--my-neutral-900",
+            "--my-neutral-800",
+            "--my-neutral-600",
+            "--my-neutral-500",
+            "--my-neutral-400",
+            "--my-neutral-300",
+            "--my-neutral-100"
+          ]
+        }
+      },
+      "light-bg-sidebar": {
+        "role": "neutral",
+        "displayName": "浅色侧栏",
+        "tonalRamp": [
+          "#181818",
+          "#303030",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#ffffff"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-1200",
+            "--my-neutral-900",
+            "--my-neutral-800",
+            "--my-neutral-600",
+            "--my-neutral-500",
+            "--my-neutral-400",
+            "--my-neutral-300",
+            "--my-neutral-100"
+          ]
+        }
+      },
+      "light-bg-canvas": {
+        "role": "neutral",
+        "displayName": "浅色画布",
+        "tonalRamp": [
+          "#181818",
+          "#303030",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#ffffff"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-1200",
+            "--my-neutral-900",
+            "--my-neutral-800",
+            "--my-neutral-600",
+            "--my-neutral-500",
+            "--my-neutral-400",
+            "--my-neutral-300",
+            "--my-neutral-100"
+          ]
+        }
+      },
+      "light-bg-panel": {
+        "role": "neutral",
+        "displayName": "浅色面板",
+        "tonalRamp": [
+          "#181818",
+          "#303030",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#ffffff"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-1200",
+            "--my-neutral-900",
+            "--my-neutral-800",
+            "--my-neutral-600",
+            "--my-neutral-500",
+            "--my-neutral-400",
+            "--my-neutral-300",
+            "--my-neutral-100"
+          ]
+        }
+      },
+      "light-bg-input": {
+        "role": "neutral",
+        "displayName": "浅色输入表面",
+        "tonalRamp": [
+          "#181818",
+          "#303030",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#ffffff"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-1200",
+            "--my-neutral-900",
+            "--my-neutral-800",
+            "--my-neutral-600",
+            "--my-neutral-500",
+            "--my-neutral-400",
+            "--my-neutral-300",
+            "--my-neutral-100"
+          ]
+        }
+      },
+      "dark-bg-accent-primary": {
+        "role": "primary",
+        "displayName": "深色主操作",
+        "tonalRamp": [
+          "#181818",
+          "#282828",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#f3f3f3"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-200",
+            "--my-neutral-400",
+            "--my-neutral-600",
+            "--my-neutral-800",
+            "--my-neutral-900",
+            "--my-neutral-1000",
+            "--my-neutral-1100",
+            "--my-neutral-1200"
+          ]
+        }
+      },
+      "dark-bg-shell": {
+        "role": "neutral",
+        "displayName": "深色外壳",
+        "tonalRamp": [
+          "#181818",
+          "#282828",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#f3f3f3"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-200",
+            "--my-neutral-400",
+            "--my-neutral-600",
+            "--my-neutral-800",
+            "--my-neutral-900",
+            "--my-neutral-1000",
+            "--my-neutral-1100",
+            "--my-neutral-1200"
+          ]
+        }
+      },
+      "dark-bg-sidebar": {
+        "role": "neutral",
+        "displayName": "深色侧栏",
+        "tonalRamp": [
+          "#181818",
+          "#282828",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#f3f3f3"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-200",
+            "--my-neutral-400",
+            "--my-neutral-600",
+            "--my-neutral-800",
+            "--my-neutral-900",
+            "--my-neutral-1000",
+            "--my-neutral-1100",
+            "--my-neutral-1200"
+          ]
+        }
+      },
+      "dark-bg-canvas": {
+        "role": "neutral",
+        "displayName": "深色画布",
+        "tonalRamp": [
+          "#181818",
+          "#282828",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#f3f3f3"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-200",
+            "--my-neutral-400",
+            "--my-neutral-600",
+            "--my-neutral-800",
+            "--my-neutral-900",
+            "--my-neutral-1000",
+            "--my-neutral-1100",
+            "--my-neutral-1200"
+          ]
+        }
+      },
+      "dark-bg-panel": {
+        "role": "neutral",
+        "displayName": "深色面板",
+        "tonalRamp": [
+          "#181818",
+          "#282828",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#f3f3f3"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-200",
+            "--my-neutral-400",
+            "--my-neutral-600",
+            "--my-neutral-800",
+            "--my-neutral-900",
+            "--my-neutral-1000",
+            "--my-neutral-1100",
+            "--my-neutral-1200"
+          ]
+        }
+      },
+      "dark-bg-input": {
+        "role": "neutral",
+        "displayName": "深色输入表面",
+        "tonalRamp": [
+          "#181818",
+          "#282828",
+          "#414141",
+          "#5d5d5d",
+          "#737373",
+          "#afafaf",
+          "#ededed",
+          "#f3f3f3"
+        ],
+        "tonalRampSource": {
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssVariables": [
+            "--my-neutral-200",
+            "--my-neutral-400",
+            "--my-neutral-600",
+            "--my-neutral-800",
+            "--my-neutral-900",
+            "--my-neutral-1000",
+            "--my-neutral-1100",
+            "--my-neutral-1200"
+          ]
+        }
+      }
+    },
+    "typographyMeta": {
+      "micro": {
+        "displayName": "micro",
+        "purpose": "键帽等微型辅助文字。"
+      },
+      "label": {
+        "displayName": "label",
+        "purpose": "导航分组与范围标签。"
+      },
+      "control": {
+        "displayName": "control",
+        "purpose": "普通按钮文字。"
+      },
+      "body": {
+        "displayName": "body",
+        "purpose": "默认 UI 正文。"
+      },
+      "text-lg": {
+        "displayName": "text-lg",
+        "purpose": "较大文字层级。"
+      },
+      "text-title": {
+        "displayName": "text-title",
+        "purpose": "标题文字层级。"
+      },
+      "text-xl": {
+        "displayName": "text-xl",
+        "purpose": "较大标题层级。"
+      },
+      "text-display": {
+        "displayName": "text-display",
+        "purpose": "显示文字层级。"
+      },
+      "settings-title": {
+        "displayName": "settings-title",
+        "purpose": "设置页面标题。"
+      },
+      "settings-section": {
+        "displayName": "settings-section",
+        "purpose": "设置分组标题。"
+      },
+      "settings-hint": {
+        "displayName": "settings-hint",
+        "purpose": "设置说明，消费全局描述角色。"
+      },
+      "document": {
+        "displayName": "document",
+        "purpose": "文档正文。"
+      },
+      "chat": {
+        "displayName": "chat",
+        "purpose": "会话正文。"
+      },
+      "mono": {
+        "displayName": "mono",
+        "purpose": "代码与快捷键。"
+      },
+      "settings-label": {
+        "displayName": "settings-label",
+        "purpose": "设置名称，消费全局名称角色。"
+      },
+      "navigation": {
+        "displayName": "navigation",
+        "purpose": "普通导航条目。"
+      },
+      "item-title": {
+        "displayName": "item-title",
+        "purpose": "普通界面名称：列表、卡片、表单与空状态的主要文字。"
+      },
+      "item-description": {
+        "displayName": "item-description",
+        "purpose": "普通界面的辅助描述。"
+      }
+    },
+    "tokenBindings": {
+      "colors.light-bg-accent-primary": {
+        "cssVariable": "--my-bg-accent-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-accent-primary-hover": {
+        "cssVariable": "--my-bg-accent-primary-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-accent-primary-active": {
+        "cssVariable": "--my-bg-accent-primary-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-on-accent": {
+        "cssVariable": "--my-txt-on-accent",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-shell": {
+        "cssVariable": "--my-bg-shell",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-sidebar": {
+        "cssVariable": "--my-bg-sidebar",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-canvas": {
+        "cssVariable": "--my-bg-canvas",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-panel": {
+        "cssVariable": "--my-bg-panel",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-panel-header": {
+        "cssVariable": "--my-bg-panel-header",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-input": {
+        "cssVariable": "--my-bg-input",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-elevated": {
+        "cssVariable": "--my-bg-elevated",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-1": {
+        "cssVariable": "--my-bg-layer-1",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-2-active": {
+        "cssVariable": "--my-bg-layer-2-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-3": {
+        "cssVariable": "--my-bg-layer-3",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-3-hover": {
+        "cssVariable": "--my-bg-layer-3-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-3-active": {
+        "cssVariable": "--my-bg-layer-3-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-transparent": {
+        "cssVariable": "--my-bg-layer-transparent",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-transparent-hover": {
+        "cssVariable": "--my-bg-layer-transparent-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-transparent-active": {
+        "cssVariable": "--my-bg-layer-transparent-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-layer-disabled": {
+        "cssVariable": "--my-bg-layer-disabled",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-navigation-hover": {
+        "cssVariable": "--my-bg-navigation-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-navigation-selected": {
+        "cssVariable": "--my-bg-navigation-selected",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-border-shell": {
+        "cssVariable": "--my-border-shell",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-border-input": {
+        "cssVariable": "--my-border-input",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-border-subtle": {
+        "cssVariable": "--my-border-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-border-subtle-1": {
+        "cssVariable": "--my-border-subtle-1",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-border-strong": {
+        "cssVariable": "--my-border-strong",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-border-strong-1": {
+        "cssVariable": "--my-border-strong-1",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-border-disabled": {
+        "cssVariable": "--my-border-disabled",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-primary": {
+        "cssVariable": "--my-txt-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-secondary": {
+        "cssVariable": "--my-txt-secondary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-tertiary": {
+        "cssVariable": "--my-txt-tertiary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-placeholder": {
+        "cssVariable": "--my-txt-placeholder",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-disabled": {
+        "cssVariable": "--my-txt-disabled",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-icon-primary": {
+        "cssVariable": "--my-txt-icon-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-icon-secondary": {
+        "cssVariable": "--my-txt-icon-secondary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-icon-tertiary": {
+        "cssVariable": "--my-txt-icon-tertiary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-focus-ring": {
+        "cssVariable": "--my-focus-ring",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-selection-bg": {
+        "cssVariable": "--my-selection-bg",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-backdrop": {
+        "cssVariable": "--my-bg-backdrop",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-danger-primary": {
+        "cssVariable": "--my-bg-danger-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-danger-primary-hover": {
+        "cssVariable": "--my-bg-danger-primary-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-danger-primary-active": {
+        "cssVariable": "--my-bg-danger-primary-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-danger-subtle": {
+        "cssVariable": "--my-bg-danger-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-border-danger-strong": {
+        "cssVariable": "--my-border-danger-strong",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-danger-primary": {
+        "cssVariable": "--my-txt-danger-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-on-color": {
+        "cssVariable": "--my-txt-on-color",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-info-subtle": {
+        "cssVariable": "--my-bg-info-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-info-primary": {
+        "cssVariable": "--my-txt-info-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-success-subtle": {
+        "cssVariable": "--my-bg-success-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-success-primary": {
+        "cssVariable": "--my-txt-success-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-bg-warning-subtle": {
+        "cssVariable": "--my-bg-warning-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.light-txt-warning-primary": {
+        "cssVariable": "--my-txt-warning-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root:not(.dark)",
+          "[data-my-theme='light']"
+        ]
+      },
+      "colors.dark-bg-accent-primary": {
+        "cssVariable": "--my-bg-accent-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-accent-primary-hover": {
+        "cssVariable": "--my-bg-accent-primary-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-accent-primary-active": {
+        "cssVariable": "--my-bg-accent-primary-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-on-accent": {
+        "cssVariable": "--my-txt-on-accent",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-shell": {
+        "cssVariable": "--my-bg-shell",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-sidebar": {
+        "cssVariable": "--my-bg-sidebar",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-canvas": {
+        "cssVariable": "--my-bg-canvas",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-panel": {
+        "cssVariable": "--my-bg-panel",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-panel-header": {
+        "cssVariable": "--my-bg-panel-header",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-input": {
+        "cssVariable": "--my-bg-input",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-elevated": {
+        "cssVariable": "--my-bg-elevated",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-1": {
+        "cssVariable": "--my-bg-layer-1",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-2-active": {
+        "cssVariable": "--my-bg-layer-2-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-3": {
+        "cssVariable": "--my-bg-layer-3",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-3-hover": {
+        "cssVariable": "--my-bg-layer-3-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-3-active": {
+        "cssVariable": "--my-bg-layer-3-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-transparent": {
+        "cssVariable": "--my-bg-layer-transparent",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-transparent-hover": {
+        "cssVariable": "--my-bg-layer-transparent-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-transparent-active": {
+        "cssVariable": "--my-bg-layer-transparent-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-layer-disabled": {
+        "cssVariable": "--my-bg-layer-disabled",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-navigation-hover": {
+        "cssVariable": "--my-bg-navigation-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-navigation-selected": {
+        "cssVariable": "--my-bg-navigation-selected",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-border-shell": {
+        "cssVariable": "--my-border-shell",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-border-input": {
+        "cssVariable": "--my-border-input",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-border-subtle": {
+        "cssVariable": "--my-border-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-border-subtle-1": {
+        "cssVariable": "--my-border-subtle-1",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-border-strong": {
+        "cssVariable": "--my-border-strong",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-border-strong-1": {
+        "cssVariable": "--my-border-strong-1",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-border-disabled": {
+        "cssVariable": "--my-border-disabled",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-primary": {
+        "cssVariable": "--my-txt-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-secondary": {
+        "cssVariable": "--my-txt-secondary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-tertiary": {
+        "cssVariable": "--my-txt-tertiary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-placeholder": {
+        "cssVariable": "--my-txt-placeholder",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-disabled": {
+        "cssVariable": "--my-txt-disabled",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-icon-primary": {
+        "cssVariable": "--my-txt-icon-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-icon-secondary": {
+        "cssVariable": "--my-txt-icon-secondary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-icon-tertiary": {
+        "cssVariable": "--my-txt-icon-tertiary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-focus-ring": {
+        "cssVariable": "--my-focus-ring",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-selection-bg": {
+        "cssVariable": "--my-selection-bg",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-backdrop": {
+        "cssVariable": "--my-bg-backdrop",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-danger-primary": {
+        "cssVariable": "--my-bg-danger-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-danger-primary-hover": {
+        "cssVariable": "--my-bg-danger-primary-hover",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-danger-primary-active": {
+        "cssVariable": "--my-bg-danger-primary-active",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-danger-subtle": {
+        "cssVariable": "--my-bg-danger-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-border-danger-strong": {
+        "cssVariable": "--my-border-danger-strong",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-danger-primary": {
+        "cssVariable": "--my-txt-danger-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-on-color": {
+        "cssVariable": "--my-txt-on-color",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-info-subtle": {
+        "cssVariable": "--my-bg-info-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-info-primary": {
+        "cssVariable": "--my-txt-info-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-success-subtle": {
+        "cssVariable": "--my-bg-success-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-success-primary": {
+        "cssVariable": "--my-txt-success-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-bg-warning-subtle": {
+        "cssVariable": "--my-bg-warning-subtle",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "colors.dark-txt-warning-primary": {
+        "cssVariable": "--my-txt-warning-primary",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root.dark",
+          "[data-my-theme='dark']"
+        ]
+      },
+      "typography.micro.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.micro.fontSize": {
+        "cssVariable": "--my-text-2xs",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.label.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.label.fontSize": {
+        "cssVariable": "--my-text-xs",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.label.fontWeight": {
+        "cssVariable": "--my-weight-medium",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.label.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.control.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.control.fontSize": {
+        "cssVariable": "--my-text-sm",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.control.fontWeight": {
+        "cssVariable": "--my-weight-medium",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.control.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.body.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.body.fontSize": {
+        "cssVariable": "--my-text-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.body.fontWeight": {
+        "cssVariable": "--my-weight-normal",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.body.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.text-lg.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.text-lg.fontSize": {
+        "cssVariable": "--my-text-lg",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.text-title.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.text-title.fontSize": {
+        "cssVariable": "--my-text-title",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.text-xl.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.text-xl.fontSize": {
+        "cssVariable": "--my-text-xl",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.text-display.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.text-display.fontSize": {
+        "cssVariable": "--my-text-display",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-title.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-title.fontSize": {
+        "cssVariable": "--my-settings-title-size",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-title.fontWeight": {
+        "cssVariable": "--my-weight-semibold",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-title.lineHeight": {
+        "cssVariable": "--my-line-heading",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-title.letterSpacing": {
+        "cssVariable": "--my-tracking-tight",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-section.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-section.fontSize": {
+        "cssVariable": "--my-text-sm",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-section.fontWeight": {
+        "cssVariable": "--my-weight-medium",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-section.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-hint.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-hint.fontSize": {
+        "cssVariable": "--my-text-item-description",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-hint.fontWeight": {
+        "cssVariable": "--my-weight-normal",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-hint.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.document.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.document.fontSize": {
+        "cssVariable": "--my-text-document",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.document.fontWeight": {
+        "cssVariable": "--my-weight-normal",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.document.lineHeight": {
+        "cssVariable": "--my-line-document",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.chat.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.chat.fontSize": {
+        "cssVariable": "--my-text-chat",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.chat.fontWeight": {
+        "cssVariable": "--my-weight-normal",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.chat.lineHeight": {
+        "cssVariable": "--my-line-chat",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.mono.fontFamily": {
+        "cssVariable": "--my-font-mono",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.mono.fontSize": {
+        "cssVariable": "--my-text-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-0": {
+        "cssVariable": "--my-space-0",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-1": {
+        "cssVariable": "--my-space-1",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-2": {
+        "cssVariable": "--my-space-2",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-3": {
+        "cssVariable": "--my-space-3",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-4": {
+        "cssVariable": "--my-space-4",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-5": {
+        "cssVariable": "--my-space-5",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-6": {
+        "cssVariable": "--my-space-6",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-8": {
+        "cssVariable": "--my-space-8",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-9": {
+        "cssVariable": "--my-space-9",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-10": {
+        "cssVariable": "--my-space-10",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-11": {
+        "cssVariable": "--my-space-11",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-12": {
+        "cssVariable": "--my-space-12",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-14": {
+        "cssVariable": "--my-space-14",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-16": {
+        "cssVariable": "--my-space-16",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-18": {
+        "cssVariable": "--my-space-18",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-20": {
+        "cssVariable": "--my-space-20",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-24": {
+        "cssVariable": "--my-space-24",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-26": {
+        "cssVariable": "--my-space-26",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-28": {
+        "cssVariable": "--my-space-28",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-30": {
+        "cssVariable": "--my-space-30",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-32": {
+        "cssVariable": "--my-space-32",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-36": {
+        "cssVariable": "--my-space-36",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-44": {
+        "cssVariable": "--my-space-44",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-48": {
+        "cssVariable": "--my-space-48",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "spacing.space-56": {
+        "cssVariable": "--my-space-56",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-primary-light.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-neutral-light.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-ghost-light.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-outline-light.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-danger-light.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.input-light.height": {
+        "cssVariable": "--my-field-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.switch-light.width": {
+        "cssVariable": "--my-switch-width",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.switch-light.height": {
+        "cssVariable": "--my-switch-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-primary-dark.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-neutral-dark.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-ghost-dark.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-outline-dark.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.button-danger-dark.height": {
+        "cssVariable": "--my-control-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.input-dark.height": {
+        "cssVariable": "--my-field-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.switch-dark.width": {
+        "cssVariable": "--my-switch-width",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "components.switch-dark.height": {
+        "cssVariable": "--my-switch-height",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "colors.light-settings-label": {
+        "cssVariable": "--my-settings-label-color",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "colors.dark-settings-label": {
+        "cssVariable": "--my-settings-label-color",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-label.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-label.fontSize": {
+        "cssVariable": "--my-text-item-title",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-label.fontWeight": {
+        "cssVariable": "--my-weight-medium",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.settings-label.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.navigation.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.navigation.fontSize": {
+        "cssVariable": "--my-text-sm",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.navigation.fontWeight": {
+        "cssVariable": "--my-weight-normal",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.navigation.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "colors.light-item-title": {
+        "cssVariable": "--my-txt-item-title",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "colors.light-item-description": {
+        "cssVariable": "--my-txt-item-description",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "colors.dark-item-title": {
+        "cssVariable": "--my-txt-item-title",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "colors.dark-item-description": {
+        "cssVariable": "--my-txt-item-description",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.item-title.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.item-title.fontSize": {
+        "cssVariable": "--my-text-item-title",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.item-title.fontWeight": {
+        "cssVariable": "--my-weight-medium",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.item-title.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.item-description.fontFamily": {
+        "cssVariable": "--my-font-sans",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.item-description.fontSize": {
+        "cssVariable": "--my-text-item-description",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.item-description.fontWeight": {
+        "cssVariable": "--my-weight-normal",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "typography.item-description.lineHeight": {
+        "cssVariable": "--my-line-ui",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "rounded.base": {
+        "cssVariable": "--my-radius-base",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "rounded.none": {
+        "cssVariable": "--my-radius-none",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "rounded.full": {
+        "cssVariable": "--my-radius-full",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      },
+      "rounded.round": {
+        "cssVariable": "--my-radius-round",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "selectors": [
+          ":root",
+          ".my-root"
+        ]
+      }
+    },
+    "sources": {
+      "tokens": "src/renderer/src/my/my-tokens.css",
+      "controls": "src/renderer/src/my/my-components.css",
+      "shell": "src/renderer/src/my/my-shell.css",
+      "preferences": "src/renderer/src/pages/settings/preferences.css",
+      "navigation": "src/renderer/src/pages/settings/settings-navigation.css",
+      "appearance": "src/renderer/src/my/appearance.ts",
+      "catalog": "src/renderer/src/my/settings-catalog.ts",
+      "frame": "src/renderer/src/my/layout/PageFrame.tsx",
+      "settings": "src/renderer/src/pages/Settings.tsx",
+      "brief": ".impeccable/surfaces/src-renderer-src-my-layout-myapp-tsx.md"
+    },
+    "fontFaces": [
+      {
+        "family": "Inter",
+        "source": "src/renderer/src/assets/fonts/InterVariable.woff2",
+        "weight": "100 900",
+        "style": "normal",
+        "display": "swap"
+      },
+      {
+        "family": "Source Han Sans SC",
+        "source": "src/renderer/src/assets/fonts/SourceHanSansSC-VF.ttf.woff2",
+        "weight": "250 900",
+        "style": "normal",
+        "display": "swap"
+      }
+    ],
+    "density": {
+      "attribute": "data-my-font-size",
+      "default": "standard",
+      "storage": {
+        "key": "tpanel.my.ui",
+        "field": "fontSize",
+        "values": [
+          "small",
+          "standard",
+          "large"
+        ],
+        "source": "src/renderer/src/my/appearance.ts"
+      },
+      "presets": {
+        "small": {
+          "label": "紧凑",
+          "storedValue": "small",
+          "selector": ".my-root[data-my-font-size='small']",
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssOverrides": {
+            "--my-font-step": "-1px",
+            "--my-control-height-sm": "26px",
+            "--my-control-height": "30px",
+            "--my-control-height-lg": "32px",
+            "--my-icon-control-size": "26px",
+            "--my-shell-chrome-size": "44px",
+            "--my-module-rail-width": "48px",
+            "--my-module-button-size": "32px",
+            "--my-module-icon-size": "18px",
+            "--my-settings-content-width": "760px",
+            "--my-settings-field-width": "280px",
+            "--my-settings-title-size": "20px",
+            "--my-settings-heading-icon-size": "32px",
+            "--my-settings-heading-glyph-size": "18px",
+            "--my-settings-nav-icon-size": "20px",
+            "--my-settings-nav-glyph-size": "14px",
+            "--my-settings-panel-padding": "16px",
+            "--my-settings-page-top": "20px",
+            "--my-settings-heading-gap": "16px",
+            "--my-settings-identity-gap": "12px",
+            "--my-settings-section-gap": "12px",
+            "--my-settings-section-heading-padding": "6px",
+            "--my-settings-row-padding": "8px",
+            "--my-settings-hint-gap": "2px",
+            "--my-settings-nav-row-height": "32px",
+            "--my-settings-nav-group-gap": "12px",
+            "--my-settings-search-height": "28px",
+            "--my-header-control-height": "28px",
+            "--my-header-segment-height": "26px",
+            "--my-header-search-width": "208px"
+          },
+          "sidebarDefault": {
+            "value": "224px",
+            "source": "src/renderer/src/my/appearance.ts",
+            "symbol": "UI_DENSITY_OPTIONS"
+          }
+        },
+        "standard": {
+          "label": "标准",
+          "storedValue": "standard",
+          "selector": ":root, .my-root",
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssOverrides": {
+            "--my-font-step": "0px",
+            "--my-text-2xs": "calc(11px + var(--my-font-step))",
+            "--my-text-xs": "calc(12px + var(--my-font-step))",
+            "--my-text-sm": "calc(13px + var(--my-font-step))",
+            "--my-text-md": "calc(14px + var(--my-font-step))",
+            "--my-text-lg": "calc(16px + var(--my-font-step))",
+            "--my-text-title": "calc(17px + var(--my-font-step))",
+            "--my-text-xl": "calc(19px + var(--my-font-step))",
+            "--my-text-display": "calc(25px + var(--my-font-step))",
+            "--my-text-ui": "var(--my-text-md)",
+            "--my-settings-title-size": "22px",
+            "--my-workspace-header-height": "var(--my-shell-chrome-size)",
+            "--my-module-rail-width": "52px",
+            "--my-module-button-size": "34px",
+            "--my-module-icon-size": "var(--my-space-20)",
+            "--my-control-height-sm": "28px",
+            "--my-control-height": "32px",
+            "--my-control-height-lg": "34px",
+            "--my-field-height": "var(--my-control-height-lg)",
+            "--my-settings-content-width": "800px",
+            "--my-settings-field-width": "300px",
+            "--my-settings-page-top": "var(--my-space-24)",
+            "--my-settings-heading-gap": "var(--my-space-20)",
+            "--my-settings-identity-gap": "var(--my-space-14)",
+            "--my-settings-heading-icon-size": "var(--my-space-36)",
+            "--my-settings-heading-glyph-size": "var(--my-space-20)",
+            "--my-settings-panel-padding": "var(--my-space-18)",
+            "--my-settings-panel-radius": "var(--my-radius-base)",
+            "--my-settings-section-gap": "var(--my-space-14)",
+            "--my-settings-section-heading-padding": "var(--my-space-8)",
+            "--my-settings-row-padding": "var(--my-space-10)",
+            "--my-settings-hint-gap": "var(--my-space-3)",
+            "--my-settings-nav-row-height": "34px",
+            "--my-settings-nav-icon-size": "var(--my-space-24)",
+            "--my-settings-nav-glyph-size": "var(--my-space-16)",
+            "--my-settings-nav-group-gap": "var(--my-space-14)",
+            "--my-settings-search-height": "var(--my-space-30)",
+            "--my-control-radius": "var(--my-radius-control)",
+            "--my-header-control-height": "var(--my-space-30)",
+            "--my-header-search-width": "var(--my-space-224)",
+            "--my-header-segment-height": "var(--my-space-28)",
+            "--my-shell-chrome-size": "var(--my-space-48)",
+            "--my-radius-control": "var(--my-radius-base)",
+            "--my-icon-control-size": "28px",
+            "--my-module-gap": "var(--my-space-6)",
+            "--my-module-rail-padding": "var(--my-space-6)",
+            "--my-switch-width": "var(--my-space-32)",
+            "--my-switch-height": "var(--my-space-20)",
+            "--my-switch-thumb-size": "var(--my-space-14)"
+          },
+          "sidebarDefault": {
+            "value": "240px",
+            "source": "src/renderer/src/my/appearance.ts",
+            "symbol": "UI_DENSITY_OPTIONS"
+          }
+        },
+        "large": {
+          "label": "舒适",
+          "storedValue": "large",
+          "selector": ".my-root[data-my-font-size='large']",
+          "source": "src/renderer/src/my/my-tokens.css",
+          "cssOverrides": {
+            "--my-font-step": "1px",
+            "--my-control-height-sm": "30px",
+            "--my-control-height": "34px",
+            "--my-control-height-lg": "36px",
+            "--my-icon-control-size": "30px",
+            "--my-shell-chrome-size": "50px",
+            "--my-module-rail-width": "54px",
+            "--my-module-button-size": "36px",
+            "--my-module-icon-size": "21px",
+            "--my-module-gap": "6px",
+            "--my-module-rail-padding": "6px",
+            "--my-settings-content-width": "820px",
+            "--my-settings-field-width": "320px",
+            "--my-settings-title-size": "24px",
+            "--my-settings-heading-icon-size": "38px",
+            "--my-settings-heading-glyph-size": "21px",
+            "--my-settings-nav-icon-size": "26px",
+            "--my-settings-nav-glyph-size": "17px",
+            "--my-settings-panel-padding": "20px",
+            "--my-settings-page-top": "26px",
+            "--my-settings-heading-gap": "22px",
+            "--my-settings-identity-gap": "15px",
+            "--my-settings-section-gap": "16px",
+            "--my-settings-section-heading-padding": "9px",
+            "--my-settings-row-padding": "11px",
+            "--my-settings-hint-gap": "4px",
+            "--my-settings-nav-row-height": "36px",
+            "--my-settings-nav-group-gap": "16px",
+            "--my-settings-search-height": "32px",
+            "--my-header-control-height": "32px",
+            "--my-header-segment-height": "30px",
+            "--my-header-search-width": "240px",
+            "--my-switch-width": "34px",
+            "--my-switch-height": "22px",
+            "--my-switch-thumb-size": "16px"
+          },
+          "sidebarDefault": {
+            "value": "256px",
+            "source": "src/renderer/src/my/appearance.ts",
+            "symbol": "UI_DENSITY_OPTIONS"
+          }
+        }
+      },
+      "behavior": {
+        "source": "src/renderer/src/my/store.ts",
+        "setter": "setFontSize",
+        "updates": [
+          "fontSize",
+          "sidebarWidth"
+        ],
+        "structure": "三档共用页头引导入口、两个主要设置面板与有数据时的最近项目列表。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "light-shadow-raised-100",
+        "value": "0 1px 2px rgba(0, 0, 0, 0.1)",
+        "purpose": "选中的分段控件和顶栏切换。",
+        "cssVariable": "--my-shadow-raised-100",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "light"
+      },
+      {
+        "name": "light-shadow-raised-200",
+        "value": "0 2px 8px rgba(0, 0, 0, 0.06)",
+        "purpose": "工具提示。",
+        "cssVariable": "--my-shadow-raised-200",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "light"
+      },
+      {
+        "name": "light-shadow-raised-300",
+        "value": "0 4px 16px rgba(0, 0, 0, 0.08)",
+        "purpose": "较高表面投影 token。",
+        "cssVariable": "--my-shadow-raised-300",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "light"
+      },
+      {
+        "name": "light-shadow-overlay-100",
+        "value": "0 8px 28px rgba(0, 0, 0, 0.08)",
+        "purpose": "浮层投影 token。",
+        "cssVariable": "--my-shadow-overlay-100",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "light"
+      },
+      {
+        "name": "light-shadow-overlay-200",
+        "value": "0 16px 48px rgba(0, 0, 0, 0.12)",
+        "purpose": "菜单与模态面板。",
+        "cssVariable": "--my-shadow-overlay-200",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "light"
+      },
+      {
+        "name": "light-shadow-composer",
+        "value": "0 3px 7.5px #0000000a, 0 0 20px #0000000d",
+        "purpose": "会话输入面。",
+        "cssVariable": "--my-shadow-composer",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "light"
+      },
+      {
+        "name": "dark-shadow-raised-100",
+        "value": "0 1px 2px rgba(0, 0, 0, 0.35)",
+        "purpose": "选中的分段控件和顶栏切换。",
+        "cssVariable": "--my-shadow-raised-100",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "dark"
+      },
+      {
+        "name": "dark-shadow-raised-200",
+        "value": "0 2px 8px rgba(0, 0, 0, 0.25)",
+        "purpose": "工具提示。",
+        "cssVariable": "--my-shadow-raised-200",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "dark"
+      },
+      {
+        "name": "dark-shadow-raised-300",
+        "value": "0 4px 16px rgba(0, 0, 0, 0.35)",
+        "purpose": "较高表面投影 token。",
+        "cssVariable": "--my-shadow-raised-300",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "dark"
+      },
+      {
+        "name": "dark-shadow-overlay-100",
+        "value": "0 8px 28px rgba(0, 0, 0, 0.3)",
+        "purpose": "浮层投影 token。",
+        "cssVariable": "--my-shadow-overlay-100",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "dark"
+      },
+      {
+        "name": "dark-shadow-overlay-200",
+        "value": "0 16px 48px rgba(0, 0, 0, 0.4)",
+        "purpose": "菜单与模态面板。",
+        "cssVariable": "--my-shadow-overlay-200",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "dark"
+      },
+      {
+        "name": "dark-shadow-composer",
+        "value": "0 3px 7.5px #0000000a, 0 0 20px #0000000d",
+        "purpose": "会话输入面。",
+        "cssVariable": "--my-shadow-composer",
+        "source": "src/renderer/src/my/my-tokens.css",
+        "theme": "dark"
+      }
+    ],
+    "motion": [
+      {
+        "name": "motion-fast",
+        "value": "140ms",
+        "purpose": "控件状态与图标悬停。",
+        "cssVariable": "--my-motion-fast",
+        "source": "src/renderer/src/my/my-tokens.css"
+      },
+      {
+        "name": "motion-normal",
+        "value": "200ms",
+        "purpose": "peek 入场。",
+        "cssVariable": "--my-motion-normal",
+        "source": "src/renderer/src/my/my-tokens.css"
+      },
+      {
+        "name": "motion-slow",
+        "value": "300ms",
+        "purpose": "较慢时长 token。",
+        "cssVariable": "--my-motion-slow",
+        "source": "src/renderer/src/my/my-tokens.css"
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "共享控件与浮层缓动。",
+        "cssVariable": "--my-ease-out",
+        "source": "src/renderer/src/my/my-tokens.css"
+      },
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.2, 0, 0, 1)",
+        "purpose": "标准缓动 token。",
+        "cssVariable": "--my-ease-standard",
+        "source": "src/renderer/src/my/my-tokens.css"
+      },
+      {
+        "name": "icon-hover-scale",
+        "value": "1.06",
+        "purpose": "符合悬停条件的图标缩放比例。",
+        "cssVariable": "--my-icon-hover-scale",
+        "source": "src/renderer/src/my/my-tokens.css"
+      }
+    ],
+    "focus": {
+      "ordinary": {
+        "outline": "2px solid var(--my-focus-ring)",
+        "outlineOffset": "1px",
+        "source": "src/renderer/src/my/my-components.css"
+      },
+      "input": {
+        "trigger": ":focus",
+        "outline": "2px solid var(--my-focus-ring)",
+        "outlineOffset": "-2px",
+        "borderColor": "var(--my-focus-ring)",
+        "boxShadow": "none",
+        "source": "src/renderer/src/my/my-components.css"
+      },
+      "select": {
+        "trigger": ":focus-visible",
+        "outline": "2px solid var(--my-focus-ring)",
+        "outlineOffset": "-2px",
+        "boxShadow": "none",
+        "source": "src/renderer/src/my/my-components.css"
+      },
+      "menuItem": {
+        "trigger": ":focus-visible",
+        "outlineOffset": "-2px",
+        "boxShadow": "none",
+        "source": "src/renderer/src/my/my-components.css"
+      },
+      "invalid": {
+        "attribute": "aria-invalid='true'",
+        "borderColor": "var(--my-border-danger-strong)",
+        "outlineColor": "var(--my-border-danger-strong)",
+        "source": "src/renderer/src/my/my-components.css"
+      },
+      "disclosure": {
+        "outline": "2px solid var(--my-focus-ring)",
+        "outlineOffset": "4px",
+        "source": "src/renderer/src/pages/settings/preferences.css"
+      }
+    },
+    "reducedMotion": {
+      "media": "(prefers-reduced-motion: reduce)",
+      "animationDuration": ".01ms",
+      "animationIterationCount": 1,
+      "transitionDuration": "0s",
+      "scrollBehavior": "auto",
+      "settingsIconScale": "none",
+      "sources": [
+        "src/renderer/src/my/my-components.css",
+        "src/renderer/src/pages/settings/settings-navigation.css"
+      ]
+    },
+    "iconHover": {
+      "media": "(hover: hover) and (prefers-reduced-motion: no-preference)",
+      "scaleCssVariable": "--my-icon-hover-scale",
+      "exclude": [
+        "disabled",
+        "aria-disabled=true",
+        "aria-busy=true",
+        "selected",
+        "current",
+        "pressed",
+        "checked",
+        "expanded",
+        "animate-spin"
+      ],
+      "settingsNavigation": "仅未选中条目的图标容器缩放。",
+      "sources": [
+        "src/renderer/src/my/my-components.css",
+        "src/renderer/src/pages/settings/settings-navigation.css"
+      ]
+    },
+    "breakpoints": [
+      {
+        "name": "header-compact",
+        "value": "1100px",
+        "query": "@media (max-width: 1100px)",
+        "source": "src/renderer/src/my/my-shell.css"
+      },
+      {
+        "name": "page-gutter",
+        "value": "960px",
+        "query": "@media (max-width: 960px)",
+        "source": "src/renderer/src/my/my-shell.css"
+      },
+      {
+        "name": "workspace-short",
+        "value": "620px",
+        "query": "@media (max-height: 620px)",
+        "source": "src/renderer/src/my/my-shell.css"
+      },
+      {
+        "name": "preference-stack",
+        "value": "600px",
+        "query": "@container (max-width: 600px)",
+        "source": "src/renderer/src/pages/settings/preferences.css"
+      },
+      {
+        "name": "preference-narrow",
+        "value": "420px",
+        "query": "@container (max-width: 420px)",
+        "source": "src/renderer/src/pages/settings/preferences.css"
+      }
+    ],
+    "layout": {
+      "settingsAlignment": {
+        "value": "margin-inline: auto",
+        "source": "src/renderer/src/pages/settings/preferences.css",
+        "selector": ".my-root .my-settings-layout .my-page-container"
+      },
+      "settingsContainerMax": "calc(var(--my-settings-content-width) + var(--my-page-inset) * 2)",
+      "fieldColumnWidth": "min(50%, var(--my-settings-field-width))",
+      "rowHeight": "auto",
+      "rowPaddingCssVariable": "--my-settings-row-padding",
+      "sidebarWidth": "min(var(--my-sidebar-width), max(220px, calc(100vw - 360px)))",
+      "sidebarResize": {
+        "min": "220px",
+        "max": "400px",
+        "source": "src/renderer/src/my/appearance.ts"
+      },
+      "zIndex": {
+        "--my-z-resize": 20,
+        "--my-z-inspector-scrim": 21,
+        "--my-z-inspector": 22,
+        "--my-z-sidebar-scrim": 31,
+        "--my-z-sidebar": 32,
+        "--my-z-modal": 70,
+        "--my-z-menu": 80,
+        "--my-z-tooltip": 90,
+        "--my-z-notification": 100
+      }
+    },
+    "shapes": {
+      "radiusToken": "rounded.base",
+      "cssVariable": "--my-radius-base",
+      "source": "src/renderer/src/my/my-tokens.css",
+      "densityIndependent": true,
+      "aliases": [
+        "--my-radius-xs",
+        "--my-radius-sm",
+        "--my-radius-inset",
+        "--my-radius-control",
+        "--my-radius-md",
+        "--my-radius-lg",
+        "--my-radius-xl",
+        "--my-radius-menu",
+        "--my-radius-3xl",
+        "--my-radius-4xl",
+        "--my-control-radius",
+        "--my-shell-radius",
+        "--my-settings-panel-radius",
+        "--my-notification-radius"
+      ],
+      "functionalShapes": [
+        "avatars",
+        "switch tracks and thumbs",
+        "status dots",
+        "progress tracks",
+        "timeline and location markers"
+      ],
+      "zeroGeometry": [
+        "joined inner edges",
+        "fullscreen surfaces"
+      ],
+      "baseline": {
+        "target": "src/renderer/src/pages/Settings.tsx",
+        "sharedComponents": "src/renderer/src/pages/settings/PreferenceSection.tsx",
+        "guidelines": "DESIGN.md",
+        "mode": "Operate"
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "按钮 primary",
+      "kind": "button",
+      "refersTo": "button-primary-light",
+      "description": "主要动作；反差中性色。",
+      "html": "<div class=\"ds-sample\"><button type=\"button\" class=\"ds-my-control ds-my-button-primary\">保存</button></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-control, .ds-my-switch, .ds-my-settings-navigation-item { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); border: 0; cursor: pointer; box-sizing: border-box; } .ds-my-control:disabled, .ds-my-switch:disabled, .ds-my-settings-navigation-item:disabled { cursor: default; }\n\r\n\r\n.ds-my-control {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: var(--my-space-6, 6px);\r\n  height: var(--my-control-height, 32px);\r\n  padding: 0 var(--my-space-12, 12px);\r\n  border-radius: var(--my-radius-base, 10px);\r\n  font-size: var(--my-text-sm, 13px);\r\n  font-weight: var(--my-weight-medium, 500);\r\n  white-space: nowrap;\r\n  transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\n.ds-my-control-sm { height: var(--my-control-height-sm, 28px); padding-inline: var(--my-space-8, 8px); gap: var(--my-space-4, 4px); }\r\n.ds-my-control-lg { height: var(--my-control-height-lg, 34px); }\r\n:where(.ds-my-button-primary) { background: var(--my-bg-accent-primary, #1a1c1f); color: var(--my-txt-on-accent, #ffffff); }\r\n:where(.ds-my-button-primary):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-hover, #303030); }\r\n:where(.ds-my-button-primary):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-active, #414141); }\r\n:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-danger):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled, color-mix(in oklab, #1a1c1f 10%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); box-shadow: none; opacity: 1; }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)) { color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); }\r\n:is(.ds-my-control, .ds-my-icon-control, .ds-my-composer-control):is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\r\n\r\n@media (hover: hover) and (prefers-reduced-motion: no-preference) {\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    transition: scale var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n  }\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    scale: var(--my-icon-hover-scale, 1.06);\r\n  }\r\n}\n.ds-my-control:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n@media (prefers-reduced-motion: reduce) { .ds-my-control, .ds-my-control svg { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "按钮 neutral",
+      "kind": "button",
+      "refersTo": "button-neutral-light",
+      "description": "默认按钮；分组底色与内描边。",
+      "html": "<div class=\"ds-sample\"><button type=\"button\" class=\"ds-my-control ds-my-button-neutral\">取消</button></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-control, .ds-my-switch, .ds-my-settings-navigation-item { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); border: 0; cursor: pointer; box-sizing: border-box; } .ds-my-control:disabled, .ds-my-switch:disabled, .ds-my-settings-navigation-item:disabled { cursor: default; }\n\r\n\r\n.ds-my-control {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: var(--my-space-6, 6px);\r\n  height: var(--my-control-height, 32px);\r\n  padding: 0 var(--my-space-12, 12px);\r\n  border-radius: var(--my-radius-base, 10px);\r\n  font-size: var(--my-text-sm, 13px);\r\n  font-weight: var(--my-weight-medium, 500);\r\n  white-space: nowrap;\r\n  transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\n.ds-my-control-sm { height: var(--my-control-height-sm, 28px); padding-inline: var(--my-space-8, 8px); gap: var(--my-space-4, 4px); }\r\n.ds-my-control-lg { height: var(--my-control-height-lg, 34px); }\r\n:where(.ds-my-button-neutral) { background: var(--my-bg-panel-header, #fafafa); color: var(--my-txt-primary, #1a1c1f); box-shadow: inset 0 0 0 1px var(--my-border-input, #d7d7d7); }\r\n:where(.ds-my-button-neutral):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-3-hover, color-mix(in oklab, #1a1c1f 6%, #f3f3f3)); }\r\n:where(.ds-my-button-neutral):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-3-active, color-mix(in oklab, #1a1c1f 10%, #f3f3f3)); }\r\n:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-danger):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled, color-mix(in oklab, #1a1c1f 10%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); box-shadow: none; opacity: 1; }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)) { color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); }\r\n:is(.ds-my-control, .ds-my-icon-control, .ds-my-composer-control):is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\r\n\r\n@media (hover: hover) and (prefers-reduced-motion: no-preference) {\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    transition: scale var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n  }\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    scale: var(--my-icon-hover-scale, 1.06);\r\n  }\r\n}\n.ds-my-control:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n@media (prefers-reduced-motion: reduce) { .ds-my-control, .ds-my-control svg { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "按钮 ghost",
+      "kind": "button",
+      "refersTo": "button-ghost-light",
+      "description": "辅助动作；透明表面。",
+      "html": "<div class=\"ds-sample\"><button type=\"button\" class=\"ds-my-control ds-my-button-ghost\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8\"></path><path d=\"M21 3v5h-5\"></path></svg>刷新</button></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-control, .ds-my-switch, .ds-my-settings-navigation-item { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); border: 0; cursor: pointer; box-sizing: border-box; } .ds-my-control:disabled, .ds-my-switch:disabled, .ds-my-settings-navigation-item:disabled { cursor: default; }\n\r\n\r\n.ds-my-control {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: var(--my-space-6, 6px);\r\n  height: var(--my-control-height, 32px);\r\n  padding: 0 var(--my-space-12, 12px);\r\n  border-radius: var(--my-radius-base, 10px);\r\n  font-size: var(--my-text-sm, 13px);\r\n  font-weight: var(--my-weight-medium, 500);\r\n  white-space: nowrap;\r\n  transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\n.ds-my-control-sm { height: var(--my-control-height-sm, 28px); padding-inline: var(--my-space-8, 8px); gap: var(--my-space-4, 4px); }\r\n.ds-my-control-lg { height: var(--my-control-height-lg, 34px); }\r\n:where(.ds-my-button-ghost) { background: var(--my-bg-layer-transparent, transparent); color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }\r\n:where(.ds-my-button-ghost):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-button-ghost, .ds-my-button-outline):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-button-outline, .ds-my-button-ghost):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-transparent, transparent); border-color: var(--my-border-disabled, color-mix(in oklab, #1a1c1f 5%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); box-shadow: none; opacity: 1; }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)) { color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); }\r\n:is(.ds-my-control, .ds-my-icon-control, .ds-my-composer-control):is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\r\n\r\n@media (hover: hover) and (prefers-reduced-motion: no-preference) {\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    transition: scale var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n  }\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    scale: var(--my-icon-hover-scale, 1.06);\r\n  }\r\n}\n.ds-my-control:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n@media (prefers-reduced-motion: reduce) { .ds-my-control, .ds-my-control svg { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "按钮 outline",
+      "kind": "button",
+      "refersTo": "button-outline-light",
+      "description": "边框按钮；通用设置页头的引导入口。",
+      "html": "<div class=\"ds-sample\"><button type=\"button\" class=\"ds-my-control ds-my-button-outline\">打开引导</button></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-control, .ds-my-switch, .ds-my-settings-navigation-item { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); border: 0; cursor: pointer; box-sizing: border-box; } .ds-my-control:disabled, .ds-my-switch:disabled, .ds-my-settings-navigation-item:disabled { cursor: default; }\n\r\n\r\n.ds-my-control {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: var(--my-space-6, 6px);\r\n  height: var(--my-control-height, 32px);\r\n  padding: 0 var(--my-space-12, 12px);\r\n  border-radius: var(--my-radius-base, 10px);\r\n  font-size: var(--my-text-sm, 13px);\r\n  font-weight: var(--my-weight-medium, 500);\r\n  white-space: nowrap;\r\n  transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\n.ds-my-control-sm { height: var(--my-control-height-sm, 28px); padding-inline: var(--my-space-8, 8px); gap: var(--my-space-4, 4px); }\r\n.ds-my-control-lg { height: var(--my-control-height-lg, 34px); }\r\n:where(.ds-my-button-outline) { border: 1px solid var(--my-border-input, #d7d7d7); background: var(--my-bg-layer-transparent, transparent); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-button-outline):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); border-color: var(--my-border-strong-1, color-mix(in oklab, #1a1c1f 22%, transparent)); }\r\n:where(.ds-my-button-ghost, .ds-my-button-outline):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-button-outline, .ds-my-button-ghost):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-transparent, transparent); border-color: var(--my-border-disabled, color-mix(in oklab, #1a1c1f 5%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); box-shadow: none; opacity: 1; }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)) { color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); }\r\n:is(.ds-my-control, .ds-my-icon-control, .ds-my-composer-control):is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\r\n\r\n@media (hover: hover) and (prefers-reduced-motion: no-preference) {\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    transition: scale var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n  }\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    scale: var(--my-icon-hover-scale, 1.06);\r\n  }\r\n}\n.ds-my-control:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n@media (prefers-reduced-motion: reduce) { .ds-my-control, .ds-my-control svg { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "按钮 danger",
+      "kind": "button",
+      "refersTo": "button-danger-light",
+      "description": "危险动作；使用危险色与对应状态。",
+      "html": "<div class=\"ds-sample\"><button type=\"button\" class=\"ds-my-control ds-my-button-danger\">删除</button></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-control, .ds-my-switch, .ds-my-settings-navigation-item { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); border: 0; cursor: pointer; box-sizing: border-box; } .ds-my-control:disabled, .ds-my-switch:disabled, .ds-my-settings-navigation-item:disabled { cursor: default; }\n\r\n\r\n.ds-my-control {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: var(--my-space-6, 6px);\r\n  height: var(--my-control-height, 32px);\r\n  padding: 0 var(--my-space-12, 12px);\r\n  border-radius: var(--my-radius-base, 10px);\r\n  font-size: var(--my-text-sm, 13px);\r\n  font-weight: var(--my-weight-medium, 500);\r\n  white-space: nowrap;\r\n  transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\n.ds-my-control-sm { height: var(--my-control-height-sm, 28px); padding-inline: var(--my-space-8, 8px); gap: var(--my-space-4, 4px); }\r\n.ds-my-control-lg { height: var(--my-control-height-lg, 34px); }\r\n:where(.ds-my-button-danger) { background: var(--my-bg-danger-primary, #bf2c22); color: var(--my-txt-on-color, #ffffff); }\r\n:where(.ds-my-button-danger):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-primary-hover, #a5261d); }\r\n:where(.ds-my-button-danger):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-primary-active, #8b2018); }\r\n:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-danger):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled, color-mix(in oklab, #1a1c1f 10%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); box-shadow: none; opacity: 1; }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)) { color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); }\r\n:is(.ds-my-control, .ds-my-icon-control, .ds-my-composer-control):is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\r\n\r\n@media (hover: hover) and (prefers-reduced-motion: no-preference) {\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    transition: scale var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n  }\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    scale: var(--my-icon-hover-scale, 1.06);\r\n  }\r\n}\n.ds-my-control:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n@media (prefers-reduced-motion: reduce) { .ds-my-control, .ds-my-control svg { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "输入框",
+      "kind": "input",
+      "refersTo": "input-light",
+      "description": "字段支持悬停、单圈焦点、错误和禁用状态。",
+      "html": "<div class=\"ds-sample\"><input class=\"ds-my-input\" aria-label=\"面板快捷键\" placeholder=\"Alt+Shift+T\" /></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-input { box-sizing: border-box; font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); }\n\r\n.ds-my-input {\r\n  width: 100%; height: var(--my-field-height, 34px); padding: var(--my-space-9, 9px) var(--my-space-11, 11px);\r\n  border: 1px solid var(--my-border-input, #d7d7d7); border-radius: var(--my-radius-base, 10px);\r\n  background: var(--my-bg-input, #f4f4f4); color: var(--my-txt-primary, #1a1c1f); font-size: var(--my-text-ui, 14px);\r\n  outline: none; transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\ntextarea.ds-my-input { height: auto; min-height: var(--my-field-height, 34px); line-height: var(--my-line-document, 1.6); }\r\n.ds-my-input::placeholder { color: var(--my-txt-placeholder, color-mix(in oklab, #1a1c1f 42%, transparent)); opacity: 1; }\r\n.ds-my-input:hover:not(:disabled):not([aria-disabled='true']):not([aria-invalid='true']):not([readonly]):not(:focus) { border-color: var(--my-border-strong-1, color-mix(in oklab, #1a1c1f 22%, transparent)); }\r\n.ds-my-input:focus { border-color: var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: calc(var(--my-space-2, 2px) * -1); box-shadow: none; }\r\n:is(.ds-my-input, .ds-my-select-trigger)[aria-invalid='true'] { border-color: var(--my-border-danger-strong, #bf2c22); }\r\n:is(.ds-my-input, .ds-my-select-trigger)[aria-invalid='true']:is(:focus, :focus-visible) { border-color: var(--my-border-danger-strong, #bf2c22); outline-color: var(--my-border-danger-strong, #bf2c22); }\r\n.ds-my-input:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled, color-mix(in oklab, #1a1c1f 10%, transparent)); border-color: var(--my-border-disabled, color-mix(in oklab, #1a1c1f 5%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); cursor: default; }\n@media (prefers-reduced-motion: reduce) { .ds-my-input { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "设置分组导航",
+      "kind": "nav",
+      "refersTo": "navigation-light",
+      "description": "搜索框、三组条目与当前页状态；名称匹配与键盘导航由 SettingsNavigation.tsx 实现。",
+      "html": "<div class=\"ds-sample\"><aside class=\"ds-my-context-sidebar\"><div class=\"ds-my-settings-navigation\"><div class=\"ds-my-settings-navigation-search\"><svg class=\"ds-my-settings-navigation-search-icon\" xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path></svg><input class=\"ds-my-input ds-my-settings-navigation-search-input\" type=\"text\" inputmode=\"search\" aria-label=\"搜索设置\" placeholder=\"搜索设置\" /></div><nav class=\"ds-my-settings-navigation-results\" aria-label=\"设置分类\"><section class=\"ds-my-settings-navigation-group\" aria-labelledby=\"ds-nav-group-0\"><h3 id=\"ds-nav-group-0\" class=\"ds-my-settings-navigation-heading\">偏好设置</h3><ul class=\"ds-my-settings-navigation-list\"><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item ds-is-selected\" aria-current=\"page\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 7h-9\"></path><path d=\"M14 17H5\"></path><circle cx=\"17\" cy=\"17\" r=\"3\"></circle><circle cx=\"7\" cy=\"7\" r=\"3\"></circle></svg></span><span class=\"ds-my-settings-navigation-title\">通用</span></button></li><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"></circle><circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"></circle><circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"></circle><circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"></circle><path d=\"M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z\"></path></svg></span><span class=\"ds-my-settings-navigation-title\">外观</span></button></li></ul></section><section class=\"ds-my-settings-navigation-group\" aria-labelledby=\"ds-nav-group-1\"><h3 id=\"ds-nav-group-1\" class=\"ds-my-settings-navigation-heading\">智能与连接</h3><ul class=\"ds-my-settings-navigation-list\"><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"16\" height=\"16\" x=\"4\" y=\"4\" rx=\"2\"></rect><rect width=\"6\" height=\"6\" x=\"9\" y=\"9\" rx=\"1\"></rect><path d=\"M15 2v2\"></path><path d=\"M15 20v2\"></path><path d=\"M2 15h2\"></path><path d=\"M2 9h2\"></path><path d=\"M20 15h2\"></path><path d=\"M20 9h2\"></path><path d=\"M9 2v2\"></path><path d=\"M9 20v2\"></path></svg></span><span class=\"ds-my-settings-navigation-title\">模型供应商</span></button></li><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 8V4H8\"></path><rect width=\"16\" height=\"12\" x=\"4\" y=\"8\" rx=\"2\"></rect><path d=\"M2 14h2\"></path><path d=\"M20 14h2\"></path><path d=\"M15 13v2\"></path><path d=\"M9 13v2\"></path></svg></span><span class=\"ds-my-settings-navigation-title\">执行引擎</span></button></li><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"></rect><path d=\"M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3\"></path></svg></span><span class=\"ds-my-settings-navigation-title\">应用集成</span></button></li><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 22v-5\"></path><path d=\"M9 8V2\"></path><path d=\"M15 8V2\"></path><path d=\"M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z\"></path></svg></span><span class=\"ds-my-settings-navigation-title\">MCP服务</span></button></li></ul></section><section class=\"ds-my-settings-navigation-group\" aria-labelledby=\"ds-nav-group-2\"><h3 id=\"ds-nav-group-2\" class=\"ds-my-settings-navigation-heading\">应用管理</h3><ul class=\"ds-my-settings-navigation-list\"><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"20\" height=\"8\" x=\"2\" y=\"2\" rx=\"2\" ry=\"2\"></rect><rect width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\" ry=\"2\"></rect><line x1=\"6\" x2=\"6.01\" y1=\"6\" y2=\"6\"></line><line x1=\"6\" x2=\"6.01\" y1=\"18\" y2=\"18\"></line></svg></span><span class=\"ds-my-settings-navigation-title\">后台服务</span></button></li><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path></svg></span><span class=\"ds-my-settings-navigation-title\">网络服务</span></button></li><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><ellipse cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"></ellipse><path d=\"M3 5V19A9 3 0 0 0 21 19V5\"></path><path d=\"M3 12A9 3 0 0 0 21 12\"></path></svg></span><span class=\"ds-my-settings-navigation-title\">存储空间</span></button></li><li><button type=\"button\" class=\"ds-my-nav-item ds-my-settings-navigation-item\"><span class=\"ds-my-settings-navigation-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4\"></path><path d=\"M12 8h.01\"></path></svg></span><span class=\"ds-my-settings-navigation-title\">关于</span></button></li></ul></section></nav></div></aside></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-control, .ds-my-switch, .ds-my-settings-navigation-item { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); border: 0; cursor: pointer; box-sizing: border-box; } .ds-my-control:disabled, .ds-my-switch:disabled, .ds-my-settings-navigation-item:disabled { cursor: default; }\n.ds-my-context-sidebar { display: flex; flex-direction: column; } .ds-my-settings-navigation-item { background: var(--my-bg-layer-transparent, transparent); } .ds-my-settings-navigation-search-input { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); box-sizing: border-box; line-height: var(--my-line-ui, 1.45); }\n\r\n.ds-my-context-sidebar {\r\n  position: relative;\r\n  width: min(var(--my-sidebar-width, 240px), max(220px, calc(100vw - 360px)));\r\n  min-width: 0;\r\n  background: var(--my-bg-sidebar, #f3f3f3);\r\n}\n\r\n.ds-my-nav-item { transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)); }\r\n.ds-my-nav-item:hover:not(:disabled):not([aria-disabled='true']):not(.ds-is-selected):not([aria-current='page']) { background: var(--my-bg-navigation-hover, color-mix(in oklab, #1a1c1f 3%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n.ds-my-nav-item.ds-is-selected,\r\n.ds-my-nav-item[aria-current='page'] { background: var(--my-bg-navigation-selected, #e5e5e5); color: var(--my-txt-primary, #1a1c1f); }\r\n.ds-my-nav-item:active:not(:disabled):not([aria-disabled='true']):not(.ds-is-selected):not([aria-current='page']) { background: var(--my-bg-navigation-selected, #e5e5e5); }\r\n.ds-my-nav-item:is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\r\n.ds-my-input {\r\n  width: 100%; height: var(--my-field-height, 34px); padding: var(--my-space-9, 9px) var(--my-space-11, 11px);\r\n  border: 1px solid var(--my-border-input, #d7d7d7); border-radius: var(--my-radius-base, 10px);\r\n  background: var(--my-bg-input, #f4f4f4); color: var(--my-txt-primary, #1a1c1f); font-size: var(--my-text-ui, 14px);\r\n  outline: none; transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\ntextarea.ds-my-input { height: auto; min-height: var(--my-field-height, 34px); line-height: var(--my-line-document, 1.6); }\r\n.ds-my-input::placeholder { color: var(--my-txt-placeholder, color-mix(in oklab, #1a1c1f 42%, transparent)); opacity: 1; }\n.ds-my-settings-navigation-search-input::placeholder { color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }\r\n.ds-my-input:hover:not(:disabled):not([aria-disabled='true']):not([aria-invalid='true']):not([readonly]):not(:focus) { border-color: var(--my-border-strong-1, color-mix(in oklab, #1a1c1f 22%, transparent)); }\r\n.ds-my-input:focus { border-color: var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: calc(var(--my-space-2, 2px) * -1); box-shadow: none; }\r\n:is(.ds-my-input, .ds-my-select-trigger)[aria-invalid='true'] { border-color: var(--my-border-danger-strong, #bf2c22); }\r\n:is(.ds-my-input, .ds-my-select-trigger)[aria-invalid='true']:is(:focus, :focus-visible) { border-color: var(--my-border-danger-strong, #bf2c22); outline-color: var(--my-border-danger-strong, #bf2c22); }\r\n.ds-my-input:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled, color-mix(in oklab, #1a1c1f 10%, transparent)); border-color: var(--my-border-disabled, color-mix(in oklab, #1a1c1f 5%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); cursor: default; }\r\n\r\n@media (hover: hover) and (prefers-reduced-motion: no-preference) {\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    transition: scale var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n  }\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    scale: var(--my-icon-hover-scale, 1.06);\r\n  }\r\n}\n.ds-my-settings-navigation {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n}\n\n.ds-my-settings-navigation-search {\n  position: relative;\n  flex-shrink: 0;\n  margin: var(--my-space-2, 2px) var(--my-space-10, 10px) var(--my-space-10, 10px);\n}\n\n.ds-my-settings-navigation-search-icon {\n  position: absolute;\n  top: 50%;\n  left: var(--my-space-10, 10px);\n  width: var(--my-space-14, 14px);\n  height: var(--my-space-14, 14px);\n  transform: translateY(-50%);\n  color: var(--my-txt-icon-tertiary, #5d5d5d);\n  pointer-events: none;\n}\n\n.ds-my-settings-navigation-search-input {\n  height: var(--my-settings-search-height, 30px);\n  padding-block: 0;\n  padding-inline: var(--my-space-32, 32px) var(--my-space-36, 36px);\n  border-color: var(--my-border-input, #d7d7d7);\n  background: var(--my-bg-input, #f4f4f4);\n  font-size: var(--my-text-sm, 13px);\n}\n\n.ds-my-settings-navigation-search-input:focus {\n  border-color: var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent));\n  background: var(--my-bg-input, #f4f4f4);\n}\n\n.ds-my-settings-navigation-clear {\n  position: absolute;\n  top: 50%;\n  right: var(--my-space-4, 4px);\n  transform: translateY(-50%);\n}\n\n.ds-my-settings-navigation-clear > svg {\n  width: var(--my-space-14, 14px);\n  height: var(--my-space-14, 14px);\n}\n\n.ds-my-settings-navigation-results {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n  scrollbar-gutter: stable both-edges;\n  padding: var(--my-space-2, 2px) var(--my-space-2, 2px) var(--my-space-16, 16px);\n}\n\n.ds-my-settings-navigation-group + .ds-my-settings-navigation-group {\n  margin-top: var(--my-settings-nav-group-gap, 14px);\n}\n\n.ds-my-settings-navigation-heading {\n  margin: 0 0 var(--my-space-4, 4px);\n  padding-inline: var(--my-space-10, 10px);\n  color: var(--my-txt-tertiary, #5d5d5d);\n  font-size: var(--my-text-xs, 12px);\n  font-weight: var(--my-weight-medium, 500);\n  line-height: var(--my-line-ui, 1.45);\n}\n\n.ds-my-settings-navigation-list {\n  display: grid;\n  gap: var(--my-space-2, 2px);\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n\n.ds-my-settings-navigation-item {\n  display: flex;\n  align-items: center;\n  gap: var(--my-space-8, 8px);\n  width: 100%;\n  min-width: 0;\n  min-height: var(--my-settings-nav-row-height, 34px);\n  padding: var(--my-space-4, 4px) var(--my-space-8, 8px);\n  border: 0;\n  border-radius: var(--my-radius-base, 10px);\n  color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent));\n  text-align: left;\n  font-size: var(--my-text-sm, 13px);\n  font-weight: var(--my-weight-normal, 400);\n  line-height: var(--my-line-ui, 1.45);\n}\n\n.ds-my-settings-navigation-item[aria-current='page'] {\n  font-weight: var(--my-weight-medium, 500);\n}\n\n.ds-my-settings-navigation-item:active {\n  background: var(--my-bg-navigation-selected, #e5e5e5);\n}\n\n.ds-my-settings-navigation-icon {\n  display: grid;\n  flex-shrink: 0;\n  place-items: center;\n  width: var(--my-settings-nav-icon-size, 24px);\n  height: var(--my-settings-nav-icon-size, 24px);\n  border-radius: var(--my-radius-base, 10px);\n  background: var(--my-bg-panel, #ffffff);\n  color: var(--my-txt-icon-secondary, color-mix(in oklab, #1a1c1f 70%, transparent));\n}\n\n.ds-my-settings-navigation-icon > svg {\n  width: var(--my-settings-nav-glyph-size, 16px);\n  height: var(--my-settings-nav-glyph-size, 16px);\n  stroke-width: var(--my-module-icon-stroke, 1.7);\n}\n\n.ds-my-settings-navigation-item[aria-current='page'] .ds-my-settings-navigation-icon {\n  background: var(--my-bg-panel-header, #fafafa);\n  color: var(--my-txt-icon-primary, #1a1c1f);\n}\n\n.ds-my-settings-navigation-title {\n  min-width: 0;\n  overflow-wrap: anywhere;\n}\n\n.ds-my-settings-navigation-empty {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: var(--my-space-8, 8px);\n  padding: var(--my-space-16, 16px) var(--my-space-10, 10px);\n  color: var(--my-txt-tertiary, #5d5d5d);\n  font-size: var(--my-text-xs, 12px);\n  line-height: var(--my-line-ui, 1.45);\n}\n\n.ds-my-settings-navigation-empty p {\n  margin: 0;\n}\n\n.ds-my-settings-navigation-empty-title {\n  color: var(--my-txt-primary, #1a1c1f);\n  font-size: var(--my-text-sm, 13px);\n  font-weight: var(--my-weight-medium, 500);\n}\n\n@media (hover: hover) and (prefers-reduced-motion: no-preference) {\n  .ds-my-settings-navigation-icon {\n    transition: scale var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\n  }\n\n  .ds-my-settings-navigation-item:hover:not([aria-current='page']) .ds-my-settings-navigation-icon {\n    scale: var(--my-icon-hover-scale, 1.06);\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .ds-my-settings-navigation-icon {\n    scale: none;\n    transition: none;\n  }\n}\n.ds-my-settings-navigation-item:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n@media (prefers-reduced-motion: reduce) { .ds-my-nav-item, .ds-my-input, .ds-my-settings-navigation-icon { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "范围标签",
+      "kind": "chip",
+      "refersTo": "chip-light",
+      "description": "非交互范围标签；最小高 20px、4px 圆角。",
+      "html": "<div class=\"ds-sample\"><span class=\"ds-my-chip\">应用</span></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n\r\n.ds-my-chip { display: inline-flex; align-items: center; gap: var(--my-space-4, 4px); min-height: var(--my-chip-height, 20px); padding: 0 var(--my-space-6, 6px); border-radius: var(--my-radius-base, 10px); font-size: var(--my-text-xs, 12px); font-weight: var(--my-weight-medium, 500); white-space: nowrap; }\n.ds-my-chip { background: var(--my-bg-layer-1, #f9f9f9); color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }"
+    },
+    {
+      "name": "开关",
+      "kind": "custom",
+      "refersTo": "switch-light",
+      "description": "关闭与开启状态；通过 aria-checked 表达状态。",
+      "html": "<div class=\"ds-sample\"><button type=\"button\" role=\"switch\" aria-label=\"开机自动启动\" aria-checked=\"false\" class=\"ds-my-switch\"><span></span></button> <button type=\"button\" role=\"switch\" aria-label=\"自动检查更新\" aria-checked=\"true\" class=\"ds-my-switch\"><span></span></button></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-control, .ds-my-switch, .ds-my-settings-navigation-item { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); border: 0; cursor: pointer; box-sizing: border-box; } .ds-my-control:disabled, .ds-my-switch:disabled, .ds-my-settings-navigation-item:disabled { cursor: default; }\n\r\n.ds-my-switch { display: inline-flex; flex-shrink: 0; align-items: center; width: var(--my-switch-width, 32px); height: var(--my-switch-height, 20px); padding: var(--my-switch-inset, 3px); border-radius: var(--my-radius-full, 9999px); background: var(--my-bg-input, #f4f4f4); box-shadow: inset 0 0 0 1px var(--my-border-input, #d7d7d7); transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), box-shadow var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)); }\r\n.ds-my-switch > span { width: var(--my-switch-thumb-size, 14px); height: var(--my-switch-thumb-size, 14px); border-radius: var(--my-radius-full, 9999px); background: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); transition: transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)); }\r\n.ds-my-switch:hover:not(:disabled):not([aria-disabled='true']):not([aria-checked='true']) { background: var(--my-bg-layer-3-hover, color-mix(in oklab, #1a1c1f 6%, #f3f3f3)); box-shadow: inset 0 0 0 1px var(--my-border-strong-1, color-mix(in oklab, #1a1c1f 22%, transparent)); }\r\n.ds-my-switch:active:not(:disabled):not([aria-disabled='true']):not([aria-checked='true']) { background: var(--my-bg-layer-3-active, color-mix(in oklab, #1a1c1f 10%, #f3f3f3)); }\r\n.ds-my-switch[aria-checked='true'] { background: var(--my-bg-accent-primary, #1a1c1f); box-shadow: none; }\r\n.ds-my-switch[aria-checked='true']:hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-hover, #303030); }\r\n.ds-my-switch[aria-checked='true']:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-active, #414141); }\r\n.ds-my-switch[aria-checked='true'] > span { background: var(--my-txt-on-accent, #ffffff); transform: translateX(calc(var(--my-switch-width, 32px) - var(--my-switch-inset, 3px) * 2 - var(--my-switch-thumb-size, 14px))); }\r\n.ds-my-switch:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled, color-mix(in oklab, #1a1c1f 10%, transparent)); box-shadow: inset 0 0 0 1px var(--my-border-disabled, color-mix(in oklab, #1a1c1f 5%, transparent)); }\r\n.ds-my-switch:is(:disabled, [aria-disabled='true']) > span { background: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\n.ds-my-switch:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n@media (prefers-reduced-motion: reduce) { .ds-my-switch, .ds-my-switch > span { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "设置页头与分组面板",
+      "kind": "card",
+      "refersTo": "settings-panel-light",
+      "description": "设置正文名称使用500字重与柔和的主体文字色；描述使用400字重、更小字号和较弱颜色。页头与分组共用居中列。",
+      "html": "<div class=\"ds-sample\"><div class=\"ds-my-settings-layout\"><div class=\"ds-my-page-container ds-my-page-content\"><header class=\"ds-settings-page-heading\"><span class=\"ds-settings-page-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 7h-9\"></path><path d=\"M14 17H5\"></path><circle cx=\"17\" cy=\"17\" r=\"3\"></circle><circle cx=\"7\" cy=\"7\" r=\"3\"></circle></svg></span><div class=\"ds-settings-page-copy\"><h1>通用</h1><p>启动行为、快捷键与本机偏好。</p></div><button type=\"button\" class=\"ds-my-control ds-my-button-outline ds-settings-page-action\">打开引导</button></header><div class=\"ds-preferences-page\"><section class=\"ds-preference-section\" aria-labelledby=\"ds-startup-title\"><header class=\"ds-preference-section-heading\"><h2 id=\"ds-startup-title\">启动与窗口</h2></header><div class=\"ds-preference-section-body\"><div class=\"ds-preference-row\" role=\"group\" aria-labelledby=\"ds-startup-label\" aria-describedby=\"ds-startup-hint\"><div class=\"ds-preference-row-label\"><span id=\"ds-startup-label\">开机自动启动</span><p id=\"ds-startup-hint\" class=\"ds-preference-row-hint\">登录系统后自动打开应用。</p></div><div class=\"ds-preference-row-control\"><button type=\"button\" role=\"switch\" class=\"ds-my-switch\" aria-label=\"开机自动启动\" aria-checked=\"false\"><span></span></button></div></div><div class=\"ds-preference-row\" role=\"group\" aria-labelledby=\"ds-update-label\" aria-describedby=\"ds-update-hint\"><div class=\"ds-preference-row-label\"><span id=\"ds-update-label\">自动检查更新</span><p id=\"ds-update-hint\" class=\"ds-preference-row-hint\">发现新版本时提醒。</p></div><div class=\"ds-preference-row-control\"><button type=\"button\" role=\"switch\" class=\"ds-my-switch\" aria-label=\"自动检查更新\" aria-checked=\"true\"><span></span></button></div></div><div class=\"ds-preference-row\" role=\"group\" aria-labelledby=\"ds-explorer-label\" aria-describedby=\"ds-explorer-hint\"><div class=\"ds-preference-row-label\"><span id=\"ds-explorer-label\">资源管理器右键菜单</span><p id=\"ds-explorer-hint\" class=\"ds-preference-row-hint\">仅打包版 Windows 支持。</p></div><div class=\"ds-preference-row-control\"><button type=\"button\" role=\"switch\" class=\"ds-my-switch\" aria-label=\"资源管理器右键：用 Trellis Panel 阅读\" aria-checked=\"false\"><span></span></button></div></div></div></section><section class=\"ds-preference-section\" aria-labelledby=\"ds-shortcuts-title\"><header class=\"ds-preference-section-heading\"><h2 id=\"ds-shortcuts-title\">键盘快捷键</h2></header><div class=\"ds-preference-section-body\"><div class=\"ds-preference-row\" role=\"group\" aria-labelledby=\"ds-shortcut-label\" aria-describedby=\"ds-shortcut-hint\"><div class=\"ds-preference-row-label\"><label id=\"ds-shortcut-label\" for=\"ds-panel-shortcut\">面板快捷键</label><p id=\"ds-shortcut-hint\" class=\"ds-preference-row-hint\">重启后生效。</p></div><div class=\"ds-preference-row-control\"><input id=\"ds-panel-shortcut\" class=\"ds-my-input ds-font-mono\" aria-describedby=\"ds-shortcut-hint\" placeholder=\"Alt+Shift+T\" /></div></div><div class=\"ds-preference-row\" role=\"group\" aria-labelledby=\"ds-quick-label\" aria-describedby=\"ds-quick-hint\"><div class=\"ds-preference-row-label\"><label id=\"ds-quick-label\" for=\"ds-quick-shortcut\">速记窗快捷键</label><p id=\"ds-quick-hint\" class=\"ds-preference-row-hint\">重启后生效。</p></div><div class=\"ds-preference-row-control\"><input id=\"ds-quick-shortcut\" class=\"ds-my-input ds-font-mono\" aria-describedby=\"ds-quick-hint\" placeholder=\"Alt+N\" /></div></div></div></section><p class=\"ds-preference-empty\">暂无最近项目</p></div></div></div></div>",
+      "css": ".ds-sample { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); font-size: var(--my-text-ui, 14px); line-height: var(--my-line-ui, 1.45); font-weight: var(--my-weight-normal, 400); font-variant-numeric: tabular-nums; color: var(--my-txt-primary, #1a1c1f); }\n.ds-my-control, .ds-my-switch, .ds-my-settings-navigation-item { font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); border: 0; cursor: pointer; box-sizing: border-box; } .ds-my-control:disabled, .ds-my-switch:disabled, .ds-my-settings-navigation-item:disabled { cursor: default; }\n.ds-my-settings-layout h1, .ds-my-settings-layout p { margin: 0; } .ds-my-input { box-sizing: border-box; font-family: var(--my-font-sans, 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); } .ds-font-mono { font-family: var(--my-font-mono, ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace); }\n\r\n.ds-my-page-container {\r\n  box-sizing: border-box;\r\n  width: 100%;\r\n  max-width: var(--my-page-max-width, none);\r\n  min-width: 0;\r\n  margin-inline: auto;\r\n  padding-inline: var(--my-page-inset, 24px);\r\n}\r\n.ds-my-page-content { padding-top: var(--my-page-block-inset, 24px); padding-bottom: var(--my-page-bottom-inset, 48px); }\n\r\n\r\n.ds-my-control {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: var(--my-space-6, 6px);\r\n  height: var(--my-control-height, 32px);\r\n  padding: 0 var(--my-space-12, 12px);\r\n  border-radius: var(--my-radius-base, 10px);\r\n  font-size: var(--my-text-sm, 13px);\r\n  font-weight: var(--my-weight-medium, 500);\r\n  white-space: nowrap;\r\n  transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\n.ds-my-control-sm { height: var(--my-control-height-sm, 28px); padding-inline: var(--my-space-8, 8px); gap: var(--my-space-4, 4px); }\r\n.ds-my-control-lg { height: var(--my-control-height-lg, 34px); }\r\n:where(.ds-my-button-outline) { border: 1px solid var(--my-border-input, #d7d7d7); background: var(--my-bg-layer-transparent, transparent); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-button-outline):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); border-color: var(--my-border-strong-1, color-mix(in oklab, #1a1c1f 22%, transparent)); }\r\n:where(.ds-my-button-ghost, .ds-my-button-outline):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-button-outline, .ds-my-button-ghost):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-transparent, transparent); border-color: var(--my-border-disabled, color-mix(in oklab, #1a1c1f 5%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); box-shadow: none; opacity: 1; }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)) { color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover, color-mix(in oklab, #1a1c1f 6%, transparent)); color: var(--my-txt-primary, #1a1c1f); }\r\n:where(.ds-my-icon-control):not(:where(.ds-my-button-primary, .ds-my-button-neutral, .ds-my-button-outline, .ds-my-button-ghost, .ds-my-button-danger)):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active, color-mix(in oklab, #1a1c1f 10%, transparent)); }\r\n:is(.ds-my-control, .ds-my-icon-control, .ds-my-composer-control):is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\r\n.ds-my-switch { display: inline-flex; flex-shrink: 0; align-items: center; width: var(--my-switch-width, 32px); height: var(--my-switch-height, 20px); padding: var(--my-switch-inset, 3px); border-radius: var(--my-radius-full, 9999px); background: var(--my-bg-input, #f4f4f4); box-shadow: inset 0 0 0 1px var(--my-border-input, #d7d7d7); transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), box-shadow var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)); }\r\n.ds-my-switch > span { width: var(--my-switch-thumb-size, 14px); height: var(--my-switch-thumb-size, 14px); border-radius: var(--my-radius-full, 9999px); background: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); transition: transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)); }\r\n.ds-my-switch:hover:not(:disabled):not([aria-disabled='true']):not([aria-checked='true']) { background: var(--my-bg-layer-3-hover, color-mix(in oklab, #1a1c1f 6%, #f3f3f3)); box-shadow: inset 0 0 0 1px var(--my-border-strong-1, color-mix(in oklab, #1a1c1f 22%, transparent)); }\r\n.ds-my-switch:active:not(:disabled):not([aria-disabled='true']):not([aria-checked='true']) { background: var(--my-bg-layer-3-active, color-mix(in oklab, #1a1c1f 10%, #f3f3f3)); }\r\n.ds-my-switch[aria-checked='true'] { background: var(--my-bg-accent-primary, #1a1c1f); box-shadow: none; }\r\n.ds-my-switch[aria-checked='true']:hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-hover, #303030); }\r\n.ds-my-switch[aria-checked='true']:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-active, #414141); }\r\n.ds-my-switch[aria-checked='true'] > span { background: var(--my-txt-on-accent, #ffffff); transform: translateX(calc(var(--my-switch-width, 32px) - var(--my-switch-inset, 3px) * 2 - var(--my-switch-thumb-size, 14px))); }\r\n.ds-my-switch:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled, color-mix(in oklab, #1a1c1f 10%, transparent)); box-shadow: inset 0 0 0 1px var(--my-border-disabled, color-mix(in oklab, #1a1c1f 5%, transparent)); }\r\n.ds-my-switch:is(:disabled, [aria-disabled='true']) > span { background: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); }\r\n.ds-my-input {\r\n  width: 100%; height: var(--my-field-height, 34px); padding: var(--my-space-9, 9px) var(--my-space-11, 11px);\r\n  border: 1px solid var(--my-border-input, #d7d7d7); border-radius: var(--my-radius-base, 10px);\r\n  background: var(--my-bg-input, #f4f4f4); color: var(--my-txt-primary, #1a1c1f); font-size: var(--my-text-ui, 14px);\r\n  outline: none; transition: background-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), border-color var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n}\r\ntextarea.ds-my-input { height: auto; min-height: var(--my-field-height, 34px); line-height: var(--my-line-document, 1.6); }\r\n.ds-my-input::placeholder { color: var(--my-txt-placeholder, color-mix(in oklab, #1a1c1f 42%, transparent)); opacity: 1; }\r\n.ds-my-input:hover:not(:disabled):not([aria-disabled='true']):not([aria-invalid='true']):not([readonly]):not(:focus) { border-color: var(--my-border-strong-1, color-mix(in oklab, #1a1c1f 22%, transparent)); }\r\n.ds-my-input:focus { border-color: var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: calc(var(--my-space-2, 2px) * -1); box-shadow: none; }\r\n:is(.ds-my-input, .ds-my-select-trigger)[aria-invalid='true'] { border-color: var(--my-border-danger-strong, #bf2c22); }\r\n:is(.ds-my-input, .ds-my-select-trigger)[aria-invalid='true']:is(:focus, :focus-visible) { border-color: var(--my-border-danger-strong, #bf2c22); outline-color: var(--my-border-danger-strong, #bf2c22); }\r\n.ds-my-input:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled, color-mix(in oklab, #1a1c1f 10%, transparent)); border-color: var(--my-border-disabled, color-mix(in oklab, #1a1c1f 5%, transparent)); color: var(--my-txt-disabled, color-mix(in oklab, #1a1c1f 38%, transparent)); cursor: default; }\r\n\r\n@media (hover: hover) and (prefers-reduced-motion: no-preference) {\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    transition: scale var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), transform var(--my-motion-fast, 140ms) var(--my-ease-out, cubic-bezier(0.22, 1, 0.36, 1));\r\n  }\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.ds-animate-spin),\r\n  :where(.ds-my-nav-item, .ds-collab-nav-item, .ds-my-menu-item, .ds-my-control, .ds-my-icon-control, .ds-my-composer-control, .ds-my-segment):not(.ds-my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.ds-is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.ds-animate-spin) {\r\n    scale: var(--my-icon-hover-scale, 1.06);\r\n  }\r\n}\n.ds-my-settings-layout {\r\n  --my-page-max-width: calc(var(--my-settings-content-width, 800px) + var(--my-page-inset, 24px) * 2);\n  background: var(--my-bg-sidebar, #f3f3f3);\r\n}\r\n\r\n.ds-my-settings-layout .ds-my-page-container { margin-inline: auto; }\r\n.ds-my-settings-layout .ds-my-page-content { padding-top: var(--my-settings-page-top, 24px); }\r\n\r\n.ds-settings-page-heading {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: var(--my-settings-identity-gap, 14px);\r\n  min-width: 0;\r\n  margin-bottom: var(--my-settings-heading-gap, 20px);\r\n}\r\n\r\n.ds-settings-page-icon {\r\n  display: inline-flex;\r\n  flex: 0 0 var(--my-settings-heading-icon-size, 36px);\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: var(--my-settings-heading-icon-size, 36px);\r\n  height: var(--my-settings-heading-icon-size, 36px);\r\n  border: 1px solid var(--my-border-subtle, color-mix(in oklab, #1a1c1f 8%, transparent));\r\n  border-radius: var(--my-radius-base, 10px);\r\n  background: var(--my-bg-panel, #ffffff);\r\n  color: var(--my-txt-primary, #1a1c1f);\r\n}\r\n\r\n.ds-settings-page-copy { flex: 1; min-width: 0; }\r\n.ds-settings-page-icon > svg { width: var(--my-settings-heading-glyph-size, 20px); height: var(--my-settings-heading-glyph-size, 20px); }\r\n.ds-settings-page-action { flex-shrink: 0; margin-left: auto; }\r\n.ds-settings-page-heading h1 {\r\n  font-size: var(--my-settings-title-size, 22px);\r\n  line-height: var(--my-line-heading, 1.2);\r\n  font-weight: var(--my-weight-semibold, 600);\r\n  letter-spacing: var(--my-tracking-tight, -0.02em);\r\n  color: var(--my-txt-primary, #1a1c1f);\r\n  overflow-wrap: anywhere;\r\n}\r\n.ds-settings-page-copy > p {\r\n  margin-top: var(--my-space-4, 4px);\r\n  font-size: var(--my-text-sm, 13px);\r\n  line-height: var(--my-line-ui, 1.45);\r\n  color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent));\r\n  overflow-wrap: anywhere;\r\n}\r\n\r\n.ds-preferences-page {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: var(--my-settings-section-gap, 14px);\r\n  min-width: 0;\r\n  container-type: inline-size;\r\n}\r\n\r\n.ds-preference-section {\r\n  min-width: 0;\r\n  scroll-margin-block: var(--my-space-24, 24px);\r\n  border: 1px solid var(--my-border-subtle, color-mix(in oklab, #1a1c1f 8%, transparent));\r\n  border-radius: var(--my-radius-base, 10px);\r\n  background: var(--my-bg-surface-1, #f7f7f7);\r\n}\r\n\r\n.ds-preference-section-heading {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: var(--my-space-12, 12px);\r\n  min-width: 0;\r\n  padding: var(--my-settings-section-heading-padding, 8px) var(--my-settings-panel-padding, 18px);\r\n  border-bottom: 1px solid var(--my-border-subtle, color-mix(in oklab, #1a1c1f 8%, transparent));\r\n  border-start-start-radius: inherit;\r\n  border-start-end-radius: inherit;\r\n  background: var(--my-bg-surface-2, #f9f9f9);\r\n}\r\n.ds-preference-section-heading:last-child { border-bottom: 0; border-radius: inherit; }\r\n.ds-preference-section-heading h2 {\r\n  min-width: 0;\r\n  margin: 0;\r\n  font-size: var(--my-text-sm, 13px);\r\n  line-height: var(--my-line-ui, 1.45);\r\n  font-weight: var(--my-weight-medium, 500);\r\n  color: var(--my-txt-primary, #1a1c1f);\r\n  overflow-wrap: anywhere;\r\n}\r\n.ds-preference-section-heading p { color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent)); font-size: var(--my-text-sm, 13px); line-height: var(--my-line-ui, 1.45); }\r\n.ds-preference-section-action {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: var(--my-space-8, 8px);\r\n  min-width: 0;\r\n  margin-left: auto;\r\n}\r\n.ds-preference-section-body {\r\n  min-width: 0;\r\n  padding-inline: var(--my-settings-panel-padding, 18px);\r\n}\r\n\r\n.ds-preference-row {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: var(--my-space-16, 16px);\r\n  min-width: 0;\r\n  padding-block: var(--my-settings-row-padding, 10px);\r\n}\r\n.ds-preference-row + .ds-preference-row { border-top: 1px solid var(--my-border-subtle, color-mix(in oklab, #1a1c1f 8%, transparent)); }\r\n.ds-preference-row-label {\r\n  flex: 1;\r\n  min-width: 0;\r\n  font-size: var(--my-text-item-title, 13px);\r\n  line-height: var(--my-line-ui, 1.45);\r\n  font-weight: var(--my-weight-medium, 500);\r\n  color: var(--my-txt-item-title, color-mix(in oklab, var(--my-txt-primary, #1a1c1f) 50%, var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent))));\r\n  overflow-wrap: anywhere;\r\n}\r\n.ds-preference-row-hint {\r\n  margin-top: var(--my-settings-hint-gap, 3px);\r\n  font-size: var(--my-text-item-description, 12px);\r\n  line-height: var(--my-line-ui, 1.45);\r\n  font-weight: var(--my-weight-normal, 400);\r\n  color: var(--my-txt-item-description, #5d5d5d);\r\n}\r\n.ds-preference-row-control {\r\n  display: flex;\r\n  flex-shrink: 0;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  justify-content: flex-end;\r\n  gap: var(--my-space-8, 8px);\r\n  width: min(50%, var(--my-settings-field-width, 300px));\r\n  min-width: 0;\r\n  font-size: var(--my-text-md, 14px);\r\n  line-height: var(--my-line-ui, 1.45);\r\n}\r\n.ds-preference-row-control > .ds-my-input { flex: 1; min-width: 0; }\r\n.ds-preference-row-control > label { display: inline-flex; align-items: center; gap: var(--my-space-8, 8px); }\r\n.ds-preference-row:has(> .ds-preference-row-detail) { flex-wrap: wrap; row-gap: var(--my-space-12, 12px); }\r\n.ds-preference-row-detail {\r\n  flex-basis: 100%;\r\n  min-width: 0;\r\n  font-size: var(--my-text-sm, 13px);\r\n  line-height: var(--my-line-document, 1.6);\r\n  color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent));\r\n  overflow-wrap: anywhere;\r\n}\r\n.ds-preference-row-detail summary { width: fit-content; cursor: pointer; }\r\n.ds-preference-actions {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  justify-content: flex-end;\r\n  gap: var(--my-space-8, 8px);\r\n  padding-block: var(--my-space-12, 12px);\r\n  border-top: 1px solid var(--my-border-subtle, color-mix(in oklab, #1a1c1f 8%, transparent));\r\n}\r\n:is(.ds-preference-theme-choices, .ds-preference-size-choices) { width: max-content; flex: 0 1 auto; flex-wrap: nowrap; }\r\n:is(.ds-preference-theme-choices, .ds-preference-size-choices) .ds-my-segment { flex: 0 0 auto; }\r\n.ds-preference-empty {\r\n  margin: 0;\r\n  font-size: var(--my-text-sm, 13px);\r\n  line-height: var(--my-line-ui, 1.45);\r\n  color: var(--my-txt-secondary, color-mix(in oklab, #1a1c1f 74%, transparent));\r\n}\r\n\r\n@container (max-width: 600px) {\r\n  .ds-preference-row { flex-wrap: wrap; gap: var(--my-space-8, 8px); }\r\n  .ds-preference-row-label { flex-basis: 100%; }\r\n  .ds-preference-row-control { width: 100%; justify-content: flex-start; }\r\n  .ds-preference-row:has(> .ds-preference-row-control > :is(.ds-my-switch, input[type='checkbox']):only-child) { flex-wrap: nowrap; gap: var(--my-space-16, 16px); }\r\n  .ds-preference-row:has(> .ds-preference-row-control > :is(.ds-my-switch, input[type='checkbox']):only-child) > .ds-preference-row-label { flex-basis: auto; }\r\n  .ds-preference-row:has(> .ds-preference-row-control > :is(.ds-my-switch, input[type='checkbox']):only-child) > .ds-preference-row-control { flex-shrink: 0; width: auto; }\r\n}\r\n\r\n@container (max-width: 420px) {\r\n  .ds-preference-section-heading, .ds-preference-section-body { padding-inline: var(--my-space-16, 16px); }\r\n  .ds-preference-section-heading { align-items: flex-start; }\r\n  .ds-preference-section-action { max-width: 100%; }\r\n}\n.ds-my-control:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n.ds-my-switch:focus-visible { outline: var(--my-space-2, 2px) solid var(--my-focus-ring, color-mix(in oklab, #1a1c1f 55%, transparent)); outline-offset: var(--my-space-1, 1px); }\n@media (max-width: 960px) { .ds-my-settings-layout { --my-page-inset: 16px; } }\n@media (prefers-reduced-motion: reduce) { .ds-my-control, .ds-my-input, .ds-my-switch, .ds-my-switch > span { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "正文名称与辅助描述",
+      "kind": "custom",
+      "refersTo": "item-title-light",
+      "description": "界面名称使用500字重和柔和主体色；辅助描述小一级，使用400字重和较弱颜色。",
+      "html": "<div class=\"ds-item-copy\"><div class=\"ds-item-title\">开机自动启动</div><p class=\"ds-item-description\">登录系统后自动打开应用。</p></div>",
+      "css": ".ds-item-copy { font-family: var(--my-font-sans, system-ui, sans-serif); line-height: var(--my-line-ui, 1.45); } .ds-item-title { font-size: var(--my-text-item-title, 13px); font-weight: var(--my-weight-medium, 500); color: var(--my-txt-item-title, #37393c); } .ds-item-description { margin: var(--my-space-3, 3px) 0 0; font-size: var(--my-text-item-description, 12px); font-weight: var(--my-weight-normal, 400); color: var(--my-txt-item-description, #5d5d5d); }"
+    }
+  ],
+  "narrative": {
+    "overview": "Trellis Panel 的应用页面以当前设置页为设计基线，使用中性石墨与纸白主题、统一矩形圆角、清楚的名称与描述层级以及克制反馈。紧凑、标准、舒适三档调整文字与布局密度，矩形圆角固定10px；默认标准档。",
+    "dos": [
+      "Do 通过共享语义 token 同步主题、文字、控件和布局密度。",
+      "Do 让设置标题与内容列在主区域内水平居中，动作紧邻页头、分组或字段。",
+      "Do 为字段关联标签与说明，保留键盘焦点、状态文字和长文本换行。",
+      "Do 在减少动态效果时关闭图标缩放与空间过渡。",
+      "Do 使用 my-item-title 与 my-item-description 区分普通名称和辅助描述，保留状态与阅读内容的语义。",
+      "Do 以设置页为应用页面设计基线，普通矩形组件共用 rounded.base 的10px圆角。"
+    ],
+    "donts": [
+      "Don't 将某一密度的行高写死，或把紧凑尺寸当作默认标准档。",
+      "Don't 给单项引导动作、空的最近项目另建整块面板。",
+      "Don't 为输入框叠加外圈光晕、阴影和多重焦点边界。",
+      "Don't 让图标悬停改变布局、覆盖已选中或禁用状态，或靠整页入场动画展示内容。",
+      "Don't 为页面、组件或密度另建正圆角值，或用间距推导附加圆角。"
+    ]
+  }
+}

@@ -26,3 +26,10 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - Put temporary validation scripts and artifacts in the operating system's TEMP directory outside the repository. Do not introduce tracked test runners, CI test jobs or test-only dependencies.
 - Preserve production checks and lifecycle guards: `check:acpx`, `check:ui`, `typecheck`, `build`, `postinstall`, and the existing dev/build/typecheck/packaging guards. Run applicable production checks and report their results.
 - Do not change global Git configuration or Git hooks to enforce these rules.
+
+# UI design standard
+
+- Use the current Settings interface as the visual baseline for application pages. Before designing or editing UI, read `PRODUCT.md` for users, purpose and constraints, then `DESIGN.md`, `.trellis/spec/frontend/css-design.md` and the relevant domain guidelines; reuse the shared components and tokens.
+- Ordinary rectangular surfaces and controls use `--my-radius-base` at 10 CSS px in every density preset. Do not introduce local radius values or spacing-derived offsets. Functional circles and tracks retain `full`/`round`; joined edges and fullscreen surfaces may use zero.
+- Use `my-item-title` and `my-item-description` for ordinary names and supporting descriptions. Keep page headings, reading content, numeric data and status information in their own roles. Title styling must not leak into editable content or control values.
+- Check actual rendered output in both themes and the three density presets. Preserve keyboard focus, restrained icon hover and reduced-motion behavior.

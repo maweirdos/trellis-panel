@@ -6,7 +6,7 @@
 .runtime-engine-toggle:hover { background: var(--my-bg-layer-2-hover); }
 .runtime-engine-toggle:focus-visible, .runtime-engine-inspect > summary:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
 .runtime-engine-identity { display: grid; gap: var(--my-space-4); min-width: 0; flex: 1; }
-.runtime-engine-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--my-space-8); font-size: var(--my-text-sm); font-weight: var(--my-weight-medium); overflow-wrap: anywhere; }
+.runtime-engine-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--my-space-8); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); overflow-wrap: anywhere; color: var(--my-txt-item-title); }
 .runtime-engine-version { color: var(--my-txt-tertiary); font-size: var(--my-text-xs); font-weight: var(--my-weight-normal); }
 .runtime-engine-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-6); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
 .runtime-engine-status.is-attention, .runtime-engine-update { color: var(--my-txt-warning-primary); }
@@ -34,11 +34,11 @@
 .runtime-engine-diagnostics li { overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
 .runtime-engine-diagnostics li + li { border-top: 1px solid var(--my-border-subtle); padding-top: var(--my-space-8); }
 .runtime-engine-empty { padding-block: var(--my-space-16); }
-.runtime-engine-defaults { color: var(--my-txt-tertiary); font-size: var(--my-text-xs); overflow-wrap: anywhere; }
+.runtime-engine-defaults { color: var(--my-txt-item-description); font-size: var(--my-text-item-description); overflow-wrap: anywhere; font-weight: var(--my-weight-normal); }
 .runtime-config-fields { display: grid; gap: var(--my-space-16); min-width: 0; }
 .runtime-config-field { min-width: 0; }
-.runtime-config-field h3 { font-weight: var(--my-weight-normal); }
-.runtime-config-inherited { display: block; margin-top: var(--my-space-4); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
+.runtime-config-fields .runtime-config-field > h3, .runtime-config-fields .runtime-config-field > label { color: var(--my-txt-item-title); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); }
+.runtime-config-inherited { display: block; margin-top: var(--my-space-4); color: var(--my-txt-item-description); font-size: var(--my-text-item-description); font-weight: var(--my-weight-normal); }
 .runtime-config-rows { display: grid; justify-items: start; gap: var(--my-space-8); margin-top: var(--my-space-8); }
 .runtime-config-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; align-items: center; gap: var(--my-space-8); width: 100%; }
 .runtime-config-row input { width: 100%; }

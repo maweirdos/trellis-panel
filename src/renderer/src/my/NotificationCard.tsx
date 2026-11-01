@@ -40,8 +40,8 @@ export function NotificationCard({ notification, onDismiss, action, onExpandedCh
     <span className="my-notification-icon" aria-hidden="true"><Icon /></span>
     <div className="my-notification-content">
       <div id={contentId} className="my-notification-message my-scrollbar" role={notification.kind === 'error' ? 'alert' : 'status'} aria-atomic="true" tabIndex={expanded ? 0 : undefined}>
-        <div ref={titleRef} className="my-notification-title">{notification.title}</div>
-        {notification.body && <div ref={bodyRef} className="my-notification-body">{notification.body}</div>}
+        <div ref={titleRef} className="my-notification-title my-item-title">{notification.title}</div>
+        {notification.body && <div ref={bodyRef} className="my-notification-body my-item-description">{notification.body}</div>}
       </div>
       {(action || overflowing || expanded) && <div className="my-notification-actions">
         {action && <button type="button" className="my-notification-action" onClick={action.onClick}>{action.label}</button>}

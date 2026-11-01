@@ -128,7 +128,7 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
     <div className={clsx("grid grid-cols-1 gap-5", mode === 'overview' && "xl:grid-cols-5")}>
       {/* 成员负载：谁在做什么（人多时自动铺成两列网格） */}
       {mode !== 'activity' && <div className={mode === 'overview' ? 'xl:col-span-3' : ''}>
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-my-xs font-semibold text-my-primary">
+        <div className="my-item-title mb-3 flex flex-wrap items-center gap-2">
           <Users2 size={13} className="text-my-icon-secondary" /> 成员负载
           <div className="ml-auto flex items-center gap-1" role="group" aria-label="按任务负责人筛选">
             {([
@@ -161,12 +161,12 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
                   <Avatar name={m.name} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-my-xs font-semibold text-my-primary">{m.name}</span>
-                      <span className="text-my-xs text-my-tertiary">
+                      <span className="my-item-title">{m.name}</span>
+                      <span className="my-item-description">
                         {inflight.length} 个未结束 · 完成 {doneCount}
                       </span>
                     </div>
-                    <div className="mt-0.5 text-my-xs text-my-secondary">
+                    <div className="my-item-description mt-0.5">
                       {m.lastRecordAt ? `关联文件最近更新 ${relTime(m.lastRecordAt)}` : '暂无文件更新记录'}
                     </div>
                   </div>
@@ -190,7 +190,7 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
                       className="flex w-full items-center gap-2 rounded-my-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-my-line hover:bg-my-layer-1"
                     >
                       <PriorityBadge priority={t.record?.priority ?? ''} />
-                      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">
+                      <span className="my-item-title min-w-0 flex-1 truncate">
                         {t.record?.title ?? taskDateLabel(t.dirName, t.date)}
                       </span>
                       <StatusBadge status={t.record?.status ?? ''} />
@@ -214,10 +214,10 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
       {/* 动态时间线：按日分组 */}
       {mode !== 'members' && <div className={mode === 'overview' ? 'xl:col-span-2' : ''}>
         <div className="overflow-hidden rounded-my-lg border border-my-line bg-my-surface-1">
-          <div className="flex items-center gap-1.5 border-b border-my-line px-4 py-2.5 text-my-xs font-semibold text-my-secondary">
+          <div className="my-item-title flex items-center gap-1.5 border-b border-my-line px-4 py-2.5">
             <GitCommitHorizontal size={13} className="text-my-tertiary" /> 最近记录
           </div>
-          <p className="border-b border-my-line bg-my-layer-1 px-4 py-2 text-my-xs leading-5 text-my-secondary">来自任务、工作区文件和会话时间记录；负责人不等于实际操作者。</p>
+          <p className="my-item-description border-b border-my-line bg-my-layer-1 px-4 py-2">来自任务、工作区文件和会话时间记录；负责人不等于实际操作者。</p>
           <div className="px-4 py-3">
             {feedGroups.map(([label, items]) => (
               <div key={label} className="mb-4 last:mb-0">
@@ -245,7 +245,7 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
                         {/* 动态内容区（标题与时间戳分离，彻底杜绝时间戳折行撕裂） */}
                         <div className="min-w-0 flex-1 leading-snug">
                           <div className="flex items-center justify-between gap-1.5">
-                            <span className="truncate font-semibold text-my-secondary">{it.who}</span>
+                            <span className="my-item-title truncate">{it.who}</span>
                             <span className="shrink-0 font-mono text-my-2xs text-my-tertiary whitespace-nowrap">
                               {relTime(it.at)}
                             </span>
@@ -361,7 +361,7 @@ export function TeamEfficiency(): JSX.Element {
   return (
     <div className="space-y-4 lg:col-span-5">
       <div className="flex items-center gap-2">
-        <div className="text-my-xs font-semibold text-my-secondary">效率分析</div>
+        <div className="my-item-title">效率分析</div>
         {aiEnabled && (
           <Button variant="outline" size="sm" className="ml-auto" onClick={() => void runDiagnosis()} disabled={diagnosing} title="AI 解读效率数据：停滞归因、负载观察、行动建议">
             {diagnosing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} {diagnosing ? 'AI 诊断中…' : 'AI 深度诊断'}
@@ -401,7 +401,7 @@ export function TeamEfficiency(): JSX.Element {
       </div>
 
       <div className="my-card px-4 py-3.5">
-        <div className="mb-3 text-my-xs font-semibold text-my-secondary">近 14 天流转热度</div>
+        <div className="my-item-title mb-3">近 14 天流转热度</div>
         <div className="flex h-24 items-end gap-1.5">
           {data.daily.map((d) => (
             <div key={d.date} className="group relative flex-1">
@@ -418,7 +418,7 @@ export function TeamEfficiency(): JSX.Element {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="my-card px-4 py-3.5">
-          <div className="mb-2.5 text-my-xs font-semibold text-my-secondary">成员平均交付周期</div>
+          <div className="my-item-title mb-2.5">成员平均交付周期</div>
           {data.memberCycle.length === 0 && <div className="text-my-xs text-my-tertiary">暂无已完成任务数据</div>}
           <div className="space-y-1.5">
             {data.memberCycle.map((m) => (
@@ -434,7 +434,7 @@ export function TeamEfficiency(): JSX.Element {
         </div>
 
         <div className="my-card px-4 py-3.5">
-          <div className="mb-2.5 text-my-xs font-semibold text-my-secondary">停滞任务预警</div>
+          <div className="my-item-title mb-2.5">停滞任务预警</div>
           {data.aging.length === 0 && <div className="text-my-xs text-my-success-text">没有停滞任务 👍</div>}
           <div className="space-y-1.5">
             {data.aging.map((t) => (
@@ -450,7 +450,7 @@ export function TeamEfficiency(): JSX.Element {
 
       {data.recent.length > 0 && (
         <div className="my-card px-4 py-3.5">
-          <div className="mb-2 text-my-xs font-semibold text-my-secondary">最近流转</div>
+          <div className="my-item-title mb-2">最近流转</div>
           <div className="space-y-1">
             {data.recent.map((e, i) => (
               <div key={i} className="flex items-center gap-2 text-my-xs text-my-tertiary">
@@ -667,7 +667,7 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
           <Star size={15} className="shrink-0 text-my-accent-text" fill="currentColor" />
           <div className="min-w-0 flex-1">
             <div className="text-my-xs uppercase tracking-wider text-my-tertiary">最近会话绑定的任务</div>
-            <button onClick={() => showTask(currentTask.dirName)} className="truncate text-my-xs font-medium text-my-primary hover:text-my-accent-text">
+            <button onClick={() => showTask(currentTask.dirName)} className="my-item-title truncate hover:text-my-accent-text">
               {currentTask.record.title}
             </button>
           </div>
@@ -680,7 +680,7 @@ function TeamPageBody({ snapshot }: { snapshot: ProjectSnapshot }): JSX.Element 
 
       {section === 'overview' && <div className="my-locked-scroll my-scrollbar">
         <div className="space-y-5">
-          <p className="text-my-sm text-my-secondary">成员来自当前项目开发者与任务负责人记录；负载按未结束任务汇总。</p>
+          <p className="my-item-description">成员来自当前项目开发者与任务负责人记录；负载按未结束任务汇总。</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setSection('members')}>查看成员</Button>
             <Button variant="ghost" onClick={() => setSection('activity')}>查看动态</Button>
@@ -724,8 +724,8 @@ function StandupTab(): JSX.Element {
   return (
     <div className="my-card flex min-h-0 flex-1 flex-col p-4">
       <div className="mb-3 flex shrink-0 items-center gap-2">
-        <span className="text-my-xs font-semibold text-my-primary">每日站会摘要</span>
-        <span className="text-my-xs text-my-tertiary">完成 · 在途 · 阻塞</span>
+        <span className="my-item-title">每日站会摘要</span>
+        <span className="my-item-description">完成 · 在途 · 阻塞</span>
         <div className="ml-auto flex gap-1.5">
           <Button variant="outline" size="sm" onClick={() => void generate()} disabled={loading}>
             重新生成
@@ -798,7 +798,7 @@ function WorkflowInsightTab({ snapshot }: { snapshot: ProjectSnapshot }): JSX.El
   return (
     <div className="space-y-4">
       <div className="my-card p-4">
-        <div className="mb-3 text-my-xs font-semibold text-my-primary">Workflow 解析链（团队 → 个人 → 任务）</div>
+        <div className="my-item-title mb-3">Workflow 解析链（团队 → 个人 → 任务）</div>
         {scan ? (
           <div className="grid gap-2 text-my-sm md:grid-cols-4">
             <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
@@ -827,7 +827,7 @@ function WorkflowInsightTab({ snapshot }: { snapshot: ProjectSnapshot }): JSX.El
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="my-card p-4">
-          <div className="mb-3 text-my-xs font-semibold text-my-primary">任务 workflow 分布</div>
+          <div className="my-item-title mb-3">任务 workflow 分布</div>
           {usage.length === 0 ? (
             <div className="text-my-xs text-my-tertiary">暂无任务</div>
           ) : (
@@ -845,7 +845,7 @@ function WorkflowInsightTab({ snapshot }: { snapshot: ProjectSnapshot }): JSX.El
           )}
         </div>
         <div className="my-card p-4">
-          <div className="mb-3 text-my-xs font-semibold text-my-primary">流程健康度 · 停滞任务（≥3 天无动静）</div>
+          <div className="my-item-title mb-3">流程健康度 · 停滞任务（≥3 天无动静）</div>
           {aging.length === 0 ? (
             <div className="text-my-xs text-my-success-text">没有停滞任务 👍</div>
           ) : (
@@ -865,7 +865,7 @@ function WorkflowInsightTab({ snapshot }: { snapshot: ProjectSnapshot }): JSX.El
 
       {scan && (
         <div className="my-card p-4">
-          <div className="mb-3 text-my-xs font-semibold text-my-primary">平台覆盖</div>
+          <div className="my-item-title mb-3">平台覆盖</div>
           <div className="flex flex-wrap gap-1.5">
             {scan.platforms.filter((p) => p.detected).map((p) => (
               <span key={p.id} className="my-chip bg-my-accent-subtle text-my-accent-text">{p.name}</span>

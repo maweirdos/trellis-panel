@@ -170,8 +170,8 @@ export function CapsuleView(): JSX.Element {
     <div className="drag-region my-floating-strip my-capsule-strip" title={error ?? '拖动可移动任务状态条'}>
       <span className={clsx('my-floating-dot', current ? statusTone : 'bg-my-icon-tertiary')} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-my-sm font-medium" title={current?.record?.title ?? current?.dirName}>{current?.record?.title ?? current?.dirName ?? (snapshot ? '暂无任务' : '未打开项目')}</div>
-        <div className={clsx('truncate text-my-2xs', error ? 'text-my-danger-text' : 'text-my-secondary')}>
+        <div className="my-item-title truncate" title={current?.record?.title ?? current?.dirName}>{current?.record?.title ?? current?.dirName ?? (snapshot ? '暂无任务' : '未打开项目')}</div>
+        <div className={clsx('my-item-description truncate', error && 'text-my-danger-text')}>
           {error ?? `${snapshot?.meta.name ?? '任务状态条'}${progress ? ` · 子任务 ${progress.done}/${progress.total}` : ' · 展开查看详情'}`}
         </div>
       </div>
@@ -183,7 +183,7 @@ export function CapsuleView(): JSX.Element {
   return <FloatingFrame>
     <header className="drag-region my-floating-header my-capsule-header">
       <PanelsTopLeft size={16} className="shrink-0 text-my-icon-secondary" aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate text-my-sm font-medium" title={snapshot?.meta.root}>{snapshot?.meta.name ?? '未打开项目'}</span>
+      <span className="my-item-title min-w-0 flex-1 truncate" title={snapshot?.meta.root}>{snapshot?.meta.name ?? '未打开项目'}</span>
       {windowActions}
     </header>
     <div className="no-drag my-floating-body my-capsule-body my-scrollbar">
@@ -242,7 +242,7 @@ export function CapsuleView(): JSX.Element {
             </button>
           })}</div>
         </section>}
-      </> : <div className="my-floating-empty"><ListTodo size={28} className="text-my-icon-tertiary" /><p className="font-medium">{snapshot ? '当前项目暂无任务' : '打开项目后开始工作'}</p><p className="text-my-xs text-my-secondary">任务与主面板保持同步，可随时收起为状态条。</p></div>}
+      </> : <div className="my-floating-empty"><ListTodo size={28} className="text-my-icon-tertiary" /><p className="my-item-title">{snapshot ? '当前项目暂无任务' : '打开项目后开始工作'}</p><p className="my-item-description">任务与主面板保持同步，可随时收起为状态条。</p></div>}
     </div>
     <footer className="no-drag my-floating-footer my-capsule-footer">
       <button type="button" className="my-capsule-footer-action" aria-label="打开当前工程" disabled={!root} onClick={() => root && void run(() => api.openInEditor(root))}><Code2 size={15} aria-hidden="true" /><span>工程</span></button>

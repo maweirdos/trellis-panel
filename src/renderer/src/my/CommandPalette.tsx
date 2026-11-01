@@ -245,9 +245,9 @@ export function CommandPalette(): JSX.Element | null {
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center">{item.icon}</span>
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   {item.fulltext && query.trim() && !item.label.toLowerCase().includes(query.trim().toLowerCase()) && (
-                    <span className="shrink-0 rounded bg-my-layer-3 px-1 text-my-2xs text-my-tertiary">描述命中</span>
+                    <span className="my-item-description shrink-0 rounded bg-my-layer-3 px-1 text-my-secondary">描述命中</span>
                   )}
-                  {item.hint && <span className="shrink-0 text-my-xs text-my-tertiary">{item.hint}</span>}
+                  {item.hint && <span className={clsx('my-item-description shrink-0', activeSelected === index && 'text-my-secondary')}>{item.hint}</span>}
                 </button>
               </div>
             )

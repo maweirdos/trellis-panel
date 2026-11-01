@@ -8,6 +8,7 @@
   font-size: var(--my-text-sm);
   overflow-wrap: anywhere;
 }
+.my-root .my-git-notice:where(.my-item-description) { font-size: var(--my-text-item-description); }
 .my-root .my-git-file {
   display: flex;
   align-items: baseline;

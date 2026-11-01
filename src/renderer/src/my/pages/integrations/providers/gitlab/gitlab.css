@@ -11,3 +11,7 @@
   max-width: 100%;
   border-radius: 0;
 }
+
+.my-root .gitlab-project-choice:is(:hover, [aria-pressed='true']):not(:disabled) .my-item-description {
+  color: var(--my-txt-secondary);
+}

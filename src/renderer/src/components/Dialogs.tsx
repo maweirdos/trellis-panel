@@ -202,7 +202,7 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
   return (
     <>
       <div className="text-my-sm font-semibold text-my-primary">{title}</div>
-      {label && <label htmlFor={fieldId} className="mt-3 mb-1.5 block text-my-xs text-my-secondary">{label}</label>}
+      {label && <label htmlFor={fieldId} className="my-item-title mt-3 mb-1.5 block">{label}</label>}
       {multiline ? (
         <textarea
           autoFocus
