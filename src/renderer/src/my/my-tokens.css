@@ -169,6 +169,7 @@
   --my-header-control-height: var(--my-space-30);
   --my-header-segment-height: var(--my-space-28);
   --my-header-search-width: var(--my-space-224);
+  --my-header-code-tools-height: calc(var(--my-header-control-height) + var(--my-space-12));
   --my-integration-setup-width: 768px;
   --my-integration-drawer-width: 800px;
   --my-page-block-inset: var(--my-space-24);

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, FolderOpen, Loader2, Pause, Play, RefreshCw, Square, Terminal, X } from 'lucide-react'
+import { Activity, ArrowLeft, FolderOpen, Loader2, Pause, Play, RefreshCw, Square, Terminal, X } from 'lucide-react'
 import type { ApplicationInstanceSummary, ApplicationLogsResult, ApplicationTaskServiceUse } from '@shared/app-runtime'
 import { api, hasIpc } from '../api'
-import { Button, Modal } from '../my/ui'
+import { Button, Modal, Tooltip } from '../my/ui'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { projectRootKey } from '../my/navigation'
@@ -48,7 +48,7 @@ function nameOf(instance: ApplicationInstanceSummary): string { return instance.
 function copyName(root: string): string { return root.split(/[\\/]/).filter(Boolean).at(-1) ?? root }
 type ReferenceOperation = { targetKey: string; pending: boolean; message?: string; failed?: boolean; sequence: number }
 
-export function ApplicationRunCenter(): JSX.Element {
+export function ApplicationRunCenter({ variant = 'default' }: { variant?: 'default' | 'activity' } = {}): JSX.Element {
   const state = useApplicationInstances()
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<ApplicationInstanceSummary | null>(null)
@@ -67,6 +67,7 @@ export function ApplicationRunCenter(): JSX.Element {
   const referenceFeedback = Object.values(referenceOps).filter(item => item.targetKey === selectedKey).sort((a, b) => a.sequence - b.sequence).at(-1)
   const referenceBusy = Object.values(referenceOps).some(item => item.targetKey === selectedKey && item.pending)
   const count = state.total === null ? '—' : `${state.total}${state.partial ? '+' : ''}`
+  const activityLabel = !hasIpc ? '本机运行 · 仅桌面端可查看' : `本机运行${state.total === null ? '数量待核对' : ` ${count} 项`}${state.loading ? '，正在刷新' : ''}${state.partial ? '，清单不完整' : ''}${state.error ? '，读取失败' : ''}${uncertain ? '，有待核对结果' : ''}`
   const recordReferenceOperation = (key: string, value: Omit<ReferenceOperation, 'sequence'>): void => {
     const receipt = { ...value, sequence: ++referenceSequence.current }
     setReferenceOps(before => ({ ...before, [key]: receipt }))
@@ -102,9 +103,9 @@ export function ApplicationRunCenter(): JSX.Element {
     finally { referencePending.current.delete(operationKey) }
   }
   return <>
-    <button type="button" className="no-drag my-control my-button-ghost mr-1 shrink-0" aria-label={`本机运行 ${count} 项${uncertain ? '，有待核对结果' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); void refreshApplicationInstances() }}>
+    {variant === 'activity' ? <Tooltip label={activityLabel} side="bottom" align="right"><Button variant="ghost" className="my-header-activity no-drag" aria-label={activityLabel} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); void refreshApplicationInstances() }}><Activity size={16} aria-hidden="true" /><span className="my-item-title">活动</span><span className="my-header-activity-count">{count}</span>{(state.error || state.partial || uncertain) && <span className="text-my-warning-text" aria-hidden="true">!</span>}</Button></Tooltip> : <button type="button" className="no-drag my-control my-button-ghost mr-1 shrink-0" aria-label={`本机运行 ${count} 项${uncertain ? '，有待核对结果' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); void refreshApplicationInstances() }}>
       <Terminal size={14} aria-hidden="true" /><span className="whitespace-nowrap text-my-xs">本机运行 {count}</span>{(state.error || state.partial || uncertain) && <span className="text-my-warning-text" aria-hidden="true">!</span>}
-    </button>
+    </button>}
     <Modal open={open} onClose={() => setOpen(false)} ariaLabel="本机运行中心" width="var(--my-run-config-width)">
       <div className="flex min-h-0 flex-col">
         <header className="flex shrink-0 items-center gap-2 border-b border-my-line p-4"><h2 className="min-w-0 flex-1 text-my-lg font-semibold text-my-primary">本机运行 <span className="text-my-sm text-my-tertiary">{count} 项</span></h2><Button variant="ghost" size="sm" disabled={state.loading || !hasIpc} onClick={() => void refreshApplicationInstances()}><RefreshCw size={14} className={state.loading ? 'animate-spin' : undefined} />刷新</Button><button className="my-icon-control" type="button" aria-label="关闭本机运行中心" onClick={() => setOpen(false)}><X size={16} /></button></header>

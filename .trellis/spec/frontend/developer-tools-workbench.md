@@ -19,8 +19,21 @@ IDEA is an interaction reference, not a private theme or IDE implementation.
 
 ## 3. Contracts
 
-- Header left: real project and branch state; right: selected config and direct
-  start/restart/stop. Preserve search/native controls and `no-drag` interactions.
+- The desktop global row carries Work/Code, team space, search, activity, account,
+  context collapse and native controls. Code engineering tools occupy a compact
+  secondary row owned by `TitleBar`: real project/development source and branch
+  state on the left, selected config and direct start/restart/stop on the right.
+  Preserve `no-drag` interactions. Keep the existing personal/team page components
+  and their routing, filters, forms and task workflows.
+- Show the tools row only in Code engineering contexts or an open task surface;
+  team/settings pages, API chat, creations and personal team-task lists do not gain
+  engineering controls merely because Code is selected. Mode changes remain a
+  presentation preference and never prepare/rebind a task or start/stop a run.
+- `ApplicationRunCenter` can expose a compact `activity` trigger in the global
+  row. Its count and unavailable/partial/uncertain states come from the existing
+  instance store; this does not claim to aggregate Agent or background job activity.
+  Preserve the actual instance details, source targeting and operation receipts.
+
   Empty/unavailable/detached/unborn are honest states, not placeholder branches.
   Test the actual shared header at the native 960px minimum with long project,
   branch and application names; child triggers must fit their shrinking owners,

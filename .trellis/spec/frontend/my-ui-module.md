@@ -22,6 +22,35 @@ double-click reset and globally reachable expand/collapse behavior.
   not own a font import or a second style entry point.
 - `?my=1` is the no-IPC development preview. It is not evidence that native project,
   connected-session or window interactions have succeeded.
+- Header changes preserve the existing personal/team navigation, page layouts,
+  filters, forms and task flows. Add integration points to their current components;
+  prototype fixture pages are not replacement implementations.
+
+## Desktop global header
+
+`TitleBar` owns one global row: brand, desktop Work/Code dropdown, team space,
+context collapse, command search, actual application activity, account and native
+window controls. `ShellViewSwitcher` retains the persisted
+`collaboration | development` values; its desktop dropdown changes only this
+presentation preference. Preserve the separate `host="web"` control.
+
+`AccountMenu` reuses the existing rail account identity, theme/settings actions
+and controlled `ConnectionPanel` with its dirty-close handling. The desktop rail
+keeps its module order and Settings entry; do not duplicate the account owner.
+
+`TeamContextSwitcher` keeps its default behavior. The global variant reads actual
+joined spaces and source status. Selecting outside the original team surface
+changes the team selection without routing, replacing the source view or
+rebinding an engineering project. Explicit space management uses the existing
+team destination. Refresh through the existing bootstrap; do not add a header
+poller or fabricate membership/data for browser previews.
+
+The compact Code tools row reuses `ProjectSwitcher`, `DevelopmentScopeTag`,
+`GitBranchControl` and `ApplicationPanel`. It is available in Code engineering
+areas and open task surfaces. Team/settings domains, API chat, creations and the
+personal team-task list retain their existing page design without this row.
+Preserve source mounting, native mutation guards and running-process authority;
+the header is not a new task or conversation router.
 
 ## Page layout contracts
 
