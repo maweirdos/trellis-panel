@@ -51,6 +51,10 @@ import { registerFlowIpc } from './flow'
 import { registerWorkflowIpc } from './workflow'
 import { registerTeamDesktopIpc } from './team-desktop'
 import { registerAcpIpc } from './acp'
+import { registerPrivateConversationsIpc } from './private-conversations'
+import { ConversationError } from '../services/private-conversations/service'
+import { getAcpHistorySession } from '../services/daemon-client/acp'
+import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 import { registerPiWebPreviewIpc } from './pi-web-preview'
 import { registerWindowIpc } from './window'
 import { registerDocsIpc } from './docs'
@@ -110,5 +114,17 @@ export function registerIpc(deps: WindowDeps): void {
   registerWorkflowIpc()
   registerTeamDesktopIpc()
   registerAcpIpc()
-  registerPiWebPreviewIpc()
+  const privateConversations = registerPrivateConversationsIpc(deps)
+  registerPiWebPreviewIpc({
+    getProject: sessionId => sessionId?.startsWith('acp-private-')
+      ? privateConversations.previewProject(sessionId)
+      : { root: getProjectRoot(), generation: getProjectGeneration() },
+    readSession: async (root, sessionId) => {
+      try {
+        return sessionId.startsWith('acp-private-') ? await privateConversations.previewSession(root, sessionId) : await getAcpHistorySession(root, sessionId)
+      } catch (error) {
+        return ipcFail(error instanceof ConversationError ? error.code : IpcErrorCode.Io, error instanceof Error ? error.message : '无法核对预览来源')
+      }
+    }
+  })
 }

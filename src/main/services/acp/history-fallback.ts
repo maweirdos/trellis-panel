@@ -7,6 +7,7 @@ import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { historicalEvent, historyEventMetadata, HistoryTurnBoundaryError, selectHistoryTurns } from './history-turns'
 import { applySessionPreferences, compareHistorySummaries, matchesHistorySummary, readSessionPreferences } from './session-preferences'
 import { readHistoryDeletion } from './history-deletion'
+import { canAccessPrivateAcpRecord } from './private-access'
 
 const snapshots = new Map<string, { root: string; query: string; filter: string; archive: string; preferencesRevision: string; expires: number; sessions: AcpHistorySummary[] }>()
 function encode(value: unknown): string { return Buffer.from(JSON.stringify(value)).toString('base64url') }
@@ -19,7 +20,7 @@ function summary(record: AcpSessionRecord, error: string, preferences = readSess
     historyCoverage: { state: 'unknown', capturedFrom: events[0]?.ts ?? null, reason: 'Archive unavailable; only the bounded compatibility snapshot can be read' },
     historyPersistence: { state: 'degraded', pendingCount: 0, committedThroughEventId: null, committedThroughSeq: null, error }, pendingPermissions: [], stateRevision: 0, connectionOwned: false, cleanupRequired: false }
 }
-function records(root: string): AcpSessionRecord[] { return readRecords().filter((record) => canonicalDirectory(record.projectRoot) === canonicalDirectory(root)) }
+function records(root: string): AcpSessionRecord[] { return readRecords().filter((record) => canAccessPrivateAcpRecord(record) && canonicalDirectory(record.projectRoot) === canonicalDirectory(root)) }
 function reset(): IpcFail { return ipcFail(IpcErrorCode.Conflict, '历史读取来源或快照已改变，请刷新后重试', { resetRequired: true }) }
 
 /** Read-only bounded snapshots remain accessible when the archive fails; limits stay explicit. */

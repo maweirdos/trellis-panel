@@ -88,6 +88,16 @@ export async function hifoxWorkspaceSnapshot(): Promise<WorkspaceView> {
   const value = await instance()
   return materialize(await value.refresh())
 }
+
+/** Current source projection; background consumers do not trigger remote refreshes. */
+export async function hifoxWorkspaceCurrentView(): Promise<WorkspaceView> {
+  if (stopped) throw new HifoxRemoteClientError('SERVICE_CLOSED', '团队协作服务正在退出')
+  if (!client && !existsSync(selectionFile())) {
+    if (!existsSync(join(app.getPath('userData'), 'hifox', 'store.json'))) throw new HifoxRemoteClientError('SOURCE_UNAVAILABLE', '本机尚无协作数据')
+    return { snapshot: loadSnapshot(), context: localContext() }
+  }
+  return materialize((await instance()).snapshot())
+}
 export async function selectHifoxWorkspace(connectionId: string | null): Promise<WorkspaceView> {
   const parsed = z.string().uuid().nullable().parse(connectionId)
   const generation = ++workspaceGeneration

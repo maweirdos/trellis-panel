@@ -24,6 +24,7 @@ import { isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
  * methods, not feature operations that can bypass GUI admission closure. Literal
  * provider names come from their schema-paired native contracts. */
 const cleanupMethods: readonly DaemonMethod[] = [
+  'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond',
   'runtime.cancel', 'runtime.end', 'runtime.handoffCancel', 'runtime.permission', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision',
   JIRA_DAEMON.cancelRead, JIRA_DAEMON.cancel, GITLAB_DAEMON.cancelJob, DINGTALK_DAEMON.cancelExecution
 ]
@@ -189,7 +190,7 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
   let abort: (() => void) | undefined
   try {
     if (admissionClosed && !cleanup) throw new DaemonError('E_UNAVAILABLE', '桌面正在退出，尚未接纳新操作。')
-    client = await connect(dedicated, method === 'runtime.hifoxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
+    client = await connect(dedicated, method.startsWith('runtime.private') || method === 'runtime.hifoxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未授权后台工作区。')
     workspace = workcopyCleanup ? undefined : await scope(client, root, isCurrent, !dedicated)
     const input = await upload(client, workspace, body, dedicated)
@@ -213,6 +214,7 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
     const context = await daemonClientContext()
     if (!cleanup) requireCurrentDaemonBuild(context, client.lease)
     else if (JSON.stringify(readLease(context)) !== JSON.stringify(client.lease)) throw new DaemonError('E_CONFLICT', 'The original cleanup owner changed before submission; no control was sent.')
+    if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '原请求已取消或来源已变化；尚未提交后台执行。')
     const result = await client.request(method, input as DaemonPayload<typeof method>, { workspace, commandId, timeoutMs })
     if (!result.ok) throw Object.assign(new DaemonError(result.code, result.error, result.outcome), { commandId: result.commandId ?? commandId })
     const wire = runtimeWireSchema.parse(result.data)

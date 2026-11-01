@@ -1,3 +1,4 @@
+import type { ChatDoneEvent, ChatOutputEvent } from '../shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
 import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
 import type { DocumentWindowApi, DocumentOriginReturn } from '../shared/document-windows'
@@ -36,14 +37,13 @@ import type { GitHistoryRequest, GitCommitRequest, GitCommitDiffRequest } from '
 import type { GitWorkspaceApi } from '../shared/git-workspace'
 import type { HifoxApi } from '../shared/hifox'
 import type { HifoxWorkApi } from '../shared/hifox-work'
+import type { ConversationApi } from '../shared/private-conversations'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
 import type {
   AiConfig,
   ChatMessage,
-  ChatDoneEvent,
-  ChatOutputEvent,
   ExtKind,
   GatewaySecurityConfig,
   GitLabConfig,
@@ -128,6 +128,30 @@ async function invokeHifox<K extends HifoxInvokeMethod>(method: K, input?: unkno
 }
 
 const api = {
+  conversations: {
+    list: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.list, input),
+    createDraft: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.createDraft, input),
+    updateDraft: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.updateDraft, id, input),
+    read: (id) => ipcRenderer.invoke(ipcInvoke.privateConversations.read, id),
+    events: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.events, id, input),
+    send: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.send, id, input),
+    respond: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.respond, id, input),
+    cancel: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.cancel, id, input),
+    end: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.end, id, input),
+    configure: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.configure, id, input),
+    recoverModel: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.recoverModel, id, input),
+    pickDirectory: () => ipcRenderer.invoke(ipcInvoke.privateConversations.pickDirectory),
+    pickFiles: (id) => ipcRenderer.invoke(ipcInvoke.privateConversations.pickFiles, id),
+    files: (id) => ipcRenderer.invoke(ipcInvoke.privateConversations.files, id),
+    openFile: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.openFile, id, input),
+    readFile: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.readFile, id, input),
+    image: (id, imageId) => ipcRenderer.invoke(ipcInvoke.privateConversations.image, id, imageId),
+    saveImage: (id, imageId) => ipcRenderer.invoke(ipcInvoke.privateConversations.saveImage, id, imageId),
+    projects: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.projects, input),
+    createProject: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.createProject, input),
+    reclassify: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.reclassify, id, input),
+    contexts: () => ipcRenderer.invoke(ipcInvoke.privateConversations.contexts)
+  } satisfies ConversationApi,
   hifoxMaterials: {
     list: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.list, input),
     read: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.read, input),

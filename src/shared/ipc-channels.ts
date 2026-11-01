@@ -19,6 +19,13 @@ import { DINGTALK_IPC } from './dingtalk-integration'
 
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
+  privateConversations: {
+    list: 'privateConversations:list', createDraft: 'privateConversations:createDraft', updateDraft: 'privateConversations:updateDraft',
+    read: 'privateConversations:read', events: 'privateConversations:events', send: 'privateConversations:send', respond: 'privateConversations:respond',
+    cancel: 'privateConversations:cancel', end: 'privateConversations:end', configure: 'privateConversations:configure', recoverModel: 'privateConversations:recoverModel', pickDirectory: 'privateConversations:pickDirectory', pickFiles: 'privateConversations:pickFiles',
+    files: 'privateConversations:files', openFile: 'privateConversations:openFile', readFile: 'privateConversations:readFile', image: 'privateConversations:image', saveImage: 'privateConversations:saveImage',
+    projects: 'privateConversations:projects', createProject: 'privateConversations:createProject', reclassify: 'privateConversations:reclassify', contexts: 'privateConversations:contexts'
+  },
   onboarding: { status: 'onboarding:status', complete: 'onboarding:complete' },
   bootstrap: { status: 'bootstrap:status', retry: 'bootstrap:retry', legacyInspect: 'bootstrap:legacyInspect', legacyStop: 'bootstrap:legacyStop', legacyReconcile: 'bootstrap:legacyReconcile', exit: 'bootstrap:exit', minimize: 'bootstrap:minimize', maximize: 'bootstrap:maximize', rendered: 'bootstrap:rendered', attached: 'bootstrap:attached', detached: 'bootstrap:detached', paint: 'bootstrap:paint' },
   jiraIntegration: JIRA_IPC,

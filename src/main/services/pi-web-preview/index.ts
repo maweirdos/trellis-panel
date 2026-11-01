@@ -25,7 +25,7 @@ export interface PiWebPreviewSession {
   connectionGeneration?: string
 }
 export interface PiWebPreviewDependencies {
-  getProject: () => { root: string | null; generation: number }
+  getProject: (sessionId?: string) => { root: string | null; generation: number }
   readSession: (root: string, sessionId: string) => Promise<{ ok: true; session: PiWebPreviewSession } | IpcFail>
 }
 export interface PiWebPreviewOwner { id: number; isCurrent: () => boolean }
@@ -72,7 +72,7 @@ export class PiWebPreviewService {
   async open(owner: PiWebPreviewOwner, input: unknown): Promise<PiWebPreviewOpenResult> {
     const parsed = piWebPreviewOpenSchema.safeParse(input)
     if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '静态预览请求无效。')
-    const project = this.deps.getProject()
+    const project = this.deps.getProject(parsed.data.sessionId)
     if (!project.root) return ipcFail(IpcErrorCode.NoProject, '未打开项目。')
     const root = project.root
     if (!samePath(root, parsed.data.expectedRoot)) return ipcFail(IpcErrorCode.Conflict, '项目已变化，请重新打开预览。')
@@ -83,7 +83,10 @@ export class PiWebPreviewService {
       return ipcFail(IpcErrorCode.Busy, '预览数量已达上限，请先关闭其他预览。')
     this.pending.set(owner.id, (this.pending.get(owner.id) ?? 0) + 1)
     let lease: Lease | undefined
-    const current = (): boolean => !this.disposed && owner.isCurrent() && this.deps.getProject().root === root && this.deps.getProject().generation === project.generation
+    const current = (): boolean => {
+      const latest = this.deps.getProject(parsed.data.sessionId)
+      return !this.disposed && owner.isCurrent() && latest.root === root && latest.generation === project.generation
+    }
     try {
       const first = await this.deps.readSession(root, parsed.data.sessionId)
       if (!current()) throw new PreviewError(IpcErrorCode.Conflict, '项目或窗口已变化。')
@@ -155,6 +158,11 @@ export class PiWebPreviewService {
     } catch (error) { return failure(error) }
   }
 
+  /** Final synchronous source/window fence after asynchronous external URL validation. */
+  ownsCurrent(ownerId: number, id: unknown): boolean {
+    return 'id' in this.owned(ownerId, id)
+  }
+
   close(ownerId: number, id: unknown): CloseResult {
     if (!validId(id)) return ipcFail(IpcErrorCode.InvalidArg, '预览 ID 无效。')
     const lease = this.leases.get(id)
@@ -189,7 +197,7 @@ export class PiWebPreviewService {
   }
 
   private current(lease: Lease): boolean {
-    const project = this.deps.getProject()
+    const project = this.deps.getProject(lease.session.sessionId)
     return !lease.closed && !this.disposed && lease.owner.isCurrent() && project.root === lease.root && project.generation === lease.generation &&
       Date.now() - lease.accessedAt < IDLE_MS && Date.now() - lease.createdAt < LIFETIME_MS
   }

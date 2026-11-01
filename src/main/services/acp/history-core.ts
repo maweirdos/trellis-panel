@@ -10,6 +10,7 @@ import { applySessionPreferences, compareHistorySummaries, matchesHistorySummary
 import { HandoffHistoryError, readHandoffArchive, type HandoffArchive } from './handoff-history'
 import { readHistoryDeletion } from './history-deletion'
 import { readHistoryText } from './history-text'
+import { isPrivateAcpRecord } from './private-access'
 
 const DB_VERSION = 1
 const SNAPSHOT_TTL = 5 * 60_000
@@ -305,7 +306,7 @@ export class AcpHistoryCore {
       const rows = this.db.prepare('SELECT * FROM sessions WHERE root=?').all(root) as unknown as SessionRow[]
       snapshotId = randomUUID()
       snapshot = { root, query, filter, archive, preferencesRevision: preferences.revision, expires: now + SNAPSHOT_TTL,
-        sessions: rows.filter(row => !readHistoryDeletion(this.directory, root, row.sessionId)).map((row) => this.summary(row, preferences)).filter((item) => matchesHistorySummary(item, query, filter, archive)).sort(compareHistorySummaries) }
+        sessions: rows.filter(row => !readHistoryDeletion(this.directory, root, row.sessionId)).map((row) => this.summary(row, preferences)).filter((item) => !isPrivateAcpRecord(item) && matchesHistorySummary(item, query, filter, archive)).sort(compareHistorySummaries) }
       if (this.snapshots.size >= 16) this.snapshots.delete(this.snapshots.keys().next().value ?? '')
       this.snapshots.set(snapshotId, snapshot)
     }

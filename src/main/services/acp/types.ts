@@ -30,7 +30,7 @@ export const profileSchema = z.object({
   env: z.array(acpEnvVarSchema).max(50).optional(),
   args: z.array(acpExtraArgSchema).max(50).optional()
 })
-export const configureSchema = z.object({ kind: z.enum(['model', 'mode', 'config']), id: z.string().min(1).max(300), value: z.string().max(1000).optional() })
+export { acpConfigurationSchema as configureSchema } from '../../../shared/acp-configuration'
 
 export function objectValue(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}

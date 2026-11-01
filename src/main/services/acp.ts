@@ -20,6 +20,7 @@ import type { AcpHandoffOrigin, AcpHandoffOperationResult, AcpHandoffPreviewResu
 import { acpDataPath, canonicalDirectory, persistRecord, readProfiles, readRecords, saveProfiles } from './acp/metadata'
 import { bindTaskSchema, configureSchema, errorMessage, idSchema, newSessionSchema, objectValue, profileSchema, promptOptionsSchema } from './acp/types'
 import { activeTaskExists, preparePromptMaterials, sourceBelongs } from './acp/materials'
+import { canAccessPrivateAcpRecord } from './acp/private-access'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { launchArgv, resolveAcpRuntimeLaunch, NATIVE_TOOLS_DIAGNOSTIC } from './acp/setup'
 import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, listAcpHistory, onHistoryPersistence, readAcpHandoffArchive, readAcpHistoryEvents, readAcpHistorySession, retryAcpHistory, stopAcpHistory, drainAcpHistory, deleteAcpHistoryArchive, readAcpTitleMaterial } from './acp/history-service'
@@ -124,11 +125,15 @@ const sessionTitles = new SessionTitles({
 
 export async function previewAcpHistoryDeletion(root: string, id: string, isCurrent: () => boolean = () => true) {
   assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(root, id)
+  if (denied) return denied
   if (!idSchema.safeParse(id).success || id === '.' || id === '..') return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
   return sessionDeletion.preview(root, id, isCurrent)
 }
 export async function deleteAcpHistorySession(root: string, id: string, token: string, isCurrent: () => boolean = () => true) {
   assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(root, id)
+  if (denied) return denied
   if (!idSchema.safeParse(id).success || id === '.' || id === '..') return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
   const result = await sessionDeletion.delete(root, id, token, isCurrent)
   if (result.ok && 'deleted' in result) broadcastToWindows(ipcEvent.acpHistoryChanged, { projectRoot: root, sessionId: id, deleted: true })
@@ -136,6 +141,8 @@ export async function deleteAcpHistorySession(root: string, id: string, token: s
 }
 export async function regenerateAcpHistoryTitle(root: string, id: string, isCurrent: () => boolean = () => true, explicit = true): Promise<AcpHistoryUpdateResult | IpcFail> {
   assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(root, id)
+  if (denied) return denied
   if (!root || !idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '项目或会话 ID 无效')
   let identity: string
   try { identity = directoryIdentity(root) } catch { return ipcFail(IpcErrorCode.Conflict, '项目目录不可用') }
@@ -259,10 +266,14 @@ function handoffMutationConflict(root: string, id: string): IpcFail | undefined 
 }
 export function previewAcpSessionHandoff(root: string, id: string, input: unknown, isCurrent?: () => boolean): Promise<AcpHandoffPreviewResult | IpcFail> {
   assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(root, id)
+  if (denied) return Promise.resolve(denied)
   return acpHandoffs.preview(root, id, input, isCurrent)
 }
 export function createAcpSessionHandoff(root: string, id: string, input: unknown, isCurrent?: () => boolean): Promise<AcpHandoffOperationResult | IpcFail> {
   assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(root, id)
+  if (denied) return Promise.resolve(denied)
   const pending = acpHandoffs.create(root, id, input, isCurrent)
   handoffRequests.add(pending)
   void pending.finally(() => handoffRequests.delete(pending)).catch(() => {})
@@ -270,10 +281,14 @@ export function createAcpSessionHandoff(root: string, id: string, input: unknown
 }
 export function getAcpSessionHandoff(root: string, id: string, operationId: string): Promise<AcpHandoffOperationResult | IpcFail> {
   assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(root, id)
+  if (denied) return Promise.resolve(denied)
   return acpHandoffs.status(root, id, operationId)
 }
 export function cancelAcpSessionHandoff(root: string, id: string, input: unknown): Promise<AcpHandoffOperationResult | IpcFail> {
   assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(root, id)
+  if (denied) return Promise.resolve(denied)
   return acpHandoffs.cancel(root, id, input)
 }
 
@@ -341,8 +356,22 @@ interface ActiveSession {
 
 function failure(error: unknown): IpcFail { return ipcFail(IpcErrorCode.Upstream, knowledgeMcpBridge.redactText(errorMessage(error))) }
 function keyFor(session: ActiveSession): string { return canonicalDirectory(session.meta.cwd ?? session.meta.projectRoot) }
-function belongs(root: string, record: Pick<AcpSessionRecord, 'projectRoot'>): boolean {
-  return !!root && canonicalDirectory(root) === canonicalDirectory(record.projectRoot)
+function belongs(root: string, record: Pick<AcpSessionRecord, 'projectRoot'> & Partial<Pick<AcpSessionRecord, 'sessionId' | 'privateConversation'>>): boolean {
+  return !!root && canAccessPrivateAcpRecord(record) && canonicalDirectory(root) === canonicalDirectory(record.projectRoot)
+}
+function privateAliasDenied(root: string, id: string): IpcFail | undefined {
+  return canAccessPrivateAcpRecord(sessions.get(id)?.meta ?? { projectRoot: root, sessionId: id }) ? undefined : ipcFail(IpcErrorCode.Denied, '私有会话需要其创建者的原生来源授权')
+}
+/** Exact original cleanup identity; does not resolve a replacement/missing cwd. */
+export function getPrivateAcpCleanupSession(root: string, id: string): { ok: true; session: AcpSessionRecord } | IpcFail {
+  assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(root, id)
+  if (denied) return denied
+  const record = sessions.get(id)?.meta ?? readRecords().find(item => item.sessionId === id)
+  if (!record || !record.privateConversation || !canAccessPrivateAcpRecord(record)) return ipcFail(IpcErrorCode.Denied, '没有原私有会话的清理身份')
+  const lexical = (value: string): string => process.platform === 'win32' ? value.replaceAll('\\', '/').toLowerCase() : value
+  if (lexical(record.projectRoot) !== lexical(root) || lexical(record.cwd ?? record.projectRoot) !== lexical(root)) return ipcFail(IpcErrorCode.Denied, '清理目标与原会话目录不一致')
+  return { ok: true, session: record }
 }
 function owned(root: string, sessionId: string): ActiveSession | IpcFail {
   if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
@@ -478,6 +507,7 @@ function save(session: ActiveSession): void {
   }
 }
 function eventFor(session: ActiveSession, kind: TimelineEventKind, text?: string, payload?: Record<string, unknown>): TimelineEvent {
+  if (session.meta.privateConversation) payload = { ...payload, privateConversation: { id: session.meta.privateConversation.id, creatorId: session.meta.privateConversation.creatorId } }
   text = text === undefined ? undefined : knowledgeMcpBridge.redactText(text)
   try { payload = payload === undefined ? undefined : knowledgeMcpBridge.redact(payload) }
   catch { payload = { diagnostic: 'Native payload omitted: descriptor redaction limits exceeded' } }
@@ -642,19 +672,21 @@ export async function listAcpHistorySessions(root: string, input?: unknown): Pro
     if (!result.ok && result.code === IpcErrorCode.Io) result = snapshotHistoryList(root, input, result.error)
     if (!result.ok) return result
     const pending = listHistoryDeletions(acpDataPath(), root).filter(item => item.state === 'pending').map(item => pendingDeletionSummary(item.metadata))
-    return { ...result, sessions: [...pending, ...result.sessions.filter(item => !readHistoryDeletion(acpDataPath(), root, item.sessionId)).map(liveHistorySummary)] }
+    return { ...result, sessions: [...pending.filter(item => belongs(root, item)), ...result.sessions.filter(item => belongs(root, item) && !readHistoryDeletion(acpDataPath(), root, item.sessionId)).map(liveHistorySummary)] }
   } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
 }
 export async function getAcpHistorySession(root: string, id: string): Promise<{ ok: true; version: 1; session: AcpHistorySummary } | IpcFail> {
   assertRuntimeExecutionHost()
   if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   if (!idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
+  const denied = privateAliasDenied(root, id)
+  if (denied) return denied
   try {
     const deletion = readHistoryDeletion(acpDataPath(), root, id)
-    if (deletion) return deletion.state === 'pending' ? { ok: true, version: 1, session: pendingDeletionSummary(deletion.metadata) } : ipcFail(IpcErrorCode.NotFound, '此会话已永久删除')
+    if (deletion) return !belongs(root, deletion.metadata) ? ipcFail(IpcErrorCode.Denied, '私有会话来源不匹配') : deletion.state === 'pending' ? { ok: true, version: 1, session: pendingDeletionSummary(deletion.metadata) } : ipcFail(IpcErrorCode.NotFound, '此会话已永久删除')
     let result = await readAcpHistorySession(root, id)
     if (!result.ok && result.code === IpcErrorCode.Io) result = snapshotHistorySession(root, id, result.error)
-    return result.ok ? { ...result, session: liveHistorySummary(result.session) } : result
+    return result.ok ? belongs(root, result.session) ? { ...result, session: liveHistorySummary(result.session) } : ipcFail(IpcErrorCode.Denied, '私有会话来源不匹配') : result
   } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
 }
 /** Metadata only: no transport connection, turn, transcript or permission mutation. */
@@ -681,10 +713,13 @@ export async function getAcpHistoryEvents(root: string, id: string, input?: unkn
   assertRuntimeExecutionHost()
   if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   if (!idSchema.safeParse(id).success) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
+  const denied = privateAliasDenied(root, id)
+  if (denied) return denied
   try {
     let result = await readAcpHistoryEvents(root, id, input)
     if (!result.ok && result.code === IpcErrorCode.Io) result = snapshotHistoryEvents(root, id, input, result.error)
     if (!result.ok) return result
+    if (!belongs(root, result.session)) return ipcFail(IpcErrorCode.Denied, '私有会话来源不匹配')
     const session = liveHistorySummary(result.session)
     return { ...result, session, historyPersistence: session.historyPersistence }
   } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
@@ -920,7 +955,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
   let knowledge: KnowledgeMcpConnection | undefined
   try {
     if (!meta.connectionGeneration) throw new Error('Native connection generation unavailable')
-    knowledge = await knowledgeMcpBridge.connect({ root: meta.projectRoot, sessionId: meta.sessionId, connectionGeneration: meta.connectionGeneration }, (knowledgeBridge) => {
+    knowledge = meta.privateConversation ? undefined : await knowledgeMcpBridge.connect({ root: meta.projectRoot, sessionId: meta.sessionId, connectionGeneration: meta.connectionGeneration }, (knowledgeBridge) => {
       if (session && sessions.get(meta.sessionId) === session && (!knowledgeBridge.turnId || knowledgeBridge.turnId === session.meta.turnId)) {
         const { knowledgeOperation, ...bridgeStatus } = knowledgeBridge
         emit(session, 'diagnostic', knowledgeBridge.detail, { knowledgeBridge: bridgeStatus, ...(knowledgeOperation ? { knowledgeOperation, activityScope: 'turn' } : knowledgeBridge.operationId ? {} : { activityScope: 'connection' }) })
@@ -1044,6 +1079,27 @@ async function refreshSessionMetadata(session: ActiveSession): Promise<void> {
   session.knowledgeSupport = support
 }
 
+const privateCreationRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
+export async function ensurePrivateAcpSession(root: string, agentId: string, owner: { sessionId: string; conversationId: string; creatorId: string }): Promise<ResumeResult> {
+  assertRuntimeExecutionHost()
+  if (!canAccessPrivateAcpRecord({ projectRoot: root, sessionId: owner.sessionId, privateConversation: { id: owner.conversationId, creatorId: owner.creatorId } })) return ipcFail(IpcErrorCode.Denied, '缺少私有创建者原生授权')
+  const prior = privateCreationRequests.get(owner.sessionId)
+  if (prior) return prior.root === canonicalDirectory(root) ? prior.promise : ipcFail(IpcErrorCode.Denied, '原会话属于不同目录')
+  const promise = (async (): Promise<ResumeResult> => {
+    const saved = sessions.get(owner.sessionId)?.meta ?? readRecords().find(item => item.sessionId === owner.sessionId)
+    if (saved) {
+      if (!belongs(root, saved) || saved.agentId !== agentId || saved.privateConversation?.id !== owner.conversationId || saved.privateConversation.creatorId !== owner.creatorId || canonicalDirectory(saved.cwd ?? root) !== canonicalDirectory(root)) return ipcFail(IpcErrorCode.Denied, '原生会话与私有会话身份不一致')
+      return resumeAcpSession(root, owner.sessionId)
+    }
+    const created = await newOwnedAcpSession(root, { agentId }, undefined, undefined, owner)
+    return created.ok ? resumeAcpSession(root, owner.sessionId) : created
+  })()
+  privateCreationRequests.set(owner.sessionId, { root: canonicalDirectory(root), promise })
+  creatingRequests.add(promise)
+  try { return await promise }
+  finally { privateCreationRequests.delete(owner.sessionId); creatingRequests.delete(promise) }
+}
+
 export function newAcpSession(projectRoot: string, input: unknown): Promise<{ ok: true; sessionId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   const pending = newOwnedAcpSession(projectRoot, input)
@@ -1155,7 +1211,7 @@ interface HandoffNewSession {
   sessionId: string; profile?: AcpAgentProfile; cwd: string; plan: HandoffTargetPlan; origin: AcpHandoffOrigin
   assertCurrent(): void; beforeNativeCreate(): void
 }
-async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession, taskOwner?: { sessionId: string; task?: AcpSessionRecord['taskProgress']; connectionGeneration?: string }): Promise<{ ok: true; sessionId: string } | IpcFail> {
+async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession, taskOwner?: { sessionId: string; task?: AcpSessionRecord['taskProgress']; connectionGeneration?: string }, privateOwner?: { sessionId: string; conversationId: string; creatorId: string }): Promise<{ ok: true; sessionId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const parsed = newSessionSchema.safeParse(input)
@@ -1184,7 +1240,8 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
     if (handoff && sessions.has(handoff.sessionId)) throw new Error('交接目标已拥有连接，未重复创建')
     const rules = await prepareAgentRules({ projectRoot, taskDir, teamTask: taskOwner?.task, additionalRules: taskOwner?.task ? [taskRule(taskOwner.task)] : undefined })
     if (taskOwner && readTaskSessionIntent(workcopyUseDirectory(), projectRoot, taskOwner.sessionId)?.phase !== 'creating') return ipcFail(IpcErrorCode.Conflict, '原任务创建已被收束，未启动执行')
-    const meta: AcpSessionRecord = { engine: config.launchKind === 'sdk' ? 'pi' : 'acp', schemaVersion: 2, sessionId: taskOwner?.sessionId ?? handoff?.sessionId ?? `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,
+    const meta: AcpSessionRecord = { engine: config.launchKind === 'sdk' ? 'pi' : 'acp', schemaVersion: 2, sessionId: privateOwner?.sessionId ?? taskOwner?.sessionId ?? handoff?.sessionId ?? `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,
+      ...(privateOwner ? { privateConversation: { id: privateOwner.conversationId, creatorId: privateOwner.creatorId } } : {}),
       projectRoot, cwd, taskDir, status: 'starting', startedAt: Date.now(), events: [], startup: [], connectionGeneration: taskOwner?.connectionGeneration ?? randomUUID(),
       agentRulesManifest: rules.manifest, taskProgress: taskOwner?.task,
       profileSnapshot: profile ? structuredClone(profile) : undefined, launchOptionsSnapshot, handoff: handoff?.origin,
@@ -1293,20 +1350,20 @@ export async function bindAcpSessionTask(projectRoot: string, sessionId: string,
   finally { session.accepting = false }
 }
 
-export async function promptAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt): Promise<{ ok: true; turnId: string } | IpcFail> {
+export async function promptAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt, privateRequestId?: string): Promise<{ ok: true; turnId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   const parsed = promptOptionsSchema.safeParse(options ?? {})
   if (parsed.success && parsed.data.knowledgeReferences?.length && !knowledgeReferenceDeliveryAvailable) return ipcFail(IpcErrorCode.Unavailable, '知识引用暂不能安全发送：后台尚无法在原生确认前核对桌面项目切换。消息和引用未发送，请保留草稿。')
   const live = sessions.get(sessionId)
   const mayRejectPrepared = live && belongs(projectRoot, live.meta) && !live.accepting && !live.turn && !live.closing
-  const result = await promptOwnedAcpSession(projectRoot, sessionId, text, options, isCurrent, projectGeneration, workflow)
+  const result = await promptOwnedAcpSession(projectRoot, sessionId, text, options, isCurrent, projectGeneration, workflow, privateRequestId)
   if (!result.ok && mayRejectPrepared) {
     try { acpHandoffs.admissionFailed(projectRoot, sessionId, result.error) }
     catch (error) { return failure(new Error(`${result.error}；交接恢复失败：${errorMessage(error)}`)) }
   }
   return result
 }
-async function promptOwnedAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt): Promise<{ ok: true; turnId: string } | IpcFail> {
+async function promptOwnedAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt, privateRequestId?: string): Promise<{ ok: true; turnId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
@@ -1407,6 +1464,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
     }
     for (const [id, state] of session.toolStates) if (state === 'settled') session.toolStates.delete(id)
     session.meta.turnId = turnId
+    if (privateRequestId && session.meta.privateConversation) session.meta.privateConversation.request = { id: privateRequestId, turnId, sent: false }
     if (workflow?.onAdmitted) publishWorkflowObservation(() => { workflow.onAdmitted?.({ sessionId, turnId, connectionGeneration: generation }); return [] })
     session.turnStartedAt = Date.now()
     session.nativeCancelReason = undefined
@@ -1448,6 +1506,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
     // Register this checkpoint before terminal completion can clear its owned scope.
     const delivery = turn.promptStarted.then(async () => {
       promptWritten = true
+      if (privateRequestId && session.meta.privateConversation?.request?.id === privateRequestId) session.meta.privateConversation.request.sent = true
       if (session.meta.taskProgress) markTaskSessionPrompt(workcopyUseDirectory(), projectRoot, sessionId, true)
       if (backendSessionId && generation) session.nativeStatus?.watchTurn({ turnId, generation, backendSessionId,
         deadlineAt: (session.turnStartedAt ?? Date.now()) + (session.meta.profileSnapshot?.maxTurnMinutes ?? 30) * 60_000,
@@ -1642,6 +1701,8 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
 export async function killAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true } | IpcFail> {
   assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
+  const denied = privateAliasDenied(projectRoot, sessionId)
+  if (denied) return denied
   const pendingResume = resumeRequests.get(sessionId)
   if (pendingResume) {
     if (pendingResume.root !== canonicalDirectory(projectRoot)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')
@@ -1670,6 +1731,8 @@ export function resumeAcpSession(projectRoot: string, sessionId: string): Promis
   assertRuntimeExecutionHost()
   if (!projectRoot) return Promise.resolve(ipcFail(IpcErrorCode.NoProject, '未打开项目'))
   if (!idSchema.safeParse(sessionId).success) return Promise.resolve(ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效'))
+  const denied = privateAliasDenied(projectRoot, sessionId)
+  if (denied) return Promise.resolve(denied)
   if (sessionDeletion.isDeleting(sessionId) || readHistoryDeletion(acpDataPath(), projectRoot, sessionId)) return Promise.resolve(ipcFail(IpcErrorCode.Conflict, '会话已进入永久删除，请完成清理'))
   const handoffConflict = handoffMutationConflict(projectRoot, sessionId)
   if (handoffConflict) return Promise.resolve(handoffConflict)
@@ -1699,6 +1762,8 @@ interface ModelRecoveryOperation {
 /** Separate from normal configuration: cold controls must never imply a ready connection. */
 export function recoverAcpSessionModel(projectRoot: string, sessionId: string, input: AcpRecoverModelInput, isCurrent?: () => boolean): Promise<AcpRecoverModelResult> {
   assertRuntimeExecutionHost()
+  const denied = privateAliasDenied(projectRoot, sessionId)
+  if (denied) return Promise.resolve(denied)
   const reject = (code: typeof IpcErrorCode[keyof typeof IpcErrorCode], message: string): Promise<AcpRecoverModelResult> => Promise.resolve(ipcFail(code, message))
   if (!projectRoot) return reject(IpcErrorCode.NoProject, '未打开项目')
   if (idSchema.safeParse(sessionId).success && (sessionDeletion.isDeleting(sessionId) || readHistoryDeletion(acpDataPath(), projectRoot, sessionId))) return reject(IpcErrorCode.Conflict, '会话已进入永久删除，请完成清理')

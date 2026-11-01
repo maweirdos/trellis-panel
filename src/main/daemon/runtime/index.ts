@@ -20,6 +20,9 @@ import { HifoxTaskProgressRuntime } from '../../services/hifox/task-progress-run
 import { installWorkcopyUse, resolveWorkcopy } from '../../services/workcopy-use'
 import { workcopyUseResultSchema, isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
 import { prepareAcpRecovery } from '../../services/workcopy-use/acp-recovery'
+import { privateNativeRead, privateNativeSend, privateNativeControl, privateNativeSession } from '../../services/private-conversations/native'
+import { withPrivateAcpOwner } from '../../services/acp/private-access'
+import { configurePrivateNativeSession, recoverPrivateNativeModel } from '../../services/private-conversations/configuration'
 
 export interface RuntimeDispatchContext { workspace?: WorkspaceGrant; commandId?: string }
 export interface DaemonRuntimePorts {
@@ -120,6 +123,29 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     const valid = (): boolean => { ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceAdmission?.(root, method); return !closed }
     const connection = <T extends { ok: boolean }>(target: { sessionId?: string; profileId?: string }, action: () => Promise<T>) => withOrdinaryConnectionAdmission(root, target, action)
     switch (method) {
+      case 'runtime.privateRead': {
+        const input = runtimeBodies[method].parse(raw)
+        return withPrivateAcpOwner(input, async () => {
+        if (input.operation !== 'updates' && input.operation !== 'receipt') return privateNativeRead(input)
+        const session = await privateNativeSession(input)
+        if (!session.ok) return session
+        if (input.operation === 'receipt') {
+          if (!input.requestId) return ipcFail(IpcErrorCode.InvalidArg, '需要原消息身份')
+          const receipt = commands.inspect('@profile', input.requestId)
+          const request = session.session.privateConversation?.request
+          return { ok: true, state: request?.id === input.requestId && request.sent ? 'sent' : receipt.state,
+            ...(request?.id === input.requestId && request.sent ? { turnId: request.turnId } : {}), receipt, session: session.session }
+        }
+        const page = events.catchUp(input.root, input.after ?? null, 100)
+        return { ok: true, ...page, events: page.events.filter(event => event.payload && typeof event.payload === 'object' && 'sessionId' in event.payload && event.payload.sessionId === input.sessionId), session: session.session }
+        })
+      }
+      case 'runtime.privateSend': { const input = runtimeBodies[method].parse(raw); return withPrivateAcpOwner(input, () => privateNativeSend(input, valid)) }
+      case 'runtime.privateConfigure': return configurePrivateNativeSession(raw, valid)
+      case 'runtime.privateRecoverModel': return recoverPrivateNativeModel(raw, valid)
+      case 'runtime.privateCancel': { const input = runtimeBodies[method].parse(raw); return withPrivateAcpOwner(input, () => privateNativeControl('cancel', input)) }
+      case 'runtime.privateEnd': { const input = runtimeBodies[method].parse(raw); return withPrivateAcpOwner(input, () => privateNativeControl('end', input)) }
+      case 'runtime.privateRespond': { const input = runtimeBodies[method].parse(raw); return withPrivateAcpOwner(input, () => privateNativeControl('respond', input)) }
       case 'runtime.workcopyUse': {
         if (root === '@profile') throw new DaemonError('E_DENIED', '工作副本登记需要原生工作区范围。')
         const input = runtimeBodies[method].parse(raw)
@@ -286,7 +312,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         if (method === 'runtime.status') return await status() as RuntimeResult<M>
         if (released) throw new DaemonError('E_UNAVAILABLE', 'Runtime authority was released.')
         ports.assertAuthority()
-        const global = ['runtime.hifoxProgress', 'runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
+        const global = ['runtime.privateRead', 'runtime.privateSend', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond', 'runtime.privateConfigure', 'runtime.privateRecoverModel', 'runtime.hifoxProgress', 'runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
         const root = context.workspace?.root ?? (global ? '@profile' : '')
         if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')
         if (context.workspace) observeWorkspace(root, context.workspace.revision)
@@ -305,7 +331,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             if (!validation.success) throw new DaemonError('E_INVALID_ARG', 'Runtime method input is invalid; no operation was admitted.')
             const input = validation.data
             const mutation = method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
-            if (closed && mutation && !['runtime.cancel', 'runtime.end', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
+            if (closed && mutation && !['runtime.cancel', 'runtime.end', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
             const action = async () => {
               try { return blobs.pack(root, await execute(bodyMethod, input, root)) }
               catch (error) {

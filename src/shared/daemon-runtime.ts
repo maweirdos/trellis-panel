@@ -8,6 +8,8 @@ import { knowledgeRuntimeBody } from './daemon-runtime-knowledge'
 import { acpHandoffPreviewInputSchema, acpHandoffCreateInputSchema, acpHandoffCancelInputSchema } from './acp-handoff'
 import { taskProgressNativeSchema } from './hifox-task-progress-native'
 import { workcopyUseRequestSchema, workcopyCleanupRequestSchema } from './workcopy-use'
+import { privateNativeReadSchema, privateNativeSendSchema, privateNativeControlSchema } from './private-conversations'
+import { privateNativeConfigureSchema, privateNativeRecoverModelSchema } from './private-conversation-controls'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
@@ -23,6 +25,13 @@ export type RuntimeCursor = z.infer<typeof runtimeCursorSchema>
 const session = z.object({ sessionId: id }).strict()
 /** Payloads are parsed after bounded wire/blob resolution, immediately before invoking the real facade. */
 export const runtimeBodies = {
+  'runtime.privateRead': privateNativeReadSchema,
+  'runtime.privateSend': privateNativeSendSchema,
+  'runtime.privateCancel': privateNativeControlSchema,
+  'runtime.privateEnd': privateNativeControlSchema,
+  'runtime.privateRespond': privateNativeControlSchema,
+  'runtime.privateConfigure': privateNativeConfigureSchema,
+  'runtime.privateRecoverModel': privateNativeRecoverModelSchema,
   'runtime.workcopyUse': workcopyUseRequestSchema,
   'runtime.workcopyCleanup': workcopyCleanupRequestSchema,
   'runtime.hifoxProgress': taskProgressNativeSchema,
@@ -103,6 +112,7 @@ export type RuntimeBody<M extends RuntimeBodyMethod> = z.input<(typeof runtimeBo
 export type RuntimeRequest<M extends RuntimeMethod> = z.input<(typeof runtimeRequests)[M]>
 export type RuntimeResult<M extends RuntimeMethod> = z.infer<(typeof runtimeResults)[M]>
 export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
+  'runtime.privateSend', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond', 'runtime.privateConfigure', 'runtime.privateRecoverModel',
   'runtime.workcopyUse',
   'runtime.workcopyCleanup',
   'runtime.knowledge',

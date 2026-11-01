@@ -1230,6 +1230,7 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   knowledgeAccess: import('./knowledge-access').KnowledgeApi
   /** HiFox 协作域：空间/成员/任务/专项/迭代/视图/分拣台/自动化/收件箱/Agent/技能/小队 */
   hifox: import('./hifox').HifoxApi
+  conversations: import('./private-conversations').ConversationApi
   hifoxWork?: import('./hifox-work').HifoxWorkApi
   hifoxProgress?: import('./hifox-task-progress').HifoxProgressApi
   creations?: import('./creation-api').CreationApi
@@ -1881,7 +1882,7 @@ export interface AcpConfigOption {
   options: Array<{ value: string; name: string }>
 }
 
-export type AcpConfigureInput = { kind: 'model' | 'mode' | 'config'; id: string; value?: string }
+export type AcpConfigureInput = import('./acp-configuration').AcpConfiguration
 
 /** Captured from a modern document read, never from Agent prose. */
 export interface AcpSourceReference {
@@ -2022,6 +2023,7 @@ export interface AcpModelCatalogMetadata {
 }
 
 export interface AcpSessionMeta {
+  privateConversation?: { id: string; creatorId: string; request?: { id: string; turnId: string; sent: boolean } }
   /** Application execution identity; legacy absent values denote ACP. */
   engine?: 'acp' | 'pi'
   pi?: { sessionFile: string; version: '1.4.0'; sessionVersion: 3 }

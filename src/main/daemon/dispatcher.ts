@@ -60,7 +60,7 @@ export class DaemonDispatcher {
     return actual
   }
   async dispatch(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown> {
-    if (request.method === 'runtime.hifoxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
+    if (request.method.startsWith('runtime.private') || request.method === 'runtime.hifoxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
     const management = ['daemon.status', 'daemon.stop', 'daemon.logs', 'commands.get'].includes(request.method)
       || isBoundedWorkcopyCleanup(request.method, request.payload)
     if ((this.checkingIdle || this.stopping) && !management) throw new DaemonError(this.stopping ? 'E_UNAVAILABLE' : 'E_BUSY', 'Native admission is closed while the original daemon owner is checking shutdown.')
