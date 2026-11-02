@@ -142,6 +142,8 @@ export function workspaceFiles(root: string, inputs: string[], managed = false):
       if (name.startsWith('.') || ignored.has(name) || managed && !directory && name === 'inputs' || /(?:secret|credential|api[-_]?key|password|token)(?:[._-]|$)/i.test(name)) continue
       const file = directory ? `${directory}/${entry.name}` : entry.name
       if (entry.isSymbolicLink()) continue
+      // Workbench command inputs and candidates are not user output materials.
+      if (managed && entry.isDirectory() && /^outputs\/requirements\/[a-f0-9-]{36}\/(?:operations|confirmations|sources)$/i.test(file)) continue
       if (entry.isDirectory()) { visit(file, depth + 1); continue }
       if (!entry.isFile() || known.has(file) || !extensions.has(extname(name))) continue
       try { const value = fileMetadata(root, file, 'output'); bytes += value.bytes; result.push(value) } catch { /* Ineligible/unstable files are excluded, never fabricated. */ }

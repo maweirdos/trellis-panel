@@ -15,6 +15,7 @@ export { ConversationStorageError as ConversationError } from './storage'
 
 type NativeSession = { ok: true; session: AcpSessionRecord } | IpcFail
 type NativeSend = { ok: true; session: AcpSessionRecord; turnId?: string } | (IpcFail & { notSent?: boolean; outcome?: string })
+export type PrivateRequestReceipt = { ok: true; state: string; turnId?: string; receipt: { state: string; result?: { inline?: NativeSend } }; session: AcpSessionRecord }
 export interface PrivateConversationPorts {
   directory(): string
   native<T, M extends RuntimeBodyMethod>(method: M, body: RuntimeBody<M>, commandId?: string, current?: () => boolean): Promise<T>
@@ -45,12 +46,13 @@ export class PrivateConversations {
   }
   private async owned(id: string, cleanup = false): Promise<Row> { const row = await this.catalog().load(id); await this.authorized(row, cleanup); return row }
   metadataDirectory(): string { return this.directory() }
-  async workspaceAccess(id: string): Promise<{ conversation: contract.Conversation; assertCurrent(): void }> {
+  async workspaceAccess(id: string, writable = false): Promise<{ conversation: contract.Conversation; assertCurrent(): void }> {
     const row = await this.owned(id)
     const root = row.conversation.workspace.root, rootKey = pathKey(root), identity = row.rootIdentity
     const creator = row.conversation.creatorId, nativeCreator = row.nativeCreatorId, nativeRef = row.conversation.nativeRef
     const assertCurrent = (): void => {
       const current = this.load(id)
+      if (writable && current.conversation.archivedAt !== undefined) throw new ConversationError('会话已归档，请恢复后再继续')
       if (current.conversation.creatorId !== creator || current.nativeCreatorId !== nativeCreator || pathKey(current.conversation.workspace.root) !== rootKey || current.rootIdentity !== identity || directoryIdentity(root) !== identity || nativeRef && JSON.stringify(current.conversation.nativeRef) !== JSON.stringify(nativeRef)) throw new ConversationError('原会话目录或执行身份已变化，请重新打开。')
     }
     assertCurrent()
@@ -144,7 +146,7 @@ export class PrivateConversations {
   async updateDraft(id: string, raw: unknown, directoryOwner?: object): Promise<contract.ConversationRead> {
     const input = contract.conversationUpdateDraftSchema.parse(raw), row = await this.owned(id)
     const before = JSON.stringify(row)
-    if (row.conversation.nativeRef && (input.runtimeId !== undefined || input.directoryGrantId !== undefined)) throw new ConversationError('原生会话已绑定，不能改运行时或执行目录')
+    if (row.conversation.nativeRef && (input.runtimeId !== undefined && input.runtimeId !== row.conversation.nativeRef.agentId || input.directoryGrantId !== undefined)) throw new ConversationError('原生会话已绑定，不能改运行时或执行目录')
     if (input.directoryGrantId && row.conversation.kind === 'work') throw new ConversationError('Work 的执行目录由应用持有', IpcErrorCode.InvalidArg)
     if (input.directoryGrantId && this.ports.workspaceHasRequirements?.(id)) throw new ConversationError('此会话已保存需求，请为其他工程新建对话')
     if (input.text !== undefined) row.draft.text = input.text
@@ -205,15 +207,24 @@ export class PrivateConversations {
     await this.authorized(row)
     return value.ok ? { ok: true, value } : value
   }
-  async send(id: string, raw: unknown): Promise<contract.ConversationResult<{ conversation: contract.Conversation; session: AcpSessionRecord; turnId: string }>> {
-    const input = contract.conversationSendSchema.parse(raw), digest = hash(JSON.stringify({ text: input.text, images: input.images ?? [] }))
+  async requestReceipt(id: string, requestId: string): Promise<PrivateRequestReceipt | IpcFail> {
+    contract.conversationIdSchema.parse(requestId)
+    const row = await this.owned(id)
+    if (!row.conversation.nativeRef) return ipcFail(IpcErrorCode.NotFound, '原需求操作尚未建立原生会话')
+    const result = await this.ports.native<PrivateRequestReceipt | IpcFail, 'runtime.privateRead'>('runtime.privateRead', { ...this.nativeOwner(row), operation: 'receipt', requestId })
+    await this.authorized(row)
+    return result
+  }
+  async send(id: string, raw: unknown, visibleText?: string): Promise<contract.ConversationResult<{ conversation: contract.Conversation; session: AcpSessionRecord; turnId: string }>> {
+    const displayText = contract.privateNativeSendSchema.shape.displayText.parse(visibleText)
+    const input = contract.conversationSendSchema.parse(raw), digest = hash(JSON.stringify({ text: input.text, images: input.images ?? [], ...(input.draftText === undefined ? {} : { draftText: input.draftText }), ...(displayText === undefined ? {} : { displayText }) }))
     const existing = this.sending.get(id)
     if (existing) return existing.requestId === input.requestId && existing.digest === digest ? existing.promise : ipcFail(IpcErrorCode.Busy, '原会话正在接纳消息，草稿已保留')
-    const promise = this.sendOwned(id, input, digest)
+    const promise = this.sendOwned(id, input, digest, displayText)
     this.sending.set(id, { requestId: input.requestId, digest, promise })
     try { return await promise } finally { if (this.sending.get(id)?.promise === promise) this.sending.delete(id); this.cancelledSends.delete(input.requestId) }
   }
-  private async sendOwned(id: string, input: contract.ConversationSend, digest: string): Promise<contract.ConversationResult<{ conversation: contract.Conversation; session: AcpSessionRecord; turnId: string }>> {
+  private async sendOwned(id: string, input: contract.ConversationSend, digest: string, displayText?: string): Promise<contract.ConversationResult<{ conversation: contract.Conversation; session: AcpSessionRecord; turnId: string }>> {
     let row = await this.reconcile(await this.owned(id))
     if (row.conversation.archivedAt !== undefined) return ipcFail(IpcErrorCode.Conflict, '会话已归档，请恢复后再发送')
     if (!input.text.trim() && !input.images?.length) return ipcFail(IpcErrorCode.InvalidArg, '请输入消息或选择图片')
@@ -230,22 +241,22 @@ export class PrivateConversations {
         return current.session ? { ok: true, value: { conversation: row.conversation, session: current.session, turnId: row.pending.turnId } } : ipcFail(IpcErrorCode.Unavailable, '原消息已发送，当前连接状态不可用；未重发')
       }
     }
-    row.draft.text = input.text
+    const textDigest = input.draftText === undefined ? undefined : hash(input.draftText)
     row.conversation.nativeRef ??= { sessionId: `acp-private-${id}`, agentId: row.draft.runtimeId ?? 'pi' }
-    row.pending = { requestId: input.requestId, digest, textDigest: hash(input.text), state: 'preparing' }
+    row.pending = { requestId: input.requestId, digest, textDigest, state: 'preparing' }
     row.conversation.updatedAt = Date.now(); this.save(row, row.revision)
     const current = (): boolean => !this.cancelledSends.has(input.requestId)
       && this.sending.get(id)?.requestId === input.requestId && this.sending.get(id)?.digest === digest && this.load(id).conversation.archivedAt === undefined
-    const prepared = await this.ports.native<NativeSend, 'runtime.privateSend'>('runtime.privateSend', { ...this.nativeOwner(row), agentId: row.conversation.nativeRef.agentId, operation: 'prepare', input }, undefined, current)
+    const prepared = await this.ports.native<NativeSend, 'runtime.privateSend'>('runtime.privateSend', { ...this.nativeOwner(row), agentId: row.conversation.nativeRef.agentId, operation: 'prepare', displayText, input }, undefined, current)
     if (!prepared.ok) return prepared
     row = await this.owned(id)
     if (!current() || this.cancelledSends.has(input.requestId)) return ipcFail(IpcErrorCode.Conflict, '原消息已停止或来源已变化，消息未发送', { notSent: true })
     const agentId = row.conversation.nativeRef?.agentId
     if (!agentId || !prepared.session.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '原生身份尚未确认')
-    row.pending = { requestId: input.requestId, digest, textDigest: hash(input.text), state: 'dispatching' }; this.save(row, row.revision)
+    row.pending = { requestId: input.requestId, digest, textDigest, state: 'dispatching' }; this.save(row, row.revision)
     let sent: NativeSend
     try {
-      sent = await this.ports.native<NativeSend, 'runtime.privateSend'>('runtime.privateSend', { ...this.nativeOwner(row), agentId, operation: 'send', input: { ...input, expectedConnectionGeneration: prepared.session.connectionGeneration } }, input.requestId, current)
+      sent = await this.ports.native<NativeSend, 'runtime.privateSend'>('runtime.privateSend', { ...this.nativeOwner(row), agentId, operation: 'send', displayText, input: { ...input, expectedConnectionGeneration: prepared.session.connectionGeneration } }, input.requestId, current)
     } catch (error) {
       const latest = this.load(id)
       const notAdmitted = error !== null && typeof error === 'object' && 'outcome' in error && error.outcome === 'not-admitted'
@@ -259,9 +270,9 @@ export class PrivateConversations {
       return sent.ok ? ipcFail(IpcErrorCode.Conflict, '消息回执未确认，未重发') : sent
     }
     if (latest.pending?.requestId === input.requestId) {
-      latest.pending = { requestId: input.requestId, digest, textDigest: hash(input.text), state: 'sent', turnId: sent.turnId }
-      if (latest.draft.text === input.text) latest.draft.text = ''
-      if (latest.conversation.title === '新对话') latest.conversation.title = input.text.trim().split(/\r?\n/, 1)[0].slice(0, 80) || '图片对话'
+      latest.pending = { requestId: input.requestId, digest, textDigest, state: 'sent', turnId: sent.turnId }
+      if (input.draftText !== undefined && latest.draft.text === input.draftText) latest.draft.text = ''
+      if (latest.conversation.title === '新对话') latest.conversation.title = (displayText ?? input.text).trim().split(/\r?\n/, 1)[0].slice(0, 80) || '图片对话'
       latest.conversation.updatedAt = Date.now(); this.save(latest, latest.revision)
     }
     await this.authorized(latest); this.observe(id)

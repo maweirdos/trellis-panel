@@ -30,7 +30,7 @@ export const conversationListSchema = z.object({
   projectId: z.string().min(1).max(256).optional(), query: z.string().max(200).optional()
 }).strict()
 export const conversationSendSchema = z.object({
-  requestId: id, text: z.string().max(200_000),
+  requestId: id, text: z.string().max(200_000), draftText: z.string().max(200_000).optional(),
   images: z.array(z.object({ id: z.string().min(1).max(200), name: z.string().max(500), mimeType: z.enum(ACP_IMAGE_MIME_TYPES), data: z.string().min(1).max(ACP_IMAGE_MAX_BASE64) }).strict()).max(8).optional(),
   expectedConnectionGeneration: z.string().min(1).max(200).optional()
 }).strict()
@@ -108,7 +108,7 @@ export const privateNativeReadSchema = privateNativeOwnerSchema.extend({
   paging: z.object({ before: z.string().max(4096).optional(), after: z.string().max(4096).optional(), limit: z.number().int().min(1).max(500).optional() }).strict().optional(),
   imageId: z.string().regex(/^[a-f0-9]{64}$/).optional()
 }).strict()
-export const privateNativeSendSchema = privateNativeOwnerSchema.extend({ operation: z.enum(['prepare', 'send']), agentId: z.string().min(1).max(200), input: conversationSendSchema }).strict()
+export const privateNativeSendSchema = privateNativeOwnerSchema.extend({ operation: z.enum(['prepare', 'send']), agentId: z.string().min(1).max(200), displayText: z.string().min(1).max(16_000).optional(), input: conversationSendSchema }).strict()
 export const privateNativeControlSchema = privateNativeOwnerSchema.extend({
   expectedConnectionGeneration: z.string().min(1).max(200).optional(),
   requestId: z.string().min(1).max(200).optional(), optionId: z.string().min(1).max(1000).optional()

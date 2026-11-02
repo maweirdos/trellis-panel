@@ -49,3 +49,5 @@
 @media (max-width: 600px) { .private-home-actions { flex-wrap: wrap; }.private-home-action { flex-basis: 42%; } }
 @media (hover: hover) and (pointer: fine) { .private-home-action:hover:not(:disabled) .private-home-action-kind>svg:first-child { scale: var(--my-icon-hover-scale); } }
 @media (prefers-reduced-motion: reduce) { .private-home-action,.private-home-action-kind>svg:first-child { transition: none; }.private-home-action:hover:not(:disabled) .private-home-action-kind>svg:first-child { scale: 1; } }
+
+.private-requirement-host { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }

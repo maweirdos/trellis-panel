@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { ChevronDown, Files, Folder, MessageSquare, MoreHorizontal, PanelLeft, RefreshCw } from 'lucide-react'
 import type { Conversation } from '@shared/private-conversations'
 import type { PiWebPreviewArtifact } from '@shared/pi-web-preview'
@@ -13,7 +13,6 @@ import { PrivateConversation } from './Conversation'
 import { ConversationFiles } from './Files'
 import { ConversationHistory } from './History'
 import { ConversationKnowledgeMenu } from './KnowledgeMenu'
-import { ConversationRequirementPanel } from './RequirementPanel'
 import { ConversationHomeActions } from './HomeActions'
 import { ConversationRequirementMenu, useRequirementSummaries } from './RequirementMenu'
 import { ConversationWorkspaceHeader } from '../acp/ConversationWorkspaceHeader'
@@ -29,6 +28,12 @@ import { addFiles, baseScopeKey, controlConversation, ensureScope, newDraft, rea
 import '../acp/workspace.css'
 import './workspace.css'
 
+const loadRequirementWorkbench = () => import('./requirement-workbench/Workbench')
+const RequirementWorkbench = lazy(loadRequirementWorkbench)
+const RequirementExecutionFlow = lazy(() => import('./requirement-workbench/ExecutionFlow').then(module => ({ default: module.RequirementExecutionFlow })))
+type RequirementSelection = { id?: string; commandId: string }
+const retainedRequirements = new Map<string, RequirementSelection>()
+
 export function PrivateWorkspace(): JSX.Element {
   const selected = useConversations((state) => state.selected), entries = useConversations((state) => state.entries), projects = useConversations((state) => state.projects)
   const projectScopes = useConversations((state) => state.projectScopes), storageError = useConversations((state) => state.storageError)
@@ -40,7 +45,9 @@ export function PrivateWorkspace(): JSX.Element {
   const [mobileHistory, setMobileHistory] = useState(false), [fileOwner, setFileOwner] = useState<string | null>(null)
   const [newPending, setNewPending] = useState(false), [error, setError] = useState('')
   const [requirement, setRequirement] = useState<{ entryKey: string; id?: string; commandId: string } | null>(null)
-  const [requirementExpanded, setRequirementExpanded] = useState(false)
+  const [execution, setExecution] = useState<{ entryKey: string; draftId: string } | null>(null)
+  const [requirementOpening, setRequirementOpening] = useState(false)
+  const requirementRequest = useRef<symbol | null>(null)
   const requirementSummaries = useRequirementSummaries(current, active && !archiveId && !current?.locked)
   const historyButton = useRef<HTMLButtonElement>(null), wasActive = useRef(false)
   const directoryRequest = useRef<symbol | null>(null)
@@ -50,7 +57,12 @@ export function PrivateWorkspace(): JSX.Element {
   const preview = usePiWebPreviewShelf({ root: current?.conversation?.workspace.root ?? '', session: current?.locked ? null : current?.session ?? null, events: current?.events ?? [], enabled: active && !archiveId && !current?.locked, isCurrent: documentSource.isCurrent, onAutoOpen: () => setMobileHistory(false) })
   useEscLayer(mobileHistory, { kind: 'overlay', id: 'private-history', onClose: () => setMobileHistory(false), returnFocusRef: historyButton })
   useLayoutEffect(() => { ensureScope(kind, projectId) }, [scope])
-  useEffect(() => { setMobileHistory(false); setFileOwner(null); setError('') }, [scope, selection])
+  useEffect(() => { setMobileHistory(false); setFileOwner(null); setExecution(null); setError('') }, [scope, selection])
+  const requirementOwner = JSON.stringify([current?.owner, selection])
+  useEffect(() => {
+    const saved = retainedRequirements.get(requirementOwner)
+    setRequirement(saved ? { entryKey: selection, ...saved } : null)
+  }, [requirementOwner])
   useEffect(() => {
     if (active && !wasActive.current) void refreshWorkspace()
     wasActive.current = active
@@ -89,11 +101,27 @@ export function PrivateWorkspace(): JSX.Element {
     selectConversation(conversation); useMy.getState().setShellView(conversation.kind === 'code' ? 'development' : 'collaboration'); setMobileHistory(false)
   }
   const openRequirement = (id?: string): void => {
-    if (!canInteract() || !current || current.locked || current.conversation?.archivedAt !== undefined || current.kind === 'code' && !current.conversation && !current.directory || !isPrivateEntrySelected(selection)) return
-    setRequirement(value => value?.entryKey === selection && value.id === id ? value : { entryKey: selection, id, commandId: crypto.randomUUID() })
-    setRequirementExpanded(false)
+    if (!canInteract() || requirementRequest.current || !current || current.locked || current.conversation?.archivedAt !== undefined || current.kind === 'code' && !current.conversation && !current.directory || !isPrivateEntrySelected(selection)) return
+    const ticket = Symbol('requirement')
+    requirementRequest.current = ticket; setRequirementOpening(true)
+    void loadRequirementWorkbench().then(() => {
+      if (!canInteract() || !isPrivateEntrySelected(selection) || currentOperationOwner.current !== operationOwner) return
+      const previous = retainedRequirements.get(requirementOwner)
+      const next = previous && previous.id === id ? previous : { id, commandId: crypto.randomUUID() }
+      if (!retainedRequirements.has(requirementOwner) && retainedRequirements.size >= 32) {
+        const oldest = retainedRequirements.keys().next().value
+        if (oldest) retainedRequirements.delete(oldest)
+      }
+      retainedRequirements.set(requirementOwner, next)
+      setRequirement({ entryKey: selection, ...next })
+    }).catch(cause => { if (canInteract() && currentOperationOwner.current === operationOwner) setError(conversationError(cause)) }).finally(() => {
+      if (requirementRequest.current === ticket) { requirementRequest.current = null; setRequirementOpening(false) }
+    })
   }
-  const activeRequirement = requirement?.entryKey === selection && !archiveId ? requirement : null
+  const activeRequirement = requirement?.entryKey === selection && !archiveId && current && !current.locked ? requirement : null
+  const closeRequirement = (): void => {
+    retainedRequirements.delete(requirementOwner); setRequirement(null); setExecution(null); requirementSummaries.refresh()
+  }
   const showWebPreview = (artifact: PiWebPreviewArtifact, eventId: string): void => {
     if (!canInteract() || !isPrivateEntrySelected(selection)) return
     setRequirement(null); requirementSummaries.refresh(); preview.openWebPreview(artifact, eventId)
@@ -108,18 +136,23 @@ export function PrivateWorkspace(): JSX.Element {
       {(close) => <><DropdownHeader>整理到分组</DropdownHeader><DropdownItem selected={!current.projectId} onClick={() => { close(); void reclassifyConversation(current.key, null) }}>未分组</DropdownItem>{projects.map((project) => <DropdownItem key={project.id} selected={current.projectId === project.id} onClick={() => { close(); void reclassifyConversation(current.key, project.id) }}>{project.name}</DropdownItem>)}</>}
     </Dropdown>}
     <ConversationKnowledgeMenu canAddFiles={active && !archiveId && canImportFiles(current)} onAddFiles={importFiles} />
-    <ConversationRequirementMenu records={requirementSummaries.records} error={requirementSummaries.error} loading={requirementSummaries.loading} disabled={!current?.loaded || Boolean(current?.action) || kind === 'code' && !current?.conversation && !current?.directory} onOpen={openRequirement} onRefresh={requirementSummaries.refresh} />
+    <ConversationRequirementMenu records={requirementSummaries.records} error={requirementSummaries.error} loading={requirementSummaries.loading} disabled={requirementOpening || !current?.loaded || Boolean(current?.action) || kind === 'code' && !current?.conversation && !current?.directory} onOpen={openRequirement} onRefresh={requirementSummaries.refresh} />
   </>
   return <DocumentSourceProvider client={documentSource}><section className={`acp-workspace${collapsed && !mobileHistory ? ' is-sidebar-collapsed' : ''}`} style={style} aria-label="对话工作区" onKeyDown={(event) => {
     if (event.defaultPrevented || event.nativeEvent.isComposing || !canInteract()) return
     if ((event.ctrlKey || event.metaKey) && event.key === '.' && current) { event.preventDefault(); event.stopPropagation(); void controlConversation(current.key, 'cancel') }
   }}>
     <div className={`acp-navigation-host flex min-h-0 shrink-0${collapsed && !mobileHistory ? ' is-collapsed' : ''}`}><ConversationHistory kind={kind} selected={selection} projectId={projectId} open={mobileHistory} onProject={(id) => selectProjectScope(kind, id)} onSelect={choose} onNew={startNew} onClose={() => setMobileHistory(false)} /></div>
-    <ConversationPreviewLayout ownerKey={activeRequirement ? `requirement:${selection}:${activeRequirement.id ?? activeRequirement.commandId}` : preview.ownerKey} expanded={activeRequirement ? requirementExpanded : preview.expanded} onExpandedChange={activeRequirement ? setRequirementExpanded : preview.setExpanded} collapsed={activeRequirement ? false : preview.collapsed} previewCount={activeRequirement ? 1 : preview.tabs.length} onCollapsedChange={(value) => value ? preview.closeWebPreview() : preview.setCollapsed(false)} preview={activeRequirement ? <ConversationRequirementPanel key={`${selection}:${activeRequirement.id ?? activeRequirement.commandId}`} entryKey={selection} requirementId={activeRequirement.id} createCommandId={activeRequirement.commandId} onClose={() => { setRequirement(null); requirementSummaries.refresh() }} onOpenTask={({ snapshot, taskDir }) => {
+    {activeRequirement ? <main className="private-requirement-host"><Suspense fallback={<div className="acp-empty" role="status">正在打开需求工作台…</div>}><RequirementWorkbench key={`${selection}:${activeRequirement.id ?? activeRequirement.commandId}`} entryKey={selection} requirementId={activeRequirement.id} createCommandId={activeRequirement.commandId} onClose={closeRequirement} onOpenTask={({ snapshot, taskDir }) => {
       if (!canInteract() || !isPrivateEntrySelected(selection)) return
       useApp.getState().setSnapshot(snapshot)
       useApp.getState().expandTaskWorkspace({ fromPage: 'chat', taskDir, archived: false, scrollTop: 0 }, `.trellis/tasks/${taskDir}/prd.md`)
-    }} /> : preview.tabs.length > 0 && current?.session && !current.locked ? <ConversationPreviewTabs key={preview.ownerKey} shelf={preview} session={current.session} /> : null}>
+    }} onStartTrellis={({ snapshot, draftId }) => {
+      if (!canInteract() || !isPrivateEntrySelected(selection)) return
+      useApp.setState(state => ({ navigationRevision: state.navigationRevision + 1 }))
+      useApp.getState().setSnapshot(snapshot)
+      setExecution({ entryKey: selection, draftId })
+    }} /></Suspense></main> : <ConversationPreviewLayout ownerKey={preview.ownerKey} expanded={preview.expanded} onExpandedChange={preview.setExpanded} collapsed={preview.collapsed} previewCount={preview.tabs.length} onCollapsedChange={value => value ? preview.closeWebPreview() : preview.setCollapsed(false)} preview={preview.tabs.length > 0 && current?.session && !current.locked ? <ConversationPreviewTabs key={preview.ownerKey} shelf={preview} session={current.session} /> : null}>
     <WorkspaceCodePreview enabled={!archiveId} openCodePreview={showCodePreview}>
     <main className="acp-main my-conversation-frame">
       <ConversationWorkspaceHeader
@@ -143,8 +176,9 @@ export function PrivateWorkspace(): JSX.Element {
       {archiveId ? <ConversationArchive key={archiveId} id={archiveId} /> : selection ? <PrivateConversation entryKey={selection} onFiles={openFiles} onNew={() => startNew()} onNewDirectory={() => void startCodeDirectory()} directoryPending={newPending} directoryFixed={requirementSummaries.records.length > 0 || Boolean(activeRequirement)} composerContext={composerContext} quickActions={<ConversationHomeActions entryKey={selection} requirements={requirementSummaries.records} requirementsError={requirementSummaries.error} requirementsLoading={requirementSummaries.loading} onRefreshRequirements={requirementSummaries.refresh} canAddFiles={active && canImportFiles(current)} onFiles={importFiles} onSelect={choose} onRequirement={openRequirement} />} onOpenWebPreview={showWebPreview} /> : <div className="acp-empty" role="status">正在准备输入区…</div>}
     </main>
     </WorkspaceCodePreview>
-    </ConversationPreviewLayout>
+    </ConversationPreviewLayout>}
     {fileOwner === selection && !archiveId && <ConversationFiles key={selection} entryKey={selection} onClose={() => setFileOwner(null)} />}
+    {execution?.entryKey === selection && active && activeRequirement && <Suspense fallback={null}><RequirementExecutionFlow entryKey={selection} draftId={execution.draftId} onClose={() => setExecution(null)} /></Suspense>}
   </section></DocumentSourceProvider>
 }
 

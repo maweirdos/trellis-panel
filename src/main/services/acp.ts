@@ -1350,20 +1350,20 @@ export async function bindAcpSessionTask(projectRoot: string, sessionId: string,
   finally { session.accepting = false }
 }
 
-export async function promptAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt, privateRequestId?: string): Promise<{ ok: true; turnId: string } | IpcFail> {
+export async function promptAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt, privateRequestId?: string, privateDisplayText?: string): Promise<{ ok: true; turnId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   const parsed = promptOptionsSchema.safeParse(options ?? {})
   if (parsed.success && parsed.data.knowledgeReferences?.length && !knowledgeReferenceDeliveryAvailable) return ipcFail(IpcErrorCode.Unavailable, '知识引用暂不能安全发送：后台尚无法在原生确认前核对桌面项目切换。消息和引用未发送，请保留草稿。')
   const live = sessions.get(sessionId)
   const mayRejectPrepared = live && belongs(projectRoot, live.meta) && !live.accepting && !live.turn && !live.closing
-  const result = await promptOwnedAcpSession(projectRoot, sessionId, text, options, isCurrent, projectGeneration, workflow, privateRequestId)
+  const result = await promptOwnedAcpSession(projectRoot, sessionId, text, options, isCurrent, projectGeneration, workflow, privateRequestId, privateDisplayText)
   if (!result.ok && mayRejectPrepared) {
     try { acpHandoffs.admissionFailed(projectRoot, sessionId, result.error) }
     catch (error) { return failure(new Error(`${result.error}；交接恢复失败：${errorMessage(error)}`)) }
   }
   return result
 }
-async function promptOwnedAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt, privateRequestId?: string): Promise<{ ok: true; turnId: string } | IpcFail> {
+async function promptOwnedAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt, privateRequestId?: string, privateDisplayText?: string): Promise<{ ok: true; turnId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
   if ('ok' in session) return session
@@ -1533,7 +1533,9 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
       if (workflow?.onPromptWritten) publishWorkflowObservation(() => { workflow.onPromptWritten?.({ sessionId, turnId, connectionGeneration: generation }); return [] })
       if (!session.closing && session.meta.turnId === turnId && session.meta.connectionGeneration === generation) observe(session, '指令已发送至引擎', session.turnStartedAt, false, 'turn')
       if (session.meta.restorePending) { session.meta.restorePending = false; observe(session, '原生会话恢复已验证') }
-      emit(session, 'message', trimmed, { role: 'user', materialSnapshot: session.meta.materialSnapshot,
+      const actionDisplay = privateRequestId && session.meta.privateConversation && privateDisplayText ? privateDisplayText : undefined
+      emit(session, 'message', actionDisplay ?? trimmed, { role: 'user', materialSnapshot: session.meta.materialSnapshot,
+        ...(actionDisplay ? { privateAction: { requestId: privateRequestId, expandedPrompt: trimmed } } : {}),
         ...(agentContext ? { agentContext: session.meta.agentContext } : {}), ...(images.length ? { images } : {}) })
       if (!session.meta.title) {
         session.meta.title = '对话摘要待生成'

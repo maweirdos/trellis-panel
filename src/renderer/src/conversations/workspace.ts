@@ -428,59 +428,41 @@ export function actionablePermissions(current: WorkspaceEntry, now: number): Rec
   if (!conversation || !session?.connectionOwned || !session.connectionGeneration) return {}
   return Object.fromEntries((session.pendingPermissions ?? []).filter((permission) => ownsSession(permission, conversation) && permission.connectionGeneration === session.connectionGeneration && (!permission.turnId || permission.turnId === session.turnId) && (permission.expiresAt === undefined || permission.expiresAt > now)).map((permission) => [permission.requestId, permission]))
 }
-export interface RequirementMessageSource {
-  owner?: string
-  conversationId: string
-  root: string
-  sessionId?: string
-  generation?: string
-  isCurrent?: () => boolean
-}
-function matchesRequirementSource(current: WorkspaceEntry | undefined, source: RequirementMessageSource): boolean {
-  return Boolean((!source.isCurrent || source.isCurrent()) && current && current.owner === source.owner && current.conversation?.id === source.conversationId && projectRootKey(current.conversation.workspace.root) === projectRootKey(source.root) && current.conversation.nativeRef?.sessionId === source.sessionId && current.session?.connectionGeneration === source.generation)
-}
-/** Sends only the saved requirement prompt; ordinary composer text and image bytes stay in their slot. */
-export async function sendRequirementMessage(key: string, text: string, source: RequirementMessageSource): Promise<boolean> {
-  if (!matchesRequirementSource(entry(key), source)) return false
-  return submitMessage(key, { text, source })
-}
 export async function sendMessage(key: string): Promise<void> { await submitMessage(key) }
-async function submitMessage(key: string, requirement?: { text: string; source: RequirementMessageSource }): Promise<boolean> {
+async function submitMessage(key: string): Promise<boolean> {
   const current = entry(key), client = conversationClient(), state = useConversations.getState()
   if (current?.conversation && (knownConversation(current.conversation.id)?.archivedAt !== undefined || state.managementBusy[current.conversation.id])) return false
-  if (!current || !client || current.action || !current.loaded || (requirement ? !requirement.text.trim() || !matchesRequirementSource(current, requirement.source) : !current.text.trim() && !current.images?.length) || sessionRunning(current)) return false
-  if (!requirement && current.images?.length && current.session && current.session.capabilities?.promptCapabilities?.image !== true) { patchEntry(key, { error: '当前执行引擎未声明支持图片输入，图片草稿已保留。' }); return false }
+  if (!current || !client || current.action || !current.loaded || (!current.text.trim() && !current.images?.length) || sessionRunning(current)) return false
+  if (current.images?.length && current.session && current.session.capabilities?.promptCapabilities?.image !== true) { patchEntry(key, { error: '当前执行引擎未声明支持图片输入，图片草稿已保留。' }); return false }
   const runtimeId = current.session?.agentId ?? current.runtimeId ?? state.defaultRuntimeId
   if (!current.conversation?.nativeRef && (!runtimeId || !state.runtimes.some((runtime) => runtime.id === runtimeId && runtime.enabled && runtime.available) || (runtimeId === 'pi' && !state.configuredPi))) {
     patchEntry(key, { error: runtimeId === 'pi' ? '请先在设置中配置可用模型，草稿已保留。' : '请选择可用的执行引擎，草稿已保留。' }); return false
   }
   const readRevision = metadataRevision
   const requestId = crypto.randomUUID(), version = current.version
-  const images = !requirement && current.images?.length ? current.images.slice() : undefined, imageVersion = current.imageVersion ?? 0
+  const images = current.images?.length ? current.images.slice() : undefined, imageVersion = current.imageVersion ?? 0
   const inputFiles = current.files.filter((file) => file.kind === 'input')
-  const text = requirement ? requirement.text : inputFiles.length ? `${current.text.trim()}\n\n会话输入文件（工作目录内的相对路径）：\n${inputFiles.map((file) => JSON.stringify(file.relativePath)).join('\n')}` : current.text.trim()
+  const text = inputFiles.length ? `${current.text.trim()}\n\n会话输入文件（工作目录内的相对路径）：\n${inputFiles.map((file) => JSON.stringify(file.relativePath)).join('\n')}` : current.text.trim()
   if (text.length > 200_000) { patchEntry(key, { error: '消息与文件路径超过长度上限，请缩短消息后再发送。' }); return false }
   const ownsSubmission = (): boolean => entry(key)?.owner === current.owner && entry(key)?.submission?.id === requestId
   stopSaveTimer(key); patchEntry(key, { action: 'sending', submission: { id: requestId, text, version }, error: undefined, following: true })
   try {
     await saving.get(key)
+    await saveDraft(key, true)
     const conversation = await persistIdentity(key), latest = entry(key)
     if (!latest || !ownsSubmission()) return false
-    if (requirement && !matchesRequirementSource(latest, requirement.source)) throw new Error('需求发送来源已改变，请重新读取需求后再发送。')
     const session = latest.session
     if (session && !ownsSession(session, conversation)) throw new Error('会话来源已改变，草稿已保留。')
     const generation = session?.connectionGeneration
     patchEntry(key, { request: session ? { requestId, projectRoot: conversation.workspace.root, sessionId: session.sessionId, connectionGeneration: generation, previousTurnId: session.turnId, phase: 'submitting' } : undefined })
-    const response = conversationValue(await client.send(conversation.id, { requestId, text, images, expectedConnectionGeneration: generation }))
+    const response = conversationValue(await client.send(conversation.id, { requestId, text, draftText: current.text, images, expectedConnectionGeneration: generation }))
     if (!ownsSubmission()) return false
     if (response.conversation.id !== conversation.id || projectRootKey(response.conversation.workspace.root) !== projectRootKey(conversation.workspace.root) || !ownsSession(response.session, response.conversation) || conversation.nativeRef && response.session.sessionId !== conversation.nativeRef.sessionId) throw new Error('发送结果的会话来源不匹配，请核对历史后重试。')
-    const currentGeneration = entry(key)?.session?.connectionGeneration
-    if (requirement && currentGeneration && currentGeneration !== generation && currentGeneration !== response.session.connectionGeneration) throw new Error('需求发送后的连接来源已改变，请核对原会话记录。')
     const metadata = keepConversation(response.conversation, readRevision)
     patchEntry(key, (value) => ({
       conversation: metadata, session: newerSession(value.session, response.session), events: mergeEvents(response.session.events ?? [], mergeEvents(value.events, buffered(response.session))),
       request: { requestId, projectRoot: response.conversation.workspace.root, sessionId: response.session.sessionId, connectionGeneration: response.session.connectionGeneration, previousTurnId: session?.turnId, turnId: response.turnId, phase: 'accepted' },
-      ...(requirement ? { savedVersion: -1 } : value.version === version ? { text: '', version: version + 1, savedVersion: version + 1 } : { savedVersion: -1 }), saveError: undefined,
+      ...(value.version === version ? { text: '', version: version + 1, savedVersion: version + 1 } : { savedVersion: -1 }), saveError: undefined,
       ...(images ? { images: (value.imageVersion ?? 0) === imageVersion ? [] : (value.images ?? []).filter((image) => !images.some((sent) => sent.id === image.id && sent.data === image.data)), imageVersion: (value.imageVersion ?? 0) + 1 } : {})
     }))
     void readConversation(key); void refreshFiles(key)

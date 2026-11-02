@@ -11,7 +11,7 @@ export interface DocumentSourceClient {
 
 const DocumentSource = createContext<DocumentSourceClient | null>(null)
 
-export function DocumentSourceProvider({ client, children }: { client: DocumentSourceClient; children: ReactNode }): JSX.Element {
+export function DocumentSourceProvider({ client, children }: { client: DocumentSourceClient | null; children: ReactNode }): JSX.Element {
   return <DocumentSource.Provider value={client}>{children}</DocumentSource.Provider>
 }
 

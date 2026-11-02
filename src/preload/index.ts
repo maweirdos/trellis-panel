@@ -142,13 +142,24 @@ const api = {
     pickDirectory: input => ipcRenderer.invoke(ipcInvoke.privateConversations.pickDirectory, input),
     git: id => ipcRenderer.invoke(ipcInvoke.privateConversations.git, id),
     requirements: {
+      knowledge: {
+        connections: id => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.knowledge.connections, id),
+        collections: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.knowledge.collections, id, input),
+        search: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.knowledge.search, id, input)
+      },
       list: id => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.list, id),
       create: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.create, id, input),
       read: (id, draftId) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.read, id, draftId),
       save: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.save, id, draftId, input),
       sync: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.sync, id, draftId, input),
-      prompt: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.prompt, id, draftId, input),
       target: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.target, id, draftId, input),
+      run: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.run, id, draftId, input),
+      observe: (id, draftId, operationId) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.observe, id, draftId, operationId),
+      evidence: (id, draftId, operationId) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.evidence, id, draftId, operationId),
+      adopt: (id, draftId, operationId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.adopt, id, draftId, operationId, input),
+      confirmRequirement: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.confirmRequirement, id, draftId, input),
+      savePlan: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.savePlan, id, draftId, input),
+      prepareExecution: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.prepareExecution, id, draftId, input),
       commit: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.commit, id, draftId, input),
       open: (id, draftId) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.open, id, draftId)
     },

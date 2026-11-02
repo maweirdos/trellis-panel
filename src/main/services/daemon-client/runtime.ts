@@ -158,6 +158,20 @@ async function download(client: DaemonClient, workspace: WorkspaceGrant | undefi
 export async function runtimeCall<T, M extends RuntimeBodyMethod = RuntimeBodyMethod>(root: string, method: M, body: RuntimeBody<M>, commandId?: string, isCurrent?: () => boolean): Promise<T> {
   return nativeDomainCall<T>(root, method, body, commandId, isCurrent)
 }
+/** Read one original native command. No new feature command or workspace grant is issued. */
+export async function readRuntimeCommandReceipt(root: string, commandId: string, isCurrent?: () => boolean): Promise<{ state: 'absent' | 'dispatching' | 'completed' | 'unknown'; result?: unknown }> {
+  z.string().uuid().parse(commandId)
+  if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '原执行准备来源已变化。')
+  const client = await connect(), workspace = await scope(client, root, isCurrent, false)
+  if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '原执行准备来源已变化。')
+  const context = await daemonClientContext()
+  requireCurrentDaemonBuild(context, client.lease)
+  const reply = await client.request('runtime.command', { commandId }, { workspace })
+  if (!reply.ok) throw new DaemonError(reply.code, reply.error, reply.outcome)
+  const result = reply.data.result ? await download(client, workspace, reply.data.result) : undefined
+  if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '原执行准备来源已变化。')
+  return { state: reply.data.state, ...(result === undefined ? {} : { result }) }
+}
 type TransientCall = { method: ProviderReadMethod; control: ProviderReadControl; signal: AbortSignal }
 /** Independent control lane keeps cancellation available under ordinary RPC load. */
 async function cancelProviderRead(epoch: string, workspace: WorkspaceGrant | undefined, transient: TransientCall): Promise<void> {

@@ -9,12 +9,21 @@ import { PrivateConversations, ConversationError, privateConversationNative } fr
 import { saveSelectedFile } from '../services/private-conversations/files'
 import { readConversationGit } from '../services/private-conversations/git'
 import { ConversationRequirements } from '../services/private-conversations/requirements'
-import { openProjectAt } from '../state'
+import { observeRequirementNative, requirementConversationContext } from '../services/private-conversations/requirement-native'
+import { RequirementKnowledgeService } from '../services/private-conversations/requirement-knowledge'
+import { RequirementExecutionService } from '../services/private-conversations/requirement-execution'
+import { requirementExecutionPrepareSchema } from '../../shared/conversation-requirement-execution'
+import { requirementKnowledgeConnectionSchema, requirementKnowledgeSearchSchema } from '../../shared/conversation-requirement-knowledge'
+import { knowledgeFailure } from '../services/knowledge-access/service'
+import { IntegrationError } from '../services/integrations/types'
+import { getProjectRoot, openProjectAt } from '../state'
+import { pathKey } from '../services/private-conversations/files'
 import { broadcastToWindows } from '../services/bridge'
 import { handle } from './registry'
 import type { WindowDeps } from './deps'
 
 export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConversations {
+  const knowledge = new RequirementKnowledgeService()
   let requirements: ConversationRequirements
   const service = new PrivateConversations({ directory: () => app.getPath('userData'), native: privateConversationNative,
     workspaceHasRequirements: id => requirements.hasDrafts(id),
@@ -26,6 +35,14 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
     selectedFile: async (id, fileId, revision) => {
       const actual = await service.file(id, fileId, revision)
       return { bytes: actual.bytes, file: actual.file }
+    },
+    send: (id, input, current, displayText) => { current(); return service.send(id, input, displayText) },
+    nativeObservation: (id, operation, current) => observeRequirementNative(service, id, operation, current),
+    conversationContext: (id, current) => requirementConversationContext(service, id, current),
+    knowledge: async (id, selection, sources, current) => {
+      const owner = await service.workspaceAccess(id)
+      const assertCurrent = (): void => { current(); owner.assertCurrent() }
+      return knowledge.resolveSources({ conversationId: id, creatorId: owner.conversation.creatorId, root: owner.conversation.workspace.root, assertCurrent }, selection, sources)
     },
     resolveTarget: (conversation, selection, directoryOwner, current) => {
       current?.()
@@ -40,7 +57,8 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
       return { snapshot: result.snapshot, taskDir }
     }
   })
-  app.once('will-quit', () => service.dispose())
+  const execution = new RequirementExecutionService({ metaDirectory: () => service.metadataDirectory() })
+  app.once('will-quit', () => { knowledge.dispose(); service.dispose() })
   const channels = ipcInvoke.privateConversations
   const documents = new WeakMap<Electron.WebContents, { frame: Electron.WebFrameMain; owner: object }>()
   const watched = new WeakSet<Electron.WebContents>()
@@ -73,7 +91,7 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
     const processId = frame.processId, routingId = frame.routingId, url = documentUrl(frame.url), owner = documentOwner(event)
     return () => { if (event.sender.isDestroyed() || frame.isDestroyed() || event.sender.mainFrame !== frame || frame.processId !== processId || frame.routingId !== routingId || documentUrl(frame.url) !== url || documents.get(event.sender)?.owner !== owner) throw new ConversationError('原页面已变化，请重新操作') }
   }
-  const fail = (error: unknown) => ipcFail(error instanceof ConversationError ? error.code : error instanceof z.ZodError ? IpcErrorCode.InvalidArg : IpcErrorCode.Io,
+  const fail = (error: unknown) => error instanceof IntegrationError ? knowledgeFailure(error) : ipcFail(error instanceof ConversationError ? error.code : error instanceof z.ZodError ? IpcErrorCode.InvalidArg : IpcErrorCode.Io,
     error instanceof Error ? error.message : '私有会话操作未完成')
   const wrapped = <T>(channel: string, action: (event: IpcMainInvokeEvent, args: unknown[], current: () => void) => Promise<T>): void => {
     handle(channel, async (event, ...args: unknown[]): Promise<ConversationResult<T>> => {
@@ -100,13 +118,41 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
   wrapped(channels.createProject, (_event, args) => service.createProject(args[0]))
   wrapped(channels.reclassify, (_event, args) => service.reclassify(id(args[0]), args[1]))
   const requirementChannels = channels.requirements
+  const knowledgeOwner = async (conversationId: string, current: () => void) => {
+    const owner = await service.workspaceAccess(conversationId)
+    const assertCurrent = (): void => { current(); owner.assertCurrent() }
+    assertCurrent()
+    return { conversationId, creatorId: owner.conversation.creatorId, root: owner.conversation.workspace.root, assertCurrent }
+  }
+  wrapped(requirementChannels.knowledge.connections, async (_event, args, current) => knowledge.connections(await knowledgeOwner(id(args[0]), current)))
+  wrapped(requirementChannels.knowledge.collections, async (_event, args, current) => knowledge.collections(await knowledgeOwner(id(args[0]), current), requirementKnowledgeConnectionSchema.parse(args[1])))
+  wrapped(requirementChannels.knowledge.search, async (_event, args, current) => knowledge.search(await knowledgeOwner(id(args[0]), current), requirementKnowledgeSearchSchema.parse(args[1])))
   direct(requirementChannels.list, (args, current) => requirements.list(id(args[0]), current))
   direct(requirementChannels.create, (args, current) => requirements.create(id(args[0]), args[1], current))
   direct(requirementChannels.read, (args, current) => requirements.read(id(args[0]), id(args[1]), current))
   direct(requirementChannels.save, (args, current) => requirements.save(id(args[0]), id(args[1]), args[2], current))
   direct(requirementChannels.sync, (args, current) => requirements.sync(id(args[0]), id(args[1]), args[2], current))
-  direct(requirementChannels.prompt, (args, current) => requirements.prompt(id(args[0]), id(args[1]), args[2], current))
   direct(requirementChannels.target, (args, current, event) => requirements.target(id(args[0]), id(args[1]), args[2], documentOwner(event), current))
+  direct(requirementChannels.run, (args, current) => requirements.run(id(args[0]), id(args[1]), args[2], current))
+  direct(requirementChannels.observe, (args, current) => requirements.observe(id(args[0]), id(args[1]), id(args[2]), current))
+  direct(requirementChannels.evidence, (args, current) => requirements.evidence(id(args[0]), id(args[1]), id(args[2]), current))
+  direct(requirementChannels.adopt, (args, current) => requirements.adopt(id(args[0]), id(args[1]), id(args[2]), args[3], current))
+  direct(requirementChannels.confirmRequirement, (args, current) => requirements.confirmRequirement(id(args[0]), id(args[1]), args[2], current))
+  direct(requirementChannels.savePlan, (args, current) => requirements.savePlan(id(args[0]), id(args[1]), args[2], current))
+  wrapped(requirementChannels.prepareExecution, async (_event, args, current) => {
+    const conversationId = id(args[0]), draftId = id(args[1]), input = requirementExecutionPrepareSchema.parse(args[2])
+    const original = await requirements.executionSource(conversationId, draftId, current)
+    const source = await service.workspaceAccess(conversationId, true)
+    const assertCurrent = (): void => { current(); original.assertCurrent(); source.assertCurrent() }
+    const result = await execution.prepare({ ...original, assertCurrent }, input)
+    assertCurrent()
+    if (result.state === 'prepared' && (!getProjectRoot() || pathKey(getProjectRoot()!) !== pathKey(result.task.root))) {
+      const opened = openProjectAt(result.task.root)
+      if (!opened.ok) throw new ConversationError(opened.error, opened.code)
+      result.snapshot = opened.snapshot
+    }
+    return result
+  })
   direct(requirementChannels.commit, (args, current) => requirements.commit(id(args[0]), id(args[1]), args[2], current))
   direct(requirementChannels.open, (args, current) => requirements.open(id(args[0]), id(args[1]), current))
   wrapped(channels.files, (_event, args) => service.files(id(args[0])))
@@ -154,6 +200,10 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
     if (!['.md', '.txt', '.html', '.htm'].includes(extension)) throw new ConversationError('此文件不支持作为文档正文读取', IpcErrorCode.InvalidArg)
     return { name: actual.file.name, body: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(actual.bytes), kind: extension === '.html' || extension === '.htm' ? 'prototype' as const : 'document' as const, revision: actual.file.revision, modifiedAt: actual.modifiedAt }
   })
+
+
+
+
   direct(channels.image, args => service.image(id(args[0]), z.string().regex(/^[a-f0-9]{64}$/).parse(args[1])))
   wrapped(channels.saveImage, async (_event, args, current) => {
     const conversationId = id(args[0]), imageId = z.string().regex(/^[a-f0-9]{64}$/).parse(args[1]), image = await service.image(conversationId, imageId)

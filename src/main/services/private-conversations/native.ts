@@ -40,7 +40,7 @@ export async function privateNativeSend(raw: unknown, valid: () => boolean) {
   if (session.session.agentId !== input.agentId || !session.session.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '原生身份未确认，消息未发送', { notSent: true })
   if (input.input.expectedConnectionGeneration && input.input.expectedConnectionGeneration !== session.session.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '原连接已变化，请重新核对后发送', { notSent: true })
   const result = await withOrdinaryWorkflowAdmission(input.root, input.sessionId, session.session.connectionGeneration, admitted => acp.promptAcpSession(input.root, input.sessionId, input.input.text,
-    { images: input.input.images, expectedConnectionGeneration: session.session.connectionGeneration }, () => valid() && admitted(), 0, undefined, input.input.requestId))
+    { images: input.input.images, expectedConnectionGeneration: session.session.connectionGeneration }, () => valid() && admitted(), 0, undefined, input.input.requestId, input.displayText))
   if (!result.ok) {
     const latest = await privateNativeSession(input)
     return latest.ok && latest.session.privateConversation?.request?.id !== input.input.requestId ? { ...result, notSent: true } : result

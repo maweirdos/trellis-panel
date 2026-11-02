@@ -44,10 +44,18 @@
     "vite": "^8.3.0"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
     "@gitbeaker/requester-utils": "43.8.0",
     "@gitbeaker/rest": "43.8.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@octokit/rest": "22.0.1",
+    "@tiptap/core": "3.32.2",
+    "@tiptap/extension-list": "3.32.2",
+    "@tiptap/extension-table": "3.32.2",
+    "@tiptap/markdown": "3.32.2",
+    "@tiptap/pm": "3.32.2",
+    "@tiptap/react": "3.32.2",
+    "@tiptap/starter-kit": "3.32.2",
     "@xyflow/react": "12.12.0",
     "acpx": "0.19.5",
     "chokidar": "^3.6.0",
@@ -59,6 +67,7 @@
     "electron-updater": "^6.8.9",
     "js-yaml": "^4.1.0",
     "lucide-react": "^0.469.0",
+    "marked": "17.0.6",
     "mermaid": "^11.17.2",
     "oauth4webapi": "3.8.8",
     "patch-package": "8.0.1",
@@ -69,8 +78,7 @@
     "remark-gfm": "^4.0.0",
     "undici": "^8.11.0",
     "zod": "^4.6.5",
-    "zustand": "^4.5.5",
-    "@earendil-works/pi-coding-agent": "1.4.0"
+    "zustand": "^4.5.5"
   },
   "overrides": {
     "acpx": {

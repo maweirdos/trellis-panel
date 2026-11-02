@@ -1,9 +1,13 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { lstatSync } from 'node:fs'
 import { join } from 'node:path'
+import { z } from 'zod'
 import type { WorkcopyLease } from '../../../shared/workcopy-use'
 import { runNativeWorkcopyCommand, recoverNativeWorkcopyCommand } from '../workcopy-use/native-command'
 import { resolveWorkcopy, assertWorkcopyObservation } from '../workcopy-use/identity'
 import { DaemonError } from '../../daemon/errors'
+import { daemonClientContext } from '../daemon-client/manager'
+import { checkedDirectory, directoryIdentity } from '../private-conversations/files'
 
 /**
  * task.py CLI 执行器（design §7.2）：
@@ -26,6 +30,8 @@ export interface TaskCliSpawnOptions {
   operationId?: string
   /** Existing preparation writer/tree-change lease; never use a renderer token. */
   workcopyLease?: WorkcopyLease
+  /** Main-owned official task activation context; never inherit another chat's pointer. */
+  taskContextKey?: string
 }
 
 export interface TaskCliRunResult {
@@ -60,8 +66,43 @@ async function runTaskPy(options: TaskCliSpawnOptions, args: string[]): Promise<
   const timeoutMs = options.timeoutMs ?? 30_000
   return runNativeWorkcopyCommand(options.root, {
     operationId: options.operationId ?? randomUUID(), executable: python, args: [taskPy, ...args], timeoutMs,
-    env: { FORCE_COLOR: '0', NO_COLOR: '1', PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }, lease: options.workcopyLease
+    env: { FORCE_COLOR: '0', NO_COLOR: '1', PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+      ...(options.taskContextKey === undefined ? {} : { TRELLIS_CONTEXT_ID: options.taskContextKey }) }, lease: options.workcopyLease
   })
+}
+
+/** Official lifecycle command; callers must verify actual status and the original context pointer. */
+export async function runTaskStartCli(options: TaskCliSpawnOptions, dirName: string): Promise<TaskCliRunResult> {
+  if (!options.taskContextKey || !/^[A-Za-z0-9_-]{1,200}$/.test(options.taskContextKey) || options.taskContextKey.startsWith('acp-private-')
+    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(dirName)) throw new DaemonError('E_INVALID_ARG', '任务启动需要原生捕获的任务与独立激活上下文。')
+  const result = await runTaskPy(options, ['start', dirName])
+  return { ...result, createdDirName: null }
+}
+
+/** Read-only absence proof at native-command's original receipt key. IO/redirect errors are not absence. */
+export async function taskCliReceiptExists(root: string, operationId: string): Promise<boolean> {
+  z.string().uuid().parse(operationId)
+  let parent = checkedDirectory((await daemonClientContext()).directory)
+  const entry = (name: string): ReturnType<typeof lstatSync> | null => {
+    const identity = directoryIdentity(parent)
+    try {
+      const value = lstatSync(join(parent, name))
+      if (directoryIdentity(parent) !== identity) throw new DaemonError('E_CONFLICT', '原命令回执目录已变化。')
+      return value
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      if (directoryIdentity(parent) !== identity) throw new DaemonError('E_CONFLICT', '不能核验原命令回执是否存在。')
+      return null
+    }
+  }
+  const key = createHash('sha256').update(JSON.stringify([root.toLowerCase(), operationId])).digest('hex')
+  for (const name of ['workcopy-commands', key]) {
+    const value = entry(name)
+    if (!value) return false
+    if (!value.isDirectory() || value.isSymbolicLink()) throw new DaemonError('E_DENIED', '原命令回执目录包含重定向。')
+    parent = checkedDirectory(join(parent, name))
+  }
+  return entry('operation.json') !== null
 }
 
 export interface TaskCreateCliInput {

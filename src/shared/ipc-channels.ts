@@ -28,8 +28,13 @@ export const ipcInvoke = {
     git: 'privateConversations:git',
     requirements: {
       list: 'privateConversations:requirements:list', create: 'privateConversations:requirements:create', read: 'privateConversations:requirements:read',
-      save: 'privateConversations:requirements:save', sync: 'privateConversations:requirements:sync', prompt: 'privateConversations:requirements:prompt',
-      target: 'privateConversations:requirements:target', commit: 'privateConversations:requirements:commit', open: 'privateConversations:requirements:open'
+      save: 'privateConversations:requirements:save', sync: 'privateConversations:requirements:sync',
+      target: 'privateConversations:requirements:target', commit: 'privateConversations:requirements:commit', open: 'privateConversations:requirements:open',
+      run: 'privateConversations:requirements:run', observe: 'privateConversations:requirements:observe', adopt: 'privateConversations:requirements:adopt',
+      evidence: 'privateConversations:requirements:evidence',
+      confirmRequirement: 'privateConversations:requirements:confirmRequirement', savePlan: 'privateConversations:requirements:savePlan',
+      prepareExecution: 'privateConversations:requirements:prepareExecution',
+      knowledge: { connections: 'privateConversations:requirements:knowledge:connections', collections: 'privateConversations:requirements:knowledge:collections', search: 'privateConversations:requirements:knowledge:search' }
     }
   },
   onboarding: { status: 'onboarding:status', complete: 'onboarding:complete' },

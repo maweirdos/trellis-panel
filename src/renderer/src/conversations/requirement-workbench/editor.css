@@ -1,0 +1,36 @@
+.requirement-document-editor { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.requirement-editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-4); flex-shrink: 0; padding: var(--my-space-8) var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); }
+.requirement-editor-modes { display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-4); }
+.requirement-editor-selection-actions { display: flex; align-items: center; gap: var(--my-space-4); margin-inline-start: auto; }
+.requirement-editor-notice { flex-shrink: 0; margin: 0; padding: var(--my-space-8) var(--my-space-24); }
+.requirement-editor-rich { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable both-edges; }
+.requirement-editor-rich[hidden], .requirement-editor-source[hidden] { display: none; }
+.requirement-editor-rich > div { min-height: 100%; }
+.requirement-document-content { box-sizing: border-box; min-height: 100%; padding: var(--my-space-24); font-family: var(--my-font-sans); font-size: var(--my-text-document); font-weight: var(--my-weight-normal); line-height: var(--my-line-document); color: var(--my-txt-primary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.requirement-document-content > :first-child { margin-block-start: 0; }
+.requirement-document-content p { margin-block: var(--my-space-12); }
+.requirement-document-content h1 { font-size: var(--my-text-xl); }
+.requirement-document-content h2 { font-size: var(--my-text-title); }
+.requirement-document-content h3, .requirement-document-content h4, .requirement-document-content h5, .requirement-document-content h6 { font-size: var(--my-text-lg); }
+.requirement-document-content :is(h1,h2,h3,h4,h5,h6) { margin-block: var(--my-space-24) var(--my-space-12); font-weight: var(--my-weight-semibold); line-height: var(--my-line-heading); }
+.requirement-document-content :is(ul,ol) { margin-block: var(--my-space-12); padding-inline-start: var(--my-space-24); }
+.requirement-document-content ul { list-style: disc; }
+.requirement-document-content ol { list-style: decimal; }
+.requirement-document-content li > p { margin-block: var(--my-space-4); }
+.requirement-document-content ul[data-type='taskList'] { padding-inline-start: 0; list-style: none; }
+.requirement-document-content ul[data-type='taskList'] > li { display: flex; align-items: baseline; gap: var(--my-space-8); }
+.requirement-document-content ul[data-type='taskList'] > li > label { flex-shrink: 0; }
+.requirement-document-content ul[data-type='taskList'] > li > div { flex: 1; min-width: 0; }
+.requirement-document-content blockquote { margin-block: var(--my-space-16); padding-inline-start: var(--my-space-16); border-inline-start: 1px solid var(--my-border-strong); color: var(--my-txt-secondary); }
+.requirement-document-content code { font-family: var(--my-font-mono); font-size: var(--my-text-sm); }
+.requirement-document-content pre { padding: var(--my-space-12); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-base); background: var(--my-bg-input); overflow-x: auto; }
+.requirement-document-content pre code { white-space: pre; }
+.requirement-document-content a { color: var(--my-txt-link-primary); text-decoration: underline; text-underline-offset: var(--my-space-2); }
+.requirement-document-content .tableWrapper { overflow-x: auto; margin-block: var(--my-space-16); }
+.requirement-document-content table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.requirement-document-content :is(th,td) { min-width: var(--my-space-32); padding: var(--my-space-8) var(--my-space-12); border: 1px solid var(--my-border-subtle); vertical-align: top; }
+.requirement-document-content th { background: var(--my-bg-panel-header); font-weight: var(--my-weight-semibold); }
+.requirement-document-content :is(th,td) > p { margin: 0; }
+.requirement-document-content .selectedCell { background: var(--my-selection-bg); }
+.requirement-document-content hr { margin-block: var(--my-space-24); border: 0; border-top: 1px solid var(--my-border-subtle); }
+.requirement-editor-source { flex: 1; min-width: 0; min-height: 0; width: auto; margin: var(--my-space-16); padding: var(--my-space-16); resize: none; font-family: var(--my-font-mono); font-size: var(--my-text-document); font-weight: var(--my-weight-normal); line-height: var(--my-line-document); tab-size: 2; }
