@@ -35,20 +35,31 @@ Context controls use shared small ghost Buttons, normal-weight `text-sm`, an
 8px gap between controls and between glyph and label. Do not reuse the bottom
 toolbar's negative-margin text-trigger utility in this row. The selected sidebar
 surface covers the complete row, including its separate More hit target.
-Starting a requirement opens a retained editor beside the original conversation.
-Save a private draft before native AI refinement. Transfer composer input and
-selected file revisions only through explicit actions; leave unsent text and
-images in the original composer. The AI uses that conversation's transport and
-permissions and must save the actual Markdown before the editor can sync it.
-Preserve dirty edits across close, source switching and Settings detours.
+Starting a requirement opens the full `requirement-workbench/Workbench` in the
+current conversation surface: formatted document on the left and the existing
+private transcript/composer in assistant mode on the right. `assistantPort`
+owns its input and projects only receipted requirement turns; ordinary text,
+images, focus intent and viewport remain in their original slot. Preserve dirty
+documents, answers and quotes across close, source switching and Settings detours.
+Transfer ordinary input, recent conversation context and selected file revisions
+only through explicit actions. The original native model, permission and stop
+transports remain authoritative. Show real integrated-knowledge connections and
+explicit collection/source selection, never an engineering project's implicit scope.
 Keep existing drafts and handoffs reopenable from a compact menu beside New
 Requirement, including after a conversation has messages and home shortcuts hide.
-Handoff requires a confirmed saved version and a real, explicitly selected
-Trellis engineering directory. Work's managed directory is not that selection.
-Create a planning task with fixed input provenance through the existing task
-creator; open its exact returned task in the retained task workspace. Starting
-development and advancing stages retain the existing Trellis lifecycle and
-approval controls. Team association is a separate explicit business action.
+Each action uses run/observe/adopt with immutable source inputs and a real
+validated candidate file after the original native turn completes. Adopt an
+explicit workbench action into an unchanged clean draft; otherwise retain a
+readable comparison. Questions are editable inputs, not fabricated progress.
+Confirmation freezes the requirement; Next produces a separate editable plan.
+Requirement changes retain and mark the prior plan stale. Handoff selects a real
+Trellis engineering directory at the plan step; Work's managed directory is not
+that selection. Create a planning task with both fixed documents and provenance.
+Execution preparation verifies official task activation and an ordinary native
+origin, then uses existing managed workflow preview/start and phase controls.
+Preparation is not running; navigation is not execution. Team association and
+formal review keep their own explicit business commands.
+See `docs/requirement-workbench.md` for the end-to-end behavior.
 An empty conversation groups its introduction, context and original composer
 around the content center. After a real send, the same composer DOM docks below
 the transcript without losing focus, IME state, images or scroll ownership.

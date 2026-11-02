@@ -52,8 +52,9 @@ Creating a material from a file reads the selected digest within the creation bo
 
 ## Requirement drafts and Trellis handoff
 
-`shared/conversation-requirements.ts` owns the private draft, selected-file
-revision, target and receipt contracts. Resolve the original conversation owner,
+`shared/conversation-requirements.ts` owns the draft, questions, fixed requirement,
+separate plan, native operation, candidate, selected source, target and receipt
+contracts. Resolve the original conversation owner,
 physical directory and calling document before writes and after async work.
 Draft creation and task handoff retain their original command IDs; repeated
 commands reconcile the same result rather than creating another object.
@@ -63,15 +64,40 @@ Markdown and explicitly selected immutable file snapshots live under the origina
 conversation directory. Compare both saved metadata and actual file digests;
 neither editor save nor model-file sync may silently overwrite a different revision.
 An existing requirement locks a draft's directory even before native execution.
+run captures the original command and native request before dispatching through
+PrivateConversations.send. Observe reconciles that request and exact native turn;
+idle state cannot prove completion. Adopt validates the real bounded candidate,
+source snapshot, metadata CAS and disk digest. Unknown sends are never replayed.
+Each integrated knowledge source retains the original connection/collection and
+returned excerpt identity; that digest is not an upstream full-document revision.
+Confirmation freezes a real snapshot, and later requirement changes invalidate
+the dependent plan without removing its file or the previous evidence.
 
 Work requirements need no team membership or engineering selection while drafting.
 Formal handoff requires a real Trellis directory selected through an owned native
 grant, or the original Code directory explicitly confirmed for handoff. Validate
 the Trellis layout and original physical identity. Create through
-`createTaskRecordAt`, with `planning` status, PRD and immutable input provenance.
+`createTaskRecordAt`, with `planning` status, PRD, standalone plan and immutable
+input provenance.
 Private creator IDs identify provenance, not project assignees; leave assignment
 unset until a project participant is explicitly chosen.
-Do not start execution, approve implementation or publish a raw transcript.
+Handoff does not start execution, approve implementation or publish a transcript.
+An explicit execution-preparation command validates the sealed handoff, uses the
+official task.py start through existing native workcopy guards, verifies actual
+status/context pointer and obtains an ordinary native origin. The private alias
+and directory remain unchanged. Existing workflow preview/start owns phase
+execution; preparation never dispatches a model prompt or a second executor.
+Reconcile uncertain origin creation through its original daemon command receipt,
+not another session. Reopening a prepared operation verifies immutable inputs and
+the original session while allowing the workflow's legitimate working-file changes.
+
+Main-only display text travels separately from the expanded native action prompt.
+The public conversation Send DTO cannot provide it. New canonical user events
+display the actual user request/action name while retaining the expanded prompt
+in native diagnostics; saved earlier history is not rewritten.
+Text autosaves carrying the unchanged runtime remain idempotent after first
+native binding. Actual runtime and directory changes retain guards; native model
+configuration continues through its original guarded transport.
 
 Persist handoff intent before crossing the task-creation boundary. A partial or
 uncertain response keeps the same target, command, draft revision and task identity.
