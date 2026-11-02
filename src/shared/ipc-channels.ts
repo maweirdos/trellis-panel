@@ -24,7 +24,13 @@ export const ipcInvoke = {
     read: 'privateConversations:read', events: 'privateConversations:events', send: 'privateConversations:send', respond: 'privateConversations:respond',
     cancel: 'privateConversations:cancel', end: 'privateConversations:end', configure: 'privateConversations:configure', recoverModel: 'privateConversations:recoverModel', pickDirectory: 'privateConversations:pickDirectory', pickFiles: 'privateConversations:pickFiles',
     files: 'privateConversations:files', openFile: 'privateConversations:openFile', readFile: 'privateConversations:readFile', image: 'privateConversations:image', saveImage: 'privateConversations:saveImage',
-    projects: 'privateConversations:projects', createProject: 'privateConversations:createProject', reclassify: 'privateConversations:reclassify'
+    projects: 'privateConversations:projects', createProject: 'privateConversations:createProject', reclassify: 'privateConversations:reclassify',
+    git: 'privateConversations:git',
+    requirements: {
+      list: 'privateConversations:requirements:list', create: 'privateConversations:requirements:create', read: 'privateConversations:requirements:read',
+      save: 'privateConversations:requirements:save', sync: 'privateConversations:requirements:sync', prompt: 'privateConversations:requirements:prompt',
+      target: 'privateConversations:requirements:target', commit: 'privateConversations:requirements:commit', open: 'privateConversations:requirements:open'
+    }
   },
   onboarding: { status: 'onboarding:status', complete: 'onboarding:complete' },
   bootstrap: { status: 'bootstrap:status', retry: 'bootstrap:retry', legacyInspect: 'bootstrap:legacyInspect', legacyStop: 'bootstrap:legacyStop', legacyReconcile: 'bootstrap:legacyReconcile', exit: 'bootstrap:exit', minimize: 'bootstrap:minimize', maximize: 'bootstrap:maximize', rendered: 'bootstrap:rendered', attached: 'bootstrap:attached', detached: 'bootstrap:detached', paint: 'bootstrap:paint' },

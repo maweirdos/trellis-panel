@@ -23,6 +23,7 @@ import { projectNameFromPath, projectRootKey } from '../my/navigation'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import { conversationClient, conversationError, conversationValue } from './client'
 import { isPrivateEntrySelected } from './source'
+import { ConversationGitContext } from './GitContext'
 import { acceptConversationSession, acquireConversationConfiguration, actionablePermissions, addFiles, chooseDirectory, controlConversation, conversationNativeOwner, earlierMessages, editDraft, ownsConversationNative, patchEntry, readConversation, requestComposerFocus, respondPermission, saveDraft, sendMessage, sessionRunning, setDraftImages, setDraftRuntime, updateConversation, useConversations, type WorkspaceEntry } from './workspace'
 
 export function openConversationSettings(): void {
@@ -38,9 +39,9 @@ function RuntimePicker({ current }: { current: WorkspaceEntry }): JSX.Element {
   </Dropdown>
 }
 
-export function PrivateConversation({ entryKey, onFiles, onNew, onNewDirectory, directoryPending, composerContext, onOpenWebPreview }: {
+export function PrivateConversation({ entryKey, onFiles, onNew, onNewDirectory, directoryPending, directoryFixed = false, composerContext, quickActions, onOpenWebPreview }: {
   entryKey: string; onFiles(): void; onNew(): void; onNewDirectory(): void
-  directoryPending: boolean; composerContext: ReactNode
+  directoryPending: boolean; directoryFixed?: boolean; composerContext: ReactNode; quickActions?: ReactNode
   onOpenWebPreview?: (artifact: PiWebPreviewArtifact, eventId: string) => void
 }): JSX.Element | null {
   const current = useConversations((state) => state.entries[entryKey]), initialized = useConversations((state) => state.initialized)
@@ -144,13 +145,13 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onNewDirectory, 
   const missingRuntime = !current.conversation?.nativeRef && (!current.runtimeId || !runtimes.some((runtime) => runtime.id === current.runtimeId && runtime.enabled && runtime.available))
   const missingModel = !current.conversation?.nativeRef && current.runtimeId === 'pi' && !configuredPi
   const missingDirectory = current.kind === 'code' && !current.directory && !current.conversation
-  const archived = Boolean(current.conversation?.archivedAt)
+  const archived = current.conversation?.archivedAt !== undefined
   const readOnly = archived || session?.historyKind === 'transcript' || session?.historyKind === 'legacy'
   const directory = current.conversation?.workspace.root ?? current.directory?.path
   const nativeAvailable = Boolean(conversationClient())
   const pickCodeDirectory = async (): Promise<void> => {
     if (!currentEntry()) return
-    if (current.conversation?.nativeRef) { onNewDirectory(); return }
+    if (current.conversation?.nativeRef || directoryFixed) { onNewDirectory(); return }
     if (await chooseDirectory(entryKey) && currentEntry() && currentRef.current?.key === entryKey) requestComposerFocus(entryKey)
   }
   const send = (): void => { if (!currentSource() || composerImages.pending || readOnly) return; following.current = true; setAtBottom(true); void sendMessage(entryKey) }
@@ -163,7 +164,7 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onNewDirectory, 
     <button type="button" className="acp-add-action my-menu-item" disabled={readOnly} onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button>
     <button type="button" className="acp-add-action my-menu-item" disabled={!nativeAvailable || Boolean(current.action) || missingDirectory || !current.loaded || readOnly} onClick={() => { close(); if (currentSource()) void addFiles(entryKey) }}><Paperclip size={14} /><span>添加本机文件</span></button>
     <button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); onFiles() }}><FileText size={14} /><span>会话文件</span></button>
-    {current.kind === 'code' && <button type="button" className="acp-add-action my-menu-item" disabled={!nativeAvailable || Boolean(current.action) || directoryPending || readOnly} title={directory} onClick={() => { close(); void pickCodeDirectory() }}><Folder size={14} /><span>{current.conversation?.nativeRef ? '为其他工程新建对话' : directory ? '更换工作目录' : '选择工作目录'}</span></button>}
+    {current.kind === 'code' && <button type="button" className="acp-add-action my-menu-item" disabled={!nativeAvailable || Boolean(current.action) || directoryPending || readOnly} title={directory} onClick={() => { close(); void pickCodeDirectory() }}><Folder size={14} /><span>{current.conversation?.nativeRef || directoryFixed ? '为其他工程新建对话' : directory ? '更换工作目录' : '选择工作目录'}</span></button>}
   </>
   const sendAction = running ? <Button variant="outline" size="sm" title="停止当前回合" disabled={!nativeAvailable || Boolean(current.action) || session?.status === 'cancelling'} onClick={() => { if (currentSource()) void controlConversation(entryKey, 'cancel') }}><CircleStop size={14} /><span className="acp-stop-label">{current.action === 'cancel' || session?.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" aria-label="发送指令" disabled={!nativeAvailable || !initialized || missingRuntime || missingModel || missingDirectory || !current.loaded || Boolean(current.action) || (!current.text.trim() && !composerImages.images.length) || composerImages.pending || readOnly} onClick={send}>{current.action === 'sending' ? <Loader2 size={14} className="acp-progress-spinner" /> : <Send size={14} />}</Button>
   const error = current.error || current.nativeError || (session?.status === 'error' ? session.error : undefined) || (archived ? managementError : undefined)
@@ -185,7 +186,8 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onNewDirectory, 
     {!atBottom && <div className="acp-scroll-to-bottom-container"><Button size="sm" variant="outline" className="acp-scroll-to-bottom-btn" onClick={(event) => { const element = stream.current; pendingAnchor.current = null; following.current = true; if (element) { if (document.activeElement === event.currentTarget) element.focus({ preventScroll: true }); element.scrollTop = element.scrollHeight }; patchEntry(entryKey, { following: true }); setAtBottom(true) }}><ArrowDown size={12} aria-hidden="true" />回到最新</Button></div>}
     <footer className="acp-composer-region my-conversation-column">
       {!readOnly && <div className="acp-composer-contextbar" aria-label="会话资料与工作上下文">
-        {current.kind === 'code' && <Button variant="ghost" size="sm" className="acp-context-action acp-directory-context" disabled={!nativeAvailable || Boolean(current.action) || directoryPending} title={directory} aria-label={current.conversation?.nativeRef ? '选择其他工程并新建对话' : '选择 Code 工作目录'} onClick={() => void pickCodeDirectory()}><Folder size={14} aria-hidden="true" /><span>{directory ? projectNameFromPath(directory) : '选择工程'}</span><ChevronDown size={12} aria-hidden="true" /></Button>}
+        {current.kind === 'code' && <Button variant="ghost" size="sm" className="acp-context-action acp-directory-context" disabled={!nativeAvailable || Boolean(current.action) || directoryPending} title={directory} aria-label={current.conversation?.nativeRef || directoryFixed ? '选择其他工程并新建对话' : '选择 Code 工作目录'} onClick={() => void pickCodeDirectory()}><Folder size={14} aria-hidden="true" /><span>{directory ? projectNameFromPath(directory) : '选择工程'}</span><ChevronDown size={12} aria-hidden="true" /></Button>}
+        {current.kind === 'code' && <ConversationGitContext entryKey={entryKey} />}
         {composerContext}
       </div>}
       {error && <ConnectionNotice message={error} />}
@@ -221,6 +223,7 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onNewDirectory, 
         </div>
       </div>}
       {(!nativeAvailable || initialized && (missingRuntime || missingModel) || runtimeError) && <div className="acp-history-note mt-2">{!nativeAvailable ? '本机会话接口当前不可用，输入仍可编辑。' : runtimeError || (missingModel ? '配置模型后即可发送。' : '选择可用执行引擎后即可发送。')}{nativeAvailable && <Button size="sm" variant="ghost" onClick={openConversationSettings}>打开设置</Button>}</div>}
+      {empty && !readOnly && quickActions}
     </footer>
   </section>
 }

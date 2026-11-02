@@ -7,14 +7,39 @@ import { conversationOpenFileSchema, conversationReadFileSchema, type Conversati
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 import { PrivateConversations, ConversationError, privateConversationNative } from '../services/private-conversations/service'
 import { saveSelectedFile } from '../services/private-conversations/files'
+import { readConversationGit } from '../services/private-conversations/git'
+import { ConversationRequirements } from '../services/private-conversations/requirements'
+import { openProjectAt } from '../state'
 import { broadcastToWindows } from '../services/bridge'
 import { handle } from './registry'
 import type { WindowDeps } from './deps'
 
 export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConversations {
+  let requirements: ConversationRequirements
   const service = new PrivateConversations({ directory: () => app.getPath('userData'), native: privateConversationNative,
+    workspaceHasRequirements: id => requirements.hasDrafts(id),
     publish: (channel, payload) => { if (Object.values(ipcEvent).includes(channel as typeof ipcEvent.acpOutput)) broadcastToWindows(channel, payload) },
     active: () => { const main = deps.getMain(); return Boolean(main && !main.isDestroyed() && main.isVisible() && !main.isMinimized()) } })
+  requirements = new ConversationRequirements({
+    metaDirectory: () => service.metadataDirectory(),
+    owner: id => service.workspaceAccess(id),
+    selectedFile: async (id, fileId, revision) => {
+      const actual = await service.file(id, fileId, revision)
+      return { bytes: actual.bytes, file: actual.file }
+    },
+    resolveTarget: (conversation, selection, directoryOwner, current) => {
+      current?.()
+      if (selection.kind === 'directory') return service.consumeWorkspaceGrant(selection.grantId, directoryOwner).root
+      if (conversation.kind !== 'code' || conversation.workspace.kind !== 'directory') throw new ConversationError('请明确选择 Trellis 工程', IpcErrorCode.InvalidArg)
+      return conversation.workspace.root
+    },
+    openTask: async (root, taskDir, current) => {
+      current?.()
+      const result = openProjectAt(root)
+      if (!result.ok) throw new ConversationError(result.error, result.code)
+      return { snapshot: result.snapshot, taskDir }
+    }
+  })
   app.once('will-quit', () => service.dispose())
   const channels = ipcInvoke.privateConversations
   const documents = new WeakMap<Electron.WebContents, { frame: Electron.WebFrameMain; owner: object }>()
@@ -56,8 +81,8 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
       catch (error) { return fail(error) }
     })
   }
-  const direct = (channel: string, action: (args: unknown[]) => Promise<unknown>): void => {
-    handle(channel, async (event, ...args: unknown[]) => { try { const current = capture(event); const result = await action(args); current(); return result } catch (error) { return fail(error) } })
+  const direct = (channel: string, action: (args: unknown[], current: () => void, event: IpcMainInvokeEvent) => Promise<unknown>): void => {
+    handle(channel, async (event, ...args: unknown[]) => { try { const current = capture(event); current(); const result = await action(args, current, event); current(); return result } catch (error) { return fail(error) } })
   }
   const id = (value: unknown): string => z.string().uuid().parse(value)
   wrapped(channels.list, (_event, args) => service.list(args[0]))
@@ -74,11 +99,30 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
   wrapped(channels.projects, () => service.projects())
   wrapped(channels.createProject, (_event, args) => service.createProject(args[0]))
   wrapped(channels.reclassify, (_event, args) => service.reclassify(id(args[0]), args[1]))
+  const requirementChannels = channels.requirements
+  direct(requirementChannels.list, (args, current) => requirements.list(id(args[0]), current))
+  direct(requirementChannels.create, (args, current) => requirements.create(id(args[0]), args[1], current))
+  direct(requirementChannels.read, (args, current) => requirements.read(id(args[0]), id(args[1]), current))
+  direct(requirementChannels.save, (args, current) => requirements.save(id(args[0]), id(args[1]), args[2], current))
+  direct(requirementChannels.sync, (args, current) => requirements.sync(id(args[0]), id(args[1]), args[2], current))
+  direct(requirementChannels.prompt, (args, current) => requirements.prompt(id(args[0]), id(args[1]), args[2], current))
+  direct(requirementChannels.target, (args, current, event) => requirements.target(id(args[0]), id(args[1]), args[2], documentOwner(event), current))
+  direct(requirementChannels.commit, (args, current) => requirements.commit(id(args[0]), id(args[1]), args[2], current))
+  direct(requirementChannels.open, (args, current) => requirements.open(id(args[0]), id(args[1]), current))
   wrapped(channels.files, (_event, args) => service.files(id(args[0])))
-  wrapped(channels.pickDirectory, async (event, _args, current) => {
+  wrapped(channels.git, async (_event, args, current) => {
+    const owner = await service.workspaceAccess(id(args[0]))
+    if (owner.conversation.kind !== 'code' || owner.conversation.workspace.kind !== 'directory') throw new ConversationError('Git 仅用于 Code 会话目录', IpcErrorCode.InvalidArg)
+    current(); owner.assertCurrent()
+    const value = await readConversationGit(owner.conversation.workspace.root)
+    current(); owner.assertCurrent()
+    return value
+  })
+  wrapped(channels.pickDirectory, async (event, args, current) => {
+    const input = z.object({ purpose: z.enum(['code', 'trellis-requirement']) }).strict().optional().parse(args[0])
     const main = deps.getMain()
     if (!main) throw new ConversationError('主窗口不可用')
-    const choice = await dialog.showOpenDialog(main, { title: '选择 Code 工作目录', properties: ['openDirectory'] })
+    const choice = await dialog.showOpenDialog(main, { title: input?.purpose === 'trellis-requirement' ? '选择 Trellis 工程' : '选择 Code 工作目录', properties: ['openDirectory'] })
     current()
     if (choice.canceled || !choice.filePaths[0]) return null
     return service.grantDirectory(choice.filePaths[0], documentOwner(event))

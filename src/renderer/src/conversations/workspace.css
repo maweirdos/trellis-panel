@@ -1,11 +1,9 @@
 .private-project-form { display: grid; gap: var(--my-space-8); padding: var(--my-space-8); }
 .private-project-form .my-input { width: 100%; }
-.private-project-group>summary,.private-archive-group>summary { cursor: pointer; list-style: none; }
-.private-project-group>summary::-webkit-details-marker,.private-archive-group>summary::-webkit-details-marker { display: none; }
+.private-project-group>summary { cursor: pointer; list-style: none; }
+.private-project-group>summary::-webkit-details-marker { display: none; }
 .private-project-group[open]>summary .private-project-chevron { transform: rotate(90deg); }
 .private-project-conversations { padding-left: var(--my-space-12); }
-.private-archive-group { margin-top: var(--my-space-20); padding-top: var(--my-space-12); border-top: 1px solid var(--my-border-subtle); }
-.private-archive-group[open]>summary>svg:last-child { transform: rotate(90deg); }
 .private-archive-notice { display: flex; align-items: center; gap: var(--my-space-6); padding-bottom: var(--my-space-20); }
 .private-archive-answer { margin-block: var(--my-space-20) var(--my-space-28); }
 .private-archive-process { margin-block: var(--my-space-8); }
@@ -25,3 +23,29 @@
 .private-file-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--my-space-4); }
 .private-files-empty { padding-block: var(--my-space-8); }
 @media (max-width: 600px) { .private-file-actions { width: 100%; justify-content: flex-end; } }
+.private-git-trigger>span:first-of-type { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.private-git-count { color: var(--my-txt-tertiary); font-size: var(--my-text-xs); font-variant-numeric: tabular-nums; }
+.private-git-menu { display: grid; gap: var(--my-space-8); padding: var(--my-space-6) var(--my-space-10) var(--my-space-12); }
+.private-git-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-8); }
+.private-git-heading>div { padding-inline: 0; }
+.private-git-root { overflow-wrap: anywhere; padding-bottom: var(--my-space-8); border-bottom: 1px solid var(--my-border-subtle); }
+.private-git-row { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-12); font-size: var(--my-text-sm); font-variant-numeric: tabular-nums; }
+.private-git-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.private-requirement-context { display: inline-flex; align-items: center; gap: var(--my-space-2); }
+.private-requirement-menu-trigger { padding-inline: var(--my-space-4); }
+.private-requirement-list { max-height: min(40vh, var(--my-composer-max-height)); overflow-y: auto; }
+.private-requirement-menu-row { display: flex; align-items: center; gap: var(--my-space-10); }
+.private-requirement-menu-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.private-home-actions { display: flex; gap: var(--my-space-10); margin-top: var(--my-space-20); }
+.private-home-action { display: flex; flex: 1 1 0; flex-direction: column; align-items: stretch; gap: var(--my-space-6); min-width: 0; padding: var(--my-space-12); text-align: start; }
+.private-home-action:disabled { color: var(--my-txt-disabled); cursor: default; }
+.private-home-action:disabled :is(.my-item-title,.my-item-description) { color: inherit; }
+.private-home-action>span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.private-home-action-kind { display: flex; align-items: center; gap: var(--my-space-6); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
+.private-home-action-kind>svg { flex-shrink: 0; }
+.private-home-action-kind>svg:first-child { transition: scale var(--my-motion-fast) var(--my-ease-out); }
+.private-home-action-kind>svg:last-child { margin-left: auto; opacity: 0; }
+.private-home-action:hover:not(:disabled) .private-home-action-kind>svg:last-child,.private-home-action:focus-visible .private-home-action-kind>svg:last-child { opacity: 1; }
+@media (max-width: 600px) { .private-home-actions { flex-wrap: wrap; }.private-home-action { flex-basis: 42%; } }
+@media (hover: hover) and (pointer: fine) { .private-home-action:hover:not(:disabled) .private-home-action-kind>svg:first-child { scale: var(--my-icon-hover-scale); } }
+@media (prefers-reduced-motion: reduce) { .private-home-action,.private-home-action-kind>svg:first-child { transition: none; }.private-home-action:hover:not(:disabled) .private-home-action-kind>svg:first-child { scale: 1; } }

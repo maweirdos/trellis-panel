@@ -7,9 +7,12 @@ import { IpcErrorCode, ipcFail, noProject, type IpcFail } from '../../shared/ipc
 import { errorText } from '../../shared/errors'
 import { getSettings } from './store'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
+import { requirementTaskOriginSchema } from '../../shared/conversation-requirements'
 export interface TaskRecordPorts { snapshot?: ProjectSnapshot | null; markWritten?(path: string): void; changed?(): void }
 export function createTaskRecordAt(root: string, input: CreateTaskInput, ports: TaskRecordPorts = {}): CreateTaskResult | IpcFail {
   if (!root) return noProject()
+  const requirementOrigin = input.conversationRequirement === undefined ? undefined : requirementTaskOriginSchema.safeParse(input.conversationRequirement)
+  if (requirementOrigin && !requirementOrigin.success) return ipcFail(IpcErrorCode.InvalidArg, '需求来源身份无效')
   if (!/^[^\\/.:\u0000-\u001f]{1,200}$/.test(input.dirName) || !resolveAuthorizedDocumentPath(root, `.trellis/tasks/${input.dirName}/task.json`).ok) return ipcFail(IpcErrorCode.InvalidArg, '任务目录无效或超出项目范围')
   const tasksRoot = join(root, '.trellis', 'tasks')
   const today = new Date()
@@ -31,6 +34,7 @@ export function createTaskRecordAt(root: string, input: CreateTaskInput, ports: 
     mkdirSync(finalDir)
     const meta: Record<string, unknown> = {}
     meta.origin = input.origin ?? (input.jiraKey ? 'jira' : 'panel')
+    if (requirementOrigin?.success) meta.conversationRequirement = requirementOrigin.data
     if (input.jiraKey) {
       meta.jiraKey = input.jiraKey
       meta.jiraUrl = input.jiraUrl ?? ''

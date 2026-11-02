@@ -20,6 +20,7 @@ export interface PrivateConversationPorts {
   native<T, M extends RuntimeBodyMethod>(method: M, body: RuntimeBody<M>, commandId?: string, current?: () => boolean): Promise<T>
   publish(channel: string, payload: unknown): void
   active?(): boolean
+  workspaceHasRequirements?(conversationId: string): boolean
 }
 export class PrivateConversations {
   private storage?: ConversationStorage
@@ -43,6 +44,22 @@ export class PrivateConversations {
     if (!cleanup && directoryIdentity(row.conversation.workspace.root) !== row.rootIdentity) throw new ConversationError('原会话目录已变化；未切换执行目录')
   }
   private async owned(id: string, cleanup = false): Promise<Row> { const row = await this.catalog().load(id); await this.authorized(row, cleanup); return row }
+  metadataDirectory(): string { return this.directory() }
+  async workspaceAccess(id: string): Promise<{ conversation: contract.Conversation; assertCurrent(): void }> {
+    const row = await this.owned(id)
+    const root = row.conversation.workspace.root, rootKey = pathKey(root), identity = row.rootIdentity
+    const creator = row.conversation.creatorId, nativeCreator = row.nativeCreatorId, nativeRef = row.conversation.nativeRef
+    const assertCurrent = (): void => {
+      const current = this.load(id)
+      if (current.conversation.creatorId !== creator || current.nativeCreatorId !== nativeCreator || pathKey(current.conversation.workspace.root) !== rootKey || current.rootIdentity !== identity || directoryIdentity(root) !== identity || nativeRef && JSON.stringify(current.conversation.nativeRef) !== JSON.stringify(nativeRef)) throw new ConversationError('原会话目录或执行身份已变化，请重新打开。')
+    }
+    assertCurrent()
+    return { conversation: row.conversation, assertCurrent }
+  }
+  consumeWorkspaceGrant(id: string, owner?: object): { root: string; kind: 'directory' } {
+    const directory = this.consumeDirectory(id, owner)
+    return { root: directory.root, kind: 'directory' }
+  }
   private nativeOwner(row: Row): contract.PrivateNativeOwner {
     return { root: row.conversation.workspace.root, sessionId: row.conversation.nativeRef?.sessionId ?? `acp-private-${row.conversation.id}`, conversationId: row.conversation.id, creatorId: row.nativeCreatorId }
   }
@@ -129,6 +146,7 @@ export class PrivateConversations {
     const before = JSON.stringify(row)
     if (row.conversation.nativeRef && (input.runtimeId !== undefined || input.directoryGrantId !== undefined)) throw new ConversationError('原生会话已绑定，不能改运行时或执行目录')
     if (input.directoryGrantId && row.conversation.kind === 'work') throw new ConversationError('Work 的执行目录由应用持有', IpcErrorCode.InvalidArg)
+    if (input.directoryGrantId && this.ports.workspaceHasRequirements?.(id)) throw new ConversationError('此会话已保存需求，请为其他工程新建对话')
     if (input.text !== undefined) row.draft.text = input.text
     if (input.title !== undefined) row.conversation.title = input.title
     if (input.runtimeId !== undefined) row.draft.runtimeId = input.runtimeId

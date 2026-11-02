@@ -82,7 +82,9 @@ export interface ConversationApi {
   end(id: string, input?: ConversationConnection): Promise<ConversationResult<null>>
   configure(id: string, input: import('./acp-configuration').ConversationConfigure): Promise<ConversationResult<AcpSessionRecord>>
   recoverModel(id: string, input: import('./acp-configuration').ConversationRecoverModel): Promise<ConversationResult<AcpSessionRecord>>
-  pickDirectory(): Promise<ConversationResult<ConversationDirectoryGrant | null>>
+  pickDirectory(input?: { purpose: 'code' | 'trellis-requirement' }): Promise<ConversationResult<ConversationDirectoryGrant | null>>
+  git(id: string): Promise<ConversationResult<import('./conversation-git').ConversationGitStatus>>
+  requirements: import('./conversation-requirements').ConversationRequirementsApi
   pickFiles(id: string): Promise<ConversationResult<ConversationFile[]>>
   files(id: string): Promise<ConversationResult<ConversationFile[]>>
   openFile(id: string, input: ConversationOpenFile): Promise<ConversationResult<null>>

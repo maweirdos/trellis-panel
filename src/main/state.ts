@@ -401,6 +401,8 @@ export interface CreateTaskInput {
   branch?: string | null
   /** 创建合同（PF-04）：随任务落盘的 prd.md 草稿；目录内已有 prd.md 时不覆盖 */
   prdContent?: string
+  /** Exact personal requirement handoff identity; never task activation. */
+  conversationRequirement?: import('../shared/conversation-requirements').RequirementTaskOrigin
 }
 
 export interface CreateTaskResult {
