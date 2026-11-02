@@ -3,8 +3,8 @@ import { FolderOpen, RefreshCw } from 'lucide-react'
 import { api, hasIpc } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { Button } from '../../my/ui'
+import { ConversationArchiveManager } from '../../conversations/ArchiveManager'
 import { useInteractionSignal } from '../../utils/interaction-scope'
-import { useApp } from '../../store'
 import { PreferenceRow, PreferenceSection } from './PreferenceSection'
 import type { StorageCacheId, StorageCleanItem, StorageScanResult } from '../../../../shared/storage'
 
@@ -32,7 +32,7 @@ function resultLabel(item: StorageCleanItem): string {
 }
 
 export function StorageSettings(): JSX.Element {
-  const setPage = useApp((state) => state.setPage)
+  const [archiveOpen, setArchiveOpen] = useState(false)
   const bridge = hasIpc && typeof api.storage?.scan === 'function' ? api.storage : null
   const [scan, setScan] = useState<StorageScanResult | null>(null)
   const [selected, setSelected] = useState<StorageCacheId[]>([])
@@ -120,10 +120,11 @@ export function StorageSettings(): JSX.Element {
     {error && <p role="alert" className="text-my-sm text-my-danger-text">{error}</p>}
     {results.length > 0 && <PreferenceSection id="storage-result" title="清理结果"><ul className="space-y-2 py-4 text-my-sm text-my-secondary" aria-live="polite">{results.map(item => <li key={item.id}>{resultLabel(item)}</li>)}</ul></PreferenceSection>}
     <PreferenceSection id="storage-data" title="数据管理">
-      <PreferenceRow label="对话历史" hint="在对话中按会话查看和管理历史记录。">
-        <Button size="sm" variant="outline" onClick={() => setPage('acp')}>打开对话</Button>
+      <PreferenceRow label="归档会话" hint="读取或恢复已归档的会话。">
+        <Button size="sm" variant="outline" onClick={() => setArchiveOpen(true)}>管理归档</Button>
       </PreferenceRow>
       <PreferenceRow label="任务观测" hint="在对应任务的详情中查看和管理观测记录。"><span className="text-my-sm text-my-secondary">任务详情</span></PreferenceRow>
     </PreferenceSection>
+    <ConversationArchiveManager open={archiveOpen} onClose={() => setArchiveOpen(false)} />
   </div>
 }

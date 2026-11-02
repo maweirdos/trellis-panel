@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type JSX } from 'react'
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Ellipsis, Folder, Loader2, Pencil, Pin, PinOff, Plus, RefreshCw, Search } from 'lucide-react'
+import { Archive, ChevronDown, ChevronRight, Ellipsis, Folder, Loader2, Pencil, Pin, PinOff, Plus, RefreshCw, Search } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { Conversation } from '@shared/private-conversations'
 import { ConversationSidebar } from '../acp/ConversationSidebar'
@@ -10,13 +10,12 @@ import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { useMy } from '../my/store'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { conversationError } from './client'
-import { createProject, refreshWorkspace, scopeKey, selectArchive, updateConversation, useConversations, type ConversationKind, type WorkspaceEntry } from './workspace'
+import { createProject, refreshWorkspace, scopeKey, updateConversation, useConversations, type ConversationKind, type WorkspaceEntry } from './workspace'
 
 const HISTORY_BATCH = 50
-type HistoryFilter = 'active' | 'archived' | 'legacy'
 type HistoryRow = { kind: 'conversation'; value: Conversation } | { kind: 'draft'; value: WorkspaceEntry }
-interface DisplayBatches { key: string; recent: number; search: number; projects: number; archive: number; groups: Record<string, number> }
-const initialBatches = (key: string): DisplayBatches => ({ key, recent: HISTORY_BATCH, search: HISTORY_BATCH, projects: HISTORY_BATCH, archive: HISTORY_BATCH, groups: {} })
+interface DisplayBatches { key: string; recent: number; search: number; projects: number; groups: Record<string, number> }
+const initialBatches = (key: string): DisplayBatches => ({ key, recent: HISTORY_BATCH, search: HISTORY_BATCH, projects: HISTORY_BATCH, groups: {} })
 const historyRowKey = (item: HistoryRow): string => item.kind === 'conversation' ? 'conversation:' + item.value.id : 'draft:' + item.value.key
 const historyRowTitle = (item: HistoryRow): string => item.kind === 'conversation' ? item.value.title : item.value.text.slice(0, 200).split('\n', 1)[0] || '图片草稿'
 const historyPreview = (conversation: Conversation): string => conversation.conversationPreview?.trim() || (conversation.nativeRef ? '摘要尚未读取' : '草稿')
@@ -37,7 +36,6 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
 }): JSX.Element {
   const state = useConversations(), canInteract = useInteractionGuard(), interactive = useInteractionActive(), signal = useInteractionSignal()
   const sidebarCollapsed = useMy((value) => value.sidebarCollapsed)
-  const [filter, setFilter] = useState<HistoryFilter>(() => selected.startsWith('archive:') ? 'legacy' : 'active')
   const [query, setQuery] = useState(''), [searchOpen, setSearchOpen] = useState(false), [searchIndex, setSearchIndex] = useState(0)
   const [projectOpen, setProjectOpen] = useState(false), [name, setName] = useState(''), [saving, setSaving] = useState(false), [projectError, setProjectError] = useState('')
   const projectComposing = useRef(false), projectLock = useRef(false), projectInputId = useId()
@@ -45,10 +43,10 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
   const renameLock = useRef(false)
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
   const search = query.trim().toLocaleLowerCase()
-  const owner = useMemo(() => ({}), [kind, projectId, selected, filter, interactive, signal])
+  const owner = useMemo(() => ({}), [kind, projectId, selected, interactive, signal])
   const ownerRef = useRef(owner); ownerRef.current = owner
-  const hover = useConversationListPreview(JSON.stringify([kind, projectId, selected, filter, open, interactive, sidebarCollapsed]), interactive && (!sidebarCollapsed || open))
-  const filterKey = JSON.stringify([kind, projectId ?? null, filter, search]), expansionKey = kind
+  const hover = useConversationListPreview(JSON.stringify([kind, projectId, selected, open, interactive, sidebarCollapsed]), interactive && (!sidebarCollapsed || open))
+  const filterKey = JSON.stringify([kind, projectId ?? null, search]), expansionKey = kind
   const [display, setDisplay] = useState<DisplayBatches>(() => initialBatches(filterKey))
   const [expanded, setExpanded] = useState<{ key: string; choices: Record<string, boolean> }>({ key: expansionKey, choices: {} })
   const batches = display.key === filterKey ? display : initialBatches(filterKey)
@@ -62,10 +60,10 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
   }, [entries])
   const projects = state.projects
   const projectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects])
-  const conversations = useMemo(() => state.conversations.filter((conversation) => conversation.kind === kind && (filter === 'archived' ? conversation.archivedAt !== undefined : conversation.archivedAt === undefined)).sort((left, right) =>
+  const conversations = useMemo(() => state.conversations.filter((conversation) => conversation.kind === kind && conversation.archivedAt === undefined).sort((left, right) =>
     Number(right.pinnedAt !== undefined) - Number(left.pinnedAt !== undefined) || right.updatedAt - left.updatedAt || right.id.localeCompare(left.id)
-  ), [state.conversations, kind, filter])
-  const localDrafts = useMemo(() => filter === 'active' ? entries.filter((item) => !item.locked && !item.conversation && item.kind === kind && (item.text || item.images?.length)) : [], [entries, kind, filter])
+  ), [state.conversations, kind])
+  const localDrafts = useMemo(() => entries.filter((item) => !item.locked && !item.conversation && item.kind === kind && (item.text || item.images?.length)), [entries, kind])
   const rows = useMemo<HistoryRow[]>(() => [...localDrafts.map((value): HistoryRow => ({ kind: 'draft', value })), ...conversations.map((value): HistoryRow => ({ kind: 'conversation', value }))], [localDrafts, conversations])
   const grouped = useMemo(() => {
     const recent: HistoryRow[] = [], projects = new Map<string, HistoryRow[]>()
@@ -77,15 +75,12 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
     return { recent, projects }
   }, [rows, projectIds])
   const matches = useMemo(() => rows.filter((item) => !search || (historyRowTitle(item) + ' ' + (item.kind === 'conversation' ? item.value.conversationPreview ?? '' : item.value.text)).toLocaleLowerCase().includes(search)), [rows, search])
-  const archiveMatches = useMemo(() => state.archives.filter((item) => !search || item.title.toLocaleLowerCase().includes(search)), [state.archives, search])
   const selectedEntry = state.entries[selected], selectedConversationId = selectedEntry?.locked ? undefined : selectedEntry?.conversation?.id
   const selectedRow = selectedConversationId ? 'conversation:' + selectedConversationId : selectedEntry && !selectedEntry.locked ? 'draft:' + selected : undefined
   const selectedGroup = selectedEntry?.locked ? undefined : selectedEntry?.projectId ?? projectId
   const recent = batchRows(grouped.recent, batches.recent, selectedRow, historyRowKey)
   const searchRows = batchRows(matches, batches.search, undefined, historyRowKey)
   const projectRows = batchRows(projects, batches.projects, selectedGroup, (item) => item.id)
-  const archiveRows = batchRows(state.archives, batches.archive, selected.startsWith('archive:') ? selected.slice(8) : undefined, (item) => item.id)
-  const archiveSearchRows = batchRows(archiveMatches, batches.search, undefined, (item) => item.id)
   const groupOpen = (id: string): boolean => openChoices['project:' + id] ?? id === selectedGroup
   const setGroupOpen = (id: string, value: boolean): void => setExpanded((previous) => {
     const choices = previous.key === expansionKey ? previous.choices : {}
@@ -95,7 +90,6 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
   useEffect(() => { setProjectOpen(false); setName(''); setProjectError(''); setSearchOpen(false); setQuery(''); setSearchIndex(0) }, [kind])
   useEffect(() => { if (!interactive) { setSearchOpen(false); setProjectOpen(false) } }, [interactive])
   useEffect(() => { setRename(null); setRenameError('') }, [owner])
-  useEffect(() => { if (selected.startsWith('archive:')) setFilter('legacy'); else setFilter((previous) => previous === 'legacy' ? 'active' : previous) }, [selected])
   useEffect(() => { if (selectedGroup) setGroupOpen('project:' + selectedGroup, true) }, [selectedGroup, expansionKey])
   const choose = (conversation: Conversation): void => { if (canInteract()) { setSearchOpen(false); onSelect(conversation) } }
   const chooseRow = (item: HistoryRow): void => {
@@ -106,7 +100,6 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
     setSearchOpen(false); onProject(draft.projectId)
     useConversations.setState((current) => ({ selected: { ...current.selected, [scopeKey(kind, draft.projectId)]: draft.key } }))
   }
-  const changeFilter = (value: HistoryFilter): void => { hover.dismiss(); setFilter(value); setQuery(''); setSearchIndex(0) }
   const openRename = (conversation: Conversation): void => {
     if (!canInteract() || state.managementBusy[conversation.id]) return
     hover.dismiss(); setRename({ id: conversation.id, owner }); setRenameTitle(conversation.title); setRenameError('')
@@ -144,7 +137,7 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
       actions={<Dropdown align="right" width={192} className="acp-recent-menu" trigger={({ open: expanded, toggle }) => <button type="button" data-session-id={conversation.id} className="acp-recent-menu-trigger my-icon-control" aria-label={'会话操作：' + conversation.title} aria-expanded={expanded} aria-haspopup="menu" aria-busy={busy || undefined} disabled={busy} onFocus={hover.dismiss} onMouseEnter={hover.dismiss} onClick={() => { hover.dismiss(); toggle() }}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Ellipsis size={15} />}</button>}>{(close) => <>
         <DropdownItem icon={<Pencil size={14} />} disabled={busy} onClick={() => { close(); openRename(conversation) }}>重命名</DropdownItem>
         <DropdownItem icon={conversation.pinnedAt !== undefined ? <PinOff size={14} /> : <Pin size={14} />} disabled={busy} onClick={() => { close(); void manage(conversation.id, { pinned: conversation.pinnedAt === undefined }) }}>{conversation.pinnedAt !== undefined ? '取消置顶' : '置顶'}</DropdownItem>
-        <DropdownItem icon={conversation.archivedAt !== undefined ? <ArchiveRestore size={14} /> : <Archive size={14} />} disabled={busy} onClick={() => { close(); void manage(conversation.id, { archived: conversation.archivedAt === undefined }) }}>{conversation.archivedAt !== undefined ? '取消归档' : '归档'}</DropdownItem>
+        <DropdownItem icon={<Archive size={14} />} disabled={busy} onClick={() => { close(); void manage(conversation.id, { archived: true }) }}>归档</DropdownItem>
       </>}</Dropdown>}
     />
   }
@@ -158,21 +151,17 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
     finally { projectLock.current = false; setSaving(false) }
   }
   const openSearch = (): void => { if (!canInteract()) return; hover.dismiss(); setQuery(''); setSearchIndex(0); setSearchOpen(true) }
-  const searchEntries = filter === 'legacy' ? archiveSearchRows.visible.map((item) => ({ id: item.id, title: item.title, description: '旧问答 · 只读归档', time: item.updatedAt })) : searchRows.visible.map((item) => ({
+  const searchEntries = searchRows.visible.map((item) => ({
     id: historyRowKey(item), title: historyRowTitle(item), description: item.kind === 'conversation' ? historyPreview(item.value) : '草稿', pinned: item.kind === 'conversation' && item.value.pinnedAt !== undefined, time: item.kind === 'conversation' ? item.value.updatedAt : item.value.localUpdatedAt
   }))
   return <>
     <ConversationSidebar title={<Dropdown trigger={({ open: expanded, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={expanded} onClick={toggle}><strong>对话</strong><ChevronDown size={13} /></button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" /></div>}</Dropdown>} open={open} onClose={onClose} ariaLabel="对话历史" resizeLabel="调整对话历史宽度"
       actions={<><button type="button" className="my-icon-control" aria-label="搜索对话" title="搜索对话" aria-expanded={searchOpen} onClick={openSearch}><Search size={15} /></button><button type="button" className="my-icon-control" aria-label="刷新对话历史" title="刷新对话历史" disabled={state.loading} onClick={() => void refreshWorkspace()}><RefreshCw size={14} className={state.loading ? 'animate-spin' : ''} /></button></>}
       primaryAction={<button type="button" className="my-nav-item" onClick={() => { if (canInteract()) onNew() }}><Plus size={15} />新建对话</button>}
-      label={<><button type="button" aria-pressed={!projectId} onClick={() => onProject()}>{filter === 'legacy' ? '旧问答归档' : filter === 'archived' ? '已归档会话' : '会话'}</button><Dropdown align="right" trigger={({ open: expanded, toggle }) => <button type="button" className="acp-list-filter" aria-label="会话列表筛选与管理" aria-expanded={expanded} onClick={toggle}>{filter === 'legacy' ? '旧问答' : filter === 'archived' ? '已归档' : '全部'}<ChevronDown size={11} /></button>}>{(close) => <div className="acp-list-filter-options">
-        <DropdownItem selected={filter === 'active'} onClick={() => { changeFilter('active'); close() }}>全部对话</DropdownItem>
-        <DropdownItem selected={filter === 'archived'} icon={<Archive size={14} />} onClick={() => { changeFilter('archived'); close() }}>已归档</DropdownItem>
-        {state.archives.length > 0 && <DropdownItem selected={filter === 'legacy'} icon={<Archive size={14} />} onClick={() => { changeFilter('legacy'); close() }}>旧问答 · 只读归档</DropdownItem>}
-        <DropdownItem icon={<Folder size={14} />} onClick={() => { hover.dismiss(); setProjectOpen(true); close() }}>新建项目</DropdownItem>
+      label={<><button type="button" aria-pressed={!projectId} onClick={() => onProject()}>会话</button><Dropdown align="right" trigger={({ open: expanded, toggle }) => <button type="button" className="acp-list-filter" aria-label="会话分组管理" aria-expanded={expanded} onClick={toggle}>分组<ChevronDown size={11} /></button>}>{(close) => <div className="acp-list-filter-options">
+        <DropdownItem icon={<Folder size={14} />} onClick={() => { hover.dismiss(); setProjectOpen(true); close() }}>新建分组</DropdownItem>
       </div>}</Dropdown></>}>
       {state.error && <div role="alert" className="acp-search-error">{state.error}<button type="button" onClick={() => void refreshWorkspace()}>重试</button></div>}
-      {filter === 'legacy' ? <>{state.archiveError && <p role="alert" className="acp-search-error">{state.archiveError}</p>}{archiveRows.visible.map((item) => <ConversationListRow key={item.id} id={item.id} title={item.title} selected={selected === 'archive:' + item.id} onSelect={() => { if (canInteract()) selectArchive(item.id, kind, projectId) }} />)}{more(archiveRows.remaining, () => updateBatches((previous) => ({ ...previous, archive: previous.archive + HISTORY_BATCH })), '加载更多归档')}{!state.archives.length && !state.archiveError && <p className="px-3 py-3 text-my-sm text-my-tertiary">没有匹配的会话</p>}</> : <>
         {recent.visible.map(row)}
         {more(recent.remaining, () => updateBatches((previous) => ({ ...previous, recent: previous.recent + HISTORY_BATCH })))}
         {!rows.length && <p className="px-3 py-3 text-my-sm text-my-tertiary">{state.loading && !state.initialized ? '正在读取对话…' : '暂无匹配的会话'}</p>}
@@ -181,12 +170,11 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
           const children = isOpen ? batchRows(grouped.projects.get(project.id) ?? [], batches.groups[project.id] ?? HISTORY_BATCH, selectedRow, historyRowKey) : null
           return <details key={project.id} className="private-project-group" open={isOpen} onToggle={(event) => setGroupOpen('project:' + project.id, event.currentTarget.open)}><summary className={clsx('acp-recent-row my-nav-item', projectId === project.id && 'is-selected')} onClick={(event) => { event.preventDefault(); setGroupOpen('project:' + project.id, !isOpen); if (!isOpen) onProject(project.id) }}><ChevronRight size={12} className="private-project-chevron" /><Folder size={14} /><span>{project.name}</span></summary>{children && <div className="private-project-conversations">{children.visible.map(row)}{more(children.remaining, () => updateBatches((previous) => ({ ...previous, groups: { ...previous.groups, [project.id]: (previous.groups[project.id] ?? HISTORY_BATCH) + HISTORY_BATCH } })))}<button type="button" className="acp-recent-row my-nav-item" onClick={() => onNew(project.id)}><Plus size={13} /><span>新对话</span></button></div>}</details>
         })}
-        {more(projectRows.remaining, () => updateBatches((previous) => ({ ...previous, projects: previous.projects + HISTORY_BATCH })), '加载更多项目', '个')}
-      </>}
+        {more(projectRows.remaining, () => updateBatches((previous) => ({ ...previous, projects: previous.projects + HISTORY_BATCH })), '加载更多分组', '个')}
     </ConversationSidebar>
-    <Modal open={projectOpen && interactive} onClose={() => setProjectOpen(false)} width={440} ariaLabel="新建项目" placement="center"><form className="p-5" onSubmit={(event) => { event.preventDefault(); if (!projectComposing.current) void saveProject() }}><h2 className="mb-4 text-my-lg font-medium text-my-primary">新建项目</h2><label htmlFor={projectInputId} className="mb-2 block text-my-sm text-my-secondary">项目名称</label><input id={projectInputId} className="my-input w-full" maxLength={200} value={name} onChange={(event) => { setName(event.target.value); setProjectError('') }} onCompositionStart={() => { projectComposing.current = true }} onCompositionEnd={() => { projectComposing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && (projectComposing.current || event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault(); if (event.key === 'Escape' && (projectComposing.current || event.nativeEvent.isComposing)) event.stopPropagation() }} autoFocus /><p className="mt-2 text-my-sm text-my-danger-text" role={projectError ? 'alert' : undefined}>{projectError}</p><div className="mt-5 flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setProjectOpen(false)}>取消</Button><Button size="sm" variant="primary" type="submit" disabled={saving || !name.trim()}>{saving ? '保存中' : '创建'}</Button></div></form></Modal>
-    <Modal open={searchOpen} onClose={() => setSearchOpen(false)} width={620} ariaLabel="搜索对话" placement="center"><ConversationSearch entries={searchEntries} query={query} selected={searchIndex} onSelected={setSearchIndex} onQuery={(value) => { setQuery(value); setSearchIndex(0) }} inputLabel={filter === 'legacy' ? '搜索旧问答标题' : '搜索对话标题或摘要'} footer={filter === 'legacy' ? '搜索旧问答标题' : '搜索对话标题与摘要'} loading={state.loading && !state.initialized} error={filter === 'legacy' ? state.archiveError : state.error}
-      hasMore={(filter === 'legacy' ? archiveSearchRows.remaining : searchRows.remaining) > 0} onLoadMore={() => updateBatches((previous) => ({ ...previous, search: previous.search + HISTORY_BATCH }))} onRetry={() => void refreshWorkspace()} onClose={() => setSearchOpen(false)} onSelect={(id) => { if (!canInteract()) return; if (filter === 'legacy') { selectArchive(id, kind, projectId); setSearchOpen(false) } else { const item = matches.find((item) => historyRowKey(item) === id); if (item) chooseRow(item) } }} /></Modal>
+    <Modal open={projectOpen && interactive} onClose={() => setProjectOpen(false)} width={440} ariaLabel="新建分组" placement="center"><form className="p-5" onSubmit={(event) => { event.preventDefault(); if (!projectComposing.current) void saveProject() }}><h2 className="mb-4 text-my-lg font-medium text-my-primary">新建分组</h2><label htmlFor={projectInputId} className="mb-2 block text-my-sm text-my-secondary">分组名称</label><input id={projectInputId} className="my-input w-full" maxLength={200} value={name} onChange={(event) => { setName(event.target.value); setProjectError('') }} onCompositionStart={() => { projectComposing.current = true }} onCompositionEnd={() => { projectComposing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && (projectComposing.current || event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault(); if (event.key === 'Escape' && (projectComposing.current || event.nativeEvent.isComposing)) event.stopPropagation() }} autoFocus /><p className="mt-2 text-my-sm text-my-danger-text" role={projectError ? 'alert' : undefined}>{projectError}</p><div className="mt-5 flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setProjectOpen(false)}>取消</Button><Button size="sm" variant="primary" type="submit" disabled={saving || !name.trim()}>{saving ? '保存中' : '创建'}</Button></div></form></Modal>
+    <Modal open={searchOpen} onClose={() => setSearchOpen(false)} width={620} ariaLabel="搜索对话" placement="center"><ConversationSearch entries={searchEntries} query={query} selected={searchIndex} onSelected={setSearchIndex} onQuery={(value) => { setQuery(value); setSearchIndex(0) }} inputLabel="搜索对话标题或摘要" footer="搜索对话标题与摘要" loading={state.loading && !state.initialized} error={state.error}
+      hasMore={searchRows.remaining > 0} onLoadMore={() => updateBatches((previous) => ({ ...previous, search: previous.search + HISTORY_BATCH }))} onRetry={() => void refreshWorkspace()} onClose={() => setSearchOpen(false)} onSelect={(id) => { if (!canInteract()) return; const item = matches.find((item) => historyRowKey(item) === id); if (item) chooseRow(item) }} /></Modal>
     <ConversationRenameDialog open={!!rename && rename.owner === owner && interactive} title={renameTitle} error={renameError || (rename ? state.managementErrors[rename.id] : undefined)} busy={!!rename && state.managementBusy[rename.id]} onTitle={(value) => { setRenameTitle(value); setRenameError('') }} onClose={() => setRename(null)} onSave={() => void saveRename()} />
     <ConversationListPreview id={hover.id} preview={hover.preview} />
   </>
