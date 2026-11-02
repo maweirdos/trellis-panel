@@ -33,9 +33,11 @@ IDEA is an interaction reference, not a private theme or IDE implementation.
   its tooltip wrapper and truncates without overlapping the adjacent branch.
   Mode changes remain a
   presentation preference and never prepare/rebind a task or start/stop a run.
-- Private conversations select their own personal/team business context within
-  the conversation workspace. Hide the ordinary global team-space switch on this
-  route; its existing behavior remains on personal and team business pages.
+- Private conversations have no personal/team selector. The global team-space
+  switch retains its existing business scope without filtering, replacing or
+  moving the current conversation or draft. Knowledge sources, requirement
+  destinations and artifact publication scopes belong to their respective
+  authorized business flows.
   Private Code directory controls use that conversation's native grant rather
   than the shell's selected project. Do not show another project's Git/run state
   beside a private conversation.

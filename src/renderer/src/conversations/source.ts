@@ -10,7 +10,7 @@ import { baseScopeKey, scopeKey, useConversations } from './workspace'
 export function isPrivateEntrySelected(entryKey: string): boolean {
   const state = useConversations.getState(), value = state.entries[entryKey]
   const kind = useMy.getState().shellView === 'development' ? 'code' : 'work'
-  return Boolean(value && !value.locked && state.selected[scopeKey(state.context, kind, state.projectScopes[baseScopeKey(state.context, kind)] ?? undefined)] === entryKey)
+  return Boolean(value && !value.locked && state.selected[scopeKey(kind, state.projectScopes[baseScopeKey(kind)] ?? undefined)] === entryKey)
 }
 
 export function usePrivateDocumentSource(entryKey: string): DocumentSourceClient {

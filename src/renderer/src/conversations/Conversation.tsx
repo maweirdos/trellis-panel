@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { ArrowDown, Bot, ChevronDown, CircleStop, FileText, Folder, ImagePlus, Loader2, Paperclip, Plus, Send, Settings2 } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ArchiveRestore, ArrowDown, ChevronDown, CircleStop, FileText, Folder, ImagePlus, Loader2, Paperclip, Plus, Send, Settings2 } from 'lucide-react'
 import type { AcpConfigureInput } from '@shared/types'
 import type { PiWebPreviewArtifact } from '@shared/pi-web-preview'
 import { ConversationTranscript, type TranscriptActiveSegment } from '../acp/ConversationTranscript'
@@ -19,11 +19,11 @@ import { projectCurrentTurnActivity, type CurrentTurnActivity } from '../acp/cur
 import { Button, Dropdown, DropdownHeader, DropdownItem } from '../my/ui'
 import { useMy } from '../my/store'
 import { useApp } from '../store'
-import { projectRootKey } from '../my/navigation'
+import { projectNameFromPath, projectRootKey } from '../my/navigation'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import { conversationClient, conversationError, conversationValue } from './client'
 import { isPrivateEntrySelected } from './source'
-import { acceptConversationSession, acquireConversationConfiguration, actionablePermissions, addFiles, chooseDirectory, controlConversation, conversationNativeOwner, earlierMessages, editDraft, ownsConversationNative, patchEntry, readConversation, requestComposerFocus, respondPermission, saveDraft, sendMessage, sessionRunning, setDraftImages, setDraftRuntime, useConversations, type WorkspaceEntry } from './workspace'
+import { acceptConversationSession, acquireConversationConfiguration, actionablePermissions, addFiles, chooseDirectory, controlConversation, conversationNativeOwner, earlierMessages, editDraft, ownsConversationNative, patchEntry, readConversation, requestComposerFocus, respondPermission, saveDraft, sendMessage, sessionRunning, setDraftImages, setDraftRuntime, updateConversation, useConversations, type WorkspaceEntry } from './workspace'
 
 export function openConversationSettings(): void {
   useMy.getState().setSettingsView('engines'); useApp.getState().setPage('settings')
@@ -38,11 +38,14 @@ function RuntimePicker({ current }: { current: WorkspaceEntry }): JSX.Element {
   </Dropdown>
 }
 
-export function PrivateConversation({ entryKey, onFiles, onNew, onOpenWebPreview }: {
-  entryKey: string; onFiles(): void; onNew(): void
+export function PrivateConversation({ entryKey, onFiles, onNew, onNewDirectory, directoryPending, composerContext, onOpenWebPreview }: {
+  entryKey: string; onFiles(): void; onNew(): void; onNewDirectory(): void
+  directoryPending: boolean; composerContext: ReactNode
   onOpenWebPreview?: (artifact: PiWebPreviewArtifact, eventId: string) => void
 }): JSX.Element | null {
   const current = useConversations((state) => state.entries[entryKey]), initialized = useConversations((state) => state.initialized)
+  const managementBusy = useConversations((state) => state.managementBusy[state.entries[entryKey]?.conversation?.id ?? ''])
+  const managementError = useConversations((state) => state.managementErrors[state.entries[entryKey]?.conversation?.id ?? ''])
   const runtimes = useConversations((state) => state.runtimes), configuredPi = useConversations((state) => state.configuredPi), runtimeError = useConversations((state) => state.runtimeError)
   const interactive = useInteractionActive(), canInteract = useInteractionGuard(), source = useDocumentSource()
   const [now, setNow] = useState(Date.now), [segment, setSegment] = useState<TranscriptActiveSegment | null>(null), [atBottom, setAtBottom] = useState(true)
@@ -60,7 +63,7 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onOpenWebPreview
     root: current?.conversation?.workspace.root ?? '', sessionId: current?.locked ? undefined : entryKey,
     generation: current?.session?.connectionGeneration, isCurrent: currentSource,
     draftSource: {
-      identity: JSON.stringify([entryKey, current?.context]),
+      identity: JSON.stringify([entryKey, current?.owner]),
       read: (key) => { const value = useConversations.getState().entries[key]; return value && !value.locked && key === entryKey ? value.images ?? [] : [] },
       write: (key, images) => { if (currentSource() && key === entryKey) setDraftImages(key, images, useConversations.getState().entries[key]?.owner) }
     }
@@ -117,7 +120,7 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onOpenWebPreview
   const activity = useMemo(() => projectCurrentTurnActivity({ root: current?.conversation?.workspace.root ?? '', session: current?.session ?? null, events: current?.events ?? [], request: current?.request, interactive }), [current?.conversation?.workspace.root, current?.session, current?.events, current?.request, interactive])
   const displayedActivity = useMemo<CurrentTurnActivity | null>(() => activity ?? (current?.action === 'sending' && interactive ? { phase: 'submitting', label: '正在发送…', spinning: true } : null), [activity, current?.action, interactive])
   if (!current) return null
-  if (current.locked) return <div role="status" className="acp-empty">原会话的账户或团队来源已改变，请在历史中重新核对后打开。</div>
+  if (current.locked) return <div role="status" className="acp-empty">原会话的本机身份尚未核对，请在历史中重新打开。</div>
   const session = current.session, running = sessionRunning(current)
   const ownsPicker = (): boolean => Boolean(owner && currentSource() && ownsConversationNative(entryKey, owner))
   const configureSession = async (configuration: AcpConfigureInput) => {
@@ -141,13 +144,16 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onOpenWebPreview
   const missingRuntime = !current.conversation?.nativeRef && (!current.runtimeId || !runtimes.some((runtime) => runtime.id === current.runtimeId && runtime.enabled && runtime.available))
   const missingModel = !current.conversation?.nativeRef && current.runtimeId === 'pi' && !configuredPi
   const missingDirectory = current.kind === 'code' && !current.directory && !current.conversation
-  const readOnly = session?.historyKind === 'transcript' || session?.historyKind === 'legacy'
+  const archived = Boolean(current.conversation?.archivedAt)
+  const readOnly = archived || session?.historyKind === 'transcript' || session?.historyKind === 'legacy'
+  const directory = current.conversation?.workspace.root ?? current.directory?.path
   const nativeAvailable = Boolean(conversationClient())
   const pickCodeDirectory = async (): Promise<void> => {
     if (!currentEntry()) return
+    if (current.conversation?.nativeRef) { onNewDirectory(); return }
     if (await chooseDirectory(entryKey) && currentEntry() && currentRef.current?.key === entryKey) requestComposerFocus(entryKey)
   }
-  const send = (): void => { if (!currentSource() || composerImages.pending) return; following.current = true; setAtBottom(true); void sendMessage(entryKey) }
+  const send = (): void => { if (!currentSource() || composerImages.pending || readOnly) return; following.current = true; setAtBottom(true); void sendMessage(entryKey) }
   const openRecordedArtifact = (file: { path: string }): void => {
     if (!source || !currentSource()) return
     void source.openDocument(file.path).catch((cause) => { if (currentSource()) patchEntry(entryKey, { error: conversationError(cause) }) })
@@ -157,32 +163,36 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onOpenWebPreview
     <button type="button" className="acp-add-action my-menu-item" disabled={readOnly} onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button>
     <button type="button" className="acp-add-action my-menu-item" disabled={!nativeAvailable || Boolean(current.action) || missingDirectory || !current.loaded || readOnly} onClick={() => { close(); if (currentSource()) void addFiles(entryKey) }}><Paperclip size={14} /><span>添加本机文件</span></button>
     <button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); onFiles() }}><FileText size={14} /><span>会话文件</span></button>
-    {current.kind === 'code' && <button type="button" className="acp-add-action my-menu-item" disabled={!nativeAvailable || Boolean(current.action) || Boolean(current.conversation?.nativeRef)} title={current.conversation?.workspace.root ?? current.directory?.path} onClick={() => { close(); void pickCodeDirectory() }}><Folder size={14} /><span>{current.directory || current.conversation ? '更换工作目录' : '选择工作目录'}</span></button>}
+    {current.kind === 'code' && <button type="button" className="acp-add-action my-menu-item" disabled={!nativeAvailable || Boolean(current.action) || directoryPending || readOnly} title={directory} onClick={() => { close(); void pickCodeDirectory() }}><Folder size={14} /><span>{current.conversation?.nativeRef ? '为其他工程新建对话' : directory ? '更换工作目录' : '选择工作目录'}</span></button>}
   </>
   const sendAction = running ? <Button variant="outline" size="sm" title="停止当前回合" disabled={!nativeAvailable || Boolean(current.action) || session?.status === 'cancelling'} onClick={() => { if (currentSource()) void controlConversation(entryKey, 'cancel') }}><CircleStop size={14} /><span className="acp-stop-label">{current.action === 'cancel' || session?.status === 'cancelling' ? '正在停止…' : '停止本轮'}</span></Button> : <Button variant="primary" size="sm" title="发送指令" aria-label="发送指令" disabled={!nativeAvailable || !initialized || missingRuntime || missingModel || missingDirectory || !current.loaded || Boolean(current.action) || (!current.text.trim() && !composerImages.images.length) || composerImages.pending || readOnly} onClick={send}>{current.action === 'sending' ? <Loader2 size={14} className="acp-progress-spinner" /> : <Send size={14} />}</Button>
-  const error = current.error || current.nativeError || (session?.status === 'error' ? session.error : undefined)
+  const error = current.error || current.nativeError || (session?.status === 'error' ? session.error : undefined) || (archived ? managementError : undefined)
   const empty = !current.events.length && !displayedActivity && !current.loadError && !current.loading
-  return <section className="acp-content">
+  return <section className="acp-content" data-empty={empty && !readOnly || undefined}>
     <div ref={stream} className="acp-transcript my-scrollbar" role="region" aria-label="会话消息" tabIndex={0} onScroll={(event) => {
       const element = event.currentTarget, next = element.scrollHeight - element.scrollTop - element.clientHeight < 48
       if (current.earlierLoading && pendingAnchor.current?.key === entryKey) pendingAnchor.current.snapshot = captureTranscriptAnchor(element)
       following.current = next; setAtBottom(next); patchEntry(entryKey, { scrollTop: element.scrollTop, following: next })
-    }}><div className={`acp-transcript-content my-conversation-column acp-chat-copy${empty ? ' flex h-full flex-col' : ''}`}>
+    }}><div className="acp-transcript-content my-conversation-column acp-chat-copy">
       {current.page && (current.page.hasEarlier || current.page.startsMidTurn || current.page.coverage.state !== 'complete') && <HistoryBoundary key={`history:${current.conversation?.workspace.root}:${current.conversation?.nativeRef?.sessionId}`} hasEarlier={current.page.hasEarlier} startsMidTurn={current.page.startsMidTurn} coverage={current.page.coverage.state} loading={Boolean(current.earlierLoading)} onLoadEarlier={older} />}
       {current.loading && !current.loaded && <p className="my-activity-note" role="status"><Loader2 size={14} className="animate-spin" />正在读取对话…</p>}
       {current.loadError && <div className="acp-history-note"><ConnectionNotice message={current.loadError} /><Button size="sm" variant="ghost" disabled={current.loading} onClick={() => void readConversation(entryKey)}>重试加载历史</Button></div>}
       {session && <ConversationTranscript privateConversation session={session} events={current.events} items={items} currentActivity={displayedActivity} onActiveSegmentChange={setSegment} suppressWorkingIndicator={Boolean(displayedActivity)} pendingPerm={permissions} permissionPending={current.permissionPending} permissionErrors={current.permissionErrors} onRespond={(requestId, optionId) => { if (currentSource()) void respondPermission(entryKey, requestId, optionId) }} onOpenArtifact={openRecordedArtifact} onOpenTask={onFiles} onOpenSpec={onFiles} onOpenJira={onFiles} onOpenWebPreview={onOpenWebPreview} />}
       {session && Object.values(permissions).filter((permission) => !items.some((item) => item.type === 'perm' && item.ev.payload?.requestId === permission.requestId)).map((permission) => <EventRow key={`current-permission:${permission.requestId}`} item={{ type: 'perm', key: `current-permission:${permission.requestId}`, ev: { id: `current-permission:${permission.requestId}`, ts: 0, source: session.engine ?? 'acp', kind: 'permission', sessionId: session.sessionId, projectRoot: session.projectRoot, text: permission.toolCall?.title ?? '等待你的授权', payload: { requestId: permission.requestId } } }} session={session} events={current.events} pendingPerm={permissions} permissionPending={current.permissionPending} permissionErrors={current.permissionErrors} onRespond={(requestId, optionId) => { if (currentSource()) void respondPermission(entryKey, requestId, optionId) }} onOpenArtifact={openRecordedArtifact} onOpenTask={onFiles} onOpenSpec={onFiles} onOpenJira={onFiles} />)}
-      {empty && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{readOnly ? '此记录仅供阅读。' : '从一条清晰的指令开始。'}</p></div>}
+      {empty && !readOnly && <div className="acp-conversation-start"><h1>{current.kind === 'code' ? '从一个想法开始。' : '今天想完成什么？'}</h1><p>{current.kind === 'code' ? '描述要构建、修改或排查的问题。' : '整理资料、梳理需求，或直接开始对话。'}</p></div>}
       <CurrentTurnStatus activity={ownSegment ? null : displayedActivity} />
     </div></div>
     {!atBottom && <div className="acp-scroll-to-bottom-container"><Button size="sm" variant="outline" className="acp-scroll-to-bottom-btn" onClick={(event) => { const element = stream.current; pendingAnchor.current = null; following.current = true; if (element) { if (document.activeElement === event.currentTarget) element.focus({ preventScroll: true }); element.scrollTop = element.scrollHeight }; patchEntry(entryKey, { following: true }); setAtBottom(true) }}><ArrowDown size={12} aria-hidden="true" />回到最新</Button></div>}
     <footer className="acp-composer-region my-conversation-column">
+      {!readOnly && <div className="acp-composer-contextbar" aria-label="会话资料与工作上下文">
+        {current.kind === 'code' && <Button variant="ghost" size="sm" className="acp-context-action acp-directory-context" disabled={!nativeAvailable || Boolean(current.action) || directoryPending} title={directory} aria-label={current.conversation?.nativeRef ? '选择其他工程并新建对话' : '选择 Code 工作目录'} onClick={() => void pickCodeDirectory()}><Folder size={14} aria-hidden="true" /><span>{directory ? projectNameFromPath(directory) : '选择工程'}</span><ChevronDown size={12} aria-hidden="true" /></Button>}
+        {composerContext}
+      </div>}
       {error && <ConnectionNotice message={error} />}
       {session?.cleanupRequired && <div className="acp-history-note"><Button size="sm" variant="outline" disabled={Boolean(current.action)} onClick={() => void controlConversation(entryKey, 'end')}>重试结束会话</Button><Button size="sm" variant="ghost" onClick={openConversationSettings}>检查执行引擎</Button></div>}
       {current.saveError && <div className="acp-history-note"><ConnectionNotice message={`草稿尚未保存：${current.saveError}`} /><Button variant="ghost" size="sm" onClick={() => void saveDraft(entryKey).catch(() => undefined)}>重试保存</Button></div>}
       {current.fileError && <div className="acp-history-note"><ConnectionNotice message={current.fileError} /><Button size="sm" variant="ghost" onClick={onFiles}>查看文件</Button></div>}
-      {readOnly ? <div className="acp-history-note"><p>此会话仅保留历史记录。</p><Button size="sm" variant="ghost" onClick={onNew}>新建对话</Button></div> : <div className={`acp-composer${composerImages.dragging ? ' acp-composer-dragging' : ''}`} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>
+      {readOnly ? <div className="acp-history-note"><p>{archived ? '此对话已归档。' : '此会话仅保留历史记录。'}</p>{archived && current.conversation && <Button size="sm" variant="ghost" disabled={managementBusy} onClick={() => { if (currentSource() && current.conversation) void updateConversation(current.conversation.id, { archived: false }) }}>{managementBusy ? <Loader2 size={14} className="animate-spin" /> : <ArchiveRestore size={14} />}恢复对话</Button>}<Button size="sm" variant="ghost" onClick={onNew}>新建对话</Button>{running && sendAction}</div> : <div className={`acp-composer${composerImages.dragging ? ' acp-composer-dragging' : ''}`} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>
         {composerImages.fileInput}
         {composerImages.dragging && <div className="acp-image-drop-hint" aria-hidden="true"><ImagePlus size={22} /><span>松开以添加图片</span></div>}
         <ImageAttachments key={entryKey} images={composerImages.images} onRemove={composerImages.remove} />
@@ -191,7 +201,24 @@ export function PrivateConversation({ entryKey, onFiles, onNew, onOpenWebPreview
         {composerImages.images.length > 0 && session && session.capabilities?.promptCapabilities?.image !== true && <p className="acp-image-status text-my-warning-text" role="status">当前执行引擎未声明支持图片输入，图片草稿已保留</p>}
         {current.files.some((file) => file.kind === 'input') && <div className="acp-source-references">{current.files.filter((file) => file.kind === 'input').map((file) => <button type="button" key={file.id} className="acp-source-chip" onClick={onFiles} title={file.relativePath}><Paperclip size={12} /><span>{file.name}</span></button>)}</div>}
         <textarea ref={composer} value={current.text} aria-label={current.kind === 'code' ? 'Code 会话指令' : '会话指令'} title="Enter 发送 · Shift Enter 换行" placeholder="说说你的想法…" maxLength={200_000} disabled={!current.loaded} rows={2} onChange={(event) => editDraft(entryKey, event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); event.stopPropagation(); if (!missingRuntime && !missingModel && !missingDirectory && !current.action && !running) send() } }} />
-        <div className="acp-composer-toolbar">{session && owner ? <ComposerModelPicker key={`${owner.sessionId}:${owner.generation}`} session={session} message={error} operationPending={Boolean(current.action) || !current.loaded || typeof conversationClient()?.configure !== 'function'} acquireConfiguration={() => ownsPicker() ? acquireConversationConfiguration(entryKey, owner) : undefined} isCurrent={ownsPicker} configureSession={configureSession} onUpdated={(updated) => { if (ownsPicker()) acceptConversationSession(entryKey, updated, owner) }} onRecoverModel={recoverModel} contextActions={contextActions} usage={<ComposerUsageIndicator session={session} events={current.events} />} sendAction={sendAction} /> : <div className="acp-composer-controls"><div className="acp-composer-controls-left"><Dropdown placement="top" width={290} trigger={({ open, toggle }) => <button type="button" className="acp-composer-add my-composer-control" aria-label="添加与会话选项" aria-expanded={open} onClick={toggle}><Plus size={19} /></button>}>{(close) => <div className="acp-add-menu my-scrollbar"><DropdownHeader>添加</DropdownHeader>{contextActions(close)}</div>}</Dropdown>{missingDirectory && <button type="button" className="acp-composer-context my-composer-control my-composer-control-label" disabled={!nativeAvailable || Boolean(current.action)} onClick={() => void pickCodeDirectory()}><Folder size={14} /><span>选择工作目录</span></button>}</div><div className="acp-composer-controls-right"><RuntimePicker current={current} />{sendAction}</div></div>}</div>
+        <div className="acp-composer-toolbar">
+          {session && owner ? <ComposerModelPicker
+            key={`${owner.sessionId}:${owner.generation}`} session={session} message={error}
+            operationPending={Boolean(current.action) || !current.loaded || typeof conversationClient()?.configure !== 'function'}
+            acquireConfiguration={() => ownsPicker() ? acquireConversationConfiguration(entryKey, owner) : undefined}
+            isCurrent={ownsPicker} configureSession={configureSession}
+            onUpdated={(updated) => { if (ownsPicker()) acceptConversationSession(entryKey, updated, owner) }}
+            onRecoverModel={recoverModel} contextActions={contextActions}
+            usage={<ComposerUsageIndicator session={session} events={current.events} />} sendAction={sendAction}
+          /> : <div className="acp-composer-controls">
+            <div className="acp-composer-controls-left">
+              <Dropdown placement="top" width={290} trigger={({ open, toggle }) => <button type="button" className="acp-composer-add my-composer-control" aria-label="添加与会话选项" aria-expanded={open} onClick={toggle}><Plus size={19} /></button>}>
+                {(close) => <div className="acp-add-menu my-scrollbar"><DropdownHeader>添加</DropdownHeader>{contextActions(close)}</div>}
+              </Dropdown>
+            </div>
+            <div className="acp-composer-controls-right"><RuntimePicker current={current} />{sendAction}</div>
+          </div>}
+        </div>
       </div>}
       {(!nativeAvailable || initialized && (missingRuntime || missingModel) || runtimeError) && <div className="acp-history-note mt-2">{!nativeAvailable ? '本机会话接口当前不可用，输入仍可编辑。' : runtimeError || (missingModel ? '配置模型后即可发送。' : '选择可用执行引擎后即可发送。')}{nativeAvailable && <Button size="sm" variant="ghost" onClick={openConversationSettings}>打开设置</Button>}</div>}
     </footer>

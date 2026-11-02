@@ -29,7 +29,6 @@ export function ArtifactDelivery({ conversation, file, onClose }: {
       if (!useHifox.getState().workspaceContext.actorId) await useHifox.getState().bootstrap()
       const source = useHifox.getState().workspaceContext
       if (!source.actorId || source.state === 'access-revoked') throw new Error('个人创作工作区尚未就绪，请重新载入')
-      if (conversation.context.kind === 'team' && conversation.context.workspaceKey !== source.key) throw new Error('请先切回此会话关联的团队工作区，再整理材料')
       const sourceIdentity = JSON.stringify([source.key, source.actorId, source.epoch])
       if (owner.current && owner.current !== sourceIdentity) throw new Error('账户或工作区已改变，请关闭后重新选择文件')
       owner.current = sourceIdentity
@@ -43,7 +42,7 @@ export function ArtifactDelivery({ conversation, file, onClose }: {
     void load().catch(failure => { if (current) setError(failure instanceof Error ? failure.message : '无法读取所选文件') })
       .finally(() => { if (current) setLoading(false) })
     return () => { current = false }
-  }, [conversation.id, conversation.context.kind, conversation.context.kind === 'team' ? conversation.context.workspaceKey : '', file.id, file.revision, attempt])
+  }, [conversation.id, file.id, file.revision, attempt])
 
   const changed = owner.current !== null && identity !== owner.current
   if (draft && !changed) return <CreateCreationDialog key={`${conversation.id}:${file.id}:${file.revision}:${identity}`}

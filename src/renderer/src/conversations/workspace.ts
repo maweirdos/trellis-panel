@@ -1,21 +1,18 @@
 import { create } from 'zustand'
 import type { AcpHistoryEventPage } from '@shared/acp-history'
-import type { Conversation, ConversationContext, ConversationContextChoice, ConversationDirectoryGrant, ConversationFile, ConversationProject, ConversationRead } from '@shared/private-conversations'
+import type { Conversation, ConversationDirectoryGrant, ConversationFile, ConversationProject, ConversationRead } from '@shared/private-conversations'
 import type { AcpAgentStatus, AcpPermissionPayload, AcpSessionRecord, ChatSessionMeta, ChatSessionView, TimelineEvent } from '@shared/types'
 import type { AcpImageAttachment } from '@shared/acp-images'
 import type { CurrentTurnRequest } from '../acp/current-turn-activity'
 import { mergeEvents } from '../acp/timeline'
 import { api, hasIpc } from '../api'
 import { projectRootKey } from '../my/navigation'
-import { useHifox } from '../hifox/store'
 import { conversationClient, conversationError, conversationValue } from './client'
 import { installationNamespace, readStoredWorkspace, writeStoredWorkspace, type StoredWorkspace } from './draft-storage'
 
-export const PERSONAL: ConversationContext = { kind: 'personal' }
 export type ConversationKind = Conversation['kind']
-export const contextKey = (context: ConversationContext): string => context.kind === 'personal' ? 'personal' : JSON.stringify([context.workspaceKey, context.spaceId])
-export const baseScopeKey = (context: ConversationContext, kind: ConversationKind): string => `${kind}:${contextKey(context)}`
-export const scopeKey = (context: ConversationContext, kind: ConversationKind, projectId?: string): string => `${baseScopeKey(context, kind)}:${projectId ?? ''}`
+export const baseScopeKey = (kind: ConversationKind): string => kind
+export const scopeKey = (kind: ConversationKind, projectId?: string): string => `${kind}:${projectId ?? ''}`
 
 export interface WorkspaceEntry {
   key: string
@@ -23,7 +20,6 @@ export interface WorkspaceEntry {
   locked?: boolean
   localUpdatedAt?: number
   kind: ConversationKind
-  context: ConversationContext
   projectId?: string
   conversation?: Conversation
   directory?: ConversationDirectoryGrant
@@ -60,10 +56,8 @@ interface ConversationWorkspace {
   entries: Record<string, WorkspaceEntry>
   selected: Record<string, string>
   projectScopes: Record<string, string | null>
-  context: ConversationContext
   conversations: Conversation[]
   projects: ConversationProject[]
-  contexts: ConversationContextChoice[]
   runtimes: AcpAgentStatus[]
   defaultRuntimeId?: string
   configuredPi: boolean
@@ -76,120 +70,18 @@ interface ConversationWorkspace {
   runtimeError?: string
   archiveError?: string
   storageError?: string
+  managementBusy: Record<string, boolean>
+  managementErrors: Record<string, string>
 }
 export const useConversations = create<ConversationWorkspace>(() => ({
-  entries: {}, selected: {}, projectScopes: {}, context: PERSONAL, conversations: [], projects: [],
-  contexts: [{ context: PERSONAL, name: '个人' }], runtimes: [], configuredPi: false,
-  archives: [], archiveReads: {}, loading: false, initialized: false
+  entries: {}, selected: {}, projectScopes: {}, conversations: [], projects: [], runtimes: [], configuredPi: false,
+  archives: [], archiveReads: {}, loading: false, initialized: false, managementBusy: {}, managementErrors: {}
 }))
-let nativeNamespace = '', authorityRevision = 0, restoringStorage = false
-const restoredOwners = new Set<string>(), preservedSnapshots = new Map<string, StoredWorkspace>()
-const unreadableStorage = new Map<string, string>()
-function storageOwner(context: ConversationContext): string | undefined {
-  if (!nativeNamespace) return undefined
-  if (context.kind === 'personal') return nativeNamespace
-  const source = useHifox.getState().workspaceContext
-  return source.key === context.workspaceKey && source.state === 'connected' && source.actorId && source.instanceId
-    ? `${nativeNamespace}:team:${JSON.stringify([source.key, source.instanceId, source.origin, source.actorId])}` : undefined
-}
-function persistLocalDrafts(): void {
-  if (!nativeNamespace || restoringStorage) return
-  const state = useConversations.getState(), owners = new Set(Object.values(state.entries).flatMap((item) => item.owner ? [item.owner] : []))
-  owners.add(nativeNamespace)
-  try {
-    for (const owner of owners) {
-      if (unreadableStorage.has(owner)) continue
-      const current = Object.values(state.entries).filter((item) => item.owner === owner && (item.conversation || item.text || Object.values(state.selected).includes(item.key)))
-      const previous = preservedSnapshots.get(owner)
-      const byKey = new Map((previous?.entries ?? []).map((item) => [item.key, item]))
-      for (const item of current) byKey.set(item.key, {
-        key: item.key, conversationId: item.conversation?.id, kind: item.kind, context: item.context,
-        projectId: item.projectId, text: item.text, runtimeId: item.runtimeId,
-        dirty: item.version !== item.savedVersion, updatedAt: item.localUpdatedAt ?? item.conversation?.updatedAt ?? Date.now()
-      })
-      const selectedKeys = new Set(Object.values(state.selected))
-      const values = [...byKey.values()].filter((item) => item.conversationId ? item.dirty || selectedKeys.has(item.key) : Boolean(item.text))
-      if (values.length > 40) throw new Error('本机草稿缓存已达到 40 条上限，请先保存未选择目录的 Code 草稿。')
-      const keys = new Set(values.map((item) => item.key)), bases = new Set(values.map((item) => baseScopeKey(item.context, item.kind)))
-      const snapshot: StoredWorkspace = {
-        version: 1, entries: values,
-        selected: Object.fromEntries(Object.entries(state.selected).filter(([, key]) => keys.has(key))),
-        projects: Object.fromEntries(Object.entries(state.projectScopes).filter(([key]) => bases.has(key))),
-        context: storageOwner(state.context) === owner ? state.context : undefined
-      }
-      writeStoredWorkspace(owner, snapshot); preservedSnapshots.set(owner, snapshot)
-    }
-    const unreadable = unreadableStorage.values().next().value
-    if (unreadable) useConversations.setState({ storageError: unreadable })
-    else if (state.storageError) useConversations.setState({ storageError: undefined })
-  } catch (cause) { useConversations.setState({ storageError: conversationError(cause) }) }
-}
-function restoreLocalDrafts(): void {
-  const state = useConversations.getState()
-  const restoreSelection = Object.values(state.entries).every((item) => !item.text && !item.action && !item.conversation)
-  const owners = new Set(state.contexts.flatMap((choice) => { const owner = storageOwner(choice.context); return owner ? [owner] : [] }))
-  for (const owner of owners) {
-    if (restoredOwners.has(owner)) continue
-    restoredOwners.add(owner)
-    try {
-      const saved = readStoredWorkspace(owner)
-      if (!saved) continue
-      preservedSnapshots.set(owner, saved)
-      const restored: Record<string, WorkspaceEntry> = {}
-      for (const item of saved.entries) {
-        if (storageOwner(item.context) !== owner || !state.contexts.some((choice) => contextKey(choice.context) === contextKey(item.context))) continue
-        if (item.projectId && !state.projects.some((project) => project.id === item.projectId && contextKey(project.context) === contextKey(item.context))) continue
-        const conversation = item.conversationId ? state.conversations.find((candidate) => candidate.id === item.conversationId && candidate.kind === item.kind && contextKey(candidate.context) === contextKey(item.context)) : undefined
-        if (item.conversationId && !conversation) continue
-        if (state.entries[item.key]?.text || item.conversationId && Object.values(state.entries).some((value) => value.conversation?.id === item.conversationId && value.version > 0)) continue
-        restored[item.key] = {
-          key: item.key, owner, localUpdatedAt: item.updatedAt, conversation, kind: item.kind, context: item.context, projectId: item.projectId,
-          text: item.dirty || !conversation ? item.text : '', runtimeId: item.runtimeId ?? state.defaultRuntimeId,
-          version: item.dirty ? 1 : 0, savedVersion: item.dirty ? -1 : 0, events: [], files: [], loaded: !conversation,
-          permissionPending: {}, permissionErrors: {}
-        }
-      }
-      useConversations.setState((latest) => {
-        const selected = { ...latest.selected }
-        for (const [scope, key] of Object.entries(saved.selected)) {
-          const existing = latest.entries[selected[scope] ?? '']
-          if (restored[key] && (!existing || !existing.text && !existing.conversation && !existing.action)) selected[scope] = key
-        }
-        const restoredContext = saved.context
-        return { entries: { ...latest.entries, ...restored }, selected, projectScopes: restoreSelection ? { ...latest.projectScopes, ...saved.projects } : latest.projectScopes,
-          ...(restoreSelection && restoredContext && storageOwner(restoredContext) === owner && latest.contexts.some((choice) => contextKey(choice.context) === contextKey(restoredContext)) ? { context: restoredContext } : {}) }
-      })
-      for (const item of Object.values(restored)) if (item.version !== item.savedVersion) queueSave(item.key)
-    } catch (cause) { const error = conversationError(cause); unreadableStorage.set(owner, error); useConversations.setState({ storageError: error }) }
-  }
-}
-let localFingerprint = ''
-useConversations.subscribe((state) => {
-  const fingerprint = JSON.stringify([state.selected, state.projectScopes, state.context, Object.values(state.entries).map((item) => [item.key, item.owner, item.version, item.savedVersion, item.projectId, item.conversation?.id, item.locked])])
-  if (fingerprint === localFingerprint) return
-  localFingerprint = fingerprint; persistLocalDrafts()
-})
-function authorityIdentity(): string {
-  const value = useHifox.getState().workspaceContext
-  return JSON.stringify([value.key, value.actorId, value.instanceId, value.origin, value.epoch, value.authorizationRevision, value.state])
-}
-let lastAuthority = authorityIdentity()
-useHifox.subscribe(() => {
-  const next = authorityIdentity()
-  if (next === lastAuthority) return
-  lastAuthority = next; authorityRevision++
-  persistLocalDrafts()
-  useConversations.setState((state) => ({
-    context: PERSONAL,
-    entries: Object.fromEntries(Object.entries(state.entries).map(([key, value]) => [key, value.context.kind === 'team' ? { ...value, locked: true, session: undefined, events: [], request: undefined, loaded: false } : value])),
-    selected: Object.fromEntries(Object.entries(state.selected).filter(([, key]) => state.entries[key]?.context.kind !== 'team')),
-    contexts: [{ context: PERSONAL, name: '个人' }], conversations: state.conversations.filter((item) => item.context.kind === 'personal'), projects: state.projects.filter((item) => item.context.kind === 'personal')
-  }))
-  if (useConversations.getState().initialized) {
-    if (refreshing) void refreshing.finally(() => refreshWorkspace())
-    else void refreshWorkspace()
-  }
-})
+let nativeNamespace = '', restoringStorage = false, restoredStorageOwner = '', unreadableStorage = ''
+let preservedSnapshot: StoredWorkspace | null = null, selectionRevision = 0, metadataRevision = 0
+interface ManagementReceipt { title?: [number, string]; pinnedAt?: [number, number | undefined]; archivedAt?: [number, number | undefined] }
+const managementReceipts = new Map<string, ManagementReceipt>()
+const publications = new Map<string, { revision: number; conversation: Conversation }>()
 const entry = (key: string): WorkspaceEntry | undefined => { const value = useConversations.getState().entries[key]; return value?.locked ? undefined : value }
 export function patchEntry(key: string, update: Partial<WorkspaceEntry> | ((previous: WorkspaceEntry) => Partial<WorkspaceEntry>)): void {
   useConversations.setState((state) => {
@@ -197,8 +89,41 @@ export function patchEntry(key: string, update: Partial<WorkspaceEntry> | ((prev
     return previous && !previous.locked ? { entries: { ...state.entries, [key]: { ...previous, ...(typeof update === 'function' ? update(previous) : update) } } } : state
   })
 }
-function keepConversation(conversation: Conversation): void {
-  useConversations.setState((state) => ({ conversations: [conversation, ...state.conversations.filter((item) => item.id !== conversation.id)].sort((a, b) => b.updatedAt - a.updatedAt) }))
+const compareConversations = (a: Conversation, b: Conversation): number => Number(b.pinnedAt !== undefined) - Number(a.pinnedAt !== undefined) || (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0) || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)
+function knownConversation(id: string): Conversation | undefined {
+  const state = useConversations.getState()
+  return state.conversations.find((item) => item.id === id) ?? Object.values(state.entries).find((item) => item.conversation?.id === id)?.conversation
+}
+function mergeConversation(incoming: Conversation, readRevision: number, index?: ReadonlyMap<string, Conversation>): Conversation {
+  const known = index ? index.get(incoming.id) : knownConversation(incoming.id)
+  let next = known && known.updatedAt > incoming.updatedAt ? { ...known } : { ...incoming }
+  if (known?.nativeRef) next = { ...next, kind: known.kind, creatorId: known.creatorId, workspace: known.workspace, nativeRef: known.nativeRef }
+  const publication = publications.get(incoming.id)
+  if (known?.conversationPreview && publication && publication.revision > readRevision && known.updatedAt >= incoming.updatedAt) next.conversationPreview = known.conversationPreview
+  const receipt = managementReceipts.get(incoming.id)
+  if (receipt?.title && receipt.title[0] > readRevision) next.title = receipt.title[1]
+  if (receipt?.pinnedAt && receipt.pinnedAt[0] > readRevision) next.pinnedAt = receipt.pinnedAt[1]
+  if (receipt?.archivedAt && receipt.archivedAt[0] > readRevision) next.archivedAt = receipt.archivedAt[1]
+  return next
+}
+function keepConversation(incoming: Conversation, readRevision = metadataRevision): Conversation {
+  const conversation = mergeConversation(incoming, readRevision)
+  publications.set(conversation.id, { revision: ++metadataRevision, conversation })
+  useConversations.setState((state) => ({ conversations: [conversation, ...state.conversations.filter((item) => item.id !== conversation.id)].sort(compareConversations) }))
+  return conversation
+}
+function acceptCatalog(values: Conversation[], readRevision: number): void {
+  const state = useConversations.getState(), knownById = new Map(state.conversations.map((item) => [item.id, item]))
+  for (const item of Object.values(state.entries)) if (item.conversation && !knownById.has(item.conversation.id)) knownById.set(item.conversation.id, item.conversation)
+  const byId = new Map(values.map((value) => { const merged = mergeConversation(value, readRevision, knownById); return [merged.id, merged] }))
+  for (const [id, publication] of publications) if (publication.revision > readRevision && !byId.has(id)) byId.set(id, publication.conversation)
+  useConversations.setState((state) => ({
+    conversations: [...byId.values()].sort(compareConversations),
+    entries: Object.fromEntries(Object.entries(state.entries).map(([key, item]) => {
+      const metadata = item.conversation ? byId.get(item.conversation.id) : undefined
+      return [key, metadata && !item.locked ? { ...item, conversation: metadata, projectId: metadata.projectId } : item]
+    }))
+  }))
 }
 function ownsSession(record: { projectRoot?: string; sessionId?: string }, conversation: Conversation): boolean {
   return Boolean(conversation.nativeRef && record.sessionId === conversation.nativeRef.sessionId && projectRootKey(record.projectRoot) === projectRootKey(conversation.workspace.root))
@@ -206,54 +131,155 @@ function ownsSession(record: { projectRoot?: string; sessionId?: string }, conve
 function newerSession(previous: AcpSessionRecord | undefined, next: AcpSessionRecord): AcpSessionRecord {
   return previous && (previous.stateRevision ?? 0) > (next.stateRevision ?? 0) ? previous : next
 }
-function acceptRead(key: string, read: ConversationRead, loadDraft = false): void {
+function acceptRead(key: string, read: ConversationRead, loadDraft = false, readRevision = metadataRevision): void {
   const previous = entry(key)
-  if (!previous || previous.kind !== read.conversation.kind || contextKey(previous.context) !== contextKey(read.conversation.context)) return
-  if (previous.conversation && previous.conversation.id !== read.conversation.id) return
+  if (!previous || previous.kind !== read.conversation.kind || previous.conversation && previous.conversation.id !== read.conversation.id) return
   if (previous.conversation && projectRootKey(previous.conversation.workspace.root) !== projectRootKey(read.conversation.workspace.root) && projectRootKey(previous.directory?.path) !== projectRootKey(read.conversation.workspace.root)) return
-  if (previous.conversation?.nativeRef && (!read.conversation.nativeRef || previous.conversation.nativeRef.sessionId !== read.conversation.nativeRef.sessionId || projectRootKey(previous.conversation.workspace.root) !== projectRootKey(read.conversation.workspace.root))) return
+  if (previous.conversation?.nativeRef && (!read.conversation.nativeRef || previous.conversation.nativeRef.sessionId !== read.conversation.nativeRef.sessionId)) return
   if (read.session && !ownsSession(read.session, read.conversation)) throw new Error('会话来源不匹配，请重新打开。')
-  patchEntry(key, (current) => ({
-    ...(current.conversation && current.conversation.updatedAt > read.conversation.updatedAt ? {} : { conversation: read.conversation, projectId: read.conversation.projectId }),
+  const conversation = keepConversation(read.conversation, readRevision)
+  patchEntry(key, (current) => ({ conversation, projectId: conversation.projectId,
     ...(loadDraft && current.version === 0 ? { text: read.draft.text, runtimeId: read.draft.runtimeId ?? current.runtimeId, savedVersion: 0 } : {}),
     nativeError: read.runtimeError,
     ...(read.session && !(current.action === 'recover-model' && current.session?.connectionGeneration !== read.session.connectionGeneration) ? { session: newerSession(current.session, read.session) } : {})
   }))
-  const accepted = entry(key)?.conversation
-  if (accepted) keepConversation(accepted)
 }
-
-export function ensureScope(context: ConversationContext, kind: ConversationKind, projectId?: string): string {
-  const scope = scopeKey(context, kind, projectId), state = useConversations.getState(), selected = state.selected[scope]
-  return selected && (selected.startsWith('archive:') || entry(selected)) ? selected : newDraft(context, kind, projectId)
+function draftEntry(kind: ConversationKind, projectId?: string, directory?: ConversationDirectoryGrant): WorkspaceEntry {
+  return { key: `draft:${crypto.randomUUID()}`, owner: nativeNamespace || undefined, localUpdatedAt: Date.now(), kind, projectId, directory,
+    text: '', runtimeId: useConversations.getState().defaultRuntimeId, version: 0, savedVersion: -1,
+    events: [], files: [], loaded: true, permissionPending: {}, permissionErrors: {}, composerFocus: crypto.randomUUID() }
 }
-export function newDraft(context: ConversationContext, kind: ConversationKind, projectId?: string, directory?: ConversationDirectoryGrant): string {
-  const state = useConversations.getState(), scope = scopeKey(context, kind, projectId)
-  const pristine = Object.values(state.entries).find((item) => !item.locked && !item.conversation && item.kind === kind && contextKey(item.context) === contextKey(context) && item.projectId === projectId && !item.text && !item.images?.length && !item.directory && !item.action)
-  const key = pristine?.key ?? `draft:${crypto.randomUUID()}`
-  const value: WorkspaceEntry = pristine ? { ...pristine, directory, composerFocus: crypto.randomUUID() } : {
-    key, owner: storageOwner(context), localUpdatedAt: Date.now(), kind, context, projectId, directory, text: '', runtimeId: state.defaultRuntimeId,
-    version: 0, savedVersion: -1, events: [], files: [], loaded: true, permissionPending: {}, permissionErrors: {}, composerFocus: crypto.randomUUID()
-  }
-  useConversations.setState({ entries: { ...state.entries, [key]: value }, selected: { ...state.selected, [scope]: key }, projectScopes: { ...state.projectScopes, [baseScopeKey(context, kind)]: projectId ?? null } })
-  return key
+function installDraft(kind: ConversationKind, projectId?: string, directory?: ConversationDirectoryGrant): string {
+  const state = useConversations.getState(), scope = scopeKey(kind, projectId)
+  const pristine = Object.values(state.entries).find((item) => !item.locked && !item.conversation && item.kind === kind && item.projectId === projectId && !item.text && !item.images?.length && !item.directory && !item.action)
+  const value = pristine ? { ...pristine, directory, composerFocus: crypto.randomUUID() } : draftEntry(kind, projectId, directory)
+  useConversations.setState({ entries: { ...state.entries, [value.key]: value }, selected: { ...state.selected, [scope]: value.key }, projectScopes: { ...state.projectScopes, [baseScopeKey(kind)]: projectId ?? null } })
+  return value.key
 }
-export function changeContext(context: ConversationContext): void { useConversations.setState({ context }) }
-export function selectProjectScope(context: ConversationContext, kind: ConversationKind, projectId?: string): void {
-  useConversations.setState((state) => ({ projectScopes: { ...state.projectScopes, [baseScopeKey(context, kind)]: projectId ?? null } }))
-  ensureScope(context, kind, projectId)
+export function ensureScope(kind: ConversationKind, projectId?: string): string {
+  const selected = useConversations.getState().selected[scopeKey(kind, projectId)]
+  return selected && (selected.startsWith('archive:') || entry(selected)) ? selected : installDraft(kind, projectId)
 }
-export function selectConversation(conversation: Conversation): string {
-  const state = useConversations.getState(), existing = Object.values(state.entries).find((item) => !item.locked && item.conversation?.id === conversation.id)
-  const key = existing?.key ?? conversation.id
-  if (!existing) useConversations.setState({ entries: { ...state.entries, [key]: {
-    key, owner: storageOwner(conversation.context), conversation, context: conversation.context, projectId: conversation.projectId, kind: conversation.kind,
-    text: '', version: 0, savedVersion: 0, events: [], files: [], loaded: false, permissionPending: {}, permissionErrors: {}
-  } } })
-  useConversations.setState((current) => ({ context: conversation.context, selected: { ...current.selected, [scopeKey(conversation.context, conversation.kind, conversation.projectId)]: key }, projectScopes: { ...current.projectScopes, [baseScopeKey(conversation.context, conversation.kind)]: conversation.projectId ?? null } }))
-  void readConversation(key)
-  return key
+export function newDraft(kind: ConversationKind, projectId?: string, directory?: ConversationDirectoryGrant): string { selectionRevision++; return installDraft(kind, projectId, directory) }
+export function selectProjectScope(kind: ConversationKind, projectId?: string): void {
+  selectionRevision++; useConversations.setState((state) => ({ projectScopes: { ...state.projectScopes, [baseScopeKey(kind)]: projectId ?? null } })); ensureScope(kind, projectId)
 }
+function unloadedEntry(conversation: Conversation): WorkspaceEntry {
+  return { key: conversation.id, owner: nativeNamespace || undefined, conversation, kind: conversation.kind, projectId: conversation.projectId,
+    text: '', version: 0, savedVersion: 0, events: [], files: [], loaded: false, permissionPending: {}, permissionErrors: {} }
+}
+export function selectConversation(incoming: Conversation): string {
+  selectionRevision++
+  const conversation = mergeConversation(incoming, metadataRevision), state = useConversations.getState()
+  const existing = Object.values(state.entries).find((item) => !item.locked && item.conversation?.id === conversation.id)
+  const value = existing ?? unloadedEntry(conversation)
+  useConversations.setState({ entries: { ...state.entries, [value.key]: { ...value, conversation, projectId: conversation.projectId } },
+    selected: { ...state.selected, [scopeKey(conversation.kind, conversation.projectId)]: value.key },
+    projectScopes: { ...state.projectScopes, [baseScopeKey(conversation.kind)]: conversation.projectId ?? null } })
+  void readConversation(value.key)
+  return value.key
+}
+export interface ConversationManagementUpdate { title?: string; pinned?: boolean; archived?: boolean }
+export async function updateConversation(id: string, input: ConversationManagementUpdate): Promise<Conversation | null> {
+  const client = conversationClient()
+  if (!client || useConversations.getState().managementBusy[id]) return null
+  useConversations.setState((state) => ({ managementBusy: { ...state.managementBusy, [id]: true }, managementErrors: { ...state.managementErrors, [id]: '' } }))
+  try {
+    const read = conversationValue(await client.updateDraft(id, input)), known = knownConversation(id) ?? read.conversation
+    if (read.conversation.id !== id || read.conversation.kind !== known.kind || read.conversation.creatorId !== known.creatorId || known.nativeRef && read.conversation.nativeRef && (known.nativeRef.sessionId !== read.conversation.nativeRef.sessionId || projectRootKey(known.workspace.root) !== projectRootKey(read.conversation.workspace.root))) throw new Error('会话身份已改变，未应用管理回执。')
+    const revision = ++metadataRevision, receipt: ManagementReceipt = { ...managementReceipts.get(id) }
+    const next: Conversation = { ...known, updatedAt: Math.max(known.updatedAt, read.conversation.updatedAt) }
+    if (input.title !== undefined) { next.title = read.conversation.title; receipt.title = [revision, next.title] }
+    if (input.pinned !== undefined) { next.pinnedAt = read.conversation.pinnedAt; receipt.pinnedAt = [revision, next.pinnedAt] }
+    if (input.archived !== undefined) { next.archivedAt = read.conversation.archivedAt; receipt.archivedAt = [revision, next.archivedAt] }
+    managementReceipts.set(id, receipt)
+    const metadata = keepConversation(next, revision)
+    useConversations.setState((state) => ({ entries: Object.fromEntries(Object.entries(state.entries).map(([key, item]) => [key, item.conversation?.id === id ? { ...item, conversation: { ...item.conversation, title: metadata.title, pinnedAt: metadata.pinnedAt, archivedAt: metadata.archivedAt, updatedAt: metadata.updatedAt } } : item])) }))
+    if (input.archived === true && metadata.archivedAt !== undefined) replaceArchivedSelections(id)
+    return metadata
+  } catch (cause) { useConversations.setState((state) => ({ managementErrors: { ...state.managementErrors, [id]: conversationError(cause) } })); return null }
+  finally { useConversations.setState((state) => ({ managementBusy: { ...state.managementBusy, [id]: false } })) }
+}
+function replaceArchivedSelections(id: string): void {
+  useConversations.setState((state) => {
+    const entries = { ...state.entries }, selected = { ...state.selected }
+    for (const [scope, key] of Object.entries(selected)) {
+      const current = entries[key]
+      if (current?.conversation?.id !== id) continue
+      const candidate = state.conversations.find((item) => item.id !== id && item.archivedAt === undefined && item.kind === current.kind && item.projectId === current.projectId)
+      const replacement = candidate ? Object.values(entries).find((item) => !item.locked && item.conversation?.id === candidate.id) ?? unloadedEntry(candidate) : draftEntry(current.kind, current.projectId)
+      entries[replacement.key] = replacement; selected[scope] = replacement.key
+    }
+    return { entries, selected }
+  })
+}
+function persistLocalDrafts(): void {
+  if (!nativeNamespace || restoringStorage || unreadableStorage) return
+  const state = useConversations.getState()
+  try {
+    const selectedKeys = new Set(Object.values(state.selected)), byKey = new Map((preservedSnapshot?.entries ?? []).map((item) => [item.key, item]))
+    for (const item of Object.values(state.entries)) {
+      if (item.owner !== nativeNamespace || item.locked) continue
+      byKey.set(item.key, { key: item.key, conversationId: item.conversation?.id, kind: item.kind, projectId: item.projectId,
+        text: item.text, runtimeId: item.runtimeId, dirty: item.version !== item.savedVersion, updatedAt: item.localUpdatedAt ?? item.conversation?.updatedAt ?? Date.now() })
+    }
+    const values = [...byKey.values()].filter((item) => item.conversationId ? item.dirty || selectedKeys.has(item.key) : Boolean(item.text))
+    if (values.length > 200) throw new Error('本机草稿缓存已达到 200 条上限，请先保存未选择目录的 Code 草稿。')
+    const keys = new Set(values.map((item) => item.key))
+    const snapshot: StoredWorkspace = { version: 2, entries: values,
+      selected: Object.fromEntries(Object.entries(state.selected).filter(([, key]) => keys.has(key) || key.startsWith('archive:'))),
+      projects: Object.fromEntries(Object.entries(state.projectScopes).filter(([key]) => key === 'work' || key === 'code')) }
+    writeStoredWorkspace(nativeNamespace, snapshot); preservedSnapshot = snapshot
+    if (state.storageError) useConversations.setState({ storageError: undefined })
+  } catch (cause) { useConversations.setState({ storageError: conversationError(cause) }) }
+}
+function restoreLocalDrafts(admittedConversationIds: ReadonlySet<string>): void {
+  const state = useConversations.getState(), first = restoredStorageOwner !== nativeNamespace
+  try {
+    if (first) { preservedSnapshot = readStoredWorkspace(nativeNamespace, admittedConversationIds); restoredStorageOwner = nativeNamespace }
+    const saved = preservedSnapshot
+    if (!saved) return
+    const byId = new Map(state.conversations.map((item) => [item.id, item])), projects = new Set(state.projects.map((item) => item.id))
+    const existingById = new Map(Object.values(state.entries).flatMap((item) => item.conversation ? [[item.conversation.id, item] as const] : []))
+    const restored: Record<string, WorkspaceEntry> = {}, aliases = new Map<string, string>()
+    for (const item of saved.entries) {
+      const conversation = item.conversationId ? byId.get(item.conversationId) : undefined
+      if (item.conversationId && !conversation) continue
+      const existing = state.entries[item.key] ?? (item.conversationId ? existingById.get(item.conversationId) : undefined)
+      if (existing) {
+        aliases.set(item.key, existing.key)
+        if (item.dirty && existing.version === 0 && !existing.text && !existing.images?.length && !existing.locked) restored[existing.key] = { ...existing, text: item.text, version: 1, savedVersion: -1 }
+        continue
+      }
+      const projectId = conversation?.projectId ?? (item.projectId && projects.has(item.projectId) ? item.projectId : undefined)
+      restored[item.key] = { key: item.key, owner: nativeNamespace, localUpdatedAt: item.updatedAt, conversation, kind: conversation?.kind ?? item.kind, projectId,
+        text: item.dirty || !conversation ? item.text : '', runtimeId: item.runtimeId ?? state.defaultRuntimeId,
+        version: item.dirty ? 1 : 0, savedVersion: item.dirty ? -1 : 0, events: [], files: [], loaded: !conversation, permissionPending: {}, permissionErrors: {} }
+      aliases.set(item.key, item.key)
+    }
+    useConversations.setState((latest) => {
+      const entries = { ...latest.entries, ...restored }, selected = { ...latest.selected }, projectScopes = { ...latest.projectScopes }
+      if (first && selectionRevision === 0) {
+        for (const [storedScope, storedKey] of Object.entries(saved.selected)) {
+          if (storedKey.startsWith('archive:') && /^(work|code):/.test(storedScope)) { selected[storedScope] = storedKey; continue }
+          const value = entries[aliases.get(storedKey) ?? '']
+          if (!value) continue
+          const scope = scopeKey(value.kind, value.projectId), previous = entries[selected[scope] ?? '']
+          if (!previous || !previous.conversation && !previous.text && !previous.images?.length && !previous.action) selected[scope] = value.key
+        }
+        for (const kind of ['work', 'code'] as const) if (kind in saved.projects) projectScopes[kind] = saved.projects[kind] && projects.has(saved.projects[kind] ?? '') ? saved.projects[kind] : null
+      }
+      return { entries, selected, projectScopes }
+    })
+    for (const item of Object.values(restored)) if (item.version !== item.savedVersion) queueSave(item.key)
+  } catch (cause) { unreadableStorage = conversationError(cause); useConversations.setState({ storageError: unreadableStorage }) }
+}
+let localFingerprint = ''
+useConversations.subscribe((state) => {
+  const fingerprint = JSON.stringify([state.selected, state.projectScopes, Object.values(state.entries).map((item) => [item.key, item.owner, item.version, item.savedVersion, item.projectId, item.conversation?.id, item.locked])])
+  if (fingerprint === localFingerprint) return
+  localFingerprint = fingerprint; persistLocalDrafts()
+})
 
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const creating = new Map<string, Promise<Conversation>>()
@@ -290,7 +316,7 @@ const configurationLocks = new Map<string, symbol>()
 type ConfigurationLease = (() => void) & { isCurrent(): boolean }
 export function acquireConversationConfiguration(key: string, owner: ConversationNativeOwner, recovering = false): ConfigurationLease | undefined {
   const current = entry(key)
-  if (!current || current.action || configurationLocks.has(key) || !ownsConversationNative(key, owner) || (!recovering && current.session?.status !== 'ready') || current.session?.cleanupRequired) return
+  if (!current || current.action || configurationLocks.has(key) || !ownsConversationNative(key, owner) || (!recovering && current.session?.status !== 'ready') || current.session?.cleanupRequired || current.conversation?.archivedAt !== undefined) return
   const token = Symbol(key)
   configurationLocks.set(key, token); patchEntry(key, { action: recovering ? 'recover-model' : 'configure' })
   const release = (): void => {
@@ -308,7 +334,7 @@ export function acceptConversationSession(key: string, session: AcpSessionRecord
 }
 export function setDraftRuntime(key: string, runtimeId: string): void {
   const current = entry(key)
-  if (!current || current.conversation?.nativeRef || current.action) return
+  if (!current || current.conversation?.nativeRef || current.action || current.conversation?.archivedAt !== undefined) return
   patchEntry(key, { runtimeId, version: current.version + 1 })
   if (current.conversation || current.text) queueSave(key)
 }
@@ -319,9 +345,10 @@ async function persistIdentity(key: string): Promise<Conversation> {
   const pending = creating.get(key)
   if (pending) return pending
   if (current.kind === 'code' && !current.directory) throw new Error('请选择此 Code 会话可以访问的本机目录。')
+  const readRevision = metadataRevision
   const operation = (async (): Promise<Conversation> => {
-    const result = conversationValue(await client.createDraft({ kind: current.kind, context: current.context, projectId: current.projectId, directoryGrantId: current.directory?.grantId, runtimeId: current.runtimeId, text: current.text }))
-    acceptRead(key, result); patchEntry(key, { savedVersion: current.version })
+    const result = conversationValue(await client.createDraft({ kind: current.kind, projectId: current.projectId, directoryGrantId: current.directory?.grantId, runtimeId: current.runtimeId, text: current.text }))
+    acceptRead(key, result, false, readRevision); patchEntry(key, { savedVersion: current.version })
     return result.conversation
   })()
   creating.set(key, operation)
@@ -336,8 +363,9 @@ export async function saveDraft(key: string, duringSend = false): Promise<void> 
     try {
       const conversation = await persistIdentity(key), latest = entry(key)
       if (!latest || latest.version === latest.savedVersion) return
+      const readRevision = metadataRevision
       const read = conversationValue(await client.updateDraft(conversation.id, { text: latest.text, ...(latest.conversation?.nativeRef ? {} : { runtimeId: latest.runtimeId }) }))
-      acceptRead(key, read); patchEntry(key, { savedVersion: latest.version, saveError: undefined })
+      acceptRead(key, read, false, readRevision); patchEntry(key, { savedVersion: latest.version, saveError: undefined })
     } catch (cause) { patchEntry(key, { saveError: conversationError(cause) }); throw cause }
   })()
   saving.set(key, operation)
@@ -350,13 +378,14 @@ function validatePage(page: AcpHistoryEventPage, conversation: Conversation): vo
 export async function readConversation(key: string): Promise<void> {
   const current = entry(key), client = conversationClient()
   if (!current?.conversation || !client || current.loading) return
+  const readRevision = metadataRevision
   const id = current.conversation.id, ticket = (reading.get(key) ?? 0) + 1
   reading.set(key, ticket); patchEntry(key, { loading: true })
   const valid = (): boolean => reading.get(key) === ticket && entry(key)?.conversation?.id === id
   try {
     const read = conversationValue(await client.read(id))
     if (!valid()) return
-    acceptRead(key, read, !current.loaded)
+    acceptRead(key, read, !current.loaded, readRevision)
     const page = conversationValue(await client.events(id, { limit: 120 }))
     if (!valid()) return
     if (page) {
@@ -393,12 +422,14 @@ export function actionablePermissions(current: WorkspaceEntry, now: number): Rec
 }
 export async function sendMessage(key: string): Promise<void> {
   const current = entry(key), client = conversationClient(), state = useConversations.getState()
+  if (current?.conversation && (knownConversation(current.conversation.id)?.archivedAt !== undefined || state.managementBusy[current.conversation.id])) return
   if (!current || !client || current.action || !current.loaded || (!current.text.trim() && !current.images?.length) || sessionRunning(current)) return
   if (current.images?.length && current.session && current.session.capabilities?.promptCapabilities?.image !== true) { patchEntry(key, { error: '当前执行引擎未声明支持图片输入，图片草稿已保留。' }); return }
   const runtimeId = current.session?.agentId ?? current.runtimeId ?? state.defaultRuntimeId
   if (!current.conversation?.nativeRef && (!runtimeId || !state.runtimes.some((runtime) => runtime.id === runtimeId && runtime.enabled && runtime.available) || (runtimeId === 'pi' && !state.configuredPi))) {
     patchEntry(key, { error: runtimeId === 'pi' ? '请先在设置中配置可用模型，草稿已保留。' : '请选择可用的执行引擎，草稿已保留。' }); return
   }
+  const readRevision = metadataRevision
   const requestId = crypto.randomUUID(), version = current.version
   const images = current.images?.length ? current.images.slice() : undefined, imageVersion = current.imageVersion ?? 0
   const inputFiles = current.files.filter((file) => file.kind === 'input')
@@ -416,9 +447,9 @@ export async function sendMessage(key: string): Promise<void> {
     const response = conversationValue(await client.send(conversation.id, { requestId, text, images, expectedConnectionGeneration: generation }))
     if (entry(key)?.submission?.id !== requestId) return
     if (response.conversation.id !== conversation.id || !ownsSession(response.session, response.conversation)) throw new Error('发送结果的会话来源不匹配，请核对历史后重试。')
-    keepConversation(response.conversation)
+    const metadata = keepConversation(response.conversation, readRevision)
     patchEntry(key, (value) => ({
-      conversation: response.conversation, session: newerSession(value.session, response.session), events: mergeEvents(response.session.events ?? [], mergeEvents(value.events, buffered(response.session))),
+      conversation: metadata, session: newerSession(value.session, response.session), events: mergeEvents(response.session.events ?? [], mergeEvents(value.events, buffered(response.session))),
       request: { requestId, projectRoot: response.conversation.workspace.root, sessionId: response.session.sessionId, connectionGeneration: response.session.connectionGeneration, previousTurnId: session?.turnId, turnId: response.turnId, phase: 'accepted' },
       ...(value.version === version ? { text: '', version: version + 1, savedVersion: version + 1 } : { savedVersion: -1 }), saveError: undefined,
       ...(images ? { images: (value.imageVersion ?? 0) === imageVersion ? [] : (value.images ?? []).filter((image) => !images.some((sent) => sent.id === image.id && sent.data === image.data)), imageVersion: (value.imageVersion ?? 0) + 1 } : {})
@@ -494,31 +525,30 @@ export async function reclassifyConversation(key: string, projectId: string | nu
   const current = entry(key), client = conversationClient()
   if (!current || !client || current.action) return
   const selectDestination = (): void => {
-    const previousScope = scopeKey(current.context, current.kind, current.projectId), nextScope = scopeKey(current.context, current.kind, projectId ?? undefined)
+    const previousScope = scopeKey(current.kind, current.projectId), nextScope = scopeKey(current.kind, projectId ?? undefined)
     useConversations.setState((state) => {
       const selected = { ...state.selected }
       if (previousScope !== nextScope && selected[previousScope] === key) delete selected[previousScope]
       selected[nextScope] = key
-      return { selected, projectScopes: { ...state.projectScopes, [baseScopeKey(current.context, current.kind)]: projectId } }
+      return { selected, projectScopes: { ...state.projectScopes, [baseScopeKey(current.kind)]: projectId } }
     })
   }
   if (!current.conversation) { patchEntry(key, { projectId: projectId ?? undefined }); selectDestination(); return }
   patchEntry(key, { action: 'classify' })
-  try { acceptRead(key, conversationValue(await client.reclassify(current.conversation.id, { context: current.context, projectId }))); if (entry(key)) selectDestination() }
+  try { acceptRead(key, conversationValue(await client.reclassify(current.conversation.id, { projectId }))); if (entry(key)) selectDestination() }
   catch (cause) { patchEntry(key, { error: conversationError(cause) }) }
   finally { patchEntry(key, { action: undefined }) }
 }
-export async function createProject(name: string, context: ConversationContext): Promise<ConversationProject> {
+export async function createProject(name: string): Promise<ConversationProject> {
   const client = conversationClient()
-  if (!client) throw new Error('请在桌面应用中创建专项。')
-  const authority = authorityRevision
-  const project = conversationValue(await client.createProject({ name, context }))
-  if (context.kind === 'team' && authority !== authorityRevision) throw new Error('团队来源已改变，请在原账户中核对新建专项。')
-  useConversations.setState((state) => ({ projects: [...state.projects.filter((item) => item.id !== project.id || contextKey(item.context) !== contextKey(project.context)), project] }))
+  if (!client) throw new Error('请在桌面应用中创建会话项目。')
+  const project = conversationValue(await client.createProject({ name }))
+  useConversations.setState((state) => ({ projects: [...state.projects.filter((item) => item.id !== project.id), project] }))
   return project
 }
-export function selectArchive(id: string, context: ConversationContext, kind: ConversationKind, projectId?: string): void {
-  useConversations.setState((state) => ({ selected: { ...state.selected, [scopeKey(context, kind, projectId)]: `archive:${id}` } }))
+export function selectArchive(id: string, kind: ConversationKind, projectId?: string): void {
+  selectionRevision++
+  useConversations.setState((state) => ({ selected: { ...state.selected, [scopeKey(kind, projectId)]: `archive:${id}` } }))
   if (!useConversations.getState().archiveReads[id]?.value) void readArchive(id)
 }
 const archiveReadTickets = new Map<string, number>()
@@ -582,54 +612,37 @@ export async function refreshWorkspace(): Promise<void> {
   listen()
   const client = conversationClient()
   if (!client) { useConversations.setState({ initialized: true, loading: false }); return }
+  const readRevision = metadataRevision
   useConversations.setState({ loading: true })
   refreshing = (async (): Promise<void> => {
-    if (!useHifox.getState().workspaceContext.actorId) await useHifox.getState().bootstrap()
-    const authority = authorityRevision, started = Date.now()
-    const [list, projects, contexts, runtimes, settings, archives] = await Promise.allSettled([client.list(), client.projects(), client.contexts(), api.acpAgents(), api.getSettings(), api.chatList()])
-    if (authority !== authorityRevision) return
-    if (list.status === 'fulfilled' && list.value.ok) {
-      useConversations.setState({ conversations: list.value.value, error: undefined })
-    } else if (list.status === 'rejected') useConversations.setState({ error: conversationError(list.reason) })
+    const [list, projects, runtimes, settings, archives] = await Promise.allSettled([client.list({ archive: 'all' }), client.projects(), api.acpAgents(), api.getSettings(), api.chatList()])
+    if (list.status === 'fulfilled' && list.value.ok) { acceptCatalog(list.value.value, readRevision); useConversations.setState({ error: undefined }) }
+    else if (list.status === 'rejected') useConversations.setState({ error: conversationError(list.reason) })
     else if (!list.value.ok) useConversations.setState({ error: list.value.error })
     if (projects.status === 'fulfilled' && projects.value.ok) useConversations.setState({ projects: projects.value.value })
     else if (projects.status === 'rejected') useConversations.setState({ error: conversationError(projects.reason) })
     else if (!projects.value.ok) useConversations.setState({ error: projects.value.error })
-    if (contexts.status === 'fulfilled' && contexts.value.ok) {
-      const choices = [{ context: PERSONAL, name: '个人' }, ...contexts.value.value.filter((item) => item.context.kind === 'team')]
-      useConversations.setState((state) => ({ contexts: choices, ...(state.context.kind === 'team' && !choices.some((choice) => contextKey(choice.context) === contextKey(state.context)) ? { context: PERSONAL } : {}) }))
-    }
-    else if (contexts.status === 'rejected') useConversations.setState({ error: conversationError(contexts.reason) })
-    else if (!contexts.value.ok) useConversations.setState({ error: contexts.value.error })
     if (runtimes.status === 'fulfilled' && runtimes.value.ok) {
       const values = runtimes.value.agents ?? [], preferred = values.find((runtime) => runtime.id === 'pi' && runtime.enabled && runtime.available) ?? values.find((runtime) => runtime.enabled && runtime.available)
       useConversations.setState({ runtimes: values, defaultRuntimeId: preferred?.id, runtimeError: undefined })
       for (const item of Object.values(useConversations.getState().entries)) if (!item.runtimeId && !item.conversation?.nativeRef) patchEntry(item.key, { runtimeId: preferred?.id })
     } else useConversations.setState({ runtimeError: runtimes.status === 'rejected' ? conversationError(runtimes.reason) : runtimes.value.error ?? '执行引擎配置无法读取。' })
+    if (archives.status === 'fulfilled' && archives.value.ok) useConversations.setState({ archives: archives.value.sessions ?? [], archiveError: undefined })
+    else useConversations.setState({ archiveError: archives.status === 'rejected' ? conversationError(archives.reason) : archives.value.error ?? '旧问答记录无法读取。' })
     if (settings.status === 'fulfilled') {
       const ai = settings.value.ai, candidates = ai.providers?.length ? ai.providers.filter((provider) => provider.enabled).flatMap((provider) => provider.models.filter((model) => model.enabled).map((model) => ({ provider, model }))) : []
       const selected = candidates.find(({ provider, model }) => provider.id === ai.activeProviderId && model.id === ai.model) ?? candidates.find(({ provider }) => provider.id === ai.activeProviderId) ?? candidates[0]
       useConversations.setState({ configuredPi: Boolean(selected || (ai.enabled && ai.model && ai.baseUrl)), modelLabel: selected ? `${selected.provider.name} · ${selected.model.name || selected.model.id}` : ai.enabled && ai.model ? ai.model : undefined })
       try {
         restoringStorage = true
-        nativeNamespace = await installationNamespace(settings.value.bridgeToken)
-        if (authority !== authorityRevision) return
-        useConversations.setState((state) => ({ entries: Object.fromEntries(Object.entries(state.entries).map(([key, value]) => [key, !value.owner && !value.locked ? { ...value, owner: storageOwner(value.context) } : value])) }))
-        if (list.status === 'fulfilled' && list.value.ok && contexts.status === 'fulfilled' && contexts.value.ok) {
-          const allowed = new Set(list.value.value.map((item) => item.id)), current = useConversations.getState()
-          useConversations.setState({ entries: Object.fromEntries(Object.entries(current.entries).map(([key, value]) => {
-            if (value.context.kind !== 'team') return [key, value]
-            const sameOwner = value.owner === storageOwner(value.context), knownContext = current.contexts.some((choice) => contextKey(choice.context) === contextKey(value.context))
-            const allowedEntry = sameOwner && knownContext && (!value.conversation || allowed.has(value.conversation.id) || value.conversation.createdAt > started)
-            return [key, allowedEntry ? { ...value, locked: false } : { ...value, locked: true, session: undefined, events: [], request: undefined, loaded: false }]
-          })) })
-          restoreLocalDrafts()
-        }
+        const nextNamespace = await installationNamespace(settings.value.bridgeToken)
+        if (nativeNamespace && nativeNamespace !== nextNamespace) { preservedSnapshot = null; restoredStorageOwner = ''; unreadableStorage = '' }
+        nativeNamespace = nextNamespace
+        useConversations.setState((state) => ({ entries: Object.fromEntries(Object.entries(state.entries).map(([key, item]) => [key, !item.owner ? { ...item, owner: nativeNamespace } : item])) }))
+        if (list.status === 'fulfilled' && list.value.ok) restoreLocalDrafts(new Set(list.value.value.map((item) => item.id)))
       } catch (cause) { useConversations.setState({ storageError: conversationError(cause) }) }
       finally { restoringStorage = false; persistLocalDrafts() }
     } else useConversations.setState({ runtimeError: conversationError(settings.reason), configuredPi: false })
-    if (archives.status === 'fulfilled' && archives.value.ok) useConversations.setState({ archives: archives.value.sessions ?? [], archiveError: undefined })
-    else useConversations.setState({ archiveError: archives.status === 'rejected' ? conversationError(archives.reason) : archives.value.error ?? '旧问答记录无法读取。' })
     useConversations.setState({ loading: false, initialized: true })
   })()
   try { await refreshing }
@@ -642,6 +655,5 @@ if (typeof window !== 'undefined') {
     persistLocalDrafts()
     for (const key of saveTimers.keys()) { stopSaveTimer(key); void saveDraft(key).catch(() => undefined) }
   }
-  window.addEventListener('pagehide', flush)
-  window.addEventListener('blur', flush)
+  window.addEventListener('pagehide', flush); window.addEventListener('blur', flush)
 }

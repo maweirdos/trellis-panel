@@ -19,7 +19,7 @@ import { TaskConversationAssociationModal } from '../components/TaskConversation
 import { TaskContinuationModal } from '../components/TaskContinuationModal'
 import { TASK_CONVERSATION_SOURCE_LABELS, taskConversationDirectory, useTaskConversations, type TaskConversationController } from '../use-task-conversations'
 import { useInteractionActive, useInteractionGuard } from '../../utils/interaction-scope'
-import { changeContext, newDraft, PERSONAL, readArchive, selectArchive, useConversations } from '../../conversations/workspace'
+import { newDraft, readArchive, selectArchive, useConversations } from '../../conversations/workspace'
 
 type HomeView = 'assigned' | 'created' | 'favorites' | 'completed'
 type StatusFilter = 'open' | 'all' | 'ready' | 'active' | 'review' | 'completed'
@@ -373,8 +373,7 @@ export function YourWorkPage(): JSX.Element {
   }
   const startAgentConversation = (): void => {
     useMy.getState().setShellView('collaboration')
-    changeContext(PERSONAL)
-    newDraft(PERSONAL, 'work')
+    newDraft('work')
     useApp.getState().setPage('chat')
   }
   const openVisit = (entry: PersonalVisit): void => {
@@ -397,8 +396,7 @@ export function YourWorkPage(): JSX.Element {
         if (current.navigationRevision !== navigation || current.snapshot?.meta.root !== projectRoot || current.page !== 'dashboard' || current.openTaskDir || !canInteract()) return
         if (!useConversations.getState().archiveReads[entry.target]?.value) { current.pushToast({ kind: 'error', title: '该问答已不可用' }); return }
         useMy.getState().setShellView('collaboration')
-        changeContext(PERSONAL)
-        selectArchive(entry.target, PERSONAL, 'work')
+        selectArchive(entry.target, 'work')
         current.setPage('chat')
         rememberVisit(entry)
       }).catch(() => {

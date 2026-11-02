@@ -8,11 +8,11 @@ Profiles remain named local project-scoped assistant roles in the engineering co
 
 ### Private conversation ownership
 
-The private catalog identifies conversations independently of the shell's selected engineering project. Renderer operations carry a conversation ID; native code resolves its fixed workspace, creator and optional authorized business context. Work uses a managed durable directory. Code uses a native directory grant. Neither a sidebar selection nor Work/Code presentation changes an executing conversation's directory, native identity or permission principal.
+The private catalog identifies conversations independently of the shell's selected engineering project and team workspace. Renderer operations carry a conversation ID; native code resolves its fixed workspace and local creator. Work uses a managed durable directory. Code uses a native directory grant. Neither a sidebar selection nor Work/Code presentation changes an executing conversation's directory, native identity or permission principal.
 
-Team space and existing team project references provide authorized business context, not readers of the transcript. Do not add conversation sharing, member invites or raw-chat publication. Formal task records, versioned materials and execution facts retain their existing authority. A selected file can become a private creation draft; publishing a fixed creation revision and adopting it into a task use the existing explicit commands.
+Ordinary conversations have no personal/team classification, space selector or team-project bucket. A team login, membership change or workspace switch cannot partition their history or reset their drafts. Team resources and delivery targets are chosen and authorized by the resource, creation or formal task flow. Do not add conversation sharing, member invites or raw-chat publication. Formal task records, versioned materials and execution facts retain their existing authority. A selected file can become a private creation draft; publishing a fixed creation revision and adopting it into a task use the existing explicit commands.
 
-Keep draft and selection slots separate for each mode, context and logical project. Switching those selectors restores the destination slot without moving earlier conversations. Empty drafts do not fill the history list. History selection reads metadata and paged events without starting an engine. Send, cancellation and permission responses resolve the exact native session and generation; hidden or stale replies cannot overwrite the visible draft. The connection limit and cleanup guards remain authoritative.
+Keep draft and selection slots separate for each mode and private theme project under the native installation owner. Switching those selectors restores the destination slot without moving earlier conversations. Empty drafts do not fill the history list. History selection reads metadata and paged events without starting an engine. Send, cancellation and permission responses resolve the exact native session and generation; hidden or stale replies cannot overwrite the visible draft. The connection limit and cleanup guards remain authoritative.
 
 Private transcripts reuse the native timeline and process projection through a conversation-owned source client. Images and generated-document actions resolve through that client. Project knowledge saving, current-global-root file openers and implicit `.trellis/notes` writes do not belong to this surface. Show only actual selected files and bounded native file results; file presence or assistant prose alone cannot prove a completed task or submitted output.
 
@@ -23,6 +23,33 @@ tabs and readers. Keep their established ACP DOM classes and global tokens.
 Private workspace CSS carries logical grouping, file delivery and archive
 structure only; it does not redefine headers, navigation rows, composer depth,
 focus, model menus, permission cards or generic spacing.
+
+The conversation header contains the title and a compact More menu. New
+conversation remains in the sidebar. Knowledge and New Requirement are labelled
+context controls immediately above the composer; Code also shows its actual
+directory there. Files remain reachable from the original plus/More menus.
+Context controls use shared small ghost Buttons, normal-weight `text-sm`, an
+8px gap between controls and between glyph and label. Do not reuse the bottom
+toolbar's negative-margin text-trigger utility in this row. The selected sidebar
+surface covers the complete row, including its separate More hit target.
+Starting a requirement opens the existing task creation flow with its own
+destination selection; it never publishes or copies the private transcript.
+If no readable destination is selected, open the existing space selection/join
+surface before requesting a task form; ordinary conversation remains available.
+An empty conversation groups its introduction, context and original composer
+around the content center. After a real send, the same composer DOM docks below
+the transcript without losing focus, IME state, images or scroll ownership.
+The welcome heading uses the existing display type role; supporting copy uses
+`text-sm` and tertiary color. Context controls and editable content retain their
+own control/chat roles rather than inheriting the welcome title size.
+
+Reuse the original list-row hover/focus preview, management menus, keyboard
+search, rename, pin and archive/restore interactions. Archived records remain
+readable and recoverable; archiving never stops an executing native session.
+Keep unsupported actions absent rather than simulating native results. Empty
+project groups and empty legacy archives do not occupy permanent sidebar blocks.
+An existing native history without cached preview uses an unread-summary state,
+not an empty-conversation claim; a loaded preview uses actual native metadata.
 
 The model picker receives its actual configure transport. Private operations
 carry a conversation ID and expected native generation; model recovery may

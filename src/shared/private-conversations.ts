@@ -7,28 +7,26 @@ import { ACP_IMAGE_MIME_TYPES, ACP_IMAGE_MAX_BASE64 } from './acp-images'
 const id = z.string().uuid()
 const name = z.string().trim().min(1).max(200)
 export const conversationIdSchema = id
-export const conversationContextSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('personal') }).strict(),
-  z.object({ kind: z.literal('team'), workspaceKey: z.string().min(1).max(256), spaceId: z.string().min(1).max(256) }).strict()
-])
 export const conversationSchema = z.object({
   id, creatorId: z.string().min(1).max(256), title: name, kind: z.enum(['work', 'code']),
-  context: conversationContextSchema, projectId: z.string().min(1).max(256).optional(),
+  projectId: z.string().min(1).max(256).optional(),
   workspace: z.object({ root: z.string().min(1).max(8192), kind: z.enum(['managed', 'directory']) }).strict(),
   nativeRef: z.object({ sessionId: z.string().min(1).max(200), agentId: z.string().min(1).max(200) }).strict().optional(),
-  createdAt: z.number().int().nonnegative(), updatedAt: z.number().int().nonnegative()
+  createdAt: z.number().int().nonnegative(), updatedAt: z.number().int().nonnegative(),
+  pinnedAt: z.number().int().nonnegative().optional(), archivedAt: z.number().int().nonnegative().optional(),
+  conversationPreview: z.string().min(1).max(500).optional()
 }).strict()
 export const conversationCreateDraftSchema = z.object({
-  kind: z.enum(['work', 'code']).default('work'), context: conversationContextSchema.default({ kind: 'personal' }),
+  kind: z.enum(['work', 'code']).default('work'),
   projectId: z.string().min(1).max(256).optional(), directoryGrantId: id.optional(),
   runtimeId: z.string().min(1).max(200).optional(), text: z.string().max(200_000).default('')
 }).strict()
 export const conversationUpdateDraftSchema = z.object({
   text: z.string().max(200_000).optional(), title: name.optional(), runtimeId: z.string().min(1).max(200).optional(),
-  directoryGrantId: id.optional()
+  directoryGrantId: id.optional(), pinned: z.boolean().optional(), archived: z.boolean().optional()
 }).strict().refine(value => Object.keys(value).length > 0, '请选择要更新的草稿字段')
 export const conversationListSchema = z.object({
-  kind: z.enum(['work', 'code']).optional(), context: conversationContextSchema.optional(),
+  kind: z.enum(['work', 'code']).optional(), archive: z.enum(['active', 'archived', 'all']).default('active'),
   projectId: z.string().min(1).max(256).optional(), query: z.string().max(200).optional()
 }).strict()
 export const conversationSendSchema = z.object({
@@ -40,9 +38,9 @@ export const conversationRespondSchema = z.object({
   requestId: z.string().min(1).max(200), optionId: z.string().min(1).max(1000), expectedConnectionGeneration: z.string().min(1).max(200)
 }).strict()
 export const conversationConnectionSchema = z.object({ expectedConnectionGeneration: z.string().min(1).max(200).optional() }).strict()
-export const conversationReclassifySchema = z.object({ context: conversationContextSchema, projectId: z.string().min(1).max(256).nullable().optional() }).strict()
-export const conversationProjectSchema = z.object({ id: z.string().min(1).max(256), name, context: conversationContextSchema }).strict()
-export const conversationCreateProjectSchema = z.object({ name, context: conversationContextSchema.default({ kind: 'personal' }) }).strict()
+export const conversationReclassifySchema = z.object({ projectId: z.string().min(1).max(256).nullable() }).strict()
+export const conversationProjectSchema = z.object({ id: z.string().min(1).max(256), name }).strict()
+export const conversationCreateProjectSchema = z.object({ name }).strict()
 export const conversationFileSchema = z.object({
   id: z.string().min(1).max(256), name: z.string().min(1).max(500), relativePath: z.string().min(1).max(8192),
   kind: z.enum(['input', 'output']), bytes: z.number().int().nonnegative(), revision: z.string().regex(/^[a-f0-9]{64}$/),
@@ -52,10 +50,9 @@ export const conversationOpenFileSchema = z.object({ fileId: z.string().min(1).m
 export const conversationReadFileSchema = z.object({ fileId: z.string().min(1).max(256), expectedRevision: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 
 export type Conversation = z.infer<typeof conversationSchema>
-export type ConversationContext = z.infer<typeof conversationContextSchema>
 export type ConversationCreateDraft = z.input<typeof conversationCreateDraftSchema>
 export type ConversationUpdateDraft = z.infer<typeof conversationUpdateDraftSchema>
-export type ConversationList = z.infer<typeof conversationListSchema>
+export type ConversationList = z.input<typeof conversationListSchema>
 export type ConversationSend = z.infer<typeof conversationSendSchema>
 export type ConversationRespond = z.infer<typeof conversationRespondSchema>
 export type ConversationConnection = z.infer<typeof conversationConnectionSchema>
@@ -72,7 +69,6 @@ export interface ConversationRead {
   session?: AcpSessionRecord
   runtimeError?: string
 }
-export interface ConversationContextChoice { context: ConversationContext; name: string }
 export interface ConversationDirectoryGrant { grantId: string; path: string }
 export interface ConversationApi {
   list(input?: ConversationList): Promise<ConversationResult<Conversation[]>>
@@ -93,10 +89,9 @@ export interface ConversationApi {
   readFile(id: string, input: ConversationReadFile): Promise<ConversationResult<{ name: string; body: string; kind: 'prototype' | 'document'; revision: string; modifiedAt: number }>>
   image(id: string, imageId: string): Promise<ConversationResult<{ mimeType: import('./acp-images').AcpImageMimeType; data: string }>>
   saveImage(id: string, imageId: string): Promise<ConversationResult<{ cancelled: boolean }>>
-  projects(input?: { context?: ConversationContext }): Promise<ConversationResult<ConversationProject[]>>
+  projects(): Promise<ConversationResult<ConversationProject[]>>
   createProject(input: ConversationCreateProject): Promise<ConversationResult<ConversationProject>>
   reclassify(id: string, input: ConversationReclassify): Promise<ConversationResult<ConversationRead>>
-  contexts(): Promise<ConversationResult<ConversationContextChoice[]>>
 }
 
 /** Native GUI transport only; renderer methods never accept these owner/path fields. */

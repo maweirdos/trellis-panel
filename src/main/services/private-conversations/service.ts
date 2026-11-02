@@ -1,41 +1,28 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync } from 'node:fs'
 import { userInfo } from 'node:os'
-import { z } from 'zod'
 import * as contract from '../../../shared/private-conversations'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import type { AcpSessionRecord } from '../../../shared/types'
 import type { AcpHistoryEventPage } from '../../../shared/acp-history'
 import type { RuntimeBody, RuntimeBodyMethod, RuntimeCursor } from '../../../shared/daemon-runtime'
 import { runtimeCall } from '../daemon-client/runtime'
-import { hifoxWorkspaceGeneration, hifoxWorkspaceSnapshot, hifoxWorkspaceCurrentView, executeHifoxWorkspace } from '../hifox/connection-service'
-import type { HifoxSnapshot } from '../../../shared/hifox'
-import type { HifoxWorkspaceContext } from '../../../shared/hifox-remote'
 import { ipcEvent } from '../../../shared/ipc-channels'
 import { checkedDirectory, directoryIdentity, hash, ownedDirectory, readRegular, workspaceFiles, importSelectedFiles, removeImportedFiles, pathKey } from './files'
 import { conversationConfigureSchema, conversationRecoverModelSchema } from '../../../shared/acp-configuration'
+import { ConversationStorage, ConversationStorageError as ConversationError, type ConversationRow as Row, type ConversationMigrationBatch } from './storage'
+export { ConversationStorageError as ConversationError } from './storage'
 
-const rowSchema = z.object({ version: z.literal(1), revision: z.number().int().positive(), conversation: contract.conversationSchema,
-  draft: z.object({ text: z.string().max(200_000), runtimeId: z.string().min(1).max(200).optional() }).strict(),
-  rootIdentity: z.string().min(1), inputs: z.array(z.string().min(1).max(8192)).max(256),
-  pending: z.object({ requestId: z.string().uuid(), digest: z.string().length(64), textDigest: z.string().length(64).optional(), state: z.enum(['preparing', 'dispatching', 'sent', 'unknown']), turnId: z.string().optional() }).strict().optional()
-}).strict()
-type Row = z.infer<typeof rowSchema>
 type NativeSession = { ok: true; session: AcpSessionRecord } | IpcFail
 type NativeSend = { ok: true; session: AcpSessionRecord; turnId?: string } | (IpcFail & { notSent?: boolean; outcome?: string })
-type TeamProof = { generation: number; snapshot: HifoxSnapshot; context: HifoxWorkspaceContext; spaces: HifoxSnapshot['spaces']; creatorId: string }
 export interface PrivateConversationPorts {
   directory(): string
   native<T, M extends RuntimeBodyMethod>(method: M, body: RuntimeBody<M>, commandId?: string, current?: () => boolean): Promise<T>
   publish(channel: string, payload: unknown): void
   active?(): boolean
 }
-export class ConversationError extends Error {
-  constructor(message: string, readonly code: IpcFail['code'] = IpcErrorCode.Conflict) { super(message) }
-}
-const equalContext = (left: contract.ConversationContext, right: contract.ConversationContext): boolean => JSON.stringify(left) === JSON.stringify(right)
 export class PrivateConversations {
+  private storage?: ConversationStorage
   private previewSources = new Map<string, { conversation: contract.Conversation; rootIdentity: string }>()
   private grants = new Map<string, { root: string; identity: string; expires: number; owner?: object; timer: ReturnType<typeof setTimeout> }>()
   private sending = new Map<string, { requestId: string; digest: string; promise: Promise<contract.ConversationResult<{ conversation: contract.Conversation; session: AcpSessionRecord; turnId: string }>> }>()
@@ -48,46 +35,16 @@ export class PrivateConversations {
     return ownedDirectory(userData, 'private-conversations')
   }
   private localCreator(): string { return `local-${hash(JSON.stringify([pathKey(checkedDirectory(this.ports.directory())), userInfo().username]))}` }
-  private rowFile(id: string): string { contract.conversationIdSchema.parse(id); return join(ownedDirectory(this.directory(), 'catalog'), `${id}.json`) }
-  private load(id: string): Row { return rowSchema.parse(JSON.parse(readRegular(this.directory(), `catalog/${contract.conversationIdSchema.parse(id)}.json`, 1024 * 1024).bytes.toString('utf8'))) }
-  private save(row: Row, expected?: number): void {
-    const file = this.rowFile(row.conversation.id)
-    if (existsSync(file) && (expected === undefined || this.load(row.conversation.id).revision !== expected)) throw new ConversationError('会话已更新，请重新读取草稿')
-    const next = rowSchema.parse({ ...row, revision: (expected ?? 0) + 1 })
-    const temporary = join(ownedDirectory(this.directory(), 'catalog'), `.${randomUUID()}.tmp`)
-    writeFileSync(temporary, JSON.stringify(next), { flag: 'wx', mode: 0o600 })
-    renameSync(temporary, file); row.revision = next.revision
-  }
-  private hasRemoteSelection(): boolean {
-    const path = join(this.ports.directory(), 'hifox-remote', 'selection.json')
-    if (!existsSync(path)) return false
-    const value = z.object({ connectionId: z.string().uuid().nullable() }).strict().parse(JSON.parse(readRegular(this.ports.directory(), 'hifox-remote/selection.json', 4096).bytes.toString('utf8')))
-    return value.connectionId !== null
-  }
-  private async team(context?: Extract<contract.ConversationContext, { kind: 'team' }>, cached = false): Promise<TeamProof> {
-    if (!this.hasRemoteSelection() && !existsSync(join(this.ports.directory(), 'hifox', 'store.json'))) throw new ConversationError('请先选择有权访问的真实团队来源', IpcErrorCode.Denied)
-    const generation = hifoxWorkspaceGeneration(), view = await (cached ? hifoxWorkspaceCurrentView() : hifoxWorkspaceSnapshot())
-    if (generation !== hifoxWorkspaceGeneration() || !['local', 'connected'].includes(view.context.state) || !view.context.actorId || context && view.context.key !== context.workspaceKey) throw new ConversationError('团队来源或登录身份已改变，请保留原草稿并重新选择', IpcErrorCode.Denied)
-    const actor = view.snapshot.members.find(member => member.id === view.context.actorId)
-    if (!actor) throw new ConversationError('当前账号不属于此团队来源', IpcErrorCode.Denied)
-    const spaces = view.snapshot.spaces.filter(space => !space.archived && (space.visibility !== 'private' || space.ownerId === actor.id || space.memberIds.includes(actor.id) || actor.role !== 'member'))
-    if (context && !spaces.some(space => space.id === context.spaceId)) throw new ConversationError('原团队空间已不可访问', IpcErrorCode.Denied)
-    return { ...view, generation, spaces, creatorId: `team-${hash(JSON.stringify([this.localCreator(), view.context.key, view.context.instanceId ?? 'local', view.context.origin ?? 'local', view.context.actorId]))}` }
-  }
-  private async creator(context: contract.ConversationContext): Promise<string> { return context.kind === 'personal' ? this.localCreator() : (await this.team(context)).creatorId }
-  private async authorized(row: Row, proof?: TeamProof, fresh = false, cleanup = false): Promise<void> {
-    const context = row.conversation.context
-    const view = context.kind === 'team' ? proof ?? await this.team(context, !fresh) : undefined
-    if (view && (view.generation !== hifoxWorkspaceGeneration() || context.kind !== 'team' || view.context.key !== context.workspaceKey || !view.spaces.some(space => space.id === context.spaceId))) throw new ConversationError('团队来源授权已变化', IpcErrorCode.Denied)
-    if (row.conversation.creatorId !== (view?.creatorId ?? this.localCreator())) throw new ConversationError('此会话属于另一位创建者', IpcErrorCode.Denied)
+  private catalog(): ConversationStorage { return this.storage ??= new ConversationStorage(this.directory(), this.localCreator(), this.ports.directory()) }
+  private load(id: string): Row { return this.catalog().read(id) }
+  private save(row: Row, expected?: number): void { this.catalog().save(row, expected) }
+  private async authorized(row: Row, cleanup = false): Promise<void> {
+    if (row.conversation.creatorId !== this.localCreator()) throw new ConversationError('此会话属于另一位本机创建者', IpcErrorCode.Denied)
     if (!cleanup && directoryIdentity(row.conversation.workspace.root) !== row.rootIdentity) throw new ConversationError('原会话目录已变化；未切换执行目录')
-    if (context.kind === 'team' && view && row.conversation.projectId) {
-      if (!view.snapshot.projects.some(project => project.id === row.conversation.projectId && project.spaceId === context.spaceId && project.status !== 'archived')) throw new ConversationError('原团队项目已不可访问', IpcErrorCode.Denied)
-    }
   }
-  private async owned(id: string, fresh = false, cleanup = false): Promise<Row> { const row = this.load(id); await this.authorized(row, undefined, fresh, cleanup); return row }
+  private async owned(id: string, cleanup = false): Promise<Row> { const row = await this.catalog().load(id); await this.authorized(row, cleanup); return row }
   private nativeOwner(row: Row): contract.PrivateNativeOwner {
-    return { root: row.conversation.workspace.root, sessionId: row.conversation.nativeRef?.sessionId ?? `acp-private-${row.conversation.id}`, conversationId: row.conversation.id, creatorId: row.conversation.creatorId }
+    return { root: row.conversation.workspace.root, sessionId: row.conversation.nativeRef?.sessionId ?? `acp-private-${row.conversation.id}`, conversationId: row.conversation.id, creatorId: row.nativeCreatorId }
   }
   private async value(row: Row): Promise<contract.ConversationRead> {
     await this.authorized(row)
@@ -100,9 +57,26 @@ export class PrivateConversations {
         else runtimeError = read.error
       } catch (error) { runtimeError = error instanceof Error ? error.message : '原生连接当前不可用' }
       await this.authorized(row)
+      if (session) row = this.rememberPreview(row, session)
       this.observe(row.conversation.id)
     }
     return { conversation: row.conversation, draft: row.draft, ...(session ? { session } : {}), ...(runtimeError ? { runtimeError } : {}) }
+  }
+  private rememberPreview(row: Row, session: AcpSessionRecord): Row {
+    if (session.sessionId !== row.conversation.nativeRef?.sessionId || pathKey(session.projectRoot) !== pathKey(row.conversation.workspace.root) || typeof session.conversationPreview !== 'string' || !session.conversationPreview.trim()) return row
+    let preview = session.conversationPreview.trim().slice(0, 500)
+    if (/[\uD800-\uDBFF]$/.test(preview)) preview = preview.slice(0, -1)
+    const at = typeof session.conversationPreviewAt === 'number' && Number.isFinite(session.conversationPreviewAt) && session.conversationPreviewAt >= 0 ? session.conversationPreviewAt : undefined
+    if (row.nativePreviewAt !== undefined && (at === undefined || at < row.nativePreviewAt)) return row
+    if (preview === row.conversation.conversationPreview && (at === undefined || row.nativePreviewAt !== undefined && at <= row.nativePreviewAt)) return row
+    const latest = this.load(row.conversation.id)
+    if (latest.conversation.nativeRef?.sessionId !== session.sessionId || latest.nativeCreatorId !== row.nativeCreatorId || pathKey(latest.conversation.workspace.root) !== pathKey(row.conversation.workspace.root)) return latest
+    if (latest.nativePreviewAt !== undefined && (at === undefined || at < latest.nativePreviewAt)) return latest
+    if (preview === latest.conversation.conversationPreview && (at === undefined || latest.nativePreviewAt !== undefined && at <= latest.nativePreviewAt)) return latest
+    latest.conversation.conversationPreview = preview
+    if (at !== undefined) { latest.nativePreviewAt = at; latest.conversation.updatedAt = Math.max(latest.conversation.updatedAt, Math.floor(at)) }
+    this.save(latest, latest.revision)
+    return latest
   }
   private async reconcile(row: Row): Promise<Row> {
     if (!row.pending || !['dispatching', 'unknown'].includes(row.pending.state)) return row
@@ -127,56 +101,61 @@ export class PrivateConversations {
     const directory = ownedDirectory(this.directory(), 'catalog')
     const names = readdirSync(directory).filter(name => /^[a-f0-9-]{36}\.json$/.test(name))
     if (names.length > 5000) throw new ConversationError('会话索引超过读取上限', IpcErrorCode.Busy)
-    const rows = names.map(name => this.load(name.slice(0, -5)))
-    let proof: TeamProof | undefined
-    if (rows.some(row => row.conversation.context.kind === 'team')) { try { proof = await this.team() } catch (error) { if (!(error instanceof ConversationError)) throw error } }
-    for (const row of rows) {
+    const batch: ConversationMigrationBatch = {}
+    for (const name of names) {
+      let row: Row
+      try { row = await this.catalog().load(name.slice(0, -5), batch) }
+      catch (error) { if (error instanceof ConversationError && error.code === IpcErrorCode.Denied) continue; throw error }
       const conversation = row.conversation
       if (!row.draft.text.trim() && !row.inputs.length && !conversation.nativeRef) continue
-      if (input.kind && input.kind !== conversation.kind || input.context && !equalContext(input.context, conversation.context) || input.projectId && input.projectId !== conversation.projectId || input.query && !conversation.title.toLocaleLowerCase().includes(input.query.toLocaleLowerCase())) continue
-      if (conversation.context.kind === 'team' && !proof) continue
-      try { await this.authorized(row, proof); result.push(conversation) } catch (error) { if (!(error instanceof ConversationError)) throw error }
+      if (input.archive === 'active' && conversation.archivedAt !== undefined || input.archive === 'archived' && conversation.archivedAt === undefined) continue
+      if (input.kind && input.kind !== conversation.kind || input.projectId && input.projectId !== conversation.projectId || input.query && !conversation.title.toLocaleLowerCase().includes(input.query.toLocaleLowerCase())) continue
+      if (conversation.creatorId === this.localCreator()) result.push(conversation)
     }
-    if (proof) { const current = await this.team(undefined, true); if (JSON.stringify([proof.generation, proof.context]) !== JSON.stringify([current.generation, current.context])) throw new ConversationError('列表读取期间团队来源已变化') }
-    return result.sort((left, right) => right.updatedAt - left.updatedAt || right.id.localeCompare(left.id))
+    return result.sort((left, right) => Number(right.pinnedAt !== undefined) - Number(left.pinnedAt !== undefined) || right.updatedAt - left.updatedAt || right.id.localeCompare(left.id))
   }
   async createDraft(raw: unknown = {}, directoryOwner?: object): Promise<contract.ConversationRead> {
-    const input = contract.conversationCreateDraftSchema.parse(raw ?? {}), id = randomUUID(), now = Date.now(), creatorId = await this.creator(input.context)
+    const input = contract.conversationCreateDraftSchema.parse(raw ?? {}), id = randomUUID(), now = Date.now(), creatorId = this.localCreator()
     if (input.kind === 'work' && input.directoryGrantId) throw new ConversationError('Work 使用应用持有的独立目录；请选择 Code 使用外部目录', IpcErrorCode.InvalidArg)
-    await this.checkProject(input.context, input.projectId)
+    await this.checkProject(input.projectId)
     const workspace = input.directoryGrantId ? this.consumeDirectory(input.directoryGrantId, directoryOwner) : { root: ownedDirectory(this.directory(), `workspaces/${id}`), kind: 'managed' as const }
     if (input.kind === 'code' && workspace.kind !== 'directory') throw new ConversationError('请为 Code 选择真实目录', IpcErrorCode.InvalidArg)
-    const row: Row = { version: 1, revision: 1, conversation: { id, creatorId, title: '新对话', kind: input.kind, context: input.context, projectId: input.projectId, workspace, createdAt: now, updatedAt: now }, draft: { text: input.text, runtimeId: input.runtimeId }, rootIdentity: directoryIdentity(workspace.root), inputs: [] }
+    const row: Row = { version: 2, revision: 1, nativeCreatorId: creatorId, conversation: { id, creatorId, title: '新对话', kind: input.kind, projectId: input.projectId, workspace, createdAt: now, updatedAt: now }, draft: { text: input.text, runtimeId: input.runtimeId }, rootIdentity: directoryIdentity(workspace.root), inputs: [] }
     await this.authorized(row); this.save(row)
     return this.value(row)
   }
   async updateDraft(id: string, raw: unknown, directoryOwner?: object): Promise<contract.ConversationRead> {
     const input = contract.conversationUpdateDraftSchema.parse(raw), row = await this.owned(id)
+    const before = JSON.stringify(row)
     if (row.conversation.nativeRef && (input.runtimeId !== undefined || input.directoryGrantId !== undefined)) throw new ConversationError('原生会话已绑定，不能改运行时或执行目录')
     if (input.directoryGrantId && row.conversation.kind === 'work') throw new ConversationError('Work 的执行目录由应用持有', IpcErrorCode.InvalidArg)
     if (input.text !== undefined) row.draft.text = input.text
     if (input.title !== undefined) row.conversation.title = input.title
     if (input.runtimeId !== undefined) row.draft.runtimeId = input.runtimeId
     if (input.directoryGrantId) { row.conversation.workspace = this.consumeDirectory(input.directoryGrantId, directoryOwner); row.rootIdentity = directoryIdentity(row.conversation.workspace.root); row.inputs = [] }
-    row.conversation.updatedAt = Date.now(); this.save(row, row.revision)
+    if (input.pinned === true) row.conversation.pinnedAt ??= Date.now()
+    else if (input.pinned === false) delete row.conversation.pinnedAt
+    if (input.archived === true) row.conversation.archivedAt ??= Date.now()
+    else if (input.archived === false) delete row.conversation.archivedAt
+    if (before !== JSON.stringify(row)) { row.conversation.updatedAt = Date.now(); this.save(row, row.revision) }
     return this.value(row)
   }
   async read(id: string): Promise<contract.ConversationRead> { return this.value(await this.owned(id)) }
   async configure(id: string, raw: unknown): Promise<contract.ConversationResult<AcpSessionRecord>> {
-    const input = conversationConfigureSchema.parse(raw), row = await this.owned(id, true)
+    const input = conversationConfigureSchema.parse(raw), row = await this.owned(id)
+    if (row.conversation.archivedAt !== undefined) return ipcFail(IpcErrorCode.Conflict, '会话已归档，请恢复后再调整参数')
     if (!row.conversation.nativeRef || this.sending.has(id)) return ipcFail(IpcErrorCode.Busy, '请等待原会话发送结束后调整参数')
-    const generation = hifoxWorkspaceGeneration()
     const result = await this.ports.native<NativeSession, 'runtime.privateConfigure'>('runtime.privateConfigure', { ...this.nativeOwner(row), input }, undefined,
-      () => row.conversation.context.kind === 'personal' || generation === hifoxWorkspaceGeneration())
+      () => { const current = this.load(id).conversation; return current.creatorId === this.localCreator() && current.archivedAt === undefined })
     await this.authorized(row)
     return result.ok ? { ok: true, value: { ...result.session, events: [] } } : result
   }
   async recoverModel(id: string, raw: unknown): Promise<contract.ConversationResult<AcpSessionRecord>> {
-    const input = conversationRecoverModelSchema.parse(raw), row = await this.owned(id, true)
+    const input = conversationRecoverModelSchema.parse(raw), row = await this.owned(id)
+    if (row.conversation.archivedAt !== undefined) return ipcFail(IpcErrorCode.Conflict, '会话已归档，请恢复后再核对模型')
     if (!row.conversation.nativeRef || this.sending.has(id)) return ipcFail(IpcErrorCode.Busy, '请等待原会话发送结束后核对模型')
-    const generation = hifoxWorkspaceGeneration()
     const result = await this.ports.native<NativeSession, 'runtime.privateRecoverModel'>('runtime.privateRecoverModel', { ...this.nativeOwner(row), input }, undefined,
-      () => row.conversation.context.kind === 'personal' || generation === hifoxWorkspaceGeneration())
+      () => { const current = this.load(id).conversation; return current.creatorId === this.localCreator() && current.archivedAt === undefined })
     await this.authorized(row)
     return result.ok ? { ok: true, value: { ...result.session, events: [] } } : result
   }
@@ -190,8 +169,8 @@ export class PrivateConversations {
         if (this.previewSources.size >= 16) this.previewSources.delete(this.previewSources.keys().next().value ?? '')
         this.previewSources.set(sessionId, source)
       }
-      if (directoryIdentity(source.conversation.workspace.root) !== source.rootIdentity) return { root: null, generation: 0 }
-      return { root: source.conversation.workspace.root, generation: source.conversation.context.kind === 'team' ? hifoxWorkspaceGeneration() : 0 }
+      if (source.conversation.creatorId !== this.localCreator() || directoryIdentity(source.conversation.workspace.root) !== source.rootIdentity) return { root: null, generation: 0 }
+      return { root: source.conversation.workspace.root, generation: 0 }
     } catch { return { root: null, generation: 0 } }
   }
   async previewSession(root: string, sessionId: string): Promise<NativeSession> {
@@ -217,7 +196,8 @@ export class PrivateConversations {
     try { return await promise } finally { if (this.sending.get(id)?.promise === promise) this.sending.delete(id); this.cancelledSends.delete(input.requestId) }
   }
   private async sendOwned(id: string, input: contract.ConversationSend, digest: string): Promise<contract.ConversationResult<{ conversation: contract.Conversation; session: AcpSessionRecord; turnId: string }>> {
-    let row = await this.reconcile(await this.owned(id, true))
+    let row = await this.reconcile(await this.owned(id))
+    if (row.conversation.archivedAt !== undefined) return ipcFail(IpcErrorCode.Conflict, '会话已归档，请恢复后再发送')
     if (!input.text.trim() && !input.images?.length) return ipcFail(IpcErrorCode.InvalidArg, '请输入消息或选择图片')
     if (input.expectedConnectionGeneration && row.conversation.nativeRef) {
       const original = await this.ports.native<NativeSession, 'runtime.privateRead'>('runtime.privateRead', { ...this.nativeOwner(row), operation: 'session' })
@@ -236,12 +216,11 @@ export class PrivateConversations {
     row.conversation.nativeRef ??= { sessionId: `acp-private-${id}`, agentId: row.draft.runtimeId ?? 'pi' }
     row.pending = { requestId: input.requestId, digest, textDigest: hash(input.text), state: 'preparing' }
     row.conversation.updatedAt = Date.now(); this.save(row, row.revision)
-    const generation = hifoxWorkspaceGeneration(), team = row.conversation.context.kind === 'team'
-    const current = (): boolean => (!team || generation === hifoxWorkspaceGeneration()) && !this.cancelledSends.has(input.requestId)
-      && this.sending.get(id)?.requestId === input.requestId && this.sending.get(id)?.digest === digest
+    const current = (): boolean => !this.cancelledSends.has(input.requestId)
+      && this.sending.get(id)?.requestId === input.requestId && this.sending.get(id)?.digest === digest && this.load(id).conversation.archivedAt === undefined
     const prepared = await this.ports.native<NativeSend, 'runtime.privateSend'>('runtime.privateSend', { ...this.nativeOwner(row), agentId: row.conversation.nativeRef.agentId, operation: 'prepare', input }, undefined, current)
     if (!prepared.ok) return prepared
-    row = await this.owned(id, true)
+    row = await this.owned(id)
     if (!current() || this.cancelledSends.has(input.requestId)) return ipcFail(IpcErrorCode.Conflict, '原消息已停止或来源已变化，消息未发送', { notSent: true })
     const agentId = row.conversation.nativeRef?.agentId
     if (!agentId || !prepared.session.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '原生身份尚未确认')
@@ -272,14 +251,14 @@ export class PrivateConversations {
   }
   async control(operation: 'cancel' | 'end' | 'respond', id: string, raw: unknown = {}): Promise<contract.ConversationResult<null>> {
     const cleanup = operation !== 'respond'
-    const input = operation === 'respond' ? contract.conversationRespondSchema.parse(raw) : contract.conversationConnectionSchema.parse(raw ?? {}), row = await this.owned(id, false, cleanup)
+    const input = operation === 'respond' ? contract.conversationRespondSchema.parse(raw) : contract.conversationConnectionSchema.parse(raw ?? {}), row = await this.owned(id, cleanup)
     const sending = this.sending.get(id)
     if (operation !== 'respond' && sending) this.cancelledSends.add(sending.requestId)
-    await this.authorized(row, undefined, true, cleanup)
+    await this.authorized(row, cleanup)
     if (!row.conversation.nativeRef) return { ok: true, value: null }
     const method = operation === 'cancel' ? 'runtime.privateCancel' : operation === 'end' ? 'runtime.privateEnd' : 'runtime.privateRespond'
     const value = await this.ports.native<{ ok: true } | IpcFail, typeof method>(method, { ...this.nativeOwner(row), ...input })
-    await this.authorized(row, undefined, false, cleanup)
+    await this.authorized(row, cleanup)
     return value.ok ? { ok: true, value: null } : value
   }
   grantDirectory(root: string, owner?: object): contract.ConversationDirectoryGrant {
@@ -301,9 +280,9 @@ export class PrivateConversations {
     this.forgetDirectoryGrant(id)
     return { root: grant.root, kind: 'directory' }
   }
-  async files(id: string): Promise<contract.ConversationFile[]> { const row = await this.owned(id, true); return workspaceFiles(row.conversation.workspace.root, row.inputs, row.conversation.workspace.kind === 'managed') }
+  async files(id: string): Promise<contract.ConversationFile[]> { const row = await this.owned(id); return workspaceFiles(row.conversation.workspace.root, row.inputs, row.conversation.workspace.kind === 'managed') }
   async importFiles(id: string, paths: string[]): Promise<contract.ConversationFile[]> {
-    const row = await this.owned(id, true)
+    const row = await this.owned(id)
     if (row.inputs.length + paths.length > 256) throw new ConversationError('会话已达到 256 个选入文件上限', IpcErrorCode.Busy)
     const directory = row.conversation.workspace.kind === 'managed' ? 'inputs' : `.trellis-panel/conversations/${id}/inputs`
     const files = importSelectedFiles(row.conversation.workspace.root, directory, paths)
@@ -312,47 +291,23 @@ export class PrivateConversations {
     return files
   }
   async file(id: string, fileId: string, revision?: string, limit?: number) {
-    const row = await this.owned(id, true), file = workspaceFiles(row.conversation.workspace.root, row.inputs, row.conversation.workspace.kind === 'managed').find(file => file.id === fileId)
+    const row = await this.owned(id), file = workspaceFiles(row.conversation.workspace.root, row.inputs, row.conversation.workspace.kind === 'managed').find(file => file.id === fileId)
     if (!file) throw new ConversationError('会话文件已移除或不可访问', IpcErrorCode.NotFound)
     const actual = readRegular(row.conversation.workspace.root, file.relativePath, limit)
     if (revision && hash(actual.bytes) !== revision) throw new ConversationError('文件已更新，请重新读取后提交')
     return { ...actual, file: { ...file, revision: hash(actual.bytes), bytes: actual.bytes.length, modifiedAt: actual.modifiedAt } }
   }
-  async projects(raw: unknown = {}): Promise<contract.ConversationProject[]> {
-    const input = z.object({ context: contract.conversationContextSchema.optional() }).strict().parse(raw ?? {}), context = input.context ?? { kind: 'personal' as const }
-    if (context.kind === 'team') { const view = await this.team(context); return view.snapshot.projects.filter(project => project.spaceId === context.spaceId && project.status !== 'archived').map(project => ({ id: project.id, name: project.name, context })) }
-    const file = join(this.directory(), 'projects.json')
-    return existsSync(file) ? z.array(contract.conversationProjectSchema).max(1000).parse(JSON.parse(readRegular(this.directory(), 'projects.json', 512 * 1024).bytes.toString('utf8'))) : []
-  }
-  private async checkProject(context: contract.ConversationContext, projectId?: string): Promise<void> { if (projectId && !(await this.projects({ context })).some(project => project.id === projectId)) throw new ConversationError('请选择当前来源中真实存在的项目', IpcErrorCode.Denied) }
+  async projects(): Promise<contract.ConversationProject[]> { return this.catalog().projects() }
+  private async checkProject(projectId?: string): Promise<void> { if (projectId && !this.catalog().projects().some(project => project.id === projectId)) throw new ConversationError('请选择已存在的私人主题分组', IpcErrorCode.Denied) }
   async createProject(raw: unknown): Promise<contract.ConversationProject> {
     const input = contract.conversationCreateProjectSchema.parse(raw)
-    if (input.context.kind === 'team') {
-      const context = input.context, prior = await this.team(context), view = await executeHifoxWorkspace('createProject', { spaceId: context.spaceId, name: input.name }, context.workspaceKey)
-      const project = view.snapshot.projects.find(project => project.spaceId === context.spaceId && project.name === input.name && !prior.snapshot.projects.some(old => old.id === project.id))
-      if (!project) throw new ConversationError('团队项目创建结果尚未核实')
-      return { id: project.id, name: project.name, context: input.context }
-    }
-    const projects = await this.projects(), project = { id: randomUUID(), name: input.name, context: input.context }
-    if (projects.length >= 1000) throw new ConversationError('个人项目数量已达到上限', IpcErrorCode.Busy)
-    projects.push(project)
-    const file = join(this.directory(), 'projects.json'), temporary = join(this.directory(), `.${randomUUID()}.tmp`)
-    writeFileSync(temporary, JSON.stringify(projects), { flag: 'wx', mode: 0o600 }); renameSync(temporary, file)
-    return project
+    return this.catalog().createProject(input.name)
   }
   async reclassify(id: string, raw: unknown): Promise<contract.ConversationRead> {
     const input = contract.conversationReclassifySchema.parse(raw), row = await this.owned(id)
-    if (!equalContext(input.context, row.conversation.context)) throw new ConversationError('既有会话不能改变来源权限；请选择或创建该来源的草稿', IpcErrorCode.Denied)
-    await this.checkProject(input.context, input.projectId ?? undefined)
+    await this.checkProject(input.projectId ?? undefined)
     row.conversation.projectId = input.projectId ?? undefined; row.conversation.updatedAt = Date.now(); this.save(row, row.revision)
     return this.value(row)
-  }
-  async contexts(): Promise<contract.ConversationContextChoice[]> {
-    const choices: contract.ConversationContextChoice[] = [{ context: { kind: 'personal' }, name: '个人' }]
-    if (!this.hasRemoteSelection() && !existsSync(join(this.ports.directory(), 'hifox', 'store.json'))) return choices
-    const view = await this.team()
-    choices.push(...view.spaces.map(space => ({ context: { kind: 'team' as const, workspaceKey: view.context.key, spaceId: space.id }, name: space.name })))
-    return choices
   }
   async image(id: string, imageId: string) {
     const row = await this.owned(id)
@@ -384,6 +339,7 @@ export class PrivateConversations {
         state.cursor = page.cursor
         state.live = page.session.connectionOwned === true || page.session.cleanupRequired === true || Boolean(page.session.pendingPermissions?.length)
         const busy = ['starting', 'busy', 'awaiting_permission', 'cancelling'].includes(page.session.status)
+        if (!busy) this.rememberPreview(row, page.session)
         state.nextAt = Date.now() + (visible && page.hasMore ? 0 : visible && busy ? 750 : 15_000)
         if (page.resetRequired) { this.ports.publish(ipcEvent.acpState, { ...page.session, session: { ...page.session, events: [] } }); this.ports.publish(ipcEvent.daemonRuntimeReset, { projectRoot: row.conversation.workspace.root }) }
         for (const event of page.events) this.ports.publish(event.channel, event.payload)

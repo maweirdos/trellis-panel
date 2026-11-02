@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 import { BookOpen, FileInput, Settings2 } from 'lucide-react'
-import { Dropdown, DropdownHeader, DropdownItem } from '../my/ui'
+import { Button, Dropdown, DropdownHeader, DropdownItem } from '../my/ui'
 import { useMy } from '../my/store'
 import { useApp } from '../store'
 import { useInteractionGuard } from '../utils/interaction-scope'
@@ -11,8 +11,8 @@ export function ConversationKnowledgeMenu({ onAddFiles, canAddFiles }: { onAddFi
   const snapshot = useApp(state => state.snapshot)
   const canInteract = useInteractionGuard()
   const root = projectRootKey(snapshot?.meta.root)
-  return <Dropdown placement="bottom" align="right" width={288} trigger={({ open, toggle }) => <button type="button"
-    className="my-icon-control" aria-label="知识与资料" title="知识与资料" aria-expanded={open} onClick={toggle}><BookOpen size={16} /></button>}>
+  return <Dropdown placement="top" width={288} trigger={({ open, toggle }) => <Button variant="ghost" size="sm"
+    className="acp-context-action" aria-label="知识与资料" aria-expanded={open} onClick={toggle}><BookOpen size={14} aria-hidden="true" /><span>知识库</span></Button>}>
     {close => <>
       <DropdownHeader>知识与资料</DropdownHeader>
       <DropdownItem icon={<FileInput size={14} />} disabled={!canAddFiles} onClick={() => { close(); if (canInteract()) onAddFiles() }}>选入会话资料</DropdownItem>

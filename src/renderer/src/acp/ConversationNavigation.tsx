@@ -1,14 +1,15 @@
 import { ModuleLinks } from '../my/layout/ModuleLinks'
-import { useEffect, useId, useMemo, useRef, useState, type JSX } from 'react'
-import { createPortal } from 'react-dom'
-import { Archive, ArchiveRestore, ChevronDown, Ellipsis, Loader2, Pencil, Pin, PinOff, Plus, Search, Sparkles, Trash2, X } from 'lucide-react'
-import { clsx } from 'clsx'
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { ConversationSearch as ConversationSearchView } from './ConversationSearch'
+import { ConversationListRow, ConversationListPreview, ConversationRenameDialog, useConversationListPreview } from './ConversationListRow'
+import { Archive, ArchiveRestore, ChevronDown, Ellipsis, Loader2, Pencil, Pin, PinOff, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
+
 import { Button, Dropdown, DropdownItem, Modal } from '../my/ui'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { projectRootKey } from '../my/navigation'
 import { ConversationSidebar } from './ConversationSidebar'
-import { useEscLayer } from '../utils/use-esc-layer'
+
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { conversationSummary, isDiagnosticConversation } from './conversation-selection'
 import { compareConversationSessions, conversationManagement, type ConversationArchive, type ConversationUpdate } from './useConversationHistory'
@@ -16,9 +17,7 @@ import type { AcpHistorySummary } from '../../../shared/acp-history'
 import type { AcpSessionRecord } from '../../../shared/types'
 import type { WorkspaceView } from './view-state'
 
-interface HoverPreview { session: AcpSessionRecord; left: number; top: number; host: Element }
-
-function ConversationSearch({ sessions, archive, onSelect, onClose }: { sessions: AcpSessionRecord[]; archive: ConversationArchive; onSelect: (id: string) => void; onClose: () => void }): JSX.Element {
+function ProjectConversationSearch({ sessions, archive, onSelect, onClose }: { sessions: AcpSessionRecord[]; archive: ConversationArchive; onSelect: (id: string) => void; onClose: () => void }): JSX.Element {
   const root = useApp((state) => state.snapshot?.meta.root ?? '')
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
@@ -28,13 +27,11 @@ function ConversationSearch({ sessions, archive, onSelect, onClose }: { sessions
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const selectedRef = useRef<HTMLButtonElement>(null)
+
   const request = useRef({ serial: 0, live: true, busy: false })
   const currentQuery = useRef(query)
   currentQuery.current = query
-  const composing = useRef(false)
-  const listId = useId()
+
   const valid = (serial: number): boolean => request.current.live && serial === request.current.serial && currentQuery.current === query && canInteract() && projectRootKey(useApp.getState().snapshot?.meta.root ?? '') === projectRootKey(root)
   const load = async (after?: string): Promise<void> => {
     if (!interactive || (after && request.current.busy)) return
@@ -71,28 +68,13 @@ function ConversationSearch({ sessions, archive, onSelect, onClose }: { sessions
       return updated ? { ...session, ...conversationManagement(updated) } : session
     }).filter((session) => archive === 'archived' ? !!session.archivedAt : !session.archivedAt).sort(compareConversationSessions))
   }, [sessions, archive])
-  useEffect(() => { selectedRef.current?.scrollIntoView({ block: 'nearest' }) }, [selected])
+
   const changeQuery = (value: string): void => {
     currentQuery.current = value; request.current.serial++; request.current.busy = false
     setQuery(value); setResults([]); setCursor(null); setError(''); setSelected(0); setLoading(true)
   }
   const choose = (id: string): void => { if (!canInteract() || loading || projectRootKey(useApp.getState().snapshot?.meta.root ?? '') !== projectRootKey(root)) return; onClose(); onSelect(id) }
-  return <section className="acp-search-palette" aria-label="搜索会话">
-    <div className="acp-search-input"><Search size={18} aria-hidden="true" /><input autoFocus ref={inputRef} role="combobox" aria-label="搜索会话标题、角色或任务" aria-autocomplete="list" aria-expanded="true" aria-controls={listId} aria-activedescendant={results[selected] ? `${listId}-${selected}` : undefined} value={query} placeholder="搜索会话" onChange={(event) => changeQuery(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => {
-      if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) { if (event.key === 'Escape') event.stopPropagation(); return }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setSelected((index) => results.length ? (index + (event.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length : 0) }
-      else if (event.key === 'Enter' && !loading && results[selected]) { event.preventDefault(); choose(results[selected].sessionId) }
-    }} /><button type="button" className="my-icon-control" aria-label={query ? '清空会话搜索' : '关闭会话搜索'} onClick={() => { if (query) { changeQuery(''); inputRef.current?.focus() } else onClose() }}><X size={16} /></button></div>
-    <div className="acp-search-caption">{query.trim() ? '会话搜索结果' : '最近会话'}</div>
-    <div id={listId} role="listbox" aria-label="会话搜索结果" className="acp-search-results my-scrollbar">
-      {results.map((session, index) => <button key={session.sessionId} ref={index === selected ? selectedRef : undefined} id={`${listId}-${index}`} type="button" role="option" aria-selected={index === selected} disabled={loading} className={clsx('acp-search-result', index === selected && 'is-selected')} onMouseEnter={() => setSelected(index)} onFocus={() => setSelected(index)} onClick={() => choose(session.sessionId)}><span><strong>{session.title ?? session.profileSnapshot?.name ?? session.agentName}</strong><small>{session.profileSnapshot?.name ? `${session.profileSnapshot.name} · ` : ''}{session.agentName}{session.taskDir ? ` · ${session.taskDir}` : ''}</small></span>{session.pinnedAt && <Pin size={12} aria-label="已置顶" />}<time>{new Date(session.startedAt).toLocaleDateString([], { month: 'numeric', day: 'numeric' })}</time></button>)}
-      {!results.length && !loading && !error && <p className="acp-search-empty">没有找到匹配的会话</p>}
-      {loading && <p className="acp-search-empty" role="status">正在搜索…</p>}
-      {error && <p className="acp-search-error" role="alert">{error}<button type="button" onClick={() => void load()}>重试</button></p>}
-      {cursor && <Button size="sm" variant="ghost" className="acp-load-more" disabled={loading} onClick={() => void load(cursor)}>加载更多会话</Button>}
-    </div>
-    <div className="acp-search-footer"><span>搜索当前项目的标题、角色与任务</span><span>↑↓ 选择　Enter 打开</span></div>
-  </section>
+  return <ConversationSearchView entries={results.map((session) => ({ id: session.sessionId, title: session.title ?? session.profileSnapshot?.name ?? session.agentName, description: <>{session.profileSnapshot?.name ? session.profileSnapshot.name + ' · ' : ''}{session.agentName}{session.taskDir ? ' · ' + session.taskDir : ''}</>, pinned: !!session.pinnedAt, time: session.startedAt }))} query={query} selected={selected} loading={loading} error={error} hasMore={!!cursor} onQuery={changeQuery} onSelected={setSelected} onSelect={choose} onClose={onClose} onRetry={() => void load()} onLoadMore={() => void load(cursor ?? undefined)} />
 }
 
 export function ConversationNavigation({ sessions, activeId, view, onView, onSelect, onNew, open, onClose, collapsed = false, query = '', onQuery, hasMore = false, loadingMore = false, onLoadMore, archive = 'active', onArchive, canManage = false, mutationBusy = {}, mutationErrors = {}, onUpdate, onDelete, onRegenerateTitle }: {
@@ -121,29 +103,15 @@ export function ConversationNavigation({ sessions, activeId, view, onView, onSel
   const [rename, setRename] = useState<{ sessionId: string; owner: typeof owner } | null>(null)
   const [renameTitle, setRenameTitle] = useState('')
   const [renameError, setRenameError] = useState('')
-  const renameComposing = useRef(false)
-  const renameInputId = useId()
-  const renameErrorId = useId()
-  const [preview, setPreview] = useState<HoverPreview | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hovered = useRef<string | null>(null)
-  const tooltipId = useId()
-  const dismiss = (): void => {
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = null; hovered.current = null; setPreview(null)
-  }
-  useEscLayer(preview !== null && (!collapsed || open), { kind: 'modal', id: `acp-hover-${tooltipId}`, onClose: dismiss })
-  useEffect(() => {
-    window.addEventListener('scroll', dismiss, true); window.addEventListener('resize', dismiss)
-    return () => { if (timer.current) clearTimeout(timer.current); window.removeEventListener('scroll', dismiss, true); window.removeEventListener('resize', dismiss) }
-  }, [])
-  useEffect(dismiss, [activeId, view, open, interactive, collapsed, archive, root])
+
+  const hover = useConversationListPreview(JSON.stringify([root, activeId, view, open, interactive, collapsed, archive]), interactive && (!collapsed || open))
+  const dismiss = hover.dismiss
   useEffect(() => { if (!interactive) setSearchOpen(false) }, [interactive])
   useEffect(() => { setRename(null); setRenameError('') }, [owner])
   const openRename = (session: AcpSessionRecord): void => {
     if (!canInteract() || mutationBusy[session.sessionId]) return
     dismiss()
-    renameComposing.current = false
+
     const title = session.title ?? session.profileSnapshot?.name ?? `${session.agentName} 会话`
     setRename({ sessionId: session.sessionId, owner }); setRenameTitle(title); setRenameError('')
   }
@@ -156,32 +124,15 @@ export function ConversationNavigation({ sessions, activeId, view, onView, onSel
     if (result && rename.owner === ownerRef.current && canInteract()) setRename((current) => current === rename ? null : current)
   }
   const closeSearch = (): void => { if (!canInteract()) return; setSearchOpen(false) }
-  const schedule = (session: AcpSessionRecord, element: HTMLButtonElement): void => {
-    if (!canInteract() || (collapsed && !open)) return
-    dismiss(); hovered.current = session.sessionId
-    const rect = element.getBoundingClientRect(), host = element.closest('.my-root') ?? document.body
-    timer.current = setTimeout(() => {
-      if (!canInteract() || (collapsed && !open) || hovered.current !== session.sessionId || !element.isConnected) return
-      const width = 260, height = 110, gap = 10
-      const left = rect.right + gap + width <= window.innerWidth - gap ? rect.right + gap : Math.max(gap, rect.left - width - gap)
-      setPreview({ session, left, top: Math.max(gap, Math.min(rect.top - 4, window.innerHeight - height - gap)), host })
-    }, 350)
-  }
+
   const recent = sessions.filter((session) => (archive === 'archived' ? !!session.archivedAt : !session.archivedAt) && (diagnostics ? isDiagnosticConversation(session) : !isDiagnosticConversation(session))).sort(compareConversationSessions)
-  const row = (session: AcpSessionRecord): JSX.Element => <div key={session.sessionId} className="acp-recent-item">
-    <button type="button" data-acp-session={session.sessionId} className={clsx('acp-recent-row my-nav-item', activeId === session.sessionId && view === 'conversation' && 'is-selected')} aria-current={activeId === session.sessionId && view === 'conversation' ? 'page' : undefined} aria-describedby={preview?.session.sessionId === session.sessionId ? tooltipId : undefined} onMouseEnter={(event) => schedule(session, event.currentTarget)} onMouseLeave={dismiss} onFocus={(event) => schedule(session, event.currentTarget)} onBlur={dismiss} onClick={() => { dismiss(); onSelect(session.sessionId) }}>
-    <span>{session.title ?? session.profileSnapshot?.name ?? `${session.agentName} 会话`}</span>
-    {session.pinnedAt && <Pin size={12} className="acp-recent-pin" aria-label="已置顶" />}
-    </button>
-    {canManage && onUpdate && <Dropdown align="right" width={192} className="acp-recent-menu" trigger={({ open: expanded, toggle }) => <button type="button" data-session-id={session.sessionId} className="acp-recent-menu-trigger my-icon-control" aria-label={`会话操作：${session.title ?? session.profileSnapshot?.name ?? `${session.agentName} 会话`}`} aria-expanded={expanded} aria-haspopup="menu" aria-busy={mutationBusy[session.sessionId] || undefined} disabled={mutationBusy[session.sessionId]} onFocus={dismiss} onMouseEnter={dismiss} onClick={() => { dismiss(); toggle() }}>{mutationBusy[session.sessionId] ? <Loader2 size={15} className="animate-spin" /> : <Ellipsis size={15} />}</button>}>{(close) => <>
+  const row = (session: AcpSessionRecord): JSX.Element => <ConversationListRow key={session.sessionId} id={session.sessionId} title={session.title ?? session.profileSnapshot?.name ?? session.agentName + ' 会话'} selected={activeId === session.sessionId && view === 'conversation'} pinned={!!session.pinnedAt} previewId={hover.preview?.id === session.sessionId ? hover.id : undefined} onPreview={(element) => hover.schedule({ id: session.sessionId, title: session.title ?? session.agentName, summary: conversationSummary(session), time: session.startedAt, metadata: <>{session.profileSnapshot?.name ? session.profileSnapshot.name + ' · ' : ''}{session.agentName}{session.taskDir ? ' · ' + session.taskDir : ' · 未关联任务'}</> }, element)} onDismissPreview={dismiss} onSelect={() => onSelect(session.sessionId)} error={rename?.sessionId === session.sessionId ? undefined : mutationErrors[session.sessionId]} actions={<>{canManage && onUpdate && <Dropdown align="right" width={192} className="acp-recent-menu" trigger={({ open: expanded, toggle }) => <button type="button" data-session-id={session.sessionId} className="acp-recent-menu-trigger my-icon-control" aria-label={`会话操作：${session.title ?? session.profileSnapshot?.name ?? `${session.agentName} 会话`}`} aria-expanded={expanded} aria-haspopup="menu" aria-busy={mutationBusy[session.sessionId] || undefined} disabled={mutationBusy[session.sessionId]} onFocus={dismiss} onMouseEnter={dismiss} onClick={() => { dismiss(); toggle() }}>{mutationBusy[session.sessionId] ? <Loader2 size={15} className="animate-spin" /> : <Ellipsis size={15} />}</button>}>{(close) => <>
       <DropdownItem icon={<Pencil size={14} />} disabled={mutationBusy[session.sessionId] || !!session.deletionState} onClick={() => { close(); openRename(session) }}>重命名</DropdownItem>
       {onRegenerateTitle && <DropdownItem icon={<Sparkles size={14} />} disabled={mutationBusy[session.sessionId] || !!session.customTitle || !!session.deletionState} onClick={() => { close(); if (canInteract()) void onRegenerateTitle(session.sessionId) }}>{session.customTitle ? '手动标题' : '重新生成标题'}</DropdownItem>}
       <DropdownItem icon={session.pinnedAt ? <PinOff size={14} /> : <Pin size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void onUpdate(session.sessionId, { pinned: !session.pinnedAt }) }}>{session.pinnedAt ? '取消置顶' : '置顶'}</DropdownItem>
       <DropdownItem icon={session.archivedAt ? <ArchiveRestore size={14} /> : <Archive size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void onUpdate(session.sessionId, { archived: !session.archivedAt }) }}>{session.archivedAt ? '取消归档' : '归档'}</DropdownItem>
       {onDelete && <DropdownItem danger icon={<Trash2 size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); dismiss(); if (canInteract()) void onDelete(session.sessionId) }}>{session.deletionState ? '重试永久删除' : '永久删除…'}</DropdownItem>}
-    </>}</Dropdown>}
-    {mutationErrors[session.sessionId] && rename?.sessionId !== session.sessionId && <p role="alert" className="acp-session-menu-error">{mutationErrors[session.sessionId]}</p>}
-  </div>
+    </>}</Dropdown>}</>} />
   return <>
     <ConversationSidebar open={open} onClose={onClose} onScroll={dismiss}
       title={<Dropdown trigger={({ open: expanded, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={expanded} onClick={toggle}><strong>{view === 'agents' ? '角色' : '对话'}</strong><ChevronDown size={13} /></button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={view === 'agents' ? 'roles' : 'conversation'} onAgentView={(next) => { dismiss(); onView(next === 'roles' ? 'agents' : 'conversation') }} /></div>}</Dropdown>}
@@ -192,16 +143,8 @@ export function ConversationNavigation({ sessions, activeId, view, onView, onSel
       {recent.map(row)}{recent.length === 0 && <p className="px-3 py-3 text-my-sm text-my-tertiary">暂无匹配的会话</p>}
       {hasMore && <Button size="sm" variant="ghost" className="acp-load-more" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? '正在加载…' : '加载更早的会话'}</Button>}
     </ConversationSidebar>
-    <Modal open={searchOpen} onClose={closeSearch} width={620} ariaLabel="搜索会话" placement="center"><ConversationSearch sessions={sessions.filter((session) => archive === 'archived' ? !!session.archivedAt : !session.archivedAt)} archive={archive} onSelect={onSelect} onClose={closeSearch} /></Modal>
-    <Modal open={!!rename && rename.owner === owner && interactive} onClose={() => setRename(null)} width={440} ariaLabel="重命名会话" placement="center">
-      <form className="p-5" onSubmit={(event) => { event.preventDefault(); if (!renameComposing.current) void saveRename() }}>
-        <h2 className="mb-4 text-my-lg font-medium text-my-primary">重命名会话</h2>
-        <label htmlFor={renameInputId} className="mb-2 block text-my-sm text-my-secondary">会话标题</label>
-        <input id={renameInputId} autoFocus className="my-input w-full" aria-label="会话标题" aria-invalid={!!(renameError || (rename && mutationErrors[rename.sessionId]))} aria-describedby={renameErrorId} value={renameTitle} onChange={(event) => { setRenameTitle(event.target.value); setRenameError('') }} onCompositionStart={() => { renameComposing.current = true }} onCompositionEnd={() => { renameComposing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && (renameComposing.current || event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault(); if (event.key === 'Escape' && (renameComposing.current || event.nativeEvent.isComposing)) event.stopPropagation() }} />
-        <p id={renameErrorId} role={renameError || (rename && mutationErrors[rename.sessionId]) ? 'alert' : undefined} className="mt-2 text-my-sm text-my-danger-text">{renameError || (rename && mutationErrors[rename.sessionId])}</p>
-        <div className="mt-5 flex justify-end gap-2"><Button variant="ghost" onClick={() => setRename(null)}>取消</Button><Button onClick={() => void saveRename()} variant="primary" disabled={!!rename && mutationBusy[rename.sessionId]}>{rename && mutationBusy[rename.sessionId] && <Loader2 size={14} className="animate-spin" />}保存</Button></div>
-      </form>
-    </Modal>
-    {preview && interactive && (!collapsed || open) && createPortal(<div role="tooltip" id={tooltipId} className="acp-recent-tooltip" style={{ left: preview.left, top: preview.top }}><div><strong>{preview.session.title ?? preview.session.agentName}</strong><time>{new Date(preview.session.startedAt).toLocaleString([], { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><p>{conversationSummary(preview.session)}</p><small>{preview.session.profileSnapshot?.name ? `${preview.session.profileSnapshot.name} · ` : ''}{preview.session.agentName}{preview.session.taskDir ? ` · ${preview.session.taskDir}` : ' · 未关联任务'}</small></div>, preview.host)}
+    <Modal open={searchOpen} onClose={closeSearch} width={620} ariaLabel="搜索会话" placement="center"><ProjectConversationSearch sessions={sessions.filter((session) => archive === 'archived' ? !!session.archivedAt : !session.archivedAt)} archive={archive} onSelect={onSelect} onClose={closeSearch} /></Modal>
+    <ConversationRenameDialog open={!!rename && rename.owner === owner && interactive} title={renameTitle} error={renameError || (rename ? mutationErrors[rename.sessionId] : undefined)} busy={!!rename && mutationBusy[rename.sessionId]} onTitle={(value) => { setRenameTitle(value); setRenameError('') }} onClose={() => setRename(null)} onSave={() => void saveRename()} />
+    <ConversationListPreview id={hover.id} preview={hover.preview} />
   </>
 }

@@ -42,8 +42,8 @@ export function TitleBar(): JSX.Element {
   const domain = getPageNavigation(page).domain
   const privateCodeRoot = useConversations(state => {
     if (page !== 'chat' || !development) return null
-    const projectId = state.projectScopes[baseScopeKey(state.context, 'code')] ?? undefined
-    const current = state.entries[state.selected[scopeKey(state.context, 'code', projectId)]]
+    const projectId = state.projectScopes[baseScopeKey('code')] ?? undefined
+    const current = state.entries[state.selected[scopeKey('code', projectId)]]
     return current && !current.locked && current.kind === 'code' ? current.conversation?.workspace.root ?? current.directory?.path ?? null : null
   })
   const privateProjectTools = Boolean(privateCodeRoot && projectRootKey(privateCodeRoot) === projectRootKey(snapshot?.meta.root))
@@ -66,7 +66,7 @@ export function TitleBar(): JSX.Element {
           <span className="sr-only">Trellis Panel</span>
         </div>
         <ShellViewSwitcher />
-        {page !== 'chat' && <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('hifox')} />}
+        <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('hifox')} />
         <div className="no-drag my-header-collapse flex shrink-0 items-center">
           <Tooltip side="bottom" label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}>
             <button type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}

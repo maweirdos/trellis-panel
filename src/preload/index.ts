@@ -146,10 +146,9 @@ const api = {
     readFile: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.readFile, id, input),
     image: (id, imageId) => ipcRenderer.invoke(ipcInvoke.privateConversations.image, id, imageId),
     saveImage: (id, imageId) => ipcRenderer.invoke(ipcInvoke.privateConversations.saveImage, id, imageId),
-    projects: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.projects, input),
+    projects: () => ipcRenderer.invoke(ipcInvoke.privateConversations.projects),
     createProject: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.createProject, input),
-    reclassify: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.reclassify, id, input),
-    contexts: () => ipcRenderer.invoke(ipcInvoke.privateConversations.contexts)
+    reclassify: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.reclassify, id, input)
   } satisfies ConversationApi,
   hifoxMaterials: {
     list: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.list, input),

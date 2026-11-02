@@ -4,9 +4,22 @@
 
 `shared/private-conversations.ts` owns validated catalog and IPC contracts. The desktop conversation service owns creator identity, draft persistence, logical project association and the fixed native directory. Preload exposes conversation IDs and opaque native directory grants, never a generic runtime RPC or a caller-selected actor/root.
 
-Personal Work requires no team account, space, logical project, role profile, Git or Trellis initialization. Its durable files live in an application-managed conversation directory. Code uses a directory explicitly selected through the native picker. Once a native identity is reserved, directory and runtime changes require a new conversation. Same-context classification changes metadata only.
+Personal Work requires no team account, space, logical project, role profile, Git or Trellis initialization. Its durable files live in an application-managed conversation directory. Code uses a directory explicitly selected through the native picker. Once a native identity is reserved, directory and runtime changes require a new conversation. Private theme classification changes metadata only.
 
-The creator is derived from the original native profile and, for a team context, its verified business identity. Recheck membership, source and directory identity after asynchronous boundaries. Switching the selected engineering project cannot retarget a conversation or authorize an old permission request.
+The creator is derived from the original native profile. The conversation API has no team context, space selector or team project classification. Resource access and artifact/task delivery retain their own business authorization. Recheck the exact native owner and physical directory after asynchronous boundaries. Switching an account, team workspace or engineering project cannot retarget a conversation or authorize an old permission request.
+
+Persist rename, pin and archive metadata in the private catalog. List active and
+archived records explicitly, with pinned records first. Archive never stops the
+native owner; sending requires an active record. Preview text comes from bounded
+native conversation metadata, without hydrating each transcript while listing or
+writing another catalog update for every streaming tick.
+
+Versioned storage conversion preserves existing personal history, drafts,
+physical directories and native aliases. An old team-scoped record requires its
+original creator proof before conversion; removing a scope field is not proof of
+ownership. Preserve the original native creator identity when it differs from
+the local catalog owner. Corrupt or unauthorized records cannot grant access to
+another creator's session.
 
 ## Execution
 
