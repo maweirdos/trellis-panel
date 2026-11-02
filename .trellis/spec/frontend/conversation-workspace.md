@@ -12,7 +12,7 @@ The private catalog identifies conversations independently of the shell's select
 
 Ordinary conversations have no personal/team classification, space selector or team-project bucket. A team login, membership change or workspace switch cannot partition their history or reset their drafts. Team resources and delivery targets are chosen and authorized by the resource, creation or formal task flow. Do not add conversation sharing, member invites or raw-chat publication. Formal task records, versioned materials and execution facts retain their existing authority. A selected file can become a private creation draft; publishing a fixed creation revision and adopting it into a task use the existing explicit commands.
 
-Keep draft and selection slots separate for each mode and private theme project under the native installation owner. Switching those selectors restores the destination slot without moving earlier conversations. Empty drafts do not fill the history list. History selection reads metadata and paged events without starting an engine. Send, cancellation and permission responses resolve the exact native session and generation; hidden or stale replies cannot overwrite the visible draft. The connection limit and cleanup guards remain authoritative.
+Keep draft and selection slots separate for each mode and private theme group under the native installation owner. The group UI uses the neutral label `分组`; it is independent of engineering projects and team spaces. Switching those selectors restores the destination slot without moving earlier conversations. Empty drafts do not fill the history list. History selection reads metadata and paged events without starting an engine. Send, cancellation and permission responses resolve the exact native session and generation; hidden or stale replies cannot overwrite the visible draft. The connection limit and cleanup guards remain authoritative.
 
 Private transcripts reuse the native timeline and process projection through a conversation-owned source client. Images and generated-document actions resolve through that client. Project knowledge saving, current-global-root file openers and implicit `.trellis/notes` writes do not belong to this surface. Show only actual selected files and bounded native file results; file presence or assistant prose alone cannot prove a completed task or submitted output.
 
@@ -27,25 +27,44 @@ focus, model menus, permission cards or generic spacing.
 The conversation header contains the title and a compact More menu. New
 conversation remains in the sidebar. Knowledge and New Requirement are labelled
 context controls immediately above the composer; Code also shows its actual
-directory there. Files remain reachable from the original plus/More menus.
+directory and source-owned Git state there. Git reads the fixed conversation
+directory, never the shell project, and exposes branch/detached/unborn/non-Git
+and bounded repository-wide change counts. It does not stage or switch branches.
+Files remain reachable from the original plus/More menus.
 Context controls use shared small ghost Buttons, normal-weight `text-sm`, an
 8px gap between controls and between glyph and label. Do not reuse the bottom
 toolbar's negative-margin text-trigger utility in this row. The selected sidebar
 surface covers the complete row, including its separate More hit target.
-Starting a requirement opens the existing task creation flow with its own
-destination selection; it never publishes or copies the private transcript.
-If no readable destination is selected, open the existing space selection/join
-surface before requesting a task form; ordinary conversation remains available.
+Starting a requirement opens a retained editor beside the original conversation.
+Save a private draft before native AI refinement. Transfer composer input and
+selected file revisions only through explicit actions; leave unsent text and
+images in the original composer. The AI uses that conversation's transport and
+permissions and must save the actual Markdown before the editor can sync it.
+Preserve dirty edits across close, source switching and Settings detours.
+Keep existing drafts and handoffs reopenable from a compact menu beside New
+Requirement, including after a conversation has messages and home shortcuts hide.
+Handoff requires a confirmed saved version and a real, explicitly selected
+Trellis engineering directory. Work's managed directory is not that selection.
+Create a planning task with fixed input provenance through the existing task
+creator; open its exact returned task in the retained task workspace. Starting
+development and advancing stages retain the existing Trellis lifecycle and
+approval controls. Team association is a separate explicit business action.
 An empty conversation groups its introduction, context and original composer
 around the content center. After a real send, the same composer DOM docks below
 the transcript without losing focus, IME state, images or scroll ownership.
+Below the empty composer, show conditional shortcuts for a real resumable
+conversation, an actual requirement draft/task and selected local materials.
+Do not invent tasks, completion states or unsupported group-chat actions.
 The welcome heading uses the existing display type role; supporting copy uses
 `text-sm` and tertiary color. Context controls and editable content retain their
 own control/chat roles rather than inheriting the welcome title size.
 
 Reuse the original list-row hover/focus preview, management menus, keyboard
 search, rename, pin and archive/restore interactions. Archived records remain
-readable and recoverable; archiving never stops an executing native session.
+readable and recoverable in Settings / Storage data management; archiving never
+stops an executing native session. Ordinary history, group trees and their search
+contain active records only, even while an archived record is read explicitly.
+Legacy transcript archives also belong in data management, not the sidebar.
 Keep unsupported actions absent rather than simulating native results. Empty
 project groups and empty legacy archives do not occupy permanent sidebar blocks.
 An existing native history without cached preview uses an unread-summary state,
@@ -460,7 +479,12 @@ content from scoped `onAcpOutput`; the legacy API path retains its snapshot
 fallback. Test both suppression of a truncated snapshot and admission of live
 output after the same state update.
 
-The sidebar contains one compact single-line conversation list. Legacy/diagnostic records use an explicit filter; an independent History destination, loaded-count filler, persistent multiline previews and invented notification actions are not allowed. Rows keep the delayed coherent hover/focus hint and existing resize/collapsed/mobile behavior. Metadata search must state its actual scope.
+The sidebar contains one compact single-line conversation list. The engineering
+console keeps its explicit diagnostic filter; private conversation archives and
+legacy transcripts live in Settings data management. Do not add a second History
+destination, loaded-count filler, persistent multiline previews or invented
+notification actions. Rows keep the delayed coherent hover/focus hint and existing
+resize/collapsed/mobile behavior. Metadata search must state its actual scope.
 
 Conversation rows expose a compact menu for `重命名`, `置顶`/`取消置顶` and
 `归档`/`取消归档` only when the actual mutation API exists. Use sibling selection
