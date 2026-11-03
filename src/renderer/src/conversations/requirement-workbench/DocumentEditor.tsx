@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState, type JSX } from 'react'
-import { Bold, CheckSquare, ChevronDown, Code2, FileText, Italic, List, ListOrdered, Quote, Redo2, Sparkles, Table2, Undo2 } from 'lucide-react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type JSX } from 'react'
+import { Bold, CheckSquare, ChevronDown, Code2, FileText, Italic, List, ListOrdered, MoreHorizontal, Quote, Redo2, Sparkles, Table2, Undo2 } from 'lucide-react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
+import { BubbleMenu } from '@tiptap/react/menus'
 import { Extension, getSchema, type JSONContent } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown, MarkdownManager } from '@tiptap/markdown'
@@ -33,6 +34,7 @@ export interface DocumentEditorProps {
   docRevision?: string
   bodyRevision?: string
   ariaLabel?: string
+  placeholder?: string
   onQuote?(selection: DocumentEditorSelection): void
   onPolish?(selection: DocumentEditorSelection): void
   onBlur?(): void
@@ -64,6 +66,7 @@ function preservesContent(document: ProseMirrorNode, text: string): boolean {
 }
 function readRich(value: string): { content: JSONContent; issue?: string } {
   try {
+    if (!value.trim()) return { content: emptyDocument }
     let unsupported = /^---\r?\n/.test(value) || /^\s*(?:\[\^[^\]]+\]:|:::)/m.test(value)
     markdown.instance.walkTokens(markdown.instance.lexer(value), token => { if (token.type === 'html' || token.type === 'image') unsupported = true })
     if (unsupported) return { content: emptyDocument, issue: '此文档包含复杂格式，使用源码可保留原文。' }
@@ -80,13 +83,16 @@ function sourceOffset(value: string, position: number): number {
   }
   return offset
 }
-interface ToolbarState { bold: boolean; italic: boolean; bullet: boolean; ordered: boolean; task: boolean; code: boolean; heading: number; undo: boolean; redo: boolean }
-const emptyToolbar: ToolbarState = { bold: false, italic: false, bullet: false, ordered: false, task: false, code: false, heading: 0, undo: false, redo: false }
+interface ToolbarState { bold: boolean; italic: boolean; bullet: boolean; ordered: boolean; task: boolean; code: boolean; heading: number; undo: boolean; redo: boolean; empty: boolean }
+const emptyToolbar: ToolbarState = { bold: false, italic: false, bullet: false, ordered: false, task: false, code: false, heading: 0, undo: false, redo: false, empty: true }
 
 export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
   const active = useInteractionActive(), canInteract = useInteractionGuard(), id = useId()
   const latest = useRef(props); latest.current = props
   const host = useRef<HTMLDivElement>(null), source = useRef<HTMLTextAreaElement>(null), mounted = useRef(true)
+  const bubble = useRef<HTMLDivElement>(null), more = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false), dismissed = useRef('')
+  const bubbleKey = `requirement-selection-${id}`
   const [initial] = useState(() => readRich(props.value))
   const [mode, setMode] = useState<'rich' | 'source'>(initial.issue ? 'source' : 'rich')
   const modeRef = useRef(mode); modeRef.current = mode
@@ -100,7 +106,7 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
   const selectionValue = (text: string, from: number, to: number, positionKind: DocumentEditorSelection['positionKind']): DocumentEditorSelection => ({ text, from, to, positionKind, documentKey: latest.current.documentKey, docRevision: latest.current.docRevision, bodyRevision: latest.current.bodyRevision, editorVersion: version.current })
   const updateSelection = (value: DocumentEditorSelection | null): void => { selected.current = value; setSelection(previous => JSON.stringify(previous) === JSON.stringify(value) ? previous : value) }
   const updateToolbar = (editor: Editor): void => {
-    const next: ToolbarState = { bold: editor.isActive('bold'), italic: editor.isActive('italic'), bullet: editor.isActive('bulletList'), ordered: editor.isActive('orderedList'), task: editor.isActive('taskList'), code: editor.isActive('codeBlock'), heading: editor.isActive('heading') ? Number(editor.getAttributes('heading').level) : 0, undo: editor.can().undo(), redo: editor.can().redo() }
+    const next: ToolbarState = { bold: editor.isActive('bold'), italic: editor.isActive('italic'), bullet: editor.isActive('bulletList'), ordered: editor.isActive('orderedList'), task: editor.isActive('taskList'), code: editor.isActive('codeBlock'), heading: editor.isActive('heading') ? Number(editor.getAttributes('heading').level) : 0, undo: editor.can().undo(), redo: editor.can().redo(), empty: editor.isEmpty }
     setToolbar(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next)
     if (modeRef.current !== 'rich') return
     const { from, to, empty } = editor.state.selection
@@ -127,7 +133,7 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
     extensions: [...extensions, Markdown, guard], content: initial.content,
     shouldRerenderOnTransaction: false,
     editorProps: {
-      attributes: { class: 'requirement-document-content', role: 'textbox', 'aria-label': props.ariaLabel ?? '需求文档正文', 'aria-multiline': 'true' },
+      attributes: { class: 'requirement-document-content', role: 'textbox', 'aria-label': props.ariaLabel ?? '需求文档正文', 'aria-multiline': 'true', 'data-placeholder': props.placeholder ?? '开始记录需求…' },
       handleClick: (_view, _position, event) => { if ((event.target as Element | null)?.closest('a')) { event.preventDefault(); return true } return false }
     },
     onCreate: ({ editor }) => { ready.current = true; updateToolbar(editor) },
@@ -144,6 +150,59 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
       setIssue(''); publish(text); updateToolbar(editor)
     }
   }, [])
+  const ownsFocus = useCallback((node: Node | null): boolean => Boolean(node && (
+    host.current?.contains(node) || bubble.current?.contains(node) ||
+    (node instanceof Element && node.closest('[data-requirement-editor-menu]')?.getAttribute('data-requirement-editor-menu') === id)
+  )), [id])
+  const selectionSignature = useCallback((editor: Editor): string => JSON.stringify([
+    latest.current.documentKey, latest.current.docRevision, latest.current.bodyRevision,
+    version.current, editor.state.selection.from, editor.state.selection.to
+  ]), [])
+  const shouldShowBubble = useCallback(({ editor, from, to }: { editor: Editor; from: number; to: number }): boolean => {
+    return modeRef.current === 'rich' && !latest.current.disabled && !latest.current.readOnly && canInteract() &&
+      !composing.current && !dragging.current && dismissed.current !== selectionSignature(editor) &&
+      from !== to && Boolean(editor.state.doc.textBetween(from, to).trim()) &&
+      (editor.view.hasFocus() || ownsFocus(document.activeElement))
+  }, [canInteract, ownsFocus, selectionSignature])
+  // Keep the menu in the owning theme root, alongside shared Dropdown portals.
+  const appendBubble = useCallback(() => host.current?.closest<HTMLElement>('.my-root') ?? host.current ?? document.body, [])
+  const bubbleOptions = useMemo(() => ({ strategy: 'fixed' as const, placement: 'top' as const, flip: true, shift: { padding: 8 } }), [])
+  useEffect(() => {
+    if (!editor || disabled || mode !== 'rich') return
+    let settle: ReturnType<typeof setTimeout> | undefined
+    const hide = (): void => { editor.view.dispatch(editor.state.tr.setMeta(bubbleKey, 'hide')) }
+    const down = (event: PointerEvent): void => {
+      if (!(event.target instanceof Node) || !editor.view.dom.contains(event.target)) return
+      dragging.current = true
+      clearTimeout(settle)
+      hide()
+    }
+    const up = (): void => {
+      if (!dragging.current) return
+      dragging.current = false
+      // A pause during a drag must never summon a menu beneath the pointer.
+      settle = setTimeout(() => {
+        if (!mounted.current || editor.isDestroyed) return
+        const { from, to } = editor.state.selection
+        if (!shouldShowBubble({ editor, from, to })) return
+        editor.view.dispatch(editor.state.tr.setMeta(bubbleKey, 'show'))
+        editor.view.dispatch(editor.state.tr.setMeta(bubbleKey, 'updatePosition'))
+      }, 180)
+    }
+    const focus = (event: FocusEvent): void => { if (!ownsFocus(event.target as Node | null)) hide() }
+    document.addEventListener('pointerdown', down, true)
+    document.addEventListener('pointerup', up, true)
+    document.addEventListener('pointercancel', up, true)
+    document.addEventListener('focusin', focus)
+    return () => {
+      clearTimeout(settle)
+      dragging.current = false
+      document.removeEventListener('pointerdown', down, true)
+      document.removeEventListener('pointerup', up, true)
+      document.removeEventListener('pointercancel', up, true)
+      document.removeEventListener('focusin', focus)
+    }
+  }, [editor, disabled, mode, bubbleKey, ownsFocus, shouldShowBubble])
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   useEffect(() => { editor?.setEditable(!disabled && mode === 'rich', false) }, [editor, disabled, mode])
   useEffect(() => {
@@ -166,6 +225,8 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
           const overlap = Math.max(0, start - Math.min(end.a, end.b))
           const transaction = editor.state.tr.replace(start, end.a + overlap, nextDoc.slice(start, end.b + overlap))
           editor.view.dispatch(closeHistory(transaction))
+          // The next user edit must not merge into the adopted document's undo event.
+          editor.view.dispatch(closeHistory(editor.state.tr))
         }
       }
       current.current = props.value; emitted.current = props.value; setRaw(props.value)
@@ -190,7 +251,7 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
   const run = (action: (editor: Editor) => void): void => { if (editor && !disabled && canInteract() && !composing.current) action(editor) }
   const quote = (polish: boolean): void => {
     const value = selected.current
-    if (!value || !value.text.trim() || value.editorVersion !== version.current || disabled || !canInteract() || composing.current) return
+    if (!value || !value.text.trim() || value.editorVersion !== version.current || value.documentKey !== latest.current.documentKey || value.docRevision !== latest.current.docRevision || value.bodyRevision !== latest.current.bodyRevision || disabled || !canInteract() || composing.current) return
     ;(polish ? latest.current.onPolish : latest.current.onQuote)?.(value)
   }
   const readSourceSelection = (): void => {
@@ -199,27 +260,63 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
     const from = sourceOffset(current.current, field.selectionStart), to = sourceOffset(current.current, field.selectionEnd)
     updateSelection(selectionValue(current.current.slice(from, to), from, to, 'markdown'))
   }
-  return <div ref={host} className="requirement-document-editor" onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; if (blurPending.current) { blurPending.current = false; if (canInteract() && !latest.current.disabled && !latest.current.readOnly) latest.current.onBlur?.() } }} onBlurCapture={event => {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-    if (composing.current) blurPending.current = true
-    else if (canInteract() && !latest.current.disabled && !latest.current.readOnly) latest.current.onBlur?.()
-  }}>
-    <div className="requirement-editor-toolbar" role="toolbar" aria-label="文档编辑">
-      <div className="requirement-editor-modes" role="group" aria-label="编辑方式"><Button size="sm" variant={mode === 'rich' ? 'neutral' : 'ghost'} aria-pressed={mode === 'rich'} disabled={!active} onClick={() => switchMode('rich')}><FileText size={13} />文档</Button><Button size="sm" variant={mode === 'source' ? 'neutral' : 'ghost'} aria-pressed={mode === 'source'} disabled={!active} onClick={() => switchMode('source')}><Code2 size={13} />源码</Button></div>
-      {mode === 'rich' && <>
-        <Dropdown disabled={disabled} trigger={({ toggle, open }) => <Button size="sm" variant="ghost" disabled={disabled} aria-expanded={open} aria-label="段落样式" onClick={toggle}>{toolbar.heading ? `标题 ${toolbar.heading}` : '正文'}<ChevronDown size={12} /></Button>}>{close => <><DropdownItem selected={!toolbar.heading} onClick={() => { run(editor => { editor.chain().focus().setParagraph().run() }); close() }}>正文</DropdownItem>{([1, 2, 3] as const).map(level => <DropdownItem key={level} selected={toolbar.heading === level} onClick={() => { run(editor => { editor.chain().focus().toggleHeading({ level }).run() }); close() }}>标题 {level}</DropdownItem>)}</>}</Dropdown>
-        <Button size="sm" variant="ghost" title="加粗" aria-label="加粗" aria-pressed={toolbar.bold} disabled={disabled} onClick={() => run(editor => { editor.chain().focus().toggleBold().run() })}><Bold size={14} /></Button>
-        <Button size="sm" variant="ghost" title="斜体" aria-label="斜体" aria-pressed={toolbar.italic} disabled={disabled} onClick={() => run(editor => { editor.chain().focus().toggleItalic().run() })}><Italic size={14} /></Button>
-        <Dropdown disabled={disabled} trigger={({ toggle, open }) => <Button size="sm" variant="ghost" aria-label="列表与区块" title="列表与区块" aria-expanded={open} disabled={disabled} onClick={toggle}><List size={14} /><ChevronDown size={12} /></Button>}>{close => <>
-          <DropdownItem selected={toolbar.bullet} icon={<List size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleBulletList().run() }); close() }}>无序列表</DropdownItem><DropdownItem selected={toolbar.ordered} icon={<ListOrdered size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleOrderedList().run() }); close() }}>有序列表</DropdownItem><DropdownItem selected={toolbar.task} icon={<CheckSquare size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleTaskList().run() }); close() }}>待办列表</DropdownItem><DropdownItem selected={toolbar.code} icon={<Code2 size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleCodeBlock().run() }); close() }}>代码块</DropdownItem><DropdownItem icon={<Table2 size={14} />} onClick={() => { run(editor => { editor.chain().focus().insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run() }); close() }}>插入表格</DropdownItem>
-        </>}</Dropdown>
-        <Button size="sm" variant="ghost" aria-label="撤销" title="撤销" disabled={disabled || !toolbar.undo} onClick={() => run(editor => { editor.chain().focus().undo().run() })}><Undo2 size={14} /></Button><Button size="sm" variant="ghost" aria-label="重做" title="重做" disabled={disabled || !toolbar.redo} onClick={() => run(editor => { editor.chain().focus().redo().run() })}><Redo2 size={14} /></Button>
-      </>}
-      {selection?.text.trim() && <div className="requirement-editor-selection-actions" aria-label="选中文字操作">{props.onQuote && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => quote(false)}><Quote size={13} />引用</Button>}{props.onPolish && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => quote(true)}><Sparkles size={13} />润色</Button>}</div>}
+  const formatItems = (close: () => void): JSX.Element => <div data-requirement-editor-menu={id}>
+    <DropdownItem selected={!toolbar.heading} onClick={() => { run(editor => { editor.chain().focus().setParagraph().run() }); close() }}>正文</DropdownItem>
+    {([1, 2, 3] as const).map(level => <DropdownItem key={level} selected={toolbar.heading === level} onClick={() => { run(editor => { editor.chain().focus().toggleHeading({ level }).run() }); close() }}>标题 {level}</DropdownItem>)}
+    <DropdownItem selected={toolbar.bullet} icon={<List size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleBulletList().run() }); close() }}>无序列表</DropdownItem>
+    <DropdownItem selected={toolbar.ordered} icon={<ListOrdered size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleOrderedList().run() }); close() }}>有序列表</DropdownItem>
+    <DropdownItem selected={toolbar.task} icon={<CheckSquare size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleTaskList().run() }); close() }}>待办列表</DropdownItem>
+    <DropdownItem selected={toolbar.code} icon={<Code2 size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleCodeBlock().run() }); close() }}>代码块</DropdownItem>
+    <DropdownItem icon={<Table2 size={14} />} onClick={() => { run(editor => { editor.chain().focus().insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run() }); close() }}>插入表格</DropdownItem>
+  </div>
+  const quoteItems = (close: () => void): JSX.Element => <>
+    {props.onQuote && <DropdownItem disabled={disabled || !selection?.text.trim()} icon={<Quote size={14} />} onClick={() => { quote(false); close() }}>引用选中文字</DropdownItem>}
+    {props.onPolish && <DropdownItem disabled={disabled || !selection?.text.trim()} icon={<Sparkles size={14} />} onClick={() => { quote(true); close() }}>润色选中文字</DropdownItem>}
+  </>
+  return <div ref={host} className="requirement-document-editor" data-empty={!disabled && toolbar.empty || undefined}
+    onKeyDown={event => {
+      if (event.defaultPrevented || event.nativeEvent.isComposing || composing.current || !canInteract()) return
+      if (event.altKey && event.key === 'F10') { event.preventDefault(); const trigger = more.current?.querySelector<HTMLButtonElement>('[data-editor-more]'); trigger?.focus({ preventScroll: true }); if (trigger?.getAttribute('aria-expanded') !== 'true') trigger?.click() }
+      else if (event.key === 'Escape' && editor && bubble.current?.isConnected && !(event.target as Element).closest('.my-menu-item')) {
+        event.preventDefault(); event.stopPropagation(); dismissed.current = selectionSignature(editor)
+        editor.view.dispatch(editor.state.tr.setMeta(bubbleKey, 'hide'))
+        if (mode === 'rich') editor.view.focus()
+      }
+    }}
+    onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; if (blurPending.current) { blurPending.current = false; if (canInteract() && !latest.current.disabled && !latest.current.readOnly) latest.current.onBlur?.() } }} onBlurCapture={event => {
+      if (ownsFocus(event.relatedTarget as Node | null)) return
+      if (composing.current) blurPending.current = true
+      else if (canInteract() && !latest.current.disabled && !latest.current.readOnly) latest.current.onBlur?.()
+    }}>
+    <div ref={more} className="requirement-editor-controls" role="group" aria-label="文档视图与格式">
+      <Button size="sm" variant={mode === 'rich' ? 'neutral' : 'ghost'} aria-pressed={mode === 'rich'} disabled={!active} onClick={() => switchMode('rich')}><FileText size={13} />文档</Button>
+      <Button size="sm" variant={mode === 'source' ? 'neutral' : 'ghost'} aria-pressed={mode === 'source'} disabled={!active} onClick={() => switchMode('source')}><Code2 size={13} />源码</Button>
+      <Dropdown align="right" disabled={disabled} trigger={({ toggle, open }) => <Button data-editor-more size="sm" variant="ghost" disabled={disabled} aria-label="更多文档操作" title="更多文档操作 (Alt+F10)" aria-haspopup="true" aria-expanded={open} onClick={toggle}><MoreHorizontal size={14} /></Button>}>{close => <div data-requirement-editor-menu={id}>
+        {mode === 'rich' && <>
+          <DropdownItem selected={toolbar.bold} icon={<Bold size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleBold().run() }); close() }}>加粗</DropdownItem>
+          <DropdownItem selected={toolbar.italic} icon={<Italic size={14} />} onClick={() => { run(editor => { editor.chain().focus().toggleItalic().run() }); close() }}>斜体</DropdownItem>
+          {formatItems(close)}
+          <DropdownItem disabled={!toolbar.undo} icon={<Undo2 size={14} />} onClick={() => { run(editor => { editor.chain().focus().undo().run() }); close() }}>撤销</DropdownItem>
+          <DropdownItem disabled={!toolbar.redo} icon={<Redo2 size={14} />} onClick={() => { run(editor => { editor.chain().focus().redo().run() }); close() }}>重做</DropdownItem>
+        </>}
+        {quoteItems(close)}
+      </div>}</Dropdown>
     </div>
     {issue && <p id={`${id}-issue`} className="requirement-editor-notice my-item-description" role="status">{issue}</p>}
-    <div className="requirement-editor-rich my-scrollbar" hidden={mode !== 'rich'}><EditorContent editor={editor} /></div>
-    <textarea ref={source} hidden={mode !== 'source'} className="requirement-editor-source my-input my-scrollbar" value={raw} aria-label={`${props.ariaLabel ?? '需求文档正文'}源码`} aria-describedby={issue ? `${id}-issue` : undefined} readOnly={disabled} spellCheck={false} onChange={event => { if (disabled || !canInteract()) return; version.current++; publish(event.target.value); readSourceSelection() }} onSelect={readSourceSelection} />
+    <div className="requirement-editor-rich my-scrollbar" hidden={mode !== 'rich'} onScroll={() => { if (editor && bubble.current?.isConnected) editor.view.dispatch(editor.state.tr.setMeta(bubbleKey, 'updatePosition')) }} onMouseDown={event => {
+      if (event.button === 0 && !disabled && canInteract() && !composing.current && (event.target === event.currentTarget || (event.target as Element).classList.contains('requirement-editor-page'))) {
+        event.preventDefault(); editor?.commands.focus('end')
+      }
+    }}><EditorContent className="requirement-editor-page" editor={editor} /></div>
+    {editor && mode === 'rich' && !disabled && <BubbleMenu ref={bubble} editor={editor} pluginKey={bubbleKey} updateDelay={180} appendTo={appendBubble} options={bubbleOptions} shouldShow={shouldShowBubble} className="requirement-editor-bubble my-menu" role="toolbar" aria-label="选中文字操作" onMouseDown={event => { if (event.button === 0) event.preventDefault() }}>
+      <Dropdown disabled={disabled} trigger={({ toggle, open }) => <Button size="sm" variant="ghost" aria-label="段落样式" aria-haspopup="true" aria-expanded={open} onClick={toggle}>{toolbar.heading ? `标题 ${toolbar.heading}` : toolbar.bullet ? '无序列表' : toolbar.ordered ? '有序列表' : toolbar.task ? '待办列表' : toolbar.code ? '代码块' : '正文'}<ChevronDown size={12} /></Button>}>{formatItems}</Dropdown>
+      <Button size="sm" variant="ghost" title="加粗" aria-label="加粗" aria-pressed={toolbar.bold} onClick={() => run(editor => { editor.chain().focus().toggleBold().run() })}><Bold size={14} /></Button>
+      <Button size="sm" variant="ghost" title="斜体" aria-label="斜体" aria-pressed={toolbar.italic} onClick={() => run(editor => { editor.chain().focus().toggleItalic().run() })}><Italic size={14} /></Button>
+      {(props.onQuote || props.onPolish) && <span className="requirement-editor-menu-divider" aria-hidden="true" />}
+      {props.onQuote && <Button size="sm" variant="ghost" onClick={() => quote(false)}><Quote size={13} />引用</Button>}
+      {props.onPolish && <Button size="sm" variant="ghost" onClick={() => quote(true)}><Sparkles size={13} />润色</Button>}
+    </BubbleMenu>}
+    <textarea ref={source} hidden={mode !== 'source'} className="requirement-editor-source my-scrollbar" value={raw} placeholder={props.placeholder ?? '开始记录需求…'} aria-label={`${props.ariaLabel ?? '需求文档正文'}源码`} aria-describedby={issue ? `${id}-issue` : undefined} readOnly={disabled} spellCheck={false} onChange={event => { if (disabled || !canInteract()) return; version.current++; publish(event.target.value); readSourceSelection() }} onSelect={readSourceSelection} onKeyUp={readSourceSelection} onPointerUp={readSourceSelection} />
   </div>
 }
 

@@ -1,12 +1,16 @@
-.requirement-document-editor { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
-.requirement-editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-4); flex-shrink: 0; padding: var(--my-space-8) var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); }
-.requirement-editor-modes { display: flex; flex-shrink: 0; align-items: center; gap: var(--my-space-4); }
-.requirement-editor-selection-actions { display: flex; align-items: center; gap: var(--my-space-4); margin-inline-start: auto; }
-.requirement-editor-notice { flex-shrink: 0; margin: 0; padding: var(--my-space-8) var(--my-space-24); }
-.requirement-editor-rich { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable both-edges; }
+.requirement-document-editor { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; isolation: isolate; }
+.requirement-editor-controls { position: absolute; inset-block-start: var(--my-space-12); inset-inline-end: var(--my-space-24); z-index: 1; display: flex; align-items: center; gap: var(--my-space-2); padding: var(--my-space-2); border-radius: var(--my-radius-base); background: var(--my-bg-canvas); }
+.my-root .requirement-editor-bubble.my-menu { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--my-space-2); width: max-content; min-width: 0; max-width: calc(100vw - var(--my-space-24)); padding: var(--my-space-4); z-index: var(--my-z-menu); }
+.requirement-editor-bubble .my-control { flex-shrink: 0; white-space: nowrap; }
+.requirement-editor-menu-divider { align-self: stretch; width: 1px; margin: var(--my-space-4); background: var(--my-border-subtle); }
+.requirement-editor-notice { flex-shrink: 0; margin: 0; padding: calc(var(--my-space-56) + var(--my-space-8)) var(--my-space-24) 0; }
+.requirement-editor-rich { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable both-edges; }
 .requirement-editor-rich[hidden], .requirement-editor-source[hidden] { display: none; }
-.requirement-editor-rich > div { min-height: 100%; }
-.requirement-document-content { box-sizing: border-box; min-height: 100%; padding: var(--my-space-24); font-family: var(--my-font-sans); font-size: var(--my-text-document); font-weight: var(--my-weight-normal); line-height: var(--my-line-document); color: var(--my-txt-primary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.requirement-editor-page { display: flex; flex: 1 0 auto; min-height: 100%; }
+.requirement-document-content { box-sizing: border-box; flex: 1; min-width: 0; min-height: 100%; padding-block: calc(var(--my-space-56) + var(--my-space-16)) var(--my-space-56); padding-inline: max(var(--my-space-24), calc((100% - min(var(--my-conversation-width), 75ch)) / 2)); border: 0; outline: none; box-shadow: none; background: transparent; font-family: var(--my-font-sans); font-size: var(--my-text-document); font-weight: var(--my-weight-normal); line-height: var(--my-line-document); color: var(--my-txt-primary); caret-color: var(--my-txt-primary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.requirement-document-content:focus-visible { outline: none; }
+.requirement-document-editor[data-empty='true'] .requirement-document-content::before { content: attr(data-placeholder); float: left; height: 0; max-width: 100%; color: var(--my-txt-secondary); pointer-events: none; }
+.requirement-document-content::selection, .requirement-document-content ::selection, .requirement-editor-source::selection { background: var(--my-selection-bg); }
 .requirement-document-content > :first-child { margin-block-start: 0; }
 .requirement-document-content p { margin-block: var(--my-space-12); }
 .requirement-document-content h1 { font-size: var(--my-text-xl); }
@@ -33,4 +37,6 @@
 .requirement-document-content :is(th,td) > p { margin: 0; }
 .requirement-document-content .selectedCell { background: var(--my-selection-bg); }
 .requirement-document-content hr { margin-block: var(--my-space-24); border: 0; border-top: 1px solid var(--my-border-subtle); }
-.requirement-editor-source { flex: 1; min-width: 0; min-height: 0; width: auto; margin: var(--my-space-16); padding: var(--my-space-16); resize: none; font-family: var(--my-font-mono); font-size: var(--my-text-document); font-weight: var(--my-weight-normal); line-height: var(--my-line-document); tab-size: 2; }
+.requirement-editor-source { box-sizing: border-box; flex: 1; min-width: 0; min-height: 0; width: 100%; margin: 0; padding-block: calc(var(--my-space-56) + var(--my-space-16)) var(--my-space-56); padding-inline: var(--my-space-24); border: 0; border-radius: 0; outline: none; box-shadow: none; resize: none; background: transparent; color: var(--my-txt-primary); caret-color: var(--my-txt-primary); font-family: var(--my-font-mono); font-size: var(--my-text-document); font-weight: var(--my-weight-normal); line-height: var(--my-line-document); tab-size: 2; }
+.requirement-editor-source:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); }
+.requirement-editor-source::placeholder { color: var(--my-txt-secondary); }
