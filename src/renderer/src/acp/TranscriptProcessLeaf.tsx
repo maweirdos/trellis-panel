@@ -29,7 +29,7 @@ export function TranscriptProcessLeaf(props: EventRowProps & { thoughtBody?: boo
     const message = errorMessage(payload)
       ?? (!/^(回合已结束|本轮结束|回合已取消)$/.test(item.ev.text ?? '') ? item.ev.text : undefined)
     return <div data-acp-item={item.key}>{result?.status === 'failed'
-      ? <ConnectionNotice message={message ?? '执行引擎报告本次请求失败，未返回进一步原因。'} />
+      ? <p className="acp-tool-failure my-scrollbar" role="alert" tabIndex={0}>处理失败：{message ?? '执行引擎未返回进一步原因。'}</p>
       : <details className="acp-process-leaf"><summary className="acp-turn-process-toggle"><span>中止详情</span><ChevronRight className="acp-turn-process-chevron" aria-hidden="true" /></summary><p className="acp-process-leaf-body">{message ?? '本次处理已中止。'}</p></details>}</div>
   }
   if (item.type === 'detail' && isTranscriptEventIssue(item.ev)) return <div data-acp-item={item.key}><ConnectionNotice message={errorMessage(item.ev.payload) ?? item.ev.text ?? String(asObject(item.ev.payload?.observation)?.label ?? '执行引擎报告请求失败。')} /></div>

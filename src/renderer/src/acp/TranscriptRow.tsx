@@ -146,6 +146,8 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
   </details>
   if (item.type === 'tool') {
     const { title, status, payload } = item.tool
+    // Use Pi's structured tool name even when an older record used output as its title.
+    const displayTitle = typeof payload.tag === 'string' && payload.tag.startsWith('pi_tool_') && typeof payload.title === 'string' ? payload.title : title
     const kind = String(payload.kind ?? '')
     const diff = Array.isArray(payload.content) ? payload.content.map(asObject).find((entry) => entry?.type === 'diff') : undefined
     const path = (Array.isArray(payload.locations) ? asObject(payload.locations[0])?.path : undefined) ?? diff?.path
@@ -157,13 +159,17 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
     const sameTurn = (event: TimelineEvent): boolean => Boolean(origin && event.source === origin.source && event.sessionId === origin.sessionId && projectRootKey(event.projectRoot) === projectRootKey(origin.projectRoot) && event.turnId === origin.turnId && event.connectionGeneration === origin.connectionGeneration)
     const running = Boolean(pending && origin?.turnId && origin.connectionGeneration && session && origin.sessionId === session.sessionId && projectRootKey(origin.projectRoot) === projectRootKey(session.projectRoot) && origin.turnId === session.turnId && origin.connectionGeneration === session.connectionGeneration && ['busy', 'awaiting_permission', 'cancelling'].includes(session.status) && !events?.some((event) => event.kind === 'turn-done' && sameTurn(event)))
     const unfinished = pending && !running
-    const label = kind === 'execute' ? running ? '正在运行命令' : unfinished ? '命令执行未完成' : '运行了命令' : kind === 'read' ? `${running ? '正在读取文件' : unfinished ? '文件读取未完成' : '读取了文件'}${fileName ? ` ${fileName}` : ''}` : kind === 'search' ? running ? '正在搜索项目' : unfinished ? '项目搜索未完成' : '搜索了项目' : title
+    const label = kind === 'execute' ? running ? '正在运行命令' : unfinished ? '命令执行未完成' : '运行了命令' : kind === 'read' ? `${running ? '正在读取文件' : unfinished ? '文件读取未完成' : '读取了文件'}${fileName ? ` ${fileName}` : ''}` : kind === 'search' ? running ? '正在搜索项目' : unfinished ? '项目搜索未完成' : '搜索了项目' : displayTitle
     const editing = kind === 'edit' && !compact
-    return <details data-acp-item={item.key} className={clsx(editing ? 'acp-result-disclosure' : 'acp-activity-row', status === 'failed' && 'is-failed')}>
-      <summary title={title}>
+    const rawOutput = asObject(payload.rawOutput)
+    const outputContent = Array.isArray(rawOutput?.content) ? rawOutput.content.map(asObject).find(block => block?.type === 'text' && typeof block.text === 'string')?.text : undefined
+    const failureReason = [payload.error, rawOutput?.error, payload.text !== displayTitle ? payload.text : undefined, outputContent, payload.outputText, title !== displayTitle ? title : undefined]
+      .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+    return <><details data-acp-item={item.key} className={clsx(editing ? 'acp-result-disclosure' : 'acp-activity-row', status === 'failed' && 'is-failed')}>
+      <summary title={displayTitle}>
         {editing ? <ActivityResult
           icon={running && !suppressWorkingIndicator ? <Loader2 size={18} className="animate-spin" /> : <Pencil size={18} />}
-          title={`${running ? '正在编辑' : unfinished ? '编辑未完成' : status === 'failed' ? '编辑失败' : status === 'cancelled' ? '编辑已取消' : '已编辑'} ${fileName ?? title}`}
+          title={`${running ? '正在编辑' : unfinished ? '编辑未完成' : status === 'failed' ? '编辑失败' : status === 'cancelled' ? '编辑已取消' : '已编辑'} ${fileName ?? displayTitle}`}
           description={typeof path === 'string' ? path : undefined}
           tone={status === 'failed' ? 'danger' : 'default'}
           action={<span className="acp-result-view">{diff ? '查看变更' : '查看记录'}<ChevronRight size={13} className="acp-disclosure-arrow" /></span>}
@@ -185,18 +191,19 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
         })}</div>}
         <details><summary className="cursor-pointer text-my-sm text-my-tertiary">原始工具数据</summary><RawData value={payload} /></details>
       </div>
-    </details>
+    </details>{status === 'failed' && <p className="acp-tool-failure my-scrollbar" role="alert" tabIndex={0}>{failureReason || '工具执行失败，未返回进一步原因。'}</p>}</>
   }
   if (item.type === 'perm') {
     const requestId = String(item.ev.payload?.requestId ?? '')
     const pending = pendingPerm[requestId]
+    if (!pending) return <div data-acp-item={item.key} className="acp-historical-permission">{item.ev.text ?? '授权记录'} · 历史记录，当前不可操作</div>
     return <div className="rounded-my-md border border-my-line-warning bg-my-warning-subtle px-3 py-2 text-my-sm">
       <div className="flex items-center gap-1.5 font-medium text-my-warning-text"><ShieldQuestion size={13} />{pending?.toolCall?.title ?? item.ev.text ?? '权限请求'}</div>
       {pending ? <>
         <div className="mt-2 flex min-w-0 max-w-full flex-wrap gap-2">{pending.options.map((option) => <Button key={option.optionId} size="sm" variant="outline" disabled={permissionPending[requestId]} className={clsx('!h-auto min-h-6 min-w-0 max-w-full !items-start !justify-start !whitespace-normal !py-2 text-left', option.kind.startsWith('reject') ? 'text-my-danger-text' : 'text-my-accent-text')} title={`原始选项：${option.optionId} · ${option.kind}`} onClick={() => onRespond(requestId, option.optionId)}>{permissionPending[requestId] && <Loader2 size={12} className="mt-0.5 shrink-0 animate-spin" />}<span className="min-w-0 flex-1 whitespace-normal break-words leading-relaxed [overflow-wrap:anywhere]">{option.name}</span></Button>)}</div>
         <p className="mt-2 text-my-sm text-my-secondary">{pending.expiresAt ? `等待选择，${new Date(pending.expiresAt).toLocaleTimeString()} 到期` : '等待选择；超时将取消本轮请求。'} · 选择按 Runtime 原始选项提交</p>
         {permissionErrors[requestId] && <p role="alert" className="mt-1 text-my-sm text-my-danger-text">{permissionErrors[requestId]}</p>}
-      </> : <p className="mt-1 text-my-sm text-my-secondary">{item.ev.text ?? '授权记录'} · 历史记录，当前不可操作</p>}
+      </> : null}
     </div>
   }
   if (item.type === 'turn') return /^(回合已结束|本轮结束|回合已取消)$/.test(item.text) ? <></> : <ConnectionNotice message={item.text} />

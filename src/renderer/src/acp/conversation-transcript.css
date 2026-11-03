@@ -89,3 +89,6 @@
   .acp-turn-process-chevron { transition: none; }
   .acp-process-segment .acp-progress-spinner { animation: none; }
 }
+.acp-log-group[open] > summary .acp-turn-process-chevron { transform: rotate(90deg); }
+.acp-historical-permission, .acp-retry-detail { margin: var(--my-space-4) 0; color: var(--my-txt-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.acp-tool-failure { max-height: 12rem; overflow: auto; margin: var(--my-space-4) 0 var(--my-space-8); color: var(--my-txt-danger-primary); font-size: var(--my-text-activity); white-space: pre-wrap; overflow-wrap: anywhere; }

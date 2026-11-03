@@ -108,6 +108,12 @@ the compact module switch; Refresh is direct when it is the only management acti
 and End Conversation uses the shared More dropdown. The current-turn Cancel action
 stays directly visible in the composer action position while applicable. Keep all
 existing operation guards and exact session/connection authority.
+Use an icon-only stop control with an accessible name and stopping state on every
+conversation surface. Keep the composer controls on one line, with the current
+permission mode identifiable and its actual scope available in the menu. Group
+retry and historical permission records behind disclosures; keep current permission
+requests, actionable choices and failure reasons visible. Current activity follows
+the owning turn's latest observed state rather than reporting a stale waiting state.
 
 Transcript and composer share `my-conversation-column` within the same
 `my-conversation-frame`. Use symmetric scrollbar gutters, explicitly overriding
