@@ -1,5 +1,5 @@
-import { lazy, Suspense, useId, useRef, useState, type JSX, type KeyboardEvent } from 'react'
-import { ArrowRight, Check, ChevronDown, CircleAlert, FileInput, FileText, FolderOpen, GitCompareArrows, ListChecks, Loader2, MessageCircle, MoreHorizontal, Quote, RefreshCw, Save, Search, Sparkles, X } from 'lucide-react'
+import { lazy, Suspense, useEffect, useId, useRef, useState, type JSX, type KeyboardEvent } from 'react'
+import { ArrowRight, Check, ChevronDown, ChevronRight, CircleAlert, FileInput, FileText, FolderOpen, GitCompareArrows, ListChecks, Loader2, MessageCircle, MoreHorizontal, Paperclip, Quote, RefreshCw, Save, Search, Sparkles, X } from 'lucide-react'
 import { REQUIREMENT_FILE_BYTES, type RequirementAction, type RequirementDocument, type RequirementOperation } from '@shared/conversation-requirements'
 import { MarkdownView } from '../../components/MarkdownView'
 import { Button, Checkbox, Dropdown, DropdownItem } from '../../my/ui'
@@ -14,6 +14,9 @@ const DocumentEditor = lazy(() => import('./DocumentEditor'))
 export interface RequirementWorkbenchProps extends RequirementWorkbenchOptions { onClose(): void }
 const actionLabels: Record<RequirementAction, string> = { clarify: '澄清问题', research: '研究资料', draft: '生成需求', revise: '修改文档', acceptance: '检查验收', plan: '生成计划', discuss: '讨论需求' }
 const stateLabels: Record<RequirementOperation['state'], string> = { reserved: '已准备', dispatching: '正在派发', running: '处理中', candidate: '待采用', adopted: '已采用', failed: '未完成', cancelled: '已取消', unknown: '待核对' }
+function adoptedSourceOperation(operations: RequirementOperation[]): RequirementOperation | undefined {
+  return [...operations].reverse().find(operation => operation.state === 'adopted' && operation.knowledge.length > 0)
+}
 
 function WorkbenchFeedback({ controller }: { controller: RequirementWorkbenchController }): JSX.Element | null {
   const issue = controller.issue, commandIssue = controller.buffer?.commandIssue
@@ -29,7 +32,7 @@ function Sources({ controller, entryKey }: { controller: RequirementWorkbenchCon
   const value = controller.buffer, [visibleFiles, setVisibleFiles] = useState(50), fieldsId = useId()
   if (!value || !controller.view) return null
   const current = controller.current
-  const adopted = [...value.operations].reverse().find(operation => operation.state === 'adopted')
+  const adopted = adoptedSourceOperation(value.operations)
   return <div className="requirement-workbench-sources">
     <KnowledgePicker key={`${value.conversation.creatorId}:${value.conversation.id}:${controller.view.draft.id}`} entryKey={entryKey} requirementId={controller.view.draft.id} selection={value.knowledgeSelection} sources={value.knowledgeSources} onChange={controller.setKnowledge} disabled={!controller.active || controller.readOnly || controller.busy} />
     {adopted && adopted.knowledge.length > 0 && <AdoptedEvidence key={adopted.id} entryKey={entryKey} draftId={controller.view.draft.id} operation={adopted} />}
@@ -50,10 +53,19 @@ function Sources({ controller, entryKey }: { controller: RequirementWorkbenchCon
   </div>
 }
 
-function AssistantEmpty({ controller }: { controller: RequirementWorkbenchController }): JSX.Element {
-  return <div className="requirement-workbench-assistant-empty"><MessageCircle size={20} aria-hidden="true" /><h2>一起把需求想清楚</h2><div className="requirement-workbench-starters">{([
-    ['clarify', <MessageCircle size={14} />], ['research', <Search size={14} />], ['draft', <FileText size={14} />], ['acceptance', <ListChecks size={14} />]
-  ] satisfies Array<[RequirementAction, JSX.Element]>).map(([action, icon]) => <Button key={action} size="sm" variant="outline" disabled={!controller.canRun || action === 'research' && !controller.buffer?.knowledgeSelection} onClick={() => void controller.runAction(action)}>{icon}{actionLabels[action]}</Button>)}</div></div>
+function AssistantEmpty({ controller, onAction }: { controller: RequirementWorkbenchController; onAction(action: RequirementAction): void }): JSX.Element {
+  const plan = controller.buffer?.document === 'plan'
+  const groups: Array<{ title: string; actions: Array<{ action: RequirementAction; icon: JSX.Element; title: string; description: string }> }> = [
+    { title: '明确需求', actions: [
+      { action: 'clarify', icon: <MessageCircle size={17} />, title: '澄清方向', description: '明确目标、范围和未决问题。' },
+      { action: 'research', icon: <Search size={17} />, title: '研究选定资料', description: controller.buffer?.knowledgeSources.length || controller.buffer?.references.length ? '核对所选资料的事实与依据。' : '选择知识摘录或文件后开始。' }
+    ] },
+    { title: plan ? '完善计划' : '形成文档', actions: [
+      { action: 'draft', icon: <FileText size={17} />, title: plan ? '整理计划' : '整理成稿', description: plan ? '按当前需求重新整理计划。' : '将资料和回答整理为需求稿。' },
+      { action: 'acceptance', icon: <ListChecks size={17} />, title: '补全验收标准', description: '检查异常路径与可验证条件。' }
+    ] }
+  ]
+  return <div className="requirement-workbench-assistant-empty"><h2>接下来做什么</h2><div className="requirement-workbench-starters">{groups.map(group => <section className="requirement-workbench-action-group" key={group.title} aria-label={group.title}><h3 className="my-item-description">{group.title}</h3>{group.actions.map(({ action, icon, title, description }) => <button key={action} type="button" className="requirement-workbench-action" disabled={!controller.canRun} onClick={() => onAction(action)}><span className="requirement-workbench-action-icon" aria-hidden="true">{icon}</span><span className="requirement-workbench-action-copy"><span className="my-item-title">{title}</span><span className="my-item-description">{description}</span></span><ChevronRight size={14} aria-hidden="true" /></button>)}</section>)}</div></div>
 }
 
 function Questions({ controller }: { controller: RequirementWorkbenchController }): JSX.Element | null {
@@ -98,15 +110,36 @@ function RemoteComparison({ controller }: { controller: RequirementWorkbenchCont
 export function RequirementWorkbench({ onClose, ...options }: RequirementWorkbenchProps): JSX.Element {
   const controller = useRequirementWorkbench(options), value = controller.buffer, view = controller.view, fieldsId = useId()
   const assistantPane = useRef<HTMLElement>(null), sourcePanel = useRef<HTMLDivElement>(null), tabRefs = useRef<Partial<Record<RequirementDocument, HTMLButtonElement | null>>>({})
+  const [sourcesOpen, setSourcesOpen] = useState(false), [sourceFocus, setSourceFocus] = useState<'knowledge' | 'files'>()
+  const [researchRequested, setResearchRequested] = useState(false)
   const document = value?.document ?? 'requirement', plan = view?.draft.plan, receipt = value?.receipt ?? view?.draft.handoff
   const busySave = value?.pending === 'save'
   const saveStatus = busySave ? '保存中…' : controller.dirty ? '未保存' : view ? '已保存' : '读取中…'
-  const source = <Sources controller={controller} entryKey={options.entryKey} />
+  const adoptedKnowledge = value ? adoptedSourceOperation(value.operations)?.knowledge ?? [] : []
+  const knowledgeCount = new Set([...(value?.knowledgeSources ?? []), ...adoptedKnowledge].map(source => source.returnedRevision)).size
+  const sourceCount = knowledgeCount + (value?.references.length ?? 0) + Number(Boolean(value?.fromConversation))
+  const sourceDescription = `${value?.knowledgeSelection?.collectionIds.length ?? 0} 个知识库 · ${value?.knowledgeSources.length ?? 0} 条选定摘录 · ${adoptedKnowledge.length} 条已采用来源 · ${value?.references.length ?? 0} 个文件${value?.fromConversation ? ' · 引用原会话' : ''}`
+  const openSources = (focus?: 'knowledge' | 'files'): void => { setSourcesOpen(true); setSourceFocus(focus) }
+  useEffect(() => {
+    if (!sourcesOpen || !sourceFocus || !controller.active) return
+    const details = sourcePanel.current?.querySelector<HTMLDetailsElement>(sourceFocus === 'knowledge' ? '.requirement-workbench-knowledge' : 'details[data-requirement-files]')
+    if (!details) return
+    details.open = true
+    details.querySelector('summary')?.focus()
+    setSourceFocus(undefined)
+  }, [sourcesOpen, sourceFocus, controller.active, view?.draft.id])
+  const assistantAction = (action: RequirementAction): void => {
+    if (!controller.canRun) return
+    if (action === 'research' && !value?.knowledgeSources.length && !value?.references.length) { setResearchRequested(true); openSources('knowledge'); return }
+    void controller.runAction(action)
+  }
+  const nextLabel = ({ '下一步：生成计划': '生成计划', '选择工程并交接': '交接工程', '创建 Trellis 任务': '创建任务', '检查本次交接': '检查交接' } as Record<string, string>)[controller.nextLabel] ?? controller.nextLabel
+  const documentStatus = document === 'requirement' && view?.draft.confirmed && !controller.requirementDirty && view.draft.confirmed.bodyRevision === view.draft.bodyRevision ? '已确认快照' : document === 'plan' && plan?.stale ? '需求已变更，计划需更新' : ''
   const port: PrivateConversationAssistantPort = {
     text: value?.text ?? '', onTextChange: controller.setText,
     onSend: () => controller.runAction(value?.quote ? 'revise' : 'discuss'),
     pending: controller.assistantPending || controller.busy || !view || controller.readOnly,
-    emptyState: <AssistantEmpty controller={controller} />, events: controller.events,
+    emptyState: <AssistantEmpty controller={controller} onAction={assistantAction} />, events: controller.events,
     context: value?.quote ? <div className="requirement-workbench-quote"><Quote size={13} aria-hidden="true" /><span>{value.quote.text}</span><Button size="sm" variant="ghost" aria-label="移除引用" onClick={controller.clearQuote}><X size={13} /></Button></div> : undefined
   }
   const tabs: Array<{ id: RequirementDocument; label: string }> = [{ id: 'requirement', label: '需求' }, { id: 'plan', label: '计划' }]
@@ -122,10 +155,23 @@ export function RequirementWorkbench({ onClose, ...options }: RequirementWorkben
   return <section className="requirement-workbench" aria-label="需求工作台" onKeyDown={event => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !event.nativeEvent.isComposing && controller.active) { event.preventDefault(); event.stopPropagation(); if (!controller.busy && !controller.readOnly) void controller.save() }
   }}>
-    <header className="requirement-workbench-header"><FileText size={17} aria-hidden="true" /><input className="requirement-workbench-identity" value={value?.title ?? ''} placeholder="需求工作台" maxLength={200} aria-label="需求名称" disabled={!view || !controller.active} readOnly={controller.readOnly} onChange={event => controller.editTitle(event.target.value)} /><span className="requirement-workbench-save-status" role="status" aria-live="polite">{busySave ? <Loader2 size={12} className="animate-spin" /> : view && !controller.dirty ? <Check size={12} /> : null}{saveStatus}</span><Button size="sm" variant="ghost" disabled={!view || !controller.dirty || controller.busy || controller.readOnly || !controller.active} aria-label="保存文档" onClick={() => void controller.save()}><Save size={15} /></Button><Dropdown align="right" disabled={!view || controller.busy || !controller.active} trigger={({ toggle, open }) => <Button size="sm" variant="ghost" aria-label="需求选项" disabled={!view || controller.busy} aria-expanded={open} onClick={toggle}><MoreHorizontal size={16} /></Button>}>{close => <><DropdownItem icon={<FileInput size={14} />} disabled={!controller.current?.text.trim() || controller.readOnly} onClick={() => { close(); controller.importInput() }}>带入当前输入</DropdownItem><DropdownItem icon={<RefreshCw size={14} />} onClick={() => { close(); void controller.reload() }}>重新读取</DropdownItem><DropdownItem icon={<RefreshCw size={14} />} disabled={controller.dirty || controller.readOnly || view?.fileState !== 'changed'} onClick={() => { close(); void controller.syncFile() }}>同步需求文件</DropdownItem><DropdownItem icon={<RefreshCw size={14} />} onClick={() => { close(); void controller.checkOperations() }}>检查原操作</DropdownItem></>}</Dropdown><Button size="sm" variant="primary" disabled={controller.nextDisabled} onClick={() => void controller.next()}>{value?.pending === 'run' || value?.pending === 'commit' || value?.pending === 'target' ? <Loader2 size={14} className="animate-spin" /> : null}{controller.nextLabel}<ArrowRight size={14} /></Button><Button size="sm" variant="ghost" aria-label="关闭需求工作台" onClick={onClose}><X size={16} /></Button></header>
-    <WorkbenchFeedback controller={controller} />
     <div className="requirement-workbench-body">
-      <section className="requirement-workbench-document" aria-label="需求与计划文档"><div className="requirement-workbench-document-bar"><div role="tablist" aria-label="需求材料" className="requirement-workbench-tabs">{tabs.map((tab, index) => <button key={tab.id} type="button" ref={node => { tabRefs.current[tab.id] = node }} className={`my-control my-control-sm ${document === tab.id ? 'my-button-neutral' : 'my-button-ghost'}`} role="tab" id={`${fieldsId}-tab-${tab.id}`} aria-controls={`${fieldsId}-${tab.id}`} aria-selected={document === tab.id} tabIndex={document === tab.id ? 0 : -1} onClick={() => controller.setDocument(tab.id)} onKeyDown={event => tabKeyDown(event, index)}>{tab.id === 'plan' ? <ListChecks size={14} /> : <FileText size={14} />}{tab.label}{tab.id === 'plan' && plan?.stale && <span className="my-item-description">需更新</span>}</button>)}</div><span className="my-item-description">{document === 'requirement' && view?.draft.confirmed && !controller.requirementDirty && view.draft.confirmed.bodyRevision === view.draft.bodyRevision ? '已确认快照' : document === 'plan' && plan?.stale ? '需求已变更' : ''}</span></div>
+      <section className="requirement-workbench-document" aria-label="需求与计划文档">
+        <header className="requirement-workbench-header">
+          <input className="requirement-workbench-identity" value={value?.title ?? ''} placeholder="需求工作台" maxLength={200} aria-label="需求名称" disabled={!view || !controller.active} readOnly={controller.readOnly} onChange={event => controller.editTitle(event.target.value)} />
+          <div role="tablist" aria-label="需求材料" className="requirement-workbench-tabs">{tabs.map((tab, index) => <button key={tab.id} type="button" ref={node => { tabRefs.current[tab.id] = node }} className={`my-control my-control-sm ${document === tab.id ? 'my-button-neutral' : 'my-button-ghost'}`} role="tab" id={`${fieldsId}-tab-${tab.id}`} aria-controls={`${fieldsId}-${tab.id}`} aria-selected={document === tab.id} tabIndex={document === tab.id ? 0 : -1} title={tab.id === 'plan' && plan?.stale ? '需求已变更，计划需更新' : tab.label} onClick={() => controller.setDocument(tab.id)} onKeyDown={event => tabKeyDown(event, index)}>{tab.label}{tab.id === 'plan' && plan?.stale && <CircleAlert size={12} aria-label="需更新" />}</button>)}</div>
+          <span className="requirement-workbench-save-status" role="status" aria-live="polite" title={[saveStatus, documentStatus].filter(Boolean).join(' · ')}>{busySave ? <Loader2 size={12} className="animate-spin" /> : view && !controller.dirty ? <Check size={12} /> : <Save size={12} />}<span>{saveStatus}</span><span className="sr-only">{documentStatus}</span></span>
+          <Dropdown align="right" disabled={!view || controller.busy || !controller.active} trigger={({ toggle, open }) => <Button size="sm" variant="ghost" aria-label="需求选项" disabled={!view || controller.busy || !controller.active} aria-expanded={open} onClick={toggle}><MoreHorizontal size={16} /></Button>}>{close => <>
+            <DropdownItem icon={<Save size={14} />} disabled={!controller.dirty || controller.readOnly} onClick={() => { close(); void controller.save() }}>保存文档</DropdownItem>
+            <DropdownItem icon={<FileInput size={14} />} disabled={!controller.current?.text.trim() || controller.readOnly} onClick={() => { close(); controller.importInput() }}>带入当前输入</DropdownItem>
+            <DropdownItem icon={<RefreshCw size={14} />} onClick={() => { close(); void controller.reload() }}>重新读取</DropdownItem>
+            <DropdownItem icon={<RefreshCw size={14} />} disabled={controller.dirty || controller.readOnly || view?.fileState !== 'changed'} onClick={() => { close(); void controller.syncFile() }}>同步需求文件</DropdownItem>
+            <DropdownItem icon={<RefreshCw size={14} />} onClick={() => { close(); void controller.checkOperations() }}>检查原操作</DropdownItem>
+          </>}</Dropdown>
+          <Button className="requirement-workbench-next" size="sm" variant="primary" title={controller.nextLabel} aria-label={controller.nextLabel} disabled={controller.nextDisabled} onClick={() => void controller.next()}>{value?.pending === 'run' || value?.pending === 'commit' || value?.pending === 'target' ? <Loader2 size={14} className="animate-spin" /> : null}<span>{nextLabel}</span><ArrowRight size={14} /></Button>
+          <Button size="sm" variant="ghost" aria-label="关闭需求工作台" onClick={onClose}><X size={16} /></Button>
+        </header>
+        <WorkbenchFeedback controller={controller} />
         <div role="tabpanel" id={`${fieldsId}-${document}`} aria-labelledby={`${fieldsId}-tab-${document}`} className="requirement-workbench-editor-panel">
           {controller.loading ? <div className="requirement-workbench-document-loading" role="status"><Loader2 size={16} className="animate-spin" />读取需求文档…</div> : !view || !value ? <div className="requirement-workbench-document-loading"><FileText size={22} /><span className="my-item-title">暂未读取需求</span><Button size="sm" variant="outline" disabled={controller.busy} onClick={() => void controller.reload()}>重新读取</Button></div> : document === 'plan' && !plan ? <div className="requirement-workbench-plan-empty"><ListChecks size={24} aria-hidden="true" /><h2>把需求变成计划</h2><p className="my-item-description">确认当前需求后，生成独立的实施计划。</p><Button variant="primary" size="sm" disabled={!controller.canRun || !value.body.trim()} onClick={() => void controller.runAction('plan')}>确认需求并生成计划<ArrowRight size={14} /></Button></div> : <>
             <Suspense fallback={<div className="requirement-workbench-document-loading" role="status"><Loader2 size={16} className="animate-spin" />载入编辑器…</div>}><DocumentEditor value={document === 'requirement' ? value.body : value.planBody} onChange={controller.editBody} documentKey={`${view.draft.id}:${document}`} docRevision={document === 'requirement' ? view.draft.revision : plan?.revision} bodyRevision={document === 'requirement' ? view.draft.bodyRevision : plan?.bodyRevision} readOnly={controller.readOnly} disabled={!controller.active} ariaLabel={document === 'requirement' ? '需求文档' : '计划文档'} onQuote={selection => { if (controller.quote(selection)) assistantPane.current?.querySelector<HTMLTextAreaElement>('.acp-composer textarea')?.focus() }} onPolish={selection => controller.quote(selection, true)} /></Suspense>
@@ -136,9 +182,17 @@ export function RequirementWorkbench({ onClose, ...options }: RequirementWorkben
         {view && (document === 'requirement' ? view.fileState !== 'saved' : Boolean(view.planFileState && view.planFileState !== 'saved')) && <div className="requirement-workbench-file-state"><CircleAlert size={13} /><span className="my-item-description">{document === 'plan' ? view.planFileState === 'changed' ? '计划文件已更新，请核对后保存。' : '计划文件暂不可读取。' : view.fileState === 'changed' ? '需求文件已更新' : view.fileState === 'missing' ? '需求文件缺失' : '需求文件暂不可读取'}</span>{document === 'requirement' && view.fileState === 'changed' && <Button size="sm" variant="ghost" disabled={controller.dirty || controller.busy || controller.readOnly} onClick={() => void controller.syncFile()}>读取文件修改</Button>}{view.detail && <details><summary className="my-item-description">原因</summary><pre>{view.detail}</pre></details>}</div>}
         {view && (plan || receipt || value?.commitCommand) && <footer className="requirement-workbench-handoff"><div className="requirement-workbench-handoff-identity"><FolderOpen size={14} aria-hidden="true" /><span className="my-item-description">{receipt?.task ? `${receipt.task.title} · ${statusLabel(receipt.task.status)}` : view.draft.target?.root ?? '计划就绪后选择工程'}</span></div><div className="requirement-workbench-line">{receipt?.task ? <><Button size="sm" variant="outline" disabled={controller.busy} onClick={() => void controller.openTask()}>打开任务</Button>{receipt.state === 'created' && options.onStartTrellis && <Button size="sm" variant="primary" disabled={controller.busy} onClick={() => void controller.openTask(true)}>进入执行流程<ArrowRight size={14} /></Button>}{receipt.state !== 'created' && <Button size="sm" variant="primary" disabled={controller.busy} onClick={() => void controller.commit()}>补全交接</Button>}</> : !controller.readOnly && plan && !plan.stale && <Dropdown align="right" disabled={controller.busy} trigger={({ toggle, open }) => <Button size="sm" variant="ghost" disabled={controller.busy} aria-expanded={open} onClick={toggle}><FolderOpen size={14} />{view.draft.target ? '更换工程' : '选择工程'}<ChevronDown size={12} /></Button>}>{close => <><DropdownItem onClick={() => { close(); void controller.selectTarget() }}>选择本机 Trellis 工程</DropdownItem>{controller.current?.kind === 'code' && <DropdownItem onClick={() => { close(); void controller.selectTarget({ kind: 'code' }) }}>使用当前 Code 工程</DropdownItem>}</>}</Dropdown>}</div>{receipt?.detail && <details><summary className="my-item-description">交接详情</summary><pre>{receipt.detail}</pre></details>}</footer>}
       </section>
-      <aside ref={assistantPane} className="requirement-workbench-assistant my-conversation-frame" aria-label="需求助手"><header className="requirement-workbench-assistant-header"><Sparkles size={15} aria-hidden="true" /><h2 className="my-item-title">需求助手</h2><Dropdown align="right" disabled={!controller.canRun} trigger={({ toggle, open }) => <Button size="sm" variant="ghost" aria-label="需求助手操作" disabled={!controller.canRun} aria-expanded={open} onClick={toggle}><MoreHorizontal size={15} /></Button>}>{close => <>{assistantActions.map(typed => {
-          return <DropdownItem key={typed} disabled={typed === 'research' && !value?.knowledgeSelection} onClick={() => { close(); void controller.runAction(typed) }}>{typed === 'draft' && document === 'plan' ? '重新整理计划' : actionLabels[typed]}</DropdownItem>
-        })}</>}</Dropdown></header><div ref={sourcePanel} className="requirement-workbench-assistant-materials my-scrollbar">{source}<Questions controller={controller} /><OperationResults controller={controller} /></div><PrivateConversation entryKey={options.entryKey} onFiles={() => { const files = sourcePanel.current?.querySelector<HTMLDetailsElement>('details[data-requirement-files]'); if (files) files.open = true; controller.refreshFiles() }} onNew={onClose} onNewDirectory={onClose} directoryPending={false} directoryFixed composerContext={null} assistantPort={port} />
+      <aside ref={assistantPane} className="requirement-workbench-assistant my-conversation-frame" aria-label="需求助手">
+        <header className="requirement-workbench-assistant-header">
+          <Sparkles size={15} aria-hidden="true" /><h2 className="my-item-title">需求助手</h2>
+          <Button className="requirement-workbench-context-trigger" size="sm" variant="ghost" aria-label={`资料与上下文，${sourceDescription}`} title={sourceDescription} aria-expanded={sourcesOpen} aria-controls={`${fieldsId}-sources`} onClick={() => { setSourceFocus(undefined); setSourcesOpen(open => !open) }}><Paperclip size={14} /><span>资料</span><span className="requirement-workbench-source-count">{sourceCount}</span><ChevronDown size={12} /></Button>
+          <Dropdown align="right" disabled={!controller.canRun} trigger={({ toggle, open }) => <Button size="sm" variant="ghost" aria-label="需求助手操作" disabled={!controller.canRun} aria-expanded={open} onClick={toggle}><MoreHorizontal size={15} /></Button>}>{close => <>{assistantActions.map(action => <DropdownItem key={action} onClick={() => { close(); assistantAction(action) }}>{action === 'draft' && document === 'plan' ? '重新整理计划' : actionLabels[action]}</DropdownItem>)}</>}</Dropdown>
+        </header>
+        <div className="requirement-workbench-assistant-materials my-scrollbar">
+          <div ref={sourcePanel} id={`${fieldsId}-sources`} hidden={!sourcesOpen}><Sources controller={controller} entryKey={options.entryKey} />{researchRequested && <div className="requirement-workbench-line requirement-workbench-research-source"><Button size="sm" variant="primary" disabled={!controller.canRun || !value?.knowledgeSources.length && !value?.references.length} onClick={() => { setResearchRequested(false); setSourcesOpen(false); void controller.runAction('research') }}><Search size={13} />使用资料研究</Button><Button size="sm" variant="ghost" onClick={() => setResearchRequested(false)}>取消</Button></div>}</div>
+          <Questions controller={controller} /><OperationResults controller={controller} />
+        </div>
+        <PrivateConversation entryKey={options.entryKey} onFiles={() => { openSources('files'); controller.refreshFiles() }} onNew={onClose} onNewDirectory={onClose} directoryPending={false} directoryFixed composerContext={null} assistantPort={port} />
       </aside>
     </div>
   </section>
