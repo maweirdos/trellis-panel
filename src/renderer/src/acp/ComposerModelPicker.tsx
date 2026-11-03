@@ -13,6 +13,12 @@ function choiceLabel(name: string): string {
   return labels[key] ?? name
 }
 
+const piModeLabels: Record<string, { short: string; description: string }> = {
+  'read-only': { short: '只读', description: '允许只读类工具，拒绝其他工具。' },
+  workspace: { short: '请求批准', description: '只读类工具直接运行，其他工具须逐次批准。' },
+  'full-access': { short: '自动批准', description: '工具自动批准，路径工具仍受目录校验。' }
+}
+
 /** All advertised current-session controls live inside the composer. */
 export function ComposerModelPicker({ session, message, operationPending = false, isCurrent, acquireConfiguration, configureSession, onUpdated, onRecoverModel, contextActions, usage, sendAction }: {
   session: AcpSessionRecord
@@ -54,6 +60,8 @@ export function ComposerModelPicker({ session, message, operationPending = false
   const modes = modeConfig ? modeConfig.options.map((option) => ({ id: option.value, name: option.name })) : session.modes ?? []
   const currentId = (recoveryMode && modelConfigs.length === 1 ? modelConfigs[0].currentValue : modelConfig?.currentValue) ?? session.currentModelId
   const currentMode = modeConfig?.currentValue ?? session.currentModeId
+  const modeName = modes.find((mode) => mode.id === currentMode)?.name ?? currentMode ?? '未报告模式'
+  const modeCaption = session.engine === 'pi' && currentMode ? piModeLabels[currentMode]?.short ?? modeName : choiceLabel(modeName)
   const currentName = models.find((model) => model.modelId === currentId)?.name ?? currentId
   const modelCaption = session.engine === 'pi' ? currentName : currentName?.split(' · ')[0]
   const excluded = new Set([modelConfig?.id, modeConfig?.id, reasoning?.id, collaboration?.id])
@@ -125,8 +133,8 @@ export function ComposerModelPicker({ session, message, operationPending = false
           {busy && <div role="status" className="flex items-center gap-2 px-3 py-2 text-my-sm text-my-tertiary"><Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" /><span>{recoveryMode || session.status === 'starting' ? '连接中…' : '更新中…'}</span></div>}
         </div>}
       </Dropdown>
-      {regularModes.length > 0 && <Dropdown align="left" width={240} trigger={({ open, toggle }) => <button type="button" className="acp-composer-context my-composer-control my-composer-control-label" aria-label="选择会话模式" aria-expanded={open} onClick={toggle}><ShieldCheck size={14} /><span>{choiceLabel(modes.find((mode) => mode.id === currentMode)?.name ?? '选择模式')}</span><ChevronDown size={12} /></button>}>
-        {(close) => <><DropdownHeader>会话模式</DropdownHeader>{regularModes.map((mode) => <DropdownItem key={mode.id} selected={mode.id === currentMode} disabled={!canConfigure || (!modeConfig && !controls.includes('session/set_mode'))} onClick={() => selectMode(mode.id, close)}>{choiceLabel(mode.name)}</DropdownItem>)}{regularModes.length === 0 && <p className="px-3 py-2 text-my-sm text-my-tertiary">计划选项位于“＋”菜单。</p>}</>}
+      {regularModes.length > 0 && <Dropdown align="left" width={240} trigger={({ open, toggle }) => <button type="button" className="acp-composer-context acp-mode-trigger my-composer-control my-composer-control-label" aria-label={`选择会话模式，当前：${modeName}`} aria-expanded={open} title={`会话模式：${modeName}`} onClick={toggle}><ShieldCheck size={14} /><span>{modeCaption}</span><ChevronDown size={12} /></button>}>
+        {(close) => <div className="acp-mode-menu"><DropdownHeader>会话模式</DropdownHeader>{session.engine !== 'pi' && <p className="acp-mode-menu-note">选项由执行引擎提供，具体权限以引擎设置为准。</p>}{regularModes.map((mode) => <DropdownItem key={mode.id} selected={mode.id === currentMode} disabled={!canConfigure || (!modeConfig && !controls.includes('session/set_mode'))} onClick={() => selectMode(mode.id, close)}>{choiceLabel(mode.name)}{session.engine === 'pi' && piModeLabels[mode.id] && <small className="acp-mode-description">{piModeLabels[mode.id].description}</small>}</DropdownItem>)}</div>}
       </Dropdown>}
       {planActive && !(nativePlanMode && regularModes.length > 0) && <span className="acp-plan-active"><Lightbulb size={12} />计划</span>}
     </div>
