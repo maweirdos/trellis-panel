@@ -51,6 +51,13 @@ Each action uses run/observe/adopt with immutable source inputs and a real
 validated candidate file after the original native turn completes. Adopt an
 explicit workbench action into an unchanged clean draft; otherwise retain a
 readable comparison. Questions are editable inputs, not fabricated progress.
+Each pane has one aligned compact topbar. Document identity, material tabs,
+save status and progression share the document topbar. The editable canvas fills
+its pane; formatting and quote/polish controls appear on a settled selection,
+with Alt+F10 and Escape keyboard access. Keep the assistant actions at the top
+and its original composer docked at the bottom, including the empty state.
+Group source selection behind the counted context control. Research without an
+actual excerpt/file selection opens that control and waits for explicit continuation.
 Confirmation freezes the requirement; Next produces a separate editable plan.
 Requirement changes retain and mark the prior plan stale. Handoff selects a real
 Trellis engineering directory at the plan step; Work's managed directory is not
