@@ -14,6 +14,12 @@
 .requirement-editor-review-diff del { background: var(--my-bg-danger-subtle); color: var(--my-txt-danger-primary); }
 .requirement-editor-review-diff ins { background: var(--my-bg-success-subtle); color: var(--my-txt-success-primary); text-decoration: none; }
 .requirement-editor-review-candidate { display: flex; flex-direction: column; gap: var(--my-space-4); }
+.requirement-editor-review-comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--my-space-192)), 1fr)); gap: var(--my-space-12); }
+.requirement-editor-review-comparison > section { min-width: 0; }
+.requirement-editor-review-comparison :is(h3,h4) { margin: 0; }
+.requirement-editor-review-comparison h4 { margin-block-start: var(--my-space-8); }
+.requirement-editor-review-comparison pre { max-height: var(--my-space-160); margin: var(--my-space-4) 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--my-txt-primary); font: inherit; }
+.requirement-editor-review-comparison pre:focus-visible { outline: 2px solid var(--my-focus-ring); outline-offset: -2px; }
 .requirement-editor-review-actions { justify-content: flex-end; }
 .requirement-editor-rich { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable both-edges; }
 .requirement-editor-rich[hidden], .requirement-editor-source[hidden] { display: none; }

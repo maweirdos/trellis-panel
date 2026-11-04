@@ -10,6 +10,7 @@ import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { closeHistory } from '@tiptap/pm/history'
 import { EditorState, Plugin, TextSelection } from '@tiptap/pm/state'
 import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { REQUIREMENT_BODY_BYTES } from '@shared/conversation-requirements'
 import { Button, Dropdown, DropdownItem } from '../../my/ui'
 import { useInteractionActive, useInteractionGuard } from '../../utils/interaction-scope'
 import { useCopyFeedback } from '../../utils/use-copy-feedback'
@@ -56,6 +57,10 @@ const MarkdownTable = Table.extend({
 const extensions = [StarterKit.configure({ link: { openOnClick: false, autolink: false }, trailingNode: false }), TableKit.configure({ table: false }), MarkdownTable, TaskList, TaskItem.configure({ nested: true })]
 const markdown = new MarkdownManager({ extensions }), schema = getSchema(extensions)
 const emptyDocument: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
+const bodyLimitMessage = '文档最多 200,000 字符且不能超过 256 KiB；本次输入未写入，请缩短后重试。'
+function bodyWithinLimit(value: string): boolean {
+  return value.length <= 200_000 && new TextEncoder().encode(value).byteLength <= REQUIREMENT_BODY_BYTES
+}
 function preservesContent(document: ProseMirrorNode, text: string): boolean {
   const restored = document.type.schema.nodeFromJSON(markdown.parse(text))
   if (document.eq(restored)) return true
@@ -159,6 +164,7 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
   const active = useInteractionActive(), canInteract = useInteractionGuard(), id = useId()
   const latest = useRef(props); latest.current = props
   const host = useRef<HTMLDivElement>(null), source = useRef<HTMLTextAreaElement>(null), mounted = useRef(true)
+  const sourceSelection = useRef<{ start: number; end: number } | null>(null)
   const bubble = useRef<HTMLDivElement>(null), more = useRef<HTMLDivElement>(null)
   const dragging = useRef(false), dismissed = useRef('')
   const bubbleKey = `requirement-selection-${id}`
@@ -192,12 +198,18 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
     if (value === emitted.current) return
     emitted.current = value; latest.current.onChange(value)
   }
+  const documentBody = (document: ProseMirrorNode): string =>
+    selectionReplacement.current?.document.eq(document) ? selectionReplacement.current.body : document.eq(document.type.schema.nodeFromJSON(original.current.content)) ? original.current.markdown : markdown.serialize(document.toJSON())
   const [guard] = useState(() => Extension.create({
     name: 'requirementMarkdownGuard',
     addProseMirrorPlugins: () => [new Plugin({ filterTransaction(transaction) {
       if (!transaction.docChanged || applying.current || !ready.current) return true
       try {
-        const text = markdown.serialize(transaction.doc.toJSON())
+        const text = documentBody(transaction.doc)
+        if (!bodyWithinLimit(text)) {
+          queueMicrotask(() => { if (mounted.current) setIssue(bodyLimitMessage) })
+          return false
+        }
         if (preservesContent(transaction.doc, text)) return true
       } catch { /* Keep the last good document instead of admitting an unrepresentable edit. */ }
       queueMicrotask(() => { if (mounted.current) setIssue('此格式暂不能完整保存，已保留原文；可切换源码编辑。') })
@@ -217,9 +229,8 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
       if (!ready.current || applying.current || modeRef.current !== 'rich' || !mounted.current) return
       version.current++
       if (reviewRef.current) setReview({ ...reviewRef.current })
-      const content = editor.getJSON()
       // Undoing back to an unedited loaded document restores its exact original bytes.
-      const text = selectionReplacement.current?.document.eq(editor.state.doc) ? selectionReplacement.current.body : editor.state.doc.eq(editor.schema.nodeFromJSON(original.current.content)) ? original.current.markdown : markdown.serialize(content)
+      const text = documentBody(editor.state.doc)
       try {
         if (!preservesContent(editor.state.doc, text)) { setIssue('当前格式暂不能完整保存，请撤销本次格式操作或切换源码。'); return }
       } catch { setIssue('当前格式暂不能完整保存，请撤销本次格式操作。'); return }
@@ -446,6 +457,7 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
   }
   const readSourceSelection = (): void => {
     const field = source.current
+    if (field) sourceSelection.current = { start: field.selectionStart, end: field.selectionEnd }
     if (!field || field.selectionStart === field.selectionEnd) { updateSelection(null); return }
     const from = sourceOffset(current.current, field.selectionStart), to = sourceOffset(current.current, field.selectionEnd)
     updateSelection(selectionValue(current.current.slice(from, to), from, to, 'markdown'))
@@ -500,8 +512,16 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
       {review.phase === 'error' && <p className="my-item-description" role="alert">{review.error}</p>}
       {review.phase === 'receipt-error' && <p className="my-item-description" role="alert">本地修改已保留。{review.error} 请在文档菜单中检查原操作，勿重复应用。</p>}
       {review.phase === 'review' && <>
+        {!reviewSnapshotCurrent(review) && <>
+          <p className="my-item-description" role="status">生成期间文档已变更。下面展示生成时全文、当前全文及对应原选区的候选；不能自动应用。</p>
+          <div className="requirement-editor-review-comparison" aria-label="生成时正文、当前正文和候选选区比较">
+            <section><h3 className="my-item-title">生成时全文</h3><pre tabIndex={0} aria-label="生成时全文" className="my-scrollbar">{review.baseline}</pre><h4 className="my-item-title">原选区</h4><pre tabIndex={0} aria-label="原选区" className="my-scrollbar">{review.selection.text}</pre></section>
+            <section><h3 className="my-item-title">当前全文</h3><pre tabIndex={0} aria-label="当前全文" className="my-scrollbar">{current.current}</pre></section>
+            <section><h3 className="my-item-title">候选选区</h3><pre tabIndex={0} aria-label="候选选区" className="my-scrollbar">{review.candidate}</pre></section>
+          </div>
+        </>}
         <div className="requirement-editor-review-diff" aria-label="原文与候选差异">{(() => { const diff = diffText(review.selection.text, review.candidate); return <>{diff.prefix}<del>{diff.removed}</del><ins>{diff.added}</ins>{diff.suffix}</> })()}</div>
-        <div className="requirement-editor-review-candidate"><span className="my-item-title">候选文本</span><div>{review.candidate}</div></div>
+        {reviewSnapshotCurrent(review) && <div className="requirement-editor-review-candidate"><span className="my-item-title">候选文本</span><div>{review.candidate}</div></div>}
         {copyFeedback.status === 'copied' && <p className="my-item-description" role="status">候选文本已复制。</p>}
         {copyFeedback.status === 'error' && <p className="my-item-description" role="alert">复制失败，请手动选择候选文本复制。</p>}
         {!canApplyReview(review) && <p className="my-item-description">{review.candidate === review.selection.text ? '候选与原文相同。' : !props.onSelectionApplied ? '暂无法登记应用回执，请比较或复制候选。' : '无法确认原选区可安全替换，请比较或复制候选。'}</p>}
@@ -526,7 +546,17 @@ export function DocumentEditor(props: DocumentEditorProps): JSX.Element {
       {props.onQuote && <Button size="sm" variant="ghost" onClick={() => quote(false)}><Quote size={13} />引用</Button>}
       {(props.onPolish || props.onSelectionEdit) && <Button size="sm" variant="ghost" disabled={Boolean(review)} onClick={() => quote(true)}><Sparkles size={13} />润色</Button>}
     </BubbleMenu>}
-    <textarea ref={source} hidden={mode !== 'source'} className="requirement-editor-source my-scrollbar" value={raw} placeholder={props.placeholder ?? '开始记录需求…'} aria-label={`${props.ariaLabel ?? '需求文档正文'}源码`} aria-describedby={issue ? `${id}-issue` : undefined} readOnly={disabled} spellCheck={false} onChange={event => { if (disabled || !canInteract()) return; version.current++; publish(event.target.value); readSourceSelection() }} onSelect={readSourceSelection} onKeyUp={readSourceSelection} onPointerUp={readSourceSelection} />
+    <textarea ref={source} hidden={mode !== 'source'} className="requirement-editor-source my-scrollbar" value={raw} placeholder={props.placeholder ?? '开始记录需求…'} aria-label={`${props.ariaLabel ?? '需求文档正文'}源码`} aria-describedby={issue ? `${id}-issue` : undefined} readOnly={disabled} spellCheck={false} onBeforeInput={event => { sourceSelection.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd } }} onChange={event => {
+      if (disabled || !canInteract()) return
+      const field = event.currentTarget, value = field.value
+      if (!bodyWithinLimit(value)) {
+        field.value = current.current
+        const selection = sourceSelection.current, length = field.value.length
+        if (selection) field.setSelectionRange(Math.min(selection.start, length), Math.min(selection.end, length))
+        setIssue(bodyLimitMessage); return
+      }
+      version.current++; setIssue(''); publish(value); readSourceSelection()
+    }} onSelect={readSourceSelection} onKeyUp={readSourceSelection} onPointerUp={readSourceSelection} />
   </div>
 }
 
