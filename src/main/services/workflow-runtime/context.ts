@@ -34,12 +34,14 @@ export type PreparedWorkflowContext = {
   additionalInputs: 'known' | 'unobserved';
   entries: Array<{ ref: string; purpose: 'baseline' | 'spec' | 'delta' | 'other'; material: ContextMaterial }>
 }
-type PacketEntry = {
+export type WorkflowPacketEntry = {
   ref: string; material: ContextMaterial['material']; purpose: string; reason: string;
   inclusion: ContextMaterial['inclusion']; text?: string
 }
 const digestOf = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
-const packetText = (entries: PacketEntry[], omitted: number): string => '\n\n<workflow_materials untrusted="true">\n' + JSON.stringify({ version: 1, entries, omitted }) + '\n</workflow_materials>'
+export const workflowPacketText = (entries: WorkflowPacketEntry[], omitted: number): string => '\n\n<workflow_materials untrusted="true">\n' + JSON.stringify({ version: 1, entries, omitted }) + '\n</workflow_materials>'
+/** The same UTF-8/JSON framing used by the native prompt; callers must account for actual metadata and instructions. */
+export const workflowContextBytes = (instruction: string, entries: WorkflowPacketEntry[], omitted: number): number => Buffer.byteLength(instruction + WORKFLOW_REFERENCE_PREFIX + workflowPacketText(entries, omitted), 'utf8')
 function prefix(bytes: Buffer, limit: number): string {
   let end = Math.min(limit, bytes.length)
   // UTF-8 continuation bytes begin 10xxxxxx; back off to a complete codepoint.
@@ -50,7 +52,7 @@ function prefix(bytes: Buffer, limit: number): string {
 export async function prepareWorkflowContext(store: WorkflowMaterialStore, raw: PrepareWorkflowContextInput): Promise<PreparedWorkflowContext> {
   const request = prepareWorkflowContextSchema.parse(raw)
   if (request.sessionMode === 'new' && request.selections.some((s) => s.purpose === 'delta') && !request.selections.some((s) => s.purpose === 'baseline')) throw new WorkflowRuntimeError('MISSING_BASELINE', 'A new session cannot receive feedback deltas without the effective baseline')
-  const packet: PacketEntry[] = []
+  const packet: WorkflowPacketEntry[] = []
   const materials: ContextMaterial[] = []
   const entries: PreparedWorkflowContext['entries'] = []
   const sources: AcpMaterialSource[] = []
@@ -60,7 +62,7 @@ export async function prepareWorkflowContext(store: WorkflowMaterialStore, raw: 
   let omitted = 0
   let complete = true
   let baselineIncluded = false
-  const byteCount = (candidate: PacketEntry[], missing = omitted): number => Buffer.byteLength(request.instruction + WORKFLOW_REFERENCE_PREFIX + packetText(candidate, missing), 'utf8')
+  const byteCount = (candidate: WorkflowPacketEntry[], missing = omitted): number => workflowContextBytes(request.instruction, candidate, missing)
   if (byteCount([], request.selections.length) > request.budgetBytes) throw new WorkflowRuntimeError('CAPACITY_EXCEEDED', 'Effective instructions and material metadata exceed the context byte budget')
 
   for (const selection of request.selections) {
@@ -84,7 +86,7 @@ export async function prepareWorkflowContext(store: WorkflowMaterialStore, raw: 
       if (selection.purpose === 'baseline' && previous.contentIncluded) baselineIncluded = true
       continue
     }
-    const base: PacketEntry = { ref: selection.ref, material, purpose: selection.purpose, reason: selection.reason, inclusion: stored ? 'full' : 'unavailable' }
+    const base: WorkflowPacketEntry = { ref: selection.ref, material, purpose: selection.purpose, reason: selection.reason, inclusion: stored ? 'full' : 'unavailable' }
     let includedText: string | undefined
     let inclusion: ContextMaterial['inclusion'] = stored ? 'full' : 'unavailable'
     if (stored) {
@@ -127,7 +129,7 @@ export async function prepareWorkflowContext(store: WorkflowMaterialStore, raw: 
   if (request.sessionMode === 'new' && request.selections.some((s) => s.purpose === 'delta') && !baselineIncluded) throw new WorkflowRuntimeError('MISSING_BASELINE', 'The effective baseline was not actually included for the new session')
   const manifest = contextManifestSchema.parse({ scope: request.scope, instruction: request.instruction, inputs: request.inputs, materials,
     engineeringBaseline: request.engineeringBaseline, outputContract: request.outputContract, budgetBytes: request.budgetBytes, complete: complete && request.effectiveInputsComplete })
-  const text = packetText(packet, omitted)
+  const text = workflowPacketText(packet, omitted)
   const promptBytes = Buffer.byteLength(request.instruction + WORKFLOW_REFERENCE_PREFIX + text, 'utf8')
   if (promptBytes > request.budgetBytes) throw new WorkflowRuntimeError('CAPACITY_EXCEEDED', 'Serialized context exceeded the admitted byte budget')
   return { manifest, instruction: request.instruction, materials: { text, files, sources, changed: [] }, promptBytes,

@@ -27,10 +27,10 @@ export const ipcInvoke = {
     projects: 'privateConversations:projects', createProject: 'privateConversations:createProject', reclassify: 'privateConversations:reclassify',
     git: 'privateConversations:git',
     requirements: {
-      list: 'privateConversations:requirements:list', create: 'privateConversations:requirements:create', read: 'privateConversations:requirements:read',
+      list: 'privateConversations:requirements:list', create: 'privateConversations:requirements:create', createSuccessor: 'privateConversations:requirements:createSuccessor', read: 'privateConversations:requirements:read',
       save: 'privateConversations:requirements:save', sync: 'privateConversations:requirements:sync',
       target: 'privateConversations:requirements:target', commit: 'privateConversations:requirements:commit', open: 'privateConversations:requirements:open',
-      run: 'privateConversations:requirements:run', observe: 'privateConversations:requirements:observe', adopt: 'privateConversations:requirements:adopt',
+      run: 'privateConversations:requirements:run', observe: 'privateConversations:requirements:observe', adopt: 'privateConversations:requirements:adopt', applySelection: 'privateConversations:requirements:applySelection', resolveConflict: 'privateConversations:requirements:resolveConflict',
       evidence: 'privateConversations:requirements:evidence',
       confirmRequirement: 'privateConversations:requirements:confirmRequirement', savePlan: 'privateConversations:requirements:savePlan',
       prepareExecution: 'privateConversations:requirements:prepareExecution',

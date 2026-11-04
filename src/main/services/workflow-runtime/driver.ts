@@ -26,6 +26,8 @@ export type WorkflowStagePlan = {
   };
   nativeTask?: Pick<NativeTaskBindingInput, 'platform' | 'pythonExecutable' | 'allowBinding'>;
   assertCurrent: () => void
+  /** Recheck async source authorization immediately before each native prompt. */
+  authorizeCurrent?: () => Promise<void>
 }
 export type StageResult = {
   operationId: string; status: 'passed' | 'failed' | 'cancelled' | 'outcome-unknown';
@@ -214,6 +216,8 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
         const instruction = repairIndex === 0 ? plan.context.instruction : `${plan.context.instruction}\n\nThe preceding output did not meet the declared output contract. Repair only the missing/invalid result; inspect existing files before repeating any side effect. Attempt ${repairIndex}/${plan.output.maxRepairTurns}.`
         if (Buffer.byteLength(instruction + WORKFLOW_REFERENCE_PREFIX + plan.context.materials.text) > plan.context.manifest.budgetBytes) return await this.finish(stage, 'failed', 'Repair instruction does not fit the admitted context budget; no extra prompt was sent')
         await this.report(stage, 'workflow.prompt-intent', { repairIndex, materialRefs: plan.context.packetRefs })
+        await plan.authorizeCurrent?.()
+        plan.assertCurrent()
         const identity = (value: WorkflowAcpTurnIdentity): boolean => {
           if (value.sessionId !== stage.sessionId || value.connectionGeneration !== stage.generation) { stage.reportError = new Error('Facade returned a foreign prompt identity'); stage.stopRequested = true; return false }
           stage.turnId = value.turnId; stage.admitted = true
@@ -229,7 +233,7 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
         if (!sent.ok) throw new WorkflowRuntimeError(stage.written ? 'OUTCOME_UNKNOWN' : 'EXECUTOR_UNAVAILABLE', sent.error)
         if (stage.turnId !== null && stage.turnId !== sent.turnId) throw new WorkflowRuntimeError('OUTCOME_UNKNOWN', 'Prompt return differs from admitted native turn')
         stage.turnId = sent.turnId
-        if (!stage.written) { stage.written = true; await this.receipts(stage, plan.context, 'emitted-to-host') }
+        if (!stage.written) throw new WorkflowRuntimeError('OUTCOME_UNKNOWN', 'Native prompt returned without its prompt-written callback; delivery must be reconciled')
         stage.acknowledgement = { operationId: request.operationId, status: 'accepted', sessionId: stage.sessionId, turnId: stage.turnId, evidenceRefs: ['facade-prompt-written'] }
         await this.awaitTerminal(stage, plan)
         await stage.queue
@@ -260,7 +264,8 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
           await this.report(stage, 'workflow.output-verified', { outputs: stage.outputs, repairIndex, historyCommitted: stage.historyCommitted, historySeq: stage.historySeq })
           return await this.finish(stage, 'passed', null)
         }
-        await this.report(stage, 'workflow.output-invalid', { repairIndex, observedOutputs: stage.outputs, reason: output.reason ?? structured.reason ?? 'Output contract rejected the result' })
+        await this.report(stage, 'workflow.output-invalid', { repairIndex, observedOutputs: stage.outputs, reason: output.reason ?? structured.reason ?? 'Output contract rejected the result', ...(output.outputPath ? { outputPath: output.outputPath } : {}) })
+        if (output.reason === 'MATERIAL_UNAVAILABLE') return await this.finish(stage, 'failed', 'Required output version is unavailable; native side effects may already exist; no further repair prompt was sent')
         if (repairIndex === plan.output.maxRepairTurns) return await this.finish(stage, 'failed', 'Bounded output repair was exhausted; native side effects may already exist')
       }
       return await this.finish(stage, 'failed', 'Output repair exhausted')
@@ -349,7 +354,7 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
     }
     if (!stage.terminal) { stage.stopRequested = true; throw new WorkflowRuntimeError('OUTCOME_UNKNOWN', 'Stage deadline elapsed; canonical stop/reconciliation is required') }
   }
-  private async captureOutputs(stage: LiveStage, plan: WorkflowStagePlan): Promise<{ ok: boolean; reason?: string }> {
+  private async captureOutputs(stage: LiveStage, plan: WorkflowStagePlan): Promise<{ ok: boolean; reason?: string; outputPath?: string }> {
     const outputs: StageResult['outputs'] = []
     stage.outputs = outputs
     for (const output of plan.output.files) {
@@ -360,13 +365,13 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
         // Infrastructure/authorization failures do not establish malformed model
         // output and must never ask the engine to repeat possible side effects.
         if (!(error instanceof WorkflowRuntimeError) || error.code !== 'MATERIAL_UNAVAILABLE') throw error
-        if (output.required) return { ok: false, reason: error.code }
+        if (output.required) return { ok: false, reason: error.code, outputPath: output.relativePath }
         continue
       }
       outputs.push({ ref: stored.ref, material: stored.material })
-      if (output.required && !stored.text.trim()) return { ok: false, reason: 'Required output file is empty' }
+      if (output.required && !stored.text.trim()) return { ok: false, reason: 'Required output file is empty', outputPath: output.relativePath }
       const checked = plan.output.validateMaterial?.(stored)
-      if (checked && !checked.ok) return { ok: false, reason: checked.reason ?? 'Pinned output bytes did not meet the declared material contract' }
+      if (checked && !checked.ok) return { ok: false, reason: checked.reason ?? 'Pinned output bytes did not meet the declared material contract', outputPath: output.relativePath }
     }
     return { ok: true }
   }

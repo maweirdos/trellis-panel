@@ -5,7 +5,7 @@ import { realpath, lstat } from 'node:fs/promises'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { canonicalWorkflowJson, legacyFlowSchema, workflowDefinitionSchema, type ExecutorBinding, type WorkflowDefinition, type VersionedAssetRef } from '../../shared/workflow'
+import { canonicalWorkflowJson, legacyFlowSchema, workflowDefinitionSchema, runRefSchema, type RunRef, type ExecutorBinding, type WorkflowDefinition, type VersionedAssetRef } from '../../shared/workflow'
 import type { AcpSessionMeta, FlowDef } from '../../shared/types'
 import type { WorkflowOrigin } from '../../shared/workflow-application'
 import { listAcpAgents, listAcpProfiles, listAcpSessions, listOwnedAcpSessionFacts, getAcpHistorySession, type OwnedAcpSessionFacts } from './acp'
@@ -17,6 +17,12 @@ import { readDocument } from './documents'
 import { getDocumentViews, readerMaterialOwner } from './document-views'
 import { canonicalWorkspaceRoot, executionWorkspaceRoot, claimWorkspaceAdmission, waitForWorkspaceAdmissions, workspaceProjects, registerWorkspaceProject, WorkflowAdmissionError, type NativeAdmissionOwner } from './workflow-admission'
 import type { WorkflowStartInput } from '../../shared/workflow-application'
+import { REQUIREMENT_REPORT_JSON_BYTES, requirementStageInstruction } from './workflow-application/requirement-flow'
+import { requirementPredecessorSchema, requirementTaskOriginSchema, type RequirementPredecessor } from '../../shared/conversation-requirements'
+import { readStoppedBeforeDispatchEvidence, requireReleasedPredecessor } from './workflow-application/predecessor-evidence'
+import { workcopyUseRegistry, resolveWorkcopy } from './workcopy-use'
+import { readRegular, hash as hashFile, pathKey } from './private-conversations/files'
+import { utf8 } from './private-conversations/requirement-files'
 
 const hash = (value: unknown): string => createHash('sha256').update(canonicalWorkflowJson(JSON.parse(JSON.stringify(value)))).digest('hex')
 const asset = (assetId: string, value: unknown): VersionedAssetRef => {
@@ -71,17 +77,18 @@ async function verifiedExecutor(root: string, origin: WorkflowOrigin): Promise<{
   return { executor: { binding, agentId: session.agentId, ...(profile ? { profileId: profile.id } : {}) }, assertCurrent, assertExecutionCurrent }
 }
 
-function builtIn(rootTask: string, executor: VerifiedApplicationExecutor): { definition: WorkflowDefinition; nodes: Record<string, ApplicationNodePolicy> } {
+function builtIn(rootTask: string, executor: VerifiedApplicationExecutor, reviewedRequirement = false): { definition: WorkflowDefinition; nodes: Record<string, ApplicationNodePolicy> } {
+  const selectedStages = reviewedRequirement ? stages.filter((stage) => stage.id === 'implement' || stage.id === 'check') : stages
   const flow: FlowDef = {
     version: 1, id: TRELLIS_MANAGED_FLOW, name: 'Trellis 任务开发', description: '需求、设计、开发与自检；产物核验不代替产品或测试验收。', inputs: [],
-    phases: stages.map((stage) => ({ id: stage.id, name: stage.label, steps: [{ id: stage.id, name: stage.label, kind: 'agent', instruction: `${stage.instruction}\n任务目录：.trellis/tasks/${rootTask}\n产物写入该任务目录的 ${stage.file}。遵循项目原有任务权限与工作流；不要修改其他任务。` }] }))
+    phases: selectedStages.map((stage) => ({ id: stage.id, name: stage.label, steps: [{ id: stage.id, name: stage.label, kind: 'agent', instruction: reviewedRequirement && (stage.id === 'implement' || stage.id === 'check') ? requirementStageInstruction(rootTask, stage.id) : `${stage.instruction}\n\n任务目录：.trellis/tasks/${rootTask}\n产物写入该任务目录的 ${stage.file}。遵循项目原有任务权限与工作流；不要修改其他任务。` }] }))
   }
   const nodes: Record<string, ApplicationNodePolicy> = {}
-  for (const stage of stages) {
+  for (const stage of selectedStages) {
     const file = { relativePath: `.trellis/tasks/${rootTask}/${stage.file}`, kind: stage.kind, required: true }
-    nodes[stage.id] = { agentId: executor.agentId, profileId: executor.profileId, output: { contract: asset(`trellis-artifact:${stage.id}`, { files: [file], verification: 'nonempty-artifact-only' }), files: [file], maxRepairTurns: 1, validateMaterial: (material) => ({ ok: material.text.trim().length > 0, reason: '阶段产物为空' }) }, ...(['codex', 'claude'].includes(executor.agentId) ? { nativeTask: { platform: executor.agentId as 'codex' | 'claude', allowBinding: true } } : {}) }
+    nodes[stage.id] = { agentId: executor.agentId, profileId: executor.profileId, output: { contract: asset(`trellis-artifact:${stage.id}`, { files: [file], verification: reviewedRequirement && stage.id === 'implement' ? 'nonempty-and-bounded-report' : 'nonempty-artifact-only' }), files: [file], maxRepairTurns: 1, validateMaterial: (material) => ({ ok: material.text.trim().length > 0 && (!reviewedRequirement || stage.id !== 'implement' || Buffer.byteLength(JSON.stringify(material.text), 'utf8') <= REQUIREMENT_REPORT_JSON_BYTES), reason: '阶段产物为空或实施报告超过上下文预算' }) }, ...(['codex', 'claude'].includes(executor.agentId) ? { nativeTask: { platform: executor.agentId as 'codex' | 'claude', allowBinding: true } } : {}) }
   }
-  return { definition: workflowDefinitionSchema.parse({ contractVersion: 1, ref: { definitionId: `${TRELLIS_MANAGED_FLOW}:${hash(flow)}`, revision: 1 }, flow, defaultExecutor: executor.binding, nodeBindings: [], trellisPhases: Object.fromEntries(stages.map((stage) => [stage.id, stage.phase])) }), nodes }
+  return { definition: workflowDefinitionSchema.parse({ contractVersion: 1, ref: { definitionId: `${TRELLIS_MANAGED_FLOW}:${hash(flow)}`, revision: 1 }, flow, defaultExecutor: executor.binding, nodeBindings: [], trellisPhases: Object.fromEntries(selectedStages.map((stage) => [stage.id, stage.phase])) }), nodes }
 }
 
 const localOutputSchema = z.object({ files: z.array(z.object({ path: z.string().min(1).max(2048), kind: z.enum(['product-requirement', 'trellis-prd', 'design', 'spec', 'code', 'feedback', 'other']), required: z.boolean().default(true) }).strict()).min(1).max(16), maxRepairTurns: z.number().int().min(0).max(3).default(1) }).strict()
@@ -99,12 +106,14 @@ export async function getWorkflowApplication(root: string): Promise<WorkflowAppl
   if (admissionClosed) throw new WorkflowApplicationError('STORE_DEGRADED', '应用正在退出，暂不接纳新的工作流')
   const pending = WorkflowApplicationService.create({
     projectRoot: canonical, acp: createFacadeWorkflowAcpPort({ isCurrent: () => !admissionClosed }),
+    checkRequirementPredecessor: async (predecessor, run) => { await checkRequirementPredecessor(canonical, predecessor, run) },
     resolveDefinition: async ({ flowId, origin, taskDir }) => {
       const { executor, assertCurrent, assertExecutionCurrent } = await verifiedExecutor(canonical, origin)
       if (flowId === TRELLIS_MANAGED_FLOW) {
         const task = await readDocument(canonical, { workspaceId: canonical, taskRef: taskDir }, { relativePath: `.trellis/tasks/${taskDir}/task.json`, requestId: 'workflow-task-authorization' })
         if (!task.ok || !task.rawText || JSON.parse(task.rawText).status !== 'in_progress') throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', '此模板包含实际代码开发；请先按项目规则确认并激活该 Trellis 任务')
-        return { ...builtIn(taskDir, executor), assertCurrent, assertExecutionCurrent }
+        const data = JSON.parse(task.rawText)
+        return { ...builtIn(taskDir, executor, Boolean(data.meta?.conversationRequirement)), assertCurrent, assertExecutionCurrent }
       }
       if (!/^[A-Za-z0-9_-]{1,128}$/.test(flowId)) throw new WorkflowApplicationError('INVALID_INPUT', '工作流标识无效')
       const read = await readDocument(canonical, { workspaceId: canonical }, { relativePath: `.trellis/flows/${flowId}.flow.json`, requestId: 'workflow-source-policy' })
@@ -146,6 +155,43 @@ async function existingApplication(root: string): Promise<WorkflowApplicationSer
   try { await lstat(join(canonical, '.trellis', '.panel', 'runtime', 'workflow-local-identity.json')) }
   catch (error) { if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return null; throw error }
   return getWorkflowApplication(canonical)
+}
+
+/** Read the original durable head, live native ownership and actual workcopy registry. */
+export async function checkRequirementPredecessor(root: string, raw: RequirementPredecessor, expected?: RunRef): Promise<{ run: RunRef; state: string }> {
+  assertRuntimeExecutionHost()
+  const predecessor = requirementPredecessorSchema.parse(raw), expectedRun = expected ? runRefSchema.parse(expected) : undefined
+  const canonical = await realpath(root), predecessorRoot = await realpath(predecessor.task.root)
+  if (pathKey(canonical) !== pathKey(predecessorRoot)) throw new WorkflowApplicationError('SCOPE_CHANGED', '后继任务与原任务不属于同一已核验工程')
+  const prefix = `.trellis/tasks/${predecessor.task.taskDir}/`
+  const assertOriginal = (): void => {
+    const task = z.object({ id: z.string(), meta: z.object({ conversationRequirement: requirementTaskOriginSchema }).passthrough() }).passthrough().parse(JSON.parse(utf8(readRegular(canonical, prefix + 'task.json', 512 * 1024).bytes)))
+    const original = task.meta.conversationRequirement
+    if (task.id !== predecessor.task.taskId || original.draftId !== predecessor.draftId || original.commandId !== predecessor.handoffCommandId || original.draftRevision !== predecessor.draftRevision || original.confirmedRevision !== predecessor.confirmedRevision || original.planRevision !== predecessor.planRevision || original.bodyRevision !== predecessor.bodyRevision || original.manifestRevision !== predecessor.manifestRevision || hashFile(readRegular(canonical, prefix + original.manifestPath, 64 * 1024).bytes) !== predecessor.manifestRevision) throw new WorkflowApplicationError('SCOPE_CHANGED', '原任务或固定交接身份已变化')
+  }
+  assertOriginal()
+  const application = await existingApplication(canonical)
+  if (!application) throw new WorkflowApplicationError('OUTCOME_UNKNOWN', '原任务没有可核对的工作流控制记录')
+  const workspace = executionWorkspaceRoot(canonical)
+  await assertNoManagedOwner(canonical, workspace)
+  const projection = await application.snapshot({ taskDir: predecessor.task.taskDir })
+  const workspaceOwner = await application.control.workspaceOwner({ projectId: application.identity.projectId, repositoryId: application.identity.repositoryId, workspaceId: application.identity.workspaceId })
+  const noDispatchEvidence = projection.nodes.some(node => node.sessionId && node.run) ? undefined : await readStoppedBeforeDispatchEvidence(application.control, projection, workspaceOwner, predecessor.task.taskDir)
+  const uses = workcopyUseRegistry().facts(resolveWorkcopy(canonical))
+  const nativeSessionIds = listOwnedAcpSessionFacts().map(session => session.sessionId)
+  const run = requireReleasedPredecessor({ projection, workspaceOwner, uses, nativeSessionIds, expectedRun, noDispatchEvidence })
+  await assertNoManagedOwner(canonical, workspace)
+  const again = await application.snapshot({ taskDir: predecessor.task.taskDir })
+  const latestOwner = await application.control.workspaceOwner({ projectId: application.identity.projectId, repositoryId: application.identity.repositoryId, workspaceId: application.identity.workspaceId })
+  const latestEvidence = noDispatchEvidence === undefined ? undefined : await readStoppedBeforeDispatchEvidence(application.control, again, latestOwner, predecessor.task.taskDir)
+  if (noDispatchEvidence !== latestEvidence) throw new WorkflowApplicationError('OUTCOME_UNKNOWN', '原运行停止证据在核对期间发生变化')
+  const finalProjection = await application.snapshot({ taskDir: predecessor.task.taskDir })
+  const finalOwner = await application.control.workspaceOwner({ projectId: application.identity.projectId, repositoryId: application.identity.repositoryId, workspaceId: application.identity.workspaceId })
+  if (hash(again) !== hash(finalProjection) || hash(latestOwner) !== hash(finalOwner)) throw new WorkflowApplicationError('OUTCOME_UNKNOWN', '原运行或租约在核对期间发生变化')
+  assertOriginal()
+  requireReleasedPredecessor({ projection: finalProjection, workspaceOwner: finalOwner, uses: workcopyUseRegistry().facts(resolveWorkcopy(canonical)), nativeSessionIds: listOwnedAcpSessionFacts().map(session => session.sessionId), expectedRun: run, noDispatchEvidence: latestEvidence })
+  if (!finalProjection.snapshot) throw new WorkflowApplicationError('OUTCOME_UNKNOWN', '原运行在核对期间不可用')
+  return { run, state: finalProjection.snapshot.run.state }
 }
 const samePhysicalWorkspace = (a: string, b: string): boolean => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
 function ownedNativeBusy(session: OwnedAcpSessionFacts): boolean {

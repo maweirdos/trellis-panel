@@ -10,6 +10,8 @@ import { taskProgressNativeSchema } from './hifox-task-progress-native'
 import { workcopyUseRequestSchema, workcopyCleanupRequestSchema } from './workcopy-use'
 import { privateNativeReadSchema, privateNativeSendSchema, privateNativeControlSchema } from './private-conversations'
 import { privateNativeConfigureSchema, privateNativeRecoverModelSchema } from './private-conversation-controls'
+import { requirementPredecessorSchema } from './conversation-requirements'
+import { runRefSchema } from './workflow'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
@@ -71,6 +73,7 @@ export const runtimeBodies = {
   'runtime.workflow.preview': workflowPreviewInputSchema,
   'runtime.workflow.start': workflowStartInputSchema,
   'runtime.workflow.snapshot': workflowSnapshotInputSchema,
+  'runtime.workflow.requirementPredecessor': z.object({ predecessor: requirementPredecessorSchema, expectedRun: runRefSchema.optional() }).strict(),
   'runtime.workflow.events': workflowEventsInputSchema,
   'runtime.workflow.stop': workflowStopInputSchema,
   'runtime.workflow.previewRevision': workflowRevisionPreviewInputSchema,

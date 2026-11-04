@@ -6,6 +6,9 @@
 .requirement-execution-inputs { padding-block: var(--my-space-4); }
 .requirement-execution-engine { display: grid; grid-template-columns: auto minmax(0, var(--my-settings-field-width)); align-items: center; gap: var(--my-space-16); justify-content: start; }
 .requirement-execution-workflow { min-width: 0; }
+.requirement-execution-review { display: flex; flex-direction: column; align-items: stretch; gap: var(--my-space-8); min-width: 0; }
+.requirement-execution-review summary { overflow-wrap: anywhere; }
+.requirement-execution-review > button { align-self: flex-start; }
 .requirement-execution-workflow>.requirement-execution-state { margin-bottom: var(--my-space-12); }
 .requirement-execution pre { max-height: var(--my-composer-max-height); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--my-text-activity); }
 @media (max-width: 600px) { .requirement-execution-engine { grid-template-columns: minmax(0, 1fr); } }

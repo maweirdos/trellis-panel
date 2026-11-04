@@ -31,6 +31,7 @@ export type WorkflowApplicationOptions = {
   resolveDefinition: (input: { projectRoot: string; flowId: string; origin: WorkflowOrigin; taskDir: string }) => Promise<ResolvedApplicationDefinition>;
   /** Main owns project lifetime; switching selected chat does not change this. */
   assertProject?: () => void;
+  checkRequirementPredecessor?: (predecessor: import('../../../shared/conversation-requirements').RequirementPredecessor, run: import('../../../shared/workflow').RunRef) => Promise<void>;
   contextBudgetBytes?: number; previewTtlMs?: number; driverTimeouts?: { startupTimeoutMs?: number; turnTimeoutMs?: number }
 }
 export type PreparedApplicationStage = { context: PreparedWorkflowContext; compiled: CompiledWorkflow; manifest: RunManifest; request: DriverDispatch; policy: ApplicationNodePolicy }

@@ -32,6 +32,7 @@ export class PrivateConversations {
   private observers = new Map<string, { id: string; selected: boolean; busy: boolean; cursor: RuntimeCursor | null; nextAt: number; touchedAt: number; live: boolean }>()
   private observerTimer?: NodeJS.Timeout
   constructor(private readonly ports: PrivateConversationPorts) {}
+  creatorIdentity(): string { return this.localCreator() }
   private directory(): string {
     const userData = checkedDirectory(this.ports.directory())
     return ownedDirectory(userData, 'private-conversations')

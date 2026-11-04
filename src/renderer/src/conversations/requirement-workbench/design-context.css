@@ -1,0 +1,11 @@
+.requirement-design-context-body { display: flex; flex-direction: column; gap: var(--my-space-12); padding-block: var(--my-space-8) var(--my-space-12); }
+.requirement-design-context-list { display: flex; flex-direction: column; gap: var(--my-space-8); min-width: 0; margin: 0; padding: 0; border: 0; }
+.requirement-design-context-list legend { padding: 0 0 var(--my-space-4); }
+.requirement-design-context-option { display: flex; align-items: flex-start; gap: var(--my-space-8); min-width: 0; cursor: pointer; }
+.requirement-design-context-option input { flex: none; margin-block-start: var(--my-space-4); accent-color: var(--my-bg-accent-primary); }
+.requirement-design-context-option input:focus-visible { outline: 2px solid var(--my-focus-ring); outline-offset: 2px; }
+.requirement-design-context-option > span { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.requirement-design-context-unavailable { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-8); min-width: 0; overflow-wrap: anywhere; }
+.requirement-design-context-direction { display: flex; flex-direction: column; gap: var(--my-space-4); }
+.requirement-design-context-direction textarea { width: 100%; min-height: var(--my-control-height); resize: vertical; border-radius: var(--my-radius-base); }
+.requirement-design-context[open] > summary > svg:last-child { transform: rotate(180deg); }

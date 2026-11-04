@@ -20,6 +20,8 @@ import { ConversationPreviewLayout } from '../acp/ConversationPreviewLayout'
 import { ConversationPreviewTabs } from '../acp/ConversationPreviewTabs'
 import { usePiWebPreviewShelf } from '../acp/PiWebPreviewShelf'
 import { CodePreviewProvider, type OpenCodePreview } from '../components/CodePreviewContext'
+import type { RequirementBuildPreparation } from './requirement-workbench/useRequirementWorkbench'
+import type { RequirementBuildChoice } from './requirement-workbench/BuildPreparation'
 import { DocumentSourceProvider } from '../reader/document-source'
 import { ConnectionNotice } from '../acp/ConnectionNotice'
 import { isPrivateEntrySelected, usePrivateDocumentSource } from './source'
@@ -31,8 +33,18 @@ import './workspace.css'
 const loadRequirementWorkbench = () => import('./requirement-workbench/Workbench')
 const RequirementWorkbench = lazy(loadRequirementWorkbench)
 const RequirementExecutionFlow = lazy(() => import('./requirement-workbench/ExecutionFlow').then(module => ({ default: module.RequirementExecutionFlow })))
+const BuildPreparation = lazy(() => import('./requirement-workbench/BuildPreparation').then(module => ({ default: module.BuildPreparation })))
 type RequirementSelection = { id?: string; commandId: string }
 const retainedRequirements = new Map<string, RequirementSelection>()
+const buildAgentKey = (creatorId: string, conversationId: string, draftId: string): string => `tpanel.requirement-build-agent.v1.${encodeURIComponent(creatorId)}.${conversationId}.${draftId}`
+function readBuildAgent(creatorId: string, conversationId: string, draftId: string, planRevision?: string): string | undefined {
+  try {
+    const raw = localStorage.getItem(buildAgentKey(creatorId, conversationId, draftId))
+    const value: unknown = raw ? JSON.parse(raw) : null
+    if (!value || typeof value !== 'object' || !('agentId' in value) || !('planRevision' in value)) return undefined
+    return typeof value.agentId === 'string' && /^[\w.-]{1,100}$/.test(value.agentId) && value.planRevision === planRevision ? value.agentId : undefined
+  } catch { return undefined }
+}
 
 export function PrivateWorkspace(): JSX.Element {
   const selected = useConversations((state) => state.selected), entries = useConversations((state) => state.entries), projects = useConversations((state) => state.projects)
@@ -45,7 +57,11 @@ export function PrivateWorkspace(): JSX.Element {
   const [mobileHistory, setMobileHistory] = useState(false), [fileOwner, setFileOwner] = useState<string | null>(null)
   const [newPending, setNewPending] = useState(false), [error, setError] = useState('')
   const [requirement, setRequirement] = useState<{ entryKey: string; id?: string; commandId: string } | null>(null)
-  const [execution, setExecution] = useState<{ entryKey: string; draftId: string } | null>(null)
+  const currentRequirement = useRef(requirement)
+  currentRequirement.current = requirement
+  const [execution, setExecution] = useState<{ entryKey: string; draftId: string; agentId?: string } | null>(null)
+  const [buildPreparation, setBuildPreparation] = useState<{ entryKey: string; request: RequirementBuildPreparation; creatorId: string; conversationId: string } | null>(null)
+  const buildCompletion = useRef<{ resolve(value: RequirementBuildChoice | null): void; reject(reason: Error): void } | null>(null)
   const [requirementOpening, setRequirementOpening] = useState(false)
   const requirementRequest = useRef<symbol | null>(null)
   const requirementSummaries = useRequirementSummaries(current, active && !archiveId && !current?.locked)
@@ -57,7 +73,8 @@ export function PrivateWorkspace(): JSX.Element {
   const preview = usePiWebPreviewShelf({ root: current?.conversation?.workspace.root ?? '', session: current?.locked ? null : current?.session ?? null, events: current?.events ?? [], enabled: active && !archiveId && !current?.locked, isCurrent: documentSource.isCurrent, onAutoOpen: () => setMobileHistory(false) })
   useEscLayer(mobileHistory, { kind: 'overlay', id: 'private-history', onClose: () => setMobileHistory(false), returnFocusRef: historyButton })
   useLayoutEffect(() => { ensureScope(kind, projectId) }, [scope])
-  useEffect(() => { setMobileHistory(false); setFileOwner(null); setExecution(null); setError('') }, [scope, selection])
+  useEffect(() => { buildCompletion.current?.resolve(null); buildCompletion.current = null; setBuildPreparation(null); setMobileHistory(false); setFileOwner(null); setExecution(null); setError('') }, [scope, selection])
+  useEffect(() => () => { buildCompletion.current?.resolve(null); buildCompletion.current = null }, [])
   const requirementOwner = JSON.stringify([current?.owner, selection])
   useEffect(() => {
     const saved = retainedRequirements.get(requirementOwner)
@@ -119,8 +136,27 @@ export function PrivateWorkspace(): JSX.Element {
     })
   }
   const activeRequirement = requirement?.entryKey === selection && !archiveId && current && !current.locked ? requirement : null
+  useEffect(() => {
+    if (active && activeRequirement) return
+    buildCompletion.current?.resolve(null); buildCompletion.current = null; setBuildPreparation(null)
+  }, [active, Boolean(activeRequirement)])
   const closeRequirement = (): void => {
+    buildCompletion.current?.resolve(null); buildCompletion.current = null; setBuildPreparation(null)
     retainedRequirements.delete(requirementOwner); setRequirement(null); setExecution(null); requirementSummaries.refresh()
+  }
+  const prepareBuild = (request: RequirementBuildPreparation): Promise<RequirementBuildChoice | null> => {
+    const conversation = current?.conversation
+    if (!conversation || !canInteract() || !isPrivateEntrySelected(selection) || buildCompletion.current) return Promise.resolve(null)
+    return new Promise((resolve, reject) => { buildCompletion.current = { resolve, reject }; setBuildPreparation({ entryKey: selection, request, creatorId: conversation.creatorId, conversationId: conversation.id }) })
+  }
+  const finishBuildPreparation = (choice: RequirementBuildChoice | null): void => {
+    const pending = buildCompletion.current, selected = buildPreparation
+    if (!pending || !selected) return
+    buildCompletion.current = null; setBuildPreparation(null)
+    if (!choice || !canInteract() || !isPrivateEntrySelected(selected.entryKey) || current?.conversation?.id !== selected.conversationId || current.conversation.creatorId !== selected.creatorId) { pending.resolve(null); return }
+    try { localStorage.setItem(buildAgentKey(selected.creatorId, selected.conversationId, selected.request.draftId), JSON.stringify({ agentId: choice.agentId, planRevision: selected.request.expectedPlanRevision })) }
+    catch { pending.reject(new Error('执行引擎选择无法保存；未创建任务，请检查本地存储。')); return }
+    pending.resolve(choice)
   }
   const showWebPreview = (artifact: PiWebPreviewArtifact, eventId: string): void => {
     if (!canInteract() || !isPrivateEntrySelected(selection)) return
@@ -147,11 +183,19 @@ export function PrivateWorkspace(): JSX.Element {
       if (!canInteract() || !isPrivateEntrySelected(selection)) return
       useApp.getState().setSnapshot(snapshot)
       useApp.getState().expandTaskWorkspace({ fromPage: 'chat', taskDir, archived: false, scrollTop: 0 }, `.trellis/tasks/${taskDir}/prd.md`)
-    }} onStartTrellis={({ snapshot, draftId }) => {
+    }} onPrepareBuild={prepareBuild} onOpenSuccessor={({ draftId, commandId }) => {
+      const latest = useConversations.getState().entries[selection]
+      const displayed = currentRequirement.current
+      if (!current?.conversation || !canInteract() || !isPrivateEntrySelected(selection) || latest?.owner !== current.owner || latest?.conversation?.id !== current.conversation.id || latest.conversation.creatorId !== current.conversation.creatorId || currentOperationOwner.current !== operationOwner || displayed?.entryKey !== selection || displayed.id !== activeRequirement.id || displayed.commandId !== activeRequirement.commandId) return
+      const next = { id: draftId, commandId }
+      retainedRequirements.set(requirementOwner, next)
+      setExecution(null); setRequirement({ entryKey: selection, ...next }); requirementSummaries.refresh()
+    }} onStartTrellis={({ snapshot, draftId, agentId, planRevision }) => {
       if (!canInteract() || !isPrivateEntrySelected(selection)) return
       useApp.setState(state => ({ navigationRevision: state.navigationRevision + 1 }))
       useApp.getState().setSnapshot(snapshot)
-      setExecution({ entryKey: selection, draftId })
+      const selectedAgent = agentId ?? (current?.conversation ? readBuildAgent(current.conversation.creatorId, current.conversation.id, draftId, planRevision) : undefined)
+      setExecution({ entryKey: selection, draftId, agentId: selectedAgent })
     }} /></Suspense></main> : <ConversationPreviewLayout ownerKey={preview.ownerKey} expanded={preview.expanded} onExpandedChange={preview.setExpanded} collapsed={preview.collapsed} previewCount={preview.tabs.length} onCollapsedChange={value => value ? preview.closeWebPreview() : preview.setCollapsed(false)} preview={preview.tabs.length > 0 && current?.session && !current.locked ? <ConversationPreviewTabs key={preview.ownerKey} shelf={preview} session={current.session} /> : null}>
     <WorkspaceCodePreview enabled={!archiveId} openCodePreview={showCodePreview}>
     <main className="acp-main my-conversation-frame">
@@ -178,7 +222,8 @@ export function PrivateWorkspace(): JSX.Element {
     </WorkspaceCodePreview>
     </ConversationPreviewLayout>}
     {fileOwner === selection && !archiveId && <ConversationFiles key={selection} entryKey={selection} onClose={() => setFileOwner(null)} />}
-    {execution?.entryKey === selection && active && activeRequirement && <Suspense fallback={null}><RequirementExecutionFlow entryKey={selection} draftId={execution.draftId} onClose={() => setExecution(null)} /></Suspense>}
+    {buildPreparation?.entryKey === selection && active && activeRequirement && <Suspense fallback={<div className="acp-empty" role="status">正在打开构建准备…</div>}><BuildPreparation entryKey={selection} request={buildPreparation.request} initialAgentId={readBuildAgent(buildPreparation.creatorId, buildPreparation.conversationId, buildPreparation.request.draftId, buildPreparation.request.expectedPlanRevision)} onResolve={finishBuildPreparation} /></Suspense>}
+    {execution?.entryKey === selection && active && activeRequirement && <Suspense fallback={null}><RequirementExecutionFlow entryKey={selection} draftId={execution.draftId} preferredAgentId={execution.agentId} onClose={() => setExecution(null)} /></Suspense>}
   </section></DocumentSourceProvider>
 }
 

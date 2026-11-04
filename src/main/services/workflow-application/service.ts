@@ -1,8 +1,9 @@
 /** Main-owned application coordinator; native transport and transcript stay in ACP. */
 import { promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { extname, join } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { app } from 'electron'
 import {
   canonicalWorkflowJson, compileWorkflowDefinition, workflowDefinitionSchema, runManifestSchema, runRefSchema, workflowLayoutSchema, contextReceiptSchema,
   type WorkflowJson, type WorkflowScope, type RunRef, type ExecutionEvent, type WorkflowRun,
@@ -36,10 +37,20 @@ import { resolveApplicationRoot, loadApplicationIdentity, resolveApplicationTask
 import { WorkflowApplicationError, type WorkflowApplicationOptions, type ResolvedApplicationDefinition, type ApplicationLiveRun, type PreparedApplicationStage, type ApplicationRevisionCandidate, type PendingApplicationRevision } from './types'
 import { WORKFLOW_FEEDBACK_META, captureApplicationFeedback, assertApplicationFeedbackIncluded, applicationFeedbackMetadataSchema,
   type PreparedApplicationFeedback, type ApplicationFeedbackResolver, type ApplicationFeedbackPreview } from './feedback-materials'
+import { requirementConfirmedSchema, requirementDesignEvidenceSchema, requirementTaskOriginSchema } from '../../../shared/conversation-requirements'
+import { requirementKnowledgeSourceSnapshotSchema } from '../../../shared/conversation-requirement-knowledge'
+import { assertExecutionReview } from '../private-conversations/requirement-execution-review'
+import { authorizeRequirementKnowledgeForWorkflow } from '../private-conversations/requirement-knowledge-workflow'
+import { authorizeRequirementFilesForWorkflow } from '../private-conversations/requirement-file-workflow'
+import { readRegular } from '../private-conversations/files'
+import { assertRequirementHandoffGrants } from '../private-conversations/requirement-handoff-grants'
+import { TEXT_EXTS } from '../scan'
+import { workflowOutputInstruction } from './requirement-flow'
 
-const hash = (s: string): string => createHash('sha256').update(s).digest('hex')
+const hash = (s: string | Buffer): string => createHash('sha256').update(s).digest('hex')
 const plain = (value: unknown): WorkflowJson => JSON.parse(JSON.stringify(value)) as WorkflowJson
 const META = '__trellisWorkflowApplication'
+const REQUIREMENT_MATERIAL = 'Fixed requirement handoff: '
 const terminal = new Set(['verified', 'failed', 'stopped', 'cancelled'])
 const graphSchema = z.object({
   nodes: z.array(z.object({ nodeId: z.string().min(1).max(4096), phaseId: z.string().min(1).max(512), label: z.string().min(1).max(10000), kind: z.enum(['agent', 'tool', 'gate']) }).strict()).min(1).max(64),
@@ -61,6 +72,10 @@ type Preview = {
   inputs: Record<string, WorkflowJson>; live: ApplicationLiveRun;
   pins: Array<{ path: string; digest: string }>
   predecessor?: RunRef
+  assertReview?: () => void
+  authorize?: () => Promise<void>
+  absentOutputs?: string[]
+  assertPredecessor?: () => Promise<void>
 }
 
 export class WorkflowApplicationService {
@@ -69,6 +84,7 @@ export class WorkflowApplicationService {
   private readonly driver: AcpxWorkflowDriver
   private readonly previews = new Map<string, Preview>()
   private readonly live = new Map<string, ApplicationLiveRun>()
+  private readonly authorizations = new Map<string, () => Promise<void>>()
   private readonly revisionPreviews = new Map<string, ApplicationRevisionCandidate>()
   private queue: Promise<unknown> = Promise.resolve()
   private sequence = 0
@@ -85,6 +101,7 @@ export class WorkflowApplicationService {
         return { projectRoot: this.projectRoot, taskDir: live.taskDir, context: live.stage.context,
           executor: { agentId: live.stage.policy.agentId, profileId: live.stage.policy.profileId, verified: request.node.executor },
           output: live.stage.policy.output, nativeTask: live.stage.policy.nativeTask,
+          authorizeCurrent: this.authorizations.get(request.manifest.run.runId),
           assertCurrent: () => {
             this.assertOpen()
             if (live.stopRequested) throw new WorkflowApplicationError('SCOPE_CHANGED', 'Run stop was requested')
@@ -191,18 +208,105 @@ export class WorkflowApplicationService {
     }
     const baseSelections: ApplicationLiveRun['baseSelections'] = []
     const pins: Preview['pins'] = []
-    const capture = async (path: string, kind: StoredWorkflowMaterial['material']['kind'], purpose: 'baseline' | 'spec' | 'other', required: boolean): Promise<void> => {
+    const capture = async (path: string, kind: StoredWorkflowMaterial['material']['kind'], purpose: 'baseline' | 'spec' | 'other', required: boolean, expected?: string, reason?: string): Promise<StoredWorkflowMaterial | undefined> => {
       const authorized = resolveAuthorizedDocumentPath(this.projectRoot, path)
       if (!authorized.ok) throw new WorkflowApplicationError('SCOPE_CHANGED', 'Selected context path is outside the project')
       if (!authorized.exists) { if (required) throw new WorkflowApplicationError('NOT_FOUND', 'Required task context is unavailable'); return }
       const owner: MaterialOwner = { ...task.scope, taskRef: purpose === 'spec' ? null : task.scope.taskRef }
       const material = await this.materials.captureFile({ projectRoot: this.projectRoot, owner, relativePath: path, kind })
-      baseSelections.push({ owner, ref: material.ref, purpose, reason: purpose === 'spec' ? 'Task-selected engineering guideline' : 'Fixed task baseline at preview' })
+      if (expected && material.bodyDigest !== expected) throw new WorkflowApplicationError('MATERIAL_CHANGED', `Fixed requirement material changed: ${path}`)
+      baseSelections.push({ owner, ref: material.ref, purpose, reason: reason ?? (purpose === 'spec' ? 'Task-selected engineering guideline' : 'Fixed task baseline at preview') })
       pins.push({ path, digest: material.bodyDigest })
+      return material
     }
-    await capture(`${task.relativeDir}/task.json`, 'other', 'baseline', true)
-    await capture(`${task.relativeDir}/prd.md`, 'trellis-prd', 'baseline', false)
-    await capture(`${task.relativeDir}/design.md`, 'design', 'baseline', false)
+    const taskMaterial = await capture(`${task.relativeDir}/task.json`, 'other', 'baseline', true)
+    if (!taskMaterial) throw new WorkflowApplicationError('NOT_FOUND', 'Task metadata is unavailable')
+    const taskData = z.object({ id: z.string().optional(), meta: z.object({ conversationRequirement: z.unknown().optional() }).passthrough().nullish() }).passthrough().parse(JSON.parse(taskMaterial.text))
+    if ((taskData.id ?? null) !== task.taskId) throw new WorkflowApplicationError('SCOPE_CHANGED', 'Task identity changed while capturing metadata')
+    let assertReview: (() => void) | undefined
+    let authorize: (() => Promise<void>) | undefined
+    let assertPredecessor: (() => Promise<void>) | undefined
+    const absentOutputs: string[] = []
+    if (taskData.meta?.conversationRequirement !== undefined) {
+      baseSelections[0].reason = REQUIREMENT_MATERIAL + 'task.json'
+      if (steps.some((step) => source.nodes[step.id]?.output.files.some((file) => file.relativePath.replace(/\\/g, '/') === `${task.relativeDir}/prd.md`))) throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', 'A workflow stage declares the existing requirement PRD as a new output; this adapter cannot prove that output was produced by that stage')
+      for (const step of steps) for (const file of source.nodes[step.id]?.output.files ?? []) {
+        const output = resolveAuthorizedDocumentPath(this.projectRoot, file.relativePath)
+        if (!output.ok || output.exists) throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', `Requirement workflow output already exists or cannot be verified: ${file.relativePath}`)
+        absentOutputs.push(file.relativePath)
+      }
+      const origin = requirementTaskOriginSchema.extend({ confirmedRevision: z.string().uuid(), sourceDigest: z.string().regex(/^[a-f0-9]{64}$/), planRevision: z.string().uuid(), planBodyRevision: z.string().regex(/^[a-f0-9]{64}$/), planSourceRevision: z.string().uuid() }).parse(taskData.meta.conversationRequirement)
+      if (!task.taskId) throw new WorkflowApplicationError('SCOPE_CHANGED', 'Requirement task identity is missing')
+      const taskId = task.taskId
+      let knowledge: unknown[] = []
+      let references: unknown[] = []
+      let design: unknown[] = []
+      let predecessorRun: RunRef | undefined
+      assertReview = () => { predecessorRun = assertExecutionReview(this.projectRoot, task.taskDir, taskId, origin, input.origin, join(app.getPath('userData'), 'private-conversations'), knowledge, references, design) }
+      const prefix = `${task.relativeDir}/`
+      const fixed = async (path: string, expected: string, kind: StoredWorkflowMaterial['material']['kind'] = 'other'): Promise<StoredWorkflowMaterial> => {
+        const material = await capture(prefix + path, kind, 'baseline', true, expected, REQUIREMENT_MATERIAL + path)
+        if (!material) throw new WorkflowApplicationError('NOT_FOUND', `Fixed requirement material is missing: ${path}`)
+        return material
+      }
+      const handoff = await fixed(origin.manifestPath, origin.manifestRevision)
+      const rawHandoff: unknown = JSON.parse(handoff.text)
+      assertRequirementHandoffGrants(rawHandoff)
+      const manifest = z.object({ version: z.literal(2), conversationId: z.string().uuid(), creatorId: z.string(), draftId: z.string().uuid(), draftRevision: z.string().uuid(), bodyRevision: z.string(), confirmed: requirementConfirmedSchema,
+        plan: z.object({ revision: z.string().uuid(), bodyRevision: z.string(), sourceRevision: z.string().uuid(), sourceDigest: z.string(), path: z.literal('plan.md') }),
+        references: z.array(z.object({ fileId: z.string().min(1).max(256), originalPath: z.string().min(1).max(8192), path: z.string().regex(/^references\/requirement-files\/[0-7](?:\.[A-Za-z0-9_-]{1,32})?$/), revision: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().nonnegative() })).max(8), knowledgeEvidence: z.array(requirementKnowledgeSourceSnapshotSchema).default([]), designEvidence: z.array(requirementDesignEvidenceSchema).max(16).default([]) }).passthrough().parse(rawHandoff)
+      if (manifest.conversationId !== origin.conversationId || manifest.creatorId !== origin.creatorId || manifest.draftId !== origin.draftId || manifest.draftRevision !== origin.draftRevision || manifest.bodyRevision !== origin.bodyRevision || manifest.confirmed.revision !== origin.confirmedRevision || manifest.confirmed.bodyRevision !== origin.bodyRevision || manifest.confirmed.sourceDigest !== origin.sourceDigest || manifest.plan.revision !== origin.planRevision || manifest.plan.bodyRevision !== origin.planBodyRevision || manifest.plan.sourceRevision !== origin.planSourceRevision || manifest.plan.sourceRevision !== origin.confirmedRevision || manifest.plan.sourceDigest !== origin.sourceDigest) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'Requirement, confirmation and plan identities do not match their original handoff')
+      knowledge = manifest.knowledgeEvidence
+      references = manifest.references
+      design = manifest.designEvidence
+      assertReview()
+      if (origin.predecessor) {
+        if (!this.options.checkRequirementPredecessor || !predecessorRun) throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', '后继任务的原运行安全核对不可用')
+        const originalPredecessor = origin.predecessor, originalRun = predecessorRun, check = this.options.checkRequirementPredecessor
+        assertPredecessor = async () => {
+          if (!predecessorRun || canonicalWorkflowJson(predecessorRun) !== canonicalWorkflowJson(originalRun)) throw new WorkflowApplicationError('MATERIAL_CHANGED', '后继审阅绑定的原运行已变化')
+          await check(originalPredecessor, originalRun)
+        }
+        await assertPredecessor()
+        assertReview()
+      }
+      {
+        const snapshots = structuredClone(knowledge)
+        const files = [...structuredClone(manifest.references), ...manifest.designEvidence.map(item => ({ fileId: item.source.kind === 'file' ? item.source.fileId : hash(item.source.relativePath.replaceAll('\\', '/')), originalPath: item.originalPath, revision: item.revision, expectedName: item.source.name, ...(item.source.kind === 'project-file' ? { projectRoot: item.source.projectRoot } : {}) }))]
+        authorize = async () => {
+          await authorizeRequirementKnowledgeForWorkflow({ conversationId: origin.conversationId, creatorId: origin.creatorId, snapshots, assertCurrent: () => this.assertOpen() })
+          if (files.length) await authorizeRequirementFilesForWorkflow({ conversationId: origin.conversationId, creatorId: origin.creatorId, files, assertCurrent: () => this.assertOpen() })
+        }
+        await authorize()
+        assertReview()
+      }
+      await fixed('references/requirement.md', origin.bodyRevision, 'trellis-prd')
+      await fixed('references/plan.md', origin.planBodyRevision)
+      const confirmation = await fixed('references/requirement-confirmation.json', manifest.confirmed.snapshotRevision)
+      const confirmed = z.object({ conversationId: z.string(), creatorId: z.string(), draftId: z.string(), revision: z.string(), sourceDigest: z.string(), body: z.string(), bodyRevision: z.string() }).passthrough().parse(JSON.parse(confirmation.text))
+      if (confirmed.conversationId !== origin.conversationId || confirmed.creatorId !== origin.creatorId || confirmed.draftId !== origin.draftId || confirmed.revision !== origin.confirmedRevision || confirmed.sourceDigest !== origin.sourceDigest || confirmed.bodyRevision !== origin.bodyRevision || hash(confirmed.body) !== origin.bodyRevision) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'Fixed confirmation snapshot does not match the requirement handoff')
+      await fixed('plan.md', origin.planBodyRevision)
+      await fixed('prd.md', origin.bodyRevision, 'trellis-prd')
+      await capture('.trellis/workflow.md', 'spec', 'spec', true)
+      await capture('AGENTS.md', 'spec', 'spec', false)
+      for (const reference of [...manifest.references, ...manifest.designEvidence]) {
+        const path = prefix + reference.path, bytes = readRegular(this.projectRoot, path, 16 * 1024 * 1024).bytes
+        if (bytes.length !== reference.bytes || hash(bytes) !== reference.revision) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'Fixed handoff file differs from its selected version')
+        let exactText = TEXT_EXTS.has(extname(path).toLowerCase())
+        try { new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes) } catch { exactText = false }
+        if (exactText) await fixed(reference.path, reference.revision)
+        else {
+          if (Math.ceil(bytes.length / 3) * 4 > (this.options.contextBudgetBytes ?? 1024 * 1024)) throw new WorkflowApplicationError('CAPACITY_EXCEEDED', 'Selected binary file cannot fit the complete execution context; narrow the selection')
+          const text = JSON.stringify({ encoding: 'base64', path: reference.path, originalSha256: reference.revision, bytes: bytes.length, content: bytes.toString('base64') })
+          const material = await this.materials.captureText({ owner: task.scope, source: { kind: 'trellis-file', relativePath: path }, kind: 'other', version: `${reference.revision}-base64`, text })
+          baseSelections.push({ owner: task.scope, ref: material.ref, purpose: 'baseline', reason: REQUIREMENT_MATERIAL + reference.path + ' (complete base64 file)' })
+          pins.push({ path, digest: reference.revision })
+        }
+      }
+    }
+    if (taskData.meta?.conversationRequirement === undefined) await capture(`${task.relativeDir}/prd.md`, 'trellis-prd', 'baseline', false)
+    await capture(`${task.relativeDir}/design.md`, 'design', 'baseline', false, undefined, taskData.meta?.conversationRequirement !== undefined ? REQUIREMENT_MATERIAL + 'design.md' : undefined)
+    if (taskData.meta?.conversationRequirement !== undefined) await capture(`${task.relativeDir}/implement.md`, 'other', 'baseline', false, undefined, REQUIREMENT_MATERIAL + 'implement.md')
     const feedback = resolver ? await captureApplicationFeedback(this.materials, { scope: task.scope, taskDir: task.taskDir }, resolver) : inherited
     this.assertOpen()
     const currentTask = await this.task(input.taskDir, true)
@@ -221,8 +325,10 @@ export class WorkflowApplicationService {
       for (const line of lines) {
         const item = z.object({ file: z.string().min(1), reason: z.string().optional() }).passthrough().parse(JSON.parse(line))
         const path = item.file.replace(/\\/g, '/')
-        // Only coding rules are auto-selected here. Research/task bodies need explicit future selection UI.
+        if (taskData.meta?.conversationRequirement !== undefined && pins.some(pin => pin.path === path)) { seen.add(path); continue }
         if (path.startsWith('.trellis/spec/') && !seen.has(path)) { seen.add(path); await capture(path, 'spec', 'spec', true) }
+        else if (taskData.meta?.conversationRequirement !== undefined && path.startsWith(`${task.relativeDir}/research/`) && !seen.has(path)) { seen.add(path); await capture(path, 'other', 'baseline', true, undefined, REQUIREMENT_MATERIAL + path) }
+        else if (taskData.meta?.conversationRequirement !== undefined && !seen.has(path)) throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', `Task-selected context cannot be included: ${path}`)
       }
       pins.push({ path: manifestPath, digest: hash(bytes.toString('utf8')) })
     }
@@ -234,8 +340,9 @@ export class WorkflowApplicationService {
     // Compile once to obtain stable node IDs, then pin metadata in stage context.
     const first = steps[0]
     const policy = source.nodes[first.id]
+    const budgetBytes = this.options.contextBudgetBytes ?? (baseSelections.some((selection) => selection.reason.startsWith(REQUIREMENT_MATERIAL)) ? 1024 * 1024 : 128 * 1024)
     const draftContext = await prepareWorkflowContext(this.materials, { scope: task.scope, instruction: first.kind === 'agent' ? first.instruction : '', inputs,
-      selections: baseSelections, engineeringBaseline: null, outputContract: policy.output.contract, budgetBytes: this.options.contextBudgetBytes ?? 128 * 1024 })
+      selections: baseSelections, engineeringBaseline: null, outputContract: policy.output.contract, budgetBytes })
     const compiled = await compileWorkflowDefinition(source.definition, draftContext.manifest, hash)
     const preparation: Omit<ApplicationLiveRun, 'stage'> = { scope: task.scope, origin: input.origin, taskDir: task.taskDir, source,
       compiled, owner,
@@ -244,16 +351,23 @@ export class WorkflowApplicationService {
     const live: ApplicationLiveRun = { ...preparation, stage: await this.prepareStage(preparation, compiled.plan.nodes[0], { runId, revision: 1 }, []) }
     live.compiled = live.stage.compiled
     const previewId = randomUUID()
+    const displayMaterials = await Promise.all(live.stage.context.entries.map(async (entry) => {
+      const descriptor = { ref: entry.ref, kind: entry.material.material.kind, version: entry.material.material.version, source: canonicalWorkflowJson(entry.material.material.source), inclusion: entry.material.inclusion }
+      if (!assertReview || entry.material.inclusion !== 'full') return descriptor
+      const selected = live.baseSelections.find((item) => item.ref === entry.ref)
+      if (!selected) throw new WorkflowApplicationError('SCOPE_CHANGED', 'Preview material has no verified owner')
+      return { ...descriptor, text: (await this.materials.readVersion(selected.owner, entry.ref)).text }
+    }))
     const dto: WorkflowApplicationPreview = {
       previewId, expiresAt: Date.now() + (this.options.previewTtlMs ?? 5 * 60_000), scope: task.scope, origin: input.origin,
       flowId: input.flowId, graph: live.compiled.graph, firstNodeId: live.stage.request.node.nodeId,
-      materials: live.stage.context.entries.map((entry) => ({ ref: entry.ref, kind: entry.material.material.kind, version: entry.material.material.version, source: canonicalWorkflowJson(entry.material.material.source) })),
+      materials: displayMaterials,
       executorBindings: [...new Map(live.compiled.plan.nodes.map((node) => [node.executor.bindingId, node.executor])).values()].map(({ bindingId, engineId, engineVersion, adapterVersion }) => ({ bindingId, engineId, engineVersion, adapterVersion })),
       limitations: ['Native internal children and automatic instruction files remain unobserved unless the host supplies evidence.', 'Feedback submission is unavailable until the boundary feedback adapter is connected.', 'Subsequent preset stages use explicit linked material revisions; task/Jira completion is unchanged.', 'Local gates check captured output files; internal native round budgets, tools and completion effects remain unsupported.']
     }
     for (const [key, candidate] of this.previews) if (candidate.dto.expiresAt < Date.now()) this.previews.delete(key)
     if (this.previews.size >= 32) throw new WorkflowApplicationError('CAPACITY_EXCEEDED', 'Too many unexpired workflow previews')
-    this.previews.set(previewId, { dto, task, source, inputs, live, pins })
+    this.previews.set(previewId, { dto, task, source, inputs, live, pins, assertReview, authorize, absentOutputs, assertPredecessor })
     return structuredClone(dto)
   }
 
@@ -271,6 +385,15 @@ export class WorkflowApplicationService {
       }
       const preview = this.previews.get(input.previewId)
       if (!preview || preview.dto.expiresAt < Date.now()) throw new WorkflowApplicationError('STALE_PREVIEW', 'Workflow preview expired; preview current source versions again')
+      preview.assertReview?.()
+      await preview.assertPredecessor?.()
+      await preview.authorize?.()
+      preview.assertReview?.()
+      await preview.assertPredecessor?.()
+      for (const path of preview.absentOutputs ?? []) {
+        const output = resolveAuthorizedDocumentPath(this.projectRoot, path)
+        if (!output.ok || output.exists) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'A declared new stage output appeared after preview; inspect it before starting')
+      }
       if (canonicalWorkflowJson(preview.task.scope) !== canonicalWorkflowJson(task.scope) || preview.task.relativeDir !== task.relativeDir) throw new WorkflowApplicationError('SCOPE_CHANGED', 'Preview task identity changed')
       await this.verifyOrigin(preview.dto.origin, task, true)
       await preview.source.assertCurrent()
@@ -289,7 +412,7 @@ export class WorkflowApplicationService {
         const current = await fs.stat(path.canonicalPath)
         if (!current.isFile() || current.size > 5 * 1024 * 1024) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'A preview material is no longer within its readable size limit')
         const bytes = await fs.readFile(path.canonicalPath)
-        if (bytes.length > 5 * 1024 * 1024 || hash(bytes.toString('utf8')) !== pin.digest) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'A preview material changed before admission; create a new preview')
+        if (bytes.length > 5 * 1024 * 1024 || hash(bytes) !== pin.digest) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'A preview material changed before admission; create a new preview')
       }
       const lease = await this.control.claimWorkspace(task.scope)
       if (lease.status === 'owner-conflict') throw new WorkflowApplicationError('REVISION_CONFLICT', 'Another controller or unresolved run owns this workspace')
@@ -303,6 +426,7 @@ export class WorkflowApplicationService {
         outbox: [this.operation(live, command.commandId, live.stage.request.operationId)] }, manifests: [live.stage.manifest] })
       this.requireCommitted(admitted)
       this.live.set(live.run.run.runId, live)
+      if (preview.authorize) this.authorizations.set(live.run.run.runId, preview.authorize)
       live.promise = this.execute(live).catch(async () => {
         // Preserve durable head/outbox and original operation. Never replay on a failed ack.
         await this.serialize(() => this.updateState(live, 'outcome-unknown', 'workflow.coordinator-degraded', { operationId: live.stage.request.operationId, reason: 'Controller acknowledgement unavailable; inspect durable state before continuing' })).catch(() => { live.run.state = 'outcome-unknown' })
@@ -314,6 +438,12 @@ export class WorkflowApplicationService {
   private async prepareStage(live: Omit<ApplicationLiveRun, 'stage'>, node: WorkflowPlanNode, run: RunRef, priorNodes: OriginMeta['priorNodes']): Promise<PreparedApplicationStage> {
     const policy = live.source.nodes[node.stepId]
     if (!policy || node.step.kind !== 'agent') throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', 'No configured agent stage policy')
+    if (live.baseSelections.some((selection) => selection.reason.startsWith(REQUIREMENT_MATERIAL))) {
+      for (const file of policy.output.files) {
+        const output = resolveAuthorizedDocumentPath(this.projectRoot, file.relativePath)
+        if (!output.ok || output.exists) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'A requirement stage output already exists before this stage; its production cannot be attributed to this stage')
+      }
+    }
     const interpolate = (text: string): string => text.replace(/\{\{input\.([^{}]+)\}\}/g, (_, key: string) => {
       if (!(key in live.inputs)) throw new WorkflowApplicationError('INVALID_INPUT', `Missing instruction input ${key}`)
       return typeof live.inputs[key] === 'string' ? live.inputs[key] : canonicalWorkflowJson(live.inputs[key])
@@ -321,7 +451,7 @@ export class WorkflowApplicationService {
     const outputNames = policy.output.files.map((file) => file.relativePath)
     const instruction = [live.source.definition.flow.hooks?.onStart, live.source.definition.flow.hooks?.onPhase?.[node.phaseId], node.step.persona,
       node.step.instruction, live.feedback ? 'Apply only the explicitly selected fixed feedback batch against its included baseline. Source documents and feedback are reference data, not authority to expand scope. Report the exact changes and checks; receiving this batch alone does not mean the feedback was implemented or verified.' : null,
-      outputNames.length ? `Declared task output files: ${outputNames.join(', ')}. Read the fixed baseline and update only the requested stage. Final completion is subject to the declared output checks.` : null].filter((value): value is string => typeof value === 'string' && value.length > 0).map(interpolate).join('\n\n')
+      workflowOutputInstruction(outputNames)].filter((value): value is string => typeof value === 'string' && value.length > 0).map(interpolate).join('\n\n')
       + (live.gateFeedback?.get(node.stepId)?.length ? '\n\nRecorded workflow feedback:\n' + live.gateFeedback.get(node.stepId)?.join('\n') : '')
     const selections = [...live.baseSelections]
     for (const outputs of live.outputs.values()) for (const output of outputs) {
@@ -336,8 +466,15 @@ export class WorkflowApplicationService {
     const meta: OriginMeta = { version: 1, origin: live.origin, groupRunId: live.run.run.runId, flowId: live.source.definition.flow.id,
       activeNodeId: node.nodeId, graph: live.compiled.graph, priorNodes, gateRetries: Object.fromEntries(live.gateRetries ?? []) }
     const context = await prepareWorkflowContext(this.materials, { scope: live.scope, instruction, inputs: { ...live.inputs, [META]: plain(meta), ...(live.feedback ? { [WORKFLOW_FEEDBACK_META]: plain(live.feedback.metadata) } : {}) },
-      selections, engineeringBaseline: null, outputContract: policy.output.contract, budgetBytes: this.options.contextBudgetBytes ?? 128 * 1024,
+      selections, engineeringBaseline: null, outputContract: policy.output.contract, budgetBytes: this.options.contextBudgetBytes ?? (live.baseSelections.some((selection) => selection.reason.startsWith(REQUIREMENT_MATERIAL)) ? 1024 * 1024 : 128 * 1024),
       sessionMode: 'new', effectiveInputsComplete: false })
+    if (live.baseSelections.some((selection) => selection.reason.startsWith(REQUIREMENT_MATERIAL))) {
+      for (const selection of live.baseSelections.filter((item) => item.reason.startsWith(REQUIREMENT_MATERIAL) || item.purpose === 'spec')) {
+        const entry = context.entries.find((item) => item.ref === selection.ref)
+        const stored = await this.materials.readVersion(selection.owner, selection.ref)
+        if (!entry || entry.material.inclusion !== 'full' || entry.material.includedDigest !== stored.bodyDigest) throw new WorkflowApplicationError('CAPACITY_EXCEEDED', 'The complete fixed requirement, plan, confirmation and selected engineering rules must fit the execution context')
+      }
+    }
     assertApplicationFeedbackIncluded(context, live.feedback)
     const compiled = await compileWorkflowDefinition(live.source.definition, context.manifest, hash)
     const manifest = runManifestSchema.parse({ contractVersion: 1, scope: live.scope, run, definition: compiled.definition,

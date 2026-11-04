@@ -4,8 +4,8 @@ import { watch, type FSWatcher } from 'chokidar'
 import { runtimeBodies, runtimeRequests, RUNTIME_MUTATING_METHODS, type RuntimeMethod, type RuntimeRequest, type RuntimeResult, type RuntimeCursor, type RuntimeBodyMethod, type RuntimeWire } from '../../../shared/daemon-runtime'
 import type { WorkspaceGrant } from '../../../shared/daemon'
 import * as acp from '../../services/acp'
-import { bindTaskSchema, configureSchema, promptOptionsSchema } from '../../services/acp/types'
-import { getWorkflowApplication, workflowDesktopTemplates, isManagedWorkflowOrigin, withOrdinaryConnectionAdmission, withOrdinaryWorkflowAdmission, withManagedWorkflowAdmission, hasWorkflowApplications, countOwnedWorkflowApplications, shutdownWorkflowApplications, setWorkflowAdmissionClosed } from '../../services/workflow-desktop'
+import { bindTaskSchema, configureSchema, newSessionSchema, promptOptionsSchema } from '../../services/acp/types'
+import { checkRequirementPredecessor, getWorkflowApplication, workflowDesktopTemplates, isManagedWorkflowOrigin, withOrdinaryConnectionAdmission, withOrdinaryWorkflowAdmission, withManagedWorkflowAdmission, hasWorkflowApplications, countOwnedWorkflowApplications, shutdownWorkflowApplications, setWorkflowAdmissionClosed } from '../../services/workflow-desktop'
 import { installHostEventSink } from '../../services/bridge'
 import { ipcFail, IpcErrorCode } from '../../../shared/ipc-errors'
 import { DaemonError } from '../errors'
@@ -19,6 +19,10 @@ import { KNOWLEDGE_MUTATIONS, knowledgeRuntimeBody } from '../../../shared/daemo
 import { HifoxTaskProgressRuntime } from '../../services/hifox/task-progress-runtime'
 import { installWorkcopyUse, resolveWorkcopy } from '../../services/workcopy-use'
 import { workcopyUseResultSchema, isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
+import { requirementPredecessorSchema, requirementTaskOriginSchema } from '../../../shared/conversation-requirements'
+import { runRefSchema } from '../../../shared/workflow'
+import { readRegular } from '../../services/private-conversations/files'
+import { utf8 } from '../../services/private-conversations/requirement-files'
 import { prepareAcpRecovery } from '../../services/workcopy-use/acp-recovery'
 import { privateNativeRead, privateNativeSend, privateNativeControl, privateNativeSession } from '../../services/private-conversations/native'
 import { withPrivateAcpOwner } from '../../services/acp/private-access'
@@ -203,8 +207,21 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       case 'runtime.handoffStatus': { const p = runtimeBodies[method].parse(raw); return acp.getAcpSessionHandoff(root, p.sessionId, p.operationId) }
       case 'runtime.handoffCancel': { const p = runtimeBodies[method].parse(raw); return acp.cancelAcpSessionHandoff(root, p.sessionId, p.input) }
       case 'runtime.new': {
-        const p = runtimeBodies[method].parse(raw), input = z.object({ profileId: z.string().optional() }).passthrough().parse(p.input)
-        return connection({ profileId: input.profileId }, () => acp.newAcpSession(root, p.input))
+        const p = runtimeBodies[method].parse(raw), input = z.object({ profileId: z.string().optional(), predecessor: requirementPredecessorSchema.optional(), predecessorRun: runRefSchema.optional() }).passthrough().parse(p.input)
+        if (Boolean(input.predecessor) !== Boolean(input.predecessorRun)) throw new DaemonError('E_INVALID_ARG', '后继执行需要原任务与原运行的完整身份')
+        return connection({ profileId: input.profileId }, async () => {
+          const target = newSessionSchema.parse(p.input)
+          if (target.taskDir) {
+            const data = z.object({ meta: z.object({ conversationRequirement: z.unknown().optional() }).passthrough().nullish() }).passthrough().parse(JSON.parse(utf8(readRegular(root, `.trellis/tasks/${target.taskDir}/task.json`, 512 * 1024).bytes)))
+            if (data.meta?.conversationRequirement !== undefined) {
+              const original = requirementTaskOriginSchema.parse(data.meta.conversationRequirement)
+              if (original.predecessor && (!input.predecessor || !input.predecessorRun || JSON.stringify(original.predecessor) !== JSON.stringify(input.predecessor))) throw new DaemonError('E_DENIED', '后继任务缺少经核验的原运行身份')
+              if (!original.predecessor && input.predecessor) throw new DaemonError('E_DENIED', '原任务没有此后继身份')
+            } else if (input.predecessor) throw new DaemonError('E_DENIED', '普通任务没有此后继身份')
+          } else if (input.predecessor) throw new DaemonError('E_DENIED', '后继运行缺少目标任务')
+          if (input.predecessor && input.predecessorRun) await checkRequirementPredecessor(root, input.predecessor, input.predecessorRun)
+          return acp.newAcpSession(root, p.input)
+        })
       }
       case 'runtime.prompt': {
         const p = runtimeBodies[method].parse(raw), options = p.options === undefined ? undefined : promptOptionsSchema.parse(p.options)
@@ -236,6 +253,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         acp.emitTrellisTimeline(root, p.kind, p.text, p.payload, p.taskDir); return null
       }
       case 'runtime.workflow.templates': return workflowDesktopTemplates(root)
+      case 'runtime.workflow.requirementPredecessor': { const p = runtimeBodies[method].parse(raw); return checkRequirementPredecessor(root, p.predecessor, p.expectedRun) }
       case 'runtime.workflow.isManagedOrigin': { const p = runtimeBodies[method].parse(raw); return isManagedWorkflowOrigin(root, p.sessionId, p.generation, p.associationOnly) }
       case 'runtime.events': {
         const p = runtimeBodies[method].parse(raw), page = events.catchUp(root, p.after, p.limit)

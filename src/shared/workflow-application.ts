@@ -26,7 +26,7 @@ export type WorkflowOrigin = z.infer<typeof workflowOriginSchema>
 export type WorkflowApplicationPreview = {
   previewId: string; expiresAt: number; scope: WorkflowScope; origin: WorkflowOrigin;
   flowId: string; graph: CompiledWorkflow['graph']; firstNodeId: string;
-  materials: Array<{ ref: string; kind: string; version: string; source: string }>;
+  materials: Array<{ ref: string; kind: string; version: string; source: string; text?: string; inclusion?: string }>;
   executorBindings: Array<{ bindingId: string; engineId: string; engineVersion: string; adapterVersion: string }>;
   limitations: string[]
 }

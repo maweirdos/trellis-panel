@@ -12,6 +12,8 @@ import { ConversationRequirements } from '../services/private-conversations/requ
 import { observeRequirementNative, requirementConversationContext } from '../services/private-conversations/requirement-native'
 import { RequirementKnowledgeService } from '../services/private-conversations/requirement-knowledge'
 import { RequirementExecutionService } from '../services/private-conversations/requirement-execution'
+import { preflightRequirementHandoff } from '../services/private-conversations/requirement-handoff-preflight'
+import { verifyRequirementPredecessorRelease } from '../services/private-conversations/requirement-predecessor-release'
 import { requirementExecutionPrepareSchema } from '../../shared/conversation-requirement-execution'
 import { requirementKnowledgeConnectionSchema, requirementKnowledgeSearchSchema } from '../../shared/conversation-requirement-knowledge'
 import { knowledgeFailure } from '../services/knowledge-access/service'
@@ -44,6 +46,13 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
       const assertCurrent = (): void => { current(); owner.assertCurrent() }
       return knowledge.resolveSources({ conversationId: id, creatorId: owner.conversation.creatorId, root: owner.conversation.workspace.root, assertCurrent }, selection, sources)
     },
+    authorizeSnapshots: async (id, sources, current) => {
+      const owner = await service.workspaceAccess(id)
+      const assertCurrent = (): void => { current(); owner.assertCurrent() }
+      return knowledge.authorizeSnapshots({ conversationId: id, creatorId: owner.conversation.creatorId, root: owner.conversation.workspace.root, assertCurrent }, sources)
+    },
+    preflightContext: preflightRequirementHandoff,
+    verifyPredecessorRelease: verifyRequirementPredecessorRelease,
     resolveTarget: (conversation, selection, directoryOwner, current) => {
       current?.()
       if (selection.kind === 'directory') return service.consumeWorkspaceGrant(selection.grantId, directoryOwner).root
@@ -129,24 +138,41 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
   wrapped(requirementChannels.knowledge.search, async (_event, args, current) => knowledge.search(await knowledgeOwner(id(args[0]), current), requirementKnowledgeSearchSchema.parse(args[1])))
   direct(requirementChannels.list, (args, current) => requirements.list(id(args[0]), current))
   direct(requirementChannels.create, (args, current) => requirements.create(id(args[0]), args[1], current))
+  direct(requirementChannels.createSuccessor, (args, current) => requirements.createSuccessor(id(args[0]), id(args[1]), args[2], current))
   direct(requirementChannels.read, (args, current) => requirements.read(id(args[0]), id(args[1]), current))
   direct(requirementChannels.save, (args, current) => requirements.save(id(args[0]), id(args[1]), args[2], current))
   direct(requirementChannels.sync, (args, current) => requirements.sync(id(args[0]), id(args[1]), args[2], current))
+  direct(requirementChannels.resolveConflict, (args, current) => requirements.resolveConflict(id(args[0]), id(args[1]), args[2], current))
   direct(requirementChannels.target, (args, current, event) => requirements.target(id(args[0]), id(args[1]), args[2], documentOwner(event), current))
   direct(requirementChannels.run, (args, current) => requirements.run(id(args[0]), id(args[1]), args[2], current))
   direct(requirementChannels.observe, (args, current) => requirements.observe(id(args[0]), id(args[1]), id(args[2]), current))
   direct(requirementChannels.evidence, (args, current) => requirements.evidence(id(args[0]), id(args[1]), id(args[2]), current))
   direct(requirementChannels.adopt, (args, current) => requirements.adopt(id(args[0]), id(args[1]), id(args[2]), args[3], current))
+  direct(requirementChannels.applySelection, (args, current) => requirements.applySelection(id(args[0]), id(args[1]), id(args[2]), args[3], current))
   direct(requirementChannels.confirmRequirement, (args, current) => requirements.confirmRequirement(id(args[0]), id(args[1]), args[2], current))
   direct(requirementChannels.savePlan, (args, current) => requirements.savePlan(id(args[0]), id(args[1]), args[2], current))
   wrapped(requirementChannels.prepareExecution, async (_event, args, current) => {
     const conversationId = id(args[0]), draftId = id(args[1]), input = requirementExecutionPrepareSchema.parse(args[2])
     const original = await requirements.executionSource(conversationId, draftId, current)
+    await requirements.authorizeHandoffKnowledge(conversationId, draftId, current)
     const source = await service.workspaceAccess(conversationId, true)
     const assertCurrent = (): void => { current(); original.assertCurrent(); source.assertCurrent() }
-    const result = await execution.prepare({ ...original, assertCurrent }, input)
+    const result = await execution.prepare({ ...original, assertCurrent, authorizeSources: () => requirements.authorizeHandoffKnowledge(conversationId, draftId, assertCurrent),
+      confirmReview: async review => {
+        assertCurrent()
+        const window = deps.getMain()
+        if (!window || window.isDestroyed()) throw new ConversationError('原窗口不可用，未确认规划审阅', IpcErrorCode.Denied)
+        const choice = await dialog.showMessageBox(window, { type: 'question', title: '确认目标工程规划审阅',
+          message: '确认已审阅列出的目标工程规则和任务材料，并满足该工程适用的规划及评审要求？',
+          detail: [`工程：${review.task.root}`, `任务：${review.task.taskDir}`, `执行引擎：${review.agentId}${review.profileId ? ` · ${review.profileId}` : ''}`, ...(review.predecessorRun ? [`原工作流：${review.predecessorRun.runId} · 版本 ${review.predecessorRun.revision}`] : []), `任务类型：${review.classification === 'complex' ? '复杂任务' : '轻量任务'}`, `审阅摘要：${review.digest}`, ...review.files.map(file => `${file.path}  ${file.digest}`)].join('\n'),
+          buttons: ['取消', '确认审阅'], defaultId: 0, cancelId: 0, noLink: true })
+        assertCurrent()
+        return choice.response === 1
+      }
+    }, input)
     assertCurrent()
-    if (result.state === 'prepared' && (!getProjectRoot() || pathKey(getProjectRoot()!) !== pathKey(result.task.root))) {
+    const activeRoot = getProjectRoot()
+    if (result.state === 'prepared' && (!activeRoot || pathKey(activeRoot) !== pathKey(result.task.root))) {
       const opened = openProjectAt(result.task.root)
       if (!opened.ok) throw new ConversationError(opened.error, opened.code)
       result.snapshot = opened.snapshot
