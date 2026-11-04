@@ -92,7 +92,17 @@ export function StorageSettings(): JSX.Element {
     finally { pending.current = false; if (mounted.current) setBusy(null) }
   }
 
-  if (!bridge) return <div className="preferences-page"><PreferenceSection id="storage-unavailable" title="存储空间"><p className="my-item-description py-4">连接桌面应用后可查看本机存储。</p></PreferenceSection></div>
+  const archiveManagement = <>
+    <PreferenceSection id="storage-data" title="数据管理">
+      <PreferenceRow label="归档会话" hint="读取或恢复已归档的会话。">
+        <Button size="sm" variant="outline" onClick={() => setArchiveOpen(true)}>管理归档</Button>
+      </PreferenceRow>
+      <PreferenceRow label="任务观测" hint="在对应任务的详情中查看和管理观测记录。"><span className="text-my-sm text-my-secondary">任务详情</span></PreferenceRow>
+    </PreferenceSection>
+    <ConversationArchiveManager open={archiveOpen} onClose={() => setArchiveOpen(false)} />
+  </>
+
+  if (!bridge) return <div className="preferences-page"><PreferenceSection id="storage-unavailable" title="存储空间"><p className="my-item-description py-4">本机存储服务暂不可用。</p></PreferenceSection>{archiveManagement}</div>
 
   return <div className="preferences-page">
     <PreferenceSection id="storage-usage" title="本机存储">
@@ -119,12 +129,6 @@ export function StorageSettings(): JSX.Element {
     </PreferenceSection>
     {error && <p role="alert" className="text-my-sm text-my-danger-text">{error}</p>}
     {results.length > 0 && <PreferenceSection id="storage-result" title="清理结果"><ul className="space-y-2 py-4 text-my-sm text-my-secondary" aria-live="polite">{results.map(item => <li key={item.id}>{resultLabel(item)}</li>)}</ul></PreferenceSection>}
-    <PreferenceSection id="storage-data" title="数据管理">
-      <PreferenceRow label="归档会话" hint="读取或恢复已归档的会话。">
-        <Button size="sm" variant="outline" onClick={() => setArchiveOpen(true)}>管理归档</Button>
-      </PreferenceRow>
-      <PreferenceRow label="任务观测" hint="在对应任务的详情中查看和管理观测记录。"><span className="text-my-sm text-my-secondary">任务详情</span></PreferenceRow>
-    </PreferenceSection>
-    <ConversationArchiveManager open={archiveOpen} onClose={() => setArchiveOpen(false)} />
+    {archiveManagement}
   </div>
 }

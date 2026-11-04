@@ -111,8 +111,6 @@
   place-items: center;
   width: var(--my-settings-nav-icon-size);
   height: var(--my-settings-nav-icon-size);
-  border-radius: var(--my-radius-inset);
-  background: var(--my-bg-panel);
   color: var(--my-txt-icon-secondary);
 }
 
@@ -123,7 +121,6 @@
 }
 
 .my-root .my-settings-navigation-item[aria-current='page'] .my-settings-navigation-icon {
-  background: var(--my-bg-panel-header);
   color: var(--my-txt-icon-primary);
 }
 

@@ -22,7 +22,7 @@ export function ConversationArchiveManager({ open, onClose }: { open: boolean; o
   const [conversations, setConversations] = useState<Conversation[]>([]), [legacy, setLegacy] = useState<ChatSessionMeta[]>([])
   const [loading, setLoading] = useState(false), [error, setError] = useState(''), [legacyError, setLegacyError] = useState('')
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
-  const request = useRef(0), lifetime = useRef(0), restored = useRef(new Set<string>()), restoring = useRef(new Set<string>())
+  const request = useRef(0), lifetime = useRef(0), restoring = useRef(new Set<string>())
   const previewHost = useRef<Element | null>(null)
   const active = useRef(false); active.current = open && interactive && !signal?.aborted
   const hover = useConversationListPreview(JSON.stringify([open, interactive, source, query, page]), open && interactive)
@@ -35,16 +35,16 @@ export function ConversationArchiveManager({ open, onClose }: { open: boolean; o
     const [records, oldRecords] = await Promise.allSettled([client.list({ archive: 'archived' }), hasIpc ? api.chatList() : Promise.resolve(null)])
     if (ticket !== request.current || !active.current || !canInteract()) return
     if (records.status === 'fulfilled') {
-      try { setConversations(conversationValue(records.value).filter((item) => item.archivedAt !== undefined && !restored.current.has(item.id))) }
-      catch (cause) { setError(conversationError(cause)) }
-    } else setError(conversationError(records.reason))
+      try { setConversations(conversationValue(records.value).filter((item) => item.archivedAt !== undefined)) }
+      catch (cause) { setConversations([]); setError(conversationError(cause)) }
+    } else { setConversations([]); setError(conversationError(records.reason)) }
     if (oldRecords.status === 'fulfilled' && oldRecords.value?.ok) {
       const values = oldRecords.value.sessions ?? []
       setLegacy(values)
       useConversations.setState({ archives: values, archiveError: undefined })
       if (!values.length) setSource('conversations')
     } else if (oldRecords.status === 'rejected' || oldRecords.value && !oldRecords.value.ok) {
-      setLegacyError(oldRecords.status === 'rejected' ? conversationError(oldRecords.reason) : oldRecords.value?.error || '旧版记录无法读取。')
+      setLegacy([]); setLegacyError(oldRecords.status === 'rejected' ? conversationError(oldRecords.reason) : oldRecords.value?.error || '旧版记录无法读取。')
     }
     setLoading(false)
   }, [client, canInteract])
@@ -52,7 +52,7 @@ export function ConversationArchiveManager({ open, onClose }: { open: boolean; o
   useEffect(() => {
     lifetime.current++
     if (open && interactive) {
-      restored.current.clear(); setSource('conversations'); setQuery(''); setPage(0); setActionErrors({})
+      setSource('conversations'); setQuery(''); setPage(0); setActionErrors({})
       setConversations([]); setLegacy([]); void refresh()
     }
     return () => { request.current++; lifetime.current++ }
@@ -86,8 +86,10 @@ export function ConversationArchiveManager({ open, onClose }: { open: boolean; o
     try {
       const result = await updateConversation(id, { archived: false })
       if (result && result.archivedAt === undefined) {
-        restored.current.add(id)
-        if (owner === lifetime.current && active.current && canInteract()) setConversations((previous) => previous.filter((item) => item.id !== id))
+        if (owner === lifetime.current && active.current && canInteract()) {
+          setConversations((previous) => previous.filter((item) => item.id !== id))
+          void refresh()
+        }
       } else if (owner === lifetime.current && active.current && canInteract()) setActionErrors((previous) => ({ ...previous, [id]: useConversations.getState().managementErrors[id] || '恢复未确认，请重试。' }))
     } catch (cause) { if (owner === lifetime.current && active.current && canInteract()) setActionErrors((previous) => ({ ...previous, [id]: conversationError(cause) })) }
     finally { restoring.current.delete(id) }
@@ -100,7 +102,7 @@ export function ConversationArchiveManager({ open, onClose }: { open: boolean; o
         <header className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-my-lg font-medium text-my-primary">归档会话</h2>
           <div className="flex items-center gap-2">
-            {legacy.length > 0 && <Dropdown align="right" trigger={({ open: expanded, toggle }) => <Button size="sm" variant="ghost" aria-label="归档记录类型" aria-expanded={expanded} onClick={toggle}>{source === 'legacy' ? '旧版记录' : '会话归档'}<ChevronDown size={13} /></Button>}>{(close) => <>
+            {(legacy.length > 0 || source === 'legacy') && <Dropdown align="right" trigger={({ open: expanded, toggle }) => <Button size="sm" variant="ghost" aria-label="归档记录类型" aria-expanded={expanded} onClick={toggle}>{source === 'legacy' ? '旧版记录' : '会话归档'}<ChevronDown size={13} /></Button>}>{(close) => <>
               <DropdownItem selected={source === 'conversations'} onClick={() => { changeSource('conversations'); close() }}>会话归档</DropdownItem>
               <DropdownItem selected={source === 'legacy'} onClick={() => { changeSource('legacy'); close() }}>旧版记录 · 只读</DropdownItem>
             </>}</Dropdown>}

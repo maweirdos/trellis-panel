@@ -1,5 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 import { useApp, type Page } from '../../store'
+import { api, hasIpc } from '../../api'
 import { useMy } from '../store'
 import { getPageNavigation, navigationScopeLabel, SETTINGS_VIEW_TITLES, type ToolView } from '../navigation'
 import { getSettingsDestination } from '../settings-catalog'
@@ -34,7 +35,7 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
         <span className="settings-page-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.7} /></span>
         <div className="settings-page-copy"><h1>{destination.title}</h1><p>{destination.description}</p></div>
         {page === 'settings' && settingsView === 'preferences' && <Button className="settings-page-action" variant="outline"
-          onClick={() => window.dispatchEvent(new Event('trellis-open-onboarding'))}>打开引导</Button>}
+          disabled={!hasIpc || !api.onboarding} onClick={() => window.dispatchEvent(new Event('trellis-open-onboarding'))}>打开设置向导</Button>}
       </header>
       {children}
     </PageContent></PageBody>

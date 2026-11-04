@@ -23,7 +23,7 @@ const GENERAL_SETTINGS: SettingsDestination = {
   page: 'settings',
   view: 'preferences',
   group: '偏好设置',
-  keywords: ['偏好', '启动', '开机', '快捷键', 'general', 'preferences', 'startup', 'shortcuts']
+  keywords: ['偏好', '启动', '开机', '快捷键', '引导', '向导', '首次设置', 'general', 'preferences', 'startup', 'shortcuts', 'onboarding']
 }
 
 export const SETTINGS_DESTINATIONS: readonly SettingsDestination[] = [
@@ -103,7 +103,7 @@ export const SETTINGS_DESTINATIONS: readonly SettingsDestination[] = [
     page: 'settings',
     view: 'storage',
     group: '应用管理',
-    keywords: ['存储', '空间', '磁盘', '缓存', '清理', '数据', 'storage', 'cache']
+    keywords: ['存储', '空间', '磁盘', '缓存', '清理', '数据', '归档', '会话', '恢复', 'storage', 'cache', 'archive']
   },
   {
     id: 'about',
