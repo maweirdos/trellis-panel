@@ -12,7 +12,6 @@ import { resolveConnection } from '../integrations/service'
 import { readIntegrationState } from '../integrations/repository'
 import { integrationRegistry } from '../integrations/providers'
 import { IntegrationError, type KnowledgePort, type ResolvedConnection } from '../integrations/types'
-import { knowledgeAccess } from '../knowledge-access/service'
 import { withKnowledgeOwner } from '../knowledge-access/workspace-host'
 import type { KnowledgeOwner } from '../knowledge-access/types'
 
@@ -37,16 +36,26 @@ export interface RequirementKnowledgePorts {
   resolve(input: RequirementKnowledgeConnection): ResolvedConnection
   collections(owner: KnowledgeOwner, input: RequirementKnowledgeConnection, signal?: AbortSignal): Promise<CollectionPage>
   search: KnowledgePort['search']
+  authorizeDocument: NonNullable<KnowledgePort['authorizeDocument']>
 }
 const defaultPorts: RequirementKnowledgePorts = {
   connections: () => readIntegrationState().connections.filter(value => value.providerId === 'weknora' && value.enabled && !value.deleted)
     .map(value => ({ connectionId: value.id, connectionRevision: value.revision, name: value.name })),
   resolve: resolveConnection,
-  collections: (owner, input) => knowledgeAccess.collections({ expectedRoot: owner.root, sessionId: owner.sessionId, ...input }),
+  collections: (_owner, input, signal) => {
+    const connection = resolveConnection(input), port = integrationRegistry.get('weknora').knowledge
+    if (!port) throw new IntegrationError('知识连接读取能力尚未安装', 'denied')
+    return port.collections(connection, signal, { limit: 1000 })
+  },
   search: (connection, ids, query, limit, signal) => {
     const port = integrationRegistry.get('weknora').knowledge
     if (!port) throw new IntegrationError('知识连接读取能力尚未安装', 'denied')
     return port.search(connection, ids, query, limit, signal)
+  },
+  authorizeDocument: (connection, documentId, collectionId, signal) => {
+    const port = integrationRegistry.get('weknora').knowledge
+    if (!port?.authorizeDocument) throw new IntegrationError('知识文档权限核验能力不可用', 'denied')
+    return port.authorizeDocument(connection, documentId, collectionId, signal)
   }
 }
 
@@ -64,7 +73,7 @@ function frozen(source: RequirementKnowledgeSourceSnapshot): RequirementKnowledg
 /** Validates a server-sealed operation snapshot after persistence; it grants no new source access. */
 export function validateRequirementKnowledgeSourceSnapshot(raw: unknown): RequirementKnowledgeSourceSnapshot {
   const source = requirementKnowledgeSourceSnapshotSchema.parse(raw)
-  if (hash(source.excerpt) !== source.contentHash || revisionOf(source) !== source.returnedRevision) throw new IntegrationError('已封存的知识引用内容或版本已改变', 'conflict')
+  if (!source.selection.collectionIds.includes(source.collectionId) || hash(source.excerpt) !== source.contentHash || revisionOf(source) !== source.returnedRevision) throw new IntegrationError('已封存的知识引用内容、范围或版本已改变', 'conflict')
   return frozen(source)
 }
 
@@ -114,7 +123,7 @@ export class RequirementKnowledgeService {
     const result = await withKnowledgeOwner(native, () => this.ports.collections(native, input, signal))
     this.guard(owner, signal)
     if (this.connection(input).instanceId !== before.instanceId) throw new IntegrationError('知识连接来源已变化', 'conflict')
-    if (result.items.length > 100 || new Set(result.items.map(value => value.id)).size !== result.items.length) throw new IntegrationError('知识库列表身份或数量无效', 'upstream')
+    if (result.items.length > 1000 || new Set(result.items.map(value => value.id)).size !== result.items.length) throw new IntegrationError('知识库列表身份或数量无效', 'upstream')
     return result
   }
 
@@ -165,14 +174,55 @@ export class RequirementKnowledgeService {
     } finally { this.reading-- }
   }
 
-  resolveSources(owner: RequirementKnowledgeOwner, rawSelection: RequirementKnowledgeSelection, rawRefs: RequirementKnowledgeSourceRef[]): RequirementKnowledgeSourceSnapshot[] {
+  async resolveSources(owner: RequirementKnowledgeOwner, rawSelection: RequirementKnowledgeSelection, rawRefs: RequirementKnowledgeSourceRef[]): Promise<RequirementKnowledgeSourceSnapshot[]> {
     this.guard(owner); this.prune()
     const selection = requirementKnowledgeSelectionSchema.parse(rawSelection), refs = referenceList.parse(rawRefs), connection = this.connection(selection)
+    if (refs.length) {
+      const available = await this.collections(owner, { connectionId: selection.connectionId, connectionRevision: selection.connectionRevision })
+      if (selection.collectionIds.some(id => !available.items.some(item => item.id === id))) throw new IntegrationError(available.hasMore ? '无法核实完整知识库范围，请重试' : '所选知识库当前不可访问，请检查权限', 'denied')
+      if (this.connection(selection).instanceId !== connection.instanceId) throw new IntegrationError('知识连接来源已变化', 'conflict')
+    }
     const sources = refs.map(reference => {
       const stored = this.snapshots.get(reference.sourceId), source = stored?.source
       if (!stored || !source || stored.owner !== this.ownerKey(owner) || selectionKey(source.selection) !== selectionKey(selection) || source.instanceId !== connection.instanceId || source.returnedRevision !== reference.returnedRevision || hash(source.excerpt) !== source.contentHash || revisionOf(source) !== source.returnedRevision) throw new IntegrationError('知识引用已失效或不属于原需求来源，请重新检索', 'conflict')
       return source
     })
+    await this.authorizeDocuments(owner, connection, sources)
+    this.guard(owner)
+    return sources
+  }
+
+  private async authorizeDocuments(owner: RequirementKnowledgeOwner, connection: ResolvedConnection, sources: RequirementKnowledgeSourceSnapshot[]): Promise<void> {
+    const seen = new Set<string>(), signal = AbortSignal.timeout(30_000)
+    for (const source of sources) {
+      const key = JSON.stringify([source.collectionId, source.documentId])
+      if (seen.has(key)) continue
+      seen.add(key)
+      this.guard(owner, signal)
+      await this.ports.authorizeDocument(connection, source.documentId, source.collectionId, signal)
+      this.guard(owner, signal)
+      if (this.connection(source.selection).instanceId !== connection.instanceId) throw new IntegrationError('知识连接来源已变化', 'conflict')
+    }
+  }
+
+  /** Reauthorize persisted excerpts before displaying or handing them off. */
+  async authorizeSnapshots(owner: RequirementKnowledgeOwner, raw: unknown[]): Promise<RequirementKnowledgeSourceSnapshot[]> {
+    this.guard(owner)
+    if (raw.length > MAX_SOURCES) throw new IntegrationError('知识引用数量超过上限', 'invalid')
+    const sources = raw.map(validateRequirementKnowledgeSourceSnapshot)
+    const groups = new Map<string, RequirementKnowledgeSourceSnapshot[]>()
+    for (const source of sources) {
+      const key = selectionKey(source.selection), group = groups.get(key) ?? []
+      group.push(source); groups.set(key, group)
+    }
+    for (const group of groups.values()) {
+      const selection = group[0].selection, before = this.connection(selection)
+      if (group.some(source => source.instanceId !== before.instanceId)) throw new IntegrationError('知识连接来源已变化', 'denied')
+      const available = await this.collections(owner, { connectionId: selection.connectionId, connectionRevision: selection.connectionRevision })
+      if (selection.collectionIds.some(id => !available.items.some(item => item.id === id))) throw new IntegrationError(available.hasMore ? '无法核实完整知识库范围，请重试' : '所选知识库当前不可访问，请检查权限', 'denied')
+      if (this.connection(selection).instanceId !== before.instanceId) throw new IntegrationError('知识连接来源已变化', 'conflict')
+      await this.authorizeDocuments(owner, before, group)
+    }
     this.guard(owner)
     return sources
   }

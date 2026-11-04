@@ -61,9 +61,11 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 export const weknoraKnowledgePort: KnowledgePort = {
-  async collections(connection, signal) {
+  async collections(connection, signal, options) {
     const rows = parse(z.array(collection).max(1000), await request(connection, '/knowledge-bases', signal))
-    return { items: rows.slice(0, 100).map((row) => ({ id: row.id, name: row.name, knowledgeCount: row.knowledge_count ?? 0 })), hasMore: rows.length > 100 }
+    const limit = options?.limit ?? 100
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new IntegrationError('知识库读取上限无效', 'invalid')
+    return { items: rows.slice(0, limit).map((row) => ({ id: row.id, name: row.name, knowledgeCount: row.knowledge_count ?? 0 })), hasMore: rows.length > limit }
   },
   async documents(connection, collectionId, page, signal, folderPath) {
     const params = new URLSearchParams({ page: String(page), page_size: '30' })
@@ -141,6 +143,10 @@ export const weknoraKnowledgePort: KnowledgePort = {
     if (!row.file_type || !textTypes.has(row.file_type.toLowerCase())) return { title, text: '', mode: 'unsupported', truncated: false }
     const text = parse(z.string().max(MAX_RESPONSE), await request(connection, path + '/preview', signal))
     return { title, text: text.slice(0, 100_000), mode: 'full', truncated: text.length > 100_000 }
+  },
+  async authorizeDocument(connection, documentId, collectionId, signal) {
+    const row = parse(document, await request(connection, `/knowledge/${encodeURIComponent(documentId)}`, signal))
+    if (row.id !== documentId || !row.knowledge_base_id || row.knowledge_base_id !== collectionId) throw new IntegrationError('无法核实知识文档当前身份或所属知识库', 'denied')
   },
   async publish(connection, collectionId, input, signal) {
     if (!input.title.trim() || input.title.length > 200 || input.content.length > 200_000) throw new IntegrationError('发布标题或正文超限，请先修改再预览')

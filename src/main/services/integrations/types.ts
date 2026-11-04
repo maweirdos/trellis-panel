@@ -14,7 +14,8 @@ export type TeamGitlabBinding = z.infer<typeof teamGitlabBindingSchema>
 
 export interface KnowledgeRemoteHit { documentId: string; collectionId: string; title: string; text: string; truncated: boolean }
 export interface KnowledgePort {
-  collections(connection: ResolvedConnection, signal?: AbortSignal): Promise<{ items: KnowledgeCollection[]; hasMore: boolean }>
+  collections(connection: ResolvedConnection, signal?: AbortSignal, options?: { limit: number }): Promise<{ items: KnowledgeCollection[]; hasMore: boolean }>
+  authorizeDocument?(connection: ResolvedConnection, documentId: string, collectionId: string, signal?: AbortSignal): Promise<void>
   documents(connection: ResolvedConnection, collectionId: string, page: number, signal?: AbortSignal, folderPath?: string): Promise<{ items: { id: string; title: string; fileType: string; parseStatus: string; folderPath?: string | null }[]; page: number; hasMore: boolean; total?: number }>
   folders(connection: ResolvedConnection, collectionId: string, signal?: AbortSignal): Promise<KnowledgeFolderTree>
   search(connection: ResolvedConnection, collectionIds: string[], query: string, limit: number, signal?: AbortSignal): Promise<{ items: KnowledgeRemoteHit[]; partial: boolean }>
