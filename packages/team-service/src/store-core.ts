@@ -41,6 +41,8 @@ import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-
 import { TeamTaskExecutions } from './task-executions'
 import { TEAM_TASK_EXECUTIONS_SQL, TEAM_TASK_EXECUTION_BOUNDARY_SQL } from './task-executions-schema'
 import { teamTaskRefSchema } from '../../../src/shared/team-task-execution'
+import { TeamImports } from './imports'
+import { TEAM_IMPORTS_SQL } from './imports-schema'
 
 type Row = Record<string, SQLOutputValue>
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
@@ -84,6 +86,11 @@ export class TeamStoreCore {
     validateOriginBundle: this.validateTaskOutputOrigin
   }
   private readonly governance = new TeamGovernance(this.governanceHost)
+  private readonly imports = new TeamImports({
+    ...this.governanceHost,
+    createTask: (...args) => this.hifox.importTask(...args),
+    event: (actorId, projectId, namespaceId, importId, commandId) => this.event('import.staged', 'personal', actorId, projectId, { namespaceId, importId, commandId })
+  })
   private readonly taskInputs = new TeamTaskInputs(this.governanceHost, this.governance)
   private readonly db: DatabaseSync
   private readonly directory: string
@@ -235,6 +242,7 @@ export class TeamStoreCore {
       if (current >= 1 && current <= 16) this.transaction(() => { this.db.exec(TEAM_INVITATION_SPACE_IDENTITY_SQL); this.db.exec('PRAGMA user_version=17') })
       if (current >= 1 && current <= 17) this.transaction(() => { this.db.exec(TEAM_TASK_EXECUTIONS_SQL); this.db.exec('PRAGMA user_version=18') })
       if (current >= 1 && current <= 18) this.transaction(() => { this.db.exec(TEAM_TASK_EXECUTION_BOUNDARY_SQL); this.db.exec('PRAGMA user_version=19') })
+      if (current >= 1 && current <= 19) this.transaction(() => { this.db.exec(TEAM_IMPORTS_SQL); this.db.exec('PRAGMA user_version=20') })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
@@ -603,6 +611,12 @@ export class TeamStoreCore {
     if (operation === 'taskExecutionHistory') return this.executions.history(actor, teamTaskRefSchema.parse(raw.task), teamIdSchema.parse(raw.executionId))
     if (operation === 'taskExecutionCommand') return this.executions.command(actor, raw.body)
     if (operation === 'taskExecutionReconcile') return this.executions.reconcile(actor, raw.body)
+    if (operation === 'importCommand') return this.imports.command(actor, raw.body)
+    if (operation === 'importReconcile') return this.imports.reconcile(actor, raw.body)
+    if (operation === 'importNamespaces') return this.imports.namespaces(principal, raw)
+    if (operation === 'importItems') return this.imports.items(principal, raw)
+    if (operation === 'importRead') return this.imports.read(principal, raw)
+    if (operation === 'importBatch') return this.imports.batchRead(principal, raw)
     if (operation === 'taskMaterialList') return this.taskMaterials.list(principal, raw)
     if (operation === 'taskMaterialRead') return this.taskMaterials.read(principal, raw)
     if (operation === 'taskMaterialVersions') return this.taskMaterials.versions(principal, raw)
@@ -648,6 +662,7 @@ export class TeamStoreCore {
       else if (kind === 'creationCommand') this.creations.authorizeReceipt(principal, result)
       else if (kind === 'codeResourceCommand') this.codeResources.authorizeReceipt(principal, result)
       else if (kind === 'taskMaterialCommand') this.taskMaterials.authorizeReceipt(principal, result)
+      else if (kind === 'importCommand') this.imports.authorizeReceipt(principal, result)
       else if (kind === 'governanceCommand') this.governance.authorizeReceipt(principal, result)
       else if (kind === 'taskInputCommand') this.taskInputs.authorizeReceipt(principal, result)
       else if (kind === 'collaborationCommand') this.collaboration.authorize(principal, resultId('entityId'))

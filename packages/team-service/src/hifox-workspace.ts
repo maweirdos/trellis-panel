@@ -13,6 +13,7 @@ import { teamIdSchema, teamRoleSchema, TEAM_MAX_RESPONSE_BYTES, type TeamCommand
 import { teamTaskMaterialMetadataSchema, teamTaskMaterialSubmissionSchema, teamTaskMaterialVersionSchema, type TeamTaskMaterialKind } from '../../../src/shared/team-task-materials'
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError, requireValue } from './errors'
+import type { TeamTaskRef } from '../../../src/shared/team-task-execution'
 
 type Row = Record<string, SQLOutputValue>
 type Workspace = { revision: number; snapshot: HifoxSnapshot }
@@ -304,6 +305,21 @@ export class TeamHifoxWorkspace {
   executionTransition(principal: StorePrincipal, projectId: string, expectedRevision: number, transition: HifoxTransitionTaskInput): void {
     this.authorize(principal, projectId, 'transitionTask')
     this.applyBusinessCommand(principal, projectId, { commandId: '', expectedEpoch: this.host.identity().epoch, expectedRevision, operation: 'transitionTask', input: transition })
+  }
+
+  /** Staged source mapping uses the existing task domain, never imported status or executor. */
+  importTask(principal: StorePrincipal, projectId: string, spaceId: string, title: string, expectedRevision: number): TeamTaskRef {
+    this.authorize(principal, projectId, 'createTask')
+    const workspace = this.load(projectId)
+    // Creating through an enabled automation could change imported business state or dispatch.
+    // Keep that behavior explicit until its separate business conversion is available.
+    if (workspace.snapshot.automations.some(rule => rule.enabled && rule.spaceId === spaceId)) throw new TeamServiceError('IMPORT_AUTOMATION_CONFLICT', 'Select an import space without enabled task automations or explicitly link an existing task', 409)
+    const statusId = workspace.snapshot.taskStatuses.find(status => status.spaceId === spaceId && status.category === 'backlog')?.id
+    if (!statusId) throw new TeamServiceError('IMPORT_STATUS_UNAVAILABLE', 'Import space has no Backlog state', 409)
+    const result = this.applyBusinessCommand(principal, projectId, { commandId: '', expectedEpoch: this.host.identity().epoch, expectedRevision, operation: 'createTask', input: { spaceId, title, statusId, triagePending: true, workKind: 'code', assigneeIds: [] } })
+    const task = result.snapshot.tasks.find(entry => entry.id === result.taskId)
+    if (!task) throw new TeamServiceError('CORRUPT_STORE', 'Imported task identity was not committed by the task domain', 503)
+    return { instanceId: this.host.identity().instanceId, projectId, spaceId, taskId: task.id, taskCreatedAt: task.createdAt }
   }
 
   private applyBusinessCommand(principal: StorePrincipal, projectId: string, input: z.infer<typeof hifoxRemoteCommandSchema>): HifoxRemoteSnapshot {

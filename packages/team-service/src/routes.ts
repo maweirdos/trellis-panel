@@ -13,6 +13,7 @@ import { registerCodeResourceRoutes } from './code-resources-routes'
 import { registerTaskMaterialRoutes } from './task-materials-routes'
 import { registerContentRoutes } from './content-routes'
 import { registerGovernanceRoutes } from './governance-routes'
+import { registerImportRoutes } from './imports-routes'
 
 const noBrowser = (request: FastifyRequest): void => { if (request.headers.origin !== undefined || request.cookies.tp_team_session) throw new TeamServiceError('FORBIDDEN', 'Device enrollment must be initiated by the local desktop client', 403) }
 export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore, auth: TeamAuthentication, config: TeamServiceConfig): Promise<void> {
@@ -35,6 +36,7 @@ export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore,
     await registerTaskMaterialRoutes(api, store, auth)
     await registerContentRoutes(api, store, auth)
     await registerGovernanceRoutes(api, store, auth)
+    await registerImportRoutes(api, store, auth)
     api.get('/api/session', async (request) => ({ ok: true, value: auth.session(request) }))
     api.get('/api/identity', async (request) => ({ ok: true, value: await auth.identity(request) }))
     const get = (path: string, operation: StoreOperation, fields: (request: FastifyRequest) => Record<string, unknown> = () => ({})): void => {

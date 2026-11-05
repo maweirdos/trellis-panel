@@ -324,6 +324,62 @@ is excluded before hydration. Pages default50/max100 and stay below 3 MiB minus
 no engine and installs no project files. See the executable contract at
 `.trellis/spec/backend/team-task-executions-v2.md`.
 
+## Read-only Trellis source import
+
+Contract version 1 uses validators/types from `shared/team-import.ts`, exported
+by this package. Native discovery/capture reads the selected root locally;
+HTTP commands receive only explicitly reviewed manifests and selected text.
+Base: `/api/projects/:projectId/imports`.
+
+| Route | Input / value |
+| --- | --- |
+| POST `/commands` | Full `ImportCommand`; committed/duplicate `ImportReceipt`. |
+| POST `/reconcile` | Original full command; original command reply or null without dispatch. |
+| GET `/namespaces` | Scoped `cursor`/`limit`; authorized namespace page. |
+| GET `/items` | Required `namespaceId`, optional `importId`, `cursor`/`limit`; candidate page. |
+| GET `/items/:candidateId` | Fixed candidate and digest/length-verified UTF-8 text. |
+| GET `/batches/:importId` | Required `namespaceId`, optional `cursor`/`limit`; fixed manifest/digest and `receipts:TeamPage<ImportReceipt>`. |
+
+Every command includes `contractVersion:1`, UUID `commandId`, `instanceId`,
+`projectId`, `expectedEpoch`, `expectedActorId` and nullable `expectedDeviceId`.
+Actions are `enroll`, `begin`, `map-task` and `snapshot`.
+
+- `enroll` fixes `enrollmentKey`, `spaceId`, original `spaceCreatedAt` and `label`.
+  Reuse that explicit namespace across members; paths, titles and Git remotes
+  cannot establish source identity.
+- `begin` fixes `namespaceId`, UUID `importId`, selected `manifest` and its
+  SHA-256 `manifestDigest` over `canonicalImportJson(manifest)`. Source authors
+  map explicitly to active space accounts or unresolved null.
+- `map-task` selects `sourceTaskKey`, `expectedWorkspaceRevision`, nullable
+  `aliasFrom` and `decision:{kind:'create'}` or
+  `{kind:'link',task:TeamTaskRef}`. Preserve original mappings; changed locations
+  require explicit alias review. New tasks enter triage through existing domain
+  rules. Local completed/archive flags grant no business acceptance.
+- `snapshot` sends `namespaceId`, `importId`, selected `itemKey` and exact `text`.
+  The server verifies fixed UTF-8 digest/length, stages an immutable candidate
+  through existing blobs and records a per-item receipt. Map task assets first.
+
+Identical selected versions reuse candidates. Changed sources preserve the
+original base and create compared candidates. Imported developer PRDs cannot
+replace product PRDs or their approvals. Import changes no adopted input or
+execution writer. Shared results remain `authority:'unactivated'`; candidates
+remain `approved:false` and `writerGranted:false`.
+Reordering otherwise identical author mappings does not create another version.
+Each new snapshot receipt includes current `comparison` and `conflicts`, even
+when its candidate is reused. The candidate's own comparison and original
+command receipts remain historical. Reviewed task-directory aliases preserve
+document identity instead of producing another version for the same bytes.
+Task-mapping receipt `itemKey` is `task:` plus SHA-256 of the original UTF-8
+`sourceTaskKey`; the full source identity remains in `mapping.sourceTaskKey`.
+This keeps receipt cursor keys bounded for every admitted source identity.
+
+Current account/device/project, space incarnation and task access apply to
+commands, reads and replay. Original UUID/body retention and reconciliation use
+the existing service mutation infrastructure. Recognized credentials, private
+keys and private absolute paths reject with `IMPORT_PRIVATE_CONTENT`. Source
+discovery, native bounds and exact error rules are documented in
+`.trellis/spec/backend/team-trellis-import.md`.
+
 ## Current task progress
 
 Validators and inferred types are exported from `shared/team-task-progress.ts`
