@@ -65,7 +65,13 @@ async function prepare(onPreparing?: () => void, onAuthenticated?: () => void): 
     if (preferences.startup === 'manual' && await daemonIsAbsent()) { onPreparing?.(); await install(context); return }
   }
   const started = await daemonManager.start()
-  if (!started.ok) throw new DaemonError(started.code, started.error, started.outcome)
+  if (!started.ok) {
+    const failure = new DaemonError(started.code, started.code === 'E_BUSY'
+      ? `${started.error} 可在后台服务状态中核对具体工作，或使用 npm run daemon:status 查看。`
+      : started.error, started.outcome)
+    if ('data' in started) throw Object.assign(failure, { takeoverStatus: started.data })
+    throw failure
+  }
   if (!started.data.capabilities.includes('native-protection')) throw new DaemonError('E_VERSION', 'The running daemon uses the previous role-specific credential format. Stop it with a compatible native controller before upgrading; no settings migration was attempted.')
   // Actual authenticated status/capability evidence, distinct from protected
   // projection readiness. Manual-start absence must not fabricate this marker.

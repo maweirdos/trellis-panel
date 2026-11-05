@@ -21,6 +21,12 @@ export async function pooledDaemonClient(): Promise<DaemonClient> {
   return client
 }
 export async function daemonIsAbsent(): Promise<boolean> { return !await verifiedLease(await context()) }
+export async function daemonBuildFreshnessForCurrentOwner(status?: DaemonStatus): Promise<ReturnType<typeof daemonBuildFreshness> | undefined> {
+  const native = await context(), lease = await verifiedLease(native)
+  if (!lease) return undefined
+  if (status && (status.epoch !== lease.epoch || !sameOwner(status.owner, lease.owner))) return undefined
+  return daemonBuildFreshness(native, lease)
+}
 async function call<M extends DaemonMethod>(method: M, payload: DaemonPayload<M>): Promise<DaemonResult<DaemonData<M>>> {
   try {
     const pool = daemonConnectionPool(await context())
@@ -42,6 +48,12 @@ const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 type BuildStop = { lease: DaemonLease; commandId: string }
 let buildStop: BuildStop | undefined
 let explicitStop: { lease: DaemonLease; commandId: string; acknowledged: boolean } | undefined
+type TakeoverDecision =
+  | { outcome: 'launch' }
+  | { outcome: 'attach'; status: DaemonStatus }
+  | { outcome: 'replace-if-idle' }
+  | { outcome: 'busy'; reason: string }
+  | { outcome: 'reconcile-stop'; commandId?: string; reason: string }
 type LifecycleResults = { start: DaemonResult<DaemonStatus>; stop: DaemonResult<null>; restart: DaemonResult<DaemonStatus> }
 let lifecycleTail: Promise<void> = Promise.resolve()
 let lastLifecycle: { kind: keyof LifecycleResults; promise: Promise<unknown> } | undefined
@@ -83,27 +95,40 @@ async function replaceOutdated(native: DaemonContext, lease: DaemonLease): Promi
     const stopped = await client.request('daemon.stop', { expectedOwner: lease.owner, idleOnly: true }, { commandId: attempt.commandId })
     if (!stopped.ok) {
       if (stopped.outcome === 'not-admitted') buildStop = undefined
-      throw Object.assign(new DaemonError(stopped.code, stopped.code === 'E_BUSY' ? 'A daemon update is needed, but the original owner still has background work. Wait for it to finish, then retry startup; active work was preserved.' : stopped.error, stopped.outcome), { commandId: attempt.commandId })
+      if (stopped.code === 'E_BUSY') {
+        const diagnostic = await status()
+        const blockers = diagnostic.ok ? diagnostic.data.blockers ?? [] : []
+        const detail = blockers.map((blocker: { label: string; state: string }) => `${blocker.label} (${blocker.state})`).join('; ')
+        throw Object.assign(new DaemonError(stopped.code, `A daemon update is needed, but the original owner still has background work.${detail ? ` Blockers: ${detail}.` : ''} Active work was preserved.`, stopped.outcome), { commandId: attempt.commandId })
+      }
+      throw Object.assign(new DaemonError(stopped.code, stopped.error, stopped.outcome), { commandId: attempt.commandId })
     }
     client.close()
     await waitForRelease(native, lease)
     buildStop = undefined
   } finally { client.close() }
 }
-async function attachOrReplace(native: DaemonContext): Promise<DaemonResult<DaemonStatus> | undefined> {
+async function attachOrReplace(native: DaemonContext): Promise<DaemonResult<DaemonStatus> | TakeoverDecision> {
   const lease = await verifiedLease(native)
-  if (!lease) return undefined
+  if (!lease) return { outcome: 'launch' }
   const attached = await status()
   if (!attached.ok) return attached
   if (attached.data.epoch !== lease.epoch || !sameOwner(attached.data.owner, lease.owner) || JSON.stringify(attached.data.identity) !== JSON.stringify(native.identity)) throw new DaemonError('E_CONFLICT', 'Daemon status changed owner while checking its build.')
+  if (attached.data.state !== 'running') {
+    const retained = explicitStop?.lease.epoch === lease.epoch && explicitStop.lease.nonce === lease.nonce ? explicitStop.commandId
+      : buildStop?.lease.epoch === lease.epoch && buildStop.lease.nonce === lease.nonce ? buildStop.commandId
+      : attached.data.stopCommandId
+    return { outcome: 'reconcile-stop', ...(retained ? { commandId: retained } : {}), reason: 'The original daemon is still stopping. Inspect its retained stop command and background cleanup before starting a successor.' }
+  }
+  if (attached.data.blockers?.length) {
+    return { outcome: 'busy', reason: `The original daemon still owns active or uncertain work: ${attached.data.blockers.map(blocker => `${blocker.label} (${blocker.state})`).join('; ')}.` }
+  }
   const freshness = daemonBuildFreshness(native, lease)
   if (freshness.state === 'current') {
-    if (attached.data.state !== 'running') throw new DaemonError('E_UNAVAILABLE', 'The original daemon is stopping. Wait for its confirmed exit before startup.')
-    return attached
+    return { outcome: 'attach', status: attached.data }
   }
   if (!freshness.idleStop) requireCurrentDaemonBuild(native, lease)
-  await replaceOutdated(native, lease)
-  return undefined
+  return { outcome: 'replace-if-idle' }
 }
 async function startOwned(): Promise<DaemonResult<DaemonStatus>> {
   return (async () => {
@@ -120,7 +145,11 @@ async function startOwned(): Promise<DaemonResult<DaemonStatus>> {
       }
       if (readLease(native)) {
         const attached = await attachOrReplace(native)
-        if (attached) return attached
+        if ('ok' in attached) return attached
+        if (attached.outcome === 'attach') return { ok: true, data: attached.status }
+        if (attached.outcome === 'busy') throw new DaemonError('E_BUSY', attached.reason)
+        if (attached.outcome === 'reconcile-stop') throw Object.assign(new DaemonError('E_UNAVAILABLE', attached.reason), attached.commandId ? { commandId: attached.commandId } : {})
+        if (attached.outcome === 'replace-if-idle') await replaceOutdated(native, await verifiedLease(native) ?? (() => { throw new DaemonError('E_CONFLICT', 'The daemon owner changed before build replacement.') })())
       }
       if (await verifiedLease(native)) throw new DaemonError('E_CONFLICT', 'A daemon owner appeared before launch. Retry attachment; no replacement was started.')
       const args = [...(app.isPackaged ? [] : [app.getAppPath()]), '--trellis-role=daemon', `--trellis-user-data-base64=${Buffer.from(native.userData).toString('base64')}`]

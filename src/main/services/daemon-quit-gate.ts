@@ -14,34 +14,32 @@ export function createDaemonQuitGate(ports: Ports): { beforeQuit(event: { preven
   }
   async function finish(): Promise<void> {
     let error: string | null = null
-    for (;;) {
-      const selected = await showDaemonQuitDialog(error)
-      if (selected.decision.action === 'cancel') return
-      try {
-        const status = selected.status ? await fresh(selected.status) : null
-        if (status && selected.decision.keepRunning && status.state !== 'running') throw new Error('后台正在停止，尚不能确认保留运行；请核对后台状态后重试')
-        // Only an explicit Exit commits the preference. Retention needs an actually verified daemon.
-        if (status) {
-          const saved = await daemonManager.setPreferences({ ...status.preferences, keepRunning: selected.decision.keepRunning })
-          if (!saved.ok) throw new Error(saved.error)
-        }
-        ports.closeGuiAdmission(true); setRuntimeClientAdmissionClosed(true)
-        await ports.stopGuiWork()
-        if (status && !selected.decision.keepRunning) {
-          const stopped = await daemonManager.stop()
-          if (!stopped.ok) throw new Error(stopped.error)
-        } else if (!status && selected.decision.keepRunning) {
-          if (!await daemonIsAbsent()) throw new Error('后台所有者仍在，但连接不可用；尚未确认保留状态，请恢复连接后重试')
-        } else if (!status) {
-          // An unverified connection failure cannot prove there is no original daemon owner.
-          const stopped = await daemonManager.stop()
-          if (!stopped.ok) throw new Error(stopped.error)
-        }
-        await ports.detach(); ports.finalize(); settled = true; ports.quit(); return
-      } catch (cause) {
-        ports.closeGuiAdmission(false); setRuntimeClientAdmissionClosed(false)
-        error = cause instanceof Error ? cause.message : '停止结果尚未核实，请重试或取消后检查原任务'
+    const selected = await showDaemonQuitDialog(error)
+    if (selected.decision.action === 'cancel') return
+    try {
+      const status = selected.status ? await fresh(selected.status) : null
+      if (status && selected.decision.keepRunning && status.state !== 'running') throw new Error('后台正在停止，尚不能确认保留运行；请核对后台状态后重试')
+      // Only an explicit Exit commits the preference. Retention needs an actually verified daemon.
+      if (status) {
+        const saved = await daemonManager.setPreferences({ ...status.preferences, keepRunning: selected.decision.keepRunning })
+        if (!saved.ok) throw new Error(saved.error)
       }
+      ports.closeGuiAdmission(true); setRuntimeClientAdmissionClosed(true)
+      await ports.stopGuiWork()
+      if (status && !selected.decision.keepRunning) {
+        const stopped = await daemonManager.stop()
+        if (!stopped.ok) throw new Error(stopped.error)
+      } else if (!status && selected.decision.keepRunning) {
+        if (!await daemonIsAbsent()) throw new Error('后台所有者仍在，但连接不可用；尚未确认保留状态，请恢复连接后重试')
+      } else if (!status) {
+        // An unverified connection failure cannot prove there is no original daemon owner.
+        const stopped = await daemonManager.stop()
+        if (!stopped.ok) throw new Error(stopped.error)
+      }
+      await ports.detach(); ports.finalize(); settled = true; ports.quit()
+    } catch (cause) {
+      ports.closeGuiAdmission(false); setRuntimeClientAdmissionClosed(false)
+      throw new Error(cause instanceof Error ? cause.message : '停止结果尚未核实，请重试或取消后检查原任务')
     }
   }
   return {

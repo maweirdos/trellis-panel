@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { z } from 'zod'
@@ -66,6 +66,12 @@ export class WorkcopyUseRegistry {
     return [...this.leases.values()].filter(use => !identity || sameWorkcopy(use.identity, identity)
       || identity.commonId !== null && identity.commonId === use.identity.commonId && ['tree-change', 'git-mutation'].includes(use.kind))
       .map(({ token: _token, ...fact }) => structuredClone(fact))
+  }
+  /** Exact private recovery capability. The digest is safe to expose publicly. */
+  leaseByDigest(leaseId: string, owner: WorkcopyOwner): WorkcopyLease | undefined {
+    this.assertOwner()
+    const lease = [...this.leases.values()].find(candidate => createHash('sha256').update(candidate.token).digest('hex') === leaseId)
+    return lease && sameOwner(lease.owner, owner) ? structuredClone(lease) : undefined
   }
   /** Native lifecycle recovery only; this private inventory is never a renderer DTO. */
   agentLeases(root?: string, sessionId?: string): WorkcopyLease[] {

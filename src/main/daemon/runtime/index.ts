@@ -19,11 +19,14 @@ import { KNOWLEDGE_MUTATIONS, knowledgeRuntimeBody } from '../../../shared/daemo
 import { HifoxTaskProgressRuntime } from '../../services/hifox/task-progress-runtime'
 import { installWorkcopyUse, resolveWorkcopy } from '../../services/workcopy-use'
 import { workcopyUseResultSchema, isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
+import type { WorkcopyOwner } from '../../../shared/workcopy-use'
 import { requirementPredecessorSchema, requirementTaskOriginSchema } from '../../../shared/conversation-requirements'
 import { runRefSchema } from '../../../shared/workflow'
 import { readRegular } from '../../services/private-conversations/files'
 import { utf8 } from '../../services/private-conversations/requirement-files'
 import { prepareAcpRecovery } from '../../services/workcopy-use/acp-recovery'
+import { recoverExactAcpWorkcopyUse, type WorkcopyRecoveryEvidence } from '../../services/workcopy-use/acp-recovery'
+import { createHash } from 'node:crypto'
 import { privateNativeRead, privateNativeSend, privateNativeControl, privateNativeSession } from '../../services/private-conversations/native'
 import { withPrivateAcpOwner } from '../../services/acp/private-access'
 import { configurePrivateNativeSession, recoverPrivateNativeModel } from '../../services/private-conversations/configuration'
@@ -49,6 +52,8 @@ export interface DaemonRuntime {
   releaseWorkcopy(root: string, payload: RuntimeWire, commandId: string): Promise<RuntimeWire>
   dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>>
   status(): Promise<{ authority: 'legacy' | 'daemon'; admission: 'open' | 'closed'; sessions: number; workflows: number; operations: number; released: boolean; reason?: string }>
+  blockers(): Promise<Array<{ domain: 'runtime' | 'workflow' | 'application' | 'work-copy'; state: 'active' | 'unknown'; label: string; rootId?: string; ownerGeneration?: string; acquiredAt?: number }>>
+  recoverWorkcopy(input: { leaseId: string; owner: WorkcopyOwner; acceptedEvidence?: WorkcopyRecoveryEvidence }): Promise<{ released: boolean; evidence?: WorkcopyRecoveryEvidence; reason?: 'released' | 'already-released' | 'missing-evidence' }>
   assertIdle(): Promise<void>
   pack(root: string, value: unknown): RuntimeWire
   unpack(root: string, wire: RuntimeWire): unknown
@@ -126,6 +131,30 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     let authority: 'legacy' | 'daemon' = 'daemon', reason: string | undefined
     try { ports.assertAuthority() } catch { authority = 'legacy'; reason = 'Runtime/settings authority preparation has not completed.' }
     return { authority, admission: closed || authority !== 'daemon' ? 'closed' : 'open', sessions: acp.listOwnedAcpSessionFacts().length, workflows: await countOwnedWorkflowApplications(), operations: commands.count(), released, ...(reason ? { reason } : {}) }
+  }
+  const blockers: DaemonRuntime['blockers'] = async () => {
+    const owned = acp.listOwnedAcpSessionFacts().map(session => ({
+      domain: 'runtime' as const,
+      state: session.cleanupRequired || session.disconnected || !session.connectionGeneration
+        ? 'unknown' as const : 'active' as const,
+      label: `Runtime session ${session.sessionId || 'unknown'}`,
+      ownerGeneration: session.connectionGeneration ?? undefined
+    }))
+    const workflows = await countOwnedWorkflowApplications()
+    return [
+      ...owned,
+      ...workflows > 0 ? [{ domain: 'workflow' as const, state: 'active' as const, label: `Owned workflows (${workflows})` }] : [],
+      ...operations > 0 ? [{ domain: 'application' as const, state: 'active' as const, label: `Runtime operations (${operations})` }] : [],
+      ...commands.count() > 0 ? [{ domain: 'application' as const, state: 'unknown' as const, label: 'Pending runtime command receipts' }] : [],
+      ...taskProgress.busy() ? [{ domain: 'application' as const, state: 'active' as const, label: 'Task progress work' }] : [],
+      ...taskExecutions.busy() ? [{ domain: 'application' as const, state: 'active' as const, label: 'Native task execution' }] : [],
+      ...workcopies.agentLeases().map(({ token, ...use }) => ({
+        domain: 'work-copy' as const,
+        state: use.state === 'unknown' ? 'unknown' as const : 'active' as const,
+        label: use.owner.label, rootId: use.identity.id, ownerGeneration: use.owner.generation, acquiredAt: use.acquiredAt,
+        leaseId: createHash('sha256').update(token).digest('hex'), owner: structuredClone(use.owner)
+      }))
+    ].map(({ state, ...fact }) => ({ ...fact, state }))
   }
   const closeAdmission = (): void => { closed = true; setWorkflowAdmissionClosed(true); acp.closeAcpAdmission() }
   const shutdown = (): Promise<void> => {
@@ -327,7 +356,8 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     }
   }
   return {
-    status, closeAdmission, shutdown,
+    status, blockers, closeAdmission, shutdown,
+    recoverWorkcopy: input => recoverExactAcpWorkcopyUse(ports.directory, workcopies, input),
     async releaseWorkcopy(_root, payload, commandId) {
       ports.assertOwner()
       z.string().uuid().parse(commandId)

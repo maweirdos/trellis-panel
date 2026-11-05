@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { workcopyOwnerSchema, type WorkcopyLease, type WorkcopyOwner } from '../../../shared/workcopy-use'
@@ -44,6 +45,52 @@ async function legacySettled(directory: string, lease: WorkcopyLease): Promise<b
   writeAtomic(file, JSON.stringify({ ...original, cleanedKernel: current }))
   preserveLegacyOwner(directory, lease)
   return true
+}
+export type WorkcopyRecoveryEvidence = 'job-witness' | 'kernel-transition' | 'cleanup-receipt'
+export type WorkcopyRecoveryInspection =
+  | { state: 'already-released' }
+  | { state: 'missing-evidence' }
+  | { state: 'recoverable'; evidence: WorkcopyRecoveryEvidence }
+/** Inspects only evidence for the exact lease. It never creates or changes a witness. */
+export async function inspectAcpRecoveryEvidence(
+  directory: string,
+  registry: WorkcopyUseRegistry,
+  lease: WorkcopyLease
+): Promise<WorkcopyRecoveryInspection> {
+  if (!registry.leaseByDigest(createHash('sha256').update(lease.token).digest('hex'), lease.owner)) return { state: 'already-released' }
+  if (lease.state !== 'unknown') return { state: 'missing-evidence' }
+  if (hasAcpJobOwner(directory, lease.owner)) return { state: 'recoverable', evidence: 'job-witness' }
+  const journal = workcopyOwnerJournalPath(directory, lease.owner)
+  if (existsSync(journal)) {
+    const original = readWorkcopyOwnerJournal(journal)
+    if (original.lease.token === lease.token && original.state === 'released') return { state: 'recoverable', evidence: 'cleanup-receipt' }
+  }
+  const quarantine = legacyFile(directory, lease)
+  if (existsSync(quarantine)) {
+    const original = readLegacy(directory, lease)
+    if (original) return { state: 'recoverable', evidence: 'kernel-transition' }
+  }
+  return { state: 'missing-evidence' }
+}
+/** Releases one exact agent lease only after native evidence is already valid. */
+export async function recoverExactAcpWorkcopyUse(
+  directory: string,
+  registry: WorkcopyUseRegistry,
+  input: { leaseId: string; owner: WorkcopyOwner; acceptedEvidence?: 'job-witness' | 'kernel-transition' | 'cleanup-receipt' }
+): Promise<{ released: boolean; evidence?: 'job-witness' | 'kernel-transition' | 'cleanup-receipt'; reason?: 'released' | 'already-released' | 'missing-evidence' }> {
+  const lease = registry.leaseByDigest(input.leaseId, input.owner)
+  const evidence = await inspectAcpRecoveryEvidence(directory, registry, lease
+    ?? (() => { throw new DaemonError('E_CONFLICT', '原工作副本登记已释放或身份不匹配。') })())
+  if (evidence.state === 'already-released') return { released: true, reason: 'already-released' }
+  if (evidence.state === 'missing-evidence') return { released: false, reason: 'missing-evidence' }
+  if (input.acceptedEvidence !== undefined && input.acceptedEvidence !== evidence.evidence) throw new DaemonError('E_CONFLICT', '实际工作副本清理证据与确认时不一致。')
+  if (evidence.evidence === 'job-witness') await recoverAcpJobOwner(directory, input.owner, true)
+  else await legacySettled(directory, registry.leaseByDigest(input.leaseId, input.owner) ?? (() => { throw new DaemonError('E_CONFLICT', '原工作副本登记在核对期间已释放。') })())
+  const current = registry.leaseByDigest(input.leaseId, input.owner)
+  if (!current) return { released: true, evidence: evidence.evidence, reason: 'already-released' }
+  const result = registry.release({ token: current.token, owner: input.owner, outcome: 'cleanup-confirmed' })
+  if (!result.released) throw new DaemonError('E_UNKNOWN', '原清理证据有效，但原登记释放尚未确认。', 'unknown')
+  return { released: true, evidence: evidence.evidence, reason: 'released' }
 }
 /** Native original-owner evidence only; never creates an intent, Job or replacement quarantine. */
 export async function hasLegacyAcpCleanupReceipt(directory: string, root: string, owner: WorkcopyOwner): Promise<boolean> {

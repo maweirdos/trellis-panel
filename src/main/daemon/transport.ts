@@ -96,10 +96,16 @@ export async function listenNativePipe(name: string, connected: (peer: NativePee
   return { async close() {
     closing = true
     if (child.exitCode !== null || child.signalCode !== null) return
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new DaemonError('E_UNKNOWN', 'The original pipe adapter has not confirmed exit.', 'unknown')), DAEMON_LIMITS.requestMs)
+    await new Promise<void>(resolve => {
+      let timer = setTimeout(onDeadline, DAEMON_LIMITS.requestMs)
       child.once('exit', () => { clearTimeout(timer); resolve() })
       child.stdin.end()
+      function onDeadline(): void {
+        child.once('exit', () => resolve())
+        child.kill('SIGKILL')
+        timer = setTimeout(() => resolve(), 1000)
+        timer.unref()
+      }
     })
   } }
 }

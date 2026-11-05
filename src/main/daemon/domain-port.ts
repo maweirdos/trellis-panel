@@ -11,5 +11,7 @@ export interface DaemonDomainPort {
    * cancelling them. Only genuinely idle owners enter canonical shutdown. */
   shutdownIfIdle(): Promise<void>
   observeRuntime(listener: (event: { root: string }) => void): () => void
+  blockers(): Promise<Array<{ domain: 'runtime' | 'workflow' | 'application' | 'work-copy'; state: 'active' | 'unknown'; label: string; rootId?: string; ownerGeneration?: string; acquiredAt?: number }>>
+  recoverWorkcopy(input: { leaseId: string; owner: import('../../shared/workcopy-use').WorkcopyOwner; acceptedEvidence?: 'job-witness' | 'kernel-transition' | 'cleanup-receipt' }): Promise<{ released: boolean; evidence?: 'job-witness' | 'kernel-transition' | 'cleanup-receipt'; reason?: 'released' | 'already-released' | 'missing-evidence' }>
   withWorkspaceChange(grant: import('../../shared/daemon').WorkspaceGrant, change: () => unknown): Promise<unknown>
 }

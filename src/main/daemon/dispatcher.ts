@@ -23,7 +23,10 @@ export class DaemonDispatcher {
   private checkingIdle = false
   private operations = 0
   private stopAttempt?: { commandId: string; intent: string; result: Promise<unknown> }
-  constructor(private readonly context: DaemonContext, private readonly lease: DaemonLease, private readonly repository: DaemonRepository, private readonly settings: ProtectedSettingsOwner, private readonly scheduler: IntegrationScheduler, private readonly log: DaemonLog, private readonly requestStop: () => void, private readonly domains?: DaemonDomainPort) {}
+  constructor(private readonly context: DaemonContext, private readonly lease: DaemonLease, private readonly repository: DaemonRepository, private readonly settings: ProtectedSettingsOwner, private readonly scheduler: IntegrationScheduler, private readonly log: DaemonLog, private readonly requestStop: () => void, private readonly domains?: DaemonDomainPort, private readonly ownerBuildSha256?: string) {}
+  retainedStopCommandId(): string | undefined {
+    return this.stopAttempt?.commandId
+  }
   /** Include timer-driven admission in the same server-side idle fence as RPC. */
   async backgroundPoll(action: () => Promise<void>): Promise<void> {
     if (this.stopping || this.checkingIdle) return
@@ -39,9 +42,26 @@ export class DaemonDispatcher {
   currentWorkspace(grant: WorkspaceGrant): boolean {
     try { const current = this.repository.grant(grant.workspaceId); return Boolean(current && JSON.stringify(current) === JSON.stringify(grant) && realpathSync(grant.root) === grant.root) } catch { return false }
   }
-  status(): DaemonStatus {
+  async status(): Promise<DaemonStatus> {
     const jobs = this.repository.allJobs()
     const intent = this.repository.startupIntent()
+    const retainedStopCommandId = this.retainedStopCommandId()
+    const domains = await this.domains?.blockers() ?? []
+    const blockerList: NonNullable<DaemonStatus['blockers']> = [
+      ...jobs.filter(job => activeJob(job) || job.state === 'unknown').map(job => ({
+        domain: 'scheduler' as const,
+        state: (job.state === 'unknown' ? 'unknown' : 'active') as 'active' | 'unknown',
+        label: `Integration job ${job.id}`, evidence: 'none' as const, requiredEvidence: [] as []
+      })),
+      ...domains.map(({ domain, state, label, rootId, ownerGeneration, acquiredAt }) => ({
+        domain, state, label, ...(rootId ? { rootId } : {}), ...(ownerGeneration ? { ownerGeneration } : {}),
+        ...(acquiredAt !== undefined ? { acquiredAt } : {}),
+        evidence: 'none' as const,
+        requiredEvidence: domain === 'work-copy'
+          ? ['job-witness', 'kernel-transition', 'cleanup-receipt'] as Array<'job-witness' | 'kernel-transition' | 'cleanup-receipt'>
+          : [] as []
+      }))
+    ].slice(0, 32)
     let startupRegistration: 'confirmed' | 'unknown' | 'unavailable' = intent ? 'unknown' : 'confirmed'
     if (!intent && this.context.identity.mode === 'production') {
       try { if (!new WindowsDaemonStartup(this.context).verify(this.repository.preferences().startup === 'login')) startupRegistration = 'unknown' }
@@ -51,7 +71,8 @@ export class DaemonDispatcher {
       state: this.stopping ? 'stopping' : 'running', runtimeAuthority: this.domains?.ready() ? 'daemon' : 'legacy', settingsAuthority: this.settings.authority(),
       preferences: this.repository.preferences(), eventCursor: this.repository.cursor(), activeJobs: jobs.filter(activeJob).length,
       unknownJobs: jobs.filter((job) => job.state === 'unknown').length, capabilities: this.domains?.ready() ? ['foundation', 'integration-jobs', 'runtime-control', 'native-protection', 'push-events'] : ['foundation', 'native-protection', 'push-events'],
-      startupRegistration, ...(intent ? { startupCommandId: intent.commandId } : {}) }
+      startupRegistration, ...(intent ? { startupCommandId: intent.commandId } : {}), ...(this.ownerBuildSha256 ? { buildSha256: this.ownerBuildSha256 } : {}),
+      ...(retainedStopCommandId ? { stopCommandId: retainedStopCommandId } : {}), ...(blockerList.length ? { blockers: blockerList } : {}) }
   }
   private workspace(request: DaemonRequest): WorkspaceGrant {
     const supplied = request.workspace
@@ -62,7 +83,7 @@ export class DaemonDispatcher {
   }
   async dispatch(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown> {
     if (request.method.startsWith('runtime.private') || request.method === 'runtime.taskExecution' || request.method === 'runtime.hifoxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
-    const management = ['daemon.status', 'daemon.stop', 'daemon.logs', 'commands.get'].includes(request.method)
+    const management = ['daemon.status', 'daemon.stop', 'daemon.workcopyRecovery', 'daemon.logs', 'commands.get'].includes(request.method)
       || isBoundedWorkcopyCleanup(request.method, request.payload)
       || isBoundedNativeTaskControl(request.method, request.payload)
     if ((this.checkingIdle || this.stopping) && !management) throw new DaemonError(this.stopping ? 'E_UNAVAILABLE' : 'E_BUSY', 'Native admission is closed while the original daemon owner is checking shutdown.')
@@ -133,7 +154,7 @@ export class DaemonDispatcher {
     if (request.expectedEpoch !== this.lease.epoch) throw new DaemonError('E_CONFLICT', 'Daemon epoch changed. Reconnect and inspect the original command receipt.')
     const mutating = MUTATING_DAEMON_METHODS.includes(request.method)
     if (mutating && !request.commandId) throw new DaemonError('E_INVALID_ARG', 'Mutations require a stable commandId.')
-    if (this.stopping && mutating && request.method !== 'daemon.stop' && !isBoundedWorkcopyCleanup(request.method, request.payload) && !isBoundedNativeTaskControl(request.method, request.payload)) throw new DaemonError('E_UNAVAILABLE', 'Daemon is stopping. Inspect the retained command receipt.')
+    if (this.stopping && mutating && request.method !== 'daemon.stop' && request.method !== 'daemon.workcopyRecovery' && !isBoundedWorkcopyCleanup(request.method, request.payload) && !isBoundedNativeTaskControl(request.method, request.payload)) throw new DaemonError('E_UNAVAILABLE', 'Daemon is stopping. Inspect the retained command receipt.')
     // The private original lease remains cleanable after grant revocation.
     if (request.workspace && !isBoundedWorkcopyCleanup(request.method, request.payload) && !isBoundedNativeTaskControl(request.method, request.payload)) this.workspace(request)
     if (this.domains?.handles(request.method)) return this.domains.dispatch(request, actor, nativeGui)
@@ -142,7 +163,7 @@ export class DaemonDispatcher {
       if (committed.found) return committed.data
     }
     switch (request.method) {
-      case 'daemon.status': daemonPayloads[request.method].parse(request.payload); return this.status()
+      case 'daemon.status': daemonPayloads[request.method].parse(request.payload); return await this.status()
       case 'daemon.preferences.get':
         daemonPayloads[request.method].parse(request.payload)
         if (this.repository.startupIntent()) throw new DaemonError('E_UNKNOWN', 'Startup registration needs native reconciliation. Inspect daemon status and its original command ID.', 'unknown')
@@ -164,6 +185,13 @@ export class DaemonDispatcher {
         return this.repository.reconcileStartup(input.originalCommandId, (preferences, registration) => startup.verifyOriginal(registration, preferences.startup === 'login'))
       }
       case 'daemon.stop': return this.stop(request)
+      case 'daemon.workcopyRecovery': {
+        if (!this.domains?.recoverWorkcopy) throw new DaemonError('E_UNAVAILABLE', '当前后台没有证据式工作副本恢复能力。')
+        const input = daemonPayloads[request.method].parse(request.payload)
+        if (input.commandId !== request.commandId) throw new DaemonError('E_CONFLICT', '恢复确认的 command ID 与请求不一致。')
+        const { commandId: _commandId, ...recovery } = input
+        return await this.domains.recoverWorkcopy(recovery)
+      }
       case 'workspace.grant': {
         const input = daemonPayloads[request.method].parse(request.payload)
         if (!isAbsolute(input.root) || !statSync(input.root).isDirectory()) throw new DaemonError('E_INVALID_ARG', 'Authorize an existing absolute workspace directory from native code.')
@@ -180,7 +208,7 @@ export class DaemonDispatcher {
       case 'events.snapshot': {
         daemonPayloads[request.method].parse(request.payload)
         const workspace = request.workspace ? this.workspace(request) : null
-        return { status: this.status(), workspace, jobs: workspace ? this.repository.jobs(workspace.workspaceId).filter(activeJob) : [], cursor: this.repository.cursor() }
+        return { status: await this.status(), workspace, jobs: workspace ? this.repository.jobs(workspace.workspaceId).filter(activeJob) : [], cursor: this.repository.cursor() }
       }
       case 'events.replay': {
         const input = daemonPayloads[request.method].parse(request.payload)

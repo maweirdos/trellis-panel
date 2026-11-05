@@ -15,7 +15,7 @@ const buildStampSchema = z.object({
   idleStopVersion: z.literal(1)
 }).strict()
 export type DaemonBuild = { sha256: string; modifiedAt: number; capturedAt: number; fingerprint: string }
-export type DaemonBuildFreshness = { state: 'current' | 'changed' | 'unknown'; idleStop: boolean }
+export type DaemonBuildFreshness = { state: 'current' | 'changed' | 'unknown'; idleStop: boolean; ownerSha256?: string; currentSha256?: string }
 const fingerprint = (entry: BigIntStats): string => [entry.dev, entry.ino, entry.size, entry.mtimeNs, entry.ctimeNs, entry.birthtimeNs].join(':')
 function bundleFile(): string {
   const root = dirname(dirname(__dirname))
@@ -85,6 +85,7 @@ export function publishDaemonBuild(context: DaemonContext, lease: DaemonLease, b
   const stamp = buildStampSchema.parse({ version: 1, lease, sha256: build.sha256, capturedAt: build.capturedAt, idleStopVersion: 1 })
   writeExclusiveAtomic(stampFile(context, lease), JSON.stringify(stamp))
 }
+export function currentDaemonBuild(): DaemonBuild { return expectedDaemonBuild() }
 export function daemonBuildFreshness(context: DaemonContext, lease: DaemonLease, expected = expectedDaemonBuild()): DaemonBuildFreshness {
   const checkLease = (): void => {
     if (JSON.stringify(readLease(context)) !== JSON.stringify(lease) || JSON.stringify(lease.identity) !== JSON.stringify(context.identity)) throw new DaemonError('E_CONFLICT', 'Daemon ownership changed during build verification. Reconnect to the original owner.')
@@ -101,12 +102,12 @@ export function daemonBuildFreshness(context: DaemonContext, lease: DaemonLease,
     if (error instanceof DaemonError && error.code === 'E_DENIED') throw error
     // Even an older bundle mtime is not proof that an unstamped legacy process
     // loaded the current bytes. Never upgrade this uncertainty to readiness.
-    return { state: 'unknown', idleStop: false }
+    return { state: 'unknown', idleStop: false, currentSha256: expected.sha256 }
   }
   checkLease()
   checkBundle()
-  if (JSON.stringify(stamp.lease) !== JSON.stringify(lease) || stamp.capturedAt < ownerStartedAt(lease) || stamp.capturedAt > lease.acquiredAt) return { state: 'unknown', idleStop: false }
-  return { state: stamp.sha256 === expected.sha256 ? 'current' : 'changed', idleStop: true }
+  if (JSON.stringify(stamp.lease) !== JSON.stringify(lease) || stamp.capturedAt < ownerStartedAt(lease) || stamp.capturedAt > lease.acquiredAt) return { state: 'unknown', idleStop: false, ownerSha256: stamp.sha256, currentSha256: expected.sha256 }
+  return { state: stamp.sha256 === expected.sha256 ? 'current' : 'changed', idleStop: true, ownerSha256: stamp.sha256, currentSha256: expected.sha256 }
 }
 export function requireCurrentDaemonBuild(context: DaemonContext, lease: DaemonLease): void {
   if (daemonBuildFreshness(context, lease).state !== 'current') throw new DaemonError('E_VERSION', 'The running daemon build is outdated or unverified. Background work is preserved. Inspect native daemon status; after work finishes, explicitly run the same installation with --trellis-role=control --trellis-command=stop, then retry startup.')

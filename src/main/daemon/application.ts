@@ -119,6 +119,11 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       } finally { changingRoots.delete(grant.root) }
     },
     ready: () => initialized && !closed,
+    blockers: () => runtime ? runtime.blockers() : Promise.resolve([]),
+    recoverWorkcopy: input => {
+      if (!runtime?.recoverWorkcopy) throw new DaemonError('E_UNAVAILABLE', '当前后台尚未安装工作副本恢复能力。')
+      return runtime.recoverWorkcopy(input)
+    },
     handles: method => method in nativeStateRequests || method in runtimeRequests || method in providerWireContracts || method === 'integration.execute' || method === 'provider.read.cancel',
     async dispatch(request, actor, nativeGui) {
       if (runtime && isBoundedNativeTaskControl(request.method, request.payload)) {

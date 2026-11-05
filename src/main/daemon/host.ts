@@ -49,7 +49,7 @@ export async function runDaemonHost(ports: DaemonHostPorts = {}): Promise<void> 
       app.exit(0)
     } catch { log.append('TRANSPORT_FAILED'); app.exit(1) } // Preserve lease on unconfirmed adapter exit.
   }
-  const dispatcher = new DaemonDispatcher(context, lease, repository, settings, scheduler, log, () => { setTimeout(() => { void stop() }, 100) }, application.domains)
+  const dispatcher = new DaemonDispatcher(context, lease, repository, settings, scheduler, log, () => { setTimeout(() => { void stop() }, 100) }, application.domains, loadedBuild.sha256)
   const tick = setInterval(() => {
     // A damaged optional provider ledger must not starve unrelated queued jobs.
     void dispatcher.backgroundPoll(async () => {
