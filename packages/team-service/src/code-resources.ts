@@ -17,7 +17,7 @@ import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 import { invalidateTaskResourceProgress, taskProgressFence } from './task-progress'
 
-type Host = Omit<CreationsHost, 'identity'> & Pick<HifoxWorkspaceHost, 'identity'>
+type Host = Omit<CreationsHost, 'identity'> & Pick<HifoxWorkspaceHost, 'identity'> & { invalidateExecution(projectId: string, taskId: string): void }
 type Context = { principal: StorePrincipal; projectId: string; canManage: boolean; canManageTasks: boolean; spaces: HifoxSpace[]; workspaceRevision: number }
 const MAX_RESOURCES = 1000
 function fail(code: string, message: string, status = 409): never { throw new TeamServiceError(code, message, status) }
@@ -36,6 +36,11 @@ function cas(actual: number, expected: number): void {
 
 export class TeamCodeResources {
   constructor(private readonly host: Host) {}
+
+  private invalidateTaskProgress(projectId: string, taskId: string): void {
+    invalidateTaskResourceProgress(this.host, projectId, taskId)
+    this.host.invalidateExecution(projectId, taskId)
+  }
 
   private context(principal: StorePrincipal, projectId: string): Context {
     this.host.project(principal, projectId)
@@ -97,7 +102,7 @@ export class TeamCodeResources {
     const rows = this.host.all("SELECT taskId FROM team_task_code_resources WHERE projectId=? AND json_extract(recordJson,'$.resourceId')=?" + (spaceId ? ' AND spaceId=?' : ''), projectId, resourceId, ...(spaceId ? [spaceId] : []))
     for (const row of rows) {
       if (typeof row.taskId !== 'string') fail('CORRUPT_STORE', 'Stored task resource identity is invalid', 503)
-      invalidateTaskResourceProgress(this.host, projectId, row.taskId)
+      this.invalidateTaskProgress(projectId, row.taskId)
     }
   }
 
@@ -222,7 +227,7 @@ export class TeamCodeResources {
         const selection = teamTaskResourceSelectionSchema.parse({ taskId: targetId, spaceId: task.spaceId, taskCreatedAt,
           resourceId: input.resourceId, revision, selectedBy: ctx.principal.person.userId, updatedAt: committedAt })
         this.host.run('INSERT INTO team_task_code_resources(projectId,taskId,spaceId,taskCreatedAt,recordJson) VALUES(?,?,?,?,?) ON CONFLICT(projectId,taskId) DO UPDATE SET spaceId=excluded.spaceId,taskCreatedAt=excluded.taskCreatedAt,recordJson=excluded.recordJson', projectId, targetId, task.spaceId, taskCreatedAt, JSON.stringify(selection))
-        if (changed) invalidateTaskResourceProgress(this.host, projectId, targetId)
+        if (changed) this.invalidateTaskProgress(projectId, targetId)
       }
     }
     return { projectId, epoch: this.host.identity().epoch, kind: input.kind, targetId, taskCreatedAt, spaceId, deviceId: ctx.principal.deviceId, revision, committedAt }

@@ -276,6 +276,54 @@ command, not the current workspace. Clients fetch a separate current snapshot;
 they do not fill visible caches from historical receipts. Backup restore rotates
 epoch and cursor secrets, preserving the original immutable backup and instance.
 
+## Platform task executions — contract v2
+
+Validators/types are exported from `shared/team-task-execution.ts` and this
+package. Version 2 task identity contains `instanceId`, `projectId`, `spaceId`,
+`taskId` and original `taskCreatedAt`; no local path/task directory is required.
+It does not change the version 1 service or progress contract.
+
+Base: `/api/projects/:projectId/hifox/tasks/:taskId/executions`.
+
+| Route | Input / value |
+| --- | --- |
+| GET base | Query `contractVersion=2&instanceId=...&spaceId=...&taskCreatedAt=...`; `TeamExecutionView`. |
+| POST `/commands` | Full `TeamExecutionCommand`; committed/duplicate `TeamExecutionReceipt`. |
+| POST `/reconcile` | The original full command; historical receipt or null, never a dispatch. |
+| GET `/:executionId` | Same task query; retained `TeamExecutionRecord`. |
+
+Commands include `contractVersion:2`, original UUID/task, `expectedEpoch`,
+`expectedActorId`, nullable `expectedDeviceId`, `expectedGeneration` and nullable
+`expectedExecutionId`. Kinds are `claim`, `report`, `finalize`, `release` and
+`transition`; exact strict payloads come from `teamExecutionCommandSchema`.
+Unsupported command versions reject with `UNSUPPORTED_EXECUTION_VERSION`.
+
+Claim requires the current handler and one available effective writer; v1
+progress binding and v2 execution exclude each other. Progress is bounded and
+monotonic. Finalization resolves fixed approved document versions. Ordinary
+handoff revalidates confirmed outputs and existing business roles, then revokes
+the former writer atomically with task/progress changes. Native outcomes remain
+`owner-reported`; authority revocation cannot establish process shutdown.
+
+Historical receipt recovery requires current task read access, the original
+reporter/actor/device, exact command scope/hash and epoch. A successful handoff
+or later generation does not hide the committed receipt or restore old writes.
+A null reconciliation result is not proof an in-flight request cannot commit.
+Clients keep the same UUID/body and read the active projection separately.
+
+The typed desktop bridge persists original task intents as profile-local SQLite
+JSON before sending; credentials retain their existing protected secret owner.
+Command bodies are not additionally encrypted. The bridge fences
+connection/person/device/project changes and exposes read/history/command/
+reconcile/pending operations through the existing protected worker. Command
+preflight reads one original connection/UUID. Pending accepts
+`{connectionId,task,cursor?,limit?}` and returns
+`{contractVersion:2,connectionId,task,items,hasMore,nextCursor}`; committed history
+is excluded before hydration. Pages default50/max100 and stay below 3 MiB minus
+64 KiB, including a valid near-request-limit original command. The bridge starts
+no engine and installs no project files. See the executable contract at
+`.trellis/spec/backend/team-task-executions-v2.md`.
+
 ## Current task progress
 
 Validators and inferred types are exported from `shared/team-task-progress.ts`

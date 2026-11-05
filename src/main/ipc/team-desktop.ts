@@ -8,6 +8,8 @@ import { getProjectRoot, getProjectGeneration } from '../state'
 import { resolveTeamPublicationSource } from '../services/team-publication-source'
 import { withDesktopTeamService, notifyDesktopTeamChanged } from '../services/team-desktop'
 import { handle } from './registry'
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
+import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 
 async function reply<T>(work: () => Promise<T>): Promise<TeamDesktopReply<T>> {
   try { return { ok: true, value: await work() } }
@@ -17,11 +19,21 @@ async function reply<T>(work: () => Promise<T>): Promise<TeamDesktopReply<T>> {
       error: (error instanceof z.ZodError ? '团队操作参数无效' : typeof known.message === 'string' ? known.message : '团队服务暂不可用，原操作身份已保留').replace(/(?:td_|ts_|ti_)[A-Za-z0-9_-]{43}/g, '[credential]').slice(0, 2000), outcomeUnknown: known.outcomeUnknown === true }
   }
 }
-export function registerTeamDesktopIpc(): void {
+export function registerTeamDesktopIpc(getMain: () => BrowserWindow | null): void {
   const call = <T>(action: (service: DesktopTeamApi) => Promise<T>, mutation = false) => reply(async () => {
     try { return await withDesktopTeamService(action) }
     finally { if (mutation) notifyDesktopTeamChanged() }
   })
+  const execution = (event: IpcMainInvokeEvent, action: (service: DesktopTeamApi) => Promise<unknown>, mutation = false) => {
+    const window = getMain()
+    if (!window || window.isDestroyed() || event.sender.isDestroyed() || window.webContents !== event.sender || !event.senderFrame || event.senderFrame !== event.sender.mainFrame) return ipcFail(IpcErrorCode.Denied, '任务执行只允许从原生主窗口操作', { outcomeUnknown: false })
+    return call(action, mutation)
+  }
+  handle(ipcInvoke.teamDesktop.executionRead, (event, input) => execution(event, service => service.executionRead(input)))
+  handle(ipcInvoke.teamDesktop.executionHistory, (event, input) => execution(event, service => service.executionHistory(input)))
+  handle(ipcInvoke.teamDesktop.executionCommand, (event, input) => execution(event, service => service.executionCommand(input), true))
+  handle(ipcInvoke.teamDesktop.executionReconcile, (event, input) => execution(event, service => service.executionReconcile(input)))
+  handle(ipcInvoke.teamDesktop.executionPending, (event, input) => execution(event, service => service.executionPending(input)))
   handle(ipcInvoke.teamDesktop.authOptions, (_event, origin) => call((service) => service.authOptions(origin)))
   handle(ipcInvoke.teamDesktop.accounts, () => call((service) => service.accounts()))
   handle(ipcInvoke.teamDesktop.login, (_event, input) => call((service) => service.login(input), true))

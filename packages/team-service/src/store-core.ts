@@ -38,6 +38,9 @@ import { TeamTaskInputs } from './task-inputs'
 import { TEAM_GOVERNANCE_SQL } from './governance-schema'
 import { teamTaskDevelopmentContextSchema, type TeamTaskDevelopmentContext } from '../../../src/shared/team-task-development'
 import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-progress'
+import { TeamTaskExecutions } from './task-executions'
+import { TEAM_TASK_EXECUTIONS_SQL, TEAM_TASK_EXECUTION_BOUNDARY_SQL } from './task-executions-schema'
+import { teamTaskRefSchema } from '../../../src/shared/team-task-execution'
 
 type Row = Record<string, SQLOutputValue>
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
@@ -122,13 +125,25 @@ export class TeamStoreCore {
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
-    mutation: (...args) => this.mutation(...args), after: (...args) => this.listAfter(...args), page: (...args) => this.page(...args)
+    mutation: (...args) => this.mutation(...args), after: (...args) => this.listAfter(...args), page: (...args) => this.page(...args),
+    invalidateExecution: (...args) => this.executions.invalidateResource(...args)
   })
   private readonly taskProgress = new TeamTaskProgress({
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
-    transaction: (fn) => this.transaction(fn)
+    transaction: (fn) => this.transaction(fn),
+    assertNoExecutionWriter: (...args) => this.executions.assertNoWriter(...args)
+  })
+  private readonly executions = new TeamTaskExecutions({
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    authenticate: actor => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    mutation: (...args) => this.mutation(...args),
+    inputs: (p, task) => this.taskInputs.read(p, { projectId: task.projectId, taskId: task.taskId, query: { spaceId: task.spaceId, taskCreatedAt: task.taskCreatedAt } }),
+    dependency: (p, task, ref) => this.taskInputs.validateExecutionDependency(p, task, ref),
+    transition: (...args) => this.hifox.executionTransition(...args),
+    event: (actorId, task, executionId, commandId, kind) => this.event('task.execution-changed', 'personal', actorId, task.projectId, { taskId: task.taskId, spaceId: task.spaceId, executionId, commandId, kind })
   })
   private readonly creations = new TeamCreations({
     identity: () => ({ epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
@@ -141,8 +156,8 @@ export class TeamStoreCore {
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
     mutation: (...args) => this.mutation(...args), transaction: (fn) => this.transaction(fn),
-    invalidateProgress: (...args) => this.taskProgress.reconcileWorkspace(...args),
-    validateTaskTransitionInputs: (...args) => this.taskInputs.validateTaskTransitionInputs(...args)
+    invalidateProgress: (...args) => { this.taskProgress.reconcileWorkspace(...args); this.executions.reconcileWorkspace(...args) },
+    validateTaskTransitionInputs: (...args) => { this.taskInputs.validateTaskTransitionInputs(...args); this.executions.validateTransition(args[0], args[1], args[2], args[4]) }
   })
   private readonly invitations = new TeamInvitations({
     issuer: () => this.options.issuer,
@@ -218,6 +233,8 @@ export class TeamStoreCore {
       if (current >= 1 && current <= 14) this.transaction(() => { this.db.exec(TEAM_GOVERNANCE_SQL); this.db.exec('PRAGMA user_version=15') })
       if (current >= 1 && current <= 15) this.transaction(() => { this.db.exec(TEAM_INVITATION_SPACES_SQL); this.db.exec('PRAGMA user_version=16') })
       if (current >= 1 && current <= 16) this.transaction(() => { this.db.exec(TEAM_INVITATION_SPACE_IDENTITY_SQL); this.db.exec('PRAGMA user_version=17') })
+      if (current >= 1 && current <= 17) this.transaction(() => { this.db.exec(TEAM_TASK_EXECUTIONS_SQL); this.db.exec('PRAGMA user_version=18') })
+      if (current >= 1 && current <= 18) this.transaction(() => { this.db.exec(TEAM_TASK_EXECUTION_BOUNDARY_SQL); this.db.exec('PRAGMA user_version=19') })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
@@ -255,7 +272,7 @@ export class TeamStoreCore {
   }
   private meta(key: string): string { return text(requireValue(this.get('SELECT value FROM team_meta WHERE key=?', key), 'CORRUPT_STORE', 'Required team database identity is missing', 503), 'value') }
   private setMeta(key: string, value: string): void { this.run('INSERT INTO team_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, value) }
-  private bumpAuthorization(): void { this.setMeta('authorizationRevision', String(Number(this.meta('authorizationRevision')) + 1)) }
+  private bumpAuthorization(): void { this.setMeta('authorizationRevision', String(Number(this.meta('authorizationRevision')) + 1)); this.executions.reconcileAuthorities() }
   private revokePersonInvitations(userId: string, teamId?: string, projectId?: string): void {
     const person = requireValue(this.get('SELECT issuer,subject FROM people WHERE userId=?', userId), 'NOT_FOUND', 'Account unavailable')
     this.run("UPDATE invitations SET status='revoked' WHERE status='pending' AND (createdBy=? OR (recipientIssuer=? AND ((json_extract(recipientJson,'$.kind')='person' AND json_extract(recipientJson,'$.userId')=?) OR (json_extract(recipientJson,'$.kind')='oidc-subject' AND json_extract(recipientJson,'$.subject')=?) OR (json_extract(recipientJson,'$.kind')='local' AND json_extract(recipientJson,'$.username')=?))))" + (teamId ? ' AND teamId=?' : '') + (projectId ? ' AND projectId=?' : ''), userId, text(person, 'issuer'), userId, text(person, 'subject'), text(person, 'subject'), ...(teamId ? [teamId] : []), ...(projectId ? [projectId] : []))
@@ -305,6 +322,7 @@ export class TeamStoreCore {
     const requestHash = digest(canonical({ kind, input }))
     return this.transaction(() => {
       const principal = this.authenticate(actor); authorize(principal)
+      if (kind === 'taskExecutionCommand' && this.get('SELECT commandId FROM hifox_task_progress_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a v1 progress operation', 409)
       if (this.get('SELECT commandId FROM team_content_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a content operation', 409)
       const previous = this.get('SELECT kind,requestHash,resultJson FROM commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)
       if (previous) {
@@ -316,6 +334,7 @@ export class TeamStoreCore {
         return { status: 'duplicate', commandId, result }
       }
       const result = apply(principal)
+      if (['hifoxCommand', 'taskInputCommand', 'governanceCommand', 'taskMaterialCommand'].includes(kind)) this.executions.reconcileAuthorities()
       this.run('INSERT INTO commands(userId,commandId,kind,requestHash,resultJson,createdAt) VALUES(?,?,?,?,?,?)', principal.person.userId, commandId, kind, requestHash, JSON.stringify(result), now())
       return { status: 'committed', commandId, result }
     })
@@ -580,6 +599,10 @@ export class TeamStoreCore {
     if (operation === 'taskProgressRead') return this.taskProgress.read(actor, raw)
     if (operation === 'taskProgressCommand') return this.taskProgress.command(actor, raw)
     if (operation === 'taskProgressReceipt') return this.taskProgress.receipt(actor, raw)
+    if (operation === 'taskExecutionRead') return this.executions.read(actor, teamTaskRefSchema.parse(raw.task))
+    if (operation === 'taskExecutionHistory') return this.executions.history(actor, teamTaskRefSchema.parse(raw.task), teamIdSchema.parse(raw.executionId))
+    if (operation === 'taskExecutionCommand') return this.executions.command(actor, raw.body)
+    if (operation === 'taskExecutionReconcile') return this.executions.reconcile(actor, raw.body)
     if (operation === 'taskMaterialList') return this.taskMaterials.list(principal, raw)
     if (operation === 'taskMaterialRead') return this.taskMaterials.read(principal, raw)
     if (operation === 'taskMaterialVersions') return this.taskMaterials.versions(principal, raw)

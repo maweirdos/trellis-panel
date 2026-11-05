@@ -1,5 +1,10 @@
 # Team task execution
 
+Platform service execution contract v2 follows
+[the v2 command and receipt contract](./team-task-executions-v2.md). The native
+Trellis projection and v1 progress paths below retain their own semantics and
+interlock with the v2 effective writer.
+
 ## Authority and scope
 
 The team service owns task stages, handlers, acceptance and cancellation. Use the

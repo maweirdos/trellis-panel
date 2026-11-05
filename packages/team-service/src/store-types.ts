@@ -14,6 +14,7 @@ export type StoreOperation = 'health' | 'createLogin' | 'consumeLogin' | 'comple
   | 'createInvitation' | 'invitations' | 'inspectInvitation' | 'acceptInvitation' | 'revokeInvitation' | 'identity'
   | 'hifoxSnapshot' | 'hifoxCommand' | 'hifoxHead' | 'taskDevelopmentContext'
   | 'taskProgressRead' | 'taskProgressCommand' | 'taskProgressReceipt'
+  | 'taskExecutionRead' | 'taskExecutionCommand' | 'taskExecutionReconcile' | 'taskExecutionHistory'
   | 'taskMaterialList' | 'taskMaterialRead' | 'taskMaterialVersions' | 'taskMaterialSubmissions' | 'taskMaterialCommand' | 'taskMaterialReceipt'
   | 'governanceList' | 'governanceRead' | 'governanceCommand' | 'governanceReceipt'
   | 'taskInputRead' | 'taskInputCandidates' | 'taskInputRevision' | 'taskInputReadDocument' | 'taskInputCommand' | 'taskInputReceipt'

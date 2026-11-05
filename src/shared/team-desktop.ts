@@ -49,6 +49,11 @@ export interface DesktopTeamProgressTransport {
   hifoxTaskProgressReceipt(connectionId: string, taskId: string, commandId: string): Promise<import('./team-task-progress').TeamTaskProgressReceipt | null>
 }
 export interface DesktopTeamApi {
+  executionRead(input: z.infer<typeof import('./team-task-execution').desktopExecutionScopeSchema>): Promise<import('./team-task-execution').TeamExecutionView>
+  executionHistory(input: z.infer<typeof import('./team-task-execution').desktopExecutionHistorySchema>): Promise<import('./team-task-execution').TeamExecutionRecord>
+  executionCommand(input: z.infer<typeof import('./team-task-execution').desktopExecutionCommandSchema>): Promise<z.infer<typeof import('./team-task-execution').teamExecutionCommandReplySchema>>
+  executionReconcile(input: z.infer<typeof import('./team-task-execution').desktopExecutionCommandSchema>): Promise<import('./team-task-execution').TeamExecutionReceipt | null>
+  executionPending(input: z.input<typeof import('./team-task-execution').desktopExecutionPendingInputSchema>): Promise<z.infer<typeof import('./team-task-execution').desktopExecutionPendingPageSchema>>
   authOptions(origin: string): Promise<DesktopTeamAuthOptions>
   accounts(): Promise<DesktopTeamAccount[]>
   login(input: DesktopTeamLoginInput): Promise<DesktopTeamAccount>

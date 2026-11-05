@@ -582,6 +582,11 @@ const api = {
   kbQaClear: () => ipcRenderer.invoke(ipcInvoke.kb.qaClear),
 
   teamDesktop: {
+    executionRead: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.executionRead, input),
+    executionHistory: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.executionHistory, input),
+    executionCommand: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.executionCommand, input),
+    executionReconcile: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.executionReconcile, input),
+    executionPending: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.executionPending, input),
     authOptions: (origin) => ipcRenderer.invoke(ipcInvoke.teamDesktop.authOptions, origin),
     accounts: () => ipcRenderer.invoke(ipcInvoke.teamDesktop.accounts),
     login: (input) => ipcRenderer.invoke(ipcInvoke.teamDesktop.login, input),

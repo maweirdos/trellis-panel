@@ -300,6 +300,49 @@ export class TeamHifoxWorkspace {
     return { ...this.host.identity(), revision: row ? integer(row, 'revision') : 0 }
   }
 
+  /** Called only inside execution admission's existing writer transaction. */
+  executionTransition(principal: StorePrincipal, projectId: string, expectedRevision: number, transition: HifoxTransitionTaskInput): void {
+    this.authorize(principal, projectId, 'transitionTask')
+    this.applyBusinessCommand(principal, projectId, { commandId: '', expectedEpoch: this.host.identity().epoch, expectedRevision, operation: 'transitionTask', input: transition })
+  }
+
+  private applyBusinessCommand(principal: StorePrincipal, projectId: string, input: z.infer<typeof hifoxRemoteCommandSchema>): HifoxRemoteSnapshot {
+    const workspace = this.load(projectId)
+    if (workspace.revision !== input.expectedRevision) throw new TeamServiceError('REVISION_CONFLICT', 'Workspace revision changed; reload the authorized snapshot before creating a new command', 409)
+    if (workspace.revision >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace revision bound exceeded', 503)
+    const source = privateInbox.has(input.operation) ? this.personal(projectId, principal.person.userId, workspace.snapshot) : workspace.snapshot
+    if (input.operation === 'saveAgent') {
+      const agent = hifoxMutationInputSchemas.saveAgent.parse(input.input)
+      for (const repository of agent.repositories ?? []) if (repository.url) repositoryReference(repository.url)
+    }
+    let executed: ReturnType<typeof executeHifoxDomain>
+    try { executed = executeHifoxDomain(source, input.operation, input.operation === 'setSpaceMembers' ? this.spaceMembersInput(source, input.input) : input.input, principal.person.userId) }
+    catch (error) {
+      if (error instanceof z.ZodError || error instanceof TeamServiceError) throw error
+      if (error instanceof HifoxSpaceAccessError) throw new TeamServiceError('SPACE_ACCESS_DENIED', error.message, 403)
+      if (error instanceof CoreError || error instanceof PlanningError || error instanceof AgentError) throw new TeamServiceError('INVALID_INPUT', error.message)
+      throw error
+    }
+    if (input.operation === 'transitionTask') {
+      const transition = hifoxMutationInputSchemas.transitionTask.parse(input.input)
+      const beforeTask = source.tasks.find(task => task.id === transition.taskId), afterTask = executed.snapshot.tasks.find(task => task.id === transition.taskId)
+      if (!beforeTask || !afterTask) throw new TeamServiceError('TASK_INPUT_SCOPE_CONFLICT', 'Original transition task is unavailable', 409)
+      this.host.validateTaskTransitionInputs(principal, projectId, beforeTask, afterTask, transition)
+    }
+    if (privateInbox.has(input.operation)) {
+      for (const item of executed.snapshot.inbox) {
+        this.host.run('INSERT INTO hifox_inbox_preferences(projectId,userId,inboxId,read,cleared,snoozedUntil) VALUES(?,?,?,?,?,?) ON CONFLICT(projectId,userId,inboxId) DO UPDATE SET read=excluded.read,cleared=excluded.cleared,snoozedUntil=excluded.snoozedUntil', projectId, principal.person.userId, item.id, item.read ? 1 : 0, item.cleared ? 1 : 0, item.snoozedUntil ?? null)
+      }
+    } else {
+      this.host.invalidateProgress(projectId, workspace.snapshot, executed.snapshot)
+      workspace.snapshot = executed.snapshot
+    }
+    workspace.revision++
+    const result = this.view(principal, projectId, workspace, executed.taskId)
+    this.host.run('INSERT INTO hifox_workspaces(projectId,revision,snapshotJson,updatedAt) VALUES(?,?,?,?) ON CONFLICT(projectId) DO UPDATE SET revision=excluded.revision,snapshotJson=excluded.snapshotJson,updatedAt=excluded.updatedAt', projectId, workspace.revision, JSON.stringify(workspace.snapshot), Date.now())
+    return result
+  }
+
   command(actor: StoreActor, raw: Record<string, unknown>): TeamCommandReply<HifoxRemoteSnapshot> {
     const projectId = teamIdSchema.parse(raw.projectId)
     const input = hifoxRemoteCommandSchema.parse(raw.body)
@@ -310,42 +353,7 @@ export class TeamHifoxWorkspace {
         if (input.expectedEpoch !== this.host.identity().epoch) throw new TeamServiceError('WORKSPACE_EPOCH_CHANGED', 'Workspace generation changed; reload the authorized snapshot and reconcile the original command before creating a new intent', 409)
         if (input.operation === 'setSpaceMembers') this.authorizeSpaceMembers(this.load(projectId).snapshot, principal.person.userId, spaceMembersInputSchema.parse(input.input).spaceId)
       },
-      (principal) => {
-        const workspace = this.load(projectId)
-        if (workspace.revision !== input.expectedRevision) throw new TeamServiceError('REVISION_CONFLICT', 'Workspace revision changed; reload the authorized snapshot before creating a new command', 409)
-        if (workspace.revision >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace revision bound exceeded', 503)
-        const source = privateInbox.has(input.operation) ? this.personal(projectId, principal.person.userId, workspace.snapshot) : workspace.snapshot
-        if (input.operation === 'saveAgent') {
-          const agent = hifoxMutationInputSchemas.saveAgent.parse(input.input)
-          for (const repository of agent.repositories ?? []) if (repository.url) repositoryReference(repository.url)
-        }
-        let executed: ReturnType<typeof executeHifoxDomain>
-        try { executed = executeHifoxDomain(source, input.operation, input.operation === 'setSpaceMembers' ? this.spaceMembersInput(source, input.input) : input.input, principal.person.userId) }
-        catch (error) {
-          if (error instanceof z.ZodError || error instanceof TeamServiceError) throw error
-          if (error instanceof HifoxSpaceAccessError) throw new TeamServiceError('SPACE_ACCESS_DENIED', error.message, 403)
-          if (error instanceof CoreError || error instanceof PlanningError || error instanceof AgentError) throw new TeamServiceError('INVALID_INPUT', error.message)
-          throw error
-        }
-        if (input.operation === 'transitionTask') {
-          const transition = hifoxMutationInputSchemas.transitionTask.parse(input.input)
-          const beforeTask = source.tasks.find(task => task.id === transition.taskId), afterTask = executed.snapshot.tasks.find(task => task.id === transition.taskId)
-          if (!beforeTask || !afterTask) throw new TeamServiceError('TASK_INPUT_SCOPE_CONFLICT', 'Original transition task is unavailable', 409)
-          this.host.validateTaskTransitionInputs(principal, projectId, beforeTask, afterTask, transition)
-        }
-        if (privateInbox.has(input.operation)) {
-          for (const item of executed.snapshot.inbox) {
-            this.host.run('INSERT INTO hifox_inbox_preferences(projectId,userId,inboxId,read,cleared,snoozedUntil) VALUES(?,?,?,?,?,?) ON CONFLICT(projectId,userId,inboxId) DO UPDATE SET read=excluded.read,cleared=excluded.cleared,snoozedUntil=excluded.snoozedUntil', projectId, principal.person.userId, item.id, item.read ? 1 : 0, item.cleared ? 1 : 0, item.snoozedUntil ?? null)
-          }
-        } else {
-          this.host.invalidateProgress(projectId, workspace.snapshot, executed.snapshot)
-          workspace.snapshot = executed.snapshot
-        }
-        workspace.revision++
-        const result = this.view(principal, projectId, workspace, executed.taskId)
-        this.host.run('INSERT INTO hifox_workspaces(projectId,revision,snapshotJson,updatedAt) VALUES(?,?,?,?) ON CONFLICT(projectId) DO UPDATE SET revision=excluded.revision,snapshotJson=excluded.snapshotJson,updatedAt=excluded.updatedAt', projectId, workspace.revision, JSON.stringify(workspace.snapshot), Date.now())
-        return result
-      },
+      (principal) => this.applyBusinessCommand(principal, projectId, input),
       (principal, result) => { this.authorize(principal, result.projectId) })
     return { ...reply, result: this.projectReceipt(this.host.authenticate(actor), reply.result) }
   }

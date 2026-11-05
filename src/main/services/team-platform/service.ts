@@ -23,6 +23,8 @@ import { GovernanceTransport, governanceTransportPinSchema, type GovernanceTrans
 import { nativeContentPinSchema, type NativeContentPin } from './content-transport'
 import type { TeamContentRequest } from '../../../shared/team-content-transport'
 import { teamTaskDevelopmentContextSchema, type TeamTaskDevelopmentContext } from '../../../shared/team-task-development'
+import { desktopExecutionScopeSchema, desktopExecutionCommandSchema, desktopExecutionHistorySchema, desktopExecutionIntentSchema, desktopExecutionPendingInputSchema, desktopExecutionPendingPageSchema, teamTaskIdentity } from '../../../shared/team-task-execution'
+import { TaskExecutionTransport } from './task-execution-transport'
 
 const hash = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 const lockedCodes = new Set(['UNAUTHENTICATED', 'UNAUTHORIZED', 'FORBIDDEN', 'DEVICE_REVOKED', 'ACCOUNT_DISABLED', 'AUTHENTICATION_REQUIRED', 'CREDENTIAL_UNAVAILABLE', 'BINDING_CHANGED'])
@@ -50,6 +52,74 @@ export type DesktopTeamOptions = {
   openExternal?: (url: string) => Promise<void>; fetch?: TeamFetch
 }
 export class DesktopTeamService implements DesktopTeamApi {
+  private async withExecution<T>(raw: z.infer<typeof desktopExecutionScopeSchema>, action: (transport: TaskExecutionTransport, c: ConnectionRecord) => Promise<T>): Promise<T> {
+    return this.tracked(async () => {
+      const input = desktopExecutionScopeSchema.parse(raw), c = await this.connection(input.connectionId, true)
+      if (c.projectId !== input.task.projectId || !c.ownerId) throw new DesktopTeamError('BINDING_CHANGED', '原执行项目或账号已变化')
+      await this.verifyActive(c)
+      const original = canonicalTeamJson([c.origin, c.pairingId, c.deviceId, c.ownerId, c.projectId])
+      const check = async (): Promise<void> => {
+        const current = await this.connection(input.connectionId, true)
+        if (canonicalTeamJson([current.origin, current.pairingId, current.deviceId, current.ownerId, current.projectId]) !== original) throw new DesktopTeamError('BINDING_CHANGED', '原执行连接已变化')
+      }
+      return action(new TaskExecutionTransport(input.task, c.ownerId, c.deviceId, async (path, schema, body) => {
+        await check()
+        const result = await this.request(c, path, schema, body)
+        try { await check(); await this.verifyActive(c) }
+        catch { throw new DesktopTeamError('BINDING_CHANGED', '请求期间原执行身份变化，请核对原命令', body !== undefined) }
+        return result
+      }), c)
+    })
+  }
+  async executionRead(raw: z.infer<typeof desktopExecutionScopeSchema>): ReturnType<DesktopTeamApi['executionRead']> {
+    return this.withExecution(desktopExecutionScopeSchema.parse(raw), transport => transport.read())
+  }
+  async executionHistory(raw: z.infer<typeof desktopExecutionHistorySchema>): ReturnType<DesktopTeamApi['executionHistory']> {
+    const input = desktopExecutionHistorySchema.parse(raw)
+    return this.withExecution({ connectionId: input.connectionId, task: input.task }, transport => transport.history(input.executionId))
+  }
+  async executionPending(raw: z.input<typeof desktopExecutionPendingInputSchema>): ReturnType<DesktopTeamApi['executionPending']> {
+    const input = desktopExecutionPendingInputSchema.parse(raw)
+    return this.withExecution({ connectionId: input.connectionId, task: input.task }, async transport => {
+      await transport.read()
+      const page = desktopExecutionPendingPageSchema.parse(await this.store.call({ op: 'execution-pending', input }))
+      if (page.connectionId !== input.connectionId || teamTaskIdentity(page.task) !== teamTaskIdentity(input.task)) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', '执行恢复页不属于原连接或任务')
+      return page
+    })
+  }
+  async executionCommand(raw: z.infer<typeof desktopExecutionCommandSchema>): ReturnType<DesktopTeamApi['executionCommand']> {
+    const input = desktopExecutionCommandSchema.parse(raw)
+    if (teamTaskIdentity(input.task) !== teamTaskIdentity(input.command.task)) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', '原执行命令与调用目标不一致')
+    return this.serial(`execution:${input.command.commandId}`, () => this.withExecution({ connectionId: input.connectionId, task: input.task }, async (transport, c) => {
+      const binding = { origin: c.origin, pairingId: c.pairingId, deviceId: c.deviceId, projectId: c.projectId, ownerId: c.ownerId }
+      const previous = desktopExecutionIntentSchema.nullable().parse(await this.store.call({ op: 'execution-intent', input: { connectionId: input.connectionId, commandId: input.command.commandId } }))
+      // Persist the exact original intent before transmission; retries are explicit calls only.
+      const record = desktopExecutionIntentSchema.parse({ connectionId: input.connectionId, command: input.command, state: previous?.receipt ? 'committed' : 'dispatching', receipt: previous?.receipt ?? null, updatedAt: Date.now() })
+      await this.store.call({ op: 'save-execution-intent', input: { record, binding } })
+      try {
+        const reply = await transport.command(input.command)
+        try { await this.store.call({ op: 'save-execution-intent', input: { record: { ...record, state: 'committed', receipt: reply.result, updatedAt: Date.now() }, binding } }) }
+        catch { throw new DesktopTeamError('ACKNOWLEDGEMENT_UNKNOWN', '服务端已提交，但本地回执保存失败，请核对原命令', true) }
+        return reply
+      } catch (error) {
+        const unknown = error instanceof DesktopTeamError && error.outcomeUnknown
+        await this.store.call({ op: 'save-execution-intent', input: { record: { ...record, state: record.receipt ? 'committed' : unknown ? 'acknowledgement-unknown' : 'rejected', updatedAt: Date.now() }, binding } }).catch(() => {})
+        throw error
+      }
+    }))
+  }
+  async executionReconcile(raw: z.infer<typeof desktopExecutionCommandSchema>): ReturnType<DesktopTeamApi['executionReconcile']> {
+    const input = desktopExecutionCommandSchema.parse(raw)
+    if (teamTaskIdentity(input.task) !== teamTaskIdentity(input.command.task)) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', '原执行命令与调用目标不一致')
+    return this.withExecution({ connectionId: input.connectionId, task: input.task }, async (transport, c) => {
+      const receipt = await transport.reconcile(input.command)
+      if (receipt) await this.store.call({ op: 'save-execution-intent', input: {
+        record: { connectionId: input.connectionId, command: input.command, state: 'committed', receipt, updatedAt: Date.now() },
+        binding: { origin: c.origin, pairingId: c.pairingId, deviceId: c.deviceId, projectId: c.projectId, ownerId: c.ownerId }
+      } })
+      return receipt
+    })
+  }
   /** Main-only content transport; the original device and selection are checked around every request. */
   async withContentTransport<T>(raw: NativeContentPin, assertCurrent: () => Promise<void>, action: (request: TeamContentRequest) => Promise<T>): Promise<T> {
     return this.tracked(async () => {
@@ -374,7 +444,7 @@ export class DesktopTeamService implements DesktopTeamApi {
     // These domains keep no generic published-document body cache. A denied
     // private draft/space operation must not revoke an otherwise active device.
     const contentScoped = path !== undefined && (/^\/api\/teams\/[^/]+\/content(?:[/?]|$)/.test(path) || /^\/api\/projects\/[^/]+\/(?:content(?:[/?]|$)|hifox\/tasks\/[^/]+\/content(?:[/?]|$))/.test(path))
-    const scoped = contentScoped || path !== undefined && /^\/api\/projects\/[^/]+\/hifox\/(?:tasks\/[^/]+\/(?:materials|inputs|code-resource|development-context)|spaces\/[^/]+\/governance|code-resources)(?:[/?]|$)/.test(path)
+    const scoped = contentScoped || path !== undefined && /^\/api\/projects\/[^/]+\/hifox\/(?:tasks\/[^/]+\/(?:materials|inputs|executions|code-resource|development-context)|spaces\/[^/]+\/governance|code-resources)(?:[/?]|$)/.test(path)
     if (error.code === 'FORBIDDEN' && scoped) {
       try {
         const session = await this.http.request(c.origin, '/api/session', teamSessionSchema, this.token(c))

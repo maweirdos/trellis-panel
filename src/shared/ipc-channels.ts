@@ -314,6 +314,7 @@ export const ipcInvoke = {
     qaClear: 'kb:qaClear'
   },
   teamDesktop: {
+    executionRead: 'teamDesktop:executionRead', executionHistory: 'teamDesktop:executionHistory', executionCommand: 'teamDesktop:executionCommand', executionReconcile: 'teamDesktop:executionReconcile', executionPending: 'teamDesktop:executionPending',
     authOptions: 'teamDesktop:authOptions', accounts: 'teamDesktop:accounts', login: 'teamDesktop:login', register: 'teamDesktop:register', logout: 'teamDesktop:logout',
     organizations: 'teamDesktop:organizations', createOrganization: 'teamDesktop:createOrganization', workspaces: 'teamDesktop:workspaces', createWorkspace: 'teamDesktop:createWorkspace',
     createInvitation: 'teamDesktop:createInvitation', inspectInvitation: 'teamDesktop:inspectInvitation', acceptInvitation: 'teamDesktop:acceptInvitation', connectWorkspace: 'teamDesktop:connectWorkspace',

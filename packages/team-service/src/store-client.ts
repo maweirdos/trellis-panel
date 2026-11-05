@@ -7,6 +7,7 @@ const readOnlyOperations = new Set<StoreOperation>(['health', 'authenticate', 'p
 for (const operation of ['contentConfigRead', 'contentCapabilities', 'contentJob', 'contentReceipt', 'contentBudget', 'contentAccounting'] as const) readOnlyOperations.add(operation)
 for (const operation of ['governanceList', 'governanceRead', 'governanceReceipt', 'taskInputRead', 'taskInputCandidates', 'taskInputRevision', 'taskInputReadDocument', 'taskInputReceipt'] as const) readOnlyOperations.add(operation)
 readOnlyOperations.add('taskDevelopmentContext')
+for (const operation of ['taskExecutionRead', 'taskExecutionHistory', 'taskExecutionReconcile'] as const) readOnlyOperations.add(operation)
 export class TeamStore {
   private readonly worker: Worker
   private readonly pending = new Map<number, Pending>()

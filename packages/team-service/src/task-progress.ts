@@ -16,7 +16,7 @@ import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 
 const RECEIPTS_PER_TASK = 32
-type Host = Pick<HifoxWorkspaceHost, 'identity' | 'transaction' | 'get' | 'all' | 'run' | 'authenticate' | 'project'>
+type Host = Pick<HifoxWorkspaceHost, 'identity' | 'transaction' | 'get' | 'all' | 'run' | 'authenticate' | 'project'> & { assertNoExecutionWriter(projectId: string, taskId: string): void }
 type Current = { generation: number; binding: TeamTaskProgressBinding | null; progress: TeamTaskProgressRecord | null; ownerKey: string | null }
 type ResourceFence = { fence: string; resourceAvailable: boolean }
 type Authority = ResourceFence & { principal: StorePrincipal; projectId: string; taskId: string; spaceId: string }
@@ -139,6 +139,7 @@ export class TeamTaskProgress {
     return this.host.transaction(() => {
       const authority = this.authorize(actor, raw, true)
       const identity = this.host.identity(), actorKey = ownerKey(actor)
+      if (this.host.get("SELECT commandId FROM commands WHERE userId=? AND commandId=? AND kind='taskExecutionCommand'", authority.principal.person.userId, input.commandId)) conflict('COMMAND_CONFLICT', 'Command UUID already belongs to a v2 execution operation')
       if (input.expectedEpoch !== identity.epoch) conflict('WORKSPACE_EPOCH_CHANGED', 'Reload task progress and reconcile the original command after service recovery')
       // Parsed objects have a fixed schema order: equivalent JSON key order hashes identically.
       const requestHash = hash(JSON.stringify({ projectId: authority.projectId, taskId: authority.taskId, input }))
@@ -151,6 +152,7 @@ export class TeamTaskProgress {
         return { status: 'duplicate', commandId: input.commandId, result: this.view(authority, current) }
       }
       if (input.kind === 'bind') {
+        this.host.assertNoExecutionWriter(authority.projectId, authority.taskId)
         if (!authority.resourceAvailable) conflict('TASK_PROGRESS_INACTIVE', 'Selected code resource must be enabled and linked to the current space')
         if (input.expectedGeneration !== current.generation || input.expectedBindingId !== (current.binding?.bindingId ?? null)) conflict('TASK_PROGRESS_BINDING_CONFLICT', 'Reporting binding changed; reload before an explicit takeover')
         if ((input.source.kind === 'desktop') !== (actor.kind === 'device')) throw new TeamServiceError('TASK_PROGRESS_FORBIDDEN', 'Reporting source does not match the authenticated transport', 403)

@@ -112,7 +112,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerChatArchiveIpc()
   registerFlowIpc()
   registerWorkflowIpc()
-  registerTeamDesktopIpc()
+  registerTeamDesktopIpc(deps.getMain)
   registerAcpIpc()
   const privateConversations = registerPrivateConversationsIpc(deps)
   registerPiWebPreviewIpc({

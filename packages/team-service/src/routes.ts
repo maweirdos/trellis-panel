@@ -8,6 +8,7 @@ import type { StoreOperation } from './store-types'
 import { teamIdSchema } from '../../../src/shared/team-platform'
 import { registerHifoxWorkspaceRoutes } from './hifox-workspace-routes'
 import { registerTaskProgressRoutes } from './task-progress-routes'
+import { registerTaskExecutionRoutes } from './task-executions-routes'
 import { registerCodeResourceRoutes } from './code-resources-routes'
 import { registerTaskMaterialRoutes } from './task-materials-routes'
 import { registerContentRoutes } from './content-routes'
@@ -29,6 +30,7 @@ export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore,
     api.addHook('preHandler', auth.require.bind(auth))
     await registerHifoxWorkspaceRoutes(api, store, auth)
     await registerTaskProgressRoutes(api, store, auth)
+    await registerTaskExecutionRoutes(api, store, auth)
     await registerCodeResourceRoutes(api, store, auth)
     await registerTaskMaterialRoutes(api, store, auth)
     await registerContentRoutes(api, store, auth)

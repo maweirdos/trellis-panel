@@ -9,6 +9,7 @@ import { teamInvitationSchema } from '../../../shared/team-invitations'
 import { type DesktopTeamOutboxPage, type DesktopTeamSnapshot } from '../../../shared/team-desktop'
 import { DesktopTeamError, MAX_CACHE_BYTES, MAX_OUTBOX_BYTES, accountRecordSchema, bindingSchema, connectionRecordSchema, invitationIntentRecordSchema, outboxInputSchema, publicOutbox, type AccountRecord, type CachedDocument, type ConnectionRecord, type InvitationIntentRecord, type OutboxBinding, type OutboxRecord, type WorkerOperation } from './types'
 import { canonicalTeamJson, verifyTeamDocument } from './codec'
+import { desktopExecutionIntentSchema, desktopExecutionPendingInputSchema, desktopExecutionPendingPageSchema, DESKTOP_EXECUTION_PENDING_MAX_BYTES, teamTaskIdentity } from '../../../shared/team-task-execution'
 
 const id = z.string().uuid(), timestamp = z.number().int().nonnegative().safe()
 const digest = (value: string): string => createHash('sha256').update(value, 'utf8').digest('hex')
@@ -40,7 +41,7 @@ export class DesktopTeamStoreCore {
       this.db.exec('PRAGMA busy_timeout=50')
       const storedVersion = fresh ? 0 : Number(this.db.prepare('PRAGMA user_version').get()?.user_version)
       if (!fresh) {
-        if (this.db.prepare('PRAGMA application_id').get()?.application_id !== 0x54445431 || ![1, 2, 3].includes(storedVersion)) throw new DesktopTeamError('STORE_VERSION', '团队本地存储版本未知，原文件已保留')
+        if (this.db.prepare('PRAGMA application_id').get()?.application_id !== 0x54445431 || ![1, 2, 3, 4, 5].includes(storedVersion)) throw new DesktopTeamError('STORE_VERSION', '团队本地存储版本未知，原文件已保留')
         if (this.db.prepare('PRAGMA quick_check').get()?.quick_check !== 'ok') throw new DesktopTeamError('CORRUPT_STORE', '团队本地存储完整性检查失败，原文件已保留')
       }
       this.db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON')
@@ -55,6 +56,13 @@ export class DesktopTeamStoreCore {
         this.db.exec('CREATE TABLE invitation_intents(commandId TEXT PRIMARY KEY,accountId TEXT NOT NULL,createdAt INTEGER NOT NULL,data TEXT NOT NULL); PRAGMA user_version=3')
       })
       this.storeId = id.parse(this.db.prepare('SELECT value FROM meta WHERE key=?').get('storeId')?.value)
+      if (storedVersion < 4) this.transaction(() => {
+        this.db.exec('CREATE TABLE execution_intents(commandId TEXT PRIMARY KEY,connectionId TEXT NOT NULL,data TEXT NOT NULL); CREATE INDEX execution_intents_owner ON execution_intents(connectionId); PRAGMA user_version=4')
+      })
+      if (storedVersion < 5) this.transaction(() => {
+        this.db.exec("CREATE INDEX execution_intents_pending ON execution_intents(connectionId) WHERE json_extract(data,'$.state')<>'committed'; PRAGMA user_version=5")
+      })
+      this.db.prepare("UPDATE execution_intents SET data=json_set(data,'$.state','acknowledgement-unknown') WHERE json_extract(data,'$.state')='dispatching'").run()
       this.transaction(() => {
         for (const row of this.db.prepare('SELECT id FROM commands').all()) {
           const record = this.command(String(row.id))
@@ -119,9 +127,69 @@ export class DesktopTeamStoreCore {
     return value
   }
   private saveSync(connectionId: string, value: Sync): void { this.db.prepare('INSERT INTO sync VALUES(?,?) ON CONFLICT(connectionId) DO UPDATE SET data=excluded.data').run(connectionId, JSON.stringify(syncSchema.parse(value))) }
+  private executionIntent(connectionId: string, commandId: string): z.infer<typeof desktopExecutionIntentSchema> | null {
+    const row = this.db.prepare('SELECT data FROM execution_intents WHERE connectionId=? AND commandId=?').get(connectionId, commandId)
+    if (!row) return null
+    const record = desktopExecutionIntentSchema.parse(JSON.parse(String(row.data)))
+    if (record.connectionId !== connectionId || record.command.commandId !== commandId) throw new DesktopTeamError('CORRUPT_STORE', '执行恢复记录与原查询身份不一致')
+    return record
+  }
+  private executionPending(raw: unknown): z.infer<typeof desktopExecutionPendingPageSchema> {
+    const input = desktopExecutionPendingInputSchema.parse(raw), connection = this.connection(input.connectionId); active(connection)
+    if (connection.projectId !== input.task.projectId) throw new DesktopTeamError('BINDING_CHANGED', '执行恢复任务不属于原连接项目')
+    const scope = { connectionId: input.connectionId, task: input.task }, taskKey = teamTaskIdentity(input.task)
+    const cursorFor = (after: number): string => Buffer.from(JSON.stringify({ store: this.storeId, connection: input.connectionId, task: taskKey, after })).toString('base64url')
+    let after = 0
+    if (input.cursor) {
+      try {
+        const cursor = z.object({ store: id, connection: id, task: z.string(), after: timestamp.positive() }).strict().parse(JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8')))
+        if (cursor.store !== this.storeId || cursor.connection !== input.connectionId || cursor.task !== taskKey) throw new Error('Foreign cursor')
+        after = cursor.after
+      } catch { throw new DesktopTeamError('CURSOR_CONFLICT', '执行恢复游标不属于原存储、连接或任务，请重新加载') }
+    }
+    const taskFilter = "connectionId=? AND json_extract(data,'$.command.task.instanceId')=? AND json_extract(data,'$.command.task.projectId')=? AND json_extract(data,'$.command.task.spaceId')=? AND json_extract(data,'$.command.task.taskId')=? AND json_extract(data,'$.command.task.taskCreatedAt')=?"
+    const parameters = [input.connectionId, input.task.instanceId, input.task.projectId, input.task.spaceId, input.task.taskId, input.task.taskCreatedAt]
+    if (after && !this.db.prepare(`SELECT rowid FROM execution_intents WHERE ${taskFilter} AND rowid=?`).get(...parameters, after)) throw new DesktopTeamError('CURSOR_CONFLICT', '执行恢复游标的原任务记录不可用')
+    // SQL excludes committed history and foreign tasks before any DTO hydration.
+    const rows = this.db.prepare(`SELECT rowid,commandId,data FROM execution_intents WHERE ${taskFilter} AND json_extract(data,'$.state')<>'committed' AND rowid>? ORDER BY rowid LIMIT ?`).iterate(...parameters, after, input.limit + 1)
+    const items: Array<z.infer<typeof desktopExecutionIntentSchema>> = []
+    let lastRow = after, hasMore = false, itemBytes = 0
+    for (const row of rows) {
+      if (items.length >= input.limit) { hasMore = true; break }
+      const record = desktopExecutionIntentSchema.parse(JSON.parse(String(row.data)))
+      if (record.connectionId !== input.connectionId || record.command.commandId !== row.commandId || teamTaskIdentity(record.command.task) !== taskKey || record.state === 'committed') throw new DesktopTeamError('CORRUPT_STORE', '执行恢复记录与原任务不一致')
+      const rowId = timestamp.positive().parse(row.rowid)
+      const recordBytes = Buffer.byteLength(JSON.stringify(record))
+      const envelopeBytes = Buffer.byteLength(JSON.stringify({ ...scope, contractVersion: 2, items: [], hasMore: true, nextCursor: cursorFor(rowId) }))
+      if (envelopeBytes + itemBytes + recordBytes + items.length > DESKTOP_EXECUTION_PENDING_MAX_BYTES) {
+        if (items.length === 0) throw new DesktopTeamError('CAPACITY_EXCEEDED', '单条待核对执行记录超过分页字节限界；原命令已保留，需按原 UUID 核对')
+        hasMore = true; break
+      }
+      items.push(record); lastRow = rowId; itemBytes += recordBytes
+    }
+    return desktopExecutionPendingPageSchema.parse({ ...scope, contractVersion: 2, items, hasMore, nextCursor: hasMore ? cursorFor(lastRow) : null })
+  }
   dispatch(operation: WorkerOperation): unknown {
     const raw = operation.input
-    if (operation.op === 'health') return { schemaVersion: 3, storeId: this.storeId }
+    if (operation.op === 'health') return { schemaVersion: 5, storeId: this.storeId }
+    if (operation.op === 'execution-intent') {
+      const input = z.object({ connectionId: id, commandId: id }).strict().parse(raw); active(this.connection(input.connectionId))
+      return this.executionIntent(input.connectionId, input.commandId)
+    }
+    if (operation.op === 'execution-pending') return this.executionPending(raw)
+    if (operation.op === 'save-execution-intent') return this.transaction(() => {
+      const input = z.object({ record: desktopExecutionIntentSchema, binding: bindingSchema }).strict().parse(raw), record = input.record
+      const connection = this.connection(record.connectionId); active(connection)
+      if (canonicalTeamJson(bindingFor(connection)) !== canonicalTeamJson(input.binding) || record.command.expectedActorId !== connection.ownerId || record.command.expectedDeviceId !== connection.deviceId || record.command.task.projectId !== connection.projectId) throw new DesktopTeamError('BINDING_CHANGED', '原执行身份已变化')
+      const row = this.db.prepare('SELECT data FROM execution_intents WHERE commandId=?').get(record.command.commandId)
+      if (row) {
+        const previous = desktopExecutionIntentSchema.parse(JSON.parse(String(row.data)))
+        if (previous.connectionId !== record.connectionId || canonicalTeamJson(previous.command) !== canonicalTeamJson(record.command) || teamTaskIdentity(previous.command.task) !== teamTaskIdentity(record.command.task)) throw new DesktopTeamError('COMMAND_CONFLICT', '执行命令不能改换原目标或载荷')
+        if (previous.receipt && canonicalTeamJson(previous.receipt) !== canonicalTeamJson(record.receipt)) throw new DesktopTeamError('COMMAND_CONFLICT', '执行回执不可替换')
+      } else if (Number(this.db.prepare('SELECT count(*) AS count FROM execution_intents').get()?.count) >= 10000 || Number(this.db.prepare('SELECT COALESCE(SUM(length(CAST(data AS BLOB))),0) AS used FROM execution_intents').get()?.used) + Buffer.byteLength(JSON.stringify(record)) > MAX_OUTBOX_BYTES) throw new DesktopTeamError('CAPACITY_EXCEEDED', '执行恢复记录已达限界')
+      this.db.prepare('INSERT INTO execution_intents VALUES(?,?,?) ON CONFLICT(commandId) DO UPDATE SET data=excluded.data').run(record.command.commandId, record.connectionId, JSON.stringify(record))
+      return record
+    })
     if (operation.op === 'accounts') return this.db.prepare('SELECT id FROM accounts ORDER BY updatedAt DESC,id').all().map((row) => this.account(String(row.id)))
     if (operation.op === 'account') return this.account(id.parse(raw))
     if (operation.op === 'save-account') return this.transaction(() => {

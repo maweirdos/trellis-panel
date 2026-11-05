@@ -29,6 +29,13 @@ function conflicts(rule: GovernanceVersion, other: GovernanceVersion): boolean {
 export class TeamTaskInputs {
   constructor(private readonly host: GovernanceHost, private readonly governance: TeamGovernance) {}
 
+  /** Initial execution dependency port uses the same fixed approval, ACL and byte validators. */
+  validateExecutionDependency(principal: StorePrincipal, scope: { projectId: string; taskId: string; spaceId: string; taskCreatedAt: string }, ref: { documentId: string; versionId: string; bodyDigest: string }): void {
+    const ctx = this.context(principal, scope, { spaceId: scope.spaceId, taskCreatedAt: scope.taskCreatedAt })
+    const document = this.document(ctx, ref.documentId, ref.versionId)
+    if (document.bodyDigest !== ref.bodyDigest || this.withdrawnDocument(ref.documentId, ref.versionId)) governanceFail('EXECUTION_DEPENDENCY_CONFLICT', 'Original confirmed document has changed or was withdrawn')
+  }
+
   private context(principal: StorePrincipal, raw: Record<string, unknown>, scope: z.infer<typeof teamTaskMaterialScopeSchema>, writing = false): Context {
     const base = this.governance.context(principal, teamIdSchema.parse(raw.projectId), scope.spaceId, writing)
     const row = this.host.get("SELECT t.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", base.projectId, teamTaskProgressResourceIdSchema.parse(raw.taskId))
