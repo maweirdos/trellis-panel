@@ -2,13 +2,13 @@ import { createHash } from 'node:crypto'
 import { executionContextPacketSchema, executionContextManifestSchema, type ExecutionContextManifest } from '../../../shared/team-execution-input'
 import type { PreparedExecutionAgentRules } from '../agent-rules'
 import { taskInputCanonical } from '../../../shared/team-task-inputs'
-import { executionContextEnvelopeBytes } from '../execution-context-budget'
+import { executionContextEnvelopeBytes, FIXED_EXECUTION_CONTEXT_MIME } from '../execution-context-budget'
 
 const hash = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
-export type ExecutionContextResource = { uri: string; mimeType: 'application/json'; text: string }
+export type ExecutionContextResource = { uri: string; mimeType: typeof FIXED_EXECUTION_CONTEXT_MIME; text: string }
 export function validateExecutionContextResource(resource: { uri: string; mimeType?: string; text: string }): ReturnType<typeof executionContextPacketSchema.parse> {
   const packet = validateExecutionContextPacket(resource.text)
-  if (resource.mimeType !== 'application/json' || resource.uri !== `trellis://execution-input/${packet.executionId}/${encodeURIComponent(packet.node.id)}/${hash(resource.text)}`) throw new Error('Fixed context resource identity does not match its packet')
+  if (resource.mimeType !== FIXED_EXECUTION_CONTEXT_MIME || resource.uri !== `trellis://execution-input/${packet.executionId}/${encodeURIComponent(packet.node.id)}/${hash(resource.text)}`) throw new Error('Fixed context resource identity does not match its packet')
   const bytes = executionContextEnvelopeBytes(resource)
   if (bytes.acp > 8192 || bytes.pi > 8192) throw new Error('Serialized fixed-context resource envelope exceeds 8 KiB')
   return packet
@@ -37,7 +37,7 @@ export function validateExecutionContextPacket(text: string): ReturnType<typeof 
 export function composeExecutionContextResource(prepared: PreparedExecutionAgentRules): { resource: ExecutionContextResource; manifest: ExecutionContextManifest } {
   const packet = validateExecutionContextPacket(prepared.instructions), manifest = executionContextManifestSchema.parse(prepared.manifest)
   const instruction = JSON.stringify({ roleInstructions: packet.roleInstructions, node: packet.node })
-  const resource = { uri: `trellis://execution-input/${packet.executionId}/${encodeURIComponent(packet.node.id)}/${manifest.packetDigest}`, mimeType: 'application/json' as const, text: prepared.instructions }
+  const resource = { uri: `trellis://execution-input/${packet.executionId}/${encodeURIComponent(packet.node.id)}/${manifest.packetDigest}`, mimeType: FIXED_EXECUTION_CONTEXT_MIME, text: prepared.instructions }
   validateExecutionContextResource(resource)
   if (manifest.packetDigest !== hash(prepared.instructions) || manifest.serializedBytes !== Buffer.byteLength(prepared.instructions, 'utf8') || manifest.inputDigest !== packet.inputDigest
     || manifest.nodeId !== packet.node.id || manifest.phaseId !== packet.node.phaseId || manifest.stage !== packet.node.stage

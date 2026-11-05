@@ -28,7 +28,9 @@ import { privateNativeRead, privateNativeSend, privateNativeControl, privateNati
 import { withPrivateAcpOwner } from '../../services/acp/private-access'
 import { configurePrivateNativeSession, recoverPrivateNativeModel } from '../../services/private-conversations/configuration'
 import { NativeTaskPreparation, type NativeTaskPreparationAuthority } from './task-preparation'
-import { withDesktopTeamService } from '../../services/team-desktop'
+import { NativeTaskExecutions } from './task-execution'
+import { isBoundedNativeTaskControl } from '../../../shared/native-task-execution'
+import { NativeTaskProgressSender } from '../../services/hifox/task-progress-sender'
 
 export interface RuntimeDispatchContext { workspace?: WorkspaceGrant; commandId?: string; native?: Pick<NativeTaskPreparationAuthority, 'actor' | 'assertProduct'> }
 export interface DaemonRuntimePorts {
@@ -74,10 +76,22 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       ports.assertWorkspaceAdmission?.(grant.root, 'runtime.taskPreparation')
       if (closed || released) throw new DaemonError('E_UNAVAILABLE', 'Native task preparation admission is closed.')
     },
-    withTransport: (pin, assertCurrent, action) => withDesktopTeamService(service => service.withContentTransport(pin, assertCurrent, action)),
+    withTransport: async (pin, assertCurrent, action, task) => {
+      const sender = new NativeTaskProgressSender(join(ports.userData ?? ports.directory, 'team-platform'), { workspaceKey: pin.workspaceKey,
+        taskId: task.taskId, spaceId: task.spaceId, connectionId: pin.connectionId, origin: pin.origin, pairingId: pin.pairingId,
+        ownerId: pin.actorId, deviceId: pin.deviceId, projectId: pin.projectId, epoch: pin.epoch, instanceId: pin.instanceId, handlerId: pin.actorId })
+      return action(sender.executionRequest(task, assertCurrent))
+    },
     assertLegacyAvailable: assertNativePreparationAvailable
   })
   const events = new RuntimeEvents(ports.epoch)
+  const taskExecutions = new NativeTaskExecutions({ directory: ports.directory, workcopies, preparation: taskPreparation,
+    assertOwner() { ports.assertOwner() },
+    assertCurrent(grant) {
+      if (closed || released) throw new DaemonError('E_UNAVAILABLE', 'Product execution admission is closed')
+      ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceGrant?.(grant)
+      ports.assertWorkspaceAdmission?.(grant.root, 'runtime.taskExecution')
+    } })
   const disposeEvents = installHostEventSink((channel, value) => events.publish(channel, value))
   let closed = false, released = false, stopping: Promise<void> | undefined
   let operations = 0
@@ -120,6 +134,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     knowledge.stopReads()
     stopping = (async () => {
       // Stop managed stages through their retained owners before canonical ACP cleanup.
+      await taskExecutions.shutdown()
       await shutdownWorkflowApplications()
       // Give ordinary turns their existing bounded cancellation first. Failure here
       // still requires canonical termination of these exact owned runtime handles.
@@ -136,6 +151,12 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     return stopping
   }
   async function execute(method: RuntimeBodyMethod, raw: unknown, root: string, context: RuntimeDispatchContext): Promise<unknown> {
+    if (method === 'runtime.taskExecution') {
+      if (!context.native) throw new DaemonError('E_DENIED', 'Product execution needs authenticated native authority')
+      const input = runtimeBodies[method].parse(raw)
+      const grant = context.workspace ?? taskExecutions.retainedGrant(input.dispatchId)
+      return taskExecutions.execute(root, input, { ...context.native, grant }, context.commandId)
+    }
     ports.assertAdmission?.()
     ports.assertWorkspaceAdmission?.(root, method)
     const valid = (): boolean => { ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceAdmission?.(root, method); return !closed }
@@ -325,7 +346,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const workflows = await countOwnedWorkflowApplications()
       ports.assertOwner(); ports.assertAuthority()
       const sessions = acp.listOwnedAcpSessionFacts()
-      if (closed || released || stopping || operations || commands.count() || workflows || taskProgress.busy() || workcopies.facts().length || sessions.some(session => !session.sessionId || !session.connectionGeneration || session.status !== 'ready'
+      if (closed || released || stopping || operations || commands.count() || workflows || taskProgress.busy() || taskExecutions.busy() || workcopies.facts().length || sessions.some(session => !session.sessionId || !session.connectionGeneration || session.status !== 'ready'
         || session.accepting || session.closing || session.disconnected || session.leaseHeld || session.cleanupRequired || session.backgroundWork
         || session.unfinishedTools || session.turnActive || session.settling || session.pendingPermission)) throw new DaemonError('E_BUSY', 'Original native sessions, preparation, workflow or unfinished operations still own background work.')
     },
@@ -336,14 +357,14 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     async ownsWorkspace(root) {
       const target = canonicalDirectory(root)
       const within = (path: string): boolean => { const delta = relative(target, canonicalDirectory(path)); return delta === '' || !isAbsolute(delta) && delta !== '..' && !delta.startsWith('../') && !delta.startsWith('..\\') }
-      return commands.count() > 0 || workcopies.facts(resolveWorkcopy(root)).length > 0 || acp.listOwnedAcpSessionFacts().some(session => within(session.projectRoot) || session.cwd !== null && within(session.cwd)) || await countOwnedWorkflowApplications() > 0
+      return taskExecutions.ownsWorkspace(root) || commands.count() > 0 || workcopies.facts(resolveWorkcopy(root)).length > 0 || acp.listOwnedAcpSessionFacts().some(session => within(session.projectRoot) || session.cwd !== null && within(session.cwd)) || await countOwnedWorkflowApplications() > 0
     },
     async release() { await shutdown(); ports.assertOwner(); if ((await status()).sessions || (await status()).workflows) throw new DaemonError('E_UNKNOWN', 'Runtime release has not been verified.', 'unknown'); released = true; disposeEvents() },
     observe: listener => events.observe(listener), catchUp: (root, cursor, limit) => events.catchUp(root, cursor, limit),
     async dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>> {
       ports.assertOwner()
       await processRecoveryReady
-      ports.assertAdmission?.()
+      if (!isBoundedNativeTaskControl(method, payload)) ports.assertAdmission?.()
       operations++
       try {
         const parsed = runtimeRequests[method].parse(payload)
@@ -351,16 +372,23 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         if (released) throw new DaemonError('E_UNAVAILABLE', 'Runtime authority was released.')
         ports.assertAuthority()
         const global = ['runtime.privateRead', 'runtime.privateSend', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond', 'runtime.privateConfigure', 'runtime.privateRecoverModel', 'runtime.hifoxProgress', 'runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
-        const root = context.workspace?.root ?? (global ? '@profile' : '')
+        const taskControl = isBoundedNativeTaskControl(method, payload)
+        const root = context.workspace?.root ?? (global || taskControl ? '@profile' : '')
         if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')
-        if (context.workspace && method !== 'runtime.taskPreparation') observeWorkspace(root, context.workspace.revision)
+        if (context.workspace && method !== 'runtime.taskPreparation' && method !== 'runtime.taskExecution') observeWorkspace(root, context.workspace.revision)
         let value: unknown
         switch (method) {
           case 'runtime.command': {
             const commandId = runtimeRequests['runtime.command'].parse(parsed).commandId
+            let productReceipt = false
             value = commands.inspect(root, commandId, originalMethod => {
               if (originalMethod === 'runtime.taskPreparation') taskPreparation.assertReceiptAuthority(root, commandId, context.native && context.workspace ? { ...context.native, grant: context.workspace } : undefined)
+              if (originalMethod === 'runtime.taskExecution') {
+                if (!context.native) throw new DaemonError('E_DENIED', 'Original product command requires native authority')
+                productReceipt = true
+              }
             })
+            if (productReceipt && context.native) await taskExecutions.assertReceipt(root, commandId, context.native.assertProduct, context.native.actor)
             break
           }
           case 'runtime.blob.open': value = blobs.open(root, runtimeRequests['runtime.blob.open'].parse(parsed)); break
@@ -374,6 +402,12 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             const validation = runtimeBodies[bodyMethod].safeParse(raw)
             if (!validation.success) throw new DaemonError('E_INVALID_ARG', 'Runtime method input is invalid; no operation was admitted.')
             const input = validation.data
+            if (bodyMethod === 'runtime.taskExecution') {
+              const native = context.native, request = runtimeBodies[bodyMethod].parse(input)
+              if (!native) throw new DaemonError('E_DENIED', 'Product execution requires protected native authority')
+              const grant = context.workspace ?? taskExecutions.retainedGrant(request.dispatchId)
+              await taskExecutions.assertAuthority(root, request, { ...native, grant })
+            }
             const preparation = bodyMethod === 'runtime.taskPreparation' ? runtimeBodies['runtime.taskPreparation'].parse(input) : undefined
             const preparationAuthority = preparation && context.native && context.workspace ? {
               actor: structuredClone(context.native.actor), grant: structuredClone(context.workspace), assertProduct: context.native.assertProduct.bind(context.native)
@@ -383,8 +417,8 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
               if (preparation.operation === 'prepare' && preparation.preparationId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Preparation must retain its original runtime command UUID.')
               taskPreparation.assertAuthority(root, preparation, preparationAuthority)
             }
-            const mutation = method === 'runtime.taskPreparation' ? runtimeBodies['runtime.taskPreparation'].parse(input).operation === 'prepare' : method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
-            if (closed && mutation && !['runtime.cancel', 'runtime.end', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
+            const mutation = method === 'runtime.taskExecution' ? runtimeBodies['runtime.taskExecution'].parse(input).operation !== 'reconcile' : method === 'runtime.taskPreparation' ? runtimeBodies['runtime.taskPreparation'].parse(input).operation === 'prepare' : method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
+            if (closed && mutation && !taskControl && !['runtime.cancel', 'runtime.end', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
             const action = async () => {
               try { return blobs.pack(root, await execute(bodyMethod, input, root, context)) }
               catch (error) {

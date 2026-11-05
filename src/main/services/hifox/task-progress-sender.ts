@@ -15,6 +15,8 @@ import { proxiedFetch } from '../proxy'
 import { teamTaskCodeResourceDtoSchema } from '../../../shared/team-code-resources'
 import { TaskMaterialsTransport, taskMaterialTransportPinSchema } from '../team-platform/task-materials-transport'
 import type { TeamTaskMaterialCommand } from '../../../shared/team-task-materials'
+import { teamTaskRefSchema, teamTaskIdentity, teamExecutionCommandSchema, type TeamTaskRef } from '../../../shared/team-task-execution'
+import type { TeamContentRequest } from '../../../shared/team-content-transport'
 
 const credentialSchema = taskProgressPinSchema.pick({ connectionId: true, origin: true, pairingId: true, ownerId: true, deviceId: true, projectId: true }).extend({ version: z.literal(1), purpose: z.literal('task-progress'), token: z.string().min(1).max(16384) }).strict()
 const fileSchema = z.object({ version: z.literal(1), connectionId: z.string().uuid(), protected: z.string().min(1).max(64 * 1024).nullable() }).strict()
@@ -129,6 +131,43 @@ export class NativeTaskProgressSender {
     }
     return { list: input => transport.list(input), read: (id, input) => transport.read(id, input),
       command: command => { allowed(command); return transport.command(command) }, receipt: command => { allowed(command); return transport.receipt(command) } }
+  }
+  /** Task-scoped v2 port using the same issued credential, with no second SQLite owner. */
+  executionRequest(raw: TeamTaskRef, assertCurrent: () => Promise<void>): TeamContentRequest {
+    const task = teamTaskRefSchema.parse(raw)
+    if (task.instanceId !== this.pin.instanceId || task.projectId !== this.pin.projectId || task.taskId !== this.pin.taskId || task.spaceId !== this.pin.spaceId) throw new DesktopTeamError('BINDING_CHANGED', 'Original v2 task differs from the protected sender')
+    const base = `/api/projects/${task.projectId}/hifox/tasks/${encodeURIComponent(task.taskId)}`
+    return async (path, schema, body, validate) => {
+      const url = new URL(path, 'http://native.invalid')
+      if (url.origin !== 'http://native.invalid' || url.hash || url.username || url.password) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Only fixed native task routes are allowed')
+      const suffix = url.pathname.slice(base.length)
+      const read = body === undefined && url.pathname.startsWith(base) && (suffix === '/code-resource'
+        || /^\/executions(?:\/[\w-]+)?$/.test(suffix)
+        || /^\/executions\/[\w-]+\/inputs(?:\/resources\/[^/]+)?$/.test(suffix)
+        || /^\/executions\/[\w-]+\/artifacts\/[\w-]+$/.test(suffix))
+      const write = body !== undefined && url.pathname.startsWith(base) && ['/executions/commands', '/executions/reconcile'].includes(suffix) && url.search === ''
+      if (!read && !write) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Native sender route is outside its fixed v2 task')
+      if (read && suffix !== '/code-resource') {
+        if (url.searchParams.get('contractVersion') !== '2' || url.searchParams.get('instanceId') !== task.instanceId
+          || url.searchParams.get('spaceId') !== task.spaceId || url.searchParams.get('taskCreatedAt') !== task.taskCreatedAt
+          || [...url.searchParams.keys()].some(key => !['contractVersion', 'instanceId', 'spaceId', 'taskCreatedAt', 'purpose'].includes(key))) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Native read changed its original task incarnation')
+      }
+      if (write) {
+        const command = teamExecutionCommandSchema.parse(body)
+        if (teamTaskIdentity(command.task) !== teamTaskIdentity(task) || command.expectedEpoch !== this.pin.epoch || command.expectedActorId !== this.pin.ownerId
+          || command.expectedDeviceId !== this.pin.deviceId || ['claim', 'transition', 'release'].includes(command.kind)) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Native sender cannot change task ownership or business state')
+      }
+      await assertCurrent()
+      const c = await this.authorized()
+      // This fixed task read fences actual service instance/epoch/incarnation even
+      // for artifact response shapes which carry no epoch field themselves.
+      const resource = await this.codeResource()
+      if (resource.taskCreatedAt !== task.taskCreatedAt) throw new DesktopTeamError('BINDING_CHANGED', 'Original task incarnation changed')
+      await assertCurrent(); this.current(c.fingerprint)
+      const result = await this.http.request(this.pin.origin, path, schema, c.value.token, body)
+      this.current(c.fingerprint, body !== undefined); await assertCurrent(); validate?.(result)
+      return result
+    }
   }
   private check(result: z.infer<typeof teamTaskProgressDtoSchema>): void {
     if (result.instanceId !== this.pin.instanceId || result.epoch !== this.pin.epoch || result.projectId !== this.pin.projectId || result.taskId !== this.pin.taskId || result.spaceId !== this.pin.spaceId) throw new DesktopTeamError('BINDING_CHANGED', '任务进度返回了不同的原服务或任务身份')

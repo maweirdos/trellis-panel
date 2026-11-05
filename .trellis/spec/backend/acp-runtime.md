@@ -151,6 +151,20 @@ prompt replay or fabricated successful/failed outcome follows from a retry read.
 
 ### Task materials and source-bound prompts
 
+Product-owned platform nodes use [Product task execution](./product-task-execution.md).
+The internal platform launch captures its local configuration, stable native
+alias and existing lifecycle lease before creation. `platformExecution` metadata
+does not create authority: the live private owner and original fixed context
+must still match. Do not route these nodes through a Trellis task pointer or a
+v1 progress binding. Ordinary session configuration/prompt/resume entrypoints
+must not bypass their owning task facade.
+
+Actual node context uses the existing T03 composer and native prompt-write
+receipt. Fixed JSON text is carried as supported `text/plain`; keep its strict
+packet/digest/envelope validation. A prepared manifest is separate from actual
+transport acknowledgement. Original native cleanup and durable task controls
+remain available without changing shared task approval or business state.
+
 `AcpPromptOptions.images?: AcpImageAttachment[]` carries `{id,name,mimeType,data}` with raw base64 (no data URL). `shared/acp-images.ts` defines raster MIME types PNG/JPEG/WebP/GIF and per-message bounds: eight images, 10 MiB per image, 20 MiB combined. `services/acp/images.ts` independently validates shape/unique IDs/base64/decoded byte count and file signature before any turn publication. This is signature checking, not full image decoding. Text may be empty only with valid images. Use the initialized runtime record's `agentCapabilities.promptCapabilities.image === true`; expose the same explicit fact as `session.capabilities.promptCapabilities.image`. Missing/false capability rejects attachments with `E_INVALID_ARG`, without changing connection state or dispatching a turn. Do not infer image support from agent/model names.
 
 Pass admitted bytes through existing public `runtime.startTurn({text,attachments:images.map(({mimeType,data})=>({mediaType:mimeType,data})),...})`. acpx already emits actual ACP image content blocks and supports image-only input; no additional transport/compat patch is needed. After `promptStarted`, attach the submitted images to the app user message's `payload.images` and retain them in schema2 history. Provider-specific model/image restrictions remain provider errors, not a reason to silently send text alone. Existing root/generation/reference/admission/cancellation guards apply unchanged.

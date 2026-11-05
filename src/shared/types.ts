@@ -1946,6 +1946,8 @@ export interface AcpModelCatalogMetadata {
 }
 
 export interface AcpSessionMeta {
+  /** Product-managed v2 execution; absent on ordinary and retained v1 sessions. */
+  platformExecution?: { dispatchId: string; preparationId: string; taskIdentity: string; configurationDigest: string }
   privateConversation?: { id: string; creatorId: string; request?: { id: string; turnId: string; sent: boolean } }
   /** Application execution identity; legacy absent values denote ACP. */
   engine?: 'acp' | 'pi'

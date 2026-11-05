@@ -22,6 +22,12 @@ Native platform preparation follows
 directory, process, grant and material paths are private execution mappings;
 they do not change the shared task identity or establish a running engine.
 
+[Product task execution](../backend/product-task-execution.md) uses a private
+`dispatchId` for one admitted native Agent node/attempt. It retains the T01
+server execution identity and T03 input digest, reports actual native evidence
+and selected T04 output references, and cannot infer whole-definition or
+business completion from a node result.
+
 ## 2. Signatures
 
 Import the public surface from `src/shared/workflow/index.ts`:

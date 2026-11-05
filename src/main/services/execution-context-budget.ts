@@ -1,4 +1,6 @@
 export type RuntimeContextResource = { uri: string; mimeType?: string; text: string }
+/** Fixed packets remain strict JSON text inside the supported native attachment. */
+export const FIXED_EXECUTION_CONTEXT_MIME = 'text/plain' as const
 /** Literal SDK attachment framing, shared with the actual Pi engine. */
 export function runtimeContextText(context?: readonly RuntimeContextResource[]): string {
   return context?.map(item => `\n\n<attached_context uri=${JSON.stringify(item.uri)} mimeType=${JSON.stringify(item.mimeType ?? 'text/plain')}>\n${item.text}\n</attached_context>`).join('') ?? ''

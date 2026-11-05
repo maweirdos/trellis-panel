@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertNativeGuiGrant } from './native-gui-grant'
 import { isBoundedWorkcopyCleanup } from '../../shared/workcopy-use'
+import { isBoundedNativeTaskControl } from '../../shared/native-task-execution'
 import { runtimeRequests, type RuntimeMethod } from '../../shared/daemon-runtime'
 import { nativeStateRequests } from '../../shared/native-state'
 import { providerWireContracts } from '../../shared/daemon-domains'
@@ -120,6 +121,12 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
     ready: () => initialized && !closed,
     handles: method => method in nativeStateRequests || method in runtimeRequests || method in providerWireContracts || method === 'integration.execute' || method === 'provider.read.cancel',
     async dispatch(request, actor, nativeGui) {
+      if (runtime && isBoundedNativeTaskControl(request.method, request.payload)) {
+        assertOwner(); assertNativeGuiGrant(context, repository.epoch, actor, nativeGui)
+        return runtime.dispatch('runtime.taskExecution', runtimeWireSchema.parse(request.payload), {
+          commandId: request.commandId, native: { actor, assertProduct: () => assertNativeGuiGrant(context, repository.epoch, actor, nativeGui) }
+        })
+      }
       if (request.method === 'runtime.hifoxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(context, repository.epoch, actor, nativeGui)
       if (runtime && scope && isBoundedWorkcopyCleanup(request.method, request.payload)) {
         assertOwner()

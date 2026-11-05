@@ -16,6 +16,7 @@ import type { ProcessOwner } from '../../shared/daemon'
 import { canonicalDirectory } from '../services/acp/metadata'
 import { assertNativeGuiGrant, type NativeGuiAuthority } from './native-gui-grant'
 import { isBoundedWorkcopyCleanup } from '../../shared/workcopy-use'
+import { isBoundedNativeTaskControl } from '../../shared/native-task-execution'
 
 export class DaemonDispatcher {
   private stopping = false
@@ -60,9 +61,10 @@ export class DaemonDispatcher {
     return actual
   }
   async dispatch(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown> {
-    if (request.method.startsWith('runtime.private') || request.method === 'runtime.hifoxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
+    if (request.method.startsWith('runtime.private') || request.method === 'runtime.taskExecution' || request.method === 'runtime.hifoxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
     const management = ['daemon.status', 'daemon.stop', 'daemon.logs', 'commands.get'].includes(request.method)
       || isBoundedWorkcopyCleanup(request.method, request.payload)
+      || isBoundedNativeTaskControl(request.method, request.payload)
     if ((this.checkingIdle || this.stopping) && !management) throw new DaemonError(this.stopping ? 'E_UNAVAILABLE' : 'E_BUSY', 'Native admission is closed while the original daemon owner is checking shutdown.')
     if (!management) this.operations++
     try { return await this.dispatchRequest(request, actor, nativeGui) }
@@ -131,9 +133,9 @@ export class DaemonDispatcher {
     if (request.expectedEpoch !== this.lease.epoch) throw new DaemonError('E_CONFLICT', 'Daemon epoch changed. Reconnect and inspect the original command receipt.')
     const mutating = MUTATING_DAEMON_METHODS.includes(request.method)
     if (mutating && !request.commandId) throw new DaemonError('E_INVALID_ARG', 'Mutations require a stable commandId.')
-    if (this.stopping && mutating && request.method !== 'daemon.stop' && !isBoundedWorkcopyCleanup(request.method, request.payload)) throw new DaemonError('E_UNAVAILABLE', 'Daemon is stopping. Inspect the retained command receipt.')
+    if (this.stopping && mutating && request.method !== 'daemon.stop' && !isBoundedWorkcopyCleanup(request.method, request.payload) && !isBoundedNativeTaskControl(request.method, request.payload)) throw new DaemonError('E_UNAVAILABLE', 'Daemon is stopping. Inspect the retained command receipt.')
     // The private original lease remains cleanable after grant revocation.
-    if (request.workspace && !isBoundedWorkcopyCleanup(request.method, request.payload)) this.workspace(request)
+    if (request.workspace && !isBoundedWorkcopyCleanup(request.method, request.payload) && !isBoundedNativeTaskControl(request.method, request.payload)) this.workspace(request)
     if (this.domains?.handles(request.method)) return this.domains.dispatch(request, actor, nativeGui)
     if (mutating && request.method !== 'daemon.stop') {
       const committed = this.repository.committedResult(request)

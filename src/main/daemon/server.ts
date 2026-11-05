@@ -13,6 +13,7 @@ import { DaemonError, daemonFailure } from './errors'
 import { listenNativePipe, type NativeServer } from './transport'
 import type { DaemonDispatcher } from './dispatcher'
 import { authenticateNativeGuiGrant, releaseNativeGuiGrant, type NativeGuiAuthority } from './native-gui-grant'
+import { isBoundedNativeTaskControl } from '../../shared/native-task-execution'
 
 export async function startDaemonServer(context: DaemonContext, lease: DaemonLease, dispatcher: DaemonDispatcher, fatal: () => void): Promise<NativeServer> {
   const admission = { ordinary: { calls: 0, bytes: 0 }, control: { calls: 0, bytes: 0 }, authentication: { calls: 0, bytes: 0 } }
@@ -71,6 +72,7 @@ export async function startDaemonServer(context: DaemonContext, lease: DaemonLea
         && transfer.workspace === JSON.stringify(request.data.workspace ?? null)
         && (!blobRead?.success || JSON.stringify(blobRead.data.blob) === JSON.stringify(transfer.blob))
       const control = request?.success && (DAEMON_CONTROL_METHODS.includes(request.data.method)
+        || isBoundedNativeTaskControl(request.data.method, request.data.payload)
         || legacy?.success && (legacy.data.operation === 'cancelRead' || legacy.data.operation === 'cancelAuthorization') || Boolean(controlTransfer))
       const budget = !client ? admission.authentication : control ? admission.control : admission.ordinary
       const callLimit = !client ? DAEMON_LIMITS.connections : control ? DAEMON_LIMITS.controlPendingCalls : DAEMON_LIMITS.pendingCalls

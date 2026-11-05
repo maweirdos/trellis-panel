@@ -9,7 +9,7 @@ import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { taskDirSchema } from './acp/types'
 import { assertNoUnownedTeamTaskRules, MAX_TASK_RULE_BYTES, readTaskInputRules, readExecutionInputRules, type FixedTaskRule } from './hifox/task-input-rules'
 import { executionContextManifestSchema, executionContextPacketSchema, type ExecutionContextManifest, type ExecutionInputSource } from '../../shared/team-execution-input'
-import { executionContextEnvelopeBytes } from './execution-context-budget'
+import { executionContextEnvelopeBytes, FIXED_EXECUTION_CONTEXT_MIME } from './execution-context-budget'
 
 const digest = (body: string): string => createHash('sha256').update(body, 'utf8').digest('hex')
 const MAX_RULE_BYTES = MAX_TASK_RULE_BYTES
@@ -187,7 +187,7 @@ export async function prepareExecutionAgentRules(raw: PrepareExecutionAgentRules
   })
   const packet = { contractVersion: 2 as const, inputDigest: input.digest, executionId: input.executionId, node: fixed.node, roleInstructions: role.instructions, sources }
   const serialize = (): string => JSON.stringify(packet)
-  const envelopeBytes = (text: string): { acp: number; pi: number } => executionContextEnvelopeBytes({ uri: `trellis://execution-input/${input.executionId}/${encodeURIComponent(fixed.node.id)}/${digest(text)}`, mimeType: 'application/json', text })
+  const envelopeBytes = (text: string): { acp: number; pi: number } => executionContextEnvelopeBytes({ uri: `trellis://execution-input/${input.executionId}/${encodeURIComponent(fixed.node.id)}/${digest(text)}`, mimeType: FIXED_EXECUTION_CONTEXT_MIME, text })
   const size = (): number => { const text = serialize(), bytes = envelopeBytes(text); return Math.max(utf8ByteLength(text), bytes.acp, bytes.pi) }
   if (size() > IMPLICIT_MATERIAL_BUDGET_BYTES) throw new Error('Required fixed inputs and source receipts exceed the serialized 8 KiB context budget')
   const provide = (index: number, text: string, status: 'full' | 'partial'): void => {

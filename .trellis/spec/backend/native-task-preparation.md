@@ -4,8 +4,11 @@
 
 Read before changing `native-task-preparation.ts`, `runtime.taskPreparation`,
 platform engineering bindings or retained legacy workspace discovery. The existing
-Daemon owns preparation, protected team credentials and workspace admission.
-The team service owns the current execution writer and fixed input authorization.
+Daemon owns preparation and workspace admission. The GUI's existing team service
+owns the local team store and protected credential issuance/revocation; the
+Daemon reads the original protected native task credential through the existing
+bounded sender. The team service owns the current execution writer and fixed
+input authorization.
 
 Preparation consumes [execution authority](./team-task-executions-v2.md),
 [fixed inputs](./team-execution-inputs.md) and
@@ -47,6 +50,18 @@ journal's actual saved method to apply the original preparation-owner check;
 missing binding metadata cannot bypass it. The desktop native helper uses its
 existing GUI pool for preparation operations. The common Daemon method also
 accepts authenticated ordinary editor-owned clients.
+
+Before a product preparation, the GUI helper authorizes the original native
+task credential through the existing DesktopTeamService owner. The internal
+preparation transport receives the fixed task reference in addition to its pin,
+guard and action. The Daemon must not open another DesktopTeamStore for these
+reads; GUI closure does not make the original credential a new connection.
+
+[Product execution](./product-task-execution.md) can consume fresh verification
+inside the existing admission boundary and synchronously transfer its lease to
+the admitted native lifecycle. Admitted background validation uses the retained
+grant and actual owning lease; it cannot recreate GUI authority or start an
+unconfirmed native execution during reconciliation.
 
 ## Directory and resources
 

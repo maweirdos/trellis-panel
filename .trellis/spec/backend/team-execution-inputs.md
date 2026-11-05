@@ -66,6 +66,13 @@ executionContextEnvelopeBytes(resource)
 runtimeContextText(context)
 ```
 
+New fixed context resources carry canonical JSON text using `text/plain`, the
+supported textual attachment MIME at the pinned public acpx boundary. Budget and
+validate the actual same MIME/URI/text envelope in both native composers. Retain
+existing packet/hash checks and historical native manifests; converting the
+transport MIME is not permission to alter a captured shared input or replay an
+uncertain old prompt.
+
 `adaptLegacyFlowToPortable(raw,{definitionId,revision,roles,phases,nodeRoles,
 capabilities,outputs})` explicitly converts supported source declarations.
 Unknown fields, active imported Hooks, parameter inputs and unenforceable

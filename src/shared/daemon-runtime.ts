@@ -13,6 +13,7 @@ import { privateNativeConfigureSchema, privateNativeRecoverModelSchema } from '.
 import { requirementPredecessorSchema } from './conversation-requirements'
 import { runRefSchema } from './workflow'
 import { nativeTaskPreparationRequestSchema } from './native-task-preparation'
+import { nativeTaskExecutionRequestSchema } from './native-task-execution'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
@@ -29,6 +30,7 @@ const session = z.object({ sessionId: id }).strict()
 /** Payloads are parsed after bounded wire/blob resolution, immediately before invoking the real facade. */
 export const runtimeBodies = {
   'runtime.taskPreparation': nativeTaskPreparationRequestSchema,
+  'runtime.taskExecution': nativeTaskExecutionRequestSchema,
   'runtime.privateRead': privateNativeReadSchema,
   'runtime.privateSend': privateNativeSendSchema,
   'runtime.privateCancel': privateNativeControlSchema,
@@ -118,6 +120,7 @@ export type RuntimeRequest<M extends RuntimeMethod> = z.input<(typeof runtimeReq
 export type RuntimeResult<M extends RuntimeMethod> = z.infer<(typeof runtimeResults)[M]>
 export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
   'runtime.taskPreparation',
+  'runtime.taskExecution',
   'runtime.privateSend', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond', 'runtime.privateConfigure', 'runtime.privateRecoverModel',
   'runtime.workcopyUse',
   'runtime.workcopyCleanup',

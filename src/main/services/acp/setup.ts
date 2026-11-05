@@ -17,6 +17,8 @@ import { applyRuntimeVerification, hasRuntimeVerification, runtimeVerificationId
 import { acpExtraArgv, acpProcessEnv, resolveAcpLaunchOptions } from '../../../shared/acp-launch-options'
 import { compareReleaseVersions, openCodeRelease, OPENCODE_MIGRATION_GUIDE, OPENCODE_V2_PACKAGE, parseReleaseVersion } from './native-releases'
 
+export { BUILTINS }
+
 export const NATIVE_TOOLS_DIAGNOSTIC = '工具由适配器原生能力提供；ACP 客户端文件和终端回调未启用，实际工具以该适配器报告和运行结果为准。'
 
 const BUILTINS = {

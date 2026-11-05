@@ -6,6 +6,7 @@ import type { ProcessOwner, WorkspaceGrant } from '../../../shared/daemon'
 import { nativeTaskBindingSchema, nativeTaskPreparationRequestSchema, type NativeTaskBinding, type NativeTaskPrepare, type NativeTaskPreparationRequest } from '../../../shared/native-task-preparation'
 import { executionInputDigestText, type ExecutionInputView } from '../../../shared/team-execution-input'
 import { teamTaskIdentity, type TeamExecutionRecord } from '../../../shared/team-task-execution'
+import type { TeamTaskRef } from '../../../shared/team-task-execution'
 import { teamTaskCodeResourceDtoSchema, type TeamTaskCodeResourceDto } from '../../../shared/team-code-resources'
 import { taskInputCanonical } from '../../../shared/team-task-inputs'
 import { executionArtifactDigestText } from '../../../shared/team-execution-artifacts'
@@ -22,12 +23,16 @@ import { resolveWorkcopy, assertWorkcopyObservation } from '../../services/workc
 import type { WorkcopyUseRegistry } from '../../services/workcopy-use/registry'
 import { claimWorkspaceAdmission } from '../../services/workflow-admission'
 import type { WorkcopyIdentity } from '../../../shared/workcopy-use'
+import type { WorkspaceAdmission } from '../../services/workflow-admission'
+import type { ExecutionInputSource } from '../../../shared/team-execution-input'
 
 const hash = (value: string): string => createHash('sha256').update(value, 'utf8').digest('hex')
 const equal = (a: unknown, b: unknown): boolean => taskInputCanonical(a) === taskInputCanonical(b)
 const MAX_MATERIAL_BYTES = 16 * 1024 * 1024
 const MAX_BINDING_BYTES = 2 * 1024 * 1024
 function conflict(message: string): never { throw new DaemonError('E_CONFLICT', message) }
+const executionRequest = (request: TeamContentRequest) => <S extends z.ZodType>(path: string, schema: S, body?: unknown): Promise<z.output<S>> =>
+  request(path, schema, body === undefined ? undefined : z.record(z.string(), z.unknown()).parse(body))
 
 /** Supplied only by the existing authenticated native dispatcher, never parsed from a body. */
 export interface NativeTaskPreparationAuthority {
@@ -40,7 +45,7 @@ export interface NativeTaskPreparationPorts {
   workcopies: WorkcopyUseRegistry
   assertOwner(): void
   assertCurrent(grant: WorkspaceGrant): void
-  withTransport<T>(pin: NativeContentPin, assertCurrent: () => Promise<void>, action: (request: TeamContentRequest) => Promise<T>): Promise<T>
+  withTransport<T>(pin: NativeContentPin, assertCurrent: () => Promise<void>, action: (request: TeamContentRequest) => Promise<T>, task: TeamTaskRef): Promise<T>
   assertLegacyAvailable(root: string): Promise<void>
 }
 
@@ -93,7 +98,8 @@ export class NativeTaskPreparation {
     if (!authority) throw new DaemonError('E_DENIED', 'Original preparation receipts require their authenticated native process and workspace grant.')
     this.assertAuthority(root, request, authority)
   }
-  async execute(root: string, raw: NativeTaskPreparationRequest, authority: NativeTaskPreparationAuthority): Promise<NativeTaskBinding> {
+  async execute(root: string, raw: NativeTaskPreparationRequest, authority: NativeTaskPreparationAuthority,
+    handoff?: (binding: NativeTaskBinding, admission: WorkspaceAdmission, releasePreparation: () => void) => void): Promise<NativeTaskBinding> {
     const request = nativeTaskPreparationRequestSchema.parse(raw)
     // Copy the authenticated capture before any await. Bodies cannot provide these facts.
     const original = { actor: structuredClone(authority.actor), grant: structuredClone(authority.grant), assertProduct: authority.assertProduct.bind(authority) }
@@ -113,7 +119,7 @@ export class NativeTaskPreparation {
     if (stored && stored.directoryIdentity !== directoryIdentity) conflict('Original selected directory was replaced.')
     assertWorkcopyObservation(workcopy, input.expected.workcopy)
     const admission = claimWorkspaceAdmission(workcopy.canonicalRoot, 'managed', undefined, { projectRoot: root })
-    let lease: ReturnType<WorkcopyUseRegistry['acquire']> | undefined
+    let lease: ReturnType<WorkcopyUseRegistry['acquire']> | undefined, handedOff = false
     const guard = (): void => {
       this.ports.assertOwner(); this.ports.assertCurrent(original.grant)
       if (!admission.isCurrent() || original.grant.root !== root || realpathSync.native(root) !== root || hifoxWorkProjectIdentity(root) !== directoryIdentity) conflict('Original physical directory or workspace admission changed.')
@@ -127,7 +133,7 @@ export class NativeTaskPreparation {
       lease = this.ports.workcopies.acquire(root, { kind: 'tree-change', expected: { id: workcopy.id, revision: workcopy.revision },
         owner: { kind: 'git', id: input.preparationId, generation: randomUUID(), label: 'Prepare platform task', taskKey: teamTaskIdentity(input.task) } })
       await checked(() => this.ports.assertLegacyAvailable(root))
-      return await checked(() => this.ports.withTransport(input.pin, async () => guard(), async requestTransport => {
+      const verified = await checked(() => this.ports.withTransport(input.pin, async () => guard(), async requestTransport => {
         const readRequest = <S extends z.ZodType>(path: string, schema: S, body?: unknown): Promise<z.output<S>> => {
           if (body !== undefined) throw new DaemonError('E_DENIED', 'Native preparation cannot submit team mutations.')
           return requestTransport(path, schema)
@@ -191,13 +197,71 @@ export class NativeTaskPreparation {
         }
         this.publish(binding, texts, guard)
         return binding
-      }))
+      }, input.task))
+      guard()
+      if (handoff) {
+        // The callback transfers the tree lease to the exact native alias without
+        // yielding. The managed admission token remains held across that transfer.
+        handoff(verified, admission, () => {
+          if (lease) this.ports.workcopies.release({ token: lease.token, owner: lease.owner, outcome: 'settled' })
+          lease = undefined
+        })
+        handedOff = true
+      }
+      return verified
     } finally {
       // This lease encloses awaited reads/private publication only. No native process
       // was started, so settling it makes no claim about a process having stopped.
       try { if (lease) this.ports.workcopies.release({ token: lease.token, owner: lease.owner, outcome: 'settled' }) }
-      finally { admission.release() }
+      finally { if (!handedOff) admission.release() }
     }
+  }
+  /** Admitted Daemon work reuses its retained grant and current protected device;
+   * the initiating GUI connection is no longer its execution authority. */
+  async withExecution<T>(binding: NativeTaskBinding, assertOwned: () => void,
+    action: (transport: TaskExecutionTransport, source: ExecutionInputSource, resource: TeamTaskCodeResourceDto) => Promise<T>): Promise<T> {
+    const original = this.read(binding.preparationId), input = original.request
+    if (!equal(original, binding) || input.origin !== 'product' || input.ownership !== 'product-managed') conflict('Original product preparation changed.')
+    const guard = (): void => {
+      this.ports.assertOwner(); this.ports.assertCurrent(original.grant); assertOwned()
+      if (hifoxWorkProjectIdentity(original.root) !== original.directoryIdentity) conflict('Original engineering directory was replaced.')
+      assertWorkcopyObservation(resolveWorkcopy(original.root), original.workcopy)
+    }
+    guard()
+    return this.ports.withTransport(input.pin, async () => guard(), async request => {
+      const transport = new TaskExecutionTransport(input.task, input.pin.actorId, input.pin.deviceId, executionRequest(request))
+      const source = new ExecutionInputTransport(input.task, input.expected.executionId, input.pin.actorId, input.pin.deviceId, executionRequest(request)).source('use')
+      const validate = async (): Promise<TeamTaskCodeResourceDto> => {
+        guard()
+        const current = await transport.read(); guard()
+        const active = this.execution(input, current.active, current.epoch)
+        if (!equal(active.executor, original.execution.executor)) conflict('Original executor claim changed.')
+        const resource = await request(`/api/projects/${input.task.projectId}/hifox/tasks/${encodeURIComponent(input.task.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema)
+        guard(); this.resource(input, resource)
+        const view = await source.read(); guard(); this.fixedInput(input, active, view)
+        if (!equal(view.input, original.input)) conflict('Original fixed input changed.')
+        const project = await inspectHifoxWorkExecutionProject(original.root, resource.resource ?? undefined)
+        guard(); if (!project.resourceMatched) conflict('Actual repository differs from the retained resource.')
+        for (const item of original.resources) {
+          const state = view.resources.find(state => state.selectionId === item.resource.selection.id)
+          if (!state || item.resource.selection.required && state.status !== 'available') conflict('A required original input is no longer available.')
+          if (item.path && (lstatSync(item.path).nlink !== 1 || hash(readBounded(item.path, 1024 * 1024)) !== item.resource.bodyDigest)) conflict('Original fixed material bytes changed.')
+        }
+        return resource
+      }
+      const resource = await validate()
+      const result = await action(transport, source, resource)
+      guard()
+      return result
+    }, input.task)
+  }
+  retained(preparationId: string): NativeTaskBinding { this.ports.assertOwner(); return this.read(preparationId) }
+  withReceipts<T>(binding: NativeTaskBinding, action: (transport: TaskExecutionTransport) => Promise<T>): Promise<T> {
+    this.ports.assertOwner()
+    if (!equal(this.read(binding.preparationId), binding)) conflict('Original preparation changed.')
+    const input = binding.request
+    return this.ports.withTransport(input.pin, async () => this.ports.assertOwner(), request => action(
+      new TaskExecutionTransport(input.task, input.pin.actorId, input.pin.deviceId, executionRequest(request))), input.task)
   }
   private execution(input: NativeTaskPrepare, execution: TeamExecutionRecord | null, epoch: string): TeamExecutionRecord {
     if (input.pin.projectId !== input.task.projectId || input.pin.instanceId !== input.task.instanceId || epoch !== input.pin.epoch || !execution

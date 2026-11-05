@@ -19,6 +19,9 @@ import { JIRA_DAEMON } from '../../../shared/jira-integration'
 import { GITLAB_DAEMON } from '../../../shared/gitlab-integration'
 import { DINGTALK_DAEMON } from '../../../shared/dingtalk-integration'
 import { isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
+import { isBoundedNativeTaskControl } from '../../../shared/native-task-execution'
+import { nativeTaskPreparationRequestSchema } from '../../../shared/native-task-preparation'
+import { withDesktopTeamService } from '../team-desktop'
 
 /** Cleanup actions only. Status/workspace lookup are reserved server preflight
  * methods, not feature operations that can bypass GUI admission closure. Literal
@@ -162,7 +165,7 @@ export async function runtimeCall<T, M extends RuntimeBodyMethod = RuntimeBodyMe
 export async function readRuntimeCommandReceipt(root: string, commandId: string, isCurrent?: () => boolean): Promise<{ state: 'absent' | 'dispatching' | 'completed' | 'unknown'; result?: unknown }> {
   z.string().uuid().parse(commandId)
   if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '原执行准备来源已变化。')
-  const client = await connect(), workspace = await scope(client, root, isCurrent, false)
+  const client = await connect(false, true), workspace = await scope(client, root, isCurrent, false)
   if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '原执行准备来源已变化。')
   const context = await daemonClientContext()
   requireCurrentDaemonBuild(context, client.lease)
@@ -196,7 +199,8 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
   const legacy = method === 'integration.execute' ? legacyIntegrationRequestSchema.safeParse(body) : null
   const legacyCleanup = legacy?.success && ['cancelRead', 'cancelAuthorization'].includes(legacy.data.operation)
   const workcopyCleanup = isBoundedWorkcopyCleanup(method, { inline: body })
-  const cleanup = Boolean(legacyCleanup) || workcopyCleanup || cleanupMethods.includes(method)
+  const taskControl = isBoundedNativeTaskControl(method, { inline: body })
+  const cleanup = Boolean(legacyCleanup) || workcopyCleanup || taskControl || cleanupMethods.includes(method)
   const dedicated = cleanup
   let client: DaemonClient | undefined
   let workspace: WorkspaceGrant | undefined, inputBlob: RuntimeBlob | undefined, outputBlob: RuntimeBlob | undefined
@@ -204,9 +208,13 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
   let abort: (() => void) | undefined
   try {
     if (admissionClosed && !cleanup) throw new DaemonError('E_UNAVAILABLE', '桌面正在退出，尚未接纳新操作。')
-    client = await connect(dedicated, method.startsWith('runtime.private') || method === 'runtime.taskPreparation' || method === 'runtime.hifoxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
+    if (method === 'runtime.taskPreparation') {
+      const preparation = nativeTaskPreparationRequestSchema.parse(body)
+      if (preparation.operation === 'prepare') await withDesktopTeamService(service => service.authorizeTaskProgress(preparation.pin.connectionId))
+    }
+    client = await connect(dedicated, method.startsWith('runtime.private') || method === 'runtime.taskExecution' || method === 'runtime.taskPreparation' || method === 'runtime.hifoxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未授权后台工作区。')
-    workspace = workcopyCleanup ? undefined : await scope(client, root, isCurrent, !dedicated)
+    workspace = workcopyCleanup || taskControl ? undefined : await scope(client, root, isCurrent, !dedicated)
     const input = await upload(client, workspace, body, dedicated)
     if ('blob' in input) inputBlob = input.blob
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未提交后台执行。')

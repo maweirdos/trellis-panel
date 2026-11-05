@@ -308,6 +308,7 @@ interface PendingPermission {
   finish: (decision: AcpPermissionDecision, outcome: string) => void
 }
 interface ActiveSession {
+  platformOwner?: PlatformAcpOwner
   nativeStatus?: OpenCodeStatus
   runtimeRetry?: import('../../shared/types').AcpRuntimeRetry
   nativeCancelReason?: { turnId: string; text: string; connectionGeneration: string; backendSessionId: string; requestedAt: number }
@@ -392,6 +393,8 @@ function teamCodeRulesFailure(meta: AcpSessionRecord): IpcFail | undefined {
   return undefined
 }
 function acquire(session: ActiveSession, mode: ActiveSession['leaseMode'] = session.leaseHeld ? session.leaseMode : 'shared'): IpcFail | undefined {
+  if (session.meta.platformExecution && !session.platformOwner) return ipcFail(IpcErrorCode.Denied, 'Original product lifecycle owner is required')
+  try { session.platformOwner?.assertActive() } catch { return ipcFail(IpcErrorCode.Conflict, 'Original product execution no longer admits native writes') }
   const rulesFailure = teamCodeRulesFailure(session.meta)
   if (rulesFailure) return rulesFailure
   if (session.cleanupRequired || session.uncertainWork) return ipcFail(IpcErrorCode.Conflict, '此会话的工具或清理尚未确认结束，请先完成原会话清理')
@@ -432,6 +435,8 @@ function holdCleanupBarrier(session: ActiveSession): void {
 }
 function release(session: ActiveSession, cleanupConfirmed = false): void {
   cleanupConfirmed ||= session.processCleanupConfirmed === true && !session.hasProcess
+  // A settled turn is not the product execution's native cleanup boundary.
+  if (session.meta.platformExecution && !cleanupConfirmed) return
   if (session.unverifiedProcessExit) { session.cleanupRequired = true; holdCleanupBarrier(session); return }
   if (session.cleanupRequired) { holdCleanupBarrier(session); return }
   const unfinished = [...session.toolStates.values()].some((state) => state === 'unfinished')
@@ -865,6 +870,8 @@ async function drainSessionRuntime(session: ActiveSession): Promise<void> {
 }
 function permissionHandler(session: ActiveSession): AcpPermissionHandler {
   return async (request, context) => {
+    try { await session.platformOwner?.assertCurrent(); session.platformOwner?.assertActive() }
+    catch { return { outcome: 'cancel' } }
     const rulesFailure = teamCodeRulesFailure(session.meta)
     if (rulesFailure) { emit(session, 'diagnostic', rulesFailure.error, { activityScope: 'turn' }); return { outcome: 'cancel' } }
     if (session.closing || !session.turn || session.meta.status === 'cancelling' || !session.leaseHeld || context.signal.aborted) return { outcome: 'cancel' }
@@ -884,7 +891,7 @@ function permissionHandler(session: ActiveSession): AcpPermissionHandler {
       // Preserve native option IDs/kinds for exact decisions while redacting
       // provider-generated labels that may echo bridge descriptors.
       options: request.raw.options.map(({ optionId, name, kind }) => ({ optionId, name: knowledgeMcpBridge.redactText(name), kind })) }
-    return new Promise<AcpPermissionDecision>((resolve) => {
+    const decision = await new Promise<AcpPermissionDecision>((resolve) => {
       let done = false
       const finish = (decision: AcpPermissionDecision, outcome: string): void => {
         if (done) return
@@ -905,14 +912,18 @@ function permissionHandler(session: ActiveSession): AcpPermissionHandler {
       broadcastToWindows(ipcEvent.acpPermission, payload)
       if (context.signal.aborted) onAbort()
     })
+    try { await session.platformOwner?.assertCurrent(); session.platformOwner?.assertActive() }
+    catch { return { outcome: 'cancel' } }
+    return decision
   }
 }
-export function respondAcpPermission(projectRoot: string, requestId: string, optionId: string): { ok: true } | IpcFail {
+export function respondAcpPermission(projectRoot: string, requestId: string, optionId: string, platformDispatchId?: string): { ok: true } | IpcFail {
   assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   for (const session of sessions.values()) {
     const pending = session.pendingPermissions.get(requestId)
     if (!pending) continue
+    if (session.meta.platformExecution && session.meta.platformExecution.dispatchId !== platformDispatchId) return ipcFail(IpcErrorCode.Denied, 'Product permissions require their original execution control')
     if (!belongs(projectRoot, session.meta)) return ipcFail(IpcErrorCode.Denied, '此权限请求不属于当前项目')
     if (pending.payload.expiresAt !== undefined && pending.payload.expiresAt <= Date.now()) { pending.finish({ outcome: 'cancel' }, 'timeout'); void cancelOwned(session, '权限等待超时'); return ipcFail(IpcErrorCode.NotFound, '权限请求已结束或超时') }
     if (session.closing || pending.payload.connectionGeneration !== session.meta.connectionGeneration || pending.payload.turnId !== session.meta.turnId) return ipcFail(IpcErrorCode.Conflict, '权限请求已失效')
@@ -956,7 +967,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
   let knowledge: KnowledgeMcpConnection | undefined
   try {
     if (!meta.connectionGeneration) throw new Error('Native connection generation unavailable')
-    knowledge = meta.privateConversation ? undefined : await knowledgeMcpBridge.connect({ root: meta.projectRoot, sessionId: meta.sessionId, connectionGeneration: meta.connectionGeneration }, (knowledgeBridge) => {
+    knowledge = meta.privateConversation || meta.platformExecution ? undefined : await knowledgeMcpBridge.connect({ root: meta.projectRoot, sessionId: meta.sessionId, connectionGeneration: meta.connectionGeneration }, (knowledgeBridge) => {
       if (session && sessions.get(meta.sessionId) === session && (!knowledgeBridge.turnId || knowledgeBridge.turnId === session.meta.turnId)) {
         const { knowledgeOperation, ...bridgeStatus } = knowledgeBridge
         emit(session, 'diagnostic', knowledgeBridge.detail, { knowledgeBridge: bridgeStatus, ...(knowledgeOperation ? { knowledgeOperation, activityScope: 'turn' } : knowledgeBridge.operationId ? {} : { activityScope: 'connection' }) })
@@ -964,6 +975,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
     })
   } catch { /* Ordinary native dialogue remains usable with an explicit unavailable diagnostic. */ }
   const runtime: ConversationRuntime = config.id === 'pi' && config.launchKind === 'sdk' ? new PiConversationRuntime({ meta, argv,
+    assertExecutionCurrent: async () => { await session.platformOwner?.assertCurrent(); session.platformOwner?.assertActive() },
     dataDirectory: app.getPath('userData'), initialModelId: recoveryModelId, windowsJobLauncher: !nativeJobs && process.platform === 'win32' ? nativeResource('windows-pi-engine.ps1') : undefined,
     nativeJobs,
     mcpServers: () => knowledge?.servers().map(server => ({ name: 'trellis_knowledge', config: { type: 'http', url: server.url, headers: Object.fromEntries(server.headers.map(header => [header.name, header.value])), exposure: 'direct' } })) ?? [],
@@ -1212,7 +1224,97 @@ interface HandoffNewSession {
   sessionId: string; profile?: AcpAgentProfile; cwd: string; plan: HandoffTargetPlan; origin: AcpHandoffOrigin
   assertCurrent(): void; beforeNativeCreate(): void
 }
-async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession, taskOwner?: { sessionId: string; task?: AcpSessionRecord['taskProgress']; connectionGeneration?: string }, privateOwner?: { sessionId: string; conversationId: string; creatorId: string }): Promise<{ ok: true; sessionId: string } | IpcFail> {
+export interface PlatformAcpLaunch {
+  agentId: 'pi' | 'codex' | 'claude'
+  profile?: AcpAgentProfile
+  options: import('../../shared/types').AcpRuntimeDefaults
+  config: AcpAgentConfig
+  argv: string[]
+  digest: string
+  assertCurrent(): void
+}
+export interface PlatformAcpOwner {
+  metadata: NonNullable<AcpSessionRecord['platformExecution']>
+  lease: WorkcopyLease
+  assertCurrent(): Promise<void>
+  assertActive(): void
+}
+export async function reservePlatformAcpSession(root: string, alias: string, agentId: 'pi' | 'codex' | 'claude'): Promise<string> {
+  assertRuntimeExecutionHost()
+  if (sessions.has(alias) || readRecords().some(record => record.sessionId === alias)) throw new Error('Original product alias already exists')
+  const intent = await reserveTaskSessionIntent(workcopyUseDirectory(), root, alias, { engine: agentId === 'pi' ? 'pi' : 'acp' })
+  return intent.generation
+}
+/** Cleanup/read identity does not depend on current task ACL or current selection. */
+export function platformAcpSession(root: string, alias: string, dispatchId: string): AcpSessionRecord | null {
+  assertRuntimeExecutionHost()
+  const meta = sessions.get(alias)?.meta ?? readRecords().find(item => item.sessionId === alias)
+  if (!meta) return null
+  if (canonicalDirectory(meta.projectRoot) !== canonicalDirectory(root) || meta.platformExecution?.dispatchId !== dispatchId) throw new Error('Original product native identity changed')
+  const active = sessions.get(alias)
+  return structuredClone({ ...meta, pendingPermissions: active ? [...active.pendingPermissions.values()].map(item => item.payload) : [] })
+}
+/** Native End evidence is independent of whether its saved conversation can resume. */
+export async function stopPlatformAcpSession(root: string, alias: string, dispatchId: string, engine: 'pi' | 'acp'): Promise<void> {
+  const meta = platformAcpSession(root, alias, dispatchId)
+  const directory = workcopyUseDirectory(), intent = readTaskSessionIntent(directory, root, alias, { engine })
+  const active = sessions.get(alias)
+  if (active) {
+    const result = await killOwned(active, 'Product execution stopped; original native cleanup confirmed')
+    if (!result.ok) throw new Error('Original product native cleanup remains unconfirmed')
+  } else if (intent?.phase !== 'cleaned' && intent?.nativeBoundary !== 'not-entered') {
+    const generation = meta?.connectionGeneration ?? intent?.generation
+    if (!generation) throw new Error('Original product native cleanup witness is unavailable')
+    const owner = meta ? workcopyOwnerForMeta(meta) : { kind: 'agent' as const, id: alias, generation, taskKey: `session:${alias}`, label: 'Product task execution' }
+    if (!hasAcpJobOwner(directory, owner)) throw new Error('Original product native Job witness is unavailable')
+    await recoverAcpJobOwner(directory, owner, true)
+    await recoverOriginalAcpUses(root, alias)
+  }
+  if (sessions.has(alias)) throw new Error('Original product native session is still owned')
+  if (intent) saveTaskSessionIntent(directory, { ...intent, phase: 'cleaned', settledOutcome: intent.nativeBoundary === 'not-entered' ? 'not-created' : 'cleaned' })
+}
+/** Capture actual device configuration before any asynchronous source read. */
+export async function preparePlatformAcpLaunch(root: string, engine: { agentId: 'pi' | 'codex' | 'claude'; profileId?: string }): Promise<PlatformAcpLaunch> {
+  const selected = structuredClone(engine)
+  const profile = selected.profileId ? structuredClone(readProfiles(root).find(item => item.id === selected.profileId)) : undefined
+  if (selected.profileId && (!profile || profile.runtimeId !== selected.agentId)) throw new Error('Selected profile does not belong to the declared engine')
+  const defaults = structuredClone(getSettings().acp?.runtimeDefaults?.[selected.agentId])
+  const options = resolveAcpLaunchOptions(defaults, profile, process.platform)
+  const piRevision = selected.agentId === 'pi' ? piConfiguredModels().revision : undefined
+  const assertCurrent = (): void => {
+    const actual = selected.profileId ? readProfiles(root).find(item => item.id === selected.profileId) : undefined
+    if (JSON.stringify(actual) !== JSON.stringify(profile) || JSON.stringify(getSettings().acp?.runtimeDefaults?.[selected.agentId]) !== JSON.stringify(defaults)
+      || piRevision !== undefined && piConfiguredModels().revision !== piRevision) throw new Error('Original engine configuration changed')
+  }
+  const launch = await resolveAcpRuntimeLaunch(selected.agentId)
+  assertCurrent()
+  if ('ok' in launch) throw new Error(launch.error)
+  const digest = createHash('sha256').update(JSON.stringify({ engine: selected, profile, options, config: launch.config, argv: launch.argv, piRevision })).digest('hex')
+  return { agentId: selected.agentId, profile, options, ...structuredClone(launch), digest, assertCurrent }
+}
+/** Uses the original task-intent/Job/session controller without v1 progress binding. */
+export async function newPlatformAcpSession(root: string, launch: PlatformAcpLaunch, owner: PlatformAcpOwner): Promise<{ ok: true; session: AcpSessionRecord } | IpcFail> {
+  owner.assertActive(); launch.assertCurrent()
+  const engine = launch.agentId === 'pi' ? 'pi' as const : 'acp' as const
+  const expected = { engine }
+  const intent = claimTaskSessionIntent(workcopyUseDirectory(), root, owner.lease.owner.id, expected)
+  if (intent.generation !== owner.lease.owner.generation) return ipcFail(IpcErrorCode.Conflict, 'Original native reservation generation changed')
+  const pending = newOwnedAcpSession(root, { agentId: launch.agentId }, undefined,
+    { sessionId: intent.alias, connectionGeneration: intent.generation }, undefined, { launch, owner })
+  creatingRequests.add(pending)
+  try {
+    const result = await pending
+    if (!result.ok) return result
+    const active = sessions.get(result.sessionId)
+    if (!active) return ipcFail(IpcErrorCode.Conflict, 'Original product native owner is unavailable')
+    await active.preparing
+    if (active.meta.status !== 'ready' || active.closing || active.disconnected || !active.meta.backendSessionId) return ipcFail(IpcErrorCode.Unavailable, 'Original product engine did not confirm readiness')
+    completeTaskSessionIntent(workcopyUseDirectory(), root, intent.alias, { sessionId: intent.alias, connectionGeneration: intent.generation,
+      backendSessionId: active.meta.backendSessionId, projectRoot: root, cwd: root, taskDir: null, engine })
+    return { ok: true, session: structuredClone(active.meta) }
+  } finally { creatingRequests.delete(pending) }
+}
+async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?: HandoffNewSession, taskOwner?: { sessionId: string; task?: AcpSessionRecord['taskProgress']; connectionGeneration?: string }, privateOwner?: { sessionId: string; conversationId: string; creatorId: string }, platform?: { launch: PlatformAcpLaunch; owner: PlatformAcpOwner }): Promise<{ ok: true; sessionId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const parsed = newSessionSchema.safeParse(input)
@@ -1223,31 +1325,35 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
   try {
     handoff?.assertCurrent()
     const { agentId, profileId, taskDir } = parsed.data
-    const profile = handoff ? handoff.profile : profileId ? readProfiles(projectRoot).find((item) => item.id === profileId) : undefined
+    const profile = platform ? platform.launch.profile : handoff ? handoff.profile : profileId ? readProfiles(projectRoot).find((item) => item.id === profileId) : undefined
     if (profileId && !profile) return ipcFail(IpcErrorCode.NotFound, 'Agent 配置不存在')
     const runtimeId = handoff?.plan.config.id ?? profile?.runtimeId ?? agentId
-    const launchOptionsSnapshot = resolveAcpLaunchOptions(getSettings().acp?.runtimeDefaults?.[runtimeId], profile, process.platform)
+    const launchOptionsSnapshot = platform ? structuredClone(platform.launch.options) : resolveAcpLaunchOptions(getSettings().acp?.runtimeDefaults?.[runtimeId], profile, process.platform)
     const launch = handoff?.plan ?? await resolveAcpRuntimeLaunch(runtimeId)
     if ('ok' in launch) return launch
+    platform?.launch.assertCurrent(); platform?.owner.assertActive()
+    if (platform && (JSON.stringify(platform.launch.config) !== JSON.stringify(launch.config) || JSON.stringify(platform.launch.argv) !== JSON.stringify(launch.argv))) throw new Error('Original product engine launch changed')
     const { config, argv } = launch
     const cwd = handoff?.cwd ?? (taskOwner || taskDir ? projectRoot : profile?.cwd || projectRoot)
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return ipcFail(IpcErrorCode.NotFound, '工作目录不可用')
-    await recoverOriginalAcpUses(cwd)
+    if (!platform) await recoverOriginalAcpUses(cwd)
     if (taskDir && !await activeTaskExists(projectRoot, taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '绑定任务不属于当前项目的活动任务目录或记录不可读')
     const slot = await reserveConnectionSlot()
     if (typeof slot !== 'symbol') return slot
     reservation = slot
     handoff?.assertCurrent()
     if (handoff && sessions.has(handoff.sessionId)) throw new Error('交接目标已拥有连接，未重复创建')
-    const rules = await prepareAgentRules({ projectRoot, taskDir, teamTask: taskOwner?.task, additionalRules: taskOwner?.task ? [taskRule(taskOwner.task)] : undefined })
+    const rules = platform ? undefined : await prepareAgentRules({ projectRoot, taskDir, teamTask: taskOwner?.task, additionalRules: taskOwner?.task ? [taskRule(taskOwner.task)] : undefined })
     if (taskOwner && readTaskSessionIntent(workcopyUseDirectory(), projectRoot, taskOwner.sessionId)?.phase !== 'creating') return ipcFail(IpcErrorCode.Conflict, '原任务创建已被收束，未启动执行')
     const meta: AcpSessionRecord = { engine: config.launchKind === 'sdk' ? 'pi' : 'acp', schemaVersion: 2, sessionId: privateOwner?.sessionId ?? taskOwner?.sessionId ?? handoff?.sessionId ?? `acp-${randomUUID()}`, agentId: runtimeId, agentName: profile?.name ?? config.name,
       ...(privateOwner ? { privateConversation: { id: privateOwner.conversationId, creatorId: privateOwner.creatorId } } : {}),
       projectRoot, cwd, taskDir, status: 'starting', startedAt: Date.now(), events: [], startup: [], connectionGeneration: taskOwner?.connectionGeneration ?? randomUUID(),
-      agentRulesManifest: rules.manifest, taskProgress: taskOwner?.task,
+      agentRulesManifest: rules?.manifest, taskProgress: taskOwner?.task,
+      ...(platform ? { platformExecution: platform.owner.metadata } : {}),
       profileSnapshot: profile ? structuredClone(profile) : undefined, launchOptionsSnapshot, handoff: handoff?.origin,
       runtimeSnapshot: { id: config.id, name: config.name, command: config.command, enabled: config.enabled, launchKind: config.launchKind, executable: config.executable, args: config.args }, historyKind: 'live', canResume: false }
     const session = await createSessionRuntime(meta, config, argv)
+    if (platform) { session.platformOwner = platform.owner; session.workcopyLease = platform.owner.lease; session.workcopyBaseline = platform.owner.lease.identity }
     if (taskOwner && readTaskSessionIntent(workcopyUseDirectory(), projectRoot, taskOwner.sessionId)?.phase !== 'creating') { session.knowledge?.revoke(); await drainSessionRuntime(session); return ipcFail(IpcErrorCode.Conflict, '原任务创建已被收束，未启动执行') }
     preparingTarget = handoff ? session : undefined
     handoff?.assertCurrent()
@@ -1263,6 +1369,8 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
     session.preparing = (async () => {
       try {
         handoff?.beforeNativeCreate()
+        platform?.owner.assertActive(); platform?.launch.assertCurrent()
+        await platform?.owner.assertCurrent()
         const model = meta.launchOptionsSnapshot?.modelId
         if (taskOwner) enterTaskSessionNativeBoundary(workcopyUseDirectory(), projectRoot, meta.sessionId)
         session.handle = await session.runtime.ensureSession({ sessionKey: meta.sessionId, agent: runtimeId, cwd, mode: 'persistent',
@@ -1370,6 +1478,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
   if ('ok' in session) return session
   const handoffConflict = handoffMutationConflict(projectRoot, sessionId)
   if (handoffConflict) return handoffConflict
+  if (session.meta.platformExecution && (!session.platformOwner || !workflow?.executionContext)) return ipcFail(IpcErrorCode.Denied, 'Product execution prompts require their original fixed context owner')
   if (session.accepting || session.turn || session.closing || (session.meta.status !== 'ready' && !(session.meta.status === 'disconnected' && session.meta.restorePending))) return ipcFail(IpcErrorCode.Conflict, `当前不能发送：${session.meta.status}`)
   if (typeof text !== 'string' || text.length > 200000) return ipcFail(IpcErrorCode.InvalidArg, '发送内容无效或过长')
   if (!session.handle) return ipcFail(IpcErrorCode.Conflict, '会话尚未准备好')
@@ -1502,7 +1611,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
     assertActive()
     const context = [...(executionContext ? [executionContext.resource] : []), ...(agentContext ? [agentContext.resource] : []), ...(handoffContext ? [handoffContext.resource] : [])]
     assertWorkcopyObservation(resolveWorkcopy(keyFor(session)), session.workcopyLease?.identity)
-    if (session.meta.taskProgress) markTaskSessionPrompt(workcopyUseDirectory(), projectRoot, sessionId, false)
+    if (session.meta.taskProgress || session.meta.platformExecution) markTaskSessionPrompt(workcopyUseDirectory(), projectRoot, sessionId, false)
     const turn = session.runtime.startTurn({ handle: session.handle, text: materialText,
       ...(context.length ? { context } : {}),
       attachments: images.map((image) => ({ mediaType: image.mimeType, data: image.data })),
@@ -1514,7 +1623,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
     const delivery = turn.promptStarted.then(async () => {
       promptWritten = true
       if (privateRequestId && session.meta.privateConversation?.request?.id === privateRequestId) session.meta.privateConversation.request.sent = true
-      if (session.meta.taskProgress) markTaskSessionPrompt(workcopyUseDirectory(), projectRoot, sessionId, true)
+      if (session.meta.taskProgress || session.meta.platformExecution) markTaskSessionPrompt(workcopyUseDirectory(), projectRoot, sessionId, true)
       if (backendSessionId && generation) session.nativeStatus?.watchTurn({ turnId, generation, backendSessionId,
         deadlineAt: (session.turnStartedAt ?? Date.now()) + (session.meta.profileSnapshot?.maxTurnMinutes ?? 30) * 60_000,
         current: () => sessions.get(sessionId) === session && session.turn === turn && session.meta.turnId === turnId
@@ -1652,6 +1761,7 @@ async function cancelOwned(session: ActiveSession, reason: string): Promise<{ ok
 export async function cancelAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true } | IpcFail> {
   assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
+  if (!('ok' in session) && session.meta.platformExecution) return ipcFail(IpcErrorCode.Denied, 'Stop product execution through its retained dispatch control')
   return 'ok' in session ? session : cancelOwned(session, '用户取消')
 }
 async function killOwned(session: ActiveSession, reason: string, finalState: 'closed' | 'disconnected' = 'closed'): Promise<{ ok: true } | IpcFail> {
@@ -1708,11 +1818,13 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
     return failure(error)
   } finally { session.canonicalCleanup = false }
 }
-export async function killAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true } | IpcFail> {
+export async function killAcpSession(projectRoot: string, sessionId: string, platformDispatchId?: string): Promise<{ ok: true } | IpcFail> {
   assertRuntimeExecutionHost()
   if (!projectRoot) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
   const denied = privateAliasDenied(projectRoot, sessionId)
   if (denied) return denied
+  const product = sessions.get(sessionId)?.meta ?? readRecords().find(record => record.sessionId === sessionId)
+  if (product?.platformExecution && product.platformExecution.dispatchId !== platformDispatchId) return ipcFail(IpcErrorCode.Denied, 'Product cleanup requires its original execution control')
   const pendingResume = resumeRequests.get(sessionId)
   if (pendingResume) {
     if (pendingResume.root !== canonicalDirectory(projectRoot)) return ipcFail(IpcErrorCode.Denied, '此会话不属于当前项目')

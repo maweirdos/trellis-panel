@@ -15,6 +15,17 @@ extensions; do not import private `dist` paths, fork the SDK or patch its loop.
 Model API factories use public `@earendil-works/pi-ai/api/*.lazy` exports rather
 than the deprecated compatibility registry.
 
+Product platform nodes follow [Product task execution](./product-task-execution.md).
+Use the original private native owner and T03 node-scoped context; do not assemble
+a second local Trellis baseline or load private material paths into the model.
+The shared host's actual prompt-write receipt establishes delivery. Keep ordinary
+Pi role/skill behavior unchanged outside the platform-node path.
+
+For a platform tool permission, validate current execution authority, await the
+existing permission result, then recheck the active turn and physical tool paths
+after the wait. A path resolved before an asynchronous authorization is not
+evidence that it still names the same allowed directory.
+
 ## Process and transport
 
 Build `engine.ts` into an independent ESM entry. Start it with an absolute,

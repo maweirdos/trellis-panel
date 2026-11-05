@@ -20,6 +20,7 @@ import { reportTaskProgress } from '../hifox/task-progress-events'
 import type { AcpJobOwner } from '../workcopy-use/acp-jobs'
 
 interface PiRuntimeOptions {
+  assertExecutionCurrent?(): Promise<void>
   meta: AcpSessionRecord
   argv: string[]
   dataDirectory: string
@@ -267,14 +268,14 @@ export class PiConversationRuntime implements ConversationRuntime {
       if (!local || local.startsWith('..') || isAbsolute(local) || !existsSync(sessionFile)) throw new Error('原 Pi 会话文件缺失或超出所属目录，历史已保留')
     }
     if (meta.agentRulesManifest) await assertAgentRulesCurrent(meta.projectRoot, meta.agentRulesManifest)
-    const rules = await prepareAgentRules({ projectRoot: meta.projectRoot, taskDir: meta.taskDir, teamTask: meta.taskProgress, additionalRules: meta.taskProgress ? [taskRule(meta.taskProgress)] : undefined })
-    if (meta.agentRulesManifest && rules.manifest.digest !== meta.agentRulesManifest.digest) throw new Error('项目规范版本已变化，请显式采用后重新连接')
-    meta.agentRulesManifest = rules.manifest
+    const rules = meta.platformExecution ? undefined : await prepareAgentRules({ projectRoot: meta.projectRoot, taskDir: meta.taskDir, teamTask: meta.taskProgress, additionalRules: meta.taskProgress ? [taskRule(meta.taskProgress)] : undefined })
+    if (meta.agentRulesManifest && rules?.manifest.digest !== meta.agentRulesManifest.digest) throw new Error('项目规范版本已变化，请显式采用后重新连接')
+    meta.agentRulesManifest = rules?.manifest
     const initialized = await this.call('initialize', piInitializeSchema.parse({ root: pathRoot, cwd: pathCwd,
       sessionDir, sessionFile, agentDir: join(this.options.dataDirectory, 'pi', 'agent'), models: this.configured.models,
       proxy: this.configured.proxy,
       modelId, recoveryModelId: restoring ? this.options.initialModelId : undefined, thinkingLevel: meta.configOptions?.find(option => option.id === 'thinking')?.currentValue ?? 'off',
-      skillPaths: meta.profileSnapshot?.skillPaths?.map(path => join(meta.projectRoot, path)) ?? [], instructions: [meta.profileSnapshot?.instructions ?? '', rules.instructions].filter(Boolean).join('\n\n'),
+      skillPaths: meta.platformExecution ? [] : meta.profileSnapshot?.skillPaths?.map(path => join(meta.projectRoot, path)) ?? [], instructions: meta.platformExecution ? '' : [meta.profileSnapshot?.instructions ?? '', rules?.instructions ?? ''].filter(Boolean).join('\n\n'),
       taskProgress: Boolean(meta.taskProgress),
       mcpServers: [...this.options.mcpServers(), ...this.projectMcp.servers] }), 60_000)
     this.state = piStateSchema.parse(initialized)
@@ -366,6 +367,7 @@ export class PiConversationRuntime implements ConversationRuntime {
   private async permission(value: unknown): Promise<boolean> {
     const request = piPermissionSchema.parse(value), run = this.running
     if (!run || run.abort.signal.aborted || this.closing) return false
+    await this.options.assertExecutionCurrent?.()
     run.input.assertActive?.()
     const read = (request.name === 'report_progress' && Boolean(this.options.meta.taskProgress)) || ['preview_web', 'read', 'grep', 'find', 'ls', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(request.name)
       || ['knowledge_search', 'knowledge_read', 'knowledge_context', 'knowledge_document_read', 'knowledge_task_read'].some(name => request.name === `mcp__trellis_knowledge__${name}`)
@@ -391,6 +393,8 @@ export class PiConversationRuntime implements ConversationRuntime {
     const decision: AcpPermissionDecision | undefined = await handler({ sessionId: this.state?.sessionId ?? this.options.meta.sessionId, inferredKind: kind,
       raw: { sessionId: this.state?.sessionId ?? this.options.meta.sessionId, toolCall: { toolCallId: request.toolCallId, title: `${request.name} · ${rawInput}`, kind, rawInput: request.args },
         options: [{ optionId: 'allow-once', kind: 'allow_once', name: '允许本次' }, { optionId: 'deny', kind: 'reject_once', name: '拒绝' }] } }, { signal: run.abort.signal })
+    run.input.assertActive?.()
+    await this.options.assertExecutionCurrent?.()
     run.input.assertActive?.()
     const finalPaths = assertPath()
     if (initialPaths.length !== finalPaths.length || initialPaths.some((path, index) => relative(path, finalPaths[index] ?? '') !== '')) throw new Error('工具路径在授权期间发生变化')
