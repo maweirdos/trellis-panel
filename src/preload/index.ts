@@ -205,10 +205,12 @@ const api = {
   },
   bootstrap: {
     status: () => ipcRenderer.invoke(ipcInvoke.bootstrap.status),
+    takeoverStatus: () => ipcRenderer.invoke(ipcInvoke.bootstrap.takeoverStatus),
     retry: () => ipcRenderer.invoke(ipcInvoke.bootstrap.retry),
     legacyInspect: () => ipcRenderer.invoke(ipcInvoke.bootstrap.legacyInspect),
     legacyStop: (input) => ipcRenderer.invoke(ipcInvoke.bootstrap.legacyStop, input),
     legacyReconcile: (input) => ipcRenderer.invoke(ipcInvoke.bootstrap.legacyReconcile, input),
+    workcopyRecovery: (input) => ipcRenderer.invoke(ipcInvoke.bootstrap.workcopyRecovery, input),
     exit: () => ipcRenderer.invoke(ipcInvoke.bootstrap.exit),
     minimize: () => ipcRenderer.invoke(ipcInvoke.bootstrap.minimize),
     maximize: () => ipcRenderer.invoke(ipcInvoke.bootstrap.maximize),

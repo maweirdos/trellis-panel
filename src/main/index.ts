@@ -25,11 +25,12 @@ import { appRuntime } from './services/app-runtime'
 import { createDaemonQuitGate } from './services/daemon-quit-gate'
 import { createDaemonTray } from './services/daemon-tray'
 import { DaemonError } from './daemon/errors'
-import { createGuiBootstrap, type GuiBootstrap } from './services/bootstrap'
+import { createGuiBootstrap, takeoverDiagnostics, type GuiBootstrap } from './services/bootstrap'
 import { registerBootstrapIpc } from './ipc/bootstrap'
 import { createOnboarding } from './onboarding'
 import { closeCreationService } from './services/creations'
 import { ipcEvent } from '../shared/ipc-channels'
+import type { DaemonStatus } from '../shared/daemon'
 import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
 import {
   setUiHooks,
@@ -722,6 +723,11 @@ if (!gotLock) {
       },
       migration: () => nativeState?.guiNativePreparationIdentity(),
       installDesktop,
+      takeover: error => {
+        const value = error instanceof Error && 'takeoverStatus' in error ? (error as Error & { takeoverStatus?: unknown }).takeoverStatus : undefined
+        const status = value && typeof value === 'object' && 'state' in value ? value as DaemonStatus : undefined
+        return status ? takeoverDiagnostics(status, 'unknown', { ownerSha256: status.buildSha256 }) : undefined
+      },
       publish: state => {
         const target = win && !win.isDestroyed() ? win : null
         try {
@@ -738,7 +744,17 @@ if (!gotLock) {
       detached: () => { fullRendererAttached = false },
       legacyInspect: async () => (await import('./services/daemon-client/legacy-upgrade')).inspectLegacyDaemon(),
       legacyStop: async input => (await import('./services/daemon-client/legacy-upgrade')).stopLegacyDaemon(input),
-      legacyReconcile: async input => (await import('./services/daemon-client/legacy-upgrade')).reconcileLegacyDaemonStop(input)
+      legacyReconcile: async input => (await import('./services/daemon-client/legacy-upgrade')).reconcileLegacyDaemonStop(input),
+      takeoverStatus: async () => {
+        const manager = await import('./services/daemon-client/manager')
+        const result = await manager.daemonManager.status()
+        if (!result.ok) return result
+        try {
+          const freshness = await manager.daemonBuildFreshnessForCurrentOwner(result.data)
+          return { ok: true as const, data: takeoverDiagnostics(result.data, freshness ? freshness.state : 'unknown', freshness ? { ownerSha256: freshness.ownerSha256 ?? result.data.buildSha256, currentSha256: freshness.currentSha256 } : { ownerSha256: result.data.buildSha256 }) }
+        } catch { return { ok: true as const, data: takeoverDiagnostics(result.data, 'unknown') } }
+      },
+      workcopyRecovery: async input => (await import('./services/daemon-client/workcopy-recovery')).recoverWorkcopyLease(input)
     })
     // Native window identity/navigation are local shell concerns; no settings,
     // OS preference changes, feature IPC or observers are installed here.

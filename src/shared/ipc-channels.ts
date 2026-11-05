@@ -38,7 +38,7 @@ export const ipcInvoke = {
     }
   },
   onboarding: { status: 'onboarding:status', complete: 'onboarding:complete' },
-  bootstrap: { status: 'bootstrap:status', retry: 'bootstrap:retry', legacyInspect: 'bootstrap:legacyInspect', legacyStop: 'bootstrap:legacyStop', legacyReconcile: 'bootstrap:legacyReconcile', exit: 'bootstrap:exit', minimize: 'bootstrap:minimize', maximize: 'bootstrap:maximize', rendered: 'bootstrap:rendered', attached: 'bootstrap:attached', detached: 'bootstrap:detached', paint: 'bootstrap:paint' },
+  bootstrap: { status: 'bootstrap:status', retry: 'bootstrap:retry', takeoverStatus: 'bootstrap:takeoverStatus', legacyInspect: 'bootstrap:legacyInspect', legacyStop: 'bootstrap:legacyStop', legacyReconcile: 'bootstrap:legacyReconcile', workcopyRecovery: 'bootstrap:workcopyRecovery', exit: 'bootstrap:exit', minimize: 'bootstrap:minimize', maximize: 'bootstrap:maximize', rendered: 'bootstrap:rendered', attached: 'bootstrap:attached', detached: 'bootstrap:detached', paint: 'bootstrap:paint' },
   jiraIntegration: JIRA_IPC,
   gitlabWorkspace: GITLAB_IPC,
   dingtalkWorkspace: DINGTALK_IPC,

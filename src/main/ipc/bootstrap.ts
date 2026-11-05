@@ -1,5 +1,5 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
-import { bootstrapPaintSchema, legacyDaemonInspectionSchema, legacyDaemonStopInputSchema, type LegacyDaemonInspection, type LegacyDaemonStopInput } from '../../shared/bootstrap'
+import { bootstrapPaintSchema, daemonTakeoverDiagnosticsSchema, legacyDaemonInspectionSchema, legacyDaemonStopInputSchema, workcopyRecoveryInputSchema, workcopyRecoveryResultSchema, type LegacyDaemonInspection, type LegacyDaemonStopInput, type WorkcopyRecoveryInput } from '../../shared/bootstrap'
 import type { DaemonFailure, DaemonResult } from '../../shared/daemon'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
@@ -17,6 +17,8 @@ export function registerBootstrapIpc(deps: {
   legacyInspect(): Promise<DaemonResult<LegacyDaemonInspection>>
   legacyStop(input: LegacyDaemonStopInput): Promise<DaemonResult<{ stopped: true }>>
   legacyReconcile(input: LegacyDaemonStopInput): Promise<DaemonResult<{ stopped: true }>>
+  workcopyRecovery(input: WorkcopyRecoveryInput): Promise<DaemonResult<import('../../shared/bootstrap').WorkcopyRecoveryResult>>
+  takeoverStatus(): Promise<DaemonResult<import('../../shared/bootstrap').DaemonTakeoverDiagnostics>>
   exit(): Promise<void> | void
   attached(): void
   detached(): void
@@ -48,6 +50,22 @@ export function registerBootstrapIpc(deps: {
     catch { return ipcFail(IpcErrorCode.Io, '无法保存引导状态，请检查本地数据目录后重试。') }
   })
   handle(ipcInvoke.bootstrap.status, event => guard(event) ? { ok: true, data: deps.bootstrap.state() } : denied())
+  handle(ipcInvoke.bootstrap.takeoverStatus, async event => {
+    if (!guard(event)) return denied()
+    const result = await deps.takeoverStatus()
+    if (!result.ok) return result
+    const parsed = daemonTakeoverDiagnosticsSchema.safeParse(result.data)
+    return parsed.success ? { ok: true as const, data: parsed.data } : daemonFailure(new DaemonError('E_IO', '后台接管状态无效，请重新检查；原后台与工作已保留。'))
+  })
+  handle(ipcInvoke.bootstrap.workcopyRecovery, async (event, input: unknown) => {
+    if (!guard(event)) return denied()
+    const parsed = workcopyRecoveryInputSchema.safeParse(input)
+    if (!parsed.success) return daemonFailure(new DaemonError('E_INVALID_ARG', '工作副本恢复身份或证据无效。'))
+    const result = await deps.workcopyRecovery(parsed.data)
+    if (!result.ok) return result
+    const validated = workcopyRecoveryResultSchema.safeParse(result.data)
+    return validated.success ? result : daemonFailure(new DaemonError('E_IO', '工作副本清理结果无效；原登记已保留。'))
+  })
   handle(ipcInvoke.bootstrap.retry, event => {
     if (!guard(event)) return denied()
     if (legacyPending || uncertainStop) return ipcFail(IpcErrorCode.Conflict, '旧后台停止尚未确认，请先核对原操作结果。')

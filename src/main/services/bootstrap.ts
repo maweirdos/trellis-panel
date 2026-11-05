@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, nativeTheme } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -9,7 +9,7 @@ import { readBounded } from '../daemon/files'
 
 const preferencesSchema = z.object({
   version: z.literal(1), revision: z.number().int().positive().safe(),
-  theme: z.enum(['dark', 'light']).optional()
+  theme: z.enum(['dark', 'light', 'system']).optional()
 })
 
 /** Read only the separate non-secret desktop file. Never initialize native
@@ -19,7 +19,7 @@ function desktopUiPreferences(): BootstrapSnapshot['ui'] {
   try {
     if (!existsSync(file)) return { theme: 'dark' }
     const prefs = preferencesSchema.parse(JSON.parse(readBounded(file, 256 * 1024)))
-    return { theme: prefs.theme ?? 'dark' }
+    return { theme: prefs.theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : prefs.theme ?? 'dark' }
   } catch {
     return { theme: 'dark', warning: '桌面外观偏好暂不可读，已使用默认外观；原文件已保留。' }
   }
@@ -39,6 +39,24 @@ type Ports = {
   migration(): BootstrapMigration | undefined
   installDesktop(): Promise<void>
   publish(state: BootstrapSnapshot): void
+  takeover?(error: unknown): BootstrapSnapshot['takeover'] | undefined
+}
+
+export function takeoverDiagnostics(status: import('../../shared/daemon').DaemonStatus, buildCompatibility: NonNullable<BootstrapSnapshot['takeover']>['buildCompatibility'] = 'unknown', builds?: { ownerSha256?: string; currentSha256?: string }): NonNullable<BootstrapSnapshot['takeover']> {
+  return {
+    state: status.state,
+    buildCompatibility,
+    identities: {
+      productVersion: status.identity.appVersion, protocolVersion: status.protocol,
+      installationId: status.identity.installationId,
+      ...(builds?.ownerSha256 ? { ownerBuildSha256: builds.ownerSha256 } : {}),
+      ...(builds?.currentSha256 ? { currentBuildSha256: builds.currentSha256 } : {})
+    },
+    activeJobs: status.activeJobs,
+    unknownJobs: status.unknownJobs,
+    ...(status.stopCommandId ? { stopCommandId: status.stopCommandId } : {}),
+    ...(status.blockers?.length ? { blockers: status.blockers.map(({ rootId, ownerGeneration, ...blocker }) => blocker).slice(0, 32) } : {})
+  }
 }
 
 /** Native retry and one-shot desktop installation are different state machines.
@@ -50,6 +68,7 @@ export function createGuiBootstrap(ports: Ports): {
   fail(error: unknown): void
   firstVisible(): void
   rendererReady(): void
+  refreshAppearance(): BootstrapSnapshot['ui']['theme']
   firstPaint(startTimeMs: number): void
 } {
   let state: BootstrapSnapshot = { revision: 0, phase: 'window-ready', ui: desktopUiPreferences(), marks: { processStartMs: performance.nodeTiming.nodeStart } }
@@ -60,18 +79,19 @@ export function createGuiBootstrap(ports: Ports): {
   const publish = (): void => { state.revision += 1; ports.publish(snapshot()) }
   const fail = (error: unknown): void => {
     const failure = daemonFailure(error)
+    const takeover = ports.takeover?.(error)
     state = { ...state, phase: failure.code === 'E_VERSION' ? 'incompatible' : 'error', failure: {
       code: failure.code, message: safeMessage(failure.error), outcome: failure.outcome,
       stage: desktopStarted ? 'desktop' : 'native', retryable: !desktopStarted,
       migration: ports.migration()
-    } }
+    }, ...(takeover ? { takeover } : {}) }
     publish()
   }
   const run = (): Promise<void> => {
     if (!rendererCommitted || state.marks.firstVisibleMs === undefined) return Promise.resolve()
     if (pending) return pending
     if (desktopStarted || state.phase === 'ready') return Promise.resolve()
-    state = { ...state, phase: 'connecting', failure: undefined }; publish()
+    state = { ...state, phase: 'connecting', failure: undefined, ...(state.takeover ? { takeover: undefined } : {}) }; publish()
     pending = (async () => {
       try {
         await ports.prepare(() => { state.phase = 'preparing'; publish() }, () => {
@@ -93,6 +113,11 @@ export function createGuiBootstrap(ports: Ports): {
     retry: () => state.failure?.retryable ? run() : pending ?? Promise.resolve(),
     fail,
     rendererReady() { rendererCommitted = true },
+    refreshAppearance() {
+      const ui = desktopUiPreferences()
+      if (ui.theme !== state.ui.theme || ui.warning !== state.ui.warning) { state.ui = ui; publish() }
+      return ui.theme
+    },
     firstVisible() { if (state.marks.firstVisibleMs === undefined) { state.marks.firstVisibleMs = performance.now(); publish() } },
     firstPaint(startTimeMs) {
       if (state.marks.rendererFirstPaintMs !== undefined) return

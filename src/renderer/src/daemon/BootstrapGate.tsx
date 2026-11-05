@@ -1,6 +1,6 @@
 import { Component, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Info } from 'lucide-react'
-import type { BootstrapApi, BootstrapSnapshot, LegacyDaemonInspection, LegacyDaemonStopInput } from '@shared/bootstrap'
+import type { BootstrapApi, BootstrapSnapshot, DaemonTakeoverDiagnostics, LegacyDaemonInspection, LegacyDaemonStopInput, WorkcopyOwner, WorkcopyRecoveryResult } from '@shared/bootstrap'
 import type { DaemonFailure } from '@shared/daemon'
 import { api, hasIpc } from '../api'
 import { BrandMark } from '../my/BrandMark'
@@ -10,6 +10,114 @@ import { StartupContext, type StartupContentSlot } from './StartupContext'
 const labels: Record<BootstrapSnapshot['phase'], string> = {
   'window-ready': '正在连接后台', connecting: '正在连接后台', preparing: '正在准备本机状态',
   ready: '正在打开工作区', error: '后台准备未完成', incompatible: '后台版本需要处理'
+}
+
+const blockerDomainLabels: Record<DaemonTakeoverDiagnostics['blockers'] extends (infer T)[] | undefined ? T extends { domain: infer D } ? D : never : never, string> = {
+  runtime: 'Runtime', workflow: '工作流', application: '应用', 'work-copy': '工作副本', scheduler: '后台任务', stop: '停止清理'
+}
+const evidenceLabels = { 'job-witness': '受控 Job 见证', 'kernel-transition': '内核代次转换', 'cleanup-receipt': '清理回执' } as const
+
+/** Read-only takeover facts. It deliberately has no recovery authority. */
+function DaemonTakeoverPanel({ bridge, snapshot, revision, onError }: {
+  bridge: BootstrapApi; snapshot: BootstrapSnapshot; revision: number; onError(error: { message: string; code?: string }): void
+}): JSX.Element | null {
+  const [status, setStatus] = useState<DaemonTakeoverDiagnostics | null>(snapshot.takeover ?? null)
+  const [pending, setPending] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const [recovering, setRecovering] = useState<string | null>(null)
+  const mounted = useRef(true)
+  const autoRefreshed = useRef(false)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  useEffect(() => {
+    if (revision !== snapshot.revision || (!snapshot.takeover && status)) setStatus(snapshot.takeover ?? null)
+  }, [revision, snapshot.revision, snapshot.takeover, status])
+  const refresh = useCallback(async (): Promise<void> => {
+    if (pending) return
+    setPending(true); setFailed(false)
+    try {
+      const result = await bridge.takeoverStatus()
+      if (!mounted.current) return
+      if (result.ok) setStatus(result.data)
+      else { setFailed(true); onError({ message: result.error, code: result.code }) }
+    } catch (cause) {
+      if (mounted.current) {
+        setFailed(true)
+        onError({ message: cause instanceof Error ? cause.message : String(cause) })
+      }
+    } finally {
+      if (mounted.current) setPending(false)
+    }
+  }, [bridge, onError, pending])
+  const recover = useCallback(async (leaseId: string, owner: WorkcopyOwner, acceptedEvidence: keyof typeof evidenceLabels): Promise<void> => {
+    if (!leaseId || !status || recovering || pending) return
+    setRecovering(leaseId)
+    try {
+      const result = await bridge.workcopyRecovery({ leaseId, owner, acceptedEvidence })
+      if (!mounted.current) return
+      if (!result.ok) onError({ message: result.error, code: result.code })
+    } catch (cause) {
+      if (mounted.current) onError({ message: cause instanceof Error ? cause.message : String(cause) })
+    } finally {
+      if (mounted.current) setRecovering(null)
+      void refresh()
+    }
+  }, [bridge, onError, pending, recovering, refresh, status])
+  useEffect(() => {
+    if (autoRefreshed.current || snapshot.takeover) return
+    autoRefreshed.current = true
+    void refresh()
+  }, [refresh, snapshot.takeover])
+  const running = status?.state === 'running'
+  const activeWork = status ? status.activeJobs + status.unknownJobs > 0 || (status.blockers?.some(blocker => blocker.state === 'active') ?? false) : false
+  const unknownWork = status ? status.unknownJobs > 0 || (status.blockers?.some(blocker => blocker.state === 'unknown') ?? false) : false
+  return <section className="my-startup-takeover" aria-labelledby="startup-takeover-title">
+    <div className="my-startup-takeover-heading">
+      <h2 id="startup-takeover-title" className="my-item-title">后台接管状态</h2>
+      <span className="my-startup-takeover-state">{running ? '运行中' : '停止中'}</span>
+    </div>
+    <p className="my-item-description">
+      {status?.buildCompatibility === 'changed' ? '现有后台来自另一个构建；本面板仅显示状态，不会终止进程。' : '正在核对现有后台与当前构建。'}
+      {activeWork ? '存在进行中的工作，已保留原后台。' : unknownWork ? '存在结果未知的工作，已保留原后台。' : '等待原后台释放后再重试连接。'}
+    </p>
+    <div className="my-startup-actions">
+      <button disabled={pending} className="my-control my-button-neutral" onClick={() => void refresh()}>{pending ? '正在刷新…' : failed ? '重新检查状态' : '刷新状态'}</button>
+    </div>
+    <details className="my-startup-details">
+      <summary>后台详情</summary>
+      <div className="my-startup-diagnostics">
+        {status && <dl>
+          <dt>后台状态</dt><dd>{running ? 'running' : 'stopping'}</dd>
+          <dt>构建兼容性</dt><dd>{status.buildCompatibility === 'current' ? 'current' : status.buildCompatibility === 'changed' ? 'changed' : 'unknown'}</dd>
+          <dt>产品版本</dt><dd>{status.identities.productVersion}</dd>
+          <dt>协议版本</dt><dd>{status.identities.protocolVersion}</dd>
+          <dt>安装身份</dt><dd>{status.identities.installationId}</dd>
+          {status.identities.ownerBuildSha256 && <><dt>原后台构建指纹</dt><dd>{status.identities.ownerBuildSha256}</dd></>}
+          {status.identities.currentBuildSha256 && <><dt>当前构建指纹</dt><dd>{status.identities.currentBuildSha256}</dd></>}
+          <dt>进行中的任务</dt><dd>{status.activeJobs}</dd>
+          <dt>结果未确认的任务</dt><dd>{status.unknownJobs}</dd>
+          {status.stopCommandId && <><dt>保留的停止 command ID</dt><dd>{status.stopCommandId}</dd></>}
+        </dl>}
+        {status?.blockers?.length ? <ul className="my-startup-blockers">
+          {status.blockers.map((blocker, index) => {
+            const leaseId = blocker.leaseId
+            const owner: WorkcopyOwner | null = leaseId && blocker.domain === 'work-copy' && blocker.owner ? blocker.owner : null
+            return <li key={`${blocker.domain}-${index}`}>
+            <span className="my-item-title">{blocker.label}</span>
+            <span className="my-item-description">
+              {blockerDomainLabels[blocker.domain]} · {blocker.state === 'active' ? '进行中' : '结果未知'}
+              {blocker.requiredEvidence.length ? ` · 需要证据：${blocker.requiredEvidence.map(evidence => evidenceLabels[evidence]).join(' / ')}` : ''}
+            </span>
+            {owner && leaseId && blocker.requiredEvidence.length ? <button
+              disabled={recovering !== null || pending}
+              className="my-control my-button-neutral"
+              onClick={() => void recover(leaseId, owner, blocker.requiredEvidence[0])}
+            >{recovering === leaseId ? '正在核对清理…' : `按${evidenceLabels[blocker.requiredEvidence[0]]}清理`}</button> : null}
+          </li>
+          })}
+        </ul> : <p>当前没有额外的工作副本阻塞项。</p>}
+      </div>
+    </details>
+  </section>
 }
 
 /** An explicit bootstrap capability, independent of full desktop settings/store.
@@ -329,6 +437,8 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
         {!workspaceFailure && legacyUpgrade && bridge && state
           ? <LegacyDaemonUpgrade bridge={bridge} revision={state.revision} onBlocked={setLegacyBlocked} onStopped={() => action('retry')} />
           : <p className="my-startup-recovery-copy">{workspaceFailure || (error && !failure) ? '请重载桌面后重试。' : !bridge ? '退出后重新打开，以加载桌面组件。' : failure?.retryable ? '请重试连接，或退出后重新打开。' : '请退出桌面并重新打开。'}</p>}
+        {!workspaceFailure && !legacyUpgrade && bridge && state && (state.takeover || ['E_BUSY', 'E_UNAVAILABLE', 'E_VERSION'].includes(failure?.code ?? '')) &&
+          <DaemonTakeoverPanel bridge={bridge} snapshot={state} revision={state.revision} onError={setError} />}
         <div className="my-startup-actions">
           {!workspaceFailure && failure?.retryable && <button disabled={legacyBlocked} className="my-control my-button-primary" onClick={() => void action('retry')}>重试连接</button>}
           {((error && !failure) || !bridge || workspaceFailure) && <button className="my-control my-button-primary" onClick={() => window.location.reload()}>重载桌面</button>}
