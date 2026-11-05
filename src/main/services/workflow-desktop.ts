@@ -16,6 +16,8 @@ import { listFlows } from './flow'
 import { readDocument } from './documents'
 import { getDocumentViews, readerMaterialOwner } from './document-views'
 import { canonicalWorkspaceRoot, executionWorkspaceRoot, claimWorkspaceAdmission, waitForWorkspaceAdmissions, workspaceProjects, registerWorkspaceProject, WorkflowAdmissionError, type NativeAdmissionOwner } from './workflow-admission'
+import { assertRetainedWorkflowAvailable } from './workflow-application/retained-owner'
+import { sameWorkcopy } from './workcopy-use/registry'
 import type { WorkflowStartInput } from '../../shared/workflow-application'
 import { REQUIREMENT_REPORT_JSON_BYTES, requirementStageInstruction } from './workflow-application/requirement-flow'
 import { requirementPredecessorSchema, requirementTaskOriginSchema, type RequirementPredecessor } from '../../shared/conversation-requirements'
@@ -198,6 +200,19 @@ function ownedNativeBusy(session: OwnedAcpSessionFacts): boolean {
   return !['ready', 'closed'].includes(session.status) || session.accepting || session.closing
     || session.disconnected || session.leaseHeld || session.cleanupRequired || session.backgroundWork
     || session.unfinishedTools || session.turnActive || session.settling || session.pendingPermission
+}
+/** Platform preparation queries retained owners without creating a legacy store. */
+export async function assertNativePreparationAvailable(root: string): Promise<void> {
+  if (admissionClosed) throw new WorkflowAdmissionError('Native execution admission is closed.')
+  const identity = resolveWorkcopy(root)
+  await assertRetainedWorkflowAvailable(root, [...services.keys()])
+  for (const session of listOwnedAcpSessionFacts()) {
+    if (!ownedNativeBusy(session)) continue
+    if (!session.projectRoot || !session.sessionId || !session.connectionGeneration) throw new WorkflowAdmissionError('Original native workspace ownership cannot be verified.')
+    const actual = resolveWorkcopy(session.cwd ?? session.projectRoot)
+    if (sameWorkcopy(identity, actual)) throw new WorkflowAdmissionError('Original native execution still occupies this physical workspace.')
+  }
+  if (admissionClosed) throw new WorkflowAdmissionError('Native execution admission closed during preparation.')
 }
 function nativeBusy(sessionId: string, generation?: string): boolean {
   try {

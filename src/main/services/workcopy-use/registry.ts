@@ -15,7 +15,7 @@ type ConsumerMutation = z.infer<typeof consumerMutationSchema>
 const storeSchema = z.object({ version: z.literal(1), leases: z.array(workcopyLeaseSchema).max(256), released: z.array(releasedSchema).max(1024).default([]), consumerMutations: z.array(consumerMutationSchema).max(256).default([]) }).strict()
 const sameOwner = (a: WorkcopyOwner, b: WorkcopyOwner): boolean => a.kind === b.kind && a.id === b.id && a.generation === b.generation && a.taskKey === b.taskKey
 const consumerTasks = (lease: WorkcopyLease): string[] => lease.consumerAccess?.taskKeys ?? (lease.owner.taskKey ? [lease.owner.taskKey] : [])
-function sameWorkcopy(a: WorkcopyIdentity, b: WorkcopyIdentity): boolean {
+export function sameWorkcopy(a: WorkcopyIdentity, b: WorkcopyIdentity): boolean {
   if (a.id === b.id || a.physicalId === b.physicalId) return true
   const within = (parent: string, child: string): boolean => { const path = relative(parent, child); return path === '' || !isAbsolute(path) && path !== '..' && !path.startsWith('../') && !path.startsWith('..\\') }
   // Removing/redirecting .git externally must not hide an existing physical directory lease.

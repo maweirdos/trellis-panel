@@ -5,6 +5,8 @@ import { runtimeRequests, runtimeResults, RUNTIME_MUTATING_METHODS } from '../da
 import { providerWireContracts, PROVIDER_MUTATING_METHODS } from '../daemon-domains'
 import { integrationNativeRequests, integrationNativeResults, integrationNativeMutations } from '../integration-native'
 import { providerCancellationRequests, providerCancellationResults } from '../provider-cancellation'
+import { processOwnerSchema, workspaceGrantSchema } from './identity'
+export { processOwnerSchema, workspaceGrantSchema, type ProcessOwner, type WorkspaceGrant } from './identity'
 
 export const DAEMON_PROTOCOL_VERSION = 1 as const
 export const DAEMON_LIMITS = {
@@ -22,11 +24,6 @@ export const daemonIdentitySchema = z.object({
   profileId: z.string().length(64), userId: z.string().min(1).max(256),
   mode: z.enum(['development', 'production']), appVersion: z.string().min(1).max(64),
   installationId: z.string().length(64)
-}).strict()
-export const processOwnerSchema = z.object({ pid: z.number().int().positive(), startedAt: z.string().min(1).max(128), userId: z.string().min(1).max(256), executable: z.string().min(1).max(4096) }).strict()
-export const workspaceGrantSchema = z.object({
-  workspaceId: z.string().min(1).max(128), root: z.string().min(1).max(4096),
-  grantId: z.string().uuid(), revision: z.number().int().positive().safe()
 }).strict()
 export const daemonPreferencesSchema = z.object({ revision: z.number().int().positive().safe(), keepRunning: z.boolean(), startup: z.enum(['client', 'login', 'manual']) }).strict()
 export const eventCursorSchema = z.object({ epoch: z.string().uuid(), sequence: z.number().int().nonnegative().safe() }).strict()
@@ -122,8 +119,6 @@ export const daemonResults = {
 } as const
 export type DaemonData<M extends DaemonMethod> = z.infer<(typeof daemonResults)[M]>
 export type DaemonIdentity = z.infer<typeof daemonIdentitySchema>
-export type ProcessOwner = z.infer<typeof processOwnerSchema>
-export type WorkspaceGrant = z.infer<typeof workspaceGrantSchema>
 export type DaemonStatus = z.infer<typeof daemonStatusSchema>
 export type DaemonPreferences = z.infer<typeof daemonPreferencesSchema>
 export type DaemonEvent = z.infer<typeof daemonEventSchema>

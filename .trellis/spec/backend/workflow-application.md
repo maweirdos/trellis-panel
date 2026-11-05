@@ -7,6 +7,11 @@ IPC/preload, managed conversation actions or quit composition. Application owns
 task/controller lifetime over existing durable control/material/native ports.
 No renderer, reading window or ordinary conversation selection owns execution.
 
+New team engineering preparation uses the separate
+[native preparation port](./native-task-preparation.md) without Trellis project
+markers or scripts. The local identity and task-directory contracts below remain
+the authority for retained legacy executions and their original cleanup.
+
 ## 2. Signatures
 
 ```ts

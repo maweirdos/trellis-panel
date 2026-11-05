@@ -204,7 +204,7 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
   let abort: (() => void) | undefined
   try {
     if (admissionClosed && !cleanup) throw new DaemonError('E_UNAVAILABLE', '桌面正在退出，尚未接纳新操作。')
-    client = await connect(dedicated, method.startsWith('runtime.private') || method === 'runtime.hifoxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
+    client = await connect(dedicated, method.startsWith('runtime.private') || method === 'runtime.taskPreparation' || method === 'runtime.hifoxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未授权后台工作区。')
     workspace = workcopyCleanup ? undefined : await scope(client, root, isCurrent, !dedicated)
     const input = await upload(client, workspace, body, dedicated)

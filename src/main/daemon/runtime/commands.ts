@@ -14,11 +14,12 @@ export class RuntimeCommands {
   private readonly pendingRoots = new Map<string, string>()
   constructor(private readonly directory: string, private readonly epoch: string, private readonly assertOwner: () => void) { mkdirSync(directory, { recursive: true }) }
   private path(id: string): string { z.string().uuid().parse(id); return join(this.directory, `${id}.json`) }
-  inspect(root: string, id: string): { state: 'absent' | 'dispatching' | 'completed' | 'unknown'; result?: RuntimeWire } {
+  inspect(root: string, id: string, assertReceipt?: (method: string) => void): { state: 'absent' | 'dispatching' | 'completed' | 'unknown'; result?: RuntimeWire } {
     const path = this.path(id)
     if (!existsSync(path)) return { state: 'absent' }
     const value = receipt.parse(JSON.parse(readBounded(path, 160 * 1024)))
     if (value.root !== root) throw new DaemonError('E_DENIED', 'The original runtime command belongs to another workspace.')
+    assertReceipt?.(value.method)
     if (value.epoch !== this.epoch) return { state: 'unknown' }
     return { state: value.state, ...(value.result ? { result: value.result } : {}) }
   }

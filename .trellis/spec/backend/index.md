@@ -55,6 +55,7 @@ ZCode setup and startup changes also follow [Managed ZCode startup](./zcode-mana
 | [team-trellis-import.md](./team-trellis-import.md) | Read-only source discovery, explicit mappings, immutable candidates and per-item import recovery | Trellis migration discovery and team import commands |
 | [team-execution-inputs.md](./team-execution-inputs.md) | Portable definitions, immutable Agent/Skill and stage inputs, authorized resources and Pi/ACP packet composition | Fixed team execution context and definition sources |
 | [team-execution-artifacts.md](./team-execution-artifacts.md) | Fixed artifacts, delivery manifests, carried references, checkpoint and actual code availability gates | Shared execution outputs and handoff transactions |
+| [native-task-preparation.md](./native-task-preparation.md) | Trellis-independent engineering binding, fixed material mapping, authenticated native admission and retained owner discovery | Platform task preparation and directory/resource checks |
 | [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |
 
 ---

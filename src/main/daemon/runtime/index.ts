@@ -5,7 +5,7 @@ import { runtimeBodies, runtimeRequests, RUNTIME_MUTATING_METHODS, type RuntimeM
 import type { WorkspaceGrant } from '../../../shared/daemon'
 import * as acp from '../../services/acp'
 import { bindTaskSchema, configureSchema, newSessionSchema, promptOptionsSchema } from '../../services/acp/types'
-import { checkRequirementPredecessor, getWorkflowApplication, workflowDesktopTemplates, isManagedWorkflowOrigin, withOrdinaryConnectionAdmission, withOrdinaryWorkflowAdmission, withManagedWorkflowAdmission, hasWorkflowApplications, countOwnedWorkflowApplications, shutdownWorkflowApplications, setWorkflowAdmissionClosed } from '../../services/workflow-desktop'
+import { checkRequirementPredecessor, getWorkflowApplication, workflowDesktopTemplates, isManagedWorkflowOrigin, withOrdinaryConnectionAdmission, withOrdinaryWorkflowAdmission, withManagedWorkflowAdmission, hasWorkflowApplications, countOwnedWorkflowApplications, shutdownWorkflowApplications, setWorkflowAdmissionClosed, assertNativePreparationAvailable } from '../../services/workflow-desktop'
 import { installHostEventSink } from '../../services/bridge'
 import { ipcFail, IpcErrorCode } from '../../../shared/ipc-errors'
 import { DaemonError } from '../errors'
@@ -27,8 +27,10 @@ import { prepareAcpRecovery } from '../../services/workcopy-use/acp-recovery'
 import { privateNativeRead, privateNativeSend, privateNativeControl, privateNativeSession } from '../../services/private-conversations/native'
 import { withPrivateAcpOwner } from '../../services/acp/private-access'
 import { configurePrivateNativeSession, recoverPrivateNativeModel } from '../../services/private-conversations/configuration'
+import { NativeTaskPreparation, type NativeTaskPreparationAuthority } from './task-preparation'
+import { withDesktopTeamService } from '../../services/team-desktop'
 
-export interface RuntimeDispatchContext { workspace?: WorkspaceGrant; commandId?: string }
+export interface RuntimeDispatchContext { workspace?: WorkspaceGrant; commandId?: string; native?: Pick<NativeTaskPreparationAuthority, 'actor' | 'assertProduct'> }
 export interface DaemonRuntimePorts {
   epoch: string
   directory: string
@@ -39,6 +41,7 @@ export interface DaemonRuntimePorts {
   /** Temporary application admission; independent from permanent authority. */
   assertAdmission?(): void
   assertWorkspaceAdmission?(root: string, method: RuntimeBodyMethod): void
+  assertWorkspaceGrant?(grant: WorkspaceGrant): void
 }
 export interface DaemonRuntime {
   releaseWorkcopy(root: string, payload: RuntimeWire, commandId: string): Promise<RuntimeWire>
@@ -63,6 +66,17 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   })
   const blobs = new RuntimeBlobs(join(ports.directory, 'runtime-blobs'))
   const commands = new RuntimeCommands(join(ports.directory, 'runtime-commands'), ports.epoch, ports.assertOwner)
+  const taskPreparation = new NativeTaskPreparation({ directory: ports.directory, workcopies,
+    assertOwner() { ports.assertOwner(); ports.assertAuthority(); ports.assertAdmission?.() },
+    assertCurrent(grant) {
+      if (!ports.assertWorkspaceGrant) throw new DaemonError('E_UNAVAILABLE', 'Native task preparation needs the retained workspace grant owner.')
+      ports.assertWorkspaceGrant(grant)
+      ports.assertWorkspaceAdmission?.(grant.root, 'runtime.taskPreparation')
+      if (closed || released) throw new DaemonError('E_UNAVAILABLE', 'Native task preparation admission is closed.')
+    },
+    withTransport: (pin, assertCurrent, action) => withDesktopTeamService(service => service.withContentTransport(pin, assertCurrent, action)),
+    assertLegacyAvailable: assertNativePreparationAvailable
+  })
   const events = new RuntimeEvents(ports.epoch)
   const disposeEvents = installHostEventSink((channel, value) => events.publish(channel, value))
   let closed = false, released = false, stopping: Promise<void> | undefined
@@ -121,12 +135,18 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     })().catch(error => { stopping = undefined; throw error })
     return stopping
   }
-  async function execute(method: RuntimeBodyMethod, raw: unknown, root: string): Promise<unknown> {
+  async function execute(method: RuntimeBodyMethod, raw: unknown, root: string, context: RuntimeDispatchContext): Promise<unknown> {
     ports.assertAdmission?.()
     ports.assertWorkspaceAdmission?.(root, method)
     const valid = (): boolean => { ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceAdmission?.(root, method); return !closed }
     const connection = <T extends { ok: boolean }>(target: { sessionId?: string; profileId?: string }, action: () => Promise<T>) => withOrdinaryConnectionAdmission(root, target, action)
     switch (method) {
+      case 'runtime.taskPreparation': {
+        const input = runtimeBodies[method].parse(raw)
+        if (!context.native || !context.workspace) throw new DaemonError('E_DENIED', 'Task preparation requires the authenticated native process and original workspace grant.')
+        if (input.operation === 'prepare' && input.preparationId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Preparation must retain its original runtime command UUID.')
+        return taskPreparation.execute(root, input, { ...context.native, grant: context.workspace })
+      }
       case 'runtime.privateRead': {
         const input = runtimeBodies[method].parse(raw)
         return withPrivateAcpOwner(input, async () => {
@@ -333,10 +353,16 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         const global = ['runtime.privateRead', 'runtime.privateSend', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond', 'runtime.privateConfigure', 'runtime.privateRecoverModel', 'runtime.hifoxProgress', 'runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
         const root = context.workspace?.root ?? (global ? '@profile' : '')
         if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')
-        if (context.workspace) observeWorkspace(root, context.workspace.revision)
+        if (context.workspace && method !== 'runtime.taskPreparation') observeWorkspace(root, context.workspace.revision)
         let value: unknown
         switch (method) {
-          case 'runtime.command': value = commands.inspect(root, runtimeRequests['runtime.command'].parse(parsed).commandId); break
+          case 'runtime.command': {
+            const commandId = runtimeRequests['runtime.command'].parse(parsed).commandId
+            value = commands.inspect(root, commandId, originalMethod => {
+              if (originalMethod === 'runtime.taskPreparation') taskPreparation.assertReceiptAuthority(root, commandId, context.native && context.workspace ? { ...context.native, grant: context.workspace } : undefined)
+            })
+            break
+          }
           case 'runtime.blob.open': value = blobs.open(root, runtimeRequests['runtime.blob.open'].parse(parsed)); break
           case 'runtime.blob.append': { const p = runtimeRequests['runtime.blob.append'].parse(parsed); value = blobs.append(root, p.id, p.offset, p.data); break }
           case 'runtime.blob.seal': value = blobs.seal(root, runtimeRequests['runtime.blob.seal'].parse(parsed).id); break
@@ -348,10 +374,19 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             const validation = runtimeBodies[bodyMethod].safeParse(raw)
             if (!validation.success) throw new DaemonError('E_INVALID_ARG', 'Runtime method input is invalid; no operation was admitted.')
             const input = validation.data
-            const mutation = method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
+            const preparation = bodyMethod === 'runtime.taskPreparation' ? runtimeBodies['runtime.taskPreparation'].parse(input) : undefined
+            const preparationAuthority = preparation && context.native && context.workspace ? {
+              actor: structuredClone(context.native.actor), grant: structuredClone(context.workspace), assertProduct: context.native.assertProduct.bind(context.native)
+            } : undefined
+            if (preparation) {
+              if (!preparationAuthority) throw new DaemonError('E_DENIED', 'Native preparation requires the authenticated process and workspace grant.')
+              if (preparation.operation === 'prepare' && preparation.preparationId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Preparation must retain its original runtime command UUID.')
+              taskPreparation.assertAuthority(root, preparation, preparationAuthority)
+            }
+            const mutation = method === 'runtime.taskPreparation' ? runtimeBodies['runtime.taskPreparation'].parse(input).operation === 'prepare' : method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
             if (closed && mutation && !['runtime.cancel', 'runtime.end', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
             const action = async () => {
-              try { return blobs.pack(root, await execute(bodyMethod, input, root)) }
+              try { return blobs.pack(root, await execute(bodyMethod, input, root, context)) }
               catch (error) {
                 if (error instanceof DaemonError) throw error
                 if (error instanceof z.ZodError) throw new DaemonError('E_INVALID_ARG', 'Runtime input violates the original facade contract.')
@@ -364,6 +399,12 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
               if (!context.commandId) throw new DaemonError('E_INVALID_ARG', 'Runtime mutations require a stable command ID.')
               value = method === 'runtime.workcopyUse' ? await action() : await commands.run(root, context.commandId, method, input, action)
             } else value = await action()
+            // A concurrent duplicate may have joined the first process's pending
+            // command before that process published its retained binding.
+            if (preparation && preparationAuthority) {
+              taskPreparation.assertAuthority(root, preparation, preparationAuthority)
+              if (preparation.operation === 'prepare') taskPreparation.assertReceiptAuthority(root, preparation.preparationId, preparationAuthority)
+            }
           }
         }
         return value as RuntimeResult<M>

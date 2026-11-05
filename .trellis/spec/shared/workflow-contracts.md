@@ -17,6 +17,11 @@ Portable team definitions and fixed execution-input version 2 follow
 identities and local Flow contracts below keep their original interpretation;
 portable definitions publish logical policies, while concrete bindings stay local.
 
+Native platform preparation follows
+[Native task preparation](../backend/native-task-preparation.md). Its local
+directory, process, grant and material paths are private execution mappings;
+they do not change the shared task identity or establish a running engine.
+
 ## 2. Signatures
 
 Import the public surface from `src/shared/workflow/index.ts`:
