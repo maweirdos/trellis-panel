@@ -30,6 +30,10 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 # UI design standard
 
 - Use the current Settings interface as the visual baseline for application pages. Before designing or editing UI, read `PRODUCT.md` for users, purpose and constraints, then `DESIGN.md`, `.trellis/spec/frontend/css-design.md` and the relevant domain guidelines; reuse the shared components and tokens.
+- Design for clarity and simplicity matching Linear and Apple Notes standards: single clear purpose, minimal architecture, restrained design, and simple direct implementation.
+- Omit slogans, secondary auxiliary text, and redundant explanatory tags or count badges. Let layout structure and spatial relationships convey purpose. If a view requires auxiliary copy to make sense, refactor the layout instead of adding explanatory labels.
+- Every interface decision must simultaneously improve User Experience (UX), Developer Experience (DX), and Agent Experience (AX) without breaking existing behaviors, accessibility, or type safety.
+- Input and toolbar action controls (such as send and stop) display icons directly without outline borders, filled frames, or box wrappers. Selector triggers display the target item directly, omitting vendor or provider prefixes.
 - Ordinary rectangular surfaces and controls use `--my-radius-base` at 10 CSS px in every density preset. Do not introduce local radius values or spacing-derived offsets. Functional circles and tracks retain `full`/`round`; joined edges and fullscreen surfaces may use zero.
 - Use `my-item-title` and `my-item-description` for ordinary names and supporting descriptions. Keep page headings, reading content, numeric data and status information in their own roles. Title styling must not leak into editable content or control values.
 - Check actual rendered output in both themes and the three density presets. Preserve keyboard focus, restrained icon hover and reduced-motion behavior.
