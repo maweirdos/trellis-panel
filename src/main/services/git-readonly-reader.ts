@@ -1,6 +1,9 @@
 /** Bounded process reader used only by the read-only Git viewer. */
 import { spawn } from 'child_process'
 import { StringDecoder } from 'string_decoder'
+import { lstat, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { IpcErrorCode } from '../../shared/ipc-errors'
 
 export const GIT_METADATA_CAP = 2 * 1024 * 1024
@@ -20,15 +23,22 @@ type ReadResult = { out: string; err: string; code: number; truncated: boolean }
 
 /** No shell, optional index writes, fsmonitor hooks, external diff, or lazy fetch. */
 export function readGit(root: string, args: string[], options: ReadOptions = {}): Promise<ReadResult> {
+  return readGitWithIndex(root, args, options)
+}
+
+/** The index override is private and only receives this module's own OS-TEMP path. */
+function readGitWithIndex(root: string, args: string[], options: ReadOptions, scratch?: { index: string; directory: string }): Promise<ReadResult> {
   const maxBytes = options.maxBytes ?? GIT_METADATA_CAP
   const env = { ...process.env }
-  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
-    'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT']) delete env[key]
+  for (const key of Object.keys(env)) if (/^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|INDEX_VERSION|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|NAMESPACE|CONFIG.*)$/i.test(key)) delete env[key]
   Object.assign(env, { GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', GIT_NO_REPLACE_OBJECTS: '1' })
+  if (scratch) Object.assign(env, { GIT_INDEX_FILE: scratch.index, GIT_INDEX_VERSION: '2' })
   return new Promise((resolve, reject) => {
     const child = spawn('git', ['--no-optional-locks', '--literal-pathspecs',
       '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', '-c', 'protocol.allow=never',
-      '-c', 'diff.external=', '-c', 'diff.suppressBlankEmpty=false', '-c', 'color.ui=false', '-c', 'log.showSignature=false', ...args],
+      '-c', 'diff.external=', '-c', 'diff.suppressBlankEmpty=false', '-c', 'color.ui=false', '-c', 'log.showSignature=false',
+      ...(scratch ? ['-c', `core.hooksPath=${scratch.directory}`, '-c', 'core.splitIndex=false', '-c', 'core.ignorestat=false',
+        '-c', 'core.sparseCheckout=false', '-c', 'core.sparseCheckoutCone=false', '-c', 'index.sparse=false'] : []), ...args],
     { cwd: root, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
     const stdout: Buffer[] = [], stderr: Buffer[] = []
     let outBytes = 0, errBytes = 0, settled = false
@@ -78,4 +88,32 @@ export async function checkedGit(root: string, args: string[], options?: ReadOpt
   const result = await readGit(root, args, options)
   if (result.code !== 0) throw new GitReadError(IpcErrorCode.Io, result.err.trim() || 'Git 读取失败')
   return result
+}
+
+/** Rebuild zero-stat stage-0 entries only in OS TEMP; Git performs its own built-in content normalization. */
+export async function readGitWorkingTreeContent(root: string, entries: string, head: string): Promise<{ status: string; diff: string }> {
+  const records = entries.split('\0').filter(Boolean)
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(head) || records.length > 2048 || Buffer.byteLength(entries) > GIT_METADATA_CAP
+    || records.some(entry => !/^(?:100644|100755) (?:[a-f0-9]{40}|[a-f0-9]{64}) 0\t[^\0]+$/.test(entry))) throw new GitReadError(IpcErrorCode.InvalidArg, 'Git 内容核验需要有界的普通文件 stage-0 索引')
+  const tempRoot = await realpath(tmpdir()), directory = await mkdtemp(join(tempRoot, 'trellis-git-content-'))
+  const initial = await lstat(directory), scratch = { directory, index: join(directory, 'index') }
+  const run = async (args: string[], options: ReadOptions = {}): Promise<ReadResult> => {
+    const result = await readGitWithIndex(root, args, options, scratch)
+    if (result.code !== 0) throw new GitReadError(IpcErrorCode.Io, result.err.trim() || 'Git 实际内容核验失败')
+    return result
+  }
+  try {
+    // These two commands write only the private scratch index, never objects or the source index.
+    await run(['read-tree', '--empty'])
+    if (records.length) await run(['update-index', '-z', '--index-info'], { stdin: records.join('\0') + '\0' })
+    const diff = (await run(['diff', '--binary', '--no-ext-diff', '--no-textconv', '--no-color', '--ignore-submodules=all', head, '--'], { maxBytes: GIT_DIFF_CAP })).out
+    const status = (await run(['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all'])).out
+    return { status, diff }
+  } finally {
+    const actual = await realpath(directory), current = await lstat(directory), within = relative(tempRoot, resolve(actual))
+    const same = (path: string): string => process.platform === 'win32' ? path.toLowerCase() : path
+    if (!within || isAbsolute(within) || within === '..' || within.startsWith('..' + sep) || same(actual) !== same(directory)
+      || !current.isDirectory() || current.isSymbolicLink() || current.dev !== initial.dev || current.ino !== initial.ino) throw new GitReadError(IpcErrorCode.Denied, '临时 Git 索引目录身份变化，未执行清理')
+    await rm(actual, { recursive: true, force: true })
+  }
 }

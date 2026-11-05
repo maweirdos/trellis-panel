@@ -151,7 +151,21 @@ export class TeamStoreCore {
     authenticate: actor => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
     mutation: (...args) => this.mutation(...args),
     inputs: (p, task) => this.taskInputs.read(p, { projectId: task.projectId, taskId: task.taskId, query: { spaceId: task.spaceId, taskCreatedAt: task.taskCreatedAt } }),
-    dependency: (p, task, ref) => this.taskInputs.validateExecutionDependency(p, task, ref),
+    dependency: (p, task, ref) => {
+      this.taskInputs.validateExecutionDependency(p, task, ref)
+      return this.taskInputs.fixedExecutionResource(p, task, ref)
+    },
+    body: digest => this.blob(digest), persistBody: (bytes, digest) => this.persistBlob(bytes, digest),
+    creation: (p, task, ref) => {
+      const view = this.creations.get(p, { projectId: task.projectId, creationId: ref.creationId, query: { revisionId: ref.revisionId } })
+      if (view.summary.home !== 'team' || view.summary.spaceId !== task.spaceId || !view.selected.published || view.selected.revisionId !== ref.revisionId || view.selected.bodyDigest !== ref.bodyDigest) throw new TeamServiceError('EXECUTION_DEPENDENCY_CONFLICT', 'Only exact published same-space team HTML creation revisions are supported', 409)
+      return { text: view.selected.body, title: view.selected.title }
+    },
+    recipient: (userId, projectId) => {
+      const principal: StorePrincipal = { person: this.person(requireValue(this.get('SELECT * FROM people WHERE userId=? AND active=1', userId), 'EXECUTION_FORBIDDEN', 'Handoff recipient is unavailable', 403)), actor: { kind: 'session', credentialHash: '' }, deviceId: null, projectId: null, csrfToken: null }
+      this.project(principal, projectId)
+      return principal
+    },
     fixedInput: (p, execution) => this.executionInputs.assertUsable(p, execution),
     transition: (...args) => this.hifox.executionTransition(...args),
     event: (actorId, task, executionId, commandId, kind) => this.event('task.execution-changed', 'personal', actorId, task.projectId, { taskId: task.taskId, spaceId: task.spaceId, executionId, commandId, kind })
@@ -171,7 +185,8 @@ export class TeamStoreCore {
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
     mutation: (...args) => this.mutation(...args), transaction: (fn) => this.transaction(fn),
     invalidateProgress: (...args) => { this.taskProgress.reconcileWorkspace(...args); this.executions.reconcileWorkspace(...args) },
-    validateTaskTransitionInputs: (...args) => { this.taskInputs.validateTaskTransitionInputs(...args); this.executions.validateTransition(args[0], args[1], args[2], args[4]) }
+    validateExecutionChanges: (...args) => this.executions.validateWorkspaceChanges(...args),
+    validateTaskTransitionInputs: (...args) => { this.taskInputs.validateTaskTransitionInputs(...args); this.executions.validateTransition(args[0], args[1], args[2], args[4], args[3]) }
   })
   private readonly invitations = new TeamInvitations({
     issuer: () => this.options.issuer,
@@ -617,6 +632,7 @@ export class TeamStoreCore {
     if (operation === 'taskProgressReceipt') return this.taskProgress.receipt(actor, raw)
     if (operation === 'taskExecutionRead') return this.executions.read(actor, teamTaskRefSchema.parse(raw.task))
     if (operation === 'taskExecutionHistory') return this.executions.history(actor, teamTaskRefSchema.parse(raw.task), teamIdSchema.parse(raw.executionId))
+    if (operation === 'taskExecutionArtifact') return this.executions.readArtifact(actor, teamTaskRefSchema.parse(raw.task), teamIdSchema.parse(raw.executionId), teamIdSchema.parse(raw.versionId))
     if (operation === 'taskExecutionCommand') return this.executions.command(actor, raw.body)
     if (operation === 'taskExecutionReconcile') return this.executions.reconcile(actor, raw.body)
     if (operation === 'importCommand') return this.imports.command(actor, raw.body)

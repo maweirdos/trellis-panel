@@ -16,7 +16,7 @@ export class TeamExecutionInputs {
   constructor(private readonly host: Host, private readonly inputs: TeamTaskInputs, private readonly executions: TeamTaskExecutions) {}
 
   private load(principal: StorePrincipal, task: TeamTaskRef, executionId: string): ExecutionInput {
-    this.executions.history(principal.actor, task, executionId)
+    this.executions.historyForPrincipal(principal, task, executionId)
     const row = this.host.get('SELECT recordJson FROM team_task_execution_inputs WHERE executionId=?', executionId)
     if (!row) fail('EXECUTION_INPUT_UNAVAILABLE', 'Execution has no captured stage input', 404)
     const input = stored(executionInputSchema, row.recordJson)
@@ -26,6 +26,11 @@ export class TeamExecutionInputs {
   }
   private fixed(principal: StorePrincipal, input: ExecutionInput, resource: ExecutionInputResource): { text: string; withdrawn: boolean } {
     const source = resource.selection.source
+    if (source.kind === 'confirmed-artifact' || source.kind === 'confirmed-creation') {
+      const value = this.executions.resolveOutput(principal, input.task, source)
+      if (value.bodyDigest !== resource.bodyDigest || value.byteLength !== resource.byteLength || value.title !== resource.title) fail('CORRUPT_STORE', 'Original predecessor artifact changed', 503)
+      return value
+    }
     if (source.kind === 'governance' || source.kind === 'confirmed-document') {
       const value = this.inputs.fixedExecutionResource(principal, input.task, source)
       if (value.bodyDigest !== resource.bodyDigest || value.byteLength !== resource.byteLength || value.title !== resource.title) fail('CORRUPT_STORE', 'Original fixed resource changed', 503)
@@ -100,6 +105,7 @@ export class TeamExecutionInputs {
     const bundle = this.inputs.fixedExecutionBundle(principal, command.task, execution.inputBundle), settings = bundle.template?.settings
     if (!settings || settings.kind !== 'workflow-template' || !settings.execution) fail('EXECUTION_DEFINITION_REQUIRED', 'Adopt a published portable workflow before capturing input')
     const definition = settings.execution
+    if (!definition.nodes.some(node => node.id === execution.nodeId && node.kind !== 'gate')) fail('EXECUTION_NODE_CONFLICT', 'Original execution node is not in the captured output-producing definition')
     if (definition.definitionId !== execution.workflow.definitionId || definition.revision !== execution.workflow.revision || hash(taskInputCanonical(definition)) !== execution.workflow.digest) fail('EXECUTION_DEFINITION_CONFLICT', 'Execution does not name its adopted portable definition')
     if (definition.roles.length !== command.roles.length || definition.roles.some(role => !command.roles.some(selected => selected.roleId === role.id))) fail('EXECUTION_INPUT_ROLE_CONFLICT', 'Capture the exact logical role set')
     const row = this.host.get('SELECT snapshotJson FROM hifox_workspaces WHERE projectId=?', command.task.projectId)
@@ -129,12 +135,18 @@ export class TeamExecutionInputs {
       const node = definition.nodes.find(item => item.id === selection.nodeId)
       if (!node || node.kind !== 'agent' || node.phaseId !== selection.phaseId || node.stage !== selection.stage) fail('EXECUTION_INPUT_SELECTION_CONFLICT', 'Selection does not belong to its declared stage/node')
       const source = selection.source
+      if (source.kind === 'confirmed-artifact' || source.kind === 'confirmed-creation') {
+        if (predecessor?.finalization?.outcome !== 'completed' || !predecessor.finalization.outputs.some(item => taskInputCanonical(item) === taskInputCanonical(source))) fail('EXECUTION_INPUT_SELECTION_CONFLICT', 'Resource is not an exact confirmed predecessor output')
+        const value = this.executions.resolveOutput(principal, command.task, source)
+        if (selection.required && value.withdrawn) fail('EXECUTION_INPUT_WITHDRAWN', 'Required predecessor output was withdrawn')
+        return { selection, title: value.title, bodyDigest: value.bodyDigest, byteLength: value.byteLength }
+      }
       if (source.kind === 'governance' || source.kind === 'confirmed-document') {
         if (source.kind === 'governance' ? ![...bundle.rules, ...(bundle.template ? [bundle.template] : [])].some(item => item.packageId === source.packageId && item.versionId === source.versionId)
           : !bundle.documents.some(item => item.documentId === source.documentId && item.versionId === source.versionId)
-            && !predecessor?.finalization?.outputs.some(item => item.documentId === source.documentId && item.versionId === source.versionId)) fail('EXECUTION_INPUT_SELECTION_CONFLICT', 'Resource is not adopted or a supported fixed predecessor output')
+            && !predecessor?.finalization?.outputs.some(item => item.kind === 'confirmed-document' && item.documentId === source.documentId && item.versionId === source.versionId)) fail('EXECUTION_INPUT_SELECTION_CONFLICT', 'Resource is not adopted or a supported fixed predecessor output')
         const value = this.inputs.fixedExecutionResource(principal, command.task, source)
-        const prior = source.kind === 'confirmed-document' && predecessor?.finalization?.outputs.find(item => item.documentId === source.documentId && item.versionId === source.versionId)
+        const prior = source.kind === 'confirmed-document' && predecessor?.finalization?.outputs.find(item => item.kind === 'confirmed-document' && item.documentId === source.documentId && item.versionId === source.versionId)
         if (prior && prior.bodyDigest !== value.bodyDigest) fail('EXECUTION_DEPENDENCY_CONFLICT', 'Original predecessor digest changed')
         if (selection.required && value.withdrawn) fail('EXECUTION_INPUT_WITHDRAWN', 'Required source was withdrawn')
         return { selection, title: value.title, bodyDigest: value.bodyDigest, byteLength: value.byteLength }

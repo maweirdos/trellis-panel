@@ -78,6 +78,12 @@ async function requireNoWorktreeFilters(root: string, paths?: string[]): Promise
   }
 }
 
+/** Shared read-only handoff guard; does not run configured content filters. */
+export async function assertGitReadSafety(root: string): Promise<void> {
+  await requireRepo(root)
+  await requireNoWorktreeFilters(root)
+}
+
 type Fingerprint = { revision: string; head: string | null; branch: string | null; refs: GitHistoryRef[] }
 
 async function fingerprint(root: string): Promise<Fingerprint> {

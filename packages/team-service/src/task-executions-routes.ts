@@ -33,6 +33,11 @@ export async function registerTaskExecutionRoutes(api: FastifyInstance, store: T
     return { ok: true, value: await store.call('taskExecutionHistory', { actor: auth.principal(request).actor, executionId, task: { ...params, instanceId: query.instanceId, spaceId: query.spaceId, taskCreatedAt: query.taskCreatedAt } }) }
   })
   const inputParams = paramsSchema.extend({ executionId: teamIdSchema }).strict()
+  api.get(path + '/:executionId/artifacts/:versionId', async request => {
+    const { executionId, versionId, ...params } = inputParams.extend({ versionId: teamIdSchema }).strict().parse(request.params)
+    const { contractVersion: _version, ...scope } = teamExecutionReadQuerySchema.parse(request.query)
+    return { ok: true, value: await store.call('taskExecutionArtifact', { actor: auth.principal(request).actor, executionId, versionId, task: { ...params, ...scope } }) }
+  })
   const inputPath = path + '/:executionId/inputs'
   for (const [suffix, operation] of [['/commands', 'executionInputCommand'], ['/reconcile', 'executionInputReconcile']] as const) {
     api.post(inputPath + suffix, async request => {

@@ -3,7 +3,7 @@ import { workflowIdSchema } from './identity'
 
 const ids = z.array(workflowIdSchema).max(32).refine(items => new Set(items).size === items.length, 'Duplicate identity')
 export const executionStageSchema = z.enum(['plan', 'implement', 'check', 'finish', 'custom'])
-export const portableOutputSchema = z.object({ id: workflowIdSchema, kind: z.enum(['prd', 'design', 'implement', 'delivery-note', 'implementation-report', 'check-report']), required: z.boolean() }).strict()
+export const portableOutputSchema = z.object({ id: workflowIdSchema, kind: z.enum(['prd', 'design', 'implement', 'delivery-note', 'implementation-report', 'check-report', 'general', 'source-patch', 'selected-file', 'creation-html']), required: z.boolean() }).strict()
 const common = { id: workflowIdSchema, phaseId: workflowIdSchema, stage: executionStageSchema, name: z.string().min(1).max(300) }
 export const portableWorkflowNodeSchema = z.discriminatedUnion('kind', [
   z.object({ ...common, kind: z.literal('agent'), roleId: workflowIdSchema, instruction: z.string().max(128 * 1024), requiredCapabilities: ids, outputs: z.array(portableOutputSchema).max(16) }).strict(),

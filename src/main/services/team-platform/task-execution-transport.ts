@@ -4,6 +4,7 @@ import { taskInputCanonical } from '../../../shared/team-task-inputs'
 import { teamExecutionCommandSchema, teamExecutionCommandReplySchema, teamExecutionRecordSchema, teamExecutionReceiptSchema,
   teamExecutionViewSchema, teamTaskIdentity, type TeamTaskRef, type TeamExecutionCommand, type TeamExecutionReceipt } from '../../../shared/team-task-execution'
 import { DesktopTeamError } from './types'
+import { executionArtifactRefSchema, executionArtifactViewSchema, type ExecutionArtifactRef } from '../../../shared/team-execution-artifacts'
 
 type Request = <S extends z.ZodType>(path: string, schema: S, body?: unknown) => Promise<z.output<S>>
 /** Fixed HTTP routes and original semantic payload; this adapter never starts native work. */
@@ -41,6 +42,14 @@ export class TaskExecutionTransport {
   async history(id: string): Promise<z.infer<typeof teamExecutionRecordSchema>> {
     const value = await this.request(`${this.base}/${id}?${this.query}`, teamExecutionRecordSchema); this.scope(value.task)
     if (value.executionId !== id) throw new DesktopTeamError('RECEIPT_MISMATCH', '执行历史身份不一致')
+    return value
+  }
+  async artifact(raw: ExecutionArtifactRef): Promise<z.infer<typeof executionArtifactViewSchema>> {
+    const ref = executionArtifactRefSchema.parse(raw)
+    const value = await this.request(`${this.base}/${ref.executionId}/artifacts/${ref.versionId}?${this.query}`, executionArtifactViewSchema)
+    const selected = value.artifact, digest = createHash('sha256').update(value.text, 'utf8').digest('hex')
+    if (selected.taskIdentity !== teamTaskIdentity(this.task) || selected.executionId !== ref.executionId || selected.artifactId !== ref.artifactId || selected.versionId !== ref.versionId
+      || selected.disposition !== 'confirmed' || selected.bodyDigest !== ref.bodyDigest || digest !== ref.bodyDigest || Buffer.byteLength(value.text, 'utf8') !== selected.byteLength) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Fixed artifact response differs from its original confirmed reference')
     return value
   }
   async command(raw: TeamExecutionCommand): Promise<z.infer<typeof teamExecutionCommandReplySchema>> {

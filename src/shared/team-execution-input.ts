@@ -4,6 +4,7 @@ import { teamTaskRefSchema, teamExecutionBundleRefSchema, teamExecutionWorkflowR
 import { executionStageSchema, portableWorkflowDefinitionSchema, portableWorkflowNodeSchema } from './workflow/portable-definition'
 import { workflowIdSchema } from './workflow/identity'
 import { taskInputCanonical } from './team-task-inputs'
+import { executionArtifactRefSchema, executionCreationRefSchema } from './team-execution-artifacts'
 
 const count = z.number().int().nonnegative().safe()
 const body = { bodyDigest: teamDigestSchema, byteLength: count.max(1024 * 1024) }
@@ -13,6 +14,8 @@ export const executionInputSelectionIdSchema = workflowIdSchema.refine(value => 
 export const executionInputSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('governance'), packageId: teamIdSchema, versionId: teamIdSchema }).strict(),
   z.object({ kind: z.literal('confirmed-document'), documentId: teamIdSchema, versionId: teamIdSchema }).strict(),
+  executionArtifactRefSchema,
+  executionCreationRefSchema,
   z.object({ kind: z.literal('agent-instructions'), roleId: workflowIdSchema }).strict(),
   z.object({ kind: z.literal('skill'), roleId: workflowIdSchema, skillId: workflowIdSchema }).strict()
 ])

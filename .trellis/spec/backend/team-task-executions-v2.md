@@ -59,8 +59,10 @@ retains original intent identities across bounded queries and restarts.
   is separate from native state. Native verification remains `owner-reported`.
 - `finalize` validates supplied fixed approved task-document versions and content
   digests through the existing document authority. It neither passes business QA
-  nor grants final acceptance. Other artifact kinds remain unsupported until
-  their actual resolver is installed.
+  nor grants final acceptance. Confirmed general artifacts, same-space published
+  HTML, fixed delivery manifests and checkpoints follow
+  [Execution artifacts](./team-execution-artifacts.md). New producer operations
+  additionally pin node/attempt without changing retained legacy finalizations.
 - Ordinary business handoff requires completed finalization with confirmed
   outputs. Revalidate those versions at transition. Releasing a writer cannot
   bypass the ordinary handoff gate. Existing task domain roles still decide

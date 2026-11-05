@@ -381,6 +381,55 @@ missing or oversized required content rejects. Prepared composition does not
 prove model receipt, compliance or execution. Exact native contracts and errors
 are in `.trellis/spec/backend/team-execution-inputs.md`.
 
+## Fixed execution artifacts and handoff
+
+Version-2 execution commands add `save-artifact`, `seal-delivery` and
+`checkpoint`. Their original task/person/device/epoch/execution/generation
+envelope is retained; fresh producer operations also pin node and attempt.
+The three new kinds require `expectedNodeId` and `expectedAttempt`. A bounded
+optional per-node attempt ledger prevents reused producer identities on re-entry;
+older rows receive no default fields. Historical original UUID recovery remains
+available after producer movement under current ACL and original credential.
+Schemas are in `shared/team-execution-artifacts.ts` and are exported by this
+package. Relations use optional existing execution-record metadata and bodies
+reuse immutable blobs; no separate approval store or database migration exists.
+
+| Operation | Payload / result |
+| --- | --- |
+| `save-artifact` | UUID `artifactId`, nullable `previousVersionId`, supported artifact kind, title/text/digest, draft or confirmed disposition; immutable version receipt. |
+| `seal-delivery` | Nullable exact previous version/digest and ordered `{outputId,ref,carriedFrom?}` entries; fixed manifest version/digest. |
+| `checkpoint` | Exact manifest, remaining-work summary, selected code source and nullable device observation; fixed checkpoint version/digest. |
+| GET `.../executions/:executionId/artifacts/:versionId` | Existing exact version-2 task query; current-ACL fixed artifact metadata and UTF-8 text. |
+
+Artifact kinds are `implementation-report`, `check-report`, `general`,
+`source-patch` and `selected-file`. Exact references resolve confirmed artifacts,
+actual approved formal documents, or supported published same-space team HTML
+creation revisions. Draft/conflict/unpublished/wrong-scope versions cannot
+satisfy required outputs. `confirmed` describes server receipt, not QA or
+document approval. Stale comparisons retain conflicts without replacing heads.
+
+Manifest entries without `carriedFrom` are produced by the current node/attempt
+and must satisfy its actual declared policies. Explicit carry refers to a sealed
+node delivery or the original immediate predecessor's completed finalization.
+Original producer refs may pass through later predecessors without copying
+identity or bodies. Carried outputs cannot replace required fresh work.
+
+Fresh managed completed finalization binds exact manifest/checkpoint refs and
+the manifest's ordered outputs. Ordinary business paths revalidate original
+refs and recipient access atomically before task transition and writer
+revocation. Retained pre-upgrade completed formal-document finalizations keep
+their original contract. Emergency reassignment/cancel and unknown native
+facts retain existing semantics. Duplicate/reconcile uses the original UUID and
+payload even after handoff, subject to original credential and current ACL.
+
+Checkpoint source kinds are `none`, `selected-files`, `git-commit` and
+`git-patch`. Native observations require an actual authenticated device and
+remain `device-reported`; server-confirmed bytes do not attest to another
+device's filesystem. Receiver ports verify actual code separately and distinguish
+available-not-applied from applied. No workspace upload, checkout, push or merge
+is performed. Exact native contracts/bounds are in
+`.trellis/spec/backend/team-execution-artifacts.md`.
+
 ## Read-only Trellis source import
 
 Contract version 1 uses validators/types from `shared/team-import.ts`, exported

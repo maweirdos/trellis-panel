@@ -4,6 +4,8 @@ import { taskMaterialInputReferenceSchema } from './task-material-inputs'
 import { teamCommandIdSchema, teamCommandReplySchema, teamDigestSchema, teamIdSchema } from './team-platform'
 import { teamTaskMaterialScopeSchema } from './team-task-materials'
 import { teamTaskProgressResourceIdSchema } from './team-task-progress'
+import { taskInputCanonical } from './team-canonical'
+export { taskInputCanonical } from './team-canonical'
 export * from './team-execution-input'
 
 const counter = z.number().int().nonnegative().safe()
@@ -45,11 +47,6 @@ export type TaskInputCommand = z.infer<typeof taskInputCommandSchema>
 export type TaskInputReceipt = z.infer<typeof taskInputReceiptSchema>
 export type TaskInputRead = z.infer<typeof taskInputReadSchema>
 
-export function taskInputCanonical(value: unknown): string {
-  if (Array.isArray(value)) return '[' + value.map(taskInputCanonical).join(',') + ']'
-  if (value !== null && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + taskInputCanonical((value as Record<string, unknown>)[key])).join(',') + '}'
-  return JSON.stringify(value)
-}
 /** Exact server digest preimage; digest itself is excluded. */
 export function taskInputBundleDigestText(bundle: TaskInputBundle): string {
   const { digest: _digest, ...content } = taskInputBundleSchema.parse(bundle)

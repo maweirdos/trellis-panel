@@ -11,10 +11,17 @@ import type { HifoxWorkspaceHost } from './hifox-workspace'
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 import { taskProgressFence } from './task-progress'
+import { TeamExecutionArtifacts } from './task-execution-artifacts'
+import type { executionCreationRefSchema } from '../../../src/shared/team-execution-artifacts'
+import { executionInputSchema } from '../../../src/shared/team-execution-input'
 
 type Host = Pick<HifoxWorkspaceHost, 'identity' | 'get' | 'all' | 'run' | 'authenticate' | 'project' | 'mutation'> & {
   inputs(principal: StorePrincipal, task: TeamTaskRef): TaskInputRead
-  dependency(principal: StorePrincipal, task: TeamTaskRef, ref: z.infer<typeof teamExecutionDependencySchema>): void
+  dependency(principal: StorePrincipal, task: TeamTaskRef, ref: Extract<z.infer<typeof teamExecutionDependencySchema>, { kind: 'confirmed-document' }>): { text: string; title: string; withdrawn: boolean }
+  creation(principal: StorePrincipal, task: TeamTaskRef, ref: z.infer<typeof executionCreationRefSchema>): { text: string; title: string }
+  body(digest: string): Buffer
+  persistBody(bytes: Buffer, digest: string): void
+  recipient(userId: string, projectId: string): StorePrincipal
   fixedInput(principal: StorePrincipal, execution: TeamExecutionRecord): void
   transition(principal: StorePrincipal, projectId: string, revision: number, input: HifoxTransitionTaskInput): void
   event(actorId: string, task: TeamTaskRef, executionId: string, commandId: string | null, kind: string): void
@@ -49,10 +56,30 @@ function businessBoundary(task: HifoxTask, statusCategory: string | null): z.inf
 }
 
 export class TeamTaskExecutions {
-  constructor(private readonly host: Host) {}
+  private readonly artifacts: TeamExecutionArtifacts
+  constructor(private readonly host: Host) {
+    this.artifacts = new TeamExecutionArtifacts({ ...host, document: host.dependency,
+      history: (principal, task, id) => this.historyForPrincipal(principal, task, id) })
+  }
+
+  resolveOutput(principal: StorePrincipal, task: TeamTaskRef, ref: z.infer<typeof teamExecutionDependencySchema>): ReturnType<TeamExecutionArtifacts['resolve']> {
+    this.principalContext(principal, task)
+    return this.artifacts.resolve(principal, task, ref)
+  }
+
+  readArtifact(actor: StoreActor, task: TeamTaskRef, executionId: string, versionId: string): { contractVersion: 2; artifact: NonNullable<TeamExecutionRecord['artifacts']>[number]; text: string } {
+    const record = this.history(actor, task, executionId), artifact = record.artifacts?.find(item => item.versionId === versionId)
+    if (!artifact || artifact.taskIdentity !== teamTaskIdentity(task) || artifact.executionId !== executionId) fail('EXECUTION_UNAVAILABLE', 'Original artifact version is unavailable', 404)
+    const bytes = this.host.body(artifact.bodyDigest), text = bytes.toString('utf8')
+    if (createHash('sha256').update(bytes).digest('hex') !== artifact.bodyDigest || bytes.length !== artifact.byteLength || !Buffer.from(text, 'utf8').equals(bytes)) fail('CORRUPT_STORE', 'Original artifact bytes failed verification', 503)
+    return { contractVersion: 2, artifact, text }
+  }
 
   private context(actor: StoreActor, raw: TeamTaskRef, writing = false): Context {
-    const ref = teamTaskRefSchema.parse(raw), principal = this.host.authenticate(actor)
+    return this.principalContext(this.host.authenticate(actor), raw, writing)
+  }
+  private principalContext(principal: StorePrincipal, raw: TeamTaskRef, writing = false): Context {
+    const ref = teamTaskRefSchema.parse(raw)
     if (ref.instanceId !== this.host.identity().instanceId) fail('EXECUTION_SCOPE_CONFLICT', 'Original service instance changed')
     this.host.project(principal, ref.projectId)
     const row = this.host.get("SELECT t.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", ref.projectId, ref.taskId)
@@ -97,6 +124,19 @@ export class TeamTaskExecutions {
   private save(record: TeamExecutionRecord): void {
     const value = teamExecutionRecordSchema.parse(record)
     this.host.run('UPDATE team_task_executions SET authority=?,recordJson=? WHERE executionId=?', value.authority, JSON.stringify(value), value.executionId)
+  }
+  private producerAttempts(record: TeamExecutionRecord): NonNullable<TeamExecutionRecord['nodeAttempts']> {
+    const visits = record.nodeAttempts ? record.nodeAttempts.map(item => ({ ...item })) : []
+    if (!record.nodeAttempts) {
+      for (const item of [record, ...(record.artifacts ?? []), ...(record.deliveries ?? []), ...(record.checkpoints ?? [])]) {
+        const known = visits.find(visit => visit.nodeId === item.nodeId)
+        if (known) known.maxAttempt = Math.max(known.maxAttempt, item.attempt)
+        else visits.push({ nodeId: item.nodeId, maxAttempt: item.attempt })
+      }
+    }
+    if (visits.length > 64) fail('CAPACITY_EXCEEDED', 'Visited output node capacity reached; original execution retained')
+    if (visits.find(item => item.nodeId === record.nodeId)?.maxAttempt !== record.attempt) fail('EXECUTION_ATTEMPT_CONFLICT', 'Retained producer attempt is ambiguous; preserve the original execution')
+    return visits
   }
   private revoke(id: string, reason: string): void {
     const { record } = this.row(id)
@@ -151,7 +191,11 @@ export class TeamTaskExecutions {
     return teamExecutionViewSchema.parse({ contractVersion: 2, task: ctx.ref, epoch, authorizationRevision, generation: row && !active ? next(head.generation) : head.generation, active, serverTime: Date.now() })
   }
   history(actor: StoreActor, ref: TeamTaskRef, id: string): TeamExecutionRecord {
-    this.context(actor, ref)
+    return this.historyForPrincipal(this.host.authenticate(actor), ref, id)
+  }
+  /** Service-internal ACL projection for an actual active recipient; never a wire actor override. */
+  historyForPrincipal(principal: StorePrincipal, ref: TeamTaskRef, id: string): TeamExecutionRecord {
+    this.principalContext(principal, ref)
     const row = this.row(id)
     if (teamTaskIdentity(row.record.task) !== teamTaskIdentity(ref)) fail('EXECUTION_SCOPE_CONFLICT', 'Execution belongs to another task')
     return row.record.authority === 'active' && !this.valid(row) ? { ...row.record, authority: 'revoked', revocationReason: 'authority-changed' } : row.record
@@ -208,7 +252,10 @@ export class TeamTaskExecutions {
         const ctx = this.context(actor, command.task, true), head = this.head(ctx.ref)
         if (head.generation !== command.expectedGeneration || head.activeExecutionId !== command.expectedExecutionId) fail('EXECUTION_GENERATION_CONFLICT', 'Reload original execution generation')
         let record: TeamExecutionRecord
+        let receiptVersion: { versionId: string; digest: string } | undefined
+        let disposition: 'draft' | 'confirmed' | 'conflict' | undefined
         if (command.kind === 'claim') {
+          if (command.attempt !== 1) fail('EXECUTION_ATTEMPT_CONFLICT', 'A newly claimed node starts at its first attempt')
           if (head.activeExecutionId) fail('EXECUTION_WRITER_CONFLICT', 'Another execution owns this task')
           const progress = this.host.get('SELECT epoch,fence,bindingJson FROM hifox_task_progress WHERE projectId=? AND taskId=?', ctx.ref.projectId, ctx.ref.taskId)
           if (progress?.bindingJson && progress.epoch === command.expectedEpoch && progress.fence === taskProgressFence(this.host, ctx.ref.projectId, ctx.task).fence) fail('EXECUTION_WRITER_CONFLICT', 'A v1 reporting binding already owns this task')
@@ -221,6 +268,7 @@ export class TeamTaskExecutions {
             actorId: principal.person.userId, deviceId: principal.deviceId, ownership: command.ownership, workflow: command.workflow, executor: command.executor,
             inputBundle: command.inputBundle, predecessorExecutionId: command.predecessorExecutionId, source: command.source, nodeId: command.nodeId, attempt: command.attempt,
             authority: 'active', revocationReason: null, nativeState: 'unknown', nativeVerification: 'owner-reported', progress: null, finalization: null, createdAt: Date.now(), updatedAt: Date.now() }
+          record.nodeAttempts = [{ nodeId: command.nodeId, maxAttempt: command.attempt }]
           const status = this.host.get("SELECT json_extract(s.value,'$.category') AS category FROM hifox_workspaces w,json_each(w.snapshotJson,'$.taskStatuses') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? AND json_extract(s.value,'$.spaceId')=?", ctx.ref.projectId, ctx.task.statusId, ctx.task.spaceId)
           const boundary = { original: businessBoundary(ctx.task, typeof status?.category === 'string' ? status.category : null), successor: null }
           this.host.run('INSERT INTO team_task_executions(executionId,projectId,taskId,authority,ownerKey,actorJson,fence,recordJson,businessBoundaryJson) VALUES(?,?,?,?,?,?,?,?,?)', record.executionId, ctx.ref.projectId, ctx.ref.taskId, 'active', owner(actor), JSON.stringify(actor), ctx.fence, JSON.stringify(record), JSON.stringify(boundary))
@@ -230,16 +278,46 @@ export class TeamTaskExecutions {
           const row = this.row(head.activeExecutionId)
           record = row.record
           if (row.ownerKey !== owner(actor) || record.generation !== command.expectedGeneration || !this.valid(row)) fail('EXECUTION_GENERATION_CONFLICT', 'Original writer is no longer authorized')
+          if ((command.kind === 'save-artifact' || command.kind === 'seal-delivery' || command.kind === 'checkpoint')
+            && (command.expectedNodeId !== record.nodeId || command.expectedAttempt !== record.attempt)) fail('EXECUTION_PRODUCER_CONFLICT', 'Original output-producing node or attempt changed')
+          if (command.kind === 'save-artifact' || command.kind === 'seal-delivery' || command.kind === 'checkpoint') record = { ...record, nodeAttempts: this.producerAttempts(record) }
           if (command.kind !== 'release') this.checkInputs(ctx, record.inputBundle)
+          if (record.finalization && ['save-artifact', 'seal-delivery', 'checkpoint'].includes(command.kind)) fail('EXECUTION_FINALIZATION_CONFLICT', 'Finalized execution artifacts are immutable')
           if (command.kind === 'report') {
             if (record.finalization || command.seq <= (record.progress?.seq ?? 0)) fail('EXECUTION_SEQUENCE_CONFLICT', 'Finalized or older progress cannot replace confirmed progress')
+            const visits = this.producerAttempts(record), visited = visits.find(item => item.nodeId === command.nodeId)
+            const allowed = command.nodeId === record.nodeId
+              ? command.attempt === record.attempt || command.attempt === record.attempt + 1
+              : command.attempt === (visited?.maxAttempt ?? 0) + 1
+            if (!allowed) fail('EXECUTION_ATTEMPT_CONFLICT', 'A retry or node re-entry requires its next unused attempt')
+            const captured = this.host.get('SELECT recordJson FROM team_task_execution_inputs WHERE executionId=?', record.executionId)
+            if (captured) {
+              const input = stored(executionInputSchema, captured.recordJson)
+              if (!input.definition.nodes.some(node => node.id === command.nodeId && node.kind !== 'gate')) fail('EXECUTION_NODE_CONFLICT', 'Reported output node is not in the original captured definition')
+            }
+            if (visited) visited.maxAttempt = command.attempt
+            else visits.push({ nodeId: command.nodeId, maxAttempt: command.attempt })
+            if (visits.length > 64) fail('CAPACITY_EXCEEDED', 'Visited output node capacity reached; original execution retained')
             record = { ...record, nodeId: command.nodeId, attempt: command.attempt, nativeState: command.nativeState,
+              nodeAttempts: visits,
               progress: { seq: command.seq, state: command.state, step: command.step, blockingReason: command.blockingReason, updatedAt: Date.now() } }
           } else if (command.kind === 'finalize') {
             if (record.finalization) fail('EXECUTION_FINALIZATION_CONFLICT', 'Execution already has a finalization boundary')
             this.host.fixedInput(principal, record)
-            for (const ref of command.finalization.outputs) this.host.dependency(principal, ctx.ref, ref)
+            for (const ref of command.finalization.outputs) if (this.resolveOutput(principal, ctx.ref, ref).withdrawn) fail('EXECUTION_DEPENDENCY_CONFLICT', 'Required output was withdrawn')
             record = { ...record, finalization: command.finalization, nativeState: command.finalization.outcome }
+            this.artifacts.validateFinalization(principal, record, true)
+          } else if (command.kind === 'save-artifact') {
+            const saved = this.artifacts.save(record, command)
+            record = saved.record; receiptVersion = { versionId: saved.selected.versionId, digest: saved.selected.bodyDigest }; disposition = saved.selected.disposition
+          } else if (command.kind === 'seal-delivery') {
+            record = this.artifacts.seal(principal, record, command)
+            const selected = record.deliveries?.at(-1)
+            if (selected) receiptVersion = { versionId: selected.versionId, digest: selected.digest }
+          } else if (command.kind === 'checkpoint') {
+            record = this.artifacts.checkpoint(principal, record, command)
+            const selected = record.checkpoints?.at(-1)
+            if (selected) receiptVersion = { versionId: selected.versionId, digest: selected.digest }
           } else if (command.kind === 'release') {
             record = { ...record, authority: 'released', nativeState: command.nativeState }
             this.host.run('UPDATE team_task_execution_heads SET generation=?,activeExecutionId=NULL WHERE projectId=? AND taskId=?', next(head.generation), ctx.ref.projectId, ctx.ref.taskId)
@@ -253,7 +331,8 @@ export class TeamTaskExecutions {
         }
         const receipt = teamExecutionReceiptSchema.parse({ contractVersion: 2, commandId: command.commandId, task: ctx.ref, epoch: command.expectedEpoch,
           kind: command.kind, requestDigest: hash(taskInputCanonical(command)), executionId: record.executionId, generation: record.generation,
-          actorId: principal.person.userId, deviceId: principal.deviceId, committedAt: Date.now() })
+          actorId: principal.person.userId, deviceId: principal.deviceId, committedAt: Date.now(),
+          ...(receiptVersion ? { version: receiptVersion } : {}), ...(disposition ? { disposition } : {}) })
         this.host.event(principal.person.userId, ctx.ref, record.executionId, command.commandId, command.kind)
         return receipt
       }, (_principal, receipt) => this.receiptContext(actor, command, receipt))
@@ -262,7 +341,27 @@ export class TeamTaskExecutions {
     if (command.expectedActorId !== principal.person.userId || command.expectedDeviceId !== principal.deviceId) fail('EXECUTION_FORBIDDEN', 'Command belongs to another original account or device', 403)
   }
   /** All ordinary business transition paths call this hook in their existing transaction. */
-  validateTransition(principal: StorePrincipal, projectId: string, task: HifoxTask, transition: HifoxTransitionTaskInput): void {
+  validateTransition(principal: StorePrincipal, projectId: string, task: HifoxTask, transition: HifoxTransitionTaskInput, successor?: HifoxTask): void {
+    this.validateHandoff(principal, projectId, task, successor, transition.action === 'decline' || transition.action === 'reassign' && principal.person.userId !== handler(task), successor ? handler(successor) : transition.assigneeId)
+  }
+  /** Secondary automation changes and legacy field edits cannot bypass explicit handoff gates. */
+  validateWorkspaceChanges(principal: StorePrincipal | null, projectId: string, before: HifoxSnapshot, after: HifoxSnapshot, explicitTaskId?: string): void {
+    const nextTasks = new Map(after.tasks.map(task => [task.id, task]))
+    const oldStatuses = new Map(before.taskStatuses.map(status => [status.id, status.category]))
+    const nextStatuses = new Map(after.taskStatuses.map(status => [status.id, status.category]))
+    for (const task of before.tasks) {
+      const successor = nextTasks.get(task.id)
+      if (!successor || task.id === explicitTaskId || successor.spaceId !== task.spaceId || successor.createdAt !== task.createdAt
+        || taskInputCanonical(businessBoundary(task, oldStatuses.get(task.statusId) ?? null)) === taskInputCanonical(businessBoundary(successor, nextStatuses.get(successor.statusId) ?? null))) continue
+      const last = this.host.get("SELECT executionId,businessBoundaryJson FROM team_task_executions WHERE projectId=? AND taskId=? AND json_extract(recordJson,'$.task.taskCreatedAt')=? AND json_extract(recordJson,'$.task.spaceId')=? ORDER BY rowid DESC LIMIT 1", projectId, task.id, task.createdAt, task.spaceId)
+      if (!last) continue
+      if (last.businessBoundaryJson !== null && stored(storedBoundarySchema, last.businessBoundaryJson).successor) continue
+      const effective = principal ?? this.host.authenticate(this.row(String(last.executionId)).actor)
+      const forced = principal !== null && (nextStatuses.get(successor.statusId) === 'cancelled' || handler(task) !== handler(successor) && principal.person.userId !== handler(task))
+      this.validateHandoff(effective, projectId, task, successor, forced, handler(successor))
+    }
+  }
+  private validateHandoff(principal: StorePrincipal, projectId: string, task: HifoxTask, successor: HifoxTask | undefined, forced: boolean, recipientId?: string): void {
     const last = this.host.get("SELECT executionId,businessBoundaryJson FROM team_task_executions WHERE projectId=? AND taskId=? AND json_extract(recordJson,'$.task.spaceId')=? AND json_extract(recordJson,'$.task.taskCreatedAt')=? ORDER BY rowid DESC LIMIT 1", projectId, task.id, task.spaceId, task.createdAt)
     if (!last) return
     const row = this.row(String(last.executionId)), record = row.record
@@ -272,10 +371,17 @@ export class TeamTaskExecutions {
     const boundary = last.businessBoundaryJson === null ? null : stored(storedBoundarySchema, last.businessBoundaryJson)
     if (boundary?.successor) return
     // A manager's forced reassignment and cancellation revoke writes before native shutdown is known.
-    if (transition.action === 'decline' || transition.action === 'reassign' && principal.person.userId !== handler(task)) return
+    if (forced) return
     if (record.finalization?.outcome !== 'completed' || record.finalization.outputs.length === 0) fail('EXECUTION_FINALIZATION_REQUIRED', 'Ordinary handoff requires completed finalization and confirmed output versions')
     this.host.fixedInput(principal, record)
+    this.artifacts.validateFinalization(principal, record)
     const ref = { ...record.task, projectId }
-    for (const dependency of record.finalization.outputs) this.host.dependency(principal, ref, dependency)
+    for (const dependency of record.finalization.outputs) if (this.resolveOutput(principal, ref, dependency).withdrawn) fail('EXECUTION_DEPENDENCY_CONFLICT', 'Required output was withdrawn')
+    if (recipientId && recipientId !== principal.person.userId) {
+      const recipient = this.host.recipient(recipientId, projectId)
+      this.principalContext(recipient, ref)
+      this.host.fixedInput(recipient, record)
+      for (const dependency of record.finalization.outputs) if (this.resolveOutput(recipient, ref, dependency).withdrawn) fail('EXECUTION_DEPENDENCY_CONFLICT', 'Handoff recipient cannot use an original output')
+    }
   }
 }

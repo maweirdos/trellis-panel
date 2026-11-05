@@ -22,6 +22,7 @@ export interface HifoxWorkspaceHost {
   identity(): { instanceId: string; epoch: string; authorizationRevision: number }
   transaction<T>(action: () => T): T
   invalidateProgress(projectId: string, before: HifoxSnapshot, after: HifoxSnapshot): void
+  validateExecutionChanges(principal: StorePrincipal | null, projectId: string, before: HifoxSnapshot, after: HifoxSnapshot, explicitTaskId?: string): void
   validateTaskTransitionInputs(principal: StorePrincipal, projectId: string, beforeTask: HifoxTask, afterTask: HifoxTask, transition: HifoxTransitionTaskInput): void
   get(sql: string, ...params: SQLInputValue[]): Row | undefined
   all(sql: string, ...params: SQLInputValue[]): Row[]
@@ -93,6 +94,7 @@ export class TeamHifoxWorkspace {
         if (JSON.stringify(ticked) === before) return
         if (Buffer.byteLength(JSON.stringify(ticked)) > MAX_SNAPSHOT_BYTES - 4096) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Scheduled workspace update exceeds its response bound', 413)
         if (workspace.revision >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace revision bound exceeded', 503)
+        this.host.validateExecutionChanges(null, projectId, workspace.snapshot, ticked)
         this.host.invalidateProgress(projectId, workspace.snapshot, ticked)
         this.host.run('UPDATE hifox_workspaces SET revision=?,snapshotJson=?,updatedAt=? WHERE projectId=?', workspace.revision + 1, JSON.stringify(ticked), Date.now(), projectId)
         updated++
@@ -350,6 +352,8 @@ export class TeamHifoxWorkspace {
         this.host.run('INSERT INTO hifox_inbox_preferences(projectId,userId,inboxId,read,cleared,snoozedUntil) VALUES(?,?,?,?,?,?) ON CONFLICT(projectId,userId,inboxId) DO UPDATE SET read=excluded.read,cleared=excluded.cleared,snoozedUntil=excluded.snoozedUntil', projectId, principal.person.userId, item.id, item.read ? 1 : 0, item.cleared ? 1 : 0, item.snoozedUntil ?? null)
       }
     } else {
+      this.host.validateExecutionChanges(principal, projectId, workspace.snapshot, executed.snapshot,
+        input.operation === 'transitionTask' ? hifoxMutationInputSchemas.transitionTask.parse(input.input).taskId : undefined)
       this.host.invalidateProgress(projectId, workspace.snapshot, executed.snapshot)
       workspace.snapshot = executed.snapshot
     }

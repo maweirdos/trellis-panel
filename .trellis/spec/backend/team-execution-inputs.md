@@ -96,8 +96,12 @@ restrictions return an unsupported result instead of silently dropping behavior.
   before writing. Agent display names and logical roles grant no business rights.
   Agent CRUD remains mutable while captured content remains fixed.
 - Sources are exact adopted governance versions, approved document versions,
-  captured Agent instructions or captured skills. A confirmed predecessor
-  document must belong to the original declared predecessor finalization.
+  captured Agent instructions or captured skills. Confirmed predecessor
+  documents, artifacts and supported published HTML must belong to the original
+  declared predecessor's fixed completed finalization. Explicitly carried refs
+  retain older producer identity through that immediate predecessor; their
+  current authorization and version rules follow
+  [Execution artifacts](./team-execution-artifacts.md).
   Arbitrary paths, caller text and unsupported artifact kinds grant no source.
 - Per-node selections retain phase, stage, order, reason and obligation. Require
   captured Agent instructions, every bound skill, globally required adopted

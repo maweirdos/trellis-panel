@@ -2,10 +2,15 @@ import { z } from 'zod'
 import { teamCommandIdSchema, teamDigestSchema, teamIdSchema } from './team-platform'
 import { teamTaskProgressResourceIdSchema, teamTaskProgressRecordSchema } from './team-task-progress'
 import { hifoxTransitionTaskInputSchema } from './hifox-schema'
+import { workflowIdSchema } from './workflow/identity'
+import { executionArtifactKindSchema, executionArtifactVersionSchema, executionCodeSourceSchema, executionDeliveryEntrySchema,
+  executionDeliveryManifestSchema, executionHandoffCheckpointSchema, executionOutputRefSchema, executionSourceObservationSchema, executionVersionRefSchema } from './team-execution-artifacts'
 
 const counter = z.number().int().nonnegative().safe()
 const serial = counter.min(1)
 const name = z.string().min(1).max(200).regex(/^[\p{L}\p{N}_.@ -]+$/u)
+/** Admit every portable ID while retaining previously valid legacy node bytes. */
+export const teamExecutionNodeIdSchema = workflowIdSchema.or(name)
 export const TEAM_EXECUTION_CONTRACT_VERSION = 2 as const
 /** Epoch is an admission fence, never part of a task's durable identity. */
 export const teamTaskRefSchema = z.object({
@@ -22,10 +27,11 @@ export const teamExecutionSourceRefSchema = z.object({ sourceProjectId: name, so
 export const teamExecutionBundleRefSchema = z.object({ bundleId: teamIdSchema, revision: serial, digest: teamDigestSchema }).strict()
 export const teamExecutionWorkflowRefSchema = z.object({ definitionId: name, revision: serial, digest: teamDigestSchema }).strict()
 export const teamExecutionExecutorSchema = z.object({ engine: name, adapterVersion: name }).strict()
-export const teamExecutionDependencySchema = z.object({ kind: z.literal('confirmed-document'), documentId: teamIdSchema, versionId: teamIdSchema, bodyDigest: teamDigestSchema }).strict()
+export const teamExecutionDependencySchema = executionOutputRefSchema
 export const teamExecutionFinalizationSchema = z.object({
   outcome: z.enum(['completed', 'interrupted', 'unknown']), evidenceRef: name,
-  outputs: z.array(teamExecutionDependencySchema).max(16)
+  outputs: z.array(teamExecutionDependencySchema).max(16),
+  manifest: executionVersionRefSchema.optional(), checkpoint: executionVersionRefSchema.optional()
 }).strict()
 export const teamExecutionNativeStateSchema = z.enum(['unknown', 'running', 'idle', 'stop-requested', 'stopped', 'completed', 'interrupted'])
 const envelope = {
@@ -33,16 +39,24 @@ const envelope = {
   expectedEpoch: teamIdSchema, expectedActorId: teamIdSchema, expectedDeviceId: teamIdSchema.nullable(),
   expectedGeneration: counter, expectedExecutionId: teamIdSchema.nullable()
 }
+const artifactProducer = { expectedNodeId: teamExecutionNodeIdSchema, expectedAttempt: serial }
 export const teamExecutionCommandSchema = z.discriminatedUnion('kind', [
   z.object({ ...envelope, kind: z.literal('claim'), ownership: z.enum(['product-managed', 'editor-owned']),
     workflow: teamExecutionWorkflowRefSchema, executor: teamExecutionExecutorSchema,
     inputBundle: teamExecutionBundleRefSchema.nullable(), predecessorExecutionId: teamIdSchema.nullable(),
-    source: teamExecutionSourceRefSchema.nullable(), nodeId: name, attempt: serial }).strict(),
-  z.object({ ...envelope, kind: z.literal('report'), seq: serial, nodeId: name, attempt: serial,
+    source: teamExecutionSourceRefSchema.nullable(), nodeId: teamExecutionNodeIdSchema, attempt: serial }).strict(),
+  z.object({ ...envelope, kind: z.literal('report'), seq: serial, nodeId: teamExecutionNodeIdSchema, attempt: serial,
     state: teamTaskProgressRecordSchema.shape.state, step: teamTaskProgressRecordSchema.shape.step,
     blockingReason: teamTaskProgressRecordSchema.shape.blockingReason, nativeState: teamExecutionNativeStateSchema }).strict(),
   z.object({ ...envelope, kind: z.literal('finalize'), finalization: teamExecutionFinalizationSchema }).strict(),
   z.object({ ...envelope, kind: z.literal('release'), nativeState: teamExecutionNativeStateSchema }).strict(),
+  z.object({ ...envelope, ...artifactProducer, kind: z.literal('save-artifact'), artifactId: teamIdSchema, previousVersionId: teamIdSchema.nullable(),
+    artifactKind: executionArtifactKindSchema, title: z.string().min(1).max(300), text: z.string().max(1024 * 1024),
+    expectedDigest: teamDigestSchema, disposition: z.enum(['draft', 'confirmed']) }).strict(),
+  z.object({ ...envelope, ...artifactProducer, kind: z.literal('seal-delivery'), previous: executionVersionRefSchema.nullable(),
+    entries: z.array(executionDeliveryEntrySchema).min(1).max(16) }).strict(),
+  z.object({ ...envelope, ...artifactProducer, kind: z.literal('checkpoint'), previous: executionVersionRefSchema.nullable(), manifest: executionVersionRefSchema,
+    remainingWork: z.string().max(8192), source: executionCodeSourceSchema, observation: executionSourceObservationSchema.nullable() }).strict(),
   z.object({ ...envelope, kind: z.literal('transition'), expectedRevision: counter, transition: hifoxTransitionTaskInputSchema }).strict()
 ])
 export type TeamExecutionCommand = z.infer<typeof teamExecutionCommandSchema>
@@ -50,10 +64,15 @@ export const teamExecutionRecordSchema = z.object({
   contractVersion: z.literal(2), executionId: teamIdSchema, task: teamTaskRefSchema, epoch: teamIdSchema, generation: serial,
   actorId: teamIdSchema, deviceId: teamIdSchema.nullable(), ownership: z.enum(['product-managed', 'editor-owned']),
   workflow: teamExecutionWorkflowRefSchema, executor: teamExecutionExecutorSchema, inputBundle: teamExecutionBundleRefSchema.nullable(),
-  predecessorExecutionId: teamIdSchema.nullable(), source: teamExecutionSourceRefSchema.nullable(), nodeId: name, attempt: serial,
+  predecessorExecutionId: teamIdSchema.nullable(), source: teamExecutionSourceRefSchema.nullable(), nodeId: teamExecutionNodeIdSchema, attempt: serial,
   authority: z.enum(['active', 'released', 'revoked']), revocationReason: z.string().max(200).nullable(),
   nativeState: teamExecutionNativeStateSchema, nativeVerification: z.literal('owner-reported'),
   progress: teamTaskProgressRecordSchema.nullable(), finalization: teamExecutionFinalizationSchema.nullable(),
+  nodeAttempts: z.array(z.object({ nodeId: teamExecutionNodeIdSchema, maxAttempt: serial }).strict()).max(64)
+    .refine(items => new Set(items.map(item => item.nodeId)).size === items.length, 'Duplicate visited output node').optional(),
+  artifacts: z.array(executionArtifactVersionSchema).max(64).optional(),
+  deliveries: z.array(executionDeliveryManifestSchema).max(16).optional(),
+  checkpoints: z.array(executionHandoffCheckpointSchema).max(16).optional(),
   createdAt: counter, updatedAt: counter
 }).strict()
 export type TeamExecutionRecord = z.infer<typeof teamExecutionRecordSchema>
@@ -62,9 +81,10 @@ export const teamExecutionViewSchema = z.object({ contractVersion: z.literal(2),
   active: teamExecutionRecordSchema.nullable(), serverTime: counter }).strict()
 export type TeamExecutionView = z.infer<typeof teamExecutionViewSchema>
 export const teamExecutionReceiptSchema = z.object({ contractVersion: z.literal(2), commandId: teamCommandIdSchema,
-  task: teamTaskRefSchema, epoch: teamIdSchema, kind: z.enum(['claim', 'report', 'finalize', 'release', 'transition']),
+  task: teamTaskRefSchema, epoch: teamIdSchema, kind: z.enum(['claim', 'report', 'finalize', 'release', 'transition', 'save-artifact', 'seal-delivery', 'checkpoint']),
   requestDigest: teamDigestSchema, executionId: teamIdSchema, generation: serial,
-  actorId: teamIdSchema, deviceId: teamIdSchema.nullable(), committedAt: counter }).strict()
+  actorId: teamIdSchema, deviceId: teamIdSchema.nullable(), committedAt: counter,
+  version: executionVersionRefSchema.optional(), disposition: z.enum(['draft', 'confirmed', 'conflict']).optional() }).strict()
 export type TeamExecutionReceipt = z.infer<typeof teamExecutionReceiptSchema>
 export const teamExecutionCommandReplySchema = z.object({ status: z.enum(['committed', 'duplicate']), commandId: teamCommandIdSchema, result: teamExecutionReceiptSchema }).strict()
 export const teamExecutionReadQuerySchema = z.object({ contractVersion: z.coerce.number().pipe(z.literal(2)), instanceId: teamIdSchema,
