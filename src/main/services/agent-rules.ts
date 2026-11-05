@@ -7,7 +7,9 @@ import { agentRulesManifestSchema, MAX_AGENT_RULE_SOURCES, teamTaskRulesContextS
 import { readDocument } from './documents/controller'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { taskDirSchema } from './acp/types'
-import { assertNoUnownedTeamTaskRules, MAX_TASK_RULE_BYTES, readTaskInputRules, type FixedTaskRule } from './hifox/task-input-rules'
+import { assertNoUnownedTeamTaskRules, MAX_TASK_RULE_BYTES, readTaskInputRules, readExecutionInputRules, type FixedTaskRule } from './hifox/task-input-rules'
+import { executionContextManifestSchema, executionContextPacketSchema, type ExecutionContextManifest, type ExecutionInputSource } from '../../shared/team-execution-input'
+import { executionContextEnvelopeBytes } from './execution-context-budget'
 
 const digest = (body: string): string => createHash('sha256').update(body, 'utf8').digest('hex')
 const MAX_RULE_BYTES = MAX_TASK_RULE_BYTES
@@ -24,6 +26,8 @@ const prepareSchema = z.object({
 }).strict()
 export type PrepareAgentRulesInput = z.input<typeof prepareSchema>
 export type PreparedAgentRules = { instructions: string; manifest: AgentRulesManifest }
+export type PrepareExecutionAgentRulesInput = { executionSource: ExecutionInputSource; nodeId: string }
+export type PreparedExecutionAgentRules = { instructions: string; manifest: ExecutionContextManifest; assertCurrent(): Promise<void> }
 type Rule = { path: string; source: 'project' | 'team'; body: string | null; totalBytes: number; declaredVersion?: string; indexOnly?: boolean; required?: boolean; fixed?: FixedTaskRule }
 const manifestLineSchema = z.object({ file: z.string().min(1).max(2048), type: z.string().optional() }).passthrough()
 const rootKey = (root: string): string => digest(process.platform === 'win32' ? root.toLowerCase() : root)
@@ -77,7 +81,10 @@ async function selectedPaths(root: string, taskDir?: string): Promise<{ paths: s
 }
 
 /** Bounded, versioned rules for both ordinary and explicitly task-bound sessions. */
-export async function prepareAgentRules(raw: PrepareAgentRulesInput): Promise<PreparedAgentRules> {
+export function prepareAgentRules(raw: PrepareAgentRulesInput): Promise<PreparedAgentRules>
+export function prepareAgentRules(raw: PrepareExecutionAgentRulesInput): Promise<PreparedExecutionAgentRules>
+export async function prepareAgentRules(raw: PrepareAgentRulesInput | PrepareExecutionAgentRulesInput): Promise<PreparedAgentRules | PreparedExecutionAgentRules> {
+  if ('executionSource' in raw) return prepareExecutionAgentRules(raw)
   const input = prepareSchema.parse(raw)
   const root = canonicalRoot(input.projectRoot)
   const fixed = input.teamTask && input.taskDir ? await readTaskInputRules({ projectRoot: root, taskDir: input.taskDir, teamTask: input.teamTask }) : undefined
@@ -162,6 +169,54 @@ export async function prepareAgentRules(raw: PrepareAgentRulesInput): Promise<Pr
   // JSON escaping can increase the final envelope beyond the raw source budget.
   if (utf8ByteLength(instructions) > IMPLICIT_MATERIAL_BUDGET_BYTES) throw new Error('Serialized Agent rules exceed their context budget; narrow the selected rules')
   return { instructions, manifest }
+}
+
+/** Same rule owner, additive fixed-source path; legacy packets/hashes stay byte-identical. */
+export async function prepareExecutionAgentRules(raw: PrepareExecutionAgentRulesInput): Promise<PreparedExecutionAgentRules> {
+  const fixed = await readExecutionInputRules(raw.executionSource, raw.nodeId), { input } = fixed.view
+  const role = input.definition.roles.find(item => item.id === fixed.node.roleId)
+  if (!role) throw new Error('Fixed node has no logical role instructions')
+  type Source = z.infer<typeof executionContextPacketSchema>['sources'][number]
+  const sources: Source[] = fixed.rules.map(rule => {
+    const selection = rule.resource.selection, required = selection.required
+    const status = rule.status !== 'available' || rule.body === null ? 'unavailable' : required ? 'full' : selection.delivery === 'omitted' ? 'omitted' : 'index-only'
+    const text = required ? rule.body : null
+    return { selection, sourceDigest: rule.resource.bodyDigest, sourceBytes: rule.resource.byteLength,
+      deliveredDigest: text === null ? null : digest(text), deliveredBytes: text === null ? 0 : utf8ByteLength(text), deliveredChars: text?.length ?? 0,
+      status, reason: rule.status === 'withdrawn' ? 'withdrawn' : status === 'unavailable' ? 'unavailable' : !required && (selection.delivery === 'full' || selection.delivery === 'partial') ? 'context-budget' : 'selected', text }
+  })
+  const packet = { contractVersion: 2 as const, inputDigest: input.digest, executionId: input.executionId, node: fixed.node, roleInstructions: role.instructions, sources }
+  const serialize = (): string => JSON.stringify(packet)
+  const envelopeBytes = (text: string): { acp: number; pi: number } => executionContextEnvelopeBytes({ uri: `trellis://execution-input/${input.executionId}/${encodeURIComponent(fixed.node.id)}/${digest(text)}`, mimeType: 'application/json', text })
+  const size = (): number => { const text = serialize(), bytes = envelopeBytes(text); return Math.max(utf8ByteLength(text), bytes.acp, bytes.pi) }
+  if (size() > IMPLICIT_MATERIAL_BUDGET_BYTES) throw new Error('Required fixed inputs and source receipts exceed the serialized 8 KiB context budget')
+  const provide = (index: number, text: string, status: 'full' | 'partial'): void => {
+    sources[index] = { ...sources[index], text, status, reason: status === 'full' ? 'selected' : 'context-budget', deliveredDigest: digest(text), deliveredBytes: utf8ByteLength(text), deliveredChars: text.length }
+  }
+  for (const [index, rule] of fixed.rules.entries()) {
+    const selection = rule.resource.selection
+    if (selection.required || rule.status !== 'available' || rule.body === null || ['index-only', 'omitted'].includes(selection.delivery)) continue
+    const initial = sources[index]
+    provide(index, rule.body, 'full')
+    if (size() <= IMPLICIT_MATERIAL_BUDGET_BYTES) continue
+    sources[index] = { ...initial, reason: 'context-budget' }
+    if (selection.delivery === 'full') continue
+    let low = 0, high = Math.min(utf8ByteLength(rule.body), IMPLICIT_MATERIAL_BUDGET_BYTES), best = ''
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2), text = clipUtf8(rule.body, middle)
+      provide(index, text, 'partial')
+      if (size() <= IMPLICIT_MATERIAL_BUDGET_BYTES) { best = text; low = middle + 1 } else high = middle - 1
+    }
+    if (best) provide(index, best, 'partial')
+    else sources[index] = { ...initial, reason: 'context-budget' }
+  }
+  const instructions = JSON.stringify(executionContextPacketSchema.parse(packet))
+  const manifest = executionContextManifestSchema.parse({ contractVersion: 2, state: 'prepared', inputDigest: input.digest,
+    nodeId: fixed.node.id, phaseId: fixed.node.phaseId, stage: fixed.node.stage,
+    instructionDigest: digest(JSON.stringify({ roleInstructions: role.instructions, node: fixed.node })), instructionBytes: utf8ByteLength(JSON.stringify({ roleInstructions: role.instructions, node: fixed.node })),
+    entries: sources.map(({ text: _text, ...receipt }) => receipt), serializedBytes: utf8ByteLength(instructions), envelopeBytes: envelopeBytes(instructions), packetDigest: digest(instructions) })
+  await fixed.assertCurrent()
+  return { instructions, manifest, assertCurrent: fixed.assertCurrent }
 }
 
 function manifestDigest(entries: AgentRulesManifest['entries'], teamTask?: TeamTaskRulesManifest): string {

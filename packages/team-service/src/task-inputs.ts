@@ -160,6 +160,28 @@ export class TeamTaskInputs {
 
   candidates(principal: StorePrincipal, raw: Record<string, unknown>): TaskInputCandidates { return this.candidatesFor(this.context(principal, raw, this.query(raw))) }
 
+  /** Exact original bundle, independent of the task's latest adoption. */
+  fixedExecutionBundle(principal: StorePrincipal, task: import('../../../src/shared/team-task-execution').TeamTaskRef, ref: import('../../../src/shared/team-task-execution').TeamExecutionRecord['inputBundle']): TaskInputBundle {
+    if (!ref || task.instanceId !== this.host.identity().instanceId) governanceFail('EXECUTION_INPUT_CONFLICT', 'A fixed adopted bundle from this service is required')
+    const ctx = this.context(principal, task, task)
+    const bundle = this.bundle(ctx, ref.bundleId)
+    if (bundle.revision !== ref.revision || bundle.digest !== ref.digest) governanceFail('EXECUTION_INPUT_CONFLICT', 'Original adopted bundle changed')
+    return bundle
+  }
+
+  fixedExecutionResource(principal: StorePrincipal, task: import('../../../src/shared/team-task-execution').TeamTaskRef,
+    source: Extract<import('../../../src/shared/team-execution-input').ExecutionInputResource['selection']['source'], { kind: 'governance' | 'confirmed-document' }>): { title: string; bodyDigest: string; byteLength: number; text: string; withdrawn: boolean } {
+    const ctx = this.context(principal, task, task)
+    if (source.kind === 'governance') {
+      const version = this.governance.version(ctx, source.packageId, source.versionId, true), text = this.governance.text(version)
+      if (Buffer.byteLength(text, 'utf8') !== version.byteLength || governanceHash(text) !== version.bodyDigest) governanceFail('CORRUPT_STORE', 'Fixed rule is not original UTF-8 text', 503)
+      return { title: version.title, bodyDigest: version.bodyDigest, byteLength: version.byteLength, text, withdrawn: this.governance.withdrawn(source.packageId, source.versionId) }
+    }
+    const ref = this.document(ctx, source.documentId, source.versionId), view = this.fixedDocument(ctx, source.documentId, source.versionId)
+    if (Buffer.byteLength(view.text, 'utf8') !== ref.byteLength || governanceHash(view.text) !== ref.bodyDigest) governanceFail('CORRUPT_STORE', 'Fixed document is not original UTF-8 text', 503)
+    return { title: ref.title, bodyDigest: ref.bodyDigest, byteLength: ref.byteLength, text: view.text, withdrawn: this.withdrawnDocument(source.documentId, source.versionId) }
+  }
+
   private bundle(ctx: Context, bundleId: string): TaskInputBundle {
     const row = this.host.get('SELECT recordJson FROM task_input_bundles WHERE bundleId=? AND projectId=? AND taskId=? AND spaceId=? AND taskCreatedAt=?', bundleId, ctx.projectId, ctx.task.id, ctx.space.id, ctx.task.createdAt)
     if (!row) governanceFail('TASK_INPUT_UNAVAILABLE', 'Original input revision is unavailable', 404)

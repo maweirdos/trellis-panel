@@ -15,6 +15,7 @@ import { taskProgressFence } from './task-progress'
 type Host = Pick<HifoxWorkspaceHost, 'identity' | 'get' | 'all' | 'run' | 'authenticate' | 'project' | 'mutation'> & {
   inputs(principal: StorePrincipal, task: TeamTaskRef): TaskInputRead
   dependency(principal: StorePrincipal, task: TeamTaskRef, ref: z.infer<typeof teamExecutionDependencySchema>): void
+  fixedInput(principal: StorePrincipal, execution: TeamExecutionRecord): void
   transition(principal: StorePrincipal, projectId: string, revision: number, input: HifoxTransitionTaskInput): void
   event(actorId: string, task: TeamTaskRef, executionId: string, commandId: string | null, kind: string): void
 }
@@ -155,6 +156,14 @@ export class TeamTaskExecutions {
     if (teamTaskIdentity(row.record.task) !== teamTaskIdentity(ref)) fail('EXECUTION_SCOPE_CONFLICT', 'Execution belongs to another task')
     return row.record.authority === 'active' && !this.valid(row) ? { ...row.record, authority: 'revoked', revocationReason: 'authority-changed' } : row.record
   }
+  /** Shared input capture/use has exactly the admitted writer's original owner. */
+  assertInputOwner(actor: StoreActor, task: TeamTaskRef, id: string, generation: number): TeamExecutionRecord {
+    this.context(actor, task, true)
+    const row = this.row(id), head = this.head(task)
+    if (teamTaskIdentity(row.record.task) !== teamTaskIdentity(task) || row.ownerKey !== owner(actor)) fail('EXECUTION_FORBIDDEN', 'Original execution owner is required', 403)
+    if (row.record.authority !== 'active' || row.record.finalization || row.record.generation !== generation || head.generation !== generation || head.activeExecutionId !== id || !this.valid(row)) fail('EXECUTION_GENERATION_CONFLICT', 'Original execution is no longer usable')
+    return row.record
+  }
   private checkInputs(ctx: Context, inputBundle: TeamExecutionRecord['inputBundle']): void {
     const inputs = this.host.inputs(ctx.principal, ctx.ref)
     const current = inputs.current ? { bundleId: inputs.current.bundleId, revision: inputs.current.revision, digest: inputs.current.digest } : null
@@ -228,6 +237,7 @@ export class TeamTaskExecutions {
               progress: { seq: command.seq, state: command.state, step: command.step, blockingReason: command.blockingReason, updatedAt: Date.now() } }
           } else if (command.kind === 'finalize') {
             if (record.finalization) fail('EXECUTION_FINALIZATION_CONFLICT', 'Execution already has a finalization boundary')
+            this.host.fixedInput(principal, record)
             for (const ref of command.finalization.outputs) this.host.dependency(principal, ctx.ref, ref)
             record = { ...record, finalization: command.finalization, nativeState: command.finalization.outcome }
           } else if (command.kind === 'release') {
@@ -264,6 +274,7 @@ export class TeamTaskExecutions {
     // A manager's forced reassignment and cancellation revoke writes before native shutdown is known.
     if (transition.action === 'decline' || transition.action === 'reassign' && principal.person.userId !== handler(task)) return
     if (record.finalization?.outcome !== 'completed' || record.finalization.outputs.length === 0) fail('EXECUTION_FINALIZATION_REQUIRED', 'Ordinary handoff requires completed finalization and confirmed output versions')
+    this.host.fixedInput(principal, record)
     const ref = { ...record.task, projectId }
     for (const dependency of record.finalization.outputs) this.host.dependency(principal, ref, dependency)
   }

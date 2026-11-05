@@ -4,6 +4,7 @@ import { taskMaterialInputReferenceSchema } from './task-material-inputs'
 import { teamCommandIdSchema, teamCommandReplySchema, teamDigestSchema, teamIdSchema } from './team-platform'
 import { teamTaskMaterialScopeSchema } from './team-task-materials'
 import { teamTaskProgressResourceIdSchema } from './team-task-progress'
+export * from './team-execution-input'
 
 const counter = z.number().int().nonnegative().safe()
 const serial = counter.min(1)

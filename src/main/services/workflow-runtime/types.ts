@@ -41,6 +41,8 @@ export type WorkflowAcpTurnIdentity = { sessionId: string; turnId: string; conne
 /** Backend-only argument. Never expose this through AcpPromptOptions or preload. */
 export type WorkflowPreparedPrompt = {
   materials: PreparedMaterials
+  /** Fixed shared stage context; supplied only by an authenticated backend owner. */
+  executionContext?: import('../agent-rules').PreparedExecutionAgentRules
   assertActive: () => void
   onAdmitted?: (identity: WorkflowAcpTurnIdentity) => void
   onPromptWritten?: (identity: WorkflowAcpTurnIdentity) => void

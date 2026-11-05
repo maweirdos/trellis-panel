@@ -5,6 +5,7 @@ import { teamTaskProgressResourceIdSchema } from './team-task-progress'
 import { teamTaskMaterialKindSchema } from './team-task-materials'
 import type { TaskInputBundle, TaskInputCandidates, TaskInputCommand, TaskInputRead, TaskInputReceipt, TaskInputScope, TaskInputDocumentView } from './team-task-inputs'
 import type { TaskMaterialInputReference } from './task-material-inputs'
+import { portableWorkflowDefinitionSchema } from './workflow/portable-definition'
 
 const counter = z.number().int().nonnegative().safe()
 const serial = counter.min(1)
@@ -21,7 +22,7 @@ export const governanceNodeSchema = z.object({
 }).strict()
 export const governanceSettingsSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('rule'), applicability: governanceApplicabilitySchema, obligation: z.enum(['required', 'recommended']), priority: z.number().int().min(0).max(1000), conflictKey: z.string().trim().max(100) }).strict(),
-  z.object({ kind: z.literal('workflow-template'), preset: z.enum(['small-change', 'standard', 'custom']), nodes: z.array(governanceNodeSchema).min(1).max(11).refine(nodes => new Set(nodes.map(node => node.stage)).size === nodes.length, 'Duplicate formal stage').refine(nodes => nodes.every((node, index) => index === 0 || hifoxTaskStageSchema.options.indexOf(nodes[index - 1].stage) < hifoxTaskStageSchema.options.indexOf(node.stage)), 'Nodes must retain the existing formal stage order') }).strict()
+  z.object({ kind: z.literal('workflow-template'), preset: z.enum(['small-change', 'standard', 'custom']), execution: portableWorkflowDefinitionSchema.optional(), nodes: z.array(governanceNodeSchema).min(1).max(11).refine(nodes => new Set(nodes.map(node => node.stage)).size === nodes.length, 'Duplicate formal stage').refine(nodes => nodes.every((node, index) => index === 0 || hifoxTaskStageSchema.options.indexOf(nodes[index - 1].stage) < hifoxTaskStageSchema.options.indexOf(node.stage)), 'Nodes must retain the existing formal stage order') }).strict()
 ])
 export const GOVERNANCE_PRESETS = {
   'small-change': [

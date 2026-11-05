@@ -10,7 +10,8 @@ import { TEAM_CONTENT_SQL } from './content-schema'
 import { TEAM_GOVERNANCE_SQL } from './governance-schema'
 import { TEAM_TASK_EXECUTIONS_SQL, TEAM_TASK_EXECUTION_BOUNDARY_SQL } from './task-executions-schema'
 import { TEAM_IMPORTS_SQL } from './imports-schema'
-export const TEAM_SCHEMA_VERSION = 20
+import { TEAM_EXECUTION_INPUTS_SQL } from './execution-inputs-schema'
+export const TEAM_SCHEMA_VERSION = 21
 export const TEAM_INVITATION_SPACES_SQL = `CREATE TABLE IF NOT EXISTS invitation_spaces(invitationId TEXT PRIMARY KEY REFERENCES invitations(invitationId),spaceId TEXT NOT NULL,spaceName TEXT NOT NULL,workspaceRevision INTEGER NOT NULL,workspaceEpoch TEXT NOT NULL);`
 export const TEAM_INVITATION_SPACE_IDENTITY_SQL = `
 ALTER TABLE invitation_spaces ADD COLUMN spaceCreatedAt TEXT;
@@ -95,4 +96,5 @@ ${TEAM_GOVERNANCE_SQL}
 ${TEAM_TASK_EXECUTIONS_SQL}
 ${TEAM_TASK_EXECUTION_BOUNDARY_SQL}
 ${TEAM_IMPORTS_SQL}
+${TEAM_EXECUTION_INPUTS_SQL}
 `

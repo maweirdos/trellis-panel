@@ -14,6 +14,7 @@ import { readAcpStoredImages } from '../../../shared/acp-images'
 import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
 import { inspectPiWebPreviewEntry } from './engine/web-preview-entry'
 import { prepareAgentRules, assertAgentRulesCurrent } from '../agent-rules'
+import { composePiPromptPacket } from './prompt-context'
 import { taskRule } from '../hifox/task-progress-context'
 import { reportTaskProgress } from '../hifox/task-progress-events'
 import type { AcpJobOwner } from '../workcopy-use/acp-jobs'
@@ -329,7 +330,7 @@ export class PiConversationRuntime implements ConversationRuntime {
       void (async () => {
         input.assertActive?.()
         this.assertConfiguration()
-        const accepted = await this.call('prompt', { text: input.text, context: input.context, images: input.attachments?.map(image => ({ mimeType: image.mediaType, data: image.data })) })
+        const accepted = await this.call('prompt', composePiPromptPacket(input))
         if (!accepted || typeof accepted !== 'object' || !('accepted' in accepted) || accepted.accepted !== true) throw new Error('Pi 未确认接纳本次输入')
         if (this.running === run && !run.startedAcknowledged) { run.startedAcknowledged = true; run.started() }
       })().catch(async error => {

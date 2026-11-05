@@ -10,6 +10,8 @@ import { resolveAuthorizedDocumentPath } from '../documents/paths'
 import { HifoxWorkBindings, nativeRootKey, validateHifoxProject, type HifoxWorkRecord } from './task-workspace-records'
 import { taskDevelopmentKey } from './task-development-identity'
 import type { HifoxWorkSource } from './task-workspace-source'
+import { executionInputViewSchema, executionInputResourceViewSchema, executionInputDigestText, type ExecutionInputSource, type ExecutionInputResource, type ExecutionInputView } from '../../../shared/team-execution-input'
+import { taskInputCanonical } from '../../../shared/team-task-inputs'
 
 export const MAX_TASK_RULE_BYTES = 128 * 1024
 const MAX_INPUT_BYTES = 256 * 1024
@@ -25,6 +27,42 @@ export type TaskInputRulesAuthority = {
 export type TaskInputRulesAuthorityCapture = (input: TaskInputRulesInput) => Promise<TaskInputRulesAuthority>
 export type FixedTaskRule = { path: string; version: GovernanceVersion; body: string | null; required: boolean }
 export type TaskInputRules = { rules: FixedTaskRule[]; manifest: TeamTaskRulesManifest }
+export type FixedExecutionRules = { view: ExecutionInputView; node: Extract<ExecutionInputView['input']['definition']['nodes'][number], { kind: 'agent' }>;
+  rules: Array<{ resource: ExecutionInputResource; body: string | null; status: 'available' | 'withdrawn' | 'unavailable' }>; assertCurrent(): Promise<void> }
+
+/** Authenticated fixed sources have no native root/taskDir/JSONL prerequisite. */
+export async function readExecutionInputRules(source: ExecutionInputSource, nodeId: string): Promise<FixedExecutionRules> {
+  const view = executionInputViewSchema.parse(await source.read()), input = view.input
+  if (view.purpose !== 'use' || hash(executionInputDigestText(input)) !== input.digest) throw new Error('Execution input is historical or its fixed digest is invalid')
+  const node = input.definition.nodes.find(item => item.id === nodeId)
+  if (!node || node.kind !== 'agent') throw new Error('Only a declared Agent node can compose model context')
+  const resources = input.resources.filter(item => item.selection.nodeId === nodeId).sort((a, b) => a.selection.order - b.selection.order)
+  if (resources.length > 24 || !resources.length || new Set(resources.map(item => item.selection.id)).size !== resources.length || new Set(resources.map(item => item.selection.order)).size !== resources.length) throw new Error('Invalid or oversized fixed stage selection')
+  const agent = input.agents.find(item => item.roleId === node.roleId)
+  if (!agent || !resources.some(item => item.selection.required && item.selection.source.kind === 'agent-instructions' && item.selection.source.roleId === node.roleId)) throw new Error('Captured Agent instructions are required for this node')
+  for (const skill of agent.skills) if (!resources.some(item => item.selection.required && item.selection.source.kind === 'skill' && item.selection.source.roleId === node.roleId && item.selection.source.skillId === skill.skillId)) throw new Error('A captured bound skill is missing from this node')
+  const rules = await Promise.all(resources.map(async resource => {
+    const selection = resource.selection
+    if (selection.phaseId !== node.phaseId || selection.stage !== node.stage) throw new Error('Selection stage differs from its fixed node')
+    const statuses = view.resources.filter(item => item.selectionId === selection.id)
+    if (statuses.length !== 1) throw new Error('Fixed input has an ambiguous source availability receipt')
+    const result = executionInputResourceViewSchema.parse(await source.readResource(selection.id))
+    if (result.inputDigest !== input.digest || taskInputCanonical(result.resource) !== taskInputCanonical(resource) || result.status !== statuses[0].status) throw new Error('Fixed source changed while assembling the node')
+    if (selection.required && (result.status !== 'available' || result.text === null || selection.delivery !== 'full')) throw new Error('Required fixed input is missing, withdrawn or not fully selected')
+    if (result.text !== null && (Buffer.byteLength(result.text, 'utf8') !== resource.byteLength || hash(result.text) !== resource.bodyDigest)) throw new Error('Fixed source body failed its exact UTF-8 digest/length check')
+    const selectedSource = selection.source
+    const sourceAgent = selectedSource.kind === 'agent-instructions' || selectedSource.kind === 'skill' ? input.agents.find(item => item.roleId === selectedSource.roleId) : undefined
+    const captured = selectedSource.kind === 'agent-instructions' ? sourceAgent?.instructions : selectedSource.kind === 'skill' ? sourceAgent?.skills.find(item => item.skillId === selectedSource.skillId) : undefined
+    if ((selection.source.kind === 'skill' || selection.source.kind === 'agent-instructions') && (!captured || captured.bodyDigest !== resource.bodyDigest || captured.byteLength !== resource.byteLength)) throw new Error('Agent/skill source differs from the original captured bytes')
+    return { resource, body: result.status === 'available' ? result.text : null, status: result.status }
+  }))
+  const assertCurrent = async (): Promise<void> => {
+    const current = executionInputViewSchema.parse(await source.read())
+    if (taskInputCanonical(current) !== taskInputCanonical(view)) throw new Error('Original execution input authority or source status changed')
+  }
+  await assertCurrent()
+  return { view, node, rules, assertCurrent }
+}
 let authorityCapture: TaskInputRulesAuthorityCapture | undefined
 
 /** Installed by the daemon's task owner, never by a renderer or a selected GUI root. */

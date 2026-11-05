@@ -12,6 +12,11 @@ no scheduling, native Agent invocation, persistence, Jira mutation or permission
 grant. Existing Flow and ACP execution stay authoritative for their own paths
 until a later explicit adapter integrates the new contracts.
 
+Portable team definitions and fixed execution-input version 2 follow
+[Fixed execution inputs](../backend/team-execution-inputs.md). The version-1
+identities and local Flow contracts below keep their original interpretation;
+portable definitions publish logical policies, while concrete bindings stay local.
+
 ## 2. Signatures
 
 Import the public surface from `src/shared/workflow/index.ts`:

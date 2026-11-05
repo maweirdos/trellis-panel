@@ -1,8 +1,83 @@
 import { promises as fs } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { legacyFlowSchema, workflowDefinitionSchema, canonicalWorkflowJson, executorBindingSchema, type WorkflowDefinition } from '../../../shared/workflow'
+import { legacyFlowSchema, workflowDefinitionSchema, canonicalWorkflowJson, executorBindingSchema, capabilityFactSchema, type WorkflowDefinition } from '../../../shared/workflow'
 import { resolveAuthorizedDocumentPath } from '../documents/paths'
 import { WorkflowApplicationError, type ApplicationNodePolicy, type ResolvedApplicationDefinition, type VerifiedApplicationExecutor } from './types'
+import { z } from 'zod'
+import { portableWorkflowDefinitionSchema, type PortableWorkflowDefinition } from '../../../shared/workflow/portable-definition'
+import { executionInputViewSchema, executionInputDigestText, type ExecutionInputSource } from '../../../shared/team-execution-input'
+import { taskInputCanonical } from '../../../shared/team-task-inputs'
+
+export interface PortableDefinitionSource {
+  read(): Promise<PortableWorkflowDefinition>
+  assertCurrent(): void | Promise<void>
+}
+/** Device-local resolution input. None of these fields belongs in the published definition. */
+export const portableExecutorConfigurationSchema = z.object({ runtime: z.enum(['pi', 'codex', 'claude']),
+  agentId: z.string().min(1).max(256), profileId: z.string().min(1).max(256).optional(), modelId: z.string().min(1).max(512).nullable().optional(), binding: executorBindingSchema }).strict()
+export type ResolvedPortableDefinition = { definition: PortableWorkflowDefinition;
+  nodes: Record<string, { configuration: z.infer<typeof portableExecutorConfigurationSchema>; requiredCapabilities: string[] }>;
+  assertCurrent(): Promise<void>; assertExecutionCurrent(): void }
+
+function freezePortableValue<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    Object.freeze(value)
+    Object.values(value).forEach(child => freezePortableValue(child))
+  }
+  return value
+}
+
+/** Reads the exact adopted version rather than a local Flow or a current publication head. */
+export function executionDefinitionSource(source: ExecutionInputSource): PortableDefinitionSource {
+  let pinned: string | undefined
+  const read = async (): Promise<PortableWorkflowDefinition> => {
+    const view = executionInputViewSchema.parse(await source.read())
+    if (view.purpose !== 'use' || createHash('sha256').update(executionInputDigestText(view.input)).digest('hex') !== view.input.digest) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'Fixed workflow source is not authorized execution input')
+    if (pinned !== undefined && pinned !== view.input.digest) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'Execution input changed; resolve a new boundary explicitly')
+    pinned = view.input.digest
+    return portableWorkflowDefinitionSchema.parse(view.input.definition)
+  }
+  return { read, assertCurrent: async () => { await read() } }
+}
+
+/** Capability resolution only; this function never launches or schedules a node. */
+export async function resolvePortableApplicationDefinition(input: { source: PortableDefinitionSource;
+  roles: Record<string, z.input<typeof portableExecutorConfigurationSchema>>; toolCapabilities?: Record<string, z.infer<typeof executorBindingSchema>['capabilities']>;
+  assertExecutionCurrent(): void }): Promise<ResolvedPortableDefinition> {
+  const assertExecutionCurrent = input.assertExecutionCurrent
+  const source = { read: input.source.read.bind(input.source), assertCurrent: input.source.assertCurrent.bind(input.source) }
+  // Capture device-local choices before the first source wait; caller mutations
+  // cannot retarget an in-flight resolution or its later authority checks.
+  const roles = structuredClone(input.roles), toolCapabilities = structuredClone(input.toolCapabilities ?? {})
+  const definition = portableWorkflowDefinitionSchema.parse(await source.read()), nodes: ResolvedPortableDefinition['nodes'] = Object.create(null)
+  const requireCapabilities = (required: string[], facts: z.infer<typeof executorBindingSchema>['capabilities']): void => {
+    for (const capability of required) {
+      const fact = capabilityFactSchema.safeParse(facts[capability])
+      if (!fact.success || fact.data.status !== 'supported') throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', `Required adapter capability is unavailable: ${capability}`)
+    }
+  }
+  for (const node of definition.nodes) {
+    if (node.kind === 'gate') continue
+    if (node.kind === 'tool') {
+      requireCapabilities([`tool:${node.tool}`, ...node.requiredCapabilities], Object.hasOwn(toolCapabilities, node.id) ? toolCapabilities[node.id] : {})
+      continue
+    }
+    const role = definition.roles.find(item => item.id === node.roleId), raw = Object.hasOwn(roles, node.roleId) ? roles[node.roleId] : undefined
+    if (!role || !raw) throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', `No local configuration for logical role ${node.roleId}`)
+    const configuration = portableExecutorConfigurationSchema.parse(raw)
+    if (configuration.agentId !== configuration.runtime || configuration.binding.engineId !== configuration.agentId) throw new WorkflowApplicationError('CAPABILITY_UNAVAILABLE', 'Local runtime and verified executor identity differ')
+    const requiredCapabilities = [...new Set([configuration.runtime === 'pi' ? 'sdkContext' : 'embeddedContext', ...role.requiredCapabilities, ...node.requiredCapabilities])]
+    requireCapabilities(requiredCapabilities, configuration.binding.capabilities)
+    nodes[node.id] = { configuration, requiredCapabilities }
+  }
+  const identity = taskInputCanonical(definition)
+  await source.assertCurrent(); assertExecutionCurrent()
+  return freezePortableValue({ definition, nodes, assertExecutionCurrent, assertCurrent: async () => {
+    await source.assertCurrent()
+    if (taskInputCanonical(portableWorkflowDefinitionSchema.parse(await source.read())) !== identity) throw new WorkflowApplicationError('MATERIAL_CHANGED', 'Portable workflow changed after resolution')
+    assertExecutionCurrent()
+  } })
+}
 
 /** Reads the existing Flow source; output policies remain explicit main configuration. */
 export async function readLocalApplicationDefinition(input: {

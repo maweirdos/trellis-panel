@@ -43,6 +43,9 @@ import { TEAM_TASK_EXECUTIONS_SQL, TEAM_TASK_EXECUTION_BOUNDARY_SQL } from './ta
 import { teamTaskRefSchema } from '../../../src/shared/team-task-execution'
 import { TeamImports } from './imports'
 import { TEAM_IMPORTS_SQL } from './imports-schema'
+import { TEAM_EXECUTION_INPUTS_SQL } from './execution-inputs-schema'
+import { TeamExecutionInputs } from './execution-inputs'
+import { executionInputSelectionIdSchema } from '../../../src/shared/team-execution-input'
 
 type Row = Record<string, SQLOutputValue>
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
@@ -149,9 +152,13 @@ export class TeamStoreCore {
     mutation: (...args) => this.mutation(...args),
     inputs: (p, task) => this.taskInputs.read(p, { projectId: task.projectId, taskId: task.taskId, query: { spaceId: task.spaceId, taskCreatedAt: task.taskCreatedAt } }),
     dependency: (p, task, ref) => this.taskInputs.validateExecutionDependency(p, task, ref),
+    fixedInput: (p, execution) => this.executionInputs.assertUsable(p, execution),
     transition: (...args) => this.hifox.executionTransition(...args),
     event: (actorId, task, executionId, commandId, kind) => this.event('task.execution-changed', 'personal', actorId, task.projectId, { taskId: task.taskId, spaceId: task.spaceId, executionId, commandId, kind })
   })
+  private readonly executionInputs = new TeamExecutionInputs({ ...this.governanceHost,
+    event: (actorId, task, executionId, commandId) => this.event('task.execution-changed', 'personal', actorId, task.projectId, { taskId: task.taskId, spaceId: task.spaceId, executionId, commandId, kind: 'input-captured' })
+  }, this.taskInputs, this.executions)
   private readonly creations = new TeamCreations({
     identity: () => ({ epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
@@ -243,6 +250,7 @@ export class TeamStoreCore {
       if (current >= 1 && current <= 17) this.transaction(() => { this.db.exec(TEAM_TASK_EXECUTIONS_SQL); this.db.exec('PRAGMA user_version=18') })
       if (current >= 1 && current <= 18) this.transaction(() => { this.db.exec(TEAM_TASK_EXECUTION_BOUNDARY_SQL); this.db.exec('PRAGMA user_version=19') })
       if (current >= 1 && current <= 19) this.transaction(() => { this.db.exec(TEAM_IMPORTS_SQL); this.db.exec('PRAGMA user_version=20') })
+      if (current >= 1 && current <= 20) this.transaction(() => { this.db.exec(TEAM_EXECUTION_INPUTS_SQL); this.db.exec('PRAGMA user_version=21') })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
@@ -330,7 +338,7 @@ export class TeamStoreCore {
     const requestHash = digest(canonical({ kind, input }))
     return this.transaction(() => {
       const principal = this.authenticate(actor); authorize(principal)
-      if (kind === 'taskExecutionCommand' && this.get('SELECT commandId FROM hifox_task_progress_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a v1 progress operation', 409)
+      if (['taskExecutionCommand', 'executionInputCommand'].includes(kind) && this.get('SELECT commandId FROM hifox_task_progress_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a v1 progress operation', 409)
       if (this.get('SELECT commandId FROM team_content_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a content operation', 409)
       const previous = this.get('SELECT kind,requestHash,resultJson FROM commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)
       if (previous) {
@@ -633,6 +641,14 @@ export class TeamStoreCore {
     if (operation === 'taskInputReadDocument') return this.taskInputs.readDocument(principal, raw)
     if (operation === 'taskInputCommand') return this.taskInputs.command(actor, raw)
     if (operation === 'taskInputReceipt') return this.taskInputs.receipt(principal, raw)
+    if (operation === 'executionInputCommand') return this.executionInputs.command(actor, raw.body)
+    if (operation === 'executionInputReconcile') return this.executionInputs.reconcile(actor, raw.body)
+    if (operation === 'executionInputRead' || operation === 'executionInputResource') {
+      const task = teamTaskRefSchema.parse(raw.task), executionId = teamIdSchema.parse(raw.executionId)
+      const purpose = z.enum(['history', 'use']).parse(raw.purpose)
+      return operation === 'executionInputRead' ? this.executionInputs.read(actor, task, executionId, purpose)
+        : this.executionInputs.readResource(actor, task, executionId, purpose, executionInputSelectionIdSchema.parse(raw.selectionId))
+    }
     if (operation === 'codeResourceList') return this.codeResources.list(principal, raw)
     if (operation === 'codeResourceCommand') return this.codeResources.command(actor, raw)
     if (operation === 'taskCodeResourceRead') return this.codeResources.readTask(principal, raw)

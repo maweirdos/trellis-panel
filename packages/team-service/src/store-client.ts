@@ -8,6 +8,7 @@ for (const operation of ['contentConfigRead', 'contentCapabilities', 'contentJob
 for (const operation of ['governanceList', 'governanceRead', 'governanceReceipt', 'taskInputRead', 'taskInputCandidates', 'taskInputRevision', 'taskInputReadDocument', 'taskInputReceipt'] as const) readOnlyOperations.add(operation)
 readOnlyOperations.add('taskDevelopmentContext')
 for (const operation of ['taskExecutionRead', 'taskExecutionHistory', 'taskExecutionReconcile'] as const) readOnlyOperations.add(operation)
+for (const operation of ['executionInputRead', 'executionInputResource', 'executionInputReconcile'] as const) readOnlyOperations.add(operation)
 for (const operation of ['importReconcile', 'importNamespaces', 'importItems', 'importRead', 'importBatch'] as const) readOnlyOperations.add(operation)
 export class TeamStore {
   private readonly worker: Worker

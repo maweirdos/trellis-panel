@@ -5,6 +5,8 @@ import serveStatic from '@fastify/static'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { WORKFLOW_ID_MAX_LENGTH } from '../../../src/shared/workflow/identity'
+export { portableWorkflowDefinitionSchema, portableWorkflowNodeSchema, portableOutputSchema, executionStageSchema } from '../../../src/shared/workflow/portable-definition'
 import { TeamAuthentication } from './auth'
 import { parseTeamConfig, type TeamServiceConfigInput, type TeamServiceConfig } from './config'
 import { TeamServiceError } from './errors'
@@ -16,7 +18,7 @@ export type TeamService = { app: FastifyInstance; config: TeamServiceConfig; sto
 export async function createTeamService(input: TeamServiceConfigInput): Promise<TeamService> {
   const config = parseTeamConfig(input)
   const store = await TeamStore.open({ dataDir: config.dataDir, issuer: config.oidc?.issuer ?? '', bootstrapSubject: config.bootstrapSubject, identityProvider: config.gitlabBaseUrl || config.gitlabIntegration ? 'gitlab' : 'oidc', sessionTtlMs: config.sessionTtlMs, pairingTtlMs: config.pairingTtlMs, onlineTtlMs: config.onlineTtlMs })
-  const app = Fastify({ bodyLimit: 2 * 1024 * 1024, requestTimeout: 15_000, connectionTimeout: 10_000, keepAliveTimeout: 5000, logController: new LogController({ disableRequestLogging: true }), logger: config.logger ? { redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-csrf-token"]', 'req.headers["x-trellis-session-proof"]', 'res.headers["set-cookie"]'], level: 'info' } : false })
+  const app = Fastify({ routerOptions: { maxParamLength: WORKFLOW_ID_MAX_LENGTH }, bodyLimit: 2 * 1024 * 1024, requestTimeout: 15_000, connectionTimeout: 10_000, keepAliveTimeout: 5000, logController: new LogController({ disableRequestLogging: true }), logger: config.logger ? { redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-csrf-token"]', 'req.headers["x-trellis-session-proof"]', 'res.headers["set-cookie"]'], level: 'info' } : false })
   app.decorateRequest('teamPrincipal', null)
   app.setErrorHandler((error, _request, reply) => {
     const http = error instanceof Error ? error as Error & { statusCode?: number; code?: string } : null

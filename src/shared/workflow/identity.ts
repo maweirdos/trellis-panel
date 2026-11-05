@@ -2,7 +2,8 @@
 import { z } from 'zod'
 
 export const WORKFLOW_CONTRACT_VERSION = 1 as const
-export const workflowIdSchema = z.string().min(1).max(512).refine((value) => value === value.trim() && !/[\u0000-\u001f\u007f]/.test(value), 'Identity must not have surrounding whitespace or control characters')
+export const WORKFLOW_ID_MAX_LENGTH = 512
+export const workflowIdSchema = z.string().min(1).max(WORKFLOW_ID_MAX_LENGTH).refine((value) => value === value.trim() && !/[\u0000-\u001f\u007f]/.test(value), 'Identity must not have surrounding whitespace or control characters')
 export const workflowRevisionSchema = z.number().int().positive().safe()
 export const workflowTimestampSchema = z.number().int().nonnegative().safe()
 export const workflowDigestSchema = z.string().regex(/^[0-9a-f]{64}$/, 'Expected a full SHA-256 digest')

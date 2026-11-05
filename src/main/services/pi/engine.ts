@@ -7,6 +7,7 @@ import {
   type AgentSession, type AgentSessionEvent, type ExtensionFactory, type ModelRuntime
 } from '@earendil-works/pi-coding-agent'
 import { z } from 'zod'
+import { runtimeContextText } from '../execution-context-budget'
 import { PI_FRAME_BYTES, piInitializeSchema, piStateSchema, type PiActivity, type PiChildMessage, type PiInitialize, type PiPermission, type PiState } from './protocol'
 import { createModels, disposeModels, initialModelSelection, selectedModel } from './engine/models'
 import { createResources, mcpLogPath, mcpRegistration } from './engine/resources'
@@ -473,7 +474,7 @@ function beginTurn(current: AgentSession, prompt: Prompt | { instructions?: stri
         await current.compact(compact || undefined)
       } else {
         // Context is carried as literal, source-labelled user input; it cannot select resources or extensions.
-        const context = prompt.context?.map(item => `\n\n<attached_context uri=${JSON.stringify(item.uri)} mimeType=${JSON.stringify(item.mimeType ?? 'text/plain')}>\n${item.text}\n</attached_context>`).join('') ?? ''
+        const context = runtimeContextText(prompt.context)
         await current.prompt(prompt.text + context, { source: 'rpc', expandPromptTemplates: false,
           images: prompt.images?.map(item => ({ type: 'image' as const, ...item })) })
       }

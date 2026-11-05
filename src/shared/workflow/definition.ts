@@ -11,6 +11,7 @@ import {
 } from './contracts'
 import { workflowDigestSchema } from './identity'
 import type { FlowDef } from '../types'
+export { portableWorkflowDefinitionSchema, portableWorkflowNodeSchema, portableOutputSchema, executionStageSchema, type PortableWorkflowDefinition } from './portable-definition'
 
 const commonStep = { id: workflowIdSchema, name: z.string().min(1) }
 const agentStepSchema = z.object({

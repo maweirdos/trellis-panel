@@ -324,6 +324,63 @@ is excluded before hydration. Pages default50/max100 and stay below 3 MiB minus
 no engine and installs no project files. See the executable contract at
 `.trellis/spec/backend/team-task-executions-v2.md`.
 
+## Fixed execution inputs — contract v2
+
+Schemas and canonical digest preimages are exported from
+`shared/team-execution-input.ts` through this package. Workflow-template settings
+accept optional `execution:PortableWorkflowDefinition` version 2. Existing
+version-1 settings and input bundle hashes retain their original representation.
+Portable definitions contain logical roles, ordered Agent/tool/gate declarations,
+required capabilities and output/gate policies. Device-local engine, model,
+profile, credentials and paths are resolved separately.
+
+Base: `/api/projects/:projectId/hifox/tasks/:taskId/executions/:executionId/inputs`.
+
+| Route | Input / value |
+| --- | --- |
+| POST `/commands` | Strict capture command; committed/duplicate `ExecutionInputReceipt`. |
+| POST `/reconcile` | Original full command; original receipt or null without dispatch. |
+| GET base | Exact task query and `purpose=history|use`; fixed input, current bundle reference and availability. |
+| GET `/resources/:selectionId` | Same query; original registered resource metadata, status and permitted fixed text. |
+
+The query includes `contractVersion=2`, `instanceId`, `spaceId` and original
+`taskCreatedAt`. Capture includes UUID `commandId`, `task:TeamTaskRef`,
+`expectedEpoch`, `expectedActorId`, nullable `expectedDeviceId`,
+`expectedExecutionId`, `expectedGeneration`, `kind:'capture'`, `roles` and
+`selections`.
+
+Each role binding names `roleId`, `agentId` and `expectedDigest`. The digest is
+SHA-256 over `executionInputAgentDigestText` of exact Agent instructions and
+resolved ordered skill contents. A selection has unique `id`, `phaseId`,
+`nodeId`, `stage`, explicit `order`, `reason`, `required`, delivery policy and
+fixed source. Source kinds are `governance`, `confirmed-document`,
+`agent-instructions` and `skill`; caller paths or arbitrary text are unsupported.
+Selection IDs allow at most 512 UTF-16 units, require well-formed Unicode and
+reject exact `.` and `..` URL segments. Expanded input metadata must fit the
+worker read-response limit minus
+64 KiB before capture commits; oversized snapshots create no row or new body.
+
+Capture requires the original active writer and matching adopted bundle and
+portable definition. It creates one immutable input per execution using existing
+blobs and transaction/receipt infrastructure. Each Agent node retains the
+chosen Agent/skills, required adopted rules and template. New publications or
+Agent/skill edits preserve existing captured bytes. Changing an original UUID
+payload conflicts; retries/reconciliation preserve that UUID and original scope.
+
+History reads check current resource/task authorization and return withdrawal
+status with permitted original bytes. Execution use also checks the original
+active owner/epoch/generation and required-version availability. Withdrawal can
+block use while history remains readable; current ACL loss grants neither lane.
+The original execution input and task's current adopted bundle are distinct.
+
+The native source port reads these versions without local Trellis paths.
+Pi/ACP composers retain per-node source order/reasons and exact digest/byte
+receipts. They enforce the actual 8192-byte implicit resource envelope, including
+JSON escaping. Full/partial/index-only/omitted/unavailable remain distinct;
+missing or oversized required content rejects. Prepared composition does not
+prove model receipt, compliance or execution. Exact native contracts and errors
+are in `.trellis/spec/backend/team-execution-inputs.md`.
+
 ## Read-only Trellis source import
 
 Contract version 1 uses validators/types from `shared/team-import.ts`, exported
