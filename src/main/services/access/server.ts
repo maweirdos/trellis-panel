@@ -23,6 +23,9 @@ import { IdempotencyCache } from './idempotency'
 import { getAccessToken, rotateAccessToken, verifyToken } from './token'
 import { writeAccessEndpoint } from './endpoint'
 import { ApplicationAccessRoutes } from './app-routes'
+import { EditorTaskMcpBridge } from './editor-task-mcp'
+import { createHash } from 'node:crypto'
+import type { withDesktopTeamService } from '../team-desktop'
 
 const PROTOCOL_VERSION = 'tpap/1'
 const MAX_BODY_BYTES = 1024 * 1024
@@ -44,6 +47,9 @@ class AccessServer {
   private idempotency = new IdempotencyCache()
   private lastError: string | undefined
   private applications = new ApplicationAccessRoutes()
+  private readonly editorTaskMcp = new EditorTaskMcpBridge()
+
+  configureEditorTaskMcp(withService: typeof withDesktopTeamService): void { this.editorTaskMcp.configure(withService) }
 
   status(): AccessMeta {
     return { running: this.server?.listening === true, port: this.server?.listening ? this.port : null, enabled: !!getSettings().access?.enabled, ...(this.lastError ? { error: this.lastError } : {}) }
@@ -92,6 +98,7 @@ class AccessServer {
       this.server = null
       this.port = null
     }
+    this.editorTaskMcp.close()
     this.publishEndpoint()
   }
 
@@ -114,6 +121,14 @@ class AccessServer {
         return this.json(res, 404, { ok: false, error: { code: 'E_NOT_FOUND', message: '未知路径' } })
       }
       const op = segments.slice(2).join('/')
+
+      if (op === 'mcp') {
+        const authorization = req.headers.authorization ?? ''
+        const mcpSession = typeof req.headers['mcp-session-id'] === 'string' ? req.headers['mcp-session-id'].slice(0, 200) : ''
+        const sessionKey = createHash('sha256').update(`${authorization}\0${mcpSession}`, 'utf8').digest('hex')
+        await this.editorTaskMcp.handle(req, res, sessionKey)
+        return
+      }
 
       if (segments[2] === 'apps') {
         const reply = await this.applications.route(req.method ?? '', segments.slice(3).join('/'), url, () => this.readBody(req))
@@ -199,7 +214,8 @@ class AccessServer {
       name: 'trellis-panel',
       protocol: PROTOCOL_VERSION,
       project: snap ? { name: snap.meta.name, root: snap.meta.root } : null,
-      capabilities: ['session.read', 'events.pull', 'tools.list', 'tools.deferred', 'tools.call', 'tool_search', 'spec.read', 'task.read', 'token.rotate', 'chat.read', 'apps.read', 'apps.start', 'apps.stop', 'apps.restart', 'apps.logs']
+      capabilities: ['session.read', 'events.pull', 'tools.list', 'tools.deferred', 'tools.call', 'tool_search', 'spec.read', 'task.read', 'token.rotate', 'chat.read', 'apps.read', 'apps.start', 'apps.stop', 'apps.restart', 'apps.logs', 'editor-task-mcp'],
+      editorTaskMcp: { transport: 'streamable-http', path: '/tpap/v1/mcp', authentication: 'same-bearer', guiSelection: 'captured-on-first-request' }
     }
   }
 

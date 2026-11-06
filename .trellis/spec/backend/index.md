@@ -57,6 +57,7 @@ ZCode setup and startup changes also follow [Managed ZCode startup](./zcode-mana
 | [team-execution-artifacts.md](./team-execution-artifacts.md) | Fixed artifacts, delivery manifests, carried references, checkpoint and actual code availability gates | Shared execution outputs and handoff transactions |
 | [native-task-preparation.md](./native-task-preparation.md) | Trellis-independent engineering binding, fixed material mapping, authenticated native admission and retained owner discovery | Platform task preparation and directory/resource checks |
 | [product-task-execution.md](./product-task-execution.md) | Current-node Pi/Codex/Claude product dispatch, actual native receipts, selected output submission and original cleanup | Product-start, report, permission, stop and reconciliation |
+| [editor-task-mcp.md](./editor-task-mcp.md) | Loopback MCP tools for editor task claim, fixed context, progress and delivery | Codex/Claude editor task access |
 | [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |
 
 ---
