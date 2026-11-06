@@ -1,7 +1,11 @@
 import { app } from 'electron'
 import { createHash } from 'node:crypto'
 import { CreationMainService } from './service'
-import { hifoxWorkspaceSnapshot, hifoxWorkspaceStatus } from '../hifox/connection-service'
+import { WhiteboardV2Service } from './whiteboard-v2-service'
+import { WhiteboardV2WorkerClient } from './whiteboard-v2-worker-client'
+import { whiteboardV2Workspace } from './whiteboard-v2-workspace'
+import type { WhiteboardWorkerWrite } from './whiteboard-v2-worker-protocol'
+import { hifoxStableWorkspaceGeneration, hifoxWorkspaceSnapshot, hifoxWorkspaceStatus } from '../hifox/connection-service'
 import { withDesktopTeamService } from '../team-desktop'
 import { getSettings } from '../store'
 import { aiChat } from '../ai'
@@ -12,6 +16,9 @@ import type { HifoxWorkQuery } from '../../../shared/hifox-work'
 import { selectTaskCreationReferences } from './task-references'
 
 let service: CreationMainService | null = null
+let whiteboard: WhiteboardV2Service | null = null
+let openingWhiteboard: Promise<WhiteboardV2Service> | null = null
+let closing: Promise<void> | null = null
 let closed = false
 export function creationService(): CreationMainService {
   if (closed) throw Object.assign(new Error('创作服务正在退出'), { code: 'SERVICE_CLOSED' })
@@ -20,7 +27,41 @@ export function creationService(): CreationMainService {
     changed: (workspaceKey, creationId) => broadcastToWindows(ipcEvent.creationsChanged, { workspaceKey, creationId }) })
   return service
 }
-export function closeCreationService(): Promise<void> { closed = true; return service?.close() ?? Promise.resolve() }
+/** Main-process only; no renderer-supplied actor, source or storage path. */
+export function whiteboardV2Service(): Promise<WhiteboardV2Service> {
+  if (closed) return Promise.reject(Object.assign(new Error('创作服务正在退出'), { code: 'SERVICE_CLOSED' }))
+  if (whiteboard) return Promise.resolve(whiteboard)
+  if (!openingWhiteboard) {
+    const opening = WhiteboardV2WorkerClient.open({ root: app.getPath('userData') }).then((store) => {
+      const value = new WhiteboardV2Service({ store, workspace: whiteboardV2Workspace, status: hifoxWorkspaceStatus, generation: hifoxStableWorkspaceGeneration })
+      whiteboard = value
+      return value
+    })
+    openingWhiteboard = opening
+    void opening.finally(() => { if (openingWhiteboard === opening) openingWhiteboard = null }).catch(() => {})
+  }
+  return openingWhiteboard.then((value) => {
+    if (closed) throw Object.assign(new Error('创作服务正在退出'), { code: 'SERVICE_CLOSED' })
+    return value
+  })
+}
+/** Main-only retained cleanup evidence, including after admission has closed. */
+export function retainedWhiteboardWrites(): WhiteboardWorkerWrite[] { return whiteboard?.retainedWrites() ?? [] }
+export function closeCreationService(): Promise<void> {
+  closed = true
+  if (closing) return closing
+  // Fence both instantiated services before awaiting either one.
+  const legacy = service?.close() ?? Promise.resolve()
+  const whiteboardClose = whiteboard ? whiteboard.close() : openingWhiteboard ? openingWhiteboard.then((value) => value.close(), () => {}) : null
+  if (!whiteboardClose) return legacy
+  const work = Promise.allSettled([legacy, whiteboardClose]).then((results) => {
+    const failed = results.find((result) => result.status === 'rejected')
+    if (failed?.status === 'rejected') throw failed.reason
+  })
+  closing = work
+  void work.catch(() => { if (closing === work) closing = null })
+  return work
+}
 
 export async function taskCreationReferences(query: HifoxWorkQuery): Promise<CreationMaterialReference[]> {
   const result = await creationService().list({ workspaceKey: query.workspaceKey, scope: 'team', taskId: query.taskId, limit: 20 })

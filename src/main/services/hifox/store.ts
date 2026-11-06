@@ -12,6 +12,27 @@ import { buildInitialSnapshot, buildSeedSnapshot } from './seed'
 let cache: HifoxSnapshot | null = null
 let cacheFile: string | null = null
 let writing = false
+const authorityObservers = new Set<() => void>()
+
+/** Subscribe to committed local authority changes, including explicit resets. */
+export function onLocalHifoxAuthorityChanged(observer: () => void): () => void {
+  authorityObservers.add(observer)
+  return () => { authorityObservers.delete(observer) }
+}
+
+function authorityFingerprint(snapshot: HifoxSnapshot): string {
+  const members = snapshot.members.map((member) => [member.id, member.role, [...(member.projectRoles ?? [])].sort()] as const)
+    .sort((left, right) => left[0].localeCompare(right[0]))
+  const spaces = snapshot.spaces.map((space) => [space.id, space.ownerId ?? null, space.visibility ?? 'public', Boolean(space.archived), [...space.memberIds].sort()] as const)
+    .sort((left, right) => left[0].localeCompare(right[0]))
+  return JSON.stringify([snapshot.members.find((member) => member.role === 'owner')?.id ?? null, members, spaces])
+}
+
+function notifyAuthorityChanged(): void {
+  for (const observer of authorityObservers) {
+    try { observer() } catch { process.emitWarning('Local collaboration authority notification failed', { code: 'HIFOX_AUTHORITY_NOTIFICATION' }) }
+  }
+}
 
 function storeDir(): string {
   const override = process.env.HIFOX_STORE_DIR
@@ -54,6 +75,7 @@ export function resetDemoSnapshot(): HifoxSnapshot {
   persist(snapshot)
   cache = snapshot
   cacheFile = storeFile()
+  notifyAuthorityChanged()
   return structuredClone(snapshot)
 }
 
@@ -70,6 +92,7 @@ function persist(snapshot: HifoxSnapshot): void {
 export function mutate<T>(fn: (draft: HifoxSnapshot) => T): { result: T; snapshot: HifoxSnapshot } {
   if (writing) throw new Error('HiFox 不支持嵌套写事务')
   const draft = loadSnapshot()
+  const previousAuthority = authorityFingerprint(draft)
   writing = true
   try {
     const result = fn(draft)
@@ -84,6 +107,7 @@ export function mutate<T>(fn: (draft: HifoxSnapshot) => T): { result: T; snapsho
     persist(committed)
     cache = committed
     cacheFile = storeFile()
+    if (authorityFingerprint(committed) !== previousAuthority) notifyAuthorityChanged()
     return { result, snapshot: draft }
   } finally {
     writing = false

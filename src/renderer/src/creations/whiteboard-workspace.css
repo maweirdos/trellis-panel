@@ -1,0 +1,22 @@
+.whiteboard-workspace { display: flex; flex-direction: column; gap: var(--my-space-16); min-width: 0; padding: var(--my-space-20); color: var(--my-txt-primary); background: var(--my-bg-canvas); }
+.whiteboard-workspace-header, .whiteboard-workspace-edit-header, .whiteboard-workspace-list-heading, .whiteboard-workspace-row, .whiteboard-workspace-actions { display: flex; align-items: center; gap: var(--my-space-12); }
+.whiteboard-workspace-header, .whiteboard-workspace-edit-header, .whiteboard-workspace-list-heading, .whiteboard-workspace-row { justify-content: space-between; }
+.whiteboard-workspace-header, .whiteboard-workspace-edit-header, .whiteboard-workspace-actions { flex-wrap: wrap; }
+.whiteboard-workspace h2, .whiteboard-workspace h3, .whiteboard-workspace h4, .whiteboard-workspace p { margin: 0; }
+.whiteboard-workspace h2 { font-size: var(--my-text-title); }
+.whiteboard-workspace h3, .whiteboard-workspace h4 { font-size: var(--my-text-sm); }
+.whiteboard-workspace-header > div:first-child, .whiteboard-workspace-title, .whiteboard-workspace-opinion-form label { display: grid; gap: var(--my-space-4); min-width: 0; }
+.whiteboard-workspace-list, .whiteboard-workspace-retained, .whiteboard-workspace-content, .whiteboard-workspace-opinions { display: grid; gap: var(--my-space-12); min-width: 0; }
+.whiteboard-workspace-list { max-width: var(--my-settings-content-width); width: 100%; }
+.whiteboard-workspace-row { padding: var(--my-space-12); border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-base); background: var(--my-bg-panel); }
+.whiteboard-workspace-row > div { min-width: 0; overflow-wrap: anywhere; }
+.whiteboard-workspace-title { flex: 1 1 var(--my-space-240); }
+.whiteboard-workspace-title input { width: 100%; }
+.whiteboard-workspace-message { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-8); padding: var(--my-space-12); border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-base); background: var(--my-bg-panel); }
+.whiteboard-workspace-comment { display: grid; gap: var(--my-space-4); padding-block: var(--my-space-8); border-bottom: 1px solid var(--my-border-subtle-1); overflow-wrap: anywhere; }
+.whiteboard-workspace-opinion-form { display: grid; justify-items: start; gap: var(--my-space-8); }
+.whiteboard-workspace-opinion-form label { width: 100%; }
+.my-root .whiteboard-workspace-opinion-form textarea.my-input { min-height: var(--my-space-80); height: auto; resize: vertical; }
+@media (max-width: 720px) { .whiteboard-workspace { padding: var(--my-space-12); } .whiteboard-workspace-edit-header { align-items: stretch; } .whiteboard-workspace-title { flex-basis: 100%; } }
+
+\r\n

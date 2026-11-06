@@ -8,7 +8,7 @@ import type { HifoxWorkspaceContext } from '../../../shared/hifox-remote'
 import { ipcEvent } from '../../../shared/ipc-channels'
 import type { DesktopTeamService } from '../team-platform/service'
 import { HifoxRemoteClient, HifoxRemoteClientError, type HifoxRemoteView } from './remote'
-import { loadSnapshot, mutate, resetDemoSnapshot } from './store'
+import { loadSnapshot, mutate, onLocalHifoxAuthorityChanged, resetDemoSnapshot } from './store'
 import { executeHifoxDomain } from '../../../shared/hifox-domain/commands'
 import type { TeamGitlabOwnerBinding, TeamGitlabConnectionStatus } from '../integrations/team-gitlab'
 import type { VerifiedGitlabIdentity } from '../integrations/types'
@@ -32,22 +32,30 @@ let client: Promise<HifoxRemoteClient> | null = null
 let stopped = false
 let selectionError: HifoxRemoteClientError | null = null
 let workspaceGeneration = 0
-/** Monotonic native selection fence, including a completed A → B → A round trip. */
+/** Monotonic native source and local-authority fence, including A → B → A. */
 export function hifoxWorkspaceGeneration(): number { return workspaceGeneration }
 let workspaceSelection: number | null = null
+let localSourceSelected = false
+/** An in-flight selection is not a stable source for new whiteboard operations. */
+export function hifoxStableWorkspaceGeneration(): number { return workspaceSelection === null ? workspaceGeneration : NaN }
 let lastContext = ''
 let gitlabGeneration = 0
 let gitlabAuthorization: AbortController | null = null
 type WorkspaceView = { snapshot: HifoxSnapshot; context: HifoxWorkspaceContext; taskId?: string }
 const directory = (): string => join(app.getPath('userData'), 'hifox-remote')
 const selectionFile = (): string => join(directory(), 'selection.json')
-const localContext = (): HifoxWorkspaceContext => ({ key: 'local', connectionId: null, projectId: null, projectName: null, actorId: loadSnapshot().members.find((member) => member.role === 'owner')?.id ?? null, canManage: true, revision: 0, state: 'local', pendingCount: 0 })
+const localContext = (): HifoxWorkspaceContext => ({ key: 'local', connectionId: null, projectId: null, projectName: null, actorId: loadSnapshot().members.find((member) => member.role === 'owner')?.id ?? null, canManage: true, revision: 0, state: 'local', pendingCount: 0, authorizationRevision: workspaceGeneration })
+onLocalHifoxAuthorityChanged(() => {
+  workspaceGeneration++
+  if (!stopped && (localSourceSelected || (!client && !existsSync(selectionFile())))) dependencies?.notify(ipcEvent.hifoxWorkspaceChanged, localContext())
+})
 
 async function instance(restoreSelection = true): Promise<HifoxRemoteClient> {
   if (stopped) throw new HifoxRemoteClientError('SERVICE_CLOSED', '团队协作服务正在退出')
   if (!client) {
     client = (async () => {
       const value = new HifoxRemoteClient({ dataDir: app.getPath('userData'), withService: (work) => withService((service) => work(service)), onChanged: (context, viewFingerprint) => {
+        localSourceSelected = context.state === 'local'
         const fingerprint = JSON.stringify([context, viewFingerprint ?? null])
         if (fingerprint === lastContext) return
         lastContext = fingerprint
@@ -80,6 +88,7 @@ function materialize(view: HifoxRemoteView): WorkspaceView {
 export async function hifoxWorkspaceStatus(): Promise<HifoxWorkspaceContext> {
   if (stopped) throw new HifoxRemoteClientError('SERVICE_CLOSED', '团队协作服务正在退出')
   const context = client || existsSync(selectionFile()) ? (await instance()).status() : localContext()
+  localSourceSelected = context.state === 'local'
   return context.state === 'local' ? localContext() : context
 }
 export async function hifoxWorkspaceSnapshot(): Promise<WorkspaceView> {

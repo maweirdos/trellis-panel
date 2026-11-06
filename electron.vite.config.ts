@@ -77,7 +77,8 @@ export default defineConfig({
       bundleMainWorker('bundle-observation-worker', 'src/main/services/observability/observation-worker.ts', 'observation-worker.js'),
       bundleMainWorker('bundle-history-worker', 'src/main/services/acp/history-worker.ts', 'history-worker.js'),
       bundleMainWorker('bundle-workflow-control-worker', 'src/main/services/workflow-control/worker.ts', 'workflow-control-worker.js'),
-      bundleMainWorker('bundle-team-desktop-worker', 'src/main/services/team-platform/store-worker.ts', 'team-desktop-worker.js')
+      bundleMainWorker('bundle-team-desktop-worker', 'src/main/services/team-platform/store-worker.ts', 'team-desktop-worker.js'),
+      bundleMainWorker('bundle-whiteboard-v2-worker', 'src/main/services/creations/whiteboard-v2-worker.ts', 'whiteboard-v2-worker.js')
     ],
     build: {
       // electron-vite 5 / vite 8 默认输出 ESM(.mjs)；本项目为 CJS（package.json 无 type:module），
@@ -96,7 +97,13 @@ export default defineConfig({
     }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), {
+      name: 'bundle-docx-sandbox-preload', apply: 'build', async closeBundle() {
+        await esbuild.build({ entryPoints: [resolve(__dirname, 'src/preload/docx-preview.ts')],
+          outfile: resolve(__dirname, 'out/preload/docx-preview.js'), bundle: true, platform: 'node',
+          format: 'cjs', target: 'node22', external: ['electron'], logLevel: 'warning' })
+      }
+    }],
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/preload/index.ts') },
@@ -120,7 +127,7 @@ export default defineConfig({
     plugins: [reactHookRefresh(resolve(__dirname, 'src/renderer/src')), react()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/renderer/index.html') }
+        input: { index: resolve(__dirname, 'src/renderer/index.html'), 'docx-preview': resolve(__dirname, 'src/renderer/docx-preview.html') }
       }
     }
   }

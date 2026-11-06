@@ -1,0 +1,52 @@
+.whiteboard-editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: var(--my-space-384);
+  height: 100%;
+  color: var(--my-txt-primary);
+  background: var(--my-bg-panel);
+  border: 1px solid var(--my-border-subtle-1);
+  border-radius: var(--my-radius-base);
+  overflow: hidden;
+}
+.whiteboard-toolbar, .whiteboard-zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-8);
+}
+.whiteboard-toolbar {
+  flex-wrap: wrap;
+  padding: var(--my-space-8);
+  border-bottom: 1px solid var(--my-border-subtle-1);
+}
+.whiteboard-zoom { margin-left: auto; }
+.whiteboard-body { display: flex; flex: 1; min-height: var(--my-space-320); min-width: 0; }
+.whiteboard-canvas { position: relative; flex: 1; min-width: 0; min-height: var(--my-space-320); background: var(--my-bg-canvas); }
+.whiteboard-canvas .react-flow { --xy-background-color: var(--my-bg-canvas); --xy-background-pattern-dots-color: var(--my-border-strong-1); --xy-edge-stroke: var(--my-txt-secondary); --xy-edge-stroke-selected: var(--my-txt-primary); --xy-connectionline-stroke: var(--my-txt-primary); }
+.whiteboard-canvas .react-flow__attribution { background: var(--my-bg-panel); color: var(--my-txt-secondary); }
+.whiteboard-canvas .react-flow__attribution a { color: inherit; }
+.whiteboard-node {
+  width: var(--my-space-192);
+  min-height: var(--my-space-64);
+  padding: var(--my-space-12);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--my-bg-panel);
+  border: 1px solid var(--my-border-strong-1);
+  border-radius: var(--my-radius-base);
+  color: var(--my-txt-primary);
+}
+.whiteboard-canvas .react-flow__node.selected .whiteboard-node { outline: 2px solid var(--my-focus-ring); outline-offset: 2px; }
+.whiteboard-canvas .react-flow__node:focus-visible, .whiteboard-canvas .react-flow__edge:focus-visible { outline: 2px solid var(--my-focus-ring); outline-offset: 2px; }
+.whiteboard-canvas .react-flow__handle { background: var(--my-txt-secondary); border-color: var(--my-bg-panel); }
+.whiteboard-editor[data-readonly="true"] .react-flow__handle { visibility: hidden; }
+.whiteboard-inspector { display: flex; flex-direction: column; gap: var(--my-space-16); width: var(--my-space-240); padding: var(--my-space-12); border-left: 1px solid var(--my-border-subtle-1); }
+.whiteboard-fields, .whiteboard-fields label, .whiteboard-picker { display: flex; flex-direction: column; gap: var(--my-space-8); min-width: 0; }
+.my-root .whiteboard-fields textarea.my-input { height: var(--my-space-128); resize: vertical; }
+.whiteboard-fields select, .whiteboard-picker select { width: 100%; }
+.whiteboard-error { padding: var(--my-space-12); color: var(--my-txt-danger-primary); }
+@media (max-width: 720px) {
+  .whiteboard-body { flex-direction: column; }
+  .whiteboard-inspector { width: auto; border-left: 0; border-top: 1px solid var(--my-border-subtle-1); }
+}
