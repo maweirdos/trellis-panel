@@ -12,6 +12,7 @@ import type { ConversationRuntime } from './runtime-port'
 import { acpProcessEnv, acpSpawnEnv, sessionAcpLaunchOptions } from '../../../shared/acp-launch-options'
 import { readAcpStoredImages } from '../../../shared/acp-images'
 import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
+import { DESIGN_GENERATION_DIRECTORY, readDesignGenerationOutput } from '../../../shared/design-generation'
 import { inspectPiWebPreviewEntry } from './engine/web-preview-entry'
 import { prepareAgentRules, assertAgentRulesCurrent } from '../agent-rules'
 import { composePiPromptPacket } from './prompt-context'
@@ -152,11 +153,25 @@ export class PiConversationRuntime implements ConversationRuntime {
       }
       const images = original.type === 'text_delta' ? readAcpStoredImages(original.meta?.piImages) : []
       const preview = original.type === 'text_delta' ? readPiWebPreviewArtifact(original.meta?.piWebPreview) : null
+      const rawDesign = original.type === 'tool_call' && original.title === 'design_open' && original.status === 'completed'
+        ? readDesignGenerationOutput((original.rawOutput as { details?: { designOutput?: unknown } } | undefined)?.details?.designOutput) : null
+      const projectedDesign = original.type === 'text_delta' ? readDesignGenerationOutput(original.meta?.designOutput) : null
       const machineFields = new Set(['type', 'id', 'toolCallId', 'name', 'status', 'tag', 'phase', 'stream', 'messageId', 'operationId', 'blockType', 'operation', 'providerMessageId', 'authority'])
       const event = JSON.parse(JSON.stringify(original, (key, item: unknown) => typeof item === 'string' && !machineFields.has(key) ? this.safe(item) : item)) as PiActivity
+      if (event.type === 'tool_call' && original.type === 'tool_call' && original.title === 'design_open') event.title = original.title
       if (event.type === 'text_delta' && images.length) event.meta = { ...event.meta, piImages: images }
       if (event.type === 'text_delta' && preview) event.meta = { ...event.meta, piWebPreview: {
         ...preview, title: preview.title.split('[redacted]').map(part => this.safe(part)).join('[redacted]').slice(0, 160)
+      } }
+      // Preserve verified generated identities through this second redaction boundary, as for preview paths.
+      if (event.type === 'tool_call' && rawDesign) {
+        const output = event.rawOutput as { details?: Record<string, unknown> }
+        event.rawOutput = { ...output, details: { ...output.details, designOutput: {
+          ...rawDesign, title: rawDesign.title.split('[redacted]').map(part => this.safe(part)).join('[redacted]').slice(0, 200)
+        } } }
+      }
+      if (event.type === 'text_delta' && projectedDesign) event.meta = { ...event.meta, designOutput: {
+        ...projectedDesign, title: projectedDesign.title.split('[redacted]').map(part => this.safe(part)).join('[redacted]').slice(0, 200)
       } }
       const run = this.running
       if (!run) return
@@ -371,12 +386,13 @@ export class PiConversationRuntime implements ConversationRuntime {
     run.input.assertActive?.()
     const read = (request.name === 'report_progress' && Boolean(this.options.meta.taskProgress)) || ['preview_web', 'read', 'grep', 'find', 'ls', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(request.name)
       || ['knowledge_search', 'knowledge_read', 'knowledge_context', 'knowledge_document_read', 'knowledge_task_read'].some(name => request.name === `mcp__trellis_knowledge__${name}`)
-    const pathTool = ['preview_web', 'read', 'write', 'edit', 'grep', 'find', 'ls'].includes(request.name)
+    const pathTool = ['preview_web', 'design_open', 'read', 'write', 'edit', 'grep', 'find', 'ls'].includes(request.name)
     const assertPath = (): string[] => {
       if (!pathTool) return []
       const root = this.pathRoot, cwd = this.pathCwd
       if (!root || !cwd || !isAbsolute(request.homeDir) || relative(cwd, request.cwd) !== '' ||
         relative(root, realpathSync(this.options.meta.projectRoot)) !== '' || relative(cwd, realpathSync(this.options.meta.cwd ?? this.options.meta.projectRoot)) !== '') throw new Error('Pi 工作目录或项目归属已改变')
+      if (request.name === 'design_open') return assertPiToolPath(root, root, request.homeDir, 'write', DESIGN_GENERATION_DIRECTORY)
       const raw = request.args.path
       if (typeof raw !== 'string' && !(raw === undefined && ['grep', 'find', 'ls'].includes(request.name))) throw new Error('工具路径无效')
       if (request.name === 'preview_web') return [inspectPiWebPreviewEntry(root, raw as string).file]
@@ -388,7 +404,7 @@ export class PiConversationRuntime implements ConversationRuntime {
     if (read || this.mode === 'full-access') return true
     const handler = run.input.onPermissionRequest
     if (!handler) return false
-    const kind = request.name === 'bash' || request.name === 'powershell' ? 'execute' as const : request.name === 'write' || request.name === 'edit' ? 'edit' as const : 'other' as const
+    const kind = request.name === 'bash' || request.name === 'powershell' ? 'execute' as const : ['write', 'edit', 'design_open'].includes(request.name) ? 'edit' as const : 'other' as const
     const rawInput = this.safe(JSON.stringify(request.args)).slice(0, 2500)
     const decision: AcpPermissionDecision | undefined = await handler({ sessionId: this.state?.sessionId ?? this.options.meta.sessionId, inferredKind: kind,
       raw: { sessionId: this.state?.sessionId ?? this.options.meta.sessionId, toolCall: { toolCallId: request.toolCallId, title: `${request.name} · ${rawInput}`, kind, rawInput: request.args },

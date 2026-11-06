@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ChevronDown, Files, Folder, MessageSquare, MoreHorizontal, PanelLeft, RefreshCw } from 'lucide-react'
+import { ChevronDown, Files, Folder, MessageSquare, MoreHorizontal, MousePointer2, RefreshCw, X } from 'lucide-react'
 import type { Conversation } from '@shared/private-conversations'
 import type { PiWebPreviewArtifact } from '@shared/pi-web-preview'
 import { Button, Dropdown, DropdownHeader, DropdownItem } from '../my/ui'
 import { useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
+import { ContextRegion } from '../my/layout/ContextRegion'
 import { useMy } from '../my/store'
 import { useApp } from '../store'
 import { useEscLayer } from '../utils/use-esc-layer'
@@ -20,13 +21,19 @@ import { ConversationPreviewLayout } from '../acp/ConversationPreviewLayout'
 import { ConversationPreviewTabs } from '../acp/ConversationPreviewTabs'
 import { usePiWebPreviewShelf } from '../acp/PiWebPreviewShelf'
 import { CodePreviewProvider, type OpenCodePreview } from '../components/CodePreviewContext'
+import { DesignWorkspace } from '../designs/DesignWorkspace'
+import { ConversationDesignCards } from '../designs/DesignLibrary'
+import { useConversationDesigns } from '../designs/hooks'
+import { sendDesignMessage, usePendingDesignSend, type DesignConversationReference } from '../designs/conversation'
+import { useDesignNavigation } from '../designs/navigation'
+import type { DesignSelection } from '@shared/design-workspace'
 import type { RequirementBuildPreparation } from './requirement-workbench/useRequirementWorkbench'
 import type { RequirementBuildChoice } from './requirement-workbench/BuildPreparation'
 import { DocumentSourceProvider } from '../reader/document-source'
 import { ConnectionNotice } from '../acp/ConnectionNotice'
 import { isPrivateEntrySelected, usePrivateDocumentSource } from './source'
 import { conversationClient, conversationError, conversationValue } from './client'
-import { addFiles, baseScopeKey, controlConversation, ensureScope, newDraft, readConversation, reclassifyConversation, refreshWorkspace, scopeKey, selectConversation, selectProjectScope, useConversations, type ConversationKind, type WorkspaceEntry } from './workspace'
+import { addFiles, baseScopeKey, controlConversation, ensureScope, newDraft, readConversation, reclassifyConversation, refreshWorkspace, requestComposerFocus, scopeKey, selectConversation, selectProjectScope, useConversations, type ConversationKind, type WorkspaceEntry } from './workspace'
 import '../acp/workspace.css'
 import './workspace.css'
 
@@ -71,6 +78,45 @@ export function PrivateWorkspace(): JSX.Element {
   currentOperationOwner.current = operationOwner
   const documentSource = usePrivateDocumentSource(selection)
   const preview = usePiWebPreviewShelf({ root: current?.conversation?.workspace.root ?? '', session: current?.locked ? null : current?.session ?? null, events: current?.events ?? [], enabled: active && !archiveId && !current?.locked, isCurrent: documentSource.isCurrent, onAutoOpen: () => setMobileHistory(false) })
+  const designs = useConversationDesigns(current, active && !archiveId && !current?.locked)
+  const [designReference, setDesignReference] = useState<{ owner: string; reference: DesignConversationReference } | null>(null)
+  const [designRestore, setDesignRestore] = useState<{ owner: string; selection: DesignSelection } | null>(null)
+  const designTarget = useDesignNavigation(state => state.conversationTarget)
+  const consumedDesignTarget = useRef('')
+  const currentDesignReference = designReference?.owner === designs.ownerKey ? designReference.reference : null
+  const pendingDesignSend = usePendingDesignSend(selection, current?.owner)
+  const sendReference = pendingDesignSend?.reference ?? currentDesignReference
+  const activeDesign = designs.documents.find(document => document.id === designs.selectedId)
+  const canShowDesign = Boolean(activeDesign && !current?.locked)
+  const canShowWeb = Boolean(preview.tabs.length > 0 && current?.session && !current.locked)
+  const previewOwner = JSON.stringify([designs.ownerKey, preview.ownerKey])
+  const lastPreview = useRef(new Map<string, 'design' | 'web'>())
+  const previewKind = canShowDesign && !designs.collapsed ? 'design'
+    : canShowWeb && !preview.collapsed ? 'web'
+      : lastPreview.current.get(previewOwner) === 'web' && canShowWeb ? 'web'
+        : canShowDesign ? 'design' : canShowWeb ? 'web' : null
+  useLayoutEffect(() => {
+    if (previewKind && (previewKind === 'design' ? !designs.collapsed : !preview.collapsed)) {
+      lastPreview.current.set(previewOwner, previewKind)
+    }
+  }, [previewOwner, previewKind, designs.collapsed, preview.collapsed])
+  const setPreviewCollapsed = (value: boolean): void => {
+    if (previewKind === 'design') {
+      designs.setCollapsed(value)
+      // A new design can arrive while a web preview is already open behind it.
+      if (value && canShowWeb && !preview.collapsed) preview.closeWebPreview()
+    } else if (previewKind === 'web') preview.setCollapsed(value)
+  }
+  useEffect(() => {
+    if (!active || !designTarget || current?.conversation?.id !== designTarget.conversationId || consumedDesignTarget.current === designTarget.token) return
+    const document = designs.documents.find(document => document.id === designTarget.documentId)
+    if (!document) return
+    consumedDesignTarget.current = designTarget.token
+    setRequirement(null); preview.closeWebPreview(); designs.open(document.id)
+    if (designTarget.selection) setDesignRestore({ owner: designs.ownerKey, selection: designTarget.selection })
+    else setDesignReference({ owner: designs.ownerKey, reference: { documentId: document.id, revision: document.revision, title: document.title } })
+    useDesignNavigation.setState({ conversationTarget: null })
+  }, [active, current?.conversation?.id, designTarget, designs.documents])
   useEscLayer(mobileHistory, { kind: 'overlay', id: 'private-history', onClose: () => setMobileHistory(false), returnFocusRef: historyButton })
   useLayoutEffect(() => { ensureScope(kind, projectId) }, [scope])
   useEffect(() => { buildCompletion.current?.resolve(null); buildCompletion.current = null; setBuildPreparation(null); setMobileHistory(false); setFileOwner(null); setExecution(null); setError('') }, [scope, selection])
@@ -160,12 +206,14 @@ export function PrivateWorkspace(): JSX.Element {
   }
   const showWebPreview = (artifact: PiWebPreviewArtifact, eventId: string): void => {
     if (!canInteract() || !isPrivateEntrySelected(selection)) return
-    setRequirement(null); requirementSummaries.refresh(); preview.openWebPreview(artifact, eventId)
+    setRequirement(null); designs.close(); requirementSummaries.refresh(); preview.openWebPreview(artifact, eventId)
   }
   const showCodePreview: OpenCodePreview = (text, language) => {
     if (!canInteract() || !isPrivateEntrySelected(selection)) return
-    setRequirement(null); requirementSummaries.refresh(); preview.openCodePreview(text, language)
+    setRequirement(null); designs.close(); requirementSummaries.refresh(); preview.openCodePreview(text, language)
   }
+  const showDesign = (id: string, candidateId?: string): void => { if (canInteract() && isPrivateEntrySelected(selection)) { setRequirement(null); setMobileHistory(false); preview.closeWebPreview(); designs.open(id, candidateId) } }
+  const takeDesignReference = (reference: DesignConversationReference): void => { if (canInteract() && isPrivateEntrySelected(selection)) { setDesignReference({ owner: designs.ownerKey, reference }); setDesignRestore(null); requestComposerFocus(selection) } }
   const selectedProject = projects.find((project) => project.id === current?.projectId)
   const composerContext = <>
     {kind === 'work' && projects.length > 0 && current && <Dropdown placement="top" width={256} trigger={({ open, toggle }) => <Button variant="ghost" size="sm" className="acp-context-action" aria-label="整理到分组" aria-expanded={open} disabled={Boolean(current.action)} onClick={toggle}><Folder size={14} aria-hidden="true" /><span>{selectedProject?.name ?? '未分组'}</span><ChevronDown size={12} aria-hidden="true" /></Button>}>
@@ -178,7 +226,7 @@ export function PrivateWorkspace(): JSX.Element {
     if (event.defaultPrevented || event.nativeEvent.isComposing || !canInteract()) return
     if ((event.ctrlKey || event.metaKey) && event.key === '.' && current) { event.preventDefault(); event.stopPropagation(); void controlConversation(current.key, 'cancel') }
   }}>
-    <div className={`acp-navigation-host flex min-h-0 shrink-0${collapsed && !mobileHistory ? ' is-collapsed' : ''}`}><ConversationHistory kind={kind} selected={selection} projectId={projectId} open={mobileHistory} onProject={(id) => selectProjectScope(kind, id)} onSelect={choose} onNew={startNew} onClose={() => setMobileHistory(false)} /></div>
+    <ContextRegion collapsed={collapsed && !mobileHistory}><div className="acp-navigation-host flex min-h-0 shrink-0"><ConversationHistory kind={kind} selected={selection} projectId={projectId} open={mobileHistory} onProject={(id) => selectProjectScope(kind, id)} onSelect={choose} onNew={startNew} onClose={() => setMobileHistory(false)} /></div></ContextRegion>
     {activeRequirement ? <main className="private-requirement-host"><Suspense fallback={<div className="acp-empty" role="status">正在打开需求工作台…</div>}><RequirementWorkbench key={`${selection}:${activeRequirement.id ?? activeRequirement.commandId}`} entryKey={selection} requirementId={activeRequirement.id} createCommandId={activeRequirement.commandId} onClose={closeRequirement} onOpenTask={({ snapshot, taskDir }) => {
       if (!canInteract() || !isPrivateEntrySelected(selection)) return
       useApp.getState().setSnapshot(snapshot)
@@ -196,11 +244,15 @@ export function PrivateWorkspace(): JSX.Element {
       useApp.getState().setSnapshot(snapshot)
       const selectedAgent = agentId ?? (current?.conversation ? readBuildAgent(current.conversation.creatorId, current.conversation.id, draftId, planRevision) : undefined)
       setExecution({ entryKey: selection, draftId, agentId: selectedAgent })
-    }} /></Suspense></main> : <ConversationPreviewLayout ownerKey={preview.ownerKey} expanded={preview.expanded} onExpandedChange={preview.setExpanded} collapsed={preview.collapsed} previewCount={preview.tabs.length} onCollapsedChange={value => value ? preview.closeWebPreview() : preview.setCollapsed(false)} preview={preview.tabs.length > 0 && current?.session && !current.locked ? <ConversationPreviewTabs key={preview.ownerKey} shelf={preview} session={current.session} /> : null}>
+    }} /></Suspense></main> : <ConversationPreviewLayout ownerKey={previewKind === 'design' ? designs.ownerKey : preview.ownerKey} expanded={previewKind === 'design' ? designs.expanded : preview.expanded} onExpandedChange={previewKind === 'design' ? designs.setExpanded : preview.setExpanded} collapsed={previewKind === 'design' ? designs.collapsed : preview.collapsed} onCollapsedChange={setPreviewCollapsed} preview={previewKind ? <div className="acp-preview-tab-panels">
+      {canShowWeb && current?.session && <div key={preview.ownerKey} className="acp-preview-tab-panel" hidden={previewKind !== 'web'} aria-hidden={previewKind !== 'web'} {...{ inert: previewKind !== 'web' ? '' : undefined }}>
+        <ConversationPreviewTabs shelf={{ ...preview, collapsed: preview.collapsed || previewKind !== 'web' }} session={current.session} />
+      </div>}
+      {previewKind === 'design' && activeDesign && <div className="acp-preview-tab-panel"><DesignWorkspace key={`${designs.ownerKey}:${activeDesign.id}`} documentId={activeDesign.id} versionRequest={designs.versionRequest} embedded onClose={designs.close} onReference={takeDesignReference} restoreSelection={designRestore?.owner === designs.ownerKey ? designRestore.selection : undefined} /></div>}
+    </div> : null}>
     <WorkspaceCodePreview enabled={!archiveId} openCodePreview={showCodePreview}>
     <main className="acp-main my-conversation-frame">
       <ConversationWorkspaceHeader
-        leading={<button type="button" ref={historyButton} className={`my-control my-control-sm my-button-ghost acp-mobile-only acp-sidebar-toggle${collapsed ? ' is-visible' : ''}`} aria-label="展开对话历史" title="展开对话历史" onClick={() => { if (matchMedia('(max-width: 900px)').matches) setMobileHistory(true); else useMy.getState().toggleSidebar() }}><PanelLeft size={16} /></button>}
         identity={<><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" /><strong title={title}>{title}</strong></>}
         actions={!archiveId && current && !current.locked && current.conversation ? <Dropdown placement="bottom" align="right" width={224} trigger={({ open, toggle }) => <button type="button" className="my-icon-control" onClick={toggle} aria-expanded={open} aria-label="更多会话操作"><MoreHorizontal size={17} /></button>}>
           {(close) => <>
@@ -217,7 +269,11 @@ export function PrivateWorkspace(): JSX.Element {
       />
       {error && <div className="acp-history-note"><ConnectionNotice message={error} /><Button size="sm" variant="ghost" onClick={() => setError('')}>收起</Button></div>}
       {storageError && <ConnectionNotice message={storageError} />}
-      {archiveId ? <ConversationArchive key={archiveId} id={archiveId} /> : selection ? <PrivateConversation entryKey={selection} onFiles={openFiles} onNew={() => startNew()} onNewDirectory={() => void startCodeDirectory()} directoryPending={newPending} directoryFixed={requirementSummaries.records.length > 0 || Boolean(activeRequirement)} composerContext={composerContext} quickActions={<ConversationHomeActions entryKey={selection} requirements={requirementSummaries.records} requirementsError={requirementSummaries.error} requirementsLoading={requirementSummaries.loading} onRefreshRequirements={requirementSummaries.refresh} canAddFiles={active && canImportFiles(current)} onFiles={importFiles} onSelect={choose} onRequirement={openRequirement} />} onOpenWebPreview={showWebPreview} /> : <div className="acp-empty" role="status">正在准备输入区…</div>}
+      {archiveId ? <ConversationArchive key={archiveId} id={archiveId} /> : selection ? <PrivateConversation entryKey={selection} onFiles={openFiles} onNew={() => startNew()} onNewDirectory={() => void startCodeDirectory()} directoryPending={newPending} directoryFixed={requirementSummaries.records.length > 0 || Boolean(activeRequirement)} composerContext={composerContext} quickActions={<ConversationHomeActions entryKey={selection} requirements={requirementSummaries.records} requirementsError={requirementSummaries.error} requirementsLoading={requirementSummaries.loading} onRefreshRequirements={requirementSummaries.refresh} canAddFiles={active && canImportFiles(current)} onFiles={importFiles} onSelect={choose} onRequirement={openRequirement} />} onOpenWebPreview={showWebPreview}
+        transcriptFooter={<ConversationDesignCards documents={designs.documents} error={designs.error} onOpen={showDesign} onRefresh={designs.refresh} />}
+        composerReferences={sendReference ? <div className="design-composer-reference my-activity-note"><MousePointer2 size={13} aria-hidden="true" /><span title={pendingDesignSend ? pendingDesignSend.text : sendReference.selection?.selector}>{pendingDesignSend ? current?.action === 'sending' ? '正在发送设计修改…' : `发送结果待核对 · ${pendingDesignSend.text.slice(0, 48)}` : `${sendReference.title}${sendReference.selection ? ` · ${sendReference.selection.tagName} · ${sendReference.selection.text?.slice(0, 48) ?? ''}` : ' · 整个设计'}`}</span>{pendingDesignSend ? <Button size="sm" disabled={Boolean(current?.action)} onClick={() => { void sendDesignMessage(selection, pendingDesignSend.reference).then(accepted => { if (accepted) { setDesignReference(value => value?.owner === designs.ownerKey ? null : value); designs.refresh() } }).catch(cause => { if (isPrivateEntrySelected(selection)) setError(conversationError(cause)) }) }}>核对原发送</Button> : <Button size="sm" variant="ghost" aria-label="移除设计引用" onClick={() => setDesignReference(null)}><X size={13} /></Button>}</div> : undefined}
+        onSendMessage={sendReference ? async () => { if (await sendDesignMessage(selection, sendReference)) { setDesignReference(value => value?.owner === designs.ownerKey ? null : value); designs.refresh() } } : undefined}
+      /> : <div className="acp-empty" role="status">正在准备输入区…</div>}
     </main>
     </WorkspaceCodePreview>
     </ConversationPreviewLayout>}

@@ -19,11 +19,16 @@ import { DINGTALK_IPC } from './dingtalk-integration'
 
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
+  designWorkspace: {
+    list: 'designWorkspace:list', get: 'designWorkspace:get', listConversation: 'designWorkspace:listConversation', sync: 'designWorkspace:sync', createConversation: 'designWorkspace:createConversation',
+    save: 'designWorkspace:save', send: 'designWorkspace:send', adopt: 'designWorkspace:adopt', discard: 'designWorkspace:discard', export: 'designWorkspace:export'
+  },
+  docxPreviewResult: 'docxPreview:result',
   privateConversations: {
     list: 'privateConversations:list', createDraft: 'privateConversations:createDraft', updateDraft: 'privateConversations:updateDraft',
     read: 'privateConversations:read', events: 'privateConversations:events', send: 'privateConversations:send', respond: 'privateConversations:respond',
     cancel: 'privateConversations:cancel', end: 'privateConversations:end', configure: 'privateConversations:configure', recoverModel: 'privateConversations:recoverModel', pickDirectory: 'privateConversations:pickDirectory', pickFiles: 'privateConversations:pickFiles',
-    files: 'privateConversations:files', openFile: 'privateConversations:openFile', readFile: 'privateConversations:readFile', image: 'privateConversations:image', saveImage: 'privateConversations:saveImage',
+    files: 'privateConversations:files', openFile: 'privateConversations:openFile', readFile: 'privateConversations:readFile', previewImage: 'privateConversations:previewImage', previewPdf: 'privateConversations:previewPdf', previewDocx: 'privateConversations:previewDocx', cancelDocx: 'privateConversations:cancelDocx', validatePdfLocator: 'privateConversations:validatePdfLocator', releasePdfLocator: 'privateConversations:releasePdfLocator', image: 'privateConversations:image', saveImage: 'privateConversations:saveImage',
     projects: 'privateConversations:projects', createProject: 'privateConversations:createProject', reclassify: 'privateConversations:reclassify',
     git: 'privateConversations:git',
     requirements: {
@@ -50,6 +55,10 @@ export const ipcInvoke = {
   creations: {
     list: 'creations:list', get: 'creations:get', command: 'creations:command', recover: 'creations:recover',
     planCandidate: 'creations:planCandidate', generateCandidate: 'creations:generateCandidate', cancelCandidate: 'creations:cancelCandidate'
+  },
+  whiteboardV2: {
+    capabilities: 'whiteboardV2:capabilities', list: 'whiteboardV2:list', get: 'whiteboardV2:get',
+    command: 'whiteboardV2:command', recover: 'whiteboardV2:recover'
   },
   taskConversations: {
     list: 'taskConversations:list',
@@ -419,7 +428,6 @@ export const ipcInvoke = {
   },
   bridge: {
     installTpanel: 'bridge:installTpanel',
-    installHooks: 'bridge:installHooks',
     pullFocus: 'bridge:pullFocus'
   },
   util: {
@@ -511,6 +519,7 @@ export const ipcInvoke = {
 
 /** 主进程 → 渲染层的事件通道（广播/推送） */
 export const ipcEvent = {
+  docxPreviewInput: 'docxPreview:input',
   bootstrapChanged: 'bootstrap:changed',
   appRuntimeChanged: 'appRuntime:changed',
   appRuntimeOutput: 'appRuntime:output',

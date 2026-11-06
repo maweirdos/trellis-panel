@@ -12,12 +12,14 @@ import { PI_FRAME_BYTES, piInitializeSchema, piStateSchema, type PiActivity, typ
 import { createModels, disposeModels, initialModelSelection, selectedModel } from './engine/models'
 import { createResources, mcpLogPath, mcpRegistration } from './engine/resources'
 import { webPreviewExtension } from './engine/web-preview'
+import { designGenerationExtension } from './engine/design-generation'
 import { openSession, prepareDirectories } from './engine/storage'
 import { AssistantTextStream } from './engine/assistant-text'
 import { configurePiFindRuntime } from './engine/find-runtime'
 import { savePiImage } from './images'
 import { ACP_IMAGE_MAX_COUNT, ACP_IMAGES_MAX_BYTES, acpImageBytes } from '../../../shared/acp-images'
 import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
+import { readDesignGenerationOutput } from '../../../shared/design-generation'
 import { Type } from '@earendil-works/pi-ai'
 import { taskProgressSummarySchema } from '../../../shared/hifox-task-progress-native'
 
@@ -102,8 +104,19 @@ function send(message: PiChildMessage): void {
   }
   const preview = message.type === 'event' && message.event.type === 'text_delta' && readPiWebPreviewArtifact(message.event.meta?.piWebPreview)
     ? message.event.meta?.piWebPreview : undefined
+  const designOutputs = new WeakSet<object>()
+  if (message.type === 'event') {
+    const event = message.event
+    const raw = event.type === 'tool_call' && event.title === 'design_open' && event.status === 'completed'
+      ? event.rawOutput as { details?: { designOutput?: unknown } } | undefined : undefined
+    for (const value of [raw?.details?.designOutput, event.type === 'text_delta' ? event.meta?.designOutput : undefined]) {
+      if (value && typeof value === 'object' && readDesignGenerationOutput(value)) designOutputs.add(value)
+    }
+  }
   const replacer = function (this: object, key: string, value: unknown): unknown {
+    if (message.type === 'event' && message.event.type === 'tool_call' && this === message.event && key === 'title' && value === 'design_open') return value
     if (this === preview && key === 'title' && typeof value === 'string') return redact(value).slice(0, 160)
+    if (designOutputs.has(this) && typeof value === 'string') return key === 'title' ? redact(value).slice(0, 200) : value
     return message.type === 'event' && typeof value === 'string' && !machineFields.has(key) && !imageRefs.has(this) &&
       !(this === preview && (key === 'path' || key === 'revision')) ? redact(value) : value
   }
@@ -368,6 +381,11 @@ function onEvent(event: AgentSessionEvent): void {
         const preview = readPiWebPreviewArtifact(result.details?.piWebPreview)
         if (preview) activity({ type: 'text_delta', text: '', stream: 'output', messageId: `pi-web-preview-${event.toolCallId}`, meta: { piWebPreview: preview } })
       }
+      if (!event.isError && event.toolName === 'design_open') {
+        const result = event.result as { details?: { designOutput?: unknown } }
+        const output = readDesignGenerationOutput(result.details?.designOutput)
+        if (output) activity({ type: 'text_delta', text: '', stream: 'output', messageId: `pi-design-${event.toolCallId}`, meta: { designOutput: output } })
+      }
       break
     }
     case 'compaction_start':
@@ -406,7 +424,7 @@ async function initialize(value: unknown): Promise<void> {
   const registration = mcpRegistration(input)
   const runtime = await createModels(input)
   models = runtime
-  const loader = createResources(input, settings, [permissionExtension, webPreviewExtension(input.root), ...(input.taskProgress ? [taskProgressExtension] : []), registration, createMcpExtension({
+  const loader = createResources(input, settings, [permissionExtension, webPreviewExtension(input.root), designGenerationExtension(input.root), ...(input.taskProgress ? [taskProgressExtension] : []), registration, createMcpExtension({
     loadConfig: () => ({ servers: [], autoEnableCodemode: false, errors: [] }), logPath: mcpLogPath,
     openUrl: () => { throw new Error('MCP sign-in must be configured by the host') },
     updateConfig: () => { throw new Error('MCP configuration is owned by the host') }
@@ -421,7 +439,7 @@ async function initialize(value: unknown): Promise<void> {
     settingsManager: settings, resourceLoader: loader, sessionManager,
     // An explicit allowlist retains direct MCP tools; noTools:'all' would suppress them too.
     noTools: 'builtin', tools: ['read', 'write', 'edit', 'grep', 'find', 'ls', process.platform === 'win32' ? 'powershell' : 'bash',
-      'preview_web', ...(input.taskProgress ? ['report_progress'] : []), 'mcp__*', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'], excludeTools: ['codemode', 'tool_search'] })
+      'preview_web', 'design_open', ...(input.taskProgress ? ['report_progress'] : []), 'mcp__*', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'], excludeTools: ['codemode', 'tool_search'] })
   session = created.session
   session.subscribe(onEvent)
   await session.bindExtensions({ mode: 'json', onError: event => {

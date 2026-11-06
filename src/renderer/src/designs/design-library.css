@@ -1,0 +1,78 @@
+.design-new-type {
+  cursor: pointer;
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+}
+
+.design-new-type > .design-new-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--my-space-40);
+  height: var(--my-space-40);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-3);
+  color: var(--my-txt-icon-secondary);
+}
+
+.design-new-type > .design-new-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.design-new-copy > span {
+  overflow-wrap: anywhere;
+}
+
+.design-new-action {
+  flex: none;
+  color: var(--my-txt-icon-tertiary);
+}
+
+.design-new-type:not(:disabled):hover {
+  background: var(--my-bg-layer-1-hover);
+  border-color: var(--my-border-strong);
+}
+
+.design-new-type:not(:disabled):active {
+  background: var(--my-bg-layer-1-active);
+}
+
+.design-new-type:disabled:hover {
+  background: var(--my-bg-panel);
+  border-color: var(--my-border-subtle);
+}
+
+.design-library-card {
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+}
+
+.design-library-card:has(.design-library-open:hover) {
+  background: var(--my-bg-layer-1-hover);
+}
+
+.design-library-card:has(.design-library-open:active) {
+  background: var(--my-bg-layer-1-active);
+}
+
+.design-library-open:focus-visible {
+  outline: none;
+}
+
+.design-library-caption > svg {
+  flex: none;
+  color: var(--my-txt-icon-secondary);
+}
+
+.design-library-caption > svg:last-child {
+  color: var(--my-txt-icon-tertiary);
+}
+
+.design-library-row:active {
+  background: var(--my-bg-layer-1-active);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .design-new-type, .design-library-card {
+    transition: none;
+  }
+}

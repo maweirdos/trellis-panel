@@ -47,6 +47,8 @@ function copyPackage(name, from, optional = false) {
 copyPackage('@earendil-works/pi-coding-agent', root)
 copyPackage('zod', root)
 copyPackage('undici', root)
+copyPackage('parse5', root)
+copyPackage('css-tree', root)
 await preparePiTools({ root })
 // Shared host dependencies stay in ASAR. Pi-only packages ship once in the external SDK closure.
 const hostVisited = new Set(), hostNames = new Set()

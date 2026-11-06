@@ -1,5 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { PrototypePreviewProps } from '@shared/creation-preview'
+import { parseDesignPrototype } from '@shared/design-prototype'
+import { DesignPublishedPreview } from '../designs/DesignPublishedPreview'
 import { Button } from '../my/ui'
 import {
   PREVIEW_CHANNEL,
@@ -23,6 +25,11 @@ interface PreviewDocument {
 
 /** Changing the body creates a fresh frame, nonce, listeners, and restore ownership. */
 export function PrototypePreview(props: PrototypePreviewProps): JSX.Element {
+  const design = useMemo(() => ({ bundle: parseDesignPrototype(props.body), nonce: createPreviewNonce() }), [props.body])
+  return design.bundle ? <DesignPublishedPreview key={design.nonce} bundle={design.bundle} previewProps={props} /> : <LegacyPrototypePreview {...props} />
+}
+
+function LegacyPrototypePreview(props: PrototypePreviewProps): JSX.Element {
   const [reload, setReload] = useState(0)
   const document = useMemo<PreviewDocument>(() => {
     const nonce = createPreviewNonce()

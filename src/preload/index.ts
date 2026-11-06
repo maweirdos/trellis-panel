@@ -37,6 +37,7 @@ import type { GitWorkspaceApi } from '../shared/git-workspace'
 import type { HifoxApi } from '../shared/hifox'
 import type { HifoxWorkApi } from '../shared/hifox-work'
 import type { ConversationApi } from '../shared/private-conversations'
+import type { DesignWorkspaceApi } from '../shared/design-workspace'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
@@ -127,6 +128,18 @@ async function invokeHifox<K extends HifoxInvokeMethod>(method: K, input?: unkno
 }
 
 const api = {
+  designWorkspace: {
+    list: () => ipcRenderer.invoke(ipcInvoke.designWorkspace.list),
+    get: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.get, input),
+    listConversation: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.listConversation, input),
+    sync: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.sync, input),
+    createConversation: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.createConversation, input),
+    save: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.save, input),
+    send: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.send, input),
+    adopt: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.adopt, input),
+    discard: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.discard, input),
+    export: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.export, input)
+  } satisfies DesignWorkspaceApi,
   conversations: {
     list: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.list, input),
     createDraft: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.createDraft, input),
@@ -170,6 +183,12 @@ const api = {
     files: (id) => ipcRenderer.invoke(ipcInvoke.privateConversations.files, id),
     openFile: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.openFile, id, input),
     readFile: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.readFile, id, input),
+    previewImage: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.previewImage, id, input),
+    previewPdf: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.previewPdf, id, input),
+    previewDocx: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.previewDocx, id, input),
+    cancelDocx: operationId => ipcRenderer.invoke(ipcInvoke.privateConversations.cancelDocx, operationId),
+    validatePdfLocator: locator => ipcRenderer.invoke(ipcInvoke.privateConversations.validatePdfLocator, locator),
+    releasePdfLocator: locator => ipcRenderer.invoke(ipcInvoke.privateConversations.releasePdfLocator, locator),
     image: (id, imageId) => ipcRenderer.invoke(ipcInvoke.privateConversations.image, id, imageId),
     saveImage: (id, imageId) => ipcRenderer.invoke(ipcInvoke.privateConversations.saveImage, id, imageId),
     projects: () => ipcRenderer.invoke(ipcInvoke.privateConversations.projects),
@@ -343,6 +362,13 @@ const api = {
     cancelCandidate: (input) => ipcRenderer.invoke(ipcInvoke.creations.cancelCandidate, input),
     onChanged: (callback) => subscribe(ipcEvent.creationsChanged, callback)
   } satisfies import('../shared/creation-api').CreationApi,
+  whiteboardV2: {
+    capabilities: (input) => ipcRenderer.invoke(ipcInvoke.whiteboardV2.capabilities, input),
+    list: (input) => ipcRenderer.invoke(ipcInvoke.whiteboardV2.list, input),
+    get: (input) => ipcRenderer.invoke(ipcInvoke.whiteboardV2.get, input),
+    command: (input) => ipcRenderer.invoke(ipcInvoke.whiteboardV2.command, input),
+    recover: (input) => ipcRenderer.invoke(ipcInvoke.whiteboardV2.recover, input)
+  } satisfies import('../shared/whiteboard-v2-api').WhiteboardV2Api,
   gitWorkspace: {
     status: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.status, input),
     diff: (input) => ipcRenderer.invoke(ipcInvoke.gitWorkspace.diff, input),
@@ -767,7 +793,6 @@ const api = {
   generateStandup: () => ipcRenderer.invoke(ipcInvoke.report.standup),
 
   installTpanel: () => ipcRenderer.invoke(ipcInvoke.bridge.installTpanel),
-  installTrellisHooks: () => ipcRenderer.invoke(ipcInvoke.bridge.installHooks),
   pullPendingFocus: () => ipcRenderer.invoke(ipcInvoke.bridge.pullFocus),
   copyToClipboard: (text: string) => ipcRenderer.invoke(ipcInvoke.util.clipboard, text),
   setCapsuleMode: (on: boolean) => ipcRenderer.send(ipcInvoke.win.capsule, on),

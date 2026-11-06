@@ -739,7 +739,7 @@ export interface AiChatResult {
 
 export interface Settings {
   recentProjects: string[]
-  theme: 'dark' | 'light'
+  theme: 'dark' | 'light' | 'system'
   cliCommand: string
   jira: JiraConfig
   /** pluggable git platform connector (GitLab first) */
@@ -762,7 +762,7 @@ export interface Settings {
   /** T4 派单：codex worker 显式模型（账号默认模型不可用时在此指定；留空用 CLI 默认） */
   dispatch: { codexModel?: string }
   /**
-   * ACP agent 注册表（10-09：缺省用内置预置项）；nativePaths 为原生直连 Runtime 的手动 CLI 路径
+   * agents 仅保留旧自定义引擎记录以识别和拒绝运行；nativePaths 为原生直连 Runtime 的手动 CLI 路径
    * （优先于 PATH 自动检测，zcode bundled 条目同样读取 nativePaths.zcode）。
    * zcode.enableAutomationTools：放行 ZCode 自动化计划工具（Cron*）；缺省禁用（安全默认）。
    */
@@ -1185,9 +1185,11 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   /** HiFox 协作域：空间/成员/任务/专项/迭代/视图/分拣台/自动化/收件箱/Agent/技能/小队 */
   hifox: import('./hifox').HifoxApi
   conversations: import('./private-conversations').ConversationApi
+  designWorkspace: import('./design-workspace').DesignWorkspaceApi
   hifoxWork?: import('./hifox-work').HifoxWorkApi
   hifoxProgress?: import('./hifox-task-progress').HifoxProgressApi
   creations?: import('./creation-api').CreationApi
+  whiteboardV2?: import('./whiteboard-v2-api').WhiteboardV2Api
   integrations: import('./integrations').IntegrationApi
   /** Feature guards still detect an older loaded preload independently. */
   jiraIntegration?: import('./jira-integration').JiraIntegrationApi
@@ -1340,7 +1342,6 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
 
   /* --- AI bridge --- */
   installTpanel: () => Promise<{ ok: boolean; error?: string; path?: string }>
-  installTrellisHooks: () => Promise<{ ok: boolean; error?: string; message?: string }>
   /** pull (and clear) a queued deep-link focus — used by cold start before listeners attach */
   pullPendingFocus: () => Promise<{ taskDir: string; root: string | null } | null>
   copyToClipboard: (text: string) => Promise<void>
@@ -1705,15 +1706,15 @@ export interface GatewaySearchResult {
 
 /* ---------- ACP Agent 控制台（10-09-acp-agent-console） ---------- */
 
-/** 设置页注册表里的一条 ACP agent（任意 NDJSON ACP agent 通用） */
+/** 内置执行引擎定义或只读的旧自定义引擎/历史快照。 */
 export interface AcpAgentConfig {
   id: string
   name: string
-  /** 命令模板（整行交给 shell，如 `codex-acp` / `gemini --acp`） */
+  /** 历史命令仅用于辨认，不作为自定义启动命令执行。 */
   command: string
   enabled: boolean
   /**
-   * Frozen launch provenance; Settings overrides are always user-managed.
+   * Frozen launch provenance; legacy Settings overrides are unavailable.
    * 'bundled'：随应用 resources 打包的桥接适配器（如 ZCode），entry 由 setup.ts 收敛解析。
    */
   launchKind?: 'managed' | 'custom' | 'native' | 'bundled' | 'sdk'

@@ -20,6 +20,7 @@ import { registerHifoxCodeResourcesIpc } from './hifox-code-resources'
 import { registerHifoxTaskMaterialsIpc } from './hifox-task-materials'
 import { registerHifoxProgressIpc } from './hifox-progress'
 import { registerCreationsIpc } from './creations'
+import { registerWhiteboardV2Ipc } from './whiteboard-v2'
 import { taskCreationReferences, taskCreationFiles } from '../services/creations'
 import { getProjectGeneration, getProjectRoot } from '../state'
 import { registerFilesIpc } from './files'
@@ -52,6 +53,7 @@ import { registerWorkflowIpc } from './workflow'
 import { registerTeamDesktopIpc } from './team-desktop'
 import { registerAcpIpc } from './acp'
 import { registerPrivateConversationsIpc } from './private-conversations'
+import { registerDesignWorkspaceIpc } from './design-workspace'
 import { ConversationError } from '../services/private-conversations/service'
 import { getAcpHistorySession } from '../services/daemon-client/acp'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
@@ -85,6 +87,7 @@ export function registerIpc(deps: WindowDeps): void {
     call: <T>(input: TaskOutputNativeInput) => taskProgressNativeCall<TaskOutputReply<T>>(input)
   })
   registerCreationsIpc()
+  registerWhiteboardV2Ipc()
   registerFilesIpc()
   registerDocumentsIpc()
   registerObservationIpc()
@@ -115,6 +118,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerTeamDesktopIpc(deps.getMain)
   registerAcpIpc()
   const privateConversations = registerPrivateConversationsIpc(deps)
+  registerDesignWorkspaceIpc(deps, privateConversations)
   registerPiWebPreviewIpc({
     getProject: sessionId => sessionId?.startsWith('acp-private-')
       ? privateConversations.previewProject(sessionId)
