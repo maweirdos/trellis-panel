@@ -43,7 +43,7 @@
 .requirement-document-content ul[data-type='taskList'] > li > label { flex-shrink: 0; }
 .requirement-document-content ul[data-type='taskList'] > li > div { flex: 1; min-width: 0; }
 .requirement-document-content blockquote { margin-block: var(--my-space-16); padding-inline-start: var(--my-space-16); border-inline-start: 1px solid var(--my-border-strong); color: var(--my-txt-secondary); }
-.requirement-document-content code { font-family: var(--my-font-mono); font-size: var(--my-text-sm); }
+.requirement-document-content code { font-family: var(--my-code-font); font-size: var(--my-text-sm); }
 .requirement-document-content pre { padding: var(--my-space-12); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-base); background: var(--my-bg-input); overflow-x: auto; }
 .requirement-document-content pre code { white-space: pre; }
 .requirement-document-content a { color: var(--my-txt-link-primary); text-decoration: underline; text-underline-offset: var(--my-space-2); }
@@ -54,6 +54,6 @@
 .requirement-document-content :is(th,td) > p { margin: 0; }
 .requirement-document-content .selectedCell { background: var(--my-selection-bg); }
 .requirement-document-content hr { margin-block: var(--my-space-24); border: 0; border-top: 1px solid var(--my-border-subtle); }
-.requirement-editor-source { box-sizing: border-box; flex: 1; min-width: 0; min-height: 0; width: 100%; margin: 0; padding-block: calc(var(--my-space-56) + var(--my-space-16)) var(--my-space-56); padding-inline: var(--my-space-24); border: 0; border-radius: 0; outline: none; box-shadow: none; resize: none; background: transparent; color: var(--my-txt-primary); caret-color: var(--my-txt-primary); font-family: var(--my-font-mono); font-size: var(--my-text-document); font-weight: var(--my-weight-normal); line-height: var(--my-line-document); tab-size: 2; }
+.requirement-editor-source { box-sizing: border-box; flex: 1; min-width: 0; min-height: 0; width: 100%; margin: 0; padding-block: calc(var(--my-space-56) + var(--my-space-16)) var(--my-space-56); padding-inline: var(--my-space-24); border: 0; border-radius: 0; outline: none; box-shadow: none; resize: none; background: transparent; color: var(--my-txt-primary); caret-color: var(--my-txt-primary); font-family: var(--my-code-font); font-size: var(--my-text-document); font-weight: var(--my-weight-normal); line-height: var(--my-line-document); tab-size: 2; }
 .requirement-editor-source:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); }
 .requirement-editor-source::placeholder { color: var(--my-txt-secondary); }

@@ -1,12 +1,14 @@
-import { type JSX, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, CircleUser, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, X, Wrench, Activity, FileText } from 'lucide-react'
+import { BookOpen, ChevronRight, CircleUser, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, X, Wrench, Activity, FileText } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { NavIcon } from '../icons'
 import { SidebarResizeHandle, useSidebarWidthStyle } from './SidebarResizeHandle'
 import { contextButtonClass } from './ModuleLinks'
 import { SettingsNavigation } from './SettingsNavigation'
+import { AccountMenu } from './AccountMenu'
+import { ContextRegion } from './ContextRegion'
 import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, pageRequiresProject, PRIMARY_NAVIGATION, type ModuleId, type TeamView } from '../navigation'
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
@@ -36,10 +38,13 @@ export function WorkspaceSidebar(): JSX.Element {
         }} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
       </nav>
       <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">
-        <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => setPage(useMy.getState().modulePages.settings ?? 'settings')} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>
+        <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => {
+          setPage(useMy.getState().modulePages.settings ?? 'settings')
+        }} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>
+        <AccountMenu />
       </div>
     </aside>
-    {!collapsed && hasShellContext(page) && <ContextSidebar />}
+    {hasShellContext(page) && <ContextRegion collapsed={collapsed}><ContextSidebar /></ContextRegion>}
   </>
 }
 
@@ -50,6 +55,11 @@ function ContextSidebar(): JSX.Element {
   const personalTaskSource = useApp((state) => state.personalTaskSource)
   const { data, workItemsView: view, setWorkItemsView: setView, setWorkItemsTab: setTab, favorites, toggleFavorite, openIssue, savedViews, applyView, removeView, teamView, setTeamView } = useMy()
   const domain = activeModule(page)
+  const moreRef = useRef<HTMLDetailsElement>(null)
+  const moreContainsCurrent = page !== 'tasks' && page !== 'creations' || page === 'tasks' && personalTaskSource === 'local' && view === 'iterations'
+  useLayoutEffect(() => {
+    if (domain === 'home' && moreContainsCurrent && moreRef.current) moreRef.current.open = true
+  }, [domain, moreContainsCurrent, page, personalTaskSource, view])
   const localTasks = (iterations = false): void => {
     useApp.getState().setPersonalTaskSource('local')
     setView(iterations ? 'iterations' : 'items')
@@ -66,17 +76,18 @@ function ContextSidebar(): JSX.Element {
     {domain === 'settings' ? <SettingsNavigation /> : <div className="my-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
       {domain === 'home' && <>
         {row('all', '任务', page === 'tasks' && (personalTaskSource === 'team' || view === 'items'), <ListTodo size={16} />, () => { setView('items'); setPage('tasks') })}
-        {row('creations', '创作', page === 'creations', <PanelsTopLeft size={16} />, () => setPage('creations'))}
-        <details key={`${page}:${personalTaskSource}:${view}`} open={page !== 'tasks' && page !== 'creations' || page === 'tasks' && personalTaskSource === 'local' && view === 'iterations' || undefined} className="group pt-3">
-          <summary className="cursor-pointer px-3 py-2 text-my-xs text-my-tertiary">更多</summary>
-        {row('overview', '概览', page === 'dashboard', <House size={16} />, () => setPage('dashboard'))}
-        {row('local-work', '本地工作', page === 'tasks' && personalTaskSource === 'local' && view === 'items', <ListTodo size={16} />, () => localTasks())}
-        {row('iterations', '本地版本', page === 'tasks' && personalTaskSource === 'local' && view === 'iterations', <RotateCw size={16} />, () => { localTasks(true); setTab('all') })}
-        {row('intake', '接入', page === 'inbox' || page === 'jira', <FolderInput size={16} />, () => setPage('inbox'))}
-        {route('archive')}
-        {row('tools', '工具', ['devtools', 'architecture', 'studio'].includes(page), <Wrench size={16} />, () => { const tool = useMy.getState().toolView; setPage(tool === 'architecture' || tool === 'studio' ? tool : 'devtools') })}
-          {savedViews.length > 0 && <details open className="mt-5">
-            <summary className="cursor-pointer px-2.5 pb-1.5 text-my-xs text-my-tertiary">视图</summary>
+        {row('creations', getPageNavigation('creations').title, page === 'creations', <PanelsTopLeft size={16} />, () => setPage('creations'))}
+        <details ref={moreRef} className="my-navigation-group pt-3">
+          <summary className="my-navigation-summary"><span>更多</span><ChevronRight aria-hidden="true" size={14} /></summary>
+          <div className="my-navigation-children">
+            {row('overview', '概览', page === 'dashboard', <House size={16} />, () => setPage('dashboard'))}
+            {row('local-work', '本地工作', false, <ListTodo size={16} />, () => localTasks())}
+            {row('iterations', '本地版本', page === 'tasks' && personalTaskSource === 'local' && view === 'iterations', <RotateCw size={16} />, () => { localTasks(true); setTab('all') })}
+            {row('intake', '接入', page === 'inbox' || page === 'jira', <FolderInput size={16} />, () => setPage('inbox'))}
+            {route('archive')}
+            {row('tools', '工具', ['devtools', 'architecture', 'studio'].includes(page), <Wrench size={16} />, () => { const tool = useMy.getState().toolView; setPage(tool === 'architecture' || tool === 'studio' ? tool : 'devtools') })}
+          {savedViews.length > 0 && <details open className="my-navigation-group mt-5">
+            <summary className="my-navigation-summary"><span>视图</span><ChevronRight aria-hidden="true" size={14} /></summary>
             {savedViews.map((saved) => <div key={saved.id} className="group/view flex items-center gap-1 rounded-my-md hover:bg-my-layer-transparent-hover">
               <button type="button" className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary" onClick={() => { localTasks(); applyView(saved.id) }}>
                 <NavIcon name="views" size={16} /><span className="truncate" title={saved.name}>{saved.name}</span>
@@ -84,8 +95,8 @@ function ContextSidebar(): JSX.Element {
               <button type="button" aria-label={`删除视图 ${saved.name}`} onClick={() => removeView(saved.id)} className="mr-1 p-1 text-my-icon-tertiary opacity-0 group-hover/view:opacity-100 focus:opacity-100"><X size={12} /></button>
             </div>)}
           </details>}
-          {data.issues.some((issue) => favorites.includes(issue.id)) && <details open className="mt-5">
-            <summary className="cursor-pointer px-2.5 pb-1.5 text-my-xs text-my-tertiary">收藏</summary>
+          {data.issues.some((issue) => favorites.includes(issue.id)) && <details open className="my-navigation-group mt-5">
+            <summary className="my-navigation-summary"><span>收藏</span><ChevronRight aria-hidden="true" size={14} /></summary>
             {data.issues.filter((issue) => favorites.includes(issue.id)).map((issue) => <div key={issue.id} className="group/favorite flex items-center gap-1 rounded-my-md hover:bg-my-layer-transparent-hover">
               <button type="button" onClick={() => { localTasks(); openIssue(issue.id) }} className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary">
                 <Star size={16} className="shrink-0 text-my-icon-tertiary" /><span className="truncate" title={issue.name}>{issue.name}</span>
@@ -93,6 +104,7 @@ function ContextSidebar(): JSX.Element {
               <button type="button" aria-label={`取消收藏 ${issue.name}`} onClick={() => toggleFavorite(issue.id)} className="mr-1 p-1 text-my-icon-tertiary opacity-0 group-hover/favorite:opacity-100 focus:opacity-100"><X size={12} /></button>
             </div>)}
           </details>}
+          </div>
         </details>
       </>}
       {domain === 'team' && <>

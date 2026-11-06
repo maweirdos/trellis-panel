@@ -7,6 +7,7 @@ export interface AcpRecoverModelInput {
 }
 
 export type AcpRecoveryKind = 'model-unavailable' | 'connection-failed'
+export const ACP_RECOVERY_COMMIT_PENDING_MESSAGE = '原会话恢复记录尚未完全确认，请检查存储后重试原会话'
 
 /** Non-secret presentation state for a failed recovery attempt. */
 export interface AcpRecoveryState {
@@ -14,6 +15,8 @@ export interface AcpRecoveryState {
   /** True only after runtime.setModel acknowledged the requested exact ID. */
   modelConfirmed?: boolean
   confirmedModelId?: string
+  /** A native-record change and the Panel snapshot may need same-session reconciliation. */
+  commitPending?: boolean
 }
 
 export type AcpRecoverModelResult = {

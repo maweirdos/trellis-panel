@@ -56,6 +56,11 @@ export class CreationLocalStore {
   }
   async list(): Promise<CreationRecord[]> { await this.load(); return [...this.records.values()].map((value) => structuredClone(value.record)) }
   async get(id: string): Promise<CreationRecord | null> { await this.load(); const value = this.records.get(id); return value ? structuredClone(value.record) : null }
+  async receiptById(creationId: string, commandId: string): Promise<CreationCommandReply | null> {
+    await this.load()
+    const value = this.records.get(creationId)?.receipts.find((entry) => entry.commandId === commandId)
+    return value ? structuredClone(value.reply) : null
+  }
   async receipt(command: CreationCommand): Promise<CreationCommandReply | null> {
     await this.load()
     const value = this.records.get(command.creationId)?.receipts.find((entry) => entry.commandId === command.commandId)

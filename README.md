@@ -50,8 +50,8 @@ Trellis Panel 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-fir
 
 1. **深链协议** `trellis-panel://`（带每安装令牌 `&t=` 防伪）：
    `open-task?dir=…` / `notify?text=…` / `task-event?path=…`
-2. **tpanel 命令**：`tpanel notify|open|task-event`（设置页一键安装/更新）
-3. **Trellis hooks**：一键写入 `.trellis/config.yaml`，任务生命周期事件实时推送面板
+2. **tpanel 命令**：在设置的网络服务中安装或更新，提供 `tpanel notify|open|task-event`
+3. **Trellis hooks**：项目中已配置的 `tpanel task-event` 可将任务生命周期事件推送面板
 
 面板只做被动通知与可视化，不通过 MCP 暴露任何写入口；AI 接活走项目内的
 `python ./.trellis/scripts/jira.py list / import <KEY>`（Trellis 侧 Jira 拉取）。
@@ -106,7 +106,7 @@ src/
 │     ├─ watcher.ts       # chokidar 监听 + 防抖
 │     ├─ cli.ts           # trellis CLI 子进程（流式输出、进程树终止）
 │     ├─ jira.ts          # Jira REST API v2（搜索/流转/评论）
-│     ├─ bridge.ts        # 深链解析、tpanel 安装、hooks 写入、通知广播
+│     ├─ bridge.ts        # 深链解析、tpanel 安装、通知广播
 │     ├─ httpapi.ts       # 只读 Web 看板 HTTP 服务
 │     ├─ studio.ts        # 定制中心：workflow/命令/子代理/技能/钩子/config.yaml 扫描与白名单写回
 │     ├─ knowledge.ts     # 五库知识库：倒排索引全文检索（CJK 二元分词 + TF-IDF）+ 我的笔记读写 + 问答历史

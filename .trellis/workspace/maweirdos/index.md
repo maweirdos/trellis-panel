@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 30
-- **Last Active**: 2026-10-24
+- **Total Sessions**: 38
+- **Last Active**: 2026-11-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1055 | Active |
+| `journal-1.md` | ~1330 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,14 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 38 | 2026-11-06 | T07 编辑器领取与 MCP 接入 | `0db1f4d1c93ef2323a24b60c8f8704a7422ae148` | `codex/team-task-execution` |
+| 37 | 2026-11-05 | Daemon lifecycle and GUI takeover | - | `codex/team-task-execution` |
+| 36 | 2026-11-05 | T06 产品派发与真实 Agent 执行 | `43df985bf071da5cb577dad32d680e1d7d9a6101` | `codex/team-task-execution` |
+| 35 | 2026-11-05 | T05 工程准备与执行绑定 | `2e665314e653c21fc8d49e4be0cd5b9aa5aefff2` | `codex/team-task-execution` |
+| 34 | 2026-11-05 | T04 fixed artifact versions and execution handoff | `51bf17bf4b60772f5051e3a8ed97592574ffe423` | `codex/team-task-execution` |
+| 33 | 2026-11-05 | T03 fixed shared resources and stage context | `9c4c21eeb4f6f149e3f4ae89acc4584919507cb2` | `codex/team-task-execution` |
+| 32 | 2026-11-05 | T02 Trellis source import and mappings | `77974112a4db191155fe98caa20d0d8aba116a38` | `codex/team-task-execution` |
+| 31 | 2026-11-05 | T01 team task execution contract | `99f56dbccedb03a73fed1c2781e56ce38ce8fb95` | `codex/team-task-execution` |
 | 30 | 2026-10-24 | ZCode 断线恢复与工作区占用修复 | - | `codex/trellis-team-refactor` |
 | 29 | 2026-10-23 | ZCode 原生历史目录与连接预检优化 | - | `codex/trellis-team-refactor` |
 | 28 | 2026-10-23 | ZCode 权限终态与打包资源真实验收 | - | `codex/trellis-team-refactor` |

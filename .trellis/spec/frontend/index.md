@@ -39,6 +39,7 @@
 | [quality.md](./quality.md)                                                     | Code quality and performance standards          | Reference     |
 | [my-ui-module.md](./my-ui-module.md)                                     | Shell module tokens & conventions               | Module-scoped |
 | [conversation-workspace.md](./conversation-workspace.md)                   | ACP history/paging/recovery, turn layout, inspector/appearance and source ownership | Conversation / reader / Settings |
+| [Design workspace contracts](../shared/design-workspace.md) | HTML page frames, live DOM references, candidate comparison, source buffers and published prototype anchors | Design canvas / artifact library |
 | [workflow-conversation.md](./workflow-conversation.md)                     | Actual node/receipt provenance, frozen revisions, retained commands and sessionless recovery | Managed workflow / revision / source history |
 | [team-collaboration.md](./team-collaboration.md)                           | Fixed published reading, offline original intents, authority changes and selected-source publication | Desktop team sharing and native publish entries |
 | [retained-source-interactions.md](./retained-source-interactions.md)       | Bounded Settings detours, reader continuity and hidden interaction ownership | Retained source pages |

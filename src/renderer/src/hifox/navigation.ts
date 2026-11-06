@@ -22,7 +22,7 @@ export const COLLABORATION_MODULES: CollaborationModule[] = [
   { id: 'views', label: '视图', group: '空间 · 任务', icon: 'board', scope: 'space', parent: 'tasks' },
   { id: 'projects', label: '专项', group: '空间 · 任务', icon: 'projects', scope: 'space', parent: 'tasks' },
   { id: 'cockpit', label: '进度与里程碑', group: '空间', icon: 'reports', scope: 'space' },
-  { id: 'creations', label: '创作', group: '空间', icon: 'board', scope: 'space' },
+  { id: 'creations', label: '产物', group: '空间', icon: 'board', scope: 'space' },
   { id: 'agents', label: 'Agent', group: '空间', icon: 'agents', scope: 'space' },
   { id: 'crews', label: '小队', group: '空间', icon: 'crews', scope: 'space' },
   { id: 'automations', label: '自动化', group: '空间', icon: 'automations', scope: 'space' },

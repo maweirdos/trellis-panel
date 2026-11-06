@@ -50,6 +50,7 @@ interface HifoxState {
   /** 当前生效的保存视图 id（null = 临时筛选） */
   activeViewId: HifoxID | null
   bootstrap: () => Promise<void>
+  workspaceChanged: (context: HifoxWorkspaceContext, refreshUnchanged?: boolean) => void
   selectWorkspace: (connectionId: string | null) => Promise<boolean>
   setModule: (module: HifoxModule) => void
   setCurrentSpace: (id: HifoxID) => void
@@ -69,6 +70,11 @@ let workspaceTicket = 0
 let pendingWrites = 0
 let switchingWorkspace = false
 let writeQueue: Promise<unknown> = Promise.resolve()
+
+function sameAuthority(left: HifoxWorkspaceContext, right: HifoxWorkspaceContext): boolean {
+  return left.key === right.key && left.actorId === right.actorId && left.instanceId === right.instanceId && left.epoch === right.epoch &&
+    left.authorizationRevision === right.authorizationRevision && (left.state === 'access-revoked') === (right.state === 'access-revoked')
+}
 
 function acceptSnapshot(snapshot: HifoxSnapshot, currentSpaceId: string | null): { snapshot: HifoxSnapshot; currentSpaceId: string | null } {
   return { snapshot, currentSpaceId: snapshot.spaces.some((space) => space.id === currentSpaceId) ? currentSpaceId : snapshot.spaces[0]?.id ?? null }
@@ -97,6 +103,18 @@ export const useHifox = create<HifoxState>()((set, get) => ({
   createTaskOpen: false,
   taskFilter: {},
   activeViewId: null,
+
+  workspaceChanged: (context, refreshUnchanged = true) => {
+    const changed = !sameAuthority(get().workspaceContext, context)
+    if (changed) {
+      snapshotTicket++
+      workspaceTicket++
+      set({ workspaceContext: context, snapshot: null,
+        loadError: context.state === 'access-revoked' ? '共享空间的访问权限已失效，请重新登录核对。' : null,
+        openTaskId: null, createTaskOpen: false, createTaskContext: null, taskFilter: {}, activeViewId: null })
+    }
+    if (changed || refreshUnchanged) void get().bootstrap()
+  },
 
   bootstrap: async () => {
     if (!hasIpc || !api.hifox) {
@@ -129,7 +147,7 @@ export const useHifox = create<HifoxState>()((set, get) => ({
     set({ busy: true })
     try {
       const result = await api.hifox.selectWorkspace({ connectionId })
-      if (ticket !== snapshotTicket) return false
+      if (ticket !== snapshotTicket && (!result.ok || !result.context || !sameAuthority(result.context, get().workspaceContext))) return false
       if (!result.ok) { useApp.getState().pushToast({ kind: 'error', title: '切换协作空间', body: result.error }); return false }
       set({ ...acceptSnapshot(result.data, null), workspaceContext: result.context ?? get().workspaceContext, loadError: null,
         openTaskId: null, createTaskOpen: false, taskFilter: {}, activeViewId: null, cockpitScope: {} })
@@ -137,7 +155,7 @@ export const useHifox = create<HifoxState>()((set, get) => ({
     } catch (error) {
       useApp.getState().pushToast({ kind: 'error', title: '切换协作空间', body: error instanceof Error ? error.message : String(error) })
       return false
-    } finally { switchingWorkspace = false; set({ busy: false }) }
+    } finally { switchingWorkspace = false; set({ busy: false }); if (!get().snapshot && !pendingWrites && get().workspaceContext.state !== 'access-revoked') void get().bootstrap() }
   },
 
   setModule: (module) => set({ module, openTaskId: null, createTaskOpen: false }),
@@ -178,7 +196,7 @@ export const useHifox = create<HifoxState>()((set, get) => ({
     try {
       if (scope !== workspaceTicket) return null
       const result = await call()
-      if (scope !== workspaceTicket) return null
+      if (scope !== workspaceTicket && (!result.ok || !('context' in result) || !result.context || !sameAuthority(result.context as HifoxWorkspaceContext, get().workspaceContext))) return null
       if (result.ok) {
         const state = get()
         const context = 'context' in result ? result.context as HifoxWorkspaceContext | undefined : undefined
@@ -202,9 +220,28 @@ export const useHifox = create<HifoxState>()((set, get) => ({
       snapshotTicket++
       set({ busy: pendingWrites > 0 })
       release()
+      if (!pendingWrites && !switchingWorkspace && !get().snapshot && get().workspaceContext.state !== 'access-revoked') void get().bootstrap()
     }
   }
 }))
+
+let workspaceObservers = 0
+let workspaceRefreshObservers = 0
+let stopWorkspaceObserver: (() => void) | undefined
+/** Share one event subscription across the desktop shell and collaboration surfaces. */
+export function observeCollaborationWorkspace(refreshUnchanged = true): () => void {
+  workspaceObservers++
+  if (refreshUnchanged) workspaceRefreshObservers++
+  if (workspaceObservers === 1) stopWorkspaceObserver = api?.hifox?.onWorkspaceChanged?.((context) => useHifox.getState().workspaceChanged(context, workspaceRefreshObservers > 0))
+  let active = true
+  return () => {
+    if (!active) return
+    active = false
+    workspaceObservers--
+    if (refreshUnchanged) workspaceRefreshObservers--
+    if (workspaceObservers === 0) { stopWorkspaceObserver?.(); stopWorkspaceObserver = undefined }
+  }
+}
 
 /* ---------------- 快照派生工具（页面共用） ---------------- */
 

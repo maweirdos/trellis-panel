@@ -34,6 +34,7 @@ import { stageKnowledgeReferenceHandoff } from '../acp/knowledge-reference-hando
 import { Button, Dropdown, DropdownItem, Modal, SearchInput } from '../my/ui'
 import { useMy } from '../my/store'
 import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
+import { ContextRegion } from '../my/layout/ContextRegion'
 import { ProductMaterialActions } from '../knowledge/ProductMaterialActions'
 import { useKnowledgeDiscussion } from '../knowledge/discussion-panel'
 import { KnowledgeScopeControl } from '../knowledge/KnowledgeScopeControl'
@@ -95,6 +96,7 @@ const LIB_CHIP: Record<KbLibrary, string> = {
 
 export function KnowledgePage(): JSX.Element {
   const sidebarStyle = useSidebarWidthStyle()
+  const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
   const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
   const viewerTabs = useApp((s) => s.viewerTabs)
@@ -696,14 +698,14 @@ export function KnowledgePage(): JSX.Element {
   return (
     <div ref={pageRef} className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
       {/* 左列：知识导航、来源与检索 */}
-      <div id="knowledge-browser" style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
+      <ContextRegion collapsed={sidebarCollapsed}><div id="knowledge-browser" style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
         <SidebarResizeHandle />
         <header className="flex h-my-header shrink-0 items-center px-4">
           <h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">知识</h1>
         </header>
         <ModuleLinks domain="knowledge" />
 
-      </div>
+      </div></ContextRegion>
 
       {/* 右列：当前知识视图与阅读器 */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">

@@ -88,6 +88,7 @@ function persist(strict = false): void {
 }
 
 export function setSettings(patch: Partial<Settings>, strict = false): Settings {
+  assertLegacyAcpAgentsUnchanged(getSettings(), patch)
   const authority = settingsPersistence()
   if (authority) return authority.write(patch, strict)
   assertLegacySettingsWriter(app.getPath('userData'))
@@ -96,6 +97,14 @@ export function setSettings(patch: Partial<Settings>, strict = false): Settings 
   cache = next
   try { persist(strict) } catch (error) { cache = cur; throw error }
   return next
+}
+
+/** Legacy custom definitions identify unavailable runtimes and must not be rewritten by settings clients. */
+export function assertLegacyAcpAgentsUnchanged(current: Settings, patch: Partial<Settings>): void {
+  if (patch.acp && Object.hasOwn(patch.acp, 'agents')
+    && JSON.stringify(patch.acp.agents) !== JSON.stringify(current.acp?.agents)) {
+    throw new Error('旧自定义执行引擎配置仅供辨认，不能新增、修改或删除')
+  }
 }
 
 function patchRuntimeDefaults(current: Record<string, AcpRuntimeDefaults> | undefined, patch: Record<string, AcpRuntimeDefaults>): Record<string, AcpRuntimeDefaults> {

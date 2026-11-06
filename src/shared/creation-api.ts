@@ -10,7 +10,8 @@ export const creationGenerateSchema = z.object({
   commentIds: z.array(z.string().uuid()).min(1).max(8), instruction: z.string().trim().max(1000).optional()
 }).strict()
 export const creationCancelSchema = z.object({ workspaceKey, commandId: z.string().uuid() }).strict()
-export const creationRecoverSchema = z.object({ workspaceKey, creationId: z.string().uuid() }).strict()
+export const creationRecoverSchema = z.object({ workspaceKey, creationId: z.string().uuid(), commandId: z.string().uuid().optional(), expectedEpoch: z.string().uuid().nullable().optional() }).strict()
+  .refine((value) => !value.commandId || value.expectedEpoch !== undefined, 'The original command requires its source epoch')
 
 export type CreationReply<T> = { ok: true; value: T } | { ok: false; code: string; error: string; outcomeUnknown?: boolean }
 export type CreationGenerationPlan = { inputBytes: number; estimatedTokens: number; fragmentCount: number; selectedCount: number; maxInputBytes: number; model: string | null; available: boolean }

@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { errorText } from '../../shared/errors'
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync, copyFileSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, copyFileSync } from 'fs'
 import { join } from 'path'
 import { watch, type FSWatcher } from 'chokidar'
 import { appCliPowerShell, appCliScript } from './access/app-cli'
@@ -188,50 +188,6 @@ exit /b 1
     return { ok: true, path: p }
   } catch (e) {
     return { ok: false, error: errorText(e, '写入失败') }
-  }
-}
-
-const HOOK_BLOCK = `# --- Trellis Panel bridge (auto-generated) ---
-hooks:
-  after_create:
-    - "tpanel task-event"
-  after_start:
-    - "tpanel task-event"
-  after_finish:
-    - "tpanel task-event"
-  after_archive:
-    - "tpanel task-event"
-`
-
-/** Append the panel bridge hooks to .trellis/config.yaml (idempotent). */
-export function installTrellisHooks(projectRoot: string): { ok: boolean; error?: string; message?: string } {
-  const cfgPath = join(projectRoot, '.trellis', 'config.yaml')
-  try {
-    let content = existsSync(cfgPath) ? readFileSync(cfgPath, 'utf-8') : ''
-    if (content.includes('tpanel task-event')) {
-      return { ok: true, message: '桥接 hooks 已存在，无需重复写入' }
-    }
-    if (/^hooks:\s*$/m.test(content)) {
-      // hooks section exists without our entries — append only missing sub-entries
-      const lines = [
-        '  after_create:',
-        '    - "tpanel task-event"',
-        '  after_start:',
-        '    - "tpanel task-event"',
-        '  after_finish:',
-        '    - "tpanel task-event"',
-        '  after_archive:',
-        '    - "tpanel task-event"'
-      ]
-      content = content.replace(/^hooks:\s*$/m, 'hooks:\n' + lines.join('\n'))
-    } else {
-      content = content.replace(/# --- Trellis Panel bridge[^\n]*\n/, '') // cleanup stale marker
-      content = content.trimEnd() + '\n\n' + HOOK_BLOCK
-    }
-    writeFileSync(cfgPath, content, 'utf-8')
-    return { ok: true, message: '已写入 .trellis/config.yaml — AI 工具的任务事件将实时推送到面板' }
-  } catch (e) {
-    return { ok: false, error: errorText(e, '写入 config.yaml 失败') }
   }
 }
 

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import {
   RotateCw,
   Plus,
@@ -17,7 +17,7 @@ import {
   X
 } from 'lucide-react'
 import { useApp } from '../store'
-import { api } from '../api'
+import { api, hasIpc } from '../api'
 import { Button, Dropdown, DropdownItem, Modal, Switch } from '../my/ui'
 import type { ModelItem, ModelProvider, AiApiFormat, AiConfig } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors'
@@ -188,13 +188,132 @@ function endpointLabel(value: string): string {
   } catch { return '自定义接口地址' }
 }
 
+function ModelRelationship({ provider, selectedModelId, onSelectProvider, layoutKey, children }: {
+  provider: ModelProvider
+  selectedModelId: string | null
+  onSelectProvider: () => void
+  layoutKey: string
+  children: ReactNode
+}): JSX.Element {
+  const graphRef = useRef<HTMLDivElement>(null)
+  const pathRef = useRef<SVGPathElement>(null)
+  const measureRef = useRef<(() => void) | null>(null)
+  const [hovered, setHovered] = useState<string | null>(null)
+  const [focused, setFocused] = useState<string | null>(null)
+  const [inputMode, setInputMode] = useState<'pointer' | 'keyboard'>('pointer')
+  const activeId = inputMode === 'keyboard' ? focused ?? selectedModelId : hovered ?? focused ?? selectedModelId
+  const kind = activeId && activeId === selectedModelId ? 'selected' : 'preview'
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', ' '].includes(event.key)) setInputMode('keyboard')
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [])
+
+  useLayoutEffect(() => {
+    const graph = graphRef.current
+    const path = pathRef.current
+    if (!graph || !path) return
+    const source = graph.querySelector<HTMLElement>('.model-graph-source')
+    const scrollRoot = graph.closest<HTMLElement>('.model-provider-detail')
+    const toolbar = graph.parentElement?.querySelector<HTMLElement>('.model-list-sticky')
+    const node = [...graph.querySelectorAll<HTMLElement>('.model-graph-node')].find((item) => item.dataset.modelId === activeId)
+    if (!source || !scrollRoot) return
+    const measure = (): void => {
+      if (!node || !node.isConnected) { path.setAttribute('visibility', 'hidden'); return }
+      const bounds = graph.getBoundingClientRect()
+      const start = source.getBoundingClientRect()
+      const end = node.getBoundingClientRect()
+      const viewport = scrollRoot.getBoundingClientRect()
+      const top = Math.max(0, viewport.top + scrollRoot.clientTop, toolbar?.getBoundingClientRect().bottom ?? 0)
+      const bottom = Math.min(window.innerHeight, viewport.top + scrollRoot.clientTop + scrollRoot.clientHeight)
+      const endCenter = end.top + end.height / 2
+      const startCenter = start.top + start.height / 2
+      if (endCenter < top || endCenter > bottom || startCenter < top || startCenter > bottom) {
+        path.setAttribute('visibility', 'hidden')
+        return
+      }
+      const x = start.right - bounds.left
+      const y = startCenter - bounds.top
+      const endX = end.left - bounds.left
+      const endY = endCenter - bounds.top
+      const middle = x + (endX - x) / 2
+      path.setAttribute('d', `M ${x} ${y} C ${middle} ${y}, ${middle} ${endY}, ${endX} ${endY}`)
+      path.setAttribute('visibility', 'visible')
+    }
+    measure()
+    let frame = 0
+    const schedule = (): void => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure() })
+    }
+    measureRef.current = schedule
+    const observer = new ResizeObserver(schedule)
+    observer.observe(graph)
+    observer.observe(source)
+    observer.observe(scrollRoot)
+    if (toolbar) observer.observe(toolbar)
+    if (node) { observer.observe(node); if (node.parentElement) observer.observe(node.parentElement) }
+    window.addEventListener('scroll', schedule, true)
+    window.addEventListener('resize', schedule)
+    return () => {
+      measureRef.current = null
+      observer.disconnect()
+      window.removeEventListener('scroll', schedule, true)
+      window.removeEventListener('resize', schedule)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [layoutKey, activeId, kind])
+
+  useLayoutEffect(() => {
+    const graph = graphRef.current
+    if (!graph) return
+    const nodes = [...graph.querySelectorAll<HTMLElement>('.model-graph-node')]
+    setHovered((id) => id && nodes.some((node) => node.dataset.modelId === id && node.matches(':hover')) ? id : null)
+    const active = document.activeElement
+    const row = active instanceof HTMLElement && graph.contains(active) ? active.closest<HTMLElement>('.model-item-row') : null
+    setFocused(row?.dataset.modelId ?? null)
+  }, [layoutKey])
+
+  useLayoutEffect(() => { measureRef.current?.() })
+
+  return <div className="model-graph" ref={graphRef} onPointerMove={() => setInputMode('pointer')} onPointerDown={() => setInputMode('pointer')} onWheelCapture={() => setInputMode('pointer')} onMouseLeave={() => setHovered(null)} onFocus={(event) => { const target = event.target as HTMLElement; if (target.matches(':focus-visible')) setInputMode('keyboard'); setFocused(target.closest<HTMLElement>('.model-item-row')?.dataset.modelId ?? null) }} onBlur={(event) => { const next = event.relatedTarget; setFocused(next instanceof HTMLElement && event.currentTarget.contains(next) ? next.closest<HTMLElement>('.model-item-row')?.dataset.modelId ?? null : null) }}>
+    <svg className="model-graph-lines" aria-hidden="true">
+      <path key={`${activeId}:${kind}`} ref={pathRef} pathLength={1} className="model-graph-path" data-model-id={activeId ?? undefined} data-kind={kind} visibility="hidden" />
+    </svg>
+    <button type="button" className="model-graph-source" aria-pressed={selectedModelId === null} onClick={onSelectProvider} title={provider.name || '未命名供应商'}>
+      <ProviderIdentity name={provider.name} local={provider.apiFormat === 'ollama'} />
+      <span className="my-item-title">{provider.name || '未命名供应商'}</span>
+      <span className="my-item-description">供应商</span>
+    </button>
+    <div className="model-graph-nodes" onMouseOver={(event) => setHovered((event.target as Element).closest<HTMLElement>('.model-graph-node')?.dataset.modelId ?? null)} onMouseOut={(event) => { const next = event.relatedTarget; setHovered(next instanceof Element && event.currentTarget.contains(next) ? next.closest<HTMLElement>('.model-graph-node')?.dataset.modelId ?? null : null) }}>{children}</div>
+  </div>
+}
+
 export function ModelsPage(): JSX.Element {
   const settings = useApp((state) => state.settings)
   const saveSettings = useApp((state) => state.saveSettings)
   const pushToast = useApp((state) => state.pushToast)
   const providers = useMemo(() => readProviders(settings?.ai), [settings?.ai])
   const activeProviderId = settings?.ai?.activeProviderId || (settings?.ai?.providers?.find((provider) => provider.enabled)?.id ?? legacyProviderDraft(settings?.ai)?.id ?? '')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [modelSearch, setModelSearch] = useState('')
+  const [selectedModel, setSelectedModel] = useState<{ providerId: string; modelId: string } | null>(null)
+  const modelSearchRef = useRef<HTMLInputElement>(null)
+  const modelToolbarRef = useRef<HTMLDivElement>(null)
+  const selectedProvider = providers.find((provider) => provider.id === selectedId)
+    ?? providers.find((provider) => provider.id === activeProviderId)
+    ?? providers[0]
+  const modelViewRef = useRef({ providerId: selectedProvider?.id, search: modelSearch })
+  modelViewRef.current = { providerId: selectedProvider?.id, search: modelSearch }
+  const filteredModels = useMemo(() => {
+    const terms = modelSearch.normalize('NFKC').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+    return (selectedProvider?.models ?? []).filter((model) => {
+      const text = [model.name, model.id, model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase()
+      return terms.every((term) => text.includes(term))
+    })
+  }, [selectedProvider, modelSearch])
   const [showTemplates, setShowTemplates] = useState(false)
   const [providerEditor, setProviderEditor] = useState<{ provider: ModelProvider; source: ProviderSource | null } | null>(null)
   const [modelEditor, setModelEditor] = useState<{ provider: ModelProvider; source: ProviderSource; model: ModelItem; isNew: boolean } | null>(null)
@@ -213,11 +332,25 @@ export function ModelsPage(): JSX.Element {
   const requests = useRef(new Set<string>())
   const saving = pendingWrites > 0
 
+  useLayoutEffect(() => {
+    const toolbar = modelToolbarRef.current
+    const container = toolbar?.closest<HTMLElement>('.model-provider-detail')
+    if (!toolbar || !container) return
+    const measure = (): void => container.style.setProperty('--model-toolbar-height', `${toolbar.getBoundingClientRect().height}px`)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(toolbar)
+    return () => { observer.disconnect(); container.style.removeProperty('--model-toolbar-height') }
+  }, [selectedProvider?.id, Boolean(settings)])
+
   useEffect(() => {
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
   useEffect(() => { setTemperature(settings?.ai?.temperature ?? 0.3) }, [settings?.ai?.temperature])
+  useEffect(() => {
+    setSelectedModel((selection) => selection && !providers.some((provider) => provider.id === selection.providerId && provider.models.some((model) => model.id === selection.modelId)) ? null : selection)
+  }, [providers])
 
   const latestProviders = (): ModelProvider[] => readProviders(useApp.getState().settings?.ai)
   const modelInstanceKey = (providerId: string, modelId: string): string => JSON.stringify([providerId, modelId])
@@ -253,6 +386,7 @@ export function ModelsPage(): JSX.Element {
         invalidateModelInstance(instance)
       }
     }
+    if (mounted.current) setSelectedModel((selection) => selection && !present.has(modelInstanceKey(selection.providerId, selection.modelId)) ? null : selection)
   }
   // Observe every committed inventory, even removal/re-addition batched into one render.
   useEffect(() => {
@@ -340,6 +474,21 @@ export function ModelsPage(): JSX.Element {
     invalidateModelInstance(getModelInstance(owner.id, modelId))
     return patchModels(owner, (models) => models.filter((model) => model.id !== modelId))
   }
+  const deleteModelWithFocus = (owner: ProviderSource, modelId: string, origin: HTMLButtonElement): void => {
+    const index = filteredModels.findIndex((model) => model.id === modelId)
+    const neighborId = filteredModels[index + 1]?.id ?? filteredModels[index - 1]?.id
+    const search = modelSearch
+    const restore = (id?: string): void => {
+      requestAnimationFrame(() => {
+        if (!mounted.current || modelViewRef.current.providerId !== owner.id || modelViewRef.current.search !== search) return
+        const active = document.activeElement
+        if (active !== origin && active !== document.body && active !== document.documentElement) return
+        const node = [...document.querySelectorAll<HTMLElement>('.model-provider-detail .model-graph-node')].find((item) => item.dataset.modelId === id)
+        ;(node ?? modelSearchRef.current)?.focus()
+      })
+    }
+    void handleDeleteModel(owner, modelId).then(() => restore(neighborId)).catch((err) => { reportFailure('删除模型失败', err); restore(modelId) })
+  }
 
   const handleSaveProvider = async (draft: ModelProvider, secretAction: ModelSecretAction): Promise<void> => {
     const editor = providerEditor
@@ -359,6 +508,7 @@ export function ModelsPage(): JSX.Element {
           ...(changed ? { status: 'untested' as const, latencyMs: undefined, lastTestedAt: undefined } : {}) }
       })
     })
+    if (!editor.source) { setSelectedId(draft.id); setModelSearch('') }
     pushToast({ kind: 'info', title: editor.source ? '已保存供应商' : '已添加供应商', body: draft.name })
   }
 
@@ -380,7 +530,7 @@ export function ModelsPage(): JSX.Element {
 
   const handleDeleteProvider = async (provider: ModelProvider): Promise<void> => {
     await persistProviders((current) => current.filter((item) => item.id !== provider.id))
-    if (expandedId === provider.id) setExpandedId(null)
+    if (selectedId === provider.id) { setSelectedId(null); setModelSearch('') }
     pushToast({ kind: 'info', title: '已删除供应商', body: provider.name })
   }
 
@@ -481,53 +631,74 @@ export function ModelsPage(): JSX.Element {
       <Button variant="primary" disabled={saving || !settings} onClick={() => setShowTemplates(true)}><Plus size={14} />添加供应商</Button>
     </div>}>
       {legacyProviderDraft(settings?.ai) && <div className="model-legacy-row"><span className="my-item-title">现有配置</span><Button variant="neutral" disabled={saving} onClick={() => runAction(persistProviders((current) => current).then(() => { pushToast({ kind: 'info', title: '已导入现有配置' }) }), '导入失败')}>导入供应商</Button></div>}
-      {!settings ? <div className="flex items-center gap-2 py-6 text-my-sm text-my-tertiary" role="status"><Loader2 size={16} className="animate-spin" />正在加载供应商…</div> : !providers.length ? <div className="model-provider-empty"><Server size={24} className="text-my-tertiary" /><p className="my-item-description">暂无供应商</p><Button variant="neutral" onClick={() => setShowTemplates(true)}><Plus size={14} />添加供应商</Button></div> : providers.map((provider) => {
-        const expanded = expandedId === provider.id
-        const active = activeProviderId === provider.id
-        const source = captureSource(provider)
-        const providerKey = providerResultKey(source)
-        const request = providerRequests[providerKey]
-        const providerResult = providerResults[providerKey]
-        const status = getProviderStatus(providerResult ? { ...provider, status: providerResult.ok ? 'connected' : 'error', latencyMs: providerResult.latencyMs } : provider, request === 'test')
-        return <div className="model-provider-group" key={provider.id}>
-          <div className="model-provider-row" data-active={active || undefined}>
-            <button type="button" className="model-provider-summary" onClick={() => setExpandedId(expanded ? null : provider.id)} aria-expanded={expanded} aria-controls={`provider-models-${provider.id}`} aria-label={`${expanded ? '收起' : '展开'} ${provider.name} 的模型`}>
+      {!settings ? <div className="model-provider-empty" role="status">{hasIpc ? <><Loader2 size={16} className="animate-spin" />正在加载供应商…</> : <><Server size={24} aria-hidden="true" /><p>连接桌面应用后可管理模型供应商。</p></>}</div> : !providers.length ? <div className="model-provider-empty"><Server size={24} className="text-my-tertiary" /><p className="my-item-description">暂无供应商</p><Button variant="neutral" onClick={() => setShowTemplates(true)}><Plus size={14} />添加供应商</Button></div> : <div className="model-workspace">
+        <nav className="model-provider-list my-scrollbar" aria-label="选择供应商">
+          {providers.map((provider) => {
+            const active = activeProviderId === provider.id
+            const source = captureSource(provider)
+            const providerKey = providerResultKey(source)
+            const request = providerRequests[providerKey]
+            const result = providerResults[providerKey]
+            const status = getProviderStatus(result ? { ...provider, status: result.ok ? 'connected' : 'error', latencyMs: result.latencyMs } : provider, request === 'test')
+            return <button type="button" className="model-provider-select" key={provider.id} title={provider.name || '未命名供应商'} aria-current={selectedProvider?.id === provider.id ? 'true' : undefined} onClick={() => { setSelectedId(provider.id); setModelSearch('') }}>
               <ProviderIdentity name={provider.name} local={provider.apiFormat === 'ollama'} />
-              <span className="model-provider-copy"><span className="flex min-w-0 items-center gap-2"><span className="my-item-title truncate">{provider.name || '未命名供应商'}</span>{active && <span className="model-active-badge"><Check size={11} />当前</span>}</span><span className="model-provider-endpoint" title={endpointLabel(provider.baseUrl)}>{endpointLabel(provider.baseUrl)}</span></span>
+              <span className="model-provider-copy"><span className="model-provider-name"><span className="my-item-title truncate">{provider.name || '未命名供应商'}</span>{active && <span className="model-active-badge"><Check size={11} />当前</span>}</span><span className="model-provider-status" title={status.tooltip}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dotClass}`} aria-hidden="true" />{request === 'fetch' ? '获取中…' : status.label}</span></span>
             </button>
-            <span className="model-provider-status" role="status" title={status.tooltip}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dotClass}`} aria-hidden="true" />{request === 'fetch' ? '获取中…' : status.label}</span>
-            <div className="model-provider-actions">
-              {!active && <Button variant="neutral" size="sm" aria-label={`使用供应商 ${provider.name}`} disabled={saving || !provider.enabled || !provider.baseUrl.trim()} onClick={() => runAction(persistProviders((current) => current, provider.id))}>使用</Button>}
-              <Button variant="ghost" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'test')} aria-label={`测试供应商 ${provider.name}`} title={provider.status === 'error' ? '重试连接' : '测试连接'}>{request === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}</Button>
-              <Button variant="ghost" size="sm" disabled={saving} onClick={() => setProviderEditor({ provider: { ...provider }, source: captureSource(provider) })} aria-label={`编辑供应商 ${provider.name}`} title="编辑供应商"><Pencil size={14} /></Button>
-              <Dropdown align="right" width={160} trigger={({ toggle }) => <Button variant="ghost" size="sm" onClick={toggle} disabled={saving} aria-label={`${provider.name} 更多操作`} title="更多操作"><MoreHorizontal size={16} /></Button>}>
-                {(close) => <>
-                  <DropdownItem selected={active} disabled={active || !provider.enabled || !provider.baseUrl.trim()} icon={<Check size={14} />} onClick={() => { close(); runAction(persistProviders((current) => current, provider.id)) }}>设为当前</DropdownItem>
-                  <DropdownItem icon={<Power size={14} />} onClick={() => { close(); runAction(patchProvider(provider.id, { enabled: !provider.enabled })) }}>{provider.enabled ? '停用供应商' : '启用供应商'}</DropdownItem>
-                  <DropdownItem icon={<Trash2 size={14} />} danger onClick={() => { close(); runAction(handleDeleteProvider(provider), '删除失败') }}>删除供应商</DropdownItem>
-                </>}
-              </Dropdown>
-              <Button variant="ghost" size="sm" onClick={() => setExpandedId(expanded ? null : provider.id)} aria-label={`${expanded ? '收起' : '展开'} ${provider.name} 模型列表`} aria-expanded={expanded} aria-controls={`provider-models-${provider.id}`} title={`${provider.models.length} 个模型`}><span className="text-my-xs tabular-nums">{provider.models.length}</span><ChevronDown size={13} className={expanded ? 'rotate-180' : ''} /></Button>
+          })}
+        </nav>
+        {selectedProvider && (() => {
+          const provider = selectedProvider
+          const active = activeProviderId === provider.id
+          const source = captureSource(provider)
+          const providerKey = providerResultKey(source)
+          const request = providerRequests[providerKey]
+          const selectedModelId = selectedModel?.providerId === provider.id && provider.models.some((model) => model.id === selectedModel.modelId) ? selectedModel.modelId : null
+          const visibleSelectedModelId = selectedModelId && filteredModels.some((model) => model.id === selectedModelId) ? selectedModelId : null
+          return <section key={provider.id} className="model-provider-detail my-scrollbar" tabIndex={0} aria-label={`${provider.name || '未命名供应商'}的模型`}>
+            <div className="model-provider-detail-header">
+              <div className="model-provider-detail-identity"><ProviderIdentity name={provider.name} local={provider.apiFormat === 'ollama'} /><span className="model-provider-copy"><span className="model-provider-name"><span className="my-item-title truncate" title={provider.name || '未命名供应商'}>{provider.name || '未命名供应商'}</span>{active && <span className="model-active-badge"><Check size={11} />当前</span>}</span><span className="model-provider-endpoint" title={endpointLabel(provider.baseUrl)}>{endpointLabel(provider.baseUrl)}</span></span></div>
+              <div className="model-provider-actions">
+                {!active && <Button variant="neutral" size="sm" aria-label={`使用供应商 ${provider.name}`} disabled={saving || !provider.enabled || !provider.baseUrl.trim()} onClick={() => runAction(persistProviders((current) => current, provider.id))}>使用</Button>}
+                <Button variant="ghost" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'test')} aria-label={`测试供应商 ${provider.name}`} title={provider.status === 'error' ? '重试连接' : '测试连接'}>{request === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}</Button>
+                <Button variant="ghost" size="sm" disabled={saving} onClick={() => setProviderEditor({ provider: { ...provider }, source: captureSource(provider) })} aria-label={`编辑供应商 ${provider.name}`} title="编辑供应商"><Pencil size={14} /></Button>
+                <Dropdown align="right" width={160} trigger={({ toggle }) => <Button variant="ghost" size="sm" onClick={toggle} disabled={saving} aria-label={`${provider.name} 更多操作`} title="更多操作"><MoreHorizontal size={16} /></Button>}>
+                  {(close) => <>
+                    <DropdownItem selected={active} disabled={active || !provider.enabled || !provider.baseUrl.trim()} icon={<Check size={14} />} onClick={() => { close(); runAction(persistProviders((current) => current, provider.id)) }}>设为当前</DropdownItem>
+                    <DropdownItem icon={<Power size={14} />} onClick={() => { close(); runAction(patchProvider(provider.id, { enabled: !provider.enabled })) }}>{provider.enabled ? '停用供应商' : '启用供应商'}</DropdownItem>
+                    <DropdownItem icon={<Trash2 size={14} />} danger onClick={() => { close(); runAction(handleDeleteProvider(provider), '删除失败') }}>删除供应商</DropdownItem>
+                  </>}
+                </Dropdown>
+              </div>
             </div>
-          </div>
-          {providerErrors[providerKey] && <div className="model-provider-error"><CopyableError message={providerErrors[providerKey]} summary={modelErrorSummary(providerErrors[providerKey], '模型目录连接失败')} /><Button variant="ghost" size="sm" disabled={Boolean(request) || saving} onClick={() => void handleProviderRequest(provider, 'test')}>重试</Button></div>}
-          {expanded && <div className="model-provider-models" id={`provider-models-${provider.id}`}>
-            <div className="model-list-toolbar"><span className="my-item-title">模型 <span className="my-item-description ml-1">{provider.models.filter((model) => model.enabled).length} / {provider.models.length} 已启用</span></span><div className="flex flex-wrap items-center gap-1"><Button variant="ghost" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'fetch')}>{request === 'fetch' ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}{request === 'fetch' ? '获取中…' : '获取模型'}</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider)}><Plus size={13} />添加模型</Button></div></div>
-            {provider.models.length ? provider.models.map((model) => {
+            {providerErrors[providerKey] && <div className="model-provider-error"><CopyableError message={providerErrors[providerKey]} summary={modelErrorSummary(providerErrors[providerKey], '模型目录连接失败')} /><Button variant="ghost" size="sm" disabled={Boolean(request) || saving} onClick={() => void handleProviderRequest(provider, 'test')}>重试</Button></div>}
+            <div className="model-provider-models">
+              <div className="model-list-sticky" ref={modelToolbarRef}>
+              <div className="model-list-toolbar"><span className="my-item-title">模型 <span className="my-item-description ml-1">{provider.models.filter((model) => model.enabled).length} / {provider.models.length} 已启用</span></span><div className="flex flex-wrap items-center gap-1"><Button variant="ghost" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'fetch')}>{request === 'fetch' ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}{request === 'fetch' ? '获取中…' : '获取模型'}</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider)}><Plus size={13} />添加模型</Button></div></div>
+              <input ref={modelSearchRef} className="my-input model-search" type="search" aria-label={`搜索 ${provider.name || '供应商'}的模型`} placeholder="搜索模型名称或 ID" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} />
+              </div>
+            {filteredModels.length ? <ModelRelationship provider={provider} selectedModelId={visibleSelectedModelId} onSelectProvider={() => { if (visibleSelectedModelId) setSelectedModel(null) }} layoutKey={JSON.stringify([provider.id, filteredModels.map((model) => model.id), visibleSelectedModelId])}>{filteredModels.map((model) => {
               const key = modelResultKey(source, model.id)
               const result = testResults[key]
               const testing = modelRequests[key]
-              return <div key={key} className="model-item-row">
-                <span className="model-item-icon" aria-hidden="true"><Server size={15} /></span>
-                <div className="model-item-copy"><span className="my-item-title block truncate">{model.name || model.id}</span><span className="my-item-description block truncate" title={[model.id, model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' · ')}>{[model.name !== model.id ? model.id : '', model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' · ') || model.id}</span></div>
-                {result && <span className={`model-test-result ${result.ok ? 'text-my-success-text' : 'text-my-danger-text'}`} role="status" title={result.error ? modelErrorSummary(result.error) : '模型推理请求成功'}>{result.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}{result.ok ? result.latencyMs === undefined ? '推理成功' : `推理成功 ${result.latencyMs}ms` : '失败'}</span>}
-                <div className="model-item-actions"><Button variant="ghost" size="sm" disabled={saving || testing || !provider.baseUrl.trim()} onClick={() => void handleTestModel(provider, model)} aria-label={`测试模型 ${model.name || model.id}`} title="测试模型推理（将调用 API）">{testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider, model)} aria-label={`编辑模型 ${model.name || model.id}`} title="编辑模型"><Pencil size={14} /></Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => runAction(handleDeleteModel(source, model.id), '删除模型失败')} aria-label={`删除模型 ${model.name || model.id}`} title="删除模型"><Trash2 size={14} /></Button><Switch checked={model.enabled} disabled={saving} onChange={(enabled) => runAction(patchModels(source, (models) => models.map((item) => item.id === model.id ? { ...item, enabled } : item)))} label={`启用模型 ${model.name || model.id}`} /></div>
-                {result?.ok === false && result.error && <div className="model-test-error"><CopyableError message={result.error} summary={modelErrorSummary(result.error)} /></div>}
+              const selected = selectedModelId === model.id
+              const isConfigured = settings.ai.model === model.id && (settings.ai.providers?.length ? settings.ai.activeProviderId === provider.id : Boolean(legacyProviderDraft(settings.ai)))
+              return <div key={model.id} className="model-item-row" data-model-id={model.id} data-selected={selected || undefined}>
+                <button type="button" className="model-graph-node" data-model-id={model.id} aria-expanded={selected} onClick={() => setSelectedModel(selected ? null : { providerId: provider.id, modelId: model.id })}>
+                  <span className="model-item-icon" aria-hidden="true"><Server size={15} /></span>
+                  <span className="model-item-copy"><span className="my-item-title block truncate" title={model.name || model.id}>{model.name || model.id}</span><span className="my-item-description block truncate" title={[model.id, model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' · ')}>{[model.name !== model.id ? model.id : '', model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' · ') || model.id}</span></span>
+                  <span className="model-node-state">{isConfigured && <span>配置模型</span>}<span>{model.enabled ? '已启用' : '已停用'}</span>{testing ? <span>测试中…</span> : result && <span className={result.ok ? 'text-my-success-text' : 'text-my-danger-text'}>{result.ok ? '推理成功' : '测试失败'}</span>}</span>
+                </button>
+                {selected && <div className="model-item-detail">
+                  {result && <span className={`model-test-result ${result.ok ? 'text-my-success-text' : 'text-my-danger-text'}`} role="status" title={result.error ? modelErrorSummary(result.error) : '模型推理请求成功'}>{result.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}{result.ok ? result.latencyMs === undefined ? '推理成功' : `推理成功 ${result.latencyMs}ms` : '测试失败'}</span>}
+                  <div className="model-item-actions"><Button variant="ghost" size="sm" disabled={saving || testing || !provider.baseUrl.trim()} onClick={() => void handleTestModel(provider, model)} aria-label={`测试模型 ${model.name || model.id}`} title="测试模型推理（将调用 API）">{testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}测试</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider, model)} aria-label={`编辑模型 ${model.name || model.id}`} title="编辑模型"><Pencil size={14} /></Button><Button variant="ghost" size="sm" disabled={saving} onClick={(event) => deleteModelWithFocus(source, model.id, event.currentTarget)} aria-label={`删除模型 ${model.name || model.id}`} title="删除模型"><Trash2 size={14} /></Button><Switch checked={model.enabled} disabled={saving} onChange={(enabled) => runAction(patchModels(source, (models) => models.map((item) => item.id === model.id ? { ...item, enabled } : item)))} label={`启用模型 ${model.name || model.id}`} /></div>
+                  {result?.ok === false && result.error && <div className="model-test-error"><CopyableError message={result.error} summary={modelErrorSummary(result.error)} /></div>}
+                </div>}
               </div>
-            }) : <div className="model-list-empty"><Server size={20} className="text-my-tertiary" /><span>暂无模型</span><Button variant="neutral" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'fetch')}>获取模型</Button></div>}
-          </div>}
-        </div>
-      })}
+            })}</ModelRelationship> : provider.models.length ? <div className="model-list-empty"><span>没有匹配的模型</span><Button variant="ghost" size="sm" onClick={() => { setModelSearch(''); modelSearchRef.current?.focus() }}>清除搜索</Button></div> : <div className="model-list-empty"><Server size={20} className="text-my-tertiary" /><span>暂无模型</span><Button variant="neutral" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'fetch')}>获取模型</Button></div>}
+            </div>
+          </section>
+        })()}
+      </div>}
     </PreferenceSection>
 
     <details className="model-advanced"><summary><SlidersHorizontal size={15} /><span>高级参数</span><ChevronDown size={14} /></summary><PreferenceRow label="温度" htmlFor="models-temperature"><input id="models-temperature" type="range" min={0} max={1} step={0.1} value={temperature} onChange={(event) => setTemperature(Number(event.target.value))} disabled={savingTemperature || !settings} className="min-w-0 flex-1" /><output htmlFor="models-temperature" className="text-my-sm text-my-secondary">{temperature}</output></PreferenceRow><div className="flex justify-end pb-4"><Button variant="neutral" disabled={saving || savingTemperature || !settings || temperature === (settings.ai.temperature ?? 0.3)} onClick={() => void handleSaveTemperature()}>{savingTemperature && <Loader2 size={13} className="animate-spin" />}{savingTemperature ? '保存中…' : '保存参数'}</Button></div></details>

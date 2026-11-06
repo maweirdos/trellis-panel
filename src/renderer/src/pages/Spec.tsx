@@ -31,6 +31,8 @@ import { Button } from '../my/ui'
 import { SpecBrowser } from '../knowledge/SpecBrowser'
 import '../knowledge/KnowledgeBrowser.css'
 import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
+import { ContextRegion } from '../my/layout/ContextRegion'
+import { useMy } from '../my/store'
 import { fmtBytes } from '../utils/format'
 import type { JSX } from 'react'
 import type { DocSearchHit, SpecNode } from '../../../shared/types'
@@ -82,6 +84,7 @@ const draftKey = (root: string, path: string): string => JSON.stringify([project
 
 export function SpecPage(): JSX.Element {
   const sidebarStyle = useSidebarWidthStyle()
+  const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
   const snapshot = useApp((s) => s.snapshot)
   const pushToast = useApp((s) => s.pushToast)
   const knowledge = useProjectKnowledge(snapshot?.meta.root ?? '')
@@ -342,11 +345,11 @@ export function SpecPage(): JSX.Element {
 
   return (
     <div ref={pageRef} className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
-      <div style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
+      <ContextRegion collapsed={sidebarCollapsed}><div style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
         <SidebarResizeHandle />
         <header className="flex h-my-header shrink-0 items-center px-4"><h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">知识</h1></header>
         <ModuleLinks domain="knowledge" />
-      </div>
+      </div></ContextRegion>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
         <div className="my-page-toolbar-row"><h1 className="text-my-md font-semibold text-my-primary">规范</h1></div>
         <div className="relative flex min-h-0 min-w-0 flex-1">

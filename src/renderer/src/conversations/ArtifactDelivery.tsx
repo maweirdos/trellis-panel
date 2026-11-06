@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { Loader2, RotateCw, X } from 'lucide-react'
 import type { Conversation, ConversationFile } from '@shared/private-conversations'
+import type { CreationPrivateSource } from '@shared/creations'
 import { api } from '../api'
 import { CreateCreationDialog } from '../creations/CreationDialogs'
 import { openCreation } from '../creations/navigation'
 import { useHifox } from '../hifox/store'
 import { Button, Modal } from '../my/ui'
 
-type Draft = { title: string; body: string; kind: 'document' | 'prototype' }
+type Draft = { title: string; body: string; kind: 'document' | 'prototype'; privateSource: CreationPrivateSource }
 
 /** Only the selected, revision-checked file becomes a private material draft. */
 export function ArtifactDelivery({ conversation, file, onClose }: {
@@ -32,17 +33,19 @@ export function ArtifactDelivery({ conversation, file, onClose }: {
       const sourceIdentity = JSON.stringify([source.key, source.actorId, source.epoch])
       if (owner.current && owner.current !== sourceIdentity) throw new Error('账户或工作区已改变，请关闭后重新选择文件')
       owner.current = sourceIdentity
-      const result = await api.conversations.readFile(conversation.id, { fileId: file.id, expectedRevision: file.revision })
+      if (!file.sourceIdentity) throw new Error('无法核实原会话来源，请刷新文件后重新选择')
+      const result = await api.conversations.readFile(conversation.id, { fileId: file.id, expectedRevision: file.revision, expectedSourceIdentity: file.sourceIdentity })
       if (!current) return
       if (!result.ok) throw new Error(result.error)
       const live = useHifox.getState().workspaceContext
       if (sourceIdentity !== JSON.stringify([live.key, live.actorId, live.epoch])) throw new Error('账户或工作区已改变，请重新选择文件')
-      setDraft({ title: result.value.name.replace(/\.[^.]+$/, ''), kind: result.value.kind, body: result.value.body })
+      setDraft({ title: result.value.name.replace(/\.[^.]+$/, ''), kind: result.value.kind, body: result.value.body,
+        privateSource: { kind: 'conversationFile', conversationId: conversation.id, fileId: file.id, fileName: result.value.name, revision: result.value.revision, sourceIdentity: file.sourceIdentity } })
     }
     void load().catch(failure => { if (current) setError(failure instanceof Error ? failure.message : '无法读取所选文件') })
       .finally(() => { if (current) setLoading(false) })
     return () => { current = false }
-  }, [conversation.id, file.id, file.revision, attempt])
+  }, [conversation.id, file.id, file.revision, file.sourceIdentity, attempt])
 
   const changed = owner.current !== null && identity !== owner.current
   if (draft && !changed) return <CreateCreationDialog key={`${conversation.id}:${file.id}:${file.revision}:${identity}`}

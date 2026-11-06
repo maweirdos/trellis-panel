@@ -1,0 +1,14 @@
+.conversation-image-preview {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.conversation-image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: var(--my-space-384);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}

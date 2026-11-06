@@ -7,6 +7,7 @@ import {
   type CreationActorContext, type CreationCommand, type CreationCommandReply, type CreationCommandResult, type CreationRecord, type CreationSummary, type CreationView, type CreationHead
 } from '../../../src/shared/creations'
 import { authorizeCreationCommand, canReadCreation, CreationError, executeCreationCommand, summarizeCreation, viewCreation } from '../../../src/shared/creations-domain'
+import { creationSearchScope, filterCreationSummaries, usesCreationSearch } from '../../../src/shared/creation-list-query'
 import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
 import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
 import { teamIdSchema, type TeamCommandReply, type TeamPage } from '../../../src/shared/team-platform'
@@ -126,6 +127,28 @@ export class TeamCreations {
     if (query.taskId) {
       const task = ctx.tasks.find((entry) => entry.id === query.taskId)
       if (!task || !ctx.spaces.some((entry) => entry.id === task.spaceId && entry.canRead) || (query.spaceId && task.spaceId !== query.spaceId)) deny()
+    }
+    if (usesCreationSearch(query)) {
+      const conditions = ['c.projectId=?'], params: SQLInputValue[] = [projectId]
+      if (query.scope === 'personal') { conditions.push("c.home='personal' AND c.ownerId=?"); params.push(ctx.actorId) }
+      else conditions.push('c.spaceId IS NOT NULL')
+      if (query.spaceId) { conditions.push('c.spaceId=?'); params.push(query.spaceId) }
+      if (query.taskId) { conditions.push('EXISTS(SELECT 1 FROM creation_task_references r WHERE r.creationId=c.creationId AND r.projectId=c.projectId AND r.taskId=?)'); params.push(query.taskId) }
+      const rows = this.host.all(`SELECT c.creationId,c.summaryJson,c.title,c.editorIdsJson FROM creations c WHERE ${conditions.join(' AND ')} ORDER BY c.creationId LIMIT ?`, ...params, MAX_PROJECT_CREATIONS + 1)
+      if (rows.length > MAX_PROJECT_CREATIONS) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Creation search exceeds its bounded project capacity', 413)
+      const visible = rows.map((row) => this.listing(row, ctx, query.taskId)).filter((item): item is CreationSummary => item !== null)
+      const items = filterCreationSummaries(visible, query)
+      const scope = JSON.stringify(['creation-search-v1', projectId, workspaceRevision, digest(creationSearchScope(query, items))])
+      const after = this.host.after(principal, scope, query.cursor)
+      const index = after ? items.findIndex((item) => item.creationId === after) : -1
+      if (after && index < 0) throw new TeamServiceError('CURSOR_CONFLICT', 'Creation list changed; reload the first page', 409)
+      const remaining = items.slice(index + 1)
+      const byId = new Map(remaining.map((item) => [item.creationId, item]))
+      const pageRows: Row[] = remaining.map((item) => ({ creationId: item.creationId }))
+      const value = creationListSchema.parse(this.host.page(principal, scope, pageRows, 'creationId', query.limit, () => true,
+        (row) => requireValue(byId.get(text(row, 'creationId')), 'CORRUPT_STORE', 'Creation projection missing', 503)))
+      if (Buffer.byteLength(JSON.stringify(value)) > CREATION_MAX_RESPONSE_BYTES - 16384) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Creation list exceeds its bounded response; request a smaller page', 413)
+      return value
     }
     const scope = JSON.stringify(['creations', projectId, query.scope, query.spaceId ?? null, query.taskId ?? null, workspaceRevision])
     const after = this.host.after(principal, scope, query.cursor)

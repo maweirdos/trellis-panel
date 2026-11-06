@@ -1,0 +1,7 @@
+.conversation-docx-preview-frame {
+  width: 100%;
+  height: var(--my-space-384);
+  border: var(--my-space-1) solid var(--my-border-subtle-1);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+}

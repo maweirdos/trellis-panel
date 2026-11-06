@@ -10,6 +10,7 @@ import type { HistoryBatchItem } from './history-core'
 import type { HandoffArchive } from './handoff-history'
 import type { HistoryOperation, HistoryWorkerRequest, HistoryWorkerResponse } from './history-worker'
 import { readHistoryDeletion } from './history-deletion'
+import { getSettings } from '../store'
 
 interface PendingRequest { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
 interface BufferedSession { record: AcpSessionRecord; events: TimelineEvent[]; dirty: boolean; pendingBytes: number }
@@ -179,13 +180,13 @@ function fail(error: unknown): IpcFail {
 export async function listAcpHistory(root: string, input?: unknown): Promise<AcpHistoryListResult | IpcFail> {
   const parsed = acpHistoryListInputSchema.safeParse(input)
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '会话分页参数无效')
-  try { await ensureAcpHistory(); await flushAcpHistory().catch(() => {}); return await request({ op: 'list', root: canonicalDirectory(root), input: parsed.data ?? {} }) }
+  try { await ensureAcpHistory(); await flushAcpHistory().catch(() => {}); return await request({ op: 'list', root: canonicalDirectory(root), input: parsed.data ?? {}, legacyIds: (getSettings().acp?.agents ?? []).map(item => item.id) }) }
   catch (error) { return fail(error) }
 }
 export async function readAcpHistorySession(root: string, sessionId: string): Promise<{ ok: true; version: 1; session: AcpHistorySummary } | IpcFail> {
   try {
     await ensureAcpHistory(); await flushAcpHistory().catch(() => {})
-    const session = await request<AcpHistorySummary | null>({ op: 'session', root: canonicalDirectory(root), sessionId })
+    const session = await request<AcpHistorySummary | null>({ op: 'session', root: canonicalDirectory(root), sessionId, legacyIds: (getSettings().acp?.agents ?? []).map(item => item.id) })
     return session ? { ok: true, version: 1, session } : ipcFail(IpcErrorCode.NotFound, '当前项目没有此会话')
   } catch (error) { return fail(error) }
 }

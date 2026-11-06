@@ -29,14 +29,25 @@ double-click reset and globally reachable expand/collapse behavior.
 ## Desktop global header
 
 `TitleBar` owns one global row: brand, desktop Work/Code dropdown, team space,
-context collapse, command search, actual application activity, account and native
+context collapse, command search, actual application activity and native
 window controls. `ShellViewSwitcher` retains the persisted
 `collaboration | development` values; its desktop dropdown changes only this
 presentation preference. Preserve the separate `host="web"` control.
 
-`AccountMenu` reuses the existing rail account identity, theme/settings actions
-and controlled `ConnectionPanel` with its dirty-close handling. The desktop rail
-keeps its module order and Settings entry; do not duplicate the account owner.
+`AccountMenu` lives at the bottom of the desktop module rail and retains the account
+identity, theme/settings actions and controlled `ConnectionPanel` with its dirty-close
+handling. The rail keeps its module order and Settings entry; do not duplicate the
+account owner. Its menu opens upward within the window.
+
+The top-bar context control expands or collapses the entire second-level sidebar.
+The module icon rail remains visible. Do not add a second collapse control inside
+the sidebar or replace the collapsed sidebar with another icon rail.
+
+The execution-engine overview links detected engines to their reported status and
+configured default model. Selecting a graph node reveals that engine's existing
+configuration, diagnostics and available operations in the same workspace. Unknown
+values remain unknown; the graph does not represent request traffic, automatic
+routing, costs or an active conversation's model.
 
 `TeamContextSwitcher` keeps its default behavior. The global variant reads actual
 joined spaces and source status. Selecting outside the original team surface

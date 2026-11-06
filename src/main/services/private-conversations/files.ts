@@ -4,6 +4,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import type { ConversationFile } from '../../../shared/private-conversations'
 
 export const FILE_LIMIT = 16 * 1024 * 1024
+export class FileSizeLimitError extends Error { constructor() { super('文件超过大小限制') } }
 const extensions = new Set(['.md', '.txt', '.html', '.htm', '.pdf', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.csv', '.tsv', '.json', '.css', '.js', '.mjs', '.ts', '.tsx', '.jsx', '.py', '.sql', '.xml', '.docx', '.xlsx', '.pptx', '.zip', '.mp3', '.wav', '.mp4', '.glb', '.gltf', '.wasm'])
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'build', '__pycache__', 'coverage', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'auth.json', 'credentials.json', 'secrets.json'])
 export const hash = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex')
@@ -71,27 +72,30 @@ export function ownedDirectory(root: string, directory: string): string {
   const target = components(root, `${directory}/.directory`, true)
   return dirname(target)
 }
-export function readRegular(root: string, file: string, limit = FILE_LIMIT): { bytes: Buffer; path: string; modifiedAt: number } {
+export function readRegular(root: string, file: string, limit = FILE_LIMIT): { bytes: Buffer; path: string; modifiedAt: number; fileIdentity: string } {
   const target = components(root, file), named = lstatSync(target)
-  if (!named.isFile() || named.isSymbolicLink() || named.nlink !== 1 || named.size > limit || pathKey(realpathSync.native(target)) !== pathKey(target)) throw new Error('文件必须是不超过限制的普通文件，不能使用链接')
+  if (!named.isFile() || named.isSymbolicLink() || named.nlink !== 1 || pathKey(realpathSync.native(target)) !== pathKey(target)) throw new Error('文件必须是普通文件，不能使用链接')
+  if (named.size > limit) throw new FileSizeLimitError()
   const descriptor = openSync(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
   try {
     const before = fstatSync(descriptor)
-    if (!before.isFile() || before.nlink !== 1 || before.size > limit) throw new Error('文件不可读或超过大小限制')
+    if (!before.isFile() || before.nlink !== 1) throw new Error('文件不可读')
+    if (before.size > limit) throw new FileSizeLimitError()
     const bytes = Buffer.alloc(before.size + 1)
     let count = 0
     while (count < bytes.length) { const n = readSync(descriptor, bytes, count, bytes.length - count, null); if (!n) break; count += n }
     for (const after of [fstatSync(descriptor), lstatSync(components(root, file))]) {
       if (!after.isFile() || after.isSymbolicLink() || before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs || after.nlink !== 1 || count !== before.size) throw new Error('文件在读取时改变，请重新选择')
     }
-    return { bytes: bytes.subarray(0, count), path: target, modifiedAt: before.mtimeMs }
+    const identity = fstatSync(descriptor, { bigint: true })
+    return { bytes: bytes.subarray(0, count), path: target, modifiedAt: before.mtimeMs, fileIdentity: hash(`${identity.dev}:${identity.ino}:${identity.birthtimeNs}`) }
   } finally { closeSync(descriptor) }
 }
-export function fileMetadata(root: string, file: string, kind: 'input' | 'output'): ConversationFile {
+export function fileMetadata(root: string, file: string, kind: 'input' | 'output'): ConversationFile & { fileIdentity: string } {
   const actual = readRegular(root, file)
   const storedName = basename(file)
   const name = kind === 'input' ? storedName.replace(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}-/i, '') : storedName
-  return { id: hash(file.replaceAll('\\', '/')), name, relativePath: file.replaceAll('\\', '/'), kind, bytes: actual.bytes.length, revision: hash(actual.bytes), modifiedAt: actual.modifiedAt }
+  return { id: hash(file.replaceAll('\\', '/')), name, relativePath: file.replaceAll('\\', '/'), kind, bytes: actual.bytes.length, revision: hash(actual.bytes), modifiedAt: actual.modifiedAt, fileIdentity: actual.fileIdentity }
 }
 export function importSelectedFiles(root: string, directory: string, selected: string[]): ConversationFile[] {
   if (selected.length > 16) throw new Error('每次最多选择 16 个文件')
@@ -112,7 +116,8 @@ export function importSelectedFiles(root: string, directory: string, selected: s
     for (const source of prepared) {
       const file = relative(root, join(destination, source.name)), target = components(root, file)
       writeFileSync(target, source.bytes, { flag: 'wx', mode: 0o600 })
-      result.push(fileMetadata(root, file, 'input'))
+      const { fileIdentity: _fileIdentity, ...metadata } = fileMetadata(root, file, 'input')
+      result.push(metadata)
     }
     return result
   } catch (error) { removeImportedFiles(root, result); throw error }
@@ -124,9 +129,23 @@ export function removeImportedFiles(root: string, files: ConversationFile[]): vo
     unlinkSync(actual.path)
   }
 }
-export function workspaceFiles(root: string, inputs: string[], managed = false): ConversationFile[] {
+/** Recheck the eligibility of a previously discovered path without enumerating the directory. */
+export function eligibleWorkspaceFile(file: string, kind: 'input' | 'output', inputs: string[], managed: boolean): boolean {
+  const parts = file.split('/')
+  if (!file || file.includes('\\') || parts.some(part => !part || part === '.' || part === '..')) return false
+  const known = inputs.some(input => input.replaceAll('\\', '/') === file)
+  if (kind === 'input') return known
+  if (known || parts.length > 9 || !extensions.has(extname(file).toLowerCase())) return false
+  for (let index = 0; index < parts.length; index++) {
+    const name = parts[index].toLowerCase(), current = parts.slice(0, index + 1).join('/')
+    if (name.startsWith('.') || ignored.has(name) || managed && index === 0 && name === 'inputs' || /(?:secret|credential|api[-_]?key|password|token)(?:[._-]|$)/i.test(name)) return false
+    if (managed && index < parts.length - 1 && /^outputs\/requirements\/[a-f0-9-]{36}\/(?:operations|confirmations|sources)$/i.test(current)) return false
+  }
+  return true
+}
+export function workspaceFiles(root: string, inputs: string[], managed = false): Array<ConversationFile & { fileIdentity: string }> {
   checkedDirectory(root)
-  const result: ConversationFile[] = []
+  const result: Array<ConversationFile & { fileIdentity: string }> = []
   const known = new Set(inputs.map(file => file.replaceAll('\\', '/')))
   for (const file of known) { try { result.push(fileMetadata(root, file, 'input')) } catch { /* Missing or changed imported files are not advertised as available. */ } }
   let scanned = 0, bytes = result.reduce((sum, file) => sum + file.bytes, 0)

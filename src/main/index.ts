@@ -2,7 +2,7 @@
  * 应用壳（薄编排层，决策 TPD-004）：窗口、托盘、全局快捷键、更新器、生命周期、深链。
  * IPC 注册全部在 src/main/ipc/；项目状态与跨域助手在 src/main/state.ts。
  */
-import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, screen, dialog } from 'electron'
+import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, nativeTheme, screen, dialog } from 'electron'
 import { join, resolve, basename, dirname, sep } from 'path'
 import { pathToFileURL } from 'url'
 import { existsSync } from 'fs'
@@ -17,7 +17,7 @@ import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindow
 import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
 import { applyChromiumProxy } from './services/proxy'
-import { mainWindowAppearance } from './services/window-appearance'
+import { applyMainWindowAppearance, mainWindowAppearance } from './services/window-appearance'
 import { installWindowNavigation, openExternalHttpUrl } from './services/window-navigation'
 import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTaskbarShortcut } from './services/window-branding'
 import { APPLICATION_ICON } from './services/notifications'
@@ -77,6 +77,11 @@ let guiApplicationsStarted = false
 let guiClosing = false
 let requestBootstrapExit = (): void => { app.exit(0) }
 let collaborationTimer: ReturnType<typeof setInterval> | null = null
+
+nativeTheme.on('updated', () => {
+  if (guiNativeStateReady && getSettings().theme === 'system') applyMainWindowAppearance(win, 'system')
+  else if (!guiNativeStateReady && bootstrap) applyMainWindowAppearance(win, bootstrap.refreshAppearance())
+})
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { autoUpdater } = (() => {
@@ -158,7 +163,7 @@ function openDocWindow(opts: Parameters<WindowDeps['openDocWindow']>[0]): {
   // 最大化状态广播给本窗（标题栏还原图标随动；双击拖动区原生切换也走这里）
   w.on('maximize', () => w.webContents.send(ipcEvent.windowMaximized, true))
   w.on('unmaximize', () => w.webContents.send(ipcEvent.windowMaximized, false))
-  loadAppWindow(w, opts.readerViewId ? { mode: 'doc', viewId: opts.readerViewId, theme: getSettings().theme } : { mode: 'doc', path: opts.file, title: opts.title, theme: opts.theme })
+  loadAppWindow(w, opts.readerViewId ? { mode: 'doc', viewId: opts.readerViewId, theme: getSettings().theme } : { mode: 'doc', path: opts.file, title: opts.title, theme: getSettings().theme })
   w.once('ready-to-show', () => w.show())
   return { ok: true }
 }

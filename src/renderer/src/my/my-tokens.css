@@ -19,6 +19,8 @@
 .my-root {
   --my-font-sans: 'Inter', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
   --my-font-mono: ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --my-code-font: var(--my-font-mono);
+  --my-code-font-size: var(--my-text-sm);
   --my-font-diagram: 'Cascadia Code', 'Cascadia Mono', Consolas, 'Fira Code', 'SimSun', 'NSimSun', monospace;
   --my-font-step: 0px;
   --my-avatar-bg: #5d5d5d;
@@ -295,6 +297,15 @@
   --my-switch-height: 22px;
   --my-switch-thumb-size: 16px;
 }
+
+[data-my-font='system'] {
+  --my-font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+}
+
+[data-my-code-font='cascadia'] { --my-code-font: 'Cascadia Mono', var(--my-font-mono); }
+[data-my-code-font='consolas'] { --my-code-font: Consolas, var(--my-font-mono); }
+[data-my-code-size='small'] { --my-code-font-size: calc(var(--my-text-sm) - 1px); }
+[data-my-code-size='large'] { --my-code-font-size: calc(var(--my-text-sm) + 2px); }
 
 :root.dark,
 [data-my-theme='dark'] {

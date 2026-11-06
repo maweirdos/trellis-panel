@@ -5,6 +5,7 @@ import { api } from '../api'
 import { useHifox } from '../hifox/store'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import { mergeComments, mergeSummaries } from './creation-state'
+import { readCreationForm, recordCreationFormReceipt, releaseCreationFormCommand, retainCreationFormCommand, type CreationFormIdentity } from './creation-form-memory'
 
 export type CreationFailure = { code: string; error: string; outcomeUnknown?: boolean }
 const unavailable = { code: 'UNAVAILABLE', error: '当前环境未连接创作服务' }
@@ -12,6 +13,15 @@ const uncertainOperations = new Map<string, CreationFailure>()
 export function creationApi(): CreationApi | undefined { return api?.creations }
 export function failureOf(error: unknown): CreationFailure {
   return { code: 'REQUEST_FAILED', error: error instanceof Error ? error.message : String(error) }
+}
+function accessDenied(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' && /FORBIDDEN|REVOKED|UNAUTHORIZED/.test(error.code)
+}
+function detailFailure(error: unknown): CreationFailure {
+  if (accessDenied(error) && typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string') {
+    return { ...failureOf(error), code: error.code }
+  }
+  return failureOf(error)
 }
 export function needsRecovery(error: CreationFailure | null): boolean {
   return Boolean(error?.outcomeUnknown || error?.code === 'PENDING_OPERATION')
@@ -42,12 +52,12 @@ export function useCreationOwner(suffix: string): {
   return { workspaceKey: context.key, actorId: context.actorId, identity, principalKey: JSON.stringify([context.key, context.actorId, context.epoch]), enabled: Boolean(context.actorId) && context.state !== 'access-revoked', capture }
 }
 
-export function useCreationList(input: { scope: 'personal' | 'team'; spaceId?: string; taskId?: string; enabled?: boolean }): {
-  data: CreationList | null; busy: boolean; error: CreationFailure | null; refresh: () => Promise<void>; loadMore: () => Promise<void>
+export function useCreationList(input: { scope: 'personal' | 'team'; spaceId?: string; taskId?: string; query?: string; kind?: 'document' | 'prototype'; sort?: 'name' | 'updated'; enabled?: boolean }): {
+  data: CreationList | null; busy: boolean; error: CreationFailure | null; mode: 'full' | 'fallback'; queryError: CreationFailure | null; refresh: () => Promise<void>; loadMore: () => Promise<void>
 } {
-  const query = JSON.stringify([input.scope, input.spaceId, input.taskId])
+  const query = JSON.stringify([input.scope, input.spaceId, input.taskId, input.query, input.kind, input.sort])
   const { workspaceKey, identity, enabled, capture } = useCreationOwner(`list:${query}`)
-  const [state, setState] = useState<{ key: string; data: CreationList | null; busy: boolean; error: CreationFailure | null }>({ key: '', data: null, busy: false, error: null })
+  const [state, setState] = useState<{ key: string; data: CreationList | null; busy: boolean; error: CreationFailure | null; mode: 'full' | 'fallback'; queryError: CreationFailure | null }>({ key: '', data: null, busy: false, error: null, mode: 'full', queryError: null })
   const current = useRef(state)
   current.current = state
   const request = useRef(0)
@@ -58,19 +68,33 @@ export function useCreationList(input: { scope: 'personal' | 'team'; spaceId?: s
     const bridge = creationApi()
     const valid = capture()
     if (!valid()) return
-    const previous = current.current.key === stateKey ? current.current.data : null
-    if (append && (!previous?.nextCursor || current.current.busy)) return
+    const prior = current.current.key === stateKey ? current.current : null
+    const previous = prior?.data ?? null
+    if (append && (!previous?.nextCursor || prior?.busy)) return
+    const fallback = append && prior?.mode === 'fallback'
     const ticket = ++request.current
-    setState({ key: stateKey, data: previous, busy: true, error: null })
+    setState({ key: stateKey, data: previous, busy: true, error: prior?.mode === 'fallback' ? prior.queryError : null, mode: prior?.mode ?? 'full', queryError: prior?.queryError ?? null })
+    let mode: 'full' | 'fallback' = fallback ? 'fallback' : 'full'
+    let queryError = fallback ? prior?.queryError ?? null : null
+    let restarted = false
     try {
-      const reply = bridge ? await bridge.list({ workspaceKey, scope: input.scope, ...(input.spaceId ? { spaceId: input.spaceId } : {}), ...(input.taskId ? { taskId: input.taskId } : {}), ...(append && previous?.nextCursor ? { cursor: previous.nextCursor } : {}), limit: 20 }) : { ok: false as const, ...unavailable }
+      const base = { workspaceKey, scope: input.scope, ...(input.spaceId ? { spaceId: input.spaceId } : {}), ...(input.taskId ? { taskId: input.taskId } : {}), ...(append && previous?.nextCursor ? { cursor: previous.nextCursor } : {}), limit: 20 }
+      const requested = input.query !== undefined || input.kind !== undefined || input.sort !== undefined
+      let reply = bridge ? await bridge.list({ ...base, ...(!fallback ? { ...(input.query !== undefined ? { query: input.query } : {}), ...(input.kind ? { kind: input.kind } : {}), ...(input.sort ? { sort: input.sort } : {}) } : {}) }) : { ok: false as const, ...unavailable }
       if (!valid() || ticket !== request.current) return
-      if (reply.ok) setState({ key: stateKey, data: { ...reply.value, items: append ? mergeSummaries(previous?.items ?? [], reply.value.items) : reply.value.items }, busy: false, error: null })
-      else setState({ key: stateKey, data: previous, busy: false, error: reply })
+      if (!fallback && requested && !reply.ok && reply.code === 'INVALID_INPUT' && bridge) {
+        queryError = reply
+        mode = 'fallback'; restarted = true
+        const { cursor: _cursor, ...firstPage } = base
+        reply = await bridge.list(firstPage)
+        if (!valid() || ticket !== request.current) return
+      }
+      if (reply.ok) setState({ key: stateKey, data: { ...reply.value, items: append && !restarted ? mergeSummaries(previous?.items ?? [], reply.value.items) : reply.value.items }, busy: false, error: queryError, mode, queryError })
+      else setState({ key: stateKey, data: /FORBIDDEN|REVOKED|UNAUTHORIZED|SOURCE_CHANGED/.test(reply.code) ? null : restarted ? null : previous, busy: false, error: reply, mode: restarted || fallback ? mode : prior?.mode ?? 'full', queryError: restarted || fallback ? queryError : prior?.queryError ?? null })
     } catch (error) {
-      if (valid() && ticket === request.current) setState({ key: stateKey, data: previous, busy: false, error: failureOf(error) })
+      if (valid() && ticket === request.current) setState({ key: stateKey, data: accessDenied(error) || restarted ? null : previous, busy: false, error: detailFailure(error), mode: restarted || fallback ? mode : prior?.mode ?? 'full', queryError: restarted || fallback ? queryError : prior?.queryError ?? null })
     }
-  }, [active, capture, stateKey, workspaceKey, input.scope, input.spaceId, input.taskId])
+  }, [active, capture, stateKey, workspaceKey, input.scope, input.spaceId, input.taskId, input.query, input.kind, input.sort])
   const refresh = useCallback(() => fetchPage(false), [fetchPage])
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
@@ -78,12 +102,14 @@ export function useCreationList(input: { scope: 'personal' | 'team'; spaceId?: s
     let timer: ReturnType<typeof setTimeout> | undefined
     const unsubscribe = creationApi()?.onChanged((event) => {
       if (event.workspaceKey !== workspaceKey) return
+      request.current++
+      setState((previous) => previous.key === stateKey ? { ...previous, busy: true } : previous)
       clearTimeout(timer)
       timer = setTimeout(() => { void refresh() }, 250)
     })
     return () => { clearTimeout(timer); unsubscribe?.() }
-  }, [active, workspaceKey, refresh])
-  return { data: state.key === stateKey ? state.data : null, busy: active && (state.key !== stateKey || state.busy), error: state.key === stateKey ? state.error : null, refresh, loadMore: () => fetchPage(true) }
+  }, [active, workspaceKey, stateKey, refresh])
+  return { data: state.key === stateKey ? state.data : null, busy: active && (state.key !== stateKey || state.busy), error: state.key === stateKey ? state.error : null, mode: state.key === stateKey ? state.mode : 'full', queryError: state.key === stateKey ? state.queryError : null, refresh, loadMore: () => fetchPage(true) }
 }
 
 export function useCreationView(creationId: string, revisionId?: string): {
@@ -111,7 +137,7 @@ export function useCreationView(creationId: string, revisionId?: string): {
       if (!reply?.ok) {
         // Permission loss removes original content; ordinary errors keep the readable version.
         const error = reply ?? unavailable
-        setState({ key, view: /FORBIDDEN|REVOKED|UNAUTHORIZED/.test(error.code) ? null : previous, busy: false, loadingMore: false, error, changed: true })
+        setState({ key, view: accessDenied(error) ? null : previous, busy: false, loadingMore: false, error, changed: true })
         return null
       }
       let value = reply.value
@@ -121,7 +147,9 @@ export function useCreationView(creationId: string, revisionId?: string): {
         const page = await creationApi()?.get({ workspaceKey, creationId, revisionId: value.selected.revisionId, commentOffset: value.nextCommentOffset, commentLimit: 20 })
         if (!valid() || ticket !== request.current) return null
         if (!page?.ok) {
-          setState({ key, view: value, busy: false, loadingMore: false, error: page ?? unavailable, changed: true }); return value
+          const error = page ?? unavailable
+          const view = accessDenied(error) ? null : value
+          setState({ key, view, busy: false, loadingMore: false, error, changed: true }); return view
         }
         if (page.value.summary.revision !== value.summary.revision) {
           setState({ key, view: previous, busy: false, loadingMore: false, error: { code: 'REVISION_CONFLICT', error: '创作在读取期间更新，请重新刷新' }, changed: true }); return null
@@ -131,7 +159,7 @@ export function useCreationView(creationId: string, revisionId?: string): {
       setState({ key, view: value, busy: false, loadingMore: false, error: null, changed: changes.current !== noticedChanges })
       return value
     } catch (error) {
-      if (valid() && ticket === request.current) setState({ key, view: previous, busy: false, loadingMore: false, error: failureOf(error), changed: true })
+      if (valid() && ticket === request.current) setState({ key, view: accessDenied(error) ? null : previous, busy: false, loadingMore: false, error: detailFailure(error), changed: true })
       return null
     }
   }, [enabled, capture, key, workspaceKey, creationId, revisionId])
@@ -146,13 +174,13 @@ export function useCreationView(creationId: string, revisionId?: string): {
     try {
       const reply = await creationApi()?.get({ workspaceKey, creationId, revisionId: previousView.selected.revisionId, commentOffset: offset, commentLimit: 20 })
       if (!valid() || ticket !== request.current) return
-      if (!reply?.ok) { setState({ ...previous, loadingMore: false, error: reply ?? unavailable }); return }
+      if (!reply?.ok) { const error = reply ?? unavailable; setState({ ...previous, view: accessDenied(error) ? null : previousView, loadingMore: false, error, changed: accessDenied(error) || previous.changed }); return }
       if (reply.value.summary.revision !== previousView.summary.revision || reply.value.selected.revisionId !== previousView.selected.revisionId) {
         setState({ ...previous, loadingMore: false, changed: true, error: { code: 'REVISION_CONFLICT', error: '批注已更新，请刷新后继续加载' } }); return
       }
       setState((currentState) => ({ ...previous, changed: previous.changed || currentState.changed, loadingMore: false, view: { ...previousView, comments: mergeComments(previousView.comments, reply.value.comments), nextCommentOffset: reply.value.nextCommentOffset } }))
     } catch (error) {
-      if (valid() && ticket === request.current) setState({ ...previous, loadingMore: false, error: failureOf(error) })
+      if (valid() && ticket === request.current) setState({ ...previous, view: accessDenied(error) ? null : previousView, loadingMore: false, error: detailFailure(error), changed: accessDenied(error) || previous.changed })
     }
   }, [enabled, key, capture, workspaceKey, creationId])
   useEffect(() => { void refresh() }, [refresh])
@@ -169,7 +197,7 @@ export function useCreationView(creationId: string, revisionId?: string): {
 
 type CommandPayload = CreationCommand extends infer C ? C extends CreationCommand ? Omit<C, 'commandId' | 'creationId' | 'expectedRevision'> : never : never
 
-export function useCreationCommands(creationId: string, revision: number | null, selectedRevisionId: string): {
+export function useCreationCommands(creationId: string, revision: number | null, selectedRevisionId: string, formIdentity?: CreationFormIdentity): {
   busy: boolean; error: CreationFailure | null; recoveryRequired: boolean; clearError: () => void
   run: (payload: CommandPayload) => Promise<CreationCommandReply | null>
   recover: () => Promise<CreationCommandReply | null | false>
@@ -183,18 +211,40 @@ export function useCreationCommands(creationId: string, revision: number | null,
   const pending = useRef<CreationFailure | null>(null)
   useLayoutEffect(() => { lock.current = false; pending.current = uncertainOperations.get(recordKey) ?? null; setState({ key, busy: false, error: pending.current }) }, [key, recordKey])
   const run = useCallback(async (payload: CommandPayload): Promise<CreationCommandReply | null> => {
-    if (!enabled || lock.current || needsRecovery(pending.current) || uncertainOperations.has(recordKey)) return null
+    if (!enabled || lock.current || needsRecovery(pending.current) || uncertainOperations.has(recordKey)) { if (formIdentity) releaseCreationFormCommand(formIdentity); return null }
     const bridge = creationApi()
     const valid = capture()
-    if (!valid()) return null
+    const context = useHifox.getState().workspaceContext
+    if (!valid() || (formIdentity && (formIdentity.workspaceKey !== context.key || formIdentity.actorId !== context.actorId || formIdentity.epoch !== (context.epoch ?? null)))) { if (formIdentity) releaseCreationFormCommand(formIdentity); return null }
     lock.current = true
     setState({ key, busy: true, error: null })
+    let admitted: Extract<CreationCommand, { action: 'create' }> | undefined
     try {
-      const command: CreationCommand = { ...payload, creationId, expectedRevision: revision, commandId: crypto.randomUUID() }
+      const command: CreationCommand = { ...payload, creationId, expectedRevision: revision, commandId: crypto.randomUUID(), ...(formIdentity?.epoch ? { expectedEpoch: formIdentity.epoch } : {}) }
+      if (formIdentity) {
+        if (command.action !== 'create' || command.home !== formIdentity.scope || command.spaceId !== formIdentity.spaceId || !retainCreationFormCommand(formIdentity, command)) {
+          releaseCreationFormCommand(formIdentity)
+          if (valid()) setState({ key, busy: false, error: { code: 'FORM_IDENTITY_MISMATCH', error: '原创建表单或操作身份无法核对' } })
+          return null
+        }
+        admitted = command
+      }
       const reply = bridge ? await bridge.command({ workspaceKey, command }) : { ok: false as const, ...unavailable }
-      if (!reply.ok && needsRecovery(reply)) uncertainOperations.set(recordKey, reply)
+      if (!reply.ok) {
+        const uncertain = needsRecovery(reply) || Boolean(admitted && /SOURCE_CHANGED|OWNER_CHANGED|BINDING_CHANGED|SERVICE_CLOSED/.test(reply.code))
+        const failure = uncertain ? { ...reply, outcomeUnknown: true } : reply
+        if (uncertain) uncertainOperations.set(recordKey, failure)
+        else if (formIdentity && admitted) releaseCreationFormCommand(formIdentity, admitted.commandId)
+        if (valid()) { pending.current = failure; setState({ key, busy: false, error: failure }) }
+        return null
+      }
+      if (formIdentity && admitted && !recordCreationFormReceipt(formIdentity, reply.value)) {
+        const failure = { code: 'RECEIPT_MISMATCH', error: '创建回执与原操作不一致，请保留表单并核对', outcomeUnknown: true }
+        uncertainOperations.set(recordKey, failure)
+        if (valid()) { pending.current = failure; setState({ key, busy: false, error: failure }) }
+        return null
+      }
       if (!valid()) return null
-      if (!reply.ok) { pending.current = reply; setState({ key, busy: false, error: reply }); return null }
       pending.current = null
       setState({ key, busy: false, error: null })
       return reply.value
@@ -208,17 +258,31 @@ export function useCreationCommands(creationId: string, revision: number | null,
       }
       return null
     } finally { if (valid()) lock.current = false }
-  }, [enabled, capture, key, recordKey, workspaceKey, creationId, revision])
+  }, [enabled, capture, key, recordKey, workspaceKey, creationId, revision, formIdentity])
   const recover = useCallback(async (): Promise<CreationCommandReply | null | false> => {
     if (!enabled || lock.current) return false
     const valid = capture()
-    if (!valid()) return false
+    const context = useHifox.getState().workspaceContext
+    if (!valid() || (formIdentity && (formIdentity.workspaceKey !== context.key || formIdentity.actorId !== context.actorId || formIdentity.epoch !== (context.epoch ?? null)))) return false
+    const form = formIdentity ? readCreationForm(formIdentity) : undefined
+    if (formIdentity && (!form?.pending || !form.command || form.command.action !== 'create' || form.command.creationId !== creationId || form.command.home !== formIdentity.scope || form.command.spaceId !== formIdentity.spaceId)) return false
     lock.current = true
     setState({ key, busy: true, error: pending.current })
     try {
-      const reply = await creationApi()?.recover({ workspaceKey, creationId })
+      const reply = await creationApi()?.recover({ workspaceKey, creationId, ...(form?.command && formIdentity ? { commandId: form.command.commandId, expectedEpoch: formIdentity.epoch } : {}) })
+      if (reply?.ok && reply.value && formIdentity && !recordCreationFormReceipt(formIdentity, reply.value)) {
+        const failure = { code: 'RECEIPT_MISMATCH', error: '核对回执与原创建操作不一致，请保留表单', outcomeUnknown: true }
+        uncertainOperations.set(recordKey, failure)
+        if (valid()) { pending.current = failure; setState({ key, busy: false, error: failure }) }
+        return false
+      }
+      if (reply?.ok && reply.value && formIdentity) uncertainOperations.delete(recordKey)
       if (!valid()) return false
       if (!reply?.ok) { pending.current = reply ?? unavailable; if (needsRecovery(pending.current)) uncertainOperations.set(recordKey, pending.current); setState({ key, busy: false, error: pending.current }); return false }
+      if (formIdentity && reply.value === null) {
+        const failure = { code: 'PENDING_OPERATION', error: '未找到可核对的原操作，结果仍未确认', outcomeUnknown: true }
+        uncertainOperations.set(recordKey, failure); pending.current = failure; setState({ key, busy: false, error: failure }); return null
+      }
       uncertainOperations.delete(recordKey)
       pending.current = null
       setState({ key, busy: false, error: null })
@@ -227,7 +291,7 @@ export function useCreationCommands(creationId: string, revision: number | null,
       if (valid()) setState({ key, busy: false, error: { ...failureOf(error), outcomeUnknown: true } })
       return false
     } finally { if (valid()) lock.current = false }
-  }, [enabled, capture, key, recordKey, workspaceKey, creationId])
+  }, [enabled, capture, key, recordKey, workspaceKey, creationId, formIdentity])
   const reportFailure = useCallback((failure: CreationFailure): void => {
     pending.current = failure
     if (needsRecovery(failure)) uncertainOperations.set(recordKey, failure)

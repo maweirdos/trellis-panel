@@ -1,9 +1,10 @@
 import { z } from 'zod'
+import { modelIdWithinLimit } from '@shared/model-selection'
 
 const storedDraftSchema = z.object({
   key: z.string().min(1).max(200), conversationId: z.string().uuid().optional(),
   kind: z.enum(['work', 'code']), projectId: z.string().max(256).optional(), text: z.string().max(200_000),
-  runtimeId: z.string().max(200).optional(), dirty: z.boolean(), updatedAt: z.number().finite()
+  runtimeId: z.string().max(200).optional(), modelId: z.string().optional(), modelTooLong: z.boolean().optional(), dirty: z.boolean(), updatedAt: z.number().finite()
 }).strict()
 const selections = z.record(z.string().max(1200), z.string().max(200))
 const projectSelections = z.record(z.string().max(1200), z.string().max(256).nullable())
@@ -27,10 +28,13 @@ function readJson(raw: string): unknown {
   if (raw.length > 4_000_000) throw new Error('本机草稿缓存超出读取范围，请先保留输入。')
   return JSON.parse(raw)
 }
+function safeModels(value: StoredWorkspace): StoredWorkspace {
+  return { ...value, entries: value.entries.map((item) => item.modelId && !modelIdWithinLimit(item.modelId) ? { ...item, modelId: undefined, modelTooLong: true } : item) }
+}
 
 export function readStoredWorkspace(owner: string, admittedConversationIds: ReadonlySet<string>): StoredWorkspace | null {
   const raw = localStorage.getItem(storageKey(owner))
-  if (raw !== null) return storedWorkspaceSchema.parse(readJson(raw))
+  if (raw !== null) return safeModels(storedWorkspaceSchema.parse(readJson(raw)))
   const legacyKeys = new Set([`${prefix}v1.${encodeURIComponent(owner)}`])
   const installationLegacyPrefix = `${prefix}v1.${encodeURIComponent(`${owner}:team:`)}`
   for (let index = 0; index < localStorage.length; index++) {
@@ -65,13 +69,13 @@ export function readStoredWorkspace(owner: string, admittedConversationIds: Read
       }
     }
   }
-  const migrated: StoredWorkspace = { version: 2, entries: [...entries.values()], selected, projects }
+  const migrated: StoredWorkspace = safeModels({ version: 2, entries: [...entries.values()], selected, projects })
   writeStoredWorkspace(owner, migrated)
   return migrated
 }
 
 export function writeStoredWorkspace(owner: string, value: StoredWorkspace): void {
-  const raw = JSON.stringify(storedWorkspaceSchema.parse(value))
+  const raw = JSON.stringify(storedWorkspaceSchema.parse(safeModels(value)))
   if (raw.length > 4_000_000) throw new Error('本机草稿缓存已满，请先为 Code 草稿选择目录并保存。')
   localStorage.setItem(storageKey(owner), raw)
 }

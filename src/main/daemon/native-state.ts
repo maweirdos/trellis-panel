@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { Settings } from '../../shared/types'
 import { canonicalWorkflowJson } from '../../shared/workflow'
 import { acpRuntimeDefaultsMapSchema } from '../../shared/acp-launch-options'
-import { defaultSettings, mergeSettings } from '../services/store'
+import { assertLegacyAcpAgentsUnchanged, defaultSettings, mergeSettings } from '../services/store'
 import { installSettingsPersistence } from '../services/store-port'
 import { installIntegrationStatePort } from '../services/integrations/state-port'
 import { integrationStateSchema, type IntegrationState } from '../services/integrations/stored-schema'
@@ -20,7 +20,7 @@ const UI_KEYS = ['recentProjects', 'theme', 'desktop'] as const
 const uiPreferencesSchema = z.object({
   version: z.literal(1), revision: z.number().int().positive().safe(),
   recentProjects: z.array(z.string().max(4096)).max(10).optional(),
-  theme: z.enum(['dark', 'light']).optional(),
+  theme: z.enum(['dark', 'light', 'system']).optional(),
   desktop: z.object({ autoStart: z.boolean(), globalShortcut: z.string().max(200), autoUpdate: z.boolean(), quickTodoShortcut: z.string().max(200), explorerContextMenu: z.boolean().optional() }).optional()
 }).strict()
 const emptyIntegrations = (): IntegrationState => ({ version: 2, connections: [], bindings: [], receipts: [], legacyImports: {} })
@@ -38,7 +38,7 @@ function settingsShape(value: unknown): z.ZodType {
 }
 const knownSettingsShape = settingsShape(defaultSettings())
 const explicitSettingsShape = z.object({
-  theme: z.enum(['dark', 'light']).optional(), recentProjects: z.array(z.string().max(4096)).max(10).optional(),
+  theme: z.enum(['dark', 'light', 'system']).optional(), recentProjects: z.array(z.string().max(4096)).max(10).optional(),
   jira: z.object({ passwordEncrypted: z.boolean().optional() }).passthrough().optional(),
   gitlab: z.object({ passwordEncrypted: z.boolean().optional() }).passthrough().optional(),
   weknora: z.object({ apiKeyEncrypted: z.boolean().optional(), mcpTokenEncrypted: z.boolean().optional() }).passthrough().optional(),
@@ -207,6 +207,7 @@ export class DaemonNativeState {
   write(patch: Partial<Settings>, _strict = true): Settings {
     this.assertPrepared()
     const current = this.owner.read()
+    assertLegacyAcpAgentsUnchanged(normalizedSettings(current.snapshot.settings), patch)
     normalizedSettings({ ...current.snapshot.settings, ...patch })
     const next = sealSettings(normalizedSettings({ ...mergeSettings(mergeUi(this.context, normalizedSettings(current.snapshot.settings)), patch) }))
     this.owner.update(current.revision, (snapshot) => { snapshot.settings = { ...next } })
@@ -215,6 +216,7 @@ export class DaemonNativeState {
   writeCommand(expectedRevision: number, commandId: string, digest: string, patch: Partial<Settings>): { revision: number; replayed: boolean } {
     this.assertPrepared()
     return this.owner.command(expectedRevision, commandId, digest, (snapshot) => {
+      assertLegacyAcpAgentsUnchanged(normalizedSettings(snapshot.settings), patch)
       normalizedSettings({ ...snapshot.settings, ...patch })
       snapshot.settings = { ...sealSettings(normalizedSettings({ ...mergeSettings(mergeUi(this.context, normalizedSettings(snapshot.settings)), patch) })) }
     })

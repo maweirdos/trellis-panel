@@ -9,6 +9,7 @@ import { acpHandoffPreviewInputSchema, acpHandoffCreateInputSchema, acpHandoffCa
 import { taskProgressNativeSchema } from './hifox-task-progress-native'
 import { workcopyUseRequestSchema, workcopyCleanupRequestSchema } from './workcopy-use'
 import { privateNativeReadSchema, privateNativeSendSchema, privateNativeControlSchema } from './private-conversations'
+import { modelSelectionIdSchema } from './model-selection'
 import { privateNativeConfigureSchema, privateNativeRecoverModelSchema } from './private-conversation-controls'
 import { requirementPredecessorSchema } from './conversation-requirements'
 import { runRefSchema } from './workflow'
@@ -66,7 +67,7 @@ export const runtimeBodies = {
   'runtime.prompt': session.extend({ text: z.string().max(2 * 1024 * 1024), options: z.unknown().optional() }).strict(),
   'runtime.cancel': session, 'runtime.end': session, 'runtime.resume': session,
   'runtime.configure': session.extend({ input: z.unknown() }).strict(),
-  'runtime.recover': session.extend({ input: z.object({ modelId: z.string().min(1).max(1000), expectedConnectionGeneration: id }).strict() }).strict(),
+  'runtime.recover': session.extend({ input: z.object({ modelId: modelSelectionIdSchema, expectedConnectionGeneration: id }).strict() }).strict(),
   'runtime.bind': session.extend({ input: z.object({ taskDir: z.string().max(200).nullable(), expectedConnectionGeneration: id }).strict() }).strict(),
   'runtime.permission': z.object({ requestId: id, optionId: z.string().min(1).max(1000) }).strict(),
   'runtime.watcher': z.object({ path: z.string().min(1).max(8192), event: z.enum(['add', 'change', 'unlink']) }).strict(),

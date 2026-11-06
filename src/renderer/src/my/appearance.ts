@@ -12,6 +12,21 @@ export function normalizeSidebarWidth(value: unknown): number {
 }
 
 export type UiFontSize = 'small' | 'standard' | 'large'
+export type UiFontFamily = 'default' | 'system'
+export type CodeFontFamily = 'default' | 'cascadia' | 'consolas'
+export type CodeFontSize = 'small' | 'standard' | 'large'
+
+export function normalizeUiFontFamily(value: unknown): UiFontFamily {
+  return value === 'system' ? 'system' : 'default'
+}
+
+export function normalizeCodeFontFamily(value: unknown): CodeFontFamily {
+  return value === 'cascadia' || value === 'consolas' ? value : 'default'
+}
+
+export function normalizeCodeFontSize(value: unknown): CodeFontSize {
+  return value === 'small' || value === 'large' ? value : 'standard'
+}
 
 export const UI_DENSITY_OPTIONS: ReadonlyArray<{ value: UiFontSize; label: string; description: string; sidebarWidth: number }> = [
   { value: 'small', label: '紧凑', description: '较小的字号、间距和控件', sidebarWidth: 224 },

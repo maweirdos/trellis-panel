@@ -92,11 +92,14 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   every route, including new routes. `PageFrame` consumes that registry; pages
   with their own module header compose the same layout directly.
 - Settings destinations share `PageFrame`'s `.my-settings-layout`: a centered
-  column using `--my-settings-content-width`, one PageBody scrollbar, and an icon,
+  column using `--my-settings-content-width`, a PageBody scrollbar, and an icon,
   title and purpose description inside PageContent. `settings-catalog.ts` owns
   category names, descriptions, icons, keywords and routes for both the page
   heading and grouped Settings navigation. Do not add a competing leaf sidebar,
-  independent page scroll region, duplicate title or scope badge.
+  duplicate title or scope badge. The model-provider page bounds its workspace
+  and scrolls the provider list and model detail independently, so scrolling a
+  long model list keeps the provider list visible. At narrow widths the provider
+  list scrolls horizontally; short windows retain access to the page scrollbar.
   Keep `margin-inline: auto` and symmetric scrollbar gutters so the title and
   content column share the remaining main region's center. Settings canvas uses
   `--my-bg-sidebar`; `PreferenceSection` and its heading use `--my-bg-surface-1`
@@ -146,11 +149,14 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   refresh/test/install completion belongs in compact status/icons and accessible
   announcements, without permanent success paragraphs. Preserve actionable errors
   and actual diagnostics; parameter/environment configuration links to Agent roles.
+  Engine rows show identity, one current status and the relevant primary action;
+  secondary configuration and diagnostics are disclosed on demand. The connection
+  diagram and row reflect the same operation. Use neutral verified marks and lines;
+  where no real progress value exists, show indeterminate activity without a percentage.
 - Model credentials belong to Models; knowledge connections and retained legacy
   synchronization controls belong to the WeKnora integration; MCP installation
   belongs to MCP. Keep active compatibility controls reachable in the owning
-  destination instead of duplicating their editors in Preferences. Engine
-  command/hooks configuration is a default-closed advanced group. About names
+  destination instead of duplicating their editors in Preferences. About names
   this application, its package version, repository and license.
 - `PageHeader`, `PageToolbar` and `PageNotice` provide fixed, aligned bands.
   `PageBody` fills the remaining height. A centered body owns one scrollbar;

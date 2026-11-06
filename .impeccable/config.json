@@ -1,3 +1,18 @@
 {
-  "buildPath": "comp"
+  "buildPath": "comp",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "files": [
+          "src/renderer/src/my/my-tokens.css"
+        ],
+        "createdAt": "2026-11-02T16:45:01.288Z",
+        "reason": "Project DESIGN.md specifies Inter as the existing interface font; this task preserves the established Settings baseline."
+      }
+    ]
+  }
 }

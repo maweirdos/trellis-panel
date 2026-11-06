@@ -59,7 +59,7 @@ Completely exiting the platform prompts when owned applications remain and waits
 
 ## Use from an Agent editor
 
-Enable the existing local access service in Settings, then install/update the `tpanel` command using the existing bridge installation action. Access remains opt-in and bound to `127.0.0.1`. The installer uses the platform's bundled Electron executable in Node mode; a global Node installation is not required. Reinstall the shim if the platform executable moves.
+In Settings → Network services, install or update the `tpanel` command beside the local access protocol, then enable the local access service. Access remains opt-in and bound to `127.0.0.1`. The shim uses the platform's bundled Electron executable in Node mode; a global Node installation is not required.
 
 Declare the application and approve its first execution through the panel. The CLI cannot create arbitrary launch commands or approve a changed command. An unapproved start returns `E_DENIED` with `APPROVAL_REQUIRED`, and the application panel shows the request.
 

@@ -16,35 +16,14 @@ import { PI_VERSION } from '../pi/protocol'
 import { applyRuntimeVerification, hasRuntimeVerification, runtimeVerificationIdentity } from './runtime-verification'
 import { acpExtraArgv, acpProcessEnv, resolveAcpLaunchOptions } from '../../../shared/acp-launch-options'
 import { compareReleaseVersions, openCodeRelease, OPENCODE_MIGRATION_GUIDE, OPENCODE_V2_PACKAGE, parseReleaseVersion } from './native-releases'
+import { BUILTINS, BUNDLED, NATIVES, isManaged, isNative, isBundled, isSupportedRuntimeSnapshot, type BuiltinId, type NativeId, type BundledId } from './runtime-definitions'
+export { isSupportedRuntimeSnapshot } from './runtime-definitions'
 
 export { BUILTINS }
 
 export const NATIVE_TOOLS_DIAGNOSTIC = '工具由适配器原生能力提供；ACP 客户端文件和终端回调未启用，实际工具以该适配器报告和运行结果为准。'
+export const LEGACY_CUSTOM_RUNTIME_ERROR = '旧自定义执行引擎已停用，无法继续执行、启动或恢复；原会话和配置仍可查看，请选择受支持的执行引擎创建新会话'
 
-const BUILTINS = {
-  codex: { name: 'Codex', packageName: '@agentclientprotocol/codex-acp', version: '2.2.2', bin: 'codex-acp' },
-  claude: { name: 'Claude Code', packageName: '@agentclientprotocol/claude-agent-acp', version: '0.91.0', bin: 'claude-agent-acp' }
-} as const
-
-/**
- * 随应用打包的桥接适配器（launchKind 'bundled'，如 ZCode→ACP 翻译层）：entry 随 resources 复制，
- * 无安装步骤；内部 CLI（zcode）由本模块检测并以 `--zcode-bin` 显式传给适配器。
- */
-const BUNDLED = {
-  zcode: { name: 'ZCode', commandName: 'zcode' }
-} as const
-type BuiltinId = keyof typeof BUILTINS
-type NativeId = keyof typeof NATIVES
-type BundledId = keyof typeof BUNDLED
-
-/**
- * 原生 ACP CLI 直连预设：CLI 自身提供 ACP server 模式（启动参数证据见任务 research/native-acp-launch.md）。
- * 检测是只读探测；安装/升级只通过 setupAcpRuntime，保持当前主版本并安装已核实的注册表版本。
- */
-const NATIVES = {
-  opencode: { name: 'OpenCode', commandName: 'opencode', launchArgs: ['acp'], npmPackage: OPENCODE_V2_PACKAGE, installHint: `npm install -g ${OPENCODE_V2_PACKAGE}`, missingHint: `未找到 opencode；可通过「安装」安装 OpenCode v2（npm install -g ${OPENCODE_V2_PACKAGE}）或使用官方安装方式` },
-  dsh: { name: 'DeepSeek DSH', commandName: 'dsh', launchArgs: ['--profile', 'acp'], npmPackage: '@deepseek-ai/dsh', installHint: 'npm install -g @deepseek-ai/dsh', missingHint: '未找到 dsh；可通过「安装执行引擎」（npm install -g @deepseek-ai/dsh）安装（需要 Node >=22.19）' }
-} as const
 const setups = new Map<string, Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail>>()
 let lastProbe: Promise<AcpAgentStatus[]> | undefined
 let lastDiscoveryIdentity: string | undefined
@@ -133,6 +112,12 @@ export function runtimeDefinitions(): AcpAgentConfig[] {
   return runtimeDefinitionsFor(getSettings().acp)
 }
 
+/** A provenance-free old snapshot cannot be attributed to a builtin when that ID was overridden. */
+export function isRuntimeSnapshotAvailable(config: AcpAgentConfig): boolean {
+  return isSupportedRuntimeSnapshot(config) && (config.launchKind !== undefined
+    || !getSettings().acp?.agents?.some(item => item.id === config.id))
+}
+
 function runtimeDefinitionsFor(settings: Settings['acp']): AcpAgentConfig[] {
   const overrides = settings?.agents ?? []
   const items: AcpAgentConfig[] = [
@@ -147,30 +132,12 @@ function runtimeDefinitionsFor(settings: Settings['acp']): AcpAgentConfig[] {
       && config.args?.length === 2 && config.args[1] === '--serve'
       && /[\\/]scripts[\\/]smoke[\\/]acp-mock-agent\.mjs$/i.test(config.args[0])) continue
     const index = items.findIndex((item) => item.id === config.id)
-    // Preserve explicit user launch commands, including existing preset overrides.
+    // Keep a disabled identity marker so a legacy override cannot resolve to a same-ID builtin.
     const custom = { ...config, launchKind: 'custom' as const }
     if (index >= 0) items[index] = custom
     else items.push(custom)
   }
   return items
-}
-
-function isManaged(config: AcpAgentConfig): config is AcpAgentConfig & { id: BuiltinId } {
-  if (!Object.hasOwn(BUILTINS, config.id) || config.launchKind === 'custom') return false
-  const spec = BUILTINS[config.id as BuiltinId]
-  // Older schema-2 snapshots have no provenance. Only the exact generated
-  // definition qualifies; never reinterpret an arbitrary custom command.
-  return config.command === `${spec.packageName}@${spec.version}` && !config.executable && !config.args?.length
-}
-
-function isNative(config: AcpAgentConfig): config is AcpAgentConfig & { id: NativeId } {
-  // Persisted overrides are always normalized to launchKind 'custom' in
-  // runtimeDefinitions, so only the generated native definition reaches here.
-  return config.launchKind === 'native' && Object.hasOwn(NATIVES, config.id)
-}
-
-function isBundled(config: AcpAgentConfig): config is AcpAgentConfig & { id: BundledId } {
-  return config.launchKind === 'bundled' && Object.hasOwn(BUNDLED, config.id)
 }
 
 /** 宽松读取 CLI --version 输出中的首个版本号形态 token，避免把横幅文案当版本展示。 */
@@ -261,6 +228,8 @@ async function probe(queryRegistry: boolean, settings: Settings['acp'], definiti
   try { node = await externalNodeFor(settings) } catch (error) { nodeError = errorMessage(error) }
   return Promise.all(definitions.map(async (config): Promise<AcpAgentStatus> => {
     const base = { ...config, runtimeId: config.id, checkedAt: Date.now(), nodePath: node?.path }
+    if (!isSupportedRuntimeSnapshot(config)) return { ...base, available: false, health: 'executable_missing', setupRequired: false,
+      setupBlockedReason: LEGACY_CUSTOM_RUNTIME_ERROR, diagnostics: [LEGACY_CUSTOM_RUNTIME_ERROR] }
     if (config.id === 'pi' && config.launchKind === 'sdk') {
       const compatible = !!node && Number(node.version.slice(1).split('.')[0]) >= 24 || !!node && /^v22\.(?:19|[2-9]\d)\./.test(node.version)
       return { ...base, available: compatible && piEngineAvailable(), health: !compatible ? 'executable_missing' : !piEngineAvailable() ? 'adapter_missing' : 'ready',
@@ -338,10 +307,7 @@ async function probe(queryRegistry: boolean, settings: Settings['acp'], definiti
         diagnostics: [entryLine, cliLine, zcodeNode ? `Node ${zcodeNode.version}（${zcodeNode.source === 'managed' ? '随应用提供' : zcodeNode.source === 'explicit' ? '自定义路径' : 'PATH 自动检测'}）` : zcodeNodeError, safeLine,
           ...(manual && detected && !detected.manual ? ['手动指定路径无效，已回退自动检测'] : []), NATIVE_TOOLS_DIAGNOSTIC].filter((line) => line.length > 0) }
     }
-    const executable = config.executable ? findExecutable(config.executable) : undefined
-    const valid = config.executable ? !!executable : config.command.trim().length > 0
-    return { ...base, available: valid, health: valid ? 'not_checked' : 'executable_missing', setupRequired: false,
-      diagnostics: [config.executable ? valid ? '结构化启动命令可用；协议将在启动时验证' : '找不到指定可执行文件' : '旧版完整 shell 命令保留；启动时按原命令执行，不以空格拆分', NATIVE_TOOLS_DIAGNOSTIC] }
+    return { ...base, available: false, health: 'executable_missing', setupRequired: false, diagnostics: [LEGACY_CUSTOM_RUNTIME_ERROR] }
   }))
 }
 
@@ -373,7 +339,7 @@ export async function listAcpAgents(refresh = false): Promise<{ ok: true; agents
   }
   if (currentDiscoveryIdentity() !== discoveryIdentity) return listAcpAgents(refresh)
   const verified = await Promise.all(agents.map(async agent => {
-    if (!hasRuntimeVerification(agent.id)) return agent
+    if (!isSupportedRuntimeSnapshot(agent) || !hasRuntimeVerification(agent.id)) return agent
     const current = definitions.find(config => config.id === agent.id)
     if (!current) return agent
     const launch = await runtimeLaunchSnapshot(current)
@@ -405,12 +371,14 @@ export async function runtimeLaunchSnapshot(config: AcpAgentConfig): Promise<{ i
  * not session startup. Native readiness/authentication still belongs to acpx/the adapter. */
 export async function resolveAcpRuntimeLaunch(id: string): Promise<{ config: AcpAgentConfig; argv: string[] } | IpcFail> {
   const config = runtimeDefinitions().find((item) => item.id === id)
+  if (config && !isSupportedRuntimeSnapshot(config)) return ipcFail(IpcErrorCode.Unavailable, LEGACY_CUSTOM_RUNTIME_ERROR)
   if (!config?.enabled) return ipcFail(IpcErrorCode.InvalidArg, 'Runtime 未启用或不可用')
   try { return { config, argv: await launchArgv(config) } }
   catch (error) { return ipcFail(IpcErrorCode.InvalidArg, errorMessage(error)) }
 }
 
 export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
+  if (!isRuntimeSnapshotAvailable(config)) throw new Error(LEGACY_CUSTOM_RUNTIME_ERROR)
   if (config.id === 'pi' && config.launchKind === 'sdk') {
     const node = await externalNode()
     const [major, minor] = node.version.slice(1).split('.').map(Number)
@@ -443,17 +411,7 @@ export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
     return [node.path, '--experimental-strip-types', entry, '--zcode-bin', zcode.path,
       ...(bundledAutomationAllowed() ? ['--enable-automation-tools'] : [])]
   }
-  if (config.executable) {
-    const executable = findExecutable(config.executable)
-    if (!executable) throw new Error('指定可执行文件不存在，请刷新或修改 Runtime 配置')
-    return [executable, ...(config.args ?? [])]
-  }
-  if (!config.command.trim()) throw new Error('Runtime 启动命令为空，请修改 Runtime 配置')
-  // Explicit legacy shell semantics preserve the complete original command.
-  // Do not infer executable/argv boundaries by splitting user input.
-  return process.platform === 'win32'
-    ? [join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', config.command]
-    : ['/bin/sh', '-lc', config.command]
+  throw new Error(LEGACY_CUSTOM_RUNTIME_ERROR)
 }
 
 /** npm 安装失败时保留原始 stderr 摘要，便于区分网络/权限/包名问题。 */
@@ -526,11 +484,12 @@ async function setupNativeRuntime(config: AcpAgentConfig & { id: NativeId }, set
 export async function setupAcpRuntime(id: string): Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail> {
   const settings = structuredClone(getSettings().acp)
   const config = runtimeDefinitionsFor(settings).find(item => item.id === id)
+  if (config && !isSupportedRuntimeSnapshot(config)) return ipcFail(IpcErrorCode.Unavailable, LEGACY_CUSTOM_RUNTIME_ERROR)
   if (config?.launchKind === 'sdk') return listAcpAgents(true)
   if (Object.hasOwn(BUNDLED, id)) return ipcFail(IpcErrorCode.InvalidArg, '内置 Runtime 随应用提供，无需安装')
   const native = Object.hasOwn(NATIVES, id)
-  if (!Object.hasOwn(BUILTINS, id) && !native) return ipcFail(IpcErrorCode.InvalidArg, '自定义 Runtime 请在本机自行安装和配置')
-  if (!config || native && !isNative(config) || !native && !isManaged(config)) return ipcFail(IpcErrorCode.InvalidArg, '自定义 Runtime 请在本机自行安装和配置')
+  if (!Object.hasOwn(BUILTINS, id) && !native) return ipcFail(IpcErrorCode.InvalidArg, '执行引擎不存在或不可安装')
+  if (!config || native && !isNative(config) || !native && !isManaged(config)) return ipcFail(IpcErrorCode.InvalidArg, '执行引擎不可安装')
   const pending = setups.get(id)
   if (pending) return pending
   const task = (async (): Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail> => {
@@ -575,6 +534,8 @@ export async function pickAcpNode(write: AcpSettingsWriter = localSettingsWriter
 
 /** ZCode selects its installation directory; other native CLIs retain file selection. */
 export async function pickAcpRuntimePath(id: string, write: AcpSettingsWriter = localSettingsWriter): Promise<{ ok: true; cancelled?: boolean; agents?: AcpAgentStatus[] } | IpcFail> {
+  const config = runtimeDefinitions().find(item => item.id === id)
+  if (config && !isSupportedRuntimeSnapshot(config)) return ipcFail(IpcErrorCode.Unavailable, LEGACY_CUSTOM_RUNTIME_ERROR)
   const native = Object.hasOwn(NATIVES, id)
   const spec = native ? NATIVES[id as NativeId] : Object.hasOwn(BUNDLED, id) ? BUNDLED[id as BundledId] : undefined
   if (!spec) return ipcFail(IpcErrorCode.InvalidArg, '仅原生直连与内置 Runtime 支持配置 CLI 路径')

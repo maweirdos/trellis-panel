@@ -174,9 +174,14 @@ select {
 .md pre code {
   background: transparent;
   padding: 0;
-  font-size: var(--my-text-sm);
+  font-family: var(--my-code-font);
+  font-size: var(--my-code-font-size);
   line-height: var(--my-line-chat);
   color: var(--my-txt-secondary);
+}
+.my-root .my-code-content {
+  font-family: var(--my-code-font);
+  font-size: var(--my-code-font-size);
 }
 .md table {
   margin: var(--my-space-16) 0;

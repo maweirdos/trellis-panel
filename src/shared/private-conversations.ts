@@ -3,6 +3,7 @@ import type { AcpHistoryEventPage } from './acp-history'
 import type { AcpSessionRecord } from './types'
 import type { IpcFail } from './ipc-errors'
 import { ACP_IMAGE_MIME_TYPES, ACP_IMAGE_MAX_BASE64 } from './acp-images'
+import { modelSelectionIdSchema } from './model-selection'
 
 const id = z.string().uuid()
 const name = z.string().trim().min(1).max(200)
@@ -19,10 +20,10 @@ export const conversationSchema = z.object({
 export const conversationCreateDraftSchema = z.object({
   kind: z.enum(['work', 'code']).default('work'),
   projectId: z.string().min(1).max(256).optional(), directoryGrantId: id.optional(),
-  runtimeId: z.string().min(1).max(200).optional(), text: z.string().max(200_000).default('')
+  runtimeId: z.string().min(1).max(200).optional(), modelId: modelSelectionIdSchema.optional(), text: z.string().max(200_000).default('')
 }).strict()
 export const conversationUpdateDraftSchema = z.object({
-  text: z.string().max(200_000).optional(), title: name.optional(), runtimeId: z.string().min(1).max(200).optional(),
+  text: z.string().max(200_000).optional(), title: name.optional(), runtimeId: z.string().min(1).max(200).optional(), modelId: modelSelectionIdSchema.nullable().optional(),
   directoryGrantId: id.optional(), pinned: z.boolean().optional(), archived: z.boolean().optional()
 }).strict().refine(value => Object.keys(value).length > 0, '请选择要更新的草稿字段')
 export const conversationListSchema = z.object({
@@ -44,10 +45,13 @@ export const conversationCreateProjectSchema = z.object({ name }).strict()
 export const conversationFileSchema = z.object({
   id: z.string().min(1).max(256), name: z.string().min(1).max(500), relativePath: z.string().min(1).max(8192),
   kind: z.enum(['input', 'output']), bytes: z.number().int().nonnegative(), revision: z.string().regex(/^[a-f0-9]{64}$/),
-  modifiedAt: z.number().finite()
+  modifiedAt: z.number().finite(), sourceIdentity: z.string().regex(/^[a-f0-9]{64}$/).optional()
 }).strict()
-export const conversationOpenFileSchema = z.object({ fileId: z.string().min(1).max(256), action: z.enum(['open', 'reveal']).default('open') }).strict()
-export const conversationReadFileSchema = z.object({ fileId: z.string().min(1).max(256), expectedRevision: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
+export const conversationOpenFileSchema = z.object({ fileId: z.string().min(1).max(256), action: z.enum(['open', 'reveal']).default('open'), expectedRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), expectedSourceIdentity: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict()
+export const conversationReadFileSchema = z.object({ fileId: z.string().min(1).max(256), expectedRevision: z.string().regex(/^[a-f0-9]{64}$/), expectedSourceIdentity: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict()
+export const conversationPreviewImageSchema = conversationReadFileSchema.extend({ expectedSourceIdentity: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
+export const CONVERSATION_IMAGE_PREVIEW_MAX_BYTES = 10 * 1024 * 1024
+export const CONVERSATION_PDF_PREVIEW_MAX_BYTES = 16 * 1024 * 1024
 
 export type Conversation = z.infer<typeof conversationSchema>
 export type ConversationCreateDraft = z.input<typeof conversationCreateDraftSchema>
@@ -65,9 +69,10 @@ export type ConversationReadFile = z.infer<typeof conversationReadFileSchema>
 export type ConversationResult<T> = { ok: true; value: T } | IpcFail
 export interface ConversationRead {
   conversation: Conversation
-  draft: { text: string; runtimeId?: string }
+  draft: { text: string; runtimeId?: string; modelId?: string }
   session?: AcpSessionRecord
   runtimeError?: string
+  modelConfirmationRequired?: boolean
 }
 export interface ConversationDirectoryGrant { grantId: string; path: string }
 export interface ConversationApi {
@@ -89,6 +94,12 @@ export interface ConversationApi {
   files(id: string): Promise<ConversationResult<ConversationFile[]>>
   openFile(id: string, input: ConversationOpenFile): Promise<ConversationResult<null>>
   readFile(id: string, input: ConversationReadFile): Promise<ConversationResult<{ name: string; body: string; kind: 'prototype' | 'document'; revision: string; modifiedAt: number }>>
+  previewImage?(id: string, input: z.infer<typeof conversationPreviewImageSchema>): Promise<ConversationResult<{ name: string; revision: string; mimeType: import('./acp-images').AcpImageMimeType; data: string }>>
+  previewPdf?(id: string, input: z.infer<typeof conversationPreviewImageSchema>): Promise<ConversationResult<{ name: string; revision: string; data: Uint8Array; locator?: string }>>
+  previewDocx?(id: string, input: z.infer<typeof conversationPreviewImageSchema> & { operationId: string }): Promise<ConversationResult<{ name: string; revision: string; html: string; locator: string }>>
+  cancelDocx?(operationId: string): Promise<ConversationResult<null>>
+  validatePdfLocator?(locator: string): Promise<ConversationResult<null>>
+  releasePdfLocator?(locator: string): Promise<ConversationResult<null>>
   image(id: string, imageId: string): Promise<ConversationResult<{ mimeType: import('./acp-images').AcpImageMimeType; data: string }>>
   saveImage(id: string, imageId: string): Promise<ConversationResult<{ cancelled: boolean }>>
   projects(): Promise<ConversationResult<ConversationProject[]>>
@@ -108,7 +119,7 @@ export const privateNativeReadSchema = privateNativeOwnerSchema.extend({
   paging: z.object({ before: z.string().max(4096).optional(), after: z.string().max(4096).optional(), limit: z.number().int().min(1).max(500).optional() }).strict().optional(),
   imageId: z.string().regex(/^[a-f0-9]{64}$/).optional()
 }).strict()
-export const privateNativeSendSchema = privateNativeOwnerSchema.extend({ operation: z.enum(['prepare', 'send']), agentId: z.string().min(1).max(200), displayText: z.string().min(1).max(16_000).optional(), input: conversationSendSchema }).strict()
+export const privateNativeSendSchema = privateNativeOwnerSchema.extend({ operation: z.enum(['prepare', 'send']), agentId: z.string().min(1).max(200), initialModelId: modelSelectionIdSchema.optional(), displayText: z.string().min(1).max(16_000).optional(), input: conversationSendSchema }).strict()
 export const privateNativeControlSchema = privateNativeOwnerSchema.extend({
   expectedConnectionGeneration: z.string().min(1).max(200).optional(),
   requestId: z.string().min(1).max(200).optional(), optionId: z.string().min(1).max(1000).optional()

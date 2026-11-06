@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, type JSX, type KeyboardEvent } from 'react'
-import { Code2, Globe, PanelRightClose, X } from 'lucide-react'
+import { Code2, Globe, X } from 'lucide-react'
 import type { AcpSessionRecord } from '../../../shared/types'
 import { Button } from '../my/ui'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
@@ -65,7 +65,6 @@ export function ConversationPreviewTabs({ shelf, session }: ConversationPreviewT
           <Button size="sm" variant="ghost" className="acp-preview-tab-close" aria-label={`关闭标签页：${tab.title}`} title={`关闭标签页：${tab.title}`} disabled={!interactive} tabIndex={tab.id === activeTabId ? 0 : -1} onClick={() => close(tab.id)}><X size={13} /></Button>
         </div>)}
       </div>
-      <Button size="sm" variant="ghost" className="acp-preview-icon-button" aria-label="收起预览栏" title="收起预览栏" disabled={!interactive} onClick={() => shelf.setCollapsed(true)}><PanelRightClose size={16} /></Button>
     </header>
     {shelf.notice && <p className="acp-preview-notice" role="alert">{shelf.notice}</p>}
     <div className="acp-preview-tab-panels">

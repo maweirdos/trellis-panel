@@ -7,8 +7,8 @@ import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 export type HistoryOperation =
   | { op: 'init'; directory: string; sourceDirectory: string }
   | { op: 'append'; items: HistoryBatchItem[] }
-  | { op: 'list'; root: string; input: { limit?: number; cursor?: string; query?: string; filter?: string; archive?: string } }
-  | { op: 'session'; root: string; sessionId: string }
+  | { op: 'list'; root: string; input: { limit?: number; cursor?: string; query?: string; filter?: string; archive?: string }; legacyIds: string[] }
+  | { op: 'session'; root: string; sessionId: string; legacyIds: string[] }
   | { op: 'delete'; root: string; sessionId: string }
   | { op: 'title-material'; root: string; sessionId: string }
   | { op: 'events'; root: string; sessionId: string; input: { limit?: number; before?: string; after?: string } }
@@ -34,8 +34,8 @@ export function handleHistoryMessage(message: HistoryOperation): unknown {
   if (!core) throw new Error('Conversation archive unavailable')
   switch (message.op) {
     case 'append': return core.append(message.items)
-    case 'list': return core.list(message.root, message.input)
-    case 'session': return core.session(message.root, message.sessionId)
+    case 'list': return core.list(message.root, message.input, message.legacyIds)
+    case 'session': return core.session(message.root, message.sessionId, message.legacyIds)
     case 'delete': core.deleteSession(message.root, message.sessionId); return { deleted: true }
     case 'title-material': return core.titleMaterial(message.root, message.sessionId)
     case 'events': return core.events(message.root, message.sessionId, message.input)

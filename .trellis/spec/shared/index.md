@@ -15,6 +15,7 @@
 | [timestamp.md](./timestamp.md)                     | Timestamp format specification    | Date/time handling     |
 | [hifox-collaboration.md](./hifox-collaboration.md) | Local/shared workspaces, accounts, space ACL, task/version invariants, scoped commands and business icons | Team collaboration |
 | [creations.md](./creations.md) | Fixed HTML revisions, webpage opinions, task adoption and bounded AI/native materials | Personal/team creation and handoff |
+| [design-workspace.md](./design-workspace.md) | Pi design generation, private canvas identity, DOM selection, candidates, export and public playback | Design conversations / canvas / library |
 | [pnpm-electron-setup.md](./pnpm-electron-setup.md) | pnpm + Electron project setup     | Project initialization |
 
 ---

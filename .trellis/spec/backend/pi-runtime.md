@@ -51,6 +51,12 @@ answer or native persistence.
 
 ## Models, tools and resources
 
+`design_open` is a permission-gated public SDK extension. Its immutable page
+output, success projection and complete external parser dependency closure follow
+[design workspace contracts](../shared/design-workspace.md). `preview_web`
+continues to preview ordinary saved HTML; a completed `design_open` result uses
+the design canvas and does not require another preview tool call.
+
 Resolve only enabled application model configurations. Keys use memory-backed
 SDK credentials; do not write ordinary `auth.json`, expose keys to renderer or
 inherit ambient model credentials. Preserve existing proxy configuration and

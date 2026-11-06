@@ -2,6 +2,14 @@ import {
   CREATION_MAX_RECORD_BYTES, CREATION_MAX_REPLIES, CREATION_MAX_RESPONSE_BYTES, creationCommandSchema, creationRecordSchema, creationSummarySchema, creationViewInputSchema, creationViewSchema,
   type CreationActorContext, type CreationCommand, type CreationComment, type CreationRecord, type CreationSummary, type CreationView
 } from './creations'
+import type { ZodType } from 'zod'
+import { whiteboardV2CommandSchema, whiteboardV2RecordSchema, whiteboardV2SummarySchema, type WhiteboardV2Command, type WhiteboardV2Record, type WhiteboardV2SummaryBasis, type WhiteboardV2Summary } from './creation-whiteboard-v2'
+
+type DomainRecord = CreationRecord | WhiteboardV2Record
+type DomainCommand = CreationCommand | WhiteboardV2Command
+type AccessRecord = Pick<CreationRecord, 'ownerId' | 'editorIds' | 'home'>
+type ReadAccessRecord = AccessRecord & Pick<CreationRecord, 'projectId' | 'spaceId'> & { revisions: Array<unknown> }
+type SummaryRecord = WhiteboardV2SummaryBasis | CreationRecord
 
 export class CreationError extends Error {
   constructor(readonly code: string, message: string, readonly statusCode = 400) { super(message); this.name = 'CreationError' }
@@ -9,27 +17,30 @@ export class CreationError extends Error {
 function fail(code: string, message: string, status = 409): never { throw new CreationError(code, message, status) }
 function forbidden(): never { return fail('CREATION_FORBIDDEN', 'Current person cannot access this creation operation', 403) }
 const bytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length
-const member = (ctx: CreationActorContext): void => { if (!ctx.activeMemberIds.includes(ctx.actorId)) forbidden() }
+export function assertCreationMember(ctx: CreationActorContext): void { if (!ctx.activeMemberIds.includes(ctx.actorId)) forbidden() }
+export function assertCreationRevision(actual: number | null, expected: number | null): void {
+  if (actual !== expected) fail('REVISION_CONFLICT', 'Creation changed; reload before submitting another intent')
+}
 const space = (ctx: CreationActorContext, spaceId: string, write: boolean): CreationActorContext['spaces'][number] => {
   const grant = ctx.spaces.find((entry) => entry.id === spaceId)
   if (!grant?.canRead || (write && !grant.canWrite)) forbidden()
   if (write && grant.archived) fail('SPACE_ARCHIVED', 'Archived spaces retain history and reject new changes')
   return grant
 }
-const owner = (record: CreationRecord, ctx: CreationActorContext): boolean => record.ownerId === ctx.actorId
-const editor = (record: CreationRecord, ctx: CreationActorContext): boolean => owner(record, ctx) || record.editorIds.includes(ctx.actorId)
-const draftEditor = (record: CreationRecord, ctx: CreationActorContext): boolean => owner(record, ctx) || (record.home === 'team' && editor(record, ctx))
-const published = (record: CreationRecord, revisionId: string): CreationRecord['revisions'][number] => {
+const owner = (record: AccessRecord, ctx: CreationActorContext): boolean => record.ownerId === ctx.actorId
+const editor = (record: AccessRecord, ctx: CreationActorContext): boolean => owner(record, ctx) || record.editorIds.includes(ctx.actorId)
+const draftEditor = (record: AccessRecord, ctx: CreationActorContext): boolean => owner(record, ctx) || (record.home === 'team' && editor(record, ctx))
+const published = (record: DomainRecord, revisionId: string): CreationRecord['revisions'][number] => {
   const revision = record.revisions.find((entry) => entry.revisionId === revisionId)
   if (!revision) fail('REVISION_NOT_FOUND', 'Published creation revision is unavailable', 404)
   return revision
 }
-const comment = (record: CreationRecord, commentId: string): CreationComment => {
+const comment = (record: DomainRecord, commentId: string): CreationComment => {
   const entry = record.comments.find((item) => item.commentId === commentId)
   if (!entry) fail('COMMENT_NOT_FOUND', 'Creation opinion is unavailable', 404)
   return entry
 }
-const review = (record: CreationRecord, revisionId: string, ctx: CreationActorContext): void => {
+const review = (record: DomainRecord, revisionId: string, ctx: CreationActorContext): void => {
   const revision = published(record, revisionId)
   if (!editor(record, ctx) && !revision.reviewerIds.includes(ctx.actorId)) forbidden()
 }
@@ -43,15 +54,20 @@ const hash = (body: string, ctx: CreationActorContext): string => {
   return value
 }
 
-export function canReadCreation(record: CreationRecord, ctx: CreationActorContext): boolean {
+function canReadDomain(record: ReadAccessRecord, ctx: CreationActorContext): boolean {
   if (record.projectId !== ctx.projectId || !ctx.activeMemberIds.includes(ctx.actorId)) return false
   if (record.spaceId && !ctx.spaces.some((entry) => entry.id === record.spaceId && entry.canRead)) return false
   return draftEditor(record, ctx) || record.revisions.length > 0
 }
 
+export function canReadCreation(record: CreationRecord, ctx: CreationActorContext): boolean { return canReadDomain(record, ctx) }
+export function canReadWhiteboard(record: WhiteboardV2Record | WhiteboardV2SummaryBasis, ctx: CreationActorContext): boolean {
+  return ctx.projectId === 'local' && record.home === 'personal' && record.ownerId === ctx.actorId && canReadDomain(record, ctx)
+}
+
 /** Authorization also runs before receipt replay; CAS belongs only to initial application. */
-export function authorizeCreationCommand(record: CreationRecord | null, command: CreationCommand, ctx: CreationActorContext): void {
-  member(ctx)
+function authorizeDomainCommand(record: DomainRecord | null, command: DomainCommand, ctx: CreationActorContext): void {
+  assertCreationMember(ctx)
   if (command.expectedEpoch !== undefined && command.expectedEpoch !== ctx.epoch) fail('EPOCH_CONFLICT', 'Creation service generation changed; reconcile the original intent before retrying')
   if (command.action === 'create') {
     if (record && (record.ownerId !== ctx.actorId || record.projectId !== ctx.projectId)) forbidden()
@@ -61,11 +77,12 @@ export function authorizeCreationCommand(record: CreationRecord | null, command:
       participants(command.editorIds ?? [], ctx, command.spaceId)
     } else if (command.spaceId !== null) fail('INVALID_INPUT', 'New personal creations do not select a team space', 400)
     if (command.home === 'personal' && command.editorIds?.length) fail('INVALID_INPUT', 'Personal drafts do not grant editors access', 400)
+    if (command.home !== 'personal' && command.privateSource) fail('INVALID_INPUT', 'Private conversation sources require a personal creation', 400)
     // A personal creation may have subsequently been published; current scope still applies to its receipt.
     if (record?.spaceId) space(ctx, record.spaceId, true)
     return
   }
-  if (!record || record.creationId !== command.creationId || !canReadCreation(record, ctx)) forbidden()
+  if (!record || record.creationId !== command.creationId || !canReadDomain(record, ctx)) forbidden()
   if (record.spaceId) space(ctx, record.spaceId, true)
   switch (command.action) {
     case 'saveDraft': case 'candidateSave': case 'candidateAdopt': case 'candidateDiscard':
@@ -114,25 +131,47 @@ export function authorizeCreationCommand(record: CreationRecord | null, command:
   }
 }
 
+export function authorizeCreationCommand(record: CreationRecord | null, command: CreationCommand, ctx: CreationActorContext): void {
+  authorizeDomainCommand(record, command, ctx)
+}
+export function authorizeWhiteboardCommand(record: WhiteboardV2Record | null, command: WhiteboardV2Command, ctx: CreationActorContext): void {
+  if (ctx.projectId !== 'local' || (record && (record.home !== 'personal' || record.ownerId !== ctx.actorId))) forbidden()
+  if (command.action === 'publish' && (command.editorIds?.length || command.reviewerIds.some((id) => id !== ctx.actorId))) {
+    fail('WHITEBOARD_SHARING_UNAVAILABLE', 'Whiteboard team sharing is not available', 400)
+  }
+  authorizeDomainCommand(record, command, ctx)
+}
+
+function createInitialDomainRecord<T extends DomainRecord>(command: Extract<DomainCommand, { action: 'create' }>, ctx: CreationActorContext, schema: ZodType<T>): T {
+  authorizeDomainCommand(null, command, ctx)
+  if (command.expectedRevision !== null) fail('REVISION_CONFLICT', 'Creation requires a null expected revision')
+  return checked(schema.parse({ creationId: command.creationId, projectId: ctx.projectId, ownerId: ctx.actorId, title: command.title, kind: command.kind, home: command.home, spaceId: command.spaceId,
+    revision: 1, editorIds: command.editorIds ?? [], draft: { revisionId: command.commandId, serial: 1, body: command.body, bodyDigest: hash(command.body, ctx), scenarios: command.scenarios ?? [], updatedAt: ctx.now },
+    privateNotes: command.privateNotes ?? '', ...(command.privateSource ? { privateSource: command.privateSource } : {}), candidate: null, revisions: [], comments: [], adoptions: [], reviewSerial: 0, createdAt: ctx.now, updatedAt: ctx.now }), schema)
+}
+
 export function createInitialCreationRecord(input: Extract<CreationCommand, { action: 'create' }>, ctx: CreationActorContext): CreationRecord {
   const command = creationCommandSchema.parse(input)
   if (command.action !== 'create') fail('INVALID_INPUT', 'Expected creation command', 400)
-  authorizeCreationCommand(null, command, ctx)
-  if (command.expectedRevision !== null) fail('REVISION_CONFLICT', 'Creation requires a null expected revision')
-  return checked(creationRecordSchema.parse({ creationId: command.creationId, projectId: ctx.projectId, ownerId: ctx.actorId, title: command.title, kind: command.kind, home: command.home, spaceId: command.spaceId,
-    revision: 1, editorIds: command.editorIds ?? [], draft: { revisionId: command.commandId, serial: 1, body: command.body, bodyDigest: hash(command.body, ctx), scenarios: command.scenarios ?? [], updatedAt: ctx.now },
-    privateNotes: command.privateNotes ?? '', candidate: null, revisions: [], comments: [], adoptions: [], reviewSerial: 0, createdAt: ctx.now, updatedAt: ctx.now }))
+  return createInitialDomainRecord(command, ctx, creationRecordSchema)
 }
 
 export function executeCreationCommand(source: CreationRecord | null, input: CreationCommand, ctx: CreationActorContext): CreationRecord {
-  const command = creationCommandSchema.parse(input)
-  authorizeCreationCommand(source, command, ctx)
+  return executeDomainCommand(source, creationCommandSchema.parse(input), ctx, creationRecordSchema)
+}
+export function executeWhiteboardCommand(source: WhiteboardV2Record | null, input: WhiteboardV2Command, ctx: CreationActorContext): WhiteboardV2Record {
+  const command = whiteboardV2CommandSchema.parse(input)
+  authorizeWhiteboardCommand(source, command, ctx)
+  return executeDomainCommand(source, command, ctx, whiteboardV2RecordSchema)
+}
+function executeDomainCommand<T extends DomainRecord>(source: T | null, command: DomainCommand, ctx: CreationActorContext, schema: ZodType<T>): T {
+  authorizeDomainCommand(source, command, ctx)
   if (command.action === 'create') {
     if (source) fail('REVISION_CONFLICT', 'Creation identity already exists')
-    return createInitialCreationRecord(command, ctx)
+    return createInitialDomainRecord(command, ctx, schema)
   }
   if (!source) fail('CREATION_NOT_FOUND', 'Creation is unavailable', 404)
-  if (source.revision !== command.expectedRevision) fail('REVISION_CONFLICT', 'Creation changed; reload before submitting another intent')
+  assertCreationRevision(source.revision, command.expectedRevision)
   if (source.revision >= Number.MAX_SAFE_INTEGER || source.reviewSerial >= Number.MAX_SAFE_INTEGER || source.draft.serial >= Number.MAX_SAFE_INTEGER) fail('CAPACITY_EXCEEDED', 'Creation revision bound exceeded', 413)
   const record = structuredClone(source)
   record.revision++
@@ -207,12 +246,12 @@ export function executeCreationCommand(source: CreationRecord | null, input: Cre
       break
     }
   }
-  return checked(record)
+  return checked(record, schema)
 }
 
-function checked(record: CreationRecord): CreationRecord {
+function checked<T extends DomainRecord>(record: T, schema: ZodType<T>): T {
   if (record.comments.reduce((sum, entry) => sum + entry.replies.length, 0) > CREATION_MAX_REPLIES || bytes(record.adoptions) > 128 * 1024 || bytes(record) > CREATION_MAX_RECORD_BYTES) fail('CAPACITY_EXCEEDED', 'Creation history exceeds its bounded capacity', 413)
-  const parsed = creationRecordSchema.safeParse(record)
+  const parsed = schema.safeParse(record)
   if (!parsed.success) fail('CAPACITY_EXCEEDED', 'Creation history or input exceeds its bounded capacity', 413)
   return parsed.data
 }
@@ -220,18 +259,34 @@ function checked(record: CreationRecord): CreationRecord {
 /** taskId selects immutable pins and their bounded confirmed rules for native task material lookup. Ordinary lists omit rule text. */
 export function summarizeCreation(record: CreationRecord, ctx: CreationActorContext, input: { taskId?: string; includeRules?: boolean } = {}): CreationSummary {
   if (!canReadCreation(record, ctx)) forbidden()
+  return creationSummarySchema.parse(summaryFields(record, ctx, input))
+}
+export function summarizeWhiteboard(record: WhiteboardV2SummaryBasis, ctx: CreationActorContext): WhiteboardV2Summary {
+  if (!canReadWhiteboard(record, ctx)) forbidden()
+  return whiteboardV2SummarySchema.parse(summaryFields(record, ctx, {}))
+}
+function summaryFields(record: SummaryRecord, ctx: CreationActorContext, input: { taskId?: string; includeRules?: boolean }): unknown {
   const latest = record.revisions.at(-1)
   const writable = !record.spaceId || ctx.spaces.some((entry) => entry.id === record.spaceId && entry.canWrite && !entry.archived)
-  return creationSummarySchema.parse({ creationId: record.creationId, projectId: record.projectId, ownerId: record.ownerId, title: draftEditor(record, ctx) ? record.title : latest?.title ?? record.title,
+  return { creationId: record.creationId, projectId: record.projectId, ownerId: record.ownerId, title: draftEditor(record, ctx) ? record.title : latest?.title ?? record.title,
     kind: record.kind, home: record.home, spaceId: record.spaceId, revision: record.revision, latestPublished: latest ? metadata(latest) : null,
     adoptions: record.adoptions.filter((entry) => !input.taskId || entry.taskId === input.taskId).map((entry) => ({ ...structuredClone(entry), confirmedRules: input.taskId || input.includeRules ? structuredClone(entry.confirmedRules) : [] })),
     canEdit: draftEditor(record, ctx) && writable, canReview: writable && (editor(record, ctx) || latest?.reviewerIds.includes(ctx.actorId) === true), canManageReview: editor(record, ctx) && writable,
-    createdAt: record.createdAt, updatedAt: record.updatedAt })
+    createdAt: record.createdAt, updatedAt: record.updatedAt }
 }
 
-function metadata(revision: CreationRecord['revisions'][number]): NonNullable<CreationSummary['latestPublished']> {
-  const { body: _body, scenarios: _scenarios, ...value } = revision
-  return value
+function metadata(revision: WhiteboardV2SummaryBasis['revisions'][number]): NonNullable<CreationSummary['latestPublished']> {
+  const { revisionId, number, title, bodyDigest, authorId, createdAt, reviewerIds } = revision
+  return { revisionId, number, title, bodyDigest, authorId, createdAt, reviewerIds }
+}
+export function visibleCreationComments(revisions: WhiteboardV2SummaryBasis['revisions'], comments: CreationComment[], revisionId: string, selectedPublication: WhiteboardV2SummaryBasis['revisions'][number] | undefined, canReadDraft: boolean): CreationComment[] {
+  return comments.filter((entry) => {
+    if (!selectedPublication) return entry.revisionId === revisionId && (!entry.private || canReadDraft)
+    if (entry.private) return false
+    const origin = revisions.find((revision) => revision.revisionId === entry.revisionId)
+    if (!origin) fail('REVISION_NOT_FOUND', 'Published creation revision is unavailable', 404)
+    return origin.number <= selectedPublication.number && (entry.revisionId === revisionId || entry.status !== 'dismissed')
+  }).sort((a, b) => Number(b.severity === 'required' && b.status === 'open') - Number(a.severity === 'required' && a.status === 'open'))
 }
 
 export function viewCreation(record: CreationRecord, ctx: CreationActorContext, raw: { revisionId?: string; commentOffset?: number; commentLimit?: number } = {}): CreationView {
@@ -242,14 +297,11 @@ export function viewCreation(record: CreationRecord, ctx: CreationActorContext, 
   const selectedCandidate = draftEditor(record, ctx) && revisionId === record.candidate?.candidateId
   const selected = selectedDraft ? record.draft : selectedCandidate && record.candidate ? record.candidate : published(record, revisionId ?? '')
   const selectedPublication = record.revisions.find((entry) => entry.revisionId === revisionId)
-  const visibleComments = record.comments.filter((entry) => selectedPublication
-    ? !entry.private && published(record, entry.revisionId).number <= selectedPublication.number && (entry.revisionId === revisionId || entry.status !== 'dismissed')
-    : entry.revisionId === revisionId && (!entry.private || draftEditor(record, ctx)))
-    .sort((a, b) => Number(b.severity === 'required' && b.status === 'open') - Number(a.severity === 'required' && a.status === 'open'))
+  const visibleComments = visibleCreationComments(record.revisions, record.comments, revisionId ?? '', selectedPublication, draftEditor(record, ctx))
   const comments = visibleComments.slice(input.commentOffset, input.commentOffset + input.commentLimit)
   const value = creationViewSchema.parse({ summary: summarizeCreation(record, ctx, { includeRules: true }), selected: { revisionId, number: selectedPublication?.number ?? null, title: selectedPublication?.title ?? record.title, body: selected.body, bodyDigest: selected.bodyDigest, scenarios: selected.scenarios, published: Boolean(selectedPublication) },
     revisions: record.revisions.map(metadata), comments, commentOffset: input.commentOffset, nextCommentOffset: input.commentOffset + comments.length < visibleComments.length ? input.commentOffset + comments.length : null,
-    ...(owner(record, ctx) ? { privateNotes: record.privateNotes } : {}),
+    ...(owner(record, ctx) ? { privateNotes: record.privateNotes, ...(record.privateSource ? { privateSource: record.privateSource } : {}) } : {}),
     ...(draftEditor(record, ctx) ? { draft: { revisionId: record.draft.revisionId, serial: record.draft.serial, bodyDigest: record.draft.bodyDigest, updatedAt: record.draft.updatedAt },
       ...(record.candidate ? { candidate: { candidateId: record.candidate.candidateId, baseDraftRevision: record.candidate.baseDraftRevision, selectedCommentIds: record.candidate.selectedCommentIds, bodyDigest: record.candidate.bodyDigest, createdAt: record.candidate.createdAt } } : {}) } : {}) })
   if (bytes(value) > CREATION_MAX_RESPONSE_BYTES - 16 * 1024) fail('CAPACITY_EXCEEDED', 'Selected view exceeds its response budget; request fewer comments', 413)

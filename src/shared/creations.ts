@@ -22,6 +22,14 @@ const commentIds = z.array(uuid).max(40).refine(unique, 'Duplicate comment ident
 const encoder = new TextEncoder()
 export const creationBodySchema = z.string().max(CREATION_MAX_BODY_BYTES).refine((value) => encoder.encode(value).length <= CREATION_MAX_BODY_BYTES, 'Body exceeds 256 KiB UTF-8')
 
+/** Private, non-authoritative navigation clue; opening requires conversation ownership checks. */
+export const creationPrivateSourceSchema = z.object({
+  kind: z.literal('conversationFile'), conversationId: uuid, fileId: digest,
+  fileName: z.string().min(1).max(500).refine((value) => !/[\\/\u0000-\u001f]/.test(value), 'File name must not contain a path or controls'),
+  revision: digest, sourceIdentity: digest.optional()
+}).strict()
+export type CreationPrivateSource = z.infer<typeof creationPrivateSourceSchema>
+
 export const creationScenarioSchema = z.object({
   id, title, preconditions: z.array(note).max(20), steps: z.array(note).min(1).max(30), expectedResult: note
 }).strict()
@@ -50,7 +58,7 @@ export const creationTargetSchema = z.discriminatedUnion('kind', [
 
 const command = { commandId: uuid, creationId: uuid, expectedRevision: serial.nullable(), expectedEpoch: uuid.optional() }
 export const creationCommandSchema = z.discriminatedUnion('action', [
-  z.object({ ...command, action: z.literal('create'), title, kind: z.enum(['prototype', 'document']), home: z.enum(['personal', 'team']), spaceId: id.nullable(), editorIds: personIds.optional(), body: creationBodySchema, scenarios: scenarios.optional(), privateNotes: z.string().max(4000).optional() }).strict(),
+  z.object({ ...command, action: z.literal('create'), title, kind: z.enum(['prototype', 'document']), home: z.enum(['personal', 'team']), spaceId: id.nullable(), editorIds: personIds.optional(), body: creationBodySchema, scenarios: scenarios.optional(), privateNotes: z.string().max(4000).optional(), privateSource: creationPrivateSourceSchema.optional() }).strict(),
   z.object({ ...command, action: z.literal('saveDraft'), body: creationBodySchema, title: title.optional(), scenarios: scenarios.optional(), privateNotes: z.string().max(4000).optional() }).strict(),
   z.object({ ...command, action: z.literal('publish'), spaceId: id, reviewerIds: personIds, editorIds: personIds.optional() }).strict(),
   z.object({ ...command, action: z.literal('annotate'), revisionId: uuid, target: creationTargetSchema, body: note, severity: z.enum(['required', 'suggestion', 'question']) }).strict(),
@@ -77,7 +85,7 @@ export const creationAdoptionSchema = z.object({ adoptionId: uuid, taskId: id, r
 /** Internal persistence only. Never serialize this record into a list, receipt or workspace snapshot. */
 export const creationRecordSchema = z.object({
   creationId: uuid, projectId: id, ownerId: id, title, kind: z.enum(['prototype', 'document']), home: z.enum(['personal', 'team']), spaceId: id.nullable(),
-  editorIds: personIds, revision: serial, draft, privateNotes: z.string().max(4000), candidate: candidate.nullable(),
+  editorIds: personIds, revision: serial, draft, privateNotes: z.string().max(4000), privateSource: creationPrivateSourceSchema.optional(), candidate: candidate.nullable(),
   revisions: z.array(publishedRevision).max(CREATION_MAX_REVISIONS), comments: z.array(creationCommentSchema).max(CREATION_MAX_COMMENTS),
   adoptions: z.array(creationAdoptionSchema).max(CREATION_MAX_ADOPTIONS), reviewSerial: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), createdAt: time, updatedAt: time
 }).strict()
@@ -100,10 +108,11 @@ export const creationViewSchema = z.object({
   selected: z.object({ revisionId: uuid, number: serial.nullable(), title, body: creationBodySchema, bodyDigest: digest, scenarios, published: z.boolean() }).strict(),
   revisions: z.array(creationRevisionMetadataSchema).max(CREATION_MAX_REVISIONS), comments: z.array(creationCommentSchema).max(20),
   commentOffset: z.number().int().nonnegative(), nextCommentOffset: z.number().int().nonnegative().nullable(),
-  privateNotes: z.string().max(4000).optional(), draft: draft.omit({ body: true, scenarios: true }).optional(), candidate: candidate.omit({ body: true, scenarios: true }).optional()
+  privateNotes: z.string().max(4000).optional(), privateSource: creationPrivateSourceSchema.optional(), draft: draft.omit({ body: true, scenarios: true }).optional(), candidate: candidate.omit({ body: true, scenarios: true }).optional()
 }).strict()
 export type CreationView = z.infer<typeof creationViewSchema>
-export const creationListInputSchema = z.object({ scope: z.enum(['personal', 'team']).default('personal'), spaceId: id.optional(), taskId: id.optional(), cursor: z.string().max(4096).optional(), limit: z.coerce.number().int().min(1).max(50).default(20) }).strict()
+export const creationListInputSchema = z.object({ scope: z.enum(['personal', 'team']).default('personal'), spaceId: id.optional(), taskId: id.optional(), cursor: z.string().max(4096).optional(), limit: z.coerce.number().int().min(1).max(50).default(20),
+  query: z.string().trim().max(200).optional(), kind: z.enum(['document', 'prototype']).optional(), sort: z.enum(['name', 'updated']).optional() }).strict()
 export const creationListSchema = z.object({ items: z.array(creationSummarySchema).max(50), hasMore: z.boolean(), nextCursor: z.string().max(4096).nullable() }).strict()
 /** Receipts intentionally carry no draft, candidate, note, comment body or title. */
 export const creationCommandResultSchema = z.object({ projectId: id, creationId: uuid, epoch: uuid.optional(), revision: serial, action: z.enum(['create', 'saveDraft', 'publish', 'annotate', 'reply', 'disposition', 'candidateSave', 'candidateAdopt', 'candidateDiscard', 'adoptForTask']),

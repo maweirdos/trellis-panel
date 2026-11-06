@@ -23,7 +23,7 @@ export function ConversationSidebar({ title, actions, primaryAction, label, chil
   return <>
     {open && <button className="acp-sidebar-scrim" aria-label="关闭会话导航" onClick={onClose} />}
     <aside className={clsx('my-context-sidebar acp-navigation', open && 'is-open')} aria-label={ariaLabel}>
-      <div className="acp-navigation-title">{title}<div className="flex-1" />{actions}<Button size="sm" variant="ghost" className="acp-mobile-only" title="关闭会话导航" onClick={onClose}><X size={14} /></Button></div>
+      <div className="acp-navigation-title">{title}<div className="flex-1" />{actions}{open && <Button size="sm" variant="ghost" className="acp-mobile-only" title="关闭会话导航" onClick={onClose}><X size={14} /></Button>}</div>
       {primaryAction && <div className="acp-navigation-primary">{primaryAction}</div>}
       {label && <div className="acp-navigation-label">{label}</div>}
       <div className="acp-navigation-scroll my-scrollbar" onScroll={onScroll}>{children}</div>

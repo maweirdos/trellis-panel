@@ -82,7 +82,7 @@ export function CodeView({ content, ext }: { content: string; ext: string }): JS
 
   if (lang === 'plain') {
     return (
-      <pre className="whitespace-pre-wrap break-words font-mono text-my-sm leading-5 text-my-secondary">{content}</pre>
+      <pre className="my-code-content whitespace-pre-wrap break-words font-mono text-my-sm leading-5 text-my-secondary">{content}</pre>
     )
   }
 
@@ -91,7 +91,7 @@ export function CodeView({ content, ext }: { content: string; ext: string }): JS
       {lines.map((toks, i) => (
         <div key={i} className="flex">
           <span className="w-9 shrink-0 select-none pr-2 text-right text-my-2xs text-my-placeholder">{i + 1}</span>
-          <span className="min-w-0 flex-1 whitespace-pre-wrap break-all">
+          <span className="my-code-content min-w-0 flex-1 whitespace-pre-wrap break-all">
             {toks.length === 0 ? (
               <span> </span>
             ) : (

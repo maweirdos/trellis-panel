@@ -4,8 +4,8 @@
 
 Read before changing `services/acp.ts`, `services/acp/`, ACP IPC/preload/types,
 the Agent workspace, dependency preparation, or Electron packaging. The supported
-pair is Codex adapter 2.2.2 and Claude adapter 0.91.0. Generic custom commands are
-retained without claiming the same compatibility evidence.
+pair is Codex adapter 2.2.2 and Claude adapter 0.91.0. Legacy custom engine
+definitions and snapshots are retained for identification and reading only.
 ZCode installation and native startup also follow `zcode-managed-startup.md`.
 
 Use the public `acpx/runtime` and `acpx/agent-registry` exports. acpx owns framing,
@@ -41,8 +41,8 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
 `api.acpSessions()` currently exposes the service's default history limit.
 
 Explicit Runtime connection tests resolve the selected current launch argv and
-send only ACP initialize. Managed adapters, native CLIs, bundled bridges and
-explicit custom commands use the same protocol probe; SDK entry validation is
+send only ACP initialize. Managed adapters, native CLIs and bundled bridges use
+the same protocol probe; SDK entry validation is
 separate and does not prove model credentials. Never create a session, send a
 prompt or perform login as part of discovery or connection testing. Advertised
 authentication methods do not establish that login is required or completed.
@@ -67,8 +67,7 @@ Agent `modelId` omitted means inherit the engine default; null means use engine
 automatic selection; a nonempty string requests that exact model. The role-save
 wire value `modelId:''` clears an existing override to inheritance before storing
 the normalized profile. Clearing SDK-inapplicable arguments sends `args:[]`.
-Capability restrictions follow the actual launchKind, including custom overrides
-whose runtime ID happens to be pi.
+Capability restrictions follow the actual supported launchKind.
 
 New sessions capture resolved values in `launchOptionsSnapshot`. Environment and
 extra arguments use that snapshot after defaults/role edits and during restore.
@@ -76,8 +75,7 @@ Historical sessions without it retain only their historical role values. Apply
 default models only when creating a session; restoring uses its actual saved model,
 with explicit model recovery taking precedence. Reject unacknowledged model IDs
 instead of silently substituting another. Pi uses configured complete selection
-IDs and rejects extra CLI parameters because it runs an SDK, while custom ACP
-engines retain their actual parameter support.
+IDs and rejects extra CLI parameters because it runs an SDK.
 
 Connection verification is bounded, main-process memory evidence keyed by the
 exact Runtime definition, resolved argv, selected Node/native paths and actual
@@ -86,7 +84,7 @@ launch configuration/files or process restart requires new evidence. Return the
 updated agent list with each test so the visible state changes immediately.
 Reject stale probe results after launch-source replacement. The generated
 Diagnostic Mock and its exact historical fixture copies are excluded from the
-Runtime catalog; unrelated user custom commands remain intact.
+Runtime catalog; other legacy custom definitions remain unavailable.
 
 Ordinary messages do not run a host knowledge search before dispatch. Keep the
 admitted project/turn scope available for actual native MCP calls. User messages
@@ -127,8 +125,7 @@ Windows native OpenCode V1 may supplement ACP with read-only `GET /session/statu
 for retry evidence that its ACP stream omits. Use public acpx `prepareSpawn` to
 assign a loopback port and random process-local `OPENCODE_SERVER_PASSWORD`;
 neither the password nor Authorization header belongs in IPC, history, launch
-snapshots or logs. Explicit port/hostname/auth overrides and custom commands keep
-their own launch configuration and skip this auxiliary reader.
+snapshots or logs. Explicit port/hostname/auth overrides skip this auxiliary reader.
 
 Before each bounded, non-redirecting request, verify the listener PID belongs to
 the live launch or its descendants and verify the launch birth time. Poll only
@@ -197,11 +194,49 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
   `userData/acp/runtimes/<id>/<version>/`. Discovery and Start never download.
   Managed launch uses an absolute external Node >=22.13 executable and the
   installed adapter's absolute entry, independently of GUI PATH.
-- Structured custom `{executable,args}` preserves argument boundaries. A legacy
-  complete command keeps explicit platform shell semantics; never split it on
-  spaces. `launchKind: 'managed' | 'custom' | 'native'` freezes snapshot
-  provenance. Later Settings overrides cannot reinterpret existing conversations.
-- Native presets (`NATIVES` in `services/acp/setup.ts`, currently `opencode` via
+- Reject custom commands and `{executable,args}` at discovery, connection test,
+  setup, session admission and snapshot restore. Preserve old settings and history;
+  settings clients cannot add, change or remove legacy definitions. A saved custom
+  ID overrides a same-ID builtin only as unavailable, never as a redirect. Reject a
+  provenance-free snapshot when its ID has a saved custom override. Validate supported
+  launch provenance and exact definitions at the final argv boundary; do not clean
+  up an old owner before rejecting its unsupported snapshot.
+- A held unavailable session rejects new prompts, configuration changes, permission
+  choices and resume requests. Recheck admission before dispatch; preserve already
+  running work, history reads, explicit cancellation and explicit session cleanup.
+  A pending permission may expire as cancelled without automatically stopping the
+  unavailable session's process.
+- History metadata, filters and task reconciliation use the same snapshot, saved
+  override ID, session `agentId` and `engine` checks. An absent legacy `engine`
+  means ACP. A provenance-free exact managed snapshot remains eligible only when
+  no same-ID custom override is retained. The archive remains readable.
+- On ACP restore compare the native record's command, saved argv and session identity
+  with the admitted snapshot and captured options. For a supported managed, native
+  or bundled engine, executable/adapter path changes may be projected onto the same
+  native session while fixed and extra arguments remain identical. Keep the original
+  record until the native session confirms its original identity and post-connection
+  status; stage intermediate writes and their model/config projection separately
+  from persisted Panel metadata. An acknowledged model may be reported through
+  `recovery.modelConfirmed` while connection recovery is still incomplete. Reject
+  incompatible or unidentifiable commands. After restore, require exact admitted
+  argv on every runtime-store load. Handoff targets re-resolve their previewed launch
+  before session creation and the native creation boundary.
+- Closing a recovering session marks it as stopping immediately and waits for any
+  in-flight native-record commit and matching Panel projection before runtime cleanup.
+  A stop during that commit must not publish a ready state. A successful commit is
+  retained as the same session's current record; a failed commit preserves the prior
+  record while cleanup and error reporting remain available.
+- Before committing a staged native-record change, persist the Panel snapshot with
+  `recovery.commitPending: true`, the original session identity and any acknowledged
+  model. A failed marker write prevents the native commit. Publish ready/closed only
+  after the final Panel snapshot is written; a failed final snapshot retains the
+  pending marker and reports failure. History reads surface that marker and its saved
+  connection generation so the original session can be retried. The two files are
+  not one atomic transaction; the marker makes an interrupted commit explicitly
+  recoverable when its snapshot is available. The Panel snapshot uses atomic rename
+  without an fsync durability guarantee, so power loss can still leave the marker or
+  either file unconfirmed; do not claim cross-file crash atomicity.
+- Native presets (`NATIVES` in `services/acp/runtime-definitions.ts`, currently `opencode` via
   `acp` and `dsh` via `--profile acp`) are CLIs that ship their own ACP server
   mode. Detection is read-only probe (settings `acp.nativePaths[id]` override,
   then PATH via `findExecutable`, then version) and never installs; missing

@@ -32,7 +32,15 @@ export async function privateNativeSend(raw: unknown, valid: () => boolean) {
     const connected = await withOrdinaryConnectionAdmission(input.root, {}, () => acp.ensurePrivateAcpSession(input.root, input.agentId, input))
     if (!connected.ok) return { ...connected, notSent: true }
     const ready = await privateNativeSession(input)
-    return ready.ok ? { ok: true as const, session: { ...ready.session, events: [] } } : { ...ready, notSent: true }
+    if (!ready.ok) return { ...ready, notSent: true }
+    if (input.initialModelId && ready.session.currentModelId !== input.initialModelId) {
+      if (!valid() || !ready.session.connectionGeneration || input.agentId !== 'pi') return ipcFail(IpcErrorCode.Conflict, '原会话连接已变化，模型未应用，消息未发送', { notSent: true })
+      const configured = await acp.configureAcpSession(input.root, input.sessionId, { kind: 'model', id: input.initialModelId })
+      if (!configured.ok) return { ...configured, notSent: true }
+      if (!valid() || configured.session.connectionGeneration !== ready.session.connectionGeneration || configured.session.currentModelId !== input.initialModelId) return ipcFail(IpcErrorCode.Conflict, '执行引擎未确认所选模型，消息未发送', { notSent: true })
+      return { ok: true as const, session: { ...configured.session, events: [] } }
+    }
+    return { ok: true as const, session: { ...ready.session, events: [] } }
   }
   if (!valid()) return ipcFail(IpcErrorCode.Conflict, '原生准入已关闭，消息未发送', { notSent: true })
   const session = await privateNativeSession(input)

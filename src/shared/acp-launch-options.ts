@@ -15,7 +15,7 @@ export const acpRuntimeDefaultsSchema = z.object({
 }).strict()
 export const acpRuntimeDefaultsMapSchema = z.record(z.string().min(1).max(200).regex(/^[\w.-]+$/), acpRuntimeDefaultsSchema)
   .refine(value => Object.keys(value).length <= 100, '最多配置 100 个执行引擎默认值')
-const launchSnapshotSchema = acpRuntimeDefaultsSchema.extend({ env: z.array(acpEnvVarSchema).max(100).optional(), args: z.array(acpExtraArgSchema).max(100).optional() })
+const launchSnapshotSchema = acpRuntimeDefaultsSchema.extend({ modelId: z.string().min(1).optional(), env: z.array(acpEnvVarSchema).max(100).optional(), args: z.array(acpExtraArgSchema).max(100).optional() })
 const environmentKey = (key: string, platform?: string): string => platform === 'win32' ? key.toUpperCase() : key
 
 /** Role entries replace all same-key defaults, retaining order and repetition within each scope. */

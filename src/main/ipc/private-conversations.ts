@@ -3,10 +3,13 @@ import { extname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import { ipcEvent, ipcInvoke } from '../../shared/ipc-channels'
-import { conversationOpenFileSchema, conversationReadFileSchema, type ConversationResult } from '../../shared/private-conversations'
+import { conversationOpenFileSchema, conversationReadFileSchema, conversationPreviewImageSchema, CONVERSATION_IMAGE_PREVIEW_MAX_BYTES, type ConversationResult } from '../../shared/private-conversations'
+import { detectAcpImageMime } from '../../shared/acp-images'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 import { PrivateConversations, ConversationError, privateConversationNative } from '../services/private-conversations/service'
+import { DesignWorkspaceError } from '../services/design-workspace/types'
 import { saveSelectedFile } from '../services/private-conversations/files'
+import { convertDocx, DocxConversionError } from '../services/docx-preview'
 import { readConversationGit } from '../services/private-conversations/git'
 import { ConversationRequirements } from '../services/private-conversations/requirements'
 import { observeRequirementNative, requirementConversationContext } from '../services/private-conversations/requirement-native'
@@ -69,11 +72,12 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
   const execution = new RequirementExecutionService({ metaDirectory: () => service.metadataDirectory() })
   app.once('will-quit', () => { knowledge.dispose(); service.dispose() })
   const channels = ipcInvoke.privateConversations
+  const docxJobs = new Map<string, { owner: object; controller: AbortController }>()
   const documents = new WeakMap<Electron.WebContents, { frame: Electron.WebFrameMain; owner: object }>()
   const watched = new WeakSet<Electron.WebContents>()
   function releaseDocument(sender: Electron.WebContents): void {
     const document = documents.get(sender)
-    if (document) service.releaseDirectoryGrants(document.owner)
+    if (document) { for (const job of docxJobs.values()) if (job.owner === document.owner) job.controller.abort(); service.releaseDirectoryGrants(document.owner); service.releasePdfLocators(document.owner) }
     documents.delete(sender)
   }
   function documentOwner(event: IpcMainInvokeEvent): object {
@@ -100,8 +104,8 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
     const processId = frame.processId, routingId = frame.routingId, url = documentUrl(frame.url), owner = documentOwner(event)
     return () => { if (event.sender.isDestroyed() || frame.isDestroyed() || event.sender.mainFrame !== frame || frame.processId !== processId || frame.routingId !== routingId || documentUrl(frame.url) !== url || documents.get(event.sender)?.owner !== owner) throw new ConversationError('原页面已变化，请重新操作') }
   }
-  const fail = (error: unknown) => error instanceof IntegrationError ? knowledgeFailure(error) : ipcFail(error instanceof ConversationError ? error.code : error instanceof z.ZodError ? IpcErrorCode.InvalidArg : IpcErrorCode.Io,
-    error instanceof Error ? error.message : '私有会话操作未完成')
+  const fail = (error: unknown) => error instanceof IntegrationError ? knowledgeFailure(error) : ipcFail(error instanceof ConversationError || error instanceof DesignWorkspaceError ? error.code : error instanceof z.ZodError ? IpcErrorCode.InvalidArg : IpcErrorCode.Io,
+    error instanceof Error ? error.message : '私有会话操作未完成', error instanceof DesignWorkspaceError ? error.receipt : undefined)
   const wrapped = <T>(channel: string, action: (event: IpcMainInvokeEvent, args: unknown[], current: () => void) => Promise<T>): void => {
     handle(channel, async (event, ...args: unknown[]): Promise<ConversationResult<T>> => {
       try { const current = capture(event); current(); const value = await action(event, args, current); current(); return { ok: true, value } }
@@ -117,7 +121,7 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
   wrapped(channels.updateDraft, (event, args) => service.updateDraft(id(args[0]), args[1], documentOwner(event)))
   wrapped(channels.read, (_event, args) => service.read(id(args[0])))
   direct(channels.events, args => service.events(id(args[0]), args[1] as Parameters<typeof service.events>[1]))
-  direct(channels.send, args => service.send(id(args[0]), args[1]))
+  direct(channels.send, (args, current) => service.send(id(args[0]), args[1], undefined, current))
   direct(channels.respond, args => service.control('respond', id(args[0]), args[1]))
   direct(channels.cancel, args => service.control('cancel', id(args[0]), args[1]))
   direct(channels.end, args => service.control('end', id(args[0]), args[1]))
@@ -211,7 +215,7 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
     current(); return service.importFiles(conversationId, choice.filePaths)
   })
   wrapped(channels.openFile, async (_event, args, current) => {
-    const input = conversationOpenFileSchema.parse(args[1]), actual = await service.file(id(args[0]), input.fileId)
+    const input = conversationOpenFileSchema.parse(args[1]), actual = await service.file(id(args[0]), input.fileId, input.expectedRevision, undefined, input.expectedSourceIdentity)
     current()
     if (input.action === 'reveal') shell.showItemInFolder(actual.path)
     else {
@@ -221,15 +225,65 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
     return null
   })
   wrapped(channels.readFile, async (_event, args) => {
-    const input = conversationReadFileSchema.parse(args[1]), actual = await service.file(id(args[0]), input.fileId, input.expectedRevision, 256 * 1024)
+    const input = conversationReadFileSchema.parse(args[1]), actual = await service.file(id(args[0]), input.fileId, input.expectedRevision, 256 * 1024, input.expectedSourceIdentity)
     const extension = extname(actual.path).toLowerCase()
-    if (!['.md', '.txt', '.html', '.htm'].includes(extension)) throw new ConversationError('此文件不支持作为文档正文读取', IpcErrorCode.InvalidArg)
+    if (!['.md', '.txt', '.html', '.htm', '.csv', '.tsv'].includes(extension)) throw new ConversationError('此文件不支持作为文档正文读取', IpcErrorCode.InvalidArg)
     return { name: actual.file.name, body: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(actual.bytes), kind: extension === '.html' || extension === '.htm' ? 'prototype' as const : 'document' as const, revision: actual.file.revision, modifiedAt: actual.modifiedAt }
   })
-
-
-
-
+  wrapped(channels.previewImage, async (_event, args, current) => {
+    const input = conversationPreviewImageSchema.parse(args[1])
+    const actual = await service.file(id(args[0]), input.fileId, input.expectedRevision, CONVERSATION_IMAGE_PREVIEW_MAX_BYTES, input.expectedSourceIdentity)
+    current()
+    const mimeType = detectAcpImageMime(actual.bytes)
+    if (!mimeType) throw new ConversationError('此文件不是支持的 PNG、JPEG、WebP 或 GIF 图片', IpcErrorCode.InvalidArg)
+    return { name: actual.file.name, revision: actual.file.revision, mimeType, data: actual.bytes.toString('base64') }
+  })
+  wrapped(channels.previewPdf, async (event, args, current) => {
+    const input = conversationPreviewImageSchema.parse(args[1])
+    try { return await service.previewPdf(id(args[0]), input, documentOwner(event), current) }
+    catch (error) { if (error instanceof ConversationError || error instanceof z.ZodError) throw error; throw new ConversationError('原会话或 PDF 不可访问，请重新选择') }
+  })
+  wrapped(channels.previewDocx, async (event, args, current) => {
+    const parsed = conversationPreviewImageSchema.extend({ operationId: z.string().uuid() }).strict().safeParse(args[1])
+    if (!parsed.success) throw new ConversationError('DOCX 预览请求无效，请重新选择文件。', IpcErrorCode.InvalidArg)
+    const raw = parsed.data, owner = documentOwner(event), key = raw.operationId
+    if (docxJobs.size >= 2 || docxJobs.has(key)) throw new ConversationError('预览任务过多，请稍后重试', IpcErrorCode.Busy)
+    const controller = new AbortController()
+    const job = { owner, controller }; docxJobs.set(key, job)
+    let locator: string | undefined, committed = false, validating = false
+    const assertCurrent = (): void => { current(); if (controller.signal.aborted || docxJobs.get(key) !== job) throw new ConversationError('DOCX 预览已取消') }
+    const interval = setInterval(() => {
+      if (!locator || validating || controller.signal.aborted) return
+      validating = true
+      void service.validatePdfLocator(locator, owner, assertCurrent).catch(() => controller.abort()).finally(() => { validating = false })
+    }, 2000)
+    try {
+      const input = { fileId: raw.fileId, expectedRevision: raw.expectedRevision, expectedSourceIdentity: raw.expectedSourceIdentity }
+      const source = await service.previewDocx(id(args[0]), input, owner, assertCurrent)
+      locator = source.locator; assertCurrent()
+      const html = await convertDocx(source.data, controller.signal); assertCurrent()
+      await service.validatePdfLocator(locator, owner, assertCurrent); assertCurrent()
+      committed = true
+      return { name: source.name, revision: source.revision, locator, html }
+    } catch (error) {
+      if (error instanceof ConversationError) throw error
+      if (error instanceof DocxConversionError) throw new ConversationError(error.message, IpcErrorCode.InvalidArg)
+      throw new ConversationError('无法读取或预览 DOCX，请使用系统打开。', IpcErrorCode.Io)
+    } finally {
+      clearInterval(interval); docxJobs.delete(key)
+      if (!committed && locator) { try { service.releasePdfLocator(locator, owner) } catch { /* source may already have been released */ } }
+    }
+  })
+  wrapped(channels.cancelDocx, async (event, args, current) => {
+    current(); const job = docxJobs.get(id(args[0]))
+    if (job?.owner === documentOwner(event)) job.controller.abort()
+    return null
+  })
+  wrapped(channels.validatePdfLocator, async (event, args, current) => {
+    try { await service.validatePdfLocator(id(args[0]), documentOwner(event), current); return null }
+    catch (error) { if (error instanceof ConversationError || error instanceof z.ZodError) throw error; throw new ConversationError('原会话或 PDF 不可访问，请重新选择') }
+  })
+  wrapped(channels.releasePdfLocator, async (event, args, current) => { current(); service.releasePdfLocator(id(args[0]), documentOwner(event)); return null })
   direct(channels.image, args => service.image(id(args[0]), z.string().regex(/^[a-f0-9]{64}$/).parse(args[1])))
   wrapped(channels.saveImage, async (_event, args, current) => {
     const conversationId = id(args[0]), imageId = z.string().regex(/^[a-f0-9]{64}$/).parse(args[1]), image = await service.image(conversationId, imageId)

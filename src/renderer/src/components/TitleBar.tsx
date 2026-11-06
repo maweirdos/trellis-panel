@@ -13,7 +13,6 @@ import { clsx } from 'clsx'
 import { getPageNavigation, pageRequiresProject, projectRootKey, projectNameFromPath } from '../my/navigation'
 import { TeamContextSwitcher } from '../hifox/TeamContextSwitcher'
 import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
-import { AccountMenu } from '../my/layout/AccountMenu'
 import { DevelopmentScopeTag } from '../hifox/development/DevelopmentContextBar'
 import { Tooltip } from '../my/ui'
 import { InteractionScope } from '../utils/interaction-scope'
@@ -69,7 +68,7 @@ export function TitleBar(): JSX.Element {
         <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('hifox')} />
         <div className="no-drag my-header-collapse flex shrink-0 items-center">
           <Tooltip side="bottom" label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}>
-            <button type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
+            <button id="shell-context-toggle" type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
               aria-expanded={!collapsed} onClick={toggleSidebar}
               className="my-icon-control">
               {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.7} /> : <PanelLeftClose size={18} strokeWidth={1.7} />}
@@ -82,7 +81,6 @@ export function TitleBar(): JSX.Element {
           <Search size={15} strokeWidth={1.8} className="shrink-0" /><span className="truncate">搜索或输入命令</span><kbd>Ctrl K</kbd>
         </button>
         <ApplicationRunCenter variant="activity" />
-        <AccountMenu />
         {hasIpc && <div className="my-window-controls no-drag flex h-full items-stretch">
           {snapshot && <WinButton label="打开任务悬浮窗" onClick={() => api.setCapsuleMode(true)}><PictureInPicture2 size={14} /></WinButton>}
           <WinButton label="最小化窗口" onClick={() => api.windowMinimize()}><Minus size={14} /></WinButton>

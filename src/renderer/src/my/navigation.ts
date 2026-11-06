@@ -29,7 +29,7 @@ interface PageNavigation {
 export const PAGE_NAVIGATION = {
   tasks: { title: '任务', domain: 'tasks', scope: 'local', icon: 'work-items', keywords: '个人 团队任务 本地工作 工作项 全部工作项' },
   dashboard: { title: '概览', domain: 'home', scope: 'project', icon: 'your-work', keywords: '首页 我的工作 个人记录 收藏' },
-  creations: { title: '创作', domain: 'home', scope: 'local', icon: 'pages', keywords: '个人 作品 原型 文档 图表 评审' },
+  creations: { title: '产物', domain: 'home', scope: 'local', icon: 'pages', keywords: '个人 创作 作品 原型 文档 图表 评审' },
   inbox: { title: '接入', domain: 'tasks', scope: 'project', icon: 'inbox', keywords: '需求接入 待办池 收件箱' },
   jira: {
     title: '接入', domain: 'tasks', scope: 'project', icon: 'work-items', keywords: 'Jira 来源 外部查询',

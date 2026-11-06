@@ -5,6 +5,9 @@ import { dirname, join, resolve } from 'path'
 import type { AcpAgentProfile, AcpSessionRecord } from '../../../shared/types'
 import { idSchema, objectValue, profileSchema } from './types'
 import { readHistoryDeletion } from './history-deletion'
+import { isRecoverableRuntimeRecord } from './runtime-definitions'
+import { getSettings } from '../store'
+import { ACP_RECOVERY_COMMIT_PENDING_MESSAGE } from '../../../shared/acp-recovery'
 
 export function canonicalDirectory(directory: string): string {
   let value: string
@@ -65,6 +68,7 @@ export function readRecords(): AcpSessionRecord[] {
   const dir = join(app.getPath('userData'), 'acp-sessions')
   if (!existsSync(dir)) return []
   const records: AcpSessionRecord[] = []
+  const legacyIds = (getSettings().acp?.agents ?? []).map(item => item.id)
   for (const name of readdirSync(dir)) {
     if (!name.endsWith('.json')) continue
     try {
@@ -74,8 +78,10 @@ export function readRecords(): AcpSessionRecord[] {
       const record = raw as unknown as AcpSessionRecord
       if (readHistoryDeletion(acpDataPath(), record.projectRoot, record.sessionId)) continue
       const legacy = record.schemaVersion !== 2
-      const canResume = !legacy && typeof record.backendSessionId === 'string' && record.backendSessionId.trim().length > 0 && record.canResume === true
+      const canResume = !legacy && isRecoverableRuntimeRecord(record, legacyIds)
+        && typeof record.backendSessionId === 'string' && record.backendSessionId.trim().length > 0 && record.canResume === true
       records.push({ ...record, status: legacy ? 'legacy' : record.status === 'closed' || record.status === 'error' ? record.status : 'disconnected',
+        error: record.recovery?.commitPending ? ACP_RECOVERY_COMMIT_PENDING_MESSAGE : record.error,
         historyKind: legacy ? 'legacy' : canResume ? 'resumable' : 'transcript',
         canResume, restorePending: false, connectionOwned: false, cleanupRequired: false, pendingPermissions: [],
         events: record.events.map((event) => event.kind === 'permission' ? { ...event, payload: { ...event.payload, pending: false } } : event)

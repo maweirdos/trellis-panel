@@ -138,19 +138,28 @@ export class BrowserCreationApi implements CreationApi {
 
   async command(input: Parameters<CreationApi['command']>[0]): ReturnType<CreationApi['command']> {
     let locked: string | undefined
+    let preparedId: string | undefined
     try {
       const parsed = creationClientCommandSchema.parse(input), owner = this.owner(parsed.workspaceKey), command = parsed.command
       if (this.busy.has(command.creationId)) throw new ApiError('IN_FLIGHT', '此创作的原操作正在准备或核对')
       this.busy.add(command.creationId); locked = command.creationId
       if (this.entries(command.creationId).length) throw new ApiError('PENDING_OPERATION', '此创作有原操作待核对，请先恢复原回执', 0, true)
       if (command.expectedEpoch && command.expectedEpoch !== owner.context.epoch) throw new ApiError('EPOCH_CONFLICT', '创作来源代次已改变，请重新读取后再提交', 409)
-      // The common journal assigns the wire UUID once; recovery reuses that entry.
+      // Retain the command owner's UUID in the journal, wire payload and receipt.
+      preparedId = command.commandId
       const prepared = await prepareCommand(this.path('/commands'), { ...command, expectedEpoch: owner.context.epoch }, creationCommandResultSchema, this.options.projectId,
-        { origin: location.origin, instanceId: owner.context.instanceId, epoch: owner.context.epoch, operation: `creation:${command.creationId}:${command.action}`, expectedRevision: command.expectedRevision ?? 0 })
+        { origin: location.origin, instanceId: owner.context.instanceId, epoch: owner.context.epoch, operation: `creation:${command.creationId}:${command.action}`, expectedRevision: command.expectedRevision ?? 0 }, command.commandId)
       retained.set(prepared.entry.commandId, prepared)
       this.assertCurrent(owner)
       return { ok: true, value: await this.send(prepared, owner) }
-    } catch (error) { return this.failure(error) }
+    } catch (error) {
+      let journalPending = false
+      if (preparedId) {
+        try { journalPending = pendingCommands(this.options.session.person.userId).some((entry) => entry.commandId === preparedId) }
+        catch { journalPending = true }
+      }
+      return this.failure(error, journalPending)
+    }
     finally { if (locked) this.busy.delete(locked) }
   }
 
@@ -158,11 +167,13 @@ export class BrowserCreationApi implements CreationApi {
     let locked: string | undefined
     let reconciling = false
     try {
-      const { workspaceKey, creationId } = creationRecoverSchema.parse(input), owner = this.owner(workspaceKey)
+      const { workspaceKey, creationId, commandId, expectedEpoch } = creationRecoverSchema.parse(input), owner = this.owner(workspaceKey)
+      if (commandId && expectedEpoch !== owner.context.epoch) throw new ApiError('EPOCH_CONFLICT', '原操作的来源代次已改变', 409, true)
       if (this.busy.has(creationId)) throw new ApiError('IN_FLIGHT', '此创作的原操作正在核对')
       this.busy.add(creationId); locked = creationId
       const entry = this.entries(creationId)[0]
       if (!entry) return { ok: true, value: null }
+      if (commandId && (entry.commandId !== commandId || entry.workspace?.operation !== `creation:${creationId}:create`)) throw new ApiError('PENDING_OPERATION', '待核对记录与原创建操作不一致', 0, true)
       reconciling = true
       this.validateEntry(entry, owner)
       let result: CreationCommandResult | undefined

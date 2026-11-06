@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
 import { ArrowUpRight, Keyboard, Loader2, X } from 'lucide-react'
 import { useApp, type Page } from '../../store'
-import { useHifox } from '../../hifox/store'
+import { observeCollaborationWorkspace, useHifox } from '../../hifox/store'
 import { observeDevelopmentNavigation } from '../../hifox/local-work'
 import { DevelopmentContextBar } from '../../hifox/development/DevelopmentContextBar'
 import { useMy } from '../store'
@@ -294,6 +294,7 @@ export function MyApp(): JSX.Element {
   }, [syncFromSnapshot])
 
   useEffect(observeDevelopmentNavigation, [])
+  useEffect(() => observeCollaborationWorkspace(false), [])
 
   // Bootstrap owns routing after pending task focus. This shell restores only presentation.
   const navigationRestored = useRef(false)

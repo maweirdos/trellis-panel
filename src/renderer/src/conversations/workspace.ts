@@ -9,6 +9,8 @@ import { api, hasIpc } from '../api'
 import { projectRootKey } from '../my/navigation'
 import { conversationClient, conversationError, conversationValue } from './client'
 import { installationNamespace, readStoredWorkspace, writeStoredWorkspace, type StoredWorkspace } from './draft-storage'
+import { piModelChoices } from './pi-models'
+import { modelIdWithinLimit } from '@shared/model-selection'
 
 export type ConversationKind = Conversation['kind']
 export const baseScopeKey = (kind: ConversationKind): string => kind
@@ -27,6 +29,9 @@ export interface WorkspaceEntry {
   images?: AcpImageAttachment[]
   imageVersion?: number
   runtimeId?: string
+  modelId?: string
+  modelTooLong?: boolean
+  modelConfirmationRequired?: boolean
   version: number
   savedVersion: number
   session?: AcpSessionRecord
@@ -62,6 +67,8 @@ interface ConversationWorkspace {
   defaultRuntimeId?: string
   configuredPi: boolean
   modelLabel?: string
+  piModels: Array<{ id: string; label: string; available: boolean }>
+  defaultPiModelId?: string
   archives: ChatSessionMeta[]
   archiveReads: Record<string, { loading?: boolean; value?: ChatSessionView; error?: string; branchId?: string }>
   loading: boolean
@@ -74,7 +81,7 @@ interface ConversationWorkspace {
   managementErrors: Record<string, string>
 }
 export const useConversations = create<ConversationWorkspace>(() => ({
-  entries: {}, selected: {}, projectScopes: {}, conversations: [], projects: [], runtimes: [], configuredPi: false,
+  entries: {}, selected: {}, projectScopes: {}, conversations: [], projects: [], runtimes: [], configuredPi: false, piModels: [],
   archives: [], archiveReads: {}, loading: false, initialized: false, managementBusy: {}, managementErrors: {}
 }))
 let nativeNamespace = '', restoringStorage = false, restoredStorageOwner = '', unreadableStorage = ''
@@ -139,8 +146,9 @@ function acceptRead(key: string, read: ConversationRead, loadDraft = false, read
   if (read.session && !ownsSession(read.session, read.conversation)) throw new Error('会话来源不匹配，请重新打开。')
   const conversation = keepConversation(read.conversation, readRevision)
   patchEntry(key, (current) => ({ conversation, projectId: conversation.projectId,
-    ...(loadDraft && current.version === 0 ? { text: read.draft.text, runtimeId: read.draft.runtimeId ?? current.runtimeId, savedVersion: 0 } : {}),
+    ...(loadDraft && current.version === 0 ? { text: read.draft.text, runtimeId: read.draft.runtimeId ?? current.runtimeId, modelId: read.draft.modelId && modelIdWithinLimit(read.draft.modelId) ? read.draft.modelId : undefined, modelTooLong: Boolean(read.draft.modelId && !modelIdWithinLimit(read.draft.modelId)), savedVersion: 0 } : {}),
     nativeError: read.runtimeError,
+    modelConfirmationRequired: read.modelConfirmationRequired === true,
     ...(read.session && !(current.action === 'recover-model' && current.session?.connectionGeneration !== read.session.connectionGeneration) ? { session: newerSession(current.session, read.session) } : {})
   }))
 }
@@ -221,7 +229,7 @@ function persistLocalDrafts(): void {
     for (const item of Object.values(state.entries)) {
       if (item.owner !== nativeNamespace || item.locked) continue
       byKey.set(item.key, { key: item.key, conversationId: item.conversation?.id, kind: item.kind, projectId: item.projectId,
-        text: item.text, runtimeId: item.runtimeId, dirty: item.version !== item.savedVersion, updatedAt: item.localUpdatedAt ?? item.conversation?.updatedAt ?? Date.now() })
+        text: item.text, runtimeId: item.runtimeId, modelId: item.modelId, modelTooLong: item.modelTooLong, dirty: item.version !== item.savedVersion, updatedAt: item.localUpdatedAt ?? item.conversation?.updatedAt ?? Date.now() })
     }
     const values = [...byKey.values()].filter((item) => item.conversationId ? item.dirty || selectedKeys.has(item.key) : Boolean(item.text))
     if (values.length > 200) throw new Error('本机草稿缓存已达到 200 条上限，请先保存未选择目录的 Code 草稿。')
@@ -248,12 +256,12 @@ function restoreLocalDrafts(admittedConversationIds: ReadonlySet<string>): void 
       const existing = state.entries[item.key] ?? (item.conversationId ? existingById.get(item.conversationId) : undefined)
       if (existing) {
         aliases.set(item.key, existing.key)
-        if (item.dirty && existing.version === 0 && !existing.text && !existing.images?.length && !existing.locked) restored[existing.key] = { ...existing, text: item.text, version: 1, savedVersion: -1 }
+        if (item.dirty && existing.version === 0 && !existing.text && !existing.images?.length && !existing.locked) restored[existing.key] = { ...existing, text: item.text, runtimeId: item.runtimeId ?? existing.runtimeId, modelId: item.modelId, modelTooLong: item.modelTooLong, version: 1, savedVersion: -1 }
         continue
       }
       const projectId = conversation?.projectId ?? (item.projectId && projects.has(item.projectId) ? item.projectId : undefined)
       restored[item.key] = { key: item.key, owner: nativeNamespace, localUpdatedAt: item.updatedAt, conversation, kind: conversation?.kind ?? item.kind, projectId,
-        text: item.dirty || !conversation ? item.text : '', runtimeId: item.runtimeId ?? state.defaultRuntimeId,
+        text: item.dirty || !conversation ? item.text : '', runtimeId: item.runtimeId ?? state.defaultRuntimeId, modelId: item.modelId, modelTooLong: item.modelTooLong,
         version: item.dirty ? 1 : 0, savedVersion: item.dirty ? -1 : 0, events: [], files: [], loaded: !conversation, permissionPending: {}, permissionErrors: {} }
       aliases.set(item.key, item.key)
     }
@@ -338,6 +346,12 @@ export function setDraftRuntime(key: string, runtimeId: string): void {
   patchEntry(key, { runtimeId, version: current.version + 1 })
   if (current.conversation || current.text) queueSave(key)
 }
+export function setDraftModel(key: string, modelId: string): void {
+  const current = entry(key)
+  if (!current || current.conversation?.nativeRef || current.action || current.conversation?.archivedAt !== undefined || !modelIdWithinLimit(modelId)) return
+  patchEntry(key, { modelId, modelTooLong: false, version: current.version + 1 })
+  if (current.conversation || current.text) queueSave(key)
+}
 async function persistIdentity(key: string): Promise<Conversation> {
   const current = entry(key), client = conversationClient()
   if (!current || !client) throw new Error('请在桌面应用中使用本机会话。')
@@ -347,7 +361,7 @@ async function persistIdentity(key: string): Promise<Conversation> {
   if (current.kind === 'code' && !current.directory) throw new Error('请选择此 Code 会话可以访问的本机目录。')
   const readRevision = metadataRevision
   const operation = (async (): Promise<Conversation> => {
-    const result = conversationValue(await client.createDraft({ kind: current.kind, projectId: current.projectId, directoryGrantId: current.directory?.grantId, runtimeId: current.runtimeId, text: current.text }))
+    const result = conversationValue(await client.createDraft({ kind: current.kind, projectId: current.projectId, directoryGrantId: current.directory?.grantId, runtimeId: current.runtimeId, modelId: current.modelId, text: current.text }))
     acceptRead(key, result, false, readRevision); patchEntry(key, { savedVersion: current.version })
     return result.conversation
   })()
@@ -372,7 +386,7 @@ export async function saveDraft(key: string, duringSend = false): Promise<void> 
       const conversation = await persistIdentity(key), latest = entry(key)
       if (!latest || latest.version === latest.savedVersion) return
       const readRevision = metadataRevision
-      const read = conversationValue(await client.updateDraft(conversation.id, { text: latest.text, ...(latest.conversation?.nativeRef ? {} : { runtimeId: latest.runtimeId }) }))
+      const read = conversationValue(await client.updateDraft(conversation.id, { text: latest.text, ...(latest.conversation?.nativeRef ? {} : { runtimeId: latest.runtimeId, ...(latest.modelTooLong ? {} : { modelId: latest.modelId ?? null }) }) }))
       acceptRead(key, read, false, readRevision); patchEntry(key, { savedVersion: latest.version, saveError: undefined })
     } catch (cause) { patchEntry(key, { saveError: conversationError(cause) }); throw cause }
   })()
@@ -438,8 +452,14 @@ async function submitMessage(key: string): Promise<boolean> {
   if (!current.conversation?.nativeRef && (!runtimeId || !state.runtimes.some((runtime) => runtime.id === runtimeId && runtime.enabled && runtime.available) || (runtimeId === 'pi' && !state.configuredPi))) {
     patchEntry(key, { error: runtimeId === 'pi' ? '请先在设置中配置可用模型，草稿已保留。' : '请选择可用的执行引擎，草稿已保留。' }); return false
   }
+  if (!current.conversation?.nativeRef && runtimeId === 'pi' && (current.modelTooLong || !state.piModels.some((model) => model.id === (current.modelId ?? state.defaultPiModelId) && model.available))) {
+    patchEntry(key, { error: current.modelTooLong ? '所选模型 ID 超出长度限制，请重新选择，草稿已保留。' : '所选模型已不可用或超出长度限制，请重新选择，草稿已保留。' }); return false
+  }
+  const initialModelId = !current.conversation?.nativeRef && runtimeId === 'pi' ? current.modelId ?? state.defaultPiModelId : undefined
+  const version = initialModelId && !current.modelId ? current.version + 1 : current.version
+  if (initialModelId && !current.modelId) patchEntry(key, { modelId: initialModelId, version })
   const readRevision = metadataRevision
-  const requestId = crypto.randomUUID(), version = current.version
+  const requestId = crypto.randomUUID()
   const images = current.images?.length ? current.images.slice() : undefined, imageVersion = current.imageVersion ?? 0
   const inputFiles = current.files.filter((file) => file.kind === 'input')
   const text = inputFiles.length ? `${current.text.trim()}\n\n会话输入文件（工作目录内的相对路径）：\n${inputFiles.map((file) => JSON.stringify(file.relativePath)).join('\n')}` : current.text.trim()
@@ -644,9 +664,8 @@ export async function refreshWorkspace(): Promise<void> {
     if (archives.status === 'fulfilled' && archives.value.ok) useConversations.setState({ archives: archives.value.sessions ?? [], archiveError: undefined })
     else useConversations.setState({ archiveError: archives.status === 'rejected' ? conversationError(archives.reason) : archives.value.error ?? '旧问答记录无法读取。' })
     if (settings.status === 'fulfilled') {
-      const ai = settings.value.ai, candidates = ai.providers?.length ? ai.providers.filter((provider) => provider.enabled).flatMap((provider) => provider.models.filter((model) => model.enabled).map((model) => ({ provider, model }))) : []
-      const selected = candidates.find(({ provider, model }) => provider.id === ai.activeProviderId && model.id === ai.model) ?? candidates.find(({ provider }) => provider.id === ai.activeProviderId) ?? candidates[0]
-      useConversations.setState({ configuredPi: Boolean(selected || (ai.enabled && ai.model && ai.baseUrl)), modelLabel: selected ? `${selected.provider.name} · ${selected.model.name || selected.model.id}` : ai.enabled && ai.model ? ai.model : undefined })
+      const { models: piModels, defaultId: defaultPiModelId } = piModelChoices(settings.value.ai)
+      useConversations.setState({ configuredPi: piModels.some((model) => model.available), piModels, defaultPiModelId, modelLabel: piModels.find((model) => model.id === defaultPiModelId)?.label })
       try {
         restoringStorage = true
         const nextNamespace = await installationNamespace(settings.value.bridgeToken)

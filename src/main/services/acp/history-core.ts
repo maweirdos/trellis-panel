@@ -11,6 +11,7 @@ import { HandoffHistoryError, readHandoffArchive, type HandoffArchive } from './
 import { readHistoryDeletion } from './history-deletion'
 import { readHistoryText } from './history-text'
 import { isPrivateAcpRecord } from './private-access'
+import { isRecoverableRuntimeRecord } from './runtime-definitions'
 
 const DB_VERSION = 1
 const SNAPSHOT_TTL = 5 * 60_000
@@ -55,7 +56,7 @@ function matchesStoredEvent(stored: { digest: string; payload: string }, canonic
 export class HistoryCursorError extends Error {}
 export interface HistoryBatchItem { root: string; record: AcpSessionRecord; events: TimelineEvent[]; coverage?: AcpHistoryCoverage }
 interface SessionRow { root: string; sessionId: string; metadata: string; lastActivityAt: number; coverage: string }
-interface Snapshot { root: string; query: string; filter: string; archive: string; preferencesRevision: string; expires: number; sessions: AcpHistorySummary[] }
+interface Snapshot { root: string; query: string; filter: string; archive: string; preferencesRevision: string; legacyIdsKey: string; expires: number; sessions: AcpHistorySummary[] }
 
 /** Synchronous SQLite work is confined to the dedicated history worker. */
 export class AcpHistoryCore {
@@ -247,7 +248,7 @@ export class AcpHistoryCore {
       this.db.prepare('INSERT INTO imports VALUES(?,?,?,?,?,?)').run(input.sourcePath, input.sourceDigest, root, record.sessionId, input.events.length, Date.now())
     })
   }
-  private summary(row: SessionRow, preferences = readSessionPreferences(this.directory, row.root)): AcpHistorySummary {
+  private summary(row: SessionRow, preferences = readSessionPreferences(this.directory, row.root), legacyIds: readonly string[] = []): AcpHistorySummary {
     const meta = JSON.parse(row.metadata) as AcpSessionRecord
     const aggregate = this.db.prepare(`SELECT COUNT(*) count,MAX(seq) seq,
       EXISTS(SELECT 1 FROM events WHERE root=? AND sessionId=? AND json_extract(payload,'$.source') IN ('acp','pi')
@@ -259,17 +260,18 @@ export class AcpHistoryCore {
     const historyPersistence: AcpHistoryPersistence = { state: coverage.unarchivedCount ? 'degraded' : 'saved', pendingCount: coverage.unarchivedCount ?? 0, committedThroughEventId: latest?.eventId ?? null, committedThroughSeq: aggregate.seq,
       ...(coverage.unarchivedCount ? { error: coverage.reason, unarchivedCount: coverage.unarchivedCount } : {}) }
     const legacy = meta.schemaVersion !== 2
-    const canResume = !legacy && meta.canResume === true && typeof meta.backendSessionId === 'string' && !!meta.backendSessionId.trim()
+    const canResume = !legacy && isRecoverableRuntimeRecord(meta, legacyIds)
+      && meta.canResume === true && typeof meta.backendSessionId === 'string' && !!meta.backendSessionId.trim()
     const preview = this.conversationPreview(row.root, row.sessionId)
     return { ...applySessionPreferences(meta, preferences), ...(preview ? { conversationPreview: preview.text, conversationPreviewAt: preview.at } : {}), status: legacy ? 'legacy' : ['closed', 'error'].includes(meta.status) ? meta.status : 'disconnected',
       canResume, historyKind: legacy ? 'legacy' : canResume ? 'resumable' : 'transcript', restorePending: false, connectionOwned: false, cleanupRequired: false,
       eventCount: aggregate.count, hasConversation: aggregate.hasConversation === 1, lastActivityAt: row.lastActivityAt, historyCoverage: coverage,
       historyPersistence, pendingPermissions: [], stateRevision: 0 }
   }
-  session(root: string, sessionId: string): AcpHistorySummary | null {
+  session(root: string, sessionId: string, legacyIds: readonly string[] = []): AcpHistorySummary | null {
     if (readHistoryDeletion(this.directory, root, sessionId)) return null
     const row = this.db.prepare('SELECT * FROM sessions WHERE root=? AND sessionId=?').get(root, sessionId) as SessionRow | undefined
-    return row ? this.summary(row) : null
+    return row ? this.summary(row, undefined, legacyIds) : null
   }
   handoff(root: string, sessionId: string, byteLimit: number): HandoffArchive | null {
     const session = this.session(root, sessionId)
@@ -285,12 +287,13 @@ export class AcpHistoryCore {
       return value
     } catch { throw new HistoryCursorError('History cursor is invalid or belongs to another archive; refresh required') }
   }
-  list(root: string, input: { limit?: number; cursor?: string; query?: string; filter?: string; archive?: string } = {}): AcpHistoryListResult {
+  list(root: string, input: { limit?: number; cursor?: string; query?: string; filter?: string; archive?: string } = {}, legacyIds: readonly string[] = []): AcpHistoryListResult {
     const now = Date.now()
     for (const [id, snapshot] of this.snapshots) if (snapshot.expires <= now) this.snapshots.delete(id)
     const query = (input.query ?? '').trim().toLocaleLowerCase()
     const filter = input.filter ?? 'all'
     const archive = input.archive ?? 'active'
+    const legacyIdsKey = JSON.stringify([...new Set(legacyIds)].sort())
     const preferences: SessionPreferences = readSessionPreferences(this.directory, root)
     let snapshotId: string
     let snapshot: Snapshot
@@ -298,15 +301,15 @@ export class AcpHistoryCore {
     if (input.cursor) {
       const cursor = this.decode(input.cursor)
       const known = this.snapshots.get(String(cursor.snapshot))
-      if (cursor.kind !== 'list' || cursor.root !== root || !known || known.root !== root || known.query !== query || known.filter !== filter || known.archive !== archive || known.preferencesRevision !== preferences.revision || !Number.isSafeInteger(cursor.position)) throw new HistoryCursorError('History catalogue snapshot expired or changed; refresh required')
+      if (cursor.kind !== 'list' || cursor.root !== root || !known || known.root !== root || known.query !== query || known.filter !== filter || known.archive !== archive || known.preferencesRevision !== preferences.revision || known.legacyIdsKey !== legacyIdsKey || !Number.isSafeInteger(cursor.position)) throw new HistoryCursorError('History catalogue snapshot expired or changed; refresh required')
       snapshotId = String(cursor.snapshot); snapshot = known; position = Number(cursor.position)
       if (position < 0 || position > snapshot.sessions.length) throw new HistoryCursorError('Invalid history catalogue position')
     } else {
       // Search the effective metadata, including manual titles on unloaded records.
       const rows = this.db.prepare('SELECT * FROM sessions WHERE root=?').all(root) as unknown as SessionRow[]
       snapshotId = randomUUID()
-      snapshot = { root, query, filter, archive, preferencesRevision: preferences.revision, expires: now + SNAPSHOT_TTL,
-        sessions: rows.filter(row => !readHistoryDeletion(this.directory, root, row.sessionId)).map((row) => this.summary(row, preferences)).filter((item) => !isPrivateAcpRecord(item) && matchesHistorySummary(item, query, filter, archive)).sort(compareHistorySummaries) }
+      snapshot = { root, query, filter, archive, preferencesRevision: preferences.revision, legacyIdsKey, expires: now + SNAPSHOT_TTL,
+        sessions: rows.filter(row => !readHistoryDeletion(this.directory, root, row.sessionId)).map((row) => this.summary(row, preferences, legacyIds)).filter((item) => !isPrivateAcpRecord(item) && matchesHistorySummary(item, query, filter, archive)).sort(compareHistorySummaries) }
       if (this.snapshots.size >= 16) this.snapshots.delete(this.snapshots.keys().next().value ?? '')
       this.snapshots.set(snapshotId, snapshot)
     }

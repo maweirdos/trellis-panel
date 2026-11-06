@@ -7,7 +7,7 @@ import { useApp, type Page } from '../store'
 import { deriveDataset, issueToTaskPatch, todayIso, TRELLIS_PROJECT_ID } from './adapter'
 import { getPageNavigation, projectRootKey, type WorkItemsView, type TeamView, type ToolView, type AgentView, type NavigationDomain, type KnowledgeView, type SettingsView } from './navigation'
 import { loadProjectPreferences, saveProjectPreferences, type SavedView } from './project-preferences'
-import { DEFAULT_SIDEBAR_WIDTH, normalizeSidebarWidth, normalizeUiFontSize, UI_DENSITY_OPTIONS, UI_PREFERENCES_KEY, type UiFontSize } from './appearance'
+import { DEFAULT_SIDEBAR_WIDTH, normalizeCodeFontFamily, normalizeCodeFontSize, normalizeSidebarWidth, normalizeUiFontFamily, normalizeUiFontSize, UI_DENSITY_OPTIONS, UI_PREFERENCES_KEY, type CodeFontFamily, type CodeFontSize, type UiFontFamily, type UiFontSize } from './appearance'
 import type { GroupBy, Issue, IssueFilters, OrderBy, Priority, ThemeMode, WorkItemLayout } from './types'
 import type { TaskConversationTarget } from '../hifox/task-conversation'
 
@@ -18,6 +18,9 @@ const STORAGE_KEY = UI_PREFERENCES_KEY
 interface PersistedPrefs {
   shellView: 'collaboration' | 'development'
   fontSize: UiFontSize
+  fontFamily: UiFontFamily
+  codeFontFamily: CodeFontFamily
+  codeFontSize: CodeFontSize
   layout: WorkItemLayout
   groupBy: GroupBy
   orderBy: OrderBy
@@ -65,6 +68,12 @@ export interface MyStore {
   setTheme: (t: ThemeMode) => void
   fontSize: UiFontSize
   setFontSize: (size: UiFontSize) => void
+  fontFamily: UiFontFamily
+  setFontFamily: (font: UiFontFamily) => void
+  codeFontFamily: CodeFontFamily
+  setCodeFontFamily: (font: CodeFontFamily) => void
+  codeFontSize: CodeFontSize
+  setCodeFontSize: (size: CodeFontSize) => void
   syncFontSizeFromStorage: () => void
 
   layout: WorkItemLayout
@@ -188,6 +197,24 @@ export const useMy = create<MyStore>()((set, get) => ({
   },
 
   fontSize: normalizeUiFontSize(prefs.fontSize),
+  fontFamily: normalizeUiFontFamily(prefs.fontFamily),
+  codeFontFamily: normalizeCodeFontFamily(prefs.codeFontFamily),
+  codeFontSize: normalizeCodeFontSize(prefs.codeFontSize),
+  setCodeFontFamily: (value) => {
+    const codeFontFamily = normalizeCodeFontFamily(value)
+    set({ codeFontFamily })
+    savePrefs({ codeFontFamily })
+  },
+  setCodeFontSize: (value) => {
+    const codeFontSize = normalizeCodeFontSize(value)
+    set({ codeFontSize })
+    savePrefs({ codeFontSize })
+  },
+  setFontFamily: (value) => {
+    const fontFamily = normalizeUiFontFamily(value)
+    set({ fontFamily })
+    savePrefs({ fontFamily })
+  },
   setFontSize: (value) => {
     const fontSize = normalizeUiFontSize(value)
     const sidebarWidth = UI_DENSITY_OPTIONS.find((option) => option.value === fontSize)?.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH
@@ -196,7 +223,7 @@ export const useMy = create<MyStore>()((set, get) => ({
   },
   syncFontSizeFromStorage: () => {
     const stored = loadPrefs()
-    set({ fontSize: normalizeUiFontSize(stored.fontSize), sidebarWidth: normalizeSidebarWidth(stored.sidebarWidth), sidebarCollapsed: stored.sidebarCollapsed === true, shellView: stored.shellView === 'development' ? 'development' : 'collaboration' })
+    set({ fontSize: normalizeUiFontSize(stored.fontSize), fontFamily: normalizeUiFontFamily(stored.fontFamily), codeFontFamily: normalizeCodeFontFamily(stored.codeFontFamily), codeFontSize: normalizeCodeFontSize(stored.codeFontSize), sidebarWidth: normalizeSidebarWidth(stored.sidebarWidth), sidebarCollapsed: stored.sidebarCollapsed === true, shellView: stored.shellView === 'development' ? 'development' : 'collaboration' })
   },
 
   layout: prefs.layout ?? 'list',

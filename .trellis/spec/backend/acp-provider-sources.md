@@ -23,7 +23,7 @@ request. Do not log credentials, encrypted envelopes or authentication headers.
 Chat turns must terminate their admitted run on credential failure; workflow
 admission returns a structured failure before creating a run.
 
-Session admission resolves only the requested Runtime from current definitions and launch checks. Full discovery, unrelated CLI version probes and npm latest-version requests belong to explicit catalog/settings refresh, not the critical path of new/resumed sessions. Preserve missing/disabled/custom-command validation, captured history launch snapshots, Node/SQLite requirements, actual native readiness, account entitlement and admission/cleanup fences. A faster launch is not permission to cache authorization or guess availability.
+Session admission resolves only the requested Runtime from current definitions and launch checks. Full discovery, unrelated CLI version probes and npm latest-version requests belong to explicit catalog/settings refresh, not the critical path of new/resumed sessions. Reject legacy custom commands and preserve missing/disabled validation, captured history launch snapshots, Node/SQLite requirements, actual native readiness, account entitlement and admission/cleanup fences. A faster launch is not permission to cache authorization or guess availability.
 
 Deduplicate exact advertised provider/model refs in their original order. Custom or colliding model labels must identify their provider; retain native human labels and use the exact selector only as a last tie-breaker. Display formatting must never alter wire selectors, add candidates or change the acknowledged current model.
 

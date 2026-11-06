@@ -1,23 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, Moon, Sun, X } from 'lucide-react'
+import { FolderOpen, X } from 'lucide-react'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { api, hasIpc } from '../api'
 import { Button, EmptyState, Switch } from '../my/ui'
 import { RuntimePanel } from '../acp/RuntimePanel'
-import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
-import { EngineToolSettings } from './settings/EngineToolSettings'
 import { DaemonSettings } from '../daemon/DaemonSettings'
-import { AppearancePreferences } from '../my/AppearancePreferences'
+import { AppearancePreferences, ThemePreferences } from '../my/AppearancePreferences'
 import { PreferenceRow, PreferenceSection } from './settings/PreferenceSection'
 import { StorageSettings } from './settings/StorageSettings'
 import type { SettingsView } from '../my/navigation'
 import type { JSX } from 'react'
-import type { AcpAgentConfig, AcpAgentStatus, McpInfo, Settings } from '../../../shared/types'
+import type { AcpAgentStatus, McpInfo, Settings } from '../../../shared/types'
 import { version as appVersion, license as appLicense } from '../../../../package.json'
 
 export function SettingsPage(): JSX.Element {
   const settingsView = useMy((state) => state.settingsView)
+  const theme = useMy((state) => state.theme)
+  const setTheme = useMy((state) => state.setTheme)
+  const [previewTheme, setPreviewTheme] = useState<Settings['theme']>(theme)
+  useEffect(() => {
+    if (hasIpc || settingsView !== 'appearance' || previewTheme !== 'system') return
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const update = (): void => setTheme(media.matches ? 'dark' : 'light')
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [settingsView, previewTheme, setTheme])
   const settings = useApp((s) => s.settings)
   if (settingsView === 'engines') return <AcpAgentsSection />
   if (settingsView === 'storage') return <StorageSettings />
@@ -25,6 +34,7 @@ export function SettingsPage(): JSX.Element {
   if (!settings) return (
     <div className="preferences-page">
       {settingsView === 'appearance' && <PreferenceSection id="preferences-preview-appearance" title="界面显示">
+        <ThemePreferences theme={previewTheme} onChange={(next) => { setPreviewTheme(next); if (next !== 'system') setTheme(next) }} />
         <AppearancePreferences />
       </PreferenceSection>}
       <EmptyState title="设置未加载" description="连接桌面应用后可查看其余设置。" />
@@ -109,19 +119,8 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
   return (
     <div className="preferences-page">
       {view === 'appearance' && <PreferenceSection id="preferences-appearance" title="界面显示">
-        <PreferenceRow label="主题" hint="选择应用的深色或浅色外观。">
-          <div className="my-segmented preference-choices preference-theme-choices" role="group" aria-label="主题">
-            {([
-              ['dark', '深色', <Moon size={16} key="dark" aria-hidden="true" />],
-              ['light', '浅色', <Sun size={16} key="light" aria-hidden="true" />]
-            ] as const).map(([value, label, icon]) => (
-              <button key={value} type="button" className="my-segment" aria-pressed={settings.theme === value}
-                disabled={pending.theme} onClick={() => void perform('theme', () => saveSettings({ theme: value }))}>
-                {icon}{label}
-              </button>
-            ))}
-          </div>
-        </PreferenceRow>
+        <ThemePreferences theme={settings.theme} disabled={pending.theme}
+          onChange={(theme) => void perform('theme', () => saveSettings({ theme }))} />
         <AppearancePreferences />
       </PreferenceSection>}
 
@@ -193,6 +192,14 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
           </Button>
           <Button size="sm" variant="ghost" aria-label="刷新 TPAP 状态" disabled={pending['access-status']} onClick={() => void perform('access-status', async () => setAccessInfo(await api.accessStatus()))}>刷新状态</Button>
         </PreferenceRow>
+        <PreferenceRow label="tpanel 命令" hint="供 Agent 管理已批准的本地应用，并向面板发送任务事件。">
+          <Button size="sm" variant="outline" disabled={pending['install-tpanel'] || !hasIpc}
+            onClick={() => void perform('install-tpanel', async () => {
+              const result = await api.installTpanel()
+              if (!result.ok) throw new Error(result.error ?? '安装失败')
+              pushToast({ kind: 'success', title: 'tpanel 命令已安装', body: result.path })
+            })}>{pending['install-tpanel'] ? '安装中…' : '安装 / 更新'}</Button>
+        </PreferenceRow>
         {accessInfo?.running && <>
           <PreferenceRow label="TPAP 端点">
             <code className="min-w-0 flex-1 break-all text-my-xs">{accessInfo.endpoint}</code>
@@ -244,58 +251,18 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
 }
 
 
-/* ---------------- ACP runtime setup and user-managed launch commands ---------------- */
+/* ---------------- ACP runtime setup ---------------- */
 
 function AcpAgentsSection(): JSX.Element {
-  const settings = useApp((state) => state.settings)
-  const saveSettings = useApp((state) => state.saveSettings)
   const [agents, setAgents] = useState<AcpAgentStatus[]>([])
-  const [rows, setRows] = useState<AcpAgentConfig[]>(() => settings?.acp?.agents ?? [])
-  const [pending, setPending] = useState(false)
-  const [runtimePending, setRuntimePending] = useState(false)
-  const [message, setMessage] = useState('')
   const live = useRef(true)
-  const lock = useRef(false)
-  const canInteract = useInteractionGuard()
-  const signal = useInteractionSignal()
-  const isCurrent = (): boolean => live.current && canInteract()
   useEffect(() => {
     live.current = true
     return () => { live.current = false }
   }, [])
-  const persist = async (): Promise<void> => {
-    if (lock.current || !isCurrent() || !hasIpc) return
-    if (rows.some((row) => !row.name.trim() || (!row.command.trim() && !row.executable))) { setMessage('请填写每个自定义 Runtime 的名称和启动命令。'); return }
-    lock.current = true; setPending(true); setMessage('')
-    const sourceCurrent = (): boolean => isCurrent() && !signal?.aborted
-    try {
-      await saveSettings({ acp: { ...useApp.getState().settings?.acp, agents: rows } })
-      if (!sourceCurrent()) return
-      const response = await api.acpRuntimeRefresh()
-      if (!sourceCurrent()) return
-      if (response.ok && response.agents) setAgents(response.agents)
-      setMessage(response.ok ? '' : response.error ?? '已保存，但重新探测失败。')
-    } catch (error) { if (sourceCurrent()) setMessage(error instanceof Error ? error.message : '保存失败，请重试') }
-    finally { lock.current = false; if (live.current) setPending(false) }
-  }
-  const controlsDisabled = pending || runtimePending
   return <div className="preferences-page">
-    <RuntimePanel agents={agents} onChange={setAgents} isCurrent={isCurrent} autoRefresh disabled={pending}
-      onPendingChange={(busy) => { lock.current = busy; if (live.current) setRuntimePending(busy) }}
+    <RuntimePanel agents={agents} onChange={setAgents} isCurrent={() => live.current} autoRefresh
       onConfigureModels={() => useApp.getState().setPage('models')}
       onManageAgents={() => { useMy.getState().requestAgentView('roles'); useApp.getState().setPage('acp') }} />
-    <PreferenceSection id="engine-custom-commands" title="自定义引擎">
-    <details className="preference-disclosure">
-      <summary>启动命令</summary>
-      <div className="space-y-3">{rows.map((row, index) => <div key={row.id} className="space-y-3 border-t border-my-line py-4 first:border-t-0">
-        <div className="flex flex-wrap items-center gap-2"><Switch label={`启用自定义引擎 ${index + 1}`} disabled={controlsDisabled} checked={row.enabled} onChange={(enabled) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, enabled } : item))} /><input aria-label={`引擎名称 ${index + 1}`} className="my-input min-w-0 flex-1" value={row.name} disabled={controlsDisabled} onChange={(event) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, name: event.target.value } : item))} /><Button size="sm" variant="ghost" disabled={controlsDisabled} className="text-my-danger-text" onClick={() => setRows((previous) => previous.filter((item) => item.id !== row.id))}>移除</Button></div>
-        <input aria-label={`引擎启动命令 ${index + 1}`} className="my-input w-full font-mono text-my-xs" value={row.executable ? [row.executable, ...(row.args ?? [])].join(' ') : row.command} disabled={controlsDisabled || Boolean(row.executable)} placeholder='如 "C:\Tools\my-agent.cmd" --acp' onChange={(event) => setRows((previous) => previous.map((item) => item.id === row.id ? { ...item, command: event.target.value } : item))} />
-        {row.executable && <p className="my-item-description">此项使用结构化 executable / args 配置，保留原始参数边界。</p>}
-      </div>)}</div>
-      <div className="mt-3 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={controlsDisabled} onClick={() => setRows((previous) => [...previous, { id: `custom-${Date.now()}`, name: '', command: '', enabled: true }])}>添加自定义引擎</Button><Button size="sm" variant="primary" disabled={controlsDisabled || !hasIpc} onClick={() => void persist()}>{pending ? '保存并检测中…' : '保存命令配置'}</Button></div>
-    </details>
-    {message && <p role="status" className="pb-4 break-words text-my-xs text-my-secondary">{message}</p>}
-    </PreferenceSection>
-    <EngineToolSettings />
   </div>
 }

@@ -1054,3 +1054,277 @@ Connected Jira/GitLab/DingTalk provider pages and typed native IPC to the indepe
 
 - 用户于2026-10-24选择保持 ZCode 原生安装不变，接受跨端强制互斥限制；原生兼容原型/补丁路线不再推进，现有项目修复与消息保留
 - 跨端实时同步、自动交接和完整历史导入不声明已实现；保留其他验收事项及不归档状态，本轮未新增提交
+
+
+## Session 31: T01 team task execution contract
+<!-- trellis-session: v=2 fp=fd25b0b8729e527e -->
+
+**Date**: 2026-11-05
+**Task**: T01 team task execution contract
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Shipped the team execution v2 contract with single-writer claims, progress, idempotent receipt recovery and transition revocation; archived T01 only.
+
+### Main Changes
+
+- Reused the existing team service and desktop IPC with fixed task, actor, device and generation scopes.
+- Updated executable API/spec contracts and preserved unrelated working changes during selective staging.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `99f56dbccedb03a73fed1c2781e56ce38ce8fb95` | feat(workflow): 建立团队任务领取与交接撤权契约 |
+
+### Testing
+
+- [OK] Production typechecks, builds and applicable guards passed; 19 independent acceptance groups and 35 Electron IPC checks passed.
+- [OK] Typechecks also passed in a TEMP snapshot containing only the committed source; native execution and OS credential encryption remain unverified.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- T02-T10 remain planning until explicitly selected.
+
+
+## Session 32: T02 Trellis source import and mappings
+<!-- trellis-session: v=2 fp=7c19c9aaf7bb829b -->
+
+**Date**: 2026-11-05
+**Task**: T02 Trellis source import and mappings
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Shipped read-only Trellis discovery, explicit source mappings, immutable candidates and resumable per-item receipts; archived T02 only.
+
+### Main Changes
+
+- Reused existing team authentication, task domain, SQLite worker, blobs, command receipts and events.
+- Preserved source files, existing execution authority and team material approvals; retained author, purpose and location conflicts explicitly.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `77974112a4db191155fe98caa20d0d8aba116a38` | feat(migration): 支持 Trellis 只读迁入与来源映射 |
+
+### Testing
+
+- [OK] Root and team-service typechecks/builds, applicable guards, 20 main acceptance groups and independent review passed.
+- [OK] The standalone source snapshot passed typechecks; 3790 reference files remained unchanged and 11 retained sessions remained unknown metadata.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- T03-T10 remain planning until explicitly selected.
+
+
+## Session 33: T03 fixed shared resources and stage context
+<!-- trellis-session: v=2 fp=92c25ec8f7ccd537 -->
+
+**Date**: 2026-11-05
+**Task**: T03 fixed shared resources and stage context
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Shipped immutable execution inputs, portable definitions and stage-specific Pi/ACP composition; archived T03 only.
+
+### Main Changes
+
+- Pinned adopted documents, governance versions and Agent/skill bytes through the existing team service and immutable blobs.
+- Preserved legacy packet hashes and unrelated mixed-file edits; enforced current authorization, readable metadata bounds and immutable local configuration resolution.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9c4c21eeb4f6f149e3f4ae89acc4584919507cb2` | feat(workflow): 固定共享资源版本与分阶段执行上下文 |
+
+### Testing
+
+- [OK] Root/service typechecks and builds, ACP/UI/icon guards, 15 main acceptance groups and independent review passed.
+- [OK] Standalone T03-only source typechecks passed; native engine execution and installed-workcopy/provider acceptance remain outside this scope.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- T04-T10 remain planning until explicitly selected.
+
+
+## Session 34: T04 fixed artifact versions and execution handoff
+<!-- trellis-session: v=2 fp=e2e86576d8a2fc1a -->
+
+**Date**: 2026-11-05
+**Task**: T04 fixed artifact versions and execution handoff
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Shipped fixed artifact versions, delivery manifests and relay checkpoints; archived T04 only.
+
+### Main Changes
+
+- Reused existing body, approval, identity and transaction owners; preserved original output references across three executions.
+- Enforced producer node/attempt fences, recipient ACL, legacy completed-record compatibility and read-only actual code verification through private temporary indexes.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `51bf17bf4b60772f5051e3a8ed97592574ffe423` | feat(workflow): 固定产物版本与执行交接清单 |
+
+### Testing
+
+- [OK] Root/service typechecks and builds, production guards, 30 main acceptance groups and final independent review passed.
+- [OK] Standalone T04-only source typechecks passed; native admission, provider execution and UI remain later acceptance.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- T05-T10 remain planning until explicitly selected.
+
+
+## Session 35: T05 工程准备与执行绑定
+<!-- trellis-session: v=2 fp=ee7d4bb5554cb4fa -->
+
+**Date**: 2026-11-05
+**Task**: T05 工程准备与执行绑定
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+提供 Trellis 无关的共用原生准备接口、固定资料与产物位置映射，核对实际目录及旧执行占用。
+
+### Main Changes
+
+- 复用团队执行权威、受保护设备连接、Daemon 工作区准入与占用登记，区分准备就绪和真实启动。
+- 保留旧控制存储的只读发现与原所有者清理边界；修复 schema 循环、材料路径变化和历史回执所有者检查。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2e665314e653c21fc8d49e4be0cd5b9aa5aefff2` | feat(workflow): 支持 Trellis 无关的工程准备与执行绑定 |
+
+### Testing
+
+- [OK] 仅含 T05 的隔离快照：类型检查、完整构建、acpx 生命周期守卫、UI 规范检查及团队服务类型与构建通过。
+- [OK] 28 组主验收与 24 组独立审查通过；验证原生认证及两类准备发起方，未启动真实执行引擎。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- T06 产品派发执行；T06-T10 保持规划状态。
+
+
+## Session 36: T06 产品派发与真实 Agent 执行
+<!-- trellis-session: v=2 fp=6923d39cb248f480 -->
+
+**Date**: 2026-11-05
+**Task**: T06 产品派发与真实 Agent 执行
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+产品派发复用 T05，接入 Pi、Codex、Claude 的真实节点执行、确认产物、交接与原生恢复。
+
+### Main Changes
+
+- 复用受保护任务连接，保留 GUI 对团队 SQLite 的单一所有权。
+- 固定当前 Agent 节点的上下文、实际会话身份、权限选项与 T04 产物及接力包。
+- 保留原命令回执、停止存储余量与关闭新接入后的原生清理通道。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43df985bf071da5cb577dad32d680e1d7d9a6101` | feat(workflow): 接入产品派发与真实 Agent 执行 |
+
+### Testing
+
+- [OK] Pi、Codex、Claude 均完成真实文件及固定上下文验证、确认产物与接力包。
+- [OK] 八项实际验收覆盖撤权、回执丢失、界面接管、创建竞态、工具取消、阶段隔离、旧文件保护、正常重启和受控进程崩溃恢复。
+- [OK] 独立投影类型检查、完整构建、ACP 兼容守卫、UI 规范守卫及团队服务类型检查和构建通过。
+- [OK] 独立审查：15 项控制器回归、10 项进程身份恢复检查、6 项关闭接入后的清理回归；25 路径提交树与产物来源匹配。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- T07–T10 保持规划状态，未启动。
+
+
+## Session 37: Daemon lifecycle and GUI takeover
+<!-- trellis-session: v=2 fp=866df645adf32613 -->
+
+**Date**: 2026-11-05
+**Task**: Daemon lifecycle and GUI takeover
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Implemented same-build daemon attachment, guarded development replacement, stopping reconciliation, bounded takeover diagnostics, evidence-based workcopy recovery, one-shot exit confirmation, Windows adapter bounded shutdown, and authenticated daemon lifecycle commands. Validated typecheck/build/check:acpx/check:ui and real development daemon lifecycle.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 38: T07 编辑器领取与 MCP 接入
+<!-- trellis-session: v=2 fp=ca9d92b7c9f40172 -->
+
+**Date**: 2026-11-06
+**Task**: T07 编辑器领取与 MCP 接入
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+通过现有 TPAP 和团队执行 v2 接入编辑器任务 MCP，完成固定上下文、编辑器领取、进度、确认产物、竞争领取与协作释放。
+
+### Main Changes
+
+- 新增 loopback Streamable HTTP MCP 工具层，绑定账号、设备、项目、服务实例、epoch 和授权版本。
+- 复用 DesktopTeamService 的执行命令、回执和任务输入，不新增团队凭据、任务状态或执行器。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0db1f4d1c93ef2323a24b60c8f8704a7422ae148` | feat(workflow): 接入编辑器任务 MCP |
+
+### Testing
+
+- [OK] 真实 MCP 环回 11 次请求通过；typecheck、build、check:acpx、check:ui 通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- T08–T10 保持规划状态。

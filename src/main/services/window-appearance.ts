@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron'
+import { nativeTheme, type BrowserWindow } from 'electron'
 import type { Settings } from '../../shared/types'
 
 // Native DWM decoration cannot consume renderer CSS variables. Mirror only the
@@ -18,7 +18,7 @@ export function mainWindowAppearance(
   theme: Settings['theme'],
   platform: NodeJS.Platform = process.platform
 ): MainWindowAppearance {
-  const colors = MAIN_WINDOW_COLORS[theme === 'light' ? 'light' : 'dark']
+  const colors = MAIN_WINDOW_COLORS[theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : theme]
   return platform === 'win32' ? colors : { backgroundColor: colors.backgroundColor }
 }
 

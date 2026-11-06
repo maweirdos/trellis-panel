@@ -4,12 +4,25 @@
 .my-root .my-window-header { background: var(--my-bg-shell); }
 .my-root .my-shell-layout { padding-right: var(--my-shell-inset); padding-bottom: var(--my-shell-inset); }
 .my-root .my-workspace-center { border: 1px solid var(--my-border-shell); border-radius: var(--my-shell-radius); }
-.my-root .my-shell-layout > .my-context-sidebar {
+.my-root .my-context-region {
+  display: grid;
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  grid-template-columns: min(var(--my-sidebar-width), max(220px, calc(100vw - 360px)));
+  transition: grid-template-columns var(--my-motion-normal) var(--my-ease-out);
+}
+.my-root .my-context-region.is-collapsed { grid-template-columns: 0px; }
+.my-root .my-context-region:has(.my-sidebar-resize-handle:active) { transition: none; }
+.my-root .my-shell-layout > .my-context-region > .my-context-sidebar {
   border: 1px solid var(--my-border-shell);
   border-right: 0;
   border-radius: var(--my-shell-radius) 0 0 var(--my-shell-radius);
 }
-.my-root .my-shell-layout > .my-context-sidebar + .my-workspace-center { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.my-root .my-context-region:not(.is-collapsed) + .my-workspace-center { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .my-root .my-context-region { transition: none; }
+}
 .my-root .my-module-brand { width: var(--my-module-rail-width); }
 .my-root .my-module-rail {
   width: var(--my-module-rail-width);
@@ -26,7 +39,6 @@
   line-height: 1;
   border: 1px solid transparent;
 }
-.my-root .my-module-button[aria-current='page'] { border-color: var(--my-border-strong); }
 .my-root .my-module-button[aria-expanded='true'] { background: var(--my-bg-navigation-selected); }
 .my-root .my-module-icon {
   width: var(--my-module-icon-size);
@@ -68,6 +80,28 @@
 .my-root .my-project-switcher:hover,
 .my-root .my-project-switcher[aria-expanded='true'] { background: var(--my-bg-layer-transparent-hover); }
 .my-root .my-context-button { border: 0; box-shadow: none; }
+.my-root .my-navigation-summary {
+  display: flex;
+  min-height: var(--my-space-32);
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--my-space-10);
+  border-radius: var(--my-radius-base);
+  color: var(--my-txt-tertiary);
+  font-size: var(--my-text-xs);
+  cursor: pointer;
+  list-style: none;
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-navigation-summary::-webkit-details-marker { display: none; }
+.my-root .my-navigation-summary:hover { background: var(--my-bg-navigation-hover); color: var(--my-txt-primary); }
+.my-root .my-navigation-summary > svg { transition: transform var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-navigation-group[open] > .my-navigation-summary > svg { transform: rotate(90deg); }
+.my-root .my-navigation-children {
+  margin-inline-start: var(--my-space-10);
+  padding-inline-start: var(--my-space-8);
+  border-inline-start: 1px solid var(--my-border-subtle);
+}
 .my-root .my-task-surface { min-width: 0; }
 @media (max-width: 1100px) {
   .my-root .my-project-switcher-name { max-width: 190px; }
@@ -97,8 +131,8 @@
 .my-root .my-global-header-row > .my-tooltip-anchor { flex-shrink: 0; }
 .my-root .my-header-activity { height: var(--my-header-control-height); gap: var(--my-space-6); padding-inline: var(--my-space-8); white-space: nowrap; }
 .my-root .my-header-activity-count { color: var(--my-txt-secondary); font-size: var(--my-text-xs); font-variant-numeric: tabular-nums; }
-.my-root .my-header-account { flex-shrink: 0; margin-inline-end: var(--my-space-4); }
-.my-root .my-header-account-trigger { width: var(--my-module-button-size); height: var(--my-module-button-size); padding: 0; }
+.my-root .my-rail-account { flex-shrink: 0; }
+.my-root .my-rail-account-trigger { width: var(--my-module-button-size); height: var(--my-module-button-size); padding: 0; }
 .my-root .my-window-controls { flex-shrink: 0; }
 .my-root .my-window-button { width: var(--my-space-44); flex-shrink: 0; }
 .my-root .my-shell-code-tools {

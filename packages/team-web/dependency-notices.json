@@ -276,6 +276,18 @@
     ]
   },
   {
+    "name": "entities",
+    "version": "6.0.1",
+    "license": "BSD-2-Clause",
+    "integrity": "sha512-aN97NXWF6AWBTahfVOIrB/NShkzi5H7F9r1s9mD3cDj4Ko5f2qhhVoYMibXF7GlLveb/D2ioWay8lxI97Ven3g==",
+    "notices": [
+      {
+        "file": "licenses/entities-6.0.1-LICENSE",
+        "digest": "cb992345949ccd6e8394b2cd6c465f7b897c864f845937dbf64e8997f389e164"
+      }
+    ]
+  },
+  {
     "name": "escape-string-regexp",
     "version": "5.0.0",
     "license": "MIT",
@@ -1040,6 +1052,18 @@
       {
         "file": "licenses/types__unist-2.0.11-LICENSE",
         "digest": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+      }
+    ]
+  },
+  {
+    "name": "parse5",
+    "version": "8.0.0",
+    "license": "MIT",
+    "integrity": "sha512-9m4m5GSgXjL4AjumKzq1Fgfp3Z8rsvjRNbnkVwfu2ImRqE5D0LnY2QfDen18FSY9C573YU5XxSapdHZTZ2WolA==",
+    "notices": [
+      {
+        "file": "licenses/parse5-8.0.0-LICENSE",
+        "digest": "8c535800331e1e4439835555b3f9edc7fe9dee2fab0d8bbbd5a982e8b8343d4d"
       }
     ]
   },

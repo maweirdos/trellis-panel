@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type JSX } from 'react'
 import { ArrowUpRight, Check, ChevronDown, FileText, Link2, Loader2, Monitor, Upload, X } from 'lucide-react'
-import type { CreationCommandReply, CreationView } from '@shared/creations'
+import type { CreationCommandReply, CreationPrivateSource, CreationView } from '@shared/creations'
 import { CREATION_MAX_BODY_BYTES } from '@shared/creations'
 import { Button, Dropdown, DropdownItem, Modal } from '../my/ui'
 import { useHifox } from '../hifox/store'
 import { bodySize, validateDraft } from './creation-state'
 import { useCreationCommands, useCreationOwner } from './hooks'
+import { discardCreationForm, openCreationForm, readCreationForm, settleCreationForm, subscribeCreationForm, updateCreationForm, type CreationFormIdentity, type RetainedCreationForm } from './creation-form-memory'
 
 type Commands = ReturnType<typeof useCreationCommands>
 
@@ -27,39 +28,78 @@ function PeoplePicker({ label, people, value, onChange, disabled }: {
   </fieldset>
 }
 
-export function CreateCreationDialog({ scope, spaceId, initialDraft, onClose, onCreated }: {
+type CreateCreationDialogProps = {
   scope: 'personal' | 'team'; spaceId?: string
-  initialDraft?: { title: string; kind: 'prototype' | 'document'; body: string }
+  initialDraft?: { title: string; kind: 'prototype' | 'document'; body: string; privateSource?: CreationPrivateSource }
+  resume?: { identity: CreationFormIdentity; creationId: string }
   onClose: () => void; onCreated: (creationId: string) => void
-}): JSX.Element {
-  const [creationId] = useState(() => crypto.randomUUID())
+}
+
+export function CreateCreationDialog(props: CreateCreationDialogProps): JSX.Element {
+  const context = useHifox((state) => state.workspaceContext)
+  const snapshot = useHifox((state) => state.snapshot)
+  const principal = JSON.stringify([context.key, context.actorId, context.epoch ?? null])
+  const originalPrincipal = useRef(principal)
+  const space = snapshot?.spaces.find((entry) => entry.id === props.spaceId)
+  const authorized = Boolean(originalPrincipal.current === principal && context.actorId && (context.state === 'local' || (context.state === 'connected' && context.epoch))
+    && (!props.resume || (props.resume.identity.workspaceKey === context.key && props.resume.identity.actorId === context.actorId
+      && props.resume.identity.epoch === (context.epoch ?? null) && props.resume.identity.scope === props.scope
+      && props.resume.identity.spaceId === (props.scope === 'team' ? props.spaceId ?? null : null)))
+    && (props.scope === 'personal' || (space && !space.archived && space.memberIds.includes(context.actorId))))
+  if (!authorized || !context.actorId) return <Modal open ariaLabel="新建创作" width={480} onClose={props.onClose}><div className="creation-dialog">
+    <p role="alert">原工作区不可用或无权访问，表单已保留。请恢复原来源后继续。</p>
+    <div className="creation-dialog-footer"><Button onClick={props.onClose}>关闭</Button></div>
+  </div></Modal>
+  const identity: CreationFormIdentity = props.resume?.identity ?? { workspaceKey: context.key, actorId: context.actorId, epoch: context.epoch ?? null,
+    scope: props.scope, spaceId: props.scope === 'team' ? props.spaceId ?? null : null, source: props.initialDraft?.privateSource ?? null }
+  return <CreationFormEntry key={JSON.stringify(identity)} {...props} identity={identity} />
+}
+
+function CreationFormEntry(props: CreateCreationDialogProps & { identity: CreationFormIdentity }): JSX.Element {
+  const [form] = useState(() => props.resume ? readCreationForm(props.identity) : openCreationForm(props.identity, props.initialDraft))
+  if (props.resume && (!form || form.creationId !== props.resume.creationId || readCreationForm(props.identity) !== form)) return <Modal open ariaLabel="继续未完成" width={480} onClose={props.onClose}><div className="creation-dialog">
+    <p role="alert">此表单已不可用，请返回列表。</p><div className="creation-dialog-footer"><Button onClick={props.onClose}>关闭</Button></div>
+  </div></Modal>
+  if (!form) return <Modal open ariaLabel="新建创作" width={480} onClose={props.onClose}><div className="creation-dialog">
+    <p role="alert">待处理表单已达上限，请先返回并完成或取消其他表单。</p>
+    <div className="creation-dialog-footer"><Button onClick={props.onClose}>关闭</Button></div>
+  </div></Modal>
+  return <CreationForm {...props} form={form} />
+}
+
+function CreationForm({ scope, spaceId, onClose, onCreated, form }: CreateCreationDialogProps & { form: RetainedCreationForm }): JSX.Element {
+  const { creationId } = form
+  useSyncExternalStore((listener) => subscribeCreationForm(form, listener), () => form.version)
   const { actorId, capture } = useCreationOwner(`new:${creationId}`)
   const snapshot = useHifox((state) => state.snapshot)
-  const commands = useCreationCommands(creationId, null, 'create')
-  const [title, setTitle] = useState(initialDraft?.title ?? '')
-  const [kind, setKind] = useState<'prototype' | 'document'>(initialDraft?.kind ?? 'prototype')
-  const [body, setBody] = useState(initialDraft?.body ?? '')
-  const [editors, setEditors] = useState<string[]>([])
+  const commands = useCreationCommands(creationId, null, 'create', form.identity)
+  const { title, kind, body, privateSource, editors } = form
+  const update = (values: Partial<Pick<RetainedCreationForm, 'title' | 'kind' | 'body' | 'privateSource' | 'editors' | 'pending'>>): void => {
+    updateCreationForm(form, values)
+  }
   const [error, setError] = useState('')
   const [importing, setImporting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const space = snapshot?.spaces.find((entry) => entry.id === spaceId)
   const people = snapshot?.members.filter((person) => space?.memberIds.includes(person.id) && person.id !== actorId) ?? []
-  const locked = importing || commands.busy || commands.recoveryRequired
+  const locked = importing || commands.busy || commands.recoveryRequired || form.pending
+  const close = (): void => { discardCreationForm(form); onClose() }
   const save = async (): Promise<void> => {
     const validation = validateDraft({ title, body, scenarios: [] })
     if (validation) { setError(validation); return }
     if (scope === 'team' && !spaceId) { setError('请先选择团队空间'); return }
     const valid = capture()
-    const result = await commands.run({ action: 'create', title: title.trim(), kind, home: scope, spaceId: scope === 'team' ? spaceId ?? null : null, body, scenarios: [], ...(scope === 'team' ? { editorIds: editors } : {}) })
-    if (result && valid()) onCreated(creationId)
+    commands.clearError()
+    update({ pending: true })
+    const result = await commands.run({ action: 'create', title: title.trim(), kind, home: scope, spaceId: scope === 'team' ? spaceId ?? null : null, body, scenarios: [], ...(scope === 'team' ? { editorIds: editors } : privateSource ? { privateSource } : {}) })
+    if (result && valid() && result.result.action === 'create' && result.result.creationId === creationId) { settleCreationForm(form); onCreated(creationId) }
   }
-  return <Modal open ariaLabel="新建创作" width={720} onClose={onClose}>
-    <div className="creation-dialog"><div className="creation-section-heading"><h2>新建创作</h2><Button size="sm" variant="ghost" aria-label="关闭" onClick={onClose}><X size={16} /></Button></div>
-      <div className="creation-form-grid"><label>标题<input autoFocus className="my-input" value={title} maxLength={200} disabled={locked} onChange={(event) => setTitle(event.target.value)} /></label>
+  return <Modal open ariaLabel="新建创作" width={720} onClose={close}>
+    <div className="creation-dialog"><div className="creation-section-heading"><h2>新建创作</h2><Button size="sm" variant="ghost" aria-label="关闭" onClick={close}><X size={16} /></Button></div>
+      <div className="creation-form-grid"><label>标题<input autoFocus className="my-input" value={title} maxLength={200} disabled={locked} onChange={(event) => update({ title: event.target.value })} /></label>
         <div className="creation-row"><Dropdown trigger={({ toggle, open }) => <Button onClick={toggle} aria-expanded={open} disabled={locked}>{kind === 'prototype' ? <Monitor size={15} /> : <FileText size={15} />}{kind === 'prototype' ? '交互原型 · HTML' : '文档 · 纯文本'}<ChevronDown size={13} /></Button>}>
-          {(close) => <><DropdownItem selected={kind === 'prototype'} onClick={() => { setKind('prototype'); close() }}>交互原型 · HTML</DropdownItem><DropdownItem selected={kind === 'document'} onClick={() => { setKind('document'); close() }}>文档 · 纯文本</DropdownItem></>}
-        </Dropdown><span className="creation-grow" /><Button disabled={importing || commands.busy} onClick={() => fileInput.current?.click()}><Upload size={15} />{importing ? '正在导入…' : '导入文件'}</Button></div>
+          {(close) => <><DropdownItem selected={kind === 'prototype'} onClick={() => { update({ kind: 'prototype' }); close() }}>交互原型 · HTML</DropdownItem><DropdownItem selected={kind === 'document'} onClick={() => { update({ kind: 'document' }); close() }}>文档 · 纯文本</DropdownItem></>}
+        </Dropdown><span className="creation-grow" /><Button disabled={locked} onClick={() => fileInput.current?.click()}><Upload size={15} />{importing ? '正在导入…' : '导入文件'}</Button></div>
         <input ref={fileInput} type="file" accept=".html,.htm,.txt,.md" className="creation-file-input" aria-label="导入 HTML 或文本文件" onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''
@@ -70,16 +110,24 @@ export function CreateCreationDialog({ scope, spaceId, initialDraft, onClose, on
           setImporting(true)
           void file.text().then((text) => {
             if (!valid()) return
-            setBody(text); setTitle((value) => value || file.name.replace(/\.[^.]+$/, '')); setKind(/\.html?$/i.test(file.name) ? 'prototype' : 'document'); setError('')
+            update({ body: text, privateSource: undefined, title: form.title || file.name.replace(/\.[^.]+$/, ''), kind: /\.html?$/i.test(file.name) ? 'prototype' : 'document' }); setError('')
           }).catch((failure: unknown) => { if (valid()) setError(failure instanceof Error ? failure.message : '读取文件失败') }).finally(() => { if (valid()) setImporting(false) })
         }} />
-        <label>{kind === 'prototype' ? '自包含 HTML' : '正文'}<textarea className={`my-input creation-import-source ${kind === 'prototype' ? 'creation-code' : ''}`} spellCheck={kind !== 'prototype'} value={body} rows={11} disabled={locked} onChange={(event) => setBody(event.target.value)} placeholder={kind === 'prototype' ? '粘贴包含样式与脚本的完整 HTML…' : '写下正文…'} /></label>
+        <label>{kind === 'prototype' ? '自包含 HTML' : '正文'}<textarea className={`my-input creation-import-source ${kind === 'prototype' ? 'creation-code' : ''}`} spellCheck={kind !== 'prototype'} value={body} rows={11} disabled={locked} onChange={(event) => update({ body: event.target.value })} placeholder={kind === 'prototype' ? '粘贴包含样式与脚本的完整 HTML…' : '写下正文…'} /></label>
         <div className="creation-meta">{bodySize(body)}</div>
-        {scope === 'team' && <PeoplePicker label="可编辑成员" people={people} value={editors} onChange={setEditors} disabled={commands.busy} />}
+        {scope === 'team' && <PeoplePicker label="可编辑成员" people={people} value={editors} onChange={(value) => update({ editors: value })} disabled={locked} />}
       </div>
       {error && <p className="creation-inline-error" role="alert">{error}</p>}
-      <OperationError commands={commands} onRecovered={(receipt) => { if (receipt) onCreated(creationId); else setError('已核对，原操作未提交，可再次创建') }} />
-      <div className="creation-dialog-footer"><Button variant="ghost" onClick={onClose}>取消</Button><Button variant="primary" disabled={commands.busy || commands.recoveryRequired || importing || !actorId || (scope === 'team' && (!space || space.archived))} onClick={() => void save()}>{commands.busy ? <Loader2 className="creation-spinner" size={15} /> : <Check size={15} />}创建草稿</Button></div>
+      {commands.error && <div className="creation-error" role="alert">{commands.error.error}</div>}
+      {form.pending && <div className="creation-error" role="status"><span className="creation-grow">{form.receipt ? '原操作已确认，草稿已创建。' : '原操作结果尚未确认，表单已保留。'}</span>{form.receipt ? <Button size="sm" onClick={() => { if (capture()()) { settleCreationForm(form); onCreated(creationId) } }}>打开草稿</Button> : <Button size="sm" disabled={commands.busy} onClick={() => {
+        const valid = capture()
+        void commands.recover().then((receipt) => {
+          if (!valid()) return
+          if (receipt && form.command && receipt.result.action === 'create' && receipt.result.creationId === creationId && receipt.commandId === form.command.commandId) { settleCreationForm(form); onCreated(creationId) }
+          else if (receipt === null) setError('未找到可核对的原操作，结果仍未确认。')
+        })
+      }}>核对原操作</Button>}</div>}
+      <div className="creation-dialog-footer"><Button variant="ghost" onClick={close}>{form.pending || commands.busy ? '关闭' : '取消'}</Button><Button variant="primary" disabled={locked || !actorId || (scope === 'team' && (!space || space.archived))} onClick={() => void save()}>{commands.busy ? <Loader2 className="creation-spinner" size={15} /> : <Check size={15} />}创建草稿</Button></div>
     </div>
   </Modal>
 }

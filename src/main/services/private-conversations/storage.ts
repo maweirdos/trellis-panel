@@ -9,9 +9,9 @@ import { hifoxWorkspaceGeneration, hifoxWorkspaceSnapshot, hifoxWorkspaceCurrent
 
 const common = {
   revision: z.number().int().positive(),
-  draft: z.object({ text: z.string().max(200_000), runtimeId: z.string().min(1).max(200).optional() }).strict(),
-  rootIdentity: z.string().min(1), inputs: z.array(z.string().min(1).max(8192)).max(256),
-  pending: z.object({ requestId: z.string().uuid(), digest: z.string().length(64), textDigest: z.string().length(64).optional(), state: z.enum(['preparing', 'dispatching', 'sent', 'unknown']), turnId: z.string().optional() }).strict().optional()
+  draft: z.object({ text: z.string().max(200_000), runtimeId: z.string().min(1).max(200).optional(), modelId: z.string().min(1).optional() }).strict(),
+  rootIdentity: z.string().min(1), sourceGeneration: z.string().uuid().optional(), inputs: z.array(z.string().min(1).max(8192)).max(256),
+  pending: z.object({ requestId: z.string().uuid(), digest: z.string().length(64), textDigest: z.string().length(64).optional(), initial: z.boolean().optional(), initialModelPending: z.boolean().optional(), modelChangeUncertain: z.boolean().optional(), state: z.enum(['preparing', 'dispatching', 'sent', 'unknown']), turnId: z.string().optional() }).strict().optional()
 }
 const legacyContextSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('personal') }).strict(),
@@ -124,10 +124,13 @@ export class ConversationStorage {
       const original = this.bytes(path), current = this.assertCreator(rowSchema.parse(JSON.parse(original.toString('utf8'))))
       if (expected === undefined || current.revision !== expected) throw new ConversationStorageError('会话已更新，请重新读取草稿')
       if (current.nativeCreatorId !== row.nativeCreatorId || current.conversation.nativeRef && (JSON.stringify(current.conversation.nativeRef) !== JSON.stringify(row.conversation.nativeRef) || JSON.stringify(current.conversation.workspace) !== JSON.stringify(row.conversation.workspace))) throw new ConversationStorageError('既有原生会话身份和目录不能改变', IpcErrorCode.Denied)
+      if (JSON.stringify([current.conversation.workspace, current.rootIdentity, current.conversation.archivedAt]) !== JSON.stringify([row.conversation.workspace, row.rootIdentity, row.conversation.archivedAt])) row.sourceGeneration = randomUUID()
       digest = hash(original)
     }
     const next = this.assertCreator(rowSchema.parse({ ...row, revision: (expected ?? 0) + 1 }))
-    this.replace(path, Buffer.from(JSON.stringify(next)), digest)
+    const bytes = Buffer.from(JSON.stringify(next), 'utf8')
+    if (bytes.length > 1024 * 1024) throw new ConversationStorageError('会话数据超过 1 MiB，未保存；原文件已保留', IpcErrorCode.Io)
+    this.replace(path, bytes, digest)
     row.revision = next.revision
   }
   projects(): ConversationProject[] {

@@ -12,7 +12,7 @@ import { realpathSync } from 'node:fs'
 import type { AcpProcessLaunch } from 'acpx/runtime'
 import type { AcpAgentConfig, AcpAgentStatus, AcpConnectionProbeResult } from '../../../shared/types'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
-import { batchShell, listAcpAgents, runtimeDefinitions, runtimeLaunchSnapshot } from './setup'
+import { batchShell, isSupportedRuntimeSnapshot, LEGACY_CUSTOM_RUNTIME_ERROR, listAcpAgents, runtimeDefinitions, runtimeLaunchSnapshot } from './setup'
 import { errorMessage, objectValue } from './types'
 import { rememberRuntimeVerification, type RuntimeConnectionProbeResult } from './runtime-verification'
 import { PI_VERSION } from '../pi/protocol'
@@ -81,6 +81,7 @@ function waitForExit(child: ChildProcess, graceMs: number): Promise<void> {
 /** Explicit initialize-only verification. SDK entry validation remains separate from ACP/authentication. */
 export async function testAcpRuntimeConnection(id: string): Promise<ConnectionTestResult> {
   const config = runtimeDefinitions().find((item) => item.id === id)
+  if (config && !isSupportedRuntimeSnapshot(config)) return ipcFail(IpcErrorCode.Unavailable, LEGACY_CUSTOM_RUNTIME_ERROR)
   if (!config?.enabled) return ipcFail(IpcErrorCode.InvalidArg, 'Runtime 未启用或不可用')
   if (config.launchKind === 'sdk' && config.id !== 'pi') return ipcFail(IpcErrorCode.InvalidArg, '此 SDK 不支持连接测试')
   const launch = await runtimeLaunchSnapshot(config)
@@ -102,7 +103,7 @@ export async function testAcpRuntimeConnection(id: string): Promise<ConnectionTe
   try { return await task } finally { if (pendingProbes.get(launch.identity) === task) pendingProbes.delete(launch.identity) }
 }
 
-export async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: string[], resolvedEnv?: Record<string, string>): Promise<RuntimeConnectionProbeResult> {
+async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: string[], resolvedEnv?: Record<string, string>): Promise<RuntimeConnectionProbeResult> {
   assertRuntimeExecutionHost()
   let argv: string[]
   let env = resolvedEnv

@@ -95,9 +95,8 @@ Main-only display text travels separately from the expanded native action prompt
 The public conversation Send DTO cannot provide it. New canonical user events
 display the actual user request/action name while retaining the expanded prompt
 in native diagnostics; saved earlier history is not rewritten.
-Text autosaves carrying the unchanged runtime remain idempotent after first
-native binding. Actual runtime and directory changes retain guards; native model
-configuration continues through its original guarded transport.
+Text autosaves carrying unchanged runtime/model fields remain idempotent after
+first native binding. Actual runtime, model and directory changes retain guards.
 
 Persist handoff intent before crossing the task-creation boundary. A partial or
 uncertain response keeps the same target, command, draft revision and task identity.

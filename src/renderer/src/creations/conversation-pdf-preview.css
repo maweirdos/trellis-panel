@@ -1,0 +1,24 @@
+.conversation-pdf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--my-space-8);
+}
+
+.conversation-pdf-page {
+  min-width: 0;
+  max-width: 100%;
+  max-height: min(70vh, 800px);
+  overflow: auto;
+  background: var(--my-bg-layer-1);
+}
+
+.conversation-pdf-page canvas { display: block; }
+.conversation-pdf-text {
+  max-height: 20rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: inherit;
+  color: var(--my-txt-primary);
+}

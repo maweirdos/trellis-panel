@@ -1,0 +1,44 @@
+.conversation-table-preview {
+  display: grid;
+  gap: var(--my-space-8);
+  min-width: 0;
+  padding: var(--my-space-12);
+  border: var(--my-space-1) solid var(--my-border-subtle-1);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+}
+
+.conversation-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  max-height: var(--my-space-384);
+  overflow: auto;
+}
+
+.conversation-table-scroll table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-ui);
+}
+
+.conversation-table-scroll th,
+.conversation-table-scroll td {
+  padding: var(--my-space-8) var(--my-space-12);
+  border: var(--my-space-1) solid var(--my-border-subtle-1);
+  text-align: left;
+  vertical-align: top;
+}
+
+.conversation-table-scroll th {
+  background: var(--my-bg-panel-header);
+  color: var(--my-txt-secondary);
+  font-weight: var(--my-weight-medium);
+}
+
+.conversation-table-scroll td {
+  max-width: var(--my-space-384);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

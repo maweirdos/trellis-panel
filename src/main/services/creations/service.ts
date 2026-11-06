@@ -4,6 +4,8 @@ import type { CreationApi, CreationGenerationPlan } from '../../../shared/creati
 import { creationClientListSchema, creationClientGetSchema, creationClientCommandSchema, creationGenerateSchema, creationCancelSchema, creationRecoverSchema } from '../../../shared/creation-api'
 import { creationCommandSchema, creationCommandResultSchema, creationListSchema, type CreationActorContext, type CreationCommand, type CreationCommandReply, type CreationComment, type CreationView } from '../../../shared/creations'
 import { authorizeCreationCommand, canReadCreation, executeCreationCommand, summarizeCreation, viewCreation, CreationError } from '../../../shared/creations-domain'
+import { creationSearchScope, filterCreationSummaries, usesCreationSearch } from '../../../shared/creation-list-query'
+import { TEAM_MAX_PAGE_ITEM_BYTES } from '../../../shared/team-platform'
 import { applyCreationPatch, buildCreationAiContext, CREATION_AI_INPUT_BYTES } from '../../../shared/creation-ai'
 import type { HifoxSnapshot } from '../../../shared/hifox'
 import type { HifoxWorkspaceContext } from '../../../shared/hifox-remote'
@@ -143,6 +145,37 @@ export class CreationMainService {
     let records = (await this.store.list()).filter((record) => canReadCreation(record, source.actor))
     records = records.filter((record) => query.scope === 'personal' ? record.home === 'personal' && record.ownerId === source.actor.actorId : record.spaceId !== null)
     records = records.filter((record) => (!query.spaceId || record.spaceId === query.spaceId) && (!query.taskId || record.adoptions.some((adoption) => adoption.taskId === query.taskId)))
+    if (usesCreationSearch(query)) {
+      if (query.taskId) {
+        const task = source.actor.tasks.find((entry) => entry.id === query.taskId)
+        if (!task || !source.actor.spaces.some((entry) => entry.id === task.spaceId && entry.canRead) || (query.spaceId && task.spaceId !== query.spaceId)) fail('CREATION_FORBIDDEN', '无权读取所选任务', 403)
+      }
+      const items = filterCreationSummaries(records.map((record) => summarizeCreation(record, source.actor, { taskId: query.taskId })), query)
+      const scope = hash(JSON.stringify([source.proof, source.actor.spaces, source.actor.tasks, creationSearchScope(query, items)]))
+      let after = ''
+      if (query.cursor) {
+        try {
+          const value = z.object({ scope: z.string(), after: z.string().uuid() }).strict().parse(JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')))
+          if (value.scope !== scope) throw Error('Stale cursor')
+          after = value.after
+        } catch { fail('CURSOR_CONFLICT', '作品列表已变化，请重新加载', 409) }
+      }
+      const index = after ? items.findIndex((item) => item.creationId === after) : -1
+      if (after && index < 0) fail('CURSOR_CONFLICT', '作品列表已变化，请重新加载', 409)
+      const selected: typeof items = []; let bytes = 0
+      for (const item of items.slice(index + 1)) {
+        const size = Buffer.byteLength(JSON.stringify(item))
+        if (size > TEAM_MAX_PAGE_ITEM_BYTES) fail('CAPACITY_EXCEEDED', '作品摘要超过响应限制', 413)
+        if (selected.length && bytes + size > TEAM_MAX_PAGE_ITEM_BYTES) break
+        selected.push(item); bytes += size
+        if (selected.length >= query.limit) break
+      }
+      const hasMore = index + 1 + selected.length < items.length
+      const nextCursor = hasMore ? Buffer.from(JSON.stringify({ scope, after: selected.at(-1)?.creationId })).toString('base64url') : null
+      const result = creationListSchema.parse({ items: selected, hasMore, nextCursor })
+      await this.current(source)
+      return result
+    }
     records.sort((left, right) => left.creationId.localeCompare(right.creationId))
     if (query.cursor) records = records.filter((record) => record.creationId > (query.cursor ?? ''))
     const selected = records.slice(0, query.limit)
@@ -227,10 +260,28 @@ export class CreationMainService {
     const input = creationRecoverSchema.parse(raw)
     return this.serial(`${input.workspaceKey}:${input.creationId}`, async () => {
       const source = await this.source(input.workspaceKey)
+      if (input.commandId && input.expectedEpoch !== (source.context.epoch ?? null)) fail('SOURCE_CHANGED', '原操作的来源代次已变化，请保留记录并核对')
+      if (!source.context.connectionId && input.commandId) {
+        // Local receipts predate epoch tracking and cannot prove a non-local generation.
+        if (source.context.epoch) fail('SOURCE_CHANGED', '无法核对本机回执的来源代次')
+        const record = await this.store.get(input.creationId)
+        await this.current(source)
+        if (!record) return null
+        const grant = record.spaceId ? source.actor.spaces.find((space) => space.id === record.spaceId) : null
+        if (record.projectId !== source.actor.projectId || record.ownerId !== source.actor.actorId || !canReadCreation(record, source.actor)
+          || (record.spaceId && (!grant?.canRead || !grant.canWrite || grant.archived))) fail('CREATION_FORBIDDEN', '无权核对原创建操作', 403)
+        const reply = await this.store.receiptById(input.creationId, input.commandId)
+        await this.current(source)
+        if (!reply) return null
+        if (reply.commandId !== input.commandId || reply.result.creationId !== input.creationId || reply.result.action !== 'create'
+          || reply.result.projectId !== source.actor.projectId || reply.result.epoch !== undefined) fail('RECEIPT_MISMATCH', '回执不属于原创建操作')
+        return reply
+      }
       const pending = await this.store.pending(input.workspaceKey, source.actor.actorId, input.creationId)
       await this.current(source)
       if (!pending) return null
       this.assertPendingSource(pending, source)
+      if (input.commandId && (pending.command.commandId !== input.commandId || pending.command.action !== 'create')) fail('PENDING_OPERATION', '待核对记录与原创建操作不一致')
       let reply = await this.deps.remote((service) => service.creationReceipt(pending.connectionId, pending.command.commandId))
       await this.current(source)
       // Explicit recovery retries exactly the same operation; an absent receipt never generates a new identity.

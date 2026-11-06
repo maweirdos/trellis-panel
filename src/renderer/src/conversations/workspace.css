@@ -1,4 +1,5 @@
 .private-project-form { display: grid; gap: var(--my-space-8); padding: var(--my-space-8); }
+.private-requirement-host { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .private-project-form .my-input { width: 100%; }
 .private-project-group>summary { cursor: pointer; list-style: none; }
 .private-project-group>summary::-webkit-details-marker { display: none; }
@@ -49,5 +50,8 @@
 @media (max-width: 600px) { .private-home-actions { flex-wrap: wrap; }.private-home-action { flex-basis: 42%; } }
 @media (hover: hover) and (pointer: fine) { .private-home-action:hover:not(:disabled) .private-home-action-kind>svg:first-child { scale: var(--my-icon-hover-scale); } }
 @media (prefers-reduced-motion: reduce) { .private-home-action,.private-home-action-kind>svg:first-child { transition: none; }.private-home-action:hover:not(:disabled) .private-home-action-kind>svg:first-child { scale: 1; } }
-
-.private-requirement-host { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.private-draft-controls { grid-template-columns: auto minmax(0, 1fr); }
+.private-draft-controls .acp-composer-controls-right { gap: var(--my-space-14); }
+.private-draft-controls .acp-composer-controls-right > .relative { flex: 0 1 auto; }
+.private-draft-picker-label { flex: none; color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
+.private-draft-model-unavailable { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

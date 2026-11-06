@@ -158,6 +158,9 @@ export default function App(): JSX.Element {
   const quickTodoMode = useApp((s) => s.quickTodoMode)
   const theme = useMy((s) => s.theme)
   const fontSize = useMy((s) => s.fontSize)
+  const fontFamily = useMy((s) => s.fontFamily)
+  const codeFontFamily = useMy((s) => s.codeFontFamily)
+  const codeFontSize = useMy((s) => s.codeFontSize)
   const development = useMy((s) => s.shellView === 'development')
   const startup = useContext(StartupContext)
   const bootstrapped = useApp((s) => s.bootstrapped)
@@ -167,9 +170,22 @@ export default function App(): JSX.Element {
   const onboardingFinishLock = useRef(false)
   const [bootstrapFailure, setBootstrapFailure] = useState<{ error: unknown } | null>(null)
   const docMode = new URLSearchParams(window.location.search).get('mode') === 'doc'
-  const [windowTheme, setWindowTheme] = useState<'light' | 'dark'>(() => new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark')
+  const [windowTheme, setWindowTheme] = useState<'light' | 'dark' | 'system'>(() => {
+    const value = new URLSearchParams(window.location.search).get('theme')
+    return value === 'light' || value === 'system' ? value : 'dark'
+  })
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   const hasWindowTheme = new URLSearchParams(window.location.search).has('theme')
-  const effectiveTheme = settings?.theme ?? startup?.initialTheme ?? (hasWindowTheme || docMode || capsuleMode || quickTodoMode ? windowTheme : theme)
+  const themePreference = settings?.theme ?? (hasWindowTheme || docMode || capsuleMode || quickTodoMode ? windowTheme : startup?.initialTheme ?? theme)
+  const effectiveTheme = themePreference === 'system' ? (systemDark ? 'dark' : 'light') : themePreference
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const update = (): void => setSystemDark(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
 
   useEffect(() => {
     if (!hasIpc || !bootstrapped || docMode || capsuleMode || quickTodoMode || !api.onboarding) return
@@ -223,7 +239,6 @@ export default function App(): JSX.Element {
     if (!hasIpc || typeof api.onThemeChanged !== 'function') return
     return api.onThemeChanged((nextTheme) => {
       // Keep every renderer in sync without persisting the same setting again.
-      useMy.setState({ theme: nextTheme })
       setWindowTheme(nextTheme)
       const current = useApp.getState().settings
       if (current) useApp.setState({ settings: { ...current, theme: nextTheme } })
@@ -254,12 +269,12 @@ export default function App(): JSX.Element {
   if (bootstrapFailure) throw bootstrapFailure.error
 
   if (docMode) {
-    return <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary"><DocWindowApp /></div>
+    return <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} data-my-font={fontFamily} data-my-code-font={codeFontFamily} data-my-code-size={codeFontSize} className="my-root flex h-full w-full flex-col bg-my-canvas text-my-md text-my-primary"><DocWindowApp /></div>
   }
 
   if (quickTodoMode) {
     return (
-      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root h-full w-full overflow-hidden bg-transparent p-0">
+      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} data-my-font={fontFamily} data-my-code-font={codeFontFamily} data-my-code-size={codeFontSize} className="my-root h-full w-full overflow-hidden bg-transparent p-0">
         <QuickTodoView />
       </div>
     )
@@ -267,7 +282,7 @@ export default function App(): JSX.Element {
 
   if (capsuleMode) {
     return (
-      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root h-full w-full bg-transparent p-0 overflow-hidden">
+      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} data-my-font={fontFamily} data-my-code-font={codeFontFamily} data-my-code-size={codeFontSize} className="my-root h-full w-full bg-transparent p-0 overflow-hidden">
         <Suspense fallback={null}><CapsuleLazy /></Suspense>
         <Toasts />
       </div>
@@ -277,7 +292,7 @@ export default function App(): JSX.Element {
   // 预览入口：?my=1 且无 IPC 环境（浏览器）时直接渲染外壳，便于界面级验证
   if (!hasIpc && window.location.protocol === 'http:' && new URLSearchParams(window.location.search).get('my') === '1') {
     return (
-      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full w-full flex-col text-my-md text-my-primary">
+      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} data-my-font={fontFamily} data-my-code-font={codeFontFamily} data-my-code-size={codeFontSize} className="my-root my-app-window flex h-full w-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <Suspense fallback={null}>
           <MyApp />
@@ -289,7 +304,7 @@ export default function App(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} className="my-root my-app-window flex h-full flex-col text-my-md text-my-primary">
+      <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} data-my-font={fontFamily} data-my-code-font={codeFontFamily} data-my-code-size={codeFontSize} className="my-root my-app-window flex h-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <MainApp />
         {development && <ApplicationDock />}
