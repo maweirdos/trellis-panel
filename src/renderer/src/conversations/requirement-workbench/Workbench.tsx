@@ -92,7 +92,10 @@ function Questions({ controller }: { controller: RequirementWorkbenchController 
   </form></details>
 }
 
-function OperationResults({ controller }: { controller: RequirementWorkbenchController }): JSX.Element | null {
+function OperationResults({ controller, onComparisonTrigger }: {
+  controller: RequirementWorkbenchController
+  onComparisonTrigger(trigger: HTMLButtonElement): void
+}): JSX.Element | null {
   const value = controller.buffer
   if (!value) return null
   const latest = value.operations[value.operations.length - 1], failed = latest && (latest.state === 'failed' || latest.state === 'cancelled') ? latest : undefined
@@ -107,7 +110,7 @@ function OperationResults({ controller }: { controller: RequirementWorkbenchCont
     {controller.pendingOperations.some(operation => operation.action === 'plan' && operation.state !== 'unknown') && <div className="requirement-workbench-result" role="status"><Loader2 size={15} className="animate-spin" /><span className="my-item-title">正在生成计划</span></div>}
     {planReady && <div className="requirement-workbench-result"><ListChecks size={15} aria-hidden="true" /><span className="requirement-workbench-result-title"><span className="my-item-title">实施计划</span><span className="my-item-description">{stale ? '需求已变更 · 需更新' : '计划已生成'}</span></span><Button size="sm" variant="outline" onClick={() => controller.setDocument('plan')}>查看计划</Button>{!controller.readOnly && <Button size="sm" variant="primary" disabled={stale ? !controller.canRun : controller.busy || !controller.active || Boolean(value.selectionCommand)} onClick={() => { if (stale) void controller.runAction('plan'); else void controller.beginBuild() }}>{stale ? '更新计划' : '开始构建'}</Button>}</div>}
     {adopted && <p key={adopted.id} className="requirement-workbench-updated" role="status"><Check size={13} aria-hidden="true" /><span>{adopted.document === 'plan' ? '计划已更新' : '需求草稿已更新'}</span></p>}
-    {controller.candidates.map(({ operation, candidate }) => <div className="requirement-workbench-result" key={operation.id}><FileText size={15} aria-hidden="true" /><span className="requirement-workbench-result-title"><span className="my-item-title">{operation.document === 'plan' ? '计划' : candidate?.title}</span><span className="my-item-description">{actionLabels[operation.action]} · 待比较</span></span><Button size="sm" variant="outline" disabled={!controller.active || controller.busy} onClick={() => controller.compare(operation.id)}><GitCompareArrows size={13} />比较候选</Button></div>)}
+    {controller.candidates.map(({ operation, candidate }) => <div className="requirement-workbench-result" key={operation.id}><FileText size={15} aria-hidden="true" /><span className="requirement-workbench-result-title"><span className="my-item-title">{operation.document === 'plan' ? '计划' : candidate?.title}</span><span className="my-item-description">{actionLabels[operation.action]} · 待比较</span></span><Button size="sm" variant="outline" disabled={!controller.active || controller.busy} onClick={event => { onComparisonTrigger(event.currentTarget); controller.compare(operation.id) }}><GitCompareArrows size={13} />比较候选</Button></div>)}
     {(uncertain.length > 0 || unmatched) && <div className="requirement-workbench-result"><CircleAlert size={15} aria-hidden="true" /><span className="my-item-title">上次操作待核对</span><Button size="sm" variant="outline" disabled={!controller.active || controller.busy} onClick={() => void controller.checkOperations()}>检查状态</Button>{unmatched && <Button size="sm" variant="outline" disabled={!controller.active || controller.busy} onClick={() => void controller.resumeOperation()}>恢复原操作</Button>}</div>}
     {selectionPending && <div className="requirement-workbench-result"><CircleAlert size={15} aria-hidden="true" /><span className="my-item-title">选区应用回执待核对</span><Button size="sm" variant="outline" disabled={!controller.active || controller.busy} onClick={() => void controller.checkOperations()}>检查原应用</Button></div>}
     {failed && <details className="requirement-workbench-operation-detail"><summary className="my-item-description">{actionLabels[failed.action]} · {stateLabels[failed.state]}</summary>{failed.detail && <pre>{failed.detail}</pre>}<Button size="sm" variant="ghost" disabled={!controller.active || controller.busy} onClick={() => void controller.checkOperations()}>检查原操作</Button></details>}
@@ -142,7 +145,7 @@ function FileComparison({ controller }: { controller: RequirementWorkbenchContro
 
 export function RequirementWorkbench({ onClose, ...options }: RequirementWorkbenchProps): JSX.Element {
   const controller = useRequirementWorkbench(options), value = controller.buffer, view = controller.view, fieldsId = useId()
-  const assistantPane = useRef<HTMLElement>(null), sourcePanel = useRef<HTMLDivElement>(null), tabRefs = useRef<Partial<Record<RequirementDocument, HTMLButtonElement | null>>>({})
+  const assistantPane = useRef<HTMLElement>(null), sourcePanel = useRef<HTMLDivElement>(null), tabRefs = useRef<Partial<Record<RequirementDocument, HTMLButtonElement | null>>>({}), comparisonTrigger = useRef<HTMLButtonElement | null>(null), comparisonWasOpen = useRef(Boolean(controller.comparison))
   const [sourcesOpen, setSourcesOpen] = useState(false), [sourceFocus, setSourceFocus] = useState<'knowledge' | 'files'>()
   const document = value?.document ?? 'requirement', plan = view?.draft.plan, receipt = value?.receipt ?? view?.draft.handoff
   const busySave = value?.pending === 'save'
@@ -162,6 +165,14 @@ export function RequirementWorkbench({ onClose, ...options }: RequirementWorkben
     details.querySelector('summary')?.focus()
     setSourceFocus(undefined)
   }, [sourcesOpen, sourceFocus, controller.active, view?.draft.id])
+  useEffect(() => {
+    const open = Boolean(controller.comparison)
+    if (comparisonWasOpen.current && !open) {
+      const trigger = comparisonTrigger.current
+      requestAnimationFrame(() => trigger?.focus())
+    }
+    comparisonWasOpen.current = open
+  }, [controller.comparison])
   const assistantAction = (action: RequirementAction): void => {
     if (!controller.active || controller.readOnly) return
     controller.appendInstruction(action === 'draft' || action === 'acceptance' || action === 'revise' ? 'revise' : 'discuss', instructions[action])
@@ -226,7 +237,7 @@ export function RequirementWorkbench({ onClose, ...options }: RequirementWorkben
         </header>
         <div className="requirement-workbench-assistant-materials my-scrollbar">
           <div ref={sourcePanel} id={`${fieldsId}-sources`} hidden={!sourcesOpen}><Sources controller={controller} entryKey={options.entryKey} /></div>
-          <Questions controller={controller} /><OperationResults controller={controller} />
+          <Questions controller={controller} /><OperationResults controller={controller} onComparisonTrigger={trigger => { comparisonTrigger.current = trigger }} />
         </div>
         <PrivateConversation entryKey={options.entryKey} onFiles={() => { openSources('files'); controller.refreshFiles() }} onNew={onClose} onNewDirectory={onClose} directoryPending={false} directoryFixed composerContext={null} assistantPort={port} />
       </aside>

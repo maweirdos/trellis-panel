@@ -386,6 +386,13 @@ import { SortableTree } from './components/dnd';
 
 ## Focus Management
 
+Transient comparison, preview, and review surfaces must return focus to the
+control that opened them when they close. Store the actual triggering element
+for the current interaction and restore it on the next animation frame only
+after the surface has unmounted. Do not guess a selector or move focus to the
+page heading; if the trigger was removed or is disabled, leave focus under the
+browser's normal order.
+
 ### Focus Ring
 
 Use consistent focus styles:
