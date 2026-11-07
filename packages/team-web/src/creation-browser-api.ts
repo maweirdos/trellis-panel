@@ -6,7 +6,7 @@ import {
   creationCommandReplySchema, creationCommandResultSchema, creationHeadSchema, creationListSchema, creationViewSchema,
   type CreationCommandReply, type CreationCommandResult, type CreationHead
 } from '../../../src/shared/creations'
-import type { HifoxWorkspaceContext } from '../../../src/shared/hifox-remote'
+import type { CruxWorkspaceContext } from '../../../src/shared/crux-remote'
 import type { TeamSession } from './contracts'
 import {
   ApiError, canRetry, isClientSession, pendingCommands, prepareCommand, reconcileCommand,
@@ -16,11 +16,11 @@ import {
 type Options = {
   projectId: string
   session: TeamSession
-  context(): HifoxWorkspaceContext
+  context(): CruxWorkspaceContext
   isCurrent(): boolean
-  subscribe(callback: (context: HifoxWorkspaceContext) => void): () => void
+  subscribe(callback: (context: CruxWorkspaceContext) => void): () => void
 }
-type Owner = { context: HifoxWorkspaceContext & { epoch: string; instanceId: string }; current(): boolean }
+type Owner = { context: CruxWorkspaceContext & { epoch: string; instanceId: string }; current(): boolean }
 const POLL_INTERVAL_MS = 8000
 // The common journal persists only references; original bodies stay in page memory.
 const retained = new Map<string, PreparedCommand<CreationCommandResult>>()
@@ -45,7 +45,7 @@ export class BrowserCreationApi implements CreationApi {
     }
   }
 
-  private signature(context: HifoxWorkspaceContext): string { return JSON.stringify([context.key, context.actorId, context.instanceId, context.epoch, context.authorizationRevision]) }
+  private signature(context: CruxWorkspaceContext): string { return JSON.stringify([context.key, context.actorId, context.instanceId, context.epoch, context.authorizationRevision]) }
   private owner(workspaceKey: string): Owner {
     const context = this.options.context(), signature = this.signature(context)
     const current = (): boolean => this.live && this.options.isCurrent() && isClientSession(this.options.session)

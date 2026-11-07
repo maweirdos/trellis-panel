@@ -19,7 +19,8 @@ export function StartupContentRegion({ identity, active = true, children }: {
   const startup = useContext(StartupContext)
   const slot = useMemo<StartupContentSlot>(() => ({ commits: new Set() }), [identity])
   useLayoutEffect(() => {
-    if (active) return startup?.register(slot)
+    if (!active) return
+    return startup?.register(slot)
   }, [startup, slot, active])
   return <ContentSlotContext.Provider value={slot}>{children}</ContentSlotContext.Provider>
 }

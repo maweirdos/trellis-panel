@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { HifoxWorkspaceContext } from '../../../src/shared/hifox-remote'
+import type { CruxWorkspaceContext } from '../../../src/shared/crux-remote'
 import type { Result, TeamContentApi } from '../../../src/shared/team-content-api'
 import { teamContentApiInputSchemas } from '../../../src/shared/team-content-api'
 import {
@@ -12,7 +12,7 @@ import {
   retainContentCommandUncertainty, settleCommandReference, type PendingCommand
 } from './client'
 
-type Options = { session: TeamSession; projectId: string; teamId: string; context(): HifoxWorkspaceContext; isCurrent(): boolean }
+type Options = { session: TeamSession; projectId: string; teamId: string; context(): CruxWorkspaceContext; isCurrent(): boolean }
 type AdminOptions = { session: TeamSession; teamId: string }
 type Method = keyof TeamContentApi
 
@@ -127,7 +127,7 @@ export class BrowserTeamContent {
         const entry = pendingCommands(pin.actorId).find(item => item.commandId === commandId)
         if (entry) {
           const taskId = z.object({ taskId: z.string() }).parse(input).taskId
-          if (entry.workspace?.origin !== location.origin || entry.workspace.instanceId !== pin.instanceId || entry.workspace.epoch !== pin.epoch || entry.projectId !== pin.projectId || entry.path !== `/api/projects/${pin.projectId}/hifox/tasks/${encodeURIComponent(taskId)}/content/jobs`) throw new ApiError('CONTENT_RESPONSE_MISMATCH', '原回执不属于保留的生成操作。', 0, true)
+          if (entry.workspace?.origin !== location.origin || entry.workspace.instanceId !== pin.instanceId || entry.workspace.epoch !== pin.epoch || entry.projectId !== pin.projectId || entry.path !== `/api/projects/${pin.projectId}/crux/tasks/${encodeURIComponent(taskId)}/content/jobs`) throw new ApiError('CONTENT_RESPONSE_MISMATCH', '原回执不属于保留的生成操作。', 0, true)
           try { settleCommandReference(entry) }
           catch { throw new ApiError('CONTENT_RECEIPT_UNCONFIRMED', '服务端已有结果，但浏览器未能更新原引用，请继续核对。', 0, true) }
         }

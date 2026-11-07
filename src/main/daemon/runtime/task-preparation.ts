@@ -17,8 +17,8 @@ import { sameOwner } from '../native'
 import { TaskExecutionTransport } from '../../services/team-platform/task-execution-transport'
 import { ExecutionInputTransport } from '../../services/team-platform/execution-input-transport'
 import type { NativeContentPin } from '../../services/team-platform/content-transport'
-import { inspectHifoxWorkExecutionProject, hifoxWorkProjectIdentity } from '../../services/hifox/work-project'
-import { verifyHandoffSource } from '../../services/hifox/task-outputs/handoff-source'
+import { inspectCruxWorkExecutionProject, cruxWorkProjectIdentity } from '../../services/crux/work-project'
+import { verifyHandoffSource } from '../../services/crux/task-outputs/handoff-source'
 import { resolveWorkcopy, assertWorkcopyObservation } from '../../services/workcopy-use/identity'
 import type { WorkcopyUseRegistry } from '../../services/workcopy-use/registry'
 import { claimWorkspaceAdmission } from '../../services/workflow-admission'
@@ -115,14 +115,14 @@ export class NativeTaskPreparation {
     if (!input) throw new DaemonError('E_DENIED', 'Original preparation is unavailable.')
     if (input.origin === 'product' ? input.ownership !== 'product-managed' : input.ownership !== 'editor-owned') throw new DaemonError('E_DENIED', 'Preparation origin differs from its native ownership mode.')
     if (input.ownership === 'product-managed') original.assertProduct()
-    const directoryIdentity = hifoxWorkProjectIdentity(root), workcopy = resolveWorkcopy(root)
+    const directoryIdentity = cruxWorkProjectIdentity(root), workcopy = resolveWorkcopy(root)
     if (stored && stored.directoryIdentity !== directoryIdentity) conflict('Original selected directory was replaced.')
     assertWorkcopyObservation(workcopy, input.expected.workcopy)
     const admission = claimWorkspaceAdmission(workcopy.canonicalRoot, 'managed', undefined, { projectRoot: root })
     let lease: ReturnType<WorkcopyUseRegistry['acquire']> | undefined, handedOff = false
     const guard = (): void => {
       this.ports.assertOwner(); this.ports.assertCurrent(original.grant)
-      if (!admission.isCurrent() || original.grant.root !== root || realpathSync.native(root) !== root || hifoxWorkProjectIdentity(root) !== directoryIdentity) conflict('Original physical directory or workspace admission changed.')
+      if (!admission.isCurrent() || original.grant.root !== root || realpathSync.native(root) !== root || cruxWorkProjectIdentity(root) !== directoryIdentity) conflict('Original physical directory or workspace admission changed.')
       if (input.ownership === 'product-managed') original.assertProduct()
       const actual = lease ? this.ports.workcopies.assertHeld(root, lease.token, lease.owner) : resolveWorkcopy(root)
       assertWorkcopyObservation(actual, workcopy)
@@ -142,11 +142,11 @@ export class NativeTaskPreparation {
         const source = new ExecutionInputTransport(input.task, input.expected.executionId, input.pin.actorId, input.pin.deviceId, readRequest).source('use')
         const active = await checked(() => taskTransport.read())
         const execution = this.execution(input, active.active, active.epoch)
-        const firstResource = await checked(() => requestTransport(`/api/projects/${input.task.projectId}/hifox/tasks/${encodeURIComponent(input.task.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema))
+        const firstResource = await checked(() => requestTransport(`/api/projects/${input.task.projectId}/crux/tasks/${encodeURIComponent(input.task.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema))
         this.resource(input, firstResource)
         const firstInput = await checked(() => source.read())
         this.fixedInput(input, execution, firstInput)
-        const project = await checked(() => inspectHifoxWorkExecutionProject(root, firstResource.resource ?? undefined))
+        const project = await checked(() => inspectCruxWorkExecutionProject(root, firstResource.resource ?? undefined))
         if (!project.resourceMatched) conflict('Selected repository does not match the actual authorized engineering directory.')
         const directory = join(this.directory, input.preparationId), texts = new Map<string, string>()
         const resources: NativeTaskBinding['resources'] = []
@@ -169,7 +169,7 @@ export class NativeTaskPreparation {
         const requiredCode = Boolean(firstResource.resource) || firstInput.input.definition.nodes.some(node => node.kind !== 'gate'
           && node.outputs.some(output => output.required && ['source-patch', 'selected-file'].includes(output.kind)))
         const predecessor = await checked(() => this.predecessor(input, execution, firstResource, taskTransport, root, workcopy, requiredCode, guard))
-        const secondResource = await checked(() => requestTransport(`/api/projects/${input.task.projectId}/hifox/tasks/${encodeURIComponent(input.task.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema))
+        const secondResource = await checked(() => requestTransport(`/api/projects/${input.task.projectId}/crux/tasks/${encodeURIComponent(input.task.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema))
         this.resource(input, secondResource)
         if (!equal({ ...firstResource, serverTime: 0 }, { ...secondResource, serverTime: 0 })) conflict('Task resource or permission changed during preparation.')
         const secondInput = await checked(() => source.read())
@@ -178,7 +178,7 @@ export class NativeTaskPreparation {
         const latest = await checked(() => taskTransport.read())
         this.execution(input, latest.active, latest.epoch)
         if (active.authorizationRevision !== latest.authorizationRevision) conflict('Task authority changed during preparation.')
-        const finalProject = await checked(() => inspectHifoxWorkExecutionProject(root, secondResource.resource ?? undefined))
+        const finalProject = await checked(() => inspectCruxWorkExecutionProject(root, secondResource.resource ?? undefined))
         if (!finalProject.resourceMatched || !equal(project, finalProject)) conflict('Actual repository identity changed during preparation.')
         await checked(() => this.ports.assertLegacyAvailable(root))
         const binding = nativeTaskBindingSchema.parse({ version: 1, state: 'ready', preparationId: input.preparationId, request: input,
@@ -224,7 +224,7 @@ export class NativeTaskPreparation {
     if (!equal(original, binding) || input.origin !== 'product' || input.ownership !== 'product-managed') conflict('Original product preparation changed.')
     const guard = (): void => {
       this.ports.assertOwner(); this.ports.assertCurrent(original.grant); assertOwned()
-      if (hifoxWorkProjectIdentity(original.root) !== original.directoryIdentity) conflict('Original engineering directory was replaced.')
+      if (cruxWorkProjectIdentity(original.root) !== original.directoryIdentity) conflict('Original engineering directory was replaced.')
       assertWorkcopyObservation(resolveWorkcopy(original.root), original.workcopy)
     }
     guard()
@@ -236,11 +236,11 @@ export class NativeTaskPreparation {
         const current = await transport.read(); guard()
         const active = this.execution(input, current.active, current.epoch)
         if (!equal(active.executor, original.execution.executor)) conflict('Original executor claim changed.')
-        const resource = await request(`/api/projects/${input.task.projectId}/hifox/tasks/${encodeURIComponent(input.task.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema)
+        const resource = await request(`/api/projects/${input.task.projectId}/crux/tasks/${encodeURIComponent(input.task.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema)
         guard(); this.resource(input, resource)
         const view = await source.read(); guard(); this.fixedInput(input, active, view)
         if (!equal(view.input, original.input)) conflict('Original fixed input changed.')
-        const project = await inspectHifoxWorkExecutionProject(original.root, resource.resource ?? undefined)
+        const project = await inspectCruxWorkExecutionProject(original.root, resource.resource ?? undefined)
         guard(); if (!project.resourceMatched) conflict('Actual repository differs from the retained resource.')
         for (const item of original.resources) {
           const state = view.resources.find(state => state.selectionId === item.resource.selection.id)

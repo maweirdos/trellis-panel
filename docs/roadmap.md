@@ -14,34 +14,34 @@
 
 当前已经具备本地任务、材料阅读、Jira接入与ACP基础。按用户偏好，AI会话、阅读和本机使用靠前呈现；粗需求/旧任务接续、本机Git/运行/日志、检查与交接仍可按真实需要独立选择。文档说明各项收益、依赖、边界和完成标准，不锁定唯一主线、最终排期或实施授权。
 
-旧Hifox研究留作证据参考；64项能力覆盖、旧48条FR、R0–R5及旧验收目录不再是现行必须完成的目标。见[范围取舍](proposals/2026-10-17-project-first-roadmap/04-scope-and-reference-decisions.md)。当前静态断点仅列候选修正及验证方法；本轮未修改产品代码或任务状态。
+旧Crux研究留作证据参考；64项能力覆盖、旧48条FR、R0–R5及旧验收目录不再是现行必须完成的目标。见[范围取舍](proposals/2026-10-17-project-first-roadmap/04-scope-and-reference-decisions.md)。当前静态断点仅列候选修正及验证方法；本轮未修改产品代码或任务状态。
 
 <details>
 <summary>历史路线和工程记录（原文保留；旧入口与阶段承诺已由v0.6取舍替代）</summary>
 
-> **v0.4.1 需求合同修订：** [审查修复对照](proposals/2026-10-15-hifox-roadmap/14-review-resolution.md)统一逐需求审批、基数、状态、R1手工/R4集成和测试门槛；业务UI仍待实测，未批准实施。
+> **v0.4.1 需求合同修订：** [审查修复对照](proposals/2026-10-15-crux-roadmap/14-review-resolution.md)统一逐需求审批、基数、状态、R1手工/R4集成和测试门槛；业务UI仍待实测，未批准实施。
 
 ## 2026-10-17：v0.5.1独立复核修正
 
-修正UI03视口元数据、区分视口/裁切后图片尺寸；U08任务对话仅结构，独立会话截图不作其视觉覆盖；UXAC按子断言分阶段，完整UXAC01在R3/R4核验，不被R0静态夹具提前关闭。未新增调研或改动产品代码。见[复核记录](proposals/2026-10-15-hifox-roadmap/14-review-resolution.md)与[阶段适用](proposals/2026-10-15-hifox-roadmap/16-ui-derived-design-contracts.md)。
+修正UI03视口元数据、区分视口/裁切后图片尺寸；U08任务对话仅结构，独立会话截图不作其视觉覆盖；UXAC按子断言分阶段，完整UXAC01在R3/R4核验，不被R0静态夹具提前关闭。未新增调研或改动产品代码。见[复核记录](proposals/2026-10-15-crux-roadmap/14-review-resolution.md)与[阶段适用](proposals/2026-10-15-crux-roadmap/16-ui-derived-design-contracts.md)。
 
 
-## 2026-10-17：Hifox登录网页实测与需求评审稿v0.5
+## 2026-10-17：Crux登录网页实测与需求评审稿v0.5
 
 保留既有路线图、v0.4.1可靠执行合同及R0–R5；新增19张经目检网页截图、25条观察和U01–U22部分覆盖矩阵。完整48条FR、15项NFR、数据流/ER/状态/权限、22个工作包与估算依赖保留；补12条UX验收和2张逻辑图、1张线框，总计15张可编辑图。
 
-当前入口：[评审目录](proposals/2026-10-15-hifox-roadmap/README.md)、[实测审查](proposals/2026-10-15-hifox-roadmap/15-hifox-uiux-audit.md)、[UI设计与验收](proposals/2026-10-15-hifox-roadmap/16-ui-derived-design-contracts.md)。研究仅低风险浏览；原生、双账号权限、跨设备、runtime执行和集成写入仍未验证。244条既有用例与12条UX增补均not_run。本轮仅文档更新，不实施代码或提交/推送。
+当前入口：[评审目录](proposals/2026-10-15-crux-roadmap/README.md)、[实测审查](proposals/2026-10-15-crux-roadmap/15-crux-uiux-audit.md)、[UI设计与验收](proposals/2026-10-15-crux-roadmap/16-ui-derived-design-contracts.md)。研究仅低风险浏览；原生、双账号权限、跨设备、runtime执行和集成写入仍未验证。244条既有用例与12条UX增补均not_run。本轮仅文档更新，不实施代码或提交/推送。
 
 
-> **深入需求增补（2026-10-16）：[Trellis 完整需求与数据控制模型](proposals/2026-10-15-hifox-roadmap/07-product-requirements.md)。** 沿用R0–R5，含48条需求、追溯/验收、可编辑流程图/DFD/ER及补证限制；未实施产品代码，Hifox原生应用实测尚缺。
+> **深入需求增补（2026-10-16）：[Trellis 完整需求与数据控制模型](proposals/2026-10-15-crux-roadmap/07-product-requirements.md)。** 沿用R0–R5，含48条需求、追溯/验收、可编辑流程图/DFD/ER及补证限制；未实施产品代码，Crux原生应用实测尚缺。
 
 # 产品化 Roadmap（持续检索沉淀）
 
-> **当前产品路线图入口（2026-10-15）：[基于 HiFox 全量公开文档的 Trellis Roadmap](proposals/2026-10-15-hifox-roadmap/README.md)。** 新稿按真人协作、手动 Agent、受控自动化分阶段，含能力地图、来源覆盖和现状边界；具体实现留待讨论。下文继续保留历史工程实现记录及冻结事项，不因新稿改变其状态。
+> **当前产品路线图入口（2026-10-15）：[基于 Crux 全量公开文档的 Trellis Roadmap](proposals/2026-10-15-crux-roadmap/README.md)。** 新稿按真人协作、手动 Agent、受控自动化分阶段，含能力地图、来源覆盖和现状边界；具体实现留待讨论。下文继续保留历史工程实现记录及冻结事项，不因新稿改变其状态。
 
 > **布局建议稿（2026-10-16）：[团队工作台完整布局方案](proposals/2026-10-16-workbench-layout/README.md)。** 将工作范围、项目模块、主工作区与辅助材料分开，覆盖团队交接、知识引用、设置范围和三种视觉状态；处于产品审查阶段，未替换当前界面实现。
 
-> **项目与拓展修订（2026-10-16）：[项目工作区与开发者工具](proposals/2026-10-15-hifox-roadmap/05-project-workspace-and-integrations.md)。** 项目提升到窗口根；保留 Jira/GitLab 等外部应用拓展口；未来开发者工具优先多项目启动、基础日志、只读 Git 查看。当前只规划，不实施，不扩展代码编辑与调试。
+> **项目与拓展修订（2026-10-16）：[项目工作区与开发者工具](proposals/2026-10-15-crux-roadmap/05-project-workspace-and-integrations.md)。** 项目提升到窗口根；保留 Jira/GitLab 等外部应用拓展口；未来开发者工具优先多项目启动、基础日志、只读 Git 查看。当前只规划，不实施，不扩展代码编辑与调试。
 
 > **本版 UI/UX 实施（2026-10-16）：[项目工作区任务](../.trellis/tasks/10-16-project-workspace-uiux/prd.md)。** 已批准实施窗口顶层项目入口、固定模块栏＋可收起上下文栏、中央任务工作区，以及知识/概览/团队页面整理；沿用当前风格并加强亮色层级。外部集成平台、多项目启动、日志和只读 Git 仍是后续能力，本版不接入。完成状态以任务验收记录为准。
 

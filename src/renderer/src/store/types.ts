@@ -22,7 +22,7 @@ export type Page =
   | 'inbox'
   | 'tasks'
   | 'creations'
-  | 'hifox'
+  | 'crux'
   | 'knowledge'
   | 'spec'
   | 'archive'

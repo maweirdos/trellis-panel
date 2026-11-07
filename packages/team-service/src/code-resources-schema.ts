@@ -19,7 +19,7 @@ CREATE TABLE team_task_code_resources(
  projectId TEXT NOT NULL REFERENCES projects(projectId),taskId TEXT NOT NULL,spaceId TEXT NOT NULL,taskCreatedAt TEXT NOT NULL,
  recordJson TEXT NOT NULL,PRIMARY KEY(projectId,taskId)
 );
-CREATE TRIGGER team_resource_workspace_cleanup AFTER UPDATE OF snapshotJson ON hifox_workspaces BEGIN
+CREATE TRIGGER team_resource_workspace_cleanup AFTER UPDATE OF snapshotJson ON crux_workspaces BEGIN
  DELETE FROM team_task_code_resources WHERE projectId=NEW.projectId AND NOT EXISTS(
   SELECT 1 FROM json_each(NEW.snapshotJson,'$.tasks') t WHERE json_extract(t.value,'$.id')=team_task_code_resources.taskId
   AND json_extract(t.value,'$.createdAt')=team_task_code_resources.taskCreatedAt AND json_extract(t.value,'$.spaceId')=team_task_code_resources.spaceId

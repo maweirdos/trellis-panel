@@ -67,43 +67,24 @@ Use proper HTML elements for accessibility and native browser behavior:
 <div role="button" onClick={handleClick}>Click me</div>
 ```
 
-### Exception: Nested Interactive Elements
+### Cards with secondary actions
 
-HTML does not allow `<button>` inside `<button>`. When a clickable card contains nested buttons (e.g., delete button), use `<div role="button">` for the outer container:
+Do not make a whole card a keyboard button when the card contains another
+interactive control. That pattern creates competing focus targets and makes
+Enter/Space behavior depend on propagation. Use an ordinary container with a
+dedicated title or primary-action button and place expand, delete, snooze, or
+other controls beside it as siblings:
 
 ```tsx
-// Good - Card with nested delete button
-<div
-  role="button"
-  tabIndex={0}
-  onClick={() => onClick(item)}
-  onKeyDown={(e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onClick(item);
-    }
-  }}
-  className="cursor-pointer focus-ring ..."
->
-  <span>{item.title}</span>
-  <button onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}>
-    Delete
-  </button>
+// Good - title and secondary action are sibling controls
+<div className="card">
+  <button type="button" onClick={() => onClick(item)}>{item.title}</button>
+  <button type="button" onClick={() => onDelete(item.id)}>Delete</button>
 </div>
-
-// Bad - Nested buttons cause hydration errors
-<button onClick={() => onClick(item)}>
-  <span>{item.title}</span>
-  <button onClick={onDelete}>Delete</button>  {/* ERROR: button inside button */}
-</button>
 ```
 
-**Required attributes for `<div role="button">`:**
-
-- `role="button"` - Accessibility role
-- `tabIndex={0}` - Make it focusable
-- `onKeyDown` - Handle Enter/Space keys
-- `cursor-pointer` - Visual affordance
+Use `div role="button"` only for a surface with no nested interactive
+controls, and only when a native button cannot express the required layout.
 
 ---
 
@@ -517,7 +498,7 @@ function Button({ isLoading, children, ...props }: ButtonProps) {
 
 | Pattern                    | When to Use                 |
 | -------------------------- | --------------------------- |
-| `role="button"` + tabIndex | Nested interactive elements |
+| `role="button"` + tabIndex | A surface with no nested interactive controls when a native button cannot express the layout |
 | `-mt-24` offset            | Empty state centering       |
 | `scrollbar-gutter: stable` | Prevent layout shift        |
 | Auto-hide scrollbar        | Any scrollable container    |

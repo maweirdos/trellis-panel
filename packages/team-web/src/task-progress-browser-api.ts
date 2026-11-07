@@ -1,26 +1,26 @@
-import type { HifoxProgressApi, HifoxProgressQuery, HifoxProgressResult, HifoxProgressValue } from '../../../src/shared/hifox-task-progress'
-import { hifoxProgressQuerySchema, hifoxProgressReportSchema } from '../../../src/shared/hifox-task-progress'
+import type { CruxProgressApi, CruxProgressQuery, CruxProgressResult, CruxProgressValue } from '../../../src/shared/crux-task-progress'
+import { cruxProgressQuerySchema, cruxProgressReportSchema } from '../../../src/shared/crux-task-progress'
 import { IpcErrorCode } from '../../../src/shared/ipc-errors'
 import { teamTaskProgressCommandSchema, teamTaskProgressDtoSchema, teamTaskProgressReceiptSchema, type TeamTaskProgressCommand, type TeamTaskProgressDto } from '../../../src/shared/team-task-progress'
-import type { HifoxWorkspaceContext } from '../../../src/shared/hifox-remote'
+import type { CruxWorkspaceContext } from '../../../src/shared/crux-remote'
 import type { TeamSession } from './contracts'
 import { ApiError, isClientSession, pendingCommands, prepareCommand, request, sendCommand, settleCommandReference, type PendingCommand, type PreparedCommand } from './client'
 
 const retained = new Map<string, PreparedCommand<TeamTaskProgressDto>>()
-type Options = { projectId: string; session: TeamSession; context(): HifoxWorkspaceContext; isCurrent(): boolean }
+type Options = { projectId: string; session: TeamSession; context(): CruxWorkspaceContext; isCurrent(): boolean }
 /** Browser-only reporting over the shared wire. Native execution capabilities remain absent. */
 export class BrowserTaskProgress {
   private readonly cache = new Map<string, TeamTaskProgressDto>()
   private readonly mutations = new Set<string>()
   private readonly lifetime = new AbortController()
   private live = true
-  readonly api: HifoxProgressApi
+  readonly api: CruxProgressApi
   constructor(private readonly options: Options) {
     this.api = {
       status: (input) => this.status(input),
       start: async () => ({ ok: false, code: IpcErrorCode.Unavailable, error: '网页版不能启动本机 Agent，请使用桌面端。' }),
       report: async (input) => this.mutate(input, async (server) => {
-        const parsed = hifoxProgressReportSchema.parse(input)
+        const parsed = cruxProgressReportSchema.parse(input)
         if (parsed.takeover) {
           if (parsed.takeover.expectedGeneration !== server.generation || parsed.takeover.expectedBindingId !== server.binding?.bindingId) throw new ApiError('TASK_PROGRESS_BINDING_CONFLICT', '确认期间主要会话已变化，请重新核对后接管。', 409)
           server = await this.command(input.taskId, server, { kind: 'bind', ...parsed.takeover, source: { kind: 'web' } })
@@ -53,10 +53,10 @@ export class BrowserTaskProgress {
   dispose(): void { this.live = false; this.lifetime.abort(); this.cache.clear() }
   private current = (): boolean => this.live && this.options.isCurrent() && isClientSession(this.options.session)
   private readOptions() { return { signal: this.lifetime.signal, isCurrent: this.current, notifyDenied: false } }
-  private path(taskId: string): string { return `/api/projects/${this.options.projectId}/hifox/tasks/${encodeURIComponent(taskId)}/progress` }
+  private path(taskId: string): string { return `/api/projects/${this.options.projectId}/crux/tasks/${encodeURIComponent(taskId)}/progress` }
   private references(taskId: string): PendingCommand[] { return pendingCommands(this.options.session.person.userId).filter((entry) => entry.path === `${this.path(taskId)}/commands`) }
-  private validateQuery(input: HifoxProgressQuery): void {
-    hifoxProgressQuerySchema.parse({ workspaceKey: input.workspaceKey, taskId: input.taskId })
+  private validateQuery(input: CruxProgressQuery): void {
+    cruxProgressQuerySchema.parse({ workspaceKey: input.workspaceKey, taskId: input.taskId })
     if (!this.current() || input.workspaceKey !== this.options.context().key) throw new ApiError('OWNER_CHANGED', '原任务工作区已关闭。')
   }
   private ownBinding(server: TeamTaskProgressDto): server is TeamTaskProgressDto & { binding: NonNullable<TeamTaskProgressDto['binding']> } {
@@ -73,23 +73,23 @@ export class BrowserTaskProgress {
     while (this.cache.size > 32) { const key = this.cache.keys().next(); if (key.done) break; this.cache.delete(key.value) }
     return server
   }
-  private value(input: HifoxProgressQuery, server: TeamTaskProgressDto | null, offline = false): HifoxProgressValue {
+  private value(input: CruxProgressQuery, server: TeamTaskProgressDto | null, offline = false): CruxProgressValue {
     return { workspaceKey: input.workspaceKey, taskId: input.taskId, server, freshness: offline ? 'cached-offline' : this.references(input.taskId).length ? 'pending' : 'remote', local: null }
   }
-  private failure(input: HifoxProgressQuery, cause: unknown): HifoxProgressResult {
+  private failure(input: CruxProgressQuery, cause: unknown): CruxProgressResult {
     const error = cause instanceof ApiError ? cause : new ApiError('UNAVAILABLE', cause instanceof Error ? cause.message : '进度暂不可用')
     const offline = ['NETWORK_UNAVAILABLE', 'INVALID_RESPONSE'].includes(error.code)
     const conflict = error.status === 409 || error.code.includes('CONFLICT')
     if (!offline) this.cache.delete(input.taskId)
-    let value: HifoxProgressValue | undefined
+    let value: CruxProgressValue | undefined
     if (this.current() && (offline || error.uncertain)) value = this.value(input, this.cache.get(input.taskId) ?? null, offline)
     return { ok: false, code: conflict ? IpcErrorCode.Conflict : IpcErrorCode.Unavailable, error: error.message, ...(value ? { value } : {}), ...(error.uncertain ? { outcomeUnknown: true } : {}) }
   }
-  private async status(input: HifoxProgressQuery): Promise<HifoxProgressResult> {
+  private async status(input: CruxProgressQuery): Promise<CruxProgressResult> {
     try { this.validateQuery(input); return { ok: true, value: this.value(input, await this.read(input.taskId)) } }
     catch (error) { return this.failure(input, error) }
   }
-  private async mutate(input: HifoxProgressQuery, operation: (current: TeamTaskProgressDto) => Promise<TeamTaskProgressDto>, retry = false): Promise<HifoxProgressResult> {
+  private async mutate(input: CruxProgressQuery, operation: (current: TeamTaskProgressDto) => Promise<TeamTaskProgressDto>, retry = false): Promise<CruxProgressResult> {
     try {
       this.validateQuery(input)
       if (this.mutations.has(input.taskId)) throw new ApiError('IN_FLIGHT', '当前任务进度正在保存。')

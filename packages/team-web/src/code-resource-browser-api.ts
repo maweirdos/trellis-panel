@@ -1,11 +1,11 @@
-import type { HifoxCodeResourceApi, HifoxResourceReply } from '../../../src/shared/hifox-code-resources'
-import { hifoxResourceCommandSchema, hifoxResourceListSchema, hifoxResourcePendingSchema, hifoxResourceRecoverySchema, hifoxResourceTaskSchema } from '../../../src/shared/hifox-code-resources'
+import type { CruxCodeResourceApi, CruxResourceReply } from '../../../src/shared/crux-code-resources'
+import { cruxResourceCommandSchema, cruxResourceListSchema, cruxResourcePendingSchema, cruxResourceRecoverySchema, cruxResourceTaskSchema } from '../../../src/shared/crux-code-resources'
 import { teamCodeResourceListSchema, teamCodeResourceReceiptSchema, teamTaskCodeResourceDtoSchema, type TeamCodeResourceCommand, type TeamCodeResourceCommandReply, type TeamCodeResourceReceipt } from '../../../src/shared/team-code-resources'
-import type { HifoxWorkspaceContext } from '../../../src/shared/hifox-remote'
+import type { CruxWorkspaceContext } from '../../../src/shared/crux-remote'
 import type { TeamSession } from './contracts'
 import { ApiError, isClientSession, pendingCommands, prepareCommand, reconcileCommand, request, sendCommand, type PendingCommand, type PreparedCommand } from './client'
 
-type Options = { projectId: string; session: TeamSession; context(): HifoxWorkspaceContext; isCurrent(): boolean }
+type Options = { projectId: string; session: TeamSession; context(): CruxWorkspaceContext; isCurrent(): boolean }
 const retained = new Map<string, PreparedCommand<TeamCodeResourceReceipt>>()
 // Settled metadata lets a remounted original view query the server again. Never
 // treat a historical response as current authority or retain its body here.
@@ -18,11 +18,11 @@ export class BrowserCodeResources {
   private live = true
   private readonly lifetime = new AbortController()
   private readonly sending = new Set<string>()
-  readonly api: HifoxCodeResourceApi
+  readonly api: CruxCodeResourceApi
   constructor(private readonly options: Options) {
     this.api = {
       list: (input) => this.run(async () => {
-        const { workspaceKey, ...query } = hifoxResourceListSchema.parse(input)
+        const { workspaceKey, ...query } = cruxResourceListSchema.parse(input)
         this.assertOwner(workspaceKey)
         const params = new URLSearchParams()
         for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value))
@@ -31,15 +31,15 @@ export class BrowserCodeResources {
         return value
       }),
       task: (input) => this.run(async () => {
-        const { workspaceKey, taskId } = hifoxResourceTaskSchema.parse(input)
+        const { workspaceKey, taskId } = cruxResourceTaskSchema.parse(input)
         this.assertOwner(workspaceKey)
-        const value = await request(`/api/projects/${encodeURIComponent(options.projectId)}/hifox/tasks/${encodeURIComponent(taskId)}/code-resource`, teamTaskCodeResourceDtoSchema, this.readOptions())
+        const value = await request(`/api/projects/${encodeURIComponent(options.projectId)}/crux/tasks/${encodeURIComponent(taskId)}/code-resource`, teamTaskCodeResourceDtoSchema, this.readOptions())
         this.validate(value)
         if (value.taskId !== taskId) throw new ApiError('INVALID_RESPONSE', '任务资源的来源不匹配')
         return value
       }),
       pending: (input) => this.run(async () => {
-        this.assertOwner(hifoxResourcePendingSchema.parse(input).workspaceKey)
+        this.assertOwner(cruxResourcePendingSchema.parse(input).workspaceKey)
         return this.references().map((entry) => {
           const kind = entry.workspace?.operation.replace('code-resource:', '')
           if (!kinds.includes(kind as TeamCodeResourceCommand['kind'])) throw new ApiError('INVALID_RESPONSE', '原资源操作类型无法核对')
@@ -48,7 +48,7 @@ export class BrowserCodeResources {
         })
       }),
       command: (input) => this.run(async () => {
-        const { workspaceKey, command } = hifoxResourceCommandSchema.parse(input)
+        const { workspaceKey, command } = cruxResourceCommandSchema.parse(input)
         this.assertOwner(workspaceKey)
         if (this.sending.size) throw new ApiError('IN_FLIGHT', '代码资源操作正在核对')
         this.sending.add(command.commandId)
@@ -64,12 +64,12 @@ export class BrowserCodeResources {
         } finally { this.sending.delete(command.commandId) }
       }),
       reconcile: (input) => this.run(async () => {
-        const parsed = hifoxResourceRecoverySchema.parse(input)
+        const parsed = cruxResourceRecoverySchema.parse(input)
         this.assertOwner(parsed.workspaceKey)
         return this.reconcile(this.reference(parsed.commandId))
       }),
       retry: (input) => this.run(async () => {
-        const parsed = hifoxResourceRecoverySchema.parse(input)
+        const parsed = cruxResourceRecoverySchema.parse(input)
         this.assertOwner(parsed.workspaceKey)
         if (this.sending.size) throw new ApiError('IN_FLIGHT', '代码资源操作正在核对')
         this.sending.add(parsed.commandId)
@@ -141,7 +141,7 @@ export class BrowserCodeResources {
       throw error
     }
   }
-  private async run<T>(call: () => Promise<T>): Promise<HifoxResourceReply<T>> {
+  private async run<T>(call: () => Promise<T>): Promise<CruxResourceReply<T>> {
     try { return { ok: true, value: await call() } }
     catch (cause) { const error = cause instanceof ApiError ? cause : new ApiError('RESOURCE_ERROR', cause instanceof Error ? cause.message : '代码资源暂不可用'); return { ok: false, code: error.code, error: error.message, ...(error.uncertain ? { outcomeUnknown: true } : {}) } }
   }

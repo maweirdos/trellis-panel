@@ -44,7 +44,7 @@ import { useEscLayer } from '../utils/use-esc-layer'
 import { DiffModal } from './DiffModal'
 import type { JSX } from 'react'
 import type { FileEntry, GitLabTaskStatus, TaskGitInfo, TaskInfo, TaskPatch } from '../../../shared/types'
-import { developmentPanelPosition, saveDevelopmentPanelPosition } from '../hifox/development/context'
+import { developmentPanelPosition, saveDevelopmentPanelPosition } from '../crux/development/context'
 
 const FIELD_LABEL: Record<string, string> = {
   title: '标题',

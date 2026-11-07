@@ -8,8 +8,8 @@ import { teamIdSchema, type TeamCommandReply, type TeamPage, type TeamVisibility
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError, requireValue } from './errors'
 import { TEAM_LOCAL_ISSUER } from '../../../src/shared/team-auth'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
-import type { HifoxSnapshot } from '../../../src/shared/hifox'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
+import type { CruxSnapshot } from '../../../src/shared/crux'
 import { teamRoleSchema, TEAM_MAX_RESPONSE_BYTES } from '../../../src/shared/team-platform'
 import { z } from 'zod'
 
@@ -58,11 +58,11 @@ export class TeamInvitations {
   }
   private issuer(row: Row): void { this.host.admin(this.host.principalFor(text(row, 'createdBy')), text(row, 'teamId')) }
   private workspace(projectId: string) {
-    const row = requireValue(this.host.get('SELECT revision,snapshotJson FROM hifox_workspaces WHERE projectId=?', projectId), 'INVITATION_CONFLICT', 'Space workspace is unavailable', 409)
+    const row = requireValue(this.host.get('SELECT revision,snapshotJson FROM crux_workspaces WHERE projectId=?', projectId), 'INVITATION_CONFLICT', 'Space workspace is unavailable', 409)
     try {
       const snapshot: unknown = JSON.parse(text(row, 'snapshotJson'))
-      hifoxSnapshotSchema.parse(snapshot)
-      return { revision: number(row, 'revision'), snapshot: snapshot as HifoxSnapshot }
+      cruxSnapshotSchema.parse(snapshot)
+      return { revision: number(row, 'revision'), snapshot: snapshot as CruxSnapshot }
     }
     catch { throw new TeamServiceError('CORRUPT_STORE', 'Stored project workspace cannot be read', 503) }
   }
@@ -192,12 +192,12 @@ export class TeamInvitations {
           const count = this.host.get('SELECT COUNT(*) AS total FROM project_members pm JOIN projects pr ON pr.projectId=pm.projectId JOIN team_members tm ON tm.teamId=pr.teamId AND tm.userId=pm.userId JOIN people p ON p.userId=pm.userId WHERE pm.projectId=? AND pm.active=1 AND tm.active=1 AND p.active=1', input.expectedProjectId)
           if (!count || number(count, 'total') > 500 || workspace.space.memberIds.length >= 500) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace member bound exceeded', 409)
           workspace.space.memberIds.push(principal.person.userId)
-          hifoxSnapshotSchema.parse(workspace.snapshot)
+          cruxSnapshotSchema.parse(workspace.snapshot)
           const snapshotJson = JSON.stringify(workspace.snapshot)
           if (Buffer.byteLength(snapshotJson) > TEAM_MAX_RESPONSE_BYTES - 16 * 1024) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Project workspace exceeds its response bound', 413)
-          const current = requireValue(this.host.get('SELECT revision FROM hifox_workspaces WHERE projectId=?', input.expectedProjectId), 'INVITATION_CONFLICT', 'Space workspace is unavailable', 409)
+          const current = requireValue(this.host.get('SELECT revision FROM crux_workspaces WHERE projectId=?', input.expectedProjectId), 'INVITATION_CONFLICT', 'Space workspace is unavailable', 409)
           if (number(current, 'revision') >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace revision bound exceeded', 503)
-          this.host.run('UPDATE hifox_workspaces SET revision=revision+1,snapshotJson=?,updatedAt=? WHERE projectId=?', snapshotJson, Date.now(), input.expectedProjectId)
+          this.host.run('UPDATE crux_workspaces SET revision=revision+1,snapshotJson=?,updatedAt=? WHERE projectId=?', snapshotJson, Date.now(), input.expectedProjectId)
         }
         this.host.run("UPDATE invitations SET status='accepted',acceptedBy=?,acceptedAt=? WHERE invitationId=? AND status='pending'", principal.person.userId, Date.now(), invitationId)
         this.host.bumpAuthorization()

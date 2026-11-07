@@ -1,7 +1,7 @@
 import { shell } from 'electron'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { hifoxRemoteCommandSchema, hifoxRemoteCommandReplySchema, hifoxRemoteSnapshotSchema, type HifoxRemoteCommand, type HifoxRemoteSnapshot } from '../../../shared/hifox-remote'
+import { cruxRemoteCommandSchema, cruxRemoteCommandReplySchema, cruxRemoteSnapshotSchema, type CruxRemoteCommand, type CruxRemoteSnapshot } from '../../../shared/crux-remote'
 import { desktopAuthoredPublicationSchema, desktopConnectionIdSchema, desktopDocumentInputSchema, desktopFeedbackInputSchema, desktopFeedbackListSchema, desktopListInputSchema, desktopPairingInputSchema, desktopPublicationBaseSchema, desktopVersionsInputSchema, type DesktopAuthoredPublicationInput, type DesktopFeedbackInput, type DesktopMaterialPublicationInput, type DesktopTeamApi, type DesktopTeamConnection, type DesktopTeamConnectionContext, type DesktopTeamDocument, type DesktopTeamEventSync, type DesktopTeamOutbox, type DesktopTeamOutboxPage, type DesktopTeamPairing, type DesktopTeamSnapshot } from '../../../shared/team-desktop'
 import { desktopTeamAccountIdSchema, desktopTeamAuthOptionsSchema, desktopTeamConnectWorkspaceSchema, desktopTeamCreateInvitationSchema, desktopTeamCreatedInvitationSchema, desktopTeamCreatedOrganizationSchema, desktopTeamCreatedWorkspaceSchema, desktopTeamCreateOrganizationSchema, desktopTeamCreateWorkspaceSchema, desktopTeamInvitationAcceptSchema, desktopTeamInvitationSchema, desktopTeamLoginSchema, desktopTeamPageOptionsSchema, desktopTeamRegisterSchema, type DesktopTeamAccount, type DesktopTeamAuthOptions, type DesktopTeamConnectWorkspaceInput, type DesktopTeamCreateInvitationInput, type DesktopTeamCreatedInvitation, type DesktopTeamCreatedOrganization, type DesktopTeamCreatedWorkspace, type DesktopTeamCreateOrganizationInput, type DesktopTeamCreateWorkspaceInput, type DesktopTeamInvitationAcceptInput, type DesktopTeamInvitationInput, type DesktopTeamLoginInput, type DesktopTeamPageOptions, type DesktopTeamRegisterInput } from '../../../shared/team-desktop-account'
 import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, createTeamProjectSchema, createTeamSchema, deviceApproveInputSchema, deviceEnrollmentInputSchema, publicationInputSchema, teamCommandIdSchema, teamCommandReplySchema, teamDeviceApprovalSchema, teamDeviceEnrollmentSchema, teamDeviceSchema, teamEventPageSchema, teamFeedbackInputSchema, teamFeedbackSchema, teamIdSchema, teamMaterialVersionSchema, teamPageSchema, teamProjectSchema, teamPublishedDocumentSchema, teamSessionSchema, teamTeamSchema, type TeamCommandReply, type TeamMaterialVersion, type TeamPage, type TeamFeedback, type TeamProject, type TeamSession, type TeamTeam } from '../../../shared/team-platform'
@@ -16,8 +16,8 @@ import { DesktopTeamError, accountRecordSchema, accountSessionEnvelopeSchema, in
 import { creationListInputSchema, creationListSchema, creationViewInputSchema, creationViewSchema, creationHeadSchema, creationCommandSchema, creationCommandReplySchema, creationCommandResultSchema, type CreationCommand, type CreationView, type CreationCommandReply, type CreationHead } from '../../../shared/creations'
 import { teamCodeResourceListInputSchema, teamCodeResourceListSchema, teamTaskCodeResourceDtoSchema, teamCodeResourceCommandSchema, teamCodeResourceCommandReplySchema, teamCodeResourceReceiptSchema, teamCodeResourceScopeIdSchema, type TeamCodeResourceList, type TeamTaskCodeResourceDto, type TeamCodeResourceCommand, type TeamCodeResourceCommandReply } from '../../../shared/team-code-resources'
 import { teamTaskProgressResourceIdSchema, teamTaskProgressCommandSchema, teamTaskProgressCommandReplySchema, teamTaskProgressDtoSchema, teamTaskProgressReceiptSchema, type TeamTaskProgressCommand, type TeamTaskProgressDto, type TeamTaskProgressCommandReply, type TeamTaskProgressReceipt } from '../../../shared/team-task-progress'
-import { writeTaskProgressCredential, NativeTaskProgressSender } from '../hifox/task-progress-sender'
-import type { TaskProgressPin } from '../../../shared/hifox-task-progress-native'
+import { writeBusinessHookCredential, writeTaskProgressCredential, NativeTaskProgressSender } from '../crux/task-progress-sender'
+import type { TaskProgressPin } from '../../../shared/crux-task-progress-native'
 import { TaskMaterialsTransport, taskMaterialTransportPinSchema, type TaskMaterialTransportPin } from './task-materials-transport'
 import { GovernanceTransport, governanceTransportPinSchema, type GovernanceTransportPin } from './governance-transport'
 import { nativeContentPinSchema, type NativeContentPin } from './content-transport'
@@ -170,6 +170,16 @@ export class DesktopTeamService implements DesktopTeamApi {
       await this.verifyActive(c)
       await this.creationOwner(c)
       writeTaskProgressCredential(this.options.dataDir, c, this.token(c), this.protection, this.reveal)
+    })
+  }
+  /** GUI-authorized project identity for background business Hook effects. */
+  async authorizeBusinessHook(connectionId: string): Promise<void> {
+    return this.tracked(async () => {
+      const c = await this.connection(connectionId, true)
+      await this.verifyActive(c)
+      const snapshot = await this.request(c, `/api/projects/${c.projectId}/crux/snapshot`, cruxRemoteSnapshotSchema)
+      await this.verifyCruxSnapshot(c, snapshot)
+      writeBusinessHookCredential(this.options.dataDir, c, this.token(c), this.protection, this.reveal, { instanceId: snapshot.instanceId, epoch: snapshot.epoch })
     })
   }
   private readonly http: TeamHttp
@@ -443,8 +453,8 @@ export class DesktopTeamService implements DesktopTeamApi {
     let lock = lockedCodes.has(error.code)
     // These domains keep no generic published-document body cache. A denied
     // private draft/space operation must not revoke an otherwise active device.
-    const contentScoped = path !== undefined && (/^\/api\/teams\/[^/]+\/content(?:[/?]|$)/.test(path) || /^\/api\/projects\/[^/]+\/(?:content(?:[/?]|$)|hifox\/tasks\/[^/]+\/content(?:[/?]|$))/.test(path))
-    const scoped = contentScoped || path !== undefined && /^\/api\/projects\/[^/]+\/hifox\/(?:tasks\/[^/]+\/(?:materials|inputs|executions|code-resource|development-context)|spaces\/[^/]+\/governance|code-resources)(?:[/?]|$)/.test(path)
+    const contentScoped = path !== undefined && (/^\/api\/teams\/[^/]+\/content(?:[/?]|$)/.test(path) || /^\/api\/projects\/[^/]+\/(?:content(?:[/?]|$)|crux\/tasks\/[^/]+\/content(?:[/?]|$))/.test(path))
+    const scoped = contentScoped || path !== undefined && /^\/api\/projects\/[^/]+\/crux\/(?:tasks\/[^/]+\/(?:materials|inputs|executions|code-resource|development-context)|spaces\/[^/]+\/governance|code-resources)(?:[/?]|$)/.test(path)
     if (error.code === 'FORBIDDEN' && scoped) {
       try {
         const session = await this.http.request(c.origin, '/api/session', teamSessionSchema, this.token(c))
@@ -454,6 +464,7 @@ export class DesktopTeamService implements DesktopTeamApi {
       }
     }
     await this.store.call({ op: 'update-connection', input: { connectionId: c.connectionId, ...(lock ? { lock: true, ...(error.code === 'CREDENTIAL_UNAVAILABLE' ? { revokeOutbox: false } : {}) } : {}), ...(error.code === 'NETWORK_UNAVAILABLE' || error.code === 'ACKNOWLEDGEMENT_UNKNOWN' ? { network: 'offline' } : {}), errorCode: error.code } })
+    if (lock) writeBusinessHookCredential(this.options.dataDir, c, null, this.protection)
   }
   private async request<T extends z.ZodType>(c: ConnectionRecord, path: string, schema: T, body?: unknown): Promise<z.output<T>> {
     try {
@@ -499,7 +510,7 @@ export class DesktopTeamService implements DesktopTeamApi {
       }))
     })
   }
-  private async verifyHifoxSnapshot(c: ConnectionRecord, value: HifoxRemoteSnapshot, write = false, expectedInstanceId?: string): Promise<HifoxRemoteSnapshot> {
+  private async verifyCruxSnapshot(c: ConnectionRecord, value: CruxRemoteSnapshot, write = false, expectedInstanceId?: string): Promise<CruxRemoteSnapshot> {
     const member = value.snapshot.members.find((item) => item.id === c.ownerId)
     if ((expectedInstanceId !== undefined && value.instanceId !== expectedInstanceId) || value.projectId !== c.projectId || value.actor.id !== c.ownerId || !member || member.role !== value.actor.role) {
       const error = new DesktopTeamError('BINDING_CHANGED', '远程协作回执不属于原设备、账号或项目', write)
@@ -511,7 +522,7 @@ export class DesktopTeamService implements DesktopTeamApi {
     if (current.origin !== c.origin || current.ownerId !== c.ownerId || current.deviceId !== c.deviceId || current.projectId !== c.projectId || current.pairingId !== c.pairingId) throw new DesktopTeamError('BINDING_CHANGED', '远程协作连接身份已改变', write)
     return value
   }
-  async hifoxSnapshot(connectionId: string, options: { afterRevision?: number; waitMs?: number; expectedInstanceId?: string } = {}): Promise<HifoxRemoteSnapshot> {
+  async cruxSnapshot(connectionId: string, options: { afterRevision?: number; waitMs?: number; expectedInstanceId?: string } = {}): Promise<CruxRemoteSnapshot> {
     return this.tracked(async () => {
       const input = z.object({ afterRevision: z.number().int().nonnegative().safe().optional(), waitMs: z.number().int().min(0).max(8000).optional(), expectedInstanceId: z.string().uuid().optional() }).strict().parse(options)
       const c = await this.connection(connectionId, true)
@@ -519,10 +530,10 @@ export class DesktopTeamService implements DesktopTeamApi {
       const query = new URLSearchParams()
       if (input.afterRevision !== undefined) query.set('afterRevision', String(input.afterRevision))
       if (input.waitMs !== undefined) query.set('waitMs', String(input.waitMs))
-      const value = await this.request(c, `/api/projects/${c.projectId}/hifox/snapshot${query.size ? '?' + query : ''}`, hifoxRemoteSnapshotSchema)
+      const value = await this.request(c, `/api/projects/${c.projectId}/crux/snapshot${query.size ? '?' + query : ''}`, cruxRemoteSnapshotSchema)
       // Revision ordering belongs to one instance/epoch. The coordinator owns
       // that durable head and must observe restore replies, including lower revisions.
-      return this.verifyHifoxSnapshot(c, value, false, input.expectedInstanceId)
+      return this.verifyCruxSnapshot(c, value, false, input.expectedInstanceId)
     })
   }
   /** Main-only fresh development facts; each source read obtains a new server response. */
@@ -531,59 +542,59 @@ export class DesktopTeamService implements DesktopTeamApi {
       const task = teamTaskProgressResourceIdSchema.parse(taskId), instance = z.string().uuid().parse(expectedInstanceId)
       const c = await this.connection(connectionId, true)
       await this.verifyActive(c)
-      const value = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(task)}/development-context`, teamTaskDevelopmentContextSchema)
-      await this.verifyHifoxSnapshot(c, value.snapshot, false, instance)
+      const value = await this.request(c, `/api/projects/${c.projectId}/crux/tasks/${encodeURIComponent(task)}/development-context`, teamTaskDevelopmentContextSchema)
+      await this.verifyCruxSnapshot(c, value.snapshot, false, instance)
       if (value.inputs.taskId !== task) throw new DesktopTeamError('BINDING_CHANGED', '开发上下文不属于原任务')
       return value
     })
   }
-  async hifoxCommand(connectionId: string, raw: HifoxRemoteCommand, expectedInstanceId?: string): Promise<z.infer<typeof hifoxRemoteCommandReplySchema>> {
+  async cruxCommand(connectionId: string, raw: CruxRemoteCommand, expectedInstanceId?: string): Promise<z.infer<typeof cruxRemoteCommandReplySchema>> {
     return this.tracked(async () => {
-      const payload = hifoxRemoteCommandSchema.parse(raw), c = await this.connection(connectionId, true)
+      const payload = cruxRemoteCommandSchema.parse(raw), c = await this.connection(connectionId, true)
       await this.verifyActive(c)
-      const reply = await this.request(c, `/api/projects/${c.projectId}/hifox/commands`, hifoxRemoteCommandReplySchema, payload)
+      const reply = await this.request(c, `/api/projects/${c.projectId}/crux/commands`, cruxRemoteCommandReplySchema, payload)
       if (reply.commandId !== payload.commandId || reply.result.epoch !== payload.expectedEpoch || reply.result.revision !== payload.expectedRevision + 1) throw new DesktopTeamError('RECEIPT_MISMATCH', '远程协作回执与原命令或版本不一致', true)
-      await this.verifyHifoxSnapshot(c, reply.result, true, expectedInstanceId)
+      await this.verifyCruxSnapshot(c, reply.result, true, expectedInstanceId)
       return reply
     })
   }
-  async hifoxReceipt(connectionId: string, commandId: string, expectedInstanceId?: string): Promise<HifoxRemoteSnapshot | null> {
+  async cruxReceipt(connectionId: string, commandId: string, expectedInstanceId?: string): Promise<CruxRemoteSnapshot | null> {
     return this.tracked(async () => {
       const id = teamCommandIdSchema.parse(commandId), c = await this.connection(connectionId, true)
       await this.verifyActive(c)
-      const schema = z.object({ commandId: teamCommandIdSchema, kind: z.string().min(1).max(100), status: z.literal('committed'), recordedAt: z.number().int().nonnegative(), result: hifoxRemoteSnapshotSchema }).strict()
+      const schema = z.object({ commandId: teamCommandIdSchema, kind: z.string().min(1).max(100), status: z.literal('committed'), recordedAt: z.number().int().nonnegative(), result: cruxRemoteSnapshotSchema }).strict()
       try {
         const receipt = await this.request(c, `/api/commands/${id}`, schema)
-        if (receipt.commandId !== id || receipt.kind !== 'hifoxCommand') throw new DesktopTeamError('RECEIPT_MISMATCH', '核对回执不属于原协作操作', true)
-        return this.verifyHifoxSnapshot(c, receipt.result, true, expectedInstanceId)
+        if (receipt.commandId !== id || receipt.kind !== 'cruxCommand') throw new DesktopTeamError('RECEIPT_MISMATCH', '核对回执不属于原协作操作', true)
+        return this.verifyCruxSnapshot(c, receipt.result, true, expectedInstanceId)
       } catch (error) { if (error instanceof DesktopTeamError && error.code === 'NOT_FOUND') return null; throw error }
     })
   }
   /** Protected native transport. Credentials and HTTP destinations never cross preload. */
-  async hifoxTaskProgress(connectionId: string, taskId: string, expectedInstanceId?: string): Promise<TeamTaskProgressDto> {
+  async cruxTaskProgress(connectionId: string, taskId: string, expectedInstanceId?: string): Promise<TeamTaskProgressDto> {
     return this.tracked(async () => {
       const id = teamTaskProgressResourceIdSchema.parse(taskId), c = await this.connection(connectionId, true)
       await this.verifyActive(c)
-      const value = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(id)}/progress`, teamTaskProgressDtoSchema)
+      const value = await this.request(c, `/api/projects/${c.projectId}/crux/tasks/${encodeURIComponent(id)}/progress`, teamTaskProgressDtoSchema)
       await this.verifyTaskProgress(c, id, value, false, expectedInstanceId)
       return value
     })
   }
-  async hifoxTaskProgressCommand(connectionId: string, taskId: string, raw: TeamTaskProgressCommand, expectedInstanceId: string): Promise<TeamTaskProgressCommandReply> {
+  async cruxTaskProgressCommand(connectionId: string, taskId: string, raw: TeamTaskProgressCommand, expectedInstanceId: string): Promise<TeamTaskProgressCommandReply> {
     return this.tracked(async () => {
       const id = teamTaskProgressResourceIdSchema.parse(taskId), command = teamTaskProgressCommandSchema.parse(raw), c = await this.connection(connectionId, true)
       await this.verifyActive(c)
-      const reply = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(id)}/progress/commands`, teamTaskProgressCommandReplySchema, command)
+      const reply = await this.request(c, `/api/projects/${c.projectId}/crux/tasks/${encodeURIComponent(id)}/progress/commands`, teamTaskProgressCommandReplySchema, command)
       if (reply.commandId !== command.commandId || reply.result.epoch !== command.expectedEpoch) throw new DesktopTeamError('RECEIPT_MISMATCH', '进度回执与原命令或服务世代不一致', true)
       await this.verifyTaskProgress(c, id, reply.result, true, expectedInstanceId)
       return reply
     })
   }
-  async hifoxTaskProgressReceipt(connectionId: string, taskId: string, commandId: string): Promise<TeamTaskProgressReceipt | null> {
+  async cruxTaskProgressReceipt(connectionId: string, taskId: string, commandId: string): Promise<TeamTaskProgressReceipt | null> {
     return this.tracked(async () => {
       const id = teamTaskProgressResourceIdSchema.parse(taskId), command = teamCommandIdSchema.parse(commandId), c = await this.connection(connectionId, true)
       await this.verifyActive(c)
-      const reply = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(id)}/progress/commands/${command}`, teamTaskProgressReceiptSchema.nullable())
+      const reply = await this.request(c, `/api/projects/${c.projectId}/crux/tasks/${encodeURIComponent(id)}/progress/commands/${command}`, teamTaskProgressReceiptSchema.nullable())
       await this.creationOwner(c)
       if (reply && reply.commandId !== command) throw new DesktopTeamError('RECEIPT_MISMATCH', '进度回执不属于原命令', true)
       return reply
@@ -613,7 +624,7 @@ export class DesktopTeamService implements DesktopTeamApi {
     return this.tracked(async () => {
       const id = teamCodeResourceScopeIdSchema.parse(taskId), c = await this.connection(connectionId, true)
       await this.verifyActive(c)
-      const result = await this.request(c, `/api/projects/${c.projectId}/hifox/tasks/${encodeURIComponent(id)}/code-resource`, teamTaskCodeResourceDtoSchema)
+      const result = await this.request(c, `/api/projects/${c.projectId}/crux/tasks/${encodeURIComponent(id)}/code-resource`, teamTaskCodeResourceDtoSchema)
       if (result.projectId !== c.projectId || result.instanceId !== expected.instanceId || result.epoch !== expected.epoch || result.taskId !== id) {
         throw new DesktopTeamError('BINDING_CHANGED', '任务代码资源不属于原服务或任务')
       }
@@ -848,6 +859,7 @@ export class DesktopTeamService implements DesktopTeamApi {
     return this.tracked(async () => {
     const c = await this.connection(connectionId)
     writeTaskProgressCredential(this.options.dataDir, c, null, this.protection)
+    writeBusinessHookCredential(this.options.dataDir, c, null, this.protection)
     return publicConnection(await this.store.call({ op: 'update-connection', input: { connectionId, disconnect: true, errorCode: 'LOCAL_DISCONNECTED' } }))
     })
   }

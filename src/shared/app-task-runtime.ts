@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { hifoxWorkQuerySchema, hifoxDevelopmentRefSchema } from './hifox-work'
+import { cruxWorkQuerySchema, cruxDevelopmentRefSchema } from './crux-work'
 import { applicationIdSchema, applicationInstanceTargetSchema, type ApplicationEnvironmentCheck, type ApplicationFailure, type ApplicationInstanceTarget, type ApplicationRunSnapshot, type ApplicationSummary, type ApplicationTaskServiceUse } from './app-runtime'
 
-export const applicationTaskContextExpectedSchema = hifoxDevelopmentRefSchema
-export const applicationTaskScopeSchema = z.object({ query: hifoxWorkQuerySchema, expected: applicationTaskContextExpectedSchema }).strict()
+export const applicationTaskContextExpectedSchema = cruxDevelopmentRefSchema
+export const applicationTaskScopeSchema = z.object({ query: cruxWorkQuerySchema, expected: applicationTaskContextExpectedSchema }).strict()
 export const applicationTaskPlanRequestSchema = applicationTaskScopeSchema
 export const applicationTaskVerifyRequestSchema = applicationTaskScopeSchema.extend({ appId: applicationIdSchema, expectedRevision: z.string().min(1).max(100), expectedPlanId: z.string().uuid() }).strict()
 export const applicationTaskStartRequestSchema = applicationTaskVerifyRequestSchema.extend({ expectedCheckId: z.string().uuid() }).strict()

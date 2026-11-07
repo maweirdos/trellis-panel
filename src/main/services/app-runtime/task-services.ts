@@ -1,23 +1,23 @@
 import { randomUUID as cryptoId } from 'node:crypto'
-import type { HifoxWorkLocal, HifoxWorkQuery } from '../../../shared/hifox-work'
+import type { CruxWorkLocal, CruxWorkQuery } from '../../../shared/crux-work'
 import { applicationTaskScopeSchema, applicationTaskVerifyRequestSchema, applicationTaskStartRequestSchema, applicationTaskReuseRequestSchema, applicationTaskDetachRequestSchema,
   type ApplicationTaskScope, type ApplicationTaskPlanResult, type ApplicationTaskPlan, type ApplicationTaskUseResult, type ApplicationTaskVerifyRequest, type ApplicationTaskStartRequest, type ApplicationTaskReuseRequest, type ApplicationTaskDetachRequest } from '../../../shared/app-task-runtime'
 import type { ApplicationLaunchPreview } from '../../../shared/app-runtime'
 import { IpcErrorCode } from '../../../shared/ipc-errors'
 import { gitWorkspace } from '../git-workspace'
 import { resolveWorkcopy } from '../workcopy-use'
-import { taskDevelopmentKey } from '../hifox/task-development-identity'
-import { HifoxWorkError } from '../hifox/task-workspace-source'
+import { taskDevelopmentKey } from '../crux/task-development-identity'
+import { CruxWorkError } from '../crux/task-workspace-source'
 import { canonicalDirectory } from './lib/persistence'
 import { ApplicationRuntime } from './lib/controller'
 import { AppRuntimeError, runtimeFailure, type ApplicationTaskReferenceOwner, type ApplicationTaskLaunchGuard, type ApplicationLaunchInspection } from './types'
 
 export type ResolvedApplicationTaskContext = {
-  local: HifoxWorkLocal
+  local: CruxWorkLocal
   spaceId: string; ownerId: string; resourceId: string | null
   authority?: string; selectionGeneration?: number; taskKey?: string
 }
-export type ApplicationTaskContextResolver = (query: HifoxWorkQuery, expected: ApplicationTaskScope['expected']) => Promise<ResolvedApplicationTaskContext>
+export type ApplicationTaskContextResolver = (query: CruxWorkQuery, expected: ApplicationTaskScope['expected']) => Promise<ResolvedApplicationTaskContext>
 type NativeContext = { resolved: ResolvedApplicationTaskContext; root: string; workcopyId: string; owner: ApplicationTaskReferenceOwner; assertCurrent: () => Promise<void> }
 export type TaskApplicationService = ReturnType<typeof createTaskApplicationService>
 
@@ -31,7 +31,7 @@ export function createTaskApplicationService({ runtime, resolveTaskContext }: { 
 } {
   const resolve = async (input: ApplicationTaskScope): Promise<ResolvedApplicationTaskContext> => {
     try { return await resolveTaskContext(input.query, input.expected) }
-    catch (error) { if (error instanceof HifoxWorkError) throw new AppRuntimeError(error.message, error.code, error.code === IpcErrorCode.Conflict ? 'PLAN_CHANGED' : undefined); throw error }
+    catch (error) { if (error instanceof CruxWorkError) throw new AppRuntimeError(error.message, error.code, error.code === IpcErrorCode.Conflict ? 'PLAN_CHANGED' : undefined); throw error }
   }
   const context = async (input: ApplicationTaskScope): Promise<NativeContext> => {
     const resolved = await resolve(input)

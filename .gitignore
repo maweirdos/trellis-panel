@@ -64,8 +64,8 @@ __pycache__/
 .zcode/v2/
 .zcode/tmp-*/
 
-# HiFox 调研资料（外部产品逆向 PRD，本机参考用）
-/prd-hifox/
+# Crux 调研资料（外部产品逆向 PRD，本机参考用）
+/prd-crux/
 
 # Local Lithe IDE configuration and generated run metadata
 /.lithe/

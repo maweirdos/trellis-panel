@@ -10,7 +10,7 @@ v0.6 · 2026-10-17 UTC · 正式规划文档；不代表功能已实现或已授
 | --- | --- |
 | 现状、代码依据和候选修正验证 | [02 项目事实基线](02-project-baseline.md) |
 | 需求、完成标准及安全约束 | [03 需求与验收](03-requirements-and-acceptance.md) |
-| Hifox借鉴、暂缓、不采用及旧FR去向 | [04 范围与参考取舍](04-scope-and-reference-decisions.md) |
+| Crux借鉴、暂缓、不采用及旧FR去向 | [04 范围与参考取舍](04-scope-and-reference-decisions.md) |
 | 当前数据、状态、对象关系与权限 | [05 数据与状态](05-data-and-state.md) |
 | 可选工作项、依赖、风险与估算 | [06 实施准备](06-decisions-and-delivery.md) |
 | 旧研究的性质和原始证据 | [历史参考说明](HISTORICAL-REFERENCE.md) |

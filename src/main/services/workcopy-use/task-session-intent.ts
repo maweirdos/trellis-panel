@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { z } from 'zod'
 import { processOwnerSchema } from '../../../shared/daemon'
 import { teamTaskRulesContextSchema } from '../../../shared/agent-rules'
-import { hifoxProgressSessionSchema, type HifoxProgressSession } from '../../../shared/hifox-task-progress'
+import { cruxProgressSessionSchema, type CruxProgressSession } from '../../../shared/crux-task-progress'
 import { DaemonError } from '../../daemon/errors'
 import { processIdentity } from '../../daemon/native'
 import { readBounded, writeAtomic } from '../../daemon/files'
@@ -16,7 +16,7 @@ const intentSchema = z.object({ version: z.literal(1), scheme: z.literal('native
   alias: z.string().min(1).max(200), nonce: z.string().uuid(), generation: z.string().uuid(), identityId: z.string().length(64),
   host: processOwnerSchema, expected: taskSessionExpectedSchema, phase: z.enum(['reserved', 'creating', 'created', 'cleaned']),
   nativeBoundary: z.enum(['not-entered', 'entered']), settledOutcome: z.enum(['not-created', 'cleaned']).optional(),
-  prompt: z.enum(['not-sent', 'dispatching', 'sent']), session: hifoxProgressSessionSchema.optional() }).strict()
+  prompt: z.enum(['not-sent', 'dispatching', 'sent']), session: cruxProgressSessionSchema.optional() }).strict()
 export type TaskSessionIntent = z.infer<typeof intentSchema>
 const rootKey = (root: string): string => resolve(root).toLowerCase()
 function file(directory: string, root: string, alias: string): string {
@@ -51,7 +51,7 @@ export function claimTaskSessionIntent(directory: string, root: string, alias: s
   if (!value || value.phase !== 'reserved' || value.identityId !== resolveWorkcopy(root).id) throw new DaemonError('E_CONFLICT', '原任务创建意图已执行、被收束或副本已变化；请核对原 alias，不能重复创建。')
   const next = { ...value, phase: 'creating' as const }; saveTaskSessionIntent(directory, next); return next
 }
-export function completeTaskSessionIntent(directory: string, root: string, alias: string, session: HifoxProgressSession): void {
+export function completeTaskSessionIntent(directory: string, root: string, alias: string, session: CruxProgressSession): void {
   const value = readTaskSessionIntent(directory, root, alias)
   if (!value || value.phase !== 'creating' || session.connectionGeneration !== value.generation) throw new DaemonError('E_CONFLICT', '原任务创建回执与意图代次不匹配。')
   saveTaskSessionIntent(directory, { ...value, phase: 'created', session })

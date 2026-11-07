@@ -319,7 +319,7 @@
       "path": ".trellis/tasks/10-15-weekly-cycles/task.json",
       "anchors": "status / description",
       "fact": "周周期、结转在in_progress既有工作中，零CLI/工作流改动",
-      "limit": "不应被写成未来才从零建设的Hifox迭代系统",
+      "limit": "不应被写成未来才从零建设的Crux迭代系统",
       "sha256": "9ee011ed986c6fdbad035979719aa1df5d55f179a97474e838c846db197ce15e",
       "review": "document_read"
     },

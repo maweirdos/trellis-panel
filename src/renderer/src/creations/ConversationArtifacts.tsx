@@ -4,7 +4,7 @@ import { CONVERSATION_IMAGE_PREVIEW_MAX_BYTES, type Conversation, type Conversat
 import { Select } from '../components/Select'
 import { ArtifactDelivery } from '../conversations/ArtifactDelivery'
 import { conversationClient, conversationError, conversationValue } from '../conversations/client'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { Button } from '../my/ui'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { ConversationTablePreview } from './ConversationTablePreview'
@@ -12,7 +12,7 @@ import { ConversationImagePreview } from './ConversationImagePreview'
 import { PdfPreviewBoundary } from './PdfPreviewBoundary'
 
 function contextIdentity(): string {
-  const context = useHifox.getState().workspaceContext
+  const context = useCrux.getState().workspaceContext
   return JSON.stringify([context.key, context.actorId, context.epoch, context.authorizationRevision, context.state])
 }
 
@@ -29,14 +29,14 @@ function fileSize(bytes: number): string {
 
 /** Mount in the personal library only. The desktop service owns conversation authorization. */
 export function ConversationArtifacts(): JSX.Element {
-  const context = useHifox(state => state.workspaceContext)
+  const context = useCrux(state => state.workspaceContext)
   const active = useInteractionActive()
   const generation = useRef(0)
   const [version, setVersion] = useState(0)
   const identity = JSON.stringify([context.key, context.actorId, context.epoch, context.authorizationRevision, context.state])
   useLayoutEffect(() => {
     let previous = contextIdentity()
-    return useHifox.subscribe(() => {
+    return useCrux.subscribe(() => {
       const next = contextIdentity()
       if (next !== previous) {
         previous = next

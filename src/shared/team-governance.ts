@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { hifoxTaskStageSchema } from './hifox-schema'
+import { cruxTaskStageSchema } from './crux-schema'
 import { teamCommandIdSchema, teamCommandReplySchema, teamDigestSchema, teamIdSchema, teamPageInputSchema, teamPageSchema, type TeamCommandReply } from './team-platform'
 import { teamTaskProgressResourceIdSchema } from './team-task-progress'
 import { teamTaskMaterialKindSchema } from './team-task-materials'
@@ -14,15 +14,15 @@ const people = z.array(teamIdSchema).min(1).max(32).refine(ids => new Set(ids).s
 export const governanceIdentityShape = { instanceId: teamIdSchema, epoch: teamIdSchema, authorizationRevision: counter }
 export const governanceSpaceIdSchema = teamTaskProgressResourceIdSchema
 export const governanceScopeSchema = z.object({ workspaceKey: z.string().min(1).max(2048), spaceId: governanceSpaceIdSchema }).strict()
-export const governanceApplicabilitySchema = z.object({ modules: names, paths: names, stages: z.array(hifoxTaskStageSchema).max(11), taskTypeIds: z.array(governanceSpaceIdSchema).max(32) }).strict()
+export const governanceApplicabilitySchema = z.object({ modules: names, paths: names, stages: z.array(cruxTaskStageSchema).max(11), taskTypeIds: z.array(governanceSpaceIdSchema).max(32) }).strict()
 export const governanceNodeSchema = z.object({
-  stage: hifoxTaskStageSchema, label: z.string().trim().min(1).max(100),
+  stage: cruxTaskStageSchema, label: z.string().trim().min(1).max(100),
   inputs: z.array(teamTaskMaterialKindSchema).max(4), outputs: z.array(teamTaskMaterialKindSchema).max(4),
   approvalRole: z.enum(['none', 'product', 'design', 'development', 'testing', 'space-owner'])
 }).strict()
 export const governanceSettingsSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('rule'), applicability: governanceApplicabilitySchema, obligation: z.enum(['required', 'recommended']), priority: z.number().int().min(0).max(1000), conflictKey: z.string().trim().max(100) }).strict(),
-  z.object({ kind: z.literal('workflow-template'), preset: z.enum(['small-change', 'standard', 'custom']), execution: portableWorkflowDefinitionSchema.optional(), nodes: z.array(governanceNodeSchema).min(1).max(11).refine(nodes => new Set(nodes.map(node => node.stage)).size === nodes.length, 'Duplicate formal stage').refine(nodes => nodes.every((node, index) => index === 0 || hifoxTaskStageSchema.options.indexOf(nodes[index - 1].stage) < hifoxTaskStageSchema.options.indexOf(node.stage)), 'Nodes must retain the existing formal stage order') }).strict()
+  z.object({ kind: z.literal('workflow-template'), preset: z.enum(['small-change', 'standard', 'custom']), execution: portableWorkflowDefinitionSchema.optional(), nodes: z.array(governanceNodeSchema).min(1).max(11).refine(nodes => new Set(nodes.map(node => node.stage)).size === nodes.length, 'Duplicate formal stage').refine(nodes => nodes.every((node, index) => index === 0 || cruxTaskStageSchema.options.indexOf(nodes[index - 1].stage) < cruxTaskStageSchema.options.indexOf(node.stage)), 'Nodes must retain the existing formal stage order') }).strict()
 ])
 export const GOVERNANCE_PRESETS = {
   'small-change': [

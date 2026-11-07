@@ -56,9 +56,9 @@ import { acpExtraArgv, acpProcessEnv, acpSpawnEnv, resolveAcpLaunchOptions, sess
 import { getSettings } from './store'
 import { isOpenCodeV1, OpenCodeStatus } from './acp/opencode-status'
 import { prepareAgentRules, assertAgentRulesCurrent } from './agent-rules'
-import { assertTaskProgressCurrent, observeTaskProgressState } from './hifox/task-progress-events'
-import { taskRule } from './hifox/task-progress-context'
-import type { HifoxProgressSession } from '../../shared/hifox-task-progress'
+import { assertTaskProgressCurrent, observeTaskProgressState } from './crux/task-progress-events'
+import { taskRule } from './crux/task-progress-context'
+import type { CruxProgressSession } from '../../shared/crux-task-progress'
 import { agentRulesManifestSchema } from '../../shared/agent-rules'
 import { composeAcpExecutionContext } from './acp/execution-context'
 import type { WorkcopyLease, WorkcopyOwner, WorkcopyObservation } from '../../shared/workcopy-use'
@@ -89,7 +89,7 @@ type ResumeResult = { ok: true; sessionId: string } | IpcFail
 const resumeRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
 const recoveryRequests = new Map<string, { root: string; operation: ModelRecoveryOperation; promise: Promise<AcpRecoverModelResult> }>()
 const creatingRequests = new Set<Promise<unknown>>()
-const taskCreationRequests = new Map<string, { signature: string; promise: Promise<{ ok: true; session: HifoxProgressSession } | IpcFail> }>()
+const taskCreationRequests = new Map<string, { signature: string; promise: Promise<{ ok: true; session: CruxProgressSession } | IpcFail> }>()
 const handoffRequests = new Set<Promise<AcpHandoffOperationResult | IpcFail>>()
 let shuttingDown = false
 let eventSeq = 0
@@ -1186,7 +1186,7 @@ export function newAcpSession(projectRoot: string, input: unknown): Promise<{ ok
   return pending
 }
 /** Main/daemon-only task launch: fixed cwd and preallocated identity, never a renderer override. */
-export function newTaskAcpSession(root: string, input: { agentId: string; taskDir?: string }, sessionId: string, engine: 'pi' | 'acp', task?: AcpSessionRecord['taskProgress']): Promise<{ ok: true; session: HifoxProgressSession } | IpcFail> {
+export function newTaskAcpSession(root: string, input: { agentId: string; taskDir?: string }, sessionId: string, engine: 'pi' | 'acp', task?: AcpSessionRecord['taskProgress']): Promise<{ ok: true; session: CruxProgressSession } | IpcFail> {
   assertRuntimeExecutionHost()
   const key = `${canonicalDirectory(root)}:${sessionId}`, signature = JSON.stringify({ input, engine, task })
   const existing = taskCreationRequests.get(key)
@@ -1197,7 +1197,7 @@ export function newTaskAcpSession(root: string, input: { agentId: string; taskDi
   void pending.finally(() => { creatingRequests.delete(pending); if (taskCreationRequests.get(key)?.promise === pending) taskCreationRequests.delete(key) }).catch(() => {})
   return pending
 }
-async function newOwnedTaskAcpSession(root: string, input: { agentId: string; taskDir?: string }, sessionId: string, engine: 'pi' | 'acp', task?: AcpSessionRecord['taskProgress']): Promise<{ ok: true; session: HifoxProgressSession } | IpcFail> {
+async function newOwnedTaskAcpSession(root: string, input: { agentId: string; taskDir?: string }, sessionId: string, engine: 'pi' | 'acp', task?: AcpSessionRecord['taskProgress']): Promise<{ ok: true; session: CruxProgressSession } | IpcFail> {
   assertRuntimeExecutionHost()
   if (sessions.has(sessionId) || readRecords().some(record => record.sessionId === sessionId)) return ipcFail(IpcErrorCode.Conflict, '原任务会话身份已存在，不能重复创建或复用最近聊天')
   const expected = taskSessionExpectedSchema.parse({ engine, taskDir: input.taskDir, task })
@@ -1219,7 +1219,7 @@ async function newOwnedTaskAcpSession(root: string, input: { agentId: string; ta
   return { ok: true, session }
 }
 export type TaskSessionReconcile =
-  | { status: 'present'; connection: 'live' | 'resumable'; session: HifoxProgressSession; dispatch: 'not-sent' | 'sent' | 'unknown' }
+  | { status: 'present'; connection: 'live' | 'resumable'; session: CruxProgressSession; dispatch: 'not-sent' | 'sent' | 'unknown' }
   | { status: 'settled'; outcome: 'not-created' | 'cleaned'; dispatch: 'not-sent' | 'sent' | 'unknown' }
   | { status: 'unknown'; reason: string; dispatch: 'unknown' }
 function runtimeRecordAvailable(meta: Pick<AcpSessionRecord, 'agentId' | 'engine' | 'runtimeSnapshot'>): boolean {
@@ -1248,7 +1248,7 @@ export async function reconcileTaskSession(root: string, nativeAlias: string, ra
     if (meta && (!belongs(root, meta) || JSON.stringify(taskSessionExpectedSchema.parse({ engine: meta.engine, taskDir: meta.taskDir, task: meta.taskProgress })) !== JSON.stringify(expected))) return unknown('原 alias 与固定任务元数据不一致，未重挂或停止其他会话。')
     if (meta && !runtimeRecordAvailable(meta)) return unknown('原任务会话的执行引擎不可恢复或身份不一致；原进程和历史已保留。')
     const dispatch = intent?.prompt === 'sent' ? 'sent' as const : intent?.prompt === 'not-sent' ? 'not-sent' as const : 'unknown' as const
-    const summary = (value: AcpSessionRecord): HifoxProgressSession => ({ sessionId: value.sessionId, backendSessionId: value.backendSessionId ?? null,
+    const summary = (value: AcpSessionRecord): CruxProgressSession => ({ sessionId: value.sessionId, backendSessionId: value.backendSessionId ?? null,
       connectionGeneration: value.connectionGeneration ?? '', projectRoot: value.projectRoot, cwd: value.cwd ?? root, taskDir: value.taskDir ?? null, engine: expected.engine })
     if (active?.handle && !active.closing && !active.disconnected && active.meta.backendSessionId) {
       if (process.platform === 'win32' && !active.nativeJobs) return unknown('原会话没有受控 Job 证明，不能作为新保护运行重挂。')

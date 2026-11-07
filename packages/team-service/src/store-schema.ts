@@ -1,6 +1,6 @@
 import { TEAM_COLLABORATION_SQL } from './collaboration-schema'
 import { TEAM_INVITATIONS_SQL } from './invitations-schema'
-import { TEAM_HIFOX_WORKSPACE_SQL } from './hifox-workspace-schema'
+import { TEAM_CRUX_WORKSPACE_SQL } from './crux-workspace-schema'
 import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
 import { TEAM_CREATIONS_SQL } from './creations-schema'
 import { TEAM_TASK_PROGRESS_SQL } from './task-progress-schema'
@@ -11,20 +11,21 @@ import { TEAM_GOVERNANCE_SQL } from './governance-schema'
 import { TEAM_TASK_EXECUTIONS_SQL, TEAM_TASK_EXECUTION_BOUNDARY_SQL } from './task-executions-schema'
 import { TEAM_IMPORTS_SQL } from './imports-schema'
 import { TEAM_EXECUTION_INPUTS_SQL } from './execution-inputs-schema'
-export const TEAM_SCHEMA_VERSION = 21
+import { TEAM_JIRA_BUSINESS_HOOKS_SQL } from './jira-business-hooks-schema'
+export const TEAM_SCHEMA_VERSION = 22
 export const TEAM_INVITATION_SPACES_SQL = `CREATE TABLE IF NOT EXISTS invitation_spaces(invitationId TEXT PRIMARY KEY REFERENCES invitations(invitationId),spaceId TEXT NOT NULL,spaceName TEXT NOT NULL,workspaceRevision INTEGER NOT NULL,workspaceEpoch TEXT NOT NULL);`
 export const TEAM_INVITATION_SPACE_IDENTITY_SQL = `
 ALTER TABLE invitation_spaces ADD COLUMN spaceCreatedAt TEXT;
 ALTER TABLE invitation_spaces ADD COLUMN accessRevoked INTEGER NOT NULL DEFAULT 0 CHECK(accessRevoked IN (0,1));
 UPDATE invitation_spaces SET spaceCreatedAt = (
- SELECT json_extract(s.value,'$.createdAt') FROM invitations i JOIN hifox_workspaces w ON w.projectId=i.projectId, json_each(CASE WHEN json_valid(w.snapshotJson) THEN w.snapshotJson ELSE '{}' END,'$.spaces') s
+ SELECT json_extract(s.value,'$.createdAt') FROM invitations i JOIN crux_workspaces w ON w.projectId=i.projectId, json_each(CASE WHEN json_valid(w.snapshotJson) THEN w.snapshotJson ELSE '{}' END,'$.spaces') s
  WHERE i.invitationId=invitation_spaces.invitationId AND w.revision=invitation_spaces.workspaceRevision
  AND invitation_spaces.workspaceEpoch=(SELECT value FROM team_meta WHERE key='epoch')
  AND json_valid(w.snapshotJson) AND json_extract(s.value,'$.id')=invitation_spaces.spaceId
  GROUP BY i.invitationId HAVING COUNT(*)=1 AND typeof(json_extract(s.value,'$.createdAt'))='text'
 );
 CREATE INDEX IF NOT EXISTS invitations_project_pending ON invitations(projectId,status,invitationId);
-CREATE TRIGGER IF NOT EXISTS invitation_space_access_revoked AFTER UPDATE OF snapshotJson ON hifox_workspaces
+CREATE TRIGGER IF NOT EXISTS invitation_space_access_revoked AFTER UPDATE OF snapshotJson ON crux_workspaces
 WHEN json_valid(OLD.snapshotJson) AND json_valid(NEW.snapshotJson)
 BEGIN
  UPDATE invitation_spaces SET accessRevoked=1 WHERE accessRevoked=0 AND spaceCreatedAt IS NOT NULL
@@ -84,7 +85,7 @@ CREATE INDEX events_project ON events(projectId,sequence);
 ${TEAM_COLLABORATION_SQL}
 ${TEAM_INVITATIONS_SQL}
 ${TEAM_INVITATION_SPACES_SQL}
-${TEAM_HIFOX_WORKSPACE_SQL}
+${TEAM_CRUX_WORKSPACE_SQL}
 ${TEAM_INVITATION_SPACE_IDENTITY_SQL}
 ${TEAM_LOCAL_AUTH_SQL}
 ${TEAM_CREATIONS_SQL}
@@ -97,4 +98,5 @@ ${TEAM_TASK_EXECUTIONS_SQL}
 ${TEAM_TASK_EXECUTION_BOUNDARY_SQL}
 ${TEAM_IMPORTS_SQL}
 ${TEAM_EXECUTION_INPUTS_SQL}
+${TEAM_JIRA_BUSINESS_HOOKS_SQL}
 `

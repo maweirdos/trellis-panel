@@ -27,7 +27,7 @@ export class TeamContentTransport {
   private scope(key: string): void { if (key !== this.pin.workspaceKey) throw new TeamContentTransportError('BINDING_CHANGED', '内容操作不属于原工作区。') }
   private project(): string { if (!this.pin.projectId) throw new TeamContentTransportError('CONTENT_PROJECT_REQUIRED', '请先选择已连接的项目。'); return this.pin.projectId }
   private admin(teamId: string): string { if (teamId !== this.pin.teamId) mismatch(); return `/api/teams/${teamId}/content` }
-  private task(taskId: string): string { return `/api/projects/${this.project()}/hifox/tasks/${encodeURIComponent(taskId)}/content` }
+  private task(taskId: string): string { return `/api/projects/${this.project()}/crux/tasks/${encodeURIComponent(taskId)}/content` }
   private identity(value: { instanceId: string; epoch: string }, write = false): void { if (value.instanceId !== this.pin.instanceId || value.epoch !== this.pin.epoch) mismatch(write) }
   private jobIdentity(job: TeamContentJob, target: { taskId?: string; jobId?: string; commandId?: string; spaceId?: string; taskCreatedAt?: string; kind?: TeamContentJob['kind'] }, write = false): void {
     this.identity(job, write)

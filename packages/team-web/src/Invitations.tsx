@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { teamInvitationSchema, teamInvitationTokenSchema, type TeamInvitation } from '../../../src/shared/team-invitations'
 import { teamLocalUsernameSchema } from '../../../src/shared/team-auth'
-import { hifoxRemoteSnapshotSchema } from '../../../src/shared/hifox-remote'
+import { cruxRemoteSnapshotSchema } from '../../../src/shared/crux-remote'
 import { teamIdSchema, teamMembershipRoleSchema, teamRoleSchema, teamProjectSchema, type TeamProject, type TeamSession } from './contracts'
 import { ApiError, isClientSession, request } from './client'
 import { usePage, useQuery, useWrite } from './hooks'
@@ -69,7 +69,7 @@ function CreateInvitation({ teamId, project, onClose, onCreated, session }: { te
   const projects = usePage(`invitation-projects:${teamId}`, '/api/projects', teamProjectSchema)
   const [projectId, setProject] = useState(project?.teamId === teamId ? project.projectId : ''), [spaceId, setSpace] = useState('')
   const spaces = useQuery(`invitation-spaces:${session.person.userId}:${projectId}`, async (signal) => {
-    try { return await request(`/api/projects/${projectId}/hifox/snapshot`, hifoxRemoteSnapshotSchema, { signal, notifyDenied: false }) }
+    try { return await request(`/api/projects/${projectId}/crux/snapshot`, cruxRemoteSnapshotSchema, { signal, notifyDenied: false }) }
     catch (error) { if (error instanceof ApiError && error.status === 403) throw new Error('当前账号无法读取此工作区的空间。'); throw error }
   }, Boolean(projectId))
   const manageableSpaces = spaces.value?.snapshot.spaces.filter((space) => !space.archived && (space.visibility !== 'private' || space.memberIds.includes(session.person.userId)) && (spaces.value?.actor.role !== 'member' || space.ownerId === session.person.userId && space.memberIds.includes(session.person.userId))) ?? []

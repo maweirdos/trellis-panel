@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { hifoxRemoteSnapshotSchema } from './hifox-remote'
+import { cruxRemoteSnapshotSchema } from './crux-remote'
 import { taskInputReadSchema } from './team-task-inputs'
 import { teamTaskCodeResourceDtoSchema } from './team-code-resources'
 import { creationListSchema } from './creations'
@@ -7,7 +7,7 @@ import { creationListSchema } from './creations'
 /** One fresh, main-consumable read; it grants no execution or input adoption. */
 export const teamTaskDevelopmentContextSchema = z.object({
   version: z.literal(1),
-  snapshot: hifoxRemoteSnapshotSchema,
+  snapshot: cruxRemoteSnapshotSchema,
   inputs: taskInputReadSchema,
   codeResource: teamTaskCodeResourceDtoSchema,
   creations: creationListSchema

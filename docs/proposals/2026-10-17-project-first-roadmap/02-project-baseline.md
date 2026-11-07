@@ -1,6 +1,6 @@
 # 项目事实基线与真实工作链
 
-核对日期2026-10-17 UTC。范围是当前工作区代码、项目规范、原始用户证词与现有任务验收。没有重新运行应用、AI、Jira写入或业务服务，也没有用Hifox截图填补Trellis验证。代码行号是本次检查点，文件内容指纹见[evidence/project-evidence.json](evidence/project-evidence.json)。仓库有并发修改，因此“当前代码”只代表采集时刻。
+核对日期2026-10-17 UTC。范围是当前工作区代码、项目规范、原始用户证词与现有任务验收。没有重新运行应用、AI、Jira写入或业务服务，也没有用Crux截图填补Trellis验证。代码行号是本次检查点，文件内容指纹见[evidence/project-evidence.json](evidence/project-evidence.json)。仓库有并发修改，因此“当前代码”只代表采集时刻。
 
 ## 1 目标证据、假设和冲突
 
@@ -86,7 +86,7 @@ README同时写“面板不接管/派发会话”和当前ACP/频道能力，亦
 | E29 历史文案 | `README.md` 功能总览 / 推荐任务流 / Jira连接 | 立项为Trellis本地可视化；仍写不派发、双向同步及旧归档能力 | 部分描述落后当前代码，不能单独当实现证明 |
 | E30 历史视觉记录 | `design-qa.md` Reopened after user review / final result | 旧布局已有检查，用户重新打开原生视觉验收；最后为blocked | 本轮不复用过时截图冒充最终原生UI通过 |
 | E31 当前代码 | `src/main/services/documents/controller.ts` L42 / L111 | 阅读器有内容修订与受控读取 | 单文档修订不等于正式需求逐义务批准 |
-| E32 已存在任务 | `.trellis/tasks/10-15-weekly-cycles/task.json` status / description | 周周期、结转在in_progress既有工作中，零CLI/工作流改动 | 不应被写成未来才从零建设的Hifox迭代系统 |
+| E32 已存在任务 | `.trellis/tasks/10-15-weekly-cycles/task.json` status / description | 周周期、结转在in_progress既有工作中，零CLI/工作流改动 | 不应被写成未来才从零建设的Crux迭代系统 |
 | E33 当前代码 | `src/main/services/documents/diff-service.ts` L173–215 | 会话打开基线与Git最近提交差异，失败有诊断降级 | 不是全工作区多仓库代码Diff管理器 |
 
 ## 6 验证口径

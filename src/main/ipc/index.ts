@@ -8,17 +8,17 @@ import { registerDaemonQuitIpc } from './daemon-quit'
 import { registerTasksIpc } from './tasks'
 import { registerTaskConversationsIpc } from './task-conversations'
 import { registerTodoIpc } from './todo'
-import { registerHifoxIpc } from './hifox'
+import { registerCruxIpc } from './crux'
 import { registerTeamContentIpc } from './team-content'
-import { registerHifoxWorkIpc } from './hifox-work'
-import { registerHifoxGovernanceIpc } from './hifox-governance'
-import { registerHifoxTaskOutputsIpc } from './hifox-task-outputs'
-import { taskProgressNativeCall } from '../services/hifox/task-progress'
-import type { TaskOutputReply, TaskOutputNativeInput } from '../../shared/hifox-task-outputs'
+import { registerCruxWorkIpc } from './crux-work'
+import { registerCruxGovernanceIpc } from './crux-governance'
+import { registerCruxTaskOutputsIpc } from './crux-task-outputs'
+import { taskProgressNativeCall } from '../services/crux/task-progress'
+import type { TaskOutputReply, TaskOutputNativeInput } from '../../shared/crux-task-outputs'
 import { ipcInvoke } from '../../shared/ipc-channels'
-import { registerHifoxCodeResourcesIpc } from './hifox-code-resources'
-import { registerHifoxTaskMaterialsIpc } from './hifox-task-materials'
-import { registerHifoxProgressIpc } from './hifox-progress'
+import { registerCruxCodeResourcesIpc } from './crux-code-resources'
+import { registerCruxTaskMaterialsIpc } from './crux-task-materials'
+import { registerCruxProgressIpc } from './crux-progress'
 import { registerCreationsIpc } from './creations'
 import { registerWhiteboardV2Ipc } from './whiteboard-v2'
 import { taskCreationReferences, taskCreationFiles } from '../services/creations'
@@ -72,15 +72,15 @@ export function registerIpc(deps: WindowDeps): void {
   registerTasksIpc()
   registerTaskConversationsIpc(deps)
   registerTodoIpc()
-  registerHifoxIpc()
+  registerCruxIpc()
   registerTeamContentIpc()
-  const codeResources = registerHifoxCodeResourcesIpc()
-  registerHifoxTaskMaterialsIpc()
-  registerHifoxGovernanceIpc(ipcInvoke.hifoxGovernance)
-  const taskWorkspace = registerHifoxWorkIpc({ getProjectRoot, getProjectGeneration, getMain: deps.getMain, creationReferences: taskCreationReferences, creationFiles: taskCreationFiles,
+  const codeResources = registerCruxCodeResourcesIpc()
+  registerCruxTaskMaterialsIpc()
+  registerCruxGovernanceIpc(ipcInvoke.cruxGovernance)
+  const taskWorkspace = registerCruxWorkIpc({ getProjectRoot, getProjectGeneration, getMain: deps.getMain, creationReferences: taskCreationReferences, creationFiles: taskCreationFiles,
     taskCodeResource: (query) => codeResources.taskForPreparation(query.workspaceKey, query.taskId) })
-  const taskProgress = registerHifoxProgressIpc(taskWorkspace, deps.getMain)
-  registerHifoxTaskOutputsIpc({
+  const taskProgress = registerCruxProgressIpc(taskWorkspace, deps.getMain)
+  registerCruxTaskOutputsIpc({
     getMain: deps.getMain, channels: ipcInvoke.taskOutputs,
     resolveContext: (query, expected) => taskWorkspace.resolveOutputContext(query, expected),
     captureOriginalPin: query => taskProgress.captureOriginalPin(query),

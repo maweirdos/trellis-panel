@@ -18,5 +18,3 @@
 .whiteboard-workspace-opinion-form label { width: 100%; }
 .my-root .whiteboard-workspace-opinion-form textarea.my-input { min-height: var(--my-space-80); height: auto; resize: vertical; }
 @media (max-width: 720px) { .whiteboard-workspace { padding: var(--my-space-12); } .whiteboard-workspace-edit-header { align-items: stretch; } .whiteboard-workspace-title { flex-basis: 100%; } }
-
-\r\n

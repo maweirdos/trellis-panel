@@ -3,7 +3,7 @@ import { ArrowUpRight, Check, ChevronDown, FileText, Link2, Loader2, Monitor, Up
 import type { CreationCommandReply, CreationPrivateSource, CreationView } from '@shared/creations'
 import { CREATION_MAX_BODY_BYTES } from '@shared/creations'
 import { Button, Dropdown, DropdownItem, Modal } from '../my/ui'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { bodySize, validateDraft } from './creation-state'
 import { useCreationCommands, useCreationOwner } from './hooks'
 import { discardCreationForm, openCreationForm, readCreationForm, settleCreationForm, subscribeCreationForm, updateCreationForm, type CreationFormIdentity, type RetainedCreationForm } from './creation-form-memory'
@@ -36,8 +36,8 @@ type CreateCreationDialogProps = {
 }
 
 export function CreateCreationDialog(props: CreateCreationDialogProps): JSX.Element {
-  const context = useHifox((state) => state.workspaceContext)
-  const snapshot = useHifox((state) => state.snapshot)
+  const context = useCrux((state) => state.workspaceContext)
+  const snapshot = useCrux((state) => state.snapshot)
   const principal = JSON.stringify([context.key, context.actorId, context.epoch ?? null])
   const originalPrincipal = useRef(principal)
   const space = snapshot?.spaces.find((entry) => entry.id === props.spaceId)
@@ -71,7 +71,7 @@ function CreationForm({ scope, spaceId, onClose, onCreated, form }: CreateCreati
   const { creationId } = form
   useSyncExternalStore((listener) => subscribeCreationForm(form, listener), () => form.version)
   const { actorId, capture } = useCreationOwner(`new:${creationId}`)
-  const snapshot = useHifox((state) => state.snapshot)
+  const snapshot = useCrux((state) => state.snapshot)
   const commands = useCreationCommands(creationId, null, 'create', form.identity)
   const { title, kind, body, privateSource, editors } = form
   const update = (values: Partial<Pick<RetainedCreationForm, 'title' | 'kind' | 'body' | 'privateSource' | 'editors' | 'pending'>>): void => {
@@ -135,8 +135,8 @@ function CreationForm({ scope, spaceId, onClose, onCreated, form }: CreateCreati
 export function PublishCreationDialog({ view, commands, onClose, onPublished, onRefresh }: {
   view: CreationView; commands: Commands; onClose: () => void; onPublished: (revisionId: string) => void; onRefresh: () => void
 }): JSX.Element {
-  const snapshot = useHifox((state) => state.snapshot)
-  const actorId = useHifox((state) => state.workspaceContext.actorId)
+  const snapshot = useCrux((state) => state.snapshot)
+  const actorId = useCrux((state) => state.workspaceContext.actorId)
   const [spaceId, setSpaceId] = useState(view.summary.spaceId ?? '')
   const [reviewers, setReviewers] = useState<string[]>([])
   const [editors, setEditors] = useState<string[]>([])
@@ -172,7 +172,7 @@ export function AdoptCreationDialog({ view, commands, onClose, onAdopted, onLoad
   view: CreationView; commands: Commands; onClose: () => void; onAdopted: () => void; onLoadMore: () => Promise<void>; loadingMore: boolean
   onRefresh: () => void
 }): JSX.Element {
-  const snapshot = useHifox((state) => state.snapshot)
+  const snapshot = useCrux((state) => state.snapshot)
   const [taskId, setTaskId] = useState('')
   const [ids, setIds] = useState<string[]>([])
   const [query, setQuery] = useState('')

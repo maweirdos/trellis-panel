@@ -16,8 +16,8 @@ import { DESIGN_GENERATION_DIRECTORY, readDesignGenerationOutput } from '../../.
 import { inspectPiWebPreviewEntry } from './engine/web-preview-entry'
 import { prepareAgentRules, assertAgentRulesCurrent } from '../agent-rules'
 import { composePiPromptPacket } from './prompt-context'
-import { taskRule } from '../hifox/task-progress-context'
-import { reportTaskProgress } from '../hifox/task-progress-events'
+import { taskRule } from '../crux/task-progress-context'
+import { reportTaskProgress } from '../crux/task-progress-events'
 import type { AcpJobOwner } from '../workcopy-use/acp-jobs'
 
 interface PiRuntimeOptions {

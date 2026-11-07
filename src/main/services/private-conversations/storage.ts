@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { conversationIdSchema, conversationSchema, conversationProjectSchema, type ConversationProject } from '../../../shared/private-conversations'
 import { IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { checkedDirectory, hash, ownedDirectory, readRegular } from './files'
-import { hifoxWorkspaceGeneration, hifoxWorkspaceSnapshot, hifoxWorkspaceCurrentView } from '../hifox/connection-service'
+import { cruxWorkspaceGeneration, cruxWorkspaceSnapshot, cruxWorkspaceCurrentView } from '../crux/connection-service'
 
 const common = {
   revision: z.number().int().positive(),
@@ -24,7 +24,7 @@ const rowSchema = z.object({
   migration: z.object({ fromVersion: z.literal(1), originalDigest: z.string().length(64), convertedAt: z.number().int().nonnegative(), legacyProjectId: z.string().min(1).max(256).optional() }).strict().optional()
 }).strict()
 export type ConversationRow = z.infer<typeof rowSchema>
-type LegacyProof = Awaited<ReturnType<typeof hifoxWorkspaceSnapshot>> & { generation: number }
+type LegacyProof = Awaited<ReturnType<typeof cruxWorkspaceSnapshot>> & { generation: number }
 export interface ConversationMigrationBatch { legacyProof?: Promise<LegacyProof> }
 const projectsSchema = z.object({ version: z.literal(2), creatorId: z.string().min(1).max(256), projects: z.array(conversationProjectSchema).max(1000) }).strict()
 const legacyProjectsSchema = z.array(conversationProjectSchema.extend({ context: legacyContextSchema }).strict()).max(1000)
@@ -65,20 +65,20 @@ export class ConversationStorage {
     }
     // This path is migration-only. New conversations and v2 reads never consult
     // a team account, selected space, membership or team project.
-    const selected = join(this.userData, 'hifox-remote', 'selection.json')
-    if (!existsSync(selected) && !existsSync(join(this.userData, 'hifox', 'store.json'))) throw new ConversationStorageError('旧会话需先核对原创建者，原文件已保留', IpcErrorCode.Denied)
+    const selected = join(this.userData, 'crux-remote', 'selection.json')
+    if (!existsSync(selected) && !existsSync(join(this.userData, 'crux', 'store.json'))) throw new ConversationStorageError('旧会话需先核对原创建者，原文件已保留', IpcErrorCode.Denied)
     batch.legacyProof ??= (async () => {
-      const generation = hifoxWorkspaceGeneration(), proof = await hifoxWorkspaceSnapshot()
-      if (generation !== hifoxWorkspaceGeneration()) throw new ConversationStorageError('旧创建者核对期间来源已变化', IpcErrorCode.Denied)
+      const generation = cruxWorkspaceGeneration(), proof = await cruxWorkspaceSnapshot()
+      if (generation !== cruxWorkspaceGeneration()) throw new ConversationStorageError('旧创建者核对期间来源已变化', IpcErrorCode.Denied)
       return { ...proof, generation }
     })().catch(() => { throw new ConversationStorageError('旧创建者身份当前不可验证，原文件已保留', IpcErrorCode.Denied) })
     const proof = await batch.legacyProof
-    let current: Awaited<ReturnType<typeof hifoxWorkspaceCurrentView>>
-    try { current = await hifoxWorkspaceCurrentView() }
+    let current: Awaited<ReturnType<typeof cruxWorkspaceCurrentView>>
+    try { current = await cruxWorkspaceCurrentView() }
     catch { throw new ConversationStorageError('旧创建者身份当前不可验证，原文件已保留', IpcErrorCode.Denied) }
     const identity = (value: LegacyProof['context']): string => JSON.stringify([value.key, value.state, value.instanceId ?? 'local', value.origin ?? 'local', value.actorId])
     if (!['local', 'connected'].includes(proof.context.state) || !proof.context.actorId || proof.context.key !== context.workspaceKey
-      || !proof.snapshot.members.some(member => member.id === proof.context.actorId) || proof.generation !== hifoxWorkspaceGeneration() || identity(current.context) !== identity(proof.context)) throw new ConversationStorageError('不能验证旧会话的原创建者，原文件已保留', IpcErrorCode.Denied)
+      || !proof.snapshot.members.some(member => member.id === proof.context.actorId) || proof.generation !== cruxWorkspaceGeneration() || identity(current.context) !== identity(proof.context)) throw new ConversationStorageError('不能验证旧会话的原创建者，原文件已保留', IpcErrorCode.Denied)
     const oldCreator = `team-${hash(JSON.stringify([this.creatorId, proof.context.key, proof.context.instanceId ?? 'local', proof.context.origin ?? 'local', proof.context.actorId]))}`
     if (row.conversation.creatorId !== oldCreator) throw new ConversationStorageError('当前身份不是旧会话的创建者，原文件已保留', IpcErrorCode.Denied)
   }

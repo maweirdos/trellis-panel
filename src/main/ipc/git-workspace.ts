@@ -15,9 +15,9 @@ import { gitWorkspace } from '../services/git-workspace'
 import { gitReadonlyFileDiff } from '../services/devtools-git'
 import type { WindowDeps } from './deps'
 import { handle } from './registry'
-import type { HifoxDevelopmentTarget } from '../../shared/hifox-work'
-import type { HifoxTaskWorkspaceService } from '../services/hifox/task-workspace'
-import { hifoxWorkspaceGeneration } from '../services/hifox/connection-service'
+import type { CruxDevelopmentTarget } from '../../shared/crux-work'
+import type { CruxTaskWorkspaceService } from '../services/crux/task-workspace'
+import { cruxWorkspaceGeneration } from '../services/crux/connection-service'
 import { codeRepositoryIdentity } from '../../shared/code-repository-identity'
 
 interface MutationContext {
@@ -34,7 +34,7 @@ function capturedRoot(expectedRoot: string): { root: string; generation: number 
   return { root, generation: getProjectGeneration() }
 }
 
-export function registerGitWorkspaceIpc(deps: WindowDeps & { resolveTaskContext?: HifoxTaskWorkspaceService['resolveContext'] }): void {
+export function registerGitWorkspaceIpc(deps: WindowDeps & { resolveTaskContext?: CruxTaskWorkspaceService['resolveContext'] }): void {
   handle(ipcInvoke.gitWorkspace.status, async (_event, input: unknown) => {
     const parsed = gitWorkspaceStatusSchema.safeParse(input)
     if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '需要有效的项目范围')
@@ -59,7 +59,7 @@ export function registerGitWorkspaceIpc(deps: WindowDeps & { resolveTaskContext?
     } catch { return ipcFail(IpcErrorCode.Io, '无法读取文件差异，请刷新后重试') }
   })
 
-  function mutation<T extends { expectedRoot: string; taskContext?: HifoxDevelopmentTarget }>(
+  function mutation<T extends { expectedRoot: string; taskContext?: CruxDevelopmentTarget }>(
     operation: Exclude<keyof typeof ipcInvoke.gitWorkspace, 'status' | 'diff'>,
     schema: z.ZodType<T>,
     execute: (root: string, input: T, context: MutationContext) => Promise<GitWorkspaceMutationResult>
@@ -70,7 +70,7 @@ export function registerGitWorkspaceIpc(deps: WindowDeps & { resolveTaskContext?
       const scope = capturedRoot(parsed.data.expectedRoot)
       if ('ok' in scope) return scope
       const target = parsed.data.taskContext
-      let authorization: Awaited<ReturnType<HifoxTaskWorkspaceService['resolveContext']>> | undefined
+      let authorization: Awaited<ReturnType<CruxTaskWorkspaceService['resolveContext']>> | undefined
       const validateContext = async (): Promise<void> => {
         if (!target) return
         if (!deps.resolveTaskContext) throw new Error('当前宿主不支持固定任务开发上下文')
@@ -84,7 +84,7 @@ export function registerGitWorkspaceIpc(deps: WindowDeps & { resolveTaskContext?
         const root = getProjectRoot()
         return deps.getMain()?.webContents.id === event.sender.id && event.senderFrame === event.sender.mainFrame && root !== null &&
           getProjectGeneration() === scope.generation && canonicalDirectory(root) === canonicalDirectory(scope.root) &&
-          (!authorization || authorization.selectionGeneration === undefined || authorization.selectionGeneration === hifoxWorkspaceGeneration())
+          (!authorization || authorization.selectionGeneration === undefined || authorization.selectionGeneration === cruxWorkspaceGeneration())
       }
       if (!guard()) return ipcFail(IpcErrorCode.Denied, '请在当前项目的主窗口手动执行 Git 操作')
       const review = async (request: GitWorkspaceReview): Promise<boolean> => {

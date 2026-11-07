@@ -1,13 +1,13 @@
 import { z } from 'zod'
 import type { IpcFail } from './ipc-errors'
 import type { GitReadonlyFileDiff } from './types'
-import { hifoxDevelopmentTargetSchema } from './hifox-work'
+import { cruxDevelopmentTargetSchema } from './crux-work'
 
 export const GIT_WORKSPACE_LIMITS = { paths: 5000, outputBytes: 4 * 1024 * 1024, diffBytes: 128 * 1024, messageBytes: 64 * 1024, localTimeoutMs: 30000, pushTimeoutMs: 60000 } as const
 const text = z.string().min(1).max(4096).refine((value) => !value.includes('\0'), '参数包含无效字符')
 export const gitWorkspaceStatusSchema = z.object({ expectedRoot: text }).strict()
 export const gitWorkspaceDiffSchema = z.object({ expectedRoot: text, path: text, staged: z.boolean() }).strict()
-const mutationFields = { expectedRoot: text, revision: z.string().regex(/^[a-f0-9]{64}$/), confirm: z.literal(true), taskContext: hifoxDevelopmentTargetSchema.optional() }
+const mutationFields = { expectedRoot: text, revision: z.string().regex(/^[a-f0-9]{64}$/), confirm: z.literal(true), taskContext: cruxDevelopmentTargetSchema.optional() }
 export const gitWorkspacePathsSchema = z.object({ ...mutationFields, paths: z.array(text).min(1).max(GIT_WORKSPACE_LIMITS.paths) }).strict()
 export const gitWorkspaceCommitSchema = z.object({ ...mutationFields, message: z.string().trim().min(1).max(GIT_WORKSPACE_LIMITS.messageBytes) }).strict()
 export const gitWorkspaceCreateBranchSchema = z.object({ ...mutationFields, name: z.string().trim().min(1).max(250), switchAfter: z.boolean().default(false) }).strict()

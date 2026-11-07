@@ -7,7 +7,7 @@ import { Button, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../my/ui'
 import { Select } from '../components/Select'
 import { CreateCreationDialog } from '../creations/CreationDialogs'
 import { openCreation } from '../creations/navigation'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { useConversations } from '../conversations/workspace'
 import { conversationError, conversationValue } from '../conversations/client'
 import { useInteractionGuard } from '../utils/interaction-scope'
@@ -134,7 +134,7 @@ export function DesignWorkspace(props: Props): JSX.Element {
       setPublish({ title: document.title, body })
     } catch (cause) { fail(cause) }
   }
-  const libraryContext = useHifox(state => state.workspaceContext)
+  const libraryContext = useCrux(state => state.workspaceContext)
   if (!document || !buffer) return <section className="design-workspace" aria-label="设计工作台">{!props.embedded && <div className="design-toolbar"><Button size="sm" variant="ghost" onClick={props.onClose}><ArrowLeft size={14} />返回</Button></div>}<div className="design-loading" role={query.error ? 'alert' : 'status'}>{query.error || <><Loader2 size={18} className="design-spinner" />正在读取设计…</>}{query.error && <Button size="sm" onClick={() => void refresh()}>重试</Button>}</div></section>
   const canModify = !readOnly && !conflict && version === 'current'
   const changeFrames = (next: DesignFrame[]): void => {
@@ -190,6 +190,6 @@ export function DesignWorkspace(props: Props): JSX.Element {
       {textEdit && <div className="design-text-editor"><textarea className="my-input" aria-label="元素文字" value={textEdit.text} maxLength={4000} rows={2} onChange={event => setTextEdit({ ...textEdit, text: event.target.value })} /><Button size="sm" variant="primary" disabled={busy || textEdit.text === textEdit.pick.text} onClick={() => { try { const page = buffer.pages.find(page => page.id === textEdit.pick.pageId); if (!page) throw new Error('页面已不存在，请重新选择。'); const next = replaceDesignElementText(page, textEdit.pick, textEdit.text); void save(buffer.pages.map(page => page.id === next.id ? next : page)) } catch (cause) { fail(cause) } }}><Save size={14} />保存文字</Button><Button size="sm" variant="ghost" onClick={() => setTextEdit(null)}>取消</Button></div>}
     </section>}
     <footer className="design-footer"><span className="my-item-description">{version === 'current' ? '当前稿' : candidate ? '候选预览' : '历史预览'} · {pages.length} 页</span><span className="design-grow" /><Button size="sm" variant="ghost" aria-pressed={sourceOpen} onClick={() => setSourceOpen(value => !value)}><Code2 size={14} />源码</Button>{!props.embedded && <Button size="sm" disabled={buffer.dirty || busy} onClick={() => void openDesignConversation(document).catch(fail)}><MessageSquare size={14} />继续会话</Button>}{props.embedded && !pick && <Button size="sm" disabled={!canModify || buffer.dirty} onClick={() => void reference().catch(fail)}>引用整个设计</Button>}</footer>
-    {publish && <CreateCreationDialog scope="personal" initialDraft={{ title: publish.title, kind: 'prototype', body: publish.body }} onClose={() => setPublish(null)} onCreated={creationId => { setPublish(null); const context = useHifox.getState().workspaceContext; if (context.actorId && context.key === libraryContext.key && context.actorId === libraryContext.actorId) { closeDesign(); openCreation({ workspaceKey: context.key, actorId: context.actorId, creationId, scope: 'personal' }); useApp.getState().setPage('creations') } }} />}
+    {publish && <CreateCreationDialog scope="personal" initialDraft={{ title: publish.title, kind: 'prototype', body: publish.body }} onClose={() => setPublish(null)} onCreated={creationId => { setPublish(null); const context = useCrux.getState().workspaceContext; if (context.actorId && context.key === libraryContext.key && context.actorId === libraryContext.actorId) { closeDesign(); openCreation({ workspaceKey: context.key, actorId: context.actorId, creationId, scope: 'personal' }); useApp.getState().setPage('creations') } }} />}
   </section>
 }

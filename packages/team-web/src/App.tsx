@@ -10,7 +10,7 @@ import { AcceptInvitation, InvitationLinkForm, invitationFromLocation, invitatio
 import { WorkspaceOnboarding, WorkspaceSetup } from './WorkspaceSetup'
 import { SpaceOnboarding } from './SpaceOnboarding'
 import { SignIn } from './SignIn'
-import { HifoxWorkspace } from './HifoxWorkspace'
+import { CruxWorkspace } from './CruxWorkspace'
 import { workspaceProjectFromLocation } from './WorkspaceTaskLocation'
 import './shell.css'
 import { Empty, ErrorLine, Modal, Notice, Pager, time } from './ui'
@@ -120,7 +120,7 @@ function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvi
   let content: ReactNode
   if (tab === 'people') content = <People key={epoch} session={session} project={project} epoch={epoch} onProjectsChanged={projectsChanged} />
   else if (tab === 'devices') content = <Devices key={epoch} accountId={session.person.userId} epoch={epoch} />
-  else if (project) content = tab === 'collaboration' ? <><SpaceOnboarding projectId={project.projectId} accountId={session.person.userId} /><HifoxWorkspace key={`${session.person.userId}:${project.projectId}`} project={project} session={session} theme={theme} authEpoch={epoch} invitedSpaceId={invitedSpace?.projectId === project.projectId && invitedSpace.accountId === session.person.userId ? invitedSpace.spaceId : undefined} onInvitedSpaceOpened={() => setInvitedSpace(null)} /></> : <Documents key={`${project.projectId}:${epoch}`} project={project} session={session} authEpoch={epoch} />
+  else if (project) content = tab === 'collaboration' ? <><SpaceOnboarding projectId={project.projectId} accountId={session.person.userId} /><CruxWorkspace key={`${session.person.userId}:${project.projectId}`} project={project} session={session} theme={theme} authEpoch={epoch} invitedSpaceId={invitedSpace?.projectId === project.projectId && invitedSpace.accountId === session.person.userId ? invitedSpace.spaceId : undefined} onInvitedSpaceOpened={() => setInvitedSpace(null)} /></> : <Documents key={`${project.projectId}:${epoch}`} project={project} session={session} authEpoch={epoch} />
   else if (projects.loading || projectId && projects.more && !projects.error) content = <section className="team-workspace-state" role="status"><RefreshCw size={22} aria-hidden="true" /><h2>正在读取工作区…</h2></section>
   else if (projects.error) content = <section className="team-workspace-state"><h2>暂时无法读取工作区</h2><ErrorLine>{projects.error}</ErrorLine><button type="button" onClick={projects.refresh}>重新读取工作区</button></section>
   else if (projectId || projects.items.length) content = <section className="team-workspace-state"><h2>原工作区当前不可用</h2><p>请选择其他已授权工作区，或重新核对权限。</p><div className="team-workspace-actions">{projects.items[0] && <button type="button" className="primary" onClick={() => setProject(projects.items[0].projectId)}>进入 {projects.items[0].name}</button>}<button type="button" onClick={projects.refresh}>重新核对</button>{!projects.items.length && <button type="button" onClick={() => setProject('')}>创建或加入工作区</button>}</div></section>
@@ -134,7 +134,7 @@ function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvi
     </aside>
     <div className="team-shell-center">
       <header className="topbar team-topbar">
-        <div className="my-root hifox-host team-view-control" data-my-theme={theme} data-my-font-size={fontSize}><ShellViewSwitcher host="web" /></div>
+        <div className="my-root crux-host team-view-control" data-my-theme={theme} data-my-font-size={fontSize}><ShellViewSwitcher host="web" /></div>
         <div className="team-project-control"><label><span className="team-sr-only">工作区</span><select aria-label="当前工作区" title={project?.name ?? '选择工作区'} disabled={!projects.items.length} value={project?.projectId ?? ''} onChange={(event) => { setProject(event.target.value); setGap(false); setChange(false) }}><option value="" disabled>{projects.loading ? '正在读取工作区…' : projects.error ? '工作区读取失败' : projects.items.length ? '选择工作区' : '尚未加入工作区'}</option>{projects.items.map((item) => <option value={item.projectId} key={item.projectId}>{item.name}</option>)}</select></label><Pager page={projects} /></div>
         <span className="team-section-name">{WEB_MODULES.find((item) => item.id === tab)?.label}</span>
         <div className="team-workspace-actions"><button type="button" onClick={() => setCreatingWorkspace(true)}><Plus size={15} />创建工作区</button><button type="button" onClick={() => setJoiningWorkspace(true)}><LinkIcon size={15} />接受邀请</button></div>

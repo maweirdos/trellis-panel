@@ -5,14 +5,14 @@ import { WhiteboardV2Service } from './whiteboard-v2-service'
 import { WhiteboardV2WorkerClient } from './whiteboard-v2-worker-client'
 import { whiteboardV2Workspace } from './whiteboard-v2-workspace'
 import type { WhiteboardWorkerWrite } from './whiteboard-v2-worker-protocol'
-import { hifoxStableWorkspaceGeneration, hifoxWorkspaceSnapshot, hifoxWorkspaceStatus } from '../hifox/connection-service'
+import { cruxStableWorkspaceGeneration, cruxWorkspaceSnapshot, cruxWorkspaceStatus } from '../crux/connection-service'
 import { withDesktopTeamService } from '../team-desktop'
 import { getSettings } from '../store'
 import { aiChat } from '../ai'
 import { broadcastToWindows } from '../bridge'
 import { ipcEvent } from '../../../shared/ipc-channels'
 import { creationReferencePath, type CreationMaterialReference, type CreationMaterialFile } from '../../../shared/creation-materials'
-import type { HifoxWorkQuery } from '../../../shared/hifox-work'
+import type { CruxWorkQuery } from '../../../shared/crux-work'
 import { selectTaskCreationReferences } from './task-references'
 
 let service: CreationMainService | null = null
@@ -22,7 +22,7 @@ let closing: Promise<void> | null = null
 let closed = false
 export function creationService(): CreationMainService {
   if (closed) throw Object.assign(new Error('创作服务正在退出'), { code: 'SERVICE_CLOSED' })
-  service ??= new CreationMainService({ dataDir: app.getPath('userData'), workspace: hifoxWorkspaceSnapshot, status: hifoxWorkspaceStatus,
+  service ??= new CreationMainService({ dataDir: app.getPath('userData'), workspace: cruxWorkspaceSnapshot, status: cruxWorkspaceStatus,
     remote: withDesktopTeamService, model: () => getSettings().ai, chat: aiChat,
     changed: (workspaceKey, creationId) => broadcastToWindows(ipcEvent.creationsChanged, { workspaceKey, creationId }) })
   return service
@@ -33,7 +33,7 @@ export function whiteboardV2Service(): Promise<WhiteboardV2Service> {
   if (whiteboard) return Promise.resolve(whiteboard)
   if (!openingWhiteboard) {
     const opening = WhiteboardV2WorkerClient.open({ root: app.getPath('userData') }).then((store) => {
-      const value = new WhiteboardV2Service({ store, workspace: whiteboardV2Workspace, status: hifoxWorkspaceStatus, generation: hifoxStableWorkspaceGeneration })
+      const value = new WhiteboardV2Service({ store, workspace: whiteboardV2Workspace, status: cruxWorkspaceStatus, generation: cruxStableWorkspaceGeneration })
       whiteboard = value
       return value
     })
@@ -63,11 +63,11 @@ export function closeCreationService(): Promise<void> {
   return work
 }
 
-export async function taskCreationReferences(query: HifoxWorkQuery): Promise<CreationMaterialReference[]> {
+export async function taskCreationReferences(query: CruxWorkQuery): Promise<CreationMaterialReference[]> {
   const result = await creationService().list({ workspaceKey: query.workspaceKey, scope: 'team', taskId: query.taskId, limit: 20 })
   return selectTaskCreationReferences(query, result)
 }
-export async function taskCreationFiles(query: HifoxWorkQuery, references: CreationMaterialReference[]): Promise<CreationMaterialFile[]> {
+export async function taskCreationFiles(query: CruxWorkQuery, references: CreationMaterialReference[]): Promise<CreationMaterialFile[]> {
   const files: CreationMaterialFile[] = []
   for (const reference of references) {
     const value = await creationService().get({ workspaceKey: query.workspaceKey, creationId: reference.creationId, revisionId: reference.revisionId })

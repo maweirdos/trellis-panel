@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { useApp } from '../store'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 
 export type CreationLocation = {
   workspaceKey: string
@@ -27,14 +27,14 @@ export function configureCreationNavigation(handler: (target: CreationLocation) 
 }
 
 export function openCreation(target: CreationLocation): void {
-  const context = useHifox.getState().workspaceContext
+  const context = useCrux.getState().workspaceContext
   if (context.key !== target.workspaceKey || context.actorId !== target.actorId || context.state === 'access-revoked') return
   useCreationNavigation.setState((state) => ({ target, sequence: state.sequence + 1 }))
   if (navigate) navigate(target)
   else if (target.scope === 'team') {
-    if (target.spaceId && useHifox.getState().currentSpaceId !== target.spaceId) useHifox.getState().setCurrentSpace(target.spaceId)
-    useHifox.getState().setModule('creations')
-    useApp.getState().setPage('hifox')
+    if (target.spaceId && useCrux.getState().currentSpaceId !== target.spaceId) useCrux.getState().setCurrentSpace(target.spaceId)
+    useCrux.getState().setModule('creations')
+    useApp.getState().setPage('crux')
   } else useApp.getState().setPage('creations')
 }
 

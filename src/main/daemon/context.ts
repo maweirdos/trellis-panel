@@ -8,7 +8,7 @@ import { daemonIdentitySchema, type DaemonIdentity, type ProcessOwner } from '..
 import { processIdentity, protectDirectory } from './native'
 import { readBounded, writeAtomic } from './files'
 import { DaemonError } from './errors'
-import { readLease, verifiedLease, type DaemonLease } from './lease'
+import { readLease, reconcileStaleLease, verifiedLease, type DaemonLease } from './lease'
 import { z } from 'zod'
 
 export interface DaemonContext {
@@ -68,6 +68,11 @@ async function createContextBase(purpose: 'ordinary' | 'historical-control'): Pr
 export async function createDaemonContext(): Promise<DaemonContext> {
   const context = await createContextBase('ordinary')
   const { directory, protection, userData: canonical } = context
+  // A daemon can acquire its lease and then fail before the role host reaches
+  // its authenticated run loop. Reconcile that dead owner before preparing
+  // the old credential; otherwise the failed credential path can prevent the
+  // normal acquireLease stale-owner cleanup and trap every later startup.
+  await reconcileStaleLease(context)
   const credentialFile = join(directory, 'native-credential')
   if (existsSync(credentialFile)) {
     const ciphertext = decodeProtectedCiphertext(readBounded(credentialFile, 8192), 8192)

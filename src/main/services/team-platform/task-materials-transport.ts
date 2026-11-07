@@ -7,10 +7,10 @@ import {
   type TeamTaskMaterialCommand, type TeamTaskMaterialMetadata, type TeamTaskMaterialReceipt
 } from '../../../shared/team-task-materials'
 import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, teamIdSchema } from '../../../shared/team-platform'
-import { hifoxMaterialScopeSchema } from '../../../shared/hifox-task-materials'
+import { cruxMaterialScopeSchema } from '../../../shared/crux-task-materials'
 import { DesktopTeamError } from './types'
 
-export const taskMaterialTransportPinSchema = hifoxMaterialScopeSchema.extend({
+export const taskMaterialTransportPinSchema = cruxMaterialScopeSchema.extend({
   connectionId: teamIdSchema, actorId: teamIdSchema, projectId: teamIdSchema, deviceId: teamIdSchema,
   pairingId: teamIdSchema, origin: z.string().url().max(2048), instanceId: teamIdSchema, epoch: teamIdSchema
 }).strict()
@@ -68,7 +68,7 @@ export function validateTaskMaterialReceipt(pin: TaskMaterialTransportPin, comma
 export class TaskMaterialsTransport {
   private readonly base: string
   constructor(private readonly pin: TaskMaterialTransportPin, private readonly request: TaskMaterialRequest) {
-    this.base = `/api/projects/${pin.projectId}/hifox/tasks/${encodeURIComponent(pin.taskId)}/materials`
+    this.base = `/api/projects/${pin.projectId}/crux/tasks/${encodeURIComponent(pin.taskId)}/materials`
   }
   private query(fields: { cursor?: string; limit?: number; versionId?: string } = {}): string {
     const query = new URLSearchParams({ spaceId: this.pin.spaceId, taskCreatedAt: this.pin.taskCreatedAt })

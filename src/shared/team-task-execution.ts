@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { teamCommandIdSchema, teamDigestSchema, teamIdSchema } from './team-platform'
 import { teamTaskProgressResourceIdSchema, teamTaskProgressRecordSchema } from './team-task-progress'
-import { hifoxTransitionTaskInputSchema } from './hifox-schema'
+import { cruxTransitionTaskInputSchema } from './crux-schema'
 import { workflowIdSchema } from './workflow/identity'
 import { executionArtifactKindSchema, executionArtifactVersionSchema, executionCodeSourceSchema, executionDeliveryEntrySchema,
   executionDeliveryManifestSchema, executionHandoffCheckpointSchema, executionOutputRefSchema, executionSourceObservationSchema, executionVersionRefSchema } from './team-execution-artifacts'
@@ -57,7 +57,7 @@ export const teamExecutionCommandSchema = z.discriminatedUnion('kind', [
     entries: z.array(executionDeliveryEntrySchema).min(1).max(16) }).strict(),
   z.object({ ...envelope, ...artifactProducer, kind: z.literal('checkpoint'), previous: executionVersionRefSchema.nullable(), manifest: executionVersionRefSchema,
     remainingWork: z.string().max(8192), source: executionCodeSourceSchema, observation: executionSourceObservationSchema.nullable() }).strict(),
-  z.object({ ...envelope, kind: z.literal('transition'), expectedRevision: counter, transition: hifoxTransitionTaskInputSchema }).strict()
+  z.object({ ...envelope, kind: z.literal('transition'), expectedRevision: counter, transition: cruxTransitionTaskInputSchema }).strict()
 ])
 export type TeamExecutionCommand = z.infer<typeof teamExecutionCommandSchema>
 export const teamExecutionRecordSchema = z.object({

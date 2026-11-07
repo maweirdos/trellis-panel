@@ -11,9 +11,9 @@ import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { closeGitWorkspace } from '../git-workspace/useGitWorkspace'
 import { clsx } from 'clsx'
 import { getPageNavigation, pageRequiresProject, projectRootKey, projectNameFromPath } from '../my/navigation'
-import { TeamContextSwitcher } from '../hifox/TeamContextSwitcher'
+import { TeamContextSwitcher } from '../crux/TeamContextSwitcher'
 import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
-import { DevelopmentScopeTag } from '../hifox/development/DevelopmentContextBar'
+import { DevelopmentScopeTag } from '../crux/development/DevelopmentContextBar'
 import { Tooltip } from '../my/ui'
 import { InteractionScope } from '../utils/interaction-scope'
 import { baseScopeKey, scopeKey, useConversations } from '../conversations/workspace'
@@ -35,7 +35,7 @@ export function TitleBar(): JSX.Element {
   const snapshot = useApp((s) => s.snapshot)
   const page = useApp((s) => s.page)
   const openTaskDir = useApp((s) => s.openTaskDir)
-  const teamContext = page === 'hifox' && !openTaskDir
+  const teamContext = page === 'crux' && !openTaskDir
   const development = useMy((s) => s.shellView === 'development')
   const personalTaskSource = useApp((s) => s.personalTaskSource)
   const domain = getPageNavigation(page).domain
@@ -65,7 +65,7 @@ export function TitleBar(): JSX.Element {
           <span className="sr-only">Trellis Panel</span>
         </div>
         <ShellViewSwitcher />
-        <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('hifox')} />
+        <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('crux')} />
         <div className="no-drag my-header-collapse flex shrink-0 items-center">
           <Tooltip side="bottom" label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}>
             <button id="shell-context-toggle" type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}

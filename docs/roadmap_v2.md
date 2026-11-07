@@ -12,7 +12,7 @@ Trellis Panel已有本地任务、资料阅读、Jira来源接入与ACP会话基
 
 1. [最新进度、证据口径与剩余验证](#progress)
 2. [场景化方向：现在怎样用、可规划什么、怎样算完成](#scenarios)
-3. [Hifox调研：范围、覆盖、观察与可借鉴模式](#research)
+3. [Crux调研：范围、覆盖、观察与可借鉴模式](#research)
 4. [项目原规划基线与代码证据](#baseline)
 5. [功能需求、非功能约束与完整验收计划](#requirements)
 6. [数据、对象关系、状态与权限边界](#data-state)
@@ -33,8 +33,8 @@ Trellis Panel已有本地任务、资料阅读、Jira来源接入与ACP会话基
 | --- | --- | --- |
 | 最新实施记录 | 现有提案README记载的实现与已执行检查 | 不等于本次重新执行，也不等于原生/真实业务全部通过 |
 | v0.6规划基线 | 当时的代码路径、用户证词、缺口和设计理由 | 代码后续已变时，不能继续称其为当前未修缺陷 |
-| Hifox官方说明 | 历史获取的公开文档所声明的能力 | 不证明客户端实测，更不要求Trellis逐项复制 |
-| Hifox网页观察 | 指定页面、操作和截图范围内的结构/行为 | 不证明原生桌面、双账号、写入或所有异常路径 |
+| Crux官方说明 | 历史获取的公开文档所声明的能力 | 不证明客户端实测，更不要求Trellis逐项复制 |
+| Crux网页观察 | 指定页面、操作和截图范围内的结构/行为 | 不证明原生桌面、双账号、写入或所有异常路径 |
 | 规划与验收计划 | 希望得到的行为及后续应怎样核对 | 不代表已批准实施、固定排期或用例已通过 |
 
 以下进度完整转录自已有[实施记录](proposals/2026-10-17-project-first-roadmap/README.md)，不由本次整合重新判定通过。ACP在那次实施中明确未改；A1原生外框/视觉、原生中文输入、真实多工程脚本与跨人接手等仍保留验证缺口。
@@ -167,7 +167,7 @@ Trellis Panel已经具备本地任务、材料阅读、Jira接入和面板内ACP
 
 **进度补充**：实施记录已记载C1/C2/C3及本机开发工具页完成；以下说明保留设计目标，真实多工程脚本、部分失败和停止范围仍按实际工程补验。
 
-这项有项目范围记录支持，不因Hifox菜单而加入，也不需要等团队审批平台完成。它可以与其他候选包独立排期；如果用户当前更在意开发时反复切工具，可优先选择这里的小项。
+这项有项目范围记录支持，不因Crux菜单而加入，也不需要等团队审批平台完成。它可以与其他候选包独立排期；如果用户当前更在意开发时反复切工具，可优先选择这里的小项。
 
 **现在怎么做**：实施记录已记载新增“本机开发工具”页，包含只读Git分组与文件差异、来自package.json的脚本运行、有界日志、退出/信号与顺序启动组合。真实多工程脚本、停止归属和部分失败尚未完成实际使用验证；没有把进程存活当作服务就绪，也未证明完整的长期服务管理平台。
 
@@ -208,15 +208,15 @@ Trellis Panel已经具备本地任务、材料阅读、Jira接入和面板内ACP
 
 <a id="research"></a>
 
-## 3 Hifox调研与UI/UX参考
+## 3 Crux调研与UI/UX参考
 
 ### 研究范围与事实边界
 
-资料入口为[Hifox帮助文档](https://help.hifox.com/docs/welcome)。已有采集记录覆盖2026-10-15当时公开链接可发现的47个文档页面；sitemap未能独立确认站点总量，因此不把“已发现正文均获取”称为全部产品功能验证。页面会变化，未来涉及实际集成或执行前再核实相关说明。本次整合没有重新联网采集。
+资料入口为[Crux帮助文档](https://help.crux.com/docs/welcome)。已有采集记录覆盖2026-10-15当时公开链接可发现的47个文档页面；sitemap未能独立确认站点总量，因此不把“已发现正文均获取”称为全部产品功能验证。页面会变化，未来涉及实际集成或执行前再核实相关说明。本次整合没有重新联网采集。
 
 既有体验审查包含已登录网页的低风险导航，形成25条观察记录、19张可交付截图及U01–U22覆盖矩阵。原生应用/本机桥接、双账号权限、跨设备、真实runtime执行和集成写入等没有完成验证。没有为了研究创建、发布、删除、付款、发消息或执行付费AI作业。
 
-研究支持交互判断，不把Hifox的组织、专项、小队、通用自动化或厂商目录反推为Trellis必建功能。下面保留原始事实与局限，迁移判断以本版取舍为准。
+研究支持交互判断，不把Crux的组织、专项、小队、通用自动化或厂商目录反推为Trellis必建功能。下面保留原始事实与局限，迁移判断以本版取舍为准。
 
 ### 公开资料主题与逐页来源
 
@@ -224,53 +224,53 @@ Trellis Panel已经具备本地任务、材料阅读、Jira接入和面板内ACP
 
 | 来源 | 页面 | 历史摘要 |
 | --- | --- | --- |
-| S01 | [欢迎使用 HiFox](https://help.hifox.com/docs/welcome) | 渐进采用 Agent，保留原有工具与人的责任，并延展到研发、支持、测试和文档。 |
-| S02 | [快速上手](https://help.hifox.com/docs/quickstart) | 区分任务、角色和执行机器，先跑通一条小工作；机器连接成功仍需检查工具与登录。 |
-| S03 | [Agent 如何执行任务](https://help.hifox.com/docs/agent-and-computer/agent-task-execution) | 任务、上下文与执行环境共同决定一次运行；排队、等待人工、失败和结果需要分别说明。 |
-| S04 | [Agent](https://help.hifox.com/docs/agent-and-computer/agents) | 角色配置覆盖职责、可见性、工具、模型、技能、并发、连接器与历史。 |
-| S05 | [与 Agent 对话](https://help.hifox.com/docs/agent-and-computer/chat-with-agent) | 区分独立探索和任务会话，说明上下文、分享范围、常用快捷指令与已有记录的关系。 |
-| S06 | [评论和回复](https://help.hifox.com/docs/agent-and-computer/comments-and-replies) | 共享讨论、回复、附件、显式提及和讨论解决承载团队意见，但不同于执行会话和任务验收。 |
-| S07 | [电脑](https://help.hifox.com/docs/agent-and-computer/computers) | 机器连接、运行就绪、工具登录、路径、操作系统及共享目录并发都有各自边界。 |
-| S08 | [小队](https://help.hifox.com/docs/agent-and-computer/crews) | 队长协调人与多个执行角色，成员分工、目录约束、结果汇总与可见性需要明确。 |
-| S09 | [收件箱](https://help.hifox.com/docs/agent-and-computer/inbox) | 个人提醒按任务聚合，并区分待行动与普通动态；阅读、清理和暂缓不是任务完成。 |
-| S10 | [连接代码库](https://help.hifox.com/docs/agent-and-computer/repositories) | 仓库定义、空间默认值和执行电脑上的 Git 凭证各有作用，删除配置不等于删除代码。 |
-| S11 | [技能](https://help.hifox.com/docs/agent-and-computer/skills) | 可重复方法可以独立维护并绑定给角色；任务特有目标仍留在任务中。 |
-| S12 | [Agent 工作目录](https://help.hifox.com/docs/agent-and-computer/working-directory) | 既有目录与临时隔离目录用途不同；默认值改变不应静默迁移已有任务执行。 |
-| S13 | [让文档更新跟着产品发布走](https://help.hifox.com/docs/best-practices/documentation-automation-pipeline) | 从发布变化生成文档计划，由人定范围，再交给撰写角色修改、预览与复核。 |
-| S14 | [连接飞书：让群聊里的问题真正被推进下去](https://help.hifox.com/docs/best-practices/feishu-group-to-task) | 将明确要求跟进的话题整理成任务，保留原讨论、身份与附件，并把进展关联回来源。 |
-| S15 | [全流程自动化测试：让测试跟上每天的发布节奏](https://help.hifox.com/docs/best-practices/full-flow-automated-testing) | 版本预检、白盒、用例设计、黑盒和人工复核是独立环节；证据与环境准备影响可信度。 |
-| S16 | [使用 HiFox 推进产品研发](https://help.hifox.com/docs/best-practices/product-development-workflow) | 从不完整想法到范围确认、任务拆解、执行、验收，再以目标和时间窗口组织整体推进。 |
-| S17 | [个人访问令牌](https://help.hifox.com/docs/cli/access-tokens) | 脚本访问应绑定真实身份和权限；凭证创建、失效、撤销与本地退出各有含义。 |
-| S18 | [HiFox CLI](https://help.hifox.com/docs/cli/cli) | 命令行覆盖任务、讨论、运行与文档集，机器可读输出和明确操作范围支持集成。 |
-| S19 | [CNB 集成](https://help.hifox.com/docs/integration/cnb) | CNB 的仓库配对、凭证、流水线事件和任务回链有专门接入约束。 |
-| S20 | [Jira、TAPD、禅道概念对照](https://help.hifox.com/docs/integration/concept-mapping) | 不同平台的项目、需求层级、迭代、身份与字段含义不能按同名直接映射；覆盖规则需明确。 |
-| S21 | [钉钉集成](https://help.hifox.com/docs/integration/dingtalk) | 群聊任务助手与普通 Agent 机器人是独立能力，各自具有绑定、触发与文件返回规则。 |
-| S22 | [Discord 集成](https://help.hifox.com/docs/integration/discord) | 机器人、任务助手、线程、文件权限和可选消息触发需要分别配置。 |
-| S23 | [飞书集成](https://help.hifox.com/docs/integration/feishu) | 任务助手、Agent 机器人、资源工具连接和个人通知是不同连接；飞书与 Lark 授权也分开。 |
-| S24 | [GitHub 集成](https://help.hifox.com/docs/integration/github) | 组织应用与个人授权支持代码、Issue、PR 和回链关联，执行电脑的 Git 凭证另有作用。 |
-| S25 | [GitLab 集成](https://help.hifox.com/docs/integration/gitlab) | 云端与自建实例、内网访问、组织和个人授权、Issue 同步与事件回调各有边界。 |
-| S26 | [Jira 集成](https://help.hifox.com/docs/integration/jira) | 一次导入、持续同步、预览映射、去重、身份、附件、字段限制、内网和回退构成完整接入链。 |
-| S27 | [Jira 兼容 API](https://help.hifox.com/docs/integration/jira-api) | 兼容 Jira 风格接口是供既有客户端接入的适配层，有自身的查询、字段与流转边界。 |
-| S28 | [PingCode 集成](https://help.hifox.com/docs/integration/pingcode) | PingCode 的授权、导入、同步、成员映射和失败恢复需要平台专门处理。 |
-| S29 | [Slack 集成](https://help.hifox.com/docs/integration/slack) | 工作区任务卡与通知、任务助手和 Agent 机器人分别连接，并处理线程、身份与触发范围。 |
-| S30 | [TAPD 集成](https://help.hifox.com/docs/integration/tapd) | 企业 API 与个人令牌的能力、实时性和限流不同，历史导入与后续同步应分别说明。 |
-| S31 | [Teambition 集成](https://help.hifox.com/docs/integration/teambition) | 应用凭据与个人授权分别影响读取和远端写入；导入、Webhook 与轮询需要能力提示。 |
-| S32 | [微信集成](https://help.hifox.com/docs/integration/wechat) | 微信可绑定 Agent 外部会话，连接状态和新会话规则明确，聊天不自动形成任务。 |
-| S33 | [企业微信集成](https://help.hifox.com/docs/integration/wecom) | 企业微信的任务助手和 Agent 机器人相互独立，绑定、触发与身份有各自限制。 |
-| S34 | [禅道集成](https://help.hifox.com/docs/integration/zentao) | 禅道版本、产品线与项目线、地址、内网、映射、回调和导入恢复都需要独立校验。 |
-| S35 | [自动化](https://help.hifox.com/docs/space/automations) | 自动化有触发范围、执行身份、运行归属、通知、历史和暂停规则；失败不天然等于安全重试。 |
-| S36 | [迭代](https://help.hifox.com/docs/space/iterations) | 时间窗口管理范围、结转与历史，和长期目标及查看方式不同；自动加入只适用于明确规则。 |
-| S37 | [成员](https://help.hifox.com/docs/space/members) | 组织身份、实际协作范围和访问角色有不同含义，外部身份与 Agent 也不同于真人成员。 |
-| S38 | [专项](https://help.hifox.com/docs/space/projects) | 一组任务可共同服务于交付目标，并跟踪目标负责人、整体进展和时间线。 |
-| S39 | [空间](https://help.hifox.com/docs/space/spaces) | 持续协作范围承载任务、成员、功能开关和默认规则，而不等于一份本地代码目录。 |
-| S40 | [任务](https://help.hifox.com/docs/space/tasks) | 任务可从不完整描述开始，持续记录人员责任、执行位置、上下文、讨论、关联和结果。 |
-| S41 | [分拣台](https://help.hifox.com/docs/space/triage) | 外部工作进入项目前可接受、去重、拒绝或暂缓，并有明确分流责任；这不同于个人提醒。 |
-| S42 | [视图和任务列表](https://help.hifox.com/docs/space/views) | 过滤、分组、排序、字段和布局可保存成视图，私有定义、团队共享和个人收藏需要区分。 |
-| S43 | [关注任务](https://help.hifox.com/docs/task/follow-tasks) | 关注用于跟踪，@ 用于直接请求，负责用于推动工作；通知需要按关系和行动强度路由。 |
-| S44 | [任务标签](https://help.hifox.com/docs/task/task-labels) | 标签用于补充分类，互斥组、合并、归档和作用范围有助于避免重复和历史丢失。 |
-| S45 | [任务关联](https://help.hifox.com/docs/task/task-relations) | 层级拆解、阻塞、重复与相关是不同关系，关系本身不应隐含启动或完成任务。 |
-| S46 | [任务状态](https://help.hifox.com/docs/task/task-statuses) | 稳定类别承载生命周期，自定义名称可服务团队；配置迁移与 Agent 运行状态必须区分。 |
-| S47 | [任务类型](https://help.hifox.com/docs/task/task-types) | 类型决定工作对象的字段与可用流程，启停、切换和字段解绑可能影响历史数据。 |
+| S01 | [欢迎使用 Crux](https://help.crux.com/docs/welcome) | 渐进采用 Agent，保留原有工具与人的责任，并延展到研发、支持、测试和文档。 |
+| S02 | [快速上手](https://help.crux.com/docs/quickstart) | 区分任务、角色和执行机器，先跑通一条小工作；机器连接成功仍需检查工具与登录。 |
+| S03 | [Agent 如何执行任务](https://help.crux.com/docs/agent-and-computer/agent-task-execution) | 任务、上下文与执行环境共同决定一次运行；排队、等待人工、失败和结果需要分别说明。 |
+| S04 | [Agent](https://help.crux.com/docs/agent-and-computer/agents) | 角色配置覆盖职责、可见性、工具、模型、技能、并发、连接器与历史。 |
+| S05 | [与 Agent 对话](https://help.crux.com/docs/agent-and-computer/chat-with-agent) | 区分独立探索和任务会话，说明上下文、分享范围、常用快捷指令与已有记录的关系。 |
+| S06 | [评论和回复](https://help.crux.com/docs/agent-and-computer/comments-and-replies) | 共享讨论、回复、附件、显式提及和讨论解决承载团队意见，但不同于执行会话和任务验收。 |
+| S07 | [电脑](https://help.crux.com/docs/agent-and-computer/computers) | 机器连接、运行就绪、工具登录、路径、操作系统及共享目录并发都有各自边界。 |
+| S08 | [小队](https://help.crux.com/docs/agent-and-computer/crews) | 队长协调人与多个执行角色，成员分工、目录约束、结果汇总与可见性需要明确。 |
+| S09 | [收件箱](https://help.crux.com/docs/agent-and-computer/inbox) | 个人提醒按任务聚合，并区分待行动与普通动态；阅读、清理和暂缓不是任务完成。 |
+| S10 | [连接代码库](https://help.crux.com/docs/agent-and-computer/repositories) | 仓库定义、空间默认值和执行电脑上的 Git 凭证各有作用，删除配置不等于删除代码。 |
+| S11 | [技能](https://help.crux.com/docs/agent-and-computer/skills) | 可重复方法可以独立维护并绑定给角色；任务特有目标仍留在任务中。 |
+| S12 | [Agent 工作目录](https://help.crux.com/docs/agent-and-computer/working-directory) | 既有目录与临时隔离目录用途不同；默认值改变不应静默迁移已有任务执行。 |
+| S13 | [让文档更新跟着产品发布走](https://help.crux.com/docs/best-practices/documentation-automation-pipeline) | 从发布变化生成文档计划，由人定范围，再交给撰写角色修改、预览与复核。 |
+| S14 | [连接飞书：让群聊里的问题真正被推进下去](https://help.crux.com/docs/best-practices/feishu-group-to-task) | 将明确要求跟进的话题整理成任务，保留原讨论、身份与附件，并把进展关联回来源。 |
+| S15 | [全流程自动化测试：让测试跟上每天的发布节奏](https://help.crux.com/docs/best-practices/full-flow-automated-testing) | 版本预检、白盒、用例设计、黑盒和人工复核是独立环节；证据与环境准备影响可信度。 |
+| S16 | [使用 Crux 推进产品研发](https://help.crux.com/docs/best-practices/product-development-workflow) | 从不完整想法到范围确认、任务拆解、执行、验收，再以目标和时间窗口组织整体推进。 |
+| S17 | [个人访问令牌](https://help.crux.com/docs/cli/access-tokens) | 脚本访问应绑定真实身份和权限；凭证创建、失效、撤销与本地退出各有含义。 |
+| S18 | [Crux CLI](https://help.crux.com/docs/cli/cli) | 命令行覆盖任务、讨论、运行与文档集，机器可读输出和明确操作范围支持集成。 |
+| S19 | [CNB 集成](https://help.crux.com/docs/integration/cnb) | CNB 的仓库配对、凭证、流水线事件和任务回链有专门接入约束。 |
+| S20 | [Jira、TAPD、禅道概念对照](https://help.crux.com/docs/integration/concept-mapping) | 不同平台的项目、需求层级、迭代、身份与字段含义不能按同名直接映射；覆盖规则需明确。 |
+| S21 | [钉钉集成](https://help.crux.com/docs/integration/dingtalk) | 群聊任务助手与普通 Agent 机器人是独立能力，各自具有绑定、触发与文件返回规则。 |
+| S22 | [Discord 集成](https://help.crux.com/docs/integration/discord) | 机器人、任务助手、线程、文件权限和可选消息触发需要分别配置。 |
+| S23 | [飞书集成](https://help.crux.com/docs/integration/feishu) | 任务助手、Agent 机器人、资源工具连接和个人通知是不同连接；飞书与 Lark 授权也分开。 |
+| S24 | [GitHub 集成](https://help.crux.com/docs/integration/github) | 组织应用与个人授权支持代码、Issue、PR 和回链关联，执行电脑的 Git 凭证另有作用。 |
+| S25 | [GitLab 集成](https://help.crux.com/docs/integration/gitlab) | 云端与自建实例、内网访问、组织和个人授权、Issue 同步与事件回调各有边界。 |
+| S26 | [Jira 集成](https://help.crux.com/docs/integration/jira) | 一次导入、持续同步、预览映射、去重、身份、附件、字段限制、内网和回退构成完整接入链。 |
+| S27 | [Jira 兼容 API](https://help.crux.com/docs/integration/jira-api) | 兼容 Jira 风格接口是供既有客户端接入的适配层，有自身的查询、字段与流转边界。 |
+| S28 | [PingCode 集成](https://help.crux.com/docs/integration/pingcode) | PingCode 的授权、导入、同步、成员映射和失败恢复需要平台专门处理。 |
+| S29 | [Slack 集成](https://help.crux.com/docs/integration/slack) | 工作区任务卡与通知、任务助手和 Agent 机器人分别连接，并处理线程、身份与触发范围。 |
+| S30 | [TAPD 集成](https://help.crux.com/docs/integration/tapd) | 企业 API 与个人令牌的能力、实时性和限流不同，历史导入与后续同步应分别说明。 |
+| S31 | [Teambition 集成](https://help.crux.com/docs/integration/teambition) | 应用凭据与个人授权分别影响读取和远端写入；导入、Webhook 与轮询需要能力提示。 |
+| S32 | [微信集成](https://help.crux.com/docs/integration/wechat) | 微信可绑定 Agent 外部会话，连接状态和新会话规则明确，聊天不自动形成任务。 |
+| S33 | [企业微信集成](https://help.crux.com/docs/integration/wecom) | 企业微信的任务助手和 Agent 机器人相互独立，绑定、触发与身份有各自限制。 |
+| S34 | [禅道集成](https://help.crux.com/docs/integration/zentao) | 禅道版本、产品线与项目线、地址、内网、映射、回调和导入恢复都需要独立校验。 |
+| S35 | [自动化](https://help.crux.com/docs/space/automations) | 自动化有触发范围、执行身份、运行归属、通知、历史和暂停规则；失败不天然等于安全重试。 |
+| S36 | [迭代](https://help.crux.com/docs/space/iterations) | 时间窗口管理范围、结转与历史，和长期目标及查看方式不同；自动加入只适用于明确规则。 |
+| S37 | [成员](https://help.crux.com/docs/space/members) | 组织身份、实际协作范围和访问角色有不同含义，外部身份与 Agent 也不同于真人成员。 |
+| S38 | [专项](https://help.crux.com/docs/space/projects) | 一组任务可共同服务于交付目标，并跟踪目标负责人、整体进展和时间线。 |
+| S39 | [空间](https://help.crux.com/docs/space/spaces) | 持续协作范围承载任务、成员、功能开关和默认规则，而不等于一份本地代码目录。 |
+| S40 | [任务](https://help.crux.com/docs/space/tasks) | 任务可从不完整描述开始，持续记录人员责任、执行位置、上下文、讨论、关联和结果。 |
+| S41 | [分拣台](https://help.crux.com/docs/space/triage) | 外部工作进入项目前可接受、去重、拒绝或暂缓，并有明确分流责任；这不同于个人提醒。 |
+| S42 | [视图和任务列表](https://help.crux.com/docs/space/views) | 过滤、分组、排序、字段和布局可保存成视图，私有定义、团队共享和个人收藏需要区分。 |
+| S43 | [关注任务](https://help.crux.com/docs/task/follow-tasks) | 关注用于跟踪，@ 用于直接请求，负责用于推动工作；通知需要按关系和行动强度路由。 |
+| S44 | [任务标签](https://help.crux.com/docs/task/task-labels) | 标签用于补充分类，互斥组、合并、归档和作用范围有助于避免重复和历史丢失。 |
+| S45 | [任务关联](https://help.crux.com/docs/task/task-relations) | 层级拆解、阻塞、重复与相关是不同关系，关系本身不应隐含启动或完成任务。 |
+| S46 | [任务状态](https://help.crux.com/docs/task/task-statuses) | 稳定类别承载生命周期，自定义名称可服务团队；配置迁移与 Agent 运行状态必须区分。 |
+| S47 | [任务类型](https://help.crux.com/docs/task/task-types) | 类型决定工作对象的字段与可用流程，启停、切换和字段解绑可能影响历史数据。 |
 
 
 ### 应用体验覆盖矩阵
@@ -309,28 +309,28 @@ Trellis Panel已经具备本地任务、材料阅读、Jira接入和面板内ACP
 
 | 记录 | 截图 | 证据等级 | 观察事实 | 未验证 |
 | --- | --- | --- | --- | --- |
-| UI01-inbox-empty 首页与收件箱 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI01-inbox-empty.jpg) | screenshot_and_structure | 收件箱/稍后/已清理和全部/重要/其他分层；主区暂无通知；组织与空间导航分开 | 未点击标已读/全部清理；没有真实通知，未验证通知聚合与处理副作用 |
-| UI02-agents-overview 全部Agent和小队 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI02-agents-overview.jpg) | screenshot_and_structure | 全部/Agent/小队/我的四种筛选；搜索；按空间分组计数；存在单条私有Agent，卡片区分runtime与所有者 | 没有执行对话、收藏或行操作；名称和所有者不进入交付截图 |
-| UI03-agent-search-empty 窄屏Agent搜索零结果 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI03-agent-search-empty.jpg) | screenshot_and_structure | 显示无匹配项；搜索框变为图标，关键词和清除入口暂不在主面板显示 | 未证明后端检索完整性；早先更新前或无效尺寸截图均已拒用 |
-| UI04-narrow-search-expanded 窄屏搜索恢复 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI04-narrow-search-expanded.jpg) | screenshot_and_structure | 原搜索词与清除搜索按钮可见 | 不进行键盘读屏合规判断 |
+| UI01-inbox-empty 首页与收件箱 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI01-inbox-empty.jpg) | screenshot_and_structure | 收件箱/稍后/已清理和全部/重要/其他分层；主区暂无通知；组织与空间导航分开 | 未点击标已读/全部清理；没有真实通知，未验证通知聚合与处理副作用 |
+| UI02-agents-overview 全部Agent和小队 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI02-agents-overview.jpg) | screenshot_and_structure | 全部/Agent/小队/我的四种筛选；搜索；按空间分组计数；存在单条私有Agent，卡片区分runtime与所有者 | 没有执行对话、收藏或行操作；名称和所有者不进入交付截图 |
+| UI03-agent-search-empty 窄屏Agent搜索零结果 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI03-agent-search-empty.jpg) | screenshot_and_structure | 显示无匹配项；搜索框变为图标，关键词和清除入口暂不在主面板显示 | 未证明后端检索完整性；早先更新前或无效尺寸截图均已拒用 |
+| UI04-narrow-search-expanded 窄屏搜索恢复 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI04-narrow-search-expanded.jpg) | screenshot_and_structure | 原搜索词与清除搜索按钮可见 | 不进行键盘读屏合规判断 |
 | UI05-agent-create-form 创建Agent未提交表单 | 仅结构记录／无可交付截图 | structure_only | 区分代码开发/日常办公；设计创意禁用；名称与职位、所属空间、私有默认、Runtime、工作方式和Git仓库分别配置 | 未填写、未提交或安装；不验证默认值保存后的语义; visual capture did not show the dialog; no visual finding claimed |
-| UI06-conversation-controls 对话工作台输入与模式控件 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI06-conversation-controls.jpg) | screenshot_and_structure | 底部提供微信/Slack/多会话视图控件；composer显示远程Runtime、工作目录控件、单对话模型与空输入禁用发送 | 未切换模式、未新建会话、未发送；未测并发、重试或恢复 |
+| UI06-conversation-controls 对话工作台输入与模式控件 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI06-conversation-controls.jpg) | screenshot_and_structure | 底部提供微信/Slack/多会话视图控件；composer显示远程Runtime、工作目录控件、单对话模型与空输入禁用发送 | 未切换模式、未新建会话、未发送；未测并发、重试或恢复 |
 | UI07-existing-run-failure 已有示例任务的历史失败 | 仅结构记录／无可交付截图 | structure_only | 任务业务状态为待开始；动态出现执行完成1次；右侧为执行失败，环境准备18秒，模型本轮无输出；提供重试和帮助入口 | 历史记录，不证明当前服务仍失败；未重试或打开原始数据；截图Page.captureScreenshot在5秒超时，视觉未验证 |
 | UI08-task-discussion-structure 任务与讨论结构 | 仅结构记录／无可交付截图 | structure_only | 任务详情可见业务状态、优先级、专项、标签、更多属性、动态与对话记录页签；普通评论、回复、对话面板有不同输入；空输入提交按钮禁用 | 未更改任何字段、评论、反应、关注或任务关系；相关菜单和提交路径未验证；未获得完整可交付截图 |
-| UI09-task-board 默认空间任务看板 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI09-task-board.jpg) | screenshot_and_structure | 任务按待开始/待分拣/待规划/进行中/已完成分组；需求/缺陷/任务筛选；显示设置、视图搜索与新建视图独立；仅一条示例任务 | 未拖拽、未改状态、未保存视图；只有示例数据不能验证大数据量和复杂层级 |
-| UI10-new-workitem-form 空间新建需求未提交表单 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI10-new-workitem-form.jpg) | screenshot_and_structure | 当前类型为需求；标题和描述分开；处理人、业务状态、优先级、专项、标签独立；标题为空显示请先填写标题且创建禁用 | 未更改类型或属性、未提交、未上传附件；不验证服务端必填校验 |
-| UI11-workitem-type-menu 工作项类型菜单 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI11-workitem-type-menu.jpg) | screenshot_and_structure | 需求/缺陷/任务与管理任务类型入口分开 | 未切换类型或进入管理；未验证角色差异和字段迁移 |
-| UI12-iterations-empty 迭代列表空态 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI12-iterations-empty.jpg) | screenshot_and_structure | 迭代列表/规划迭代分开；可按状态筛选；还没有迭代明确引导创建第一轮 | 当前无真实迭代，无法验证结束、结转、历史和跨周期统计 |
-| UI13-saved-views-empty 保存视图空态 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI13-saved-views-empty.jpg) | screenshot_and_structure | 空态说明视图保存常用任务筛选和展示方式，可按处理人、状态、专项创建；新建与帮助入口并列 | 未创建或保存视图，不证明多人共享与权限边界 |
-| UI14-task-navigation-more 任务子导航扩展 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI14-task-navigation-more.jpg) | screenshot_and_structure | 迭代、分拣台、视图、专项在同一任务导航扩展；各入口的固定/移除控件独立 | 未更改固定项或拖动导航 |
-| UI15-delivery-goals-empty 专项空态 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI15-delivery-goals-empty.jpg) | screenshot_and_structure | 将专项解释为有限起止时间的攻坚目标，对应Epic；提供创建与帮助 | 当前无专项；期限、负责人、进度汇总和跨任务交付未验证 |
-| UI16-triage-empty 分拣台空态 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI16-triage-empty.jpg) | screenshot_and_structure | 待分拣任务计数为0；列表与详情双区；说明外部集成/访客任务先审核、定优先级，再接受或拒绝；责任配置单列 | 无待分拣记录；未配置、创建、接受、拒绝、去重或暂缓 |
-| UI17-automation-empty 自动化空态 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI17-automation-empty.jpg) | screenshot_and_structure | 说明由任务事件触发任务操作，并可组合Agent和第三方集成；仅新建入口，当前无规则记录 | 未新建、启用、触发或测试规则；运行历史和失败补偿未验证 |
-| UI18-skills-empty 空间技能空态 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI18-skills-empty.jpg) | screenshot_and_structure | 添加来源包括创建、URL导入和已连接电脑复制；页面处在空间上下文，空态文案同时提到组织中每个Agent可用 | 未导入、复制、安装或发布技能；实际可见性与执行权限未验证 |
-| UI19-document-library-empty 文档库私有与团队范围 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI19-document-library-empty.jpg) | screenshot_and_structure | 我的文档与团队文档分列；我的文档空态明确只属于自己；文档集、快速添加、上传文件为独立入口 | 未新建、上传、共享或搜索真实文档；跨设备访问和Agent实际读取未验证 |
-| UI20-integration-directory 外部应用集成目录 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI20-integration-directory.jpg) | screenshot_and_structure | 任务管理、Git仓库、协作工具分组；入口区分设置与即将推出；部分文案描述双向更新、回链或消息发送 | 未打开凭据、授权、测试连接或发起同步；所有方向/范围能力仅是界面声明 |
-| UI21-git-and-collaboration-integrations Git与协作工具集成分类 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI21-git-and-collaboration-integrations.jpg) | screenshot_and_structure | Git仓库与Git issues单独分类；协作平台与任务平台不同职责；部分未来平台显式即将推出 | 未连接厂商、获取凭据、发消息或执行回写；当前只有目录声明 |
-| UI22-computer-local-bridge-unavailable 电脑与运行资源 | [有图](proposals/2026-10-15-hifox-roadmap/evidence/ui/UI22-computer-local-bridge-unavailable.jpg) | screenshot_and_structure | 本地桌面桥接能力在当前Chrome扩展访问环境中不可用，页面给出重启/更新说明；共享远程电脑为空；私有电脑列表显示可用徽标及多个Runtime图标 | 未启动/刷新服务，未连接新电脑，未点击电脑详情、检查凭据或执行任何Runtime；主机名与所有者不交付 |
+| UI09-task-board 默认空间任务看板 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI09-task-board.jpg) | screenshot_and_structure | 任务按待开始/待分拣/待规划/进行中/已完成分组；需求/缺陷/任务筛选；显示设置、视图搜索与新建视图独立；仅一条示例任务 | 未拖拽、未改状态、未保存视图；只有示例数据不能验证大数据量和复杂层级 |
+| UI10-new-workitem-form 空间新建需求未提交表单 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI10-new-workitem-form.jpg) | screenshot_and_structure | 当前类型为需求；标题和描述分开；处理人、业务状态、优先级、专项、标签独立；标题为空显示请先填写标题且创建禁用 | 未更改类型或属性、未提交、未上传附件；不验证服务端必填校验 |
+| UI11-workitem-type-menu 工作项类型菜单 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI11-workitem-type-menu.jpg) | screenshot_and_structure | 需求/缺陷/任务与管理任务类型入口分开 | 未切换类型或进入管理；未验证角色差异和字段迁移 |
+| UI12-iterations-empty 迭代列表空态 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI12-iterations-empty.jpg) | screenshot_and_structure | 迭代列表/规划迭代分开；可按状态筛选；还没有迭代明确引导创建第一轮 | 当前无真实迭代，无法验证结束、结转、历史和跨周期统计 |
+| UI13-saved-views-empty 保存视图空态 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI13-saved-views-empty.jpg) | screenshot_and_structure | 空态说明视图保存常用任务筛选和展示方式，可按处理人、状态、专项创建；新建与帮助入口并列 | 未创建或保存视图，不证明多人共享与权限边界 |
+| UI14-task-navigation-more 任务子导航扩展 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI14-task-navigation-more.jpg) | screenshot_and_structure | 迭代、分拣台、视图、专项在同一任务导航扩展；各入口的固定/移除控件独立 | 未更改固定项或拖动导航 |
+| UI15-delivery-goals-empty 专项空态 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI15-delivery-goals-empty.jpg) | screenshot_and_structure | 将专项解释为有限起止时间的攻坚目标，对应Epic；提供创建与帮助 | 当前无专项；期限、负责人、进度汇总和跨任务交付未验证 |
+| UI16-triage-empty 分拣台空态 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI16-triage-empty.jpg) | screenshot_and_structure | 待分拣任务计数为0；列表与详情双区；说明外部集成/访客任务先审核、定优先级，再接受或拒绝；责任配置单列 | 无待分拣记录；未配置、创建、接受、拒绝、去重或暂缓 |
+| UI17-automation-empty 自动化空态 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI17-automation-empty.jpg) | screenshot_and_structure | 说明由任务事件触发任务操作，并可组合Agent和第三方集成；仅新建入口，当前无规则记录 | 未新建、启用、触发或测试规则；运行历史和失败补偿未验证 |
+| UI18-skills-empty 空间技能空态 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI18-skills-empty.jpg) | screenshot_and_structure | 添加来源包括创建、URL导入和已连接电脑复制；页面处在空间上下文，空态文案同时提到组织中每个Agent可用 | 未导入、复制、安装或发布技能；实际可见性与执行权限未验证 |
+| UI19-document-library-empty 文档库私有与团队范围 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI19-document-library-empty.jpg) | screenshot_and_structure | 我的文档与团队文档分列；我的文档空态明确只属于自己；文档集、快速添加、上传文件为独立入口 | 未新建、上传、共享或搜索真实文档；跨设备访问和Agent实际读取未验证 |
+| UI20-integration-directory 外部应用集成目录 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI20-integration-directory.jpg) | screenshot_and_structure | 任务管理、Git仓库、协作工具分组；入口区分设置与即将推出；部分文案描述双向更新、回链或消息发送 | 未打开凭据、授权、测试连接或发起同步；所有方向/范围能力仅是界面声明 |
+| UI21-git-and-collaboration-integrations Git与协作工具集成分类 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI21-git-and-collaboration-integrations.jpg) | screenshot_and_structure | Git仓库与Git issues单独分类；协作平台与任务平台不同职责；部分未来平台显式即将推出 | 未连接厂商、获取凭据、发消息或执行回写；当前只有目录声明 |
+| UI22-computer-local-bridge-unavailable 电脑与运行资源 | [有图](proposals/2026-10-15-crux-roadmap/evidence/ui/UI22-computer-local-bridge-unavailable.jpg) | screenshot_and_structure | 本地桌面桥接能力在当前Chrome扩展访问环境中不可用，页面给出重启/更新说明；共享远程电脑为空；私有电脑列表显示可用徽标及多个Runtime图标 | 未启动/刷新服务，未连接新电脑，未点击电脑详情、检查凭据或执行任何Runtime；主机名与所有者不交付 |
 | UI23-members-role-scope 组织成员页 | 仅结构记录／无可交付截图 | structure_only | 成员与外部账号分Tab，表头分别列角色、空间、加入时间；当前只有一个所有者。 | 未邀请、复制链接、查看个人详情、修改角色或验证无权场景；裁切截图超时，视觉未验证 |
 | UI24-keyboard-preferences 快捷键说明 | 仅结构记录／无可交付截图 | structure_only | 发送快捷键适用于对话、评论和回复；命令菜单、移动任务和当前视图查找分别提供快捷键说明。 | 未修改偏好、未发送内容、未做读屏和全键盘审查；没有交付截图 |
 | UI25-agent-settings-form 组织设置创建Agent | 仅结构记录／无可交付截图 | structure_only | 空白表单将名称、职位/角色、所属空间、可见性、Runtime和工作方式分开；代码开发与日常办公可选，设计创意禁用。本次可见性显示共享，与UI05结构观察私有不同。 | 未创建或修改；截图超时且复查时弹层已消失，不能归因于产品；不交付视觉结论。主机名、所有者和Agent名称不交付 |
@@ -368,7 +368,7 @@ Trellis Panel已经具备本地任务、材料阅读、Jira接入和面板内ACP
 > **时间边界**：本章记录v0.6规划形成时的代码路径，解释原问题及设计动机。现有实施记录发生在其后。尤其F01–F04和创建、交接、Git等路径已有更新，不能把本章的旧判断当作当前未修缺陷。最新进度见第1章；本次没有重跑VF01–VF03。
 
 
-核对日期2026-10-17 UTC。范围是当前工作区代码、项目规范、原始用户证词与现有任务验收。没有重新运行应用、AI、Jira写入或业务服务，也没有用Hifox截图填补Trellis验证。代码行号是本次检查点，文件内容指纹见[evidence/project-evidence.json](proposals/2026-10-17-project-first-roadmap/evidence/project-evidence.json)。仓库有并发修改，因此“当前代码”只代表采集时刻。
+核对日期2026-10-17 UTC。范围是当前工作区代码、项目规范、原始用户证词与现有任务验收。没有重新运行应用、AI、Jira写入或业务服务，也没有用Crux截图填补Trellis验证。代码行号是本次检查点，文件内容指纹见[evidence/project-evidence.json](proposals/2026-10-17-project-first-roadmap/evidence/project-evidence.json)。仓库有并发修改，因此“当前代码”只代表采集时刻。
 
 ### 1 目标证据、假设和冲突
 
@@ -454,7 +454,7 @@ README同时写“面板不接管/派发会话”和当前ACP/频道能力，亦
 | E29 历史文案 | `README.md` 功能总览 / 推荐任务流 / Jira连接 | 立项为Trellis本地可视化；仍写不派发、双向同步及旧归档能力 | 部分描述落后当前代码，不能单独当实现证明 |
 | E30 历史视觉记录 | `design-qa.md` Reopened after user review / final result | 旧布局已有检查，用户重新打开原生视觉验收；最后为blocked | 本轮不复用过时截图冒充最终原生UI通过 |
 | E31 当前代码 | `src/main/services/documents/controller.ts` L42 / L111 | 阅读器有内容修订与受控读取 | 单文档修订不等于正式需求逐义务批准 |
-| E32 已存在任务 | `.trellis/tasks/10-15-weekly-cycles/task.json` status / description | 周周期、结转在in_progress既有工作中，零CLI/工作流改动 | 不应被写成未来才从零建设的Hifox迭代系统 |
+| E32 已存在任务 | `.trellis/tasks/10-15-weekly-cycles/task.json` status / description | 周周期、结转在in_progress既有工作中，零CLI/工作流改动 | 不应被写成未来才从零建设的Crux迭代系统 |
 | E33 当前代码 | `src/main/services/documents/diff-service.ts` L173–215 | 会话打开基线与Git最近提交差异，失败有诊断降级 | 不是全工作区多仓库代码Diff管理器 |
 
 ### 6 验证口径
@@ -653,7 +653,7 @@ VF01–03不是已复现缺陷或已修复证明。任何修复先确认本项�
 | ACP配置 | userData/acp/profiles/<root-hash>.json | 可复用名字/职责/指令/runtime/default目录 | 本机配置按root分开，不是组织角色/执行授权 |
 | ACP会话 | userData/acp-sessions/<sessionId>.json；projectRoot/taskDir/远端身份/turn/events/materialSnapshot | acpx事件与主进程投影，历史读取与受能力支持的恢复 | taskDir可空；本机记录不自动共享；材料快照不等于完整内容指纹或遵守证据 |
 | 观测回执/活动 | 既有observability与activity服务 | Hook/文件/第一方动作→有来源记录→读模型 | assembled/emitted与模型接受/遵守分开；无记录不补成功 |
-| 周期/视图偏好 | TaskRecord.cycle；按工程的本机偏好 | 工作项分组与自然周结转 | 没必要引入Hifox式专项/共享视图实体才能使用当前周期 |
+| 周期/视图偏好 | TaskRecord.cycle；按工程的本机偏好 | 工作项分组与自然周结转 | 没必要引入Crux式专项/共享视图实体才能使用当前周期 |
 | Flow模板/运行 | .trellis/flows；userData/flow-runs | 定制中心显式运行模板，保存事件/结果 | 是另一工具路径，不是外部Trellis全生命周期审计 |
 | Git/CLI事实 | taskGitInfo、文档基线；CliRun的id/proc与流式输出 | 读取Git或显式运行命令 | 文件脏改动未必属于当前任务；进程存活不等于就绪 |
 
@@ -699,19 +699,19 @@ VF01–03不是已复现缺陷或已修复证明。任何修复先确认本项�
 
 ## 7 范围取舍及旧需求去向
 
-旧版从Hifox覆盖清单反推64项能力、48条FR和R0–R5，容易把“研究过”变成“迟早要做”。本版停止这种推导。旧研究与截图原样保留，证明当时看到了什么；是否进入产品路线必须再有本项目场景、现实缺口和用户目标。**没有64能力全覆盖目标，没有要求旧48条逐项通过的新门槛。**
+旧版从Crux覆盖清单反推64项能力、48条FR和R0–R5，容易把“研究过”变成“迟早要做”。本版停止这种推导。旧研究与截图原样保留，证明当时看到了什么；是否进入产品路线必须再有本项目场景、现实缺口和用户目标。**没有64能力全覆盖目标，没有要求旧48条逐项通过的新门槛。**
 
-### 1 Hifox借鉴、暂缓与不采用
+### 1 Crux借鉴、暂缓与不采用
 
 | 参考主题 | 本版取舍 | 项目理由 | 何时才改变 |
 | --- | --- | --- | --- |
-| 阅读、就地资料和渐进披露 | 借鉴细节，沿用现有实现 | 服务P01与E05；不重绘成Hifox组织/空间结构 | 遇到当前阅读/窄屏问题时按真实截图验证 |
+| 阅读、就地资料和渐进披露 | 借鉴细节，沿用现有实现 | 服务P01与E05；不重绘成Crux组织/空间结构 | 遇到当前阅读/窄屏问题时按真实截图验证 |
 | 环境诊断与业务/运行分开 | 保留原则，复用当前ACP | E03/E18已有安装/认证/目录/会话事实；不能当未来全新平台 | 继续原任务的真实厂商与原生验收 |
 | Agent列表/角色配置 | 复用现有ACP配置，适度借鉴 | 当前Codex/Claude和root配置已实现，不新增组织资源发布 | 有具体配置难用样本再调整交互 |
-| 搜索条件/空态/错误恢复 | 仅作交互检查参考 | Hifox截图可提示风险，不能替代Trellis复现 | 实际任务页出现相同问题才立项 |
+| 搜索条件/空态/错误恢复 | 仅作交互检查参考 | Crux截图可提示风险，不能替代Trellis复现 | 实际任务页出现相同问题才立项 |
 | 周迭代 | 复用当前自然周，不照搬新平台 | E20/E32已有周期和结转；属于既有进行中工作 | 按原任务验证，新增复杂规则另决策 |
-| 多工程运行/日志/只读Git | 项目主场景，可独立排期 | E05明确后续方向、E24/E25有基础；不依赖Hifox或共享审批 | 由实际工程/脚本/优先级决定C1–C3顺序 |
-| 专项/交付目标、分拣台 | 暂缓且允许不采用 | 当前没有独立长期目标或外部反馈分诊的具体样本；本地需求接入并不等于Hifox分拣 | 出现跨任务目标管理/大量外部反馈，并证明现有任务与Jira不足 |
+| 多工程运行/日志/只读Git | 项目主场景，可独立排期 | E05明确后续方向、E24/E25有基础；不依赖Crux或共享审批 | 由实际工程/脚本/优先级决定C1–C3顺序 |
+| 专项/交付目标、分拣台 | 暂缓且允许不采用 | 当前没有独立长期目标或外部反馈分诊的具体样本；本地需求接入并不等于Crux分拣 | 出现跨任务目标管理/大量外部反馈，并证明现有任务与Jira不足 |
 | 高级字段/任务类型平台 | 不纳入本规划范围 | 已有TaskRecord足以承接当前任务；照搬三类类型会增加迁移和管理 | 具体字段/检索无法表达且使用者确认收益 |
 | 共享视图/通知/统计扩张 | 保留现有本机功能，暂缓团队平台化 | 个人保存视图与本机通知不被删除；没有跨人身份/投递数据就不补假在线或待办 | 真实多人流程出现明确漏接/视图共享问题，先用现有渠道试验 |
 | 正式跨设备审批/组织权限 | 先验证实际协作，不预选平台 | E01确有团队目标，但不推出必须自建完整服务 | 用户确定产品/测试的实际入口、回复和权限需求后再选最小方案 |
@@ -746,7 +746,7 @@ VF01–03不是已复现缺陷或已修复证明。任何修复先确认本项�
 | FR-015 R1手工交付最小合同 | 取消统一硬合同 | PF-11 | 每任务不必发布manifest/构建包/跨设备交付；按任务实际检查记录。 |
 | FR-016 动作账本、授权与并发恢复 | 按现有副作用边界复用 | PF-03/PF-04/PN-04 | Jira本地操作控制已有；不为全部动作建通用新账本。 |
 | FR-017 材料组织与搜索 | 复用现有 | PF-02/PF-07 | 知识与材料阅读沿用当前索引和来源。 |
-| FR-018 任务类型与分类 | 不纳入默认 | 候选 | 不以Hifox需求/缺陷/任务三类取代现有工程TaskRecord。 |
+| FR-018 任务类型与分类 | 不纳入默认 | 候选 | 不以Crux需求/缺陷/任务三类取代现有工程TaskRecord。 |
 | FR-019 任务关系 | 缩为现有任务关联 | PF-08 | 先显示已有parent/children和后续任务，不建通用关系平台。 |
 | FR-020 个人与共享视图 | 复用个人偏好，暂缓共享平台 | PF-01/候选 | 已有本机保存视图不删除；共享默认需真实团队场景。 |
 | FR-021 迭代与交付目标 | 拆开处理 | 当前周期任务/候选 | 自然周已实现；专项/交付目标没有独立样本则暂缓。 |
@@ -849,7 +849,7 @@ VF01–03不是已复现缺陷或已修复证明。任何修复先确认本项�
 
 ### 6 交付物与历史处理（v0.6记录）
 
-v0.6正式入口已更新到原提案目录；根docs/roadmap.md保留原内容为折叠历史，并把本版放在首屏。项目旧Hifox目录不改原字节，原Library三个文件更新内容版本以保留版本历史。单独的v0.6-draft.1草稿也保留，不当作当前正式版本。
+v0.6正式入口已更新到原提案目录；根docs/roadmap.md保留原内容为折叠历史，并把本版放在首屏。项目旧Crux目录不改原字节，原Library三个文件更新内容版本以保留版本历史。单独的v0.6-draft.1草稿也保留，不当作当前正式版本。
 
 本版阅读层不继续铺陈旧64项能力、旧复杂实体和强制阶段。旧141文件只放在明确标记“已被本版取舍替代”的历史ZIP中，便于追溯研究证据；不将其作为现行附录或实施清单。当前48条历史FR的去向均implementation_commitment=false。
 
@@ -994,16 +994,16 @@ flowchart LR
 
 当前有效的规划入口是[场景化Roadmap](#scenarios)及[取舍表](#scope)。
 
-[Hifox v0.5.1原始归档](proposals/2026-10-17-project-first-roadmap/history/hifox-v0.5.1.zip)保存141个原文件，包括官方资料整理、19张应用网页截图、25条观察、覆盖矩阵、未验证范围、旧图源与当时提出的需求。归档保留原字节，便于追溯，不表示认可以前的范围推导。
+[Crux v0.5.1原始归档](proposals/2026-10-17-project-first-roadmap/history/crux-v0.5.1.zip)保存141个原文件，包括官方资料整理、19张应用网页截图、25条观察、覆盖矩阵、未验证范围、旧图源与当时提出的需求。归档保留原字节，便于追溯，不表示认可以前的范围推导。
 
 **归档内旧64项能力、48条FR、R0–R5、244+12条用例和22工作包均不构成现行必建清单。** 当时文件中的“当前入口”“阶段合同”“必须”只属于历史版本；现行采纳、暂缓及不采用以第7章为准。新文档不会要求把竞品研究覆盖逐项实现。
 
-原研究实际验证的是可访问的Hifox网页；本机桥接不可用、原生应用与跨设备/双账号权限、runtime执行及真实集成写入等仍未验证，不能称为全功能遍历。官方文档声明、网页观察、当前Trellis静态证据及设计建议保持分开。
+原研究实际验证的是可访问的Crux网页；本机桥接不可用、原生应用与跨设备/双账号权限、runtime执行及真实集成写入等仍未验证，不能称为全功能遍历。官方文档声明、网页观察、当前Trellis静态证据及设计建议保持分开。
 
 [更新前根roadmap原文](proposals/2026-10-17-project-first-roadmap/history/roadmap-before-v0.6.md)只供追溯，里面的旧“当前入口”已由本版替代。项目既有旧目录及原Library内容版本继续保留。
 
 ### 本次整合与资料维护方式
 
-本文件合并现有六份规划正文、现有README的实施记录、Hifox原始公开资料索引、22项应用覆盖、25条观察、12项UX发现、全部11条PA验收计划及四份图源。没有把旧64项能力或旧R0–R5再排成必建路线，没有重新提出先定主线的前置问题。
+本文件合并现有六份规划正文、现有README的实施记录、Crux原始公开资料索引、22项应用覆盖、25条观察、12项UX发现、全部11条PA验收计划及四份图源。没有把旧64项能力或旧R0–R5再排成必建路线，没有重新提出先定主线的前置问题。
 
 原roadmap和原提案文件保持原状。来源链接用于核对更细的原始记录，核心规划、观察、局限、需求、验收和模型已经放在本文，不以索引代替正文。今后若继续基于本文件交接，应先同步实际实施/验证记录，再调整相关场景与状态，保留未测项；代码变化时重查证据行号。

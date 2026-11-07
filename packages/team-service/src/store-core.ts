@@ -19,8 +19,8 @@ import { TEAM_COLLABORATION_SQL } from './collaboration-schema'
 import { TeamCollaboration } from './collaboration'
 import { TEAM_INVITATIONS_SQL } from './invitations-schema'
 import { TeamInvitations } from './invitations'
-import { TeamHifoxWorkspace } from './hifox-workspace'
-import { TEAM_HIFOX_WORKSPACE_SQL, TEAM_HIFOX_WORKSPACE_TRIGGERS_SQL } from './hifox-workspace-schema'
+import { TeamCruxWorkspace } from './crux-workspace'
+import { TEAM_CRUX_WORKSPACE_SQL, TEAM_CRUX_WORKSPACE_TRIGGERS_SQL } from './crux-workspace-schema'
 import { TeamCreations } from './creations'
 import { TEAM_CREATIONS_SQL } from './creations-schema'
 import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
@@ -46,6 +46,8 @@ import { TEAM_IMPORTS_SQL } from './imports-schema'
 import { TEAM_EXECUTION_INPUTS_SQL } from './execution-inputs-schema'
 import { TeamExecutionInputs } from './execution-inputs'
 import { executionInputSelectionIdSchema } from '../../../src/shared/team-execution-input'
+import { TEAM_JIRA_BUSINESS_HOOKS_SQL } from './jira-business-hooks-schema'
+import { TeamJiraBusinessHooks } from './jira-business-hooks'
 
 type Row = Record<string, SQLOutputValue>
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
@@ -91,7 +93,7 @@ export class TeamStoreCore {
   private readonly governance = new TeamGovernance(this.governanceHost)
   private readonly imports = new TeamImports({
     ...this.governanceHost,
-    createTask: (...args) => this.hifox.importTask(...args),
+    createTask: (...args) => this.crux.importTask(...args),
     event: (actorId, projectId, namespaceId, importId, commandId) => this.event('import.staged', 'personal', actorId, projectId, { namespaceId, importId, commandId })
   })
   private readonly taskInputs = new TeamTaskInputs(this.governanceHost, this.governance)
@@ -129,7 +131,7 @@ export class TeamStoreCore {
     },
     body: (bodyDigest) => this.blob(bodyDigest), persistBody: (bytes, bodyDigest) => this.persistBlob(bytes, bodyDigest),
     validateOriginBundle: this.validateTaskOutputOrigin,
-    workspaceChanged: (projectId) => this.hifox.materialsChanged(projectId)
+    workspaceChanged: (projectId) => this.crux.materialsChanged(projectId)
   })
   private readonly codeResources = new TeamCodeResources({
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
@@ -167,7 +169,7 @@ export class TeamStoreCore {
       return principal
     },
     fixedInput: (p, execution) => this.executionInputs.assertUsable(p, execution),
-    transition: (...args) => this.hifox.executionTransition(...args),
+    transition: (...args) => this.crux.executionTransition(...args),
     event: (actorId, task, executionId, commandId, kind) => this.event('task.execution-changed', 'personal', actorId, task.projectId, { taskId: task.taskId, spaceId: task.spaceId, executionId, commandId, kind })
   })
   private readonly executionInputs = new TeamExecutionInputs({ ...this.governanceHost,
@@ -179,7 +181,7 @@ export class TeamStoreCore {
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
     mutation: (...args) => this.mutation(...args), after: (...args) => this.listAfter(...args), page: (...args) => this.page(...args)
   })
-  private readonly hifox = new TeamHifoxWorkspace({
+  private readonly crux = new TeamCruxWorkspace({
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
@@ -187,6 +189,25 @@ export class TeamStoreCore {
     invalidateProgress: (...args) => { this.taskProgress.reconcileWorkspace(...args); this.executions.reconcileWorkspace(...args) },
     validateExecutionChanges: (...args) => this.executions.validateWorkspaceChanges(...args),
     validateTaskTransitionInputs: (...args) => { this.taskInputs.validateTaskTransitionInputs(...args); this.executions.validateTransition(args[0], args[1], args[2], args[4], args[3]) }
+  })
+  private readonly jiraBusinessHooks = new TeamJiraBusinessHooks({
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch') }),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    authenticate: actor => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    task: (p, task) => {
+      this.project(p, task.projectId)
+      const row = this.get('SELECT snapshotJson FROM crux_workspaces WHERE projectId=?', task.projectId)
+      const snapshot = row ? JSON.parse(text(row, 'snapshotJson')) as { tasks?: Array<Record<string, unknown>>; spaces?: Array<Record<string, unknown>> } : null
+      const current = snapshot?.tasks?.find(item => item.id === task.taskId)
+      const space = current && snapshot?.spaces?.find(item => item.id === current.spaceId)
+      const memberIds = Array.isArray(space?.memberIds) ? space.memberIds.filter((value): value is string => typeof value === 'string') : []
+      if (!current || !space || current.createdAt !== task.taskCreatedAt || current.spaceId !== task.spaceId || !memberIds.includes(p.person.userId)) {
+        throw new TeamServiceError('JIRA_TASK_FORBIDDEN', 'The authenticated actor cannot access the Jira-linked platform task', 403)
+      }
+      if (space.archived) throw new TeamServiceError('JIRA_TASK_INACTIVE', 'Archived task spaces cannot accept new Jira business effects', 409)
+    },
+    mutation: <T>(actor: StoreActor, commandId: string, kind: string, input: unknown, authorize: (p: StorePrincipal) => void, apply: (p: StorePrincipal) => T, authorizeReplay?: (p: StorePrincipal, result: T) => void) => this.mutation(actor, commandId, kind, input, authorize, apply, authorizeReplay),
+    event: (...args) => this.event(...args)
   })
   private readonly invitations = new TeamInvitations({
     issuer: () => this.options.issuer,
@@ -246,14 +267,14 @@ export class TeamStoreCore {
       })
       if (current >= 1 && current <= 3) this.transaction(() => { this.db.exec(TEAM_COLLABORATION_SQL); this.db.exec('PRAGMA user_version=4') })
       if (current >= 1 && current <= 4) this.transaction(() => { this.db.exec(TEAM_INVITATIONS_SQL); this.db.exec('PRAGMA user_version=5') })
-      if (current >= 1 && current <= 5) this.transaction(() => { this.db.exec(TEAM_HIFOX_WORKSPACE_SQL); this.db.exec('PRAGMA user_version=6') })
+      if (current >= 1 && current <= 5) this.transaction(() => { this.db.exec(TEAM_CRUX_WORKSPACE_SQL); this.db.exec('PRAGMA user_version=6') })
       if (current >= 1 && current <= 6) this.transaction(() => { this.db.exec(TEAM_LOCAL_AUTH_SQL); this.db.exec('PRAGMA user_version=7') })
-      if (current >= 1 && current <= 7) this.transaction(() => { this.db.exec(TEAM_HIFOX_WORKSPACE_TRIGGERS_SQL); this.db.exec('PRAGMA user_version=8') })
+      if (current >= 1 && current <= 7) this.transaction(() => { this.db.exec(TEAM_CRUX_WORKSPACE_TRIGGERS_SQL); this.db.exec('PRAGMA user_version=8') })
       if (current >= 1 && current <= 8) this.transaction(() => { this.db.exec(TEAM_CREATIONS_SQL); this.db.exec('PRAGMA user_version=9') })
       if (current >= 1 && current <= 9) this.transaction(() => { this.db.exec(TEAM_TASK_PROGRESS_SQL); this.db.exec('PRAGMA user_version=10') })
       if (current >= 1 && current <= 10) this.transaction(() => {
         this.db.exec(TEAM_TASK_PROGRESS_IDENTITIES_SQL)
-        this.db.exec('INSERT OR IGNORE INTO hifox_task_progress_commands(projectId,taskId,commandId,userId,ownerKey,requestHash) SELECT projectId,taskId,commandId,userId,ownerKey,requestHash FROM hifox_task_progress_receipts')
+        this.db.exec('INSERT OR IGNORE INTO crux_task_progress_commands(projectId,taskId,commandId,userId,ownerKey,requestHash) SELECT projectId,taskId,commandId,userId,ownerKey,requestHash FROM crux_task_progress_receipts')
         this.db.exec('PRAGMA user_version=11')
       })
       if (current >= 1 && current <= 11) this.transaction(() => { this.db.exec(TEAM_CODE_RESOURCES_SQL); this.db.exec('PRAGMA user_version=12') })
@@ -266,6 +287,7 @@ export class TeamStoreCore {
       if (current >= 1 && current <= 18) this.transaction(() => { this.db.exec(TEAM_TASK_EXECUTION_BOUNDARY_SQL); this.db.exec('PRAGMA user_version=19') })
       if (current >= 1 && current <= 19) this.transaction(() => { this.db.exec(TEAM_IMPORTS_SQL); this.db.exec('PRAGMA user_version=20') })
       if (current >= 1 && current <= 20) this.transaction(() => { this.db.exec(TEAM_EXECUTION_INPUTS_SQL); this.db.exec('PRAGMA user_version=21') })
+      if (current >= 1 && current <= 21) this.transaction(() => { this.db.exec(TEAM_JIRA_BUSINESS_HOOKS_SQL); this.db.exec('PRAGMA user_version=22') })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
@@ -353,7 +375,7 @@ export class TeamStoreCore {
     const requestHash = digest(canonical({ kind, input }))
     return this.transaction(() => {
       const principal = this.authenticate(actor); authorize(principal)
-      if (['taskExecutionCommand', 'executionInputCommand'].includes(kind) && this.get('SELECT commandId FROM hifox_task_progress_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a v1 progress operation', 409)
+      if (['taskExecutionCommand', 'executionInputCommand'].includes(kind) && this.get('SELECT commandId FROM crux_task_progress_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a v1 progress operation', 409)
       if (this.get('SELECT commandId FROM team_content_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a content operation', 409)
       const previous = this.get('SELECT kind,requestHash,resultJson FROM commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)
       if (previous) {
@@ -365,7 +387,7 @@ export class TeamStoreCore {
         return { status: 'duplicate', commandId, result }
       }
       const result = apply(principal)
-      if (['hifoxCommand', 'taskInputCommand', 'governanceCommand', 'taskMaterialCommand'].includes(kind)) this.executions.reconcileAuthorities()
+      if (['cruxCommand', 'taskInputCommand', 'governanceCommand', 'taskMaterialCommand'].includes(kind)) this.executions.reconcileAuthorities()
       this.run('INSERT INTO commands(userId,commandId,kind,requestHash,resultJson,createdAt) VALUES(?,?,?,?,?,?)', principal.person.userId, commandId, kind, requestHash, JSON.stringify(result), now())
       return { status: 'committed', commandId, result }
     })
@@ -501,7 +523,7 @@ export class TeamStoreCore {
   async dispatch(operation: StoreOperation, raw: unknown): Promise<unknown> {
     if (this.isClosed) throw new TeamServiceError('STORE_UNAVAILABLE', 'Team store is closed', 503)
     if (operation === 'health') return { schemaVersion: TEAM_SCHEMA_VERSION, instanceId: this.meta('instanceId'), epoch: this.meta('epoch') }
-    if (operation === 'hifoxTick') return this.hifox.tick()
+    if (operation === 'cruxTick') return this.crux.tick()
     if (operation === 'contentRecover') { this.content.recover(z.object({ restart: z.boolean() }).strict().parse(raw).restart); return null }
     if (operation === 'contentStart') return this.content.start(raw)
     if (operation === 'contentSettle') { this.content.settle(raw); return null }
@@ -597,7 +619,7 @@ export class TeamStoreCore {
     const { projectId, taskId } = z.object({ actor: actorSchema, projectId: teamIdSchema, taskId: teamTaskProgressResourceIdSchema,
       query: z.object({}).strict().optional() }).strict().parse(raw)
     // The owned worker serializes this synchronous read with all mutations; no getter yields.
-    const snapshot = this.hifox.read(principal, { projectId })
+    const snapshot = this.crux.read(principal, { projectId })
     const task = snapshot.snapshot.tasks.find(item => item.id === taskId)
     const space = task && snapshot.snapshot.spaces.find(item => item.id === task.spaceId)
     if (!task || !space) throw new TeamServiceError('TASK_DEVELOPMENT_UNAVAILABLE', 'Original task is unavailable', 404)
@@ -624,9 +646,9 @@ export class TeamStoreCore {
     if (operation === 'contentBudget') return this.content.budget(principal, raw)
     if (operation === 'contentAccounting') return this.content.accounting(principal, raw)
     if (operation === 'contentReconcile') return this.content.reconcile(actor, raw)
-    if (operation === 'hifoxSnapshot') return this.hifox.read(principal, raw)
-    if (operation === 'hifoxHead') return this.hifox.head(actor, raw)
-    if (operation === 'hifoxCommand') return this.hifox.command(actor, raw)
+    if (operation === 'cruxSnapshot') return this.crux.read(principal, raw)
+    if (operation === 'cruxHead') return this.crux.head(actor, raw)
+    if (operation === 'cruxCommand') return this.crux.command(actor, raw)
     if (operation === 'taskProgressRead') return this.taskProgress.read(actor, raw)
     if (operation === 'taskProgressCommand') return this.taskProgress.command(actor, raw)
     if (operation === 'taskProgressReceipt') return this.taskProgress.receipt(actor, raw)
@@ -668,6 +690,10 @@ export class TeamStoreCore {
     if (operation === 'codeResourceList') return this.codeResources.list(principal, raw)
     if (operation === 'codeResourceCommand') return this.codeResources.command(actor, raw)
     if (operation === 'taskCodeResourceRead') return this.codeResources.readTask(principal, raw)
+    if (operation === 'jiraBusinessMappingRead') return this.jiraBusinessHooks.readMapping(actor, raw)
+    if (operation === 'jiraBusinessMappingCommand') return this.jiraBusinessHooks.command(actor, raw.body)
+    if (operation === 'jiraBusinessEffectRead') return this.jiraBusinessHooks.readEffect(actor, raw)
+    if (operation === 'jiraBusinessEventCommand') return this.jiraBusinessHooks.event(actor, raw.body)
     if (operation === 'creationList') return this.creations.list(principal, raw)
     if (operation === 'creationHead') return this.creations.head(principal, raw)
     if (operation === 'creationView') return this.creations.get(principal, raw)
@@ -686,9 +712,9 @@ export class TeamStoreCore {
       const kind = text(command, 'kind'); const result = z.record(z.string(), z.unknown()).parse(json(command, 'resultJson'))
       const resultId = (key: string): string => { const parsed = teamIdSchema.safeParse(result[key]); if (!parsed.success) throw new TeamServiceError('LEGACY_COMMAND_SCOPE_UNKNOWN', 'Stored receipt lacks scope metadata; reconcile using the original request', 409); return parsed.data }
       if (['createInvitation', 'acceptInvitation', 'revokeInvitation'].includes(kind)) this.invitations.authorizeReceipt(principal, kind, resultId('invitationId'))
-      else if (kind === 'hifoxCommand') {
-        this.hifox.authorize(principal, resultId('projectId'))
-        const scoped = this.hifox.projectReceipt(principal, result)
+      else if (kind === 'cruxCommand') {
+        this.crux.authorize(principal, resultId('projectId'))
+        const scoped = this.crux.projectReceipt(principal, result)
         return { commandId, kind, status: 'committed', recordedAt: integer(command, 'createdAt'), result: scoped }
       }
       else if (kind === 'creationCommand') this.creations.authorizeReceipt(principal, result)

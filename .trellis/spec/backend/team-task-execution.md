@@ -67,7 +67,7 @@ command. A command UUID with a different payload must not be accepted as a retry
 Directory display names and opaque session identifiers do not prove an external
 runtime's actual filesystem confinement.
 
-The global `runtime.hifoxProgress` control lane requires the protected native GUI
+The global `runtime.cruxProgress` control lane requires the protected native GUI
 capability in addition to ordinary profile authentication. Bind proof to the
 current connection challenge and kernel-verified process lifetime. Actor labels,
 client-supplied PIDs and a workspace-less request do not establish GUI authority.
@@ -75,8 +75,8 @@ The daemon's internal sender does not depend on an attached GUI capability.
 
 ## Desktop execution
 
-`api.hifoxProgress` exposes `status`, `start`, `report`, `retry` and `detach`.
-`src/shared/hifox-task-progress.ts` owns their exact validated shapes. Browser
+`api.cruxProgress` exposes `status`, `start`, `report`, `retry` and `detach`.
+`src/shared/crux-task-progress.ts` owns their exact validated shapes. Browser
 hosting must not expose native execution as a simulated capability.
 
 Capture the original origin, account, device, service project, space, task,
@@ -152,7 +152,7 @@ adoptions are separate records; new drafts/publications never move an adoption.
 
 ### 2. Signatures
 
-- `HifoxWorkApi`: `development`, `status`, `prepare`, `change` in `shared/hifox-work.ts`.
+- `CruxWorkApi`: `development`, `status`, `prepare`, `change` in `shared/crux-work.ts`.
 - `resolveContext({workspaceKey,taskId}, {contextId,generation})` is main-only.
 - `withNativeWorkcopyPreparation` owns material/CLI write admission and cleanup.
 - `installTaskInputRulesAuthority` binds rule loading to the original daemon row.
@@ -177,7 +177,7 @@ remember a candidate directory. Read full source S1 and resource R1, verify the
 original private ready record plus actual adapter, task, frozen files and Git,
 then read resource R2 followed by full source S2. Explicitly compare task creation,
 space, actor/authority/selection generation, material revision, resource proof
-and private binding revision; `readHifoxWorkSource(expected)` alone does not
+and private binding revision; `readCruxWorkSource(expected)` alone does not
 compare all of these fields. Recheck local files and physical/Git observations
 after the network waits. Missing team authority requires preparation/review.
 Every subsequent operation or runtime assertion starts fresh; no result is an
@@ -278,7 +278,7 @@ main window's main frame may admit task execution and output registration.
 
 ## Managed task outputs
 
-`shared/hifox-task-outputs.ts` defines the native schema factory and renderer
+`shared/crux-task-outputs.ts` defines the native schema factory and renderer
 API. The existing daemon owns `TaskOutputCoordinator`, its queue and pump even
 when there are no task-progress rows. Main provisions the original OS-protected
 sender grant before the first output-only request; it does not create a progress

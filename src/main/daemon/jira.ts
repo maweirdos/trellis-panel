@@ -1,6 +1,7 @@
 import { JIRA_DAEMON, jiraRequests, jiraResults } from '../../shared/jira-integration'
 import type { IntegrationSource } from '../../shared/integration-work'
 import { createJiraWorkspace, installJiraWorkspacePorts, type JiraLocalSnapshot } from '../services/integrations/jira-workspace'
+import { createCurrentJiraBusinessHook } from '../services/integrations/jira-workspace/business-hooks'
 import { integrationRegistry } from '../services/integrations/providers'
 import { resolveBinding, resolveConnection } from '../services/integrations/service'
 import type { ResolvedConnection } from '../services/integrations/types'
@@ -28,7 +29,7 @@ export function installJiraDomain(input: { context: DaemonContext; repository: D
     resolveBindingConnection: async (grant: Parameters<typeof scope.assert>[0], source: { connectionId: string; connectionRevision: number; bindingId: string; bindingRevision: number }) => binding(grant, source),
     resolvePersonalConnection: async (grant: Parameters<typeof scope.assert>[0], source: { connectionId: string; connectionRevision: number }) => { scope.assert(grant); const c = resolveConnection(source); if (c.public.providerId !== 'jira') throw new DaemonError('E_DENIED', 'Personal account must use a protected Jira connection.'); return c }
   }
-  const jira = createJiraWorkspace({ stateDirectory: context.directory, profileId: context.identity.profileId, assertOwner, authority, ledger: repository, scheduler, assertTaskRemovable: input.assertTaskRemovable })
+  const jira = createJiraWorkspace({ stateDirectory: context.directory, profileId: context.identity.profileId, assertOwner, authority, ledger: repository, scheduler, assertTaskRemovable: input.assertTaskRemovable, businessHooks: createCurrentJiraBusinessHook(context.userData) })
   installJiraWorkspacePorts(integrationRegistry, jira)
   const unwrap = <T>(result: { ok: true; data: T } | { ok: false; code: string; error: string }): T => {
     if (result.ok) return result.data

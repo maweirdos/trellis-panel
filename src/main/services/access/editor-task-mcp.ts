@@ -6,7 +6,7 @@ import { JSONRPCNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { withDesktopTeamService } from '../team-desktop'
 import { teamTaskProgressStateSchema } from '../../../shared/team-task-progress'
-import { hifoxTransitionTaskInputSchema } from '../../../shared/hifox-schema'
+import { cruxTransitionTaskInputSchema } from '../../../shared/crux-schema'
 import { teamExecutionWorkflowRefSchema, teamExecutionExecutorSchema, teamExecutionSourceRefSchema, teamExecutionNativeStateSchema } from '../../../shared/team-task-execution'
 import { executionArtifactKindSchema, executionCodeSourceSchema, executionSourceObservationSchema } from '../../../shared/team-execution-artifacts'
 import type { TeamTaskRef } from '../../../shared/team-task-execution'
@@ -28,7 +28,7 @@ const historyInput = taskInput.extend({ executionId: z.string().uuid() }).strict
 const artifactInput = outputScope.extend({ outputId: z.string().min(1).max(200), artifactId: z.string().uuid(), artifactKind: executionArtifactKindSchema, title: z.string().trim().min(1).max(300), text: z.string().max(MAX_TEXT_BYTES), previousVersionId: z.string().uuid().nullable().default(null), disposition: z.enum(['draft', 'confirmed']).default('confirmed') }).strict()
 const sealInput = outputScope.extend({ previousVersionId: z.string().uuid().nullable().default(null), previousDigest: z.string().regex(/^[a-f0-9]{64}$/).nullable().default(null), entries: z.array(z.object({ outputId: z.string().min(1).max(200), artifactId: z.string().uuid(), versionId: z.string().uuid(), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(16) }).strict()
 const checkpointInput = outputScope.extend({ manifestVersionId: z.string().uuid(), manifestDigest: z.string().regex(/^[a-f0-9]{64}$/), remainingWork: z.string().max(8192), source: executionCodeSourceSchema, observation: executionSourceObservationSchema.nullable().default(null) }).strict()
-const transitionInput = taskInput.extend({ expectedRevision: z.number().int().nonnegative().safe(), transition: hifoxTransitionTaskInputSchema }).strict()
+const transitionInput = taskInput.extend({ expectedRevision: z.number().int().nonnegative().safe(), transition: cruxTransitionTaskInputSchema }).strict()
 
 type EditorBinding = {
   connectionId: string
@@ -95,7 +95,7 @@ export class EditorTaskMcpBridge {
     const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     const mutation = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     server.registerTool('team_tasks_list', { description: '列出当前账号和设备可见的团队任务。返回的是当前团队服务快照，不代表已领取或拥有写入权。', inputSchema: z.object({ includeClosed: z.boolean().optional().default(false) }).strict(), annotations: readOnly }, async input => this.call(sessionKey, async binding => this.withService(async service => {
-      const snapshot = await service.hifoxSnapshot(binding.connectionId, { expectedInstanceId: binding.instanceId })
+      const snapshot = await service.cruxSnapshot(binding.connectionId, { expectedInstanceId: binding.instanceId })
       this.assertSnapshot(binding, snapshot)
       const items = snapshot.snapshot.tasks.filter(task => input.includeClosed || !['done', 'cancelled'].includes(snapshot.snapshot.taskStatuses.find(status => status.id === task.statusId)?.category ?? ''))
         .slice(0, MAX_TASKS).map(task => ({ id: task.id, spaceId: task.spaceId, createdAt: task.createdAt, title: task.title, statusId: task.statusId, priority: task.priority, assigneeIds: task.assigneeIds, handlerId: task.workflow?.handlerId ?? task.assigneeIds[0] ?? null, workflowStage: task.workflow?.stage ?? null, executor: task.executor ?? null }))
@@ -184,7 +184,7 @@ export class EditorTaskMcpBridge {
     const binding = await this.withService(async service => {
       const connection = (await service.connections()).find(item => item.state === 'active' && !item.accessLocked && item.ownerId && item.projectId)
       if (!connection || !connection.ownerId || !connection.projectId) throw new Error('当前没有可用于编辑器领取的团队连接')
-      const snapshot = await service.hifoxSnapshot(connection.connectionId)
+      const snapshot = await service.cruxSnapshot(connection.connectionId)
       this.assertSnapshotValues(connection.connectionId, connection.projectId, connection.ownerId, connection.deviceId, snapshot)
       return { connectionId: connection.connectionId, origin: connection.origin, pairingId: connection.pairingId, deviceId: connection.deviceId, ownerId: connection.ownerId, projectId: connection.projectId, instanceId: snapshot.instanceId, epoch: snapshot.epoch, authorizationRevision: snapshot.authorizationRevision }
     })
@@ -197,7 +197,7 @@ export class EditorTaskMcpBridge {
     await this.withService(async service => {
       const connection = (await service.connections()).find(item => item.connectionId === binding.connectionId)
       if (!connection || connection.state !== 'active' || connection.accessLocked || connection.deviceId !== binding.deviceId || connection.ownerId !== binding.ownerId || connection.projectId !== binding.projectId) throw new Error('编辑器原设备或账号权限已撤销')
-      const snapshot = await service.hifoxSnapshot(binding.connectionId, { expectedInstanceId: binding.instanceId })
+      const snapshot = await service.cruxSnapshot(binding.connectionId, { expectedInstanceId: binding.instanceId })
       this.assertSnapshot(binding, snapshot)
     })
   }

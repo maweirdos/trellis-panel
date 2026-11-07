@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, realpathSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { canonicalWorkflowJson } from '../../shared/workflow'
@@ -12,7 +12,7 @@ import { assertLease, type DaemonLease } from './lease'
 import { processIdentity, sameOwner } from './native'
 import { decodeProtectedCiphertext } from './protection'
 
-const PURPOSE = 'hifox-task-progress-native-gui'
+const PURPOSE = 'crux-task-progress-native-gui'
 const grantSchema = z.object({
   version: z.literal(1), purpose: z.literal(PURPOSE), id: z.string().uuid(),
   profileId: z.string().length(64), installationId: z.string().length(64), userId: z.string().min(1),
@@ -47,7 +47,17 @@ export async function ensureNativeGuiGrant(context: DaemonContext, lease: Daemon
   const actual = await processIdentity(process.pid)
   if (!process.versions.electron || process.type !== 'browser' || !actual || !sameOwner(actual, context.owner) || !sameOwner(actual, lease.owner)) throw new DaemonError('E_DENIED', 'Only the leased native application owner may issue its GUI grant.')
   assertOwner(); assertLease(context, lease)
-  if (existsSync(path(context))) { read(context); return }
+  if (existsSync(path(context))) {
+    try { read(context); return }
+    catch (error) {
+      // The current lease has already fenced the previous owner. A malformed,
+      // foreign-installation or unreadable grant cannot authorize the new
+      // owner; rotate only this capability file, never the daemon lease or
+      // protected settings, then issue a fresh grant below.
+      if (!(error instanceof DaemonError) || error.code !== 'E_DENIED') throw error
+      assertOwner(); assertLease(context, lease); unlinkSync(path(context))
+    }
+  }
   const secret = randomBytes(32)
   try {
     const grant = grantSchema.parse({ version: 1, purpose: PURPOSE, id: randomUUID(), profileId: context.identity.profileId,

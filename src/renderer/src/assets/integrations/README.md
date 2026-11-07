@@ -13,7 +13,7 @@ GitLab and GitHub art comes from Devicon v2.17.0 (MIT, see LICENSE.devicon.txt).
 WeKnora's favicon comes from Tencent's own repository; its complete license and
 third-party notices are preserved in LICENSE.WeKnora.txt. Gitee and Feishu favicons come
 from their official product sites. The blue DingTalk PNG is the product mark
-extracted from the installed HiFox artifact with REA; no implementation code was
+extracted from the installed Crux artifact with REA; no implementation code was
 copied. No explicit open artwork license was identified for these product marks.
 Do not describe all artwork as MIT or claim trademark ownership/endorsement.
 

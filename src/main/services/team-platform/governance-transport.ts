@@ -39,14 +39,14 @@ export function validateGovernanceReceipt(pin: GovernanceTransportPin, command: 
 
 export class GovernanceTransport {
   private readonly base: string
-  constructor(private readonly pin: GovernanceTransportPin, private readonly request: GovernanceRequest) { this.base = `/api/projects/${pin.projectId}/hifox/spaces/${encodeURIComponent(pin.spaceId)}/governance` }
+  constructor(private readonly pin: GovernanceTransportPin, private readonly request: GovernanceRequest) { this.base = `/api/projects/${pin.projectId}/crux/spaces/${encodeURIComponent(pin.spaceId)}/governance` }
   private identity(value: { instanceId: string; epoch: string }): void { if (value.instanceId !== this.pin.instanceId || value.epoch !== this.pin.epoch) mismatch() }
   private task(raw: TaskInputScope): TaskInputScope {
     const task = taskInputScopeSchema.parse(raw)
     if (task.workspaceKey !== this.pin.workspaceKey || task.spaceId !== this.pin.spaceId) throw new DesktopTeamError('BINDING_CHANGED', '任务输入与原工作区不一致。')
     return task
   }
-  private taskBase(task: TaskInputScope): string { return `/api/projects/${this.pin.projectId}/hifox/tasks/${encodeURIComponent(task.taskId)}/inputs` }
+  private taskBase(task: TaskInputScope): string { return `/api/projects/${this.pin.projectId}/crux/tasks/${encodeURIComponent(task.taskId)}/inputs` }
   private query(task: TaskInputScope): string { return new URLSearchParams({ spaceId: task.spaceId, taskCreatedAt: task.taskCreatedAt }).toString() }
   private taskResult(task: TaskInputScope, value: { projectId: string; taskId: string; spaceId: string; taskCreatedAt: string }): void { if (value.projectId !== this.pin.projectId || value.taskId !== task.taskId || value.spaceId !== task.spaceId || value.taskCreatedAt !== task.taskCreatedAt) mismatch() }
   async list(input: { cursor?: string; limit?: number } = {}): Promise<z.infer<typeof governanceListSchema>> {

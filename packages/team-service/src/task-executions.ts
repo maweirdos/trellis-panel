@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
-import type { HifoxSnapshot, HifoxTask, HifoxTransitionTaskInput } from '../../../src/shared/hifox'
+import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
+import type { CruxSnapshot, CruxTask, CruxTransitionTaskInput } from '../../../src/shared/crux'
 import { taskInputCanonical, type TaskInputRead } from '../../../src/shared/team-task-inputs'
 import { teamExecutionCommandSchema, teamExecutionRecordSchema, teamExecutionReceiptSchema, teamExecutionViewSchema,
   teamTaskIdentity, teamTaskRefSchema, type TeamTaskRef, type TeamExecutionCommand, type TeamExecutionRecord,
   type TeamExecutionReceipt, type TeamExecutionView, type teamExecutionDependencySchema } from '../../../src/shared/team-task-execution'
-import type { HifoxWorkspaceHost } from './hifox-workspace'
+import type { CruxWorkspaceHost } from './crux-workspace'
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 import { taskProgressFence } from './task-progress'
@@ -15,7 +15,7 @@ import { TeamExecutionArtifacts } from './task-execution-artifacts'
 import type { executionCreationRefSchema } from '../../../src/shared/team-execution-artifacts'
 import { executionInputSchema } from '../../../src/shared/team-execution-input'
 
-type Host = Pick<HifoxWorkspaceHost, 'identity' | 'get' | 'all' | 'run' | 'authenticate' | 'project' | 'mutation'> & {
+type Host = Pick<CruxWorkspaceHost, 'identity' | 'get' | 'all' | 'run' | 'authenticate' | 'project' | 'mutation'> & {
   inputs(principal: StorePrincipal, task: TeamTaskRef): TaskInputRead
   dependency(principal: StorePrincipal, task: TeamTaskRef, ref: Extract<z.infer<typeof teamExecutionDependencySchema>, { kind: 'confirmed-document' }>): { text: string; title: string; withdrawn: boolean }
   creation(principal: StorePrincipal, task: TeamTaskRef, ref: z.infer<typeof executionCreationRefSchema>): { text: string; title: string }
@@ -23,7 +23,7 @@ type Host = Pick<HifoxWorkspaceHost, 'identity' | 'get' | 'all' | 'run' | 'authe
   persistBody(bytes: Buffer, digest: string): void
   recipient(userId: string, projectId: string): StorePrincipal
   fixedInput(principal: StorePrincipal, execution: TeamExecutionRecord): void
-  transition(principal: StorePrincipal, projectId: string, revision: number, input: HifoxTransitionTaskInput): void
+  transition(principal: StorePrincipal, projectId: string, revision: number, input: CruxTransitionTaskInput): void
   event(actorId: string, task: TeamTaskRef, executionId: string, commandId: string | null, kind: string): void
 }
 const hash = (s: string): string => createHash('sha256').update(s).digest('hex')
@@ -37,8 +37,8 @@ function stored<T>(schema: z.ZodType<T>, value: unknown): T {
   try { return schema.parse(typeof value === 'string' ? JSON.parse(value) : value) }
   catch { return fail('CORRUPT_STORE', 'Stored execution record failed validation', 503) }
 }
-const handler = (t: HifoxTask): string | undefined => t.workflow ? t.workflow.handlerId : t.assigneeIds.length === 1 ? t.assigneeIds[0] : undefined
-type Context = { principal: StorePrincipal; task: HifoxTask; ref: TeamTaskRef; fence: string; writable: boolean }
+const handler = (t: CruxTask): string | undefined => t.workflow ? t.workflow.handlerId : t.assigneeIds.length === 1 ? t.assigneeIds[0] : undefined
+type Context = { principal: StorePrincipal; task: CruxTask; ref: TeamTaskRef; fence: string; writable: boolean }
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 const boundaryScope = { spaceId: z.string(), taskCreatedAt: z.string() }
 const businessBoundarySchema = z.discriminatedUnion('kind', [
@@ -48,7 +48,7 @@ const businessBoundarySchema = z.discriminatedUnion('kind', [
     assigneeIds: z.array(z.string()), completedAt: z.string().nullable(), triagePending: z.boolean() }).strict()
 ])
 const storedBoundarySchema = z.object({ original: businessBoundarySchema.nullable(), successor: businessBoundarySchema.nullable() }).strict()
-function businessBoundary(task: HifoxTask, statusCategory: string | null): z.infer<typeof businessBoundarySchema> {
+function businessBoundary(task: CruxTask, statusCategory: string | null): z.infer<typeof businessBoundarySchema> {
   const scope = { spaceId: task.spaceId, taskCreatedAt: task.createdAt }
   return task.workflow ? { ...scope, kind: 'formal', stage: task.workflow.stage, handlerId: task.workflow.handlerId ?? null,
     historyLength: task.workflow.history.length, historyHeadId: task.workflow.history.at(-1)?.id ?? null }
@@ -82,15 +82,15 @@ export class TeamTaskExecutions {
     const ref = teamTaskRefSchema.parse(raw)
     if (ref.instanceId !== this.host.identity().instanceId) fail('EXECUTION_SCOPE_CONFLICT', 'Original service instance changed')
     this.host.project(principal, ref.projectId)
-    const row = this.host.get("SELECT t.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", ref.projectId, ref.taskId)
+    const row = this.host.get("SELECT t.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", ref.projectId, ref.taskId)
     if (!row) fail('EXECUTION_UNAVAILABLE', 'Original task is unavailable', 404)
-    const task = stored(hifoxSnapshotSchema.shape.tasks.element, row.body)
+    const task = stored(cruxSnapshotSchema.shape.tasks.element, row.body)
     if (task.spaceId !== ref.spaceId || task.createdAt !== ref.taskCreatedAt) fail('EXECUTION_SCOPE_CONFLICT', 'Task incarnation changed')
-    const sr = this.host.get("SELECT s.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", ref.projectId, ref.spaceId)
+    const sr = this.host.get("SELECT s.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", ref.projectId, ref.spaceId)
     if (!sr) fail('EXECUTION_UNAVAILABLE', 'Original space is unavailable', 404)
-    const space = stored(hifoxSnapshotSchema.shape.spaces.element, sr.body)
-    if (!canReadHifoxSpace(space, principal.person.userId)) fail('EXECUTION_FORBIDDEN', 'Current space access is required', 403)
-    const status = this.host.get("SELECT json_extract(s.value,'$.category') AS category FROM hifox_workspaces w,json_each(w.snapshotJson,'$.taskStatuses') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? AND json_extract(s.value,'$.spaceId')=?", ref.projectId, task.statusId, ref.spaceId)
+    const space = stored(cruxSnapshotSchema.shape.spaces.element, sr.body)
+    if (!canReadCruxSpace(space, principal.person.userId)) fail('EXECUTION_FORBIDDEN', 'Current space access is required', 403)
+    const status = this.host.get("SELECT json_extract(s.value,'$.category') AS category FROM crux_workspaces w,json_each(w.snapshotJson,'$.taskStatuses') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? AND json_extract(s.value,'$.spaceId')=?", ref.projectId, task.statusId, ref.spaceId)
     const resource = taskProgressFence(this.host, ref.projectId, task)
     const writable = !space.archived && space.memberIds.includes(principal.person.userId) && handler(task) === principal.person.userId
       && !!status && !['done', 'cancelled'].includes(String(status.category)) && !task.completedAt && task.workflow?.stage !== 'done' && !task.triagePending && resource.resourceAvailable
@@ -158,7 +158,7 @@ export class TeamTaskExecutions {
     const head = this.host.get('SELECT activeExecutionId FROM team_task_execution_heads WHERE projectId=? AND taskId=?', projectId, taskId)
     if (typeof head?.activeExecutionId === 'string') this.revoke(head.activeExecutionId, 'resource-changed')
   }
-  reconcileWorkspace(projectId: string, before: HifoxSnapshot, after: HifoxSnapshot): void {
+  reconcileWorkspace(projectId: string, before: CruxSnapshot, after: CruxSnapshot): void {
     // This hook runs inside the business writer transaction. Input/resource/ACL
     // invalidation alone never records that an execution's phase was handed off.
     const nextTasks = new Map(after.tasks.map(task => [task.id, task]))
@@ -257,7 +257,7 @@ export class TeamTaskExecutions {
         if (command.kind === 'claim') {
           if (command.attempt !== 1) fail('EXECUTION_ATTEMPT_CONFLICT', 'A newly claimed node starts at its first attempt')
           if (head.activeExecutionId) fail('EXECUTION_WRITER_CONFLICT', 'Another execution owns this task')
-          const progress = this.host.get('SELECT epoch,fence,bindingJson FROM hifox_task_progress WHERE projectId=? AND taskId=?', ctx.ref.projectId, ctx.ref.taskId)
+          const progress = this.host.get('SELECT epoch,fence,bindingJson FROM crux_task_progress WHERE projectId=? AND taskId=?', ctx.ref.projectId, ctx.ref.taskId)
           if (progress?.bindingJson && progress.epoch === command.expectedEpoch && progress.fence === taskProgressFence(this.host, ctx.ref.projectId, ctx.task).fence) fail('EXECUTION_WRITER_CONFLICT', 'A v1 reporting binding already owns this task')
           this.checkInputs(ctx, command.inputBundle)
           if (command.predecessorExecutionId) {
@@ -269,7 +269,7 @@ export class TeamTaskExecutions {
             inputBundle: command.inputBundle, predecessorExecutionId: command.predecessorExecutionId, source: command.source, nodeId: command.nodeId, attempt: command.attempt,
             authority: 'active', revocationReason: null, nativeState: 'unknown', nativeVerification: 'owner-reported', progress: null, finalization: null, createdAt: Date.now(), updatedAt: Date.now() }
           record.nodeAttempts = [{ nodeId: command.nodeId, maxAttempt: command.attempt }]
-          const status = this.host.get("SELECT json_extract(s.value,'$.category') AS category FROM hifox_workspaces w,json_each(w.snapshotJson,'$.taskStatuses') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? AND json_extract(s.value,'$.spaceId')=?", ctx.ref.projectId, ctx.task.statusId, ctx.task.spaceId)
+          const status = this.host.get("SELECT json_extract(s.value,'$.category') AS category FROM crux_workspaces w,json_each(w.snapshotJson,'$.taskStatuses') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? AND json_extract(s.value,'$.spaceId')=?", ctx.ref.projectId, ctx.task.statusId, ctx.task.spaceId)
           const boundary = { original: businessBoundary(ctx.task, typeof status?.category === 'string' ? status.category : null), successor: null }
           this.host.run('INSERT INTO team_task_executions(executionId,projectId,taskId,authority,ownerKey,actorJson,fence,recordJson,businessBoundaryJson) VALUES(?,?,?,?,?,?,?,?,?)', record.executionId, ctx.ref.projectId, ctx.ref.taskId, 'active', owner(actor), JSON.stringify(actor), ctx.fence, JSON.stringify(record), JSON.stringify(boundary))
           this.host.run('INSERT INTO team_task_execution_heads(projectId,taskId,generation,activeExecutionId) VALUES(?,?,?,?) ON CONFLICT(projectId,taskId) DO UPDATE SET generation=excluded.generation,activeExecutionId=excluded.activeExecutionId', ctx.ref.projectId, ctx.ref.taskId, record.generation, record.executionId)
@@ -341,11 +341,11 @@ export class TeamTaskExecutions {
     if (command.expectedActorId !== principal.person.userId || command.expectedDeviceId !== principal.deviceId) fail('EXECUTION_FORBIDDEN', 'Command belongs to another original account or device', 403)
   }
   /** All ordinary business transition paths call this hook in their existing transaction. */
-  validateTransition(principal: StorePrincipal, projectId: string, task: HifoxTask, transition: HifoxTransitionTaskInput, successor?: HifoxTask): void {
+  validateTransition(principal: StorePrincipal, projectId: string, task: CruxTask, transition: CruxTransitionTaskInput, successor?: CruxTask): void {
     this.validateHandoff(principal, projectId, task, successor, transition.action === 'decline' || transition.action === 'reassign' && principal.person.userId !== handler(task), successor ? handler(successor) : transition.assigneeId)
   }
   /** Secondary automation changes and legacy field edits cannot bypass explicit handoff gates. */
-  validateWorkspaceChanges(principal: StorePrincipal | null, projectId: string, before: HifoxSnapshot, after: HifoxSnapshot, explicitTaskId?: string): void {
+  validateWorkspaceChanges(principal: StorePrincipal | null, projectId: string, before: CruxSnapshot, after: CruxSnapshot, explicitTaskId?: string): void {
     const nextTasks = new Map(after.tasks.map(task => [task.id, task]))
     const oldStatuses = new Map(before.taskStatuses.map(status => [status.id, status.category]))
     const nextStatuses = new Map(after.taskStatuses.map(status => [status.id, status.category]))
@@ -361,7 +361,7 @@ export class TeamTaskExecutions {
       this.validateHandoff(effective, projectId, task, successor, forced, handler(successor))
     }
   }
-  private validateHandoff(principal: StorePrincipal, projectId: string, task: HifoxTask, successor: HifoxTask | undefined, forced: boolean, recipientId?: string): void {
+  private validateHandoff(principal: StorePrincipal, projectId: string, task: CruxTask, successor: CruxTask | undefined, forced: boolean, recipientId?: string): void {
     const last = this.host.get("SELECT executionId,businessBoundaryJson FROM team_task_executions WHERE projectId=? AND taskId=? AND json_extract(recordJson,'$.task.spaceId')=? AND json_extract(recordJson,'$.task.taskCreatedAt')=? ORDER BY rowid DESC LIMIT 1", projectId, task.id, task.spaceId, task.createdAt)
     if (!last) return
     const row = this.row(String(last.executionId)), record = row.record

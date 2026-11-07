@@ -6,7 +6,7 @@ import type { TeamAuthentication } from './auth'
 import type { TeamStore } from './store-client'
 
 const paramsSchema = z.object({ projectId: teamIdSchema, taskId: teamTaskProgressResourceIdSchema }).strict()
-const path = '/api/projects/:projectId/hifox/tasks/:taskId/progress'
+const path = '/api/projects/:projectId/crux/tasks/:taskId/progress'
 
 /** Register inside the existing session/device authentication and browser CSRF scope. */
 export async function registerTaskProgressRoutes(api: FastifyInstance, store: TeamStore, auth: TeamAuthentication): Promise<void> {

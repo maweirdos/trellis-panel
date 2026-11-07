@@ -1,10 +1,10 @@
 import { app } from 'electron'
 import { ipcInvoke } from '../../shared/ipc-channels'
-import { HifoxContentService } from '../services/hifox/content-service'
+import { CruxContentService } from '../services/crux/content-service'
 import { handle } from './registry'
 
 export function registerTeamContentIpc(): void {
-  const service = new HifoxContentService(app.getPath('userData'))
+  const service = new CruxContentService(app.getPath('userData'))
   handle(ipcInvoke.teamContent.readiness, (_event, input) => service.readiness(input))
   handle(ipcInvoke.teamContent.generate, (_event, input) => service.generate(input))
   handle(ipcInvoke.teamContent.job, (_event, input) => service.job(input))

@@ -3,7 +3,7 @@ import { ArrowUpRight, FileText, Loader2, RefreshCw } from 'lucide-react'
 import type { CreationPrivateSource } from '@shared/creations'
 import { conversationClient, conversationError, conversationValue } from '../conversations/client'
 import { selectConversation } from '../conversations/workspace'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { useMy } from '../my/store'
 import { Button } from '../my/ui'
 import { useApp } from '../store'
@@ -11,7 +11,7 @@ import { useInteractionGuard } from '../utils/interaction-scope'
 
 /** This owner-only clue never grants access; resolve the original conversation again. */
 export function CreationSource({ source, disabled }: { source: CreationPrivateSource; disabled: boolean }): JSX.Element {
-  const context = useHifox((state) => state.workspaceContext)
+  const context = useCrux((state) => state.workspaceContext)
   const identity = JSON.stringify([context.key, context.actorId, context.epoch, context.authorizationRevision, context.state])
   const current = useRef(true)
   const blocked = useRef(disabled)
@@ -56,7 +56,7 @@ export function CreationSource({ source, disabled }: { source: CreationPrivateSo
     if (!client) { setError('请在桌面应用中打开关联会话。'); return }
     const ticket = ++request.current
     const valid = (): boolean => {
-      const live = useHifox.getState().workspaceContext
+      const live = useCrux.getState().workspaceContext
       return current.current && !blocked.current && request.current === ticket && canInteract() &&
         identity === JSON.stringify([live.key, live.actorId, live.epoch, live.authorizationRevision, live.state]) && live.state !== 'access-revoked'
     }

@@ -140,7 +140,7 @@
     "title": "任务类型与分类",
     "disposition": "不纳入默认",
     "new_reference": "候选",
-    "reason": "不以Hifox需求/缺陷/任务三类取代现有工程TaskRecord。",
+    "reason": "不以Crux需求/缺陷/任务三类取代现有工程TaskRecord。",
     "implementation_commitment": false
   },
   {

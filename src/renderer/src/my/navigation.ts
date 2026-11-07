@@ -37,9 +37,9 @@ export const PAGE_NAVIGATION = {
     commandHint: '导入当前项目 · 外部查询'
   },
   team: { title: '概况', domain: 'team', scope: 'project', icon: 'views', keywords: '协作' },
-  hifox: {
+  crux: {
     title: '团队协作', domain: 'team', scope: 'local', icon: 'modules',
-    keywords: 'HiFox 团队协作 空间 同事 成员 任务 看板 专项 版本 迭代 分拣台 收件箱 自动化 Agent 技能 小队'
+    keywords: 'Crux 团队协作 空间 同事 成员 任务 看板 专项 版本 迭代 分拣台 收件箱 自动化 Agent 技能 小队'
   },
   analytics: { title: '统计', domain: 'team', scope: 'project', icon: 'analytics', keywords: '统计分析' },
   archive: { title: '归档', domain: 'tasks', scope: 'project', icon: 'intake' },
@@ -73,7 +73,7 @@ export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
 export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string }> = [
   { id: 'agents', page: 'chat', label: '对话', shortLabel: '对话' },
   { id: 'home', page: 'tasks', label: '个人', shortLabel: '个人' },
-  { id: 'team', page: 'hifox', label: '团队', shortLabel: '团队' },
+  { id: 'team', page: 'crux', label: '团队', shortLabel: '团队' },
   { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' }
 ]
 
@@ -94,7 +94,7 @@ export function activeModule(page: Page): ModuleId {
 
 /** Knowledge and conversation pages already own their real source/session browsers. */
 export function hasShellContext(page: Page): boolean {
-  return page !== 'hifox' && !['knowledge', 'agents'].includes(activeModule(page))
+  return page !== 'crux' && !['knowledge', 'agents'].includes(activeModule(page))
 }
 
 export function navigationScopeLabel(scope: NavigationScope): string {

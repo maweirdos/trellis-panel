@@ -57,7 +57,7 @@ export async function createTeamService(input: TeamServiceConfigInput): Promise<
     const tickTimer = setInterval(() => {
       if (ticking) return
       ticking = true
-      void store.call('hifoxTick', {}).catch(() => { if (config.logger) app.log.warn('Scheduled workspace rules could not complete; the next tick will recheck authority') }).finally(() => { ticking = false })
+      void store.call('cruxTick', {}).catch(() => { if (config.logger) app.log.warn('Scheduled workspace rules could not complete; the next tick will recheck authority') }).finally(() => { ticking = false })
     }, 30_000)
     tickTimer.unref()
     app.addHook('preClose', async () => { clearInterval(tickTimer) })
@@ -79,7 +79,7 @@ export * from '../../../src/shared/team-collaboration'
 export * from '../../../src/shared/team-invitations'
 export * from '../../../src/shared/team-identity'
 export * from '../../../src/shared/team-auth'
-export * from '../../../src/shared/hifox-remote'
+export * from '../../../src/shared/crux-remote'
 export * from '../../../src/shared/creations'
 export * from '../../../src/shared/team-task-progress'
 export * from '../../../src/shared/team-task-execution'
@@ -90,3 +90,4 @@ export * from '../../../src/shared/team-task-materials'
 export * from '../../../src/shared/team-content'
 export * from '../../../src/shared/team-governance'
 export * from '../../../src/shared/team-task-inputs'
+export * from '../../../src/shared/jira-business-hooks'

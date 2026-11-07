@@ -37,6 +37,8 @@ export const jiraMappingSchema = z.object({
 })
 export const jiraPlanSchema = z.object({
   plan: syncPlanSchema, controlRevision: revision, name: z.string().min(1).max(200), jql: z.string().max(4000), mapping: jiraMappingSchema,
+  /** Explicit platform Space for Jira intake/status business Hooks. */
+  platformSpaceId: id.nullable().optional(),
   rules: z.object({ inboundCreate: z.boolean(), inboundUpdate: z.boolean(), outboundCreate: z.boolean(), outboundUpdate: z.boolean() }).strict(),
   /** Explicit locally selected tasks; a plan never exports the whole workspace implicitly. */
   outboundTaskRefs: z.array(z.string().min(1).max(256)).max(100),
@@ -75,7 +77,7 @@ export const jiraMetadataSchema = z.object({
 export const jiraItemReceiptSchema = z.object({
   id: z.string().uuid(), jobId: z.string().uuid(), identity: z.string().max(300), issueId: jiraNumericIdSchema.nullable(), key: z.string().max(64),
   taskRef: z.string().max(256).nullable(), operationId: z.string().max(128).nullable(),
-  effect: z.enum(['local-create', 'local-update', 'remote-create', 'remote-update', 'remote-transition', 'remote-comment', 'rollback']),
+  effect: z.enum(['local-create', 'local-update', 'platform-create', 'platform-update', 'remote-create', 'remote-update', 'remote-transition', 'remote-comment', 'rollback']),
   state: z.enum(['intent', 'applied', 'failed', 'conflict', 'unknown', 'skipped', 'rolled-back', 'rollback-blocked']),
   created: z.boolean(), detail: z.string().max(400), at: timestamp
 }).strict()

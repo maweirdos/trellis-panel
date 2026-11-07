@@ -44,9 +44,9 @@ export type DesktopFeedbackInput = z.infer<typeof desktopFeedbackInputSchema>
 export type DesktopPairingInput = z.infer<typeof desktopPairingInputSchema>
 /** Native service transport only. Do not project these identity-bearing methods into preload. */
 export interface DesktopTeamProgressTransport {
-  hifoxTaskProgress(connectionId: string, taskId: string, expectedInstanceId?: string): Promise<import('./team-task-progress').TeamTaskProgressDto>
-  hifoxTaskProgressCommand(connectionId: string, taskId: string, command: import('./team-task-progress').TeamTaskProgressCommand, expectedInstanceId: string): Promise<import('./team-task-progress').TeamTaskProgressCommandReply>
-  hifoxTaskProgressReceipt(connectionId: string, taskId: string, commandId: string): Promise<import('./team-task-progress').TeamTaskProgressReceipt | null>
+  cruxTaskProgress(connectionId: string, taskId: string, expectedInstanceId?: string): Promise<import('./team-task-progress').TeamTaskProgressDto>
+  cruxTaskProgressCommand(connectionId: string, taskId: string, command: import('./team-task-progress').TeamTaskProgressCommand, expectedInstanceId: string): Promise<import('./team-task-progress').TeamTaskProgressCommandReply>
+  cruxTaskProgressReceipt(connectionId: string, taskId: string, commandId: string): Promise<import('./team-task-progress').TeamTaskProgressReceipt | null>
 }
 export interface DesktopTeamApi {
   executionRead(input: z.infer<typeof import('./team-task-execution').desktopExecutionScopeSchema>): Promise<import('./team-task-execution').TeamExecutionView>

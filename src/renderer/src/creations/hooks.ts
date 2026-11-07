@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { CreationApi, CreationList } from '@shared/creation-api'
 import type { CreationCommand, CreationCommandReply, CreationView } from '@shared/creations'
 import { api } from '../api'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import { mergeComments, mergeSummaries } from './creation-state'
 import { readCreationForm, recordCreationFormReceipt, releaseCreationFormCommand, retainCreationFormCommand, type CreationFormIdentity } from './creation-form-memory'
@@ -31,7 +31,7 @@ export function needsRecovery(error: CreationFailure | null): boolean {
 export function useCreationOwner(suffix: string): {
   workspaceKey: string; actorId: string | null; identity: string; principalKey: string; enabled: boolean; capture: () => () => boolean
 } {
-  const context = useHifox((state) => state.workspaceContext)
+  const context = useCrux((state) => state.workspaceContext)
   const canInteract = useInteractionGuard()
   const identity = JSON.stringify([context.key, context.actorId, context.epoch, context.authorizationRevision, context.state])
   const key = `${identity}:${suffix}`
@@ -44,7 +44,7 @@ export function useCreationOwner(suffix: string): {
   const capture = useCallback(() => {
     const generation = owner.current.generation
     return (): boolean => {
-      const live = useHifox.getState().workspaceContext
+      const live = useCrux.getState().workspaceContext
       return owner.current.mounted && owner.current.key === key && owner.current.generation === generation && canInteract()
         && JSON.stringify([live.key, live.actorId, live.epoch, live.authorizationRevision, live.state]) === identity
     }
@@ -214,7 +214,7 @@ export function useCreationCommands(creationId: string, revision: number | null,
     if (!enabled || lock.current || needsRecovery(pending.current) || uncertainOperations.has(recordKey)) { if (formIdentity) releaseCreationFormCommand(formIdentity); return null }
     const bridge = creationApi()
     const valid = capture()
-    const context = useHifox.getState().workspaceContext
+    const context = useCrux.getState().workspaceContext
     if (!valid() || (formIdentity && (formIdentity.workspaceKey !== context.key || formIdentity.actorId !== context.actorId || formIdentity.epoch !== (context.epoch ?? null)))) { if (formIdentity) releaseCreationFormCommand(formIdentity); return null }
     lock.current = true
     setState({ key, busy: true, error: null })
@@ -262,7 +262,7 @@ export function useCreationCommands(creationId: string, revision: number | null,
   const recover = useCallback(async (): Promise<CreationCommandReply | null | false> => {
     if (!enabled || lock.current) return false
     const valid = capture()
-    const context = useHifox.getState().workspaceContext
+    const context = useCrux.getState().workspaceContext
     if (!valid() || (formIdentity && (formIdentity.workspaceKey !== context.key || formIdentity.actorId !== context.actorId || formIdentity.epoch !== (context.epoch ?? null)))) return false
     const form = formIdentity ? readCreationForm(formIdentity) : undefined
     if (formIdentity && (!form?.pending || !form.command || form.command.action !== 'create' || form.command.creationId !== creationId || form.command.home !== formIdentity.scope || form.command.spaceId !== formIdentity.spaceId)) return false

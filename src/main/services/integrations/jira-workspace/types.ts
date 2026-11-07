@@ -4,6 +4,7 @@ import { integrationAccountSchema, integrationSourceSchema } from '../../../../s
 import { jiraConflictSchema, jiraDiagnosticSchema, jiraFieldsSchema, jiraIssueSchema, jiraItemReceiptSchema, jiraPlanSchema, jiraPreviewSchema } from '../../../../shared/jira-integration'
 import type { IntegrationSource } from '../../../../shared/integration-work'
 import type { ResolvedConnection } from '../types'
+import { teamTaskRefSchema } from '../../../../shared/team-task-execution'
 import { resolve } from 'node:path'
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
@@ -20,6 +21,7 @@ export const executionReceiptSchema = z.object({
   before: localSnapshotSchema.nullable(), after: localSnapshotSchema.nullable(),
   expectedLocal: jiraFieldsSchema.partial().nullable(),
   expectedRemote: jiraFieldsSchema.partial().nullable(), issue: jiraIssueSchema.nullable(),
+  platformTask: teamTaskRefSchema.nullable().optional(),
   /** Exact artifact tree recorded only when this invocation proved creation. */
   ownedTree: hash.nullable(), rollbackCommandId: z.string().uuid().nullable(), quarantine: z.string().max(512).nullable()
 }).strict()

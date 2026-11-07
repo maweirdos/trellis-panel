@@ -34,8 +34,8 @@ import type { ApplicationRuntimeApi, ApplicationInstanceApi, ApplicationRuntimeE
 import type { ApplicationTaskRuntimeApi } from '../shared/app-task-runtime'
 import type { GitHistoryRequest, GitCommitRequest, GitCommitDiffRequest } from '../shared/git-readonly'
 import type { GitWorkspaceApi } from '../shared/git-workspace'
-import type { HifoxApi } from '../shared/hifox'
-import type { HifoxWorkApi } from '../shared/hifox-work'
+import type { CruxApi } from '../shared/crux'
+import type { CruxWorkApi } from '../shared/crux-work'
 import type { ConversationApi } from '../shared/private-conversations'
 import type { DesignWorkspaceApi } from '../shared/design-workspace'
 
@@ -107,24 +107,24 @@ const taskConversationsApi: TaskConversationsApi = {
   taskConversationsInspect: (input) => ipcRenderer.invoke(ipcInvoke.taskConversations.inspect, input)
 }
 
-let hifoxScopeKey = 'local'
-let hifoxScopeGeneration = 0
-function observeHifoxContext(context: unknown): void {
-  if (context && typeof context === 'object' && 'key' in context && typeof context.key === 'string' && context.key !== hifoxScopeKey) {
-    hifoxScopeKey = context.key
-    hifoxScopeGeneration++
+let cruxScopeKey = 'local'
+let cruxScopeGeneration = 0
+function observeCruxContext(context: unknown): void {
+  if (context && typeof context === 'object' && 'key' in context && typeof context.key === 'string' && context.key !== cruxScopeKey) {
+    cruxScopeKey = context.key
+    cruxScopeGeneration++
   }
 }
-subscribe(ipcEvent.hifoxWorkspaceChanged, observeHifoxContext)
-type HifoxInvokeMethod = Exclude<keyof HifoxApi, 'onWorkspaceChanged'>
-async function invokeHifox<K extends HifoxInvokeMethod>(method: K, input?: unknown): Promise<Awaited<ReturnType<HifoxApi[K]>>> {
-  const generation = method === 'selectWorkspace' ? ++hifoxScopeGeneration : hifoxScopeGeneration
-  const scopeKey = hifoxScopeKey
-  const response: unknown = await ipcRenderer.invoke(ipcInvoke.hifox[method], input, scopeKey)
-  if (generation === hifoxScopeGeneration && response && typeof response === 'object' && 'context' in response) {
-    observeHifoxContext(response.context)
+subscribe(ipcEvent.cruxWorkspaceChanged, observeCruxContext)
+type CruxInvokeMethod = Exclude<keyof CruxApi, 'onWorkspaceChanged'>
+async function invokeCrux<K extends CruxInvokeMethod>(method: K, input?: unknown): Promise<Awaited<ReturnType<CruxApi[K]>>> {
+  const generation = method === 'selectWorkspace' ? ++cruxScopeGeneration : cruxScopeGeneration
+  const scopeKey = cruxScopeKey
+  const response: unknown = await ipcRenderer.invoke(ipcInvoke.crux[method], input, scopeKey)
+  if (generation === cruxScopeGeneration && response && typeof response === 'object' && 'context' in response) {
+    observeCruxContext(response.context)
   }
-  return response as Awaited<ReturnType<HifoxApi[K]>>
+  return response as Awaited<ReturnType<CruxApi[K]>>
 }
 
 const api = {
@@ -195,24 +195,24 @@ const api = {
     createProject: (input) => ipcRenderer.invoke(ipcInvoke.privateConversations.createProject, input),
     reclassify: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.reclassify, id, input)
   } satisfies ConversationApi,
-  hifoxMaterials: {
-    list: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.list, input),
-    read: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.read, input),
-    versions: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.versions, input),
-    submissions: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.submissions, input),
-    command: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.command, input),
-    pending: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.pending, input),
-    reconcile: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.reconcile, input),
-    retry: input => ipcRenderer.invoke(ipcInvoke.hifoxMaterials.retry, input)
-  } satisfies import('../shared/hifox-task-materials').HifoxTaskMaterialsApi,
-  hifoxResources: {
-    list: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.list, input),
-    task: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.task, input),
-    command: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.command, input),
-    pending: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.pending, input),
-    reconcile: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.reconcile, input),
-    retry: (input) => ipcRenderer.invoke(ipcInvoke.hifoxResources.retry, input)
-  } satisfies import('../shared/hifox-code-resources').HifoxCodeResourceApi,
+  cruxMaterials: {
+    list: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.list, input),
+    read: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.read, input),
+    versions: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.versions, input),
+    submissions: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.submissions, input),
+    command: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.command, input),
+    pending: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.pending, input),
+    reconcile: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.reconcile, input),
+    retry: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.retry, input)
+  } satisfies import('../shared/crux-task-materials').CruxTaskMaterialsApi,
+  cruxResources: {
+    list: (input) => ipcRenderer.invoke(ipcInvoke.cruxResources.list, input),
+    task: (input) => ipcRenderer.invoke(ipcInvoke.cruxResources.task, input),
+    command: (input) => ipcRenderer.invoke(ipcInvoke.cruxResources.command, input),
+    pending: (input) => ipcRenderer.invoke(ipcInvoke.cruxResources.pending, input),
+    reconcile: (input) => ipcRenderer.invoke(ipcInvoke.cruxResources.reconcile, input),
+    retry: (input) => ipcRenderer.invoke(ipcInvoke.cruxResources.retry, input)
+  } satisfies import('../shared/crux-code-resources').CruxCodeResourceApi,
   storage: {
     scan: () => ipcRenderer.invoke(ipcInvoke.storage.scan),
     clean: (input: import('../shared/storage').StorageCleanInput) => ipcRenderer.invoke(ipcInvoke.storage.clean, input),
@@ -242,72 +242,72 @@ const api = {
   jiraIntegration: createJiraWorkspaceBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   gitlabWorkspace: createGitlabWorkspaceBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   dingtalkWorkspace: createDingTalkBridge((channel, input) => ipcRenderer.invoke(channel, input)),
-  hifox: {
-    workspaceStatus: () => invokeHifox('workspaceStatus'),
-    workspacePending: () => invokeHifox('workspacePending'),
-    discardWorkspaceCommand: (input) => invokeHifox('discardWorkspaceCommand', input),
-    selectWorkspace: (input) => invokeHifox('selectWorkspace', input),
-    retryWorkspaceCommand: (input) => invokeHifox('retryWorkspaceCommand', input),
-    onWorkspaceChanged: (callback) => subscribe<import('../shared/hifox-remote').HifoxWorkspaceContext>(ipcEvent.hifoxWorkspaceChanged, callback),
-    snapshot: () => invokeHifox('snapshot'),
-    resetDemo: () => invokeHifox('resetDemo'),
-    triageQueue: (spaceId) => invokeHifox('triageQueue', spaceId),
-    createSpace: (input) => invokeHifox('createSpace', input),
-    updateSpace: (input) => invokeHifox('updateSpace', input),
-    joinSpace: (input) => invokeHifox('joinSpace', input),
-    inviteMember: (input) => invokeHifox('inviteMember', input),
-    updateMember: (input) => invokeHifox('updateMember', input),
-    removeMember: (input) => invokeHifox('removeMember', input),
-    setSpaceMembers: (input) => invokeHifox('setSpaceMembers', input),
-    createTaskType: (input) => invokeHifox('createTaskType', input),
-    updateTaskType: (input) => invokeHifox('updateTaskType', input),
-    removeTaskType: (input) => invokeHifox('removeTaskType', input),
-    createTaskStatus: (input) => invokeHifox('createTaskStatus', input),
-    removeTaskStatus: (input) => invokeHifox('removeTaskStatus', input),
-    createLabel: (input) => invokeHifox('createLabel', input),
-    archiveLabel: (input) => invokeHifox('archiveLabel', input),
-    createTask: (input) => invokeHifox('createTask', input),
-    transitionTask: (input) => invokeHifox('transitionTask', input),
-    recordVersionDelivery: (input) => invokeHifox('recordVersionDelivery', input),
-    saveMilestone: (input) => invokeHifox('saveMilestone', input),
-    completeMilestone: (input) => invokeHifox('completeMilestone', input),
-    removeMilestone: (input) => invokeHifox('removeMilestone', input),
-    updateTask: (input) => invokeHifox('updateTask', input),
-    removeTask: (input) => invokeHifox('removeTask', input),
-    addRelation: (input) => invokeHifox('addRelation', input),
-    removeRelation: (input) => invokeHifox('removeRelation', input),
-    addComment: (input) => invokeHifox('addComment', input),
-    resolveComment: (input) => invokeHifox('resolveComment', input),
-    createProject: (input) => invokeHifox('createProject', input),
-    updateProject: (input) => invokeHifox('updateProject', input),
-    createIteration: (input) => invokeHifox('createIteration', input),
-    updateIteration: (input) => invokeHifox('updateIteration', input),
-    completeIteration: (input) => invokeHifox('completeIteration', input),
-    saveView: (input) => invokeHifox('saveView', input),
-    removeView: (input) => invokeHifox('removeView', input),
-    triage: (input) => invokeHifox('triage', input),
-    recordTaskDelivery: (input) => invokeHifox('recordTaskDelivery', input),
-    saveAutomation: (input) => invokeHifox('saveAutomation', input),
-    toggleAutomation: (input) => invokeHifox('toggleAutomation', input),
-    removeAutomation: (input) => invokeHifox('removeAutomation', input),
-    runAutomation: (input) => invokeHifox('runAutomation', input),
-    markInboxRead: (input) => invokeHifox('markInboxRead', input),
-    snoozeInbox: (input) => invokeHifox('snoozeInbox', input),
-    clearInbox: (input) => invokeHifox('clearInbox', input),
-    restoreInbox: (input) => invokeHifox('restoreInbox', input),
-    saveAgent: (input) => invokeHifox('saveAgent', input),
-    removeAgent: (input) => invokeHifox('removeAgent', input),
-    saveSkill: (input) => invokeHifox('saveSkill', input),
-    removeSkill: (input) => invokeHifox('removeSkill', input),
-    saveCrew: (input) => invokeHifox('saveCrew', input),
-    removeCrew: (input) => invokeHifox('removeCrew', input)
-  } satisfies HifoxApi,
-  hifoxWork: {
-    status: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.status, input),
-    prepare: (input) => ipcRenderer.invoke(ipcInvoke.hifoxWork.prepare, input),
-    development: input => ipcRenderer.invoke(ipcInvoke.hifoxWork.development, input),
-    change: input => ipcRenderer.invoke(ipcInvoke.hifoxWork.change, input)
-  } satisfies HifoxWorkApi,
+  crux: {
+    workspaceStatus: () => invokeCrux('workspaceStatus'),
+    workspacePending: () => invokeCrux('workspacePending'),
+    discardWorkspaceCommand: (input) => invokeCrux('discardWorkspaceCommand', input),
+    selectWorkspace: (input) => invokeCrux('selectWorkspace', input),
+    retryWorkspaceCommand: (input) => invokeCrux('retryWorkspaceCommand', input),
+    onWorkspaceChanged: (callback) => subscribe<import('../shared/crux-remote').CruxWorkspaceContext>(ipcEvent.cruxWorkspaceChanged, callback),
+    snapshot: () => invokeCrux('snapshot'),
+    resetDemo: () => invokeCrux('resetDemo'),
+    triageQueue: (spaceId) => invokeCrux('triageQueue', spaceId),
+    createSpace: (input) => invokeCrux('createSpace', input),
+    updateSpace: (input) => invokeCrux('updateSpace', input),
+    joinSpace: (input) => invokeCrux('joinSpace', input),
+    inviteMember: (input) => invokeCrux('inviteMember', input),
+    updateMember: (input) => invokeCrux('updateMember', input),
+    removeMember: (input) => invokeCrux('removeMember', input),
+    setSpaceMembers: (input) => invokeCrux('setSpaceMembers', input),
+    createTaskType: (input) => invokeCrux('createTaskType', input),
+    updateTaskType: (input) => invokeCrux('updateTaskType', input),
+    removeTaskType: (input) => invokeCrux('removeTaskType', input),
+    createTaskStatus: (input) => invokeCrux('createTaskStatus', input),
+    removeTaskStatus: (input) => invokeCrux('removeTaskStatus', input),
+    createLabel: (input) => invokeCrux('createLabel', input),
+    archiveLabel: (input) => invokeCrux('archiveLabel', input),
+    createTask: (input) => invokeCrux('createTask', input),
+    transitionTask: (input) => invokeCrux('transitionTask', input),
+    recordVersionDelivery: (input) => invokeCrux('recordVersionDelivery', input),
+    saveMilestone: (input) => invokeCrux('saveMilestone', input),
+    completeMilestone: (input) => invokeCrux('completeMilestone', input),
+    removeMilestone: (input) => invokeCrux('removeMilestone', input),
+    updateTask: (input) => invokeCrux('updateTask', input),
+    removeTask: (input) => invokeCrux('removeTask', input),
+    addRelation: (input) => invokeCrux('addRelation', input),
+    removeRelation: (input) => invokeCrux('removeRelation', input),
+    addComment: (input) => invokeCrux('addComment', input),
+    resolveComment: (input) => invokeCrux('resolveComment', input),
+    createProject: (input) => invokeCrux('createProject', input),
+    updateProject: (input) => invokeCrux('updateProject', input),
+    createIteration: (input) => invokeCrux('createIteration', input),
+    updateIteration: (input) => invokeCrux('updateIteration', input),
+    completeIteration: (input) => invokeCrux('completeIteration', input),
+    saveView: (input) => invokeCrux('saveView', input),
+    removeView: (input) => invokeCrux('removeView', input),
+    triage: (input) => invokeCrux('triage', input),
+    recordTaskDelivery: (input) => invokeCrux('recordTaskDelivery', input),
+    saveAutomation: (input) => invokeCrux('saveAutomation', input),
+    toggleAutomation: (input) => invokeCrux('toggleAutomation', input),
+    removeAutomation: (input) => invokeCrux('removeAutomation', input),
+    runAutomation: (input) => invokeCrux('runAutomation', input),
+    markInboxRead: (input) => invokeCrux('markInboxRead', input),
+    snoozeInbox: (input) => invokeCrux('snoozeInbox', input),
+    clearInbox: (input) => invokeCrux('clearInbox', input),
+    restoreInbox: (input) => invokeCrux('restoreInbox', input),
+    saveAgent: (input) => invokeCrux('saveAgent', input),
+    removeAgent: (input) => invokeCrux('removeAgent', input),
+    saveSkill: (input) => invokeCrux('saveSkill', input),
+    removeSkill: (input) => invokeCrux('removeSkill', input),
+    saveCrew: (input) => invokeCrux('saveCrew', input),
+    removeCrew: (input) => invokeCrux('removeCrew', input)
+  } satisfies CruxApi,
+  cruxWork: {
+    status: (input) => ipcRenderer.invoke(ipcInvoke.cruxWork.status, input),
+    prepare: (input) => ipcRenderer.invoke(ipcInvoke.cruxWork.prepare, input),
+    development: input => ipcRenderer.invoke(ipcInvoke.cruxWork.development, input),
+    change: input => ipcRenderer.invoke(ipcInvoke.cruxWork.change, input)
+  } satisfies CruxWorkApi,
   teamContent: {
     readiness: input => ipcRenderer.invoke(ipcInvoke.teamContent.readiness, input),
     generate: input => ipcRenderer.invoke(ipcInvoke.teamContent.generate, input),
@@ -319,18 +319,18 @@ const api = {
     configure: input => ipcRenderer.invoke(ipcInvoke.teamContent.configure, input),
     probe: input => ipcRenderer.invoke(ipcInvoke.teamContent.probe, input)
   } satisfies import('../shared/team-content-api').TeamContentApi,
-  hifoxGovernance: {
-    readDocument: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.readDocument, input),
-    list: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.list, input),
-    read: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.read, input),
-    command: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.command, input),
-    inputs: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.inputs, input),
-    candidates: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.candidates, input),
-    adopt: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.adopt, input),
-    inputRevision: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.inputRevision, input),
-    pending: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.pending, input),
-    reconcile: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.reconcile, input),
-    retry: input => ipcRenderer.invoke(ipcInvoke.hifoxGovernance.retry, input)
+  cruxGovernance: {
+    readDocument: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.readDocument, input),
+    list: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.list, input),
+    read: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.read, input),
+    command: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.command, input),
+    inputs: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.inputs, input),
+    candidates: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.candidates, input),
+    adopt: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.adopt, input),
+    inputRevision: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.inputRevision, input),
+    pending: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.pending, input),
+    reconcile: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.reconcile, input),
+    retry: input => ipcRenderer.invoke(ipcInvoke.cruxGovernance.retry, input)
   } satisfies import('../shared/team-governance').TeamGovernanceApi,
   taskOutputs: {
     read: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.read, input),
@@ -338,20 +338,20 @@ const api = {
     confirm: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.confirm, input),
     compare: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.compare, input),
     recover: input => ipcRenderer.invoke(ipcInvoke.taskOutputs.recover, input)
-  } satisfies import('../shared/hifox-task-outputs').TaskOutputsApi,
-  hifoxProgress: {
-    status: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.status, input),
-    start: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.start, input),
-    report: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.report, input),
-    retry: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.retry, input),
-    detach: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.detach, input),
-    conversation: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.conversation, input),
-    events: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.events, input),
-    send: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.send, input),
-    respond: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.respond, input),
-    cancel: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.cancel, input),
-    resume: input => ipcRenderer.invoke(ipcInvoke.hifoxProgress.resume, input)
-  } satisfies import('../shared/hifox-task-progress').HifoxProgressApi,
+  } satisfies import('../shared/crux-task-outputs').TaskOutputsApi,
+  cruxProgress: {
+    status: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.status, input),
+    start: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.start, input),
+    report: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.report, input),
+    retry: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.retry, input),
+    detach: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.detach, input),
+    conversation: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.conversation, input),
+    events: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.events, input),
+    send: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.send, input),
+    respond: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.respond, input),
+    cancel: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.cancel, input),
+    resume: input => ipcRenderer.invoke(ipcInvoke.cruxProgress.resume, input)
+  } satisfies import('../shared/crux-task-progress').CruxProgressApi,
   creations: {
     list: (input) => ipcRenderer.invoke(ipcInvoke.creations.list, input),
     get: (input) => ipcRenderer.invoke(ipcInvoke.creations.get, input),

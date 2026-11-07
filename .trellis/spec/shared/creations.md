@@ -6,7 +6,7 @@ Read before changing personal/team creation, webpage opinions, candidate modific
 
 - `shared/creations.ts` owns the validated wire/persistence schemas; `creations-domain.ts` owns permissions, immutable publications, review continuity, candidates and adoption rules.
 - `creation-api.ts` exposes the source-bound desktop/browser interface. Renderer inputs carry a workspace key, never credentials, native roots or an asserted actor. The adapter derives identity, membership and epoch before and after asynchronous reads.
-- Published bodies, drafts and candidates stay outside `HifoxSnapshot`. Lists contain authorized metadata; opening a revision loads one body. `creations/head` hashes authorized identity/revision metadata for change detection without loading HTML. Browser/native observers notify only actual changes, with bounded polling and cleanup.
+- Published bodies, drafts and candidates stay outside `CruxSnapshot`. Lists contain authorized metadata; opening a revision loads one body. `creations/head` hashes authorized identity/revision metadata for change detection without loading HTML. Browser/native observers notify only actual changes, with bounded polling and cleanup.
 - The existing team SQL writer owns shared persistence, CAS, receipts and additive migrations. Desktop local mode uses the same pure domain and atomically stores its record with bounded command receipts. Unknown shared writes retain the original source, epoch, UUID and payload; recovery rechecks or repeats that same command.
 - Pending records missing their original project proof remain preserved and locked; never infer a destination from the current selection. Shutdown belongs to confirmed quit cleanup, after the reversible quit confirmation.
 - Personal creations belong to the selected collaboration source. Personal drafts and private notes remain owner-only; publishing shares a fixed revision. Team draft editing uses explicit same-space editor grants. Occupation names do not grant permissions.
@@ -44,7 +44,7 @@ The child protocol validates exact frame source, opaque origin, per-document non
 
 ## Native handoff
 
-The existing `HifoxTaskWorkspaceService` creates or reuses the original native execution identity when an authorized handler starts code work. Parent composition injects creation reference/body resolvers; the core service stays independently testable.
+The existing `CruxTaskWorkspaceService` creates or reuses the original native execution identity when an authorized handler starts code work. Parent composition injects creation reference/body resolvers; the core service stays independently testable.
 
 Validate source/epoch, fixed digests, native roots and task-relative paths before writing references. Save generated files with CAS, retain their digests and reject modified/deleted references on reopening. Existing human PRD edits are never overwritten. General non-code work does not require Trellis.
 

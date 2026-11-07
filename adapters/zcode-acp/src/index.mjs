@@ -77,7 +77,7 @@ function findOnPath(command) {
   return undefined
 }
 
-/** 标准安装位置表（复刻 HiFox 发现顺序）；显式 env（TRELLIS_ZCODE_BIN / ZCODE_BIN）优先。 */
+/** 标准安装位置表（复刻 Crux 发现顺序）；显式 env（TRELLIS_ZCODE_BIN / ZCODE_BIN）优先。 */
 export function resolveZcodeBin() {
   const explicit = process.env.TRELLIS_ZCODE_BIN ?? process.env.ZCODE_BIN
   if (regularFile(explicit)) return explicit

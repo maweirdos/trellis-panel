@@ -4,8 +4,8 @@ import { CreationError } from '../../../shared/creations-domain'
 import type { CreationCommandReply } from '../../../shared/creations'
 import { WHITEBOARD_V2_CAPABILITIES, whiteboardV2CommandSchema, whiteboardV2ListInputSchema, whiteboardV2ViewInputSchema, type WhiteboardV2Capabilities, type WhiteboardV2Command, type WhiteboardV2List, type WhiteboardV2View } from '../../../shared/creation-whiteboard-v2'
 import { whiteboardV2CapabilityInputSchema } from '../../../shared/whiteboard-v2-api'
-import type { HifoxSnapshot } from '../../../shared/hifox'
-import type { HifoxWorkspaceContext } from '../../../shared/hifox-remote'
+import type { CruxSnapshot } from '../../../shared/crux'
+import type { CruxWorkspaceContext } from '../../../shared/crux-remote'
 import { WhiteboardV2WorkerClient } from './whiteboard-v2-worker-client'
 import type { PendingWhiteboardV2 } from './whiteboard-v2-store'
 import type { WhiteboardWorkerActor, WhiteboardWorkerSource, WhiteboardWorkerWrite } from './whiteboard-v2-worker-protocol'
@@ -20,17 +20,17 @@ const listInputSchema = whiteboardV2ListInputSchema.extend({ workspaceKey: key }
 const getInputSchema = whiteboardV2ViewInputSchema.extend({ workspaceKey: key, creationId: z.string().uuid() }).strict()
 const recoverIdsSchema = z.object({ workspaceKey: key, creationId: z.string().uuid(), commandId: z.string().uuid() }).strict()
 const recoverInputSchema = z.union([commandInputSchema, recoverIdsSchema])
-type Workspace = { context: HifoxWorkspaceContext; snapshot: HifoxSnapshot }
+type Workspace = { context: CruxWorkspaceContext; snapshot: CruxSnapshot }
 type Source = { proof: string; actor: WhiteboardWorkerActor; binding: WhiteboardWorkerSource }
 export type WhiteboardV2ServiceDependencies = {
-  status(): Promise<HifoxWorkspaceContext>
+  status(): Promise<CruxWorkspaceContext>
   workspace(): Promise<Workspace>
   generation(): number
   store: WhiteboardV2WorkerClient
   now?(): number
 }
 function fail(code: string, message: string, status = 409): never { throw new CreationError(code, message, status) }
-function contextProof(context: HifoxWorkspaceContext): string {
+function contextProof(context: CruxWorkspaceContext): string {
   return JSON.stringify([context.key, context.connectionId, context.actorId, context.projectId, context.origin, context.instanceId, context.epoch, context.authorizationRevision, context.state])
 }
 function uncertain(error: unknown): Error {

@@ -5,7 +5,7 @@ import type { CreationPrivateSource } from '@shared/creations'
 import { api } from '../api'
 import { CreateCreationDialog } from '../creations/CreationDialogs'
 import { openCreation } from '../creations/navigation'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { Button, Modal } from '../my/ui'
 
 type Draft = { title: string; body: string; kind: 'document' | 'prototype'; privateSource: CreationPrivateSource }
@@ -14,7 +14,7 @@ type Draft = { title: string; body: string; kind: 'document' | 'prototype'; priv
 export function ArtifactDelivery({ conversation, file, onClose }: {
   conversation: Conversation; file: ConversationFile; onClose: () => void
 }): JSX.Element {
-  const context = useHifox(state => state.workspaceContext)
+  const context = useCrux(state => state.workspaceContext)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -27,8 +27,8 @@ export function ArtifactDelivery({ conversation, file, onClose }: {
     setLoading(true); setError(''); setDraft(null)
     const load = async (): Promise<void> => {
       if (!api?.conversations) throw new Error('请在桌面应用中打开会话文件')
-      if (!useHifox.getState().workspaceContext.actorId) await useHifox.getState().bootstrap()
-      const source = useHifox.getState().workspaceContext
+      if (!useCrux.getState().workspaceContext.actorId) await useCrux.getState().bootstrap()
+      const source = useCrux.getState().workspaceContext
       if (!source.actorId || source.state === 'access-revoked') throw new Error('个人创作工作区尚未就绪，请重新载入')
       const sourceIdentity = JSON.stringify([source.key, source.actorId, source.epoch])
       if (owner.current && owner.current !== sourceIdentity) throw new Error('账户或工作区已改变，请关闭后重新选择文件')
@@ -37,7 +37,7 @@ export function ArtifactDelivery({ conversation, file, onClose }: {
       const result = await api.conversations.readFile(conversation.id, { fileId: file.id, expectedRevision: file.revision, expectedSourceIdentity: file.sourceIdentity })
       if (!current) return
       if (!result.ok) throw new Error(result.error)
-      const live = useHifox.getState().workspaceContext
+      const live = useCrux.getState().workspaceContext
       if (sourceIdentity !== JSON.stringify([live.key, live.actorId, live.epoch])) throw new Error('账户或工作区已改变，请重新选择文件')
       setDraft({ title: result.value.name.replace(/\.[^.]+$/, ''), kind: result.value.kind, body: result.value.body,
         privateSource: { kind: 'conversationFile', conversationId: conversation.id, fileId: file.id, fileName: result.value.name, revision: result.value.revision, sourceIdentity: file.sourceIdentity } })
@@ -50,7 +50,7 @@ export function ArtifactDelivery({ conversation, file, onClose }: {
   const changed = owner.current !== null && identity !== owner.current
   if (draft && !changed) return <CreateCreationDialog key={`${conversation.id}:${file.id}:${file.revision}:${identity}`}
     scope="personal" initialDraft={draft} onClose={onClose} onCreated={creationId => {
-      const live = useHifox.getState().workspaceContext
+      const live = useCrux.getState().workspaceContext
       if (!live.actorId || identity !== JSON.stringify([live.key, live.actorId, live.epoch])) return
       onClose()
       openCreation({ workspaceKey: live.key, actorId: live.actorId, creationId, scope: 'personal' })

@@ -1173,21 +1173,21 @@ export interface SyncExtensionResult {
 /** APIs exposed to the renderer via contextBridge. */
 export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceApi, ApplicationTaskRuntimeApi, DocumentWindowApi, TaskConversationsApi {
   teamContent: import('./team-content-api').TeamContentApi
-  hifoxResources?: import('./hifox-code-resources').HifoxCodeResourceApi
-  hifoxMaterials?: import('./hifox-task-materials').HifoxTaskMaterialsApi
-  hifoxGovernance?: import('./team-governance').TeamGovernanceApi
-  taskOutputs?: import('./hifox-task-outputs').TaskOutputsApi
+  cruxResources?: import('./crux-code-resources').CruxCodeResourceApi
+  cruxMaterials?: import('./crux-task-materials').CruxTaskMaterialsApi
+  cruxGovernance?: import('./team-governance').TeamGovernanceApi
+  taskOutputs?: import('./crux-task-outputs').TaskOutputsApi
   storage: import('./storage').StorageApi
   bootstrap: import('./bootstrap').BootstrapApi
   onboarding: import('./onboarding').OnboardingApi
   gitWorkspace: import('./git-workspace').GitWorkspaceApi
   knowledgeAccess: import('./knowledge-access').KnowledgeApi
-  /** HiFox 协作域：空间/成员/任务/专项/迭代/视图/分拣台/自动化/收件箱/Agent/技能/小队 */
-  hifox: import('./hifox').HifoxApi
+  /** Crux 协作域：空间/成员/任务/专项/迭代/视图/分拣台/自动化/收件箱/Agent/技能/小队 */
+  crux: import('./crux').CruxApi
   conversations: import('./private-conversations').ConversationApi
   designWorkspace: import('./design-workspace').DesignWorkspaceApi
-  hifoxWork?: import('./hifox-work').HifoxWorkApi
-  hifoxProgress?: import('./hifox-task-progress').HifoxProgressApi
+  cruxWork?: import('./crux-work').CruxWorkApi
+  cruxProgress?: import('./crux-task-progress').CruxProgressApi
   creations?: import('./creation-api').CreationApi
   whiteboardV2?: import('./whiteboard-v2-api').WhiteboardV2Api
   integrations: import('./integrations').IntegrationApi

@@ -8,8 +8,8 @@ import {
 } from '../../../src/shared/creations'
 import { authorizeCreationCommand, canReadCreation, CreationError, executeCreationCommand, summarizeCreation, viewCreation } from '../../../src/shared/creations-domain'
 import { creationSearchScope, filterCreationSummaries, usesCreationSearch } from '../../../src/shared/creation-list-query'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
-import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
+import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
 import { teamIdSchema, type TeamCommandReply, type TeamPage } from '../../../src/shared/team-platform'
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError, requireValue } from './errors'
@@ -47,13 +47,13 @@ export class TeamCreations {
     if (members.length > 500) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Creation project roster exceeds its bound', 413)
     const activeMemberIds = members.map((row) => text(row, 'userId'))
     if (!activeMemberIds.includes(principal.person.userId)) deny()
-    const row = this.host.get('SELECT revision,snapshotJson FROM hifox_workspaces WHERE projectId=?', projectId)
-    let snapshot: z.infer<typeof hifoxSnapshotSchema> | null = null
-    try { snapshot = row ? hifoxSnapshotSchema.parse(JSON.parse(text(row, 'snapshotJson'))) : null }
+    const row = this.host.get('SELECT revision,snapshotJson FROM crux_workspaces WHERE projectId=?', projectId)
+    let snapshot: z.infer<typeof cruxSnapshotSchema> | null = null
+    try { snapshot = row ? cruxSnapshotSchema.parse(JSON.parse(text(row, 'snapshotJson'))) : null }
     catch { throw new TeamServiceError('CORRUPT_STORE', 'Creation space authority cannot be read', 503) }
     const actorId = principal.person.userId
     return { workspaceRevision: row ? number(row, 'revision') : 0, actor: { projectId, actorId, epoch: this.host.identity().epoch, now: Date.now(), activeMemberIds,
-      spaces: (snapshot?.spaces ?? []).map((entry) => ({ id: entry.id, archived: entry.archived === true, canRead: canReadHifoxSpace(entry, actorId), canWrite: canReadHifoxSpace(entry, actorId) && entry.memberIds.includes(actorId), memberIds: entry.memberIds.filter((id) => activeMemberIds.includes(id)) })),
+      spaces: (snapshot?.spaces ?? []).map((entry) => ({ id: entry.id, archived: entry.archived === true, canRead: canReadCruxSpace(entry, actorId), canWrite: canReadCruxSpace(entry, actorId) && entry.memberIds.includes(actorId), memberIds: entry.memberIds.filter((id) => activeMemberIds.includes(id)) })),
       tasks: (snapshot?.tasks ?? []).map((entry) => ({ id: entry.id, spaceId: entry.spaceId })), digestBody: digest } }
   }
 

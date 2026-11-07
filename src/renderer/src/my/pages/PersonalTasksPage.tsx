@@ -6,18 +6,18 @@ import { projectRootKey } from '../navigation'
 import { PageToolbar } from '../layout/PageLayout'
 import { Button, EmptyState } from '../ui'
 import { WorkItemsPage } from './WorkItemsPage'
-import { TaskWorkspace } from '../../hifox/TaskWorkspace'
-import { useHifox } from '../../hifox/store'
-import { useCollaborationWorkspace } from '../../hifox/HiFoxApp'
-import { ConnectionPanel } from '../../hifox/ConnectionPanel'
-import { NewTaskModal, TaskDetailDrawer } from '../../hifox/pages/TaskDetailDrawer'
+import { TaskWorkspace } from '../../crux/TaskWorkspace'
+import { useCrux } from '../../crux/store'
+import { useCollaborationWorkspace } from '../../crux/CruxApp'
+import { ConnectionPanel } from '../../crux/ConnectionPanel'
+import { NewTaskModal, TaskDetailDrawer } from '../../crux/pages/TaskDetailDrawer'
 
 function PersonalTeamTasks(): JSX.Element {
   useCollaborationWorkspace()
-  const { snapshot, loadError, bootstrap, createTaskOpen, createTaskContext, setCreateTaskOpen } = useHifox()
+  const { snapshot, loadError, bootstrap, createTaskOpen, createTaskContext, setCreateTaskOpen } = useCrux()
   useEffect(() => () => {
-    useHifox.getState().openTask(null)
-    useHifox.getState().setCreateTaskOpen(false)
+    useCrux.getState().openTask(null)
+    useCrux.getState().setCreateTaskOpen(false)
   }, [])
   if (loadError) return <div className="flex flex-col items-center"><EmptyState title={loadError} /><Button variant="outline" onClick={() => void bootstrap()}>重新加载</Button></div>
   if (!snapshot) return <div role="status" className="grid h-full place-items-center text-my-sm text-my-tertiary">正在加载团队任务…</div>

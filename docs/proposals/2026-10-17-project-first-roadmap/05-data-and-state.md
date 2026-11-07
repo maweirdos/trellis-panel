@@ -14,7 +14,7 @@
 | ACP配置 | userData/acp/profiles/<root-hash>.json | 可复用名字/职责/指令/runtime/default目录 | 本机配置按root分开，不是组织角色/执行授权 |
 | ACP会话 | userData/acp-sessions/<sessionId>.json；projectRoot/taskDir/远端身份/turn/events/materialSnapshot | acpx事件与主进程投影，历史读取与受能力支持的恢复 | taskDir可空；本机记录不自动共享；材料快照不等于完整内容指纹或遵守证据 |
 | 观测回执/活动 | 既有observability与activity服务 | Hook/文件/第一方动作→有来源记录→读模型 | assembled/emitted与模型接受/遵守分开；无记录不补成功 |
-| 周期/视图偏好 | TaskRecord.cycle；按工程的本机偏好 | 工作项分组与自然周结转 | 没必要引入Hifox式专项/共享视图实体才能使用当前周期 |
+| 周期/视图偏好 | TaskRecord.cycle；按工程的本机偏好 | 工作项分组与自然周结转 | 没必要引入Crux式专项/共享视图实体才能使用当前周期 |
 | Flow模板/运行 | .trellis/flows；userData/flow-runs | 定制中心显式运行模板，保存事件/结果 | 是另一工具路径，不是外部Trellis全生命周期审计 |
 | Git/CLI事实 | taskGitInfo、文档基线；CliRun的id/proc与流式输出 | 读取Git或显式运行命令 | 文件脏改动未必属于当前任务；进程存活不等于就绪 |
 

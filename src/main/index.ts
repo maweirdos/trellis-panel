@@ -52,8 +52,8 @@ import { setWorkflowAdmissionClosed } from './services/workflow-desktop'
 import { stopWorkflowSubscriptions } from './ipc/workflow'
 import { closeTaskConversations } from './ipc/task-conversations'
 import { resumeDesktopTeamBackground, setDesktopTeamAdmissionClosed, closeDesktopTeamService, withDesktopTeamService } from './services/team-desktop'
-import { tickScheduledAutomations } from './services/hifox/planning'
-import { resumeHifoxWorkspace, closeHifoxWorkspace, configureHifoxConnectionService } from './services/hifox/connection-service'
+import { tickScheduledAutomations } from './services/crux/planning'
+import { resumeCruxWorkspace, closeCruxWorkspace, configureCruxConnectionService } from './services/crux/connection-service'
 import { ensureTeamGitlabConnection } from './services/integrations/team-gitlab'
 
 let win: BrowserWindow | null = null
@@ -565,7 +565,7 @@ if (!gotLock) {
       for (const close of closeSources) { try { close() } catch (error) { errors.push(error) } }
       const results = await Promise.allSettled([
         closeCreationService(),
-        closeHifoxWorkspace(),
+        closeCruxWorkspace(),
         closeDesktopTeamService(),
         ...(guiApplicationsStarted ? [appRuntime.shutdown()] : [])
       ])
@@ -595,9 +595,16 @@ if (!gotLock) {
     if (guiExitWork) return guiExitWork
     const work = (async () => {
       guiClosing = true; fullRendererAttached = false; guiNativeStateReady = false
-      if (desktopCompositionStarted) {
+      if (desktopCompositionStarted && fullRendererEverAttached) {
         try { await waitForGuiCleanup() }
         catch (error) { reportGuiCleanupFailure(error); throw error }
+      } else if (desktopCompositionStarted) {
+        // Bootstrap failed before the full renderer was ever admitted. Do not
+        // deadlock the recovery shell behind full GUI cleanup: the daemon and
+        // native owners retain their own leases and the next startup will
+        // reconcile them. Best-effort partial cleanup may continue briefly,
+        // but the user must be able to exit this recovery window immediately.
+        void cleanupGui().catch(() => {})
       }
       app.exit(0)
     })()
@@ -645,7 +652,7 @@ if (!gotLock) {
       },
       create: createCapsule
     }
-    configureHifoxConnectionService({ withService: withDesktopTeamService, notify: (channel, payload) => broadcastToWindows(channel, payload), ensureGitlab: ensureTeamGitlabConnection })
+    configureCruxConnectionService({ withService: withDesktopTeamService, notify: (channel, payload) => broadcastToWindows(channel, payload), ensureGitlab: ensureTeamGitlabConnection })
     registerIpc({
       getMain: () => (win && !win.isDestroyed() ? win : null),
       getCapsule: () => (capsule && !capsule.isDestroyed() ? capsule : null),
@@ -696,7 +703,7 @@ if (!gotLock) {
     if (!desktopIngressStarted) {
       desktopIngressStarted = true
       resumeDesktopTeamBackground()
-      resumeHifoxWorkspace()
+      resumeCruxWorkspace()
       const tickCollaboration = (): void => {
         try { tickScheduledAutomations() }
         catch (error) { console.warn('协作定时规则检查失败', error) }
@@ -785,7 +792,7 @@ if (!gotLock) {
   const quitGate = createDaemonQuitGate({
     closeGuiAdmission: (closed) => { appRuntime.setAdmissionClosed(closed); setWorkflowAdmissionClosed(closed); setDesktopTeamAdmissionClosed(closed) },
     stopGuiWork: async () => { await appRuntime.shutdown(); await closeDesktopTeamService() },
-    detach: async () => { await closeCreationService(); detachRuntimeObservers(); await closeHifoxWorkspace() },
+    detach: async () => { await closeCreationService(); detachRuntimeObservers(); await closeCruxWorkspace() },
     finalize: () => {
       disposeDaemonTray()
       if (collaborationTimer) { clearInterval(collaborationTimer); collaborationTimer = null }

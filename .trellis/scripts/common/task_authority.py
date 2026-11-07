@@ -1,4 +1,4 @@
-"""Explicit team authority guards; legacy local/HiFox tasks stay local."""
+"""Explicit team authority guards; legacy local/Crux tasks stay local."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def is_team_managed(data: dict) -> bool:
 def is_reserved_task_meta(key: str) -> bool:
     return (
         key in ("panel_task_authority", "panel_operation_id")
-        or key.startswith("panel_hifox_")
+        or key.startswith("panel_trellis_flow_")
         or key.startswith("panel_team_")
     )
 

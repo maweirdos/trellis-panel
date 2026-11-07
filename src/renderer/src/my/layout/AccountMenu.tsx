@@ -2,8 +2,8 @@ import { useState, type JSX } from 'react'
 import { CircleUser, Moon, Sun, Users } from 'lucide-react'
 import { hasIpc } from '../../api'
 import { useApp } from '../../store'
-import { ConnectionPanel } from '../../hifox/ConnectionPanel'
-import { useHifox } from '../../hifox/store'
+import { ConnectionPanel } from '../../crux/ConnectionPanel'
+import { useCrux } from '../../crux/store'
 import { useMy } from '../store'
 import { Avatar, Button, Dropdown, DropdownItem, Tooltip } from '../ui'
 
@@ -13,8 +13,8 @@ export function AccountMenu(): JSX.Element {
   const theme = useMy((state) => state.theme)
   const toggleTheme = useMy((state) => state.toggleTheme)
   const [connectionsOpen, setConnectionsOpen] = useState(false)
-  const accountContext = useHifox((state) => state.workspaceContext)
-  const accountName = useHifox((state) => state.snapshot?.members.find((member) => member.id === state.workspaceContext.actorId)?.name)
+  const accountContext = useCrux((state) => state.workspaceContext)
+  const accountName = useCrux((state) => state.snapshot?.members.find((member) => member.id === state.workspaceContext.actorId)?.name)
   const inLocalMode = accountContext.state === 'local'
   const visibleAccount = inLocalMode ? snapshot?.meta.developer ?? '本机用户' : accountName ?? '团队账号待核对'
   return <>

@@ -130,34 +130,90 @@ function LegacyDaemonUpgrade({ bridge, revision, onBlocked, onStopped }: {
   const [failure, setFailure] = useState<DaemonFailure | null>(null)
   const [uncertain, setUncertain] = useState(false)
   const [stopped, setStopped] = useState(false)
+  const [inspectionTimedOut, setInspectionTimedOut] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const operation = useRef(false)
   const stopUncertain = useRef(false)
+  // Automatic inspection is a one-shot convenience for a fresh bootstrap
+  // shell. It must not be keyed to the bootstrap revision: a failed retry
+  // publishes a new revision, and coupling the two creates
+  // inspect -> retry -> revision -> inspect loops when no historical owner
+  // exists (the common E_UNAVAILABLE/not-admitted case).
+  const autoInspectAttempted = useRef(false)
   const originalStopInput = useRef<LegacyDaemonStopInput | null>(null)
   const mounted = useRef(true)
   const currentRevision = useRef(revision)
+  const inspectionAttempt = useRef(0)
+  const inspectionTimer = useRef<number | undefined>(undefined)
   currentRevision.current = revision
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      if (inspectionTimer.current !== undefined) window.clearTimeout(inspectionTimer.current)
+    }
+  }, [])
   const inspected = inspection?.revision === revision ? inspection.data : null
 
   const inspect = async (): Promise<void> => {
     if (operation.current || stopped || stopUncertain.current) return
     operation.current = true; setPending('inspect'); onBlocked(true)
-    setInspection(null); setFailure(null); setMessage(null)
+    setInspection(null); setFailure(null); setMessage(null); setInspectionTimedOut(false)
     const capturedRevision = revision
+    const capturedAttempt = ++inspectionAttempt.current
+    // Native identity/DPAPI/pipe inspection has bounded subprocess and
+    // request timers, but those layers can still take several seconds in a
+    // locked Windows session. Release the renderer latch after 20s so a stuck
+    // check never leaves the shell permanently showing "正在检查旧后台".
+    inspectionTimer.current = window.setTimeout(() => {
+      if (!mounted.current || !operation.current || inspectionAttempt.current !== capturedAttempt) return
+      inspectionAttempt.current += 1 // Ignore the eventual late IPC reply.
+      operation.current = false
+      setPending(null)
+      setInspectionTimedOut(true)
+      setMessage('检查旧后台超过 20 秒，已停止等待。请退出桌面后重试；不会自动重试或替换原后台。')
+      onBlocked(false)
+    }, 20_000)
     try {
       const result = await bridge.legacyInspect()
-      if (!mounted.current || currentRevision.current !== capturedRevision) return
+      if (!mounted.current || currentRevision.current !== capturedRevision || inspectionAttempt.current !== capturedAttempt) return
+      if (!result.ok && result.code === 'E_UNAVAILABLE' && /No verified historical daemon owner is running/.test(result.error)) {
+        // A missing historical owner is not proof that the native migration
+        // itself is complete. Retrying here can reproduce the same durable
+        // migration failure and, when the bootstrap revision changes, trigger
+        // another automatic inspection. Keep the shell interactive and leave
+        // the final retry to the user after the original diagnostic is visible.
+        setMessage('未发现仍在运行的旧后台。请查看诊断详情后手动重试连接。')
+        return
+      }
       if (result.ok) setInspection({ revision: capturedRevision, data: result.data })
       else setFailure(result)
     } catch {
-      if (mounted.current) setMessage('未能确认旧后台状态，请重新检查。')
+      if (mounted.current && inspectionAttempt.current === capturedAttempt) setMessage('未能确认旧后台状态，请重新检查。')
     } finally {
-      operation.current = false
-      if (mounted.current) setPending(null)
-      onBlocked(stopUncertain.current)
+      if (inspectionTimer.current !== undefined) {
+        window.clearTimeout(inspectionTimer.current)
+        inspectionTimer.current = undefined
+      }
+      // A timed-out attempt has already released the latch and invalidated its
+      // result. The late native reply must not re-enable or overwrite a newer
+      // user-visible state.
+      if (inspectionAttempt.current === capturedAttempt) {
+        operation.current = false
+        if (mounted.current) setPending(null)
+        onBlocked(stopUncertain.current)
+      }
     }
   }
+  useEffect(() => {
+    if (autoInspectAttempted.current || stopped || uncertain) return
+    autoInspectAttempted.current = true
+    void inspect()
+    // The revision fence inside inspect() owns stale-result protection. This
+    // effect only removes the extra click from the initial startup path; it is
+    // intentionally one-shot so a retry cannot create a feedback loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision])
   const confirmStopped = async (capturedRevision: number): Promise<void> => {
     stopUncertain.current = false
     if (!mounted.current) return
@@ -217,6 +273,7 @@ function LegacyDaemonUpgrade({ bridge, revision, onBlocked, onStopped }: {
       : pending === 'reconcile' ? '正在核对原停止结果。'
         : uncertain ? '停止结果尚未确认，核对只查询原操作。'
           : stopped ? '旧后台已停止，正在连接新版。'
+          : inspectionTimedOut ? '旧后台检查超时，已停止等待。'
             : failure || message ? '旧后台操作未完成，请查看详情后重试。'
               : inspected ? inspected.canStop ? '旧后台已空闲，切换将安全停止并连接新版。' : '暂时无法安全切换，请先在旧版应用中处理。'
                 : '检查旧后台后可继续。'
@@ -417,7 +474,11 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
 
   if (!hasIpc) return <Suspense fallback={null}>{children}</Suspense>
   const failure = state?.failure
-  const legacyUpgrade = !!bridge && (state?.phase === 'error' || state?.phase === 'incompatible') && failure?.stage === 'native' && failure.code === 'E_VERSION'
+  // Historical inspection is read-only and independently fenced by main.
+  // Offer it for native E_UNAVAILABLE as well: an old owner may be live while
+  // ordinary startup cannot attach its protected credential, and a generic
+  // retry leaves the user trapped waiting for the old backend.
+  const legacyUpgrade = !!bridge && (state?.phase === 'error' || state?.phase === 'incompatible') && failure?.stage === 'native' && ['E_VERSION', 'E_UNAVAILABLE'].includes(failure.code)
   const shell = (workspaceFailure?: { error: unknown }): JSX.Element => {
     const failed = !!(failure || error || !bridge || workspaceFailure || state?.phase === 'error' || state?.phase === 'incompatible')
     return <div data-my-theme={theme} className="my-root my-startup-window">

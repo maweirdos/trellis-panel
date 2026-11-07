@@ -227,18 +227,18 @@ platform enrollment flow, not a claim of implementing OAuth Device Authorization
 
 ## Shared task workspaces
 
-`GET /api/projects/:projectId/hifox/snapshot` returns
+`GET /api/projects/:projectId/crux/snapshot` returns
 `{projectId,instanceId,epoch,authorizationRevision,revision,actor,canManage,snapshot,serverTime}`.
 The project and device are reauthorized on each read. `afterRevision` and bounded
 `waitMs` support long polling. The snapshot includes only currently readable space
 content; a private-space metadata grant does not grant its bodies or member list.
 
-`GET /api/projects/:projectId/hifox/tasks/:taskId/development-context` accepts no
+`GET /api/projects/:projectId/crux/tasks/:taskId/development-context` accepts no
 query fields and returns `{version:1,snapshot,inputs,codeResource,creations}` under
 the normal `{ok:true,value}` envelope, with `Cache-Control: no-store`.
 `shared/team-task-development.ts` exports `teamTaskDevelopmentContextSchema` and
 its inferred `TeamTaskDevelopmentContext` type. The four fields reuse
-`HifoxRemoteSnapshot`, `TaskInputRead`, `TeamTaskCodeResourceDto` and `CreationList`.
+`CruxRemoteSnapshot`, `TaskInputRead`, `TeamTaskCodeResourceDto` and `CreationList`.
 One synchronous operation in the existing owned SQLite worker calls the original
 getters with the same authenticated principal. Project, service instance/epoch,
 authorization revision, task, space and task creation identity must agree. The
@@ -250,10 +250,10 @@ Closed tasks and input admission blockers remain facts for the client to assess.
 This read does not execute, publish, approve, adopt or write a binding. It provides
 no grant for a later action; each later read or write must reauthorize.
 
-`POST /api/projects/:projectId/hifox/commands` accepts
+`POST /api/projects/:projectId/crux/commands` accepts
 `{commandId,expectedEpoch,expectedRevision,operation,input}`. Supported operation
-and input validators are `shared/hifox-domain/commands.ts`; replies use
-`hifoxRemoteCommandReplySchema`. Epoch/revision conflicts return409 without applying
+and input validators are `shared/crux-domain/commands.ts`; replies use
+`cruxRemoteCommandReplySchema`. Epoch/revision conflicts return409 without applying
 the draft. Actor fields come from authenticated identity, never submitted names.
 
 Local roster invitation/profile operations cannot change server identities.
@@ -270,7 +270,7 @@ are account-specific. The service runs due scheduled rules independently of open
 desktop clients and persists their date deduplication in the owned transaction.
 Runtime-bound configuration never becomes a claim of actual Agent execution.
 
-Historical `hifoxCommand` receipts retain original instance/epoch/revision/time,
+Historical `cruxCommand` receipts retain original instance/epoch/revision/time,
 but their body and actor projection use current access. They prove the old
 command, not the current workspace. Clients fetch a separate current snapshot;
 they do not fill visible caches from historical receipts. Backup restore rotates
@@ -283,7 +283,7 @@ package. Version 2 task identity contains `instanceId`, `projectId`, `spaceId`,
 `taskId` and original `taskCreatedAt`; no local path/task directory is required.
 It does not change the version 1 service or progress contract.
 
-Base: `/api/projects/:projectId/hifox/tasks/:taskId/executions`.
+Base: `/api/projects/:projectId/crux/tasks/:taskId/executions`.
 
 | Route | Input / value |
 | --- | --- |
@@ -334,7 +334,7 @@ Portable definitions contain logical roles, ordered Agent/tool/gate declarations
 required capabilities and output/gate policies. Device-local engine, model,
 profile, credentials and paths are resolved separately.
 
-Base: `/api/projects/:projectId/hifox/tasks/:taskId/executions/:executionId/inputs`.
+Base: `/api/projects/:projectId/crux/tasks/:taskId/executions/:executionId/inputs`.
 
 | Route | Input / value |
 | --- | --- |
@@ -494,7 +494,7 @@ and the service entry point: `teamTaskProgressStateSchema`, `SourceSchema`,
 and `ReceiptSchema` share the `teamTaskProgress` prefix. Resource IDs use
 `teamTaskProgressResourceIdSchema`; project/person/device IDs remain UUIDs.
 
-- GET `/api/projects/:projectId/hifox/tasks/:taskId/progress` returns
+- GET `/api/projects/:projectId/crux/tasks/:taskId/progress` returns
   `{instanceId,epoch,authorizationRevision,projectId,taskId,spaceId,generation,binding,progress,serverTime}`.
 - POST the same path followed by `/commands` returns
   `{status:committed|duplicate,commandId,result:TeamTaskProgressDto}`.
@@ -575,7 +575,7 @@ by the service package. Browser calls use the existing session, exact Origin and
 CSRF token; paired devices use their project-bound bearer identity. Every request
 rechecks account, team/project membership, task incarnation and current space ACL.
 
-The base path is `/api/projects/:projectId/hifox/tasks/:taskId/materials`.
+The base path is `/api/projects/:projectId/crux/tasks/:taskId/materials`.
 Every GET requires `spaceId` and `taskCreatedAt` query parameters from the selected
 task snapshot. Every command carries those fields in its body. A changed space or
 creation timestamp causes `TASK_MATERIAL_SCOPE_CONFLICT`; an old document cannot
@@ -687,7 +687,7 @@ the workspace head; clients must explicitly refresh these material endpoints.
   task creation identity when applicable, original `spaceId` (null for catalog
   commands), device ID, committed revision and time.
   Reconcile through GET `/api/commands/:commandId`, then reload current data.
-- GET `/api/projects/:projectId/hifox/tasks/:taskId/code-resource` returns the
+- GET `/api/projects/:projectId/crux/tasks/:taskId/code-resource` returns the
   current task creation/update identities, `revision`, `canSelect`, `spaceRevision`,
   `selection`, `resource`, `defaultResource` and `availability`. Availability is
   `unconfigured`, `available`, `disabled` or `unlinked`. Existing tasks start with
@@ -808,10 +808,10 @@ the SQLite worker only prepares, reserves, records dispatch and settles.
 | `GET /api/teams/:teamId/content/budget?userId=` | Same administrator; team and selected member UTC daily counts, measured token dimensions, unresolved reservations and unknown costs |
 | `GET /api/teams/:teamId/content/jobs/:jobId/accounting` | Same administrator; job accounting metadata without member inputs, candidate or source references |
 | `POST /api/teams/:teamId/content/jobs/:jobId/reconcile` | Same administrator; original UUID, epoch, expected job revision, external evidence, and measured usage or confirmed `not-started` |
-| `POST /api/projects/:projectId/hifox/tasks/:taskId/content/jobs` | Current project and actual space member; returns `{status:accepted|duplicate,job}` |
-| `GET /api/projects/:projectId/hifox/tasks/:taskId/content/jobs/:jobId` | Original person/device and current project/space/task authority; persisted job and candidate |
-| `GET /api/projects/:projectId/hifox/tasks/:taskId/content/commands/:commandId` | Same authority; recover the original job after acknowledgement loss |
-| `POST /api/projects/:projectId/hifox/tasks/:taskId/content/jobs/:jobId/cancel` | Same authority; UUID and epoch; cancellation does not establish absence of upstream consumption |
+| `POST /api/projects/:projectId/crux/tasks/:taskId/content/jobs` | Current project and actual space member; returns `{status:accepted|duplicate,job}` |
+| `GET /api/projects/:projectId/crux/tasks/:taskId/content/jobs/:jobId` | Original person/device and current project/space/task authority; persisted job and candidate |
+| `GET /api/projects/:projectId/crux/tasks/:taskId/content/commands/:commandId` | Same authority; recover the original job after acknowledgement loss |
+| `POST /api/projects/:projectId/crux/tasks/:taskId/content/jobs/:jobId/cancel` | Same authority; UUID and epoch; cancellation does not establish absence of upstream consumption |
 
 These routes use the existing authentication, exact browser Origin and CSRF
 checks. A job pins service instance/epoch, person/device, project, space and task
@@ -902,7 +902,7 @@ material/code evidence connectors remain outside this slice.
 
 ## Space governance and fixed task inputs
 
-`GET /api/projects/:projectId/hifox/spaces/:spaceId/governance` lists bounded,
+`GET /api/projects/:projectId/crux/spaces/:spaceId/governance` lists bounded,
 body-free rule/workflow metadata. Cursor scope includes the space workspace and
 catalog revisions. `GET .../governance/:packageId?versionId=...` reads exact
 version bytes after current project/space authorization, including older and
@@ -926,7 +926,7 @@ paths do not exclude a required rule. Workflow nodes use the existing formal
 stages in their existing order, with configured material inputs, outputs and
 approval roles; there is no separate workflow scheduler.
 
-`GET /api/projects/:projectId/hifox/tasks/:taskId/inputs` requires query
+`GET /api/projects/:projectId/crux/tasks/:taskId/inputs` requires query
 `spaceId` and `taskCreatedAt`. It returns the CAS head `revision`, immutable
 `current` bundle or null, `admission` and optional formal `legacySummary`.
 `admission.status` is `ready`, `requires-adoption`, `blocked` or
@@ -942,7 +942,7 @@ rule/template candidates without bodies. Document references retain
 approved document with only that version's current upstream ACL and original
 task scope. It returns the fixed reference and text, omitting mutable draft
 metadata. An unrelated newer private draft cannot hide the adopted authorized
-version. Native projection uses `HifoxGovernanceService.readDocument` or
+version. Native projection uses `CruxGovernanceService.readDocument` or
 `GovernanceTransport.readDocument`; neither adds a renderer channel.
 `POST .../inputs/commands` accepts `adopt` with document/rule/template version
 IDs, the original UUID/epoch/task identity and `expectedRevision`. It resolves

@@ -106,12 +106,12 @@ const uncertainCommands = new Set<string>()
 export type PreparedCommand<T> = { entry: PendingCommand; body: Record<string, unknown>; schema: z.ZodType<T> }
 const resourceSessions = new WeakMap<object, { session: TeamSession; generation: number }>()
 function isResourceCommand(entry: PendingCommand): boolean { return entry.path.endsWith('/code-resources/commands') }
-function isMaterialCommand(entry: PendingCommand): boolean { return /^\/api\/projects\/[^/]+\/hifox\/tasks\/[^/]+\/materials\/commands$/.test(entry.path) }
-function isContentCommand(entry: PendingCommand): boolean { return /^\/api\/teams\/[^/]+\/content\/(?:config|probe)$/.test(entry.path) || /^\/api\/projects\/[^/]+\/hifox\/tasks\/[^/]+\/content\/jobs(?:\/[^/]+\/cancel)?$/.test(entry.path) }
+function isMaterialCommand(entry: PendingCommand): boolean { return /^\/api\/projects\/[^/]+\/crux\/tasks\/[^/]+\/materials\/commands$/.test(entry.path) }
+function isContentCommand(entry: PendingCommand): boolean { return /^\/api\/teams\/[^/]+\/content\/(?:config|probe)$/.test(entry.path) || /^\/api\/projects\/[^/]+\/crux\/tasks\/[^/]+\/content\/jobs(?:\/[^/]+\/cancel)?$/.test(entry.path) }
 function isDomainCommand(entry: PendingCommand): boolean {
   return isResourceCommand(entry) || isMaterialCommand(entry) || isContentCommand(entry) ||
-    /^\/api\/projects\/[^/]+\/hifox\/spaces\/[^/]+\/governance\/commands$/.test(entry.path) ||
-    /^\/api\/projects\/[^/]+\/hifox\/tasks\/[^/]+\/inputs\/commands$/.test(entry.path)
+    /^\/api\/projects\/[^/]+\/crux\/spaces\/[^/]+\/governance\/commands$/.test(entry.path) ||
+    /^\/api\/projects\/[^/]+\/crux\/tasks\/[^/]+\/inputs\/commands$/.test(entry.path)
 }
 export async function prepareCommand<T>(path: string, body: Record<string, unknown>, schema: z.ZodType<T>, projectId: string | null, workspace?: WorkspaceCommandReference, originalCommandId?: string): Promise<PreparedCommand<T>> {
   requireBrowserCrypto()

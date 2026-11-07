@@ -52,7 +52,7 @@ GET /api/events
   repository or workspace IDs are source metadata, never authorization. Preserve
   pinned local identities; map path-shaped native IDs to durable privacy-safe
   remote aliases rather than modifying the original run.
-- Shared task/space/Agent commands follow [the collaboration contract](../shared/hifox-collaboration.md).
+- Shared task/space/Agent commands follow [the collaboration contract](../shared/crux-collaboration.md).
   Their server epoch/revision, current space ACL and per-person inbox projection
   remain distinct from document publication versions and feedback records.
 - Pending enrollment may have no project. Save the returned candidate credential

@@ -11,10 +11,10 @@ import {
 } from '../../../src/shared/team-task-inputs'
 import { taskMaterialInputReferenceSchema } from '../../../src/shared/task-material-inputs'
 import { teamIdSchema, type TeamSession } from './contracts'
-import type { HifoxWorkspaceContext } from '../../../src/shared/hifox-remote'
+import type { CruxWorkspaceContext } from '../../../src/shared/crux-remote'
 import { ApiError, authEvents, digest, isClientSession, request, requireBrowserCrypto, verifyDocument } from './client'
 
-export type BrowserGovernanceOptions = { projectId: string; session: TeamSession; context(): HifoxWorkspaceContext; isCurrent(): boolean; subscribe(callback: (context: HifoxWorkspaceContext) => void): () => void }
+export type BrowserGovernanceOptions = { projectId: string; session: TeamSession; context(): CruxWorkspaceContext; isCurrent(): boolean; subscribe(callback: (context: CruxWorkspaceContext) => void): () => void }
 const referenceSchema = z.object({ scope: governanceRecoveryScopeSchema, origin: z.string().url(), projectId: teamIdSchema, accountId: teamIdSchema, instanceId: teamIdSchema, epoch: teamIdSchema, commandId: teamIdSchema, digest: z.string().regex(/^[a-f0-9]{64}$/), action: z.string().max(50), state: z.enum(['pending', 'unknown', 'rejected', 'committed']), createdAt: z.number().int().nonnegative(), error: z.string().max(2000).nullable() }).strict()
 type Reference = z.infer<typeof referenceSchema>
 type Owner = { scope: GovernanceRecoveryScope; instanceId: string; epoch: string; accountId: string; generation: number }
@@ -121,7 +121,7 @@ export class BrowserGovernance {
   }
   dispose(): void { this.invalidate(); this.unsubscribe(); authEvents.removeEventListener('denied', this.invalidate); authEvents.removeEventListener('session-changed', this.invalidate) }
   private readonly invalidate = (): void => { this.live = false; this.generation++; this.retained.clear(); this.lifetime.abort() }
-  private signature(ctx: HifoxWorkspaceContext): string { return JSON.stringify([ctx.key, ctx.actorId, ctx.projectId, ctx.instanceId, ctx.epoch, ctx.state]) }
+  private signature(ctx: CruxWorkspaceContext): string { return JSON.stringify([ctx.key, ctx.actorId, ctx.projectId, ctx.instanceId, ctx.epoch, ctx.state]) }
   private owner(scope: GovernanceRecoveryScope): Owner {
     const ctx = this.options.context()
     if (!this.live || !this.options.isCurrent() || !isClientSession(this.options.session) || ctx.state !== 'connected' || ctx.key !== scope.workspaceKey || ctx.projectId !== this.options.projectId || ctx.actorId !== this.options.session.person.userId || !ctx.instanceId || !ctx.epoch) throw new ApiError('OWNER_CHANGED', '原工作区或登录身份不可用，请恢复后核对。')
@@ -136,7 +136,7 @@ export class BrowserGovernance {
   private taskIdentity(owner: Owner, value: { projectId: string; taskId: string; spaceId: string; taskCreatedAt: string }): void {
     if (owner.scope.lane !== 'inputs' || value.projectId !== this.options.projectId || value.taskId !== owner.scope.taskId || value.spaceId !== owner.scope.spaceId || value.taskCreatedAt !== owner.scope.taskCreatedAt) this.invalid()
   }
-  private base(scope: GovernanceRecoveryScope): string { return `/api/projects/${this.options.projectId}/hifox/` + (scope.lane === 'inputs' ? `tasks/${encodeURIComponent(scope.taskId)}/inputs` : `spaces/${encodeURIComponent(scope.spaceId)}/governance`) }
+  private base(scope: GovernanceRecoveryScope): string { return `/api/projects/${this.options.projectId}/crux/` + (scope.lane === 'inputs' ? `tasks/${encodeURIComponent(scope.taskId)}/inputs` : `spaces/${encodeURIComponent(scope.spaceId)}/governance`) }
   private query(scope: GovernanceRecoveryScope): string { return scope.lane === 'inputs' ? new URLSearchParams({ spaceId: scope.spaceId, taskCreatedAt: scope.taskCreatedAt }).toString() : '' }
   private async get<T>(owner: Owner, path: string, schema: z.ZodType<T>): Promise<T> { this.current(owner); const value = await request(path, schema, { signal: this.lifetime.signal, notifyDenied: false, isCurrent: () => { try { this.current(owner); return true } catch { return false } } }); this.current(owner); return value }
   private recoveryScope(input: z.infer<typeof governanceRecoveryInputSchema>): GovernanceRecoveryScope { return input.lane === 'inputs' ? { workspaceKey: input.workspaceKey, spaceId: input.spaceId, taskId: input.taskId, taskCreatedAt: input.taskCreatedAt, lane: input.lane } : { workspaceKey: input.workspaceKey, spaceId: input.spaceId, lane: input.lane } }

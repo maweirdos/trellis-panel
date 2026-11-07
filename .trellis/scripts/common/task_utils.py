@@ -432,10 +432,10 @@ def run_task_hooks(event: str, task_json_path: Path, repo_root: Path) -> None:
         "TASK_JSON_PATH": str(task_json_path),
         "TRELLIS_TASK_AUTHORITY": "team" if managed else "local",
         "TRELLIS_TASK_ID": str(task.get("id", "")) if task is not None else "",
-        "TRELLIS_TEAM_WORKSPACE_KEY": str(meta.get("panel_hifox_workspace_key", "")) if managed else "",
-        "TRELLIS_TEAM_SPACE_ID": str(meta.get("panel_hifox_space_id", "")) if managed else "",
-        "TRELLIS_TEAM_TASK_ID": str(meta.get("panel_hifox_task_id", "")) if managed else "",
-        "TRELLIS_TEAM_OWNER_IDENTITY": str(meta.get("panel_hifox_identity", "")) if managed else "",
+        "TRELLIS_TEAM_WORKSPACE_KEY": str(meta.get("panel_trellis_flow_workspace_key", "")) if managed else "",
+        "TRELLIS_TEAM_SPACE_ID": str(meta.get("panel_trellis_flow_space_id", "")) if managed else "",
+        "TRELLIS_TEAM_TASK_ID": str(meta.get("panel_trellis_flow_task_id", "")) if managed else "",
+        "TRELLIS_TEAM_OWNER_IDENTITY": str(meta.get("panel_trellis_flow_identity", "")) if managed else "",
     }
 
     # POSIX only: a fresh session puts the shell and every descendant in one

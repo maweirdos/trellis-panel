@@ -21,7 +21,7 @@ import { ACP_IMAGE_MAX_COUNT, ACP_IMAGES_MAX_BYTES, acpImageBytes } from '../../
 import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
 import { readDesignGenerationOutput } from '../../../shared/design-generation'
 import { Type } from '@earendil-works/pi-ai'
-import { taskProgressSummarySchema } from '../../../shared/hifox-task-progress-native'
+import { taskProgressSummarySchema } from '../../../shared/crux-task-progress-native'
 
 const commandSchema = z.object({ id: z.string().min(1), method: z.string().min(1), params: z.unknown().optional() }).strict()
 const permissionResponseSchema = z.object({ type: z.literal('permission_response'), id: z.string().min(1), allow: z.boolean(), reason: z.string().optional() }).strict()

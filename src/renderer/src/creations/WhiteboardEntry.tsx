@@ -1,12 +1,12 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { api } from '../api'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { PageBody, PageHeader, PageLayout } from '../my/layout/PageLayout'
 import { Button } from '../my/ui'
 import { WhiteboardWorkspace, type WhiteboardWorkspaceAdapter } from './WhiteboardWorkspace'
 
-type WorkspaceState = ReturnType<typeof useHifox.getState>
+type WorkspaceState = ReturnType<typeof useCrux.getState>
 
 function authority(state: WorkspaceState): string {
   const context = state.workspaceContext
@@ -18,11 +18,11 @@ function authority(state: WorkspaceState): string {
 
 /** A synchronous store subscription fences replies even before React re-renders. */
 export function WhiteboardEntry({ onBack }: { onBack: () => void }): JSX.Element {
-  const context = useHifox((state) => state.workspaceContext)
-  const snapshot = useHifox((state) => state.snapshot)
+  const context = useCrux((state) => state.workspaceContext)
+  const snapshot = useCrux((state) => state.snapshot)
   const [generation, setGeneration] = useState(0)
-  const fence = useRef({ value: 0, authority: authority(useHifox.getState()) })
-  useLayoutEffect(() => useHifox.subscribe((state) => {
+  const fence = useRef({ value: 0, authority: authority(useCrux.getState()) })
+  useLayoutEffect(() => useCrux.subscribe((state) => {
     const next = authority(state)
     if (next !== fence.current.authority) {
       fence.current = { value: fence.current.value + 1, authority: next }
@@ -30,8 +30,8 @@ export function WhiteboardEntry({ onBack }: { onBack: () => void }): JSX.Element
     }
   }), [])
 
-  const identity = authority(useHifox.getState())
-  const current = useCallback(() => fence.current.value === generation && fence.current.authority === identity && authority(useHifox.getState()) === identity, [generation, identity])
+  const identity = authority(useCrux.getState())
+  const current = useCallback(() => fence.current.value === generation && fence.current.authority === identity && authority(useCrux.getState()) === identity, [generation, identity])
   const sourceId = JSON.stringify([context.key, context.connectionId, context.projectId, context.origin, context.instanceId, context.epoch])
   const actorId = context.actorId ?? ''
   const publicationKey = JSON.stringify(context.state === 'local' && actorId && snapshot

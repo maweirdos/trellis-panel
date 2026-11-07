@@ -12,7 +12,7 @@ export async function registerContentRoutes(api: FastifyInstance, store: TeamSto
   api.addHook('preClose', async () => { await runtime.close() })
   const team = z.object({ teamId: teamIdSchema }).strict()
   const task = z.object({ projectId: teamIdSchema, taskId: teamContentScopeIdSchema }).strict()
-  const adminPath = '/api/teams/:teamId/content', taskPath = '/api/projects/:projectId/hifox/tasks/:taskId/content'
+  const adminPath = '/api/teams/:teamId/content', taskPath = '/api/projects/:projectId/crux/tasks/:taskId/content'
   const get = (path: string, operation: StoreOperation, params: z.ZodType): void => {
     api.get(path, async (request) => ({ ok: true, value: await store.call(operation, {
       actor: auth.principal(request).actor, ...z.record(z.string(), z.unknown()).parse(params.parse(request.params)), query: request.query

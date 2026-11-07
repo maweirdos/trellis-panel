@@ -3,9 +3,9 @@
 import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
 import { ArrowUpRight, Keyboard, Loader2, X } from 'lucide-react'
 import { useApp, type Page } from '../../store'
-import { observeCollaborationWorkspace, useHifox } from '../../hifox/store'
-import { observeDevelopmentNavigation } from '../../hifox/local-work'
-import { DevelopmentContextBar } from '../../hifox/development/DevelopmentContextBar'
+import { observeCollaborationWorkspace, useCrux } from '../../crux/store'
+import { observeDevelopmentNavigation } from '../../crux/local-work'
+import { DevelopmentContextBar } from '../../crux/development/DevelopmentContextBar'
 import { useMy } from '../store'
 import { rememberVisit } from '../personal-history'
 import { loadStartupNavigationLocation, saveNavigationLocation } from '../navigation-preferences'
@@ -49,7 +49,7 @@ const GatewayPage = lazy(() => import('../../pages/Gateway').then((m) => ({ defa
 const ChatPage = lazy(() => import('../../pages/Chat').then((m) => ({ default: m.ChatPage })))
 const AcpConsolePage = lazy(() => import('../../pages/AcpConsole').then((m) => ({ default: m.AcpConsolePage })))
 const DevToolsPage = lazy(() => import('../pages/DevToolsPage').then((m) => ({ default: m.DevToolsPage })))
-const HiFoxApp = lazy(() => import('../../hifox/HiFoxApp').then((m) => ({ default: m.HiFoxApp })))
+const CruxApp = lazy(() => import('../../crux/CruxApp').then((m) => ({ default: m.CruxApp })))
 const TaskDetail = lazy(() => import('../../pages/TaskDetail').then((m) => ({ default: m.TaskDetail })))
 
 function rememberModulePage(page: Page): void {
@@ -76,7 +76,7 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   channels: <ChannelsPage />,
   acp: <AcpConsolePage />,
   team: <TeamPage />,
-  hifox: <HiFoxApp />,
+  crux: <CruxApp />,
   creations: <CreationWorkspace scope="personal" />,
   analytics: <AnalyticsPage />,
   jira: <JiraPage />,
@@ -303,7 +303,7 @@ export function MyApp(): JSX.Element {
     const snapshot = app.snapshot
     if (navigationRestored.current) return
     navigationRestored.current = true
-    const opening = useHifox.getState().localWorkOpening
+    const opening = useCrux.getState().localWorkOpening
     if (opening && projectRootKey(opening.projectRoot) === root) return
     const saved = loadStartupNavigationLocation(snapshot?.meta.root ?? null, snapshot?.meta.developer)
     if (saved && saved.page === app.page && app.navigationRevision === 0 && !app.openTaskDir && !app.pendingFocusDir && !app.specDocumentTarget && !app.taskExpandOrigin) {
@@ -370,10 +370,10 @@ export function MyApp(): JSX.Element {
       if (e.key === 'c' || e.key === 'C') {
         if (escLayerCount() > 0) return
         const app = useApp.getState()
-        if (app.page === 'hifox' || app.page === 'tasks' && app.personalTaskSource === 'team' && !app.openTaskDir) {
-          const team = useHifox.getState()
+        if (app.page === 'crux' || app.page === 'tasks' && app.personalTaskSource === 'team' && !app.openTaskDir) {
+          const team = useCrux.getState()
           if (team.currentSpaceId) team.setCreateTaskOpen(true)
-          else { team.setModule('spaces'); if (app.page === 'tasks') app.setPage('hifox') }
+          else { team.setModule('spaces'); if (app.page === 'tasks') app.setPage('crux') }
         } else if (app.page !== 'creations' && app.snapshot) setCreateIssueOpen(true)
       } else if (e.key === '/') {
         e.preventDefault()

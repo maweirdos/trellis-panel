@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import type { HifoxSpace, HifoxTask } from '../../../src/shared/hifox'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
-import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
+import type { CruxSpace, CruxTask } from '../../../src/shared/crux'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
+import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
 import { teamCommandIdSchema, teamIdSchema, type TeamMaterialVersion, type TeamPage } from '../../../src/shared/team-platform'
 import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-progress'
 import {
@@ -14,18 +14,18 @@ import {
   type TeamTaskMaterialScope, type TeamTaskMaterialSubmission, type TeamTaskMaterialVersion, type TeamTaskMaterialView
 } from '../../../src/shared/team-task-materials'
 import type { CreationsHost } from './creations'
-import type { HifoxWorkspaceHost } from './hifox-workspace'
+import type { CruxWorkspaceHost } from './crux-workspace'
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 import { TASK_OUTPUT_KINDS, type TaskOutputOriginBundle, type TaskOutputVersionOrigin } from '../../../src/shared/task-output-origin'
 
-export type TaskMaterialsHost = Omit<CreationsHost, 'identity'> & Pick<HifoxWorkspaceHost, 'identity'> & {
+export type TaskMaterialsHost = Omit<CreationsHost, 'identity'> & Pick<CruxWorkspaceHost, 'identity'> & {
   material(principal: StorePrincipal, materialId: string, version: number): TeamMaterialVersion
   body(bodyDigest: string): Buffer
   persistBody(bytes: Buffer, bodyDigest: string): void
   validateOriginBundle(principal: StorePrincipal, scope: TeamTaskMaterialScope & { projectId: string; taskId: string }, bundle: TaskOutputOriginBundle): void
 }
-type Context = { principal: StorePrincipal; projectId: string; task: HifoxTask; space: HifoxSpace; workspaceRevision: number }
+type Context = { principal: StorePrincipal; projectId: string; task: CruxTask; space: CruxSpace; workspaceRevision: number }
 const MAX_VERSIONS = 1000
 const MAX_BLOB_BYTES = 1024 * 1024 * 1024
 const hash = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
@@ -50,13 +50,13 @@ export class TeamTaskMaterials {
   private context(principal: StorePrincipal, raw: Record<string, unknown>, scope: TeamTaskMaterialScope, writing = false): Context {
     const projectId = teamIdSchema.parse(raw.projectId), taskId = teamTaskProgressResourceIdSchema.parse(raw.taskId)
     this.host.project(principal, projectId)
-    const row = this.host.get("SELECT w.revision,t.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", projectId, taskId)
+    const row = this.host.get("SELECT w.revision,t.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", projectId, taskId)
     if (!row) unavailable()
-    const task = stored(hifoxSnapshotSchema.shape.tasks.element, row.body)
-    const spaceRow = this.host.get("SELECT s.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", projectId, task.spaceId)
+    const task = stored(cruxSnapshotSchema.shape.tasks.element, row.body)
+    const spaceRow = this.host.get("SELECT s.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", projectId, task.spaceId)
     if (!spaceRow) unavailable()
-    const space = stored(hifoxSnapshotSchema.shape.spaces.element, spaceRow.body)
-    if (!canReadHifoxSpace(space, principal.person.userId)) unavailable()
+    const space = stored(cruxSnapshotSchema.shape.spaces.element, spaceRow.body)
+    if (!canReadCruxSpace(space, principal.person.userId)) unavailable()
     if (task.spaceId !== scope.spaceId || task.createdAt !== scope.taskCreatedAt) fail('TASK_MATERIAL_SCOPE_CONFLICT', 'Task identity or space changed; the original document cannot be retargeted')
     if (writing && (space.archived || !space.memberIds.includes(principal.person.userId))) forbidden()
     return { principal, projectId, task, space, workspaceRevision: stored(z.number().int().nonnegative().safe(), row.revision) }
@@ -97,8 +97,8 @@ export class TeamTaskMaterials {
         const row = this.host.get("SELECT c.spaceId,c.published,json_extract(v.value,'$.bodyDigest') AS bodyDigest FROM creations c,json_each(c.recordJson,'$.revisions') v WHERE c.projectId=? AND c.creationId=? AND json_extract(v.value,'$.revisionId')=?", ctx.projectId, ref.creationId, ref.revisionId)
         if (!row || row.published !== 1) unavailable()
         if (row.spaceId !== null) {
-          const spaceRow = this.host.get("SELECT s.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", ctx.projectId, row.spaceId)
-          if (!spaceRow || !canReadHifoxSpace(stored(hifoxSnapshotSchema.shape.spaces.element, spaceRow.body), ctx.principal.person.userId)) forbidden()
+          const spaceRow = this.host.get("SELECT s.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", ctx.projectId, row.spaceId)
+          if (!spaceRow || !canReadCruxSpace(stored(cruxSnapshotSchema.shape.spaces.element, spaceRow.body), ctx.principal.person.userId)) forbidden()
         }
         if (row.bodyDigest !== ref.bodyDigest) fail('TASK_MATERIAL_REFERENCE_CONFLICT', 'Referenced creation digest does not match its fixed publication')
       }

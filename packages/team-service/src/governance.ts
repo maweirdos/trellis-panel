@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
-import type { HifoxSpace } from '../../../src/shared/hifox'
+import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
+import type { CruxSpace } from '../../../src/shared/crux'
 import {
   governanceCommandSchema, governanceListQuerySchema, governancePackageSchema, governanceReceiptSchema, governanceVersionSchema,
   type GovernanceCommand, type GovernancePackage, type GovernanceReceipt, type GovernanceVersion
@@ -14,7 +14,7 @@ import type { TaskMaterialsHost } from './task-materials'
 import type { StoreActor, StorePrincipal } from './store-types'
 
 export type GovernanceHost = TaskMaterialsHost
-export type GovernanceContext = { principal: StorePrincipal; projectId: string; space: HifoxSpace; workspaceRevision: number }
+export type GovernanceContext = { principal: StorePrincipal; projectId: string; space: CruxSpace; workspaceRevision: number }
 export const governanceHash = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex')
 export function governanceFail(code: string, message: string, status = 409): never { throw new TeamServiceError(code, message, status) }
 export function governanceStored<T>(schema: z.ZodType<T>, raw: unknown): T {
@@ -34,10 +34,10 @@ export class TeamGovernance {
 
   context(principal: StorePrincipal, projectId: string, spaceId: string, writing = false): GovernanceContext {
     this.host.project(principal, teamIdSchema.parse(projectId))
-    const row = this.host.get("SELECT w.revision,s.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", projectId, teamTaskProgressResourceIdSchema.parse(spaceId))
+    const row = this.host.get("SELECT w.revision,s.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", projectId, teamTaskProgressResourceIdSchema.parse(spaceId))
     if (!row) governanceFail('GOVERNANCE_UNAVAILABLE', 'Space governance is unavailable', 404)
-    const space = governanceStored(hifoxSnapshotSchema.shape.spaces.element, row.body)
-    if (!canReadHifoxSpace(space, principal.person.userId)) governanceFail('GOVERNANCE_UNAVAILABLE', 'Space governance is unavailable', 404)
+    const space = governanceStored(cruxSnapshotSchema.shape.spaces.element, row.body)
+    if (!canReadCruxSpace(space, principal.person.userId)) governanceFail('GOVERNANCE_UNAVAILABLE', 'Space governance is unavailable', 404)
     if (writing && (space.archived || !space.memberIds.includes(principal.person.userId))) governanceFail('GOVERNANCE_FORBIDDEN', 'An active space membership is required', 403)
     return { principal, projectId, space, workspaceRevision: governanceStored(z.number().int().nonnegative().safe(), row.revision) }
   }

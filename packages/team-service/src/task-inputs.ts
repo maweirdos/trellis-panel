@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import type { HifoxTask, HifoxTransitionTaskInput } from '../../../src/shared/hifox'
-import { hifoxSnapshotSchema, hifoxTransitionTaskInputSchema } from '../../../src/shared/hifox-schema'
+import type { CruxTask, CruxTransitionTaskInput } from '../../../src/shared/crux'
+import { cruxSnapshotSchema, cruxTransitionTaskInputSchema } from '../../../src/shared/crux-schema'
 import type { GovernanceVersion } from '../../../src/shared/team-governance'
 import type { TaskMaterialInputReference } from '../../../src/shared/task-material-inputs'
 import { teamCommandIdSchema, teamIdSchema, type TeamCommandReply } from '../../../src/shared/team-platform'
@@ -14,7 +14,7 @@ import {
 import { TeamGovernance, governanceCas, governanceFail, governanceHash, governanceNext, governanceStored, type GovernanceContext, type GovernanceHost } from './governance'
 import type { StoreActor, StorePrincipal } from './store-types'
 
-type Context = GovernanceContext & { task: HifoxTask }
+type Context = GovernanceContext & { task: CruxTask }
 export type TaskContentRule = { version: GovernanceVersion; text: string }
 const canonical = (value: unknown): string => {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
@@ -38,9 +38,9 @@ export class TeamTaskInputs {
 
   private context(principal: StorePrincipal, raw: Record<string, unknown>, scope: z.infer<typeof teamTaskMaterialScopeSchema>, writing = false): Context {
     const base = this.governance.context(principal, teamIdSchema.parse(raw.projectId), scope.spaceId, writing)
-    const row = this.host.get("SELECT t.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", base.projectId, teamTaskProgressResourceIdSchema.parse(raw.taskId))
+    const row = this.host.get("SELECT t.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", base.projectId, teamTaskProgressResourceIdSchema.parse(raw.taskId))
     if (!row) governanceFail('TASK_INPUT_UNAVAILABLE', 'Original task is unavailable', 404)
-    const task = governanceStored(hifoxSnapshotSchema.shape.tasks.element, row.body)
+    const task = governanceStored(cruxSnapshotSchema.shape.tasks.element, row.body)
     if (task.spaceId !== scope.spaceId || task.createdAt !== scope.taskCreatedAt) governanceFail('TASK_INPUT_SCOPE_CONFLICT', 'Task identity changed; do not retarget the original input')
     return { ...base, task }
   }
@@ -95,7 +95,7 @@ export class TeamTaskInputs {
     return taskInputDocumentViewSchema.parse({ ...this.host.identity(), ...this.scope(ctx), reference, text: view.text, canWithdraw: view.document.approverIds.includes(principal.person.userId) })
   }
   private withdrawnDocument(documentId: string, versionId: string): boolean { return !!this.host.get('SELECT versionId FROM task_input_withdrawals WHERE documentId=? AND versionId=?', documentId, versionId) }
-  private applicable(version: GovernanceVersion, task: HifoxTask): boolean {
+  private applicable(version: GovernanceVersion, task: CruxTask): boolean {
     // A future file/module selection must not omit a required rule before its scope is known.
     // Paths and modules remain explicit selection evidence; task-type mismatch is authoritative here.
     return version.settings.kind !== 'rule' || version.settings.applicability.taskTypeIds.length === 0 || version.settings.applicability.taskTypeIds.includes(task.typeId ?? '')
@@ -236,8 +236,8 @@ export class TeamTaskInputs {
    * Inputs and required outputs must already be explicitly adopted fixed approvals.
    * Recovery/backward actions remain available while a baseline needs review.
    */
-  validateTaskTransitionInputs(principal: StorePrincipal, projectId: string, beforeTask: HifoxTask, afterTask: HifoxTask, raw: HifoxTransitionTaskInput): void {
-    const input = hifoxTransitionTaskInputSchema.parse(raw)
+  validateTaskTransitionInputs(principal: StorePrincipal, projectId: string, beforeTask: CruxTask, afterTask: CruxTask, raw: CruxTransitionTaskInput): void {
+    const input = cruxTransitionTaskInputSchema.parse(raw)
     if (input.taskId !== beforeTask.id || afterTask.id !== beforeTask.id || afterTask.spaceId !== beforeTask.spaceId || afterTask.createdAt !== beforeTask.createdAt) governanceFail('TASK_INPUT_SCOPE_CONFLICT', 'A transition cannot change its original task identity')
     if (['request_info', 'supplement', 'decline', 'reassign', 'return_design', 'return_development', 'return_delivery'].includes(input.action)) return
     const scope = { spaceId: beforeTask.spaceId, taskCreatedAt: beforeTask.createdAt }
@@ -368,6 +368,6 @@ export class TeamTaskInputs {
 }
 
 /** Adapter for a native workspace host callback; it creates no second workflow state. */
-export function validateTaskTransitionInputs(inputs: TeamTaskInputs, principal: StorePrincipal, projectId: string, beforeTask: HifoxTask, afterTask: HifoxTask, transition: HifoxTransitionTaskInput): void {
+export function validateTaskTransitionInputs(inputs: TeamTaskInputs, principal: StorePrincipal, projectId: string, beforeTask: CruxTask, afterTask: CruxTask, transition: CruxTransitionTaskInput): void {
   inputs.validateTaskTransitionInputs(principal, projectId, beforeTask, afterTask, transition)
 }

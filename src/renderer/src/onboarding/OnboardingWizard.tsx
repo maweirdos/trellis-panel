@@ -1,8 +1,8 @@
 import { useCallback, useState, type JSX } from 'react'
 import { ArrowLeft, ArrowRight, Check, Laptop, Moon, ShieldCheck, Sun, Users } from 'lucide-react'
 import { useApp } from '../store'
-import { useHifox } from '../hifox/store'
-import { ConnectionPanel } from '../hifox/ConnectionPanel'
+import { useCrux } from '../crux/store'
+import { ConnectionPanel } from '../crux/ConnectionPanel'
 import { Button } from '../my/ui'
 import { OnboardingShell } from './OnboardingShell'
 import { AgentDiscoveryStep } from './AgentDiscoveryStep'
@@ -37,7 +37,7 @@ export function OnboardingWizard({ onFinish, onDefer, storageUnavailable = false
   const [error, setError] = useState('')
   const settings = useApp((state) => state.settings)
   const saveSettings = useApp((state) => state.saveSettings)
-  const workspace = useHifox((state) => state.workspaceContext)
+  const workspace = useCrux((state) => state.workspaceContext)
   const current = steps[step]
   const next = (): void => { setError(''); setStep((value) => Math.min(value + 1, steps.length - 1)) }
   const back = (): void => { setError(''); setStep((value) => Math.max(value - 1, 0)) }

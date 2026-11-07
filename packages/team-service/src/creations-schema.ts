@@ -1,4 +1,4 @@
-/** Additive v9 migration; creation bodies never enter hifox_workspaces. */
+/** Additive v9 migration; creation bodies never enter crux_workspaces. */
 export const TEAM_CREATIONS_SQL = `
 CREATE TABLE IF NOT EXISTS creations(
  creationId TEXT PRIMARY KEY, projectId TEXT NOT NULL REFERENCES projects(projectId), ownerId TEXT NOT NULL REFERENCES people(userId),

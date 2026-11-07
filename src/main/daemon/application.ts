@@ -132,7 +132,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
           commandId: request.commandId, native: { actor, assertProduct: () => assertNativeGuiGrant(context, repository.epoch, actor, nativeGui) }
         })
       }
-      if (request.method === 'runtime.hifoxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(context, repository.epoch, actor, nativeGui)
+      if (request.method === 'runtime.cruxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(context, repository.epoch, actor, nativeGui)
       if (runtime && scope && isBoundedWorkcopyCleanup(request.method, request.payload)) {
         assertOwner()
         if (!request.commandId) throw new DaemonError('E_DENIED', '原工作副本清理需要原命令。')

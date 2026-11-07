@@ -4,7 +4,7 @@
 
 Applies to `my/pages/integrations/**`, its settings navigation and shared layout. Follow the approved [Chinese design principles](./design-principles.md); native identity, redaction and grant contracts remain in [backend integration contracts](../backend/integrations.md).
 
-The reference is the user's HiFox screenshots and fresh REA static analysis of its public frontend (SHA256 `4c8111c249751de3cc25711fa1c058e04789f1c02a59eabd6dcd72e1a4d19f16`). Static evidence establishes component/route/form behavior, not authenticated remote success. Independently implement supported interactions; never import reference bundle code, call private HiFox APIs or synthesize unsupported authorization/QR success.
+The reference is the user's Crux screenshots and fresh REA static analysis of its public frontend (SHA256 `4c8111c249751de3cc25711fa1c058e04789f1c02a59eabd6dcd72e1a4d19f16`). Static evidence establishes component/route/form behavior, not authenticated remote success. Independently implement supported interactions; never import reference bundle code, call private Crux APIs or synthesize unsupported authorization/QR success.
 
 ## Composition and signatures
 
@@ -34,7 +34,7 @@ An extension may set `connectionMode: 'shared' | 'provider'` (default shared). J
 - Cards use neutral surface roles; account management is a compact gray rounded row. Product typography, controls, themes, focus and spacing use the shared tokens/primitives. Optional configuration and raw root/revision/command facts are on demand; essential write/clear/rebind risk remains visible before commitment.
 - Existing legacy connection labels such as internal compatibility names are replaced only in presentation by a safe HTTP(S) host/provider label. Normal user-defined names remain intact. Never display URL userinfo/query as an instance label or alter the stored immutable legacy name.
 - Connect forms use labelled essential fields, meaningful defaults, a close action, cancellation and one submit action. Optional name/query/mapping/OAuth registration detail is progressive. New missing required fields disable submit; editing may keep an existing secret blank or explicitly clear it with the existing warning. Secret patches remain keep/replace/clear; a disabled reference auth choice does not become a saved capability.
-- GitLab defaults to its actual PAT method. OAuth is selected/configured only when native support is available, with its real client registration and explicit scope consent. Do not imitate HiFox's managed OAuth app without such a service. Jira retains Server/basic support; Cloud/PAT/proxy controls remain honestly unavailable. No fake QR is generated for DingTalk.
+- GitLab defaults to its actual PAT method. OAuth is selected/configured only when native support is available, with its real client registration and explicit scope consent. Do not imitate Crux's managed OAuth app without such a service. Jira retains Server/basic support; Cloud/PAT/proxy controls remain honestly unavailable. No fake QR is generated for DingTalk.
 
 ## Provider flows and state ownership
 

@@ -17,7 +17,7 @@ exported by the team-service entry point. `teamTaskIdentity(TeamTaskRef)` encode
 instance, project, space, task ID and original task creation identity. Epoch is
 an admission fence, not a durable task ID. References contain no task directory.
 
-Base route: `/api/projects/:projectId/hifox/tasks/:taskId/executions`.
+Base route: `/api/projects/:projectId/crux/tasks/:taskId/executions`.
 
 | Operation | Input / result |
 | --- | --- |

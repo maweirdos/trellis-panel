@@ -65,7 +65,7 @@ import { readActiveSession, readSessionView, readWorkspaceView, writeWorkspaceVi
 import type { AcpAgentProfile, AcpAgentStatus, AcpMaterialChange, AcpPermissionPayload, AcpSessionRecord, AcpSourceReference, AcpStartupObservation, AcpStateEvent, TimelineEvent } from '../../../shared/types'
 import type { AcpHandoffOperation } from '../../../shared/acp-handoff'
 import './workspace.css'
-import { TaskConversationWorkspace } from '../hifox/TaskConversationWorkspace'
+import { TaskConversationWorkspace } from '../crux/TaskConversationWorkspace'
 
 const STATUS_COLOR: Record<string, string> = {
   starting: 'text-my-tertiary', ready: 'text-my-tertiary', busy: 'text-my-info-text',

@@ -25,7 +25,7 @@ canonical preimage for chosen instructions and ordered resolved skill contents.
 `executionInputDigestText` excludes only the input's digest field.
 
 Base route:
-`/api/projects/:projectId/hifox/tasks/:taskId/executions/:executionId/inputs`.
+`/api/projects/:projectId/crux/tasks/:taskId/executions/:executionId/inputs`.
 
 | Operation | Input / result |
 | --- | --- |

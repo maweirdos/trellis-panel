@@ -31,10 +31,10 @@ export function registerBootstrapIpc(deps: {
   const legacyAllowed = (): boolean => {
     const state = deps.bootstrap.state()
     return (state.phase === 'error' || state.phase === 'incompatible') &&
-      state.failure?.stage === 'native' && state.failure.code === 'E_VERSION' &&
+      state.failure?.stage === 'native' && ['E_VERSION', 'E_UNAVAILABLE'].includes(state.failure.code) &&
       state.marks.desktopReadyMs === undefined
   }
-  const legacyDenied = (): DaemonFailure => daemonFailure(new DaemonError('E_DENIED', '旧后台切换仅供版本不兼容、尚未打开工作区的启动页使用。'))
+  const legacyDenied = (): DaemonFailure => daemonFailure(new DaemonError('E_DENIED', '旧后台切换仅供本机后台未完成、尚未打开工作区的启动页使用。'))
   const legacyBusy = (): DaemonFailure => daemonFailure(new DaemonError('E_BUSY', '旧后台操作正在进行，请等待原操作结果。'))
   const guard = (event: IpcMainInvokeEvent): BrowserWindow | null => {
     const window = deps.getMain()

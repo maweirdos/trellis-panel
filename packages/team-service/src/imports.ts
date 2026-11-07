@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
-import type { HifoxSpace, HifoxTask } from '../../../src/shared/hifox'
-import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
+import type { CruxSpace, CruxTask } from '../../../src/shared/crux'
+import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
 import { teamIdSchema, teamRelativePathSchema, type TeamCommandReply, type TeamPage } from '../../../src/shared/team-platform'
 import type { TeamTaskRef } from '../../../src/shared/team-task-execution'
 import {
@@ -11,11 +11,11 @@ import {
   type ImportCandidate, type ImportCommand, type ImportManifest, type ImportNamespace, type ImportReceipt, type ImportTaskMapping
 } from '../../../src/shared/team-import'
 import type { CreationsHost } from './creations'
-import type { HifoxWorkspaceHost } from './hifox-workspace'
+import type { CruxWorkspaceHost } from './crux-workspace'
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 
-export type ImportsHost = Omit<CreationsHost, 'identity'> & Pick<HifoxWorkspaceHost, 'identity'> & {
+export type ImportsHost = Omit<CreationsHost, 'identity'> & Pick<CruxWorkspaceHost, 'identity'> & {
   body(digest: string): Buffer
   persistBody(bytes: Buffer, digest: string): void
   createTask(principal: StorePrincipal, projectId: string, spaceId: string, title: string, expectedRevision: number): TeamTaskRef
@@ -34,12 +34,12 @@ function shareable(text: string): void { try { assertImportShareableText(text) }
 export class TeamImports {
   constructor(private readonly host: ImportsHost) {}
 
-  private space(principal: StorePrincipal, projectId: string, spaceId: string, createdAt?: string, writing = false): HifoxSpace {
+  private space(principal: StorePrincipal, projectId: string, spaceId: string, createdAt?: string, writing = false): CruxSpace {
     this.host.project(principal, projectId)
-    const row = this.host.get("SELECT s.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", projectId, spaceId)
+    const row = this.host.get("SELECT s.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=?", projectId, spaceId)
     if (!row) unavailable()
-    const space = parse(hifoxSnapshotSchema.shape.spaces.element, row.body)
-    if ((createdAt && space.createdAt !== createdAt) || !canReadHifoxSpace(space, principal.person.userId)) unavailable()
+    const space = parse(cruxSnapshotSchema.shape.spaces.element, row.body)
+    if ((createdAt && space.createdAt !== createdAt) || !canReadCruxSpace(space, principal.person.userId)) unavailable()
     if (writing && (space.archived || !space.memberIds.includes(principal.person.userId))) fail('IMPORT_FORBIDDEN', 'Import requires current membership of an active space', 403)
     return space
   }
@@ -50,12 +50,12 @@ export class TeamImports {
     this.space(principal, projectId, source.spaceId, source.spaceCreatedAt, writing)
     return source
   }
-  private task(principal: StorePrincipal, source: ImportNamespace, ref: TeamTaskRef): HifoxTask {
+  private task(principal: StorePrincipal, source: ImportNamespace, ref: TeamTaskRef): CruxTask {
     if (ref.instanceId !== this.host.identity().instanceId || ref.projectId !== source.projectId || ref.spaceId !== source.spaceId) unavailable()
     this.space(principal, ref.projectId, ref.spaceId, source.spaceCreatedAt)
-    const row = this.host.get("SELECT t.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", source.projectId, ref.taskId)
+    const row = this.host.get("SELECT t.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", source.projectId, ref.taskId)
     if (!row) unavailable()
-    const task = parse(hifoxSnapshotSchema.shape.tasks.element, row.body)
+    const task = parse(cruxSnapshotSchema.shape.tasks.element, row.body)
     if (task.createdAt !== ref.taskCreatedAt || task.spaceId !== source.spaceId) unavailable()
     return task
   }
@@ -148,12 +148,12 @@ export class TeamImports {
           }
           receipt.reused = true
         } else {
-          const collision = this.host.get("SELECT json_extract(t.value,'$.id') AS taskId FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.spaceId')=? AND json_extract(t.value,'$.title')=? LIMIT 1", source.projectId, source.spaceId, local.title)
+          const collision = this.host.get("SELECT json_extract(t.value,'$.id') AS taskId FROM crux_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.spaceId')=? AND json_extract(t.value,'$.title')=? LIMIT 1", source.projectId, source.spaceId, local.title)
           if (collision) receipt.conflicts.push('NAME_COLLISION')
           let task: TeamTaskRef
           if (command.decision.kind === 'link') {
             this.task(p, source, command.decision.task)
-            const workspace = this.host.get('SELECT revision FROM hifox_workspaces WHERE projectId=?', source.projectId)
+            const workspace = this.host.get('SELECT revision FROM crux_workspaces WHERE projectId=?', source.projectId)
             if (workspace?.revision !== command.expectedWorkspaceRevision) fail('REVISION_CONFLICT', 'Workspace changed before the explicit task link')
             task = command.decision.task
           } else task = this.host.createTask(p, source.projectId, source.spaceId, local.title, command.expectedWorkspaceRevision)

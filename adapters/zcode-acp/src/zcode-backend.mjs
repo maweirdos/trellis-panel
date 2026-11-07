@@ -73,13 +73,13 @@ export function clearLastErrorLog(forensicsDir) {
   try { unlinkSync(path) } catch { /* 不存在或不可删均无害 */ }
 }
 
-/** 默认禁用自动化计划工具（复刻 HiFox 安全默认）；enableAutomationTools=true 才放行。 */
+/** 默认禁用自动化计划工具（复刻 Crux 安全默认）；enableAutomationTools=true 才放行。 */
 export function appServerArgs(workspacePath, enableAutomationTools) {
   return ['app-server', '--stdio', '--cwd', workspacePath, ...(enableAutomationTools ? [] : ['--disallowed-tools', AUTOMATION_TOOLS_DEFAULT])]
 }
 
 /**
- * 解析 CLI 内置 provider 配置文件（HiFox resolve.ts 同序两候选）：
+ * 解析 CLI 内置 provider 配置文件（Crux resolve.ts 同序两候选）：
  * <zcodeBin 目录>/provider/zcode-builtin.json → <zcodeBin 目录>/../config/provider/zcode-builtin.json。
  * 纯同步 fs 检查；两候选均缺失返回 undefined（不设 env，维持服务端自身回退行为）。
  */
@@ -101,7 +101,7 @@ export function appServerEnv(zcodeBin, isolatedDir) {
   const env = { ...process.env }
   // Electron's Node-only and module injection state must not leak into a selected external CLI.
   delete env.ELECTRON_RUN_AS_NODE
-  delete env.ZCODE_BASE_URL // HiFox 源码注明：会被 app-server 读作服务 origin，污染端点
+  delete env.ZCODE_BASE_URL // Crux 源码注明：会被 app-server 读作服务 origin，污染端点
   env.ZCODE_BIN = zcodeBin
   // 服务端候选回退曾受运行环境影响（Electron 内启动即 exit=1「无法为 CLI ZCode Built-in Provider
   // Config」）；存在即显式指定，消除对 cwd/候选回退的依赖。指向安装目录自带文件，与用户态共存无冲突。

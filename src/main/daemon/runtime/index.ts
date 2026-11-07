@@ -16,7 +16,7 @@ import { verifyMaterialChange } from '../../services/acp/materials'
 import { canonicalDirectory } from '../../services/acp/metadata'
 import { createRuntimeKnowledge } from './knowledge'
 import { KNOWLEDGE_MUTATIONS, knowledgeRuntimeBody } from '../../../shared/daemon-runtime-knowledge'
-import { HifoxTaskProgressRuntime } from '../../services/hifox/task-progress-runtime'
+import { CruxTaskProgressRuntime } from '../../services/crux/task-progress-runtime'
 import { installWorkcopyUse, resolveWorkcopy } from '../../services/workcopy-use'
 import { workcopyUseResultSchema, isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
 import type { WorkcopyOwner } from '../../../shared/workcopy-use'
@@ -33,7 +33,7 @@ import { configurePrivateNativeSession, recoverPrivateNativeModel } from '../../
 import { NativeTaskPreparation, type NativeTaskPreparationAuthority } from './task-preparation'
 import { NativeTaskExecutions } from './task-execution'
 import { isBoundedNativeTaskControl } from '../../../shared/native-task-execution'
-import { NativeTaskProgressSender } from '../../services/hifox/task-progress-sender'
+import { NativeTaskProgressSender } from '../../services/crux/task-progress-sender'
 
 export interface RuntimeDispatchContext { workspace?: WorkspaceGrant; commandId?: string; native?: Pick<NativeTaskPreparationAuthority, 'actor' | 'assertProduct'> }
 export interface DaemonRuntimePorts {
@@ -101,7 +101,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   let closed = false, released = false, stopping: Promise<void> | undefined
   let operations = 0
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
-  const taskProgress = new HifoxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
+  const taskProgress = new CruxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
   const watchers = new Map<string, FSWatcher>()
   const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
   function observeWorkspace(root: string, generation: number): void {
@@ -238,7 +238,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         if (input.owner.kind === 'application' ? !['consumer', 'writer'].includes(input.kind) : !['tree-change', 'git-mutation', 'writer'].includes(input.kind)) throw new DaemonError('E_DENIED', '工作副本使用类别与原生调用者不一致。')
         return workcopyUseResultSchema.parse({ operation: 'acquire', lease: workcopies.acquire(root, { kind: input.kind, owner: input.owner, expected: input.expected, token: input.token }) })
       }
-      case 'runtime.hifoxProgress': {
+      case 'runtime.cruxProgress': {
         const input = runtimeBodies[method].parse(raw)
         if (closed && !['catalog', 'read', 'conversation', 'events', 'cancel', 'official'].includes(input.operation)) throw new DaemonError('E_UNAVAILABLE', 'Task execution admission is closed.')
         return taskProgress.execute(input)
@@ -401,7 +401,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         if (method === 'runtime.status') return await status() as RuntimeResult<M>
         if (released) throw new DaemonError('E_UNAVAILABLE', 'Runtime authority was released.')
         ports.assertAuthority()
-        const global = ['runtime.privateRead', 'runtime.privateSend', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond', 'runtime.privateConfigure', 'runtime.privateRecoverModel', 'runtime.hifoxProgress', 'runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
+        const global = ['runtime.privateRead', 'runtime.privateSend', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond', 'runtime.privateConfigure', 'runtime.privateRecoverModel', 'runtime.cruxProgress', 'runtime.agents', 'runtime.setup', 'runtime.probe', 'runtime.blob.open', 'runtime.blob.append', 'runtime.blob.seal', 'runtime.blob.read', 'runtime.blob.release', 'runtime.command'].includes(method)
         const taskControl = isBoundedNativeTaskControl(method, payload)
         const root = context.workspace?.root ?? (global || taskControl ? '@profile' : '')
         if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')

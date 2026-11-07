@@ -9,7 +9,7 @@ import { TeamServiceError } from './errors'
 import { executionInputCommandSchema, executionInputReadQuerySchema, executionInputSelectionIdSchema } from '../../../src/shared/team-execution-input'
 
 const paramsSchema = z.object({ projectId: teamIdSchema, taskId: teamTaskProgressResourceIdSchema }).strict()
-const path = '/api/projects/:projectId/hifox/tasks/:taskId/executions'
+const path = '/api/projects/:projectId/crux/tasks/:taskId/executions'
 export async function registerTaskExecutionRoutes(api: FastifyInstance, store: TeamStore, auth: TeamAuthentication): Promise<void> {
   const version = (body: unknown): void => {
     if (body && typeof body === 'object' && 'contractVersion' in body && body.contractVersion !== 2) throw new TeamServiceError('UNSUPPORTED_EXECUTION_VERSION', 'Execution contract version 2 is required', 409)

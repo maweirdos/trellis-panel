@@ -9,7 +9,7 @@ import { getPageNavigation, projectRootKey, type WorkItemsView, type TeamView, t
 import { loadProjectPreferences, saveProjectPreferences, type SavedView } from './project-preferences'
 import { DEFAULT_SIDEBAR_WIDTH, normalizeCodeFontFamily, normalizeCodeFontSize, normalizeSidebarWidth, normalizeUiFontFamily, normalizeUiFontSize, UI_DENSITY_OPTIONS, UI_PREFERENCES_KEY, type CodeFontFamily, type CodeFontSize, type UiFontFamily, type UiFontSize } from './appearance'
 import type { GroupBy, Issue, IssueFilters, OrderBy, Priority, ThemeMode, WorkItemLayout } from './types'
-import type { TaskConversationTarget } from '../hifox/task-conversation'
+import type { TaskConversationTarget } from '../crux/task-conversation'
 
 export type { SavedView } from './project-preferences'
 

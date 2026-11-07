@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import { ArrowUpRight, Link2, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '../my/ui'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { useCreationList } from './hooks'
 import { openCreation, type CreationLocation } from './navigation'
 import './creation-workspace.css'
@@ -9,7 +9,7 @@ import './creation-workspace.css'
 export function TaskCreationReferences({ taskId, spaceId, onOpen }: {
   taskId: string; spaceId: string; onOpen?: (location: CreationLocation) => void
 }): JSX.Element {
-  const context = useHifox((state) => state.workspaceContext)
+  const context = useCrux((state) => state.workspaceContext)
   const { data, error, busy, refresh, loadMore } = useCreationList({ scope: 'team', taskId, spaceId })
   const references = data?.items.flatMap((creation) => {
     const adoption = creation.adoptions.filter((entry) => entry.taskId === taskId).at(-1)

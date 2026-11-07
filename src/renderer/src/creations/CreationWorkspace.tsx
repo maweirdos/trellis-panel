@@ -8,8 +8,8 @@ import { Select } from '../components/Select'
 import { CreationSource } from './CreationSource'
 import { ConversationArtifacts } from './ConversationArtifacts'
 import { PageBody, PageHeader, PageLayout, PageToolbar } from '../my/layout/PageLayout'
-import { useHifox } from '../hifox/store'
-import { ConnectionPanel } from '../hifox/ConnectionPanel'
+import { useCrux } from '../crux/store'
+import { ConnectionPanel } from '../crux/ConnectionPanel'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { PrototypePreview } from './PrototypePreview'
@@ -230,7 +230,7 @@ function CreationDetail({ location, onBack, onRevision }: { location: CreationLo
             : <TextPreview body={body} annotate={tab === 'review' && canAnnotate} onSelect={selectTarget} />}</div>
           <ScenarioEditor scenarios={tab === 'edit' && draft && editable ? draft.scenarios : view.selected.scenarios} editable={tab === 'edit' && editable} onChange={(scenarios) => changeDraft({ scenarios })} onAnnotate={canAnnotate ? (scenarioId) => { setTab('review'); selectTarget({ kind: 'scenario', scenarioId }) } : undefined} />
         </>}
-        {view.summary.adoptions.length > 0 && <details className="creation-adoptions"><summary><Link2 size={13} />已被 {new Set(view.summary.adoptions.map((entry) => entry.taskId)).size} 个任务采用</summary>{view.summary.adoptions.map((adoption) => <div className="creation-row" key={adoption.adoptionId}><Button size="sm" variant="ghost" onClick={() => { useHifox.getState().setModule('tasks'); useHifox.getState().openTask(adoption.taskId); useApp.getState().setPage('hifox') }}>{useHifox.getState().snapshot?.tasks.find((task) => task.id === adoption.taskId)?.title ?? adoption.taskId}</Button><span className="my-chip">R{adoption.revisionNumber}</span><span className="creation-meta">{adoption.confirmedRules.length} 条规则</span></div>)}</details>}
+        {view.summary.adoptions.length > 0 && <details className="creation-adoptions"><summary><Link2 size={13} />已被 {new Set(view.summary.adoptions.map((entry) => entry.taskId)).size} 个任务采用</summary>{view.summary.adoptions.map((adoption) => <div className="creation-row" key={adoption.adoptionId}><Button size="sm" variant="ghost" onClick={() => { useCrux.getState().setModule('tasks'); useCrux.getState().openTask(adoption.taskId); useApp.getState().setPage('crux') }}>{useCrux.getState().snapshot?.tasks.find((task) => task.id === adoption.taskId)?.title ?? adoption.taskId}</Button><span className="my-chip">R{adoption.revisionNumber}</span><span className="creation-meta">{adoption.confirmedRules.length} 条规则</span></div>)}</details>}
       </main>
       <div className="creation-review-column">
         <ReviewPanel key={`review:${view.selected.revisionId}`} view={view} target={annotationTarget} activeCommentId={activeCommentId} missingAnchors={missingAnchors} canAnnotate={canAnnotate && !query.changed} busy={blocked || query.changed} selectedIds={selectedIds} loadingMore={query.loadingMore}
@@ -244,7 +244,7 @@ function CreationDetail({ location, onBack, onRevision }: { location: CreationLo
 }
 
 function CreationListRow({ item, onOpen }: { item: CreationSummary; onOpen: () => void }): JSX.Element {
-  const members = useHifox((state) => state.snapshot?.members)
+  const members = useCrux((state) => state.snapshot?.members)
   return <button type="button" className="creation-list-row" onClick={onOpen}>
     <span className="creation-list-icon" aria-hidden="true">{item.kind === 'prototype' ? <Monitor size={18} /> : <FileText size={18} />}</span>
     <span className="creation-list-title"><span className="my-item-title creation-truncate">{item.title}</span><span className="my-item-description creation-truncate">{members?.find((person) => person.id === item.ownerId)?.name ?? item.ownerId}</span></span>
@@ -256,11 +256,11 @@ function CreationListRow({ item, onOpen }: { item: CreationSummary; onOpen: () =
 }
 
 export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' | 'team' }): JSX.Element {
-  const context = useHifox((state) => state.workspaceContext)
-  const snapshot = useHifox((state) => state.snapshot)
-  const bootstrap = useHifox((state) => state.bootstrap)
-  const loadError = useHifox((state) => state.loadError)
-  const currentSpaceId = useHifox((state) => state.currentSpaceId)
+  const context = useCrux((state) => state.workspaceContext)
+  const snapshot = useCrux((state) => state.snapshot)
+  const bootstrap = useCrux((state) => state.bootstrap)
+  const loadError = useCrux((state) => state.loadError)
+  const currentSpaceId = useCrux((state) => state.currentSpaceId)
   const target = useCreationNavigation((state) => state.target)
   const matching = target && target.workspaceKey === context.key && target.actorId === context.actorId && target.scope === scope && (scope === 'personal' || target.spaceId === currentSpaceId) ? target : null
   const activeScope = matching?.scope ?? scope
@@ -284,7 +284,7 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
   const identity = JSON.stringify([context.key, context.actorId, context.epoch, context.authorizationRevision, context.state, activeScope, spaceId])
   const showingDesign = scope === 'personal' && Boolean(designDocumentId)
   const query = useCreationList({ scope: activeScope, spaceId, query: searchQuery, ...(kind === 'all' || kind === 'design' ? {} : { kind }), sort, enabled: !matching && kind !== 'design' && !showingDesign })
-  useEffect(() => { if (!showingDesign && kind !== 'design' && !useHifox.getState().snapshot) void bootstrap() }, [bootstrap, showingDesign, kind])
+  useEffect(() => { if (!showingDesign && kind !== 'design' && !useCrux.getState().snapshot) void bootstrap() }, [bootstrap, showingDesign, kind])
   useEffect(() => { const timer = setTimeout(() => setSearchQuery(search.trim()), 250); return () => clearTimeout(timer) }, [search])
   useLayoutEffect(() => { setCreating(false); setResuming(null); setSearch(''); setSearchQuery(''); setKind('all'); setSort('updated'); setAccessDenied(false); setShowFiles(false); setShowWhiteboard(false); listScroll.current = 0 }, [identity])
   useLayoutEffect(() => { if (!matching && !showWhiteboard && listMarker.current?.parentElement) listMarker.current.parentElement.scrollTop = listScroll.current }, [Boolean(matching), showWhiteboard])

@@ -101,7 +101,7 @@ function TeamContentAdministration({ session, teamId }: { session: TeamSession; 
     return () => lease.dispose()
   }, [session, teamId])
   const current = binding && binding.teamId === teamId && binding.session.person.userId === session.person.userId && binding.session.csrfToken === session.csrfToken
-  return <section className="my-root hifox-host team-content-settings" aria-label="团队 AI 设置">{current ? <TeamContentSettings workspaceKey={binding.lease.workspaceKey} teamId={teamId} contentApi={binding.lease.api} /> : <p role="status">正在连接团队 AI 设置…</p>}</section>
+  return <section className="my-root crux-host team-content-settings" aria-label="团队 AI 设置">{current ? <TeamContentSettings workspaceKey={binding.lease.workspaceKey} teamId={teamId} contentApi={binding.lease.api} /> : <p role="status">正在连接团队 AI 设置…</p>}</section>
 }
 function AccountStatus({ person, self, onClose, onDone }: { person: z.infer<typeof teamPersonSchema>; self: boolean; onClose: () => void; onDone: () => void }) {
   const write = useWrite(`/api/people/${person.userId}/status`, teamPersonSchema, null, onDone)

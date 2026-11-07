@@ -13,7 +13,7 @@ export class ExecutionInputTransport {
   private readonly query: Record<string, string>
   constructor(private readonly task: TeamTaskRef, private readonly executionId: string, private readonly actorId: string,
     private readonly deviceId: string | null, private readonly request: Request) {
-    this.base = `/api/projects/${task.projectId}/hifox/tasks/${encodeURIComponent(task.taskId)}/executions/${executionId}/inputs`
+    this.base = `/api/projects/${task.projectId}/crux/tasks/${encodeURIComponent(task.taskId)}/executions/${executionId}/inputs`
     this.query = { contractVersion: '2', instanceId: task.instanceId, spaceId: task.spaceId, taskCreatedAt: task.taskCreatedAt }
   }
   private commandInput(raw: ExecutionInputCommand): ExecutionInputCommand {

@@ -1,14 +1,14 @@
 import { useLayoutEffect, useRef, useState, type JSX } from 'react'
 import { z } from 'zod'
 import { teamIdSchema, teamOpaqueIdSchema } from './contracts'
-import { useHifox } from '../../../src/renderer/src/hifox/store'
-import { canReadTaskSpace } from '../../../src/renderer/src/hifox/pages/task-detail/use-task-source'
-import type { BrowserHifoxWorkspace } from './hifox-browser-api'
+import { useCrux } from '../../../src/renderer/src/crux/store'
+import { canReadTaskSpace } from '../../../src/renderer/src/crux/pages/task-detail/use-task-source'
+import type { BrowserCruxWorkspace } from './crux-browser-api'
 
 const targetSchema = z.object({ projectId: teamIdSchema, taskId: teamOpaqueIdSchema, taskCreatedAt: z.iso.datetime({ offset: true }).max(64) })
 type TaskLocation = z.infer<typeof targetSchema>
 type Target = { kind: 'none' } | { kind: 'invalid' } | { kind: 'task'; value: TaskLocation }
-type Workspace = Pick<BrowserHifoxWorkspace, 'context' | 'isCurrent'>
+type Workspace = Pick<BrowserCruxWorkspace, 'context' | 'isCurrent'>
 type LocationOwner = { active(): boolean; retry(): void; clear(): void; dispose(): void }
 
 export function workspaceProjectFromLocation(): string {
@@ -42,7 +42,7 @@ export function trackWorkspaceTaskLocation(workspace: Workspace, accountId: stri
   let observed: TaskLocation | null = null
   if (target.kind === 'task' && target.value.projectId !== origin.projectId) target = { kind: 'none' }
   const owns = (): boolean => {
-    const context = useHifox.getState().workspaceContext
+    const context = useCrux.getState().workspaceContext
     return live && !invalidated && workspace.isCurrent() && context.key === origin.key && context.projectId === origin.projectId && (!context.actorId || context.actorId === accountId)
   }
   const invalidate = (): void => {
@@ -52,7 +52,7 @@ export function trackWorkspaceTaskLocation(workspace: Workspace, accountId: stri
   const inspect = (): void => {
     if (!live || invalidated) return
     if (!owns()) { invalidate(); return }
-    const state = useHifox.getState(), context = state.workspaceContext, current = workspace.context()
+    const state = useCrux.getState(), context = state.workspaceContext, current = workspace.context()
     if (context.state === 'access-revoked' || source && (context.instanceId !== source.instanceId || context.epoch !== source.epoch)) { invalidate(); return }
     // The first empty lease and background reconnects cannot consume the URL target.
     if (!state.snapshot || state.loadError || context.state !== 'connected' || context.actorId !== accountId || !context.instanceId || !context.epoch || current.state !== 'connected' || current.actorId !== accountId ||
@@ -93,7 +93,7 @@ export function trackWorkspaceTaskLocation(workspace: Workspace, accountId: stri
     observed = null
     notice(''); if (origin.projectId) replaceLocation(origin.projectId)
   }
-  const unsubscribe = useHifox.subscribe(inspect)
+  const unsubscribe = useCrux.subscribe(inspect)
   inspect()
   return {
     active: owns,
@@ -101,12 +101,12 @@ export function trackWorkspaceTaskLocation(workspace: Workspace, accountId: stri
       if (!owns()) return
       if (observed && target.kind === 'none') target = { kind: 'task', value: observed }
       attempted = false
-      void useHifox.getState().bootstrap()
+      void useCrux.getState().bootstrap()
     },
     clear() {
-      if (!owns() || useHifox.getState().workspaceContext.state !== 'connected') return
+      if (!owns() || useCrux.getState().workspaceContext.state !== 'connected') return
       target = { kind: 'none' }; observed = null; attempted = false
-      useHifox.getState().openTask(null); useHifox.getState().setModule('overview')
+      useCrux.getState().openTask(null); useCrux.getState().setModule('overview')
       if (origin.projectId) replaceLocation(origin.projectId)
       notice('')
     },
@@ -123,5 +123,5 @@ export function WorkspaceTaskLocation({ workspace, accountId }: { workspace: Wor
     owner.current = { binding, workspace }
     return () => { binding.dispose(); if (owner.current?.binding === binding) owner.current = null }
   }, [workspace, accountId])
-  return message ? <div className="hifox-host-status" role="alert"><p>{message}</p><button type="button" disabled={!owner.current?.binding.active()} onClick={() => { if (owner.current?.workspace === workspace) owner.current.binding.retry() }}>重新核对任务</button><button type="button" disabled={!owner.current?.binding.active()} onClick={() => { if (owner.current?.workspace === workspace) owner.current.binding.clear() }}>返回工作区</button><button type="button" onClick={() => { if (owner.current?.workspace === workspace) location.reload() }}>重新载入页面</button></div> : null
+  return message ? <div className="crux-host-status" role="alert"><p>{message}</p><button type="button" disabled={!owner.current?.binding.active()} onClick={() => { if (owner.current?.workspace === workspace) owner.current.binding.retry() }}>重新核对任务</button><button type="button" disabled={!owner.current?.binding.active()} onClick={() => { if (owner.current?.workspace === workspace) owner.current.binding.clear() }}>返回工作区</button><button type="button" onClick={() => { if (owner.current?.workspace === workspace) location.reload() }}>重新载入页面</button></div> : null
 }

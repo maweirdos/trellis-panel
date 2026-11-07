@@ -930,11 +930,11 @@ to load. Other active tasks were preserved.
 - 保留任务进行中；修复共享工作区 daemon/集成构建错误后做完整桌面安装包与实际权限验收，再审阅提交分组
 
 
-## Session 27: HiFox integrations daemon composition and provider wiring
+## Session 27: Crux integrations daemon composition and provider wiring
 <!-- trellis-session: v=2 fp=83a8a9946c548342 -->
 
 **Date**: 2026-10-23
-**Task**: HiFox integrations daemon composition and provider wiring
+**Task**: Crux integrations daemon composition and provider wiring
 **Branch**: `codex/trellis-team-refactor`
 
 ### Summary

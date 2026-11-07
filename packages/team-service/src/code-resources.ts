@@ -1,8 +1,8 @@
 import type { z } from 'zod'
 import { z as schema } from 'zod'
-import type { HifoxSpace, HifoxTask } from '../../../src/shared/hifox'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
-import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
+import type { CruxSpace, CruxTask } from '../../../src/shared/crux'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
+import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
 import { teamIdSchema } from '../../../src/shared/team-platform'
 import {
   teamCodeResourceSchema, teamCodeResourceCommandSchema, teamCodeResourceListInputSchema, teamCodeResourceListSchema,
@@ -12,13 +12,13 @@ import {
   type TeamCodeResourceReceipt, type TeamSpaceResourceLink, type TeamTaskResourceSelection, type TeamTaskCodeResourceDto
 } from '../../../src/shared/team-code-resources'
 import type { CreationsHost } from './creations'
-import type { HifoxWorkspaceHost } from './hifox-workspace'
+import type { CruxWorkspaceHost } from './crux-workspace'
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 import { invalidateTaskResourceProgress, taskProgressFence } from './task-progress'
 
-type Host = Omit<CreationsHost, 'identity'> & Pick<HifoxWorkspaceHost, 'identity'> & { invalidateExecution(projectId: string, taskId: string): void }
-type Context = { principal: StorePrincipal; projectId: string; canManage: boolean; canManageTasks: boolean; spaces: HifoxSpace[]; workspaceRevision: number }
+type Host = Omit<CreationsHost, 'identity'> & Pick<CruxWorkspaceHost, 'identity'> & { invalidateExecution(projectId: string, taskId: string): void }
+type Context = { principal: StorePrincipal; projectId: string; canManage: boolean; canManageTasks: boolean; spaces: CruxSpace[]; workspaceRevision: number }
 const MAX_RESOURCES = 1000
 function fail(code: string, message: string, status = 409): never { throw new TeamServiceError(code, message, status) }
 function unavailable(): never { return fail('CODE_RESOURCE_UNAVAILABLE', 'Resource scope is unavailable', 404) }
@@ -49,33 +49,33 @@ export class TeamCodeResources {
     const roles = stored(schema.array(schema.string()).max(10), member.rolesJson)
     const teamRoles = stored(schema.array(schema.string()).max(10), member.teamRolesJson)
     const canManage = roles.includes('admin') || teamRoles.some((role) => role === 'owner' || role === 'admin') || principal.person.isPlatformAdmin
-    const workspace = this.host.get('SELECT revision FROM hifox_workspaces WHERE projectId=?', projectId)
-    const rows = this.host.all("SELECT s.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? LIMIT 501", projectId)
+    const workspace = this.host.get('SELECT revision FROM crux_workspaces WHERE projectId=?', projectId)
+    const rows = this.host.all("SELECT s.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? LIMIT 501", projectId)
     if (rows.length > 500) fail('CAPACITY_EXCEEDED', 'Workspace space count exceeds the resource authorization bound', 413)
     return { principal, projectId, canManage, canManageTasks: canManage || roles.includes('pm'),
       workspaceRevision: workspace ? stored(schema.number().int().nonnegative().safe(), workspace.revision) : 0,
-      spaces: rows.map((row) => stored(hifoxSnapshotSchema.shape.spaces.element, row.body)) }
+      spaces: rows.map((row) => stored(cruxSnapshotSchema.shape.spaces.element, row.body)) }
   }
 
-  private space(ctx: Context, spaceId: string, writing = false): HifoxSpace {
+  private space(ctx: Context, spaceId: string, writing = false): CruxSpace {
     const space = ctx.spaces.find((entry) => entry.id === spaceId)
-    if (!space || !canReadHifoxSpace(space, ctx.principal.person.userId)) unavailable()
+    if (!space || !canReadCruxSpace(space, ctx.principal.person.userId)) unavailable()
     if (writing && space.archived) fail('CODE_RESOURCE_INACTIVE', 'Archived spaces cannot change resource associations')
     return space
   }
 
-  private task(ctx: Context, taskId: string): HifoxTask {
-    const row = this.host.get("SELECT t.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=? LIMIT 1", ctx.projectId, taskId)
+  private task(ctx: Context, taskId: string): CruxTask {
+    const row = this.host.get("SELECT t.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=? LIMIT 1", ctx.projectId, taskId)
     if (!row) unavailable()
-    const task = stored(hifoxSnapshotSchema.shape.tasks.element, row.body)
+    const task = stored(cruxSnapshotSchema.shape.tasks.element, row.body)
     this.space(ctx, task.spaceId)
     return task
   }
 
-  private canSelect(ctx: Context, task: HifoxTask): boolean {
+  private canSelect(ctx: Context, task: CruxTask): boolean {
     const space = this.space(ctx, task.spaceId)
     if (space.archived || task.completedAt || task.triagePending || task.workflow?.stage === 'done') return false
-    const status = this.host.get("SELECT json_extract(s.value,'$.category') AS category FROM hifox_workspaces w,json_each(w.snapshotJson,'$.taskStatuses') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? AND json_extract(s.value,'$.spaceId')=? LIMIT 1", ctx.projectId, task.statusId, task.spaceId)
+    const status = this.host.get("SELECT json_extract(s.value,'$.category') AS category FROM crux_workspaces w,json_each(w.snapshotJson,'$.taskStatuses') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? AND json_extract(s.value,'$.spaceId')=? LIMIT 1", ctx.projectId, task.statusId, task.spaceId)
     if (!status || status.category === 'done' || status.category === 'cancelled') return false
     const userId = ctx.principal.person.userId
     const handler = task.workflow ? task.workflow.handlerId : task.assigneeIds.length === 1 ? task.assigneeIds[0] : undefined
@@ -93,7 +93,7 @@ export class TeamCodeResources {
     return stored(teamSpaceResourceLinkSchema, { spaceId, revision: row?.revision ?? 0, defaultResourceId: row?.defaultResourceId ?? null, resourceIds: links.map((entry) => entry.resourceId) })
   }
 
-  private selection(ctx: Context, task: HifoxTask): TeamTaskResourceSelection | null {
+  private selection(ctx: Context, task: CruxTask): TeamTaskResourceSelection | null {
     const row = this.host.get('SELECT recordJson FROM team_task_code_resources WHERE projectId=? AND taskId=? AND spaceId=? AND taskCreatedAt=?', ctx.projectId, task.id, task.spaceId, task.createdAt)
     return row ? stored(teamTaskResourceSelectionSchema, row.recordJson) : null
   }
@@ -110,7 +110,7 @@ export class TeamCodeResources {
     const projectId = teamIdSchema.parse(raw.projectId), query = teamCodeResourceListInputSchema.parse(raw.query ?? {})
     const ctx = this.context(principal, projectId)
     if (query.spaceId) this.space(ctx, query.spaceId)
-    const spaces = query.spaceId ? [query.spaceId] : ctx.spaces.filter((space) => canReadHifoxSpace(space, principal.person.userId)).map((space) => space.id)
+    const spaces = query.spaceId ? [query.spaceId] : ctx.spaces.filter((space) => canReadCruxSpace(space, principal.person.userId)).map((space) => space.id)
     const heads = this.host.get('SELECT COALESCE(SUM(revision),0) AS revision FROM team_code_resources WHERE projectId=?', projectId)
     const linkHeads = this.host.get('SELECT COALESCE(SUM(revision),0) AS revision FROM team_space_resources WHERE projectId=?', projectId)
     const scope = JSON.stringify(['code-resources', projectId, query.spaceId ?? null, ctx.workspaceRevision, heads?.revision, linkHeads?.revision])
@@ -216,7 +216,7 @@ export class TeamCodeResources {
       }
       const changed = (previous?.resourceId ?? null) !== input.resourceId
       if (changed) {
-        const progress = this.host.get('SELECT epoch,fence,bindingJson FROM hifox_task_progress WHERE projectId=? AND taskId=?', projectId, targetId)
+        const progress = this.host.get('SELECT epoch,fence,bindingJson FROM crux_task_progress WHERE projectId=? AND taskId=?', projectId, targetId)
         if (progress?.bindingJson != null && progress.epoch === this.host.identity().epoch && progress.fence === taskProgressFence(this.host, projectId, task).fence) {
           fail('RESOURCE_IN_USE', 'Release the current progress binding and verify native execution is safely handled before changing the task resource')
         }

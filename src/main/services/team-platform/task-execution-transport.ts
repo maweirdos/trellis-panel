@@ -12,7 +12,7 @@ export class TaskExecutionTransport {
   private readonly base: string
   private readonly query: string
   constructor(private readonly task: TeamTaskRef, private readonly actorId: string, private readonly deviceId: string, private readonly request: Request) {
-    this.base = `/api/projects/${task.projectId}/hifox/tasks/${encodeURIComponent(task.taskId)}/executions`
+    this.base = `/api/projects/${task.projectId}/crux/tasks/${encodeURIComponent(task.taskId)}/executions`
     this.query = new URLSearchParams({ contractVersion: '2', instanceId: task.instanceId, spaceId: task.spaceId, taskCreatedAt: task.taskCreatedAt }).toString()
   }
   private scope(task: TeamTaskRef, write = false): void {

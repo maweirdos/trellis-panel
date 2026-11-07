@@ -1,10 +1,10 @@
 * { box-sizing: border-box; }
-.hifox-host { position: relative; isolation: isolate; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--my-bg-canvas); color: var(--my-txt-primary); }
-.hifox-host-body { min-height: 0; min-width: 0; flex: 1; overflow: hidden; }
-.hifox-host :where(label, form, fieldset) { flex-direction: row; gap: 0; align-items: normal; }
-.hifox-host :where(label) { display: block; font-size: inherit; font-weight: inherit; }
-.hifox-host .hifox-host-status { flex: 0 0 auto; max-height: 30vh; overflow: auto; padding: var(--my-space-12); border-bottom: 1px solid var(--my-border-subtle); font-size: var(--my-text-xs); }
-.hifox-host .hifox-host-status button { border: 1px solid var(--my-border-subtle); border-radius: var(--my-control-radius); padding: var(--my-space-6) var(--my-space-10); margin: var(--my-space-4); }
+.crux-host { position: relative; isolation: isolate; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--my-bg-canvas); color: var(--my-txt-primary); }
+.crux-host-body { min-height: 0; min-width: 0; flex: 1; overflow: hidden; }
+.crux-host :where(label, form, fieldset) { flex-direction: row; gap: 0; align-items: normal; }
+.crux-host :where(label) { display: block; font-size: inherit; font-weight: inherit; }
+.crux-host .crux-host-status { flex: 0 0 auto; max-height: 30vh; overflow: auto; padding: var(--my-space-12); border-bottom: 1px solid var(--my-border-subtle); font-size: var(--my-text-xs); }
+.crux-host .crux-host-status button { border: 1px solid var(--my-border-subtle); border-radius: var(--my-control-radius); padding: var(--my-space-6) var(--my-space-10); margin: var(--my-space-4); }
 html, body, #root { margin: 0; min-height: 100%; }
 body { background: var(--my-bg-canvas); color: var(--my-txt-primary); font-family: var(--my-font-sans); font-size: var(--my-text-ui); line-height: var(--my-line-ui); }
 button, input, select, textarea { font: inherit; color: inherit; }

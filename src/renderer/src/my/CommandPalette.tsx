@@ -7,9 +7,9 @@ import { useMy } from './store'
 import { NavIcon, StateGroupIcon } from './icons'
 import { Modal } from './ui'
 import { DOMAIN_LABELS, getPageNavigation, navigationScopeLabel, PAGE_NAVIGATION } from './navigation'
-import { useHifox } from '../hifox/store'
-import { COLLABORATION_MODULES } from '../hifox/navigation'
-import { FlowIcon } from '../hifox/icons'
+import { useCrux } from '../crux/store'
+import { COLLABORATION_MODULES } from '../crux/navigation'
+import { FlowIcon } from '../crux/icons'
 import { hasIpc } from '../api'
 
 interface PaletteItem {
@@ -30,7 +30,7 @@ export function CommandPalette(): JSX.Element | null {
   const data = useMy((s) => s.data)
   const projectRoot = useApp((s) => s.snapshot?.meta.root)
   const page = useApp((s) => s.page)
-  const collaboration = useHifox((s) => s.snapshot)
+  const collaboration = useCrux((s) => s.snapshot)
   const theme = useMy((s) => s.theme)
   const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
   const openIssue = useMy((s) => s.openIssue)
@@ -40,7 +40,7 @@ export function CommandPalette(): JSX.Element | null {
   const [selected, setSelected] = useState(0)
   const selectedItemRef = useRef<HTMLButtonElement>(null)
   const composing = useRef(false)
-  useEffect(() => { if (open) void useHifox.getState().bootstrap() }, [open])
+  useEffect(() => { if (open) void useCrux.getState().bootstrap() }, [open])
 
   const go = useCallback((page: Page): void => {
     const ui = useMy.getState()
@@ -80,7 +80,7 @@ export function CommandPalette(): JSX.Element | null {
       ...COLLABORATION_MODULES.map((entry) => ({
         id: `n-collaboration-${entry.id}`, section: '导航 · 团队', label: entry.label,
         icon: <FlowIcon name={entry.icon} size={16} />, hint: `团队协作 · ${entry.group}`,
-        keywords: `${entry.id} 团队协作`, run: () => { useHifox.getState().setModule(entry.id); go('hifox') }
+        keywords: `${entry.id} 团队协作`, run: () => { useCrux.getState().setModule(entry.id); go('crux') }
       })),
       ...(['members', 'activity', 'reports'] as const).map((section) => ({
         id: `n-team-${section}`, section: '导航 · 团队', label: { members: '项目成员记录', activity: '项目动态', reports: '项目报告' }[section], icon: <NavIcon name="views" size={14} />, hint: '当前项目',
@@ -92,7 +92,7 @@ export function CommandPalette(): JSX.Element | null {
       { id: 'n-run', section: '导航 · 任务', label: '运行', icon: <NavIcon name="views" size={14} />, hint: '本机项目工具', run: () => { useMy.getState().setToolView('run'); setPageMain('devtools'); setOpen(false) } },
       { id: 'n-git', section: '导航 · 任务', label: 'Git', icon: <NavIcon name="views" size={14} />, hint: '当前项目 · 只读', run: () => { useMy.getState().setToolView('git'); setPageMain('devtools'); setOpen(false) } }
     ]
-    const issues: PaletteItem[] = (page === 'hifox' || (hasIpc && !projectRoot) ? [] : data.issues).slice(0, 60).map((issue) => ({
+    const issues: PaletteItem[] = (page === 'crux' || (hasIpc && !projectRoot) ? [] : data.issues).slice(0, 60).map((issue) => ({
       id: `i-${issue.id}`,
       section: '任务',
       label: issue.name,
@@ -109,8 +109,8 @@ export function CommandPalette(): JSX.Element | null {
     }))
     const actions: PaletteItem[] = [
       { id: 'a-new-team', section: '操作', label: '新建团队任务', icon: <FlowIcon name="tasks" size={16} />, hint: '当前协作空间', run: () => {
-        go('hifox')
-        const state = useHifox.getState()
+        go('crux')
+        const state = useCrux.getState()
         if (state.currentSpaceId) state.setCreateTaskOpen(true)
         else state.setModule('spaces')
       } },
@@ -140,8 +140,8 @@ export function CommandPalette(): JSX.Element | null {
       }
     ]
     const sections = (['home', 'agents', 'tasks', 'team', 'knowledge', 'settings'] as const).map((domain) => `导航 · ${DOMAIN_LABELS[domain]}`)
-    const teamTasks: PaletteItem[] = (collaboration?.tasks ?? []).map((task) => ({ id: `team-task-${task.id}`, section: '团队任务', label: `${task.id} · ${task.title}`, icon: <FlowIcon name="tasks" size={16} />, hint: collaboration?.spaces.find((space) => space.id === task.spaceId)?.name, fulltext: task.description, run: () => { useHifox.getState().setModule('tasks'); useHifox.getState().openTask(task.id); go('hifox') } }))
-    return [...nav, ...extra].sort((a, b) => sections.indexOf(a.section) - sections.indexOf(b.section)).concat(page === 'hifox' ? teamTasks : issues, page === 'hifox' ? [] : teamTasks, actions.filter((item) => item.id !== 'a-new' || Boolean(projectRoot) || !hasIpc))
+    const teamTasks: PaletteItem[] = (collaboration?.tasks ?? []).map((task) => ({ id: `team-task-${task.id}`, section: '团队任务', label: `${task.id} · ${task.title}`, icon: <FlowIcon name="tasks" size={16} />, hint: collaboration?.spaces.find((space) => space.id === task.spaceId)?.name, fulltext: task.description, run: () => { useCrux.getState().setModule('tasks'); useCrux.getState().openTask(task.id); go('crux') } }))
+    return [...nav, ...extra].sort((a, b) => sections.indexOf(a.section) - sections.indexOf(b.section)).concat(page === 'crux' ? teamTasks : issues, page === 'crux' ? [] : teamTasks, actions.filter((item) => item.id !== 'a-new' || Boolean(projectRoot) || !hasIpc))
   }, [data, collaboration, theme, go, setWorkItemsView, setPageMain, openIssue, setOpen, setCreateIssueOpen, page, projectRoot])
 
   const filtered = useMemo(() => {

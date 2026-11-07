@@ -1,13 +1,13 @@
 import { z } from 'zod'
-import { hifoxMaterialScopeSchema, hifoxMaterialPendingSchema } from '../../../src/shared/hifox-task-materials'
+import { cruxMaterialScopeSchema, cruxMaterialPendingSchema } from '../../../src/shared/crux-task-materials'
 import { teamCommandIdSchema, teamDigestSchema, teamIdSchema } from '../../../src/shared/team-platform'
 import { ApiError } from './client'
 
 const recordSchema = z.object({
-  scope: hifoxMaterialScopeSchema,
+  scope: cruxMaterialScopeSchema,
   origin: z.url().max(2048), accountId: teamIdSchema, projectId: teamIdSchema,
   instanceId: teamIdSchema, epoch: teamIdSchema, commandId: teamCommandIdSchema,
-  digest: teamDigestSchema, action: hifoxMaterialPendingSchema.shape.action,
+  digest: teamDigestSchema, action: cruxMaterialPendingSchema.shape.action,
   documentId: teamIdSchema.nullable(), versionId: teamIdSchema.nullable(), submissionId: teamIdSchema.nullable(),
   expectedRevision: z.number().int().nonnegative().safe().nullable(),
   expectedDraftRevision: z.number().int().nonnegative().safe().nullable(),

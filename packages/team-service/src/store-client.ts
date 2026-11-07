@@ -3,13 +3,14 @@ import { TeamServiceError } from './errors'
 import type { StoreOperation, StoreOptions, StoreRequest, StoreResponse } from './store-types'
 
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; bytes: number; timer: ReturnType<typeof setTimeout>; expired: boolean; operation: StoreOperation }
-const readOnlyOperations = new Set<StoreOperation>(['health', 'authenticate', 'people', 'teams', 'teamMembers', 'projects', 'projectMembers', 'materials', 'versions', 'document', 'feedback', 'events', 'command', 'pairing', 'pairingStatus', 'devices', 'collaborationList', 'collaborationGet', 'collaborationHistory', 'collaborationReplies', 'collaborationReports', 'collaborationReanchor', 'invitations', 'inspectInvitation', 'identity', 'hifoxSnapshot', 'hifoxHead', 'taskProgressRead', 'taskProgressReceipt', 'taskMaterialList', 'taskMaterialRead', 'taskMaterialVersions', 'taskMaterialSubmissions', 'taskMaterialReceipt', 'codeResourceList', 'taskCodeResourceRead', 'localCredential'])
+const readOnlyOperations = new Set<StoreOperation>(['health', 'authenticate', 'people', 'teams', 'teamMembers', 'projects', 'projectMembers', 'materials', 'versions', 'document', 'feedback', 'events', 'command', 'pairing', 'pairingStatus', 'devices', 'collaborationList', 'collaborationGet', 'collaborationHistory', 'collaborationReplies', 'collaborationReports', 'collaborationReanchor', 'invitations', 'inspectInvitation', 'identity', 'cruxSnapshot', 'cruxHead', 'taskProgressRead', 'taskProgressReceipt', 'taskMaterialList', 'taskMaterialRead', 'taskMaterialVersions', 'taskMaterialSubmissions', 'taskMaterialReceipt', 'codeResourceList', 'taskCodeResourceRead', 'localCredential'])
 for (const operation of ['contentConfigRead', 'contentCapabilities', 'contentJob', 'contentReceipt', 'contentBudget', 'contentAccounting'] as const) readOnlyOperations.add(operation)
 for (const operation of ['governanceList', 'governanceRead', 'governanceReceipt', 'taskInputRead', 'taskInputCandidates', 'taskInputRevision', 'taskInputReadDocument', 'taskInputReceipt'] as const) readOnlyOperations.add(operation)
 readOnlyOperations.add('taskDevelopmentContext')
 for (const operation of ['taskExecutionRead', 'taskExecutionHistory', 'taskExecutionReconcile', 'taskExecutionArtifact'] as const) readOnlyOperations.add(operation)
 for (const operation of ['executionInputRead', 'executionInputResource', 'executionInputReconcile'] as const) readOnlyOperations.add(operation)
 for (const operation of ['importReconcile', 'importNamespaces', 'importItems', 'importRead', 'importBatch'] as const) readOnlyOperations.add(operation)
+for (const operation of ['jiraBusinessMappingRead', 'jiraBusinessEffectRead'] as const) readOnlyOperations.add(operation)
 export class TeamStore {
   private readonly worker: Worker
   private readonly pending = new Map<number, Pending>()

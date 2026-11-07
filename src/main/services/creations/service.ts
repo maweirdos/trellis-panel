@@ -7,13 +7,13 @@ import { authorizeCreationCommand, canReadCreation, executeCreationCommand, summ
 import { creationSearchScope, filterCreationSummaries, usesCreationSearch } from '../../../shared/creation-list-query'
 import { TEAM_MAX_PAGE_ITEM_BYTES } from '../../../shared/team-platform'
 import { applyCreationPatch, buildCreationAiContext, CREATION_AI_INPUT_BYTES } from '../../../shared/creation-ai'
-import type { HifoxSnapshot } from '../../../shared/hifox'
-import type { HifoxWorkspaceContext } from '../../../shared/hifox-remote'
+import type { CruxSnapshot } from '../../../shared/crux'
+import type { CruxWorkspaceContext } from '../../../shared/crux-remote'
 import type { AiConfig, AiChatResult, ChatMessage } from '../../../shared/types'
 import { CreationLocalStore, sameCreationCommand, type PendingCreation } from './store'
 import type { DesktopTeamService } from '../team-platform/service'
 
-type Workspace = { snapshot: HifoxSnapshot; context: HifoxWorkspaceContext }
+type Workspace = { snapshot: CruxSnapshot; context: CruxWorkspaceContext }
 type Remote = Pick<DesktopTeamService, 'creationHead' | 'creationsList' | 'creationGet' | 'creationCommand' | 'creationReceipt'>
 type Source = Workspace & { actor: CreationActorContext; proof: string }
 type GenerateInput = z.output<typeof creationGenerateSchema>
@@ -21,14 +21,14 @@ type Generation = { source: Source; commandId: string; controller: AbortControll
 export type CreationServiceDependencies = {
   dataDir: string
   workspace(): Promise<Workspace>
-  status(): Promise<HifoxWorkspaceContext>
+  status(): Promise<CruxWorkspaceContext>
   remote<T>(action: (service: Remote) => Promise<T>): Promise<T>
   model(): AiConfig
   chat(config: AiConfig, messages: ChatMessage[], options: { maxTokens: number; signal: AbortSignal }): Promise<AiChatResult>
   changed(workspaceKey: string, creationId: string | null): void
 }
 const hash = (value: string): string => createHash('sha256').update(value, 'utf8').digest('hex')
-const sourceProof = (context: HifoxWorkspaceContext): string => JSON.stringify([context.key, context.connectionId, context.actorId, context.projectId, context.origin, context.instanceId, context.epoch, context.authorizationRevision])
+const sourceProof = (context: CruxWorkspaceContext): string => JSON.stringify([context.key, context.connectionId, context.actorId, context.projectId, context.origin, context.instanceId, context.epoch, context.authorizationRevision])
 function fail(code: string, message: string, status = 409): never { throw new CreationError(code, message, status) }
 
 /** Native/local transport only; domain and server remain the authority for shared work. */

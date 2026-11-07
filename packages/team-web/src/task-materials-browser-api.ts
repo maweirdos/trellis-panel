@@ -1,16 +1,16 @@
 import { z } from 'zod'
 import {
-  hifoxMaterialScopeSchema, hifoxMaterialListSchema, hifoxMaterialReadSchema,
-  hifoxMaterialHistorySchema, hifoxMaterialCommandSchema, hifoxMaterialRecoverySchema,
-  type HifoxTaskMaterialsApi, type HifoxMaterialScope, type HifoxMaterialReply
-} from '../../../src/shared/hifox-task-materials'
+  cruxMaterialScopeSchema, cruxMaterialListSchema, cruxMaterialReadSchema,
+  cruxMaterialHistorySchema, cruxMaterialCommandSchema, cruxMaterialRecoverySchema,
+  type CruxTaskMaterialsApi, type CruxMaterialScope, type CruxMaterialReply
+} from '../../../src/shared/crux-task-materials'
 import {
   teamTaskMaterialListSchema, teamTaskMaterialViewSchema, teamTaskMaterialHistorySchema,
   teamTaskMaterialSubmissionsSchema, teamTaskMaterialReceiptSchema,
   type TeamTaskMaterialCommand, type TeamTaskMaterialMetadata, type TeamTaskMaterialReceipt,
   type TeamTaskMaterialCommandReply
 } from '../../../src/shared/team-task-materials'
-import type { HifoxWorkspaceContext } from '../../../src/shared/hifox-remote'
+import type { CruxWorkspaceContext } from '../../../src/shared/crux-remote'
 import { TEAM_MAX_DOCUMENT_BYTES, type TeamSession } from './contracts'
 import {
   ApiError, authEvents, digest, isClientSession, pendingCommands, prepareCommand, request, requireBrowserCrypto,
@@ -21,12 +21,12 @@ import { materialReferences, rememberMaterialReference, type MaterialCommandRefe
 export type BrowserTaskMaterialsOptions = {
   projectId: string
   session: TeamSession
-  context(): HifoxWorkspaceContext
+  context(): CruxWorkspaceContext
   isCurrent(): boolean
-  subscribe(callback: (context: HifoxWorkspaceContext) => void): () => void
+  subscribe(callback: (context: CruxWorkspaceContext) => void): () => void
 }
 type Owner = {
-  scope: HifoxMaterialScope
+  scope: CruxMaterialScope
   instanceId: string
   epoch: string
   authorizationRevision: number
@@ -38,7 +38,7 @@ type TaskIdentity = Pick<TeamTaskMaterialReceipt, 'projectId' | 'taskId' | 'spac
 
 /** One browser workspace lease; recovery never rebuilds a command from a live editor. */
 export class BrowserTaskMaterials {
-  readonly api: HifoxTaskMaterialsApi
+  readonly api: CruxTaskMaterialsApi
   private live = true
   private generation = 0
   private source: string
@@ -55,14 +55,14 @@ export class BrowserTaskMaterials {
     authEvents.addEventListener('session-changed', this.invalidate)
     this.api = {
       list: (input) => this.run(async () => {
-        const parsed = hifoxMaterialListSchema.parse(input), owner = this.owner(parsed)
+        const parsed = cruxMaterialListSchema.parse(input), owner = this.owner(parsed)
         const value = await request(this.url(owner.scope, '', parsed), teamTaskMaterialListSchema, this.readOptions(owner))
         this.identity(value, owner); this.task(value, owner)
         for (const document of value.page.items) this.document(document, owner)
         return value
       }),
       read: (input) => this.run(async () => {
-        const parsed = hifoxMaterialReadSchema.parse(input), owner = this.owner(parsed)
+        const parsed = cruxMaterialReadSchema.parse(input), owner = this.owner(parsed)
         const value = await request(this.url(owner.scope, `/${encodeURIComponent(parsed.documentId)}`, parsed), teamTaskMaterialViewSchema, this.readOptions(owner))
         this.identity(value, owner); this.document(value.document, owner, parsed.documentId)
         if (value.selected.documentId !== parsed.documentId || value.selected.versionId !== (parsed.versionId ?? value.document.draft.versionId)) this.invalid('材料正文的文档或固定版本不匹配')
@@ -72,21 +72,21 @@ export class BrowserTaskMaterials {
         return value
       }),
       versions: (input) => this.run(async () => {
-        const parsed = hifoxMaterialHistorySchema.parse(input), owner = this.owner(parsed)
+        const parsed = cruxMaterialHistorySchema.parse(input), owner = this.owner(parsed)
         const value = await request(this.url(owner.scope, `/${encodeURIComponent(parsed.documentId)}/versions`, parsed), teamTaskMaterialHistorySchema, this.readOptions(owner))
         this.identity(value, owner)
         if (value.page.items.some((item) => item.documentId !== parsed.documentId)) this.invalid('材料版本历史的文档归属不匹配')
         return value
       }),
       submissions: (input) => this.run(async () => {
-        const parsed = hifoxMaterialHistorySchema.parse(input), owner = this.owner(parsed)
+        const parsed = cruxMaterialHistorySchema.parse(input), owner = this.owner(parsed)
         const value = await request(this.url(owner.scope, `/${encodeURIComponent(parsed.documentId)}/submissions`, parsed), teamTaskMaterialSubmissionsSchema, this.readOptions(owner))
         this.identity(value, owner)
         if (value.page.items.some((item) => item.documentId !== parsed.documentId)) this.invalid('材料提交历史的文档归属不匹配')
         return value
       }),
       pending: (input) => this.run(async () => {
-        const owner = this.owner(hifoxMaterialScopeSchema.parse(input))
+        const owner = this.owner(cruxMaterialScopeSchema.parse(input))
         const common = pendingCommands(options.session.person.userId)
         return materialReferences().filter((item) => item.state !== 'committed' && this.sameScope(item, owner.scope)).map((item) => {
           const entry = common.find((candidate) => candidate.commandId === item.commandId)
@@ -100,7 +100,7 @@ export class BrowserTaskMaterials {
         })
       }),
       command: (input) => this.run(() => this.exclusive(async () => {
-        const parsed = hifoxMaterialCommandSchema.parse(input), owner = this.owner(parsed), command = parsed.command
+        const parsed = cruxMaterialCommandSchema.parse(input), owner = this.owner(parsed), command = parsed.command
         if (command.spaceId !== owner.scope.spaceId || command.taskCreatedAt !== owner.scope.taskCreatedAt) throw new ApiError('SCOPE_MISMATCH', '材料命令与原任务实例不匹配')
         if (command.expectedEpoch !== owner.epoch) throw new ApiError('WORKSPACE_EPOCH_CHANGED', '材料来源代次已改变，请重新读取')
         requireBrowserCrypto()
@@ -135,12 +135,12 @@ export class BrowserTaskMaterials {
         return this.send(prepared, reference, owner)
       })),
       reconcile: (input) => this.run(() => this.exclusive(async () => {
-        const parsed = hifoxMaterialRecoverySchema.parse(input), owner = this.owner(parsed)
+        const parsed = cruxMaterialRecoverySchema.parse(input), owner = this.owner(parsed)
         const reference = this.reference(parsed.commandId, owner)
         return this.withOriginalOutcome(reference, () => this.reconcile(reference, owner))
       })),
       retry: (input) => this.run(() => this.exclusive(async () => {
-        const parsed = hifoxMaterialRecoverySchema.parse(input), owner = this.owner(parsed)
+        const parsed = cruxMaterialRecoverySchema.parse(input), owner = this.owner(parsed)
         const reference = this.reference(parsed.commandId, owner)
         return this.withOriginalOutcome(reference, async (): Promise<TeamTaskMaterialCommandReply> => {
           const receipt = await this.reconcile(reference, owner)
@@ -162,16 +162,16 @@ export class BrowserTaskMaterials {
     authEvents.removeEventListener('session-changed', this.invalidate)
   }
 
-  private signature(context: HifoxWorkspaceContext): string {
+  private signature(context: CruxWorkspaceContext): string {
     return JSON.stringify([context.key, context.origin, context.projectId, context.actorId, context.instanceId, context.epoch, context.authorizationRevision, context.state === 'access-revoked', context.state === 'local'])
   }
   private invalidate = (): void => { this.generation++; this.retained.clear() }
-  private observe(context: HifoxWorkspaceContext): void {
+  private observe(context: CruxWorkspaceContext): void {
     const source = this.signature(context)
     if (source !== this.source) { this.source = source; this.invalidate() }
   }
-  private owner(input: HifoxMaterialScope): Owner {
-    const scope = hifoxMaterialScopeSchema.parse({ workspaceKey: input.workspaceKey, taskId: input.taskId, spaceId: input.spaceId, taskCreatedAt: input.taskCreatedAt })
+  private owner(input: CruxMaterialScope): Owner {
+    const scope = cruxMaterialScopeSchema.parse({ workspaceKey: input.workspaceKey, taskId: input.taskId, spaceId: input.spaceId, taskCreatedAt: input.taskCreatedAt })
     const context = this.options.context()
     this.observe(context)
     const key = JSON.stringify(scope)
@@ -196,10 +196,10 @@ export class BrowserTaskMaterials {
     if (!owner.current()) throw new ApiError('OWNER_CHANGED', '材料来源已改变，未采用原请求结果')
   }
   private readOptions(owner: Owner) { return { signal: this.lifetime.signal, notifyDenied: false, isCurrent: owner.current } }
-  private path(scope: HifoxMaterialScope): string {
-    return `/api/projects/${encodeURIComponent(this.options.projectId)}/hifox/tasks/${encodeURIComponent(scope.taskId)}/materials`
+  private path(scope: CruxMaterialScope): string {
+    return `/api/projects/${encodeURIComponent(this.options.projectId)}/crux/tasks/${encodeURIComponent(scope.taskId)}/materials`
   }
-  private url(scope: HifoxMaterialScope, suffix = '', query: { cursor?: string; limit?: number; versionId?: string } = {}): string {
+  private url(scope: CruxMaterialScope, suffix = '', query: { cursor?: string; limit?: number; versionId?: string } = {}): string {
     const search = new URLSearchParams({ spaceId: scope.spaceId, taskCreatedAt: scope.taskCreatedAt })
     for (const key of ['cursor', 'limit', 'versionId'] as const) if (query[key] !== undefined) search.set(key, String(query[key]))
     return `${this.path(scope)}${suffix}?${search}`
@@ -218,7 +218,7 @@ export class BrowserTaskMaterials {
       || value.draft.disposition !== 'draft' || value.approved && (value.approved.documentId !== documentId || value.approved.status !== 'approved')
       || value.latestSubmission && value.latestSubmission.documentId !== documentId) this.invalid('材料元信息的文档、模板或版本归属不匹配')
   }
-  private sameScope(reference: MaterialCommandReference, scope: HifoxMaterialScope): boolean {
+  private sameScope(reference: MaterialCommandReference, scope: CruxMaterialScope): boolean {
     return reference.origin === location.origin && reference.accountId === this.options.session.person.userId && reference.projectId === this.options.projectId
       && reference.scope.workspaceKey === scope.workspaceKey && reference.scope.taskId === scope.taskId
       && reference.scope.spaceId === scope.spaceId && reference.scope.taskCreatedAt === scope.taskCreatedAt
@@ -323,7 +323,7 @@ export class BrowserTaskMaterials {
       throw cause
     }
   }
-  private async run<T>(action: () => Promise<T>): Promise<HifoxMaterialReply<T>> {
+  private async run<T>(action: () => Promise<T>): Promise<CruxMaterialReply<T>> {
     try { return { ok: true, value: await action() } }
     catch (cause) {
       const error = cause instanceof ApiError ? cause : cause instanceof z.ZodError

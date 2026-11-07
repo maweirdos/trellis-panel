@@ -196,7 +196,7 @@ export function resolveAdapterEntry(): string | undefined {
   return regularFile(entry) ? entry : undefined
 }
 
-/** bundled 条目的内部 CLI 检测：nativePaths 手动指定 > 环境变量 ZCODE_BIN > PATH > 标准安装位置表（复刻 HiFox 发现顺序）。 */
+/** bundled 条目的内部 CLI 检测：nativePaths 手动指定 > 环境变量 ZCODE_BIN > PATH > 标准安装位置表（复刻 Crux 发现顺序）。 */
 export function resolveZcodeExecutable(): { path: string; manual: boolean } | undefined {
   return resolveZcodeExecutableFor(getSettings().acp)
 }

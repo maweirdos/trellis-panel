@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
 import { teamTaskIdentity, type TeamExecutionRecord, type TeamTaskRef } from '../../../src/shared/team-task-execution'
 import { taskInputCanonical } from '../../../src/shared/team-task-inputs'
 import { TEAM_MAX_RESPONSE_BYTES } from '../../../src/shared/team-platform'
@@ -108,9 +108,9 @@ export class TeamExecutionInputs {
     if (!definition.nodes.some(node => node.id === execution.nodeId && node.kind !== 'gate')) fail('EXECUTION_NODE_CONFLICT', 'Original execution node is not in the captured output-producing definition')
     if (definition.definitionId !== execution.workflow.definitionId || definition.revision !== execution.workflow.revision || hash(taskInputCanonical(definition)) !== execution.workflow.digest) fail('EXECUTION_DEFINITION_CONFLICT', 'Execution does not name its adopted portable definition')
     if (definition.roles.length !== command.roles.length || definition.roles.some(role => !command.roles.some(selected => selected.roleId === role.id))) fail('EXECUTION_INPUT_ROLE_CONFLICT', 'Capture the exact logical role set')
-    const row = this.host.get('SELECT snapshotJson FROM hifox_workspaces WHERE projectId=?', command.task.projectId)
+    const row = this.host.get('SELECT snapshotJson FROM crux_workspaces WHERE projectId=?', command.task.projectId)
     if (!row) fail('EXECUTION_INPUT_UNAVAILABLE', 'Original Agent configuration is unavailable', 404)
-    const snapshot = stored(hifoxSnapshotSchema, row.snapshotJson), pending = new Map<string, Buffer>()
+    const snapshot = stored(cruxSnapshotSchema, row.snapshotJson), pending = new Map<string, Buffer>()
     const captureBody = (text: string): { bodyDigest: string; byteLength: number } => {
       const bytes = Buffer.from(text, 'utf8'), bodyDigest = hash(bytes)
       if (bytes.toString('utf8') !== text || bytes.length > 128 * 1024) fail('EXECUTION_INPUT_TOO_LARGE', 'Captured Agent or skill must be exact UTF-8 within 128 KiB', 413)

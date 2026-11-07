@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { z } from 'zod'
 import { teamCommandIdSchema, teamIdSchema } from '../../../src/shared/team-platform'
-import { hifoxSnapshotSchema } from '../../../src/shared/hifox-schema'
-import { canReadHifoxSpace } from '../../../src/shared/hifox-domain/commands'
+import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
+import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
 import {
   TEAM_CONTENT_MAX_TEXT_BYTES, TEAM_CONTENT_MAX_OUTPUT_BYTES, teamContentConfigSchema, teamContentConfigureSchema, teamContentGenerateSchema,
   teamContentProbeSchema, teamContentJobSchema, teamContentCancelSchema, teamContentReconcileSchema,
@@ -34,7 +34,7 @@ export type ContentHost = {
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 const privateSchema = z.object({ actor: actorSchema, messages: contentProviderEnvelopeSchema.shape.messages,
   timeoutMs: contentProviderEnvelopeSchema.shape.timeoutMs }).strict()
-type Task = z.infer<typeof hifoxSnapshotSchema.shape.tasks.element>
+type Task = z.infer<typeof cruxSnapshotSchema.shape.tasks.element>
 function fail(code: string, message: string, status = 409): never { throw new TeamServiceError(code, message, status) }
 function text(row: Row, key: string): string {
   if (typeof row[key] !== 'string') fail('CORRUPT_STORE', 'Content metadata is invalid', 503)
@@ -77,12 +77,12 @@ export class TeamContent {
   }
   private task(principal: StorePrincipal, projectId: string, taskId: string, expected?: { spaceId: string | null; taskCreatedAt: string | null }, writing = false): Task {
     this.projectTeam(principal, projectId)
-    const row = this.host.get("SELECT t.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=? LIMIT 1", projectId, taskId)
+    const row = this.host.get("SELECT t.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=? LIMIT 1", projectId, taskId)
     if (!row) fail('CONTENT_SCOPE_UNAVAILABLE', 'Task scope is unavailable', 404)
-    const task = saved(hifoxSnapshotSchema.shape.tasks.element, row.body)
-    const spaceRow = this.host.get("SELECT s.value AS body FROM hifox_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? LIMIT 1", projectId, task.spaceId)
-    const space = spaceRow ? saved(hifoxSnapshotSchema.shape.spaces.element, spaceRow.body) : null
-    if (!space || !canReadHifoxSpace(space, principal.person.userId) || !space.memberIds.includes(principal.person.userId)) fail('CONTENT_SCOPE_UNAVAILABLE', 'Current space membership is required', 403)
+    const task = saved(cruxSnapshotSchema.shape.tasks.element, row.body)
+    const spaceRow = this.host.get("SELECT s.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.spaces') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? LIMIT 1", projectId, task.spaceId)
+    const space = spaceRow ? saved(cruxSnapshotSchema.shape.spaces.element, spaceRow.body) : null
+    if (!space || !canReadCruxSpace(space, principal.person.userId) || !space.memberIds.includes(principal.person.userId)) fail('CONTENT_SCOPE_UNAVAILABLE', 'Current space membership is required', 403)
     if (expected && (expected.spaceId !== task.spaceId || expected.taskCreatedAt !== task.createdAt)) fail('CONTENT_TASK_CHANGED', 'Task identity or space changed; the original job cannot be retargeted')
     if (writing && space.archived) fail('CONTENT_SCOPE_ARCHIVED', 'Archived spaces cannot start new content jobs')
     return task

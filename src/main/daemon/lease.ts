@@ -29,21 +29,27 @@ export async function verifiedLease(context: DaemonContext): Promise<DaemonLease
   }
   return null
 }
+/** Reconcile a lease left by a process that is no longer present. This is
+ * safe before credential preparation because it only removes the exact owner
+ * record after a fresh OS identity check and an unchanged lease re-read. A
+ * live or unverifiable owner remains protected. */
+export async function reconcileStaleLease(context: DaemonContext): Promise<DaemonLease | null> {
+  const previous = readLease(context)
+  if (!previous) return null
+  const actual = await processIdentity(previous.owner.pid)
+  if (actual && sameOwner(actual, previous.owner)) return previous
+  if (JSON.stringify(readLease(context)) !== JSON.stringify(previous)) throw new DaemonError('E_CONFLICT', 'Daemon ownership changed during stale-owner verification.')
+  const directory = join(context.directory, 'owner')
+  writeAtomic(join(context.directory, 'previous-owner.json'), JSON.stringify(previous))
+  unlinkSync(join(directory, 'lease.json'))
+  rmdirSync(directory)
+  return null
+}
 /** Requires the native Electron daemon-role lock. Expiry never authorizes replacement. */
 export async function acquireLease(context: DaemonContext): Promise<DaemonLease> {
-  const previous = readLease(context)
+  await reconcileStaleLease(context)
   if (await verifiedLease(context)) throw new DaemonError('E_CONFLICT', 'A verified daemon already owns this profile; attach to it.')
   const directory = join(context.directory, 'owner')
-  if (previous) {
-    // Recheck the original owner immediately before preserving its stale record.
-    const current = await processIdentity(previous.owner.pid)
-    if (current && sameOwner(current, previous.owner)) throw new DaemonError('E_CONFLICT', 'The recorded daemon owner is still alive.')
-    if (JSON.stringify(readLease(context)) !== JSON.stringify(previous)) throw new DaemonError('E_CONFLICT', 'Daemon ownership changed during stale-owner verification. Preserve the current record.')
-    const archive = join(context.directory, 'previous-owner.json')
-    writeAtomic(archive, JSON.stringify(previous))
-    unlinkSync(join(directory, 'lease.json'))
-    rmdirSync(directory)
-  }
   mkdirSync(directory)
   const lease = daemonLeaseSchema.parse({ version: 1, epoch: randomUUID(), nonce: randomUUID(), identity: context.identity, owner: context.owner, acquiredAt: Date.now() })
   writeAtomic(join(directory, 'lease.json'), JSON.stringify(lease))

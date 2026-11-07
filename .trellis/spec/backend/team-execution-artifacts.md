@@ -15,7 +15,7 @@ checkpoint and code-source schemas. Original task identity, actor/device,
 epoch/generation and command UUID follow execution contract version 2.
 
 Commands use the existing
-`/api/projects/:projectId/hifox/tasks/:taskId/executions/commands` and `/reconcile`.
+`/api/projects/:projectId/crux/tasks/:taskId/executions/commands` and `/reconcile`.
 
 | New command | Payload |
 | --- | --- |
@@ -43,7 +43,7 @@ task query returns fixed metadata and text under current task ACL.
 digest and UTF-8 bytes. Fixed T03 sources accept confirmed artifacts and
 supported published HTML through exact predecessor finalization references.
 
-Main-only local ports in `hifox/task-outputs/handoff-source.ts`:
+Main-only local ports in `crux/task-outputs/handoff-source.ts`:
 
 ```text
 captureSelectedFile({root,relativePath,expectedDigest?,assertOwned})

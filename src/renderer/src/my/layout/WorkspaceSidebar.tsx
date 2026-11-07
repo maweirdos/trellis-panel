@@ -111,7 +111,7 @@ function ContextSidebar(): JSX.Element {
         {([['overview', '概况', <Users size={16} />], ['members', '成员', <CircleUser size={16} />], ['activity', '动态', <Activity size={16} />]] as Array<[TeamView, string, ReactNode]>).map(([id, label, icon]) => row(id, label, page === 'team' && teamView === id, icon, () => { setTeamView(id); setPage('team') }))}
         {route('analytics')}
         {row('reports', '报告', page === 'team' && teamView === 'reports', <FileText size={16} />, () => { setTeamView('reports'); setPage('team') })}
-        {route('hifox')}
+        {route('crux')}
         <p className="my-item-description px-3 pt-4 leading-relaxed">当前项目的成员责任、协作记录与交付情况。</p>
       </>}
     </div>}

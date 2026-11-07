@@ -32,28 +32,28 @@
 | --- | --- |
 | 用户截图 U1–U4 | 个人任务、团队概览、角色、资料页的入口与信息层级 |
 | 本机页面走查 | 资料页 → 团队概览 → 已有任务详情 → 交给测试表单 → 取消并返回；当前为本机协作数据，不能据此认定双机同步已通过 |
-| [E01 导航与顶栏](../src/renderer/src/my/navigation.ts)、[协作导航](../src/renderer/src/hifox/navigation.ts)、[顶栏](../src/renderer/src/components/TitleBar.tsx) | 模块、范围、两种显示视图 |
-| [E02 任务工作区](../src/renderer/src/hifox/TaskWorkspace.tsx)、[概览](../src/renderer/src/hifox/pages/OverviewPage.tsx) | 列表复用、筛选状态、统计与关注任务 |
-| [E03 任务业务流程](../src/shared/hifox-domain/workflow.ts)、[交接界面](../src/renderer/src/hifox/TaskWorkflow.tsx) | 正式阶段、可执行动作、权限与验收限制 |
-| [E04 草稿](../src/renderer/src/hifox/pages/task-detail/task-drafts.ts)、[会话往返](../src/renderer/src/hifox/task-conversation.ts) | 内存草稿与来源身份保护、返回任务的已有能力 |
-| [E05 执行说明](team-task-execution.md)、[进度协议](../src/shared/team-task-progress.ts)、[进度界面](../src/renderer/src/hifox/pages/task-detail/TaskProgressPanel.tsx) | 固定绑定、短摘要、正式阶段与执行状态分开、15 秒进度查询 |
+| [E01 导航与顶栏](../src/renderer/src/my/navigation.ts)、[协作导航](../src/renderer/src/crux/navigation.ts)、[顶栏](../src/renderer/src/components/TitleBar.tsx) | 模块、范围、两种显示视图 |
+| [E02 任务工作区](../src/renderer/src/crux/TaskWorkspace.tsx)、[概览](../src/renderer/src/crux/pages/OverviewPage.tsx) | 列表复用、筛选状态、统计与关注任务 |
+| [E03 任务业务流程](../src/shared/crux-domain/workflow.ts)、[交接界面](../src/renderer/src/crux/TaskWorkflow.tsx) | 正式阶段、可执行动作、权限与验收限制 |
+| [E04 草稿](../src/renderer/src/crux/pages/task-detail/task-drafts.ts)、[会话往返](../src/renderer/src/crux/task-conversation.ts) | 内存草稿与来源身份保护、返回任务的已有能力 |
+| [E05 执行说明](team-task-execution.md)、[进度协议](../src/shared/team-task-progress.ts)、[进度界面](../src/renderer/src/crux/pages/task-detail/TaskProgressPanel.tsx) | 固定绑定、短摘要、正式阶段与执行状态分开、15 秒进度查询 |
 | [E06 团队使用](team-collaboration.md)、[部署](team-deployment.md)、[Web 外壳](../packages/team-web/src/App.tsx) | 账号、邀请、配对、共享工作区及单实例 SQLite 部署 |
 | [E07 创作契约](../.trellis/spec/shared/creations.md)、[实体](../src/shared/creations.ts) | 私有草稿、固定发布版本、意见、采纳、任务引用 |
 | [E08 知识发送准入](../src/main/services/acp/knowledge-reference-admission.ts)、[外部集成](integration-connectors.md) | 显式资料发送能力开关关闭；本地保存、发布和索引不同步完成 |
-| [E09 本机角色](../src/renderer/src/acp/AgentRoleDetails.tsx)、[协作实体](../src/shared/hifox.ts) | 本机角色与空间 Agent 配置分属不同对象 |
-| [E10 自动化](../src/renderer/src/hifox/pages/AutomationsPage.tsx)、[计划域](../src/shared/hifox-domain/planning.ts) | 成员通知与等待 Runtime 的边界；版本、专项与自动化规则 |
+| [E09 本机角色](../src/renderer/src/acp/AgentRoleDetails.tsx)、[协作实体](../src/shared/crux.ts) | 本机角色与空间 Agent 配置分属不同对象 |
+| [E10 自动化](../src/renderer/src/crux/pages/AutomationsPage.tsx)、[计划域](../src/shared/crux-domain/planning.ts) | 成员通知与等待 Runtime 的边界；版本、专项与自动化规则 |
 | [E11 开发工具](developer-tools-workbench.md)、[对话工作流](workflow-conversation.md)、[执行控制](workflow-application.md) | Git、应用运行、托管流程与业务完成的边界 |
 | [E12 交互规范](../.trellis/spec/frontend/design-principles.md)、[团队资料交互](../.trellis/spec/frontend/team-collaboration.md) | 既有设计系统、固定版本阅读、授权及未知结果恢复 |
 | [E13 Pi 事件与扩展](../src/main/services/pi/engine.ts)、[运行适配](../src/main/services/pi/runtime.ts) | 已有工具扩展、工具事件、权限检查和用量事件；不是完整团队流程编排产品 |
 | [E14 规范装配](../src/main/services/agent-rules.ts)、[上下文协议](../src/shared/acp-context.ts) | 已有版本化材料清单及提供状态；不能证明模型理解或每个外部工具的实际读取 |
-| [E15 Trellis 权威守卫](../.trellis/scripts/common/task_authority.py)、[团队投影](../src/main/services/hifox/team-task-projection.ts) | 团队任务状态已有服务端权威和本地投影；尚不代表整个规范、流程和材料编辑体系已经平台化 |
+| [E15 Trellis 权威守卫](../.trellis/scripts/common/task_authority.py)、[团队投影](../src/main/services/crux/team-task-projection.ts) | 团队任务状态已有服务端权威和本地投影；尚不代表整个规范、流程和材料编辑体系已经平台化 |
 | [E16 Pi 用量与模型适配](../src/main/services/pi/engine/storage.ts)、[模型配置](../src/main/services/pi/engine/models.ts) | 有用量记录基础；当前模型适配的 cost 配置为零，不能把它当真实费用为零 |
-| [E17 首次工程选择与准备](../src/main/services/hifox/task-workspace.ts)、[本机绑定记录](../src/main/services/hifox/task-workspace-records.ts) | 未有任务绑定时优先采用主进程当前有效 Trellis 工程；绑定记录按来源任务保存路径与材料身份，尚无完整代码资源/工作副本/启动环境关联 |
-| [E18 工程切换](../src/renderer/src/store/slices/session.ts)、[工程选择器](../src/renderer/src/my/layout/ProjectSwitcher.tsx)、[本地任务进入](../src/renderer/src/hifox/local-work.ts) | 全局工程切换到 dashboard 并清理部分阅读状态；本地任务准备后可能切换全局工程再进入任务阅读器 |
+| [E17 首次工程选择与准备](../src/main/services/crux/task-workspace.ts)、[本机绑定记录](../src/main/services/crux/task-workspace-records.ts) | 未有任务绑定时优先采用主进程当前有效 Trellis 工程；绑定记录按来源任务保存路径与材料身份，尚无完整代码资源/工作副本/启动环境关联 |
+| [E18 工程切换](../src/renderer/src/store/slices/session.ts)、[工程选择器](../src/renderer/src/my/layout/ProjectSwitcher.tsx)、[本地任务进入](../src/renderer/src/crux/local-work.ts) | 全局工程切换到 dashboard 并清理部分阅读状态；本地任务准备后可能切换全局工程再进入任务阅读器 |
 | [E19 Git 范围与守卫](../src/renderer/src/git-workspace/useGitWorkspace.ts)、[Git 服务](../src/main/services/git-workspace/lib/controller.ts)、[切分支](../src/main/services/git-workspace/procedures/switch-branch.ts) | Git 面板跟随全局工程，已有 expectedRoot/revision 校验及共同 Git 目录串行队列；切分支拒绝脏工作区，但该流程未统一核验任务执行与应用服务占用 |
 | [E20 启动配置显示与持久化](../src/renderer/src/applications/useApplications.ts)、[持久化](../src/main/services/app-runtime/lib/persistence.ts)、[配置协议](../src/shared/app-runtime.ts) | 配置按本机规范化工程路径保存；切工程更换列表并清空运行面板标签；没有任务/代码资源/环境身份字段贯通全链 |
 | [E21 启动执行与 IPC](../src/main/services/app-runtime/lib/controller.ts)、[IPC 范围](../src/main/ipc/app-runtime.ts)、[应用生命周期](local-app-runtime.md) | 启动校验配置修订/批准/端口；同工程同应用单实例；GUI 接口要求当前工程；退出应用与 Agent 后台驻留不同，不能混为同一生命周期 |
-| [E22 任务会话返回](../src/renderer/src/hifox/task-conversation.ts)、[外壳返回逻辑](../src/renderer/src/my/layout/MyApp.tsx) | 原会话继续与任务阅读器进入是两条路径；已有原任务/权限保护，尚未统一工程/Git/运行配置/列表位置的返回合同 |
+| [E22 任务会话返回](../src/renderer/src/crux/task-conversation.ts)、[外壳返回逻辑](../src/renderer/src/my/layout/MyApp.tsx) | 原会话继续与任务阅读器进入是两条路径；已有原任务/权限保护，尚未统一工程/Git/运行配置/列表位置的返回合同 |
 | [W01 Figma MCP 访问](https://developers.figma.com/docs/figma-mcp-server/rate-limits-access/)、[REST 文件接口](https://developers.figma.com/docs/rest-api/file-endpoints/)、[REST 限流](https://developers.figma.com/docs/rest-api/rate-limits/) | 2026-10-29 核对：MCP 有受限访问额度，文件权限和席位影响使用；REST 能读取文件/节点信息，但同样受权限与限流约束 |
 | [W02 ACP 回合与事件](https://agentclientprotocol.com/protocol/v1/prompt-turn)、[工具调用](https://agentclientprotocol.com/protocol/v1/tool-calls) | 客户端可以展示 Agent 上报的回合、计划和工具事件；是否支持与上报完整度须按当前适配器验证 |
 
@@ -193,9 +193,9 @@ P0 不承诺所有 Agent 自动理解真实完成度，不计算基于聊天回�
 
 | 关联环节 | 当前源码可核对的实现 | 尚未形成的产品闭环 | 对应需求 |
 | --- | --- | --- | --- |
-| 空间/任务选择代码资源 | [资源协议](../src/shared/team-code-resources.ts)、[服务](../packages/team-service/src/code-resources.ts)及[任务资源卡](../src/renderer/src/hifox/code-resources/TaskCodeResources.tsx)已有空间授权、默认候选和任务显式选用；默认候选不等于已保存的任务选择 | 不能据此推断成员电脑上的目录；仍需资源到多个本机副本的映射、选择和失效修复 | R88/R89/R101 |
-| 首次绑定与材料准备 | [原生绑定入口](../src/main/ipc/hifox-work.ts)已有目录选择与确认；[目录核对](../src/main/services/hifox/work-project.ts)检查真实目录身份、Git 事实和仓库来源；[准备服务](../src/main/services/hifox/task-workspace.ts)保留原材料和冲突 | [绑定记录](../src/main/services/hifox/task-workspace-records.ts)仍以来源任务的一份记录为中心；缺少完整的副本候选、新旧开发尝试、更换绑定与采纳新材料的交互。`source_changed` 是保护结果，不是用户已经完成换版 | R89/R90/R100/R101 |
-| 团队任务进入与返回 | [本地任务进入](../src/renderer/src/hifox/local-work.ts)与[会话往返](../src/renderer/src/hifox/task-conversation.ts)已有原任务/账号/权限保护 | 本地阅读器与继续会话仍是两条路径；[工程切换](../src/renderer/src/store/slices/session.ts)会改变全局页面。尚需统一任务开发上下文、列表位置、草稿、Git 与日志恢复 | R91/R92/R99 |
+| 空间/任务选择代码资源 | [资源协议](../src/shared/team-code-resources.ts)、[服务](../packages/team-service/src/code-resources.ts)及[任务资源卡](../src/renderer/src/crux/code-resources/TaskCodeResources.tsx)已有空间授权、默认候选和任务显式选用；默认候选不等于已保存的任务选择 | 不能据此推断成员电脑上的目录；仍需资源到多个本机副本的映射、选择和失效修复 | R88/R89/R101 |
+| 首次绑定与材料准备 | [原生绑定入口](../src/main/ipc/crux-work.ts)已有目录选择与确认；[目录核对](../src/main/services/crux/work-project.ts)检查真实目录身份、Git 事实和仓库来源；[准备服务](../src/main/services/crux/task-workspace.ts)保留原材料和冲突 | [绑定记录](../src/main/services/crux/task-workspace-records.ts)仍以来源任务的一份记录为中心；缺少完整的副本候选、新旧开发尝试、更换绑定与采纳新材料的交互。`source_changed` 是保护结果，不是用户已经完成换版 | R89/R90/R100/R101 |
+| 团队任务进入与返回 | [本地任务进入](../src/renderer/src/crux/local-work.ts)与[会话往返](../src/renderer/src/crux/task-conversation.ts)已有原任务/账号/权限保护 | 本地阅读器与继续会话仍是两条路径；[工程切换](../src/renderer/src/store/slices/session.ts)会改变全局页面。尚需统一任务开发上下文、列表位置、草稿、Git 与日志恢复 | R91/R92/R99 |
 | 工作副本使用协调 | [使用协议](../src/shared/workcopy-use.ts)、[登记服务](../src/main/services/workcopy-use/registry.ts)、Git 与应用调用方已出现写入、消费、工作树切换等类别及所有者代次 | 必须逐入口核对 GUI、Pi/ACP、CLI 和异常恢复是否使用同一登记；还需面向用户的占用清单、等待/停止/另选副本及未知清理恢复。仅有一处锁不能认定并行任务已安全 | R96/R97/R104 |
 | 跨工程运行实例 | [运行中心](../src/renderer/src/applications/ApplicationRunCenter.tsx)、[实例 IPC](../src/main/ipc/app-runtime.ts)及[启动快照](../src/main/services/app-runtime/lib/snapshot.ts)已有跨工程清单、原实例日志/停止/重启和配置修订事实 | [运行事实界面](../src/renderer/src/applications/ApplicationRunFacts.tsx)仍明确显示“独立运行·未登记任务引用”“环境待核实”。还不能按任务展示实际服务、判断兼容复用或把实例作为已验证测试环境 | R93–R95/R103 |
 | 启动配置与环境 | [配置保存](../src/main/services/app-runtime/lib/persistence.ts)仍按本机规范化工程路径保存；启动时读取 cwd、环境文件、覆盖项、端口和探针 | 需补齐任务内启动计划、环境选择/实际目标核对和变化失效规则。配置名称、进程存活、探针成功都不能单独证明启动了正确业务环境 | R93/R94/R98/R100 |
@@ -1021,7 +1021,7 @@ flowchart LR
 | --- | --- | --- |
 | Trellis 团队数据适配 | `.trellis/scripts/task.py`、`common/task_authority.py` | 将读任务、取材料、保存材料、请求节点推进分成 local/team 后端；团队命令通过受权本机桥调服务，不直接连数据库、不借 hook 失败后继续假成功 |
 | 团队控制与材料服务 | `packages/team-service` 的任务/材料/命令回执 | 新增规则/模板发布、节点审批、共享草稿与固定版本关系；任务阶段与节点门禁有唯一服务端状态 |
-| 本机投影与同步 | `services/hifox/task-workspace*`、`team-task-projection.ts`、待发队列 | 安装兼容适配、按包生成 JSON/JSONL/Markdown、监听明确受管文件、逐项确认与冲突比较 |
+| 本机投影与同步 | `services/crux/task-workspace*`、`team-task-projection.ts`、待发队列 | 安装兼容适配、按包生成 JSON/JSONL/Markdown、监听明确受管文件、逐项确认与冲突比较 |
 | 上下文选择与证据 | `services/agent-rules.ts`、Pi/ACP 适配及知识桥 | 从团队已固定材料和本机所需规则装配，记录实际提供/读取证据；不能用本机任意内容冒充团队发布版本 |
 | 流程执行 | `workflow-control`、`workflow-application`、`workflow-runtime` 与 Pi SDK | 本地记录原运行尝试/停止/恢复事实，团队记录共享节点及审批；在允许节点启动本机执行，原有本地流程独立使用仍保留 |
 | 页面与阅读 | `acp/workflow`、原文阅读器、创作与任务工作区 | 复用原会话/文档身份，新增团队节点/材料/证据视图；不为流程图创建另一份聊天或重复任务 |

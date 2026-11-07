@@ -7,7 +7,7 @@ import type { TeamStore } from './store-client'
 import type { StoreOperation } from './store-types'
 
 const params = z.object({ projectId: teamIdSchema, taskId: teamTaskProgressResourceIdSchema }).strict()
-const path = '/api/projects/:projectId/hifox/tasks/:taskId/materials'
+const path = '/api/projects/:projectId/crux/tasks/:taskId/materials'
 
 /** Shares the existing browser CSRF/device authentication scope. */
 export async function registerTaskMaterialRoutes(api: FastifyInstance, store: TeamStore, auth: TeamAuthentication): Promise<void> {

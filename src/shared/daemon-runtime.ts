@@ -6,7 +6,7 @@ import { workflowRevisionPreviewInputSchema, workflowRevisionAcceptInputSchema, 
 import { workflowWorkspaceRecoveryInputSchema, workflowRecoveryArtifactInputSchema } from './workflow-recovery'
 import { knowledgeRuntimeBody } from './daemon-runtime-knowledge'
 import { acpHandoffPreviewInputSchema, acpHandoffCreateInputSchema, acpHandoffCancelInputSchema } from './acp-handoff'
-import { taskProgressNativeSchema } from './hifox-task-progress-native'
+import { taskProgressNativeSchema } from './crux-task-progress-native'
 import { workcopyUseRequestSchema, workcopyCleanupRequestSchema } from './workcopy-use'
 import { privateNativeReadSchema, privateNativeSendSchema, privateNativeControlSchema } from './private-conversations'
 import { modelSelectionIdSchema } from './model-selection'
@@ -41,7 +41,7 @@ export const runtimeBodies = {
   'runtime.privateRecoverModel': privateNativeRecoverModelSchema,
   'runtime.workcopyUse': workcopyUseRequestSchema,
   'runtime.workcopyCleanup': workcopyCleanupRequestSchema,
-  'runtime.hifoxProgress': taskProgressNativeSchema,
+  'runtime.cruxProgress': taskProgressNativeSchema,
   'runtime.knowledge': knowledgeRuntimeBody,
   'runtime.sessions': z.object({ limit: z.number().int().min(1).max(200).optional() }).strict(),
   'runtime.agents': z.object({ refresh: z.boolean().optional() }).strict(),

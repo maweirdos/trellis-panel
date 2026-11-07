@@ -5,19 +5,20 @@ import type { IntegrationJob } from '../../../../shared/integration-work'
 import { JIRA_LIMITS, type JiraDiagnostic, type JiraFields, type JiraIssueRecord, type JiraMapping, type JiraPlan } from '../../../../shared/jira-integration'
 import { JiraV2Error } from '../../jira'
 import type { IntegrationWorkPort } from '../work-ports'
-import { JiraWorkspaceRepository } from './repository'
+import { digest, JiraWorkspaceRepository } from './repository'
 import { JiraWorkspaceError, sameGrant, type JiraExecutionReceipt, type JiraLocalSnapshot, type JiraWorkspaceAuthority } from './types'
 import type { JiraTaskPort } from './lib/local-tasks'
 import { JiraRemote } from './lib/remote'
 import { equal, fieldDecision, inboundFields, outboundFields } from './lib/mapping'
 import { applyComment, applyCreate, applyTransition, applyUpdate, prepareCreate, prepareTransition, prepareUpdate } from './lib/writes'
+import type { JiraBusinessHookPort } from './business-hooks'
 
 type Dispatch = Parameters<IntegrationWorkPort['dispatch']>[0]
 type Result = Awaited<ReturnType<IntegrationWorkPort['dispatch']>>
 type Context = Dispatch & { remote: JiraRemote }
 const cursorSchema = z.object({ afterId: z.string().regex(/^[1-9]\d{0,14}$/).nullable(), csvIndex: z.number().int().nonnegative().max(500), phase: z.enum(['issues', 'outbound']), outboundIndex: z.number().int().nonnegative().max(100) }).strict()
 export class JiraWorkspaceWorker implements IntegrationWorkPort {
-  constructor(readonly repository: JiraWorkspaceRepository, private readonly authority: JiraWorkspaceAuthority, readonly tasks: JiraTaskPort) {}
+  constructor(readonly repository: JiraWorkspaceRepository, private readonly authority: JiraWorkspaceAuthority, readonly tasks: JiraTaskPort, private readonly businessHooks?: JiraBusinessHookPort) {}
   supports(kind: IntegrationJob['input']['kind']): boolean { return kind === 'import' || kind === 'sync' }
   private evidence(job: IntegrationJob): string { return `jira-job:${job.id}` }
   diagnostic(workspaceId: string, code: JiraDiagnostic['code'], detail: string, issueId: string | null = null): void {
@@ -51,7 +52,7 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
     const entry: JiraExecutionReceipt = { receipt: { id: randomUUID(), jobId: context.job.id, identity, issueId: issue?.issueId ?? null, key: issue?.key ?? '', taskRef: before?.taskRef ?? null, operationId: before?.operationId ?? null, effect, state: 'intent', created: false, detail: 'Durable provider intent committed before effect.', at: Date.now() }, workspace: context.workspace, source: context.job.source, before, after: null, expectedRemote, expectedLocal, issue, ownedTree: null, rollbackCommandId: null, quarantine: null }
     return this.repository.change((state) => { state.receipts.push(entry); return entry })
   }
-  settle(id: string, state: JiraExecutionReceipt['receipt']['state'], detail: string, patch: Partial<Pick<JiraExecutionReceipt, 'after' | 'expectedRemote' | 'issue' | 'ownedTree' | 'quarantine' | 'rollbackCommandId'>> = {}, created?: boolean): void {
+  settle(id: string, state: JiraExecutionReceipt['receipt']['state'], detail: string, patch: Partial<Pick<JiraExecutionReceipt, 'after' | 'expectedRemote' | 'issue' | 'ownedTree' | 'quarantine' | 'rollbackCommandId' | 'platformTask'>> = {}, created?: boolean): void {
     this.repository.change((repository) => {
       const entry = repository.receipts.find((entry) => entry.receipt.id === id)
       if (!entry) throw new JiraWorkspaceError('E_IO', 'Original provider receipt was lost.')
@@ -95,6 +96,7 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
     let local = this.tasks.find(context.workspace, issue)
     if (!local) {
       if (plan && !plan.rules.inboundCreate) { const skipped = this.intent(context, identity, 'local-create', issue, null); this.settle(skipped.receipt.id, 'skipped', 'Inbound creation is disabled by this plan.'); return }
+      if (plan?.platformSpaceId && !this.businessHooks) throw new JiraWorkspaceError('E_UNAVAILABLE', 'Jira platform task Hook is not installed for the current desktop team connection.')
       const receipt = this.intent(context, identity, 'local-create', issue, null)
       const result = await this.effect(context, receipt, () => this.tasks.create(context.workspace, issue, mapping), (result) => this.settle(receipt.receipt.id, 'applied', result.created ? 'Created through the existing Jira intake.' : 'Existing task opened through numeric source deduplication.', { after: result.snapshot, issue, ownedTree: result.created ? result.snapshot.treeHash : null }, result.created))
       local = result.snapshot
@@ -103,6 +105,13 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
         const after = await this.effect(context, changed, async () => this.tasks.patch(context.workspace, before, mapped, issue), (after) => this.settle(changed.receipt.id, 'applied', 'Mapped fields and source evidence retained; authored PRD preserved.', { after }))
         // Creation ownership includes this job's own initial mapped metadata publication.
         this.settle(receipt.receipt.id, 'applied', 'Created and mapped by this exact import job.', { after, ownedTree: after.treeHash }, true)
+        if (plan?.platformSpaceId && this.businessHooks) {
+          const hooks = this.businessHooks
+          const platformReceipt = this.intent(context, identity + ':platform-create', 'platform-create', issue, after)
+          const platformTask = await this.effect(context, platformReceipt, () => hooks.create({ spaceId: plan.platformSpaceId as string, title: issue.fields.title, description: issue.fields.description,
+            issue: { instanceId: issue.instanceId, issueId: issue.issueId, issueKey: issue.key, remoteProjectId: issue.projectId }, providerJobId: context.job.id, providerCommandId: context.job.commandId, payloadDigest: digest({ issue, mapping }) }), task => this.settle(platformReceipt.receipt.id, 'applied', 'Platform task created through the current desktop team business Hook.', { platformTask: task }))
+          this.settle(receipt.receipt.id, 'applied', 'Created, mapped and linked to the platform task.', { after, platformTask }, true)
+        }
         if (plan) this.base(plan, issue, after)
         return
       }
@@ -130,6 +139,13 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
     if (Object.keys(inbound).length || keyChanged) {
       const before = local; const receipt = this.intent(context, identity, 'local-update', issue, before, null, inbound)
       local = await this.effect(context, receipt, async () => this.tasks.patch(context.workspace, before, inbound, issue), (after) => this.settle(receipt.receipt.id, 'applied', 'Only explicitly mapped inbound fields updated; PRD and lifecycle preserved.', { after }))
+    }
+    const platformTask = this.repository.read().receipts.find(entry => entry.receipt.issueId === issue.issueId && entry.source.instanceId === issue.instanceId && entry.platformTask)?.platformTask
+    if (platformTask && plan.platformSpaceId && this.businessHooks && mapped.status) {
+      const hooks = this.businessHooks
+      const platformReceipt = this.intent(context, identity + ':platform-update', 'platform-update', issue, local, { status: mapped.status })
+      await this.effect(context, platformReceipt, () => hooks.update({ task: platformTask, patch: { statusId: mapped.status },
+        issue: { instanceId: issue.instanceId, issueId: issue.issueId, issueKey: issue.key, remoteProjectId: issue.projectId }, providerJobId: context.job.id, providerCommandId: context.job.commandId, payloadDigest: digest({ issue, status: mapped.status }) }), updated => this.settle(platformReceipt.receipt.id, 'applied', 'Platform task status updated through the current desktop team business Hook.', { platformTask: updated }))
     }
     if (!Object.keys(inbound).length && !Object.keys(outbound).length && !keyChanged) { const receipt = this.intent(context, identity, 'local-update', issue, local); this.settle(receipt.receipt.id, 'skipped', 'No authorized mapped field changed.') }
     // Disabled direction must not advance its base past an unapplied edit.
@@ -303,9 +319,34 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
   }
   async reconcile(input: Parameters<IntegrationWorkPort['reconcile']>[0]): Promise<{ resolved: boolean; evidenceRef: string | null }> {
     this.authority.assertGrant(input.workspace)
-    const remote = new JiraRemote(await this.authority.resolve(input.workspace, input.job.source))
-    for (const entry of this.repository.read().receipts.filter((entry) => entry.receipt.jobId === input.job.id && ['intent', 'unknown'].includes(entry.receipt.state))) {
+    const entries = this.repository.read().receipts.filter((entry) => entry.receipt.jobId === input.job.id && ['intent', 'unknown'].includes(entry.receipt.state))
+    const needsRemote = entries.some((entry) => !['platform-create', 'platform-update'].includes(entry.receipt.effect))
+    const remote = needsRemote ? new JiraRemote(await this.authority.resolve(input.workspace, input.job.source)) : null
+    for (const entry of entries) {
       if (!sameGrant(entry.workspace, input.workspace) || !equal(entry.source, input.job.source)) throw new JiraWorkspaceError('E_CONFLICT', 'Original effect owner/source does not match reconciliation.')
+      if (entry.receipt.effect === 'platform-create' || entry.receipt.effect === 'platform-update') {
+        if (!this.businessHooks || !entry.issue) continue
+        try {
+          const mapping = await this.businessHooks.lookup({ instanceId: entry.issue.instanceId, issueId: entry.issue.issueId })
+          if (!mapping) continue
+          if (entry.platformTask && !equal(mapping.task, entry.platformTask)) {
+            this.settle(entry.receipt.id, 'conflict', 'Jira issue is canonically mapped to a different platform task; no replacement was inferred.')
+            continue
+          }
+          if (entry.receipt.effect === 'platform-create') {
+            const task = await this.businessHooks.readTask(mapping.task)
+            if (task) this.settle(entry.receipt.id, 'applied', 'Canonical Jira mapping and platform task identity confirm the original create.', { platformTask: mapping.task })
+            continue
+          }
+          const task = await this.businessHooks.readTask(mapping.task)
+          const expectedStatus = entry.expectedRemote?.status
+          if (task && (expectedStatus === undefined || task.statusId === expectedStatus)) this.settle(entry.receipt.id, 'applied', 'Mapped platform task state confirms the original status synchronization.', { platformTask: mapping.task })
+        } catch {
+          // Credential loss, offline service and acknowledgement gaps remain unresolved.
+        }
+        continue
+      }
+      if (!remote) continue
       if (entry.receipt.effect === 'local-create' && entry.issue) {
         const local = this.tasks.find(input.workspace, entry.issue)
         if (local) this.settle(entry.receipt.id, 'applied', 'Existing numeric source task confirmed; crash-time creation ownership remains unproven, so rollback is disabled.', { after: local }, false)
@@ -322,8 +363,8 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
         if (confirmed) this.settle(entry.receipt.id, 'applied', 'Original numeric remote effect re-read and confirmed without another write.', { issue: observed })
       }
     }
-    const entries = this.repository.read().receipts.filter((entry) => entry.receipt.jobId === input.job.id)
-    const resolved = entries.every((entry) => !['intent', 'unknown'].includes(entry.receipt.state))
-    return { resolved, evidenceRef: entries.length ? this.evidence(input.job) : null }
+    const current = this.repository.read().receipts.filter((entry) => entry.receipt.jobId === input.job.id)
+    const resolved = current.every((entry) => !['intent', 'unknown'].includes(entry.receipt.state))
+    return { resolved, evidenceRef: current.length ? this.evidence(input.job) : null }
   }
 }

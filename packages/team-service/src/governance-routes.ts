@@ -7,8 +7,8 @@ import type { TeamStore } from './store-client'
 import type { StoreOperation } from './store-types'
 
 export async function registerGovernanceRoutes(api: FastifyInstance, store: TeamStore, auth: TeamAuthentication): Promise<void> {
-  const space = '/api/projects/:projectId/hifox/spaces/:spaceId/governance'
-  const task = '/api/projects/:projectId/hifox/tasks/:taskId/inputs'
+  const space = '/api/projects/:projectId/crux/spaces/:spaceId/governance'
+  const task = '/api/projects/:projectId/crux/tasks/:taskId/inputs'
   const spaceParams = z.object({ projectId: teamIdSchema, spaceId: teamTaskProgressResourceIdSchema }).strict()
   const taskParams = z.object({ projectId: teamIdSchema, taskId: teamTaskProgressResourceIdSchema }).strict()
   const get = (path: string, operation: StoreOperation, schema: z.ZodType): void => {

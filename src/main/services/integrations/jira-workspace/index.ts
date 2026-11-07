@@ -11,6 +11,7 @@ import { JiraWorkspaceService } from './procedures/workspace'
 import { createJiraIntegrationBridge } from './bridge'
 import { JiraRemote } from './lib/remote'
 import { JiraWorkspaceError, sameGrant, type JiraCallbackPort, type JiraLocalSnapshot, type JiraWorkspaceAuthority } from './types'
+import type { JiraBusinessHookPort } from './business-hooks'
 
 export interface JiraWorkspaceComposition {
   stateDirectory: string
@@ -22,10 +23,11 @@ export interface JiraWorkspaceComposition {
   callbacks?: JiraCallbackPort
   /** Must reject any later source links, workflow/session ownership or task activation. */
   assertTaskRemovable?: (grant: WorkspaceGrant, task: JiraLocalSnapshot) => void
+  businessHooks?: JiraBusinessHookPort
 }
 export function createJiraWorkspace(input: JiraWorkspaceComposition) {
   const repository = new JiraWorkspaceRepository(join(input.stateDirectory, 'jira-workspace'), input.assertOwner)
-  const worker = new JiraWorkspaceWorker(repository, input.authority, createJiraTaskPort(input.authority, input.assertTaskRemovable))
+  const worker = new JiraWorkspaceWorker(repository, input.authority, createJiraTaskPort(input.authority, input.assertTaskRemovable), input.businessHooks)
   let installedRegistry: IntegrationRegistry | null = null
   const assertInstalled = (): void => { input.assertOwner(); if (!installedRegistry || installedRegistry.get('jira').work !== work) throw new JiraWorkspaceError('E_UNAVAILABLE', 'Jira native work/account/sync ports are not installed in the daemon registry.') }
   const service = new JiraWorkspaceService(repository, worker, input.authority, input.ledger, input.scheduler, input.profileId, assertInstalled, input.callbacks)

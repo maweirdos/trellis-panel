@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type JSX } from 'react'
 import { Check, CircleAlert, CircleHelp, Lightbulb, Link2Off, MessageSquare, MessageSquarePlus, Send, X } from 'lucide-react'
 import type { CreationComment, CreationView } from '@shared/creations'
 import { Button, Dropdown, DropdownItem } from '../my/ui'
-import { useHifox } from '../hifox/store'
+import { useCrux } from '../crux/store'
 import { targetLabel, type CreationTarget } from './creation-state'
 import type { useCreationCommands } from './hooks'
 
@@ -20,7 +20,7 @@ function ReviewComment({ comment, index, active, missing, selected, selectable, 
   onOpenOrigin: () => void
   onCommand: ReturnType<typeof useCreationCommands>['run']
 }): JSX.Element {
-  const members = useHifox((state) => state.snapshot?.members)
+  const members = useCrux((state) => state.snapshot?.members)
   const [reply, setReply] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [finalRule, setFinalRule] = useState(comment.finalRule ?? comment.body)
@@ -69,7 +69,7 @@ export function ReviewPanel({ view, target, activeCommentId, missingAnchors, can
   onSelection: (ids: string[]) => void; onCommand: ReturnType<typeof useCreationCommands>['run']; onLoadMore: () => Promise<void>
   onOpenOrigin: (revisionId: string) => void
 }): JSX.Element {
-  const actorId = useHifox((state) => state.workspaceContext.actorId)
+  const actorId = useCrux((state) => state.workspaceContext.actorId)
   const [body, setBody] = useState('')
   const [severity, setSeverity] = useState<CreationComment['severity']>('suggestion')
   const [selectionError, setSelectionError] = useState('')

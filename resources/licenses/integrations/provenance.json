@@ -52,7 +52,7 @@
     },
     {
       "file": "dingtalk.png",
-      "source": "HiFox.asar:renderer/community/icons/dingtalk.png",
+      "source": "Crux.asar:renderer/community/icons/dingtalk.png",
       "artifactSha256": "35e33df04e54ba562f623cf8f7fb7c91588fb82de3ecf3979cef3ff14557d40e",
       "evidenceId": "ev_c39941dded60ae002d9f997d064b398fd008247388e6f87655e4a78857df885e",
       "retrievedAt": "2026-10-24",

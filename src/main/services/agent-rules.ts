@@ -7,7 +7,7 @@ import { agentRulesManifestSchema, MAX_AGENT_RULE_SOURCES, teamTaskRulesContextS
 import { readDocument } from './documents/controller'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { taskDirSchema } from './acp/types'
-import { assertNoUnownedTeamTaskRules, MAX_TASK_RULE_BYTES, readTaskInputRules, readExecutionInputRules, type FixedTaskRule } from './hifox/task-input-rules'
+import { assertNoUnownedTeamTaskRules, MAX_TASK_RULE_BYTES, readTaskInputRules, readExecutionInputRules, type FixedTaskRule } from './crux/task-input-rules'
 import { executionContextManifestSchema, executionContextPacketSchema, type ExecutionContextManifest, type ExecutionInputSource } from '../../shared/team-execution-input'
 import { executionContextEnvelopeBytes, FIXED_EXECUTION_CONTEXT_MIME } from './execution-context-budget'
 
